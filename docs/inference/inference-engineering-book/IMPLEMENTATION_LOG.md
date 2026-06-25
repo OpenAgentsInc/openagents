@@ -129,10 +129,10 @@ codebase?})`; recorded only as the one-way `hashCacheAffinityKey` digest
      `enqueued_at` and the queue message carries `enqueuedAtIso` (the START of the
      batch wait), the consumer stamps `started_at` from an injected clock (the
      END), and `computeBatchWaitMs` derives `batchWaitMs = started_at -
-enqueued_at`. Honest `not_measured` + a `batch_wait_not_measured` `blockerRef`
+     enqueued_at`. Honest `not_measured` + a `batch_wait_not_measured` `blockerRef`
      when timing is unavailable (a pre-`0223` job, a token-only job that was never
      enqueued). Surfaced on the closeout receipt AND `GET
-/v1/inference/batches/:jobId` (job state + wait, auditable from the poll).
+     /v1/inference/batches/:jobId` (job state + wait, auditable from the poll).
   3. **Durable-connection scope documented + confirmed (deliverable 4).** The
      chat gateway uses a DO only for the #6056 single-client reconnect proxy (not
      multi-subscriber); DO + hibernatable-WebSocket multi-subscriber transport is
@@ -210,12 +210,13 @@ enqueued_at`. Honest `not_measured` + a `batch_wait_not_measured` `blockerRef`
   (`matrix.ts`, `lane-seam.ts`, `runner.ts`, `report.ts`, `fixtures.ts`,
   `index.ts` + `*.test.ts`). `fixtures.ts` ships `SAMPLE_DECISION_SUITE_CONFIG`
   (the Q5 minimum decision suite: Fireworks vs Vertex on chat/code/verifier/
-  long-context + the two future lanes). Doc:
+  long-context + the two future lanes; later extended by #6268 as described
+  below). Doc:
   `docs/khala/2026-06-23-khala-benchmark-harness-book-p1-5.md`.
 - **Verification bar (green):** the inference test suites (742 tests, 39 new),
   `typecheck`, `check:architecture`, `check:effect-topology`,
   `check:public-projection-freshness`. Tests cover: the matrix expands to the
-  expected cells (192 for the decision suite); the fixture runner is deterministic
+  expected cells (384 for the current decision suite); the fixture runner is deterministic
   and produces telemetry records with the P0-1 fields; the report aggregation
   (percentiles, cost-per-accepted-outcome, verification rate, cache hit rate) is
   correct on a hand-checkable fixture set; the real-lane seam is flag-gated OFF by
@@ -234,6 +235,23 @@ enqueued_at`. Honest `not_measured` + a `batch_wait_not_measured` `blockerRef`
   when future lanes are skipped, requires public-safe observed Khala traffic
   evidence for every `realistic` shape, and keeps synthetic or unevidenced
   traffic out of `decisionGrade` even when it is owner-approved for a smoke.
+- **2026-06-25 continuation (#6268):** extended the matrix from lane/engine pairs
+  to public-safe target candidate profiles, so the same report can compare
+  Fireworks DeepSeek V4 Flash, Hydralisk GPT-OSS 120B/20B, Vertex Gemini,
+  Vertex Anthropic, and the GLM-5.2 REAP 504B pool without collapsing distinct
+  serving profiles into one lane bucket. `SequenceShape` now carries optional
+  canonical `requestClass`, public-safe observed-traffic evidence refs,
+  observed-request counts, and a bounded source. The runner threads queue wait,
+  batch wait, fallback reason, simulated/measured price, economics state, and
+  margin bucket through the canonical `openagents.khala.telemetry.v1` record,
+  while the public report still withholds raw price and margin. The report now
+  groups by candidate + workload and emits GLM `routingRecommendations`:
+  fixture/synthetic reports say `insufficient_data`; decision-grade real reports
+  can recommend GLM as `first`, `fallback`, or `reserved` by request class based
+  on verified rate plus cost-per-accepted-outcome, or TTFT/TPS for unverified
+  chat. The observed sweep template anchors one realistic shape to the
+  public-safe 2026-06-25 Khala token-ledger mix and lets real-sweep preflight
+  consume inline shape evidence.
 - **Status:** PR open against `main` (#6088); orchestrator reviews / merges /
   deploys / smokes. NOT deployed, NO spend by this entry.
 

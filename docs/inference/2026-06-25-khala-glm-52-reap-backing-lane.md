@@ -229,6 +229,29 @@ refs instead of silently treating uncovered owned-infra cost as free.
 - Direct customer selection remains closed; public model listing still exposes
   Khala, not internal supply workers.
 
+## Gym Benchmark Matrix
+
+The OpenAgents Gym benchmark harness can now compare the GLM pool against the
+same provider field Khala actually uses: Fireworks DeepSeek V4 Flash, Hydralisk
+GPT-OSS 120B/20B, Vertex Gemini, Vertex Anthropic, and future Pylon/Psionic
+lanes. The GLM target is a public-safe candidate profile:
+
+```text
+hydralisk.glm_52_reap_504b.pool.vllm.tp4x2.v1
+```
+
+It carries only `replicaPoolRef`, `replicaCount`, route role, cost-profile ref,
+and evidence refs. It does not disclose private endpoint URLs, bearer tokens,
+raw provider payloads, prompts, responses, raw price, or margin.
+
+The fixture suite remains synthetic and produces `decisionGrade:false`. A real
+comparison uses `KHALA_GLM_PROVIDER_OBSERVED_SWEEP_CONFIG`, which anchors the
+sequence shape to the public-safe 2026-06-25 Khala token-ledger mix, then passes
+through `preflightRealBenchmarkSweep` with owner approval, a positive budget cap,
+and a maximum billable-sample cap. Only that owner-armed path can produce
+decision-grade routing advice saying whether GLM should be first, fallback, or
+reserved for a request class.
+
 ## Verification
 
 The code path is covered by API tests for:

@@ -24,11 +24,12 @@
 // This file is PURE/Worker-safe: no Worker bindings, no Effect runtime, no
 // network, no Date.now/Math.random. The fixture lane derives its numbers
 // arithmetically from the cell + scenario so the whole harness is reproducible.
+import type { KhalaSpeculationInput } from '../khala-speculation'
 import type {
+  KhalaEconomicsState,
   KhalaExecutedVerdict,
   KhalaVerificationClass,
 } from '../khala-telemetry'
-import type { KhalaSpeculationInput } from '../khala-speculation'
 import type { BenchmarkCell } from './matrix'
 import {
   buildOpenCodeFixtureClientSurface,
@@ -68,6 +69,16 @@ export type BenchmarkLaneSample = Readonly<{
   // Cost basis in msat where known (the provider's unit cost for the request).
   // The benchmark records cost so the report can compute cost-per-accepted-outcome.
   costBasisMsat: number
+  // Price in msat where a metering hook priced the request. The public benchmark
+  // report never exposes raw price; it remains in the canonical telemetry record
+  // so margin buckets can be derived by the existing public-safe telemetry logic.
+  priceMsat?: number | undefined
+  economicsState?: KhalaEconomicsState | undefined
+  // Queue/fallback observations from the serving path. Fixture values are
+  // deterministic; real sweeps should pass the measured adapter/gateway values.
+  queueWaitMs?: number | undefined
+  batchWaitMs?: number | undefined
+  fallbackReason?: string | null | undefined
   // The serving region the lane reports (public-safe coarse region string).
   region: string
   // The SPECULATIVE-DECODING signals this sample observed (book P1-8 / #6091).
@@ -366,15 +377,11 @@ export const makeFixtureLaneSeam = (
     // meaningful TTFT (the book: batch optimizes throughput, not first-token), so
     // we set it equal to the full wall-clock there to keep the field honest.
     const cacheTtftDiscount =
-      cell.transport === 'streaming'
-        ? 1 - 0.3 * profile.cacheHitFraction
-        : 1
+      cell.transport === 'streaming' ? 1 - 0.3 * profile.cacheHitFraction : 1
     const ttftMs =
       cell.transport === 'streaming'
         ? Math.round(profile.baseTtftMs * cacheTtftDiscount * jitter)
-        : Math.round(
-            (profile.baseTtftMs + generationWallClockMs) * jitter,
-          )
+        : Math.round((profile.baseTtftMs + generationWallClockMs) * jitter)
 
     const providerTimeMs = ttftMs + generationWallClockMs
     const totalWallClockMs = providerTimeMs + profile.gatewayOverheadMs
@@ -389,6 +396,18 @@ export const makeFixtureLaneSeam = (
     )
 
     const totalTokens = promptTokens + completionTokens
+    const queueWaitMs =
+      cell.transport === 'streaming'
+        ? Math.max(0, cell.shape.concurrency - 1) * 12
+        : 0
+    const batchWaitMs =
+      cell.transport === 'batch'
+        ? 250 + Math.max(1, cell.shape.concurrency) * 20
+        : undefined
+    const fallbackReason =
+      cell.targetProfile?.routeRole === 'fallback'
+        ? 'benchmark_fallback_candidate'
+        : null
 
     const clientSurface = buildOpenCodeFixtureClientSurface(cell)
     return {
@@ -402,6 +421,13 @@ export const makeFixtureLaneSeam = (
       providerTimeMs,
       gatewayOverheadMs: profile.gatewayOverheadMs,
       costBasisMsat,
+      // Fixture pricing is simulated only. It exercises the canonical
+      // price/margin telemetry path without claiming owner billing facts.
+      priceMsat: Math.round(costBasisMsat * 1.25),
+      economicsState: 'simulated',
+      queueWaitMs,
+      ...(batchWaitMs === undefined ? {} : { batchWaitMs }),
+      fallbackReason,
       region: profile.region,
       // Fixture speculation: the policy decides on/off from the cell's batch
       // (concurrency) + derived pressure; counts only when enabled (book P1-8).

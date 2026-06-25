@@ -27,15 +27,15 @@
 > first concurrency point where quota or latency degrades while preserving
 > `not_measured` as distinct from measured `0`.
 > The Gym is the interactive experimentation surface and **eval+reward factory**
-> that sits *on top of the
-> already-landed Khala benchmark harness*
+> that sits _on top of the
+> already-landed Khala benchmark harness_
 > (`apps/openagents.com/workers/api/src/inference/benchmark/`, book P1-5 / #6088),
 > the coordinator/`ModelRouter` seam (#5482), the provider-adapter registry
 > (#5479/#5480/#5481 + Pylon + Tassadar), the verification-class registry, the
 > Blueprint/program + plugin layer
 > ([`../khala/2026-06-23-khala-blueprint-program-and-plugin-extensibility.md`](../khala/2026-06-23-khala-blueprint-program-and-plugin-extensibility.md)),
 > and the merged telemetry schema (`openagents.khala.telemetry.v1`). It specifies
-> what the Gym *is*, the `/gym` web surface, its typed config, its economics, and
+> what the Gym _is_, the `/gym` web surface, its typed config, its economics, and
 > a phased roadmap keyed to those existing seams. **It claims nothing is shipped
 > beyond what those docs already document.** This is not a product promise, a
 > served capability, or public-claim copy; nothing here widens a promise registry
@@ -51,15 +51,15 @@
 
 ## 0. In one paragraph
 
-OpenAI shipped **Gym** early: a standard set of *environments* plus a common
+OpenAI shipped **Gym** early: a standard set of _environments_ plus a common
 interface (`reset`/`step`/observation/action/reward) so anyone could develop and
 compare RL policies against the same tasks. **OpenAgents Gym is the analogous
 thing for Khala** — a standard set of **environments** (benchmarks/tasks each
 paired with a verifier and acceptance contract), a typed interface to run a
 **policy** (a Khala configuration: coordinator candidate × provider fan-out × tool
 set × plugin/module composition × sampling × quantization/speculation × prompt
-layout) against them, and a **reward** that is the *executed verification verdict
-+ cost-per-accepted-outcome* — the same signal the learned coordinator trains on.
+layout) against them, and a **reward** that is the _executed verification verdict
++ cost-per-accepted-outcome_ — the same signal the learned coordinator trains on.
 The `/gym` web route is the human surface: a wall of knobs and dials over that
 typed config, rendered in our existing Foldkit + `three-effect` UI, where you can
 fan out to multiple inference providers, swap tool sets, compose plugins/modules,
@@ -67,23 +67,23 @@ point at Terminal-Bench or any other environment, watch a run light up, and read
 dereferenceable report. Because every run rides the existing metering/settlement
 spine, **people can pay to run benchmarks** — submit an environment + policy, get a
 priced quote, spend credits (or Bitcoin), and receive a public-safe report
-receipt. The Gym is therefore both the *lab where we train Khala* and a
-*benchmark-as-a-service* product over the same machinery.
+receipt. The Gym is therefore both the _lab where we train Khala_ and a
+_benchmark-as-a-service_ product over the same machinery.
 
 ## 1. Where the Gym sits (it is not a new engine)
 
 The Gym is **not** a new inference codebase and **not** a new metric vocabulary.
-It is a typed experimentation layer that *compiles down to* surfaces that already
+It is a typed experimentation layer that _compiles down to_ surfaces that already
 exist:
 
-| Gym concept | Existing seam it compiles to |
-|---|---|
+| Gym concept                                             | Existing seam it compiles to                                                                                                                                                                                                                                                                     |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Environment (task set + verifier + acceptance contract) | the benchmark **matrix** workload axis (`benchmark/matrix.ts`) + the verification-class registry (`khala.md` §6) + the executed acceptance contract ([`../inference/2026-06-22-verified-work-must-execute-the-artifact.md`](../inference/2026-06-22-verified-work-must-execute-the-artifact.md)) |
-| Policy under test | a Khala configuration: a **coordinator candidate** (`ModelRouter` → TRINITY → Conductor) over a **provider fan-out** (provider-adapter registry) with a **tool set** and **plugin/module composition** (program-signature layer) |
-| Run | `expandMatrix` → `runner.ts` over a `BenchmarkLaneSeam` (`lane-seam.ts`) producing `KhalaTelemetryRecord`s |
-| Reward / score | `buildBenchmarkReport` (`report.ts`): latency percentiles, **cost-per-accepted-outcome**, verification rate, cache-hit rate |
-| Spend / billing | the balance gate (`readAgentBalance`, `402`) + `MeteringHook` (#5477) + the revenue-loop spine (EPIC #5457) |
-| Public output | the public-safe report (already enforced by `checkReportPublicSafety`) + an optional leaderboard projection |
+| Policy under test                                       | a Khala configuration: a **coordinator candidate** (`ModelRouter` → TRINITY → Conductor) over a **provider fan-out** (provider-adapter registry) with a **tool set** and **plugin/module composition** (program-signature layer)                                                                 |
+| Run                                                     | `expandMatrix` → `runner.ts` over a `BenchmarkLaneSeam` (`lane-seam.ts`) producing `KhalaTelemetryRecord`s                                                                                                                                                                                       |
+| Reward / score                                          | `buildBenchmarkReport` (`report.ts`): latency percentiles, **cost-per-accepted-outcome**, verification rate, cache-hit rate                                                                                                                                                                      |
+| Spend / billing                                         | the balance gate (`readAgentBalance`, `402`) + `MeteringHook` (#5477) + the revenue-loop spine (EPIC #5457)                                                                                                                                                                                      |
+| Public output                                           | the public-safe report (already enforced by `checkReportPublicSafety`) + an optional leaderboard projection                                                                                                                                                                                      |
 
 So building the Gym is mostly: (a) a **typed `GymExperiment` config** that is a
 thin, human-authored superset of the existing `BenchmarkMatrixConfig`; (b) a
@@ -95,18 +95,18 @@ tripwire, provider adapters, and settlement spine already exist.
 
 ## 2. Why "Gym" — the analogy, made precise
 
-| OpenAI Gym | OpenAgents Gym |
-|---|---|
-| `Environment` with `reset()`/`step(action)` | `GymEnvironment` = task set + verifier + acceptance contract + sequence shapes (ISL/OSL/cacheable-prefix/concurrency) |
-| `observation` | the request (prompt-prefix layout, tool schemas, context) |
-| `action` | the policy's choice: which workers/providers, which role plan (Thinker/Worker/Verifier), which tools/modules |
-| `reward` | the **executed verification verdict** + cost-per-accepted-outcome — never a self-grade, never a benchmark grader the policy can reach (the TMAX reward-hacking lesson, `khala.md` §6) |
-| comparing RL algorithms on a fixed env | comparing **coordinator candidates / provider mixes / tool sets / plugin compositions** on a fixed environment, scored on outcome |
-| leaderboard | optional public-safe Gym leaderboard projection over decision-grade reports |
+| OpenAI Gym                                  | OpenAgents Gym                                                                                                                                                                        |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Environment` with `reset()`/`step(action)` | `GymEnvironment` = task set + verifier + acceptance contract + sequence shapes (ISL/OSL/cacheable-prefix/concurrency)                                                                 |
+| `observation`                               | the request (prompt-prefix layout, tool schemas, context)                                                                                                                             |
+| `action`                                    | the policy's choice: which workers/providers, which role plan (Thinker/Worker/Verifier), which tools/modules                                                                          |
+| `reward`                                    | the **executed verification verdict** + cost-per-accepted-outcome — never a self-grade, never a benchmark grader the policy can reach (the TMAX reward-hacking lesson, `khala.md` §6) |
+| comparing RL algorithms on a fixed env      | comparing **coordinator candidates / provider mixes / tool sets / plugin compositions** on a fixed environment, scored on outcome                                                     |
+| leaderboard                                 | optional public-safe Gym leaderboard projection over decision-grade reports                                                                                                           |
 
 The crucial discipline carried from the benchmark harness (book P1-5): **"faster"
-is meaningless until you say faster at *what*, on *which lane*, under *which
-traffic shape*, judged on *which outcome*.** The Gym makes those four axes the
+is meaningless until you say faster at _what_, on _which lane_, under _which
+traffic shape_, judged on _which outcome_.** The Gym makes those four axes the
 explicit knobs of an experiment, and refuses to call a result decision-grade until
 an owner-armed real seam ran over **realistic** traffic.
 
@@ -135,7 +135,7 @@ and the `scene/` elements already use — `pylonBezierNetworkElement.ts`,
 `tassadarProofReplayElement.ts`, etc.). The knobs/dials are Foldkit structure; the
 live run is a `three-effect` scene reusing the Verse visual language — **fan-out
 energy arcs from the Gym nexus to each selected provider/worker, verdict beams
-back on `test_passed`, a cost meter filling in msat** — so a Gym run *looks like*
+back on `test_passed`, a cost meter filling in msat** — so a Gym run _looks like_
 a Khala request in the world ([`../khala/khala-in-the-world.md`](../khala/khala-in-the-world.md)).
 
 ### The knobs and dials (each maps to one typed config field)
@@ -143,7 +143,7 @@ a Khala request in the world ([`../khala/khala-in-the-world.md`](../khala/khala-
 1. **Environment picker** — choose the benchmark/task env: `terminal-bench`,
    `khala-code` (crossy-road rubric / artifact-gen), `long-context-codebase-qa`,
    the **M8 head-to-head** demo ([`../khala/2026-06-23-khala-head-to-head-m8-status.md`](../khala/2026-06-23-khala-head-to-head-m8-status.md)),
-   the **OpenCode coding-agent head-to-head** (the first *client-surface*
+   the **OpenCode coding-agent head-to-head** (the first _client-surface_
    environment — run the same coding task through OpenCode against each model
    endpoint; FIRST Phase-1 target per Episode 243, see
    [`2026-06-25-gym-opencode-head-to-head-and-khala-flywheel.md`](2026-06-25-gym-opencode-head-to-head-and-khala-flywheel.md)),
@@ -172,7 +172,7 @@ a Khala request in the world ([`../khala/khala-in-the-world.md`](../khala/khala-
    behind Khala **program signatures** (starter-plugin-catalog deterministic
    units today; FUTURE Tier-E conformance-tested modules behind ABI tokens),
    discovered **semantically** via the signature lookup — never string-matched.
-   **Boundary (in force):** this is *not* a public plugin marketplace and not
+   **Boundary (in force):** this is _not_ a public plugin marketplace and not
    arbitrary external admission; the
    [extensibility doc's](../khala/2026-06-23-khala-blueprint-program-and-plugin-extensibility.md)
    no-marketplace boundary holds.
@@ -195,7 +195,7 @@ a Khala request in the world ([`../khala/khala-in-the-world.md`](../khala/khala-
 - a live `three-effect` run scene (arcs/verdicts/cost meter);
 - the dereferenceable **report**: P50/P90/P99 + mean for TTFT / wall-clock /
   perceived TPS / ITL, **cost-per-accepted-outcome**, verification rate, cache-hit
-  rate — over *measured* samples only (`not_measured` dropped, never coerced);
+  rate — over _measured_ samples only (`not_measured` dropped, never coerced);
 - the honesty header: `decisionGrade` true only for an owner-armed real seam over
   realistic traffic with no synthetic-only group; otherwise the `illustrativeNotice`;
 - the **report receipt** (`detailRef`) for a paid run.
@@ -230,10 +230,44 @@ GymExperiment {
 training consumer reads (`scalarReward` + cost-per-accepted-outcome) comes
 straight from the canonical telemetry record — **no parallel grader**.
 
+### Current GLM provider matrix
+
+The bundled `SAMPLE_DECISION_SUITE_CONFIG` now compares the active Khala field as
+typed benchmark candidates, not just broad provider names:
+
+- Fireworks DeepSeek V4 Flash (`fireworks.deepseek_v4_flash.provider_native.v1`)
+- Hydralisk GPT-OSS 120B and 20B (`hydralisk.gpt_oss_120b.vllm.v1`,
+  `hydralisk.gpt_oss_20b.vllm.v1`)
+- Vertex Gemini Flash (`vertex.gemini_2_5_flash.provider_native.v1`)
+- Hydralisk GLM-5.2 REAP 504B pool
+  (`hydralisk.glm_52_reap_504b.pool.vllm.tp4x2.v1`)
+- Vertex Anthropic plus the future Pylon/Psionic lanes, kept in the shape but
+  skipped by real sweeps until they are available.
+
+Each target may carry public-safe `profileRef`, `modelRef`, `replicaPoolRef`,
+`replicaCount`, `costProfileRef`, route role, and evidence refs. This makes the
+GLM pool/replica shape visible to Gym without exposing private Hydralisk URLs,
+bearer tokens, raw provider payloads, raw price, or margin.
+
+`SequenceShape` also carries optional `requestClass`,
+`observedTrafficEvidenceRef`, `observedRequestCount`, and `source`. The default
+suite stays synthetic and therefore illustrative. The separate
+`KHALA_GLM_PROVIDER_OBSERVED_SWEEP_CONFIG` uses the public-safe 2026-06-25 Khala
+token-ledger mix as a realistic shape, but an owner-armed run still needs budget
+caps and a real spending seam before the report can be `decisionGrade:true`.
+
+`buildBenchmarkReport` now emits `routingRecommendations` for GLM candidates.
+Fixture or synthetic reports only return `insufficient_data`; decision-grade real
+reports can mark GLM `first`, `fallback`, or `reserved` for each workload/request
+class based on verification rate plus cost-per-accepted-outcome, or TTFT/TPS for
+unverified chat. That is the handoff point for deciding whether GLM should lead
+Khala, sit behind Fireworks/Vertex/GPT-OSS, or be reserved for specific request
+classes.
+
 ## 5. The Gym trains Khala (the reason it exists)
 
-A DSPy/Blueprint Khala request is a *signature → composed module → executed
-reward* program (the extensibility doc). The Gym is the surface that **produces
+A DSPy/Blueprint Khala request is a _signature → composed module → executed
+reward_ program (the extensibility doc). The Gym is the surface that **produces
 the eval + reward artifacts** that improve those programs:
 
 ```text
@@ -313,7 +347,7 @@ guarantees realistic traffic + owner-armed seam + a citable public report.
 - **Phase 0 — explainer + fixture demo (no spend).** `GymRoute()` + the public
   `/gym` page (Foldkit + `three-effect`), the typed `GymExperiment` schema, and
   `compileGymExperiment` over the existing fixture lane seam. Output: a live
-  fixture run scene + an illustrative report. *Success:* a visitor configures
+  fixture run scene + an illustrative report. _Success:_ a visitor configures
   knobs, runs the bundled decision suite through the fixture seam, and reads a
   labeled non-decision-grade report — entirely in-CI, no spend. **Landed and
   closed:** #6163, #6164, #6165, #6166.
@@ -337,7 +371,7 @@ guarantees realistic traffic + owner-armed seam + a citable public report.
   tool set. `compileGymExperiment` carries that grader binding forward and
   refuses unregistered or graderless environments before any fixture run starts.
 - **Phase 2 — paid runs (owner-armed real seam).** The quote → balance-gate →
-  `preflightRealBenchmarkSweep` → real seam → report-receipt path. *Success:* a
+  `preflightRealBenchmarkSweep` → real seam → report-receipt path. _Success:_ a
   funded account pays to run a real, billable sweep over realistic traffic and
   gets a `decisionGrade:true` report receipt; revenue splits land on the spine.
   **Landed D3:** `paid-run.ts` compiles real-seam experiments as pure plans,
@@ -347,7 +381,7 @@ guarantees realistic traffic + owner-armed seam + a citable public report.
   receipt.
 - **Phase 3 — Gym → training loop.** Gym reports feed GEPA candidate feedback +
   TRINITY/Conductor training in Psionic; winners return as shadow candidates and
-  re-enter the Gym for the head-to-head. *Success:* a coordinator candidate
+  re-enter the Gym for the head-to-head. _Success:_ a coordinator candidate
   trained on Gym-produced reward beats the heuristic in shadow on
   cost-per-accepted-outcome, then is promoted via an approval-gated
   `runtime_promotion`. **Landed D4:** `flywheel.ts` projects Gym reports into
@@ -358,7 +392,7 @@ guarantees realistic traffic + owner-armed seam + a citable public report.
 - **Phase 4 — plugin/module composition + leaderboard.** Compose admitted
   modules behind program signatures into Gym policies; public-safe leaderboard
   projection over decision-grade reports; (FUTURE/gated) per-trace revenue split
-  to component authors. *Success:* a composed-module policy is benchmarked and
+  to component authors. _Success:_ a composed-module policy is benchmarked and
   metered, with the author split modeled on evidence — boundary intact (no public
   plugin marketplace). **Landed D5:** `leaderboard.ts` ranks only
   `decisionGrade:true` public-safe reports and models owner-armed module-author
@@ -497,7 +531,7 @@ metric vocabulary, or a new settlement path.
   `decisionGrade:true` reports only; open work is the logged-in/public surface
   that dereferences those rows and its refresh cadence.
 - Where the Gym's logged-in run surface lives relative to the operator dashboard,
-  and how Artanis may *propose* (approval-gated) Gym sweeps as `inference`-class
+  and how Artanis may _propose_ (approval-gated) Gym sweeps as `inference`-class
   work.
 
 ---

@@ -23,6 +23,8 @@
 // labels it. This mirrors the telemetry schema's `not_measured` discipline.
 import { Schema as S } from 'effect'
 
+import { KhalaRequestClass } from '../khala-telemetry'
+
 // ---------------------------------------------------------------------------
 // Axis values (the book's matrix dimensions, as closed literal unions).
 // ---------------------------------------------------------------------------
@@ -114,27 +116,28 @@ export type LaneAvailability = typeof LaneAvailability.Type
 // lanes stay in the comparison shape but are never measured. This is the single
 // source of truth the runner + report read; it never invents an "available"
 // claim for an unbuilt lane.
-export const LANE_AVAILABILITY: Readonly<Record<BenchmarkLane, LaneAvailability>> =
-  {
-    khala: 'available',
-    bigpickle: 'fixture_only',
-    'gemini-free': 'fixture_only',
-    'openai-gpt': 'fixture_only',
-    claude: 'fixture_only',
-    'vertex-anthropic': 'available',
-    'vertex-gemini': 'available',
-    fireworks: 'available',
-    'partner-passthrough': 'available',
-    'gpt-oss-20b': 'available',
-    'gpt-oss-120b': 'available',
-    'glm-52': 'available',
-    // Pylon whole-small serving and Psionic shard-WAN are named in the notes as
-    // FUTURE lanes (§6, decentralized-serving-shard-wan). They are matrix axes so
-    // the decision suite is shaped for them, but they are not real serving paths
-    // yet — honestly labeled, never measured.
-    'pylon-whole-small': 'not_yet_available',
-    'psionic-shard-wan': 'not_yet_available',
-  }
+export const LANE_AVAILABILITY: Readonly<
+  Record<BenchmarkLane, LaneAvailability>
+> = {
+  khala: 'available',
+  bigpickle: 'fixture_only',
+  'gemini-free': 'fixture_only',
+  'openai-gpt': 'fixture_only',
+  claude: 'fixture_only',
+  'vertex-anthropic': 'available',
+  'vertex-gemini': 'available',
+  fireworks: 'available',
+  'partner-passthrough': 'available',
+  'gpt-oss-20b': 'available',
+  'gpt-oss-120b': 'available',
+  'glm-52': 'available',
+  // Pylon whole-small serving and Psionic shard-WAN are named in the notes as
+  // FUTURE lanes (§6, decentralized-serving-shard-wan). They are matrix axes so
+  // the decision suite is shaped for them, but they are not real serving paths
+  // yet — honestly labeled, never measured.
+  'pylon-whole-small': 'not_yet_available',
+  'psionic-shard-wan': 'not_yet_available',
+}
 
 export const laneAvailability = (lane: BenchmarkLane): LaneAvailability =>
   LANE_AVAILABILITY[lane]
@@ -142,6 +145,14 @@ export const laneAvailability = (lane: BenchmarkLane): LaneAvailability =>
 // ---------------------------------------------------------------------------
 // Sequence shape (book §4.5: ISL / OSL / cacheable prefix — must match prod).
 // ---------------------------------------------------------------------------
+
+export const BenchmarkShapeSource = S.Literals([
+  'gateway_telemetry',
+  'receipt_projection',
+  'operator_export',
+  'synthetic_fixture',
+])
+export type BenchmarkShapeSource = typeof BenchmarkShapeSource.Type
 
 // A sequence shape: input length (ISL), output length (OSL), and the cacheable
 // prefix length within the input. The book is emphatic that these must match the
@@ -166,6 +177,16 @@ export const SequenceShape = S.Struct({
   // (`realistic`) or were invented (`synthetic`). The report surfaces this
   // prominently: synthetic-only numbers are illustrative, not decision-grade.
   provenance: S.Literals(['realistic', 'synthetic']),
+  // The Khala request class this shape came from, when known. This reuses the
+  // canonical telemetry vocabulary so the benchmark never invents a parallel
+  // traffic classifier. Optional on legacy/synthetic shapes.
+  requestClass: S.optional(KhalaRequestClass),
+  // Public-safe evidence that the shape was sourced from observed Khala traffic.
+  // Required by the real-sweep preflight for decision-grade realistic runs; kept
+  // optional here so synthetic fixtures can stay spend-free and honest.
+  observedTrafficEvidenceRef: S.optional(S.String),
+  observedRequestCount: S.optional(S.Number),
+  source: S.optional(BenchmarkShapeSource),
 })
 export type SequenceShape = typeof SequenceShape.Type
 
@@ -187,6 +208,39 @@ export type SamplingSettings = typeof SamplingSettings.Type
 // The matrix config (declarative cross-product spec) + a single expanded cell.
 // ---------------------------------------------------------------------------
 
+export const BenchmarkTargetRouteRole = S.Literals([
+  'first',
+  'fallback',
+  'reserved',
+  'comparison',
+])
+export type BenchmarkTargetRouteRole = typeof BenchmarkTargetRouteRole.Type
+
+export const BenchmarkTargetCapacityClass = S.Literals([
+  'provider_managed',
+  'owned_singleflight',
+  'owned_pool',
+  'fixture',
+])
+export type BenchmarkTargetCapacityClass =
+  typeof BenchmarkTargetCapacityClass.Type
+
+// Public-safe metadata for one benchmark candidate. This is where "GLM pool
+// primary" and "Fireworks DeepSeek V4 Flash" become distinct candidates without
+// leaking private endpoints, secrets, raw prices, or owner-only topology.
+export const BenchmarkTargetProfile = S.Struct({
+  profileRef: S.String,
+  modelRef: S.String,
+  routeRole: BenchmarkTargetRouteRole,
+  capacityClass: BenchmarkTargetCapacityClass,
+  replicaPoolRef: S.optional(S.String),
+  replicaRef: S.optional(S.String),
+  replicaCount: S.optional(S.Number),
+  costProfileRef: S.optional(S.String),
+  evidenceRefs: S.optional(S.Array(S.String)),
+})
+export type BenchmarkTargetProfile = typeof BenchmarkTargetProfile.Type
+
 // One (lane, engine) supply target. Engines are paired with lanes explicitly
 // (rather than a blind cross-product) because not every engine runs on every
 // lane — a managed provider is always `provider-native`; only self-hosted lanes
@@ -194,6 +248,7 @@ export type SamplingSettings = typeof SamplingSettings.Type
 export const BenchmarkTarget = S.Struct({
   lane: BenchmarkLane,
   engine: BenchmarkEngine,
+  profile: S.optional(BenchmarkTargetProfile),
 })
 export type BenchmarkTarget = typeof BenchmarkTarget.Type
 
@@ -226,6 +281,8 @@ export const BenchmarkCell = S.Struct({
   cellId: S.String,
   lane: BenchmarkLane,
   engine: BenchmarkEngine,
+  targetProfile: S.optional(BenchmarkTargetProfile),
+  candidateRef: S.String,
   laneAvailability: LaneAvailability,
   workload: BenchmarkWorkload,
   shape: SequenceShape,
@@ -260,6 +317,7 @@ export const verificationExpectationForWorkload = (
 export const buildCellId = (input: {
   lane: BenchmarkLane
   engine: BenchmarkEngine
+  profileRef?: string | undefined
   workload: BenchmarkWorkload
   shapeId: string
   transport: BenchmarkTransport
@@ -268,6 +326,9 @@ export const buildCellId = (input: {
   [
     input.lane,
     input.engine,
+    ...(input.profileRef === undefined || input.profileRef.trim() === ''
+      ? []
+      : [`profile:${input.profileRef}`]),
     input.workload,
     input.shapeId,
     input.transport,
@@ -293,6 +354,7 @@ export const expandMatrix = (
               cellId: buildCellId({
                 lane: target.lane,
                 engine: target.engine,
+                profileRef: target.profile?.profileRef,
                 workload,
                 shapeId: shape.id,
                 transport,
@@ -300,6 +362,11 @@ export const expandMatrix = (
               }),
               lane: target.lane,
               engine: target.engine,
+              ...(target.profile === undefined
+                ? {}
+                : { targetProfile: target.profile }),
+              candidateRef:
+                target.profile?.profileRef ?? `${target.lane}/${target.engine}`,
               laneAvailability: laneAvailability(target.lane),
               workload,
               shape,

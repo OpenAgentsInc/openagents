@@ -16,12 +16,12 @@ import {
   type KhalaTelemetryRecord,
   buildKhalaTelemetryRecord,
 } from '../khala-telemetry'
-import type { BenchmarkCell, BenchmarkMatrixConfig } from './matrix'
-import { expandMatrix } from './matrix'
 import type {
   BenchmarkClientSurfaceSample,
   BenchmarkLaneSeam,
 } from './lane-seam'
+import type { BenchmarkCell, BenchmarkMatrixConfig } from './matrix'
+import { expandMatrix } from './matrix'
 import { modelIdForBenchmarkCell } from './opencode-client-runner'
 
 // One executed sample of one cell: the cell context + the canonical telemetry
@@ -131,9 +131,12 @@ const runSample = (
     generationWallClockMs: sample.generationWallClockMs,
     providerTimeMs: sample.providerTimeMs,
     gatewayOverheadMs: sample.gatewayOverheadMs,
+    queueWaitMs: sample.queueWaitMs,
+    batchWaitMs: sample.batchWaitMs,
     verifierTimeMs:
       sample.verifierTimeMs > 0 ? sample.verifierTimeMs : undefined,
     region: sample.region,
+    fallbackReason: sample.fallbackReason,
     // Speculation disclosure (book P1-8 / #6091): the seam's per-sample
     // speculation outcome (mode + draft counts) flows into the canonical record
     // so a benchmark sample discloses speculation the same way a production
@@ -145,8 +148,10 @@ const runSample = (
     executedVerdict: sample.executedVerdict,
     scalarReward: sample.scalarReward,
     costBasisMsat: sample.costBasisMsat,
-    // The benchmark measures COST basis; it does not set a price (pricing is a
-    // separate product concern). Margin bucket therefore stays `not_measured`.
+    priceMsat: sample.priceMsat,
+    economicsState: sample.economicsState,
+    // The benchmark records price only when the seam has a measured/simulated
+    // metering value. The public report still omits raw price and margin.
     settlementState: 'not_applicable',
   })
 

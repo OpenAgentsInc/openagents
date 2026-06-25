@@ -27,14 +27,20 @@
 // regardless of seam.
 //
 // PURE: no clock, no randomness, no IO. Same run set → same report.
-import { type MeasuredNumber, isMeasured } from '../khala-telemetry'
 import type { KhalaSpeculationMode } from '../khala-speculation'
-import type { BenchmarkRun, BenchmarkRunSet } from './runner'
+import {
+  type KhalaRequestClass,
+  type MeasuredNumber,
+  isMeasured,
+} from '../khala-telemetry'
 import type {
+  BenchmarkEngine,
   BenchmarkLane,
+  BenchmarkTargetProfile,
   BenchmarkWorkload,
   LaneAvailability,
 } from './matrix'
+import type { BenchmarkRun, BenchmarkRunSet } from './runner'
 
 // ---------------------------------------------------------------------------
 // Percentile helper (book Ch.1 §1.4.1).
@@ -115,7 +121,11 @@ const summarize = (values: ReadonlyArray<number>): LatencySummary => ({
 // The aggregate metrics for one (lane × workload) group.
 export type BenchmarkGroupMetrics = Readonly<{
   lane: BenchmarkLane
+  engine: BenchmarkEngine
+  candidateRef: string
+  targetProfile: BenchmarkTargetProfile | null
   workload: BenchmarkWorkload
+  requestClasses: ReadonlyArray<KhalaRequestClass>
   laneAvailability: LaneAvailability
   // True when EVERY shape in this group is synthetic (numbers are not
   // production-representative — book §4.5). Labeled prominently.
@@ -154,14 +164,12 @@ export type BenchmarkGroupMetrics = Readonly<{
 
 // Aggregate one group's runs into metrics. PURE.
 const aggregateGroup = (
-  lane: BenchmarkLane,
-  workload: BenchmarkWorkload,
   runs: ReadonlyArray<BenchmarkRun>,
 ): BenchmarkGroupMetrics => {
+  const first = runs[0]!
   const executed = runs.filter(run => run.record !== null)
   const skipped = runs.filter(run => run.record === null)
-  const laneAvailability =
-    runs[0]?.cell.laneAvailability ?? 'available'
+  const laneAvailability = first.cell.laneAvailability
   const syntheticOnly =
     runs.length > 0 &&
     runs.every(run => run.cell.shape.provenance === 'synthetic')
@@ -173,12 +181,17 @@ const aggregateGroup = (
   let toolCallsSucceeded = 0
   let totalCostBasisMsat = 0
   const cacheRates: Array<number> = []
+  const requestClasses = new Set<KhalaRequestClass>()
 
-  for (const run of executed) {
+  for (const run of runs) {
     const record = run.record
     if (record === null) {
+      if (run.cell.shape.requestClass !== undefined) {
+        requestClasses.add(run.cell.shape.requestClass)
+      }
       continue
     }
+    requestClasses.add(record.requestClass)
     if (record.executedVerdict !== 'not_executed') {
       attemptedVerifications += 1
       if (record.executedVerdict === 'passed') {
@@ -202,8 +215,12 @@ const aggregateGroup = (
   }
 
   return {
-    lane,
-    workload,
+    lane: first.cell.lane,
+    engine: first.cell.engine,
+    candidateRef: first.cell.candidateRef,
+    targetProfile: first.cell.targetProfile ?? null,
+    workload: first.cell.workload,
+    requestClasses: [...requestClasses].sort(),
     laneAvailability,
     syntheticOnly,
     executedSamples: executed.length,
@@ -228,11 +245,177 @@ const aggregateGroup = (
     toolCallsAttempted,
     toolCallsSucceeded,
     costPerAcceptedOutcomeMsat:
-      acceptedOutcomes === 0
-        ? null
-        : totalCostBasisMsat / acceptedOutcomes,
+      acceptedOutcomes === 0 ? null : totalCostBasisMsat / acceptedOutcomes,
     totalCostBasisMsat,
   }
+}
+
+// ---------------------------------------------------------------------------
+// Public-safe routing recommendations.
+// ---------------------------------------------------------------------------
+
+export type BenchmarkRoutingRecommendation = Readonly<{
+  workload: BenchmarkWorkload
+  requestClasses: ReadonlyArray<KhalaRequestClass>
+  candidateRef: string
+  lane: BenchmarkLane
+  engine: BenchmarkEngine
+  targetRouteRole: BenchmarkTargetProfile['routeRole'] | null
+  recommendation: 'first' | 'fallback' | 'reserved' | 'insufficient_data'
+  reasonRefs: ReadonlyArray<string>
+}>
+
+const hasVerifiedOutcomeAxis = (group: BenchmarkGroupMetrics): boolean =>
+  group.attemptedVerifications > 0
+
+const comparableGroupsFor = (
+  groups: ReadonlyArray<BenchmarkGroupMetrics>,
+  group: BenchmarkGroupMetrics,
+): ReadonlyArray<BenchmarkGroupMetrics> =>
+  groups.filter(
+    candidate =>
+      candidate.workload === group.workload &&
+      candidate.laneAvailability === 'available' &&
+      candidate.executedSamples > 0,
+  )
+
+const recommendationForVerifiedWorkload = (
+  group: BenchmarkGroupMetrics,
+  comparable: ReadonlyArray<BenchmarkGroupMetrics>,
+): Pick<BenchmarkRoutingRecommendation, 'recommendation' | 'reasonRefs'> => {
+  if (
+    group.verificationRate === null ||
+    group.costPerAcceptedOutcomeMsat === null
+  ) {
+    return {
+      recommendation: 'reserved',
+      reasonRefs: ['benchmark.no_accepted_outcome_cost'],
+    }
+  }
+
+  const verifiedComparable = comparable.filter(
+    candidate =>
+      candidate.verificationRate !== null &&
+      candidate.costPerAcceptedOutcomeMsat !== null,
+  )
+  const bestVerificationRate = Math.max(
+    ...verifiedComparable.map(candidate => candidate.verificationRate ?? 0),
+  )
+  const eligibleCosts = verifiedComparable
+    .filter(
+      candidate =>
+        (candidate.verificationRate ?? 0) >= bestVerificationRate - 0.05,
+    )
+    .map(candidate => candidate.costPerAcceptedOutcomeMsat)
+    .filter((value): value is number => value !== null)
+  const bestCost = Math.min(...eligibleCosts)
+
+  if (
+    group.verificationRate >= bestVerificationRate - 0.02 &&
+    group.costPerAcceptedOutcomeMsat <= bestCost * 1.05
+  ) {
+    return {
+      recommendation: 'first',
+      reasonRefs: ['benchmark.verified_cost_frontier'],
+    }
+  }
+  if (
+    group.verificationRate >= bestVerificationRate - 0.1 &&
+    group.costPerAcceptedOutcomeMsat <= bestCost * 1.5
+  ) {
+    return {
+      recommendation: 'fallback',
+      reasonRefs: ['benchmark.verified_cost_competitive'],
+    }
+  }
+  return {
+    recommendation: 'reserved',
+    reasonRefs: ['benchmark.verified_cost_or_quality_lag'],
+  }
+}
+
+const recommendationForUnverifiedWorkload = (
+  group: BenchmarkGroupMetrics,
+  comparable: ReadonlyArray<BenchmarkGroupMetrics>,
+): Pick<BenchmarkRoutingRecommendation, 'recommendation' | 'reasonRefs'> => {
+  const ttfts = comparable
+    .map(candidate => candidate.ttftMs.p50)
+    .filter((value): value is number => value !== null)
+  const tpsValues = comparable
+    .map(candidate => candidate.perceivedTps.p50)
+    .filter((value): value is number => value !== null)
+  if (
+    group.ttftMs.p50 === null ||
+    group.perceivedTps.p50 === null ||
+    ttfts.length === 0 ||
+    tpsValues.length === 0
+  ) {
+    return {
+      recommendation: 'reserved',
+      reasonRefs: ['benchmark.latency_not_measured'],
+    }
+  }
+
+  const bestTtft = Math.min(...ttfts)
+  const bestTps = Math.max(...tpsValues)
+  if (
+    group.ttftMs.p50 <= bestTtft * 1.1 &&
+    group.perceivedTps.p50 >= bestTps * 0.9
+  ) {
+    return {
+      recommendation: 'first',
+      reasonRefs: ['benchmark.latency_frontier'],
+    }
+  }
+  if (group.ttftMs.p50 <= bestTtft * 1.5) {
+    return {
+      recommendation: 'fallback',
+      reasonRefs: ['benchmark.latency_competitive'],
+    }
+  }
+  return {
+    recommendation: 'reserved',
+    reasonRefs: ['benchmark.latency_lag'],
+  }
+}
+
+const buildRoutingRecommendations = (
+  groups: ReadonlyArray<BenchmarkGroupMetrics>,
+  decisionGrade: boolean,
+): ReadonlyArray<BenchmarkRoutingRecommendation> => {
+  const recommendations: Array<BenchmarkRoutingRecommendation> = []
+  for (const group of groups) {
+    if (group.lane !== 'glm-52') {
+      continue
+    }
+    const base = {
+      workload: group.workload,
+      requestClasses: group.requestClasses,
+      candidateRef: group.candidateRef,
+      lane: group.lane,
+      engine: group.engine,
+      targetRouteRole: group.targetProfile?.routeRole ?? null,
+    } as const
+
+    if (!decisionGrade || group.syntheticOnly) {
+      recommendations.push({
+        ...base,
+        recommendation: 'insufficient_data',
+        reasonRefs: [
+          ...(decisionGrade ? [] : ['benchmark.report_not_decision_grade']),
+          ...(group.syntheticOnly ? ['benchmark.synthetic_shape'] : []),
+        ],
+      })
+      continue
+    }
+
+    const comparable = comparableGroupsFor(groups, group)
+    const result = hasVerifiedOutcomeAxis(group)
+      ? recommendationForVerifiedWorkload(group, comparable)
+      : recommendationForUnverifiedWorkload(group, comparable)
+    recommendations.push({ ...base, ...result })
+  }
+  return recommendations
 }
 
 // ---------------------------------------------------------------------------
@@ -367,6 +550,10 @@ export type BenchmarkReport = Readonly<{
   // rate (honest absence), which is itself the finding that speculation did not
   // run (e.g. disabled at high batch, or not a code workload).
   speculationAcceptance: ReadonlyArray<SpeculationAcceptanceCell>
+  // Public-safe GLM routing advice. Fixture/synthetic reports produce
+  // `insufficient_data`; decision-grade real reports can mark GLM candidates as
+  // first, fallback, or reserved for each workload/request-class slice.
+  routingRecommendations: ReadonlyArray<BenchmarkRoutingRecommendation>
 }>
 
 const ILLUSTRATIVE_NOTICE =
@@ -377,23 +564,6 @@ const ILLUSTRATIVE_NOTICE =
   'cacheable prefixes, real concurrency). Synthetic-only traffic is labeled as ' +
   'such per group and is never a basis for a product claim.'
 
-// Stable ordering of lanes + workloads so the report group list is byte-stable.
-const LANE_ORDER: ReadonlyArray<BenchmarkLane> = [
-  'khala',
-  'bigpickle',
-  'gemini-free',
-  'openai-gpt',
-  'claude',
-  'vertex-anthropic',
-  'vertex-gemini',
-  'fireworks',
-  'partner-passthrough',
-  'gpt-oss-20b',
-  'gpt-oss-120b',
-  'glm-52',
-  'pylon-whole-small',
-  'psionic-shard-wan',
-]
 const WORKLOAD_ORDER: ReadonlyArray<BenchmarkWorkload> = [
   'chat',
   'opencode-coding-task',
@@ -407,10 +577,19 @@ const WORKLOAD_ORDER: ReadonlyArray<BenchmarkWorkload> = [
 export const buildBenchmarkReport = (
   runSet: BenchmarkRunSet,
 ): BenchmarkReport => {
-  // Bucket runs by (lane, workload).
+  // Bucket runs by (target candidate, workload). The candidate ref keeps two
+  // same-lane profiles, such as two GLM pool profiles, from collapsing into one
+  // aggregate.
   const buckets = new Map<string, Array<BenchmarkRun>>()
+  const targetOrder: Array<string> = []
+  const seenTargets = new Set<string>()
   for (const run of runSet.runs) {
-    const key = `${run.cell.lane}::${run.cell.workload}`
+    const targetKey = `${run.cell.lane}::${run.cell.engine}::${run.cell.candidateRef}`
+    if (!seenTargets.has(targetKey)) {
+      seenTargets.add(targetKey)
+      targetOrder.push(targetKey)
+    }
+    const key = `${targetKey}::${run.cell.workload}`
     const existing = buckets.get(key)
     if (existing === undefined) {
       buckets.set(key, [run])
@@ -420,18 +599,22 @@ export const buildBenchmarkReport = (
   }
 
   const groups: Array<BenchmarkGroupMetrics> = []
-  for (const lane of LANE_ORDER) {
+  for (const targetKey of targetOrder) {
     for (const workload of WORKLOAD_ORDER) {
-      const runs = buckets.get(`${lane}::${workload}`)
+      const runs = buckets.get(`${targetKey}::${workload}`)
       if (runs === undefined || runs.length === 0) {
         continue
       }
-      groups.push(aggregateGroup(lane, workload, runs))
+      groups.push(aggregateGroup(runs))
     }
   }
 
   const anySynthetic = groups.some(group => group.syntheticOnly)
   const decisionGrade = runSet.seamCanSpend && !anySynthetic
+  const routingRecommendations = buildRoutingRecommendations(
+    groups,
+    decisionGrade,
+  )
 
   return {
     schemaVersion: 'openagents.khala.benchmark-report.v1',
@@ -444,6 +627,7 @@ export const buildBenchmarkReport = (
     cellsSkipped: runSet.cellsSkipped,
     groups,
     speculationAcceptance: aggregateSpeculationAcceptance(runSet.runs),
+    routingRecommendations,
   }
 }
 

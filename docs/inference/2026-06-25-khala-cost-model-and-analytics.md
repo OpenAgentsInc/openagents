@@ -222,6 +222,28 @@ tokens/day. That is why owner analytics must show both provider-token marginal
 cost and owned-GPU idle burn: low utilization makes an otherwise cheap owned lane
 look expensive per token.
 
+### Gym benchmark shape from this ledger
+
+Issue #6268 wires the Gym benchmark matrix to compare GLM against Fireworks,
+GPT-OSS 120B/20B, and Vertex/Gemini on the same workload cells. The default
+suite stays synthetic and illustrative, but the owner-armed observed template
+uses this public-safe aggregate ledger mix:
+
+```text
+shape: observed-khala-fireworks-current-mix
+evidence: evidence.openagents.token_usage_events.fireworks_mix.2026_06_25
+observed requests: 560
+avg input tokens: 573
+avg output tokens: 1448
+cacheable prefix: 0 (historical cached-input count was not measured)
+request class: interactive_stream
+```
+
+That shape is enough to avoid benchmarking only toy prompts, but not enough to
+claim GLM should lead Khala. Decision-grade routing advice still requires an
+owner-approved real sweep with a budget cap and max billable-sample cap, then the
+report scores cost-per-accepted-outcome and verified rate on the same prompts.
+
 ### The endpoint (owner-gated)
 
 `GET /api/admin/inference-analytics?window=7d` — **admin/owner browser session

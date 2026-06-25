@@ -151,6 +151,40 @@ describe('benchmark report — aggregation', () => {
     )
     expect(JSON.stringify(a)).toBe(JSON.stringify(b))
   })
+
+  test('GLM pool groups stay candidate-aware and fixture recommendations refuse live claims', () => {
+    const report = buildBenchmarkReport(
+      runBenchmark(SAMPLE_DECISION_SUITE_CONFIG, makeFixtureLaneSeam()),
+    )
+    const glmCode = report.groups.find(
+      g => g.lane === 'glm-52' && g.workload === 'khala-code-artifact-gen',
+    )!
+
+    expect(glmCode.candidateRef).toBe(
+      'hydralisk.glm_52_reap_504b.pool.vllm.tp4x2.v1',
+    )
+    expect(glmCode.engine).toBe('vllm')
+    expect(glmCode.targetProfile?.replicaPoolRef).toBe(
+      'pool.hydralisk.glm_52_reap_504b',
+    )
+    expect(glmCode.targetProfile?.costProfileRef).toBe(
+      'cost_profile.hydralisk.glm_52_reap_504b.g4_4g.spot.2026_06_25',
+    )
+    expect(glmCode.requestClasses).toEqual(['batch', 'interactive_stream'])
+
+    const glmRecommendations = report.routingRecommendations.filter(
+      recommendation => recommendation.lane === 'glm-52',
+    )
+    expect(glmRecommendations).toHaveLength(4)
+    expect(
+      glmRecommendations.every(
+        recommendation => recommendation.recommendation === 'insufficient_data',
+      ),
+    ).toBe(true)
+    expect(glmRecommendations[0]?.reasonRefs).toContain(
+      'benchmark.report_not_decision_grade',
+    )
+  })
 })
 
 describe('benchmark report — honesty + public-safety', () => {

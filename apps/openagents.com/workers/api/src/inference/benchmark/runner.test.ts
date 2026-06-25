@@ -47,6 +47,11 @@ describe('benchmark runner — fixture lane', () => {
     expect(isMeasured(record.totalWallClockMs)).toBe(true)
     expect(isMeasured(record.perceivedTps)).toBe(true)
     expect(isMeasured(record.costBasisMsat)).toBe(true)
+    expect(isMeasured(record.priceMsat)).toBe(true)
+    expect(isMeasured(record.queueWaitMs)).toBe(true)
+    expect(record.economicsState).toBe('simulated')
+    expect(record.marginBucket).toBe('standard')
+    expect(record.fallbackReason).toBeNull()
     expect(record.executedVerdict).toBe('passed')
     expect(record.provider).toBe('fireworks')
     expect(record.route).toBe('khala-code-artifact-gen')
@@ -57,10 +62,14 @@ describe('benchmark runner — fixture lane', () => {
   })
 
   test('a verifier-run cell is classed as verifier_run; chat as interactive_stream; batch as batch', () => {
-    const runSet = runBenchmark(SAMPLE_DECISION_SUITE_CONFIG, makeFixtureLaneSeam())
+    const runSet = runBenchmark(
+      SAMPLE_DECISION_SUITE_CONFIG,
+      makeFixtureLaneSeam(),
+    )
     const executed = runSet.runs.filter(r => r.record !== null)
     const verifier = executed.find(
-      r => r.cell.workload === 'verifier-run' && r.cell.transport === 'streaming',
+      r =>
+        r.cell.workload === 'verifier-run' && r.cell.transport === 'streaming',
     )
     const chat = executed.find(
       r => r.cell.workload === 'chat' && r.cell.transport === 'streaming',

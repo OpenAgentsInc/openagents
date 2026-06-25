@@ -2,11 +2,9 @@
 //
 // This is the "first run produces a dereferenceable report comparing at least
 // Fireworks vs Vertex on chat + khala-code workloads" deliverable from the
-// issue's done-when, expressed as a typed config the fixture runner can execute
-// deterministically. It is the MINIMUM DECISION SUITE shape (notes Q5): the two
-// real managed lanes (Fireworks, Vertex-Anthropic) plus the two named future
-// lanes (Pylon whole-small, Psionic shard-WAN, labeled not-yet-available), over
-// the chat / khala-code / verifier / long-context workloads.
+// issue's done-when, expanded for the current Khala field: Fireworks DeepSeek,
+// GPT-OSS 120B/20B, Vertex Gemini, GLM-5.2 REAP pool, Vertex Anthropic, and the
+// two named future lanes (Pylon whole-small, Psionic shard-WAN).
 //
 // The sequence shapes here are SYNTHETIC and labeled as such — they are
 // plausible placeholders, NOT sampled from real Khala traffic. Until real
@@ -14,8 +12,11 @@
 // produces is illustrative. That honesty is encoded in `provenance: 'synthetic'`,
 // which makes the report flag every group `syntheticOnly` and `decisionGrade:
 // false`.
+import { DEFAULT_GLM_52_REAP_504B_OWNED_COST_PROFILE_REF } from '../owned-inference-cost'
 import type {
   BenchmarkMatrixConfig,
+  BenchmarkTarget,
+  BenchmarkTargetProfile,
   SamplingSettings,
   SequenceShape,
 } from './matrix'
@@ -31,6 +32,8 @@ const SHORT_CHAT_SHAPE: SequenceShape = {
   cacheablePrefixTokens: 180,
   concurrency: 1,
   provenance: 'synthetic',
+  requestClass: 'interactive_stream',
+  source: 'synthetic_fixture',
 }
 
 const CODE_ARTIFACT_SHAPE: SequenceShape = {
@@ -41,6 +44,8 @@ const CODE_ARTIFACT_SHAPE: SequenceShape = {
   cacheablePrefixTokens: 1600,
   concurrency: 4,
   provenance: 'synthetic',
+  requestClass: 'interactive_stream',
+  source: 'synthetic_fixture',
 }
 
 const LONG_CONTEXT_SHAPE: SequenceShape = {
@@ -50,6 +55,8 @@ const LONG_CONTEXT_SHAPE: SequenceShape = {
   cacheablePrefixTokens: 28000,
   concurrency: 2,
   provenance: 'synthetic',
+  requestClass: 'interactive_stream',
+  source: 'synthetic_fixture',
 }
 
 const OPENCODE_CODING_TASK_SHAPE: SequenceShape = {
@@ -59,6 +66,25 @@ const OPENCODE_CODING_TASK_SHAPE: SequenceShape = {
   cacheablePrefixTokens: 900,
   concurrency: 1,
   provenance: 'synthetic',
+  requestClass: 'interactive_stream',
+  source: 'synthetic_fixture',
+}
+
+export const OBSERVED_KHALA_FIREWORKS_MIX_SHAPE: SequenceShape = {
+  id: 'observed-khala-fireworks-current-mix',
+  inputTokens: 573,
+  outputTokens: 1448,
+  // The 2026-06-25 token-ledger export did not include historical cached-input
+  // counts, so the observed shape keeps the cacheable prefix at 0 rather than
+  // inventing one. Future observed shapes can fill this from gateway telemetry.
+  cacheablePrefixTokens: 0,
+  concurrency: 1,
+  provenance: 'realistic',
+  requestClass: 'interactive_stream',
+  observedTrafficEvidenceRef:
+    'evidence.openagents.token_usage_events.fireworks_mix.2026_06_25',
+  observedRequestCount: 560,
+  source: 'operator_export',
 }
 
 const DEFAULT_SAMPLING: SamplingSettings = {
@@ -71,23 +97,135 @@ const REASONING_SAMPLING: SamplingSettings = {
   reasoningEffort: 'medium',
 }
 
-// The sample/minimum-decision-suite config. Fireworks vs Vertex-Anthropic on
-// the four workloads, plus the two future lanes for shape completeness, over the
-// three synthetic shapes, both transports, both sampling settings, 5 samples per
-// cell (book §4.5.2: enough traffic to read percentiles, not be swayed by one
-// outlier).
+const targetProfile = (
+  profile: BenchmarkTargetProfile,
+): BenchmarkTargetProfile => profile
+
+export const FIREWORKS_DEEPSEEK_V4_FLASH_TARGET: BenchmarkTarget = {
+  lane: 'fireworks',
+  engine: 'provider-native',
+  profile: targetProfile({
+    profileRef: 'fireworks.deepseek_v4_flash.provider_native.v1',
+    modelRef: 'fireworks/deepseek-v4-flash',
+    routeRole: 'comparison',
+    capacityClass: 'provider_managed',
+    evidenceRefs: ['docs.inference.2026_06_25.khala_cost_model'],
+  }),
+}
+
+export const VERTEX_GEMINI_FLASH_TARGET: BenchmarkTarget = {
+  lane: 'vertex-gemini',
+  engine: 'provider-native',
+  profile: targetProfile({
+    profileRef: 'vertex.gemini_2_5_flash.provider_native.v1',
+    modelRef: 'gemini-2.5-flash',
+    routeRole: 'fallback',
+    capacityClass: 'provider_managed',
+    evidenceRefs: ['docs.inference.2026_06_25.khala_cost_model'],
+  }),
+}
+
+export const VERTEX_ANTHROPIC_TARGET: BenchmarkTarget = {
+  lane: 'vertex-anthropic',
+  engine: 'provider-native',
+  profile: targetProfile({
+    profileRef: 'vertex.anthropic.provider_native.v1',
+    modelRef: 'vertex/anthropic',
+    routeRole: 'comparison',
+    capacityClass: 'provider_managed',
+    evidenceRefs: ['docs.inference.book.p1_5.minimum_suite'],
+  }),
+}
+
+export const GPT_OSS_120B_TARGET: BenchmarkTarget = {
+  lane: 'gpt-oss-120b',
+  engine: 'vllm',
+  profile: targetProfile({
+    profileRef: 'hydralisk.gpt_oss_120b.vllm.v1',
+    modelRef: 'openai/gpt-oss-120b',
+    routeRole: 'comparison',
+    capacityClass: 'owned_pool',
+    replicaPoolRef: 'pool.hydralisk.gpt_oss_120b',
+    evidenceRefs: ['docs.inference.2026_06_25.khala_cost_model'],
+  }),
+}
+
+export const GPT_OSS_20B_TARGET: BenchmarkTarget = {
+  lane: 'gpt-oss-20b',
+  engine: 'vllm',
+  profile: targetProfile({
+    profileRef: 'hydralisk.gpt_oss_20b.vllm.v1',
+    modelRef: 'openai/gpt-oss-20b',
+    routeRole: 'comparison',
+    capacityClass: 'owned_pool',
+    replicaPoolRef: 'pool.hydralisk.gpt_oss_20b',
+    evidenceRefs: ['docs.inference.2026_06_25.khala_cost_model'],
+  }),
+}
+
+export const GLM_52_REAP_POOL_TARGET: BenchmarkTarget = {
+  lane: 'glm-52',
+  engine: 'vllm',
+  profile: targetProfile({
+    profileRef: 'hydralisk.glm_52_reap_504b.pool.vllm.tp4x2.v1',
+    modelRef: 'openagents/glm-5.2-reap-504b',
+    routeRole: 'first',
+    capacityClass: 'owned_pool',
+    replicaPoolRef: 'pool.hydralisk.glm_52_reap_504b',
+    replicaCount: 2,
+    costProfileRef: DEFAULT_GLM_52_REAP_504B_OWNED_COST_PROFILE_REF,
+    evidenceRefs: [
+      'docs.inference.2026_06_25.khala_glm_52_reap_backing_lane',
+      'docs.inference.2026_06_25.khala_cost_model',
+    ],
+  }),
+}
+
+const PYLON_WHOLE_SMALL_TARGET: BenchmarkTarget = {
+  lane: 'pylon-whole-small',
+  engine: 'vllm',
+  profile: targetProfile({
+    profileRef: 'pylon.whole_small.future.vllm.v1',
+    modelRef: 'openagents/pylon-whole-small',
+    routeRole: 'reserved',
+    capacityClass: 'fixture',
+    evidenceRefs: ['docs.inference.book.p1_5.future_lane'],
+  }),
+}
+
+const PSIONIC_SHARD_WAN_TARGET: BenchmarkTarget = {
+  lane: 'psionic-shard-wan',
+  engine: 'sglang',
+  profile: targetProfile({
+    profileRef: 'psionic.shard_wan.future.sglang.v1',
+    modelRef: 'openagents/psionic-shard-wan',
+    routeRole: 'reserved',
+    capacityClass: 'fixture',
+    evidenceRefs: ['docs.inference.book.p1_5.future_lane'],
+  }),
+}
+
+// The sample/minimum-decision-suite config. It now names the whole immediate
+// competitive field: Fireworks DeepSeek V4 Flash, GPT-OSS 120B/20B, Vertex
+// Gemini, GLM-5.2 REAP pool, plus Vertex Anthropic and the two future lanes for
+// shape completeness. The shapes remain synthetic and therefore illustrative.
 export const SAMPLE_DECISION_SUITE_CONFIG: BenchmarkMatrixConfig = {
   id: 'khala-decision-suite-v1',
   description:
-    'Minimum Khala lane decision suite: Fireworks vs Vertex-Anthropic on chat / ' +
-    'khala-code / verifier / long-context, with Pylon whole-small and Psionic ' +
-    'shard-WAN named as not-yet-available future lanes. Synthetic shapes — ' +
+    'Khala lane decision suite: Fireworks DeepSeek V4 Flash, GPT-OSS 120B/20B, ' +
+    'Vertex Gemini, and GLM-5.2 REAP pool on chat / khala-code / verifier / ' +
+    'long-context, with Vertex Anthropic plus Pylon whole-small and Psionic ' +
+    'shard-WAN named for comparison/future completeness. Synthetic shapes — ' +
     'illustrative until real traffic + an owner-armed sweep replace them.',
   targets: [
-    { lane: 'fireworks', engine: 'provider-native' },
-    { lane: 'vertex-anthropic', engine: 'provider-native' },
-    { lane: 'pylon-whole-small', engine: 'vllm' },
-    { lane: 'psionic-shard-wan', engine: 'sglang' },
+    FIREWORKS_DEEPSEEK_V4_FLASH_TARGET,
+    GPT_OSS_120B_TARGET,
+    GPT_OSS_20B_TARGET,
+    VERTEX_GEMINI_FLASH_TARGET,
+    GLM_52_REAP_POOL_TARGET,
+    VERTEX_ANTHROPIC_TARGET,
+    PYLON_WHOLE_SMALL_TARGET,
+    PSIONIC_SHARD_WAN_TARGET,
   ],
   workloads: [
     'chat',
@@ -99,6 +237,19 @@ export const SAMPLE_DECISION_SUITE_CONFIG: BenchmarkMatrixConfig = {
   transports: ['streaming', 'batch'],
   sampling: [DEFAULT_SAMPLING, REASONING_SAMPLING],
   samplesPerCell: 5,
+}
+
+export const KHALA_GLM_PROVIDER_OBSERVED_SWEEP_CONFIG: BenchmarkMatrixConfig = {
+  ...SAMPLE_DECISION_SUITE_CONFIG,
+  id: 'khala-glm-provider-observed-sweep-v1',
+  description:
+    'Owner-armed decision sweep template over the 2026-06-25 observed Khala ' +
+    'Fireworks traffic mix. Uses public-safe aggregate token-ledger evidence; ' +
+    'decision-grade execution still requires owner approval, budget caps, and a ' +
+    'real spending seam.',
+  shapes: [OBSERVED_KHALA_FIREWORKS_MIX_SHAPE],
+  transports: ['streaming'],
+  sampling: [DEFAULT_SAMPLING],
 }
 
 export const OPENCODE_KHALA_VS_BIGPICKLE_FIXTURE_CONFIG: BenchmarkMatrixConfig =

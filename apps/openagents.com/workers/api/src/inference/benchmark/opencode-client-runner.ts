@@ -1,8 +1,8 @@
-import type { BenchmarkCell, BenchmarkLane } from './matrix'
 import type {
   BenchmarkClientSurfaceSample,
   BenchmarkLaneSample,
 } from './lane-seam'
+import type { BenchmarkCell, BenchmarkLane } from './matrix'
 
 export type OpenCodeProvisionedConfig = Readonly<{
   client: 'opencode'
@@ -54,7 +54,9 @@ export const OPENCODE_FIXTURE_CODING_TASK = {
 export class OpenCodeConfigUnsupportedLaneError extends Error {
   readonly _tag = 'OpenCodeConfigUnsupportedLaneError'
   constructor(lane: BenchmarkLane) {
-    super(`No OpenCode client-surface config profile is registered for ${lane}.`)
+    super(
+      `No OpenCode client-surface config profile is registered for ${lane}.`,
+    )
     this.name = 'OpenCodeConfigUnsupportedLaneError'
   }
 }
@@ -94,7 +96,7 @@ const openAgentsProviderJson = (
   modelId: string,
   displayName: string,
 ): Readonly<Record<string, unknown>> => ({
-  '$schema': 'https://opencode.ai/config.json',
+  $schema: 'https://opencode.ai/config.json',
   provider: {
     openagents: {
       npm: '@ai-sdk/openai-compatible',
@@ -194,7 +196,7 @@ export const provisionOpenCodeConfigForLane = (
         configRef: 'opencode.config.fixture.bigpickle.v1',
         availabilityNote: 'fixture_only',
         opencodeJson: {
-          '$schema': 'https://opencode.ai/config.json',
+          $schema: 'https://opencode.ai/config.json',
           model: 'opencode/bigpickle',
         },
       }
@@ -209,7 +211,7 @@ export const provisionOpenCodeConfigForLane = (
         configRef: 'opencode.config.fixture.gemini_free.v1',
         availabilityNote: 'fixture_only',
         opencodeJson: {
-          '$schema': 'https://opencode.ai/config.json',
+          $schema: 'https://opencode.ai/config.json',
           model: 'google/gemini-free',
         },
       }
@@ -224,7 +226,7 @@ export const provisionOpenCodeConfigForLane = (
         configRef: 'opencode.config.fixture.openai_gpt.v1',
         availabilityNote: 'fixture_only',
         opencodeJson: {
-          '$schema': 'https://opencode.ai/config.json',
+          $schema: 'https://opencode.ai/config.json',
           model: 'openai/gpt',
         },
       }
@@ -239,7 +241,7 @@ export const provisionOpenCodeConfigForLane = (
         configRef: 'opencode.config.fixture.claude.v1',
         availabilityNote: 'fixture_only',
         opencodeJson: {
-          '$schema': 'https://opencode.ai/config.json',
+          $schema: 'https://opencode.ai/config.json',
           model: 'anthropic/claude',
         },
       }
@@ -249,6 +251,9 @@ export const provisionOpenCodeConfigForLane = (
 }
 
 export const modelIdForBenchmarkCell = (cell: BenchmarkCell): string => {
+  if (cell.targetProfile !== undefined) {
+    return cell.targetProfile.modelRef
+  }
   if (cell.workload !== 'opencode-coding-task') {
     return `${cell.lane}/${cell.engine}`
   }

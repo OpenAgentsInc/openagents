@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'vitest'
 
 import {
+  GLM_52_REAP_POOL_TARGET,
+  KHALA_GLM_PROVIDER_OBSERVED_SWEEP_CONFIG,
   SAMPLE_DECISION_SUITE_CONFIG,
   TINY_TEST_CONFIG,
 } from './fixtures'
@@ -16,9 +18,9 @@ import {
 describe('benchmark matrix — expansion', () => {
   test('expands to exactly the cross-product cardinality', () => {
     const cells = expandMatrix(SAMPLE_DECISION_SUITE_CONFIG)
-    // 4 targets × 4 workloads × 3 shapes × 2 transports × 2 sampling = 192.
-    expect(expectedCellCount(SAMPLE_DECISION_SUITE_CONFIG)).toBe(192)
-    expect(cells.length).toBe(192)
+    // 8 targets × 4 workloads × 3 shapes × 2 transports × 2 sampling = 384.
+    expect(expectedCellCount(SAMPLE_DECISION_SUITE_CONFIG)).toBe(384)
+    expect(cells.length).toBe(384)
   })
 
   test('tiny config expands to a hand-checkable cell count', () => {
@@ -46,6 +48,41 @@ describe('benchmark matrix — expansion', () => {
     })
     expect(id).toBe(
       'fireworks|provider-native|chat|short-chat|streaming|t0.2|rmedium',
+    )
+  })
+
+  test('profiled targets are candidate-aware and keep GLM pool metadata', () => {
+    const cells = expandMatrix({
+      ...TINY_TEST_CONFIG,
+      id: 'profiled-glm-test-v1',
+      targets: [GLM_52_REAP_POOL_TARGET],
+    })
+    const first = cells[0]!
+    expect(first.candidateRef).toBe(
+      'hydralisk.glm_52_reap_504b.pool.vllm.tp4x2.v1',
+    )
+    expect(first.cellId).toContain(
+      'profile:hydralisk.glm_52_reap_504b.pool.vllm.tp4x2.v1',
+    )
+    expect(first.targetProfile?.replicaPoolRef).toBe(
+      'pool.hydralisk.glm_52_reap_504b',
+    )
+    expect(first.targetProfile?.replicaCount).toBe(2)
+    expect(first.targetProfile?.routeRole).toBe('first')
+  })
+
+  test('sample suite includes the requested provider field and GLM pool', () => {
+    const candidateRefs = SAMPLE_DECISION_SUITE_CONFIG.targets.map(
+      target => target.profile?.profileRef ?? `${target.lane}/${target.engine}`,
+    )
+    expect(candidateRefs).toEqual(
+      expect.arrayContaining([
+        'fireworks.deepseek_v4_flash.provider_native.v1',
+        'hydralisk.gpt_oss_120b.vllm.v1',
+        'hydralisk.gpt_oss_20b.vllm.v1',
+        'vertex.gemini_2_5_flash.provider_native.v1',
+        'hydralisk.glm_52_reap_504b.pool.vllm.tp4x2.v1',
+      ]),
     )
   })
 
@@ -96,5 +133,19 @@ describe('benchmark matrix — expansion', () => {
       decodeBenchmarkMatrixConfig(SAMPLE_DECISION_SUITE_CONFIG),
     ).not.toThrow()
     expect(() => decodeBenchmarkMatrixConfig(TINY_TEST_CONFIG)).not.toThrow()
+    expect(() =>
+      decodeBenchmarkMatrixConfig(KHALA_GLM_PROVIDER_OBSERVED_SWEEP_CONFIG),
+    ).not.toThrow()
+  })
+
+  test('observed sweep template carries public-safe shape evidence', () => {
+    const shape = KHALA_GLM_PROVIDER_OBSERVED_SWEEP_CONFIG.shapes[0]!
+    expect(shape.provenance).toBe('realistic')
+    expect(shape.requestClass).toBe('interactive_stream')
+    expect(shape.source).toBe('operator_export')
+    expect(shape.observedRequestCount).toBe(560)
+    expect(shape.observedTrafficEvidenceRef).toBe(
+      'evidence.openagents.token_usage_events.fireworks_mix.2026_06_25',
+    )
   })
 })

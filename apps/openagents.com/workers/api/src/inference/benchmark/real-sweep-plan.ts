@@ -92,6 +92,47 @@ const evidenceByShapeId = (
   return result
 }
 
+const evidenceSourceForShape = (
+  source: BenchmarkMatrixConfig['shapes'][number]['source'],
+): RealTrafficShapeEvidence['source'] | null => {
+  switch (source) {
+    case 'gateway_telemetry':
+    case 'receipt_projection':
+    case 'operator_export':
+      return source
+    case 'synthetic_fixture':
+    case undefined:
+      return null
+  }
+}
+
+const inlineTrafficEvidenceFromConfig = (
+  config: BenchmarkMatrixConfig,
+): ReadonlyArray<RealTrafficShapeEvidence> => {
+  const evidence: Array<RealTrafficShapeEvidence> = []
+  for (const shape of config.shapes) {
+    if (shape.provenance !== 'realistic') {
+      continue
+    }
+    const source = evidenceSourceForShape(shape.source)
+    if (
+      source === null ||
+      shape.observedTrafficEvidenceRef === undefined ||
+      shape.observedRequestCount === undefined
+    ) {
+      continue
+    }
+    evidence.push({
+      shapeId: shape.id,
+      evidenceRef: shape.observedTrafficEvidenceRef,
+      observedRequestCount: shape.observedRequestCount,
+      source,
+      publicSafe: true,
+    })
+  }
+  return evidence
+}
+
 export const preflightRealBenchmarkSweep = (
   config: BenchmarkMatrixConfig,
   options: RealSweepPreflightOptions,
@@ -122,7 +163,10 @@ export const preflightRealBenchmarkSweep = (
       .map(shape => shape.id),
   )
   const approvalRef = normalizedApprovalRef(options.ownerApprovalRef)
-  const trafficEvidence = evidenceByShapeId(options.trafficEvidence)
+  const trafficEvidence = evidenceByShapeId([
+    ...inlineTrafficEvidenceFromConfig(config),
+    ...(options.trafficEvidence ?? []),
+  ])
   const realTrafficEvidenceRefs: Array<string> = []
   const blockers: Array<RealSweepBlocker> = []
   const warnings: Array<RealSweepWarning> = []

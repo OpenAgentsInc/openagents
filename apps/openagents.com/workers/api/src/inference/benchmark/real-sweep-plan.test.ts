@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'vitest'
 
-import { SAMPLE_DECISION_SUITE_CONFIG, TINY_TEST_CONFIG } from './fixtures'
+import {
+  KHALA_GLM_PROVIDER_OBSERVED_SWEEP_CONFIG,
+  SAMPLE_DECISION_SUITE_CONFIG,
+  TINY_TEST_CONFIG,
+} from './fixtures'
 import type { BenchmarkMatrixConfig } from './matrix'
 import { preflightRealBenchmarkSweep } from './real-sweep-plan'
 
@@ -95,6 +99,28 @@ describe('real benchmark sweep preflight', () => {
     expect(preflight.billableSampleUpperBound).toBe(3)
     expect(preflight.realTrafficEvidenceRefs).toEqual([
       'receipt.public.khala_traffic_shape.observed_code_artifact',
+    ])
+  })
+
+  test('observed sweep config can carry public-safe traffic evidence inline', () => {
+    const preflight = preflightRealBenchmarkSweep(
+      KHALA_GLM_PROVIDER_OBSERVED_SWEEP_CONFIG,
+      {
+        ownerConfirmed: true,
+        ownerApprovalRef: 'owner-approved-real-sweep:glm-provider-matrix',
+        budgetCapMsat: 50_000,
+        maxBillableSamples: 120,
+      },
+    )
+
+    expect(preflight.canArmRealSeam).toBe(true)
+    expect(preflight.decisionGradeEligible).toBe(true)
+    expect(preflight.realTrafficEvidenceRefs).toEqual([
+      'evidence.openagents.token_usage_events.fireworks_mix.2026_06_25',
+    ])
+    expect(preflight.billableSampleUpperBound).toBe(120)
+    expect(preflight.warnings.map(warning => warning.code)).toEqual([
+      'future_lanes_skipped',
     ])
   })
 
