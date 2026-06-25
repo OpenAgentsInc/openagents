@@ -1712,9 +1712,6 @@ const schemaComponents = (): JsonSchema => ({
   PublicPylonStats: objectSummary(
     'Public-safe OpenAgents Pylon API aggregate for v0.2.5+ registration, heartbeat, and receipt-backed accepted-work settlement stats. Canonical fields include minimumClientVersion, pylonsRegisteredTotal, pylonsWalletReadyNow, pylonsAssignmentReadyNow, earningLaunchGate, nexusAcceptedWorkSettlementGate, nexusAcceptedWorkPayoutReceiptRefs, pylonsByResourceMode, pylonsByClientVersion, caveatRefs, and sourceRefs. Accepted-work sats are populated only from public settlement receipts that prove real bitcoin movement; unavailable receipt storage remains distinct from zero settled receipts. Online, wallet-ready, assignment-ready, and earningLaunchGate-ready states are not accepted-work, payout, or settlement evidence.',
   ),
-  PublicKhalaTokensServed: objectSummary(
-    'Public-safe Khala usage aggregate with schemaVersion, tokensServed, generatedAt, and the live_at_read public-projection staleness contract. It is computed from the token usage ledger as one network-wide scalar and excludes per-user, per-team, provider, prompt, completion, API key, wallet, payment, and secret material. Read-only; grants no billing, quota, payout, settlement, or model-performance claim authority.',
-  ),
   TrainingRunEnvelope: objectSummary(
     'Public-safe training-run projection with trainingRunRef, promiseRef, state, sourceRefs, receiptRefs, display timestamps, and optional summary metrics. Public summary metrics include provenance labels for windows, contributors, verification, receipt refs, provider-confirmed settled payout sats, and the CS336 A1 real-gradient status/loss/leaderboard projection. Pending, offered, claimed, and wallet-side records are not counted as paid. The real-gradient status remains blocked unless Psionic evidence includes two real contributor devices, Freivalds commitments, merge/eval refs, verified closeouts, and loss under budget. It grants no assignment, payout, model-publication, or spend authority.',
   ),
@@ -8650,23 +8647,6 @@ const paths = (): JsonSchema => ({
         '201': okJson(
           'Recorded promise transition receipt.',
           '#/components/schemas/ProductPromiseTransitions',
-        ),
-        ...errorResponses(),
-      },
-    }),
-  },
-  '/api/public/khala-tokens-served': {
-    get: operation({
-      operationId: 'getPublicKhalaTokensServed',
-      summary: 'Read public Khala Tokens Served counter',
-      description:
-        'Returns the public-safe "Khala Tokens Served" aggregate: the running network-wide SUM of input + output tokens across all token usage ledger events, plus generatedAt and the declared live_at_read staleness contract. A single non-negative scalar; no per-user, per-team, provider, or secret material. Read-only counter; grants no payout, settlement, or public-claim authority.',
-      tags: ['Public Proof'],
-      security: [],
-      responses: {
-        '200': okJson(
-          'Public Khala Tokens Served counter.',
-          '#/components/schemas/PublicKhalaTokensServed',
         ),
         ...errorResponses(),
       },
