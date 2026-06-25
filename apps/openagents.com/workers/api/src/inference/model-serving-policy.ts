@@ -37,9 +37,7 @@ export type HydraliskModelId =
   | typeof HYDRALISK_GPT_OSS_20B_MODEL_ID
   | typeof HYDRALISK_GPT_OSS_120B_MODEL_ID
 
-export type HydraliskModelArming = Readonly<
-  Record<HydraliskModelId, boolean>
->
+export type HydraliskModelArming = Readonly<Record<HydraliskModelId, boolean>>
 
 export const KHALA_BACKING_HYDRALISK_GPT_OSS = 'hydralisk-gpt-oss'
 export const KHALA_BACKING_FIREWORKS_DEEPSEEK_V4_FLASH =
@@ -112,6 +110,12 @@ export type SupplyLaneCredentialEnv = Readonly<{
   HYDRALISK_GLM_52_REAP_504B_BEARER_TOKEN?: string | undefined
   HYDRALISK_GLM_52_REAP_504B_PREFLIGHT_REF?: string | undefined
   HYDRALISK_GLM_52_REAP_504B_RECEIPT_REF?: string | undefined
+  HYDRALISK_GLM_52_REAP_504B_PROFILE_REF?: string | undefined
+  HYDRALISK_GLM_52_REAP_504B_COST_PROFILE_REF?: string | undefined
+  HYDRALISK_GLM_52_REAP_504B_MAX_INFLIGHT?: string | undefined
+  HYDRALISK_GLM_52_REAP_504B_BENCHMARK_RESERVED?: string | undefined
+  HYDRALISK_GLM_52_REAP_504B_DRAINING?: string | undefined
+  HYDRALISK_GLM_52_REAP_504B_REPLICA_IDS?: string | undefined
   // Hydralisk GPT-OSS 20B lane. The URL/token are secret-backed transport
   // presence only; the public-safe preflight/receipt refs are the evidence that
   // the owned L4/vLLM route is ready for Khala traffic.
@@ -161,6 +165,29 @@ export type HydraliskGlm52Reap504bArming = Readonly<{
   armed: boolean
   evidenceRefs: ReadonlyArray<string>
   blockerRefs: ReadonlyArray<string>
+  replicas: ReadonlyArray<HydraliskGlm52Replica>
+}>
+
+export type HydraliskGlm52Replica = Readonly<{
+  replicaId: string
+  baseUrl: string
+  bearerToken: string
+  baseUrlSecretRef: string
+  bearerSecretRef: string
+  profileRef: string
+  evidenceRefs: ReadonlyArray<string>
+  costProfileRef: string
+  maxInflight: number
+  benchmarkReserved: boolean
+  draining: boolean
+}>
+
+export type HydraliskGlm52ReplicaArming = Readonly<{
+  replicaId: string
+  armed: boolean
+  evidenceRefs: ReadonlyArray<string>
+  blockerRefs: ReadonlyArray<string>
+  replica?: HydraliskGlm52Replica | undefined
 }>
 
 export type HydraliskGptOss120bArming = Readonly<{
@@ -190,6 +217,236 @@ const isPublicSafeRef = (value: string | undefined): value is string => {
     !trimmed.includes('://') &&
     !trimmed.toLowerCase().startsWith('sk-')
   )
+}
+
+const LEGACY_GLM_REPLICA_ID = 'primary'
+const DEFAULT_GLM_PROFILE_REF =
+  'profile.hydralisk.glm_52_reap_504b.g4_tp4_minp.v1'
+const DEFAULT_GLM_COST_PROFILE_REF =
+  'cost_profile.hydralisk.glm_52_reap_504b.g4_4g.spot.2026_06_25'
+const REPLICA_ID = /^[a-z0-9][a-z0-9-]{0,63}$/u
+
+const isEnabledFlag = (value: string | undefined): boolean => {
+  const normalized = value?.trim().toLowerCase()
+  return (
+    normalized === 'true' ||
+    normalized === '1' ||
+    normalized === 'yes' ||
+    normalized === 'on'
+  )
+}
+
+const parsePositiveInt = (
+  value: string | undefined,
+  fallback: number,
+): number => {
+  const parsed = Number(value?.trim())
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
+}
+
+const parseGlmReplicaIds = (
+  value: string | undefined,
+): Readonly<{
+  replicaIds: ReadonlyArray<string>
+  blockerRefs: ReadonlyArray<string>
+}> => {
+  const rawValue = value?.trim()
+  if (rawValue === undefined || rawValue === '') {
+    return { blockerRefs: [], replicaIds: [LEGACY_GLM_REPLICA_ID] }
+  }
+
+  const blockerRefs: Array<string> = []
+  const seen = new Set<string>()
+  const replicaIds: Array<string> = []
+  for (const raw of rawValue.split(',')) {
+    const replicaId = raw.trim().toLowerCase()
+    if (!REPLICA_ID.test(replicaId)) {
+      blockerRefs.push('blocker.hydralisk_glm_52_reap_504b.replica_id_invalid')
+      continue
+    }
+    if (seen.has(replicaId)) {
+      blockerRefs.push(
+        `blocker.hydralisk_glm_52_reap_504b.${replicaId}.replica_id_duplicate`,
+      )
+      continue
+    }
+    seen.add(replicaId)
+    replicaIds.push(replicaId)
+  }
+
+  if (replicaIds.length === 0) {
+    blockerRefs.push('blocker.hydralisk_glm_52_reap_504b.replica_ids_empty')
+  }
+
+  return { blockerRefs, replicaIds }
+}
+
+const replicaEnvToken = (replicaId: string): string =>
+  replicaId.replace(/-/gu, '_').toUpperCase()
+
+const glmReplicaEnvKey = (replicaId: string, suffix: string): string =>
+  `HYDRALISK_GLM_52_REAP_504B_${replicaEnvToken(replicaId)}_${suffix}`
+
+const envStringValue = (
+  env: SupplyLaneCredentialEnv,
+  key: string,
+): string | undefined => {
+  const value = (env as Readonly<Record<string, unknown>>)[key]
+  return typeof value === 'string' ? value : undefined
+}
+
+const glmReplicaEnvValue = (
+  env: SupplyLaneCredentialEnv,
+  replicaId: string,
+  suffix: string,
+  legacyKey: keyof SupplyLaneCredentialEnv,
+): Readonly<{ key: string; value: string | undefined }> => {
+  const key = glmReplicaEnvKey(replicaId, suffix)
+  const namedValue = envStringValue(env, key)
+  if (replicaId === LEGACY_GLM_REPLICA_ID && !isPresent(namedValue)) {
+    return {
+      key: String(legacyKey),
+      value: envStringValue(env, String(legacyKey)),
+    }
+  }
+  return { key, value: namedValue }
+}
+
+const resolveHydraliskGlm52ReplicaArming = (
+  env: SupplyLaneCredentialEnv,
+  replicaId: string,
+): HydraliskGlm52ReplicaArming => {
+  const enabled = glmReplicaEnvValue(
+    env,
+    replicaId,
+    'ENABLED',
+    'HYDRALISK_GLM_52_REAP_504B_ENABLED',
+  )
+  const baseUrl = glmReplicaEnvValue(
+    env,
+    replicaId,
+    'BASE_URL',
+    'HYDRALISK_GLM_52_REAP_504B_BASE_URL',
+  )
+  const bearerToken = glmReplicaEnvValue(
+    env,
+    replicaId,
+    'BEARER_TOKEN',
+    'HYDRALISK_GLM_52_REAP_504B_BEARER_TOKEN',
+  )
+  const preflightRef = glmReplicaEnvValue(
+    env,
+    replicaId,
+    'PREFLIGHT_REF',
+    'HYDRALISK_GLM_52_REAP_504B_PREFLIGHT_REF',
+  )
+  const receiptRef = glmReplicaEnvValue(
+    env,
+    replicaId,
+    'RECEIPT_REF',
+    'HYDRALISK_GLM_52_REAP_504B_RECEIPT_REF',
+  )
+  const profileRef = glmReplicaEnvValue(
+    env,
+    replicaId,
+    'PROFILE_REF',
+    'HYDRALISK_GLM_52_REAP_504B_PROFILE_REF',
+  )
+  const costProfileRef = glmReplicaEnvValue(
+    env,
+    replicaId,
+    'COST_PROFILE_REF',
+    'HYDRALISK_GLM_52_REAP_504B_COST_PROFILE_REF',
+  )
+  const maxInflight = glmReplicaEnvValue(
+    env,
+    replicaId,
+    'MAX_INFLIGHT',
+    'HYDRALISK_GLM_52_REAP_504B_MAX_INFLIGHT',
+  )
+  const benchmarkReserved = glmReplicaEnvValue(
+    env,
+    replicaId,
+    'BENCHMARK_RESERVED',
+    'HYDRALISK_GLM_52_REAP_504B_BENCHMARK_RESERVED',
+  )
+  const draining = glmReplicaEnvValue(
+    env,
+    replicaId,
+    'DRAINING',
+    'HYDRALISK_GLM_52_REAP_504B_DRAINING',
+  )
+
+  const blockerPrefix =
+    replicaId === LEGACY_GLM_REPLICA_ID &&
+    !isPresent(env.HYDRALISK_GLM_52_REAP_504B_REPLICA_IDS)
+      ? 'blocker.hydralisk_glm_52_reap_504b'
+      : `blocker.hydralisk_glm_52_reap_504b.${replicaId}`
+  const blockerRefs: Array<string> = []
+  if (enabled.value?.trim() !== HYDRALISK_ROUTE_READY_ON_TOKEN) {
+    blockerRefs.push(`${blockerPrefix}.route_not_ready`)
+  }
+  if (!isPresent(baseUrl.value)) {
+    blockerRefs.push(`${blockerPrefix}.base_url_missing`)
+  }
+  if (!isPresent(bearerToken.value)) {
+    blockerRefs.push(`${blockerPrefix}.bearer_missing`)
+  }
+
+  const evidenceRefs: Array<string> = []
+  const evidence: Array<[string, string | undefined]> = [
+    [`${blockerPrefix}.preflight_ref_missing`, preflightRef.value],
+    [`${blockerPrefix}.receipt_ref_missing`, receiptRef.value],
+  ]
+  for (const [blockerRef, value] of evidence) {
+    if (isPublicSafeRef(value)) {
+      evidenceRefs.push(value)
+    } else {
+      blockerRefs.push(blockerRef)
+    }
+  }
+
+  const profileCandidate = profileRef.value?.trim()
+  const costProfileCandidate = costProfileRef.value?.trim()
+  const resolvedProfileRef =
+    profileCandidate === undefined || profileCandidate === ''
+      ? DEFAULT_GLM_PROFILE_REF
+      : profileCandidate
+  const resolvedCostProfileRef =
+    costProfileCandidate === undefined || costProfileCandidate === ''
+      ? DEFAULT_GLM_COST_PROFILE_REF
+      : costProfileCandidate
+  if (!isPublicSafeRef(resolvedProfileRef)) {
+    blockerRefs.push(`${blockerPrefix}.profile_ref_invalid`)
+  }
+  if (!isPublicSafeRef(resolvedCostProfileRef)) {
+    blockerRefs.push(`${blockerPrefix}.cost_profile_ref_invalid`)
+  }
+
+  const armed = blockerRefs.length === 0
+  return {
+    armed,
+    blockerRefs,
+    evidenceRefs,
+    replicaId,
+    ...(armed
+      ? {
+          replica: {
+            baseUrl: baseUrl.value!.trim(),
+            baseUrlSecretRef: baseUrl.key,
+            bearerSecretRef: bearerToken.key,
+            bearerToken: bearerToken.value!.trim(),
+            benchmarkReserved: isEnabledFlag(benchmarkReserved.value),
+            costProfileRef: resolvedCostProfileRef,
+            draining: isEnabledFlag(draining.value),
+            evidenceRefs,
+            maxInflight: parsePositiveInt(maxInflight.value, 1),
+            profileRef: resolvedProfileRef,
+            replicaId,
+          },
+        }
+      : {}),
+  }
 }
 
 export const resolveKhalaBackingModel = (
@@ -293,14 +550,22 @@ export const resolveHydraliskGptOss20bArming = (
 export const resolveHydraliskGlm52Reap504bArming = (
   env: SupplyLaneCredentialEnv,
 ): HydraliskGlm52Reap504bArming => {
-  return resolveHydraliskGptOssModelArming({
-    baseUrl: env.HYDRALISK_GLM_52_REAP_504B_BASE_URL,
-    bearerToken: env.HYDRALISK_GLM_52_REAP_504B_BEARER_TOKEN,
-    blockerPrefix: 'blocker.hydralisk_glm_52_reap_504b',
-    enabled: env.HYDRALISK_GLM_52_REAP_504B_ENABLED,
-    preflightRef: env.HYDRALISK_GLM_52_REAP_504B_PREFLIGHT_REF,
-    receiptRef: env.HYDRALISK_GLM_52_REAP_504B_RECEIPT_REF,
-  })
+  const parsed = parseGlmReplicaIds(env.HYDRALISK_GLM_52_REAP_504B_REPLICA_IDS)
+  const replicaArmings = parsed.replicaIds.map(replicaId =>
+    resolveHydraliskGlm52ReplicaArming(env, replicaId),
+  )
+  const replicas = replicaArmings.flatMap(arming =>
+    arming.replica === undefined ? [] : [arming.replica],
+  )
+  return {
+    armed: replicas.length > 0,
+    blockerRefs: [
+      ...parsed.blockerRefs,
+      ...replicaArmings.flatMap(arming => arming.blockerRefs),
+    ],
+    evidenceRefs: replicaArmings.flatMap(arming => arming.evidenceRefs),
+    replicas,
+  }
 }
 
 export const resolveHydraliskGptOss120bArming = (

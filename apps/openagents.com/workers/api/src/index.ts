@@ -26,29 +26,15 @@ import { Exit } from 'effect'
 import { WorkerEnvironment } from 'effect-cf'
 
 import { handleAcceptedOutcomesPerKwhApi } from './accepted-outcomes-per-kwh-routes'
-import {
-  handleOperatorGymRunProgressApi,
-  handlePublicGymRunProgressApi,
-} from './inference/gym/run-progress-routes'
 import { AdjutantEnrichmentQueueMessage } from './adjutant-enrichment-jobs'
 import type { AdjutantTaskPacketRefValidationInput } from './adjutant-task-packets'
 import { recordAdjutantUsageReceipt } from './adjutant-usage-receipts'
 import { makeAdminOverviewHandlers } from './admin-overview-routes'
-import { makeCfBrowserSmokeHandler } from './cf-browser-smoke-routes'
 import {
   handleAgentBalanceApi,
   handleAgentBalancePreferencesApi,
 } from './agent-balance-routes'
 import { makeAgentGoalRoutes } from './agent-goal-routes'
-import { makeAutopilotOnboardingRoutes } from './autopilot-onboarding-routes'
-import { makeKhalaChatRoutes } from './khala-chat-routes'
-import type { KhalaChatStreamClient } from './khala-chat-program'
-import {
-  type OnboardingInferenceClient,
-  OnboardingInferenceError,
-  type OnboardingStreamClient,
-  type OnboardingStreamSource,
-} from './autopilot-onboarding-program'
 import {
   handleProgrammaticAgentHome,
   handleProgrammaticAgentSelfUpdate,
@@ -80,10 +66,6 @@ import {
 import { makeAgentSearchRoutes } from './agent-search-routes'
 import { makeAgentSiteRoutes } from './agent-site-routes'
 import {
-  CodingQuickWinPipelineEndpoint,
-  handleCodingQuickWinPipelineApi,
-} from './coding-quick-win-pipeline-routes'
-import {
   AgenticLaborProductEndpoint,
   handleAgenticLaborProductApi,
   isAgenticLaborProductsEnabled,
@@ -113,8 +95,6 @@ import { ArtanisMindSmokeSystem, artanisMindComplete } from './artanis-mind'
 import { makeOperatorArtanisConsoleRoutes } from './artanis-operator-console-routes'
 import { saveArtanisForumPublicationIntent } from './artanis-persistence'
 import { handlePublicArtanisReportApi } from './artanis-public-report-routes'
-import { handlePublicLaborEarningsApi } from './labor-earnings-routes'
-import { handleSelfServeLaborPayoutApi } from './labor-self-serve-earning-payout-routes'
 import { runArtanisComposerScheduled } from './artanis-reply-composer'
 import {
   boundedResponderSupportLimit,
@@ -172,6 +152,13 @@ import { makeAutopilotDecisionRoutes } from './autopilot-decision-routes'
 import { makeHostedGeminiExecuteReadyWork } from './autopilot-hosted-gemini-executor-env'
 import { makeAutopilotMorningReportRoutes } from './autopilot-morning-report-routes'
 import {
+  type OnboardingInferenceClient,
+  OnboardingInferenceError,
+  type OnboardingStreamClient,
+  type OnboardingStreamSource,
+} from './autopilot-onboarding-program'
+import { makeAutopilotOnboardingRoutes } from './autopilot-onboarding-routes'
+import {
   type AutopilotWorkOrderRecord,
   dispatchDueScheduledAutopilotWork,
   makeAutopilotWorkRoutes,
@@ -212,6 +199,7 @@ import { buyModePaymentBridgeForEnv } from './buy-mode-http-payment-bridge'
 import { buyModeEvalBridgeForEnv } from './buy-mode-live-eval-bridge'
 import { buyModeRelayPublisherForEnv } from './buy-mode-live-publisher'
 import { makeD1BuyerPaymentLedgerStore } from './buyer-payment-ledger'
+import { makeCfBrowserSmokeHandler } from './cf-browser-smoke-routes'
 import { makeCheckoutPageRoutes } from './checkout-page-routes'
 // Cloud coding-session surface (autopilot.cloud_coding_sessions.v1, red) — the
 // "our cloud" autonomous-execution lane. INERT behind CLOUD_CODING_SESSIONS_ENABLED
@@ -223,6 +211,7 @@ import {
   isCloudCodingSessionsEnabled,
   routeCloudCodingSessionRequest as routeCloudCodingSessionRequestImpl,
 } from './cloud/cloud-coding-session-routes'
+import { makeD1CloudPrimitiveReceiptStore } from './cloud/cloud-primitive-receipts'
 // Cloud primitive SCAFFOLDS (EPIC #5510). Both flag-gated INERT by default; the
 // promises `cloud.fine_tuning_service.v1` / `cloud.sandbox_compute_service.v1`
 // STAY red until a dereferenceable paid receipt lands. No green flip here.
@@ -230,17 +219,38 @@ import {
   handleFineTuningJobSubmit,
   isFineTuningServiceEnabled,
 } from './cloud/fine-tuning-service-routes'
+import { makePublicCloudPrimitiveReceiptRoutes } from './cloud/public-cloud-primitive-receipt-routes'
 import {
   handleSandboxRequest,
   isSandboxComputeServiceEnabled,
 } from './cloud/sandbox-compute-service-routes'
-import { makeD1CloudPrimitiveReceiptStore } from './cloud/cloud-primitive-receipts'
-import { makePublicCloudPrimitiveReceiptRoutes } from './cloud/public-cloud-primitive-receipt-routes'
+import {
+  CodingQuickWinPipelineEndpoint,
+  handleCodingQuickWinPipelineApi,
+} from './coding-quick-win-pipeline-routes'
 import {
   type OpenAgentsWorkerConfigEnv,
   getOpenAgentsWorkerConfig,
   redactedValue,
 } from './config'
+import { makeCrmBatchRoutes } from './crm-batch-routes'
+import { makeCrmCommandRoutes } from './crm-command-routes'
+import { makeCrmEmailRoutes } from './crm-email-routes'
+import { makeCrmImportRoutes } from './crm-import-routes'
+import { makeCrmMcpCatalog } from './crm-mcp'
+import { makeCrmMcpDiscoveryRoutes } from './crm-mcp-discovery-routes'
+import {
+  crmMcpAdminPrincipal,
+  mcpTenantHeader,
+  readMcpBearerToken,
+  resolveCrmMcpGrantPrincipal,
+} from './crm-mcp-grant'
+import { makeCrmMcpGrantRoutes } from './crm-mcp-grant-routes'
+import { makeCrmMcpRoutes } from './crm-mcp-routes'
+import { isCrmResendSendEnabled, makeCrmResendSender } from './crm-resend'
+import { makeCrmResendRoutes } from './crm-resend-routes'
+import { makeCrmRoutes } from './crm-routes'
+import { makeCrmSendRoutes } from './crm-send-routes'
 import { CustomerOneCohortEndpoint } from './customer-one-cohort-projection'
 import {
   handleOperatorCustomerOneCohortRowsApi,
@@ -248,12 +258,12 @@ import {
 } from './customer-one-cohort-routes'
 import { makeD1CustomerOneCohortRowStore } from './customer-one-cohort-store'
 import { handleDemandProvenanceApi } from './demand-provenance-routes'
-import { makeEcommerceCampaignReceiptRoutes } from './ecommerce-campaign-receipt-routes'
-import { makeEcommerceCampaignReceiptOperatorRoutes } from './ecommerce-campaign-receipt-operator-routes'
-import { makeEcommerceCampaignSelfServeRoutes } from './ecommerce-campaign-self-serve-routes'
-import { makeD1EcommerceCampaignReceiptStore } from './ecommerce-campaign-receipt-store'
-import { firstPaidEcommerceCampaignDeliveryReceiptFixture } from './ecommerce-campaign-delivery-receipt-fixture'
 import { makeInMemoryEcommerceCampaignPaidDeliveryClaimStore } from './ecommerce-campaign-claim-upgrade'
+import { firstPaidEcommerceCampaignDeliveryReceiptFixture } from './ecommerce-campaign-delivery-receipt-fixture'
+import { makeEcommerceCampaignReceiptOperatorRoutes } from './ecommerce-campaign-receipt-operator-routes'
+import { makeEcommerceCampaignReceiptRoutes } from './ecommerce-campaign-receipt-routes'
+import { makeD1EcommerceCampaignReceiptStore } from './ecommerce-campaign-receipt-store'
+import { makeEcommerceCampaignSelfServeRoutes } from './ecommerce-campaign-self-serve-routes'
 import {
   AutopilotDecisionEmailInput,
   OrderSitesTransactionalEmailInput,
@@ -327,77 +337,59 @@ import { makeD1HygieneDebtReceiptStore } from './hygiene-debt-receipt-store'
 import { makeHygieneLaneSettlementRoutes } from './hygiene-lane-settlement-routes'
 import { makeImageGenerationRoutes } from './image-generation-routes'
 import { makeD1InferenceReceiptStore } from './inference-receipts'
-import { makeD1CardCreditSpendReceiptStore } from './inference/card-credit-spend-receipt-store'
-import { handleBatchJobsSubmit, handleBatchJobReceiptRead, handleBatchJobStatusRead } from './inference/batch-job-routes'
-import {
-  BatchJobQueueMessage,
-  executeBatchJob,
-} from './inference/batch-job-consumer'
-import { makeD1BatchJobStore } from './inference/batch-job-store'
-import {
-  handleChatCompletions,
-  isInferenceDurableStreamEnabled,
-  isInferenceGatewayEnabled,
-} from './inference/chat-completions-routes'
-import { isComponentChannelEnabled } from './inference/khala-component-channel'
-import { type DurableStreamNamespace } from './inference/durable-inference-do-transport'
-import {
-  matchDurableReadRequest,
-  routeDurableInferenceReadRequest,
-  routeDurableInferenceReadRequestDO,
-} from './inference/durable-inference-read-routes'
-import {
-  type DiscoverySurfacePath,
-  renderDiscoverySurface,
-} from './inference/discovery-surfaces'
-import { renderMppDiscoveryDocument } from './inference/mpp-discovery-document'
-import {
-  handleMppChatCompletions,
-  isKhalaMppEnabled,
-  isKhalaMppLightningEnabled,
-} from './inference/mpp/mpp-chat-completions-routes'
-import { makeFallbackLightningInvoiceIssuer } from './inference/mpp/mpp-lightning-invoice'
-import {
-  makeMdkLightningInvoiceIssuer,
-  MDK_LIGHTNING_FALLBACK_MINT_TIMEOUT_MS,
-  normalizeMdkLightningRouteUrl,
-} from './inference/mpp/mpp-lightning-invoice-mdk'
-import { makeSparkLightningInvoiceIssuer } from './inference/mpp/mpp-lightning-invoice-spark'
 import {
   isAcceptanceDispatchEnabled,
   makeD1KhalaVerificationStore,
 } from './inference/acceptance-dispatch'
-import {
-  type AcceptedOutcomeSettlementSink,
-  handleAcceptanceVerdictCallback,
-} from './inference/acceptance-verdict-callback-routes'
 import {
   handleAcceptanceJobAck,
   handleAcceptanceJobLease,
 } from './inference/acceptance-job-lease-routes'
 import { makeD1AcceptanceJobQueueStore } from './inference/acceptance-job-queue-store'
 import {
-  settleVerifiedAcceptedOutcome,
-  summarizeAcceptedOutcomeSettlement,
-} from './inference/khala-accepted-outcome-settlement'
+  type AcceptedOutcomeSettlementSink,
+  handleAcceptanceVerdictCallback,
+} from './inference/acceptance-verdict-callback-routes'
 import {
-  type KhalaSettlementDispatch,
-  makeDryRunSettlementDispatch,
-  makeKhalaLoopSettlementDispatch,
-  readKhalaLoopArming,
-} from './inference/khala-loop-integration'
+  BatchJobQueueMessage,
+  executeBatchJob,
+} from './inference/batch-job-consumer'
+import {
+  handleBatchJobReceiptRead,
+  handleBatchJobStatusRead,
+  handleBatchJobsSubmit,
+} from './inference/batch-job-routes'
+import { makeD1BatchJobStore } from './inference/batch-job-store'
+import { makeD1CardCreditSpendReceiptStore } from './inference/card-credit-spend-receipt-store'
+import {
+  handleChatCompletions,
+  isInferenceDurableStreamEnabled,
+  isInferenceGatewayEnabled,
+} from './inference/chat-completions-routes'
+import {
+  type DiscoverySurfacePath,
+  renderDiscoverySurface,
+} from './inference/discovery-surfaces'
+import { type DurableStreamNamespace } from './inference/durable-inference-do-transport'
+import {
+  matchDurableReadRequest,
+  routeDurableInferenceReadRequest,
+  routeDurableInferenceReadRequestDO,
+} from './inference/durable-inference-read-routes'
 import { fireworksAdapter } from './inference/fireworks-adapter'
 import { handleGatewayReadiness } from './inference/gateway-readiness-routes'
-import { makeHydraliskVllmAdapter } from './inference/hydralisk-adapter'
+import {
+  handleOperatorGymRunProgressApi,
+  handlePublicGymRunProgressApi,
+} from './inference/gym/run-progress-routes'
+import {
+  makeHydraliskVllmAdapter,
+  makeHydraliskVllmPoolAdapter,
+} from './inference/hydralisk-adapter'
 import {
   checkFreeAllowancePreflight,
   withFreeAllowance,
 } from './inference/inference-free-allowance'
-import {
-  isOperatorExemptionEnabled,
-  makeOperatorExemptionGate,
-  withOperatorCredit,
-} from './inference/inference-operator-exemption'
 import {
   decideFreeKeyMint,
   isFreeTierEnabled,
@@ -409,53 +401,89 @@ import {
   sanitizeFreeKeyLabel,
   withFreeTierKhala,
 } from './inference/inference-free-tier-key'
+import {
+  isOperatorExemptionEnabled,
+  makeOperatorExemptionGate,
+  withOperatorCredit,
+} from './inference/inference-operator-exemption'
 import { makeVerifiedOwnerIdentityResolver } from './inference/inference-owner-identity'
 import { makePremiumAccessGate } from './inference/inference-premium-allowlist'
 import { withReferralAccrual } from './inference/inference-referral-accrual'
 import { makeInferenceReferralRoutes } from './inference/inference-referral-routes'
-import { makeLedgerMeteringHook } from './inference/metering-hook'
-import { makeD1ServedTokensRecorder } from './inference/served-tokens-recorder'
+import {
+  settleVerifiedAcceptedOutcome,
+  summarizeAcceptedOutcomeSettlement,
+} from './inference/khala-accepted-outcome-settlement'
+import {
+  emitKhalaChatTrace,
+  isKhalaChatTraceEmitEnabled,
+} from './inference/khala-chat-trace-emitter'
+import { isComponentChannelEnabled } from './inference/khala-component-channel'
+import {
+  type KhalaSettlementDispatch,
+  makeDryRunSettlementDispatch,
+  makeKhalaLoopSettlementDispatch,
+  readKhalaLoopArming,
+} from './inference/khala-loop-integration'
 import {
   buildKhalaTokensServedDelta,
   publishKhalaTokensServedDelta,
 } from './inference/khala-tokens-served-sync'
+import { makeLedgerMeteringHook } from './inference/metering-hook'
 import {
-  dispatchWithOverflow,
-  HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
   HYDRALISK_ADAPTER_ID,
+  HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
   HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
+  dispatchWithOverflow,
   makeKhalaBackedAdapterPlan,
 } from './inference/model-router'
-import { resolveSupplyLaneArming } from './inference/model-serving-policy'
+import {
+  resolveHydraliskGlm52Reap504bArming,
+  resolveSupplyLaneArming,
+} from './inference/model-serving-policy'
 import {
   handleModelsList,
   routeModelRetrieveRequest,
 } from './inference/models-routes'
+import { renderMppDiscoveryDocument } from './inference/mpp-discovery-document'
+import {
+  handleMppChatCompletions,
+  isKhalaMppEnabled,
+  isKhalaMppLightningEnabled,
+} from './inference/mpp/mpp-chat-completions-routes'
+import { makeFallbackLightningInvoiceIssuer } from './inference/mpp/mpp-lightning-invoice'
+import {
+  MDK_LIGHTNING_FALLBACK_MINT_TIMEOUT_MS,
+  makeMdkLightningInvoiceIssuer,
+  normalizeMdkLightningRouteUrl,
+} from './inference/mpp/mpp-lightning-invoice-mdk'
+import { makeSparkLightningInvoiceIssuer } from './inference/mpp/mpp-lightning-invoice-spark'
+import { dispatchOnboardingStreamSource } from './inference/onboarding-stream-source'
+import { makeAdmittedOpenAgentsNetworkAdapter } from './inference/openagents-network-adapter'
 import {
   type PassthroughAdapterConfig,
   makePassthroughAdapter,
 } from './inference/passthrough-adapter'
 import {
+  HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
+  HYDRALISK_GPT_OSS_20B_MODEL_ID,
+  HYDRALISK_GPT_OSS_120B_MODEL_ID,
+} from './inference/pricing'
+import {
   InferenceAdapterError,
+  InferenceProviderRegistry,
   type InferenceRequest,
   type InferenceResult,
-  InferenceProviderRegistry,
 } from './inference/provider-adapter'
-import {
-  HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
-  HYDRALISK_GPT_OSS_120B_MODEL_ID,
-  HYDRALISK_GPT_OSS_20B_MODEL_ID,
-} from './inference/pricing'
-import { dispatchOnboardingStreamSource } from './inference/onboarding-stream-source'
-import { makeAdmittedOpenAgentsNetworkAdapter } from './inference/openagents-network-adapter'
+import { dispatchPsionicServe } from './inference/psionic-fabric-serve'
 import {
   makePylonFabricHttpTransport,
   pylonFabricHttpTransportConfigFromEnv,
   pylonGatewayAdmissionFromEnv,
 } from './inference/pylon-fabric-http-transport'
 import { handlePylonFabricSmoke } from './inference/pylon-fabric-smoke-routes'
-import { dispatchPsionicServe } from './inference/psionic-fabric-serve'
 import { handleQuote } from './inference/quote-routes'
+import { makeD1ServedTokensRecorder } from './inference/served-tokens-recorder'
 import { stubEchoAdapter } from './inference/stub-echo-adapter'
 import {
   VERTEX_ANTHROPIC_ADAPTER_ID,
@@ -477,11 +505,15 @@ import {
   safeJsonRecord,
   stringArrayFromUnknown,
 } from './json-boundary'
+import type { KhalaChatStreamClient } from './khala-chat-program'
+import { makeKhalaChatRoutes } from './khala-chat-routes'
 import { makeOpenAgentsL402HmacSigningBoundary } from './l402-credential-service'
-import { makeMarketingAgencyReceiptPublicRoutes } from './marketing-agency-receipt-public-routes'
+import { handlePublicLaborEarningsApi } from './labor-earnings-routes'
+import { handleSelfServeLaborPayoutApi } from './labor-self-serve-earning-payout-routes'
 import { makeInMemoryMarketingAgencyPaidDeliveryClaimStore } from './marketing-agency-claim-upgrade'
-import { makeMarketingAgencySelfServePublicRoutes } from './marketing-agency-self-serve-public-routes'
+import { makeMarketingAgencyReceiptPublicRoutes } from './marketing-agency-receipt-public-routes'
 import { makeInMemoryMarketingAgencySelfServeClaimStore } from './marketing-agency-self-serve-claim-upgrade'
+import { makeMarketingAgencySelfServePublicRoutes } from './marketing-agency-self-serve-public-routes'
 import {
   MarketplaceComposeListEndpoint,
   handleMarketplaceCompositionApi,
@@ -567,24 +599,6 @@ import {
   readOperatorTargetUser,
   readSelectedInferenceCreditTargetUser as readSelectedInferenceCreditTargetUserBase,
 } from './operator-targets'
-import { makeCrmBatchRoutes } from './crm-batch-routes'
-import { makeCrmMcpCatalog } from './crm-mcp'
-import { makeCrmMcpDiscoveryRoutes } from './crm-mcp-discovery-routes'
-import {
-  crmMcpAdminPrincipal,
-  mcpTenantHeader,
-  readMcpBearerToken,
-  resolveCrmMcpGrantPrincipal,
-} from './crm-mcp-grant'
-import { makeCrmMcpGrantRoutes } from './crm-mcp-grant-routes'
-import { makeCrmMcpRoutes } from './crm-mcp-routes'
-import { makeCrmCommandRoutes } from './crm-command-routes'
-import { makeCrmEmailRoutes } from './crm-email-routes'
-import { makeCrmImportRoutes } from './crm-import-routes'
-import { isCrmResendSendEnabled, makeCrmResendSender } from './crm-resend'
-import { makeCrmResendRoutes } from './crm-resend-routes'
-import { makeCrmSendRoutes } from './crm-send-routes'
-import { makeCrmRoutes } from './crm-routes'
 import { makePartnerAgreementRoutes } from './partner-agreement-routes'
 import { PartnerPayoutDispatchError } from './partner-payout-dispatch'
 import { makePartnerPayoutLedgerRoutes } from './partner-payout-ledger-routes'
@@ -621,9 +635,9 @@ import {
   handlePublicActivityTimelineApiForEnv,
   handlePublicActivityTimelineStreamApiForEnv,
 } from './public-activity-timeline-routes'
-import { handlePublicForumActivityApiForEnv } from './public-forum-activity-routes'
 import { handlePublicAdjutantActivityApi } from './public-adjutant-activity-routes'
 import { makePublicCardCreditSpendReceiptRoutes } from './public-card-credit-spend-receipt-routes'
+import { handlePublicForumActivityApiForEnv } from './public-forum-activity-routes'
 import { makePublicInferenceReceiptRoutes } from './public-inference-receipt-routes'
 import { handlePublicKhalaTokensServedHistoryApi } from './public-khala-tokens-served-history-routes'
 import { handlePublicKhalaTokensServedApi } from './public-khala-tokens-served-routes'
@@ -760,16 +774,6 @@ import {
 } from './tassadar-settled-feed-sync'
 import { makeD1TrainingTraceContributionStore } from './tassadar-trace-contribution-authority'
 import { makeTassadarTraceContributionRoutes } from './tassadar-trace-contribution-routes'
-import { makeTraceStoreRoutes } from './trace-store-routes'
-import {
-  emitKhalaChatTrace,
-  isKhalaChatTraceEmitEnabled,
-} from './inference/khala-chat-trace-emitter'
-import {
-  makeD1TraceStore,
-  makeR2TraceMediaBlobStore,
-  makeR2TraceTrajectoryBlobStore,
-} from './trace-store-d1'
 import { runTassadarTracePairingScheduled } from './tassadar-trace-pairing'
 import {
   type TeamChatMessage,
@@ -821,6 +825,12 @@ import {
   TokenUsageLeaderboards,
 } from './token-usage'
 import { makeTokenUsageLedgerRoutes } from './token-usage-ledger-routes'
+import {
+  makeD1TraceStore,
+  makeR2TraceMediaBlobStore,
+  makeR2TraceTrajectoryBlobStore,
+} from './trace-store-d1'
+import { makeTraceStoreRoutes } from './trace-store-routes'
 import {
   TrainingAblationDeriskingLedgerEndpoint,
   handleTrainingAblationDeriskingLedgerApi,
@@ -1199,7 +1209,9 @@ const makeAcceptedOutcomeSettlementSink = (
   env: Env,
 ): AcceptedOutcomeSettlementSink | undefined => {
   // FIRST gate: the loop-arming flag. OFF (default) => no sink => no settlement.
-  if (!readKhalaLoopArming(env as unknown as Record<string, unknown>).loopArmed) {
+  if (
+    !readKhalaLoopArming(env as unknown as Record<string, unknown>).loopArmed
+  ) {
     return undefined
   }
 
@@ -1317,9 +1329,7 @@ const makeAcceptedOutcomeSettlementSink = (
       },
       outcome,
     ).pipe(
-      Effect.map(result =>
-        summarizeAcceptedOutcomeSettlement(outcome, result),
-      ),
+      Effect.map(result => summarizeAcceptedOutcomeSettlement(outcome, result)),
     )
   }
 }
@@ -3161,9 +3171,16 @@ const makeAuthIssuer = (env: Env) => {
       radius: 'none' as const,
       primary: { light: '#0a0a0a', dark: '#f1efe8' },
       background: { light: '#ffffff', dark: '#000000' },
-      font: { family: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace' },
-      logo: { light: 'data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%27240%27%20height%3D%2740%27%20viewBox%3D%270%200%20240%2040%27%3E%3Ctext%20x%3D%27120%27%20y%3D%2730%27%20text-anchor%3D%27middle%27%20font-family%3D%27ui-monospace%2CSFMono-Regular%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%2729%27%20font-weight%3D%27700%27%20letter-spacing%3D%27-1.5%27%20fill%3D%27%230a0a0a%27%3EOpenAgents%3C%2Ftext%3E%3C%2Fsvg%3E', dark: 'data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%27240%27%20height%3D%2740%27%20viewBox%3D%270%200%20240%2040%27%3E%3Ctext%20x%3D%27120%27%20y%3D%2730%27%20text-anchor%3D%27middle%27%20font-family%3D%27ui-monospace%2CSFMono-Regular%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%2729%27%20font-weight%3D%27700%27%20letter-spacing%3D%27-1.5%27%20fill%3D%27%23f1efe8%27%3EOpenAgents%3C%2Ftext%3E%3C%2Fsvg%3E' },
-      favicon: 'data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%2764%27%20height%3D%2764%27%20viewBox%3D%270%200%2064%2064%27%3E%3Crect%20width%3D%2764%27%20height%3D%2764%27%20fill%3D%27%23000000%27%2F%3E%3Ctext%20x%3D%2732%27%20y%3D%2744%27%20text-anchor%3D%27middle%27%20font-family%3D%27ui-monospace%2CSFMono-Regular%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%2734%27%20font-weight%3D%27700%27%20letter-spacing%3D%27-2%27%20fill%3D%27%23f1efe8%27%3Eoa%3C%2Ftext%3E%3C%2Fsvg%3E',
+      font: {
+        family: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+      },
+      logo: {
+        light:
+          'data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%27240%27%20height%3D%2740%27%20viewBox%3D%270%200%20240%2040%27%3E%3Ctext%20x%3D%27120%27%20y%3D%2730%27%20text-anchor%3D%27middle%27%20font-family%3D%27ui-monospace%2CSFMono-Regular%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%2729%27%20font-weight%3D%27700%27%20letter-spacing%3D%27-1.5%27%20fill%3D%27%230a0a0a%27%3EOpenAgents%3C%2Ftext%3E%3C%2Fsvg%3E',
+        dark: 'data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%27240%27%20height%3D%2740%27%20viewBox%3D%270%200%20240%2040%27%3E%3Ctext%20x%3D%27120%27%20y%3D%2730%27%20text-anchor%3D%27middle%27%20font-family%3D%27ui-monospace%2CSFMono-Regular%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%2729%27%20font-weight%3D%27700%27%20letter-spacing%3D%27-1.5%27%20fill%3D%27%23f1efe8%27%3EOpenAgents%3C%2Ftext%3E%3C%2Fsvg%3E',
+      },
+      favicon:
+        'data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%2764%27%20height%3D%2764%27%20viewBox%3D%270%200%2064%2064%27%3E%3Crect%20width%3D%2764%27%20height%3D%2764%27%20fill%3D%27%23000000%27%2F%3E%3Ctext%20x%3D%2732%27%20y%3D%2744%27%20text-anchor%3D%27middle%27%20font-family%3D%27ui-monospace%2CSFMono-Regular%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%2734%27%20font-weight%3D%27700%27%20letter-spacing%3D%27-2%27%20fill%3D%27%23f1efe8%27%3Eoa%3C%2Ftext%3E%3C%2Fsvg%3E',
     },
     providers: {
       github: GithubProvider({
@@ -6565,8 +6582,7 @@ export const handleFreeKeyMint = async (
     )
   }
 
-  const store =
-    agentRegistrationStore ?? makeD1AgentRegistrationStore(db)
+  const store = agentRegistrationStore ?? makeD1AgentRegistrationStore(db)
 
   try {
     const registration = await createProgrammaticAgentRegistration(store, {
@@ -7318,25 +7334,27 @@ const agentGoalRoutes = makeAgentGoalRoutes({
   requireBrowserSession,
 })
 
-const autopilotOnboardingRoutes = makeAutopilotOnboardingRoutes<WorkerBindings>({
-  makeInferenceClient: env => makeOnboardingInferenceClient(env),
-  makeStreamClient: env => makeOnboardingStreamClient(env),
-  // DURABLE ONBOARDING STREAM (#6154 item 4). The per-request Durable Object
-  // namespace, resolved only when the durable-stream flag is on AND the binding
-  // is wired; absent => the onboarding stream stays the non-durable SSE
-  // (fail-safe). Keyed by the stable id `onboarding:{sessionId}:{turnIndex}` so
-  // an unauthenticated browser can resume a dropped turn by offset.
-  resolveDurableStream: env => {
-    // `env` is the full Worker `Env` at call time; the route's generic narrows it
-    // to `WorkerBindings`, so read the config flag through the broader Env shape.
-    const fullEnv = env as Env
-    return isInferenceDurableStreamEnabled(
-      fullEnv.INFERENCE_DURABLE_STREAM_ENABLED,
-    ) && fullEnv.INFERENCE_DURABLE_STREAM !== undefined
-      ? (fullEnv.INFERENCE_DURABLE_STREAM as unknown as DurableStreamNamespace)
-      : undefined
+const autopilotOnboardingRoutes = makeAutopilotOnboardingRoutes<WorkerBindings>(
+  {
+    makeInferenceClient: env => makeOnboardingInferenceClient(env),
+    makeStreamClient: env => makeOnboardingStreamClient(env),
+    // DURABLE ONBOARDING STREAM (#6154 item 4). The per-request Durable Object
+    // namespace, resolved only when the durable-stream flag is on AND the binding
+    // is wired; absent => the onboarding stream stays the non-durable SSE
+    // (fail-safe). Keyed by the stable id `onboarding:{sessionId}:{turnIndex}` so
+    // an unauthenticated browser can resume a dropped turn by offset.
+    resolveDurableStream: env => {
+      // `env` is the full Worker `Env` at call time; the route's generic narrows it
+      // to `WorkerBindings`, so read the config flag through the broader Env shape.
+      const fullEnv = env as Env
+      return isInferenceDurableStreamEnabled(
+        fullEnv.INFERENCE_DURABLE_STREAM_ENABLED,
+      ) && fullEnv.INFERENCE_DURABLE_STREAM !== undefined
+        ? (fullEnv.INFERENCE_DURABLE_STREAM as unknown as DurableStreamNamespace)
+        : undefined
+    },
   },
-})
+)
 
 const checkoutPageRoutes = makeCheckoutPageRoutes<WorkerBindings>({
   hostedMdkClient: env => hostedMdkClientForEnv(env),
@@ -7641,7 +7659,8 @@ const crmEmailRoutes = makeCrmEmailRoutes<WorkerBindings>({
 
 const resolveCrmResendDeps = (env: WorkerBindings) => {
   const enabled = isCrmResendSendEnabled(
-    (env as { CRM_RESEND_SEND_ENABLED?: string | undefined }).CRM_RESEND_SEND_ENABLED,
+    (env as { CRM_RESEND_SEND_ENABLED?: string | undefined })
+      .CRM_RESEND_SEND_ENABLED,
   )
   const resend = getResendEmailConfig(env)
   if (resend === undefined) {
@@ -7685,15 +7704,24 @@ const crmMcpRoutes = makeCrmMcpRoutes<WorkerBindings>({
   authenticate: async (request, env) => {
     const isAdmin = await requireAdminApiToken(request, env)
     if (isAdmin) {
-      return crmMcpAdminPrincipal(mcpTenantHeader(request), currentIsoTimestamp())
+      return crmMcpAdminPrincipal(
+        mcpTenantHeader(request),
+        currentIsoTimestamp(),
+      )
     }
     const token = readMcpBearerToken(request)
     if (token === undefined) {
       return null
     }
-    return resolveCrmMcpGrantPrincipal(openAgentsDatabase(env), token, currentIsoTimestamp())
+    return resolveCrmMcpGrantPrincipal(
+      openAgentsDatabase(env),
+      token,
+      currentIsoTimestamp(),
+    )
   },
-  catalog: makeCrmMcpCatalog<WorkerBindings>({ resolveResendDeps: resolveCrmResendDeps }),
+  catalog: makeCrmMcpCatalog<WorkerBindings>({
+    resolveResendDeps: resolveCrmResendDeps,
+  }),
 })
 
 const crmMcpGrantRoutes = makeCrmMcpGrantRoutes<WorkerBindings>({
@@ -7734,10 +7762,11 @@ const operatorBuyModeRoutes = makeOperatorBuyModeRoutes<Env>({
   requireAdminApiToken,
 })
 
-const ecommerceCampaignSelfServeRoutes = makeEcommerceCampaignSelfServeRoutes<Env>({
-  makeStore: env => makePrefilledWorkspaceService(openAgentsDatabase(env)),
-  enabled: true, // INERT self-serve enabled
-})
+const ecommerceCampaignSelfServeRoutes =
+  makeEcommerceCampaignSelfServeRoutes<Env>({
+    makeStore: env => makePrefilledWorkspaceService(openAgentsDatabase(env)),
+    enabled: true, // INERT self-serve enabled
+  })
 
 const ecommerceCampaignReceiptRoutes = makeEcommerceCampaignReceiptRoutes<Env>({
   makeStore: env =>
@@ -7749,20 +7778,22 @@ const ecommerceCampaignReceiptRoutes = makeEcommerceCampaignReceiptRoutes<Env>({
     makeInMemoryEcommerceCampaignPaidDeliveryClaimStore([
       {
         document: firstPaidEcommerceCampaignDeliveryReceiptFixture,
-        receiptRef: firstPaidEcommerceCampaignDeliveryReceiptFixture.receipt.workItemRef,
+        receiptRef:
+          firstPaidEcommerceCampaignDeliveryReceiptFixture.receipt.workItemRef,
         ownerSignOffRef: 'owner.signoff.fixture.1',
       },
     ]),
 })
 
-const ecommerceCampaignReceiptOperatorRoutes = makeEcommerceCampaignReceiptOperatorRoutes<Env>({
-  makeStore: env =>
-    makeD1EcommerceCampaignReceiptStore(
-      openAgentsDatabase(env),
-      currentIsoTimestamp,
-    ),
-  requireAdminApiToken: requireAdminApiToken,
-})
+const ecommerceCampaignReceiptOperatorRoutes =
+  makeEcommerceCampaignReceiptOperatorRoutes<Env>({
+    makeStore: env =>
+      makeD1EcommerceCampaignReceiptStore(
+        openAgentsDatabase(env),
+        currentIsoTimestamp,
+      ),
+    requireAdminApiToken: requireAdminApiToken,
+  })
 
 const publicNip90MarketReceiptRoutes = makePublicNip90MarketReceiptRoutes<Env>({
   makeStore: env => makeD1Nip90MarketReceiptStore(openAgentsDatabase(env)),
@@ -7779,18 +7810,18 @@ const publicInferenceReceiptRoutes = makePublicInferenceReceiptRoutes<Env>({
 // no authority and asserts no promise is green.
 const publicCloudPrimitiveReceiptRoutes =
   makePublicCloudPrimitiveReceiptRoutes<Env>({
-    makeStore: env =>
-      makeD1CloudPrimitiveReceiptStore(openAgentsDatabase(env)),
+    makeStore: env => makeD1CloudPrimitiveReceiptStore(openAgentsDatabase(env)),
     nowIso: currentIsoTimestamp,
   })
 
 const marketingAgencyReceiptPublicRoutes =
   makeMarketingAgencyReceiptPublicRoutes<Env>({
-    makeClaimStore: _env => makeInMemoryMarketingAgencyPaidDeliveryClaimStore([])
+    makeClaimStore: _env =>
+      makeInMemoryMarketingAgencyPaidDeliveryClaimStore([]),
   })
 const marketingAgencySelfServePublicRoutes =
   makeMarketingAgencySelfServePublicRoutes<Env>({
-    makeClaimStore: _env => makeInMemoryMarketingAgencySelfServeClaimStore([])
+    makeClaimStore: _env => makeInMemoryMarketingAgencySelfServeClaimStore([]),
   })
 
 const publicCardCreditSpendReceiptRoutes =
@@ -8775,7 +8806,28 @@ const registerHydraliskAdapter = (
   }
   hydraliskAdaptersRegistered.add(env)
   const arming = resolveSupplyLaneArming(env)
-  if (
+  const glm52 = resolveHydraliskGlm52Reap504bArming(env)
+  if (glm52.replicas.length > 0) {
+    registry.register(
+      makeHydraliskVllmPoolAdapter({
+        id: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+        replicas: glm52.replicas.map(replica => ({
+          apiKey: Redacted.make(replica.bearerToken),
+          baseUrl: replica.baseUrl,
+          benchmarkReserved: replica.benchmarkReserved,
+          costProfileRef: replica.costProfileRef,
+          draining: replica.draining,
+          evidenceRefs: replica.evidenceRefs,
+          id: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+          maxInflight: replica.maxInflight,
+          profileRef: replica.profileRef,
+          replicaId: replica.replicaId,
+          upstreamModel: HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
+        })),
+        upstreamModel: HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
+      }),
+    )
+  } else if (
     arming.hydraliskModels?.[HYDRALISK_GLM_52_REAP_504B_MODEL_ID] === true
   ) {
     registerConfiguredHydraliskAdapter(registry, {
@@ -9148,8 +9200,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   },
   {
     path: '/api/public/forum-activity',
-    handler: (request, env) =>
-      handlePublicForumActivityApiForEnv(request, env),
+    handler: (request, env) => handlePublicForumActivityApiForEnv(request, env),
   },
   {
     path: TASSADAR_COMPILED_MODULE_MARKETPLACE_ROUTE,
@@ -9476,7 +9527,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     // a valid receipt. INERT: it creates no new state, moves no money, and
     // serves strictly to orchestrate verifiable structures into a pipeline.
     path: CodingQuickWinPipelineEndpoint,
-    handler: (request) => handleCodingQuickWinPipelineApi(request),
+    handler: request => handleCodingQuickWinPipelineApi(request),
   },
   {
     // Self-serve control-center fanout scaffold (promise
@@ -9784,8 +9835,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     // `env.BROWSER` binding from a deployed Worker; honest `{ ok:false, reason }`
     // if the binding is absent or Browser Rendering errors.
     path: '/api/admin/cf-browser-smoke',
-    handler: (request, env, ctx) =>
-      handleCfBrowserSmokeApi(request, env, ctx),
+    handler: (request, env, ctx) => handleCfBrowserSmokeApi(request, env, ctx),
   },
   {
     path: '/api/stats/token-usage/events',
@@ -10714,15 +10764,13 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         // non-Khala models, and over-quota requests fall through to the normal
         // path. Inert (identity) when the flag is off. Each decorator acts only on
         // its own lane, so the order among the free wrappers is independent.
-        meteringHook: (
-          baseHook =>
-            operatorExemptionEnabled
-              ? withOperatorCredit(baseHook, {
-                  db: openAgentsDatabase(env),
-                  resolveOwnerIdentity,
-                })
-              : baseHook
-        )(
+        meteringHook: (baseHook =>
+          operatorExemptionEnabled
+            ? withOperatorCredit(baseHook, {
+                db: openAgentsDatabase(env),
+                resolveOwnerIdentity,
+              })
+            : baseHook)(
           withFreeAllowance(
             (innerHook =>
               freeTierEnabled
@@ -10746,18 +10794,21 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         // hook short-circuits, but the tokens were still served and must count).
         // Idempotent per request; never fails the completion. INERT regardless —
         // only reached when the gateway is enabled.
-        recordTokensServed: makeD1ServedTokensRecorder(openAgentsDatabase(env), {
-          // Live-counter push (#6231): on a REAL new served-tokens row, push the
-          // public-safe delta onto the tokens-served sync scope so the homepage
-          // odometer rolls up instantly. Fail-soft: never breaks the completion.
-          publishDelta: delta =>
-            Effect.promise(() =>
-              publishKhalaTokensServedDelta(
-                env,
-                buildKhalaTokensServedDelta(delta),
-              ).catch(() => undefined),
-            ),
-        }),
+        recordTokensServed: makeD1ServedTokensRecorder(
+          openAgentsDatabase(env),
+          {
+            // Live-counter push (#6231): on a REAL new served-tokens row, push the
+            // public-safe delta onto the tokens-served sync scope so the homepage
+            // odometer rolls up instantly. Fail-soft: never breaks the completion.
+            publishDelta: delta =>
+              Effect.promise(() =>
+                publishKhalaTokensServedDelta(
+                  env,
+                  buildKhalaTokensServedDelta(delta),
+                ).catch(() => undefined),
+              ),
+          },
+        ),
         readAvailableMsat: async accountRef => {
           const balance = await readAgentBalance(
             openAgentsDatabase(env),
@@ -10986,9 +11037,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         db: openAgentsDatabase(env),
         enabled: isKhalaMppEnabled(env.KHALA_MPP_ENABLED),
         lightningEnabled,
-        ...(mintLightningInvoice === undefined
-          ? {}
-          : { mintLightningInvoice }),
+        ...(mintLightningInvoice === undefined ? {} : { mintLightningInvoice }),
         signingSecret: env.KHALA_MPP_SIGNING_SECRET,
         stripeNetworkProfileId: env.STRIPE_MPP_NETWORK_PROFILE_ID,
         stripeSecretKey: env.STRIPE_API_KEY,
@@ -11057,9 +11106,9 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         // the first VERIFIED+EXECUTED backfill. Double-gated + inert by default (undefined
         // unless the KHALA loop flag is armed; even then the owner real-settlement gate +
         // caps + destination fail-close inside the engine). NEEDS-OWNER to arm real money.
-        ...((sink => (sink === undefined ? {} : { settlement: sink }))(
+        ...(sink => (sink === undefined ? {} : { settlement: sink }))(
           makeAcceptedOutcomeSettlementSink(env),
-        )),
+        ),
       }),
   },
   {
@@ -11395,7 +11444,10 @@ const routeRequest = makeWorkerRouteRequest({
         return undefined
       }
       return Effect.promise(() =>
-        routeDurableInferenceReadRequestDO(request, { enabled, namespace }).then(
+        routeDurableInferenceReadRequestDO(request, {
+          enabled,
+          namespace,
+        }).then(
           // A matched durable URL with the namespace present always yields a
           // Response; the `?? notFound` is a defensive total fallback.
           response =>
@@ -11496,8 +11548,7 @@ const routeRequest = makeWorkerRouteRequest({
   routePublicPartnerPayoutReceiptRequest:
     publicPartnerPayoutReceiptRoutes.routePublicPartnerPayoutReceiptRequest,
   routePublicSiteReferralPayoutReceiptRequest:
-    publicSiteReferralPayoutReceiptRoutes
-      .routePublicSiteReferralPayoutReceiptRequest,
+    publicSiteReferralPayoutReceiptRoutes.routePublicSiteReferralPayoutReceiptRequest,
   routePublicStripeCheckoutReceiptRequest:
     publicStripeCheckoutReceiptRoutes.routePublicStripeCheckoutReceiptRequest,
   routeEcommerceCampaignReceiptRequest:

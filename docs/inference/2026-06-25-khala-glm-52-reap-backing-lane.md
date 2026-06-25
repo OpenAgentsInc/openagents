@@ -38,6 +38,45 @@ HYDRALISK_GLM_52_REAP_504B_PREFLIGHT_REF=<public-safe preflight evidence ref>
 HYDRALISK_GLM_52_REAP_504B_RECEIPT_REF=<public-safe smoke/receipt evidence ref>
 ```
 
+These legacy variables now resolve to a pool of one with replica id `primary`.
+That keeps the first production smoke path stable while letting Khala broaden
+capacity without exposing any new public model selector.
+
+For two or more replicas, set a comma-separated pool and use the named variable
+form. Replica ids must be lower-case alphanumeric or hyphenated; hyphens become
+underscores in env names:
+
+```text
+HYDRALISK_GLM_52_REAP_504B_REPLICA_IDS=primary,second
+
+HYDRALISK_GLM_52_REAP_504B_PRIMARY_ENABLED=ready
+HYDRALISK_GLM_52_REAP_504B_PRIMARY_BASE_URL=<Worker secret value>
+HYDRALISK_GLM_52_REAP_504B_PRIMARY_BEARER_TOKEN=<Worker secret value>
+HYDRALISK_GLM_52_REAP_504B_PRIMARY_PREFLIGHT_REF=<public-safe ref>
+HYDRALISK_GLM_52_REAP_504B_PRIMARY_RECEIPT_REF=<public-safe ref>
+HYDRALISK_GLM_52_REAP_504B_PRIMARY_PROFILE_REF=<public-safe profile ref>
+HYDRALISK_GLM_52_REAP_504B_PRIMARY_COST_PROFILE_REF=<public-safe cost profile ref>
+HYDRALISK_GLM_52_REAP_504B_PRIMARY_MAX_INFLIGHT=1
+HYDRALISK_GLM_52_REAP_504B_PRIMARY_BENCHMARK_RESERVED=true
+
+HYDRALISK_GLM_52_REAP_504B_SECOND_ENABLED=ready
+HYDRALISK_GLM_52_REAP_504B_SECOND_BASE_URL=<Worker secret value>
+HYDRALISK_GLM_52_REAP_504B_SECOND_BEARER_TOKEN=<Worker secret value>
+HYDRALISK_GLM_52_REAP_504B_SECOND_PREFLIGHT_REF=<public-safe ref>
+HYDRALISK_GLM_52_REAP_504B_SECOND_RECEIPT_REF=<public-safe ref>
+HYDRALISK_GLM_52_REAP_504B_SECOND_PROFILE_REF=<public-safe profile ref>
+HYDRALISK_GLM_52_REAP_504B_SECOND_COST_PROFILE_REF=<public-safe cost profile ref>
+HYDRALISK_GLM_52_REAP_504B_SECOND_MAX_INFLIGHT=1
+HYDRALISK_GLM_52_REAP_504B_SECOND_DRAINING=false
+```
+
+The Worker registers one private GLM adapter id for the whole pool:
+`hydralisk-vllm-glm-5p2-reap-504b`. Each replica carries public-safe
+`profileRef`, evidence refs, cost-profile ref, `maxInflight`, and lifecycle
+flags internally; raw URLs and bearer values stay in Worker secrets. Missing or
+partial replica fields fail closed for that replica, so a partially armed
+`second` endpoint is not used just because `primary` is healthy.
+
 Only the variable names and evidence-reference names belong in tracked files.
 Endpoint values, bearer tokens, and private topology stay in Worker secrets or
 operator-only notes.

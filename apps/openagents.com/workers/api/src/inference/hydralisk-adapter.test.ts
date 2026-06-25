@@ -1,7 +1,10 @@
 import { Effect, Redacted } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { makeHydraliskVllmAdapter } from './hydralisk-adapter'
+import {
+  makeHydraliskVllmAdapter,
+  makeHydraliskVllmPoolAdapter,
+} from './hydralisk-adapter'
 import { HYDRALISK_ADAPTER_ID } from './model-router'
 import { HYDRALISK_GPT_OSS_20B_MODEL_ID } from './pricing'
 import type { InferenceRequest } from './provider-adapter'
@@ -38,6 +41,58 @@ const RETRYABLE_STATUS_CASES = [
 ] as const
 
 describe('hydralisk vLLM adapter', () => {
+  it('keeps one GLM pool adapter id while dispatching to an eligible replica', async () => {
+    const capturedInputs: Array<string> = []
+    const adapter = makeHydraliskVllmPoolAdapter({
+      id: 'hydralisk-vllm-glm-5p2-reap-504b',
+      replicas: [
+        {
+          apiKey: Redacted.make('reserved-token'),
+          baseUrl: 'https://reserved.example.test',
+          benchmarkReserved: true,
+          costProfileRef:
+            'cost_profile.hydralisk.glm_52_reap_504b.g4_4g.spot.fixture.v1',
+          draining: false,
+          evidenceRefs: ['receipt.hydralisk.glm.reserved.fixture'],
+          fetchImpl: async input => {
+            capturedInputs.push(input)
+            return Response.json(responseBody)
+          },
+          id: 'hydralisk-vllm-glm-5p2-reap-504b',
+          maxInflight: 1,
+          profileRef: 'profile.hydralisk.glm_52_reap_504b.reserved.fixture',
+          replicaId: 'reserved',
+        },
+        {
+          apiKey: Redacted.make('second-token'),
+          baseUrl: 'https://second.example.test',
+          benchmarkReserved: false,
+          costProfileRef:
+            'cost_profile.hydralisk.glm_52_reap_504b.g4_4g.spot.fixture.v1',
+          draining: false,
+          evidenceRefs: ['receipt.hydralisk.glm.second.fixture'],
+          fetchImpl: async input => {
+            capturedInputs.push(input)
+            return Response.json(responseBody)
+          },
+          id: 'hydralisk-vllm-glm-5p2-reap-504b',
+          maxInflight: 1,
+          profileRef: 'profile.hydralisk.glm_52_reap_504b.second.fixture',
+          replicaId: 'second',
+        },
+      ],
+      upstreamModel: 'openagents/glm-5.2-reap-504b',
+    })
+
+    const result = await Effect.runPromise(adapter.complete(request()))
+
+    expect(adapter.id).toBe('hydralisk-vllm-glm-5p2-reap-504b')
+    expect(result.content).toBe('READY')
+    expect(capturedInputs).toEqual([
+      'https://second.example.test/v1/chat/completions',
+    ])
+  })
+
   it('maps the GPT-OSS model id to the Hydralisk OpenAI-compatible endpoint', async () => {
     let captured:
       | Readonly<{

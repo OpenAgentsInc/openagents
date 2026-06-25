@@ -57,6 +57,34 @@ const HYDRALISK_GLM_52_REAP_READY_ENV = {
     'receipt.hydralisk.glm_52_reap_504b.g4.mtp2_smoke.v1',
 } as const
 
+const HYDRALISK_GLM_52_REAP_TWO_REPLICA_ENV = {
+  HYDRALISK_GLM_52_REAP_504B_REPLICA_IDS: 'primary,second',
+  HYDRALISK_GLM_52_REAP_504B_PRIMARY_BASE_URL:
+    'https://hydralisk-glm-primary.example.test',
+  HYDRALISK_GLM_52_REAP_504B_PRIMARY_BEARER_TOKEN:
+    'secret-hydralisk-glm-primary-token',
+  HYDRALISK_GLM_52_REAP_504B_PRIMARY_ENABLED: 'ready',
+  HYDRALISK_GLM_52_REAP_504B_PRIMARY_PREFLIGHT_REF:
+    'preflight.hydralisk.glm_52_reap_504b.primary.v1',
+  HYDRALISK_GLM_52_REAP_504B_PRIMARY_RECEIPT_REF:
+    'receipt.hydralisk.glm_52_reap_504b.primary.v1',
+  HYDRALISK_GLM_52_REAP_504B_PRIMARY_PROFILE_REF:
+    'profile.hydralisk.glm_52_reap_504b.g4_tp4.primary.v1',
+  HYDRALISK_GLM_52_REAP_504B_PRIMARY_COST_PROFILE_REF:
+    'cost_profile.hydralisk.glm_52_reap_504b.g4_4g.spot.primary.v1',
+  HYDRALISK_GLM_52_REAP_504B_PRIMARY_MAX_INFLIGHT: '1',
+  HYDRALISK_GLM_52_REAP_504B_SECOND_BASE_URL:
+    'https://hydralisk-glm-second.example.test',
+  HYDRALISK_GLM_52_REAP_504B_SECOND_BEARER_TOKEN:
+    'secret-hydralisk-glm-second-token',
+  HYDRALISK_GLM_52_REAP_504B_SECOND_ENABLED: 'ready',
+  HYDRALISK_GLM_52_REAP_504B_SECOND_PREFLIGHT_REF:
+    'preflight.hydralisk.glm_52_reap_504b.second.v1',
+  HYDRALISK_GLM_52_REAP_504B_SECOND_RECEIPT_REF:
+    'receipt.hydralisk.glm_52_reap_504b.second.v1',
+  HYDRALISK_GLM_52_REAP_504B_SECOND_BENCHMARK_RESERVED: 'true',
+} as const
+
 const HYDRALISK_120B_READY_ENV = {
   HYDRALISK_GPT_OSS_120B_BASE_URL:
     'https://hydralisk-gpt-oss-120b.example.test',
@@ -328,6 +356,60 @@ describe('resolveHydraliskGlm52Reap504bArming', () => {
       'preflight.hydralisk.glm_52_reap_504b.g4.mtp2.v1',
       'receipt.hydralisk.glm_52_reap_504b.g4.mtp2_smoke.v1',
     ])
+    expect(arming.replicas).toEqual([
+      expect.objectContaining({
+        baseUrlSecretRef: 'HYDRALISK_GLM_52_REAP_504B_BASE_URL',
+        bearerSecretRef: 'HYDRALISK_GLM_52_REAP_504B_BEARER_TOKEN',
+        benchmarkReserved: false,
+        draining: false,
+        maxInflight: 1,
+        replicaId: 'primary',
+      }),
+    ])
+  })
+
+  it('resolves two named GLM replicas without exposing their secret values as refs', () => {
+    const arming = resolveHydraliskGlm52Reap504bArming(
+      HYDRALISK_GLM_52_REAP_TWO_REPLICA_ENV,
+    )
+    expect(arming.armed).toBe(true)
+    expect(arming.blockerRefs).toEqual([])
+    expect(arming.replicas.map(replica => replica.replicaId)).toEqual([
+      'primary',
+      'second',
+    ])
+    expect(arming.replicas[0]).toMatchObject({
+      baseUrlSecretRef: 'HYDRALISK_GLM_52_REAP_504B_PRIMARY_BASE_URL',
+      bearerSecretRef: 'HYDRALISK_GLM_52_REAP_504B_PRIMARY_BEARER_TOKEN',
+      costProfileRef:
+        'cost_profile.hydralisk.glm_52_reap_504b.g4_4g.spot.primary.v1',
+      maxInflight: 1,
+      profileRef: 'profile.hydralisk.glm_52_reap_504b.g4_tp4.primary.v1',
+    })
+    expect(arming.replicas[1]).toMatchObject({
+      baseUrlSecretRef: 'HYDRALISK_GLM_52_REAP_504B_SECOND_BASE_URL',
+      bearerSecretRef: 'HYDRALISK_GLM_52_REAP_504B_SECOND_BEARER_TOKEN',
+      benchmarkReserved: true,
+      costProfileRef:
+        'cost_profile.hydralisk.glm_52_reap_504b.g4_4g.spot.2026_06_25',
+      maxInflight: 1,
+      profileRef: 'profile.hydralisk.glm_52_reap_504b.g4_tp4_minp.v1',
+    })
+  })
+
+  it('fails a partial named replica closed while preserving complete pool members', () => {
+    const partialSecondReplicaEnv = {
+      ...HYDRALISK_GLM_52_REAP_TWO_REPLICA_ENV,
+      HYDRALISK_GLM_52_REAP_504B_SECOND_BEARER_TOKEN: '',
+    }
+    const arming = resolveHydraliskGlm52Reap504bArming(partialSecondReplicaEnv)
+    expect(arming.armed).toBe(true)
+    expect(arming.replicas.map(replica => replica.replicaId)).toEqual([
+      'primary',
+    ])
+    expect(arming.blockerRefs).toContain(
+      'blocker.hydralisk_glm_52_reap_504b.second.bearer_missing',
+    )
   })
 })
 

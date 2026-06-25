@@ -291,6 +291,16 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   HYDRALISK_GLM_52_REAP_504B_BEARER_TOKEN?: string | undefined
   HYDRALISK_GLM_52_REAP_504B_PREFLIGHT_REF?: string | undefined
   HYDRALISK_GLM_52_REAP_504B_RECEIPT_REF?: string | undefined
+  HYDRALISK_GLM_52_REAP_504B_PROFILE_REF?: string | undefined
+  HYDRALISK_GLM_52_REAP_504B_COST_PROFILE_REF?: string | undefined
+  HYDRALISK_GLM_52_REAP_504B_MAX_INFLIGHT?: string | undefined
+  HYDRALISK_GLM_52_REAP_504B_BENCHMARK_RESERVED?: string | undefined
+  HYDRALISK_GLM_52_REAP_504B_DRAINING?: string | undefined
+  // Optional comma-separated pool names. When absent, the five legacy GLM
+  // fields above are treated as the `primary` replica. When present, each
+  // named replica reads HYDRALISK_GLM_52_REAP_504B_<REPLICA>_<FIELD>, with
+  // hyphens mapped to underscores and the same secret/evidence discipline.
+  HYDRALISK_GLM_52_REAP_504B_REPLICA_IDS?: string | undefined
   // Hydralisk GPT-OSS 20B lane (#6155). The Worker registers this owned
   // OpenAI-compatible vLLM adapter only when HYDRALISK_GPT_OSS_20B_ENABLED is
   // exactly "ready", HYDRALISK_BASE_URL and HYDRALISK_BEARER_TOKEN are present,

@@ -10,6 +10,11 @@ import { Effect, Redacted } from 'effect'
 
 import { parseJsonRecord, recordFromUnknown } from '../json-boundary'
 import {
+  inferenceToolCallDeltasFromUnknown,
+  inferenceToolCallsFromUnknown,
+  openAiWireMessageFromInferenceMessage,
+} from './openai-chat-compat'
+import {
   InferenceAdapterError,
   type InferenceProviderAdapter,
   type InferenceRequest,
@@ -19,11 +24,6 @@ import {
   type InferenceStreamSource,
   type InferenceUsage,
 } from './provider-adapter'
-import {
-  inferenceToolCallDeltasFromUnknown,
-  inferenceToolCallsFromUnknown,
-  openAiWireMessageFromInferenceMessage,
-} from './openai-chat-compat'
 
 type HydraliskResponse = Response
 
@@ -37,6 +37,23 @@ export type HydraliskAdapterConfig = Readonly<{
   apiKey: Redacted.Redacted<string>
   baseUrl: string
   fetchImpl?: HydraliskFetch | undefined
+  upstreamModel?: string | undefined
+}>
+
+export type HydraliskReplicaAdapterConfig = HydraliskAdapterConfig &
+  Readonly<{
+    replicaId: string
+    profileRef: string
+    evidenceRefs: ReadonlyArray<string>
+    costProfileRef: string
+    maxInflight: number
+    benchmarkReserved: boolean
+    draining: boolean
+  }>
+
+export type HydraliskPoolAdapterConfig = Readonly<{
+  id: string
+  replicas: ReadonlyArray<HydraliskReplicaAdapterConfig>
   upstreamModel?: string | undefined
 }>
 
@@ -132,7 +149,7 @@ const postChatCompletions = (
     try: () => {
       const fetcher = config.fetchImpl ?? globalThis.fetch
       return fetcher(requestUrl(config), {
-      body: JSON.stringify(toRequestBody(config, request)),
+        body: JSON.stringify(toRequestBody(config, request)),
         headers: headersFor(config, request),
         method: 'POST',
       })
@@ -439,30 +456,30 @@ const streamChunks = (
     let servedModel = request.model
     let usage: InferenceUsage | undefined
 
-  for (const frame of frames) {
-    servedModel = servedModelFrom(frame, servedModel)
-    const event = eventForFrame(frame)
-    if (
-      event.contentDelta !== '' ||
-      (event.toolCallDeltas !== undefined && event.toolCallDeltas.length > 0)
-    ) {
-      contentChunks.push({
-        contentDelta: event.contentDelta,
-        ...(event.toolCallDeltas === undefined
-          ? {}
-          : { toolCallDeltas: event.toolCallDeltas }),
-      })
+    for (const frame of frames) {
+      servedModel = servedModelFrom(frame, servedModel)
+      const event = eventForFrame(frame)
+      if (
+        event.contentDelta !== '' ||
+        (event.toolCallDeltas !== undefined && event.toolCallDeltas.length > 0)
+      ) {
+        contentChunks.push({
+          contentDelta: event.contentDelta,
+          ...(event.toolCallDeltas === undefined
+            ? {}
+            : { toolCallDeltas: event.toolCallDeltas }),
+        })
+      }
+      if (event.finishReason !== undefined) {
+        finishReason = event.finishReason
+      }
+      if (event.usage !== undefined) {
+        usage = event.usage
+      }
+      if (event.servedModel !== undefined) {
+        servedModel = event.servedModel
+      }
     }
-    if (event.finishReason !== undefined) {
-      finishReason = event.finishReason
-    }
-    if (event.usage !== undefined) {
-      usage = event.usage
-    }
-    if (event.servedModel !== undefined) {
-      servedModel = event.servedModel
-    }
-  }
 
     return [
       ...contentChunks,
@@ -501,4 +518,64 @@ export const makeHydraliskVllmAdapter = (
       }
       return makeSseSource(response.body, request.model)
     }),
+})
+
+const poolAdapterError = (
+  config: HydraliskPoolAdapterConfig,
+  reason: string,
+): InferenceAdapterError =>
+  new InferenceAdapterError({
+    adapterId: config.id,
+    kind: 'configuration_error',
+    reason,
+    retryable: false,
+  })
+
+const firstRunnableReplica = (
+  config: HydraliskPoolAdapterConfig,
+): HydraliskReplicaAdapterConfig | undefined =>
+  config.replicas.find(
+    replica => !replica.benchmarkReserved && !replica.draining,
+  )
+
+const selectedReplicaConfig = (
+  config: HydraliskPoolAdapterConfig,
+): Effect.Effect<HydraliskAdapterConfig, InferenceAdapterError> =>
+  Effect.gen(function* () {
+    const replica = firstRunnableReplica(config)
+    if (replica === undefined) {
+      return yield* Effect.fail(
+        poolAdapterError(
+          config,
+          'hydralisk GLM replica pool has no eligible armed replicas',
+        ),
+      )
+    }
+    return {
+      apiKey: replica.apiKey,
+      baseUrl: replica.baseUrl,
+      fetchImpl: replica.fetchImpl,
+      id: config.id,
+      upstreamModel: config.upstreamModel ?? replica.upstreamModel,
+    }
+  })
+
+export const makeHydraliskVllmPoolAdapter = (
+  config: HydraliskPoolAdapterConfig,
+): InferenceProviderAdapter => ({
+  complete: request =>
+    selectedReplicaConfig(config).pipe(
+      Effect.flatMap(replicaConfig => complete(replicaConfig, request)),
+    ),
+  id: config.id,
+  stream: request =>
+    selectedReplicaConfig(config).pipe(
+      Effect.flatMap(replicaConfig => streamChunks(replicaConfig, request)),
+    ),
+  streamSse: request =>
+    selectedReplicaConfig(config).pipe(
+      Effect.flatMap(replicaConfig =>
+        makeHydraliskVllmAdapter(replicaConfig).streamSse!(request),
+      ),
+    ),
 })
