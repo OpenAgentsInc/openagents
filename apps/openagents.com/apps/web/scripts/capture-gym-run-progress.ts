@@ -86,14 +86,13 @@ const main = async (): Promise<void> => {
     const must = [
       'data-gym-run-progress-panel',
       'Live Gym run follow-along',
-      'data-three-effect-scene="gym-run-progress"',
-      'data-gym-run-progress-in-progress="true"',
-      'data-gym-run-progress-decision-grade="false"',
+      'data-gym-run="run.gym.terminal_bench.glm52-reap-baseline"',
+      'data-gym-run-in-progress="true"',
+      'data-gym-run-decision-grade="false"',
       'data-gym-run-progress-accessible-mirror',
-      'Completed of official denominator',
-      '41 of 89',
-      'Pass rate over completed tasks',
-      'Last updated',
+      'Completed / official',
+      '18 / 89',
+      'Pass rate over completed',
     ]
     for (const token of must) {
       if (!out.includes(token)) {

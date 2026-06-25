@@ -9,6 +9,7 @@ import { KhalaChatModel, initKhalaChatModel } from '../khala-chat/flow'
 import { BlobRef as AtifBlobRef, Trajectory as AtifTrajectory } from '../trace/atif'
 import { SAMPLE_TRACE_UUID } from '../trace/sample'
 import { GymModel, initGymModel } from './gym/flow'
+import { GymRunProgressPublicProjection } from './gym/runProgress'
 
 // MODEL
 
@@ -1359,6 +1360,28 @@ export const initKhalaTokensServedStreamModel = (): KhalaTokensServedStreamModel
     appliedEventRefs: [],
   })
 
+// Live Gym / Harbor run-progress follow-along (#6261). The `/gym` route polls
+// `GET /api/public/gym/run-progress` and renders EVERY returned run live
+// (counts, pass-rate over completed, official denominator, freshness,
+// in-progress + decisionGrade:false markers). The endpoint is already redacted
+// to the public-safe projection; the page only renders it. The honest empty
+// state shows ONLY when the endpoint returns `runs: []`.
+export const IdlePublicGymRunProgress = ts('PublicGymRunProgressIdle', {})
+export const LoadingPublicGymRunProgress = ts('PublicGymRunProgressLoading', {})
+export const LoadedPublicGymRunProgress = ts('PublicGymRunProgressLoaded', {
+  runs: S.Array(GymRunProgressPublicProjection),
+})
+export const FailedPublicGymRunProgress = ts('PublicGymRunProgressFailed', {
+  error: S.String,
+})
+export const PublicGymRunProgressModel = S.Union([
+  IdlePublicGymRunProgress,
+  LoadingPublicGymRunProgress,
+  LoadedPublicGymRunProgress,
+  FailedPublicGymRunProgress,
+])
+export type PublicGymRunProgressModel = typeof PublicGymRunProgressModel.Type
+
 export const Model = ts('LoggedOut', {
   route: LoggedOutRoute,
   onboarding: OnboardingModel,
@@ -1370,6 +1393,7 @@ export const Model = ts('LoggedOut', {
   // in-flight streaming reply, and the info-popup open flag.
   khalaChat: KhalaChatModel,
   gym: GymModel,
+  gymRunProgress: PublicGymRunProgressModel,
   publicAgent: PublicAgentModel,
   publicArtanisReport: PublicArtanisReportModel,
   publicAdjutantActivity: PublicAdjutantActivityModel,
@@ -1412,6 +1436,10 @@ export const init = (
     ),
     khalaChat: initKhalaChatModel(),
     gym: initGymModel(),
+    gymRunProgress:
+      route._tag === 'Gym'
+        ? LoadingPublicGymRunProgress()
+        : IdlePublicGymRunProgress(),
     publicAgent:
       route._tag === 'PublicAgent'
         ? LoadingPublicAgent({ agentRef: route.agentRef })

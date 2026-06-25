@@ -13,6 +13,7 @@
 // `decisionGrade:false`, partial phases are `inProgress:true`, pass-rate is over
 // COMPLETED tasks (never the official denominator), and `not_measured` is null,
 // never 0.
+import { Schema as S } from 'effect'
 import type {
   TrainingRunBeamDefinition,
   TrainingRunBurstDefinition,
@@ -29,64 +30,115 @@ type TrainingRunBeamStyle = 'crackling_arc' | 'flow'
 export const GYM_RUN_PROGRESS_SCHEMA =
   'openagents.gym.run_progress.v1' as const
 
-export type GymRunPhase =
-  | 'queued'
-  | 'running'
-  | 'completed'
-  | 'cancelled'
-  | 'errored'
+// ---------------------------------------------------------------------------
+// Browser-side decode schemas for the public-safe run-progress projection.
+//
+// These MIRROR the Worker's `openagents.gym.run_progress.v1` projection
+// (`workers/api/src/inference/gym/run-progress.ts`) so `GET
+// /api/public/gym/run-progress` can be decoded client-side. The Worker is the
+// authority; these are the browser type mirror only. They stay loose on enum'd
+// ref strings (profileRef/model/agent are plain strings here) so a new
+// serving-profile ref the Worker adds never breaks the public follow-along.
+// ---------------------------------------------------------------------------
 
-export type GymRunPublication = 'local_only' | 'web_authorized'
+export const GymRunPhase = S.Literals([
+  'queued',
+  'running',
+  'completed',
+  'cancelled',
+  'errored',
+])
+export type GymRunPhase = typeof GymRunPhase.Type
 
-export type GymRunProgressProfile = Readonly<{
-  profileRef: string
-  publicLabel: string
-  model: string
-  attribution: string
-  hardwareProfile: string
-  contextWindowTokens: number
-}>
+export const GymRunPublication = S.Literals(['local_only', 'web_authorized'])
+export type GymRunPublication = typeof GymRunPublication.Type
 
-export type GymRunProgressCounts = Readonly<{
-  officialDenominator: number
-  completed: number
-  completedPassed: number
-  completedFailed: number
-  running: number
-  pending: number
-  error: number
-  cancelled: number
-}>
+const MaybeNumber = S.NullOr(S.Number)
 
-export type GymRunProgressTokens = Readonly<{
-  promptTokens: number | null
-  completionTokens: number | null
-  totalTokens: number | null
-}>
+export const GymRunProgressProfile = S.Struct({
+  profileRef: S.String,
+  publicLabel: S.String,
+  model: S.String,
+  attribution: S.String,
+  hardwareProfile: S.String,
+  contextWindowTokens: S.Number,
+})
+export type GymRunProgressProfile = typeof GymRunProgressProfile.Type
 
-export type GymRunProgress = Readonly<{
-  schemaVersion: typeof GYM_RUN_PROGRESS_SCHEMA
-  runRef: string
-  jobRef: string
-  configId: string
-  environmentRef: 'terminal-bench'
-  datasetRef: 'terminal-bench@2.0'
-  runner: 'harbor'
-  agent: string
-  profile: GymRunProgressProfile
-  phase: GymRunPhase
-  decisionGrade: false
-  inProgress: boolean
-  publication: GymRunPublication
-  counts: GymRunProgressCounts
-  passRateOverCompleted: number | null
-  completionFraction: number
-  tokens: GymRunProgressTokens
-  elapsedMs: number | null
-  lastUpdatedAt: string
-  caveatRefs: ReadonlyArray<string>
-  blockerRefs: ReadonlyArray<string>
-}>
+export const GymRunProgressCounts = S.Struct({
+  officialDenominator: S.Number,
+  completed: S.Number,
+  completedPassed: S.Number,
+  completedFailed: S.Number,
+  running: S.Number,
+  pending: S.Number,
+  error: S.Number,
+  cancelled: S.Number,
+})
+export type GymRunProgressCounts = typeof GymRunProgressCounts.Type
+
+export const GymRunProgressTokens = S.Struct({
+  promptTokens: MaybeNumber,
+  completionTokens: MaybeNumber,
+  totalTokens: MaybeNumber,
+})
+export type GymRunProgressTokens = typeof GymRunProgressTokens.Type
+
+// A `web_authorized` run carries the full live counts. This is the shape the
+// follow-along renders. `decisionGrade` is a HARD `false` literal.
+export const GymRunProgress = S.Struct({
+  schemaVersion: S.Literal(GYM_RUN_PROGRESS_SCHEMA),
+  runRef: S.String,
+  jobRef: S.String,
+  configId: S.String,
+  environmentRef: S.Literal('terminal-bench'),
+  datasetRef: S.Literal('terminal-bench@2.0'),
+  runner: S.Literal('harbor'),
+  agent: S.String,
+  profile: GymRunProgressProfile,
+  phase: GymRunPhase,
+  decisionGrade: S.Literal(false),
+  inProgress: S.Boolean,
+  publication: S.Literal('web_authorized'),
+  counts: GymRunProgressCounts,
+  passRateOverCompleted: MaybeNumber,
+  completionFraction: S.Number,
+  tokens: GymRunProgressTokens,
+  elapsedMs: MaybeNumber,
+  lastUpdatedAt: S.String,
+  caveatRefs: S.Array(S.String),
+  blockerRefs: S.Array(S.String),
+})
+export type GymRunProgress = typeof GymRunProgress.Type
+
+// A `local_only` run degrades honestly: no live numbers, just an
+// awaiting-authorization marker. The Worker projects this for runs not yet
+// authorized for web publication.
+export const GymRunProgressUnpublished = S.Struct({
+  schemaVersion: S.Literal(GYM_RUN_PROGRESS_SCHEMA),
+  runRef: S.String,
+  publication: S.Literal('local_only'),
+  inProgress: S.Boolean,
+  decisionGrade: S.Literal(false),
+  blockerRefs: S.Array(S.String),
+  lastUpdatedAt: S.String,
+})
+export type GymRunProgressUnpublished = typeof GymRunProgressUnpublished.Type
+
+export const GymRunProgressPublicProjection = S.Union([
+  GymRunProgress,
+  GymRunProgressUnpublished,
+])
+export type GymRunProgressPublicProjection =
+  typeof GymRunProgressPublicProjection.Type
+
+// The `GET /api/public/gym/run-progress` envelope. We decode ONLY `runs`; the
+// staleness/scope/generatedAt envelope fields are tolerated and ignored at the
+// render edge (the freshness is carried per-run on `lastUpdatedAt`).
+export const GymRunProgressResponse = S.Struct({
+  runs: S.Array(GymRunProgressPublicProjection),
+})
+export type GymRunProgressResponse = typeof GymRunProgressResponse.Type
 
 // ---------------------------------------------------------------------------
 // Formatting helpers (shared by the text/table mirror).

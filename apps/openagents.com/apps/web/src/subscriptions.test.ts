@@ -22,6 +22,8 @@ import {
   DashboardRoute,
   DemoOrderRoute,
   DemoRoute,
+  GymRoute,
+  HomeRoute,
   TeamChatRoute,
   TeamFileRoute,
   TeamFilesRoute,
@@ -32,6 +34,7 @@ import {
   demoClockDependenciesForModel,
   demoKeyboardDependenciesForModel,
   demoPlaybackDependenciesForModel,
+  gymRunProgressPollDependenciesForModel,
   onboardingResumeDependenciesForModel,
   onboardingStreamDependenciesForModel,
   syncMessageFromPayload,
@@ -149,6 +152,20 @@ describe('Autopilot run polling subscriptions', () => {
       isActive: false,
       runId: '',
     })
+  })
+})
+
+describe('gym run-progress poll subscription (#6261)', () => {
+  test('polls while on the /gym route', () => {
+    expect(
+      gymRunProgressPollDependenciesForModel(LoggedOut.init(GymRoute())),
+    ).toEqual({ isActive: true })
+  })
+
+  test('does not poll off the /gym route', () => {
+    expect(
+      gymRunProgressPollDependenciesForModel(LoggedOut.init(HomeRoute())),
+    ).toEqual({ isActive: false })
   })
 })
 

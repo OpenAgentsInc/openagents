@@ -33,6 +33,7 @@ import {
   GymToolSetRef,
   GymTransport,
 } from './gym/flow'
+import { GymRunProgressPublicProjection } from './gym/runProgress'
 
 // MESSAGE
 
@@ -207,6 +208,24 @@ export const SucceededLoadPublicKhalaTokensServedHistory = m(
 )
 export const FailedLoadPublicKhalaTokensServedHistory = m(
   'FailedLoadPublicKhalaTokensServedHistory',
+  {
+    error: S.String,
+  },
+)
+// Live Gym / Harbor run-progress follow-along (#6261). The poll subscription
+// fires RequestedPollGymRunProgress on a ~12s cadence while on the `/gym`
+// route; the command resolves to Succeeded/Failed and the follow-along renders
+// every returned run (counts, pass-rate over completed, freshness). The model
+// holds its last loaded runs between ticks (no flash to Loading).
+export const RequestedPollGymRunProgress = m('RequestedPollGymRunProgress')
+export const SucceededLoadPublicGymRunProgress = m(
+  'SucceededLoadPublicGymRunProgress',
+  {
+    runs: S.Array(GymRunProgressPublicProjection),
+  },
+)
+export const FailedLoadPublicGymRunProgress = m(
+  'FailedLoadPublicGymRunProgress',
   {
     error: S.String,
   },
@@ -513,6 +532,9 @@ export const Message = S.Union([
   RequestedPollKhalaTokensServedHistory,
   SucceededLoadPublicKhalaTokensServedHistory,
   FailedLoadPublicKhalaTokensServedHistory,
+  RequestedPollGymRunProgress,
+  SucceededLoadPublicGymRunProgress,
+  FailedLoadPublicGymRunProgress,
   SucceededLoadPublicForumLaunchStatus,
   FailedLoadPublicForumLaunchStatus,
   SucceededLoadPublicForumTipLeaderboards,

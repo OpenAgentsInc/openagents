@@ -1,3 +1,4 @@
+import { Array as Arr } from 'effect'
 import type { Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
 
@@ -28,6 +29,15 @@ import {
   laneOptions,
   sequenceShapeOptions,
 } from '../gym/flow'
+import type { PublicGymRunProgressModel } from '../model'
+import {
+  type GymRunProgress,
+  type GymRunProgressPublicProjection,
+  formatRunProgressCount,
+  formatRunProgressDuration,
+  formatRunProgressPercent,
+  runPhaseLabel,
+} from '../gym/runProgress'
 
 type InputAttr = Parameters<ReturnType<typeof html<Message>>['input']>[0][number]
 type DivAttr = Parameters<ReturnType<typeof html<Message>>['div']>[0][number]
@@ -164,7 +174,169 @@ const terminalBenchPanel = (): Html => {
   )
 }
 
-const runProgressPanel = (): Html => {
+const runProgressEmptyState = (): Html => {
+  const h = html<Message>()
+
+  return emptyState(
+    [
+      h.DataAttribute('gym-run-progress-accessible-mirror', ''),
+      h.AriaLabel('Live Gym run progress'),
+      h.DataAttribute('gym-run-progress-empty', ''),
+    ],
+    'Live run',
+    'No active Gym run',
+    'Live runs appear here when a real Harbor/Khala benchmark is ingested. Pass rate is always computed over completed tasks, with the official denominator kept separate, so a partial run is never read as a final solve rate.',
+  )
+}
+
+const runProgressStat = (label: string, value: string): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [Ui.className<Message>('grid gap-1 border border-white/10 bg-black p-3')],
+    [
+      h.span([Ui.className<Message>('text-[0.72rem] text-white/45')], [label]),
+      h.span(
+        [Ui.className<Message>('text-[1rem] font-semibold text-white')],
+        [value],
+      ),
+    ],
+  )
+}
+
+// A `web_authorized` run: render the live counts/pass-rate-over-completed,
+// official denominator, profile label, tokens, freshness, and the honest
+// in-progress / decisionGrade:false markers. The accessible mirror carries the
+// same numbers as text so the follow-along is readable without the field.
+const renderAuthorizedRun = (run: GymRunProgress): Html => {
+  const h = html<Message>()
+  const { counts } = run
+
+  return h.article(
+    [
+      h.DataAttribute('gym-run-progress-accessible-mirror', ''),
+      h.DataAttribute('gym-run', run.runRef),
+      h.AriaLabel(`Live Gym run progress: ${run.profile.publicLabel}`),
+      Ui.className<Message>('grid gap-3 border border-white/10 bg-black p-4'),
+    ],
+    [
+      h.div(
+        [Ui.className<Message>('flex flex-wrap items-center justify-between gap-2')],
+        [
+          h.div([Ui.className<Message>('grid gap-0.5')], [
+            h.p(
+              [Ui.className<Message>('m-0 text-base font-semibold text-white')],
+              [run.profile.publicLabel],
+            ),
+            h.p(
+              [Ui.className<Message>('m-0 text-[0.78rem] text-white/50')],
+              [`${run.profile.model} · ${run.profile.attribution}`],
+            ),
+          ]),
+          h.div([Ui.className<Message>('flex flex-wrap items-center gap-2')], [
+            h.span(
+              [
+                h.DataAttribute('gym-run-in-progress', String(run.inProgress)),
+                Ui.className<Message>(
+                  'border border-[#7fb0ff]/30 bg-[#07111f] px-2 py-1 text-[0.7rem] font-semibold uppercase tracking-wide text-[#b8d4ff]',
+                ),
+              ],
+              [runPhaseLabel(run)],
+            ),
+            h.span(
+              [
+                h.DataAttribute('gym-run-decision-grade', 'false'),
+                Ui.className<Message>(
+                  'border border-white/15 bg-white/[0.03] px-2 py-1 text-[0.7rem] font-semibold uppercase tracking-wide text-white/55',
+                ),
+              ],
+              ['not decision-grade'],
+            ),
+          ]),
+        ],
+      ),
+      h.div(
+        [Ui.className<Message>('grid gap-3 sm:grid-cols-2 lg:grid-cols-4')],
+        [
+          runProgressStat(
+            'Completed / official',
+            `${counts.completed} / ${counts.officialDenominator}`,
+          ),
+          runProgressStat(
+            'Pass rate over completed',
+            formatRunProgressPercent(run.passRateOverCompleted),
+          ),
+          runProgressStat(
+            'Progress',
+            formatRunProgressPercent(run.completionFraction),
+          ),
+          runProgressStat(
+            'Tokens served',
+            formatRunProgressCount(run.tokens.totalTokens),
+          ),
+        ],
+      ),
+      h.div(
+        [Ui.className<Message>('grid gap-3 sm:grid-cols-3 lg:grid-cols-5')],
+        [
+          runProgressStat('Passed', formatRunProgressCount(counts.completedPassed)),
+          runProgressStat('Failed', formatRunProgressCount(counts.completedFailed)),
+          runProgressStat('Running', formatRunProgressCount(counts.running)),
+          runProgressStat('Pending', formatRunProgressCount(counts.pending)),
+          runProgressStat('Errored', formatRunProgressCount(counts.error)),
+        ],
+      ),
+      h.p(
+        [Ui.className<Message>('m-0 text-[0.78rem] text-white/45')],
+        [
+          `${run.profile.hardwareProfile} · elapsed ${formatRunProgressDuration(
+            run.elapsedMs,
+          )} · updated ${run.lastUpdatedAt}`,
+        ],
+      ),
+    ],
+  )
+}
+
+// A `local_only` run degrades honestly: no live numbers, just the
+// awaiting-authorization marker the public projection carries.
+const renderUnpublishedRun = (
+  run: Extract<GymRunProgressPublicProjection, { publication: 'local_only' }>,
+): Html =>
+  emptyState(
+    [
+      html<Message>().DataAttribute('gym-run-progress-accessible-mirror', ''),
+      html<Message>().DataAttribute('gym-run', run.runRef),
+      html<Message>().AriaLabel(`Gym run awaiting authorization: ${run.runRef}`),
+    ],
+    'Live run',
+    'Run awaiting web authorization',
+    'This run is recorded locally but is not yet authorized for web publication, so no live numbers are shown rather than inventing any.',
+  )
+
+const renderRun = (run: GymRunProgressPublicProjection): Html =>
+  run.publication === 'web_authorized'
+    ? renderAuthorizedRun(run)
+    : renderUnpublishedRun(run)
+
+const runProgressBody = (model: PublicGymRunProgressModel): Html => {
+  const h = html<Message>()
+
+  if (model._tag !== 'PublicGymRunProgressLoaded') {
+    return runProgressEmptyState()
+  }
+
+  return Arr.match(model.runs, {
+    onEmpty: () => runProgressEmptyState(),
+    onNonEmpty: runs =>
+      h.div(
+        [Ui.className<Message>('grid gap-4')],
+        Arr.map(runs, renderRun),
+      ),
+  })
+}
+
+const runProgressPanel = (model: PublicGymRunProgressModel): Html => {
   const h = html<Message>()
 
   return h.section(
@@ -185,16 +357,7 @@ const runProgressPanel = (): Html => {
           'Counts, pass-rate over completed tasks, the official denominator, and freshness update from the public-safe progress projection as a real run is ingested; raw prompts, responses, logs, trajectories, keys, and private endpoints are never included.',
         ]),
       ]),
-      emptyState(
-        [
-          h.DataAttribute('gym-run-progress-accessible-mirror', ''),
-          h.AriaLabel('Live Gym run progress'),
-          h.DataAttribute('gym-run-progress-empty', ''),
-        ],
-        'Live run',
-        'No active Gym run',
-        'Live runs appear here when a real Harbor/Khala benchmark is ingested. Pass rate is always computed over completed tasks, with the official denominator kept separate, so a partial run is never read as a final solve rate.',
-      ),
+      runProgressBody(model),
     ],
   )
 }
@@ -260,7 +423,10 @@ const shapeControl = (model: GymModel): Html => {
   ])
 }
 
-export const view = (model: GymModel): Html => {
+export const view = (
+  model: GymModel,
+  runProgress: PublicGymRunProgressModel,
+): Html => {
   const h = html<Message>()
 
   return h.main(
@@ -293,7 +459,7 @@ export const view = (model: GymModel): Html => {
           ),
         ]),
         terminalBenchPanel(),
-        runProgressPanel(),
+        runProgressPanel(runProgress),
         h.div([Ui.className<Message>('grid gap-4 lg:grid-cols-[1.2fr_0.8fr]')], [
           h.section([Ui.className<Message>(panelClass)], [
             h.p([Ui.className<Message>(sectionTitleClass)], ['Experiment']),

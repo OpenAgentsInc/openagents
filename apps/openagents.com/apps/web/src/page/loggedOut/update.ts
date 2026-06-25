@@ -25,6 +25,7 @@ import {
   FailedLoadKhalaTokensServedSnapshot,
   FailedLoadPublicKhalaTokensServed,
   FailedLoadPublicKhalaTokensServedHistory,
+  FailedLoadPublicGymRunProgress,
   FailedLoadPublicProductPromises,
   FailedLoadPublicPromiseTransitions,
   FailedLoadPublicPylonStats,
@@ -41,6 +42,7 @@ import {
   SucceededLoadKhalaTokensServedSnapshot,
   SucceededLoadPublicKhalaTokensServed,
   SucceededLoadPublicKhalaTokensServedHistory,
+  SucceededLoadPublicGymRunProgress,
   SucceededLoadPublicProductPromises,
   SucceededLoadPublicPromiseTransitions,
   SucceededLoadPublicPylonStats,
@@ -57,6 +59,7 @@ import {
   FailedPublicForumTipLeaderboards,
   FailedPublicKhalaTokensServed,
   FailedPublicKhalaTokensServedHistory,
+  FailedPublicGymRunProgress,
   FailedPublicProductPromises,
   FailedPublicPromiseTransitions,
   FailedPublicPylonStats,
@@ -68,6 +71,7 @@ import {
   LoadedPublicForumLaunchStatus,
   LoadedPublicForumTipLeaderboards,
   LoadedPublicKhalaTokensServedHistory,
+  LoadedPublicGymRunProgress,
   LoadedPublicProductPromises,
   LoadedPublicPromiseTransitions,
   LoadedPublicPylonStats,
@@ -118,6 +122,7 @@ import {
   toggleGymLane,
   toggleGymSequenceShape,
 } from './gym/flow'
+import { GymRunProgressResponse } from './gym/runProgress'
 import { BlobRef as AtifBlobRef, Trajectory as AtifTrajectory } from '../trace/atif'
 import { SAMPLE_TRACE_UUID } from '../trace/sample'
 import { recordFromUnknown } from '../../json-boundary'
@@ -166,6 +171,11 @@ class PublicKhalaTokensServedLoadError extends S.TaggedErrorClass<PublicKhalaTok
 
 class PublicKhalaTokensServedHistoryLoadError extends S.TaggedErrorClass<PublicKhalaTokensServedHistoryLoadError>()(
   'PublicKhalaTokensServedHistoryLoadError',
+  { error: S.Defect },
+) {}
+
+class PublicGymRunProgressLoadError extends S.TaggedErrorClass<PublicGymRunProgressLoadError>()(
+  'PublicGymRunProgressLoadError',
   { error: S.Defect },
 ) {}
 
@@ -550,6 +560,51 @@ export const LoadPublicKhalaTokensServedHistory = Command.define(
     Effect.catch(error =>
       Effect.succeed(
         FailedLoadPublicKhalaTokensServedHistory({
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      ),
+    ),
+  ),
+)
+
+// Live Gym / Harbor run-progress follow-along (#6261). Cold-reads the
+// public-safe `{ runs: [...] }` projection for the `/gym` follow-along; the poll
+// subscription re-runs this on a ~12s cadence. Public read: no-store, no auth,
+// already redacted (counts/denominators/refs only). Decodes through the
+// `GymRunProgressResponse` envelope (tolerating the staleness/scope/generatedAt
+// fields) and surfaces just the runs.
+export const LoadPublicGymRunProgress = Command.define(
+  'LoadPublicGymRunProgress',
+  SucceededLoadPublicGymRunProgress,
+  FailedLoadPublicGymRunProgress,
+)(
+  Effect.gen(function* () {
+    const response = yield* Effect.tryPromise({
+      try: () =>
+        fetch('/api/public/gym/run-progress', {
+          cache: 'no-store',
+          headers: { accept: 'application/json' },
+        }),
+      catch: error => new PublicGymRunProgressLoadError({ error }),
+    })
+
+    if (!response.ok) {
+      return yield* new PublicGymRunProgressLoadError({
+        error: `Public Gym run progress returned HTTP ${response.status}.`,
+      })
+    }
+
+    const payload = yield* Effect.tryPromise({
+      try: () => response.json(),
+      catch: error => new PublicGymRunProgressLoadError({ error }),
+    })
+    const decoded = yield* S.decodeUnknownEffect(GymRunProgressResponse)(payload)
+
+    return SucceededLoadPublicGymRunProgress({ runs: decoded.runs })
+  }).pipe(
+    Effect.catch(error =>
+      Effect.succeed(
+        FailedLoadPublicGymRunProgress({
           error: error instanceof Error ? error.message : String(error),
         }),
       ),
@@ -1365,6 +1420,8 @@ export const initialCommands = (
         ]
       : model.route._tag === 'Khala'
         ? [LoadKhalaTokensServedSnapshot(), LoadPublicKhalaTokensServed()]
+      : model.route._tag === 'Gym'
+        ? [LoadPublicGymRunProgress()]
       : model.route._tag === 'ProductPromises'
         ? [LoadPublicProductPromises(), LoadPublicPromiseTransitions()]
         : model.route._tag === 'PublicTrainingRuns'
@@ -1662,6 +1719,28 @@ export const update = (model: Model, message: Message): UpdateReturn =>
           publicKhalaTokensServedHistory: () =>
             FailedPublicKhalaTokensServedHistory({ error }),
         }),
+        [],
+      ],
+      // Gym run-progress poll tick: re-fetch the live runs. The model holds its
+      // last loaded runs (no flash to Loading) so the follow-along stays stable
+      // between fetches and just updates when the next runs arrive.
+      RequestedPollGymRunProgress: () => [model, [LoadPublicGymRunProgress()]],
+      SucceededLoadPublicGymRunProgress: ({ runs }) => [
+        evo(model, {
+          gymRunProgress: () => LoadedPublicGymRunProgress({ runs }),
+        }),
+        [],
+      ],
+      // A failed poll must never wipe out an already-loaded set of live runs:
+      // only surface the error if no runs have loaded yet, so a transient
+      // network blip never flashes the follow-along back to an empty/error
+      // state while runs are live.
+      FailedLoadPublicGymRunProgress: ({ error }) => [
+        model.gymRunProgress._tag === 'PublicGymRunProgressLoaded'
+          ? model
+          : evo(model, {
+              gymRunProgress: () => FailedPublicGymRunProgress({ error }),
+            }),
         [],
       ],
       SucceededLoadPublicForumLaunchStatus: ({ status }) => [

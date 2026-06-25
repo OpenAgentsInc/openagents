@@ -2,6 +2,11 @@ import type { Html } from 'foldkit/html'
 import { describe, expect, test } from 'vitest'
 
 import { initGymModel } from '../gym/flow'
+import { GYM_RUN_PROGRESS_SCHEMA, type GymRunProgress } from '../gym/runProgress'
+import {
+  IdlePublicGymRunProgress,
+  LoadedPublicGymRunProgress,
+} from '../model'
 import * as Gym from './gym'
 
 type VNodeLike = Readonly<{
@@ -61,9 +66,86 @@ const renderHtml = (html: Html): string => {
   return `<${tag}${attrsToString(html)}>${text}${children}</${tag}>`
 }
 
+// A test-local web_authorized run mirroring the live `/api/public/gym/run-
+// progress` shape (#6261). This is NOT a shipped fixture: it only drives the
+// render assertions. The page renders the honest empty state until real runs
+// arrive over the live poll.
+const liveRun: GymRunProgress = {
+  schemaVersion: GYM_RUN_PROGRESS_SCHEMA,
+  runRef: 'run.gym.terminal_bench.glm52-reap-baseline',
+  jobRef: 'job.gym.harbor_terminal_bench.glm52-reap-baseline',
+  configId: 'gym.terminal_bench.glm52-reap-baseline',
+  environmentRef: 'terminal-bench',
+  datasetRef: 'terminal-bench@2.0',
+  runner: 'harbor',
+  agent: 'terminus-2',
+  profile: {
+    profileRef: 'glm-reap-504b-g4-tp4-mtp2-rp105',
+    publicLabel: 'glm-reap baseline profile',
+    model: 'openagents/glm-5.2-reap-504b',
+    attribution: 'Z.ai GLM-5.2 REAP',
+    hardwareProfile: 'hydralisk-g4-4x-rtx-pro-6000',
+    contextWindowTokens: 250_000,
+  },
+  phase: 'running',
+  decisionGrade: false,
+  inProgress: true,
+  publication: 'web_authorized',
+  counts: {
+    officialDenominator: 89,
+    completed: 18,
+    completedPassed: 10,
+    completedFailed: 8,
+    running: 1,
+    pending: 70,
+    error: 5,
+    cancelled: 0,
+  },
+  passRateOverCompleted: 10 / 18,
+  completionFraction: 18 / 89,
+  tokens: {
+    promptTokens: 61_966_392,
+    completionTokens: 296_537,
+    totalTokens: 62_262_929,
+  },
+  elapsedMs: null,
+  lastUpdatedAt: '2026-06-25T18:13:35.081Z',
+  caveatRefs: [],
+  blockerRefs: [],
+}
+
+const secondRun: GymRunProgress = {
+  ...liveRun,
+  runRef: 'run.gym.terminal_bench.khala-live',
+  jobRef: 'job.gym.harbor_terminal_bench.khala-live',
+  configId: 'gym.terminal_bench.khala-live',
+  profile: {
+    ...liveRun.profile,
+    profileRef: 'khala-public-heuristic',
+    publicLabel: 'khala heuristic public route',
+    model: 'openagents/khala',
+    attribution: 'OpenAgents Khala orchestrator',
+    hardwareProfile: 'khala-router',
+  },
+  counts: {
+    officialDenominator: 89,
+    completed: 1,
+    completedPassed: 0,
+    completedFailed: 1,
+    running: 1,
+    pending: 87,
+    error: 0,
+    cancelled: 0,
+  },
+  passRateOverCompleted: 0,
+  completionFraction: 1 / 89,
+}
+
 describe('public Gym page', () => {
   test('renders the typed config controls and locked economics', () => {
-    const rendered = renderHtml(Gym.view(initGymModel()))
+    const rendered = renderHtml(
+      Gym.view(initGymModel(), IdlePublicGymRunProgress()),
+    )
 
     expect(rendered).toContain('data-gym-page')
     expect(rendered).toContain('data-gym-no-spend-banner')
@@ -75,7 +157,9 @@ describe('public Gym page', () => {
   })
 
   test('renders honest empty states with NO fixture numbers', () => {
-    const rendered = renderHtml(Gym.view(initGymModel()))
+    const rendered = renderHtml(
+      Gym.view(initGymModel(), IdlePublicGymRunProgress()),
+    )
 
     // Benchmark comparison empty state (no fixture pass rates).
     expect(rendered).toContain('data-gym-terminal-bench-empty')
@@ -111,5 +195,48 @@ describe('public Gym page', () => {
     // No raw benchmark content leaks into the rendered surface.
     expect(rendered).not.toContain('private_openai_compat')
     expect(rendered).not.toContain('Bearer')
+  })
+
+  test('renders live run-progress runs (counts + in-progress, not the empty state)', () => {
+    const rendered = renderHtml(
+      Gym.view(
+        initGymModel(),
+        LoadedPublicGymRunProgress({ runs: [liveRun, secondRun] }),
+      ),
+    )
+
+    // The empty state is gone while runs exist.
+    expect(rendered).not.toContain('data-gym-run-progress-empty')
+    expect(rendered).not.toContain('No active Gym run')
+
+    // A mirror per run (two runs right now).
+    const mirrorCount = rendered.split(
+      'data-gym-run-progress-accessible-mirror',
+    ).length - 1
+    expect(mirrorCount).toBe(2)
+
+    // Live counts: completed / official denominator, and the in-progress +
+    // not-decision-grade honesty markers.
+    expect(rendered).toContain('18 / 89')
+    expect(rendered).toContain('glm-reap baseline profile')
+    expect(rendered).toContain('khala heuristic public route')
+    expect(rendered).toContain('in progress')
+    expect(rendered).toContain('not decision-grade')
+    expect(rendered).toContain('gym-run-in-progress="true"')
+    expect(rendered).toContain('gym-run-decision-grade="false"')
+
+    // Pass rate over completed is rendered (10/18 ≈ 55.6%), kept distinct from
+    // the official denominator progress.
+    expect(rendered).toContain('55.6%')
+  })
+
+  test('renders the empty state ONLY for runs:[]', () => {
+    const rendered = renderHtml(
+      Gym.view(initGymModel(), LoadedPublicGymRunProgress({ runs: [] })),
+    )
+
+    expect(rendered).toContain('data-gym-run-progress-empty')
+    expect(rendered).toContain('No active Gym run')
+    expect(rendered).not.toContain('gym-run-in-progress="true"')
   })
 })

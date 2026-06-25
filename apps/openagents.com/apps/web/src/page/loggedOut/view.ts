@@ -280,7 +280,7 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
               Animations: () => Animations.view({ _tag: 'LoggedOut' }),
               Activity: () => Activity.view({ _tag: 'LoggedOut' }),
               DemoLegal: () => DemoLegal.view({ _tag: 'LoggedOut' }),
-              Gym: () => Gym.view(model.gym),
+              Gym: () => Gym.view(model.gym, model.gymRunProgress),
               Run: () => Run.view({ _tag: 'LoggedOut' }),
               TassadarReplay: route =>
                 Run.view({ _tag: 'LoggedOut' }, route.replaySlug),

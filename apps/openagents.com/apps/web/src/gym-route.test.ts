@@ -28,7 +28,11 @@ describe('/gym route', () => {
       _tag: 'LoggedOut',
       route: { _tag: 'Gym' },
     })
-    expect(commands).toHaveLength(0)
+    // #6261: entering /gym fetches the live public run-progress projection so
+    // the follow-along renders live runs instead of a permanent empty state.
+    expect(commands.map(command => command.name)).toEqual([
+      'LoadPublicGymRunProgress',
+    ])
   })
 
   // Regression for #6258: `/gym` rendered the homepage-lookalike maintenance

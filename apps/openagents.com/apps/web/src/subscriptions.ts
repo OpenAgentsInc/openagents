@@ -40,6 +40,7 @@ import {
   ReceivedKhalaTokensServedPatch,
   RequestedPollKhalaTokensServed,
   RequestedPollKhalaTokensServedHistory,
+  RequestedPollGymRunProgress,
   SucceededAutopilotOnboardingTurn,
   SucceededResumeAutopilotOnboardingTurn,
   FailedKhalaChatTurn,
@@ -418,6 +419,25 @@ export const khalaTokensServedPollDependenciesForModel = (
   khalaTokensServedRouteIsLive(model)
     ? { isActive: true }
     : inactiveKhalaTokensServedPoll
+
+// Live Gym / Harbor run-progress follow-along (#6261). The `/gym` route polls
+// `GET /api/public/gym/run-progress` so the follow-along renders live runs as
+// each Harbor task completes. Polled on a short cadence (~12s) gated on the
+// route; the stored snapshot's staleness contract rebuilds at most every 300s,
+// so a 12s client poll comfortably reflects fresh task completions without
+// hammering the endpoint. Mirrors the Khala history poll gate.
+const GYM_RUN_PROGRESS_POLL_INTERVAL_SECONDS = 12
+
+const inactiveGymRunProgressPoll = { isActive: false }
+
+type GymRunProgressPollDependencies = typeof inactiveGymRunProgressPoll
+
+export const gymRunProgressPollDependenciesForModel = (
+  model: Model,
+): GymRunProgressPollDependencies =>
+  model._tag === 'LoggedOut' && model.route._tag === 'Gym'
+    ? { isActive: true }
+    : inactiveGymRunProgressPoll
 
 // The scalar SUM reconcile poll is the SOCKET-DOWN FALLBACK only (#6231 follow-
 // up). When the realtime stream is open the authoritative running total flows
@@ -1299,6 +1319,30 @@ export const subscriptions = Subscription.make<Model, Message>()(entry => ({
             Stream.map(() =>
               GotLoggedOutMessage({
                 message: RequestedPollKhalaTokensServedHistory(),
+              }),
+            ),
+          ),
+          Effect.sync(() => isActive),
+        ),
+    },
+  ),
+  // Live Gym / Harbor run-progress follow-along (#6261). Polls the public-safe
+  // run-progress projection on a short cadence while on the `/gym` route so the
+  // follow-along renders live runs (counts/pass-rate-over-completed/freshness).
+  gymRunProgressPoll: entry(
+    {
+      isActive: S.Boolean,
+    },
+    {
+      modelToDependencies: gymRunProgressPollDependenciesForModel,
+      dependenciesToStream: ({ isActive }: { isActive: boolean }) =>
+        Stream.when(
+          Stream.tick(
+            Duration.seconds(GYM_RUN_PROGRESS_POLL_INTERVAL_SECONDS),
+          ).pipe(
+            Stream.map(() =>
+              GotLoggedOutMessage({
+                message: RequestedPollGymRunProgress(),
               }),
             ),
           ),
