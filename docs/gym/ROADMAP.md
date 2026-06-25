@@ -448,6 +448,24 @@ contention with live Khala serving lanes when scheduling runs.
 the real cost basis, and a training-ready trajectory artifact.
 **Refs:** harbor doc §3, §6; cost-model doc.
 
+### E4. Benchmark goal — replicate GLM-5.2 REAP's claimed 69.1% on Terminal-Bench 2.0, compare inference methods, beat it with Khala ([#6253](https://github.com/OpenAgentsInc/openagents/issues/6253))
+
+**Type:** epic · **Lever:** benchmarking (ties Epic D + E) · **Status:** direction
+**Why:** GLM 5.2 (Z.ai), REAP-pruned (`0xSero/GLM-5.2-504B`, keep-168 NVFP4) is reported
+at **69.1% on Terminal-Bench 2.0** — claimed highest for a model fitting on 4× RTX PRO
+6000 — and is already live as a **private canary on Hydralisk** behind `openagents/khala`
+(Hydralisk #82–#93). The concrete quality goal: replicate it honestly, then beat it.
+**Scope:** (A) full owner-armed Terminal-Bench 2.0 via Harbor-on-Hydralisk against the
+GLM-REAP lane → confirm ~69.1% as a decision-grade number (not the ~60/87 pilot);
+(B) compare **inference methods** (4×/8×/dual-4× TP, ±MTP-2 speculative, context envelope,
+quant) on solve-rate × cost-per-accepted-outcome × tok/s; (C) **beat it with Khala**
+orchestration (multi-model fan-out + verifier-pick/best-of-N + coordinator) on the same
+tasks. Reuses E1/E2/E3 + D1/D2.
+**Acceptance:** a decision-grade GLM-REAP TB2.0 report at/near 69.1% (or honest gap), an
+inference-method comparison table, and a Khala-orchestrated run that beats the single-model
+score (or documents why not) — all public-safe.
+**Refs:** #6253; harbor doc; Hydralisk runbook + evidence (`2026-06-25-glm-52-reap-504b-khala-canary-status.md`); `0xSero/GLM-5.2-504B` card.
+
 **Shipped 2026-06-25:** `harbor-reward.ts` maps Hydralisk Harbor summaries into
 `openagents.gym.harbor_reward_report.v1`: accepted outcomes from solved tasks,
 attempted verifications from properly attempted tasks, scalar reward mean, real
