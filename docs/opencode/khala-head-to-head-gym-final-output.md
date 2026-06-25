@@ -4,12 +4,12 @@ Now I have a thorough picture. Here is the planning memo.
 
 ## Planning Memo: Head-to-Head Model Comparison GYM (Benchmarking Gym)
 
-### 0. Etymology — "BigPickle" and "GYM"
+### 0. Etymology — "Big Pickle" and "GYM"
 
 The owner clarified both garbled voice terms:
 
 - **"gem" → GYM** — the **benchmarking gym / evaluation gym** (not a Ruby gem, not an ambiguous benchmark gem). The GYM is the recurring evaluation harness that trains and benchmarks Khala on a ladder of opponents — the same concept as the inference gym referenced in the GTM push doc (Pillar 3: "run it through the gym — the benchmark ladder").
-- **"BigPickle"** — origin still unconfirmed by the owner; do not invent specifics. The ladder should accept a pluggable competitor slot here once confirmed.
+- **"Big Pickle" → "Big Pickle"** (with a space) — the **main free model in OpenCode**. It is the default open/free option users reach for when they do not configure a paid provider. Big Pickle sits at ladder rung 1 as the immediate baseline Khala must beat on cost-per-accepted-outcome and verified-rate.
 
 The GYM reuses the existing typed benchmark matrix, runner, and lane-seam architecture. The GYM name replaces the informal "gem" throughout this memo.
 
@@ -27,7 +27,7 @@ The existing harness (`apps/openagents.com/workers/api/src/inference/benchmark/m
 | **Sampling** | Temperature + reasoning effort | Production values, not benchmark-flattering |
 | **Samples per cell** | Configurable (≥1) | Book §4.5.2: enough for percentiles |
 
-**What the GYM adds** on top of this matrix: a client-side surface (models compared via **OpenCode**, Aider, or direct API calls) rather than only comparing provider lanes behind the gateway. The existing matrix compares *supply lanes* (Fireworks vs Vertex). The GYM compares *model endpoints* (Khala vs BigPickle/GPT/Claude/Gemini free tiers).
+**What the GYM adds** on top of this matrix: a client-side surface (models compared via **OpenCode**, Aider, or direct API calls) rather than only comparing provider lanes behind the gateway. The existing matrix compares *supply lanes* (Fireworks vs Vertex). The GYM compares *model endpoints* (Khala vs Big Pickle/GPT/Claude/Gemini free tiers).
 
 ### 2. Fixtures — Prompt/Workload Corpus
 
@@ -69,7 +69,7 @@ Blockers (preflight refuses to arm):
 
 `makeRealLaneSeam` throws `RealLaneNotArmedError` when unarmed. The GYM must enforce the same gate for live API calls to competitors.
 
-**For the GYM specifically:** calling competitor APIs (OpenAI, Google Gemini free tier, Claude API, etc.) is real spend too. Each competitor lane needs its own budget cap, arm flag, and token accounting. The same `RealLaneSeam` architecture extends here by adding competitor lanes as new `BenchmarkLane` values — e.g., `openai-gpt`, `gemini-free`, `claude`, `bigpickle` (once confirmed).
+**For the GYM specifically:** calling competitor APIs (OpenAI, Google Gemini free tier, Claude API, etc.) is real spend too. Each competitor lane needs its own budget cap, arm flag, and token accounting. The same `RealLaneSeam` architecture extends here by adding competitor lanes as new `BenchmarkLane` values — e.g., `openai-gpt`, `gemini-free`, `claude`, `bigpickle`.
 
 ### 4. Token Accounting
 
@@ -117,11 +117,11 @@ BenchmarkReport {
 - **Verification outcome per run** (already supported via `BenchmarkLaneSample.executedVerdict`)
 - **Cost-per-accepted-outcome** at the model level, not just lane level (already supported but needs competitor cost basis)
 
-### 6. How to Compare Khala Against BigPickle/Free Models Honestly
+### 6. How to Compare Khala Against Big Pickle / Free Models Honestly
 
 **The ladder (from GTM push §3):**
 
-1. **Khala vs BigPickle** (baseline — once confirmed what this is)
+1. **Khala vs Big Pickle** (baseline — the default free model in OpenCode)
 2. **Khala vs free/open models** (Gemini Flash free tier, Llama, Qwen, Mistral free API endpoints)
 3. **Khala vs paid frontier models** (GPT-5, Claude Sonnet 4, Gemini 2.5 Pro)
 
@@ -139,20 +139,20 @@ BenchmarkReport {
 | Public safety: no prompts/completions/keys in reports | `checkReportPublicSafety` tripwire |
 | External reported claims (e.g., Fugu numbers from X) are separated | The head-to-head demo manifest already has `externalReportedClaims` |
 
-**The OpenCode integration step** (runbook step 5): the GYM adds OpenCode as the first *client surface* — not comparing supply lanes but comparing entire coding agent experiences. For each model under test (Khala, BigPickle, Gemini-free, etc.), run the same OpenCode task against that model's endpoint, record tokens/wall-clock/tool-call-completion/verification-outcome, and produce the same report schema.
+**The OpenCode integration step** (runbook step 5): the GYM adds OpenCode as the first *client surface* — not comparing supply lanes but comparing entire coding agent experiences. For each model under test (Khala, Big Pickle, Gemini-free, etc.), run the same OpenCode task against that model's endpoint, record tokens/wall-clock/tool-call-completion/verification-outcome, and produce the same report schema.
 
 ### 7. Implementation Sequence
 
-1. **Confirm "BigPickle" with the owner** — do not wire specifics until confirmed
-2. **Add competitor lanes** as new `BenchmarkLane` values (e.g., `bigpickle`, `gemini-free`, `openai-gpt`) with proper `LANE_AVAILABILITY` entries
-3. **Extend the runner** to accept competitor API credentials via environment variables (matching the existing `makeRealLaneSeam` gating pattern)
-4. **Add OpenCode as a client runner** — a module that provisions the `opencode.json`, runs a task, and extracts usage/wall-clock/verification from the output
-5. **Define the first realistic fixture set** from the QA runner or internal dogfood traffic
-6. **Run an owner-armed real sweep** with budget cap and approval ref, comparing Khala vs the confirmed competitor(s) on the OpenCode task
-7. **Publish the first decision-grade report**, clearly labeled with competitor model ids, dates, and all honesty caveats
+1. **Add competitor lanes** as new `BenchmarkLane` values (e.g., `bigpickle`, `gemini-free`, `openai-gpt`) with proper `LANE_AVAILABILITY` entries
+2. **Extend the runner** to accept competitor API credentials via environment variables (matching the existing `makeRealLaneSeam` gating pattern)
+3. **Add OpenCode as a client runner** — a module that provisions the `opencode.json`, runs a task, and extracts usage/wall-clock/verification from the output
+4. **Define the first realistic fixture set** from the QA runner or internal dogfood traffic
+5. **Run an owner-armed real sweep** with budget cap and approval ref, comparing Khala vs Big Pickle and other competitors on the OpenCode task
+6. **Publish the first decision-grade report**, clearly labeled with competitor model ids, dates, and all honesty caveats
 
 ### 8. Key Open Questions for the Owner
 
-- What exactly is "BigPickle"? A benchmark suite, a competitor product, a model name? (Owner confirmed GYM means benchmarking gym; BigPickle remains unconfirmed.)
-- Budget: what msat cap should the first armed sweep carry?
-- Is the first comparison on the OpenCode coding-agent surface (tool calling) or direct chat-completion quality (rubric/verifier)?
+- **Budget:** what msat cap should the first armed sweep carry?
+- **Surface:** is the first comparison on the OpenCode coding-agent surface (tool calling) or direct chat-completion quality (rubric/verifier)?
+
+**Resolved by owner:** GYM = benchmarking gym; Big Pickle (space) = main free model in OpenCode.
