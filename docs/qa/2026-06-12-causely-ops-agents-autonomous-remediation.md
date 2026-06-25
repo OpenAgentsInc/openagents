@@ -2,11 +2,11 @@
 
 Updated: 2026-06-25
 
-> **Status:** source note, not a verbatim transcript. YouTube reports that
-> subtitles are disabled for this third-party livestream, and this repository
-> should not carry a full reproduced transcript of externally owned video
-> content without explicit rights clearance. This file preserves source metadata
-> and a concise, non-verbatim QA-relevant summary for follow-up research.
+> **Status:** content summary, not a verbatim transcript. YouTube reports that
+> subtitles are disabled for this third-party livestream. Direct HLS/audio
+> extraction from this environment returned Googlevideo `403` fragment errors,
+> so this note summarizes the actual event agenda and claims from public indexed
+> Causely/LinkedIn source text rather than reproducing a transcript.
 
 Source: <https://www.youtube.com/live/L0BXwymeYvk>
 
@@ -19,19 +19,35 @@ Source: <https://www.youtube.com/live/L0BXwymeYvk>
 - Video ID: `L0BXwymeYvk`
 - Caption check: YouTube transcript API returned `TranscriptsDisabled`
 
-## Public Description Summary
+## Actual Content Summary
 
-The livestream presents a production-operations agent workflow for autonomous
-remediation: background agents detect operational issues, reason over event
-signals, and attempt fixes before users notice the incident. The session centers
-on how Fountain built event-driven background agents for production operations
-with Open-Inspect and Causely.
+The session is about a concrete production-operations pattern: trigger a
+background agent from operational events, give it enough system context to
+understand the likely cause, and let it propose or perform remediation before a
+customer-visible incident develops. The example is Fountain's ops-agent work,
+presented by Martin Roberts, Cloud and Platform Operations lead at Fountain.
 
-The listed participants are Martin Roberts, Cloud and Platform Operations lead
-at Fountain; Cole Murray, creator of Open-Inspect; and Anson McCook, Customer
-Engineer at Causely. The public description frames the demo around Open-Inspect
-agent behavior plus Causely's operational context, with an invitation to try the
-Causely agent product.
+The agenda pairs two tools. Open-Inspect is presented as the agent/workflow side:
+Cole Murray shows how it works and why it fits autonomous trigger loops inspired
+by background-agent patterns. Causely is presented as the causal context side:
+Anson McCook explains how Causely's reasoning engine gives the agent dependency
+and cause/effect context so it can act quickly and avoid shallow alert-to-action
+automation.
+
+The promised walkthrough covers real-world Fountain examples of Open-Inspect and
+Causely working together in a cloud environment. The intended audience is SREs,
+platform engineers, and dev-team leads who want to move from reactive incident
+response toward agentic production operations. The source framing says viewers
+should come away with: a concrete pattern for triggering background agents, a way
+to combine Open-Inspect with Causely in cloud operations, and a framework for
+approaching agentic workflows at scale. The session closes with open Q&A.
+
+The important technical through-line is not "agent watches alerts and runs a
+script." It is: event source -> autonomous trigger loop -> causal graph/context ->
+agent diagnosis/action -> verified operational outcome. For QA/remediation work,
+that distinction matters because the agent needs traceable evidence for each
+stage: what event fired, what context narrowed the cause, what action was chosen,
+and how the system verified the fix.
 
 ## QA Relevance
 
@@ -53,6 +69,9 @@ observation, diagnosis, proposed action, executed action, and verified outcome.
 ## Transcript Availability
 
 No first-party caption track was available through YouTube's transcript
-endpoint on 2026-06-25. If explicit transcript rights are later confirmed, the
-next step is to create a separate verbatim transcript file from an authorized
-caption or transcription source and link it here.
+endpoint on 2026-06-25. Attempts to download or extract the audio stream from the
+local agent environment hit Googlevideo `403 Forbidden` responses on HLS
+fragments and direct audio URLs, even though the browser player itself could load
+the video. If explicit transcript rights are later confirmed, the practical next
+step is to transcribe from an authorized recording or a local browser/audio
+capture path and link that separate transcript here.
