@@ -22,6 +22,7 @@ import {
   FailedLoadPublicArtanisReport,
   FailedLoadPublicForumLaunchStatus,
   FailedLoadPublicForumTipLeaderboards,
+  FailedLoadKhalaTokensServedSnapshot,
   FailedLoadPublicKhalaTokensServed,
   FailedLoadPublicKhalaTokensServedHistory,
   FailedLoadPublicProductPromises,
@@ -37,6 +38,7 @@ import {
   SucceededLoadPublicArtanisReport,
   SucceededLoadPublicForumLaunchStatus,
   SucceededLoadPublicForumTipLeaderboards,
+  SucceededLoadKhalaTokensServedSnapshot,
   SucceededLoadPublicKhalaTokensServed,
   SucceededLoadPublicKhalaTokensServedHistory,
   SucceededLoadPublicProductPromises,
@@ -65,7 +67,6 @@ import {
   LoadedPublicArtanisReport,
   LoadedPublicForumLaunchStatus,
   LoadedPublicForumTipLeaderboards,
-  LoadedPublicKhalaTokensServed,
   LoadedPublicKhalaTokensServedHistory,
   LoadedPublicProductPromises,
   LoadedPublicPromiseTransitions,
@@ -136,7 +137,10 @@ import {
   settledFeedOpen,
 } from './settled-feed'
 import {
+  KHALA_TOKENS_SERVED_SCOPE,
   applyKhalaTokensServedPatch,
+  khalaTokensServedAfterScalarSeed,
+  khalaTokensServedAfterSnapshot,
   khalaTokensServedStreamAfterCursorGap,
   khalaTokensServedStreamClosed,
   khalaTokensServedStreamFailed,
@@ -426,6 +430,83 @@ export const LoadPublicKhalaTokensServed = Command.define(
     Effect.catch(error =>
       Effect.succeed(
         FailedLoadPublicKhalaTokensServed({
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      ),
+    ),
+  ),
+)
+
+class KhalaTokensServedSnapshotLoadError extends S.TaggedErrorClass<KhalaTokensServedSnapshotLoadError>()(
+  'KhalaTokensServedSnapshotLoadError',
+  {
+    error: S.Defect,
+  },
+) {}
+
+const KhalaTokensServedSnapshotPayload = S.Struct({
+  collections: S.Record(S.String, S.Record(S.String, S.Unknown)),
+  cursor: S.Number,
+})
+
+const KhalaTokensServedSnapshotSummary = S.Struct({
+  observedAt: S.String,
+  tokensServedTotal: S.Number,
+})
+
+// "Khala Tokens Served" snapshot seed (#6231 follow-up). ONE read of the public
+// tokens-served sync scope returns the AUTHORITATIVE running total (the room's
+// `summary` record) + the cursor. The client seeds from this and subscribes
+// strictly from that cursor, so events already baked into the seeded total are
+// never replayed-and-re-added — no double-count, no backward jump. When the
+// summary is absent (a brand-new scope with no served events yet) the scalar
+// `LoadPublicKhalaTokensServed` below still seeds the displayed total.
+export const LoadKhalaTokensServedSnapshot = Command.define(
+  'LoadKhalaTokensServedSnapshot',
+  SucceededLoadKhalaTokensServedSnapshot,
+  FailedLoadKhalaTokensServedSnapshot,
+)(
+  Effect.gen(function* () {
+    const response = yield* Effect.tryPromise({
+      try: () =>
+        fetch(
+          `/api/sync/${KHALA_TOKENS_SERVED_SCOPE.replace(':', '/')}/snapshot`,
+          {
+            cache: 'no-store',
+            headers: { accept: 'application/json' },
+          },
+        ),
+      catch: error => new KhalaTokensServedSnapshotLoadError({ error }),
+    })
+
+    if (!response.ok) {
+      return yield* new KhalaTokensServedSnapshotLoadError({
+        error: `Khala tokens served snapshot returned HTTP ${response.status}.`,
+      })
+    }
+
+    const payload = yield* Effect.tryPromise({
+      try: () => response.json(),
+      catch: error => new KhalaTokensServedSnapshotLoadError({ error }),
+    })
+    const decoded =
+      yield* S.decodeUnknownEffect(KhalaTokensServedSnapshotPayload)(payload)
+    const rawSummary =
+      decoded.collections['tokens_served_summary']?.['summary']
+    const summary = rawSummary === undefined
+      ? null
+      : yield* S.decodeUnknownEffect(KhalaTokensServedSnapshotSummary)(
+          rawSummary,
+        ).pipe(Effect.orElseSucceed(() => null))
+
+    return SucceededLoadKhalaTokensServedSnapshot({
+      cursor: decoded.cursor,
+      summary,
+    })
+  }).pipe(
+    Effect.catch(error =>
+      Effect.succeed(
+        FailedLoadKhalaTokensServedSnapshot({
           error: error instanceof Error ? error.message : String(error),
         }),
       ),
@@ -1276,12 +1357,15 @@ export const initialCommands = (
         model.route._tag === 'PublicStatsArchive'
       ? [
           LoadPublicPylonStats(),
+          LoadKhalaTokensServedSnapshot(),
           LoadPublicKhalaTokensServed(),
           LoadPublicKhalaTokensServedHistory(),
           LoadPublicForumLaunchStatus(),
           LoadPublicForumTipLeaderboards(),
           LoadSettledFeedSnapshot(),
         ]
+      : model.route._tag === 'Khala'
+        ? [LoadKhalaTokensServedSnapshot(), LoadPublicKhalaTokensServed()]
       : model.route._tag === 'ProductPromises'
         ? [LoadPublicProductPromises(), LoadPublicPromiseTransitions()]
         : model.route._tag === 'PublicTrainingRuns'
@@ -1505,25 +1589,63 @@ export const update = (model: Model, message: Message): UpdateReturn =>
         }),
         [],
       ],
-      // Poll tick from the subscription: re-fetch the aggregate. The model is
-      // left as-is (no flash to Loading) so the odometer holds its last value
-      // until the next total arrives, then animates to it.
+      // Reconcile tick (only fired if the slow fallback poll is active, i.e. the
+      // socket is down): re-fetch the scalar SUM. The model is left as-is (no
+      // flash to Loading) so the odometer holds its last value until the next
+      // total arrives.
       RequestedPollKhalaTokensServed: () => [
         model,
         [LoadPublicKhalaTokensServed()],
       ],
+      // Scalar SUM seed / socket-down fallback. MONOTONE: only ever raises the
+      // displayed total, never lowers it — so a stale-low cached scalar value can
+      // never clobber a higher live (snapshot + stream) total back down. The
+      // authoritative running total now flows through the snapshot summary + the
+      // per-event `tokensServedTotal`; this scalar path is the seed-before-socket
+      // and the graceful fallback when the socket is unavailable.
       SucceededLoadPublicKhalaTokensServed: ({ served }) => [
         evo(model, {
-          publicKhalaTokensServed: () =>
-            LoadedPublicKhalaTokensServed({ served }),
+          publicKhalaTokensServed: counter =>
+            khalaTokensServedAfterScalarSeed(counter, {
+              generatedAt: served.generatedAt,
+              tokensServed: served.tokensServed,
+            }),
         }),
         [],
       ],
+      // Snapshot seed: the room's `summary` record carries the AUTHORITATIVE
+      // running total; the snapshot carries the cursor. Seed both, then subscribe
+      // strictly from the cursor so events baked into the seed are never replayed.
+      SucceededLoadKhalaTokensServedSnapshot: ({ cursor, summary }) => {
+        const seeded = khalaTokensServedAfterSnapshot({
+          counter: model.publicKhalaTokensServed,
+          cursor,
+          stream: model.khalaTokensServedStream,
+          summary,
+        })
+
+        return [
+          evo(model, {
+            publicKhalaTokensServed: () => seeded.counter,
+            khalaTokensServedStream: () => seeded.stream,
+          }),
+          [],
+        ]
+      },
+      // A snapshot read failure is non-fatal: the scalar seed still establishes
+      // the displayed total and the stream still seeds the cursor on its first
+      // patch. Leave the model untouched.
+      FailedLoadKhalaTokensServedSnapshot: () => [model, []],
+      // Scalar fetch failure: only surface the error if the counter has NOT yet
+      // been seeded with an authoritative value. A failed reconcile must never
+      // wipe out a good live total.
       FailedLoadPublicKhalaTokensServed: ({ error }) => [
-        evo(model, {
-          publicKhalaTokensServed: () =>
-            FailedPublicKhalaTokensServed({ error }),
-        }),
+        model.publicKhalaTokensServed._tag === 'PublicKhalaTokensServedLoaded'
+          ? model
+          : evo(model, {
+              publicKhalaTokensServed: () =>
+                FailedPublicKhalaTokensServed({ error }),
+            }),
         [],
       ],
       // History poll tick: re-fetch the per-day series. The model holds its

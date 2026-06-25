@@ -171,6 +171,29 @@ export const FailedLoadPublicKhalaTokensServed = m(
     error: S.String,
   },
 )
+// "Khala Tokens Served" snapshot seed (#6231 follow-up). One snapshot read of the
+// public sync scope returns the AUTHORITATIVE running total (the room's `summary`
+// record) + the cursor. The client seeds from this and subscribes strictly from
+// that cursor, so events already baked into the seed are never replayed-and-added
+// — no double-count, no backward jump.
+export const SucceededLoadKhalaTokensServedSnapshot = m(
+  'SucceededLoadKhalaTokensServedSnapshot',
+  {
+    cursor: S.Number,
+    summary: S.NullOr(
+      S.Struct({
+        observedAt: S.String,
+        tokensServedTotal: S.Number,
+      }),
+    ),
+  },
+)
+export const FailedLoadKhalaTokensServedSnapshot = m(
+  'FailedLoadKhalaTokensServedSnapshot',
+  {
+    error: S.String,
+  },
+)
 // "Khala Tokens Served" history (#6227). The same poll subscription tick that
 // re-fetches the scalar counter also re-fetches the per-day history series for
 // the /stats chart; the command resolves to Succeeded/Failed.
@@ -487,6 +510,8 @@ export const Message = S.Union([
   RequestedPollKhalaTokensServed,
   SucceededLoadPublicKhalaTokensServed,
   FailedLoadPublicKhalaTokensServed,
+  SucceededLoadKhalaTokensServedSnapshot,
+  FailedLoadKhalaTokensServedSnapshot,
   RequestedPollKhalaTokensServedHistory,
   SucceededLoadPublicKhalaTokensServedHistory,
   FailedLoadPublicKhalaTokensServedHistory,

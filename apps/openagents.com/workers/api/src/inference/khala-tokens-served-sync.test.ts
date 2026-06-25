@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'vitest'
 
 import {
+  KHALA_TOKENS_SERVED_SUMMARY_COLLECTION,
+  KHALA_TOKENS_SERVED_SUMMARY_ENTITY_ID,
   KHALA_TOKENS_SERVED_SYNC_COLLECTION,
   buildKhalaTokensServedDelta,
   publishKhalaTokensServedDelta,
@@ -42,7 +44,7 @@ const makeResult = <T>(results: Array<T> = []): D1Result<T> => ({
 type MemoryD1 = D1Database & Readonly<{ changes: Array<StoredChange> }>
 
 const makeStatement = (
-  state: Pick<MemoryD1, 'changes'> & { lastSeq: number },
+  state: Pick<MemoryD1, 'changes'> & { lastSeq: number; tokensServed: number },
   query: string,
 ): D1PreparedStatement => {
   let values: ReadonlyArray<unknown> = []
@@ -60,6 +62,13 @@ const makeStatement = (
         state.lastSeq = state.lastSeq + 1
 
         return JSON.parse(JSON.stringify({ last_seq: state.lastSeq })) as T
+      }
+
+      // The authoritative ledger SUM read used to fill `tokensServedTotal`.
+      if (query.includes('AS tokens_served')) {
+        return JSON.parse(
+          JSON.stringify({ tokens_served: state.tokensServed }),
+        ) as T
       }
 
       return null
@@ -86,8 +95,12 @@ const makeStatement = (
   return statement
 }
 
-const makeMemoryD1 = (): MemoryD1 => {
-  const state = { changes: [] as Array<StoredChange>, lastSeq: 0 }
+const makeMemoryD1 = (tokensServed = 0): MemoryD1 => {
+  const state = {
+    changes: [] as Array<StoredChange>,
+    lastSeq: 0,
+    tokensServed,
+  }
 
   return {
     changes: state.changes,
@@ -164,8 +177,10 @@ describe('buildKhalaTokensServedDelta', () => {
 })
 
 describe('publishKhalaTokensServedDelta', () => {
-  test('writes one public-safe delta to the tokens-served scope and pokes the room', async () => {
-    const db = makeMemoryD1()
+  test('writes the event + an authoritative running-total summary and pokes the room', async () => {
+    // The authoritative ledger SUM (1_000_042) is the running total AFTER this
+    // 42-token row; both the event and the summary must carry it.
+    const db = makeMemoryD1(1_000_042)
     const notifiedScopes: Array<string> = []
 
     await publishKhalaTokensServedDelta(
@@ -177,16 +192,30 @@ describe('publishKhalaTokensServedDelta', () => {
       }),
     )
 
-    expect(db.changes).toHaveLength(1)
-    expect(db.changes[0]?.collection).toBe(
-      KHALA_TOKENS_SERVED_SYNC_COLLECTION,
+    expect(db.changes).toHaveLength(2)
+
+    const event = db.changes.find(
+      change => change.collection === KHALA_TOKENS_SERVED_SYNC_COLLECTION,
     )
-    expect(db.changes[0]?.scope).toBe('public-khala-tokens-served:network')
-    expect(db.changes[0]?.op).toBe('put')
-    expect(JSON.parse(db.changes[0]?.value_json ?? '{}')).toMatchObject({
+    const summary = db.changes.find(
+      change => change.collection === KHALA_TOKENS_SERVED_SUMMARY_COLLECTION,
+    )
+
+    expect(event?.scope).toBe('public-khala-tokens-served:network')
+    expect(event?.op).toBe('put')
+    expect(event?.entity_id).toBe('event.inference.served-tokens.chatcmpl-1')
+    expect(JSON.parse(event?.value_json ?? '{}')).toMatchObject({
       eventRef: 'event.inference.served-tokens.chatcmpl-1',
       tokensServedDelta: 42,
+      tokensServedTotal: 1_000_042,
     })
+
+    expect(summary?.op).toBe('put')
+    expect(summary?.entity_id).toBe(KHALA_TOKENS_SERVED_SUMMARY_ENTITY_ID)
+    expect(JSON.parse(summary?.value_json ?? '{}')).toMatchObject({
+      tokensServedTotal: 1_000_042,
+    })
+
     expect(notifiedScopes).toEqual(['public-khala-tokens-served:network'])
   })
 

@@ -1330,15 +1330,20 @@ export const initSettledFeedModel = (): SettledFeedModel =>
     totalSettledSats: 0,
   })
 
-// Live "Khala Tokens Served" delta stream (#6231). The homepage/stats counter
-// is seeded ONCE from the scalar endpoint, then rolls up instantly as each
-// served completion pushes a public-safe `{ tokensServedDelta, observedAt }`
-// patch onto a public, read-only sync room scope — no per-second polling/SUM.
-// `cursor` tracks the last applied seq so a reconnect replays missed deltas;
-// `appliedEventRefs` de-dupes replayed deltas so a reconnect/cursor-replay never
-// double-counts. When the socket is unavailable the slow reconcile poll keeps
-// the counter honest. This slice is purely additive live transport state; the
-// running total itself lives on `publicKhalaTokensServed`.
+// Live "Khala Tokens Served" stream (#6231 + follow-up). The homepage/stats
+// counter is seeded with the AUTHORITATIVE running total + cursor from ONE sync
+// snapshot read (the room's `summary` record carries the live ledger SUM), then
+// each served completion pushes a public-safe event carrying the running total
+// AFTER it (`tokensServedTotal`). The client subscribes strictly from the seeded
+// cursor and takes `max(displayed, total)`, so events baked into the seed are
+// never replayed-and-re-added: the counter is monotonic and converges exactly to
+// the ledger — no double-count (the old ~2M over-count) and no backward jump (the
+// old ~1.59M clobber). `cursor` tracks the last applied seq so a reconnect
+// replays missed events from there; `appliedEventRefs` is a redundant de-dupe
+// guard atop the authoritative-total `max`. The scalar endpoint is now only the
+// socket-down fallback seed (monotone: it only ever raises the displayed total).
+// This slice is purely live transport state; the total lives on
+// `publicKhalaTokensServed`.
 export const KhalaTokensServedStreamModel = ts('LoggedOutKhalaTokensServedStream', {
   connection: SettledFeedConnection,
   cursor: S.Number,

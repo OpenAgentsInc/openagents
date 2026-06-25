@@ -39,32 +39,61 @@ import { notifySyncScopes } from '../sync-notifier'
  *  - REUSE: it goes through the same `makeD1SyncOutboxRepository` outbox +
  *    `SyncRoomDurableObject` poke that the settled feed and team-sync already
  *    use; no parallel realtime path and no new Durable Object.
+ *
+ * SINGLE SOURCE OF TRUTH / MONOTONICITY (openagents #6231 follow-up).
+ * The earlier shape pushed a bare delta and the client seeded from the scalar
+ * `SUM` endpoint while subscribing from cursor 0. That double-counted: the
+ * cursor-0 replay re-delivered every delta ALREADY inside the seed `SUM`, the
+ * client added them on top (over-count, ~2M), then the periodic scalar reconcile
+ * clobbered the value back down to the true `SUM` (~1.59M) — a visible backward
+ * jump, oscillating. The fix mirrors `tassadar-settled-feed-sync.ts`: every
+ * published event AND a single running-total summary record carry the
+ * AUTHORITATIVE running total (`tokensServedTotal` = the live ledger `SUM` after
+ * this row). The client seeds the running total + cursor from ONE snapshot read
+ * and applies only events after that cursor, taking `max(displayed, total)`, so
+ * the counter is monotonic by construction and converges exactly to the ledger.
  */
 
 export const KHALA_TOKENS_SERVED_SYNC_COLLECTION = 'tokens_served_deltas'
+export const KHALA_TOKENS_SERVED_SUMMARY_COLLECTION = 'tokens_served_summary'
+export const KHALA_TOKENS_SERVED_SUMMARY_ENTITY_ID = 'summary'
 
 // The public-safe shape that lands on the sync room (and in the homepage Model).
-// By construction it carries ONLY a bare integer delta + a timestamp — no per
-// user/team/account/provider/model material.
+// By construction it carries ONLY bare integers + a timestamp — no per
+// user/team/account/provider/model material. `tokensServedTotal` is the
+// authoritative running ledger total AFTER this event, so the client advances
+// monotonically (`max`) and converges to the true `SUM` with no double-count.
 export type PublicKhalaTokensServedDelta = Readonly<{
   // Stable per-event ref so a reconnect/cursor-replay applies each delta at most
   // once (the client de-dupes on this ref). Public-safe by construction.
   eventRef: string
   observedAt: string
   tokensServedDelta: number
+  tokensServedTotal: number
+}>
+
+// The single running-total record kept current on the scope. Because the outbox
+// snapshot collapses puts by entity id, the snapshot's summary is always the
+// latest authoritative running total + the snapshot cursor — the one-shot seed
+// the client reads to start, with no double-count.
+export type PublicKhalaTokensServedSummary = Readonly<{
+  observedAt: string
+  tokensServedTotal: number
 }>
 
 // Build the public-safe delta patch for one served completion. The delta is the
 // served input + output tokens for that completion; the event ref reuses the
 // recorder's stable per-request event id so a retried/replayed publish (same
-// request) carries the SAME ref and the client de-dupes it.
+// request) carries the SAME ref and the client de-dupes it. `tokensServedTotal`
+// is filled in by `publishKhalaTokensServedDelta` from the authoritative ledger
+// SUM; callers pass only the per-request delta + refs.
 export const buildKhalaTokensServedDelta = (
   input: Readonly<{
     eventRef: string
     observedAt: string
     tokensServedDelta: number
   }>,
-): PublicKhalaTokensServedDelta => ({
+): Omit<PublicKhalaTokensServedDelta, 'tokensServedTotal'> => ({
   eventRef: input.eventRef,
   observedAt: input.observedAt,
   tokensServedDelta: Math.max(0, Math.trunc(input.tokensServedDelta)),
@@ -72,16 +101,54 @@ export const buildKhalaTokensServedDelta = (
 
 type KhalaTokensServedSyncEnv = Pick<WorkerBindings, 'OPENAGENTS_DB' | 'SYNC_ROOM'>
 
+// Read the AUTHORITATIVE running total: the live `SUM(input+output)` over the
+// canonical ledger — the SAME aggregate the scalar `GET /api/public/
+// khala-tokens-served` endpoint serves. Read here (after the row this publish
+// announces is already committed) so the summary/event totals equal the ledger.
+// A plain D1 read keeps this Promise-based module out of any Effect bridge; a
+// failure returns -1 so the caller skips publishing a non-authoritative total
+// rather than risking a non-monotonic client.
+const readAuthoritativeTokensServedTotal = async (
+  db: D1Database,
+): Promise<number> => {
+  try {
+    const row = await db
+      .prepare(
+        `SELECT
+            COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)
+              AS tokens_served
+           FROM token_usage_events`,
+      )
+      .first<{ tokens_served: number | null }>()
+
+    return Math.max(0, Math.trunc(row?.tokens_served ?? 0))
+  } catch {
+    return -1
+  }
+}
+
 /**
- * Publish ONE public-safe tokens-served delta to the public tokens-served scope,
- * then poke the room. The payload is scanned for unsafe material before it can
- * be written; a rejected or zero/negative delta is skipped (it never reaches the
- * outbox). The whole operation is fail-soft via `observedPromise` so the caller
- * is never broken or slowed by a broadcast failure.
+ * Publish ONE public-safe tokens-served event to the public tokens-served scope,
+ * then poke the room. The event AND a single running-total summary record carry
+ * the AUTHORITATIVE running ledger total (the live `SUM(input+output)` AFTER this
+ * row, read here — the recorder calls this AFTER the canonical row is committed,
+ * so the SUM already includes it). Because the snapshot collapses puts by entity
+ * id, the snapshot's summary is always the latest authoritative total + cursor:
+ * the client seeds from it and applies only events after that cursor, taking
+ * `max(displayed, total)`, so the counter never double-counts and never moves
+ * backward.
+ *
+ * The payload is scanned for unsafe material before it can be written; a rejected
+ * or zero/negative delta is skipped (it never reaches the outbox). The whole
+ * operation is fail-soft via `observedPromise` so the caller is never broken or
+ * slowed by a broadcast failure. Reading the SUM here is bounded by completion
+ * throughput (one per served row), runs off the customer's response path, and
+ * replaces the per-second client poll + per-second SUM the original #6231 work
+ * removed — it does not reintroduce per-viewer or per-second load.
  */
 export const publishKhalaTokensServedDelta = async (
   env: KhalaTokensServedSyncEnv,
-  delta: PublicKhalaTokensServedDelta,
+  delta: Omit<PublicKhalaTokensServedDelta, 'tokensServedTotal'>,
   options: Readonly<{ ctx?: SyncNotificationContext; feedId?: string }> = {},
 ): Promise<void> => {
   if (delta.tokensServedDelta <= 0) {
@@ -89,8 +156,32 @@ export const publishKhalaTokensServedDelta = async (
   }
 
   await observedPromise('Sync.publishKhalaTokensServedDelta', async () => {
+    const db = openAgentsDatabase(env)
+
+    const tokensServedTotal = await readAuthoritativeTokensServedTotal(db)
+
+    // If the authoritative SUM read fails we cannot publish a trustworthy total
+    // (a wrong total would risk a non-monotonic client). Skip — the client's
+    // socket-down fallback seed keeps the counter honest, and the next served
+    // completion republishes a fresh authoritative total.
+    if (tokensServedTotal < 0) {
+      return
+    }
+
+    const event: PublicKhalaTokensServedDelta = {
+      eventRef: delta.eventRef,
+      observedAt: delta.observedAt,
+      tokensServedDelta: delta.tokensServedDelta,
+      tokensServedTotal,
+    }
+    const summary: PublicKhalaTokensServedSummary = {
+      observedAt: delta.observedAt,
+      tokensServedTotal,
+    }
+
     try {
-      assertNexusPylonPublicSafe('Public khala tokens served delta', delta)
+      assertNexusPylonPublicSafe('Public khala tokens served delta', event)
+      assertNexusPylonPublicSafe('Public khala tokens served summary', summary)
     } catch {
       return
     }
@@ -98,15 +189,23 @@ export const publishKhalaTokensServedDelta = async (
     const scope = publicKhalaTokensServedScope(
       options.feedId ?? PUBLIC_KHALA_TOKENS_SERVED_ID,
     )
-    const store = makeD1SyncOutboxRepository(openAgentsDatabase(env))
+    const store = makeD1SyncOutboxRepository(db)
 
     await store.appendChange({
       actorId: 'system',
       collection: KHALA_TOKENS_SERVED_SYNC_COLLECTION,
-      id: delta.eventRef,
+      id: event.eventRef,
       op: 'put',
       scope,
-      value: delta,
+      value: event,
+    })
+    await store.appendChange({
+      actorId: 'system',
+      collection: KHALA_TOKENS_SERVED_SUMMARY_COLLECTION,
+      id: KHALA_TOKENS_SERVED_SUMMARY_ENTITY_ID,
+      op: 'put',
+      scope,
+      value: summary,
     })
 
     const notify = notifySyncScopes(env, [scope])

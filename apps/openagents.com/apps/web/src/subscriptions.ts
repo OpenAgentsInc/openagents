@@ -408,11 +408,29 @@ const inactiveKhalaTokensServedPoll = { isActive: false }
 
 type KhalaTokensServedPollDependencies = typeof inactiveKhalaTokensServedPoll
 
+const khalaTokensServedRouteIsLive = (model: Model): boolean =>
+  model._tag === 'LoggedOut' &&
+  (settledFeedRouteIsLive(model) || model.route._tag === 'Khala')
+
 export const khalaTokensServedPollDependenciesForModel = (
   model: Model,
 ): KhalaTokensServedPollDependencies =>
+  khalaTokensServedRouteIsLive(model)
+    ? { isActive: true }
+    : inactiveKhalaTokensServedPoll
+
+// The scalar SUM reconcile poll is the SOCKET-DOWN FALLBACK only (#6231 follow-
+// up). When the realtime stream is open the authoritative running total flows
+// through the snapshot summary + per-event `tokensServedTotal`, so re-fetching
+// the scalar SUM on a timer is unnecessary AND was the source of the backward
+// jump (a stale-low cached scalar value clobbering a correct-higher live total).
+// So the reconcile only runs while the stream is NOT open.
+export const khalaTokensServedReconcileDependenciesForModel = (
+  model: Model,
+): KhalaTokensServedPollDependencies =>
+  khalaTokensServedRouteIsLive(model) &&
   model._tag === 'LoggedOut' &&
-  (settledFeedRouteIsLive(model) || model.route._tag === 'Khala')
+  model.khalaTokensServedStream.connection !== 'open'
     ? { isActive: true }
     : inactiveKhalaTokensServedPoll
 
@@ -1249,7 +1267,7 @@ export const subscriptions = Subscription.make<Model, Message>()(entry => ({
       isActive: S.Boolean,
     },
     {
-      modelToDependencies: khalaTokensServedPollDependenciesForModel,
+      modelToDependencies: khalaTokensServedReconcileDependenciesForModel,
       dependenciesToStream: ({ isActive }: { isActive: boolean }) =>
         Stream.when(
           Stream.tick(
