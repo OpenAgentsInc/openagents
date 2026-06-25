@@ -50,7 +50,7 @@ provider-adapter registry, verification-class registry, and the
   public-safe reports and models owner-armed module-author splits from
   composition evidence while keeping payout, settlement, listing, and public
   marketplace authority disabled.
-- **Epic E1/E2 landed:** `harbor-dispatch.ts` formalizes the Worker/Gym →
+- **Epic E1/E2/E3 landed:** `harbor-dispatch.ts` formalizes the Worker/Gym →
   Hydralisk → Harbor seam for Terminal-Bench against `openagents/khala`: typed
   job spec, injected Hydralisk harness, public-safe
   `hydralisk.evals.terminal_bench.summary.v1` ingest, ATIF artifact ref, and a
@@ -58,7 +58,10 @@ provider-adapter registry, verification-class registry, and the
   must include distinct-device verifier evidence: `environment_mode = separate`,
   distinct agent/verifier host+device refs, `no-network` verifier, explicit
   artifact handoff, and reward read from the verifier artifact.
-  Remaining real-sweep work expands reward/cost mapping and public surfaces.
+  `harbor-reward.ts` then maps Harbor rewards to cost-per-accepted-outcome using
+  served-token cost basis, emits a training-ready public-safe ATIF trajectory
+  bundle, and blocks readiness when GPU contention is not cleared.
+  Remaining real-sweep work expands live executor wiring and public surfaces.
 
 ## Contents
 

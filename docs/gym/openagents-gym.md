@@ -367,8 +367,10 @@ guarantees realistic traffic + owner-armed seam + a citable public report.
   Hydralisk. The dispatch receipt now also carries verified distinct-device
   verifier placement evidence: Harbor `environment_mode = separate`, distinct
   agent/verifier host+device refs, `no-network` verifier, explicit artifact
-  handoff, and reward read from a verifier artifact. E3 still owns reward/cost
-  report mapping.
+  handoff, and reward read from a verifier artifact. `harbor-reward.ts` maps the
+  summary into a Gym reward report with cost-per-accepted-outcome from
+  served-token cost basis and emits a training-ready public-safe ATIF trajectory
+  bundle when GPU contention is cleared.
 
 ## 9. Build spec (for a coding agent)
 
@@ -422,6 +424,11 @@ metric vocabulary, or a new settlement path.
     `environment_mode = separate`, distinct agent/verifier devices, `no-network`
     verifier execution, explicit artifact handoff, and reward read from the
     verifier artifact before ingest can mark the placement verified.
+12. Harbor reward/cost/training projection: map solved Terminal-Bench tasks to
+    accepted outcomes, properly attempted tasks to attempted verifications, real
+    served-token cost basis to cost-per-accepted-outcome, and public-safe ATIF
+    refs into GEPA/TRINITY/Conductor-ready training trajectory bundles. Block
+    decision-grade/training readiness when GPU contention is not cleared.
 ```
 
 ## 10. Open questions
@@ -430,8 +437,9 @@ metric vocabulary, or a new settlement path.
   landed, but real dispatch adapters still need per-surface artifact ingest.
 - Terminal-Bench specifically: the typed env, Worker-side Hydralisk Harbor
   dispatch/summary-ingest seam, and distinct-device verifier placement evidence
-  are landed. The next open part is E3 reward/cost mapping from Harbor
-  summary/ATIF artifacts into a decision-grade Gym report.
+  are landed. Reward/cost mapping and training trajectory projection from Harbor
+  summary/ATIF artifacts are also landed; remaining work is wiring the live
+  owner-armed executor path and public/logged-in surfaces around the projections.
 - Pricing tiers: free fixture vs metered self-serve vs decision-grade certified;
   the first quote path is landed from matrix shape and configured lane prices,
   while tier packaging and certified-report pricing remain open.

@@ -642,9 +642,14 @@ The QA-runner ATIF emitter is being built; the Gym↔Khala dog-food wiring is th
    distinct agent/verifier devices, `no-network` verifier execution, explicit
    artifact handoff, and reward read from the verifier artifact before the Worker
    accepts the placement as verified.
-5. **Wire cost-per-accepted-outcome** for the env using the real per-lane
-   `cost_amount` basis (the cost-model doc) × Harbor's verdict; render null
-   cost-per-outcome for zero-accepted groups (no fake-cheap results).
+5. **Shipped (#6242): wire cost-per-accepted-outcome and trajectory ingestion** —
+   `harbor-reward.ts` maps the Hydralisk summary's solved/properly-attempted
+   counts into `openagents.gym.harbor_reward_report.v1`, consumes the real
+   served-token `totalCostBasisMsat`, renders null cost-per-outcome for
+   zero-accepted groups (no fake-cheap results), and emits
+   `openagents.gym.harbor_training_trajectory.v1` from the public-safe ATIF trace
+   ref for GEPA/TRINITY/Conductor. GPU contention must be cleared by a benchmark
+   replica or exclusive off-peak window before decision-grade/training readiness.
 6. **CI smoke (free, no spend)** — a `terminal-bench` env wiring test that runs
    the `oracle` agent on the retained subset through the harness, asserts reward
    1.0, asserts the report is `decisionGrade:false`, and asserts the public-safety
@@ -665,10 +670,11 @@ The QA-runner ATIF emitter is being built; the Gym↔Khala dog-food wiring is th
 - **Direction vs shipped:** the Phase 0 fixture Gym (#6163–#6166), owner-gated
   `/gym/oss` (#6167), Phase 1 Gym registry/OpenCode work, Phase 2 paid-run gate,
   Worker-side Hydralisk Harbor dispatch/summary-ingest seam (#6250), and
-  distinct-device verifier evidence gate (#6251) are landed. Harbor reward→Gym
-  report mapping and training ingestion remain direction. We use Harbor's format
-  (ATIF) and now a typed out-of-process artifact seam, not Harbor runtime code in
-  the Worker.
+  distinct-device verifier evidence gate (#6251), and Harbor reward/cost +
+  training projection (#6242) are landed. Remaining direction is live
+  owner-armed executor wiring, operational scheduling, and public/logged-in
+  surfaces. We use Harbor's format (ATIF) and a typed out-of-process artifact
+  seam, not Harbor runtime code in the Worker.
 - **Reference-repo discipline:** Harbor stays a read-only reference; we integrate
   at the job/artifact seam and do not vendor or fork it into our repos.
 - **No published numbers** without an owner-armed real seam over realistic

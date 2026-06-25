@@ -250,7 +250,8 @@ Mostly as the OpenCode-via-Khala memo sketched, now de-TBD'd:
   surface and remain owner-armed work. The first task-set dispatch seam is now
   landed for Terminal-Bench on Hydralisk/Harbor: typed job spec, injected harness,
   public-safe summary ingest, ATIF trace ref, and distinct-device verifier
-  evidence gate, with reward/cost mapping still owned by the next Harbor issue.
+  evidence gate. Reward/cost mapping and training trajectory projection are also
+  landed from Harbor summaries + served-token cost basis + public-safe ATIF refs.
 - How the throughput/concurrency environment (§8) relates to `/gym/oss` (promote it
   from an owner playground to a typed Gym environment, or keep it separate?).
 - Internal-vs-external demand tagging in the analytics so Gym/dog-food tokens never

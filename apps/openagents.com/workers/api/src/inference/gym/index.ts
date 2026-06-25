@@ -1,5 +1,6 @@
 export * from './experiment'
 export * from './flywheel'
 export * from './harbor-dispatch'
+export * from './harbor-reward'
 export * from './leaderboard'
 export * from './paid-run'

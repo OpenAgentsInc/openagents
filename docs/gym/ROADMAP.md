@@ -406,7 +406,7 @@ reward artifact ref. The ingest projection records the verified placement fields
 and rejects same-host/same-device or missing-reward-artifact evidence.
 
 ### E3. Map Harbor reward → Gym cost-per-accepted-outcome; ingest Harbor trajectories for training  ([#6242](https://github.com/OpenAgentsInc/openagents/issues/6242))
-**Type:** task · **Lever:** benchmarking/training · **Status:** direction
+**Type:** task · **Lever:** benchmarking/training · **Status:** shipped 2026-06-25
 **Why:** Harbor's float reward IS the executed verdict the Gym multiplies by the real
 per-lane cost basis; Harbor trajectories feed Khala training.
 **Scope:** map Harbor's `reward.txt` → the Gym report's accepted-outcome; pipe
@@ -415,6 +415,15 @@ contention with live Khala serving lanes when scheduling runs.
 **Acceptance:** a Harbor run produces a Gym report with cost-per-accepted-outcome from
 the real cost basis, and a training-ready trajectory artifact.
 **Refs:** harbor doc §3, §6; cost-model doc.
+
+**Shipped 2026-06-25:** `harbor-reward.ts` maps Hydralisk Harbor summaries into
+`openagents.gym.harbor_reward_report.v1`: accepted outcomes from solved tasks,
+attempted verifications from properly attempted tasks, scalar reward mean, real
+served-token `totalCostBasisMsat`, and null cost-per-accepted-outcome when
+accepted outcomes are zero. It requires a public-safe ATIF trace ref, emits
+`openagents.gym.harbor_training_trajectory.v1` for GEPA/TRINITY/Conductor,
+keeps raw traces out, and blocks decision-grade/training readiness when GPU
+contention is not cleared by a benchmark replica or exclusive off-peak window.
 
 ---
 
@@ -467,7 +476,7 @@ point where latency/quota degrades, with `not_measured` distinct from `0`.
 3. **C1 (#6239)** (publish the OpenCode recipe) — first external demand.
 4. **B2 → B3** (QA on every push: pre-push smoke, then GCE async).
 5. **D1 + D2 + E1** (Gym Phase 1 + Harbor/Terminal-Bench backend) — the head-to-head.
-6. **E2/E3, D4, F3** (distinct-device verifier, training loop, throughput) — quality
+6. **D4, F3, remaining Harbor ops** (training loop, throughput, live executor wiring) — quality
    + flywheel.
 7. **D3, C2, D5, A3, F2** (paid runs [owner-gated], more tools, leaderboard, Verse,
    history surfacing) — broaden behind proof.
