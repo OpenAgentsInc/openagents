@@ -493,7 +493,11 @@ import {
 } from './inference/pylon-fabric-http-transport'
 import { handlePylonFabricSmoke } from './inference/pylon-fabric-smoke-routes'
 import { handleQuote } from './inference/quote-routes'
-import { makeD1ServedTokensRecorder } from './inference/served-tokens-recorder'
+import {
+  buildServedTokensIngestBody,
+  makeD1ServedTokensRecorder,
+  type ServedTokensRecorderInput,
+} from './inference/served-tokens-recorder'
 import { stubEchoAdapter } from './inference/stub-echo-adapter'
 import {
   VERTEX_ANTHROPIC_ADAPTER_ID,
@@ -7706,6 +7710,135 @@ const crmBatchRoutes = makeCrmBatchRoutes<WorkerBindings>({
   resolveResendDeps: resolveCrmResendDeps,
 })
 
+type KhalaMcpTokensServedDelta = Readonly<{
+  eventRef: string
+  observedAt: string
+  tokensServedDelta: number
+}>
+
+const makeKhalaMcpServedTokensRecorder = (
+  db: D1Database,
+  options: Readonly<{
+    nowIso?: () => string
+    publishDelta?: (input: KhalaMcpTokensServedDelta) => Promise<void>
+  }> = {},
+): ((input: ServedTokensRecorderInput) => Promise<void>) => {
+  const nowIso = options.nowIso ?? currentIsoTimestamp
+
+  return async input => {
+    const inputTokens = Math.max(0, Math.trunc(input.usage.promptTokens))
+    const outputTokens = Math.max(0, Math.trunc(input.usage.completionTokens))
+    const tokensServedDelta = inputTokens + outputTokens
+    if (tokensServedDelta <= 0) {
+      return
+    }
+
+    const observedAt = nowIso()
+    const body = buildServedTokensIngestBody({
+      accountRef: input.accountRef,
+      adapterId: input.adapterId,
+      observedAt,
+      requestAttribution: input.requestAttribution,
+      requestId: input.requestId,
+      requestedModel: input.requestedModel,
+      servedModel: input.servedModel,
+      usage: input.usage,
+    })
+    const safeMetadataJson = JSON.stringify(body.safeMetadata ?? {})
+
+    try {
+      const result = await db
+        .prepare(
+          `INSERT OR IGNORE INTO token_usage_events (
+            id,
+            idempotency_key,
+            observed_at,
+            ingested_at,
+            producer_system,
+            source_route,
+            actor_user_id,
+            actor_team_id,
+            account_ref,
+            anonymized_source_ref,
+            run_ref,
+            session_ref,
+            task_ref,
+            repository_ref,
+            provider,
+            model,
+            backend_profile,
+            input_tokens,
+            output_tokens,
+            reasoning_tokens,
+            cache_read_tokens,
+            cache_write_5m_tokens,
+            cache_write_1h_tokens,
+            total_tokens,
+            usage_truth,
+            cost_amount,
+            currency,
+            demand_kind,
+            demand_source,
+            demand_client,
+            leaderboard_eligible,
+            privacy_opt_out,
+            safe_metadata_json
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .bind(
+          body.eventId,
+          body.idempotencyKey,
+          body.observedAt,
+          nowIso(),
+          body.producerSystem,
+          body.sourceRoute,
+          null,
+          null,
+          body.actor?.accountRef ?? null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          body.provider ?? null,
+          body.model ?? null,
+          body.backendProfile ?? null,
+          body.tokenCounts.inputTokens,
+          body.tokenCounts.outputTokens,
+          body.tokenCounts.reasoningTokens,
+          body.tokenCounts.cacheReadTokens,
+          body.tokenCounts.cacheWrite5mTokens,
+          body.tokenCounts.cacheWrite1hTokens,
+          body.tokenCounts.totalTokens,
+          body.usageTruth,
+          body.cost?.amount ?? null,
+          body.cost?.currency ?? null,
+          body.demand?.demandKind ?? 'unlabeled',
+          body.demand?.demandSource ?? null,
+          body.demand?.demandClient ?? null,
+          body.privacy?.leaderboardEligible === false ? 0 : 1,
+          body.privacy?.privacyOptOut === true ? 1 : 0,
+          safeMetadataJson,
+        )
+        .run()
+
+      const inserted =
+        Number((result.meta as D1Meta & { changes?: number }).changes ?? 0) > 0
+      if (inserted && options.publishDelta !== undefined) {
+        await options
+          .publishDelta({
+            eventRef: body.eventId,
+            observedAt,
+            tokensServedDelta,
+          })
+          .catch(() => undefined)
+      }
+    } catch {
+      return
+    }
+  }
+}
+
 // CRM MCP server (epic #5991): read-only catalog (#5993) + resources (#5994),
 // authenticated to a bound principal — admin token = full CRM authority on the
 // header/default tenant; a scoped grant (#5995) = its declared authorities +
@@ -7746,6 +7879,14 @@ const crmMcpRoutes = makeCrmMcpRoutes<WorkerBindings>({
     makeKhalaMcpCatalog<WorkerBindings>({
       agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
       pylonStore: env => makeD1PylonApiStore(openAgentsDatabase(env)),
+      recordTokensServed: env =>
+        makeKhalaMcpServedTokensRecorder(openAgentsDatabase(env), {
+          publishDelta: delta =>
+            publishKhalaTokensServedDelta(
+              env,
+              buildKhalaTokensServedDelta(delta),
+            ).catch(() => undefined),
+        }),
     }),
   ]),
 })

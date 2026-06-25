@@ -32,10 +32,18 @@ import type {
   AgentRegistrationStore,
   LinkedAgentOwnerRecord,
   OpenAuthAgentLinkRecord,
+  ProgrammaticAgentSession,
 } from './agent-registration'
 import { sha256Hex } from './agent-registration'
+import { authorizeInferenceMonetization } from './inference-resale-authorization'
 import { classifyCodingWorkflow } from './inference/coding-workflow-classifier'
 import { delegateCodingWorkflow } from './inference/coding-workflow-delegation'
+import type { ServedTokensRecorderInput } from './inference/served-tokens-recorder'
+import {
+  KHALA_MCP_TOOLS,
+  khalaMcpAgentPrincipal,
+  makeKhalaMcpCatalog,
+} from './khala-mcp'
 import type {
   PylonApiAssignmentRecord,
   PylonApiEventRecord,
@@ -553,5 +561,271 @@ describe('#6273 coding-capacity validation harness', () => {
     })
     expect(result).toBeNull()
     expect(pylonStore.createdAssignments()).toHaveLength(0)
+  })
+
+  test('P6.4 — reusable issuer harness: link -> issue -> authorize -> route -> durable resume', async () => {
+    const userA = 'openauth-user-a'
+    const credentials: Array<Credential> = [
+      {
+        id: 'cred_a',
+        agentUserId: 'agent_a',
+        displayName: 'Agent A',
+        tokenHash: await sha256Hex(tokenFor('agent_a')),
+        tokenPrefix: tokenFor('agent_a').slice(0, 16),
+        openauthUserId: null,
+      },
+    ]
+    const agentStore = makeAgentStore(credentials)
+    const pylonStore = makePylonStore([
+      registration({ ownerAgentUserId: 'agent_a', pylonRef: 'pylon.a.codex' }),
+      registration({
+        id: 'pylon_api_registration_b',
+        ownerAgentUserId: 'agent_b',
+        pylonRef: 'pylon.b.codex',
+      }),
+    ])
+
+    const linked = await route({
+      agentStore,
+      pylonStore,
+      path: '/api/account/pylon-agent-links',
+      method: 'POST',
+      body: { agentToken: tokenFor('agent_a') },
+      browserUserId: userA,
+    })
+    expect(linked.status).toBe(201)
+
+    const recordedTokens: Array<ServedTokensRecorderInput> = []
+    const durableReads: string[] = []
+    const idQueue = ['chatcmpl_validate_issue', 'assignment_validate_issue']
+    const catalog = makeKhalaMcpCatalog({
+      agentStore: () => agentStore,
+      durableFetch: async input => {
+        durableReads.push(input instanceof Request ? input.url : String(input))
+        return new Response('data: [DONE]\n\n', {
+          headers: {
+            'stream-closed': 'true',
+            'stream-next-offset': '17',
+            'stream-up-to-date': 'true',
+          },
+        })
+      },
+      makeId: () => idQueue.shift() ?? 'id-more',
+      nowIso: () => NOW_ISO,
+      pylonStore: () => pylonStore,
+      recordTokensServed: () => async input => {
+        recordedTokens.push(input)
+      },
+    })
+    const session: ProgrammaticAgentSession = {
+      credential: {
+        id: 'cred_a',
+        lastUsedAt: NOW_ISO,
+        openauthUserId: userA,
+        profileMetadataJson: '{}',
+        tokenPrefix: tokenFor('agent_a').slice(0, 16),
+      },
+      user: {
+        avatarUrl: null,
+        createdAt: NOW_ISO,
+        displayName: 'Agent A',
+        id: 'agent_a',
+        kind: 'agent',
+        primaryEmail: null,
+        status: 'active',
+        updatedAt: NOW_ISO,
+      },
+    }
+    const principal = khalaMcpAgentPrincipal(session, NOW_ISO)
+    const request = new Request('https://openagents.com/api/mcp', {
+      headers: { authorization: `Bearer ${tokenFor('agent_a')}` },
+      method: 'POST',
+    })
+
+    const issued = await catalog.callTool(
+      { OPENAGENTS_DB: {} as D1Database },
+      request,
+      principal,
+      'khala.request',
+      {
+        prompt: 'Run the reusable issuer harness fixture',
+        targetPylonRef: 'pylon.a.codex',
+        workflow: 'codex_agent_task',
+      },
+    )
+
+    expect(issued.isError).toBeFalsy()
+    expect(issued.structuredContent).toMatchObject({
+      assignmentRef: 'assignment.public.khala_coding.assignment_validate_issue',
+      durableRequestId: 'chatcmpl_validate_issue',
+      durableStreamUrl:
+        '/v1/chat/completions/durable/chatcmpl_validate_issue',
+      pylonRef: 'pylon.a.codex',
+      stream: true,
+      workflow: 'codex_agent_task',
+    })
+    expect(pylonStore.createdAssignments()).toHaveLength(1)
+    expect(pylonStore.createdAssignments()[0]?.ownerAgentUserId).toBe('agent_a')
+    expect(pylonStore.createdAssignments()[0]?.pylonRef).toBe('pylon.a.codex')
+    expect(recordedTokens).toHaveLength(1)
+    expect(recordedTokens[0]).toMatchObject({
+      adapterId: 'pylon-codex-own-capacity',
+      requestAttribution: {
+        demandKind: 'own_capacity',
+        demandSource: 'khala_mcp_request',
+      },
+      requestId: 'chatcmpl_validate_issue',
+      requestedModel: 'openagents/khala',
+      servedModel: 'openagents/pylon-codex',
+      streamed: true,
+    })
+
+    const resumed = await catalog.callTool(
+      { OPENAGENTS_DB: {} as D1Database },
+      request,
+      principal,
+      'khala.resume',
+      { durableRequestId: 'chatcmpl_validate_issue', offset: 12 },
+    )
+    expect(resumed.isError).toBeFalsy()
+    expect(durableReads).toEqual([
+      'https://openagents.com/v1/chat/completions/durable/chatcmpl_validate_issue?offset=12',
+    ])
+  })
+
+  test('P6.2 — bounded own-capacity property holds across origins, tokens, and targets', async () => {
+    const origins = ['local_cli', 'remote_mcp', 'web_chat'] as const
+    const callers = [
+      { openauthUserId: 'user_a', ownerAgentUserId: 'agent_a', pylonRef: 'pylon.a.codex' },
+      { openauthUserId: 'user_b', ownerAgentUserId: 'agent_b', pylonRef: 'pylon.b.codex' },
+    ] as const
+    const targets = ['none', 'own', 'other'] as const
+
+    for (const origin of origins) {
+      for (const caller of callers) {
+        for (const target of targets) {
+          const other = callers.find(item => item !== caller)!
+          const pylonStore = makePylonStore([
+            registration({
+              ownerAgentUserId: 'agent_a',
+              pylonRef: 'pylon.a.codex',
+            }),
+            registration({
+              id: 'pylon_api_registration_b',
+              ownerAgentUserId: 'agent_b',
+              pylonRef: 'pylon.b.codex',
+            }),
+          ])
+          const targetPylonRef =
+            target === 'none'
+              ? undefined
+              : target === 'own'
+                ? caller.pylonRef
+                : other.pylonRef
+          const rawBody =
+            targetPylonRef === undefined
+              ? { openagents: { workflowClass: 'codex_agent_task' } }
+              : {
+                  openagents: {
+                    coding: { targetPylonRef },
+                    workflowClass: 'codex_agent_task',
+                  },
+                }
+          const result = await delegateCodingWorkflow({
+            classification: {
+              confidence: 1,
+              evidenceRefs: [`evidence.coding_workflow.${origin}`],
+              workflowClass: 'codex_agent_task',
+            },
+            linkedAgents: [
+              {
+                agentUserId: caller.ownerAgentUserId,
+                credentialId: `cred_${caller.ownerAgentUserId}`,
+                displayName: caller.ownerAgentUserId,
+                linkKind: 'credential_anchor',
+                openauthUserId: caller.openauthUserId,
+                tokenPrefix: `oa_${caller.ownerAgentUserId}`,
+              },
+            ],
+            makeId: () => `id_${origin}_${caller.ownerAgentUserId}_${target}`,
+            nowIso: NOW_ISO,
+            pylonStore,
+            rawBody,
+            requestId: `chatcmpl_${origin}_${caller.ownerAgentUserId}_${target}`,
+          })
+
+          if (target === 'other') {
+            expect(result).toMatchObject({
+              error: 'target_pylon_not_authorized',
+              kind: 'rejected',
+              requestedPylonRef: other.pylonRef,
+              statusCode: 403,
+            })
+            expect(pylonStore.createdAssignments()).toHaveLength(0)
+          } else {
+            expect(result?.kind).toBe('assigned')
+            if (result?.kind !== 'assigned') {
+              throw new Error(`expected assignment for ${origin}/${target}`)
+            }
+            expect(result.assignment.ownerAgentUserId).toBe(
+              caller.ownerAgentUserId,
+            )
+            expect(result.assignment.pylonRef).toBe(caller.pylonRef)
+          }
+        }
+      }
+    }
+  })
+
+  test('P6.3 — issuer path stays no-resale, semantic, and MCP-authority bounded', () => {
+    expect(
+      authorizeInferenceMonetization({ kind: 'agentic_work' }).authorized,
+    ).toBe(true)
+    const subscriptionResale = authorizeInferenceMonetization({
+      kind: 'subscription_capacity_resale',
+      accountAuthMode: 'subscription',
+      refs: {},
+    })
+    expect(subscriptionResale.authorized).toBe(false)
+    expect(subscriptionResale.blockerRefs).toContain(
+      'blocker.inference_resale.subscription_resale_forbidden',
+    )
+
+    expect(
+      classifyCodingWorkflow({
+        messages: [
+          {
+            content:
+              'This prose mentions code, repository, fix, tests, and commit but carries no structured marker.',
+            role: 'user',
+          },
+        ],
+        rawBody: {},
+      }).workflowClass,
+    ).toBe('none')
+
+    expect(
+      KHALA_MCP_TOOLS.map(tool => ({
+        name: tool.name,
+        requiredAuthorities: tool.requiredAuthorities,
+      })),
+    ).toEqual([
+      {
+        name: 'khala.request',
+        requiredAuthorities: ['coding_session_control'],
+      },
+      {
+        name: 'khala.resume',
+        requiredAuthorities: ['private_account_read'],
+      },
+      {
+        name: 'khala.capacity',
+        requiredAuthorities: ['private_account_read'],
+      },
+      {
+        name: 'khala.status',
+        requiredAuthorities: ['private_account_read'],
+      },
+    ])
   })
 })

@@ -231,6 +231,36 @@ describe('served-tokens-recorder', () => {
     expect(await readServed(ledger)).toBe(100)
   })
 
+  test('MCP-issued own-capacity coding tokens count on the same public scalar (#6285)', async () => {
+    const rows: Array<Row> = []
+    const db = makeFakeDb(rows)
+    const ledger = makeD1TokenUsageLedger(db)
+    const recorder = makeServedTokensRecorder({ ledger, nowIso: fixedNow })
+
+    await runRecorder(recorder, {
+      accountRef: 'agent:mcp-owner-capacity',
+      adapterId: 'pylon-codex-own-capacity',
+      requestId: 'chatcmpl-mcp-own-capacity',
+      requestAttribution: {
+        demandKind: 'own_capacity',
+        demandSource: 'khala_mcp_request',
+      },
+      requestedModel: 'openagents/khala',
+      servedModel: 'openagents/pylon-codex',
+      streamed: true,
+      usage: { completionTokens: 25, promptTokens: 75, totalTokens: 100 },
+    })
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.demand_kind).toBe('own_capacity')
+    expect(rows[0]!.demand_source).toBe('khala_mcp_request')
+    expect(JSON.parse(String(rows[0]!.safe_metadata_json))).toMatchObject({
+      demandKind: 'own_capacity',
+      demandSource: 'khala_mcp_request',
+    })
+    expect(await readServed(ledger)).toBe(100)
+  })
+
   test('a free-tier (zero-debit) completion still counts its served tokens', async () => {
     const rows: Array<Row> = []
     const db = makeFakeDb(rows)

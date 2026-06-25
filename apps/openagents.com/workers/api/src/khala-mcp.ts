@@ -23,12 +23,14 @@ import type {
 } from './crm-mcp-routes'
 import {
   delegateCodingWorkflow,
+  estimatedDelegatedCodingUsage,
   type CodingDelegationInput,
 } from './inference/coding-workflow-delegation'
 import type {
   CodingWorkflowClass,
   CodingWorkflowClassification,
 } from './inference/coding-workflow-classifier'
+import type { ServedTokensRecorderInput } from './inference/served-tokens-recorder'
 import {
   pylonCodingServiceCapacityProjection,
   type PylonApiRegistrationRecord,
@@ -450,6 +452,9 @@ export type KhalaMcpCatalogDeps<Bindings extends KhalaMcpEnv> = Readonly<{
   makeId?: () => string
   nowIso?: () => string
   pylonStore: (env: Bindings) => PylonApiStore
+  recordTokensServed?: (
+    env: Bindings,
+  ) => (input: ServedTokensRecorderInput) => Promise<void>
 }>
 
 export const makeKhalaMcpCatalog = <Bindings extends KhalaMcpEnv>(
@@ -525,6 +530,25 @@ export const makeKhalaMcpCatalog = <Bindings extends KhalaMcpEnv>(
             reason:
               'No linked, heartbeat-fresh, Codex-capable Pylon capacity is available for this account.',
           })
+        }
+        const recordTokensServed = deps.recordTokensServed?.(env)
+        if (recordTokensServed !== undefined) {
+          const messages = Array.isArray(payload.rawBody.messages)
+            ? payload.rawBody.messages
+            : []
+          await recordTokensServed({
+            accountRef: principal.subjectRef,
+            adapterId: 'pylon-codex-own-capacity',
+            requestAttribution: {
+              demandKind: 'own_capacity',
+              demandSource: 'khala_mcp_request',
+            },
+            requestId,
+            requestedModel: 'openagents/khala',
+            servedModel: 'openagents/pylon-codex',
+            streamed: true,
+            usage: estimatedDelegatedCodingUsage(messages),
+          }).catch(() => undefined)
         }
         return projectToolOutcome(name, {
           assignmentRef: delegation.assignment.assignmentRef,

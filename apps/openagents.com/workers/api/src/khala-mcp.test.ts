@@ -13,6 +13,7 @@ import {
   khalaMcpAgentPrincipal,
   makeKhalaMcpCatalog,
 } from './khala-mcp'
+import type { ServedTokensRecorderInput } from './inference/served-tokens-recorder'
 import type {
   PylonApiAssignmentRecord,
   PylonApiRegistrationRecord,
@@ -145,6 +146,7 @@ const catalogFor = (
   options: Readonly<{
     durableFetch?: typeof fetch
     ids?: string[]
+    recordedTokens?: Array<ServedTokensRecorderInput>
     registrations?: ReadonlyArray<PylonApiRegistrationRecord>
   }> = {},
 ) => {
@@ -155,6 +157,9 @@ const catalogFor = (
     makeId: () => ids.shift() ?? 'id_more',
     nowIso: () => nowIso,
     pylonStore: () => makeStore(options.registrations ?? [registration()]),
+    recordTokensServed: () => async input => {
+      options.recordedTokens?.push(input)
+    },
   })
 }
 
@@ -205,7 +210,8 @@ describe('Khala MCP catalog', () => {
   })
 
   test('khala.request delegates through own linked Pylon capacity and returns a durable handle', async () => {
-    const outcome = await catalogFor().callTool(
+    const recordedTokens: Array<ServedTokensRecorderInput> = []
+    const outcome = await catalogFor({ recordedTokens }).callTool(
       env,
       request,
       principal,
@@ -217,6 +223,20 @@ describe('Khala MCP catalog', () => {
       },
     )
 
+    expect(recordedTokens).toHaveLength(1)
+    expect(recordedTokens[0]).toMatchObject({
+      accountRef: 'agent:agent_owner',
+      adapterId: 'pylon-codex-own-capacity',
+      requestAttribution: {
+        demandKind: 'own_capacity',
+        demandSource: 'khala_mcp_request',
+      },
+      requestId: 'chatcmpl_mcp',
+      requestedModel: 'openagents/khala',
+      servedModel: 'openagents/pylon-codex',
+      streamed: true,
+    })
+    expect(recordedTokens[0]?.usage.totalTokens).toBeGreaterThan(0)
     expect(outcome.isError).toBeFalsy()
     expect(outcome.structuredContent).toMatchObject({
       assignmentRef: 'assignment.public.khala_coding.assignment_id',
@@ -231,7 +251,9 @@ describe('Khala MCP catalog', () => {
   })
 
   test('khala.request returns isError when an explicit target is not caller-owned', async () => {
+    const recordedTokens: Array<ServedTokensRecorderInput> = []
     const outcome = await catalogFor({
+      recordedTokens,
       registrations: [
         registration(),
         registration({
@@ -248,6 +270,7 @@ describe('Khala MCP catalog', () => {
     })
 
     expect(outcome.isError).toBe(true)
+    expect(recordedTokens).toHaveLength(0)
     expect(outcome.structuredContent).toMatchObject({
       error: 'target_pylon_not_authorized',
       ok: false,
