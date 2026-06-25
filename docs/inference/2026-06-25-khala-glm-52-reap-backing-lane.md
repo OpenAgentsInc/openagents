@@ -68,3 +68,38 @@ Run the deployment gate from `apps/openagents.com` before production rollout:
 ```sh
 bun run check:deploy
 ```
+
+The operator end-to-end smoke for issue #6259 is:
+
+```sh
+cd apps/openagents.com
+OPENAGENTS_AGENT_TOKEN=oa_agent_... \
+HYDRALISK_GLM_52_REAP_504B_ENABLED=ready \
+HYDRALISK_GLM_52_REAP_504B_BASE_URL=<Worker secret value> \
+HYDRALISK_GLM_52_REAP_504B_BEARER_TOKEN=<Worker secret value> \
+HYDRALISK_GLM_52_REAP_504B_PREFLIGHT_REF=<public-safe ref> \
+HYDRALISK_GLM_52_REAP_504B_RECEIPT_REF=<public-safe ref> \
+bun run smoke:khala:glm-reap -- --approve-live-spend
+```
+
+Default target paths are the public canonical aliases:
+
+- `GET /api/v1/models`
+- `POST /api/v1/chat/completions`
+- `GET /api/public/khala-tokens-served`
+
+The smoke exits `0` with `skipped: true` when those GLM arming variables are not
+present, so CI and unarmed operator shells do not accidentally call another
+backing lane. When armed, it verifies:
+
+- the public catalog lists `openagents/khala` but not raw GLM ids such as
+  `openagents/glm-5.2-reap-504b`;
+- non-streaming and streaming `openagents/khala` calls disclose
+  `supply_lane: hydralisk`, `worker: hydralisk-vllm-glm-5p2-reap-504b`, and
+  `served_model: openagents/glm-5.2-reap-504b`;
+- each public inference receipt carries matching model evidence and usage;
+- the public Khala tokens-served counter moves by approximately the served usage.
+
+Do not run the armed smoke while a decision-grade single-flight benchmark owns
+the GLM proxy. The unarmed skip and catalog-only reads are safe; authenticated
+completion calls are not.
