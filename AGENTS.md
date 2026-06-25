@@ -245,6 +245,53 @@ Common failure signatures:
 - A heartbeat validation error on `capacity.coding.*=N` means the counted
   capacity-ref schema regressed.
 
+Known public-safe steering gaps to keep visible:
+
+- The runbook proves caller-owned Pylon targeting through an explicit
+  `--pylon-ref`. Do not treat it as proof of broad automatic steering from any
+  Khala request to any linked capacity until the caller-scoped capacity resolver
+  and router branch are verified in the same deployment.
+- The authorization boundary is the token-resolved owner scope. A remote issuer
+  must only read and target Pylons linked to that same owner scope; never widen a
+  routing test to pooled, third-party, marketplace, or settlement-bearing
+  capacity while validating this own-capacity path.
+- The typed coding request path must remain explicit. If `--workflow
+  codex_agent_task` or the equivalent typed MCP/tool field is missing, assume the
+  request may fall back to normal model routing and stop before running spendful
+  work.
+- Counted capacity refs are part of steering correctness, not display-only
+  telemetry. Before testing parallel dispatch, confirm the heartbeat projection
+  carries `capacity.coding.codex.available=N`, busy, queued, and ready refs for
+  the targeted Pylon, then verify active assignment rows do not exceed that
+  advertised availability.
+- The OpenAuth account to many-keys/many-Pylons aggregation is separate from the
+  single owner-scoped execution invariant. Aggregation may make linked capacity
+  easier to discover, but it must not allow one owner scope to execute against
+  another owner's Pylon.
+- Counter movement alone is weak evidence when multiple agents are active. The
+  workflow needs a first-class command that resolves `durableRequestId` to the
+  exact `token_usage_events.id`, provider, model, `demand_kind`,
+  `demand_source`, and token totals so agents do not have to query D1 directly.
+- `assignment run-no-spend --json` should expose live progress while Codex is
+  running: elapsed time, last progress event, current phase, and the assignment
+  ref being worked. A long silent run is hard to supervise and hard to
+  distinguish from a stuck executor.
+- Assignment closeout should include the local workspace path or a safe local
+  lookup command. Today the public-safe `previewRefs` are correct for reports
+  but force the supervising agent to infer the cache path before inspecting the
+  patch.
+- Parallel delegation from one account is valid and should have an explicit
+  runner command that accepts several assignment refs, leases up to advertised
+  capacity, and reports per-assignment closeouts. Manual background shells are
+  too easy to misattribute.
+- `presence heartbeat` should exit cleanly after the heartbeat write. If a
+  runtime handle keeps the process alive, operators currently need an outer
+  timeout even though the heartbeat already succeeded.
+- The Khala request safety guard should support an explain/dry-run mode for
+  public issue work. During this run, ordinary safety words in an issue-summary
+  prompt were rejected without naming the offending field, and an unsupported
+  verifier shape returned a server 500 instead of a typed client error.
+
 Report evidence with the deployment commit, Worker version, live `/` and exact
 asset smoke, `pylonRef`, `assignmentRef`, `durableRequestId`, closeout refs, and
 before/after counter values. Keep raw tokens, private prompts, wallet material,
