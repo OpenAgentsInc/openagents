@@ -260,6 +260,8 @@ export const KHALA_MODEL_SLUG = 'khala'
 export const KHALA_MODEL_ID = 'openagents/khala'
 export const KHALA_MINI_MODEL_ID = 'openagents/khala-mini'
 export const KHALA_CODE_MODEL_ID = 'openagents/khala-code'
+export const HYDRALISK_GLM_52_REAP_504B_MODEL_ID =
+  'openagents/glm-5.2-reap-504b'
 export const HYDRALISK_GPT_OSS_20B_MODEL_ID = 'openai/gpt-oss-20b'
 export const HYDRALISK_GPT_OSS_120B_MODEL_ID = 'openai/gpt-oss-120b'
 export const KHALA_PYLON_MINI_MODEL_ID = 'openagents/khala-pylon-mini'

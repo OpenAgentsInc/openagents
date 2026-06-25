@@ -110,6 +110,7 @@ import {
 } from './metering-hook'
 import {
   FIREWORKS_ADAPTER_ID,
+  HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
   HYDRALISK_ADAPTER_ID,
   HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
   OPENAGENTS_NETWORK_ADAPTER_ID,
@@ -882,6 +883,7 @@ const supplyLaneForAdapterId = (adapterId: string): SupplyLane | undefined => {
   switch (adapterId) {
     case FIREWORKS_ADAPTER_ID:
       return 'fireworks'
+    case HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID:
     case HYDRALISK_ADAPTER_ID:
     case HYDRALISK_GPT_OSS_120B_ADAPTER_ID:
       return 'hydralisk'

@@ -417,6 +417,7 @@ import {
 } from './inference/khala-tokens-served-sync'
 import {
   dispatchWithOverflow,
+  HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
   HYDRALISK_ADAPTER_ID,
   HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
   makeKhalaBackedAdapterPlan,
@@ -437,6 +438,7 @@ import {
   InferenceProviderRegistry,
 } from './inference/provider-adapter'
 import {
+  HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
   HYDRALISK_GPT_OSS_120B_MODEL_ID,
   HYDRALISK_GPT_OSS_20B_MODEL_ID,
 } from './inference/pricing'
@@ -8769,6 +8771,16 @@ const registerHydraliskAdapter = (
   }
   hydraliskAdaptersRegistered.add(env)
   const arming = resolveSupplyLaneArming(env)
+  if (
+    arming.hydraliskModels?.[HYDRALISK_GLM_52_REAP_504B_MODEL_ID] === true
+  ) {
+    registerConfiguredHydraliskAdapter(registry, {
+      adapterId: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+      baseUrl: env.HYDRALISK_GLM_52_REAP_504B_BASE_URL,
+      bearerToken: env.HYDRALISK_GLM_52_REAP_504B_BEARER_TOKEN,
+      upstreamModel: HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
+    })
+  }
   if (arming.hydraliskModels?.[HYDRALISK_GPT_OSS_20B_MODEL_ID] === true) {
     registerConfiguredHydraliskAdapter(registry, {
       adapterId: HYDRALISK_ADAPTER_ID,

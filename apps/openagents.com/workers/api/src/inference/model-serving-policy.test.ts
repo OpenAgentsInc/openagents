@@ -13,6 +13,7 @@ import {
   khalaBackingPriceModel,
   khalaBackingSupplyLane,
   projectKhalaCatalogForArming,
+  resolveHydraliskGlm52Reap504bArming,
   resolveHydraliskGptOss20bArming,
   resolveHydraliskGptOss120bArming,
   resolveKhalaBackingModel,
@@ -21,6 +22,7 @@ import {
   resolveSupplyLaneArming,
 } from './model-serving-policy'
 import {
+  HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
   HYDRALISK_GPT_OSS_20B_MODEL_ID,
   HYDRALISK_GPT_OSS_120B_MODEL_ID,
   KHALA_MODEL_ID,
@@ -42,6 +44,17 @@ const HYDRALISK_READY_ENV = {
   HYDRALISK_GPT_OSS_20B_PREFLIGHT_REF: 'preflight.hydralisk.gpt_oss_20b.l4.v1',
   HYDRALISK_GPT_OSS_20B_RECEIPT_REF:
     'receipt.hydralisk.gpt_oss_20b.l4.smoke.v1',
+} as const
+
+const HYDRALISK_GLM_52_REAP_READY_ENV = {
+  HYDRALISK_GLM_52_REAP_504B_BASE_URL:
+    'https://hydralisk-glm-52-reap-504b.example.test',
+  HYDRALISK_GLM_52_REAP_504B_BEARER_TOKEN: 'secret-hydralisk-glm-token',
+  HYDRALISK_GLM_52_REAP_504B_ENABLED: 'ready',
+  HYDRALISK_GLM_52_REAP_504B_PREFLIGHT_REF:
+    'preflight.hydralisk.glm_52_reap_504b.g4.mtp2.v1',
+  HYDRALISK_GLM_52_REAP_504B_RECEIPT_REF:
+    'receipt.hydralisk.glm_52_reap_504b.g4.mtp2_smoke.v1',
 } as const
 
 const HYDRALISK_120B_READY_ENV = {
@@ -115,6 +128,19 @@ describe('resolveSupplyLaneArming', () => {
     )
     expect(arming.fireworks).toBe(false)
     expect(arming['openagents-network']).toBe(false)
+  })
+
+  it('arms GLM-5.2 REAP independently as a Hydralisk Khala backing lane', () => {
+    const arming = resolveSupplyLaneArming(HYDRALISK_GLM_52_REAP_READY_ENV)
+    expect(arming.hydralisk).toBe(true)
+    expect(arming.hydraliskModels?.[HYDRALISK_GLM_52_REAP_504B_MODEL_ID]).toBe(
+      true,
+    )
+    expect(arming.hydraliskModels?.[HYDRALISK_GPT_OSS_120B_MODEL_ID]).toBe(
+      false,
+    )
+    expect(arming.hydraliskModels?.[HYDRALISK_GPT_OSS_20B_MODEL_ID]).toBe(false)
+    expect(arming.fireworks).toBe(false)
   })
 
   it('arms GPT-OSS 120B Hydralisk independently from the 20B L4 lane', () => {
@@ -278,6 +304,33 @@ describe('resolveHydraliskGptOss20bArming', () => {
   })
 })
 
+describe('resolveHydraliskGlm52Reap504bArming', () => {
+  it('fails closed with typed blockers when GLM route evidence is absent', () => {
+    const arming = resolveHydraliskGlm52Reap504bArming({})
+    expect(arming.armed).toBe(false)
+    expect(arming.evidenceRefs).toEqual([])
+    expect(arming.blockerRefs).toEqual([
+      'blocker.hydralisk_glm_52_reap_504b.route_not_ready',
+      'blocker.hydralisk_glm_52_reap_504b.base_url_missing',
+      'blocker.hydralisk_glm_52_reap_504b.bearer_missing',
+      'blocker.hydralisk_glm_52_reap_504b.preflight_ref_missing',
+      'blocker.hydralisk_glm_52_reap_504b.receipt_ref_missing',
+    ])
+  })
+
+  it('returns only public-safe refs when the GLM route evidence is complete', () => {
+    const arming = resolveHydraliskGlm52Reap504bArming(
+      HYDRALISK_GLM_52_REAP_READY_ENV,
+    )
+    expect(arming.armed).toBe(true)
+    expect(arming.blockerRefs).toEqual([])
+    expect(arming.evidenceRefs).toEqual([
+      'preflight.hydralisk.glm_52_reap_504b.g4.mtp2.v1',
+      'receipt.hydralisk.glm_52_reap_504b.g4.mtp2_smoke.v1',
+    ])
+  })
+})
+
 describe('resolveHydraliskGptOss120bArming', () => {
   it('fails closed with typed blockers when high-memory route evidence is absent', () => {
     const arming = resolveHydraliskGptOss120bArming({})
@@ -340,12 +393,23 @@ describe('isLaneArmed / isModelServable', () => {
   it('does not publish raw Hydralisk model ids even when their lanes are armed', () => {
     const catalog = buildModelCatalog()
     const twentyB = catalog.find(e => e.id === HYDRALISK_GPT_OSS_20B_MODEL_ID)!
+    const glmReap = catalog.find(
+      e => e.id === HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
+    )
     const oneTwentyB = catalog.find(
       e => e.id === HYDRALISK_GPT_OSS_120B_MODEL_ID,
     )!
     const twentyBArming = resolveSupplyLaneArming(HYDRALISK_READY_ENV)
+    const glmArming = resolveSupplyLaneArming(HYDRALISK_GLM_52_REAP_READY_ENV)
+    expect(glmReap).toBeUndefined()
     expect(isModelServable(twentyB, twentyBArming)).toBe(false)
     expect(isModelServable(oneTwentyB, twentyBArming)).toBe(false)
+    expect(
+      resolveNamedModelServability(
+        HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
+        glmArming,
+      ),
+    ).toBe(false)
   })
 })
 
@@ -432,7 +496,14 @@ describe('resolveNamedModelServability', () => {
 
   it('rejects raw Hydralisk model ids even when their backing routes are armed', () => {
     const twentyBArming = resolveSupplyLaneArming(HYDRALISK_READY_ENV)
+    const glmArming = resolveSupplyLaneArming(HYDRALISK_GLM_52_REAP_READY_ENV)
     const oneTwentyBArming = resolveSupplyLaneArming(HYDRALISK_120B_READY_ENV)
+    expect(
+      resolveNamedModelServability(
+        HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
+        glmArming,
+      ),
+    ).toBe(false)
     expect(
       resolveNamedModelServability(
         HYDRALISK_GPT_OSS_20B_MODEL_ID,

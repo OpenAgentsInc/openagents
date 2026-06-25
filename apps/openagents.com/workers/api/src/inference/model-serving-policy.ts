@@ -21,6 +21,7 @@
 // catalog advertises to what is genuinely servable.
 import type { ModelCatalogEntry } from './model-catalog'
 import {
+  HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
   HYDRALISK_GPT_OSS_20B_MODEL_ID,
   HYDRALISK_GPT_OSS_120B_MODEL_ID,
   KHALA_MODEL_ID,
@@ -31,12 +32,13 @@ import type { SupplyLane } from './pricing'
 
 // Which supply lanes the gateway can ACTUALLY serve right now. A lane is "armed"
 // only when its upstream credential/binding is provisioned.
-export type HydraliskGptOssModelId =
+export type HydraliskModelId =
+  | typeof HYDRALISK_GLM_52_REAP_504B_MODEL_ID
   | typeof HYDRALISK_GPT_OSS_20B_MODEL_ID
   | typeof HYDRALISK_GPT_OSS_120B_MODEL_ID
 
 export type HydraliskModelArming = Readonly<
-  Record<HydraliskGptOssModelId, boolean>
+  Record<HydraliskModelId, boolean>
 >
 
 export const KHALA_BACKING_HYDRALISK_GPT_OSS = 'hydralisk-gpt-oss'
@@ -67,6 +69,7 @@ export type SupplyLaneArming = Readonly<
 export const ALL_LANES_UNARMED: SupplyLaneArming = {
   fireworks: false,
   hydraliskModels: {
+    [HYDRALISK_GLM_52_REAP_504B_MODEL_ID]: false,
     [HYDRALISK_GPT_OSS_120B_MODEL_ID]: false,
     [HYDRALISK_GPT_OSS_20B_MODEL_ID]: false,
   },
@@ -101,6 +104,14 @@ export type SupplyLaneCredentialEnv = Readonly<{
   // Operator-only backing selector for the single public Khala model. Supported
   // values are bounded below; raw customer model selection remains closed.
   KHALA_BACKING_MODEL?: string | undefined
+  // Hydralisk GLM-5.2 504B REAP private G4 lane. This uses the admitted
+  // OpenAI-compatible private proxy and remains a backing worker for the single
+  // public Khala model, not a public model selector.
+  HYDRALISK_GLM_52_REAP_504B_ENABLED?: string | undefined
+  HYDRALISK_GLM_52_REAP_504B_BASE_URL?: string | undefined
+  HYDRALISK_GLM_52_REAP_504B_BEARER_TOKEN?: string | undefined
+  HYDRALISK_GLM_52_REAP_504B_PREFLIGHT_REF?: string | undefined
+  HYDRALISK_GLM_52_REAP_504B_RECEIPT_REF?: string | undefined
   // Hydralisk GPT-OSS 20B lane. The URL/token are secret-backed transport
   // presence only; the public-safe preflight/receipt refs are the evidence that
   // the owned L4/vLLM route is ready for Khala traffic.
@@ -141,6 +152,12 @@ export type OpenAgentsNetworkGatewayArming = Readonly<{
 }>
 
 export type HydraliskGptOss20bArming = Readonly<{
+  armed: boolean
+  evidenceRefs: ReadonlyArray<string>
+  blockerRefs: ReadonlyArray<string>
+}>
+
+export type HydraliskGlm52Reap504bArming = Readonly<{
   armed: boolean
   evidenceRefs: ReadonlyArray<string>
   blockerRefs: ReadonlyArray<string>
@@ -273,6 +290,19 @@ export const resolveHydraliskGptOss20bArming = (
   })
 }
 
+export const resolveHydraliskGlm52Reap504bArming = (
+  env: SupplyLaneCredentialEnv,
+): HydraliskGlm52Reap504bArming => {
+  return resolveHydraliskGptOssModelArming({
+    baseUrl: env.HYDRALISK_GLM_52_REAP_504B_BASE_URL,
+    bearerToken: env.HYDRALISK_GLM_52_REAP_504B_BEARER_TOKEN,
+    blockerPrefix: 'blocker.hydralisk_glm_52_reap_504b',
+    enabled: env.HYDRALISK_GLM_52_REAP_504B_ENABLED,
+    preflightRef: env.HYDRALISK_GLM_52_REAP_504B_PREFLIGHT_REF,
+    receiptRef: env.HYDRALISK_GLM_52_REAP_504B_RECEIPT_REF,
+  })
+}
+
 export const resolveHydraliskGptOss120bArming = (
   env: SupplyLaneCredentialEnv,
 ): HydraliskGptOss120bArming => {
@@ -339,15 +369,18 @@ export const resolveSupplyLaneArming = (
   const vertex = isPresent(env.VERTEX_SA_KEY)
   const khalaBacking = resolveKhalaBackingModel(env.KHALA_BACKING_MODEL)
   const openAgentsNetwork = resolveOpenAgentsNetworkGatewayArming(env)
+  const hydraliskGlm52 = resolveHydraliskGlm52Reap504bArming(env)
   const hydralisk20b = resolveHydraliskGptOss20bArming(env)
   const hydralisk120b = resolveHydraliskGptOss120bArming(env)
   const hydraliskModels = {
+    [HYDRALISK_GLM_52_REAP_504B_MODEL_ID]: hydraliskGlm52.armed,
     [HYDRALISK_GPT_OSS_120B_MODEL_ID]: hydralisk120b.armed,
     [HYDRALISK_GPT_OSS_20B_MODEL_ID]: hydralisk20b.armed,
   } as const
   return {
     fireworks: isPresent(env.FIREWORKS_API_KEY),
     hydralisk:
+      hydraliskModels[HYDRALISK_GLM_52_REAP_504B_MODEL_ID] ||
       hydraliskModels[HYDRALISK_GPT_OSS_20B_MODEL_ID] ||
       hydraliskModels[HYDRALISK_GPT_OSS_120B_MODEL_ID],
     hydraliskModels,
@@ -369,6 +402,12 @@ const hydraliskModelArmed = (
   modelId: string,
 ): boolean => {
   const normalized = modelId.trim().toLowerCase()
+  if (normalized === HYDRALISK_GLM_52_REAP_504B_MODEL_ID) {
+    return (
+      arming.hydraliskModels?.[HYDRALISK_GLM_52_REAP_504B_MODEL_ID] ??
+      arming.hydralisk
+    )
+  }
   if (normalized === HYDRALISK_GPT_OSS_20B_MODEL_ID) {
     return (
       arming.hydraliskModels?.[HYDRALISK_GPT_OSS_20B_MODEL_ID] ??

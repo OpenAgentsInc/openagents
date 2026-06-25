@@ -34,6 +34,7 @@ import { NOT_MEASURED, decodeKhalaTelemetryBlock } from './khala-telemetry'
 import { type MeteringContext, type MeteringHook } from './metering-hook'
 import {
   FIREWORKS_ADAPTER_ID,
+  HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
   HYDRALISK_ADAPTER_ID,
   HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
   VERTEX_GEMINI_ADAPTER_ID,
@@ -45,6 +46,7 @@ import {
 } from './model-serving-policy'
 import {
   AUTOPILOT_CONCIERGE_MODEL_ID,
+  HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
   HYDRALISK_GPT_OSS_120B_MODEL_ID,
   HYDRALISK_GPT_OSS_20B_MODEL_ID,
   KHALA_CODE_MODEL_ID,
@@ -118,6 +120,17 @@ const hydralisk120bReadyArming = resolveSupplyLaneArming({
     'preflight.hydralisk.gpt_oss_120b.h100.v1',
   HYDRALISK_GPT_OSS_120B_RECEIPT_REF:
     'receipt.hydralisk.gpt_oss_120b.h100.smoke.v1',
+})
+
+const hydraliskGlm52ReapReadyArming = resolveSupplyLaneArming({
+  HYDRALISK_GLM_52_REAP_504B_BASE_URL:
+    'https://hydralisk-glm-52-reap-504b.example.test',
+  HYDRALISK_GLM_52_REAP_504B_BEARER_TOKEN: 'secret-route-token',
+  HYDRALISK_GLM_52_REAP_504B_ENABLED: 'ready',
+  HYDRALISK_GLM_52_REAP_504B_PREFLIGHT_REF:
+    'preflight.hydralisk.glm_52_reap_504b.g4.mtp2.v1',
+  HYDRALISK_GLM_52_REAP_504B_RECEIPT_REF:
+    'receipt.hydralisk.glm_52_reap_504b.g4.mtp2_smoke.v1',
 })
 
 const HYDRALISK_RETRYABLE_STATUS_CASES = [
@@ -1302,6 +1315,66 @@ describe('POST /v1/chat/completions', () => {
     expect(captured[0]?.requestedModel).toBe(KHALA_MODEL_ID)
     expect(captured[0]?.servedModel).toBe('openai/gpt-oss-20b')
     expect(captured[0]?.usage.totalTokens).toBe(8)
+  })
+
+  test('a Khala request routes through the GLM-5.2 REAP Hydralisk lane when armed', async () => {
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      complete: () =>
+        Effect.sync(() => ({
+          content: 'READY-GLM',
+          finishReason: 'stop',
+          servedModel: HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
+          usage: { completionTokens: 2, promptTokens: 7, totalTokens: 9 },
+        })),
+      id: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+      stream: () => Effect.sync(() => []),
+    })
+    const captured: Array<MeteringContext> = []
+    const meteringHook: MeteringHook = context =>
+      Effect.sync(() => {
+        captured.push(context)
+        return { metered: true, receiptRef: 'receipt.hydralisk.glm.route.test' }
+      })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          messages: [{ content: 'Say READY.', role: 'user' }],
+          model: KHALA_MODEL_ID,
+        }),
+        baseDeps({
+          laneArming: hydraliskGlm52ReapReadyArming,
+          lanePlan: selectAdapterPlan,
+          meteringHook,
+          newId: () => 'chatcmpl-hydralisk-glm',
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      choices: ReadonlyArray<{ message: { content: string } }>
+      model: string
+      openagents?: {
+        requested_model: string
+        served_model: string
+        supply_lane: string
+        worker: string
+      }
+    }
+    expect(body.model).toBe(KHALA_MODEL_ID)
+    expect(body.choices[0]?.message.content).toBe('READY-GLM')
+    expect(body.openagents).toMatchObject({
+      requested_model: KHALA_MODEL_ID,
+      served_model: HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
+      supply_lane: 'hydralisk',
+      worker: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+    })
+    expect(captured).toHaveLength(1)
+    expect(captured[0]?.adapterId).toBe(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID)
+    expect(captured[0]?.requestedModel).toBe(KHALA_MODEL_ID)
   })
 
   test('a Fireworks-backed Khala request discloses the concrete Fireworks supply lane', async () => {

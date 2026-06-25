@@ -61,6 +61,7 @@ const supplyLaneForAdapterId = (adapterId: string): string => {
   switch (adapterId) {
     case 'fireworks':
       return 'fireworks'
+    case 'hydralisk-vllm-glm-5p2-reap-504b':
     case 'hydralisk-vllm':
     case 'hydralisk-vllm-gpt-oss-120b':
       return 'hydralisk'

@@ -4,6 +4,7 @@ import { describe, expect, test } from 'vitest'
 import {
   DEFAULT_OVERFLOW_BACKOFF,
   FIREWORKS_ADAPTER_ID,
+  HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
   HYDRALISK_ADAPTER_ID,
   HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
   OPENAGENTS_NETWORK_ADAPTER_ID,
@@ -24,6 +25,7 @@ import { KHALA_BACKING_FIREWORKS_DEEPSEEK_V4_FLASH } from './model-serving-polic
 import { openAgentsNetworkAdapter } from './openagents-network-adapter'
 import {
   AUTOPILOT_CONCIERGE_MODEL_ID,
+  HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
   HYDRALISK_GPT_OSS_20B_MODEL_ID,
   HYDRALISK_GPT_OSS_120B_MODEL_ID,
   KHALA_CODE_MODEL_ID,
@@ -144,10 +146,11 @@ describe('model classification', () => {
     }
   })
 
-  test('routes the single Khala model through Hydralisk, then degrades to Vertex Gemini on full outage', () => {
+  test('routes the single Khala model through the Hydralisk mix, then degrades to Vertex Gemini on full outage', () => {
     for (const model of [KHALA_MODEL_SLUG, KHALA_MODEL_ID]) {
       expect(classifyModel(model)).toBe('open')
       expect(selectAdapterPlan(model)).toEqual([
+        HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
         HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
         HYDRALISK_ADAPTER_ID,
         VERTEX_GEMINI_ADAPTER_ID,
@@ -164,6 +167,7 @@ describe('model classification', () => {
         ),
       ).toEqual([
         FIREWORKS_ADAPTER_ID,
+        HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
         HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
         HYDRALISK_ADAPTER_ID,
         VERTEX_GEMINI_ADAPTER_ID,
@@ -206,6 +210,12 @@ describe('model classification', () => {
     expect(classifyModel(HYDRALISK_GPT_OSS_20B_MODEL_ID)).toBe('open')
     expect(selectAdapterPlan(HYDRALISK_GPT_OSS_20B_MODEL_ID)).toEqual([
       HYDRALISK_ADAPTER_ID,
+    ])
+  })
+
+  test('routes the Hydralisk GLM-5.2 REAP internal model id only to its private G4 lane', () => {
+    expect(selectAdapterPlan(HYDRALISK_GLM_52_REAP_504B_MODEL_ID)).toEqual([
+      HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
     ])
   })
 

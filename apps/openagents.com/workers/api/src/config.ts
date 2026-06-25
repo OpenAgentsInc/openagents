@@ -277,8 +277,20 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   FIREWORKS_API_KEY?: string | undefined
   // Operator-only backing selector for the single public Khala model. This is a
   // non-secret routing knob, not a public model selector; supported values are
-  // bounded in model-serving-policy.ts. Absent defaults to Hydralisk GPT-OSS.
+  // bounded in model-serving-policy.ts. Absent defaults to the Hydralisk-owned
+  // Khala mix.
   KHALA_BACKING_MODEL?: string | undefined
+  // Hydralisk GLM-5.2 504B REAP lane. The Worker registers this owned
+  // OpenAI-compatible private proxy only when the enabled flag is exactly
+  // "ready", the private URL/token are present, and the public-safe
+  // preflight/receipt refs below are valid. The URL/token are Worker secrets
+  // and must never appear in catalog/readiness payloads, public evidence, docs,
+  // issues, or logs.
+  HYDRALISK_GLM_52_REAP_504B_ENABLED?: string | undefined
+  HYDRALISK_GLM_52_REAP_504B_BASE_URL?: string | undefined
+  HYDRALISK_GLM_52_REAP_504B_BEARER_TOKEN?: string | undefined
+  HYDRALISK_GLM_52_REAP_504B_PREFLIGHT_REF?: string | undefined
+  HYDRALISK_GLM_52_REAP_504B_RECEIPT_REF?: string | undefined
   // Hydralisk GPT-OSS 20B lane (#6155). The Worker registers this owned
   // OpenAI-compatible vLLM adapter only when HYDRALISK_GPT_OSS_20B_ENABLED is
   // exactly "ready", HYDRALISK_BASE_URL and HYDRALISK_BEARER_TOKEN are present,

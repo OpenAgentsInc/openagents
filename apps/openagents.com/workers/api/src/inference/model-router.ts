@@ -43,6 +43,7 @@ import {
   type KhalaBackingModel,
 } from './model-serving-policy'
 import {
+  HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
   HYDRALISK_GPT_OSS_20B_MODEL_ID,
   HYDRALISK_GPT_OSS_120B_MODEL_ID,
   KHALA_MODEL_ID,
@@ -69,6 +70,8 @@ export const VERTEX_ANTHROPIC_ADAPTER_ID = 'vertex-anthropic'
 // gemini-* ids from our first-party Vertex quota — the default/free-tier lane.
 export const VERTEX_GEMINI_ADAPTER_ID = 'vertex-gemini'
 export const FIREWORKS_ADAPTER_ID = 'fireworks'
+export const HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID =
+  'hydralisk-vllm-glm-5p2-reap-504b'
 export const HYDRALISK_ADAPTER_ID = 'hydralisk-vllm'
 export const HYDRALISK_GPT_OSS_120B_ADAPTER_ID = 'hydralisk-vllm-gpt-oss-120b'
 export const PASSTHROUGH_ANTHROPIC_ADAPTER_ID = 'passthrough-anthropic'
@@ -248,6 +251,7 @@ const LANE_PLAN_BY_CLASS: Readonly<
 }
 
 const KHALA_HYDRALISK_ADAPTER_PLAN: ReadonlyArray<string> = [
+  HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
   HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
   HYDRALISK_ADAPTER_ID,
   VERTEX_GEMINI_ADAPTER_ID,
@@ -284,15 +288,17 @@ export const makeKhalaBackedAdapterPlan =
 export const selectAdapterPlan = (model: string): ReadonlyArray<string> => {
   const normalizedModel = normalizeKhalaModelId(model)
   if (normalizedModel === KHALA_MODEL_ID) {
-    // Khala-first: the Hydralisk GPT-OSS lanes (120B, then 20B) serve the
-    // collapsed public Khala model. Vertex Gemini is the FINAL graceful-
-    // degradation overflow so a full Hydralisk outage degrades to Gemini
-    // instead of failing the whole product with `inference_unavailable`
-    // (the vertex-gemini adapter is registered at module load and reads
-    // VERTEX_SA_KEY via the shared adapter env). Explicit `hydralisk-gpt-oss-*`
-    // model ids below keep NO Gemini fallback — they are deliberate GPT-OSS
-    // requests, not the generic Khala lane.
+    // Khala-first: the Hydralisk owned lanes serve the collapsed public Khala
+    // model, with GLM-5.2 REAP first when that private G4 route is armed, then
+    // GPT-OSS 120B, GPT-OSS 20B, and Vertex Gemini as the FINAL graceful-
+    // degradation overflow so a full Hydralisk outage degrades instead of
+    // failing the whole product with `inference_unavailable`. Explicit raw
+    // Hydralisk model ids below keep NO Gemini fallback — they are deliberate
+    // supply-lane requests, not the generic Khala lane.
     return KHALA_HYDRALISK_ADAPTER_PLAN
+  }
+  if (normalizedModel === HYDRALISK_GLM_52_REAP_504B_MODEL_ID) {
+    return [HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID]
   }
   if (normalizedModel === HYDRALISK_GPT_OSS_20B_MODEL_ID) {
     return [HYDRALISK_ADAPTER_ID]
