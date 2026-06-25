@@ -106,7 +106,8 @@ Episode 243 the live/near-live set includes:
 - **GPT-OSS 20B / 120B on our own Google Cloud infra (Hydralisk)** — the
   Python/NVIDIA inference engine; the `/gym/oss` playground already exercises the
   20B lane.
-- **Cerebras GLM 5.2 (REAP) on RTX Pro** — newest entrant; *"add it to the mix that
+- **GLM 5.2 (Z.ai) (REAP) on RTX Pro** — newest entrant; the model is from the lab
+  **Z.ai** (z.ai), served on our own RTX Pro infra; *"add it to the mix that
   goes into Khala… exercise it in the gym."*
 
 The Gym is explicitly the place where a **new or tuned lane gets exercised before it
@@ -118,7 +119,7 @@ of lane-level result the Gym should measure on the *outcome* axis, not just raw
 tok/s — "faster" is meaningless until you say faster at *what*, on *which lane*,
 under *which traffic*, judged on *which outcome*. Concretely:
 
-- Add `gpt-oss-20b` / `gpt-oss-120b` (Hydralisk) and `cerebras-glm-52` as typed
+- Add `gpt-oss-20b` / `gpt-oss-120b` (Hydralisk) and `glm-52` as typed
   lanes in `LANE_AVAILABILITY`, labeled honestly (live vs future), never fabricated
   zeroes.
 - Reuse the speculation-acceptance fields already in the report schema to record
@@ -193,7 +194,7 @@ Mostly as the OpenCode-via-Khala memo sketched, now de-TBD'd:
 1. **Add competitor lanes** as typed `BenchmarkLane` values with honest
    `LANE_AVAILABILITY` entries: `bigpickle` (OpenCode default free), `gemini-free`,
    `openai-gpt`, `claude`; plus the own/open lanes `gpt-oss-20b`/`gpt-oss-120b`
-   (Hydralisk) and `cerebras-glm-52`.
+   (Hydralisk) and `glm-52`.
 2. **OpenCode client runner** — a module that provisions `opencode.json` for a model
    endpoint, runs a fixed coding task, and extracts tokens (from the provider
    `usage` block, never estimated), wall-clock, **tool-call-completion**, and the
@@ -236,3 +237,25 @@ Mostly as the OpenCode-via-Khala memo sketched, now de-TBD'd:
   from an owner playground to a typed Gym environment, or keep it separate?).
 - Internal-vs-external demand tagging in the analytics so Gym/dog-food tokens never
   imply external traction.
+
+## 12. Cross-ref: QA-runner verified traces are the realistic-traffic + verifier source the Gym needs (added 2026-06-25)
+
+> Marker: this section was added with the QA audit
+> ([`../qa/2026-06-25-qa-agent-khala-dogfood-and-qa-on-every-push.md`](../qa/2026-06-25-qa-agent-khala-dogfood-and-qa-on-every-push.md)).
+> Direction, not a live claim.
+
+The Phase-1 "first realistic fixtures" step (§9.3) already names QA-runner /
+internal dog-food traffic as the source that lets a head-to-head reach
+`decisionGrade: true`. Worth stating plainly: **`qa-runner` is the closest thing we
+have to the realistic-traffic + acceptance-verdict source the Gym needs.** It does
+real browser work, emits an **honest executed pass/fail + a CONFIRMED/REFUTED/
+INCONCLUSIVE verify verdict** (#6192) and a **committed e2e test**, and publishes a
+redacted shareable `/trace/{uuid}` with the video inline — i.e. exactly the
+"executed verification verdict + cost-per-accepted-outcome over realistic traffic"
+the Gym refuses to call decision-grade without. Routing `qa-runner → Khala`
+(dogfood lane #1; see the QA audit) therefore feeds the Gym's two needs at once:
+realistic traffic and an independent verifier. As a next step, a **QA-runner Gym
+environment** (a typed `GymEnvironment` whose tasks are QA scenarios and whose
+reward is the real-browser verify verdict) could seed the Gym's `verified-rate` and
+cost-per-accepted-outcome axes from live QA runs rather than synthetic fixtures —
+consistent with §6's flywheel (the Gym both trains Khala and runs on Khala).
