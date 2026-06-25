@@ -872,12 +872,22 @@ const khalaTokensServedFromModel = (
     ? model.served.tokensServed
     : null
 
+// The shared display string for "Khala Tokens Served" (the same `formatNumber`
+// thousands-separator formatter the hero counter uses), so the top-left landing
+// pill and the hero counter render byte-identical numbers off the SAME model.
+// Falls back to the em-dash placeholder when the value has not loaded yet.
+export const formatKhalaTokensServed = (
+  model: PublicKhalaTokensServedModel,
+): string => {
+  const tokensServed = khalaTokensServedFromModel(model)
+  return tokensServed === null ? '—' : formatNumber(tokensServed)
+}
+
 export const khalaTokensServedCounter = (
   model: PublicKhalaTokensServedModel,
 ): Html => {
   const h = html<Message>()
-  const tokensServed = khalaTokensServedFromModel(model)
-  const display = tokensServed === null ? '—' : formatNumber(tokensServed)
+  const display = formatKhalaTokensServed(model)
   const live = model._tag === 'PublicKhalaTokensServedLoaded'
 
   return h.section(

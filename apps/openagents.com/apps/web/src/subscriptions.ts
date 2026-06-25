@@ -259,6 +259,18 @@ const settledFeedRouteIsLive = (
   model.route._tag === 'Stats' ||
   model.route._tag === 'PublicStatsArchive'
 
+// Routes that show a live "Khala Tokens Served" total and therefore subscribe to
+// the live delta stream / reconcile poll: the /home + /stats hero counter
+// surfaces (via `settledFeedRouteIsLive`), the /khala counter, AND the / landing
+// hero's top-left pill. The landing pill reuses the SAME stream + cursor plumbing
+// as /khala — it is not a parallel data source.
+const khalaTokensServedSurfaceIsLive = (
+  model: Extract<Model, { _tag: 'LoggedOut' }>,
+): boolean =>
+  settledFeedRouteIsLive(model) ||
+  model.route._tag === 'Khala' ||
+  model.route._tag === 'Landing'
+
 export const settledFeedDependenciesForModel = (
   model: Model,
 ): SettledFeedDependencies => {
@@ -311,7 +323,7 @@ export const khalaTokensServedStreamDependenciesForModel = (
 ): KhalaTokensServedStreamDependencies => {
   if (
     model._tag !== 'LoggedOut' ||
-    !(settledFeedRouteIsLive(model) || model.route._tag === 'Khala')
+    !khalaTokensServedSurfaceIsLive(model)
   ) {
     return inactiveKhalaTokensServedStream
   }
@@ -410,8 +422,7 @@ const inactiveKhalaTokensServedPoll = { isActive: false }
 type KhalaTokensServedPollDependencies = typeof inactiveKhalaTokensServedPoll
 
 const khalaTokensServedRouteIsLive = (model: Model): boolean =>
-  model._tag === 'LoggedOut' &&
-  (settledFeedRouteIsLive(model) || model.route._tag === 'Khala')
+  model._tag === 'LoggedOut' && khalaTokensServedSurfaceIsLive(model)
 
 export const khalaTokensServedPollDependenciesForModel = (
   model: Model,

@@ -574,7 +574,12 @@ describe('authenticated startup routing', () => {
       _tag: 'LoggedOut',
       route: { _tag: 'Landing' },
     })
-    expect(commands).toHaveLength(0)
+    // The Landing hero now seeds the live "Khala Tokens Served" pill from the
+    // SAME snapshot + scalar endpoints the /khala counter uses.
+    expect(commands.map(command => command.name)).toEqual([
+      'LoadKhalaTokensServedSnapshot',
+      'LoadPublicKhalaTokensServed',
+    ])
   })
 
   test('keeps authenticated root visits on the public Landing scene', () => {
@@ -587,7 +592,10 @@ describe('authenticated startup routing', () => {
       _tag: 'LoggedOut',
       route: { _tag: 'Landing' },
     })
-    expect(commands).toHaveLength(0)
+    expect(commands.map(command => command.name)).toEqual([
+      'LoadKhalaTokensServedSnapshot',
+      'LoadPublicKhalaTokensServed',
+    ])
   })
 
   test('redirects authenticated visitors without Core Team access away from invite', () => {
@@ -617,7 +625,10 @@ describe('authenticated startup routing', () => {
       _tag: 'LoggedOut',
       route: { _tag: 'Landing' },
     })
-    expect(commands).toHaveLength(0)
+    expect(commands.map(command => command.name)).toEqual([
+      'LoadKhalaTokensServedSnapshot',
+      'LoadPublicKhalaTokensServed',
+    ])
   })
 
   test('keeps logged-out workspace invite visitors on the invite URL', () => {
@@ -700,7 +711,13 @@ describe('authenticated startup routing', () => {
       _tag: 'LoggedOut',
       route: { _tag: 'Landing' },
     })
-    expect(commands.map(command => command.name)).toEqual(['RedirectToHome'])
+    // Landing is the redirect target, and it now also seeds the live
+    // "Khala Tokens Served" pill, so the seed commands precede the redirect.
+    expect(commands.map(command => command.name)).toEqual([
+      'LoadKhalaTokensServedSnapshot',
+      'LoadPublicKhalaTokensServed',
+      'RedirectToHome',
+    ])
   })
 
   test('loads public Artanis goals and pylon stats without an authenticated shell', () => {
@@ -796,7 +813,10 @@ describe('authenticated startup routing', () => {
       _tag: 'LoggedOut',
       route: { _tag: 'Landing' },
     })
-    expect(commands).toHaveLength(0)
+    expect(commands.map(command => command.name)).toEqual([
+      'LoadKhalaTokensServedSnapshot',
+      'LoadPublicKhalaTokensServed',
+    ])
   })
 
   test('loads the admin route for configured admins', () => {

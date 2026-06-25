@@ -94,6 +94,7 @@ const landingFloatingAvatar = (
 const landingOverlay = (
   h: ReturnType<typeof html<Message>>,
   landingFloatingMenu: Html | undefined,
+  landingTopLeftPill: Html | undefined,
 ): Html =>
   h.div(
     [
@@ -103,6 +104,12 @@ const landingOverlay = (
       ),
     ],
     [
+      // The live "Khala Tokens Served" pill pins to the same top-left slot the
+      // back button uses on the child poses (it is itself a `fixed top-left`
+      // control, so it sits inside this pass-through overlay but paints in the
+      // scene's top-left). On /khala and /tassadar this slot holds the back
+      // button instead; never both at once.
+      ...(landingTopLeftPill !== undefined ? [landingTopLeftPill] : []),
       ...(landingFloatingMenu !== undefined
         ? [landingFloatingAvatar(h, landingFloatingMenu)]
         : []),
@@ -247,9 +254,10 @@ const overlayForRoute = (
   khalaOverlay: Html | undefined,
   loginOverlay: Html | undefined,
   landingFloatingMenu: Html | undefined,
+  landingTopLeftPill: Html | undefined,
 ): Html =>
   route === 'Landing'
-    ? landingOverlay(h, landingFloatingMenu)
+    ? landingOverlay(h, landingFloatingMenu, landingTopLeftPill)
     : route === 'Tassadar'
       ? tassadarOverlay(h, copiedAgentInstructions)
       : route === 'Autopilot'
@@ -263,8 +271,11 @@ const overlayForRoute = (
 // /login card + flush header — all supplied by the loggedOut view. Each is only
 // consulted on its own route; other routes ignore it. `landingFloatingMenu` is
 // the shared signed-in avatar menu, consulted only on the Landing route (the
-// chrome-less hero). Keeping them parameters (rather than importing the pages
-// here) avoids a model/message import cycle through the scene module.
+// chrome-less hero). `landingTopLeftPill` is the live "Khala Tokens Served"
+// pill, also consulted only on the Landing route, occupying the same top-left
+// slot the back button uses on the child poses. Keeping them parameters (rather
+// than importing the pages here) avoids a model/message import cycle through the
+// scene module.
 export const view = (
   route: PersistentSceneRoute,
   copiedAgentInstructions = false,
@@ -272,6 +283,7 @@ export const view = (
   khalaOverlay?: Html,
   loginOverlay?: Html,
   landingFloatingMenu?: Html,
+  landingTopLeftPill?: Html,
 ): Html => {
   const h = html<Message>()
 
@@ -311,6 +323,7 @@ export const view = (
             khalaOverlay,
             loginOverlay,
             landingFloatingMenu,
+            landingTopLeftPill,
           ),
         ],
       ),

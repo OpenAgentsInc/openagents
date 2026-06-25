@@ -1,5 +1,6 @@
 import { Option } from 'effect'
 import { Scene } from 'foldkit'
+import { evo } from 'foldkit/struct'
 import { describe, expect, test } from 'vitest'
 
 import { LoggedOut } from '../../../model'
@@ -9,6 +10,12 @@ import {
   LoginRoute,
   TassadarRoute,
 } from '../../../route'
+import { ClickedEnterKhala } from '../message'
+import {
+  LoadedPublicKhalaTokensServed,
+  PublicKhalaTokensServed,
+} from '../model'
+import { update as loggedOutUpdate } from '../update'
 
 const githubViewerSession = Option.some({
   userId: 'github:1',
@@ -395,6 +402,89 @@ describe('persistent landing and Khala scene', () => {
       // No avatar image; the monogram initials stand in (Mono Gram -> MG).
       Scene.expect(Scene.text('MG')).toExist(),
     )
+  })
+
+  // The live "Khala Tokens Served" pill occupies the top-left slot on the
+  // homepage (#6273 follow-up). It reads the SAME live tokens-served model that
+  // powers the /khala counter, mirrors the back-button styling, and links to
+  // /khala. The back button (the slot's child-route occupant) is absent on /.
+  const landingWithTokens = (tokensServed: number) =>
+    evo(LoggedOut.init(LandingRoute()), {
+      publicKhalaTokensServed: () =>
+        LoadedPublicKhalaTokensServed({
+          served: PublicKhalaTokensServed.make({
+            tokensServed,
+            generatedAt: '2026-06-24T12:00:00.000Z',
+          }),
+        }),
+    })
+
+  test('shows the live "Khala Tokens Served" pill in the top-left slot on the homepage', () => {
+    Scene.scene(
+      { update, view },
+      Scene.with(landingWithTokens(1_250_000)),
+      // The homepage hero is present (the pill mounts over the same scene).
+      Scene.expect(
+        Scene.selector('[data-landing-wordmark="openagents"]'),
+      ).toExist(),
+      // The pill is in the top-left slot, reading the fixed label + live total
+      // with thousands separators (the same formatter the /khala counter uses).
+      Scene.expect(
+        Scene.selector('[data-landing-khala-tokens-pill="home"]'),
+      ).toExist(),
+      Scene.expect(Scene.text('Khala Tokens Served:')).toExist(),
+      Scene.expect(Scene.text('1,250,000')).toExist(),
+      // It is an accessible, keyboard-activatable control to /khala.
+      Scene.expect(
+        Scene.role('button', { name: 'Khala tokens served — open Khala' }),
+      ).toExist(),
+      // The back button (the child-route occupant of the same slot) is NOT on /.
+      Scene.expect(Scene.selector('[data-khala-back="home"]')).not.toExist(),
+      Scene.expect(Scene.selector('[data-tassadar-back="home"]')).not.toExist(),
+    )
+  })
+
+  test('renders the em-dash placeholder in the pill before the live total loads', () => {
+    Scene.scene(
+      { update, view },
+      Scene.with(LoggedOut.init(LandingRoute())),
+      Scene.expect(
+        Scene.selector('[data-landing-khala-tokens-pill="home"]'),
+      ).toExist(),
+      Scene.expect(Scene.text('Khala Tokens Served:')).toExist(),
+      Scene.expect(Scene.text('—')).toExist(),
+    )
+  })
+
+  test('child routes (/khala, /tassadar) show the back button in the slot, not the pill', () => {
+    Scene.scene(
+      { update, view },
+      Scene.with(LoggedOut.init(KhalaRoute())),
+      Scene.expect(Scene.selector('[data-khala-back="home"]')).toExist(),
+      Scene.expect(
+        Scene.selector('[data-landing-khala-tokens-pill="home"]'),
+      ).not.toExist(),
+    )
+    Scene.scene(
+      { update, view },
+      Scene.with(LoggedOut.init(TassadarRoute())),
+      Scene.expect(Scene.selector('[data-tassadar-back="home"]')).toExist(),
+      Scene.expect(
+        Scene.selector('[data-landing-khala-tokens-pill="home"]'),
+      ).not.toExist(),
+    )
+  })
+
+  test('clicking the homepage pill navigates to /khala (the inverse of the back wire)', () => {
+    // Clicking the pill dispatches `ClickedEnterKhala`; the loggedOut update
+    // returns the `NavigateToKhala` pushUrl command (resolving to
+    // `CompletedNavigateToKhala`) — the same enter-Khala wire the landing CTA
+    // uses, the inverse of the back button's navigate-home.
+    const [, commands] = loggedOutUpdate(
+      LoggedOut.init(LandingRoute()),
+      ClickedEnterKhala(),
+    )
+    expect(commands.map(command => command.name)).toEqual(['NavigateToKhala'])
   })
 
 })

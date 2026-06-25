@@ -167,12 +167,17 @@ describe('app link routing', () => {
     )
 
     // The homepage route is the landing scene; Pylon lives at /pylons.
-    // Unknown logged-out URLs redirect home.
+    // Unknown logged-out URLs redirect home. Landing now also seeds the live
+    // "Khala Tokens Served" pill, so the seed commands precede the redirect.
     expect(model).toMatchObject({
       _tag: 'LoggedOut',
       route: { _tag: 'Landing' },
     })
-    expect(commands.map(command => command.name)).toEqual(['RedirectToHome'])
+    expect(commands.map(command => command.name)).toEqual([
+      'LoadKhalaTokensServedSnapshot',
+      'LoadPublicKhalaTokensServed',
+      'RedirectToHome',
+    ])
   })
 
   test('keeps team room routes as internal navigation', () => {

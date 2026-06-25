@@ -24,6 +24,9 @@ import {
   DemoRoute,
   GymRoute,
   HomeRoute,
+  KhalaRoute,
+  LandingRoute,
+  TassadarRoute,
   TeamChatRoute,
   TeamFileRoute,
   TeamFilesRoute,
@@ -35,6 +38,8 @@ import {
   demoKeyboardDependenciesForModel,
   demoPlaybackDependenciesForModel,
   gymRunProgressPollDependenciesForModel,
+  khalaTokensServedPollDependenciesForModel,
+  khalaTokensServedStreamDependenciesForModel,
   onboardingResumeDependenciesForModel,
   onboardingStreamDependenciesForModel,
   syncMessageFromPayload,
@@ -626,5 +631,47 @@ describe('autopilot onboarding resume subscription', () => {
     )
 
     expect(onboardingResumeDependenciesForModel(restored).offset).toBe('128')
+  })
+})
+
+describe('Khala tokens-served live surfaces', () => {
+  // The / landing hero's top-left pill shows the SAME live total the /khala
+  // counter does, so the Landing route must subscribe to the SAME live delta
+  // stream + reconcile poll (no parallel data source). /home and /khala stay
+  // live; /tassadar (which shows the back button, not the pill) stays inactive.
+  test('the homepage (/ Landing) subscribes to the live tokens-served stream', () => {
+    expect(
+      khalaTokensServedStreamDependenciesForModel(
+        LoggedOut.init(LandingRoute()),
+      ).isActive,
+    ).toBe(true)
+    expect(
+      khalaTokensServedPollDependenciesForModel(LoggedOut.init(LandingRoute()))
+        .isActive,
+    ).toBe(true)
+  })
+
+  test('/khala and /home stay live for the tokens-served stream', () => {
+    expect(
+      khalaTokensServedStreamDependenciesForModel(LoggedOut.init(KhalaRoute()))
+        .isActive,
+    ).toBe(true)
+    expect(
+      khalaTokensServedStreamDependenciesForModel(LoggedOut.init(HomeRoute()))
+        .isActive,
+    ).toBe(true)
+  })
+
+  test('/tassadar (back-button slot, no pill) is NOT live for the tokens-served stream', () => {
+    expect(
+      khalaTokensServedStreamDependenciesForModel(
+        LoggedOut.init(TassadarRoute()),
+      ).isActive,
+    ).toBe(false)
+    expect(
+      khalaTokensServedPollDependenciesForModel(
+        LoggedOut.init(TassadarRoute()),
+      ).isActive,
+    ).toBe(false)
   })
 })

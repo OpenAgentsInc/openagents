@@ -42,7 +42,7 @@ import * as Gym from './page/gym'
 import * as Moksha from './page/moksha'
 import * as Moksha2 from './page/moksha2'
 import * as Onboarding from './page/onboarding'
-import { backButton } from './page/backButton'
+import { backButton, khalaTokensServedPill } from './page/backButton'
 import * as PersistentScene from './page/persistentScene'
 import * as Promises from './page/promises'
 import * as PublicAgent from './page/publicAgent'
@@ -111,6 +111,12 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
         // Only the Landing overlay consults this floating avatar menu; the
         // scene ignores it on the Tassadar pose.
         landingFloatingMenu(model),
+        // The live "Khala Tokens Served" pill occupies the top-left slot only on
+        // the Landing pose; /tassadar shows the back button in that slot instead
+        // (its own overlay), so the pill is omitted on Tassadar — never both.
+        model.route._tag === 'Landing'
+          ? khalaTokensServedPill(model.publicKhalaTokensServed)
+          : undefined,
       ),
     ])
   }

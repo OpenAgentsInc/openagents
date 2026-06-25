@@ -1418,8 +1418,12 @@ export const initialCommands = (
           LoadPublicForumTipLeaderboards(),
           LoadSettledFeedSnapshot(),
         ]
-      : model.route._tag === 'Khala'
-        ? [LoadKhalaTokensServedSnapshot(), LoadPublicKhalaTokensServed()]
+      : model.route._tag === 'Khala' || model.route._tag === 'Landing'
+        ? // /khala AND the / landing hero both show the live "Khala Tokens
+          // Served" total (the landing top-left pill mirrors the /khala
+          // counter), so both seed from the SAME snapshot + scalar endpoints and
+          // subscribe to the SAME live stream below — no parallel data source.
+          [LoadKhalaTokensServedSnapshot(), LoadPublicKhalaTokensServed()]
       : model.route._tag === 'Gym'
         ? [LoadPublicGymRunProgress()]
       : model.route._tag === 'ProductPromises'

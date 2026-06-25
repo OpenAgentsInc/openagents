@@ -2,8 +2,10 @@ import type { Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
 
 import * as Ui from '../../../ui'
-import { ClickedExitKhala } from '../message'
+import { ClickedEnterKhala, ClickedExitKhala } from '../message'
 import type { Message } from '../message'
+import type { PublicKhalaTokensServedModel } from '../model'
+import { formatKhalaTokensServed } from './home'
 
 // Shared "← OpenAgents" back-home control for the persistent-scene overlays
 // (/tassadar, /khala). It pins to the top-left of the dimmed scene and dispatches
@@ -43,6 +45,42 @@ export const backButton = (surface: 'tassadar' | 'khala'): Html => {
         [
           h.span([Ui.className<Message>(backArrowClass)], ['←']),
           h.span([], ['OpenAgents']),
+        ],
+      ),
+    ],
+  )
+}
+
+// The homepage twin of the back button: it occupies the SAME top-left slot the
+// back affordance uses on the child poses (/khala, /tassadar), so the landing
+// hero shows this live counter pill where the child routes show "← OpenAgents".
+// It reuses the SAME wrap/pill styling (dark glass, khala-blue, Commit Mono,
+// fixed top-left, reduced-motion safe) and reads the SAME live tokens-served
+// model that powers the hero counter — no parallel data source. Clicking it
+// enters Khala (`ClickedEnterKhala` → NavigateToKhala), the inverse of the back
+// button's navigate-home wire. The digits carry `tabular-nums` so they don't
+// jiggle as the live total ticks up.
+export const khalaTokensServedPill = (
+  model: PublicKhalaTokensServedModel,
+): Html => {
+  const h = html<Message>()
+  return h.div(
+    [Ui.className<Message>(backButtonWrapClass)],
+    [
+      h.button(
+        [
+          h.Type('button'),
+          h.OnClick(ClickedEnterKhala()),
+          h.AriaLabel('Khala tokens served — open Khala'),
+          h.DataAttribute('landing-khala-tokens-pill', 'home'),
+          Ui.className<Message>(backButtonClass),
+        ],
+        [
+          h.span([], ['Khala Tokens Served:']),
+          h.span(
+            [Ui.className<Message>('tabular-nums text-white')],
+            [formatKhalaTokensServed(model)],
+          ),
         ],
       ),
     ],
