@@ -9,7 +9,7 @@ read-only Khala/OpenCode planning sessions run on 2026-06-25.
 |---|---|---|
 | `khala-opencode-adoption` | `ses_10326a63effemvIlvgP8BA27Pd` | [`khala-opencode-adoption-final-output.md`](./khala-opencode-adoption-final-output.md) |
 | `khala-tool-compat` | `ses_10326a5adffeM2AASSYKnOaRrA` | [`khala-tool-compat-final-output.md`](./khala-tool-compat-final-output.md) |
-| `khala-head-to-head-gem` | `ses_10326a5ecffeQ87YSJaqbhOwYN` | [`khala-head-to-head-gem-final-output.md`](./khala-head-to-head-gem-final-output.md) |
+| `khala-head-to-head-gem` (GYM) | `ses_10326a5ecffeQ87YSJaqbhOwYN` | [`khala-head-to-head-gem-final-output.md`](./khala-head-to-head-gem-final-output.md) — "gem" was a garbled transcription; owner confirmed the intended term is **GYM** (benchmarking gym / evaluation gym). |
 | `opencode-usage-audit-inventory` | `ses_10326a5bbffe4lxnPV4UWNa8Je` | [`opencode-usage-audit-inventory-final-output.md`](./opencode-usage-audit-inventory-final-output.md) |
 | `khala-internal-dogfood` | `ses_10326a5c6ffex5saSMPIVvAjIP` | [`khala-internal-dogfood-final-output.md`](./khala-internal-dogfood-final-output.md) |
 
