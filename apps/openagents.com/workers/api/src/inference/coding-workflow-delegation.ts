@@ -50,7 +50,7 @@ export type CodingDelegationResult =
   | CodingDelegationAssignmentResult
   | CodingDelegationRejection
 
-const requestIdRef = (requestId: string): string =>
+export const khalaCodingRequestIdRef = (requestId: string): string =>
   `request.public.khala_coding.${requestId.replaceAll(/[^A-Za-z0-9_.:-]/g, '_')}`
 
 const workflowRef = (classification: CodingWorkflowClassification): string =>
@@ -155,7 +155,7 @@ const codingAssignmentFromInput = (
     ...(workspace === null ? {} : { workspace }),
     requiredCapabilityRefs: [CODEX_AGENT_CAPABILITY_REF],
     routing: {
-      durableStreamRef: requestIdRef(input.requestId),
+      durableStreamRef: khalaCodingRequestIdRef(input.requestId),
       schema: 'openagents.khala.coding_delegation.v1',
     },
   }
@@ -175,7 +175,7 @@ const assignmentRequestFromInput = (
   campaignRef: 'campaign.public.khala_coding.own_capacity',
   closeoutPathRefs: [
     'closeout.public.khala_coding.durable_stream',
-    requestIdRef(input.requestId),
+    khalaCodingRequestIdRef(input.requestId),
   ],
   codingAssignment: codingAssignmentFromInput(input),
   forumAutoPublishAllowed: false,
@@ -192,7 +192,10 @@ const assignmentRequestFromInput = (
   rollbackRefs: ['rollback.public.khala_coding.assignment_cancel'],
   selectionPolicyRefs: ['selection.public.khala_coding.codex_first'],
   spendCapRefs: [],
-  taskRefs: [workflowRef(input.classification), requestIdRef(input.requestId)],
+  taskRefs: [
+    workflowRef(input.classification),
+    khalaCodingRequestIdRef(input.requestId),
+  ],
 })
 
 const hasFreshOnlineHeartbeat = (

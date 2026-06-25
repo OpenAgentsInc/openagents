@@ -24,6 +24,7 @@ import type {
 import {
   delegateCodingWorkflow,
   estimatedDelegatedCodingUsage,
+  khalaCodingRequestIdRef,
   type CodingDelegationInput,
 } from './inference/coding-workflow-delegation'
 import type {
@@ -446,6 +447,48 @@ const durableReadProjection = async (
   }
 }
 
+const assignmentMatchesDurableRequest = (
+  assignment: Readonly<{
+    taskRefs?: ReadonlyArray<string>
+  }>,
+  durableRequestId: string,
+): boolean => {
+  const requestRef = khalaCodingRequestIdRef(durableRequestId)
+  return assignment.taskRefs?.includes(requestRef) ?? false
+}
+
+export const khalaDurableRequestIsLinkedToPrincipal = async (
+  input: Readonly<{
+    agentStore: AgentRegistrationStore
+    durableRequestId: string
+    principal: McpPrincipal
+    pylonStore: PylonApiStore
+  }>,
+): Promise<boolean> => {
+  const linkedAgents = await linkedAgentsForPrincipal(
+    input.agentStore,
+    input.principal,
+  )
+  const registrations = await linkedRegistrations(input.pylonStore, linkedAgents)
+  const pylonRefs = registrations.map(registration => registration.pylonRef)
+  if (pylonRefs.length === 0) return false
+
+  const assignments =
+    input.pylonStore.listAssignmentsForPylons === undefined
+      ? (
+          await Promise.all(
+            pylonRefs.map(pylonRef =>
+              input.pylonStore.listAssignmentsForPylon(pylonRef, 100),
+            ),
+          )
+        ).flat()
+      : await input.pylonStore.listAssignmentsForPylons(pylonRefs, 100)
+
+  return assignments.some(assignment =>
+    assignmentMatchesDurableRequest(assignment, input.durableRequestId),
+  )
+}
+
 export type KhalaMcpCatalogDeps<Bindings extends KhalaMcpEnv> = Readonly<{
   agentStore: (env: Bindings) => AgentRegistrationStore
   durableFetch?: typeof fetch
@@ -565,6 +608,20 @@ export const makeKhalaMcpCatalog = <Bindings extends KhalaMcpEnv>(
 
       if (name === 'khala.resume' || name === 'khala.status') {
         const durableRequestId = requiredString(args, 'durableRequestId')
+        const authorized = await khalaDurableRequestIsLinkedToPrincipal({
+          agentStore: deps.agentStore(env),
+          durableRequestId,
+          principal,
+          pylonStore: deps.pylonStore(env),
+        })
+        if (!authorized) {
+          return toolErrorOutcome(name, 'durable_request_not_authorized', {
+            durableRequestId,
+            reason:
+              'The durable Khala stream is not attached to any assignment on a caller-owned linked Pylon.',
+            statusCode: 403,
+          })
+        }
         const data = await durableReadProjection({
           durableRequestId,
           fetcher: deps.durableFetch ?? fetch,

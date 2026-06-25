@@ -288,6 +288,7 @@
         "marked": "^18.0.5",
       },
       "devDependencies": {
+        "@openagentsinc/durable-stream": "workspace:*",
         "bun-types": "^1.0.0",
       },
       "optionalDependencies": {

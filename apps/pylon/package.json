@@ -92,6 +92,7 @@
     "mysql2": "^3.11.0"
   },
   "devDependencies": {
+    "@openagentsinc/durable-stream": "workspace:*",
     "bun-types": "^1.0.0"
   }
 }

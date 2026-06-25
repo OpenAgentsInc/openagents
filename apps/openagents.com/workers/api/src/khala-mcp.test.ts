@@ -13,6 +13,7 @@ import {
   khalaMcpAgentPrincipal,
   makeKhalaMcpCatalog,
 } from './khala-mcp'
+import { khalaCodingRequestIdRef } from './inference/coding-workflow-delegation'
 import type { ServedTokensRecorderInput } from './inference/served-tokens-recorder'
 import type {
   PylonApiAssignmentRecord,
@@ -109,10 +110,37 @@ const registration = (
   ...overrides,
 })
 
+const assignment = (
+  overrides: Partial<PylonApiAssignmentRecord> = {},
+): PylonApiAssignmentRecord => ({
+  acceptanceCriteriaRefs: ['acceptance.public.khala_coding.owner_requested'],
+  acceptedWorkRefs: [],
+  artifactRefs: [],
+  assignmentRef: 'assignment.public.khala_coding.assignment_id',
+  closeoutRefs: [],
+  codingAssignment: null,
+  createdAt: nowIso,
+  id: 'pylon_api_assignment_1',
+  idempotencyKeyHash: 'khala-coding:chatcmpl_mcp',
+  jobKind: 'codex_agent_task',
+  leaseExpiresAt: '2026-06-25T13:00:00.000Z',
+  ownerAgentUserId: 'agent_owner',
+  proofRefs: [],
+  publicProjectionJson: '{}',
+  pylonRef: 'pylon.owner.codex',
+  rejectionRefs: [],
+  resultExpectationRefs: ['result.public.khala_coding.worker_closeout'],
+  state: 'offered',
+  taskRefs: [khalaCodingRequestIdRef('chatcmpl_mcp')],
+  updatedAt: nowIso,
+  ...overrides,
+})
+
 const makeStore = (
   registrations: ReadonlyArray<PylonApiRegistrationRecord> = [registration()],
+  seededAssignments: ReadonlyArray<PylonApiAssignmentRecord> = [],
 ): PylonApiStore => {
-  const assignments: Array<PylonApiAssignmentRecord> = []
+  const assignments: Array<PylonApiAssignmentRecord> = [...seededAssignments]
   return {
     createAssignment: async record => {
       assignments.push(record)
@@ -144,6 +172,7 @@ const makeStore = (
 
 const catalogFor = (
   options: Readonly<{
+    assignments?: ReadonlyArray<PylonApiAssignmentRecord>
     durableFetch?: typeof fetch
     ids?: string[]
     recordedTokens?: Array<ServedTokensRecorderInput>
@@ -156,7 +185,11 @@ const catalogFor = (
     durableFetch: options.durableFetch ?? fetch,
     makeId: () => ids.shift() ?? 'id_more',
     nowIso: () => nowIso,
-    pylonStore: () => makeStore(options.registrations ?? [registration()]),
+    pylonStore: () =>
+      makeStore(
+        options.registrations ?? [registration()],
+        options.assignments ?? [],
+      ),
     recordTokensServed: () => async input => {
       options.recordedTokens?.push(input)
     },
@@ -292,7 +325,10 @@ describe('Khala MCP catalog', () => {
       })
     }
 
-    const outcome = await catalogFor({ durableFetch }).callTool(
+    const outcome = await catalogFor({
+      assignments: [assignment()],
+      durableFetch,
+    }).callTool(
       env,
       request,
       principal,
@@ -310,6 +346,48 @@ describe('Khala MCP catalog', () => {
       ok: true,
       streamClosed: true,
       streamUpToDate: true,
+    })
+  })
+
+  test('khala.resume rejects durable handles not attached to the caller-owned Pylon assignments', async () => {
+    const seen: string[] = []
+    const durableFetch: typeof fetch = async input => {
+      seen.push(input instanceof Request ? input.url : String(input))
+      return new Response('data: [DONE]\n\n')
+    }
+
+    const outcome = await catalogFor({
+      assignments: [
+        assignment({
+          ownerAgentUserId: 'agent_other',
+          pylonRef: 'pylon.other.codex',
+        }),
+      ],
+      durableFetch,
+      registrations: [
+        registration(),
+        registration({
+          ownerAgentCredentialId: 'agent_credential_other',
+          ownerAgentTokenPrefix: 'oa_agent_other',
+          ownerAgentUserId: 'agent_other',
+          pylonRef: 'pylon.other.codex',
+        }),
+      ],
+    }).callTool(
+      env,
+      request,
+      principal,
+      'khala.resume',
+      { durableRequestId: 'chatcmpl_mcp' },
+    )
+
+    expect(outcome.isError).toBe(true)
+    expect(seen).toEqual([])
+    expect(outcome.structuredContent).toMatchObject({
+      durableRequestId: 'chatcmpl_mcp',
+      error: 'durable_request_not_authorized',
+      ok: false,
+      statusCode: 403,
     })
   })
 

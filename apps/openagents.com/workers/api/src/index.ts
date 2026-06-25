@@ -260,6 +260,7 @@ import { makeD1CustomerOneCohortRowStore } from './customer-one-cohort-store'
 import { handleDemandProvenanceApi } from './demand-provenance-routes'
 import {
   combineMcpCatalogs,
+  khalaDurableRequestIsLinkedToPrincipal,
   khalaMcpAgentPrincipal,
   makeKhalaMcpCatalog,
 } from './khala-mcp'
@@ -11657,6 +11658,11 @@ const routeRequest = makeWorkerRouteRequest({
   // chat route's producer teed into. FAIL-SAFE: with the flag off OR the binding
   // absent, returns an honest 404 (the synchronous fallback path).
   routeDurableInferenceReadRequest: (request, env) => {
+    const matched = matchDurableReadRequest(request)
+    if (matched === undefined) {
+      return undefined
+    }
+
     const enabled =
       isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED) &&
       isInferenceDurableStreamEnabled(env.INFERENCE_DURABLE_STREAM_ENABLED)
@@ -11664,17 +11670,67 @@ const routeRequest = makeWorkerRouteRequest({
       enabled && env.INFERENCE_DURABLE_STREAM !== undefined
         ? (env.INFERENCE_DURABLE_STREAM as unknown as DurableStreamNamespace)
         : undefined
+    const authorizeKhalaAssignmentRead = async (): Promise<
+      Response | undefined
+    > => {
+      const db = openAgentsDatabase(env)
+      const pylonStore = makeD1PylonApiStore(db)
+      let khalaAssignmentExists = false
+      try {
+        khalaAssignmentExists =
+          (await pylonStore.readAssignmentByIdempotencyKeyHash(
+            `khala-coding:${matched.requestId}`,
+          )) !== undefined
+      } catch {
+        return noStoreJsonResponse(
+          { error: 'durable_request_authorization_unavailable' },
+          { status: 503 },
+        )
+      }
+      if (!khalaAssignmentExists) {
+        return undefined
+      }
+
+      const token = readBearerToken(request)
+      if (token === undefined) {
+        return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+      }
+
+      const agentStore = makeD1AgentRegistrationStore(db)
+      const session = await authenticateProgrammaticAgent(agentStore, token)
+      if (session === undefined) {
+        return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+      }
+
+      const authorized = await khalaDurableRequestIsLinkedToPrincipal({
+        agentStore,
+        durableRequestId: matched.requestId,
+        principal: khalaMcpAgentPrincipal(session, currentIsoTimestamp()),
+        pylonStore,
+      })
+      return authorized
+        ? undefined
+        : noStoreJsonResponse(
+            {
+              error: 'durable_request_not_authorized',
+              reason:
+                'The durable Khala stream is attached to an assignment outside the caller-owned linked Pylon set.',
+            },
+            { status: 403 },
+          )
+    }
     // Production DO-backed resume (async): when the binding is wired, a durable
     // read URL resolves to an Effect that reads the per-request DO; a non-durable
     // URL falls through (undefined). The URL match is synchronous, so the
     // dispatcher contract (`Effect<Response> | undefined`) is honored: undefined
     // only for a non-match.
     if (namespace !== undefined) {
-      if (matchDurableReadRequest(request) === undefined) {
-        return undefined
-      }
-      return Effect.promise(() =>
-        routeDurableInferenceReadRequestDO(request, {
+      return Effect.promise(async () => {
+        const denial = await authorizeKhalaAssignmentRead()
+        if (denial !== undefined) {
+          return denial
+        }
+        return routeDurableInferenceReadRequestDO(request, {
           enabled,
           namespace,
         }).then(
@@ -11689,8 +11745,8 @@ const routeRequest = makeWorkerRouteRequest({
               },
               status: 404,
             }),
-        ),
-      )
+        )
+      })
     }
     // Fail-safe synchronous path (binding absent / flag off): honest 404.
     const response = routeDurableInferenceReadRequest(request, {
