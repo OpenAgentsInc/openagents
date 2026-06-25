@@ -11,7 +11,10 @@ Prove that OpenCode-served inference increments the public Khala tokens-served c
 - `ServedTokensRecorder` fires synchronously after every `/v1/chat/completions` completion, recording the `usage.total_tokens` from the upstream response.
 - Public endpoints: `GET /api/public/khala-tokens-served` (aggregate), `/history` (per-day buckets).
 - Already verified under 24-wide concurrent stress — the recorder is monotonic and durable.
-- The counter **cannot** distinguish traffic sources today — it aggregates everything.
+- The public counter intentionally aggregates everything. The gateway also accepts
+  optional safe attribution headers and stores them in
+  `token_usage_events.safe_metadata_json`; owner-gated per-tool rollups are F1
+  (#6252), not public counter dimensions.
 
 ## 2. Proving OpenCode Increments the Counter
 
@@ -38,15 +41,23 @@ The public counter is a single aggregate. If OpenCode serves 10k tokens and qa-r
 
 ### The solution: per-client tagging at the gateway
 
-Add an **optional, server-enforced `client` tag** on the inference request. This is not a user-facing parameter — it is set by our own systems and optionally by ecosystem integrations.
+The gateway accepts optional public-safe attribution tags on the inference
+request. These are set by first-party systems and by recipes where the client can
+send custom headers.
 
 **Implementation sketch:**
 
-1. **Request header** — `X-Khala-Client: opencode | qa-runner | autopilot | probe | forum | sites | external`. The gateway reads this header on the request path in `chat-completions.ts`.
-2. **Telemetry record** — `KhalaTelemetryRecord` in `khala-telemetry.ts` currently has `requestClass`, `tokens`, `TTFT`, etc. but **no consumer field**. Add `consumer: string` (default `"external"` if header absent).
-3. **Ledger table** — The token-usage ledger (`token-usage-ledger.ts`) already records per-request rows. Add a `consumer` column to the persisted row.
-4. **Attribution endpoint** — A new internal-only endpoint `GET /api/internal/khala-tokens-by-client?window=7d&bucket=day` returns `{ consumer: string, tokens: number }[]`. This is **not** on the public counter — it is our analytics surface.
-5. **Dogfood dashboard** — Query this endpoint daily. The public counter stays aggregate; the internal dashboard breaks out the split.
+1. **Request headers** — the route reads:
+   - `x-openagents-demand-kind: external | internal | unlabeled`
+   - `x-openagents-demand-source: ecosystem | dogfood | ...`
+   - `x-openagents-client: opencode | aider | qa-runner | ...`
+2. **Ledger metadata** — `ServedTokensRecorder` writes these values into
+   `safeMetadata` as `demandKind`, `demandSource`, and `demandClient`.
+3. **Attribution endpoint** — F1 (#6252) owns the owner-gated aggregate
+   analytics split over these safe metadata fields. This is **not** on the
+   public counter.
+4. **Dogfood dashboard** — Query the F1 analytics split daily. The public
+   counter stays aggregate; the internal dashboard breaks out the split.
 
 ### Honesty rules (anti-vanity guardrails)
 
@@ -54,24 +65,28 @@ Add an **optional, server-enforced `client` tag** on the inference request. This
 |---|---|
 | The public counter is **always** aggregate, never broken out by source | No per-source query parameters on public endpoints |
 | External attribution claims ("OpenCode served X tokens") must come from the internal attribution endpoint, **not** from subtracting dogfood from aggregate | The dogfood dashboard is the single source of truth for per-tool numbers |
-| If a tool's `X-Khala-Client` header is missing/untrusted, it counts as `"external"` | Default is safe — under-attribution is honest, over-attribution is not |
+| If a tool's attribution header is missing/untrusted, it is treated as unlabeled aggregate traffic | Default is safe — under-attribution is honest, over-attribution is not |
 | Internal dogfood traffic uses registered `oa_agent_` tokens, not free-tier mint keys | Free-tier tokens are indistinguishable from external; registered tokens carry operator metadata for the attribution header |
 
 ### Rollout sequence
 
-1. **Add `consumer` field** to `KhalaTelemetryRecord` and the ledger persistence layer.
-2. **Add `X-Khala-Client` header read** in the gateway request path.
-3. **Build internal attribution endpoint** + dashboard.
-4. **Tag all internal systems** (qa-runner, Autopilot, Probe) with their consumer id.
-5. **Tag OpenCode recipe** — Publish the config with a note: if you set `X-Khala-Client: opencode` in your custom HTTP client, we count your tokens separately. (Not required for the recipe to work.)
-6. **Verify delta discipline.** Run the automated check from §2 with the client header set. Confirm the public counter increments AND the attribution endpoint records it correctly.
+1. **Use the existing request headers** in first-party clients that can set them.
+2. **Build internal attribution endpoint** + dashboard in F1 (#6252).
+3. **Tag all internal systems** (qa-runner, Autopilot, Probe) with their demand
+   kind/source/client.
+4. **Tag ecosystem recipes when possible** — AI SDK and LangChain JS can set
+   custom headers; Aider, Cline, and Continue should use fresh per-tool keys
+   until F1 can roll up request metadata.
+5. **Verify delta discipline.** Run the automated check from §2 with headers set
+   where supported. Confirm the public counter increments and, once F1 exists,
+   the attribution endpoint records the split.
 
 ## 4. What We May Claim (and How)
 
 | Claim | Data source | Honest framing |
 |---|---|---|
 | "Khala served N tokens total today" | Public counter | Aggregate, includes internal + external |
-| "OpenCode sessions served M tokens through Khala" | Attribution endpoint | Only if `X-Khala-Client: opencode` header was present; else say "at least" |
+| "OpenCode sessions served M tokens through Khala" | Attribution endpoint or fresh-key test window | Only if headers/key scope bind the traffic to OpenCode; else say "at least" |
 | "X external developers tried Khala via OpenCode" | Count distinct `oa_agent_` keys used in OpenCode sessions | Not derivable from token counts alone; needs key-level attribution |
 | "Khala tokens grew W% week-over-week" | Public history endpoint | Aggregate; internal growth is real growth but should note if mostly dogfood |
 
@@ -82,14 +97,16 @@ The public-facing `/khala` page shows the aggregate counter. The per-tool number
 | # | Item | Owner |
 |---|---|---|
 | 1 | Write `verify-opencode-counter.ts` automated counter-delta script | Agent session |
-| 2 | Add `consumer` field to `KhalaTelemetryRecord` schema | Gateway team |
-| 3 | Add `X-Khala-Client` header read in chat-completions request path | Gateway team |
-| 4 | Add `consumer` column to token-usage ledger persistence | Ledger team |
-| 5 | Build `GET /api/internal/khala-tokens-by-client` endpoint | API team |
-| 6 | Tag all internal systems with their consumer id | Each system owner |
-| 7 | Add `X-Khala-Client: opencode` to the published OpenCode recipe | Docs team |
-| 8 | Run acceptance script as pre-publication gate before publishing OpenCode recipe | QA |
+| 2 | Use `x-openagents-demand-kind`, `x-openagents-demand-source`, and `x-openagents-client` in clients that support headers | Each integration owner |
+| 3 | Build owner-gated per-tool rollups over safe metadata | F1 / API team |
+| 4 | Tag all internal systems with demand kind/source/client | Each system owner |
+| 5 | Use fresh per-tool keys for tools that cannot set headers | Docs / QA |
+| 6 | Run acceptance script as pre-publication gate before publishing recipes | QA |
 
 ## Status Summary
 
-Written `docs/opencode/opencode-token-counter-attribution-plan.md`. The plan defines three layers: (1) an automated counter-delta acceptance script to prove OpenCode traffic hits the public counter; (2) per-client tagging via `X-Khala-Client` header + new `consumer` field on the telemetry and ledger records, with a strictly internal attribution endpoint; and (3) honesty guardrails that keep the public counter aggregate-only and default to `"external"` (under-attribution) when a client identity is missing. No other files edited. Not committed. Not pushed.
+Current status: the served-token recorder already stores safe request attribution
+metadata when callers send `x-openagents-demand-kind`,
+`x-openagents-demand-source`, and `x-openagents-client`. The remaining F1 work is
+the owner-gated analytics split over those fields. The public counter remains
+aggregate-only.

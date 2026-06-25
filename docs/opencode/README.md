@@ -20,6 +20,9 @@ opponents (Pillar 3).
   sending the correct upstream model id.
 - [`opencode-free-tier-402-playbook.md`](./opencode-free-tier-402-playbook.md)
   documents the current free tier and quota failure path.
+- [`khala-ecosystem-tool-recipes.md`](./khala-ecosystem-tool-recipes.md)
+  publishes the next-tool recipes for Aider, Cline, Continue, AI SDK, LiteLLM,
+  and LangChain, with current upstream research links and attribution guidance.
 
 The final-output files below are planning exports from the 2026-06-25 sessions.
 They preserve explored configs and historical notes, including older doubled

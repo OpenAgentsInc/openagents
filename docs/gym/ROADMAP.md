@@ -209,7 +209,7 @@ upstream. The support docs now use the real free-key response field
 tokens/day per key.
 
 ### C2. Land the next tools: Aider → Cline/Continue → Vercel AI SDK → LiteLLM/LangChain  ([#6240](https://github.com/OpenAgentsInc/openagents/issues/6240))
-**Type:** epic · **Lever:** ecosystem · **Status:** direction
+**Type:** epic · **Lever:** ecosystem · **Status:** shipped 2026-06-25
 **Why:** breadth of one-config-line adoption across the coding/agent ecosystem; the
 Vercel AI SDK recipe is high-leverage (substrate under many tools).
 **Scope:** one verified recipe + test checklist per tool, in priority order; do our
@@ -218,6 +218,13 @@ per-tool token attribution.
 **Acceptance:** each landed tool has a published recipe and shows attributable tokens
 on the counter via per-tool analytics.
 **Refs:** GTM §3 "Next tools after OpenCode".
+
+**Shipped:** `../opencode/khala-ecosystem-tool-recipes.md` publishes current
+recipes for Aider, Cline, Continue, AI SDK, LiteLLM, and LangChain. The recipe
+set records upstream research sources, uses the current Khala free-key shape,
+documents which clients can set `x-openagents-*` attribution headers today, and
+uses fresh per-tool keys plus public counter deltas for clients that cannot set
+headers. Owner-gated per-tool rollups remain the F1 analytics issue (#6252).
 
 ---
 

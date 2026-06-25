@@ -1,6 +1,10 @@
 # OpenCode → Ecosystem Tools Expansion Plan
 
-> Source context: `docs/inference/2026-06-25-khala-inference-gtm-push.md` §3 (Next tools after OpenCode), Pillar 2 — The ecosystem-tools playbook. Planning document only. Defers to the product-promise registry for public claims.
+> Source context: `docs/inference/2026-06-25-khala-inference-gtm-push.md` §3
+> (Next tools after OpenCode), Pillar 2 — The ecosystem-tools playbook.
+> Planning document only. The canonical shipped #6240 recipes live in
+> [`khala-ecosystem-tool-recipes.md`](./khala-ecosystem-tool-recipes.md).
+> Defers to the product-promise registry for public claims.
 
 The playbook for every tool is identical: **one config line, zero rewrites.** Each tool below is an OpenAI-compatible consumer. The deliverable for each is a short, exact, copy-pasteable recipe (base URL + free key + model id) plus a "what to test" checklist. Keep recipes in this repo's docs and on `/khala` once the copy gate clears.
 
@@ -12,27 +16,20 @@ After OpenCode is verified and its runbook published, next in priority order:
 
 **Priority:** Highest (big coding audience, CLI-native, one env-var config line)
 
-**Why:** Aider is the most popular CLI coding agent outside OpenCode. It accepts `OPENAI_API_BASE_URL` and `--model` flags, making Khala a one-liner. Large, well-known audience that generates real token volume.
+**Why:** Aider is the most popular CLI coding agent outside OpenCode. It accepts `OPENAI_API_BASE` and `--model` flags, making Khala a one-liner. Large, well-known audience that generates real token volume.
 
 **Exact recipe:**
 ```bash
-export OPENAI_API_BASE_URL=https://openagents.com/api/v1
-export OPENAI_API_KEY=$(curl -s -X POST https://openagents.com/api/keys/free | jq -r '.key')
-aider --model openagents/khala
-```
-
-Or via `.aider.conf.yml`:
-```yaml
-api-key: <free key>
-openai-api-base: https://openagents.com/api/v1
-model: openagents/khala
+export OPENAI_API_BASE=https://openagents.com/api/v1
+export OPENAI_API_KEY="$OPENAGENTS_API_KEY"
+aider --model openai/openagents/khala
 ```
 
 Aider uses the OpenAI Python client under the hood. Base URL override maps directly to our `/api/v1/chat/completions`.
 
 **Config details to verify:**
-- Aider's `openai-api-base` env var or config key maps correctly to our endpoint (it appends `/chat/completions` — confirm it does not append twice)
-- Model name `openagents/khala` is accepted as-is (Aider passes it through as the `model` field)
+- Aider's `OPENAI_API_BASE` env var or `--openai-api-base` flag maps correctly to our endpoint (it appends `/chat/completions` — confirm it does not append twice)
+- Model name `openai/openagents/khala` selects the OpenAI-compatible route and sends `openagents/khala` as the model field
 - Tool/function calling: Aider's edit workflow depends on the model producing `read_file` / `write_file` / `run` tool calls. This is the critical correctness test.
 - Streaming: Aider uses streaming by default for real-time output. Verify SSE works end-to-end.
 - `--no-git` mode: Aider commits by default; test without git hooks first for a clean signal.
@@ -90,19 +87,18 @@ Or in VS Code settings.json:
 
 ### Continue
 
-**Exact recipe (`~/.continue/config.json`):**
-```json
-{
-  "models": [
-    {
-      "title": "Khala",
-      "provider": "openai",
-      "model": "openagents/khala",
-      "apiBase": "https://openagents.com/api/v1",
-      "apiKey": "<free key>"
-    }
-  ]
-}
+**Exact recipe (`~/.continue/config.yaml`):**
+```yaml
+name: OpenAgents Khala
+version: 0.0.1
+schema: v1
+
+models:
+  - name: Khala
+    provider: openai
+    model: openagents/khala
+    apiBase: https://openagents.com/api/v1
+    apiKey: <credential.token>
 ```
 
 **What to test:**
@@ -134,9 +130,15 @@ const khala = createOpenAICompatible({
   name: 'openagents',
   baseURL: 'https://openagents.com/api/v1',
   apiKey: process.env.OPENAGENTS_API_KEY,
+  includeUsage: true,
+  headers: {
+    'x-openagents-demand-kind': 'external',
+    'x-openagents-demand-source': 'ecosystem',
+    'x-openagents-client': 'ai-sdk',
+  },
 })
 
-const model = khala.chatModel('openagents/khala')
+const model = khala('openagents/khala')
 ```
 
 Or with per-instance config:
@@ -160,7 +162,7 @@ const { text } = await generateText({
 1. Verify the snippet with a live AI SDK client (Node.js script)
 2. Publish as a "Using Khala with the AI SDK" runbook doc — short, copy-pasteable
 3. Optionally contribute the provider preset to the AI SDK's built-in provider list (upstream PR to `packages/providers/openai-compatible/`)
-4. Track: AI SDK adoption is harder to attribute directly (it's a library, not a tool) — recommend `x-oa-sdk: ai-sdk` header for attribution
+4. Track: AI SDK adoption is harder to attribute directly (it's a library, not a tool) — recommend `x-openagents-client: ai-sdk` plus `x-openagents-demand-source: ecosystem` for attribution
 
 ---
 
@@ -232,7 +234,9 @@ LangChain's `ChatOpenAI` wraps the OpenAI Python client, which supports arbitrar
 2. Publish a single "Middleware / Framework Integration" runbook doc covering both
 3. Contribute `openagents/khala` to LiteLLM's `model_prices_and_context_window.json` for cost tracking
 4. Contribute `openagents/khala` to LangChain's model registry (it uses `ChatOpenAI` with no registry — but a doc note)
-5. Track: LiteLLM and LangChain are proxy layers; hard to attribute directly. Accept this as broad distribution, not per-tool tracking.
+5. Track: LiteLLM and LangChain are proxy layers; use `x-openagents-client`
+   where the caller/proxy can set custom headers, otherwise rely on fresh-key
+   counter windows until F1 (#6252) ships owner-gated rollups.
 
 ---
 
@@ -315,12 +319,19 @@ export ANTHROPIC_API_KEY=<free key>
 
 We need to attribute tokens to each tool to know which landings actually move the north-star metric. Approaches (in order of preference):
 
-1. **Dedicated API key per tool.** When we publish a recipe, recommend using a key minted via a tool-specific flow (e.g., `POST /api/keys/free?source=aider`). The key's metadata ties ledger rows to the tool.
-2. **User-agent header parsing.** Tools send `User-Agent` in HTTP headers (e.g., `aider/v0.x.x`, `OpenCode/v2.x.x`). Parse and index in the token-usage ledger.
-3. **`source` query parameter.** Include `?source=aider` in the recipe's base URL (e.g., `https://openagents.com/api/v1?source=aider`). Enables server-side attribution without key-flow changes.
-4. **Fallback: manual cohort analysis.** If none of the above, compare token-history buckets before and after publishing each recipe.
+1. **Attribution headers where supported.** Use
+   `x-openagents-demand-kind`, `x-openagents-demand-source`, and
+   `x-openagents-client`; the gateway records them in safe ledger metadata.
+2. **Dedicated API key per tool.** For clients that cannot set headers, mint a
+   fresh key per tool and use before/after public counter deltas for verification.
+3. **User-agent header parsing.** Later F1 rollups may also read tool user agents,
+   but do not claim per-tool totals from user-agent guesses alone.
+4. **Fallback: manual cohort analysis.** If none of the above, compare
+   token-history buckets before and after publishing each recipe.
 
-**Recommendation:** Implement approach 1 (dedicated key source) + approach 2 (user-agent parsing) as the primary and fallback. The `ServedTokensRecorder` already writes the request's HTTP metadata context — extend it to index a `source` column.
+**Recommendation:** Use headers for AI SDK / LangChain JS / any controlled proxy,
+and fresh per-tool keys for Aider, Cline, and Continue until F1 (#6252) ships the
+owner-gated analytics split.
 
 ---
 
@@ -341,4 +352,6 @@ Before marking any tool as "integrated":
 
 ## Status
 
-**Created:** `docs/opencode/opencode-next-tools-expansion.md` — expansion plan covering 6 tool categories (Aider, Cline/Continue, AI SDK, LiteLLM/LangChain, Codex/Claude Code, OpenRouter aggregators) in priority order, each with exact recipe, test checklist, adoption path, and gating notes. Parallel overlap pattern identified (Phases 1 and 2 can run concurrently). Per-tool attribution strategy recommended (dedicated key source + user-agent parsing). No files edited outside `docs/opencode/`. No commit. No push.
+**Updated:** the shipped #6240 recipes live in
+`docs/opencode/khala-ecosystem-tool-recipes.md`. This plan remains the broader
+expansion map for later Codex/Claude Code and aggregator work.

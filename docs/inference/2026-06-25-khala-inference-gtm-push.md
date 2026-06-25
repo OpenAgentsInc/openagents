@@ -157,8 +157,10 @@ coding agents through OpenCode against our endpoint is the cleanest first landin
 it is a coding tool (our wedge), it is config-driven (no upstream PR needed to
 start), and it exercises the same code/tool-calling workload Khala must be good at.
 
-**Exact config** (verified against the OpenCode repo docs/schema —
-`packages/web/src/content/docs/providers.mdx`, `config.mdx`,
+**Exact config:** the canonical OpenCode recipe is
+[`../opencode/opencode-khala-recipe.md`](../opencode/opencode-khala-recipe.md).
+It was verified against the OpenCode repo docs/schema
+(`packages/web/src/content/docs/providers.mdx`, `config.mdx`,
 `packages/core/src/config/provider.ts`). Put in `~/.config/opencode/opencode.json`
 (global) or `opencode.json` (project root):
 
@@ -174,13 +176,18 @@ start), and it exercises the same code/tool-calling workload Khala must be good 
         "apiKey": "{env:OPENAGENTS_API_KEY}"
       },
       "models": {
-        "openagents/khala": {
+        "khala": {
           "name": "Khala",
+          "api": {
+            "id": "openagents/khala"
+          },
+          "tool_call": true,
           "limit": { "context": 128000, "output": 65536 }
         }
       }
     }
-  }
+  },
+  "model": "openagents/khala"
 }
 ```
 
@@ -190,14 +197,10 @@ start), and it exercises the same code/tool-calling workload Khala must be good 
   `OPENAGENTS_API_KEY`, or use OpenCode's `/connect → Other → id "openagents"` to
   store it in `~/.local/share/opencode/auth.json`. The provider id typed in
   `/connect` must equal the `provider` key in the config.
-- **Model selection:** OpenCode's model reference is `providerId/modelKey`. With
-  the model **key** `openagents/khala` (which is what gets sent upstream as the
-  model id — correct for our API), the in-TUI selector path reads
-  `openagents/openagents/khala`. **TBD to confirm in testing:** whether to keep the
-  model key literally `openagents/khala` (sends the right model id; selector has a
-  doubled segment) or to add server-side acceptance of a shorter key so the
-  selector reads cleanly. Document whichever we choose; do not ship ambiguous
-  instructions.
+- **Model selection:** OpenCode displays `providerId/modelKey`. The published
+  recipe uses model key `khala` plus `api.id: "openagents/khala"`, so the
+  selector is `openagents/khala` and the upstream request still sends
+  `model: "openagents/khala"`. No server-side alias is needed.
 
 **What to test before we publish the OpenCode recipe:**
 - The endpoint serves chat-completions at `/api/v1/chat/completions` (it does) and
@@ -213,6 +216,11 @@ start), and it exercises the same code/tool-calling workload Khala must be good 
   `khala-tokens-served` counter (proving external traffic is counted).
 
 ### Next tools after OpenCode
+
+The canonical #6240 recipe set is
+[`../opencode/khala-ecosystem-tool-recipes.md`](../opencode/khala-ecosystem-tool-recipes.md).
+It covers Aider, Cline, Continue, AI SDK, LiteLLM, and LangChain with current
+upstream docs links, exact configs, test checklists, and attribution guidance.
 
 Prioritized by how directly each is a one-config-line OpenAI-compatible drop-in
 and how much coding/agent traffic it represents (reference repos under
@@ -237,8 +245,8 @@ and how much coding/agent traffic it represents (reference repos under
 
 For each tool the deliverable is the same: a short, exact, copy-pasteable recipe
 (base URL + free key + model id) plus a "what to test" checklist, published where
-the tool's users look. Keep the recipes in this repo's docs and on `/khala` once
-the copy gate clears.
+the tool's users look. Keep the recipes in this repo's docs and promote to
+`/khala` only once the copy gate clears.
 
 ## 4. Pillar 3 — Benchmarking ("make it good," not just "get there")
 
@@ -319,8 +327,8 @@ are explicitly labeled illustrative and never published as measurements.
    names; arm a real sweep over the now-real dogfood traffic; produce the first
    decision-grade report and a publishable head-to-head.
 4. **Broaden to more tools (Pillar 2 continued).** Aider → Cline/Continue → Vercel
-   AI SDK → LiteLLM/LangChain lists → aggregators. One recipe at a time, each with
-   a test checklist.
+   AI SDK → LiteLLM/LangChain recipes are now in the repo; aggregator/provider-list
+   work remains later-stage. One recipe at a time, each with a test checklist.
 5. **Keep driving internal dogfood demand throughout.** Pillar 1 never stops; new
    internal systems default to Khala as they ship. Constant motion.
 
