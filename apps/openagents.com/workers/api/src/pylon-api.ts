@@ -813,6 +813,10 @@ export type PylonApiStore = Readonly<{
   updateAssignment: (
     record: PylonApiAssignmentRecord,
   ) => Promise<PylonApiAssignmentRecord>
+  updateAssignmentIfState: (
+    record: PylonApiAssignmentRecord,
+    expectedState: PylonApiAssignmentState,
+  ) => Promise<PylonApiAssignmentRecord | undefined>
   upsertProviderJobLifecycle: (
     record: PylonApiProviderJobLifecycleRecord,
   ) => Promise<PylonApiProviderJobLifecycleRecord>
@@ -2147,6 +2151,63 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
         providerJobLifecycleRecordFromAssignment(next),
       ),
     ])
+
+    return next
+  },
+
+  updateAssignmentIfState: async (record, expectedState) => {
+    const publicProjectionJson = JSON.stringify(
+      publicPylonApiAssignmentProjection(record, record.updatedAt),
+    )
+
+    const result = await db
+      .prepare(
+        `UPDATE pylon_api_assignments
+            SET state = ?,
+                artifact_refs_json = ?,
+                proof_refs_json = ?,
+                accepted_work_refs_json = ?,
+                rejection_refs_json = ?,
+                closeout_refs_json = ?,
+                coding_assignment_json = ?,
+                public_projection_json = ?,
+                updated_at = ?
+          WHERE assignment_ref = ?
+            AND pylon_ref = ?
+            AND state = ?
+            AND archived_at IS NULL`,
+      )
+      .bind(
+        record.state,
+        JSON.stringify(record.artifactRefs),
+        JSON.stringify(record.proofRefs),
+        JSON.stringify(record.acceptedWorkRefs),
+        JSON.stringify(record.rejectionRefs),
+        JSON.stringify(record.closeoutRefs),
+        record.codingAssignment === null
+          ? null
+          : JSON.stringify(record.codingAssignment),
+        publicProjectionJson,
+        record.updatedAt,
+        record.assignmentRef,
+        record.pylonRef,
+        expectedState,
+      )
+      .run()
+
+    if ((result.meta?.changes ?? 0) < 1) {
+      return undefined
+    }
+
+    const next = {
+      ...record,
+      publicProjectionJson,
+    }
+
+    await upsertProviderJobLifecycleStatement(
+      db,
+      providerJobLifecycleRecordFromAssignment(next),
+    ).run()
 
     return next
   },

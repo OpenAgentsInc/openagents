@@ -1253,6 +1253,28 @@ const routeEvent = <Bindings extends PylonApiRouteEnv>(
           status: eventStatusFromBody(body, input.fallbackStatus),
         }),
     })
+    const claimedAcceptanceAssignment =
+      assignment !== undefined && input.eventKind === 'assignment_acceptance'
+        ? yield* Effect.flatMap(
+            Effect.tryPromise({
+              catch: pylonApiStoreErrorFromUnknown,
+              try: () =>
+                store.updateAssignmentIfState(
+                  nextAssignmentForEvent(assignment, event, nowIso),
+                  'offered',
+                ),
+            }),
+            record =>
+              record === undefined
+                ? Effect.fail(
+                    new PylonApiStoreError({
+                      kind: 'conflict',
+                      reason: 'Pylon assignment was already claimed.',
+                    }),
+                  )
+                : Effect.succeed(record),
+          )
+        : undefined
     const eventResult = yield* Effect.tryPromise({
       catch: pylonApiStoreErrorFromUnknown,
       try: () => store.createEvent(event),
@@ -1260,13 +1282,19 @@ const routeEvent = <Bindings extends PylonApiRouteEnv>(
     const storedAssignment =
       assignment === undefined
         ? undefined
-        : yield* Effect.tryPromise({
-            catch: pylonApiStoreErrorFromUnknown,
-            try: () =>
-              store.updateAssignment(
-                nextAssignmentForEvent(assignment, eventResult.record, nowIso),
-              ),
-          })
+        : input.eventKind === 'assignment_acceptance'
+          ? claimedAcceptanceAssignment
+          : yield* Effect.tryPromise({
+              catch: pylonApiStoreErrorFromUnknown,
+              try: () =>
+                store.updateAssignment(
+                  nextAssignmentForEvent(
+                    assignment,
+                    eventResult.record,
+                    nowIso,
+                  ),
+                ),
+            })
     if (storedAssignment !== undefined) {
       yield* maybeRecordAutopilotWorkerCloseout(dependencies, env, {
         assignment: storedAssignment,

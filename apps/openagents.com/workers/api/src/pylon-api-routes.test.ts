@@ -201,6 +201,19 @@ class MemoryPylonApiStore implements PylonApiStore {
     return record
   }
 
+  updateAssignmentIfState = async (
+    record: PylonApiAssignmentRecord,
+    expectedState: PylonApiAssignmentRecord['state'],
+  ) => {
+    const current = this.assignments.get(record.assignmentRef)
+
+    if (current === undefined || current.state !== expectedState) {
+      return undefined
+    }
+
+    return this.updateAssignment(record)
+  }
+
   upsertProviderJobLifecycle = async (
     record: PylonApiProviderJobLifecycleRecord,
   ) => {
@@ -2373,6 +2386,48 @@ describe('Pylon API routes', () => {
     expect(paymentReceiptBody.assignment?.state).toBe('accepted_work')
     expect(progressAfterCloseout.status).toBe(409)
     expect(progressAfterCloseoutBody.error).toBe('pylon_api_conflict')
+  })
+
+  test('does not record acceptance events after a lost assignment-claim race', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store)
+    await markOnline(store)
+    await markWalletReady(store)
+    await createAssignment(store)
+
+    let attemptedAtomicClaim = false
+    store.updateAssignmentIfState = async () => {
+      attemptedAtomicClaim = true
+      return undefined
+    }
+
+    const accept = await route(
+      store,
+      '/api/pylons/pylon.test.one/assignments/assignment.public.issue502.echo/accept',
+      {
+        body: {
+          acceptanceRefs: ['acceptance.public.echo_ready'],
+          accepted: true,
+        },
+        idempotencyKey: 'accept-echo-lost-claim-race',
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
+    const body = await responseJson<PylonRouteJson>(accept)
+    const assignment = await store.readAssignment(
+      'assignment.public.issue502.echo',
+    )
+
+    expect(attemptedAtomicClaim).toBe(true)
+    expect(accept.status).toBe(409)
+    expect(body.error).toBe('pylon_api_conflict')
+    expect(assignment?.state).toBe('offered')
+    expect(
+      Array.from(store.events.values()).filter(
+        event => event.eventKind === 'assignment_acceptance',
+      ),
+    ).toHaveLength(0)
   })
 
   test('blocks stale leases, wrong Pylon writes, invalid proof material, and supports rejected closeout', async () => {

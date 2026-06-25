@@ -369,6 +369,19 @@ class MemoryPylonApiStore implements PylonApiStore {
     return record
   }
 
+  updateAssignmentIfState = async (
+    record: PylonApiAssignmentRecord,
+    expectedState: PylonApiAssignmentRecord['state'],
+  ) => {
+    const current = this.assignments.get(record.assignmentRef)
+
+    if (current === undefined || current.state !== expectedState) {
+      return undefined
+    }
+
+    return this.updateAssignment(record)
+  }
+
   upsertProviderJobLifecycle = async (
     record: PylonApiProviderJobLifecycleRecord,
   ) => {

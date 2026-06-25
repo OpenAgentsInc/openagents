@@ -240,6 +240,18 @@ const makePylonStore = (
     readRegistration: async pylonRef =>
       registrations.find(item => item.pylonRef === pylonRef),
     updateAssignment: async record => record,
+    updateAssignmentIfState: async (record, expectedState) => {
+      const index = assignments.findIndex(
+        item => item.assignmentRef === record.assignmentRef,
+      )
+
+      if (index < 0 || assignments[index]?.state !== expectedState) {
+        return undefined
+      }
+
+      assignments[index] = record
+      return record
+    },
     upsertProviderJobLifecycle: async record => record,
     upsertRegistration: async record => record,
   }
