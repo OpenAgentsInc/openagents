@@ -85,6 +85,13 @@ provider-adapter registry, verification-class registry, and the
   using `@openagentsinc/three-effect`, with an accessible text/table mirror and
   no raw prompts, completions, private endpoint material, bearer material, or
   hidden tokens. Full Autopilot Verse integration remains deferred.
+- **Epic E6 landed (#6258):** `terminal-bench-khala-orchestration.ts` compares
+  decision-grade Khala Terminal-Bench policy reports against the raw Z.ai
+  GLM-5.2 REAP baseline and emits explicit `beats_on_solve_rate`,
+  `beats_on_cost_per_accepted_outcome`, `no_win`, `blocked`, or `not_measured`
+  outcomes. The paired flywheel projection is evidence-only: no public claim,
+  runtime promotion, payout, settlement, or provider mutation authority is
+  granted by the comparison.
 - **Epic F1/F2 landed:** `token_usage_events` now carries typed owner-gated
   demand attribution (`internal`, `external`, or `unlabeled` plus source/client
   labels), `GET /api/admin/inference-analytics` exposes the split plus

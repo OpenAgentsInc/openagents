@@ -465,6 +465,13 @@ metric vocabulary, or a new settlement path.
     field on `/gym`, and provide an accessible mirror with lanes, verifier
     placement, metrics, blockers, and caveats. Keep full Autopilot Verse
     integration deferred until a later owner-armed world pass.
+15. Khala-orchestrated Terminal-Bench comparison: define typed heuristic,
+    TRINITY, and Conductor policy profiles over existing Gym fanout axes, compare
+    decision-grade Khala reports against the raw Z.ai GLM-5.2 REAP baseline, and
+    emit explicit solve-rate, cost-per-accepted-outcome, no-win, blocked, or
+    not-measured outcomes. Feed winning reports into the Gym flywheel as
+    evidence only; do not grant public claim, runtime promotion, payout,
+    settlement, or provider mutation authority.
 ```
 
 ## 10. Open questions
@@ -475,9 +482,10 @@ metric vocabulary, or a new settlement path.
   dispatch/summary-ingest seam, and distinct-device verifier placement evidence
   are landed. Reward/cost mapping and training trajectory projection from Harbor
   summary/ATIF artifacts are also landed, along with the GLM-REAP profile
-  comparison report and public `/gym` three-effect visualizer. Remaining work is
-  wiring the live owner-armed executor path, Khala-orchestrated comparison runs,
-  and logged-in surfaces around the projections.
+  comparison report, public `/gym` three-effect visualizer, and pure
+  Khala-vs-raw-GLM orchestration comparison/flywheel projection. Remaining work
+  is wiring the live owner-armed executor path and logged-in surfaces around the
+  projections.
 - Pricing tiers: free fixture vs metered self-serve vs decision-grade certified;
   the first quote path is landed from matrix shape and configured lane prices,
   while tier packaging and certified-report pricing remain open.

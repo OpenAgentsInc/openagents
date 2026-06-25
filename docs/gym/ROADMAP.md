@@ -522,6 +522,32 @@ operator signals, and world items; the page renders an accessible mirror with
 the same lanes/metrics/caveats. Route-table, parser, server-admission, product
 intent, page, and replay tests lock the contract.
 
+### E6. Khala orchestrated Terminal-Bench comparison and flywheel projection ([#6258](https://github.com/OpenAgentsInc/openagents/issues/6258))
+
+**Type:** task · **Lever:** benchmarking/product · **Status:** shipped 2026-06-25
+**Why:** #6253 asks whether Khala's orchestrator can beat the raw GLM-REAP
+baseline on the same Terminal-Bench 2.0 denominator, and whether it does so on
+solve rate, cost per accepted outcome, or neither. That comparison must remain
+separate from public claim promotion and runtime activation.
+**Scope:** add typed Khala Terminal-Bench policy profiles for heuristic,
+TRINITY, and Conductor candidates; model multi-lane fanout over Khala, raw
+GLM-REAP, GPT-OSS, Gemini, and Fireworks-style lanes using existing Gym axes;
+produce a pure orchestration comparison report; feed win evidence into the
+Gym flywheel projection as evidence only.
+**Acceptance:** only decision-grade, public-safe, full official-denominator
+reports can produce `beats_on_solve_rate` or
+`beats_on_cost_per_accepted_outcome`; fixture, pilot, attempted-only, unsafe,
+non-decision-grade, and not-measured reports stay blocked or not-measured. The
+flywheel projection grants no runtime promotion, payout, settlement, provider
+mutation, or public claim authority.
+
+**Shipped #6258:** `workers/api/src/inference/gym/terminal-bench-khala-orchestration.ts`
+defines the Khala policy profile catalog, pure Khala-vs-raw-GLM comparison
+artifact, and evidence-only flywheel projection. Tests cover solve-rate wins,
+cost wins, no-win, non-decision/pilot blocking, not-measured cost, unsafe report
+rejection, and the authority-all-false boundary. The raw baseline is attributed
+to Z.ai GLM-5.2 REAP, not to a serving vendor.
+
 ---
 
 ## EPIC F — Measurement & honesty (cross-cutting)
