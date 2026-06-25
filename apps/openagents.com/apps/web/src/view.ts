@@ -543,6 +543,23 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
     })
   }
 
+  // `/gym` is the public Terminal-Bench web visualizer. Its registry render
+  // disposition is `submodel`, so it renders through the loggedOut Submodel
+  // (the gym page reads `model.gym` and mounts the three-effect run field). It
+  // must be dispatched here; otherwise it falls through `publicRouteBody` to
+  // `maintenanceBody`, which silently shows the homepage-lookalike instead of
+  // the gym page (#6258).
+  if (model._tag === 'LoggedOut' && model.route._tag === 'Gym') {
+    const h = html<Message>()
+
+    return h.submodel({
+      slotId: 'logged-out-gym',
+      model,
+      view: LoggedOut.view,
+      toParentMessage: message => GotLoggedOutMessage({ message }),
+    })
+  }
+
   if (
     model._tag === 'LoggedOut' &&
     (model.route._tag === 'Home' ||
