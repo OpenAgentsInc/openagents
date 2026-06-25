@@ -85,18 +85,38 @@ if [ "$st_code" = "200" ] && [ "$st_chunks" -gt 1 ]; then ok=$((ok+1)); else
 fi
 details="$details{\"c\":\"streaming\",\"http\":$st_code,\"chunks\":$st_chunks},"
 
-# --- Config E: long-gen concurrency burst (the bulk of the ~50k + a load probe) ---
-CONC="${KHALA_HEARTBEAT_LONG_CONC:-6}"   # 6 x ~8k ≈ ~50k tokens
-for i in $(seq 1 "$CONC"); do
-  ( curl -s --max-time 180 -w '\n%{http_code}' "$BASE/chat/completions" "${AUTH[@]}" \
-      -d "$(jq -nc --arg m "$MODEL" --argjson n "$i" '{model:$m,max_tokens:8000,messages:[{role:"user",content:("Heartbeat long-gen \($n): write a detailed multi-paragraph explanation of how Bitcoin and the Lightning Network support paid AI inference. Be thorough.")}]}')" \
-      > "$WORK/long_$i.out" 2>&1 ) &
-done
-wait
-for i in $(seq 1 "$CONC"); do
-  code=$(tail -1 "$WORK/long_$i.out" 2>/dev/null)
-  tok=$(sed '$d' "$WORK/long_$i.out" 2>/dev/null | jq -r '((.usage.prompt_tokens//0)+(.usage.completion_tokens//0)) // 0' 2>/dev/null || echo 0)
-  record "long-$i" "${code:-000}" "${tok:-0}"
+# --- Config E: long-gen burst, looped to a token TARGET (models stop well under
+# max_tokens, so fire waves of `WAVE` concurrent long-gens until ~TARGET served). ---
+TARGET="${KHALA_HEARTBEAT_TOKEN_TARGET:-50000}"
+WAVE="${KHALA_HEARTBEAT_LONG_CONC:-6}"          # concurrency per wave (also the load probe)
+MAX_WAVES="${KHALA_HEARTBEAT_MAX_WAVES:-15}"     # safety cap on total requests
+PROMPTS=(
+  "write a detailed multi-paragraph technical explanation of how the Lightning Network settles micropayments for AI inference, covering HTLCs, invoices, and routing."
+  "explain in depth how an OpenAI-compatible inference gateway routes a request across multiple model providers, with fan-out, verification, and cost accounting."
+  "describe thoroughly how speculative decoding and tensor parallelism affect throughput and latency on multi-GPU inference servers."
+  "give a comprehensive overview of how verifiable agent work is benchmarked: task sets, executed verifiers, acceptance contracts, and cost-per-accepted-outcome."
+)
+gi=0; prev=0; wave=0
+while [ "$summed" -lt "$TARGET" ] && [ "$wave" -lt "$MAX_WAVES" ]; do
+  wave=$((wave+1))
+  for j in $(seq 1 "$WAVE"); do
+    gi=$((gi+1))
+    p="${PROMPTS[$(( gi % ${#PROMPTS[@]} ))]}"
+    ( curl -s --max-time 180 -w '\n%{http_code}' "$BASE/chat/completions" "${AUTH[@]}" \
+        -d "$(jq -nc --arg m "$MODEL" --argjson n "$gi" --arg p "$p" '{model:$m,max_tokens:8000,messages:[{role:"user",content:("Heartbeat long-gen \($n): \($p) Be thorough.")}]}')" \
+        > "$WORK/long_$gi.out" 2>&1 ) &
+  done
+  wait
+  any_ok=0
+  for k in $(seq $((prev+1)) "$gi"); do
+    code=$(tail -1 "$WORK/long_$k.out" 2>/dev/null)
+    tok=$(sed '$d' "$WORK/long_$k.out" 2>/dev/null | jq -r '((.usage.prompt_tokens//0)+(.usage.completion_tokens//0)) // 0' 2>/dev/null || echo 0)
+    record "long-$k" "${code:-000}" "${tok:-0}"
+    [ "${code:-000}" = "200" ] && any_ok=1
+  done
+  prev=$gi
+  # if a whole wave came back quota-limited/failed, stop looping (don't hammer)
+  [ "$any_ok" -eq 0 ] && break
 done
 
 sleep 3

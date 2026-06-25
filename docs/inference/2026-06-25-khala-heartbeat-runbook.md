@@ -22,8 +22,12 @@ Updated: 2026-06-25
    - **content-array** — OpenCode-style `content: [{type:"text",…}]` shape (exercises
      the tool-compat path that was the first OpenCode blocker)
    - **streaming** (SSE, max_tokens 400 — verifies the stream path returns chunks)
-   - **long-gen concurrency burst** — `KHALA_HEARTBEAT_LONG_CONC` (default 6) parallel
-     max_tokens 8000 requests (the bulk of the ~50k + a small load probe)
+   - **long-gen burst, looped to a token target** — waves of `KHALA_HEARTBEAT_LONG_CONC`
+     (default 6) concurrent max_tokens 8000 requests, repeated until
+     `KHALA_HEARTBEAT_TOKEN_TARGET` (default 50000) tokens are served (capped at
+     `KHALA_HEARTBEAT_MAX_WAVES`, default 15). The model stops ~1.5k tokens/request
+     well under max_tokens, so the loop is what reliably reaches ~50k (typically
+     ~30 long-gens, ~63k served). Also the load probe (6-wide concurrency).
 4. Re-reads the counter and asserts it **moved** (proves the served-tokens recorder
    is alive), then writes a status line.
 
@@ -61,17 +65,21 @@ Heartbeat keys are **free-tier** `oa_agent_` keys stored in
 KHALA_HEARTBEAT_KEYS=oa_agent_xxx,oa_agent_yyy
 ```
 
-The free tier is **2,500,000 tokens/UTC-day per key** (`FREE_TIER_MAX_TOKENS_PER_DAY`,
-#6232). The heartbeat fires ~50k/run × ~96 runs/day ≈ **~4.8M tokens/day**, so **one
-key cannot cover 24/7** — it 402s after ~12h. Provision **≥2 keys** and the script
-round-robins them (≈2.4M/key/day, under quota). Mint keys with
-`POST /api/keys/free` (returns `oa_agent_…`), but note minting is **rate-limited to
-25/IP/day** — mint when you have headroom (or from another IP) and append to the pool.
-A funded key would avoid the quota cap but spends real balance (~$0.24/Mtok blended,
-so ~$1.15/day for the full heartbeat); free + rotated is the no-spend default.
+The free tier caps **both** tokens and requests per UTC-day per key:
+**2,500,000 tokens** (`FREE_TIER_MAX_TOKENS_PER_DAY`) and **2,000 requests**
+(`FREE_TIER_MAX_REQUESTS_PER_DAY`), #6232. A ~50k/run heartbeat is ~34 requests/run
+(≈30 long-gens + 4), so at ~96 runs/day that is ≈ **~5–6M tokens/day AND ~3.3k
+requests/day** — **one key cannot cover 24/7 on either quota** (it 402s after ~12h).
+Provision **≥2 keys** and the script round-robins them (≈2.5–3M tokens + ~1.7k req per
+key/day, under both caps). Mint keys with `POST /api/keys/free` (returns `oa_agent_…`),
+but note minting is **rate-limited to 25/IP/day** — mint when you have headroom (or from
+another IP) and append to the pool. A funded key avoids the free caps but spends real
+balance (~$0.24/Mtok blended, ~$1.4/day for the full heartbeat); free + rotated is the
+no-spend default.
 
-To lower the per-run load, set `KHALA_HEARTBEAT_LONG_CONC` smaller (e.g. 3 ≈ ~25k/run,
-which one key sustains 24/7) — but the owner asked for **≥~50k/run**, so the default is 6.
+To lower the per-run load, drop `KHALA_HEARTBEAT_TOKEN_TARGET` (e.g. `25000` ≈ ~17
+long-gens, which one key sustains 24/7 on both quotas) — but the owner asked for
+**≥~50k/run**, so the default target is `50000`.
 
 ## Schedule (every 15 minutes, no GitHub Actions)
 
