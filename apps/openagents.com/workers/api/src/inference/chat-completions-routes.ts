@@ -889,7 +889,9 @@ const toInferenceRequest = (
     model: _model,
     oa_component_channel: _oaComponentChannel,
     openagents: _openagents,
+    pylonRef: _pylonRef,
     stream: _stream,
+    targetPylonRef: _targetPylonRef,
     workflow_class: _workflowClassSnake,
     workflowClass: _workflowClass,
     ...rest

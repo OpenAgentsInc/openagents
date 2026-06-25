@@ -71,6 +71,8 @@ describe("pylon khala requester body", () => {
         workflowClass: "codex_agent_task",
       },
       stream: true,
+      targetPylonRef: "pylon.owner.codex",
+      workflowClass: "codex_agent_task",
     })
     expect((body.messages as Array<{ content: string; role: string }>)[0]).toEqual({
       content: "Fix the public failing test",
@@ -119,6 +121,8 @@ describe("pylon khala requester body", () => {
           },
         },
       },
+      targetPylonRef: "pylon.owner.codex",
+      workflowClass: "codex_agent_task",
     })
   })
 
@@ -168,6 +172,8 @@ describe("pylon khala requester API", () => {
         workflowClass: "codex_agent_task",
       },
       stream: true,
+      targetPylonRef: "pylon.owner.codex",
+      workflowClass: "codex_agent_task",
     })
     expect(result).toMatchObject({
       assignmentRef: "assignment.public.one",
@@ -332,6 +338,8 @@ describe("pylon khala requester API", () => {
         workflowClass: "codex_agent_task",
       },
       stream: true,
+      targetPylonRef: "pylon.owner.codex",
+      workflowClass: "codex_agent_task",
     })
     const body = JSON.parse(result.stdout) as Record<string, unknown>
     expect(body).toMatchObject({

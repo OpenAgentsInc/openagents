@@ -143,8 +143,23 @@ const targetPylonRefFromBody = (
       kind: 'rejected'
       rejection: CodingDelegationRejection
     }> => {
+  const bodyRecord =
+    body !== null && typeof body === 'object'
+      ? (body as Record<string, unknown>)
+      : undefined
+  const openagents =
+    bodyRecord?.openagents !== null &&
+    typeof bodyRecord?.openagents === 'object'
+      ? (bodyRecord.openagents as Record<string, unknown>)
+      : undefined
   const coding = rawCodingFromBody(body)
-  const rawValue = coding?.targetPylonRef ?? coding?.pylonRef
+  const rawValue =
+    coding?.targetPylonRef ??
+    coding?.pylonRef ??
+    openagents?.targetPylonRef ??
+    openagents?.pylonRef ??
+    bodyRecord?.targetPylonRef ??
+    bodyRecord?.pylonRef
 
   if (rawValue === undefined || rawValue === null || rawValue === '') {
     return { kind: 'none' }

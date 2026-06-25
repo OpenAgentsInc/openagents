@@ -443,6 +443,7 @@ describe('coding delegation default-on guard', () => {
             coding: { targetPylonRef: 'pylon.owner.codex' },
             workflowClass: 'codex_agent_task',
           },
+          targetPylonRef: 'pylon.owner.codex',
           temperature: 0,
           workflowClass: 'codex_agent_task',
           workflow_class: 'codex_agent_task',
@@ -459,6 +460,7 @@ describe('coding delegation default-on guard', () => {
     expect(captured[0]).not.toHaveProperty('workflow_class')
     expect(captured[0]).not.toHaveProperty('codebase')
     expect(captured[0]).not.toHaveProperty('oa_component_channel')
+    expect(captured[0]).not.toHaveProperty('targetPylonRef')
     expect(captured[0]).not.toHaveProperty('disable_coding_delegation')
   })
 })

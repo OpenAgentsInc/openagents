@@ -239,8 +239,12 @@ export function buildPylonKhalaChatRequestBody(
       },
     ],
     model: KHALA_REQUEST_MODEL,
+    ...(input.workflow === undefined ? {} : { workflowClass: input.workflow }),
     ...(openagents === undefined ? {} : { openagents }),
     stream: true,
+    ...(targetPylonRef === undefined || targetPylonRef === ""
+      ? {}
+      : { targetPylonRef }),
   }
   assertPublicSafe(body, "khala request body")
   return body

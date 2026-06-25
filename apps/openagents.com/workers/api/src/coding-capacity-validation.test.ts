@@ -532,6 +532,43 @@ describe('#6273 coding-capacity validation harness', () => {
     )
   })
 
+  test('AREA 5 — router/delegate: root typed target refs route to OWN Codex Pylon', async () => {
+    const pylonStore = makePylonStore([
+      registration({ ownerAgentUserId: 'agent_a', pylonRef: 'pylon.a.codex' }),
+    ])
+    const result = await delegateCodingWorkflow({
+      classification: {
+        confidence: 1,
+        evidenceRefs: ['evidence.coding_workflow.structured_body'],
+        workflowClass: 'codex_agent_task',
+      },
+      linkedAgents: [
+        {
+          agentUserId: 'agent_a',
+          credentialId: 'cred_a',
+          displayName: 'Agent A',
+          linkKind: 'credential_anchor',
+          openauthUserId: 'openauth-user-a',
+          tokenPrefix: tokenFor('agent_a').slice(0, 16),
+        },
+      ],
+      makeId: () => 'id1',
+      nowIso: NOW_ISO,
+      pylonStore,
+      rawBody: {
+        targetPylonRef: 'pylon.a.codex',
+        workflowClass: 'codex_agent_task',
+      },
+      requestId: 'chatcmpl_validate_root_target',
+    })
+
+    expect(result?.kind).toBe('assigned')
+    if (result?.kind !== 'assigned') {
+      throw new Error('expected root target assignment')
+    }
+    expect(result.assignment.pylonRef).toBe('pylon.a.codex')
+  })
+
   test('AREA 5b — router/delegate: NEVER routes to another account capacity', async () => {
     const pylonStore = makePylonStore([
       registration({ ownerAgentUserId: 'agent_b', pylonRef: 'pylon.b.codex' }),
