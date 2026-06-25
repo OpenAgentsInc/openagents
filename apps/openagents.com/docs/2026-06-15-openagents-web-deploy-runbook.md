@@ -28,29 +28,32 @@ The `--assets ../../apps/web/dist` argument is mandatory. A deploy can otherwise
 publish a Worker version whose `ASSETS` binding returns 404 for `/` and the
 hashed web bundle, even though Wrangler reports a successful Worker upload.
 
-## Desktop Build Gate
+## Deploy Gate Scope
 
-`openagents.com` deploys must not regress Autopilot Desktop. The canonical
-deploy check now runs the desktop deploy verifier before the Worker typecheck
-and selected web/API tests:
+`openagents.com` deploys must stay on the web/Worker critical path. The
+canonical deploy check runs the web and Worker deploy checks, package
+typechecks, and selected web/API tests:
 
 ```sh
 cd apps/openagents.com
 bun run check:deploy
 ```
 
-That transitively runs:
+Do not add interactive desktop launch smoke checks to this web deploy gate. The
+desktop verifier is a dedicated desktop release lane:
 
 ```sh
 cd ../..
 bun run verify:autopilot-desktop:deploy
 ```
 
-The desktop verifier runs the Foldkit regression tests, the Three/WebGL training
-scene smoke, the browser and Bun entrypoint builds, the full ElectroBun build,
-and a packaged-asset assertion for the shared `three-effect` Moksha GLB used by
-the desktop network scene. Do not deploy if this gate fails; fix the desktop
-failure first.
+The desktop verifier runs the Foldkit regression tests, the Three/WebGL
+training scene smoke, the browser and Bun entrypoint builds, the full ElectroBun
+build, a packaged-asset assertion for the shared `three-effect` Moksha GLB used
+by the desktop network scene, and the bounded Verse launch smoke. Run it for
+desktop release validation or changes that intentionally touch shared desktop
+behavior. Do not block unrelated Worker/web deploys on an interactive desktop
+smoke result.
 
 ## Keep shared github-dependency pins consistent across workspaces
 
