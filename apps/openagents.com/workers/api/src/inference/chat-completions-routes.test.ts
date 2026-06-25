@@ -1231,6 +1231,135 @@ describe('POST /v1/chat/completions', () => {
     })
   })
 
+  // #6298 follow-up: env-configured internal/ops account auto-classifies as
+  // `demand_kind=internal` WITHOUT any request header, for BOTH the ledger
+  // (recorder) AND the trace (emitter), so untagged dogfood (e.g. the long-
+  // running Terminal-Bench run) never pollutes the external corpus.
+  test('internal-account traffic with NO demand header classifies internal for BOTH ledger and trace (#6298)', async () => {
+    const recorded: Array<{ requestAttribution?: unknown }> = []
+    const emitted: Array<{ requestAttribution?: unknown }> = []
+
+    await run(
+      handleChatCompletions(
+        // NO demand headers at all.
+        chatRequest({ ...helloBody, oa_emit_trace: true }),
+        baseDeps({
+          internalAccountRefs: new Set(['agent:test-user']),
+          recordTokensServed: input =>
+            Effect.sync(() => {
+              recorded.push({ requestAttribution: input.requestAttribution })
+            }),
+          traceEmit: {
+            enabled: true,
+            emit: async input => {
+              emitted.push({ requestAttribution: input.requestAttribution })
+              return { emitted: true }
+            },
+          },
+        }),
+      ),
+    )
+
+    // Ledger attribution: header-less internal account => internal /
+    // internal_account (NOT unlabeled).
+    expect(recorded).toHaveLength(1)
+    expect(recorded[0]?.requestAttribution).toEqual({
+      demandKind: 'internal',
+      demandSource: 'internal_account',
+    })
+    // Trace attribution: the SAME resolved value the recorder got.
+    expect(emitted).toHaveLength(1)
+    expect(emitted[0]?.requestAttribution).toEqual({
+      demandKind: 'internal',
+      demandSource: 'internal_account',
+    })
+  })
+
+  // #6298 follow-up: the account rule must NEVER downgrade a specific internal
+  // source. An internal-account request that DID tag harbor_terminal_bench keeps
+  // that specific source (not the generic internal_account marker).
+  test('internal-account traffic WITH a specific internal-source header keeps that source (#6298)', async () => {
+    const recorded: Array<{ requestAttribution?: unknown }> = []
+
+    await run(
+      handleChatCompletions(
+        chatRequest(helloBody, {
+          headers: {
+            [INFERENCE_DEMAND_KIND_HEADER]: 'internal',
+            [INFERENCE_DEMAND_SOURCE_HEADER]: 'harbor_terminal_bench',
+          },
+        }),
+        baseDeps({
+          internalAccountRefs: new Set(['agent:test-user']),
+          recordTokensServed: input =>
+            Effect.sync(() => {
+              recorded.push({ requestAttribution: input.requestAttribution })
+            }),
+        }),
+      ),
+    )
+
+    expect(recorded).toHaveLength(1)
+    expect(recorded[0]?.requestAttribution).toEqual({
+      demandKind: 'internal',
+      demandSource: 'harbor_terminal_bench',
+    })
+  })
+
+  // #6298 follow-up: a NON-allowlisted account with no header is unaffected — it
+  // still resolves the header-less default (unlabeled), so real external users
+  // keep landing in the external/unlabeled corpus.
+  test('non-allowlisted account with no demand header still resolves unlabeled (#6298)', async () => {
+    const recorded: Array<{ requestAttribution?: unknown }> = []
+
+    await run(
+      handleChatCompletions(
+        chatRequest(helloBody, {
+          headers: { [INFERENCE_CLIENT_HEADER]: 'opencode' },
+        }),
+        baseDeps({
+          // Allowlist holds a DIFFERENT account; the caller (`agent:test-user`)
+          // is external.
+          internalAccountRefs: new Set(['agent:some-other-ops-account']),
+          recordTokensServed: input =>
+            Effect.sync(() => {
+              recorded.push({ requestAttribution: input.requestAttribution })
+            }),
+        }),
+      ),
+    )
+
+    expect(recorded).toHaveLength(1)
+    expect(recorded[0]?.requestAttribution).toEqual({
+      demandClient: 'opencode',
+      demandKind: 'unlabeled',
+    })
+  })
+
+  // #6298 follow-up: an EMPTY allowlist is a pure no-op — even the ops account
+  // resolves exactly as the header-derived value would (fail-soft).
+  test('empty internal-account allowlist is a no-op (#6298)', async () => {
+    const recorded: Array<{ requestAttribution?: unknown }> = []
+
+    await run(
+      handleChatCompletions(
+        chatRequest(helloBody),
+        baseDeps({
+          internalAccountRefs: new Set<string>(),
+          recordTokensServed: input =>
+            Effect.sync(() => {
+              recorded.push({ requestAttribution: input.requestAttribution })
+            }),
+        }),
+      ),
+    )
+
+    expect(recorded).toHaveLength(1)
+    // No headers + empty allowlist => no attribution at all (recorder records
+    // `undefined`, the ledger writes the legacy `unlabeled` default).
+    expect(recorded[0]?.requestAttribution).toBeUndefined()
+  })
+
   test('records served tokens for a completed streaming completion (issue #6227)', async () => {
     const recorded: Array<{ streamed: boolean; usage: InferenceUsage }> = []
     const response = await run(

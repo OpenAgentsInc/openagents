@@ -502,6 +502,7 @@ import {
   pylonFabricHttpTransportConfigFromEnv,
   pylonGatewayAdmissionFromEnv,
 } from './inference/pylon-fabric-http-transport'
+import { parseInternalAccountRefs } from './inference/inference-internal-account'
 import { handlePylonFabricSmoke } from './inference/pylon-fabric-smoke-routes'
 import { handleQuote } from './inference/quote-routes'
 import {
@@ -11051,6 +11052,13 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
               ),
           },
         ),
+        // INTERNAL/OPS ACCOUNT DEMAND ALLOWLIST (#6298 follow-up). Parsed once
+        // from the worker var; traffic from a listed account is auto-classified
+        // `demand_kind=internal` (header-independent), keeping our own dogfood
+        // out of the external trace corpus + demand ledger. Empty => no-op.
+        internalAccountRefs: parseInternalAccountRefs(
+          env.INFERENCE_INTERNAL_ACCOUNT_REFS,
+        ),
         codingDelegation: {
           agentStore: makeD1AgentRegistrationStore(openAgentsDatabase(env)),
           pylonStore: makeD1PylonApiStore(openAgentsDatabase(env)),
@@ -11414,6 +11422,11 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
                   ).catch(() => undefined),
                 ),
             },
+          ),
+          // Same internal/ops account demand allowlist on the MPP path (#6298
+          // follow-up), so the resolver stays uniform across both gateways.
+          internalAccountRefs: parseInternalAccountRefs(
+            env.INFERENCE_INTERNAL_ACCOUNT_REFS,
           ),
           lanePlan: makeKhalaBackedAdapterPlan(laneArming.khalaBacking),
           laneArming,

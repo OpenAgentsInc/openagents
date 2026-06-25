@@ -167,6 +167,7 @@ import {
   type InferenceStreamSource,
   type InferenceToolCallDelta,
 } from './provider-adapter'
+import { applyInternalAccountAttribution } from './inference-internal-account'
 import {
   type ServedTokensRecorder,
   type ServedTokensRequestAttribution,
@@ -441,6 +442,19 @@ export type ChatCompletionsDeps = Readonly<{
   // path is byte-for-byte unchanged). The recorder never throws and never fails
   // the customer's already-delivered completion.
   recordTokensServed?: ServedTokensRecorder | undefined
+  // INTERNAL/OPS ACCOUNT DEMAND ALLOWLIST (#6298 follow-up). The set of account
+  // refs (parsed once from `INFERENCE_INTERNAL_ACCOUNT_REFS`) whose traffic is
+  // auto-classified `demand_kind=internal` REGARDLESS of request headers, so our
+  // own dogfood (heartbeat / canary / Terminal-Bench, all on the ops key) never
+  // pollutes the external trace corpus or the demand ledger — without each
+  // caller having to send a header. The rule refines the SINGLE resolved
+  // `requestAttribution` value that feeds BOTH the served-tokens recorder
+  // (`token_usage_events`) AND the trace emitter (`agent_traces.demand_kind`),
+  // so they stay consistent. Precedence: a specific internal-source header
+  // (e.g. `harbor_terminal_bench`) is preserved; only a header-less / non-
+  // internal internal-account request defaults to `internal_account`. A non-
+  // internal account is unaffected. Default empty => pure no-op (fail-soft).
+  internalAccountRefs?: ReadonlySet<string> | undefined
   // Resolves the account's funding kind (card | bitcoin) for the metering hook.
   // Defaults to card (no Bitcoin discount).
   resolveFundingKind?: InferenceFundingResolver
@@ -2054,7 +2068,7 @@ export const handleChatCompletions = (
     // Messages into the same InferenceRequest and reuses the registry +
     // metering hook below. Out of scope for #5476.
 
-    const requestAttribution = requestAttributionFromHeaders(request.headers)
+    const headerAttribution = requestAttributionFromHeaders(request.headers)
     const session = yield* Effect.promise(() => deps.authenticate(request))
     if (session === undefined) {
       const headers = new Headers({ 'www-authenticate': 'Bearer' })
@@ -2063,6 +2077,23 @@ export const handleChatCompletions = (
         { headers, status: 401 },
       )
     }
+
+    // INTERNAL/OPS ACCOUNT DEMAND RULE (#6298 follow-up). Refine the single
+    // header-derived attribution with the env-configured internal-account
+    // allowlist NOW that the account is authenticated. Traffic from an
+    // internal/ops account is forced to `demand_kind=internal` (defaulting the
+    // source to `internal_account` when no specific internal-source header was
+    // sent, never downgrading a specific one like `harbor_terminal_bench`), so
+    // untagged dogfood never lands in the external/`unlabeled` corpus or the
+    // demand ledger. This ONE value feeds BOTH the served-tokens recorder
+    // (`token_usage_events`) and the trace emitter (`agent_traces.demand_kind`),
+    // so they classify identically. Empty allowlist / non-internal account =>
+    // no-op (external users resolve exactly as before).
+    const requestAttribution = applyInternalAccountAttribution(
+      headerAttribution,
+      session.accountRef,
+      deps.internalAccountRefs ?? new Set<string>(),
+    )
 
     // FAIR-SHARE GATE (#5486). Keyed to the authenticated account so one customer
     // cannot starve the shared Vertex quota / Fireworks limits. Open (no-op) when

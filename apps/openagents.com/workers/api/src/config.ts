@@ -105,6 +105,19 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // keys still 402. Granting is an owner/admin action; no owner id/token is ever
   // logged.
   INFERENCE_OPERATOR_EXEMPTION_ENABLED?: string | undefined
+  // Internal/ops account demand-attribution allowlist (#6298 follow-up). A
+  // comma-separated list of account refs (e.g. `agent:user_...`) whose inference
+  // traffic is auto-classified `demand_kind=internal` REGARDLESS of request
+  // headers, so our own dogfood (heartbeat / canary / Terminal-Bench, all on one
+  // ops key) never pollutes the external trace corpus (`agent_traces`) or the
+  // demand ledger (`token_usage_events`) — without each caller having to send a
+  // header. Parsed once into a set; a header-less request from a listed account
+  // defaults `demand_source` to `internal_account`, while a specific internal-
+  // source header (e.g. `harbor_terminal_bench`) is preserved (never
+  // downgraded). Non-listed accounts are unaffected. Unset/blank => empty set =>
+  // pure no-op (everything resolves exactly as before). The ops account ref is
+  // NOT hardcoded in source; it lives in the worker `vars`.
+  INFERENCE_INTERNAL_ACCOUNT_REFS?: string | undefined
   // Khala FREE API MODE feature flag (issue #6228, EPIC #5474). Default OFF: the
   // self-serve free-key mint endpoint (`POST /api/keys/free`) is inert and the
   // `/v1/chat/completions` balance gate is unchanged (a zero-balance key 402s),

@@ -48,6 +48,16 @@
     // (#6295, INFERENCE_CONFIDENTIAL_COMPUTE_ENABLED). Public sharing is opt-in only.
     "KHALA_CHAT_TRACE_EMIT_ENABLED": "true",
     "KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT": "true",
+    // Internal/ops account demand-attribution allowlist (#6298 follow-up).
+    // Comma-separated account refs whose inference traffic is auto-classified
+    // `demand_kind=internal` REGARDLESS of request headers, so our own dogfood
+    // (heartbeat / canary / Terminal-Bench, all on the ops key) never pollutes
+    // the external trace corpus (`agent_traces`) or the demand ledger
+    // (`token_usage_events`) — without each caller sending a header. A header-
+    // less request from a listed account defaults `demand_source` to
+    // `internal_account`; a specific internal-source header (e.g.
+    // `harbor_terminal_bench`) is preserved. Empty/unset => no-op.
+    "INFERENCE_INTERNAL_ACCOUNT_REFS": "agent:user_7a6d6dab-b198-4ee8-b7bf-2e00385f9139",
     // Owner-controlled inference balance-gate exemption (#6180). Arms the gate
     // ONLY; it is a no-op until a verified owner key is granted into
     // `inference_operator_exemption`. Own-infra/non-premium lanes only; exempt
@@ -301,6 +311,9 @@
         "ARTANIS_SCHEDULED_RUNNER_ENABLED": "false",
         "INFERENCE_GATEWAY_ENABLED": "true",
         "INFERENCE_FREE_TIER_ENABLED": "true",
+        // Internal/ops account demand allowlist (#6298 follow-up) — staging too,
+        // so dogfood traffic classifies `demand_kind=internal` consistently.
+        "INFERENCE_INTERNAL_ACCOUNT_REFS": "agent:user_7a6d6dab-b198-4ee8-b7bf-2e00385f9139",
         // Durable-stream Rank-1 resumable inference (#6058) — LIVE on staging too
         // (the DO binding + migration are added to this env below).
         "INFERENCE_DURABLE_STREAM_ENABLED": "true",
