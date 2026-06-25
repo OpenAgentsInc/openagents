@@ -411,6 +411,10 @@ import { makeInferenceReferralRoutes } from './inference/inference-referral-rout
 import { makeLedgerMeteringHook } from './inference/metering-hook'
 import { makeD1ServedTokensRecorder } from './inference/served-tokens-recorder'
 import {
+  buildKhalaTokensServedDelta,
+  publishKhalaTokensServedDelta,
+} from './inference/khala-tokens-served-sync'
+import {
   dispatchWithOverflow,
   HYDRALISK_ADAPTER_ID,
   HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
@@ -10696,7 +10700,18 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         // hook short-circuits, but the tokens were still served and must count).
         // Idempotent per request; never fails the completion. INERT regardless —
         // only reached when the gateway is enabled.
-        recordTokensServed: makeD1ServedTokensRecorder(openAgentsDatabase(env)),
+        recordTokensServed: makeD1ServedTokensRecorder(openAgentsDatabase(env), {
+          // Live-counter push (#6231): on a REAL new served-tokens row, push the
+          // public-safe delta onto the tokens-served sync scope so the homepage
+          // odometer rolls up instantly. Fail-soft: never breaks the completion.
+          publishDelta: delta =>
+            Effect.promise(() =>
+              publishKhalaTokensServedDelta(
+                env,
+                buildKhalaTokensServedDelta(delta),
+              ).catch(() => undefined),
+            ),
+        }),
         readAvailableMsat: async accountRef => {
           const balance = await readAgentBalance(
             openAgentsDatabase(env),
@@ -10949,6 +10964,17 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           // the public counter sums, so x402/MPP traffic counts too.
           recordTokensServed: makeD1ServedTokensRecorder(
             openAgentsDatabase(env),
+            {
+              // Live-counter push (#6231): MPP traffic rolls the homepage
+              // odometer up instantly too. Fail-soft.
+              publishDelta: delta =>
+                Effect.promise(() =>
+                  publishKhalaTokensServedDelta(
+                    env,
+                    buildKhalaTokensServedDelta(delta),
+                  ).catch(() => undefined),
+                ),
+            },
           ),
           lanePlan: makeKhalaBackedAdapterPlan(laneArming.khalaBacking),
           laneArming,

@@ -135,6 +135,13 @@ import {
   settledFeedFailed,
   settledFeedOpen,
 } from './settled-feed'
+import {
+  applyKhalaTokensServedPatch,
+  khalaTokensServedStreamAfterCursorGap,
+  khalaTokensServedStreamClosed,
+  khalaTokensServedStreamFailed,
+  khalaTokensServedStreamOpen,
+} from './khala-tokens-served-feed'
 
 type UpdateReturn = readonly [Model, ReadonlyArray<Command.Command<Message>>]
 const withUpdateReturn = M.withReturnType<UpdateReturn>()
@@ -1680,6 +1687,41 @@ export const update = (model: Model, message: Message): UpdateReturn =>
       ReceivedSettledFeedCursorGap: ({ gap }) => [
         evo(model, {
           settledFeed: feed => settledFeedAfterCursorGap(feed, gap),
+        }),
+        [],
+      ],
+      // Live "Khala Tokens Served" delta stream (#6231).
+      OpenedKhalaTokensServedStream: () => [
+        evo(model, { khalaTokensServedStream: khalaTokensServedStreamOpen }),
+        [],
+      ],
+      ClosedKhalaTokensServedStream: () => [
+        evo(model, { khalaTokensServedStream: khalaTokensServedStreamClosed }),
+        [],
+      ],
+      FailedKhalaTokensServedStream: () => [
+        evo(model, { khalaTokensServedStream: khalaTokensServedStreamFailed }),
+        [],
+      ],
+      ReceivedKhalaTokensServedPatch: ({ patch }) => {
+        const applied = applyKhalaTokensServedPatch({
+          counter: model.publicKhalaTokensServed,
+          patch,
+          stream: model.khalaTokensServedStream,
+        })
+
+        return [
+          evo(model, {
+            publicKhalaTokensServed: () => applied.counter,
+            khalaTokensServedStream: () => applied.stream,
+          }),
+          [],
+        ]
+      },
+      ReceivedKhalaTokensServedCursorGap: ({ gap }) => [
+        evo(model, {
+          khalaTokensServedStream: stream =>
+            khalaTokensServedStreamAfterCursorGap(stream, gap),
         }),
         [],
       ],

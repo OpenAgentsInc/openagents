@@ -134,6 +134,21 @@ export const buildServedTokensIngestBody = (
   usageTruth: 'exact' as const,
 })
 
+// Public-safe live-counter publish hook (openagents #6231). Called fire-and-
+// forget ONLY when a served completion produced a REAL new ledger row (a fresh
+// insert, never a duplicate/no-op or a failed completion), so the homepage
+// odometer rolls up instantly without polling a per-second D1 SUM. It receives a
+// bare integer delta + the recorder's stable per-request event ref + a
+// timestamp; never any per-user/team/provider/model material. It must never
+// throw — the counter is a projection, never the source of the served answer.
+export type ServedTokensDeltaPublisher = (
+  input: Readonly<{
+    eventRef: string
+    observedAt: string
+    tokensServedDelta: number
+  }>,
+) => Effect.Effect<void>
+
 // Build the served-tokens recorder over a token usage ledger. The recorder
 // writes one canonical ledger row per served completion, idempotently, and never
 // throws: any validation/persistence failure is logged public-safe and swallowed
@@ -142,6 +157,9 @@ export const makeServedTokensRecorder = (
   deps: Readonly<{
     ledger: TokenUsageLedgerShape
     nowIso?: () => string
+    // Optional live-counter publisher (#6231). Wired in production; omitted in
+    // tests that only assert ledger behavior.
+    publishDelta?: ServedTokensDeltaPublisher
   }>,
 ): ServedTokensRecorder => {
   const nowIso = deps.nowIso ?? currentIsoTimestamp
@@ -159,10 +177,11 @@ export const makeServedTokensRecorder = (
         return
       }
 
+      const observedAt = nowIso()
       const body = buildServedTokensIngestBody({
         accountRef: input.accountRef,
         adapterId: input.adapterId,
-        observedAt: nowIso(),
+        observedAt,
         requestId: input.requestId,
         requestedModel: input.requestedModel,
         servedModel: input.servedModel,
@@ -197,6 +216,21 @@ export const makeServedTokensRecorder = (
                 streamed: input.streamed,
                 totalTokens: input.usage.totalTokens,
               }),
+            ).pipe(
+              // Live-counter push (#6231): publish the delta ONLY when this was a
+              // REAL new ledger row (a fresh insert). A duplicate/no-op insert
+              // (`inserted:false`) already counted, so re-publishing would double
+              // count. The publisher is fail-soft (it swallows its own errors),
+              // so it can never break the customer's completion.
+              Effect.flatMap(() =>
+                deps.publishDelta === undefined || !result.inserted
+                  ? Effect.void
+                  : deps.publishDelta({
+                      eventRef: servedTokensEventId(input.requestId),
+                      observedAt,
+                      tokensServedDelta: inputTokens + outputTokens,
+                    }),
+              ),
             ),
         }),
       )
@@ -204,11 +238,20 @@ export const makeServedTokensRecorder = (
 }
 
 // Build the production (D1-backed) served-tokens recorder for the Worker wiring.
+// `env` carries the sync bindings (`OPENAGENTS_DB` + `SYNC_ROOM`) used to push
+// the live tokens-served delta (#6231); when omitted (legacy callers), the
+// recorder still records the ledger row but performs no live push.
 export const makeD1ServedTokensRecorder = (
   db: D1Database,
-  nowIso?: () => string,
+  options: Readonly<{
+    nowIso?: () => string
+    publishDelta?: ServedTokensDeltaPublisher
+  }> = {},
 ): ServedTokensRecorder =>
   makeServedTokensRecorder({
     ledger: makeD1TokenUsageLedger(db),
-    ...(nowIso === undefined ? {} : { nowIso }),
+    ...(options.nowIso === undefined ? {} : { nowIso: options.nowIso }),
+    ...(options.publishDelta === undefined
+      ? {}
+      : { publishDelta: options.publishDelta }),
   })

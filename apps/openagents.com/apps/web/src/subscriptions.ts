@@ -33,6 +33,11 @@ import {
   ReceivedAutopilotOnboardingStreamHandshake,
   ReceivedSettledFeedCursorGap,
   ReceivedSettledFeedPatch,
+  ClosedKhalaTokensServedStream,
+  FailedKhalaTokensServedStream,
+  OpenedKhalaTokensServedStream,
+  ReceivedKhalaTokensServedCursorGap,
+  ReceivedKhalaTokensServedPatch,
   RequestedPollKhalaTokensServed,
   RequestedPollKhalaTokensServedHistory,
   SucceededAutopilotOnboardingTurn,
@@ -54,6 +59,7 @@ import {
 } from './page/khala-chat/flow'
 import { newOnboardingSessionId } from './page/loggedOut/update'
 import { SETTLED_FEED_SCOPE } from './page/loggedOut/settled-feed'
+import { KHALA_TOKENS_SERVED_SCOPE } from './page/loggedOut/khala-tokens-served-feed'
 import {
   syncAgentRunScope,
   syncTeamScope,
@@ -269,17 +275,134 @@ export const settledFeedDependenciesForModel = (
   }
 }
 
-// "Khala Tokens Served" homepage counter (#6227). v1 realtime = poll: while the
-// logged-out homepage / stats surface is mounted, tick every few seconds and
-// re-fetch the public aggregate so the odometer count-up reads live. Reuses the
-// exact poll shape as autopilotRunPoll (Stream.tick + Stream.when); no Durable
-// Object / WebSocket for this pass (a true-push v2 is a noted follow-up).
-// Scalar "tokens served" counter: poll fast so the number feels live. The server
-// caps the underlying D1 SUM to ≤1/sec via a 1s in-isolate cache, so a 1s client
-// poll stays cheap regardless of how many viewers are watching.
-const KHALA_TOKENS_SERVED_POLL_INTERVAL_SECONDS = 1
+// "Khala Tokens Served" homepage counter (#6231). PUSH is now the primary path:
+// the counter is seeded ONCE from the scalar endpoint on route entry, then rolls
+// up instantly as each served completion pushes a public-safe delta over the
+// `khalaTokensServedStream` WebSocket below. The poll is no longer the live path;
+// it is a SLOW (~30s) reconcile/fallback so the counter self-heals if the socket
+// is down or a delta was missed (the scalar SUM is authoritative). This drops
+// the per-second client poll and the per-second D1 SUM entirely.
+const KHALA_TOKENS_SERVED_POLL_INTERVAL_SECONDS = 30
 // Per-day history bars change slowly (daily buckets) — poll them far less often.
 const KHALA_TOKENS_SERVED_HISTORY_POLL_INTERVAL_SECONDS = 15
+
+// Live "Khala Tokens Served" delta stream (#6231). The logged-out homepage /
+// stats / khala surfaces subscribe to ONE public, read-only sync room scope so
+// the counter rolls up live as served completions stream. Reuses the exact same
+// WebSocket + cursor-replay plumbing as the settled feed; the slow reconcile
+// poll above is the graceful fallback when the socket is unavailable.
+const inactiveKhalaTokensServedStream: {
+  readonly cursor: number
+  readonly isActive: boolean
+  readonly scope: string
+  readonly streamHref: string
+} = {
+  cursor: 0,
+  isActive: false,
+  scope: '',
+  streamHref: '',
+}
+
+type KhalaTokensServedStreamDependencies = typeof inactiveKhalaTokensServedStream
+
+export const khalaTokensServedStreamDependenciesForModel = (
+  model: Model,
+): KhalaTokensServedStreamDependencies => {
+  if (
+    model._tag !== 'LoggedOut' ||
+    !(settledFeedRouteIsLive(model) || model.route._tag === 'Khala')
+  ) {
+    return inactiveKhalaTokensServedStream
+  }
+
+  const cursor = model.khalaTokensServedStream.cursor
+
+  return {
+    cursor,
+    isActive: true,
+    scope: KHALA_TOKENS_SERVED_SCOPE,
+    streamHref: syncStreamHref(KHALA_TOKENS_SERVED_SCOPE, cursor),
+  }
+}
+
+const khalaTokensServedStream = (
+  dependencies: KhalaTokensServedStreamDependencies,
+): Stream.Stream<Message> => {
+  if (!dependencies.isActive) {
+    return Stream.empty
+  }
+
+  const { streamHref } = dependencies
+
+  return Stream.callback<Message>(queue =>
+    Effect.acquireRelease(
+      Effect.sync(() => {
+        const socket = new WebSocket(webSocketUrl(streamHref))
+        const resource = { released: false, socket }
+        socket.addEventListener('open', () => {
+          if (resource.released) {
+            socket.close()
+            return
+          }
+
+          Queue.offerUnsafe(
+            queue,
+            GotLoggedOutMessage({ message: OpenedKhalaTokensServedStream() }),
+          )
+        })
+        socket.addEventListener('message', event => {
+          const decoded = syncMessageFromPayload(String(event.data))
+
+          Queue.offerUnsafe(
+            queue,
+            GotLoggedOutMessage({
+              message:
+                decoded._tag === 'ReceivedSyncPatch'
+                  ? ReceivedKhalaTokensServedPatch({ patch: decoded.patch })
+                  : decoded._tag === 'ReceivedSyncCursorGap'
+                    ? ReceivedKhalaTokensServedCursorGap({ gap: decoded.gap })
+                    : FailedKhalaTokensServedStream({ error: decoded.error }),
+            }),
+          )
+        })
+        socket.addEventListener('close', () => {
+          if (resource.released) {
+            return
+          }
+
+          Queue.offerUnsafe(
+            queue,
+            GotLoggedOutMessage({ message: ClosedKhalaTokensServedStream() }),
+          )
+        })
+        socket.addEventListener('error', () => {
+          if (resource.released) {
+            return
+          }
+
+          Queue.offerUnsafe(
+            queue,
+            GotLoggedOutMessage({
+              message: FailedKhalaTokensServedStream({
+                error: 'Khala tokens served stream connection failed.',
+              }),
+            }),
+          )
+        })
+
+        return resource
+      }),
+      resource =>
+        Effect.sync(() => {
+          resource.released = true
+
+          if (resource.socket.readyState === WebSocket.OPEN) {
+            resource.socket.close()
+          }
+        }),
+    ).pipe(Effect.flatMap(() => Effect.never)),
+  )
+}
 
 const inactiveKhalaTokensServedPoll = { isActive: false }
 
@@ -1103,6 +1226,22 @@ export const subscriptions = Subscription.make<Model, Message>()(entry => ({
       keepAliveEquivalence: (left, right) =>
         left.isActive === right.isActive && left.scope === right.scope,
       dependenciesToStream: settledFeedStream,
+    },
+  ),
+  // Live "Khala Tokens Served" delta stream (#6231): the primary realtime path
+  // for the counter. The poll below is now just a slow reconcile/fallback.
+  khalaTokensServedStream: entry(
+    {
+      cursor: S.Number,
+      isActive: S.Boolean,
+      scope: S.String,
+      streamHref: S.String,
+    },
+    {
+      modelToDependencies: khalaTokensServedStreamDependenciesForModel,
+      keepAliveEquivalence: (left, right) =>
+        left.isActive === right.isActive && left.scope === right.scope,
+      dependenciesToStream: khalaTokensServedStream,
     },
   ),
   khalaTokensServedPoll: entry(

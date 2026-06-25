@@ -304,6 +304,29 @@ export const ReceivedSettledFeedPatch = m('ReceivedSettledFeedPatch', {
 export const ReceivedSettledFeedCursorGap = m('ReceivedSettledFeedCursorGap', {
   gap: CursorGap,
 })
+// Live "Khala Tokens Served" delta stream (openagents #6231). The homepage
+// subscribes to a public sync scope and rolls the odometer up instantly as each
+// served completion pushes a public-safe delta — no per-second poll/SUM.
+export const OpenedKhalaTokensServedStream = m('OpenedKhalaTokensServedStream')
+export const ClosedKhalaTokensServedStream = m('ClosedKhalaTokensServedStream')
+export const FailedKhalaTokensServedStream = m(
+  'FailedKhalaTokensServedStream',
+  {
+    error: S.String,
+  },
+)
+export const ReceivedKhalaTokensServedPatch = m(
+  'ReceivedKhalaTokensServedPatch',
+  {
+    patch: SyncPatch,
+  },
+)
+export const ReceivedKhalaTokensServedCursorGap = m(
+  'ReceivedKhalaTokensServedCursorGap',
+  {
+    gap: CursorGap,
+  },
+)
 
 // /autopilot onboarding conversation (#6129).
 export const UpdatedAutopilotOnboardingComposer = m(
@@ -489,6 +512,11 @@ export const Message = S.Union([
   FailedSettledFeedStream,
   ReceivedSettledFeedPatch,
   ReceivedSettledFeedCursorGap,
+  OpenedKhalaTokensServedStream,
+  ClosedKhalaTokensServedStream,
+  FailedKhalaTokensServedStream,
+  ReceivedKhalaTokensServedPatch,
+  ReceivedKhalaTokensServedCursorGap,
   UpdatedAutopilotOnboardingComposer,
   SubmittedAutopilotOnboardingTurn,
   OpenedAutopilotOnboardingStream,

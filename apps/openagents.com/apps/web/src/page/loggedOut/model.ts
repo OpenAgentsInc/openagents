@@ -1330,6 +1330,30 @@ export const initSettledFeedModel = (): SettledFeedModel =>
     totalSettledSats: 0,
   })
 
+// Live "Khala Tokens Served" delta stream (#6231). The homepage/stats counter
+// is seeded ONCE from the scalar endpoint, then rolls up instantly as each
+// served completion pushes a public-safe `{ tokensServedDelta, observedAt }`
+// patch onto a public, read-only sync room scope — no per-second polling/SUM.
+// `cursor` tracks the last applied seq so a reconnect replays missed deltas;
+// `appliedEventRefs` de-dupes replayed deltas so a reconnect/cursor-replay never
+// double-counts. When the socket is unavailable the slow reconcile poll keeps
+// the counter honest. This slice is purely additive live transport state; the
+// running total itself lives on `publicKhalaTokensServed`.
+export const KhalaTokensServedStreamModel = ts('LoggedOutKhalaTokensServedStream', {
+  connection: SettledFeedConnection,
+  cursor: S.Number,
+  appliedEventRefs: S.Array(S.String),
+})
+export type KhalaTokensServedStreamModel =
+  typeof KhalaTokensServedStreamModel.Type
+
+export const initKhalaTokensServedStreamModel = (): KhalaTokensServedStreamModel =>
+  KhalaTokensServedStreamModel({
+    connection: 'idle',
+    cursor: 0,
+    appliedEventRefs: [],
+  })
+
 export const Model = ts('LoggedOut', {
   route: LoggedOutRoute,
   onboarding: OnboardingModel,
@@ -1347,6 +1371,7 @@ export const Model = ts('LoggedOut', {
   publicPylonStats: PublicPylonStatsModel,
   publicKhalaTokensServed: PublicKhalaTokensServedModel,
   publicKhalaTokensServedHistory: PublicKhalaTokensServedHistoryModel,
+  khalaTokensServedStream: KhalaTokensServedStreamModel,
   publicForumLaunchStatus: PublicForumLaunchStatusModel,
   publicForumTipLeaderboards: PublicForumTipLeaderboardsModel,
   publicProductPromises: PublicProductPromisesModel,
@@ -1440,6 +1465,7 @@ export const init = (
           ? LoadingPublicTrainingRuns({ runId: route.runId })
           : IdlePublicTrainingRuns(),
     settledFeed: initSettledFeedModel(),
+    khalaTokensServedStream: initKhalaTokensServedStreamModel(),
     shareProjection:
       route._tag === 'Share'
         ? LoadingShareProjection({ shareId: route.shareId })

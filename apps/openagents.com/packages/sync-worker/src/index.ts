@@ -635,6 +635,19 @@ export const publicSettledFeedScope = (
   feedId: string = PUBLIC_SETTLED_FEED_ID,
 ): string => `public-settled-feed:${feedId}`
 
+// Single public, read-only firehose scope for the live "Khala Tokens Served"
+// counter (openagents #6231). Each served Khala completion publishes ONE
+// public-safe `{ tokensServedDelta, observedAt }` patch onto this scope so the
+// homepage / stats odometer rolls up instantly instead of polling a per-second
+// D1 SUM. The id is a stable network key (not a per-request id) so every public
+// surface subscribes to one room. Public-safe payloads only — a bare integer
+// delta + timestamp, never per-user/team/provider/secret material.
+export const PUBLIC_KHALA_TOKENS_SERVED_ID = 'network'
+
+export const publicKhalaTokensServedScope = (
+  feedId: string = PUBLIC_KHALA_TOKENS_SERVED_ID,
+): string => `public-khala-tokens-served:${feedId}`
+
 export const makeD1SyncOutboxStore = (
   db: D1Database,
   runtime: SyncWorkerRuntime = systemSyncWorkerRuntime,

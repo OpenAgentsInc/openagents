@@ -286,6 +286,141 @@ describe('served-tokens-recorder', () => {
     ).resolves.toBeUndefined()
   })
 
+  // Live-counter PUSH (#6231): the recorder publishes ONE public-safe delta per
+  // REAL new ledger row, and only then. ----------------------------------------
+
+  type PublishedDelta = Readonly<{
+    eventRef: string
+    observedAt: string
+    tokensServedDelta: number
+  }>
+
+  const recordWithPublisher = (
+    rows: Array<Row>,
+    published: Array<PublishedDelta>,
+  ) => {
+    const ledger = makeD1TokenUsageLedger(makeFakeDb(rows))
+    const recorder = makeServedTokensRecorder({
+      ledger,
+      nowIso: fixedNow,
+      publishDelta: delta =>
+        Effect.sync(() => {
+          published.push(delta)
+        }),
+    })
+    return { ledger, recorder }
+  }
+
+  test('a real served completion publishes exactly one public-safe delta', async () => {
+    const rows: Array<Row> = []
+    const published: Array<PublishedDelta> = []
+    const { recorder } = recordWithPublisher(rows, published)
+
+    await runRecorder(recorder, {
+      accountRef: 'agent:push-1',
+      adapterId: 'hydralisk',
+      requestId: 'chatcmpl-push-1',
+      requestedModel: 'openagents/khala',
+      servedModel: 'openagents/khala',
+      streamed: false,
+      usage: { completionTokens: 30, promptTokens: 12, totalTokens: 42 },
+    })
+
+    expect(published).toHaveLength(1)
+    // The delta is the served input + output (12 + 30), the stable per-request
+    // event ref, and a timestamp — nothing else.
+    expect(published[0]).toStrictEqual({
+      eventRef: servedTokensEventId('chatcmpl-push-1'),
+      observedAt: fixedNow(),
+      tokensServedDelta: 42,
+    })
+    // Public-safe: no account ref, model id, or provider in the pushed payload.
+    const serialized = JSON.stringify(published[0])
+    expect(serialized).not.toContain('agent:push-1')
+    expect(serialized).not.toContain('khala')
+    expect(serialized).not.toContain('hydralisk')
+  })
+
+  test('a duplicate (no-op) insert does NOT publish a second delta', async () => {
+    const rows: Array<Row> = []
+    const published: Array<PublishedDelta> = []
+    const { recorder } = recordWithPublisher(rows, published)
+
+    const call = () =>
+      runRecorder(recorder, {
+        accountRef: 'agent:push-dup',
+        adapterId: 'hydralisk',
+        requestId: 'chatcmpl-push-dup',
+        requestedModel: 'openagents/khala',
+        servedModel: 'openagents/khala',
+        streamed: false,
+        usage: { completionTokens: 20, promptTokens: 10, totalTokens: 30 },
+      })
+
+    await call()
+    await call() // replay for the SAME request id — a no-op insert.
+
+    // Counted once, and pushed once — a replay must never double the counter.
+    expect(rows).toHaveLength(1)
+    expect(published).toHaveLength(1)
+    expect(published[0]!.tokensServedDelta).toBe(30)
+  })
+
+  test('a zero-token completion publishes no delta (nothing was served)', async () => {
+    const rows: Array<Row> = []
+    const published: Array<PublishedDelta> = []
+    const { recorder } = recordWithPublisher(rows, published)
+
+    await runRecorder(recorder, {
+      accountRef: 'agent:push-zero',
+      adapterId: 'hydralisk',
+      requestId: 'chatcmpl-push-zero',
+      requestedModel: 'openagents/khala',
+      servedModel: 'openagents/khala',
+      streamed: false,
+      usage: { completionTokens: 0, promptTokens: 0, totalTokens: 0 },
+    })
+
+    expect(rows).toHaveLength(0)
+    expect(published).toHaveLength(0)
+  })
+
+  test('a failed completion (ledger ingest fails) publishes no delta', async () => {
+    const published: Array<PublishedDelta> = []
+    const failingLedger: TokenUsageLedgerShape = {
+      ...makeD1TokenUsageLedger(makeFakeDb()),
+      ingestEvent: () =>
+        Effect.fail(
+          new TokenUsageLedgerStorageError({
+            error: new Error('boom'),
+            operation: 'tokenUsageEvents.insert',
+          }),
+        ),
+    }
+    const recorder = makeServedTokensRecorder({
+      ledger: failingLedger,
+      nowIso: fixedNow,
+      publishDelta: delta =>
+        Effect.sync(() => {
+          published.push(delta)
+        }),
+    })
+
+    await expect(
+      runRecorder(recorder, {
+        accountRef: 'agent:push-fail',
+        adapterId: 'hydralisk',
+        requestId: 'chatcmpl-push-fail',
+        requestedModel: 'openagents/khala',
+        servedModel: 'openagents/khala',
+        streamed: false,
+        usage: { completionTokens: 5, promptTokens: 5, totalTokens: 10 },
+      }),
+    ).resolves.toBeUndefined()
+
+    expect(published).toHaveLength(0)
+  })
+
   test('the ingest body is public-safe (exact truth, no leaderboard, no secrets)', () => {
     const body = buildServedTokensIngestBody({
       accountRef: 'agent:body-1',
