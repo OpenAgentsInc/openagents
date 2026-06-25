@@ -381,7 +381,15 @@ guarantees realistic traffic + owner-armed seam + a citable public report.
   handoff, and reward read from a verifier artifact. `harbor-reward.ts` maps the
   summary into a Gym reward report with cost-per-accepted-outcome from
   served-token cost basis and emits a training-ready public-safe ATIF trajectory
-  bundle when GPU contention is cleared.
+  bundle when GPU contention is cleared. `terminal-bench-comparison.ts` then
+  projects those reward reports plus throughput measurements into
+  `openagents.gym.terminal_bench_comparison_report.v1`, comparing profile refs
+  against the external 69.1% Terminal-Bench 2.0 target without treating that
+  target as an OpenAgents result. Decision-grade replication requires the
+  official 89-task denominator, owner approval, public-safe summary,
+  distinct-device verifier evidence, served-token cost basis, and cleared
+  GPU-contention evidence; attempted-only or pilot denominators stay visible but
+  cannot satisfy the claim.
 
 ## 9. Build spec (for a coding agent)
 
@@ -442,6 +450,10 @@ metric vocabulary, or a new settlement path.
     served-token cost basis to cost-per-accepted-outcome, and public-safe ATIF
     refs into GEPA/TRINITY/Conductor-ready training trajectory bundles. Block
     decision-grade/training readiness when GPU contention is not cleared.
+13. Terminal-Bench comparison report: compare closed profile refs against the
+    external 69.1% target as a target row, not an OpenAgents result; preserve
+    `not_measured` versus measured `0`; require the official 89-task denominator
+    before `replicationClaimSatisfied` can be true.
 ```
 
 ## 10. Open questions
@@ -451,8 +463,9 @@ metric vocabulary, or a new settlement path.
 - Terminal-Bench specifically: the typed env, Worker-side Hydralisk Harbor
   dispatch/summary-ingest seam, and distinct-device verifier placement evidence
   are landed. Reward/cost mapping and training trajectory projection from Harbor
-  summary/ATIF artifacts are also landed; remaining work is wiring the live
-  owner-armed executor path and public/logged-in surfaces around the projections.
+  summary/ATIF artifacts are also landed, along with the GLM-REAP profile
+  comparison report. Remaining work is wiring the live owner-armed executor path
+  and public/logged-in surfaces around the projections.
 - Pricing tiers: free fixture vs metered self-serve vs decision-grade certified;
   the first quote path is landed from matrix shape and configured lane prices,
   while tier packaging and certified-report pricing remain open.

@@ -896,6 +896,7 @@ export const dispatchGymHarborTerminalBenchRun = async (
     harness: HydraliskHarborTerminalBenchHarness
     agent?: HarborTerminalBenchAgent | undefined
     ownerApprovalRef?: string | undefined
+    profileRef?: GymTerminalBenchProfileRef | undefined
     registry?: GymEnvironmentRegistry | undefined
   }>,
 ): Promise<GymHarborTerminalBenchRun> => {
@@ -932,4 +933,7 @@ export const dispatchGymHarborTerminalBenchRun = async (
   }
 }
 
-export type GymHarborTerminalBenchDispatchLane = Extract<BenchmarkLane, 'khala'>
+export type GymHarborTerminalBenchDispatchLane = Extract<
+  BenchmarkLane,
+  'khala' | 'glm-52'
+>

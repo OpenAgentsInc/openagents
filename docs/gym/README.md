@@ -55,9 +55,10 @@ provider-adapter registry, verification-class registry, and the
   public-safe reports and models owner-armed module-author splits from
   composition evidence while keeping payout, settlement, listing, and public
   marketplace authority disabled.
-- **Epic E1/E2/E3 landed:** `harbor-dispatch.ts` formalizes the Worker/Gym →
-  Hydralisk → Harbor seam for Terminal-Bench against `openagents/khala`: typed
-  job spec, injected Hydralisk harness, public-safe
+- **Epic E1/E2/E3/E4 landed:** `harbor-dispatch.ts` formalizes the Worker/Gym →
+  Hydralisk → Harbor seam for Terminal-Bench against `openagents/khala` and
+  closed GLM-REAP replication profiles: typed job spec, injected Hydralisk
+  harness, public-safe
   `hydralisk.evals.terminal_bench.summary.v1` ingest, ATIF artifact ref, and a
   test that the Worker imports no Harbor runtime code. Dispatch receipts now
   must include distinct-device verifier evidence: `environment_mode = separate`,
@@ -66,6 +67,14 @@ provider-adapter registry, verification-class registry, and the
   `harbor-reward.ts` then maps Harbor rewards to cost-per-accepted-outcome using
   served-token cost basis, emits a training-ready public-safe ATIF trajectory
   bundle, and blocks readiness when GPU contention is not cleared.
+- **Epic E4 landed (#6256):** `terminal-bench-comparison.ts` builds
+  `openagents.gym.terminal_bench_comparison_report.v1`, comparing GLM-REAP
+  profile refs against the external 69.1% Terminal-Bench 2.0 target as an
+  external claim, not an OpenAgents result. Decision-grade replication requires
+  the official 89-task denominator, owner approval, public-safe summary,
+  distinct-device verifier evidence, served-token cost basis, and cleared
+  GPU-contention evidence; pilot/attempted-only denominators remain visible but
+  cannot satisfy the replication claim.
 - **Epic F1/F2 landed:** `token_usage_events` now carries typed owner-gated
   demand attribution (`internal`, `external`, or `unlabeled` plus source/client
   labels), `GET /api/admin/inference-analytics` exposes the split plus

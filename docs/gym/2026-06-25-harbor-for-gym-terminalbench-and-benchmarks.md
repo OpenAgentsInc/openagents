@@ -658,15 +658,23 @@ The QA-runner ATIF emitter is being built; the Gym↔Khala dog-food wiring is th
    `openagents.gym.harbor_training_trajectory.v1` from the public-safe ATIF trace
    ref for GEPA/TRINITY/Conductor. GPU contention must be cleared by a benchmark
    replica or exclusive off-peak window before decision-grade/training readiness.
-7. **CI smoke (free, no spend)** — a `terminal-bench` env wiring test that runs
+7. **Shipped (#6256): build the Terminal-Bench comparison report** —
+   `terminal-bench-comparison.ts` projects Harbor summaries, reward reports, and
+   throughput measurements into
+   `openagents.gym.terminal_bench_comparison_report.v1`. It treats the GLM-REAP
+   69.1% Terminal-Bench 2.0 number as an external comparison target, not an
+   OpenAgents result, and preserves `not_measured` separately from measured `0`.
+   A profile row can satisfy replication only when it is decision-grade over the
+   official 89-task denominator.
+8. **CI smoke (free, no spend)** — a `terminal-bench` env wiring test that runs
    the `oracle` agent on the retained subset through the harness, asserts reward
    1.0, asserts the report is `decisionGrade:false`, and asserts the public-safety
    tripwire strips task content. Mirrors the spec's "fixture run is deterministic"
    test.
-8. **Emit ATIF from Gym runs** — adopt the in-repo public-safe ATIF subset the
+9. **Emit ATIF from Gym runs** — adopt the in-repo public-safe ATIF subset the
    traces spec asks for; Harbor-executed envs get ATIF for free, the OpenCode
    runner exports it. One trajectory format for benchmark + trace + training.
-9. **(Phase 2/3, owner-armed)** — the paid-run gate is landed for quote, 402
+10. **(Phase 2/3, owner-armed)** — the paid-run gate is landed for quote, 402
    balance gate, `preflightRealBenchmarkSweep`, real seam arming, metering
    contexts, and report receipts. A real `terminal-bench` executor still needs to
    plug into that gate for the first decision-grade Khala-vs-competitor number on
@@ -680,10 +688,10 @@ The QA-runner ATIF emitter is being built; the Gym↔Khala dog-food wiring is th
   Worker-side Hydralisk Harbor dispatch/summary-ingest seam (#6250), and
   the closed Terminal-Bench serving profile catalog (#6255), distinct-device
   verifier evidence gate (#6251), and Harbor reward/cost + training projection
-  (#6242) are landed. Remaining direction is live
-  owner-armed executor wiring, operational scheduling, and public/logged-in
-  surfaces. We use Harbor's format (ATIF) and a typed out-of-process artifact
-  seam, not Harbor runtime code in the Worker.
+  (#6242), and the Terminal-Bench comparison report (#6256) are landed.
+  Remaining direction is live owner-armed executor wiring, operational
+  scheduling, and public/logged-in surfaces. We use Harbor's format (ATIF) and a
+  typed out-of-process artifact seam, not Harbor runtime code in the Worker.
 - **Reference-repo discipline:** Harbor stays a read-only reference; we integrate
   at the job/artifact seam and do not vendor or fork it into our repos.
 - **No published numbers** without an owner-armed real seam over realistic

@@ -456,6 +456,29 @@ accepted outcomes are zero. It requires a public-safe ATIF trace ref, emits
 keeps raw traces out, and blocks decision-grade/training readiness when GPU
 contention is not cleared by a benchmark replica or exclusive off-peak window.
 
+### E4. Compare Terminal-Bench GLM-REAP profiles and the external 69.1% target ([#6256](https://github.com/OpenAgentsInc/openagents/issues/6256))
+
+**Type:** task · **Lever:** benchmarking/measurement · **Status:** shipped 2026-06-25
+**Why:** #6253 needs one public-safe comparison artifact that names the GLM-REAP
+claimed Terminal-Bench 2.0 score without treating it as an OpenAgents result, then
+compares our Hydralisk profile rows on solve-rate, cost, and throughput.
+**Scope:** build `openagents.gym.terminal_bench_comparison_report.v1` from Harbor
+run summaries, reward reports, and throughput measurements. Preserve
+`not_measured` as different from measured `0`; require the official 89-task
+denominator for decision-grade replication; compare against the external 69.1%
+full-denominator target with source refs and caveats.
+**Acceptance:** the report carries profile refs, full/attempted/properly-attempted
+solve rates, gap-to-claim bps, cost-per-accepted-outcome, TTFT/TPS/ITL/aggregate
+TPS, decision-grade blockers, and public-safe evidence refs without raw prompts,
+responses, logs, private endpoint URLs, bearer material, or hidden tokens.
+
+**Shipped #6256:** `terminal-bench-comparison.ts` builds the comparison report
+over the GLM-REAP 4xTP/8xTP/dual-4x/MTP/context profile refs. A row is
+decision-grade only when it has owner approval, the official full 89-task set,
+public-safe summary, verified distinct-device placement, served-token cost basis,
+and cleared GPU-contention evidence. Pilot or attempted-only denominators can be
+shown, but cannot satisfy `replicationClaimSatisfied`.
+
 ---
 
 ## EPIC F — Measurement & honesty (cross-cutting)
