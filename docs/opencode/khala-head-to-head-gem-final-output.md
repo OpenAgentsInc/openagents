@@ -2,15 +2,15 @@ Now I have a thorough picture. Here is the planning memo.
 
 ---
 
-## Planning Memo: Head-to-Head Model Comparison Gym
+## Planning Memo: Head-to-Head Model Comparison Gem
 
-### 0. Etymology — "BigPickle" and "gym"
+### 0. Etymology — "BigPickle" and "gem"
 
-The owner clarified that "gem" was the wrong hearing: the intended word is **gym** (G-Y-M), as in a benchmark/evaluation gym for head-to-head model runs. "BigPickle" remains a likely garbled voice transcription until separately confirmed. The earlier clarification (present in the `oa-wt-cost` worktree at `docs/inference/2026-06-25-khala-inference-gtm-push.md:279-283`) reads:
+Both were **garbled voice transcription** from the owner. The clarification (present in the `oa-wt-cost` worktree at `docs/inference/2026-06-25-khala-inference-gtm-push.md:279-283`) reads:
 
 > Read charitably, these point at (a) a named **coding/inference benchmark** to run Khala against, and (b) a named **competitor tool/model** to beat — possibly a benchmark "gem" (harness/leaderboard) and a competitor codenamed something mis-transcribed. **Do not invent specifics.** The action item is to confirm the...
 
-Update: **do not ask the owner what "gem" means anymore.** Treat it as **gym**: a reusable benchmark/evaluation gym that can run the same OpenCode task ladder against Khala and pluggable opponent endpoints. The remaining naming question is only what "BigPickle" refers to before wiring a specific comparator.
+Our working doc in this repo does **not** have this note yet. **Action: confirm with the owner** what "BigPickle" and "gem" actually refer to before naming any specific competitor or benchmark. Until then, the gem should be structured to accept pluggable opponents — which the existing harness already supports.
 
 ### 1. Benchmark Dimensions (what the matrix already measures)
 
@@ -26,11 +26,11 @@ The existing harness (`apps/openagents.com/workers/api/src/inference/benchmark/m
 | **Sampling** | Temperature + reasoning effort | Production values, not benchmark-flattering |
 | **Samples per cell** | Configurable (≥1) | Book §4.5.2: enough for percentiles |
 
-**What the gym adds** on top of this matrix: a client-side surface (models compared via **OpenCode**, Aider, or direct API calls) rather than only comparing provider lanes behind the gateway. The existing matrix compares *supply lanes* (Fireworks vs Vertex). The gym compares *model endpoints* (Khala vs BigPickle/GPT/Claude/Gemini free tiers).
+**What the gem adds** on top of this matrix: a client-side surface (models compared via **OpenCode**, Aider, or direct API calls) rather than only comparing provider lanes behind the gateway. The existing matrix compares *supply lanes* (Fireworks vs Vertex). The gem compares *model endpoints* (Khala vs BigPickle/GPT/Claude/Gemini free tiers).
 
 ### 2. Fixtures — Prompt/Workload Corpus
 
-The gym needs two layers of fixtures:
+The gem needs two layers of fixtures:
 
 **A. Quick/taste fixtures** (no cost, deterministic, for harness proof):
 - The existing `SAMPLE_DECISION_SUITE_CONFIG` in `fixtures.ts` with synthetic shapes (short-chat 350/220, code-artifact 2400/1800, long-codebase-32k 32000/600).
@@ -66,9 +66,9 @@ Blockers (preflight refuses to arm):
 - `real_traffic_evidence_missing` / `real_traffic_evidence_invalid`
 - `no_available_cells`
 
-`makeRealLaneSeam` throws `RealLaneNotArmedError` when unarmed. The gym must enforce the same gate for live API calls to competitors.
+`makeRealLaneSeam` throws `RealLaneNotArmedError` when unarmed. The gem must enforce the same gate for live API calls to competitors.
 
-**For the gym specifically:** calling competitor APIs (OpenAI, Google Gemini free tier, Claude API, etc.) is real spend too. Each competitor lane needs its own budget cap, arm flag, and token accounting. The same `RealLaneSeam` architecture extends here by adding competitor lanes as new `BenchmarkLane` values — e.g., `openai-gpt`, `gemini-free`, `claude`, `bigpickle` (once confirmed).
+**For the gem specifically:** calling competitor APIs (OpenAI, Google Gemini free tier, Claude API, etc.) is real spend too. Each competitor lane needs its own budget cap, arm flag, and token accounting. The same `RealLaneSeam` architecture extends here by adding competitor lanes as new `BenchmarkLane` values — e.g., `openai-gpt`, `gemini-free`, `claude`, `bigpickle` (once confirmed).
 
 ### 4. Token Accounting
 
@@ -78,7 +78,7 @@ The existing telemetry schema (`buildKhalaTelemetryRecord`) already captures:
 - `costBasisMsat` (provider cost)
 - `settlementState`
 
-**For the gym:** each competitor call must return its own `usage` block. The runner records:
+**For the gem:** each competitor call must return its own `usage` block. The runner records:
 - Tokens from the provider's `usage` response (never estimated)
 - Wall-clock from the benchmark runner's clock (TTFT, total wall-clock, generation wall-clock)
 - Cost from the provider's stated pricing OR `not_measured` when unbilled (free tier)
@@ -86,7 +86,7 @@ The existing telemetry schema (`buildKhalaTelemetryRecord`) already captures:
 
 **Honesty rule:** free-tier competitor calls have `costBasisMsat: 0` but are labeled with `provenance: 'free_tier'`. They are not "free" in the engineering sense (they consume quota/rate-limits), but the direct spend is zero.
 
-### 5. Outputs — What the Gym Produces
+### 5. Outputs — What the Gem Produces
 
 The existing `BenchmarkReport` schema (`report.ts`) is the canonical output:
 
@@ -110,7 +110,7 @@ BenchmarkReport {
 }
 ```
 
-**Gym-specific additions** (extend the report or produce a companion artifact):
+**Gem-specific additions** (extend the report or produce a companion artifact):
 - **Client attribution**: which client/CLI drove each run (OpenCode v1.17.9, Aider, direct curl)
 - **Tool-call completion rate**: did the model actually call tools, and did calls complete? This is the single highest-risk dimension for OpenCode.
 - **Verification outcome per run** (already supported via `BenchmarkLaneSample.executedVerdict`)
@@ -138,11 +138,11 @@ BenchmarkReport {
 | Public safety: no prompts/completions/keys in reports | `checkReportPublicSafety` tripwire |
 | External reported claims (e.g., Fugu numbers from X) are separated | The head-to-head demo manifest already has `externalReportedClaims` |
 
-**The OpenCode integration step** (runbook step 5): the gym adds OpenCode as the first *client surface* — not comparing supply lanes but comparing entire coding agent experiences. For each model under test (Khala, BigPickle, Gemini-free, etc.), run the same OpenCode task against that model's endpoint, record tokens/wall-clock/tool-call-completion/verification-outcome, and produce the same report schema.
+**The OpenCode integration step** (runbook step 5): the gem adds OpenCode as the first *client surface* — not comparing supply lanes but comparing entire coding agent experiences. For each model under test (Khala, BigPickle, Gemini-free, etc.), run the same OpenCode task against that model's endpoint, record tokens/wall-clock/tool-call-completion/verification-outcome, and produce the same report schema.
 
 ### 7. Implementation Sequence
 
-1. **Confirm "BigPickle" with the owner** — "gym" is already clarified as the benchmark/evaluation gym; do not wire a BigPickle-specific lane until the comparator is confirmed
+1. **Confirm "BigPickle" and "gem" with the owner** — do not wire specifics until confirmed
 2. **Add competitor lanes** as new `BenchmarkLane` values (e.g., `bigpickle`, `gemini-free`, `openai-gpt`) with proper `LANE_AVAILABILITY` entries
 3. **Extend the runner** to accept competitor API credentials via environment variables (matching the existing `makeRealLaneSeam` gating pattern)
 4. **Add OpenCode as a client runner** — a module that provisions the `opencode.json`, runs a task, and extracts usage/wall-clock/verification from the output
@@ -153,6 +153,6 @@ BenchmarkReport {
 ### 8. Key Open Questions for the Owner
 
 - What exactly is "BigPickle"? A benchmark suite, a competitor product, a model name?
-- What should the first gym artifact be named in code and reports (`khala-gym`, `opencode-gym`, or a broader benchmark-suite name)?
+- What exactly is "gem"? A shared benchmark/leaderboard, a specific harness, or just the colloquial name for this comparison?
 - Budget: what msat cap should the first armed sweep carry?
 - Is the first comparison on the OpenCode coding-agent surface (tool calling) or direct chat-completion quality (rubric/verifier)?
