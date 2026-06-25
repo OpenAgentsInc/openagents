@@ -570,3 +570,26 @@ apps/openagents.com/scripts/khala-production-readiness-monitor.mjs` from repo
   analytics now surface per-replica `keepWarmStatus`, `watchdogStatus`,
   `warmCompletionStatus`, warm state, wall time, and exact warm-completion token
   counts when present.
+
+---
+
+## P2-16 — Live Gym Harbor Progress Ingest — DONE (#6271)
+
+- **Notes ref:** `../../gym/ROADMAP.md` Epic E7 and
+  `../../gym/2026-06-25-harbor-for-gym-terminalbench-and-benchmarks.md`.
+- **What shipped:** live Harbor run progress now reaches the Worker through
+  `POST /api/operator/gym/run-progress`, backed by
+  `gym_run_progress_snapshots` in D1. Public `/api/public/gym/run-progress` and
+  operator `/api/operator/gym/run-progress` read stored real runs only, returning
+  `[]` when nothing has been pushed.
+- **Producer path:** operators run
+  `bun run gym:harbor-progress-push -- --result path/to/result.json ...` beside
+  a Harbor job. The pusher handles the real Terminal-Bench 2.0 `.stats` summary
+  and older per-trial arrays, then sends counts, token counts, public-safe refs,
+  phase, and freshness only.
+- **Public-safety behavior:** the Worker rebuilds every pushed snapshot through
+  `buildGymRunProgress` and `checkGymRunProgressPublicSafety`; payloads
+  smuggling prompts, completions, task ids, logs, trajectories, keys, bearer
+  material, or private endpoint URLs are rejected with a typed 400 before
+  storage. Partial runs remain `decisionGrade:false` and cannot become final
+  benchmark claims.

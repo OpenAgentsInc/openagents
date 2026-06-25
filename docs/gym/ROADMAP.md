@@ -578,12 +578,28 @@ degradation). Routes
 `GET /api/operator/gym/run-progress` (admin bearer, full incl. local_only) and
 `GET /api/public/gym/run-progress` (public-safe projection). The `/gym`
 follow-along view (`apps/openagents.com/apps/web/src/page/loggedOut/page/gym.ts`
-+ `apps/web/src/page/loggedOut/gym/runProgress.ts`) renders the live counts,
-pass-rate over completed tasks, official denominator, and freshness with a
-three-effect fan-out field plus an accessible mirror, labeled in-progress and
-`decisionGrade:false`. Polling the scoped status endpoint is the chosen path
-(low-frequency per-task updates). Final decision-grade reports stay on the
-owner-armed report path (Epic F / #6242), separate from these partials.
+and `apps/openagents.com/apps/web/src/page/loggedOut/gym/runProgress.ts`)
+renders the live counts, pass-rate over completed tasks, official denominator,
+and freshness with a three-effect fan-out field plus an accessible mirror,
+labeled in-progress and `decisionGrade:false`. Polling the scoped status
+endpoint is the chosen path (low-frequency per-task updates). Final
+decision-grade reports stay on the owner-armed report path (Epic F / #6242),
+separate from these partials.
+
+**Shipped #6271:**
+The live progress source is now real pushed Harbor state, not a fixture.
+`workers/api/migrations/0233_gym_run_progress_snapshots.sql` stores one
+public-safe progress object per `runRef`; `POST
+/api/operator/gym/run-progress` rebuilds every pushed snapshot through
+`buildGymRunProgress` + `checkGymRunProgressPublicSafety` before upsert, and the
+public/operator GET routes read only those stored rows (`[]` when none). The
+Harbor-side pusher lives at
+`apps/openagents.com/scripts/gym-harbor-progress-push.ts` and is exposed as
+`bun run gym:harbor-progress-push -- ...`; it reads the live `result.json`,
+handles both the real Terminal-Bench 2.0 `.stats` summary and older per-trial
+arrays, projects only counts/token counts/public-safe refs/freshness, and never
+sends raw benchmark prompts, completions, task ids, logs, trajectories, keys, or
+private endpoint material.
 
 ---
 
