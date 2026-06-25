@@ -3,8 +3,9 @@ import { html } from 'foldkit/html'
 
 import * as Ui from '../../../ui'
 import type { Message } from '../message'
-import { ClickedCopyAgentInstructions, ClickedExitKhala } from '../message'
+import { ClickedCopyAgentInstructions } from '../message'
 import { TASSADAR_AGENT_INSTRUCTIONS } from '../update'
+import { backButton } from './backButton'
 
 // Public `/tassadar` surface: a readable, scrollable explainer for the
 // OpenAgents Tassadar training run, rendered in the OpenAgents house style —
@@ -33,19 +34,6 @@ import { TASSADAR_AGENT_INSTRUCTIONS } from '../update'
 
 const pageClass =
   'relative min-h-screen min-h-dvh w-full overflow-y-auto font-mono text-[#f1efe8] antialiased'
-
-const backButtonWrapClass = 'fixed left-4 top-4 z-20 sm:left-6 sm:top-6'
-
-const backButtonClass =
-  'khala-focus group pointer-events-auto inline-flex items-center gap-2 rounded-full ' +
-  'border border-[#3a7bff]/45 bg-[#070b12]/80 px-4 py-2 font-mono text-xs font-semibold ' +
-  'uppercase tracking-[0.2em] text-[#bcd4ff] backdrop-blur-md transition-all duration-300 ' +
-  'ease-out hover:border-[#4fd0ff]/80 hover:text-white hover:khala-glow ' +
-  'motion-reduce:transition-none'
-
-const backArrowClass =
-  'text-[#4fd0ff] transition-transform duration-300 ease-out group-hover:-translate-x-0.5 ' +
-  'motion-reduce:transition-none'
 
 const containerClass =
   'khala-panel relative mx-auto my-12 w-[min(100%,880px)] overflow-hidden rounded-2xl ' +
@@ -191,25 +179,6 @@ export const view = (copied: boolean): Html => {
       ],
     )
 
-  const backButton = h.div(
-    [Ui.className<Message>(backButtonWrapClass)],
-    [
-      h.button(
-        [
-          h.Type('button'),
-          h.OnClick(ClickedExitKhala()),
-          h.AriaLabel('Back to OpenAgents home'),
-          h.DataAttribute('tassadar-back', 'home'),
-          Ui.className<Message>(backButtonClass),
-        ],
-        [
-          h.span([Ui.className<Message>(backArrowClass)], ['←']),
-          h.span([], ['OpenAgents']),
-        ],
-      ),
-    ],
-  )
-
   const copyButton = copied
     ? h.button(
         [
@@ -247,7 +216,7 @@ export const view = (copied: boolean): Html => {
   return h.div(
     [h.DataAttribute('route', 'tassadar'), Ui.className<Message>(pageClass)],
     [
-      backButton,
+      backButton('tassadar'),
       h.main(
         [h.AriaLabel('Tassadar'), Ui.className<Message>(containerClass)],
         [

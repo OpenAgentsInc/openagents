@@ -268,6 +268,11 @@ describe('persistent landing and Khala scene', () => {
         Scene.selector('[data-counter="khala-tokens-served"]'),
       ).toExist(),
       Scene.expect(Scene.text('Khala Tokens Served')).toExist(),
+      // Back button mirrors /tassadar: same "← OpenAgents" home control.
+      Scene.expect(Scene.selector('[data-khala-back="home"]')).toExist(),
+      Scene.expect(
+        Scene.role('button', { name: 'Back to OpenAgents home' }),
+      ).toExist(),
     )
   })
 
@@ -317,6 +322,11 @@ describe('persistent landing and Khala scene', () => {
         Scene.selector('[data-tassadar-copy="agent-instructions"]'),
       ).toExist(),
       Scene.expect(Scene.text('Copy Agent Instructions')).toExist(),
+      // Back button: the shared "← OpenAgents" home control.
+      Scene.expect(Scene.selector('[data-tassadar-back="home"]')).toExist(),
+      Scene.expect(
+        Scene.role('button', { name: 'Back to OpenAgents home' }),
+      ).toExist(),
     )
   })
 

@@ -42,6 +42,7 @@ import * as Gym from './page/gym'
 import * as Moksha from './page/moksha'
 import * as Moksha2 from './page/moksha2'
 import * as Onboarding from './page/onboarding'
+import { backButton } from './page/backButton'
 import * as PersistentScene from './page/persistentScene'
 import * as Promises from './page/promises'
 import * as PublicAgent from './page/publicAgent'
@@ -142,8 +143,21 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
         'Khala',
         model.copiedAgentInstructions,
         undefined,
-        KhalaChatPage.instructionsView<Message>(
-          Home.khalaTokensServedCounter(model.publicKhalaTokensServed),
+        // Back button + the API-instructions panel share the Khala overlay
+        // layer; the back control mirrors /tassadar exactly (same component,
+        // styling, position, and navigate-home wire).
+        h.div(
+          [],
+          [
+            // The instructions panel is a full-bleed `pointer-events-auto`
+            // layer; render the back button AFTER it (later in DOM, same z-tier)
+            // so the fixed top-left control paints above the panel and stays
+            // clickable — matching /tassadar's always-on-top back affordance.
+            KhalaChatPage.instructionsView<Message>(
+              Home.khalaTokensServedCounter(model.publicKhalaTokensServed),
+            ),
+            backButton('khala'),
+          ],
         ),
       ),
     ])
