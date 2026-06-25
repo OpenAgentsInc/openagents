@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { join } from "node:path"
 
 import {
+  buildPylonKhalaGitCheckoutWorkspace,
   buildPylonKhalaChatRequestBody,
   durableRequestIdFromUrl,
   issuePylonKhalaRequest,
@@ -74,6 +75,50 @@ describe("pylon khala requester body", () => {
     expect((body.messages as Array<{ content: string; role: string }>)[0]).toEqual({
       content: "Fix the public failing test",
       role: "user",
+    })
+  })
+
+  test("builds a workspace-backed Khala coding request", () => {
+    const workspace = buildPylonKhalaGitCheckoutWorkspace({
+      commit: "7ab7cb401803f6e04a6c93b7aa9102405de66419",
+      repository: "OpenAgentsInc/openagents",
+      verificationCommand: "bun run --cwd apps/openagents.com/workers/api test -- src/inference/coding-workflow-delegation.test.ts",
+    })
+    const body = buildPylonKhalaChatRequestBody({
+      objectiveSummary: "Implement the public-safe issue slice and run the named verification command.",
+      prompt: "Implement the public-safe issue slice and run the named verification command.",
+      targetPylonRef: "pylon.owner.codex",
+      workflow: "codex_agent_task",
+      workspace,
+    })
+
+    expect(body).toMatchObject({
+      openagents: {
+        coding: {
+          objectiveSummary: "Implement the public-safe issue slice and run the named verification command.",
+          targetPylonRef: "pylon.owner.codex",
+          workspace: {
+            kind: "git_checkout",
+            repository: {
+              commitSha: "7ab7cb401803f6e04a6c93b7aa9102405de66419",
+              fullName: "OpenAgentsInc/openagents",
+              provider: "github",
+              visibility: "public",
+            },
+            verificationCommand: {
+              args: [
+                "bun",
+                "run",
+                "--cwd",
+                "apps/openagents.com/workers/api",
+                "test",
+                "--",
+                "src/inference/coding-workflow-delegation.test.ts",
+              ],
+            },
+          },
+        },
+      },
     })
   })
 
@@ -251,6 +296,12 @@ describe("pylon khala requester API", () => {
         "codex_agent_task",
         "--pylon-ref",
         "pylon.owner.codex",
+        "--commit",
+        "7ab7cb401803f6e04a6c93b7aa9102405de66419",
+        "--repo",
+        "OpenAgentsInc/openagents",
+        "--verify",
+        "bun test",
         "--json",
       ],
       {
@@ -267,7 +318,17 @@ describe("pylon khala requester API", () => {
     expect(requests[0]?.body).toMatchObject({
       model: "openagents/khala",
       openagents: {
-        coding: { targetPylonRef: "pylon.owner.codex" },
+        coding: {
+          objectiveSummary: "Run the CLI fixture task",
+          targetPylonRef: "pylon.owner.codex",
+          workspace: {
+            kind: "git_checkout",
+            repository: {
+              commitSha: "7ab7cb401803f6e04a6c93b7aa9102405de66419",
+              fullName: "OpenAgentsInc/openagents",
+            },
+          },
+        },
         workflowClass: "codex_agent_task",
       },
       stream: true,

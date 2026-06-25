@@ -33,11 +33,12 @@ import type { PylonLocalState } from "./state.js"
  * so assignment payloads stay ref-only.
  *
  * Boundary law (the design delta from the Claude Agent gate): the Codex
- * SDK has no PreToolUse hook, so the workspace boundary is enforced by the
- * SDK sandbox (workspace-write pinned to the bounded working directory, no
- * additional directories, network disabled) plus post-hoc validation that
- * every reported file change stayed inside the workspace. A violation
- * produces a typed rejected closeout; danger-full-access is never used.
+ * SDK has no PreToolUse hook. For the caller-owned Khala->Pylon->Codex lane,
+ * the executor intentionally uses the SDK equivalent of
+ * `--dangerously-bypass-approvals-and-sandbox` so Codex can perform real local
+ * GitHub/worktree operations. Assignment payloads cannot request that mode:
+ * it is an owner-local executor invariant, paired with post-hoc validation that
+ * every reported file change stayed inside the materialized workspace.
  */
 
 export const CODEX_AGENT_TASK_SCHEMA = "openagents.pylon.codex_agent_task.v0.3"
@@ -49,6 +50,10 @@ export const CODEX_AGENT_SUM_REPAIR_FIXTURE_REF = "fixture.public.pylon.codex_ag
 // (#4798) — same validator, same checkout runner, never forked.
 export type CodexAgentGitCheckoutWorkspace = GitCheckoutWorkspace
 export type CodexAgentCheckoutRunner = WorkspaceCheckoutRunner
+export type CodexAgentRuntimeSandboxMode = CodexAgentSandboxMode | "danger-full-access"
+
+export const CODEX_AGENT_OWNER_LOCAL_SANDBOX_MODE = "danger-full-access" as const
+export const CODEX_AGENT_OWNER_LOCAL_APPROVAL_POLICY = "never" as const
 
 export type CodexAgentTaskPayload = {
   schema: typeof CODEX_AGENT_TASK_SCHEMA
@@ -65,7 +70,8 @@ export type CodexAgentRunInput = {
   instructions: string
   account?: ResolvedPylonAccountSelection | null
   env?: Record<string, string | undefined>
-  sandboxMode: CodexAgentSandboxMode
+  networkAccessEnabled: boolean
+  sandboxMode: CodexAgentRuntimeSandboxMode
   timeoutMs: number
   model?: string
 }
@@ -167,16 +173,16 @@ function boundedNumber(value: number | undefined, fallback: number, max: number)
 }
 
 /**
- * Resolves the effective sandbox mode: read-only requested anywhere wins;
- * otherwise workspace-write. Config and dispatch can narrow, never expand,
- * and danger-full-access does not exist on this code path at all.
+ * Resolves the effective sandbox mode for caller-owned Khala coding
+ * assignments. The public assignment wire format and assignment-safe config
+ * still accept only bounded modes, but this local executor always maps to the
+ * Codex SDK equivalent of `--dangerously-bypass-approvals-and-sandbox`.
  */
 export function effectiveSandboxMode(
-  taskMode: CodexAgentSandboxMode | undefined,
-  configMode: CodexAgentSandboxMode | undefined,
-): CodexAgentSandboxMode {
-  if (taskMode === "read-only" || configMode === "read-only") return "read-only"
-  return "workspace-write"
+  _taskMode: CodexAgentSandboxMode | undefined,
+  _configMode: CodexAgentSandboxMode | undefined,
+): CodexAgentRuntimeSandboxMode {
+  return CODEX_AGENT_OWNER_LOCAL_SANDBOX_MODE
 }
 
 /**
@@ -215,8 +221,8 @@ type CodexThreadEvent = {
 /**
  * The production runner: one Codex SDK thread pinned to the bounded
  * workspace with approvalPolicy "never" (unattended, nothing to approve
- * against), the configured sandbox mode, network disabled inside the
- * thread, and a wall-clock budget enforced through the turn AbortSignal.
+ * against), owner-local full access, network enabled, and a wall-clock budget
+ * enforced through the turn AbortSignal.
  * Every reported file change is validated against the workspace post hoc.
  * Lazy-imports the optional SDK dependency.
  */
@@ -249,9 +255,9 @@ export async function runWithCodexSdk(input: CodexAgentRunInput): Promise<CodexA
     const thread = codex.startThread({
       workingDirectory: input.cwd,
       sandboxMode: input.sandboxMode,
-      approvalPolicy: "never",
+      approvalPolicy: CODEX_AGENT_OWNER_LOCAL_APPROVAL_POLICY,
       skipGitRepoCheck: true,
-      networkAccessEnabled: false,
+      networkAccessEnabled: input.networkAccessEnabled,
       ...(input.model === undefined ? {} : { model: input.model }),
     })
     const { events } = await thread.runStreamed(input.instructions, { signal: abort.signal })
@@ -445,6 +451,7 @@ export async function executeCodexAgentAssignment(
       account: options.account,
       env,
       instructions: materialized.instructions,
+      networkAccessEnabled: true,
       sandboxMode: effectiveSandboxMode(task.sandboxMode, config.sandboxMode),
       timeoutMs:
         boundedNumber(

@@ -64,10 +64,15 @@ More specific invariant ledgers apply inside imported apps and packages.
   explicit about unsettled, rejected, unpaid, credited, and settled states.
 - Pylon local supervised danger modes (Codex `danger-full-access`, Claude
   `bypassPermissions`) are explicit owner-local opt-ins only: local composer
-  and authenticated local control sessions may honor the local dev overlay;
-  every public command, assignment, labor, and provider path rejects them with
-  a typed blocker, and the assignment-safe config loaders never read a
-  permissive mode.
+  and authenticated local control sessions may honor the local dev overlay.
+  Caller-owned Khala -> Pylon -> Codex coding delegation is also owner-local:
+  when the caller is routed to their own linked Pylon, the local Codex executor
+  uses the SDK equivalent of
+  `--dangerously-bypass-approvals-and-sandbox` (`danger-full-access` plus
+  approval policy `never`) so real GitHub/worktree operations can complete.
+  Untrusted labor, provider, and public command paths still reject caller-
+  supplied danger flags with a typed blocker, and assignment-safe config
+  loaders never read a permissive mode from public wire/config.
 - Secrets, wallet material, raw prompts, private repo content, provider
   payloads, and private customer data must not be committed or written into
   docs, tests, fixtures, logs, or public projections.

@@ -146,6 +146,33 @@ delegation frame naming the targeted Pylon. If the request falls through to a
 model/provider path instead of returning a delegation frame, stop and debug the
 delegation preconditions before running spendful or unrelated work.
 
+For real repository work, pin the public checkout and verification command so
+the Pylon materializes a fresh bounded Git workspace instead of the fixture:
+
+```sh
+$PYLON khala request \
+  --prompt "Implement public issue #NNNN and run the named verification." \
+  --workflow codex_agent_task \
+  --pylon-ref "<owner pylon ref>" \
+  --repo OpenAgentsInc/openagents \
+  --branch main \
+  --commit "<current origin/main sha>" \
+  --verify "bun run --cwd apps/openagents.com/workers/api test -- src/path.test.ts" \
+  --json
+```
+
+Keep this prompt public-safe and bounded: cite public issue numbers, public file
+paths, and public verification commands only. Do not include raw private prompts,
+secrets, local paths, provider payloads, wallet material, or private repo
+content. The Pylon runner receives the public objective summary plus the pinned
+checkout refs; raw Codex events and local workspace paths stay on the device.
+For caller-owned Khala -> Pylon -> Codex assignments, the local Codex runner uses
+the SDK equivalent of `--dangerously-bypass-approvals-and-sandbox`: sandbox mode
+`danger-full-access`, approval policy `never`, and network enabled. That full
+access is an owner-local executor invariant so Codex can do real Git/GitHub work;
+do not add it as a public wire field or use it for untrusted labor/provider
+work.
+
 4. Execute the assignment locally with no spend:
 
 ```sh

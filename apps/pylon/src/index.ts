@@ -251,6 +251,7 @@ import {
   workRequestMemoryEntry,
 } from "./work-requester.js"
 import {
+  buildPylonKhalaGitCheckoutWorkspace,
   issuePylonKhalaRequest,
   readPylonKhalaStatus,
   resumePylonKhalaRequest,
@@ -3661,8 +3662,9 @@ async function main() {
         const targetPylonRef =
           optionString(options, "pylon-ref") ??
           optionString(options, "target-pylon-ref")
+        const commit = optionString(options, "commit")
         if (!prompt) {
-          throw new Error("usage: pylon khala request --prompt <text> [--workflow cloud_coding_session|codex_agent_task] [--pylon-ref <pylonRef>] [--json]")
+          throw new Error("usage: pylon khala request --prompt <text> [--workflow cloud_coding_session|codex_agent_task] [--pylon-ref <pylonRef>] [--commit <sha> --repo <owner/repo> --verify <argv>] [--json]")
         }
         if (
           workflow !== undefined &&
@@ -3677,6 +3679,17 @@ async function main() {
             ? {}
             : { targetPylonRef }),
           ...(workflow === undefined ? {} : { workflow: workflow as PylonKhalaWorkflow }),
+          ...(commit === undefined
+            ? {}
+            : {
+                objectiveSummary: prompt,
+                workspace: buildPylonKhalaGitCheckoutWorkspace({
+                  branch: optionString(options, "branch"),
+                  commit,
+                  repository: optionString(options, "repo"),
+                  verificationCommand: optionString(options, "verify"),
+                }),
+              }),
         })
         emit(result)
         return

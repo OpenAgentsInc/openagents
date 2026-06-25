@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto"
+
 import type { TipsNetworkOptions } from "./tips.js"
 import { assertPublicSafe } from "./work-requester.js"
 
@@ -9,8 +11,25 @@ export type PylonKhalaWorkflow =
 
 export type PylonKhalaRequestInput = {
   prompt: string
+  objectiveSummary?: string
   targetPylonRef?: string
   workflow?: PylonKhalaWorkflow
+  workspace?: PylonKhalaGitCheckoutWorkspace
+}
+
+export type PylonKhalaGitCheckoutWorkspace = {
+  kind: "git_checkout"
+  repository: {
+    branch: string
+    commitSha: string
+    fullName: string
+    provider: "github"
+    visibility: "public"
+  }
+  verificationCommand: {
+    args: string[]
+    commandRef: string
+  }
 }
 
 export type PylonKhalaResumeInput = {
@@ -65,6 +84,102 @@ function requireAgentToken(options: TipsNetworkOptions): string {
 
 const byteLength = (value: string): number => new TextEncoder().encode(value).byteLength
 const pylonRefPattern = /^[a-z0-9][a-z0-9_.:-]{2,119}$/
+const githubFullNamePattern = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/
+const gitCommitShaPattern = /^[a-f0-9]{40}$/i
+const placeholderCommitShaPattern = /^(0{40}|1{40})$/i
+const verificationCommandArgPattern = /^[A-Za-z0-9_./:=@+-]{1,120}$/
+
+function stableRef(prefix: string, value: string) {
+  return `${prefix}.${createHash("sha256").update(value).digest("hex").slice(0, 24)}`
+}
+
+function cleanRefSegment(value: string) {
+  return value.trim().replace(/[^A-Za-z0-9_-]+/g, "_").slice(0, 80) || "request"
+}
+
+function githubFullNameFromInput(repository: string | undefined): string {
+  const value = repository?.trim()
+  if (!value) return "OpenAgentsInc/openagents"
+  assertPublicSafe(value, "khala request repository")
+  if (githubFullNamePattern.test(value)) return value
+  const github = /^https:\/\/github\.com\/([^/\s]+)\/([^/\s#?]+)(?:[/?#].*)?$/.exec(value)
+  if (github) return `${github[1]}/${github[2].replace(/\.git$/, "")}`
+  throw new Error("khala request --repo must be owner/repo or a public GitHub URL")
+}
+
+function verificationArgsFromInput(command: string | undefined): string[] {
+  const value = command?.trim() || "bun test"
+  assertPublicSafe(value, "khala request verification command")
+  const args = value.split(/\s+/).filter(Boolean)
+  if (
+    args.length === 0 ||
+    args.length > 20 ||
+    args.some((arg) =>
+      !verificationCommandArgPattern.test(arg) ||
+      arg.includes("..") ||
+      arg.startsWith("/"),
+    )
+  ) {
+    throw new Error("khala request --verify must be bounded argv tokens without absolute paths or traversal")
+  }
+  return args
+}
+
+function commitShaFromInput(commit: string | undefined): string {
+  const value = commit?.trim()
+  if (!value) {
+    throw new Error("khala request --commit <40-char-sha> is required for workspace-backed coding requests")
+  }
+  if (!gitCommitShaPattern.test(value) || placeholderCommitShaPattern.test(value)) {
+    throw new Error("khala request --commit must be a real pinned 40-character commit SHA, not a placeholder")
+  }
+  return value.toLowerCase()
+}
+
+function cleanBranch(branch: string | undefined): string {
+  const value = branch?.trim() || "main"
+  assertPublicSafe(value, "khala request branch")
+  if (value.includes("..") || value.startsWith("/") || value.length > 120) {
+    throw new Error("khala request --branch must be a bounded public branch name")
+  }
+  return value
+}
+
+export function buildPylonKhalaGitCheckoutWorkspace(input: {
+  branch?: string
+  commit?: string
+  repository?: string
+  verificationCommand?: string
+}): PylonKhalaGitCheckoutWorkspace {
+  const fullName = githubFullNameFromInput(input.repository)
+  const commitSha = commitShaFromInput(input.commit)
+  const args = verificationArgsFromInput(input.verificationCommand)
+  const workspace: PylonKhalaGitCheckoutWorkspace = {
+    kind: "git_checkout",
+    repository: {
+      branch: cleanBranch(input.branch),
+      commitSha,
+      fullName,
+      provider: "github",
+      visibility: "public",
+    },
+    verificationCommand: {
+      args,
+      commandRef: `command.public.pylon_khala.${cleanRefSegment(args.join("_"))}.${stableRef("argv", args.join("\0")).slice("argv.".length)}`,
+    },
+  }
+  assertPublicSafe(workspace, "khala request workspace")
+  return workspace
+}
+
+function cleanObjectiveSummary(value: string | undefined, fallback: string): string {
+  const summary = (value ?? fallback).trim()
+  if (summary.length < 3 || summary.length > 1000) {
+    throw new Error("khala request objective summary must be 3-1000 characters")
+  }
+  assertPublicSafe(summary, "khala request objective summary")
+  return summary
+}
 
 export function durableRequestIdFromUrl(value: string | null | undefined): string | null {
   if (value === null || value === undefined || value.trim() === "") {
@@ -96,18 +211,24 @@ export function buildPylonKhalaChatRequestBody(
     assertPublicSafe(targetPylonRef, "khala request target pylon ref")
   }
 
+  const coding =
+    targetPylonRef === undefined || targetPylonRef === ""
+      ? undefined
+      : { targetPylonRef }
+  const workspaceCoding =
+    input.workspace === undefined
+      ? coding
+      : {
+          ...(coding ?? {}),
+          objectiveSummary: cleanObjectiveSummary(input.objectiveSummary, prompt),
+          workspace: input.workspace,
+        }
   const openagents =
-    input.workflow === undefined && (targetPylonRef === undefined || targetPylonRef === "")
+    input.workflow === undefined && workspaceCoding === undefined
       ? undefined
       : {
           ...(input.workflow === undefined ? {} : { workflowClass: input.workflow }),
-          ...(targetPylonRef === undefined || targetPylonRef === ""
-            ? {}
-            : {
-                coding: {
-                  targetPylonRef,
-                },
-              }),
+          ...(workspaceCoding === undefined ? {} : { coding: workspaceCoding }),
         }
 
   const body = {

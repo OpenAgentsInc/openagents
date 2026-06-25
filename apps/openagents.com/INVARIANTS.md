@@ -1503,6 +1503,15 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   `gate.public.pylon.assignment_dispatch.controlled.v1` and inherit its
   no-duplicate, no-auto-publish, capability, heartbeat, pause, rollback, and
   closeout requirements.
+- For caller-owned Khala -> Pylon -> Codex assignments, the local Pylon executor
+  runs Codex with the SDK equivalent of
+  `--dangerously-bypass-approvals-and-sandbox` (`danger-full-access`,
+  approval policy `never`, network enabled) so the owner's Codex session can
+  perform real local GitHub/worktree work. This mode is an owner-local executor
+  invariant, not a public wire field: untrusted labor/provider/public command
+  paths still reject danger flags, assignment selection must remain caller-owned,
+  and public closeouts must not expose raw prompts, local paths, secrets, or
+  private repo content.
 - Regression coverage for this policy lives in
   `workers/api/src/inference/coding-workflow-classifier.test.ts`,
   `workers/api/src/inference/coding-workflow-delegation.test.ts`,

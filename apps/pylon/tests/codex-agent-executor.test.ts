@@ -233,10 +233,11 @@ describe("codex agent task recognition", () => {
     })
   })
 
-  test("the runner receives the bounded sandbox mode, never full access", async () => {
+  test("the runner receives the owner-local full-access mode", async () => {
     await withState(async (state) => {
       let seenMode: string | null = null
       let seenCodeHome: string | undefined
+      let seenNetworkAccess: boolean | null = null
       const account = {
         provider: "codex" as const,
         selector: "direct_home" as const,
@@ -247,6 +248,7 @@ describe("codex agent task recognition", () => {
       const observingRunner: CodexAgentRunner = async (input) => {
         seenMode = input.sandboxMode
         seenCodeHome = input.env?.CODEX_HOME
+        seenNetworkAccess = input.networkAccessEnabled
         expect(input.account).toBe(account)
         return fixingRunner(input)
       }
@@ -255,18 +257,19 @@ describe("codex agent task recognition", () => {
         codexAgentRunner: observingRunner,
         codexAgentProbe: readyProbe,
       })
-      expect(seenMode).toBe("workspace-write")
+      expect(seenMode).toBe("danger-full-access")
+      expect(seenNetworkAccess).toBe(true)
       expect(seenCodeHome).toBe("/tmp/pylon-codex-account")
     })
   })
 })
 
 describe("sandbox mode resolution", () => {
-  test("read-only requested anywhere wins; default is workspace-write", () => {
-    expect(effectiveSandboxMode(undefined, undefined)).toBe("workspace-write")
-    expect(effectiveSandboxMode("workspace-write", undefined)).toBe("workspace-write")
-    expect(effectiveSandboxMode("read-only", "workspace-write")).toBe("read-only")
-    expect(effectiveSandboxMode("workspace-write", "read-only")).toBe("read-only")
+  test("caller-owned Khala assignments use the Codex full-access SDK equivalent", () => {
+    expect(effectiveSandboxMode(undefined, undefined)).toBe("danger-full-access")
+    expect(effectiveSandboxMode("workspace-write", undefined)).toBe("danger-full-access")
+    expect(effectiveSandboxMode("read-only", "workspace-write")).toBe("danger-full-access")
+    expect(effectiveSandboxMode("workspace-write", "read-only")).toBe("danger-full-access")
   })
 })
 

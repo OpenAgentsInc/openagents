@@ -154,6 +154,90 @@ describe('coding workflow delegation', () => {
     })
   })
 
+  test('carries a public-safe workspace and objective into the Codex assignment', async () => {
+    const workspace = {
+      kind: 'git_checkout',
+      repository: {
+        branch: 'main',
+        commitSha: '7ab7cb401803f6e04a6c93b7aa9102405de66419',
+        fullName: 'OpenAgentsInc/openagents',
+        provider: 'github',
+        visibility: 'public',
+      },
+      verificationCommand: {
+        args: [
+          'bun',
+          'run',
+          '--cwd',
+          'apps/openagents.com/workers/api',
+          'test',
+          '--',
+          'src/inference/coding-workflow-delegation.test.ts',
+        ],
+        commandRef: 'command.public.pylon_khala.delegation_test',
+      },
+    }
+    const result = await delegateCodingWorkflow({
+      classification,
+      linkedAgents: [linkedOwner],
+      makeId: () => 'id1',
+      nowIso,
+      pylonStore: makeStore({ registrations: [registration()] }),
+      rawBody: {
+        openagents: {
+          coding: {
+            objectiveSummary:
+              'Implement the public-safe issue slice and run the named verification command.',
+            targetPylonRef: 'pylon.owner.codex',
+            workspace,
+          },
+        },
+      },
+      requestId: 'chatcmpl_coding_workspace',
+    })
+    const assigned = expectAssigned(result)
+
+    expect(assigned.assignment.codingAssignment).toMatchObject({
+      codex: {
+        agentKind: 'codex_sdk',
+        schema: 'openagents.pylon.codex_agent_task.v0.3',
+      },
+      objective: {
+        publicSummary:
+          'Implement the public-safe issue slice and run the named verification command.',
+      },
+      workspace,
+    })
+    expect(assigned.assignment.codingAssignment?.codex).not.toHaveProperty(
+      'fixtureRef',
+    )
+  })
+
+  test('rejects unsafe objective summaries before assignment creation', async () => {
+    const result = await delegateCodingWorkflow({
+      classification,
+      linkedAgents: [linkedOwner],
+      makeId: () => 'id1',
+      nowIso,
+      pylonStore: makeStore({ registrations: [registration()] }),
+      rawBody: {
+        openagents: {
+          coding: {
+            objectiveSummary: 'Use Bearer secret from /Users/example/.env',
+            targetPylonRef: 'pylon.owner.codex',
+          },
+        },
+      },
+      requestId: 'chatcmpl_coding_unsafe_objective',
+    })
+
+    expect(result).toMatchObject({
+      error: 'invalid_coding_objective_summary',
+      kind: 'rejected',
+      statusCode: 400,
+    })
+  })
+
   test('does not use another OpenAuth user account capacity', async () => {
     const result = await delegateCodingWorkflow({
       classification,

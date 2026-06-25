@@ -38,6 +38,7 @@ export type CodingDelegationAssignmentResult = Readonly<{
 
 export type CodingDelegationRejection = Readonly<{
   error:
+    | 'invalid_coding_objective_summary'
     | 'invalid_target_pylon_ref'
     | 'target_pylon_not_authorized'
     | 'target_pylon_unavailable'
@@ -81,6 +82,54 @@ const rawWorkspaceFromBody = (
   return workspace !== null && typeof workspace === 'object'
     ? (workspace as Record<string, unknown>)
     : null
+}
+
+const unsafeObjectiveSummaryPattern =
+  /(@|\/Users\/|\/home\/|\.env|access[_-]?token|auth\.json|bearer\s+|cookie|gho_[A-Za-z0-9_]+|ghp_[A-Za-z0-9_]+|github[_-]?pat_[A-Za-z0-9_]+|invoice|lnbc|lntb|lnbcrt|lno1|mdk[_-]?(access[_-]?token|mnemonic|webhook[_-]?secret)|mnemonic|oauth|payment[_-]?(hash|preimage|proof)|payout[_-]?(address|destination|target)|preimage|private[_-]?(key|repo)|provider[_-]?(account|credential|grant|payload|secret|token)|raw[_-]?(auth|command|content|payload|prompt|provider|runner|source|trace)|secret|seed[_-]?phrase|sk-[a-z0-9]|ssh:\/\/|wallet[._-]?(key|material|mnemonic|preimage|secret|seed)|xprv)/i
+
+const objectiveSummaryFromBody = (
+  body: unknown,
+):
+  | Readonly<{ kind: 'summary'; summary: string | null }>
+  | Readonly<{ kind: 'rejected'; rejection: CodingDelegationRejection }> => {
+  const rawValue = rawCodingFromBody(body)?.objectiveSummary
+  if (rawValue === undefined || rawValue === null || rawValue === '') {
+    return { kind: 'summary', summary: null }
+  }
+  if (typeof rawValue !== 'string') {
+    return {
+      kind: 'rejected',
+      rejection: {
+        error: 'invalid_coding_objective_summary',
+        evidenceRefs: ['evidence.khala_coding.objective_summary.invalid_type'],
+        kind: 'rejected',
+        reason:
+          'openagents.coding.objectiveSummary must be a bounded public-safe string.',
+        requestedPylonRef: null,
+        statusCode: 400,
+      },
+    }
+  }
+  const summary = rawValue.trim()
+  if (
+    summary.length < 3 ||
+    summary.length > 1000 ||
+    unsafeObjectiveSummaryPattern.test(summary)
+  ) {
+    return {
+      kind: 'rejected',
+      rejection: {
+        error: 'invalid_coding_objective_summary',
+        evidenceRefs: ['evidence.khala_coding.objective_summary.unsafe'],
+        kind: 'rejected',
+        reason:
+          'openagents.coding.objectiveSummary must not contain private, credential, wallet, raw prompt, or local-path material.',
+        requestedPylonRef: null,
+        statusCode: 400,
+      },
+    }
+  }
+  return { kind: 'summary', summary }
 }
 
 const pylonRefPattern = /^[a-z0-9][a-z0-9_.:-]{2,119}$/
@@ -137,6 +186,7 @@ const targetPylonRefFromBody = (
 
 const codingAssignmentFromInput = (
   input: CodingDelegationInput,
+  objectiveSummary: string | null,
 ): Record<string, unknown> => {
   const workspace = rawWorkspaceFromBody(input.rawBody)
 
@@ -152,6 +202,7 @@ const codingAssignmentFromInput = (
     objective: {
       objectiveRef: workflowRef(input.classification),
       publicSummary:
+        objectiveSummary ??
         'Run the caller-owned Khala coding workflow on a linked local Codex Pylon.',
     },
     ...(workspace === null ? {} : { workspace }),
@@ -165,6 +216,7 @@ const codingAssignmentFromInput = (
 
 const assignmentRequestFromInput = (
   input: CodingDelegationInput,
+  objectiveSummary: string | null,
   pylonRef: string,
 ): PylonApiCreateAssignmentRequest => ({
   acceptanceCriteriaRefs: [
@@ -179,7 +231,7 @@ const assignmentRequestFromInput = (
     'closeout.public.khala_coding.durable_stream',
     khalaCodingRequestIdRef(input.requestId),
   ],
-  codingAssignment: codingAssignmentFromInput(input),
+  codingAssignment: codingAssignmentFromInput(input, objectiveSummary),
   forumAutoPublishAllowed: false,
   idempotencyRefs: ['idempotency.public.khala_coding.request'],
   jobKind: 'codex_agent_task',
@@ -239,6 +291,11 @@ export const delegateCodingWorkflow = async (
   const target = targetPylonRefFromBody(input.rawBody)
   if (target.kind === 'rejected') {
     return target.rejection
+  }
+
+  const objectiveSummary = objectiveSummaryFromBody(input.rawBody)
+  if (objectiveSummary.kind === 'rejected') {
+    return objectiveSummary.rejection
   }
 
   const ownerAgentUserIds = input.linkedAgents.map(agent => agent.agentUserId)
@@ -306,7 +363,11 @@ export const delegateCodingWorkflow = async (
   }
 
   for (const registration of candidates) {
-    const body = assignmentRequestFromInput(input, registration.pylonRef)
+    const body = assignmentRequestFromInput(
+      input,
+      objectiveSummary.summary,
+      registration.pylonRef,
+    )
     const activeAssignments = await input.pylonStore.listAssignmentsForPylon(
       registration.pylonRef,
       100,
