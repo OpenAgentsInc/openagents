@@ -27,15 +27,25 @@ import { Schema as S } from 'effect'
 // Axis values (the book's matrix dimensions, as closed literal unions).
 // ---------------------------------------------------------------------------
 
-// The supply LANE under test. Matches the provider-adapter seam ids plus the
-// not-yet-built decentralized lanes the notes call out (Pylon whole-small,
-// Psionic shard-WAN). The benchmark can name a lane that does not exist yet; the
-// `LANE_AVAILABILITY` table below records whether it is real.
+// The lane under test. Phase 0 used provider-adapter supply lanes; Phase 1 also
+// names client-surface model endpoints so the Gym can compare whole coding-agent
+// experiences through OpenCode (Khala vs BigPickle vs other free/paid fields).
+// The benchmark can name a lane that does not have a real spend seam yet; the
+// `LANE_AVAILABILITY` table below records whether it is real, fixture-only, or
+// future-only.
 export const BenchmarkLane = S.Literals([
+  'khala',
+  'bigpickle',
+  'gemini-free',
+  'openai-gpt',
+  'claude',
   'vertex-anthropic',
   'vertex-gemini',
   'fireworks',
   'partner-passthrough',
+  'gpt-oss-20b',
+  'gpt-oss-120b',
+  'glm-52',
   'pylon-whole-small',
   'psionic-shard-wan',
 ])
@@ -59,6 +69,7 @@ export type BenchmarkEngine = typeof BenchmarkEngine.Type
 // long-context codebase question stresses input length + prefix cache.
 export const BenchmarkWorkload = S.Literals([
   'chat',
+  'opencode-coding-task',
   'khala-code-artifact-gen',
   'verifier-run',
   'long-context-codebase-question',
@@ -91,21 +102,32 @@ export type BenchmarkVerificationExpectation =
 // real-lane adapter today, vs a named-but-unbuilt future lane.
 export const LaneAvailability = S.Literals([
   'available',
+  'fixture_only',
   'not_yet_available',
 ])
 export type LaneAvailability = typeof LaneAvailability.Type
 
-// The availability table. `available` lanes have a real provider adapter behind
-// the (owner-gated) real-lane seam; `not_yet_available` lanes can still be put in
-// the matrix (so the comparison shape is complete) but are labeled and never
-// measured against a real path. This is the single source of truth the runner +
-// report read; it never invents an "available" claim for an unbuilt lane.
+// The availability table. `available` lanes have a real provider adapter or
+// client-surface endpoint behind the owner-gated real-lane seam. `fixture_only`
+// lanes can be executed by the deterministic fixture seam, but are skipped by
+// owner-armed real sweeps until a real executor is wired. `not_yet_available`
+// lanes stay in the comparison shape but are never measured. This is the single
+// source of truth the runner + report read; it never invents an "available"
+// claim for an unbuilt lane.
 export const LANE_AVAILABILITY: Readonly<Record<BenchmarkLane, LaneAvailability>> =
   {
+    khala: 'available',
+    bigpickle: 'fixture_only',
+    'gemini-free': 'fixture_only',
+    'openai-gpt': 'fixture_only',
+    claude: 'fixture_only',
     'vertex-anthropic': 'available',
     'vertex-gemini': 'available',
     fireworks: 'available',
     'partner-passthrough': 'available',
+    'gpt-oss-20b': 'available',
+    'gpt-oss-120b': 'available',
+    'glm-52': 'available',
     // Pylon whole-small serving and Psionic shard-WAN are named in the notes as
     // FUTURE lanes (§6, decentralized-serving-shard-wan). They are matrix axes so
     // the decision suite is shaped for them, but they are not real serving paths
@@ -226,6 +248,7 @@ export const verificationExpectationForWorkload = (
       return 'none'
     case 'long-context-codebase-question':
       return 'seeded'
+    case 'opencode-coding-task':
     case 'khala-code-artifact-gen':
     case 'verifier-run':
       return 'test_passed'

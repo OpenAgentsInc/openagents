@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 
 import {
   BUNDLED_GYM_EXPERIMENT,
+  OPENCODE_HEAD_TO_HEAD_GYM_EXPERIMENT,
   compileGymExperiment,
   decodeGymExperiment,
   encodeGymExperiment,
@@ -13,6 +14,12 @@ describe('OpenAgents Gym experiment schema', () => {
     const decoded = decodeGymExperiment(BUNDLED_GYM_EXPERIMENT)
     const encoded = encodeGymExperiment(decoded)
     expect(encoded).toEqual(BUNDLED_GYM_EXPERIMENT)
+  })
+
+  test('round-trips the OpenCode head-to-head fixture experiment', () => {
+    const decoded = decodeGymExperiment(OPENCODE_HEAD_TO_HEAD_GYM_EXPERIMENT)
+    const encoded = encodeGymExperiment(decoded)
+    expect(encoded).toEqual(OPENCODE_HEAD_TO_HEAD_GYM_EXPERIMENT)
   })
 
   test('rejects malformed configs at the schema boundary', () => {
@@ -46,6 +53,18 @@ describe('compileGymExperiment', () => {
       'psionic-shard-wan',
     ])
     expect(compiled.policySelection.skippedCells.length).toBe(24)
+  })
+
+  test('expands the OpenCode fixture experiment to Khala vs BigPickle', () => {
+    const compiled = compileGymExperiment(OPENCODE_HEAD_TO_HEAD_GYM_EXPERIMENT)
+    expect(compiled.expectedCellCount).toBe(2)
+    expect(compiled.matrixConfig.workloads).toEqual(['opencode-coding-task'])
+    expect(compiled.policySelection.fanout.lanes).toEqual([
+      'khala',
+      'bigpickle',
+    ])
+    expect(compiled.policySelection.tools).toBe('opencode-client-tools')
+    expect(compiled.policySelection.skippedCells).toEqual([])
   })
 
   test('rejects seam: real before any lane seam can be constructed', () => {
@@ -100,5 +119,24 @@ describe('runGymFixtureExperiment', () => {
     expect(result.publicSafety.safe).toBe(true)
     expect(result.publicSafety.violations).toEqual([])
   })
-})
 
+  test('runs the OpenCode Khala vs BigPickle fixture through the report path', () => {
+    const result = runGymFixtureExperiment(OPENCODE_HEAD_TO_HEAD_GYM_EXPERIMENT)
+    const khala = result.report.groups.find(
+      group =>
+        group.lane === 'khala' && group.workload === 'opencode-coding-task',
+    )
+    const bigpickle = result.report.groups.find(
+      group =>
+        group.lane === 'bigpickle' &&
+        group.workload === 'opencode-coding-task',
+    )
+
+    expect(result.report.decisionGrade).toBe(false)
+    expect(khala?.toolCallSuccessRate).toBe(1)
+    expect(khala?.verificationRate).toBe(1)
+    expect(bigpickle?.toolCallSuccessRate).toBeCloseTo(2 / 3, 6)
+    expect(bigpickle?.verificationRate).toBe(0)
+    expect(result.publicSafety.safe).toBe(true)
+  })
+})

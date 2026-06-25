@@ -149,10 +149,12 @@ a Khala request in the world ([`../khala/khala-in-the-world.md`](../khala/khala-
    `psionic-shard-wan` labeled future), and a **fan-out mode**: `single` · `race`
    (first viable) · `best-of-N` · `verifier-pick` (run N, keep the one that
    verifies). Concurrency is a dial. The single `LANE_AVAILABILITY` table stays
-   the source of truth; future lanes are selectable axes but never measured
-   (honest skipped run, never a fake zero). The Gym is also where a **new or tuned
-   lane is exercised before it joins the Khala mix** (e.g. the GLM-REAP MTP2
-   speculative-decoding win), scored on outcome, not just raw tok/s.
+   the source of truth; `available` lanes can enter owner-armed real sweeps,
+   `fixture_only` lanes can be exercised by the deterministic no-spend seam, and
+   future lanes are selectable axes but never measured (honest skipped run, never
+   a fake zero). The Gym is also where a **new or tuned lane is exercised before
+   it joins the Khala mix** (e.g. the GLM-REAP MTP2 speculative-decoding win),
+   scored on outcome, not just raw tok/s.
    For the head-to-head ladder, competitor model endpoints are typed lanes too:
    `bigpickle` (OpenCode's default free model) → other open/free → paid frontier.
 3. **Tool set** — select the tools/tool-schemas exposed to the policy (and MCP
@@ -315,11 +317,14 @@ guarantees realistic traffic + owner-armed seam + a citable public report.
   This is not a public no-spend fixture route; it is an owner-gated operational
   surface for the hourly lane. **Landed and closed:** #6167.
 - **Phase 1 — environments + policy matrix.** Register the first environments
-  (Terminal-Bench adapter, `khala-code`, long-context QA, M8) with their verifiers
-  and acceptance contracts; wire the full policy axis (provider fan-out modes,
-  tool sets, coordinator candidate selection). *Success:* a fixture run compares
-  two coordinator candidates × two provider mixes on one env, scored on
-  cost-per-accepted-outcome.
+  and client surfaces with their verifiers and acceptance contracts; wire the
+  full policy axis (provider fan-out modes, tool sets, coordinator candidate
+  selection). **Landed D1:** the OpenCode client-surface fixture registers typed
+  endpoint lanes, provisions public-safe `opencode.json`, records provider usage
+  without estimation, and produces a `decisionGrade:false` Khala-vs-BigPickle
+  report scored on cost-per-accepted-outcome, verified-rate, and tool-call
+  success. Remaining Phase 1 work registers Terminal-Bench, `khala-code`,
+  long-context QA, and M8.
 - **Phase 2 — paid runs (owner-armed real seam).** The quote → balance-gate →
   `preflightRealBenchmarkSweep` → real seam → report-receipt path. *Success:* a
   funded account pays to run a real, billable sweep over realistic traffic and
@@ -353,8 +358,9 @@ metric vocabulary, or a new settlement path.
    expandMatrix / runner.ts / buildBenchmarkReport. Reuse the
    openagents.khala.telemetry.v1 schema and checkReportPublicSafety. No forks.
 3. Register environments behind a typed GymEnvironment registry (task set +
-   verifier + acceptance contract + default shapes): terminal-bench, khala-code,
-   long-context-qa, m8. Selection is typed/semantic, never string-matched.
+   verifier + acceptance contract + default shapes): OpenCode head-to-head is
+   landed for the fixture seam; terminal-bench, khala-code, long-context-qa, and
+   m8 follow. Selection is typed/semantic, never string-matched.
 4. Add GymRoute() + the public /gym page in Foldkit; the live-run visualization
    in @openagentsinc/three-effect, reusing the Verse fan-out/verdict/cost visual
    language. Knobs/dials bind to the typed config fields above.

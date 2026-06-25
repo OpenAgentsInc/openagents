@@ -235,7 +235,7 @@ headers. Owner-gated per-tool rollups remain the F1 analytics issue (#6252).
 > [`2026-06-25-gym-opencode-head-to-head-and-khala-flywheel.md`](2026-06-25-gym-opencode-head-to-head-and-khala-flywheel.md).
 
 ### D1. Phase 1 — competitor lanes + the OpenCode client-surface environment  ([#6246](https://github.com/OpenAgentsInc/openagents/issues/6246))
-**Type:** epic · **Lever:** benchmarking · **Status:** direction
+**Type:** epic · **Lever:** benchmarking · **Status:** shipped 2026-06-25
 **Why:** the first real head-to-head: compare *model endpoints through a real coding
 agent*, not just supply lanes. BigPickle (OpenCode's default free model) is rung 1.
 **Scope:** add typed `BenchmarkLane` values for competitor endpoints (`bigpickle`,
@@ -249,6 +249,16 @@ matrix→runner→report + `checkReportPublicSafety`.
 scored on cost-per-accepted-outcome + verified-rate + tool-call-completion, with a
 `decisionGrade:false` labeled report.
 **Refs:** flywheel doc §3, §9; the OpenCode-via-Khala memo in `../opencode/`.
+
+**Shipped:** `workers/api/src/inference/benchmark` now includes the typed OpenCode
+endpoint lanes (`khala`, `bigpickle`, `gemini-free`, `openai-gpt`, `claude`) and
+own/open lanes (`gpt-oss-20b`, `gpt-oss-120b`, `glm-52`). `fixture_only` availability
+lets the deterministic fixture compare Khala vs BigPickle without pretending a
+real/billable executor exists. `opencode-client-runner.ts` provisions public-safe
+`opencode.json`, rejects missing provider `usage` instead of estimating tokens,
+records wall-clock/tool-call success/verifier verdict, and feeds the existing
+matrix→runner→report path. `OPENCODE_HEAD_TO_HEAD_GYM_EXPERIMENT` produces a
+public-safe `decisionGrade:false` report over one OpenCode coding task.
 
 ### D2. Phase 1 — register the first environments (Terminal-Bench, khala-code, long-context, M8)  ([#6241](https://github.com/OpenAgentsInc/openagents/issues/6241))
 **Type:** task · **Lever:** benchmarking · **Status:** direction

@@ -52,6 +52,15 @@ const LONG_CONTEXT_SHAPE: SequenceShape = {
   provenance: 'synthetic',
 }
 
+const OPENCODE_CODING_TASK_SHAPE: SequenceShape = {
+  id: 'opencode-edit-run-smoke',
+  inputTokens: 1800,
+  outputTokens: 700,
+  cacheablePrefixTokens: 900,
+  concurrency: 1,
+  provenance: 'synthetic',
+}
+
 const DEFAULT_SAMPLING: SamplingSettings = {
   temperature: 0.2,
   reasoningEffort: 'off',
@@ -91,6 +100,24 @@ export const SAMPLE_DECISION_SUITE_CONFIG: BenchmarkMatrixConfig = {
   sampling: [DEFAULT_SAMPLING, REASONING_SAMPLING],
   samplesPerCell: 5,
 }
+
+export const OPENCODE_KHALA_VS_BIGPICKLE_FIXTURE_CONFIG: BenchmarkMatrixConfig =
+  {
+    id: 'opencode-khala-vs-bigpickle-fixture-v1',
+    description:
+      'OpenCode client-surface fixture: Khala public endpoint vs BigPickle on ' +
+      'one synthetic edit/run coding task. No network and no spend; the report ' +
+      'is illustrative and decisionGrade:false.',
+    targets: [
+      { lane: 'khala', engine: 'provider-native' },
+      { lane: 'bigpickle', engine: 'provider-native' },
+    ],
+    workloads: ['opencode-coding-task'],
+    shapes: [OPENCODE_CODING_TASK_SHAPE],
+    transports: ['streaming'],
+    sampling: [DEFAULT_SAMPLING],
+    samplesPerCell: 5,
+  }
 
 // A tiny config used by tests for exact, hand-checkable expansion + aggregation.
 // One real lane, one future lane, one workload, one shape, one transport, one

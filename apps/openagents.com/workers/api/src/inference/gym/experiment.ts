@@ -1,6 +1,7 @@
 import { Array, Schema as S } from 'effect'
 
 import {
+  OPENCODE_KHALA_VS_BIGPICKLE_FIXTURE_CONFIG,
   SAMPLE_DECISION_SUITE_CONFIG,
   buildBenchmarkReport,
   checkReportPublicSafety,
@@ -21,7 +22,10 @@ import {
 const isReadonlyArrayEmpty = <A>(items: ReadonlyArray<A>): boolean =>
   items.length === 0
 
-export const GymEnvironmentRef = S.Literals(['bundled-decision-suite-v1'])
+export const GymEnvironmentRef = S.Literals([
+  'bundled-decision-suite-v1',
+  'opencode-head-to-head-v1',
+])
 export type GymEnvironmentRef = typeof GymEnvironmentRef.Type
 
 export const CoordinatorCandidateRef = S.Literals([
@@ -42,6 +46,7 @@ export type GymFanoutMode = typeof GymFanoutMode.Type
 export const GymToolSetRef = S.Literals([
   'khala-fixture-tools',
   'khala-code-tools',
+  'opencode-client-tools',
   'no-tools',
 ])
 export type GymToolSetRef = typeof GymToolSetRef.Type
@@ -159,7 +164,12 @@ export type GymFixtureRunResult = Readonly<{
 }>
 
 const engineForLane = (lane: BenchmarkLane): BenchmarkEngine => {
-  if (lane === 'pylon-whole-small') {
+  if (
+    lane === 'pylon-whole-small' ||
+    lane === 'gpt-oss-20b' ||
+    lane === 'gpt-oss-120b' ||
+    lane === 'glm-52'
+  ) {
     return 'vllm'
   }
   if (lane === 'psionic-shard-wan') {
@@ -178,6 +188,9 @@ const environmentWorkloads = (
 ): BenchmarkMatrixConfig['workloads'] => {
   if (environment === 'bundled-decision-suite-v1') {
     return SAMPLE_DECISION_SUITE_CONFIG.workloads
+  }
+  if (environment === 'opencode-head-to-head-v1') {
+    return OPENCODE_KHALA_VS_BIGPICKLE_FIXTURE_CONFIG.workloads
   }
   return []
 }
@@ -212,6 +225,48 @@ export const BUNDLED_GYM_EXPERIMENT: GymExperiment = {
   },
   shapes: SAMPLE_DECISION_SUITE_CONFIG.shapes,
   samplesPerCell: SAMPLE_DECISION_SUITE_CONFIG.samplesPerCell,
+  budget: {
+    spendCapMsat: 0,
+    maxBillableSamples: 0,
+    seam: 'fixture',
+  },
+}
+
+export const OPENCODE_HEAD_TO_HEAD_GYM_EXPERIMENT: GymExperiment = {
+  id: 'gym-opencode-khala-vs-bigpickle-fixture-v1',
+  environment: 'opencode-head-to-head-v1',
+  policy: {
+    coordinator: 'heuristic-v0',
+    fanout: {
+      lanes: OPENCODE_KHALA_VS_BIGPICKLE_FIXTURE_CONFIG.targets.map(
+        target => target.lane,
+      ),
+      mode: 'verifier-pick',
+      concurrency: 1,
+    },
+    tools: 'opencode-client-tools',
+    modules: {
+      mode: 'none',
+      signatureRefs: [],
+      moduleRefs: [],
+    },
+    sampling: {
+      temperature:
+        OPENCODE_KHALA_VS_BIGPICKLE_FIXTURE_CONFIG.sampling[0]?.temperature ??
+        0.2,
+      reasoningEffort:
+        OPENCODE_KHALA_VS_BIGPICKLE_FIXTURE_CONFIG.sampling[0]
+          ?.reasoningEffort ?? 'off',
+      maxTokens: 2048,
+      transport: 'streaming',
+    },
+    serving: {
+      quantization: { mode: 'none' },
+      speculation: { mode: 'none' },
+    },
+  },
+  shapes: OPENCODE_KHALA_VS_BIGPICKLE_FIXTURE_CONFIG.shapes,
+  samplesPerCell: OPENCODE_KHALA_VS_BIGPICKLE_FIXTURE_CONFIG.samplesPerCell,
   budget: {
     spendCapMsat: 0,
     maxBillableSamples: 0,

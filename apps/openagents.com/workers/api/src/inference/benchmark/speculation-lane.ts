@@ -34,6 +34,7 @@ import type { BenchmarkCell } from './matrix'
 // the typed workload enum — NOT request-content string matching.
 const isCodeWorkload = (cell: BenchmarkCell): boolean => {
   switch (cell.workload) {
+    case 'opencode-coding-task':
     case 'khala-code-artifact-gen':
     case 'verifier-run':
     case 'long-context-codebase-question':

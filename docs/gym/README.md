@@ -28,11 +28,10 @@ provider-adapter registry, verification-class registry, and the
   `#6167`. It is auth/owner-gated, capped at eight in-flight requests, streams
   against `openagents/khala-oss-20b`, and keeps `not_measured` distinct from
   fabricated zeroes.
-- **Episode 243 direction (next to build):** the **OpenCode coding-agent
-  head-to-head** is the first real Phase 1 environment — Khala benched against
-  **BigPickle** (OpenCode's default free model) → other open/free models → paid
-  frontier, on the same coding tasks. See the considerations doc below. Direction,
-  not yet shipped.
+- **Phase 1 D1 landed:** the **OpenCode coding-agent head-to-head** now has typed
+  benchmark lanes, a fixture-only BigPickle rung, an OpenCode config/usage runner,
+  and a deterministic `decisionGrade:false` Khala-vs-BigPickle fixture report.
+  Remaining Phase 1 work expands environments and owner-armed real sweeps.
 
 ## Contents
 

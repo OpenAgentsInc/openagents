@@ -18,7 +18,11 @@ import {
 } from '../khala-telemetry'
 import type { BenchmarkCell, BenchmarkMatrixConfig } from './matrix'
 import { expandMatrix } from './matrix'
-import type { BenchmarkLaneSeam } from './lane-seam'
+import type {
+  BenchmarkClientSurfaceSample,
+  BenchmarkLaneSeam,
+} from './lane-seam'
+import { modelIdForBenchmarkCell } from './opencode-client-runner'
 
 // One executed sample of one cell: the cell context + the canonical telemetry
 // record. A not-yet-available lane produces NO telemetry record (it was never
@@ -30,6 +34,10 @@ export type BenchmarkRun = Readonly<{
   // The canonical lifecycle record, or null when the cell was skipped (a
   // not-yet-available lane is never executed — honest, not a fabricated zero).
   record: KhalaTelemetryRecord | null
+  // Public-safe client-surface metrics that are not part of provider telemetry,
+  // such as OpenCode tool-call success counts. Null for direct API workloads or
+  // skipped cells.
+  clientSurface: BenchmarkClientSurfaceSample | null
   // Why a run was skipped; null when it executed.
   skippedReason: string | null
 }>
@@ -59,6 +67,19 @@ const buildRunRequestId = (
   sampleIndex: number,
 ): string => `bench:${configId}:${cellId}:s${sampleIndex}`
 
+const skippedReasonForCell = (
+  cell: BenchmarkCell,
+  seam: BenchmarkLaneSeam,
+): string | null => {
+  if (cell.laneAvailability === 'not_yet_available') {
+    return `lane_not_yet_available:${cell.lane}`
+  }
+  if (cell.laneAvailability === 'fixture_only' && seam.canSpend) {
+    return `lane_fixture_only:${cell.lane}`
+  }
+  return null
+}
+
 // Run a single sample of a cell against the seam and assemble its telemetry
 // record. A not-yet-available lane is NEVER executed against any seam — it yields
 // a skipped run (honest absence), because there is no real path to measure and we
@@ -69,17 +90,20 @@ const runSample = (
   sampleIndex: number,
   seam: BenchmarkLaneSeam,
 ): BenchmarkRun => {
-  if (cell.laneAvailability === 'not_yet_available') {
+  const skippedReason = skippedReasonForCell(cell, seam)
+  if (skippedReason !== null) {
     return {
       cellId: cell.cellId,
       cell,
       sampleIndex,
       record: null,
-      skippedReason: `lane_not_yet_available:${cell.lane}`,
+      clientSurface: null,
+      skippedReason,
     }
   }
 
   const sample = seam.sample(cell, sampleIndex)
+  const modelId = modelIdForBenchmarkCell(cell)
   const requestClass =
     cell.transport === 'batch'
       ? 'batch'
@@ -89,8 +113,8 @@ const runSample = (
 
   const record = buildKhalaTelemetryRecord({
     requestId: buildRunRequestId(config.id, cell.cellId, sampleIndex),
-    requestedModel: `${cell.lane}/${cell.engine}`,
-    servedModel: `${cell.lane}/${cell.engine}`,
+    requestedModel: modelId,
+    servedModel: modelId,
     route: cell.workload,
     provider: cell.lane,
     requestClass,
@@ -127,13 +151,14 @@ const runSample = (
     cell,
     sampleIndex,
     record,
+    clientSurface: sample.clientSurface ?? null,
     skippedReason: null,
   }
 }
 
 // Run an entire matrix config against a seam. Expands the matrix deterministically,
 // then runs `samplesPerCell` samples of each executable cell (one skipped run for
-// each not-yet-available cell). PURE with the fixture seam.
+// each unavailable cell). PURE with the fixture seam.
 export const runBenchmark = (
   config: BenchmarkMatrixConfig,
   seam: BenchmarkLaneSeam,
@@ -144,7 +169,7 @@ export const runBenchmark = (
   let cellsSkipped = 0
 
   for (const cell of cells) {
-    if (cell.laneAvailability === 'not_yet_available') {
+    if (skippedReasonForCell(cell, seam) !== null) {
       cellsSkipped += 1
       runs.push(runSample(config, cell, 0, seam))
       continue
