@@ -12,8 +12,6 @@ import {
 import {
   type PylonKhalaWorkflow,
   issuePylonKhalaRequest,
-  readPylonKhalaStatus,
-  resumePylonKhalaRequest,
 } from "./khala-requester.js"
 import type { TipsNetworkOptions } from "./tips.js"
 
@@ -163,6 +161,49 @@ const workflowArg = (
   throw new Error("workflow must be cloud_coding_session or codex_agent_task")
 }
 
+const requireAgentToken = (network: TipsNetworkOptions): string => {
+  const token = network.agentToken ?? process.env.OPENAGENTS_AGENT_TOKEN
+  if (token === undefined || token.trim() === "") {
+    throw new Error("OPENAGENTS_AGENT_TOKEN or --agent-token is required for Khala MCP calls")
+  }
+  return token
+}
+
+async function callRemoteKhalaMcpTool(
+  network: TipsNetworkOptions,
+  name: "khala.resume" | "khala.status",
+  args: Record<string, unknown>,
+): Promise<McpToolCallResult> {
+  const response = await (network.fetch ?? fetch)(new URL("/api/mcp", network.baseUrl), {
+    body: JSON.stringify({
+      id: `pylon.local.${name}`,
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: {
+        arguments: args,
+        name,
+      },
+    }),
+    headers: {
+      Authorization: `Bearer ${requireAgentToken(network)}`,
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  })
+  const text = await response.text()
+  if (!response.ok) {
+    return toolError(`remote ${name} failed (${response.status}): ${text.trim() || response.status}`)
+  }
+  const envelope = JSON.parse(text) as McpResponseEnvelope<McpToolCallResult>
+  if (envelope.error !== undefined) {
+    return toolError(envelope.error.message)
+  }
+  if (envelope.result === undefined) {
+    return toolError(`remote ${name} returned no result`)
+  }
+  return envelope.result
+}
+
 async function callKhalaTool(
   deps: PylonKhalaMcpDeps,
   name: string,
@@ -189,12 +230,10 @@ async function callKhalaTool(
       if (durableRequestId === undefined) {
         return toolError("khala.resume requires durableRequestId")
       }
-      return toolResult(
-        await resumePylonKhalaRequest(deps.network, {
-          durableRequestId,
-          offset: offsetArg(args, "offset"),
-        }),
-      )
+      return callRemoteKhalaMcpTool(deps.network, "khala.resume", {
+        durableRequestId,
+        offset: offsetArg(args, "offset"),
+      })
     }
 
     if (name === "khala.status") {
@@ -202,7 +241,9 @@ async function callKhalaTool(
       if (durableRequestId === undefined) {
         return toolError("khala.status requires durableRequestId")
       }
-      return toolResult(await readPylonKhalaStatus(deps.network, durableRequestId))
+      return callRemoteKhalaMcpTool(deps.network, "khala.status", {
+        durableRequestId,
+      })
     }
 
     if (name === "khala.capacity") {

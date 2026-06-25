@@ -129,6 +129,107 @@ describe("pylon khala MCP stdio handler", () => {
     })
   })
 
+  test("khala.resume proxies through the remote MCP surface so ownership is checked server-side", async () => {
+    const requests: Array<{ body: Record<string, unknown>; headers: Headers; path: string }> =
+      []
+    const server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url)
+        requests.push({
+          body: JSON.parse(await request.text()) as Record<string, unknown>,
+          headers: request.headers,
+          path: url.pathname,
+        })
+        return Response.json({
+          id: "pylon.local.khala.resume",
+          jsonrpc: "2.0",
+          result: {
+            content: [
+              {
+                text: JSON.stringify({
+                  durableRequestId: "chatcmpl_mcp",
+                  ok: true,
+                  schema: "openagents.khala_mcp.durable_read.v1",
+                  streamClosed: true,
+                }),
+                type: "text",
+              },
+            ],
+          },
+        })
+      },
+    })
+    servers.push(server)
+
+    const response = await callMcp(
+      buildToolCallRequest("khala.resume", {
+        durableRequestId: "chatcmpl_mcp",
+        offset: 42,
+      }),
+      `http://127.0.0.1:${server.port}`,
+    )
+
+    const body = parseJsonContent(response.result as McpToolCallResult)
+    expect(body).toMatchObject({
+      durableRequestId: "chatcmpl_mcp",
+      ok: true,
+      streamClosed: true,
+    })
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.path).toBe("/api/mcp")
+    expect(requests[0]?.headers.get("authorization")).toBe(
+      "Bearer oa_agent_mcp_test",
+    )
+    expect(requests[0]?.body).toMatchObject({
+      method: "tools/call",
+      params: {
+        arguments: {
+          durableRequestId: "chatcmpl_mcp",
+          offset: 42,
+        },
+        name: "khala.resume",
+      },
+    })
+  })
+
+  test("khala.resume preserves remote MCP ownership denial as an isError result", async () => {
+    const server = Bun.serve({
+      port: 0,
+      fetch() {
+        return Response.json({
+          id: "pylon.local.khala.resume",
+          jsonrpc: "2.0",
+          result: {
+            content: [
+              {
+                text: "durable_request_not_authorized",
+                type: "text",
+              },
+            ],
+            isError: true,
+          },
+        })
+      },
+    })
+    servers.push(server)
+
+    const response = await callMcp(
+      buildToolCallRequest("khala.resume", {
+        durableRequestId: "chatcmpl_mcp",
+      }),
+      `http://127.0.0.1:${server.port}`,
+    )
+
+    const parsed = parseToolResult(
+      response as { jsonrpc: "2.0"; id: string; result?: McpToolCallResult },
+    )
+    expect(parsed).toEqual({
+      error: "durable_request_not_authorized",
+      ok: false,
+    })
+  })
+
   test("tool failures are returned as MCP isError results", async () => {
     const response = await callMcp(
       buildToolCallRequest("khala.request", {

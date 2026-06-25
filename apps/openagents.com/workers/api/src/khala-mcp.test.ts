@@ -180,16 +180,16 @@ const catalogFor = (
   }> = {},
 ) => {
   const ids = [...(options.ids ?? ['chatcmpl_mcp', 'assignment_id'])]
+  const store = makeStore(
+    options.registrations ?? [registration()],
+    options.assignments ?? [],
+  )
   return makeKhalaMcpCatalog<TestEnv>({
     agentStore: () => agentStore(),
     durableFetch: options.durableFetch ?? fetch,
     makeId: () => ids.shift() ?? 'id_more',
     nowIso: () => nowIso,
-    pylonStore: () =>
-      makeStore(
-        options.registrations ?? [registration()],
-        options.assignments ?? [],
-      ),
+    pylonStore: () => store,
     recordTokensServed: () => async input => {
       options.recordedTokens?.push(input)
     },
@@ -324,11 +324,21 @@ describe('Khala MCP catalog', () => {
         },
       })
     }
+    const catalog = catalogFor({ durableFetch })
+    const issued = await catalog.callTool(
+      env,
+      request,
+      principal,
+      'khala.request',
+      {
+        prompt: 'Fix the failing test',
+        targetPylonRef: 'pylon.owner.codex',
+        workflow: 'codex_agent_task',
+      },
+    )
+    expect(issued.isError).toBeFalsy()
 
-    const outcome = await catalogFor({
-      assignments: [assignment()],
-      durableFetch,
-    }).callTool(
+    const outcome = await catalog.callTool(
       env,
       request,
       principal,

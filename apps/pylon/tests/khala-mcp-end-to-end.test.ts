@@ -283,6 +283,38 @@ const makeOpenAgentsFixtureServer = (input: {
       const body = text.trim() === "" ? {} : JSON.parse(text)
       requests.push({ body, path: url.pathname })
 
+      if (url.pathname === "/api/mcp" && request.method === "POST") {
+        const session = requireSession(request)
+        if (session === undefined) return json({ error: "unauthorized" }, { status: 401 })
+        const rpc = body as {
+          id?: string | number | null
+          method?: unknown
+          params?: { arguments?: unknown; name?: unknown }
+        }
+        if (rpc.method !== "tools/call" || typeof rpc.params?.name !== "string") {
+          return json({
+            error: {
+              code: -32601,
+              message: "unsupported MCP fixture method",
+            },
+            id: rpc.id ?? null,
+            jsonrpc: "2.0",
+          })
+        }
+        const outcome = await catalog.callTool(
+          {},
+          request,
+          khalaMcpAgentPrincipal(session, NOW_ISO),
+          rpc.params.name,
+          rpc.params.arguments,
+        )
+        return json({
+          id: rpc.id ?? null,
+          jsonrpc: "2.0",
+          result: outcome,
+        })
+      }
+
       if (url.pathname === "/v1/chat/completions" && request.method === "POST") {
         const session = requireSession(request)
         if (session === undefined) return json({ error: "unauthorized" }, { status: 401 })
@@ -632,8 +664,8 @@ describe("Khala MCP end-to-end smoke", () => {
         token: OTHER_TOKEN,
       })
       expect(deniedCall.isError).toBe(true)
-      expect(deniedCall.text).toContain("pylon khala request failed (403)")
-      expect(deniedCall.text).toContain("caller-owned linked Pylon set")
+      expect(deniedCall.text).toContain("durable_request_not_authorized")
+      expect(deniedCall.text).toContain("caller-owned linked Pylon assignment")
       expect(fixture.durableReplayCount()).toBe(1)
     })
   })

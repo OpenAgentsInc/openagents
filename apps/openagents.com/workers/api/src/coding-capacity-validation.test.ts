@@ -563,8 +563,9 @@ describe('#6273 coding-capacity validation harness', () => {
     expect(pylonStore.createdAssignments()).toHaveLength(0)
   })
 
-  test('P6.4 — reusable issuer harness: link -> issue -> authorize -> route -> durable resume', async () => {
+  test('P4/P6 — bare MCP issuer harness: link -> issue -> route -> durable resume, with cross-account resume denied', async () => {
     const userA = 'openauth-user-a'
+    const userB = 'openauth-user-b'
     const credentials: Array<Credential> = [
       {
         id: 'cred_a',
@@ -573,6 +574,14 @@ describe('#6273 coding-capacity validation harness', () => {
         tokenHash: await sha256Hex(tokenFor('agent_a')),
         tokenPrefix: tokenFor('agent_a').slice(0, 16),
         openauthUserId: null,
+      },
+      {
+        id: 'cred_b',
+        agentUserId: 'agent_b',
+        displayName: 'Agent B',
+        tokenHash: await sha256Hex(tokenFor('agent_b')),
+        tokenPrefix: tokenFor('agent_b').slice(0, 16),
+        openauthUserId: userB,
       },
     ]
     const agentStore = makeAgentStore(credentials)
@@ -691,6 +700,44 @@ describe('#6273 coding-capacity validation harness', () => {
     expect(durableReads).toEqual([
       'https://openagents.com/v1/chat/completions/durable/chatcmpl_validate_issue?offset=12',
     ])
+
+    const otherSession: ProgrammaticAgentSession = {
+      credential: {
+        id: 'cred_b',
+        lastUsedAt: NOW_ISO,
+        openauthUserId: userB,
+        profileMetadataJson: '{}',
+        tokenPrefix: tokenFor('agent_b').slice(0, 16),
+      },
+      user: {
+        avatarUrl: null,
+        createdAt: NOW_ISO,
+        displayName: 'Agent B',
+        id: 'agent_b',
+        kind: 'agent',
+        primaryEmail: null,
+        status: 'active',
+        updatedAt: NOW_ISO,
+      },
+    }
+    const otherRequest = new Request('https://openagents.com/api/mcp', {
+      headers: { authorization: `Bearer ${tokenFor('agent_b')}` },
+      method: 'POST',
+    })
+    const denied = await catalog.callTool(
+      { OPENAGENTS_DB: {} as D1Database },
+      otherRequest,
+      khalaMcpAgentPrincipal(otherSession, NOW_ISO),
+      'khala.resume',
+      { durableRequestId: 'chatcmpl_validate_issue', offset: 0 },
+    )
+    expect(denied.isError).toBe(true)
+    expect(denied.structuredContent).toMatchObject({
+      error: 'durable_request_not_authorized',
+      ok: false,
+      statusCode: 403,
+    })
+    expect(durableReads).toHaveLength(1)
   })
 
   test('P6.2 — bounded own-capacity property holds across origins, tokens, and targets', async () => {

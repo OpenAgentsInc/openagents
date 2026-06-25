@@ -34,6 +34,7 @@ import type {
 import type { ServedTokensRecorderInput } from './inference/served-tokens-recorder'
 import {
   pylonCodingServiceCapacityProjection,
+  type PylonApiAssignmentRecord,
   type PylonApiRegistrationRecord,
   type PylonApiStore,
 } from './pylon-api'
@@ -447,14 +448,24 @@ const durableReadProjection = async (
   }
 }
 
-const assignmentMatchesDurableRequest = (
-  assignment: Readonly<{
-    taskRefs?: ReadonlyArray<string>
-  }>,
-  durableRequestId: string,
-): boolean => {
-  const requestRef = khalaCodingRequestIdRef(durableRequestId)
-  return assignment.taskRefs?.includes(requestRef) ?? false
+const assignmentsForRegistrations = async (
+  pylonStore: PylonApiStore,
+  registrations: ReadonlyArray<PylonApiRegistrationRecord>,
+): Promise<ReadonlyArray<PylonApiAssignmentRecord>> => {
+  const pylonRefs = registrations.map(registration => registration.pylonRef)
+  if (pylonRefs.length === 0) {
+    return []
+  }
+  if (pylonStore.listAssignmentsForPylons !== undefined) {
+    return pylonStore.listAssignmentsForPylons(pylonRefs, 200)
+  }
+  return (
+    await Promise.all(
+      pylonRefs.map(pylonRef =>
+        pylonStore.listAssignmentsForPylon(pylonRef, 100),
+      ),
+    )
+  ).flat()
 }
 
 export const khalaDurableRequestIsLinkedToPrincipal = async (
@@ -470,22 +481,20 @@ export const khalaDurableRequestIsLinkedToPrincipal = async (
     input.principal,
   )
   const registrations = await linkedRegistrations(input.pylonStore, linkedAgents)
-  const pylonRefs = registrations.map(registration => registration.pylonRef)
-  if (pylonRefs.length === 0) return false
-
-  const assignments =
-    input.pylonStore.listAssignmentsForPylons === undefined
-      ? (
-          await Promise.all(
-            pylonRefs.map(pylonRef =>
-              input.pylonStore.listAssignmentsForPylon(pylonRef, 100),
-            ),
-          )
-        ).flat()
-      : await input.pylonStore.listAssignmentsForPylons(pylonRefs, 100)
-
-  return assignments.some(assignment =>
-    assignmentMatchesDurableRequest(assignment, input.durableRequestId),
+  const ownerAgentUserIds = new Set(linkedAgents.map(agent => agent.agentUserId))
+  const pylonRefs = new Set(
+    registrations.map(registration => registration.pylonRef),
+  )
+  const requestRef = khalaCodingRequestIdRef(input.durableRequestId)
+  const assignments = await assignmentsForRegistrations(
+    input.pylonStore,
+    registrations,
+  )
+  return assignments.some(
+    assignment =>
+      ownerAgentUserIds.has(assignment.ownerAgentUserId) &&
+      pylonRefs.has(assignment.pylonRef) &&
+      assignment.taskRefs.includes(requestRef),
   )
 }
 
@@ -618,7 +627,7 @@ export const makeKhalaMcpCatalog = <Bindings extends KhalaMcpEnv>(
           return toolErrorOutcome(name, 'durable_request_not_authorized', {
             durableRequestId,
             reason:
-              'The durable Khala stream is not attached to any assignment on a caller-owned linked Pylon.',
+              'The durable Khala stream is not attached to a caller-owned linked Pylon assignment.',
             statusCode: 403,
           })
         }

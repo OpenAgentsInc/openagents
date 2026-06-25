@@ -568,7 +568,7 @@ Each task: scope · seam it touches · acceptance. No code is written here.
   - Acceptance: `pylon mcp config --json` yields valid stdio + remote configs; a
     doc shows a bare Claude Code / Codex picking them up.
 
-### P4 — Bare-agent-via-MCP end-to-end through the pylon network (NOW; needs #6278 + P2 + P3)
+### P4 — Bare-agent-via-MCP end-to-end through the pylon network (LANDED; needs #6278 + P2 + P3)
 
 - **P4.1 Route an issued request across the account's linked Pylons.**
   - Seam: the #6278 router; the assignment-lease pull
@@ -581,12 +581,18 @@ Each task: scope · seam it touches · acceptance. No code is written here.
     request → authorized + routed to a fixture owned Pylon → executes → durable
     frames → bare agent receives result; a dropped agent resumes via the durable
     route; a second account cannot see/resume the stream.
+  - Evidence: `apps/openagents.com/workers/api/src/coding-capacity-validation.test.ts`
+    `P4/P6` harness plus
+    `docs/khala/2026-06-25-bare-agent-mcp-khala-runbook.md`.
 - **P4.2 Bare Codex / Claude Code acceptance smoke.**
   - Seam: a doc smoke + fixture harness.
   - Scope: prove "bare Codex/Claude + one MCP config line → Khala-network client"
     against fixtures.
   - Acceptance: a runbook + smoke showing a vanilla agent session driving the
     full path with only the MCP config + token.
+  - Evidence: `pylon mcp config --json` config shape and the fixture/live-safe
+    procedure in
+    `docs/khala/2026-06-25-bare-agent-mcp-khala-runbook.md`.
 
 ### P5 — Autopilot Verse desktop integration (later; needs P1–P4)
 
