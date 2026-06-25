@@ -4,13 +4,12 @@ import { Effect, Match as M, Schema as S } from 'effect'
 import {
   AGENT_TOKEN_PREFIX,
   type AgentRegistrationStore,
+  type OpenAuthAgentLinkRecord,
   type ProgrammaticAgentSession,
   authenticateProgrammaticAgent,
   sha256Hex,
 } from './agent-registration'
-import type {
-  AutopilotWorkerCloseoutIngestionInput,
-} from './autopilot-work-routes'
+import type { AutopilotWorkerCloseoutIngestionInput } from './autopilot-work-routes'
 import {
   methodNotAllowed,
   noStoreJsonResponse,
@@ -23,9 +22,9 @@ import {
   PylonApiAssignmentAcceptanceRequest,
   PylonApiAssignmentCloseoutRequest,
   PylonApiAssignmentProgressRequest,
-  PylonApiAssignmentWorkerCloseoutRequest,
   type PylonApiAssignmentRecord,
   type PylonApiAssignmentState,
+  PylonApiAssignmentWorkerCloseoutRequest,
   PylonApiCreateAssignmentRequest,
   type PylonApiEventKind,
   PylonApiHeartbeatRequest,
@@ -77,9 +76,31 @@ type PylonApiRouteDependencies<Bindings> = Readonly<{
     input: AutopilotWorkerCloseoutIngestionInput,
   ) => Promise<unknown>
   requireAdminApiToken?: (request: Request, env: Bindings) => Promise<boolean>
+  requireBrowserSession?: (
+    request: Request,
+    env: Bindings,
+    ctx: ExecutionContext,
+  ) => Promise<PylonApiBrowserSession | undefined>
 }>
 
 type PylonApiRouteEnv = Readonly<Record<string, unknown>>
+type PylonApiBrowserSession = Readonly<{
+  user: Readonly<{
+    email?: string
+    name?: string
+    userId: string
+  }>
+}>
+
+const LinkOpenAuthAgentRequest = S.Struct({
+  agentToken: S.Trim.check(
+    S.isMinLength(AGENT_TOKEN_PREFIX.length + 8),
+    S.isMaxLength(2048),
+    S.isPattern(/^oa_agent_[A-Za-z0-9_-]+$/),
+  ),
+})
+
+type LinkOpenAuthAgentRequest = typeof LinkOpenAuthAgentRequest.Type
 
 // Presence contract (#5058): Pylon presence and lifecycle writes are
 // agent-token authenticated. A node's self-held Nostr key proves Nostr
@@ -216,6 +237,28 @@ const routeAgentStore = <Bindings extends PylonApiRouteEnv>(
   env: Bindings,
 ): AgentRegistrationStore => dependencies.agentStore(env)
 
+const requireBrowser = <Bindings extends PylonApiRouteEnv>(
+  dependencies: PylonApiRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  ctx: ExecutionContext,
+): Effect.Effect<PylonApiBrowserSession, PylonApiUnauthorized> => {
+  if (dependencies.requireBrowserSession === undefined) {
+    return Effect.fail(new PylonApiUnauthorized({}))
+  }
+
+  return Effect.flatMap(
+    Effect.tryPromise({
+      catch: () => new PylonApiUnauthorized({}),
+      try: () => dependencies.requireBrowserSession!(request, env, ctx),
+    }),
+    session =>
+      session === undefined
+        ? Effect.fail(new PylonApiUnauthorized({}))
+        : Effect.succeed(session),
+  )
+}
+
 // #5306 onboarding backstop: resolve the node's Spark payout-target readiness
 // from the private operator store keyed by pylonRef. Fails closed — when the
 // store dependency is not wired or the read errors, readiness is not-ready, so
@@ -266,7 +309,7 @@ const duplicateBlockingAssignmentStates = new Set<PylonApiAssignmentState>([
   'running',
 ])
 
-type ControlledPylonAssignmentDispatchGate = Readonly<{
+export type ControlledPylonAssignmentDispatchGate = Readonly<{
   assignmentRef: string | null
   blockerRefs: ReadonlyArray<string>
   campaignRef: string | null
@@ -336,7 +379,7 @@ const heartbeatAgeMs = (
   return Number.isFinite(latest) && Number.isFinite(now) ? now - latest : null
 }
 
-const controlledPylonAssignmentDispatchGate = (
+export const controlledPylonAssignmentDispatchGate = (
   input: Readonly<{
     activeAssignments: ReadonlyArray<PylonApiAssignmentRecord>
     assignmentRef: string | null
@@ -1401,7 +1444,10 @@ const routeRegisterSparkPayoutTarget = <Bindings extends PylonApiRouteEnv>(
     // Recompute readiness from the private store right after the upsert: this
     // is the moment a node-registered target becomes visible as ready (#5306).
     const sparkReadiness = yield* Effect.promise(() =>
-      resolveSparkPayoutTargetReadiness(sparkStore, storedRegistration.pylonRef),
+      resolveSparkPayoutTargetReadiness(
+        sparkStore,
+        storedRegistration.pylonRef,
+      ),
     )
 
     return noStoreJsonResponse(
@@ -1451,6 +1497,189 @@ const routeList = <Bindings extends PylonApiRouteEnv>(
     return noStoreJsonResponse({ pylons })
   })
 
+const routeListAccountPylons = <Bindings extends PylonApiRouteEnv>(
+  dependencies: PylonApiRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  ctx: ExecutionContext,
+) =>
+  Effect.gen(function* () {
+    const session = yield* requireBrowser(dependencies, request, env, ctx)
+    const nowIso = routeNowIso(dependencies)
+    const agentStore = routeAgentStore(dependencies, env)
+    if (agentStore.listLinkedAgentsForOpenAuthUser === undefined) {
+      return routeErrorResponse(
+        new PylonApiStoreError({
+          kind: 'storage_error',
+          reason: 'OpenAuth agent link store is not wired.',
+        }),
+      )
+    }
+    const linkedAgents = yield* Effect.tryPromise({
+      catch: pylonApiStoreErrorFromUnknown,
+      try: () =>
+        agentStore.listLinkedAgentsForOpenAuthUser!(session.user.userId, 100),
+    })
+    const ownerAgentUserIds = linkedAgents.map(agent => agent.agentUserId)
+    const store = routeStore(dependencies, env)
+    const registrations = yield* Effect.tryPromise({
+      catch: pylonApiStoreErrorFromUnknown,
+      try: () =>
+        store.listRegistrationsForOwnerAgentUserIds === undefined
+          ? store
+              .listRegistrations(200)
+              .then(rows =>
+                rows.filter(row =>
+                  ownerAgentUserIds.includes(row.ownerAgentUserId),
+                ),
+              )
+          : store.listRegistrationsForOwnerAgentUserIds(ownerAgentUserIds, 200),
+    })
+    const pylonRefs = registrations.map(registration => registration.pylonRef)
+    const assignments = yield* Effect.tryPromise({
+      catch: pylonApiStoreErrorFromUnknown,
+      try: async () =>
+        store.listAssignmentsForPylons === undefined
+          ? (
+              await Promise.all(
+                pylonRefs.map(pylonRef =>
+                  store.listAssignmentsForPylon(pylonRef, 25),
+                ),
+              )
+            ).flat()
+          : store.listAssignmentsForPylons(pylonRefs, 100),
+    })
+    const events = yield* Effect.tryPromise({
+      catch: pylonApiStoreErrorFromUnknown,
+      try: async () =>
+        (
+          await Promise.all(
+            pylonRefs.map(pylonRef => store.listEventsForPylon(pylonRef, 10)),
+          )
+        )
+          .flat()
+          .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+          .slice(0, 100),
+    })
+    const pylons = yield* Effect.forEach(
+      registrations,
+      registration =>
+        resolveRouteSparkPayoutTargetReadiness(
+          dependencies,
+          env,
+          registration.pylonRef,
+        ).pipe(
+          Effect.map(readiness =>
+            publicPylonApiRegistrationProjection(
+              registration,
+              nowIso,
+              readiness,
+            ),
+          ),
+        ),
+      { concurrency: 8 },
+    )
+
+    return noStoreJsonResponse({
+      activity: {
+        assignments: [...assignments]
+          .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+          .slice(0, 100)
+          .map(assignment =>
+            publicPylonApiAssignmentProjection(assignment, nowIso),
+          ),
+        events: events.map(event =>
+          publicPylonApiEventProjection(event, nowIso),
+        ),
+      },
+      linkedAgents: linkedAgents.map(agent => ({
+        agentRef: `agent:${agent.agentUserId}`,
+        displayName: agent.displayName,
+        linkKind: agent.linkKind,
+        tokenPrefix: agent.tokenPrefix,
+      })),
+      pylons,
+      summary: {
+        linkedAgentCount: linkedAgents.length,
+        onlineCodingPylonCount: pylons.filter(pylon =>
+          pylon.codingCapacity.some(capacity => capacity.available > 0),
+        ).length,
+        pylonCount: pylons.length,
+      },
+    })
+  })
+
+const routeLinkOpenAuthAgent = <Bindings extends PylonApiRouteEnv>(
+  dependencies: PylonApiRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  ctx: ExecutionContext,
+) =>
+  Effect.gen(function* () {
+    const session = yield* requireBrowser(dependencies, request, env, ctx)
+    const body = yield* decodeBody(request, LinkOpenAuthAgentRequest)
+    const agentStore = routeAgentStore(dependencies, env)
+    if (agentStore.linkOpenAuthAgent === undefined) {
+      return routeErrorResponse(
+        new PylonApiStoreError({
+          kind: 'storage_error',
+          reason: 'OpenAuth agent link store is not wired.',
+        }),
+      )
+    }
+    const nowIso = routeNowIso(dependencies)
+    const agentSession = yield* Effect.tryPromise({
+      catch: pylonApiStoreErrorFromUnknown,
+      try: () => authenticateProgrammaticAgent(agentStore, body.agentToken),
+    })
+
+    if (agentSession === undefined) {
+      return unauthorized()
+    }
+
+    if (
+      agentSession.credential.openauthUserId !== null &&
+      agentSession.credential.openauthUserId !== session.user.userId
+    ) {
+      return routeErrorResponse(
+        new PylonApiStoreError({
+          kind: 'forbidden',
+          reason:
+            'Agent credential is already linked to another OpenAuth user.',
+        }),
+      )
+    }
+
+    const linkRecord: OpenAuthAgentLinkRecord = {
+      agentCredentialId: agentSession.credential.id,
+      agentUserId: agentSession.user.id,
+      createdAt: nowIso,
+      id: `openauth_agent_link_${routeMakeId(dependencies)}`,
+      linkKind: 'credential_anchor',
+      openauthUserId: session.user.userId,
+      revokedAt: null,
+      status: 'active',
+      updatedAt: nowIso,
+    }
+
+    yield* Effect.tryPromise({
+      catch: pylonApiStoreErrorFromUnknown,
+      try: () => agentStore.linkOpenAuthAgent!(linkRecord),
+    })
+
+    return noStoreJsonResponse(
+      {
+        linkedAgent: {
+          agentRef: `agent:${agentSession.user.id}`,
+          displayName: agentSession.user.displayName,
+          linkKind: linkRecord.linkKind,
+          tokenPrefix: agentSession.credential.tokenPrefix,
+        },
+      },
+      { status: 201 },
+    )
+  })
+
 const routeRead = <Bindings extends PylonApiRouteEnv>(
   dependencies: PylonApiRouteDependencies<Bindings>,
   env: Bindings,
@@ -1494,8 +1723,29 @@ export const makePylonApiRoutes = <Bindings extends PylonApiRouteEnv>(
   routePylonApiRequest: (
     request: Request,
     env: Bindings,
+    ctx: ExecutionContext,
   ): Effect.Effect<HttpResponse> | undefined => {
     const url = new URL(request.url)
+
+    if (url.pathname === '/api/account/pylons') {
+      if (request.method !== 'GET') {
+        return Effect.succeed(methodNotAllowed(['GET']))
+      }
+
+      return routeListAccountPylons(dependencies, request, env, ctx).pipe(
+        Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+      )
+    }
+
+    if (url.pathname === '/api/account/pylon-agent-links') {
+      if (request.method !== 'POST') {
+        return Effect.succeed(methodNotAllowed(['POST']))
+      }
+
+      return routeLinkOpenAuthAgent(dependencies, request, env, ctx).pipe(
+        Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+      )
+    }
 
     if (url.pathname === '/api/pylons') {
       if (request.method !== 'GET') {
@@ -1668,29 +1918,29 @@ export const makePylonApiRoutes = <Bindings extends PylonApiRouteEnv>(
                 fallbackStatus: 'running',
                 schema: PylonApiAssignmentProgressRequest,
               }
-              : action === 'artifacts'
+            : action === 'artifacts'
+              ? {
+                  eventKind: 'artifact_proof_metadata' as const,
+                  fallbackStatus: 'submitted',
+                  schema: PylonApiArtifactProofMetadataRequest,
+                }
+              : action === 'closeout'
                 ? {
-                    eventKind: 'artifact_proof_metadata' as const,
-                    fallbackStatus: 'submitted',
-                    schema: PylonApiArtifactProofMetadataRequest,
+                    eventKind: 'worker_closeout' as const,
+                    fallbackStatus: 'closeout_submitted',
+                    schema: PylonApiAssignmentWorkerCloseoutRequest,
                   }
-                : action === 'closeout'
+                : action === 'payment-receipts'
                   ? {
-                      eventKind: 'worker_closeout' as const,
-                      fallbackStatus: 'closeout_submitted',
-                      schema: PylonApiAssignmentWorkerCloseoutRequest,
+                      eventKind: 'payment_receipt' as const,
+                      fallbackStatus: 'reported',
+                      schema: PylonApiPaymentReceiptRequest,
                     }
-                  : action === 'payment-receipts'
-                    ? {
-                        eventKind: 'payment_receipt' as const,
-                        fallbackStatus: 'reported',
-                        schema: PylonApiPaymentReceiptRequest,
-                      }
-                    : {
-                        eventKind: 'settlement_status' as const,
-                        fallbackStatus: 'reported',
-                        schema: PylonApiSettlementStatusRequest,
-                      }
+                  : {
+                      eventKind: 'settlement_status' as const,
+                      fallbackStatus: 'reported',
+                      schema: PylonApiSettlementStatusRequest,
+                    }
 
       return routeEvent(dependencies, request, env, {
         assignmentRef: decodeURIComponent(assignmentMatch[2]!),

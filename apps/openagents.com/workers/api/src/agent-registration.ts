@@ -87,6 +87,7 @@ export type AgentProfileRecord = Readonly<{
 export type AgentCredentialRecord = Readonly<{
   id: string
   userId: string
+  openauthUserId: string | null
   tokenHash: string
   tokenPrefix: string
   name: string
@@ -105,8 +106,35 @@ export type AgentRegistrationRecord = Readonly<{
 export type AgentCredentialLookup = Readonly<{
   user: AgentUserRecord
   credentialId: string
+  openauthUserId?: string | null
   profileMetadataJson: string
   tokenPrefix: string
+}>
+
+export type OpenAuthAgentLinkKind =
+  | 'claim_approval'
+  | 'credential_anchor'
+  | 'manual'
+
+export type OpenAuthAgentLinkRecord = Readonly<{
+  id: string
+  openauthUserId: string
+  agentUserId: string
+  agentCredentialId: string | null
+  linkKind: OpenAuthAgentLinkKind
+  status: 'active' | 'revoked'
+  createdAt: string
+  updatedAt: string
+  revokedAt: string | null
+}>
+
+export type LinkedAgentOwnerRecord = Readonly<{
+  agentUserId: string
+  credentialId: string | null
+  displayName: string
+  linkKind: OpenAuthAgentLinkKind
+  openauthUserId: string
+  tokenPrefix: string | null
 }>
 
 export type AgentRegistrationStore = Readonly<{
@@ -129,6 +157,11 @@ export type AgentRegistrationStore = Readonly<{
     displayName: string,
     updatedAt: string,
   ) => Promise<number>
+  linkOpenAuthAgent?: (record: OpenAuthAgentLinkRecord) => Promise<void>
+  listLinkedAgentsForOpenAuthUser?: (
+    openauthUserId: string,
+    limit: number,
+  ) => Promise<ReadonlyArray<LinkedAgentOwnerRecord>>
 }>
 
 export type ProgrammaticAgentRegistration = Readonly<{
@@ -151,6 +184,7 @@ export type ProgrammaticAgentSession = Readonly<{
   user: AgentUserRecord
   credential: Readonly<{
     id: string
+    openauthUserId?: string | null
     profileMetadataJson: string
     tokenPrefix: string
     lastUsedAt: string
@@ -166,8 +200,18 @@ type AgentCredentialLookupRow = Readonly<{
   created_at: string
   updated_at: string
   credential_id: string
+  openauth_user_id: string | null
   metadata_json: string | null
   token_prefix: string
+}>
+
+type LinkedAgentOwnerRow = Readonly<{
+  agent_user_id: string
+  credential_id: string | null
+  display_name: string
+  link_kind: OpenAuthAgentLinkKind
+  openauth_user_id: string
+  token_prefix: string | null
 }>
 
 const textEncoder = new TextEncoder()
@@ -268,12 +312,13 @@ export const makeD1AgentRegistrationStore = (
       db
         .prepare(
           `INSERT INTO agent_credentials
-            (id, user_id, token_hash, token_prefix, name, status, created_at, expires_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            (id, user_id, openauth_user_id, token_hash, token_prefix, name, status, created_at, expires_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           record.credential.id,
           record.credential.userId,
+          record.credential.openauthUserId,
           record.credential.tokenHash,
           record.credential.tokenPrefix,
           record.credential.name,
@@ -296,6 +341,7 @@ export const makeD1AgentRegistrationStore = (
             users.created_at,
             users.updated_at,
             agent_credentials.id AS credential_id,
+            agent_credentials.openauth_user_id,
             agent_profiles.metadata_json,
             agent_credentials.token_prefix
          FROM agent_credentials
@@ -331,6 +377,7 @@ export const makeD1AgentRegistrationStore = (
         updatedAt: row.updated_at,
       },
       credentialId: row.credential_id,
+      openauthUserId: row.openauth_user_id,
       profileMetadataJson: row.metadata_json ?? '{}',
       tokenPrefix: row.token_prefix,
     }
@@ -363,6 +410,118 @@ export const makeD1AgentRegistrationStore = (
     const changes = result.meta?.changes
 
     return typeof changes === 'number' ? changes : 0
+  },
+
+  linkOpenAuthAgent: async record => {
+    await db.batch([
+      db
+        .prepare(
+          `INSERT INTO openauth_agent_links
+            (id, openauth_user_id, agent_user_id, agent_credential_id,
+             link_kind, status, created_at, updated_at, revoked_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(openauth_user_id, agent_user_id, agent_credential_id)
+           DO UPDATE SET
+             link_kind = excluded.link_kind,
+             status = excluded.status,
+             updated_at = excluded.updated_at,
+             revoked_at = excluded.revoked_at`,
+        )
+        .bind(
+          record.id,
+          record.openauthUserId,
+          record.agentUserId,
+          record.agentCredentialId,
+          record.linkKind,
+          record.status,
+          record.createdAt,
+          record.updatedAt,
+          record.revokedAt,
+        ),
+      ...(record.agentCredentialId === null
+        ? []
+        : [
+            db
+              .prepare(
+                `UPDATE agent_credentials
+                    SET openauth_user_id = ?
+                  WHERE id = ?
+                    AND user_id = ?
+                    AND status = 'active'
+                    AND revoked_at IS NULL`,
+              )
+              .bind(
+                record.openauthUserId,
+                record.agentCredentialId,
+                record.agentUserId,
+              ),
+          ]),
+    ])
+  },
+
+  listLinkedAgentsForOpenAuthUser: async (openauthUserId, limit) => {
+    const boundedLimit = Math.max(1, Math.min(Math.trunc(limit), 100))
+    const result = await db
+      .prepare(
+        `WITH explicit_links AS (
+           SELECT
+             openauth_agent_links.openauth_user_id,
+             openauth_agent_links.agent_user_id,
+             openauth_agent_links.agent_credential_id AS credential_id,
+             openauth_agent_links.link_kind,
+             agent_credentials.token_prefix
+           FROM openauth_agent_links
+           LEFT JOIN agent_credentials
+             ON agent_credentials.id = openauth_agent_links.agent_credential_id
+            AND agent_credentials.status = 'active'
+            AND agent_credentials.revoked_at IS NULL
+           WHERE openauth_agent_links.openauth_user_id = ?
+             AND openauth_agent_links.status = 'active'
+             AND openauth_agent_links.revoked_at IS NULL
+         ),
+         credential_links AS (
+           SELECT
+             agent_credentials.openauth_user_id,
+             agent_credentials.user_id AS agent_user_id,
+             agent_credentials.id AS credential_id,
+             'credential_anchor' AS link_kind,
+             agent_credentials.token_prefix
+           FROM agent_credentials
+           WHERE agent_credentials.openauth_user_id = ?
+             AND agent_credentials.status = 'active'
+             AND agent_credentials.revoked_at IS NULL
+         )
+         SELECT
+           linked.openauth_user_id,
+           linked.agent_user_id,
+           linked.credential_id,
+           linked.link_kind,
+           users.display_name,
+           linked.token_prefix
+         FROM (
+           SELECT * FROM explicit_links
+           UNION
+           SELECT * FROM credential_links
+         ) AS linked
+         INNER JOIN users
+           ON users.id = linked.agent_user_id
+          AND users.kind = 'agent'
+          AND users.status = 'active'
+          AND users.deleted_at IS NULL
+         ORDER BY users.updated_at DESC, linked.agent_user_id ASC
+         LIMIT ?`,
+      )
+      .bind(openauthUserId, openauthUserId, boundedLimit)
+      .all<LinkedAgentOwnerRow>()
+
+    return (result.results ?? []).map(row => ({
+      agentUserId: row.agent_user_id,
+      credentialId: row.credential_id,
+      displayName: row.display_name,
+      linkKind: row.link_kind,
+      openauthUserId: row.openauth_user_id,
+      tokenPrefix: row.token_prefix,
+    }))
   },
 })
 
@@ -412,6 +571,7 @@ export const buildProgrammaticAgentRegistrationRecord = (
   const credential: AgentCredentialRecord = {
     id: credentialId,
     userId,
+    openauthUserId: null,
     tokenHash: credentialInput.tokenHash,
     tokenPrefix: credentialInput.tokenPrefix,
     name: `${input.displayName} programmatic token`,
@@ -492,6 +652,9 @@ export const authenticateProgrammaticAgent = async (
     user: lookup.user,
     credential: {
       id: lookup.credentialId,
+      ...(lookup.openauthUserId === undefined
+        ? {}
+        : { openauthUserId: lookup.openauthUserId }),
       profileMetadataJson: lookup.profileMetadataJson,
       tokenPrefix: lookup.tokenPrefix,
       lastUsedAt,

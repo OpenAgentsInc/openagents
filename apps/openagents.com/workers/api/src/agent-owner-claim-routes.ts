@@ -312,10 +312,7 @@ type AgentOwnerClaimRouteDependencies<
   Bindings,
 > = Readonly<{
   agentStore?: (env: Bindings) => AgentRegistrationStore
-  requireAdminApiToken?: (
-    request: Request,
-    env: Bindings,
-  ) => Promise<boolean>
+  requireAdminApiToken?: (request: Request, env: Bindings) => Promise<boolean>
   rewardCampaignCap?: number
   appendRefreshedSessionCookies: (
     response: HttpResponse,
@@ -805,7 +802,12 @@ export const makeD1AgentOwnerClaimStore = (
               AND status = 'pending'
               AND agent_user_id IS NOT NULL`,
         )
-        .bind(input.ownerUserId, input.decidedAt, input.decidedAt, input.claimId)
+        .bind(
+          input.ownerUserId,
+          input.decidedAt,
+          input.decidedAt,
+          input.claimId,
+        )
         .run()
 
       return readClaimById(input.claimId)
@@ -859,18 +861,40 @@ export const makeD1AgentOwnerClaimStore = (
         db
           .prepare(
             `INSERT INTO agent_credentials
-            (id, user_id, token_hash, token_prefix, name, status, created_at, expires_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            (id, user_id, openauth_user_id, token_hash, token_prefix, name, status, created_at, expires_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           )
           .bind(
             input.registration.credential.id,
             input.registration.credential.userId,
+            input.ownerUserId,
             input.registration.credential.tokenHash,
             input.registration.credential.tokenPrefix,
             input.registration.credential.name,
             input.registration.credential.status,
             input.registration.credential.createdAt,
             input.credentialExpiresAt,
+          ),
+        db
+          .prepare(
+            `INSERT INTO openauth_agent_links
+              (id, openauth_user_id, agent_user_id, agent_credential_id,
+               link_kind, status, created_at, updated_at, revoked_at)
+             VALUES (?, ?, ?, ?, 'claim_approval', 'active', ?, ?, NULL)
+             ON CONFLICT(openauth_user_id, agent_user_id, agent_credential_id)
+             DO UPDATE SET
+               link_kind = 'claim_approval',
+               status = 'active',
+               updated_at = excluded.updated_at,
+               revoked_at = NULL`,
+          )
+          .bind(
+            `openauth_agent_link_${input.claimId}`,
+            input.ownerUserId,
+            input.registration.user.id,
+            input.registration.credential.id,
+            input.decidedAt,
+            input.decidedAt,
           ),
         db
           .prepare(
@@ -1173,7 +1197,8 @@ const createClaimResponse = async <
       requestedAt,
       dependencies.claimTtlMs ?? CLAIM_TTL_MS,
     ),
-    externalId: existingAgentUserId === null ? (parsed.externalId ?? null) : null,
+    externalId:
+      existingAgentUserId === null ? (parsed.externalId ?? null) : null,
     id: claimId,
     metadataJson: JSON.stringify(parsed.metadata ?? {}),
     ownerUserId: null,
@@ -1569,8 +1594,7 @@ const verifyXClaimResponse = async <
     const rejected = await store.rejectXChallenge({
       challengeId: challenge.id,
       now,
-      reason:
-        'X verification tweet author could not be determined.',
+      reason: 'X verification tweet author could not be determined.',
     })
 
     return xClaimChallengeResponse(rejected ?? challenge, 409)
@@ -1590,17 +1614,17 @@ const verifyXClaimResponse = async <
   const htmlText = tweet.htmlText ?? ''
   const hasCode = htmlText.includes(challenge.nonce)
   const hasLegacyClaimUrl = htmlText.includes(challenge.requiredUrl)
-  const isLegacyRequiredText =
-    challenge.requiredText.includes(challenge.requiredUrl)
+  const isLegacyRequiredText = challenge.requiredText.includes(
+    challenge.requiredUrl,
+  )
 
   if (!hasCode || (isLegacyRequiredText && !hasLegacyClaimUrl)) {
     const rejected = await store.rejectXChallenge({
       challengeId: challenge.id,
       now,
-      reason:
-        isLegacyRequiredText
-          ? 'X verification tweet is missing the required nonce or claim URL.'
-          : 'X verification tweet is missing the required code.',
+      reason: isLegacyRequiredText
+        ? 'X verification tweet is missing the required nonce or claim URL.'
+        : 'X verification tweet is missing the required code.',
     })
 
     return xClaimChallengeResponse(rejected ?? challenge, 409)
@@ -2056,9 +2080,7 @@ const ownerClaimPageResponse = async <
       ? `<section class="x-claim" data-x-claim-panel>
       <h2>Verify on X</h2>
       <p>Post a public verification tweet, then paste the tweet URL here. OpenAgents binds the author from the public tweet and never asks for X OAuth tokens.</p>
-      <div id="xChallengeExisting"${
-        xChallenge === undefined ? ' hidden' : ''
-      }>
+      <div id="xChallengeExisting"${xChallenge === undefined ? ' hidden' : ''}>
         <pre id="xRequiredText">${escapeHtml(xChallenge?.requiredText ?? '')}</pre>
         <a class="button" id="xIntent" href="${escapeHtml(
           xChallenge === undefined
@@ -2340,9 +2362,7 @@ export const makeAgentOwnerClaimRoutes = <
     }
 
     const rewardDispatchMatch =
-      /^\/api\/agents\/claims\/rewards\/([^/]+)\/dispatch$/.exec(
-        url.pathname,
-      )
+      /^\/api\/agents\/claims\/rewards\/([^/]+)\/dispatch$/.exec(url.pathname)
 
     if (rewardDispatchMatch !== null) {
       const rewardId = decodeURIComponent(rewardDispatchMatch[1] ?? '')
@@ -2367,8 +2387,9 @@ export const makeAgentOwnerClaimRoutes = <
       )
     }
 
-    const rewardStatusMatch =
-      /^\/api\/agents\/claims\/rewards\/([^/]+)$/.exec(url.pathname)
+    const rewardStatusMatch = /^\/api\/agents\/claims\/rewards\/([^/]+)$/.exec(
+      url.pathname,
+    )
 
     if (rewardStatusMatch !== null) {
       const rewardRef = decodeURIComponent(rewardStatusMatch[1] ?? '')

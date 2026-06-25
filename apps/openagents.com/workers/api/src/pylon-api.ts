@@ -268,9 +268,7 @@ export type PylonSparkPayoutTargetStore = Readonly<{
   upsert: (
     record: PylonSparkPayoutTargetRecord,
   ) => Promise<PylonSparkPayoutTargetRecord>
-  read: (
-    pylonRef: string,
-  ) => Promise<PylonSparkPayoutTargetRecord | undefined>
+  read: (pylonRef: string) => Promise<PylonSparkPayoutTargetRecord | undefined>
   // Owner-scoped read (#5252 backing index): the most recently updated Spark
   // payout target registered by an owning agent across ANY of its pylons. The
   // settlement resolver uses this as a canonical fallback when a contribution's
@@ -539,7 +537,9 @@ export const PylonApiAssignmentWorkerCloseoutRequest = S.Struct({
   summaryRefs: PublicSafeRefs,
   testRefs: PublicSafeRefs,
   verificationRefs: PublicSafeRefs,
-  worktreeIdentityStatus: S.optionalKey(S.Literals(['blocked', 'ready', 'stale'])),
+  worktreeIdentityStatus: S.optionalKey(
+    S.Literals(['blocked', 'ready', 'stale']),
+  ),
   writebackRequired: S.optionalKey(S.Boolean),
 })
 export type PylonApiAssignmentWorkerCloseoutRequest =
@@ -667,6 +667,7 @@ export type PylonApiAssignmentRecord = Readonly<{
 
 export type PylonApiRegistrationProjection = Readonly<{
   capabilityRefs: ReadonlyArray<string>
+  codingCapacity: ReadonlyArray<PylonCodingServiceCapacityProjection>
   clientProtocolVersion: string | null
   clientVersion: string | null
   createdAtDisplay: string
@@ -694,6 +695,14 @@ export type PylonApiRegistrationProjection = Readonly<{
   updatedAtDisplay: string
   walletReady: boolean
   walletRef: string | null
+}>
+
+export type PylonCodingServiceCapacityProjection = Readonly<{
+  available: number
+  busy: number
+  queued: number
+  ready: number
+  service: 'claude' | 'codex'
 }>
 
 export type PylonApiEventProjection = Readonly<{
@@ -776,6 +785,10 @@ export type PylonApiStore = Readonly<{
     limit: number,
   ) => Promise<ReadonlyArray<PylonApiEventRecord>>
   listRegistrations: (
+    limit: number,
+  ) => Promise<ReadonlyArray<PylonApiRegistrationRecord>>
+  listRegistrationsForOwnerAgentUserIds?: (
+    ownerAgentUserIds: ReadonlyArray<string>,
     limit: number,
   ) => Promise<ReadonlyArray<PylonApiRegistrationRecord>>
   listProviderJobLifecycleForPylons: (
@@ -972,6 +985,73 @@ export const pylonApiStoreErrorFromUnknown = (
         reason: error instanceof Error ? error.message : String(error),
       })
 
+const codingServiceCapacityRefPattern =
+  /^capacity\.coding\.(codex|claude)\.(ready|available)=(\d+)$/
+const codingServiceLoadRefPattern =
+  /^load\.coding\.(codex|claude)\.(busy|queued)=(\d+)$/
+
+const boundedRefInteger = (value: string): number => {
+  const parsed = Number.parseInt(value, 10)
+
+  return Number.isSafeInteger(parsed) && parsed >= 0
+    ? Math.min(parsed, 1_000_000)
+    : 0
+}
+
+export const pylonCodingServiceCapacityProjection = (
+  record: PylonApiRegistrationRecord,
+): ReadonlyArray<PylonCodingServiceCapacityProjection> => {
+  const byService = new Map<
+    PylonCodingServiceCapacityProjection['service'],
+    { available: number; busy: number; queued: number; ready: number }
+  >()
+  const serviceSlot = (
+    service: PylonCodingServiceCapacityProjection['service'],
+  ) => {
+    const existing = byService.get(service)
+    if (existing !== undefined) {
+      return existing
+    }
+    const next = { available: 0, busy: 0, queued: 0, ready: 0 }
+    byService.set(service, next)
+    return next
+  }
+
+  for (const ref of record.latestCapacityRefs) {
+    const match = codingServiceCapacityRefPattern.exec(ref)
+    if (match === null) {
+      continue
+    }
+
+    const slot = serviceSlot(
+      match[1] as PylonCodingServiceCapacityProjection['service'],
+    )
+    slot[match[2] as 'available' | 'ready'] = boundedRefInteger(match[3]!)
+  }
+
+  for (const ref of record.latestLoadRefs) {
+    const match = codingServiceLoadRefPattern.exec(ref)
+    if (match === null) {
+      continue
+    }
+
+    const slot = serviceSlot(
+      match[1] as PylonCodingServiceCapacityProjection['service'],
+    )
+    slot[match[2] as 'busy' | 'queued'] = boundedRefInteger(match[3]!)
+  }
+
+  return [...byService.entries()]
+    .map(([service, slot]) => ({
+      available: slot.available,
+      busy: slot.busy,
+      queued: slot.queued,
+      ready: slot.ready,
+      service,
+    }))
+    .sort((left, right) => left.service.localeCompare(right.service))
+}
+
 export const publicPylonApiRegistrationProjection = (
   record: PylonApiRegistrationRecord,
   nowIso: string,
@@ -979,13 +1059,13 @@ export const publicPylonApiRegistrationProjection = (
   // store keyed by pylonRef. Defaults fail-closed to not-ready so any caller
   // that has not (or could not) read the store projects a visible gap rather
   // than a fabricated target. The raw `spark1…` never reaches this function.
-  sparkPayoutTargetReadiness: PylonSparkPayoutTargetReadiness =
-    SPARK_PAYOUT_TARGET_NOT_READY,
+  sparkPayoutTargetReadiness: PylonSparkPayoutTargetReadiness = SPARK_PAYOUT_TARGET_NOT_READY,
 ): PylonApiRegistrationProjection => ({
   capabilityRefs: publicScannerSafeRefs(
     'capability.public.pylon',
     record.capabilityRefs,
   ),
+  codingCapacity: pylonCodingServiceCapacityProjection(record),
   clientProtocolVersion: record.clientProtocolVersion,
   clientVersion: record.clientVersion,
   createdAtDisplay: friendlyBlueprintMissionBriefingTime(
@@ -1912,6 +1992,28 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
           LIMIT ?`,
       )
       .bind(limit)
+      .all<PylonApiRegistrationRow>()
+
+    return (result.results ?? []).map(rowToRegistration)
+  },
+
+  listRegistrationsForOwnerAgentUserIds: async (ownerAgentUserIds, limit) => {
+    if (ownerAgentUserIds.length === 0) {
+      return []
+    }
+
+    const uniqueOwnerIds = [...new Set(ownerAgentUserIds)].slice(0, 100)
+    const placeholders = uniqueOwnerIds.map(() => '?').join(', ')
+    const result = await db
+      .prepare(
+        `SELECT *
+           FROM pylon_api_registrations
+          WHERE owner_agent_user_id IN (${placeholders})
+            AND archived_at IS NULL
+          ORDER BY updated_at DESC
+          LIMIT ?`,
+      )
+      .bind(...uniqueOwnerIds, Math.max(1, Math.min(Math.trunc(limit), 200)))
       .all<PylonApiRegistrationRow>()
 
     return (result.results ?? []).map(rowToRegistration)

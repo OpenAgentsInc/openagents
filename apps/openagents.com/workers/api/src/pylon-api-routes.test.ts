@@ -63,6 +63,7 @@ type PylonRouteJson = Readonly<{
   idempotent?: boolean
   pylon?: Readonly<{
     capabilityRefs?: ReadonlyArray<string>
+    codingCapacity?: ReadonlyArray<unknown>
     clientProtocolVersion?: string | null
     clientVersion?: string | null
     createdAtDisplay?: string
@@ -84,6 +85,7 @@ type PylonRouteJson = Readonly<{
   pylons?: ReadonlyArray<
     Readonly<{
       capabilityRefs?: ReadonlyArray<string>
+      codingCapacity?: ReadonlyArray<unknown>
       providerMarketRelayRefs?: ReadonlyArray<string>
       providerNip90LaneRefs?: ReadonlyArray<string>
       providerNostrNpub?: string | null
@@ -157,6 +159,16 @@ class MemoryPylonApiStore implements PylonApiStore {
 
   listRegistrations = async (limit: number) =>
     Array.from(this.registrations.values()).slice(0, limit)
+
+  listRegistrationsForOwnerAgentUserIds = async (
+    ownerAgentUserIds: ReadonlyArray<string>,
+    limit: number,
+  ) =>
+    Array.from(this.registrations.values())
+      .filter(registration =>
+        ownerAgentUserIds.includes(registration.ownerAgentUserId),
+      )
+      .slice(0, limit)
 
   listProviderJobLifecycleForPylons = async (
     pylonRefs: ReadonlyArray<string>,
@@ -427,6 +439,7 @@ const sessionFor = (userId: string): ProgrammaticAgentSession => ({
   credential: {
     id: `credential-${userId}`,
     lastUsedAt: '2026-06-07T00:00:00.000Z',
+    openauthUserId: null,
     profileMetadataJson: '{}',
     tokenPrefix: 'oa_agent_test',
   },
@@ -447,10 +460,23 @@ const agentStoreFor = (userId: string): AgentRegistrationStore => ({
   findAgentByTokenHash: () =>
     Promise.resolve({
       credentialId: `credential-${userId}`,
+      openauthUserId: null,
       profileMetadataJson: '{}',
       tokenPrefix: 'oa_agent_test',
       user: sessionFor(userId).user,
     }),
+  linkOpenAuthAgent: () => Promise.resolve(),
+  listLinkedAgentsForOpenAuthUser: () =>
+    Promise.resolve([
+      {
+        agentUserId: userId,
+        credentialId: `credential-${userId}`,
+        displayName: `Agent ${userId}`,
+        linkKind: 'credential_anchor',
+        openauthUserId: 'openauth-user-one',
+        tokenPrefix: 'oa_agent_test',
+      },
+    ]),
   touchAgentCredential: () => Promise.resolve(),
   updateAgentDisplayName: () => Promise.resolve(0),
 })
@@ -501,9 +527,13 @@ const route = async (
           request.headers.get('authorization') === 'Bearer admin',
       ),
   })
-  const response = routes.routePylonApiRequest(request, {
-    OPENAGENTS_DB: {} as D1Database,
-  })
+  const response = routes.routePylonApiRequest(
+    request,
+    {
+      OPENAGENTS_DB: {} as D1Database,
+    },
+    {} as ExecutionContext,
+  )
 
   if (response === undefined) {
     throw new Error(`No route matched ${path}`)
@@ -775,8 +805,7 @@ describe('Pylon API routes', () => {
 
   test('admits and advertises a Tassadar executor capability carried with its self-test receipt (W4.1)', async () => {
     const store = new MemoryPylonApiStore()
-    const receiptRef =
-      'receipt.tassadar_executor.self_test.v1.f2995c4e3c959b42'
+    const receiptRef = 'receipt.tassadar_executor.self_test.v1.f2995c4e3c959b42'
     const created = await registerPylon(store, {
       capabilityRefs: [
         'capability.tassadar_poc.numeric_model_executor',
@@ -798,8 +827,7 @@ describe('Pylon API routes', () => {
 
   test('blocks executor dispatch against a legacy registration whose capability has no self-test receipt (W4.1)', async () => {
     const store = new MemoryPylonApiStore()
-    const receiptRef =
-      'receipt.tassadar_executor.self_test.v1.f2995c4e3c959b42'
+    const receiptRef = 'receipt.tassadar_executor.self_test.v1.f2995c4e3c959b42'
     await registerPylon(store, {
       capabilityRefs: [
         'capability.tassadar_poc.numeric_model_executor',
@@ -950,20 +978,24 @@ describe('Pylon API routes', () => {
     await registerPylon(store)
     const providerNostrPubkey =
       'f0e1d2c3b4a5f6e7d8c9b0a1f2e3d4c5b6a7f8e9d0c1b2a3f4e5d6c7b8a9f0e1'
-    const heartbeat = await route(store, '/api/pylons/pylon.test.one/heartbeat', {
-      body: {
-        capacityRefs: ['capacity.public.gpu_available'],
-        healthRefs: ['health.public.ok'],
-        loadRefs: ['load.public.low'],
-        providerMarketRelayRefs: ['wss://relay.openagents.com'],
-        providerNip90LaneRefs: ['lane.public.nip90.5050.text_generation'],
-        providerNostrPubkey,
-        status: 'online',
+    const heartbeat = await route(
+      store,
+      '/api/pylons/pylon.test.one/heartbeat',
+      {
+        body: {
+          capacityRefs: ['capacity.public.gpu_available'],
+          healthRefs: ['health.public.ok'],
+          loadRefs: ['load.public.low'],
+          providerMarketRelayRefs: ['wss://relay.openagents.com'],
+          providerNip90LaneRefs: ['lane.public.nip90.5050.text_generation'],
+          providerNostrPubkey,
+          status: 'online',
+        },
+        idempotencyKey: 'heartbeat-provider-discovery-upgrade',
+        method: 'POST',
+        tokenUserId: 'agent-one',
       },
-      idempotencyKey: 'heartbeat-provider-discovery-upgrade',
-      method: 'POST',
-      tokenUserId: 'agent-one',
-    })
+    )
     const heartbeatJson = await responseJson<PylonRouteJson>(heartbeat)
     const listJson = await responseJson<PylonRouteJson>(
       await route(store, '/api/pylons'),
@@ -1005,21 +1037,25 @@ describe('Pylon API routes', () => {
     const store = new MemoryPylonApiStore()
     await registerPylon(store)
 
-    const heartbeat = await route(store, '/api/pylons/pylon.test.one/heartbeat', {
-      body: {
-        capacityRefs: ['capacity.public.gpu_available'],
-        clientProtocolVersion: '0.2.6',
-        clientVersion: 'pylon-v0.2.6',
-        healthRefs: ['health.public.ok'],
-        loadRefs: ['load.public.low'],
-        resourceMode: 'balanced',
-        status: 'online',
-        walletReady: true,
+    const heartbeat = await route(
+      store,
+      '/api/pylons/pylon.test.one/heartbeat',
+      {
+        body: {
+          capacityRefs: ['capacity.public.gpu_available'],
+          clientProtocolVersion: '0.2.6',
+          clientVersion: 'pylon-v0.2.6',
+          healthRefs: ['health.public.ok'],
+          loadRefs: ['load.public.low'],
+          resourceMode: 'balanced',
+          status: 'online',
+          walletReady: true,
+        },
+        idempotencyKey: 'key-heartbeat-walletready',
+        method: 'POST',
+        tokenUserId: 'agent-one',
       },
-      idempotencyKey: 'key-heartbeat-walletready',
-      method: 'POST',
-      tokenUserId: 'agent-one',
-    })
+    )
     expect(heartbeat.status).toBe(201)
 
     const detail = await responseJson<PylonRouteJson>(
@@ -1218,9 +1254,13 @@ describe('Pylon API routes', () => {
       nowIso: () => '2026-06-07T00:10:00.000Z',
       requireAdminApiToken: () => Promise.resolve(false),
     })
-    const response = routes.routePylonApiRequest(request, {
-      OPENAGENTS_DB: {} as D1Database,
-    })
+    const response = routes.routePylonApiRequest(
+      request,
+      {
+        OPENAGENTS_DB: {} as D1Database,
+      },
+      {} as ExecutionContext,
+    )
 
     if (response === undefined) {
       throw new Error('No route matched heartbeat')
@@ -1244,11 +1284,15 @@ describe('Pylon API routes', () => {
     const store = new MemoryPylonApiStore()
     await registerPylon(store)
 
-    const response = await route(store, '/api/pylons/pylon.test.one/heartbeat', {
-      body: { healthRefs: ['health.public.ok'], status: 'online' },
-      idempotencyKey: 'heartbeat-no-auth',
-      method: 'POST',
-    })
+    const response = await route(
+      store,
+      '/api/pylons/pylon.test.one/heartbeat',
+      {
+        body: { healthRefs: ['health.public.ok'], status: 'online' },
+        idempotencyKey: 'heartbeat-no-auth',
+        method: 'POST',
+      },
+    )
     const body = await responseJson<PylonRouteJson>(response)
 
     expect(response.status).toBe(401)
@@ -1360,9 +1404,13 @@ describe('Pylon API routes', () => {
       nowIso: () => options.nowIso ?? '2026-06-07T00:10:00.000Z',
       requireAdminApiToken: () => Promise.resolve(false),
     })
-    const response = routes.routePylonApiRequest(request, {
-      OPENAGENTS_DB: {} as D1Database,
-    })
+    const response = routes.routePylonApiRequest(
+      request,
+      {
+        OPENAGENTS_DB: {} as D1Database,
+      },
+      {} as ExecutionContext,
+    )
 
     if (response === undefined) {
       throw new Error(`No route matched ${path}`)
@@ -1536,8 +1584,7 @@ describe('Pylon API routes', () => {
     const sparkStore = new MemorySparkPayoutTargetStore()
     await registerPylon(store)
 
-    const rawSparkAddress =
-      'spark1pqqqqq0000000000000000000000000000recipient'
+    const rawSparkAddress = 'spark1pqqqqq0000000000000000000000000000recipient'
     await sparkRoute(
       store,
       sparkStore,
@@ -1609,9 +1656,7 @@ describe('Pylon API routes', () => {
     // The lease's device-ref has NO direct target; owner-resolver maps it to
     // the same owning agent that registered the target above.
     const resolveOwner = (pylonRef: string) =>
-      Promise.resolve(
-        pylonRef === leaseDeviceRef ? 'agent_trigger' : undefined,
-      )
+      Promise.resolve(pylonRef === leaseDeviceRef ? 'agent_trigger' : undefined)
 
     const resolved = await resolveSparkPayoutDestination(
       sparkStore,
@@ -1625,13 +1670,17 @@ describe('Pylon API routes', () => {
     const sparkStore = new MemorySparkPayoutTargetStore()
 
     expect(
-      await resolveSparkPayoutDestination(sparkStore, 'pylon_45b58c56783cbedf2d113a0c'),
+      await resolveSparkPayoutDestination(
+        sparkStore,
+        'pylon_45b58c56783cbedf2d113a0c',
+      ),
     ).toBeUndefined()
   })
 
   test('settlement resolver fails closed when the resolved owner has NO target anywhere (#5252)', async () => {
     const sparkStore = new MemorySparkPayoutTargetStore()
-    const resolveOwner = () => Promise.resolve<string | undefined>('agent_trigger')
+    const resolveOwner = () =>
+      Promise.resolve<string | undefined>('agent_trigger')
 
     expect(
       await resolveSparkPayoutDestination(
@@ -1664,8 +1713,7 @@ describe('Pylon API routes', () => {
   })
 
   test('settlement resolver: a direct exact-ref match still wins without using the owner fallback (#5252)', async () => {
-    const rawSparkAddress =
-      'spark1pqqqqq0000000000000000000000000000directwins'
+    const rawSparkAddress = 'spark1pqqqqq0000000000000000000000000000directwins'
     const sparkStore = new MemorySparkPayoutTargetStore()
     await sparkStore.upsert({
       pylonRef: 'pylon.test.one',
@@ -1763,8 +1811,7 @@ describe('Pylon API routes', () => {
     expect(before.pylon?.sparkPayoutTargetReady).toBe(false)
 
     // The node (#5305) auto-registers its OWN raw Spark address.
-    const rawSparkAddress =
-      'spark1pqqqqq0000000000000000000000000000readyflip'
+    const rawSparkAddress = 'spark1pqqqqq0000000000000000000000000000readyflip'
     const payoutTargetRef = await sparkDigestRef(rawSparkAddress)
     await sparkRoute(
       store,
@@ -1890,8 +1937,7 @@ describe('Pylon API routes', () => {
 
   test('readiness resolver returns ready with the redacted digest ref for a properly registered target (#5306)', async () => {
     const sparkStore = new MemorySparkPayoutTargetStore()
-    const rawSparkAddress =
-      'spark1pqqqqq0000000000000000000000000000resolverok'
+    const rawSparkAddress = 'spark1pqqqqq0000000000000000000000000000resolverok'
     const payoutTargetRef = await sparkDigestRef(rawSparkAddress)
     await sparkStore.upsert({
       pylonRef: 'pylon.ready',

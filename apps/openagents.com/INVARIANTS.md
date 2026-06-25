@@ -1438,6 +1438,32 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
 - Regression coverage for this policy lives in
   `workers/api/src/pylon-api-routes.test.ts`.
 
+## Khala Coding Delegation Through Pylons
+
+- Khala coding workflow delegation may use only the caller's own linked Pylon
+  capacity. A browser OpenAuth account may be linked to many agent API keys, but
+  assignment selection must stay within agent credentials or
+  `openauth_agent_links` owned by that same OpenAuth user.
+- Coding workflow classification must be typed or semantic. It must not route
+  by ad hoc keyword matching over user prose, filenames, or prompt text.
+- Coding delegation is default-on when a typed coding workflow, a linked owner
+  agent, fresh Pylon heartbeat, matching coding capability, and available
+  service capacity all exist. Callers may opt out only through the explicit
+  disable switch.
+- Delegated Khala-orchestrated coding tokens are source-agnostic public counter
+  usage and must be recorded as `own_capacity` usage instead of falling out of
+  the served-token ledger.
+- Delegated coding assignments must still pass
+  `gate.public.pylon.assignment_dispatch.controlled.v1` and inherit its
+  no-duplicate, no-auto-publish, capability, heartbeat, pause, rollback, and
+  closeout requirements.
+- Regression coverage for this policy lives in
+  `workers/api/src/inference/coding-workflow-classifier.test.ts`,
+  `workers/api/src/inference/coding-workflow-delegation.test.ts`,
+  `workers/api/src/inference/chat-completions-routes.test.ts`,
+  `workers/api/src/inference/served-tokens-recorder.test.ts`, and
+  `../pylon/tests/presence.test.ts`.
+
 ## Spark Address Payout Target Registration
 
 - A Pylon may register its OWN Spark address as a payout target so the platform

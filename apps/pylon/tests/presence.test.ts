@@ -5,6 +5,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
 import {
   completePylonLink,
+  codingServiceCapacityFromRuntime,
   degradeStalePresence,
   presenceClientOptionsFromEnv,
   refreshPylonLink,
@@ -17,6 +18,8 @@ import { verifyNip98Authorization } from "../src/nostr-identity"
 import { PYLON_NIP90_PROVIDER_CAPABILITY_REF, providerNip90LaneRefs } from "../src/provider-nip90"
 import { assertPublicProjectionSafe, ensurePylonLocalState, loadOrCreatePresenceState, writePresenceState } from "../src/state"
 import { registerSparkPayoutTarget, sparkPayoutTargetRef } from "../src/wallet"
+import { CODEX_AGENT_CAPABILITY_REF } from "../src/codex-agent"
+import { CLAUDE_AGENT_CAPABILITY_REF } from "../src/claude-agent"
 
 // Inject a deterministic wallet probe for heartbeat tests that exercise the
 // #5151 readiness path. Without one, heartbeats omit wallet readiness instead
@@ -240,6 +243,63 @@ describe("Pylon presence registration and heartbeat", () => {
       const failed = fake.requests.filter(r => r.path.includes("/heartbeat")).at(-1)!
       expect(failed.body.walletReadiness).toBe("unknown")
       expect("walletReady" in failed.body).toBe(false)
+    })
+  })
+
+  test("heartbeat publishes per-service coding capacity dimensions (#6276)", async () => {
+    await withTempHome(async (home) => {
+      const fake = fakePresenceServer()
+      const summary = createBootstrapSummary(
+        parseBootstrapArgs([
+          "--display-name",
+          "Coding Capacity Test",
+          "--capability-ref",
+          CODEX_AGENT_CAPABILITY_REF,
+          "--capability-ref",
+          CLAUDE_AGENT_CAPABILITY_REF,
+        ]),
+        { PYLON_HOME: home },
+        "darwin",
+      )
+      const env = {
+        OPENAGENTS_PYLON_CLAUDE_BUSY: "0",
+        OPENAGENTS_PYLON_CLAUDE_CONCURRENCY: "1",
+        OPENAGENTS_PYLON_CLAUDE_QUEUED: "3",
+        OPENAGENTS_PYLON_CODEX_BUSY: "1",
+        OPENAGENTS_PYLON_CODEX_CONCURRENCY: "4",
+        OPENAGENTS_PYLON_CODEX_QUEUED: "2",
+      } as NodeJS.ProcessEnv
+      const state = await ensurePylonLocalState(summary)
+
+      expect(codingServiceCapacityFromRuntime(state, env)).toEqual([
+        { available: 3, busy: 1, queued: 2, ready: 4, service: "codex" },
+        { available: 1, busy: 0, queued: 3, ready: 1, service: "claude" },
+      ])
+
+      await registerPylon(summary, { baseUrl: fake.baseUrl, env })
+      await sendHeartbeat(summary, {
+        baseUrl: fake.baseUrl,
+        env,
+        walletProbe: offlineWalletProbe,
+      })
+
+      const heartbeat = fake.requests.filter(r => r.path.includes("/heartbeat")).at(-1)!
+      expect(heartbeat.body.capacityRefs).toEqual(
+        expect.arrayContaining([
+          "capacity.coding.codex.ready=4",
+          "capacity.coding.codex.available=3",
+          "capacity.coding.claude.ready=1",
+          "capacity.coding.claude.available=1",
+        ]),
+      )
+      expect(heartbeat.body.loadRefs).toEqual(
+        expect.arrayContaining([
+          "load.coding.codex.busy=1",
+          "load.coding.codex.queued=2",
+          "load.coding.claude.busy=0",
+          "load.coding.claude.queued=3",
+        ]),
+      )
     })
   })
 

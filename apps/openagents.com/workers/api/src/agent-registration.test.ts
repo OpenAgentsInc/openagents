@@ -4,12 +4,14 @@ import {
   type AgentCredentialLookup,
   type AgentRegistrationRecord,
   type AgentRegistrationStore,
+  type OpenAuthAgentLinkRecord,
   authenticateProgrammaticAgent,
   createProgrammaticAgentRegistration,
 } from './agent-registration'
 
 class MemoryAgentRegistrationStore implements AgentRegistrationStore {
   readonly registrations: Array<AgentRegistrationRecord> = []
+  readonly links: Array<OpenAuthAgentLinkRecord> = []
   readonly lookups = new Map<string, AgentCredentialLookup>()
   readonly touches: Array<
     Readonly<{ credentialId: string; lastUsedAt: string }>
@@ -20,6 +22,7 @@ class MemoryAgentRegistrationStore implements AgentRegistrationStore {
     this.lookups.set(record.credential.tokenHash, {
       user: record.user,
       credentialId: record.credential.id,
+      openauthUserId: record.credential.openauthUserId,
       profileMetadataJson: record.profile.metadataJson,
       tokenPrefix: record.credential.tokenPrefix,
     })
@@ -45,6 +48,50 @@ class MemoryAgentRegistrationStore implements AgentRegistrationStore {
 
   updateAgentDisplayName(): Promise<number> {
     return Promise.resolve(0)
+  }
+
+  async linkOpenAuthAgent(record: OpenAuthAgentLinkRecord): Promise<void> {
+    this.links.push(record)
+    const registration = this.registrations.find(
+      item =>
+        item.user.id === record.agentUserId &&
+        item.credential.id === record.agentCredentialId,
+    )
+    if (registration !== undefined) {
+      this.lookups.set(registration.credential.tokenHash, {
+        credentialId: registration.credential.id,
+        openauthUserId: record.openauthUserId,
+        profileMetadataJson: registration.profile.metadataJson,
+        tokenPrefix: registration.credential.tokenPrefix,
+        user: registration.user,
+      })
+    }
+  }
+
+  async listLinkedAgentsForOpenAuthUser(
+    openauthUserId: string,
+    _limit: number,
+  ) {
+    return this.links
+      .filter(
+        link =>
+          link.openauthUserId === openauthUserId &&
+          link.status === 'active' &&
+          link.revokedAt === null,
+      )
+      .map(link => {
+        const registration = this.registrations.find(
+          item => item.user.id === link.agentUserId,
+        )
+        return {
+          agentUserId: link.agentUserId,
+          credentialId: link.agentCredentialId,
+          displayName: registration?.user.displayName ?? link.agentUserId,
+          linkKind: link.linkKind,
+          openauthUserId: link.openauthUserId,
+          tokenPrefix: registration?.credential.tokenPrefix ?? null,
+        }
+      })
   }
 }
 
@@ -134,6 +181,7 @@ describe('programmatic agent registration', () => {
     expect(session?.user.id).toBe(registration.user.id)
     expect(session?.credential).toEqual({
       id: registration.credential.id,
+      openauthUserId: null,
       profileMetadataJson: '{}',
       tokenPrefix: registration.credential.tokenPrefix,
       lastUsedAt,
@@ -142,6 +190,61 @@ describe('programmatic agent registration', () => {
       {
         credentialId: registration.credential.id,
         lastUsedAt,
+      },
+    ])
+  })
+
+  test('links one OpenAuth account to many owned agent credentials', async () => {
+    const store = new MemoryAgentRegistrationStore()
+    const first = await createProgrammaticAgentRegistration(
+      store,
+      { displayName: 'Owner Codex Pylon' },
+      {
+        makeToken: () => 'oa_agent_owner_1',
+        makeUuid: makeUuidFactory(['user-4', 'credential-4', 'identity-4']),
+        now: () => '2026-06-02T17:00:00.000Z',
+      },
+    )
+    const second = await createProgrammaticAgentRegistration(
+      store,
+      { displayName: 'Other Owner Pylon' },
+      {
+        makeToken: () => 'oa_agent_owner_2',
+        makeUuid: makeUuidFactory(['user-5', 'credential-5', 'identity-5']),
+        now: () => '2026-06-02T17:00:00.000Z',
+      },
+    )
+
+    await store.linkOpenAuthAgent({
+      agentCredentialId: first.credential.id,
+      agentUserId: first.user.id,
+      createdAt: '2026-06-02T17:01:00.000Z',
+      id: 'openauth_agent_link_1',
+      linkKind: 'credential_anchor',
+      openauthUserId: 'user_human_1',
+      revokedAt: null,
+      status: 'active',
+      updatedAt: '2026-06-02T17:01:00.000Z',
+    })
+    await store.linkOpenAuthAgent({
+      agentCredentialId: second.credential.id,
+      agentUserId: second.user.id,
+      createdAt: '2026-06-02T17:01:00.000Z',
+      id: 'openauth_agent_link_2',
+      linkKind: 'credential_anchor',
+      openauthUserId: 'user_human_2',
+      revokedAt: null,
+      status: 'active',
+      updatedAt: '2026-06-02T17:01:00.000Z',
+    })
+
+    await expect(
+      store.listLinkedAgentsForOpenAuthUser('user_human_1', 100),
+    ).resolves.toMatchObject([
+      {
+        agentUserId: first.user.id,
+        displayName: 'Owner Codex Pylon',
+        openauthUserId: 'user_human_1',
       },
     ])
   })

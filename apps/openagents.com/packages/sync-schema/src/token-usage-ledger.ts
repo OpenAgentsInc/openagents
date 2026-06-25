@@ -37,6 +37,7 @@ export type TokenUsageTruth = typeof TokenUsageTruth.Type
 export const TokenUsageDemandKind = S.Literals([
   'external',
   'internal',
+  'own_capacity',
   'unlabeled',
 ])
 export type TokenUsageDemandKind = typeof TokenUsageDemandKind.Type

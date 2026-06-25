@@ -32,7 +32,6 @@
 // `@openagentsinc/durable-stream` `StreamStore` port (synchronous, single-stream
 // — the exact DO model), so this is fully Bun-unit-testable with the in-memory
 // store. The DO-backed `SqliteStreamStore` plugs into the same port in prod.
-
 import {
   type StreamMeta,
   type StreamStore,
@@ -162,6 +161,35 @@ const closeStream = (
       },
     }),
   )
+}
+
+export const seedDurableInferenceStream = (input: {
+  readonly close?: boolean
+  readonly frames: ReadonlyArray<string>
+  readonly nowMs: number
+  readonly requestId: string
+  readonly store: StreamStore
+}): boolean => {
+  if (!ensureStream(input.store, input.requestId, input.nowMs)) {
+    return false
+  }
+
+  input.frames.forEach((frame, index) =>
+    appendFrame(
+      input.store,
+      input.requestId,
+      input.nowMs,
+      index,
+      frame,
+      input.close === true && index === input.frames.length - 1,
+    ),
+  )
+
+  if (input.close === true && input.frames.length === 0) {
+    closeStream(input.store, input.requestId, input.nowMs, 0)
+  }
+
+  return true
 }
 
 // The public URL a client uses to resume a durable completion by offset. Keyed
@@ -325,7 +353,8 @@ export const replayFromOffset = (input: {
   return {
     body: decoder.decode(bodyBytes),
     contentType: res.headers['content-type'] ?? DURABLE_INFERENCE_CONTENT_TYPE,
-    nextOffset: res.headers['stream-next-offset'] ?? tailOffset(bodyBytes.length),
+    nextOffset:
+      res.headers['stream-next-offset'] ?? tailOffset(bodyBytes.length),
     status: res.status,
     streamClosed: res.headers['stream-closed'] === 'true',
     upToDate: res.headers['stream-up-to-date'] === 'true',

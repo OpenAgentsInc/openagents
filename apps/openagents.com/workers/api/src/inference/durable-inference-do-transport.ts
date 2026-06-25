@@ -28,7 +28,6 @@
 // completion. Persist errors stop the durable mirror but the client keeps
 // receiving its tokens and metering still settles on EOF — a broken durable
 // substrate degrades to today's non-durable pass-through behaviour.
-
 import {
   DURABLE_INFERENCE_CONTENT_TYPE,
   DURABLE_INFERENCE_TTL_SECONDS,
@@ -128,6 +127,35 @@ const closeStreamDO = async (
       },
     }),
   )
+}
+
+export const seedDurableInferenceStreamDO = async (input: {
+  readonly close?: boolean
+  readonly frames: ReadonlyArray<string>
+  readonly namespace: DurableStreamNamespace
+  readonly requestId: string
+}): Promise<boolean> => {
+  const stub = input.namespace.getByName(input.requestId)
+  const created = await ensureStreamDO(stub, input.requestId).catch(() => false)
+  if (!created) {
+    return false
+  }
+
+  for (let index = 0; index < input.frames.length; index += 1) {
+    await appendFrameDO(
+      stub,
+      input.requestId,
+      index,
+      input.frames[index]!,
+      input.close === true && index === input.frames.length - 1,
+    )
+  }
+
+  if (input.close === true && input.frames.length === 0) {
+    await closeStreamDO(stub, input.requestId, 0)
+  }
+
+  return true
 }
 
 // Tee the upstream `InferenceStreamSource` into the DO durable log AND to the

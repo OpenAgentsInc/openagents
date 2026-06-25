@@ -18,12 +18,15 @@
 // #5476.
 import { Effect } from 'effect'
 
+import type { AgentRegistrationStore } from '../agent-registration'
 import { noStoreJsonResponse } from '../http/responses'
 import { recordFromUnknown } from '../json-boundary'
+import type { PylonApiStore } from '../pylon-api'
 import {
   compactRandomId,
   currentEpochMillis,
   currentEpochSeconds,
+  epochMillisToIsoTimestamp,
 } from '../runtime-primitives'
 // PURE dispatch producer only — enqueues an out-of-Worker verification job; never
 // imports the headless runner (playwright) into the Worker bundle (EPIC #6017).
@@ -59,14 +62,21 @@ import {
   type LaneHealthOracle,
   decideCacheAwareRouting,
 } from './cache-aware-routing'
+import { classifyCodingWorkflow } from './coding-workflow-classifier'
+import {
+  delegateCodingWorkflow,
+  estimatedDelegatedCodingUsage,
+} from './coding-workflow-delegation'
 import {
   type DurableStreamNamespace,
+  seedDurableInferenceStreamDO,
   teeUpstreamToDurableDO,
 } from './durable-inference-do-transport'
 import {
   type DurableInferenceStreamStore,
   type StreamStore,
   durableInferenceReadUrl,
+  seedDurableInferenceStream,
   teeUpstreamToDurable,
 } from './durable-inference-proxy'
 import {
@@ -195,6 +205,7 @@ const demandKindFromHeader = (
   if (
     normalized === 'external' ||
     normalized === 'internal' ||
+    normalized === 'own_capacity' ||
     normalized === 'unlabeled'
   ) {
     return normalized
@@ -229,6 +240,36 @@ const requestAttributionFromHeaders = (
     ...(demandSource === undefined ? {} : { demandSource }),
     ...(demandClient === undefined ? {} : { demandClient }),
   }
+}
+
+const booleanBodyFlag = (body: Record<string, unknown>, key: string): boolean =>
+  body[key] === true || body[key] === 'true' || body[key] === 1
+
+export const codingDelegationDisabled = (
+  request: Request,
+  rawBody: Record<string, unknown>,
+): boolean => {
+  const header = request.headers
+    .get('x-openagents-disable-coding-delegation')
+    ?.trim()
+    .toLowerCase()
+  if (header === 'true' || header === '1') {
+    return true
+  }
+
+  if (booleanBodyFlag(rawBody, 'disable_coding_delegation')) {
+    return true
+  }
+
+  const openagents =
+    rawBody.openagents !== null && typeof rawBody.openagents === 'object'
+      ? (rawBody.openagents as Record<string, unknown>)
+      : undefined
+
+  return openagents === undefined
+    ? false
+    : booleanBodyFlag(openagents, 'disable_coding_delegation') ||
+        booleanBodyFlag(openagents, 'disableCodingDelegation')
 }
 
 // AUTH SEAM ---------------------------------------------------------------
@@ -488,6 +529,16 @@ export type ChatCompletionsDeps = Readonly<{
     accountRef: string,
     model: string,
   ) => Promise<PremiumAccessDecision>
+  // DEFAULT-ON caller-owned Pylon delegation for typed coding workflows (#6278).
+  // When wired, a request classified by `classifyCodingWorkflow` is routed to
+  // the caller's linked, heartbeat-fresh Codex Pylon capacity before normal
+  // provider supply selection. The branch is disabled only by an explicit
+  // per-request disable header/body switch; absence means default-on.
+  codingDelegation?: Readonly<{
+    agentStore: AgentRegistrationStore
+    pylonStore: PylonApiStore
+    resolveOpenAuthUserId: (accountRef: string) => Promise<string | undefined>
+  }>
   // Deterministic id/timestamp injection for tests. `nowEpochSeconds` defaults
   // to the runtime-primitives clock; `newId` to a runtime-primitives random id.
   nowEpochSeconds?: () => number
@@ -2108,6 +2159,136 @@ export const handleChatCompletions = (
       }
     }
 
+    const meteringHook = deps.meteringHook ?? stubMeteringHook
+    const resolveFundingKind =
+      deps.resolveFundingKind ?? defaultCardFundingResolver
+    const nowEpochSeconds = deps.nowEpochSeconds ?? currentEpochSeconds
+    const newId = deps.newId ?? defaultId
+    const nowEpochMillis = deps.nowEpochMillis ?? currentEpochMillis
+    const created = nowEpochSeconds()
+    const responseId = newId()
+    const requestStartMs = nowEpochMillis()
+    const fundingKind = yield* Effect.promise(() =>
+      resolveFundingKind(session.accountRef),
+    )
+    const codingWorkflow = classifyCodingWorkflow({
+      headers: request.headers,
+      messages: body.messages,
+      rawBody,
+    })
+
+    if (
+      deps.codingDelegation !== undefined &&
+      codingWorkflow.workflowClass !== 'none' &&
+      !codingDelegationDisabled(request, rawBody)
+    ) {
+      const openauthUserId = yield* Effect.promise(() =>
+        deps.codingDelegation!.resolveOpenAuthUserId(session.accountRef),
+      )
+      const linkedAgents =
+        openauthUserId === undefined ||
+        deps.codingDelegation.agentStore.listLinkedAgentsForOpenAuthUser ===
+          undefined
+          ? []
+          : yield* Effect.promise(() =>
+              deps.codingDelegation!.agentStore
+                .listLinkedAgentsForOpenAuthUser!(openauthUserId, 100),
+            )
+      const nowIso = epochMillisToIsoTimestamp(created * 1000)
+      const delegation = yield* Effect.promise(() =>
+        delegateCodingWorkflow({
+          classification: codingWorkflow,
+          linkedAgents,
+          makeId: newId,
+          nowIso,
+          pylonStore: deps.codingDelegation!.pylonStore,
+          rawBody,
+          requestId: responseId,
+        }),
+      )
+
+      if (delegation !== null) {
+        const content =
+          `Coding workflow delegated to linked Pylon ${delegation.pylon.pylonRef}. ` +
+          `Resume stream: ${delegation.durableStreamUrl}`
+        const frame = sseFrame({
+          choices: [
+            {
+              delta: { content, role: 'assistant' },
+              finish_reason: null,
+              index: 0,
+            },
+          ],
+          created,
+          id: responseId,
+          model: requestedModel,
+          object: 'chat.completion.chunk',
+          openagents: {
+            coding_delegation: {
+              assignmentRef: delegation.assignment.assignmentRef,
+              durableStreamUrl: delegation.durableStreamUrl,
+              evidenceRefs: delegation.evidenceRefs,
+              pylonRef: delegation.pylon.pylonRef,
+              workflowClass: codingWorkflow.workflowClass,
+            },
+          },
+        })
+        const doneFrame = 'data: [DONE]\n\n'
+        const streamBody = `${frame}${doneFrame}`
+
+        if (deps.durableStreamEnabled === true) {
+          if (deps.durableStreamNamespace !== undefined) {
+            yield* Effect.promise(() =>
+              seedDurableInferenceStreamDO({
+                close: true,
+                frames: [frame, doneFrame],
+                namespace: deps.durableStreamNamespace!,
+                requestId: responseId,
+              }),
+            )
+          } else if (deps.durableStream !== undefined) {
+            const store = resolveDurableStore(deps.durableStream, responseId)
+            if (store !== undefined) {
+              seedDurableInferenceStream({
+                close: true,
+                frames: [frame, doneFrame],
+                nowMs: requestStartMs,
+                requestId: responseId,
+                store,
+              })
+            }
+          }
+        }
+
+        if (deps.recordTokensServed !== undefined) {
+          yield* deps.recordTokensServed({
+            accountRef: session.accountRef,
+            adapterId: 'pylon-codex-own-capacity',
+            requestAttribution: {
+              demandKind: 'own_capacity',
+              demandSource: 'khala_coding_delegation',
+            },
+            requestId: responseId,
+            requestedModel,
+            servedModel: 'openagents/pylon-codex',
+            streamed: true,
+            usage: estimatedDelegatedCodingUsage(body.messages),
+          })
+        }
+
+        return new Response(streamBody, {
+          headers: {
+            'cache-control': 'no-store',
+            'content-type': 'text/event-stream; charset=utf-8',
+            'openagents-coding-assignment-ref':
+              delegation.assignment.assignmentRef,
+            'openagents-durable-stream-url': delegation.durableStreamUrl,
+          },
+          status: 200,
+        })
+      }
+    }
+
     // SUPPLY SELECTION (#5482) -------------------------------------------
     // Resolve the ordered candidate adapter ids for this model. When a
     // multi-lane `lanePlan` is supplied (the Worker wires `selectAdapterPlan`)
@@ -2192,23 +2373,6 @@ export const handleChatCompletions = (
     // receipt records its public-safe HASH (never the raw key). Undefined for
     // non-Khala / no-affinity requests.
     const cacheAffinityKeyRaw = affinity.rawKey
-    const meteringHook = deps.meteringHook ?? stubMeteringHook
-    const resolveFundingKind =
-      deps.resolveFundingKind ?? defaultCardFundingResolver
-    const nowEpochSeconds = deps.nowEpochSeconds ?? currentEpochSeconds
-    const newId = deps.newId ?? defaultId
-    const nowEpochMillis = deps.nowEpochMillis ?? currentEpochMillis
-    const created = nowEpochSeconds()
-    const responseId = newId()
-    // Request-accept wall-clock start (ms). Telemetry total wall-clock is measured
-    // from here to completion (book P0-1). Deterministic in tests via nowEpochMillis.
-    const requestStartMs = nowEpochMillis()
-    // Funding kind (card | bitcoin) for the metering charge. Resolved once per
-    // request so the Bitcoin discount in `priceRequest` applies; defaults card.
-    const fundingKind = yield* Effect.promise(() =>
-      resolveFundingKind(session.accountRef),
-    )
-
     // Dispatch deps for the overflow loop. The plan is pinned to `plannedIds`
     // (already resolved from lanePlan/router above) so selection + dispatch use
     // exactly the same ordering.

@@ -243,7 +243,9 @@ const demandKindFromText = (
 ): TokenUsageDemandKind => {
   const normalized = value?.trim().toLowerCase()
 
-  return normalized === 'external' || normalized === 'internal'
+  return normalized === 'external' ||
+    normalized === 'internal' ||
+    normalized === 'own_capacity'
     ? normalized
     : 'unlabeled'
 }

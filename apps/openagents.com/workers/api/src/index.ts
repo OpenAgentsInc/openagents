@@ -8099,6 +8099,7 @@ const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
     return delivered
   },
   requireAdminApiToken,
+  requireBrowserSession,
 })
 
 const trainingRunWindowRoutes = makeTrainingRunWindowRoutes<WorkerBindings>({
@@ -10819,6 +10820,51 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
               ),
           },
         ),
+        codingDelegation: {
+          agentStore: makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+          pylonStore: makeD1PylonApiStore(openAgentsDatabase(env)),
+          resolveOpenAuthUserId: async accountRef => {
+            const agentUserId = accountRef.startsWith('agent:')
+              ? accountRef.slice('agent:'.length)
+              : undefined
+            if (agentUserId === undefined || agentUserId === '') {
+              return undefined
+            }
+            const row = await openAgentsDatabase(env)
+              .prepare(
+                `SELECT openauth_user_id
+                   FROM agent_credentials
+                  WHERE user_id = ?
+                    AND openauth_user_id IS NOT NULL
+                    AND status = 'active'
+                    AND revoked_at IS NULL
+                  ORDER BY last_used_at DESC
+                  LIMIT 1`,
+              )
+              .bind(agentUserId)
+              .first<{ openauth_user_id: string | null }>()
+            if (
+              row?.openauth_user_id !== null &&
+              row?.openauth_user_id !== undefined
+            ) {
+              return row.openauth_user_id
+            }
+            const link = await openAgentsDatabase(env)
+              .prepare(
+                `SELECT openauth_user_id
+                   FROM openauth_agent_links
+                  WHERE agent_user_id = ?
+                    AND status = 'active'
+                    AND revoked_at IS NULL
+                  ORDER BY updated_at DESC
+                  LIMIT 1`,
+              )
+              .bind(agentUserId)
+              .first<{ openauth_user_id: string | null }>()
+
+            return link?.openauth_user_id ?? undefined
+          },
+        },
         readAvailableMsat: async accountRef => {
           const balance = await readAgentBalance(
             openAgentsDatabase(env),
@@ -12090,6 +12136,7 @@ export default {
                   },
                 ),
                 env,
+                ctx,
               ),
             )
             if (response === undefined) {
@@ -12136,6 +12183,7 @@ export default {
                   },
                 ),
                 env,
+                ctx,
               ),
             )
             if (response === undefined) {

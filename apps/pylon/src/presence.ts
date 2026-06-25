@@ -6,6 +6,8 @@ import {
   providerNip90LaneRefs,
   relaysFromEnv,
 } from "./provider-nip90.js"
+import { CODEX_AGENT_CAPABILITY_REF } from "./codex-agent.js"
+import { CLAUDE_AGENT_CAPABILITY_REF } from "./claude-agent.js"
 import { publishableCapabilityRefs } from "./tassadar-capability.js"
 import { createNip98Event, encodeNip98Authorization, loadOrCreateNostrIdentity } from "./nostr-identity.js"
 import {
@@ -126,6 +128,14 @@ export type PylonLinkRequest = {
 
 type JsonRecord = Record<string, unknown>
 
+export type PylonCodingServiceCapacity = {
+  available: number
+  busy: number
+  queued: number
+  ready: number
+  service: "claude" | "codex"
+}
+
 export function sha256Base64Url(input: string) {
   return createHash("sha256").update(input).digest("base64url")
 }
@@ -138,6 +148,70 @@ const makeIdempotencyKey = (
   action: "register" | "heartbeat" | "link-complete" | "link-refresh",
   now: Date,
 ) => `pylon-presence:${pylonRef}:${action}:${compactTimestamp(now)}`
+
+const nonNegativeEnvInteger = (
+  env: NodeJS.ProcessEnv,
+  key: string,
+  fallback: number,
+) => {
+  const raw = env[key]?.trim()
+  if (raw === undefined || raw === "") return fallback
+  const parsed = Number.parseInt(raw, 10)
+  return Number.isSafeInteger(parsed) && parsed >= 0
+    ? Math.min(parsed, 10_000)
+    : fallback
+}
+
+export function codingServiceCapacityFromRuntime(
+  state: PylonLocalState,
+  env: NodeJS.ProcessEnv = process.env,
+): PylonCodingServiceCapacity[] {
+  const capabilityRefs = publishableCapabilityRefs(state.runtime.capabilityRefs)
+  const serviceConfig = [
+    {
+      busyKey: "OPENAGENTS_PYLON_CODEX_BUSY",
+      capabilityRef: CODEX_AGENT_CAPABILITY_REF,
+      concurrencyKey: "OPENAGENTS_PYLON_CODEX_CONCURRENCY",
+      queuedKey: "OPENAGENTS_PYLON_CODEX_QUEUED",
+      service: "codex" as const,
+    },
+    {
+      busyKey: "OPENAGENTS_PYLON_CLAUDE_BUSY",
+      capabilityRef: CLAUDE_AGENT_CAPABILITY_REF,
+      concurrencyKey: "OPENAGENTS_PYLON_CLAUDE_CONCURRENCY",
+      queuedKey: "OPENAGENTS_PYLON_CLAUDE_QUEUED",
+      service: "claude" as const,
+    },
+  ]
+
+  return serviceConfig
+    .filter(config => capabilityRefs.includes(config.capabilityRef))
+    .map(config => {
+      const ready = nonNegativeEnvInteger(env, config.concurrencyKey, 1)
+      const busy = Math.min(nonNegativeEnvInteger(env, config.busyKey, 0), ready)
+      const queued = nonNegativeEnvInteger(env, config.queuedKey, 0)
+      return {
+        available: Math.max(0, ready - busy),
+        busy,
+        queued,
+        ready,
+        service: config.service,
+      }
+    })
+}
+
+export const codingServiceCapacityRefs = (
+  capacity: ReadonlyArray<PylonCodingServiceCapacity>,
+): { capacityRefs: string[]; loadRefs: string[] } => ({
+  capacityRefs: capacity.flatMap(item => [
+    `capacity.coding.${item.service}.ready=${item.ready}`,
+    `capacity.coding.${item.service}.available=${item.available}`,
+  ]),
+  loadRefs: capacity.flatMap(item => [
+    `load.coding.${item.service}.busy=${item.busy}`,
+    `load.coding.${item.service}.queued=${item.queued}`,
+  ]),
+})
 
 export async function createSignedHeaders(input: {
   method: string
@@ -292,17 +366,23 @@ export async function sendHeartbeat(summary: BootstrapSummary, options: Presence
       walletReady = undefined
     }
   }
+  const codingRefs = codingServiceCapacityRefs(
+    codingServiceCapacityFromRuntime(state, options.env ?? process.env),
+  )
   const body: PylonHeartbeatRequest = {
     schema: "openagents.pylon.heartbeat.v0.3",
     pylonRef: state.identity.pylonRef,
     sequence,
     sentAt,
     lifecycle: state.runtime.lifecycle,
-    capacityRefs: ["capacity.public.pylon_cli.available"],
+    capacityRefs: [
+      "capacity.public.pylon_cli.available",
+      ...codingRefs.capacityRefs,
+    ],
     clientProtocolVersion: "0.3.0",
     clientVersion: PYLON_CLIENT_VERSION,
     healthRefs: ["health.public.pylon_cli.ok"],
-    loadRefs: ["load.public.pylon_cli.low"],
+    loadRefs: ["load.public.pylon_cli.low", ...codingRefs.loadRefs],
     resourceMode: state.runtime.resourceMode,
     status: "online",
     walletReadiness,

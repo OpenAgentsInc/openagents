@@ -202,6 +202,35 @@ describe('served-tokens-recorder', () => {
     expect(after).toBe(42)
   })
 
+  test('own-capacity delegated coding tokens count in the public counter (#6280)', async () => {
+    const rows: Array<Row> = []
+    const db = makeFakeDb(rows)
+    const ledger = makeD1TokenUsageLedger(db)
+    const recorder = makeServedTokensRecorder({ ledger, nowIso: fixedNow })
+
+    await runRecorder(recorder, {
+      accountRef: 'agent:owner-capacity-1',
+      adapterId: 'pylon-codex-own-capacity',
+      requestId: 'chatcmpl-own-capacity-1',
+      requestAttribution: {
+        demandKind: 'own_capacity',
+        demandSource: 'khala_coding_delegation',
+      },
+      requestedModel: 'openagents/khala',
+      servedModel: 'openagents/pylon-codex',
+      streamed: true,
+      usage: { completionTokens: 32, promptTokens: 68, totalTokens: 100 },
+    })
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.demand_kind).toBe('own_capacity')
+    expect(JSON.parse(String(rows[0]!.safe_metadata_json))).toMatchObject({
+      demandKind: 'own_capacity',
+      demandSource: 'khala_coding_delegation',
+    })
+    expect(await readServed(ledger)).toBe(100)
+  })
+
   test('a free-tier (zero-debit) completion still counts its served tokens', async () => {
     const rows: Array<Row> = []
     const db = makeFakeDb(rows)

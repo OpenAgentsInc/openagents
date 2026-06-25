@@ -843,7 +843,7 @@ const pylonRoute = async (
     },
     method: options.method ?? (options.body === undefined ? 'GET' : 'POST'),
   })
-  const response = routes.routePylonApiRequest(request, {})
+  const response = routes.routePylonApiRequest(request, {}, {} as ExecutionContext)
 
   if (response === undefined) {
     throw new Error(`No Pylon API route matched ${path}`)

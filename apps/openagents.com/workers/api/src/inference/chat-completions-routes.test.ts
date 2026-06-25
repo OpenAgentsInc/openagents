@@ -16,6 +16,7 @@ import {
   INFERENCE_DEMAND_SOURCE_HEADER,
   type InferenceAuth,
   type InferenceBalanceReader,
+  codingDelegationDisabled,
   handleChatCompletions,
   isInferenceGatewayEnabled,
 } from './chat-completions-routes'
@@ -152,6 +153,40 @@ describe('inference gateway feature flag', () => {
     expect(isInferenceGatewayEnabled('TRUE')).toBe(true)
     expect(isInferenceGatewayEnabled('1')).toBe(true)
     expect(isInferenceGatewayEnabled('on')).toBe(true)
+  })
+})
+
+describe('coding delegation default-on guard', () => {
+  test('stays enabled unless the caller explicitly disables it', () => {
+    const request = new Request('https://openagents.test/v1/chat/completions')
+
+    expect(
+      codingDelegationDisabled(request, {
+        openagents: { workflowClass: 'codex_agent_task' },
+      }),
+    ).toBe(false)
+  })
+
+  test('accepts explicit body and header disable switches', () => {
+    expect(
+      codingDelegationDisabled(
+        new Request('https://openagents.test/v1/chat/completions'),
+        {
+          disable_coding_delegation: true,
+        },
+      ),
+    ).toBe(true)
+
+    expect(
+      codingDelegationDisabled(
+        new Request('https://openagents.test/v1/chat/completions', {
+          headers: {
+            'x-openagents-disable-coding-delegation': '1',
+          },
+        }),
+        {},
+      ),
+    ).toBe(true)
   })
 })
 
