@@ -105,9 +105,27 @@ fallback reason.
 The adapter keeps an in-process inflight counter around every dispatched call.
 With two `maxInflight=1` replicas, two overlapping product requests are sent to
 different endpoints rather than both hitting the same singleflight proxy. If no
-replica is eligible, the pool fails with a retryable service-overloaded error so
-the outer Khala overflow plan can degrade to the next supply lane instead of
-pretending capacity exists.
+replica is eligible, the pool enters a typed saturation path instead of stacking
+more work into either busy four-GPU process.
+
+The saturation policy is explicit:
+
+- `overflow_immediately`: interactive streaming requests fail the GLM adapter
+  immediately with retryable `glm_pool_saturated`, so Khala can continue to the
+  next supply lane without adding a second request to a busy singleflight
+  proxy.
+- `queue_then_overflow`: non-stream Khala chat work waits one short bounded edge
+  queue window, defaults to 250 ms, and then retries replica selection once. If
+  a replica became idle, the request is served there; if not, Khala overflows to
+  the next lane with the same typed `glm_pool_saturated` reason.
+- `queue_then_429`: operator-controlled strict backpressure for situations
+  where we would rather tell the caller to retry than spend the request on a
+  non-GLM lane. The response is an OpenAI-compatible `429` with `Retry-After: 1`.
+
+The edge queue is intentionally tiny and hard-capped at 1,000 ms. It is a short
+race for a just-finishing request, not a long in-Worker job queue. Longer batch
+or detached work belongs in the async lane so Cloudflare request deadlines and
+user-visible latency do not become hidden backlog.
 
 Successful Khala responses include the selected replica in the existing
 `openagents.routing` block:
@@ -116,6 +134,8 @@ Successful Khala responses include the selected replica in the existing
 {
   "selected_replica_id": "second",
   "selected_replica_ref": "replica.hydralisk.glm_52_reap_504b.second",
+  "queue_wait_ms": 0,
+  "glm_saturation_policy": "queue_then_overflow",
   "replica_fallback_reason": "inflight_full",
   "replica_health_score": 1,
   "replica_region": "us-central1-a"
@@ -124,6 +144,23 @@ Successful Khala responses include the selected replica in the existing
 
 Those fields are refs, coarse scores, and neutral reasons only. They never
 include endpoint URLs, private IPs, bearer tokens, prompts, or responses.
+
+When GLM is saturated and Khala successfully overflows to another adapter, the
+receipt keeps that public-safe reason attached:
+
+```json
+{
+  "fallback_reason": "glm_pool_saturated",
+  "queue_wait_ms": 250,
+  "glm_saturation_policy": "queue_then_overflow",
+  "replica_busy_reason": "inflight_full",
+  "replica_fallback_reason": "inflight_full"
+}
+```
+
+That makes operator and owner dashboards honest about why a request did not use
+GLM while still keeping the private Hydralisk topology out of customer-visible
+data.
 
 ## Expected Behavior
 
@@ -135,6 +172,8 @@ include endpoint URLs, private IPs, bearer tokens, prompts, or responses.
   not.
 - Overlapping requests spread across distinct idle singleflight replicas when
   capacity exists.
+- Saturated GLM pools do not dispatch into busy endpoints; they use the typed
+  overflow, short-queue, or strict-429 policy above.
 - If the GLM worker is not armed, the router skips it and continues through the
   rest of the Khala plan.
 - The GLM backing lane counts as Hydralisk supply for disclosures, usage

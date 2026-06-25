@@ -56,6 +56,7 @@ import {
 } from './pricing'
 import {
   InferenceAdapterError,
+  type InferenceAdapterRouteMetadata,
   type InferenceProviderAdapter,
   type InferenceProviderRegistry,
   type InferenceRequest,
@@ -384,6 +385,7 @@ export type DispatchRouteMetadata = Readonly<{
   fallbackReason: string | null
   providerHealthScore?: number | undefined
   region?: string | undefined
+  fallbackAdapterRouteMetadata?: InferenceAdapterRouteMetadata | undefined
 }>
 
 export type DispatchWithOverflowResult<A> = Readonly<{
@@ -442,6 +444,7 @@ export const dispatchWithOverflowWithMetadata = <A>(
     let lastError: InferenceAdapterError | undefined
     let overflowCount = 0
     let fallbackReason: string | null = null
+    let fallbackAdapterRouteMetadata: InferenceAdapterRouteMetadata | undefined
     const primaryAdapterId = adapters[0]!.id
 
     for (let index = 0; index < adapters.length; index += 1) {
@@ -466,6 +469,9 @@ export const dispatchWithOverflowWithMetadata = <A>(
         return {
           route: {
             fallbackReason,
+            ...(fallbackAdapterRouteMetadata === undefined
+              ? {}
+              : { fallbackAdapterRouteMetadata }),
             primaryAdapterId,
             servedAdapterId: adapter.id,
             ...(providerHealthScore === undefined
@@ -483,6 +489,7 @@ export const dispatchWithOverflowWithMetadata = <A>(
         return yield* Effect.fail(outcome.error)
       }
       fallbackReason = fallbackReasonFor(outcome.error)
+      fallbackAdapterRouteMetadata = outcome.error.adapterRouteMetadata
       // Retryable: continue to the next viable lane (loop), backing off above.
     }
 

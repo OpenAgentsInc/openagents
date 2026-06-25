@@ -56,6 +56,11 @@ export type GlmReplicaHealth = 'healthy' | 'degraded' | 'unhealthy'
 
 export type GlmReplicaCapacityClass = 'spot' | 'on_demand' | 'unknown'
 
+export type GlmSaturationPolicy =
+  | 'overflow_immediately'
+  | 'queue_then_overflow'
+  | 'queue_then_429'
+
 export type GlmReplicaRoutingState = Readonly<{
   replicaId: string
   health: GlmReplicaHealth
@@ -101,8 +106,15 @@ export type HydraliskPoolAdapterConfig = Readonly<{
   replicas: ReadonlyArray<HydraliskReplicaAdapterConfig>
   affinityOracle?: GlmReplicaAffinityOracle | undefined
   routingStateOracle?: GlmReplicaRoutingStateOracle | undefined
+  saturationPolicy?: GlmSaturationPolicy | undefined
+  maxQueueWaitMs?: number | undefined
+  sleep?: ((ms: number) => Effect.Effect<void>) | undefined
+  nowEpochMs?: (() => number) | undefined
   upstreamModel?: string | undefined
 }>
+
+const DEFAULT_GLM_ASYNC_QUEUE_WAIT_MS = 250
+const MAX_GLM_EDGE_QUEUE_WAIT_MS = 1_000
 
 const requestUrl = (config: HydraliskAdapterConfig): string =>
   `${config.baseUrl.replace(/\/+$/u, '')}/v1/chat/completions`
@@ -580,9 +592,11 @@ const poolAdapterError = (
     kind?: string | undefined
     retryable?: boolean | undefined
     httpStatus?: number | undefined
+    adapterRouteMetadata?: InferenceAdapterRouteMetadata | undefined
   }> = {},
 ): InferenceAdapterError =>
   new InferenceAdapterError({
+    adapterRouteMetadata: input.adapterRouteMetadata,
     adapterId: config.id,
     httpStatus: input.httpStatus,
     kind: input.kind ?? 'configuration_error',
@@ -718,7 +732,11 @@ const metadataForSelection = (
   selected: ReplicaCandidate,
   replicaFallbackReason: string | null,
   replicaBusyReason: string | null,
+  queueWaitMs: number,
+  saturationPolicy: GlmSaturationPolicy,
 ): InferenceAdapterRouteMetadata => ({
+  glmSaturationPolicy: saturationPolicy,
+  queueWaitMs,
   replicaBusyReason,
   replicaFallbackReason,
   replicaHealthScore: healthScore(selected.state.health),
@@ -729,10 +747,56 @@ const metadataForSelection = (
   selectedReplicaRef: replicaRefFor(selected.replica.replicaId),
 })
 
-const selectedReplicaConfig = (
+const boundedQueueWaitMs = (value: number | undefined): number =>
+  Math.min(
+    MAX_GLM_EDGE_QUEUE_WAIT_MS,
+    Math.max(
+      0,
+      Math.floor(
+        value === undefined || !Number.isFinite(value)
+          ? DEFAULT_GLM_ASYNC_QUEUE_WAIT_MS
+          : value,
+      ),
+    ),
+  )
+
+const defaultSaturationPolicyFor = (
+  request: InferenceRequest,
+): GlmSaturationPolicy =>
+  request.stream ? 'overflow_immediately' : 'queue_then_overflow'
+
+const saturationError = (
+  config: HydraliskPoolAdapterConfig,
+  input: Readonly<{
+    policy: GlmSaturationPolicy
+    reason: string
+    queueWaitMs: number
+  }>,
+): InferenceAdapterError =>
+  poolAdapterError(
+    config,
+    input.policy === 'queue_then_429'
+      ? `hydralisk GLM pool saturated (${input.reason}); retry later or use the async batch lane`
+      : `hydralisk GLM pool saturated (${input.reason}); overflowing to the next Khala lane`,
+    {
+      httpStatus: 429,
+      kind: 'glm_pool_saturated',
+      retryable: input.policy !== 'queue_then_429',
+      adapterRouteMetadata: {
+        glmSaturationPolicy: input.policy,
+        queueWaitMs: input.queueWaitMs,
+        replicaBusyReason: input.reason,
+        replicaFallbackReason: input.reason,
+      },
+    },
+  )
+
+const selectedReplicaConfigOnce = (
   config: HydraliskPoolAdapterConfig,
   request: InferenceRequest,
   inflight: Map<string, number>,
+  queueWaitMs: number,
+  saturationPolicy: GlmSaturationPolicy,
 ): Effect.Effect<ReplicaSelection, InferenceAdapterError> =>
   Effect.try({
     catch: error =>
@@ -768,15 +832,11 @@ const selectedReplicaConfig = (
           candidates
             .map(candidate => busyReasonFor(candidate.state))
             .find(Boolean) ?? 'no_eligible_replica'
-        throw poolAdapterError(
-          config,
-          `hydralisk GLM replica pool has no idle eligible replicas (${reason})`,
-          {
-            httpStatus: 503,
-            kind: 'service_overloaded',
-            retryable: true,
-          },
-        )
+        throw saturationError(config, {
+          policy: saturationPolicy,
+          queueWaitMs,
+          reason,
+        })
       }
 
       const affinity = requestAffinity(request)
@@ -834,10 +894,54 @@ const selectedReplicaConfig = (
           selected,
           replicaFallbackReason,
           replicaBusyReason,
+          queueWaitMs,
+          saturationPolicy,
         ),
         release,
       }
     },
+  })
+
+const selectedReplicaConfig = (
+  config: HydraliskPoolAdapterConfig,
+  request: InferenceRequest,
+  inflight: Map<string, number>,
+): Effect.Effect<ReplicaSelection, InferenceAdapterError> =>
+  Effect.gen(function* () {
+    const policy =
+      config.saturationPolicy ?? defaultSaturationPolicyFor(request)
+    const queueWaitLimitMs =
+      policy === 'overflow_immediately'
+        ? 0
+        : boundedQueueWaitMs(config.maxQueueWaitMs)
+    const first = yield* selectedReplicaConfigOnce(
+      config,
+      request,
+      inflight,
+      0,
+      policy,
+    ).pipe(Effect.result)
+
+    if (first._tag === 'Success') {
+      return first.success
+    }
+    if (first.failure.kind !== 'glm_pool_saturated' || queueWaitLimitMs <= 0) {
+      return yield* Effect.fail(first.failure)
+    }
+
+    const now = config.nowEpochMs ?? Date.now
+    const startedAt = now()
+    yield* (config.sleep ?? Effect.sleep)(queueWaitLimitMs)
+    const elapsed = Math.max(0, now() - startedAt)
+    const measuredQueueWaitMs = Math.max(queueWaitLimitMs, elapsed)
+
+    return yield* selectedReplicaConfigOnce(
+      config,
+      request,
+      inflight,
+      measuredQueueWaitMs,
+      policy,
+    )
   })
 
 const terminalChunkIndex = (

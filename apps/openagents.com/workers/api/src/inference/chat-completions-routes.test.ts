@@ -1197,6 +1197,7 @@ describe('POST /v1/chat/completions', () => {
         routing?: {
           fallback_reason: string | null
           provider_health_score: number | typeof NOT_MEASURED
+          queue_wait_ms?: number | typeof NOT_MEASURED
           region: string | typeof NOT_MEASURED
         }
         telemetry?: Record<string, unknown>
@@ -1208,11 +1209,146 @@ describe('POST /v1/chat/completions', () => {
     expect(body.openagents?.routing).toEqual({
       fallback_reason: 'retryable_provider_error',
       provider_health_score: 0.91,
+      queue_wait_ms: NOT_MEASURED,
       region: 'us-central1',
     })
     expect(body.openagents?.telemetry).toMatchObject({
       requestClass: 'async_job',
       schemaVersion: 'openagents.khala.telemetry.v1',
+    })
+  })
+
+  test('a saturated GLM primary overflows without stacking and exposes queue wait metadata', async () => {
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      ...echoAdapter(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID),
+      complete: () =>
+        Effect.fail(
+          new InferenceAdapterError({
+            adapterId: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+            adapterRouteMetadata: {
+              glmSaturationPolicy: 'queue_then_overflow',
+              queueWaitMs: 125,
+              replicaBusyReason: 'inflight_full',
+              replicaFallbackReason: 'inflight_full',
+            },
+            httpStatus: 429,
+            kind: 'glm_pool_saturated',
+            reason: 'hydralisk GLM pool saturated',
+            retryable: true,
+          }),
+        ),
+    })
+    registry.register(echoAdapter(VERTEX_GEMINI_ADAPTER_ID))
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          messages: [{ content: 'hello world', role: 'user' }],
+          model: KHALA_MODEL_ID,
+        }),
+        baseDeps({
+          dispatch: { sleep: () => Effect.void },
+          lanePlan: () => [
+            HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+            VERTEX_GEMINI_ADAPTER_ID,
+          ],
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      openagents?: {
+        routing?: {
+          fallback_reason: string | null
+          glm_saturation_policy?: string
+          provider_health_score: number | typeof NOT_MEASURED
+          queue_wait_ms?: number | typeof NOT_MEASURED
+          region: string | typeof NOT_MEASURED
+          replica_busy_reason?: string | null
+          replica_fallback_reason?: string | null
+        }
+        telemetry?: Record<string, unknown>
+        worker: string
+      }
+    }
+
+    expect(body.openagents?.worker).toBe(VERTEX_GEMINI_ADAPTER_ID)
+    expect(body.openagents?.routing).toEqual({
+      fallback_reason: 'glm_pool_saturated',
+      glm_saturation_policy: 'queue_then_overflow',
+      provider_health_score: NOT_MEASURED,
+      queue_wait_ms: 125,
+      region: NOT_MEASURED,
+      replica_busy_reason: 'inflight_full',
+      replica_fallback_reason: 'inflight_full',
+    })
+    expect(body.openagents?.telemetry).toMatchObject({
+      requestClass: 'async_job',
+      schemaVersion: 'openagents.khala.telemetry.v1',
+    })
+  })
+
+  test('a saturated Khala GLM-only route returns stable OpenAI-compatible 429 backpressure', async () => {
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      ...echoAdapter(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID),
+      complete: () =>
+        Effect.fail(
+          new InferenceAdapterError({
+            adapterId: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+            adapterRouteMetadata: {
+              glmSaturationPolicy: 'queue_then_429',
+              queueWaitMs: 75,
+              replicaBusyReason: 'inflight_full',
+            },
+            httpStatus: 429,
+            kind: 'glm_pool_saturated',
+            reason:
+              'hydralisk GLM pool saturated (inflight_full); retry later or use the async batch lane',
+            retryable: false,
+          }),
+        ),
+    })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          messages: [{ content: 'hello world', role: 'user' }],
+          model: KHALA_MODEL_ID,
+        }),
+        baseDeps({
+          lanePlan: () => [HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID],
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(429)
+    expect(response.headers.get('retry-after')).toBe('1')
+    const body = (await response.json()) as {
+      error?: {
+        code?: string
+        message?: string
+        queue_wait_ms?: number
+        replica_busy_reason?: string
+        retryable?: boolean
+        saturation_policy?: string
+        type?: string
+      }
+    }
+
+    expect(body.error).toEqual({
+      code: 'glm_pool_saturated',
+      message:
+        'hydralisk GLM pool saturated (inflight_full); retry later or use the async batch lane',
+      queue_wait_ms: 75,
+      replica_busy_reason: 'inflight_full',
+      retryable: false,
+      saturation_policy: 'queue_then_429',
+      type: 'glm_pool_saturated',
     })
   })
 
@@ -1254,7 +1390,9 @@ describe('POST /v1/chat/completions', () => {
       openagents?: {
         routing?: {
           fallback_reason: string | null
+          glm_saturation_policy?: string
           provider_health_score: number | typeof NOT_MEASURED
+          queue_wait_ms?: number | typeof NOT_MEASURED
           region: string | typeof NOT_MEASURED
           replica_fallback_reason?: string | null
           replica_health_score?: number | typeof NOT_MEASURED
@@ -1271,6 +1409,7 @@ describe('POST /v1/chat/completions', () => {
     expect(body.openagents?.routing).toEqual({
       fallback_reason: null,
       provider_health_score: 1,
+      queue_wait_ms: NOT_MEASURED,
       region: 'us-central1-a',
       replica_fallback_reason: 'inflight_full',
       replica_health_score: 1,

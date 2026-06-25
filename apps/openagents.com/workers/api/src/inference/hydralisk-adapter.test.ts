@@ -260,6 +260,120 @@ describe('hydralisk vLLM adapter', () => {
     ])
   })
 
+  it('overflows immediately when every GLM replica is busy and never stacks a busy endpoint', async () => {
+    const capturedInputs: Array<string> = []
+    const adapter = makeHydraliskVllmPoolAdapter({
+      id: GLM_POOL_ADAPTER_ID,
+      replicas: [
+        replicaFixture('primary', {
+          fetchImpl: captureFetch(capturedInputs),
+        }),
+        replicaFixture('second', {
+          fetchImpl: captureFetch(capturedInputs),
+        }),
+      ],
+      routingStateOracle: () => ({ inflightCount: 1, maxInflight: 1 }),
+      saturationPolicy: 'overflow_immediately',
+      upstreamModel: 'openagents/glm-5.2-reap-504b',
+    })
+
+    const outcome = await Effect.runPromise(
+      Effect.result(adapter.complete(request())),
+    )
+
+    expect(outcome._tag).toBe('Failure')
+    if (outcome._tag === 'Failure') {
+      expect(outcome.failure.kind).toBe('glm_pool_saturated')
+      expect(outcome.failure.httpStatus).toBe(429)
+      expect(outcome.failure.retryable).toBe(true)
+      expect(outcome.failure.adapterRouteMetadata).toMatchObject({
+        glmSaturationPolicy: 'overflow_immediately',
+        queueWaitMs: 0,
+        replicaBusyReason: 'inflight_full',
+      })
+    }
+    expect(capturedInputs).toEqual([])
+  })
+
+  it('waits a bounded queue window for non-streaming GLM work, then serves a newly idle replica', async () => {
+    const capturedInputs: Array<string> = []
+    let busy = true
+    let now = 1_000
+    const sleeps: Array<number> = []
+    const adapter = makeHydraliskVllmPoolAdapter({
+      id: GLM_POOL_ADAPTER_ID,
+      maxQueueWaitMs: 125,
+      nowEpochMs: () => now,
+      replicas: [
+        replicaFixture('primary', {
+          fetchImpl: captureFetch(capturedInputs),
+        }),
+      ],
+      routingStateOracle: () =>
+        busy ? { inflightCount: 1, maxInflight: 1 } : undefined,
+      saturationPolicy: 'queue_then_overflow',
+      sleep: ms =>
+        Effect.sync(() => {
+          sleeps.push(ms)
+          now += ms
+          busy = false
+        }),
+      upstreamModel: 'openagents/glm-5.2-reap-504b',
+    })
+
+    const result = await Effect.runPromise(adapter.complete(request()))
+
+    expect(result.adapterRouteMetadata).toMatchObject({
+      glmSaturationPolicy: 'queue_then_overflow',
+      queueWaitMs: 125,
+      selectedReplicaId: 'primary',
+    })
+    expect(sleeps).toEqual([125])
+    expect(capturedInputs).toEqual([
+      'https://primary.example.test/v1/chat/completions',
+    ])
+  })
+
+  it('returns stable non-retryable backpressure after the queue window for queue_then_429', async () => {
+    const capturedInputs: Array<string> = []
+    const sleeps: Array<number> = []
+    const adapter = makeHydraliskVllmPoolAdapter({
+      id: GLM_POOL_ADAPTER_ID,
+      maxQueueWaitMs: 75,
+      nowEpochMs: () => 0,
+      replicas: [
+        replicaFixture('primary', {
+          fetchImpl: captureFetch(capturedInputs),
+        }),
+      ],
+      routingStateOracle: () => ({ inflightCount: 1, maxInflight: 1 }),
+      saturationPolicy: 'queue_then_429',
+      sleep: ms =>
+        Effect.sync(() => {
+          sleeps.push(ms)
+        }),
+      upstreamModel: 'openagents/glm-5.2-reap-504b',
+    })
+
+    const outcome = await Effect.runPromise(
+      Effect.result(adapter.complete(request())),
+    )
+
+    expect(outcome._tag).toBe('Failure')
+    if (outcome._tag === 'Failure') {
+      expect(outcome.failure.kind).toBe('glm_pool_saturated')
+      expect(outcome.failure.httpStatus).toBe(429)
+      expect(outcome.failure.retryable).toBe(false)
+      expect(outcome.failure.adapterRouteMetadata).toMatchObject({
+        glmSaturationPolicy: 'queue_then_429',
+        queueWaitMs: 75,
+        replicaBusyReason: 'inflight_full',
+      })
+    }
+    expect(sleeps).toEqual([75])
+    expect(capturedInputs).toEqual([])
+  })
+
   it('maps the GPT-OSS model id to the Hydralisk OpenAI-compatible endpoint', async () => {
     let captured:
       | Readonly<{

@@ -4,8 +4,8 @@ import { describe, expect, test } from 'vitest'
 import {
   DEFAULT_OVERFLOW_BACKOFF,
   FIREWORKS_ADAPTER_ID,
-  HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
   HYDRALISK_ADAPTER_ID,
+  HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
   HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
   OPENAGENTS_NETWORK_ADAPTER_ID,
   PASSTHROUGH_ANTHROPIC_ADAPTER_ID,
@@ -434,6 +434,56 @@ describe('dispatchWithOverflow', () => {
       }),
     )
     expect(result._tag).toBe('Success')
+  })
+
+  test('GLM saturation overflows with public-safe queue and busy metadata', async () => {
+    const glm = mockAdapter(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID, [
+      new InferenceAdapterError({
+        adapterId: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+        adapterRouteMetadata: {
+          glmSaturationPolicy: 'queue_then_overflow',
+          queueWaitMs: 125,
+          replicaBusyReason: 'inflight_full',
+          replicaFallbackReason: 'inflight_full',
+        },
+        httpStatus: 429,
+        kind: 'glm_pool_saturated',
+        reason: 'pool saturated',
+        retryable: true,
+      }),
+    ])
+    const gemini = mockAdapter(VERTEX_GEMINI_ADAPTER_ID, [undefined])
+    const registry = new InferenceProviderRegistry()
+    registry.register(glm.adapter)
+    registry.register(gemini.adapter)
+
+    const result = await runResult(
+      dispatchWithOverflowWithMetadata(request(KHALA_MODEL_ID), completeOp, {
+        plan: () => [
+          HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+          VERTEX_GEMINI_ADAPTER_ID,
+        ],
+        registry,
+        sleep: noSleep,
+      }),
+    )
+
+    expect(result._tag).toBe('Success')
+    if (result._tag === 'Success') {
+      expect(result.success.route).toEqual({
+        fallbackAdapterRouteMetadata: {
+          glmSaturationPolicy: 'queue_then_overflow',
+          queueWaitMs: 125,
+          replicaBusyReason: 'inflight_full',
+          replicaFallbackReason: 'inflight_full',
+        },
+        fallbackReason: 'glm_pool_saturated',
+        primaryAdapterId: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+        servedAdapterId: VERTEX_GEMINI_ADAPTER_ID,
+      })
+    }
+    expect(glm.calls()).toBe(1)
+    expect(gemini.calls()).toBe(1)
   })
 
   test('a non-retryable failure surfaces immediately without overflow', async () => {

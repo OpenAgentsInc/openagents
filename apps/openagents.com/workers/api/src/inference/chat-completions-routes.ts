@@ -859,6 +859,40 @@ const resolveCacheAffinity = (
 
 const defaultId = () => compactRandomId('chatcmpl')
 
+const providerErrorResponse = (error: InferenceAdapterError) => {
+  if (error.kind === 'glm_pool_saturated') {
+    const queueWaitMs = error.adapterRouteMetadata?.queueWaitMs
+    return noStoreJsonResponse(
+      {
+        error: {
+          code: 'glm_pool_saturated',
+          message: error.reason,
+          retryable: error.retryable,
+          type: 'glm_pool_saturated',
+          ...(queueWaitMs === undefined ? {} : { queue_wait_ms: queueWaitMs }),
+          ...(error.adapterRouteMetadata?.replicaBusyReason === undefined
+            ? {}
+            : {
+                replica_busy_reason:
+                  error.adapterRouteMetadata.replicaBusyReason,
+              }),
+          ...(error.adapterRouteMetadata?.glmSaturationPolicy === undefined
+            ? {}
+            : {
+                saturation_policy:
+                  error.adapterRouteMetadata.glmSaturationPolicy,
+              }),
+        },
+      },
+      { headers: { 'retry-after': '1' }, status: 429 },
+    )
+  }
+  return noStoreJsonResponse(
+    { error: 'provider_error', reason: error.reason },
+    { status: 502 },
+  )
+}
+
 // The public OpenAgents disclosure block (M0 / #6008). Khala virtual models use
 // it to show which concrete model/worker served one endpoint; Hydralisk raw
 // model ids use it to disclose owned infrastructure without pretending to be a
@@ -884,6 +918,8 @@ type OpenAgentsReceipt = Readonly<{
         replica_health_score?: number | typeof NOT_MEASURED | undefined
         replica_region?: string | typeof NOT_MEASURED | undefined
         replica_busy_reason?: string | null | undefined
+        queue_wait_ms?: number | typeof NOT_MEASURED | undefined
+        glm_saturation_policy?: string | undefined
       }>
     | undefined
   // `unverified` is the HONEST default for an executable artifact we have not actually
@@ -981,6 +1017,9 @@ type KhalaTelemetryTiming = Readonly<{
   // TPS + mean inter-token latency. Streaming only; undefined => those derived
   // metrics are the sentinel (we never guess them from total wall-clock).
   generationWallClockMs?: number | undefined
+  // Bounded queue wait before a serving lane either accepted work or overflowed.
+  // Undefined means no measured queue wait was available; 0 means measured zero.
+  queueWaitMs?: number | undefined
 }>
 
 // Map a khala-code verifier verdict's CLASS onto the telemetry verification
@@ -1047,6 +1086,8 @@ const openAgentsReceiptForResult = (
     worker: input.adapterId,
   } satisfies Omit<OpenAgentsReceipt, 'verification'>
   const adapterRouteMetadata = input.result.adapterRouteMetadata
+  const fallbackAdapterRouteMetadata =
+    input.routeMetadata?.fallbackAdapterRouteMetadata
   const routeProviderHealthScore =
     input.routeMetadata?.providerHealthScore ??
     adapterRouteMetadata?.replicaHealthScore
@@ -1056,6 +1097,19 @@ const openAgentsReceiptForResult = (
     input.routeMetadata?.fallbackReason ??
     adapterRouteMetadata?.replicaFallbackReason ??
     null
+  const routeQueueWaitMs =
+    input.timing?.queueWaitMs ??
+    adapterRouteMetadata?.queueWaitMs ??
+    fallbackAdapterRouteMetadata?.queueWaitMs
+  const routeGlmSaturationPolicy =
+    adapterRouteMetadata?.glmSaturationPolicy ??
+    fallbackAdapterRouteMetadata?.glmSaturationPolicy
+  const routeReplicaBusyReason =
+    adapterRouteMetadata?.replicaBusyReason ??
+    fallbackAdapterRouteMetadata?.replicaBusyReason
+  const routeReplicaFallbackReason =
+    adapterRouteMetadata?.replicaFallbackReason ??
+    fallbackAdapterRouteMetadata?.replicaFallbackReason
   const routing = {
     fallback_reason: input.routeMetadata?.fallbackReason ?? null,
     provider_health_score: routeProviderHealthScore ?? NOT_MEASURED,
@@ -1066,10 +1120,10 @@ const openAgentsReceiptForResult = (
     ...(adapterRouteMetadata?.selectedReplicaRef === undefined
       ? {}
       : { selected_replica_ref: adapterRouteMetadata.selectedReplicaRef }),
-    ...(adapterRouteMetadata?.replicaFallbackReason === undefined
+    ...(routeReplicaFallbackReason === undefined
       ? {}
       : {
-          replica_fallback_reason: adapterRouteMetadata.replicaFallbackReason,
+          replica_fallback_reason: routeReplicaFallbackReason,
         }),
     ...(adapterRouteMetadata?.replicaHealthScore === undefined
       ? {}
@@ -1077,9 +1131,13 @@ const openAgentsReceiptForResult = (
     ...(adapterRouteMetadata?.replicaRegion === undefined
       ? {}
       : { replica_region: adapterRouteMetadata.replicaRegion }),
-    ...(adapterRouteMetadata?.replicaBusyReason === undefined
+    ...(routeReplicaBusyReason === undefined
       ? {}
-      : { replica_busy_reason: adapterRouteMetadata.replicaBusyReason }),
+      : { replica_busy_reason: routeReplicaBusyReason }),
+    queue_wait_ms: routeQueueWaitMs ?? NOT_MEASURED,
+    ...(routeGlmSaturationPolicy === undefined
+      ? {}
+      : { glm_saturation_policy: routeGlmSaturationPolicy }),
   } satisfies NonNullable<OpenAgentsReceipt['routing']>
 
   if (!isKhala) {
@@ -1136,6 +1194,9 @@ const openAgentsReceiptForResult = (
         ...(input.timing?.generationWallClockMs === undefined
           ? {}
           : { generationWallClockMs: input.timing.generationWallClockMs }),
+        ...(routeQueueWaitMs === undefined
+          ? {}
+          : { queueWaitMs: routeQueueWaitMs }),
         ...(input.timing?.totalWallClockMs === undefined
           ? {}
           : { totalWallClockMs: input.timing.totalWallClockMs }),
@@ -1215,6 +1276,9 @@ const openAgentsReceiptForResult = (
       ...(input.timing?.generationWallClockMs === undefined
         ? {}
         : { generationWallClockMs: input.timing.generationWallClockMs }),
+      ...(routeQueueWaitMs === undefined
+        ? {}
+        : { queueWaitMs: routeQueueWaitMs }),
       ...(input.timing?.totalWallClockMs === undefined
         ? {}
         : { totalWallClockMs: input.timing.totalWallClockMs }),
@@ -2115,9 +2179,8 @@ export const handleChatCompletions = (
         Effect.map(served => ({ ok: true as const, served })),
         Effect.catch(error =>
           Effect.succeed({
-            kind: error.kind,
+            error,
             ok: false as const,
-            reason: error.reason,
           }),
         ),
       )
@@ -2190,11 +2253,8 @@ export const handleChatCompletions = (
       // not stream incrementally. A real upstream/connect failure (provider
       // error) must surface as the 502 it is, not be retried via the buffered
       // path (which would double-dispatch and could 524 again).
-      if (sseDispatch.kind !== 'stream_not_supported') {
-        return noStoreJsonResponse(
-          { error: 'provider_error', reason: sseDispatch.reason },
-          { status: 502 },
-        )
+      if (sseDispatch.error.kind !== 'stream_not_supported') {
+        return providerErrorResponse(sseDispatch.error)
       }
 
       // Run the stream op across the lane plan; the served adapter id rides
@@ -2208,15 +2268,10 @@ export const handleChatCompletions = (
         dispatchDeps,
       ).pipe(
         Effect.map(served => ({ ok: true as const, served })),
-        Effect.catch(error =>
-          Effect.succeed({ ok: false as const, reason: error.reason }),
-        ),
+        Effect.catch(error => Effect.succeed({ error, ok: false as const })),
       )
       if (!chunks.ok) {
-        return noStoreJsonResponse(
-          { error: 'provider_error', reason: chunks.reason },
-          { status: 502 },
-        )
+        return providerErrorResponse(chunks.error)
       }
       const servedChunks = chunks.served.value.value
       // Settle metering from the terminal usage frame (receipt-first).
@@ -2440,15 +2495,10 @@ export const handleChatCompletions = (
       dispatchDeps,
     ).pipe(
       Effect.map(served => ({ ok: true as const, served })),
-      Effect.catch(error =>
-        Effect.succeed({ ok: false as const, reason: error.reason }),
-      ),
+      Effect.catch(error => Effect.succeed({ error, ok: false as const })),
     )
     if (!result.ok) {
-      return noStoreJsonResponse(
-        { error: 'provider_error', reason: result.reason },
-        { status: 502 },
-      )
+      return providerErrorResponse(result.error)
     }
 
     // KHALA IDENTITY GUARD (STEP 2). Run the typed identity signature over the

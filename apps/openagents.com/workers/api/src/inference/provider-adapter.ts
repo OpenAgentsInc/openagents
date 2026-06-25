@@ -68,6 +68,8 @@ export type InferenceAdapterRouteMetadata = Readonly<{
   replicaHealthScore?: number | undefined
   replicaRegion?: string | undefined
   replicaBusyReason?: string | null | undefined
+  queueWaitMs?: number | undefined
+  glmSaturationPolicy?: string | undefined
 }>
 
 export type InferenceToolCall = Readonly<{
@@ -197,6 +199,11 @@ export class InferenceAdapterError extends Error {
   // "rate_limited", "service_overloaded", "upstream_error", "transport_error",
   // "configuration_error", "malformed_response", "request_rejected".
   readonly kind: string | undefined
+  // Optional public-safe routing metadata about the failed adapter attempt. Used
+  // when a lane refuses work before serving (for example GLM saturation) so the
+  // overflow receipt can still expose queue wait and busy reason without leaking
+  // private endpoint details.
+  readonly adapterRouteMetadata: InferenceAdapterRouteMetadata | undefined
 
   constructor(
     input: Readonly<{
@@ -205,6 +212,7 @@ export class InferenceAdapterError extends Error {
       retryable?: boolean | undefined
       httpStatus?: number | undefined
       kind?: string | undefined
+      adapterRouteMetadata?: InferenceAdapterRouteMetadata | undefined
     }>,
   ) {
     super(`[${input.adapterId}] ${input.reason}`)
@@ -214,6 +222,7 @@ export class InferenceAdapterError extends Error {
     this.retryable = input.retryable ?? false
     this.httpStatus = input.httpStatus
     this.kind = input.kind
+    this.adapterRouteMetadata = input.adapterRouteMetadata
   }
 }
 
