@@ -355,6 +355,21 @@ export const PYLON_COMMAND_CATALOG: readonly PylonCommandEntry[] = [
     ],
   },
   {
+    command: "mcp",
+    summary: "Run the Khala MCP stdio server or emit local/remote MCP config.",
+    mutates: true,
+    spends: false,
+    needsNetwork: true,
+    json: true,
+    args: [
+      pos("config", "Optional subcommand to emit MCP config instead of running stdio.", false),
+      opt("--base-url", "OpenAgents base URL."),
+      opt("--agent-token", "Agent token or OPENAGENTS_AGENT_TOKEN."),
+      opt("--command", "config: local pylon command/path for stdio clients."),
+      flag("--json", "config: emit JSON."),
+    ],
+  },
+  {
     command: "assignment",
     summary: "Poll/accept/progress/closeout OpenAgents assignments.",
     mutates: true,

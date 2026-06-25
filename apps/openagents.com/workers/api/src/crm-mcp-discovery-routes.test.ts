@@ -17,16 +17,26 @@ describe('CRM MCP discovery doc', () => {
     const res = await run(new Request('https://openagents.com/.well-known/openagents-mcp.json'))
     expect(res.status).toBe(200)
     const doc = (await res.json()) as {
+      authority: { model: string; note: string }
       server: { name: string }
       transport: { endpoint: string; kind: string }
       tools: Array<{ name: string; requiredAuthorities: string[] }>
       resources: Array<{ uri: string }>
     }
+    expect(doc.authority.model).toBe('admin_token_or_scoped_grant_or_agent_bearer')
+    expect(doc.authority.note).toContain('agent Bearer token')
     expect(doc.server.name).toBe('openagents-crm-mcp')
     expect(doc.transport.endpoint).toBe('/api/mcp')
     expect(doc.transport.kind).toBe('streamable_http')
-    expect(doc.tools.length).toBeGreaterThanOrEqual(21)
+    expect(doc.tools.length).toBeGreaterThanOrEqual(25)
     expect(doc.tools.map(t => t.name)).toContain('crm.contacts.list')
+    expect(doc.tools.map(t => t.name)).toContain('khala.request')
+    expect(
+      doc.tools.find(t => t.name === 'khala.request')?.requiredAuthorities,
+    ).toEqual(['coding_session_control'])
+    expect(
+      doc.tools.find(t => t.name === 'khala.capacity')?.requiredAuthorities,
+    ).toEqual(['private_account_read'])
     expect(doc.resources.map(r => r.uri)).toContain('mcp://openagents/worker/crm/contacts')
   })
 

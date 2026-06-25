@@ -258,6 +258,11 @@ import {
 } from './customer-one-cohort-routes'
 import { makeD1CustomerOneCohortRowStore } from './customer-one-cohort-store'
 import { handleDemandProvenanceApi } from './demand-provenance-routes'
+import {
+  combineMcpCatalogs,
+  khalaMcpAgentPrincipal,
+  makeKhalaMcpCatalog,
+} from './khala-mcp'
 import { makeInMemoryEcommerceCampaignPaidDeliveryClaimStore } from './ecommerce-campaign-claim-upgrade'
 import { firstPaidEcommerceCampaignDeliveryReceiptFixture } from './ecommerce-campaign-delivery-receipt-fixture'
 import { makeEcommerceCampaignReceiptOperatorRoutes } from './ecommerce-campaign-receipt-operator-routes'
@@ -7718,15 +7723,31 @@ const crmMcpRoutes = makeCrmMcpRoutes<WorkerBindings>({
     if (token === undefined) {
       return null
     }
-    return resolveCrmMcpGrantPrincipal(
+    const crmPrincipal = await resolveCrmMcpGrantPrincipal(
       openAgentsDatabase(env),
       token,
       currentIsoTimestamp(),
     )
+    if (crmPrincipal !== null) {
+      return crmPrincipal
+    }
+    const session = await authenticateProgrammaticAgent(
+      makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+      token,
+    )
+    return session === undefined
+      ? null
+      : khalaMcpAgentPrincipal(session, currentIsoTimestamp())
   },
-  catalog: makeCrmMcpCatalog<WorkerBindings>({
-    resolveResendDeps: resolveCrmResendDeps,
-  }),
+  catalog: combineMcpCatalogs<WorkerBindings>([
+    makeCrmMcpCatalog<WorkerBindings>({
+      resolveResendDeps: resolveCrmResendDeps,
+    }),
+    makeKhalaMcpCatalog<WorkerBindings>({
+      agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+      pylonStore: env => makeD1PylonApiStore(openAgentsDatabase(env)),
+    }),
+  ]),
 })
 
 const crmMcpGrantRoutes = makeCrmMcpGrantRoutes<WorkerBindings>({

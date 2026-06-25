@@ -16,6 +16,7 @@ import { OPENAGENTS_MCP_SCHEMA_VERSION } from '@openagentsinc/mcp-contract'
 import { CRM_MCP_RESOURCES, CRM_MCP_TOOLS } from './crm-mcp'
 import { CRM_MCP_PATH, CRM_MCP_PROTOCOL_VERSION, CRM_MCP_SERVER_INFO } from './crm-mcp-routes'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { KHALA_MCP_TOOLS } from './khala-mcp'
 
 type HttpResponse = globalThis.Response
 
@@ -25,9 +26,9 @@ const SOURCE = 'docs/mcp/2026-06-22-crm-mcp-server-phase-1-audit.md'
 
 const discoveryDocument = () => ({
   authority: {
-    model: 'admin_token_or_scoped_grant',
+    model: 'admin_token_or_scoped_grant_or_agent_bearer',
     note:
-      'Authenticate at the endpoint with an admin Bearer token (full CRM authority on the X-OpenAgents-Tenant / default tenant) or a scoped MCP grant token (its declared authority classes + bound tenant). tools/list is filtered by the caller grant; ungranted tools are absent.',
+      'Authenticate at the endpoint with an admin Bearer token (full CRM authority on the X-OpenAgents-Tenant / default tenant), a scoped MCP grant token (its declared authority classes + bound tenant), or an agent Bearer token for Khala own-capacity tools. tools/list is filtered by the caller grant; ungranted tools are absent.',
     tenantHeader: 'X-OpenAgents-Tenant',
   },
   resources: CRM_MCP_RESOURCES.map(resource => ({
@@ -37,8 +38,11 @@ const discoveryDocument = () => ({
   })),
   schemaVersion: OPENAGENTS_MCP_SCHEMA_VERSION,
   server: CRM_MCP_SERVER_INFO,
-  sourceRefs: [SOURCE],
-  tools: CRM_MCP_TOOLS.map(tool => ({
+  sourceRefs: [
+    SOURCE,
+    'docs/khala/2026-06-25-pylon-cli-mcp-steerable-khala-network-audit.md',
+  ],
+  tools: [...CRM_MCP_TOOLS, ...KHALA_MCP_TOOLS].map(tool => ({
     name: tool.name,
     requiredAuthorities: tool.requiredAuthorities,
     riskClass: tool.riskClass,

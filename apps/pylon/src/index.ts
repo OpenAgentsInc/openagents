@@ -256,6 +256,10 @@ import {
   resumePylonKhalaRequest,
   type PylonKhalaWorkflow,
 } from "./khala-requester.js"
+import {
+  pylonKhalaMcpConfig,
+  runPylonKhalaMcpStdio,
+} from "./khala-mcp.js"
 import { hostname } from "node:os"
 
 // Routes node lifecycle log lines from plain async call sites into the
@@ -3580,6 +3584,47 @@ async function main() {
       throw new Error("usage: pylon work submit|status|review|request|offers|accept ...")
     } catch (error) {
       process.stdout.write(`${JSON.stringify({ error: error instanceof Error ? error.message : String(error), ok: false }, null, 2)}\n`)
+      process.exitCode = 1
+      return
+    }
+  }
+
+  if (args[0] === "mcp") {
+    try {
+      const command = args[1]
+      const optionArgs = command === "config" ? args.slice(2) : args.slice(1)
+      const options = parseKeyValueOptions(optionArgs)
+      const baseUrl =
+        optionString(options, "base-url") ??
+        Bun.env.PYLON_OPENAGENTS_BASE_URL ??
+        "https://openagents.com"
+      if (command === "config") {
+        process.stdout.write(
+          `${JSON.stringify(
+            pylonKhalaMcpConfig({
+              baseUrl,
+              command: optionString(options, "command") ?? "pylon",
+            }),
+            null,
+            2,
+          )}\n`,
+        )
+        return
+      }
+
+      await runPylonKhalaMcpStdio({
+        network: {
+          agentToken:
+            optionString(options, "agent-token") ??
+            Bun.env.OPENAGENTS_AGENT_TOKEN,
+          baseUrl,
+        },
+      })
+      return
+    } catch (error) {
+      process.stdout.write(
+        `${JSON.stringify({ error: error instanceof Error ? error.message : String(error), ok: false }, null, 2)}\n`,
+      )
       process.exitCode = 1
       return
     }

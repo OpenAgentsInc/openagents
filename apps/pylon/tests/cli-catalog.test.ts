@@ -18,7 +18,7 @@ describe("pylon command catalog", () => {
   })
 
   test("the new CL-5035 steering verbs are all listed", () => {
-    for (const name of ["help", "sessions", "approvals", "deploy", "training", "khala"]) {
+    for (const name of ["help", "sessions", "approvals", "deploy", "training", "khala", "mcp"]) {
       expect(findCommandEntry(name), `missing ${name}`).toBeDefined()
     }
   })
@@ -71,6 +71,17 @@ describe("pylon command catalog", () => {
     expect(entry.args[0]?.name).toContain("request")
     expect(entry.args.some((arg) => arg.name === "--workflow")).toBe(true)
     expect(entry.args.some((arg) => arg.name === "--resume")).toBe(true)
+  })
+
+  test("khala MCP bridge is catalogued as network-backed and non-spending", () => {
+    const entry = findCommandEntry("mcp")!
+    expect(entry.needsNetwork).toBe(true)
+    expect(entry.spends).toBe(false)
+    expect(entry.mutates).toBe(true)
+    expect(entry.json).toBe(true)
+    expect(entry.args[0]?.name).toBe("config")
+    expect(entry.args.some((arg) => arg.name === "--command")).toBe(true)
+    expect(entry.args.some((arg) => arg.name === "--agent-token")).toBe(true)
   })
 
   test("every entry has a non-empty summary and unique command name", () => {
