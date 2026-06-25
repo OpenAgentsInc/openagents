@@ -1144,10 +1144,11 @@ const runHeadlessNode = Effect.gen(function* () {
   yield* Effect.sync(() => startSparkBackupProvisioning(localState, (message, level) => logToUi(message, level)))
 
   const presenceBaseUrl = Bun.env.PYLON_OPENAGENTS_BASE_URL
-  const presenceClientOptions = presenceClientOptionsFromEnv({
-    baseUrl: presenceBaseUrl ?? "",
-    env: Bun.env,
-  })
+  const currentPresenceClientOptions = () =>
+    presenceClientOptionsFromEnv({
+      baseUrl: presenceBaseUrl ?? "",
+      env: Bun.env,
+    })
   yield* forkNodeServices(runtime, {
     wallet: { classify: () => classifyPrimaryAgentWalletForState(localState) },
     telemetry: {
@@ -1160,21 +1161,23 @@ const runHeadlessNode = Effect.gen(function* () {
     },
     heartbeat: {
       baseUrl: presenceBaseUrl,
-      register: () => registerPylon(bootstrapSummary, presenceClientOptions),
+      register: () => registerPylon(bootstrapSummary, currentPresenceClientOptions()),
       heartbeat: () =>
         sendHeartbeat(bootstrapSummary, {
-          ...presenceClientOptions,
+          ...currentPresenceClientOptions(),
           walletProbe: () => classifyPrimaryAgentWalletForState(localState),
         }),
       // #5305: auto-register this node's own Spark address as a payout target,
       // hands-off. Idempotent + fail-soft (never blocks/fails the heartbeat).
-      ensurePayoutTarget: () =>
-        ensureSparkPayoutTargetRegistered({
+      ensurePayoutTarget: () => {
+        const presenceClientOptions = currentPresenceClientOptions()
+        return ensureSparkPayoutTargetRegistered({
           state: localState,
           baseUrl: presenceBaseUrl,
           ...(presenceClientOptions.agentToken ? { agentToken: presenceClientOptions.agentToken } : {}),
           log: (message, level) => logToUi(message, level),
-        }),
+        })
+      },
     },
   })
   if (presenceBaseUrl && Bun.env.PYLON_ASSIGNMENT_WORKER === "1") {

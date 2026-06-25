@@ -18,6 +18,7 @@ import {
   writePresenceState,
 } from "./state.js"
 import type { WalletStatusProjection } from "./wallet.js"
+import { PresenceRequestError } from "./presence-error.js"
 
 // The fields of the local wallet probe the heartbeat needs to publish
 // receive-readiness (openagents #5151). A full WalletStatusProjection satisfies
@@ -206,7 +207,7 @@ async function postJson(
     json = JSON.parse(responseText) as JsonRecord
   }
   if (!response.ok) {
-    throw new Error(`OpenAgents presence request failed (${response.status}): ${responseText}`)
+    throw new PresenceRequestError(response.status, responseText)
   }
   return json
 }

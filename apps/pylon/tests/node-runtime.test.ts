@@ -10,6 +10,7 @@ import {
   telemetryPollOnce,
   walletPollOnce,
 } from "../src/node/runtime"
+import { PresenceRequestError } from "../src/presence-error"
 
 describe("pylon node runtime", () => {
   test("logMessage appends to the feed and publishes a log event", async () => {
@@ -145,6 +146,54 @@ describe("pylon node runtime", () => {
 })
 
 describe("heartbeat auto-register payout target (#5305)", () => {
+  test("re-registers and retries once when a long-running heartbeat gets a 401 (#6236)", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const runtime = yield* makePylonNodeRuntime
+          let registerCalls = 0
+          let heartbeatCalls = 0
+          let resolveRecovered: (() => void) | undefined
+          const recovered = new Promise<void>((resolve) => {
+            resolveRecovered = resolve
+          })
+          const fiber = yield* Effect.forkScoped(
+            heartbeatServiceLoop(runtime, {
+              baseUrl: "https://openagents.test",
+              register: async () => {
+                registerCalls += 1
+                return { ok: true }
+              },
+              heartbeat: async () => {
+                heartbeatCalls += 1
+                if (heartbeatCalls === 1) {
+                  throw new PresenceRequestError(401, '{"error":"unauthorized"}')
+                }
+                resolveRecovered?.()
+                return { ok: true }
+              },
+              intervalMs: 1_000,
+            }),
+          )
+          yield* Effect.promise(() =>
+            Promise.race([
+              recovered,
+              new Promise<void>((_resolve, reject) =>
+                setTimeout(() => reject(new Error("heartbeat auth recovery timed out")), 500),
+              ),
+            ]),
+          )
+          yield* Fiber.interrupt(fiber)
+
+          expect(registerCalls).toBe(2)
+          expect(heartbeatCalls).toBe(2)
+          const feed = yield* SubscriptionRef.get(runtime.logFeed)
+          expect(feed.some((entry) => entry.message.includes("Heartbeat blocked"))).toBe(false)
+        }),
+      ),
+    )
+  })
+
   test("invokes ensurePayoutTarget after a successful register, then again each cycle (idempotent closure)", async () => {
     await Effect.runPromise(
       Effect.scoped(

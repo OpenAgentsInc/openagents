@@ -22,6 +22,7 @@ import {
   type WalletPaneState,
   type WalletStatusInput,
 } from "./state.js"
+import { isPresenceUnauthorizedError } from "../presence-error.js"
 
 export interface PylonNodeRuntime {
   readonly wallet: SubscriptionRef.SubscriptionRef<WalletPaneState>
@@ -240,6 +241,15 @@ export const heartbeatServiceLoop = (
           await deps.heartbeat()
           return true
         } catch (error) {
+          if (isPresenceUnauthorizedError(error)) {
+            try {
+              await deps.register()
+              await deps.heartbeat()
+              return true
+            } catch (retryError) {
+              return String(retryError)
+            }
+          }
           return String(error)
         }
       })
