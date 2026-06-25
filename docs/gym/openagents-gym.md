@@ -144,8 +144,8 @@ a Khala request in the world ([`../khala/khala-in-the-world.md`](../khala/khala-
 2. **Provider fan-out** — multi-select the lanes (`fireworks` —
    DeepSeek V4 Flash, the primary backing lane today — plus `vertex-anthropic`,
    `vertex-gemini`, `partner-passthrough`, the OpenRouter-free lane, and the
-   own-infra `gpt-oss-20b` / `gpt-oss-120b` (Hydralisk) and `cerebras-glm-52`
-   (REAP) lanes that Episode 243 added to the Khala mix; `pylon-whole-small`,
+   own-infra `gpt-oss-20b` / `gpt-oss-120b` (Hydralisk) and `glm-52` (Z.ai
+   GLM 5.2, REAP-pruned) lanes that Episode 243 added to the Khala mix; `pylon-whole-small`,
    `psionic-shard-wan` labeled future), and a **fan-out mode**: `single` · `race`
    (first viable) · `best-of-N` · `verifier-pick` (run N, keep the one that
    verifies). Concurrency is a dial. The single `LANE_AVAILABILITY` table stays

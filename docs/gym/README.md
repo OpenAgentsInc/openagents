@@ -40,7 +40,7 @@ provider-adapter registry, verification-class registry, and the
 - [`2026-06-25-gym-opencode-head-to-head-and-khala-flywheel.md`](2026-06-25-gym-opencode-head-to-head-and-khala-flywheel.md)
   — Episode 243 considerations: the OpenCode head-to-head, BigPickle (de-TBD'd),
   the expanded lane set (Fireworks DeepSeek V4 Flash, GPT-OSS via Hydralisk,
-  Cerebras GLM 5.2), the real cost basis, and the train-and-use-Khala flywheel.
+  GLM 5.2 (Z.ai)), the real cost basis, and the train-and-use-Khala flywheel.
 - [`2026-06-25-harbor-for-gym-terminalbench-and-benchmarks.md`](2026-06-25-harbor-for-gym-terminalbench-and-benchmarks.md)
   — audit: using Harbor (the official Terminal-Bench 2.0 harness + ATIF) as the
   Gym's executor/verifier for `terminal-bench` and other benchmarks; the
