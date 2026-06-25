@@ -4,8 +4,10 @@
 // (`workers/api/src/inference/gym/run-progress.ts`) so the `/gym` follow-along
 // view can render an active run with the existing three-effect run vocabulary
 // plus an accessible text/table mirror. The Worker is the authority; this file
-// holds the browser type mirror, a seeded public-safe fixture (until the live
-// poll lands), and the three-effect option adapter.
+// holds the browser type mirror and the three-effect option adapter ONLY. It
+// carries no seeded run: until a real Harbor/Khala run is ingested into the
+// Worker, the `/gym` follow-along renders an honest empty state, never a
+// fabricated run.
 //
 // Honesty discipline carries over verbatim: a progress object is ALWAYS
 // `decisionGrade:false`, partial phases are `inProgress:true`, pass-rate is over
@@ -85,59 +87,6 @@ export type GymRunProgress = Readonly<{
   caveatRefs: ReadonlyArray<string>
   blockerRefs: ReadonlyArray<string>
 }>
-
-// ---------------------------------------------------------------------------
-// Seeded public-safe fixture (web_authorized partial run).
-// ---------------------------------------------------------------------------
-
-export const LIVE_GYM_RUN_PROGRESS_FIXTURE: GymRunProgress = {
-  schemaVersion: GYM_RUN_PROGRESS_SCHEMA,
-  runRef: 'run.gym.terminal_bench.glm_reap_mtp2.live.fixture',
-  jobRef: 'job.gym.harbor_terminal_bench.glm_reap_mtp2.fixture',
-  configId: 'gym.terminal_bench.glm_reap_mtp2.fixture',
-  environmentRef: 'terminal-bench',
-  datasetRef: 'terminal-bench@2.0',
-  runner: 'harbor',
-  agent: 'terminus-2',
-  profile: {
-    profileRef: 'glm-reap-504b-g4-tp4-mtp2-rp105',
-    publicLabel: 'GLM-5.2 REAP 504B TP4 MTP-2 speculative decoding',
-    model: 'openagents/glm-5.2-reap-504b',
-    attribution: 'Z.ai GLM-5.2, REAP-pruned keep-168 NVFP4',
-    hardwareProfile: 'hydralisk-g4-4x-rtx-pro-6000',
-    contextWindowTokens: 250_000,
-  },
-  phase: 'running',
-  decisionGrade: false,
-  inProgress: true,
-  publication: 'web_authorized',
-  counts: {
-    officialDenominator: 89,
-    completed: 41,
-    completedPassed: 27,
-    completedFailed: 14,
-    running: 4,
-    pending: 44,
-    error: 0,
-    cancelled: 0,
-  },
-  passRateOverCompleted: 27 / 41,
-  completionFraction: 41 / 89,
-  tokens: {
-    promptTokens: 1_840_000,
-    completionTokens: 612_000,
-    totalTokens: 2_452_000,
-  },
-  elapsedMs: 1_920_000,
-  lastUpdatedAt: '2026-06-25T00:00:00.000Z',
-  caveatRefs: [
-    'caveat.gym.run_progress.partial_denominator_not_final_score',
-    'caveat.gym.terminal_bench.mtp2_vllm_min_p_disabled',
-  ],
-  blockerRefs: [
-    'blocker.gym.run_progress.decision_grade_report_requires_owner_armed_sweep',
-  ],
-}
 
 // ---------------------------------------------------------------------------
 // Formatting helpers (shared by the text/table mirror).

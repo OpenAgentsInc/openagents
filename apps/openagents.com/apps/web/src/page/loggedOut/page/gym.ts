@@ -1,10 +1,8 @@
 import type { Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
-import { trainingRunView } from '@openagentsinc/three-effect/foldkit'
 
 import * as Ui from '../../../ui'
 import {
-  ClickedRunGymFixture,
   ToggledGymCoordinator,
   ToggledGymLane,
   ToggledGymSequenceShape,
@@ -23,7 +21,6 @@ import {
   type GymFanoutMode,
   type GymModuleCompositionMode,
   type GymModel,
-  type PublicGymMetricSummary,
   type GymReasoningEffort,
   type GymToolSetRef,
   type GymTransport,
@@ -31,26 +28,9 @@ import {
   laneOptions,
   sequenceShapeOptions,
 } from '../gym/flow'
-import {
-  TERMINAL_BENCH_VISUAL_REPLAY,
-  formatTerminalBenchMetric,
-  formatTerminalBenchPercent,
-  terminalBenchLaneRate,
-  terminalBenchReplayTotals,
-  terminalBenchVisualizationOptions,
-  type TerminalBenchRunLane,
-} from '../gym/terminalBenchReplay'
-import {
-  LIVE_GYM_RUN_PROGRESS_FIXTURE,
-  formatRunProgressCount,
-  formatRunProgressDuration,
-  formatRunProgressPercent,
-  runPhaseLabel,
-  runProgressVisualizationOptions,
-  type GymRunProgress,
-} from '../gym/runProgress'
 
 type InputAttr = Parameters<ReturnType<typeof html<Message>>['input']>[0][number]
+type DivAttr = Parameters<ReturnType<typeof html<Message>>['div']>[0][number]
 
 const pageClass =
   'mx-auto grid min-w-0 w-full max-w-7xl gap-6 px-4 py-8 font-mono text-white sm:px-6 lg:px-8'
@@ -97,47 +77,6 @@ const stat = (label: string, value: string): Html => {
   )
 }
 
-const formatMetric = (value: number, suffix: string): string =>
-  `${Number.isInteger(value) ? String(value) : value.toFixed(1)}${suffix}`
-
-const formatMsat = (value: number | null): string =>
-  value === null ? 'not measured' : `${value.toLocaleString('en-US')} msat`
-
-const latencyMetric = (metric: PublicGymMetricSummary): Html => {
-  const h = html<Message>()
-  const suffix = metric.label === 'Perceived TPS' ? ' t/s' : ' ms'
-  const compactMetric = (label: string, value: number): Html =>
-    h.div([Ui.className<Message>('grid gap-0.5')], [
-      h.span([Ui.className<Message>('text-white/40')], [label]),
-      h.span([Ui.className<Message>('font-semibold text-white/85')], [
-        formatMetric(value, suffix),
-      ]),
-    ])
-
-  return h.div(
-    [Ui.className<Message>('grid gap-2 border border-white/10 bg-black p-3')],
-    [
-      h.div([Ui.className<Message>('flex items-center justify-between gap-2')], [
-        h.span([Ui.className<Message>('text-[0.78rem] font-semibold text-white')], [
-          metric.label,
-        ]),
-        h.span([Ui.className<Message>('text-[0.7rem] text-white/45')], [
-          `${metric.measuredSampleCount} measured`,
-        ]),
-      ]),
-      h.div([Ui.className<Message>('grid grid-cols-4 gap-2 text-[0.72rem]')], [
-        compactMetric('P50', metric.p50),
-        compactMetric('P90', metric.p90),
-        compactMetric('P99', metric.p99),
-        compactMetric('Mean', metric.mean),
-      ]),
-      h.p([Ui.className<Message>('m-0 text-[0.72rem] text-white/45')], [
-        `${metric.notMeasuredDropped} not measured samples dropped`,
-      ]),
-    ],
-  )
-}
-
 const checkboxRow = (
   checked: boolean,
   label: string,
@@ -156,187 +95,46 @@ const checkboxRow = (
   ])
 }
 
-const terminalBenchStateClass = (state: TerminalBenchRunLane['state']): string =>
-  state === 'accepted'
-    ? 'border-[#6abf69]/35 bg-[#051b0a] text-[#9bf59b]'
-    : state === 'failing'
-      ? 'border-[#ff7b7b]/35 bg-[#1c0707] text-[#ffb3b3]'
-      : 'border-[#ffcf6a]/35 bg-[#211a05] text-[#ffe0a3]'
+// ---------------------------------------------------------------------------
+// Honest empty states.
+//
+// The Gym surfaces render LIVE data only. There is no seeded run, no fixture
+// comparison, and no synthesized report on this page. Until a real Harbor/Khala
+// benchmark is ingested into the Worker, each surface shows an honest empty
+// state instead of fabricated numbers.
+// ---------------------------------------------------------------------------
 
-const terminalBenchStateLabel = (
-  state: TerminalBenchRunLane['state'],
-): string =>
-  state === 'accepted'
-    ? 'accepted lane'
-    : state === 'failing'
-      ? 'failing lane'
-      : 'not started lane'
-
-const terminalBenchMetricStrip = (): Html => {
-  const h = html<Message>()
-  const replay = TERMINAL_BENCH_VISUAL_REPLAY
-  const totals = terminalBenchReplayTotals(replay)
-
-  return h.div([Ui.className<Message>('grid gap-3 sm:grid-cols-4')], [
-    stat('Task set', `${replay.officialTotalTasks} official`),
-    stat('Accepted tasks', String(totals.acceptedTasks)),
-    stat('Failing tasks', String(totals.failingTasks)),
-    stat('Not started', String(totals.notStartedTasks)),
-  ])
-}
-
-const terminalBenchLaneRow = (lane: TerminalBenchRunLane): Html => {
+const emptyState = (
+  attrs: ReadonlyArray<DivAttr>,
+  eyebrow: string,
+  heading: string,
+  body: string,
+): Html => {
   const h = html<Message>()
 
-  return h.tr([Ui.className<Message>('border-t border-white/10')], [
-    h.td(
-      [Ui.className<Message>('py-3 pr-4 align-top text-base text-white sm:text-sm')],
-      [
-        h.div([Ui.className<Message>('grid gap-1')], [
-          h.span([Ui.className<Message>('font-semibold text-white')], [
-            lane.label,
-          ]),
-          h.span([Ui.className<Message>('text-base text-white/45 sm:text-sm')], [
-            lane.profileRef,
-          ]),
-        ]),
-      ],
-    ),
-    h.td(
-      [Ui.className<Message>('px-4 py-3 align-top text-base text-white/70 sm:text-sm')],
-      [
-        `${lane.acceptedTasks} accepted / ${lane.failingTasks} failing / ${lane.notStartedTasks} not started`,
-      ],
-    ),
-    h.td(
-      [Ui.className<Message>('px-4 py-3 align-top text-base text-white/70 sm:text-sm')],
-      [formatTerminalBenchPercent(terminalBenchLaneRate(lane))],
-    ),
-    h.td(
-      [Ui.className<Message>('px-4 py-3 align-top text-base text-white/70 sm:text-sm')],
-      [
-        `${formatTerminalBenchMetric(lane.ttftMs, ' ms')} TTFT; ${formatTerminalBenchMetric(
-          lane.perceivedTps,
-          ' t/s',
-        )}`,
-      ],
-    ),
-    h.td(
-      [Ui.className<Message>('px-4 py-3 align-top text-base text-white/70 sm:text-sm')],
-      [
-        lane.distinctVerifierDevice
-          ? 'distinct-device verifier'
-          : 'verifier placement blocked',
-      ],
-    ),
-    h.td(
-      [Ui.className<Message>('py-3 pl-4 align-top text-base text-white/70 sm:text-sm')],
-      [
-        h.span(
-          [
-            h.DataAttribute('gym-terminal-bench-lane-state', lane.state),
-            Ui.className<Message>(
-              `inline-flex border px-2 py-1 text-[0.75rem] font-medium ${terminalBenchStateClass(
-                lane.state,
-              )}`,
-            ),
-          ],
-          [terminalBenchStateLabel(lane.state)],
-        ),
-      ],
-    ),
-  ])
-}
-
-const terminalBenchMirror = (): Html => {
-  const h = html<Message>()
-  const replay = TERMINAL_BENCH_VISUAL_REPLAY
-
-  return h.section(
+  return h.div(
     [
-      h.DataAttribute('gym-terminal-bench-accessible-mirror', ''),
-      h.AriaLabel('Terminal-Bench run mirror'),
-      Ui.className<Message>('grid min-w-0 gap-4'),
+      ...attrs,
+      Ui.className<Message>(
+        'grid place-items-start gap-2 border border-dashed border-white/15 bg-black p-6',
+      ),
     ],
     [
-      h.div([Ui.className<Message>('grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end')], [
-        h.div([Ui.className<Message>('grid gap-1')], [
-          h.p([Ui.className<Message>(sectionTitleClass)], [
-            'Accessible run mirror',
-          ]),
-          h.p([Ui.className<Message>('m-0 max-w-[78ch] text-base text-white/60 sm:text-sm')], [
-            `${replay.externalClaim.label} is displayed as an external target, not an OpenAgents result. This replay is public-safe fixture data; raw task prompts, completions, and private Harbor artifacts are not included.`,
-          ]),
-        ]),
-        h.span(
-          [
-            h.DataAttribute('gym-terminal-bench-decision-grade', 'false'),
-            Ui.className<Message>(
-              'w-fit border border-[#ffcf6a]/35 bg-[#211a05] px-2 py-1 text-[0.75rem] text-[#ffe0a3]',
-            ),
-          ],
-          ['decisionGrade: false'],
-        ),
-      ]),
-      h.div([Ui.className<Message>('-mx-4 -my-2 max-w-[calc(100%+2rem)] min-w-0 overflow-x-auto whitespace-nowrap sm:-mx-4')], [
-        h.div([Ui.className<Message>('inline-block min-w-full px-4 py-2 align-middle')], [
-          h.table([Ui.className<Message>('w-full border-collapse')], [
-            h.thead([], [
-              h.tr([Ui.className<Message>('text-left text-[0.75rem] text-white/45')], [
-                h.th([Ui.className<Message>('whitespace-nowrap py-2 pr-4 font-medium')], [
-                  'Profile lane',
-                ]),
-                h.th([Ui.className<Message>('whitespace-nowrap px-4 py-2 font-medium')], [
-                  'Tasks',
-                ]),
-                h.th([Ui.className<Message>('whitespace-nowrap px-4 py-2 font-medium')], [
-                  'Solve rate',
-                ]),
-                h.th([Ui.className<Message>('whitespace-nowrap px-4 py-2 font-medium')], [
-                  'Latency / throughput',
-                ]),
-                h.th([Ui.className<Message>('whitespace-nowrap px-4 py-2 font-medium')], [
-                  'Verifier placement',
-                ]),
-                h.th([Ui.className<Message>('whitespace-nowrap py-2 pl-4 font-medium')], [
-                  'State',
-                ]),
-              ]),
-            ]),
-            h.tbody([], replay.lanes.map(terminalBenchLaneRow)),
-          ]),
-        ]),
-      ]),
-      h.div([Ui.className<Message>('grid gap-3 md:grid-cols-[1fr_1fr]')], [
-        h.div([Ui.className<Message>('grid gap-2 border-t border-white/10 pt-3')], [
-          h.p([Ui.className<Message>(sectionTitleClass)], ['Caveats']),
-          h.ul(
-            [
-              h.Role('list'),
-              Ui.className<Message>('grid gap-1 text-base text-white/55 sm:text-sm'),
-            ],
-            replay.caveatRefs.map(ref => h.li([], [ref])),
-          ),
-        ]),
-        h.div([Ui.className<Message>('grid gap-2 border-t border-white/10 pt-3')], [
-          h.p([Ui.className<Message>(sectionTitleClass)], ['Blocked before claims']),
-          h.ul(
-            [
-              h.Role('list'),
-              Ui.className<Message>('grid gap-1 text-base text-white/55 sm:text-sm'),
-            ],
-            replay.blockerRefs.map(ref => h.li([], [ref])),
-          ),
-        ]),
-      ]),
+      h.p([Ui.className<Message>(sectionTitleClass)], [eyebrow]),
+      h.p(
+        [Ui.className<Message>('m-0 text-base font-semibold text-white/80 sm:text-lg')],
+        [heading],
+      ),
+      h.p(
+        [Ui.className<Message>('m-0 max-w-[78ch] text-base text-white/55 sm:text-sm')],
+        [body],
+      ),
     ],
   )
 }
 
-const terminalBenchScenePanel = (): Html => {
+const terminalBenchPanel = (): Html => {
   const h = html<Message>()
-  const replay = TERMINAL_BENCH_VISUAL_REPLAY
-  const totals = terminalBenchReplayTotals(replay)
 
   return h.section(
     [
@@ -344,187 +142,30 @@ const terminalBenchScenePanel = (): Html => {
       Ui.className<Message>(panelClass),
     ],
     [
-      h.div([Ui.className<Message>('grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end')], [
-        h.div([Ui.className<Message>('grid gap-2')], [
-          h.p([Ui.className<Message>(sectionTitleClass)], [
-            'Terminal-Bench Gym replay',
-          ]),
-          h.h2(
-            [Ui.className<Message>('m-0 max-w-[18ch] text-2xl font-semibold tracking-tight text-balance text-white sm:text-4xl')],
-            ['Terminal-Bench 2.0 run field'],
-          ),
-          h.p([Ui.className<Message>('m-0 max-w-[78ch] text-base text-white/65 sm:text-sm')], [
-            'A three-effect field for profile lanes, verifier placement, accepted/failing/not-started tasks, cost basis, latency, throughput, and claim caveats. Full Autopilot Verse integration is deferred until this web surface is solid.',
-          ]),
+      h.div([Ui.className<Message>('grid gap-2')], [
+        h.p([Ui.className<Message>(sectionTitleClass)], [
+          'Terminal-Bench Gym replay',
         ]),
-        h.div(
-          [
-            h.DataAttribute('gym-terminal-bench-cost-meter', ''),
-            Ui.className<Message>(
-              'grid gap-1 border border-[#7cf0ff]/30 bg-[#061620] px-3 py-2 text-base text-[#bdf6ff] sm:text-sm',
-            ),
-          ],
-          [
-            h.span([Ui.className<Message>('text-white/45')], ['Cost basis']),
-            h.span([Ui.className<Message>('font-semibold tabular-nums')], [
-              formatMsat(totals.totalCostBasisMsat),
-            ]),
-          ],
+        h.h2(
+          [Ui.className<Message>('m-0 max-w-[20ch] text-2xl font-semibold tracking-tight text-balance text-white sm:text-4xl')],
+          ['Terminal-Bench 2.0 run field'],
         ),
-      ]),
-      terminalBenchMetricStrip(),
-      h.div(
-        [
-          h.DataAttribute('gym-terminal-bench-scene', ''),
-          Ui.className<Message>(
-            'min-h-[420px] min-w-0 max-w-full overflow-hidden border border-[#3a7bff]/25 bg-[#020409]',
-          ),
-        ],
-        [
-          trainingRunView<Message>(
-            [
-              h.DataAttribute('three-effect-scene', 'gym-terminal-bench-run'),
-              h.AriaLabel('Terminal-Bench Gym three-effect run field'),
-              Ui.className<Message>('block min-h-[420px] min-w-0 max-w-full'),
-            ],
-            terminalBenchVisualizationOptions(replay),
-          ),
-        ],
-      ),
-      terminalBenchMirror(),
-    ],
-  )
-}
-
-const runProgressCountCell = (label: string, value: string): Html => {
-  const h = html<Message>()
-
-  return h.div(
-    [Ui.className<Message>('grid gap-1 border border-white/10 bg-black p-3')],
-    [
-      h.span([Ui.className<Message>('text-[0.72rem] text-white/45')], [label]),
-      h.span(
-        [Ui.className<Message>('text-[1rem] font-semibold tabular-nums text-white')],
-        [value],
-      ),
-    ],
-  )
-}
-
-const runProgressCountStrip = (progress: GymRunProgress): Html => {
-  const h = html<Message>()
-  const { counts } = progress
-
-  return h.div(
-    [Ui.className<Message>('grid gap-2 sm:grid-cols-3 lg:grid-cols-6')],
-    [
-      runProgressCountCell('Completed', String(counts.completed)),
-      runProgressCountCell('Passed', String(counts.completedPassed)),
-      runProgressCountCell('Failing', String(counts.completedFailed)),
-      runProgressCountCell('Running', String(counts.running)),
-      runProgressCountCell('Pending', String(counts.pending)),
-      runProgressCountCell(
-        'Error / cancelled',
-        `${counts.error} / ${counts.cancelled}`,
-      ),
-    ],
-  )
-}
-
-const runProgressMirrorRow = (label: string, value: string): Html => {
-  const h = html<Message>()
-
-  return h.tr([Ui.className<Message>('border-t border-white/10')], [
-    h.th(
-      [
-        h.Scope('row'),
-        Ui.className<Message>(
-          'py-2 pr-4 text-left align-top text-base font-medium text-white/60 sm:text-sm',
-        ),
-      ],
-      [label],
-    ),
-    h.td(
-      [Ui.className<Message>('py-2 align-top text-base font-semibold tabular-nums text-white/85 sm:text-sm')],
-      [value],
-    ),
-  ])
-}
-
-const runProgressMirror = (progress: GymRunProgress): Html => {
-  const h = html<Message>()
-  const { counts } = progress
-
-  return h.section(
-    [
-      h.DataAttribute('gym-run-progress-accessible-mirror', ''),
-      h.AriaLabel('Live Gym run progress mirror'),
-      Ui.className<Message>('grid min-w-0 gap-3'),
-    ],
-    [
-      h.p([Ui.className<Message>(sectionTitleClass)], ['Accessible progress mirror']),
-      h.table([Ui.className<Message>('w-full border-collapse')], [
-        h.tbody([], [
-          runProgressMirrorRow(
-            'Completed of official denominator',
-            `${counts.completed} of ${counts.officialDenominator}`,
-          ),
-          runProgressMirrorRow(
-            'Completion progress',
-            formatRunProgressPercent(progress.completionFraction),
-          ),
-          runProgressMirrorRow(
-            'Pass rate over completed tasks',
-            formatRunProgressPercent(progress.passRateOverCompleted),
-          ),
-          runProgressMirrorRow('Passed', String(counts.completedPassed)),
-          runProgressMirrorRow('Failing', String(counts.completedFailed)),
-          runProgressMirrorRow('Running', String(counts.running)),
-          runProgressMirrorRow('Pending', String(counts.pending)),
-          runProgressMirrorRow(
-            'Total tokens',
-            formatRunProgressCount(progress.tokens.totalTokens),
-          ),
-          runProgressMirrorRow(
-            'Elapsed',
-            formatRunProgressDuration(progress.elapsedMs),
-          ),
-          runProgressMirrorRow('Last updated', progress.lastUpdatedAt),
-          runProgressMirrorRow('Phase', runPhaseLabel(progress)),
+        h.p([Ui.className<Message>('m-0 max-w-[78ch] text-base text-white/65 sm:text-sm')], [
+          'A three-effect field for profile lanes, verifier placement, accepted/failing tasks, cost basis, latency, throughput, and claim caveats. It renders from real published benchmark reports only.',
         ]),
       ]),
-      h.p([Ui.className<Message>('m-0 max-w-[78ch] text-base text-white/55 sm:text-sm')], [
-        'Pass rate is computed over completed tasks only. The official denominator stays separate so a partial run is never read as the final solve rate.',
-      ]),
-      h.div([Ui.className<Message>('grid gap-3 md:grid-cols-2')], [
-        h.div([Ui.className<Message>('grid gap-2 border-t border-white/10 pt-3')], [
-          h.p([Ui.className<Message>(sectionTitleClass)], ['Caveats']),
-          h.ul(
-            [
-              h.Role('list'),
-              Ui.className<Message>('grid gap-1 text-base text-white/55 sm:text-sm'),
-            ],
-            progress.caveatRefs.map(ref => h.li([], [ref])),
-          ),
-        ]),
-        h.div([Ui.className<Message>('grid gap-2 border-t border-white/10 pt-3')], [
-          h.p([Ui.className<Message>(sectionTitleClass)], ['Blocked before claims']),
-          h.ul(
-            [
-              h.Role('list'),
-              Ui.className<Message>('grid gap-1 text-base text-white/55 sm:text-sm'),
-            ],
-            progress.blockerRefs.map(ref => h.li([], [ref])),
-          ),
-        ]),
-      ]),
+      emptyState(
+        [h.DataAttribute('gym-terminal-bench-empty', '')],
+        'Benchmark comparison',
+        'No decision-grade benchmark reports published yet',
+        'When a real Terminal-Bench report is ingested and authorized for the web, its lanes, verifier placement, and caveats appear here. No fixture or placeholder pass rates are shown.',
+      ),
     ],
   )
 }
 
 const runProgressPanel = (): Html => {
   const h = html<Message>()
-  const progress = LIVE_GYM_RUN_PROGRESS_FIXTURE
 
   return h.section(
     [
@@ -532,60 +173,28 @@ const runProgressPanel = (): Html => {
       Ui.className<Message>(panelClass),
     ],
     [
-      h.div([Ui.className<Message>('grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end')], [
-        h.div([Ui.className<Message>('grid gap-2')], [
-          h.p([Ui.className<Message>(sectionTitleClass)], [
-            'Live Gym run follow-along',
-          ]),
-          h.h2(
-            [Ui.className<Message>('m-0 max-w-[20ch] text-2xl font-semibold tracking-tight text-balance text-white sm:text-3xl')],
-            [progress.profile.publicLabel],
-          ),
-          h.p([Ui.className<Message>('m-0 max-w-[78ch] text-base text-white/65 sm:text-sm')], [
-            'Follow an active Terminal-Bench run as tasks complete. Counts, pass-rate over completed tasks, the official denominator, and freshness update from the public-safe progress projection; raw prompts, responses, logs, trajectories, keys, and private endpoints are never included.',
-          ]),
+      h.div([Ui.className<Message>('grid gap-2')], [
+        h.p([Ui.className<Message>(sectionTitleClass)], [
+          'Live Gym run follow-along',
         ]),
-        h.div([Ui.className<Message>('grid gap-2 sm:grid-flow-col sm:items-center')], [
-          h.span(
-            [
-              h.DataAttribute('gym-run-progress-in-progress', String(progress.inProgress)),
-              Ui.className<Message>(
-                'w-fit border border-[#ffcf6a]/35 bg-[#211a05] px-2 py-1 text-[0.75rem] font-semibold uppercase tracking-wide text-[#ffe0a3]',
-              ),
-            ],
-            [runPhaseLabel(progress)],
-          ),
-          h.span(
-            [
-              h.DataAttribute('gym-run-progress-decision-grade', 'false'),
-              Ui.className<Message>(
-                'w-fit border border-white/15 bg-black px-2 py-1 text-[0.75rem] text-white/60',
-              ),
-            ],
-            ['decisionGrade: false'],
-          ),
+        h.h2(
+          [Ui.className<Message>('m-0 max-w-[24ch] text-2xl font-semibold tracking-tight text-balance text-white sm:text-3xl')],
+          ['Follow an active Terminal-Bench run'],
+        ),
+        h.p([Ui.className<Message>('m-0 max-w-[78ch] text-base text-white/65 sm:text-sm')], [
+          'Counts, pass-rate over completed tasks, the official denominator, and freshness update from the public-safe progress projection as a real run is ingested; raw prompts, responses, logs, trajectories, keys, and private endpoints are never included.',
         ]),
       ]),
-      runProgressCountStrip(progress),
-      h.div(
+      emptyState(
         [
-          h.DataAttribute('gym-run-progress-scene', ''),
-          Ui.className<Message>(
-            'min-h-[380px] min-w-0 max-w-full overflow-hidden border border-[#3a7bff]/25 bg-[#020409]',
-          ),
+          h.DataAttribute('gym-run-progress-accessible-mirror', ''),
+          h.AriaLabel('Live Gym run progress'),
+          h.DataAttribute('gym-run-progress-empty', ''),
         ],
-        [
-          trainingRunView<Message>(
-            [
-              h.DataAttribute('three-effect-scene', 'gym-run-progress'),
-              h.AriaLabel('Live Gym run progress three-effect field'),
-              Ui.className<Message>('block min-h-[380px] min-w-0 max-w-full'),
-            ],
-            runProgressVisualizationOptions(progress),
-          ),
-        ],
+        'Live run',
+        'No active Gym run',
+        'Live runs appear here when a real Harbor/Khala benchmark is ingested. Pass rate is always computed over completed tasks, with the official denominator kept separate, so a partial run is never read as a final solve rate.',
       ),
-      runProgressMirror(progress),
     ],
   )
 }
@@ -651,156 +260,6 @@ const shapeControl = (model: GymModel): Html => {
   ])
 }
 
-const resultPanel = (model: GymModel): Html => {
-  const h = html<Message>()
-  const result = model.result
-
-  if (result === null) {
-    return h.div(
-      [
-        h.DataAttribute('gym-result-empty', ''),
-        Ui.className<Message>(panelClass),
-      ],
-      [
-        h.p([Ui.className<Message>(sectionTitleClass)], ['Fixture scene']),
-        h.p(
-          [Ui.className<Message>('m-0 max-w-[58ch] text-sm text-white/60')],
-          [
-            'Run the fixture to prepare the deterministic scene and typed public report payload.',
-          ],
-        ),
-      ],
-    )
-  }
-
-  return h.div(
-    [h.DataAttribute('gym-result', ''), Ui.className<Message>(panelClass)],
-    [
-      h.div([Ui.className<Message>('flex flex-wrap items-center gap-2')], [
-        h.p([Ui.className<Message>(sectionTitleClass)], ['Fixture result']),
-        h.span(
-          [
-            h.DataAttribute('gym-report-viewer-input', result.viewerSchema),
-            Ui.className<Message>(
-              'border border-[#6abf69]/30 bg-[#08200b] px-2 py-1 text-[0.72rem] text-[#9bf59b]',
-            ),
-          ],
-          [result.viewerSchema],
-        ),
-      ]),
-      h.div(
-        [
-          h.DataAttribute('gym-illustrative-notice', ''),
-          Ui.className<Message>(
-            'border border-[#ffcf6a]/30 bg-[#211a05] px-3 py-2 text-[0.78rem] font-medium text-[#ffe0a3]',
-          ),
-        ],
-        [
-          `decisionGrade: false - ${result.reportViewer.illustrativeNotice}`,
-        ],
-      ),
-      h.div([Ui.className<Message>('grid gap-3 sm:grid-cols-4')], [
-        stat('Cells', String(result.expectedCellCount)),
-        stat('Executed', String(result.executedCellCount)),
-        stat('Skipped', String(result.skippedCellCount)),
-        stat('Billed cost', `$${result.metrics.meanCostUsd.toFixed(2)}`),
-      ]),
-      h.section([Ui.className<Message>('grid gap-3')], [
-        h.div([Ui.className<Message>('flex flex-wrap items-center gap-2')], [
-          h.p([Ui.className<Message>(sectionTitleClass)], [
-            'Fixture lane mirror',
-          ]),
-          h.span(
-            [
-              h.DataAttribute('gym-scene-cost-meter', ''),
-              Ui.className<Message>(
-                'border border-[#7cf0ff]/30 bg-[#061620] px-2 py-1 text-[0.72rem] text-[#bdf6ff]',
-              ),
-            ],
-            [
-              `${result.scene.simulatedCostMsat} msat simulated meter / ${result.scene.billedCostMsat} msat billed`,
-            ],
-          ),
-        ]),
-        h.div([Ui.className<Message>('grid gap-2 sm:grid-cols-3')], [
-          ...result.scene.lanes.map(lane =>
-            h.div(
-              [
-                h.DataAttribute('gym-scene-lane', lane.lane),
-                Ui.className<Message>(
-                  'grid gap-1 border border-white/10 bg-black p-3 text-[0.78rem]',
-                ),
-              ],
-              [
-                h.span([Ui.className<Message>('font-semibold text-white')], [
-                  lane.label,
-                ]),
-                h.span(
-                  [
-                    h.DataAttribute('gym-scene-lane-status', lane.status),
-                    Ui.className<Message>(
-                      lane.status === 'test_passed'
-                        ? 'text-[#9bf59b]'
-                        : 'text-white/45',
-                    ),
-                  ],
-                  [
-                    lane.status === 'test_passed'
-                      ? 'test_passed verdict beam'
-                      : 'skipped_unavailable arc',
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ]),
-      ]),
-      h.section([Ui.className<Message>('grid gap-3')], [
-        h.p([Ui.className<Message>(sectionTitleClass)], ['Report viewer']),
-        h.div(
-          [
-            h.DataAttribute('gym-report-viewer', ''),
-            Ui.className<Message>('grid gap-3 lg:grid-cols-2'),
-          ],
-          result.reportViewer.latency.map(latencyMetric),
-        ),
-        h.div([Ui.className<Message>('grid gap-3 sm:grid-cols-3')], [
-          stat(
-            'Verification rate',
-            `${Math.round(result.reportViewer.verificationRate * 100)}%`,
-          ),
-          stat(
-            'Cache hit rate',
-            `${Math.round(result.reportViewer.cacheHitRate * 100)}%`,
-          ),
-          stat(
-            'Cost per accepted outcome',
-            result.reportViewer.costPerAcceptedOutcomeUsd === null
-              ? 'null'
-              : `$${result.reportViewer.costPerAcceptedOutcomeUsd.toFixed(4)}`,
-          ),
-        ]),
-        h.div(
-          [
-            h.DataAttribute('gym-null-cost-finding', ''),
-            Ui.className<Message>(
-              'border border-white/10 bg-black px-3 py-2 text-sm text-white/65',
-            ),
-          ],
-          [
-            `${result.reportViewer.nullCostFinding} Zero-accepted edge: ${result.reportViewer.zeroAcceptedFinding.finding}.`,
-          ],
-        ),
-      ]),
-      h.p([Ui.className<Message>('m-0 text-sm text-white/60')], [
-        `Public safety ${result.publicSafety}; ${Math.round(
-          result.metrics.acceptedOutcomeRate * 100,
-        )}% accepted outcome rate; fixture report ${result.reportRef}.`,
-      ]),
-    ],
-  )
-}
-
 export const view = (model: GymModel): Html => {
   const h = html<Message>()
 
@@ -820,7 +279,7 @@ export const view = (model: GymModel): Html => {
                 'w-fit border border-[#7fb0ff]/30 bg-[#07111f] px-3 py-1 text-[0.75rem] font-semibold uppercase tracking-wide text-[#b8d4ff]',
               ),
             ],
-            ['Illustrative / no-spend'],
+            ['Live data only / no-spend'],
           ),
           h.h1(
             [Ui.className<Message>('m-0 text-3xl font-semibold sm:text-5xl')],
@@ -829,11 +288,11 @@ export const view = (model: GymModel): Html => {
           h.p(
             [Ui.className<Message>('m-0 max-w-3xl text-base text-white/65')],
             [
-              'A public fixture lab for Khala policy shapes and Terminal-Bench run visualization. This page configures the bundled decision suite, emits public-safe report payloads, and never reaches provider accounts or billing.',
+              'A public lab for Khala policy shapes and Terminal-Bench run visualization. Configure the bundled decision suite below. Live runs and benchmark reports populate the surfaces above once a real Harbor/Khala run is ingested; nothing on this page is fabricated, and this page never reaches provider accounts or billing.',
             ],
           ),
         ]),
-        terminalBenchScenePanel(),
+        terminalBenchPanel(),
         runProgressPanel(),
         h.div([Ui.className<Message>('grid gap-4 lg:grid-cols-[1.2fr_0.8fr]')], [
           h.section([Ui.className<Message>(panelClass)], [
@@ -1060,7 +519,7 @@ export const view = (model: GymModel): Html => {
                   h.input([
                     h.Type('text'),
                     h.Disabled(true),
-                    h.Value('fixture only - no spend'),
+                    h.Value('no spend'),
                     Ui.className<Message>(inputClass),
                   ]),
                 ]),
@@ -1070,20 +529,19 @@ export const view = (model: GymModel): Html => {
                 ]),
               ],
             ),
-            h.button(
+            h.div(
               [
-                h.Type('button'),
-                h.DataAttribute('gym-run', ''),
-                h.OnClick(ClickedRunGymFixture()),
+                h.DataAttribute('gym-run-ingest-note', ''),
                 Ui.className<Message>(
-                  'min-h-11 border border-[#7fb0ff]/40 bg-[#0a1d36] px-4 text-sm font-semibold text-[#d5e7ff] hover:bg-[#102b4d] focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[#7fb0ff]',
+                  'border border-[#7fb0ff]/30 bg-[#07111f] px-3 py-2 text-[0.78rem] text-[#b8d4ff]',
                 ),
               ],
-              ['Run fixture'],
+              [
+                'Runs are not launched from this page. Live runs and benchmark reports populate above once a real Harbor/Khala run is ingested into the Worker.',
+              ],
             ),
           ]),
         ]),
-        resultPanel(model),
       ]),
     ],
   )

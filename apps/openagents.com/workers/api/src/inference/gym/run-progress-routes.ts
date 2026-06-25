@@ -23,7 +23,6 @@ import {
   type GymRunProgress,
   projectPublicGymRunProgress,
 } from './run-progress'
-import { LIVE_GYM_RUN_PROGRESS_FIXTURE } from './run-progress-fixture'
 
 // A live Harbor run emits at most one update per task completion, so a five-minute
 // staleness bound is honest for the polled stored-snapshot projection: each
@@ -38,9 +37,11 @@ const gymRunProgressStaleness = () =>
   ])
 
 export type GymRunProgressRouteInput = Readonly<{
-  // Source of live progress objects. Defaults to the seeded public-safe fixture
-  // so the surface is honestly populated until the live Hydralisk Harbor poll is
-  // wired. Every object MUST already be public-safe (built via buildGymRunProgress).
+  // Source of live progress objects. There is NO seeded default: the endpoints
+  // return ONLY real ingested runs and `[]` when none exist yet. The live ingest
+  // (Hydralisk Harbor `result.json` -> Worker) is a separate pipeline; until it
+  // lands the surface is honestly empty rather than faked. Every supplied object
+  // MUST already be public-safe (built via buildGymRunProgress).
   listRunProgress?: () => ReadonlyArray<GymRunProgress>
   nowIso?: () => string
 }>
@@ -53,7 +54,7 @@ export type GymRunProgressOperatorRouteInput = GymRunProgressRouteInput &
 const listProgress = (
   input: GymRunProgressRouteInput,
 ): ReadonlyArray<GymRunProgress> =>
-  (input.listRunProgress ?? (() => LIVE_GYM_RUN_PROGRESS_FIXTURE))()
+  (input.listRunProgress ?? (() => []))()
 
 const unauthorized = () =>
   noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })

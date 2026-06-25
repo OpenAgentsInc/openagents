@@ -105,7 +105,6 @@ import {
 } from '../autopilot-onboarding/persistence'
 import { FlowModel } from '../autopilot-onboarding/flow'
 import {
-  runGymFixture,
   setGymConcurrency,
   setGymFanoutMode,
   setGymMaxTokens,
@@ -1534,10 +1533,6 @@ export const update = (model: Model, message: Message): UpdateReturn =>
       ],
       UpdatedGymSamplesPerCell: ({ value }) => [
         evo(model, { gym: gym => setGymSamplesPerCell(gym, value) }),
-        [],
-      ],
-      ClickedRunGymFixture: () => [
-        evo(model, { gym: gym => runGymFixture(gym) }),
         [],
       ],
       SucceededLoadPublicAgentGoal: ({ agentRef, response }) => [

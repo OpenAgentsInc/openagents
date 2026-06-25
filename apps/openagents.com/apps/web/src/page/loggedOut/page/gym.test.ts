@@ -1,7 +1,7 @@
 import type { Html } from 'foldkit/html'
 import { describe, expect, test } from 'vitest'
 
-import { initGymModel, runGymFixture } from '../gym/flow'
+import { initGymModel } from '../gym/flow'
 import * as Gym from './gym'
 
 type VNodeLike = Readonly<{
@@ -62,70 +62,52 @@ const renderHtml = (html: Html): string => {
 }
 
 describe('public Gym page', () => {
-  test('renders public fixture controls and locked economics', () => {
+  test('renders the typed config controls and locked economics', () => {
     const rendered = renderHtml(Gym.view(initGymModel()))
 
     expect(rendered).toContain('data-gym-page')
     expect(rendered).toContain('data-gym-no-spend-banner')
     expect(rendered).toContain('data-gym-terminal-bench-panel')
-    expect(rendered).toContain(
-      'data-three-effect-scene="gym-terminal-bench-run"',
-    )
     expect(rendered).toContain('Terminal-Bench 2.0')
-    expect(rendered).toContain('distinct-device verifier')
-    expect(rendered).toContain('accepted lane')
-    expect(rendered).toContain('failing lane')
-    expect(rendered).toContain('not started lane')
-    expect(rendered).toContain('Full Autopilot Verse integration is deferred')
-    expect(rendered).toContain('data-gym-terminal-bench-accessible-mirror')
     expect(rendered).toContain('Provider fan-out')
     expect(rendered).toContain('Program signature modules')
-    expect(rendered).toContain('fixture only - no spend')
-    expect(rendered).toContain('data-gym-run')
+    expect(rendered).toContain('no spend')
   })
 
-  test('renders the report viewer payload after a fixture run', () => {
-    const rendered = renderHtml(Gym.view(runGymFixture(initGymModel())))
-
-    expect(rendered).toContain('data-gym-result')
-    expect(rendered).toContain('openagents.gym.fixture_report.v1')
-    expect(rendered).toContain('data-gym-terminal-bench-panel')
-    expect(rendered).toContain(
-      'data-three-effect-scene="gym-terminal-bench-run"',
-    )
-    expect(rendered).toContain('decisionGrade: false')
-    expect(rendered).toContain('TTFT')
-    expect(rendered).toContain('P50')
-    expect(rendered).toContain('not measured samples dropped')
-    expect(rendered).toContain('Cost per accepted outcome')
-    expect(rendered).toContain('null')
-    expect(rendered).toContain('money spent, nothing accepted')
-    expect(rendered).toContain('skipped_unavailable arc')
-    expect(rendered).toContain('Billed cost')
-    expect(rendered).toContain('$0.00')
-    expect(rendered).not.toContain('not_measured')
-  })
-
-  test('renders the live run follow-along with in-progress label, scene, and mirror', () => {
+  test('renders honest empty states with NO fixture numbers', () => {
     const rendered = renderHtml(Gym.view(initGymModel()))
 
-    expect(rendered).toContain('data-gym-run-progress-panel')
-    expect(rendered).toContain('Live Gym run follow-along')
-    // The three-effect run field for the live progress.
-    expect(rendered).toContain('data-three-effect-scene="gym-run-progress"')
-    // Labeled in-progress, never the final score.
-    expect(rendered).toContain('data-gym-run-progress-in-progress="true"')
-    expect(rendered).toContain('data-gym-run-progress-decision-grade="false"')
-    expect(rendered).toContain('in progress')
-    // The accessible text/table mirror with counts + pass-rate + denominator.
-    expect(rendered).toContain('data-gym-run-progress-accessible-mirror')
-    expect(rendered).toContain('Completed of official denominator')
-    expect(rendered).toContain('41 of 89')
-    expect(rendered).toContain('Pass rate over completed tasks')
-    expect(rendered).toContain('Last updated')
+    // Benchmark comparison empty state (no fixture pass rates).
+    expect(rendered).toContain('data-gym-terminal-bench-empty')
     expect(rendered).toContain(
-      'Pass rate is computed over completed tasks only',
+      'No decision-grade benchmark reports published yet',
     )
+
+    // Live run follow-along empty state + accessible mirror marker.
+    expect(rendered).toContain('data-gym-run-progress-panel')
+    expect(rendered).toContain('data-gym-run-progress-accessible-mirror')
+    expect(rendered).toContain('data-gym-run-progress-empty')
+    expect(rendered).toContain('No active Gym run')
+    expect(rendered).toContain(
+      'Live runs appear here when a real Harbor/Khala benchmark is ingested',
+    )
+
+    // No run-and-show-fake-report button or fixture result anywhere. (The
+    // run-progress / ingest-note data attributes legitimately share the
+    // `data-gym-run` prefix, so assert the exact removed markers.)
+    expect(rendered).not.toContain('data-gym-run=""')
+    expect(rendered).not.toContain('data-gym-result')
+    expect(rendered).not.toContain('Run fixture')
+    expect(rendered).not.toContain('openagents.gym.fixture_report.v1')
+
+    // None of the removed fabricated numbers / labels may appear.
+    expect(rendered).not.toContain('69.7')
+    expect(rendered).not.toContain('67.4')
+    expect(rendered).not.toContain('70.0')
+    expect(rendered).not.toContain('69.1')
+    expect(rendered).not.toContain('41 of 89')
+    expect(rendered).not.toContain('GLM-5.2 REAP 504B TP4 MTP-2')
+
     // No raw benchmark content leaks into the rendered surface.
     expect(rendered).not.toContain('private_openai_compat')
     expect(rendered).not.toContain('Bearer')

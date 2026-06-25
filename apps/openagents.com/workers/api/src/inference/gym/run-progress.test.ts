@@ -7,7 +7,6 @@ import {
   checkGymRunProgressPublicSafety,
   projectPublicGymRunProgress,
 } from './run-progress'
-import { LIVE_GYM_RUN_PROGRESS_FIXTURE } from './run-progress-fixture'
 
 const baseInput = {
   runRef: 'run.gym.terminal_bench.test',
@@ -174,18 +173,3 @@ describe('public projection — honest degradation', () => {
   })
 })
 
-describe('seeded fixture is built public-safe', () => {
-  test('every fixture run is public-safe, in-progress, and decision-grade false', () => {
-    expect(LIVE_GYM_RUN_PROGRESS_FIXTURE.length).toBeGreaterThan(0)
-    for (const run of LIVE_GYM_RUN_PROGRESS_FIXTURE) {
-      expect(run.decisionGrade).toBe(false)
-      expect(checkGymRunProgressPublicSafety(run).safe).toBe(true)
-    }
-  })
-
-  test('the fixture exercises both publication states', () => {
-    const states = LIVE_GYM_RUN_PROGRESS_FIXTURE.map(run => run.publication)
-    expect(states).toContain('web_authorized')
-    expect(states).toContain('local_only')
-  })
-})

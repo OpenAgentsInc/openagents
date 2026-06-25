@@ -62,127 +62,11 @@ export type TerminalBenchVisualReplay = Readonly<{
   }>
 }>
 
-export const TERMINAL_BENCH_VISUAL_REPLAY: TerminalBenchVisualReplay = {
-  schemaVersion: 'openagents.gym.terminal_bench_visual_replay.v1',
-  replayRef: 'replay.gym.terminal_bench.glm_reap.visual_fixture.v1',
-  generatedAt: '2026-06-25T00:00:00.000Z',
-  datasetRef: 'terminal-bench@2.0',
-  taskSetLabel: 'Terminal-Bench 2.0 official denominator',
-  officialTotalTasks: 89,
-  externalClaim: {
-    label: 'GLM-5.2 REAP claimed 69.1%',
-    claimedFullDenominatorSolveRate: 0.691,
-    sourceRefs: [
-      'source.huggingface.0xsero.glm_5_2_504b',
-      'source.x.glm_reap_terminal_bench_2_691_claim',
-    ],
-    caveatRefs: [
-      'caveat.external_claim.not_openagents_result',
-      'caveat.external_claim.requires_source_review',
-    ],
-  },
-  lanes: [
-    {
-      profileRef: 'glm-reap-504b-g4-tp4-mtp2-rp105',
-      label: 'GLM REAP G4 TP4 MTP2',
-      model: 'zai/glm-5.2-504b-reap-nvfp4',
-      state: 'accepted',
-      acceptedTasks: 62,
-      failingTasks: 27,
-      notStartedTasks: 0,
-      totalTasks: 89,
-      costBasisMsat: 620_000,
-      ttftMs: 380,
-      perceivedTps: 51,
-      aggregateTps: 51,
-      producerDeviceRef: 'hydralisk.harbor.g4.producer.fixture',
-      verifierDeviceRef: 'hydralisk.harbor.cpu.verifier.fixture',
-      distinctVerifierDevice: true,
-      caveatRefs: ['caveat.gym.terminal_bench.visual_fixture'],
-      blockerRefs: ['blocker.gym.terminal_bench.live_hydralisk_run_required'],
-      evidenceRefs: [
-        'report.gym.terminal_bench_comparison.fixture',
-        'artifact.hydralisk.terminal_bench.glm_reap_mtp2.summary.fixture',
-      ],
-    },
-    {
-      profileRef: 'glm-reap-504b-g4-tp4-minp-rp105',
-      label: 'GLM REAP G4 TP4 minP',
-      model: 'zai/glm-5.2-504b-reap-nvfp4',
-      state: 'failing',
-      acceptedTasks: 60,
-      failingTasks: 29,
-      notStartedTasks: 0,
-      totalTasks: 89,
-      costBasisMsat: 570_000,
-      ttftMs: null,
-      perceivedTps: null,
-      aggregateTps: null,
-      producerDeviceRef: 'hydralisk.harbor.g4.producer.fixture',
-      verifierDeviceRef: 'hydralisk.harbor.cpu.verifier.fixture',
-      distinctVerifierDevice: true,
-      caveatRefs: [
-        'caveat.gym.terminal_bench.visual_fixture',
-        'caveat.gym.terminal_bench.throughput_not_fully_measured',
-      ],
-      blockerRefs: [
-        'blocker.gym.terminal_bench.replication_gap_to_claim',
-        'blocker.gym.terminal_bench.live_hydralisk_run_required',
-      ],
-      evidenceRefs: [
-        'report.gym.terminal_bench_comparison.fixture',
-        'artifact.hydralisk.terminal_bench.glm_reap_minp.summary.fixture',
-      ],
-    },
-    {
-      profileRef: 'glm-reap-504b-g4-dual-tp4-minp-rp105',
-      label: 'Dual G4 pilot',
-      model: 'zai/glm-5.2-504b-reap-nvfp4',
-      state: 'not_started',
-      acceptedTasks: 7,
-      failingTasks: 0,
-      notStartedTasks: 3,
-      totalTasks: 10,
-      costBasisMsat: 70_000,
-      ttftMs: 0,
-      perceivedTps: null,
-      aggregateTps: 0,
-      producerDeviceRef: 'hydralisk.harbor.dual_g4.producer.fixture',
-      verifierDeviceRef: null,
-      distinctVerifierDevice: false,
-      caveatRefs: [
-        'caveat.gym.terminal_bench.visual_fixture',
-        'caveat.gym.terminal_bench.throughput_not_fully_measured',
-      ],
-      blockerRefs: [
-        'blocker.gym.terminal_bench.official_full_task_set_required',
-        'blocker.gym.terminal_bench.distinct_device_verifier_missing',
-      ],
-      evidenceRefs: [
-        'report.gym.terminal_bench_comparison.pilot_fixture',
-        'artifact.hydralisk.terminal_bench.dual_g4.summary.fixture',
-      ],
-    },
-  ],
-  decisionGrade: false,
-  publicSafe: true,
-  rawArtifactsIncluded: false,
-  caveatRefs: [
-    'caveat.gym.terminal_bench.visual_fixture',
-    'caveat.gym.terminal_bench.no_raw_prompts_or_completions',
-    'caveat.gym.terminal_bench.not_live_verse_integration',
-  ],
-  blockerRefs: [
-    'blocker.gym.terminal_bench.live_hydralisk_run_required',
-    'blocker.gym.terminal_bench.owner_replication_approval_required',
-    'blocker.gym.terminal_bench.distinct_device_verifier_required',
-  ],
-  deferredIntegration: {
-    surface: 'autopilot_verse',
-    state: 'deferred',
-    note: 'Full Autopilot Verse/world integration is intentionally deferred; this route proves the web visualization contract first.',
-  },
-}
+// No fixture replay is exported. The comparison/visualizer renders only from a
+// real published Terminal-Bench report ingested into the Worker; until one
+// exists, the `/gym` page shows an honest empty state. The types and the
+// `terminalBenchVisualizationOptions` adapter below stay so a real replay can be
+// projected into the three-effect field without re-deriving the shape.
 
 export type TerminalBenchReplayTotals = Readonly<{
   acceptedTasks: number
@@ -295,7 +179,10 @@ const laneContributor = (
   phase: count <= 0 ? 0 : index / count,
 })
 
-const laneBeam = (lane: TerminalBenchRunLane): TrainingRunBeamDefinition => ({
+const laneBeam = (
+  lane: TerminalBenchRunLane,
+  generatedAt: string,
+): TrainingRunBeamDefinition => ({
   fromId: 'run:terminal-bench',
   toId: `lane:${lane.profileRef}`,
   style: lane.state === 'accepted' ? 'crackling_arc' : 'flow',
@@ -307,15 +194,18 @@ const laneBeam = (lane: TerminalBenchRunLane): TrainingRunBeamDefinition => ({
         : 'assignment',
   simulated: true,
   sourceRefs: lane.evidenceRefs,
-  generatedAt: TERMINAL_BENCH_VISUAL_REPLAY.generatedAt,
+  generatedAt,
 })
 
-const laneBurst = (lane: TerminalBenchRunLane): TrainingRunBurstDefinition => ({
+const laneBurst = (
+  lane: TerminalBenchRunLane,
+  generatedAt: string,
+): TrainingRunBurstDefinition => ({
   atId: `lane:${lane.profileRef}`,
   motionKind: lane.state === 'accepted' ? 'replay_verified' : 'replay_rejected',
   simulated: true,
   sourceRefs: lane.evidenceRefs,
-  generatedAt: TERMINAL_BENCH_VISUAL_REPLAY.generatedAt,
+  generatedAt,
 })
 
 const statusSignals = (
@@ -335,7 +225,7 @@ const statusSignals = (
     state: replay.decisionGrade ? 'success' : 'info',
     detail: replay.decisionGrade
       ? 'replication-ready'
-      : 'fixture visualization only',
+      : 'partial replay, not decision-grade',
   },
   {
     id: 'terminal-bench.verse',
@@ -353,7 +243,7 @@ const worldItems = (
     kind: 'bulletin_board',
     label: 'Terminal-Bench board',
     title: 'Terminal-Bench 2.0',
-    detail: 'Public-safe Gym visualization fixture',
+    detail: 'Public-safe Gym visualization',
     position: [0, 2.72, 0],
     status: 'active',
     lines: [
@@ -371,7 +261,7 @@ const worldItems = (
 ]
 
 export const terminalBenchVisualizationOptions = (
-  replay: TerminalBenchVisualReplay = TERMINAL_BENCH_VISUAL_REPLAY,
+  replay: TerminalBenchVisualReplay,
 ): TrainingRunVisualizationOptions => {
   const laneCount = replay.lanes.length
   const verifierNodes = replay.lanes
@@ -380,7 +270,7 @@ export const terminalBenchVisualizationOptions = (
   const nodes: ReadonlyArray<TrainingRunNodeDefinition> = [
     {
       id: 'claim:external',
-      label: '69.1% target',
+      label: 'external target',
       detail: replay.externalClaim.label,
       role: 'rung',
       status: 'sealed',
@@ -427,10 +317,10 @@ export const terminalBenchVisualizationOptions = (
     entities: [],
     worldItems: worldItems(replay),
     remoteAvatars: [],
-    beams: replay.lanes.map(laneBeam),
+    beams: replay.lanes.map(lane => laneBeam(lane, replay.generatedAt)),
     bursts: replay.lanes
       .filter(lane => lane.state !== 'not_started')
-      .map(laneBurst),
+      .map(lane => laneBurst(lane, replay.generatedAt)),
     motionPolicy: {
       structuralEdges: 'animated',
       ambient: 'animated',

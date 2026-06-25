@@ -68,6 +68,18 @@ describe('operator run-progress route', () => {
     expect(body.runs[0]?.counts).toBeDefined()
   })
 
+  test('returns no runs by default for an authorized operator (live-only)', async () => {
+    const response = await run(
+      handleOperatorGymRunProgressApi(
+        new Request('https://openagents.com/api/operator/gym/run-progress'),
+        { requireAdminApiToken: () => Promise.resolve(true) },
+      ),
+    )
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as { runs: ReadonlyArray<unknown> }
+    expect(body.runs).toEqual([])
+  })
+
   test('rejects non-GET methods', async () => {
     const response = await run(
       handleOperatorGymRunProgressApi(
@@ -102,7 +114,7 @@ describe('public run-progress route', () => {
     )
   })
 
-  test('uses the seeded fixture by default', async () => {
+  test('returns no runs by default (live-only, no seeded fixture)', async () => {
     const response = await run(
       handlePublicGymRunProgressApi(
         new Request('https://openagents.com/api/public/gym/run-progress'),
@@ -110,7 +122,7 @@ describe('public run-progress route', () => {
     )
     expect(response.status).toBe(200)
     const body = (await response.json()) as { runs: ReadonlyArray<unknown> }
-    expect(body.runs.length).toBeGreaterThan(0)
+    expect(body.runs).toEqual([])
   })
 
   test('declares generatedAt + the staleness contract on the public payload', async () => {

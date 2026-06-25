@@ -3,7 +3,6 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { LandingRoute, TraceRoute } from '../../route'
 import {
-  ClickedRunGymFixture,
   ClickedCopyAgentInstructions,
   ClickedEnterKhala,
   ClickedEnterTassadar,
@@ -59,24 +58,6 @@ describe('logged-out nav + copy update', () => {
     expect(commands).toEqual([])
   })
 
-  test('ClickedRunGymFixture materializes a no-spend report payload', () => {
-    const [next, commands] = update(model, ClickedRunGymFixture())
-
-    expect(commands).toEqual([])
-    expect(next.gym.result).toMatchObject({
-      viewerSchema: 'openagents.gym.fixture_report.v1',
-      expectedCellCount: 90,
-      executedCellCount: 60,
-      skippedCellCount: 30,
-      metrics: { meanCostUsd: 0 },
-      reportViewer: {
-        decisionGrade: false,
-        costPerAcceptedOutcomeUsd: null,
-        zeroAcceptedFinding: { finding: 'money spent, nothing accepted' },
-      },
-    })
-  })
-
   test('Gym lane toggles keep at least one provider lane selected', () => {
     const onlyLane = {
       ...model,
@@ -100,11 +81,10 @@ describe('logged-out nav + copy update', () => {
     expect(next.gym.experiment.fanout.lanes).toEqual(['provider-baseline'])
   })
 
-  test('Gym samples per cell clamps public fixture input', () => {
+  test('Gym samples per cell clamps public config input', () => {
     const [next] = update(model, UpdatedGymSamplesPerCell({ value: '9000' }))
 
     expect(next.gym.experiment.samplesPerCell).toBe(25)
-    expect(next.gym.result).toBeNull()
   })
 
   test('the copied agent instructions are grounded in AGENTS.md', () => {

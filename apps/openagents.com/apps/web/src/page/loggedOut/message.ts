@@ -111,7 +111,6 @@ export const ToggledGymSequenceShape = m('ToggledGymSequenceShape', {
 export const UpdatedGymSamplesPerCell = m('UpdatedGymSamplesPerCell', {
   value: S.String,
 })
-export const ClickedRunGymFixture = m('ClickedRunGymFixture')
 export const SucceededLoadPublicAgentGoal = m('SucceededLoadPublicAgentGoal', {
   agentRef: S.String,
   response: PublicAgentGoalResponse,
@@ -498,7 +497,6 @@ export const Message = S.Union([
   UpdatedGymTransport,
   ToggledGymSequenceShape,
   UpdatedGymSamplesPerCell,
-  ClickedRunGymFixture,
   SucceededLoadPublicAgentGoal,
   FailedLoadPublicAgentGoal,
   SucceededLoadPublicArtanisReport,

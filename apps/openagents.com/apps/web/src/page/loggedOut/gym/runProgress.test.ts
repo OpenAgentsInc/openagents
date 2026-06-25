@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 
 import {
-  LIVE_GYM_RUN_PROGRESS_FIXTURE,
+  GYM_RUN_PROGRESS_SCHEMA,
   type GymRunProgress,
   formatRunProgressCount,
   formatRunProgressDuration,
@@ -10,8 +10,55 @@ import {
   runProgressVisualizationOptions,
 } from './runProgress'
 
+// A test-local progress object. This is NOT a shipped fixture: it only exercises
+// the pure formatting helpers and the three-effect adapter. The page itself
+// renders an honest empty state until a real run is ingested.
+const partialRun: GymRunProgress = {
+  schemaVersion: GYM_RUN_PROGRESS_SCHEMA,
+  runRef: 'run.gym.terminal_bench.test',
+  jobRef: 'job.gym.harbor_terminal_bench.test',
+  configId: 'gym.terminal_bench.test',
+  environmentRef: 'terminal-bench',
+  datasetRef: 'terminal-bench@2.0',
+  runner: 'harbor',
+  agent: 'terminus-2',
+  profile: {
+    profileRef: 'glm-reap-504b-g4-tp4-mtp2-rp105',
+    publicLabel: 'GLM REAP test profile',
+    model: 'openagents/glm-5.2-reap-504b',
+    attribution: 'test attribution',
+    hardwareProfile: 'test-hardware',
+    contextWindowTokens: 250_000,
+  },
+  phase: 'running',
+  decisionGrade: false,
+  inProgress: true,
+  publication: 'web_authorized',
+  counts: {
+    officialDenominator: 89,
+    completed: 41,
+    completedPassed: 27,
+    completedFailed: 14,
+    running: 4,
+    pending: 44,
+    error: 0,
+    cancelled: 0,
+  },
+  passRateOverCompleted: 27 / 41,
+  completionFraction: 41 / 89,
+  tokens: {
+    promptTokens: 1_840_000,
+    completionTokens: 612_000,
+    totalTokens: 2_452_000,
+  },
+  elapsedMs: 1_920_000,
+  lastUpdatedAt: '2026-06-25T00:00:00.000Z',
+  caveatRefs: ['caveat.gym.run_progress.partial_denominator_not_final_score'],
+  blockerRefs: [],
+}
+
 const completedRun: GymRunProgress = {
-  ...LIVE_GYM_RUN_PROGRESS_FIXTURE,
+  ...partialRun,
   phase: 'completed',
   inProgress: false,
   counts: {
@@ -42,14 +89,14 @@ describe('runProgress formatting helpers', () => {
   })
 
   test('phase label marks partial runs in-progress and finished runs not decision-grade', () => {
-    expect(runPhaseLabel(LIVE_GYM_RUN_PROGRESS_FIXTURE)).toContain('in progress')
+    expect(runPhaseLabel(partialRun)).toContain('in progress')
     expect(runPhaseLabel(completedRun)).toContain('not decision-grade')
   })
 })
 
 describe('runProgress three-effect adapter', () => {
   test('builds a fan-out field for a partial run with passed/failed/running/pending buckets', () => {
-    const options = runProgressVisualizationOptions(LIVE_GYM_RUN_PROGRESS_FIXTURE)
+    const options = runProgressVisualizationOptions(partialRun)
     const nodeIds = (options.nodes ?? []).map(node => node.id)
 
     expect(nodeIds).toContain('run:progress')
@@ -92,9 +139,9 @@ describe('runProgress three-effect adapter', () => {
 
   test('a run with no passed tasks fires no verdict burst', () => {
     const options = runProgressVisualizationOptions({
-      ...LIVE_GYM_RUN_PROGRESS_FIXTURE,
+      ...partialRun,
       counts: {
-        ...LIVE_GYM_RUN_PROGRESS_FIXTURE.counts,
+        ...partialRun.counts,
         completed: 0,
         completedPassed: 0,
         completedFailed: 0,
@@ -107,9 +154,9 @@ describe('runProgress three-effect adapter', () => {
     expect(options.bursts ?? []).toHaveLength(0)
   })
 
-  test('the fixture never leaks private endpoint material', () => {
+  test('the adapter never leaks private endpoint material', () => {
     const serialized = JSON.stringify(
-      runProgressVisualizationOptions(LIVE_GYM_RUN_PROGRESS_FIXTURE),
+      runProgressVisualizationOptions(partialRun),
     )
     expect(serialized).not.toContain('private_openai_compat')
     expect(serialized).not.toContain('Bearer')
