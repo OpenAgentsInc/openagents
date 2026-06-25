@@ -566,6 +566,43 @@ cost wins, no-win, non-decision/pilot blocking, not-measured cost, unsafe report
 rejection, and the authority-all-false boundary. The raw baseline is attributed
 to Z.ai GLM-5.2 REAP, not to a serving vendor.
 
+### E7. Live Gym / Harbor run progress API and `/gym` follow-along view ([#6261](https://github.com/OpenAgentsInc/openagents/issues/6261))
+
+**Type:** task · **Lever:** observability/product · **Status:** shipped 2026-06-25
+**Why:** #6253 exposed a gap — an active owner-armed Harbor job could only be
+followed by tailing local `result.json`; there was no first-class OpenAgents
+surface for following a live Gym run from `/gym`.
+**Scope:** a typed `openagents.gym.run_progress.v1` summary schema for active
+runs; ingest an in-progress Harbor snapshot into a public-safe progress object
+with an explicit redaction boundary (no raw prompts/responses/logs/trajectories/
+keys/private endpoints); a scoped operator status endpoint plus a public-safe
+projection; a `/gym` follow-along view using the existing three-effect run
+vocabulary plus an accessible text/table mirror; honest degradation for
+local-only runs; keep partial progress labeled in-progress and separate from
+final decision-grade reports.
+**Acceptance:** a Harbor snapshot produces a public-safe live progress object
+with no raw benchmark content; `/gym` animates an active run through the
+three-effect field + accessible mirror; partial progress is labeled in-progress
+and never shown as the final score; tests cover schema parse, redaction
+boundaries, partial-run rendering, and completed-run rendering.
+
+**Shipped #6261:**
+`apps/openagents.com/workers/api/src/inference/gym/run-progress.ts` defines the
+`openagents.gym.run_progress.v1` schema, `buildGymRunProgress` (ingest with a
+`checkGymRunProgressPublicSafety` tripwire that reserves leak SHAPES, not the
+count field names), and `projectPublicGymRunProgress` (honest local_only
+degradation). Routes
+(`apps/openagents.com/workers/api/src/inference/gym/run-progress-routes.ts`):
+`GET /api/operator/gym/run-progress` (admin bearer, full incl. local_only) and
+`GET /api/public/gym/run-progress` (public-safe projection). The `/gym`
+follow-along view (`apps/openagents.com/apps/web/src/page/loggedOut/page/gym.ts`
++ `apps/web/src/page/loggedOut/gym/runProgress.ts`) renders the live counts,
+pass-rate over completed tasks, official denominator, and freshness with a
+three-effect fan-out field plus an accessible mirror, labeled in-progress and
+`decisionGrade:false`. Polling the scoped status endpoint is the chosen path
+(low-frequency per-task updates). Final decision-grade reports stay on the
+owner-armed report path (Epic F / #6242), separate from these partials.
+
 ---
 
 ## EPIC F — Measurement & honesty (cross-cutting)

@@ -1923,6 +1923,13 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     the receipt-backed accepted-outcome seed, metric definition, and product
     promise registry — compliant (`generatedAt`, contract, evidence-state
     labels, caveats, and modeled-vs-measured gate).
+  - `GET /api/public/gym/run-progress` — stored-snapshot projection of live
+    Gym / Harbor run progress (`openagents.gym.run_progress.v1`, #6261) —
+    compliant (`generatedAt`, stored-snapshot contract, each run carries its own
+    `lastUpdatedAt`; public-safe counts/denominator/pass-rate-over-completed/
+    token-counts/freshness only, always `decisionGrade:false`/`inProgress` for
+    partial phases; `local_only` runs degrade to an awaiting-authorization
+    marker with no live numbers).
   - `GET /api/public/payments/contributor-accrual-bundle?economicsId=<id>` —
     live at read over one persisted accepted-outcome economics record (promise
     `payments.accepted_outcome_economics.v1`, red;

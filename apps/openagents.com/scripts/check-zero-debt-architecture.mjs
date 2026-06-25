@@ -402,7 +402,15 @@ const budgetChecks = [
     // sibling `handleProgrammaticAgentRegistration` already counted here. It mints
     // a rate-limited free key and grants no payout/settlement authority. Ratchet
     // back down when index.ts route handlers move behind a shared route mapper.
-    budget: 111,
+    // +2 (111 -> 113) on 2026-06-25 (#6261) for the live Gym / Harbor run
+    // progress routes (`handleOperatorGymRunProgressApi`,
+    // `handlePublicGymRunProgressApi` in inference/gym/run-progress-routes.ts):
+    // two read-only route handlers returning `Effect.Effect<Response>` like the
+    // sibling public-projection handlers already counted here. They serve a
+    // public-safe `openagents.gym.run_progress.v1` projection (counts only) and
+    // mint no spend/settlement/payout/public-claim authority. Ratchet back down
+    // when these route handlers move behind a shared route mapper.
+    budget: 113,
     description:
       'Worker domain and route modules may not grow Response-returning surfaces while route mappers are extracted.',
     details: countByFile(
@@ -784,6 +792,11 @@ const publicProjectionSurfaces = [
   {
     module: 'workers/api/src/accepted-outcomes-per-kwh.ts',
     route: '/api/public/metrics/accepted-outcomes-per-kwh',
+    status: 'staleness_declared',
+  },
+  {
+    module: 'workers/api/src/inference/gym/run-progress-routes.ts',
+    route: '/api/public/gym/run-progress',
     status: 'staleness_declared',
   },
   {

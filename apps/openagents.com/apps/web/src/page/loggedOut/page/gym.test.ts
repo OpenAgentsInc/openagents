@@ -105,4 +105,29 @@ describe('public Gym page', () => {
     expect(rendered).toContain('$0.00')
     expect(rendered).not.toContain('not_measured')
   })
+
+  test('renders the live run follow-along with in-progress label, scene, and mirror', () => {
+    const rendered = renderHtml(Gym.view(initGymModel()))
+
+    expect(rendered).toContain('data-gym-run-progress-panel')
+    expect(rendered).toContain('Live Gym run follow-along')
+    // The three-effect run field for the live progress.
+    expect(rendered).toContain('data-three-effect-scene="gym-run-progress"')
+    // Labeled in-progress, never the final score.
+    expect(rendered).toContain('data-gym-run-progress-in-progress="true"')
+    expect(rendered).toContain('data-gym-run-progress-decision-grade="false"')
+    expect(rendered).toContain('in progress')
+    // The accessible text/table mirror with counts + pass-rate + denominator.
+    expect(rendered).toContain('data-gym-run-progress-accessible-mirror')
+    expect(rendered).toContain('Completed of official denominator')
+    expect(rendered).toContain('41 of 89')
+    expect(rendered).toContain('Pass rate over completed tasks')
+    expect(rendered).toContain('Last updated')
+    expect(rendered).toContain(
+      'Pass rate is computed over completed tasks only',
+    )
+    // No raw benchmark content leaks into the rendered surface.
+    expect(rendered).not.toContain('private_openai_compat')
+    expect(rendered).not.toContain('Bearer')
+  })
 })

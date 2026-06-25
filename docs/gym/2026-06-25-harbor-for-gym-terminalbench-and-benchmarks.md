@@ -703,10 +703,29 @@ The QA-runner ATIF emitter is being built; the Gym↔Khala dog-food wiring is th
   verifier evidence gate (#6251), and Harbor reward/cost + training projection
   (#6242), the Terminal-Bench comparison report (#6256), the public `/gym`
   Terminal-Bench three-effect visualizer (#6257), and the Khala-vs-raw-GLM
-  orchestration/flywheel comparison (#6258) are landed.
+  orchestration/flywheel comparison (#6258), and the public-safe live run
+  progress projection + `/gym` follow-along view (#6261) are landed.
   Remaining direction is live owner-armed executor wiring, operational
   scheduling, and public/logged-in surfaces. We use Harbor's format (ATIF) and a
   typed out-of-process artifact seam, not Harbor runtime code in the Worker.
+- **Live run progress (#6261):** a typed `openagents.gym.run_progress.v1` schema
+  (`apps/openagents.com/workers/api/src/inference/gym/run-progress.ts`) turns an
+  in-progress Harbor job snapshot (the live projection of `result.json` parsed on
+  Hydralisk) into a public-safe progress object — completed/running/pending/
+  error/cancelled COUNTS, the official denominator, pass-rate over COMPLETED
+  tasks, token counts when safe, public-safe serving-profile refs, and freshness
+  — with the same redaction boundary as the completed-run summary
+  (`checkGymRunProgressPublicSafety` reserves leak SHAPES, never the count field
+  names). It is always `decisionGrade:false` / `inProgress:true` for partial
+  phases, so a partial denominator is never read as a final benchmark claim. A
+  scoped operator endpoint (`GET /api/operator/gym/run-progress`, admin bearer)
+  exposes every run including `local_only` ones; the public projection
+  (`GET /api/public/gym/run-progress`) degrades a `local_only` run honestly to an
+  awaiting-authorization marker rather than faking numbers. The `/gym`
+  follow-along view renders it with the existing three-effect run vocabulary
+  (fan-out into passed/failed/running/pending) plus an accessible text/table
+  mirror. Polling the scoped status endpoint is the chosen path (low-frequency
+  per-task updates).
 - **Reference-repo discipline:** Harbor stays a read-only reference; we integrate
   at the job/artifact seam and do not vendor or fork it into our repos.
 - **No published numbers** without an owner-armed real seam over realistic

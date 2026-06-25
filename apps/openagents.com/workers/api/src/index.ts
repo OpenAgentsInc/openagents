@@ -26,6 +26,10 @@ import { Exit } from 'effect'
 import { WorkerEnvironment } from 'effect-cf'
 
 import { handleAcceptedOutcomesPerKwhApi } from './accepted-outcomes-per-kwh-routes'
+import {
+  handleOperatorGymRunProgressApi,
+  handlePublicGymRunProgressApi,
+} from './inference/gym/run-progress-routes'
 import { AdjutantEnrichmentQueueMessage } from './adjutant-enrichment-jobs'
 import type { AdjutantTaskPacketRefValidationInput } from './adjutant-task-packets'
 import { recordAdjutantUsageReceipt } from './adjutant-usage-receipts'
@@ -9192,6 +9196,14 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: request => handleAcceptedOutcomesPerKwhApi(request),
   },
   {
+    // Public-safe live Gym / Harbor run progress (#6261). web_authorized runs
+    // render live counts/denominator/pass-rate-over-completed/freshness with the
+    // in-progress + decisionGrade:false markers; local_only runs degrade to an
+    // honest awaiting-authorization marker. No raw prompts/responses/logs/keys.
+    path: '/api/public/gym/run-progress',
+    handler: request => handlePublicGymRunProgressApi(request),
+  },
+  {
     // Contributor accrual bundle dereference, addressed by accepted-outcome
     // economics id (?economicsId=...) for payments.accepted_outcome_economics.v1
     // (blocker.product_promises.contributor_ledger_missing). Read-only public
@@ -9498,6 +9510,17 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env) =>
       handlePublicCustomerOneCohortApi(request, {
         store: makeD1CustomerOneCohortRowStore(openAgentsDatabase(env)),
+      }),
+  },
+  {
+    // Scoped operator status for live Gym / Harbor runs (#6261): returns every
+    // progress object, including local_only runs not yet authorized for web
+    // publication. Still public-safe; "scoped" gates visibility, not fields.
+    path: '/api/operator/gym/run-progress',
+    handler: (request, env) =>
+      handleOperatorGymRunProgressApi(request, {
+        requireAdminApiToken: adminRequest =>
+          requireAdminApiToken(adminRequest, env),
       }),
   },
   {

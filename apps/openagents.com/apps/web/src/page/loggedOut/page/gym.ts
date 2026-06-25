@@ -40,6 +40,15 @@ import {
   terminalBenchVisualizationOptions,
   type TerminalBenchRunLane,
 } from '../gym/terminalBenchReplay'
+import {
+  LIVE_GYM_RUN_PROGRESS_FIXTURE,
+  formatRunProgressCount,
+  formatRunProgressDuration,
+  formatRunProgressPercent,
+  runPhaseLabel,
+  runProgressVisualizationOptions,
+  type GymRunProgress,
+} from '../gym/runProgress'
 
 type InputAttr = Parameters<ReturnType<typeof html<Message>>['input']>[0][number]
 
@@ -387,6 +396,200 @@ const terminalBenchScenePanel = (): Html => {
   )
 }
 
+const runProgressCountCell = (label: string, value: string): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [Ui.className<Message>('grid gap-1 border border-white/10 bg-black p-3')],
+    [
+      h.span([Ui.className<Message>('text-[0.72rem] text-white/45')], [label]),
+      h.span(
+        [Ui.className<Message>('text-[1rem] font-semibold tabular-nums text-white')],
+        [value],
+      ),
+    ],
+  )
+}
+
+const runProgressCountStrip = (progress: GymRunProgress): Html => {
+  const h = html<Message>()
+  const { counts } = progress
+
+  return h.div(
+    [Ui.className<Message>('grid gap-2 sm:grid-cols-3 lg:grid-cols-6')],
+    [
+      runProgressCountCell('Completed', String(counts.completed)),
+      runProgressCountCell('Passed', String(counts.completedPassed)),
+      runProgressCountCell('Failing', String(counts.completedFailed)),
+      runProgressCountCell('Running', String(counts.running)),
+      runProgressCountCell('Pending', String(counts.pending)),
+      runProgressCountCell(
+        'Error / cancelled',
+        `${counts.error} / ${counts.cancelled}`,
+      ),
+    ],
+  )
+}
+
+const runProgressMirrorRow = (label: string, value: string): Html => {
+  const h = html<Message>()
+
+  return h.tr([Ui.className<Message>('border-t border-white/10')], [
+    h.th(
+      [
+        h.Scope('row'),
+        Ui.className<Message>(
+          'py-2 pr-4 text-left align-top text-base font-medium text-white/60 sm:text-sm',
+        ),
+      ],
+      [label],
+    ),
+    h.td(
+      [Ui.className<Message>('py-2 align-top text-base font-semibold tabular-nums text-white/85 sm:text-sm')],
+      [value],
+    ),
+  ])
+}
+
+const runProgressMirror = (progress: GymRunProgress): Html => {
+  const h = html<Message>()
+  const { counts } = progress
+
+  return h.section(
+    [
+      h.DataAttribute('gym-run-progress-accessible-mirror', ''),
+      h.AriaLabel('Live Gym run progress mirror'),
+      Ui.className<Message>('grid min-w-0 gap-3'),
+    ],
+    [
+      h.p([Ui.className<Message>(sectionTitleClass)], ['Accessible progress mirror']),
+      h.table([Ui.className<Message>('w-full border-collapse')], [
+        h.tbody([], [
+          runProgressMirrorRow(
+            'Completed of official denominator',
+            `${counts.completed} of ${counts.officialDenominator}`,
+          ),
+          runProgressMirrorRow(
+            'Completion progress',
+            formatRunProgressPercent(progress.completionFraction),
+          ),
+          runProgressMirrorRow(
+            'Pass rate over completed tasks',
+            formatRunProgressPercent(progress.passRateOverCompleted),
+          ),
+          runProgressMirrorRow('Passed', String(counts.completedPassed)),
+          runProgressMirrorRow('Failing', String(counts.completedFailed)),
+          runProgressMirrorRow('Running', String(counts.running)),
+          runProgressMirrorRow('Pending', String(counts.pending)),
+          runProgressMirrorRow(
+            'Total tokens',
+            formatRunProgressCount(progress.tokens.totalTokens),
+          ),
+          runProgressMirrorRow(
+            'Elapsed',
+            formatRunProgressDuration(progress.elapsedMs),
+          ),
+          runProgressMirrorRow('Last updated', progress.lastUpdatedAt),
+          runProgressMirrorRow('Phase', runPhaseLabel(progress)),
+        ]),
+      ]),
+      h.p([Ui.className<Message>('m-0 max-w-[78ch] text-base text-white/55 sm:text-sm')], [
+        'Pass rate is computed over completed tasks only. The official denominator stays separate so a partial run is never read as the final solve rate.',
+      ]),
+      h.div([Ui.className<Message>('grid gap-3 md:grid-cols-2')], [
+        h.div([Ui.className<Message>('grid gap-2 border-t border-white/10 pt-3')], [
+          h.p([Ui.className<Message>(sectionTitleClass)], ['Caveats']),
+          h.ul(
+            [
+              h.Role('list'),
+              Ui.className<Message>('grid gap-1 text-base text-white/55 sm:text-sm'),
+            ],
+            progress.caveatRefs.map(ref => h.li([], [ref])),
+          ),
+        ]),
+        h.div([Ui.className<Message>('grid gap-2 border-t border-white/10 pt-3')], [
+          h.p([Ui.className<Message>(sectionTitleClass)], ['Blocked before claims']),
+          h.ul(
+            [
+              h.Role('list'),
+              Ui.className<Message>('grid gap-1 text-base text-white/55 sm:text-sm'),
+            ],
+            progress.blockerRefs.map(ref => h.li([], [ref])),
+          ),
+        ]),
+      ]),
+    ],
+  )
+}
+
+const runProgressPanel = (): Html => {
+  const h = html<Message>()
+  const progress = LIVE_GYM_RUN_PROGRESS_FIXTURE
+
+  return h.section(
+    [
+      h.DataAttribute('gym-run-progress-panel', ''),
+      Ui.className<Message>(panelClass),
+    ],
+    [
+      h.div([Ui.className<Message>('grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end')], [
+        h.div([Ui.className<Message>('grid gap-2')], [
+          h.p([Ui.className<Message>(sectionTitleClass)], [
+            'Live Gym run follow-along',
+          ]),
+          h.h2(
+            [Ui.className<Message>('m-0 max-w-[20ch] text-2xl font-semibold tracking-tight text-balance text-white sm:text-3xl')],
+            [progress.profile.publicLabel],
+          ),
+          h.p([Ui.className<Message>('m-0 max-w-[78ch] text-base text-white/65 sm:text-sm')], [
+            'Follow an active Terminal-Bench run as tasks complete. Counts, pass-rate over completed tasks, the official denominator, and freshness update from the public-safe progress projection; raw prompts, responses, logs, trajectories, keys, and private endpoints are never included.',
+          ]),
+        ]),
+        h.div([Ui.className<Message>('grid gap-2 sm:grid-flow-col sm:items-center')], [
+          h.span(
+            [
+              h.DataAttribute('gym-run-progress-in-progress', String(progress.inProgress)),
+              Ui.className<Message>(
+                'w-fit border border-[#ffcf6a]/35 bg-[#211a05] px-2 py-1 text-[0.75rem] font-semibold uppercase tracking-wide text-[#ffe0a3]',
+              ),
+            ],
+            [runPhaseLabel(progress)],
+          ),
+          h.span(
+            [
+              h.DataAttribute('gym-run-progress-decision-grade', 'false'),
+              Ui.className<Message>(
+                'w-fit border border-white/15 bg-black px-2 py-1 text-[0.75rem] text-white/60',
+              ),
+            ],
+            ['decisionGrade: false'],
+          ),
+        ]),
+      ]),
+      runProgressCountStrip(progress),
+      h.div(
+        [
+          h.DataAttribute('gym-run-progress-scene', ''),
+          Ui.className<Message>(
+            'min-h-[380px] min-w-0 max-w-full overflow-hidden border border-[#3a7bff]/25 bg-[#020409]',
+          ),
+        ],
+        [
+          trainingRunView<Message>(
+            [
+              h.DataAttribute('three-effect-scene', 'gym-run-progress'),
+              h.AriaLabel('Live Gym run progress three-effect field'),
+              Ui.className<Message>('block min-h-[380px] min-w-0 max-w-full'),
+            ],
+            runProgressVisualizationOptions(progress),
+          ),
+        ],
+      ),
+      runProgressMirror(progress),
+    ],
+  )
+}
+
 const laneControl = (model: GymModel): Html => {
   const h = html<Message>()
 
@@ -631,6 +834,7 @@ export const view = (model: GymModel): Html => {
           ),
         ]),
         terminalBenchScenePanel(),
+        runProgressPanel(),
         h.div([Ui.className<Message>('grid gap-4 lg:grid-cols-[1.2fr_0.8fr]')], [
           h.section([Ui.className<Message>(panelClass)], [
             h.p([Ui.className<Message>(sectionTitleClass)], ['Experiment']),
