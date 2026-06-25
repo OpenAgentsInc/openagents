@@ -89,6 +89,10 @@ import { makeCloudControlSessionExecutor } from "./openagents-cloud-provider.js"
 import { collectPylonContextProjection } from "./context-projection.js"
 import { collectPylonDevDoctor } from "./dev-doctor.js"
 import {
+  parsePylonAccountsConnectArgs,
+  runPylonAccountsConnect,
+} from "./account-connect.js"
+import {
   collectPylonAccountsList,
   collectPylonAccountsUsage,
   parsePylonAccountsUsageArgs,
@@ -3070,7 +3074,17 @@ async function main() {
         }, null, 2)}\n`)
         return
       }
-      throw new Error("usage: pylon accounts list|usage ...")
+      if (command === "connect") {
+        const options = parsePylonAccountsConnectArgs(args.slice(2))
+        if (!options.json) {
+          throw new Error("usage: pylon accounts connect codex --account <ref> [--home <path>] [--openagents-link|--openagents-attempt-id <id>] --json")
+        }
+        const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
+        const projection = await runPylonAccountsConnect(summary, options, { env: Bun.env })
+        process.stdout.write(`${JSON.stringify(projection, null, 2)}\n`)
+        return
+      }
+      throw new Error("usage: pylon accounts list|usage|connect ...")
     } catch (error) {
       process.stderr.write(`Pylon accounts failed: ${error instanceof Error ? error.message : String(error)}\n`)
       process.exitCode = 1

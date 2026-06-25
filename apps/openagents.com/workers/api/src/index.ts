@@ -648,6 +648,7 @@ import {
 import { probeProviderApiKey } from './provider-account-api-key'
 import { makeProviderAccountBrowserHandlers } from './provider-account-browser-routes'
 import { makeProviderAccountPoolRoutes } from './provider-account-pool-routes'
+import { makeProviderAccountPylonHandlers } from './provider-account-pylon-routes'
 import { makeProviderAccountRoutes } from './provider-account-routes'
 import { makeProviderAccountServiceHandlers } from './provider-account-service-routes'
 import { makeProviderAccountUsageRoutes } from './provider-account-usage-routes'
@@ -7110,6 +7111,14 @@ const providerAccountBrowserHandlers = makeProviderAccountBrowserHandlers({
   storeStartedCodexDeviceLogin,
 })
 
+const providerAccountPylonHandlers = makeProviderAccountPylonHandlers({
+  agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+  deleteStartedCodexDeviceLogin,
+  readStartedCodexDeviceLogin,
+  storeConnectedCodexAuth,
+  storeStartedCodexDeviceLogin,
+})
+
 const providerAccountServiceHandlers = makeProviderAccountServiceHandlers({
   readConnectedCodexAuthMaterial,
   requireProviderServiceActor,
@@ -7278,6 +7287,21 @@ const providerAccountRoutes = makeProviderAccountRoutes({
         request,
         env,
         ctx,
+        attemptId,
+      ),
+    ),
+  handlePylonProviderDeviceLoginStartApi: (request, env) =>
+    routeEffect('handle_pylon_provider_device_login_start_api', () =>
+      providerAccountPylonHandlers.handlePylonProviderDeviceLoginStartApi(
+        request,
+        env,
+      ),
+    ),
+  handlePylonProviderDeviceLoginStatusApi: (request, env, attemptId) =>
+    routeEffect('handle_pylon_provider_device_login_status_api', () =>
+      providerAccountPylonHandlers.handlePylonProviderDeviceLoginStatusApi(
+        request,
+        env,
         attemptId,
       ),
     ),

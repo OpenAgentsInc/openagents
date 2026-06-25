@@ -219,6 +219,17 @@ payout target`) run from the palette and always end in an explicit
   one has been observed. On wide dashboards it renders beside telemetry; on
   narrow dashboards use `f6` or the command palette to open the full context
   view, and `Context: refresh repo & AI` to re-probe local state.
+- `pylon accounts connect codex --account <ref> --json` creates or reuses an
+  isolated local Codex home, forces `cli_auth_credentials_store = "file"` for
+  that home, runs `codex login --device-auth` unless the home is already
+  authenticated, and registers the ref in `dev.accounts`. Add
+  `--openagents-link` to also start the OpenAgents-linked ChatGPT/Codex
+  provider-account device flow through the Pylon agent token; the returned
+  verification URL/code attaches to the OpenAuth account linked to that Pylon
+  token, not to an ambient browser session. After entering the code, poll with
+  `--openagents-attempt-id <id>` so OpenAgents records the connected provider
+  account. The command never prints raw `auth.json`, OAuth tokens, agent tokens,
+  or local absolute credential paths.
 - `pylon accounts list --json` reports configured credential homes by
   provider, readiness state, and hashed home/account refs without raw paths.
   `pylon accounts usage [--account <ref-or-provider>|--provider <codex|claude_agent>|--all] [--refresh] --json`
@@ -298,6 +309,9 @@ pylon bootstrap --json
 pylon bootstrap --register-openagents --setup-mdk-wallet --pylon-ref <ref> --display-name <name> --resource-mode background_20 --capability-ref <ref> --json
 pylon status --json
 pylon context --json
+pylon accounts connect codex --account codex-a --json
+pylon accounts connect codex --account codex-b --openagents-link --json
+pylon accounts connect codex --account codex-b --skip-device-login --openagents-attempt-id <attempt-id> --json
 pylon accounts list --json
 pylon accounts usage --json
 pylon accounts usage --account codex --json

@@ -89,6 +89,15 @@ type ProviderAccountRouteDependencies<Bindings = OpenAgentsEnv> = Readonly<{
     ctx: ExecutionContext,
     attemptId: string,
   ) => RouteEffect
+  handlePylonProviderDeviceLoginStartApi: (
+    request: Request,
+    env: Bindings,
+  ) => RouteEffect
+  handlePylonProviderDeviceLoginStatusApi: (
+    request: Request,
+    env: Bindings,
+    attemptId: string,
+  ) => RouteEffect
 }>
 
 export const makeProviderAccountRoutes = <Bindings = OpenAgentsEnv>(
@@ -124,6 +133,15 @@ export const makeProviderAccountRoutes = <Bindings = OpenAgentsEnv>(
     ) {
       return routeEffectOrResponse(
         dependencies.handleProviderDeviceLoginStartApi(request, env, ctx),
+      )
+    }
+
+    if (
+      url.pathname ===
+      '/api/pylon/provider-accounts/chatgpt-codex/device-login/start'
+    ) {
+      return routeEffectOrResponse(
+        dependencies.handlePylonProviderDeviceLoginStartApi(request, env),
       )
     }
 
@@ -243,6 +261,25 @@ export const makeProviderAccountRoutes = <Bindings = OpenAgentsEnv>(
             request,
             env,
             ctx,
+            attemptId,
+          ),
+        )
+      }
+    }
+
+    const pylonProviderDeviceLoginStatusMatch =
+      /^\/api\/pylon\/provider-accounts\/chatgpt-codex\/device-login\/([^/]+)$/.exec(
+        url.pathname,
+      )
+
+    if (pylonProviderDeviceLoginStatusMatch !== null) {
+      const attemptId = pylonProviderDeviceLoginStatusMatch[1]
+
+      if (attemptId !== undefined) {
+        return routeEffectOrResponse(
+          dependencies.handlePylonProviderDeviceLoginStatusApi(
+            request,
+            env,
             attemptId,
           ),
         )
