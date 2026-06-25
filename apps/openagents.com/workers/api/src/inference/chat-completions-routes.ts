@@ -878,6 +878,12 @@ type OpenAgentsReceipt = Readonly<{
         provider_health_score: number | typeof NOT_MEASURED
         region: string | typeof NOT_MEASURED
         fallback_reason: string | null
+        selected_replica_id?: string | undefined
+        selected_replica_ref?: string | undefined
+        replica_fallback_reason?: string | null | undefined
+        replica_health_score?: number | typeof NOT_MEASURED | undefined
+        replica_region?: string | typeof NOT_MEASURED | undefined
+        replica_busy_reason?: string | null | undefined
       }>
     | undefined
   // `unverified` is the HONEST default for an executable artifact we have not actually
@@ -1040,11 +1046,40 @@ const openAgentsReceiptForResult = (
     ...(supplyLane === undefined ? {} : { supply_lane: supplyLane }),
     worker: input.adapterId,
   } satisfies Omit<OpenAgentsReceipt, 'verification'>
+  const adapterRouteMetadata = input.result.adapterRouteMetadata
+  const routeProviderHealthScore =
+    input.routeMetadata?.providerHealthScore ??
+    adapterRouteMetadata?.replicaHealthScore
+  const routeRegion =
+    input.routeMetadata?.region ?? adapterRouteMetadata?.replicaRegion
+  const routeFallbackReason =
+    input.routeMetadata?.fallbackReason ??
+    adapterRouteMetadata?.replicaFallbackReason ??
+    null
   const routing = {
     fallback_reason: input.routeMetadata?.fallbackReason ?? null,
-    provider_health_score:
-      input.routeMetadata?.providerHealthScore ?? NOT_MEASURED,
-    region: input.routeMetadata?.region ?? NOT_MEASURED,
+    provider_health_score: routeProviderHealthScore ?? NOT_MEASURED,
+    region: routeRegion ?? NOT_MEASURED,
+    ...(adapterRouteMetadata?.selectedReplicaId === undefined
+      ? {}
+      : { selected_replica_id: adapterRouteMetadata.selectedReplicaId }),
+    ...(adapterRouteMetadata?.selectedReplicaRef === undefined
+      ? {}
+      : { selected_replica_ref: adapterRouteMetadata.selectedReplicaRef }),
+    ...(adapterRouteMetadata?.replicaFallbackReason === undefined
+      ? {}
+      : {
+          replica_fallback_reason: adapterRouteMetadata.replicaFallbackReason,
+        }),
+    ...(adapterRouteMetadata?.replicaHealthScore === undefined
+      ? {}
+      : { replica_health_score: adapterRouteMetadata.replicaHealthScore }),
+    ...(adapterRouteMetadata?.replicaRegion === undefined
+      ? {}
+      : { replica_region: adapterRouteMetadata.replicaRegion }),
+    ...(adapterRouteMetadata?.replicaBusyReason === undefined
+      ? {}
+      : { replica_busy_reason: adapterRouteMetadata.replicaBusyReason }),
   } satisfies NonNullable<OpenAgentsReceipt['routing']>
 
   if (!isKhala) {
@@ -1084,18 +1119,16 @@ const openAgentsReceiptForResult = (
         priceMsat: undefined,
         promptTokens: input.result.usage.promptTokens,
         provider: input.adapterId,
-        ...(input.routeMetadata?.providerHealthScore === undefined
+        ...(routeProviderHealthScore === undefined
           ? {}
-          : { providerHealthScore: input.routeMetadata.providerHealthScore }),
+          : { providerHealthScore: routeProviderHealthScore }),
         requestClass: telemetryRequestClass(streamed),
         requestId: input.responseId,
         requestedModel: input.requestedModel,
         route: classifyModel(input.requestedModel),
         servedModel: input.result.servedModel,
-        ...(input.routeMetadata?.region === undefined
-          ? {}
-          : { region: input.routeMetadata.region }),
-        fallbackReason: input.routeMetadata?.fallbackReason ?? null,
+        ...(routeRegion === undefined ? {} : { region: routeRegion }),
+        fallbackReason: routeFallbackReason,
         ...(cacheAffinityKeyRaw === undefined ? {} : { cacheAffinityKeyRaw }),
         ...(input.result.usage.cachedPromptTokens === undefined
           ? {}
@@ -1160,18 +1193,16 @@ const openAgentsReceiptForResult = (
       priceMsat: undefined,
       promptTokens: input.result.usage.promptTokens,
       provider: input.adapterId,
-      ...(input.routeMetadata?.providerHealthScore === undefined
+      ...(routeProviderHealthScore === undefined
         ? {}
-        : { providerHealthScore: input.routeMetadata.providerHealthScore }),
+        : { providerHealthScore: routeProviderHealthScore }),
       requestClass: telemetryRequestClass(streamed),
       requestId: input.responseId,
       requestedModel: input.requestedModel,
       route: 'coding',
       servedModel: input.result.servedModel,
-      ...(input.routeMetadata?.region === undefined
-        ? {}
-        : { region: input.routeMetadata.region }),
-      fallbackReason: input.routeMetadata?.fallbackReason ?? null,
+      ...(routeRegion === undefined ? {} : { region: routeRegion }),
+      fallbackReason: routeFallbackReason,
       scalarReward: verdict.scalarReward,
       settlementState: verdict.verified ? 'pending' : 'not_applicable',
       totalTokens: input.result.usage.totalTokens,
@@ -1521,6 +1552,9 @@ const makePassThroughResponseStream = (
     }
 
     const streamResult: InferenceResult = {
+      ...(terminal.adapterRouteMetadata === undefined
+        ? {}
+        : { adapterRouteMetadata: terminal.adapterRouteMetadata }),
       content,
       finishReason: terminal.finishReason ?? 'stop',
       servedModel,
@@ -2274,6 +2308,9 @@ export const handleChatCompletions = (
       }
 
       const streamResult: InferenceResult = {
+        ...(terminal?.adapterRouteMetadata === undefined
+          ? {}
+          : { adapterRouteMetadata: terminal.adapterRouteMetadata }),
         content: guardedStreamContent,
         finishReason: terminal?.finishReason ?? 'stop',
         servedModel: terminal?.servedModel ?? requestedModel,

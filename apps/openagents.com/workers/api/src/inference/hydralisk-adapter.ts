@@ -16,6 +16,7 @@ import {
 } from './openai-chat-compat'
 import {
   InferenceAdapterError,
+  type InferenceAdapterRouteMetadata,
   type InferenceProviderAdapter,
   type InferenceRequest,
   type InferenceResult,
@@ -51,9 +52,55 @@ export type HydraliskReplicaAdapterConfig = HydraliskAdapterConfig &
     draining: boolean
   }>
 
+export type GlmReplicaHealth = 'healthy' | 'degraded' | 'unhealthy'
+
+export type GlmReplicaCapacityClass = 'spot' | 'on_demand' | 'unknown'
+
+export type GlmReplicaRoutingState = Readonly<{
+  replicaId: string
+  health: GlmReplicaHealth
+  warmAtEpochMs?: number | undefined
+  inflightCount: number
+  maxInflight: number
+  queueDepth: number
+  last429AtEpochMs?: number | undefined
+  observedTtftMs?: number | undefined
+  observedTps?: number | undefined
+  region?: string | undefined
+  capacityClass: GlmReplicaCapacityClass
+  benchmarkReserved: boolean
+  draining: boolean
+}>
+
+export type GlmReplicaRoutingStateOverride = Partial<
+  Omit<
+    GlmReplicaRoutingState,
+    | 'benchmarkReserved'
+    | 'draining'
+    | 'inflightCount'
+    | 'maxInflight'
+    | 'replicaId'
+  >
+> &
+  Readonly<{
+    benchmarkReserved?: boolean | undefined
+    draining?: boolean | undefined
+    health?: GlmReplicaHealth | undefined
+    inflightCount?: number | undefined
+    maxInflight?: number | undefined
+  }>
+
+export type GlmReplicaRoutingStateOracle = (
+  replicaId: string,
+) => GlmReplicaRoutingStateOverride | undefined
+
+export type GlmReplicaAffinityOracle = (affinity: string) => string | undefined
+
 export type HydraliskPoolAdapterConfig = Readonly<{
   id: string
   replicas: ReadonlyArray<HydraliskReplicaAdapterConfig>
+  affinityOracle?: GlmReplicaAffinityOracle | undefined
+  routingStateOracle?: GlmReplicaRoutingStateOracle | undefined
   upstreamModel?: string | undefined
 }>
 
@@ -310,6 +357,7 @@ const eventForFrame = (
 const makeSseSource = (
   body: ReadableStream<Uint8Array>,
   fallbackModel: string,
+  adapterRouteMetadata?: InferenceAdapterRouteMetadata | undefined,
 ): InferenceStreamSource => {
   let finishReason: string | undefined
   let usage: InferenceUsage | undefined
@@ -370,7 +418,12 @@ const makeSseSource = (
 
   return {
     frames,
-    terminal: () => ({ finishReason, servedModel, usage }),
+    terminal: () => ({
+      ...(adapterRouteMetadata === undefined ? {} : { adapterRouteMetadata }),
+      finishReason,
+      servedModel,
+      usage,
+    }),
   }
 }
 
@@ -523,59 +576,370 @@ export const makeHydraliskVllmAdapter = (
 const poolAdapterError = (
   config: HydraliskPoolAdapterConfig,
   reason: string,
+  input: Readonly<{
+    kind?: string | undefined
+    retryable?: boolean | undefined
+    httpStatus?: number | undefined
+  }> = {},
 ): InferenceAdapterError =>
   new InferenceAdapterError({
     adapterId: config.id,
-    kind: 'configuration_error',
+    httpStatus: input.httpStatus,
+    kind: input.kind ?? 'configuration_error',
     reason,
-    retryable: false,
+    retryable: input.retryable ?? false,
   })
 
-const firstRunnableReplica = (
-  config: HydraliskPoolAdapterConfig,
-): HydraliskReplicaAdapterConfig | undefined =>
-  config.replicas.find(
-    replica => !replica.benchmarkReserved && !replica.draining,
-  )
+const finiteNonNegative = (value: number | undefined): number | undefined =>
+  value === undefined || !Number.isFinite(value) || value < 0
+    ? undefined
+    : value
+
+const positiveInteger = (value: number | undefined): number | undefined =>
+  value === undefined || !Number.isFinite(value) || value < 1
+    ? undefined
+    : Math.floor(value)
+
+const healthScore = (health: GlmReplicaHealth): number => {
+  switch (health) {
+    case 'healthy':
+      return 1
+    case 'degraded':
+      return 0.5
+    case 'unhealthy':
+      return 0
+  }
+}
+
+const replicaRefFor = (replicaId: string): string =>
+  `replica.hydralisk.glm_52_reap_504b.${replicaId}`
+
+const requestAffinity = (request: InferenceRequest): string | undefined => {
+  const affinity = request.passthroughParams['x-session-affinity']
+  return typeof affinity === 'string' && affinity.trim() !== ''
+    ? affinity.trim()
+    : undefined
+}
+
+const stateForReplica = (
+  replica: HydraliskReplicaAdapterConfig,
+  internalInflight: number,
+  override: GlmReplicaRoutingStateOverride | undefined,
+): GlmReplicaRoutingState => {
+  const maxInflight =
+    positiveInteger(override?.maxInflight) ??
+    positiveInteger(replica.maxInflight) ??
+    1
+  const externalInflight = finiteNonNegative(override?.inflightCount) ?? 0
+  return {
+    benchmarkReserved: override?.benchmarkReserved ?? replica.benchmarkReserved,
+    capacityClass: override?.capacityClass ?? 'unknown',
+    draining: override?.draining ?? replica.draining,
+    health: override?.health ?? 'healthy',
+    inflightCount: Math.max(internalInflight, externalInflight),
+    maxInflight,
+    queueDepth: finiteNonNegative(override?.queueDepth) ?? 0,
+    replicaId: replica.replicaId,
+    ...(finiteNonNegative(override?.last429AtEpochMs) === undefined
+      ? {}
+      : { last429AtEpochMs: finiteNonNegative(override?.last429AtEpochMs)! }),
+    ...(finiteNonNegative(override?.observedTps) === undefined
+      ? {}
+      : { observedTps: finiteNonNegative(override?.observedTps)! }),
+    ...(finiteNonNegative(override?.observedTtftMs) === undefined
+      ? {}
+      : { observedTtftMs: finiteNonNegative(override?.observedTtftMs)! }),
+    ...(typeof override?.region === 'string' && override.region.trim() !== ''
+      ? { region: override.region.trim() }
+      : {}),
+    ...(finiteNonNegative(override?.warmAtEpochMs) === undefined
+      ? {}
+      : { warmAtEpochMs: finiteNonNegative(override?.warmAtEpochMs)! }),
+  }
+}
+
+type ReplicaCandidate = Readonly<{
+  index: number
+  replica: HydraliskReplicaAdapterConfig
+  state: GlmReplicaRoutingState
+}>
+
+type ReplicaSelection = Readonly<{
+  adapterConfig: HydraliskAdapterConfig
+  metadata: InferenceAdapterRouteMetadata
+  release: () => void
+}>
+
+const busyReasonFor = (state: GlmReplicaRoutingState): string | null => {
+  if (state.benchmarkReserved) {
+    return 'benchmark_reserved'
+  }
+  if (state.draining) {
+    return 'draining'
+  }
+  if (state.health !== 'healthy') {
+    return `health_${state.health}`
+  }
+  if (state.inflightCount >= state.maxInflight) {
+    return 'inflight_full'
+  }
+  return null
+}
+
+const rankEligibleReplicas = (
+  a: ReplicaCandidate,
+  b: ReplicaCandidate,
+): number => {
+  const aWarm = a.state.warmAtEpochMs ?? -1
+  const bWarm = b.state.warmAtEpochMs ?? -1
+  if (aWarm !== bWarm) {
+    return bWarm - aWarm
+  }
+  if (a.state.queueDepth !== b.state.queueDepth) {
+    return a.state.queueDepth - b.state.queueDepth
+  }
+  if (a.state.inflightCount !== b.state.inflightCount) {
+    return a.state.inflightCount - b.state.inflightCount
+  }
+  const aTtft = a.state.observedTtftMs ?? Number.POSITIVE_INFINITY
+  const bTtft = b.state.observedTtftMs ?? Number.POSITIVE_INFINITY
+  if (aTtft !== bTtft) {
+    return aTtft - bTtft
+  }
+  const aTps = a.state.observedTps ?? -1
+  const bTps = b.state.observedTps ?? -1
+  if (aTps !== bTps) {
+    return bTps - aTps
+  }
+  return a.index - b.index
+}
+
+const metadataForSelection = (
+  selected: ReplicaCandidate,
+  replicaFallbackReason: string | null,
+  replicaBusyReason: string | null,
+): InferenceAdapterRouteMetadata => ({
+  replicaBusyReason,
+  replicaFallbackReason,
+  replicaHealthScore: healthScore(selected.state.health),
+  ...(selected.state.region === undefined
+    ? {}
+    : { replicaRegion: selected.state.region }),
+  selectedReplicaId: selected.replica.replicaId,
+  selectedReplicaRef: replicaRefFor(selected.replica.replicaId),
+})
 
 const selectedReplicaConfig = (
   config: HydraliskPoolAdapterConfig,
-): Effect.Effect<HydraliskAdapterConfig, InferenceAdapterError> =>
-  Effect.gen(function* () {
-    const replica = firstRunnableReplica(config)
-    if (replica === undefined) {
-      return yield* Effect.fail(
-        poolAdapterError(
-          config,
-          'hydralisk GLM replica pool has no eligible armed replicas',
+  request: InferenceRequest,
+  inflight: Map<string, number>,
+): Effect.Effect<ReplicaSelection, InferenceAdapterError> =>
+  Effect.try({
+    catch: error =>
+      error instanceof InferenceAdapterError
+        ? error
+        : poolAdapterError(
+            config,
+            'hydralisk GLM replica pool selection failed unexpectedly',
+          ),
+    try: () => {
+      const candidates = config.replicas.map((replica, index) => ({
+        index,
+        replica,
+        state: stateForReplica(
+          replica,
+          inflight.get(replica.replicaId) ?? 0,
+          config.routingStateOracle?.(replica.replicaId),
         ),
+      }))
+      const eligible = candidates.filter(
+        candidate => busyReasonFor(candidate.state) === null,
       )
-    }
-    return {
-      apiKey: replica.apiKey,
-      baseUrl: replica.baseUrl,
-      fetchImpl: replica.fetchImpl,
-      id: config.id,
-      upstreamModel: config.upstreamModel ?? replica.upstreamModel,
-    }
+
+      if (candidates.length === 0) {
+        throw poolAdapterError(
+          config,
+          'hydralisk GLM replica pool has no configured replicas',
+        )
+      }
+
+      if (eligible.length === 0) {
+        const reason =
+          candidates
+            .map(candidate => busyReasonFor(candidate.state))
+            .find(Boolean) ?? 'no_eligible_replica'
+        throw poolAdapterError(
+          config,
+          `hydralisk GLM replica pool has no idle eligible replicas (${reason})`,
+          {
+            httpStatus: 503,
+            kind: 'service_overloaded',
+            retryable: true,
+          },
+        )
+      }
+
+      const affinity = requestAffinity(request)
+      const affinityReplicaId =
+        affinity === undefined ? undefined : config.affinityOracle?.(affinity)
+      const affinityCandidate =
+        affinityReplicaId === undefined
+          ? undefined
+          : candidates.find(
+              candidate => candidate.replica.replicaId === affinityReplicaId,
+            )
+      const affinityBusy =
+        affinityCandidate === undefined
+          ? affinityReplicaId === undefined
+            ? null
+            : 'affinity_replica_missing'
+          : busyReasonFor(affinityCandidate.state)
+      const selected =
+        affinityCandidate !== undefined && affinityBusy === null
+          ? affinityCandidate
+          : [...eligible].sort(rankEligibleReplicas)[0]!
+      const replicaFallbackReason =
+        affinityReplicaId === undefined
+          ? null
+          : selected.replica.replicaId === affinityReplicaId
+            ? 'cache_affinity_hit'
+            : (affinityBusy ?? 'affinity_replica_not_selected')
+      const replicaBusyReason =
+        selected.state.inflightCount > 0 ? 'shared_capacity_in_use' : null
+
+      inflight.set(selected.replica.replicaId, selected.state.inflightCount + 1)
+      let released = false
+      const release = () => {
+        if (released) {
+          return
+        }
+        released = true
+        const current = inflight.get(selected.replica.replicaId) ?? 0
+        if (current <= 1) {
+          inflight.delete(selected.replica.replicaId)
+        } else {
+          inflight.set(selected.replica.replicaId, current - 1)
+        }
+      }
+
+      return {
+        adapterConfig: {
+          apiKey: selected.replica.apiKey,
+          baseUrl: selected.replica.baseUrl,
+          fetchImpl: selected.replica.fetchImpl,
+          id: config.id,
+          upstreamModel: config.upstreamModel ?? selected.replica.upstreamModel,
+        },
+        metadata: metadataForSelection(
+          selected,
+          replicaFallbackReason,
+          replicaBusyReason,
+        ),
+        release,
+      }
+    },
   })
+
+const terminalChunkIndex = (
+  chunks: ReadonlyArray<InferenceStreamChunk>,
+): number =>
+  chunks.findIndex(
+    chunk => chunk.finishReason !== undefined || chunk.usage !== undefined,
+  )
+
+const attachMetadataToStreamChunks = (
+  chunks: ReadonlyArray<InferenceStreamChunk>,
+  metadata: InferenceAdapterRouteMetadata,
+): ReadonlyArray<InferenceStreamChunk> => {
+  const terminalIndex = terminalChunkIndex(chunks)
+  const targetIndex = terminalIndex === -1 ? chunks.length - 1 : terminalIndex
+  return chunks.map((chunk, index) =>
+    index === targetIndex
+      ? { ...chunk, adapterRouteMetadata: metadata }
+      : chunk,
+  )
+}
+
+const attachMetadataToSource = (
+  source: InferenceStreamSource,
+  metadata: InferenceAdapterRouteMetadata,
+  release: () => void,
+): InferenceStreamSource => {
+  let released = false
+  const releaseOnce = () => {
+    if (released) {
+      return
+    }
+    released = true
+    release()
+  }
+  const frames = (async function* (): AsyncIterable<InferenceStreamEvent> {
+    try {
+      for await (const frame of source.frames) {
+        yield frame
+      }
+    } finally {
+      releaseOnce()
+    }
+  })()
+  return {
+    frames,
+    terminal: () => ({
+      ...source.terminal(),
+      adapterRouteMetadata: metadata,
+    }),
+  }
+}
 
 export const makeHydraliskVllmPoolAdapter = (
   config: HydraliskPoolAdapterConfig,
-): InferenceProviderAdapter => ({
-  complete: request =>
-    selectedReplicaConfig(config).pipe(
-      Effect.flatMap(replicaConfig => complete(replicaConfig, request)),
-    ),
-  id: config.id,
-  stream: request =>
-    selectedReplicaConfig(config).pipe(
-      Effect.flatMap(replicaConfig => streamChunks(replicaConfig, request)),
-    ),
-  streamSse: request =>
-    selectedReplicaConfig(config).pipe(
-      Effect.flatMap(replicaConfig =>
-        makeHydraliskVllmAdapter(replicaConfig).streamSse!(request),
+): InferenceProviderAdapter => {
+  const inflight = new Map<string, number>()
+  return {
+    complete: request =>
+      selectedReplicaConfig(config, request, inflight).pipe(
+        Effect.flatMap(selection =>
+          complete(selection.adapterConfig, request).pipe(
+            Effect.map(result => ({
+              ...result,
+              adapterRouteMetadata: selection.metadata,
+            })),
+            Effect.ensuring(Effect.sync(selection.release)),
+          ),
+        ),
       ),
-    ),
-})
+    id: config.id,
+    stream: request =>
+      selectedReplicaConfig(config, request, inflight).pipe(
+        Effect.flatMap(selection =>
+          streamChunks(selection.adapterConfig, request).pipe(
+            Effect.map(chunks =>
+              attachMetadataToStreamChunks(chunks, selection.metadata),
+            ),
+            Effect.ensuring(Effect.sync(selection.release)),
+          ),
+        ),
+      ),
+    streamSse: request =>
+      selectedReplicaConfig(config, request, inflight).pipe(
+        Effect.flatMap(selection =>
+          makeHydraliskVllmAdapter(selection.adapterConfig).streamSse!(
+            request,
+          ).pipe(
+            Effect.map(source =>
+              attachMetadataToSource(
+                source,
+                selection.metadata,
+                selection.release,
+              ),
+            ),
+            Effect.catch((error: InferenceAdapterError) =>
+              Effect.sync(selection.release).pipe(
+                Effect.flatMap(() => Effect.fail(error)),
+              ),
+            ),
+          ),
+        ),
+      ),
+  }
+}

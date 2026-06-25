@@ -1216,6 +1216,74 @@ describe('POST /v1/chat/completions', () => {
     })
   })
 
+  test('a Khala GLM receipt carries public-safe selected replica routing metadata', async () => {
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      ...echoAdapter(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID),
+      complete: () =>
+        Effect.succeed({
+          adapterRouteMetadata: {
+            replicaFallbackReason: 'inflight_full',
+            replicaHealthScore: 1,
+            replicaRegion: 'us-central1-a',
+            selectedReplicaId: 'second',
+            selectedReplicaRef: 'replica.hydralisk.glm_52_reap_504b.second',
+          },
+          content: 'READY',
+          finishReason: 'stop',
+          servedModel: HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
+          usage: { completionTokens: 1, promptTokens: 9, totalTokens: 10 },
+        }),
+    })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          messages: [{ content: 'hello world', role: 'user' }],
+          model: KHALA_MODEL_ID,
+        }),
+        baseDeps({
+          lanePlan: () => [HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID],
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      openagents?: {
+        routing?: {
+          fallback_reason: string | null
+          provider_health_score: number | typeof NOT_MEASURED
+          region: string | typeof NOT_MEASURED
+          replica_fallback_reason?: string | null
+          replica_health_score?: number | typeof NOT_MEASURED
+          replica_region?: string | typeof NOT_MEASURED
+          selected_replica_id?: string
+          selected_replica_ref?: string
+        }
+        telemetry?: Record<string, unknown>
+        worker: string
+      }
+    }
+
+    expect(body.openagents?.worker).toBe(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID)
+    expect(body.openagents?.routing).toEqual({
+      fallback_reason: null,
+      provider_health_score: 1,
+      region: 'us-central1-a',
+      replica_fallback_reason: 'inflight_full',
+      replica_health_score: 1,
+      replica_region: 'us-central1-a',
+      selected_replica_id: 'second',
+      selected_replica_ref: 'replica.hydralisk.glm_52_reap_504b.second',
+    })
+    expect(body.openagents?.telemetry).toMatchObject({
+      requestClass: 'async_job',
+      schemaVersion: 'openagents.khala.telemetry.v1',
+    })
+  })
+
   test('surfaces a non-retryable failure as 502 without overflow', async () => {
     const overflow = echoAdapter('overflow')
     let overflowCalls = 0

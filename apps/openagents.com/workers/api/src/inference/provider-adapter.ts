@@ -14,7 +14,6 @@
 // so a real client works by changing only base URL + key. Anthropic Messages is
 // a parallel surface (#5476 leaves a clean spot); both normalize into the same
 // adapter request/result here.
-
 import { Effect } from 'effect'
 
 // A single chat message in the normalized request. `role`/`content` mirror the
@@ -57,6 +56,20 @@ export type InferenceUsage = Readonly<{
   cachedPromptTokens?: number | undefined
 }>
 
+// Public-safe routing metadata a provider adapter may know only after its own
+// internal selection runs. The lane router knows "Hydralisk GLM pool"; the pool
+// adapter knows which replica actually served. All fields must be refs, coarse
+// measurements, or neutral reason strings: never raw URLs, private IPs, tokens,
+// prompts, or responses.
+export type InferenceAdapterRouteMetadata = Readonly<{
+  selectedReplicaId?: string | undefined
+  selectedReplicaRef?: string | undefined
+  replicaFallbackReason?: string | null | undefined
+  replicaHealthScore?: number | undefined
+  replicaRegion?: string | undefined
+  replicaBusyReason?: string | null | undefined
+}>
+
 export type InferenceToolCall = Readonly<{
   id: string
   type: 'function'
@@ -91,6 +104,9 @@ export type InferenceResult = Readonly<{
   // OpenAI-compatible assistant tool calls, present when `finishReason` is
   // `tool_calls` or a provider returns an assistant message that requests tools.
   toolCalls?: ReadonlyArray<InferenceToolCall> | undefined
+  // Optional public-safe metadata about adapter-internal route selection. The
+  // route folds this into the OpenAgents receipt block when present.
+  adapterRouteMetadata?: InferenceAdapterRouteMetadata | undefined
 }>
 
 // One normalized SSE frame as it is parsed off the upstream byte stream, plus
@@ -135,6 +151,7 @@ export type InferenceStreamSource = Readonly<{
     finishReason: string | undefined
     usage: InferenceUsage | undefined
     servedModel: string | undefined
+    adapterRouteMetadata?: InferenceAdapterRouteMetadata | undefined
   }>
 }>
 
@@ -153,6 +170,9 @@ export type InferenceStreamChunk = Readonly<{
   // Provider-native model id actually served. Set on the terminal frame when
   // the adapter can resolve it; the route falls back to the requested id.
   servedModel?: string | undefined
+  // Optional public-safe metadata about adapter-internal route selection. Set on
+  // the terminal chunk when the adapter can disclose it.
+  adapterRouteMetadata?: InferenceAdapterRouteMetadata | undefined
 }>
 
 // Typed adapter failure. Adapters surface provider/transport problems as this

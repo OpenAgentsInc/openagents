@@ -81,10 +81,60 @@ Only the variable names and evidence-reference names belong in tracked files.
 Endpoint values, bearer tokens, and private topology stay in Worker secrets or
 operator-only notes.
 
+## Pool Routing Contract
+
+Each GLM replica is treated as one interactive singleflight slot unless its
+public-safe state says otherwise. The pool adapter builds a typed
+`GlmReplicaRoutingState` for each replica before every request:
+
+- health: `healthy`, `degraded`, or `unhealthy`;
+- warm timestamp, queue depth, inflight count, and configured `maxInflight`;
+- last 429 timestamp, observed TTFT, observed tokens/second, and region when
+  the control plane exposes them;
+- coarse capacity class (`spot`, `on_demand`, or `unknown`);
+- `benchmarkReserved` and `draining` lifecycle flags.
+
+The selector only sends product traffic to replicas that are healthy, not
+draining, not benchmark-reserved, and below `maxInflight`. If the request has a
+cache-affinity value and the affinity oracle maps it to an idle healthy replica,
+that replica wins so long conversations and repeated codebase work stay warm.
+If the affinity target is busy, unhealthy, draining, reserved, or missing, the
+selector falls back to the best warmed idle replica and records a public-safe
+fallback reason.
+
+The adapter keeps an in-process inflight counter around every dispatched call.
+With two `maxInflight=1` replicas, two overlapping product requests are sent to
+different endpoints rather than both hitting the same singleflight proxy. If no
+replica is eligible, the pool fails with a retryable service-overloaded error so
+the outer Khala overflow plan can degrade to the next supply lane instead of
+pretending capacity exists.
+
+Successful Khala responses include the selected replica in the existing
+`openagents.routing` block:
+
+```json
+{
+  "selected_replica_id": "second",
+  "selected_replica_ref": "replica.hydralisk.glm_52_reap_504b.second",
+  "replica_fallback_reason": "inflight_full",
+  "replica_health_score": 1,
+  "replica_region": "us-central1-a"
+}
+```
+
+Those fields are refs, coarse scores, and neutral reasons only. They never
+include endpoint URLs, private IPs, bearer tokens, prompts, or responses.
+
 ## Expected Behavior
 
 - `openagents/khala` uses the GLM Hydralisk adapter first when the GLM lane is
   armed and registered.
+- Product traffic avoids GLM replicas marked `benchmarkReserved` or `draining`.
+- Same-session/cache-affinity traffic prefers the warm replica when that replica
+  is healthy and idle, then falls back to another warmed idle replica when it is
+  not.
+- Overlapping requests spread across distinct idle singleflight replicas when
+  capacity exists.
 - If the GLM worker is not armed, the router skips it and continues through the
   rest of the Khala plan.
 - The GLM backing lane counts as Hydralisk supply for disclosures, usage

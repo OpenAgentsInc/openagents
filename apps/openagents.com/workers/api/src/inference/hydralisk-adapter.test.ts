@@ -2,6 +2,8 @@ import { Effect, Redacted } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import {
+  type HydraliskFetch,
+  type HydraliskReplicaAdapterConfig,
   makeHydraliskVllmAdapter,
   makeHydraliskVllmPoolAdapter,
 } from './hydralisk-adapter'
@@ -40,55 +42,220 @@ const RETRYABLE_STATUS_CASES = [
   [500, 'upstream_error'],
 ] as const
 
+const GLM_POOL_ADAPTER_ID = 'hydralisk-vllm-glm-5p2-reap-504b'
+
+const replicaFixture = (
+  replicaId: string,
+  overrides: Partial<HydraliskReplicaAdapterConfig> = {},
+): HydraliskReplicaAdapterConfig => ({
+  apiKey: Redacted.make(`${replicaId}-token`),
+  baseUrl: `https://${replicaId}.example.test`,
+  benchmarkReserved: false,
+  costProfileRef:
+    'cost_profile.hydralisk.glm_52_reap_504b.g4_4g.spot.fixture.v1',
+  draining: false,
+  evidenceRefs: [`receipt.hydralisk.glm.${replicaId}.fixture`],
+  fetchImpl: async () => Response.json(responseBody),
+  id: GLM_POOL_ADAPTER_ID,
+  maxInflight: 1,
+  profileRef: `profile.hydralisk.glm_52_reap_504b.${replicaId}.fixture`,
+  replicaId,
+  ...overrides,
+})
+
+const captureFetch =
+  (inputs: Array<string>): HydraliskFetch =>
+  async input => {
+    inputs.push(input)
+    return Response.json(responseBody)
+  }
+
 describe('hydralisk vLLM adapter', () => {
   it('keeps one GLM pool adapter id while dispatching to an eligible replica', async () => {
     const capturedInputs: Array<string> = []
     const adapter = makeHydraliskVllmPoolAdapter({
-      id: 'hydralisk-vllm-glm-5p2-reap-504b',
+      id: GLM_POOL_ADAPTER_ID,
       replicas: [
-        {
-          apiKey: Redacted.make('reserved-token'),
+        replicaFixture('reserved', {
           baseUrl: 'https://reserved.example.test',
           benchmarkReserved: true,
-          costProfileRef:
-            'cost_profile.hydralisk.glm_52_reap_504b.g4_4g.spot.fixture.v1',
-          draining: false,
-          evidenceRefs: ['receipt.hydralisk.glm.reserved.fixture'],
-          fetchImpl: async input => {
-            capturedInputs.push(input)
-            return Response.json(responseBody)
-          },
-          id: 'hydralisk-vllm-glm-5p2-reap-504b',
-          maxInflight: 1,
-          profileRef: 'profile.hydralisk.glm_52_reap_504b.reserved.fixture',
-          replicaId: 'reserved',
-        },
-        {
-          apiKey: Redacted.make('second-token'),
+          fetchImpl: captureFetch(capturedInputs),
+        }),
+        replicaFixture('second', {
           baseUrl: 'https://second.example.test',
-          benchmarkReserved: false,
-          costProfileRef:
-            'cost_profile.hydralisk.glm_52_reap_504b.g4_4g.spot.fixture.v1',
-          draining: false,
-          evidenceRefs: ['receipt.hydralisk.glm.second.fixture'],
-          fetchImpl: async input => {
-            capturedInputs.push(input)
-            return Response.json(responseBody)
-          },
-          id: 'hydralisk-vllm-glm-5p2-reap-504b',
-          maxInflight: 1,
-          profileRef: 'profile.hydralisk.glm_52_reap_504b.second.fixture',
-          replicaId: 'second',
-        },
+          fetchImpl: captureFetch(capturedInputs),
+        }),
       ],
       upstreamModel: 'openagents/glm-5.2-reap-504b',
     })
 
     const result = await Effect.runPromise(adapter.complete(request()))
 
-    expect(adapter.id).toBe('hydralisk-vllm-glm-5p2-reap-504b')
+    expect(adapter.id).toBe(GLM_POOL_ADAPTER_ID)
     expect(result.content).toBe('READY')
+    expect(result.adapterRouteMetadata).toMatchObject({
+      replicaFallbackReason: null,
+      replicaHealthScore: 1,
+      selectedReplicaId: 'second',
+      selectedReplicaRef: 'replica.hydralisk.glm_52_reap_504b.second',
+    })
     expect(capturedInputs).toEqual([
+      'https://second.example.test/v1/chat/completions',
+    ])
+  })
+
+  it('prefers the cache-affinity replica when it is healthy and idle', async () => {
+    const capturedInputs: Array<string> = []
+    const adapter = makeHydraliskVllmPoolAdapter({
+      affinityOracle: affinity =>
+        affinity === 'cacheaff:fixture' ? 'second' : undefined,
+      id: GLM_POOL_ADAPTER_ID,
+      replicas: [
+        replicaFixture('primary', { fetchImpl: captureFetch(capturedInputs) }),
+        replicaFixture('second', {
+          baseUrl: 'https://second.example.test',
+          fetchImpl: captureFetch(capturedInputs),
+        }),
+      ],
+      upstreamModel: 'openagents/glm-5.2-reap-504b',
+    })
+
+    const result = await Effect.runPromise(
+      adapter.complete(
+        request({
+          passthroughParams: {
+            max_tokens: 8,
+            'x-session-affinity': 'cacheaff:fixture',
+          },
+        }),
+      ),
+    )
+
+    expect(result.adapterRouteMetadata).toMatchObject({
+      replicaFallbackReason: 'cache_affinity_hit',
+      selectedReplicaId: 'second',
+    })
+    expect(capturedInputs).toEqual([
+      'https://second.example.test/v1/chat/completions',
+    ])
+  })
+
+  it('falls back to a warmed idle replica when the affinity target is busy', async () => {
+    const capturedInputs: Array<string> = []
+    const adapter = makeHydraliskVllmPoolAdapter({
+      affinityOracle: () => 'second',
+      id: GLM_POOL_ADAPTER_ID,
+      replicas: [
+        replicaFixture('primary', {
+          baseUrl: 'https://primary.example.test',
+          fetchImpl: captureFetch(capturedInputs),
+        }),
+        replicaFixture('second', {
+          baseUrl: 'https://second.example.test',
+          fetchImpl: captureFetch(capturedInputs),
+        }),
+      ],
+      routingStateOracle: replicaId =>
+        replicaId === 'second'
+          ? { inflightCount: 1, maxInflight: 1, warmAtEpochMs: 200 }
+          : { warmAtEpochMs: 100 },
+      upstreamModel: 'openagents/glm-5.2-reap-504b',
+    })
+
+    const result = await Effect.runPromise(
+      adapter.complete(
+        request({
+          passthroughParams: {
+            max_tokens: 8,
+            'x-session-affinity': 'cacheaff:fixture',
+          },
+        }),
+      ),
+    )
+
+    expect(result.adapterRouteMetadata).toMatchObject({
+      replicaFallbackReason: 'inflight_full',
+      selectedReplicaId: 'primary',
+    })
+    expect(capturedInputs).toEqual([
+      'https://primary.example.test/v1/chat/completions',
+    ])
+  })
+
+  it('skips draining replicas and chooses the warmed idle candidate', async () => {
+    const capturedInputs: Array<string> = []
+    const adapter = makeHydraliskVllmPoolAdapter({
+      id: GLM_POOL_ADAPTER_ID,
+      replicas: [
+        replicaFixture('draining', {
+          baseUrl: 'https://draining.example.test',
+          draining: true,
+          fetchImpl: captureFetch(capturedInputs),
+        }),
+        replicaFixture('warm', {
+          baseUrl: 'https://warm.example.test',
+          fetchImpl: captureFetch(capturedInputs),
+        }),
+        replicaFixture('cold', {
+          baseUrl: 'https://cold.example.test',
+          fetchImpl: captureFetch(capturedInputs),
+        }),
+      ],
+      routingStateOracle: replicaId =>
+        replicaId === 'warm' ? { warmAtEpochMs: 500 } : undefined,
+      upstreamModel: 'openagents/glm-5.2-reap-504b',
+    })
+
+    const result = await Effect.runPromise(adapter.complete(request()))
+
+    expect(result.adapterRouteMetadata?.selectedReplicaId).toBe('warm')
+    expect(capturedInputs).toEqual([
+      'https://warm.example.test/v1/chat/completions',
+    ])
+  })
+
+  it('sends concurrent singleflight requests to different idle replicas', async () => {
+    const capturedInputs: Array<string> = []
+    let releasePrimary: (() => void) | undefined
+    let markPrimaryStarted: (() => void) | undefined
+    const primaryStarted = new Promise<void>(resolve => {
+      markPrimaryStarted = resolve
+    })
+    const releasePrimaryPromise = new Promise<void>(resolve => {
+      releasePrimary = resolve
+    })
+    const primaryFetch: HydraliskFetch = async input => {
+      capturedInputs.push(input)
+      markPrimaryStarted?.()
+      await releasePrimaryPromise
+      return Response.json(responseBody)
+    }
+    const adapter = makeHydraliskVllmPoolAdapter({
+      id: GLM_POOL_ADAPTER_ID,
+      replicas: [
+        replicaFixture('primary', {
+          baseUrl: 'https://primary.example.test',
+          fetchImpl: primaryFetch,
+        }),
+        replicaFixture('second', {
+          baseUrl: 'https://second.example.test',
+          fetchImpl: captureFetch(capturedInputs),
+        }),
+      ],
+      upstreamModel: 'openagents/glm-5.2-reap-504b',
+    })
+
+    const first = Effect.runPromise(adapter.complete(request()))
+    await primaryStarted
+    const second = Effect.runPromise(adapter.complete(request()))
+    releasePrimary?.()
+    const results = await Promise.all([first, second])
+
+    expect(
+      results.map(result => result.adapterRouteMetadata?.selectedReplicaId),
+    ).toEqual(['primary', 'second'])
+    expect(capturedInputs).toEqual([
+      'https://primary.example.test/v1/chat/completions',
       'https://second.example.test/v1/chat/completions',
     ])
   })
