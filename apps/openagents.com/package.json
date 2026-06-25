@@ -56,7 +56,8 @@
     "khala-code:verify": "bun scripts/khala-code-headless-harness.mjs",
     "sync:icons": "bun scripts/sync-fireball-icons.mjs",
     "prepare": "node scripts/patch-effect-language-service.mjs",
-    "check:no-github-actions": "bun run scripts/check-no-github-actions.mjs"
+    "check:no-github-actions": "bun run scripts/check-no-github-actions.mjs",
+    "check:deploy-from-main": "bun run scripts/check-deploy-from-main.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250601.0",
