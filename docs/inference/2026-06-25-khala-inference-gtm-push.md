@@ -284,9 +284,11 @@ automatically re-scored. The gym drives the harness above over a *ladder of
 opponents*, all on identical prompts and our axes (tokens, $, wall-clock,
 cost-per-accepted-outcome, verified-rate):
 
-1. **BigPickle vs Khala** — the first named baseline target. *(Confirm exactly
-   which model/benchmark "BigPickle" refers to before wiring this rung; the rest
-   of the ladder doesn't depend on it.)*
+1. **BigPickle vs Khala** — the first named baseline target. **BigPickle is
+   OpenCode's default free model** (owner-confirmed, Episode 243), so this rung is
+   "Khala vs the free model an OpenCode user gets by default," run on the OpenCode
+   coding surface — the cleanest, most directly relevant baseline to beat on
+   cost-per-accepted-outcome and verified-rate.
 2. **Other (open / free) models vs Khala** — the open models a developer would
    otherwise reach for (the catalog/ecosystem set), so we know where Khala stands
    among the free options people compare us to.

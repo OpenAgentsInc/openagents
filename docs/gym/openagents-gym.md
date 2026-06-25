@@ -32,6 +32,14 @@
 > beyond what those docs already document.** This is not a product promise, a
 > served capability, or public-claim copy; nothing here widens a promise registry
 > entry or asserts a public benchmark marketplace.
+>
+> **Episode 243 delta (2026-06-25):** see
+> [`2026-06-25-gym-opencode-head-to-head-and-khala-flywheel.md`](2026-06-25-gym-opencode-head-to-head-and-khala-flywheel.md)
+> for the current Phase-1 direction — the **OpenCode coding-agent head-to-head** as
+> the first real environment, **BigPickle** (OpenCode's default free model) de-TBD'd
+> as ladder rung 1, the expanded backing-lane set, the real per-lane cost basis the
+> cost-per-accepted-outcome now consumes, and the **train-and-use-Khala** flywheel
+> (the Gym's own runner/eval inference routed through Khala = the next dog-food lane).
 
 ## 0. In one paragraph
 
@@ -127,15 +135,26 @@ a Khala request in the world ([`../khala/khala-in-the-world.md`](../khala/khala-
 1. **Environment picker** — choose the benchmark/task env: `terminal-bench`,
    `khala-code` (crossy-road rubric / artifact-gen), `long-context-codebase-qa`,
    the **M8 head-to-head** demo ([`../khala/2026-06-23-khala-head-to-head-m8-status.md`](../khala/2026-06-23-khala-head-to-head-m8-status.md)),
+   the **OpenCode coding-agent head-to-head** (the first *client-surface*
+   environment — run the same coding task through OpenCode against each model
+   endpoint; FIRST Phase-1 target per Episode 243, see
+   [`2026-06-25-gym-opencode-head-to-head-and-khala-flywheel.md`](2026-06-25-gym-opencode-head-to-head-and-khala-flywheel.md)),
    or a custom registered env. Picking an env fixes its verifier + acceptance
    contract — you cannot run an env without its grader.
-2. **Provider fan-out** — multi-select the lanes (`vertex-anthropic`,
-   `vertex-gemini`, `fireworks`, `partner-passthrough` real today;
-   `pylon-whole-small`, `psionic-shard-wan` labeled future), and a **fan-out
-   mode**: `single` · `race` (first viable) · `best-of-N` · `verifier-pick`
-   (run N, keep the one that verifies). Concurrency is a dial. The single
-   `LANE_AVAILABILITY` table stays the source of truth; future lanes are
-   selectable axes but never measured (honest skipped run, never a fake zero).
+2. **Provider fan-out** — multi-select the lanes (`fireworks` —
+   DeepSeek V4 Flash, the primary backing lane today — plus `vertex-anthropic`,
+   `vertex-gemini`, `partner-passthrough`, the OpenRouter-free lane, and the
+   own-infra `gpt-oss-20b` / `gpt-oss-120b` (Hydralisk) and `cerebras-glm-52`
+   (REAP) lanes that Episode 243 added to the Khala mix; `pylon-whole-small`,
+   `psionic-shard-wan` labeled future), and a **fan-out mode**: `single` · `race`
+   (first viable) · `best-of-N` · `verifier-pick` (run N, keep the one that
+   verifies). Concurrency is a dial. The single `LANE_AVAILABILITY` table stays
+   the source of truth; future lanes are selectable axes but never measured
+   (honest skipped run, never a fake zero). The Gym is also where a **new or tuned
+   lane is exercised before it joins the Khala mix** (e.g. the GLM-REAP MTP2
+   speculative-decoding win), scored on outcome, not just raw tok/s.
+   For the head-to-head ladder, competitor model endpoints are typed lanes too:
+   `bigpickle` (OpenCode's default free model) → other open/free → paid frontier.
 3. **Tool set** — select the tools/tool-schemas exposed to the policy (and MCP
    tool toggles). Tool order/serialization stays canonical so the stable
    prompt-prefix hash holds (book P0-2, `prompt-prefix-cache.ts`).
