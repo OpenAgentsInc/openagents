@@ -41,13 +41,17 @@ export const overlayView = <Message>(
       h.main(
         [
           h.AriaLabel('Log in'),
+          // `items-start` + the card's `my-auto` centers the card when there is
+          // room but lets it scroll from its top (auto margins collapse to 0 on
+          // overflow) at short heights, instead of clipping the top the way
+          // `items-center` centering would.
           Ui.className<Message>(
-            'flex min-h-0 flex-1 items-center justify-center px-4 py-12',
+            'flex min-h-0 flex-1 items-start justify-center px-4 py-12',
           ),
         ],
         [
           h.div(
-            [Ui.className<Message>(cardClass)],
+            [Ui.className<Message>(`my-auto ${cardClass}`)],
             [
               h.div(
                 [Ui.className<Message>('grid gap-2')],

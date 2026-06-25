@@ -382,15 +382,21 @@ export const instructionsView = <Message>(counter?: Html): Html => {
   return h.div(
     [
       h.DataAttribute(KHALA_INSTRUCTIONS_ATTR, ''),
+      // Scroll container: `overflow-y-auto` + `items-start` so the panel's TOP is
+      // always reachable. The panel itself uses `my-auto` to center vertically
+      // when there is room, but auto block-margins collapse to 0 the moment the
+      // panel is taller than the viewport (short/landscape heights) — so the full
+      // panel scrolls from its top instead of being clipped at the top the way
+      // `items-center` centering would clip it.
       Ui.className<Message>(
-        'pointer-events-auto absolute inset-0 z-20 flex items-start justify-center overflow-y-auto p-6 sm:items-center',
+        'pointer-events-auto absolute inset-0 z-20 flex items-start justify-center overflow-y-auto p-6',
       ),
     ],
     [
       h.div(
         [
           Ui.className<Message>(
-            'grid w-full max-w-xl gap-5 rounded-xl border border-[#1d2733] ' +
+            'my-auto grid w-full max-w-xl gap-5 rounded-xl border border-[#1d2733] ' +
               'bg-[#04070c]/90 p-7 shadow-2xl backdrop-blur-md',
           ),
         ],
