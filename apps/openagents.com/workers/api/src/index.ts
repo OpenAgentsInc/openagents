@@ -415,6 +415,8 @@ import {
   sanitizeFreeKeyLabel,
   withFreeTierKhala,
 } from './inference/inference-free-tier-key'
+import { freeTierDataSharingDisclosure } from './inference/free-tier-data-sharing-disclosure'
+import { handleFreeTierDataSharingDisclosureApi } from './inference/free-tier-data-sharing-routes'
 import {
   isConfidentialComputeEnabled,
   makePaidPrivacyResolver,
@@ -6641,6 +6643,13 @@ export const handleFreeKeyMint = async (
           },
           usage:
             'Send this token as the Authorization: Bearer credential to POST /api/v1/chat/completions with {"model":"openagents/khala"}. Free within the daily quota; beyond it, add credits.',
+          // DATA-SHARING DISCLOSURE (#6296). Honest, code-accurate terms for the
+          // free tier: free usage is captured by default as redacted, private
+          // (owner_only) traces that may be used to improve/train models; pay for
+          // privacy (or use confidential compute) to opt out; public sharing is
+          // opt-in only. The same canonical disclosure is served at
+          // GET /api/public/free-tier-data-sharing for agents.
+          dataSharing: freeTierDataSharingDisclosure(),
         },
         { status: 201 },
       ),
@@ -9407,6 +9416,15 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/public/product-promises',
     handler: (request, env) =>
       handlePublicProductPromisesApi(request, openAgentsDatabase(env)),
+  },
+  {
+    // Free-API data-sharing terms / consent disclosure (#6296). Public,
+    // agent-readable: the honest free-tier terms (captured by default, redacted,
+    // private owner_only, may improve/train; pay-for-privacy opt-out; public
+    // sharing opt-in only; reward marker inert). Same canonical disclosure the
+    // free-key mint response embeds. Read-only, no auth, no DB, no secrets.
+    path: '/api/public/free-tier-data-sharing',
+    handler: request => handleFreeTierDataSharingDisclosureApi(request),
   },
   {
     path: '/api/public/product-promises/transitions',

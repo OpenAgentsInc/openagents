@@ -336,7 +336,14 @@ Ordered; each maps to a filed issue (§9):
 - Master/keystone: **default-ON redacted trace capture for free-tier traffic.**
 - Child: **private-by-default visibility + opt-in-to-public mutation route.**
 - Child: **paid-privacy / confidential-compute capture opt-OUT.**
-- Child: **data-sharing terms/consent disclosure surface** (via `docs/promises/`).
+- Child: **data-sharing terms/consent disclosure surface** (#6296, via
+  `docs/promises/`). **LANDED** as `data.free_tier_capture_disclosure.v1`
+  ([`docs/promises/2026-06-25-free-tier-data-sharing-disclosure.md`](../promises/2026-06-25-free-tier-data-sharing-disclosure.md)):
+  the canonical disclosure
+  ([`free-tier-data-sharing-disclosure.ts`](../../apps/openagents.com/workers/api/src/inference/free-tier-data-sharing-disclosure.ts))
+  is surfaced at `POST /api/keys/free` (`dataSharing`), the agent-readable
+  `GET /api/public/free-tier-data-sharing`, and the public `AGENTS.md`. Yellow
+  until the capture-default flip + owner-approved copy land.
 
 (Issue numbers/URLs recorded in the commit / handoff. The repo's strict-bug-only
 issue default is explicitly overridden by the owner's directive for this work.)

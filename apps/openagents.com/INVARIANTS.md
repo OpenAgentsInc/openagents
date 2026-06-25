@@ -2399,6 +2399,14 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     `workers/api/src/public-card-credit-spend-receipt-routes.test.ts`.
   - `GET /api/public/home` — static discovery document, exempt (not a state
     projection).
+  - `GET /api/public/free-tier-data-sharing` — static free-API data-sharing
+    terms/policy contract (#6296: version, ordered terms, bounded policy facts),
+    exempt (not a state projection, no `generatedAt`/staleness contract). Honest
+    and code-accurate to the capture seams (redacted, `owner_only` default,
+    paid-privacy fail-closed opt-out, public opt-in only, reward marker inert);
+    grants no capture, training-consent, spend, payout, or settlement authority.
+    Regression coverage:
+    `workers/api/src/inference/free-tier-data-sharing-disclosure.test.ts`.
   - `GET /api/public/product-promises` — live at read over the versioned
     product-promise registry — compliant (`generatedAt`, `registryVersion`,
     `maxStalenessSeconds`, top-level `projection_staleness.v1`

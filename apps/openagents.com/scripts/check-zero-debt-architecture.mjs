@@ -1017,6 +1017,14 @@ const publicProjectionSurfaces = [
     status: 'static_contract_exempt',
   },
   {
+    // Free-tier data-sharing disclosure (#6296): a static terms/policy contract
+    // (version + ordered terms + bounded policy facts), not a live state
+    // projection, so it carries no generatedAt/staleness contract.
+    module: 'workers/api/src/inference/free-tier-data-sharing-routes.ts',
+    route: '/api/public/free-tier-data-sharing',
+    status: 'static_contract_exempt',
+  },
+  {
     module: 'workers/api/src/ecommerce-campaign-receipt-routes.ts',
     route: '/api/public/ecommerce-campaign/receipts',
     status: 'static_contract_exempt',

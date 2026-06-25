@@ -3762,12 +3762,74 @@ const requestSchemas = (): JsonSchema => ({
     },
     examples: [{ label: 'my-cli' }, {}],
   },
+  FreeTierDataSharingDisclosure: {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'promiseId',
+      'version',
+      'summary',
+      'terms',
+      'policy',
+      'optOut',
+      'publicSharing',
+      'reportPath',
+      'references',
+    ],
+    description:
+      'Canonical, code-accurate data-sharing terms for the free Khala API (#6296). Public-safe: terms text + bounded policy facts only — no secrets, account, or payment material.',
+    properties: {
+      promiseId: {
+        type: 'string',
+        description:
+          'The product-promise id this disclosure is tracked under (data.free_tier_capture_disclosure.v1).',
+      },
+      version: {
+        type: 'string',
+        description: 'Disclosure version; bumped when the terms text changes.',
+      },
+      summary: { type: 'string' },
+      terms: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Ordered, bounded disclosure clauses.',
+      },
+      policy: {
+        type: 'object',
+        additionalProperties: false,
+        required: [
+          'capturedByDefault',
+          'redacted',
+          'defaultVisibility',
+          'mayTrain',
+          'paidPrivacyOptOut',
+          'publicSharingOptIn',
+          'rewardInert',
+        ],
+        description:
+          'Machine-checkable policy facts mirroring the runtime capture seams.',
+        properties: {
+          capturedByDefault: { type: 'boolean' },
+          redacted: { type: 'boolean' },
+          defaultVisibility: { type: 'string', enum: ['owner_only'] },
+          mayTrain: { type: 'boolean' },
+          paidPrivacyOptOut: { type: 'boolean' },
+          publicSharingOptIn: { type: 'boolean' },
+          rewardInert: { type: 'boolean' },
+        },
+      },
+      optOut: { type: 'string' },
+      publicSharing: { type: 'string' },
+      reportPath: { type: 'string' },
+      references: { type: 'array', items: { type: 'string' } },
+    },
+  },
   FreeApiKeyMintResponse: {
     type: 'object',
     additionalProperties: false,
-    required: ['tier', 'model', 'credential', 'quota', 'usage'],
+    required: ['tier', 'model', 'credential', 'quota', 'usage', 'dataSharing'],
     description:
-      'Khala FREE API mode mint result. The raw bearer token is returned ONCE here and is not redisplayed. No wallet, payment, or owner-private material is included.',
+      'Khala FREE API mode mint result. The raw bearer token is returned ONCE here and is not redisplayed. No wallet, payment, or owner-private material is included. The dataSharing field carries the honest free-tier data-sharing terms (#6296): free usage is captured by default as redacted, private traces that may improve/train models; pay for privacy to opt out; public sharing is opt-in only.',
     properties: {
       tier: { type: 'string', enum: ['free'] },
       model: { type: 'string', enum: ['openagents/khala'] },
@@ -3796,6 +3858,9 @@ const requestSchemas = (): JsonSchema => ({
         },
       },
       usage: { type: 'string' },
+      dataSharing: {
+        $ref: '#/components/schemas/FreeTierDataSharingDisclosure',
+      },
     },
   },
   LinkAccountPylonAgentRequest: objectSummary(
@@ -4929,6 +4994,23 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Product promises.',
           '#/components/schemas/ProductPromises',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/free-tier-data-sharing': {
+    get: operation({
+      operationId: 'getFreeTierDataSharingDisclosure',
+      summary: 'Read free-API data-sharing terms',
+      description:
+        'Returns the canonical, code-accurate data-sharing terms for the free Khala API so agents and users can discover them over the API surface, not only in human UI. The honest terms: free API usage is captured by default as REDACTED, PRIVATE (owner_only) traces that may be used to improve and train OpenAgents models; paying for privacy (or running confidential compute) opts you OUT of capture (fail-closed to not-captured); public sharing of a captured trace is owner opt-in only; and being captured grants NO payout or settlement (the data-market reward marker is inert and owner-gated). The same disclosure object is embedded in the POST /api/keys/free mint response. Read-only, no auth, no secrets.',
+      tags: ['Public Proof', 'Agents'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Free-tier data-sharing disclosure.',
+          '#/components/schemas/FreeTierDataSharingDisclosure',
         ),
         ...errorResponses(),
       },

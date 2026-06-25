@@ -152,11 +152,24 @@ describe('POST /api/keys/free (issue #6228)', () => {
       model: string
       credential: { token: string; tokenPrefix: string }
       quota: { maxRequestsPerDay: number; maxTokensPerDay: number }
+      dataSharing: {
+        promiseId: string
+        terms: ReadonlyArray<string>
+        policy: { capturedByDefault: boolean; paidPrivacyOptOut: boolean }
+      }
     }
     expect(body.tier).toBe('free')
     expect(body.model).toBe('openagents/khala')
     expect(body.credential.token.startsWith('oa_agent_')).toBe(true)
     expect(body.quota.maxRequestsPerDay).toBeGreaterThan(0)
+    // DISCLOSURE (#6296): the honest free-tier data-sharing terms ride along on
+    // the mint response so a caller is told the deal at key-mint time.
+    expect(body.dataSharing.promiseId).toBe(
+      'data.free_tier_capture_disclosure.v1',
+    )
+    expect(body.dataSharing.terms.length).toBeGreaterThan(0)
+    expect(body.dataSharing.policy.capturedByDefault).toBe(true)
+    expect(body.dataSharing.policy.paidPrivacyOptOut).toBe(true)
     // The minted account is now marked free-tier in D1.
     const row = await db
       .prepare(

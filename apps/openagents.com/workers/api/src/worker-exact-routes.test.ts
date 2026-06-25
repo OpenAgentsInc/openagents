@@ -16,6 +16,7 @@ const approvedExactRoutePaths = [
   '/api/public/tassadar-replays/first-real-settlement',
   '/api/public/proof-replays',
   '/api/public/product-promises',
+  '/api/public/free-tier-data-sharing',
   '/api/public/product-promises/transitions',
   '/api/public/product-promises/audit',
   '/api/public/metrics/accepted-outcomes-per-kwh',

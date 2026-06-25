@@ -1,5 +1,10 @@
 [
   {
+    "surface": "/api/public/free-tier-data-sharing -> FreeTierDataSharingDisclosure",
+    "issueRef": "OpenAgentsInc/openagents#6296",
+    "reason": "Static free-API data-sharing terms/policy contract (version + ordered terms + bounded policy facts), not a live state projection — it has no generatedAt or staleness because the disclosed terms do not go stale; it changes only with an explicit disclosure version bump."
+  },
+  {
     "surface": "/api/public/adjutant/activity -> PublicAdjutantActivity",
     "issueRef": "OpenAgentsInc/openagents#4751",
     "reason": "Grandfathered public projection documented before the freshness gate; add generatedAt and an explicit staleness contract before removing this entry."

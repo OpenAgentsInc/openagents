@@ -1,5 +1,19 @@
 # Promise Registry
 
+> Registry `2026-06-25.1` adds `data.free_tier_capture_disclosure.v1` (yellow):
+> the honest free-API data-sharing disclosure backing default-on free-tier trace
+> capture (#6293/#6294/#6295, EPIC #6206, issue #6296). Free-tier
+> `/api/v1/chat/completions` traffic is captured by default as redacted, private
+> (`owner_only`) traces that may be used to improve/train models; paying for
+> privacy / confidential compute opts out (fail-closed); public sharing is owner
+> opt-in only; capture grants no payout (reward marker inert, owner-gated #6221).
+> The canonical disclosure
+> ([`free-tier-data-sharing-disclosure.ts`](../../apps/openagents.com/workers/api/src/inference/free-tier-data-sharing-disclosure.ts))
+> is surfaced at `POST /api/keys/free` (`dataSharing` field), the agent-readable
+> `GET /api/public/free-tier-data-sharing`, and the public `AGENTS.md`. Record:
+> [`2026-06-25-free-tier-data-sharing-disclosure.md`](2026-06-25-free-tier-data-sharing-disclosure.md).
+> It is disclosure-only — no capture behavior, no authority, no money.
+>
 > Latest reconciliation: live registry `2026-06-19.2` (see
 > [`product-promises.ts`](../../apps/openagents.com/workers/api/src/product-promises.ts)
 > and the June 18-19 launch/promise reconciliation notes). `2026-06-19.2` is a
