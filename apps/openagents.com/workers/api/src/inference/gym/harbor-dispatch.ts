@@ -1,6 +1,9 @@
 import { Schema as S } from 'effect'
 
-import type { BenchmarkLane } from '../benchmark'
+import {
+  BenchmarkLane as BenchmarkLaneSchema,
+  type BenchmarkLane,
+} from '../benchmark'
 import {
   GYM_ENVIRONMENT_REGISTRY,
   compileGymExperiment,
@@ -22,7 +25,249 @@ export const HYDRALISK_TERMINAL_BENCH_SUMMARY_SCHEMA =
   'hydralisk.evals.terminal_bench.summary.v1'
 
 const TERMINAL_BENCH_HARBOR_DATASET_CLI_REF = 'terminal-bench/terminal-bench-2'
-const KHALA_PUBLIC_MODEL_ID = 'openagents/khala'
+export const KHALA_PUBLIC_MODEL_ID = 'openagents/khala' as const
+export const GLM_REAP_TERMINAL_BENCH_MODEL_ID =
+  'openagents/glm-5.2-reap-504b' as const
+
+export const GymHarborTerminalBenchModelId = S.Literals([
+  KHALA_PUBLIC_MODEL_ID,
+  GLM_REAP_TERMINAL_BENCH_MODEL_ID,
+])
+export type GymHarborTerminalBenchModelId =
+  typeof GymHarborTerminalBenchModelId.Type
+
+export const GymTerminalBenchProfileRef = S.Literals([
+  'khala-public-heuristic',
+  'glm-reap-504b-g4-tp4-minp-rp105',
+  'glm-reap-504b-g4-tp8-minp-rp105',
+  'glm-reap-504b-g4-dual-tp4-minp-rp105',
+  'glm-reap-504b-g4-tp4-mtp2-rp105',
+  'glm-reap-504b-g4-tp4-65k-fast',
+  'glm-reap-504b-g4-tp4-250k-stable',
+])
+export type GymTerminalBenchProfileRef =
+  typeof GymTerminalBenchProfileRef.Type
+
+export const GymTerminalBenchSpeculationMode = S.Literals(['none', 'mtp2'])
+export type GymTerminalBenchSpeculationMode =
+  typeof GymTerminalBenchSpeculationMode.Type
+
+export const GymTerminalBenchReplicaTopology = S.Literals([
+  'single_tp4',
+  'single_tp8',
+  'dual_tp4',
+  'khala_router',
+])
+export type GymTerminalBenchReplicaTopology =
+  typeof GymTerminalBenchReplicaTopology.Type
+
+export const GymTerminalBenchQuantization = S.Literals([
+  'nvfp4',
+  'router_mixed',
+])
+export type GymTerminalBenchQuantization =
+  typeof GymTerminalBenchQuantization.Type
+
+export const GymTerminalBenchServingProfile = S.Struct({
+  profileRef: GymTerminalBenchProfileRef,
+  lane: BenchmarkLaneSchema,
+  publicLabel: S.String,
+  model: GymHarborTerminalBenchModelId,
+  modelEndpointRef: S.String,
+  sourceModelRef: S.String,
+  attribution: S.String,
+  hardwareProfile: S.String,
+  tensorParallelism: S.Number,
+  replicaTopology: GymTerminalBenchReplicaTopology,
+  contextWindowTokens: S.Number,
+  quantization: GymTerminalBenchQuantization,
+  speculationMode: GymTerminalBenchSpeculationMode,
+  sampler: S.Struct({
+    minP: S.NullOr(S.Number),
+    repetitionPenalty: S.Number,
+    enableThinking: S.Boolean,
+  }),
+  caveatRefs: S.Array(S.String),
+})
+export type GymTerminalBenchServingProfile =
+  typeof GymTerminalBenchServingProfile.Type
+
+const HYDRALISK_GLM_ENDPOINT_REF =
+  'hydralisk.glm_52_reap_504b.private_openai_compat.v1'
+const GLM_SOURCE_MODEL_REF = '0xSero/GLM-5.2-504B'
+const GLM_ATTRIBUTION = 'Z.ai GLM-5.2, REAP-pruned keep-168 NVFP4'
+
+export const GYM_TERMINAL_BENCH_PROFILE_CATALOG: Readonly<
+  Record<GymTerminalBenchProfileRef, GymTerminalBenchServingProfile>
+> = {
+  'khala-public-heuristic': {
+    profileRef: 'khala-public-heuristic',
+    lane: 'khala',
+    publicLabel: 'Khala heuristic public route',
+    model: KHALA_PUBLIC_MODEL_ID,
+    modelEndpointRef: 'openagents.khala.public_openai_compat.v1',
+    sourceModelRef: 'openagents/khala',
+    attribution: 'OpenAgents Khala orchestrator',
+    hardwareProfile: 'khala-router',
+    tensorParallelism: 0,
+    replicaTopology: 'khala_router',
+    contextWindowTokens: 250_000,
+    quantization: 'router_mixed',
+    speculationMode: 'none',
+    sampler: {
+      minP: 0.05,
+      repetitionPenalty: 1.05,
+      enableThinking: false,
+    },
+    caveatRefs: ['caveat.gym.terminal_bench.public_khala_route'],
+  },
+  'glm-reap-504b-g4-tp4-minp-rp105': {
+    profileRef: 'glm-reap-504b-g4-tp4-minp-rp105',
+    lane: 'glm-52',
+    publicLabel: 'GLM-5.2 REAP 504B G4 TP4 min-p guardrail',
+    model: GLM_REAP_TERMINAL_BENCH_MODEL_ID,
+    modelEndpointRef: HYDRALISK_GLM_ENDPOINT_REF,
+    sourceModelRef: GLM_SOURCE_MODEL_REF,
+    attribution: GLM_ATTRIBUTION,
+    hardwareProfile: 'hydralisk-g4-4x-rtx-pro-6000',
+    tensorParallelism: 4,
+    replicaTopology: 'single_tp4',
+    contextWindowTokens: 250_000,
+    quantization: 'nvfp4',
+    speculationMode: 'none',
+    sampler: {
+      minP: 0.05,
+      repetitionPenalty: 1.05,
+      enableThinking: false,
+    },
+    caveatRefs: ['caveat.gym.terminal_bench.raw_glm_not_public_catalog_model'],
+  },
+  'glm-reap-504b-g4-tp8-minp-rp105': {
+    profileRef: 'glm-reap-504b-g4-tp8-minp-rp105',
+    lane: 'glm-52',
+    publicLabel: 'GLM-5.2 REAP 504B G4 TP8 min-p guardrail',
+    model: GLM_REAP_TERMINAL_BENCH_MODEL_ID,
+    modelEndpointRef: HYDRALISK_GLM_ENDPOINT_REF,
+    sourceModelRef: GLM_SOURCE_MODEL_REF,
+    attribution: GLM_ATTRIBUTION,
+    hardwareProfile: 'hydralisk-g4-8x-rtx-pro-6000',
+    tensorParallelism: 8,
+    replicaTopology: 'single_tp8',
+    contextWindowTokens: 250_000,
+    quantization: 'nvfp4',
+    speculationMode: 'none',
+    sampler: {
+      minP: 0.05,
+      repetitionPenalty: 1.05,
+      enableThinking: false,
+    },
+    caveatRefs: ['caveat.gym.terminal_bench.raw_glm_not_public_catalog_model'],
+  },
+  'glm-reap-504b-g4-dual-tp4-minp-rp105': {
+    profileRef: 'glm-reap-504b-g4-dual-tp4-minp-rp105',
+    lane: 'glm-52',
+    publicLabel: 'GLM-5.2 REAP 504B dual TP4 replicas',
+    model: GLM_REAP_TERMINAL_BENCH_MODEL_ID,
+    modelEndpointRef: HYDRALISK_GLM_ENDPOINT_REF,
+    sourceModelRef: GLM_SOURCE_MODEL_REF,
+    attribution: GLM_ATTRIBUTION,
+    hardwareProfile: 'hydralisk-g4-dual-4x-rtx-pro-6000',
+    tensorParallelism: 4,
+    replicaTopology: 'dual_tp4',
+    contextWindowTokens: 250_000,
+    quantization: 'nvfp4',
+    speculationMode: 'none',
+    sampler: {
+      minP: 0.05,
+      repetitionPenalty: 1.05,
+      enableThinking: false,
+    },
+    caveatRefs: ['caveat.gym.terminal_bench.raw_glm_not_public_catalog_model'],
+  },
+  'glm-reap-504b-g4-tp4-mtp2-rp105': {
+    profileRef: 'glm-reap-504b-g4-tp4-mtp2-rp105',
+    lane: 'glm-52',
+    publicLabel: 'GLM-5.2 REAP 504B TP4 MTP-2 speculative decoding',
+    model: GLM_REAP_TERMINAL_BENCH_MODEL_ID,
+    modelEndpointRef: HYDRALISK_GLM_ENDPOINT_REF,
+    sourceModelRef: GLM_SOURCE_MODEL_REF,
+    attribution: GLM_ATTRIBUTION,
+    hardwareProfile: 'hydralisk-g4-4x-rtx-pro-6000',
+    tensorParallelism: 4,
+    replicaTopology: 'single_tp4',
+    contextWindowTokens: 250_000,
+    quantization: 'nvfp4',
+    speculationMode: 'mtp2',
+    sampler: {
+      minP: null,
+      repetitionPenalty: 1.05,
+      enableThinking: false,
+    },
+    caveatRefs: [
+      'caveat.gym.terminal_bench.raw_glm_not_public_catalog_model',
+      'caveat.gym.terminal_bench.mtp2_vllm_min_p_disabled',
+    ],
+  },
+  'glm-reap-504b-g4-tp4-65k-fast': {
+    profileRef: 'glm-reap-504b-g4-tp4-65k-fast',
+    lane: 'glm-52',
+    publicLabel: 'GLM-5.2 REAP 504B TP4 65K fast context',
+    model: GLM_REAP_TERMINAL_BENCH_MODEL_ID,
+    modelEndpointRef: HYDRALISK_GLM_ENDPOINT_REF,
+    sourceModelRef: GLM_SOURCE_MODEL_REF,
+    attribution: GLM_ATTRIBUTION,
+    hardwareProfile: 'hydralisk-g4-4x-rtx-pro-6000',
+    tensorParallelism: 4,
+    replicaTopology: 'single_tp4',
+    contextWindowTokens: 65_000,
+    quantization: 'nvfp4',
+    speculationMode: 'none',
+    sampler: {
+      minP: 0.05,
+      repetitionPenalty: 1.05,
+      enableThinking: false,
+    },
+    caveatRefs: ['caveat.gym.terminal_bench.raw_glm_not_public_catalog_model'],
+  },
+  'glm-reap-504b-g4-tp4-250k-stable': {
+    profileRef: 'glm-reap-504b-g4-tp4-250k-stable',
+    lane: 'glm-52',
+    publicLabel: 'GLM-5.2 REAP 504B TP4 250K stable context',
+    model: GLM_REAP_TERMINAL_BENCH_MODEL_ID,
+    modelEndpointRef: HYDRALISK_GLM_ENDPOINT_REF,
+    sourceModelRef: GLM_SOURCE_MODEL_REF,
+    attribution: GLM_ATTRIBUTION,
+    hardwareProfile: 'hydralisk-g4-4x-rtx-pro-6000',
+    tensorParallelism: 4,
+    replicaTopology: 'single_tp4',
+    contextWindowTokens: 250_000,
+    quantization: 'nvfp4',
+    speculationMode: 'none',
+    sampler: {
+      minP: 0.05,
+      repetitionPenalty: 1.10,
+      enableThinking: false,
+    },
+    caveatRefs: ['caveat.gym.terminal_bench.raw_glm_not_public_catalog_model'],
+  },
+}
+
+const decodeProfileRef = S.decodeUnknownSync(GymTerminalBenchProfileRef)
+const decodeServingProfile = S.decodeUnknownSync(GymTerminalBenchServingProfile)
+
+export const resolveGymTerminalBenchServingProfile = (
+  profileRef: unknown,
+): GymTerminalBenchServingProfile => {
+  const ref = decodeProfileRef(profileRef)
+  return decodeServingProfile(GYM_TERMINAL_BENCH_PROFILE_CATALOG[ref])
+}
+
+const defaultProfileRefForLane = (
+  lane: BenchmarkLane,
+): GymTerminalBenchProfileRef =>
+  lane === 'khala'
+    ? 'khala-public-heuristic'
+    : 'glm-reap-504b-g4-tp4-minp-rp105'
 
 export const HarborTerminalBenchAgent = S.Literals([
   'terminus-2',
@@ -82,6 +327,8 @@ export const GymHarborTerminalBenchJobSpec = S.Struct({
   jobRef: S.String,
   experimentId: S.String,
   configId: S.String,
+  profileRef: GymTerminalBenchProfileRef,
+  servingProfile: GymTerminalBenchServingProfile,
   environmentRef: S.Literal('terminal-bench'),
   taskSetRef: S.String,
   retainedPublicTaskRefs: S.Array(S.String),
@@ -90,8 +337,8 @@ export const GymHarborTerminalBenchJobSpec = S.Struct({
   harnessRef: S.Literal('hydralisk.harbor.terminal_bench.cli_artifact.v1'),
   runner: S.Literal('harbor'),
   agent: HarborTerminalBenchAgent,
-  model: S.Literal(KHALA_PUBLIC_MODEL_ID),
-  modelEndpointRef: S.Literal('openagents.khala.public_openai_compat.v1'),
+  model: GymHarborTerminalBenchModelId,
+  modelEndpointRef: S.String,
   nConcurrent: S.Number.check(S.isBetween({ minimum: 1, maximum: 64 })),
   maxAttempts: S.Number.check(S.isBetween({ minimum: 1, maximum: 1000 })),
   ownerApprovalRef: S.NullOr(S.String),
@@ -136,7 +383,7 @@ export const HydraliskTerminalBenchSummary = S.Struct({
     name: S.Literal('harbor'),
     version: S.String,
     agent: HarborTerminalBenchAgent,
-    model: S.Literal(KHALA_PUBLIC_MODEL_ID),
+    model: GymHarborTerminalBenchModelId,
     nConcurrent: S.Number,
     timeoutSeconds: S.Number,
     maxAttempts: S.Number,
@@ -149,7 +396,7 @@ export const HydraliskTerminalBenchSummary = S.Struct({
     hardwareProfile: S.String,
   }),
   sampler: S.Struct({
-    minP: S.Number,
+    minP: S.NullOr(S.Number),
     repetitionPenalty: S.Number,
     maxTokens: S.Number,
     enableThinking: S.Boolean,
@@ -210,6 +457,7 @@ export const GymHarborTerminalBenchIngest = S.Struct({
   jobRef: S.String,
   hydraliskRunRef: S.String,
   configId: S.String,
+  profileRef: GymTerminalBenchProfileRef,
   environmentRef: S.Literal('terminal-bench'),
   summarySchema: S.Literal(HYDRALISK_TERMINAL_BENCH_SUMMARY_SCHEMA),
   summaryArtifactRef: S.String,
@@ -217,7 +465,7 @@ export const GymHarborTerminalBenchIngest = S.Struct({
   datasetRef: S.Literal('terminal-bench@2.0'),
   runner: S.Literal('harbor'),
   agent: HarborTerminalBenchAgent,
-  model: S.Literal(KHALA_PUBLIC_MODEL_ID),
+  model: GymHarborTerminalBenchModelId,
   publicSafe: S.Literal(true),
   publicClaimEligible: S.Literal(false),
   decisionGradeReportReady: S.Literal(false),
@@ -318,11 +566,15 @@ const stableJson = (value: unknown): string => {
     .join(',')}}`
 }
 
-const makeJobRef = (experiment: GymExperiment): string =>
+const makeJobRef = (
+  experiment: GymExperiment,
+  profileRef: GymTerminalBenchProfileRef,
+): string =>
   `job.gym.harbor_terminal_bench.${safeRefSegment(experiment.id)}.${fnv1a32(
     stableJson({
       environment: experiment.environment,
       lanes: experiment.policy.fanout.lanes,
+      profileRef,
       samplesPerCell: experiment.samplesPerCell,
       shapes: experiment.shapes.map(shape => shape.id),
     }),
@@ -354,9 +606,10 @@ const terminalBenchDefinition = (
   return definition
 }
 
-const assertTerminalBenchKhalaExperiment = (
+const assertTerminalBenchExperiment = (
   experiment: GymExperiment,
   definition: GymEnvironmentDefinition,
+  profile: GymTerminalBenchServingProfile,
 ): void => {
   if (experiment.environment !== 'terminal-bench') {
     throw new GymHarborDispatchError({
@@ -377,18 +630,26 @@ const assertTerminalBenchKhalaExperiment = (
   }
   if (
     experiment.policy.fanout.lanes.length !== 1 ||
-    experiment.policy.fanout.lanes[0] !== 'khala'
+    !['khala', 'glm-52'].includes(experiment.policy.fanout.lanes[0] ?? '')
   ) {
     throw new GymHarborDispatchError({
       reason: 'unsupported_lane',
       message:
-        'The first Hydralisk Harbor dispatch seam is intentionally scoped to openagents/khala.',
+        'Hydralisk Harbor Terminal-Bench dispatch requires exactly one supported benchmark lane.',
+    })
+  }
+  if (profile.lane !== experiment.policy.fanout.lanes[0]) {
+    throw new GymHarborDispatchError({
+      reason: 'unsupported_lane',
+      message:
+        'Hydralisk Harbor Terminal-Bench profile must match the selected benchmark lane.',
     })
   }
 }
 
 const commandForJob = (input: {
   agent: HarborTerminalBenchAgent
+  model: GymHarborTerminalBenchModelId
   nConcurrent: number
 }): GymHarborTerminalBenchCommandSpec => ({
   executable: 'harbor',
@@ -400,7 +661,7 @@ const commandForJob = (input: {
     '--agent',
     input.agent,
     '--model',
-    KHALA_PUBLIC_MODEL_ID,
+    input.model,
     '--n-concurrent',
     `${input.nConcurrent}`,
   ],
@@ -411,6 +672,7 @@ export const buildGymHarborTerminalBenchJobSpec = (
   input: Readonly<{
     agent?: HarborTerminalBenchAgent | undefined
     ownerApprovalRef?: string | undefined
+    profileRef?: GymTerminalBenchProfileRef | undefined
     registry?: GymEnvironmentRegistry | undefined
   }> = {},
 ): Readonly<{
@@ -419,14 +681,23 @@ export const buildGymHarborTerminalBenchJobSpec = (
 }> => {
   const registry = input.registry ?? GYM_ENVIRONMENT_REGISTRY
   const definition = terminalBenchDefinition(registry)
-  assertTerminalBenchKhalaExperiment(experiment, definition)
+  const selectedLane = experiment.policy.fanout.lanes[0]
+  const profile = resolveGymTerminalBenchServingProfile(
+    input.profileRef ??
+      (selectedLane === undefined
+        ? 'khala-public-heuristic'
+        : defaultProfileRefForLane(selectedLane)),
+  )
+  assertTerminalBenchExperiment(experiment, definition, profile)
   const compiled = compileGymExperiment(experiment, registry)
   const agent = input.agent ?? 'terminus-2'
   const job = decodeJobSpec({
     schemaVersion: GYM_HARBOR_TERMINAL_BENCH_JOB_SPEC_SCHEMA,
-    jobRef: makeJobRef(experiment),
+    jobRef: makeJobRef(experiment, profile.profileRef),
     experimentId: experiment.id,
     configId: compiled.matrixConfig.id,
+    profileRef: profile.profileRef,
+    servingProfile: profile,
     environmentRef: 'terminal-bench',
     taskSetRef: definition.taskSet.ref,
     retainedPublicTaskRefs: definition.taskSet.publicSafeTaskRefs,
@@ -435,13 +706,14 @@ export const buildGymHarborTerminalBenchJobSpec = (
     harnessRef: 'hydralisk.harbor.terminal_bench.cli_artifact.v1',
     runner: 'harbor',
     agent,
-    model: KHALA_PUBLIC_MODEL_ID,
-    modelEndpointRef: 'openagents.khala.public_openai_compat.v1',
+    model: profile.model,
+    modelEndpointRef: profile.modelEndpointRef,
     nConcurrent: experiment.policy.fanout.concurrency,
     maxAttempts: experiment.samplesPerCell,
     ownerApprovalRef: input.ownerApprovalRef ?? null,
     command: commandForJob({
       agent,
+      model: profile.model,
       nConcurrent: experiment.policy.fanout.concurrency,
     }),
     artifacts: {
@@ -584,6 +856,7 @@ export const buildGymHarborTerminalBenchIngest = (input: {
     jobRef: input.job.jobRef,
     hydraliskRunRef: input.dispatch.hydraliskRunRef,
     configId: input.job.configId,
+    profileRef: input.job.profileRef,
     environmentRef: 'terminal-bench',
     summarySchema: HYDRALISK_TERMINAL_BENCH_SUMMARY_SCHEMA,
     summaryArtifactRef: input.dispatch.summaryArtifactRef,
@@ -608,6 +881,7 @@ export const buildGymHarborTerminalBenchIngest = (input: {
     fullDenominatorSolved: input.summary.rates.fullDenominatorSolved,
     passAtN: input.summary.rates.passAtN,
     caveats: [
+      ...input.job.servingProfile.caveatRefs,
       'summary_ingest_only',
       'raw_harbor_artifacts_excluded',
       'cost_per_accepted_outcome_mapping_deferred_to_6242',

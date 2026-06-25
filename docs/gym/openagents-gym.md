@@ -367,10 +367,15 @@ guarantees realistic traffic + owner-armed seam + a citable public report.
   `harbor-dispatch.ts` builds a typed
   `openagents.gym.harbor_terminal_bench_job_spec.v1` for Hydralisk to run
   `harbor run -d terminal-bench/terminal-bench-2 --agent terminus-2 --model
-  openagents/khala`, then ingests the public-safe
-  `hydralisk.evals.terminal_bench.summary.v1` summary plus an ATIF trace ref.
-  The Worker imports no Harbor runtime code; raw Harbor artifacts stay on
-  Hydralisk. The dispatch receipt now also carries verified distinct-device
+  openagents/khala` or a closed GLM-REAP replication profile, then ingests the
+  public-safe `hydralisk.evals.terminal_bench.summary.v1` summary plus an ATIF
+  trace ref.
+  The Worker imports no Harbor runtime code; raw Harbor artifacts and private
+  endpoint material stay on Hydralisk. The job spec now carries `profileRef`,
+  model/source attribution, topology, context-window, speculation, and sampler
+  guardrails so 4xTP, 8xTP, dual-4x, MTP-2, 65K, and 250K GLM-REAP sweeps are
+  comparable without widening public claims. The dispatch receipt also carries
+  verified distinct-device
   verifier placement evidence: Harbor `environment_mode = separate`, distinct
   agent/verifier host+device refs, `no-network` verifier, explicit artifact
   handoff, and reward read from a verifier artifact. `harbor-reward.ts` maps the
@@ -423,7 +428,9 @@ metric vocabulary, or a new settlement path.
    settlement, listing, and public marketplace authority disabled.
 10. Harbor dispatch seam: for `terminal-bench`, build a typed Worker-side job
     spec for the Hydralisk Harbor harness, scope the first run to
-    `openagents/khala`, request only public-safe summary + ATIF artifacts, ingest
+    `openagents/khala`, then compare closed GLM-REAP profile refs for the
+    `glm-52` replication lane without leaking private endpoint material. Request
+    only public-safe summary + ATIF artifacts, ingest
     `hydralisk.evals.terminal_bench.summary.v1`, and assert no Harbor runtime
     package is imported into the Worker bundle.
 11. Harbor verifier placement: require dispatch evidence proving

@@ -1,9 +1,17 @@
 import { Schema as S } from 'effect'
 
 import {
+  GymHarborTerminalBenchModelId,
   type GymHarborTerminalBenchRun,
+  GymTerminalBenchProfileRef,
   HYDRALISK_TERMINAL_BENCH_SUMMARY_SCHEMA,
+  type GymHarborTerminalBenchModelId as GymHarborTerminalBenchModelIdType,
+  type GymTerminalBenchProfileRef as GymTerminalBenchProfileRefType,
 } from './harbor-dispatch'
+import {
+  BenchmarkLane as BenchmarkLaneSchema,
+  type BenchmarkLane,
+} from '../benchmark'
 
 export const GYM_HARBOR_REAL_COST_BASIS_SCHEMA =
   'openagents.gym.harbor_real_cost_basis.v1'
@@ -43,15 +51,16 @@ export const GymHarborTerminalBenchRewardReport = S.Struct({
   schemaVersion: S.Literal(GYM_HARBOR_REWARD_REPORT_SCHEMA),
   reportRef: S.String,
   configId: S.String,
+  profileRef: GymTerminalBenchProfileRef,
   jobRef: S.String,
   hydraliskRunRef: S.String,
   summarySchema: S.Literal(HYDRALISK_TERMINAL_BENCH_SUMMARY_SCHEMA),
   summaryArtifactRef: S.String,
   costBasisRef: S.String,
-  lane: S.Literal('khala'),
+  lane: BenchmarkLaneSchema,
   workload: S.Literal('verifier-run'),
   datasetRef: S.Literal('terminal-bench@2.0'),
-  model: S.Literal('openagents/khala'),
+  model: GymHarborTerminalBenchModelId,
   decisionGrade: S.Boolean,
   publicClaimEligible: S.Literal(false),
   verifierPlacementVerified: S.Literal(true),
@@ -67,6 +76,12 @@ export const GymHarborTerminalBenchRewardReport = S.Struct({
 })
 export type GymHarborTerminalBenchRewardReport =
   typeof GymHarborTerminalBenchRewardReport.Type
+
+export type GymHarborTerminalBenchRewardReportProfile = Readonly<{
+  profileRef: GymTerminalBenchProfileRefType
+  lane: BenchmarkLane
+  model: GymHarborTerminalBenchModelIdType
+}>
 
 export const GymHarborTrainingTrajectory = S.Struct({
   schemaVersion: S.Literal(GYM_HARBOR_TRAINING_TRAJECTORY_SCHEMA),
@@ -224,12 +239,13 @@ export const buildGymHarborTerminalBenchRewardArtifacts = (input: {
     schemaVersion: GYM_HARBOR_REWARD_REPORT_SCHEMA,
     reportRef: reportRefForRun(input.run, costBasis),
     configId: input.run.job.configId,
+    profileRef: input.run.job.profileRef,
     jobRef: input.run.job.jobRef,
     hydraliskRunRef: input.run.dispatch.hydraliskRunRef,
     summarySchema: HYDRALISK_TERMINAL_BENCH_SUMMARY_SCHEMA,
     summaryArtifactRef: input.run.dispatch.summaryArtifactRef,
     costBasisRef: costBasis.costBasisRef,
-    lane: 'khala',
+    lane: input.run.job.servingProfile.lane,
     workload: 'verifier-run',
     datasetRef: input.run.summary.benchmark.datasetRef,
     model: input.run.summary.runner.model,
@@ -245,6 +261,7 @@ export const buildGymHarborTerminalBenchRewardArtifacts = (input: {
     costPerAcceptedOutcomeMsat,
     blockers,
     caveats: [
+      ...input.run.job.servingProfile.caveatRefs,
       'public_claim_requires_product_promise_review',
       'raw_harbor_artifacts_excluded',
       'cost_basis_from_served_tokens_recorder',

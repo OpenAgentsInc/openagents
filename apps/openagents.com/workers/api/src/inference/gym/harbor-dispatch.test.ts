@@ -1,8 +1,9 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 
-import { TERMINAL_BENCH_GYM_EXPERIMENT } from './experiment'
+import { TERMINAL_BENCH_GYM_EXPERIMENT, type GymExperiment } from './experiment'
 import {
+  GLM_REAP_TERMINAL_BENCH_MODEL_ID,
   GYM_HARBOR_TERMINAL_BENCH_INGEST_SCHEMA,
   HYDRALISK_TERMINAL_BENCH_SUMMARY_SCHEMA,
   buildGymHarborTerminalBenchJobSpec,
@@ -14,7 +15,20 @@ import {
   type GymHarborVerifierPlacementEvidence,
   type HydraliskHarborTerminalBenchHarness,
   type HydraliskTerminalBenchSummary,
+  resolveGymTerminalBenchServingProfile,
 } from './harbor-dispatch'
+
+const GLM_TERMINAL_BENCH_GYM_EXPERIMENT: GymExperiment = {
+  ...TERMINAL_BENCH_GYM_EXPERIMENT,
+  id: 'gym-terminal-bench-glm-reap-profile-fixture-v1',
+  policy: {
+    ...TERMINAL_BENCH_GYM_EXPERIMENT.policy,
+    fanout: {
+      ...TERMINAL_BENCH_GYM_EXPERIMENT.policy.fanout,
+      lanes: ['glm-52'],
+    },
+  },
+}
 
 const sampleSummary: HydraliskTerminalBenchSummary = {
   schema: HYDRALISK_TERMINAL_BENCH_SUMMARY_SCHEMA,
@@ -121,7 +135,11 @@ describe('Gym Harbor Terminal-Bench dispatch seam', () => {
     expect(compiled.policySelection.environment.ref).toBe('terminal-bench')
     expect(job.harborDataset).toBe('terminal-bench@2.0')
     expect(job.harborDatasetCliRef).toBe('terminal-bench/terminal-bench-2')
+    expect(job.profileRef).toBe('khala-public-heuristic')
     expect(job.model).toBe('openagents/khala')
+    expect(job.modelEndpointRef).toBe(
+      'openagents.khala.public_openai_compat.v1',
+    )
     expect(job.command.argv).toEqual([
       'run',
       '-d',
@@ -145,6 +163,60 @@ describe('Gym Harbor Terminal-Bench dispatch seam', () => {
     })
     expect(job.publicSafetyBoundary.workerImportsHarborRuntime).toBe(false)
     expect(job.retainedPublicTaskRefs).toContain('configure-git-webserver')
+  })
+
+  test('builds profile-aware raw GLM-REAP Harbor jobs without leaking private endpoints', () => {
+    const { compiled, job } = buildGymHarborTerminalBenchJobSpec(
+      GLM_TERMINAL_BENCH_GYM_EXPERIMENT,
+      {
+        ownerApprovalRef: 'approval.gym.harbor.terminal_bench.glm.001',
+        profileRef: 'glm-reap-504b-g4-tp4-mtp2-rp105',
+      },
+    )
+
+    expect(compiled.policySelection.fanout.lanes).toEqual(['glm-52'])
+    expect(job.profileRef).toBe('glm-reap-504b-g4-tp4-mtp2-rp105')
+    expect(job.model).toBe(GLM_REAP_TERMINAL_BENCH_MODEL_ID)
+    expect(job.modelEndpointRef).toBe(
+      'hydralisk.glm_52_reap_504b.private_openai_compat.v1',
+    )
+    expect(job.servingProfile).toMatchObject({
+      lane: 'glm-52',
+      attribution: 'Z.ai GLM-5.2, REAP-pruned keep-168 NVFP4',
+      tensorParallelism: 4,
+      replicaTopology: 'single_tp4',
+      contextWindowTokens: 250_000,
+      speculationMode: 'mtp2',
+      sampler: {
+        minP: null,
+        repetitionPenalty: 1.05,
+        enableThinking: false,
+      },
+    })
+    expect(job.command.argv).toEqual([
+      'run',
+      '-d',
+      'terminal-bench/terminal-bench-2',
+      '--agent',
+      'terminus-2',
+      '--model',
+      GLM_REAP_TERMINAL_BENCH_MODEL_ID,
+      '--n-concurrent',
+      '1',
+    ])
+    expect(JSON.stringify(job)).not.toMatch(/bearer|api_key|https:\/\/private/i)
+  })
+
+  test('rejects unsupported or lane-mismatched Terminal-Bench profiles', () => {
+    expect(() =>
+      resolveGymTerminalBenchServingProfile('glm-reap-private-ad-hoc'),
+    ).toThrow()
+
+    expect(() =>
+      buildGymHarborTerminalBenchJobSpec(TERMINAL_BENCH_GYM_EXPERIMENT, {
+        profileRef: 'glm-reap-504b-g4-tp4-minp-rp105',
+      }),
+    ).toThrow(/profile must match/)
   })
 
   test('dispatches to an injected Hydralisk harness and ingests the summary', async () => {

@@ -15,6 +15,16 @@ When the lane is armed, the router tries the private GLM-5.2 REAP worker first,
 then the existing Hydralisk GPT-OSS workers, then Vertex Gemini as the final
 degradation lane. Raw supply-lane IDs are not advertised in the public catalog.
 
+For Gym/Terminal-Bench replication work, the Worker may reference the lane
+through closed public-safe serving profile refs such as
+`glm-reap-504b-g4-tp4-minp-rp105`,
+`glm-reap-504b-g4-tp4-mtp2-rp105`, and
+`glm-reap-504b-g4-dual-tp4-minp-rp105`. Those refs disclose topology,
+context-window, speculation, quantization, sampler guardrails, and source
+attribution needed for a decision-grade benchmark comparison, but they do not
+disclose private Hydralisk URLs, bearer tokens, raw task prompts, responses, or
+operator-only placement notes.
+
 ## Operator Contract
 
 The GLM lane is fail-closed and only arms when all transport and evidence fields

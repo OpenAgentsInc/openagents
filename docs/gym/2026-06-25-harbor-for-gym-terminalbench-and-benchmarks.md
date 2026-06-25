@@ -637,12 +637,20 @@ The QA-runner ATIF emitter is being built; the Gym↔Khala dog-food wiring is th
    Raw Harbor logs, task prompts, and model responses remain on Hydralisk; the
    Worker imports no Harbor runtime package. Reward→telemetry/report mapping is
    still the next step.
-4. **Shipped (#6251): require distinct-device verifier evidence** — Hydralisk
+4. **Shipped (#6255): add the Terminal-Bench serving profile catalog** — the
+   job spec now includes a closed `profileRef` and public-safe serving metadata:
+   model id, model endpoint ref, source attribution, hardware/TP topology,
+   context window, quantization, speculation mode, and sampler guardrails. The
+   catalog covers `openagents/khala` and GLM-REAP replication profiles for 4xTP,
+   8xTP, dual-4x, MTP-2/no-min-p, 65K, and 250K sweeps. Private Hydralisk base
+   URLs, bearer tokens, raw prompts, and responses remain outside the Worker.
+   Lane/profile mismatches are rejected before dispatch.
+5. **Shipped (#6251): require distinct-device verifier evidence** — Hydralisk
    dispatch receipts must now prove Harbor `environment_mode = "separate"`,
    distinct agent/verifier devices, `no-network` verifier execution, explicit
    artifact handoff, and reward read from the verifier artifact before the Worker
    accepts the placement as verified.
-5. **Shipped (#6242): wire cost-per-accepted-outcome and trajectory ingestion** —
+6. **Shipped (#6242): wire cost-per-accepted-outcome and trajectory ingestion** —
    `harbor-reward.ts` maps the Hydralisk summary's solved/properly-attempted
    counts into `openagents.gym.harbor_reward_report.v1`, consumes the real
    served-token `totalCostBasisMsat`, renders null cost-per-outcome for
@@ -650,15 +658,15 @@ The QA-runner ATIF emitter is being built; the Gym↔Khala dog-food wiring is th
    `openagents.gym.harbor_training_trajectory.v1` from the public-safe ATIF trace
    ref for GEPA/TRINITY/Conductor. GPU contention must be cleared by a benchmark
    replica or exclusive off-peak window before decision-grade/training readiness.
-6. **CI smoke (free, no spend)** — a `terminal-bench` env wiring test that runs
+7. **CI smoke (free, no spend)** — a `terminal-bench` env wiring test that runs
    the `oracle` agent on the retained subset through the harness, asserts reward
    1.0, asserts the report is `decisionGrade:false`, and asserts the public-safety
    tripwire strips task content. Mirrors the spec's "fixture run is deterministic"
    test.
-7. **Emit ATIF from Gym runs** — adopt the in-repo public-safe ATIF subset the
+8. **Emit ATIF from Gym runs** — adopt the in-repo public-safe ATIF subset the
    traces spec asks for; Harbor-executed envs get ATIF for free, the OpenCode
    runner exports it. One trajectory format for benchmark + trace + training.
-8. **(Phase 2/3, owner-armed)** — the paid-run gate is landed for quote, 402
+9. **(Phase 2/3, owner-armed)** — the paid-run gate is landed for quote, 402
    balance gate, `preflightRealBenchmarkSweep`, real seam arming, metering
    contexts, and report receipts. A real `terminal-bench` executor still needs to
    plug into that gate for the first decision-grade Khala-vs-competitor number on
@@ -670,8 +678,9 @@ The QA-runner ATIF emitter is being built; the Gym↔Khala dog-food wiring is th
 - **Direction vs shipped:** the Phase 0 fixture Gym (#6163–#6166), owner-gated
   `/gym/oss` (#6167), Phase 1 Gym registry/OpenCode work, Phase 2 paid-run gate,
   Worker-side Hydralisk Harbor dispatch/summary-ingest seam (#6250), and
-  distinct-device verifier evidence gate (#6251), and Harbor reward/cost +
-  training projection (#6242) are landed. Remaining direction is live
+  the closed Terminal-Bench serving profile catalog (#6255), distinct-device
+  verifier evidence gate (#6251), and Harbor reward/cost + training projection
+  (#6242) are landed. Remaining direction is live
   owner-armed executor wiring, operational scheduling, and public/logged-in
   surfaces. We use Harbor's format (ATIF) and a typed out-of-process artifact
   seam, not Harbor runtime code in the Worker.

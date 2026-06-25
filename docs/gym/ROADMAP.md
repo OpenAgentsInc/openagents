@@ -407,6 +407,14 @@ public-safe summary + ATIF artifacts, keeps raw Harbor logs/prompts/responses on
 Hydralisk, and tests that the Worker imports no Harbor runtime code. Reward→cost
 report mapping remains E3; distinct-device verifier evidence is now E2.
 
+**Shipped #6255:** the same dispatch seam now carries a closed Terminal-Bench
+serving profile catalog for the GLM-5.2 REAP replication lane. Job specs include
+`profileRef`, model id, model endpoint ref, source attribution, hardware/TP
+topology, context window, quantization, speculation mode, and sampler guardrails.
+The catalog covers `openagents/khala` plus GLM-REAP 4xTP, 8xTP, dual-4x,
+MTP-2/no-min-p, 65K, and 250K profiles without exposing private base URLs or
+tokens. Profile lane mismatches are rejected before dispatch.
+
 ### E2. Distinct-device verifier via Harbor `environment_mode = "separate"` ([#6251](https://github.com/OpenAgentsInc/openagents/issues/6251))
 
 **Type:** task · **Lever:** benchmarking · **Status:** shipped 2026-06-25
