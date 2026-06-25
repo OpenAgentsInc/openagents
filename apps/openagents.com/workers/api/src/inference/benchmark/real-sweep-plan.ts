@@ -203,7 +203,7 @@ export const preflightRealBenchmarkSweep = (
     warnings.push({
       code: 'future_lanes_skipped',
       message:
-        'Not-yet-available future lanes stay in the comparison shape but are skipped by the real sweep.',
+        'Fixture-only or not-yet-available lanes stay in the comparison shape but are skipped by the real sweep.',
     })
   }
 

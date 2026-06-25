@@ -1,8 +1,12 @@
 import { describe, expect, test } from 'vitest'
 
 import { isMeasured } from '../khala-telemetry'
-import { SAMPLE_DECISION_SUITE_CONFIG, TINY_TEST_CONFIG } from './fixtures'
-import { makeFixtureLaneSeam } from './lane-seam'
+import {
+  OPENCODE_KHALA_VS_BIGPICKLE_FIXTURE_CONFIG,
+  SAMPLE_DECISION_SUITE_CONFIG,
+  TINY_TEST_CONFIG,
+} from './fixtures'
+import { makeFixtureLaneSeam, makeRealLaneSeam } from './lane-seam'
 import { runBenchmark } from './runner'
 
 describe('benchmark runner — fixture lane', () => {
@@ -91,5 +95,35 @@ describe('benchmark runner — fixture lane', () => {
     expect(sampledLanes.has('fireworks')).toBe(true)
     expect(sampledLanes.has('pylon-whole-small')).toBe(false)
     expect(sampledLanes.has('psionic-shard-wan')).toBe(false)
+  })
+
+  test('fixture-only OpenCode competitor lanes execute in fixture but skip in a real seam', () => {
+    const fixtureRunSet = runBenchmark(
+      OPENCODE_KHALA_VS_BIGPICKLE_FIXTURE_CONFIG,
+      makeFixtureLaneSeam(),
+    )
+    const fixtureBigpickle = fixtureRunSet.runs.filter(
+      run => run.cell.lane === 'bigpickle',
+    )
+    expect(fixtureBigpickle.length).toBe(5)
+    expect(fixtureBigpickle.every(run => run.record !== null)).toBe(true)
+    expect(
+      fixtureBigpickle.every(run => run.clientSurface?.client === 'opencode'),
+    ).toBe(true)
+
+    const realRunSet = runBenchmark(
+      OPENCODE_KHALA_VS_BIGPICKLE_FIXTURE_CONFIG,
+      makeRealLaneSeam({
+        armRealSweep: true,
+        executor: (cell, sampleIndex) =>
+          makeFixtureLaneSeam().sample(cell, sampleIndex),
+      }),
+    )
+    const realBigpickle = realRunSet.runs.filter(
+      run => run.cell.lane === 'bigpickle',
+    )
+    expect(realBigpickle).toHaveLength(1)
+    expect(realBigpickle[0]?.record).toBeNull()
+    expect(realBigpickle[0]?.skippedReason).toBe('lane_fixture_only:bigpickle')
   })
 })

@@ -151,6 +151,14 @@ ledger, RL-2 escrow→Bitcoin payout, RL-3 asset-boundary/no-resale guards).
     DeepSeek V4 Flash backing lane, with catalog, quote, MPP pricing, router,
     adapter, and receipt-metering alignment.
 
+19. **[`2026-06-25-opencode-khala-runbook-and-audit.md`](./2026-06-25-opencode-khala-runbook-and-audit.md)**
+    — OpenCode to Khala operational runbook and compatibility audit. Points to
+    the authoritative recipe, fixes the model selector decision to
+    `openagents/khala`, and keeps the smoke checklist for tool-calling,
+    streaming, token-counter movement, and readable 402 quota behavior. The next
+    ecosystem-tool recipes live in
+    [`../opencode/khala-ecosystem-tool-recipes.md`](../opencode/khala-ecosystem-tool-recipes.md).
+
 ## The shape, in one line
 
 Aggregate cheap, reliable inference supply (our Vertex quota + our Pylon fabric + passthrough)

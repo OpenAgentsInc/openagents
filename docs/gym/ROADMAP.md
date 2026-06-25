@@ -139,7 +139,7 @@ test are produced as today; analytics attribute the tokens to QA (internal).
 attribution headers that the served-token recorder stores in ledger metadata.
 
 ### B2. QA on every push — Tier 1: bounded, scoped pre-push smoke (no GitHub Actions)  ([#6245](https://github.com/OpenAgentsInc/openagents/issues/6245))
-**Type:** task · **Lever:** dogfood/quality · **Status:** direction
+**Type:** task · **Lever:** dogfood/quality · **Status:** shipped (#6245)
 **Why:** the owner wants every push to run QA; the repo has a hard **no-GitHub-Actions**
 invariant, so it must live in the local pre-push hook / our own infra — and must not
 become the next verse-smoke (#6234).
@@ -153,8 +153,14 @@ within the timeout and prints a clear verdict; pushing unrelated changes skips i
 never forces `--no-verify`.
 **Refs:** QA audit §3 (Tier 1), §4; #6234 lesson.
 
+**Shipped 2026-06-25:** `.githooks/pre-push` runs
+`scripts/qa-pre-push-smoke.ts` after `check:deploy`. The smoke scopes itself to
+changed user-facing surfaces, runs deterministic `qa run --fake-model` under
+`OA_QA_PRE_PUSH_TIMEOUT_MS` (default 60s), skips unrelated pushes, and remains
+warning-only so a failed or incomplete QA run never forces `--no-verify`.
+
 ### B3. QA on every push — Tier 2: full async QA pass on our GCE runner  ([#6238](https://github.com/OpenAgentsInc/openagents/issues/6238))
-**Type:** epic · **Lever:** dogfood/quality · **Status:** direction
+**Type:** epic · **Lever:** dogfood/quality · **Status:** shipped (#6238)
 **Why:** the authoritative, non-blocking, owned-infra home for the full matrix — what
 the no-Actions invariant intends ("autonomous/unattended execution on OUR GCE").
 **Scope:** trigger a full `qa-runner` matrix (model backend = Khala) on push/deploy
@@ -166,6 +172,15 @@ Non-blocking and loud.
 loudly without blocking the push/deploy.
 **Refs:** QA audit §3 (Tier 2); "our cloud = OpenAgents GCE".
 
+**Shipped 2026-06-25:** `.githooks/pre-push` now launches warning-only
+`scripts/qa-async-gce-trigger.ts` after the Tier 1 smoke. The trigger posts an
+`openagents.codex_placement_assignment.v1` assignment to `oa-codex-control`'s
+`/v1/placement/start` surface, pins the lane to `cloud-gcp`, asks the GCE runner
+to run the Khala-backed full QA matrix, publish `/trace/{uuid}` and `/pro`
+evidence, and post the `pr-comment-run.ts` verdict when a PR number is supplied.
+The hook remains non-blocking: missing owner-gated env skips, control failure
+prints a warning, and pushes still proceed after `check:deploy` is green.
+
 ---
 
 ## EPIC C — Ecosystem tool landings (Pillar 2): one-config-line drop-ins
@@ -174,7 +189,7 @@ loudly without blocking the push/deploy.
 > recipe with a test checklist. Ordered by coding-traffic leverage.
 
 ### C1. Publish the OpenCode → Khala recipe (first external landing)  ([#6239](https://github.com/OpenAgentsInc/openagents/issues/6239))
-**Type:** task · **Lever:** ecosystem · **Status:** in-progress (integration fixed; recipe to publish)
+**Type:** task · **Lever:** ecosystem · **Status:** shipped 2026-06-25
 **Why:** OpenCode is the cleanest first landing — config-driven OpenAI-compatible
 provider, coding wedge, exercises tool-calling. Tool-calling is already fixed.
 **Scope:** finalize + publish the exact `opencode.json` recipe (base
@@ -186,8 +201,15 @@ task end-to-end (tool-calling + streaming), and sees their tokens on the counter
 402/quota path is a legible error, not a crash.
 **Refs:** GTM §3 "First target: OpenCode"; the runbook + `../opencode/`.
 
+**Shipped:** `../opencode/opencode-khala-recipe.md` is now the canonical recipe.
+The selector decision is model key `khala` with `api.id: "openagents/khala"`,
+which displays `openagents/khala` in OpenCode and sends the same public model id
+upstream. The support docs now use the real free-key response field
+`credential.token` and the current free tier, 2,000 requests/day plus 2,500,000
+tokens/day per key.
+
 ### C2. Land the next tools: Aider → Cline/Continue → Vercel AI SDK → LiteLLM/LangChain  ([#6240](https://github.com/OpenAgentsInc/openagents/issues/6240))
-**Type:** epic · **Lever:** ecosystem · **Status:** direction
+**Type:** epic · **Lever:** ecosystem · **Status:** shipped 2026-06-25
 **Why:** breadth of one-config-line adoption across the coding/agent ecosystem; the
 Vercel AI SDK recipe is high-leverage (substrate under many tools).
 **Scope:** one verified recipe + test checklist per tool, in priority order; do our
@@ -196,6 +218,13 @@ per-tool token attribution.
 **Acceptance:** each landed tool has a published recipe and shows attributable tokens
 on the counter via per-tool analytics.
 **Refs:** GTM §3 "Next tools after OpenCode".
+
+**Shipped:** `../opencode/khala-ecosystem-tool-recipes.md` publishes current
+recipes for Aider, Cline, Continue, AI SDK, LiteLLM, and LangChain. The recipe
+set records upstream research sources, uses the current Khala free-key shape,
+documents which clients can set `x-openagents-*` attribution headers today, and
+uses fresh per-tool keys plus public counter deltas for clients that cannot set
+headers. Owner-gated per-tool rollups remain the F1 analytics issue (#6252).
 
 ---
 
@@ -206,7 +235,7 @@ on the counter via per-tool analytics.
 > [`2026-06-25-gym-opencode-head-to-head-and-khala-flywheel.md`](2026-06-25-gym-opencode-head-to-head-and-khala-flywheel.md).
 
 ### D1. Phase 1 — competitor lanes + the OpenCode client-surface environment  ([#6246](https://github.com/OpenAgentsInc/openagents/issues/6246))
-**Type:** epic · **Lever:** benchmarking · **Status:** direction
+**Type:** epic · **Lever:** benchmarking · **Status:** shipped 2026-06-25
 **Why:** the first real head-to-head: compare *model endpoints through a real coding
 agent*, not just supply lanes. BigPickle (OpenCode's default free model) is rung 1.
 **Scope:** add typed `BenchmarkLane` values for competitor endpoints (`bigpickle`,
@@ -221,8 +250,18 @@ scored on cost-per-accepted-outcome + verified-rate + tool-call-completion, with
 `decisionGrade:false` labeled report.
 **Refs:** flywheel doc §3, §9; the OpenCode-via-Khala memo in `../opencode/`.
 
+**Shipped:** `workers/api/src/inference/benchmark` now includes the typed OpenCode
+endpoint lanes (`khala`, `bigpickle`, `gemini-free`, `openai-gpt`, `claude`) and
+own/open lanes (`gpt-oss-20b`, `gpt-oss-120b`, `glm-52`). `fixture_only` availability
+lets the deterministic fixture compare Khala vs BigPickle without pretending a
+real/billable executor exists. `opencode-client-runner.ts` provisions public-safe
+`opencode.json`, rejects missing provider `usage` instead of estimating tokens,
+records wall-clock/tool-call success/verifier verdict, and feeds the existing
+matrix→runner→report path. `OPENCODE_HEAD_TO_HEAD_GYM_EXPERIMENT` produces a
+public-safe `decisionGrade:false` report over one OpenCode coding task.
+
 ### D2. Phase 1 — register the first environments (Terminal-Bench, khala-code, long-context, M8)  ([#6241](https://github.com/OpenAgentsInc/openagents/issues/6241))
-**Type:** task · **Lever:** benchmarking · **Status:** direction
+**Type:** task · **Lever:** benchmarking · **Status:** shipped 2026-06-25
 **Why:** an env without its verifier+acceptance contract is not runnable; these are the
 first task sets the ladder runs on. Terminal-Bench rides Harbor (Epic E).
 **Scope:** typed `GymEnvironment` registry entries (task set + verifier + acceptance
@@ -230,6 +269,16 @@ contract + default realistic shapes), selection typed/semantic only.
 **Acceptance:** each env runs through the fixture seam with its grader bound; a run
 cannot start without the env's verifier.
 **Refs:** gym spec §3, §10; flywheel doc §9.
+
+**Shipped:** `workers/api/src/inference/gym/experiment.ts` now has a typed
+`GYM_ENVIRONMENT_REGISTRY` with task-set, verifier, acceptance-contract, default
+shape, and default tool bindings for `terminal-bench`, `khala-code`,
+`long-context-codebase-qa`, and `m8-head-to-head`, alongside the existing bundled
+decision suite and OpenCode head-to-head. `compileGymExperiment` resolves the
+environment through that registry, carries the grader binding in
+`policySelection.environment`, and refuses unregistered/graderless environments.
+Fixture experiments for all four Phase-1 environments run through the existing
+matrix→fixture-seam→report path with `decisionGrade:false`.
 
 ### D3. Phase 2 — paid runs (owner-armed real seam → report receipt)  ([#6247](https://github.com/OpenAgentsInc/openagents/issues/6247))
 **Type:** epic · **Lever:** benchmarking/revenue · **Status:** direction (owner-gated)

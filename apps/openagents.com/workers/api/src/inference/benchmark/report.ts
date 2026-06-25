@@ -30,7 +30,11 @@
 import { type MeasuredNumber, isMeasured } from '../khala-telemetry'
 import type { KhalaSpeculationMode } from '../khala-speculation'
 import type { BenchmarkRun, BenchmarkRunSet } from './runner'
-import type { BenchmarkLane, BenchmarkWorkload } from './matrix'
+import type {
+  BenchmarkLane,
+  BenchmarkWorkload,
+  LaneAvailability,
+} from './matrix'
 
 // ---------------------------------------------------------------------------
 // Percentile helper (book Ch.1 §1.4.1).
@@ -112,7 +116,7 @@ const summarize = (values: ReadonlyArray<number>): LatencySummary => ({
 export type BenchmarkGroupMetrics = Readonly<{
   lane: BenchmarkLane
   workload: BenchmarkWorkload
-  laneAvailability: 'available' | 'not_yet_available'
+  laneAvailability: LaneAvailability
   // True when EVERY shape in this group is synthetic (numbers are not
   // production-representative — book §4.5). Labeled prominently.
   syntheticOnly: boolean
@@ -133,6 +137,13 @@ export type BenchmarkGroupMetrics = Readonly<{
   verificationRate: number | null
   acceptedOutcomes: number
   attemptedVerifications: number
+  // Client-surface tool-call success: succeeded / attempted. Null when the
+  // workload did not attempt tool calls. This is named without "completion" so
+  // the public-safety tripwire can still reserve that substring for raw model
+  // output leakage.
+  toolCallSuccessRate: number | null
+  toolCallsAttempted: number
+  toolCallsSucceeded: number
   // COST-PER-ACCEPTED-OUTCOME in msat: total cost basis / accepted outcomes.
   // null when there were zero accepted outcomes (dividing would fabricate a
   // number — a lane with no accepted outcome has UNDEFINED cost-per-outcome,
@@ -158,6 +169,8 @@ const aggregateGroup = (
   // Verification: count attempted (an executed verdict) and accepted (passed).
   let attemptedVerifications = 0
   let acceptedOutcomes = 0
+  let toolCallsAttempted = 0
+  let toolCallsSucceeded = 0
   let totalCostBasisMsat = 0
   const cacheRates: Array<number> = []
 
@@ -174,6 +187,10 @@ const aggregateGroup = (
     }
     if (isMeasured(record.costBasisMsat)) {
       totalCostBasisMsat += record.costBasisMsat
+    }
+    if (run.clientSurface !== null) {
+      toolCallsAttempted += run.clientSurface.toolCallsAttempted
+      toolCallsSucceeded += run.clientSurface.toolCallsSucceeded
     }
     if (
       isMeasured(record.cachedInputTokens) &&
@@ -206,6 +223,10 @@ const aggregateGroup = (
         : acceptedOutcomes / attemptedVerifications,
     acceptedOutcomes,
     attemptedVerifications,
+    toolCallSuccessRate:
+      toolCallsAttempted === 0 ? null : toolCallsSucceeded / toolCallsAttempted,
+    toolCallsAttempted,
+    toolCallsSucceeded,
     costPerAcceptedOutcomeMsat:
       acceptedOutcomes === 0
         ? null
@@ -358,15 +379,24 @@ const ILLUSTRATIVE_NOTICE =
 
 // Stable ordering of lanes + workloads so the report group list is byte-stable.
 const LANE_ORDER: ReadonlyArray<BenchmarkLane> = [
+  'khala',
+  'bigpickle',
+  'gemini-free',
+  'openai-gpt',
+  'claude',
   'vertex-anthropic',
   'vertex-gemini',
   'fireworks',
   'partner-passthrough',
+  'gpt-oss-20b',
+  'gpt-oss-120b',
+  'glm-52',
   'pylon-whole-small',
   'psionic-shard-wan',
 ]
 const WORKLOAD_ORDER: ReadonlyArray<BenchmarkWorkload> = [
   'chat',
+  'opencode-coding-task',
   'khala-code-artifact-gen',
   'verifier-run',
   'long-context-codebase-question',

@@ -1,6 +1,8 @@
 # OpenCode Provider Config & Model Selector
 
 > Focused note for engineers wiring `openagents/khala` in OpenCode.
+> The copy-pasteable recipe lives in
+> [`opencode-khala-recipe.md`](./opencode-khala-recipe.md).
 
 ## OpenAI-Compatible Base URL
 
@@ -17,14 +19,14 @@ This hits our live `POST /api/v1/chat/completions`, model `openagents/khala`.
 OpenCode resolves the in-TUI model selector path as:
 
 ```
-providerId / model key
+providerId / model.api.id
 ```
 
 Two separate concepts:
 
 | Field | Purpose | Example |
 |---|---|---|
-| JSON **key** under `models` | TUI/default-model key segment | `openagents/khala` or `khala` |
+| JSON **key** under `models` | TUI model key segment | `openagents/khala` or `khala` |
 | `api.id` (optional override) | What gets sent as `"model"` upstream | defaults to the JSON key |
 
 If you set model key `openagents/khala` with no `api.id` override, the selector renders `openagents/openagents/khala` (doubled) — correct upstream (sends `{"model": "openagents/khala"}`) but ugly UX.
@@ -56,10 +58,10 @@ Override `api.id` explicitly to decouple the TUI display key from the upstream m
       "models": {
         "khala": {
           "name": "Khala",
-          "tool_call": true,
           "api": {
             "id": "openagents/khala"
           },
+          "tool_call": true,
           "limit": { "context": 128000, "output": 65536 }
         }
       }
@@ -74,7 +76,6 @@ Override `api.id` explicitly to decouple the TUI display key from the upstream m
 | Model JSON **key** | `khala` | Selector reads `openagents/khala` — clean |
 | `api.id` override | `openagents/khala` | Upstream sends `{"model": "openagents/khala"}` — correct |
 | `model` (default) | `openagents/khala` | OpenCode's default model selection |
-| `tool_call` | `true` | OpenCode may use tools/edit loops with the model |
 
 Verified: OpenCode's `packages/core/src/plugin/provider/opencode.ts:125` applies `config.id` when `api.id` is set (`if (config.id !== undefined) model.api.id = config.id`).
 
@@ -82,13 +83,12 @@ Verified: OpenCode's `packages/core/src/plugin/provider/opencode.ts:125` applies
 
 ```bash
 curl -fsS -X POST https://openagents.com/api/keys/free
-# returns {"credential":{"token":"oa_agent_..."}}
+# response includes {"credential": {"token": "oa_agent_..."}}
 export OPENAGENTS_API_KEY="oa_agent_..."
 ```
 
-Do not paste raw keys into issues, docs, commits, logs, or benchmark artifacts.
-
-Free tier: 2,000 requests / 2,500,000 tokens per UTC day per key. Over-quota -> 402 `insufficient_credits` / `quota_exceeded`.
+Free tier: 2,000 requests / 2,500,000 tokens per UTC day per key. Over-quota
+returns HTTP 402 with a readable OpenAI-style error body.
 
 ## Summary
 
@@ -98,4 +98,6 @@ Free tier: 2,000 requests / 2,500,000 tokens per UTC day per key. Over-quota -> 
 | Wrong upstream model id | Short model key with no override | Set `api.id` to `"openagents/khala"` |
 | Both right | — | Recipe above |
 
-**Status:** Selected #6239 recipe for repo docs. Tool-call compatibility (issue #6232 — content arrays, tool-call deltas) is deployed; public promotion still needs a live OpenCode smoke evidence packet covering tool-calling, streaming, token-counter delta, and legible 402 handling.
+**Status:** Selector decision resolved for #6239. Publish model key `khala` with
+`api.id: "openagents/khala"` so OpenCode displays `openagents/khala` while the
+gateway receives the real public model id.

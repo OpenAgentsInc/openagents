@@ -9,46 +9,24 @@ internal agents through Khala (Pillar 1), lands ecosystem-tool integrations
 starting with OpenCode (Pillar 2), and benchmarks Khala on a ladder of
 opponents (Pillar 3).
 
-## Current Recipe
+## Authoritative Recipe
 
-Use this `opencode.json` in a project root, or in
-`~/.config/opencode/opencode.json` for global use:
+- [`opencode-khala-recipe.md`](./opencode-khala-recipe.md) is the current
+  copy-pasteable OpenCode to Khala recipe: free key, `opencode.json`, selector
+  decision, smoke test, token-counter check, and 402/quota behavior.
+- [`opencode-provider-config-model-selector.md`](./opencode-provider-config-model-selector.md)
+  explains why the recipe uses model key `khala` plus
+  `api.id: "openagents/khala"` to show `openagents/khala` in OpenCode while
+  sending the correct upstream model id.
+- [`opencode-free-tier-402-playbook.md`](./opencode-free-tier-402-playbook.md)
+  documents the current free tier and quota failure path.
+- [`khala-ecosystem-tool-recipes.md`](./khala-ecosystem-tool-recipes.md)
+  publishes the next-tool recipes for Aider, Cline, Continue, AI SDK, LiteLLM,
+  and LangChain, with current upstream research links and attribution guidance.
 
-```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "provider": {
-    "openagents": {
-      "npm": "@ai-sdk/openai-compatible",
-      "name": "OpenAgents",
-      "options": {
-        "baseURL": "https://openagents.com/api/v1",
-        "apiKey": "{env:OPENAGENTS_API_KEY}"
-      },
-      "models": {
-        "khala": {
-          "name": "Khala",
-          "tool_call": true,
-          "api": {
-            "id": "openagents/khala"
-          },
-          "limit": { "context": 128000, "output": 65536 }
-        }
-      }
-    }
-  },
-  "model": "openagents/khala"
-}
-```
-
-Mint a free key with `POST https://openagents.com/api/keys/free` and export the
-returned `credential.token` as `OPENAGENTS_API_KEY`. The free tier is currently
-2,000 requests / 2,500,000 tokens per UTC day per key; over-quota requests should
-surface a legible 402.
-
-Verification before public promotion: OpenCode must complete a tool-calling
-coding task, stream tokens normally, increment the public Khala tokens-served
-counter by the recorded usage delta, and show a readable 402/quota error.
+The final-output files below are planning exports from the 2026-06-25 sessions.
+They preserve explored configs and historical notes, including older doubled
+selector examples; use the authoritative recipe above for implementation.
 
 ## Sessions
 

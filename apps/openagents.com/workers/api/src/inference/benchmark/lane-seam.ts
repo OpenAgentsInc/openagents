@@ -30,6 +30,10 @@ import type {
 } from '../khala-telemetry'
 import type { KhalaSpeculationInput } from '../khala-speculation'
 import type { BenchmarkCell } from './matrix'
+import {
+  buildOpenCodeFixtureClientSurface,
+  fixtureOpenCodeVerdictForLane,
+} from './opencode-client-runner'
 import { fixtureSpeculationForCell } from './speculation-lane'
 
 // ---------------------------------------------------------------------------
@@ -74,6 +78,18 @@ export type BenchmarkLaneSample = Readonly<{
   // (no speculation ran) on a disabled/high-batch cell, and a real drafting mode
   // with acceptance counts on a low-batch code cell.
   speculation?: KhalaSpeculationInput | undefined
+  // Client-surface measurements that are not provider lifecycle telemetry, such
+  // as whether OpenCode tool calls actually completed. The report aggregates
+  // these public-safe counts separately from the canonical Khala telemetry.
+  clientSurface?: BenchmarkClientSurfaceSample | undefined
+}>
+
+export type BenchmarkClientSurfaceSample = Readonly<{
+  client: 'opencode'
+  taskRef: string
+  configRef: string
+  toolCallsAttempted: number
+  toolCallsSucceeded: number
 }>
 
 // The pluggable seam. Given a cell, return a measured sample. PURE for the
@@ -122,6 +138,51 @@ export type FixtureLaneProfile = Readonly<{
 export const DEFAULT_FIXTURE_PROFILES: Readonly<
   Partial<Record<BenchmarkCell['lane'], FixtureLaneProfile>>
 > = {
+  khala: {
+    baseTtftMs: 230,
+    msPerOutputToken: 8,
+    gatewayOverheadMs: 30,
+    costPerKPromptMsat: 1400,
+    costPerKCompletionMsat: 2800,
+    cacheHitFraction: 0.8,
+    region: 'openagents',
+  },
+  bigpickle: {
+    baseTtftMs: 380,
+    msPerOutputToken: 14,
+    gatewayOverheadMs: 25,
+    costPerKPromptMsat: 0,
+    costPerKCompletionMsat: 0,
+    cacheHitFraction: 0.35,
+    region: 'opencode-free',
+  },
+  'gemini-free': {
+    baseTtftMs: 310,
+    msPerOutputToken: 11,
+    gatewayOverheadMs: 35,
+    costPerKPromptMsat: 0,
+    costPerKCompletionMsat: 0,
+    cacheHitFraction: 0.6,
+    region: 'google-free-tier',
+  },
+  'openai-gpt': {
+    baseTtftMs: 440,
+    msPerOutputToken: 13,
+    gatewayOverheadMs: 40,
+    costPerKPromptMsat: 9000,
+    costPerKCompletionMsat: 27000,
+    cacheHitFraction: 0.65,
+    region: 'openai',
+  },
+  claude: {
+    baseTtftMs: 420,
+    msPerOutputToken: 14,
+    gatewayOverheadMs: 35,
+    costPerKPromptMsat: 6000,
+    costPerKCompletionMsat: 30000,
+    cacheHitFraction: 0.9,
+    region: 'anthropic',
+  },
   fireworks: {
     baseTtftMs: 240,
     msPerOutputToken: 8,
@@ -157,6 +218,33 @@ export const DEFAULT_FIXTURE_PROFILES: Readonly<
     costPerKCompletionMsat: 9000,
     cacheHitFraction: 0.5,
     region: 'partner',
+  },
+  'gpt-oss-20b': {
+    baseTtftMs: 260,
+    msPerOutputToken: 10,
+    gatewayOverheadMs: 35,
+    costPerKPromptMsat: 900,
+    costPerKCompletionMsat: 1800,
+    cacheHitFraction: 0.65,
+    region: 'hydralisk-l4',
+  },
+  'gpt-oss-120b': {
+    baseTtftMs: 340,
+    msPerOutputToken: 12,
+    gatewayOverheadMs: 40,
+    costPerKPromptMsat: 1800,
+    costPerKCompletionMsat: 3600,
+    cacheHitFraction: 0.7,
+    region: 'hydralisk-highmem',
+  },
+  'glm-52': {
+    baseTtftMs: 290,
+    msPerOutputToken: 9,
+    gatewayOverheadMs: 35,
+    costPerKPromptMsat: 1600,
+    costPerKCompletionMsat: 3200,
+    cacheHitFraction: 0.7,
+    region: 'hydralisk-rtx-pro',
   },
 }
 
@@ -199,6 +287,16 @@ const fixtureVerification = (
   BenchmarkLaneSample,
   'verificationClass' | 'executedVerdict' | 'scalarReward' | 'verifierTimeMs'
 > => {
+  if (cell.workload === 'opencode-coding-task') {
+    const verdict = fixtureOpenCodeVerdictForLane(cell.lane)
+    return {
+      verificationClass: verdict === 'passed' ? 'test_passed' : 'failed',
+      executedVerdict: verdict,
+      scalarReward: verdict === 'passed' ? 1 : 0,
+      verifierTimeMs: 2200,
+    }
+  }
+
   switch (cell.verificationExpectation) {
     case 'none':
       return {
@@ -287,6 +385,7 @@ export const makeFixtureLaneSeam = (
 
     const totalTokens = promptTokens + completionTokens
 
+    const clientSurface = buildOpenCodeFixtureClientSurface(cell)
     return {
       promptTokens,
       completionTokens,
@@ -302,6 +401,7 @@ export const makeFixtureLaneSeam = (
       // Fixture speculation: the policy decides on/off from the cell's batch
       // (concurrency) + derived pressure; counts only when enabled (book P1-8).
       speculation: fixtureSpeculationForCell(cell),
+      ...(clientSurface === undefined ? {} : { clientSurface }),
       ...fixtureVerification(cell),
     }
   },

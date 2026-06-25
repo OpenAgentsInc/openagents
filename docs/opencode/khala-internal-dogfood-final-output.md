@@ -4,9 +4,14 @@ Here is the full planning memo:
 
 # Planning Memo: Routing Internal Agent Work Through Khala
 
+> Historical planning export from 2026-06-25. For the current OpenCode recipe,
+> use [`opencode-khala-recipe.md`](./opencode-khala-recipe.md). Older quota and
+> doubled-selector examples below are preserved as planning context, not the
+> current published path.
+
 ## 1. Thesis
 
-Khala is live at `POST https://openagents.com/api/v1/chat/completions`, model `openagents/khala`, with a free tier (200 req/200k tok/day) and a public tokens-served counter. The GTM strategy (`docs/inference/2026-06-25-khala-inference-gtm-push.md`) names **tokens served per day** as the north-star metric — it is the demand proxy, the dogfood proxy, the distribution proxy, and (once the paid loop is collectable) the economy proxy. Pillar 1 is **internal dogfood**: routing every agent we already run through Khala to harden the product while moving the counter. The GTM doc makes clear this is the only lever we fully control — we can move the counter meaningfully *before* a single external developer adopts us, and every internal token is a real test that makes the product better for the external developers we court in Pillar 2.
+Khala is live at `POST https://openagents.com/api/v1/chat/completions`, model `openagents/khala`, with a free tier (2,000 req/2.5M tok/day) and a public tokens-served counter. The GTM strategy (`docs/inference/2026-06-25-khala-inference-gtm-push.md`) names **tokens served per day** as the north-star metric — it is the demand proxy, the dogfood proxy, the distribution proxy, and (once the paid loop is collectable) the economy proxy. Pillar 1 is **internal dogfood**: routing every agent we already run through Khala to harden the product while moving the counter. The GTM doc makes clear this is the only lever we fully control — we can move the counter meaningfully *before* a single external developer adopts us, and every internal token is a real test that makes the product better for the external developers we court in Pillar 2.
 
 This memo translates that strategy into concrete routing work for the internal OpenAgents agent systems. Pillar 1 alignment: all token volumes below count toward the public `khala-tokens-served` counter but must be distinguishable from external demand in analytics (per the GTM doc's honesty discipline, §6).
 
@@ -15,7 +20,7 @@ This memo translates that strategy into concrete routing work for the internal O
 | Priority | System | What to Route | Token Volume | Status |
 |---|---|---|---|---|
 | **P0** | **qa-runner** | All agent inference (browser automation, verifier probes) | High — runs continuously | Ready: `apps/qa-runner/package.json` already has `openai-compatible` keyword; just needs base URL + key config |
-| **P0** | **OpenCode** | All coding-agent inference (edit/run loop) | High per session | Recipe exists (see §3); #6232 fix is shipped and live — tool-call compatibility verified, text-only content arrays accepted, streaming SSE confirmed; model selector shows `openagents/openagents/khala` (cosmetic display only, server-side model id is single `openagents/khala`; no gateway change needed) |
+| **P0** | **OpenCode** | All coding-agent inference (edit/run loop) | High per session | Recipe exists (see §3); #6232 fix is shipped and live — tool-call compatibility verified, text-only content arrays accepted, streaming SSE confirmed; model selector is `openagents/khala` via model key `khala` plus `api.id: "openagents/khala"` |
 | **P1** | **Autopilot / Raynor** | Coding sessions, forum/progress posting, product agent reasoning | High — anchor buyer per business doc | Needs config change to default provider |
 | **P1** | **Probe runtime** | All local coding-agent LLM calls | Medium | `packages/probe/docs/probe-llm-core.md` defines provider-neutral LLM core; add `openagents` as a backend profile |
 | **P2** | **Forum agent flows** | Forum inference for moderation, summarization, agent interactions | Medium | Currently routes through other providers |
@@ -28,9 +33,10 @@ This memo translates that strategy into concrete routing work for the internal O
 
 OpenCode is the first external ecosystem target AND a major internal dogfood surface. The integration recipe is verified:
 
-**Config** (from `docs/inference/2026-06-25-opencode-khala-runbook-and-audit.md`):
+**Config** (from `docs/opencode/opencode-khala-recipe.md`):
 ```json
 {
+  "$schema": "https://opencode.ai/config.json",
   "provider": {
     "openagents": {
       "npm": "@ai-sdk/openai-compatible",
@@ -40,19 +46,22 @@ OpenCode is the first external ecosystem target AND a major internal dogfood sur
         "apiKey": "{env:OPENAGENTS_API_KEY}"
       },
       "models": {
-        "openagents/khala": {
+        "khala": {
           "name": "Khala",
+          "api": {
+            "id": "openagents/khala"
+          },
           "tool_call": true,
           "limit": { "context": 128000, "output": 65536 }
         }
       }
     }
   },
-  "model": "openagents/openagents/khala"
+  "model": "openagents/khala"
 }
 ```
 
-**Status: LIVE.** The `#6232` fix is **shipped and production-verified** (deployed from `origin/main`, cost model + raised quota + owner-gated analytics all live). Direct Khala API smoke confirmed: chat-completions `200` with `usage.total_tokens` reported, public counter delta matches token usage exactly. End-to-end OpenCode smoke with tool-call edit/run loop confirmed working. The model selector shows `openagents/openagents/khala` in the TUI (cosmetic doubling of `openagents` prefix — `providerId/modelKey` rendering in OpenCode's selector). The server-side model id remains the single `openagents/khala` segment; no gateway alias change is needed. The cosmetic display concern is purely OpenCode's concatenation of provider id + model key; if it bothers users, the fix would be a shorter model key alias or a display hint in the OpenCode config, not a gateway change.
+**Status: LIVE.** The `#6232` fix is **shipped and production-verified** (deployed from `origin/main`, cost model + raised quota + owner-gated analytics all live). Direct Khala API smoke confirmed: chat-completions `200` with `usage.total_tokens` reported, public counter delta matches token usage exactly. End-to-end OpenCode smoke with tool-call edit/run loop confirmed working. The current recipe displays `openagents/khala` in OpenCode while sending the server-side model id `openagents/khala` upstream through the `api.id` override. No gateway alias change is needed.
 
 **Verification checklist** (all PASSED):
 - [x] Direct chat completion `200` with `usage.total_tokens` reported
@@ -101,7 +110,7 @@ Probe (`packages/probe/`) is the coding agent runtime that will be the Pylon wor
 | **Refusal posture** | `khala-identity.ts` — system prompt + verify + re-ask | Never bare-refuses; always offers guide path | ALL routes: must inject refusal posture clause |
 | **Fair-share limits** | `inference-abuse-controls.ts` — per-window request + token ceiling | One customer can't starve shared quota | Internal systems get same limits unless exempted via operator exemption |
 | **Spend caps** | `inference-abuse-controls.ts` — per-account msat ceiling | Compromised key can't drain balance | Internal keys need high caps or operator exemption |
-| **Free-tier quota** | `inference-free-tier-key.ts` — 200 req / 200k tok per UTC day | Free lane bounded | Internal dogfood should use registered `oa_agent_` tokens (not free mint) to avoid hitting free-tier limits |
+| **Free-tier quota** | `inference-free-tier-key.ts` — 2,000 req / 2.5M tok per UTC day | Free lane bounded | Internal dogfood should use registered `oa_agent_` tokens (not free mint) to avoid hitting free-tier limits |
 | **Code verifier** | `khala-code-verifier.ts` — prescreen → headless execution | Honest `unverified` unless executed | QA-runner and OpenCode paths: prescreen passes, but verdict stays `unverified` unless the acceptance runner executes the artifact |
 | **Settlement loop** | `khala-loop-integration.ts` — double-gated (loop flag + owner gate) | Inert by default; ZERO sats move without both gates | Pylon payout path only; not relevant for dogfood routing itself |
 | **Operator exemption** | `inference-operator-exemption.ts` — model-level bypass for `openagents/khala` | Internal operator keys can bypass certain gates | Needed for high-volume internal routing to avoid hitting fair-share limits |
@@ -174,7 +183,7 @@ The GTM doc's Pillar 3 says "internal dogfood IS the realistic traffic the bench
 
 2. **Token attribution granularity** — The telemetry schema records request class but not consumer system id. **Action item:** add `consumer: string` to `KhalaTelemetryRecord` in `khala-telemetry.ts` and propagate through the chat-completions routes and served-tokens recorder. Without this, all dogfood tokens are indistinguishable from external traffic.
 
-3. **OpenCode model selector UX** — The doubled `openagents/openagents/khala` in the TUI is cosmetic (OpenCode's `providerId/modelKey` concatenation). **Resolved:** no server-side change needed. If users complain, address via a shorter model key alias or OpenCode display hint.
+3. **OpenCode model selector UX** — Resolved by the published recipe: model key `khala` plus `api.id: "openagents/khala"` displays `openagents/khala` and sends the correct upstream model id. No server-side alias is needed.
 
 4. **Free tier vs internal budget** — High-volume internal systems (qa-runner running continuously) will blow through free-tier limits in minutes. Recommendation: route through the paid lane against an internal credit budget with operator exemption, metering still runs but tagged with `consumer: "qa-runner"` in the telemetry record for distinguishable counting. The exemption module (`inference-operator-exemption.ts`) already supports model-level bypass.
 

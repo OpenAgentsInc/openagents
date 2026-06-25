@@ -28,9 +28,10 @@ verification outcome.
 first and most important rung: if Khala cannot beat Big Pickle on the
 OpenCode surface, it has no reason to exist as an OpenCode provider.
 
-**Competitor lane:** `bigpickle` — exact model id TBD (resolve from OpenCode
-source: `packages/core/src/config/provider.ts` or the upstream provider
-definition). Record the exact model id + API version + date in every report.
+**Competitor lane:** `bigpickle` — registered as `fixture_only` for the no-spend
+Gym fixture. The fixture selector is `opencode/bigpickle`; an owner-armed real
+sweep must resolve and record the exact upstream OpenCode model id + API version
++ date before a decision-grade report.
 
 **What we measure (all on the same coding task, same prompt, same verifier):**
 
@@ -154,24 +155,26 @@ used in external comparisons or claims.
 
 ## Implementation Sequence
 
-1. **Register `bigpickle` as a `BenchmarkLane`** in the typed matrix with
-   proper `LANE_AVAILABILITY` entry (lane: available, engine: provider-native).
-   Exact model id: resolve from OpenCode source.
-2. **Add free-tier competitor lanes** (`gemini-free`, `llama-free`, `qwen-free`,
-   `mistral-free`) — same pattern, each with `canSpend: false` and
-   `provenance: 'free_tier'` in shape metadata.
-3. **Add paid competitor lanes** (`openai-gpt`, `anthropic-claude`,
-   `google-gemini`) — each with its own preflight budget cap and
-   `makeRealLaneSeam` arm gate.
+1. **Shipped (#6246): register OpenCode endpoint lanes** in the typed matrix:
+   `khala`, `bigpickle`, `gemini-free`, `openai-gpt`, `claude`, plus own/open
+   `gpt-oss-20b`, `gpt-oss-120b`, and `glm-52`. `bigpickle`, `gemini-free`,
+   `openai-gpt`, and `claude` are `fixture_only` until a real executor is wired.
+2. **Shipped (#6246): add the OpenCode client runner** in
+   `workers/api/src/inference/benchmark/opencode-client-runner.ts`. It provisions
+   public-safe `opencode.json`, extracts provider `usage` without token
+   estimation, records wall-clock/tool-call success/verifier verdict, and feeds
+   the existing report path.
+3. **Next: add owner-armed real executors** for free-tier and paid competitor
+   lanes, each with its own budget cap and `makeRealLaneSeam` arm gate.
 4. **Source the first realistic fixture set** from QA-runner traces or
    internal dogfood sessions. Package as `RealTrafficShapeEvidence[]`.
-5. **Write the Gym runner module** (`benchmark/competitor-sweep.ts` or
-   similar) that:
-   - Reads the fixture set and competitor lane list from config
-   - For each cell, calls the competitor API with the same prompt
+5. **Extend the shipped runner with real competitor executors** that:
+   - Read the fixture set and competitor lane list from config
+   - For each owner-armed cell, call the competitor API with the same prompt
    - Records usage (provider `usage` block, never estimated), wall-clock
      (TTFT, total, generation), and verification outcome
-   - Produces a `BenchmarkReport` with competitor attribution
+   - Produce the same public-safe `BenchmarkReport` with competitor
+     attribution
 6. **Run an owner-armed real sweep** — first on rung 1 only (Khala vs Big
    Pickle), then expand to rungs 2 and 3.
 7. **Publish the first decision-grade report** to a well-known path

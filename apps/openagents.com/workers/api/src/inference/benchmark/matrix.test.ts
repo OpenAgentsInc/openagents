@@ -61,6 +61,9 @@ describe('benchmark matrix — expansion', () => {
 
   test('verification expectation is derived from workload (scored on outcome)', () => {
     expect(verificationExpectationForWorkload('chat')).toBe('none')
+    expect(verificationExpectationForWorkload('opencode-coding-task')).toBe(
+      'test_passed',
+    )
     expect(verificationExpectationForWorkload('khala-code-artifact-gen')).toBe(
       'test_passed',
     )
@@ -73,9 +76,17 @@ describe('benchmark matrix — expansion', () => {
   })
 
   test('lane availability table is the single source of truth', () => {
+    expect(laneAvailability('khala')).toBe('available')
+    expect(laneAvailability('bigpickle')).toBe('fixture_only')
+    expect(laneAvailability('gemini-free')).toBe('fixture_only')
+    expect(laneAvailability('openai-gpt')).toBe('fixture_only')
+    expect(laneAvailability('claude')).toBe('fixture_only')
     expect(laneAvailability('vertex-anthropic')).toBe('available')
     expect(laneAvailability('fireworks')).toBe('available')
     expect(laneAvailability('partner-passthrough')).toBe('available')
+    expect(laneAvailability('gpt-oss-20b')).toBe('available')
+    expect(laneAvailability('gpt-oss-120b')).toBe('available')
+    expect(laneAvailability('glm-52')).toBe('available')
     expect(laneAvailability('pylon-whole-small')).toBe('not_yet_available')
     expect(laneAvailability('psionic-shard-wan')).toBe('not_yet_available')
   })

@@ -191,14 +191,16 @@ This also gives the cost model real concurrency/latency curves per lane.
 
 Mostly as the OpenCode-via-Khala memo sketched, now de-TBD'd:
 
-1. **Add competitor lanes** as typed `BenchmarkLane` values with honest
-   `LANE_AVAILABILITY` entries: `bigpickle` (OpenCode default free), `gemini-free`,
+1. **Shipped D1 (#6246): competitor lanes** are typed `BenchmarkLane` values with
+   honest `LANE_AVAILABILITY` entries: `khala`, `bigpickle`, `gemini-free`,
    `openai-gpt`, `claude`; plus the own/open lanes `gpt-oss-20b`/`gpt-oss-120b`
-   (Hydralisk) and `glm-52`.
-2. **OpenCode client runner** — a module that provisions `opencode.json` for a model
-   endpoint, runs a fixed coding task, and extracts tokens (from the provider
-   `usage` block, never estimated), wall-clock, **tool-call-completion**, and the
-   independent verification verdict. Reuse the runbook config.
+   (Hydralisk) and `glm-52`. `fixture_only` keeps BigPickle in no-spend fixture
+   reports without pretending a real/billable executor exists.
+2. **Shipped D1 (#6246): OpenCode client runner** provisions public-safe
+   `opencode.json` for a model endpoint, extracts tokens from provider `usage`
+   (never estimated), records wall-clock, **tool-call success**, and the
+   independent verification verdict, then feeds the existing
+   matrix→runner→report path.
 3. **First realistic fixtures** — sourced from QA-runner / internal dog-food traffic
    (Pillar 1) so a head-to-head can reach `decisionGrade: true`; keep synthetic
    taste fixtures (the crossy-road artifact prompt, the quickstart smoke) labeled
@@ -231,8 +233,10 @@ Mostly as the OpenCode-via-Khala memo sketched, now de-TBD'd:
 - First-surface choice for the first armed sweep: OpenCode tool-calling coding tasks
   (whole-agent experience) vs direct chat-completion quality (rubric/verifier)?
 - Budget cap (msat) for the first Khala-vs-BigPickle armed sweep.
-- Minimal typed `GymEnvironment` contract for a **client-surface** environment
-  (OpenCode) vs a supply-lane environment — they measure different things.
+- Minimal typed `GymEnvironment` contract for client-surface, task-set,
+  artifact-acceptance, retrieval-QA, and recorded-head-to-head environments is
+  landed in `GYM_ENVIRONMENT_REGISTRY`; real dispatch adapters still differ by
+  surface and remain owner-armed work.
 - How the throughput/concurrency environment (§8) relates to `/gym/oss` (promote it
   from an owner playground to a typed Gym environment, or keep it separate?).
 - Internal-vs-external demand tagging in the analytics so Gym/dog-food tokens never

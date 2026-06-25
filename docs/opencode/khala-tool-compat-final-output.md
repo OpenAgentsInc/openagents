@@ -4,6 +4,11 @@ Here is the planning memo based on our reading of the GTM push doc, the inferenc
 
 ## OpenCode API Compatibility — Planning Memo
 
+> Historical planning export from 2026-06-25. For the current OpenCode recipe,
+> use [`opencode-khala-recipe.md`](./opencode-khala-recipe.md). Older quota and
+> doubled-selector examples below are preserved as planning context, not the
+> current published path.
+
 ### 1. Content Arrays
 
 **Current state:** The gateway reads `record['content']` through `decodeOpenAiContent` which handles string, `null`, and `Array<{type: 'text', text: string}>` (joining text parts with `\n\n`). Only `text` content parts are supported — image/vision `image_url` parts, `input_audio`, or multimodal content are rejected as `undefined` → `invalid_request` (400).
@@ -117,7 +122,7 @@ After metering, `ServedTokensRecorder` writes a `token_usage_events` row idempot
 | 10 | Dispatch → provider | 502 | `provider_error` |
 
 **Free tier specifics:**
-- 200 requests / 200,000 tokens per UTC day per free key
+- 2,000 requests / 2,500,000 tokens per UTC day per free key
 - Free tier bypasses balance gate (step 8)
 - Over-quota → falls through to normal balance gate (402 if unfunded)
 - Premium models NEVER free
@@ -196,4 +201,4 @@ After metering, `ServedTokensRecorder` writes a `token_usage_events` row idempot
    
 3. **Production smoke scripts** that exercise all seven smoke types above, runnable against staging/prod with a free key.
 
-4. **Documentation** for the GTM doc: note the `openagents/openagents/khala` display in OpenCode's TUI selector is a cosmetic concatenation of provider id (`openagents`) + model key (`openagents/khala`). The public model id on the server is already the single segment `openagents/khala` — no server-side change is needed. The display concern is purely OpenCode's `providerId/modelKey` rendering; if the cosmetic double-segment bothers users, the fix would be a shorter model key alias or a display hint in the OpenCode config, not a gateway change.
+4. **Documentation** for the GTM doc: note the older `openagents/openagents/khala` display in OpenCode's TUI selector was a cosmetic concatenation of provider id (`openagents`) + model key (`openagents/khala`). The public model id on the server is already the single segment `openagents/khala`; the published recipe resolves display by using model key `khala` with `api.id: "openagents/khala"`, so no server-side alias is needed.

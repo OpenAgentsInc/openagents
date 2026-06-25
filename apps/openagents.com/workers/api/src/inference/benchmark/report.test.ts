@@ -1,6 +1,10 @@
 import { describe, expect, test } from 'vitest'
 
-import { SAMPLE_DECISION_SUITE_CONFIG, TINY_TEST_CONFIG } from './fixtures'
+import {
+  OPENCODE_KHALA_VS_BIGPICKLE_FIXTURE_CONFIG,
+  SAMPLE_DECISION_SUITE_CONFIG,
+  TINY_TEST_CONFIG,
+} from './fixtures'
 import { makeFixtureLaneSeam, makeRealLaneSeam } from './lane-seam'
 import {
   buildBenchmarkReport,
@@ -99,6 +103,32 @@ describe('benchmark report — aggregation', () => {
     const fireworks = report.groups.find(g => g.lane === 'fireworks')!
     // 500 cacheable prefix × 0.8 hit = 400 cached, over a 1000-token prompt = 0.4.
     expect(fireworks.cacheHitRate).toBeCloseTo(0.4, 6)
+  })
+
+  test('OpenCode fixture compares Khala vs BigPickle with tool-call success', () => {
+    const report = buildBenchmarkReport(
+      runBenchmark(
+        OPENCODE_KHALA_VS_BIGPICKLE_FIXTURE_CONFIG,
+        makeFixtureLaneSeam(),
+      ),
+    )
+    const khala = report.groups.find(
+      g => g.lane === 'khala' && g.workload === 'opencode-coding-task',
+    )!
+    const bigpickle = report.groups.find(
+      g => g.lane === 'bigpickle' && g.workload === 'opencode-coding-task',
+    )!
+
+    expect(report.decisionGrade).toBe(false)
+    expect(khala.executedSamples).toBe(5)
+    expect(bigpickle.executedSamples).toBe(5)
+    expect(khala.verificationRate).toBe(1)
+    expect(bigpickle.verificationRate).toBe(0)
+    expect(khala.toolCallSuccessRate).toBe(1)
+    expect(bigpickle.toolCallSuccessRate).toBeCloseTo(2 / 3, 6)
+    expect(khala.costPerAcceptedOutcomeMsat).not.toBeNull()
+    expect(bigpickle.costPerAcceptedOutcomeMsat).toBeNull()
+    expect(checkReportPublicSafety(report).safe).toBe(true)
   })
 
   test('latency percentiles populate for streaming, sample count matches', () => {

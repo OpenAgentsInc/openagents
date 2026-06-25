@@ -157,8 +157,10 @@ coding agents through OpenCode against our endpoint is the cleanest first landin
 it is a coding tool (our wedge), it is config-driven (no upstream PR needed to
 start), and it exercises the same code/tool-calling workload Khala must be good at.
 
-**Exact config** (verified against the OpenCode repo docs/schema —
-`packages/web/src/content/docs/providers.mdx`, `config.mdx`,
+**Exact config:** the canonical OpenCode recipe is
+[`../opencode/opencode-khala-recipe.md`](../opencode/opencode-khala-recipe.md).
+It was verified against the OpenCode repo docs/schema
+(`packages/web/src/content/docs/providers.mdx`, `config.mdx`,
 `packages/core/src/config/provider.ts`). Put in `~/.config/opencode/opencode.json`
 (global) or `opencode.json` (project root):
 
@@ -176,10 +178,10 @@ start), and it exercises the same code/tool-calling workload Khala must be good 
       "models": {
         "khala": {
           "name": "Khala",
-          "tool_call": true,
           "api": {
             "id": "openagents/khala"
           },
+          "tool_call": true,
           "limit": { "context": 128000, "output": 65536 }
         }
       }
@@ -195,11 +197,10 @@ start), and it exercises the same code/tool-calling workload Khala must be good 
   `OPENAGENTS_API_KEY`, or use OpenCode's `/connect → Other → id "openagents"` to
   store it in `~/.local/share/opencode/auth.json`. The provider id typed in
   `/connect` must equal the `provider` key in the config.
-- **Model selection:** OpenCode's model reference is `providerId/modelKey`. The
-  selected recipe uses model key `khala`, so the selector/default model is
-  `openagents/khala`. The per-model `api.id` override makes the upstream
-  Chat Completions body still send `model: "openagents/khala"`. This resolves the
-  old doubled selector without adding a server-side alias.
+- **Model selection:** OpenCode displays `providerId/modelKey`. The published
+  recipe uses model key `khala` plus `api.id: "openagents/khala"`, so the
+  selector is `openagents/khala` and the upstream request still sends
+  `model: "openagents/khala"`. No server-side alias is needed.
 
 **What to test before we publish the OpenCode recipe:**
 - The endpoint serves chat-completions at `/api/v1/chat/completions` (it does) and
@@ -215,6 +216,11 @@ start), and it exercises the same code/tool-calling workload Khala must be good 
   `khala-tokens-served` counter (proving external traffic is counted).
 
 ### Next tools after OpenCode
+
+The canonical #6240 recipe set is
+[`../opencode/khala-ecosystem-tool-recipes.md`](../opencode/khala-ecosystem-tool-recipes.md).
+It covers Aider, Cline, Continue, AI SDK, LiteLLM, and LangChain with current
+upstream docs links, exact configs, test checklists, and attribution guidance.
 
 Prioritized by how directly each is a one-config-line OpenAI-compatible drop-in
 and how much coding/agent traffic it represents (reference repos under
@@ -239,8 +245,8 @@ and how much coding/agent traffic it represents (reference repos under
 
 For each tool the deliverable is the same: a short, exact, copy-pasteable recipe
 (base URL + free key + model id) plus a "what to test" checklist, published where
-the tool's users look. Keep the recipes in this repo's docs and on `/khala` once
-the copy gate clears.
+the tool's users look. Keep the recipes in this repo's docs and promote to
+`/khala` only once the copy gate clears.
 
 ## 4. Pillar 3 — Benchmarking ("make it good," not just "get there")
 
@@ -321,8 +327,8 @@ are explicitly labeled illustrative and never published as measurements.
    names; arm a real sweep over the now-real dogfood traffic; produce the first
    decision-grade report and a publishable head-to-head.
 4. **Broaden to more tools (Pillar 2 continued).** Aider → Cline/Continue → Vercel
-   AI SDK → LiteLLM/LangChain lists → aggregators. One recipe at a time, each with
-   a test checklist.
+   AI SDK → LiteLLM/LangChain recipes are now in the repo; aggregator/provider-list
+   work remains later-stage. One recipe at a time, each with a test checklist.
 5. **Keep driving internal dogfood demand throughout.** Pillar 1 never stops; new
    internal systems default to Khala as they ship. Constant motion.
 
