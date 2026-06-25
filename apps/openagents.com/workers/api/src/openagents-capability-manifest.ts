@@ -383,6 +383,22 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'Public-safe proof closeout for the OTEC Site order, including caveats, claim state, agent instruction card, and first-Site agent challenges.',
       },
       {
+        id: 'public_khala_tokens_served',
+        href: 'https://openagents.com/api/public/khala-tokens-served',
+        method: 'GET',
+        auth: 'public',
+        description:
+          'Public-safe "Khala Tokens Served" counter: the running network-wide SUM of input + output tokens across all token usage ledger events, plus generatedAt and the live_at_read staleness contract. Aggregate scalar only, no per-user, per-team, provider, or secret material. Read-only counter; grants no payout, settlement, or public-claim authority.',
+      },
+      {
+        id: 'public_khala_tokens_served_history',
+        href: 'https://openagents.com/api/public/khala-tokens-served/history',
+        method: 'GET',
+        auth: 'public',
+        description:
+          'Public-safe "Khala Tokens Served" history: window (today/7d/30d/all, default 30d), bucket (day), and a per-day series of { day, tokensServed } summing input + output tokens served that UTC day, plus generatedAt and the live_at_read staleness contract. Each point is a bare day + sum, no per-user, per-team, provider, or secret material. Read-only counter history; grants no payout, settlement, or public-claim authority.',
+      },
+      {
         id: 'public_pylon_capacity_funnel',
         href: 'https://openagents.com/api/public/pylon-capacity-funnel',
         method: 'GET',

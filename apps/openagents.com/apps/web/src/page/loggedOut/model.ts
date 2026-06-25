@@ -972,6 +972,54 @@ export const PublicKhalaTokensServedModel = S.Union([
 export type PublicKhalaTokensServedModel =
   typeof PublicKhalaTokensServedModel.Type
 
+// "Khala Tokens Served" history (#6227): the public-safe per-day series from
+// GET /api/public/khala-tokens-served/history, polled on the same interval as
+// the scalar counter so the /stats history chart reads live. Each point is a
+// bare UTC day + the SUM of input + output tokens served that day.
+export const PublicKhalaTokensServedHistoryPoint = S.Struct({
+  day: S.String,
+  tokensServed: S.Number,
+})
+export type PublicKhalaTokensServedHistoryPoint =
+  typeof PublicKhalaTokensServedHistoryPoint.Type
+
+export const PublicKhalaTokensServedHistory = S.Struct({
+  window: S.String,
+  bucket: S.String,
+  series: S.Array(PublicKhalaTokensServedHistoryPoint),
+})
+export type PublicKhalaTokensServedHistory =
+  typeof PublicKhalaTokensServedHistory.Type
+
+export const IdlePublicKhalaTokensServedHistory = ts(
+  'PublicKhalaTokensServedHistoryIdle',
+  {},
+)
+export const LoadingPublicKhalaTokensServedHistory = ts(
+  'PublicKhalaTokensServedHistoryLoading',
+  {},
+)
+export const LoadedPublicKhalaTokensServedHistory = ts(
+  'PublicKhalaTokensServedHistoryLoaded',
+  {
+    history: PublicKhalaTokensServedHistory,
+  },
+)
+export const FailedPublicKhalaTokensServedHistory = ts(
+  'PublicKhalaTokensServedHistoryFailed',
+  {
+    error: S.String,
+  },
+)
+export const PublicKhalaTokensServedHistoryModel = S.Union([
+  IdlePublicKhalaTokensServedHistory,
+  LoadingPublicKhalaTokensServedHistory,
+  LoadedPublicKhalaTokensServedHistory,
+  FailedPublicKhalaTokensServedHistory,
+])
+export type PublicKhalaTokensServedHistoryModel =
+  typeof PublicKhalaTokensServedHistoryModel.Type
+
 export const IdlePublicForumLaunchStatus = ts('PublicForumLaunchStatusIdle', {})
 export const LoadingPublicForumLaunchStatus = ts(
   'PublicForumLaunchStatusLoading',
@@ -1298,6 +1346,7 @@ export const Model = ts('LoggedOut', {
   publicAdjutantActivity: PublicAdjutantActivityModel,
   publicPylonStats: PublicPylonStatsModel,
   publicKhalaTokensServed: PublicKhalaTokensServedModel,
+  publicKhalaTokensServedHistory: PublicKhalaTokensServedHistoryModel,
   publicForumLaunchStatus: PublicForumLaunchStatusModel,
   publicForumTipLeaderboards: PublicForumTipLeaderboardsModel,
   publicProductPromises: PublicProductPromisesModel,
@@ -1358,6 +1407,12 @@ export const init = (
       route._tag === 'PublicStatsArchive'
         ? LoadingPublicKhalaTokensServed()
         : IdlePublicKhalaTokensServed(),
+    publicKhalaTokensServedHistory:
+      route._tag === 'Home' ||
+      route._tag === 'Stats' ||
+      route._tag === 'PublicStatsArchive'
+        ? LoadingPublicKhalaTokensServedHistory()
+        : IdlePublicKhalaTokensServedHistory(),
     publicForumLaunchStatus:
       route._tag === 'Home' ||
       route._tag === 'Stats' ||

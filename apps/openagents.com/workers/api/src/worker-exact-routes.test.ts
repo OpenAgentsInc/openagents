@@ -78,6 +78,7 @@ const approvedExactRoutePaths = [
   '/api/autopilot/morning-report',
   '/api/public/pylon-stats',
   '/api/public/khala-tokens-served',
+  '/api/public/khala-tokens-served/history',
   '/api/public/pylon-capacity-funnel',
   '/api/public/pylon-capacity-funnel/history',
   '/api/public/site-referral-payouts',

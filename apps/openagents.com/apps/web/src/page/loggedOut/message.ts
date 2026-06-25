@@ -15,6 +15,7 @@ import {
   PublicForumLaunchStatus,
   PublicForumTipLeaderboards,
   PublicKhalaTokensServed,
+  PublicKhalaTokensServedHistory,
   PublicProductPromises,
   PublicPromiseTransitions,
   PublicPylonStats,
@@ -166,6 +167,24 @@ export const SucceededLoadPublicKhalaTokensServed = m(
 )
 export const FailedLoadPublicKhalaTokensServed = m(
   'FailedLoadPublicKhalaTokensServed',
+  {
+    error: S.String,
+  },
+)
+// "Khala Tokens Served" history (#6227). The same poll subscription tick that
+// re-fetches the scalar counter also re-fetches the per-day history series for
+// the /stats chart; the command resolves to Succeeded/Failed.
+export const RequestedPollKhalaTokensServedHistory = m(
+  'RequestedPollKhalaTokensServedHistory',
+)
+export const SucceededLoadPublicKhalaTokensServedHistory = m(
+  'SucceededLoadPublicKhalaTokensServedHistory',
+  {
+    history: PublicKhalaTokensServedHistory,
+  },
+)
+export const FailedLoadPublicKhalaTokensServedHistory = m(
+  'FailedLoadPublicKhalaTokensServedHistory',
   {
     error: S.String,
   },
@@ -445,6 +464,9 @@ export const Message = S.Union([
   RequestedPollKhalaTokensServed,
   SucceededLoadPublicKhalaTokensServed,
   FailedLoadPublicKhalaTokensServed,
+  RequestedPollKhalaTokensServedHistory,
+  SucceededLoadPublicKhalaTokensServedHistory,
+  FailedLoadPublicKhalaTokensServedHistory,
   SucceededLoadPublicForumLaunchStatus,
   FailedLoadPublicForumLaunchStatus,
   SucceededLoadPublicForumTipLeaderboards,

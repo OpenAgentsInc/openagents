@@ -9,6 +9,7 @@ import {
   copyBoundaryPanel,
   endpointManifestPanel,
   forumStatsPanel,
+  khalaTokensServedPanel,
   nostrRelayPanel,
   pylonStatsPanel,
 } from './home'
@@ -80,6 +81,10 @@ export const view = (input: HomeViewInput): Html => {
                   ['Home'],
                 ),
               ],
+            ),
+            khalaTokensServedPanel(
+              input.publicKhalaTokensServed,
+              input.publicKhalaTokensServedHistory,
             ),
             h.div(
               [

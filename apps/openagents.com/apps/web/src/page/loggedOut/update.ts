@@ -23,6 +23,7 @@ import {
   FailedLoadPublicForumLaunchStatus,
   FailedLoadPublicForumTipLeaderboards,
   FailedLoadPublicKhalaTokensServed,
+  FailedLoadPublicKhalaTokensServedHistory,
   FailedLoadPublicProductPromises,
   FailedLoadPublicPromiseTransitions,
   FailedLoadPublicPylonStats,
@@ -37,6 +38,7 @@ import {
   SucceededLoadPublicForumLaunchStatus,
   SucceededLoadPublicForumTipLeaderboards,
   SucceededLoadPublicKhalaTokensServed,
+  SucceededLoadPublicKhalaTokensServedHistory,
   SucceededLoadPublicProductPromises,
   SucceededLoadPublicPromiseTransitions,
   SucceededLoadPublicPylonStats,
@@ -52,6 +54,7 @@ import {
   FailedPublicForumLaunchStatus,
   FailedPublicForumTipLeaderboards,
   FailedPublicKhalaTokensServed,
+  FailedPublicKhalaTokensServedHistory,
   FailedPublicProductPromises,
   FailedPublicPromiseTransitions,
   FailedPublicPylonStats,
@@ -63,6 +66,7 @@ import {
   LoadedPublicForumLaunchStatus,
   LoadedPublicForumTipLeaderboards,
   LoadedPublicKhalaTokensServed,
+  LoadedPublicKhalaTokensServedHistory,
   LoadedPublicProductPromises,
   LoadedPublicPromiseTransitions,
   LoadedPublicPylonStats,
@@ -78,6 +82,7 @@ import {
   PublicForumLaunchStatus,
   PublicForumTipLeaderboards,
   PublicKhalaTokensServed,
+  PublicKhalaTokensServedHistory,
   PublicProductPromises,
   PublicPromiseTransitions,
   PublicPylonStats,
@@ -146,6 +151,11 @@ class PublicPylonStatsLoadError extends S.TaggedErrorClass<PublicPylonStatsLoadE
 
 class PublicKhalaTokensServedLoadError extends S.TaggedErrorClass<PublicKhalaTokensServedLoadError>()(
   'PublicKhalaTokensServedLoadError',
+  { error: S.Defect },
+) {}
+
+class PublicKhalaTokensServedHistoryLoadError extends S.TaggedErrorClass<PublicKhalaTokensServedHistoryLoadError>()(
+  'PublicKhalaTokensServedHistoryLoadError',
   { error: S.Defect },
 ) {}
 
@@ -409,6 +419,50 @@ export const LoadPublicKhalaTokensServed = Command.define(
     Effect.catch(error =>
       Effect.succeed(
         FailedLoadPublicKhalaTokensServed({
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      ),
+    ),
+  ),
+)
+
+// "Khala Tokens Served" history (#6227). Cold-reads the public-safe per-day
+// series for the /stats chart; the poll subscription re-runs this every few
+// seconds alongside the scalar counter. Public read: no-store, no auth,
+// aggregate-only (bare day + sum) series.
+export const LoadPublicKhalaTokensServedHistory = Command.define(
+  'LoadPublicKhalaTokensServedHistory',
+  SucceededLoadPublicKhalaTokensServedHistory,
+  FailedLoadPublicKhalaTokensServedHistory,
+)(
+  Effect.gen(function* () {
+    const response = yield* Effect.tryPromise({
+      try: () =>
+        fetch('/api/public/khala-tokens-served/history?window=30d&bucket=day', {
+          cache: 'no-store',
+          headers: { accept: 'application/json' },
+        }),
+      catch: error => new PublicKhalaTokensServedHistoryLoadError({ error }),
+    })
+
+    if (!response.ok) {
+      return yield* new PublicKhalaTokensServedHistoryLoadError({
+        error: `Public Khala tokens served history returned HTTP ${response.status}.`,
+      })
+    }
+
+    const payload = yield* Effect.tryPromise({
+      try: () => response.json(),
+      catch: error => new PublicKhalaTokensServedHistoryLoadError({ error }),
+    })
+    const decoded =
+      yield* S.decodeUnknownEffect(PublicKhalaTokensServedHistory)(payload)
+
+    return SucceededLoadPublicKhalaTokensServedHistory({ history: decoded })
+  }).pipe(
+    Effect.catch(error =>
+      Effect.succeed(
+        FailedLoadPublicKhalaTokensServedHistory({
           error: error instanceof Error ? error.message : String(error),
         }),
       ),
@@ -1216,6 +1270,7 @@ export const initialCommands = (
       ? [
           LoadPublicPylonStats(),
           LoadPublicKhalaTokensServed(),
+          LoadPublicKhalaTokensServedHistory(),
           LoadPublicForumLaunchStatus(),
           LoadPublicForumTipLeaderboards(),
           LoadSettledFeedSnapshot(),
@@ -1461,6 +1516,27 @@ export const update = (model: Model, message: Message): UpdateReturn =>
         evo(model, {
           publicKhalaTokensServed: () =>
             FailedPublicKhalaTokensServed({ error }),
+        }),
+        [],
+      ],
+      // History poll tick: re-fetch the per-day series. The model holds its
+      // last loaded series (no flash to Loading) so the chart stays stable
+      // between fetches and just updates when the next series arrives.
+      RequestedPollKhalaTokensServedHistory: () => [
+        model,
+        [LoadPublicKhalaTokensServedHistory()],
+      ],
+      SucceededLoadPublicKhalaTokensServedHistory: ({ history }) => [
+        evo(model, {
+          publicKhalaTokensServedHistory: () =>
+            LoadedPublicKhalaTokensServedHistory({ history }),
+        }),
+        [],
+      ],
+      FailedLoadPublicKhalaTokensServedHistory: ({ error }) => [
+        evo(model, {
+          publicKhalaTokensServedHistory: () =>
+            FailedPublicKhalaTokensServedHistory({ error }),
         }),
         [],
       ],

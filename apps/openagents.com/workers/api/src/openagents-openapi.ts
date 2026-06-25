@@ -1623,6 +1623,12 @@ const schemaComponents = (): JsonSchema => ({
   PublicPylonCapacityFunnelHistory: objectSummary(
     'Public-safe retained Pylon capacity funnel history: hourly and daily count-only snapshots with the same read-only capacity-accounting authority boundary as the live funnel. No device identifiers, owner linkage, wallet detail, assignment authority, payout authority, or settlement authority.',
   ),
+  PublicKhalaTokensServed: objectSummary(
+    'Public-safe "Khala Tokens Served" aggregate: tokensServed (the running network-wide SUM of input + output tokens across all token usage ledger events), generatedAt, and the declared live_at_read staleness contract. A single non-negative scalar; no per-user, per-team, provider, or secret material. Read-only counter; grants no payout, settlement, or public-claim authority.',
+  ),
+  PublicKhalaTokensServedHistory: objectSummary(
+    'Public-safe "Khala Tokens Served" history: window, bucket (day), and a per-day series of { day, tokensServed } where tokensServed is the SUM of input + output tokens served that UTC day, plus generatedAt and the declared live_at_read staleness contract. Each point is a bare day + sum; no per-user, per-team, provider, or secret material. Read-only counter history; grants no payout, settlement, or public-claim authority.',
+  ),
   PublicRelayHealth: objectSummary(
     'Public-safe canonical market relay health projection: current status (healthy/degraded/unhealthy, or unknown before the first probe), per-leg NIP-11 (HTTP status, latency, relay name) and websocket REQ/EOSE round-trip (outcome, latency) results, bounded retained probe history (7 days), typed status-transition events (30 days), generatedAt, probe cadence, and the declared stored_snapshot staleness contract with a staleExceeded flag. Read-only monitoring evidence; grants no relay-mutation, payout, settlement, or public-claim authority.',
   ),
@@ -8624,6 +8630,47 @@ const paths = (): JsonSchema => ({
         '201': okJson(
           'Recorded promise transition receipt.',
           '#/components/schemas/ProductPromiseTransitions',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/khala-tokens-served': {
+    get: operation({
+      operationId: 'getPublicKhalaTokensServed',
+      summary: 'Read public Khala Tokens Served counter',
+      description:
+        'Returns the public-safe "Khala Tokens Served" aggregate: the running network-wide SUM of input + output tokens across all token usage ledger events, plus generatedAt and the declared live_at_read staleness contract. A single non-negative scalar; no per-user, per-team, provider, or secret material. Read-only counter; grants no payout, settlement, or public-claim authority.',
+      tags: ['Public Proof'],
+      security: [],
+      responses: {
+        '200': okJson(
+          'Public Khala Tokens Served counter.',
+          '#/components/schemas/PublicKhalaTokensServed',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/khala-tokens-served/history': {
+    get: operation({
+      operationId: 'getPublicKhalaTokensServedHistory',
+      summary: 'Read public Khala Tokens Served history',
+      description:
+        'Returns the public-safe "Khala Tokens Served" history: window, bucket (day), and a per-day series of { day, tokensServed } where tokensServed is the SUM of input + output tokens served that UTC day, plus generatedAt and the declared live_at_read staleness contract. Each point is a bare day + sum; no per-user, per-team, provider, or secret material. Read-only counter history; grants no payout, settlement, or public-claim authority.',
+      tags: ['Public Proof'],
+      security: [],
+      parameters: [
+        queryParam(
+          'window',
+          'Time window for the series: today, 7d, 30d, or all. Default 30d.',
+        ),
+        queryParam('bucket', 'Series bucket. Only day is supported. Default day.'),
+      ],
+      responses: {
+        '200': okJson(
+          'Public Khala Tokens Served history.',
+          '#/components/schemas/PublicKhalaTokensServedHistory',
         ),
         ...errorResponses(),
       },

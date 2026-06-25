@@ -1,4 +1,5 @@
 import { motionOdometerClass } from '@openagentsinc/ui'
+import { Array, Match as M } from 'effect'
 import type { Attribute, Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
 
@@ -9,6 +10,8 @@ import type {
   PublicForumLaunchStatusModel,
   PublicForumTipLeaderboards,
   PublicForumTipLeaderboardsModel,
+  PublicKhalaTokensServedHistoryModel,
+  PublicKhalaTokensServedHistoryPoint,
   PublicKhalaTokensServedModel,
   PublicPylonStats,
   PublicPylonStatsModel,
@@ -19,6 +22,7 @@ export type HomeViewInput = {
   forumLaunchStatus: PublicForumLaunchStatusModel
   forumTipLeaderboards: PublicForumTipLeaderboardsModel
   publicKhalaTokensServed: PublicKhalaTokensServedModel
+  publicKhalaTokensServedHistory: PublicKhalaTokensServedHistoryModel
   publicPylonStats: PublicPylonStatsModel
   settledFeed: SettledFeedModel
 }
@@ -937,6 +941,254 @@ export const khalaTokensServedCounter = (
   )
 }
 
+// "Khala Tokens Served" history graph (#6227): a small hand-rolled SVG bar
+// chart of tokens-per-day for the last 30 days, sitting next to the live
+// counter on /stats. Public-safe: the series is bare day + sum. No chart
+// library — just scaled rect bars (via the foldkit h.rect builder) in the brand
+// positive-green over the dark panel. Bars are visible by default (no
+// class-gated reveal), so the chart is reduced-motion-safe and renders in
+// headless/SSR contexts. Accessibility: the chart root carries role="img" plus
+// an aria-label summary, each bar a title element, and a visually-hidden
+// table-like text fallback lists every day + value.
+
+const CHART_VIEW_WIDTH = 320
+const CHART_VIEW_HEIGHT = 96
+const CHART_BASELINE_Y = CHART_VIEW_HEIGHT - 1
+
+const compactNumberFormatter = new Intl.NumberFormat('en-US', {
+  notation: 'compact',
+  maximumFractionDigits: 1,
+})
+
+const formatCompactNumber = (value: number): string =>
+  compactNumberFormatter.format(value)
+
+const historyChartHeading = (live: boolean): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [
+      Ui.className<Message>(
+        'flex items-center gap-2 text-[0.66rem] uppercase leading-none tracking-[0.08em] text-white/45',
+      ),
+    ],
+    [
+      h.span(
+        [
+          h.DataAttribute('status', live ? 'live' : 'pending'),
+          Ui.className<Message>(
+            `inline-block h-1.5 w-1.5 rounded-full ${
+              live ? 'bg-[#00c853]' : 'bg-white/30'
+            }`,
+          ),
+        ],
+        [],
+      ),
+      h.span([], ['Tokens Served / Day']),
+    ],
+  )
+}
+
+const historyChartShell = (live: boolean, body: Html, caption: string): Html => {
+  const h = html<Message>()
+
+  return h.section(
+    [
+      h.DataAttribute('chart', 'khala-tokens-served-history'),
+      Ui.className<Message>(
+        'flex flex-col gap-3 border border-[#242424] bg-[#030303] px-4 py-5',
+      ),
+    ],
+    [
+      historyChartHeading(live),
+      body,
+      h.p(
+        [Ui.className<Message>('m-0 text-[0.66rem] leading-4 text-white/35')],
+        [caption],
+      ),
+    ],
+  )
+}
+
+const historyChartPlaceholder = (label: string): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [
+      h.Role('status'),
+      Ui.className<Message>(
+        'flex h-[96px] items-center justify-center text-[0.7rem] text-white/35',
+      ),
+    ],
+    [label],
+  )
+}
+
+// The visually-hidden, screen-reader / headless text fallback: every day and
+// its served-token count, so the data is never locked inside the SVG.
+const historyTextFallback = (
+  series: ReadonlyArray<PublicKhalaTokensServedHistoryPoint>,
+): Html => {
+  const h = html<Message>()
+
+  return h.ul(
+    [Ui.className<Message>('sr-only')],
+    series.map(point =>
+      h.li([], [`${point.day}: ${formatNumber(point.tokensServed)} tokens`]),
+    ),
+  )
+}
+
+const historyChartBars = (
+  series: ReadonlyArray<PublicKhalaTokensServedHistoryPoint>,
+): Html => {
+  const h = html<Message>()
+  const maxTokens = series.reduce(
+    (max, point) => (point.tokensServed > max ? point.tokensServed : max),
+    0,
+  )
+  // Even gaps; bars take ~70% of each slot. With <=30 points the gap reads as
+  // clear separation without crowding.
+  const slot = CHART_VIEW_WIDTH / series.length
+  const barWidth = Math.max(1, slot * 0.7)
+
+  const bars = series.map((point, index) => {
+    // A zero-token day still shows a 1px sliver so the day is not invisible.
+    const heightRatio = maxTokens === 0 ? 0 : point.tokensServed / maxTokens
+    const barHeight = Math.max(
+      point.tokensServed > 0 ? 2 : 0,
+      heightRatio * (CHART_VIEW_HEIGHT - 4),
+    )
+    const x = index * slot + (slot - barWidth) / 2
+    const y = CHART_BASELINE_Y - barHeight
+
+    return h.rect(
+      [
+        h.Attribute('x', x.toFixed(2)),
+        h.Attribute('y', y.toFixed(2)),
+        h.Attribute('width', barWidth.toFixed(2)),
+        h.Attribute('height', barHeight.toFixed(2)),
+        h.Attribute('rx', '0.5'),
+        h.Fill('#00c853'),
+        h.Attribute('fill-opacity', point.tokensServed > 0 ? '0.85' : '0.25'),
+      ],
+      [
+        h.title(
+          [],
+          [`${point.day}: ${formatNumber(point.tokensServed)} tokens`],
+        ),
+      ],
+    )
+  })
+
+  const ariaLabel = `Tokens served per day for the last ${series.length} ${
+    series.length === 1 ? 'day' : 'days'
+  }. Peak ${formatNumber(maxTokens)} tokens in a day.`
+
+  return h.div(
+    [],
+    [
+      h.svg(
+        [
+          h.Role('img'),
+          h.AriaLabel(ariaLabel),
+          Ui.className<Message>('h-[96px] w-full'),
+          h.Xmlns('http://www.w3.org/2000/svg'),
+          h.ViewBox(`0 0 ${CHART_VIEW_WIDTH} ${CHART_VIEW_HEIGHT}`),
+          h.Attribute('preserveAspectRatio', 'none'),
+        ],
+        [
+          // Baseline rule, faint, on-brand.
+          h.line(
+            [
+              h.Attribute('x1', '0'),
+              h.Attribute('y1', String(CHART_BASELINE_Y)),
+              h.Attribute('x2', String(CHART_VIEW_WIDTH)),
+              h.Attribute('y2', String(CHART_BASELINE_Y)),
+              h.Attribute('stroke', '#242424'),
+              h.Attribute('stroke-width', '1'),
+            ],
+            [],
+          ),
+          ...bars,
+        ],
+      ),
+      historyTextFallback(series),
+    ],
+  )
+}
+
+export const khalaTokensServedHistoryChart = (
+  model: PublicKhalaTokensServedHistoryModel,
+): Html =>
+  M.value(model).pipe(
+    M.tagsExhaustive({
+      PublicKhalaTokensServedHistoryIdle: () =>
+        historyChartShell(
+          false,
+          historyChartPlaceholder('Waiting for data…'),
+          'Daily input + output tokens served across the network, powered by Khala.',
+        ),
+      PublicKhalaTokensServedHistoryLoading: () =>
+        historyChartShell(
+          false,
+          historyChartPlaceholder('Loading history…'),
+          'Daily input + output tokens served across the network, powered by Khala.',
+        ),
+      PublicKhalaTokensServedHistoryFailed: () =>
+        historyChartShell(
+          false,
+          historyChartPlaceholder('History unavailable.'),
+          'Daily input + output tokens served across the network, powered by Khala.',
+        ),
+      PublicKhalaTokensServedHistoryLoaded: ({ history }) =>
+        Array.match(history.series, {
+          onEmpty: () =>
+            historyChartShell(
+              true,
+              historyChartPlaceholder('No tokens served yet.'),
+              'Daily input + output tokens served across the network, powered by Khala.',
+            ),
+          onNonEmpty: series =>
+            historyChartShell(
+              true,
+              historyChartBars(series),
+              `Daily input + output tokens served across the network, powered by Khala. Last ${
+                series.length
+              } ${series.length === 1 ? 'day' : 'days'}, peak ${formatCompactNumber(
+                series.reduce(
+                  (max, point) =>
+                    point.tokensServed > max ? point.tokensServed : max,
+                  0,
+                ),
+              )} in a day.`,
+            ),
+        }),
+    }),
+  )
+
+// The paired "Khala Tokens Served" surface: the live counter and the
+// tokens-per-day history chart side by side on wide viewports, stacked on
+// narrow ones. Used on both the homepage and /stats.
+export const khalaTokensServedPanel = (
+  counter: PublicKhalaTokensServedModel,
+  history: PublicKhalaTokensServedHistoryModel,
+): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [
+      Ui.className<Message>(
+        'grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]',
+      ),
+    ],
+    [
+      khalaTokensServedCounter(counter),
+      khalaTokensServedHistoryChart(history),
+    ],
+  )
+}
+
 const topStatTile = (label: string, value: string, detail: string): Html => {
   const h = html<Message>()
   return h.div(
@@ -1113,7 +1365,10 @@ export const view = (input: HomeViewInput): Html => {
                 publicAgentPath(),
               ],
             ),
-            khalaTokensServedCounter(input.publicKhalaTokensServed),
+            khalaTokensServedPanel(
+              input.publicKhalaTokensServed,
+              input.publicKhalaTokensServedHistory,
+            ),
             topStatsStrip(input),
             liveSettledFeedPanel(
               input.settledFeed,

@@ -1,5 +1,7 @@
 import {
   PublicKhalaTokensServedAggregate,
+  PublicKhalaTokensServedHistory,
+  type PublicKhalaTokensServedHistoryBucket,
   TokenUsageAggregateResponse,
   TokenUsageCounts,
   TokenUsageEventIngestBody,
@@ -51,6 +53,12 @@ export type TokenUsageLedgerFilters = Readonly<{
 export type TokenUsageLeaderboardFilters = Readonly<{
   now?: string | undefined
   until?: string | undefined
+  window?: '7d' | '30d' | 'all' | 'today' | string | undefined
+}>
+
+export type TokenUsageHistoryFilters = Readonly<{
+  bucket?: 'day' | string | undefined
+  now?: string | undefined
   window?: '7d' | '30d' | 'all' | 'today' | string | undefined
 }>
 
@@ -106,6 +114,12 @@ export type TokenUsageLedgerShape = Readonly<{
   >
   readPublicTokensServed: () => Effect.Effect<
     typeof PublicKhalaTokensServedAggregate.Type,
+    TokenUsageLedgerStorageError | TokenUsageLedgerValidationError
+  >
+  readPublicTokensServedHistory: (
+    filters?: TokenUsageHistoryFilters,
+  ) => Effect.Effect<
+    typeof PublicKhalaTokensServedHistory.Type,
     TokenUsageLedgerStorageError | TokenUsageLedgerValidationError
   >
   readLeaderboardPreference: (
@@ -436,6 +450,21 @@ const decodePublicTokensServedAggregate = (
     catch: error =>
       new TokenUsageLedgerValidationError({
         field: 'public_tokens_served_aggregate',
+        message: error instanceof Error ? error.message : String(error),
+      }),
+  })
+
+const decodePublicTokensServedHistory = (
+  value: unknown,
+): Effect.Effect<
+  typeof PublicKhalaTokensServedHistory.Type,
+  TokenUsageLedgerValidationError
+> =>
+  Effect.try({
+    try: () => S.decodeUnknownSync(PublicKhalaTokensServedHistory)(value),
+    catch: error =>
+      new TokenUsageLedgerValidationError({
+        field: 'public_tokens_served_history',
         message: error instanceof Error ? error.message : String(error),
       }),
   })
@@ -918,6 +947,24 @@ const leaderboardWindowSince = (
   return runtime.isoTimestampAfterIso(nowIso, -days * dayMilliseconds)
 }
 
+const normalizeHistoryBucket = (
+  value: string | undefined,
+): Effect.Effect<
+  PublicKhalaTokensServedHistoryBucket,
+  TokenUsageLedgerValidationError
+> => {
+  const bucket = optionalText(value) ?? 'day'
+
+  return bucket === 'day'
+    ? Effect.succeed('day')
+    : Effect.fail(
+        new TokenUsageLedgerValidationError({
+          field: 'bucket',
+          message: 'bucket must be day.',
+        }),
+      )
+}
+
 type AggregateWhere = Readonly<{
   filters: TokenUsageLeaderboardFilters | TokenUsageLedgerFilters
   sql: string
@@ -1296,6 +1343,63 @@ export const makeD1TokenUsageLedger = (
 
       return yield* decodePublicTokensServedAggregate({
         tokensServed: Math.max(0, Math.trunc(row?.tokens_served ?? 0)),
+      })
+    }),
+
+  // Public-safe "Khala Tokens Served" history: the per-day SUM of input +
+  // output tokens over the requested window, ordered ascending by UTC day. Like
+  // the scalar above, it is aggregate only — bare day + sum, no per-user,
+  // per-actor, or provider columns. Buckets only on date(observed_at) and uses
+  // the observed_at index for the window lower bound. Default window 30d,
+  // default bucket day.
+  readPublicTokensServedHistory: (filters = {}) =>
+    Effect.gen(function* () {
+      const window = yield* normalizeLeaderboardWindow(filters.window ?? '30d')
+      const bucket = yield* normalizeHistoryBucket(filters.bucket)
+      const nowIso = yield* requireTimestamp(
+        'now',
+        filters.now ?? runtime.nowIso(),
+      )
+      const since = leaderboardWindowSince(window, nowIso, runtime)
+      const rows = yield* d1Effect(
+        'tokenUsageEvents.publicTokensServedHistory',
+        () =>
+          db
+            .prepare(
+              since === undefined
+                ? `SELECT
+                      date(observed_at) AS day,
+                      COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)
+                        AS tokens
+                     FROM token_usage_events
+                    GROUP BY day
+                    ORDER BY day ASC`
+                : `SELECT
+                      date(observed_at) AS day,
+                      COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)
+                        AS tokens
+                     FROM token_usage_events
+                    WHERE observed_at >= ?
+                    GROUP BY day
+                    ORDER BY day ASC`,
+            )
+            .bind(...(since === undefined ? [] : [since]))
+            .all<{ day: string | null; tokens: number | null }>(),
+      )
+
+      const series = rows.results
+        .filter((row): row is { day: string; tokens: number | null } =>
+          typeof row.day === 'string' && row.day !== '',
+        )
+        .map(row => ({
+          day: row.day,
+          tokensServed: Math.max(0, Math.trunc(row.tokens ?? 0)),
+        }))
+
+      return yield* decodePublicTokensServedHistory({
+        bucket,
+        series,
+        window,
       })
     }),
 

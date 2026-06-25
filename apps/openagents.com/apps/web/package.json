@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "capture:landing": "bun run scripts/capture-landing.ts"
+    "capture:landing": "bun run scripts/capture-landing.ts",
+    "capture:khala-tokens-history": "bun run scripts/capture-khala-tokens-history.ts"
   },
   "dependencies": {
     "@effect/platform-browser": "4.0.0-beta.70",

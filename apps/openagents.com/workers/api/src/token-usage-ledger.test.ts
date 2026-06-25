@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { describe, expect, test } from 'vitest'
 
 import {
+  type TokenUsageHistoryFilters,
   type TokenUsageIngestResult,
   TokenUsageLedger,
   type TokenUsageLedgerFilters,
@@ -318,6 +319,27 @@ const makeMemoryD1 = (
           )
         }
 
+        // Public tokens-served history: per-day SUM(input + output), ordered
+        // ascending by UTC day. The `since` lower bound (when present) was
+        // applied by filteredRows via the bound `observed_at >= ?` value.
+        if (
+          query.includes('date(observed_at) AS day') &&
+          query.includes('GROUP BY day')
+        ) {
+          const byDay = new Map<string, number>()
+          for (const row of rows) {
+            const day = String(row.observed_at).slice(0, 10)
+            const served = Number(row.input_tokens ?? 0) + Number(row.output_tokens ?? 0)
+            byDay.set(day, (byDay.get(day) ?? 0) + served)
+          }
+
+          const series = [...byDay.entries()]
+            .map(([day, tokens]) => ({ day, tokens }))
+            .sort((left, right) => left.day.localeCompare(right.day))
+
+          return Promise.resolve(makeResult<T>(series as Array<T>))
+        }
+
         return Promise.resolve(makeResult<T>())
       },
       bind: (...nextValues: ReadonlyArray<unknown>) => {
@@ -480,6 +502,11 @@ const ingest = (
 
 const aggregate = (filters?: TokenUsageLedgerFilters) =>
   Effect.flatMap(TokenUsageLedger, ledger => ledger.readAggregates(filters))
+
+const tokensServedHistory = (filters?: TokenUsageHistoryFilters) =>
+  Effect.flatMap(TokenUsageLedger, ledger =>
+    ledger.readPublicTokensServedHistory(filters),
+  )
 
 const leaderboards = () =>
   Effect.flatMap(TokenUsageLedger, ledger =>
@@ -763,5 +790,102 @@ describe('token usage ledger', () => {
         totalTokens: 250,
       },
     })
+  })
+})
+
+describe('public tokens-served history', () => {
+  const eventOnDay = (
+    eventId: string,
+    observedAt: string,
+    inputTokens: number,
+    outputTokens: number,
+  ) => ({
+    schemaVersion: 'openagents.token_usage_event.v1',
+    actor: { userId: 'user_chris' },
+    eventId,
+    idempotencyKey: `history:${eventId}`,
+    model: 'openagents/khala',
+    observedAt,
+    producerSystem: 'omega',
+    provider: 'openagents',
+    sourceRoute: 'omega_hosted_gemini',
+    tokenCounts: {
+      cacheReadTokens: 0,
+      cacheWrite1hTokens: 0,
+      cacheWrite5mTokens: 0,
+      inputTokens,
+      outputTokens,
+      reasoningTokens: 0,
+      totalTokens: inputTokens + outputTokens,
+    },
+    usageTruth: 'exact',
+  })
+
+  test('returns correct per-day sums over a window from the ledger', async () => {
+    const db = makeMemoryD1()
+
+    await runLedger(
+      db,
+      Effect.gen(function* () {
+        // Two events on 2026-06-06 → that day sums to (100+40) + (10+5) = 155.
+        yield* ingest(eventOnDay('e1', '2026-06-06T09:00:00.000Z', 100, 40))
+        yield* ingest(eventOnDay('e2', '2026-06-06T20:30:00.000Z', 10, 5))
+        // One event on 2026-06-07 → 60.
+        yield* ingest(eventOnDay('e3', '2026-06-07T01:00:00.000Z', 40, 20))
+        // One event on 2026-06-08 → 9.
+        yield* ingest(eventOnDay('e4', '2026-06-08T11:00:00.000Z', 6, 3))
+      }),
+    )
+
+    const history = await runLedger(db, tokensServedHistory({ window: '30d' }))
+
+    expect(history.window).toBe('30d')
+    expect(history.bucket).toBe('day')
+    // Ascending by day; per-day input + output sums.
+    expect(history.series).toEqual([
+      { day: '2026-06-06', tokensServed: 155 },
+      { day: '2026-06-07', tokensServed: 60 },
+      { day: '2026-06-08', tokensServed: 9 },
+    ])
+  })
+
+  test('the window lower bound excludes older days', async () => {
+    const db = makeMemoryD1()
+
+    await runLedger(
+      db,
+      Effect.gen(function* () {
+        // Inside a 7d window (now = 2026-06-08T12:00Z, since = 2026-06-01).
+        yield* ingest(eventOnDay('in1', '2026-06-07T10:00:00.000Z', 50, 50))
+        // Older than 7d → must be excluded from the 7d window.
+        yield* ingest(eventOnDay('old1', '2026-05-20T10:00:00.000Z', 999, 999))
+      }),
+    )
+
+    const history = await runLedger(db, tokensServedHistory({ window: '7d' }))
+
+    expect(history.series).toEqual([
+      { day: '2026-06-07', tokensServed: 100 },
+    ])
+  })
+
+  test('empty ledger → empty series', async () => {
+    const db = makeMemoryD1()
+    const history = await runLedger(db, tokensServedHistory({ window: '30d' }))
+
+    expect(history.series).toEqual([])
+  })
+
+  test('rejects an unsupported bucket', async () => {
+    const db = makeMemoryD1()
+    const exit = await Effect.runPromise(
+      Effect.exit(
+        tokensServedHistory({ bucket: 'hour', window: '30d' }).pipe(
+          Effect.provide(TokenUsageLedger.live(db, runtime)),
+        ),
+      ),
+    )
+
+    expect(exit._tag).toBe('Failure')
   })
 })

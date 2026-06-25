@@ -34,6 +34,7 @@ import {
   ReceivedSettledFeedCursorGap,
   ReceivedSettledFeedPatch,
   RequestedPollKhalaTokensServed,
+  RequestedPollKhalaTokensServedHistory,
   SucceededAutopilotOnboardingTurn,
   SucceededResumeAutopilotOnboardingTurn,
   FailedKhalaChatTurn,
@@ -1113,6 +1114,29 @@ export const subscriptions = Subscription.make<Model, Message>()(entry => ({
             Stream.map(() =>
               GotLoggedOutMessage({
                 message: RequestedPollKhalaTokensServed(),
+              }),
+            ),
+          ),
+          Effect.sync(() => isActive),
+        ),
+    },
+  ),
+  // The /stats history chart (#6227) polls the per-day series on the same
+  // interval and the same route-activity gate as the scalar counter above.
+  khalaTokensServedHistoryPoll: entry(
+    {
+      isActive: S.Boolean,
+    },
+    {
+      modelToDependencies: khalaTokensServedPollDependenciesForModel,
+      dependenciesToStream: ({ isActive }: { isActive: boolean }) =>
+        Stream.when(
+          Stream.tick(
+            Duration.seconds(KHALA_TOKENS_SERVED_POLL_INTERVAL_SECONDS),
+          ).pipe(
+            Stream.map(() =>
+              GotLoggedOutMessage({
+                message: RequestedPollKhalaTokensServedHistory(),
               }),
             ),
           ),
