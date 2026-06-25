@@ -15,8 +15,9 @@ Updated: 2026-06-25
 > Phase 0 fixture Gym (#6163–#6167) is labeled **direction**, not a live claim.
 > Harbor is a **reference repo**: the workspace external-references rule says
 > study + integrate at a seam, do not vendor or fork wholesale. This audit
-> respects that — Harbor would run as an out-of-process harness in
-> Hydralisk/Psionic, not be copied into the Worker.
+> respects that — Harbor runs as an out-of-process harness on **Hydralisk** (our
+> Python/NVIDIA inference stack, which has already run Harbor against
+> Terminal-Bench 2.0; see §3.3), never copied into the Bun/Effect Worker.
 
 ## 0. TL;DR — the four sharpest findings
 
@@ -259,25 +260,128 @@ isolation, not literal device isolation, but it is the right primitive: combine
 at the device level too. Recommendation: make `verifierMode: "separate"` the Gym
 default for `terminal-bench` and any env where reward-hacking is a risk.
 
-### 3.3 Where it runs (Hydralisk / Psionic / Pylon)
+### 3.3 Where Harbor runs — Hydralisk
 
-Harbor needs **Python 3.12+, uv, and Docker** (and GPUs for GPU tasks). Our
-Worker has none of these. The placement that fits the existing stack:
+**Harbor runs on Hydralisk.** This is not a hypothetical placement: Hydralisk is
+our standalone Python/NVIDIA inference repo (`OpenAgentsInc/hydralisk`,
+`~/work/hydralisk`), and it has **already run Harbor** against Terminal-Bench
+2.0. The evidence is committed in the Hydralisk repo, so the "run Harbor here"
+decision is a description of what is, not a proposal.
 
-- **Hydralisk / Psionic host** runs the `harbor` CLI or `harbor.job.Job` — it
-  already has Python + NVIDIA + Docker (it hosts the GPT-OSS 20B/120B lanes per
-  the Episode 243 doc). This is the Harbor harness home.
+**Why Hydralisk is the host (the requirements are already satisfied there).**
+Harbor is Python 3.12+ / uv / Docker (`projects/repos/harbor/pyproject.toml`,
+`requires-python = ">=3.12"`). Hydralisk's host provisioner installs *exactly*
+that stack and nothing about it is Harbor-specific — it is just how Hydralisk
+already serves models:
+
+- **Python 3.12 + uv.** `hydralisk/pyproject.toml` is `requires-python = ">=3.12"`;
+  `deploy/gce/install-hydralisk-l4.sh` installs `uv`, runs `uv python install
+  3.12`, `uv venv --python 3.12`, and `uv pip install .`. Harbor's own install is
+  the same idiom — `uv tool install harbor` (the Hydralisk Terminal-Bench
+  evidence doc cites this verbatim).
+- **NVIDIA + CUDA + a real GPU.** The same script does `uv pip install vllm
+  --torch-backend=auto`, resolves the bundled NVIDIA CUDA libs into
+  `LD_LIBRARY_PATH`, and records `nvidia-smi`-class GPU facts; the systemd unit
+  `deploy/systemd/vllm-gpt-oss-20b.service` runs `vllm serve` on the L4 host.
+  This is where the GPT-OSS 20B (L4, `g2-standard-8`,
+  `hydralisk-gptoss20b-l4-20260624000550`) and GPT-OSS 120B (H100,
+  `a3-highgpu-1g`) Khala lanes live, and where the GLM-5.2 REAP 504B G4 lane runs
+  (4 x RTX PRO 6000) per `hydralisk/README.md`. The GPU infra is **our Google
+  Cloud** (project `openagentsgemini`, `us-central1` L4 / G4 RTX PRO 6000 lanes,
+  per `docs/inference/2026-06-23-gcloud-gpu-quota-inventory.md`).
+- **Docker.** Harbor's default environment backend is `docker` (the agent's task
+  container, plus the `separate` verifier container). Hydralisk already runs
+  containerized model serving on these hosts (e.g. the GLM-5.2 raw vLLM Docker
+  with a restart policy per the README's operator-hardening note), so the Docker
+  daemon Harbor needs for its task/verifier containers is the same daemon
+  Hydralisk already operates.
+
+So Harbor's three hard requirements — Docker task containers, GPU access, a
+Python 3.12/uv toolchain — are **already present on the Hydralisk hosts as a
+side effect of how those hosts serve models**. Standing Harbor up there is "add a
+tool to an existing host," not "build new infra."
+
+**Proof Hydralisk already runs Harbor.** Hydralisk has:
+
+- a committed Harbor/Terminal-Bench evidence receipt,
+  `hydralisk/docs/evidence/2026-06-24-glm-52-reap-504b-terminal-bench-20.md`,
+  recording a real run — `runner: harbor`, `runner version: 0.15.0`, `agent:
+  terminus-2`, dataset `terminal-bench@2.0` (89 tasks, 60 solved), hardware
+  `4x RTX PRO 6000 G4` — with the exact recipe `harbor run --dataset
+  terminal-bench@2.0 --agent terminus-2 --model openai/glm-5.2-reap-504b-g4
+  --n-concurrent 1` pointed at the private Hydralisk `/v1` proxy over an IAP/SSH
+  tunnel;
+- a first-class **public-safe Harbor-result summarizer** wired as the
+  `hydralisk-terminal-bench-summary` console script
+  (`hydralisk/hydralisk/evals/terminal_bench.py`, schema
+  `hydralisk.evals.terminal_bench.summary.v1`) whose defaults are literally
+  `runner = "harbor"`, `agent = "terminus-2"`, `benchmark_ref =
+  "terminal-bench@2.0"`. It ingests a *sanitized* Harbor JSON summary and emits
+  counts / pass@1 / pass@N / denominator definitions with a public-safety block —
+  i.e. the exact "Harbor produces the verdict, Hydralisk emits a public-safe
+  receipt" boundary this audit wants, already implemented.
+
+That is the grounding for the recommendation: we are not choosing a new home for
+Harbor, we are formalizing the home Harbor already has.
+
+**Why the Worker cannot host Harbor (the contrast).** The product/Worker
+(`apps/openagents.com`) is Bun / Effect / Foldkit on Cloudflare Workers. It has
+no Python interpreter, no uv, no Docker daemon, and no GPU — it cannot run
+`harbor run`, cannot build a `task.toml` `environment/Dockerfile`, and cannot
+host a `separate` verifier container. Harbor therefore stays strictly
+**out-of-process from the Worker**: the Worker dispatches a job and ingests
+artifacts; it never imports Harbor. This matches Hydralisk's own ownership line
+(`docs/inference/2026-06-23-hydralisk-python-nvidia-inference-stack.md`): Hydralisk
+owns Python serving mechanics and run/eval evidence; the product layer keeps
+pricing, credits, routing, settlement, and public claims.
+
+**The role split on our infra:**
+
+- **Hydralisk host** runs the `harbor` CLI (or, later, `harbor.job.Job`) and the
+  model endpoint it tests — already true for the GLM-5.2 REAP Terminal-Bench run.
 - **The agent under test** is the policy: either a built-in Harbor agent
-  (`opencode`, `claude-code`, `codex`) pointed at a Khala/competitor endpoint via
-  `--model` + `--ak base_url=…`, or (later) a custom Harbor agent wrapping the
-  Khala coordinator. Run the agent's container on Pylon/a worker; run the
-  verifier container `separate` on the Psionic/Hydralisk side.
+  (`terminus-2`, `opencode`, `claude-code`, `codex`) pointed at a Khala /
+  competitor endpoint via `--model` + the OpenAI base-url env (the evidence doc
+  sets `OPENAI_API_BASE` to the forwarded Hydralisk `/v1`), or (later) a custom
+  Harbor agent wrapping the Khala coordinator.
 - **The Worker** (`apps/openagents.com`) owns the typed `GymExperiment`, the
   quote/balance gate, and report rendering. It dispatches a Harbor job to the
   Hydralisk harness and ingests the resulting **artifacts** (per-trial
   `result.json` with `verifier_result.rewards`, ATIF trajectories, token/cost
-  metrics), then compiles them into `openagents.khala.telemetry.v1` records and
+  metrics — or, today, the public-safe `hydralisk-terminal-bench-summary`
+  receipt), then compiles them into `openagents.khala.telemetry.v1` records and
   `buildBenchmarkReport`. No Harbor code runs in the Worker.
+
+### 3.4 The distinct-device verifier mapping, concretely on our infra
+
+The Gym spec wants producer ≠ verifier *at the device level*; Harbor's
+`environment_mode = "separate"` (§3.2) gives container-level isolation. On our
+infra the two compose cleanly because Hydralisk's hosts are real, separate VMs on
+our Google Cloud, and the agent endpoint is already a *different* process from
+the Harbor harness:
+
+- **Agent device ≠ verifier device.** In the existing GLM-5.2 REAP run the
+  *agent* (Harbor `terminus-2`) ran the task container while the *model* it drove
+  was the Hydralisk vLLM proxy on the G4 host, reached over a tunnel — the policy
+  it queried already lived on a distinct host from where the task/verifier
+  containers ran. Generalize that: run the Harbor **task/agent container** on one
+  Hydralisk/Pylon node and bind `environment_mode = "separate"` so the
+  **verifier container** runs isolated; place that verifier on a different
+  Hydralisk/Psionic node (or at minimum a different VM) so the producing policy
+  cannot reach its own grader. The cheap-rung lanes (L4 GPT-OSS 20B) and the
+  frontier lanes (G4 GLM-5.2) are already separate VMs, so "verifier on a
+  distinct device" is an allocation choice, not new plumbing.
+- **`no-network` verifier.** Set the verifier environment to
+  `network_mode = "no-network"` (the worked example in
+  `examples/tasks/separate-verifier-environment/task.toml`) so the grader cannot
+  be reached or exfiltrated to — this is the reward-hacking guard the TMAX lesson
+  motivates.
+- **Honest scope of "distinct device."** Harbor's primitive is process/container
+  isolation; true device isolation comes from *where we schedule the two
+  containers*. Recommendation: make `verifierMode: "separate"` + verifier on a
+  distinct VM the Gym default for `terminal-bench`. This is direction — the GLM-5.2
+  run proved the harness and the model-on-a-separate-host pattern, not a
+  fully separate-VM verifier placement.
 
 ### 3.4 Onto the matrix → runner → report path
 
@@ -422,21 +526,38 @@ The QA-runner ATIF emitter is being built; the Gym↔Khala dog-food wiring is th
 ## 7. Integration considerations & risks
 
 - **Python/uv/Docker vs Bun/Effect (the central risk).** Harbor cannot live in
-  the Worker. It must run on a Python+Docker host (Hydralisk/Psionic). The
-  integration is an **out-of-process job seam** (dispatch + artifact ingest), not
-  a library import. This is more moving parts (a harness host, job dispatch,
-  artifact transport) but it is the *correct* boundary and matches where our
-  Python already lives. Risk is operational (keeping the harness host healthy),
-  not architectural.
-- **Invocation seam choice.** Two options, both viable:
-  (a) **CLI** — `harbor run … -o <jobs-dir>` then read `jobs/<job>/…/result.json`
-  + trajectory files; simplest, language-agnostic, decision-grade-friendly
-  (real artifacts on disk). (b) **Library** — a thin Python service wrapping
-  `harbor.job.Job` exposing a typed HTTP/RPC the Worker calls; better for tight
-  RL loops (token interception). **Recommendation:** start with the **CLI +
-  artifact** seam (lowest coupling, easiest to keep Harbor un-forked); graduate
-  to the library service only for the RL rollout loop where token_ids/logprobs
-  matter.
+  the Worker. It must run on a Python+Docker host — **Hydralisk** (§3.3), where
+  that stack already exists. The integration is an **out-of-process job seam**
+  (dispatch + artifact ingest), not a library import. This is more moving parts
+  (a harness host, job dispatch, artifact transport) but it is the *correct*
+  boundary and matches where our Python + GPUs already live. Risk is operational
+  (keeping the Hydralisk harness host healthy), not architectural.
+- **Invocation seam from the Gym/Worker.** The flow is:
+  **Worker/Gym orchestrates → Hydralisk runs `harbor run …` → results/trajectories
+  flow back.** Two options, both viable:
+  (a) **CLI + artifacts (the existing, recommended path).** `harbor run …` writes
+  a jobs dir; today the Hydralisk operator reduces that to a *sanitized* JSON
+  summary and runs `hydralisk-terminal-bench-summary --input … --output-dir
+  docs/evidence` to emit the public-safe receipt — i.e. the artifact seam is
+  already implemented for Terminal-Bench. Generalize it: the Worker dispatches a
+  job spec, Hydralisk runs Harbor and produces public-safe artifacts (per-trial
+  `result.json` rewards, the ATIF trajectory for `/trace/{uuid}`, token/cost), and
+  the Worker ingests *artifacts*, never Harbor internals. Simplest,
+  language-agnostic, decision-grade-friendly (real artifacts on disk).
+  (b) **Library service (later).** A thin Python service wrapping
+  `harbor.job.Job` exposing a typed HTTP/RPC the Worker calls; better for tight RL
+  loops (token_ids/logprobs interception). **Recommendation:** start with the CLI
+  + artifact seam (lowest coupling, easiest to keep Harbor un-forked); graduate to
+  the library service only for the RL rollout loop.
+- **Where artifacts land / Docker-in-Hydralisk.** Harbor writes its jobs dir on
+  the Hydralisk host; Hydralisk's guardrails forbid committing raw Harbor run
+  folders, task prompts, transcripts, model output, or container logs (the
+  Terminal-Bench evidence doc says this explicitly), so only the public-safe
+  summary/receipt and the public-safe ATIF subset cross back to the Worker. Harbor
+  runs its task and `separate` verifier as **Docker containers on the Hydralisk
+  host's daemon** — the same daemon already running Hydralisk's containerized vLLM
+  serving — so the consideration is daemon sharing and image/layer disk on the GPU
+  VM, not a new container runtime.
 - **Cost / spend gating.** A real Harbor run spends real money (provider tokens
   for the agent; cloud-sandbox costs if `--env daytona`). This must ride the
   existing gates: fixture/oracle runs are free and `decisionGrade:false`; real
@@ -453,20 +574,51 @@ The QA-runner ATIF emitter is being built; the Gym↔Khala dog-food wiring is th
 - **Versioning / reproducibility.** Pin the Harbor version (currently 0.15.0),
   the dataset tag (`terminal-bench@2.0`), the agent version, and the dated model
   id — Harbor's own parity discipline (`docs/.../datasets/adapters.mdx`, Step 5)
-  is a good template for "decision-grade" runs.
-- **Honest scope.** Today we use Harbor's *format* only. Running Harbor as a
-  benchmark executor is **direction**; the harness host, the job seam, the
-  `terminal-bench` `GymEnvironment`, and the training wiring are all unbuilt. The
-  Phase 0 fixture Gym (#6163–#6166) and `/gym/oss` (#6167) remain the only landed
-  pieces.
+  is a good template for "decision-grade" runs. Hydralisk already pins these in
+  its evidence receipt (`runner version 0.15.0`, `agent terminus-2`, model
+  revision `0xSero/GLM-5.2-504B@cb6b1e0…`), so the receipt format is the template.
+- **Risks specific to hosting Harbor on Hydralisk.** These are the costs of
+  putting Harbor on the GPU serving hosts rather than a clean dedicated harness:
+  - **GPU contention with live Khala serving lanes.** The Hydralisk hosts also
+    serve production Khala traffic (GPT-OSS 20B on L4; the GLM-5.2 (Z.ai),
+    REAP-pruned `glm-52` lane on the RTX PRO 6000 G4 host). A Harbor benchmark
+    sweep drives the *same* vLLM endpoints, so a long `terminal-bench` run can
+    compete with production requests for the model. The GLM-5.2 lane is already
+    **single-flight** (`HYDRALISK_MAX_INFLIGHT_REQUESTS=1`, the GLM run used
+    `--n-concurrent 1`), so a benchmark and live traffic cannot truly share it;
+    plan benchmark windows off the production lane, or run the sweep against a
+    *separate* benchmark replica, not the live serving endpoint.
+  - **Docker / daemon sharing.** Harbor's task and `separate` verifier containers
+    run on the same Docker daemon Hydralisk uses for its own containerized serving;
+    no nested Docker-in-Docker is required for the default `docker` backend, but
+    image pulls, build layers, and container disk land on the GPU VM. Watch disk
+    and daemon pressure on hosts that are also serving.
+  - **Isolation / distinct-device verifier.** Getting producer ≠ verifier at the
+    device level (§3.4) means scheduling the verifier container on a different VM,
+    which is an allocation decision the operator must make deliberately;
+    `environment_mode = "separate"` alone gives only container isolation.
+  - **Quota.** Real sweeps want GPU headroom beyond the production lane; G4 RTX PRO
+    6000 / high-memory quota is the binding constraint per
+    `docs/inference/2026-06-23-gcloud-gpu-quota-inventory.md`. Spot capacity is
+    fine for benchmark sweeps; production serving should not be displaced by one.
+- **Honest scope.** For Gym integration we use Harbor's *format* (ATIF) and the
+  artifact seam; the typed `terminal-bench` `GymEnvironment`, the Worker→Hydralisk
+  job dispatch, and the training wiring are all **direction**, unbuilt. The Phase 0
+  fixture Gym (#6163–#6166) and `/gym/oss` (#6167) remain the only landed Gym
+  pieces. The one thing that is *not* hypothetical is the host: Hydralisk has
+  already run Harbor against Terminal-Bench 2.0 and committed a public-safe
+  receipt, so "run Harbor on Hydralisk" describes existing practice; what is new is
+  wiring that practice into the Gym as a typed environment behind the Worker.
 
 ## 8. Concrete next steps (keyed to the Gym Phase-1 roadmap)
 
-1. **Stand up a Harbor harness on Hydralisk/Psionic** — `uv tool install harbor`,
-   Docker available, validate with the free path: `harbor run -d
-   terminal-bench/terminal-bench-2 -a oracle` (oracle = no model spend) and
-   `harbor run -t hello-world/hello-world`. Confirm `environment_mode =
-   "separate"` works on that host. (Operational; no Worker change.)
+1. **Formalize the Harbor harness on Hydralisk** (it already runs there, §3.3) —
+   `uv tool install harbor` on the GPU host, Docker available, validate with the
+   free path: `harbor run -d terminal-bench/terminal-bench-2 -a oracle` (oracle =
+   no model spend) and `harbor run -t hello-world/hello-world`. Confirm
+   `environment_mode = "separate"` works on that host, and reuse
+   `hydralisk-terminal-bench-summary` for the public-safe receipt. (Operational;
+   no Worker change.)
 2. **Define the typed `terminal-bench` `GymEnvironment`** — `{ harborDataset,
    taskIdSubset?, acceptanceRewardThreshold: 1.0, verifierMode: "separate", env }`,
    selected via the typed env enum. Seed `taskIdSubset` from the existing retained
