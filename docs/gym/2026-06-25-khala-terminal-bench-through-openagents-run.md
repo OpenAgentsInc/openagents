@@ -52,6 +52,15 @@ harbor run \
   --agent-kwarg 'llm_call_kwargs={"extra_headers":{"x-openagents-demand-kind":"internal","x-openagents-demand-source":"openagents-gym","x-openagents-client":"harbor-terminal-bench-6272"}}'
 ```
 
+> Demand-origin self-tag (#6298): this run already sent
+> `x-openagents-demand-kind: internal`, which classifies its token-ledger events
+> and (with default-on capture) its captured traces as internal dogfood, kept
+> out of the external real-user corpus. The CANONICAL internal source slug for
+> the Terminal-Bench path is now `harbor_terminal_bench` — future Harbor runs
+> should send `"x-openagents-demand-source":"harbor_terminal_bench"`. See the
+> demand-origin self-tag convention in
+> `docs/inference/2026-06-25-khala-heartbeat-runbook.md`.
+
 Results:
 
 - Harbor completed `1/1` bounded task with `0` exceptions.

@@ -46,7 +46,12 @@ import {
   validateAtifTrajectory,
 } from '../atif-trace-schema'
 import { currentIsoTimestamp, randomUuid } from '../runtime-primitives'
-import type { TraceStore, TraceUploadSource } from '../trace-store-d1'
+import {
+  parseTraceDemandKind,
+  type TraceDemandKind,
+  type TraceStore,
+  type TraceUploadSource,
+} from '../trace-store-d1'
 import { isKhalaModel } from './pricing'
 import type { InferenceMessage, InferenceResult } from './provider-adapter'
 import {
@@ -117,6 +122,48 @@ export const resolveKhalaChatTraceOptIn = (
     (typeof bodyField === 'string' &&
       ['1', 'true', 'yes', 'on'].includes(bodyField.trim().toLowerCase()))
   return headerOptIn || bodyOptIn
+}
+
+// Demand-origin attribution threaded into the capture (#6298). This is the SAME
+// resolved value the chat path hands the served-tokens recorder
+// (`ServedTokensRequestAttribution`), so a captured trace and its ledger event
+// always agree. We carry only the bounded kind + source token here; the trace
+// store has no use for `demandClient`.
+export type TraceDemandAttribution = Readonly<{
+  demandKind: TraceDemandKind
+  demandSource?: string | undefined
+}>
+
+// A bounded attribution token: a short [A-Za-z0-9 _.:-] slug. Anything else is
+// dropped (defensive: the chat path already validates, but the emitter must
+// never persist an unbounded/free-form value, and this is the fail-soft point).
+const safeDemandSource = (
+  value: string | null | undefined,
+): string | undefined => {
+  const trimmed = value?.trim()
+  return trimmed !== undefined &&
+    trimmed !== '' &&
+    /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$/.test(trimmed)
+    ? trimmed
+    : undefined
+}
+
+/**
+ * FAIL-SOFT resolve of the demand attribution to persist on a captured trace
+ * (#6298). A missing/unparseable kind defaults to `unlabeled`; an unbounded or
+ * malformed source is dropped to null. NEVER throws: classification must never
+ * break the completion or the capture.
+ */
+export const resolveTraceDemandColumns = (
+  attribution: TraceDemandAttribution | undefined,
+): Readonly<{ demandKind: TraceDemandKind; demandSource: string | null }> => {
+  try {
+    const demandKind = parseTraceDemandKind(attribution?.demandKind) ?? 'unlabeled'
+    const demandSource = safeDemandSource(attribution?.demandSource) ?? null
+    return { demandKind, demandSource }
+  } catch {
+    return { demandKind: 'unlabeled', demandSource: null }
+  }
 }
 
 // A completed Khala chat session, expressed in the data the chat handler already
@@ -276,6 +323,12 @@ export type EmitKhalaChatTraceDeps = Readonly<{
   owner: KhalaChatTraceOwner | undefined
   // Default visibility for an emitted trace. Defaults to `unlisted`.
   visibility?: TraceVisibility | undefined
+  // DEMAND-ORIGIN ATTRIBUTION (#6298). The SAME resolved value the chat path
+  // hands the served-tokens recorder, so a captured trace and its ledger event
+  // always agree. Absent / unparseable => `unlabeled` (fail-soft); we do NOT
+  // re-parse headers here. Persisted on the trace so the corpus can segment
+  // internal-dogfood (heartbeat/canary/Terminal-Bench) from external users.
+  demandAttribution?: TraceDemandAttribution | undefined
   // Deterministic id/clock injection for tests.
   makeId?: (() => string) | undefined
   nowIso?: (() => string) | undefined
@@ -398,6 +451,12 @@ export const emitKhalaChatTrace = async (
   const nowIso = (deps.nowIso ?? currentIsoTimestamp)()
   const traceUuid = (deps.makeId ?? randomUuid)()
 
+  // DEMAND-ORIGIN (#6298), fail-soft: a missing/unparseable attribution defaults
+  // to `unlabeled` and an unbounded source is dropped. Never throws.
+  const { demandKind, demandSource } = resolveTraceDemandColumns(
+    deps.demandAttribution,
+  )
+
   try {
     const stored = await deps.store.createTrace({
       traceUuid,
@@ -423,6 +482,10 @@ export const emitKhalaChatTrace = async (
       rewardEligible: false,
       rewardAmountSats: null,
       uploadSource: deps.owner.uploadSource,
+      // DEMAND-ORIGIN (#6298): the same attribution the ledger recorded for this
+      // request, so the corpus can segment internal-dogfood from external users.
+      demandKind,
+      demandSource,
       nowIso,
     })
     return {

@@ -6,8 +6,10 @@ Updated: 2026-06-25
 > heartbeat that fires ~50k tokens across diverse configs at the **live production**
 > Khala endpoint every 15 minutes, verifies the public counter records them, and
 > writes a public-safe status. For future agents/operators. Not a product promise;
-> heartbeat tokens are **internal dogfood** (not external demand) and should be
-> tagged as such once demand-tagging (`docs/gym/ROADMAP.md` F1 / #6252) lands.
+> heartbeat tokens are **internal dogfood** (not external demand) and are now
+> **demand-tagged `internal`** at the source (#6298) so neither the token ledger
+> nor the captured trace corpus mistakes them for external real-user traffic.
+> See **Demand-origin self-tag** below.
 
 ## What it is
 
@@ -35,6 +37,63 @@ Updated: 2026-06-25
 short/long/streaming/content-array/concurrent proves the **real** paths customers use
 (tool-calling shapes, streaming, long decode, concurrency) and that **accounting**
 still records every served token. It is also honest dogfood traffic on the North Star.
+
+## Demand-origin self-tag (#6298) — keep internal traffic out of the corpus
+
+Default-on free-tier trace capture (#6293) records completed `openagents/khala`
+sessions for the data-market / training corpus. Our own dogfood — the heartbeat,
+the 500 canary, and the Harbor/Terminal-Bench run — would otherwise land in that
+corpus mixed in with (and often outnumbering) genuine external free-tier users.
+
+To keep the corpus clean **with no manual curation**, every internal caller
+**self-tags its demand origin** with two request headers. The chat path resolves
+the SAME attribution it already writes to the token ledger
+(`token_usage_events`, migration 0232) and threads it onto the captured trace
+(`agent_traces.demand_kind` / `demand_source`, migration 0236), so the trace and
+the ledger always agree, and the corpus read excludes internal-dogfood by
+default.
+
+- `x-openagents-demand-kind`: one of `external | internal | own_capacity |
+  unlabeled`. Internal callers send `internal`.
+- `x-openagents-demand-source`: a bounded attribution token (a short
+  `[A-Za-z0-9_.:-]` slug), the canonical name of the internal source.
+
+Canonical internal sources (send these, exactly):
+
+| Internal caller | `x-openagents-demand-kind` | `x-openagents-demand-source` |
+| --- | --- | --- |
+| `scripts/khala-heartbeat.sh` | `internal` | `heartbeat` |
+| `scripts/khala-canary.sh` | `internal` | `canary` |
+| Harbor / Terminal-Bench run | `internal` | `harbor_terminal_bench` |
+
+Both scripts add these headers to their shared `AUTH` curl array, so **every**
+completion they issue is tagged. Anything missing/unparseable defaults to
+`unlabeled` (fail-soft): tagging never breaks a completion or a capture.
+
+The Harbor/Terminal-Bench path tags itself through the Terminus agent's
+extra-headers. The progress pusher
+(`apps/openagents.com/scripts/gym-harbor-progress-push.ts`) is metadata-only and
+issues no completions; it is the Harbor **agent's** `openagents/khala` calls that
+must carry the headers, via the Terminus `llm_call_kwargs` extra-headers:
+
+```sh
+harbor run \
+  --agent terminus-2 \
+  --model openai/openagents/khala \
+  --agent-kwarg api_base=https://openagents.com/api/v1 \
+  --agent-kwarg 'llm_call_kwargs={"extra_headers":{"x-openagents-demand-kind":"internal","x-openagents-demand-source":"harbor_terminal_bench"}}'
+```
+
+(See `docs/gym/2026-06-25-khala-terminal-bench-through-openagents-run.md` for the
+full Harbor invocation.) **Future internal load must self-identify the same
+way:** pick a stable `internal` source slug and send both headers so it never
+pollutes the external corpus.
+
+Corpus read: `GET /api/traces` (owner session) excludes internal-dogfood
+(`internal` + `own_capacity`) by default. `?demand_kind=internal` (repeatable /
+comma-separated) filters to named kinds; `?demand_kind=all` returns every kind.
+The response also carries `demandSegments` — a `{external, internal,
+own_capacity, unlabeled}` count over all of the owner's traces.
 
 ## Verdict / exit codes
 

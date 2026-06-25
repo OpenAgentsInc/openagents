@@ -28,12 +28,16 @@ import {
 } from './runtime-primitives'
 import {
   type TraceBlobRef,
+  type TraceDemandKind,
   type TraceMediaBlobStore,
   type TraceRecord,
   type TraceStore,
   TraceStoreError,
   type TraceTrajectoryBlobStore,
   type TraceUploadSource,
+  TRACE_DEMAND_KINDS,
+  TRACE_INTERNAL_DEMAND_KINDS,
+  parseTraceDemandKind,
   traceStoreErrorFromUnknown,
 } from './trace-store-d1'
 
@@ -451,6 +455,12 @@ const ownerTraceSummary = (record: TraceRecord) => ({
   ...(record.license === null ? {} : { license: record.license }),
   uploadSource: record.uploadSource,
   rewardEligible: record.rewardEligible,
+  // DEMAND-ORIGIN (#6298): a legacy null row is the unclassified real-user
+  // default (`unlabeled`). Surfaced so the operator can see each trace's origin.
+  demandKind: record.demandKind ?? 'unlabeled',
+  ...(record.demandSource === null
+    ? {}
+    : { demandSource: record.demandSource }),
 })
 
 // ---------------------------------------------------------------------------
@@ -659,6 +669,13 @@ const routeIngest = <Bindings, Session extends TraceBrowserSession>(
           rewardEligible,
           rewardAmountSats,
           uploadSource: uploader.uploadSource,
+          // Direct user/agent uploads (#6221) carry no gateway demand header;
+          // they are real external contributions, so demand origin is left
+          // unclassified (null => `unlabeled` on read, kept in the default
+          // real-user corpus). Demand tagging (#6298) applies to the gateway
+          // CAPTURE path, where the chat route resolves the attribution.
+          demandKind: null,
+          demandSource: null,
           nowIso,
         }),
     })
@@ -1022,16 +1039,58 @@ const routeOwnerList = <Bindings, Session extends TraceBrowserSession>(
       return yield* new TraceUnauthorized({})
     }
 
+    // DEMAND-ORIGIN CORPUS FILTER (#6298). The owner/corpus list segments by
+    // demand origin. By DEFAULT it EXCLUDES internal-dogfood (internal +
+    // own_capacity: heartbeat / canary / Terminal-Bench / coding-delegation) so
+    // the default view is the genuine external real-user corpus. An explicit
+    // `?demand_kind=` (repeatable / comma-separated) overrides that to the named
+    // kinds; `?demand_kind=all` returns every kind including internal.
+    const store = dependencies.makeStore(env)
+    const url = new URL(request.url)
+    const requested = url.searchParams
+      .getAll('demand_kind')
+      .flatMap(value => value.split(','))
+      .map(value => value.trim().toLowerCase())
+      .filter(value => value !== '')
+    const wantsAll = requested.includes('all')
+    const parsedRequested = requested
+      .map(value => parseTraceDemandKind(value))
+      .filter((value): value is TraceDemandKind => value !== undefined)
+    // Default real-user corpus = every kind EXCEPT internal-dogfood.
+    const defaultCorpusKinds = TRACE_DEMAND_KINDS.filter(
+      kind => !TRACE_INTERNAL_DEMAND_KINDS.includes(kind),
+    )
+    const demandFilter: ReadonlyArray<TraceDemandKind> | undefined = wantsAll
+      ? undefined
+      : parsedRequested.length > 0
+        ? parsedRequested
+        : defaultCorpusKinds
+
     const traces = yield* Effect.tryPromise({
       catch: traceStoreErrorFromUnknown,
       try: () =>
-        dependencies
-          .makeStore(env)
-          .listTracesForOwner(session.user.userId, OWNER_LIST_LIMIT),
+        store.listTracesForOwnerByDemand(
+          session.user.userId,
+          OWNER_LIST_LIMIT,
+          demandFilter,
+        ),
+    })
+
+    // Segmented operator count over ALL of the owner's traces (external vs
+    // internal vs own_capacity vs unlabeled), independent of the applied filter.
+    const demandCounts = yield* Effect.tryPromise({
+      catch: traceStoreErrorFromUnknown,
+      try: () => store.countTracesForOwnerByDemand(session.user.userId),
     })
 
     return dependencies.appendRefreshedSessionCookies(
-      noStoreJsonResponse({ traces: traces.map(ownerTraceSummary) }),
+      noStoreJsonResponse({
+        traces: traces.map(ownerTraceSummary),
+        demandSegments: demandCounts,
+        // Echo the applied filter so the operator UI knows internal was excluded
+        // by default. `null` means "all kinds" (?demand_kind=all).
+        appliedDemandKinds: demandFilter === undefined ? null : demandFilter,
+      }),
       session,
     )
   })

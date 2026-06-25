@@ -659,6 +659,11 @@ export type ChatCompletionsDeps = Readonly<{
         // DEFAULT-ON CAPTURE: persist even without an explicit opt-in. Stored
         // owner_only (private-by-default). Resolved at the call site.
         captureDefault: boolean
+        // DEMAND-ORIGIN (#6298): the SAME resolved attribution the recorder got
+        // (`requestAttribution`), so a captured trace and its ledger event
+        // agree. Absent => `unlabeled` on the trace (fail-soft). We do NOT
+        // re-parse the demand headers; we reuse the already-resolved value.
+        requestAttribution?: ServedTokensRequestAttribution | undefined
       }>,
     ) => Promise<void>
   }>
@@ -3015,6 +3020,12 @@ export const handleChatCompletions = (
             requestedModel,
             responseId,
             result: guardedResult,
+            // DEMAND-ORIGIN (#6298): reuse the SAME resolved attribution the
+            // recorder got (resolved once at the chat seam), so the captured
+            // trace and its ledger event always agree on internal-vs-external.
+            ...(requestAttribution === undefined
+              ? {}
+              : { requestAttribution }),
           }),
         )
       }

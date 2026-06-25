@@ -11281,6 +11281,22 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
                   agentRef: input.accountRef,
                   uploadSource: 'agent',
                 },
+                // DEMAND-ORIGIN (#6298): the SAME attribution the recorder got
+                // for this request (kind + source), so the captured trace and
+                // its token-ledger event always agree. Absent => `unlabeled`.
+                ...(input.requestAttribution === undefined
+                  ? {}
+                  : {
+                      demandAttribution: {
+                        demandKind: input.requestAttribution.demandKind,
+                        ...(input.requestAttribution.demandSource === undefined
+                          ? {}
+                          : {
+                              demandSource:
+                                input.requestAttribution.demandSource,
+                            }),
+                      },
+                    }),
               },
             )
           },

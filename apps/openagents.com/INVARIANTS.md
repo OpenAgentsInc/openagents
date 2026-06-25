@@ -356,6 +356,43 @@ This is the invariant ledger for `openagents`.
   `workers/api/src/inference/khala-chat-trace-emitter.test.ts`,
   `workers/api/src/inference/inference-privacy-entitlement.test.ts`.
 
+## Captured Trace Demand-Origin Segmentation
+
+- A captured trace is auto-tagged with its DEMAND ORIGIN (#6298, migration
+  `0236_agent_traces_demand_attribution.sql`) so the Khala corpus separates our
+  own dogfood traffic (heartbeat / canary / Terminal-Bench / coding-delegation)
+  from genuine external free-tier users WITH NO MANUAL STEP. `agent_traces`
+  carries `demand_kind` (`external | internal | own_capacity | unlabeled`, CHECK
+  enforced, nullable) and `demand_source` (a bounded attribution token, not
+  content).
+- The emitter reuses the SAME resolved attribution the chat path already hands
+  the served-tokens recorder (`ServedTokensRequestAttribution`, resolved once at
+  the chat seam from `x-openagents-demand-kind` / `x-openagents-demand-source`).
+  It MUST NOT re-parse the demand headers separately, so the captured trace and
+  its `token_usage_events` ledger entry always agree on internal-vs-external.
+- Classification is FAIL-SOFT: a missing/unparseable attribution defaults to
+  `unlabeled` and a malformed/unbounded source is dropped to null. A
+  classification error NEVER breaks or alters the completion or the capture.
+  Forward-only: legacy rows stay null and are treated as `unlabeled` on read.
+- `demand_kind` / `demand_source` are bounded tokens stored as dedicated D1
+  columns OUTSIDE the public-safe trajectory JSON. They are never part of the
+  value-based tripwire's reject scan and must not carry trajectory content.
+- Internal callers SELF-TAG so they classify `internal`: `scripts/khala-
+  heartbeat.sh` (source `heartbeat`), `scripts/khala-canary.sh` (source
+  `canary`), and the Harbor/Terminal-Bench agent (source `harbor_terminal_bench`
+  via the Terminus extra-headers). The convention is documented in
+  `docs/inference/2026-06-25-khala-heartbeat-runbook.md`.
+- The owner/corpus read (`GET /api/traces`, requireBrowserSession) EXCLUDES
+  internal-dogfood (`internal` + `own_capacity`) from the default real-user
+  corpus view; `?demand_kind=` filters to named kinds and `?demand_kind=all`
+  returns every kind. The response carries a segmented count (`demandSegments`)
+  over all of the owner's traces. Public/unlisted single-trace read behavior is
+  unchanged. Demand tagging grants no new authority; a trace stays evidence
+  only.
+- Regression coverage:
+  `workers/api/src/inference/khala-chat-trace-emitter.test.ts`,
+  `workers/api/src/trace-store-routes.test.ts`.
+
 ## Trace Upload Data Market
 
 - The trace upload data market (#6221, epic #6206; migrations

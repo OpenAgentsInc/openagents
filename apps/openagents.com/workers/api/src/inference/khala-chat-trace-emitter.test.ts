@@ -19,6 +19,7 @@ import {
   isKhalaChatTraceEmitEnabled,
   khalaChatSessionToAtifTrajectory,
   resolveKhalaChatTraceOptIn,
+  resolveTraceDemandColumns,
 } from './khala-chat-trace-emitter'
 
 const fakeResult = (
@@ -69,6 +70,8 @@ const makeFakeStore = (): TraceStore & {
     rewardEligible: input.rewardEligible,
     rewardAmountSats: input.rewardAmountSats,
     uploadSource: input.uploadSource,
+    demandKind: input.demandKind,
+    demandSource: input.demandSource,
     createdAt: input.nowIso,
     updatedAt: input.nowIso,
   })
@@ -94,6 +97,13 @@ const makeFakeStore = (): TraceStore & {
     listTracesForOwner: async () => [],
     findTraceByOwnerDigest: async () => undefined,
     countTracesForOwnerSince: async () => 0,
+    listTracesForOwnerByDemand: async () => [],
+    countTracesForOwnerByDemand: async () => ({
+      external: 0,
+      internal: 0,
+      own_capacity: 0,
+      unlabeled: 0,
+    }),
   }
 }
 
@@ -267,6 +277,13 @@ describe('emitKhalaChatTrace persistence (flag ON, opted in)', () => {
       listTracesForOwner: async () => [],
       findTraceByOwnerDigest: async () => undefined,
       countTracesForOwnerSince: async () => 0,
+      listTracesForOwnerByDemand: async () => [],
+      countTracesForOwnerByDemand: async () => ({
+        external: 0,
+        internal: 0,
+        own_capacity: 0,
+        unlabeled: 0,
+      }),
     }
     const result = await emitKhalaChatTrace(fakeSession(), {
       enabled: true,
@@ -385,5 +402,91 @@ describe('flag + opt-in parsers', () => {
         rawBody: {},
       }),
     ).toBe(false)
+  })
+})
+
+describe('demand-origin attribution on a captured trace (#6298)', () => {
+  it('persists the threaded demand_kind + demand_source on the stored trace', async () => {
+    const store = makeFakeStore()
+    const result = await emitKhalaChatTrace(fakeSession(), {
+      enabled: true,
+      optedIn: true,
+      store,
+      owner: { ownerUserId: 'u1', agentRef: 'agent:u1', uploadSource: 'agent' },
+      demandAttribution: { demandKind: 'internal', demandSource: 'heartbeat' },
+    })
+    expect(result.emitted).toBe(true)
+    expect(store.created).toHaveLength(1)
+    expect(store.created[0]!.demandKind).toBe('internal')
+    expect(store.created[0]!.demandSource).toBe('heartbeat')
+  })
+
+  it('an internal-tagged request => trace demand_kind=internal', async () => {
+    const store = makeFakeStore()
+    await emitKhalaChatTrace(fakeSession(), {
+      enabled: true,
+      captureDefault: true,
+      optedIn: false,
+      store,
+      owner: { ownerUserId: 'u1', agentRef: 'agent:u1', uploadSource: 'agent' },
+      demandAttribution: {
+        demandKind: 'internal',
+        demandSource: 'harbor_terminal_bench',
+      },
+    })
+    expect(store.created[0]!.demandKind).toBe('internal')
+    expect(store.created[0]!.demandSource).toBe('harbor_terminal_bench')
+  })
+
+  it('an external completion with no header => demand_kind=external', async () => {
+    const store = makeFakeStore()
+    await emitKhalaChatTrace(fakeSession(), {
+      enabled: true,
+      optedIn: true,
+      store,
+      owner: { ownerUserId: 'u1', agentRef: 'agent:u1', uploadSource: 'agent' },
+      // The chat path resolves a header-less external request to `external`.
+      demandAttribution: { demandKind: 'external' },
+    })
+    expect(store.created[0]!.demandKind).toBe('external')
+    expect(store.created[0]!.demandSource).toBeNull()
+  })
+
+  it('FAIL-SOFT: missing attribution => unlabeled, capture still succeeds', async () => {
+    const store = makeFakeStore()
+    const result = await emitKhalaChatTrace(fakeSession(), {
+      enabled: true,
+      optedIn: true,
+      store,
+      owner: { ownerUserId: 'u1', agentRef: 'agent:u1', uploadSource: 'agent' },
+      // No demandAttribution at all.
+    })
+    expect(result.emitted).toBe(true)
+    expect(store.created[0]!.demandKind).toBe('unlabeled')
+    expect(store.created[0]!.demandSource).toBeNull()
+  })
+
+  it('resolveTraceDemandColumns is fail-soft over bad/missing input', () => {
+    expect(resolveTraceDemandColumns(undefined)).toEqual({
+      demandKind: 'unlabeled',
+      demandSource: null,
+    })
+    // An unbounded / malformed source is dropped to null.
+    expect(
+      resolveTraceDemandColumns({
+        demandKind: 'internal',
+        demandSource: 'has spaces and !!!',
+      }),
+    ).toEqual({ demandKind: 'internal', demandSource: null })
+    // A bounded source slug is kept.
+    expect(
+      resolveTraceDemandColumns({
+        demandKind: 'own_capacity',
+        demandSource: 'khala_coding_delegation',
+      }),
+    ).toEqual({
+      demandKind: 'own_capacity',
+      demandSource: 'khala_coding_delegation',
+    })
   })
 })

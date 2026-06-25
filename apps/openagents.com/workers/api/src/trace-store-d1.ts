@@ -40,6 +40,50 @@ export type TraceBlobRef = Readonly<{
 /** How an upload authenticated (#6221). */
 export type TraceUploadSource = 'agent' | 'user_session'
 
+/**
+ * Demand-origin classification for a captured trace (#6298). This is the SAME
+ * bounded enum the token ledger uses (`ServedTokensRequestAttribution`,
+ * migration 0232) so a trace and its ledger event always agree. `null` (legacy
+ * rows / unclassifiable requests) is treated as `unlabeled` on read.
+ */
+export type TraceDemandKind =
+  | 'external'
+  | 'internal'
+  | 'own_capacity'
+  | 'unlabeled'
+
+/**
+ * The set of demand kinds the corpus read can filter by. `unlabeled` is the
+ * unclassified real-user default; legacy null rows fold into it on read.
+ */
+export const TRACE_DEMAND_KINDS: ReadonlyArray<TraceDemandKind> = [
+  'external',
+  'internal',
+  'own_capacity',
+  'unlabeled',
+]
+
+/** Parse an arbitrary string into a `TraceDemandKind`, else undefined. */
+export const parseTraceDemandKind = (
+  value: string | null | undefined,
+): TraceDemandKind | undefined => {
+  const normalized = value?.trim().toLowerCase()
+  return normalized !== undefined &&
+    (TRACE_DEMAND_KINDS as ReadonlyArray<string>).includes(normalized)
+    ? (normalized as TraceDemandKind)
+    : undefined
+}
+
+/**
+ * The kinds treated as INTERNAL DOGFOOD (#6298): our own heartbeat / canary /
+ * Terminal-Bench / coding-delegation traffic. Excluded from the default
+ * real-user corpus view so internal noise never pollutes the external corpus.
+ */
+export const TRACE_INTERNAL_DEMAND_KINDS: ReadonlyArray<TraceDemandKind> = [
+  'internal',
+  'own_capacity',
+]
+
 export type TraceRecord = Readonly<{
   traceUuid: string
   ownerUserId: string
@@ -84,6 +128,19 @@ export type TraceRecord = Readonly<{
   rewardAmountSats: number | null
   /** Whether the upload arrived via agent bearer or a user web session. */
   uploadSource: TraceUploadSource
+  /**
+   * Demand-origin classification (#6298). The SAME value the token ledger
+   * recorded for this request (kind resolved from `x-openagents-demand-kind`).
+   * `null` on legacy rows / unclassifiable requests; treated as `unlabeled` on
+   * read so the corpus can segment internal-dogfood from external real users.
+   */
+  demandKind: TraceDemandKind | null
+  /**
+   * Bounded demand-source attribution token (#6298), e.g. `heartbeat`,
+   * `canary`, `harbor_terminal_bench`. A token, never trajectory content, so it
+   * lives OUTSIDE the public-safe trajectory JSON and is not tripwire-scanned.
+   */
+  demandSource: string | null
   createdAt: string
   updatedAt: string
 }>
@@ -107,6 +164,10 @@ export type CreateTraceInput = Readonly<{
   rewardEligible: boolean
   rewardAmountSats: number | null
   uploadSource: TraceUploadSource
+  /** Demand-origin classification (#6298); null when unclassified. */
+  demandKind: TraceDemandKind | null
+  /** Bounded demand-source attribution token (#6298); null when absent. */
+  demandSource: string | null
   nowIso: string
 }>
 
@@ -144,6 +205,25 @@ export type TraceStore = Readonly<{
     ownerUserId: string,
     sinceIso: string,
   ) => Promise<number>
+  /**
+   * Owner-scoped list filtered by demand origin (#6298). When `demandKinds` is
+   * provided, only traces whose `demandKind` is in that set are returned (a
+   * legacy null row counts as `unlabeled`). When absent, behaves like
+   * `listTracesForOwner` (no demand filter).
+   */
+  listTracesForOwnerByDemand: (
+    ownerUserId: string,
+    limit: number,
+    demandKinds: ReadonlyArray<TraceDemandKind> | undefined,
+  ) => Promise<ReadonlyArray<TraceRecord>>
+  /**
+   * Owner-scoped segmented counts by demand origin (#6298): how many of the
+   * owner's traces fall into each demand kind (legacy null rows fold into
+   * `unlabeled`). Operator segmentation view.
+   */
+  countTracesForOwnerByDemand: (
+    ownerUserId: string,
+  ) => Promise<Record<TraceDemandKind, number>>
 }>
 
 const str = (value: unknown): string => (typeof value === 'string' ? value : '')
@@ -193,6 +273,8 @@ const recordFromRow = (row: Record<string, unknown>): TraceRecord => ({
   rewardEligible: bool(row.reward_eligible),
   rewardAmountSats: nullableNum(row.reward_amount_sats),
   uploadSource: uploadSourceFromRow(row.upload_source),
+  demandKind: parseTraceDemandKind(nullableStr(row.demand_kind)) ?? null,
+  demandSource: nullableStr(row.demand_source),
   createdAt: str(row.created_at),
   updatedAt: str(row.updated_at),
 })
@@ -206,6 +288,7 @@ const TRACE_COLUMNS = `trace_uuid, owner_user_id, agent_ref, schema_version,
                   idempotency_key,
                   training_consent, license, content_digest,
                   reward_eligible, reward_amount_sats, upload_source,
+                  demand_kind, demand_source,
                   created_at, updated_at`
 
 export const makeD1TraceStore = (db: D1Database): TraceStore => {
@@ -270,9 +353,10 @@ export const makeD1TraceStore = (db: D1Database): TraceStore => {
                 idempotency_key,
                 training_consent, license, content_digest,
                 reward_eligible, reward_amount_sats, upload_source,
+                demand_kind, demand_source,
                 created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
-                     ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)`,
+                     ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)`,
           )
           .bind(
             input.traceUuid,
@@ -293,6 +377,8 @@ export const makeD1TraceStore = (db: D1Database): TraceStore => {
             input.rewardEligible ? 1 : 0,
             input.rewardAmountSats,
             input.uploadSource,
+            input.demandKind,
+            input.demandSource,
             input.nowIso,
             input.nowIso,
           )
@@ -368,6 +454,78 @@ export const makeD1TraceStore = (db: D1Database): TraceStore => {
           .first<Record<string, unknown>>()
 
         return row === null ? 0 : num(row.n)
+      } catch (error) {
+        throw traceStoreErrorFromUnknown(error)
+      }
+    },
+    listTracesForOwnerByDemand: async (ownerUserId, limit, demandKinds) => {
+      // No filter => identical to the unfiltered owner list.
+      if (demandKinds === undefined || demandKinds.length === 0) {
+        try {
+          const result = await db
+            .prepare(
+              `SELECT ${TRACE_COLUMNS}
+                 FROM agent_traces
+                WHERE owner_user_id = ?1
+                ORDER BY created_at DESC
+                LIMIT ?2`,
+            )
+            .bind(ownerUserId, limit)
+            .all<Record<string, unknown>>()
+          return (result.results ?? []).map(recordFromRow)
+        } catch (error) {
+          throw traceStoreErrorFromUnknown(error)
+        }
+      }
+      // A legacy null row counts as `unlabeled`: when `unlabeled` is requested we
+      // also match NULL. The placeholders are a bounded enum set (max 4), so the
+      // dynamic `IN (...)` is safe.
+      const wantUnlabeled = demandKinds.includes('unlabeled')
+      const placeholders = demandKinds
+        .map((_, i) => `?${i + 2}`)
+        .join(', ')
+      const nullClause = wantUnlabeled ? ' OR demand_kind IS NULL' : ''
+      try {
+        const result = await db
+          .prepare(
+            `SELECT ${TRACE_COLUMNS}
+               FROM agent_traces
+              WHERE owner_user_id = ?1
+                AND (demand_kind IN (${placeholders})${nullClause})
+              ORDER BY created_at DESC
+              LIMIT ?${demandKinds.length + 2}`,
+          )
+          .bind(ownerUserId, ...demandKinds, limit)
+          .all<Record<string, unknown>>()
+        return (result.results ?? []).map(recordFromRow)
+      } catch (error) {
+        throw traceStoreErrorFromUnknown(error)
+      }
+    },
+    countTracesForOwnerByDemand: async ownerUserId => {
+      try {
+        const result = await db
+          .prepare(
+            `SELECT COALESCE(demand_kind, 'unlabeled') AS kind, COUNT(*) AS n
+               FROM agent_traces
+              WHERE owner_user_id = ?1
+              GROUP BY COALESCE(demand_kind, 'unlabeled')`,
+          )
+          .bind(ownerUserId)
+          .all<Record<string, unknown>>()
+        const counts: Record<TraceDemandKind, number> = {
+          external: 0,
+          internal: 0,
+          own_capacity: 0,
+          unlabeled: 0,
+        }
+        for (const row of result.results ?? []) {
+          const kind = parseTraceDemandKind(nullableStr(row.kind))
+          if (kind !== undefined) {
+            counts[kind] = num(row.n)
+          }
+        }
+        return counts
       } catch (error) {
         throw traceStoreErrorFromUnknown(error)
       }

@@ -94,7 +94,13 @@ IDX_STATE="$HOME_DIR/.canary-keystate"
 idx=0; [ -f "$IDX_STATE" ] && idx=$(cat "$IDX_STATE" 2>/dev/null || echo 0)
 KEY="${KEYS[$(( idx % ${#KEYS[@]} ))]}"
 echo $(( (idx + 1) % 1000000 )) > "$IDX_STATE"
-AUTH=(-H "Authorization: Bearer $KEY" -H "content-type: application/json")
+# DEMAND-ORIGIN SELF-TAG (#6298). The canary is INTERNAL dogfood, not external
+# demand. Tag every completion so the token ledger AND the captured trace corpus
+# classify it as internal (source `canary`) and segment it out of the genuine
+# external real-user corpus. See
+# docs/inference/2026-06-25-khala-heartbeat-runbook.md ("Demand-origin self-tag").
+AUTH=(-H "Authorization: Bearer $KEY" -H "content-type: application/json" \
+  -H "x-openagents-demand-kind: internal" -H "x-openagents-demand-source: canary")
 
 # --- one tick ----------------------------------------------------------------
 before=$(curl -s --max-time 10 "$PUBLIC_BASE/api/public/khala-tokens-served" | jq -r '.tokensServed // empty')

@@ -74,6 +74,8 @@ const makeMemoryStore = (): TraceStore & { rows: Map<string, TraceRecord> } => {
     rewardEligible: input.rewardEligible,
     rewardAmountSats: input.rewardAmountSats,
     uploadSource: input.uploadSource,
+    demandKind: input.demandKind,
+    demandSource: input.demandSource,
     createdAt: input.nowIso,
     updatedAt: input.nowIso,
   })
@@ -117,6 +119,35 @@ const makeMemoryStore = (): TraceStore & { rows: Map<string, TraceRecord> } => {
           row => row.ownerUserId === ownerUserId && row.createdAt >= sinceIso,
         ).length,
       ),
+    listTracesForOwnerByDemand: (ownerUserId, limit, demandKinds) =>
+      Promise.resolve(
+        [...rows.values()]
+          .filter(row => row.ownerUserId === ownerUserId)
+          .filter(row => {
+            if (demandKinds === undefined || demandKinds.length === 0) {
+              return true
+            }
+            const kind = row.demandKind ?? 'unlabeled'
+            return demandKinds.includes(kind)
+          })
+          .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+          .slice(0, limit),
+      ),
+    countTracesForOwnerByDemand: ownerUserId => {
+      const counts = {
+        external: 0,
+        internal: 0,
+        own_capacity: 0,
+        unlabeled: 0,
+      }
+      for (const row of rows.values()) {
+        if (row.ownerUserId !== ownerUserId) {
+          continue
+        }
+        counts[row.demandKind ?? 'unlabeled'] += 1
+      }
+      return Promise.resolve(counts)
+    },
   }
 }
 
@@ -615,6 +646,8 @@ describe('trace data market (#6221)', () => {
         rewardEligible: false,
         rewardAmountSats: null,
         uploadSource: 'agent',
+        demandKind: null,
+        demandSource: null,
         nowIso: NOW,
       })
     }
@@ -762,6 +795,8 @@ const seedTrace = async (
     rewardEligible: false,
     rewardAmountSats: null,
     uploadSource: 'agent',
+    demandKind: null,
+    demandSource: null,
     nowIso: NOW,
   })
   return result.record.traceUuid
@@ -884,6 +919,8 @@ describe('GET /api/traces owner list', () => {
       rewardEligible: false,
       rewardAmountSats: null,
       uploadSource: 'agent',
+      demandKind: null,
+      demandSource: null,
       nowIso: NOW,
     })
     const routes = makeDeps({
@@ -913,6 +950,104 @@ describe('GET /api/traces owner list', () => {
       ),
     )
     expect(response.status).toBe(401)
+  })
+
+  // DEMAND-ORIGIN CORPUS SEGMENTATION (#6298) ------------------------------
+  const seedDemand = (
+    store: TraceStore,
+    uuid: string,
+    demandKind: 'external' | 'internal' | 'own_capacity' | 'unlabeled' | null,
+    demandSource: string | null,
+  ) =>
+    store.createTrace({
+      traceUuid: uuid,
+      ownerUserId: 'agent-1',
+      agentRef: 'agent:agent-1',
+      schemaVersion: ATIF_PINNED_SCHEMA_VERSION,
+      trajectoryId: `t-${uuid}`,
+      sessionId: null,
+      visibility: 'owner_only',
+      stepCount: 1,
+      trajectory: {},
+      trajectoryR2Key: null,
+      blobRefs: [],
+      idempotencyKey: null,
+      trainingConsent: false,
+      license: null,
+      contentDigest: `digest-${uuid}`,
+      rewardEligible: false,
+      rewardAmountSats: null,
+      uploadSource: 'agent',
+      demandKind,
+      demandSource,
+      nowIso: NOW,
+    })
+
+  const ownerListJson = async (
+    store: TraceStore,
+    query = '',
+  ): Promise<{
+    traces: ReadonlyArray<{ uuid: string; demandKind: string }>
+    demandSegments: Record<string, number>
+    appliedDemandKinds: ReadonlyArray<string> | null
+  }> => {
+    const routes = makeDeps({
+      store,
+      browserSession: { user: { userId: 'agent-1' } },
+    })
+    const response = await run(
+      routes.routeTraceRequest(
+        new Request(`https://openagents.com/api/traces${query}`),
+        ENV,
+        CTX,
+      ),
+    )
+    expect(response.status).toBe(200)
+    return (await response.json()) as never
+  }
+
+  it('EXCLUDES internal-dogfood from the default real-user corpus view', async () => {
+    const store = makeMemoryStore()
+    await seedDemand(store, 'ext', 'external', null)
+    await seedDemand(store, 'unl', null, null) // legacy null => unlabeled, kept
+    await seedDemand(store, 'hb', 'internal', 'heartbeat') // excluded by default
+    await seedDemand(store, 'own', 'own_capacity', 'khala_coding_delegation') // excluded
+
+    const json = await ownerListJson(store)
+    const uuids = json.traces.map(t => t.uuid).sort()
+    // Default view keeps external + unlabeled, drops internal + own_capacity.
+    expect(uuids).toEqual(['ext', 'unl'])
+    // Each returned summary carries its demand origin (null => unlabeled).
+    const byUuid = Object.fromEntries(
+      json.traces.map(t => [t.uuid, t.demandKind]),
+    )
+    expect(byUuid['ext']).toBe('external')
+    expect(byUuid['unl']).toBe('unlabeled')
+    // Segmented operator count spans ALL of the owner's traces.
+    expect(json.demandSegments).toEqual({
+      external: 1,
+      internal: 1,
+      own_capacity: 1,
+      unlabeled: 1,
+    })
+  })
+
+  it('?demand_kind=internal filters to internal-dogfood', async () => {
+    const store = makeMemoryStore()
+    await seedDemand(store, 'ext', 'external', null)
+    await seedDemand(store, 'hb', 'internal', 'heartbeat')
+    const json = await ownerListJson(store, '?demand_kind=internal')
+    expect(json.traces.map(t => t.uuid)).toEqual(['hb'])
+    expect(json.appliedDemandKinds).toEqual(['internal'])
+  })
+
+  it('?demand_kind=all returns every kind including internal', async () => {
+    const store = makeMemoryStore()
+    await seedDemand(store, 'ext', 'external', null)
+    await seedDemand(store, 'hb', 'internal', 'heartbeat')
+    const json = await ownerListJson(store, '?demand_kind=all')
+    expect(json.traces.map(t => t.uuid).sort()).toEqual(['ext', 'hb'])
+    expect(json.appliedDemandKinds).toBeNull()
   })
 })
 
@@ -945,6 +1080,8 @@ const seedTraceWithBlobs = async (
     rewardEligible: false,
     rewardAmountSats: null,
     uploadSource: 'agent',
+    demandKind: null,
+    demandSource: null,
     nowIso: NOW,
   })
   return result.record.traceUuid
