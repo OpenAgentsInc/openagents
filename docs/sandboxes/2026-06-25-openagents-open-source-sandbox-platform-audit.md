@@ -220,8 +220,9 @@ with a typed adapter interface (dispatch/cancel/health/callbacks); the CF-Contai
 (fake + real-contract) but is **not live** (gated). Verdict: an excellent **light/web/burst** lane,
 **not** a substitute for an isolated heavy/untrusted VM.
 
-**SHC = Self-Hosted Cloud** (`apps/openagents.com/docs/2026-06-02-shc-agent-deployment-runbook.md`):
-the current primary execution substrate. Node `oa-shc-katy-01` (Ubuntu 24.04, 16 vCPU / 64 GB /
+**SHC = Sovereign Hybrid Compute** (`apps/openagents.com/docs/2026-06-02-shc-agent-deployment-runbook.md`):
+OpenAgents' own/sovereign compute nodes hybridized with the Cloudflare control plane (Autopilot runs
+on SHC; the web app + backend run on Cloudflare) — the current primary execution substrate. Node `oa-shc-katy-01` (Ubuntu 24.04, 16 vCPU / 64 GB /
 256 GB SSD), control API `http://.../v1/codex-runs`, Codex broker over WS. Flow: Foldkit → Worker
 → D1/DO/R2/Queues → **SHC runner (primary)** or **GCloud (`oa-gcp-shc-katy-01`, n2-standard-16)
 fallback**. Important honesty: SHC today runs Codex in `danger_full_access` — only safe **because**

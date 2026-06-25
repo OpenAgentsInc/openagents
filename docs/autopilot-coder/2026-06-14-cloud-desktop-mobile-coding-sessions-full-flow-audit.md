@@ -160,7 +160,7 @@ Contracts: `openagents.codex_workroom_assignment.v1`,
 `openagents.resource_usage_receipt.v1`,
 `openagents.compute_quota_routing.v1`.
 
-**SHC** = self-hosted cloud. The live MVP node is **`oa-shc-katy-01`**
+**SHC** = Sovereign Hybrid Compute (OpenAgents' own/sovereign compute nodes hybridized with the Cloudflare control plane — *not* "self-hosted cloud"). The live MVP node is **`oa-shc-katy-01`**
 (`23.182.128.195`, 16 vCPU / 62 GiB / KVM present, Ubuntu 24.04, Codex CLI
 `0.135.0`, Firecracker `1.15.1` bootable). Codex runs under
 `danger_full_access` inside the no-wallet VM boundary because the bubblewrap
