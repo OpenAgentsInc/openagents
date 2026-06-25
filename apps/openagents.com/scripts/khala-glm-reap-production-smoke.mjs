@@ -8,6 +8,7 @@ const defaultCounterPath = '/api/public/khala-tokens-served'
 const khalaModel = 'openagents/khala'
 const glmWorkerId = 'hydralisk-vllm-glm-5p2-reap-504b'
 const glmServedModel = 'openagents/glm-5.2-reap-504b'
+const legacyGlmReplicaId = 'primary'
 const defaultPrompt =
   'OpenAgents Khala GLM REAP smoke: answer with exactly READY and no other words.'
 
@@ -28,6 +29,7 @@ const forbiddenPublicModelIds = [
 ]
 
 const publicSafeRef = /^[a-z0-9][a-z0-9._:-]{1,199}$/iu
+const replicaIdPattern = /^[a-z0-9][a-z0-9-]{0,63}$/u
 
 const trimBaseUrl = baseUrl =>
   String(baseUrl || defaultBaseUrl).replace(/\/+$/u, '')
@@ -86,8 +88,7 @@ const redact = value => {
     .replace(/https?:\/\/10\.[^\s"']+/gu, '<private-rfc1918-url>')
 }
 
-const isPresent = value =>
-  typeof value === 'string' && value.trim() !== ''
+const isPresent = value => typeof value === 'string' && value.trim() !== ''
 
 const isPublicSafeRef = value =>
   typeof value === 'string' &&
@@ -96,6 +97,212 @@ const isPublicSafeRef = value =>
   publicSafeRef.test(value) &&
   !value.includes('://') &&
   !value.toLowerCase().startsWith('sk-')
+
+const normalizeReplicaId = value =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+
+const isReplicaId = value => replicaIdPattern.test(normalizeReplicaId(value))
+
+const replicaEnvToken = replicaId =>
+  normalizeReplicaId(replicaId).replace(/-/gu, '_').toUpperCase()
+
+const glmReplicaEnvKey = (replicaId, suffix) =>
+  `HYDRALISK_GLM_52_REAP_504B_${replicaEnvToken(replicaId)}_${suffix}`
+
+const envStringValue = (env, key) => {
+  const value = env?.[key]
+  return typeof value === 'string' ? value : undefined
+}
+
+const glmReplicaEnvValue = (env, replicaId, suffix, legacyKey, hasPool) => {
+  const key = glmReplicaEnvKey(replicaId, suffix)
+  const namedValue = envStringValue(env, key)
+  if (
+    !hasPool &&
+    normalizeReplicaId(replicaId) === legacyGlmReplicaId &&
+    !isPresent(namedValue)
+  ) {
+    return { key: legacyKey, value: envStringValue(env, legacyKey) }
+  }
+  return { key, value: namedValue }
+}
+
+const parseGlmReplicaIds = env => {
+  const rawValue = env.HYDRALISK_GLM_52_REAP_504B_REPLICA_IDS?.trim()
+  if (rawValue === undefined || rawValue === '') {
+    return {
+      blockerRefs: [],
+      explicitPool: false,
+      replicaIds: [legacyGlmReplicaId],
+    }
+  }
+
+  const blockerRefs = []
+  const replicaIds = []
+  const seen = new Set()
+  for (const raw of rawValue.split(',')) {
+    const replicaId = normalizeReplicaId(raw)
+    if (!isReplicaId(replicaId)) {
+      blockerRefs.push('HYDRALISK_GLM_52_REAP_504B_REPLICA_IDS')
+      continue
+    }
+    if (seen.has(replicaId)) {
+      blockerRefs.push('HYDRALISK_GLM_52_REAP_504B_REPLICA_IDS')
+      continue
+    }
+    seen.add(replicaId)
+    replicaIds.push(replicaId)
+  }
+
+  if (replicaIds.length === 0) {
+    blockerRefs.push('HYDRALISK_GLM_52_REAP_504B_REPLICA_IDS')
+  }
+
+  return { blockerRefs, explicitPool: true, replicaIds }
+}
+
+const isEnabledFlag = value => {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase()
+  return (
+    normalized === 'true' ||
+    normalized === '1' ||
+    normalized === 'yes' ||
+    normalized === 'on'
+  )
+}
+
+const replicaRefFor = replicaId =>
+  `replica.hydralisk.glm_52_reap_504b.${normalizeReplicaId(replicaId)}`
+
+const namedRequiredFieldsForReplica = replicaId => [
+  glmReplicaEnvKey(replicaId, 'ENABLED'),
+  glmReplicaEnvKey(replicaId, 'BASE_URL'),
+  glmReplicaEnvKey(replicaId, 'BEARER_TOKEN'),
+  glmReplicaEnvKey(replicaId, 'PREFLIGHT_REF'),
+  glmReplicaEnvKey(replicaId, 'RECEIPT_REF'),
+]
+
+const resolveGlmReplicaSmokeArming = (env, replicaId, hasPool) => {
+  const enabled = glmReplicaEnvValue(
+    env,
+    replicaId,
+    'ENABLED',
+    'HYDRALISK_GLM_52_REAP_504B_ENABLED',
+    hasPool,
+  )
+  const baseUrl = glmReplicaEnvValue(
+    env,
+    replicaId,
+    'BASE_URL',
+    'HYDRALISK_GLM_52_REAP_504B_BASE_URL',
+    hasPool,
+  )
+  const bearerToken = glmReplicaEnvValue(
+    env,
+    replicaId,
+    'BEARER_TOKEN',
+    'HYDRALISK_GLM_52_REAP_504B_BEARER_TOKEN',
+    hasPool,
+  )
+  const preflightRef = glmReplicaEnvValue(
+    env,
+    replicaId,
+    'PREFLIGHT_REF',
+    'HYDRALISK_GLM_52_REAP_504B_PREFLIGHT_REF',
+    hasPool,
+  )
+  const receiptRef = glmReplicaEnvValue(
+    env,
+    replicaId,
+    'RECEIPT_REF',
+    'HYDRALISK_GLM_52_REAP_504B_RECEIPT_REF',
+    hasPool,
+  )
+  const profileRef = glmReplicaEnvValue(
+    env,
+    replicaId,
+    'PROFILE_REF',
+    'HYDRALISK_GLM_52_REAP_504B_PROFILE_REF',
+    hasPool,
+  )
+  const costProfileRef = glmReplicaEnvValue(
+    env,
+    replicaId,
+    'COST_PROFILE_REF',
+    'HYDRALISK_GLM_52_REAP_504B_COST_PROFILE_REF',
+    hasPool,
+  )
+  const benchmarkReserved = glmReplicaEnvValue(
+    env,
+    replicaId,
+    'BENCHMARK_RESERVED',
+    'HYDRALISK_GLM_52_REAP_504B_BENCHMARK_RESERVED',
+    hasPool,
+  )
+  const draining = glmReplicaEnvValue(
+    env,
+    replicaId,
+    'DRAINING',
+    'HYDRALISK_GLM_52_REAP_504B_DRAINING',
+    hasPool,
+  )
+
+  const blockerRefs = []
+  if (enabled.value?.trim() !== 'ready') {
+    blockerRefs.push(enabled.key)
+  }
+  if (!isPresent(baseUrl.value)) {
+    blockerRefs.push(baseUrl.key)
+  }
+  if (!isPresent(bearerToken.value)) {
+    blockerRefs.push(bearerToken.key)
+  }
+  if (!isPublicSafeRef(preflightRef.value)) {
+    blockerRefs.push(preflightRef.key)
+  }
+  if (!isPublicSafeRef(receiptRef.value)) {
+    blockerRefs.push(receiptRef.key)
+  }
+  if (isPresent(profileRef.value) && !isPublicSafeRef(profileRef.value)) {
+    blockerRefs.push(profileRef.key)
+  }
+  if (
+    isPresent(costProfileRef.value) &&
+    !isPublicSafeRef(costProfileRef.value)
+  ) {
+    blockerRefs.push(costProfileRef.key)
+  }
+
+  const armed = blockerRefs.length === 0
+  const reserved = isEnabledFlag(benchmarkReserved.value)
+  const isDraining = isEnabledFlag(draining.value)
+  const eligible = armed && !reserved && !isDraining
+  return {
+    armed,
+    benchmarkReserved: reserved,
+    blockerRefs,
+    costProfileRef: isPublicSafeRef(costProfileRef.value)
+      ? costProfileRef.value
+      : undefined,
+    draining: isDraining,
+    eligible,
+    evidenceRefs: [preflightRef.value, receiptRef.value].filter(
+      isPublicSafeRef,
+    ),
+    profileRef: isPublicSafeRef(profileRef.value)
+      ? profileRef.value
+      : undefined,
+    replicaId,
+    replicaRef: replicaRefFor(replicaId),
+    requiredFields: hasPool
+      ? namedRequiredFieldsForReplica(replicaId)
+      : requiredArmingFields,
+  }
+}
 
 const isFireworksKhalaBacking = value => {
   const normalized = String(value || '')
@@ -109,21 +316,25 @@ const isFireworksKhalaBacking = value => {
 }
 
 export const resolveGlmReapSmokeArming = (env = process.env) => {
-  const blockerRefs = []
-  if (env.HYDRALISK_GLM_52_REAP_504B_ENABLED?.trim() !== 'ready') {
-    blockerRefs.push('HYDRALISK_GLM_52_REAP_504B_ENABLED')
-  }
-  if (!isPresent(env.HYDRALISK_GLM_52_REAP_504B_BASE_URL)) {
-    blockerRefs.push('HYDRALISK_GLM_52_REAP_504B_BASE_URL')
-  }
-  if (!isPresent(env.HYDRALISK_GLM_52_REAP_504B_BEARER_TOKEN)) {
-    blockerRefs.push('HYDRALISK_GLM_52_REAP_504B_BEARER_TOKEN')
-  }
-  if (!isPublicSafeRef(env.HYDRALISK_GLM_52_REAP_504B_PREFLIGHT_REF)) {
-    blockerRefs.push('HYDRALISK_GLM_52_REAP_504B_PREFLIGHT_REF')
-  }
-  if (!isPublicSafeRef(env.HYDRALISK_GLM_52_REAP_504B_RECEIPT_REF)) {
-    blockerRefs.push('HYDRALISK_GLM_52_REAP_504B_RECEIPT_REF')
+  const parsed = parseGlmReplicaIds(env)
+  const replicas = parsed.replicaIds.map(replicaId =>
+    resolveGlmReplicaSmokeArming(env, replicaId, parsed.explicitPool),
+  )
+  const eligibleReplicaRefs = replicas
+    .filter(replica => replica.eligible)
+    .map(replica => replica.replicaRef)
+  const excludedReplicaRefs = replicas
+    .filter(
+      replica =>
+        replica.armed && (replica.benchmarkReserved || replica.draining),
+    )
+    .map(replica => replica.replicaRef)
+  const blockerRefs = [
+    ...parsed.blockerRefs,
+    ...replicas.flatMap(replica => replica.blockerRefs),
+  ]
+  if (eligibleReplicaRefs.length === 0) {
+    blockerRefs.push('HYDRALISK_GLM_52_REAP_504B_NO_ELIGIBLE_REPLICA')
   }
   if (isFireworksKhalaBacking(env.KHALA_BACKING_MODEL)) {
     blockerRefs.push('KHALA_BACKING_MODEL')
@@ -132,7 +343,16 @@ export const resolveGlmReapSmokeArming = (env = process.env) => {
   return {
     armed: blockerRefs.length === 0,
     blockerRefs,
-    requiredFields: requiredArmingFields,
+    eligibleReplicaRefs,
+    excludedReplicaRefs,
+    poolMode: parsed.explicitPool ? 'named_pool' : 'legacy_single',
+    replicas,
+    requiredFields: parsed.explicitPool
+      ? [
+          'HYDRALISK_GLM_52_REAP_504B_REPLICA_IDS',
+          ...replicas.flatMap(replica => replica.requiredFields),
+        ]
+      : requiredArmingFields,
   }
 }
 
@@ -150,14 +370,12 @@ export const parseArgs = (argv, env = process.env) => {
       env.OPENAGENTS_KHALA_GLM_REAP_COUNTER_POLL_MS,
       2_500,
     ),
-    counterPolls: positiveInt(
-      env.OPENAGENTS_KHALA_GLM_REAP_COUNTER_POLLS,
-      8,
-    ),
+    counterPolls: positiveInt(env.OPENAGENTS_KHALA_GLM_REAP_COUNTER_POLLS, 8),
     env,
     failWhenUnarmed: truthy(
       env.OPENAGENTS_KHALA_GLM_REAP_SMOKE_FAIL_WHEN_UNARMED,
     ),
+    expectedReplicaId: env.OPENAGENTS_KHALA_GLM_REAP_EXPECTED_REPLICA_ID || '',
     prompt: env.OPENAGENTS_KHALA_GLM_REAP_SMOKE_PROMPT || defaultPrompt,
     readinessOnly: false,
     token: env.OPENAGENTS_AGENT_TOKEN || '',
@@ -177,6 +395,8 @@ export const parseArgs = (argv, env = process.env) => {
       options.counterPollMs = positiveInt(argv[++index], options.counterPollMs)
     } else if (value === '--prompt') {
       options.prompt = argv[++index] || options.prompt
+    } else if (value === '--expected-replica-id') {
+      options.expectedReplicaId = argv[++index] || options.expectedReplicaId
     } else if (value === '--token') {
       options.token = argv[++index] || options.token
     } else if (value === '--approve-live-spend') {
@@ -204,12 +424,22 @@ export const usage = () => `Usage:
   HYDRALISK_GLM_52_REAP_504B_RECEIPT_REF=<public-ref> \\
     node scripts/khala-glm-reap-production-smoke.mjs --approve-live-spend
 
+Named pool:
+  HYDRALISK_GLM_52_REAP_504B_REPLICA_IDS=primary,second \\
+  HYDRALISK_GLM_52_REAP_504B_PRIMARY_ENABLED=ready \\
+  HYDRALISK_GLM_52_REAP_504B_PRIMARY_BENCHMARK_RESERVED=true \\
+  HYDRALISK_GLM_52_REAP_504B_SECOND_ENABLED=ready \\
+    node scripts/khala-glm-reap-production-smoke.mjs \\
+      --approve-live-spend --expected-replica-id second
+
 Options:
   --base-url <url>          OpenAgents origin. Defaults to https://openagents.com.
   --api-base-path <path>    API base path. Defaults to /api/v1.
   --counter-path <path>     Public counter path. Defaults to /api/public/khala-tokens-served.
   --counter-polls <n>       Counter retry count. Defaults to 8.
   --counter-poll-ms <ms>    Counter retry interval. Defaults to 2500.
+  --expected-replica-id <id>
+                            Require the selected public-safe GLM replica ref.
   --prompt <text>           Prompt used for nonstreaming and streaming calls.
   --token <token>           Agent bearer token. Defaults to OPENAGENTS_AGENT_TOKEN.
   --approve-live-spend      Required before authenticated completion calls.
@@ -267,6 +497,59 @@ const pollCounterDelta = async ({
   return { after, attempts: counterPolls, delta: after - before }
 }
 
+const poolSummaryFromArming = arming => ({
+  eligibleReplicaRefs: arming.eligibleReplicaRefs,
+  excludedReplicaRefs: arming.excludedReplicaRefs,
+  mode: arming.poolMode,
+  replicas: arming.replicas.map(replica => ({
+    armed: replica.armed,
+    benchmarkReserved: replica.benchmarkReserved,
+    draining: replica.draining,
+    eligible: replica.eligible,
+    evidenceRefs: replica.evidenceRefs,
+    replicaId: replica.replicaId,
+    replicaRef: replica.replicaRef,
+    ...(replica.profileRef === undefined
+      ? {}
+      : { profileRef: replica.profileRef }),
+    ...(replica.costProfileRef === undefined
+      ? {}
+      : { costProfileRef: replica.costProfileRef }),
+  })),
+})
+
+const resolveReplicaRoutingExpectation = (arming, expectedReplicaId) => {
+  const expectedReplica = normalizeReplicaId(expectedReplicaId)
+  if (expectedReplica !== '') {
+    if (!isReplicaId(expectedReplica)) {
+      throw new Error(
+        `expected_glm_replica_id_public_safe failed: ${expectedReplicaId}`,
+      )
+    }
+    const expectedSelectedReplicaRef = replicaRefFor(expectedReplica)
+    assert(
+      arming.eligibleReplicaRefs.includes(expectedSelectedReplicaRef),
+      `expected_glm_replica_eligible failed: ${expectedReplica}`,
+    )
+    return {
+      allowedSelectedReplicaRefs: [],
+      expectedSelectedReplicaRef,
+      forbiddenSelectedReplicaRefs: arming.excludedReplicaRefs,
+      requireSelectedReplicaRef: true,
+    }
+  }
+
+  return {
+    allowedSelectedReplicaRefs: arming.eligibleReplicaRefs,
+    expectedSelectedReplicaRef:
+      arming.eligibleReplicaRefs.length === 1
+        ? arming.eligibleReplicaRefs[0]
+        : '',
+    forbiddenSelectedReplicaRefs: arming.excludedReplicaRefs,
+    requireSelectedReplicaRef: true,
+  }
+}
+
 export const runKhalaGlmReapProductionSmoke = async ({
   approveLiveSpend = false,
   apiBasePath = defaultApiBasePath,
@@ -275,6 +558,7 @@ export const runKhalaGlmReapProductionSmoke = async ({
   counterPollMs = 2_500,
   counterPolls = 8,
   env = process.env,
+  expectedReplicaId = '',
   failWhenUnarmed = false,
   fetchImpl = globalThis.fetch,
   prompt = defaultPrompt,
@@ -290,6 +574,7 @@ export const runKhalaGlmReapProductionSmoke = async ({
       arming: {
         armed: false,
         blockerRefs: arming.blockerRefs,
+        pool: poolSummaryFromArming(arming),
       },
       ok: true,
       reason: 'glm_reap_lane_not_armed',
@@ -307,18 +592,27 @@ export const runKhalaGlmReapProductionSmoke = async ({
   const before = readinessOnly
     ? null
     : await readTokensServed(fetchImpl, origin, counterPath)
+  const replicaExpectation = resolveReplicaRoutingExpectation(
+    arming,
+    expectedReplicaId,
+  )
   const khalaSmoke = await runKhalaProductionSmoke({
+    allowedSelectedReplicaRefs: replicaExpectation.allowedSelectedReplicaRefs,
     approveLiveSpend,
     apiBasePath,
     baseUrl: origin,
     expectedServedModelContains: glmServedModel,
+    expectedSelectedReplicaRef: replicaExpectation.expectedSelectedReplicaRef,
     expectedSupplyLane: 'hydralisk',
     expectedWorker: glmWorkerId,
     fetchImpl,
+    forbiddenSelectedReplicaRefs:
+      replicaExpectation.forbiddenSelectedReplicaRefs,
     forbiddenPublicModelIds,
     model: khalaModel,
     prompt,
     readinessOnly,
+    requireSelectedReplicaRef: replicaExpectation.requireSelectedReplicaRef,
     token,
   })
 
@@ -327,6 +621,7 @@ export const runKhalaGlmReapProductionSmoke = async ({
       arming: { armed: true, blockerRefs: [] },
       ...khalaSmoke,
       counter: null,
+      pool: poolSummaryFromArming(arming),
       skipped: false,
     }
   }
@@ -361,6 +656,7 @@ export const runKhalaGlmReapProductionSmoke = async ({
       requiredDelta,
       servedTokens,
     },
+    pool: poolSummaryFromArming(arming),
     skipped: false,
   }
 }

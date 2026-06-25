@@ -210,6 +210,36 @@ HYDRALISK_GLM_52_REAP_504B_RECEIPT_REF=<public-safe ref> \
 bun run smoke:khala:glm-reap -- --approve-live-spend
 ```
 
+For the #6265 pool smoke, keep the benchmark-owned first lane reserved and make
+the second lane the expected eligible product replica:
+
+```sh
+cd apps/openagents.com
+OPENAGENTS_AGENT_TOKEN=oa_agent_... \
+HYDRALISK_GLM_52_REAP_504B_REPLICA_IDS=primary,second \
+HYDRALISK_GLM_52_REAP_504B_PRIMARY_ENABLED=ready \
+HYDRALISK_GLM_52_REAP_504B_PRIMARY_BASE_URL=<Worker secret value> \
+HYDRALISK_GLM_52_REAP_504B_PRIMARY_BEARER_TOKEN=<Worker secret value> \
+HYDRALISK_GLM_52_REAP_504B_PRIMARY_PREFLIGHT_REF=<public-safe ref> \
+HYDRALISK_GLM_52_REAP_504B_PRIMARY_RECEIPT_REF=<public-safe ref> \
+HYDRALISK_GLM_52_REAP_504B_PRIMARY_BENCHMARK_RESERVED=true \
+HYDRALISK_GLM_52_REAP_504B_SECOND_ENABLED=ready \
+HYDRALISK_GLM_52_REAP_504B_SECOND_BASE_URL=<Worker secret value> \
+HYDRALISK_GLM_52_REAP_504B_SECOND_BEARER_TOKEN=<Worker secret value> \
+HYDRALISK_GLM_52_REAP_504B_SECOND_PREFLIGHT_REF=<public-safe ref> \
+HYDRALISK_GLM_52_REAP_504B_SECOND_RECEIPT_REF=<public-safe ref> \
+HYDRALISK_GLM_52_REAP_504B_SECOND_PROFILE_REF=<public-safe profile ref> \
+bun run smoke:khala:glm-reap -- \
+  --approve-live-spend \
+  --expected-replica-id second
+```
+
+The pool smoke can also target a single named replica by setting
+`HYDRALISK_GLM_52_REAP_504B_REPLICA_IDS=second` and supplying the matching
+`HYDRALISK_GLM_52_REAP_504B_SECOND_*` fields above. Do not commit the endpoint
+values or bearer tokens; only the env variable names and public-safe evidence
+refs belong in tracked files or issue comments.
+
 Default target paths are the public canonical aliases:
 
 - `GET /api/v1/models`
@@ -225,6 +255,9 @@ backing lane. When armed, it verifies:
 - non-streaming and streaming `openagents/khala` calls disclose
   `supply_lane: hydralisk`, `worker: hydralisk-vllm-glm-5p2-reap-504b`, and
   `served_model: openagents/glm-5.2-reap-504b`;
+- pool-mode completions disclose a public-safe
+  `openagents.routing.selected_replica_ref`, and the smoke rejects a response
+  that routes to a replica marked `benchmarkReserved` or `draining`;
 - each public inference receipt carries matching model evidence and usage;
 - the public Khala tokens-served counter moves by approximately the served usage.
 

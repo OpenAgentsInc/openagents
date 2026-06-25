@@ -167,10 +167,38 @@ const receiptPathFrom = openagents => {
   ) {
     return openagents.telemetry.detailRef
   }
-  if (typeof openagents?.receipt === 'string' && openagents.receipt.length > 0) {
+  if (
+    typeof openagents?.receipt === 'string' &&
+    openagents.receipt.length > 0
+  ) {
     return `/api/public/inference/receipts/${encodeURIComponent(openagents.receipt)}`
   }
   return null
+}
+
+const routingSummaryFrom = openagents => {
+  const routing = openagents?.routing
+  if (typeof routing !== 'object' || routing === null) {
+    return undefined
+  }
+  return {
+    fallback_reason: routing.fallback_reason,
+    glm_saturation_policy: routing.glm_saturation_policy,
+    provider_health_score: routing.provider_health_score,
+    queue_wait_ms: routing.queue_wait_ms,
+    region: routing.region,
+    replica_busy_reason: routing.replica_busy_reason,
+    replica_fallback_reason: routing.replica_fallback_reason,
+    replica_health_score: routing.replica_health_score,
+    replica_region: routing.replica_region,
+    selected_replica_id: routing.selected_replica_id,
+    selected_replica_ref: routing.selected_replica_ref,
+  }
+}
+
+const selectedReplicaRefFrom = openagents => {
+  const ref = openagents?.routing?.selected_replica_ref
+  return typeof ref === 'string' && ref.length > 0 ? ref : null
 }
 
 const summarizeOpenAgents = openagents => ({
@@ -178,6 +206,7 @@ const summarizeOpenAgents = openagents => ({
   receipt: openagents?.receipt,
   receipt_url: openagents?.receipt_url,
   requested_model: openagents?.requested_model,
+  routing: routingSummaryFrom(openagents),
   served_model: openagents?.served_model,
   supply_lane: openagents?.supply_lane,
   telemetry_detail_ref: openagents?.telemetry?.detailRef,
@@ -190,7 +219,10 @@ const receiptProjectionFrom = body =>
     : body
 
 const receiptModelEvidenceFrom = receipt =>
-  receipt?.modelEvidence ?? receipt?.model_evidence ?? receipt?.inference ?? null
+  receipt?.modelEvidence ??
+  receipt?.model_evidence ??
+  receipt?.inference ??
+  null
 
 const receiptBackingFrom = receipt => {
   const evidence = receiptModelEvidenceFrom(receipt)
@@ -272,10 +304,7 @@ const verifyReceiptProof = async ({
     redactionLeaks,
   })
 
-  return summarizeReceipt(
-    receipt,
-    absoluteUrl(origin, receiptPath),
-  )
+  return summarizeReceipt(receipt, absoluteUrl(origin, receiptPath))
 }
 
 const backingMatches = (
@@ -305,6 +334,52 @@ const backingMatches = (
   return true
 }
 
+const replicaRoutingExpectation = ({
+  allowedSelectedReplicaRefs = [],
+  expectedSelectedReplicaRef = '',
+  forbiddenSelectedReplicaRefs = [],
+  requireSelectedReplicaRef = false,
+} = {}) => ({
+  allowedSelectedReplicaRefs: [...allowedSelectedReplicaRefs].filter(Boolean),
+  expectedSelectedReplicaRef: String(expectedSelectedReplicaRef || ''),
+  forbiddenSelectedReplicaRefs: [...forbiddenSelectedReplicaRefs].filter(
+    Boolean,
+  ),
+  requireSelectedReplicaRef: Boolean(requireSelectedReplicaRef),
+})
+
+const hasReplicaRoutingExpectation = expectation =>
+  expectation.requireSelectedReplicaRef ||
+  expectation.expectedSelectedReplicaRef !== '' ||
+  expectation.allowedSelectedReplicaRefs.length > 0 ||
+  expectation.forbiddenSelectedReplicaRefs.length > 0
+
+const replicaRoutingMatches = (openagents, expectation) => {
+  const selectedReplicaRef = selectedReplicaRefFrom(openagents)
+  if (expectation.requireSelectedReplicaRef && selectedReplicaRef === null) {
+    return false
+  }
+  if (
+    expectation.expectedSelectedReplicaRef !== '' &&
+    selectedReplicaRef !== expectation.expectedSelectedReplicaRef
+  ) {
+    return false
+  }
+  if (
+    expectation.allowedSelectedReplicaRefs.length > 0 &&
+    !expectation.allowedSelectedReplicaRefs.includes(selectedReplicaRef)
+  ) {
+    return false
+  }
+  if (
+    selectedReplicaRef !== null &&
+    expectation.forbiddenSelectedReplicaRefs.includes(selectedReplicaRef)
+  ) {
+    return false
+  }
+  return true
+}
+
 export const parseArgs = (argv, env = process.env) => {
   const options = {
     approveLiveSpend:
@@ -317,7 +392,8 @@ export const parseArgs = (argv, env = process.env) => {
       defaultExpectedServedModelContains,
     expectedSupplyLane:
       env.OPENAGENTS_KHALA_EXPECTED_SUPPLY_LANE || defaultExpectedSupplyLane,
-    expectedWorker: env.OPENAGENTS_KHALA_EXPECTED_WORKER || defaultExpectedWorker,
+    expectedWorker:
+      env.OPENAGENTS_KHALA_EXPECTED_WORKER || defaultExpectedWorker,
     forbiddenPublicModelIds: [
       ...defaultForbiddenPublicModelIds,
       ...csv(env.OPENAGENTS_KHALA_FORBIDDEN_PUBLIC_MODEL_IDS),
@@ -390,17 +466,21 @@ completion text.
 `
 
 export const runKhalaProductionSmoke = async ({
+  allowedSelectedReplicaRefs = [],
   approveLiveSpend = false,
   apiBasePath = defaultApiBasePath,
   baseUrl = defaultBaseUrl,
   expectedServedModelContains = defaultExpectedServedModelContains,
+  expectedSelectedReplicaRef = '',
   expectedSupplyLane = defaultExpectedSupplyLane,
   expectedWorker = defaultExpectedWorker,
   fetchImpl = globalThis.fetch,
+  forbiddenSelectedReplicaRefs = [],
   forbiddenPublicModelIds = defaultForbiddenPublicModelIds,
   model = defaultModel,
   prompt = defaultPrompt,
   readinessOnly = false,
+  requireSelectedReplicaRef = false,
   token = '',
 } = {}) => {
   assert(typeof fetchImpl === 'function', 'A fetch implementation is required.')
@@ -476,21 +556,24 @@ export const runKhalaProductionSmoke = async ({
     expectedWorker,
     model,
   }
+  const replicaExpectation = replicaRoutingExpectation({
+    allowedSelectedReplicaRefs,
+    expectedSelectedReplicaRef,
+    forbiddenSelectedReplicaRefs,
+    requireSelectedReplicaRef,
+  })
+  const shouldCheckReplicaRouting =
+    hasReplicaRoutingExpectation(replicaExpectation)
   const chatBody = {
     messages: [{ content: prompt, role: 'user' }],
     model,
   }
 
-  const completion = await requestJson(
-    fetchImpl,
-    origin,
-    chatCompletionsPath,
-    {
-      body: JSON.stringify({ ...chatBody, stream: false }),
-      headers: authHeaders,
-      method: 'POST',
-    },
-  )
+  const completion = await requestJson(fetchImpl, origin, chatCompletionsPath, {
+    body: JSON.stringify({ ...chatBody, stream: false }),
+    headers: authHeaders,
+    method: 'POST',
+  })
   check('nonstream_completion_200', okStatus(completion.response), {
     status: completion.response.status,
   })
@@ -514,6 +597,16 @@ export const runKhalaProductionSmoke = async ({
     backingMatches(completion.body?.openagents, backingExpectation),
     summarizeOpenAgents(completion.body?.openagents),
   )
+  if (shouldCheckReplicaRouting) {
+    check(
+      'nonstream_replica_routing_present',
+      replicaRoutingMatches(completion.body?.openagents, replicaExpectation),
+      {
+        expectation: replicaExpectation,
+        openagents: summarizeOpenAgents(completion.body?.openagents),
+      },
+    )
+  }
   const nonstreamReceipt = await verifyReceiptProof({
     backingExpectation,
     check,
@@ -557,6 +650,16 @@ export const runKhalaProductionSmoke = async ({
     backingMatches(terminalOpenAgents, backingExpectation),
     summarizeOpenAgents(terminalOpenAgents),
   )
+  if (shouldCheckReplicaRouting) {
+    check(
+      'stream_replica_routing_present',
+      replicaRoutingMatches(terminalOpenAgents, replicaExpectation),
+      {
+        expectation: replicaExpectation,
+        openagents: summarizeOpenAgents(terminalOpenAgents),
+      },
+    )
+  }
   const streamReceipt = await verifyReceiptProof({
     backingExpectation,
     check,
