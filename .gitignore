@@ -22,3 +22,7 @@ var/
 
 # Agent worktrees (on-disk, never tracked)
 .worktrees/
+
+# Local agent working files / tooling (never tracked)
+.codex/
+NEEDS_OWNER.md
