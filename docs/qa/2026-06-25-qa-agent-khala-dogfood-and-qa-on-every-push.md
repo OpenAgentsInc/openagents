@@ -43,6 +43,15 @@ Updated: 2026-06-25
   scoped to changed user-facing surfaces, hard-timeout-bounded, deterministic
   (`qa run --fake-model`), and yields on failure/incomplete instead of forcing
   `--no-verify`. (§3, §4)
+- **Tier 2 async GCE trigger is shipped (#6238):** the same pre-push hook now
+  launches warning-only `scripts/qa-async-gce-trigger.ts` after Tier 1. When the
+  owner-gated control env is armed, it posts an
+  `openagents.codex_placement_assignment.v1` assignment to
+  `oa-codex-control`'s `/v1/placement/start` endpoint, pins `cloud-gcp`, and asks
+  the GCE runner to run the Khala-backed full QA matrix, publish `/trace/{uuid}`
+  + `/pro` evidence, and post the existing `pr-comment-run.ts` verdict on PRs.
+  Missing config skips; failed launch warns; neither blocks a green deploy gate.
+  (§3, §4)
 
 ---
 
@@ -363,6 +372,31 @@ This keeps the blocking gate fast and deterministic (Tier 1), and moves the
 heavy, flaky, real-browser work off the push critical path and onto owned infra
 (Tier 2) — the exact shape the #6234 fix arrived at for verse-smoke.
 
+**Shipped trigger seam (#6238).** `.githooks/pre-push` now runs
+`scripts/qa-async-gce-trigger.ts` after Tier 1. The trigger is configured only by
+owner-gated env:
+
+```bash
+export OA_QA_ASYNC_CONTROL_URL="https://<oa-codex-control>/"
+export OA_QA_ASYNC_CONTROL_TOKEN="<bearer token>"
+export OA_QA_ASYNC_PROVIDER_ACCOUNT_REF="provider-account_..."
+export OA_QA_ASYNC_AUTH_GRANT_REF="codex-auth-grant_..."
+# optional
+export OA_QA_ASYNC_OWNER_REF="owner://openagents/internal-qa"
+export OA_QA_ASYNC_TARGET_URL="https://openagents.com"
+export OA_QA_ASYNC_PRO_BASE_URL="https://openagents.com"
+export OA_QA_ASYNC_PR_NUMBER="<pr number>"
+```
+
+It posts a refs-only `openagents.codex_placement_assignment.v1` payload to
+`/v1/placement/start` with `lane: "cloud-gcp"`, `wallet_authority: false`, and
+`repository: "OpenAgentsInc/openagents@<pushed sha>"`. The goal instructs the GCE
+runner to use `apps/qa-runner`'s Khala defaults, publish only public-safe green
+VERIFIED traces/videos to `/trace/{uuid}` and `/pro`, and report red/refuted/
+incomplete results loudly without mutating or blocking the pushed commit. Missing
+env exits as `SKIPPED`; HTTP/control failure exits non-zero so the hook prints a
+warning, but the push remains allowed after `check:deploy` is green.
+
 ---
 
 ## 4. Relationship to the deploy gate
@@ -394,11 +428,12 @@ QA **complements** `check:deploy`; it must not **become** it.
   honest verdict; BYO-model incl. Khala default (#6237); verify verdict (#6192);
   harness quality bar (#6193); QA Control API (#6196); shareable redacted
   `/trace/{uuid}` publish (proven live 2026-06-24); the pre-push `check:deploy`
-  gate; warning-only scoped/bounded Tier 1 QA smoke (#6245); `oa-codex-control` +
-  GCE (deployed). Epic #6181 closed.
-- **Direction (to build):** the push→`oa-codex-control` trigger seam for Tier 2;
-  a Gym environment seeded from QA tasks + the real-browser verifier (§GYM
-  cross-ref).
+  gate; warning-only scoped/bounded Tier 1 QA smoke (#6245); warning-only
+  push→`oa-codex-control` GCE trigger seam (#6238); `oa-codex-control` + GCE
+  (deployed). Epic #6181 closed.
+- **Direction (to build):** a Gym environment seeded from QA tasks + the
+  real-browser verifier (§GYM cross-ref), plus production operator policy for
+  where the owner-gated Tier 2 env is armed.
 
 **Risks.**
 
@@ -444,7 +479,8 @@ QA **complements** `check:deploy`; it must not **become** it.
 - `INVARIANTS.md` (root) — No GitHub-Hosted CI / Cloud Actions; `check:no-github-actions`.
 - `apps/openagents.com/package.json` — `check:deploy`, `check:no-github-actions`.
 - `.githooks/pre-push`, `scripts/enable-git-hooks.sh`,
-  `scripts/qa-pre-push-smoke.ts` — the pre-push gate and Tier 1 QA smoke.
+  `scripts/qa-pre-push-smoke.ts`, `scripts/qa-async-gce-trigger.ts` — the
+  pre-push gate, Tier 1 QA smoke, and Tier 2 async GCE trigger.
 - `apps/autopilot-desktop/scripts/run-bounded.ts`,
   `scripts/run-if-desktop-changed.ts`; commit `a462f448d1` — the #6234 fix.
 - `cloud/crates/oa-codex-control/`, `cloud/scripts/gcp-codex-control-deploy.sh`;

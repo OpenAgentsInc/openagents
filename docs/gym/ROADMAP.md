@@ -160,7 +160,7 @@ changed user-facing surfaces, runs deterministic `qa run --fake-model` under
 warning-only so a failed or incomplete QA run never forces `--no-verify`.
 
 ### B3. QA on every push — Tier 2: full async QA pass on our GCE runner  ([#6238](https://github.com/OpenAgentsInc/openagents/issues/6238))
-**Type:** epic · **Lever:** dogfood/quality · **Status:** direction
+**Type:** epic · **Lever:** dogfood/quality · **Status:** shipped (#6238)
 **Why:** the authoritative, non-blocking, owned-infra home for the full matrix — what
 the no-Actions invariant intends ("autonomous/unattended execution on OUR GCE").
 **Scope:** trigger a full `qa-runner` matrix (model backend = Khala) on push/deploy
@@ -171,6 +171,15 @@ Non-blocking and loud.
 `/trace/{uuid}` + `/pro`; tokens show on the counter; a failing check is reported
 loudly without blocking the push/deploy.
 **Refs:** QA audit §3 (Tier 2); "our cloud = OpenAgents GCE".
+
+**Shipped 2026-06-25:** `.githooks/pre-push` now launches warning-only
+`scripts/qa-async-gce-trigger.ts` after the Tier 1 smoke. The trigger posts an
+`openagents.codex_placement_assignment.v1` assignment to `oa-codex-control`'s
+`/v1/placement/start` surface, pins the lane to `cloud-gcp`, asks the GCE runner
+to run the Khala-backed full QA matrix, publish `/trace/{uuid}` and `/pro`
+evidence, and post the `pr-comment-run.ts` verdict when a PR number is supplied.
+The hook remains non-blocking: missing owner-gated env skips, control failure
+prints a warning, and pushes still proceed after `check:deploy` is green.
 
 ---
 

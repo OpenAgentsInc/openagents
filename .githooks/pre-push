@@ -39,5 +39,10 @@ if ! ( cd "$root" && bun scripts/qa-pre-push-smoke.ts ) >&2; then
   echo "[pre-push gate] WARNING: Tier 1 QA smoke did not pass or did not finish. Push remains allowed; Tier 2 async QA is authoritative." >&2
 fi
 
-echo "[pre-push gate] main gate green; QA smoke yielded — push allowed." >&2
+echo "[pre-push gate] launching warning-only Tier 2 async QA on OpenAgents GCE..." >&2
+if ! ( cd "$root" && bun scripts/qa-async-gce-trigger.ts ) >&2; then
+  echo "[pre-push gate] WARNING: Tier 2 async QA trigger failed. Push remains allowed; inspect oa-codex-control / GCE runner health." >&2
+fi
+
+echo "[pre-push gate] main gate green; QA stages yielded — push allowed." >&2
 exit 0
