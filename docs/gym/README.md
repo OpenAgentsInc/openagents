@@ -41,6 +41,11 @@ provider-adapter registry, verification-class registry, and the
   quote, 402 balance gate, real-sweep preflight, narrowly declared real executors
   for otherwise fixture-only competitor lanes, `MeteringHook` contexts, and a
   public-safe report receipt.
+- **Phase 3 D4 landed:** `flywheel.ts` converts Gym reports into
+  GEPA/TRINITY/Conductor reward bundles, emits internal `openagents-gym` Khala
+  token attribution for the served-tokens counter, and gates shadow candidates
+  plus approval-backed `runtime_promotion` readiness on decision-grade
+  cost-per-accepted-outcome improvement.
   Remaining real-sweep work expands the executor backends and public surfaces.
 
 ## Contents

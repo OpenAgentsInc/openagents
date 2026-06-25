@@ -307,7 +307,7 @@ only after the real preflight passes. Tests inject the real executor, so CI cove
 the funded acceptance path without live provider spend.
 
 ### D4. Phase 3 — Gym → training loop, and the Gym runs on Khala (the flywheel)  ([#6248](https://github.com/OpenAgentsInc/openagents/issues/6248))
-**Type:** epic · **Lever:** benchmarking/dogfood · **Status:** direction
+**Type:** epic · **Lever:** benchmarking/dogfood · **Status:** shipped 2026-06-25
 **Why:** the tightest flywheel — Gym reports are the eval+reward artifacts that train
 the coordinator, and the Gym's own runner/eval inference is itself dogfood traffic.
 **Scope:** feed Gym reports (executed verdict + cost-per-accepted-outcome) to GEPA /
@@ -318,6 +318,20 @@ the Gym's own client-runner/eval inference through `openagents/khala` (counter m
 shadow on cost-per-accepted-outcome, then is promoted via approval; Gym runs add
 attributable internal tokens to the counter.
 **Refs:** gym spec §5, §8 Phase 3; flywheel doc §6.
+
+**Shipped:** `workers/api/src/inference/gym/flywheel.ts` now turns
+decision-grade Gym reports into a typed training reward bundle for GEPA, TRINITY,
+and Conductor, using executed verification verdicts plus
+cost-per-accepted-outcome as the reward rows Psionic can import. It also builds
+Khala `ServedTokensRecorder` inputs for Gym runner/eval calls with internal
+`openagents-gym` attribution, so those requests can move the served-tokens
+counter without storing prompts or raw traces. The flywheel evaluator compares a
+candidate report against the heuristic baseline, returns the winner as a shadow
+candidate for head-to-head re-entry, and allows `runtime_promotion` only when the
+candidate improves cost-per-accepted-outcome and carries an explicit approval ref.
+Tests cover the cheaper-candidate path, the missing-approval shadow gate, the
+approved runtime-promotion-ready path, Khala dogfood attribution, and unsafe-ref
+rejection without live Psionic or provider spend.
 
 ### D5. Phase 4 — public-safe leaderboard + (gated) plugin/module composition split  ([#6249](https://github.com/OpenAgentsInc/openagents/issues/6249))
 **Type:** task · **Lever:** benchmarking · **Status:** direction

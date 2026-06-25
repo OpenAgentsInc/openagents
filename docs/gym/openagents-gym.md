@@ -342,7 +342,11 @@ guarantees realistic traffic + owner-armed seam + a citable public report.
   re-enter the Gym for the head-to-head. *Success:* a coordinator candidate
   trained on Gym-produced reward beats the heuristic in shadow on
   cost-per-accepted-outcome, then is promoted via an approval-gated
-  `runtime_promotion`.
+  `runtime_promotion`. **Landed D4:** `flywheel.ts` projects Gym reports into
+  GEPA/TRINITY/Conductor reward bundles, emits Khala served-token recorder inputs
+  with `openagents-gym` internal attribution, and gates shadow plus
+  approval-backed runtime-promotion readiness on decision-grade
+  cost-per-accepted-outcome improvement.
 - **Phase 4 — plugin/module composition + leaderboard.** Compose admitted
   modules behind program signatures into Gym policies; public-safe leaderboard
   projection over decision-grade reports; (FUTURE/gated) per-trace revenue split
@@ -384,6 +388,11 @@ metric vocabulary, or a new settlement path.
 7. Tests: schema round-trip, compiler -> expected matrix cells, fixture run is
    deterministic, report public-safety tripwire, balance gate refuses unfunded,
    real seam refuses unarmed. No live spend in CI.
+8. Training flywheel: project decision-grade reports into typed GEPA/TRINITY/
+   Conductor reward bundles, produce Khala internal served-token attribution for
+   Gym runner/eval calls, return improved candidates to the head-to-head as
+   shadow candidates, and require an explicit approval ref before any
+   `runtime_promotion` can be marked ready.
 ```
 
 ## 10. Open questions

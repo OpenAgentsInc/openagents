@@ -213,14 +213,18 @@ Mostly as the OpenCode-via-Khala memo sketched, now de-TBD'd:
    otherwise fixture-only competitor lanes, `MeteringHook` contexts, and a
    public-safe report receipt. The first live decision-grade
    Khala-vs-BigPickle report on the OpenCode surface remains owner-armed.
-6. **Gym↔Khala dog-food wiring** — route the Gym's own runner/eval inference through
-   Khala (counter moves; flywheel closes).
+6. **Gym↔Khala dog-food wiring** — **D4 landed the typed flywheel contract:**
+   Gym reports become GEPA/TRINITY/Conductor reward bundles, Gym runner/eval
+   Khala calls carry internal `openagents-gym` served-token attribution, winners
+   return as shadow candidates for head-to-head re-entry, and
+   `runtime_promotion` is marked ready only with an explicit approval ref.
 
 ## 10. Honest-scope boundaries (unchanged)
 
 - Direction vs shipped: the Phase 0 fixture Gym (#6163–#6166), owner-gated
   `/gym/oss` playground (#6167), Phase 1 OpenCode/environment registry work
-  (D1/D2), and Phase 2 paid-run planning gate (D3) are landed. Live published
+  (D1/D2), Phase 2 paid-run planning gate (D3), and Phase 3 typed reward/
+  dogfood/promotion flywheel contract (D4) are landed. Live published
   decision-grade benchmark numbers still require an owner-armed real run over
   realistic traffic.
 - No published numbers without an owner-armed real seam over realistic traffic;
