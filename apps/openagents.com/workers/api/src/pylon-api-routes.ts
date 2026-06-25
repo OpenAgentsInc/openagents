@@ -303,7 +303,6 @@ const controlledDispatchOnlineStatuses = new Set([
 const duplicateBlockingAssignmentStates = new Set<PylonApiAssignmentState>([
   'accepted',
   'blocked',
-  'closeout_submitted',
   'offered',
   'proof_submitted',
   'running',

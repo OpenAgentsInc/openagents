@@ -341,4 +341,38 @@ describe('coding workflow delegation', () => {
 
     expect(result).toBeNull()
   })
+
+  test('does not treat submitted closeout evidence as active Codex capacity', async () => {
+    const result = await delegateCodingWorkflow({
+      classification,
+      linkedAgents: [linkedOwner],
+      makeId: () => 'id1',
+      nowIso,
+      pylonStore: makeStore({
+        activeAssignments: [
+          assignment({
+            artifactRefs: ['artifact.public.previous_patch'],
+            closeoutRefs: ['closeout.public.previous_summary'],
+            proofRefs: ['proof.public.previous_test'],
+            state: 'closeout_submitted',
+          }),
+        ],
+        registrations: [registration()],
+      }),
+      rawBody: {
+        openagents: {
+          coding: {
+            targetPylonRef: 'pylon.owner.codex',
+          },
+        },
+      },
+      requestId: 'chatcmpl_coding_after_closeout',
+    })
+
+    expect(result?.kind).toBe('assigned')
+    if (result?.kind !== 'assigned') {
+      throw new Error('expected delegated coding assignment')
+    }
+    expect(result.pylon.pylonRef).toBe('pylon.owner.codex')
+  })
 })
