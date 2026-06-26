@@ -45,9 +45,6 @@ async function createOriginRepo(root: string): Promise<{ url: string; commitSha:
   await run(["git", "init"], root)
   await run(["git", "config", "user.email", "fixture@test.local"], root)
   await run(["git", "config", "user.name", "Fixture"], root)
-  // local transports refuse unadvertised-object fetches by default; the
-  // production path fetches by SHA from GitHub, which allows them
-  await run(["git", "config", "uploadpack.allowAnySHA1InWant", "true"], root)
   await writeFile(
     join(root, "package.json"),
     `${JSON.stringify({ private: true, scripts: { test: "bun test sum.test.ts" }, type: "module" }, null, 2)}\n`,
@@ -55,6 +52,7 @@ async function createOriginRepo(root: string): Promise<{ url: string; commitSha:
   await writeFile(join(root, "sum.ts"), "export const sum = (left: number, right: number) => left - right\n")
   await run(["git", "add", "."], root)
   await run(["git", "commit", "-m", "fixture"], root)
+  await run(["git", "branch", "-M", "main"], root)
   const commitSha = (await run(["git", "rev-parse", "HEAD"], root)).trim()
   return { url: `file://${root}`, commitSha }
 }

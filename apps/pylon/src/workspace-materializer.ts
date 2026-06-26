@@ -109,6 +109,8 @@ function canonicalPath(path: string): string {
 }
 
 const githubFullNamePattern = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/
+const gitBranchNamePattern =
+  /^(?!-)(?!refs\/)(?!.*(?:^|\/)\.)(?!.*(?:^|\/)$)(?!.*\.\.)(?!.*@{)(?!.*\/\/)(?!.*\.lock(?:\/|$))(?!.*\.$)[A-Za-z0-9][A-Za-z0-9._/-]{0,119}$/i
 const gitCommitShaPattern = /^[a-f0-9]{40}$/i
 const verificationCommandArgPattern = /^[A-Za-z0-9_./:=@+-]{1,120}$/
 
@@ -127,7 +129,7 @@ export function gitCheckoutWorkspaceFrom(codingAssignment: unknown): GitCheckout
   if (payload.repository?.provider !== "github" || payload.repository.visibility !== "public") return null
   if (!githubFullNamePattern.test(payload.repository.fullName)) return null
   if (!gitCommitShaPattern.test(payload.repository.commitSha)) return null
-  if (typeof payload.repository.branch !== "string" || payload.repository.branch.includes("..")) return null
+  if (typeof payload.repository.branch !== "string" || !gitBranchNamePattern.test(payload.repository.branch)) return null
   if (!Array.isArray(payload.verificationCommand?.args) || payload.verificationCommand.args.length === 0) return null
   if (typeof payload.verificationCommand.commandRef !== "string") return null
   const safeArgs = payload.verificationCommand.args.every((arg) =>
@@ -600,10 +602,19 @@ export function createGitWorktreeCheckoutRunner(
       if (!cached) {
         const remoteUrl =
           options.remoteUrlFor?.(checkout) ?? `https://github.com/${repository.fullName}.git`
+        const branchRefSpec = `+refs/heads/${repository.branch}:refs/remotes/pylon/${repository.branch}`
         await runCheckedCommand(
-          ["git", "fetch", "--depth", "1", remoteUrl, repository.commitSha],
+          ["git", "fetch", "--depth", "50", remoteUrl, branchRefSpec],
           bareDirectory,
         )
+        const branchWindowCached =
+          (await runQuietCommand(["git", "cat-file", "-e", commitArg], bareDirectory)) === 0
+        if (!branchWindowCached) {
+          await runCheckedCommand(
+            ["git", "fetch", "--deepen", "450", remoteUrl, branchRefSpec],
+            bareDirectory,
+          )
+        }
         await runCheckedCommand(["git", "cat-file", "-e", commitArg], bareDirectory)
       }
       // best-effort gc pin; materialization correctness never depends on it

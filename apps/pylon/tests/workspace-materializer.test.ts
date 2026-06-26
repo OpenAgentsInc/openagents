@@ -88,10 +88,24 @@ describe("gitCheckoutWorkspaceFrom", () => {
     }
   })
 
-  test("rejects branch values carrying traversal", () => {
-    expect(
-      gitCheckoutWorkspaceFrom(assignmentWith(checkoutWith({ repository: { branch: "../escape" } }))),
-    ).toBeNull()
+  test("rejects branch values that cannot safely become git refspecs", () => {
+    for (const branch of [
+      "../escape",
+      "feature/../escape",
+      "-main",
+      "refs/heads/main",
+      "main lock",
+      "feature:bad",
+      "feature@{bad",
+      "feature//bad",
+      "feature.lock",
+      "feature.",
+    ]) {
+      expect(
+        gitCheckoutWorkspaceFrom(assignmentWith(checkoutWith({ repository: { branch } }))),
+        branch,
+      ).toBeNull()
+    }
   })
 
   test("rejects absolute verification paths and traversal in args", () => {
