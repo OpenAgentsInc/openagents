@@ -401,6 +401,16 @@ assignment with `settlementState: not_applicable` and
 `payoutClaimAllowed: false`. Paid leases are blocked unless wallet send
 readiness is explicitly proven.
 
+Before claiming a lease, `run-no-spend` refreshes Pylon presence so a short
+operator delay does not trip `blocker.assignment.presence_stale`. If that
+refresh fails and local admission is still blocked on stale presence, the
+result includes a typed recovery diagnostic with the exact
+`pylon presence heartbeat --base-url ...` command to run. While a local
+Codex/Claude assignment runtime is active, the runner records a public-safe
+active-run marker, refreshes it during execution, and removes it on closeout so
+heartbeats and `provider go-online --json` project busy/available capacity from
+real in-flight work.
+
 ### Local multi-session proof runs
 
 For owner-directed local orchestration, `scripts/multi-session-run.ts` runs a
@@ -455,7 +465,10 @@ an explicit first-run operator approval record from `provider approve-labor`
 before they execute on a machine. `provider once` is the headless smoke path
 for one relay loop iteration; the default dashboard starts the same loop
 automatically only when the persisted lifecycle is `online` or
-`assignment-ready`.
+`assignment-ready`. Own-capacity dispatch includes local active
+`assignment run-no-spend` runners in `load.coding.<service>.busy`, so a
+machine with two active Codex assignments reports those slots as busy instead
+of advertising them as still available.
 
 The provider loop subscribes to the scoped OpenAgents market relay by default,
 publishes NIP-89 handler info, admits public kind `5050` text-inference

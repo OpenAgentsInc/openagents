@@ -59,6 +59,7 @@ const lease = (overrides: Partial<PylonAssignmentLease> = {}): PylonAssignmentLe
 
 function fakeAssignmentServer(input: {
   leases?: PylonAssignmentLease[]
+  failHeartbeats?: number
   rejectAccept?: boolean
   rejectAcceptRefs?: ReadonlyArray<string>
   cancelOnProgress?: boolean
@@ -67,6 +68,7 @@ function fakeAssignmentServer(input: {
 } = {}) {
   const requests: { path: string; body: any; headers: Headers }[] = []
   const accepted = new Set<string>()
+  let heartbeatFailures = input.failHeartbeats ?? 0
   const server = Bun.serve({
     port: 0,
     async fetch(request) {
@@ -77,7 +79,11 @@ function fakeAssignmentServer(input: {
 
       if (request.headers.get("authorization")?.startsWith("Bearer ")) {
         if (request.method === "POST") {
-          expect(request.headers.get("Idempotency-Key")).toContain("pylon.assignment.")
+          expect(request.headers.get("Idempotency-Key")).toContain(
+            url.pathname.includes("/heartbeat")
+              ? "pylon-presence:"
+              : "pylon.assignment.",
+          )
         }
       } else {
         verifyNip98Authorization(request.headers.get("authorization"), {
@@ -102,6 +108,10 @@ function fakeAssignmentServer(input: {
       }
 
       if (url.pathname.includes("/heartbeat")) {
+        if (heartbeatFailures > 0) {
+          heartbeatFailures -= 1
+          return Response.json({ errorRef: "error.presence.temporarily_unavailable" }, { status: 503 })
+        }
         return Response.json({ heartbeatRef: `heartbeat.${body.pylonRef}.${body.sequence}` })
       }
       if (url.pathname.endsWith("/assignments")) {
@@ -273,6 +283,77 @@ describe("Pylon assignment lease flow", () => {
       expect(result.ok).toBe(true)
       if (!result.ok) throw new Error("expected no-spend assignment to run")
       expect(result.closeout.status).toBe("accepted")
+    })
+  })
+
+  test("run-no-spend refreshes stale presence before claiming a lease (#6354)", async () => {
+    await withTempHome(async (home) => {
+      const fake = fakeAssignmentServer()
+      const summary = await readySummary(home)
+      const state = await ensurePylonLocalState(summary)
+      await writePresenceState(state.paths, {
+        registered: true,
+        linked: false,
+        stale: true,
+        pylonRef: state.identity.pylonRef,
+        registrationRef: "registration.test",
+        linkRef: null,
+        lastHeartbeatAt: "2026-06-09T00:00:00.000Z",
+        heartbeatSequence: 7,
+        blockerRefs: ["blocker.assignment.presence_stale"],
+        sparkPayoutTargetRef: null,
+        updatedAt: "2026-06-09T00:00:00.000Z",
+      })
+
+      const result = await runNoSpendAssignment(summary, {
+        baseUrl: fake.baseUrl,
+        now: () => new Date("2026-06-09T00:02:30.000Z"),
+      })
+
+      expect(result.ok).toBe(true)
+      const heartbeatIndex = fake.requests.findIndex((request) => request.path.includes("/heartbeat"))
+      const acceptIndex = fake.requests.findIndex((request) => request.path.endsWith("/accept"))
+      expect(heartbeatIndex).toBeGreaterThanOrEqual(0)
+      expect(acceptIndex).toBeGreaterThan(heartbeatIndex)
+      expect(fake.requests[heartbeatIndex].body.sequence).toBe(8)
+    })
+  })
+
+  test("run-no-spend emits actionable stale-presence recovery when heartbeat refresh fails (#6354)", async () => {
+    await withTempHome(async (home) => {
+      const fake = fakeAssignmentServer({ failHeartbeats: 1 })
+      const summary = await readySummary(home)
+      const state = await ensurePylonLocalState(summary)
+      await writePresenceState(state.paths, {
+        registered: true,
+        linked: false,
+        stale: true,
+        pylonRef: state.identity.pylonRef,
+        registrationRef: "registration.test",
+        linkRef: null,
+        lastHeartbeatAt: "2026-06-09T00:00:00.000Z",
+        heartbeatSequence: 7,
+        blockerRefs: ["blocker.assignment.presence_stale"],
+        sparkPayoutTargetRef: null,
+        updatedAt: "2026-06-09T00:00:00.000Z",
+      })
+
+      const result = await runNoSpendAssignment(summary, {
+        baseUrl: fake.baseUrl,
+        now: () => new Date("2026-06-09T00:02:30.000Z"),
+      })
+
+      expect(result.ok).toBe(false)
+      if (result.ok) throw new Error("expected stale-presence diagnostic")
+      expect(result.acceptance.blockerRefs).toContain("blocker.assignment.presence_stale")
+      expect(result.diagnostic).toMatchObject({
+        schema: "openagents.pylon.assignment_recovery_diagnostic.v0.1",
+        blockerRefs: ["blocker.assignment.presence_stale"],
+        diagnosticRef: "diagnostic.assignment.presence_heartbeat_required",
+        heartbeatStatus: 503,
+        recoveryCommand: `pylon presence heartbeat --base-url ${fake.baseUrl}`,
+      })
+      assertPublicProjectionSafe(result.diagnostic)
     })
   })
 

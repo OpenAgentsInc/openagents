@@ -28,6 +28,10 @@ import {
 } from "./state.js"
 import type { WalletStatusProjection } from "./wallet.js"
 import { PresenceRequestError } from "./presence-error.js"
+import {
+  activeCodingRunCounts,
+  type PylonActiveCodingRunCounts,
+} from "./active-assignment-runs.js"
 
 // The fields of the local wallet probe the heartbeat needs to publish
 // receive-readiness (openagents #5151). A full WalletStatusProjection satisfies
@@ -175,6 +179,7 @@ export function codingServiceCapacityFromRuntime(
   state: PylonLocalState,
   env: NodeJS.ProcessEnv = process.env,
   readyCounts: PylonCodingServiceReadyCounts = {},
+  activeRunCounts: PylonActiveCodingRunCounts = {},
 ): PylonCodingServiceCapacity[] {
   const capabilityRefs = publishableCapabilityRefs(state.runtime.capabilityRefs)
   const serviceConfig = [
@@ -200,7 +205,10 @@ export function codingServiceCapacityFromRuntime(
       const observedReady = Math.max(0, readyCounts[config.service] ?? 0)
       const fallbackReady = observedReady > 0 ? observedReady : 1
       const ready = nonNegativeEnvInteger(env, config.concurrencyKey, fallbackReady)
-      const busy = Math.min(nonNegativeEnvInteger(env, config.busyKey, 0), ready)
+      const busy = Math.min(
+        nonNegativeEnvInteger(env, config.busyKey, 0) + Math.max(0, activeRunCounts[config.service] ?? 0),
+        ready,
+      )
       const queued = nonNegativeEnvInteger(env, config.queuedKey, 0)
       return {
         available: Math.max(0, ready - busy),
@@ -418,6 +426,7 @@ export async function sendHeartbeat(summary: BootstrapSummary, options: Presence
       state,
       options.env ?? process.env,
       await localCodingServiceReadyCounts(summary, options.env ?? process.env),
+      await activeCodingRunCounts(state.paths, { now: options.now?.() }),
     ),
   )
   const body: PylonHeartbeatRequest = {

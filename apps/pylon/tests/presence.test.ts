@@ -21,6 +21,7 @@ import { assertPublicProjectionSafe, ensurePylonLocalState, loadOrCreatePresence
 import { registerSparkPayoutTarget, sparkPayoutTargetRef } from "../src/wallet"
 import { CODEX_AGENT_CAPABILITY_REF } from "../src/codex-agent"
 import { CLAUDE_AGENT_CAPABILITY_REF } from "../src/claude-agent"
+import { registerActiveCodingRun } from "../src/active-assignment-runs"
 
 const INDEX = join(import.meta.dir, "..", "src", "index.ts")
 const CWD = join(import.meta.dir, "..")
@@ -769,6 +770,68 @@ describe("Pylon presence registration and heartbeat", () => {
         ready: 5,
         service: "codex",
       })
+      assertPublicProjectionSafe(json)
+    })
+  })
+
+  test("provider go-online JSON projects active local Codex assignment runs as busy (#6354)", async () => {
+    await withTempHome(async (home) => {
+      const codexHome = join(home, "codex-home")
+      await mkdir(codexHome, { recursive: true })
+      await writeFile(join(codexHome, "auth.json"), "{}")
+      const summary = createBootstrapSummary(
+        parseBootstrapArgs([
+          "--display-name",
+          "Active Codex Busy Test",
+          "--capability-ref",
+          CODEX_AGENT_CAPABILITY_REF,
+        ]),
+        { PYLON_HOME: home },
+        "darwin",
+      )
+      const state = await ensurePylonLocalState(summary)
+      await registerActiveCodingRun(state.paths, {
+        assignmentRef: "assignment.public.no_spend.codex_busy_a",
+        leaseRef: "lease.public.no_spend.codex_busy_a",
+        service: "codex",
+      })
+      await registerActiveCodingRun(state.paths, {
+        assignmentRef: "assignment.public.no_spend.codex_busy_b",
+        leaseRef: "lease.public.no_spend.codex_busy_b",
+        service: "codex",
+      })
+
+      const result = await runProviderCli({
+        args: ["go-online", "--json"],
+        env: {
+          CODEX_HOME: codexHome,
+          OPENAGENTS_PYLON_CODEX_BUSY: "0",
+          OPENAGENTS_PYLON_CODEX_CONCURRENCY: "5",
+          OPENAGENTS_PYLON_CODEX_QUEUED: "0",
+          PYLON_HOME: home,
+        },
+        timeoutMs: 20_000,
+      })
+
+      expect(result.timedOut).toBe(false)
+      expect(result.exitCode).toBe(0)
+      const json = JSON.parse(result.stdout)
+      expect(json.ownCapacityDispatch).toMatchObject({
+        availableCodexAssignments: 3,
+        maxCodexAssignments: 5,
+      })
+      expect(json.ownCapacityDispatch.loadRefs).toEqual([
+        "load.coding.codex.busy=2",
+        "load.coding.codex.queued=0",
+      ])
+      expect(json.codingCapacity).toContainEqual({
+        available: 3,
+        busy: 2,
+        queued: 0,
+        ready: 5,
+        service: "codex",
+      })
+      expect(result.stdout).not.toContain(home)
       assertPublicProjectionSafe(json)
     })
   })

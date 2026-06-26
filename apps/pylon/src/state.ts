@@ -16,6 +16,7 @@ export type PylonPaths = BootstrapSummary["paths"] & {
   identityMnemonic: string
   runtimeState: string
   presenceState: string
+  activeAssignmentRuns: string
   assignmentState: string
   ledger: string
 }
@@ -132,6 +133,7 @@ export function resolveStatePaths(paths: BootstrapSummary["paths"]): PylonPaths 
     identityMnemonic: `${paths.home}/identity.mnemonic`,
     runtimeState: `${paths.home}/runtime-state.json`,
     presenceState: `${paths.home}/presence-state.json`,
+    activeAssignmentRuns: `${paths.home}/active-assignment-runs`,
     assignmentState: `${paths.home}/assignment-state.json`,
     ledger: `${paths.home}/ledger.jsonl`,
   }
@@ -141,6 +143,7 @@ export async function ensureStateDirectories(paths: PylonPaths) {
   await mkdir(paths.home, { recursive: true })
   await mkdir(paths.cache, { recursive: true })
   await mkdir(paths.releases, { recursive: true })
+  await mkdir(paths.activeAssignmentRuns, { recursive: true })
   await mkdir(dirname(paths.ledger), { recursive: true })
 }
 

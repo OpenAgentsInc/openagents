@@ -10,19 +10,30 @@ import {
   TASSADAR_EXECUTOR_TRACE_JOB_KIND,
 } from "@openagentsinc/tassadar-executor"
 import type { BootstrapSummary } from "./bootstrap.js"
-import type { ClaudeAgentProbeOptions } from "./claude-agent.js"
+import {
+  CLAUDE_AGENT_CAPABILITY_REF,
+  type ClaudeAgentProbeOptions,
+} from "./claude-agent.js"
 import {
   executeClaudeAgentAssignment,
   type ClaudeAgentCheckoutRunner,
   type ClaudeAgentRunner,
 } from "./claude-agent-executor.js"
 import {
+  CODEX_AGENT_CAPABILITY_REF,
   loadCodexAgentConfig,
   probeCodexAgentReadiness,
   type CodexAgentProbeOptions,
 } from "./codex-agent.js"
 import { executeCodexAgentAssignment, type CodexAgentRunner } from "./codex-agent-executor.js"
-import { createSignedHeaders } from "./presence.js"
+import { createSignedHeaders, sendHeartbeat } from "./presence.js"
+import { PresenceRequestError } from "./presence-error.js"
+import {
+  finishActiveCodingRun,
+  refreshActiveCodingRun,
+  registerActiveCodingRun,
+  type PylonCodingServiceRef,
+} from "./active-assignment-runs.js"
 import {
   assertPublicProjectionSafe,
   ensurePylonLocalState,
@@ -145,6 +156,7 @@ export type AssignmentClientOptions = {
   codexAgentRunner?: CodexAgentRunner
   codexAgentProbe?: CodexAgentProbeOptions
   onLifecycleEvent?: (event: AssignmentRunLifecycleEvent) => void | Promise<void>
+  runtimeHeartbeatIntervalMs?: number
   runtimeProgressIntervalMs?: number
 }
 
@@ -175,6 +187,14 @@ export type AssignmentRunLifecycleEvent = {
   phase?: "runtime_active"
   lastProgressEvent?: AssignmentRunLifecycleEvent["event"]
   blockerRefs?: string[]
+}
+
+export type AssignmentRecoveryDiagnostic = {
+  schema: "openagents.pylon.assignment_recovery_diagnostic.v0.1"
+  blockerRefs: string[]
+  diagnosticRef: string
+  heartbeatStatus?: number
+  recoveryCommand: string
 }
 
 type AssignmentStore = {
@@ -749,6 +769,23 @@ function localLeaseIsTerminal(store: AssignmentStore, leaseRef: string): boolean
   return local !== undefined && locallyTerminalAssignmentStatuses.has(local.status)
 }
 
+function codingRunServiceForLease(lease: PylonAssignmentLease): PylonCodingServiceRef | null {
+  const codingAssignment = lease.codingAssignment as { claudeAgent?: unknown; codex?: unknown } | undefined
+  if (
+    lease.capabilityRefs.includes(CODEX_AGENT_CAPABILITY_REF) ||
+    (codingAssignment?.codex !== null && typeof codingAssignment?.codex === "object")
+  ) {
+    return "codex"
+  }
+  if (
+    lease.capabilityRefs.includes(CLAUDE_AGENT_CAPABILITY_REF) ||
+    (codingAssignment?.claudeAgent !== null && typeof codingAssignment?.claudeAgent === "object")
+  ) {
+    return "claude"
+  }
+  return null
+}
+
 function isLegacyLease(value: unknown): value is PylonAssignmentLease {
   const lease = value as PylonAssignmentLease
   return (
@@ -1191,6 +1228,12 @@ async function resolveCodexAccountForAssignment(
 }
 
 export async function runNoSpendAssignment(summary: BootstrapSummary, options: AssignmentClientOptions) {
+  const runtimeHeartbeatIntervalMs =
+    typeof options.runtimeHeartbeatIntervalMs === "number" &&
+    Number.isFinite(options.runtimeHeartbeatIntervalMs) &&
+    options.runtimeHeartbeatIntervalMs > 0
+      ? Math.max(1, Math.floor(options.runtimeHeartbeatIntervalMs))
+      : 30_000
   const runtimeProgressIntervalMs =
     typeof options.runtimeProgressIntervalMs === "number" &&
     Number.isFinite(options.runtimeProgressIntervalMs) &&
@@ -1251,8 +1294,22 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
       clearInterval(interval)
     }
   }
+  const heartbeatRefresh = async () => {
+    await sendHeartbeat(summary, {
+      ...(options.agentToken === undefined ? {} : { agentToken: options.agentToken }),
+      baseUrl: options.baseUrl,
+      ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+      ...(options.now === undefined ? {} : { now: options.now }),
+    })
+  }
   const state = await ensurePylonLocalState(summary)
   const store = await loadAssignmentStore(state)
+  let presenceRefreshError: unknown
+  try {
+    await heartbeatRefresh()
+  } catch (error) {
+    presenceRefreshError = error
+  }
   const leases = await pollAssignments(summary, options)
   const candidates = leases.filter((candidate) =>
     candidate.paymentMode === "no-spend" &&
@@ -1279,6 +1336,27 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
     lastAcceptance = result
   }
   if (claimed === undefined) {
+    const diagnostic =
+      lastAcceptance !== undefined &&
+      presenceRefreshError !== undefined &&
+      lastAcceptance.blockerRefs.some(ref =>
+        ref === "blocker.assignment.presence_stale" ||
+        ref === "blocker.assignment.presence_never_heartbeat"
+      )
+        ? {
+            schema: "openagents.pylon.assignment_recovery_diagnostic.v0.1" as const,
+            blockerRefs: lastAcceptance.blockerRefs.filter(ref =>
+              ref === "blocker.assignment.presence_stale" ||
+              ref === "blocker.assignment.presence_never_heartbeat"
+            ),
+            diagnosticRef: "diagnostic.assignment.presence_heartbeat_required",
+            ...(presenceRefreshError instanceof PresenceRequestError
+              ? { heartbeatStatus: presenceRefreshError.status }
+              : {}),
+            recoveryCommand: `pylon presence heartbeat --base-url ${options.baseUrl}`,
+          } satisfies AssignmentRecoveryDiagnostic
+        : undefined
+    if (diagnostic !== undefined) assertPublicProjectionSafe(diagnostic)
     await emitLifecycleEvent({
       event: "assignment_run.no_assignment",
       leaseCount: leases.length,
@@ -1294,7 +1372,7 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
     })
     return lastAcceptance === undefined
       ? { ok: false, reason: "no no-spend assignment lease available", leases }
-      : { ok: false, acceptance: lastAcceptance, leases }
+      : { ok: false, acceptance: lastAcceptance, ...(diagnostic === undefined ? {} : { diagnostic }), leases }
   }
   const { acceptance, lease } = claimed
   await emitLifecycleEvent({
@@ -1320,28 +1398,73 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
   })
 
   const runtimeStartedAtMs = Date.now()
-  const runtimeGate = await withRuntimeProgress({
-    assignmentRef: lease.assignmentRef,
-    ...(codexAccount.accountRefHash === undefined ? {} : { accountRefHash: codexAccount.accountRefHash }),
-    leaseRef: lease.leaseRef,
-    startedAtMs: runtimeStartedAtMs,
-    run: async () =>
-      (await executeTassadarAssignment(lease, observedAtDate)) ??
-      (await executeClaudeAgentAssignment(state, lease, observedAtDate, {
-        ...(options.claudeAgentCheckoutRunner === undefined ? {} : { checkoutRunner: options.claudeAgentCheckoutRunner }),
-        ...(options.claudeAgentRunner === undefined ? {} : { claudeAgentRunner: options.claudeAgentRunner }),
-        ...(options.claudeAgentProbe === undefined ? {} : { claudeAgentProbe: options.claudeAgentProbe }),
-      })) ??
-      (await executeCodexAgentAssignment(state, lease, observedAtDate, {
-        ...(options.agentToken === undefined ? {} : { agentToken: options.agentToken }),
-        ...(codexAccount.account === null ? {} : { account: codexAccount.account }),
-        baseUrl: options.baseUrl,
-        ...(options.codexAgentRunner === undefined ? {} : { codexAgentRunner: options.codexAgentRunner }),
-        ...(options.codexAgentProbe === undefined ? {} : { codexAgentProbe: options.codexAgentProbe }),
-        ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
-      })) ??
-      (await executeRuntimeGate(state, lease, observedAtDate)),
-  })
+  const codingRunService = codingRunServiceForLease(lease)
+  const activeRun = codingRunService === null
+    ? null
+    : await registerActiveCodingRun(state.paths, {
+        assignmentRef: lease.assignmentRef,
+        ...(codexAccount.accountRefHash === undefined ? {} : { accountRefHash: codexAccount.accountRefHash }),
+        leaseRef: lease.leaseRef,
+        now: observedAtDate,
+        service: codingRunService,
+      })
+  if (activeRun !== null) {
+    try {
+      await heartbeatRefresh()
+    } catch {
+      // Active-run heartbeats are load projection. Assignment execution remains
+      // local and bounded even if the projection endpoint is briefly down.
+    }
+  }
+  let stopActiveRunRefresh = false
+  const activeRunRefreshInterval = activeRun === null
+    ? undefined
+    : setInterval(() => {
+        if (stopActiveRunRefresh) return
+        void refreshActiveCodingRun(state.paths, activeRun.runRef)
+          .then(() => heartbeatRefresh())
+          .catch(() => {})
+      }, runtimeHeartbeatIntervalMs)
+  let runtimeGate:
+    | Awaited<ReturnType<typeof executeTassadarAssignment>>
+    | Awaited<ReturnType<typeof executeClaudeAgentAssignment>>
+    | Awaited<ReturnType<typeof executeCodexAgentAssignment>>
+    | Awaited<ReturnType<typeof executeRuntimeGate>>
+  try {
+    runtimeGate = await withRuntimeProgress({
+      assignmentRef: lease.assignmentRef,
+      ...(codexAccount.accountRefHash === undefined ? {} : { accountRefHash: codexAccount.accountRefHash }),
+      leaseRef: lease.leaseRef,
+      startedAtMs: runtimeStartedAtMs,
+      run: async () =>
+        (await executeTassadarAssignment(lease, observedAtDate)) ??
+        (await executeClaudeAgentAssignment(state, lease, observedAtDate, {
+          ...(options.claudeAgentCheckoutRunner === undefined ? {} : { checkoutRunner: options.claudeAgentCheckoutRunner }),
+          ...(options.claudeAgentRunner === undefined ? {} : { claudeAgentRunner: options.claudeAgentRunner }),
+          ...(options.claudeAgentProbe === undefined ? {} : { claudeAgentProbe: options.claudeAgentProbe }),
+        })) ??
+        (await executeCodexAgentAssignment(state, lease, observedAtDate, {
+          ...(options.agentToken === undefined ? {} : { agentToken: options.agentToken }),
+          ...(codexAccount.account === null ? {} : { account: codexAccount.account }),
+          baseUrl: options.baseUrl,
+          ...(options.codexAgentRunner === undefined ? {} : { codexAgentRunner: options.codexAgentRunner }),
+          ...(options.codexAgentProbe === undefined ? {} : { codexAgentProbe: options.codexAgentProbe }),
+          ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+        })) ??
+        (await executeRuntimeGate(state, lease, observedAtDate)),
+    })
+  } finally {
+    stopActiveRunRefresh = true
+    if (activeRunRefreshInterval !== undefined) clearInterval(activeRunRefreshInterval)
+    if (activeRun !== null) {
+      await finishActiveCodingRun(state.paths, activeRun.runRef)
+      try {
+        await heartbeatRefresh()
+      } catch {
+        // Best-effort final load projection; closeout remains source of truth.
+      }
+    }
+  }
   const artifactRefs = runtimeGate?.artifactRefs ?? [stableRef("assignment.artifact", `${lease.assignmentRef}:${lease.goal}`)]
   const proofRefs = runtimeGate?.proofRefs ?? [stableRef("assignment.proof", `${lease.leaseRef}:${artifactRefs[0]}`)]
   const progress: AssignmentProgress = {

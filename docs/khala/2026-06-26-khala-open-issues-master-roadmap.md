@@ -38,8 +38,8 @@ batches. Four cross-cutting tracks run *alongside* the phased sequence and feed 
   token rows + traces (`pylon khala proof --assignment-ref ... --json`), review,
   merge (`deploy:safe` for worker changes), refill the slots, and repeat. Codex is
   the master coding agent for now; #6321 (Artanis) is the eventual in-product
-  version. Steering prerequisite: **#6354** (auto-refresh presence + project active
-  busy load) plus the already-closed steering fixes (#6331-#6341, #6349-#6350).
+  version. The presence/busy-load steering prerequisite **#6354** is closed; keep
+  the already-closed steering fixes (#6331-#6341, #6349-#6350) in the loop guard.
 - **#6356 — Trace review.** Systematically review the ATIF traces / exact token
   rows / raw Codex events we **and external testers** are now generating: failure
   modes, model mix, notable/novel traces, and the intents behind them -> triaged
@@ -137,7 +137,7 @@ operator view of what remains, not a public product claim.
 | #6325 | **Closed** | Pylon/Codex delegated sessions are persisted as private traces and exact token events (`c92a5652ab`), with the live raw-chunk follow-up in `74f25e77ad`. |
 | #6326 | **Closed** | Complete raw Codex SDK event streams persist privately for Pylon/Codex Khala delegation (`48e43cee02`, deploy `4d1de2d8-6285-41fa-bd9f-7a5a88cf8275`), plus live chunk rows in `pylon_codex_raw_event_chunks`. |
 | #6331 | **Closed** | The Pylon coding-delegation 500/unavailable path is fixed with typed diagnostics and proof surfaces. |
-| #6354 | **Open** | Steering prerequisite for the loop: Pylon Codex delegation runner should auto-refresh presence + project active busy load (so `provider go-online` reflects active `assignment run-no-spend` runners and avoids `presence_stale`). |
+| #6354 | **Closed** | Pylon `assignment run-no-spend` now refreshes presence before claiming, emits a typed heartbeat recovery diagnostic if stale presence cannot be refreshed, records public-safe active local assignment run markers, and projects those active Codex/Claude runners into heartbeat/go-online busy capacity. Focused Pylon typecheck and assignment/presence regressions passed. |
 | #6355 | **Open** | **NEW** — autonomous parallel Khala->Pylon->Codex backlog-burndown loop (operator runner). Formalizes the manual stress batches into a repeatable max-parallel loop that drives the whole sequence; verify-and-merge each closeout. |
 | #6356 | **Open** | **NEW** — systematic trace review (our runs + external testers): failure modes, model mix, notable traces, user intents -> triaged backlog. |
 | #6357 | **Open** | **NEW** — running unsupported-request list (what testers try that Khala can't do) -> triage into bug / missing-capability / won't-do -> issues. |
@@ -145,7 +145,7 @@ operator view of what remains, not a public product claim.
 | #6359 | **Open** | **NEW EPIC** — Artanis autonomously owns the whole Khala improvement loop (unblock users, ensure inference, drive #6355, act on feedback, consult `inference-engineering-book` once the set drains). Subsumes #6321; coordinates #6355/#6356/#6357/#6358 + the #6316 serving track. See the Artanis section. |
 | #6360 | **Open** | **NEW** — Artanis ingests + acts on Khala CLI `/feedback` (`khala_feedback` table): style→response-style change (owner-gated), capability gap→#6357→issue, bug→issue. |
 | #6321 | **Open** | Artanis fleet-overseer control loop (heal/scale/stress/external-yield). Now scoped under the broader Artanis ownership epic #6359. |
-| #6354 | **Open** | Newly opened steering blocker: `assignment run-no-spend` can still require manual `presence heartbeat` recovery, `provider go-online --json` can report `busy=0` while local Codex assignment runners are active, and the controlled assignment dispatch gate later refused a fresh targeted lease even though local projection showed five available Codex slots. This is now the top execution-lane fix before more parallel Pylon/Codex delegation, because it blocks honest scaling and makes the counter look stuck while work is merely in-flight or denied. |
+| #6354 | **Closed** | The execution-lane blocker is implemented: `assignment run-no-spend` publishes a best-effort heartbeat before polling/claiming, returns `diagnostic.assignment.presence_heartbeat_required` with the exact heartbeat command when refresh fails and admission remains stale, and maintains per-run active local assignment markers so `provider go-online --json` and heartbeat `load.coding.*.busy` reflect in-flight Codex/Claude runners. |
 
 ## Execution notes
 
@@ -166,12 +166,11 @@ operator view of what remains, not a public product claim.
   no new large Pylon/Codex exact closeout row has landed in that interval; do
   not infer assignment attribution from aggregate movement because canaries and
   other agents can also write token rows.
-- #6354 is the current Pylon/Codex execution-lane blocker. More parallel
-  delegation should resume after the runner refreshes presence automatically,
-  the operator projection accounts for active local Codex runners, and lease
-  refusal responses expose enough typed evidence to diagnose whether the gate is
-  stale presence, duplicate active assignment capacity, or another public-safe
-  blocker.
+- #6354 is no longer the Pylon/Codex execution-lane blocker: runner-owned
+  presence refresh, active local busy-load projection, and typed stale-presence
+  recovery diagnostics are implemented. More parallel delegation can resume
+  while continuing to watch for duplicate active-assignment capacity denials or
+  other public-safe blockers.
 - 2026-06-26: Supervising agents may briefly prioritize Khala -> Pylon -> Codex
   steering blockers ahead of the next phase item when the blocker prevents honest
   delegation, token attribution, or trace verification. This does not reorder the
@@ -420,12 +419,12 @@ operator view of what remains, not a public product claim.
   replacement-reserve-prebake acceptance patch. Focused GLM pilot/readiness
   tests, `typecheck:web`, `typecheck:api`, and `check:deploy` passed before
   landing.
-  Steering gaps observed in the batch: a replacement launch hit
-  `blocker.assignment.presence_stale` until `presence heartbeat --json` was
-  run; the plain `codex` account had previously refused execution while
-  `codex-2+` succeeded; and `provider go-online --json` still reported
-  `busy:0` during active local `assignment run-no-spend` sessions, so public
-  capacity projection does not yet reflect active local runners.
+  The #6354 steering blocker from that batch is now fixed in Pylon: local
+  no-spend runners refresh presence before claim, produce typed stale-presence
+  recovery diagnostics when refresh fails, and count active local assignment
+  runs in busy capacity. Remaining steering gaps are the plain `codex` account
+  refusal versus `codex-2+`, and whether to add a labeled in-flight estimate to
+  the public product counter.
 - Current serving observability status: canonical scheduled
   `glm-pool-heartbeat` rows are now live. `5b11c6eaf5` is deployed as Worker
   `7ee46a76-f9ef-42cf-ac9f-31a472d2b3fb`; after one cron interval,
@@ -664,7 +663,7 @@ Remaining active sequence after the 2026-06-26 ~19:24Z refresh:
 Running **continuously alongside** the above (not gated by it), per the operating
 model section: **#6355** (parallel burndown loop that *drives* the sequence),
 **#6356** (trace review), **#6357** (unsupported-request triage), and **#6358**
-(counter health), with **#6354** as the loop's steering prerequisite. #6356/#6357
+(counter health), with **#6354** now closed as the loop's presence/busy-load prerequisite. #6356/#6357
 feed new issues back into the sequence as testers surface gaps. The end state is
 **Artanis owning this loop autonomously** (see the Artanis section below / #6321).
 
@@ -700,11 +699,9 @@ GLM coding lane and leave REAP-504B on the 4x hosts.)
   raw-event refs, and streamed raw chunks. Future launches should record
   assignment refs immediately, verify
   `pylon khala proof --assignment-ref ... --json`, and compare exact token rows
-  instead of relying on public counter movement. The next steering gaps to settle
-  are (1) auto-refreshing Pylon presence before `assignment run-no-spend` so
-  operators do not hit `blocker.assignment.presence_stale`, (2) why the plain
-  `codex` account refused one assignment while `codex-2+` succeeded, (3) making
-  `provider go-online --json` / public capacity show active local
-  `assignment run-no-spend` sessions as busy, and (4) whether the public product
-  should add a clearly labeled in-flight estimate from streamed SDK chunks while
-  preserving exact public accounting at assignment closeout.
+  instead of relying on public counter movement. The #6354 presence/busy-load
+  steering gap is fixed in Pylon. The next steering gaps to settle are (1) why
+  the plain `codex` account refused one assignment while `codex-2+` succeeded,
+  and (2) whether the public product should add a clearly labeled in-flight
+  estimate from streamed SDK chunks while preserving exact public accounting at
+  assignment closeout.

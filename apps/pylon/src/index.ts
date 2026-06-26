@@ -177,6 +177,7 @@ import {
   type BootstrapSummary,
 } from "./bootstrap.js"
 import { assertPublicProjectionSafe, ensurePylonLocalState, loadOrCreatePresenceState, projectPublicStatus, writePresenceState, writeRuntimeState, type PylonLocalState, type PylonPaths } from "./state.js"
+import { activeCodingRunCounts } from "./active-assignment-runs.js"
 import {
   completePylonLink,
   codingServiceCapacityFromRuntime,
@@ -4596,6 +4597,7 @@ async function main() {
           { ...state, runtime: nextRuntime },
           Bun.env,
           await localCodingServiceReadyCounts(summary, Bun.env),
+          await activeCodingRunCounts(state.paths),
         )
         const codingRefs = codingServiceCapacityRefs(codingCapacity)
         const codexCapacity = codingCapacity.find((item) => item.service === "codex") ?? {
