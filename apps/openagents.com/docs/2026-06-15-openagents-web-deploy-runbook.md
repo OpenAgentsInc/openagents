@@ -11,11 +11,12 @@ explicitly:
 
 ```sh
 cd apps/openagents.com/workers/api
-npx wrangler deploy --assets ../../apps/web/dist
+npx wrangler deploy --containers-rollout=none --assets ../../apps/web/dist
 ```
 
-For Worker-only deploys that must skip container image rollout, keep the same
-explicit assets argument:
+The final Worker upload uses `--containers-rollout=none` so a local
+Docker/container rollout probe cannot stall the safe production deploy. Keep the
+same explicit assets argument for Worker-only deploys:
 
 ```sh
 cd apps/openagents.com
@@ -111,7 +112,8 @@ bun run --cwd workers/api deploy
 ```
 
 That command runs deploy checks, applies remote D1 migrations, rebuilds
-`apps/web/dist`, and deploys Wrangler with `--assets ../../apps/web/dist`.
+`apps/web/dist`, and deploys Wrangler with
+`--containers-rollout=none --assets ../../apps/web/dist`.
 
 ## Required Live Smoke
 

@@ -69,7 +69,9 @@ If `foldkit-skills` is installed as a Claude Code plugin, the `generate-program`
   `check:deploy` (typecheck:web/api + the real web/worker test suites + guards,
   with NO dependency on the flaky `verse-launch-smoke`), applies remote D1
   migrations, runs `check:pending-migrations` (fails if ANY migration is still
-  pending), builds web assets, then uploads the worker LAST. **Raw
+  pending), builds web assets, then uploads the worker LAST with
+  `--containers-rollout=none` so Wrangler does not probe local Docker/container
+  rollout state. **Raw
   `bunx wrangler deploy` / `npx wrangler deploy` is FORBIDDEN as a deploy path:**
   it skips migrations and shipped the worker ahead of its schema in the
   2026-06-25 gateway-wide 500 outage

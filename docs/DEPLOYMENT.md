@@ -27,7 +27,7 @@ change, update its linked runbook **and** fix the pointer here.
 
 | Surface | What | Canonical runbook | One-line recipe | GitHub release tag |
 |---|---|---|---|---|
-| **openagents.com Worker** | Cloudflare Worker + web app + API (product promises, Forum, Autopilot/Forge UI) | `apps/openagents.com/docs/2026-06-15-openagents-web-deploy-runbook.md` | **`bun run --cwd apps/openagents.com/workers/api deploy:safe`** (the ONLY sanctioned path — see the Worker deploy safety gate below). For a web-asset-only no-container deploy after a fresh `deploy:safe` run, the documented no-container variant adds `--containers-rollout=none`. | — |
+| **openagents.com Worker** | Cloudflare Worker + web app + API (product promises, Forum, Autopilot/Forge UI) | `apps/openagents.com/docs/2026-06-15-openagents-web-deploy-runbook.md` | **`bun run --cwd apps/openagents.com/workers/api deploy:safe`** (the ONLY sanctioned path — see the Worker deploy safety gate below). The final Worker upload uses `--containers-rollout=none` so local Docker/container probes cannot stall the safe deploy. | — |
 | **Pylon (npm)** | `@openagentsinc/pylon` CLI/runtime | `apps/pylon/docs/npm-publishing-runbook.md` | publish leaf deps first → `cd apps/pylon && bun run release:gate` → `bun pm pack` → `npm publish <tgz> --tag rc --access public` (**not** `bun publish`; `--tag rc` keeps `latest` stable; corgi manifest lags minutes after publish) | `pylon-v<version>` (prerelease for rc) |
 | **Pylon RC binaries / OTA** | signed standalone binaries → auto-update feed | `apps/oa-updates/docs/release-signing-runbook.md` | `bash apps/pylon/scripts/build-rc-binaries.sh <version>` (ed25519-signed) → publish to `updates.openagents.com` | — |
 | **Autopilot Desktop (macOS DMG)** | Electrobun desktop app | `apps/autopilot-desktop/README.md` (Release Builds) + `apps/autopilot-desktop/scripts/notarize-macos.sh` + the signing runbook | bump `electrobun.config.ts` version → `bun run --cwd apps/autopilot-desktop build:stable` (unsigned `.app`+`.dmg`) → `notarize:macos` (codesign `--options runtime` + `notarytool --wait` + staple the `.app`) → **re-create the DMG from the stapled `.app`** then codesign/notarize/staple the DMG → `gcloud storage cp …dmg gs://openagentsgemini-oa-updates/desktop/` → GitHub release pointing to it | `autopilot-desktop-v<version>` (prerelease) |
@@ -55,7 +55,8 @@ change, update its linked runbook **and** fix the pointer here.
 4. **`check:pending-migrations`** — runs `wrangler d1 migrations list … --remote`
    and **fails the deploy if ANY migration is still pending**, naming the files.
    This is the guard that makes "code shipped ahead of its schema" impossible.
-5. `build:web` → `wrangler deploy --assets …` — the worker is uploaded last.
+5. `build:web` → `wrangler deploy --containers-rollout=none --assets …` — the
+   worker is uploaded last, without Wrangler container rollout probing.
 
 **Raw `bunx wrangler deploy` / `npx wrangler deploy` is FORBIDDEN as a deploy
 path** because it skips both `migrations apply` and `check:pending-migrations`.

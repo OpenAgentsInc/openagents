@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 
 import {
@@ -63,5 +64,35 @@ describe('decidePendingMigrations', () => {
     expect(d.message).toContain('0234_pylon_openauth_links.sql')
     expect(d.message).toContain('must NOT ship ahead of its schema')
     expect(d.message).toContain('wrangler d1 migrations apply')
+  })
+})
+
+describe('deploy:safe package command', () => {
+  const apiPackage = JSON.parse(
+    readFileSync(new URL('../workers/api/package.json', import.meta.url), 'utf8'),
+  )
+  const deploySafe = apiPackage.scripts['deploy:safe']
+
+  test('keeps migration-first zero-pending build upload ordering', () => {
+    const expectedOrder = [
+      'cd ../.. && bun run check:deploy-from-main',
+      '&& bun run check:deploy &&',
+      '&& cd workers/api && wrangler d1 migrations apply openagents-autopilot --remote',
+      '&& cd ../.. && bun run check:pending-migrations',
+      '&& bun run build:web',
+      '&& cd workers/api && wrangler deploy --containers-rollout=none --assets ../../apps/web/dist',
+    ]
+
+    expectedOrder.reduce((previousIndex, step) => {
+      const index = deploySafe.indexOf(step)
+      expect(index).toBeGreaterThan(previousIndex)
+      return index
+    }, -1)
+  })
+
+  test('disables Wrangler container rollout probing on the final upload', () => {
+    expect(deploySafe).toContain(
+      'wrangler deploy --containers-rollout=none --assets ../../apps/web/dist',
+    )
   })
 })
