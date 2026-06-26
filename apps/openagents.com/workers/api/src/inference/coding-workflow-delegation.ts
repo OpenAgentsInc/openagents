@@ -377,6 +377,7 @@ export const delegateCodingWorkflow = async (
     }
   }
 
+  const blockedGateRefs: string[] = []
   for (const registration of candidates) {
     const body = assignmentRequestFromInput(
       input,
@@ -396,6 +397,7 @@ export const delegateCodingWorkflow = async (
     })
 
     if (!gate.dispatchAllowed) {
+      blockedGateRefs.push(...gate.blockerRefs)
       continue
     }
 
@@ -417,6 +419,21 @@ export const delegateCodingWorkflow = async (
       ],
       kind: 'assigned',
       pylon: registration,
+    }
+  }
+
+  if (target.kind === 'target' && blockedGateRefs.length > 0) {
+    return {
+      error: 'target_pylon_unavailable',
+      evidenceRefs: [
+        'evidence.khala_coding.target_pylon_ref.dispatch_gate_blocked',
+        ...[...new Set(blockedGateRefs)].sort(),
+      ],
+      kind: 'rejected',
+      reason:
+        'The requested linked Pylon is available but the controlled assignment dispatch gate refused the coding lease.',
+      requestedPylonRef: target.pylonRef,
+      statusCode: 409,
     }
   }
 

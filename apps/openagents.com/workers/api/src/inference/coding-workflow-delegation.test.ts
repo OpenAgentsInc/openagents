@@ -419,6 +419,44 @@ describe('coding workflow delegation', () => {
     expect(result).toBeNull()
   })
 
+  test('returns typed refusal when a targeted linked Pylon is blocked by active assignment capacity', async () => {
+    const result = await delegateCodingWorkflow({
+      classification,
+      linkedAgents: [linkedOwner],
+      makeId: () => 'id1',
+      nowIso,
+      pylonStore: makeStore({
+        activeAssignments: [
+          assignment({
+            assignmentRef: 'assignment.public.test.stale_active_slot',
+            id: 'pylon_api_assignment_stale_active_slot',
+            updatedAt: '2026-06-25T11:00:00.000Z',
+          }),
+        ],
+        registrations: [registration()],
+      }),
+      rawBody: {
+        openagents: {
+          coding: {
+            targetPylonRef: 'pylon.owner.codex',
+          },
+        },
+      },
+      requestId: 'chatcmpl_coding_target_capacity_full',
+    })
+
+    expect(result).toMatchObject({
+      error: 'target_pylon_unavailable',
+      evidenceRefs: expect.arrayContaining([
+        'evidence.khala_coding.target_pylon_ref.dispatch_gate_blocked',
+        'blocker.public.pylon_dispatch.duplicate_active_assignment',
+      ]),
+      kind: 'rejected',
+      requestedPylonRef: 'pylon.owner.codex',
+      statusCode: 409,
+    })
+  })
+
   test('does not treat submitted closeout evidence as active Codex capacity', async () => {
     const result = await delegateCodingWorkflow({
       classification,

@@ -314,6 +314,37 @@ describe('Khala MCP catalog', () => {
     })
   })
 
+  test('khala.request returns typed gate refusal when linked Pylon capacity is consumed by an active assignment', async () => {
+    const recordedTokens: Array<ServedTokensRecorderInput> = []
+    const outcome = await catalogFor({
+      assignments: [
+        assignment({
+          assignmentRef: 'assignment.public.khala_coding.stale_active_slot',
+          id: 'pylon_api_assignment_stale_active_slot',
+          updatedAt: '2026-06-25T11:00:00.000Z',
+        }),
+      ],
+      recordedTokens,
+    }).callTool(env, request, principal, 'khala.request', {
+      prompt: 'Run the public issue task',
+      targetPylonRef: 'pylon.owner.codex',
+      workflow: 'codex_agent_task',
+    })
+
+    expect(outcome.isError).toBe(true)
+    expect(recordedTokens).toHaveLength(0)
+    expect(outcome.structuredContent).toMatchObject({
+      error: 'target_pylon_unavailable',
+      evidenceRefs: expect.arrayContaining([
+        'evidence.khala_coding.target_pylon_ref.dispatch_gate_blocked',
+        'blocker.public.pylon_dispatch.duplicate_active_assignment',
+      ]),
+      ok: false,
+      requestedPylonRef: 'pylon.owner.codex',
+      statusCode: 409,
+    })
+  })
+
   test('khala.resume reads the durable stream route without metering', async () => {
     const seen: string[] = []
     const durableFetch: typeof fetch = async input => {
