@@ -126,6 +126,15 @@ describe("pylon khala requester body", () => {
     })
   })
 
+  test("requires an explicit workspace verification command", () => {
+    expect(() =>
+      buildPylonKhalaGitCheckoutWorkspace({
+        commit: "7ab7cb401803f6e04a6c93b7aa9102405de66419",
+        repository: "OpenAgentsInc/openagents",
+      }),
+    ).toThrow(/--verify/)
+  })
+
   test("rejects unsafe prompt material before calling the gateway", () => {
     expect(() =>
       buildPylonKhalaChatRequestBody({

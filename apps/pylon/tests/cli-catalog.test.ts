@@ -84,6 +84,22 @@ describe("pylon command catalog", () => {
     expect(entry.args.some((arg) => arg.name === "--agent-token")).toBe(true)
   })
 
+  test("assignment runner advertises pinned no-spend execution", () => {
+    const entry = findCommandEntry("assignment")!
+    expect(entry.args[0]?.name).toContain("run-no-spend")
+    expect(entry.args.some((arg) => arg.name === "--assignment-ref")).toBe(true)
+    expect(entry.args.some((arg) => arg.name === "--lease-ref")).toBe(true)
+    expect(entry.args.some((arg) => arg.name === "--json" && arg.kind === "flag")).toBe(true)
+  })
+
+  test("presence heartbeat advertises one-shot JSON auth flags", () => {
+    const entry = findCommandEntry("presence")!
+    expect(entry.args[0]?.name).toContain("heartbeat")
+    expect(entry.args.some((arg) => arg.name === "--agent-token")).toBe(true)
+    expect(entry.args.some((arg) => arg.name === "--json" && arg.kind === "flag")).toBe(true)
+    expect(entry.args.some((arg) => arg.name === "--wallet-probe" && arg.kind === "flag")).toBe(true)
+  })
+
   test("every entry has a non-empty summary and unique command name", () => {
     const seen = new Set<string>()
     for (const entry of PYLON_COMMAND_CATALOG) {

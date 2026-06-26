@@ -108,7 +108,10 @@ function githubFullNameFromInput(repository: string | undefined): string {
 }
 
 function verificationArgsFromInput(command: string | undefined): string[] {
-  const value = command?.trim() || "bun test"
+  const value = command?.trim()
+  if (!value) {
+    throw new Error("khala request --verify <command> is required for workspace-backed coding requests")
+  }
   assertPublicSafe(value, "khala request verification command")
   const args = value.split(/\s+/).filter(Boolean)
   if (
