@@ -54,6 +54,7 @@
     "smoke:visibility:browser": "node scripts/visibility-browser-smoke.mjs",
     "lint": "eslint .",
     "format": "prettier -w .",
+    "gym:harbor-full-trace-archive": "bun scripts/gym-harbor-full-trace-archive.ts",
     "gym:harbor-progress-push": "bun scripts/gym-harbor-progress-push.ts",
     "khala-code:verify": "bun scripts/khala-code-headless-harness.mjs",
     "sync:icons": "bun scripts/sync-fireball-icons.mjs",

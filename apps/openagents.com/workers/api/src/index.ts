@@ -387,6 +387,8 @@ import {
   glmPoolHeartbeatRoutingStateOracle,
   runScheduledGlmPoolHeartbeatForD1,
 } from './inference/glm-pool-heartbeat'
+import { handleOperatorHarborFullTraceArchivesApi } from './inference/gym/harbor-full-trace-archive-routes'
+import { makeD1R2HarborFullTraceArchiveStore } from './inference/gym/harbor-full-trace-archive-store'
 import {
   handleOperatorGymRunProgressApi,
   handlePublicGymRunProgressApi,
@@ -675,10 +677,6 @@ import { handlePublicForumActivityApiForEnv } from './public-forum-activity-rout
 import { makePublicInferenceReceiptRoutes } from './public-inference-receipt-routes'
 import { handlePublicKhalaTokensServedHistoryApi } from './public-khala-tokens-served-history-routes'
 import { handlePublicKhalaTokensServedApi } from './public-khala-tokens-served-routes'
-import {
-  decideHighFrequencyBroadcast,
-  highFrequencyBroadcastLastAtStorageKey,
-} from './sync-broadcast-throttle'
 import { handlePublicLaunchDashboardApi } from './public-launch-dashboard-routes'
 import { makePublicNip90MarketReceiptRoutes } from './public-nip90-market-receipt-routes'
 import { handlePublicOtecProofApi } from './public-otec-proof-routes'
@@ -701,6 +699,11 @@ import {
   recordPylonCapacityFunnelSnapshots,
 } from './pylon-capacity-funnel-live-routes'
 import {
+  PYLON_CODEX_TURN_INGEST_PATH,
+  makeD1R2PylonCodexRawEventStore,
+  makePylonCodexTurnIngestRoutes,
+} from './pylon-codex-turn-ingest-routes'
+import {
   PylonLargestDecentralizedTrainingClaimEndpoint,
   handlePylonLargestDecentralizedTrainingClaimStatusApi,
 } from './pylon-largest-decentralized-training-claim-status-routes'
@@ -711,11 +714,6 @@ import {
   isPylonMultiEarningProjectionEnabled,
 } from './pylon-multi-earning-node-routes'
 import { makePylonOpenAgentsAuthHandlers } from './pylon-openagents-auth-routes'
-import {
-  PYLON_CODEX_TURN_INGEST_PATH,
-  makeD1R2PylonCodexRawEventStore,
-  makePylonCodexTurnIngestRoutes,
-} from './pylon-codex-turn-ingest-routes'
 import {
   type RelayHealthFetch,
   canonicalMarketRelayUrl,
@@ -782,6 +780,10 @@ import { makeSiteRuntimeRoutes } from './site-runtime-routes'
 import { makeSitesOrchestrationRoutes } from './sites-orchestration-routes'
 import { readBillingCreditPackages } from './stripe-billing'
 import { makeD1StripeCheckoutReceiptStore } from './stripe-checkout-receipts'
+import {
+  decideHighFrequencyBroadcast,
+  highFrequencyBroadcastLastAtStorageKey,
+} from './sync-broadcast-throttle'
 import {
   type SyncNotificationContext,
   notifyAgentRunSyncScopes,
@@ -6899,10 +6901,7 @@ const pylonCodexTurnIngestRoutes = makePylonCodexTurnIngestRoutes<Env>({
     makeD1R2PylonCodexRawEventStore(openAgentsDatabase(env), env.ARTIFACTS),
   publishDelta: (env, delta) =>
     Effect.promise(() =>
-      publishKhalaTokensServedDelta(
-        env,
-        buildKhalaTokensServedDelta(delta),
-      ),
+      publishKhalaTokensServedDelta(env, buildKhalaTokensServedDelta(delta)),
     ),
   traceStore: env => makeD1TraceStore(openAgentsDatabase(env)),
 })
@@ -9988,6 +9987,21 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         // Fail-soft and off the customer path via the execution context.
         publishProgress: progress =>
           publishGymRunProgressSnapshot(env, progress, { ctx }),
+      }),
+  },
+  {
+    // Operator-only Harbor full trace archive (#6253). Stores raw Harbor job
+    // tarballs in private R2 with D1 metadata. Unlike `/api/traces`, this is
+    // NOT a public-safe ATIF projection and never appears on public `/gym`.
+    path: '/api/operator/gym/full-trace-archives',
+    handler: (request, env) =>
+      handleOperatorHarborFullTraceArchivesApi(request, {
+        requireAdminApiToken: adminRequest =>
+          requireAdminApiToken(adminRequest, env),
+        store: makeD1R2HarborFullTraceArchiveStore(
+          openAgentsDatabase(env),
+          env.ARTIFACTS,
+        ),
       }),
   },
   {

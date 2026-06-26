@@ -424,6 +424,29 @@ This is the invariant ledger for `openagents`.
   `workers/api/src/inference/khala-chat-trace-emitter.test.ts`,
   `workers/api/src/trace-store-routes.test.ts`.
 
+## Harbor Full Trace Archive (operator-only)
+
+- Harbor / Terminal-Bench full trace archives are RAW PRIVATE EVIDENCE, not
+  shareable ATIF traces. The operator route
+  `POST|GET /api/operator/gym/full-trace-archives` may store an entire Harbor
+  job directory tarball in the private `ARTIFACTS` R2 bucket under
+  `private/gym/harbor-full-trace-archives/...`, with D1 metadata in
+  `gym_harbor_full_trace_archives` (migration
+  `0239_gym_harbor_full_trace_archives.sql`).
+- Every stored archive is `visibility=operator_only`, `demand_kind=internal`,
+  `demand_source=harbor_terminal_bench`, and explicitly marked as containing
+  raw prompts, raw logs, and private material. The route requires the admin API
+  token for upload, metadata list, and download. It must never be linked from,
+  copied into, or summarized as bytes on public `/gym`, `/trace/{uuid}`, public
+  product promises, issue comments, public docs, or public claim projections.
+- The archive metadata is evidence only. It grants no accepted-work, payout,
+  settlement, provider mutation, spend, training-consent, or public-claim
+  authority. If any material from a Harbor archive is promoted into a public
+  trace or training corpus, it must go through the separate redaction,
+  public-safe ATIF validation, owner/consent, and tripwire path first.
+- Regression coverage lives in
+  `workers/api/src/inference/gym/harbor-full-trace-archive-routes.test.ts`.
+
 ## Trace Upload Data Market
 
 - The trace upload data market (#6221, epic #6206; migrations
