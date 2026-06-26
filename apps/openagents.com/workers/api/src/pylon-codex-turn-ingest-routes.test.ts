@@ -571,8 +571,8 @@ const makeFakeProofD1 = (): D1Database & {
     const schemaVersion = String(values[2] ?? '')
     const demandKind = String(values[3] ?? '')
     const demandSource = String(values[4] ?? '')
-    const trajectoryLike = String(values[5] ?? '')
-    const trajectoryPrefix = trajectoryLike.replace(/%$/, '')
+    const trajectoryPrefixLength = Number(values[5] ?? 0)
+    const trajectoryPrefix = String(values[6] ?? '')
     return (
       row.owner_user_id === ownerUserId &&
       row.agent_ref === agentRef &&
@@ -580,7 +580,7 @@ const makeFakeProofD1 = (): D1Database & {
       row.schema_version === schemaVersion &&
       row.demand_kind === demandKind &&
       row.demand_source === demandSource &&
-      row.trajectory_id.startsWith(trajectoryPrefix)
+      row.trajectory_id.slice(0, trajectoryPrefixLength) === trajectoryPrefix
     )
   }
 

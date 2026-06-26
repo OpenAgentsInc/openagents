@@ -312,6 +312,7 @@ export const makeD1PylonCodexAssignmentProofStore = (
       )
       .first<PylonCodexTokenProofRow>()
 
+    const traceTrajectoryPrefix = `pylon_codex:${input.assignmentRef}:`
     const traceFilter = `
       owner_user_id = ?
       AND agent_ref = ?
@@ -319,7 +320,7 @@ export const makeD1PylonCodexAssignmentProofStore = (
       AND schema_version = ?
       AND demand_kind = ?
       AND demand_source = ?
-      AND trajectory_id LIKE ?
+      AND substr(trajectory_id, 1, ?) = ?
     `
     const traceBindings = [
       input.ownerUserId,
@@ -327,7 +328,8 @@ export const makeD1PylonCodexAssignmentProofStore = (
       ATIF_PINNED_SCHEMA_VERSION,
       PYLON_CODEX_DEMAND_KIND,
       PYLON_CODEX_DEMAND_SOURCE,
-      `pylon_codex:${input.assignmentRef}:%`,
+      traceTrajectoryPrefix.length,
+      traceTrajectoryPrefix,
     ] as const
 
     const traceCountRow = await db
