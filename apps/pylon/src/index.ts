@@ -178,7 +178,6 @@ import { assertPublicProjectionSafe, ensurePylonLocalState, loadOrCreatePresence
 import {
   completePylonLink,
   presenceClientOptionsFromEnv,
-  recordAccountLinkInPresence,
   refreshPylonLink,
   registerPylon,
   sendHeartbeat,
@@ -3141,19 +3140,6 @@ async function main() {
         }
         const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
         const projection = await runPylonAccountsConnect(summary, options, { env: Bun.env })
-        // #6331: when the connect established (or reused) a server-side
-        // account->OpenAuth-owner link, reconcile that into the local presence
-        // state so the next `presence heartbeat` reports linked: true + a real
-        // linkRef. Without this, the connect's `pylonLink: linked` never reached
-        // the presence state the heartbeat and dispatch gate read.
-        if (
-          projection.openAgentsDeviceLogin.status === "started" ||
-          projection.openAgentsDeviceLogin.status === "polled"
-        ) {
-          await recordAccountLinkInPresence(summary, {
-            providerAccountRef: projection.openAgentsDeviceLogin.providerAccountRef,
-          })
-        }
         process.stdout.write(`${JSON.stringify(projection, null, 2)}\n`)
         return
       }

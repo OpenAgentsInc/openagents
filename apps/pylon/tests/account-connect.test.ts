@@ -10,7 +10,7 @@ import {
 } from "../src/account-connect"
 import { hashPylonAccountRef } from "../src/account-registry"
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
-import { assertPublicProjectionSafe } from "../src/state"
+import { assertPublicProjectionSafe, ensurePylonLocalState, loadOrCreatePresenceState } from "../src/state"
 
 async function withHome<T>(fn: (home: string) => Promise<T>) {
   const home = await mkdtemp(join(tmpdir(), "pylon-account-connect-"))
@@ -106,6 +106,87 @@ describe("pylon accounts connect", () => {
       }
       expect(config.dev?.accounts).toHaveLength(1)
       assertPublicProjectionSafe(second)
+    })
+  })
+
+  test("reused Codex auth still records linked OpenAgents presence", async () => {
+    await withHome(async home => {
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), {
+        PYLON_HOME: home,
+      })
+      const codexHome = join(home, "accounts", "codex", "codex-a")
+      await mkdir(codexHome, { recursive: true })
+      await writeFile(join(codexHome, "auth.json"), JSON.stringify({ authenticated: true }))
+
+      const state = await ensurePylonLocalState(summary)
+      const before = await loadOrCreatePresenceState(state.paths, state.identity)
+      expect(before.linked).toBe(false)
+      expect(before.linkRef).toBeNull()
+
+      const args = parsePylonAccountsConnectArgs([
+        "codex",
+        "--account",
+        "codex-a",
+        "--openagents-link",
+        "--base-url",
+        "https://openagents.example/",
+        "--agent-token",
+        "oa_agent_secret_test",
+        "--json",
+      ])
+      const first = await runPylonAccountsConnect(summary, args, {
+        fetcher: async () =>
+          new Response(
+            JSON.stringify({
+              attempt: { id: "provider_attempt_reused", status: "pending" },
+              expiresAt: "2026-06-25T12:10:00.000Z",
+              intervalSeconds: 5,
+              providerAccountRef: "provider_account_codex_reused",
+              pylonLink: { owner: "openauth", status: "linked" },
+              userCode: "ABCD-EFGH",
+              verificationUrl: "https://auth.openai.com/device",
+            }),
+            { status: 201, headers: { "content-type": "application/json" } },
+          ),
+        runCodexDeviceLogin: async () => {
+          throw new Error("device login should not run when auth.json already exists")
+        },
+      })
+
+      expect(first.deviceLogin.status).toBe("skipped_existing_auth")
+      expect(first.openAgentsDeviceLogin).toMatchObject({
+        status: "started",
+        providerAccountRef: "provider_account_codex_reused",
+        pylonLink: { owner: "openauth", status: "linked" },
+      })
+      const linked = await loadOrCreatePresenceState(state.paths, state.identity)
+      expect(linked.linked).toBe(true)
+      expect(linked.linkRef?.startsWith("link.account.")).toBe(true)
+      assertPublicProjectionSafe({ linkRef: linked.linkRef })
+      expect(linked.linkRef).not.toContain("provider_account_codex_reused")
+
+      const second = await runPylonAccountsConnect(summary, args, {
+        fetcher: async () =>
+          new Response(
+            JSON.stringify({
+              attempt: { id: "provider_attempt_reused_2", status: "pending" },
+              expiresAt: "2026-06-25T12:10:00.000Z",
+              intervalSeconds: 5,
+              providerAccountRef: "provider_account_codex_reused",
+              pylonLink: { owner: "openauth", status: "linked" },
+              userCode: "WXYZ-1234",
+              verificationUrl: "https://auth.openai.com/device",
+            }),
+            { status: 201, headers: { "content-type": "application/json" } },
+          ),
+      })
+      const linkedAgain = await loadOrCreatePresenceState(state.paths, state.identity)
+      expect(second.deviceLogin.status).toBe("skipped_existing_auth")
+      expect(linkedAgain.linkRef).toBe(linked.linkRef)
+      assertPublicProjectionSafe(first)
+      assertPublicProjectionSafe(second)
+      expect(JSON.stringify(first)).not.toContain(home)
+      expect(JSON.stringify(first)).not.toContain("oa_agent_secret_test")
     })
   })
 
