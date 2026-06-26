@@ -293,7 +293,17 @@ const projectStatsToSnapshot = (
 
   const evals = isRecord(stats['evals']) ? stats['evals'] : {}
   const completedPassed = sumRewardListLengths(evals, reward => reward > 0)
-  const completedFailed = sumRewardListLengths(evals, reward => reward <= 0)
+  const rewardListedFailed = sumRewardListLengths(evals, reward => reward <= 0)
+  const completedFromStats = countOrZero(stats['n_completed_trials'])
+  // Some Harbor runs report the authoritative completed denominator in
+  // `n_completed_trials` before every completed task appears in reward_stats.
+  // Missing reward entries are completed non-pass outcomes; this matches
+  // Harbor's metrics.mean (passed / n_completed_trials) and keeps `error` as a
+  // subset of completed for Worker validation.
+  const completedFailed = Math.max(
+    rewardListedFailed,
+    completedFromStats - completedPassed,
+  )
   const running = countOrZero(stats['n_running_trials'])
   const pending = countOrZero(stats['n_pending_trials'])
   const error = countOrZero(stats['n_errored_trials'])
