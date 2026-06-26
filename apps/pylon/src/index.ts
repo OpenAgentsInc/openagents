@@ -3090,12 +3090,19 @@ async function main() {
     }
   }
 
-  if (args[0] === "accounts") {
+  const accountCommandArgs =
+    args[0] === "accounts"
+      ? args.slice(1)
+      : args[0] === "codex" && args[1] === "accounts"
+        ? args.slice(2)
+        : null
+
+  if (accountCommandArgs !== null) {
     try {
-      const command = args[1]
+      const command = accountCommandArgs[0]
       if (command === "list") {
         const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
-        if (args.includes("--json")) {
+        if (accountCommandArgs.includes("--json")) {
           const projection = await collectPylonAccountsList(summary, { env: Bun.env })
           process.stdout.write(`${JSON.stringify(projection, null, 2)}\n`)
           return
@@ -3119,7 +3126,7 @@ async function main() {
         return
       }
       if (command === "usage") {
-        const options = parsePylonAccountsUsageArgs(args.slice(2))
+        const options = parsePylonAccountsUsageArgs(accountCommandArgs.slice(1))
         if (!options.json) {
           throw new Error("usage: pylon accounts usage [--account <ref-or-provider>|--provider <codex|claude_agent>|--all] [--refresh] --json")
         }
@@ -3142,7 +3149,7 @@ async function main() {
         return
       }
       if (command === "connect") {
-        const options = parsePylonAccountsConnectArgs(args.slice(2))
+        const options = parsePylonAccountsConnectArgs(accountCommandArgs.slice(1))
         if (!options.json) {
           throw new Error("usage: pylon accounts connect codex --account <ref> [--home <path>] [--openagents-link|--openagents-attempt-id <id>] --json")
         }

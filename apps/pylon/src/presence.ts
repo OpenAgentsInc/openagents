@@ -1,6 +1,13 @@
 import { createHash } from "node:crypto"
+import { stat } from "node:fs/promises"
+import { homedir } from "node:os"
+import { join } from "node:path"
 import { PYLON_CLIENT_VERSION, type PylonClientVersion } from "./version.js"
 import type { BootstrapSummary } from "./bootstrap.js"
+import {
+  loadPylonAccountRegistry,
+  normalizeAccountHome,
+} from "./account-registry.js"
 import {
   PYLON_NIP90_PROVIDER_CAPABILITY_REF,
   providerNip90LaneRefs,
@@ -136,6 +143,8 @@ export type PylonCodingServiceCapacity = {
   service: "claude" | "codex"
 }
 
+export type PylonCodingServiceReadyCounts = Partial<Record<PylonCodingServiceCapacity["service"], number>>
+
 export function sha256Base64Url(input: string) {
   return createHash("sha256").update(input).digest("base64url")
 }
@@ -165,6 +174,7 @@ const nonNegativeEnvInteger = (
 export function codingServiceCapacityFromRuntime(
   state: PylonLocalState,
   env: NodeJS.ProcessEnv = process.env,
+  readyCounts: PylonCodingServiceReadyCounts = {},
 ): PylonCodingServiceCapacity[] {
   const capabilityRefs = publishableCapabilityRefs(state.runtime.capabilityRefs)
   const serviceConfig = [
@@ -187,7 +197,9 @@ export function codingServiceCapacityFromRuntime(
   return serviceConfig
     .filter(config => capabilityRefs.includes(config.capabilityRef))
     .map(config => {
-      const ready = nonNegativeEnvInteger(env, config.concurrencyKey, 1)
+      const observedReady = Math.max(0, readyCounts[config.service] ?? 0)
+      const fallbackReady = observedReady > 0 ? observedReady : 1
+      const ready = nonNegativeEnvInteger(env, config.concurrencyKey, fallbackReady)
       const busy = Math.min(nonNegativeEnvInteger(env, config.busyKey, 0), ready)
       const queued = nonNegativeEnvInteger(env, config.queuedKey, 0)
       return {
@@ -212,6 +224,41 @@ export const codingServiceCapacityRefs = (
     `load.coding.${item.service}.queued=${item.queued}`,
   ]),
 })
+
+async function codexHomeHasAuth(home: string): Promise<boolean> {
+  try {
+    const info = await stat(join(home, "auth.json"))
+    return info.isFile() && info.size > 0
+  } catch {
+    return false
+  }
+}
+
+export async function localCodingServiceReadyCounts(
+  summary: Pick<BootstrapSummary, "paths">,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<PylonCodingServiceReadyCounts> {
+  const codexHomes = new Set<string>()
+  const configuredCodexHome = env.CODEX_HOME?.trim()
+  codexHomes.add(
+    configuredCodexHome && configuredCodexHome.length > 0
+      ? normalizeAccountHome(configuredCodexHome)
+      : join(homedir(), ".codex"),
+  )
+  for (const entry of await loadPylonAccountRegistry(summary)) {
+    if (entry.provider === "codex") {
+      codexHomes.add(entry.home)
+    }
+  }
+
+  let codex = 0
+  for (const home of codexHomes) {
+    if (await codexHomeHasAuth(home)) {
+      codex += 1
+    }
+  }
+  return codex > 0 ? { codex } : {}
+}
 
 export async function createSignedHeaders(input: {
   method: string
@@ -367,7 +414,11 @@ export async function sendHeartbeat(summary: BootstrapSummary, options: Presence
     }
   }
   const codingRefs = codingServiceCapacityRefs(
-    codingServiceCapacityFromRuntime(state, options.env ?? process.env),
+    codingServiceCapacityFromRuntime(
+      state,
+      options.env ?? process.env,
+      await localCodingServiceReadyCounts(summary, options.env ?? process.env),
+    ),
   )
   const body: PylonHeartbeatRequest = {
     schema: "openagents.pylon.heartbeat.v0.3",

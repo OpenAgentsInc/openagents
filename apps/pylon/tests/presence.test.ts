@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { afterEach, describe, expect, test } from "bun:test"
@@ -408,6 +408,70 @@ describe("Pylon presence registration and heartbeat", () => {
           "load.coding.codex.queued=2",
           "load.coding.claude.busy=0",
           "load.coding.claude.queued=3",
+        ]),
+      )
+    })
+  })
+
+  test("heartbeat defaults Codex capacity to connected account homes", async () => {
+    await withTempHome(async (home) => {
+      const fake = fakePresenceServer()
+      const summary = createBootstrapSummary(
+        parseBootstrapArgs([
+          "--display-name",
+          "Multi-Codex Capacity Test",
+          "--capability-ref",
+          CODEX_AGENT_CAPABILITY_REF,
+        ]),
+        { PYLON_HOME: home },
+        "darwin",
+      )
+      const codexOne = join(home, "codex-one")
+      const codexTwo = join(home, "codex-two")
+      const codexThree = join(home, "codex-three")
+      for (const accountHome of [codexOne, codexTwo, codexThree]) {
+        await mkdir(accountHome, { recursive: true })
+        await writeFile(join(accountHome, "auth.json"), "{}\n")
+      }
+      await writeFile(
+        summary.paths.config,
+        `${JSON.stringify(
+          {
+            dev: {
+              accounts: [
+                { ref: "codex-one", provider: "codex", home: codexOne },
+                { ref: "codex-two", provider: "codex", home: codexTwo },
+                { ref: "codex-three", provider: "codex", home: codexThree },
+              ],
+            },
+          },
+          null,
+          2,
+        )}\n`,
+      )
+      const env = {
+        CODEX_HOME: join(home, "missing-default-codex"),
+        PYLON_ACCOUNT_HOME_ROOT: join(home, "no-sibling-scan"),
+        PYLON_HOME: home,
+      } as NodeJS.ProcessEnv
+
+      await sendHeartbeat(summary, {
+        baseUrl: fake.baseUrl,
+        env,
+        walletProbe: offlineWalletProbe,
+      })
+
+      const heartbeat = fake.requests.filter(r => r.path.includes("/heartbeat")).at(-1)!
+      expect(heartbeat.body.capacityRefs).toEqual(
+        expect.arrayContaining([
+          "capacity.coding.codex.ready=3",
+          "capacity.coding.codex.available=3",
+        ]),
+      )
+      expect(heartbeat.body.loadRefs).toEqual(
+        expect.arrayContaining([
+          "load.coding.codex.busy=0",
+          "load.coding.codex.queued=0",
         ]),
       )
     })

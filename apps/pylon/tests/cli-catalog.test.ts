@@ -18,7 +18,7 @@ describe("pylon command catalog", () => {
   })
 
   test("the new CL-5035 steering verbs are all listed", () => {
-    for (const name of ["help", "sessions", "approvals", "deploy", "training", "khala", "mcp"]) {
+    for (const name of ["help", "sessions", "approvals", "deploy", "training", "khala", "mcp", "codex"]) {
       expect(findCommandEntry(name), `missing ${name}`).toBeDefined()
     }
   })
@@ -82,6 +82,15 @@ describe("pylon command catalog", () => {
     expect(entry.args[0]?.name).toBe("config")
     expect(entry.args.some((arg) => arg.name === "--command")).toBe(true)
     expect(entry.args.some((arg) => arg.name === "--agent-token")).toBe(true)
+  })
+
+  test("codex account inventory alias is catalogued", () => {
+    const entry = findCommandEntry("codex")!
+    expect(entry.summary).toContain("codex accounts list --json")
+    expect(entry.args[0]?.name).toBe("accounts")
+    expect(entry.args[1]?.name).toContain("list")
+    expect(entry.spends).toBe(false)
+    expect(entry.json).toBe(true)
   })
 
   test("assignment runner advertises pinned no-spend execution", () => {

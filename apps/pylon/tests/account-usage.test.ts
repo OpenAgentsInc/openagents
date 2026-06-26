@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test"
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
-
 import {
   collectPylonAccountUsageSummary,
   collectPylonAccountsList,
@@ -16,6 +15,9 @@ import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
 import { hashPylonAccountRef } from "../src/account-registry"
 import { assertPublicProjectionSafe } from "../src/state"
 
+const INDEX = join(import.meta.dir, "..", "src", "index.ts")
+const CWD = join(import.meta.dir, "..")
+
 async function withHome<T>(fn: (home: string) => Promise<T>) {
   const home = await mkdtemp(join(tmpdir(), "pylon-account-usage-"))
   try {
@@ -25,7 +27,46 @@ async function withHome<T>(fn: (home: string) => Promise<T>) {
   }
 }
 
+async function runPylonCli(args: string[], env: Record<string, string | undefined>) {
+  const proc = Bun.spawn(["bun", INDEX, ...args], {
+    cwd: CWD,
+    env,
+    stderr: "pipe",
+    stdout: "pipe",
+  })
+  const timeout = setTimeout(() => proc.kill(), 5_000)
+  try {
+    const [exitCode, stdout, stderr] = await Promise.all([
+      proc.exited,
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+    ])
+    return { exitCode, stdout, stderr }
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 describe("pylon account usage", () => {
+  test("codex accounts list aliases the local account inventory command", async () => {
+    await withHome(async (home) => {
+      const proc = await runPylonCli(["codex", "accounts", "list", "--json"], {
+        ...Bun.env,
+        CODEX_HOME: join(home, "codex-default"),
+        CLAUDE_CONFIG_DIR: join(home, "claude-default"),
+        PYLON_ACCOUNT_HOME_ROOT: join(home, "no-sibling-scan"),
+        PYLON_HOME: home,
+      })
+
+      expect(proc.exitCode).toBe(0)
+      expect(proc.stderr).toBe("")
+      const projection = JSON.parse(proc.stdout)
+      expect(projection.schema).toBe("openagents.pylon.accounts_list.v0.3")
+      expect(projection.accounts.some((account: { provider: string }) => account.provider === "codex")).toBe(true)
+      assertPublicProjectionSafe(projection)
+    })
+  })
+
   test("parses Codex rate-limit header families into labeled snapshots", () => {
     const snapshots = parseCodexRateLimitHeaders({
       "x-codex-primary-used-percent": "35",

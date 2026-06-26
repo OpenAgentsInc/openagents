@@ -103,8 +103,8 @@ Through Pylons".
 > real `pylon auth codex` flow already uses isolated per-account homes
 > (`<pylon home>/accounts/codex/<ref>`) and must never write to `~/.codex`.
 > To inspect connected accounts, use `pylon accounts list` (human view: email +
-> last linked) or `pylon accounts list --json` (public-safe) — never re-run a
-> login to "check".
+> last linked) or `pylon codex accounts list --json` (public-safe alias for
+> `pylon accounts list --json`) — never re-run a login to "check".
 
 Prerequisites:
 
@@ -131,15 +131,15 @@ current worktree before using it as evidence for Pylon/Codex delegation.
 0. Confirm the linked Codex account inventory:
 
 ```sh
-$PYLON accounts list --json
+$PYLON codex accounts list --json
 ```
 
 Expected output lists each configured Codex account with
 `readiness.state: "ready"` and `capability.pylon.local_codex` before you route
 work to it. Use this before parallel delegation and after every new
-`pylon auth codex` login. If a local wrapper exposes the same inventory command
-as `codex accounts list --json`, its JSON must be equivalent before you treat it
-as proof of connected capacity. For a specific account proof, run the refresh
+`pylon auth codex` login. The older `$PYLON accounts list --json` path remains
+equivalent; prefer the Codex namespaced alias in Pylon/Codex runbooks so the
+operator intent is unambiguous. For a specific account proof, run the refresh
 path explicitly:
 
 ```sh

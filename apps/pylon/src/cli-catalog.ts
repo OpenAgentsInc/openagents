@@ -136,6 +136,22 @@ export const PYLON_COMMAND_CATALOG: readonly PylonCommandEntry[] = [
     ],
   },
   {
+    command: "codex",
+    summary: "Codex account namespace alias; `codex accounts list --json` is equivalent to `accounts list --json`.",
+    mutates: true,
+    spends: false,
+    json: true,
+    args: [
+      pos("accounts", "Codex account sub-namespace."),
+      pos("list|usage|connect", "Account subcommand forwarded to the accounts command."),
+      opt("--account", "connect/usage: stable local Codex account ref."),
+      opt("--base-url", "connect --openagents-link: OpenAgents base URL."),
+      opt("--home", "connect: existing or derived local Codex home."),
+      flag("--json", "Emit JSON."),
+      flag("--refresh", "usage: refresh provider snapshots."),
+    ],
+  },
+  {
     command: "balance",
     summary: "Read projection-safe wallet/earnings balance (never seed/offers).",
     mutates: false,
