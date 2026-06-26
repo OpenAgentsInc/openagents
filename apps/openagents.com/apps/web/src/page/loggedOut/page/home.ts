@@ -978,9 +978,7 @@ export const khalaTokensServedCounter = (
 // an aria-label summary, each bar a title element, and a visually-hidden
 // table-like text fallback lists every day + value.
 
-const CHART_VIEW_WIDTH = 320
-const CHART_VIEW_HEIGHT = 96
-const CHART_BASELINE_Y = CHART_VIEW_HEIGHT - 1
+const HISTORY_DAY_SECONDS = 24 * 60 * 60
 const HISTORY_CHART_MAX_DAYS = 4
 
 const compactNumberFormatter = new Intl.NumberFormat('en-US', {
@@ -1069,14 +1067,29 @@ const historyChartPlaceholder = (label: string): Html => {
 // its served-token count, so the data is never locked inside the SVG.
 const historyTextFallback = (
   series: ReadonlyArray<PublicKhalaTokensServedHistoryPoint>,
+  projection: HistoryProjection | undefined = undefined,
 ): Html => {
   const h = html<Message>()
 
   return h.ul(
     [Ui.className<Message>('sr-only')],
-    series.map(point =>
-      h.li([], [`${point.day}: ${formatNumber(point.tokensServed)} tokens`]),
-    ),
+    [
+      ...series.map(point =>
+        h.li([], [`${point.day}: ${formatNumber(point.tokensServed)} tokens`]),
+      ),
+      ...(projection === undefined
+        ? []
+        : [
+            h.li(
+              [],
+              [
+                `${projection.day} projected by midnight: ${formatNumber(
+                  projection.projectedTokens,
+                )} tokens`,
+              ],
+            ),
+          ]),
+    ],
   )
 }
 
@@ -1183,140 +1196,341 @@ const recentContiguousHistorySeries = (
   return selected
 }
 
-const historyDayValueRail = (
-  series: ReadonlyArray<PublicKhalaTokensServedHistoryPoint>,
-  maxTokens: number,
-): Html => {
-  const h = html<Message>()
+type HistoryTimezoneParts = Readonly<{
+  day: number
+  hour: number
+  minute: number
+  month: number
+  second: number
+  year: number
+}>
 
-  return h.ul(
-    [
-      Ui.className<Message>(
-        'm-0 flex max-w-full list-none gap-1.5 overflow-x-auto p-0 pb-1',
-      ),
-    ],
-    series.map(point => {
-      const isPeak = point.tokensServed === maxTokens && maxTokens > 0
+type HistoryProjection = Readonly<{
+  day: string
+  elapsedSeconds: number
+  observedTokens: number
+  projectedExtraTokens: number
+  projectedTokens: number
+}>
 
-      return h.li(
-        [
-          h.DataAttribute('day', point.day),
-          h.DataAttribute('highlight', isPeak ? 'peak' : 'normal'),
-          h.Attribute(
-            'title',
-            `${point.day}: ${formatNumber(point.tokensServed)} tokens`,
-          ),
-          Ui.className<Message>(
-            `grid min-w-[4.85rem] gap-1 border px-2 py-1.5 ${
-              isPeak
-                ? 'border-[#00c853] bg-[#062010]'
-                : 'border-[#1d1d1d] bg-[#050505]'
-            }`,
-          ),
-        ],
-        [
-          h.span(
-            [
-              Ui.className<Message>(
-                isPeak
-                  ? 'text-[0.58rem] uppercase leading-none text-[#9ad6b7]'
-                  : 'text-[0.58rem] uppercase leading-none text-white/35',
-              ),
-            ],
-            [formatHistoryDayLabel(point.day)],
-          ),
-          h.span(
-            [
-              Ui.className<Message>(
-                isPeak
-                  ? 'text-[0.72rem] font-semibold leading-none tabular-nums text-[#f1efe8]'
-                  : 'text-[0.72rem] font-semibold leading-none tabular-nums text-white/70',
-              ),
-            ],
-            [formatCompactNumber(point.tokensServed)],
-          ),
-        ],
-      )
-    }),
-  )
+const historyNumberPart = (
+  parts: ReadonlyArray<Intl.DateTimeFormatPart>,
+  type: Intl.DateTimeFormatPartTypes,
+): number => Number(parts.find(part => part.type === type)?.value ?? '0')
+
+const historyPad2 = (value: number): string =>
+  value.toString().padStart(2, '0')
+
+const isoTimestampMs = (value: string): number | undefined => {
+  const match =
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?Z$/.exec(
+      value,
+    )
+  if (match === null) {
+    return undefined
+  }
+
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const hour = Number(match[4])
+  const minute = Number(match[5])
+  const second = Number(match[6])
+  const millisecond = Number((match[7] ?? '0').padEnd(3, '0'))
+
+  if (
+    historyDayNumber(`${year}-${historyPad2(month)}-${historyPad2(day)}`) ===
+      undefined ||
+    hour < 0 ||
+    hour > 23 ||
+    minute < 0 ||
+    minute > 59 ||
+    second < 0 ||
+    second > 59 ||
+    millisecond < 0 ||
+    millisecond > 999
+  ) {
+    return undefined
+  }
+
+  return Date.UTC(year, month - 1, day, hour, minute, second, millisecond)
 }
+
+const historyTimezoneParts = (
+  generatedAt: string | undefined,
+  timezone: string,
+): HistoryTimezoneParts | undefined => {
+  if (generatedAt === undefined) {
+    return undefined
+  }
+
+  const timestampMs = isoTimestampMs(generatedAt)
+  if (timestampMs === undefined) {
+    return undefined
+  }
+
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      day: '2-digit',
+      hour: '2-digit',
+      hourCycle: 'h23',
+      minute: '2-digit',
+      month: '2-digit',
+      second: '2-digit',
+      timeZone: timezone,
+      year: 'numeric',
+    })
+    const parts = formatter.formatToParts(timestampMs)
+
+    return {
+      day: historyNumberPart(parts, 'day'),
+      hour: historyNumberPart(parts, 'hour'),
+      minute: historyNumberPart(parts, 'minute'),
+      month: historyNumberPart(parts, 'month'),
+      second: historyNumberPart(parts, 'second'),
+      year: historyNumberPart(parts, 'year'),
+    }
+  } catch {
+    return undefined
+  }
+}
+
+const historyDayFromTimezoneParts = (parts: HistoryTimezoneParts): string =>
+  `${parts.year}-${historyPad2(parts.month)}-${historyPad2(parts.day)}`
+
+const historyElapsedDaySeconds = (parts: HistoryTimezoneParts): number =>
+  parts.hour * 60 * 60 + parts.minute * 60 + parts.second
+
+const latestDayProjection = (
+  series: ReadonlyArray<PublicKhalaTokensServedHistoryPoint>,
+  generatedAt: string | undefined,
+  timezone: string,
+): HistoryProjection | undefined => {
+  const latest = series[series.length - 1]
+  if (latest === undefined || latest.tokensServed <= 0) {
+    return undefined
+  }
+
+  const parts = historyTimezoneParts(generatedAt, timezone)
+  if (parts === undefined || historyDayFromTimezoneParts(parts) !== latest.day) {
+    return undefined
+  }
+
+  const elapsedSeconds = historyElapsedDaySeconds(parts)
+  if (elapsedSeconds <= 0 || elapsedSeconds >= HISTORY_DAY_SECONDS) {
+    return undefined
+  }
+
+  const projectedTokens = Math.max(
+    latest.tokensServed,
+    Math.round((latest.tokensServed * HISTORY_DAY_SECONDS) / elapsedSeconds),
+  )
+  const projectedExtraTokens = projectedTokens - latest.tokensServed
+  if (projectedExtraTokens <= 0) {
+    return undefined
+  }
+
+  return {
+    day: latest.day,
+    elapsedSeconds,
+    observedTokens: latest.tokensServed,
+    projectedExtraTokens,
+    projectedTokens,
+  }
+}
+
+const historyGridColumnsStyle = (count: number): string =>
+  `grid-template-columns: repeat(${Math.max(1, count)}, minmax(0, 1fr));`
+
+const historyBarHeightPercent = (tokens: number, maxTokens: number): number =>
+  maxTokens <= 0 ? 0 : Math.max(tokens > 0 ? 2 : 0, (tokens / maxTokens) * 100)
+
+const historyBarSegmentHeightStyle = (
+  tokens: number,
+  maxTokens: number,
+): string => `height: ${historyBarHeightPercent(tokens, maxTokens).toFixed(2)}%;`
+
+const historyProjectionSegmentStyle = (
+  tokens: number,
+  maxTokens: number,
+): string =>
+  [
+    historyBarSegmentHeightStyle(tokens, maxTokens),
+    'background-color: #000000;',
+    'background-image: repeating-linear-gradient(135deg, rgba(0, 200, 83, 0.95) 0px, rgba(0, 200, 83, 0.95) 2px, transparent 2px, transparent 7px);',
+  ].join(' ')
 
 const historyChartBars = (
   series: ReadonlyArray<PublicKhalaTokensServedHistoryPoint>,
+  projection: HistoryProjection | undefined = undefined,
 ): Html => {
   const h = html<Message>()
   const maxTokens = series.reduce(
     (max, point) => (point.tokensServed > max ? point.tokensServed : max),
     0,
   )
-  // Even gaps; bars take ~70% of each slot. With <=30 points the gap reads as
-  // clear separation without crowding.
-  const slot = CHART_VIEW_WIDTH / series.length
-  const barWidth = Math.max(1, slot * 0.7)
-
-  const bars = series.map((point, index) => {
-    // A zero-token day still shows a 1px sliver so the day is not invisible.
-    const heightRatio = maxTokens === 0 ? 0 : point.tokensServed / maxTokens
-    const barHeight = Math.max(
-      point.tokensServed > 0 ? 2 : 0,
-      heightRatio * (CHART_VIEW_HEIGHT - 4),
-    )
-    const x = index * slot + (slot - barWidth) / 2
-    const y = CHART_BASELINE_Y - barHeight
-
-    return h.rect(
-      [
-        h.Attribute('x', x.toFixed(2)),
-        h.Attribute('y', y.toFixed(2)),
-        h.Attribute('width', barWidth.toFixed(2)),
-        h.Attribute('height', barHeight.toFixed(2)),
-        h.Attribute('rx', '0.5'),
-        h.Fill('#00c853'),
-        h.Attribute('fill-opacity', point.tokensServed > 0 ? '0.85' : '0.25'),
-      ],
-      [
-        h.title(
-          [],
-          [`${point.day}: ${formatNumber(point.tokensServed)} tokens`],
-        ),
-      ],
-    )
-  })
+  const scaleMaxTokens = Math.max(maxTokens, projection?.projectedTokens ?? 0)
+  const gridStyle = historyGridColumnsStyle(series.length)
 
   const ariaLabel = `Tokens served per day for the last ${series.length} ${
     series.length === 1 ? 'day' : 'days'
-  }. Peak ${formatNumber(maxTokens)} tokens in a day.`
+  }. Peak ${formatNumber(maxTokens)} tokens in a day.${
+    projection === undefined
+      ? ''
+      : ` Current pace projects ${formatNumber(
+          projection.projectedTokens,
+        )} tokens by midnight.`
+  }`
 
   return h.div(
-    [],
+    [h.Role('img'), h.AriaLabel(ariaLabel)],
     [
-      h.svg(
+      h.ul(
         [
-          h.Role('img'),
-          h.AriaLabel(ariaLabel),
-          Ui.className<Message>('h-[96px] w-full'),
-          h.Xmlns('http://www.w3.org/2000/svg'),
-          h.ViewBox(`0 0 ${CHART_VIEW_WIDTH} ${CHART_VIEW_HEIGHT}`),
-          h.Attribute('preserveAspectRatio', 'none'),
-        ],
-        [
-          // Baseline rule, faint, on-brand.
-          h.line(
-            [
-              h.Attribute('x1', '0'),
-              h.Attribute('y1', String(CHART_BASELINE_Y)),
-              h.Attribute('x2', String(CHART_VIEW_WIDTH)),
-              h.Attribute('y2', String(CHART_BASELINE_Y)),
-              h.Attribute('stroke', '#242424'),
-              h.Attribute('stroke-width', '1'),
-            ],
-            [],
+          h.Attribute('style', gridStyle),
+          Ui.className<Message>(
+            'm-0 grid list-none gap-2 p-0 [overflow:visible]',
           ),
-          ...bars,
         ],
+        series.map(point => {
+          const pointProjection =
+            projection?.day === point.day ? projection : undefined
+          const isPeak = point.tokensServed === maxTokens && maxTokens > 0
+          const title =
+            pointProjection === undefined
+              ? `${point.day}: ${formatNumber(point.tokensServed)} tokens`
+              : `${point.day}: ${formatNumber(
+                  point.tokensServed,
+                )} tokens, projected ${formatNumber(
+                  pointProjection.projectedTokens,
+                )} by midnight`
+
+          return h.li(
+            [
+              h.DataAttribute('day', point.day),
+              h.DataAttribute('highlight', isPeak ? 'peak' : 'normal'),
+              h.DataAttribute(
+                'projection',
+                pointProjection === undefined ? 'none' : 'end-of-day',
+              ),
+              h.Attribute('title', title),
+              Ui.className<Message>('grid min-w-0 grid-rows-[9.25rem_auto]'),
+            ],
+            [
+              h.div(
+                [
+                  Ui.className<Message>(
+                    'flex h-[9.25rem] min-w-0 items-end border-b border-[#242424]',
+                  ),
+                ],
+                [
+                  h.div(
+                    [
+                      Ui.className<Message>(
+                        'flex h-full w-full min-w-0 flex-col justify-end',
+                      ),
+                    ],
+                    [
+                      ...(pointProjection === undefined
+                        ? []
+                        : [
+                            h.div(
+                              [
+                                h.DataAttribute(
+                                  'projected-tokens',
+                                  String(pointProjection.projectedTokens),
+                                ),
+                                h.Attribute(
+                                  'style',
+                                  historyProjectionSegmentStyle(
+                                    pointProjection.projectedExtraTokens,
+                                    scaleMaxTokens,
+                                  ),
+                                ),
+                                Ui.className<Message>(
+                                  'w-full border-x border-t border-[#00c853]/55',
+                                ),
+                              ],
+                              [],
+                            ),
+                          ]),
+                      h.div(
+                        [
+                          h.DataAttribute(
+                            'observed-tokens',
+                            String(point.tokensServed),
+                          ),
+                          h.Attribute(
+                            'style',
+                            historyBarSegmentHeightStyle(
+                              point.tokensServed,
+                              scaleMaxTokens,
+                            ),
+                          ),
+                          Ui.className<Message>(
+                            'w-full bg-[#00c853] opacity-90',
+                          ),
+                        ],
+                        [],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              h.div(
+                [
+                  Ui.className<Message>(
+                    `grid min-w-0 gap-1 border px-2 py-1.5 ${
+                      isPeak
+                        ? 'border-[#00c853] bg-[#062010]'
+                        : 'border-[#1d1d1d] bg-[#050505]'
+                    }`,
+                  ),
+                ],
+                [
+                  h.span(
+                    [
+                      Ui.className<Message>(
+                        isPeak
+                          ? 'truncate text-[0.58rem] uppercase leading-none text-[#9ad6b7]'
+                          : 'truncate text-[0.58rem] uppercase leading-none text-white/35',
+                      ),
+                    ],
+                    [formatHistoryDayLabel(point.day)],
+                  ),
+                  h.span(
+                    [
+                      Ui.className<Message>(
+                        isPeak
+                          ? 'truncate text-[0.72rem] font-semibold leading-none tabular-nums text-[#f1efe8]'
+                          : 'truncate text-[0.72rem] font-semibold leading-none tabular-nums text-white/70',
+                      ),
+                    ],
+                    [formatCompactNumber(point.tokensServed)],
+                  ),
+                  ...(pointProjection === undefined
+                    ? []
+                    : [
+                        h.span(
+                          [
+                            Ui.className<Message>(
+                              'truncate text-[0.56rem] font-medium leading-none tabular-nums text-[#75c999]',
+                            ),
+                          ],
+                          [
+                            `EOD ${formatCompactNumber(
+                              pointProjection.projectedTokens,
+                            )}`,
+                          ],
+                        ),
+                      ]),
+                ],
+              ),
+            ],
+          )
+        }),
       ),
-      historyDayValueRail(series, maxTokens),
-      historyTextFallback(series),
+      historyTextFallback(series, projection),
     ],
   )
 }
@@ -1359,15 +1573,26 @@ export const khalaTokensServedHistoryChart = (
                 point.tokensServed > max ? point.tokensServed : max,
               0,
             )
+            const projection = latestDayProjection(
+              chartSeries,
+              history.generatedAt,
+              history.timezone,
+            )
 
             return historyChartShell(
               true,
-              historyChartBars(chartSeries),
+              historyChartBars(chartSeries, projection),
               `Daily input + output tokens served across the network in ${history.timezone}. Last ${
                 chartSeries.length
               } ${chartSeries.length === 1 ? 'day' : 'days'}, peak ${formatCompactNumber(
                 peakTokens,
-              )} in a day.`,
+              )} in a day.${
+                projection === undefined
+                  ? ''
+                  : ` Current pace projects ${formatCompactNumber(
+                      projection.projectedTokens,
+                    )} by midnight.`
+              }`,
             )
           },
         }),

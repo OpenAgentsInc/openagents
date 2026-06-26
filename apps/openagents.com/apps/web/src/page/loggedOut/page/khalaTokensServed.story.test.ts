@@ -52,6 +52,7 @@ const sparseRecentHistory = PublicKhalaTokensServedHistory.make({
   window: '30d',
   bucket: 'day',
   timezone: 'America/Chicago',
+  generatedAt: '2026-06-26T19:20:00.000Z',
   series: [
     { day: '2026-06-11', tokensServed: 7 },
     { day: '2026-06-24', tokensServed: 14_700_000 },
@@ -274,6 +275,26 @@ describe('Khala Tokens Served history chart (#6227)', () => {
     expect(markup).toContain('14.7M')
     expect(markup).toContain('"data-highlight":"peak"')
     expect(markup).toContain('Last 3 days, peak 206.2M in a day.')
+  })
+
+  test('aligns every day label directly under its bar and projects today to midnight', () => {
+    const markup = JSON.stringify(
+      StatsPage.view(statsInputWithHistory(sparseRecentHistory)),
+    )
+
+    expect(markup).toContain(
+      'grid-template-columns: repeat(3, minmax(0, 1fr));',
+    )
+    expect(markup).toContain('grid-rows-[9.25rem_auto]')
+    expect(markup).toContain('h-[9.25rem]')
+    expect(markup).toContain('"data-projection":"end-of-day"')
+    expect(markup).toContain('"data-projected-tokens":"345265116"')
+    expect(markup).toContain('repeating-linear-gradient(135deg')
+    expect(markup).toContain('EOD 345.3M')
+    expect(markup).toContain(
+      '2026-06-26 projected by midnight: 345,265,116 tokens',
+    )
+    expect(markup).toContain('Current pace projects 345.3M by midnight.')
   })
 
   test('renders the same per-day curve on public /stats', () => {

@@ -988,6 +988,7 @@ export const PublicKhalaTokensServedHistory = S.Struct({
   window: S.String,
   bucket: S.String,
   timezone: S.String,
+  generatedAt: S.optionalKey(S.String),
   series: S.Array(PublicKhalaTokensServedHistoryPoint),
 })
 export type PublicKhalaTokensServedHistory =

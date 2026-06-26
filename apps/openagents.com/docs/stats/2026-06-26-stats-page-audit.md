@@ -36,7 +36,12 @@ the latest contiguous America/Chicago daily run, capped at four days, so sparse
 older buckets such as an isolated `2026-06-11` event do not appear beside the
 current `2026-06-24` onward run. Each displayed day appears as a compact
 `MM/DD` + value cell; the peak day is highlighted so the daily maximum is
-obvious without hovering.
+obvious without hovering. Bar columns and value cells share the same grid column
+so the visible day/value number sits directly under its bar. The latest
+America/Chicago day may add a black, green-striped end-of-day projection segment
+above the observed green segment; it is calculated from the public
+`generatedAt` timestamp's Central-time elapsed day seconds through midnight and
+is labeled as an `EOD` estimate, not counted as observed tokens.
 
 ## 5b Model Mix Endpoint
 
