@@ -167,6 +167,27 @@ describe('coding workflow delegation', () => {
     })
   })
 
+  test('does not require wallet readiness for unpaid local Codex delegation', async () => {
+    const result = await delegateCodingWorkflow({
+      classification,
+      linkedAgents: [linkedOwner],
+      makeId: () => 'id1',
+      nowIso,
+      pylonStore: makeStore({
+        registrations: [registration({ walletReady: false, walletRef: null })],
+      }),
+      rawBody: {},
+      requestId: 'chatcmpl_coding_no_wallet',
+    })
+    const assigned = expectAssigned(result)
+
+    expect(assigned.assignment.pylonRef).toBe('pylon.owner.codex')
+    expect(assigned.assignment.jobKind).toBe('codex_agent_task')
+    expect(assigned.assignment.codingAssignment?.codex).toMatchObject({
+      agentKind: 'codex_sdk',
+    })
+  })
+
   test('carries a public-safe workspace and objective into the Codex assignment', async () => {
     const workspace = {
       kind: 'git_checkout',

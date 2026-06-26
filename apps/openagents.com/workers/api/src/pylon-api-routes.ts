@@ -475,6 +475,8 @@ export const controlledPylonAssignmentDispatchGate = (
     paymentMode !== null &&
     paidAssignmentPaymentModes.has(paymentMode) &&
     !hasGateRefs(body.spendCapRefs)
+  const paidModeRequiresWallet =
+    paymentMode !== null && paidAssignmentPaymentModes.has(paymentMode)
   const duplicateRefs = activeDuplicateAssignmentRefs(
     input.activeAssignments,
     input.nowIso,
@@ -514,7 +516,9 @@ export const controlledPylonAssignmentDispatchGate = (
     ...(registration !== undefined && registration.status !== 'active'
       ? ['blocker.public.pylon_dispatch.pylon_not_active']
       : []),
-    ...(registration !== undefined && !registration.walletReady
+    ...(registration !== undefined &&
+    paidModeRequiresWallet &&
+    !registration.walletReady
       ? ['blocker.public.pylon_dispatch.wallet_not_ready']
       : []),
     ...(registration !== undefined &&

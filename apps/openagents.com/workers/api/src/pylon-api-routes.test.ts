@@ -2355,6 +2355,26 @@ describe('Pylon API routes', () => {
     )
   })
 
+  test('allows unpaid smoke dispatch without wallet readiness', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store)
+    await markOnline(store)
+
+    const create = await createAssignment(store, {
+      assignmentRef: 'assignment.public.unpaid_without_wallet',
+      idempotencyKey: 'assignment-unpaid-without-wallet',
+    })
+    const body = await responseJson<PylonRouteJson>(create)
+
+    expect(create.status).toBe(201)
+    expect(body.dispatchGate?.dispatchAllowed).toBe(true)
+    expect(body.dispatchGate?.noSpendDispatch).toBe(true)
+    expect(body.dispatchGate?.walletSpendAllowed).toBe(false)
+    expect(body.dispatchGate?.blockerRefs).not.toContain(
+      'blocker.public.pylon_dispatch.wallet_not_ready',
+    )
+  })
+
   test('allows parallel coding dispatches up to advertised ready Codex slots', async () => {
     const store = new MemoryPylonApiStore()
     await registerPylon(store, {

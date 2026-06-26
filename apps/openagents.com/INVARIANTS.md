@@ -1623,11 +1623,13 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   refs, closeout path refs, no-duplicate refs, no-Forum-publish refs, required
   capability refs, an explicit unpaused campaign state, and an explicit
   `forumAutoPublishAllowed:false` state.
-- Assignment dispatch must deny missing Pylons, non-active Pylons,
-  wallet-not-ready Pylons, offline Pylons, stale heartbeat Pylons,
-  below-minimum client versions, wrong capability refs, and duplicate
-  unexpired active assignments.
-- Paid assignment modes require public-safe spend-cap refs at dispatch time.
+- Assignment dispatch must deny missing Pylons, non-active Pylons, offline
+  Pylons, stale heartbeat Pylons, below-minimum client versions, wrong
+  capability refs, and duplicate unexpired active assignments. Paid assignment
+  modes must also deny wallet-not-ready Pylons.
+- Paid assignment modes require public-safe spend-cap refs and wallet readiness
+  at dispatch time. `unpaid_smoke` / no-spend local-agent assignments do not
+  require wallet readiness because they cannot spend, settle, or pay out.
   The assignment route still must not spend bitcoin, dispatch payouts, settle
   work, mutate provider accounts, or publish Forum posts.
 - Idempotency replay may return the original assignment response, but it must
@@ -1653,7 +1655,8 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
 - Delegated coding assignments must still pass
   `gate.public.pylon.assignment_dispatch.controlled.v1` and inherit its
   no-duplicate, no-auto-publish, capability, heartbeat, pause, rollback, and
-  closeout requirements.
+  closeout requirements. Khala -> Pylon -> Codex uses `unpaid_smoke`, so wallet
+  readiness is not a dispatch prerequisite for local no-spend coding work.
 - For caller-owned Khala -> Pylon -> Codex assignments, the local Pylon executor
   runs Codex with the SDK equivalent of
   `--dangerously-bypass-approvals-and-sandbox` (`danger-full-access`,
