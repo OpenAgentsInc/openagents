@@ -43,6 +43,7 @@ import {
 import { NOT_MEASURED, decodeKhalaTelemetryBlock } from './khala-telemetry'
 import { type MeteringContext, type MeteringHook } from './metering-hook'
 import {
+  type DispatchFailureTelemetryEvent,
   FIREWORKS_ADAPTER_ID,
   HYDRALISK_ADAPTER_ID,
   HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
@@ -1933,6 +1934,213 @@ describe('POST /v1/chat/completions', () => {
     // Metering attributes the request to the lane that actually served it.
     expect(captured).toHaveLength(1)
     expect(captured[0]?.adapterId).toBe('overflow')
+  })
+
+  test('retries the same lane before overflowing when route dispatch retry is configured', async () => {
+    let primaryCalls = 0
+    let overflowCalls = 0
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      complete: request => {
+        primaryCalls += 1
+        return primaryCalls === 1
+          ? Effect.fail(
+              new InferenceAdapterError({
+                adapterId: 'flaky-primary',
+                kind: 'provider_error',
+                reason: 'first attempt failed',
+                retryable: true,
+              }),
+            )
+          : stubEchoAdapter.complete(request)
+      },
+      id: 'flaky-primary',
+      stream: () =>
+        Effect.fail(
+          new InferenceAdapterError({
+            adapterId: 'flaky-primary',
+            reason: 'stream unused',
+            retryable: true,
+          }),
+        ),
+    })
+    registry.register({
+      ...echoAdapter('overflow'),
+      complete: request => {
+        overflowCalls += 1
+        return stubEchoAdapter.complete(request)
+      },
+    })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(helloBody),
+        baseDeps({
+          dispatch: {
+            retry: { maxRetriesPerLane: 1 },
+            sleep: () => Effect.void,
+          },
+          lanePlan: () => ['flaky-primary', 'overflow'],
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(primaryCalls).toBe(2)
+    expect(overflowCalls).toBe(0)
+  })
+
+  test('sheds internal stress requests when route dispatch shedding is configured', async () => {
+    let dispatched = false
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      ...echoAdapter('primary'),
+      complete: request => {
+        dispatched = true
+        return stubEchoAdapter.complete(request)
+      },
+    })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(helloBody),
+        baseDeps({
+          dispatch: {
+            shedding: {
+              demandClass: 'internal_stress',
+              slo: { breached: true, reason: 'external_ttft_p90' },
+            },
+          },
+          lanePlan: () => ['primary'],
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(502)
+    expect(dispatched).toBe(false)
+    const body = (await response.json()) as { reason: string }
+    expect(body.reason).toBe(
+      'request shed because SLO is breached: external_ttft_p90',
+    )
+  })
+
+  test('hedges external requests to a warm lane when route dispatch hedging is configured', async () => {
+    let primaryCalls = 0
+    let hedgeCalls = 0
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      ...echoAdapter('slow-primary'),
+      complete: request => {
+        primaryCalls += 1
+        return stubEchoAdapter.complete(request)
+      },
+    })
+    registry.register({
+      ...echoAdapter('warm-hedge'),
+      complete: request => {
+        hedgeCalls += 1
+        return stubEchoAdapter.complete(request)
+      },
+    })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(helloBody),
+        baseDeps({
+          dispatch: {
+            hedging: {
+              demandClass: 'external',
+              enabled: true,
+              ttftP99ThresholdMs: 500,
+            },
+            routingSignals: id =>
+              id === 'slow-primary'
+                ? { laneHealth: 'healthy', ttftP99Ms: 1_200, warmState: 'warm' }
+                : { laneHealth: 'healthy', ttftP99Ms: 120, warmState: 'warm' },
+            sleep: () => Effect.void,
+          },
+          lanePlan: () => ['slow-primary', 'warm-hedge'],
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(primaryCalls).toBe(0)
+    expect(hedgeCalls).toBe(1)
+    const body = (await response.json()) as {
+      openagents?: {
+        routing?: { fallback_reason: string | null }
+        worker?: string
+      }
+    }
+    expect(body.openagents?.worker).toBe('warm-hedge')
+    expect(body.openagents?.routing?.fallback_reason).toBe(
+      'hedged_ttft_p99_breach',
+    )
+  })
+
+  test('records route dispatch failure telemetry for empty-content fallback', async () => {
+    const events: Array<DispatchFailureTelemetryEvent> = []
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      complete: () =>
+        Effect.succeed({
+          content: '',
+          finishReason: 'stop',
+          servedModel: KHALA_MODEL_ID,
+          usage: { completionTokens: 0, promptTokens: 5, totalTokens: 5 },
+        }),
+      id: 'empty-lane',
+      stream: () => Effect.sync(() => []),
+    })
+    registry.register({
+      complete: () =>
+        Effect.succeed({
+          content: 'healthy fallback content',
+          finishReason: 'stop',
+          servedModel: KHALA_MODEL_ID,
+          usage: { completionTokens: 3, promptTokens: 5, totalTokens: 8 },
+        }),
+      id: 'healthy-lane',
+      stream: () => Effect.sync(() => []),
+    })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(helloBody),
+        baseDeps({
+          dispatch: {
+            failureTelemetry: event => {
+              events.push(event)
+            },
+            sleep: () => Effect.void,
+          },
+          lanePlan: () => ['empty-lane', 'healthy-lane'],
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(events).toEqual([
+      {
+        adapterId: 'empty-lane',
+        classifier: 'empty_content',
+        kind: 'empty_assistant_content',
+        retryable: true,
+        stage: 'validation_failure',
+      },
+      {
+        adapterId: 'healthy-lane',
+        classifier: 'fallback',
+        kind: 'empty_assistant_content',
+        retryable: true,
+        stage: 'fallback',
+      },
+    ])
   })
 
   test('continues past an empty assistant fallback lane and serves non-empty content', async () => {
