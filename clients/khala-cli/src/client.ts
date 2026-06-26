@@ -14,6 +14,7 @@ import {
   type ChatTurnOptions,
   type ChatTurnResult,
   type ChatTurnMetadata,
+  type FreeKeyResponse as FreeKeyResponseType,
   type KhalaFeedbackSubmitOptions,
   type KhalaStreamUsage,
 } from "./types.js"
@@ -70,7 +71,7 @@ export function fetchModels(options: Pick<ChatClientOptions, "baseUrl" | "fetch"
   })
 }
 
-export function mintFreeKey(options: Pick<ChatClientOptions, "baseUrl" | "fetch">): Effect.Effect<unknown, KhalaCliError> {
+export function mintFreeKey(options: Pick<ChatClientOptions, "baseUrl" | "fetch">): Effect.Effect<FreeKeyResponseType, KhalaCliError> {
   return Effect.gen(function* () {
     const response = yield* request({
       fetch: options.fetch,
@@ -393,6 +394,8 @@ function buildTurnMetadata(input: {
     servedModel: input.streamMetadata.servedModel,
     tokensPerSecond,
     traceRef: input.streamMetadata.traceRef,
+    traceUrl: input.streamMetadata.traceUrl,
+    traceUuid: input.streamMetadata.traceUuid,
     usage,
   }
 }

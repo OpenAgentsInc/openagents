@@ -4,9 +4,17 @@ export interface KhalaChangelogEntry {
   readonly bullets: ReadonlyArray<string>
 }
 
-export const KHALA_CLI_VERSION = "0.1.8"
+export const KHALA_CLI_VERSION = "0.1.9"
 
 export const KHALA_CHANGELOG: ReadonlyArray<KhalaChangelogEntry> = [
+  {
+    version: "0.1.9",
+    releasedAt: "2026-06-26T18:30:01.000Z",
+    bullets: [
+      "Adds /info and khala info with a CLI thread id plus owner-token trace viewing link.",
+      "Rewords /msginfo around Khala as the orchestrator and backend models/adapters as routing details.",
+    ],
+  },
   {
     version: "0.1.8",
     releasedAt: "2026-06-26T18:04:35.000Z",

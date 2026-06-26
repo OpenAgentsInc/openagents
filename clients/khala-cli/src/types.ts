@@ -57,6 +57,8 @@ export const PublicMetaPayload = S.Struct({
   servedAdapterId: S.optional(S.String),
   servedModel: S.optional(S.String),
   traceRef: S.optional(S.String),
+  traceUrl: S.optional(S.String),
+  traceUuid: S.optional(S.String),
   usage: S.optional(KhalaStreamUsage),
 })
 export type PublicMetaPayload = typeof PublicMetaPayload.Type
@@ -64,6 +66,7 @@ export type PublicMetaPayload = typeof PublicMetaPayload.Type
 export const OpenAiStreamPayload = S.Struct({
   id: S.optional(S.String),
   model: S.optional(S.String),
+  openagents: S.optional(S.Unknown),
   choices: S.Array(
     S.Struct({
       delta: S.Struct({
@@ -82,7 +85,12 @@ export const OpenAiStreamPayload = S.Struct({
 })
 
 export const OpenAiModelsResponse = S.Record(S.String, S.Unknown)
-export const FreeKeyResponse = S.Record(S.String, S.Unknown)
+export const FreeKeyResponse = S.Struct({
+  credential: S.Struct({
+    token: S.String,
+  }),
+})
+export type FreeKeyResponse = typeof FreeKeyResponse.Type
 
 export const KhalaFeedbackResponse = S.Struct({
   schemaVersion: S.String,
@@ -144,6 +152,8 @@ export interface ChatTurnMetadata {
   readonly servedModel?: string | undefined
   readonly tokensPerSecond?: number | undefined
   readonly traceRef?: string | undefined
+  readonly traceUrl?: string | undefined
+  readonly traceUuid?: string | undefined
   readonly usage: KhalaStreamUsage
 }
 

@@ -105,6 +105,28 @@ describe("SSE parsing", () => {
     expect(result.metadata.servedModel).toBe("openagents/khala")
   })
 
+  test("extracts Khala orchestration metadata from OpenAI-compatible openagents receipt", async () => {
+    const fakeFetch = (async () => sseResponse([
+      'data: {"id":"chat_1","model":"openagents/khala","choices":[{"delta":{"content":"Hi"}}]}',
+      'data: {"id":"chat_1","model":"openagents/khala","choices":[],"openagents":{"served_model":"poolside/laguna-m.1-20260312:free","worker":"openrouter-khala-glm-fallback","routing":{"fallback_reason":"rate_limited"}},"usage":{"prompt_tokens":4,"completion_tokens":1,"total_tokens":5}}',
+      "data: [DONE]",
+      "",
+    ].join("\n\n"))) as unknown as typeof fetch
+
+    const result = await Effect.runPromise(runChatTurn({
+      mode: "api",
+      baseUrl: "https://example.test",
+      token: "oa_agent_test",
+      fetch: fakeFetch,
+      messages: [{ role: "user", content: "Hello" }],
+    }))
+
+    expect(result.metadata.requestedModel).toBe("openagents/khala")
+    expect(result.metadata.servedModel).toBe("poolside/laguna-m.1-20260312:free")
+    expect(result.metadata.servedAdapterId).toBe("openrouter-khala-glm-fallback")
+    expect(result.metadata.fallbackReason).toBe("rate_limited")
+  })
+
   test("keeps OpenAI-compatible reasoning_content separate from answer text", async () => {
     const fakeFetch = (async () => sseResponse([
       'data: {"id":"chat_1","model":"openagents/khala","choices":[{"delta":{"reasoning_content":"internal"}}]}',

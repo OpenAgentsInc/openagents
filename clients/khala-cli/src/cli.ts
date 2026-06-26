@@ -4,6 +4,7 @@ import { KHALA_CLI_VERSION, formatKhalaChangelog } from "./changelog.js"
 import { fetchModels, fetchTokensServed, mintFreeKey, runChatTurn, submitFeedback, toKhalaCliError } from "./client.js"
 import { appendPromptHistory, readPromptFromTerminal } from "./input.js"
 import { renderMarkdownDeltaForTerminal, renderMarkdownForTerminal, renderReasoningMarkdownDeltaForTerminal, terminalStyle } from "./terminal.js"
+import { ensureStoredAgentToken, traceTokenPath } from "./token-store.js"
 import { DEFAULT_BASE_URL, type ChatMode, type ChatTurnMetadata, type KhalaChatMessage, type KhalaCliError, type KhalaTokensResponse } from "./types.js"
 import { startKhalaAutoUpdate } from "./updater.js"
 
@@ -12,6 +13,7 @@ type ParsedCommand =
   | { readonly kind: "changelog" }
   | { readonly kind: "feedback"; readonly text: string | undefined }
   | { readonly kind: "help" }
+  | { readonly kind: "info" }
   | { readonly kind: "tokens" }
   | { readonly kind: "version" }
 
@@ -64,6 +66,16 @@ export async function runKhalaCli(argv: ReadonlyArray<string>, env: Record<strin
     }
     if (args.command.kind === "help") {
       process.stdout.write(usage())
+      return 0
+    }
+    if (args.command.kind === "info") {
+      process.stdout.write(`${await formatInfo({
+        args,
+        env,
+        lastMessageInfo: undefined,
+        lastTraceRef: undefined,
+        sessionId: createCliSessionId(),
+      })}\n`)
       return 0
     }
     if (args.command.kind === "tokens") {
@@ -180,6 +192,8 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
     command = { kind: "changelog" }
   } else if (maybeCommand === "help") {
     command = { kind: "help" }
+  } else if (maybeCommand === "info") {
+    command = { kind: "info" }
   } else if (maybeCommand === "tokens") {
     command = { kind: "tokens" }
   } else if (maybeCommand === "version") {
@@ -208,6 +222,7 @@ async function runInteractive(args: ParsedArgs, env: Record<string, string | und
   let promptHistory: ReadonlyArray<string> = []
   let lastTraceRef: string | undefined
   let lastMessageInfo: ChatTurnMetadata | undefined
+  const sessionId = createCliSessionId()
   process.stdout.write(
     `Khala CLI v${KHALA_CLI_VERSION}. Type /help for commands, /exit to quit.\n\n`,
   )
@@ -232,7 +247,7 @@ async function runInteractive(args: ParsedArgs, env: Record<string, string | und
     }
     promptHistory = appendPromptHistory(promptHistory, prompt)
     if (prompt.trim().startsWith("/")) {
-      const outcome = await handleSlashCommand(args, prompt.trim(), lastTraceRef, lastMessageInfo)
+      const outcome = await handleSlashCommand(args, env, prompt.trim(), lastTraceRef, lastMessageInfo, sessionId)
       if (outcome === "exit") return
       continue
     }
@@ -285,9 +300,11 @@ async function runInteractive(args: ParsedArgs, env: Record<string, string | und
 
 async function handleSlashCommand(
   args: ParsedArgs,
+  env: Record<string, string | undefined>,
   input: string,
   lastTraceRef: string | undefined,
   lastMessageInfo: ChatTurnMetadata | undefined,
+  sessionId: string,
 ): Promise<"handled" | "exit"> {
   const [command = "", ...rest] = input.split(/\s+/)
   const argument = rest.join(" ").trim()
@@ -305,6 +322,16 @@ async function handleSlashCommand(
   }
   if (command === "/msginfo") {
     process.stdout.write(`${terminalStyle.assistant("Khala:")} ${formatMessageInfo(lastMessageInfo)}\n\n`)
+    return "handled"
+  }
+  if (command === "/info") {
+    process.stdout.write(`${terminalStyle.assistant("Khala:")} ${await formatInfo({
+      args,
+      env,
+      lastMessageInfo,
+      lastTraceRef,
+      sessionId,
+    })}\n\n`)
     return "handled"
   }
   if (command === "/changelog") {
@@ -439,9 +466,11 @@ function formatMessageInfo(info: ChatTurnMetadata | undefined): string {
   const lines = [
     "Last message metadata:",
     `trace: ${info.traceRef ?? "not reported"}`,
-    `model: requested ${info.requestedModel ?? "openagents/khala"}; served ${info.servedModel ?? "not reported"}`,
-    `adapter: ${info.servedAdapterId ?? "not reported"}${info.primaryAdapterId === undefined ? "" : ` (primary ${info.primaryAdapterId})`}`,
-    `fallback: ${info.fallbackReason ?? "none reported"}`,
+    `orchestrator: ${info.requestedModel ?? "openagents/khala"}`,
+    `backend model: ${info.servedModel ?? "not reported"}`,
+    `backend adapter: ${info.servedAdapterId ?? "not reported"}`,
+    `primary adapter: ${info.primaryAdapterId ?? "same as backend or not reported"}`,
+    `route: ${formatFallback(info)}`,
     `tokens: ${info.usage.totalTokens} total (${info.usage.promptTokens} prompt, ${info.usage.completionTokens} completion${info.usage.cachedPromptTokens === undefined ? "" : `, ${info.usage.cachedPromptTokens} cached`}; ${usageNote})`,
     `speed: ${info.tokensPerSecond === undefined ? "not measured" : `${info.tokensPerSecond.toFixed(1)} tok/s`} over ${(info.durationMs / 1_000).toFixed(2)}s`,
     `finish: ${info.finishReason ?? "not reported"}`,
@@ -449,10 +478,72 @@ function formatMessageInfo(info: ChatTurnMetadata | undefined): string {
   return terminalStyle.meta(lines.join("\n"))
 }
 
+function formatFallback(info: ChatTurnMetadata): string {
+  if (info.fallbackReason === undefined || info.fallbackReason === null) {
+    return "primary backend, no fallback reported"
+  }
+  const primary = info.primaryAdapterId ?? "primary adapter"
+  const backend = info.servedAdapterId ?? "fallback adapter"
+  return `${primary} reported ${info.fallbackReason}; Khala used ${backend}`
+}
+
+async function formatInfo(input: {
+  readonly args: ParsedArgs
+  readonly env: Record<string, string | undefined>
+  readonly lastMessageInfo: ChatTurnMetadata | undefined
+  readonly lastTraceRef: string | undefined
+  readonly sessionId: string
+}): Promise<string> {
+  const lines = [
+    "Current Khala session:",
+    `thread: ${input.sessionId}`,
+    `last request trace: ${input.lastMessageInfo?.traceRef ?? input.lastTraceRef ?? "not reported yet"}`,
+  ]
+  const traceUrl = resolveTraceUrl(input.args.baseUrl, input.lastMessageInfo)
+  if (traceUrl !== undefined) {
+    lines.push(`trace: ${traceUrl}`)
+    return terminalStyle.meta(lines.join("\n"))
+  }
+
+  try {
+    const token = await ensureStoredAgentToken({
+      baseUrl: input.args.baseUrl,
+      env: input.env,
+      explicitToken: input.args.token,
+    })
+    lines.push(`traces: ${baseUrlFor(input.args.baseUrl)}/traces?token=${encodeURIComponent(token)}`)
+    lines.push(`token store: ${traceTokenPath(input.env)}`)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    lines.push(`traces: unavailable (${message})`)
+  }
+  return terminalStyle.meta(lines.join("\n"))
+}
+
+function resolveTraceUrl(baseUrl: string, info: ChatTurnMetadata | undefined): string | undefined {
+  if (info?.traceUrl !== undefined) {
+    if (info.traceUrl.startsWith("http://") || info.traceUrl.startsWith("https://")) return info.traceUrl
+    return `${baseUrlFor(baseUrl)}${info.traceUrl.startsWith("/") ? "" : "/"}${info.traceUrl}`
+  }
+  if (info?.traceUuid !== undefined) {
+    return `${baseUrlFor(baseUrl)}/trace/${encodeURIComponent(info.traceUuid)}`
+  }
+  return undefined
+}
+
+function baseUrlFor(baseUrl: string): string {
+  return baseUrl.replace(/\/+$/, "")
+}
+
+function createCliSessionId(): string {
+  return `khala_cli.${crypto.randomUUID()}`
+}
+
 function interactiveHelp(): string {
   return `${terminalStyle.meta("Slash commands:")}
 /help              Show this command list
 /feedback <text>   Save product feedback with the last trace when available
+/info              Show this CLI session and trace viewing link
 /msginfo           Show metadata for the last Khala response
 /tokens            Show global Khala tokens served
 /changelog         Show recent Khala CLI changes
@@ -467,6 +558,7 @@ function usage(): string {
 Usage:
   khala
   khala help
+  khala info
   khala version
   khala changelog
   khala tokens
@@ -478,6 +570,7 @@ Usage:
 Interactive commands:
   /help              Show slash commands
   /feedback <text>   Save product feedback without sending it to inference
+  /info              Show this CLI session and trace viewing link
   /msginfo           Show metadata for the last Khala response
   /tokens            Show global Khala tokens served
   /changelog         Show recent Khala CLI changes

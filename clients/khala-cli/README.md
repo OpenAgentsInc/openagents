@@ -7,6 +7,7 @@ bunx @openagentsinc/khala --prompt "Say hello in one short sentence."
 khala feedback "The input ate my transcript."
 khala changelog
 khala tokens
+khala info
 khala version
 bun run khala
 bun run khala -- --prompt "Say hello in one short sentence."
@@ -23,7 +24,7 @@ two modes:
   transcript with `>` prompts and `Khala:` turns in scrollback. Up/Down cycles
   through previous prompts. It does
   not use an alternate-screen/full-screen UI. Slash commands such as
-  `/feedback`, `/msginfo`, `/tokens`, `/changelog`, `/version`, and `/help` are
+  `/feedback`, `/info`, `/msginfo`, `/tokens`, `/changelog`, `/version`, and `/help` are
   handled locally instead of being sent to inference.
   Provider-labeled reasoning is rendered separately as dim `Khala reasoning:`
   text when the API supplies it.
@@ -44,9 +45,13 @@ that check.
 - `/feedback <text>` saves product feedback without sending the text to
   inference. When a trace reference is available, the CLI includes it with the
   feedback.
-- `/msginfo` prints the last Khala response metadata: trace reference, model and
-  adapter routing, fallback reason, token counts, and tokens per second when
-  reported by the backend.
+- `/info` prints the current CLI thread id, the last request trace, and a trace
+  viewing link. When no exact stored `/trace/{uuid}` URL has been reported yet,
+  it uses the same owner-token `/traces?token=...` pattern as the Khala mobile
+  app and stores that token under the local Khala config directory.
+- `/msginfo` prints the last Khala response metadata: trace reference, Khala
+  orchestrator model, backend model/adapter routing, fallback reason, token
+  counts, and tokens per second when reported by the backend.
 - `/tokens` prints the global Khala tokens-served count from the same public
   counter shown on `openagents.com` and `/khala`.
 - `/changelog` prints the five most recent CLI releases in reverse
@@ -59,6 +64,7 @@ that check.
 
 - `khala feedback "text"` sends feedback from scripts or a shell. This command
   may not have a chat trace reference, which is expected.
+- `khala info` prints a one-shot CLI thread id and trace viewing link.
 - `khala tokens` prints the current global Khala tokens-served count.
 - `khala changelog` prints recent releases.
 - `khala version` prints the installed CLI version.
@@ -77,6 +83,13 @@ that check.
 - `--mint-free-key` calls `POST /api/keys/free` and prints the response once.
 
 ## Changelog
+
+### v0.1.9 - Jun 26, 2026, 1:30:01 PM CDT
+
+- Adds `/info` and `khala info` with a CLI thread id plus owner-token trace
+  viewing link.
+- Rewords `/msginfo` around Khala as the orchestrator and backend models/adapters
+  as routing details.
 
 ### v0.1.8 - Jun 26, 2026, 1:04:35 PM CDT
 

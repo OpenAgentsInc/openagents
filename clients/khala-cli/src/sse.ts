@@ -69,6 +69,8 @@ export interface StreamFrameMetadata {
   readonly servedAdapterId?: string | undefined
   readonly servedModel?: string | undefined
   readonly traceRef?: string | undefined
+  readonly traceUrl?: string | undefined
+  readonly traceUuid?: string | undefined
   readonly usage?: KhalaStreamUsage | undefined
 }
 
@@ -111,12 +113,17 @@ export function decodeOpenAiFrame(frame: SseFrame): DecodedStreamFrame {
   const reasoningText = payload.choices
     .map((choice) => choice.delta.reasoning_content ?? choice.delta.reasoning ?? "")
     .join("")
+  const openagents = extractOpenAgentsReceipt(payload.openagents)
   return {
     kind: "delta",
     metadata: {
+      adapterRouteMetadata: openagents?.routing,
+      fallbackReason: openagents?.fallbackReason,
       id: payload.id,
+      primaryAdapterId: openagents?.primaryAdapterId,
       requestedModel: payload.model,
-      servedModel: payload.model,
+      servedAdapterId: openagents?.servedAdapterId,
+      servedModel: openagents?.servedModel ?? payload.model,
       usage: payload.usage === undefined
         ? undefined
         : {
@@ -131,6 +138,31 @@ export function decodeOpenAiFrame(frame: SseFrame): DecodedStreamFrame {
   }
 }
 
+function extractOpenAgentsReceipt(value: unknown): {
+  readonly fallbackReason?: string | null | undefined
+  readonly primaryAdapterId?: string | undefined
+  readonly routing?: unknown
+  readonly servedAdapterId?: string | undefined
+  readonly servedModel?: string | undefined
+} | undefined {
+  if (value === null || typeof value !== "object") return undefined
+  const record = value as Record<string, unknown>
+  const routing = record.routing
+  const routingRecord = routing !== null && typeof routing === "object"
+    ? routing as Record<string, unknown>
+    : undefined
+  const fallbackReason = routingRecord?.fallback_reason
+  return {
+    ...(typeof fallbackReason === "string" || fallbackReason === null
+      ? { fallbackReason }
+      : {}),
+    primaryAdapterId: typeof record.primary_worker === "string" ? record.primary_worker : undefined,
+    routing,
+    servedAdapterId: typeof record.worker === "string" ? record.worker : undefined,
+    servedModel: typeof record.served_model === "string" ? record.served_model : undefined,
+  }
+}
+
 function publicMetadata(payload: PublicMetaPayloadType): StreamFrameMetadata {
   return {
     adapterRouteMetadata: payload.adapterRouteMetadata,
@@ -141,6 +173,8 @@ function publicMetadata(payload: PublicMetaPayloadType): StreamFrameMetadata {
     servedAdapterId: payload.servedAdapterId,
     servedModel: payload.servedModel,
     traceRef: payload.traceRef,
+    traceUrl: payload.traceUrl,
+    traceUuid: payload.traceUuid,
     usage: payload.usage,
   }
 }
