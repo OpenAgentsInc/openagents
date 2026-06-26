@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test"
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import {
@@ -541,6 +541,106 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
       const projected = JSON.stringify(record)
       expect(projected).not.toContain(state.paths.cache)
       expect(projected).not.toContain("Repair the failing sum test.")
+    })
+  })
+
+  test("prepares locked Bun checkout dependencies before running Codex", async () => {
+    await withState(async (state) => {
+      const checkoutRunner = async (workspace: string) => {
+        await mkdir(workspace, { recursive: true })
+        await writeFile(
+          join(workspace, "package.json"),
+          `${JSON.stringify({ private: true, type: "module" })}\n`,
+        )
+        await writeFile(join(workspace, "bun.lock"), "")
+        await writeFile(
+          join(workspace, "sum.ts"),
+          "export const sum = (left: number, right: number) => left - right\n",
+        )
+        await writeFile(
+          join(workspace, "sum.test.ts"),
+          [
+            'import { describe, expect, test } from "bun:test"',
+            'import { sum } from "./sum"',
+            'describe("sum", () => { test("adds", () => { expect(sum(2, 3)).toBe(5) }) })',
+            "",
+          ].join("\n"),
+        )
+      }
+      let installerCalled = false
+      let runnerSawPreparedWorkspace = false
+      const dependencyInstaller = async (input: { args: string[]; cwd: string }) => {
+        installerCalled = true
+        expect(input.args).toEqual(["bun", "install", "--frozen-lockfile"])
+        await writeFile(join(input.cwd, "dependency-ready.txt"), "ready\n")
+        return { exitCode: 0, stderrBytes: 0, stdoutBytes: 12, timedOut: false }
+      }
+      const observingRunner: CodexAgentRunner = async (input) => {
+        runnerSawPreparedWorkspace =
+          (await readFile(join(input.cwd, "dependency-ready.txt"), "utf8")) === "ready\n"
+        return fixingRunner(input)
+      }
+
+      const record = await executeCodexAgentAssignment(
+        state,
+        { ...lease, codingAssignment: checkoutAssignment },
+        now,
+        {
+          checkoutRunner,
+          codexAgentProbe: readyProbe,
+          codexAgentRunner: observingRunner,
+          dependencyInstaller,
+        },
+      )
+
+      expect(record?.status).toBe("accepted")
+      expect(installerCalled).toBe(true)
+      expect(runnerSawPreparedWorkspace).toBe(true)
+      assertPublicProjectionSafe(record)
+    })
+  })
+
+  test("dependency preparation failure returns a typed public-safe blocker", async () => {
+    await withState(async (state) => {
+      const checkoutRunner = async (workspace: string) => {
+        await mkdir(workspace, { recursive: true })
+        await writeFile(
+          join(workspace, "package.json"),
+          `${JSON.stringify({ private: true, type: "module" })}\n`,
+        )
+        await writeFile(join(workspace, "bun.lock"), "")
+      }
+      let runnerCalled = false
+      const record = await executeCodexAgentAssignment(
+        state,
+        { ...lease, codingAssignment: checkoutAssignment },
+        now,
+        {
+          checkoutRunner,
+          codexAgentProbe: readyProbe,
+          codexAgentRunner: async () => {
+            runnerCalled = true
+            return idleRunner()
+          },
+          dependencyInstaller: async () => ({
+            exitCode: 1,
+            stderrBytes: 24,
+            stdoutBytes: 0,
+            timedOut: false,
+          }),
+        },
+      )
+
+      expect(record?.status).toBe("rejected")
+      expect(record?.blockerRefs).toEqual([
+        "blocker.assignment.codex_agent_workspace_dependency_install_failed",
+      ])
+      expect(record?.resultRefs).toContain(
+        "result.public.pylon.codex_agent_task.workspace_dependency_install_failed",
+      )
+      expect(runnerCalled).toBe(false)
+      assertPublicProjectionSafe(record)
+      expect(JSON.stringify(record)).not.toContain(state.paths.cache)
     })
   })
 

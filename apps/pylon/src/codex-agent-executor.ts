@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises"
+import { access, mkdir, writeFile } from "node:fs/promises"
 import { isAbsolute, join, resolve } from "node:path"
 import { createHash } from "node:crypto"
 import {
@@ -103,6 +103,15 @@ export type CodexAgentRunResult = {
 
 export type CodexAgentRunner = (input: CodexAgentRunInput) => Promise<CodexAgentRunResult>
 
+type LocalCommandResult = {
+  exitCode: number
+  stderrBytes: number
+  stdoutBytes: number
+  timedOut: boolean
+}
+
+type LocalCommandRunner = (input: { args: string[]; cwd: string; timeoutMs?: number }) => Promise<LocalCommandResult>
+
 export type CodexAgentExecutionOptions = {
   account?: ResolvedPylonAccountSelection | null
   agentToken?: string
@@ -111,6 +120,7 @@ export type CodexAgentExecutionOptions = {
   codexAgentRunner?: CodexAgentRunner
   codexAgentProbe?: CodexAgentProbeOptions
   codexTurnReporter?: CodexTurnReporter
+  dependencyInstaller?: LocalCommandRunner
   fetch?: typeof fetch
 }
 
@@ -212,14 +222,76 @@ export function fileChangeEscapesWorkspace(path: string, workspace: string): boo
   return resolved !== workspaceRoot && !resolved.startsWith(`${workspaceRoot}/`)
 }
 
-async function runCommand(input: { args: string[]; cwd: string }) {
+async function runCommand(input: { args: string[]; cwd: string; timeoutMs?: number }): Promise<LocalCommandResult> {
   const proc = Bun.spawn(input.args, { cwd: input.cwd, stderr: "pipe", stdout: "pipe" })
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).arrayBuffer(),
-    new Response(proc.stderr).arrayBuffer(),
-    proc.exited,
-  ])
-  return { exitCode, stderrBytes: stderr.byteLength, stdoutBytes: stdout.byteLength }
+  let timedOut = false
+  const timer =
+    input.timeoutMs === undefined
+      ? undefined
+      : setTimeout(() => {
+          timedOut = true
+          proc.kill()
+        }, input.timeoutMs)
+  try {
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).arrayBuffer(),
+      new Response(proc.stderr).arrayBuffer(),
+      proc.exited,
+    ])
+    return { exitCode, stderrBytes: stderr.byteLength, stdoutBytes: stdout.byteLength, timedOut }
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
+  }
+}
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await access(path)
+    return true
+  } catch {
+    return false
+  }
+}
+
+type DependencyPreparation =
+  | { ok: true; prepared: boolean; receiptRef?: string }
+  | { ok: false; receiptRef: string }
+
+async function prepareWorkspaceDependencies(input: {
+  installer?: LocalCommandRunner
+  workspace: string
+}): Promise<DependencyPreparation> {
+  const hasPackageJson = await pathExists(join(input.workspace, "package.json"))
+  const hasBunLock =
+    (await pathExists(join(input.workspace, "bun.lock"))) ||
+    (await pathExists(join(input.workspace, "bun.lockb")))
+  if (!hasPackageJson || !hasBunLock) {
+    return { ok: true, prepared: false }
+  }
+
+  const nodeModulesReady = await pathExists(join(input.workspace, "node_modules"))
+  if (nodeModulesReady) {
+    return {
+      ok: true,
+      prepared: false,
+      receiptRef: "dependency.pylon.codex_agent_task.node_modules_present",
+    }
+  }
+
+  const installer = input.installer ?? runCommand
+  const install = await installer({
+    args: ["bun", "install", "--frozen-lockfile"],
+    cwd: input.workspace,
+    timeoutMs: 5 * 60 * 1000,
+  })
+  const receiptRef = stableRef(
+    "dependency.pylon.codex_agent_task.bun_install",
+    `${install.exitCode}:${install.timedOut}:${install.stdoutBytes}:${install.stderrBytes}`,
+  )
+  if (install.exitCode !== 0 || install.timedOut) {
+    return { ok: false, receiptRef }
+  }
+  return { ok: true, prepared: true, receiptRef }
 }
 
 type CodexThreadEvent = {
@@ -642,6 +714,21 @@ export async function executeCodexAgentAssignment(
       resultRef: "result.public.pylon.codex_agent_task.workspace_checkout_failed",
       summaryRef: "summary.public.pylon.codex_agent_task.workspace_checkout_failed",
       message: "Local Codex thread refused because the bounded workspace checkout could not be materialized.",
+    })
+  }
+
+  const dependencies = await prepareWorkspaceDependencies({
+    ...(options.dependencyInstaller === undefined ? {} : { installer: options.dependencyInstaller }),
+    workspace: materialized.workspace,
+  })
+  if (!dependencies.ok) {
+    return refusalRecord({
+      lease,
+      runRef,
+      blockerRefs: ["blocker.assignment.codex_agent_workspace_dependency_install_failed"],
+      resultRef: "result.public.pylon.codex_agent_task.workspace_dependency_install_failed",
+      summaryRef: "summary.public.pylon.codex_agent_task.workspace_dependency_install_failed",
+      message: "Local Codex thread refused because workspace dependencies could not be prepared.",
     })
   }
 
