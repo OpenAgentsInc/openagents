@@ -4403,7 +4403,13 @@ async function main() {
         return
       }
       if (command === "run-no-spend") {
-        const result = await runNoSpendAssignment(summary, clientOptions)
+        const assignmentRef =
+          optionString(options, "assignment-ref") ??
+          optionString(options, "lease-ref")
+        const result = await runNoSpendAssignment(summary, {
+          ...clientOptions,
+          ...(assignmentRef === undefined ? {} : { assignmentRef }),
+        })
         process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
         return
       }

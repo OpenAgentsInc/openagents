@@ -116,6 +116,7 @@ export type AssignmentCloseout = {
 
 export type AssignmentClientOptions = {
   agentToken?: string
+  assignmentRef?: string
   baseUrl: string
   fetch?: typeof fetch
   now?: () => Date
@@ -1090,6 +1091,9 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
   const leases = await pollAssignments(summary, options)
   const candidates = leases.filter((candidate) =>
     candidate.paymentMode === "no-spend" &&
+    (options.assignmentRef === undefined ||
+      candidate.assignmentRef === options.assignmentRef ||
+      candidate.leaseRef === options.assignmentRef) &&
     !localLeaseIsTerminal(store, candidate.leaseRef)
   )
   let claimed:

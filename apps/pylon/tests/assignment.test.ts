@@ -299,6 +299,41 @@ describe("Pylon assignment lease flow", () => {
     })
   })
 
+  test("can target a single no-spend lease when older offers are still visible", async () => {
+    await withTempHome(async (home) => {
+      const oldLease = lease({
+        assignmentRef: "assignment.public.no_spend.old_visible",
+        leaseRef: "lease.public.no_spend.old_visible",
+      })
+      const targetLease = lease({
+        assignmentRef: "assignment.public.no_spend.target",
+        leaseRef: "lease.public.no_spend.target",
+      })
+      const fake = fakeAssignmentServer({ leases: [oldLease, targetLease] })
+      const summary = await readySummary(home)
+      await sendHeartbeat(summary, {
+        baseUrl: fake.baseUrl,
+        now: () => new Date("2026-06-09T00:00:00.000Z"),
+      })
+
+      const result = await runNoSpendAssignment(summary, {
+        assignmentRef: targetLease.assignmentRef,
+        baseUrl: fake.baseUrl,
+        now: () => new Date("2026-06-09T00:00:30.000Z"),
+      })
+
+      expect(result.ok).toBe(true)
+      if (!result.ok) throw new Error("expected runner to claim target lease")
+      expect(result.lease.leaseRef).toBe(targetLease.leaseRef)
+      const acceptPaths = fake.requests
+        .map((request) => request.path)
+        .filter((path) => path.endsWith("/accept"))
+      expect(acceptPaths).toEqual([
+        `/api/pylons/${encodeURIComponent(fake.requests[0].body.pylonRef)}/assignments/${encodeURIComponent(targetLease.leaseRef)}/accept`,
+      ])
+    })
+  })
+
   test("executes runtime-gate coding assignment and reports only public-safe refs", async () => {
     await withTempHome(async (home) => {
       const codingAssignment = {
