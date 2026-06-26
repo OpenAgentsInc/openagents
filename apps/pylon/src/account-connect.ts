@@ -8,6 +8,7 @@ import {
   type PylonAccountProvider,
 } from "./account-registry.js"
 import type { BootstrapSummary } from "./bootstrap.js"
+import { recordAccountLinkInPresence } from "./presence.js"
 import { assertPublicProjectionSafe } from "./state.js"
 
 export type PylonAccountsConnectArgs = {
@@ -386,8 +387,24 @@ async function runOpenAgentsPylonDeviceLogin(input: {
   }
 }
 
+export function linkedOpenAgentsProviderAccountRef(
+  result: PylonAccountConnectProjection["openAgentsDeviceLogin"],
+): string | null {
+  if (
+    "pylonLink" in result &&
+    result.pylonLink.owner === "openauth" &&
+    result.pylonLink.status === "linked" &&
+    "providerAccountRef" in result &&
+    typeof result.providerAccountRef === "string" &&
+    result.providerAccountRef.trim() !== ""
+  ) {
+    return result.providerAccountRef
+  }
+  return null
+}
+
 export async function runPylonAccountsConnect(
-  summary: Pick<BootstrapSummary, "paths">,
+  summary: Pick<BootstrapSummary, "bootstrap" | "paths">,
   args: PylonAccountsConnectArgs,
   options: {
     env?: Record<string, string | undefined>
@@ -452,5 +469,11 @@ export async function runPylonAccountsConnect(
     blockerRefs: [],
   } satisfies PylonAccountConnectProjection
   assertPublicProjectionSafe(projection)
+  const linkedProviderAccountRef = linkedOpenAgentsProviderAccountRef(openAgentsDeviceLogin)
+  if (linkedProviderAccountRef !== null) {
+    await recordAccountLinkInPresence(summary, {
+      providerAccountRef: linkedProviderAccountRef,
+    })
+  }
   return projection
 }

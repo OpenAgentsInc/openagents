@@ -178,7 +178,6 @@ import { assertPublicProjectionSafe, ensurePylonLocalState, loadOrCreatePresence
 import {
   completePylonLink,
   presenceClientOptionsFromEnv,
-  recordAccountLinkInPresence,
   refreshPylonLink,
   registerPylon,
   sendHeartbeat,
@@ -1247,6 +1246,13 @@ const runtimeCommandNamespaces = new Set([
 
 function parsePresenceOptions(args: string[]) {
   return parseCliOptions(args)
+}
+
+async function writeJsonAndExit(value: unknown, exitCode = 0): Promise<never> {
+  await new Promise<void>((resolve) => {
+    process.stdout.write(`${JSON.stringify(value, null, 2)}\n`, () => resolve())
+  })
+  process.exit(exitCode)
 }
 
 // Key/value option parser for user commands (forum/tip/work/wallet/balance/
@@ -3141,19 +3147,6 @@ async function main() {
         }
         const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
         const projection = await runPylonAccountsConnect(summary, options, { env: Bun.env })
-        // #6331: when the connect established (or reused) a server-side
-        // account->OpenAuth-owner link, reconcile that into the local presence
-        // state so the next `presence heartbeat` reports linked: true + a real
-        // linkRef. Without this, the connect's `pylonLink: linked` never reached
-        // the presence state the heartbeat and dispatch gate read.
-        if (
-          projection.openAgentsDeviceLogin.status === "started" ||
-          projection.openAgentsDeviceLogin.status === "polled"
-        ) {
-          await recordAccountLinkInPresence(summary, {
-            providerAccountRef: projection.openAgentsDeviceLogin.providerAccountRef,
-          })
-        }
         process.stdout.write(`${JSON.stringify(projection, null, 2)}\n`)
         return
       }
@@ -3262,6 +3255,10 @@ async function main() {
       const command = args[1]
       const presenceArgs = args.slice(2)
       const options = parsePresenceOptions(presenceArgs)
+      // Presence one-shots are JSON-native. `--json` is accepted as an
+      // idempotent no-op for supervisor/runbook parity with other Pylon
+      // machine-readable commands.
+      void optionFlag(options, "json")
       const baseUrl = optionString(options, "base-url") ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
       if (!baseUrl) {
         throw new Error("presence commands require --base-url or PYLON_OPENAGENTS_BASE_URL")
@@ -3285,8 +3282,10 @@ async function main() {
                 ? await refreshPylonLink(summary, clientOptions)
                 : null
       if (!result) throw new Error(`unknown presence command: ${command ?? ""}`)
-      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
-      return
+      if (Bun.env.PYLON_PRESENCE_ONESHOT_TEST_HOLD_HANDLE === "1") {
+        setInterval(() => undefined, 60_000)
+      }
+      await writeJsonAndExit(result)
     } catch (error) {
       process.stderr.write(`Pylon presence failed: ${error instanceof Error ? error.message : String(error)}\n`)
       process.exitCode = 1
@@ -4443,11 +4442,19 @@ async function main() {
           optionString(options, "account") ??
           optionString(options, "account-ref")
         const accountHome = optionString(options, "account-home")
+        const emitJsonLifecycle = optionFlag(options, "json")
         const result = await runNoSpendAssignment(summary, {
           ...clientOptions,
           ...(accountRef === undefined ? {} : { accountRef }),
           ...(accountHome === undefined ? {} : { accountHome }),
           ...(assignmentRef === undefined ? {} : { assignmentRef }),
+          ...(emitJsonLifecycle
+            ? {
+                onLifecycleEvent: (event) => {
+                  process.stderr.write(`${JSON.stringify(event)}\n`)
+                },
+              }
+            : {}),
         })
         process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
         return

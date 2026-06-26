@@ -923,7 +923,7 @@ type PylonProviderJobLifecycleRow = Readonly<{
 }>
 
 const unsafePylonApiMaterialPattern =
-  /([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|\/Users\/|\/home\/|access[_-]?token|auth\.json|balance[._-]?sats|bearer|channel[_-]?monitor|cookie|customer[_-]?(email|name|value)|email[_-]?(address|body)|entropy|gho_[A-Za-z0-9_]+|ghp_[A-Za-z0-9_]+|github\.com\/[^:/]+\/private|invoice|lnbc|lntb|lnbcrt|lno1|lnurl|macaroon|mdk[_-]?(access[_-]?token|mnemonic|webhook[_-]?secret)|mnemonic|oauth|payment[_-]?(hash|id|preimage|proof=)|payout[_-]?(address|destination|private|raw)|preimage|private[_-]?(artifact|channel|key|output|proof|wallet)|provider[_-]?(grant|payload|secret|token)|raw[_-]?(artifact|auth|backup|balance|channel|invoice|liquidity|output|payload|payment|payout|prompt|proof|provider|runner|run[_-]?log|state|telemetry|webhook)|recovery[_-]?phrase|secret|seed[_-]?phrase|sk-[a-z0-9]|token|wallet[._-](key|material|mnemonic|payment|preimage|secret|seed))/i
+  /([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|\/Users\/|\/home\/|access[_-]?token|auth\.json|balance[._-]?sats|bearer|channel[_-]?monitor|cookie|customer[_-]?(email|name|value)|email[_-]?(address|body)|entropy|gho_[A-Za-z0-9_]+|ghp_[A-Za-z0-9_]+|github\.com\/[^:/]+\/private|invoice|lnbc|lntb|lnbcrt|lno1|lnurl|macaroon|mdk[_-]?(access[_-]?token|mnemonic|webhook[_-]?secret)|mnemonic|oauth|payment[_-]?(hash|id|preimage|proof=)|payout[_-]?(address|destination|private|raw)|preimage|private[_-]?(artifact|channel|key|output|proof|wallet)|provider[_-]?(grant|payload|secret|token)|raw[_-]?(artifact|auth|backup|balance|channel|invoice|liquidity|output|payload|payment|payout|prompt|proof|provider|runner|run[_-]?log|state|telemetry|webhook)|recovery[_-]?phrase|secret|seed[_-]?phrase|sk-[a-z0-9]|"token"\s*:|token[_-]?(credential|grant|payload|secret|value)|wallet[._-](key|material|mnemonic|payment|preimage|secret|seed))/i
 const exactBalanceRefPattern = /balance\.mdk_agent_wallet\.\d+\b/i
 // #5252: a raw Spark address/invoice is PAYMENT MATERIAL and must never appear
 // in a public Pylon payload. The redacted `payout.spark.<digest>` ref does not
@@ -954,6 +954,32 @@ const uniqueOrderedRefs = (
 ): ReadonlyArray<string> => [
   ...new Set((refs ?? []).map(ref => ref.trim()).filter(ref => ref !== '')),
 ]
+
+const d1MultiValueSelectChunkSize = 80
+
+const chunkRefsForD1Select = (
+  refs: ReadonlyArray<string>,
+): ReadonlyArray<ReadonlyArray<string>> => {
+  const chunks: Array<ReadonlyArray<string>> = []
+
+  for (
+    let index = 0;
+    index < refs.length;
+    index += d1MultiValueSelectChunkSize
+  ) {
+    chunks.push(refs.slice(index, index + d1MultiValueSelectChunkSize))
+  }
+
+  return chunks
+}
+
+const mergeRowsByUpdatedAtDesc = <Row extends Readonly<{ updated_at: string }>>(
+  rows: ReadonlyArray<Row>,
+  limit: number,
+): ReadonlyArray<Row> =>
+  [...rows]
+    .sort((left, right) => right.updated_at.localeCompare(left.updated_at))
+    .slice(0, Math.max(1, Math.trunc(limit)))
 
 export const pylonApiPayloadHasPrivateMaterial = (value: unknown): boolean => {
   const json = safeFalseTracePolicyJsonReplacements.reduce(
@@ -1941,20 +1967,28 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
       return []
     }
 
-    const placeholders = pylonRefs.map(() => '?').join(', ')
-    const result = await db
-      .prepare(
-        `SELECT *
-           FROM pylon_api_assignments
-          WHERE pylon_ref IN (${placeholders})
-            AND archived_at IS NULL
-          ORDER BY updated_at DESC
-          LIMIT ?`,
-      )
-      .bind(...pylonRefs, limit)
-      .all<PylonApiAssignmentRow>()
+    const rows: PylonApiAssignmentRow[] = []
 
-    return (result.results ?? []).map(rowToAssignment)
+    for (const pylonRefChunk of chunkRefsForD1Select(
+      uniqueOrderedRefs(pylonRefs),
+    )) {
+      const placeholders = pylonRefChunk.map(() => '?').join(', ')
+      const result = await db
+        .prepare(
+          `SELECT *
+             FROM pylon_api_assignments
+            WHERE pylon_ref IN (${placeholders})
+              AND archived_at IS NULL
+            ORDER BY updated_at DESC
+            LIMIT ?`,
+        )
+        .bind(...pylonRefChunk, limit)
+        .all<PylonApiAssignmentRow>()
+
+      rows.push(...(result.results ?? []))
+    }
+
+    return mergeRowsByUpdatedAtDesc(rows, limit).map(rowToAssignment)
   },
 
   listEventsForPylon: async (pylonRef, limit) => {
@@ -2009,21 +2043,29 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
       return []
     }
 
-    const uniqueOwnerIds = [...new Set(ownerAgentUserIds)].slice(0, 100)
-    const placeholders = uniqueOwnerIds.map(() => '?').join(', ')
-    const result = await db
-      .prepare(
-        `SELECT *
-           FROM pylon_api_registrations
-          WHERE owner_agent_user_id IN (${placeholders})
-            AND archived_at IS NULL
-          ORDER BY updated_at DESC
-          LIMIT ?`,
-      )
-      .bind(...uniqueOwnerIds, Math.max(1, Math.min(Math.trunc(limit), 200)))
-      .all<PylonApiRegistrationRow>()
+    const boundedLimit = Math.max(1, Math.min(Math.trunc(limit), 200))
+    const rows: PylonApiRegistrationRow[] = []
 
-    return (result.results ?? []).map(rowToRegistration)
+    for (const ownerIdChunk of chunkRefsForD1Select(
+      uniqueOrderedRefs(ownerAgentUserIds).slice(0, 200),
+    )) {
+      const placeholders = ownerIdChunk.map(() => '?').join(', ')
+      const result = await db
+        .prepare(
+          `SELECT *
+             FROM pylon_api_registrations
+            WHERE owner_agent_user_id IN (${placeholders})
+              AND archived_at IS NULL
+            ORDER BY updated_at DESC
+            LIMIT ?`,
+        )
+        .bind(...ownerIdChunk, boundedLimit)
+        .all<PylonApiRegistrationRow>()
+
+      rows.push(...(result.results ?? []))
+    }
+
+    return mergeRowsByUpdatedAtDesc(rows, boundedLimit).map(rowToRegistration)
   },
 
   listProviderJobLifecycleForPylons: async (pylonRefs, limit) => {
@@ -2031,20 +2073,28 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
       return []
     }
 
-    const placeholders = pylonRefs.map(() => '?').join(', ')
-    const result = await db
-      .prepare(
-        `SELECT *
-           FROM pylon_provider_job_lifecycle
-          WHERE pylon_ref IN (${placeholders})
-            AND archived_at IS NULL
-          ORDER BY updated_at DESC
-          LIMIT ?`,
-      )
-      .bind(...pylonRefs, limit)
-      .all<PylonProviderJobLifecycleRow>()
+    const rows: PylonProviderJobLifecycleRow[] = []
 
-    return (result.results ?? []).map(rowToProviderJobLifecycle)
+    for (const pylonRefChunk of chunkRefsForD1Select(
+      uniqueOrderedRefs(pylonRefs),
+    )) {
+      const placeholders = pylonRefChunk.map(() => '?').join(', ')
+      const result = await db
+        .prepare(
+          `SELECT *
+             FROM pylon_provider_job_lifecycle
+            WHERE pylon_ref IN (${placeholders})
+              AND archived_at IS NULL
+            ORDER BY updated_at DESC
+            LIMIT ?`,
+        )
+        .bind(...pylonRefChunk, limit)
+        .all<PylonProviderJobLifecycleRow>()
+
+      rows.push(...(result.results ?? []))
+    }
+
+    return mergeRowsByUpdatedAtDesc(rows, limit).map(rowToProviderJobLifecycle)
   },
 
   readEventByIdempotencyKeyHash: async idempotencyKeyHash => {

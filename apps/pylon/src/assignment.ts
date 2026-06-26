@@ -131,6 +131,31 @@ export type AssignmentClientOptions = {
   claudeAgentProbe?: ClaudeAgentProbeOptions
   codexAgentRunner?: CodexAgentRunner
   codexAgentProbe?: CodexAgentProbeOptions
+  onLifecycleEvent?: (event: AssignmentRunLifecycleEvent) => void | Promise<void>
+}
+
+export type AssignmentRunLifecycleEvent = {
+  schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1"
+  event:
+    | "assignment_run.poll_complete"
+    | "assignment_run.accepted"
+    | "assignment_run.runtime_started"
+    | "assignment_run.progress_submitted"
+    | "assignment_run.artifacts_submitted"
+    | "assignment_run.closeout_submitted"
+    | "assignment_run.completed"
+    | "assignment_run.no_assignment"
+  observedAt: string
+  assignmentRef?: string
+  leaseRef?: string
+  leaseCount?: number
+  candidateCount?: number
+  status?: AssignmentStatus | AssignmentProgress["status"]
+  statusRef?: string
+  progressRef?: string
+  artifactRef?: string
+  closeoutRef?: string
+  blockerRefs?: string[]
 }
 
 type AssignmentStore = {
@@ -1089,6 +1114,21 @@ export async function submitAssignmentCloseout(
 }
 
 export async function runNoSpendAssignment(summary: BootstrapSummary, options: AssignmentClientOptions) {
+  const emitLifecycleEvent = async (
+    event: Omit<AssignmentRunLifecycleEvent, "schema" | "observedAt">,
+  ) => {
+    if (options.onLifecycleEvent === undefined) return
+    try {
+      await options.onLifecycleEvent({
+        schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
+        observedAt: (options.now?.() ?? new Date()).toISOString(),
+        ...event,
+      })
+    } catch {
+      // Lifecycle output is operator observability; assignment execution must
+      // remain fail-soft if stderr or an injected reporter is unavailable.
+    }
+  }
   const state = await ensurePylonLocalState(summary)
   const store = await loadAssignmentStore(state)
   const leases = await pollAssignments(summary, options)
@@ -1099,6 +1139,11 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
       candidate.leaseRef === options.assignmentRef) &&
     !localLeaseIsTerminal(store, candidate.leaseRef)
   )
+  await emitLifecycleEvent({
+    event: "assignment_run.poll_complete",
+    leaseCount: leases.length,
+    candidateCount: candidates.length,
+  })
   let claimed:
     | { acceptance: AssignmentAcceptance; lease: PylonAssignmentLease }
     | undefined
@@ -1112,11 +1157,30 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
     lastAcceptance = result
   }
   if (claimed === undefined) {
+    await emitLifecycleEvent({
+      event: "assignment_run.no_assignment",
+      leaseCount: leases.length,
+      candidateCount: candidates.length,
+      ...(lastAcceptance === undefined
+        ? {}
+        : {
+            assignmentRef: lastAcceptance.assignmentRef,
+            leaseRef: lastAcceptance.leaseRef,
+            statusRef: lastAcceptance.statusRef,
+            blockerRefs: lastAcceptance.blockerRefs,
+          }),
+    })
     return lastAcceptance === undefined
       ? { ok: false, reason: "no no-spend assignment lease available", leases }
       : { ok: false, acceptance: lastAcceptance, leases }
   }
   const { acceptance, lease } = claimed
+  await emitLifecycleEvent({
+    event: "assignment_run.accepted",
+    assignmentRef: lease.assignmentRef,
+    leaseRef: lease.leaseRef,
+    statusRef: acceptance.statusRef,
+  })
 
   const observedAtDate = options.now?.() ?? new Date()
   const observedAt = observedAtDate.toISOString()
@@ -1128,6 +1192,12 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
           ...(options.accountRef === undefined ? {} : { accountRef: options.accountRef }),
           ...(options.accountHome === undefined ? {} : { accountHome: options.accountHome }),
         })
+  await emitLifecycleEvent({
+    event: "assignment_run.runtime_started",
+    assignmentRef: lease.assignmentRef,
+    leaseRef: lease.leaseRef,
+  })
+
   const runtimeGate =
     (await executeTassadarAssignment(lease, observedAtDate)) ??
     (await executeClaudeAgentAssignment(state, lease, observedAtDate, {
@@ -1161,6 +1231,13 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
   let artifactReceipt: { artifactRef: string } | null = null
   try {
     progressReceipt = await submitAssignmentProgress(summary, progress, options)
+    await emitLifecycleEvent({
+      event: "assignment_run.progress_submitted",
+      assignmentRef: lease.assignmentRef,
+      leaseRef: lease.leaseRef,
+      status: progress.status,
+      progressRef: progressReceipt.progressRef,
+    })
     artifactReceipt = await submitAssignmentArtifacts(
       summary,
       {
@@ -1171,6 +1248,12 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
       },
       options,
     )
+    await emitLifecycleEvent({
+      event: "assignment_run.artifacts_submitted",
+      assignmentRef: lease.assignmentRef,
+      leaseRef: lease.leaseRef,
+      artifactRef: artifactReceipt.artifactRef,
+    })
   } catch (error) {
     const message = String(error)
     const status = message.includes("(410)") ? "cancelled" : message.includes("(408)") ? "timed-out" : "rejected"
@@ -1197,6 +1280,22 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
       completedAt: observedAt,
     }
     const closeoutReceipt = await submitAssignmentCloseout(summary, closeout, options)
+    await emitLifecycleEvent({
+      event: "assignment_run.closeout_submitted",
+      assignmentRef: lease.assignmentRef,
+      leaseRef: lease.leaseRef,
+      status: closeout.status,
+      closeoutRef: closeoutReceipt.closeoutRef,
+      blockerRefs: closeout.blockerRefs,
+    })
+    await emitLifecycleEvent({
+      event: "assignment_run.completed",
+      assignmentRef: lease.assignmentRef,
+      leaseRef: lease.leaseRef,
+      status: closeout.status,
+      closeoutRef: closeoutReceipt.closeoutRef,
+      blockerRefs: closeout.blockerRefs,
+    })
     return { ok: false, lease, acceptance, closeout, closeoutReceipt }
   }
   const closeout: AssignmentCloseout = {
@@ -1228,6 +1327,22 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
   }
   assertPublicProjectionSafe(closeout)
   const closeoutReceipt = await submitAssignmentCloseout(summary, closeout, options)
+  await emitLifecycleEvent({
+    event: "assignment_run.closeout_submitted",
+    assignmentRef: lease.assignmentRef,
+    leaseRef: lease.leaseRef,
+    status: closeout.status,
+    closeoutRef: closeoutReceipt.closeoutRef,
+    blockerRefs: closeout.blockerRefs,
+  })
+  await emitLifecycleEvent({
+    event: "assignment_run.completed",
+    assignmentRef: lease.assignmentRef,
+    leaseRef: lease.leaseRef,
+    status: closeout.status,
+    closeoutRef: closeoutReceipt.closeoutRef,
+    blockerRefs: closeout.blockerRefs,
+  })
   return {
     ok: closeout.status === "accepted",
     lease,

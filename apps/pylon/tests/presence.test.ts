@@ -22,6 +22,9 @@ import { registerSparkPayoutTarget, sparkPayoutTargetRef } from "../src/wallet"
 import { CODEX_AGENT_CAPABILITY_REF } from "../src/codex-agent"
 import { CLAUDE_AGENT_CAPABILITY_REF } from "../src/claude-agent"
 
+const INDEX = join(import.meta.dir, "..", "src", "index.ts")
+const CWD = join(import.meta.dir, "..")
+
 // Inject a deterministic wallet probe for heartbeat tests that exercise the
 // #5151 readiness path. Without one, heartbeats omit wallet readiness instead
 // of spawning a local wallet backend.
@@ -106,6 +109,77 @@ function fakePresenceServer(input: { failHeartbeats?: number } = {}) {
     baseUrl: `http://127.0.0.1:${server.port}`,
     requests,
   }
+}
+
+function fakePresenceCliServer() {
+  const requests: { path: string; body: any; headers: Headers }[] = []
+  const server = Bun.serve({
+    port: 0,
+    async fetch(request) {
+      const url = new URL(request.url)
+      const text = await request.text()
+      const body = text ? JSON.parse(text) : {}
+      requests.push({ path: url.pathname, body, headers: request.headers })
+
+      expect(request.headers.get("authorization")).toBe("Bearer test-agent-token")
+      expect(request.headers.get("x-pylon-ref")).toBe(body.pylonRef)
+
+      if (url.pathname === "/api/pylons/register") {
+        return Response.json({ registrationRef: `registration.${body.pylonRef}` })
+      }
+      if (url.pathname.includes("/heartbeat")) {
+        return Response.json({ heartbeatRef: `heartbeat.${body.pylonRef}.${body.sequence}` })
+      }
+      if (url.pathname === "/api/pylon-links/complete") {
+        return Response.json({ linkRef: `link.${body.pylonRef}` })
+      }
+      if (url.pathname === "/api/pylon-links/refresh") {
+        return Response.json({ linkRef: `link.${body.pylonRef}.refresh` })
+      }
+      return Response.json({ errorRef: "error.not_found" }, { status: 404 })
+    },
+  })
+  servers.push(server)
+  return {
+    baseUrl: `http://127.0.0.1:${server.port}`,
+    requests,
+  }
+}
+
+async function runPresenceCli(input: {
+  args: string[]
+  env: Record<string, string>
+  timeoutMs?: number
+}): Promise<{ exitCode: number | null; stdout: string; stderr: string; timedOut: boolean }> {
+  const proc = Bun.spawn(["bun", INDEX, "presence", ...input.args], {
+    cwd: CWD,
+    env: {
+      ...process.env,
+      OPENAGENTS_AGENT_TOKEN: "test-agent-token",
+      PYLON_DISABLE_DAEMON_ROUTING: "1",
+      PYLON_DISABLE_OPENCODE_STARTUP: "1",
+      PYLON_SPARK_BACKUP_DISABLED: "1",
+      ...input.env,
+    },
+    stderr: "pipe",
+    stdout: "pipe",
+  })
+  let timeout: ReturnType<typeof setTimeout> | undefined
+  const exit = await Promise.race([
+    proc.exited.then((exitCode) => ({ exitCode, timedOut: false as const })),
+    new Promise<{ exitCode: null; timedOut: true }>((resolve) => {
+      timeout = setTimeout(() => {
+        proc.kill()
+        resolve({ exitCode: null, timedOut: true })
+      }, input.timeoutMs ?? 10_000)
+    }),
+  ])
+  if (timeout !== undefined) clearTimeout(timeout)
+  const [stdout, stderr] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ])
+  return { ...exit, stderr, stdout }
 }
 
 describe("Pylon presence registration and heartbeat", () => {
@@ -372,6 +446,61 @@ describe("Pylon presence registration and heartbeat", () => {
       expect(linked.linkRef).not.toContain("provider-account-abc")
     })
   })
+
+  test("CLI presence register, heartbeat, link-complete, and link-refresh accept --json as a no-op", async () => {
+    await withTempHome(async (home) => {
+      const fake = fakePresenceCliServer()
+      const env = {
+        PYLON_HOME: home,
+        PYLON_OPENAGENTS_BASE_URL: fake.baseUrl,
+      }
+      let pylonRef = ""
+
+      for (const command of ["register", "heartbeat", "link-complete", "link-refresh"]) {
+        const result = await runPresenceCli({
+          args: [command, "--json", "--display-name", "Presence CLI JSON Test"],
+          env,
+        })
+        expect(result.timedOut).toBe(false)
+        expect(result.exitCode).toBe(0)
+        expect(result.stderr).toBe("")
+        const body = JSON.parse(result.stdout)
+        expect(body.pylonRef).toStartWith("pylon.")
+        pylonRef = body.pylonRef
+      }
+
+      expect(fake.requests.map((request) => request.path)).toEqual([
+        "/api/pylons/register",
+        `/api/pylons/${encodeURIComponent(pylonRef)}/heartbeat`,
+        "/api/pylon-links/complete",
+        "/api/pylon-links/refresh",
+      ])
+    })
+  }, 30_000)
+
+  test("CLI one-shot presence heartbeat exits after JSON even when a runtime handle is left open", async () => {
+    await withTempHome(async (home) => {
+      const fake = fakePresenceCliServer()
+      const result = await runPresenceCli({
+        args: ["heartbeat", "--json", "--display-name", "Presence One Shot Exit Test"],
+        env: {
+          PYLON_HOME: home,
+          PYLON_OPENAGENTS_BASE_URL: fake.baseUrl,
+          PYLON_PRESENCE_ONESHOT_TEST_HOLD_HANDLE: "1",
+        },
+        timeoutMs: 5_000,
+      })
+
+      expect(result.timedOut).toBe(false)
+      expect(result.exitCode).toBe(0)
+      expect(result.stderr).toBe("")
+      const body = JSON.parse(result.stdout)
+      expect(body.heartbeatSequence).toBe(1)
+      expect(fake.requests.map((request) => request.path)).toEqual([
+        `/api/pylons/${encodeURIComponent(body.pylonRef)}/heartbeat`,
+      ])
+    })
+  }, 15_000)
 
   test("retries transient heartbeat failure and records fresh state after success", async () => {
     await withTempHome(async (home) => {

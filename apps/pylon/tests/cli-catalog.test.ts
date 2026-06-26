@@ -90,6 +90,7 @@ describe("pylon command catalog", () => {
     expect(entry.args.some((arg) => arg.name === "--assignment-ref")).toBe(true)
     expect(entry.args.some((arg) => arg.name === "--lease-ref")).toBe(true)
     expect(entry.args.some((arg) => arg.name === "--json" && arg.kind === "flag")).toBe(true)
+    expect(entry.args.find((arg) => arg.name === "--json")?.description).toContain("stderr")
   })
 
   test("presence heartbeat advertises one-shot JSON auth flags", () => {

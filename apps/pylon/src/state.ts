@@ -257,7 +257,9 @@ export async function writeRuntimeState(paths: PylonPaths, state: PylonRuntimeSt
   await writeFile(paths.runtimeState, `${JSON.stringify({ ...state, updatedAt: new Date().toISOString() }, null, 2)}\n`)
 }
 
-export async function ensurePylonLocalState(summary: BootstrapSummary): Promise<PylonLocalState> {
+export async function ensurePylonLocalState(
+  summary: Pick<BootstrapSummary, "bootstrap" | "paths">,
+): Promise<PylonLocalState> {
   const paths = resolveStatePaths(summary.paths)
   const identity = await loadOrCreateIdentity(paths, {
     nodeLabel: summary.bootstrap.displayName ?? undefined,

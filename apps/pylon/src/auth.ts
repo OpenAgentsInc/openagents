@@ -814,7 +814,7 @@ const quietCodexDeviceLoginRunner = (
 }
 
 export async function runPylonAuthCodex(
-  summary: Pick<BootstrapSummary, "paths">,
+  summary: Pick<BootstrapSummary, "bootstrap" | "paths">,
   args: PylonAuthArgs,
   options: PylonAuthOptions = {},
 ): Promise<PylonAuthCodexProjection> {

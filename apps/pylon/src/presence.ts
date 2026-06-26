@@ -477,7 +477,7 @@ export async function refreshPylonLink(summary: BootstrapSummary, options: Prese
  * `linked: true` once a Codex account is connected with `--openagents-link`.
  */
 export async function recordAccountLinkInPresence(
-  summary: BootstrapSummary,
+  summary: Pick<BootstrapSummary, "bootstrap" | "paths">,
   input: { providerAccountRef: string },
 ): Promise<PylonPresenceState> {
   const state = await ensurePylonLocalState(summary)

@@ -417,7 +417,7 @@ export const PYLON_COMMAND_CATALOG: readonly PylonCommandEntry[] = [
       opt("--assignment-ref", "run-no-spend: accept only this assignment ref; prevents stale leases from being claimed."),
       opt("--base-url", "OpenAgents base URL."),
       opt("--lease-ref", "run-no-spend: alias for --assignment-ref."),
-      flag("--json", "Emit JSON."),
+      flag("--json", "Emit final JSON on stdout; run-no-spend lifecycle JSONL is emitted on stderr."),
     ],
   },
   {

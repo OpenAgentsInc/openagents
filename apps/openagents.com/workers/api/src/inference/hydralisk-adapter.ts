@@ -669,6 +669,7 @@ const stateForReplica = (
 type ReplicaCandidate = Readonly<{
   index: number
   replica: HydraliskReplicaAdapterConfig
+  routingStateObserved: boolean
   state: GlmReplicaRoutingState
 }>
 
@@ -685,7 +686,7 @@ const busyReasonFor = (state: GlmReplicaRoutingState): string | null => {
   if (state.draining) {
     return 'draining'
   }
-  if (state.health !== 'healthy') {
+  if (state.health === 'unhealthy') {
     return `health_${state.health}`
   }
   if (state.inflightCount >= state.maxInflight) {
@@ -710,6 +711,11 @@ const rankEligibleReplicas = (
   }
   const aWarmRank = warmRank(a.state)
   const bWarmRank = warmRank(b.state)
+  const aHealthScore = healthScore(a.state.health)
+  const bHealthScore = healthScore(b.state.health)
+  if (aHealthScore !== bHealthScore) {
+    return bHealthScore - aHealthScore
+  }
   if (aWarmRank !== bWarmRank) {
     return bWarmRank - aWarmRank
   }
@@ -806,6 +812,47 @@ const saturationError = (
     },
   )
 
+const laneQuorumUnhealthyError = (
+  config: HydraliskPoolAdapterConfig,
+  input: Readonly<{
+    policy: GlmSaturationPolicy
+    queueWaitMs: number
+  }>,
+): InferenceAdapterError =>
+  poolAdapterError(
+    config,
+    'hydralisk GLM lane quorum unhealthy; overflowing to the next Khala lane',
+    {
+      httpStatus: 503,
+      kind: 'lane_quorum_unhealthy',
+      retryable: true,
+      adapterRouteMetadata: {
+        glmSaturationPolicy: input.policy,
+        queueWaitMs: input.queueWaitMs,
+        replicaBusyReason: 'lane_quorum_unhealthy',
+        replicaFallbackReason: 'lane_quorum_unhealthy',
+        replicaHealthScore: 0,
+      },
+    },
+  )
+
+const isLaneQuorumUnhealthy = (
+  candidates: ReadonlyArray<ReplicaCandidate>,
+): boolean => {
+  const active = candidates.filter(
+    candidate => !candidate.state.benchmarkReserved && !candidate.state.draining,
+  )
+  if (active.length === 0) {
+    return false
+  }
+  const quorum = Math.floor(active.length / 2) + 1
+  const unhealthyObservedCount = active.filter(
+    candidate =>
+      candidate.routingStateObserved && candidate.state.health === 'unhealthy',
+  ).length
+  return unhealthyObservedCount >= quorum
+}
+
 const selectedReplicaConfigOnce = (
   config: HydraliskPoolAdapterConfig,
   request: InferenceRequest,
@@ -822,15 +869,21 @@ const selectedReplicaConfigOnce = (
             'hydralisk GLM replica pool selection failed unexpectedly',
           ),
     try: () => {
-      const candidates = config.replicas.map((replica, index) => ({
-        index,
-        replica,
-        state: stateForReplica(
+      const candidates = config.replicas.map((replica, index) => {
+        const routingStateOverride = config.routingStateOracle?.(
+          replica.replicaId,
+        )
+        return {
+          index,
           replica,
-          inflight.get(replica.replicaId) ?? 0,
-          config.routingStateOracle?.(replica.replicaId),
-        ),
-      }))
+          routingStateObserved: routingStateOverride !== undefined,
+          state: stateForReplica(
+            replica,
+            inflight.get(replica.replicaId) ?? 0,
+            routingStateOverride,
+          ),
+        }
+      })
       const eligible = candidates.filter(
         candidate => busyReasonFor(candidate.state) === null,
       )
@@ -840,6 +893,13 @@ const selectedReplicaConfigOnce = (
           config,
           'hydralisk GLM replica pool has no configured replicas',
         )
+      }
+
+      if (isLaneQuorumUnhealthy(candidates)) {
+        throw laneQuorumUnhealthyError(config, {
+          policy: saturationPolicy,
+          queueWaitMs,
+        })
       }
 
       if (eligible.length === 0) {
