@@ -2,6 +2,16 @@
 
 > Authoritative issue #6240 recipe set. Researched against current upstream docs
 > on 2026-06-25. This is repo documentation, not public marketing copy.
+>
+> **Verification status (#6306):** the verified scope for #6306 is **OpenCode**
+> and **Hermes** (top priority), then **Vercel AI SDK**, then **LangChain**. All
+> four were end-to-end smoked against the live gateway on 2026-06-26 — auth,
+> streaming, and real agentic tool-calling loops (OpenCode read a file via its
+> Read tool; Hermes ran its tool loop to extract a file marker). Aider, Cline,
+> Continue, and LiteLLM were **descoped from #6306** by owner direction; their
+> recipe sections below remain as #6240 reference material but are not part of
+> the #6306 verified set. Full evidence:
+> [`khala-ecosystem-tool-verification.md`](./khala-ecosystem-tool-verification.md).
 
 ## Shared Khala Settings
 
@@ -64,7 +74,64 @@ Do not claim per-tool public adoption from the aggregate counter alone. The
 counter proves traffic was served; per-tool claims require either a fresh-key
 test window or the owner-gated F1 analytics split.
 
+## Hermes (Nous Research hermes-agent) — #6306 verified
+
+Source finding: Hermes routes any OpenAI-compatible endpoint through its
+`custom` provider. Set `model.provider: "custom"` plus `model.base_url` in
+`~/.hermes/config.yaml` (or an isolated `HERMES_HOME`), and supply the key via
+`OPENAI_API_KEY`. `custom` is a config-only provider — it is not a `--provider`
+CLI choice — so drive it from config, not the flag.
+
+`~/.hermes/config.yaml`:
+
+```yaml
+model:
+  default: "openagents/khala"
+  provider: "custom"
+  base_url: "https://openagents.com/api/v1"
+```
+
+Key (do not commit it):
+
+```sh
+export OPENAI_API_KEY="$OPENAGENTS_API_KEY"
+```
+
+Smoke (non-interactive one-shot, quiet mode):
+
+```sh
+hermes chat -q "Reply with exactly: khala-hermes-ok" -Q --max-turns 2
+```
+
+Tool-loop smoke (forces the agentic tool path):
+
+```sh
+printf 'the secret marker is BANANA-7741\n' > marker.txt
+hermes chat -q "Use your tools to read marker.txt and tell me the secret marker value, then stop." -Q --yolo --max-turns 6
+```
+
+To verify without touching an existing Hermes install, run it in an isolated
+home: `HERMES_HOME="$(mktemp -d)"` with the config above written into
+`$HERMES_HOME/config.yaml`, and optionally `--ignore-user-config --ignore-rules`
+for a fully clean session.
+
+Attribution: the OpenAI SDK path Hermes uses applies a provider profile's
+`default_headers` when present. For a dedicated verification window without
+custom headers, use a fresh key plus the public counter delta.
+
+Checklist:
+
+- One-shot completion returns the exact sentinel.
+- The agentic tool loop reads a file and returns its contents (proves
+  tool-calling round-trips, not just chat).
+- Streaming tool output renders in interactive `hermes chat`.
+- The public counter increases after the session.
+- An over-quota key surfaces a readable 402 rather than crashing the loop.
+
 ## Aider
+
+> Descoped from #6306 by owner direction (Aider treated as legacy). Section kept
+> as #6240 reference; not part of the #6306 verified set.
 
 Source finding: Aider's OpenAI-compatible docs use `OPENAI_API_BASE`,
 `OPENAI_API_KEY`, and require the model name to be prefixed with `openai/`.
@@ -100,6 +167,9 @@ Checklist:
 
 ## Cline
 
+> Descoped from #6306 by owner direction. Section kept as #6240 reference; not
+> part of the #6306 verified set.
+
 Source finding: Cline's OpenAI Compatible provider expects three settings: base
 URL, API key, and model ID.
 
@@ -125,6 +195,9 @@ Checklist:
 - The public counter increases after the session.
 
 ## Continue
+
+> Descoped from #6306 by owner direction. Section kept as #6240 reference; not
+> part of the #6306 verified set.
 
 Source finding: Continue's OpenAI-compatible provider uses `provider: openai`
 with `apiBase`, `apiKey`, and `model` in `config.yaml`.
@@ -156,7 +229,7 @@ Checklist:
 - The public counter increases after the session.
 - 402 quota errors are visible and actionable.
 
-## Vercel AI SDK
+## Vercel AI SDK — #6306 verified
 
 Source finding: AI SDK's OpenAI-compatible provider uses
 `createOpenAICompatible`; it accepts `baseURL`, `apiKey`, `headers`, and
@@ -221,6 +294,10 @@ Checklist:
 
 ## LiteLLM
 
+> Descoped from #6306 by owner direction. Section kept as #6240 reference; the
+> direct-SDK path was smoked live on 2026-06-26 but LiteLLM is not part of the
+> #6306 verified set.
+
 Source finding: LiteLLM routes OpenAI-compatible chat completions by using the
 `openai/` model prefix and `api_base`. The proxy config must use the base URL,
 not a `/chat/completions` URL.
@@ -270,7 +347,7 @@ Checklist:
 - The public counter increases after the run.
 - 402 quota errors pass through clearly to the caller.
 
-## LangChain
+## LangChain — #6306 verified
 
 Source finding: LangChain Python `ChatOpenAI` accepts `base_url` or
 `OPENAI_API_BASE`; LangChain JS accepts `configuration.baseURL` and
@@ -324,6 +401,8 @@ Checklist:
 
 ## Research Sources
 
+- Hermes Agent docs: <https://hermes-agent.nousresearch.com/docs/>
+- Hermes Agent repo (custom OpenAI-compatible provider): <https://github.com/NousResearch/hermes-agent>
 - Aider OpenAI-compatible docs: <https://aider.chat/docs/llms/openai-compat.html>
 - Aider options reference: <https://aider.chat/docs/config/options.html>
 - Cline OpenAI Compatible provider docs: <https://docs.cline.bot/provider-config/openai-compatible>

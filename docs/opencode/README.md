@@ -21,8 +21,14 @@ opponents (Pillar 3).
 - [`opencode-free-tier-402-playbook.md`](./opencode-free-tier-402-playbook.md)
   documents the current free tier and quota failure path.
 - [`khala-ecosystem-tool-recipes.md`](./khala-ecosystem-tool-recipes.md)
-  publishes the next-tool recipes for Aider, Cline, Continue, AI SDK, LiteLLM,
-  and LangChain, with current upstream research links and attribution guidance.
+  publishes the next-tool recipes. The #6306 verified set is Hermes, Vercel AI
+  SDK, and LangChain (OpenCode has its own recipe doc above); Aider, Cline,
+  Continue, and LiteLLM remain as #6240 reference but are descoped from #6306.
+  Includes upstream research links and attribution guidance.
+- [`khala-ecosystem-tool-verification.md`](./khala-ecosystem-tool-verification.md)
+  is the per-tool verification record (#6306): which recipes were end-to-end
+  smoked against the live gateway, with evidence, plus the manual in-editor
+  checklist for the GUI-only tools (Cline, Continue).
 
 The final-output files below are planning exports from the 2026-06-25 sessions.
 They preserve explored configs and historical notes, including older doubled

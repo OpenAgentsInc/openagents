@@ -2,6 +2,16 @@
 
 > Authoritative recipe for issue #6239. This is repo documentation, not public
 > marketing copy. Public site copy still follows the Khala promise gate.
+>
+> **Verified end-to-end on 2026-06-26 (#6306 / #6305).** With this exact config,
+> OpenCode 1.17.9 completed both a plain chat turn and an agentic tool-calling
+> turn against `openagents/khala`: it invoked its `Read` tool on a file and
+> returned the file's content (full tool round-trip), with no tool-call
+> malformation or stall. Evidence:
+> [`khala-ecosystem-tool-verification.md`](./khala-ecosystem-tool-verification.md).
+> Note: the first `opencode run` after a fresh install pauses while OpenCode
+> fetches the `@ai-sdk/openai-compatible` provider package; let it finish and
+> re-run, or warm it with a simple non-tool query first.
 
 ## What You Get
 
