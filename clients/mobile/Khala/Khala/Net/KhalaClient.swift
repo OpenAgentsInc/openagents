@@ -81,12 +81,12 @@ enum KhalaClient {
     /// Mint a free `oa_agent_…` key. Returns the token. The caller is
     /// responsible for showing the free-tier data-sharing disclosure to the
     /// user before/at first use (see the spec, Section 5).
-    static func mintFreeKey() async throws -> String {
+    static func mintFreeKey(session: URLSession = .shared) async throws -> String {
         var request = URLRequest(url: freeKeyURL)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse else { throw KhalaError.decoding }
             guard (200..<300).contains(http.statusCode) else {
                 throw KhalaError.http(http.statusCode, String(data: data, encoding: .utf8) ?? "")
@@ -111,7 +111,11 @@ enum KhalaClient {
 
     /// Send a single user message to `openagents/khala` and return the
     /// assistant text. v1 is non-streaming.
-    static func complete(prompt: String, apiKey: String) async throws -> String {
+    static func complete(
+        prompt: String,
+        apiKey: String,
+        session: URLSession = .shared
+    ) async throws -> String {
         let url = baseURL.appendingPathComponent("chat/completions")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -125,7 +129,7 @@ enum KhalaClient {
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse else { throw KhalaError.decoding }
             if http.statusCode == 402 { throw KhalaError.quotaExceeded }
             guard (200..<300).contains(http.statusCode) else {

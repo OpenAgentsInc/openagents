@@ -33,3 +33,18 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         ENABLE_PREVIEWS: YES
         SWIFT_EMIT_LOC_STRINGS: YES
+  KhalaTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: KhalaTests
+    dependencies:
+      - target: Khala
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.openagents.khala.tests
+        PRODUCT_NAME: KhalaTests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Khala.app/Khala"
+        BUNDLE_LOADER: "$(TEST_HOST)"
