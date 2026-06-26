@@ -108,6 +108,12 @@
     // PRIMARY_* named base_url/bearer secrets + these refs keep the Worker and
     // the smoke in agreement that both pool replicas are armed and eligible.
     "HYDRALISK_GLM_52_REAP_504B_PRIMARY_ENABLED": "ready",
+    // Endpoint 1 (8g-b) is currently RESERVED by the decision-grade Terminal-Bench
+    // run (singleflight MAX_INFLIGHT=1, so it 429s all other traffic). Mark it
+    // benchmark-reserved so the #6262 pool routes live Khala traffic to the
+    // healthy `replica-b` (endpoint 2) instead of overflowing past GLM to
+    // GPT-OSS. Flip back to false once the bench run releases endpoint 1.
+    "HYDRALISK_GLM_52_REAP_504B_PRIMARY_BENCHMARK_RESERVED": "true",
     "HYDRALISK_GLM_52_REAP_504B_PRIMARY_PROFILE_REF": "profile.hydralisk.glm_52_reap_504b.g4_tp4_minp.v1",
     "HYDRALISK_GLM_52_REAP_504B_PRIMARY_COST_PROFILE_REF": "cost_profile.hydralisk.glm_52_reap_504b.g4_4g.spot.2026_06_25",
     "HYDRALISK_GLM_52_REAP_504B_PRIMARY_PREFLIGHT_REF": "preflight.hydralisk.glm_52_reap_504b.g4.20260625T020559Z",
