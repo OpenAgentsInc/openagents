@@ -23,6 +23,7 @@ const heartbeat = (
   keepWarmStatus: 'completed',
   modelsStatus: 'ok',
   observedAt,
+  probeTimeoutMs: 2_000,
   replicaId,
   replicaRef: `replica.hydralisk.glm_52_reap_504b.${replicaId}`,
   runRef: 'heartbeat.hydralisk.glm_52_reap_504b.fixture',

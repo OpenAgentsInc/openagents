@@ -199,6 +199,77 @@ describe('runGlmPoolHeartbeat', () => {
     })
   })
 
+  test('persists failed rows and continues when a replica probe hangs', async () => {
+    const calls: Array<
+      Readonly<{ body?: string; method: string; url: string }>
+    > = []
+    const { bodies, ledger } = captureLedger()
+    const fetchImpl: GlmPoolHeartbeatFetch = async (input, init) => {
+      calls.push({
+        method: init.method ?? 'GET',
+        url: input,
+      })
+      if (String(input).includes('hung.glm.example.test')) {
+        return await new Promise(() => undefined)
+      }
+      return Response.json({ ok: true })
+    }
+
+    const report = await Effect.runPromise(
+      runGlmPoolHeartbeat({
+        benchmarkOwnershipActive: false,
+        fetchImpl,
+        ledger,
+        observedAt: OBSERVED_AT,
+        probeTimeoutMs: 50,
+        replicas: [replica('hung'), replica('healthy-after-timeout')],
+        warmCompletionEnabled: false,
+      }),
+    )
+
+    expect(
+      calls.map(call => `${call.method} ${new URL(call.url).host}`),
+    ).toEqual([
+      'GET hung.glm.example.test',
+      'GET hung.glm.example.test',
+      'GET healthy-after-timeout.glm.example.test',
+      'GET healthy-after-timeout.glm.example.test',
+    ])
+    expect(report.records).toEqual([
+      expect.objectContaining({
+        healthStatus: 'failed',
+        keepWarmStatus: 'control_plane_only',
+        modelsStatus: 'failed',
+        probeTimeoutMs: 50,
+        replicaId: 'hung',
+        watchdogStatus: 'degraded',
+      }),
+      expect.objectContaining({
+        healthStatus: 'ok',
+        modelsStatus: 'ok',
+        probeTimeoutMs: 50,
+        replicaId: 'healthy-after-timeout',
+        watchdogStatus: 'healthy',
+      }),
+    ])
+    expect(bodies).toHaveLength(2)
+    expect(bodies[0]?.safeMetadata).toMatchObject({
+      heartbeatKind: 'glm_pool_heartbeat',
+      healthStatus: 'failed',
+      modelsStatus: 'failed',
+      probeTimeoutMs: 50,
+      selectedReplicaId: 'hung',
+      watchdogStatus: 'degraded',
+    })
+    expect(bodies[1]?.safeMetadata).toMatchObject({
+      healthStatus: 'ok',
+      modelsStatus: 'ok',
+      selectedReplicaId: 'healthy-after-timeout',
+      watchdogStatus: 'healthy',
+    })
+    expect(String(JSON.stringify(bodies))).not.toContain('hung-token')
+  })
+
   test('benchmark ownership windows block warm completions but keep control-plane health', async () => {
     const calls: Array<
       Readonly<{ body?: string; method: string; url: string }>

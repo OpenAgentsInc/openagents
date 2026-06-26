@@ -59,6 +59,7 @@ export type GlmPoolHeartbeatReplicaRecord = Readonly<{
   keepWarmStatus: GlmPoolKeepWarmStatus
   modelsStatus: GlmPoolHeartbeatProbeStatus
   observedAt: string
+  probeTimeoutMs: number
   replicaId: string
   replicaRef: string
   runRef: string
@@ -89,6 +90,9 @@ export type HydraliskGlmPoolHeartbeatEnv = SupplyLaneCredentialEnv &
     HYDRALISK_GLM_52_REAP_504B_HEARTBEAT_CADENCE_MINUTES?: string | undefined
     HYDRALISK_GLM_52_REAP_504B_HEARTBEAT_ENABLED?: string | undefined
     HYDRALISK_GLM_52_REAP_504B_HEARTBEAT_FAILURE_THRESHOLD?:
+      | string
+      | undefined
+    HYDRALISK_GLM_52_REAP_504B_HEARTBEAT_PROBE_TIMEOUT_MS?:
       | string
       | undefined
     HYDRALISK_GLM_52_REAP_504B_HEARTBEAT_READMIT_SUCCESS_THRESHOLD?:
@@ -131,6 +135,9 @@ const DEFAULT_BREAKER_POLICY: GlmReplicaHeartbeatBreakerPolicy = {
 }
 const MIN_BREAKER_THRESHOLD = 2
 const MAX_BREAKER_THRESHOLD = 10
+const DEFAULT_PROBE_TIMEOUT_MS = 2_000
+const MIN_PROBE_TIMEOUT_MS = 10
+const MAX_PROBE_TIMEOUT_MS = 30_000
 
 const isEnabledFlag = (value: string | undefined): boolean => {
   const normalized = value?.trim().toLowerCase()
@@ -154,6 +161,12 @@ const clampBreakerThreshold = (value: number): number =>
   Math.min(
     MAX_BREAKER_THRESHOLD,
     Math.max(MIN_BREAKER_THRESHOLD, Math.floor(value)),
+  )
+
+const clampProbeTimeoutMs = (value: number): number =>
+  Math.min(
+    MAX_PROBE_TIMEOUT_MS,
+    Math.max(MIN_PROBE_TIMEOUT_MS, Math.floor(value)),
   )
 
 const normalizeBreakerPolicy = (
@@ -190,19 +203,61 @@ const authorizedHeaders = (
   authorization: `Bearer ${replica.bearerToken}`,
 })
 
+const promiseWithTimeout = async <A>(
+  timeoutMs: number,
+  run: (signal: AbortSignal) => Promise<A>,
+): Promise<A | undefined> => {
+  const controller = new AbortController()
+  let settled = false
+  return await new Promise<A | undefined>(resolve => {
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true
+        controller.abort()
+        resolve(undefined)
+      }
+    }, timeoutMs)
+
+    run(controller.signal).then(
+      value => {
+        if (!settled) {
+          settled = true
+          clearTimeout(timer)
+          resolve(value)
+        }
+      },
+      () => {
+        if (!settled) {
+          settled = true
+          clearTimeout(timer)
+          resolve(undefined)
+        }
+      },
+    )
+  })
+}
+
 const fetchOk = (
   fetchImpl: GlmPoolHeartbeatFetch,
   replica: HydraliskGlm52Replica,
   path: string,
+  probeTimeoutMs: number,
 ): Effect.Effect<boolean> =>
   Effect.tryPromise({
     catch: () => 'glm_pool_heartbeat_fetch_failed' as const,
     try: async () => {
-      const response = await fetchImpl(urlFor(replica, path), {
-        headers: authorizedHeaders(replica),
-        method: 'GET',
-      })
-      return response.ok
+      const responseOk = await promiseWithTimeout(
+        probeTimeoutMs,
+        async signal => {
+          const response = await fetchImpl(urlFor(replica, path), {
+            headers: authorizedHeaders(replica),
+            method: 'GET',
+            signal,
+          })
+          return response.ok
+        },
+      )
+      return responseOk ?? false
     },
   }).pipe(Effect.catch(() => Effect.succeed(false)))
 
@@ -239,25 +294,29 @@ const usageFromWarmCompletion = (
 const warmCompletion = (
   fetchImpl: GlmPoolHeartbeatFetch,
   replica: HydraliskGlm52Replica,
+  probeTimeoutMs: number,
 ): Effect.Effect<InferenceUsage | undefined> =>
   Effect.tryPromise({
     catch: () => 'glm_pool_heartbeat_warm_failed' as const,
     try: async () => {
-      const response = await fetchImpl(
-        urlFor(replica, '/v1/chat/completions'),
-        {
-          body: JSON.stringify(warmRequestBody()),
-          headers: {
-            ...authorizedHeaders(replica),
-            'content-type': 'application/json',
+      return await promiseWithTimeout(probeTimeoutMs, async signal => {
+        const response = await fetchImpl(
+          urlFor(replica, '/v1/chat/completions'),
+          {
+            body: JSON.stringify(warmRequestBody()),
+            headers: {
+              ...authorizedHeaders(replica),
+              'content-type': 'application/json',
+            },
+            method: 'POST',
+            signal,
           },
-          method: 'POST',
-        },
-      )
-      if (!response.ok) {
-        return undefined
-      }
-      return usageFromWarmCompletion(await response.json())
+        )
+        if (!response.ok) {
+          return undefined
+        }
+        return usageFromWarmCompletion(await response.json())
+      })
     },
   }).pipe(
     Effect.catch(() =>
@@ -432,6 +491,7 @@ const ingestHeartbeatRecord = (
         healthStatus: record.healthStatus,
         keepWarmStatus: record.keepWarmStatus,
         modelsStatus: record.modelsStatus,
+        probeTimeoutMs: record.probeTimeoutMs,
         replicaWarmState: record.warmState,
         selectedReplicaId: record.replicaId,
         selectedReplicaRef: record.replicaRef,
@@ -526,6 +586,7 @@ const skippedRecord = (
       'skipped_benchmark_reserved' | 'skipped_draining'
     >
     observedAt: string
+    probeTimeoutMs: number
     replica: HydraliskGlm52Replica
     runRef: string
   }>,
@@ -536,6 +597,7 @@ const skippedRecord = (
   keepWarmStatus: input.keepWarmStatus,
   modelsStatus: 'skipped',
   observedAt: input.observedAt,
+  probeTimeoutMs: input.probeTimeoutMs,
   replicaId: input.replica.replicaId,
   replicaRef: replicaRefFor(input.replica.replicaId),
   runRef: input.runRef,
@@ -554,6 +616,7 @@ const probeReplica = (
     nowMs: () => number
     observedAt: string
     breakerPolicy: GlmReplicaHeartbeatBreakerPolicy
+    probeTimeoutMs: number
     replica: HydraliskGlm52Replica
     runRef: string
     warmCompletionEnabled: boolean
@@ -564,6 +627,7 @@ const probeReplica = (
       return skippedRecord({
         keepWarmStatus: 'skipped_benchmark_reserved',
         observedAt: input.observedAt,
+        probeTimeoutMs: input.probeTimeoutMs,
         replica: input.replica,
         runRef: input.runRef,
       })
@@ -572,22 +636,33 @@ const probeReplica = (
       return skippedRecord({
         keepWarmStatus: 'skipped_draining',
         observedAt: input.observedAt,
+        probeTimeoutMs: input.probeTimeoutMs,
         replica: input.replica,
         runRef: input.runRef,
       })
     }
 
     const startedAt = input.nowMs()
-    const healthOk = yield* fetchOk(input.fetchImpl, input.replica, '/health')
+    const healthOk = yield* fetchOk(
+      input.fetchImpl,
+      input.replica,
+      '/health',
+      input.probeTimeoutMs,
+    )
     const modelsOk = yield* fetchOk(
       input.fetchImpl,
       input.replica,
       '/v1/models',
+      input.probeTimeoutMs,
     )
     const shouldWarm =
       input.warmCompletionEnabled && !input.benchmarkOwnershipActive
     const usage = shouldWarm
-      ? yield* warmCompletion(input.fetchImpl, input.replica)
+      ? yield* warmCompletion(
+          input.fetchImpl,
+          input.replica,
+          input.probeTimeoutMs,
+        )
       : undefined
     const totalWallClockMs = roundMs(input.nowMs() - startedAt)
     const warmOk = usage !== undefined
@@ -632,6 +707,7 @@ const probeReplica = (
       keepWarmStatus,
       modelsStatus,
       observedAt: input.observedAt,
+      probeTimeoutMs: input.probeTimeoutMs,
       replicaId: input.replica.replicaId,
       replicaRef: replicaRefFor(input.replica.replicaId),
       runRef: input.runRef,
@@ -652,6 +728,7 @@ export const runGlmPoolHeartbeat = (
     observedAt: string
     breakerPolicy?: Partial<GlmReplicaHeartbeatBreakerPolicy> | undefined
     replicas: ReadonlyArray<HydraliskGlm52Replica>
+    probeTimeoutMs?: number | undefined
     warmCompletionEnabled: boolean
   }>,
 ): Effect.Effect<GlmPoolHeartbeatRunReport> => {
@@ -659,6 +736,9 @@ export const runGlmPoolHeartbeat = (
   const fetchImpl = input.fetchImpl ?? globalThis.fetch
   const nowMs = input.nowMs ?? currentEpochMillis
   const breakerPolicy = normalizeBreakerPolicy(input.breakerPolicy)
+  const probeTimeoutMs = clampProbeTimeoutMs(
+    input.probeTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS,
+  )
 
   return Effect.gen(function* () {
     const records = yield* Effect.forEach(input.replicas, replica =>
@@ -669,6 +749,7 @@ export const runGlmPoolHeartbeat = (
         nowMs,
         observedAt: input.observedAt,
         breakerPolicy,
+        probeTimeoutMs,
         replica,
         runRef,
         warmCompletionEnabled: input.warmCompletionEnabled,
@@ -729,6 +810,12 @@ export const runScheduledGlmPoolHeartbeat = (
       DEFAULT_BREAKER_POLICY.readmitSuccessThreshold,
     ),
   })
+  const probeTimeoutMs = clampProbeTimeoutMs(
+    parsePositiveInteger(
+      input.env.HYDRALISK_GLM_52_REAP_504B_HEARTBEAT_PROBE_TIMEOUT_MS,
+      DEFAULT_PROBE_TIMEOUT_MS,
+    ),
+  )
   const arming = resolveHydraliskGlm52Reap504bArming(input.env)
 
   const skippedReport = (
@@ -779,6 +866,7 @@ export const runScheduledGlmPoolHeartbeat = (
     observedAt,
     breakerPolicy,
     replicas: arming.replicas,
+    probeTimeoutMs,
     warmCompletionEnabled,
   })
 }
