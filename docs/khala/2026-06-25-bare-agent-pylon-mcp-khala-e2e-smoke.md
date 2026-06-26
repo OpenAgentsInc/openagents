@@ -125,6 +125,22 @@ Resume from the durable handle returned by `khala.request`:
 }
 ```
 
+Resolve the owner-scoped Pylon/Codex proof for the assignment:
+
+```sh
+OPENAGENTS_AGENT_TOKEN="<owner agent token>" \
+PYLON_OPENAGENTS_BASE_URL="https://openagents.com" \
+pylon khala proof "<assignmentRef>" --json
+```
+
+Expected proof shape is public-safe only: exact `tokenUsage` row counts and
+totals for `provider: "pylon-codex-own-capacity"`, `model:
+"openagents/pylon-codex"`, `usageTruth: "exact"`, `demandKind:
+"own_capacity"`, `demandSource: "khala_coding_delegation"`, owner-only trace
+refs/counts, and private raw-event refs/counts/byte totals. It must never return
+raw Codex events, prompts, command args, shell output, local paths, keys,
+`trajectory_json`, `safe_metadata_json`, R2 keys, or trace bodies.
+
 Expected result:
 
 - the request creates `assignment.public.khala_coding.*`

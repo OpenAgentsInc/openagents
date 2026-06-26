@@ -265,6 +265,7 @@ import {
 import {
   buildPylonKhalaGitCheckoutWorkspace,
   issuePylonKhalaRequest,
+  readPylonKhalaProof,
   readPylonKhalaStatus,
   resumePylonKhalaRequest,
   type PylonKhalaWorkflow,
@@ -3834,7 +3835,20 @@ async function main() {
         return
       }
 
-      throw new Error("usage: pylon khala request|resume|status ...")
+      if (command === "proof") {
+        const assignmentRef =
+          args[2] !== undefined && !args[2].startsWith("--")
+            ? args[2]
+            : optionString(options, "assignment-ref")
+        if (!assignmentRef) {
+          throw new Error("usage: pylon khala proof <assignmentRef> [--json]")
+        }
+        const result = await readPylonKhalaProof(networkOptions, assignmentRef)
+        emit(result)
+        return
+      }
+
+      throw new Error("usage: pylon khala request|resume|status|proof ...")
     } catch (error) {
       process.stdout.write(`${JSON.stringify({ error: error instanceof Error ? error.message : String(error), ok: false }, null, 2)}\n`)
       process.exitCode = 1

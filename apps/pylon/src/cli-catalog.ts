@@ -369,13 +369,13 @@ export const PYLON_COMMAND_CATALOG: readonly PylonCommandEntry[] = [
   },
   {
     command: "khala",
-    summary: "Issue/resume/status Khala requests through the caller's linked Pylon capacity.",
+    summary: "Issue/resume/status/proof Khala requests through the caller's linked Pylon capacity.",
     mutates: true,
     spends: false,
     needsNetwork: true,
     json: true,
     args: [
-      pos("request|resume|status", "Subcommand."),
+      pos("request|resume|status|proof", "Subcommand."),
       opt("--prompt", "request: prompt text for openagents/khala."),
       opt("--objective", "request: objective text alias for --prompt."),
       opt("--workflow", "request: typed workflow class cloud_coding_session|codex_agent_task."),
@@ -386,6 +386,7 @@ export const PYLON_COMMAND_CATALOG: readonly PylonCommandEntry[] = [
       opt("--commit", "request: pinned 40-character commit SHA for workspace-backed codex_agent_task work."),
       opt("--verify", "request: bounded verification argv for workspace-backed codex_agent_task work."),
       opt("--resume", "request/resume: durable request id to resume."),
+      opt("--assignment-ref", "proof: assignment ref to resolve."),
       opt("--offset", "resume/status: durable byte offset."),
       opt("--base-url", "OpenAgents base URL."),
       opt("--agent-token", "Agent token or OPENAGENTS_AGENT_TOKEN."),

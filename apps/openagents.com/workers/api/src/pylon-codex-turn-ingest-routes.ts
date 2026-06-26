@@ -44,6 +44,7 @@ import {
 type HttpResponse = globalThis.Response
 
 export const PYLON_CODEX_TURN_INGEST_PATH = '/api/pylon/codex/turns'
+export const PYLON_CODEX_ASSIGNMENT_PROOF_PATH = '/api/pylon/codex/proof'
 
 const PYLON_CODEX_SCHEMA_VERSION = 'openagents.pylon.codex_turn.v1' as const
 const PYLON_CODEX_MODEL_NAME = 'openagents/pylon-codex' as const
@@ -125,6 +126,7 @@ type PylonCodexTurnIngestDependencies<Bindings> = Readonly<{
   makeId?: () => string
   nowIso?: () => string
   pylonStore: (env: Bindings) => Pick<PylonApiStore, 'readAssignment'>
+  proofStore?: (env: Bindings) => PylonCodexAssignmentProofStore
   rawEventStore?: (env: Bindings) => PylonCodexRawEventStore | undefined
   publishDelta?: (
     env: Bindings,
@@ -135,6 +137,55 @@ type PylonCodexTurnIngestDependencies<Bindings> = Readonly<{
     }>,
   ) => Effect.Effect<void, unknown>
   traceStore: (env: Bindings) => TraceStore
+}>
+
+export type PylonCodexAssignmentProof = Readonly<{
+  schemaVersion: 'openagents.pylon.codex_assignment_proof.v1'
+  assignmentRef: string
+  pylonRef: string
+  owner: Readonly<{
+    agentUserRef: string
+    openauthUserRef: string
+  }>
+  tokenUsage: Readonly<{
+    rowCount: number
+    provider: typeof PYLON_CODEX_PROVIDER
+    model: typeof PYLON_CODEX_MODEL_NAME
+    usageTruth: 'exact'
+    demandKind: typeof PYLON_CODEX_DEMAND_KIND
+    demandSource: typeof PYLON_CODEX_DEMAND_SOURCE
+    inputTokens: number
+    outputTokens: number
+    reasoningTokens: number
+    cacheReadTokens: number
+    totalTokens: number
+  }>
+  traces: Readonly<{
+    count: number
+    visibility: 'owner_only'
+    schemaVersion: typeof ATIF_PINNED_SCHEMA_VERSION
+    refs: ReadonlyArray<string>
+  }>
+  rawEvents: Readonly<{
+    count: number
+    eventCount: number
+    byteLength: number
+    visibility: 'owner_only'
+    refs: ReadonlyArray<string>
+  }>
+  generatedAt: string
+}>
+
+export type PylonCodexAssignmentProofStore = Readonly<{
+  readAssignmentProof: (
+    input: Readonly<{
+      assignmentRef: string
+      ownerAgentUserId: string
+      ownerUserId: string
+      pylonRef: string
+      nowIso: string
+    }>,
+  ) => Promise<PylonCodexAssignmentProof>
 }>
 
 export type PylonCodexRawEventStoreInput = Readonly<{
@@ -188,6 +239,198 @@ type PylonCodexRawEventMetadataRow = Readonly<{
   r2_key: string
   raw_event_ref: string
 }>
+
+type PylonCodexTokenProofRow = Readonly<{
+  row_count: number
+  input_tokens: number | null
+  output_tokens: number | null
+  reasoning_tokens: number | null
+  cache_read_tokens: number | null
+  total_tokens: number | null
+}>
+
+type PylonCodexTraceProofRow = Readonly<{
+  trace_uuid: string
+}>
+
+type PylonCodexCountProofRow = Readonly<{
+  row_count: number
+}>
+
+type PylonCodexRawEventAggregateProofRow = Readonly<{
+  row_count: number
+  event_count: number | null
+  byte_length: number | null
+}>
+
+type PylonCodexRawEventProofRow = Readonly<{
+  raw_event_ref: string
+}>
+
+const boundedProofRefs = (
+  rows: ReadonlyArray<{ readonly [key: string]: unknown }>,
+  key: string,
+): ReadonlyArray<string> =>
+  rows
+    .map(row => String(row[key] ?? '').trim())
+    .filter(ref => ref !== '')
+    .slice(0, 100)
+
+export const makeD1PylonCodexAssignmentProofStore = (
+  db: D1Database,
+): PylonCodexAssignmentProofStore => ({
+  readAssignmentProof: async input => {
+    const tokenRow = await db
+      .prepare(
+        `
+          SELECT
+            COUNT(*) AS row_count,
+            COALESCE(SUM(input_tokens), 0) AS input_tokens,
+            COALESCE(SUM(output_tokens), 0) AS output_tokens,
+            COALESCE(SUM(reasoning_tokens), 0) AS reasoning_tokens,
+            COALESCE(SUM(cache_read_tokens), 0) AS cache_read_tokens,
+            COALESCE(SUM(total_tokens), 0) AS total_tokens
+          FROM token_usage_events
+          WHERE provider = ?
+            AND model = ?
+            AND usage_truth = 'exact'
+            AND demand_kind = ?
+            AND demand_source = ?
+            AND task_ref = ?
+            AND account_ref = ?
+            AND actor_user_id = ?
+        `,
+      )
+      .bind(
+        PYLON_CODEX_PROVIDER,
+        PYLON_CODEX_MODEL_NAME,
+        PYLON_CODEX_DEMAND_KIND,
+        PYLON_CODEX_DEMAND_SOURCE,
+        input.assignmentRef,
+        `agent:${input.ownerAgentUserId}`,
+        input.ownerUserId,
+      )
+      .first<PylonCodexTokenProofRow>()
+
+    const traceFilter = `
+      owner_user_id = ?
+      AND agent_ref = ?
+      AND visibility = 'owner_only'
+      AND schema_version = ?
+      AND demand_kind = ?
+      AND demand_source = ?
+      AND trajectory_id LIKE ?
+    `
+    const traceBindings = [
+      input.ownerUserId,
+      `agent:${input.ownerAgentUserId}`,
+      ATIF_PINNED_SCHEMA_VERSION,
+      PYLON_CODEX_DEMAND_KIND,
+      PYLON_CODEX_DEMAND_SOURCE,
+      `pylon_codex:${input.assignmentRef}:%`,
+    ] as const
+
+    const traceCountRow = await db
+      .prepare(`SELECT COUNT(*) AS row_count FROM agent_traces WHERE ${traceFilter}`)
+      .bind(...traceBindings)
+      .first<PylonCodexCountProofRow>()
+
+    const traceRows = await db
+      .prepare(
+        `
+          SELECT trace_uuid
+          FROM agent_traces
+          WHERE ${traceFilter}
+          ORDER BY created_at DESC
+          LIMIT 100
+        `,
+      )
+      .bind(...traceBindings)
+      .all<PylonCodexTraceProofRow>()
+
+    const rawEventFilter = `
+      owner_user_id = ?
+      AND assignment_ref = ?
+      AND pylon_ref = ?
+      AND demand_kind = ?
+      AND demand_source = ?
+    `
+    const rawEventBindings = [
+      input.ownerUserId,
+      input.assignmentRef,
+      input.pylonRef,
+      PYLON_CODEX_DEMAND_KIND,
+      PYLON_CODEX_DEMAND_SOURCE,
+    ] as const
+
+    const rawAggregateRow = await db
+      .prepare(
+        `
+          SELECT
+            COUNT(*) AS row_count,
+            COALESCE(SUM(event_count), 0) AS event_count,
+            COALESCE(SUM(byte_length), 0) AS byte_length
+          FROM pylon_codex_raw_events
+          WHERE ${rawEventFilter}
+        `,
+      )
+      .bind(...rawEventBindings)
+      .first<PylonCodexRawEventAggregateProofRow>()
+
+    const rawRows = await db
+      .prepare(
+        `
+          SELECT raw_event_ref
+          FROM pylon_codex_raw_events
+          WHERE ${rawEventFilter}
+          ORDER BY turn_index ASC
+          LIMIT 100
+        `,
+      )
+      .bind(...rawEventBindings)
+      .all<PylonCodexRawEventProofRow>()
+
+    const traces = traceRows.results ?? []
+    const rawEvents = rawRows.results ?? []
+
+    return {
+      schemaVersion: 'openagents.pylon.codex_assignment_proof.v1',
+      assignmentRef: input.assignmentRef,
+      pylonRef: input.pylonRef,
+      owner: {
+        agentUserRef: `agent:${input.ownerAgentUserId}`,
+        openauthUserRef: input.ownerUserId,
+      },
+      tokenUsage: {
+        rowCount: Number(tokenRow?.row_count ?? 0),
+        provider: PYLON_CODEX_PROVIDER,
+        model: PYLON_CODEX_MODEL_NAME,
+        usageTruth: 'exact',
+        demandKind: PYLON_CODEX_DEMAND_KIND,
+        demandSource: PYLON_CODEX_DEMAND_SOURCE,
+        inputTokens: Number(tokenRow?.input_tokens ?? 0),
+        outputTokens: Number(tokenRow?.output_tokens ?? 0),
+        reasoningTokens: Number(tokenRow?.reasoning_tokens ?? 0),
+        cacheReadTokens: Number(tokenRow?.cache_read_tokens ?? 0),
+        totalTokens: Number(tokenRow?.total_tokens ?? 0),
+      },
+      traces: {
+        count: Number(traceCountRow?.row_count ?? 0),
+        visibility: 'owner_only',
+        schemaVersion: ATIF_PINNED_SCHEMA_VERSION,
+        refs: boundedProofRefs(traces, 'trace_uuid'),
+      },
+      rawEvents: {
+        count: Number(rawAggregateRow?.row_count ?? 0),
+        eventCount: Number(rawAggregateRow?.event_count ?? 0),
+        byteLength: Number(rawAggregateRow?.byte_length ?? 0),
+        visibility: 'owner_only',
+        refs: boundedProofRefs(rawEvents, 'raw_event_ref'),
+      },
+      generatedAt: input.nowIso,
+    }
+  },
+})
 
 export const makeD1R2PylonCodexRawEventStore = (
   db: D1Database,
@@ -433,7 +676,10 @@ const requireOwnedAssignment = <Bindings>(
   dependencies: PylonCodexTurnIngestDependencies<Bindings>,
   env: Bindings,
   session: ProgrammaticAgentSession,
-  body: PylonCodexTurnIngestBody,
+  input: Readonly<{
+    assignmentRef: string
+    pylonRef?: string
+  }>,
 ): Effect.Effect<
   PylonApiAssignmentRecord,
   PylonCodexForbidden | PylonCodexNotFound | PylonCodexStorageError
@@ -445,7 +691,7 @@ const requireOwnedAssignment = <Bindings>(
           operation: 'pylon_assignment_read',
           reason: pylonApiStoreErrorFromUnknown(error).reason,
         }),
-      try: () => dependencies.pylonStore(env).readAssignment(body.assignmentRef),
+      try: () => dependencies.pylonStore(env).readAssignment(input.assignmentRef),
     })
     if (assignment === undefined) {
       return yield* new PylonCodexNotFound({
@@ -457,7 +703,7 @@ const requireOwnedAssignment = <Bindings>(
         reason: 'Pylon assignment belongs to another agent.',
       })
     }
-    if (assignment.pylonRef !== body.pylonRef) {
+    if (input.pylonRef !== undefined && assignment.pylonRef !== input.pylonRef) {
       return yield* new PylonCodexForbidden({
         reason: 'Pylon assignment is not assigned to this pylon.',
       })
@@ -985,6 +1231,69 @@ const storeRawCodexEvents = <Bindings>(
   )
 }
 
+const assignmentRefFromProofRequest = (
+  request: Request,
+): Effect.Effect<string, PylonCodexValidationError> => {
+  const value = new URL(request.url).searchParams.get('assignmentRef')?.trim()
+  if (value === undefined || value === '') {
+    return Effect.fail(
+      new PylonCodexValidationError({
+        reason: 'Missing required assignmentRef query parameter.',
+      }),
+    )
+  }
+  if (!/^[A-Za-z0-9][A-Za-z0-9_.:-]{2,180}$/.test(value)) {
+    return Effect.fail(
+      new PylonCodexValidationError({
+        reason: 'assignmentRef is not a bounded public-safe ref.',
+      }),
+    )
+  }
+  return Effect.succeed(value)
+}
+
+const routeProof = <Bindings>(
+  dependencies: PylonCodexTurnIngestDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+): Effect.Effect<HttpResponse, PylonCodexRouteError> =>
+  Effect.gen(function* () {
+    if (request.method !== 'GET') {
+      return methodNotAllowed(['GET'])
+    }
+    const proofStore = dependencies.proofStore?.(env)
+    if (proofStore === undefined) {
+      return yield* new PylonCodexStorageError({
+        operation: 'pylon_codex_assignment_proof_read',
+        reason: 'proof_store_unconfigured',
+      })
+    }
+
+    const session = yield* requireAgent(dependencies, request, env)
+    const assignmentRef = yield* assignmentRefFromProofRequest(request)
+    const assignment = yield* requireOwnedAssignment(dependencies, env, session, {
+      assignmentRef,
+    })
+    const ownerUserId = ownerUserIdForAgent(session)
+    const proof = yield* Effect.tryPromise({
+      catch: error =>
+        new PylonCodexStorageError({
+          operation: 'pylon_codex_assignment_proof_read',
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+      try: () =>
+        proofStore.readAssignmentProof({
+          assignmentRef,
+          nowIso: routeNowIso(dependencies),
+          ownerAgentUserId: session.user.id,
+          ownerUserId,
+          pylonRef: assignment.pylonRef,
+        }),
+    })
+
+    return noStoreJsonResponse(proof)
+  })
+
 const routeIngest = <Bindings>(
   dependencies: PylonCodexTurnIngestDependencies<Bindings>,
   request: Request,
@@ -1025,7 +1334,10 @@ const routeIngest = <Bindings>(
         ),
     })
 
-    yield* requireOwnedAssignment(dependencies, env, session, body)
+    yield* requireOwnedAssignment(dependencies, env, session, {
+      assignmentRef: body.assignmentRef,
+      pylonRef: body.pylonRef,
+    })
 
     const ownerUserId = ownerUserIdForAgent(session)
     const observedAt = body.observedAt ?? routeNowIso(dependencies)
@@ -1152,6 +1464,17 @@ const routeIngest = <Bindings>(
 export const makePylonCodexTurnIngestRoutes = <Bindings>(
   dependencies: PylonCodexTurnIngestDependencies<Bindings>,
 ) => ({
+  handlePylonCodexAssignmentProofApi: (
+    request: Request,
+    env: Bindings,
+  ): Effect.Effect<HttpResponse> => {
+    if (new URL(request.url).pathname !== PYLON_CODEX_ASSIGNMENT_PROOF_PATH) {
+      return Effect.succeed(noStoreJsonResponse({ error: 'not_found' }, { status: 404 }))
+    }
+    return routeProof(dependencies, request, env).pipe(
+      Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+    )
+  },
   handlePylonCodexTurnIngestApi: (
     request: Request,
     env: Bindings,

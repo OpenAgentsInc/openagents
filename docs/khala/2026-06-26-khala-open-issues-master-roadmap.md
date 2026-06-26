@@ -35,10 +35,12 @@ stress/benchmark load is best-effort, preemptible, instantly-yielding, and tagge
   generic unavailable/500 path. This makes parallel Pylon/Codex capacity failures
   actionable while working the Phase 0/1 items below.
 - Raw Pylon/Codex event capture is live only when the local Pylon runner uses a
-  source/binary at or after #6326. Verification must reconcile the public counter
-  to exact `token_usage_events` rows and matching `pylon_codex_raw_events` plus
-  owner-only `agent_traces` rows for the assignment, not just observe a counter
-  increase.
+  source/binary at or after #6326. Verification now has a first-class
+  owner-scoped read path (`GET /api/pylon/codex/proof?assignmentRef=...` and
+  `pylon khala proof <assignmentRef> --json`) that reconciles exact
+  `token_usage_events` rows with matching `pylon_codex_raw_events` counts and
+  owner-only `agent_traces` refs for the assignment. Counter movement alone is
+  still not proof.
 - Observed steering gaps to keep fixing as they block throughput: `presence
   heartbeat` prints local `linked:false` even when server-side provider-account
   linking and capacity projection are usable; `presence link-refresh` is a stale

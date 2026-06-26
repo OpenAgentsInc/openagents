@@ -72,7 +72,46 @@ export type PylonKhalaStatusResult = PylonKhalaStreamProjection & {
   state: "closed" | "streaming" | "up_to_date"
 }
 
+export type PylonKhalaProofResult = {
+  assignmentRef: string
+  generatedAt: string
+  ok: true
+  owner: {
+    agentUserRef: string
+    openauthUserRef: string
+  }
+  pylonRef: string
+  rawEvents: {
+    byteLength: number
+    count: number
+    eventCount: number
+    refs: string[]
+    visibility: "owner_only"
+  }
+  schemaVersion: "openagents.pylon.codex_assignment_proof.v1"
+  tokenUsage: {
+    cacheReadTokens: number
+    demandKind: "own_capacity"
+    demandSource: "khala_coding_delegation"
+    inputTokens: number
+    model: "openagents/pylon-codex"
+    outputTokens: number
+    provider: "pylon-codex-own-capacity"
+    reasoningTokens: number
+    rowCount: number
+    totalTokens: number
+    usageTruth: "exact"
+  }
+  traces: {
+    count: number
+    refs: string[]
+    schemaVersion: string
+    visibility: "owner_only"
+  }
+}
+
 const durablePrefix = "/v1/chat/completions/durable/"
+const codexAssignmentProofPath = "/api/pylon/codex/proof"
 
 function requireAgentToken(options: TipsNetworkOptions): string {
   const token = options.agentToken ?? process.env.OPENAGENTS_AGENT_TOKEN
@@ -214,6 +253,15 @@ export function durableRequestIdFromUrl(value: string | null | undefined): strin
   }
   const encoded = parsed.pathname.slice(durablePrefix.length)
   return encoded === "" || encoded.includes("/") ? null : decodeURIComponent(encoded)
+}
+
+function cleanAssignmentRef(value: string): string {
+  const assignmentRef = value.trim()
+  if (!/^[A-Za-z0-9][A-Za-z0-9_.:-]{2,180}$/.test(assignmentRef)) {
+    throw new Error("khala proof assignmentRef must be a bounded public-safe ref")
+  }
+  assertPublicSafe(assignmentRef, "khala proof assignment ref")
+  return assignmentRef
 }
 
 export function buildPylonKhalaChatRequestBody(
@@ -449,5 +497,22 @@ export async function readPylonKhalaStatus(
       : resumed.streamUpToDate
         ? "up_to_date"
         : "streaming",
+  }
+}
+
+export async function readPylonKhalaProof(
+  options: TipsNetworkOptions,
+  assignmentRefInput: string,
+): Promise<PylonKhalaProofResult> {
+  const assignmentRef = cleanAssignmentRef(assignmentRefInput)
+  const response = await khalaApiRequest(options, {
+    method: "GET",
+    path: `${codexAssignmentProofPath}?assignmentRef=${encodeURIComponent(assignmentRef)}`,
+  })
+  const payload = (await response.json()) as Omit<PylonKhalaProofResult, "ok">
+  assertPublicSafe(payload, "khala proof response")
+  return {
+    ...payload,
+    ok: true,
   }
 }

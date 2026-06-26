@@ -87,6 +87,7 @@ const approvedExactRoutePaths = [
   '/api/public/khala-tokens-served',
   '/api/public/khala-tokens-served/history',
   '/api/pylon/codex/turns',
+  '/api/pylon/codex/proof',
   '/api/public/pylon-capacity-funnel',
   '/api/public/pylon-capacity-funnel/history',
   '/api/public/site-referral-payouts',

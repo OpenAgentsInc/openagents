@@ -706,7 +706,9 @@ import {
   recordPylonCapacityFunnelSnapshots,
 } from './pylon-capacity-funnel-live-routes'
 import {
+  PYLON_CODEX_ASSIGNMENT_PROOF_PATH,
   PYLON_CODEX_TURN_INGEST_PATH,
+  makeD1PylonCodexAssignmentProofStore,
   makeD1R2PylonCodexRawEventStore,
   makePylonCodexTurnIngestRoutes,
 } from './pylon-codex-turn-ingest-routes'
@@ -6904,6 +6906,7 @@ const pylonCodexTurnIngestRoutes = makePylonCodexTurnIngestRoutes<Env>({
   agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
   ledger: env => makeD1TokenUsageLedger(openAgentsDatabase(env)),
   pylonStore: env => makeD1PylonApiStore(openAgentsDatabase(env)),
+  proofStore: env => makeD1PylonCodexAssignmentProofStore(openAgentsDatabase(env)),
   rawEventStore: env =>
     makeD1R2PylonCodexRawEventStore(openAgentsDatabase(env), env.ARTIFACTS),
   publishDelta: (env, delta) =>
@@ -10381,6 +10384,14 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: PYLON_CODEX_TURN_INGEST_PATH,
     handler: (request, env) =>
       pylonCodexTurnIngestRoutes.handlePylonCodexTurnIngestApi(request, env),
+  },
+  {
+    path: PYLON_CODEX_ASSIGNMENT_PROOF_PATH,
+    handler: (request, env) =>
+      pylonCodexTurnIngestRoutes.handlePylonCodexAssignmentProofApi(
+        request,
+        env,
+      ),
   },
   {
     path: '/api/public/pylon-capacity-funnel',

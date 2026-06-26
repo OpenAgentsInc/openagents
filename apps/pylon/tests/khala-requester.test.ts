@@ -6,6 +6,7 @@ import {
   buildPylonKhalaChatRequestBody,
   durableRequestIdFromUrl,
   issuePylonKhalaRequest,
+  readPylonKhalaProof,
   readPylonKhalaStatus,
   resumePylonKhalaRequest,
 } from "../src/khala-requester"
@@ -332,6 +333,84 @@ describe("pylon khala requester API", () => {
     })
   })
 
+  test("proof reads owner-scoped public-safe assignment totals", async () => {
+    const calls: Array<{ init: RequestInit; url: string }> = []
+    const result = await readPylonKhalaProof(
+      {
+        agentToken: "oa_agent_test",
+        baseUrl: "https://openagents.test",
+        fetch: async (url: URL | RequestInfo, init?: RequestInit) => {
+          calls.push({ init: init ?? {}, url: String(url) })
+          return new Response(
+            JSON.stringify({
+              schemaVersion: "openagents.pylon.codex_assignment_proof.v1",
+              assignmentRef: "assignment-pylon-codex-1",
+              pylonRef: "pylon-local-codex-1",
+              owner: {
+                agentUserRef: "agent:agent-user-1",
+                openauthUserRef: "user-openauth-1",
+              },
+              tokenUsage: {
+                rowCount: 2,
+                provider: "pylon-codex-own-capacity",
+                model: "openagents/pylon-codex",
+                usageTruth: "exact",
+                demandKind: "own_capacity",
+                demandSource: "khala_coding_delegation",
+                inputTokens: 100,
+                outputTokens: 40,
+                reasoningTokens: 10,
+                cacheReadTokens: 5,
+                totalTokens: 140,
+              },
+              traces: {
+                count: 2,
+                visibility: "owner_only",
+                schemaVersion: "ATIF-v1.7",
+                refs: ["trace-1", "trace-2"],
+              },
+              rawEvents: {
+                count: 2,
+                eventCount: 8,
+                byteLength: 4096,
+                visibility: "owner_only",
+                refs: ["raw.pylon_codex.aaa", "raw.pylon_codex.bbb"],
+              },
+              generatedAt: "2026-06-26T12:00:00.000Z",
+            }),
+            { headers: { "content-type": "application/json" } },
+          )
+        },
+      },
+      "assignment-pylon-codex-1",
+    )
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.url).toBe("https://openagents.test/api/pylon/codex/proof?assignmentRef=assignment-pylon-codex-1")
+    expect(calls[0]?.init.method).toBe("GET")
+    expect((calls[0]?.init.headers as Record<string, string>).Authorization).toBe("Bearer oa_agent_test")
+    expect(result).toMatchObject({
+      assignmentRef: "assignment-pylon-codex-1",
+      ok: true,
+      rawEvents: {
+        eventCount: 8,
+        visibility: "owner_only",
+      },
+      tokenUsage: {
+        provider: "pylon-codex-own-capacity",
+        totalTokens: 140,
+        usageTruth: "exact",
+      },
+      traces: {
+        count: 2,
+        visibility: "owner_only",
+      },
+    })
+    expect(JSON.stringify(result)).not.toMatch(
+      /rawEventsJson|trajectory_json|safe_metadata_json|r2_key|prompt|shell|\/Users|secret|access[_-]?token|bearer/i,
+    )
+  })
+
   test("parses durable request ids from relative and absolute resume URLs", () => {
     expect(durableRequestIdFromUrl("/v1/chat/completions/durable/chatcmpl_123")).toBe("chatcmpl_123")
     expect(durableRequestIdFromUrl("https://openagents.test/v1/chat/completions/durable/chatcmpl_456")).toBe("chatcmpl_456")
@@ -411,6 +490,86 @@ describe("pylon khala requester API", () => {
       schema: "openagents.pylon.khala_request.v1",
       text: "cli delegated",
     })
+  }, 15_000)
+
+  test("local CLI reads Khala assignment proof as JSON", async () => {
+    const requests: Array<{ headers: Headers; path: string; search: string }> = []
+    const server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url)
+        requests.push({ headers: request.headers, path: url.pathname, search: url.search })
+        return new Response(
+          JSON.stringify({
+            schemaVersion: "openagents.pylon.codex_assignment_proof.v1",
+            assignmentRef: url.searchParams.get("assignmentRef"),
+            pylonRef: "pylon-local-codex-1",
+            owner: {
+              agentUserRef: "agent:agent-user-1",
+              openauthUserRef: "user-openauth-1",
+            },
+            tokenUsage: {
+              rowCount: 1,
+              provider: "pylon-codex-own-capacity",
+              model: "openagents/pylon-codex",
+              usageTruth: "exact",
+              demandKind: "own_capacity",
+              demandSource: "khala_coding_delegation",
+              inputTokens: 10,
+              outputTokens: 5,
+              reasoningTokens: 2,
+              cacheReadTokens: 1,
+              totalTokens: 15,
+            },
+            traces: {
+              count: 1,
+              visibility: "owner_only",
+              schemaVersion: "ATIF-v1.7",
+              refs: ["trace-1"],
+            },
+            rawEvents: {
+              count: 1,
+              eventCount: 3,
+              byteLength: 1024,
+              visibility: "owner_only",
+              refs: ["raw.pylon_codex.aaa"],
+            },
+            generatedAt: "2026-06-26T12:00:00.000Z",
+          }),
+          { headers: { "content-type": "application/json" } },
+        )
+      },
+    })
+    servers.push(server)
+
+    const result = await runPylonCli(
+      ["khala", "proof", "assignment-pylon-codex-1", "--json"],
+      {
+        OPENAGENTS_AGENT_TOKEN: "oa_agent_cli_test",
+        PYLON_OPENAGENTS_BASE_URL: `http://127.0.0.1:${server.port}`,
+      },
+    )
+
+    expect(result.timedOut).toBe(false)
+    expect(result.exitCode).toBe(0)
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.path).toBe("/api/pylon/codex/proof")
+    expect(requests[0]?.search).toBe("?assignmentRef=assignment-pylon-codex-1")
+    expect(requests[0]?.headers.get("authorization")).toBe("Bearer oa_agent_cli_test")
+    const body = JSON.parse(result.stdout) as Record<string, unknown>
+    expect(body).toMatchObject({
+      assignmentRef: "assignment-pylon-codex-1",
+      ok: true,
+      tokenUsage: {
+        totalTokens: 15,
+        usageTruth: "exact",
+      },
+      traces: { visibility: "owner_only" },
+      rawEvents: { eventCount: 3, visibility: "owner_only" },
+    })
+    expect(JSON.stringify(body)).not.toMatch(
+      /rawEventsJson|trajectory_json|safe_metadata_json|r2_key|prompt|shell|\/Users|secret|access[_-]?token|bearer/i,
+    )
   }, 15_000)
 
   test("local CLI refuses codex_agent_task without fixture intent or complete workspace pins before gateway calls", async () => {
