@@ -20,7 +20,9 @@ import {
   type ResolvedPylonAccountSelection,
 } from "./account-registry.js"
 import {
+  createPylonCodexEventChunkReporter,
   createPylonCodexTurnReporter,
+  type CodexEventChunkReporter,
   type CodexTurnReportItem,
   type CodexTurnReporter,
   type CodexTurnUsage,
@@ -81,6 +83,7 @@ export type CodexAgentRunInput = {
   workspaceRef?: string
   account?: ResolvedPylonAccountSelection | null
   env?: Record<string, string | undefined>
+  eventChunkReporter?: CodexEventChunkReporter
   eventReporter?: CodexTurnReporter
   networkAccessEnabled: boolean
   sandboxMode: CodexAgentRuntimeSandboxMode
@@ -120,6 +123,7 @@ export type CodexAgentExecutionOptions = {
   checkoutRunner?: CodexAgentCheckoutRunner
   codexAgentRunner?: CodexAgentRunner
   codexAgentProbe?: CodexAgentProbeOptions
+  codexEventChunkReporter?: CodexEventChunkReporter
   codexTurnReporter?: CodexTurnReporter
   dependencyInstaller?: LocalCommandRunner
   fetch?: typeof fetch
@@ -585,6 +589,39 @@ async function reportCodexTurn(input: {
   }).catch(() => undefined)
 }
 
+async function reportCodexEventChunk(input: {
+  eventChunkReporter: CodexEventChunkReporter | undefined
+  runInput: CodexAgentRunInput
+  sessionRef: string | undefined
+  turnIndex: number
+  chunkIndex: number
+  items?: ReadonlyArray<CodexTurnReportItem>
+  rawEvents: ReadonlyArray<RawCodexThreadEvent>
+}) {
+  if (
+    input.eventChunkReporter === undefined ||
+    input.runInput.assignmentRef === undefined ||
+    input.runInput.leaseRef === undefined ||
+    input.runInput.pylonRef === undefined ||
+    input.rawEvents.length === 0
+  ) {
+    return
+  }
+  await input.eventChunkReporter({
+    assignmentRef: input.runInput.assignmentRef,
+    leaseRef: input.runInput.leaseRef,
+    pylonRef: input.runInput.pylonRef,
+    ...(input.runInput.runRef === undefined ? {} : { runRef: input.runInput.runRef }),
+    ...(input.sessionRef === undefined ? {} : { sessionRef: input.sessionRef }),
+    ...(input.runInput.workspaceRef === undefined ? {} : { workspaceRef: input.runInput.workspaceRef }),
+    turnIndex: input.turnIndex,
+    chunkIndex: input.chunkIndex,
+    observedAt: new Date().toISOString(),
+    rawEvents: input.rawEvents,
+    ...(input.items === undefined || input.items.length === 0 ? {} : { items: input.items }),
+  }).catch(() => undefined)
+}
+
 /**
  * The production runner: one Codex SDK thread pinned to the bounded
  * workspace with approvalPolicy "never" (unattended, nothing to approve
@@ -618,9 +655,30 @@ export async function runWithCodexSdk(input: CodexAgentRunInput): Promise<CodexA
   let failed = false
   let activeTurnIndex = 0
   let itemOrdinal = 0
+  let currentTurnChunkIndex = 0
   let currentTurnItems: Array<CodexTurnReportItem> = []
   let currentRawEvents: Array<RawCodexThreadEvent> = []
   let pendingRawEvents: Array<RawCodexThreadEvent> = []
+  let pendingChunkItems: Array<CodexTurnReportItem> = []
+  let pendingChunkRawEvents: Array<RawCodexThreadEvent> = []
+
+  const flushEventChunk = async (turnIndex: number) => {
+    if (pendingChunkRawEvents.length === 0) return
+    currentTurnChunkIndex += 1
+    const sessionRef =
+      threadId === null ? undefined : stableRef("session.pylon.codex_agent", threadId)
+    await reportCodexEventChunk({
+      chunkIndex: currentTurnChunkIndex,
+      eventChunkReporter: input.eventChunkReporter,
+      items: pendingChunkItems,
+      rawEvents: pendingChunkRawEvents,
+      runInput: input,
+      sessionRef,
+      turnIndex,
+    })
+    pendingChunkItems = []
+    pendingChunkRawEvents = []
+  }
 
   try {
     const codex = new sdk.Codex({ env })
@@ -636,6 +694,9 @@ export async function runWithCodexSdk(input: CodexAgentRunInput): Promise<CodexA
     for await (const raw of events) {
       const event = raw as CodexThreadEvent
       const rawEvent = raw !== null && typeof raw === "object" ? (raw as RawCodexThreadEvent) : undefined
+      if (rawEvent !== undefined) {
+        pendingChunkRawEvents.push(rawEvent)
+      }
       if (rawEvent !== undefined && event.type !== "turn.started") {
         if (activeTurnIndex > 0) {
           currentRawEvents.push(rawEvent)
@@ -648,13 +709,16 @@ export async function runWithCodexSdk(input: CodexAgentRunInput): Promise<CodexA
       }
       if (event.type === "turn.started") {
         activeTurnIndex = turnCount + 1
+        currentTurnChunkIndex = 0
         currentTurnItems = []
         currentRawEvents = rawEvent === undefined ? pendingRawEvents : [...pendingRawEvents, rawEvent]
         pendingRawEvents = []
+        await flushEventChunk(activeTurnIndex)
       }
       if (event.type === "turn.completed") {
         const completedTurnIndex = activeTurnIndex > 0 ? activeTurnIndex : turnCount + 1
         const completedRawEvents = activeTurnIndex > 0 ? currentRawEvents : pendingRawEvents
+        await flushEventChunk(completedTurnIndex)
         turnCount += 1
         const sessionRef =
           threadId === null ? undefined : stableRef("session.pylon.codex_agent", threadId)
@@ -670,6 +734,8 @@ export async function runWithCodexSdk(input: CodexAgentRunInput): Promise<CodexA
         currentTurnItems = []
         currentRawEvents = []
         pendingRawEvents = []
+        pendingChunkItems = []
+        pendingChunkRawEvents = []
         activeTurnIndex = 0
       }
       if (event.type === "turn.failed" || event.type === "error") failed = true
@@ -681,6 +747,8 @@ export async function runWithCodexSdk(input: CodexAgentRunInput): Promise<CodexA
         if (projected !== undefined) {
           itemOrdinal += 1
           currentTurnItems.push(projected)
+          pendingChunkItems.push(projected)
+          await flushEventChunk(activeTurnIndex > 0 ? activeTurnIndex : turnCount + 1)
         }
       }
       if (event.type === "item.completed" && event.item?.type === "file_change") {
@@ -883,6 +951,13 @@ export async function executeCodexAgentAssignment(
       ...(options.baseUrl === undefined ? {} : { baseUrl: options.baseUrl }),
       ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
     })
+  const eventChunkReporter =
+    options.codexEventChunkReporter ??
+    createPylonCodexEventChunkReporter({
+      ...(options.agentToken === undefined ? {} : { agentToken: options.agentToken }),
+      ...(options.baseUrl === undefined ? {} : { baseUrl: options.baseUrl }),
+      ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+    })
   let run: CodexAgentRunResult
   try {
     run = await runner({
@@ -890,6 +965,7 @@ export async function executeCodexAgentAssignment(
       cwd: materialized.workspace,
       account: options.account,
       env,
+      ...(eventChunkReporter === undefined ? {} : { eventChunkReporter }),
       ...(eventReporter === undefined ? {} : { eventReporter }),
       instructions: materialized.instructions,
       leaseRef: lease.leaseRef,

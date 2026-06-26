@@ -305,17 +305,33 @@ should still complete, with only a public-safe diagnostic returned by the ingest
 route. Token-ingest failures are not acceptable proof; rerun or debug them until
 the exact `token_usage_events` row exists.
 
-The redacted ATIF trace is only the public-safe summary. The complete ordered
-Codex SDK event stream for each delegated turn is posted to
-`POST /api/pylon/codex/turns` as `rawEvents` and stored in private owner-scoped
-blob storage under the Pylon/Codex raw-event prefix, with D1 metadata rows in
-`pylon_codex_raw_events` keyed by assignment/session/owner/turn for audit and
-idempotent replay checks. Those raw events may contain prompts, command/tool
-args, local paths, file-change details, and shell output; they must never be
-copied into public traces, counters, issue comments, Forum posts,
+The redacted ATIF trace is only the public-safe summary. While the Codex SDK
+turn is still running, local Pylon streams raw SDK event chunks to
+`POST /api/pylon/codex/event-chunks`; the Worker stores those chunks in private
+owner-scoped blob storage under the Pylon/Codex raw-event-chunk prefix, with D1
+metadata rows in `pylon_codex_raw_event_chunks` keyed by
+assignment/session/owner/turn/chunk. Verify that chunk rows exist before
+treating a long-running delegation as observable:
+
+```sql
+SELECT chunk_ref, assignment_ref, session_ref, turn_index, chunk_index,
+       event_count, byte_length, demand_kind, demand_source, observed_at
+  FROM pylon_codex_raw_event_chunks
+ WHERE assignment_ref = '<assignmentRef>'
+ ORDER BY turn_index ASC, chunk_index ASC;
+```
+
+At final turn closeout, Pylon also posts the complete ordered Codex SDK event
+stream to `POST /api/pylon/codex/turns` as `rawEvents`; the Worker stores that
+canonical whole-turn archive in `pylon_codex_raw_events` for audit and
+idempotent replay checks. Raw chunks and final archives may contain prompts,
+command/tool args, local paths, file-change details, and shell output; they
+must never be copied into public traces, counters, issue comments, Forum posts,
 product-promise output, or public closeout refs. Raw-event persistence is
-fail-soft after exact token accounting and should return only a private-safe
-diagnostic/ref on failure.
+fail-soft for the local coding task and should return only private-safe refs or
+diagnostics. Token accounting remains exact-only: do not synthesize public
+counter deltas from chunks; reconcile the counter against the exact
+`token_usage_events` rows posted from `turn.completed.usage`.
 
 7. Confirm the public counter projected those exact rows:
 

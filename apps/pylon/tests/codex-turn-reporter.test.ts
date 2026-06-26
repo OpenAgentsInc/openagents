@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test"
 
 import {
+  PYLON_CODEX_EVENT_CHUNK_INGEST_PATH,
+  PYLON_CODEX_EVENT_CHUNK_SCHEMA_VERSION,
   PYLON_CODEX_TURN_INGEST_PATH,
   PYLON_CODEX_TURN_SCHEMA_VERSION,
+  createPylonCodexEventChunkReporter,
   createPylonCodexTurnReporter,
 } from "../src/codex-turn-reporter"
 
@@ -115,6 +118,64 @@ describe("Pylon Codex turn reporter", () => {
         baseUrl: "https://openagents.com",
       }),
     ).toBeUndefined()
+  })
+
+  test("posts streaming event chunks without usage tokens", async () => {
+    const calls: Array<{ init?: RequestInit; url: string }> = []
+    const reporter = createPylonCodexEventChunkReporter({
+      agentToken: "oa_agent_test_token",
+      baseUrl: "https://openagents.com/",
+      fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
+        calls.push({ init, url: String(input) })
+        return new Response(JSON.stringify({ ok: true }), { status: 200 })
+      }) as typeof fetch,
+    })
+
+    await reporter?.({
+      assignmentRef: "assignment.public.codex-report",
+      chunkIndex: 0,
+      leaseRef: "lease.public.codex-report",
+      pylonRef: "pylon.public.codex-report",
+      runRef: "run.public.codex-report",
+      sessionRef: "session.public.codex-report",
+      turnIndex: 1,
+      rawEvents: [{ type: "item.completed", item: { type: "agent_message" } }],
+      items: [
+        {
+          itemType: "agent_message",
+          message: "A streamed message.",
+          ordinal: 1,
+          status: "completed",
+        },
+      ],
+    })
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.url).toBe(
+      `https://openagents.com${PYLON_CODEX_EVENT_CHUNK_INGEST_PATH}`,
+    )
+    expect(calls[0]?.init?.headers).toMatchObject({
+      "Idempotency-Key":
+        "pylon.codex.event-chunk.pylon.public.codex-report.assignment.public.codex-report.session.public.codex-report.1.1",
+      authorization: "Bearer oa_agent_test_token",
+      "content-type": "application/json",
+    })
+    const body = JSON.parse(String(calls[0]?.init?.body)) as Record<
+      string,
+      unknown
+    >
+    expect(body).toMatchObject({
+      assignmentRef: "assignment.public.codex-report",
+      chunkIndex: 1,
+      leaseRef: "lease.public.codex-report",
+      pylonRef: "pylon.public.codex-report",
+      schemaVersion: PYLON_CODEX_EVENT_CHUNK_SCHEMA_VERSION,
+      turnIndex: 1,
+    })
+    expect(body).not.toHaveProperty("usage")
+    expect(body.rawEvents).toEqual([
+      { type: "item.completed", item: { type: "agent_message" } },
+    ])
   })
 
   test("surfaces non-2xx ingest responses to the SDK fail-soft caller", async () => {

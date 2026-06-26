@@ -13,7 +13,10 @@ import {
   type CodexAgentRunner,
 } from "../src/codex-agent-executor"
 import { CODEX_AGENT_SDK_PACKAGE } from "../src/codex-agent"
-import type { CodexTurnReport } from "../src/codex-turn-reporter"
+import type {
+  CodexEventChunkReport,
+  CodexTurnReport,
+} from "../src/codex-turn-reporter"
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
 import { ensurePylonLocalState, assertPublicProjectionSafe } from "../src/state"
 import { WorkspaceCheckoutError } from "../src/workspace-materializer"
@@ -436,6 +439,104 @@ describe("codex agent task recognition", () => {
         },
       },
     ])
+  })
+
+  test("streams raw event chunks during the SDK turn before final closeout", async () => {
+    const chunks: Array<CodexEventChunkReport> = []
+    const turns: Array<CodexTurnReport> = []
+    mock.module(CODEX_AGENT_SDK_PACKAGE, () => ({
+      Codex: class {
+        startThread() {
+          return {
+            runStreamed: async () => ({
+              events: (async function* () {
+                yield { type: "thread.started", thread_id: "thread-codex-stream-chunks" }
+                yield { type: "turn.started" }
+                yield {
+                  type: "item.completed",
+                  item: {
+                    status: "completed",
+                    text: "Streaming item one.",
+                    type: "agent_message",
+                  },
+                }
+                yield {
+                  type: "item.completed",
+                  item: {
+                    aggregated_output: "raw command output stored privately",
+                    exit_code: 0,
+                    status: "completed",
+                    type: "command_execution",
+                  },
+                }
+                yield {
+                  type: "turn.completed",
+                  usage: {
+                    cached_input_tokens: 4,
+                    input_tokens: 70,
+                    output_tokens: 11,
+                    reasoning_output_tokens: 5,
+                  },
+                }
+              })(),
+            }),
+          }
+        }
+      },
+    }))
+
+    const result = await runWithCodexSdk({
+      assignmentRef: "assignment.public.codex_agent.stream_chunks",
+      cwd: "/tmp",
+      eventChunkReporter: async chunk => {
+        chunks.push(chunk)
+      },
+      eventReporter: async report => {
+        turns.push(report)
+      },
+      instructions: "Run a mocked Codex turn.",
+      leaseRef: "lease.public.codex_agent.stream_chunks",
+      networkAccessEnabled: true,
+      pylonRef: "pylon.public.codex_agent.stream_chunks",
+      runRef: "run.public.codex_agent.stream_chunks",
+      sandboxMode: "danger-full-access",
+      timeoutMs: 1_000,
+      workspaceRef: "workspace.public.codex_agent.stream_chunks",
+    })
+
+    expect(result.outcome).toBe("completed")
+    expect(chunks.map(chunk => chunk.chunkIndex)).toEqual([1, 2, 3, 4])
+    expect(chunks[0]?.rawEvents.map(event => event.type)).toEqual([
+      "thread.started",
+      "turn.started",
+    ])
+    expect(chunks[1]).toMatchObject({
+      items: [{ itemType: "agent_message", message: "Streaming item one." }],
+      turnIndex: 1,
+    })
+    expect(chunks[2]).toMatchObject({
+      items: [{ itemType: "command_execution", exitCode: 0 }],
+      turnIndex: 1,
+    })
+    expect(chunks[3]?.rawEvents).toEqual([
+      {
+        type: "turn.completed",
+        usage: {
+          cached_input_tokens: 4,
+          input_tokens: 70,
+          output_tokens: 11,
+          reasoning_output_tokens: 5,
+        },
+      },
+    ])
+    expect(turns).toHaveLength(1)
+    expect(turns[0]?.usage).toMatchObject({
+      cachedInputTokens: 4,
+      inputTokens: 70,
+      outputTokens: 11,
+      reasoningOutputTokens: 5,
+    })
+    expect(turns[0]?.rawEvents).toHaveLength(5)
   })
 })
 

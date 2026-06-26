@@ -9,14 +9,20 @@ import {
 } from './agent-registration'
 import {
   PYLON_CODEX_ASSIGNMENT_PROOF_PATH,
+  PYLON_CODEX_EVENT_CHUNK_INGEST_PATH,
   PYLON_CODEX_TURN_INGEST_PATH,
   codexTurnUsageTokenCounts,
   makeD1PylonCodexAssignmentProofStore,
+  makeD1R2PylonCodexRawEventChunkStore,
   makeD1R2PylonCodexRawEventStore,
   makePylonCodexTurnIngestRoutes,
+  pylonCodexRawEventChunkRef,
   pylonCodexRawEventRef,
   type PylonCodexAssignmentProof,
   type PylonCodexAssignmentProofStore,
+  type PylonCodexRawEventChunkStore,
+  type PylonCodexRawEventChunkStoreInput,
+  type PylonCodexRawEventChunkStoreResult,
   type PylonCodexRawEventStore,
   type PylonCodexRawEventStoreInput,
   type PylonCodexRawEventStoreResult,
@@ -381,6 +387,36 @@ class MemoryRawEventStore implements PylonCodexRawEventStore {
   }
 }
 
+class MemoryRawEventChunkStore implements PylonCodexRawEventChunkStore {
+  readonly inputs: Array<PylonCodexRawEventChunkStoreInput> = []
+  readonly records = new Map<string, PylonCodexRawEventChunkStoreResult>()
+
+  failPut = false
+
+  putEventChunk(
+    input: PylonCodexRawEventChunkStoreInput,
+  ): Promise<PylonCodexRawEventChunkStoreResult> {
+    this.inputs.push(input)
+    if (this.failPut) {
+      return Promise.reject(new Error('synthetic raw event chunk failure'))
+    }
+    const ref = pylonCodexRawEventChunkRef(input.digest)
+    const r2Key = `private/pylon-codex-raw-event-chunks/${input.assignmentRef}/turn-${input.turnIndex}/chunk-${input.chunkIndex}/${input.digest}.json`
+    const existing = this.records.get(ref)
+    if (existing !== undefined) {
+      return Promise.resolve({ ...existing, created: false })
+    }
+    const record = {
+      byteLength: new TextEncoder().encode(input.eventsJson).byteLength,
+      created: true,
+      ref,
+      r2Key,
+    }
+    this.records.set(ref, record)
+    return Promise.resolve(record)
+  }
+}
+
 type RawEventMetadataRow = Readonly<{
   assignment_ref: string
   byte_length: number
@@ -395,6 +431,28 @@ type RawEventMetadataRow = Readonly<{
   pylon_ref: string
   r2_key: string
   raw_event_ref: string
+  run_ref: string | null
+  session_ref: string | null
+  turn_index: number
+  updated_at: string
+  workspace_ref: string | null
+}>
+
+type RawEventChunkMetadataRow = Readonly<{
+  assignment_ref: string
+  byte_length: number
+  chunk_index: number
+  chunk_ref: string
+  content_digest: string
+  created_at: string
+  demand_kind: string
+  demand_source: string
+  event_count: number
+  lease_ref: string
+  observed_at: string
+  owner_user_id: string
+  pylon_ref: string
+  r2_key: string
   run_ref: string | null
   session_ref: string | null
   turn_index: number
@@ -551,6 +609,119 @@ const makeFakeRawEventD1 = (): D1Database & {
       throw new Error('session unused')
     },
   } as unknown as D1Database & { rows: Array<RawEventMetadataRow> }
+}
+
+const makeFakeRawEventChunkD1 = (): D1Database & {
+  rows: Array<RawEventChunkMetadataRow>
+} => {
+  const rows: Array<RawEventChunkMetadataRow> = []
+
+  const statement = (_query: string): D1PreparedStatement => {
+    let bound: ReadonlyArray<unknown> = []
+    const stmt: D1PreparedStatement = {
+      all: async <T,>() => ({
+        meta: {} as D1Meta & Record<string, unknown>,
+        results: rows as unknown as T[],
+        success: true as const,
+      }),
+      bind: (...values: ReadonlyArray<unknown>) => {
+        bound = values
+        return stmt
+      },
+      first: async <T,>() => {
+        const ref = String(bound[0])
+        return (rows.find(row => row.chunk_ref === ref) ?? null) as T | null
+      },
+      raw: async () => {
+        throw new Error('raw unused')
+      },
+      run: async <T,>() => {
+        const [
+          chunk_ref,
+          assignment_ref,
+          lease_ref,
+          pylon_ref,
+          owner_user_id,
+          run_ref,
+          session_ref,
+          workspace_ref,
+          turn_index,
+          chunk_index,
+          event_count,
+          byte_length,
+          content_digest,
+          r2_key,
+          observed_at,
+          created_at,
+          updated_at,
+          demand_kind,
+          demand_source,
+        ] = bound as [
+          string,
+          string,
+          string,
+          string,
+          string,
+          string | null,
+          string | null,
+          string | null,
+          number,
+          number,
+          number,
+          number,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+          string,
+        ]
+        const existed = rows.some(row => row.chunk_ref === chunk_ref)
+        if (!existed) {
+          rows.push({
+            assignment_ref,
+            byte_length,
+            chunk_index,
+            chunk_ref,
+            content_digest,
+            created_at,
+            demand_kind,
+            demand_source,
+            event_count,
+            lease_ref,
+            observed_at,
+            owner_user_id,
+            pylon_ref,
+            r2_key,
+            run_ref,
+            session_ref,
+            turn_index,
+            updated_at,
+            workspace_ref,
+          })
+        }
+        return {
+          meta: { changes: existed ? 0 : 1 } as D1Meta &
+            Record<string, unknown>,
+          results: [] as unknown as T[],
+          success: true as const,
+        }
+      },
+    }
+    return stmt
+  }
+
+  return {
+    batch: () => Promise.reject(new Error('batch unused')),
+    dump: () => Promise.reject(new Error('dump unused')),
+    exec: () => Promise.reject(new Error('exec unused')),
+    prepare: (query: string) => statement(query),
+    rows,
+    withSession: () => {
+      throw new Error('session unused')
+    },
+  } as unknown as D1Database & { rows: Array<RawEventChunkMetadataRow> }
 }
 
 const makeFakeProofD1 = (): D1Database & {
@@ -841,6 +1012,19 @@ const postTurn = (body: unknown): Request =>
     method: 'POST',
   })
 
+const postEventChunk = (body: unknown): Request =>
+  new Request(
+    `https://openagents.com${PYLON_CODEX_EVENT_CHUNK_INGEST_PATH}`,
+    {
+      body: JSON.stringify(body),
+      headers: {
+        authorization: `Bearer ${agentToken}`,
+        'content-type': 'application/json',
+      },
+      method: 'POST',
+    },
+  )
+
 const getProof = (assignmentRef: string, token = agentToken): Request =>
   new Request(
     `https://openagents.com${PYLON_CODEX_ASSIGNMENT_PROOF_PATH}?assignmentRef=${encodeURIComponent(assignmentRef)}`,
@@ -858,6 +1042,7 @@ const makeHarness = async (
   const agentStore = new MemoryAgentStore(await sha256Hex(agentToken))
   const ledger = new MemoryTokenUsageLedger()
   const proofStore = new MemoryProofStore()
+  const rawEventChunkStore = new MemoryRawEventChunkStore()
   const rawEventStore = new MemoryRawEventStore()
   const traceStore = new MemoryTraceStore()
   const pylonStore = new MemoryPylonStore(
@@ -884,11 +1069,20 @@ const makeHarness = async (
     pylonStore: () =>
       pylonStore as unknown as Pick<PylonApiStore, 'readAssignment'>,
     proofStore: () => proofStore,
+    rawEventChunkStore: () => rawEventChunkStore,
     rawEventStore: () => rawEventStore,
     traceStore: () => traceStore,
   })
 
-  return { deltas, ledger, proofStore, rawEventStore, routes, traceStore }
+  return {
+    deltas,
+    ledger,
+    proofStore,
+    rawEventChunkStore,
+    rawEventStore,
+    routes,
+    traceStore,
+  }
 }
 
 describe('GET /api/pylon/codex/proof', () => {
@@ -1095,6 +1289,101 @@ describe('GET /api/pylon/codex/proof', () => {
 })
 
 describe('POST /api/pylon/codex/turns', () => {
+  test('stores streaming raw event chunks and owner-only redacted chunk traces without token rows', async () => {
+    const { deltas, ledger, rawEventChunkStore, routes, traceStore } =
+      await makeHarness()
+    const chunkBody = {
+      schemaVersion: 'openagents.pylon.codex_event_chunk.v1',
+      assignmentRef: 'assignment-pylon-codex-1',
+      leaseRef: 'lease-pylon-codex-1',
+      pylonRef: 'pylon-local-codex-1',
+      runRef: 'run-pylon-codex-1',
+      sessionRef: 'session-pylon-codex-1',
+      workspaceRef: 'workspace.public.pylon-codex-1',
+      turnIndex: 1,
+      chunkIndex: 2,
+      observedAt: nowIso,
+      rawEvents: [
+        {
+          item: {
+            aggregated_output: 'raw output with sk-proj-secret',
+            command: 'cat /Users/chris/.codex/auth.json',
+            type: 'command_execution',
+          },
+          type: 'item.completed',
+        },
+      ],
+      items: [
+        {
+          itemType: 'agent_message',
+          message:
+            'Streamed alice@example.com and sk-proj-abcdefghijklmnopqrstuvwxyz.',
+          ordinal: 1,
+          status: 'completed',
+        },
+      ],
+    }
+
+    const first = await Effect.runPromise(
+      routes.handlePylonCodexEventChunkIngestApi(postEventChunk(chunkBody), {}),
+    )
+    const firstBody = (await first.json()) as {
+      rawEvents: {
+        created?: boolean
+        eventCount?: number
+        ref?: string
+        r2Key?: string
+        visibility?: string
+      }
+      trace: { created?: boolean; visibility?: string }
+    }
+    const second = await Effect.runPromise(
+      routes.handlePylonCodexEventChunkIngestApi(postEventChunk(chunkBody), {}),
+    )
+    const secondBody = (await second.json()) as {
+      rawEvents: { created?: boolean }
+      trace: { created?: boolean }
+    }
+
+    expect(first.status).toBe(200)
+    expect(second.status).toBe(200)
+    expect(firstBody.rawEvents).toMatchObject({
+      created: true,
+      eventCount: 1,
+      visibility: 'owner_only',
+    })
+    expect(firstBody.rawEvents.ref).toMatch(/^raw_chunk\.pylon_codex\./)
+    expect(firstBody.rawEvents.r2Key).toContain(
+      'private/pylon-codex-raw-event-chunks/assignment-pylon-codex-1/turn-1/chunk-2/',
+    )
+    expect(firstBody.trace).toMatchObject({
+      created: true,
+      visibility: 'owner_only',
+    })
+    expect(secondBody.rawEvents.created).toBe(false)
+    expect(secondBody.trace.created).toBe(false)
+    expect(ledger.events).toHaveLength(0)
+    expect(deltas).toHaveLength(0)
+    expect(rawEventChunkStore.records.size).toBe(1)
+    expect(rawEventChunkStore.inputs[0]).toMatchObject({
+      assignmentRef: 'assignment-pylon-codex-1',
+      chunkIndex: 2,
+      eventCount: 1,
+      leaseRef: 'lease-pylon-codex-1',
+      ownerUserId: linkedOpenAuthUserId,
+      pylonRef: 'pylon-local-codex-1',
+      turnIndex: 1,
+    })
+    expect(rawEventChunkStore.inputs[0]?.eventsJson).toContain(
+      'raw output with sk-proj-secret',
+    )
+    expect(traceStore.records).toHaveLength(1)
+    const traceJson = JSON.stringify(traceStore.records[0]?.trajectory)
+    expect(traceJson).not.toContain('alice@example.com')
+    expect(traceJson).not.toContain('sk-proj-abcdefghijklmnopqrstuvwxyz')
+    expect(traceJson).toContain('[REDACTED:')
+  })
+
   test('stores exact downstream Codex tokens and an owner-only redacted trace', async () => {
     const { deltas, ledger, rawEventStore, routes, traceStore } =
       await makeHarness()
@@ -1403,6 +1692,69 @@ describe('POST /api/pylon/codex/turns', () => {
       assignmentRef: input.assignmentRef,
       ownerUserId: linkedOpenAuthUserId,
       rawEventRef: first.ref,
+    })
+  })
+
+  test('D1+R2 raw event chunk store writes live chunk metadata idempotently', async () => {
+    const db = makeFakeRawEventChunkD1()
+    const bucket = new MemoryRawEventsR2Bucket()
+    const store = makeD1R2PylonCodexRawEventChunkStore(
+      db as unknown as D1Database,
+      bucket as unknown as R2Bucket,
+    )
+    const input: PylonCodexRawEventChunkStoreInput = {
+      assignmentRef: 'assignment-pylon-codex-1',
+      chunkIndex: 3,
+      digest: 'def456abc1237890def456abc1237890def456abc1237890',
+      eventCount: 2,
+      eventsJson: JSON.stringify({
+        events: [{ type: 'item.completed' }, { type: 'turn.completed' }],
+      }),
+      leaseRef: 'lease-pylon-codex-1',
+      observedAt: nowIso,
+      ownerUserId: linkedOpenAuthUserId,
+      pylonRef: 'pylon-local-codex-1',
+      runRef: 'run-pylon-codex-1',
+      sessionRef: 'session-pylon-codex-1',
+      turnIndex: 1,
+      workspaceRef: 'workspace.public.pylon-codex-1',
+    }
+
+    const first = await store.putEventChunk(input)
+    const second = await store.putEventChunk(input)
+
+    expect(first).toMatchObject({
+      created: true,
+      ref: pylonCodexRawEventChunkRef(input.digest),
+    })
+    expect(first.r2Key).toContain(
+      'private/pylon-codex-raw-event-chunks/assignment-pylon-codex-1/turn-1/chunk-3/',
+    )
+    expect(second).toMatchObject({
+      created: false,
+      ref: first.ref,
+      r2Key: first.r2Key,
+    })
+    expect(db.rows).toHaveLength(1)
+    expect(db.rows[0]).toMatchObject({
+      assignment_ref: input.assignmentRef,
+      chunk_index: 3,
+      chunk_ref: first.ref,
+      content_digest: input.digest,
+      demand_kind: 'own_capacity',
+      demand_source: 'khala_coding_delegation',
+      event_count: 2,
+      owner_user_id: linkedOpenAuthUserId,
+      r2_key: first.r2Key,
+      turn_index: 1,
+    })
+    expect(bucket.objects.size).toBe(1)
+    expect(bucket.objects.get(first.r2Key)?.body).toContain('item.completed')
+    expect(bucket.objects.get(first.r2Key)?.customMetadata).toMatchObject({
+      assignmentRef: input.assignmentRef,
+      chunkIndex: '3',
+      ownerUserId: linkedOpenAuthUserId,
+      rawEventChunkRef: first.ref,
     })
   })
 })

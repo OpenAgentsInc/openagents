@@ -44,9 +44,13 @@ import {
 type HttpResponse = globalThis.Response
 
 export const PYLON_CODEX_TURN_INGEST_PATH = '/api/pylon/codex/turns'
+export const PYLON_CODEX_EVENT_CHUNK_INGEST_PATH =
+  '/api/pylon/codex/event-chunks'
 export const PYLON_CODEX_ASSIGNMENT_PROOF_PATH = '/api/pylon/codex/proof'
 
 const PYLON_CODEX_SCHEMA_VERSION = 'openagents.pylon.codex_turn.v1' as const
+const PYLON_CODEX_EVENT_CHUNK_SCHEMA_VERSION =
+  'openagents.pylon.codex_event_chunk.v1' as const
 const PYLON_CODEX_MODEL_NAME = 'openagents/pylon-codex' as const
 const PYLON_CODEX_PROVIDER = 'pylon-codex-own-capacity' as const
 const PYLON_CODEX_PRODUCER_SYSTEM = 'omega' as const
@@ -109,6 +113,23 @@ class PylonCodexTurnIngestBody extends S.Class<PylonCodexTurnIngestBody>(
   rawEvents: S.optionalKey(S.Array(RawCodexEventPayload)),
 }) {}
 
+class PylonCodexEventChunkIngestBody extends S.Class<PylonCodexEventChunkIngestBody>(
+  'PylonCodexEventChunkIngestBody',
+)({
+  schemaVersion: S.Literal(PYLON_CODEX_EVENT_CHUNK_SCHEMA_VERSION),
+  assignmentRef: NonEmptyString,
+  leaseRef: NonEmptyString,
+  pylonRef: NonEmptyString,
+  runRef: S.optionalKey(NonEmptyString),
+  sessionRef: S.optionalKey(NonEmptyString),
+  workspaceRef: S.optionalKey(NonEmptyString),
+  turnIndex: PositiveInt,
+  chunkIndex: PositiveInt,
+  observedAt: S.optionalKey(S.String.check(S.isMaxLength(80))),
+  rawEvents: S.Array(RawCodexEventPayload),
+  items: S.optionalKey(S.Array(PylonCodexTurnItem)),
+}) {}
+
 export type PylonCodexTurnIngest =
   typeof PylonCodexTurnIngestBody.Type
 
@@ -127,6 +148,9 @@ type PylonCodexTurnIngestDependencies<Bindings> = Readonly<{
   nowIso?: () => string
   pylonStore: (env: Bindings) => Pick<PylonApiStore, 'readAssignment'>
   proofStore?: (env: Bindings) => PylonCodexAssignmentProofStore
+  rawEventChunkStore?: (
+    env: Bindings,
+  ) => PylonCodexRawEventChunkStore | undefined
   rawEventStore?: (env: Bindings) => PylonCodexRawEventStore | undefined
   publishDelta?: (
     env: Bindings,
@@ -210,10 +234,39 @@ export type PylonCodexRawEventStoreResult = Readonly<{
   r2Key: string
 }>
 
+export type PylonCodexRawEventChunkStoreInput = Readonly<{
+  assignmentRef: string
+  chunkIndex: number
+  digest: string
+  eventCount: number
+  eventsJson: string
+  leaseRef: string
+  observedAt: string
+  ownerUserId: string
+  pylonRef: string
+  runRef: string | null
+  sessionRef: string | null
+  turnIndex: number
+  workspaceRef: string | null
+}>
+
+export type PylonCodexRawEventChunkStoreResult = Readonly<{
+  byteLength: number
+  created: boolean
+  ref: string
+  r2Key: string
+}>
+
 export type PylonCodexRawEventStore = Readonly<{
   putTurnEvents: (
     input: PylonCodexRawEventStoreInput,
   ) => Promise<PylonCodexRawEventStoreResult>
+}>
+
+export type PylonCodexRawEventChunkStore = Readonly<{
+  putEventChunk: (
+    input: PylonCodexRawEventChunkStoreInput,
+  ) => Promise<PylonCodexRawEventChunkStoreResult>
 }>
 
 export const pylonCodexRawEventR2Key = (
@@ -233,11 +286,36 @@ export const pylonCodexRawEventR2Key = (
 export const pylonCodexRawEventRef = (digest: string): string =>
   `raw.pylon_codex.${digest.slice(0, 32)}`
 
+export const pylonCodexRawEventChunkR2Key = (
+  input: Pick<
+    PylonCodexRawEventChunkStoreInput,
+    'assignmentRef' | 'chunkIndex' | 'digest' | 'turnIndex'
+  >,
+): string =>
+  [
+    'private',
+    'pylon-codex-raw-event-chunks',
+    input.assignmentRef,
+    `turn-${input.turnIndex}`,
+    `chunk-${input.chunkIndex}`,
+    `${input.digest}.json`,
+  ].join('/')
+
+export const pylonCodexRawEventChunkRef = (digest: string): string =>
+  `raw_chunk.pylon_codex.${digest.slice(0, 32)}`
+
 type PylonCodexRawEventMetadataRow = Readonly<{
   byte_length: number
   event_count: number
   r2_key: string
   raw_event_ref: string
+}>
+
+type PylonCodexRawEventChunkMetadataRow = Readonly<{
+  byte_length: number
+  chunk_ref: string
+  event_count: number
+  r2_key: string
 }>
 
 type PylonCodexTokenProofRow = Readonly<{
@@ -513,6 +591,109 @@ export const makeD1R2PylonCodexRawEventStore = (
         input.sessionRef,
         input.workspaceRef,
         input.turnIndex,
+        input.eventCount,
+        byteLength,
+        input.digest,
+        r2Key,
+        input.observedAt,
+        now,
+        now,
+        PYLON_CODEX_DEMAND_KIND,
+        PYLON_CODEX_DEMAND_SOURCE,
+      )
+      .run()
+
+    return {
+      byteLength,
+      created: (result.meta.changes ?? 0) > 0,
+      ref,
+      r2Key,
+    }
+  },
+})
+
+export const makeD1R2PylonCodexRawEventChunkStore = (
+  db: D1Database,
+  bucket: R2Bucket,
+): PylonCodexRawEventChunkStore => ({
+  putEventChunk: async input => {
+    const ref = pylonCodexRawEventChunkRef(input.digest)
+    const existing = await db
+      .prepare(
+        `
+          SELECT chunk_ref, r2_key, byte_length, event_count
+          FROM pylon_codex_raw_event_chunks
+          WHERE chunk_ref = ?
+          LIMIT 1
+        `,
+      )
+      .bind(ref)
+      .first<PylonCodexRawEventChunkMetadataRow>()
+    if (existing !== null) {
+      return {
+        byteLength: Number(existing.byte_length),
+        created: false,
+        ref: existing.chunk_ref,
+        r2Key: existing.r2_key,
+      }
+    }
+
+    const r2Key = pylonCodexRawEventChunkR2Key(input)
+    const existingObject = await bucket.head(r2Key)
+    const byteLength = new TextEncoder().encode(input.eventsJson).byteLength
+    if (existingObject === null) {
+      await bucket.put(r2Key, input.eventsJson, {
+        customMetadata: {
+          assignmentRef: input.assignmentRef,
+          chunkIndex: String(input.chunkIndex),
+          demandKind: PYLON_CODEX_DEMAND_KIND,
+          demandSource: PYLON_CODEX_DEMAND_SOURCE,
+          ownerUserId: input.ownerUserId,
+          rawEventChunkRef: ref,
+          turnIndex: String(input.turnIndex),
+        },
+        httpMetadata: { contentType: 'application/json; charset=utf-8' },
+      })
+    }
+
+    const now = currentIsoTimestamp()
+    const result = await db
+      .prepare(
+        `
+          INSERT OR IGNORE INTO pylon_codex_raw_event_chunks (
+            chunk_ref,
+            assignment_ref,
+            lease_ref,
+            pylon_ref,
+            owner_user_id,
+            run_ref,
+            session_ref,
+            workspace_ref,
+            turn_index,
+            chunk_index,
+            event_count,
+            byte_length,
+            content_digest,
+            r2_key,
+            observed_at,
+            created_at,
+            updated_at,
+            demand_kind,
+            demand_source
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+      )
+      .bind(
+        ref,
+        input.assignmentRef,
+        input.leaseRef,
+        input.pylonRef,
+        input.ownerUserId,
+        input.runRef,
+        input.sessionRef,
+        input.workspaceRef,
+        input.turnIndex,
+        input.chunkIndex,
         input.eventCount,
         byteLength,
         input.digest,
@@ -900,6 +1081,40 @@ export const pylonCodexTurnToAtifTrajectory = (
   })
 }
 
+export const pylonCodexEventChunkToAtifTrajectory = (
+  body: PylonCodexEventChunkIngestBody,
+): AtifTrajectory => {
+  const items =
+    body.items === undefined || body.items.length === 0
+      ? [
+          new AtifStep({
+            step_id: 1,
+            source: 'agent',
+            message: `Codex streamed ${body.rawEvents.length} raw event(s).`,
+            model_name: PYLON_CODEX_MODEL_NAME,
+          }),
+        ]
+      : body.items.map((item, index) => itemToAtifStep(item, index + 1))
+
+  return new AtifTrajectory({
+    schema_version: ATIF_PINNED_SCHEMA_VERSION,
+    trajectory_id: `pylon_codex:${body.assignmentRef}:turn:${body.turnIndex}:chunk:${body.chunkIndex}`,
+    session_id: body.sessionRef ?? body.assignmentRef,
+    visibility: 'owner_only',
+    agent: {
+      name: 'Pylon Codex',
+      version: 'pylon-codex-v1',
+      model_name: PYLON_CODEX_MODEL_NAME,
+    },
+    steps: items,
+    final_metrics: {
+      total_prompt_tokens: 0,
+      total_completion_tokens: 0,
+      total_steps: items.length,
+    },
+  })
+}
+
 const stableTurnDigest = (
   body: PylonCodexTurnIngestBody,
 ): Effect.Effect<string> =>
@@ -911,6 +1126,22 @@ const stableTurnDigest = (
         body.pylonRef,
         body.sessionRef ?? 'session.pending',
         String(body.turnIndex),
+      ].join(':'),
+    ),
+  )
+
+const stableEventChunkDigest = (
+  body: PylonCodexEventChunkIngestBody,
+): Effect.Effect<string> =>
+  Effect.promise(() =>
+    sha256Hex(
+      [
+        body.assignmentRef,
+        body.leaseRef,
+        body.pylonRef,
+        body.sessionRef ?? 'session.pending',
+        String(body.turnIndex),
+        String(body.chunkIndex),
       ].join(':'),
     ),
   )
@@ -1064,6 +1295,90 @@ const storeTrace = <Bindings>(
     }
   })
 
+const storeEventChunkTrace = <Bindings>(
+  dependencies: PylonCodexTurnIngestDependencies<Bindings>,
+  env: Bindings,
+  input: Readonly<{
+    body: PylonCodexEventChunkIngestBody
+    digest: string
+    nowIso: string
+    ownerUserId: string
+    session: ProgrammaticAgentSession
+  }>,
+): Effect.Effect<
+  Readonly<{
+    created: boolean
+    redactionReport: TraceRedactionReport
+    uuid: string
+  }>,
+  PylonCodexStorageError | PylonCodexTraceRejected | PylonCodexValidationError
+> =>
+  Effect.gen(function* () {
+    const mapped = pylonCodexEventChunkToAtifTrajectory(input.body)
+    const mappedIssues = validateAtifTrajectory(mapped)
+    if (mappedIssues.length > 0) {
+      return yield* new PylonCodexValidationError({
+        reason: mappedIssues.map(issue => issue.message).join(' '),
+      })
+    }
+
+    const { value: redacted, report: redactionReport } =
+      redactTraceValue(mapped)
+    const trajectory = redacted as AtifTrajectory
+    const redactedIssues = validateAtifTrajectory(trajectory)
+    if (redactedIssues.length > 0) {
+      return yield* new PylonCodexValidationError({
+        reason: redactedIssues.map(issue => issue.message).join(' '),
+      })
+    }
+
+    const tripwireFindings = atifTraceTripwire(trajectory)
+    if (tripwireFindings.length > 0) {
+      return yield* new PylonCodexTraceRejected({
+        findings: tripwireFindings.map(finding => finding.code),
+        redactionReport,
+      })
+    }
+
+    const stored = yield* Effect.tryPromise({
+      catch: error =>
+        new PylonCodexStorageError({
+          operation: 'trace_store_create',
+          reason: traceStoreErrorFromUnknown(error).reason,
+        }),
+      try: () =>
+        dependencies.traceStore(env).createTrace({
+          traceUuid: routeMakeId(dependencies),
+          ownerUserId: input.ownerUserId,
+          agentRef: `agent:${input.session.user.id}`,
+          schemaVersion: trajectory.schema_version,
+          trajectoryId: trajectory.trajectory_id,
+          sessionId: trajectory.session_id ?? null,
+          visibility: 'owner_only',
+          stepCount: trajectory.steps.length,
+          trajectory,
+          trajectoryR2Key: null,
+          blobRefs: [],
+          idempotencyKey: `pylon-codex-event-chunk:${input.digest}`,
+          trainingConsent: false,
+          license: null,
+          contentDigest: null,
+          rewardEligible: false,
+          rewardAmountSats: null,
+          uploadSource: 'agent',
+          demandKind: PYLON_CODEX_DEMAND_KIND,
+          demandSource: PYLON_CODEX_DEMAND_SOURCE,
+          nowIso: input.nowIso,
+        }),
+    })
+
+    return {
+      created: stored.created,
+      redactionReport,
+      uuid: stored.record.traceUuid,
+    }
+  })
+
 type PylonCodexTraceDropDiagnostic = Readonly<{
   findings?: ReadonlyArray<string>
   operation?: string
@@ -1107,6 +1422,21 @@ type PylonCodexRawEventsOutcome =
   | Readonly<{
       kind: 'not_submitted'
       eventCount: 0
+    }>
+
+type PylonCodexRawEventChunkOutcome =
+  | Readonly<{
+      kind: 'stored'
+      ref: string
+      created: boolean
+      byteLength: number
+      eventCount: number
+      r2Key: string
+    }>
+  | Readonly<{
+      kind: 'dropped'
+      diagnostic: PylonCodexRawEventsDropDiagnostic
+      eventCount: number
     }>
 
 const traceDropDiagnostic = (
@@ -1233,6 +1563,103 @@ const storeRawCodexEvents = <Bindings>(
   )
 }
 
+const storeRawCodexEventChunk = <Bindings>(
+  dependencies: PylonCodexTurnIngestDependencies<Bindings>,
+  env: Bindings,
+  input: Readonly<{
+    body: PylonCodexEventChunkIngestBody
+    digest: string
+    observedAt: string
+    ownerUserId: string
+  }>,
+): Effect.Effect<PylonCodexRawEventChunkOutcome> => {
+  const store = dependencies.rawEventChunkStore?.(env)
+  if (store === undefined) {
+    return Effect.succeed({
+      diagnostic: {
+        operation: 'raw_codex_events_store',
+        reason: 'raw_event_chunk_store_unconfigured',
+      },
+      eventCount: input.body.rawEvents.length,
+      kind: 'dropped' as const,
+    })
+  }
+
+  const eventsJson = Effect.try({
+    catch: error => ({
+      diagnostic: {
+        operation: 'raw_codex_events_store' as const,
+        reason:
+          error instanceof Error
+            ? error.message
+            : 'raw_event_chunk_payload_serialize_failed',
+      },
+      eventCount: input.body.rawEvents.length,
+      kind: 'dropped' as const,
+    }),
+    try: () =>
+      JSON.stringify({
+        schemaVersion: 'openagents.pylon.codex_raw_event_chunk.v1',
+        assignmentRef: input.body.assignmentRef,
+        leaseRef: input.body.leaseRef,
+        pylonRef: input.body.pylonRef,
+        runRef: input.body.runRef ?? null,
+        sessionRef: input.body.sessionRef ?? null,
+        workspaceRef: input.body.workspaceRef ?? null,
+        turnIndex: input.body.turnIndex,
+        chunkIndex: input.body.chunkIndex,
+        observedAt: input.observedAt,
+        eventCount: input.body.rawEvents.length,
+        events: input.body.rawEvents,
+      }),
+  })
+
+  return eventsJson.pipe(
+    Effect.flatMap(serialized =>
+      Effect.tryPromise({
+        catch: error => ({
+          diagnostic: {
+            operation: 'raw_codex_events_store' as const,
+            reason:
+              error instanceof Error
+                ? error.message
+                : 'raw_event_chunk_store_unavailable',
+          },
+          eventCount: input.body.rawEvents.length,
+          kind: 'dropped' as const,
+        }),
+        try: () =>
+          store.putEventChunk({
+            assignmentRef: input.body.assignmentRef,
+            chunkIndex: input.body.chunkIndex,
+            digest: input.digest,
+            eventCount: input.body.rawEvents.length,
+            eventsJson: serialized,
+            leaseRef: input.body.leaseRef,
+            observedAt: input.observedAt,
+            ownerUserId: input.ownerUserId,
+            pylonRef: input.body.pylonRef,
+            runRef: input.body.runRef ?? null,
+            sessionRef: input.body.sessionRef ?? null,
+            turnIndex: input.body.turnIndex,
+            workspaceRef: input.body.workspaceRef ?? null,
+          }),
+      }),
+    ),
+    Effect.match({
+      onFailure: outcome => outcome,
+      onSuccess: result => ({
+        byteLength: result.byteLength,
+        created: result.created,
+        eventCount: input.body.rawEvents.length,
+        kind: 'stored' as const,
+        ref: result.ref,
+        r2Key: result.r2Key,
+      }),
+    }),
+  )
+}
+
 const assignmentRefFromProofRequest = (
   request: Request,
 ): Effect.Effect<string, PylonCodexValidationError> => {
@@ -1294,6 +1721,131 @@ const routeProof = <Bindings>(
     })
 
     return noStoreJsonResponse(proof)
+  })
+
+const routeEventChunkIngest = <Bindings>(
+  dependencies: PylonCodexTurnIngestDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+): Effect.Effect<HttpResponse, PylonCodexRouteError> =>
+  Effect.gen(function* () {
+    if (request.method !== 'POST') {
+      return methodNotAllowed(['POST'])
+    }
+
+    const session = yield* requireAgent(dependencies, request, env)
+
+    const rawBody = yield* Effect.tryPromise({
+      catch: () =>
+        new PylonCodexValidationError({
+          reason: 'Request body could not be read.',
+        }),
+      try: () => request.text(),
+    })
+    if (new TextEncoder().encode(rawBody).length > MAX_BODY_BYTES) {
+      return yield* new PylonCodexValidationError({
+        reason: `Pylon Codex event chunk payload exceeds the ${MAX_BODY_BYTES}-byte limit.`,
+      })
+    }
+
+    const body = yield* Effect.try({
+      catch: error =>
+        new PylonCodexValidationError({
+          reason:
+            error instanceof Error
+              ? error.message
+              : 'Request body does not match the Pylon Codex event chunk schema.',
+        }),
+      try: () =>
+        decodeUnknownWithSchema(
+          PylonCodexEventChunkIngestBody,
+          rawBody.trim() === '' ? {} : parseJsonUnknown(rawBody),
+        ),
+    })
+    if (body.rawEvents.length === 0) {
+      return yield* new PylonCodexValidationError({
+        reason: 'Pylon Codex event chunk must include at least one raw event.',
+      })
+    }
+
+    yield* requireOwnedAssignment(dependencies, env, session, {
+      assignmentRef: body.assignmentRef,
+      pylonRef: body.pylonRef,
+    })
+
+    const ownerUserId = ownerUserIdForAgent(session)
+    const observedAt = body.observedAt ?? routeNowIso(dependencies)
+    const digest = yield* stableEventChunkDigest(body)
+    const rawEventsOutcome = yield* storeRawCodexEventChunk(dependencies, env, {
+      body,
+      digest,
+      observedAt,
+      ownerUserId,
+    })
+    if (rawEventsOutcome.kind === 'dropped') {
+      return yield* new PylonCodexStorageError({
+        operation: rawEventsOutcome.diagnostic.operation,
+        reason: rawEventsOutcome.diagnostic.reason,
+      })
+    }
+
+    const traceOutcome: PylonCodexTraceOutcome = yield* storeEventChunkTrace(
+      dependencies,
+      env,
+      {
+        body,
+        digest,
+        nowIso: observedAt,
+        ownerUserId,
+        session,
+      },
+    ).pipe(
+      Effect.match({
+        onFailure: error => ({
+          diagnostic: traceDropDiagnostic(error),
+          kind: 'dropped' as const,
+        }),
+        onSuccess: trace => ({
+          kind: 'stored' as const,
+          trace,
+        }),
+      }),
+    )
+
+    const trace =
+      traceOutcome.kind === 'stored'
+        ? {
+            created: traceOutcome.trace.created,
+            uuid: traceOutcome.trace.uuid,
+            visibility: 'owner_only' as const,
+          }
+        : {
+            diagnostic: traceOutcome.diagnostic,
+            dropped: true,
+            visibility: 'owner_only' as const,
+          }
+
+    const redactionReport =
+      traceOutcome.kind === 'stored'
+        ? traceOutcome.trace.redactionReport
+        : traceOutcome.diagnostic.redactionReport
+
+    return noStoreJsonResponse({
+      schemaVersion: 'openagents.pylon.codex_event_chunk_ingest_result.v1',
+      assignmentRef: body.assignmentRef,
+      chunkIndex: body.chunkIndex,
+      rawEvents: {
+        byteLength: rawEventsOutcome.byteLength,
+        created: rawEventsOutcome.created,
+        eventCount: rawEventsOutcome.eventCount,
+        ref: rawEventsOutcome.ref,
+        r2Key: rawEventsOutcome.r2Key,
+        visibility: 'owner_only' as const,
+      },
+      trace,
+      turnIndex: body.turnIndex,
+      ...(redactionReport === undefined ? {} : { redactionReport }),
+    })
   })
 
 const routeIngest = <Bindings>(
@@ -1466,6 +2018,17 @@ const routeIngest = <Bindings>(
 export const makePylonCodexTurnIngestRoutes = <Bindings>(
   dependencies: PylonCodexTurnIngestDependencies<Bindings>,
 ) => ({
+  handlePylonCodexEventChunkIngestApi: (
+    request: Request,
+    env: Bindings,
+  ): Effect.Effect<HttpResponse> => {
+    if (new URL(request.url).pathname !== PYLON_CODEX_EVENT_CHUNK_INGEST_PATH) {
+      return Effect.succeed(noStoreJsonResponse({ error: 'not_found' }, { status: 404 }))
+    }
+    return routeEventChunkIngest(dependencies, request, env).pipe(
+      Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+    )
+  },
   handlePylonCodexAssignmentProofApi: (
     request: Request,
     env: Bindings,

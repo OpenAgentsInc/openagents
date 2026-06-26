@@ -5,6 +5,9 @@ import { exactRoutePathManifest } from './index'
 const approvedExactRoutePaths = [
   '/',
   '/api/public/home',
+  '/api/khala/feedback',
+  '/api/khala/tokens',
+  '/api/operator/khala/feedback',
   '/api/public/business-signup',
   '/api/public/tassadar-run-summary',
   '/api/public/training/public-distributed-run-scale',
@@ -89,6 +92,7 @@ const approvedExactRoutePaths = [
   '/api/public/khala-tokens-served',
   '/api/public/khala-tokens-served/history',
   '/api/pylon/codex/turns',
+  '/api/pylon/codex/event-chunks',
   '/api/pylon/codex/proof',
   '/api/public/pylon-capacity-funnel',
   '/api/public/pylon-capacity-funnel/history',
