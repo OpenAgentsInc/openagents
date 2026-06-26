@@ -12743,6 +12743,29 @@ export default {
   scheduled: async (event, env, ctx): Promise<void> => {
     const config = getOpenAgentsWorkerConfig(env)
 
+    const glmPoolHeartbeatReport = await observedEffect(
+      'HydraliskGlmPoolHeartbeat.run',
+      runScheduledGlmPoolHeartbeatForD1({
+        db: openAgentsDatabase(env),
+        env,
+        scheduledTimeMs: event.scheduledTime,
+      }),
+    )
+    if (glmPoolHeartbeatReport.persistenceFailures.length > 0) {
+      logWorkerRouteWarning('glm_pool_heartbeat_persistence_blocked', {
+        blockerRef:
+          'blocker.public.inference.glm_pool_heartbeat.token_usage_events_persistence_failed',
+        failureCount: glmPoolHeartbeatReport.persistenceFailures.length,
+        failureErrorTags: glmPoolHeartbeatReport.persistenceFailures
+          .map(failure => failure.errorTag)
+          .join(','),
+        failureStages: glmPoolHeartbeatReport.persistenceFailures
+          .map(failure => failure.stage)
+          .join(','),
+        runRef: glmPoolHeartbeatReport.runRef,
+      })
+    }
+
     await Promise.all([
       sweepActiveAgentRunBilling(env, ctx),
       sendPendingReviewReadyArtifactNotifications(env),
@@ -12765,14 +12788,6 @@ export default {
       observedEffect(
         'RelayHealth.probeTick',
         runRelayHealthProbeScheduled(env, event.scheduledTime),
-      ),
-      observedEffect(
-        'HydraliskGlmPoolHeartbeat.run',
-        runScheduledGlmPoolHeartbeatForD1({
-          db: openAgentsDatabase(env),
-          env,
-          scheduledTimeMs: event.scheduledTime,
-        }),
       ),
       observedEffect(
         'SelfServeWindowProducer.topUp',

@@ -70,10 +70,18 @@ export type GlmPoolHeartbeatReplicaRecord = Readonly<{
   watchdogStatus: GlmPoolWatchdogStatus
 }>
 
+export type GlmPoolHeartbeatPersistenceFailure = Readonly<{
+  errorTag: string
+  replicaId?: string | undefined
+  runRef: string
+  stage: 'replica_record' | 'scheduled_skip'
+}>
+
 export type GlmPoolHeartbeatRunReport = Readonly<{
   benchmarkOwnershipActive: boolean
   enabled: boolean
   observedAt: string
+  persistenceFailures: ReadonlyArray<GlmPoolHeartbeatPersistenceFailure>
   records: ReadonlyArray<GlmPoolHeartbeatReplicaRecord>
   runRef: string
   skippedReason?: 'cadence' | 'disabled' | 'unarmed' | undefined
@@ -440,7 +448,7 @@ export const glmPoolHeartbeatLatestRecordOracle = (
 const ingestHeartbeatRecord = (
   ledger: TokenUsageLedgerShape,
   record: GlmPoolHeartbeatReplicaRecord,
-): Effect.Effect<void> =>
+): Effect.Effect<void, unknown> =>
   ledger
     .ingestEvent({
       schemaVersion: 'openagents.token_usage_event.v1',
@@ -512,10 +520,7 @@ const ingestHeartbeatRecord = (
       },
       usageTruth: 'exact',
     })
-    .pipe(
-      Effect.asVoid,
-      Effect.catch(() => Effect.void),
-    )
+    .pipe(Effect.asVoid)
 
 const ingestScheduledSkipDiagnostic = (
   input: Readonly<{
@@ -529,7 +534,7 @@ const ingestScheduledSkipDiagnostic = (
     skippedReason: GlmPoolHeartbeatSkippedReason
     warmCompletionEnabled: boolean
   }>,
-): Effect.Effect<void> =>
+): Effect.Effect<void, unknown> =>
   input.ledger
     .ingestEvent({
       schemaVersion: 'openagents.token_usage_event.v1',
@@ -574,10 +579,34 @@ const ingestScheduledSkipDiagnostic = (
       },
       usageTruth: 'exact',
     })
-    .pipe(
-      Effect.asVoid,
-      Effect.catch(() => Effect.void),
-    )
+    .pipe(Effect.asVoid)
+
+const errorTagFromUnknown = (error: unknown): string => {
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    '_tag' in error &&
+    typeof error._tag === 'string'
+  ) {
+    return error._tag
+  }
+
+  return 'unknown_error'
+}
+
+const heartbeatPersistenceFailure = (
+  input: Readonly<{
+    error: unknown
+    replicaId?: string | undefined
+    runRef: string
+    stage: GlmPoolHeartbeatPersistenceFailure['stage']
+  }>,
+): GlmPoolHeartbeatPersistenceFailure => ({
+  errorTag: errorTagFromUnknown(input.error),
+  ...(input.replicaId === undefined ? {} : { replicaId: input.replicaId }),
+  runRef: input.runRef,
+  stage: input.stage,
+})
 
 const skippedRecord = (
   input: Readonly<{
@@ -717,7 +746,7 @@ const probeReplica = (
       warmState,
       watchdogStatus,
     }
-  }).pipe(Effect.tap(record => ingestHeartbeatRecord(input.ledger, record)))
+  })
 
 export const runGlmPoolHeartbeat = (
   input: Readonly<{
@@ -755,12 +784,39 @@ export const runGlmPoolHeartbeat = (
         warmCompletionEnabled: input.warmCompletionEnabled,
       }),
     )
+    const persistenceFailures = yield* Effect.forEach(records, record =>
+      ingestHeartbeatRecord(input.ledger, record).pipe(
+        Effect.as(
+          undefined as GlmPoolHeartbeatPersistenceFailure | undefined,
+        ),
+        Effect.catch(error =>
+          Effect.succeed(
+            heartbeatPersistenceFailure({
+              error,
+              replicaId: record.replicaId,
+              runRef: record.runRef,
+              stage: 'replica_record',
+            }),
+          ),
+        ),
+      ),
+    ).pipe(
+      Effect.map(failures =>
+        failures.filter(
+          (
+            failure,
+          ): failure is GlmPoolHeartbeatPersistenceFailure =>
+            failure !== undefined,
+        ),
+      ),
+    )
     recordGlmPoolHeartbeatRoutingState(records)
 
     return {
       benchmarkOwnershipActive: input.benchmarkOwnershipActive,
       enabled: true,
       observedAt: input.observedAt,
+      persistenceFailures,
       records,
       runRef,
       warmCompletionEnabled: input.warmCompletionEnabled,
@@ -821,10 +877,12 @@ export const runScheduledGlmPoolHeartbeat = (
   const skippedReport = (
     skippedReason: GlmPoolHeartbeatSkippedReason,
     reportEnabled: boolean,
+    persistenceFailures: ReadonlyArray<GlmPoolHeartbeatPersistenceFailure> = [],
   ): GlmPoolHeartbeatRunReport => ({
     benchmarkOwnershipActive,
     enabled: reportEnabled,
     observedAt,
+    persistenceFailures,
     records: [],
     runRef,
     skippedReason,
@@ -845,7 +903,20 @@ export const runScheduledGlmPoolHeartbeat = (
       runRef,
       skippedReason,
       warmCompletionEnabled,
-    }).pipe(Effect.as(skippedReport(skippedReason, reportEnabled)))
+    }).pipe(
+      Effect.as(skippedReport(skippedReason, reportEnabled)),
+      Effect.catch(error =>
+        Effect.succeed(
+          skippedReport(skippedReason, reportEnabled, [
+            heartbeatPersistenceFailure({
+              error,
+              runRef,
+              stage: 'scheduled_skip',
+            }),
+          ]),
+        ),
+      ),
+    )
 
   if (!enabled) {
     return persistSkippedReport('disabled', false)

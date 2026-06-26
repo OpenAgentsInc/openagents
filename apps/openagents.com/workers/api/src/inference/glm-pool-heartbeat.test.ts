@@ -43,6 +43,14 @@ const captureLedger = () => {
   return { bodies, ledger }
 }
 
+const failingLedger = (errorTag: string): TokenUsageLedgerShape =>
+  ({
+    ingestEvent: () =>
+      Effect.fail({
+        _tag: errorTag,
+      }),
+  }) as unknown as TokenUsageLedgerShape
+
 const okFetch =
   (
     calls: Array<Readonly<{ body?: string; method: string; url: string }>>,
@@ -197,6 +205,37 @@ describe('runGlmPoolHeartbeat', () => {
       health: 'healthy',
       warmState: 'warm',
     })
+  })
+
+  test('keeps probe results public-safe when token ledger persistence fails', async () => {
+    const calls: Array<
+      Readonly<{ body?: string; method: string; url: string }>
+    > = []
+
+    const report = await Effect.runPromise(
+      runGlmPoolHeartbeat({
+        benchmarkOwnershipActive: false,
+        fetchImpl: okFetch(calls),
+        ledger: failingLedger('TokenUsageLedgerStorageError'),
+        observedAt: OBSERVED_AT,
+        replicas: [replica('persistence-failure')],
+        warmCompletionEnabled: false,
+      }),
+    )
+
+    expect(report.records).toHaveLength(1)
+    expect(report.persistenceFailures).toEqual([
+      {
+        errorTag: 'TokenUsageLedgerStorageError',
+        replicaId: 'persistence-failure',
+        runRef:
+          'heartbeat.hydralisk.glm_52_reap_504b.20260625t160000000z',
+        stage: 'replica_record',
+      },
+    ])
+    expect(String(JSON.stringify(report.persistenceFailures))).not.toContain(
+      'persistence-failure-token',
+    )
   })
 
   test('persists failed rows and continues when a replica probe hangs', async () => {
@@ -609,5 +648,31 @@ describe('runScheduledGlmPoolHeartbeat', () => {
       replicaCount: 0,
       scheduledSkipReason: 'unarmed',
     })
+  })
+
+  test('reports a typed scheduled blocker when diagnostic persistence fails', async () => {
+    const report = await Effect.runPromise(
+      runScheduledGlmPoolHeartbeat({
+        env: {
+          HYDRALISK_GLM_52_REAP_504B_HEARTBEAT_ENABLED: 'true',
+        },
+        ledger: failingLedger('TokenUsageLedgerUnsafePayload'),
+        scheduledTimeMs: Date.parse(OBSERVED_AT),
+      }),
+    )
+
+    expect(report).toMatchObject({
+      enabled: true,
+      records: [],
+      skippedReason: 'unarmed',
+    })
+    expect(report.persistenceFailures).toEqual([
+      {
+        errorTag: 'TokenUsageLedgerUnsafePayload',
+        runRef:
+          'heartbeat.hydralisk.glm_52_reap_504b.20260625t160000000z',
+        stage: 'scheduled_skip',
+      },
+    ])
   })
 })
