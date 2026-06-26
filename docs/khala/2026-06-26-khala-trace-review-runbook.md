@@ -26,7 +26,8 @@ Run this once per Khala improvement cycle, or before starting a burndown batch:
 2. Review `failureModes` first. Convert high/medium priority `triageItems` into
    GitHub issues when they are not already represented.
 3. Review `userIntents` and `notableTraces` for repeated capability gaps. Feed
-   unsupported requests into #6357.
+   unsupported requests into the #6357 ledger:
+   `GET/POST /api/operator/khala/unsupported-requests`.
 4. Use `modelMix`, `outcomes`, and `demandSources` to spot backend regressions,
    fallback drift, empty responses, estimated token rows, and traffic shifts.
 5. Keep raw trace inspection owner-only through `/traces?token=...` or the
@@ -49,3 +50,6 @@ Example triage item shape:
 The route is intentionally not part of the public OpenAPI contract. It is an
 operator/admin surface for turning owner-scoped traces into backlog items while
 preserving the raw-data boundary.
+
+The #6357 unsupported-request ledger runbook is
+`docs/khala/2026-06-26-khala-unsupported-request-list.md`.

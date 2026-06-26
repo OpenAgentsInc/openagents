@@ -570,6 +570,10 @@ import {
   makeD1KhalaTraceReviewStore,
 } from './khala-trace-review-routes'
 import {
+  handleOperatorKhalaUnsupportedRequests,
+  makeD1KhalaUnsupportedRequestStore,
+} from './khala-unsupported-request-routes'
+import {
   combineMcpCatalogs,
   khalaDurableRequestIsLinkedToPrincipal,
   khalaMcpAgentPrincipal,
@@ -9698,6 +9702,15 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         requireAdminApiToken: adminRequest =>
           requireAdminApiToken(adminRequest, env),
         store: makeD1KhalaTraceReviewStore(openAgentsDatabase(env)),
+      }),
+  },
+  {
+    path: '/api/operator/khala/unsupported-requests',
+    handler: (request, env) =>
+      handleOperatorKhalaUnsupportedRequests(request, {
+        requireAdminApiToken: adminRequest =>
+          requireAdminApiToken(adminRequest, env),
+        store: makeD1KhalaUnsupportedRequestStore(openAgentsDatabase(env)),
       }),
   },
   {
