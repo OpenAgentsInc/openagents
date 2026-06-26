@@ -7,6 +7,8 @@ struct ContentView: View {
     @State private var showSettings = false
     @State private var hasKey = KeychainStore.hasAPIKey
     @State private var permissionsRequested = false
+    @State private var typedMessage = ""
+    @FocusState private var composerFocused: Bool
 
     var body: some View {
         ZStack {
@@ -50,6 +52,8 @@ struct ContentView: View {
                 )
                 .padding(.bottom, 12)
 
+                composer
+
                 if !hasKey {
                     Button("Add a Khala key to get started") { showSettings = true }
                         .font(.footnote)
@@ -66,6 +70,47 @@ struct ContentView: View {
             permissionsRequested = true
             _ = await voice.requestPermissions()
         }
+    }
+
+    /// Voice-free composer: type a message and send it through the same Khala
+    /// round-trip the push-to-talk path uses. This is the minimal way to test
+    /// the end-to-end handshake without microphone/speech permissions.
+    private var composer: some View {
+        HStack(spacing: 8) {
+            TextField("Type a message…", text: $typedMessage, axis: .vertical)
+                .lineLimit(1...4)
+                .textFieldStyle(.plain)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+                .focused($composerFocused)
+                .submitLabel(.send)
+                .onSubmit(sendTyped)
+                .disabled(voice.state.isBusy)
+
+            Button(action: sendTyped) {
+                Image(systemName: "arrow.up.circle.fill")
+                    .font(.title)
+                    .foregroundStyle(canSend ? voice.state.accentColor : Color.secondary)
+            }
+            .disabled(!canSend)
+            .accessibilityLabel("Send message")
+        }
+        .padding(.horizontal, 4)
+    }
+
+    private var canSend: Bool {
+        hasKey
+            && !voice.state.isBusy
+            && !typedMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func sendTyped() {
+        let text = typedMessage
+        guard canSend else { return }
+        composerFocused = false
+        typedMessage = ""
+        voice.sendText(text)
     }
 
     private var header: some View {

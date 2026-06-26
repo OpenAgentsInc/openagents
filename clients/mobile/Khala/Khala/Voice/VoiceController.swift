@@ -112,6 +112,21 @@ final class VoiceController: ObservableObject {
         }
     }
 
+    // MARK: - Text input (voice-free handshake path)
+
+    /// Send a typed message through the same Khala round-trip the voice path
+    /// uses. This is the minimal, voice-free way to exercise the end-to-end
+    /// handshake (mint/paste key -> type -> POST /chat/completions -> response),
+    /// e.g. in the simulator or before microphone permission is granted.
+    func sendText(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        guard !state.isBusy else { return }
+        response = ""
+        transcript = trimmed
+        Task { await send(trimmed) }
+    }
+
     // MARK: - Khala API
 
     private func send(_ prompt: String) async {
