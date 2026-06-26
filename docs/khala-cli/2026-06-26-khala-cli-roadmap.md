@@ -2,21 +2,21 @@
 
 > Status: **internal execution roadmap, 2026-06-26.** Pairs with
 > [`2026-06-26-khala-cli-audit.md`](./2026-06-26-khala-cli-audit.md). Direction
-> only; flips no promise state and ships no code by itself.
+> and implementation record; flips no promise state.
 
-A single Bun + Effect script that reads one line of input (OpenTUI) and streams
-a Khala answer to stdout. Build it in small, independently-shippable milestones.
-Each milestone has a hard **done-when**. The whole thing should be a few hundred
-lines, not a framework.
+A single Bun + Effect client that reads one line of input (OpenTUI) and streams
+a Khala answer to stdout. It now ships from `clients/khala-cli/`; the original
+milestone plan remains below as the execution record.
 
 ## Where it lives
 
-- **Proposed home:** `apps/khala-cli/` as a tiny standalone app in the monorepo,
-  entrypoint `apps/khala-cli/src/index.ts` with a `#!/usr/bin/env bun` shebang
-  (mirrors `apps/pylon/src/index.ts`). A `package.json` with a `bin` field
-  (`khala`) so `bun run` / `bunx` works.
-- **Alternative (lighter):** a single `scripts/khala.ts` if we decide it does not
-  warrant its own app package. Decide at M0; default to `apps/khala-cli/`.
+- **Actual home:** `clients/khala-cli/` as a tiny standalone client package in
+  the monorepo, entrypoint `clients/khala-cli/src/index.ts` with a
+  `#!/usr/bin/env bun` shebang. Its `package.json` exposes a `khala` bin, and
+  the root package exposes `bun run khala`.
+- **Original proposed home:** `apps/khala-cli/`.
+- **Rejected lighter alternative:** a single `scripts/khala.ts`; the shipped
+  client is a package because it needs a `khala` bin and isolated tests.
 - **Dependency:** `@opentui/core` (published npm build; see M0 native-core note).
   Effect + Effect Schema as already used across the repo.
 
@@ -63,12 +63,12 @@ once at startup.
 ## Milestones
 
 ### M0 — Scaffold + native-core check
-- Create `apps/khala-cli/` (`package.json`, `tsconfig`, `src/index.ts` shebang).
+- Create `clients/khala-cli/` (`package.json`, `tsconfig`, `src/index.ts` shebang).
 - `bun install @opentui/core`; confirm the published package resolves its
   **prebuilt native binary** on this machine without requiring a local Zig
   toolchain (the audit flags this as the one environment risk). If a build
   machine lacks the prebuilt binary, document the `bun install` requirement.
-- **Done-when:** `bun apps/khala-cli/src/index.ts --help` prints usage and exits 0.
+- **Done-when:** `bun run --cwd clients/khala-cli khala -- --help` prints usage and exits 0.
 
 ### M1 — OpenTUI input, echo only (no network)
 - Stand up the OpenTUI input: `createCliRenderer()` → one `InputRenderable` →
@@ -105,12 +105,12 @@ once at startup.
 ### M4 — Polish + ship
 - `--no-stream` (single JSON response) for piping; `--system`-free by design
   (server owns the system prompt — document this).
-- README usage block; `bin` wired so `bunx khala` / `bun run khala` work.
+- README usage block; `bin` wired so `bun run khala` works from the repo.
 - Tests: a deterministic SSE-parser unit test (feed canned `delta`/`done`/`error`
   bytes, assert assembled text and terminal handling) and a bounds-validator
   test. Keep network calls out of unit tests.
 - **Done-when:** the full relevant test suite + `check:deploy` are green, README
-  shows a copy-pasteable session, and `apps/khala-cli` is committed and pushed to
+  shows a copy-pasteable session, and `clients/khala-cli` is committed and pushed to
   `main`.
 
 ## Sequence (flat)
@@ -134,8 +134,8 @@ without blocking M2's usefulness.
 
 ## Open decisions (resolve as you build)
 
-- **`apps/khala-cli/` vs `scripts/khala.ts`** — default to the app package; drop
-  to a single script only if the package overhead clearly isn't worth it.
+- **Package vs single script** — resolved to `clients/khala-cli/` so the command
+  can expose a real `khala` bin and headless tests.
 - **Minimal-renderer vs key-handler-only** OpenTUI mode (audit §3) — default to
   minimal-renderer; fall back if it fights "dirt-simple."
 - **Conversation trimming policy** when approaching the public-lane bounds —
