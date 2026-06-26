@@ -8,9 +8,13 @@ bun run khala -- --prompt "Say hello in one short sentence."
 printf 'Say OK only.' | bun run khala -- --headless --json
 ```
 
-Default `khala` opens a one-line OpenTUI prompt. Headless mode uses
-`--prompt`, positional text, or stdin and streams the assistant response to
-stdout.
+"Khala CLI" names the command-line program surface: the `khala` command. It has
+two modes:
+
+- **Interactive terminal mode:** default `khala` opens a one-line OpenTUI prompt
+  for paste-safe input. This is intentionally not a dashboard-style TUI.
+- **Headless CLI mode:** `--prompt`, positional text, or stdin runs one turn and
+  streams the assistant response to stdout for scripts and agents.
 
 ## Flags
 
