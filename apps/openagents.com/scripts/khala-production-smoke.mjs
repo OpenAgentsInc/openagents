@@ -176,6 +176,34 @@ const receiptPathFrom = openagents => {
   return null
 }
 
+const operatorCreditReceiptRefPrefix = 'receipt.inference.operator_credit.'
+
+const receiptRefFromReceiptPath = receiptPath => {
+  if (typeof receiptPath !== 'string' || receiptPath.length === 0) {
+    return null
+  }
+  const publicReceiptPrefix = '/api/public/inference/receipts/'
+  if (receiptPath.startsWith(publicReceiptPrefix)) {
+    return decodeURIComponent(receiptPath.slice(publicReceiptPrefix.length))
+  }
+  try {
+    const url = new URL(receiptPath)
+    if (url.pathname.startsWith(publicReceiptPrefix)) {
+      return decodeURIComponent(url.pathname.slice(publicReceiptPrefix.length))
+    }
+  } catch {
+    // Relative paths are common in the Worker disclosure block.
+  }
+  return receiptPath.startsWith('receipt.inference.') ? receiptPath : null
+}
+
+const operatorCreditReceiptRefFromPath = receiptPath => {
+  const receiptRef = receiptRefFromReceiptPath(receiptPath)
+  return receiptRef?.startsWith(operatorCreditReceiptRefPrefix)
+    ? receiptRef
+    : null
+}
+
 const summarizeGatewayReadiness = readiness => ({
   hiddenModelCount: readiness?.hiddenModelCount,
   lanes: Array.isArray(readiness?.lanes)
@@ -257,6 +285,9 @@ const receiptTotalTokensFrom = receipt => {
   return evidence?.total_tokens ?? evidence?.totalTokens
 }
 
+const telemetryTotalTokensFrom = openagents =>
+  openagents?.telemetry?.totalTokens ?? openagents?.telemetry?.total_tokens
+
 const receiptRedactionLeaks = value => {
   const serialized = JSON.stringify(value || {})
   const patterns = [
@@ -283,6 +314,21 @@ const summarizeReceipt = (receipt, url) => ({
   url,
 })
 
+const summarizeOperatorCreditReceipt = (openagents, receiptRef, url) => ({
+  kind: 'operator_credit',
+  ledgerState: 'zero_debit_operator_exempt',
+  modelEvidence: {
+    requested_model: openagents?.requested_model,
+    served_model: openagents?.served_model,
+    supply_lane: openagents?.supply_lane,
+    total_tokens: telemetryTotalTokensFrom(openagents),
+    worker: openagents?.worker,
+  },
+  receiptRef,
+  url,
+  zeroDebit: true,
+})
+
 const verifyReceiptProof = async ({
   backingExpectation,
   check,
@@ -293,6 +339,24 @@ const verifyReceiptProof = async ({
 }) => {
   const receiptPath = receiptPathFrom(openagents)
   check(`${label}_receipt_ref_present`, receiptPath !== null, { receiptPath })
+
+  const operatorCreditReceiptRef = operatorCreditReceiptRefFromPath(receiptPath)
+  if (operatorCreditReceiptRef !== null) {
+    check(
+      `${label}_operator_credit_zero_debit`,
+      backingMatches(openagents, backingExpectation) &&
+        Number(telemetryTotalTokensFrom(openagents) || 0) > 0,
+      {
+        receiptRef: operatorCreditReceiptRef,
+        totalTokens: telemetryTotalTokensFrom(openagents),
+      },
+    )
+    return summarizeOperatorCreditReceipt(
+      openagents,
+      operatorCreditReceiptRef,
+      absoluteUrl(origin, receiptPath),
+    )
+  }
 
   const receiptResult = await requestJson(fetchImpl, origin, receiptPath)
   check(`${label}_receipt_endpoint_200`, okStatus(receiptResult.response), {

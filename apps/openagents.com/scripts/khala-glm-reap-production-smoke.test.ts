@@ -333,6 +333,110 @@ describe('Khala GLM REAP production smoke', () => {
     })
   })
 
+  test('treats operator-credit GLM receipts as zero-debit smoke evidence', async () => {
+    let counterReads = 0
+    let receiptReads = 0
+    const fetchImpl = vi.fn(
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const url = new URL(
+          input instanceof Request ? input.url : String(input),
+        )
+
+        if (url.pathname === '/api/public/khala-tokens-served') {
+          counterReads += 1
+          return json({ tokensServed: counterReads === 1 ? 200 : 225 })
+        }
+
+        if (url.pathname === '/api/v1/gateway/readiness') {
+          return json({ servableModelCount: 1, status: 'ready' })
+        }
+
+        if (url.pathname === '/api/v1/models') {
+          return json({ data: [{ id: 'openagents/khala' }], object: 'list' })
+        }
+
+        if (url.pathname === '/api/v1/chat/completions') {
+          const body = JSON.parse(String(init?.body || '{}')) as {
+            stream?: boolean
+          }
+          const totalTokens = body.stream ? 11 : 9
+          const openagents = {
+            lane: 'open',
+            requested_model: 'openagents/khala',
+            routing: {
+              selected_replica_id: 'primary',
+              selected_replica_ref:
+                'replica.hydralisk.glm_52_reap_504b.primary',
+            },
+            served_model: 'openagents/glm-5.2-reap-504b',
+            supply_lane: 'hydralisk',
+            telemetry: {
+              detailRef: body.stream
+                ? '/api/public/inference/receipts/receipt.inference.operator_credit.glm_stream'
+                : '/api/public/inference/receipts/receipt.inference.operator_credit.glm_nonstream',
+              totalTokens,
+            },
+            worker: 'hydralisk-vllm-glm-5p2-reap-504b',
+          }
+
+          if (body.stream) {
+            return sse([
+              '{"choices":[{"delta":{"content":"READY"},"finish_reason":null}]}',
+              JSON.stringify({
+                choices: [{ delta: {}, finish_reason: null }],
+                openagents,
+              }),
+            ])
+          }
+
+          return json({
+            choices: [{ message: { content: 'READY', role: 'assistant' } }],
+            id: 'chatcmpl_glm_operator_credit',
+            model: 'openagents/khala',
+            openagents,
+            usage: { total_tokens: totalTokens },
+          })
+        }
+
+        if (url.pathname.startsWith('/api/public/inference/receipts/')) {
+          receiptReads += 1
+        }
+
+        return json({ error: 'not found', path: url.pathname }, { status: 404 })
+      },
+    )
+
+    const output = await smoke.runKhalaGlmReapProductionSmoke({
+      approveLiveSpend: true,
+      counterPollMs: 1,
+      env: armedEnv,
+      fetchImpl,
+      sleep: () => Promise.resolve(),
+      token: 'oa_agent_test',
+    })
+
+    expect(receiptReads).toBe(0)
+    expect(output).toMatchObject({
+      counter: {
+        delta: 25,
+        requiredDelta: 15,
+        servedTokens: 20,
+      },
+      ok: true,
+      skipped: false,
+    })
+    expect(output.nonstream.receipt).toMatchObject({
+      kind: 'operator_credit',
+      receiptRef: 'receipt.inference.operator_credit.glm_nonstream',
+      zeroDebit: true,
+    })
+    expect(output.stream.receipt).toMatchObject({
+      kind: 'operator_credit',
+      receiptRef: 'receipt.inference.operator_credit.glm_stream',
+      zeroDebit: true,
+    })
+  })
+
   test('checks the whole named pool while proving the reserved primary receives no smoke traffic', async () => {
     let counterReads = 0
     const fetchImpl = vi.fn(

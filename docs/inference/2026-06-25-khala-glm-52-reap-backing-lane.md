@@ -358,7 +358,10 @@ backing lane. When armed, it verifies:
 - pool-mode completions disclose a public-safe
   `openagents.routing.selected_replica_ref`, and the smoke rejects a response
   that routes to a replica marked `benchmarkReserved` or `draining`;
-- each public inference receipt carries matching model evidence and usage;
+- billable tokens dereference a public inference receipt with matching model
+  evidence and usage; operator-exempt zero-debit tokens instead disclose a
+  public-safe `receipt.inference.operator_credit.*` ref and the smoke records
+  that as `zero_debit_operator_exempt` without treating it as a paid receipt;
 - the public Khala tokens-served counter moves by approximately the served usage.
 
 Do not run the armed smoke while a decision-grade single-flight benchmark owns

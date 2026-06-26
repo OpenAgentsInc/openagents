@@ -195,6 +195,94 @@ describe('Khala production smoke', () => {
     ])
   })
 
+  test('accepts operator-credit zero-debit receipts without dereferencing charge receipts', async () => {
+    let receiptReads = 0
+    const fetchImpl = vi.fn(
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const url = new URL(
+          input instanceof Request ? input.url : String(input),
+        )
+
+        if (url.pathname === '/v1/gateway/readiness') {
+          return json({ servableModelCount: 1, status: 'ready' })
+        }
+
+        if (url.pathname === '/v1/models') {
+          return json({ data: [{ id: 'openagents/khala' }] })
+        }
+
+        if (url.pathname === '/v1/chat/completions') {
+          const body = JSON.parse(String(init?.body || '{}')) as {
+            stream?: boolean
+          }
+          const openagents = {
+            lane: 'open',
+            requested_model: 'openagents/khala',
+            served_model: 'accounts/fireworks/models/deepseek-v4-flash',
+            supply_lane: 'fireworks',
+            telemetry: {
+              detailRef: body.stream
+                ? '/api/public/inference/receipts/receipt.inference.operator_credit.stream'
+                : '/api/public/inference/receipts/receipt.inference.operator_credit.nonstream',
+              totalTokens: 8,
+            },
+            worker: 'fireworks',
+          }
+
+          if (body.stream) {
+            return sse([
+              '{"choices":[{"delta":{"content":"READY"},"finish_reason":null}]}',
+              JSON.stringify({
+                choices: [{ delta: {}, finish_reason: null }],
+                openagents,
+              }),
+            ])
+          }
+
+          return json({
+            choices: [{ message: { content: 'READY', role: 'assistant' } }],
+            id: 'chatcmpl_operator_credit',
+            model: 'openagents/khala',
+            openagents,
+            usage: { total_tokens: 8 },
+          })
+        }
+
+        if (url.pathname.startsWith('/api/public/inference/receipts/')) {
+          receiptReads += 1
+        }
+
+        return json({ error: 'not found' }, { status: 404 })
+      },
+    )
+
+    const output = await smoke.runKhalaProductionSmoke({
+      approveLiveSpend: true,
+      fetchImpl,
+      token: 'oa_agent_test',
+    })
+
+    expect(receiptReads).toBe(0)
+    expect(output.nonstream.receipt).toMatchObject({
+      kind: 'operator_credit',
+      ledgerState: 'zero_debit_operator_exempt',
+      receiptRef: 'receipt.inference.operator_credit.nonstream',
+      zeroDebit: true,
+    })
+    expect(output.stream.receipt).toMatchObject({
+      kind: 'operator_credit',
+      ledgerState: 'zero_debit_operator_exempt',
+      receiptRef: 'receipt.inference.operator_credit.stream',
+      zeroDebit: true,
+    })
+    expect(output.checks.map((check: { name: string }) => check.name)).toContain(
+      'nonstream_operator_credit_zero_debit',
+    )
+    expect(output.checks.map((check: { name: string }) => check.name)).toContain(
+      'stream_operator_credit_zero_debit',
+    )
+  })
+
   test('fails when a completion has no dereferenceable receipt ref', async () => {
     const fetchImpl = vi.fn(async (input: string | URL | Request) => {
       const url = new URL(input instanceof Request ? input.url : String(input))
