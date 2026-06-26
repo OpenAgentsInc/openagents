@@ -583,6 +583,14 @@ export type DispatchDeps = Readonly<{
   registry: InferenceProviderRegistry
   // Defaults to the pure selector; injectable for tests.
   plan?: ((model: string) => ReadonlyArray<string>) | undefined
+  // Optional last-mile request mapper. Use this when a virtual public model
+  // routes across heterogeneous provider lanes whose native model ids differ.
+  requestForAdapter?:
+    | ((
+        request: InferenceRequest,
+        adapterId: string,
+      ) => InferenceRequest)
+    | undefined
   backoff?: OverflowBackoff | undefined
   // Injected delay (defaults to Effect.sleep). Tests pass `() => Effect.void`.
   sleep?: ((ms: number) => Effect.Effect<void>) | undefined
@@ -1029,6 +1037,8 @@ export const dispatchWithOverflowWithMetadata = <A>(
 
     for (let index = startIndex; index < adapters.length; index += 1) {
       const adapter = adapters[index]!
+      const adapterRequest =
+        deps.requestForAdapter?.(request, adapter.id) ?? request
       // Back off before an overflow attempt (never before the first attempt).
       if (index > startIndex) {
         yield* sleep(backoffDelayMs(backoff, overflowCount))
@@ -1040,14 +1050,18 @@ export const dispatchWithOverflowWithMetadata = <A>(
         backoff,
         failureTelemetry: deps.failureTelemetry,
         operation,
-        request,
+        request: adapterRequest,
         retryCount,
         sleep,
       })
 
       if (outcome.ok) {
         const validation =
-          validateSuccess?.({ adapter, request, value: outcome.value }) ??
+          validateSuccess?.({
+            adapter,
+            request: adapterRequest,
+            value: outcome.value,
+          }) ??
           validateDefaultDispatchSuccess({ adapter, value: outcome.value })
         if (validation._tag === 'failed') {
           lastError = validation.error
@@ -1105,8 +1119,8 @@ export const dispatchWithOverflowWithMetadata = <A>(
       }
 
       lastError = outcome.error
-      if (wasInternalStressPreempted(request)) {
-        return yield* Effect.fail(internalStressPreemptedError(request))
+      if (wasInternalStressPreempted(adapterRequest)) {
+        return yield* Effect.fail(internalStressPreemptedError(adapterRequest))
       }
       // Non-retryable: surface immediately, no overflow.
       if (!outcome.error.retryable) {

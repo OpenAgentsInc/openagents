@@ -3343,6 +3343,7 @@ describe('POST /v1/chat/completions', () => {
       complete: request =>
         Effect.sync(() => {
           glmCalls += 1
+          expect(request.model).toBe(HYDRALISK_GLM_52_REAP_504B_MODEL_ID)
           expect(request.passthroughParams.tools).toEqual([
             {
               function: {
@@ -3379,6 +3380,9 @@ describe('POST /v1/chat/completions', () => {
       complete: request =>
         Effect.sync(() => {
           fireworksCalls += 1
+          expect(request.model).toBe(
+            'accounts/fireworks/models/deepseek-v4-flash',
+          )
           expect(request.passthroughParams.tools).toEqual([
             {
               function: {
@@ -3472,9 +3476,10 @@ describe('POST /v1/chat/completions', () => {
     let glmCalls = 0
     let fireworksCalls = 0
     registry.register({
-      complete: () =>
+      complete: request =>
         Effect.sync(() => {
           glmCalls += 1
+          expect(request.model).toBe(HYDRALISK_GLM_52_REAP_504B_MODEL_ID)
           return {
             content: 'READY-GLM',
             finishReason: 'stop',
@@ -3486,9 +3491,12 @@ describe('POST /v1/chat/completions', () => {
       stream: () => Effect.sync(() => []),
     })
     registry.register({
-      complete: () =>
+      complete: request =>
         Effect.sync(() => {
           fireworksCalls += 1
+          expect(request.model).toBe(
+            'accounts/fireworks/models/deepseek-v4-flash',
+          )
           return {
             content: 'READY-FIREWORKS',
             finishReason: 'stop',
@@ -3524,6 +3532,50 @@ describe('POST /v1/chat/completions', () => {
     expect(body.openagents?.worker).toBe(FIREWORKS_ADAPTER_ID)
     expect(glmCalls).toBe(0)
     expect(fireworksCalls).toBe(1)
+  })
+
+  test('a non-tool conversational Khala request maps the Gemini fast lane to the real Vertex model id', async () => {
+    const registry = new InferenceProviderRegistry()
+    let geminiCalls = 0
+    registry.register({
+      complete: request =>
+        Effect.sync(() => {
+          geminiCalls += 1
+          expect(request.model).toBe('gemini-3.5-flash')
+          return {
+            content: 'READY-GEMINI',
+            finishReason: 'stop',
+            servedModel: 'gemini-3.5-flash',
+            usage: { completionTokens: 2, promptTokens: 7, totalTokens: 9 },
+          }
+        }),
+      id: VERTEX_GEMINI_ADAPTER_ID,
+      stream: () => Effect.sync(() => []),
+    })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          messages: [{ content: 'Say READY.', role: 'user' }],
+          model: KHALA_MODEL_ID,
+        }),
+        baseDeps({
+          laneArming: hydraliskGlm52ReapReadyArming,
+          lanePlan: selectAdapterPlan,
+          newId: () => 'chatcmpl-khala-plain-gemini',
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      choices: ReadonlyArray<{ message: { content: string } }>
+      openagents?: { worker: string }
+    }
+    expect(body.choices[0]?.message.content).toBe('READY-GEMINI')
+    expect(body.openagents?.worker).toBe(VERTEX_GEMINI_ADAPTER_ID)
+    expect(geminiCalls).toBe(1)
   })
 
   test('a Fireworks-backed Khala request discloses the concrete Fireworks supply lane', async () => {

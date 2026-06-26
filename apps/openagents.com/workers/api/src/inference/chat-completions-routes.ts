@@ -79,6 +79,7 @@ import {
   seedDurableInferenceStream,
   teeUpstreamToDurable,
 } from './durable-inference-proxy'
+import { KHALA_FIREWORKS_BACKING_MODEL_ID } from './fireworks-adapter'
 import {
   type FairShareDecision,
   type SpendCapDecision,
@@ -152,6 +153,7 @@ import {
 import { inferenceToolCallsFromUnknown } from './openai-chat-compat'
 import {
   type FundingKind,
+  HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
   KHALA_CODE_MODEL_ID,
   KHALA_MODEL_ID,
   type SupplyLane,
@@ -185,6 +187,7 @@ import {
   type ServedTokensRequestMetrics,
 } from './served-tokens-recorder'
 import { STUB_ECHO_ADAPTER_ID } from './stub-echo-adapter'
+import { DEFAULT_GEMINI_MODEL_ID } from './vertex-gemini-adapter'
 
 // DEFAULT MODEL ------------------------------------------------------------
 // The model served when a request omits `model`. Public model selection has
@@ -1376,6 +1379,25 @@ const supplyLaneForAdapterId = (adapterId: string): SupplyLane | undefined => {
       return 'vertex-gemini'
     default:
       return undefined
+  }
+}
+
+const khalaRequestForAdapter = (
+  request: InferenceRequest,
+  adapterId: string,
+): InferenceRequest => {
+  if (normalizeKhalaModelId(request.model) !== KHALA_MODEL_ID) {
+    return request
+  }
+  switch (adapterId) {
+    case VERTEX_GEMINI_ADAPTER_ID:
+      return { ...request, model: DEFAULT_GEMINI_MODEL_ID }
+    case FIREWORKS_ADAPTER_ID:
+      return { ...request, model: KHALA_FIREWORKS_BACKING_MODEL_ID }
+    case HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID:
+      return { ...request, model: HYDRALISK_GLM_52_REAP_504B_MODEL_ID }
+    default:
+      return request
   }
 }
 
@@ -2859,6 +2881,7 @@ export const handleChatCompletions = (
     const dispatchDeps: DispatchDeps = {
       registry: deps.registry,
       plan: () => plannedIds,
+      requestForAdapter: khalaRequestForAdapter,
       ...(deps.dispatch?.backoff === undefined
         ? {}
         : { backoff: deps.dispatch.backoff }),
