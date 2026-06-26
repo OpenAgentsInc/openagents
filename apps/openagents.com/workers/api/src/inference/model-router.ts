@@ -60,6 +60,7 @@ import {
   type InferenceProviderAdapter,
   type InferenceProviderRegistry,
   type InferenceRequest,
+  type InferenceResult,
 } from './provider-adapter'
 
 // Registered adapter ids the router can select. Kept as string constants here
@@ -408,6 +409,54 @@ export type DispatchSuccessValidator<A> = (
 ) => DispatchLaneValidation
 
 export const acceptDispatchLane: DispatchLaneValidation = { _tag: 'accepted' }
+
+const recordFromUnknown = (
+  value: unknown,
+): Readonly<Record<string, unknown>> | undefined =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Readonly<Record<string, unknown>>)
+    : undefined
+
+const inferenceResultFromUnknown = (
+  value: unknown,
+): InferenceResult | undefined => {
+  const record = recordFromUnknown(value)
+  if (record === undefined) {
+    return undefined
+  }
+  if (
+    typeof record['content'] === 'string' &&
+    typeof record['finishReason'] === 'string' &&
+    typeof record['servedModel'] === 'string'
+  ) {
+    return value as InferenceResult
+  }
+  return inferenceResultFromUnknown(record['value'])
+}
+
+const validateDefaultDispatchSuccess = <A>(
+  input: Readonly<{
+    adapter: InferenceProviderAdapter
+    value: A
+  }>,
+): DispatchLaneValidation => {
+  const result = inferenceResultFromUnknown(input.value)
+  if (result === undefined) {
+    return acceptDispatchLane
+  }
+  return result.content.trim() === '' &&
+    (result.toolCalls === undefined || result.toolCalls.length === 0)
+    ? {
+        _tag: 'failed',
+        error: new InferenceAdapterError({
+          adapterId: input.adapter.id,
+          kind: 'empty_assistant_content',
+          reason: 'adapter returned empty assistant content',
+          retryable: true,
+        }),
+      }
+    : acceptDispatchLane
+}
 
 export type ProviderRoutingSignals = Readonly<{
   // Coarse circuit-breaker state. `unhealthy` and `quarantined` remove the lane
@@ -900,7 +949,7 @@ export const dispatchWithOverflowWithMetadata = <A>(
       if (outcome.ok) {
         const validation =
           validateSuccess?.({ adapter, request, value: outcome.value }) ??
-          acceptDispatchLane
+          validateDefaultDispatchSuccess({ adapter, value: outcome.value })
         if (validation._tag === 'failed') {
           lastError = validation.error
           recordFailureTelemetry(
