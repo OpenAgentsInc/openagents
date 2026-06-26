@@ -43,16 +43,17 @@ struct ChatView: View {
             AnimatedBackground(level: voice.level, accent: voice.state.accentColor)
 
             if isEmptyState {
-                // Tapping a suggestion PREFILLS the composer (focuses + opens the
-                // keyboard) so you can edit it and say exactly what you want,
-                // rather than firing a canned prompt.
-                EmptyStateView(
-                    canSend: hasKey,
-                    onSelect: { prompt in
-                        typedMessage = prompt
-                        composerFocused = true
-                    }
-                )
+                // Home/empty state: greeting + the voice orb (push-to-talk) as the
+                // primary affordance. No canned suggestions — hold the orb to talk
+                // or type in the composer below.
+                VStack(spacing: 32) {
+                    Spacer(minLength: 0)
+                    emptyGreeting
+                    voiceControls
+                    Spacer(minLength: 0)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.horizontal)
             } else {
             ScrollViewReader { proxy in
                 ScrollView {
@@ -155,6 +156,26 @@ struct ChatView: View {
         let lastAssistant = conversation.sortedMessages.last { $0.role == .assistant }
         guard message.id == lastAssistant?.id else { return nil }
         return { model.regenerate() }
+    }
+
+    /// Home/empty-state greeting shown above the voice orb.
+    private var emptyGreeting: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 34, weight: .semibold))
+                .foregroundStyle(.tint)
+                .accessibilityHidden(true)
+            Text("Khala")
+                .font(.largeTitle.weight(.semibold))
+                .foregroundStyle(.primary)
+            Text("Collective intelligence behind a free API — one mind, many models. Hold the orb to talk, or type below.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: 460)
+        .padding(.horizontal, 12)
     }
 
     private var voiceControls: some View {

@@ -191,6 +191,16 @@ struct RootView: View {
         // `selection` was already set before this task ran).
         syncModel()
 
+        // Free dogfood app: guarantee an API key so the composer works out of the
+        // box (no manual key setup). Auto-mint a free key on first launch when
+        // none is stored; if minting fails, Settings still offers mint/paste.
+        if KeychainStore.hasAPIKey {
+            hasKey = true
+        } else if let token = try? await KhalaClient.mintFreeKey() {
+            KeychainStore.saveAPIKey(token)
+            hasKey = true
+        }
+
         guard !permissionsRequested else { return }
         permissionsRequested = true
         // Demo/test hook (env-gated; no-op in normal use): skip the mic/speech
