@@ -25,6 +25,14 @@ enum KeychainStore {
     }
 
     static func loadAPIKey() -> String? {
+        // Demo/test hook (env-gated; a no-op in normal use): allow injecting the
+        // bearer key via the KHALA_API_KEY launch environment so the API
+        // round-trip is testable on a simulator without driving the UI. Falls
+        // back to the Keychain when the env var is absent.
+        if let envKey = ProcessInfo.processInfo.environment["KHALA_API_KEY"],
+           !envKey.isEmpty {
+            return envKey
+        }
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,

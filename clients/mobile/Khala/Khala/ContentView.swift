@@ -69,6 +69,13 @@ struct ContentView: View {
             guard !permissionsRequested else { return }
             permissionsRequested = true
             _ = await voice.requestPermissions()
+            // Demo/test hook (env-gated; no-op in normal use): auto-send a prompt
+            // on launch so the end-to-end Khala API round-trip is verifiable on a
+            // simulator without driving the UI. Pair with KHALA_API_KEY.
+            if let demo = ProcessInfo.processInfo.environment["KHALA_DEMO_PROMPT"],
+               !demo.isEmpty, hasKey {
+                voice.sendText(demo)
+            }
         }
     }
 
