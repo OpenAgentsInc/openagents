@@ -675,6 +675,10 @@ import { handlePublicForumActivityApiForEnv } from './public-forum-activity-rout
 import { makePublicInferenceReceiptRoutes } from './public-inference-receipt-routes'
 import { handlePublicKhalaTokensServedHistoryApi } from './public-khala-tokens-served-history-routes'
 import { handlePublicKhalaTokensServedApi } from './public-khala-tokens-served-routes'
+import {
+  decideHighFrequencyBroadcast,
+  highFrequencyBroadcastLastAtStorageKey,
+} from './sync-broadcast-throttle'
 import { handlePublicLaunchDashboardApi } from './public-launch-dashboard-routes'
 import { makePublicNip90MarketReceiptRoutes } from './public-nip90-market-receipt-routes'
 import { handlePublicOtecProofApi } from './public-otec-proof-routes'
@@ -12285,27 +12289,12 @@ export class DurableInferenceStreamObject {
   }
 }
 
-// Minimum spacing between broadcasts on the high-frequency public tokens-served
-// scope (openagents #6324): cap pushes to ≤3/sec. During the GLM surge the
-// counter scope received one poke per completion (~42/sec); coalescing trailing
-// pokes into one broadcast every ~333ms holds the client frame rate at ≤3/sec
-// while the count-up animation still interpolates smoothly between updates. The
-// authoritative running total rides every event + the summary, so a coalesced
-// (dropped-intermediate) poke loses nothing: the next broadcast carries the
-// latest total. Other scopes are unaffected — they broadcast immediately.
-const HIGH_FREQUENCY_BROADCAST_MIN_INTERVAL_MS = 334
-const isThrottledBroadcastScope = (scope: string): boolean =>
-  scope.startsWith('public-khala-tokens-served:')
-
+// High-frequency public tokens-served broadcast throttle (openagents #6324).
+// The throttle DECISION + interval + scope predicate now live in the pure,
+// unit-tested module `./sync-broadcast-throttle`. This DO only persists the
+// durable `lastBroadcastAt` and performs the fanout. See that module for the
+// hibernation/freeze-then-jump root cause and the leading-edge fix rationale.
 export class SyncRoomDurableObject {
-  // Per-scope last-broadcast wall-clock (ms) for the throttled high-frequency
-  // scopes, kept in DO memory. Each scope maps to its own DO instance, so this is
-  // effectively a single timestamp for the throttled khala scope.
-  private lastBroadcastAtMs = new Map<string, number>()
-  // Scopes with a coalesced trailing broadcast already scheduled via the alarm,
-  // so a burst of pokes collapses to ONE trailing broadcast.
-  private pendingTrailingScopes = new Set<string>()
-
   constructor(
     private readonly state: DurableObjectState,
     private readonly env: Env,
@@ -12353,7 +12342,6 @@ export class SyncRoomDurableObject {
   }
 
   private async broadcastScope(scope: string): Promise<void> {
-    this.lastBroadcastAtMs.set(scope, currentEpochMillis())
     await Promise.all(
       this.state.getWebSockets(scope).map(async socket => {
         const attachment = syncSocketAttachment(socket.deserializeAttachment())
@@ -12363,39 +12351,38 @@ export class SyncRoomDurableObject {
     )
   }
 
-  // Broadcast `scope` now if it is outside the throttle window; otherwise coalesce
-  // into a single trailing broadcast via the DO alarm so a burst of pokes on the
-  // high-frequency public counter scope collapses to ≤3 broadcasts/sec
-  // (openagents #6324). Non-throttled scopes always broadcast immediately.
+  // Hibernation-safe, burst-safe leading-edge throttle for the high-frequency
+  // public tokens-served scope (openagents #6324). The decision is made by the
+  // pure `decideHighFrequencyBroadcast` helper against a DURABLE `lastBroadcastAt`
+  // read from `state.storage`, so it survives DO hibernation between hibernatable
+  // WebSocket events and never depends on a sub-second alarm. Non-throttled scopes
+  // always broadcast immediately. A skipped intermediate poke loses nothing: the
+  // authoritative running total rides every event + the summary row, so the next
+  // poke ~334ms later carries the latest total — the counter never freezes-then-
+  // jumps, it advances in steady ≤3/sec steps.
   private async notifyScopeThrottled(scope: string): Promise<void> {
-    if (!isThrottledBroadcastScope(scope)) {
-      await this.broadcastScope(scope)
+    const storageKey = highFrequencyBroadcastLastAtStorageKey(scope)
+    const lastBroadcastAtMs =
+      (await this.state.storage.get<number>(storageKey)) ?? null
+
+    const decision = decideHighFrequencyBroadcast({
+      scope,
+      nowMs: currentEpochMillis(),
+      lastBroadcastAtMs,
+    })
+
+    if (!decision.broadcast) {
       return
     }
 
-    const now = currentEpochMillis()
-    const lastAt = this.lastBroadcastAtMs.get(scope) ?? 0
-    const sinceLast = now - lastAt
-
-    if (sinceLast >= HIGH_FREQUENCY_BROADCAST_MIN_INTERVAL_MS) {
-      await this.broadcastScope(scope)
-      return
+    if (decision.persistLastBroadcastAtMs !== undefined) {
+      await this.state.storage.put(
+        storageKey,
+        decision.persistLastBroadcastAtMs,
+      )
     }
 
-    // Inside the window: schedule (once) a trailing broadcast at the next slot.
-    this.pendingTrailingScopes.add(scope)
-    const fireAt = lastAt + HIGH_FREQUENCY_BROADCAST_MIN_INTERVAL_MS
-    const existing = await this.state.storage.getAlarm()
-    if (existing === null || existing > fireAt) {
-      await this.state.storage.setAlarm(Math.max(fireAt, now + 1))
-    }
-  }
-
-  async alarm(): Promise<void> {
-    const scopes = [...this.pendingTrailingScopes]
-    this.pendingTrailingScopes.clear()
-
-    await Promise.all(scopes.map(scope => this.broadcastScope(scope)))
+    await this.broadcastScope(scope)
   }
 
   async fetch(request: Request): Promise<Response> {
