@@ -1,4 +1,6 @@
 /// <reference types="vite/client" />
+import { readFileSync } from 'node:fs'
+
 import { describe, expect, test } from 'vitest'
 
 const indexHtml = import.meta.glob<string>('../index.html', {
@@ -67,6 +69,9 @@ describe('index html', () => {
 
   test('links stable crawlable favicon assets', () => {
     expect(html).toContain(
+      '<link rel="icon" href="/favicon.ico" sizes="32x32" />',
+    )
+    expect(html).toContain(
       '<link rel="icon" type="image/svg+xml" sizes="any" href="/favicon.svg" />',
     )
     expect(html).toContain(
@@ -76,5 +81,8 @@ describe('index html', () => {
     expect(publicAssets['../public/icon.svg']).toContain('<svg')
     expect(publicAssets['../public/favicon.svg']).not.toContain('<html')
     expect(publicAssets['../public/icon.svg']).not.toContain('<html')
+
+    const faviconIco = readFileSync('public/favicon.ico')
+    expect([...faviconIco.subarray(0, 4)]).toEqual([0, 0, 1, 0])
   })
 })
