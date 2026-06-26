@@ -423,7 +423,7 @@ describe('runGlmPoolHeartbeat', () => {
 
 describe('runScheduledGlmPoolHeartbeat', () => {
   test('reads replica config and respects the disabled default', async () => {
-    const { ledger } = captureLedger()
+    const { bodies, ledger } = captureLedger()
 
     const report = await Effect.runPromise(
       runScheduledGlmPoolHeartbeat({
@@ -445,6 +445,98 @@ describe('runScheduledGlmPoolHeartbeat', () => {
       enabled: false,
       records: [],
       skippedReason: 'disabled',
+    })
+    expect(bodies).toHaveLength(1)
+    expect(bodies[0]).toMatchObject({
+      idempotencyKey:
+        'inference:glm-pool-heartbeat:heartbeat.hydralisk.glm_52_reap_504b.20260625t160000000z:scheduled:disabled',
+      model: 'openagents/glm-5.2-reap-504b',
+      tokenCounts: {
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+      },
+    })
+    expect(bodies[0]?.safeMetadata).toMatchObject({
+      demandSource: 'glm-pool-heartbeat',
+      enabled: false,
+      heartbeatDiagnosticKind: 'scheduled_skip',
+      heartbeatKind: 'glm_pool_heartbeat',
+      replicaCount: 1,
+      scheduledSkipReason: 'disabled',
+    })
+    expect(String(JSON.stringify(bodies[0]))).not.toContain('secret')
+    expect(String(JSON.stringify(bodies[0]))).not.toContain(
+      'primary.example.test',
+    )
+  })
+
+  test('persists a canonical diagnostic row when cadence skips a scheduled heartbeat', async () => {
+    const { bodies, ledger } = captureLedger()
+
+    const report = await Effect.runPromise(
+      runScheduledGlmPoolHeartbeat({
+        env: {
+          HYDRALISK_GLM_52_REAP_504B_BASE_URL: 'https://primary.example.test',
+          HYDRALISK_GLM_52_REAP_504B_BEARER_TOKEN: 'secret',
+          HYDRALISK_GLM_52_REAP_504B_ENABLED: 'ready',
+          HYDRALISK_GLM_52_REAP_504B_HEARTBEAT_CADENCE_MINUTES: '7',
+          HYDRALISK_GLM_52_REAP_504B_HEARTBEAT_ENABLED: 'true',
+          HYDRALISK_GLM_52_REAP_504B_PREFLIGHT_REF:
+            'preflight.hydralisk.glm.primary.fixture',
+          HYDRALISK_GLM_52_REAP_504B_RECEIPT_REF:
+            'receipt.hydralisk.glm.primary.fixture',
+        },
+        ledger,
+        scheduledTimeMs: Date.parse(OBSERVED_AT),
+      }),
+    )
+
+    expect(report).toMatchObject({
+      enabled: true,
+      records: [],
+      skippedReason: 'cadence',
+    })
+    expect(bodies).toHaveLength(1)
+    expect(bodies[0]?.safeMetadata).toMatchObject({
+      cadenceMinutes: 7,
+      enabled: true,
+      heartbeatDiagnosticKind: 'scheduled_skip',
+      heartbeatKind: 'glm_pool_heartbeat',
+      replicaCount: 1,
+      scheduledSkipReason: 'cadence',
+    })
+    expect(String(JSON.stringify(bodies[0]))).not.toContain('secret')
+    expect(String(JSON.stringify(bodies[0]))).not.toContain(
+      'primary.example.test',
+    )
+  })
+
+  test('persists a canonical diagnostic row when scheduled heartbeat is unarmed', async () => {
+    const { bodies, ledger } = captureLedger()
+
+    const report = await Effect.runPromise(
+      runScheduledGlmPoolHeartbeat({
+        env: {
+          HYDRALISK_GLM_52_REAP_504B_HEARTBEAT_ENABLED: 'true',
+        },
+        ledger,
+        scheduledTimeMs: Date.parse(OBSERVED_AT),
+      }),
+    )
+
+    expect(report).toMatchObject({
+      enabled: true,
+      records: [],
+      skippedReason: 'unarmed',
+    })
+    expect(bodies).toHaveLength(1)
+    expect(bodies[0]?.safeMetadata).toMatchObject({
+      enabled: true,
+      heartbeatDiagnosticKind: 'scheduled_skip',
+      heartbeatKind: 'glm_pool_heartbeat',
+      replicaCount: 0,
+      scheduledSkipReason: 'unarmed',
     })
   })
 })

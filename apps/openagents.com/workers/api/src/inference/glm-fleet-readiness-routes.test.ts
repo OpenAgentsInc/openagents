@@ -137,6 +137,16 @@ describe('handleGlmFleetReadiness', () => {
     const records = await readPersistedGlmFleetReadinessHeartbeatRecords(
       dbWithRows([
         {
+          demand_source: 'glm-pool-heartbeat',
+          heartbeat_kind: 'glm_pool_heartbeat',
+          observed_at: '2026-06-26T14:45:55.581Z',
+          provider: 'hydralisk-vllm-glm-5p2-reap-504b',
+          replica_id: null,
+          total_tokens: 0,
+          warm_state: null,
+          watchdog_status: null,
+        },
+        {
           demand_source: 'heartbeat',
           heartbeat_kind: null,
           observed_at: '2026-06-26T14:44:55.581Z',

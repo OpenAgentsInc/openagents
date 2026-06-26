@@ -79,6 +79,10 @@ export type GlmPoolHeartbeatRunReport = Readonly<{
   warmCompletionEnabled: boolean
 }>
 
+type GlmPoolHeartbeatSkippedReason = NonNullable<
+  GlmPoolHeartbeatRunReport['skippedReason']
+>
+
 export type HydraliskGlmPoolHeartbeatEnv = SupplyLaneCredentialEnv &
   Readonly<{
     HYDRALISK_GLM_52_REAP_504B_BENCHMARK_OWNERSHIP_ACTIVE?: string | undefined
@@ -453,6 +457,68 @@ const ingestHeartbeatRecord = (
       Effect.catch(() => Effect.void),
     )
 
+const ingestScheduledSkipDiagnostic = (
+  input: Readonly<{
+    benchmarkOwnershipActive: boolean
+    cadenceMinutes: number
+    enabled: boolean
+    ledger: TokenUsageLedgerShape
+    observedAt: string
+    replicaCount: number
+    runRef: string
+    skippedReason: GlmPoolHeartbeatSkippedReason
+    warmCompletionEnabled: boolean
+  }>,
+): Effect.Effect<void> =>
+  input.ledger
+    .ingestEvent({
+      schemaVersion: 'openagents.token_usage_event.v1',
+      actor: { accountRef: HEARTBEAT_ACCOUNT_REF },
+      backendProfile: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+      demand: {
+        demandClient: HEARTBEAT_DEMAND_CLIENT,
+        demandKind: 'own_capacity',
+        demandSource: HEARTBEAT_DEMAND_SOURCE,
+      },
+      eventId: `event.${input.runRef}.scheduled.${input.skippedReason}`,
+      idempotencyKey: `inference:glm-pool-heartbeat:${input.runRef}:scheduled:${input.skippedReason}`,
+      model: HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
+      observedAt: input.observedAt,
+      privacy: { leaderboardEligible: false, privacyOptOut: false },
+      producerSystem: 'omega',
+      provider: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+      safeMetadata: {
+        benchmarkOwnershipActive: input.benchmarkOwnershipActive,
+        cadenceMinutes: input.cadenceMinutes,
+        demandClient: HEARTBEAT_DEMAND_CLIENT,
+        demandKind: 'own_capacity',
+        demandSource: HEARTBEAT_DEMAND_SOURCE,
+        enabled: input.enabled,
+        heartbeatDiagnosticKind: 'scheduled_skip',
+        heartbeatKind: 'glm_pool_heartbeat',
+        heartbeatRunRef: input.runRef,
+        replicaCount: input.replicaCount,
+        scheduledSkipReason: input.skippedReason,
+        warmCompletionEnabled: input.warmCompletionEnabled,
+      },
+      sourceRefs: { runRef: input.runRef },
+      sourceRoute: 'omega_hosted_gemini',
+      tokenCounts: {
+        cacheReadTokens: 0,
+        cacheWrite1hTokens: 0,
+        cacheWrite5mTokens: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        reasoningTokens: 0,
+        totalTokens: 0,
+      },
+      usageTruth: 'exact',
+    })
+    .pipe(
+      Effect.asVoid,
+      Effect.catch(() => Effect.void),
+    )
+
 const skippedRecord = (
   input: Readonly<{
     keepWarmStatus: Extract<
@@ -665,40 +731,45 @@ export const runScheduledGlmPoolHeartbeat = (
   })
   const arming = resolveHydraliskGlm52Reap504bArming(input.env)
 
-  if (!enabled) {
-    return Effect.succeed({
+  const skippedReport = (
+    skippedReason: GlmPoolHeartbeatSkippedReason,
+    reportEnabled: boolean,
+  ): GlmPoolHeartbeatRunReport => ({
+    benchmarkOwnershipActive,
+    enabled: reportEnabled,
+    observedAt,
+    records: [],
+    runRef,
+    skippedReason,
+    warmCompletionEnabled,
+  })
+
+  const persistSkippedReport = (
+    skippedReason: GlmPoolHeartbeatSkippedReason,
+    reportEnabled: boolean,
+  ): Effect.Effect<GlmPoolHeartbeatRunReport> =>
+    ingestScheduledSkipDiagnostic({
       benchmarkOwnershipActive,
-      enabled: false,
+      cadenceMinutes,
+      enabled: reportEnabled,
+      ledger: input.ledger,
       observedAt,
-      records: [],
+      replicaCount: arming.replicas.length,
       runRef,
-      skippedReason: 'disabled',
+      skippedReason,
       warmCompletionEnabled,
-    })
+    }).pipe(Effect.as(skippedReport(skippedReason, reportEnabled)))
+
+  if (!enabled) {
+    return persistSkippedReport('disabled', false)
   }
 
   if (!cadenceAllows(input.scheduledTimeMs, cadenceMinutes)) {
-    return Effect.succeed({
-      benchmarkOwnershipActive,
-      enabled: true,
-      observedAt,
-      records: [],
-      runRef,
-      skippedReason: 'cadence',
-      warmCompletionEnabled,
-    })
+    return persistSkippedReport('cadence', true)
   }
 
   if (arming.replicas.length === 0) {
-    return Effect.succeed({
-      benchmarkOwnershipActive,
-      enabled: true,
-      observedAt,
-      records: [],
-      runRef,
-      skippedReason: 'unarmed',
-      warmCompletionEnabled,
-    })
+    return persistSkippedReport('unarmed', true)
   }
 
   return runGlmPoolHeartbeat({
