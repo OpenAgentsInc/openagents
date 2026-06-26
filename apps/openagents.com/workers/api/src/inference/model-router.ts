@@ -263,6 +263,26 @@ const KHALA_FIREWORKS_DEEPSEEK_ADAPTER_PLAN: ReadonlyArray<string> = [
   ...KHALA_HYDRALISK_ADAPTER_PLAN,
 ]
 
+const KHALA_TOOL_SAFE_ADAPTER_PLAN: ReadonlyArray<string> = [
+  FIREWORKS_ADAPTER_ID,
+  HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
+  HYDRALISK_ADAPTER_ID,
+  VERTEX_GEMINI_ADAPTER_ID,
+]
+
+const dedupeAdapterPlan = (
+  adapterIds: ReadonlyArray<string>,
+): ReadonlyArray<string> => {
+  const seen = new Set<string>()
+  return adapterIds.filter(adapterId => {
+    if (seen.has(adapterId)) {
+      return false
+    }
+    seen.add(adapterId)
+    return true
+  })
+}
+
 export const selectAdapterPlanForKhalaBacking = (
   model: string,
   khalaBacking: KhalaBackingModel = KHALA_BACKING_HYDRALISK_GPT_OSS,
@@ -274,6 +294,22 @@ export const selectAdapterPlanForKhalaBacking = (
       : KHALA_HYDRALISK_ADAPTER_PLAN
   }
   return selectAdapterPlan(model)
+}
+
+export const selectAdapterPlanForKhalaToolRequest = (
+  model: string,
+  basePlan: ReadonlyArray<string> = selectAdapterPlan(model),
+): ReadonlyArray<string> => {
+  const normalizedModel = normalizeKhalaModelId(model)
+  if (normalizedModel !== KHALA_MODEL_ID) {
+    return basePlan
+  }
+  return dedupeAdapterPlan([
+    ...KHALA_TOOL_SAFE_ADAPTER_PLAN,
+    ...basePlan.filter(
+      adapterId => adapterId !== HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+    ),
+  ])
 }
 
 export const makeKhalaBackedAdapterPlan =
@@ -353,6 +389,20 @@ export type AdapterOperation<A> = (
   request: InferenceRequest,
 ) => Effect.Effect<A, InferenceAdapterError>
 
+export type DispatchLaneValidation =
+  | Readonly<{ _tag: 'accepted' }>
+  | Readonly<{ _tag: 'failed'; error: InferenceAdapterError }>
+
+export type DispatchSuccessValidator<A> = (
+  input: Readonly<{
+    adapter: InferenceProviderAdapter
+    request: InferenceRequest
+    value: A
+  }>,
+) => DispatchLaneValidation
+
+export const acceptDispatchLane: DispatchLaneValidation = { _tag: 'accepted' }
+
 export type ProviderRoutingSignals = Readonly<{
   // Public-safe provider health score in [0, 1], where 1 means the lane is fully
   // healthy according to the injected control-plane snapshot. Undefined means
@@ -418,6 +468,7 @@ export const dispatchWithOverflowWithMetadata = <A>(
   request: InferenceRequest,
   operation: AdapterOperation<A>,
   deps: DispatchDeps,
+  validateSuccess?: DispatchSuccessValidator<A>,
 ): Effect.Effect<DispatchWithOverflowResult<A>, InferenceAdapterError> =>
   Effect.gen(function* () {
     const planFor = deps.plan ?? selectAdapterPlan
@@ -461,6 +512,18 @@ export const dispatchWithOverflowWithMetadata = <A>(
       )
 
       if (outcome.ok) {
+        const validation =
+          validateSuccess?.({ adapter, request, value: outcome.value }) ??
+          acceptDispatchLane
+        if (validation._tag === 'failed') {
+          lastError = validation.error
+          if (!validation.error.retryable) {
+            return yield* Effect.fail(validation.error)
+          }
+          fallbackReason = fallbackReasonFor(validation.error)
+          fallbackAdapterRouteMetadata = validation.error.adapterRouteMetadata
+          continue
+        }
         const signals = deps.routingSignals?.(adapter.id)
         const providerHealthScore = normalizeProviderHealthScore(
           signals?.providerHealthScore,
@@ -511,7 +574,11 @@ export const dispatchWithOverflow = <A>(
   request: InferenceRequest,
   operation: AdapterOperation<A>,
   deps: DispatchDeps,
+  validateSuccess?: DispatchSuccessValidator<A>,
 ): Effect.Effect<A, InferenceAdapterError> =>
-  dispatchWithOverflowWithMetadata(request, operation, deps).pipe(
-    Effect.map(result => result.value),
-  )
+  dispatchWithOverflowWithMetadata(
+    request,
+    operation,
+    deps,
+    validateSuccess,
+  ).pipe(Effect.map(result => result.value))

@@ -4,12 +4,12 @@ import { describe, expect, test } from 'vitest'
 
 import type { AgentRegistrationStore } from '../agent-registration'
 import type { InferenceReceiptReadStore } from '../inference-receipts'
+import { makePublicInferenceReceiptRoutes } from '../public-inference-receipt-routes'
 import type {
   PylonApiAssignmentRecord,
   PylonApiRegistrationRecord,
   PylonApiStore,
 } from '../pylon-api'
-import { makePublicInferenceReceiptRoutes } from '../public-inference-receipt-routes'
 import {
   acceptanceContractGuidanceForRequest,
   acceptanceContractGuidanceForSpec,
@@ -166,19 +166,18 @@ const codingPylonStore = (
       ),
   }) as unknown as PylonApiStore
 
-const linkedCodingAgentStore: AgentRegistrationStore =
-  ({
-    listLinkedAgentsForOpenAuthUser: async () => [
-      {
-        agentUserId: 'agent_owner',
-        credentialId: 'agent_credential_owner',
-        displayName: 'Owner agent',
-        linkKind: 'credential_anchor',
-        openauthUserId: 'user_owner',
-        tokenPrefix: 'oa_agent_owner',
-      },
-    ],
-  }) as unknown as AgentRegistrationStore
+const linkedCodingAgentStore: AgentRegistrationStore = {
+  listLinkedAgentsForOpenAuthUser: async () => [
+    {
+      agentUserId: 'agent_owner',
+      credentialId: 'agent_credential_owner',
+      displayName: 'Owner agent',
+      linkKind: 'credential_anchor',
+      openauthUserId: 'user_owner',
+      tokenPrefix: 'oa_agent_owner',
+    },
+  ],
+} as unknown as AgentRegistrationStore
 
 const hydraliskReadyArming = resolveSupplyLaneArming({
   HYDRALISK_BASE_URL: 'https://hydralisk.example.test',
@@ -603,8 +602,9 @@ describe('POST /v1/chat/completions', () => {
   })
 
   test('does not auto-capture when the paid-privacy resolver marks the caller private', async () => {
-    const emitted: Array<Readonly<{ optedIn: boolean; captureDefault: boolean }>> =
-      []
+    const emitted: Array<
+      Readonly<{ optedIn: boolean; captureDefault: boolean }>
+    > = []
 
     const response = await run(
       handleChatCompletions(
@@ -631,8 +631,9 @@ describe('POST /v1/chat/completions', () => {
   })
 
   test('does not auto-capture when capture-default resolution errors', async () => {
-    const emitted: Array<Readonly<{ optedIn: boolean; captureDefault: boolean }>> =
-      []
+    const emitted: Array<
+      Readonly<{ optedIn: boolean; captureDefault: boolean }>
+    > = []
 
     const response = await run(
       handleChatCompletions(
@@ -1868,6 +1869,138 @@ describe('POST /v1/chat/completions', () => {
     expect(captured[0]?.adapterId).toBe('overflow')
   })
 
+  test('continues past an empty assistant fallback lane and serves non-empty content', async () => {
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      complete: () =>
+        Effect.succeed({
+          content: '',
+          finishReason: 'stop',
+          servedModel: KHALA_MODEL_ID,
+          usage: { completionTokens: 0, promptTokens: 5, totalTokens: 5 },
+        }),
+      id: 'empty-lane',
+      stream: () => Effect.sync(() => []),
+    })
+    registry.register({
+      complete: () =>
+        Effect.succeed({
+          content: 'healthy fallback content',
+          finishReason: 'stop',
+          servedModel: KHALA_MODEL_ID,
+          usage: { completionTokens: 3, promptTokens: 5, totalTokens: 8 },
+        }),
+      id: 'healthy-lane',
+      stream: () => Effect.sync(() => []),
+    })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(helloBody),
+        baseDeps({
+          dispatch: { sleep: () => Effect.void },
+          lanePlan: () => ['empty-lane', 'healthy-lane'],
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      choices: ReadonlyArray<{ message: { content: string } }>
+      openagents?: {
+        routing?: { fallback_reason: string | null }
+        worker: string
+      }
+    }
+    expect(body.choices[0]?.message.content).toBe('healthy fallback content')
+    expect(body.openagents?.worker).toBe('healthy-lane')
+    expect(body.openagents?.routing?.fallback_reason).toBe(
+      'empty_assistant_content',
+    )
+  })
+
+  test('continues past a tool-required lane that returns no tool calls', async () => {
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      complete: () =>
+        Effect.succeed({
+          content: '',
+          finishReason: 'stop',
+          servedModel: KHALA_MODEL_ID,
+          usage: { completionTokens: 0, promptTokens: 9, totalTokens: 9 },
+        }),
+      id: 'empty-no-tool-lane',
+      stream: () => Effect.sync(() => []),
+    })
+    registry.register({
+      complete: () =>
+        Effect.succeed({
+          content: '',
+          finishReason: 'tool_calls',
+          servedModel: KHALA_MODEL_ID,
+          toolCalls: [
+            {
+              function: { arguments: '{"cmd":"pwd"}', name: 'bash' },
+              id: 'call_bash',
+              type: 'function',
+            },
+          ],
+          usage: { completionTokens: 4, promptTokens: 9, totalTokens: 13 },
+        }),
+      id: 'tool-lane',
+      stream: () => Effect.sync(() => []),
+    })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          ...helloBody,
+          tool_choice: 'required',
+          tools: [
+            {
+              function: {
+                description: 'Run a command',
+                name: 'bash',
+                parameters: { type: 'object' },
+              },
+              type: 'function',
+            },
+          ],
+        }),
+        baseDeps({
+          dispatch: { sleep: () => Effect.void },
+          lanePlan: () => ['empty-no-tool-lane', 'tool-lane'],
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      choices: ReadonlyArray<{
+        finish_reason: string
+        message: { tool_calls?: unknown }
+      }>
+      openagents?: {
+        routing?: { fallback_reason: string | null }
+        worker: string
+      }
+    }
+    expect(body.choices[0]?.finish_reason).toBe('tool_calls')
+    expect(body.choices[0]?.message.tool_calls).toEqual([
+      {
+        function: { arguments: '{"cmd":"pwd"}', name: 'bash' },
+        id: 'call_bash',
+        type: 'function',
+      },
+    ])
+    expect(body.openagents?.worker).toBe('tool-lane')
+    expect(body.openagents?.routing?.fallback_reason).toBe(
+      'tool_required_no_tool_calls',
+    )
+  })
+
   test('a Khala overflow receipt carries region, provider health score, and fallback reason', async () => {
     const registry = new InferenceProviderRegistry()
     registry.register(failing('primary', true))
@@ -2343,6 +2476,180 @@ describe('POST /v1/chat/completions', () => {
     expect(captured).toHaveLength(1)
     expect(captured[0]?.adapterId).toBe(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID)
     expect(captured[0]?.requestedModel).toBe(KHALA_MODEL_ID)
+  })
+
+  test('a tool-bearing Khala request avoids the broken GLM tool path and returns tool calls', async () => {
+    const registry = new InferenceProviderRegistry()
+    let glmCalls = 0
+    let fireworksCalls = 0
+    registry.register({
+      complete: () =>
+        Effect.sync(() => {
+          glmCalls += 1
+        }).pipe(
+          Effect.flatMap(() =>
+            Effect.fail(
+              new InferenceAdapterError({
+                adapterId: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+                kind: 'request_rejected',
+                reason: 'GLM tool parser failed',
+                retryable: false,
+              }),
+            ),
+          ),
+        ),
+      id: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+      stream: () => Effect.sync(() => []),
+    })
+    registry.register({
+      complete: request =>
+        Effect.sync(() => {
+          fireworksCalls += 1
+          expect(request.passthroughParams.tools).toEqual([
+            {
+              function: {
+                description: 'Run a shell command.',
+                name: 'bash',
+                parameters: {
+                  additionalProperties: false,
+                  properties: { command: { type: 'string' } },
+                  required: ['command'],
+                  type: 'object',
+                },
+              },
+              type: 'function',
+            },
+          ])
+          return {
+            content: '',
+            finishReason: 'tool_calls',
+            servedModel: 'accounts/fireworks/models/deepseek-v4-flash',
+            toolCalls: [
+              {
+                function: { arguments: '{"command":"pwd"}', name: 'bash' },
+                id: 'call_bash',
+                type: 'function' as const,
+              },
+            ],
+            usage: { completionTokens: 3, promptTokens: 11, totalTokens: 14 },
+          }
+        }),
+      id: FIREWORKS_ADAPTER_ID,
+      stream: () => Effect.sync(() => []),
+    })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          messages: [{ content: 'Use the available tool.', role: 'user' }],
+          model: KHALA_MODEL_ID,
+          tool_choice: 'auto',
+          tools: [
+            {
+              function: {
+                description: 'Run a shell command.',
+                name: 'bash',
+                parameters: {
+                  additionalProperties: false,
+                  properties: { command: { type: 'string' } },
+                  required: ['command'],
+                  type: 'object',
+                },
+              },
+              type: 'function',
+            },
+          ],
+        }),
+        baseDeps({
+          laneArming: hydraliskGlm52ReapReadyArming,
+          lanePlan: selectAdapterPlan,
+          newId: () => 'chatcmpl-khala-tool-fireworks',
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      choices: ReadonlyArray<{
+        finish_reason: string
+        message: { content: string; tool_calls?: ReadonlyArray<unknown> }
+      }>
+      error?: unknown
+      openagents?: { worker: string }
+    }
+    expect(body.error).toBeUndefined()
+    expect(body.choices[0]?.finish_reason).toBe('tool_calls')
+    expect(body.choices[0]?.message.content).toBe('')
+    expect(body.choices[0]?.message.tool_calls).toEqual([
+      {
+        function: { arguments: '{"command":"pwd"}', name: 'bash' },
+        id: 'call_bash',
+        type: 'function',
+      },
+    ])
+    expect(body.openagents?.worker).toBe(FIREWORKS_ADAPTER_ID)
+    expect(glmCalls).toBe(0)
+    expect(fireworksCalls).toBe(1)
+  })
+
+  test('a non-tool Khala request still prefers GLM over Fireworks when both are armed', async () => {
+    const registry = new InferenceProviderRegistry()
+    let glmCalls = 0
+    let fireworksCalls = 0
+    registry.register({
+      complete: () =>
+        Effect.sync(() => {
+          glmCalls += 1
+          return {
+            content: 'READY-GLM',
+            finishReason: 'stop',
+            servedModel: HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
+            usage: { completionTokens: 2, promptTokens: 7, totalTokens: 9 },
+          }
+        }),
+      id: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+      stream: () => Effect.sync(() => []),
+    })
+    registry.register({
+      complete: () =>
+        Effect.sync(() => {
+          fireworksCalls += 1
+          return {
+            content: 'READY-FIREWORKS',
+            finishReason: 'stop',
+            servedModel: 'accounts/fireworks/models/deepseek-v4-flash',
+            usage: { completionTokens: 2, promptTokens: 7, totalTokens: 9 },
+          }
+        }),
+      id: FIREWORKS_ADAPTER_ID,
+      stream: () => Effect.sync(() => []),
+    })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          messages: [{ content: 'Say READY.', role: 'user' }],
+          model: KHALA_MODEL_ID,
+        }),
+        baseDeps({
+          laneArming: hydraliskGlm52ReapReadyArming,
+          lanePlan: selectAdapterPlan,
+          newId: () => 'chatcmpl-khala-plain-glm',
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      choices: ReadonlyArray<{ message: { content: string } }>
+      openagents?: { worker: string }
+    }
+    expect(body.choices[0]?.message.content).toBe('READY-GLM')
+    expect(body.openagents?.worker).toBe(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID)
+    expect(glmCalls).toBe(1)
+    expect(fireworksCalls).toBe(0)
   })
 
   test('a Fireworks-backed Khala request discloses the concrete Fireworks supply lane', async () => {

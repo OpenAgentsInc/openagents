@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest'
 
 import {
   DEFAULT_OVERFLOW_BACKOFF,
+  type DispatchSuccessValidator,
   FIREWORKS_ADAPTER_ID,
   HYDRALISK_ADAPTER_ID,
   HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
@@ -19,6 +20,7 @@ import {
   openModelsByCost,
   selectAdapterPlan,
   selectAdapterPlanForKhalaBacking,
+  selectAdapterPlanForKhalaToolRequest,
   selectPrimaryAdapterId,
 } from './model-router'
 import {
@@ -66,8 +68,8 @@ const okResult = (servedModel: string): InferenceResult => ({
 })
 
 // A mock adapter that records calls and returns a scripted sequence of
-// outcomes (one per invocation). `error: undefined` => success.
-type Scripted = InferenceAdapterError | undefined
+// outcomes (one per invocation). `undefined` => default success.
+type Scripted = InferenceAdapterError | InferenceResult | undefined
 const mockAdapter = (
   id: string,
   script: ReadonlyArray<Scripted>,
@@ -80,9 +82,10 @@ const mockAdapter = (
   }
   const run = (): Effect.Effect<InferenceResult, InferenceAdapterError> => {
     const outcome = next()
-    return outcome === undefined
-      ? Effect.succeed(okResult(`served-by-${id}`))
-      : Effect.fail(outcome)
+    if (outcome instanceof InferenceAdapterError) {
+      return Effect.fail(outcome)
+    }
+    return Effect.succeed(outcome ?? okResult(`served-by-${id}`))
   }
   return {
     adapter: {
@@ -112,6 +115,38 @@ const noSleep = () => Effect.void
 
 const completeOp = (adapter: InferenceProviderAdapter, req: InferenceRequest) =>
   adapter.complete(req).pipe(Effect.map(value => ({ id: adapter.id, value })))
+
+const nonEmptyAssistantValidator: DispatchSuccessValidator<
+  Readonly<{ id: string; value: InferenceResult }>
+> = ({ adapter, value }) =>
+  value.value.content.trim() === '' &&
+  (value.value.toolCalls === undefined || value.value.toolCalls.length === 0)
+    ? {
+        _tag: 'failed',
+        error: new InferenceAdapterError({
+          adapterId: adapter.id,
+          kind: 'empty_assistant_content',
+          reason: 'adapter returned empty assistant content',
+          retryable: true,
+        }),
+      }
+    : { _tag: 'accepted' }
+
+const toolRequiredValidator: DispatchSuccessValidator<
+  Readonly<{ id: string; value: InferenceResult }>
+> = ({ adapter, request, value }) =>
+  request.passthroughParams['tool_choice'] === 'required' &&
+  (value.value.toolCalls === undefined || value.value.toolCalls.length === 0)
+    ? {
+        _tag: 'failed',
+        error: new InferenceAdapterError({
+          adapterId: adapter.id,
+          kind: 'tool_required_no_tool_calls',
+          reason: 'adapter returned no tool calls for a tool-required request',
+          retryable: true,
+        }),
+      }
+    : { _tag: 'accepted' }
 
 // ==========================================================================
 // 1. Model -> lane classification + selection
@@ -208,6 +243,23 @@ describe('model classification', () => {
         resolveKhalaBackingModel('hydralisk-glm-5.2-reap-504b'),
       )(KHALA_MODEL_ID)[0],
     ).toBe(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID)
+  })
+
+  test('routes tool-bearing Khala requests off the GLM tool path while keeping typed fallbacks', () => {
+    expect(
+      selectAdapterPlanForKhalaToolRequest(
+        KHALA_MODEL_ID,
+        selectAdapterPlanForKhalaBacking(
+          KHALA_MODEL_ID,
+          KHALA_BACKING_HYDRALISK_GPT_OSS,
+        ),
+      ),
+    ).toEqual([
+      FIREWORKS_ADAPTER_ID,
+      HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
+      HYDRALISK_ADAPTER_ID,
+      VERTEX_GEMINI_ADAPTER_ID,
+    ])
   })
 
   test('does not treat old Khala split ids as the public Khala route', () => {
@@ -407,6 +459,101 @@ describe('dispatchWithOverflow', () => {
     expect(passthrough.calls()).toBe(1)
   })
 
+  test('treats an empty assistant fallback result as a failed lane and continues', async () => {
+    const emptyLane = mockAdapter('empty-lane', [
+      {
+        content: '   ',
+        finishReason: 'stop',
+        servedModel: 'empty-model',
+        usage: { completionTokens: 0, promptTokens: 1, totalTokens: 1 },
+      },
+    ])
+    const healthyLane = mockAdapter('healthy-lane', [undefined])
+    const registry = new InferenceProviderRegistry()
+    registry.register(emptyLane.adapter)
+    registry.register(healthyLane.adapter)
+
+    const result = await runResult(
+      dispatchWithOverflowWithMetadata(
+        request(KHALA_MODEL_ID),
+        completeOp,
+        {
+          plan: () => ['empty-lane', 'healthy-lane'],
+          registry,
+          sleep: noSleep,
+        },
+        nonEmptyAssistantValidator,
+      ),
+    )
+
+    expect(result._tag).toBe('Success')
+    if (result._tag === 'Success') {
+      expect(result.success.route).toMatchObject({
+        fallbackReason: 'empty_assistant_content',
+        primaryAdapterId: 'empty-lane',
+        servedAdapterId: 'healthy-lane',
+      })
+    }
+    expect(emptyLane.calls()).toBe(1)
+    expect(healthyLane.calls()).toBe(1)
+  })
+
+  test('treats a tool-required response without tool calls as a failed lane', async () => {
+    const noToolLane = mockAdapter('no-tool-lane', [
+      {
+        content: 'I can do that.',
+        finishReason: 'stop',
+        servedModel: 'no-tool-model',
+        usage: { completionTokens: 4, promptTokens: 8, totalTokens: 12 },
+      },
+    ])
+    const toolLane = mockAdapter('tool-lane', [
+      {
+        content: '',
+        finishReason: 'tool_calls',
+        servedModel: 'tool-model',
+        toolCalls: [
+          {
+            function: { arguments: '{"cmd":"pwd"}', name: 'bash' },
+            id: 'call_bash',
+            type: 'function',
+          },
+        ],
+        usage: { completionTokens: 4, promptTokens: 8, totalTokens: 12 },
+      },
+    ])
+    const registry = new InferenceProviderRegistry()
+    registry.register(noToolLane.adapter)
+    registry.register(toolLane.adapter)
+
+    const result = await runResult(
+      dispatchWithOverflowWithMetadata(
+        {
+          ...request(KHALA_MODEL_ID),
+          passthroughParams: { tool_choice: 'required' },
+        },
+        completeOp,
+        {
+          plan: () => ['no-tool-lane', 'tool-lane'],
+          registry,
+          sleep: noSleep,
+        },
+        toolRequiredValidator,
+      ),
+    )
+
+    expect(result._tag).toBe('Success')
+    if (result._tag === 'Success') {
+      expect(result.success.route.fallbackReason).toBe(
+        'tool_required_no_tool_calls',
+      )
+      expect(result.success.route.servedAdapterId).toBe('tool-lane')
+      expect(result.success.value.value.toolCalls).toHaveLength(1)
+    }
+    expect(noToolLane.calls()).toBe(1)
+    expect(toolLane.calls()).toBe(1)
+  })
+
   test('metadata reports the served lane, fallback reason, region, and health score', async () => {
     const fireworks = mockAdapter(FIREWORKS_ADAPTER_ID, [
       new InferenceAdapterError({
@@ -542,7 +689,10 @@ describe('dispatchWithOverflow', () => {
       dispatchWithOverflowWithMetadata(request(KHALA_MODEL_ID), completeOp, {
         // The REAL GLM-first Khala backing plan (KHALA_HYDRALISK_ADAPTER_PLAN).
         plan: model =>
-          selectAdapterPlanForKhalaBacking(model, KHALA_BACKING_HYDRALISK_GPT_OSS),
+          selectAdapterPlanForKhalaBacking(
+            model,
+            KHALA_BACKING_HYDRALISK_GPT_OSS,
+          ),
         registry,
         sleep: noSleep,
       }),
