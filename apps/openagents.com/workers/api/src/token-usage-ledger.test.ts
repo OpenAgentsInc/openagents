@@ -46,9 +46,20 @@ const makeResult = <T>(results: Array<T> = []): D1Result<T> => ({
 const asNumber = (value: string | number | null | undefined): number =>
   typeof value === 'number' ? value : 0
 
+type TokenUsageCountRow = {
+  cache_read_tokens: number
+  cache_write_1h_tokens: number
+  cache_write_5m_tokens: number
+  input_tokens: number
+  output_tokens: number
+  reasoning_tokens: number
+  total_tokens: number
+  usage_events: number
+}
+
 const countRow = (
   rows: ReadonlyArray<StoredTokenUsageRow>,
-): Record<string, number> => ({
+): TokenUsageCountRow => ({
   cache_read_tokens: rows.reduce(
     (total, row) => total + asNumber(row.cache_read_tokens),
     0,
@@ -437,6 +448,15 @@ const makeMemoryD1 = (
           return Promise.resolve(row === undefined ? null : (row as T))
         }
 
+        if (query.includes('AS tokens_served')) {
+          const rows = filteredRows(store.rows, query, values, store.preferences)
+          const count = countRow(rows)
+
+          return Promise.resolve({
+            tokens_served: count.input_tokens + count.output_tokens,
+          } as T)
+        }
+
         if (query.includes('COUNT(*) AS usage_events')) {
           return Promise.resolve(
             countRow(
@@ -575,6 +595,9 @@ const tokensServedHistory = (filters?: TokenUsageHistoryFilters) =>
     ledger.readPublicTokensServedHistory(filters),
   )
 
+const tokensServedAggregate = () =>
+  Effect.flatMap(TokenUsageLedger, ledger => ledger.readPublicTokensServed())
+
 const tokensServedModelMix = (filters?: TokenUsageLeaderboardFilters) =>
   Effect.flatMap(TokenUsageLedger, ledger =>
     ledger.readPublicTokensServedModelMix(filters),
@@ -702,6 +725,79 @@ describe('token usage ledger', () => {
       demand_kind: 'internal_stress',
       demand_source: 'glm-saturation',
     })
+  })
+
+  test('public tokens-served scalar excludes internal dogfood but counts own-capacity and stress rows (#6358)', async () => {
+    const db = makeMemoryD1()
+    await runLedger(
+      db,
+      Effect.gen(function* () {
+        yield* ingest({
+          ...validProbeEvent,
+          demand: {
+            demandKind: 'external',
+            demandSource: 'public-api',
+          },
+          eventId: 'token_event_public_external',
+          idempotencyKey: 'probe:event:public-external',
+          tokenCounts: {
+            ...validProbeEvent.tokenCounts,
+            inputTokens: 10,
+            outputTokens: 5,
+            totalTokens: 15,
+          },
+        })
+        yield* ingest({
+          ...validProbeEvent,
+          demand: {
+            demandKind: 'internal',
+            demandSource: 'heartbeat',
+          },
+          eventId: 'token_event_public_internal',
+          idempotencyKey: 'probe:event:public-internal',
+          tokenCounts: {
+            ...validProbeEvent.tokenCounts,
+            inputTokens: 1_000,
+            outputTokens: 1_000,
+            totalTokens: 2_000,
+          },
+        })
+        yield* ingest({
+          ...validProbeEvent,
+          demand: {
+            demandKind: 'own_capacity',
+            demandSource: 'khala_coding_delegation',
+          },
+          eventId: 'token_event_public_own_capacity',
+          idempotencyKey: 'probe:event:public-own-capacity',
+          tokenCounts: {
+            ...validProbeEvent.tokenCounts,
+            inputTokens: 20,
+            outputTokens: 10,
+            totalTokens: 30,
+          },
+        })
+        yield* ingest({
+          ...validProbeEvent,
+          demand: {
+            demandKind: 'internal_stress',
+            demandSource: 'glm-saturation',
+          },
+          eventId: 'token_event_public_internal_stress',
+          idempotencyKey: 'probe:event:public-internal-stress',
+          tokenCounts: {
+            ...validProbeEvent.tokenCounts,
+            inputTokens: 7,
+            outputTokens: 3,
+            totalTokens: 10,
+          },
+        })
+      }),
+    )
+
+    const aggregate = await runLedger(db, tokensServedAggregate())
+
+    expect(aggregate.tokensServed).toBe(55)
   })
 
   test('rejects unsafe prompt, provider payload, private path, and bearer material', async () => {
@@ -917,6 +1013,7 @@ describe('public tokens-served history', () => {
     observedAt: string,
     inputTokens: number,
     outputTokens: number,
+    demandKind?: 'external' | 'internal' | 'internal_stress' | 'own_capacity',
   ) => ({
     schemaVersion: 'openagents.token_usage_event.v1',
     actor: { userId: 'user_chris' },
@@ -927,6 +1024,14 @@ describe('public tokens-served history', () => {
     producerSystem: 'omega',
     provider: 'openagents',
     sourceRoute: 'omega_hosted_gemini',
+    ...(demandKind === undefined
+      ? {}
+      : {
+          demand: {
+            demandKind,
+            demandSource: 'history-test',
+          },
+        }),
     tokenCounts: {
       cacheReadTokens: 0,
       cacheWrite1hTokens: 0,
@@ -984,6 +1089,61 @@ describe('public tokens-served history', () => {
     const history = await runLedger(db, tokensServedHistory({ window: '7d' }))
 
     expect(history.series).toEqual([{ day: '2026-06-07', tokensServed: 100 }])
+  })
+
+  test('excludes internal dogfood rows but keeps own-capacity and stress rows', async () => {
+    const db = makeMemoryD1()
+
+    await runLedger(
+      db,
+      Effect.gen(function* () {
+        yield* ingest(
+          eventOnDay(
+            'history-external',
+            '2026-06-07T10:00:00.000Z',
+            50,
+            50,
+            'external',
+          ),
+        )
+        yield* ingest(
+          eventOnDay(
+            'history-internal',
+            '2026-06-07T11:00:00.000Z',
+            1_000,
+            1_000,
+            'internal',
+          ),
+        )
+        yield* ingest(
+          eventOnDay(
+            'history-own-capacity',
+            '2026-06-07T12:00:00.000Z',
+            20,
+            10,
+            'own_capacity',
+          ),
+        )
+        yield* ingest(
+          eventOnDay(
+            'history-internal-stress',
+            '2026-06-07T13:00:00.000Z',
+            7,
+            3,
+            'internal_stress',
+          ),
+        )
+      }),
+    )
+
+    const history = await runLedger(
+      db,
+      tokensServedHistory({ now: '2026-06-08T12:00:00.000Z', window: '7d' }),
+    )
+
+    expect(history.series).toEqual([
+      { day: '2026-06-07', tokensServed: 140 },
+    ])
   })
 
   test('can bucket history by America/Chicago local day across a UTC boundary', async () => {

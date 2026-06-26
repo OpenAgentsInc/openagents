@@ -57,6 +57,7 @@ import { notifySyncScopes } from '../sync-notifier'
 export const KHALA_TOKENS_SERVED_SYNC_COLLECTION = 'tokens_served_deltas'
 export const KHALA_TOKENS_SERVED_SUMMARY_COLLECTION = 'tokens_served_summary'
 export const KHALA_TOKENS_SERVED_SUMMARY_ENTITY_ID = 'summary'
+const PUBLIC_TOKENS_SERVED_DEMAND_WHERE = `(demand_kind IS NULL OR lower(demand_kind) <> 'internal')`
 
 // The public-safe shape that lands on the sync room (and in the homepage Model).
 // By construction it carries ONLY bare integers + a timestamp — no per
@@ -101,13 +102,14 @@ export const buildKhalaTokensServedDelta = (
 
 type KhalaTokensServedSyncEnv = Pick<WorkerBindings, 'OPENAGENTS_DB' | 'SYNC_ROOM'>
 
-// Read the AUTHORITATIVE running total: the live `SUM(input+output)` over the
-// canonical ledger — the SAME aggregate the scalar `GET /api/public/
-// khala-tokens-served` endpoint serves. Read here (after the row this publish
-// announces is already committed) so the summary/event totals equal the ledger.
-// A plain D1 read keeps this Promise-based module out of any Effect bridge; a
-// failure returns -1 so the caller skips publishing a non-authoritative total
-// rather than risking a non-monotonic client.
+// Read the AUTHORITATIVE public-countable running total: the live
+// `SUM(input+output)` over the canonical ledger, excluding `demand_kind=internal`
+// dogfood/ops probes — the SAME aggregate the scalar
+// `GET /api/public/khala-tokens-served` endpoint serves. Read here (after the
+// row this publish announces is already committed) so the summary/event totals
+// equal the ledger. A plain D1 read keeps this Promise-based module out of any
+// Effect bridge; a failure returns -1 so the caller skips publishing a
+// non-authoritative total rather than risking a non-monotonic client.
 const readAuthoritativeTokensServedTotal = async (
   db: D1Database,
 ): Promise<number> => {
@@ -117,7 +119,8 @@ const readAuthoritativeTokensServedTotal = async (
         `SELECT
             COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)
               AS tokens_served
-           FROM token_usage_events`,
+           FROM token_usage_events
+          WHERE ${PUBLIC_TOKENS_SERVED_DEMAND_WHERE}`,
       )
       .first<{ tokens_served: number | null }>()
 
@@ -217,7 +220,9 @@ const trimKhalaTokensServedDeltaScope = async (
  * id, the snapshot's summary is always the latest authoritative total + cursor:
  * the client seeds from it and applies only events after that cursor, taking
  * `max(displayed, total)`, so the counter never double-counts and never moves
- * backward.
+ * backward. Callers must only publish deltas for public-countable rows; internal
+ * dogfood completions still land in the ledger for private/operator accounting
+ * but do not emit public counter changes.
  *
  * The payload is scanned for unsafe material before it can be written; a rejected
  * or zero/negative delta is skipped (it never reaches the outbox). The whole

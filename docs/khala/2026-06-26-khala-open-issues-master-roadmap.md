@@ -108,7 +108,7 @@ store; and the `inference-engineering-book` consultation as the recurring
 ## Current status snapshot
 
 Refreshed from GitHub issue state, `origin/main`, live counter/proof reads, and
-the local Pylon state on **2026-06-26 ~20:49Z**. This table is the
+the local Pylon state on **2026-06-26 ~23:26Z**. This table is the
 operator view of what remains, not a public product claim.
 
 | Issue | State | Current status / next action |
@@ -142,8 +142,8 @@ operator view of what remains, not a public product claim.
 | #6354 | **Closed** | Pylon `assignment run-no-spend` now refreshes presence before claiming, emits a typed heartbeat recovery diagnostic if stale presence cannot be refreshed, records public-safe active local assignment run markers, and projects those active Codex/Claude runners into heartbeat/go-online busy capacity. Focused Pylon typecheck and assignment/presence regressions passed. |
 | #6355 | **Closed** | `pylon khala burndown` formalizes the manual stress batches into a repeatable max-parallel operator loop: dry-run plan, optional `--execute` dispatch/run/proof, exact token-proof verification, public counter before/after evidence, and explicit `operator_review_required` merge closeout. Runbook: `apps/pylon/docs/khala-burndown-runbook.md`. |
 | #6356 | **Closed** | `GET /api/operator/khala/trace-review` now returns the recurring owner/admin trace-review report: failure modes, model mix, outcome buckets, notable trace refs, recurring user intents, raw Codex event metadata, and triage items. Runbook: `docs/khala/2026-06-26-khala-trace-review-runbook.md`. |
-| #6357 | **Open** | Operator ledger added in this patch: `GET/POST /api/operator/khala/unsupported-requests` maintains the Forum-first unsupported-request list from trace review, feedback refs, Forum refs, or operator rows. `bug` / `missing_capability` rows default to `needs_issue` until a GitHub issue ref is attached; runbook: `docs/khala/2026-06-26-khala-unsupported-request-list.md`. |
-| #6358 | **Open** | **NEW** — public token-counter health: correct/continuous increment from real closeouts, fix the false-alarming heartbeat monitor, hold the monotonic invariant, optional labeled in-flight estimate. |
+| #6357 | **Closed** | Operator ledger landed and issue closed at `2026-06-26T22:41:12Z`: `GET/POST /api/operator/khala/unsupported-requests` maintains the Forum-first unsupported-request list from trace review, feedback refs, Forum refs, or operator rows. `bug` / `missing_capability` rows default to `needs_issue` until a GitHub issue ref is attached; runbook: `docs/khala/2026-06-26-khala-unsupported-request-list.md`. |
+| #6358 | **Closed** | Counter-health patch deployed through `deploy:safe` as Worker `95d3fcee-f740-477d-b3c4-368f198e8255`: public token-counter projections exclude only `demand_kind=internal` dogfood while preserving `own_capacity` Pylon/Codex and `internal_stress` served work; live sync deltas skip internal rows; `scripts/khala-heartbeat.sh` / `scripts/khala-canary.sh` validate 200 + non-empty usage and monotonic/readable counter health without requiring internal probes to move the public counter. The local patched Pylon recovered stale assignment `assignment.public.khala_coding.chatcmpl_fd33103f7b4349218f9b0760e8ca5632` with closeout `assignment.closeout.cfd5d6dd9b2a6140f361a836`, then ran two same-Pylon assignments concurrently to accepted exact-token closeout (`assignment.public.khala_coding.chatcmpl_6d190807e87c4a558dac39a098a9d268`, 161,832 tokens; `assignment.public.khala_coding.chatcmpl_a2bd2121c00d4a2f8e63eb26f48f9148`, 128,873 tokens). Live smokes after deploy: public counter `301,802,319`, model-mix `pylon_codex=224,016,760` across `123` events, canary `state=up` with `publicCounterCheck=skipped_internal`, and one heartbeat wave `ok=10 fail=0 summedTokens=21,049`. Optional labeled in-flight estimate remains deferred. |
 | #6359 | **Open** | **NEW EPIC** — Artanis autonomously owns the whole Khala improvement loop (unblock users, ensure inference, drive #6355, act on feedback, consult `inference-engineering-book` once the set drains). Subsumes #6321; coordinates #6355/#6356/#6357/#6358 + the #6316 serving track. See the Artanis section. |
 | #6360 | **Open** | **NEW** — Artanis ingests + acts on Khala CLI `/feedback` (`khala_feedback` table): style→response-style change (owner-gated), capability gap→#6357→issue, bug→issue. |
 | #6321 | **Open** | Artanis fleet-overseer control loop (heal/scale/stress/external-yield). Now scoped under the broader Artanis ownership epic #6359. |
@@ -713,3 +713,15 @@ GLM coding lane and leave REAP-504B on the 4x hosts.)
   and (2) whether the public product should add a clearly labeled in-flight
   estimate from streamed SDK chunks while preserving exact public accounting at
   assignment closeout.
+- 2026-06-26 `23:24Z` stale-lease recovery proof: patched local Pylon
+  `pylon.33afd48282a649047e3a` reclaimed abandoned accepted no-spend assignment
+  `assignment.public.khala_coding.chatcmpl_fd33103f7b4349218f9b0760e8ca5632`
+  with stale closeout `assignment.closeout.cfd5d6dd9b2a6140f361a836`, then ran
+  two same-Pylon assignments concurrently to accepted closeout:
+  `assignment.public.khala_coding.chatcmpl_6d190807e87c4a558dac39a098a9d268`
+  (`161,832` exact tokens, `15` owner-only ATIF traces, `22` raw SDK events)
+  and `assignment.public.khala_coding.chatcmpl_a2bd2121c00d4a2f8e63eb26f48f9148`
+  (`128,873` exact tokens, `12` owner-only ATIF traces, `17` raw SDK events).
+  After closeout, `provider go-online` again reported Codex `available=2`,
+  `ready=2`, `busy=0`, `queued=0`; treat this as the current proof that stale
+  local no-spend leases no longer poison advertised capacity.

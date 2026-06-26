@@ -12,13 +12,16 @@
 > "accepted outcomes per kilowatt hour" thesis). The orchestrator framing changes
 > two earlier recommendations in this doc, now reversed by owner decision:
 >
-> 1. **The public `khala-tokens-served` counter is SOURCE-AGNOSTIC.** Every token
->    Khala orchestrates counts — local, crowd, swarm, cloud, subscription, "beamed
->    down from space." It does not matter that our own inference engine did not
->    serve them; if they flow through the Khala system they hit the counter. So
->    **own-capacity Codex/Claude coding tokens orchestrated through Khala DO
->    increment the public counter.** (See §1.8 / §2 / P5a — this REVERSES the
->    earlier "keep them out of the counter" guidance.)
+> 1. **The public `khala-tokens-served` counter is SOURCE-AGNOSTIC for
+>    public-countable work.** Every non-dogfood token Khala orchestrates counts —
+>    local, crowd, swarm, cloud, subscription, "beamed down from space." It does
+>    not matter that our own inference engine did not serve them; if they flow
+>    through the Khala system they hit the counter. So **own-capacity Codex/Claude
+>    coding tokens orchestrated through Khala DO increment the public counter.**
+>    `demand_kind=internal` dogfood/ops probes are the one explicit exclusion:
+>    they stay exact in the ledger and private analytics, but not in the public
+>    product counter. (See §1.8 / §2 / P5a — this REVERSES the earlier
+>    "keep them out of the counter" guidance for own-capacity work.)
 > 2. **Account linking is built NOW, on the multi-link model.** Execution stays
 >    single-user / own-capacity (firm invariant), but the **OpenAuth web-login
 >    account is the one account that links MULTIPLE Pylons AND multiple agent/API
@@ -33,8 +36,9 @@
 > speculative; **DEFAULT-ON** = armed and live by default (no owner flip needed).
 >
 > Owner decisions applied (override all prior recommendations in this doc):
-> (1) counter counts ALL Khala-orchestrated tokens, source-agnostic, with an
-> internal `demand_kind`/source tag for honest analytics; (2) build OpenAuth
+> (1) counter counts all public-countable Khala-orchestrated tokens,
+> source-agnostic except `demand_kind=internal` dogfood/ops probes, with a
+> `demand_kind`/source tag for honest analytics; (2) build OpenAuth
 > account ↔ many-Pylons + many-keys linking NOW; (3) coding-workflow classifier:
 > full typed/semantic version (no keyword routing); (4) execution rides our
 > **Durable Streams** resumable-SSE model (every request returns an interruptible,
@@ -355,7 +359,7 @@ pull** (the Pylon already polls `/assignments`), so no new server→node push ch
 is strictly required for P1–P4 — the router just *creates* the assignment and the
 caller's Pylon picks it up. Results return via the existing closeout/artifacts path.
 
-### 1.8 Accounting + invariants — **own-capacity is allowed; counter counts ALL orchestrated tokens**
+### 1.8 Accounting + invariants — **own-capacity is allowed; counter counts public-countable orchestrated tokens**
 
 - **No-resale (INVARIANTS.md, Provider Capacity Marketplace Gate ≈L981–1043).**
   Exact scope: *"The no-resale rule stays scoped to consumer SUBSCRIPTION accounts
@@ -368,23 +372,23 @@ caller's Pylon picks it up. Results return via the existing closeout/artifacts p
   A user running **their own** Codex/Claude capacity for **their own** work is
   `agentic_work` on owned capacity — explicitly allowed, not resale. **Confirmed: this
   feature does not touch the no-resale prohibition.**
-- **Public Khala counter — counts ALL orchestrated tokens (owner decision,
+- **Public Khala counter — counts public-countable orchestrated tokens (owner decision,
   REVERSES the prior recommendation).** `public-khala-tokens-served-routes.ts`
   exposes `GET /api/public/khala-tokens-served` =
-  `SUM(input_tokens)+SUM(output_tokens)` over `token_usage_events` with **no
-  filter** (`token-usage-ledger.ts`). The ledger carries a `demand_kind` column
-  (`internal`/`external`/`unlabeled`) and a `demand_source` column; private reads
-  can filter on them. **Khala is an orchestrator** (Episode 232): the headline rule
-  is that **every token Khala orchestrates counts on the public counter,
+  `SUM(input_tokens)+SUM(output_tokens)` over `token_usage_events`, excluding
+  only rows tagged `demand_kind=internal` (`token-usage-ledger.ts`). The ledger
+  carries a `demand_kind` column (`internal`/`internal_stress`/`own_capacity`/
+  `external`/`unlabeled`) and a `demand_source` column; private reads can filter
+  on them. **Khala is an orchestrator** (Episode 232): the headline rule is that
+  **public-countable work Khala orchestrates counts on the public counter,
   source-agnostic** — local, crowd, swarm, cloud, subscription, "beamed down from
   space." It does not matter that our own inference engine did not serve the
   completion bytes; if the work flows through the Khala system, it hits the
-  counter. **Therefore own-capacity Codex/Claude coding tokens orchestrated through
-  Khala DO increment the public `khala-tokens-served` scalar.** This is consistent
-  with the existing design, which already includes internal dog-food in the public
-  scalar. We still record an honest internal tag — `demand_kind` (own-capacity vs
-  external vs hosted) and `demand_source` — for analytics, so we can always break
-  the number down by source; but the tokens **count**. The prior
+  counter. **Therefore own-capacity Codex/Claude coding tokens orchestrated
+  through Khala DO increment the public `khala-tokens-served` scalar.** We still
+  record honest tags — `demand_kind` and `demand_source` — for analytics, so we
+  can always break the number down by source; but only first-party dogfood/ops
+  probes tagged exactly `internal` are excluded from public projections. The prior
   "do-NOT-add-them-to-the-counter" recommendation is **withdrawn.**
 
 ---
@@ -410,14 +414,14 @@ caller's Pylon picks it up. Results return via the existing closeout/artifacts p
   request field/header or a central semantic/embedding selector — never ad-hoc string
   matching on prose. Deterministic enum parsing is allowed only after the typed route
   is chosen.
-- **All-orchestrated-tokens-count (owner decision).** Khala is an orchestrator;
-  every token it orchestrates counts on the public `khala-tokens-served` scalar,
-  **source-agnostic** (local / crowd / swarm / cloud / subscription / own-capacity).
-  Own-capacity coding tokens orchestrated through Khala therefore DO increment the
-  public counter. Keep an internal `demand_kind` (own-capacity / external / hosted)
-  and `demand_source` tag for honest analytics, but never *exclude* orchestrated
-  tokens from the public count. (Reverses the earlier public-counter-honesty
-  recommendation.)
+- **All public-countable orchestrated tokens count (owner decision).** Khala is
+  an orchestrator; every non-dogfood token it orchestrates counts on the public
+  `khala-tokens-served` scalar, **source-agnostic** (local / crowd / swarm /
+  cloud / subscription / own-capacity). Own-capacity coding tokens orchestrated
+  through Khala therefore DO increment the public counter. Keep `demand_kind` and
+  `demand_source` tags for honest analytics; exclude only `demand_kind=internal`
+  dogfood/ops probes from the public count. (Reverses the earlier
+  public-counter-honesty recommendation for own-capacity work.)
 - **Default-on routing (owner decision).** The coding-workflow routing is **armed
   and live by default** — not owner-gated-off. No flag flip is required to enable
   it; it is on. (If a kill switch is wired at all, it is an off-by-default *disable*
@@ -605,13 +609,14 @@ durable, resumable stream of the same shape.
 
 ### P5 — Accounting, invariant enforcement, tests (NOW)
 
-- **P5a — Count ALL Khala-orchestrated tokens on the public counter (owner
-  decision, source-agnostic).** Record own-capacity coding tokens in
-  `token_usage_events` with an honest internal `demand_kind` (own-capacity vs
-  external vs hosted) and `demand_source` tag, **and include them in the public
-  `khala-tokens-served` scalar** — they are orchestrated through Khala, so they
-  count. Seam: `token-usage-ledger.ts`, `served-tokens-recorder.ts`,
-  `public-khala-tokens-served-routes.ts`, `khala-tokens-served-sync.ts`.
+- **P5a — Count public-countable Khala-orchestrated tokens on the public counter
+  (owner decision, source-agnostic).** Record own-capacity coding tokens in
+  `token_usage_events` with an honest `own_capacity` `demand_kind` and
+  `demand_source` tag, **and include them in the public `khala-tokens-served`
+  scalar** — they are orchestrated through Khala, so they count. Exclude only
+  `demand_kind=internal` dogfood/ops probes. Seam: `token-usage-ledger.ts`,
+  `served-tokens-recorder.ts`, `public-khala-tokens-served-routes.ts`,
+  `khala-tokens-served-sync.ts`.
   Acceptance: a test that an own-capacity coding completion **does** move the public
   counter, AND that its `demand_kind`/`demand_source` tag lets a private analytics
   read break it out by source. (Reverses the prior "counter does not move" test.)
@@ -654,12 +659,14 @@ durable, resumable stream of the same shape.
    `durable-inference-read-routes.ts`). The turn never blocks: a dropped client
    resumes from its last offset and replays the suffix; long-running PR work returns
    a durable handle immediately (P4).
-4. **Public counter policy. RESOLVED → counter counts ALL orchestrated tokens.**
-   Khala is an orchestrator; every token it orchestrates counts on the public
-   `khala-tokens-served` scalar, **source-agnostic** (local / crowd / swarm / cloud
-   / subscription / own-capacity). Own-capacity coding tokens **DO** increment the
-   public counter; keep an internal `demand_kind`/`demand_source` tag for honest
-   analytics (P5a). (This reverses the earlier "keep them out" recommendation.)
+4. **Public counter policy. RESOLVED → counter counts public-countable
+   orchestrated tokens.** Khala is an orchestrator; every non-dogfood token it
+   orchestrates counts on the public `khala-tokens-served` scalar,
+   **source-agnostic** (local / crowd / swarm / cloud / subscription /
+   own-capacity). Own-capacity coding tokens **DO** increment the public counter;
+   keep `demand_kind`/`demand_source` tags for honest analytics, and exclude only
+   `demand_kind=internal` dogfood/ops probes from public projections (P5a). (This
+   reverses the earlier "keep them out" recommendation for own-capacity work.)
 5. **Arming default. RESOLVED → default-ON, armed now.** The coding-workflow routing
    is **live by default**, not owner-gated-off. Any switch wired is an
    off-by-default *disable* (kill switch) only, never an off-by-default *enable* gate

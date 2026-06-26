@@ -243,6 +243,28 @@ closeout status is `accepted` with `settlementState: "not_applicable"` and
 `payoutClaimAllowed: false`. For the public fixture, a successful run includes
 `result.public.pylon.codex_agent_task.fixture_repair_passed`.
 
+For parallel delegation, run each assignment with an explicit assignment ref and
+publish capacity first:
+
+```sh
+OPENAGENTS_PYLON_CODEX_CONCURRENCY=2 \
+OPENAGENTS_PYLON_CODEX_BUSY=0 \
+OPENAGENTS_PYLON_CODEX_QUEUED=0 \
+$PYLON presence heartbeat --json
+
+$PYLON assignment run-no-spend --assignment-ref "<assignmentRefA>" --json
+$PYLON assignment run-no-spend --assignment-ref "<assignmentRefB>" --json
+```
+
+Current Pylon stores owner-local process and heartbeat evidence for accepted
+no-spend leases. If a previous local run was interrupted, a fresh runner should
+submit a public-safe stale closeout (`blocker.assignment.local_run_interrupted`)
+before claiming new work, so abandoned accepted rows do not poison the
+advertised Codex capacity until server lease expiry. If fresh dispatch is still
+refused, inspect the Pylon assignment rows for non-expired active leases and
+verify whether their local owner process is still alive before creating more
+requests.
+
 5. Verify durable resume:
 
 ```sh

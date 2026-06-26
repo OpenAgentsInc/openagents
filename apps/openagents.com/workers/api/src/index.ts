@@ -535,6 +535,7 @@ import {
   type ServedTokensRecorderInput,
   buildServedTokensIngestBody,
   makeD1ServedTokensRecorder,
+  servedTokensRowIsPublicCountable,
 } from './inference/served-tokens-recorder'
 import { stubEchoAdapter } from './inference/stub-echo-adapter'
 import {
@@ -8019,7 +8020,11 @@ const makeKhalaMcpServedTokensRecorder = (
 
       const inserted =
         Number((result.meta as D1Meta & { changes?: number }).changes ?? 0) > 0
-      if (inserted && options.publishDelta !== undefined) {
+      if (
+        inserted &&
+        options.publishDelta !== undefined &&
+        servedTokensRowIsPublicCountable(input.requestAttribution)
+      ) {
         await options
           .publishDelta({
             eventRef: body.eventId,
@@ -11469,11 +11474,12 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
             { db: openAgentsDatabase(env), resolveOwnerIdentity },
           ),
         ),
-        // SERVED-TOKENS COUNTER (issue #6227). Records one canonical
+        // SERVED-TOKENS COUNTER (issue #6227/#6358). Records one canonical
         // `token_usage_events` row per SERVED completion so the public "Khala
         // Tokens Served" counter (GET /api/public/khala-tokens-served) reflects
-        // ALL Khala traffic — paid AND free-tier (the free-tier credit-ledger
-        // hook short-circuits, but the tokens were still served and must count).
+        // public-countable Khala traffic — paid, free-tier, own-capacity, and
+        // internal_stress. `demand_kind=internal` dogfood remains exact in the
+        // ledger but is excluded from public projections.
         // Idempotent per request; never fails the completion. INERT regardless —
         // only reached when the gateway is enabled.
         recordTokensServed: makeD1ServedTokensRecorder(

@@ -206,6 +206,37 @@ describe("codex agent task recognition", () => {
     })
   })
 
+  test("bounds a hung Codex runner with a typed budget-exceeded closeout", async () => {
+    await withState(async (state) => {
+      const hungLease = {
+        ...lease,
+        codingAssignment: {
+          codex: {
+            schema: CODEX_AGENT_TASK_SCHEMA,
+            agentKind: "codex_sdk",
+            fixtureRef: CODEX_AGENT_SUM_REPAIR_FIXTURE_REF,
+            timeoutSeconds: 0.001,
+          },
+        },
+      }
+      const neverSettles: CodexAgentRunner = async () => new Promise(() => {})
+
+      const record = await executeCodexAgentAssignment(state, hungLease, now, {
+        codexAgentRunner: neverSettles,
+        codexAgentProbe: readyProbe,
+      })
+
+      expect(record?.status).toBe("rejected")
+      expect(record?.blockerRefs).toEqual([
+        "blocker.assignment.codex_agent_budget_exceeded",
+      ])
+      expect(record?.resultRefs).toContain(
+        "result.public.pylon.codex_agent_task.budget_exceeded",
+      )
+      assertPublicProjectionSafe(record)
+    })
+  })
+
   test("redaction: unsafe-shaped digests are rejected before any POST", async () => {
     await withState(async (state) => {
       const record = await executeCodexAgentAssignment(state, lease, now, {

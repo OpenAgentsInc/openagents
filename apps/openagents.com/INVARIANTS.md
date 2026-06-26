@@ -1657,6 +1657,13 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   no-duplicate, no-auto-publish, capability, heartbeat, pause, rollback, and
   closeout requirements. Khala -> Pylon -> Codex uses `unpaid_smoke`, so wallet
   readiness is not a dispatch prerequisite for local no-spend coding work.
+- Local no-spend Pylon/Codex accepted leases must carry local owner-process and
+  heartbeat evidence. A sibling local Pylon runner may submit a public-safe
+  stale closeout for a no-spend lease only when the local owner process is dead,
+  its owner heartbeat is stale, or the server lease has expired. Stale recovery
+  closeouts must use `settlementState='not_applicable'`,
+  `payoutClaimAllowed=false`, and public blocker refs only; they must not expose
+  raw local paths, prompts, credentials, or private repo material.
 - For caller-owned Khala -> Pylon -> Codex assignments, the local Pylon executor
   runs Codex with the SDK equivalent of
   `--dangerously-bypass-approvals-and-sandbox` (`danger-full-access`,

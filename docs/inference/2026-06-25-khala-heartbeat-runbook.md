@@ -1,15 +1,16 @@
 # Khala Liveness Heartbeat — Runbook
 
-Updated: 2026-06-25
+Updated: 2026-06-26
 
 > **Status:** operational runbook, honest-scope. Documents the scheduled liveness
 > heartbeat that fires ~50k tokens across diverse configs at the **live production**
-> Khala endpoint every 15 minutes, verifies the public counter records them, and
-> writes a public-safe status. For future agents/operators. Not a product promise;
+> Khala endpoint every 15 minutes, verifies completion success, checks public
+> counter health without requiring internal dogfood tokens to move it, and writes
+> a public-safe status. For future agents/operators. Not a product promise;
 > heartbeat tokens are **internal dogfood** (not external demand) and are now
-> **demand-tagged `internal`** at the source (#6298) so neither the token ledger
-> nor the captured trace corpus mistakes them for external real-user traffic.
-> See **Demand-origin self-tag** below.
+> **demand-tagged `internal`** at the source (#6298), so neither public counters
+> nor the captured trace corpus mistake them for external real-user traffic. See
+> **Demand-origin self-tag** below.
 
 ## What it is
 
@@ -30,13 +31,19 @@ Updated: 2026-06-25
      `KHALA_HEARTBEAT_MAX_WAVES`, default 15). The model stops ~1.5k tokens/request
      well under max_tokens, so the loop is what reliably reaches ~50k (typically
      ~30 long-gens, ~63k served). Also the load probe (6-wide concurrency).
-4. Re-reads the counter and asserts it **moved** (proves the served-tokens recorder
-   is alive), then writes a status line.
+4. Re-reads the counter and verifies it is readable and did not move backward.
+   By default it does **not** require movement, because the heartbeat is tagged
+   `internal` and `internal` rows are excluded from the public counter. To run
+   the same script as a public-counter movement proof with a non-allowlisted,
+   public-countable key, set `KHALA_HEARTBEAT_DEMAND_KIND=external` and
+   `KHALA_HEARTBEAT_EXPECT_PUBLIC_COUNTER=1`.
 
 **Why ~50k in diverse configs:** a single ping proves "the box answers"; ~50k across
 short/long/streaming/content-array/concurrent proves the **real** paths customers use
-(tool-calling shapes, streaming, long decode, concurrency) and that **accounting**
-still records every served token. It is also honest dogfood traffic on the North Star.
+(tool-calling shapes, streaming, long decode, concurrency) and that terminal
+usage frames are non-empty. Exact accounting is verified from `token_usage_events`
+for internal probes; the public counter is only an accounting proof for
+public-countable demand.
 
 ## Demand-origin self-tag (#6298) — keep internal traffic out of the corpus
 
@@ -53,8 +60,8 @@ the SAME attribution it already writes to the token ledger
 the ledger always agree, and the corpus read excludes internal-dogfood by
 default.
 
-- `x-openagents-demand-kind`: one of `external | internal | own_capacity |
-  unlabeled`. Internal callers send `internal`.
+- `x-openagents-demand-kind`: one of `external | internal | internal_stress |
+  own_capacity | unlabeled`. Internal dogfood callers send `internal`.
 - `x-openagents-demand-source`: a bounded attribution token (a short
   `[A-Za-z0-9_.:-]` slug), the canonical name of the internal source.
 
@@ -68,7 +75,10 @@ Canonical internal sources (send these, exactly):
 
 Both scripts add these headers to their shared `AUTH` curl array, so **every**
 completion they issue is tagged. Anything missing/unparseable defaults to
-`unlabeled` (fail-soft): tagging never breaks a completion or a capture.
+`unlabeled` (fail-soft): tagging never breaks a completion or a capture. Public
+Khala token-counter projections exclude only `demand_kind=internal`; they still
+count `own_capacity` Pylon/Codex closeouts and `internal_stress` load when those
+are Khala-orchestrated.
 
 The Harbor/Terminal-Bench path tags itself through the Terminus agent's
 extra-headers. The progress pusher
@@ -97,16 +107,22 @@ own_capacity, unlabeled}` count over all of the owner's traces.
 
 ## Verdict / exit codes
 
-- `0` **ok** — configs succeeded and the counter moved.
+- `0` **ok** — configs returned success with non-empty usage/chunks, and the
+  public counter endpoint was readable and monotonic. `status.json` includes
+  `publicCounterCheck:"skipped_internal"` for the default internal mode, or
+  `"required"` when `KHALA_HEARTBEAT_EXPECT_PUBLIC_COUNTER=1`.
 - `2` **degraded** — everything that ran was quota-limited (`402`/`429`): the endpoint
   is alive but the key is tapped out for the UTC day (rotate / add keys).
-- `1` **down** — a hard failure on a config, or the counter did **not** move while
-  tokens were served, or no keys configured. Writes to `FAILURES.log`.
+- `1` **down** — a hard failure on a config, an HTTP 200 with empty usage,
+  unreadable public counter endpoint, backward public counter movement, no keys
+  configured, or (only when public-counter movement is explicitly required)
+  no public counter movement after served tokens. Writes to `FAILURES.log`.
 
 ## Files (all under `~/work/.khala-heartbeat/`, gitignored)
 
 - `heartbeat.jsonl` — append-only log, one public-safe JSON line per run (ts, state,
-  ok/fail/quota counts, summed tokens, counter before/after/delta, per-config http).
+  ok/fail/quota counts, summed tokens, counter before/after/delta, counter-check
+  mode, demand kind, per-config http).
 - `status.json` — the latest run only (what to check first).
 - `FAILURES.log` — only failure/degraded notes (tail this when triaging).
 - `.keystate` — round-robin key index.
@@ -194,9 +210,13 @@ bash ~/work/openagents/scripts/khala-heartbeat.sh       # run once on demand
 
 - **degraded (quota)** → rotate is automatic; if it persists, add another key to the
   pool (`KHALA_HEARTBEAT_KEYS`) — the day's quota is spent, not an outage.
-- **down + counter didn't move** → the gateway served but the **recorder/counter**
-  regressed (this is exactly the class of bug behind #6231 / the monotonic-counter
-  fix). Check `GET /api/public/khala-tokens-served` and the served-tokens recorder.
+- **down + counter didn't move** → only possible when
+  `KHALA_HEARTBEAT_EXPECT_PUBLIC_COUNTER=1`; the gateway served public-countable
+  demand but the **recorder/counter** regressed. Check
+  `GET /api/public/khala-tokens-served` and the served-tokens recorder. In the
+  default internal heartbeat mode, no public counter movement is expected.
+- **down + counter regressed/unreadable** → the public counter surface itself is
+  unhealthy; check the live-at-read scalar endpoint and sync summary path.
 - **down + http 5xx / timeouts** → the gateway or a backing lane (Fireworks DeepSeek
   V4 Flash primary; Gemini Flash / GPT-OSS Hydralisk / GLM-REAP fallbacks) is
   unhealthy. Check `GET /api/v1/models` and the lane health.
@@ -216,11 +236,15 @@ returned 500 for ~10+ minutes after the worker shipped ahead of migration
 `scripts/khala-canary.sh` is the tight loop that closes that detection gap. Each
 run (every ~90s) fires **ONE** small real `openagents/khala` completion and:
 
-- **UP** (exit 0): http 200 and the public counter moved.
+- **UP** (exit 0): http 200 with non-empty usage, and the public counter endpoint
+  was readable and monotonic. In default internal mode the public counter delta
+  is informational and may be zero.
 - **DEGRADED** (exit 2): http 402/429 — endpoint alive, the canary key is just
   quota/rate-limited (rotate/add keys). **No RED ALERT.**
-- **DOWN** (exit 1): http 500 / any non-200, OR http 200 but the counter did not
-  move while tokens were served (the served-tokens recorder regressed).
+- **DOWN** (exit 1): http 500 / any non-200, http 200 with empty usage, unreadable
+  public counter endpoint, backward public counter movement, or (only with
+  `KHALA_CANARY_EXPECT_PUBLIC_COUNTER=1`) no public counter movement after
+  served public-countable tokens.
 
 On a **healthy→down transition only** (edge-triggered, so a sustained outage does
 NOT spam), DOWN:
@@ -243,8 +267,10 @@ the most recent deploy (the ONLY sanctioned deploy is `deploy:safe`).
 
 Secret-safe like the heartbeat: keys come from the gitignored secrets file (by
 default `~/work/.secrets/khala-heartbeat.env`; point at a dedicated ops pool with
-`KHALA_CANARY_ENV` + `KHALA_CANARY_KEYS`). No key/prompt/completion/raw-IP ever
-lands in any file.
+`KHALA_CANARY_ENV` + `KHALA_CANARY_KEYS`). To make the canary a public-counter
+movement proof, use a public-countable, non-allowlisted key plus
+`KHALA_CANARY_DEMAND_KIND=external KHALA_CANARY_EXPECT_PUBLIC_COUNTER=1`. No
+key/prompt/completion/raw-IP ever lands in any file.
 
 Check it:
 

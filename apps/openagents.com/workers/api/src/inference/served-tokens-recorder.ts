@@ -135,12 +135,17 @@ export const servedTokensIdempotencyKey = (requestId: string): string =>
 export const servedTokensEventId = (requestId: string): string =>
   `event.inference.served-tokens.${requestId}`
 
+export const servedTokensRowIsPublicCountable = (
+  attribution: ServedTokensRequestAttribution | undefined,
+): boolean => attribution?.demandKind !== 'internal'
+
 // Build the canonical `token_usage_events` ingest body for one served completion.
 // `usageTruth: 'exact'` — these are real provider-reported counts, not estimates.
 // `leaderboardEligible: false` keeps the served-tokens row OUT of the per-actor
-// leaderboards (it is the network-wide served counter, not a competitive tally);
-// the public `readPublicTokensServed()` SUM ignores that flag, so the counter
-// still reflects ALL served tokens.
+// leaderboards (it is the network-wide served counter, not a competitive tally).
+// The public `readPublicTokensServed()` SUM ignores that leaderboard flag but
+// does exclude `demand_kind=internal`, so heartbeat/canary/operator dogfood rows
+// stay exact in the ledger without moving the public product counter.
 // Our marginal COST (USD) to serve this completion, priced against the SERVED
 // model on the real supply lane (so a Fireworks `deepseek-v4-flash` completion
 // is costed at the Fireworks rate, GPT-OSS at the Hydralisk rate, etc.). This is
@@ -439,12 +444,17 @@ export const makeServedTokensRecorder = (
               }),
             ).pipe(
               // Live-counter push (#6231): publish the delta ONLY when this was a
-              // REAL new ledger row (a fresh insert). A duplicate/no-op insert
-              // (`inserted:false`) already counted, so re-publishing would double
-              // count. The publisher is fail-soft (it swallows its own errors),
-              // so it can never break the customer's completion.
+              // REAL new public-countable ledger row (a fresh insert and not
+              // `demand_kind=internal`). A duplicate/no-op insert (`inserted:false`)
+              // already counted, and internal dogfood rows are intentionally
+              // excluded from public projections (#6298/#6358), so re-publishing
+              // either shape would mislead the public counter. The publisher is
+              // fail-soft (it swallows its own errors), so it can never break the
+              // customer's completion.
               Effect.flatMap(() =>
-                deps.publishDelta === undefined || !result.inserted
+                deps.publishDelta === undefined ||
+                !result.inserted ||
+                !servedTokensRowIsPublicCountable(input.requestAttribution)
                   ? Effect.void
                   : deps.publishDelta({
                       eventRef: servedTokensEventId(input.requestId),

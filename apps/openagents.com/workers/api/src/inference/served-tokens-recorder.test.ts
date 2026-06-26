@@ -495,6 +495,64 @@ describe('served-tokens-recorder', () => {
     expect(serialized).not.toContain('public-api')
   })
 
+  test('internal dogfood records exact ledger rows but publishes no public counter delta (#6358)', async () => {
+    const rows: Array<Row> = []
+    const published: Array<PublishedDelta> = []
+    const { recorder } = recordWithPublisher(rows, published)
+
+    await runRecorder(recorder, {
+      accountRef: 'agent:push-internal',
+      adapterId: 'hydralisk',
+      requestAttribution: {
+        demandKind: 'internal',
+        demandSource: 'heartbeat',
+      },
+      requestId: 'chatcmpl-push-internal',
+      requestedModel: 'openagents/khala',
+      servedModel: 'openagents/khala',
+      streamed: false,
+      usage: { completionTokens: 30, promptTokens: 20, totalTokens: 50 },
+    })
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      demand_kind: 'internal',
+      demand_source: 'heartbeat',
+      input_tokens: 20,
+      output_tokens: 30,
+    })
+    expect(published).toHaveLength(0)
+  })
+
+  test('own-capacity closeouts remain public-countable (#6358)', async () => {
+    const rows: Array<Row> = []
+    const published: Array<PublishedDelta> = []
+    const { recorder } = recordWithPublisher(rows, published)
+
+    await runRecorder(recorder, {
+      accountRef: 'agent:push-own-capacity',
+      adapterId: 'pylon-codex-own-capacity',
+      requestAttribution: {
+        demandKind: 'own_capacity',
+        demandSource: 'khala_coding_delegation',
+      },
+      requestId: 'chatcmpl-push-own-capacity',
+      requestedModel: 'openagents/khala',
+      servedModel: 'openagents/pylon-codex',
+      streamed: false,
+      usage: { completionTokens: 30, promptTokens: 20, totalTokens: 50 },
+    })
+
+    expect(rows).toHaveLength(1)
+    expect(published).toStrictEqual([
+      {
+        eventRef: servedTokensEventId('chatcmpl-push-own-capacity'),
+        observedAt: fixedNow(),
+        tokensServedDelta: 50,
+      },
+    ])
+  })
+
   test('a duplicate (no-op) insert does NOT publish a second delta', async () => {
     const rows: Array<Row> = []
     const published: Array<PublishedDelta> = []

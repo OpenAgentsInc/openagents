@@ -842,6 +842,37 @@ type CodexAgentLease = {
   codingAssignment?: unknown
 }
 
+function deadlineBudgetExceededResult(): CodexAgentRunResult {
+  return {
+    outcome: "budget_exceeded",
+    turnCount: 0,
+    editedFileCount: 0,
+    commandCount: 0,
+    sessionRef: null,
+  }
+}
+
+async function runCodexAgentWithOuterDeadline(
+  runner: CodexAgentRunner,
+  input: CodexAgentRunInput,
+): Promise<CodexAgentRunResult> {
+  let timeout: ReturnType<typeof setTimeout> | undefined
+  const runnerPromise = runner(input)
+  runnerPromise.catch(() => undefined)
+  const timeoutPromise = new Promise<CodexAgentRunResult>((resolve) => {
+    timeout = setTimeout(
+      () => resolve(deadlineBudgetExceededResult()),
+      Math.max(0, input.timeoutMs),
+    )
+  })
+
+  try {
+    return await Promise.race([runnerPromise, timeoutPromise])
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout)
+  }
+}
+
 function refusalRecord(input: {
   lease: CodexAgentLease
   runRef: string
@@ -960,7 +991,13 @@ export async function executeCodexAgentAssignment(
     })
   let run: CodexAgentRunResult
   try {
-    run = await runner({
+    const timeoutMs =
+      boundedNumber(
+        task.timeoutSeconds ?? config.timeoutSeconds,
+        DEFAULT_TIMEOUT_SECONDS,
+        MAX_TIMEOUT_SECONDS,
+      ) * 1000
+    run = await runCodexAgentWithOuterDeadline(runner, {
       assignmentRef: lease.assignmentRef,
       cwd: materialized.workspace,
       account: options.account,
@@ -973,12 +1010,7 @@ export async function executeCodexAgentAssignment(
       pylonRef: state.identity.pylonRef,
       runRef,
       sandboxMode: effectiveSandboxMode(task.sandboxMode, config.sandboxMode),
-      timeoutMs:
-        boundedNumber(
-          task.timeoutSeconds ?? config.timeoutSeconds,
-          DEFAULT_TIMEOUT_SECONDS,
-          MAX_TIMEOUT_SECONDS,
-        ) * 1000,
+      timeoutMs,
       ...(config.model === undefined ? {} : { model: config.model }),
       workspaceRef: materialized.workspaceRef,
     })

@@ -261,6 +261,12 @@ const demandKindFromText = (
     : 'unlabeled'
 }
 
+// Public Khala token counters exclude first-party dogfood/ops probes that are
+// explicitly classified as `internal` by #6298. Other demand classes, including
+// `internal_stress` and `own_capacity`, retain their existing public counter
+// semantics because they are Khala-orchestrated served work.
+const publicTokensServedDemandWhere = `(demand_kind IS NULL OR lower(demand_kind) <> 'internal')`
+
 const demandAttributionFromInput = (
   body: typeof TokenUsageEventIngestBody.Type,
 ): Readonly<{
@@ -2128,9 +2134,11 @@ export const makeD1TokenUsageLedger = (
     }),
 
   // Public-safe "Khala Tokens Served" aggregate: the running network-wide SUM
-  // of input + output tokens across ALL ledger events. No filters, no grouping,
-  // no per-actor or provider material — a single non-negative scalar. The route
-  // layer wraps it with generatedAt + the staleness contract before serving.
+  // of input + output tokens across public-countable ledger events. It excludes
+  // `demand_kind=internal` dogfood/ops probes, but keeps `internal_stress` and
+  // `own_capacity` countable per the Khala roadmap. No grouping, no per-actor or
+  // provider material — a single non-negative scalar. The route layer wraps it
+  // with generatedAt + the staleness contract before serving.
   readPublicTokensServed: () =>
     Effect.gen(function* () {
       const row = yield* d1Effect('tokenUsageEvents.publicTokensServed', () =>
@@ -2139,7 +2147,8 @@ export const makeD1TokenUsageLedger = (
             `SELECT
                 COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)
                   AS tokens_served
-               FROM token_usage_events`,
+               FROM token_usage_events
+              WHERE ${publicTokensServedDemandWhere}`,
           )
           .first<{ tokens_served: number | null }>(),
       )
@@ -2150,12 +2159,12 @@ export const makeD1TokenUsageLedger = (
     }),
 
   // Public-safe "Khala Tokens Served" history: the per-day SUM of input +
-  // output tokens over the requested window, ordered ascending by day in the
-  // requested timezone. Like the scalar above, it is aggregate only — bare day
-  // + sum, no per-user, per-actor, or provider columns. The default UTC path
-  // keeps the indexed D1 GROUP BY; named IANA timezones group public-safe rows
-  // in runtime code so DST boundaries are handled by Intl rather than by a
-  // fixed offset.
+  // output tokens over public-countable rows in the requested window, ordered
+  // ascending by day in the requested timezone. Like the scalar above, it is
+  // aggregate only — bare day + sum, no per-user, per-actor, or provider
+  // columns. The default UTC path keeps the indexed D1 GROUP BY; named IANA
+  // timezones group public-safe rows in runtime code so DST boundaries are
+  // handled by Intl rather than by a fixed offset.
   readPublicTokensServedHistory: (filters = {}) =>
     Effect.gen(function* () {
       const window = yield* normalizeLeaderboardWindow(filters.window ?? '30d')
@@ -2176,10 +2185,11 @@ export const makeD1TokenUsageLedger = (
                 since === undefined
                   ? `SELECT observed_at, input_tokens, output_tokens
                        FROM token_usage_events
+                      WHERE ${publicTokensServedDemandWhere}
                       ORDER BY observed_at ASC`
                   : `SELECT observed_at, input_tokens, output_tokens
                        FROM token_usage_events
-                      WHERE observed_at >= ?
+                      WHERE observed_at >= ? AND ${publicTokensServedDemandWhere}
                       ORDER BY observed_at ASC`,
               )
               .bind(...(since === undefined ? [] : [since]))
@@ -2231,6 +2241,7 @@ export const makeD1TokenUsageLedger = (
                       COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)
                         AS tokens
                      FROM token_usage_events
+                    WHERE ${publicTokensServedDemandWhere}
                     GROUP BY day
                     ORDER BY day ASC`
                 : `SELECT
@@ -2238,7 +2249,7 @@ export const makeD1TokenUsageLedger = (
                       COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)
                         AS tokens
                      FROM token_usage_events
-                    WHERE observed_at >= ?
+                    WHERE observed_at >= ? AND ${publicTokensServedDemandWhere}
                     GROUP BY day
                     ORDER BY day ASC`,
             )
@@ -2277,7 +2288,6 @@ export const makeD1TokenUsageLedger = (
         filters.now ?? runtime.nowIso(),
       )
       const since = leaderboardWindowSince(window, nowIso, runtime)
-      const publicDemandWhere = `(demand_kind IS NULL OR lower(demand_kind) <> 'internal')`
 
       const rows = yield* d1Effect(
         'tokenUsageEvents.publicTokensServedModelMix',
@@ -2292,7 +2302,7 @@ export const makeD1TokenUsageLedger = (
                         AS tokens,
                       COUNT(*) AS usage_events
                      FROM token_usage_events
-                    WHERE ${publicDemandWhere}
+                    WHERE ${publicTokensServedDemandWhere}
                     GROUP BY provider, model`
                 : `SELECT
                       provider,
@@ -2301,7 +2311,7 @@ export const makeD1TokenUsageLedger = (
                         AS tokens,
                       COUNT(*) AS usage_events
                      FROM token_usage_events
-                    WHERE observed_at >= ? AND ${publicDemandWhere}
+                    WHERE observed_at >= ? AND ${publicTokensServedDemandWhere}
                     GROUP BY provider, model`,
             )
             .bind(...(since === undefined ? [] : [since]))

@@ -5,15 +5,19 @@
 # `POST /api/v1/chat/completions` returned 500 for ~10+ minutes) was NOT
 # auto-detected — the owner noticed manually. The 15-minute liveness heartbeat
 # (scripts/khala-heartbeat.sh) is too coarse and too heavy to be a fast outage
-# detector. This canary is the TIGHT loop: ONE real `openagents/khala` completion
-# every ~90s, and on a 500 / non-200 / counter-not-moving it fires a RED ALERT.
+# detector. This canary is the TIGHT loop: ONE real `openagents/khala`
+# completion every ~90s, and on a 500 / non-200 / empty usage it fires a RED
+# ALERT. Public counter movement is required only for countable probes; internal
+# dogfood is intentionally excluded from the public counter.
 #
 # WHAT IT DOES each tick:
 #   1. Reads the public tokens-served counter.
 #   2. Fires ONE small real completion (model: openagents/khala).
 #   3. Re-reads the counter.
-#   4. Verdict: UP if http 200; DOWN if http 500 / any non-200 / (200 but the
-#      counter did not move while tokens were served).
+#   4. Verdict: UP if http 200 + non-empty usage; DOWN if http 500 / any
+#      non-200 / empty usage / public counter unreadable or backward. If
+#      KHALA_CANARY_EXPECT_PUBLIC_COUNTER=1, DOWN also includes 200 with served
+#      tokens but no public counter movement.
 #   5. RED ALERT only on a healthy->down TRANSITION (edge-triggered, not every
 #      tick), so a sustained outage does not spam. Recovery (down->up) is logged.
 #
@@ -34,6 +38,9 @@ set -uo pipefail
 BASE="${KHALA_BASE_URL:-https://openagents.com/api/v1}"
 PUBLIC_BASE="${KHALA_PUBLIC_BASE:-https://openagents.com}"
 MODEL="${KHALA_MODEL:-openagents/khala}"
+DEMAND_KIND="${KHALA_CANARY_DEMAND_KIND:-internal}"
+DEMAND_SOURCE="${KHALA_CANARY_DEMAND_SOURCE:-canary}"
+EXPECT_PUBLIC_COUNTER="${KHALA_CANARY_EXPECT_PUBLIC_COUNTER:-}"
 # Reuse the heartbeat secrets file by default; an ops-only canary key pool can be
 # pointed at via KHALA_CANARY_ENV (e.g. ~/work/.secrets/khala-ops-keys.env).
 SECRETS="${KHALA_CANARY_ENV:-${KHALA_HEARTBEAT_ENV:-$HOME/work/.secrets/khala-heartbeat.env}}"
@@ -50,9 +57,9 @@ mkdir -p "$HOME_DIR"
 ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 prev_health="unknown"; [ -f "$STATE" ] && prev_health="$(cat "$STATE" 2>/dev/null || echo unknown)"
 
-emit() { # state http detail
+emit() { # state http detail delta counter_check
   local state="$1" http="$2" detail="$3"
-  local line="{\"ts\":\"$(ts)\",\"kind\":\"canary\",\"state\":\"$state\",\"http\":$http,\"counterDelta\":${4:-0},\"detail\":\"$detail\"}"
+  local line="{\"ts\":\"$(ts)\",\"kind\":\"canary\",\"state\":\"$state\",\"http\":$http,\"counterDelta\":${4:-0},\"publicCounterCheck\":\"${5:-unknown}\",\"demandKind\":\"$DEMAND_KIND\",\"detail\":\"$detail\"}"
   echo "$line" >> "$LOG"
   echo "$line" > "$STATUS"
   echo "$line"
@@ -94,17 +101,22 @@ IDX_STATE="$HOME_DIR/.canary-keystate"
 idx=0; [ -f "$IDX_STATE" ] && idx=$(cat "$IDX_STATE" 2>/dev/null || echo 0)
 KEY="${KEYS[$(( idx % ${#KEYS[@]} ))]}"
 echo $(( (idx + 1) % 1000000 )) > "$IDX_STATE"
-# DEMAND-ORIGIN SELF-TAG (#6298). The canary is INTERNAL dogfood, not external
-# demand. Tag every completion so the token ledger AND the captured trace corpus
-# classify it as internal (source `canary`) and segment it out of the genuine
-# external real-user corpus. See
+# DEMAND-ORIGIN SELF-TAG (#6298). The canary defaults to INTERNAL dogfood, not
+# external demand. Tag every completion so the token ledger AND the captured
+# trace corpus classify it as internal (source `canary`) and segment it out of
+# the genuine external real-user corpus. See
 # docs/inference/2026-06-25-khala-heartbeat-runbook.md ("Demand-origin self-tag").
 AUTH=(-H "Authorization: Bearer $KEY" -H "content-type: application/json" \
-  -H "x-openagents-demand-kind: internal" -H "x-openagents-demand-source: canary")
+  -H "x-openagents-demand-kind: $DEMAND_KIND" -H "x-openagents-demand-source: $DEMAND_SOURCE")
+if [ -z "$EXPECT_PUBLIC_COUNTER" ]; then
+  if [ "$DEMAND_KIND" = "internal" ]; then EXPECT_PUBLIC_COUNTER=0; else EXPECT_PUBLIC_COUNTER=1; fi
+fi
+if [ "$EXPECT_PUBLIC_COUNTER" = "1" ]; then counter_check="required"; else counter_check="skipped_internal"; fi
 
 # --- one tick ----------------------------------------------------------------
+counter_readable=1
 before=$(curl -s --max-time 10 "$PUBLIC_BASE/api/public/khala-tokens-served" | jq -r '.tokensServed // empty')
-[ -z "$before" ] && before=0
+if ! [[ "$before" =~ ^[0-9]+$ ]]; then counter_readable=0; before=0; fi
 
 body=$(jq -nc --arg m "$MODEL" \
   '{model:$m,max_tokens:48,temperature:0.2,messages:[{role:"user",content:"Canary: reply with one short sentence."}]}')
@@ -112,10 +124,11 @@ resp=$(curl -s --max-time 60 -w '\n%{http_code}' "$BASE/chat/completions" "${AUT
 http=$(printf '%s' "$resp" | tail -1)
 [ -z "$http" ] && http=0
 tok=$(printf '%s' "$resp" | sed '$d' | jq -r '((.usage.prompt_tokens//0)+(.usage.completion_tokens//0)) // 0' 2>/dev/null || echo 0)
+[[ "$tok" =~ ^[0-9]+$ ]] || tok=0
 
 sleep 2
 after=$(curl -s --max-time 10 "$PUBLIC_BASE/api/public/khala-tokens-served" | jq -r '.tokensServed // empty')
-[ -z "$after" ] && after=0
+if ! [[ "$after" =~ ^[0-9]+$ ]]; then counter_readable=0; after=0; fi
 delta=$(( after - before ))
 
 # --- verdict -----------------------------------------------------------------
@@ -124,11 +137,19 @@ if [ "$http" = "402" ] || [ "$http" = "429" ]; then
   state="degraded"; detail="quota_or_rate_limited http=$http (rotate/add canary keys)"
 elif [ "$http" != "200" ]; then
   state="down"; detail="non_200 http=$http"
-elif [ "$tok" -gt 0 ] && [ "$delta" -le 0 ]; then
+elif [ "$tok" -le 0 ]; then
+  state="down"; detail="empty_usage http=200"
+elif [ "$counter_readable" -eq 0 ]; then
+  state="down"; detail="counter_unreadable"
+elif [ "$delta" -lt 0 ]; then
+  state="down"; detail="counter_regressed before=$before after=$after"
+elif [ "$EXPECT_PUBLIC_COUNTER" = "1" ] && [ "$delta" -le 0 ]; then
   state="down"; detail="counter_did_not_move http=200 served=$tok delta=$delta"
+elif [ "$EXPECT_PUBLIC_COUNTER" != "1" ]; then
+  detail="ok_counter_delta_not_required_internal_probe"
 fi
 
-emit "$state" "$http" "$detail" "$delta"
+emit "$state" "$http" "$detail" "$delta" "$counter_check"
 
 # --- edge-triggered alerting -------------------------------------------------
 case "$state" in
@@ -142,7 +163,7 @@ case "$state" in
     echo "degraded" > "$STATE"; exit 2 ;;
   up)
     if [ "$prev_health" = "down" ]; then
-      echo "$(ts) RECOVERED: Khala completions back UP (http=200, counter moving)." >> "$REDALERT"
+      echo "$(ts) RECOVERED: Khala completions back UP (http=200, $detail)." >> "$REDALERT"
     fi
     echo "up" > "$STATE"; exit 0 ;;
 esac

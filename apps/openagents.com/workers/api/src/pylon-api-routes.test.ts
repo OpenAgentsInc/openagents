@@ -2355,6 +2355,32 @@ describe('Pylon API routes', () => {
     )
   })
 
+  test('does not let expired active leases consume future dispatch capacity', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store)
+    await markOnline(store)
+    await markWalletReady(store)
+    const expired = await createAssignment(store, {
+      assignmentRef: 'assignment.public.expired_active_one',
+      idempotencyKey: 'assignment-expired-active-one',
+      leaseSeconds: 60,
+      nowIso: '2026-06-07T00:10:00.000Z',
+    })
+    const fresh = await createAssignment(store, {
+      assignmentRef: 'assignment.public.after_expired_active_two',
+      idempotencyKey: 'assignment-after-expired-active-two',
+      nowIso: '2026-06-07T00:11:01.000Z',
+    })
+    const freshBody = await responseJson<PylonRouteJson>(fresh)
+
+    expect(expired.status).toBe(201)
+    expect(fresh.status).toBe(201)
+    expect(freshBody.dispatchGate?.dispatchAllowed).toBe(true)
+    expect(freshBody.dispatchGate?.blockerRefs).not.toContain(
+      'blocker.public.pylon_dispatch.duplicate_active_assignment',
+    )
+  })
+
   test('allows unpaid smoke dispatch without wallet readiness', async () => {
     const store = new MemoryPylonApiStore()
     await registerPylon(store)

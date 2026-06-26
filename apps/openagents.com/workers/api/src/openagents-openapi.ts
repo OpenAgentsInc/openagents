@@ -1697,10 +1697,10 @@ const schemaComponents = (): JsonSchema => ({
     'Public-safe retained Pylon capacity funnel history: hourly and daily count-only snapshots with the same read-only capacity-accounting authority boundary as the live funnel. No device identifiers, owner linkage, wallet detail, assignment authority, payout authority, or settlement authority.',
   ),
   PublicKhalaTokensServed: objectSummary(
-    'Public-safe "Khala Tokens Served" aggregate: tokensServed (the running network-wide SUM of input + output tokens across all token usage ledger events), generatedAt, and the declared live_at_read staleness contract. A single non-negative scalar; no per-user, per-team, provider, or secret material. Read-only counter; grants no payout, settlement, or public-claim authority.',
+    'Public-safe "Khala Tokens Served" aggregate: tokensServed (the running network-wide SUM of input + output tokens across public-countable token usage ledger events, excluding demand_kind=internal dogfood/ops probes), generatedAt, and the declared live_at_read staleness contract. A single non-negative scalar; no per-user, per-team, provider, or secret material. Read-only counter; grants no payout, settlement, or public-claim authority.',
   ),
   PublicKhalaTokensServedHistory: objectSummary(
-    'Public-safe "Khala Tokens Served" history: window, bucket (day), timezone (default UTC), and a per-day series of { day, tokensServed } where tokensServed is the SUM of input + output tokens served that calendar day in the response timezone, plus generatedAt and the declared live_at_read staleness contract. Each point is a bare day + sum; no per-user, per-team, provider, or secret material. Read-only counter history; grants no payout, settlement, or public-claim authority.',
+    'Public-safe "Khala Tokens Served" history: window, bucket (day), timezone (default UTC), and a per-day series of { day, tokensServed } where tokensServed is the SUM of input + output tokens served by public-countable rows that calendar day in the response timezone, excluding demand_kind=internal dogfood/ops probes, plus generatedAt and the declared live_at_read staleness contract. Each point is a bare day + sum; no per-user, per-team, provider, or secret material. Read-only counter history; grants no payout, settlement, or public-claim authority.',
   ),
   PublicKhalaTokensServedModelMix: objectSummary(
     'Public-safe "Khala Tokens Served" model/provider mix for /stats: schemaVersion openagents.public_khala_model_mix.v1, window, totalTokens, and canonical aggregate groups { family, label, tokens, reqs, pct }, plus generatedAt and the declared live_at_read staleness contract. Raw provider ids and model ids are collapsed into glm, fireworks_deepseek, pylon_codex, gpt_oss, gemini, or other before serving; demand_kind=internal rows are excluded. No per-user, per-team, per-account, raw provider/model, prompt, completion, or secret material. Read-only stats projection; grants no payout, settlement, routing, provider, or public-claim authority.',
@@ -4799,7 +4799,7 @@ const paths = (): JsonSchema => ({
       operationId: 'getPublicKhalaTokensServed',
       summary: 'Read public Khala tokens-served aggregate',
       description:
-        'Returns the public-safe network-wide Khala tokens-served aggregate from the token usage ledger. The response contains schemaVersion, tokensServed, generatedAt, and the live_at_read staleness contract only; it excludes per-user, per-team, provider, prompt, completion, API key, wallet, payment, and secret material.',
+        'Returns the public-safe network-wide Khala tokens-served aggregate from the token usage ledger, excluding demand_kind=internal dogfood/ops probes. The response contains schemaVersion, tokensServed, generatedAt, and the live_at_read staleness contract only; it excludes per-user, per-team, provider, prompt, completion, API key, wallet, payment, and secret material.',
       tags: ['Public Proof', 'Inference'],
       security: publicRead,
       responses: {
@@ -9091,7 +9091,7 @@ const paths = (): JsonSchema => ({
       operationId: 'getPublicKhalaTokensServedHistory',
       summary: 'Read public Khala Tokens Served history',
       description:
-        'Returns the public-safe "Khala Tokens Served" history: window, bucket (day), timezone (default UTC), and a per-day series of { day, tokensServed } where tokensServed is the SUM of input + output tokens served that calendar day in the response timezone, plus generatedAt and the declared live_at_read staleness contract. Each point is a bare day + sum; no per-user, per-team, provider, or secret material. Read-only counter history; grants no payout, settlement, or public-claim authority.',
+        'Returns the public-safe "Khala Tokens Served" history: window, bucket (day), timezone (default UTC), and a per-day series of { day, tokensServed } where tokensServed is the SUM of input + output tokens served by public-countable rows that calendar day in the response timezone, excluding demand_kind=internal dogfood/ops probes, plus generatedAt and the declared live_at_read staleness contract. Each point is a bare day + sum; no per-user, per-team, provider, or secret material. Read-only counter history; grants no payout, settlement, or public-claim authority.',
       tags: ['Public Proof'],
       security: [],
       parameters: [

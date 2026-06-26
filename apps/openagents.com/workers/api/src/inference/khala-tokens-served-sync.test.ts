@@ -42,7 +42,8 @@ const makeResult = <T>(results: Array<T> = []): D1Result<T> => ({
   success: true,
 })
 
-type MemoryD1 = D1Database & Readonly<{ changes: Array<StoredChange> }>
+type MemoryD1 = D1Database &
+  Readonly<{ changes: Array<StoredChange>; queries: Array<string> }>
 
 const makeStatement = (
   state: Pick<MemoryD1, 'changes'> & { lastSeq: number; tokensServed: number },
@@ -131,22 +132,30 @@ const makeMemoryD1 = (tokensServed = 0): MemoryD1 => {
   const state = {
     changes: [] as Array<StoredChange>,
     lastSeq: 0,
+    queries: [] as Array<string>,
     tokensServed,
   }
 
   return {
     changes: state.changes,
+    queries: state.queries,
     batch: async <T = unknown>(statements: Array<D1PreparedStatement>) =>
       Promise.all(statements.map(statement => statement.run<T>())),
     dump: async () => new ArrayBuffer(0),
     exec: async () => ({ count: 0, duration: 0 }),
-    prepare: (query: string) => makeStatement(state, query),
+    prepare: (query: string) => {
+      state.queries.push(query)
+      return makeStatement(state, query)
+    },
     withSession: () =>
       ({
         batch: async <T = unknown>(statements: Array<D1PreparedStatement>) =>
           Promise.all(statements.map(statement => statement.run<T>())),
         getBookmark: () => null,
-        prepare: (query: string) => makeStatement(state, query),
+        prepare: (query: string) => {
+          state.queries.push(query)
+          return makeStatement(state, query)
+        },
       }) satisfies D1DatabaseSession,
   } as unknown as MemoryD1
 }
@@ -247,6 +256,13 @@ describe('publishKhalaTokensServedDelta', () => {
     expect(JSON.parse(summary?.value_json ?? '{}')).toMatchObject({
       tokensServedTotal: 1_000_042,
     })
+    expect(
+      db.queries.some(
+        query =>
+          query.includes('AS tokens_served') &&
+          query.includes("lower(demand_kind) <> 'internal'"),
+      ),
+    ).toBe(true)
 
     expect(notifiedScopes).toEqual(['public-khala-tokens-served:network'])
   })

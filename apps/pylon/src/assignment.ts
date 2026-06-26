@@ -155,6 +155,8 @@ export type AssignmentClientOptions = {
   claudeAgentProbe?: ClaudeAgentProbeOptions
   codexAgentRunner?: CodexAgentRunner
   codexAgentProbe?: CodexAgentProbeOptions
+  localAssignmentHeartbeatStaleAfterMs?: number
+  localProcessIsAlive?: (processId: number) => boolean
   onLifecycleEvent?: (event: AssignmentRunLifecycleEvent) => void | Promise<void>
   runtimeHeartbeatIntervalMs?: number
   runtimeProgressIntervalMs?: number
@@ -197,9 +199,24 @@ export type AssignmentRecoveryDiagnostic = {
   recoveryCommand: string
 }
 
+type AssignmentStoreLeaseRecord = {
+  assignmentRef: string
+  status: AssignmentStatus
+  acceptedAt?: string
+  closedAt?: string
+  leaseExpiresAt?: string
+  ownerHeartbeatAt?: string
+  ownerHeartbeatSequence?: number
+  ownerProcessId?: number
+  ownerStartedAt?: string
+  paymentMode?: AssignmentPaymentMode
+  serverCloseoutRef?: string
+  serverCloseoutSubmittedAt?: string
+}
+
 type AssignmentStore = {
   schema: "openagents.pylon.assignment_state.v0.3"
-  leases: Record<string, { assignmentRef: string; status: AssignmentStatus; acceptedAt?: string; closedAt?: string }>
+  leases: Record<string, AssignmentStoreLeaseRecord>
 }
 
 type AssignmentCodexAccountSelection = {
@@ -763,6 +780,130 @@ const locallyTerminalAssignmentStatuses = new Set<AssignmentStatus>([
   "timed-out",
   "stale",
 ])
+const LOCAL_ASSIGNMENT_HEARTBEAT_INTERVAL_MS = 5_000
+const DEFAULT_LOCAL_ASSIGNMENT_HEARTBEAT_STALE_AFTER_MS = 90_000
+const LEGACY_LOCAL_ACTIVE_LEASE_TTL_MS = 5 * 60 * 1000
+
+function defaultLocalProcessIsAlive(processId: number): boolean {
+  if (!Number.isInteger(processId) || processId <= 0) return false
+  try {
+    process.kill(processId, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function localLeaseRecordIsExpired(
+  record: AssignmentStoreLeaseRecord,
+  now: Date,
+): boolean {
+  if (locallyTerminalAssignmentStatuses.has(record.status)) return false
+  if (record.leaseExpiresAt !== undefined) {
+    const expiresAt = Date.parse(record.leaseExpiresAt)
+    return Number.isFinite(expiresAt) && expiresAt <= now.getTime()
+  }
+  return false
+}
+
+function localLeaseRecordIsInterrupted(
+  record: AssignmentStoreLeaseRecord,
+  now: Date,
+  options: Pick<AssignmentClientOptions, "localAssignmentHeartbeatStaleAfterMs" | "localProcessIsAlive"> = {},
+): boolean {
+  if (locallyTerminalAssignmentStatuses.has(record.status)) return false
+  if (localLeaseRecordIsExpired(record, now)) return true
+  const localProcessIsAlive = options.localProcessIsAlive ?? defaultLocalProcessIsAlive
+  const heartbeatStaleAfterMs =
+    typeof options.localAssignmentHeartbeatStaleAfterMs === "number" &&
+    Number.isFinite(options.localAssignmentHeartbeatStaleAfterMs) &&
+    options.localAssignmentHeartbeatStaleAfterMs > 0
+      ? Math.max(1, Math.floor(options.localAssignmentHeartbeatStaleAfterMs))
+      : DEFAULT_LOCAL_ASSIGNMENT_HEARTBEAT_STALE_AFTER_MS
+  if (record.ownerProcessId !== undefined) {
+    if (!localProcessIsAlive(record.ownerProcessId)) return true
+    const heartbeatAt = Date.parse(
+      record.ownerHeartbeatAt ?? record.acceptedAt ?? record.ownerStartedAt ?? "",
+    )
+    return Number.isFinite(heartbeatAt) &&
+      now.getTime() - heartbeatAt > heartbeatStaleAfterMs
+  }
+  if (record.acceptedAt !== undefined) {
+    const acceptedAt = Date.parse(record.acceptedAt)
+    return Number.isFinite(acceptedAt) &&
+      now.getTime() - acceptedAt > LEGACY_LOCAL_ACTIVE_LEASE_TTL_MS
+  }
+  return false
+}
+
+function staleExpiredLocalLeases(
+  store: AssignmentStore,
+  now: Date,
+  options: Pick<AssignmentClientOptions, "localAssignmentHeartbeatStaleAfterMs" | "localProcessIsAlive"> = {},
+): { changed: boolean; store: AssignmentStore } {
+  let changed = false
+  const leases: AssignmentStore["leases"] = {}
+  for (const [leaseRef, record] of Object.entries(store.leases)) {
+    if (!localLeaseRecordIsInterrupted(record, now, options)) {
+      leases[leaseRef] = record
+      continue
+    }
+    changed = true
+    leases[leaseRef] = {
+      ...record,
+      status: "stale",
+      closedAt: now.toISOString(),
+    }
+  }
+  return changed ? { changed, store: { ...store, leases } } : { changed, store }
+}
+
+function expiredActiveLocalLeaseEntries(
+  store: AssignmentStore,
+  now: Date,
+  options: Pick<AssignmentClientOptions, "localAssignmentHeartbeatStaleAfterMs" | "localProcessIsAlive"> = {},
+): Array<readonly [string, AssignmentStoreLeaseRecord]> {
+  return Object.entries(store.leases).filter(([, record]) =>
+    !locallyTerminalAssignmentStatuses.has(record.status) &&
+    localLeaseRecordIsInterrupted(record, now, options),
+  )
+}
+
+function interruptedNoSpendLeaseEntriesNeedingCloseout(
+  store: AssignmentStore,
+  now: Date,
+  options: Pick<AssignmentClientOptions, "localAssignmentHeartbeatStaleAfterMs" | "localProcessIsAlive"> = {},
+): Array<readonly [string, AssignmentStoreLeaseRecord]> {
+  const entries = new Map<string, AssignmentStoreLeaseRecord>()
+  for (const [leaseRef, record] of expiredActiveLocalLeaseEntries(store, now, options)) {
+    if (record.paymentMode !== "paid") {
+      entries.set(leaseRef, record)
+    }
+  }
+  for (const [leaseRef, record] of Object.entries(store.leases)) {
+    if (
+      record.status === "stale" &&
+      record.paymentMode !== "paid" &&
+      record.serverCloseoutSubmittedAt === undefined
+    ) {
+      entries.set(leaseRef, record)
+    }
+  }
+  return [...entries.entries()]
+}
+
+async function loadPrunedAssignmentStore(
+  state: PylonLocalState,
+  now: Date,
+  options: Pick<AssignmentClientOptions, "localAssignmentHeartbeatStaleAfterMs" | "localProcessIsAlive"> = {},
+): Promise<AssignmentStore> {
+  const loaded = await loadAssignmentStore(state)
+  const pruned = staleExpiredLocalLeases(loaded, now, options)
+  if (pruned.changed) {
+    await writeAssignmentStore(state, pruned.store)
+  }
+  return pruned.store
+}
 
 function localLeaseIsTerminal(store: AssignmentStore, leaseRef: string): boolean {
   const local = store.leases[leaseRef]
@@ -1035,7 +1176,8 @@ export async function acceptAssignment(
   options: AssignmentClientOptions,
 ): Promise<AssignmentAcceptance> {
   const state = await ensurePylonLocalState(summary)
-  const store = await loadAssignmentStore(state)
+  const acceptedAt = options.now?.() ?? new Date()
+  const store = await loadPrunedAssignmentStore(state, acceptedAt, options)
   const existing = store.leases[lease.leaseRef]
   if (
     existing?.status === "accepted" ||
@@ -1101,7 +1243,13 @@ export async function acceptAssignment(
   store.leases[lease.leaseRef] = {
     assignmentRef: lease.assignmentRef,
     status: "accepted",
-    acceptedAt: (options.now?.() ?? new Date()).toISOString(),
+    acceptedAt: acceptedAt.toISOString(),
+    leaseExpiresAt: lease.expiresAt,
+    ownerHeartbeatAt: acceptedAt.toISOString(),
+    ownerHeartbeatSequence: 0,
+    ownerProcessId: process.pid,
+    ownerStartedAt: acceptedAt.toISOString(),
+    paymentMode: lease.paymentMode,
   }
   await writeAssignmentStore(state, store)
   return { ok: true, accepted: true, assignmentRef: lease.assignmentRef, leaseRef: lease.leaseRef, statusRef, blockerRefs: [] }
@@ -1161,22 +1309,133 @@ export async function submitAssignmentCloseout(
     closeout,
     state,
   )
+  const closeoutRef = String(response.closeoutRef ?? stableRef("assignment.closeout", closeout.leaseRef))
   const store = await loadAssignmentStore(state)
   store.leases[closeout.leaseRef] = {
     assignmentRef: closeout.assignmentRef,
     status: closeout.status === "accepted" ? "closed" : closeout.status,
     acceptedAt: store.leases[closeout.leaseRef]?.acceptedAt,
+    leaseExpiresAt: store.leases[closeout.leaseRef]?.leaseExpiresAt,
+    paymentMode: closeout.paymentMode,
     closedAt: closeout.completedAt,
+    serverCloseoutRef: closeoutRef,
+    serverCloseoutSubmittedAt: closeout.completedAt,
   }
   await writeAssignmentStore(state, store)
-  const closeoutRef = String(response.closeoutRef ?? stableRef("assignment.closeout", closeout.leaseRef))
   await writeTrainingWorkerReceiptsBundle(state, closeout, closeoutRef)
   return { closeoutRef }
+}
+
+async function recordLocalLeaseHeartbeat(
+  state: PylonLocalState,
+  leaseRef: string,
+  now: Date,
+  status: "accepted" | "running" = "running",
+): Promise<void> {
+  const store = await loadAssignmentStore(state)
+  const existing = store.leases[leaseRef]
+  if (existing === undefined || locallyTerminalAssignmentStatuses.has(existing.status)) {
+    return
+  }
+  store.leases[leaseRef] = {
+    ...existing,
+    status,
+    ownerHeartbeatAt: now.toISOString(),
+    ownerHeartbeatSequence: (existing.ownerHeartbeatSequence ?? 0) + 1,
+    ownerProcessId: process.pid,
+    ownerStartedAt: existing.ownerStartedAt ?? existing.acceptedAt ?? now.toISOString(),
+  }
+  await writeAssignmentStore(state, store)
+}
+
+function startLocalLeaseHeartbeat(
+  state: PylonLocalState,
+  leaseRef: string,
+  options: AssignmentClientOptions,
+): { stop: () => void } {
+  let stopped = false
+  const touch = async () => {
+    if (stopped) return
+    await recordLocalLeaseHeartbeat(
+      state,
+      leaseRef,
+      options.now?.() ?? new Date(),
+      "running",
+    )
+  }
+  void touch().catch(() => {})
+  const interval = setInterval(() => {
+    void touch().catch(() => {})
+  }, LOCAL_ASSIGNMENT_HEARTBEAT_INTERVAL_MS)
+  return {
+    stop: () => {
+      stopped = true
+      clearInterval(interval)
+    },
+  }
 }
 
 function deterministicIndexFromRef(value: string, size: number): number {
   if (size <= 0) return 0
   return createHash("sha256").update(value).digest().readUInt32BE(0) % size
+}
+
+function interruptedLocalLeaseCloseout(
+  leaseRef: string,
+  record: AssignmentStoreLeaseRecord,
+  now: Date,
+): AssignmentCloseout {
+  const closeoutRef = stableRef(
+    "assignment.closeout.local_interrupted",
+    `${leaseRef}:${record.acceptedAt ?? "unknown"}:${now.toISOString()}`,
+  )
+  const proofRef = stableRef(
+    "assignment.proof.local_interrupted",
+    `${leaseRef}:${record.status}:${record.acceptedAt ?? "unknown"}`,
+  )
+  return {
+    schema: "openagents.pylon.assignment_closeout.v0.3",
+    assignmentRef: record.assignmentRef,
+    leaseRef,
+    status: "stale",
+    paymentMode: "no-spend",
+    settlementState: "not_applicable",
+    payoutClaimAllowed: false,
+    artifactRefs: [],
+    blockerRefs: ["blocker.assignment.local_run_interrupted"],
+    buildRefs: [],
+    closeoutRefs: [closeoutRef],
+    previewRefs: [],
+    proofRefs: [proofRef],
+    receiptRefs: ["receipt.pylon.assignment.local_interrupted_no_spend"],
+    resultRefs: ["result.public.pylon.assignment.local_interrupted"],
+    summaryRefs: ["summary.public.pylon.assignment.local_interrupted"],
+    testRefs: [proofRef],
+    redacted: true,
+    completedAt: now.toISOString(),
+  }
+}
+
+async function closeoutInterruptedNoSpendLeases(
+  summary: BootstrapSummary,
+  state: PylonLocalState,
+  options: AssignmentClientOptions,
+  now: Date,
+): Promise<void> {
+  const store = await loadAssignmentStore(state)
+  const interrupted = interruptedNoSpendLeaseEntriesNeedingCloseout(store, now, options)
+  for (const [leaseRef, record] of interrupted) {
+    try {
+      await submitAssignmentCloseout(
+        summary,
+        interruptedLocalLeaseCloseout(leaseRef, record, now),
+        options,
+      )
+    } catch {
+      // If the server already expired or closed the lease, local pruning below
+      // still prevents the interrupted run from poisoning future dispatch.
+    }
+  }
 }
 
 async function resolveCodexAccountForAssignment(
@@ -1303,7 +1562,9 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
     })
   }
   const state = await ensurePylonLocalState(summary)
-  const store = await loadAssignmentStore(state)
+  const observedAtDate = options.now?.() ?? new Date()
+  await closeoutInterruptedNoSpendLeases(summary, state, options, observedAtDate)
+  const store = await loadPrunedAssignmentStore(state, observedAtDate, options)
   let presenceRefreshError: unknown
   try {
     await heartbeatRefresh()
@@ -1316,6 +1577,7 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
     (options.assignmentRef === undefined ||
       candidate.assignmentRef === options.assignmentRef ||
       candidate.leaseRef === options.assignmentRef) &&
+    !isExpired(candidate, observedAtDate) &&
     !localLeaseIsTerminal(store, candidate.leaseRef)
   )
   await emitLifecycleEvent({
@@ -1381,8 +1643,8 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
     leaseRef: lease.leaseRef,
     statusRef: acceptance.statusRef,
   })
+  const localLeaseHeartbeat = startLocalLeaseHeartbeat(state, lease.leaseRef, options)
 
-  const observedAtDate = options.now?.() ?? new Date()
   const observedAt = observedAtDate.toISOString()
   const codexAccount = await resolveCodexAccountForAssignment(
     summary,
@@ -1547,6 +1809,7 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
       closeoutRef: closeoutReceipt.closeoutRef,
       blockerRefs: closeout.blockerRefs,
     })
+    localLeaseHeartbeat.stop()
     return { ok: false, lease, acceptance, closeout, closeoutReceipt }
   }
   const closeout: AssignmentCloseout = {
@@ -1594,6 +1857,7 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
     closeoutRef: closeoutReceipt.closeoutRef,
     blockerRefs: closeout.blockerRefs,
   })
+  localLeaseHeartbeat.stop()
   return {
     ok: closeout.status === "accepted",
     lease,

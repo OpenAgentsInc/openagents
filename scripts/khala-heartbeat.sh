@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Khala liveness heartbeat — fires ~50k tokens across diverse configs against the
-# LIVE production endpoint every run, verifies the public counter records them, and
-# writes a public-safe status + JSONL log. Designed to run on a 15-minute schedule
+# LIVE production endpoint every run, verifies completion success, checks public
+# counter health without requiring internal dogfood tokens to move it, and writes
+# a public-safe status + JSONL log. Designed to run on a 15-minute schedule
 # (launchd / cron). See docs/inference/2026-06-25-khala-heartbeat-runbook.md.
 #
 # SECRET-SAFE: reads bearer key(s) from a gitignored secrets file; NEVER prints a
@@ -14,6 +15,9 @@ set -uo pipefail
 BASE="${KHALA_BASE_URL:-https://openagents.com/api/v1}"
 PUBLIC_BASE="${KHALA_PUBLIC_BASE:-https://openagents.com}"
 MODEL="${KHALA_MODEL:-openagents/khala}"
+DEMAND_KIND="${KHALA_HEARTBEAT_DEMAND_KIND:-internal}"
+DEMAND_SOURCE="${KHALA_HEARTBEAT_DEMAND_SOURCE:-heartbeat}"
+EXPECT_PUBLIC_COUNTER="${KHALA_HEARTBEAT_EXPECT_PUBLIC_COUNTER:-}"
 SECRETS="${KHALA_HEARTBEAT_ENV:-$HOME/work/.secrets/khala-heartbeat.env}"
 HOME_DIR="${KHALA_HEARTBEAT_HOME:-$HOME/work/.khala-heartbeat}"
 LOG="$HOME_DIR/heartbeat.jsonl"
@@ -39,22 +43,29 @@ idx=0; [ -f "$STATE" ] && idx=$(cat "$STATE" 2>/dev/null || echo 0)
 KEY="${KEYS[$(( idx % ${#KEYS[@]} ))]}"
 echo $(( (idx + 1) % 1000000 )) > "$STATE"
 
-# DEMAND-ORIGIN SELF-TAG (#6298). These are INTERNAL dogfood tokens, not external
-# demand. Tag every completion so the token ledger AND the captured trace corpus
-# classify this traffic as internal (source `heartbeat`) and segment it out of
-# the genuine external real-user corpus. See
+# DEMAND-ORIGIN SELF-TAG (#6298). These default to INTERNAL dogfood tokens, not
+# external demand. Tag every completion so the token ledger AND the captured trace
+# corpus classify this traffic as internal (source `heartbeat`) and segment it
+# out of the genuine external real-user corpus. See
 # docs/inference/2026-06-25-khala-heartbeat-runbook.md ("Demand-origin self-tag").
 AUTH=(-H "Authorization: Bearer $KEY" -H "content-type: application/json" \
-  -H "x-openagents-demand-kind: internal" -H "x-openagents-demand-source: heartbeat")
+  -H "x-openagents-demand-kind: $DEMAND_KIND" -H "x-openagents-demand-source: $DEMAND_SOURCE")
+if [ -z "$EXPECT_PUBLIC_COUNTER" ]; then
+  if [ "$DEMAND_KIND" = "internal" ]; then EXPECT_PUBLIC_COUNTER=0; else EXPECT_PUBLIC_COUNTER=1; fi
+fi
+if [ "$EXPECT_PUBLIC_COUNTER" = "1" ]; then counter_check="required"; else counter_check="skipped_internal"; fi
 ok=0; fail=0; q402=0; summed=0; details=""
 
+counter_readable=1
 before=$(curl -s --max-time 15 "$PUBLIC_BASE/api/public/khala-tokens-served" | jq -r '.tokensServed // empty')
-[ -z "$before" ] && before=0
+if ! [[ "$before" =~ ^[0-9]+$ ]]; then counter_readable=0; before=0; fi
 
 # record one config outcome into the running tallies
 record() { # name http_code tokens
   local name="$1" code="$2" tok="$3"
-  if [ "$code" = "200" ]; then ok=$((ok+1)); summed=$((summed + tok));
+  [[ "$tok" =~ ^[0-9]+$ ]] || tok=0
+  if [ "$code" = "200" ] && [ "$tok" -gt 0 ]; then ok=$((ok+1)); summed=$((summed + tok));
+  elif [ "$code" = "200" ]; then fail=$((fail+1)); fail_note "config=$name http=200 empty_usage";
   elif [ "$code" = "402" ] || [ "$code" = "429" ]; then q402=$((q402+1));
   else fail=$((fail+1)); fail_note "config=$name http=$code"; fi
   details="$details{\"c\":\"$name\",\"http\":$code,\"tok\":$tok},"
@@ -118,7 +129,8 @@ while [ "$summed" -lt "$TARGET" ] && [ "$wave" -lt "$MAX_WAVES" ]; do
     code=$(tail -1 "$WORK/long_$k.out" 2>/dev/null)
     tok=$(sed '$d' "$WORK/long_$k.out" 2>/dev/null | jq -r '((.usage.prompt_tokens//0)+(.usage.completion_tokens//0)) // 0' 2>/dev/null || echo 0)
     record "long-$k" "${code:-000}" "${tok:-0}"
-    [ "${code:-000}" = "200" ] && any_ok=1
+    [[ "${tok:-0}" =~ ^[0-9]+$ ]] || tok=0
+    [ "${code:-000}" = "200" ] && [ "$tok" -gt 0 ] && any_ok=1
   done
   prev=$gi
   # if a whole wave came back quota-limited/failed, stop looping (don't hammer)
@@ -127,18 +139,23 @@ done
 
 sleep 3
 after=$(curl -s --max-time 15 "$PUBLIC_BASE/api/public/khala-tokens-served" | jq -r '.tokensServed // empty')
-[ -z "$after" ] && after=0
+if ! [[ "$after" =~ ^[0-9]+$ ]]; then counter_readable=0; after=0; fi
 delta=$(( after - before ))
 
 # --- verdict ---
-# DOWN: a hard failure on a config, OR the counter did not move while we served tokens.
+# DOWN: a hard failure on a config, empty success usage, unreadable/regressed
+# public counter, OR (only when explicitly required) a countable public counter
+# did not move while we served tokens. Internal heartbeat traffic is excluded
+# from the public counter by #6298/#6358, so zero public delta is not downtime.
 # DEGRADED: everything that ran was quota-limited (402/429) — endpoint alive, key tapped out.
 state="ok"
 if [ "$fail" -gt 0 ]; then state="down"; fi
-if [ "$ok" -gt 0 ] && [ "$delta" -le 0 ]; then state="down"; fail_note "counter_did_not_move ok=$ok delta=$delta"; fi
-if [ "$ok" -eq 0 ] && [ "$q402" -gt 0 ] && [ "$fail" -eq 0 ]; then state="degraded"; fail_note "quota_exhausted (rotate/add keys)"; fi
+if [ "$counter_readable" -eq 0 ]; then state="down"; fail_note "counter_unreadable"; fi
+if [ "$counter_readable" -eq 1 ] && [ "$delta" -lt 0 ]; then state="down"; fail_note "counter_regressed before=$before after=$after"; fi
+if [ "$ok" -gt 0 ] && [ "$EXPECT_PUBLIC_COUNTER" = "1" ] && [ "$delta" -le 0 ]; then state="down"; fail_note "counter_did_not_move ok=$ok delta=$delta"; fi
+if [ "$state" = "ok" ] && [ "$ok" -eq 0 ] && [ "$q402" -gt 0 ] && [ "$fail" -eq 0 ]; then state="degraded"; fail_note "quota_exhausted (rotate/add keys)"; fi
 
-line="{\"ts\":\"$(ts)\",\"state\":\"$state\",\"ok\":$ok,\"fail\":$fail,\"quota\":$q402,\"summedTokens\":$summed,\"counterBefore\":$before,\"counterAfter\":$after,\"counterDelta\":$delta,\"keyIndex\":$(( idx % ${#KEYS[@]} )),\"configs\":[${details%,}]}"
+line="{\"ts\":\"$(ts)\",\"state\":\"$state\",\"ok\":$ok,\"fail\":$fail,\"quota\":$q402,\"summedTokens\":$summed,\"counterBefore\":$before,\"counterAfter\":$after,\"counterDelta\":$delta,\"publicCounterCheck\":\"$counter_check\",\"demandKind\":\"$DEMAND_KIND\",\"keyIndex\":$(( idx % ${#KEYS[@]} )),\"configs\":[${details%,}]}"
 echo "$line" >> "$LOG"
 echo "$line" > "$STATUS"
 echo "$line"

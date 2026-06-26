@@ -997,6 +997,183 @@ describe("Pylon assignment lease flow", () => {
     })
   })
 
+  test("stales expired local accepted leases so interrupted runs do not block fresh work", async () => {
+    await withTempHome(async (home) => {
+      const expiredLease = lease({
+        assignmentRef: "assignment.public.local_stale_expired",
+        leaseRef: "lease.public.local_stale_expired",
+        expiresAt: "2026-06-09T00:01:00.000Z",
+      })
+      const freshLease = lease({
+        assignmentRef: "assignment.public.local_stale_fresh",
+        leaseRef: "lease.public.local_stale_fresh",
+        expiresAt: "2026-06-09T01:00:00.000Z",
+      })
+      const fake = fakeAssignmentServer({ leases: [expiredLease, freshLease] })
+      const summary = await readySummary(home)
+      const state = await ensurePylonLocalState(summary)
+      await sendHeartbeat(summary, { baseUrl: fake.baseUrl, now: () => new Date("2026-06-09T00:00:00.000Z") })
+
+      const acceptedExpired = await acceptAssignment(summary, expiredLease, {
+        baseUrl: fake.baseUrl,
+        now: () => new Date("2026-06-09T00:00:30.000Z"),
+      })
+      const result = await runNoSpendAssignment(summary, {
+        baseUrl: fake.baseUrl,
+        now: () => new Date("2026-06-09T00:02:00.000Z"),
+      })
+      const assignmentState = JSON.parse(await readFile(state.paths.assignmentState, "utf8"))
+
+      expect(acceptedExpired.accepted).toBe(true)
+      expect(result.ok).toBe(true)
+      if (!result.ok) throw new Error("expected fresh assignment to run")
+      expect(result.lease.leaseRef).toBe(freshLease.leaseRef)
+      expect(assignmentState.leases[expiredLease.leaseRef]).toMatchObject({
+        assignmentRef: expiredLease.assignmentRef,
+        status: "stale",
+        leaseExpiresAt: expiredLease.expiresAt,
+      })
+      expect(assignmentState.leases[freshLease.leaseRef]).toMatchObject({
+        assignmentRef: freshLease.assignmentRef,
+        status: "closed",
+        leaseExpiresAt: freshLease.expiresAt,
+      })
+    })
+  })
+
+  test("closeouts dead local no-spend owners so parallel runners can claim fresh work", async () => {
+    await withTempHome(async (home) => {
+      const interruptedLease = lease({
+        assignmentRef: "assignment.public.local_interrupted_owner",
+        leaseRef: "lease.public.local_interrupted_owner",
+        expiresAt: "2026-06-09T00:30:00.000Z",
+      })
+      const freshLease = lease({
+        assignmentRef: "assignment.public.local_after_interruption",
+        leaseRef: "lease.public.local_after_interruption",
+        expiresAt: "2026-06-09T00:30:00.000Z",
+      })
+      const fake = fakeAssignmentServer({ leases: [interruptedLease, freshLease] })
+      const summary = await readySummary(home)
+      const state = await ensurePylonLocalState(summary)
+      await sendHeartbeat(summary, { baseUrl: fake.baseUrl, now: () => new Date("2026-06-09T00:00:00.000Z") })
+      await writeFile(
+        state.paths.assignmentState,
+        `${JSON.stringify({
+          schema: "openagents.pylon.assignment_state.v0.3",
+          leases: {
+            [interruptedLease.leaseRef]: {
+              assignmentRef: interruptedLease.assignmentRef,
+              status: "running",
+              acceptedAt: "2026-06-09T00:00:00.000Z",
+              leaseExpiresAt: interruptedLease.expiresAt,
+              ownerHeartbeatAt: "2026-06-09T00:01:00.000Z",
+              ownerHeartbeatSequence: 3,
+              ownerProcessId: 424242,
+              ownerStartedAt: "2026-06-09T00:00:00.000Z",
+              paymentMode: "no-spend",
+            },
+          },
+        }, null, 2)}\n`,
+      )
+
+      const result = await runNoSpendAssignment(summary, {
+        baseUrl: fake.baseUrl,
+        localProcessIsAlive: () => false,
+        now: () => new Date("2026-06-09T00:02:00.000Z"),
+      })
+      const closeouts = fake.requests.filter((request) => request.path.endsWith("/closeout"))
+      const assignmentState = JSON.parse(await readFile(state.paths.assignmentState, "utf8"))
+
+      expect(result.ok).toBe(true)
+      if (!result.ok) throw new Error("expected fresh assignment to run")
+      expect(result.lease.leaseRef).toBe(freshLease.leaseRef)
+      expect(closeouts.map((request) => request.body.leaseRef)).toEqual([
+        interruptedLease.leaseRef,
+        freshLease.leaseRef,
+      ])
+      expect(closeouts[0]?.body).toMatchObject({
+        leaseRef: interruptedLease.leaseRef,
+        status: "stale",
+        blockerRefs: ["blocker.assignment.local_run_interrupted"],
+      })
+      expect(assignmentState.leases[interruptedLease.leaseRef]).toMatchObject({
+        assignmentRef: interruptedLease.assignmentRef,
+        status: "stale",
+        leaseExpiresAt: interruptedLease.expiresAt,
+      })
+      expect(assignmentState.leases[freshLease.leaseRef]).toMatchObject({
+        assignmentRef: freshLease.assignmentRef,
+        status: "closed",
+        leaseExpiresAt: freshLease.expiresAt,
+      })
+    })
+  })
+
+  test("retries local stale no-spend closeout until the server closeout is recorded", async () => {
+    await withTempHome(async (home) => {
+      const staleLease = lease({
+        assignmentRef: "assignment.public.local_stale_unsubmitted",
+        leaseRef: "lease.public.local_stale_unsubmitted",
+        expiresAt: "2026-06-09T00:30:00.000Z",
+      })
+      const freshLease = lease({
+        assignmentRef: "assignment.public.local_after_stale_retry",
+        leaseRef: "lease.public.local_after_stale_retry",
+        expiresAt: "2026-06-09T00:30:00.000Z",
+      })
+      const fake = fakeAssignmentServer({
+        authNow: new Date("2026-06-09T00:06:00.000Z"),
+        leases: [staleLease, freshLease],
+        maxSkewSeconds: 600,
+      })
+      const summary = await readySummary(home)
+      const state = await ensurePylonLocalState(summary)
+      await sendHeartbeat(summary, { baseUrl: fake.baseUrl, now: () => new Date("2026-06-09T00:00:00.000Z") })
+      await writeFile(
+        state.paths.assignmentState,
+        `${JSON.stringify({
+          schema: "openagents.pylon.assignment_state.v0.3",
+          leases: {
+            [staleLease.leaseRef]: {
+              assignmentRef: staleLease.assignmentRef,
+              status: "stale",
+              acceptedAt: "2026-06-09T00:00:00.000Z",
+              closedAt: "2026-06-09T00:05:00.000Z",
+              leaseExpiresAt: staleLease.expiresAt,
+              paymentMode: "no-spend",
+            },
+          },
+        }, null, 2)}\n`,
+      )
+
+      const result = await runNoSpendAssignment(summary, {
+        baseUrl: fake.baseUrl,
+        now: () => new Date("2026-06-09T00:06:00.000Z"),
+      })
+      const closeouts = fake.requests.filter((request) => request.path.endsWith("/closeout"))
+      const assignmentState = JSON.parse(await readFile(state.paths.assignmentState, "utf8"))
+
+      expect(result.ok).toBe(true)
+      if (!result.ok) throw new Error("expected fresh assignment to run")
+      expect(result.lease.leaseRef).toBe(freshLease.leaseRef)
+      expect(closeouts.map((request) => request.body.leaseRef)).toEqual([
+        staleLease.leaseRef,
+        freshLease.leaseRef,
+      ])
+      expect(assignmentState.leases[staleLease.leaseRef]).toMatchObject({
+        assignmentRef: staleLease.assignmentRef,
+        status: "stale",
+        serverCloseoutSubmittedAt: "2026-06-09T00:06:00.000Z",
+      })
+      expect(assignmentState.leases[freshLease.leaseRef]).toMatchObject({
+        assignmentRef: freshLease.assignmentRef,
+        status: "closed",
+        serverCloseoutSubmittedAt: "2026-06-09T00:06:00.000Z",
+      })
+    })
+  })
+
   test("denies paused, stale, wrong-capability, unsupported-backend, and expired leases without wallet gating", async () => {
     await withTempHome(async (home) => {
       const summary = await readySummary(home)
