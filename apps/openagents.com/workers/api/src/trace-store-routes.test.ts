@@ -1508,3 +1508,333 @@ describe('POST /api/traces/{uuid}/blob/{r2Key} upload (#6223)', () => {
     expect(response.status).toBe(501)
   })
 })
+
+// Mobile "Open traces in web" read-scope token (#6347) ----------------------
+//
+// The Khala mobile app opens `/traces?token=<oa_agent_…>` and
+// `/trace/{uuid}?token=…` so an OWNER can view THEIR OWN traces in the browser
+// WITHOUT a web login. The token is a bearer for OWNER-SCOPED TRACE READ ONLY:
+// it can read/list only the traces owned by the user id it resolves to, never
+// another owner's, and never with write/admin authority.
+//
+// The agent-store double in this suite authenticates ANY `oa_agent_` token to
+// `options.agentUserId`. So "a different owner's token" is modeled by resolving
+// the token to one owner id while the seeded trace is owned by another.
+describe('read-scope token (mobile open-in-web, #6347)', () => {
+  const tokenReadRequest = (uuid: string, token: string): Request =>
+    new Request(
+      `https://openagents.com/api/traces/${uuid}?token=${encodeURIComponent(token)}`,
+    )
+  const tokenListRequest = (token: string): Request =>
+    new Request(
+      `https://openagents.com/api/traces?token=${encodeURIComponent(token)}`,
+    )
+  const headerListRequest = (token: string): Request =>
+    new Request('https://openagents.com/api/traces', {
+      headers: { authorization: `Bearer ${token}` },
+    })
+
+  it('lets an owner read THEIR OWN owner_only trace with ?token= (no web login)', async () => {
+    const store = makeMemoryStore()
+    const uuid = await seedTrace(store, 'owner_only', 'agent-1')
+    const routes = makeDeps({
+      store,
+      agentUserId: 'agent-1', // token resolves to the trace's owner
+      browserSession: undefined, // no web login
+    })
+    const response = await run(
+      routes.routeTraceRequest(tokenReadRequest(uuid, 'oa_agent_owner'), ENV, CTX),
+    )
+    expect(response.status).toBe(200)
+    const json = (await response.json()) as { trace: Record<string, unknown> }
+    expect(json.trace.uuid).toBe(uuid)
+  })
+
+  it('lets an owner read their own owner_only trace via the Bearer header too', async () => {
+    const store = makeMemoryStore()
+    const uuid = await seedTrace(store, 'owner_only', 'agent-1')
+    const routes = makeDeps({
+      store,
+      agentUserId: 'agent-1',
+      browserSession: undefined,
+    })
+    const response = await run(
+      routes.routeTraceRequest(
+        new Request(`https://openagents.com/api/traces/${uuid}`, {
+          headers: { authorization: 'Bearer oa_agent_owner' },
+        }),
+        ENV,
+        CTX,
+      ),
+    )
+    expect(response.status).toBe(200)
+  })
+
+  it('does NOT let a cross-owner token read another owner\'s owner_only trace (404, no existence disclosure)', async () => {
+    const store = makeMemoryStore()
+    const uuid = await seedTrace(store, 'owner_only', 'agent-1')
+    const routes = makeDeps({
+      store,
+      agentUserId: 'agent-2', // token resolves to a DIFFERENT owner
+      browserSession: undefined,
+    })
+    const response = await run(
+      routes.routeTraceRequest(tokenReadRequest(uuid, 'oa_agent_other'), ENV, CTX),
+    )
+    expect(response.status).toBe(404)
+  })
+
+  it('treats an invalid (non-oa_agent_) ?token= as anonymous (404 on owner_only)', async () => {
+    const store = makeMemoryStore()
+    const uuid = await seedTrace(store, 'owner_only', 'agent-1')
+    const routes = makeDeps({
+      store,
+      agentUserId: 'agent-1',
+      browserSession: undefined,
+    })
+    const response = await run(
+      routes.routeTraceRequest(tokenReadRequest(uuid, 'not_a_key'), ENV, CTX),
+    )
+    expect(response.status).toBe(404)
+  })
+
+  it('treats an unrecognized token as anonymous (404 on owner_only)', async () => {
+    const store = makeMemoryStore()
+    const uuid = await seedTrace(store, 'owner_only', 'agent-1')
+    const routes = makeDeps({
+      store,
+      agentUserId: undefined, // token authenticates to nobody
+      browserSession: undefined,
+    })
+    const response = await run(
+      routes.routeTraceRequest(tokenReadRequest(uuid, 'oa_agent_revoked'), ENV, CTX),
+    )
+    expect(response.status).toBe(404)
+  })
+
+  it('lists ONLY the token owner\'s own traces with ?token= (no web login)', async () => {
+    const store = makeMemoryStore()
+    await seedTrace(store, 'owner_only', 'agent-1')
+    await seedTrace(store, 'public', 'agent-1')
+    await store.createTrace({
+      traceUuid: 'other-owner',
+      ownerUserId: 'agent-2',
+      agentRef: 'agent:agent-2',
+      schemaVersion: ATIF_PINNED_SCHEMA_VERSION,
+      trajectoryId: 't',
+      sessionId: null,
+      visibility: 'owner_only',
+      stepCount: 1,
+      trajectory: {},
+      trajectoryR2Key: null,
+      blobRefs: [],
+      idempotencyKey: null,
+      trainingConsent: false,
+      license: null,
+      contentDigest: 'digest-other-owner',
+      rewardEligible: false,
+      rewardAmountSats: null,
+      uploadSource: 'agent',
+      demandKind: null,
+      demandSource: null,
+      nowIso: NOW,
+    })
+    const routes = makeDeps({
+      store,
+      agentUserId: 'agent-1',
+      browserSession: undefined,
+    })
+    const response = await run(
+      routes.routeTraceRequest(tokenListRequest('oa_agent_owner'), ENV, CTX),
+    )
+    expect(response.status).toBe(200)
+    const json = (await response.json()) as {
+      traces: ReadonlyArray<{ uuid: string }>
+    }
+    // Two own traces; the other owner's trace is NOT visible.
+    expect(json.traces).toHaveLength(2)
+    expect(json.traces.map(trace => trace.uuid)).not.toContain('other-owner')
+  })
+
+  it('lists the token owner\'s traces via the Bearer header too', async () => {
+    const store = makeMemoryStore()
+    await seedTrace(store, 'owner_only', 'agent-1')
+    const routes = makeDeps({
+      store,
+      agentUserId: 'agent-1',
+      browserSession: undefined,
+    })
+    const response = await run(
+      routes.routeTraceRequest(headerListRequest('oa_agent_owner'), ENV, CTX),
+    )
+    expect(response.status).toBe(200)
+    const json = (await response.json()) as { traces: ReadonlyArray<unknown> }
+    expect(json.traces).toHaveLength(1)
+  })
+
+  it('still 401s a list with no session AND no token', async () => {
+    const store = makeMemoryStore()
+    const routes = makeDeps({
+      store,
+      agentUserId: 'agent-1',
+      browserSession: undefined,
+    })
+    const response = await run(
+      routes.routeTraceRequest(
+        new Request('https://openagents.com/api/traces'),
+        ENV,
+        CTX,
+      ),
+    )
+    expect(response.status).toBe(401)
+  })
+
+  it('prefers the browser session over a token when both are present', async () => {
+    const store = makeMemoryStore()
+    await seedTrace(store, 'owner_only', 'session-user')
+    const routes = makeDeps({
+      store,
+      agentUserId: 'token-user', // token would resolve to a different owner
+      browserSession: { user: { userId: 'session-user' } },
+    })
+    const response = await run(
+      routes.routeTraceRequest(tokenListRequest('oa_agent_token'), ENV, CTX),
+    )
+    expect(response.status).toBe(200)
+    const json = (await response.json()) as { traces: ReadonlyArray<unknown> }
+    // The session owner's trace is listed (not the token owner's empty set).
+    expect(json.traces).toHaveLength(1)
+  })
+
+  it('does NOT let the token write visibility (PATCH stays browser/admin-only)', async () => {
+    const store = makeMemoryStore()
+    const uuid = await seedTrace(store, 'owner_only', 'agent-1')
+    const routes = makeDeps({
+      store,
+      agentUserId: 'agent-1', // a valid owner token
+      browserSession: undefined,
+    })
+    const response = await run(
+      routes.routeTraceRequest(
+        new Request(
+          `https://openagents.com/api/traces/${uuid}?token=oa_agent_owner`,
+          {
+            method: 'PATCH',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ visibility: 'public' }),
+          },
+        ),
+        ENV,
+        CTX,
+      ),
+    )
+    // The token grants READ scope only; the write path requires a web session.
+    expect(response.status).toBe(401)
+    expect(store.rows.get(uuid)?.visibility).toBe('owner_only')
+  })
+})
+
+// GET /traces — owner-scoped HTML list page (mobile open-in-web, #6347) -------
+describe('GET /traces HTML page (#6347)', () => {
+  it('renders the owner\'s own traces as HTML for a ?token= (no web login)', async () => {
+    const store = makeMemoryStore()
+    await seedTrace(store, 'owner_only', 'agent-1')
+    await store.createTrace({
+      traceUuid: 'other-owner-page',
+      ownerUserId: 'agent-2',
+      agentRef: 'agent:agent-2',
+      schemaVersion: ATIF_PINNED_SCHEMA_VERSION,
+      trajectoryId: 'other-traj',
+      sessionId: null,
+      visibility: 'owner_only',
+      stepCount: 1,
+      trajectory: {},
+      trajectoryR2Key: null,
+      blobRefs: [],
+      idempotencyKey: null,
+      trainingConsent: false,
+      license: null,
+      contentDigest: 'digest-other-owner-page',
+      rewardEligible: false,
+      rewardAmountSats: null,
+      uploadSource: 'agent',
+      demandKind: null,
+      demandSource: null,
+      nowIso: NOW,
+    })
+    const routes = makeDeps({
+      store,
+      agentUserId: 'agent-1',
+      browserSession: undefined,
+    })
+    const response = await run(
+      routes.routeTraceRequest(
+        new Request('https://openagents.com/traces?token=oa_agent_owner'),
+        ENV,
+        CTX,
+      ),
+    )
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toContain('text/html')
+    const html = await response.text()
+    // The owner's own trace is linked with the token preserved for the deep-link.
+    expect(html).toContain('/trace/uuid-owner_only?token=oa_agent_owner')
+    // The other owner's trace is NOT present.
+    expect(html).not.toContain('other-owner-page')
+  })
+
+  it('renders the sign-in prompt with no token and no session', async () => {
+    const store = makeMemoryStore()
+    const routes = makeDeps({
+      store,
+      agentUserId: 'agent-1',
+      browserSession: undefined,
+    })
+    const response = await run(
+      routes.routeTraceRequest(
+        new Request('https://openagents.com/traces'),
+        ENV,
+        CTX,
+      ),
+    )
+    expect(response.status).toBe(200)
+    const html = await response.text()
+    expect(html).toContain('/login')
+    // No trace links for an unauthenticated viewer.
+    expect(html).not.toContain('/trace/')
+  })
+
+  it('renders the signed-in owner\'s traces (session path, no token needed)', async () => {
+    const store = makeMemoryStore()
+    await seedTrace(store, 'owner_only', 'session-user')
+    const routes = makeDeps({
+      store,
+      browserSession: { user: { userId: 'session-user' } },
+    })
+    const response = await run(
+      routes.routeTraceRequest(
+        new Request('https://openagents.com/traces'),
+        ENV,
+        CTX,
+      ),
+    )
+    expect(response.status).toBe(200)
+    const html = await response.text()
+    // Session path: the deep-link carries NO token.
+    expect(html).toContain('/trace/uuid-owner_only"')
+    expect(html).not.toContain('token=')
+  })
+
+  it('405s a non-GET method on /traces', async () => {
+    const store = makeMemoryStore()
+    const routes = makeDeps({ store, agentUserId: 'agent-1' })
+    const response = await run(
+      routes.routeTraceRequest(
+        new Request('https://openagents.com/traces', { method: 'POST' }),
+        ENV,
+        CTX,
+      ),
+    )
+    expect(response.status).toBe(405)
+  })
+})

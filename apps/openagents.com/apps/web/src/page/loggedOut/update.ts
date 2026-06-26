@@ -1078,9 +1078,19 @@ export const LoadTrace = Command.define(
   FailedLoadTrace,
 )(({ uuid }) =>
   Effect.gen(function* () {
+    // Read-scope token (mobile "Open traces in web", #6347): when the owner
+    // opens `/trace/{uuid}?token=<oa_agent_…>` from the Khala app, forward the
+    // token to the visibility-gated read API so an owner_only trace resolves
+    // without a web login. Read-only: the token only grants owner-scoped trace
+    // READ. A normal shared link carries no token and is unaffected.
+    const maybeToken = new URLSearchParams(window.location.search).get('token')
+    const tokenQuery =
+      maybeToken !== null && maybeToken.startsWith('oa_agent_')
+        ? `?token=${encodeURIComponent(maybeToken)}`
+        : ''
     const response = yield* Effect.tryPromise({
       try: () =>
-        fetch(`/api/traces/${encodeURIComponent(uuid)}`, {
+        fetch(`/api/traces/${encodeURIComponent(uuid)}${tokenQuery}`, {
           cache: 'no-store',
           credentials: 'include',
           headers: { accept: 'application/json' },

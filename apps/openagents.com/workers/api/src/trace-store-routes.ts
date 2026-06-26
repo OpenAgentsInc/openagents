@@ -338,6 +338,68 @@ const idempotencyKeyFromRequest = (request: Request): string | undefined => {
   return value === undefined || value === '' ? undefined : value
 }
 
+/**
+ * A read-only owner-scope token (mobile "Open traces in web", #6347). The
+ * Khala mobile app opens `/traces?token=<oa_agent_…>` (the user's own Khala API
+ * key from the device Keychain) so an owner can view THEIR OWN traces in the
+ * browser WITHOUT a web login. The token is accepted from EITHER the
+ * `Authorization: Bearer` header OR a `?token=` query parameter (the URL form
+ * the app uses). It must be an `oa_agent_` key; any other shape is ignored.
+ *
+ * This token is a bearer for OWNER-SCOPED TRACE READ ONLY. It is never used to
+ * authorize ingest, visibility writes, blob upload, admin, or any broader
+ * account access — only the GET read/list paths consult it, and they scope
+ * strictly to the resolved owner's own traces (see callers). We never log the
+ * token value.
+ */
+const readScopeTokenFromRequest = (
+  request: Request,
+  url: URL,
+): string | undefined => {
+  const bearer = bearerTokenFromRequest(request)
+  if (bearer !== undefined) {
+    return bearer
+  }
+  const queryToken = url.searchParams.get('token')?.trim()
+  return queryToken !== undefined &&
+    queryToken !== '' &&
+    queryToken.startsWith(AGENT_TOKEN_PREFIX)
+    ? queryToken
+    : undefined
+}
+
+/**
+ * Resolve a READ-ONLY owner-scope identity from an `oa_agent_` token (header or
+ * `?token=`). Returns the owning user id (`session.user.id`) — the SAME
+ * `ownerUserId` the Khala chat trace emitter stamps on a captured trace
+ * (`agent:<id>` => `<id>`) and the ingest path stamps on an owned upload. A
+ * missing/invalid token resolves to `undefined` (no scope), never an error, so
+ * the caller can still fall back to the browser session. Read-only: this grants
+ * NO write/admin authority.
+ */
+const resolveReadScopeOwner = <Bindings, Session extends TraceBrowserSession>(
+  dependencies: TraceStoreRouteDependencies<Bindings, Session>,
+  request: Request,
+  url: URL,
+  env: Bindings,
+): Effect.Effect<string | undefined> =>
+  Effect.gen(function* () {
+    const token = readScopeTokenFromRequest(request, url)
+    if (token === undefined) {
+      return undefined
+    }
+    const session = yield* Effect.tryPromise({
+      catch: () => undefined,
+      try: () =>
+        authenticateProgrammaticAgent(
+          dependencies.agentStore(env),
+          token,
+          dependencies.nowIso,
+        ),
+    }).pipe(Effect.catch(() => Effect.succeed(undefined)))
+    return session === undefined ? undefined : session.user.id
+  })
+
 const routeNowIso = <Bindings, Session extends TraceBrowserSession>(
   dependencies: TraceStoreRouteDependencies<Bindings, Session>,
 ): string => dependencies.nowIso?.() ?? currentIsoTimestamp()
@@ -807,6 +869,27 @@ const routeRead = <Bindings, Session extends TraceBrowserSession>(
     }).pipe(Effect.catch(() => Effect.succeed(undefined)))
 
     if (session === undefined) {
+      // No web login: allow the OWNER to read THEIR OWN owner_only trace with an
+      // `oa_agent_` read-scope token (header or `?token=`, mobile "Open traces
+      // in web", #6347). Strictly owner-scoped: the token resolves to a single
+      // owner id and may only see traces that owner owns; a cross-owner token is
+      // indistinguishable from anonymous (still 404, existence not revealed).
+      const tokenOwner = yield* resolveReadScopeOwner(
+        dependencies,
+        request,
+        new URL(request.url),
+        env,
+      )
+      if (tokenOwner !== undefined && tokenOwner === record.ownerUserId) {
+        const rehydratedForToken = yield* rehydrateTrajectory(
+          dependencies,
+          env,
+          record,
+        )
+        return noStoreJsonResponse({
+          trace: publicTraceProjection(rehydratedForToken),
+        })
+      }
       // Do not reveal existence of an owner_only trace to anonymous callers.
       return yield* new TraceNotFound({})
     }
@@ -952,6 +1035,20 @@ const authorizeTraceForBlobRead = <
     }).pipe(Effect.catch(() => Effect.succeed(undefined)))
 
     if (session === undefined) {
+      // No web login: allow the OWNER to read THEIR OWN owner_only trace's media
+      // with an `oa_agent_` read-scope token (header or `?token=`, #6347),
+      // exactly mirroring the JSON read. Strictly owner-scoped; a cross-owner or
+      // missing token is indistinguishable from anonymous (404, no existence
+      // disclosure).
+      const tokenOwner = yield* resolveReadScopeOwner(
+        dependencies,
+        request,
+        new URL(request.url),
+        env,
+      )
+      if (tokenOwner !== undefined && tokenOwner === record.ownerUserId) {
+        return record
+      }
       // Do not reveal existence of an owner_only trace to anonymous callers.
       return yield* new TraceNotFound({})
     }
@@ -1143,12 +1240,26 @@ const routeOwnerList = <Bindings, Session extends TraceBrowserSession>(
   ctx: ExecutionContext,
 ): Effect.Effect<HttpResponse, TraceRouteError> =>
   Effect.gen(function* () {
+    const url = new URL(request.url)
+
     const session = yield* Effect.tryPromise({
       catch: () => new TraceUnauthorized({}),
       try: () => dependencies.requireBrowserSession(request, env, ctx),
     }).pipe(Effect.catch(() => Effect.succeed(undefined)))
 
-    if (session === undefined) {
+    // Resolve the owner scope: the browser session if signed in, otherwise an
+    // `oa_agent_` read-scope token (header or `?token=`, mobile "Open traces in
+    // web", #6347). The token is read-only and owner-scoped: it can only list
+    // the traces owned by the user id it resolves to, never another owner's and
+    // never with write/admin authority. No session AND no valid token => 401.
+    const tokenOwner =
+      session === undefined
+        ? yield* resolveReadScopeOwner(dependencies, request, url, env)
+        : undefined
+    const ownerUserId =
+      session !== undefined ? session.user.userId : tokenOwner
+
+    if (ownerUserId === undefined) {
       return yield* new TraceUnauthorized({})
     }
 
@@ -1159,7 +1270,6 @@ const routeOwnerList = <Bindings, Session extends TraceBrowserSession>(
     // `?demand_kind=` (repeatable / comma-separated) overrides that to the named
     // kinds; `?demand_kind=all` returns every kind including internal.
     const store = dependencies.makeStore(env)
-    const url = new URL(request.url)
     const requested = url.searchParams
       .getAll('demand_kind')
       .flatMap(value => value.split(','))
@@ -1183,7 +1293,7 @@ const routeOwnerList = <Bindings, Session extends TraceBrowserSession>(
       catch: traceStoreErrorFromUnknown,
       try: () =>
         store.listTracesForOwnerByDemand(
-          session.user.userId,
+          ownerUserId,
           OWNER_LIST_LIMIT,
           demandFilter,
         ),
@@ -1193,18 +1303,166 @@ const routeOwnerList = <Bindings, Session extends TraceBrowserSession>(
     // internal vs own_capacity vs unlabeled), independent of the applied filter.
     const demandCounts = yield* Effect.tryPromise({
       catch: traceStoreErrorFromUnknown,
-      try: () => store.countTracesForOwnerByDemand(session.user.userId),
+      try: () => store.countTracesForOwnerByDemand(ownerUserId),
     })
 
-    return dependencies.appendRefreshedSessionCookies(
-      noStoreJsonResponse({
-        traces: traces.map(ownerTraceSummary),
-        demandSegments: demandCounts,
-        // Echo the applied filter so the operator UI knows internal was excluded
-        // by default. `null` means "all kinds" (?demand_kind=all).
-        appliedDemandKinds: demandFilter === undefined ? null : demandFilter,
-      }),
-      session,
+    const listResponse = noStoreJsonResponse({
+      traces: traces.map(ownerTraceSummary),
+      demandSegments: demandCounts,
+      // Echo the applied filter so the operator UI knows internal was excluded
+      // by default. `null` means "all kinds" (?demand_kind=all).
+      appliedDemandKinds: demandFilter === undefined ? null : demandFilter,
+    })
+
+    // Only the browser-session path refreshes cookies; the token path is a
+    // read-only owner scope and issues no web session.
+    return session === undefined
+      ? listResponse
+      : dependencies.appendRefreshedSessionCookies(listResponse, session)
+  })
+
+// ---------------------------------------------------------------------------
+// GET /traces — owner-scoped HTML list page (mobile "Open traces in web", #6347)
+//
+// The Khala mobile app opens `https://openagents.com/traces?token=<oa_agent_…>`
+// in the system browser so an OWNER can view THEIR OWN traces WITHOUT a web
+// login. This is a self-contained, read-only, server-rendered page: it resolves
+// the owner from the token (header or `?token=`), lists that owner's recent
+// traces, and links each to `/trace/{uuid}?token=` so owner_only deep-links also
+// open without a login. With no valid token it renders the honest sign-in
+// prompt (the logged-in web list lives in the SPA). The page never persists or
+// echoes the token outside the owner's own trace links, and grants read only.
+// ---------------------------------------------------------------------------
+
+const escapeHtml = (value: string): string =>
+  value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
+
+// Styled after the openagents.com homepage: black, white, monospace.
+const tracesPageShell = (title: string, body: string): string =>
+  `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex" />
+<title>${escapeHtml(title)} | OpenAgents</title>
+<style>
+body { background:#000; color:#fff; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; display:flex; justify-content:center; padding:48px 16px; margin:0; }
+main { max-width: 720px; width:100%; }
+h1 { font-size: 18px; color:#fff; text-transform: uppercase; letter-spacing: 0.08em; margin:0 0 4px; }
+p { line-height: 1.6; font-size: 14px; color:#a1a1aa; }
+a { color:#fff; }
+ul { list-style:none; padding:0; margin:16px 0 0; }
+li { border-bottom:1px solid #18181b; padding:12px 0; }
+li a { display:block; text-decoration:none; }
+.title { color:#e4e4e7; font-size:14px; word-break:break-all; }
+.meta { color:#71717a; font-size:12px; margin-top:4px; }
+.badge { display:inline-block; border:1px solid #27272a; border-radius:4px; padding:1px 6px; margin-right:6px; color:#a1a1aa; font-size:11px; text-transform:uppercase; letter-spacing:0.04em; }
+.muted { color:#71717a; font-size:12px; }
+</style>
+</head>
+<body><main>${body}</main></body>
+</html>`
+
+const tracesHtmlResponse = (
+  title: string,
+  body: string,
+  status = 200,
+): HttpResponse =>
+  new Response(tracesPageShell(title, body), {
+    headers: {
+      'cache-control': 'no-store',
+      'content-type': 'text/html; charset=utf-8',
+    },
+    status,
+  })
+
+const traceListItemHtml = (
+  record: TraceRecord,
+  tokenQuery: string,
+): string => {
+  const label = record.sessionId ?? record.trajectoryId
+  const href = `/trace/${encodeURIComponent(record.traceUuid)}${tokenQuery}`
+  return `<li><a href="${escapeHtml(href)}"><span class="title">${escapeHtml(
+    label,
+  )}</span><span class="meta"><span class="badge">${escapeHtml(
+    record.visibility,
+  )}</span>${record.stepCount} step${
+    record.stepCount === 1 ? '' : 's'
+  } &middot; ${escapeHtml(record.createdAt)}</span></a></li>`
+}
+
+const routeTracesPage = <Bindings, Session extends TraceBrowserSession>(
+  dependencies: TraceStoreRouteDependencies<Bindings, Session>,
+  request: Request,
+  env: Bindings,
+  ctx: ExecutionContext,
+): Effect.Effect<HttpResponse> =>
+  Effect.gen(function* () {
+    const url = new URL(request.url)
+
+    // Owner scope: browser session if signed in, else the read-scope token.
+    const session = yield* Effect.tryPromise({
+      catch: () => undefined,
+      try: () => dependencies.requireBrowserSession(request, env, ctx),
+    }).pipe(Effect.catch(() => Effect.succeed(undefined)))
+
+    const tokenOwner =
+      session === undefined
+        ? yield* resolveReadScopeOwner(dependencies, request, url, env)
+        : undefined
+    const ownerUserId =
+      session !== undefined ? session.user.userId : tokenOwner
+
+    if (ownerUserId === undefined) {
+      return tracesHtmlResponse(
+        'Traces',
+        `<h1>Your traces</h1><p>Open this page from the Khala app's "Open traces in web" menu, or <a href="/login">sign in</a> to view your traces on the web.</p>`,
+        200,
+      )
+    }
+
+    // Preserve the token (if any) for the per-trace deep-links so owner_only
+    // traces also open without a web login. A signed-in session needs no token.
+    const rawToken =
+      session === undefined ? readScopeTokenFromRequest(request, url) : undefined
+    const tokenQuery =
+      rawToken === undefined
+        ? ''
+        : `?token=${encodeURIComponent(rawToken)}`
+
+    // The default real-user corpus view (excludes internal dogfood), mirroring
+    // the JSON owner list default.
+    const defaultCorpusKinds = TRACE_DEMAND_KINDS.filter(
+      kind => !TRACE_INTERNAL_DEMAND_KINDS.includes(kind),
+    )
+    const traces = yield* Effect.tryPromise({
+      catch: () => [] as ReadonlyArray<TraceRecord>,
+      try: () =>
+        dependencies
+          .makeStore(env)
+          .listTracesForOwnerByDemand(
+            ownerUserId,
+            OWNER_LIST_LIMIT,
+            defaultCorpusKinds,
+          ),
+    }).pipe(Effect.catch(() => Effect.succeed([] as ReadonlyArray<TraceRecord>)))
+
+    const list =
+      traces.length === 0
+        ? '<p class="muted">No traces yet. Run a Khala chat and your session traces will appear here.</p>'
+        : `<ul>${traces
+            .map(record => traceListItemHtml(record, tokenQuery))
+            .join('')}</ul>`
+
+    return tracesHtmlResponse(
+      'Your traces',
+      `<h1>Your traces</h1><p>Read-only view of your own agent traces.</p>${list}`,
     )
   })
 
@@ -1224,6 +1482,16 @@ export const makeTraceStoreRoutes = <
     ctx: ExecutionContext,
   ): Effect.Effect<HttpResponse> | undefined => {
     const url = new URL(request.url)
+
+    // GET /traces — owner-scoped HTML list page (mobile "Open traces in web",
+    // #6347). Served HERE (before the SPA app-shell fallback) so a token-bearing
+    // owner sees their own traces with no web login.
+    if (url.pathname === '/traces') {
+      if (request.method === 'GET') {
+        return routeTracesPage(dependencies, request, env, ctx)
+      }
+      return Effect.succeed(methodNotAllowed(['GET']))
+    }
 
     if (url.pathname === '/api/traces') {
       if (request.method === 'POST') {

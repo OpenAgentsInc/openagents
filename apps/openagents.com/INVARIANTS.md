@@ -296,6 +296,23 @@ This is the invariant ledger for `openagents`.
   enforced on read. `public` and `unlisted` reads need no auth (anyone with the
   link); `owner_only` reads require the owning browser session (or an admin) and
   otherwise return 404 so an owner-only trace's existence is not revealed.
+- READ-SCOPE TOKEN (mobile "Open traces in web", #6347). An `oa_agent_` agent
+  token (the caller's OWN Khala API key) is also accepted on the GET read paths
+  ONLY — `GET /traces` (the owner-scoped HTML list page), `GET /api/traces`
+  (owner-scoped JSON list), `GET /api/traces/{uuid}`, and the
+  `GET /api/traces/{uuid}/blob/{r2Key}` media serve — supplied EITHER as
+  `Authorization: Bearer` OR a `?token=` query parameter (the URL form the Khala
+  app opens). The token resolves to a single owner id (`session.user.id`, the
+  SAME `ownerUserId` the chat-trace emitter and ingest path stamp) and grants
+  STRICTLY READ-ONLY, OWNER-SCOPED access: it may read/list ONLY traces owned by
+  that resolved owner, never another owner's. A cross-owner, missing, malformed,
+  or unrecognized token is indistinguishable from anonymous (owner_only stays a
+  404, no existence disclosure). The token NEVER authorizes ingest, visibility
+  writes, blob upload, admin, or any broader account access — only the GET read
+  paths consult it, and only the JSON read still emits the all-false `authority`
+  block. The token value is never logged and never persisted; the browser
+  session always takes precedence over a token when both are present. The list's
+  redaction/visibility rules and the value-based tripwire are unchanged.
 - Visibility updates (`PATCH /api/traces/{uuid}`) require the owning browser
   session or an admin session and accept only the same bounded visibility enum.
   This route is the owner/admin opt-in path from auto-captured `owner_only` to
