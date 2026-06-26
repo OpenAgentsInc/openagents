@@ -55,6 +55,14 @@ export const KhalaFeedbackResponse = S.Struct({
 })
 export type KhalaFeedbackResponse = typeof KhalaFeedbackResponse.Type
 
+export const KhalaTokensResponse = S.Struct({
+  schemaVersion: S.String,
+  tokensServed: S.Int,
+  generatedAt: S.String,
+  staleness: S.Unknown,
+})
+export type KhalaTokensResponse = typeof KhalaTokensResponse.Type
+
 export class KhalaCliError extends S.TaggedErrorClass<KhalaCliError>()("KhalaCliError", {
   reason: S.String,
   code: S.optional(S.String),

@@ -9616,6 +9616,10 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       }),
   },
   {
+    path: '/api/khala/tokens',
+    handler: (request, env) => handlePublicKhalaTokensServedApi(request, env),
+  },
+  {
     path: '/api/operator/khala/feedback',
     handler: (request, env) =>
       handleOperatorKhalaFeedback(request, {

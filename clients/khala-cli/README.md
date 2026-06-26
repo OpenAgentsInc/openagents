@@ -6,6 +6,7 @@ Small Bun + Effect terminal client for Khala.
 bunx @openagentsinc/khala --prompt "Say hello in one short sentence."
 khala feedback "The input ate my transcript."
 khala changelog
+khala tokens
 bun run khala
 bun run khala -- --prompt "Say hello in one short sentence."
 printf 'Say OK only.' | bun run khala -- --headless --json
@@ -20,19 +21,27 @@ two modes:
 - **Interactive terminal mode:** default `khala` opens a normal terminal chat
   transcript with persistent `You:` and `Khala:` turns in scrollback. It does
   not use an alternate-screen/full-screen UI. Slash commands such as
-  `/feedback` and `/changelog` are handled locally instead of being sent to
-  inference.
+  `/feedback`, `/tokens`, and `/changelog` are handled locally instead of being
+  sent to inference.
 - **Headless CLI mode:** `--prompt`, positional text, or stdin runs one turn and
   streams the assistant response to stdout for scripts and agents.
 - **Utility commands:** `khala feedback "..."` saves feedback to
-  `POST /api/khala/feedback`, and `khala changelog` prints the recent package
+  `POST /api/khala/feedback`, `khala tokens` reads the public Khala
+  tokens-served counter, and `khala changelog` prints the recent package
   changelog.
+
+Interactive mode checks npm for a newer `@openagentsinc/khala` in the
+background. If a newer version installs successfully, it prints one line and
+the next `khala` launch uses the update. Set `KHALA_NO_AUTO_UPDATE=1` to skip
+that check.
 
 ## Interactive commands
 
 - `/feedback <text>` saves product feedback without sending the text to
   inference. When a trace reference is available, the CLI includes it with the
   feedback.
+- `/tokens` prints the global Khala tokens-served count from the same public
+  counter shown on `openagents.com` and `/khala`.
 - `/changelog` prints the five most recent CLI releases in reverse
   chronological order.
 - `/exit` quits.
@@ -41,6 +50,7 @@ two modes:
 
 - `khala feedback "text"` sends feedback from scripts or a shell. This command
   may not have a chat trace reference, which is expected.
+- `khala tokens` prints the current global Khala tokens-served count.
 - `khala changelog` prints recent releases.
 
 ## Flags
@@ -57,20 +67,26 @@ two modes:
 
 ## Changelog
 
-### v0.1.2 - 2026-06-26
+### v0.1.3 - Jun 26, 2026, 11:50:00 AM CDT
+
+- Added background npm auto-update checks for interactive sessions.
+- Added `khala tokens` and `/tokens` backed by the public Khala tokens-served
+  counter.
+
+### v0.1.2 - Jun 26, 2026, 11:38:47 AM CDT
 
 - Added `/feedback` and `khala feedback` for out-of-band product feedback.
 - Added `/changelog` and `khala changelog`, plus clearer retrying and terminal
   errors for unavailable inference.
 
-### v0.1.1 - 2026-06-26
+### v0.1.1 - Jun 26, 2026, 11:12:03 AM CDT
 
 - Replaced the full-screen alternate prompt with a normal scrollback chat
   transcript.
 - Removed runtime npm dependencies so global installs avoid unrelated engine
   warnings.
 
-### v0.1.0 - 2026-06-26
+### v0.1.0 - Jun 26, 2026, 11:02:59 AM CDT
 
 - Initial Khala command with interactive terminal chat and headless prompt/stdin
   modes.

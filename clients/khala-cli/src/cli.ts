@@ -1,14 +1,16 @@
 import { Effect } from "effect"
 import { appendAssistantTurn, prepareUserTurn } from "./bounds.js"
 import { KHALA_CLI_VERSION, formatKhalaChangelog } from "./changelog.js"
-import { fetchModels, mintFreeKey, runChatTurn, submitFeedback, toKhalaCliError } from "./client.js"
+import { fetchModels, fetchTokensServed, mintFreeKey, runChatTurn, submitFeedback, toKhalaCliError } from "./client.js"
 import { readPromptFromTerminal } from "./input.js"
-import { DEFAULT_BASE_URL, type ChatMode, type KhalaChatMessage, type KhalaCliError } from "./types.js"
+import { DEFAULT_BASE_URL, type ChatMode, type KhalaChatMessage, type KhalaCliError, type KhalaTokensResponse } from "./types.js"
+import { startKhalaAutoUpdate } from "./updater.js"
 
 type ParsedCommand =
   | { readonly kind: "chat" }
   | { readonly kind: "changelog" }
   | { readonly kind: "feedback"; readonly text: string | undefined }
+  | { readonly kind: "tokens" }
 
 interface ParsedArgs {
   readonly help: boolean
@@ -57,6 +59,11 @@ export async function runKhalaCli(argv: ReadonlyArray<string>, env: Record<strin
       process.stdout.write(`${formatKhalaChangelog()}\n`)
       return 0
     }
+    if (args.command.kind === "tokens") {
+      const tokens = await Effect.runPromise(fetchTokensServed({ baseUrl: args.baseUrl }))
+      process.stdout.write(args.json ? `${JSON.stringify(tokens)}\n` : `${formatTokensServed(tokens)}\n`)
+      return 0
+    }
     if (args.command.kind === "feedback") {
       const feedback = args.command.text?.trim()
       if (feedback === undefined || feedback.length === 0) {
@@ -96,7 +103,7 @@ export async function runKhalaCli(argv: ReadonlyArray<string>, env: Record<strin
       throw new Error("Interactive Khala requires a TTY. Pass --headless or --prompt for programmatic use.")
     }
 
-    await runInteractive(args)
+    await runInteractive(args, env)
     return 0
   } catch (error) {
     printError(toKhalaCliError(error, "Khala CLI failed."))
@@ -159,6 +166,8 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
     }
   } else if (maybeCommand === "changelog") {
     command = { kind: "changelog" }
+  } else if (maybeCommand === "tokens") {
+    command = { kind: "tokens" }
   } else if (prompt === undefined && positional.length > 0) {
     prompt = positional.join(" ")
   }
@@ -178,10 +187,15 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
   }
 }
 
-async function runInteractive(args: ParsedArgs): Promise<void> {
+async function runInteractive(args: ParsedArgs, env: Record<string, string | undefined>): Promise<void> {
   let messages: ReadonlyArray<KhalaChatMessage> = []
   let lastTraceRef: string | undefined
   process.stdout.write("Khala CLI. Type /exit to quit.\n\n")
+  startKhalaAutoUpdate({
+    currentVersion: KHALA_CLI_VERSION,
+    env,
+    notify: line => process.stdout.write(`\nKhala: ${line}\n\n`),
+  })
   while (true) {
     const prompt = await readPromptFromTerminal()
     if (prompt === null) {
@@ -248,6 +262,15 @@ async function handleSlashCommand(
     process.stdout.write(`${formatKhalaChangelog()}\n\n`)
     return "handled"
   }
+  if (command === "/tokens") {
+    try {
+      const tokens = await Effect.runPromise(fetchTokensServed({ baseUrl: args.baseUrl }))
+      process.stdout.write(`Khala: ${formatTokensServed(tokens)}\n\n`)
+    } catch (error) {
+      process.stdout.write(`Khala: ${formatInteractiveError(toKhalaCliError(error, "Tokens fetch failed."))}\n\n`)
+    }
+    return "handled"
+  }
   if (command === "/feedback") {
     if (argument.length === 0) {
       process.stdout.write("Khala: Usage: /feedback <message>\n\n")
@@ -268,7 +291,7 @@ async function handleSlashCommand(
     return "handled"
   }
 
-  process.stdout.write(`Khala: Unknown command ${command}. Try /feedback <message>, /changelog, or /exit.\n\n`)
+  process.stdout.write(`Khala: Unknown command ${command}. Try /feedback <message>, /tokens, /changelog, or /exit.\n\n`)
   return "handled"
 }
 
@@ -339,12 +362,25 @@ function formatDelay(delayMs: number): string {
   return `${(delayMs / 1_000).toFixed(1)}s`
 }
 
+function formatTokensServed(tokens: KhalaTokensResponse): string {
+  const formatted = new Intl.NumberFormat().format(tokens.tokensServed)
+  return `Khala tokens served: ${formatted} (as of ${formatTokensTimestamp(tokens.generatedAt)})`
+}
+
+function formatTokensTimestamp(iso: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+    timeStyle: "medium",
+  }).format(new Date(iso))
+}
+
 function usage(): string {
   return `Khala CLI
 
 Usage:
   khala
   khala changelog
+  khala tokens
   khala feedback "The transcript disappeared"
   khala --prompt "Say hello"
   khala --headless --json < prompt.txt
@@ -352,6 +388,7 @@ Usage:
 
 Interactive commands:
   /feedback <text>   Save product feedback without sending it to inference
+  /tokens            Show global Khala tokens served
   /changelog         Show recent Khala CLI changes
   /exit              Quit
 

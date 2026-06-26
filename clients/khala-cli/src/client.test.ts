@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
-import { runChatTurn, submitFeedback } from "./client.js"
+import { fetchTokensServed, runChatTurn, submitFeedback } from "./client.js"
 
 describe("Khala client", () => {
   test("submits feedback to the public feedback endpoint", async () => {
@@ -64,6 +64,27 @@ describe("Khala client", () => {
     expect(calls).toBe(2)
     expect(retryEvents).toEqual([{ maxRetries: 2, retry: 1 }])
   })
+
+  test("fetches the global Khala tokens-served counter", async () => {
+    const calls: Array<string> = []
+    const fakeFetch = (async (url: Parameters<typeof fetch>[0]) => {
+      calls.push(String(url))
+      return Response.json({
+        schemaVersion: "openagents.public_khala_tokens_served.v1",
+        tokensServed: 1_250_000,
+        generatedAt: "2026-06-26T16:45:00.000Z",
+        staleness: { composition: "live_at_read", maxStalenessSeconds: 0 },
+      })
+    }) as unknown as typeof fetch
+
+    const response = await Effect.runPromise(fetchTokensServed({
+      baseUrl: "https://example.test",
+      fetch: fakeFetch,
+    }))
+
+    expect(response.tokensServed).toBe(1_250_000)
+    expect(calls).toEqual(["https://example.test/api/khala/tokens"])
+  })
 })
 
 function sseResponse(text: string): Response {
@@ -77,4 +98,3 @@ function sseResponse(text: string): Response {
     headers: { "content-type": "text/event-stream" },
   })
 }
-

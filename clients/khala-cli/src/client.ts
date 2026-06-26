@@ -8,6 +8,7 @@ import {
   KhalaFeedbackResponse,
   KhalaCliError,
   KhalaPublicChatRequest,
+  KhalaTokensResponse,
   OpenAiModelsResponse,
   type ChatClientOptions,
   type ChatTurnOptions,
@@ -90,6 +91,27 @@ export function submitFeedback(options: KhalaFeedbackSubmitOptions): Effect.Effe
       try: () => S.decodeUnknownSync(KhalaFeedbackResponse)(payload),
       catch: (error) => new KhalaCliError({
         reason: `Unexpected feedback response: ${String(error)}`,
+        code: "schema_mismatch",
+      }),
+    })
+  })
+}
+
+export function fetchTokensServed(options: Pick<ChatClientOptions, "baseUrl" | "fetch">): Effect.Effect<KhalaTokensResponse, KhalaCliError> {
+  return Effect.gen(function* () {
+    const response = yield* request({
+      fetch: options.fetch,
+      url: urlFor(options.baseUrl, "/api/khala/tokens"),
+      init: {
+        method: "GET",
+        headers: { accept: "application/json" },
+      },
+    })
+    const payload = yield* readJsonResponse(response, "tokens response")
+    return yield* Effect.try({
+      try: () => S.decodeUnknownSync(KhalaTokensResponse)(payload),
+      catch: (error) => new KhalaCliError({
+        reason: `Unexpected tokens response: ${String(error)}`,
         code: "schema_mismatch",
       }),
     })
