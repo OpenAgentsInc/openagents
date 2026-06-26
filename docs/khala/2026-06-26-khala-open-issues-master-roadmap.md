@@ -29,16 +29,16 @@ external-wins admission, not for hiding usage.
 ## Current status snapshot
 
 Refreshed from GitHub issue state, `origin/main`, live counter/proof reads, and
-the local Pylon state on **2026-06-26 ~19:24Z**. This table is the
+the local Pylon state on **2026-06-26 ~19:48Z**. This table is the
 operator view of what remains, not a public product claim.
 
 | Issue | State | Current status / next action |
 | --- | --- | --- |
 | #6310 | **Closed** | P0 OpenCode/tool-calling outage is no longer open. Keep its repro in regression coverage and do not let demand docs outrun the actual tool-call path. |
-| #6323 | **Open** | Decision artifact for the full `nvidia/GLM-5.2-NVFP4` single-host pilot landed. The delegated Pylon/Codex retry (`assignment.public.khala_coding.chatcmpl_6a9906e622ad43caa1c9cc3fb2f20d00`, 4,371,243 exact tokens) has now been reviewed, tightened for public-safety, merged in `c7a86d7d06`, and deployed via `deploy:safe` as Worker `12066869-4f81-4b32-ba41-ba3c50b07595`. Still open: run the owner-armed isolated 8x-host pilot and record measured tool-call/quality/max-context/tok-s results. |
+| #6323 | **Open** | Decision artifact for the full `nvidia/GLM-5.2-NVFP4` single-host pilot landed. The delegated Pylon/Codex retry (`assignment.public.khala_coding.chatcmpl_6a9906e622ad43caa1c9cc3fb2f20d00`, 4,371,243 exact tokens) has now been reviewed, tightened for public-safety, merged in `c7a86d7d06`, and deployed via `deploy:safe` as Worker `12066869-4f81-4b32-ba41-ba3c50b07595`. A later supervised Pylon/Codex pair (`assignment.public.khala_coding.chatcmpl_6bb60a39d229481e9837bd08ce25f8a6`, 1,533,834 exact tokens; `assignment.public.khala_coding.chatcmpl_dac3ccd7c09f4591b42f2528ef43aff6`, 975,671 exact tokens) was reviewed and folded into the current integration patch to add typed public evidence-ref audits, fail-closed observation ref redaction, and stricter tool-call-name validation. Still open: run the owner-armed isolated 8x-host pilot and record measured tool-call/quality/max-context/tok-s results. |
 | #6319 | **Closed** | Reliability hardening/fallback-chain repair is closed. Treat empty responses and dead fallback lanes as regression risks in later serving work. |
 | #6313 | **Closed** | Real OpenRouter fallback lane is closed. It is now a dependency assumption for further reliability and benchmark runs. |
-| #6311 | **Open** | Partial readiness/watchdog projection work landed, and the Khala -> Pylon -> Codex diagnostic slices are now on `main`: `36ee76689c` (`assignment.public.khala_coding.chatcmpl_b5a0d831027a4c779b1105be73217f29`, 6,415,202 exact tokens), `7f94c0556a` (`assignment.public.khala_coding.chatcmpl_c7358576d7464620ae3da33ed2f473a0`, 7,393,396 exact tokens), `5b11c6eaf5` (`assignment.public.khala_coding.chatcmpl_a5dc55d153ca4642b2836e0fa80005df`, 4,500,934 exact tokens), `d373eaee69` (`assignment.public.khala_coding.chatcmpl_ff2b38153a9c457d8769bb6fc44ad9a5`, 3,653,854 exact tokens), and `88f60cb924` (`assignment.public.khala_coding.chatcmpl_b2051745aee042d08f6d5348282215dc`, 2,905,828 exact tokens). `88f60cb924` is deployed as Worker `ba4ed1d7-f81a-4c82-b63c-2042b6bb4ad3` and adds the fail-closed typed acceptance projection for all-replica watchdog, capacity-floor owner decision, multi-region auto-replace, and quota tracking. Live `/v1/gateway/glm-fleet/readiness` is serving `status:"ready"`, but `acceptance.status:"blocked"` because those durable-fleet proofs are not complete. |
+| #6311 | **Open** | Partial readiness/watchdog projection work landed, and the Khala -> Pylon -> Codex diagnostic slices are now on `main`: `36ee76689c` (`assignment.public.khala_coding.chatcmpl_b5a0d831027a4c779b1105be73217f29`, 6,415,202 exact tokens), `7f94c0556a` (`assignment.public.khala_coding.chatcmpl_c7358576d7464620ae3da33ed2f473a0`, 7,393,396 exact tokens), `5b11c6eaf5` (`assignment.public.khala_coding.chatcmpl_a5dc55d153ca4642b2836e0fa80005df`, 4,500,934 exact tokens), `d373eaee69` (`assignment.public.khala_coding.chatcmpl_ff2b38153a9c457d8769bb6fc44ad9a5`, 3,653,854 exact tokens), and `88f60cb924` (`assignment.public.khala_coding.chatcmpl_b2051745aee042d08f6d5348282215dc`, 2,905,828 exact tokens). `88f60cb924` is deployed as Worker `ba4ed1d7-f81a-4c82-b63c-2042b6bb4ad3` and adds the fail-closed typed acceptance projection for all-replica watchdog, capacity-floor owner decision, multi-region auto-replace, and quota tracking. The current supervised integration folded in three more accepted Pylon/Codex slices (`assignment.public.khala_coding.chatcmpl_efb67743f96f44b9ad0078763e224fe6`, 1,571,076 exact tokens; `assignment.public.khala_coding.chatcmpl_bfe667383900474aa93652ad09e5d2e8`, 3,136,839 exact tokens; `assignment.public.khala_coding.chatcmpl_8132762906104faaa5fa9a68e7920bec`, 1,209,821 exact tokens) for typed quota state, capacity-floor evidence, all-replica watchdog readability, and multi-region replacement/reserve/prebake evidence. Live `/v1/gateway/glm-fleet/readiness` is serving `status:"ready"`, but `acceptance.status:"blocked"` until durable fleet proofs are complete. |
 | #6259 | **Closed** | Khala -> GLM served-worker disclosure + counter smoke is closed. |
 | #6315 | **Closed** | Zero-debit receipt-ref fix for #6259 is closed. |
 | #6320 | **Open** | A bounded routed slice landed in `85ca837413` and deployed as Worker `228ac0f9-c891-4ad2-b05f-0dd8894f3c86`: typed throughput-sweep metadata for `max-num-seqs`, prefix cache, chunked prefill, speculative decode, quant gates. Delegated slices landed on `main` in `a8c12aff42` (`assignment.public.khala_coding.chatcmpl_5ccffa5593b84cc09e414d3ad358b9b0`, 2,202,625 exact tokens), `03b6ffa094` (`assignment.public.khala_coding.chatcmpl_7033a7cd0fff4afaaad412e783bab29a`, 4,949,572 exact tokens), `d373eaee69` (`assignment.public.khala_coding.chatcmpl_a8737564357847eca23110d319bf4edf`, 2,656,599 exact tokens), `88f60cb924` (`assignment.public.khala_coding.chatcmpl_9a27a65fa4f5434db8715bcb1288c91d`, 5,505,826 exact tokens), and `7a73ab8d95` (`assignment.public.khala_coding.chatcmpl_ec4be93966804054a0775f1099465a8f`, 2,090,306 exact tokens): typed throughput rollout recommendation/flag selection, owner-armed rollout artifact/guardrails, fail-closed measured-lift rollout readout, and a fail-closed public-safe evidence checklist for owner arm ref, live engine config, before/after throughput, ITL, progress, and public refs. Current deployed Worker is `d3571d83-ecdb-40e0-8af4-08fe14f7ed1e`; still open for actual live engine rollout and measured throughput lift. |
@@ -56,7 +56,7 @@ operator view of what remains, not a public product claim.
 | #6352 | **Closed** | Public `/stats` page landed in `a282066552` and deployed via `deploy:safe` as Worker `197f381e-e1fc-4574-a5c0-a06d71c403d4`. It renders the live Khala token counter, America/Chicago daily history, and aggregate model-family mix from the public endpoints. The delegated Khala -> Pylon -> Codex assignment `assignment.public.khala_coding.chatcmpl_9bf5c69c6b53465598b45410b58a9cdd` counted `9,201,324` exact tokens and stored raw Codex events plus owner-only ATIF traces. |
 | #6353 | **Closed** | Public stats epic is closed: #6330, #6351, and #6352 are all closed and the live `/stats` route returns HTTP 200 after Worker `197f381e-e1fc-4574-a5c0-a06d71c403d4`. |
 | #6303 | **Open** | GTM umbrella remains open: recipe issues are closed and benchmark publication layers exist, but the real decision-grade benchmark/quality evidence and adoption scoreboard are not complete. |
-| #6316 | **Open** | Serving umbrella remains open: #6320/#6318 have partial slices and fresh Pylon/Codex proofs, and #6311's scheduled heartbeat rows plus fail-closed readiness acceptance are live. Current deployed Worker is `d3571d83-ecdb-40e0-8af4-08fe14f7ed1e`, but #6323 pilot, #6311 durability, #6320 live rollout, #6318 live saturation/preemption proof, #6317 stress, #6312 aggregate benchmark, and #6321 overseer are not complete. |
+| #6316 | **Open** | Serving umbrella remains open: #6320/#6318 have partial slices and fresh Pylon/Codex proofs, and #6311's scheduled heartbeat rows plus fail-closed readiness acceptance are live. Current deployed Worker before this integration is `d3571d83-ecdb-40e0-8af4-08fe14f7ed1e`, but #6323 pilot, #6311 durability, #6320 live rollout, #6318 live saturation/preemption proof, #6317 stress, #6312 aggregate benchmark, and #6321 overseer are not complete. |
 | #6325 | **Closed** | Pylon/Codex delegated sessions are persisted as private traces and exact token events (`c92a5652ab`), with the live raw-chunk follow-up in `74f25e77ad`. |
 | #6326 | **Closed** | Complete raw Codex SDK event streams persist privately for Pylon/Codex Khala delegation (`48e43cee02`, deploy `4d1de2d8-6285-41fa-bd9f-7a5a88cf8275`), plus live chunk rows in `pylon_codex_raw_event_chunks`. |
 | #6331 | **Closed** | The Pylon coding-delegation 500/unavailable path is fixed with typed diagnostics and proof surfaces. |
@@ -279,6 +279,40 @@ operator view of what remains, not a public product claim.
   not continuously tick per SDK event. If the product requirement becomes a
   continuously moving public estimate, that is a separate projection from raw
   chunks and must be labeled as estimated until exact closeout tokens arrive.
+- Post-19:32 supervised five-run Pylon/Codex batch:
+  the counter baseline was `/api/public/khala-tokens-served=294,220,135` at
+  `2026-06-26T19:32:57Z`. Five accepted Khala -> Pylon -> Codex assignments
+  then closed out with exact `pylon-codex-own-capacity` rows totaling
+  **8,427,241 Khala coding tokens**:
+  #6323 `assignment.public.khala_coding.chatcmpl_6bb60a39d229481e9837bd08ce25f8a6`
+  (`1,533,834` tokens, `51` owner-only ATIF traces, `86` raw SDK events /
+  `294,230` bytes), #6323
+  `assignment.public.khala_coding.chatcmpl_dac3ccd7c09f4591b42f2528ef43aff6`
+  (`975,671` tokens, `52` owner-only ATIF traces, `87` raw SDK events /
+  `1,282,405` bytes), #6311
+  `assignment.public.khala_coding.chatcmpl_efb67743f96f44b9ad0078763e224fe6`
+  (`1,571,076` tokens, `54` owner-only ATIF traces, `88` raw SDK events /
+  `2,588,271` bytes), #6311
+  `assignment.public.khala_coding.chatcmpl_bfe667383900474aa93652ad09e5d2e8`
+  (`3,136,839` tokens, `81` owner-only ATIF traces, `136` raw SDK events /
+  `1,742,620` bytes), and #6311
+  `assignment.public.khala_coding.chatcmpl_8132762906104faaa5fa9a68e7920bec`
+  (`1,209,821` tokens, `51` owner-only ATIF traces, `84` raw SDK events /
+  `388,368` bytes). Live `/api/public/khala-tokens-served` returned
+  `302,661,428` at `2026-06-26T19:45:48Z`, a `8,441,293` aggregate increase
+  from the baseline. The `14,052` token difference is expected aggregate noise
+  from other work/canaries; the assignment proofs above are the attribution
+  source. The current integration folds in the reviewed #6323 evidence-audit /
+  hallucinated-tool-call patch and the reviewed #6311 quota/capacity/
+  replacement-reserve-prebake acceptance patch. Focused GLM pilot/readiness
+  tests, `typecheck:web`, `typecheck:api`, and `check:deploy` passed before
+  landing.
+  Steering gaps observed in the batch: a replacement launch hit
+  `blocker.assignment.presence_stale` until `presence heartbeat --json` was
+  run; the plain `codex` account had previously refused execution while
+  `codex-2+` succeeded; and `provider go-online --json` still reported
+  `busy:0` during active local `assignment run-no-spend` sessions, so public
+  capacity projection does not yet reflect active local runners.
 - Current serving observability status: canonical scheduled
   `glm-pool-heartbeat` rows are now live. `5b11c6eaf5` is deployed as Worker
   `7ee46a76-f9ef-42cf-ac9f-31a472d2b3fb`; after one cron interval,
@@ -540,17 +574,17 @@ GLM coding lane and leave REAP-504B on the 4x hosts.)
   the owner-armed real seam over realistic traffic (`decisionGrade:true`); internal
   dogfood/stress tokens stay segmented (#6298 demand tags) and out of external metrics.
 - Khala -> Pylon -> Codex worker status at refresh: the latest supervised batch
-  completed and was merged/deployed after overseer review as `7a73ab8d95` and
-  `713b715f8d`. Accepted work completed across connected Codex accounts with
-  exact owner-capacity token rows, traces, raw-event refs, and streamed raw
-  chunks. Earlier runs already proved same-account parallelism by running
-  multiple assignments on both `codex-2` and `codex-3`. Future launches should
-  record assignment refs immediately, verify
+  completed across `codex-2`, `codex-3`, and `codex-4`, with simultaneous runs
+  on both `codex-2` and `codex-3` across the broader stress sequence. Accepted
+  work has exact owner-capacity token rows, owner-only ATIF traces, owner-only
+  raw-event refs, and streamed raw chunks. Future launches should record
+  assignment refs immediately, verify
   `pylon khala proof --assignment-ref ... --json`, and compare exact token rows
   instead of relying on public counter movement. The next steering gaps to settle
   are (1) auto-refreshing Pylon presence before `assignment run-no-spend` so
   operators do not hit `blocker.assignment.presence_stale`, (2) why the plain
-  `codex` account refused one assignment while `codex-2+` succeeded, and (3)
-  whether the public product should add a clearly labeled in-flight estimate
-  from streamed SDK chunks while preserving exact public accounting at
-  assignment closeout.
+  `codex` account refused one assignment while `codex-2+` succeeded, (3) making
+  `provider go-online --json` / public capacity show active local
+  `assignment run-no-spend` sessions as busy, and (4) whether the public product
+  should add a clearly labeled in-flight estimate from streamed SDK chunks while
+  preserving exact public accounting at assignment closeout.

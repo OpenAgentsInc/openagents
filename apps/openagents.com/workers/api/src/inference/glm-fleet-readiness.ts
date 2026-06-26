@@ -70,9 +70,9 @@ export type GlmFleetCapacityFloorDecision =
 
 export type GlmFleetQuotaRequestState =
   | 'approved'
+  | 'denied'
   | 'missing'
   | 'pending'
-  | 'rejected'
   | 'unknown'
 
 export type GlmFleetReadinessAcceptance = Readonly<{
@@ -92,7 +92,11 @@ export type GlmFleetReadinessAcceptance = Readonly<{
   }>
   multiRegionAutoReplace: Readonly<{
     blockerRefs: ReadonlyArray<string>
+    coveredReplacementReplicaRefs: ReadonlyArray<string>
     evidenceRefs: ReadonlyArray<string>
+    missingReplacementReplicaRefs: ReadonlyArray<string>
+    prebakeEvidenceRefs: ReadonlyArray<string>
+    reserveEvidenceRefs: ReadonlyArray<string>
     status: GlmFleetAcceptanceDimensionStatus
   }>
   quotaRequestTracking: Readonly<{
@@ -147,6 +151,12 @@ type GlmFleetReadinessEnv = SupplyLaneCredentialEnv &
     HYDRALISK_GLM_52_REAP_504B_MULTI_REGION_AUTO_REPLACE_REF?:
       | string
       | undefined
+    HYDRALISK_GLM_52_REAP_504B_MULTI_REGION_AUTO_REPLACE_PREBAKE_REFS?:
+      | string
+      | undefined
+    HYDRALISK_GLM_52_REAP_504B_MULTI_REGION_AUTO_REPLACE_RESERVE_REFS?:
+      | string
+      | undefined
     HYDRALISK_GLM_52_REAP_504B_QUOTA_REQUEST_REF?: string | undefined
     HYDRALISK_GLM_52_REAP_504B_QUOTA_REQUEST_STATE?: string | undefined
   }>
@@ -170,6 +180,13 @@ const isPublicSafeRef = (value: string | undefined): value is string => {
 const publicSafeRefs = (
   values: ReadonlyArray<string | undefined>,
 ): ReadonlyArray<string> => values.filter(isPublicSafeRef)
+
+const publicSafeCsvRefs = (
+  value: string | undefined,
+): ReadonlyArray<string> =>
+  value === undefined
+    ? []
+    : publicSafeRefs(value.split(',').map(ref => ref.trim()))
 
 const replicaStatus = (
   arming: HydraliskGlm52ReplicaArming,
@@ -349,12 +366,11 @@ const normalizeQuotaRequestState = (
   value: string | undefined,
 ): GlmFleetQuotaRequestState => {
   const normalized = value?.trim().toLowerCase()
-  if (
-    normalized === 'approved' ||
-    normalized === 'pending' ||
-    normalized === 'rejected'
-  ) {
+  if (normalized === 'approved' || normalized === 'pending') {
     return normalized
+  }
+  if (normalized === 'denied' || normalized === 'rejected') {
+    return 'denied'
   }
   return normalized === undefined || normalized === '' ? 'missing' : 'unknown'
 }
@@ -384,7 +400,7 @@ const acceptanceFor = (
     input.env.HYDRALISK_GLM_52_REAP_504B_CAPACITY_FLOOR_DECISION,
   )
   const capacityFloorOwnerDecision =
-    capacityFloorDecision === 'missing' || capacityFloorEvidenceRefs.length === 0
+    capacityFloorDecision === 'missing'
       ? {
           blockerRefs: [
             'blocker.hydralisk_glm_52_reap_504b.capacity_floor_owner_decision_missing',
@@ -393,6 +409,15 @@ const acceptanceFor = (
           evidenceRefs: capacityFloorEvidenceRefs,
           status: 'blocked' as const,
         }
+      : capacityFloorEvidenceRefs.length === 0
+        ? {
+            blockerRefs: [
+              'blocker.hydralisk_glm_52_reap_504b.capacity_floor_owner_decision_evidence_missing',
+            ],
+            decision: capacityFloorDecision,
+            evidenceRefs: [],
+            status: 'blocked' as const,
+          }
       : {
           blockerRefs: [],
           decision: capacityFloorDecision,
@@ -453,20 +478,61 @@ const acceptanceFor = (
   const autoReplaceEvidenceRefs = publicSafeRefs([
     input.env.HYDRALISK_GLM_52_REAP_504B_MULTI_REGION_AUTO_REPLACE_REF,
   ])
-  const multiRegionAutoReplace =
-    autoReplaceEvidenceRefs.length === 0
-      ? {
-          blockerRefs: [
-            'blocker.hydralisk_glm_52_reap_504b.multi_region_auto_replace_evidence_missing',
-          ],
-          evidenceRefs: [],
-          status: 'blocked' as const,
-        }
-      : {
-          blockerRefs: [],
-          evidenceRefs: autoReplaceEvidenceRefs,
-          status: 'complete' as const,
-        }
+  const replacementReplicas = input.replicas.filter(
+    replica => replica.benchmarkReserved && !replica.draining,
+  )
+  const coveredReplacementReplicaRefs = replacementReplicas.map(
+    replica => replica.replicaRef,
+  )
+  const reserveEvidenceRefs = [
+    ...publicSafeCsvRefs(
+      input.env
+        .HYDRALISK_GLM_52_REAP_504B_MULTI_REGION_AUTO_REPLACE_RESERVE_REFS,
+    ),
+    ...replacementReplicas.flatMap(replica =>
+      publicSafeRefs(replica.armingEvidenceRefs),
+    ),
+  ].filter((ref, index, refs) => refs.indexOf(ref) === index)
+  const prebakeEvidenceRefs = publicSafeCsvRefs(
+    input.env.HYDRALISK_GLM_52_REAP_504B_MULTI_REGION_AUTO_REPLACE_PREBAKE_REFS,
+  )
+  const autoReplaceBlockerRefs = [
+    ...(autoReplaceEvidenceRefs.length === 0
+      ? [
+          'blocker.hydralisk_glm_52_reap_504b.multi_region_auto_replace_evidence_missing',
+        ]
+      : []),
+    ...(coveredReplacementReplicaRefs.length === 0
+      ? [
+          'blocker.hydralisk_glm_52_reap_504b.multi_region_auto_replace_replacement_region_missing',
+        ]
+      : []),
+    ...(reserveEvidenceRefs.length === 0
+      ? [
+          'blocker.hydralisk_glm_52_reap_504b.multi_region_auto_replace_reserve_evidence_missing',
+        ]
+      : []),
+    ...(prebakeEvidenceRefs.length === 0
+      ? [
+          'blocker.hydralisk_glm_52_reap_504b.multi_region_auto_replace_prebake_evidence_missing',
+        ]
+      : []),
+  ]
+  const multiRegionAutoReplace = {
+    blockerRefs: autoReplaceBlockerRefs,
+    coveredReplacementReplicaRefs,
+    evidenceRefs: autoReplaceEvidenceRefs,
+    missingReplacementReplicaRefs:
+      coveredReplacementReplicaRefs.length === 0
+        ? ['replica.hydralisk.glm_52_reap_504b.replacement-region.missing']
+        : [],
+    prebakeEvidenceRefs,
+    reserveEvidenceRefs,
+    status:
+      autoReplaceBlockerRefs.length === 0
+        ? ('complete' as const)
+        : ('blocked' as const),
+  }
 
   const quotaRequestEvidenceRefs = publicSafeRefs([
     input.env.HYDRALISK_GLM_52_REAP_504B_QUOTA_REQUEST_REF,
@@ -475,15 +541,33 @@ const acceptanceFor = (
     input.env.HYDRALISK_GLM_52_REAP_504B_QUOTA_REQUEST_STATE,
   )
   const quotaRequestTracking =
-    quotaRequestEvidenceRefs.length === 0 || quotaRequestState === 'missing'
+    quotaRequestState === 'missing'
       ? {
           blockerRefs: [
-            'blocker.hydralisk_glm_52_reap_504b.quota_request_tracking_missing',
+            'blocker.hydralisk_glm_52_reap_504b.quota_request_state_missing',
           ],
           evidenceRefs: quotaRequestEvidenceRefs,
           requestState: quotaRequestState,
           status: 'blocked' as const,
         }
+      : quotaRequestEvidenceRefs.length === 0
+        ? {
+            blockerRefs: [
+              'blocker.hydralisk_glm_52_reap_504b.quota_request_evidence_missing',
+            ],
+            evidenceRefs: [],
+            requestState: quotaRequestState,
+            status: 'blocked' as const,
+          }
+        : quotaRequestState === 'unknown'
+          ? {
+              blockerRefs: [
+                'blocker.hydralisk_glm_52_reap_504b.quota_request_state_unknown',
+              ],
+              evidenceRefs: quotaRequestEvidenceRefs,
+              requestState: quotaRequestState,
+              status: 'blocked' as const,
+            }
       : {
           blockerRefs:
             quotaRequestState === 'approved'
@@ -496,7 +580,9 @@ const acceptanceFor = (
           status:
             quotaRequestState === 'approved'
               ? ('complete' as const)
-              : ('incomplete' as const),
+              : quotaRequestState === 'pending'
+                ? ('incomplete' as const)
+                : ('blocked' as const),
         }
 
   return {

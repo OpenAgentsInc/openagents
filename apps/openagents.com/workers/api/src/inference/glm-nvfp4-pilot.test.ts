@@ -5,6 +5,7 @@ import {
   GLM_NVFP4_EXACT_VLLM_FLAGS,
   GLM_NVFP4_MIN_TOOL_LOOP_SAMPLES,
   GLM_NVFP4_PILOT_MODEL,
+  GLM_NVFP4_PUBLIC_FIXTURE_TOOL_NAME,
   GlmNvfp4PilotNotArmedError,
   buildGlmNvfp4PilotLaunchFlags,
   buildGlmNvfp4PilotResult,
@@ -127,6 +128,43 @@ describe('GLM NVFP4 pilot preflight (#6323)', () => {
     expect(result.evidenceRefs).toContain(
       'evidence.public.khala.glm_nvfp4.tool_loop.001',
     )
+    expect(result.evidenceRefAudit).toEqual([
+      {
+        field: 'ownerApprovalRef',
+        status: 'accepted',
+        publicRef: 'approval.public.khala.glm_nvfp4.owner_armed.001',
+      },
+      {
+        field: 'endpointRef',
+        status: 'accepted',
+        publicRef: 'endpoint.public.khala.glm_nvfp4.single_host_8x.001',
+      },
+      {
+        field: 'decisionRef',
+        status: 'accepted',
+        publicRef: 'decision.public.khala.glm_nvfp4.issue_6323.001',
+      },
+      {
+        field: 'measuredMaxModelLenEvidenceRef',
+        status: 'accepted',
+        publicRef: 'evidence.public.khala.glm_nvfp4.max_model_len.65536.001',
+      },
+      {
+        field: 'qualityEvidenceRef',
+        status: 'accepted',
+        publicRef: 'evidence.public.khala.glm_nvfp4.quality_parity.001',
+      },
+      {
+        field: 'toolLoopEvidenceRef',
+        status: 'accepted',
+        publicRef: 'evidence.public.khala.glm_nvfp4.tool_loop.001',
+      },
+      {
+        field: 'throughputEvidenceRef',
+        status: 'accepted',
+        publicRef: 'evidence.public.khala.glm_nvfp4.tps.001',
+      },
+    ])
     expect(JSON.stringify(result)).not.toContain(
       'https://glm-nvfp4-pilot.example.invalid',
     )
@@ -177,7 +215,13 @@ describe('GLM NVFP4 pilot preflight (#6323)', () => {
 
     expect(result.ownerApprovalRef).toBeNull()
     expect(result.blockerRefs).toContain('unsafe_public_ref')
+    expect(result.blockerRefs).toContain('owner_approval_ref_unsafe')
     expect(result.blockerRefs).toContain('owner_approval_ref_missing')
+    expect(result.evidenceRefAudit).toContainEqual({
+      field: 'ownerApprovalRef',
+      status: 'rejected_unsafe',
+      publicRef: null,
+    })
     expect(JSON.stringify(result)).not.toContain('/Users/operator')
   })
 
@@ -191,8 +235,57 @@ describe('GLM NVFP4 pilot preflight (#6323)', () => {
 
     expect(result.endpointRef).toBeNull()
     expect(result.blockerRefs).toContain('unsafe_public_ref')
+    expect(result.blockerRefs).toContain('endpoint_ref_unsafe')
     expect(result.blockerRefs).toContain('endpoint_ref_missing')
+    expect(result.evidenceRefAudit).toContainEqual({
+      field: 'endpointRef',
+      status: 'rejected_unsafe',
+      publicRef: null,
+    })
     expect(JSON.stringify(result)).not.toContain('pilot.internal')
+  })
+
+  test('redacts unsafe live observation evidence refs before public reporting', () => {
+    const result = buildGlmNvfp4PilotResult({
+      config: baseConfig(),
+      observation: passingObservation({
+        toolLoop: {
+          sampleCount: GLM_NVFP4_MIN_TOOL_LOOP_SAMPLES,
+          providerErrorCount: 0,
+          toolCallsAttempted: GLM_NVFP4_MIN_TOOL_LOOP_SAMPLES,
+          toolCallsSucceeded: GLM_NVFP4_MIN_TOOL_LOOP_SAMPLES,
+          hallucinatedToolCallCount: 0,
+          evidenceRef: 'prompt.private.host.secret',
+        },
+        throughput: {
+          outputTokens: 640,
+          wallClockMs: 10000,
+          measuredTps: 64,
+          reapBaselineTps: GLM_NVFP4_DEFAULT_REAP_BASELINE_TPS,
+          evidenceRef: '/home/operator/tps.json',
+        },
+      }),
+    })
+
+    expect(result.decision).toBe('no_go')
+    expect(result.toolLoop.evidenceRef).toBeNull()
+    expect(result.throughput.evidenceRef).toBeNull()
+    expect(result.evidenceRefs).not.toContain('prompt.private.host.secret')
+    expect(result.evidenceRefs).not.toContain('/home/operator/tps.json')
+    expect(result.blockerRefs).toContain('tool_loop_evidence_ref_unsafe')
+    expect(result.blockerRefs).toContain('tps_evidence_ref_unsafe')
+    expect(result.evidenceRefAudit).toContainEqual({
+      field: 'toolLoopEvidenceRef',
+      status: 'rejected_unsafe',
+      publicRef: null,
+    })
+    expect(result.evidenceRefAudit).toContainEqual({
+      field: 'throughputEvidenceRef',
+      status: 'rejected_unsafe',
+      publicRef: null,
+    })
+    expect(JSON.stringify(result)).not.toContain('/home/operator')
+    expect(JSON.stringify(result)).not.toContain('prompt.private.host.secret')
   })
 
   test('live executor captures tool-call and TPS evidence without raw content', async () => {
@@ -208,7 +301,7 @@ describe('GLM NVFP4 pilot preflight (#6323)', () => {
                   id: 'call_fixture',
                   type: 'function',
                   function: {
-                    name: 'public_fixture_return_number',
+                    name: GLM_NVFP4_PUBLIC_FIXTURE_TOOL_NAME,
                     arguments: '{"value":7}',
                   },
                 },
@@ -234,5 +327,46 @@ describe('GLM NVFP4 pilot preflight (#6323)', () => {
     expect(JSON.stringify(observation)).not.toContain(
       'Use the provided public fixture tool',
     )
+  })
+
+  test('live executor fails closed on hallucinated tool names without exposing raw output', async () => {
+    const executor = makeOpenAiCompatibleGlmNvfp4PilotExecutor({
+      samples: 1,
+      evidenceSeed: 'seed.public.fixture',
+      http: async () => ({
+        choices: [
+          {
+            message: {
+              tool_calls: [
+                {
+                  id: 'call_unexpected',
+                  type: 'function',
+                  function: {
+                    name: 'search',
+                    arguments: '{"query":"private host"}',
+                  },
+                },
+              ],
+            },
+          },
+        ],
+        usage: {
+          completion_tokens: 8,
+        },
+      }),
+    })
+
+    const observation = await executor(baseConfig({ requiredToolLoopSamples: 1 }))
+    const result = buildGlmNvfp4PilotResult({
+      config: baseConfig({ requiredToolLoopSamples: 1 }),
+      observation,
+    })
+
+    expect(observation.toolLoop?.toolCallsSucceeded).toBe(0)
+    expect(observation.toolLoop?.hallucinatedToolCallCount).toBe(1)
+    expect(result.decision).toBe('no_go')
+    expect(result.blockerRefs).toContain('tool_loop_missing_tool_calls')
+    expect(JSON.stringify(observation)).not.toContain('private host')
+    expect(JSON.stringify(observation)).not.toContain('search')
   })
 })

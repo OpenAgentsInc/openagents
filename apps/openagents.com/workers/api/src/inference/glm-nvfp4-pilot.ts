@@ -6,6 +6,8 @@ export const GLM_NVFP4_PILOT_RESULT_SCHEMA =
 export const GLM_NVFP4_PILOT_MODEL = 'nvidia/GLM-5.2-NVFP4' as const
 export const GLM_NVFP4_MIN_TOOL_LOOP_SAMPLES = 20
 export const GLM_NVFP4_DEFAULT_REAP_BASELINE_TPS = 47
+export const GLM_NVFP4_PUBLIC_FIXTURE_TOOL_NAME =
+  'public_fixture_return_number' as const
 
 export const GLM_NVFP4_EXACT_VLLM_FLAGS = [
   { name: '--tensor-parallel-size', value: '8' },
@@ -20,26 +22,61 @@ export const GLM_NVFP4_EXACT_VLLM_FLAGS = [
 export const GlmNvfp4PilotBlocker = S.Literals([
   'owner_arm_missing',
   'owner_approval_ref_missing',
+  'owner_approval_ref_unsafe',
   'endpoint_ref_missing',
+  'endpoint_ref_unsafe',
   'endpoint_url_missing',
   'model_mismatch',
   'measured_max_model_len_missing',
   'measured_max_model_len_evidence_ref_missing',
+  'measured_max_model_len_evidence_ref_unsafe',
   'tool_loop_evidence_missing',
+  'tool_loop_evidence_ref_unsafe',
   'tool_loop_sample_count_too_low',
   'tool_loop_provider_error',
   'tool_loop_missing_tool_calls',
   'quality_parity_missing',
   'quality_evidence_ref_missing',
+  'quality_evidence_ref_unsafe',
   'tps_measurement_missing',
+  'tps_evidence_ref_unsafe',
   'tps_not_finite',
   'decision_ref_missing',
+  'decision_ref_unsafe',
   'unsafe_public_ref',
 ])
 export type GlmNvfp4PilotBlocker = typeof GlmNvfp4PilotBlocker.Type
 
 export const GlmNvfp4PilotDecision = S.Literals(['go', 'no_go'])
 export type GlmNvfp4PilotDecision = typeof GlmNvfp4PilotDecision.Type
+
+export const GlmNvfp4PilotEvidenceRefField = S.Literals([
+  'ownerApprovalRef',
+  'endpointRef',
+  'decisionRef',
+  'measuredMaxModelLenEvidenceRef',
+  'qualityEvidenceRef',
+  'toolLoopEvidenceRef',
+  'throughputEvidenceRef',
+])
+export type GlmNvfp4PilotEvidenceRefField =
+  typeof GlmNvfp4PilotEvidenceRefField.Type
+
+export const GlmNvfp4PilotEvidenceRefAuditStatus = S.Literals([
+  'accepted',
+  'missing',
+  'rejected_unsafe',
+])
+export type GlmNvfp4PilotEvidenceRefAuditStatus =
+  typeof GlmNvfp4PilotEvidenceRefAuditStatus.Type
+
+export const GlmNvfp4PilotEvidenceRefAudit = S.Struct({
+  field: GlmNvfp4PilotEvidenceRefField,
+  status: GlmNvfp4PilotEvidenceRefAuditStatus,
+  publicRef: S.Union([S.String, S.Null]),
+})
+export type GlmNvfp4PilotEvidenceRefAudit =
+  typeof GlmNvfp4PilotEvidenceRefAudit.Type
 
 export const GlmNvfp4PilotVllmFlag = S.Struct({
   name: S.String,
@@ -99,6 +136,7 @@ export const GlmNvfp4PilotResult = S.Struct({
     'route_coding_tools_to_full_model_then_reap_overflow',
   ]),
   blockerRefs: S.Array(GlmNvfp4PilotBlocker),
+  evidenceRefAudit: S.Array(GlmNvfp4PilotEvidenceRefAudit),
   evidenceRefs: S.Array(S.String),
   authorityBoundary: S.String,
   contentRedacted: S.Literal(true),
@@ -162,8 +200,54 @@ const safeRefOrNull = (value: string | null | undefined): string | null => {
   return ref !== null && isSafeRef(ref) ? ref : null
 }
 
+const evidenceRefAudit = (input: {
+  field: GlmNvfp4PilotEvidenceRefField
+  rawRef: string | null | undefined
+  publicRef: string | null
+}): GlmNvfp4PilotEvidenceRefAudit => {
+  const normalized = nullIfBlank(input.rawRef)
+  return {
+    field: input.field,
+    status:
+      normalized === null
+        ? 'missing'
+        : input.publicRef === null
+          ? 'rejected_unsafe'
+          : 'accepted',
+    publicRef: input.publicRef,
+  }
+}
+
+const unsafeBlockerForEvidenceField = (
+  field: GlmNvfp4PilotEvidenceRefField,
+): GlmNvfp4PilotBlocker => {
+  const blockersByField: Record<
+    GlmNvfp4PilotEvidenceRefField,
+    GlmNvfp4PilotBlocker
+  > = {
+    ownerApprovalRef: 'owner_approval_ref_unsafe',
+    endpointRef: 'endpoint_ref_unsafe',
+    decisionRef: 'decision_ref_unsafe',
+    measuredMaxModelLenEvidenceRef:
+      'measured_max_model_len_evidence_ref_unsafe',
+    qualityEvidenceRef: 'quality_evidence_ref_unsafe',
+    toolLoopEvidenceRef: 'tool_loop_evidence_ref_unsafe',
+    throughputEvidenceRef: 'tps_evidence_ref_unsafe',
+  }
+  return blockersByField[field]
+}
+
 const stableRef = (prefix: string, value: string): string =>
   `${prefix}.${createHash('sha256').update(value).digest('hex').slice(0, 24)}`
+
+const toolCallFunctionName = (value: unknown): string | null => {
+  if (typeof value !== 'object' || value === null) return null
+  const toolCall = value as Record<string, unknown>
+  const fn = toolCall.function
+  if (typeof fn !== 'object' || fn === null) return null
+  const name = (fn as Record<string, unknown>).name
+  return typeof name === 'string' && name.trim() !== '' ? name : null
+}
 
 const defaultToolLoop = (): GlmNvfp4ToolLoopEvidence => ({
   sampleCount: 0,
@@ -226,18 +310,53 @@ export const buildGlmNvfp4PilotResult = (input: {
     input.observation?.throughput ?? defaultThroughput(reapBaselineTps)
   const requiredToolLoopSamples =
     config.requiredToolLoopSamples ?? GLM_NVFP4_MIN_TOOL_LOOP_SAMPLES
-  const rawRefs = [
-    config.ownerApprovalRef,
-    config.endpointRef,
-    config.decisionRef,
-    config.measuredMaxModelLenEvidenceRef,
-    config.qualityEvidenceRef,
-    toolLoop.evidenceRef,
-    throughput.evidenceRef,
-  ].flatMap(ref => {
-    const normalized = nullIfBlank(ref)
-    return normalized === null ? [] : [normalized]
-  })
+  const toolLoopEvidenceRef = safeRefOrNull(toolLoop.evidenceRef)
+  const throughputEvidenceRef = safeRefOrNull(throughput.evidenceRef)
+  const publicToolLoop: GlmNvfp4ToolLoopEvidence = {
+    ...toolLoop,
+    evidenceRef: toolLoopEvidenceRef,
+  }
+  const publicThroughput: GlmNvfp4ThroughputEvidence = {
+    ...throughput,
+    evidenceRef: throughputEvidenceRef,
+  }
+  const evidenceRefAuditRows = [
+    evidenceRefAudit({
+      field: 'ownerApprovalRef',
+      rawRef: config.ownerApprovalRef,
+      publicRef: ownerApprovalRef,
+    }),
+    evidenceRefAudit({
+      field: 'endpointRef',
+      rawRef: config.endpointRef,
+      publicRef: endpointRef,
+    }),
+    evidenceRefAudit({
+      field: 'decisionRef',
+      rawRef: config.decisionRef,
+      publicRef: decisionRef,
+    }),
+    evidenceRefAudit({
+      field: 'measuredMaxModelLenEvidenceRef',
+      rawRef: config.measuredMaxModelLenEvidenceRef,
+      publicRef: measuredMaxModelLenEvidenceRef,
+    }),
+    evidenceRefAudit({
+      field: 'qualityEvidenceRef',
+      rawRef: config.qualityEvidenceRef,
+      publicRef: qualityEvidenceRef,
+    }),
+    evidenceRefAudit({
+      field: 'toolLoopEvidenceRef',
+      rawRef: toolLoop.evidenceRef,
+      publicRef: toolLoopEvidenceRef,
+    }),
+    evidenceRefAudit({
+      field: 'throughputEvidenceRef',
+      rawRef: throughput.evidenceRef,
+      publicRef: throughputEvidenceRef,
+    }),
+  ]
 
   if (config.ownerArmed !== true) blockerRefs.add('owner_arm_missing')
   if (ownerApprovalRef === null) blockerRefs.add('owner_approval_ref_missing')
@@ -254,7 +373,9 @@ export const buildGlmNvfp4PilotResult = (input: {
   if (measuredMaxModelLenEvidenceRef === null) {
     blockerRefs.add('measured_max_model_len_evidence_ref_missing')
   }
-  if (toolLoop.evidenceRef === null) blockerRefs.add('tool_loop_evidence_missing')
+  if (toolLoopEvidenceRef === null) {
+    blockerRefs.add('tool_loop_evidence_missing')
+  }
   if (toolLoop.sampleCount < requiredToolLoopSamples) {
     blockerRefs.add('tool_loop_sample_count_too_low')
   }
@@ -278,7 +399,12 @@ export const buildGlmNvfp4PilotResult = (input: {
     blockerRefs.add('tps_not_finite')
   }
   if (decisionRef === null) blockerRefs.add('decision_ref_missing')
-  if (rawRefs.some(ref => !isSafeRef(ref))) blockerRefs.add('unsafe_public_ref')
+  evidenceRefAuditRows
+    .filter(row => row.status === 'rejected_unsafe')
+    .forEach(row => {
+      blockerRefs.add('unsafe_public_ref')
+      blockerRefs.add(unsafeBlockerForEvidenceField(row.field))
+    })
 
   const decision: GlmNvfp4PilotDecision =
     blockerRefs.size === 0 ? 'go' : 'no_go'
@@ -288,8 +414,8 @@ export const buildGlmNvfp4PilotResult = (input: {
     decisionRef,
     measuredMaxModelLenEvidenceRef,
     qualityEvidenceRef,
-    toolLoop.evidenceRef,
-    throughput.evidenceRef,
+    publicToolLoop.evidenceRef,
+    publicThroughput.evidenceRef,
   ].filter((ref): ref is string => ref !== null)
 
   return decodeGlmNvfp4PilotResult({
@@ -315,9 +441,9 @@ export const buildGlmNvfp4PilotResult = (input: {
       isolatedEndpointRequired: true,
     },
     vllmFlags: buildGlmNvfp4PilotLaunchFlags(measuredMaxModelLen),
-    toolLoop,
+    toolLoop: publicToolLoop,
     throughput: {
-      ...throughput,
+      ...publicThroughput,
       reapBaselineTps,
     },
     routingOutcome:
@@ -325,6 +451,7 @@ export const buildGlmNvfp4PilotResult = (input: {
         ? 'route_coding_tools_to_full_model_then_reap_overflow'
         : 'keep_reap_live_lane',
     blockerRefs: [...blockerRefs].sort(),
+    evidenceRefAudit: evidenceRefAuditRows,
     evidenceRefs: [...new Set(evidenceRefs)].sort(),
     authorityBoundary:
       'Owner-armed, public-safe pilot/preflight record for issue #6323. It does not expose endpoint URLs, API keys, raw prompts, raw model output, checkpoint paths, host paths, wallet material, or private traces; it does not repoint live Khala routing by itself.',
@@ -377,7 +504,7 @@ export const makeOpenAiCompatibleGlmNvfp4PilotExecutor =
             {
               type: 'function',
               function: {
-                name: 'public_fixture_return_number',
+                name: GLM_NVFP4_PUBLIC_FIXTURE_TOOL_NAME,
                 description: 'Return a public fixture number.',
                 parameters: {
                   type: 'object',
@@ -408,6 +535,16 @@ export const makeOpenAiCompatibleGlmNvfp4PilotExecutor =
         const toolCalls = Array.isArray(message.tool_calls)
           ? message.tool_calls
           : []
+        const toolCallNames = toolCalls.flatMap(toolCall => {
+          const name = toolCallFunctionName(toolCall)
+          return name === null ? [] : [name]
+        })
+        const expectedToolCallCount = toolCallNames.filter(
+          name => name === GLM_NVFP4_PUBLIC_FIXTURE_TOOL_NAME,
+        ).length
+        const hallucinatedToolCallCount = toolCallNames.filter(
+          name => name !== GLM_NVFP4_PUBLIC_FIXTURE_TOOL_NAME,
+        ).length
         const usage =
           typeof response.usage === 'object' && response.usage !== null
             ? (response.usage as Record<string, unknown>)
@@ -418,7 +555,8 @@ export const makeOpenAiCompatibleGlmNvfp4PilotExecutor =
             : 0
         return {
           error,
-          toolCallCount: toolCalls.length,
+          expectedToolCallCount,
+          hallucinatedToolCallCount,
           completionTokens,
         }
       }),
@@ -429,8 +567,15 @@ export const makeOpenAiCompatibleGlmNvfp4PilotExecutor =
       0,
     )
     const toolCallsSucceeded = observations.filter(
-      observation => observation.toolCallCount > 0 && !observation.error,
+      observation =>
+        observation.expectedToolCallCount > 0 &&
+        observation.hallucinatedToolCallCount === 0 &&
+        !observation.error,
     ).length
+    const hallucinatedToolCallCount = observations.reduce(
+      (sum, observation) => sum + observation.hallucinatedToolCallCount,
+      0,
+    )
     const seed = `${input.evidenceSeed}:${config.endpointRef}:${input.samples}:${outputTokens}:${toolCallsSucceeded}`
     return {
       toolLoop: {
@@ -439,7 +584,7 @@ export const makeOpenAiCompatibleGlmNvfp4PilotExecutor =
           .length,
         toolCallsAttempted: observations.length,
         toolCallsSucceeded,
-        hallucinatedToolCallCount: 0,
+        hallucinatedToolCallCount,
         evidenceRef: stableRef('evidence.public.khala.glm_nvfp4.tool_loop', seed),
       },
       throughput: {

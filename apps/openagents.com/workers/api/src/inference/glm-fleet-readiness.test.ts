@@ -251,12 +251,15 @@ describe('projectGlmFleetReadiness', () => {
       multiRegionAutoReplace: {
         blockerRefs: [
           'blocker.hydralisk_glm_52_reap_504b.multi_region_auto_replace_evidence_missing',
+          'blocker.hydralisk_glm_52_reap_504b.multi_region_auto_replace_replacement_region_missing',
+          'blocker.hydralisk_glm_52_reap_504b.multi_region_auto_replace_reserve_evidence_missing',
+          'blocker.hydralisk_glm_52_reap_504b.multi_region_auto_replace_prebake_evidence_missing',
         ],
         status: 'blocked',
       },
       quotaRequestTracking: {
         blockerRefs: [
-          'blocker.hydralisk_glm_52_reap_504b.quota_request_tracking_missing',
+          'blocker.hydralisk_glm_52_reap_504b.quota_request_state_missing',
         ],
         requestState: 'missing',
         status: 'blocked',
@@ -299,12 +302,28 @@ describe('projectGlmFleetReadiness', () => {
   test('projects durable fleet acceptance dimensions only from public-safe evidence', () => {
     const env = {
       ...readyEnv,
+      HYDRALISK_GLM_52_REAP_504B_REPLICA_IDS:
+        'warm-one,ready-two,reclaimed-three,disabled-four,missing-five,reserved-six',
+      HYDRALISK_GLM_52_REAP_504B_RESERVED_SIX_BASE_URL:
+        'https://reserved-six.private.example.test',
+      HYDRALISK_GLM_52_REAP_504B_RESERVED_SIX_BEARER_TOKEN:
+        'secret-reserved-six',
+      HYDRALISK_GLM_52_REAP_504B_RESERVED_SIX_BENCHMARK_RESERVED: 'true',
+      HYDRALISK_GLM_52_REAP_504B_RESERVED_SIX_ENABLED: 'ready',
+      HYDRALISK_GLM_52_REAP_504B_RESERVED_SIX_PREFLIGHT_REF:
+        'preflight.hydralisk.glm.reserved_six',
+      HYDRALISK_GLM_52_REAP_504B_RESERVED_SIX_RECEIPT_REF:
+        'receipt.hydralisk.glm.reserved_six',
       HYDRALISK_GLM_52_REAP_504B_CAPACITY_FLOOR_DECISION:
         'owner_accepted_all_spot',
       HYDRALISK_GLM_52_REAP_504B_CAPACITY_FLOOR_DECISION_REF:
         'decision.hydralisk.glm_52_reap_504b.capacity_floor.owner_20260626',
       HYDRALISK_GLM_52_REAP_504B_MULTI_REGION_AUTO_REPLACE_REF:
         'evidence.hydralisk.glm_52_reap_504b.multi_region_auto_replace.plan_20260626',
+      HYDRALISK_GLM_52_REAP_504B_MULTI_REGION_AUTO_REPLACE_PREBAKE_REFS:
+        'prebake.hydralisk.glm_52_reap_504b.reserved_six.20260626',
+      HYDRALISK_GLM_52_REAP_504B_MULTI_REGION_AUTO_REPLACE_RESERVE_REFS:
+        'reserve.hydralisk.glm_52_reap_504b.reserved_six.20260626',
       HYDRALISK_GLM_52_REAP_504B_QUOTA_REQUEST_REF:
         'quota_request.gcp.us_central1.rtx_pro_6000.20260626',
       HYDRALISK_GLM_52_REAP_504B_QUOTA_REQUEST_STATE: 'pending',
@@ -338,8 +357,20 @@ describe('projectGlmFleetReadiness', () => {
       },
       multiRegionAutoReplace: {
         blockerRefs: [],
+        coveredReplacementReplicaRefs: [
+          'replica.hydralisk.glm_52_reap_504b.reserved-six',
+        ],
         evidenceRefs: [
           'evidence.hydralisk.glm_52_reap_504b.multi_region_auto_replace.plan_20260626',
+        ],
+        missingReplacementReplicaRefs: [],
+        prebakeEvidenceRefs: [
+          'prebake.hydralisk.glm_52_reap_504b.reserved_six.20260626',
+        ],
+        reserveEvidenceRefs: [
+          'reserve.hydralisk.glm_52_reap_504b.reserved_six.20260626',
+          'preflight.hydralisk.glm.reserved_six',
+          'receipt.hydralisk.glm.reserved_six',
         ],
         status: 'complete',
       },
@@ -355,6 +386,178 @@ describe('projectGlmFleetReadiness', () => {
     })
     expect(JSON.stringify(projection)).not.toContain('private.example.test')
     expect(JSON.stringify(projection)).not.toContain('secret-')
+  })
+
+  test('fails closed when multi-region auto-replace reserve or prebake evidence is missing', () => {
+    const env = {
+      ...readyEnv,
+      HYDRALISK_GLM_52_REAP_504B_MULTI_REGION_AUTO_REPLACE_REF:
+        'evidence.hydralisk.glm_52_reap_504b.multi_region_auto_replace.plan_20260626',
+      HYDRALISK_GLM_52_REAP_504B_MULTI_REGION_AUTO_REPLACE_PREBAKE_REFS:
+        'https://operator-only.example.test/prebake',
+      HYDRALISK_GLM_52_REAP_504B_MULTI_REGION_AUTO_REPLACE_RESERVE_REFS:
+        'sk-reserve-secret',
+    } as const
+
+    const projection = projectGlmFleetReadinessForEnv(env, replicaId =>
+      heartbeat(replicaId),
+    )
+
+    expect(projection.acceptance.multiRegionAutoReplace).toEqual({
+      blockerRefs: [
+        'blocker.hydralisk_glm_52_reap_504b.multi_region_auto_replace_replacement_region_missing',
+        'blocker.hydralisk_glm_52_reap_504b.multi_region_auto_replace_reserve_evidence_missing',
+        'blocker.hydralisk_glm_52_reap_504b.multi_region_auto_replace_prebake_evidence_missing',
+      ],
+      coveredReplacementReplicaRefs: [],
+      evidenceRefs: [
+        'evidence.hydralisk.glm_52_reap_504b.multi_region_auto_replace.plan_20260626',
+      ],
+      missingReplacementReplicaRefs: [
+        'replica.hydralisk.glm_52_reap_504b.replacement-region.missing',
+      ],
+      prebakeEvidenceRefs: [],
+      reserveEvidenceRefs: [],
+      status: 'blocked',
+    })
+    expect(projection.acceptance.status).toBe('blocked')
+    expect(JSON.stringify(projection)).not.toContain('operator-only')
+    expect(JSON.stringify(projection)).not.toContain('sk-reserve-secret')
+  })
+
+  test('fails closed when owner-confirmed capacity-floor evidence is missing or unsafe', () => {
+    const env = {
+      ...readyEnv,
+      HYDRALISK_GLM_52_REAP_504B_CAPACITY_FLOOR_DECISION:
+        'non_spot_floor_approved',
+      HYDRALISK_GLM_52_REAP_504B_CAPACITY_FLOOR_DECISION_REF:
+        'https://private.example.test/capacity-floor',
+      HYDRALISK_GLM_52_REAP_504B_MULTI_REGION_AUTO_REPLACE_REF:
+        'evidence.hydralisk.glm_52_reap_504b.multi_region_auto_replace.plan_20260626',
+      HYDRALISK_GLM_52_REAP_504B_QUOTA_REQUEST_REF:
+        'quota_request.gcp.us_central1.rtx_pro_6000.20260626',
+      HYDRALISK_GLM_52_REAP_504B_QUOTA_REQUEST_STATE: 'approved',
+    } as const
+
+    const projection = projectGlmFleetReadinessForEnv(env, replicaId =>
+      heartbeat(replicaId),
+    )
+
+    expect(projection.acceptance.capacityFloorOwnerDecision).toEqual({
+      blockerRefs: [
+        'blocker.hydralisk_glm_52_reap_504b.capacity_floor_owner_decision_evidence_missing',
+      ],
+      decision: 'non_spot_floor_approved',
+      evidenceRefs: [],
+      status: 'blocked',
+    })
+    expect(projection.acceptance.quotaRequestTracking).toMatchObject({
+      requestState: 'approved',
+      status: 'complete',
+    })
+    expect(projection.acceptance.status).toBe('blocked')
+    expect(JSON.stringify(projection)).not.toContain('private.example.test')
+  })
+
+  test.each([
+    {
+      blockerRef: 'blocker.hydralisk_glm_52_reap_504b.quota_request_pending',
+      expectedState: 'pending',
+      expectedStatus: 'incomplete',
+      state: 'pending',
+    },
+    {
+      blockerRef: 'blocker.hydralisk_glm_52_reap_504b.quota_request_denied',
+      expectedState: 'denied',
+      expectedStatus: 'blocked',
+      state: 'denied',
+    },
+    {
+      blockerRef: 'blocker.hydralisk_glm_52_reap_504b.quota_request_denied',
+      expectedState: 'denied',
+      expectedStatus: 'blocked',
+      state: 'rejected',
+    },
+    {
+      blockerRef:
+        'blocker.hydralisk_glm_52_reap_504b.quota_request_state_unknown',
+      expectedState: 'unknown',
+      expectedStatus: 'blocked',
+      state: 'owner-said-maybe',
+    },
+  ])(
+    'distinguishes quota request state $state as $expectedStatus',
+    ({ blockerRef, expectedState, expectedStatus, state }) => {
+      const env = {
+        ...readyEnv,
+        HYDRALISK_GLM_52_REAP_504B_REPLICA_IDS:
+          'warm-one,ready-two,reclaimed-three,disabled-four,missing-five,reserved-six',
+        HYDRALISK_GLM_52_REAP_504B_RESERVED_SIX_BASE_URL:
+          'https://reserved-six.private.example.test',
+        HYDRALISK_GLM_52_REAP_504B_RESERVED_SIX_BEARER_TOKEN:
+          'secret-reserved-six',
+        HYDRALISK_GLM_52_REAP_504B_RESERVED_SIX_BENCHMARK_RESERVED: 'true',
+        HYDRALISK_GLM_52_REAP_504B_RESERVED_SIX_ENABLED: 'ready',
+        HYDRALISK_GLM_52_REAP_504B_RESERVED_SIX_PREFLIGHT_REF:
+          'preflight.hydralisk.glm.reserved_six',
+        HYDRALISK_GLM_52_REAP_504B_RESERVED_SIX_RECEIPT_REF:
+          'receipt.hydralisk.glm.reserved_six',
+        HYDRALISK_GLM_52_REAP_504B_CAPACITY_FLOOR_DECISION:
+          'owner_accepted_all_spot',
+        HYDRALISK_GLM_52_REAP_504B_CAPACITY_FLOOR_DECISION_REF:
+          'decision.hydralisk.glm_52_reap_504b.capacity_floor.owner_20260626',
+        HYDRALISK_GLM_52_REAP_504B_MULTI_REGION_AUTO_REPLACE_REF:
+          'evidence.hydralisk.glm_52_reap_504b.multi_region_auto_replace.plan_20260626',
+        HYDRALISK_GLM_52_REAP_504B_MULTI_REGION_AUTO_REPLACE_PREBAKE_REFS:
+          'prebake.hydralisk.glm_52_reap_504b.reserved_six.20260626',
+        HYDRALISK_GLM_52_REAP_504B_MULTI_REGION_AUTO_REPLACE_RESERVE_REFS:
+          'reserve.hydralisk.glm_52_reap_504b.reserved_six.20260626',
+        HYDRALISK_GLM_52_REAP_504B_QUOTA_REQUEST_REF:
+          'quota_request.gcp.us_central1.rtx_pro_6000.20260626',
+        HYDRALISK_GLM_52_REAP_504B_QUOTA_REQUEST_STATE: state,
+      } as const
+
+      const projection = projectGlmFleetReadinessForEnv(env, replicaId =>
+        heartbeat(replicaId),
+      )
+
+      expect(projection.acceptance.quotaRequestTracking).toEqual({
+        blockerRefs: [blockerRef],
+        evidenceRefs: ['quota_request.gcp.us_central1.rtx_pro_6000.20260626'],
+        requestState: expectedState,
+        status: expectedStatus,
+      })
+      expect(projection.acceptance.status).toBe(expectedStatus)
+    },
+  )
+
+  test('fails closed when quota request state exists without public-safe evidence', () => {
+    const env = {
+      ...readyEnv,
+      HYDRALISK_GLM_52_REAP_504B_CAPACITY_FLOOR_DECISION:
+        'owner_accepted_all_spot',
+      HYDRALISK_GLM_52_REAP_504B_CAPACITY_FLOOR_DECISION_REF:
+        'decision.hydralisk.glm_52_reap_504b.capacity_floor.owner_20260626',
+      HYDRALISK_GLM_52_REAP_504B_MULTI_REGION_AUTO_REPLACE_REF:
+        'evidence.hydralisk.glm_52_reap_504b.multi_region_auto_replace.plan_20260626',
+      HYDRALISK_GLM_52_REAP_504B_QUOTA_REQUEST_REF: 'sk-private-not-a-ref',
+      HYDRALISK_GLM_52_REAP_504B_QUOTA_REQUEST_STATE: 'pending',
+    } as const
+
+    const projection = projectGlmFleetReadinessForEnv(env, replicaId =>
+      heartbeat(replicaId),
+    )
+
+    expect(projection.acceptance.quotaRequestTracking).toEqual({
+      blockerRefs: [
+        'blocker.hydralisk_glm_52_reap_504b.quota_request_evidence_missing',
+      ],
+      evidenceRefs: [],
+      requestState: 'pending',
+      status: 'blocked',
+    })
+    expect(projection.acceptance.status).toBe('blocked')
+    expect(JSON.stringify(projection)).not.toContain('sk-private-not-a-ref')
   })
 
   test('uses only stable replica refs from configured armings', () => {
