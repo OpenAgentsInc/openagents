@@ -69,8 +69,11 @@ describe("pylon command catalog", () => {
     expect(entry.mutates).toBe(true)
     expect(entry.json).toBe(true)
     expect(entry.args[0]?.name).toContain("request")
+    expect(entry.args[0]?.name).toContain("burndown")
     expect(entry.args.some((arg) => arg.name === "--workflow")).toBe(true)
     expect(entry.args.some((arg) => arg.name === "--resume")).toBe(true)
+    expect(entry.args.some((arg) => arg.name === "--max-parallel")).toBe(true)
+    expect(entry.args.some((arg) => arg.name === "--execute" && arg.kind === "flag")).toBe(true)
   })
 
   test("khala MCP bridge is catalogued as network-backed and non-spending", () => {

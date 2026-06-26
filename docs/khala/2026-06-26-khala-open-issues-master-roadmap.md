@@ -31,15 +31,15 @@ external-wins admission, not for hiding usage.
 The phases below are now driven by a **continuous parallel loop**, not one-off
 batches. Four cross-cutting tracks run *alongside* the phased sequence and feed it:
 
-- **#6355 — Parallel backlog-burndown loop (operator runner).** Spin up the MAX
-  parallel Khala -> Pylon -> Codex assignments across ALL connected Codex accounts
-  (today `codex-2..4` healthy; plain `codex` flaky), map each open slot to the next
-  open backlog issue, run `assignment run-no-spend`, then on closeout verify exact
-  token rows + traces (`pylon khala proof --assignment-ref ... --json`), review,
-  merge (`deploy:safe` for worker changes), refill the slots, and repeat. Codex is
-  the master coding agent for now; #6321 (Artanis) is the eventual in-product
-  version. The presence/busy-load steering prerequisite **#6354** is closed; keep
-  the already-closed steering fixes (#6331-#6341, #6349-#6350) in the loop guard.
+- **#6355 — Parallel backlog-burndown loop (operator runner).** Closed by the
+  `pylon khala burndown` operator command: dry-run plans issue/account slots from
+  the roadmap or an explicit list, `--execute` dispatches `codex_agent_task`
+  requests, runs no-spend assignments, and verifies exact proof totals before
+  checking public token-counter movement and reporting `operator_review_required`
+  merge policy. Codex is the master coding agent for now; #6321 (Artanis) is
+  the eventual in-product version. The
+  presence/busy-load steering prerequisite **#6354** is closed; keep the
+  already-closed steering fixes (#6331-#6341, #6349-#6350) in the loop guard.
 - **#6356 — Trace review.** Systematically review the ATIF traces / exact token
   rows / raw Codex events we **and external testers** are now generating: failure
   modes, model mix, notable/novel traces, and the intents behind them -> triaged
@@ -138,7 +138,7 @@ operator view of what remains, not a public product claim.
 | #6326 | **Closed** | Complete raw Codex SDK event streams persist privately for Pylon/Codex Khala delegation (`48e43cee02`, deploy `4d1de2d8-6285-41fa-bd9f-7a5a88cf8275`), plus live chunk rows in `pylon_codex_raw_event_chunks`. |
 | #6331 | **Closed** | The Pylon coding-delegation 500/unavailable path is fixed with typed diagnostics and proof surfaces. |
 | #6354 | **Closed** | Pylon `assignment run-no-spend` now refreshes presence before claiming, emits a typed heartbeat recovery diagnostic if stale presence cannot be refreshed, records public-safe active local assignment run markers, and projects those active Codex/Claude runners into heartbeat/go-online busy capacity. Focused Pylon typecheck and assignment/presence regressions passed. |
-| #6355 | **Open** | **NEW** — autonomous parallel Khala->Pylon->Codex backlog-burndown loop (operator runner). Formalizes the manual stress batches into a repeatable max-parallel loop that drives the whole sequence; verify-and-merge each closeout. |
+| #6355 | **Closed** | `pylon khala burndown` formalizes the manual stress batches into a repeatable max-parallel operator loop: dry-run plan, optional `--execute` dispatch/run/proof, exact token-proof verification, public counter before/after evidence, and explicit `operator_review_required` merge closeout. Runbook: `apps/pylon/docs/khala-burndown-runbook.md`. |
 | #6356 | **Open** | **NEW** — systematic trace review (our runs + external testers): failure modes, model mix, notable traces, user intents -> triaged backlog. |
 | #6357 | **Open** | **NEW** — running unsupported-request list (what testers try that Khala can't do) -> triage into bug / missing-capability / won't-do -> issues. |
 | #6358 | **Open** | **NEW** — public token-counter health: correct/continuous increment from real closeouts, fix the false-alarming heartbeat monitor, hold the monotonic invariant, optional labeled in-flight estimate. |
@@ -661,9 +661,10 @@ Remaining active sequence after the 2026-06-26 ~19:24Z refresh:
 `#6308` ‖ `#6309`(recurring evidence) → close `#6316` / `#6303`.
 
 Running **continuously alongside** the above (not gated by it), per the operating
-model section: **#6355** (parallel burndown loop that *drives* the sequence),
-**#6356** (trace review), **#6357** (unsupported-request triage), and **#6358**
-(counter health), with **#6354** now closed as the loop's presence/busy-load prerequisite. #6356/#6357
+model section: **#6355** (operator tooling now closed and available through
+`pylon khala burndown` to *drive* the sequence), **#6356** (trace review),
+**#6357** (unsupported-request triage), and **#6358** (counter health), with
+**#6354** now closed as the loop's presence/busy-load prerequisite. #6356/#6357
 feed new issues back into the sequence as testers surface gaps. The end state is
 **Artanis owning this loop autonomously** (see the Artanis section below / #6321).
 

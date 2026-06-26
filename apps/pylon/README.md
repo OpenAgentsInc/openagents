@@ -411,6 +411,15 @@ active-run marker, refreshes it during execution, and removes it on closeout so
 heartbeats and `provider go-online --json` project busy/available capacity from
 real in-flight work.
 
+For owner-operated Khala roadmap burn-down, `pylon khala burndown --json`
+builds a public-safe plan from the roadmap or an explicit `--issues` list,
+selects ready local Codex accounts, and shows the request/run/proof commands
+for each parallel slot. Add `--execute` to dispatch each `codex_agent_task`, run
+the no-spend assignment, verify exact token proof, and record before/after
+public Khala token-counter evidence. The command reports `mergePolicy:
+"operator_review_required"`; review, commit, push, and close each issue after
+proof. See `docs/khala-burndown-runbook.md`.
+
 ### Local multi-session proof runs
 
 For owner-directed local orchestration, `scripts/multi-session-run.ts` runs a

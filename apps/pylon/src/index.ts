@@ -277,6 +277,13 @@ import {
   type PylonKhalaWorkflow,
 } from "./khala-requester.js"
 import {
+  buildPylonKhalaBurndownPlan,
+  localPylonTargetRef,
+  parseKhalaBurndownIssueNumbers,
+  readKhalaRoadmapIssueNumbers,
+  runPylonKhalaBurndownPlan,
+} from "./khala-burndown.js"
+import {
   pylonKhalaMcpConfig,
   runPylonKhalaMcpStdio,
 } from "./khala-mcp.js"
@@ -3770,6 +3777,72 @@ async function main() {
         process.stdout.write(`${text}\n`)
       }
 
+      if (command === "burndown") {
+        const commit = optionString(options, "commit")
+        const repository = optionString(options, "repo") ?? "OpenAgentsInc/openagents"
+        const verificationCommand = optionString(options, "verify")
+        const missingPins = [
+          commit === undefined ? "--commit" : null,
+          verificationCommand === undefined ? "--verify" : null,
+        ].filter((pin): pin is string => pin !== null)
+        if (commit === undefined || verificationCommand === undefined) {
+          throw new Error(
+            `usage: pylon khala burndown [--issues <#,...> | --roadmap <path>] --commit <sha> --verify <argv> [--repo owner/repo] [--max-parallel n] [--iterations n] [--execute] [--json]; missing ${missingPins.join(", ")}`,
+          )
+        }
+        const state = await ensurePylonLocalState(summary)
+        const targetPylonRef =
+          optionString(options, "pylon-ref") ??
+          optionString(options, "target-pylon-ref") ??
+          localPylonTargetRef(state)
+        if (optionFlag(options, "execute")) {
+          try {
+            await sendHeartbeat(summary, {
+              ...presenceClientOptionsFromEnv({ baseUrl, env: Bun.env }),
+              ...(resolvedAgentToken === null ? {} : { agentToken: resolvedAgentToken.token }),
+            })
+          } catch {
+            // #6355: execution still proceeds; run-no-spend reports the precise
+            // presence blocker if the server-side view remains stale.
+          }
+        }
+        const issuesOption = optionString(options, "issues")
+        const issueNumbers =
+          issuesOption === undefined
+            ? await readKhalaRoadmapIssueNumbers(
+                optionString(options, "roadmap") ??
+                  "docs/khala/2026-06-26-khala-open-issues-master-roadmap.md",
+              )
+            : parseKhalaBurndownIssueNumbers(issuesOption)
+        const accounts = await collectPylonAccountsList(summary, { env: Bun.env })
+        const maxParallel = positiveIntegerOption(options, "max-parallel", "khala burndown --max-parallel")
+        const iterations = positiveIntegerOption(options, "iterations", "khala burndown --iterations")
+        const branch = optionString(options, "branch")
+        const plan = buildPylonKhalaBurndownPlan({
+          accounts,
+          baseUrl,
+          ...(branch === undefined ? {} : { branch }),
+          commit,
+          issueNumbers,
+          ...(iterations === undefined ? {} : { iterations }),
+          ...(maxParallel === undefined ? {} : { maxParallel }),
+          repository,
+          targetPylonRef,
+          verificationCommand,
+        })
+        if (!optionFlag(options, "execute")) {
+          emit(plan)
+          return
+        }
+        const result = await runPylonKhalaBurndownPlan({
+          network: networkOptions,
+          plan,
+          summary,
+        })
+        emit(result)
+        return
+      }
+
       if (command === "request") {
         const prompt =
           optionString(options, "prompt") ??
@@ -3876,7 +3949,7 @@ async function main() {
         return
       }
 
-      throw new Error("usage: pylon khala request|resume|status|proof ...")
+      throw new Error("usage: pylon khala request|resume|status|proof|burndown ...")
     } catch (error) {
       process.stdout.write(`${JSON.stringify({ error: error instanceof Error ? error.message : String(error), ok: false }, null, 2)}\n`)
       process.exitCode = 1
