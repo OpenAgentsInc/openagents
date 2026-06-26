@@ -1,0 +1,31 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 64 64"
+  role="img"
+  aria-label="OpenAgents"
+>
+  <rect width="64" height="64" rx="14" fill="#05070a" />
+  <circle
+    cx="25"
+    cy="32"
+    r="14"
+    fill="none"
+    stroke="#f8fafc"
+    stroke-width="6"
+  />
+  <path
+    d="M39 48L49 16L59 48"
+    fill="none"
+    stroke="#60a5fa"
+    stroke-width="6"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M43.5 36H54.5"
+    fill="none"
+    stroke="#60a5fa"
+    stroke-width="6"
+    stroke-linecap="round"
+  />
+</svg>
