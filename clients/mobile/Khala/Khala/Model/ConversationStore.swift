@@ -66,12 +66,14 @@ final class ConversationStore: ObservableObject {
 
     /// Append a message to a conversation and bump `updatedAt`. If the
     /// conversation is still untitled and this is the first user message, derive
-    /// a title from it.
+    /// a title from it. Returns the inserted `Message` so streaming callers can
+    /// mutate its `content` live (token-by-token) before the final `persist()`.
+    @discardableResult
     func appendMessage(
         _ role: MessageRole,
         content: String,
         to conversation: Conversation
-    ) {
+    ) -> Message {
         let message = Message(role: role, content: content)
         message.conversation = conversation
         conversation.messages.append(message)
@@ -83,6 +85,25 @@ final class ConversationStore: ObservableObject {
             conversation.title = Conversation.derivedTitle(from: content)
         }
 
+        save()
+        refresh()
+        return message
+    }
+
+    /// Delete a single message from a conversation (e.g. an empty/failed
+    /// streamed assistant turn, or the assistant turn being regenerated).
+    func deleteMessage(_ message: Message, from conversation: Conversation) {
+        conversation.messages.removeAll { $0.id == message.id }
+        context.delete(message)
+        conversation.updatedAt = Date()
+        save()
+        refresh()
+    }
+
+    /// Persist in-place edits to already-inserted models (e.g. an assistant
+    /// `Message` whose `content` was grown live during streaming) and re-sort
+    /// Recents. Cheaper than re-inserting; used at stream settle.
+    func persist() {
         save()
         refresh()
     }

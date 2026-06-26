@@ -18,6 +18,11 @@ struct RootView: View {
     @State private var hasKey = KeychainStore.hasAPIKey
     @State private var permissionsRequested = false
     @State private var selection: Conversation?
+    /// The streaming chat view model for the active conversation. Owned here so
+    /// the demo/suggestion auto-send paths and the voice transcript handoff all
+    /// drive the SAME model `ChatView` renders. Recreated when the active
+    /// conversation changes.
+    @State private var model: ChatViewModel?
 
     var body: some View {
         DrawerContainer(isOpen: $drawerOpen) {
@@ -38,6 +43,9 @@ struct RootView: View {
             aboutSheet
         }
         .task { await onAppear() }
+        // The drawer can change `selection` directly; keep the model in sync with
+        // the active conversation however it changed.
+        .onChange(of: selection?.id) { _, _ in syncModel() }
     }
 
     // MARK: - Chat stack + top bar
@@ -45,10 +53,11 @@ struct RootView: View {
     private var chatStack: some View {
         NavigationStack {
             Group {
-                if let conversation = activeConversation {
+                if let conversation = activeConversation, let model = modelFor(conversation) {
                     ChatView(
                         store: store,
                         voice: voice,
+                        model: model,
                         conversation: conversation,
                         hasKey: $hasKey,
                         onOpenSettings: { showSettings = true }
@@ -143,34 +152,60 @@ struct RootView: View {
         selection ?? store.mostRecent
     }
 
-    /// A conversation is "empty" (shows the empty state) when it has no
-    /// user/assistant turns yet and no in-flight request is being rendered.
-    private func isEmpty(_ conversation: Conversation) -> Bool {
-        let hasTurns = conversation.messages.contains { $0.role != .system }
-        let inFlight = voice.state.isBusy || !voice.response.isEmpty
-            || !voice.transcript.isEmpty || voice.requestError != nil
-        return !hasTurns && !inFlight
+    /// The streaming view model for `conversation`, when it matches the current
+    /// active model. `syncModel()` keeps `model` aligned with the active
+    /// conversation; here we only hand `ChatView` a model bound to the same
+    /// conversation it is rendering.
+    private func modelFor(_ conversation: Conversation) -> ChatViewModel? {
+        if let model, model.conversationID == conversation.id { return model }
+        return nil
     }
 
-    /// Start a conversation from a tapped empty-state suggestion. Sends the
-    /// canned prompt as the first user turn through the same Khala round-trip
-    /// the composer uses; the empty state then yields to the live transcript.
+    /// Create or recreate the active conversation's view model so the demo,
+    /// suggestion, voice, and `ChatView` paths all drive one model. Cheap and
+    /// idempotent: a no-op when the model already matches.
+    private func syncModel() {
+        guard let conversation = activeConversation else { model = nil; return }
+        if model?.conversationID == conversation.id { return }
+        model?.stop()
+        let created = ChatViewModel(store: store, conversation: conversation)
+        // Route push-to-talk transcripts into the shared streaming path.
+        voice.onTranscript = { [weak created] transcript in
+            created?.send(transcript)
+        }
+        model = created
+    }
+
+    /// A conversation is "empty" (shows the empty state) when it has no
+    /// user/assistant turns yet and no in-flight chat/codex request is rendered.
+    private func isEmpty(_ conversation: Conversation) -> Bool {
+        let hasTurns = conversation.messages.contains { $0.role != .system }
+        let chatInFlight = model?.isStreaming == true || model?.error != nil
+        let codexInFlight = voice.state.isBusy || !voice.response.isEmpty
+            || voice.requestError != nil
+        return !hasTurns && !chatInFlight && !codexInFlight
+    }
+
+    /// Start a conversation from a tapped empty-state suggestion. Streams the
+    /// canned prompt as the first user turn through the same path the composer
+    /// uses; the empty state then yields to the live streaming transcript.
     private func sendSuggestion(_ prompt: String) {
-        guard hasKey, !voice.state.isBusy, let conversation = activeConversation else { return }
+        guard hasKey, let conversation = activeConversation,
+              let model = modelFor(conversation), !model.isStreaming else { return }
         let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        store.appendMessage(.user, content: trimmed, to: conversation)
-        voice.sendText(trimmed)
+        model.send(trimmed)
     }
 
     private func open(_ conversation: Conversation) {
+        // `.onChange(of: selection?.id)` recreates the model for the new chat.
         selection = conversation
         withAnimation { drawerOpen = false }
     }
 
     private func newChat() {
         let convo = store.createConversation()
-        selection = convo
+        selection = convo // triggers syncModel via onChange
         withAnimation { drawerOpen = false }
     }
 
@@ -183,6 +218,10 @@ struct RootView: View {
         } else if selection == nil {
             selection = store.mostRecent
         }
+        // Build the model for the initial active conversation up front so the
+        // chat surface renders immediately (the onChange may not fire if
+        // `selection` was already set before this task ran).
+        syncModel()
 
         guard !permissionsRequested else { return }
         permissionsRequested = true
@@ -195,12 +234,12 @@ struct RootView: View {
         }
 
         // Demo/test hook (env-gated; no-op in normal use): auto-send a prompt on
-        // launch so the end-to-end Khala API round-trip is verifiable on a
+        // launch so the end-to-end streaming Khala round-trip is verifiable on a
         // simulator without driving the UI. Pair with KHALA_API_KEY.
         if let demo = ProcessInfo.processInfo.environment["KHALA_DEMO_PROMPT"],
-           !demo.isEmpty, hasKey, let conversation = activeConversation {
-            store.appendMessage(.user, content: demo, to: conversation)
-            voice.sendText(demo)
+           !demo.isEmpty, hasKey, let conversation = activeConversation,
+           let model = modelFor(conversation) {
+            model.send(demo)
         }
     }
 }

@@ -18,7 +18,6 @@ final class VoiceController: ObservableObject {
     }
 
     private enum Submission: Equatable {
-        case chat(String)
         case codexTask(prompt: String, pylonRef: String)
     }
 
@@ -28,6 +27,13 @@ final class VoiceController: ObservableObject {
     @Published private(set) var requestError: RequestError?
     /// Smoothed 0...1 microphone level for the animated background.
     @Published private(set) var level: Double = 0
+
+    /// Called with the final transcript when a push-to-talk capture finishes.
+    /// `ChatView` wires this to `ChatViewModel.send(_:)` so a spoken turn becomes
+    /// a normal user turn that streams a reply into the shared transcript. The
+    /// voice controller keeps the orb/level visualization but no longer owns the
+    /// chat round-trip for the streaming path.
+    var onTranscript: ((String) -> Void)?
 
     private let engine = AVAudioEngine()
     private let recognizer = SpeechRecognizer()
@@ -116,31 +122,20 @@ final class VoiceController: ObservableObject {
         state = .transcribing
         do {
             let text = try await recognizer.finish()
-            transcript = text
-            state = .success
-            lastSubmission = .chat(text)
-            await send(text)
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            transcript = trimmed
+            // The streaming chat round-trip is owned by `ChatViewModel`; hand the
+            // transcript off as a normal user turn. The orb returns to idle.
+            state = .idle
+            if !trimmed.isEmpty {
+                onTranscript?(trimmed)
+            }
         } catch {
             state = .error((error as? LocalizedError)?.errorDescription ?? "Transcription failed.")
         }
     }
 
-    // MARK: - Text input (voice-free handshake path)
-
-    /// Send a typed message through the same Khala round-trip the voice path
-    /// uses. This is the minimal, voice-free way to exercise the end-to-end
-    /// handshake (mint/paste key -> type -> POST /chat/completions -> response),
-    /// e.g. in the simulator or before microphone permission is granted.
-    func sendText(_ text: String) {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        guard !state.isBusy else { return }
-        response = ""
-        transcript = trimmed
-        requestError = nil
-        lastSubmission = .chat(trimmed)
-        Task { await send(trimmed) }
-    }
+    // MARK: - Codex delegation (typed, non-streaming, separate from chat)
 
     /// Submit a typed coding delegation request through Khala to the caller's
     /// own linked Pylon. Normal chat remains separate so coding work is always
@@ -162,32 +157,13 @@ final class VoiceController: ObservableObject {
         requestError = nil
 
         switch lastSubmission {
-        case .chat(let prompt):
-            transcript = prompt
-            Task { await send(prompt) }
         case .codexTask(let prompt, let pylonRef):
             transcript = prompt
             Task { await sendCodexTask(prompt, pylonRef: pylonRef) }
         }
     }
 
-    // MARK: - Khala API
-
-    private func send(_ prompt: String) async {
-        guard let key = KeychainStore.loadAPIKey() else {
-            handle(KhalaClient.KhalaError.missingKey)
-            return
-        }
-        state = .thinking
-        do {
-            let reply = try await KhalaClient.complete(prompt: prompt, apiKey: key)
-            response = reply
-            requestError = nil
-            state = .idle
-        } catch {
-            handle(error)
-        }
-    }
+    // MARK: - Khala API (Codex delegation)
 
     private func sendCodexTask(_ prompt: String, pylonRef: String) async {
         guard let key = KeychainStore.loadAPIKey() else {

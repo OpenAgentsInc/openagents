@@ -2,19 +2,24 @@ import SwiftUI
 
 /// The main chat surface for a single conversation.
 ///
-/// FOUNDATION SEAM (issue #6345 fills this out): rich markdown / fenced
-/// code-block rendering, response action rows (copy, regenerate), and the
-/// polished ChatGPT-style bubble layout. Issue #6344 owns composer streaming
-/// refinements.
+/// #6346 wires LIVE STREAMING into this view: typed and voice turns both append
+/// a user `Message`, create an empty assistant `Message`, and stream the reply
+/// token-by-token over the FULL conversation history (multi-turn). The assistant
+/// bubble grows live (`MessageBubble(isStreaming:true)`) and settles into
+/// rendered markdown/code on `[DONE]`. A stop control cancels the in-flight
+/// stream; the regenerate hook re-streams the last user turn.
 ///
-/// This foundation version is functional today: it renders the persisted
-/// transcript, the existing voice visualization + push-to-talk orb, a text
-/// composer, and the folded-in Codex/Delegate panel. Completed turns are
-/// persisted to the active `Conversation` through `ConversationStore` so the
-/// chat survives relaunch and shows up in Recents.
+/// Voice and text share one transcript: the push-to-talk orb transcribes and
+/// hands the transcript to the same streaming `send(_:)`, so a spoken turn is a
+/// normal user turn that streams a reply. The voice visualization stays.
+///
+/// The streaming chat round-trip is owned by `ChatViewModel`; the explicit Codex
+/// delegation panel keeps its separate, typed, non-streaming path on
+/// `VoiceController`.
 struct ChatView: View {
     @ObservedObject var store: ConversationStore
     @ObservedObject var voice: VoiceController
+    @ObservedObject var model: ChatViewModel
     let conversation: Conversation
     @Binding var hasKey: Bool
     let onOpenSettings: () -> Void
@@ -39,15 +44,19 @@ struct ChatView: View {
                                 .font(.footnote.weight(.semibold))
                                 .foregroundStyle(.orange)
                         }
+                        Color.clear.frame(height: 1).id("bottom")
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal)
                     .padding(.vertical, 18)
                 }
                 .scrollDismissesKeyboard(.interactively)
+                // Auto-scroll to the streaming turn as it grows + on each delta.
+                .onChange(of: model.streamTick) { _, _ in scroll(proxy) }
+                .onChange(of: conversation.messages.count) { _, _ in scroll(proxy) }
+                .onChange(of: model.error) { _, _ in scroll(proxy) }
                 .onChange(of: voice.response) { _, _ in scroll(proxy) }
                 .onChange(of: voice.requestError) { _, _ in scroll(proxy) }
-                .onChange(of: conversation.messages.count) { _, _ in scroll(proxy) }
             }
         }
         .safeAreaInset(edge: .bottom) {
@@ -57,6 +66,12 @@ struct ChatView: View {
                 .padding(.bottom, 8)
                 .background(.thinMaterial)
         }
+        .onAppear {
+            // Route push-to-talk transcripts into the shared streaming path.
+            voice.onTranscript = { [weak model] transcript in
+                model?.send(transcript)
+            }
+        }
     }
 
     // MARK: - Transcript
@@ -64,7 +79,8 @@ struct ChatView: View {
     private var transcriptPanel: some View {
         VStack(alignment: .leading, spacing: 12) {
             let persisted = conversation.sortedMessages.filter { $0.role != .system }
-            if persisted.isEmpty && voice.transcript.isEmpty && voice.response.isEmpty && voice.requestError == nil {
+            if persisted.isEmpty && !model.isStreaming && model.error == nil
+                && voice.response.isEmpty && voice.requestError == nil {
                 Text("Type a message or hold to talk.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -75,42 +91,52 @@ struct ChatView: View {
                     MessageBubble(
                         title: message.role == .user ? "You" : "Khala",
                         text: message.content,
-                        outgoing: message.role == .user
+                        outgoing: message.role == .user,
+                        isStreaming: message.id == model.streamingMessageID,
+                        onRegenerate: regenerateHook(for: message)
                     )
+                    .id(message.id)
                 }
 
-                // Live in-flight turn (not yet persisted).
-                if voice.state.isBusy || !voice.response.isEmpty || voice.requestError != nil {
-                    if !voice.transcript.isEmpty, lastPersistedUserDiffers(voice.transcript) {
-                        MessageBubble(title: "You", text: voice.transcript, outgoing: true)
-                    }
-                    if !voice.response.isEmpty {
-                        MessageBubble(
-                            title: "Khala",
-                            text: voice.response,
-                            outgoing: false,
-                            isStreaming: voice.state.isBusy
-                        )
-                    }
-                    if let requestError = voice.requestError {
-                        errorNotice(requestError)
-                    }
+                // Inline streaming-chat error with retry.
+                if let error = model.error {
+                    chatErrorNotice(error)
+                }
+
+                // The separate Codex-delegation panel surfaces its result/error
+                // through the voice controller; keep rendering those.
+                if !voice.response.isEmpty {
+                    MessageBubble(
+                        title: "Khala",
+                        text: voice.response,
+                        outgoing: false,
+                        isStreaming: voice.state.isBusy
+                    )
+                }
+                if let requestError = voice.requestError {
+                    codexErrorNotice(requestError)
                 }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .animation(.easeOut(duration: 0.18), value: voice.transcript)
+        .animation(.easeOut(duration: 0.18), value: model.streamTick)
+        .animation(.easeOut(duration: 0.18), value: model.error)
         .animation(.easeOut(duration: 0.18), value: voice.response)
         .animation(.easeOut(duration: 0.18), value: voice.requestError)
-        // Persist completed assistant turns into the conversation.
-        .onChange(of: voice.state) { _, newValue in
-            persistCompletedTurnIfNeeded(state: newValue)
-        }
+    }
+
+    /// Regenerate is offered only on the LAST assistant turn and only when no
+    /// stream is in flight.
+    private func regenerateHook(for message: Message) -> (() -> Void)? {
+        guard message.role == .assistant, !model.isStreaming else { return nil }
+        let lastAssistant = conversation.sortedMessages.last { $0.role == .assistant }
+        guard message.id == lastAssistant?.id else { return nil }
+        return { model.regenerate() }
     }
 
     private var voiceControls: some View {
         VStack(spacing: 12) {
-            Text(voice.state.label)
+            Text(voiceLabel)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(voice.state.accentColor)
                 .multilineTextAlignment(.center)
@@ -127,7 +153,47 @@ struct ChatView: View {
         }
     }
 
-    private func errorNotice(_ error: VoiceController.RequestError) -> some View {
+    /// While a chat stream is in flight the orb reads "Khala is replying…" so the
+    /// voice label reflects the shared transcript state.
+    private var voiceLabel: String {
+        if model.isStreaming { return "Khala is replying…" }
+        return voice.state.label
+    }
+
+    /// Inline error for the streaming chat path (402 / network / HTTP), with a
+    /// retry affordance for retryable failures.
+    private func chatErrorNotice(_ error: ChatViewModel.ChatError) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: error.isRetryable ? "arrow.clockwise.circle.fill" : "exclamationmark.circle.fill")
+                    .foregroundStyle(error.isRetryable ? .orange : .red)
+                Text(error.title)
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.primary)
+            }
+            Text(error.message)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if error.isRetryable {
+                Button(action: model.retry) {
+                    Label("Retry", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(model.isStreaming)
+            } else if !hasKey {
+                Button("Open Settings", action: onOpenSettings)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func codexErrorNotice(_ error: VoiceController.RequestError) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Image(systemName: error.isRetryable ? "arrow.clockwise.circle.fill" : "exclamationmark.circle.fill")
@@ -165,21 +231,27 @@ struct ChatView: View {
                 .focused($composerFocused)
                 .submitLabel(.send)
                 .onSubmit(sendTyped)
-                .disabled(voice.state.isBusy)
+                .disabled(model.isStreaming || voice.state.isBusy)
 
-            Button(action: sendTyped) {
-                Group {
-                    if voice.state.isBusy {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Image(systemName: "arrow.up.circle.fill").font(.title)
-                    }
+            // Stop while streaming, send otherwise.
+            if model.isStreaming {
+                Button(action: model.stop) {
+                    Image(systemName: "stop.circle.fill")
+                        .font(.title)
+                        .frame(width: 34, height: 34)
+                        .foregroundStyle(.red)
                 }
-                .frame(width: 34, height: 34)
-                .foregroundStyle(canSend ? voice.state.accentColor : Color.secondary)
+                .accessibilityLabel("Stop generating")
+            } else {
+                Button(action: sendTyped) {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.title)
+                        .frame(width: 34, height: 34)
+                        .foregroundStyle(canSend ? voice.state.accentColor : Color.secondary)
+                }
+                .disabled(!canSend)
+                .accessibilityLabel("Send message")
             }
-            .disabled(!canSend)
-            .accessibilityLabel("Send message")
         }
         .padding(.horizontal, 4)
     }
@@ -222,12 +294,14 @@ struct ChatView: View {
     // MARK: - Send
 
     private var canSend: Bool {
-        hasKey && !voice.state.isBusy
+        hasKey && !model.isStreaming && !voice.state.isBusy
             && !typedMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var canSendCodexTask: Bool {
-        canSend && codexPylonRef.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3
+        hasKey && !model.isStreaming && !voice.state.isBusy
+            && !typedMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && codexPylonRef.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3
     }
 
     private func sendTyped() {
@@ -235,8 +309,7 @@ struct ChatView: View {
         guard canSend else { return }
         composerFocused = false
         typedMessage = ""
-        store.appendMessage(.user, content: text, to: conversation)
-        voice.sendText(text)
+        model.send(text)
     }
 
     private func sendCodexTask() {
@@ -248,45 +321,9 @@ struct ChatView: View {
         voice.sendCodexTask(text, pylonRef: codexPylonRef)
     }
 
-    // MARK: - Persistence of completed turns
-
-    @State private var persistedResponseForState = false
-
-    /// When a turn finishes (state leaves `.thinking` for `.idle`/`.success`)
-    /// with a non-empty response, persist the assistant turn. Voice turns also
-    /// persist the user transcript first if it was not already recorded.
-    private func persistCompletedTurnIfNeeded(state: VoiceState) {
-        switch state {
-        case .thinking, .recording, .transcribing:
-            persistedResponseForState = false
-        case .idle, .success:
-            guard !persistedResponseForState else { return }
-            // Persist a voice user turn that bypassed the text composer.
-            let trimmedTranscript = voice.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmedTranscript.isEmpty, lastPersistedUserDiffers(trimmedTranscript) {
-                store.appendMessage(.user, content: trimmedTranscript, to: conversation)
-            }
-            let reply = voice.response.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !reply.isEmpty {
-                store.appendMessage(.assistant, content: reply, to: conversation)
-                persistedResponseForState = true
-            }
-        case .error:
-            persistedResponseForState = false
-        }
-    }
-
-    /// True when the latest persisted user message differs from `text`, so a
-    /// composer-sent message (already persisted in `sendTyped`) is not duplicated.
-    private func lastPersistedUserDiffers(_ text: String) -> Bool {
-        let lastUser = conversation.sortedMessages.last { $0.role == .user }
-        return lastUser?.content.trimmingCharacters(in: .whitespacesAndNewlines)
-            != text.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
     private func scroll(_ proxy: ScrollViewProxy) {
         withAnimation(.easeOut(duration: 0.2)) {
-            proxy.scrollTo("transcript", anchor: .bottom)
+            proxy.scrollTo("bottom", anchor: .bottom)
         }
     }
 }

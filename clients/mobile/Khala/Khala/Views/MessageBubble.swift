@@ -16,6 +16,9 @@ struct MessageBubble: View {
     /// When true (an in-flight assistant turn), the response action row is
     /// hidden until the stream settles.
     var isStreaming: Bool = false
+    /// Optional regenerate hook (#6346). When present on a settled assistant
+    /// turn, the action row shows a regenerate control alongside copy.
+    var onRegenerate: (() -> Void)? = nil
 
     var body: some View {
         if outgoing {
@@ -57,7 +60,7 @@ struct MessageBubble: View {
             MarkdownMessage(content: text)
 
             if !isStreaming, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                ResponseActionRow(messageText: text)
+                ResponseActionRow(messageText: text, onRegenerate: onRegenerate)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
