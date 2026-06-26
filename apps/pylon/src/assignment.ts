@@ -38,6 +38,7 @@ import {
   type PsionicQwenModelAdmission,
   type PsionicQwenTaskMode,
 } from "../packages/runtime/src/index.js"
+import { resolvePylonAccountSelection } from "./account-registry.js"
 
 export type AssignmentPaymentMode = "no-spend" | "paid"
 export type AssignmentStatus = "offered" | "accepted" | "running" | "closed" | "rejected" | "cancelled" | "timed-out" | "stale"
@@ -116,6 +117,8 @@ export type AssignmentCloseout = {
 
 export type AssignmentClientOptions = {
   agentToken?: string
+  accountHome?: string
+  accountRef?: string
   assignmentRef?: string
   baseUrl: string
   fetch?: typeof fetch
@@ -1117,6 +1120,14 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
 
   const observedAtDate = options.now?.() ?? new Date()
   const observedAt = observedAtDate.toISOString()
+  const codexAccount =
+    options.accountRef === undefined && options.accountHome === undefined
+      ? null
+      : await resolvePylonAccountSelection(summary, {
+          provider: "codex",
+          ...(options.accountRef === undefined ? {} : { accountRef: options.accountRef }),
+          ...(options.accountHome === undefined ? {} : { accountHome: options.accountHome }),
+        })
   const runtimeGate =
     (await executeTassadarAssignment(lease, observedAtDate)) ??
     (await executeClaudeAgentAssignment(state, lease, observedAtDate, {
@@ -1126,6 +1137,7 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
     })) ??
     (await executeCodexAgentAssignment(state, lease, observedAtDate, {
       ...(options.agentToken === undefined ? {} : { agentToken: options.agentToken }),
+      ...(codexAccount === null ? {} : { account: codexAccount }),
       baseUrl: options.baseUrl,
       ...(options.codexAgentRunner === undefined ? {} : { codexAgentRunner: options.codexAgentRunner }),
       ...(options.codexAgentProbe === undefined ? {} : { codexAgentProbe: options.codexAgentProbe }),

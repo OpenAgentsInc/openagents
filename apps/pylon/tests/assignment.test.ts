@@ -22,6 +22,11 @@ import {
   type ClaudeAgentCheckoutRunner,
   type ClaudeAgentRunner,
 } from "../src/claude-agent-executor"
+import {
+  CODEX_AGENT_SUM_REPAIR_FIXTURE_REF,
+  CODEX_AGENT_TASK_SCHEMA,
+  type CodexAgentRunner,
+} from "../src/codex-agent-executor"
 
 const servers: ReturnType<typeof Bun.serve>[] = []
 
@@ -216,6 +221,72 @@ describe("Pylon assignment lease flow", () => {
       expect(JSON.stringify(bundle)).not.toContain(home)
       expect(JSON.stringify(bundle)).not.toContain("/Users/")
       assertPublicProjectionSafe(bundle)
+    })
+  })
+
+  test("routes Codex no-spend assignments through the selected Codex account", async () => {
+    await withTempHome(async (home) => {
+      const codexLease = lease({
+        capabilityRefs: ["capability.pylon.local_codex"],
+        codingAssignment: {
+          codex: {
+            agentKind: "codex_sdk",
+            fixtureRef: CODEX_AGENT_SUM_REPAIR_FIXTURE_REF,
+            schema: CODEX_AGENT_TASK_SCHEMA,
+          },
+        },
+      })
+      const fake = fakeAssignmentServer({ leases: [codexLease] })
+      const summary = await readySummary(home, ["capability.pylon.local_codex"])
+      const state = await ensurePylonLocalState(summary)
+      const codexHome = join(home, "accounts/codex/codex-a")
+      await mkdir(codexHome, { recursive: true })
+      await writeFile(join(codexHome, "auth.json"), "{}\n")
+      await writeFile(
+        state.paths.config,
+        `${JSON.stringify(
+          {
+            dev: {
+              accounts: [{ provider: "codex", ref: "codex-a", home: codexHome }],
+            },
+          },
+          null,
+          2,
+        )}\n`,
+      )
+      await sendHeartbeat(summary, { baseUrl: fake.baseUrl, now: () => new Date("2026-06-09T00:00:00.000Z") })
+
+      let seenAccountRef: string | null = null
+      let seenCodexHome: string | null = null
+      const fixingCodexRunner: CodexAgentRunner = async (input) => {
+        seenAccountRef = input.account?.accountRef ?? null
+        seenCodexHome = input.env?.CODEX_HOME ?? null
+        await writeFile(
+          join(input.cwd, "sum.ts"),
+          "export const sum = (left: number, right: number) => left + right\n",
+        )
+        return { commandCount: 1, editedFileCount: 1, outcome: "completed", sessionRef: null, turnCount: 1 }
+      }
+
+      const result = await runNoSpendAssignment(summary, {
+        accountRef: "codex-a",
+        baseUrl: fake.baseUrl,
+        codexAgentProbe: {
+          env: {},
+          importer: async () => ({}),
+          platform: "darwin",
+        },
+        codexAgentRunner: fixingCodexRunner,
+        now: () => new Date("2026-06-09T00:00:30.000Z"),
+      })
+
+      expect(result.ok).toBe(true)
+      if (!result.ok) throw new Error("expected Codex assignment to run")
+      expect(seenAccountRef).toBe("codex-a")
+      expect(seenCodexHome).toBe(codexHome)
+      expect(result.closeout.resultRefs).toContain(
+        "result.public.pylon.codex_agent_task.fixture_repair_passed",
+      )
     })
   })
 

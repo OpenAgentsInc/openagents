@@ -4439,8 +4439,14 @@ async function main() {
         const assignmentRef =
           optionString(options, "assignment-ref") ??
           optionString(options, "lease-ref")
+        const accountRef =
+          optionString(options, "account") ??
+          optionString(options, "account-ref")
+        const accountHome = optionString(options, "account-home")
         const result = await runNoSpendAssignment(summary, {
           ...clientOptions,
+          ...(accountRef === undefined ? {} : { accountRef }),
+          ...(accountHome === undefined ? {} : { accountHome }),
           ...(assignmentRef === undefined ? {} : { assignmentRef }),
         })
         process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)

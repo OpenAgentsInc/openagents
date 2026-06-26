@@ -412,6 +412,8 @@ export const PYLON_COMMAND_CATALOG: readonly PylonCommandEntry[] = [
     json: true,
     args: [
       pos("poll|accept|progress|closeout|run-no-spend", "Subcommand."),
+      opt("--account", "run-no-spend: Codex account ref to use for codex_agent_task leases."),
+      opt("--account-home", "run-no-spend: direct Codex home path when no registered account ref is used."),
       opt("--assignment-ref", "run-no-spend: accept only this assignment ref; prevents stale leases from being claimed."),
       opt("--base-url", "OpenAgents base URL."),
       opt("--lease-ref", "run-no-spend: alias for --assignment-ref."),
