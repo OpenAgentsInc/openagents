@@ -4,9 +4,17 @@ export interface KhalaChangelogEntry {
   readonly bullets: ReadonlyArray<string>
 }
 
-export const KHALA_CLI_VERSION = "0.1.10"
+export const KHALA_CLI_VERSION = "0.1.11"
 
 export const KHALA_CHANGELOG: ReadonlyArray<KhalaChangelogEntry> = [
+  {
+    version: "0.1.11",
+    releasedAt: "2026-06-26T19:01:29.000Z",
+    bullets: [
+      "Adds Blueprint-selected local Codex delegation for workspace, filesystem, shell, git, and code tasks.",
+      "Adds khala auth codex, khala codex, and /codex commands with Pylon Codex account reuse.",
+    ],
+  },
   {
     version: "0.1.10",
     releasedAt: "2026-06-26T18:37:50.000Z",

@@ -2,6 +2,14 @@ import { Effect } from "effect"
 import { appendAssistantTurn, prepareUserTurn } from "./bounds.js"
 import { KHALA_CLI_VERSION, formatKhalaChangelog } from "./changelog.js"
 import { fetchModels, fetchTokensServed, mintFreeKey, runChatTurn, submitFeedback, toKhalaCliError } from "./client.js"
+import {
+  connectKhalaCodex,
+  resolveKhalaCodexStatus,
+  runKhalaCodexTask,
+  selectKhalaRoute,
+  type KhalaCodexDisplayEvent,
+  type KhalaCodexStatus,
+} from "./codex.js"
 import { appendPromptHistory, readPromptFromTerminal } from "./input.js"
 import { renderMarkdownForTerminal, renderReasoningMarkdownDeltaForTerminal, terminalStyle } from "./terminal.js"
 import { ensureStoredAgentToken, traceTokenPath } from "./token-store.js"
@@ -10,6 +18,9 @@ import { startKhalaAutoUpdate } from "./updater.js"
 
 type ParsedCommand =
   | { readonly kind: "chat" }
+  | { readonly kind: "codex"; readonly text: string | undefined }
+  | { readonly kind: "codexAuth" }
+  | { readonly kind: "codexStatus" }
   | { readonly kind: "changelog" }
   | { readonly kind: "feedback"; readonly text: string | undefined }
   | { readonly kind: "help" }
@@ -66,6 +77,39 @@ export async function runKhalaCli(argv: ReadonlyArray<string>, env: Record<strin
     }
     if (args.command.kind === "help") {
       process.stdout.write(usage())
+      return 0
+    }
+    if (args.command.kind === "codexAuth") {
+      const connected = await connectKhalaCodex({ env })
+      process.stdout.write(
+        connected.status === "already_connected"
+          ? `Codex already connected: ${connected.codexHome}\n`
+          : `Codex connected: ${connected.codexHome}\n`,
+      )
+      return 0
+    }
+    if (args.command.kind === "codexStatus") {
+      process.stdout.write(`${formatCodexStatus(await resolveKhalaCodexStatus(env))}\n`)
+      return 0
+    }
+    if (args.command.kind === "codex") {
+      const prompt = args.command.text?.trim()
+      if (prompt === undefined || prompt.length === 0) {
+        throw new Error("khala codex requires a task, for example: khala codex \"read README.md\"")
+      }
+      const result = await runKhalaCodexTask({
+        cwd: process.cwd(),
+        env,
+        prompt,
+        onEvent: args.json ? undefined : event => writeCodexEvent(event),
+      })
+      if (args.json) {
+        process.stdout.write(`${JSON.stringify({ kind: "local_codex", ...result })}\n`)
+      } else if (result.text.trim().length === 0) {
+        process.stdout.write(`${terminalStyle.assistant("Khala:")} Codex completed with no final text.\n`)
+      } else {
+        process.stdout.write("\n")
+      }
       return 0
     }
     if (args.command.kind === "info") {
@@ -190,6 +234,12 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
     }
   } else if (maybeCommand === "changelog") {
     command = { kind: "changelog" }
+  } else if (maybeCommand === "auth" && positional[1] === "codex") {
+    command = { kind: "codexAuth" }
+  } else if (maybeCommand === "codex") {
+    command = positional[1] === "status"
+      ? { kind: "codexStatus" }
+      : { kind: "codex", text: positional.slice(1).join(" ") || prompt }
   } else if (maybeCommand === "help") {
     command = { kind: "help" }
   } else if (maybeCommand === "info") {
@@ -249,6 +299,15 @@ async function runInteractive(args: ParsedArgs, env: Record<string, string | und
     if (prompt.trim().startsWith("/")) {
       const outcome = await handleSlashCommand(args, env, prompt.trim(), lastTraceRef, lastMessageInfo, sessionId)
       if (outcome === "exit") return
+      continue
+    }
+
+    const routed = await maybeRunLocalCodexTurn(args, env, messages, prompt)
+    if (routed.handled) {
+      messages = appendAssistantTurn(
+        prepareUserTurn(messages, prompt),
+        routed.text,
+      )
       continue
     }
 
@@ -332,6 +391,45 @@ async function handleSlashCommand(
     process.stdout.write(`${terminalStyle.assistant("Khala:")} khala ${KHALA_CLI_VERSION}\n\n`)
     return "handled"
   }
+  if (command === "/codex") {
+    if (argument === "status") {
+      process.stdout.write(`${terminalStyle.assistant("Khala:")} ${formatCodexStatus(await resolveKhalaCodexStatus(env))}\n\n`)
+      return "handled"
+    }
+    if (argument === "connect" || argument === "auth") {
+      try {
+        const connected = await connectKhalaCodex({ env })
+        process.stdout.write(`${terminalStyle.assistant("Khala:")} ${
+          connected.status === "already_connected"
+            ? `Codex already connected: ${connected.codexHome}`
+            : `Codex connected: ${connected.codexHome}`
+        }\n\n`)
+      } catch (error) {
+        process.stdout.write(`${terminalStyle.assistant("Khala:")} ${String(error instanceof Error ? error.message : error)}\n\n`)
+      }
+      return "handled"
+    }
+    if (argument.length === 0) {
+      process.stdout.write(`${terminalStyle.assistant("Khala:")} Usage: /codex <task>, /codex status, or /codex connect\n\n`)
+      return "handled"
+    }
+    try {
+      const result = await runKhalaCodexTask({
+        cwd: process.cwd(),
+        env,
+        prompt: argument,
+        onEvent: event => writeCodexEvent(event),
+      })
+      if (result.text.trim().length === 0) {
+        process.stdout.write(`${terminalStyle.assistant("Khala:")} Codex completed with no final text.\n\n`)
+      } else {
+        process.stdout.write("\n")
+      }
+    } catch (error) {
+      process.stdout.write(`${terminalStyle.assistant("Khala:")} ${String(error instanceof Error ? error.message : error)}\n\n`)
+    }
+    return "handled"
+  }
   if (command === "/msginfo") {
     process.stdout.write(`${terminalStyle.assistant("Khala:")} ${formatMessageInfo(lastMessageInfo)}\n\n`)
     return "handled"
@@ -390,6 +488,16 @@ async function runOneTurn(
   onDelta?: (text: string) => void,
   onReasoning?: (text: string) => void,
 ): Promise<string> {
+  const routed = await maybeRunLocalCodexTurn(args, Bun.env, history, prompt, {
+    silent: args.json,
+    onEvent: onDelta === undefined
+      ? undefined
+      : event => {
+          if (event.kind === "message") onDelta(event.text)
+          else if (event.kind === "reasoning") onReasoning?.(event.text)
+        },
+  })
+  if (routed.handled) return routed.text
   const messages = prepareUserTurn(history, prompt)
   const result = await Effect.runPromise(runChatTurn({
     mode: args.mode,
@@ -403,6 +511,57 @@ async function runOneTurn(
     },
   }))
   return result.text
+}
+
+async function maybeRunLocalCodexTurn(
+  args: ParsedArgs,
+  env: Record<string, string | undefined>,
+  history: ReadonlyArray<KhalaChatMessage>,
+  prompt: string,
+  options: {
+    readonly onEvent?: ((event: KhalaCodexDisplayEvent) => void) | undefined
+    readonly silent?: boolean | undefined
+  } = {},
+): Promise<{ readonly handled: false } | { readonly handled: true; readonly text: string }> {
+  const selection = await selectKhalaRoute({
+    baseUrl: args.baseUrl,
+    env,
+    history,
+    mode: args.mode,
+    prompt,
+    token: args.token,
+  })
+  if (selection.route !== "local_codex") {
+    return { handled: false }
+  }
+  const status = await resolveKhalaCodexStatus(env)
+  if (!status.ready) {
+    const message = status.blocker === "codex_sdk_missing"
+      ? "Local Codex routing selected, but this Khala build is missing @openai/codex-sdk."
+      : "Local Codex routing selected, but Codex is not connected. Run `khala auth codex` or `/codex connect`."
+    if (options.silent !== true) {
+      process.stdout.write(`${terminalStyle.assistant("Khala:")} ${message}\n\n`)
+    }
+    return { handled: true, text: message }
+  }
+  if (options.silent !== true) {
+    process.stdout.write(`${terminalStyle.assistant("Khala:")} ${terminalStyle.meta(`Blueprint selected local Codex: ${selection.reason}`)}\n`)
+  }
+  const result = await runKhalaCodexTask({
+    cwd: process.cwd(),
+    env,
+    prompt,
+    onEvent: options.silent === true ? undefined : options.onEvent ?? (event => writeCodexEvent(event)),
+  })
+  if (options.silent === true) {
+    return { handled: true, text: result.text }
+  }
+  if (result.text.trim().length === 0) {
+    process.stdout.write(`${terminalStyle.assistant("Khala:")} Codex completed with no final text.\n\n`)
+  } else {
+    process.stdout.write("\n")
+  }
+  return { handled: true, text: result.text }
 }
 
 async function readStdinPrompt(): Promise<string> {
@@ -513,6 +672,53 @@ function formatFallback(info: ChatTurnMetadata): string {
   return `${primary} reported ${info.fallbackReason}; Khala used ${backend}`
 }
 
+function formatCodexStatus(status: KhalaCodexStatus): string {
+  if (status.ready) {
+    return terminalStyle.meta([
+      "Local Codex: connected",
+      `home: ${status.codexHome}`,
+      `credentials: ${formatCodexCredentialSource(status.credentialSource)}`,
+      "workspace delegation: enabled",
+    ].join("\n"))
+  }
+  const lines = [
+    "Local Codex: not connected",
+    `home: ${status.codexHome}`,
+    `sdk: ${status.sdk}`,
+    status.blocker === "codex_sdk_missing"
+      ? "fix: install a Khala build that includes @openai/codex-sdk"
+      : "fix: run khala auth codex or /codex connect",
+  ]
+  return terminalStyle.meta(lines.join("\n"))
+}
+
+function formatCodexCredentialSource(source: Extract<KhalaCodexStatus, { readonly ready: true }>["credentialSource"]): string {
+  if (source === "khala_codex_home") return "Khala Codex account"
+  if (source === "codex_home_env") return "CODEX_HOME"
+  if (source === "default_codex_home") return "~/.codex"
+  return "Pylon Codex account"
+}
+
+function writeCodexEvent(event: KhalaCodexDisplayEvent): void {
+  if (event.kind === "message") {
+    process.stdout.write(`${renderMarkdownForTerminal(event.text)}\n`)
+    return
+  }
+  if (event.kind === "reasoning") {
+    process.stdout.write(`${terminalStyle.reasoning(renderMarkdownForTerminal(event.text))}\n`)
+    return
+  }
+  if (event.kind === "command") {
+    process.stdout.write(`${terminalStyle.meta(`Codex: ${event.text}`)}\n`)
+    return
+  }
+  if (event.kind === "file_change") {
+    process.stdout.write(`${terminalStyle.meta(`Codex: ${event.text}`)}\n`)
+    return
+  }
+  process.stdout.write(`${terminalStyle.meta(`Codex: ${event.text}`)}\n`)
+}
+
 async function formatInfo(input: {
   readonly args: ParsedArgs
   readonly env: Record<string, string | undefined>
@@ -571,6 +777,9 @@ function interactiveHelp(): string {
 /feedback <text>   Save product feedback with the last trace when available
 /info              Show this CLI session and trace viewing link
 /msginfo           Show metadata for the last Khala response
+/codex status      Show local Codex connection status
+/codex connect     Connect Codex to Khala with device auth
+/codex <task>      Delegate a workspace task directly to Codex
 /tokens            Show global Khala tokens served
 /changelog         Show recent Khala CLI changes
 /version           Show the installed Khala CLI version
@@ -588,6 +797,9 @@ Usage:
   khala version
   khala changelog
   khala tokens
+  khala auth codex
+  khala codex status
+  khala codex "read README.md"
   khala feedback "The transcript disappeared"
   khala --prompt "Say hello"
   khala --headless --json < prompt.txt
@@ -598,6 +810,9 @@ Interactive commands:
   /feedback <text>   Save product feedback without sending it to inference
   /info              Show this CLI session and trace viewing link
   /msginfo           Show metadata for the last Khala response
+  /codex status      Show local Codex connection status
+  /codex connect     Connect Codex to Khala with device auth
+  /codex <task>      Delegate a workspace task directly to Codex
   /tokens            Show global Khala tokens served
   /changelog         Show recent Khala CLI changes
   /version           Show the installed Khala CLI version

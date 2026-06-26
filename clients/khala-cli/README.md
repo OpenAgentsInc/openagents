@@ -9,6 +9,8 @@ khala changelog
 khala tokens
 khala info
 khala version
+khala auth codex
+khala codex "read README.md"
 bun run khala
 bun run khala -- --prompt "Say hello in one short sentence."
 printf 'Say OK only.' | bun run khala -- --headless --json
@@ -24,12 +26,20 @@ two modes:
   transcript with `>` prompts and `Khala:` turns in scrollback. Up/Down cycles
   through previous prompts. It does
   not use an alternate-screen/full-screen UI. Slash commands such as
-  `/feedback`, `/info`, `/msginfo`, `/tokens`, `/changelog`, `/version`, and `/help` are
-  handled locally instead of being sent to inference.
+  `/feedback`, `/info`, `/msginfo`, `/codex`, `/tokens`, `/changelog`,
+  `/version`, and `/help` are handled locally instead of being sent to
+  inference.
   Provider-labeled reasoning is rendered separately as dim `Khala reasoning:`
   text when the API supplies it.
 - **Headless CLI mode:** `--prompt`, positional text, or stdin runs one turn and
   streams the assistant response to stdout for scripts and agents.
+- **Local Codex delegation:** when the Blueprint route selector sees that a
+  request needs the local workspace, filesystem, shell, git, tests, or code
+  edits, Khala delegates that turn to a connected local Codex account instead
+  of letting the chat model claim it has no file access. `khala auth codex`
+  connects Codex with device auth, and existing Pylon Codex account homes are
+  reused automatically when present. Set `KHALA_CODEX_AUTO=off` to disable
+  automatic delegation.
 - **Utility commands:** `khala feedback "..."` saves feedback to
   `POST /api/khala/feedback`, `khala tokens` reads the public Khala
   tokens-served counter, and `khala changelog` prints the recent package
@@ -52,6 +62,9 @@ that check.
 - `/msginfo` prints the last Khala response metadata: trace reference, Khala
   orchestrator model, backend model/adapter routing, fallback reason, token
   counts, and tokens per second when reported by the backend.
+- `/codex status` shows whether local Codex workspace delegation is connected.
+- `/codex connect` runs Codex device auth into Khala's local Codex home.
+- `/codex <task>` delegates a workspace task directly to Codex.
 - `/tokens` prints the global Khala tokens-served count from the same public
   counter shown on `openagents.com` and `/khala`.
 - `/changelog` prints the five most recent CLI releases in reverse
@@ -65,6 +78,9 @@ that check.
 - `khala feedback "text"` sends feedback from scripts or a shell. This command
   may not have a chat trace reference, which is expected.
 - `khala info` prints a one-shot CLI thread id and trace viewing link.
+- `khala auth codex` connects a Codex account for local workspace delegation.
+- `khala codex status` shows the active local Codex credential source.
+- `khala codex "task"` delegates directly to local Codex.
 - `khala tokens` prints the current global Khala tokens-served count.
 - `khala changelog` prints recent releases.
 - `khala version` prints the installed CLI version.
@@ -83,6 +99,13 @@ that check.
 - `--mint-free-key` calls `POST /api/keys/free` and prints the response once.
 
 ## Changelog
+
+### v0.1.11 - Jun 26, 2026, 2:01:29 PM CDT
+
+- Adds Blueprint-selected local Codex delegation for workspace, filesystem,
+  shell, git, and code tasks.
+- Adds `khala auth codex`, `khala codex`, and `/codex` commands with Pylon
+  Codex account reuse.
 
 ### v0.1.10 - Jun 26, 2026, 1:37:50 PM CDT
 

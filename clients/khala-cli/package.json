@@ -1,6 +1,6 @@
 {
   "name": "@openagentsinc/khala",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "description": "Khala terminal client with interactive and headless CLI modes",
   "private": false,
   "type": "module",
@@ -26,6 +26,9 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "dependencies": {
+    "@openai/codex-sdk": "^0.139.0"
   },
   "devDependencies": {
     "bun-types": "^1.0.0",

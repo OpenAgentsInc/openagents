@@ -332,9 +332,12 @@
     },
     "clients/khala-cli": {
       "name": "@openagentsinc/khala",
-      "version": "0.1.8",
+      "version": "0.1.11",
       "bin": {
         "khala": "dist/index.js",
+      },
+      "dependencies": {
+        "@openai/codex-sdk": "^0.139.0",
       },
       "devDependencies": {
         "bun-types": "^1.0.0",
