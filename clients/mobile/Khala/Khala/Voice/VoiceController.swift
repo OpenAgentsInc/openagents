@@ -11,9 +11,21 @@ import SwiftUI
 /// background.
 @MainActor
 final class VoiceController: ObservableObject {
+    struct RequestError: Equatable {
+        let title: String
+        let message: String
+        let isRetryable: Bool
+    }
+
+    private enum Submission: Equatable {
+        case chat(String)
+        case codexTask(prompt: String, pylonRef: String)
+    }
+
     @Published private(set) var state: VoiceState = .idle
     @Published private(set) var transcript: String = ""
     @Published private(set) var response: String = ""
+    @Published private(set) var requestError: RequestError?
     /// Smoothed 0...1 microphone level for the animated background.
     @Published private(set) var level: Double = 0
 
@@ -24,6 +36,7 @@ final class VoiceController: ObservableObject {
     private let minHoldSeconds: TimeInterval = 0.2
     private var pressStart: Date?
     private var capturing = false
+    private var lastSubmission: Submission?
 
     // MARK: - Permissions
 
@@ -45,6 +58,7 @@ final class VoiceController: ObservableObject {
         pressStart = Date()
         response = ""
         transcript = ""
+        requestError = nil
         startCapture()
     }
 
@@ -104,6 +118,7 @@ final class VoiceController: ObservableObject {
             let text = try await recognizer.finish()
             transcript = text
             state = .success
+            lastSubmission = .chat(text)
             await send(text)
         } catch {
             state = .error((error as? LocalizedError)?.errorDescription ?? "Transcription failed.")
@@ -122,6 +137,8 @@ final class VoiceController: ObservableObject {
         guard !state.isBusy else { return }
         response = ""
         transcript = trimmed
+        requestError = nil
+        lastSubmission = .chat(trimmed)
         Task { await send(trimmed) }
     }
 
@@ -134,29 +151,47 @@ final class VoiceController: ObservableObject {
         guard !state.isBusy else { return }
         response = ""
         transcript = trimmed
+        requestError = nil
+        lastSubmission = .codexTask(prompt: trimmed, pylonRef: pylonRef)
         Task { await sendCodexTask(trimmed, pylonRef: pylonRef) }
+    }
+
+    func retryLastSubmission() {
+        guard let lastSubmission, requestError?.isRetryable == true, !state.isBusy else { return }
+        response = ""
+        requestError = nil
+
+        switch lastSubmission {
+        case .chat(let prompt):
+            transcript = prompt
+            Task { await send(prompt) }
+        case .codexTask(let prompt, let pylonRef):
+            transcript = prompt
+            Task { await sendCodexTask(prompt, pylonRef: pylonRef) }
+        }
     }
 
     // MARK: - Khala API
 
     private func send(_ prompt: String) async {
         guard let key = KeychainStore.loadAPIKey() else {
-            state = .error("No API key. Open Settings to add one.")
+            handle(KhalaClient.KhalaError.missingKey)
             return
         }
         state = .thinking
         do {
             let reply = try await KhalaClient.complete(prompt: prompt, apiKey: key)
             response = reply
+            requestError = nil
             state = .idle
         } catch {
-            state = .error((error as? LocalizedError)?.errorDescription ?? "Request failed.")
+            handle(error)
         }
     }
 
     private func sendCodexTask(_ prompt: String, pylonRef: String) async {
         guard let key = KeychainStore.loadAPIKey() else {
-            state = .error("No API key. Open Settings to add one.")
+            handle(KhalaClient.KhalaError.missingKey)
             return
         }
         state = .thinking
@@ -167,10 +202,31 @@ final class VoiceController: ObservableObject {
                 apiKey: key
             )
             response = result.displayText
+            requestError = nil
             state = .idle
         } catch {
-            state = .error((error as? LocalizedError)?.errorDescription ?? "Request failed.")
+            handle(error)
         }
+    }
+
+    private func handle(_ error: Error) {
+        if let error = error as? KhalaClient.KhalaError {
+            requestError = RequestError(
+                title: error.recoveryTitle,
+                message: error.recoveryMessage,
+                isRetryable: error.isRetryable
+            )
+            state = .error(error.recoveryTitle)
+            return
+        }
+
+        let message = (error as? LocalizedError)?.errorDescription ?? "Request failed."
+        requestError = RequestError(
+            title: "Request failed",
+            message: message,
+            isRetryable: true
+        )
+        state = .error("Request failed")
     }
 
     // MARK: - Level metering

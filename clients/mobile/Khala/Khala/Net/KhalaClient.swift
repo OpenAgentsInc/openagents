@@ -37,6 +37,55 @@ enum KhalaClient {
                 return "Network error: \(err.localizedDescription)"
             }
         }
+
+        var recoveryTitle: String {
+            switch self {
+            case .quotaExceeded:
+                return "Free quota reached"
+            case .http(let code, _) where code >= 500:
+                return "Temporary Khala error"
+            case .transport:
+                return "Connection interrupted"
+            case .missingKey:
+                return "Missing API key"
+            case .invalidCodingRequest:
+                return "Check the request"
+            case .http:
+                return "Khala API error"
+            case .decoding:
+                return "Unexpected response"
+            }
+        }
+
+        var recoveryMessage: String {
+            switch self {
+            case .quotaExceeded:
+                return "Your free quota is out for now. Add credits or wait for the UTC reset before sending again."
+            case .http(let code, _) where code >= 500:
+                return "The server returned \(code). This is usually temporary, so the same message can be retried."
+            case .transport(let err):
+                return "The request did not reach Khala cleanly: \(err.localizedDescription). Check the connection and retry."
+            case .missingKey:
+                return "Mint or paste a Khala key in Settings, then send the message again."
+            case .invalidCodingRequest(let reason):
+                return reason
+            case .http(let code, _):
+                return "Khala returned HTTP \(code). Update the request or try again after checking Settings."
+            case .decoding:
+                return "Khala responded, but the app could not read the response body."
+            }
+        }
+
+        var isRetryable: Bool {
+            switch self {
+            case .http(let code, _) where code >= 500:
+                return true
+            case .transport:
+                return true
+            default:
+                return false
+            }
+        }
     }
 
     struct CodingDelegationResult {

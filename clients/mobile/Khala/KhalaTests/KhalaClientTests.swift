@@ -72,10 +72,73 @@ final class KhalaClientTests: XCTestCase {
                 session: session
             )
             XCTFail("Expected quotaExceeded")
-        } catch KhalaClient.KhalaError.quotaExceeded {
-            // Expected.
+        } catch let error as KhalaClient.KhalaError {
+            guard case .quotaExceeded = error else {
+                return XCTFail("Expected quotaExceeded, got \(error)")
+            }
+            XCTAssertEqual(error.recoveryTitle, "Free quota reached")
+            XCTAssertFalse(error.isRetryable)
         } catch {
             XCTFail("Expected quotaExceeded, got \(error)")
+        }
+    }
+
+    func testCompleteMapsHTTP500ToRetryableServerError() async throws {
+        let session = makeSession()
+
+        MockURLProtocol.requestHandler = { request in
+            return (
+                HTTPURLResponse(
+                    url: try XCTUnwrap(request.url),
+                    statusCode: 503,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )!,
+                Data(#"{ "error": "unavailable" }"#.utf8)
+            )
+        }
+
+        do {
+            _ = try await KhalaClient.complete(
+                prompt: "hello",
+                apiKey: "oa_agent_test_key",
+                session: session
+            )
+            XCTFail("Expected http 503")
+        } catch let error as KhalaClient.KhalaError {
+            guard case .http(let code, _) = error else {
+                return XCTFail("Expected http 503, got \(error)")
+            }
+            XCTAssertEqual(code, 503)
+            XCTAssertEqual(error.recoveryTitle, "Temporary Khala error")
+            XCTAssertTrue(error.isRetryable)
+        } catch {
+            XCTFail("Expected http 503, got \(error)")
+        }
+    }
+
+    func testCompleteMapsTransportFailureToRetryableError() async throws {
+        let session = makeSession()
+
+        MockURLProtocol.requestHandler = { _ in
+            throw URLError(.notConnectedToInternet)
+        }
+
+        do {
+            _ = try await KhalaClient.complete(
+                prompt: "hello",
+                apiKey: "oa_agent_test_key",
+                session: session
+            )
+            XCTFail("Expected transport error")
+        } catch let error as KhalaClient.KhalaError {
+            guard case .transport = error else {
+                return XCTFail("Expected transport error, got \(error)")
+            }
+            XCTAssertEqual(error.recoveryTitle, "Connection interrupted")
+            XCTAssertTrue(error.isRetryable)
+        } catch {
+            XCTFail("Expected transport error, got \(error)")
         }
     }
 

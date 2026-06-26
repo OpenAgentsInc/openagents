@@ -15,55 +15,52 @@ struct ContentView: View {
         ZStack {
             AnimatedBackground(level: voice.level, accent: voice.state.accentColor)
 
-            VStack(spacing: 24) {
+            VStack(spacing: 0) {
                 header
+                    .padding(.horizontal)
+                    .padding(.top)
+                    .padding(.bottom, 10)
 
-                Spacer()
-
-                if !voice.transcript.isEmpty {
-                    Text("“\(voice.transcript)”")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
-                }
-
-                if !voice.response.isEmpty {
+                ScrollViewReader { proxy in
                     ScrollView {
-                        Text(voice.response)
-                            .font(.body)
-                            .foregroundStyle(.primary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding()
+                        VStack(spacing: 18) {
+                            conversationPanel
+                                .id("conversation")
+
+                            voiceControls
+
+                            codexTaskPanel
+
+                            if !hasKey {
+                                Button("Add a Khala key to get started") { showSettings = true }
+                                    .font(.footnote.weight(.semibold))
+                                    .foregroundStyle(.orange)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal)
+                        .padding(.bottom, 18)
                     }
-                    .frame(maxHeight: 220)
-                }
-
-                Spacer()
-
-                Text(voice.state.label)
-                    .font(.subheadline)
-                    .foregroundStyle(voice.state.accentColor)
-
-                PushToTalkButton(
-                    state: voice.state,
-                    level: voice.level,
-                    onPressDown: { voice.pressDown() },
-                    onPressUp: { voice.pressUp() }
-                )
-                .padding(.bottom, 12)
-
-                composer
-
-                codexTaskPanel
-
-                if !hasKey {
-                    Button("Add a Khala key to get started") { showSettings = true }
-                        .font(.footnote)
-                        .foregroundStyle(.orange)
+                    .scrollDismissesKeyboard(.interactively)
+                    .onChange(of: voice.response) { _, _ in
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            proxy.scrollTo("conversation", anchor: .bottom)
+                        }
+                    }
+                    .onChange(of: voice.requestError) { _, _ in
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            proxy.scrollTo("conversation", anchor: .bottom)
+                        }
+                    }
                 }
             }
-            .padding()
+        }
+        .safeAreaInset(edge: .bottom) {
+            composer
+                .padding(.horizontal)
+                .padding(.top, 10)
+                .padding(.bottom, 8)
+                .background(.thinMaterial)
         }
         .sheet(isPresented: $showSettings) {
             SettingsView(hasKey: $hasKey)
@@ -80,6 +77,116 @@ struct ContentView: View {
                 voice.sendText(demo)
             }
         }
+    }
+
+    private var conversationPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if voice.transcript.isEmpty && voice.response.isEmpty && voice.requestError == nil {
+                Text("Type a message or hold to talk.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 32)
+            } else {
+                if !voice.transcript.isEmpty {
+                    messageBubble(title: "You", text: voice.transcript, outgoing: true)
+                }
+
+                if !voice.response.isEmpty {
+                    messageBubble(title: "Khala", text: voice.response, outgoing: false)
+                }
+
+                if let requestError = voice.requestError {
+                    errorNotice(requestError)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 10)
+        .animation(.easeOut(duration: 0.18), value: voice.transcript)
+        .animation(.easeOut(duration: 0.18), value: voice.response)
+        .animation(.easeOut(duration: 0.18), value: voice.requestError)
+    }
+
+    private var voiceControls: some View {
+        VStack(spacing: 12) {
+            Text(voice.state.label)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(voice.state.accentColor)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .minimumScaleFactor(0.85)
+
+            PushToTalkButton(
+                state: voice.state,
+                level: voice.level,
+                onPressDown: { voice.pressDown() },
+                onPressUp: { voice.pressUp() }
+            )
+            .padding(.bottom, 4)
+        }
+    }
+
+    private func messageBubble(
+        title: String,
+        text: String,
+        outgoing: Bool
+    ) -> some View {
+        HStack {
+            if outgoing {
+                Spacer(minLength: 34)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(text)
+                    .font(.body)
+                    .foregroundStyle(.primary)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(14)
+            .frame(maxWidth: 520, alignment: .leading)
+            .background(
+                outgoing ? AnyShapeStyle(.thinMaterial) : AnyShapeStyle(.regularMaterial),
+                in: RoundedRectangle(cornerRadius: 14)
+            )
+
+            if !outgoing {
+                Spacer(minLength: 34)
+            }
+        }
+    }
+
+    private func errorNotice(_ error: VoiceController.RequestError) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: error.isRetryable ? "arrow.clockwise.circle.fill" : "exclamationmark.circle.fill")
+                    .foregroundStyle(error.isRetryable ? .orange : .red)
+                Text(error.title)
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.primary)
+            }
+
+            Text(error.message)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if error.isRetryable {
+                Button(action: voice.retryLastSubmission) {
+                    Label("Retry", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(voice.state.isBusy)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
     }
 
     /// Voice-free composer: type a message and send it through the same Khala
@@ -99,9 +206,17 @@ struct ContentView: View {
                 .disabled(voice.state.isBusy)
 
             Button(action: sendTyped) {
-                Image(systemName: "arrow.up.circle.fill")
-                    .font(.title)
-                    .foregroundStyle(canSend ? voice.state.accentColor : Color.secondary)
+                Group {
+                    if voice.state.isBusy {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.title)
+                    }
+                }
+                .frame(width: 34, height: 34)
+                .foregroundStyle(canSend ? voice.state.accentColor : Color.secondary)
             }
             .disabled(!canSend)
             .accessibilityLabel("Send message")
