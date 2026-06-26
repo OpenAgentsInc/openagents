@@ -21,3 +21,11 @@ export * from './real-lane-executor'
 export * from './real-lane-transports'
 export * from './real-sweep-config'
 export * from './real-sweep-runner'
+// External head-to-head publication layer (#6308): the developer-default
+// comparator set, the recurring published quality bar (Khala vs the
+// tools/models a developer would otherwise use, scored on solve-rate AND
+// cost-per-accepted-outcome), its D1 snapshot store, and the public + operator
+// routes — all built on the merged harness + gym leaderboard projection.
+export * from './head-to-head'
+export * from './head-to-head-store'
+export * from './head-to-head-routes'

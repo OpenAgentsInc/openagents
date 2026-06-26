@@ -402,6 +402,11 @@ import {
 } from './inference/gym/ladder-routes'
 import { makeD1GymLadderStore } from './inference/gym/ladder-store'
 import {
+  handleOperatorKhalaHeadToHeadApi,
+  handlePublicKhalaHeadToHeadApi,
+} from './inference/benchmark/head-to-head-routes'
+import { makeD1KhalaHeadToHeadStore } from './inference/benchmark/head-to-head-store'
+import {
   makeHydraliskVllmAdapter,
   makeHydraliskVllmPoolAdapter,
 } from './inference/hydralisk-adapter'
@@ -9688,6 +9693,20 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       }),
   },
   {
+    // Public, dereferenceable Khala external HEAD-TO-HEAD quality bar (#6308,
+    // GTM §4). Khala vs the tools/models a developer would otherwise reach for
+    // (default coding model -> free/open -> paid frontier), each matchup scored
+    // on solve-rate AND cost-per-accepted-outcome. Returns the latest owner-armed
+    // decision-grade published snapshot; when none exists it serves the honest
+    // empty shape (all matchups awaiting_owner with their owner-gate refs) so the
+    // surface never fabricates a measurement. Read-only, no auth.
+    path: '/api/public/khala/head-to-head',
+    handler: (request, env) =>
+      handlePublicKhalaHeadToHeadApi(request, {
+        store: makeD1KhalaHeadToHeadStore(openAgentsDatabase(env)),
+      }),
+  },
+  {
     // Contributor accrual bundle dereference, addressed by accepted-outcome
     // economics id (?economicsId=...) for payments.accepted_outcome_economics.v1
     // (blocker.product_promises.contributor_ledger_missing). Read-only public
@@ -10032,6 +10051,21 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         requireAdminApiToken: adminRequest =>
           requireAdminApiToken(adminRequest, env),
         store: makeD1GymLadderStore(openAgentsDatabase(env)),
+      }),
+  },
+  {
+    // Recurring publish boundary for the Khala external HEAD-TO-HEAD (#6308). The
+    // operator (or the recurring scheduler) POSTs the decision-grade
+    // GymLeaderboardReportInput[] from an owner-armed real sweep; the Worker
+    // re-builds the bar via buildKhalaHeadToHead (decision-grade +
+    // public-safety-checked rows only) and upserts the public-safe artifact by
+    // headToHeadRef. GET returns the current published bar. Admin-bearer gated.
+    path: '/api/operator/khala/head-to-head',
+    handler: (request, env) =>
+      handleOperatorKhalaHeadToHeadApi(request, {
+        requireAdminApiToken: adminRequest =>
+          requireAdminApiToken(adminRequest, env),
+        store: makeD1KhalaHeadToHeadStore(openAgentsDatabase(env)),
       }),
   },
   {

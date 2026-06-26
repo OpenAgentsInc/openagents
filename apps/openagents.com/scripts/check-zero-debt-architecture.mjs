@@ -430,7 +430,17 @@ const budgetChecks = [
     // rungs, decision-grade rows only) and mint no spend/settlement/payout/
     // public-claim authority. Ratchet back down when these route handlers move
     // behind a shared route mapper.
-    budget: 117,
+    // +2 (117 -> 119) on 2026-06-26 (#6308) for the recurring published Khala
+    // external HEAD-TO-HEAD routes in inference/benchmark/head-to-head-routes.ts:
+    // two read-only route handlers returning `Effect.Effect<Response>`
+    // (`handlePublicKhalaHeadToHeadApi`, `handleOperatorKhalaHeadToHeadApi`) like
+    // the sibling public-projection handlers already counted here. They serve a
+    // public-safe `openagents.khala.head_to_head.v1` projection (Khala vs the
+    // developer-default comparators, decision-grade rows only, scored on
+    // solve-rate AND cost-per-accepted-outcome) and mint no spend/settlement/
+    // payout/public-claim authority. Ratchet back down when these route handlers
+    // move behind a shared route mapper.
+    budget: 119,
     description:
       'Worker domain and route modules may not grow Response-returning surfaces while route mappers are extracted.',
     details: countByFile(
@@ -822,6 +832,11 @@ const publicProjectionSurfaces = [
   {
     module: 'workers/api/src/inference/gym/ladder-routes.ts',
     route: '/api/public/gym/leaderboard',
+    status: 'staleness_declared',
+  },
+  {
+    module: 'workers/api/src/inference/benchmark/head-to-head-routes.ts',
+    route: '/api/public/khala/head-to-head',
     status: 'staleness_declared',
   },
   {

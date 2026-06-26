@@ -1666,6 +1666,18 @@ const schemaComponents = (): JsonSchema => ({
   GymLadderLeaderboardOperatorEnvelope: objectSummary(
     'Admin-token-gated read of the current published Gym benchmark ladder: schemaVersion, scope="operator", cadence, and the ladder. Same public-safe fields as the public projection.',
   ),
+  KhalaHeadToHeadPublicEnvelope: objectSummary(
+    'Public, dereferenceable Khala external HEAD-TO-HEAD quality bar: schemaVersion, scope="public", generatedAt, cadence, the stored_snapshot staleness contract (maxStalenessSeconds + rebuildsOn publish transitions, epic #4751), and the headToHead. The headToHead pairs Khala against the tools/models a developer would otherwise reach for (default coding model, free/open, paid frontier), each matchup scored on solve-rate AND cost-per-accepted-outcome with an honest two-axis verdict. Only owner-armed decision-grade real-sweep rows publish; fixture/synthetic numbers are never published. A matchup with no measured comparator is awaiting_owner and shows its owner-gate refs, never a fabricated number. Read-only projection; grants no dispatch, spend, settlement, payout, or public-claim authority.',
+  ),
+  KhalaHeadToHeadPublishRequest: objectSummary(
+    'Operator (or recurring scheduler) publish body for the Khala external head-to-head: { reports: GymLeaderboardReportInput[] } from an owner-armed real sweep. The Worker re-builds the bar via buildKhalaHeadToHead (decision-grade + public-safety-checked rows only) and upserts the public-safe artifact by headToHeadRef. Anything not decision-grade or not public-safe is dropped by the builder and never stored.',
+  ),
+  KhalaHeadToHeadPublishEnvelope: objectSummary(
+    'Admin-token-gated publish receipt for the Khala external head-to-head: schemaVersion, kind="khala_head_to_head_published", publishedAt, and the stored public-safe headToHead. Storage/projection evidence only; grants no dispatch, spend, settlement, payout, or public-claim authority.',
+  ),
+  KhalaHeadToHeadOperatorEnvelope: objectSummary(
+    'Admin-token-gated read of the current published Khala external head-to-head: schemaVersion, scope="operator", cadence, and the headToHead. Same public-safe fields as the public projection.',
+  ),
   HarborFullTraceArchive: objectSummary(
     'Operator-only Harbor / Terminal-Bench full trace archive metadata. Points at a private R2 tarball under private/gym/harbor-full-trace-archives/... and explicitly marks containsRawPrompts/containsRawLogs/containsPrivateMaterial true. Internal evidence only; grants no accepted-work, payout, settlement, training-consent, or public-claim authority.',
   ),
@@ -4945,6 +4957,58 @@ const paths = (): JsonSchema => ({
         '201': okJson(
           'Published public-safe Gym benchmark ladder.',
           '#/components/schemas/GymLadderLeaderboardPublishEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/khala/head-to-head': {
+    get: operation({
+      operationId: 'getPublicKhalaHeadToHead',
+      summary: 'Read the public Khala external head-to-head quality bar',
+      description:
+        'Returns the latest published, dereferenceable Khala external head-to-head: Khala vs the tools/models a developer would otherwise reach for (default coding model, free/open, paid frontier), each matchup scored on solve-rate AND cost-per-accepted-outcome with an honest two-axis verdict. Only owner-armed decision-grade real-sweep rows publish; a matchup with no measured comparator is awaiting_owner with its owner-gate refs shown, never a fabricated number. When nothing decision-grade has been published yet the surface serves the honest empty shape. No raw prompts, responses, logs, trajectories, keys, or private endpoints.',
+      tags: ['Public Proof'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Public-safe Khala external head-to-head quality bar.',
+          '#/components/schemas/KhalaHeadToHeadPublicEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/operator/khala/head-to-head': {
+    get: operation({
+      operationId: 'operatorGetKhalaHeadToHead',
+      summary: 'Read the current published Khala head-to-head (operator)',
+      description:
+        'Admin-token-gated read of the current published Khala external head-to-head. Same public-safe fields as the public projection.',
+      tags: ['Admin'],
+      security: adminSession,
+      responses: {
+        '200': okJson(
+          'Current published Khala external head-to-head.',
+          '#/components/schemas/KhalaHeadToHeadOperatorEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+    post: operation({
+      operationId: 'operatorPublishKhalaHeadToHead',
+      summary: 'Publish the Khala external head-to-head quality bar',
+      description:
+        'Admin-token-gated recurring publish boundary for the Khala external head-to-head. The operator (or scheduler) POSTs the decision-grade GymLeaderboardReportInput[] from an owner-armed real sweep; the Worker re-builds the bar via buildKhalaHeadToHead (decision-grade + public-safety-checked rows only) and upserts the public-safe artifact by headToHeadRef. Anything not decision-grade or not public-safe is dropped by the builder and never stored. Projection evidence only; grants no dispatch, spend, settlement, payout, or public-claim authority.',
+      tags: ['Admin'],
+      security: adminSession,
+      requestBody: jsonContent(
+        '#/components/schemas/KhalaHeadToHeadPublishRequest',
+      ),
+      responses: {
+        '201': okJson(
+          'Published public-safe Khala external head-to-head.',
+          '#/components/schemas/KhalaHeadToHeadPublishEnvelope',
         ),
         ...errorResponses(),
       },
