@@ -6525,6 +6525,11 @@ export const handleProgrammaticAgentRegistration = async (
       parsed,
     )
 
+    const autoClaimSparkAddress =
+      typeof parsed.sparkAddress === 'string' &&
+      parsed.sparkAddress.trim() !== ''
+        ? parsed.sparkAddress.trim()
+        : null
     const autoClaimLightningAddress =
       typeof parsed.lightningAddress === 'string' &&
       parsed.lightningAddress.trim() !== ''
@@ -6535,18 +6540,50 @@ export const handleProgrammaticAgentRegistration = async (
         ? parsed.bolt12Offer.trim()
         : null
 
-    if (autoClaimLightningAddress !== null || autoClaimBolt12Offer !== null) {
+    if (
+      autoClaimSparkAddress !== null ||
+      autoClaimLightningAddress !== null ||
+      autoClaimBolt12Offer !== null
+    ) {
       // Automatically register the tip wallet so the user doesn't have to call
-      // claim-tip-wallet. Spark Lightning Address is the preferred agent path;
-      // BOLT 12 remains accepted for legacy registrations.
+      // claim-tip-wallet. Native Spark (offline-receive `spark1...` address) is
+      // the preferred default agent rail; a Spark Lightning Address is the
+      // online-receive path; BOLT 12 remains accepted for legacy registrations.
       const { upsertForumTipRecipientWallet } =
         await import('./forum/repository')
       const db = openAgentsDatabase(env)
-      const sparkPrimary = autoClaimLightningAddress !== null
+      const sparkAddressPrimary = autoClaimSparkAddress !== null
+      const lightningAddressPrimary =
+        !sparkAddressPrimary && autoClaimLightningAddress !== null
+
+      const readinessRefs = sparkAddressPrimary
+        ? [
+            'readiness.public.spark_address.offline_receive_ready',
+            'readiness.public.spark_primary.agent_balance',
+          ]
+        : lightningAddressPrimary
+        ? [
+            'readiness.public.spark_lightning_address.receive_ready',
+            'readiness.public.spark_primary.agent_balance',
+          ]
+        : [
+            'readiness.public.mdk_agent.daemon_running',
+            'readiness.public.mdk_agent.receive_ready',
+            'readiness.public.mdk_agent.setup_present',
+          ]
+      const custodyPolicyRefs = sparkAddressPrimary
+        ? [
+            'policy.public.forum_tip_recipient.self_custody_mdk_agent_wallet',
+            'policy.public.forum_tip_recipient.spark_self_custody',
+          ]
+        : lightningAddressPrimary
+        ? ['policy.public.forum_tip_recipient.spark_self_custody']
+        : ['policy.public.forum_tip_recipient.self_custody_mdk_agent_wallet']
 
       await Effect.runPromise(
         upsertForumTipRecipientWallet(db, {
           actorRef: `agent:${registration.user.id}`,
+          sparkAddress: autoClaimSparkAddress,
           bolt12Offer: autoClaimBolt12Offer,
           lightningAddress: autoClaimLightningAddress,
           caveatRefs: [
@@ -6555,27 +6592,14 @@ export const handleProgrammaticAgentRegistration = async (
           claimPolicyRefs: [
             'policy.public.forum_tip_recipient.agent_registration_auto_claimed',
           ],
-          custodyPolicyRefs: sparkPrimary
-            ? ['policy.public.forum_tip_recipient.spark_self_custody']
-            : [
-                'policy.public.forum_tip_recipient.self_custody_mdk_agent_wallet',
-              ],
+          custodyPolicyRefs,
           disabledAt: null,
           id: `forum_tip_recipient_wallet.user_${registration.user.id}.auto_claim`,
           payoutTargetApprovalRef: null,
-          providerClass: sparkPrimary
+          providerClass: lightningAddressPrimary
             ? 'external_lightning'
             : 'mdk_agent_wallet',
-          readinessRefs: sparkPrimary
-            ? [
-                'readiness.public.spark_lightning_address.receive_ready',
-                'readiness.public.spark_primary.agent_balance',
-              ]
-            : [
-                'readiness.public.mdk_agent.daemon_running',
-                'readiness.public.mdk_agent.receive_ready',
-                'readiness.public.mdk_agent.setup_present',
-              ],
+          readinessRefs,
           receiveCapabilityRef: `receive_capability.public.auto_${registration.user.id}.redacted`,
           sourceRef:
             'source.public.forum_tip_recipient.agent_registration_auto_claim',

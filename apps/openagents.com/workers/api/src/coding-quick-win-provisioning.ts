@@ -60,7 +60,11 @@ export type CodingQuickWinProvisioning = typeof CodingQuickWinProvisioning.Type
 export class CodingQuickWinProvisioningInvariantError extends S.TaggedErrorClass<CodingQuickWinProvisioningInvariantError>()(
   'CodingQuickWinProvisioningInvariantError',
   { reason: S.String }
-) {}
+) {
+  override get message() {
+    return this.reason
+  }
+}
 
 /**
  * Builds a validated provisioning event.

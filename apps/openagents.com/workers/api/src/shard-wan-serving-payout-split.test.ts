@@ -5,6 +5,7 @@ import {
   ShardWanLargeModelServingBlocker,
   ShardWanServingPayoutDecision,
   ShardWanShardedRunReceiptSchemaVersion,
+  buildShardWanServingPayoutPayInPlan,
   evaluateShardWanServingPayout,
 } from './shard-wan-serving-payout-split'
 
@@ -170,8 +171,6 @@ describe('evaluateShardWanServingPayout', () => {
 })
 
 describe('buildShardWanServingPayoutPayInPlan', () => {
-  const { buildShardWanServingPayoutPayInPlan } = require('./shard-wan-serving-payout-split')
-
   test('builds a PayInPlan when payable and owner armed', () => {
     const decision = evaluateShardWanServingPayout({
       contributorCutSats: 1000,

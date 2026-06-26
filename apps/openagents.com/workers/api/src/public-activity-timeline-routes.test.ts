@@ -387,7 +387,7 @@ const inferenceReceiptStore = (): PublicActivityTimelineInferenceReceiptStore =>
   listRecentInferenceReceipts: async () => [
     {
       contextRef:
-        'inference:fireworks:served:accounts%2Ffireworks%2Fmodels%2Fqwen3:tokens:42:requested:openagents%2Fkhala-code',
+        'inference:fireworks:served:accounts%2Ffireworks%2Fmodels%2Fqwen3:tokens:42:requested:openagents%2Fkhala',
       createdAt: '2026-06-18T18:00:08.500Z',
       payInType: 'adjustment',
       receiptRef: khalaReceiptRef,
@@ -502,7 +502,7 @@ describe('public activity timeline route', () => {
     expect(khala).toMatchObject({
       actorRef: 'gateway.fireworks',
       sourceKind: 'inference_receipt',
-      state: 'openagents/khala-code',
+      state: 'openagents/khala',
       targetRef: khalaReceiptRef,
     })
     expect(khala?.sourceRefs).toContain(khalaReceiptRef)

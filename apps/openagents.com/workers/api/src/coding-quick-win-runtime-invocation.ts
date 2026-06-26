@@ -62,7 +62,11 @@ export type CodingQuickWinRuntimeInvocation = typeof CodingQuickWinRuntimeInvoca
 export class CodingQuickWinRuntimeInvocationInvariantError extends S.TaggedErrorClass<CodingQuickWinRuntimeInvocationInvariantError>()(
   'CodingQuickWinRuntimeInvocationInvariantError',
   { reason: S.String }
-) {}
+) {
+  override get message() {
+    return this.reason
+  }
+}
 
 export type RuntimeInvocationInput = Readonly<{
   scopeRef: string

@@ -50,7 +50,11 @@ export type CodingQuickWinAcceptanceEvidence =
 export class CodingQuickWinAcceptanceInvariantError extends S.TaggedErrorClass<CodingQuickWinAcceptanceInvariantError>()(
   'CodingQuickWinAcceptanceInvariantError',
   { reason: S.String },
-) {}
+) {
+  override get message() {
+    return this.reason
+  }
+}
 
 export type CodingQuickWinAcceptanceInput = Readonly<{
   diffRef: string

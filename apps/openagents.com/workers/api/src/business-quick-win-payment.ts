@@ -51,7 +51,11 @@ export type BusinessQuickWinPaymentEvidence =
 export class BusinessQuickWinPaymentInvariantError extends S.TaggedErrorClass<BusinessQuickWinPaymentInvariantError>()(
   'BusinessQuickWinPaymentInvariantError',
   { reason: S.String },
-) {}
+) {
+  override get message() {
+    return this.reason
+  }
+}
 
 export type BusinessQuickWinPaymentInput = Readonly<{
   signupId: string

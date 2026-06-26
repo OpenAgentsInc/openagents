@@ -112,6 +112,11 @@ describe('ecommerce campaign self-serve routes', () => {
       ],
     })
     expect(json.workspace).toBeDefined()
-    expect(json.workspace.holderRef).toBe('design_partner.ecommerce.inventory_campaign.v1')
+    // This is the public-safe self-serve projection (toPublicProjection), which
+    // intentionally omits the holder-scoped `holderRef` so prospect/holder
+    // identity material never leaks on the public endpoint. The e-commerce
+    // vertical template identity is proven by the public-safe projectName.
+    expect(json.workspace.holderRef).toBeUndefined()
+    expect(json.workspace.projectName).toBe('Inventory-Aware Campaign Workspace')
   })
 })

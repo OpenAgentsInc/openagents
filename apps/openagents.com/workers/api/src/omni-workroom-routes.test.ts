@@ -463,6 +463,7 @@ describe('Omni workroom routes', () => {
                   businessObjectRef: 'business_object.contact.acme_primary',
                   caveatRefs: [],
                   closeoutRefs: [],
+                  connectorReadReceiptRefs: [],
                   createdAtIso: '2026-06-19T05:10:00.000Z',
                   evidenceRefs: [],
                   id: 'business_object_write.acme_contact_1',
