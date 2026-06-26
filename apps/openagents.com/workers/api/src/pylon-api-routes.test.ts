@@ -448,6 +448,74 @@ class AssignmentBatchD1 implements D1Database {
   }
 }
 
+class ChunkedSelectStatement implements D1PreparedStatement {
+  constructor(
+    private readonly db: ChunkedSelectD1,
+    private readonly query: string,
+    private readonly bindings: ReadonlyArray<unknown> = [],
+  ) {}
+
+  bind(...values: ReadonlyArray<unknown>): D1PreparedStatement {
+    return new ChunkedSelectStatement(this.db, this.query, values)
+  }
+
+  first<T = unknown>(): Promise<T | null> {
+    return Promise.reject(new Error(`Unexpected D1 first: ${this.query}`))
+  }
+
+  run<T = Record<string, unknown>>(): Promise<D1Result<T>> {
+    return Promise.reject(new Error(`Unexpected D1 run: ${this.query}`))
+  }
+
+  all<T = unknown>(): Promise<D1Result<T>> {
+    this.db.bindCounts.push(this.bindings.length)
+    this.db.queries.push(this.query)
+
+    if (this.bindings.length > 81) {
+      return Promise.reject(
+        new Error(`D1 select bind count exceeded: ${this.bindings.length}`),
+      )
+    }
+
+    return Promise.resolve(d1Result<T>())
+  }
+
+  raw<T = unknown[]>(options: {
+    columnNames: true
+  }): Promise<[string[], ...T[]]>
+  raw<T = unknown[]>(options?: { columnNames?: false }): Promise<T[]>
+  raw<T = unknown[]>(options?: {
+    columnNames?: boolean
+  }): Promise<T[] | [string[], ...T[]]> {
+    return Promise.reject(new Error(`Unexpected D1 raw: ${this.query}`))
+  }
+}
+
+class ChunkedSelectD1 implements D1Database {
+  readonly bindCounts: number[] = []
+  readonly queries: string[] = []
+
+  batch<T = unknown>(): Promise<Array<D1Result<T>>> {
+    return Promise.reject(new Error('D1 batch should not be used'))
+  }
+
+  dump(): Promise<ArrayBuffer> {
+    return Promise.reject(new Error('D1 dump should not be used'))
+  }
+
+  exec(): Promise<D1ExecResult> {
+    return Promise.reject(new Error('D1 exec should not be used'))
+  }
+
+  prepare(query: string): D1PreparedStatement {
+    return new ChunkedSelectStatement(this, query)
+  }
+
+  withSession(): D1DatabaseSession {
+    throw new Error('D1 session should not be used')
+  }
+}
+
 const sessionFor = (userId: string): ProgrammaticAgentSession => ({
   credential: {
     id: `credential-${userId}`,
@@ -778,6 +846,38 @@ describe('Pylon API routes', () => {
     expect(failingDb.batchQueries).toHaveLength(2)
   })
 
+  test('D1 store chunks multi-value Pylon reads under the D1 bind ceiling', async () => {
+    const db = new ChunkedSelectD1()
+    const store = makeD1PylonApiStore(db)
+    const refs = Array.from(
+      { length: 105 },
+      (_, index) => `pylon.test.chunk_${index}`,
+    )
+    const ownerIds = Array.from(
+      { length: 105 },
+      (_, index) => `agent_chunk_${index}`,
+    )
+
+    await store.listAssignmentsForPylons?.(refs, 1_000)
+    await store.listProviderJobLifecycleForPylons(refs, 1_000)
+    await store.listRegistrationsForOwnerAgentUserIds?.(ownerIds, 200)
+
+    expect(db.bindCounts).toEqual([81, 26, 81, 26, 81, 26])
+    expect(
+      db.queries.filter(query => query.includes('FROM pylon_api_assignments')),
+    ).toHaveLength(2)
+    expect(
+      db.queries.filter(query =>
+        query.includes('FROM pylon_provider_job_lifecycle'),
+      ),
+    ).toHaveLength(2)
+    expect(
+      db.queries.filter(query =>
+        query.includes('FROM pylon_api_registrations'),
+      ),
+    ).toHaveLength(2)
+  })
+
   test('registers a Pylon and exposes public-safe reads', async () => {
     const store = new MemoryPylonApiStore()
     const created = await registerPylon(store)
@@ -1098,10 +1198,7 @@ describe('Pylon API routes', () => {
           clientProtocolVersion: '0.3.0',
           clientVersion: 'openagents.pylon@0.3.0',
           healthRefs: ['health.public.ok'],
-          loadRefs: [
-            'load.coding.codex.busy=1',
-            'load.coding.codex.queued=0',
-          ],
+          loadRefs: ['load.coding.codex.busy=1', 'load.coding.codex.queued=0'],
           resourceMode: 'balanced',
           status: 'online',
         },
