@@ -116,6 +116,9 @@ const filteredRows = (
     'AND leaderboard_eligible = 1',
   )
   const requirePrivacyIncluded = query.includes('AND privacy_opt_out = 0')
+  const excludeInternalDemand = query.includes(
+    "lower(demand_kind) <> 'internal'",
+  )
   const nonNullColumns = [
     'anonymized_source_ref',
     'repository_ref',
@@ -137,6 +140,8 @@ const filteredRows = (
         asNumber(row.leaderboard_eligible) === leaderboardEligible) &&
       (privacyOptOut === undefined ||
         asNumber(row.privacy_opt_out) === privacyOptOut) &&
+      (!excludeInternalDemand ||
+        String(row.demand_kind ?? '').toLowerCase() !== 'internal') &&
       (!requireLeaderboardEligible ||
         asNumber(row.leaderboard_eligible) === 1) &&
       (!requirePrivacyIncluded || asNumber(row.privacy_opt_out) === 0) &&
@@ -1048,6 +1053,7 @@ describe('public tokens-served model mix', () => {
   const eventForFamily = (
     eventId: string,
     input: Readonly<{
+      demandKind?: 'external' | 'internal' | 'internal_stress' | 'own_capacity'
       model: string
       observedAt: string
       outputTokens: number
@@ -1064,6 +1070,14 @@ describe('public tokens-served model mix', () => {
     producerSystem: 'omega',
     provider: input.provider,
     sourceRoute: 'omega_hosted_gemini',
+    ...(input.demandKind === undefined
+      ? {}
+      : {
+          demand: {
+            demandKind: input.demandKind,
+            demandSource: 'model-mix-test',
+          },
+        }),
     tokenCounts: {
       cacheReadTokens: 0,
       cacheWrite1hTokens: 0,
@@ -1076,46 +1090,64 @@ describe('public tokens-served model mix', () => {
     usageTruth: 'exact',
   })
 
-  test('collapses raw provider and model ids into canonical public families', async () => {
+  test('collapses raw provider and model ids into canonical public groups', async () => {
     const db = makeMemoryD1()
 
     await runLedger(
       db,
       Effect.gen(function* () {
         yield* ingest(
-          eventForFamily('openai-1', {
+          eventForFamily('glm-1', {
             inputTokens: 100,
-            model: 'gpt-4.1',
+            model: 'openagents/glm-5.2-reap-504b',
             observedAt: '2026-06-07T10:00:00.000Z',
             outputTokens: 50,
-            provider: 'openai',
+            provider: 'hydralisk-g4',
           }),
         )
         yield* ingest(
-          eventForFamily('openai-2', {
+          eventForFamily('glm-2', {
             inputTokens: 30,
-            model: 'o3',
+            model: 'z-ai/glm-4.5',
             observedAt: '2026-06-07T11:00:00.000Z',
             outputTokens: 20,
-            provider: 'broker',
+            provider: 'z.ai',
           }),
         )
         yield* ingest(
-          eventForFamily('gemini-1', {
+          eventForFamily('fireworks-1', {
             inputTokens: 40,
-            model: 'gemini-2.5-pro',
+            model: 'accounts/fireworks/models/deepseek-v4-flash',
             observedAt: '2026-06-07T12:00:00.000Z',
             outputTokens: 10,
-            provider: 'google_vertex',
+            provider: 'fireworks',
           }),
         )
         yield* ingest(
           eventForFamily('codex-1', {
-            inputTokens: 15,
+            inputTokens: 20,
             model: 'openagents/pylon-codex',
             observedAt: '2026-06-07T13:00:00.000Z',
             outputTokens: 5,
             provider: 'pylon-codex-own-capacity',
+          }),
+        )
+        yield* ingest(
+          eventForFamily('gpt-oss-1', {
+            inputTokens: 10,
+            model: 'gpt-oss-120b',
+            observedAt: '2026-06-07T14:00:00.000Z',
+            outputTokens: 5,
+            provider: 'openai-compatible',
+          }),
+        )
+        yield* ingest(
+          eventForFamily('gemini-1', {
+            inputTokens: 7,
+            model: 'gemini-2.5-pro',
+            observedAt: '2026-06-07T15:00:00.000Z',
+            outputTokens: 3,
+            provider: 'google_vertex',
           }),
         )
       }),
@@ -1128,31 +1160,51 @@ describe('public tokens-served model mix', () => {
 
     expect(mix).toEqual({
       window: '30d',
-      totalTokensServed: 270,
-      families: [
+      totalTokens: 300,
+      groups: [
         {
-          family: 'openai',
-          share: 0.740741,
-          tokensServed: 200,
-          usageEvents: 2,
+          family: 'glm',
+          label: 'GLM family',
+          pct: 66.666667,
+          reqs: 2,
+          tokens: 200,
         },
         {
-          family: 'gemini',
-          share: 0.185185,
-          tokensServed: 50,
-          usageEvents: 1,
+          family: 'fireworks_deepseek',
+          label: 'Fireworks DeepSeek',
+          pct: 16.666667,
+          reqs: 1,
+          tokens: 50,
         },
         {
           family: 'pylon_codex',
-          share: 0.074074,
-          tokensServed: 20,
-          usageEvents: 1,
+          label: 'Pylon-Codex',
+          pct: 8.333333,
+          reqs: 1,
+          tokens: 25,
+        },
+        {
+          family: 'gpt_oss',
+          label: 'GPT-OSS',
+          pct: 5,
+          reqs: 1,
+          tokens: 15,
+        },
+        {
+          family: 'gemini',
+          label: 'Gemini',
+          pct: 3.333333,
+          reqs: 1,
+          tokens: 10,
         },
       ],
     })
+    expect(
+      mix.groups.reduce((sum, group) => sum + group.pct, 0),
+    ).toBeCloseTo(100, 6)
   })
 
-  test('default 30d window excludes older provider/model rows', async () => {
+  test('default 30d window excludes older rows and exact internal rows', async () => {
     const db = makeMemoryD1()
 
     await runLedger(
@@ -1161,10 +1213,20 @@ describe('public tokens-served model mix', () => {
         yield* ingest(
           eventForFamily('inside', {
             inputTokens: 50,
-            model: 'claude-3-5-sonnet',
+            model: 'gpt-oss-20b',
             observedAt: '2026-06-07T10:00:00.000Z',
             outputTokens: 50,
-            provider: 'anthropic',
+            provider: 'openai-compatible',
+          }),
+        )
+        yield* ingest(
+          eventForFamily('internal', {
+            demandKind: 'internal',
+            inputTokens: 1_000,
+            model: 'openagents/glm-5.2-reap-504b',
+            observedAt: '2026-06-07T10:00:00.000Z',
+            outputTokens: 1_000,
+            provider: 'hydralisk-g4',
           }),
         )
         yield* ingest(
@@ -1184,12 +1246,13 @@ describe('public tokens-served model mix', () => {
       tokensServedModelMix({ now: nowIso, window: '30d' }),
     )
 
-    expect(mix.families).toEqual([
+    expect(mix.groups).toEqual([
       {
-        family: 'anthropic',
-        share: 1,
-        tokensServed: 100,
-        usageEvents: 1,
+        family: 'gpt_oss',
+        label: 'GPT-OSS',
+        pct: 100,
+        reqs: 1,
+        tokens: 100,
       },
     ])
   })

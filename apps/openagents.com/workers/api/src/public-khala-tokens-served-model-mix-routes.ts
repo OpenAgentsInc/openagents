@@ -15,18 +15,19 @@ import {
   makeD1TokenUsageLedger,
 } from './token-usage-ledger'
 
-export const PublicKhalaTokensServedModelMixFamily = S.Struct({
+export const PublicKhalaTokensServedModelMixGroup = S.Struct({
   family: PublicKhalaTokensServedModelFamily,
-  tokensServed: S.Int,
-  usageEvents: S.Int,
-  share: S.Number,
+  label: S.String,
+  tokens: S.Int,
+  reqs: S.Int,
+  pct: S.Number,
 })
 
 export const PublicKhalaTokensServedModelMixResponse = S.Struct({
-  schemaVersion: S.Literal('openagents.public_khala_tokens_served_model_mix.v1'),
+  schemaVersion: S.Literal('openagents.public_khala_model_mix.v1'),
   window: PublicKhalaTokensServedHistoryWindow,
-  totalTokensServed: S.Int,
-  families: S.Array(PublicKhalaTokensServedModelMixFamily),
+  totalTokens: S.Int,
+  groups: S.Array(PublicKhalaTokensServedModelMixGroup),
   generatedAt: S.String,
   staleness: PublicProjectionStalenessContract,
 })
@@ -56,14 +57,15 @@ export const handlePublicKhalaTokensServedModelMixApi = (
   return ledger.readPublicTokensServedModelMix({ window }).pipe(
     Effect.map(mix => {
       const payload: PublicKhalaTokensServedModelMixResponse = {
-        schemaVersion: 'openagents.public_khala_tokens_served_model_mix.v1',
+        schemaVersion: 'openagents.public_khala_model_mix.v1',
         window: mix.window,
-        totalTokensServed: mix.totalTokensServed,
-        families: mix.families.map(family => ({
-          family: family.family,
-          tokensServed: family.tokensServed,
-          usageEvents: family.usageEvents,
-          share: family.share,
+        totalTokens: mix.totalTokens,
+        groups: mix.groups.map(group => ({
+          family: group.family,
+          label: group.label,
+          tokens: group.tokens,
+          reqs: group.reqs,
+          pct: group.pct,
         })),
         generatedAt: nowIso(),
         staleness: liveAtReadStaleness(['token_usage_events']),

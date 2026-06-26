@@ -322,40 +322,36 @@ export class PublicKhalaTokensServedHistory extends S.Class<PublicKhalaTokensSer
 }) {}
 
 export const PublicKhalaTokensServedModelFamily = S.Literals([
-  'anthropic',
-  'deepseek',
-  'gemini',
   'glm',
-  'grok',
-  'llama',
-  'mistral',
-  'openai',
+  'fireworks_deepseek',
   'pylon_codex',
-  'qwen',
+  'gpt_oss',
+  'gemini',
   'other',
 ])
 export type PublicKhalaTokensServedModelFamily =
   typeof PublicKhalaTokensServedModelFamily.Type
 
-export class PublicKhalaTokensServedModelMixFamily extends S.Class<PublicKhalaTokensServedModelMixFamily>(
-  'PublicKhalaTokensServedModelMixFamily',
+export class PublicKhalaTokensServedModelMixGroup extends S.Class<PublicKhalaTokensServedModelMixGroup>(
+  'PublicKhalaTokensServedModelMixGroup',
 )({
   family: PublicKhalaTokensServedModelFamily,
-  tokensServed: S.Int,
-  usageEvents: S.Int,
-  share: S.Number,
+  label: S.String,
+  tokens: S.Int,
+  reqs: S.Int,
+  pct: S.Number,
 }) {}
 
 // Public-safe model/provider mix for /stats. The ledger collapses raw provider
-// and model ids into canonical families before returning, so the public payload
-// remains aggregate-only: no raw provider ids, raw model ids, account refs,
-// actor refs, or per-event rows.
+// and model ids into the bounded owner-requested groups before returning, so
+// the public payload remains aggregate-only: no raw provider ids, raw model ids,
+// account refs, actor refs, or per-event rows.
 export class PublicKhalaTokensServedModelMix extends S.Class<PublicKhalaTokensServedModelMix>(
   'PublicKhalaTokensServedModelMix',
 )({
   window: PublicKhalaTokensServedHistoryWindow,
-  totalTokensServed: S.Int,
-  families: S.Array(PublicKhalaTokensServedModelMixFamily),
+  totalTokens: S.Int,
+  groups: S.Array(PublicKhalaTokensServedModelMixGroup),
 }) {}
 
 // ----------------------------------------------------------------------------

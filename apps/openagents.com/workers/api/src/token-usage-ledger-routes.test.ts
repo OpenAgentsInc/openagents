@@ -519,8 +519,8 @@ const makeRoutes = (
     readPublicTokensServedModelMix: () =>
       Effect.succeed({
         window: '30d',
-        totalTokensServed: 0,
-        families: [],
+        totalTokens: 0,
+        groups: [],
       }),
     readLeaderboardPreference: input => {
       preferenceInputs.push(input)

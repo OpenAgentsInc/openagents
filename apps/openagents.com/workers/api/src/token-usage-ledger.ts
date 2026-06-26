@@ -1313,21 +1313,35 @@ const publicModelFamilyFromProviderAndModel = (
   const text = `${provider ?? ''} ${model ?? ''}`.trim().toLowerCase()
 
   if (
+    text.includes('glm') ||
+    text.includes('z.ai') ||
+    text.includes('z-ai') ||
+    text.includes('zai') ||
+    text.includes('zhipu') ||
+    text.includes('hydralisk')
+  ) {
+    return 'glm'
+  }
+
+  if (text.includes('fireworks') || text.includes('deepseek')) {
+    return 'fireworks_deepseek'
+  }
+
+  if (
     text.includes('pylon-codex') ||
     text.includes('pylon_codex') ||
-    text.includes('openagents/pylon-codex')
+    text.includes('openagents/pylon-codex') ||
+    text.includes('chatgpt-codex')
   ) {
     return 'pylon_codex'
   }
 
   if (
-    text.includes('anthropic') ||
-    text.includes('claude') ||
-    text.includes('sonnet') ||
-    text.includes('opus') ||
-    text.includes('haiku')
+    text.includes('gpt-oss') ||
+    text.includes('gpt_oss') ||
+    text.includes('gptoss')
   ) {
-    return 'anthropic'
+    return 'gpt_oss'
   }
 
   if (
@@ -1338,55 +1352,28 @@ const publicModelFamilyFromProviderAndModel = (
     return 'gemini'
   }
 
-  if (text.includes('deepseek')) {
-    return 'deepseek'
-  }
-
-  if (
-    text.includes('glm') ||
-    text.includes('z.ai') ||
-    text.includes('zai') ||
-    text.includes('zhipu')
-  ) {
-    return 'glm'
-  }
-
-  if (text.includes('llama') || text.includes('meta')) {
-    return 'llama'
-  }
-
-  if (text.includes('mistral') || text.includes('mixtral')) {
-    return 'mistral'
-  }
-
-  if (
-    text.includes('qwen') ||
-    text.includes('dashscope') ||
-    text.includes('alibaba')
-  ) {
-    return 'qwen'
-  }
-
-  if (text.includes('grok') || text.includes('xai') || text.includes('x.ai')) {
-    return 'grok'
-  }
-
-  if (
-    text.includes('openai') ||
-    text.includes('gpt-') ||
-    /\bo[134]\b/.test(text) ||
-    /\bo[134]-/.test(text)
-  ) {
-    return 'openai'
-  }
-
   return 'other'
 }
 
-const roundedShare = (tokensServed: number, totalTokensServed: number): number =>
-  totalTokensServed <= 0
+const publicModelFamilyLabel = (
+  family: PublicKhalaTokensServedModelFamily,
+): string =>
+  family === 'glm'
+    ? 'GLM family'
+    : family === 'fireworks_deepseek'
+      ? 'Fireworks DeepSeek'
+      : family === 'pylon_codex'
+        ? 'Pylon-Codex'
+        : family === 'gpt_oss'
+          ? 'GPT-OSS'
+          : family === 'gemini'
+            ? 'Gemini'
+            : 'Other'
+
+const roundedPercent = (tokens: number, totalTokens: number): number =>
+  totalTokens <= 0
     ? 0
-    : Math.round((tokensServed / totalTokensServed) * 1_000_000) / 1_000_000
+    : Math.round((tokens / totalTokens) * 100_000_000) / 1_000_000
 
 const localDayFormatter = (timezone: string): Intl.DateTimeFormat =>
   new Intl.DateTimeFormat('en-US', {
@@ -2278,8 +2265,10 @@ export const makeD1TokenUsageLedger = (
     }),
 
   // Public-safe model/provider mix for /stats: raw provider and model ids are
-  // used only inside this aggregate read, then collapsed into canonical
-  // families before anything leaves the ledger boundary.
+  // used only inside this aggregate read, then collapsed into the bounded public
+  // group taxonomy before anything leaves the ledger boundary. Internal dogfood
+  // traffic (`demand_kind=internal`) is excluded; other typed demand classes keep
+  // their existing public counter semantics.
   readPublicTokensServedModelMix: (filters = {}) =>
     Effect.gen(function* () {
       const window = yield* normalizeLeaderboardWindow(filters.window ?? '30d')
@@ -2288,6 +2277,7 @@ export const makeD1TokenUsageLedger = (
         filters.now ?? runtime.nowIso(),
       )
       const since = leaderboardWindowSince(window, nowIso, runtime)
+      const publicDemandWhere = `(demand_kind IS NULL OR lower(demand_kind) <> 'internal')`
 
       const rows = yield* d1Effect(
         'tokenUsageEvents.publicTokensServedModelMix',
@@ -2302,6 +2292,7 @@ export const makeD1TokenUsageLedger = (
                         AS tokens,
                       COUNT(*) AS usage_events
                      FROM token_usage_events
+                    WHERE ${publicDemandWhere}
                     GROUP BY provider, model`
                 : `SELECT
                       provider,
@@ -2310,7 +2301,7 @@ export const makeD1TokenUsageLedger = (
                         AS tokens,
                       COUNT(*) AS usage_events
                      FROM token_usage_events
-                    WHERE observed_at >= ?
+                    WHERE observed_at >= ? AND ${publicDemandWhere}
                     GROUP BY provider, model`,
             )
             .bind(...(since === undefined ? [] : [since]))
@@ -2329,44 +2320,43 @@ export const makeD1TokenUsageLedger = (
             row.model,
           )
           const previous = families.get(family) ?? {
-            tokensServed: 0,
-            usageEvents: 0,
+            reqs: 0,
+            tokens: 0,
           }
           families.set(family, {
-            tokensServed:
-              previous.tokensServed + Math.max(0, Math.trunc(row.tokens ?? 0)),
-            usageEvents:
-              previous.usageEvents +
-              Math.max(0, Math.trunc(row.usage_events ?? 0)),
+            reqs:
+              previous.reqs + Math.max(0, Math.trunc(row.usage_events ?? 0)),
+            tokens: previous.tokens + Math.max(0, Math.trunc(row.tokens ?? 0)),
           })
           return families
         },
         new Map<
           PublicKhalaTokensServedModelFamily,
-          { tokensServed: number; usageEvents: number }
+          { reqs: number; tokens: number }
         >(),
       )
 
-      const totalTokensServed = [...grouped.values()].reduce(
-        (sum, row) => sum + row.tokensServed,
+      const totalTokens = [...grouped.values()].reduce(
+        (sum, row) => sum + row.tokens,
         0,
       )
-      const families = [...grouped.entries()]
+      const groups = [...grouped.entries()]
         .map(([family, row]) => ({
           family,
-          share: roundedShare(row.tokensServed, totalTokensServed),
-          tokensServed: row.tokensServed,
-          usageEvents: row.usageEvents,
+          label: publicModelFamilyLabel(family),
+          pct: roundedPercent(row.tokens, totalTokens),
+          reqs: row.reqs,
+          tokens: row.tokens,
         }))
         .sort(
           (left, right) =>
-            right.tokensServed - left.tokensServed ||
+            right.tokens - left.tokens ||
             left.family.localeCompare(right.family),
         )
 
       return yield* decodePublicTokensServedModelMix({
-        families,
-        totalTokensServed,
+        groups,
+        totalTokens,
         window,
       })
     }),

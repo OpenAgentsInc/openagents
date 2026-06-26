@@ -404,7 +404,7 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         method: 'GET',
         auth: 'public',
         description:
-          'Public-safe Khala model/provider mix for /stats: window (today/7d/30d/all, default 30d), totalTokensServed, and canonical family aggregate rows { family, tokensServed, usageEvents, share }, plus generatedAt and the live_at_read staleness contract. Raw provider ids and model ids are collapsed before serving; no per-user, per-team, raw provider/model, or secret material. Read-only stats projection; grants no payout, settlement, routing, provider, or public-claim authority.',
+          'Public-safe Khala model/provider mix for /stats: schemaVersion openagents.public_khala_model_mix.v1, window (today/7d/30d/all, default 30d), totalTokens, and canonical aggregate groups { family, label, tokens, reqs, pct }, plus generatedAt and the live_at_read staleness contract. Raw provider ids and model ids are collapsed into glm, fireworks_deepseek, pylon_codex, gpt_oss, gemini, or other before serving; demand_kind=internal rows are excluded. No per-user, per-team, raw provider/model, or secret material. Read-only stats projection; grants no payout, settlement, routing, provider, or public-claim authority.',
       },
       {
         id: 'public_pylon_capacity_funnel',

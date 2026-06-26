@@ -79,34 +79,35 @@ describe('GET /api/public/khala-tokens-served/model-mix', () => {
 
     const body = (await response.json()) as Record<string, unknown>
 
-    expect(body.schemaVersion).toBe(
-      'openagents.public_khala_tokens_served_model_mix.v1',
-    )
+    expect(body.schemaVersion).toBe('openagents.public_khala_model_mix.v1')
     expect(body.window).toBe('30d')
-    expect(body.totalTokensServed).toBe(2_000)
+    expect(body.totalTokens).toBe(2_000)
     expect(body.generatedAt).toBe(nowIso)
     expect(body.staleness).toMatchObject({
       composition: 'live_at_read',
       maxStalenessSeconds: 0,
     })
-    expect(body.families).toEqual([
+    expect(body.groups).toEqual([
       {
-        family: 'openai',
-        share: 0.5,
-        tokensServed: 1_000,
-        usageEvents: 2,
+        family: 'other',
+        label: 'Other',
+        pct: 50,
+        reqs: 2,
+        tokens: 1_000,
       },
       {
-        family: 'deepseek',
-        share: 0.25,
-        tokensServed: 500,
-        usageEvents: 1,
+        family: 'fireworks_deepseek',
+        label: 'Fireworks DeepSeek',
+        pct: 25,
+        reqs: 1,
+        tokens: 500,
       },
       {
         family: 'gemini',
-        share: 0.25,
-        tokensServed: 500,
-        usageEvents: 1,
+        label: 'Gemini',
+        pct: 25,
+        reqs: 1,
+        tokens: 500,
       },
     ])
   })
@@ -128,12 +129,13 @@ describe('GET /api/public/khala-tokens-served/model-mix', () => {
     const body = (await response.json()) as Record<string, unknown>
 
     expect(body.window).toBe('30d')
-    expect(body.families).toEqual([
+    expect(body.groups).toEqual([
       {
         family: 'pylon_codex',
-        share: 1,
-        tokensServed: 42,
-        usageEvents: 1,
+        label: 'Pylon-Codex',
+        pct: 100,
+        reqs: 1,
+        tokens: 42,
       },
     ])
   })
@@ -157,22 +159,24 @@ describe('GET /api/public/khala-tokens-served/model-mix', () => {
       ...makeD1TokenUsageLedger(fakeModelMixDb([]), runtime),
       readPublicTokensServedModelMix: () =>
         Effect.succeed({
-          families: [
+          groups: [
             {
-              family: 'openai',
+              family: 'other',
+              label: 'Other',
               model: 'gpt-4.1-secret-experiment',
+              pct: 100,
               provider: 'openai-private-lane',
-              share: 1,
-              tokensServed: 50,
-              usageEvents: 1,
+              reqs: 1,
+              tokens: 50,
             } as unknown as {
-              family: 'openai'
-              share: number
-              tokensServed: number
-              usageEvents: number
+              family: 'other'
+              label: string
+              pct: number
+              reqs: number
+              tokens: number
             },
           ],
-          totalTokensServed: 50,
+          totalTokens: 50,
           window: '30d',
         }),
     }
@@ -186,21 +190,22 @@ describe('GET /api/public/khala-tokens-served/model-mix', () => {
     const body = (await response.json()) as Record<string, unknown>
 
     expect(Object.keys(body).sort()).toEqual([
-      'families',
       'generatedAt',
+      'groups',
       'schemaVersion',
       'staleness',
-      'totalTokensServed',
+      'totalTokens',
       'window',
     ])
 
-    const families = body.families as ReadonlyArray<Record<string, unknown>>
-    expect(families).toHaveLength(1)
-    expect(Object.keys(families[0]!).sort()).toEqual([
+    const groups = body.groups as ReadonlyArray<Record<string, unknown>>
+    expect(groups).toHaveLength(1)
+    expect(Object.keys(groups[0]!).sort()).toEqual([
       'family',
-      'share',
-      'tokensServed',
-      'usageEvents',
+      'label',
+      'pct',
+      'reqs',
+      'tokens',
     ])
     expect(JSON.stringify(body)).not.toContain('gpt-4.1-secret-experiment')
     expect(JSON.stringify(body)).not.toContain('openai-private-lane')
