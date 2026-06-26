@@ -137,6 +137,7 @@ const makeMemoryStore = (): TraceStore & { rows: Map<string, TraceRecord> } => {
       const counts = {
         external: 0,
         internal: 0,
+        internal_stress: 0,
         own_capacity: 0,
         unlabeled: 0,
       }
@@ -1089,7 +1090,13 @@ describe('GET /api/traces owner list', () => {
   const seedDemand = (
     store: TraceStore,
     uuid: string,
-    demandKind: 'external' | 'internal' | 'own_capacity' | 'unlabeled' | null,
+    demandKind:
+      | 'external'
+      | 'internal'
+      | 'internal_stress'
+      | 'own_capacity'
+      | 'unlabeled'
+      | null,
     demandSource: string | null,
   ) =>
     store.createTrace({
@@ -1144,6 +1151,7 @@ describe('GET /api/traces owner list', () => {
     await seedDemand(store, 'ext', 'external', null)
     await seedDemand(store, 'unl', null, null) // legacy null => unlabeled, kept
     await seedDemand(store, 'hb', 'internal', 'heartbeat') // excluded by default
+    await seedDemand(store, 'stress', 'internal_stress', 'glm-saturation') // excluded
     await seedDemand(store, 'own', 'own_capacity', 'khala_coding_delegation') // excluded
 
     const json = await ownerListJson(store)
@@ -1160,9 +1168,19 @@ describe('GET /api/traces owner list', () => {
     expect(json.demandSegments).toEqual({
       external: 1,
       internal: 1,
+      internal_stress: 1,
       own_capacity: 1,
       unlabeled: 1,
     })
+  })
+
+  it('?demand_kind=internal_stress filters to stress traces', async () => {
+    const store = makeMemoryStore()
+    await seedDemand(store, 'hb', 'internal', 'heartbeat')
+    await seedDemand(store, 'stress', 'internal_stress', 'glm-saturation')
+    const json = await ownerListJson(store, '?demand_kind=internal_stress')
+    expect(json.traces.map(t => t.uuid)).toEqual(['stress'])
+    expect(json.appliedDemandKinds).toEqual(['internal_stress'])
   })
 
   it('?demand_kind=internal filters to internal-dogfood', async () => {

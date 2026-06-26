@@ -261,6 +261,39 @@ describe('served-tokens-recorder', () => {
     expect(await readServed(ledger)).toBe(100)
   })
 
+  test('internal-stress Khala tokens persist distinctly and still count publicly (#6318 slice)', async () => {
+    const rows: Array<Row> = []
+    const db = makeFakeDb(rows)
+    const ledger = makeD1TokenUsageLedger(db)
+    const recorder = makeServedTokensRecorder({ ledger, nowIso: fixedNow })
+
+    await runRecorder(recorder, {
+      accountRef: 'agent:stress-1',
+      adapterId: 'hydralisk',
+      requestId: 'chatcmpl-internal-stress-1',
+      requestAttribution: {
+        demandClient: 'stress-harness',
+        demandKind: 'internal_stress',
+        demandSource: 'glm-saturation',
+      },
+      requestedModel: 'openagents/khala',
+      servedModel: 'openagents/khala',
+      streamed: true,
+      usage: { completionTokens: 80, promptTokens: 20, totalTokens: 100 },
+    })
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.demand_kind).toBe('internal_stress')
+    expect(rows[0]!.demand_source).toBe('glm-saturation')
+    expect(rows[0]!.demand_client).toBe('stress-harness')
+    expect(JSON.parse(String(rows[0]!.safe_metadata_json))).toMatchObject({
+      demandClient: 'stress-harness',
+      demandKind: 'internal_stress',
+      demandSource: 'glm-saturation',
+    })
+    expect(await readServed(ledger)).toBe(100)
+  })
+
   test('a free-tier (zero-debit) completion still counts its served tokens', async () => {
     const rows: Array<Row> = []
     const db = makeFakeDb(rows)

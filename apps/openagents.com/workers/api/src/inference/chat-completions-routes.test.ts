@@ -1299,6 +1299,34 @@ describe('POST /v1/chat/completions', () => {
     })
   })
 
+  test('parses internal_stress demand headers without flattening to internal (#6318 slice)', async () => {
+    const recorded: Array<{ requestAttribution?: unknown }> = []
+    await run(
+      handleChatCompletions(
+        chatRequest(helloBody, {
+          headers: {
+            [INFERENCE_CLIENT_HEADER]: 'stress-harness',
+            [INFERENCE_DEMAND_KIND_HEADER]: ' internal_stress ',
+            [INFERENCE_DEMAND_SOURCE_HEADER]: 'glm-saturation',
+          },
+        }),
+        baseDeps({
+          recordTokensServed: input =>
+            Effect.sync(() => {
+              recorded.push({ requestAttribution: input.requestAttribution })
+            }),
+        }),
+      ),
+    )
+
+    expect(recorded).toHaveLength(1)
+    expect(recorded[0]?.requestAttribution).toEqual({
+      demandClient: 'stress-harness',
+      demandKind: 'internal_stress',
+      demandSource: 'glm-saturation',
+    })
+  })
+
   // #6298 follow-up: env-configured internal/ops account auto-classifies as
   // `demand_kind=internal` WITHOUT any request header, for BOTH the ledger
   // (recorder) AND the trace (emitter), so untagged dogfood (e.g. the long-
@@ -1371,6 +1399,45 @@ describe('POST /v1/chat/completions', () => {
     expect(recorded[0]?.requestAttribution).toEqual({
       demandKind: 'internal',
       demandSource: 'harbor_terminal_bench',
+    })
+  })
+
+  test('internal-account traffic WITH internal_stress header preserves stress attribution (#6318 slice)', async () => {
+    const recorded: Array<{ requestAttribution?: unknown }> = []
+    const emitted: Array<{ requestAttribution?: unknown }> = []
+
+    await run(
+      handleChatCompletions(
+        chatRequest({ ...helloBody, oa_emit_trace: true }, {
+          headers: {
+            [INFERENCE_DEMAND_KIND_HEADER]: 'internal_stress',
+            [INFERENCE_DEMAND_SOURCE_HEADER]: 'glm-saturation',
+          },
+        }),
+        baseDeps({
+          internalAccountRefs: new Set(['agent:test-user']),
+          recordTokensServed: input =>
+            Effect.sync(() => {
+              recorded.push({ requestAttribution: input.requestAttribution })
+            }),
+          traceEmit: {
+            enabled: true,
+            emit: async input => {
+              emitted.push({ requestAttribution: input.requestAttribution })
+              return { emitted: true }
+            },
+          },
+        }),
+      ),
+    )
+
+    expect(recorded[0]?.requestAttribution).toEqual({
+      demandKind: 'internal_stress',
+      demandSource: 'glm-saturation',
+    })
+    expect(emitted[0]?.requestAttribution).toEqual({
+      demandKind: 'internal_stress',
+      demandSource: 'glm-saturation',
     })
   })
 

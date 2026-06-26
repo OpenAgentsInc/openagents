@@ -631,6 +631,30 @@ describe('token usage ledger', () => {
     expect(JSON.stringify(db.rows)).not.toContain('completion')
   })
 
+  test('persists internal_stress demand kind from typed ingest text (#6318 slice)', async () => {
+    const db = makeMemoryD1()
+    await runLedger(
+      db,
+      ingest({
+        ...validProbeEvent,
+        demand: {
+          demandClient: 'stress-harness',
+          demandKind: 'internal_stress',
+          demandSource: 'glm-saturation',
+        },
+        eventId: 'token_event_internal_stress',
+        idempotencyKey: 'probe:event:internal-stress',
+      }),
+    )
+
+    expect(db.rows).toHaveLength(1)
+    expect(db.rows[0]).toMatchObject({
+      demand_client: 'stress-harness',
+      demand_kind: 'internal_stress',
+      demand_source: 'glm-saturation',
+    })
+  })
+
   test('rejects unsafe prompt, provider payload, private path, and bearer material', async () => {
     const db = makeMemoryD1()
     const unsafe = {

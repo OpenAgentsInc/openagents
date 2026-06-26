@@ -49,6 +49,7 @@ export type TraceUploadSource = 'agent' | 'user_session'
 export type TraceDemandKind =
   | 'external'
   | 'internal'
+  | 'internal_stress'
   | 'own_capacity'
   | 'unlabeled'
 
@@ -59,6 +60,7 @@ export type TraceDemandKind =
 export const TRACE_DEMAND_KINDS: ReadonlyArray<TraceDemandKind> = [
   'external',
   'internal',
+  'internal_stress',
   'own_capacity',
   'unlabeled',
 ]
@@ -81,6 +83,7 @@ export const parseTraceDemandKind = (
  */
 export const TRACE_INTERNAL_DEMAND_KINDS: ReadonlyArray<TraceDemandKind> = [
   'internal',
+  'internal_stress',
   'own_capacity',
 ]
 
@@ -526,6 +529,7 @@ export const makeD1TraceStore = (db: D1Database): TraceStore => {
         const counts: Record<TraceDemandKind, number> = {
           external: 0,
           internal: 0,
+          internal_stress: 0,
           own_capacity: 0,
           unlabeled: 0,
         }

@@ -95,6 +95,7 @@ const fireworksEvent = (
     demandKind?:
       | 'external'
       | 'internal'
+      | 'internal_stress'
       | 'own_capacity'
       | 'unlabeled'
       | undefined
@@ -723,6 +724,44 @@ describe('readInferenceAnalytics (#6232)', () => {
     expect(JSON.stringify(result)).not.toContain('internal')
     expect(JSON.stringify(result)).not.toContain('external')
     expect(JSON.stringify(result)).not.toContain('qa-dogfood')
+  })
+
+  test('keeps Khala-orchestrated internal_stress tokens in the public counter (#6318 slice)', async () => {
+    const db = makeDb()
+    await runLedger(
+      db,
+      ingest(
+        fireworksEvent({
+          demandClient: 'stress-harness',
+          demandKind: 'internal_stress',
+          demandSource: 'glm-saturation',
+          eventId: 'internal-stress',
+          inputTokens: 90,
+          observedAt: '2026-06-25T01:00:00.000Z',
+          outputTokens: 45,
+        }),
+      ),
+    )
+    await runLedger(
+      db,
+      ingest(
+        fireworksEvent({
+          demandClient: 'sdk',
+          demandKind: 'external',
+          demandSource: 'public-api',
+          eventId: 'external-after-stress',
+          inputTokens: 20,
+          observedAt: '2026-06-25T02:00:00.000Z',
+          outputTokens: 10,
+        }),
+      ),
+    )
+
+    const result = await runLedger(db, publicTokensServed())
+
+    expect(result).toEqual({ tokensServed: 165 })
+    expect(JSON.stringify(result)).not.toContain('internal_stress')
+    expect(JSON.stringify(result)).not.toContain('glm-saturation')
   })
 
   test('window=today excludes rows before UTC start of day', async () => {

@@ -30,6 +30,9 @@
 //     a specific `demandSource` (e.g. `harbor_terminal_bench` / `heartbeat` /
 //     `canary`) KEEPS that specific source — the account rule only ensures the
 //     `internal` kind, it must not overwrite the more specific source.
+//   - An explicit `internal_stress` header KEEPS that typed kind so stress load
+//     stays distinguishable from ordinary internal dogfood while still being an
+//     internal-account attribution.
 //   - When the account is internal but NO internal-specific header was sent
 //     (header-less, or a non-internal header kind), force `demandKind=internal`
 //     and default `demandSource` to `internal_account` (the generic ops marker).
@@ -76,9 +79,10 @@ export const parseInternalAccountRefs = (
 //
 // Returns the (possibly refined) attribution. When the account is NOT internal,
 // the input is returned unchanged (including `undefined`). When the account IS
-// internal, the result always carries `demandKind: 'internal'`, preserving a
-// specific internal `demandSource`/`demandClient` from the header and defaulting
-// the source to `internal_account` otherwise.
+// internal, the result always carries an internal kind (`internal` or explicitly
+// tagged `internal_stress`), preserving a specific internal
+// `demandSource`/`demandClient` from the header and defaulting the source to
+// `internal_account` otherwise.
 export const applyInternalAccountAttribution = (
   attribution: ServedTokensRequestAttribution | undefined,
   accountRef: string,
@@ -92,10 +96,16 @@ export const applyInternalAccountAttribution = (
 
   // The account is internal. Preserve a specific internal source the header
   // already set (never downgrade `harbor_terminal_bench` etc. to the generic
-  // marker); otherwise default the source to the generic ops marker. Either way,
-  // force `demandKind: 'internal'`.
+  // marker); otherwise default the source to the generic ops marker.
+  // `internal_stress` is also preserved as a typed internal kind so stress
+  // traffic does not flatten into ordinary dogfood.
+  const demandKind =
+    attribution?.demandKind === 'internal_stress'
+      ? 'internal_stress'
+      : 'internal'
   const hadInternalHeaderSource =
-    attribution?.demandKind === 'internal' &&
+    (attribution?.demandKind === 'internal' ||
+      attribution?.demandKind === 'internal_stress') &&
     attribution.demandSource !== undefined
 
   const demandSource = hadInternalHeaderSource
@@ -103,7 +113,7 @@ export const applyInternalAccountAttribution = (
     : INTERNAL_ACCOUNT_DEMAND_SOURCE
 
   return {
-    demandKind: 'internal',
+    demandKind,
     demandSource,
     ...(attribution?.demandClient === undefined
       ? {}

@@ -51,6 +51,18 @@ describe('applyInternalAccountAttribution (#6298)', () => {
     })
   })
 
+  test('internal account + internal_stress header keeps the stress kind', () => {
+    const header: ServedTokensRequestAttribution = {
+      demandKind: 'internal_stress',
+      demandSource: 'glm-stress',
+    }
+    const out = applyInternalAccountAttribution(header, OPS, allowlist)
+    expect(out).toEqual({
+      demandKind: 'internal_stress',
+      demandSource: 'glm-stress',
+    })
+  })
+
   test('internal account + a NON-internal header kind => forced internal, generic source', () => {
     // A request that somehow sent `external` (or any non-internal kind) but is on
     // the ops account is still forced to internal with the generic marker (the

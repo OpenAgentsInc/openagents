@@ -247,6 +247,7 @@ const demandKindFromText = (
 
   return normalized === 'external' ||
     normalized === 'internal' ||
+    normalized === 'internal_stress' ||
     normalized === 'own_capacity'
     ? normalized
     : 'unlabeled'

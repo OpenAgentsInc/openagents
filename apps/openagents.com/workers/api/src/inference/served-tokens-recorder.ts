@@ -47,7 +47,12 @@ import { priceRequest } from './pricing'
 import { type InferenceUsage } from './provider-adapter'
 
 export type ServedTokensRequestAttribution = Readonly<{
-  demandKind: 'external' | 'internal' | 'own_capacity' | 'unlabeled'
+  demandKind:
+    | 'external'
+    | 'internal'
+    | 'internal_stress'
+    | 'own_capacity'
+    | 'unlabeled'
   demandSource?: string | undefined
   demandClient?: string | undefined
 }>

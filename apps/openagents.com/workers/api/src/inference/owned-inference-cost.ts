@@ -66,7 +66,12 @@ export type OwnedInferenceCostSummary = Readonly<{
       activeServingHours: number
       costPerServedTokenUsd: number | typeof NOT_MEASURED
       demandClient: string
-      demandKind: 'external' | 'internal' | 'unlabeled'
+      demandKind:
+        | 'external'
+        | 'internal'
+        | 'internal_stress'
+        | 'own_capacity'
+        | 'unlabeled'
       demandSource: string
       key: string
       label: string
@@ -228,8 +233,13 @@ const optionalText = (value: string | null | undefined): string | undefined => {
 
 const normalizeDemandKind = (
   value: string | null | undefined,
-): 'external' | 'internal' | 'unlabeled' =>
-  value === 'external' || value === 'internal' ? value : 'unlabeled'
+): 'external' | 'internal' | 'internal_stress' | 'own_capacity' | 'unlabeled' =>
+  value === 'external' ||
+  value === 'internal' ||
+  value === 'internal_stress' ||
+  value === 'own_capacity'
+    ? value
+    : 'unlabeled'
 
 const isBenchmarkReserved = (
   value: boolean | number | string | null | undefined,

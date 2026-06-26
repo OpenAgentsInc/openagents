@@ -261,6 +261,7 @@ class MemoryTraceStore implements TraceStore {
     const counts: Record<TraceDemandKind, number> = {
       external: 0,
       internal: 0,
+      internal_stress: 0,
       own_capacity: 0,
       unlabeled: 0,
     }

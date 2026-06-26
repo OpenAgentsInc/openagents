@@ -101,6 +101,7 @@ const makeFakeStore = (): TraceStore & {
     countTracesForOwnerByDemand: async () => ({
       external: 0,
       internal: 0,
+      internal_stress: 0,
       own_capacity: 0,
       unlabeled: 0,
     }),
@@ -282,6 +283,7 @@ describe('emitKhalaChatTrace persistence (flag ON, opted in)', () => {
       countTracesForOwnerByDemand: async () => ({
         external: 0,
         internal: 0,
+        internal_stress: 0,
         own_capacity: 0,
         unlabeled: 0,
       }),
@@ -440,6 +442,23 @@ describe('demand-origin attribution on a captured trace (#6298)', () => {
     expect(store.created[0]!.demandSource).toBe('harbor_terminal_bench')
   })
 
+  it('an internal-stress request => trace demand_kind=internal_stress', async () => {
+    const store = makeFakeStore()
+    await emitKhalaChatTrace(fakeSession(), {
+      enabled: true,
+      captureDefault: true,
+      optedIn: false,
+      store,
+      owner: { ownerUserId: 'u1', agentRef: 'agent:u1', uploadSource: 'agent' },
+      demandAttribution: {
+        demandKind: 'internal_stress',
+        demandSource: 'glm-saturation',
+      },
+    })
+    expect(store.created[0]!.demandKind).toBe('internal_stress')
+    expect(store.created[0]!.demandSource).toBe('glm-saturation')
+  })
+
   it('an external completion with no header => demand_kind=external', async () => {
     const store = makeFakeStore()
     await emitKhalaChatTrace(fakeSession(), {
@@ -481,6 +500,12 @@ describe('demand-origin attribution on a captured trace (#6298)', () => {
       }),
     ).toEqual({ demandKind: 'internal', demandSource: null })
     // A bounded source slug is kept.
+    expect(
+      resolveTraceDemandColumns({
+        demandKind: 'internal_stress',
+        demandSource: 'glm-saturation',
+      }),
+    ).toEqual({ demandKind: 'internal_stress', demandSource: 'glm-saturation' })
     expect(
       resolveTraceDemandColumns({
         demandKind: 'own_capacity',
