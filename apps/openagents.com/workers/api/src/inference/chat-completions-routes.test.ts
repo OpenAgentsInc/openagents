@@ -344,16 +344,10 @@ describe('coding delegation default-on guard', () => {
     expect(text).toContain(
       'Coding workflow delegated to linked Pylon pylon.owner.codex',
     )
-    expect(recorded).toHaveLength(1)
-    expect(recorded[0]).toMatchObject({
-      adapterId: 'pylon-codex-own-capacity',
-      requestAttribution: {
-        demandKind: 'own_capacity',
-        demandSource: 'khala_coding_delegation',
-      },
-      servedModel: 'openagents/pylon-codex',
-    })
-    expect(recorded[0]?.usage.totalTokens).toBeGreaterThan(32)
+    // #6325: the chat route must not write synthetic handoff estimates.
+    // Exact Pylon/Codex downstream SDK usage arrives via
+    // POST /api/pylon/codex/turns after the local Codex turn completes.
+    expect(recorded).toHaveLength(0)
   })
 
   test('delegates typed coding workflows before balance and provider supply gates', async () => {

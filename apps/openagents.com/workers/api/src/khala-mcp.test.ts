@@ -268,20 +268,10 @@ describe('Khala MCP catalog', () => {
       },
     )
 
-    expect(recordedTokens).toHaveLength(1)
-    expect(recordedTokens[0]).toMatchObject({
-      accountRef: 'agent:agent_owner',
-      adapterId: 'pylon-codex-own-capacity',
-      requestAttribution: {
-        demandKind: 'own_capacity',
-        demandSource: 'khala_mcp_request',
-      },
-      requestId: 'chatcmpl_mcp',
-      requestedModel: 'openagents/khala',
-      servedModel: 'openagents/pylon-codex',
-      streamed: true,
-    })
-    expect(recordedTokens[0]?.usage.totalTokens).toBeGreaterThan(0)
+    // #6325: MCP delegation must not meter a handoff estimate. The local
+    // Pylon/Codex executor records exact downstream SDK turn usage through the
+    // registered-agent ingest route after Codex actually runs.
+    expect(recordedTokens).toHaveLength(0)
     expect(outcome.isError).toBeFalsy()
     expect(outcome.structuredContent).toMatchObject({
       assignmentRef: 'assignment.public.khala_coding.assignment_id',

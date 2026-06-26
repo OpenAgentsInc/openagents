@@ -708,6 +708,10 @@ import {
 } from './pylon-multi-earning-node-routes'
 import { makePylonOpenAgentsAuthHandlers } from './pylon-openagents-auth-routes'
 import {
+  PYLON_CODEX_TURN_INGEST_PATH,
+  makePylonCodexTurnIngestRoutes,
+} from './pylon-codex-turn-ingest-routes'
+import {
   type RelayHealthFetch,
   canonicalMarketRelayUrl,
   makeD1RelayHealthStore,
@@ -859,6 +863,7 @@ import {
   type AutopilotTokenLeaderboards,
   TokenUsageLeaderboards,
 } from './token-usage'
+import { makeD1TokenUsageLedger } from './token-usage-ledger'
 import { makeTokenUsageLedgerRoutes } from './token-usage-ledger-routes'
 import {
   makeD1TraceStore,
@@ -6881,6 +6886,20 @@ const traceStoreRoutes = makeTraceStoreRoutes({
   requireBrowserSession,
 })
 
+const pylonCodexTurnIngestRoutes = makePylonCodexTurnIngestRoutes<Env>({
+  agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+  ledger: env => makeD1TokenUsageLedger(openAgentsDatabase(env)),
+  pylonStore: env => makeD1PylonApiStore(openAgentsDatabase(env)),
+  publishDelta: (env, delta) =>
+    Effect.promise(() =>
+      publishKhalaTokensServedDelta(
+        env,
+        buildKhalaTokensServedDelta(delta),
+      ),
+    ),
+  traceStore: env => makeD1TraceStore(openAgentsDatabase(env)),
+})
+
 const hostedMdkClientForEnv = (
   env: WorkerBindings & OpenAgentsWorkerConfigEnv,
 ) => {
@@ -10294,6 +10313,11 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/public/khala-tokens-served/history',
     handler: (request, env) =>
       handlePublicKhalaTokensServedHistoryApi(request, env),
+  },
+  {
+    path: PYLON_CODEX_TURN_INGEST_PATH,
+    handler: (request, env) =>
+      pylonCodexTurnIngestRoutes.handlePylonCodexTurnIngestApi(request, env),
   },
   {
     path: '/api/public/pylon-capacity-funnel',

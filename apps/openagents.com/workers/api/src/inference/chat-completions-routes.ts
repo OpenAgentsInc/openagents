@@ -65,7 +65,6 @@ import {
 import { classifyCodingWorkflow } from './coding-workflow-classifier'
 import {
   delegateCodingWorkflow,
-  estimatedDelegatedCodingUsage,
 } from './coding-workflow-delegation'
 import {
   type DurableStreamNamespace,
@@ -2418,22 +2417,6 @@ export const handleChatCompletions = (
               })
             }
           }
-        }
-
-        if (deps.recordTokensServed !== undefined) {
-          yield* deps.recordTokensServed({
-            accountRef: session.accountRef,
-            adapterId: 'pylon-codex-own-capacity',
-            requestAttribution: {
-              demandKind: 'own_capacity',
-              demandSource: 'khala_coding_delegation',
-            },
-            requestId: responseId,
-            requestedModel,
-            servedModel: 'openagents/pylon-codex',
-            streamed: true,
-            usage: estimatedDelegatedCodingUsage(body.messages),
-          })
         }
 
         return new Response(streamBody, {

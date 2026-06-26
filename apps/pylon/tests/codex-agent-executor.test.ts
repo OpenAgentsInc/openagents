@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, mock, test } from "bun:test"
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
@@ -9,9 +9,11 @@ import {
   effectiveSandboxMode,
   executeCodexAgentAssignment,
   fileChangeEscapesWorkspace,
+  runWithCodexSdk,
   type CodexAgentRunner,
 } from "../src/codex-agent-executor"
 import { CODEX_AGENT_SDK_PACKAGE } from "../src/codex-agent"
+import type { CodexTurnReport } from "../src/codex-turn-reporter"
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
 import { ensurePylonLocalState, assertPublicProjectionSafe } from "../src/state"
 
@@ -260,6 +262,148 @@ describe("codex agent task recognition", () => {
       expect(seenMode).toBe("danger-full-access")
       expect(seenNetworkAccess).toBe(true)
       expect(seenCodeHome).toBe("/tmp/pylon-codex-account")
+    })
+  })
+
+  test("passes turn reports to the injected reporter with assignment context", async () => {
+    await withState(async (state) => {
+      const reports: Array<CodexTurnReport> = []
+      const reportingRunner: CodexAgentRunner = async (input) => {
+        await input.eventReporter?.({
+          assignmentRef: input.assignmentRef ?? "missing-assignment",
+          leaseRef: input.leaseRef ?? "missing-lease",
+          pylonRef: input.pylonRef ?? "missing-pylon",
+          ...(input.runRef === undefined ? {} : { runRef: input.runRef }),
+          sessionRef: "session.pylon.codex_agent.test",
+          ...(input.workspaceRef === undefined ? {} : { workspaceRef: input.workspaceRef }),
+          turnIndex: 1,
+          observedAt: now.toISOString(),
+          usage: {
+            cachedInputTokens: 2,
+            inputTokens: 30,
+            outputTokens: 4,
+            reasoningOutputTokens: 6,
+          },
+          items: [
+            {
+              itemType: "agent_message",
+              message: "Fixed the fixture.",
+              ordinal: 1,
+              status: "completed",
+            },
+          ],
+        })
+        return fixingRunner(input)
+      }
+
+      const record = await executeCodexAgentAssignment(state, lease, now, {
+        codexAgentProbe: readyProbe,
+        codexAgentRunner: reportingRunner,
+        codexTurnReporter: async report => {
+          reports.push(report)
+        },
+      })
+
+      expect(record?.status).toBe("accepted")
+      expect(reports).toHaveLength(1)
+      expect(reports[0]).toMatchObject({
+        assignmentRef: lease.assignmentRef,
+        leaseRef: lease.leaseRef,
+        pylonRef: state.identity.pylonRef,
+        sessionRef: "session.pylon.codex_agent.test",
+        turnIndex: 1,
+        usage: {
+          cachedInputTokens: 2,
+          inputTokens: 30,
+          outputTokens: 4,
+          reasoningOutputTokens: 6,
+        },
+      })
+      expect(reports[0]?.runRef).toStartWith("run.pylon.codex_agent_task.")
+      expect(reports[0]?.workspaceRef).toStartWith("workspace.pylon.codex_agent_task.")
+    })
+  })
+
+  test("SDK turn reporter failures do not fail the local Codex task", async () => {
+    const reports: Array<unknown> = []
+    mock.module(CODEX_AGENT_SDK_PACKAGE, () => ({
+      Codex: class {
+        startThread() {
+          return {
+            runStreamed: async () => ({
+              events: (async function* () {
+                yield { type: "thread.started", thread_id: "thread-codex-reporter-fail-soft" }
+                yield { type: "turn.started" }
+                yield {
+                  type: "item.completed",
+                  item: {
+                    status: "completed",
+                    text: "Completed the turn.",
+                    type: "agent_message",
+                  },
+                }
+                yield {
+                  type: "item.completed",
+                  item: {
+                    aggregated_output: "raw shell output stays local",
+                    exit_code: 0,
+                    status: "completed",
+                    type: "command_execution",
+                  },
+                }
+                yield {
+                  type: "turn.completed",
+                  usage: {
+                    cached_input_tokens: 2,
+                    input_tokens: 50,
+                    output_tokens: 7,
+                    reasoning_output_tokens: 3,
+                  },
+                }
+              })(),
+            }),
+          }
+        }
+      },
+    }))
+
+    const result = await runWithCodexSdk({
+      assignmentRef: "assignment.public.codex_agent.reporter",
+      cwd: "/tmp",
+      eventReporter: async report => {
+        reports.push(report)
+        throw new Error("ingest unavailable")
+      },
+      instructions: "Run a mocked Codex turn.",
+      leaseRef: "lease.public.codex_agent.reporter",
+      networkAccessEnabled: true,
+      pylonRef: "pylon.public.codex_agent.reporter",
+      runRef: "run.public.codex_agent.reporter",
+      sandboxMode: "danger-full-access",
+      timeoutMs: 1_000,
+      workspaceRef: "workspace.public.codex_agent.reporter",
+    })
+
+    expect(result).toMatchObject({
+      commandCount: 1,
+      editedFileCount: 0,
+      outcome: "completed",
+      turnCount: 1,
+    })
+    expect(result.sessionRef).toStartWith("session.pylon.codex_agent.")
+    expect(reports).toHaveLength(1)
+    expect(JSON.stringify(reports[0])).not.toContain("raw shell output stays local")
+    expect(reports[0]).toMatchObject({
+      assignmentRef: "assignment.public.codex_agent.reporter",
+      leaseRef: "lease.public.codex_agent.reporter",
+      pylonRef: "pylon.public.codex_agent.reporter",
+      turnIndex: 1,
+      usage: {
+        cachedInputTokens: 2,
+        inputTokens: 50,
+        outputTokens: 7,
+        reasoningOutputTokens: 3,
+      },
     })
   })
 })

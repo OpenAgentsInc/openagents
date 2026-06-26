@@ -1125,8 +1125,11 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
       ...(options.claudeAgentProbe === undefined ? {} : { claudeAgentProbe: options.claudeAgentProbe }),
     })) ??
     (await executeCodexAgentAssignment(state, lease, observedAtDate, {
+      ...(options.agentToken === undefined ? {} : { agentToken: options.agentToken }),
+      baseUrl: options.baseUrl,
       ...(options.codexAgentRunner === undefined ? {} : { codexAgentRunner: options.codexAgentRunner }),
       ...(options.codexAgentProbe === undefined ? {} : { codexAgentProbe: options.codexAgentProbe }),
+      ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
     })) ??
     (await executeRuntimeGate(state, lease, observedAtDate))
   const artifactRefs = runtimeGate?.artifactRefs ?? [stableRef("assignment.artifact", `${lease.assignmentRef}:${lease.goal}`)]

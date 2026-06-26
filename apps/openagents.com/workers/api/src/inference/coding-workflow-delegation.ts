@@ -423,19 +423,6 @@ export const delegateCodingWorkflow = async (
   return null
 }
 
-export const estimatedDelegatedCodingUsage = (
-  messages: ReadonlyArray<unknown>,
-): { completionTokens: number; promptTokens: number; totalTokens: number } => {
-  const json = JSON.stringify(messages)
-  const promptTokens = Math.max(1, Math.ceil(json.length / 4))
-  const completionTokens = 32
-  return {
-    completionTokens,
-    promptTokens,
-    totalTokens: promptTokens + completionTokens,
-  }
-}
-
 export const codingDelegationUnavailableError = () =>
   new PylonApiStoreError({
     kind: 'not_found',

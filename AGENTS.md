@@ -243,32 +243,75 @@ $PYLON khala resume "<durableRequestId>" --offset 0 --json
 Expected output includes the original delegation frame, `[DONE]`,
 `streamClosed: true`, and `streamUpToDate: true`.
 
-6. Confirm the public counter ticked:
+6. Confirm exact downstream Codex token rows and private traces.
+
+The source of truth for this flow is no longer the chat/MCP handoff. The chat
+route creates the Pylon assignment, then local Pylon posts each completed Codex
+SDK turn to `POST /api/pylon/codex/turns`. That registered-agent ingest route is
+the only place the downstream Codex tokens should be counted, and it stores the
+matching redacted owner-only ATIF trace. Verify exact rows first:
+
+```sql
+SELECT id, idempotency_key, account_ref, actor_user_id, session_ref, task_ref,
+       provider, model, input_tokens, output_tokens, reasoning_tokens,
+       cache_read_tokens, total_tokens, usage_truth,
+       demand_kind, demand_source
+  FROM token_usage_events
+ WHERE provider = 'pylon-codex-own-capacity'
+   AND model = 'openagents/pylon-codex'
+   AND usage_truth = 'exact'
+   AND demand_kind = 'own_capacity'
+   AND demand_source = 'khala_coding_delegation'
+   AND task_ref = '<assignmentRef>'
+ ORDER BY observed_at DESC;
+```
+
+Expected: one row per completed Codex SDK turn. The row must be owned by the
+linked OpenAuth/user account (`actor_user_id`) while `account_ref` remains the
+local Pylon agent account, and `total_tokens` must reflect the exact SDK usage
+for that turn. For Codex rows, reasoning output tokens are counted into the
+public served-token total while also preserved in `reasoning_tokens`.
+
+Then verify the redacted owner-private trace:
+
+```sql
+SELECT trace_uuid, owner_user_id, agent_ref, session_id, trajectory_id,
+       visibility, schema_version, step_count, demand_kind, demand_source
+  FROM agent_traces
+ WHERE demand_kind = 'own_capacity'
+   AND demand_source = 'khala_coding_delegation'
+   AND trajectory_id LIKE 'pylon_codex:<assignmentRef>:%'
+ ORDER BY created_at DESC;
+```
+
+Expected: `visibility='owner_only'`, `schema_version='ATIF-v1.7'`, owner equals
+the linked OpenAuth/user account, and the stored trajectory has been scrubbed
+before tripwire. The trace projection may contain bounded agent messages,
+reasoning summaries, tool labels, file-change counts, and command output byte
+counts; it must not contain raw prompts, raw shell output, API keys, provider
+credentials, local auth paths, wallet material, or private repo data.
+
+Trace ingest failures are fail-soft: the local Codex task and exact token row
+should still complete, with only a public-safe diagnostic returned by the ingest
+route. Token-ingest failures are not acceptable proof; rerun or debug them until
+the exact `token_usage_events` row exists.
+
+7. Confirm the public counter projected those exact rows:
 
 ```sh
 curl -fsS https://openagents.com/api/public/khala-tokens-served
 ```
 
-The new `tokensServed` value must be greater than the baseline. This proves the
-Khala-orchestrated own-capacity path counted on the same public counter the
-homepage renders only when no other work is running. In normal multi-agent
-operation, aggregate counter movement is not enough: verify exact attribution in
-`token_usage_events` by the request id. The row should look like:
+The new `tokensServed` value must increase by at least the sum of the newly
+inserted exact downstream Pylon/Codex rows. Counter movement by itself is never
+proof, because other agents may be running. Treat the homepage and `/khala`
+counters as public projections of `token_usage_events`, then reconcile the
+projection back to the exact rows above.
 
-```sql
-SELECT id, idempotency_key, account_ref, provider, model, total_tokens,
-       demand_kind, demand_source
-  FROM token_usage_events
- WHERE id = 'event.inference.served-tokens.<durableRequestId>'
-    OR idempotency_key LIKE '%' || '<durableRequestId>' || '%';
-```
-
-Expected attribution for this flow is `provider='pylon-codex-own-capacity'`,
-`model='openagents/pylon-codex'`, `demand_kind='own_capacity'`, and
-`demand_source='khala_coding_delegation'`. When supervising parallel work, also
-verify the `pylon_api_assignments` rows for each assignment reached
-`closeout_submitted` and `pylon_api_events` contains one acceptance, progress,
-artifact/proof, and worker closeout event per assignment.
+When supervising parallel work, also verify the `pylon_api_assignments` rows
+for each assignment reached `closeout_submitted` and `pylon_api_events` contains
+one acceptance, progress, artifact/proof, and worker closeout event per
+assignment.
 
 Common failure signatures:
 
@@ -305,10 +348,11 @@ Known public-safe steering gaps to keep visible:
   single owner-scoped execution invariant. Aggregation may make linked capacity
   easier to discover, but it must not allow one owner scope to execute against
   another owner's Pylon.
-- Counter movement alone is weak evidence when multiple agents are active. The
-  workflow needs a first-class command that resolves `durableRequestId` to the
-  exact `token_usage_events.id`, provider, model, `demand_kind`,
-  `demand_source`, and token totals so agents do not have to query D1 directly.
+- Counter movement alone is never completion evidence for Pylon/Codex work. The
+  workflow needs a first-class command that resolves `assignmentRef` to the
+  exact `token_usage_events` rows and `agent_traces` rows, including provider,
+  model, `usage_truth`, `demand_kind`, `demand_source`, visibility, and token
+  totals, so agents do not have to query D1 directly.
 - `assignment run-no-spend --json` should expose live progress while Codex is
   running: elapsed time, last progress event, current phase, and the assignment
   ref being worked. A long silent run is hard to supervise and hard to
