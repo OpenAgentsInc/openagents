@@ -1580,6 +1580,17 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   paths still reject danger flags, assignment selection must remain caller-owned,
   and public closeouts must not expose raw prompts, local paths, secrets, or
   private repo content.
+- Pylon/Codex delegated turns have two separate evidence products. The
+  owner-only ATIF trace is still a redacted public-safe summary. The complete
+  ordered Codex SDK event stream (`rawEvents` on
+  `POST /api/pylon/codex/turns`) is private owner-scoped source-of-truth
+  evidence and may contain prompts, command/tool args, local paths, file-change
+  details, and shell output. It must be stored only in private raw-event storage
+  with D1 metadata rows linked by assignment/session/owner/turn refs, idempotent
+  on replay, and never exposed through `/trace/{uuid}`, public counters, public
+  sync, issue comments, Forum posts, product-promise output, or public closeout
+  refs. Raw-event storage failures are fail-soft after exact token accounting
+  and return only a private-safe diagnostic/ref.
 - Regression coverage for this policy lives in
   `workers/api/src/inference/coding-workflow-classifier.test.ts`,
   `workers/api/src/inference/coding-workflow-delegation.test.ts`,

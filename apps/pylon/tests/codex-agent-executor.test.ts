@@ -392,7 +392,7 @@ describe("codex agent task recognition", () => {
     })
     expect(result.sessionRef).toStartWith("session.pylon.codex_agent.")
     expect(reports).toHaveLength(1)
-    expect(JSON.stringify(reports[0])).not.toContain("raw shell output stays local")
+    expect(JSON.stringify(reports[0])).toContain("raw shell output stays local")
     expect(reports[0]).toMatchObject({
       assignmentRef: "assignment.public.codex_agent.reporter",
       leaseRef: "lease.public.codex_agent.reporter",
@@ -405,6 +405,36 @@ describe("codex agent task recognition", () => {
         reasoningOutputTokens: 3,
       },
     })
+    expect((reports[0] as CodexTurnReport).rawEvents).toEqual([
+      { type: "thread.started", thread_id: "thread-codex-reporter-fail-soft" },
+      { type: "turn.started" },
+      {
+        type: "item.completed",
+        item: {
+          status: "completed",
+          text: "Completed the turn.",
+          type: "agent_message",
+        },
+      },
+      {
+        type: "item.completed",
+        item: {
+          aggregated_output: "raw shell output stays local",
+          exit_code: 0,
+          status: "completed",
+          type: "command_execution",
+        },
+      },
+      {
+        type: "turn.completed",
+        usage: {
+          cached_input_tokens: 2,
+          input_tokens: 50,
+          output_tokens: 7,
+          reasoning_output_tokens: 3,
+        },
+      },
+    ])
   })
 })
 

@@ -52,12 +52,13 @@ const PYLON_CODEX_PRODUCER_SYSTEM = 'omega' as const
 const PYLON_CODEX_SOURCE_ROUTE = 'omega_hosted_gemini' as const
 const PYLON_CODEX_DEMAND_KIND = 'own_capacity' as const
 const PYLON_CODEX_DEMAND_SOURCE = 'khala_coding_delegation' as const
-const MAX_BODY_BYTES = 2 * 1024 * 1024
+const MAX_BODY_BYTES = 8 * 1024 * 1024
 
 const NonEmptyString = S.Trim.check(S.isMinLength(1), S.isMaxLength(512))
 const BoundedText = S.String.check(S.isMaxLength(64 * 1024))
 const NonNegativeInt = S.Int.check(S.isGreaterThanOrEqualTo(0))
 const PositiveInt = S.Int.check(S.isGreaterThanOrEqualTo(1))
+const RawCodexEventPayload = S.Record(S.String, S.Unknown)
 
 class PylonCodexUsage extends S.Class<PylonCodexUsage>('PylonCodexUsage')({
   inputTokens: NonNegativeInt,
@@ -104,6 +105,7 @@ class PylonCodexTurnIngestBody extends S.Class<PylonCodexTurnIngestBody>(
   observedAt: S.optionalKey(S.String.check(S.isMaxLength(80))),
   usage: PylonCodexUsage,
   items: S.Array(PylonCodexTurnItem),
+  rawEvents: S.optionalKey(S.Array(RawCodexEventPayload)),
 }) {}
 
 export type PylonCodexTurnIngest =
@@ -123,6 +125,7 @@ type PylonCodexTurnIngestDependencies<Bindings> = Readonly<{
   makeId?: () => string
   nowIso?: () => string
   pylonStore: (env: Bindings) => Pick<PylonApiStore, 'readAssignment'>
+  rawEventStore?: (env: Bindings) => PylonCodexRawEventStore | undefined
   publishDelta?: (
     env: Bindings,
     input: Readonly<{
@@ -133,6 +136,158 @@ type PylonCodexTurnIngestDependencies<Bindings> = Readonly<{
   ) => Effect.Effect<void, unknown>
   traceStore: (env: Bindings) => TraceStore
 }>
+
+export type PylonCodexRawEventStoreInput = Readonly<{
+  assignmentRef: string
+  digest: string
+  eventCount: number
+  eventsJson: string
+  leaseRef: string
+  observedAt: string
+  ownerUserId: string
+  pylonRef: string
+  runRef: string | null
+  sessionRef: string | null
+  turnIndex: number
+  workspaceRef: string | null
+}>
+
+export type PylonCodexRawEventStoreResult = Readonly<{
+  byteLength: number
+  created: boolean
+  ref: string
+  r2Key: string
+}>
+
+export type PylonCodexRawEventStore = Readonly<{
+  putTurnEvents: (
+    input: PylonCodexRawEventStoreInput,
+  ) => Promise<PylonCodexRawEventStoreResult>
+}>
+
+export const pylonCodexRawEventR2Key = (
+  input: Pick<
+    PylonCodexRawEventStoreInput,
+    'assignmentRef' | 'digest' | 'turnIndex'
+  >,
+): string =>
+  [
+    'private',
+    'pylon-codex-raw-events',
+    input.assignmentRef,
+    `turn-${input.turnIndex}`,
+    `${input.digest}.json`,
+  ].join('/')
+
+export const pylonCodexRawEventRef = (digest: string): string =>
+  `raw.pylon_codex.${digest.slice(0, 32)}`
+
+type PylonCodexRawEventMetadataRow = Readonly<{
+  byte_length: number
+  event_count: number
+  r2_key: string
+  raw_event_ref: string
+}>
+
+export const makeD1R2PylonCodexRawEventStore = (
+  db: D1Database,
+  bucket: R2Bucket,
+): PylonCodexRawEventStore => ({
+  putTurnEvents: async input => {
+    const ref = pylonCodexRawEventRef(input.digest)
+    const existing = await db
+      .prepare(
+        `
+          SELECT raw_event_ref, r2_key, byte_length, event_count
+          FROM pylon_codex_raw_events
+          WHERE raw_event_ref = ?
+          LIMIT 1
+        `,
+      )
+      .bind(ref)
+      .first<PylonCodexRawEventMetadataRow>()
+    if (existing !== null) {
+      return {
+        byteLength: Number(existing.byte_length),
+        created: false,
+        ref: existing.raw_event_ref,
+        r2Key: existing.r2_key,
+      }
+    }
+
+    const r2Key = pylonCodexRawEventR2Key(input)
+    const existingObject = await bucket.head(r2Key)
+    const byteLength = new TextEncoder().encode(input.eventsJson).byteLength
+    if (existingObject === null) {
+      await bucket.put(r2Key, input.eventsJson, {
+        customMetadata: {
+          assignmentRef: input.assignmentRef,
+          demandKind: PYLON_CODEX_DEMAND_KIND,
+          demandSource: PYLON_CODEX_DEMAND_SOURCE,
+          ownerUserId: input.ownerUserId,
+          rawEventRef: ref,
+          turnIndex: String(input.turnIndex),
+        },
+        httpMetadata: { contentType: 'application/json; charset=utf-8' },
+      })
+    }
+
+    const now = currentIsoTimestamp()
+    const result = await db
+      .prepare(
+        `
+          INSERT OR IGNORE INTO pylon_codex_raw_events (
+            raw_event_ref,
+            assignment_ref,
+            lease_ref,
+            pylon_ref,
+            owner_user_id,
+            run_ref,
+            session_ref,
+            workspace_ref,
+            turn_index,
+            event_count,
+            byte_length,
+            content_digest,
+            r2_key,
+            observed_at,
+            created_at,
+            updated_at,
+            demand_kind,
+            demand_source
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+      )
+      .bind(
+        ref,
+        input.assignmentRef,
+        input.leaseRef,
+        input.pylonRef,
+        input.ownerUserId,
+        input.runRef,
+        input.sessionRef,
+        input.workspaceRef,
+        input.turnIndex,
+        input.eventCount,
+        byteLength,
+        input.digest,
+        r2Key,
+        input.observedAt,
+        now,
+        now,
+        PYLON_CODEX_DEMAND_KIND,
+        PYLON_CODEX_DEMAND_SOURCE,
+      )
+      .run()
+
+    return {
+      byteLength,
+      created: (result.meta.changes ?? 0) > 0,
+      ref,
+      r2Key,
+    }
+  },
+})
 
 class PylonCodexUnauthorized extends S.TaggedErrorClass<PylonCodexUnauthorized>()(
   'PylonCodexUnauthorized',
@@ -682,6 +837,30 @@ type PylonCodexTraceOutcome =
       diagnostic: PylonCodexTraceDropDiagnostic
     }>
 
+type PylonCodexRawEventsDropDiagnostic = Readonly<{
+  operation: 'raw_codex_events_store'
+  reason: string
+}>
+
+type PylonCodexRawEventsOutcome =
+  | Readonly<{
+      kind: 'stored'
+      ref: string
+      created: boolean
+      byteLength: number
+      eventCount: number
+      r2Key: string
+    }>
+  | Readonly<{
+      kind: 'dropped'
+      diagnostic: PylonCodexRawEventsDropDiagnostic
+      eventCount: number
+    }>
+  | Readonly<{
+      kind: 'not_submitted'
+      eventCount: 0
+    }>
+
 const traceDropDiagnostic = (
   error:
     | PylonCodexStorageError
@@ -704,6 +883,107 @@ const traceDropDiagnostic = (
     }),
     M.exhaustive,
   )
+
+const storeRawCodexEvents = <Bindings>(
+  dependencies: PylonCodexTurnIngestDependencies<Bindings>,
+  env: Bindings,
+  input: Readonly<{
+    body: PylonCodexTurnIngestBody
+    digest: string
+    observedAt: string
+    ownerUserId: string
+  }>,
+): Effect.Effect<PylonCodexRawEventsOutcome> => {
+  const events = input.body.rawEvents
+  if (events === undefined || events.length === 0) {
+    return Effect.succeed({ eventCount: 0, kind: 'not_submitted' as const })
+  }
+
+  const store = dependencies.rawEventStore?.(env)
+  if (store === undefined) {
+    return Effect.succeed({
+      diagnostic: {
+        operation: 'raw_codex_events_store',
+        reason: 'raw_event_store_unconfigured',
+      },
+      eventCount: events.length,
+      kind: 'dropped' as const,
+    })
+  }
+
+  const eventsJson = Effect.try({
+    catch: error => ({
+      diagnostic: {
+        operation: 'raw_codex_events_store' as const,
+        reason:
+          error instanceof Error
+            ? error.message
+            : 'raw_event_payload_serialize_failed',
+      },
+      eventCount: events.length,
+      kind: 'dropped' as const,
+    }),
+    try: () =>
+      JSON.stringify({
+        schemaVersion: 'openagents.pylon.codex_raw_events.v1',
+        assignmentRef: input.body.assignmentRef,
+        leaseRef: input.body.leaseRef,
+        pylonRef: input.body.pylonRef,
+        runRef: input.body.runRef ?? null,
+        sessionRef: input.body.sessionRef ?? null,
+        workspaceRef: input.body.workspaceRef ?? null,
+        turnIndex: input.body.turnIndex,
+        observedAt: input.observedAt,
+        eventCount: events.length,
+        events,
+        usage: input.body.usage,
+      }),
+  })
+
+  return eventsJson.pipe(
+    Effect.flatMap(serialized =>
+      Effect.tryPromise({
+        catch: error => ({
+          diagnostic: {
+            operation: 'raw_codex_events_store' as const,
+            reason:
+              error instanceof Error
+                ? error.message
+                : 'raw_event_store_unavailable',
+          },
+          eventCount: events.length,
+          kind: 'dropped' as const,
+        }),
+        try: () =>
+          store.putTurnEvents({
+            assignmentRef: input.body.assignmentRef,
+            digest: input.digest,
+            eventCount: events.length,
+            eventsJson: serialized,
+            leaseRef: input.body.leaseRef,
+            observedAt: input.observedAt,
+            ownerUserId: input.ownerUserId,
+            pylonRef: input.body.pylonRef,
+            runRef: input.body.runRef ?? null,
+            sessionRef: input.body.sessionRef ?? null,
+            turnIndex: input.body.turnIndex,
+            workspaceRef: input.body.workspaceRef ?? null,
+          }),
+      }),
+    ),
+    Effect.match({
+      onFailure: outcome => outcome,
+      onSuccess: result => ({
+        byteLength: result.byteLength,
+        created: result.created,
+        eventCount: events.length,
+        kind: 'stored' as const,
+        ref: result.ref,
+        r2Key: result.r2Key,
+      }),
+    }),
+  )
+}
 
 const routeIngest = <Bindings>(
   dependencies: PylonCodexTurnIngestDependencies<Bindings>,
@@ -772,6 +1052,13 @@ const routeIngest = <Bindings>(
         ),
       )
 
+    const rawEventsOutcome = yield* storeRawCodexEvents(dependencies, env, {
+      body,
+      digest,
+      observedAt,
+      ownerUserId,
+    })
+
     if (
       tokenResult.inserted &&
       dependencies.publishDelta !== undefined &&
@@ -835,6 +1122,28 @@ const routeIngest = <Bindings>(
         ? counts.inputTokens + counts.outputTokens
         : 0,
       tokenUsageEventRef: tokenBody.eventId,
+      rawEvents:
+        rawEventsOutcome.kind === 'stored'
+          ? {
+              byteLength: rawEventsOutcome.byteLength,
+              created: rawEventsOutcome.created,
+              eventCount: rawEventsOutcome.eventCount,
+              ref: rawEventsOutcome.ref,
+              r2Key: rawEventsOutcome.r2Key,
+              visibility: 'owner_only' as const,
+            }
+          : rawEventsOutcome.kind === 'dropped'
+            ? {
+                diagnostic: rawEventsOutcome.diagnostic,
+                dropped: true,
+                eventCount: rawEventsOutcome.eventCount,
+                visibility: 'owner_only' as const,
+              }
+            : {
+                eventCount: 0,
+                submitted: false,
+                visibility: 'owner_only' as const,
+              },
       trace,
       ...(redactionReport === undefined ? {} : { redactionReport }),
     })

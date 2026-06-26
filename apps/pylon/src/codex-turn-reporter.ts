@@ -40,6 +40,7 @@ export type CodexTurnReport = {
   observedAt?: string
   usage: CodexTurnUsage
   items: ReadonlyArray<CodexTurnReportItem>
+  rawEvents?: ReadonlyArray<Record<string, unknown>>
 }
 
 export type CodexTurnReporter = (report: CodexTurnReport) => Promise<void>
@@ -115,6 +116,7 @@ export function createPylonCodexTurnReporter(input: {
         ...(typeof item.changeCount === "number" ? { changeCount: nonNegativeInteger(item.changeCount) } : {}),
         ...(boundedString(item.toolName, 120) === undefined ? {} : { toolName: boundedString(item.toolName, 120) }),
       })),
+      ...(report.rawEvents === undefined ? {} : { rawEvents: report.rawEvents }),
     }
     const response = await fetchImpl(new URL(PYLON_CODEX_TURN_INGEST_PATH, baseUrl), {
       method: "POST",

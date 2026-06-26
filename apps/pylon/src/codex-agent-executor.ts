@@ -33,10 +33,9 @@ import type { PylonLocalState } from "./state.js"
  * Recognizes the codex_sdk coding work class on a Pylon assignment,
  * materializes a bounded fixture workspace, drives one Codex SDK thread
  * inside it, verifies the result with the fixture's real test command, and
- * digests everything into public-safe closeout refs. Raw SDK events,
- * prompts, file contents, and local paths never leave the device; the
- * instruction text lives in the locally-shipped fixture, not on the wire,
- * so assignment payloads stay ref-only.
+ * digests everything into public-safe closeout refs. The complete raw SDK
+ * event stream is posted only to the owner-scoped private Codex turn ingest
+ * store; public closeouts and ATIF traces remain redacted/ref-only.
  *
  * Boundary law (the design delta from the Claude Agent gate): the Codex
  * SDK has no PreToolUse hook. For the caller-owned Khala->Pylon->Codex lane,
@@ -247,6 +246,8 @@ type CodexThreadEvent = {
   }
 }
 
+type RawCodexThreadEvent = Record<string, unknown>
+
 function finiteToken(value: number | undefined): number {
   return typeof value === "number" && Number.isFinite(value) && value > 0
     ? Math.trunc(value)
@@ -348,6 +349,7 @@ async function reportCodexTurn(input: {
   turnIndex: number
   usage: CodexTurnUsage | undefined
   items: ReadonlyArray<CodexTurnReportItem>
+  rawEvents: ReadonlyArray<RawCodexThreadEvent>
 }) {
   if (
     input.eventReporter === undefined ||
@@ -369,6 +371,7 @@ async function reportCodexTurn(input: {
     observedAt: new Date().toISOString(),
     usage: input.usage,
     items: input.items,
+    rawEvents: input.rawEvents,
   }).catch(() => undefined)
 }
 
@@ -406,6 +409,8 @@ export async function runWithCodexSdk(input: CodexAgentRunInput): Promise<CodexA
   let activeTurnIndex = 0
   let itemOrdinal = 0
   let currentTurnItems: Array<CodexTurnReportItem> = []
+  let currentRawEvents: Array<RawCodexThreadEvent> = []
+  let pendingRawEvents: Array<RawCodexThreadEvent> = []
 
   try {
     const codex = new sdk.Codex({ env })
@@ -420,27 +425,41 @@ export async function runWithCodexSdk(input: CodexAgentRunInput): Promise<CodexA
     const { events } = await thread.runStreamed(input.instructions, { signal: abort.signal })
     for await (const raw of events) {
       const event = raw as CodexThreadEvent
+      const rawEvent = raw !== null && typeof raw === "object" ? (raw as RawCodexThreadEvent) : undefined
+      if (rawEvent !== undefined && event.type !== "turn.started") {
+        if (activeTurnIndex > 0) {
+          currentRawEvents.push(rawEvent)
+        } else {
+          pendingRawEvents.push(rawEvent)
+        }
+      }
       if (event.type === "thread.started" && typeof event.thread_id === "string") {
         threadId = event.thread_id
       }
       if (event.type === "turn.started") {
         activeTurnIndex = turnCount + 1
         currentTurnItems = []
+        currentRawEvents = rawEvent === undefined ? pendingRawEvents : [...pendingRawEvents, rawEvent]
+        pendingRawEvents = []
       }
       if (event.type === "turn.completed") {
         const completedTurnIndex = activeTurnIndex > 0 ? activeTurnIndex : turnCount + 1
+        const completedRawEvents = activeTurnIndex > 0 ? currentRawEvents : pendingRawEvents
         turnCount += 1
         const sessionRef =
           threadId === null ? undefined : stableRef("session.pylon.codex_agent", threadId)
         await reportCodexTurn({
           eventReporter: input.eventReporter,
           items: currentTurnItems,
+          rawEvents: completedRawEvents,
           runInput: input,
           sessionRef,
           turnIndex: completedTurnIndex,
           usage: usageFromTurnCompleted(event),
         })
         currentTurnItems = []
+        currentRawEvents = []
+        pendingRawEvents = []
         activeTurnIndex = 0
       }
       if (event.type === "turn.failed" || event.type === "error") failed = true
