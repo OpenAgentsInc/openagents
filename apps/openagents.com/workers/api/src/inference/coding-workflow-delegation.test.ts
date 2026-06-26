@@ -383,6 +383,43 @@ describe('coding workflow delegation', () => {
     expect(result?.kind).toBe('assigned')
   })
 
+  test('allows more coding delegation when ready slots exceed remaining available slots', async () => {
+    const result = await delegateCodingWorkflow({
+      classification,
+      linkedAgents: [linkedOwner],
+      makeId: () => 'id1',
+      nowIso,
+      pylonStore: makeStore({
+        activeAssignments: [
+          assignment({
+            assignmentRef: 'assignment.public.test.active_one',
+            id: 'pylon_api_assignment_active_one',
+          }),
+          assignment({
+            assignmentRef: 'assignment.public.test.active_two',
+            id: 'pylon_api_assignment_active_two',
+          }),
+        ],
+        registrations: [
+          registration({
+            latestCapacityRefs: [
+              'capacity.coding.codex.ready=4',
+              'capacity.coding.codex.available=2',
+            ],
+            latestLoadRefs: [
+              'load.coding.codex.busy=2',
+              'load.coding.codex.queued=0',
+            ],
+          }),
+        ],
+      }),
+      rawBody: {},
+      requestId: 'chatcmpl_coding_parallel_busy_available',
+    })
+
+    expect(result?.kind).toBe('assigned')
+  })
+
   test('blocks same-account coding delegation once advertised Codex slots are reserved', async () => {
     const result = await delegateCodingWorkflow({
       classification,

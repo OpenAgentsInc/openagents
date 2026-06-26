@@ -2257,7 +2257,7 @@ describe('Pylon API routes', () => {
     )
   })
 
-  test('allows parallel coding dispatches up to advertised available Codex slots', async () => {
+  test('allows parallel coding dispatches up to advertised ready Codex slots', async () => {
     const store = new MemoryPylonApiStore()
     await registerPylon(store, {
       capabilityRefs: ['capability.pylon.local_codex'],
@@ -2291,6 +2291,56 @@ describe('Pylon API routes', () => {
     expect(second.status).toBe(201)
     expect(third.status).toBe(409)
     expect(thirdBody.dispatchGate?.blockerRefs).toContain(
+      'blocker.public.pylon_dispatch.duplicate_active_assignment',
+    )
+  })
+
+  test('does not treat remaining available Codex slots as the total parallel ceiling', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store, {
+      capabilityRefs: ['capability.pylon.local_codex'],
+    })
+    await markOnline(store, {
+      capacityRefs: [
+        'capacity.coding.codex.ready=4',
+        'capacity.coding.codex.available=2',
+      ],
+      loadRefs: ['load.coding.codex.busy=2', 'load.coding.codex.queued=0'],
+    })
+    await markWalletReady(store)
+    const first = await createAssignment(store, {
+      assignmentRef: 'assignment.public.codex_busy_parallel_one',
+      idempotencyKey: 'assignment-codex-busy-parallel-one',
+      requiredCapabilityRefs: ['capability.pylon.local_codex'],
+    })
+    const second = await createAssignment(store, {
+      assignmentRef: 'assignment.public.codex_busy_parallel_two',
+      idempotencyKey: 'assignment-codex-busy-parallel-two',
+      requiredCapabilityRefs: ['capability.pylon.local_codex'],
+    })
+    const third = await createAssignment(store, {
+      assignmentRef: 'assignment.public.codex_busy_parallel_three',
+      idempotencyKey: 'assignment-codex-busy-parallel-three',
+      requiredCapabilityRefs: ['capability.pylon.local_codex'],
+    })
+    const fourth = await createAssignment(store, {
+      assignmentRef: 'assignment.public.codex_busy_parallel_four',
+      idempotencyKey: 'assignment-codex-busy-parallel-four',
+      requiredCapabilityRefs: ['capability.pylon.local_codex'],
+    })
+    const fifth = await createAssignment(store, {
+      assignmentRef: 'assignment.public.codex_busy_parallel_five',
+      idempotencyKey: 'assignment-codex-busy-parallel-five',
+      requiredCapabilityRefs: ['capability.pylon.local_codex'],
+    })
+    const fifthBody = await responseJson<PylonRouteJson>(fifth)
+
+    expect(first.status).toBe(201)
+    expect(second.status).toBe(201)
+    expect(third.status).toBe(201)
+    expect(fourth.status).toBe(201)
+    expect(fifth.status).toBe(409)
+    expect(fifthBody.dispatchGate?.blockerRefs).toContain(
       'blocker.public.pylon_dispatch.duplicate_active_assignment',
     )
   })

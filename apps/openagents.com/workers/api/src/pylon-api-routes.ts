@@ -387,8 +387,14 @@ const activeDuplicateCapacitySlots = (
   const capacity = pylonCodingServiceCapacityProjection(input.registration).find(
     item => item.service === requestedService,
   )
+  const advertisedSlots =
+    capacity === undefined
+      ? 1
+      : capacity.ready > 0
+        ? capacity.ready
+        : capacity.available
 
-  return Math.max(1, capacity?.available ?? 1)
+  return Math.max(1, advertisedSlots)
 }
 
 const hasControlledDispatchOnlineStatus = (
