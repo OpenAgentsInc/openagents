@@ -39,6 +39,7 @@ import {
 import {
   KHALA_IDENTITY_STATEMENT,
   KHALA_IDENTITY_SYSTEM_PROMPT,
+  KHALA_STANDARD_GREETING,
 } from './khala-identity'
 import { NOT_MEASURED, decodeKhalaTelemetryBlock } from './khala-telemetry'
 import { type MeteringContext, type MeteringHook } from './metering-hook'
@@ -4570,7 +4571,7 @@ describe('Khala identity guard', () => {
             m.content.toLowerCase().includes('answer again'),
         )
         const content = isReask
-          ? 'We are Khala, the OpenAgents inference model. How can we help?'
+          ? KHALA_STANDARD_GREETING
           : leak
         return {
           content,
@@ -4885,7 +4886,7 @@ describe('Khala identity guard', () => {
     // The route guard must NOT prepend or re-state the identity — it passes
     // through byte-for-byte so the identity sentence appears exactly once.
     const cleanIdentity =
-      'We are Khala, the OpenAgents inference model — one endpoint over a network of agents. We are not Gemini or any other model. How can we help you today?'
+      'We are Khala, a collective intelligence. We are not Gemini or any other model. How can we help you?'
     const registry = new InferenceProviderRegistry()
     registry.register({
       complete: request =>

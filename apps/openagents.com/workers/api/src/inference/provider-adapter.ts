@@ -130,6 +130,10 @@ export type InferenceResult = Readonly<{
 export type InferenceStreamEvent = Readonly<{
   // Incremental content for this frame (may be empty on the terminal frame).
   contentDelta: string
+  // Incremental provider-labeled reasoning/thinking for this frame. This is
+  // deliberately separate from content so clients can render or hide reasoning
+  // differently and never have to infer the channel from prose.
+  reasoningDelta?: string | undefined
   // Incremental OpenAI-compatible tool-call deltas. Arguments may arrive in many
   // partial frames; the route must forward them as-is instead of trying to
   // assemble or validate the provider's JSON argument stream.
@@ -172,6 +176,8 @@ export type InferenceStreamSource = Readonly<{
 export type InferenceStreamChunk = Readonly<{
   // Incremental content delta for this frame (may be empty on the final frame).
   contentDelta: string
+  // Incremental provider-labeled reasoning/thinking for this frame.
+  reasoningDelta?: string | undefined
   // Incremental OpenAI-compatible tool-call deltas.
   toolCallDeltas?: ReadonlyArray<InferenceToolCallDelta> | undefined
   // Set on the terminal frame only.

@@ -58,6 +58,31 @@ describe("SSE parsing", () => {
     })
   })
 
+  test("keeps public reasoning frames separate from answer text", async () => {
+    const fakeFetch = (async () => sseResponse([
+      'event: reasoning\ndata: {"text":"thinking in provider channel"}',
+      'event: delta\ndata: {"text":"Answer"}',
+      'event: done\ndata: {"done":true}',
+      "",
+    ].join("\n\n"))) as unknown as typeof fetch
+
+    const reasoning: Array<string> = []
+    const deltas: Array<string> = []
+    const result = await Effect.runPromise(runChatTurn({
+      mode: "public",
+      baseUrl: "https://example.test",
+      fetch: fakeFetch,
+      messages: [{ role: "user", content: "Hello" }],
+      onDelta: (delta) => deltas.push(delta),
+      onReasoning: (delta) => reasoning.push(delta),
+    }))
+
+    expect(result.text).toBe("Answer")
+    expect(result.reasoningText).toBe("thinking in provider channel")
+    expect(deltas).toEqual(["Answer"])
+    expect(reasoning).toEqual(["thinking in provider channel"])
+  })
+
   test("streams OpenAI-compatible delta frames", async () => {
     const fakeFetch = (async () => sseResponse([
       'data: {"id":"chat_1","model":"openagents/khala","choices":[{"delta":{"content":"Kh"}}]}',
@@ -78,6 +103,30 @@ describe("SSE parsing", () => {
     expect(result.text).toBe("Khala")
     expect(result.metadata.usage.totalTokens).toBe(6)
     expect(result.metadata.servedModel).toBe("openagents/khala")
+  })
+
+  test("keeps OpenAI-compatible reasoning_content separate from answer text", async () => {
+    const fakeFetch = (async () => sseResponse([
+      'data: {"id":"chat_1","model":"openagents/khala","choices":[{"delta":{"reasoning_content":"internal"}}]}',
+      'data: {"id":"chat_1","model":"openagents/khala","choices":[{"delta":{"content":"Visible"}}]}',
+      'data: {"id":"chat_1","model":"openagents/khala","choices":[],"usage":{"prompt_tokens":4,"completion_tokens":2,"total_tokens":6}}',
+      "data: [DONE]",
+      "",
+    ].join("\n\n"))) as unknown as typeof fetch
+
+    const reasoning: Array<string> = []
+    const result = await Effect.runPromise(runChatTurn({
+      mode: "api",
+      baseUrl: "https://example.test",
+      token: "oa_agent_test",
+      fetch: fakeFetch,
+      messages: [{ role: "user", content: "Hello" }],
+      onReasoning: (delta) => reasoning.push(delta),
+    }))
+
+    expect(result.text).toBe("Visible")
+    expect(result.reasoningText).toBe("internal")
+    expect(reasoning).toEqual(["internal"])
   })
 })
 

@@ -10,9 +10,9 @@
 // shape:
 //   - System prompt = the Khala identity contract (`KHALA_IDENTITY_SYSTEM_PROMPT`
 //     from `inference/khala-identity.ts`, first-person plural "we are Khala",
-//     NEVER naming an underlying provider) + a light instruction that Khala is a
-//     general assistant that may discuss its own capabilities, the
-//     OpenAI-compatible API, and the public model ids — but NOT the
+//     NEVER naming an underlying provider) + the refusal posture + Blueprint
+//     response discipline contracts + a light generic chat instruction. API
+//     mechanics are only volunteered when explicitly asked — this is NOT the
 //     onboarding/concierge intake program.
 //   - Stateless: the client sends the running message list each turn. There is
 //     NO server session row, no durable resume, no persistence.
@@ -33,6 +33,8 @@ import {
 import {
   KHALA_IDENTITY_SYSTEM_PROMPT,
   KHALA_REFUSAL_POSTURE_SYSTEM_PROMPT,
+  KHALA_RESPONSE_DISCIPLINE_SYSTEM_PROMPT,
+  KHALA_STANDARD_GREETING,
 } from './inference/khala-identity'
 
 // The live public Khala model for the generic chat demo (same model id the
@@ -64,15 +66,17 @@ export const KhalaChatRequest = S.Struct({
 })
 export type KhalaChatRequest = typeof KhalaChatRequest.Type
 
-// The generic instruction layered ON TOP of the identity contract. It tells
-// Khala it is the OpenAgents inference orchestrator / a general assistant that
-// may discuss its own capabilities, the OpenAI-compatible API, the public model
-// ids, the base URL, and SSE streaming. It deliberately does NOT introduce an
-// intake interview, an output spec, or any concierge scoping behavior.
+// The generic instruction layered ON TOP of the identity/refusal/response
+// contracts. It keeps public chat conversational and avoids volunteering API
+// mechanics unless the user explicitly asks for integration details. It
+// deliberately does NOT introduce an intake interview or concierge scoping
+// behavior.
 export const KHALA_CHAT_INSTRUCTION = [
   'You are answering in a public chat demo on the OpenAgents website.',
-  'You are the OpenAgents inference orchestrator: one OpenAI-compatible endpoint over a network of agents. You are a general-purpose assistant — answer whatever the user asks directly and helpfully.',
-  'You may explain your own capabilities when asked: you are reachable as an OpenAI-compatible Chat Completions API at the base URL https://openagents.com/api/v1, the public model id is openagents/khala, and streaming works over standard Server-Sent Events.',
+  `For a simple greeting or intro, answer exactly: "${KHALA_STANDARD_GREETING}"`,
+  'You are a general-purpose assistant. Answer the user directly and helpfully.',
+  'Do not volunteer base URLs, model ids, endpoint details, or Server-Sent Events mechanics in normal conversation. Explain API usage only when the user explicitly asks how to call the API or integrate Khala programmatically.',
+  'When API details are explicitly requested, you may say that Khala is available as an OpenAI-compatible Chat Completions API at https://openagents.com/api/v1 with model id openagents/khala.',
   'Do not run an intake interview, do not ask a fixed script of onboarding questions, and do not collect a business profile. Just have a normal, helpful conversation.',
 ].join(' ')
 
@@ -179,7 +183,7 @@ export const buildKhalaChatMessages = (
 ): ReadonlyArray<InferenceMessage> => [
   {
     role: 'system',
-    content: `${KHALA_IDENTITY_SYSTEM_PROMPT} ${KHALA_REFUSAL_POSTURE_SYSTEM_PROMPT} ${KHALA_CHAT_INSTRUCTION}`,
+    content: `${KHALA_IDENTITY_SYSTEM_PROMPT} ${KHALA_REFUSAL_POSTURE_SYSTEM_PROMPT} ${KHALA_RESPONSE_DISCIPLINE_SYSTEM_PROMPT} ${KHALA_CHAT_INSTRUCTION}`,
   },
   ...messages.map(message => ({ role: message.role, content: message.content })),
 ]

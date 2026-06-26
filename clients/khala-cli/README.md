@@ -20,10 +20,13 @@ command through a Bun shebang, so Bun 1.3+ must be available on `PATH`.
 two modes:
 
 - **Interactive terminal mode:** default `khala` opens a normal terminal chat
-  transcript with persistent `You:` and `Khala:` turns in scrollback. It does
+  transcript with `>` prompts and `Khala:` turns in scrollback. Up/Down cycles
+  through previous prompts. It does
   not use an alternate-screen/full-screen UI. Slash commands such as
   `/feedback`, `/msginfo`, `/tokens`, `/changelog`, `/version`, and `/help` are
   handled locally instead of being sent to inference.
+  Provider-labeled reasoning is rendered separately as dim `Khala reasoning:`
+  text when the API supplies it.
 - **Headless CLI mode:** `--prompt`, positional text, or stdin runs one turn and
   streams the assistant response to stdout for scripts and agents.
 - **Utility commands:** `khala feedback "..."` saves feedback to
@@ -74,6 +77,13 @@ that check.
 - `--mint-free-key` calls `POST /api/keys/free` and prints the response once.
 
 ## Changelog
+
+### v0.1.8 - Jun 26, 2026, 1:04:35 PM CDT
+
+- Adds Up/Down prompt history, switches the interactive prompt to `>`, and keeps
+  provider reasoning in a separate dim stream.
+- Adds the Blueprint response-discipline contract so Khala answers land as one
+  coherent final answer instead of visible revision loops.
 
 ### v0.1.7 - Jun 26, 2026, 12:36:47 PM CDT
 

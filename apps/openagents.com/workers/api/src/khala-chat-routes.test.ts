@@ -2,6 +2,7 @@ import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import { OnboardingInferenceError } from './autopilot-onboarding-program'
+import type { OnboardingStreamDelta } from './autopilot-onboarding-program'
 import {
   KHALA_CHAT_MAX_MESSAGE_CHARS,
   type KhalaChatStreamClient,
@@ -26,7 +27,7 @@ const chatRequest = (body: unknown): Request =>
 // A stub stream client that yields the given chunks as deltas, headlessly (no
 // provider, no browser). Mirrors the onboarding test's scripted-inference Layer.
 const chunkStream =
-  (chunks: ReadonlyArray<string>, metadata?: KhalaChatStreamSource['metadata']): KhalaChatStreamClient =>
+  (chunks: ReadonlyArray<OnboardingStreamDelta>, metadata?: KhalaChatStreamSource['metadata']): KhalaChatStreamClient =>
   () =>
     Effect.succeed<KhalaChatStreamSource>({
       deltas: (async function* () {
@@ -34,7 +35,9 @@ const chunkStream =
           yield chunk
         }
       })(),
-      final: () => chunks.join(''),
+      final: () => chunks
+        .map(chunk => typeof chunk === 'string' ? chunk : chunk.kind === 'content' ? chunk.text : '')
+        .join(''),
       ...(metadata === undefined ? {} : { metadata }),
     })
 
@@ -113,6 +116,24 @@ describe('khala chat route', () => {
     expect(text).toContain('"servedAdapterId":"hydralisk"')
     expect(text).toContain('"traceRef":"trace.khala_chat.')
     expect(text.indexOf('event: meta')).toBeLessThan(text.indexOf('event: done'))
+  })
+
+  test('emits provider-labeled reasoning on a separate SSE event', async () => {
+    const routes = routesWith(chunkStream([
+      { kind: 'reasoning', text: 'provider thought' },
+      'Visible answer.',
+    ]))
+    const response = await run(
+      routes.routeKhalaChatRequest(
+        chatRequest({ messages: [{ role: 'user', content: 'hi' }] }),
+        {},
+      ),
+    )
+
+    const text = await response.text()
+    expect(text).toContain('event: reasoning\ndata: {"text":"provider thought"}')
+    expect(text).toContain('event: delta\ndata: {"text":"Visible answer."}')
+    expect(text.indexOf('event: reasoning')).toBeLessThan(text.indexOf('event: delta'))
   })
 
   test('injects the Khala identity system prompt and keeps the running conversation', async () => {

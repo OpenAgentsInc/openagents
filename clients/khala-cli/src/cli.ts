@@ -2,8 +2,8 @@ import { Effect } from "effect"
 import { appendAssistantTurn, prepareUserTurn } from "./bounds.js"
 import { KHALA_CLI_VERSION, formatKhalaChangelog } from "./changelog.js"
 import { fetchModels, fetchTokensServed, mintFreeKey, runChatTurn, submitFeedback, toKhalaCliError } from "./client.js"
-import { readPromptFromTerminal } from "./input.js"
-import { renderMarkdownDeltaForTerminal, renderMarkdownForTerminal, terminalStyle } from "./terminal.js"
+import { appendPromptHistory, readPromptFromTerminal } from "./input.js"
+import { renderMarkdownDeltaForTerminal, renderMarkdownForTerminal, renderReasoningMarkdownDeltaForTerminal, terminalStyle } from "./terminal.js"
 import { DEFAULT_BASE_URL, type ChatMode, type ChatTurnMetadata, type KhalaChatMessage, type KhalaCliError, type KhalaTokensResponse } from "./types.js"
 import { startKhalaAutoUpdate } from "./updater.js"
 
@@ -101,6 +101,7 @@ export async function runKhalaCli(argv: ReadonlyArray<string>, env: Record<strin
         [],
         prompt,
         args.json ? undefined : (delta) => process.stdout.write(delta),
+        args.json ? undefined : (delta) => process.stderr.write(renderReasoningMarkdownDeltaForTerminal(delta)),
       )
       if (args.json) {
         process.stdout.write(`${JSON.stringify({ text })}\n`)
@@ -204,6 +205,7 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
 
 async function runInteractive(args: ParsedArgs, env: Record<string, string | undefined>): Promise<void> {
   let messages: ReadonlyArray<KhalaChatMessage> = []
+  let promptHistory: ReadonlyArray<string> = []
   let lastTraceRef: string | undefined
   let lastMessageInfo: ChatTurnMetadata | undefined
   process.stdout.write(
@@ -215,7 +217,9 @@ async function runInteractive(args: ParsedArgs, env: Record<string, string | und
     notify: line => process.stdout.write(`\n${terminalStyle.assistant("Khala:")} ${line}\n\n`),
   })
   while (true) {
-    const prompt = await readPromptFromTerminal(terminalStyle.user("You: "))
+    const prompt = await readPromptFromTerminal(terminalStyle.user("> "), {
+      history: promptHistory,
+    })
     if (prompt === null) {
       process.stdout.write("\n")
       return
@@ -226,6 +230,7 @@ async function runInteractive(args: ParsedArgs, env: Record<string, string | und
     if (prompt.trim().length === 0) {
       continue
     }
+    promptHistory = appendPromptHistory(promptHistory, prompt)
     if (prompt.trim().startsWith("/")) {
       const outcome = await handleSlashCommand(args, prompt.trim(), lastTraceRef, lastMessageInfo)
       if (outcome === "exit") return
@@ -235,6 +240,7 @@ async function runInteractive(args: ParsedArgs, env: Record<string, string | und
     const prepared = prepareUserTurn(messages, prompt)
     try {
       let streamed = false
+      let reasoningStreamed = false
       const result = await Effect.runPromise(runChatTurn({
         mode: args.mode,
         baseUrl: args.baseUrl,
@@ -242,16 +248,26 @@ async function runInteractive(args: ParsedArgs, env: Record<string, string | und
         messages: prepared,
         onDelta: (delta) => {
           if (!streamed) {
+            if (reasoningStreamed) {
+              process.stdout.write("\n")
+            }
             process.stdout.write(`${terminalStyle.assistant("Khala:")} `)
             streamed = true
           }
           process.stdout.write(renderMarkdownDeltaForTerminal(delta))
         },
+        onReasoning: (delta) => {
+          if (!reasoningStreamed) {
+            process.stdout.write(`${terminalStyle.meta("Khala reasoning:")} `)
+            reasoningStreamed = true
+          }
+          process.stdout.write(renderReasoningMarkdownDeltaForTerminal(delta))
+        },
         onRetry: (event) => {
-          process.stdout.write(`${streamed ? "\n" : ""}${terminalStyle.assistant("Khala:")} ${formatRetryNotice(event)}\n`)
+          process.stdout.write(`${streamed || reasoningStreamed ? "\n" : ""}${terminalStyle.assistant("Khala:")} ${formatRetryNotice(event)}\n`)
         },
       }))
-      if (streamed) {
+      if (streamed || reasoningStreamed) {
         process.stdout.write("\n\n")
       } else {
         process.stdout.write(`${terminalStyle.assistant("Khala:")} ${renderMarkdownForTerminal(result.text)}\n\n`)
@@ -333,6 +349,7 @@ async function runOneTurn(
   history: ReadonlyArray<KhalaChatMessage>,
   prompt: string,
   onDelta?: (text: string) => void,
+  onReasoning?: (text: string) => void,
 ): Promise<string> {
   const messages = prepareUserTurn(history, prompt)
   const result = await Effect.runPromise(runChatTurn({
@@ -341,6 +358,7 @@ async function runOneTurn(
     token: args.token,
     messages,
     onDelta,
+    onReasoning,
     onRetry: (event) => {
       process.stderr.write(`khala: ${formatRetryNotice(event)}\n`)
     },

@@ -219,9 +219,12 @@ export const teeUpstreamToDurableDO = async (input: {
     for await (const event of source.frames) {
       const hasDelta =
         event.contentDelta !== '' ||
+        (event.reasoningDelta !== undefined && event.reasoningDelta !== '') ||
         (event.toolCallDeltas !== undefined && event.toolCallDeltas.length > 0)
       if (hasDelta) {
-        contentParts.push(event.contentDelta)
+        if (event.contentDelta !== '') {
+          contentParts.push(event.contentDelta)
+        }
         const frame =
           frameForEvent === undefined
             ? frameForDelta(event.contentDelta)

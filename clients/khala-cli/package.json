@@ -1,6 +1,6 @@
 {
   "name": "@openagentsinc/khala",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Khala terminal client with interactive and headless CLI modes",
   "private": false,
   "type": "module",

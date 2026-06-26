@@ -703,16 +703,20 @@ const drainSource = async (
   }
   const source = sourceResult.success
   const deltas: Array<string> = []
+  const reasoningDeltas: Array<string> = []
   const toolCallDeltas: Array<unknown> = []
   for await (const event of source.frames) {
     if (event.contentDelta !== '') {
       deltas.push(event.contentDelta)
     }
+    if (event.reasoningDelta !== undefined) {
+      reasoningDeltas.push(event.reasoningDelta)
+    }
     if (event.toolCallDeltas !== undefined) {
       toolCallDeltas.push(...event.toolCallDeltas)
     }
   }
-  return { ok: true as const, source, deltas, toolCallDeltas }
+  return { ok: true as const, source, deltas, reasoningDeltas, toolCallDeltas }
 }
 
 describe('fireworks adapter incremental pass-through stream', () => {
@@ -814,6 +818,29 @@ describe('fireworks adapter incremental pass-through stream', () => {
       { function: { arguments: '{"cmd":"pwd"}' }, index: 0 },
     ])
     expect(drained.source.terminal().finishReason).toBe('tool_calls')
+  })
+
+  test('preserves provider-labeled reasoning_content separately from content', async () => {
+    const { fetchImpl } = recordingFetch(
+      chunkedSseResponse([
+        { choices: [{ delta: { reasoning_content: 'think' }, index: 0 }] },
+        { choices: [{ delta: { content: 'answer' }, index: 0 }] },
+        {
+          choices: [{ delta: {}, finish_reason: 'stop', index: 0 }],
+          usage: { completion_tokens: 2, prompt_tokens: 7, total_tokens: 9 },
+        },
+      ]),
+    )
+    const adapter = makeFireworksAdapter(baseConfig({ fetchImpl }))
+
+    const drained = await drainSource(adapter, request({ stream: true }))
+
+    expect(drained.ok).toBe(true)
+    if (!drained.ok) {
+      return
+    }
+    expect(drained.reasoningDeltas).toEqual(['think'])
+    expect(drained.deltas).toEqual(['answer'])
   })
 
   // The missing-terminal-frame case for the pass-through path: the source still

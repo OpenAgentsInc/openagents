@@ -5,8 +5,9 @@
 // PUBLIC, UNAUTHENTICATED, STREAMING. Mirrors the onboarding streaming pattern
 // (`autopilot-onboarding-routes.ts`): it reaches Khala over the SAME internal
 // provider-adapter program path the onboarding route uses (no auth/credit gate,
-// no external HTTP hop), emits incremental `event: delta` frames then a terminal
-// `event: done`, and a terminal `event: error` on failure. The difference is
+// no external HTTP hop), emits incremental `event: delta` frames, optional
+// provider-labeled `event: reasoning` frames, then a terminal `event: done`,
+// and a terminal `event: error` on failure. The difference is
 // that this is GENERIC and STATELESS: the client sends the running message list
 // each turn, there is no server session row, no durable resume, and no
 // persistence. The system prompt (Khala identity + generic chat instruction) is
@@ -26,7 +27,10 @@ import {
   validateKhalaChatRequest,
 } from './khala-chat-program'
 import type { KhalaChatStreamClient } from './khala-chat-program'
-import { OnboardingInferenceError } from './autopilot-onboarding-program'
+import {
+  type OnboardingStreamDelta,
+  OnboardingInferenceError,
+} from './autopilot-onboarding-program'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { logWorkerRouteError } from './observability'
 import { compactRandomId, currentEpochMillis } from './runtime-primitives'
@@ -65,6 +69,7 @@ export type KhalaChatRouteDependencies = Readonly<{
 
 // A narrow, self-describing SSE wire (same shape as the onboarding stream):
 //   event: delta  data: { "text": "…" }   (one per content increment)
+//   event: reasoning data: { "text": "…" } (provider-labeled reasoning only)
 //   event: done   data: { "done": true }  (terminal, once)
 //   event: error  data: { "error": "…" }  (terminal, on failure)
 const sseFrame = (event: string, payload: unknown): string =>
@@ -143,13 +148,25 @@ const logKhalaChatFailure = (
   })
 }
 
+const streamDeltaEvent = (
+  delta: OnboardingStreamDelta,
+): Readonly<{ event: 'delta' | 'reasoning'; text: string }> => {
+  if (typeof delta === 'string') {
+    return { event: 'delta', text: delta }
+  }
+  return {
+    event: delta.kind === 'reasoning' ? 'reasoning' : 'delta',
+    text: delta.text,
+  }
+}
+
 // Build the SSE response body for a prepared streaming turn. Pumps prose deltas,
 // then emits the terminal `done` frame. A failure mid-stream emits a terminal
 // `error` frame and closes — the client never hangs. Stateless: there is no
 // finalize/persist step (unlike onboarding); the client owns the transcript.
 const makeKhalaChatStreamBody = (
   source: {
-    readonly deltas: AsyncIterable<string>
+    readonly deltas: AsyncIterable<OnboardingStreamDelta>
     readonly metadata?: (() => unknown) | undefined
   },
   trace: string,
@@ -162,8 +179,9 @@ const makeKhalaChatStreamBody = (
 
       try {
         for await (const delta of source.deltas) {
-          if (delta !== '') {
-            emit(sseFrame('delta', { text: delta }))
+          const payload = streamDeltaEvent(delta)
+          if (payload.text !== '') {
+            emit(sseFrame(payload.event, { text: payload.text }))
           }
         }
         const metadata = source.metadata?.()

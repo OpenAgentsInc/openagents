@@ -28,6 +28,7 @@ import {
   OnboardingInferenceError,
   type OnboardingSessionStore,
   type OnboardingStreamClient,
+  type OnboardingStreamDelta,
   type OnboardingStreamTurn,
   OnboardingStorageError,
   OnboardingTurnRequest,
@@ -223,9 +224,10 @@ const makeOnboardingStreamBody = (
         let accumulated = ''
         try {
           for await (const delta of turn.source.deltas) {
-            if (delta !== '') {
-              accumulated += delta
-              emit(sseFrame('delta', { text: delta }))
+            const text = onboardingDeltaText(delta)
+            if (text !== '') {
+              accumulated += text
+              emit(sseFrame('delta', { text }))
             }
           }
           const final = turn.source.final()
@@ -251,9 +253,10 @@ const makeOnboardingStreamBody = (
       const adapted = {
         frames: (async function* () {
           for await (const delta of turn.source.deltas) {
-            if (delta !== '') {
-              accumulated += delta
-              yield { contentDelta: delta }
+            const text = onboardingDeltaText(delta)
+            if (text !== '') {
+              accumulated += text
+              yield { contentDelta: text }
             }
           }
         })(),
@@ -286,6 +289,13 @@ const makeOnboardingStreamBody = (
     },
   })
 }
+
+const onboardingDeltaText = (delta: OnboardingStreamDelta): string =>
+  typeof delta === 'string'
+    ? delta
+    : delta.kind === 'content'
+      ? delta.text
+      : ''
 
 // Construct the streaming `Response` for a prepared turn. The finalize step
 // (append + persist) is a plain Promise driven by `Effect.runPromise` HERE — at

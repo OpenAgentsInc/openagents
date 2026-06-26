@@ -350,13 +350,43 @@ This is the invariant ledger for `openagents`.
   plan; every other value maps to the Hydralisk plan. For the current committed
   value, `workers/api/src/inference/model-router.ts`
   `selectAdapterPlanForKhalaBacking` orders
-  GLM-5.2-REAP-504B -> GPT-OSS-120B -> GPT-OSS-20B -> Vertex Gemini.
+  GLM-5.2-REAP-504B -> OpenRouter `openrouter/free` -> Vertex Gemini ->
+  Fireworks. GPT-OSS is not in the main Khala fallback thread; raw GPT-OSS model
+  ids remain explicit named-model routes only.
 - DeepSeek-V4-Flash is not a fallback tier in the current GLM-first Khala
   overflow chain. It remains available through Fireworks open-model routing and
   as the alternate Fireworks-first Khala primary when the backing value is one
   of the DeepSeek aliases above. If DeepSeek should sit behind GLM as a real
   fallback tier, that requires a separate routing change and tests rather than
   flipping `KHALA_BACKING_MODEL` back to `deepseek-v4-flash`.
+
+## Khala Response Discipline And Reasoning Channel
+
+- Khala prose completions must carry the generic Blueprint response-discipline
+  contract from `workers/api/src/inference/khala-identity.ts`, not a
+  task-specific heuristic for translation, summarization, or any other user
+  request. The contract applies to the whole Khala lane through the stable
+  prompt block and signature guard: user-visible prose is one coherent final
+  answer, not visible scratchpad, self-debate, repeated "actually/final answer"
+  loops, or raw chain-of-thought.
+- Provider-labeled reasoning must stay labeled as reasoning across the gateway
+  boundary. Provider fields such as `reasoning_content` / `reasoning` /
+  `reasoning_delta` are represented internally as `reasoningDelta`, emitted to
+  OpenAI-compatible clients as `delta.reasoning_content`, and emitted on the
+  public Khala stream as `event: reasoning`. They must not be appended to normal
+  answer content, tokenized into the visible transcript, or silently relabeled as
+  ordinary assistant text.
+- The public CLI may render provider reasoning differently (for example dimmer
+  metadata styling), but it must preserve the distinction from the visible Khala
+  answer so clients can choose their own display policy. Trace capture remains
+  governed by the existing redaction/private-by-default trace invariants.
+- Regression coverage lives in
+  `workers/api/src/inference/khala-identity.test.ts`,
+  `workers/api/src/inference/chat-completions-routes.test.ts`,
+  `workers/api/src/inference/hydralisk-adapter.test.ts`,
+  `workers/api/src/inference/fireworks-adapter.test.ts`,
+  `workers/api/src/khala-chat-routes.test.ts`, and
+  `clients/khala-cli/src/sse.test.ts`.
 
 ## Default-On Free-Tier Trace Capture (redacted, private-by-default)
 

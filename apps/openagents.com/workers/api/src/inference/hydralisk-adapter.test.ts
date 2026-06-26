@@ -837,6 +837,48 @@ describe('hydralisk vLLM adapter', () => {
     })
   })
 
+  it('preserves provider-labeled reasoning_content separately from content deltas', async () => {
+    const encoder = new TextEncoder()
+    const sse = [
+      'data: {"model":"openai/gpt-oss-20b","choices":[{"delta":{"reasoning_content":"think"},"finish_reason":null}]}',
+      'data: {"model":"openai/gpt-oss-20b","choices":[{"delta":{"content":"answer"},"finish_reason":null}]}',
+      'data: {"model":"openai/gpt-oss-20b","choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":7,"completion_tokens":1,"total_tokens":8}}',
+      'data: [DONE]',
+    ].join('\n\n')
+    const adapter = makeHydraliskVllmAdapter({
+      apiKey: Redacted.make('hydralisk-token'),
+      baseUrl: 'https://hydralisk.example.test',
+      fetchImpl: async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(encoder.encode(sse))
+              controller.close()
+            },
+          }),
+          { headers: { 'content-type': 'text/event-stream' }, status: 200 },
+        ),
+      id: HYDRALISK_ADAPTER_ID,
+    })
+
+    const source = await Effect.runPromise(
+      adapter.streamSse!(request({ stream: true })),
+    )
+    const contentDeltas: Array<string> = []
+    const reasoningDeltas: Array<string> = []
+    for await (const frame of source.frames) {
+      if (frame.contentDelta !== '') {
+        contentDeltas.push(frame.contentDelta)
+      }
+      if (frame.reasoningDelta !== undefined) {
+        reasoningDeltas.push(frame.reasoningDelta)
+      }
+    }
+
+    expect(reasoningDeltas).toEqual(['think'])
+    expect(contentDeltas).toEqual(['answer'])
+  })
+
   it('preserves streamed tool_call deltas', async () => {
     const encoder = new TextEncoder()
     const sse = [

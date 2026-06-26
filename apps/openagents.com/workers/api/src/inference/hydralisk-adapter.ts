@@ -317,6 +317,16 @@ const deltaContentOf = (frame: Record<string, unknown>): string => {
   return typeof content === 'string' ? content : ''
 }
 
+const deltaReasoningOf = (frame: Record<string, unknown>): string => {
+  const delta = recordFromUnknown(firstChoice(frame)?.['delta'])
+  const direct =
+    delta?.['reasoning_content'] ??
+    delta?.['reasoning'] ??
+    delta?.['reasoning_delta'] ??
+    delta?.['reasoningContent']
+  return typeof direct === 'string' ? direct : ''
+}
+
 const toolCallDeltasOf = (
   frame: Record<string, unknown>,
 ): InferenceStreamEvent['toolCallDeltas'] => {
@@ -339,10 +349,15 @@ const eventForFrame = (
 ): InferenceStreamEvent => {
   const event: {
     contentDelta: string
+    reasoningDelta?: string
     toolCallDeltas?: InferenceStreamEvent['toolCallDeltas']
     finishReason?: string
     usage?: InferenceUsage
   } = { contentDelta: deltaContentOf(frame) }
+  const reasoningDelta = deltaReasoningOf(frame)
+  if (reasoningDelta !== '') {
+    event.reasoningDelta = reasoningDelta
+  }
   const toolCallDeltas = toolCallDeltasOf(frame)
   if (toolCallDeltas !== undefined) {
     event.toolCallDeltas = toolCallDeltas
@@ -521,10 +536,14 @@ const streamChunks = (
       const event = eventForFrame(frame)
       if (
         event.contentDelta !== '' ||
+        event.reasoningDelta !== undefined ||
         (event.toolCallDeltas !== undefined && event.toolCallDeltas.length > 0)
       ) {
         contentChunks.push({
           contentDelta: event.contentDelta,
+          ...(event.reasoningDelta === undefined
+            ? {}
+            : { reasoningDelta: event.reasoningDelta }),
           ...(event.toolCallDeltas === undefined
             ? {}
             : { toolCallDeltas: event.toolCallDeltas }),

@@ -4,7 +4,11 @@ import {
   KHALA_IDENTITY_SIGNATURE,
   KHALA_IDENTITY_STATEMENT,
   KHALA_IDENTITY_SYSTEM_PROMPT,
+  KHALA_RESPONSE_DISCIPLINE_SIGNATURE,
+  KHALA_RESPONSE_DISCIPLINE_SYSTEM_PROMPT,
   KHALA_SIGNATURES,
+  KHALA_STANDARD_GREETING,
+  detectKhalaResponseDisciplineViolations,
   getKhalaSignature,
   guardKhalaCompletion,
   verifyKhalaSignatures,
@@ -47,6 +51,12 @@ describe('Khala identity system prompt (STEP 1)', () => {
       'state your identity once',
     )
   })
+
+  test('includes the standard collective-intelligence greeting', () => {
+    expect(KHALA_IDENTITY_SYSTEM_PROMPT).toContain(
+      'We are Khala, a collective intelligence. How can we help you?',
+    )
+  })
 })
 
 describe('Khala canonical identity statement (plural)', () => {
@@ -67,12 +77,46 @@ describe('Khala signature registry (extensible; identity is #1)', () => {
     expect(KHALA_SIGNATURES.length).toBeGreaterThanOrEqual(1)
     expect(KHALA_SIGNATURES[0]?.id).toBe('identity')
     expect(getKhalaSignature('identity')).toBe(KHALA_IDENTITY_SIGNATURE)
+    expect(getKhalaSignature('response_discipline')).toBe(
+      KHALA_RESPONSE_DISCIPLINE_SIGNATURE,
+    )
   })
 
   test('verifyKhalaSignatures runs every registered signature', () => {
     const verdicts = verifyKhalaSignatures('Hello there.')
     expect(verdicts.length).toBe(KHALA_SIGNATURES.length)
     expect(verdicts.every(v => v.satisfied)).toBe(true)
+  })
+})
+
+describe('Khala response discipline signature', () => {
+  test('injects the Blueprint response contract', () => {
+    const prompt = KHALA_RESPONSE_DISCIPLINE_SYSTEM_PROMPT.toLowerCase()
+    expect(prompt).toContain('blueprint response contract')
+    expect(prompt).toContain('reasoning channel')
+    expect(prompt).toContain('one coherent answer')
+  })
+
+  test('flags visible self-correction loops and repeated final-answer rewrites', () => {
+    const runaway = [
+      'Actually, let us give you a cleaner translation.',
+      'Final answer:',
+      'Actually no. We apologize for the mess.',
+      'Final answer, for real:',
+      'We keep adding artifacts.',
+    ].join('\n\n')
+
+    const violations = detectKhalaResponseDisciplineViolations(runaway)
+    expect(violations.map(v => v.text)).toContain(
+      'visible_self_correction_loop',
+    )
+    expect(KHALA_RESPONSE_DISCIPLINE_SIGNATURE.verify(runaway).satisfied).toBe(false)
+  })
+
+  test('does not flag a normal direct answer', () => {
+    const answer =
+      'C’est parti. Qu’est-ce qu’on construit, casse ou clarifie aujourd’hui ? Balancez-nous ça.'
+    expect(KHALA_RESPONSE_DISCIPLINE_SIGNATURE.verify(answer).satisfied).toBe(true)
   })
 })
 
@@ -152,7 +196,7 @@ describe('Khala identity signature — verify (detection)', () => {
 
   test('FIX 1: does NOT flag the canonical plural denial-style identity answer', () => {
     const answer =
-      'We are Khala, the OpenAgents inference model. We are not Gemini, Google, or any other underlying model.'
+      'We are Khala, a collective intelligence. We are not Gemini, Google, or any other underlying model.'
     expect(KHALA_IDENTITY_SIGNATURE.verify(answer).satisfied).toBe(true)
   })
 })
@@ -171,7 +215,7 @@ describe('Khala identity guard — verify + correct', () => {
     // model correctly states identity once, then denies the provider. The guard
     // must leave it byte-for-byte unchanged (no second identity sentence).
     const cleanPluralAnswer =
-      'We are Khala, the OpenAgents inference model — one endpoint over a network of agents. We are not Gemini or any other model. How can we help you today?'
+      'We are Khala, a collective intelligence. We are not Gemini or any other model. How can we help you?'
     const out = await guardKhalaCompletion({ completion: cleanPluralAnswer })
     expect(out.corrected).toBe(false)
     expect(out.method).toBe('none')
@@ -185,7 +229,7 @@ describe('Khala identity guard — verify + correct', () => {
     // The model stated identity correctly once AND then leaked. The backstop
     // must remove the leak WITHOUT adding a second copy of the identity line.
     const mixed =
-      'We are Khala, the OpenAgents inference model — one endpoint over a network of agents. We are powered by Gemini under the hood. How can we help?'
+      'We are Khala, a collective intelligence. We are powered by Gemini under the hood. How can we help?'
     const out = await guardKhalaCompletion({ completion: mixed })
     expect(out.corrected).toBe(true)
     expect(out.method).toBe('redacted')
@@ -201,7 +245,7 @@ describe('Khala identity guard — verify + correct', () => {
     const out = await guardKhalaCompletion({
       completion: leak,
       reask: async () =>
-        'We are Khala, the OpenAgents inference model. How can we help?',
+        KHALA_STANDARD_GREETING,
     })
     expect(out.corrected).toBe(true)
     expect(out.method).toBe('re_ask')

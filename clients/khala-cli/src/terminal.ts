@@ -9,6 +9,7 @@ const ansi = {
   list: "\x1b[38;5;216m",
   meta: "\x1b[90m",
   quote: "\x1b[38;5;180m",
+  reasoning: "\x1b[38;5;244m",
   strong: "\x1b[38;5;215m\x1b[1m",
   user: "\x1b[38;2;127;220;155m\x1b[1m",
   assistant: "\x1b[38;2;58;123;255m\x1b[1m",
@@ -30,6 +31,7 @@ export const terminalStyle = {
   list: (text: string): string => colorize("list", text),
   meta: (text: string): string => colorize("meta", text),
   quote: (text: string): string => colorize("quote", text),
+  reasoning: (text: string): string => colorize("reasoning", text),
   strong: (text: string): string => colorize("strong", text),
   user: (text: string): string => colorize("user", text),
 }
@@ -90,6 +92,10 @@ export function renderMarkdownForTerminal(markdown: string): string {
 
 export function renderMarkdownDeltaForTerminal(markdownDelta: string): string {
   return renderInlineMarkdown(markdownDelta)
+}
+
+export function renderReasoningMarkdownDeltaForTerminal(markdownDelta: string): string {
+  return terminalStyle.reasoning(renderInlineMarkdown(markdownDelta))
 }
 
 function renderInlineMarkdown(input: string): string {

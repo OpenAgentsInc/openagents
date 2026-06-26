@@ -290,14 +290,19 @@ export class OnboardingInferenceError extends S.TaggedErrorClass<OnboardingInfer
 // streaming complement to `OnboardingInferenceClient` — same input, incremental
 // output. Errors surface as the same tagged failure the route already maps.
 export type OnboardingStreamSource = Readonly<{
-  deltas: AsyncIterable<string>
+  deltas: AsyncIterable<OnboardingStreamDelta>
   // Resolves AFTER `deltas` is exhausted, with the full accumulated reply.
   final: () => string
   metadata?: (() => OnboardingStreamMetadata | undefined) | undefined
 }>
 
+export type OnboardingStreamDelta =
+  | string
+  | Readonly<{ kind: 'content' | 'reasoning'; text: string }>
+
 export type OnboardingStreamMetadata = Readonly<{
   adapterRouteMetadata?: Readonly<Record<string, unknown>> | undefined
+  blueprintOperation?: Readonly<Record<string, unknown>> | undefined
   fallbackReason?: string | null | undefined
   finishReason?: string | undefined
   primaryAdapterId?: string | undefined

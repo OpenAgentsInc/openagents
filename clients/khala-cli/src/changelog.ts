@@ -4,9 +4,17 @@ export interface KhalaChangelogEntry {
   readonly bullets: ReadonlyArray<string>
 }
 
-export const KHALA_CLI_VERSION = "0.1.7"
+export const KHALA_CLI_VERSION = "0.1.8"
 
 export const KHALA_CHANGELOG: ReadonlyArray<KhalaChangelogEntry> = [
+  {
+    version: "0.1.8",
+    releasedAt: "2026-06-26T18:04:35.000Z",
+    bullets: [
+      "Adds Up/Down prompt history, switches the interactive prompt to >, and keeps provider reasoning in a separate dim stream.",
+      "Adds the Blueprint response-discipline contract so Khala answers land as one coherent final answer instead of visible revision loops.",
+    ],
+  },
   {
     version: "0.1.7",
     releasedAt: "2026-06-26T17:36:47.000Z",

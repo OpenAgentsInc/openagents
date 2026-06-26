@@ -6,6 +6,7 @@ import {
   PublicDonePayload,
   PublicErrorPayload,
   PublicMetaPayload,
+  PublicReasoningPayload,
   type KhalaStreamUsage,
   type PublicMetaPayload as PublicMetaPayloadType,
 } from "./types.js"
@@ -54,7 +55,7 @@ export async function* readSseFrames(body: ReadableStream<Uint8Array>): AsyncGen
 }
 
 export type DecodedStreamFrame =
-  | { readonly kind: "delta"; readonly metadata?: StreamFrameMetadata | undefined; readonly text: string }
+  | { readonly kind: "delta"; readonly metadata?: StreamFrameMetadata | undefined; readonly reasoningText?: string | undefined; readonly text: string }
   | { readonly kind: "done" }
   | { readonly kind: "meta"; readonly metadata: StreamFrameMetadata }
 
@@ -76,6 +77,10 @@ export function decodePublicFrame(frame: SseFrame): DecodedStreamFrame {
   if (frame.event === "delta") {
     const payload = S.decodeUnknownSync(PublicDeltaPayload)(data)
     return { kind: "delta", text: payload.text }
+  }
+  if (frame.event === "reasoning") {
+    const payload = S.decodeUnknownSync(PublicReasoningPayload)(data)
+    return { kind: "delta", reasoningText: payload.text, text: "" }
   }
   if (frame.event === "meta") {
     const payload = S.decodeUnknownSync(PublicMetaPayload)(data)
@@ -103,6 +108,9 @@ export function decodeOpenAiFrame(frame: SseFrame): DecodedStreamFrame {
   const data = parseJson(frame.data, "OpenAI-compatible stream frame")
   const payload = S.decodeUnknownSync(OpenAiStreamPayload)(data)
   const text = payload.choices.map((choice) => choice.delta.content ?? "").join("")
+  const reasoningText = payload.choices
+    .map((choice) => choice.delta.reasoning_content ?? choice.delta.reasoning ?? "")
+    .join("")
   return {
     kind: "delta",
     metadata: {
@@ -118,6 +126,7 @@ export function decodeOpenAiFrame(frame: SseFrame): DecodedStreamFrame {
             totalTokens: payload.usage.total_tokens,
           },
     },
+    ...(reasoningText.length === 0 ? {} : { reasoningText }),
     text,
   }
 }

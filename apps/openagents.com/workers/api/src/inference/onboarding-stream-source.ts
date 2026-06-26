@@ -31,6 +31,13 @@ const routeMetadata = (
 ): Readonly<Record<string, unknown>> | undefined =>
   metadata === undefined ? undefined : { ...metadata }
 
+const reasoningDelta = (
+  text: string,
+): Readonly<{ kind: 'reasoning'; text: string }> => ({
+  kind: 'reasoning',
+  text,
+})
+
 // Surface an adapter's incremental `InferenceStreamSource.frames` as the
 // onboarding `deltas` async-iterable. Empty content deltas (e.g. the terminal
 // usage frame) are skipped so the route only sees prose. `final()` returns ''
@@ -40,6 +47,9 @@ export const onboardingSourceFromStreamSse = (
 ): OnboardingStreamSource => ({
   deltas: (async function* () {
     for await (const frame of source.frames) {
+      if (frame.reasoningDelta !== undefined && frame.reasoningDelta !== '') {
+        yield reasoningDelta(frame.reasoningDelta)
+      }
       if (frame.contentDelta !== '') {
         yield frame.contentDelta
       }
@@ -72,6 +82,9 @@ export const onboardingSourceFromChunks = (
 ): OnboardingStreamSource => ({
   deltas: (async function* () {
     for (const chunk of chunks) {
+      if (chunk.reasoningDelta !== undefined && chunk.reasoningDelta !== '') {
+        yield reasoningDelta(chunk.reasoningDelta)
+      }
       if (chunk.contentDelta !== '') {
         yield chunk.contentDelta
       }

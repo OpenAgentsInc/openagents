@@ -26,7 +26,12 @@ export function runChatTurn(options: ChatTurnOptions): Effect.Effect<ChatTurnRes
     const startedAt = Date.now()
     const response = yield* postChat(options)
     const traceRef = readTraceRef(response)
-    const stream = yield* consumeStream(response, options.mode, options.onDelta)
+    const stream = yield* consumeStream(
+      response,
+      options.mode,
+      options.onDelta,
+      options.onReasoning,
+    )
     const durationMs = Math.max(0, Date.now() - startedAt)
     const metadata = buildTurnMetadata({
       durationMs,
@@ -39,6 +44,7 @@ export function runChatTurn(options: ChatTurnOptions): Effect.Effect<ChatTurnRes
     })
     return {
       text: stream.text,
+      reasoningText: stream.reasoningText,
       assistantMessage: { role: "assistant" as const, content: stream.text },
       metadata,
       traceRef: metadata.traceRef,
@@ -187,13 +193,15 @@ function consumeStream(
   response: Response,
   mode: "public" | "api",
   onDelta: ((text: string) => void) | undefined,
-): Effect.Effect<{ readonly metadata: StreamFrameMetadata; readonly text: string }, KhalaCliError> {
+  onReasoning: ((text: string) => void) | undefined,
+): Effect.Effect<{ readonly metadata: StreamFrameMetadata; readonly reasoningText: string; readonly text: string }, KhalaCliError> {
   return Effect.tryPromise({
     try: async () => {
       if (response.body === null) {
         throw new KhalaCliError({ reason: "Khala response did not include a stream body.", code: "missing_stream_body" })
       }
       let assembled = ""
+      let reasoning = ""
       let metadata: StreamFrameMetadata = {}
       for await (const frame of readSseFrames(response.body)) {
         const decoded = mode === "public" ? decodePublicFrame(frame) : decodeOpenAiFrame(frame)
@@ -203,12 +211,16 @@ function consumeStream(
           continue
         }
         metadata = mergeMetadata(metadata, decoded.metadata)
+        if (decoded.reasoningText !== undefined && decoded.reasoningText.length > 0) {
+          reasoning += decoded.reasoningText
+          onReasoning?.(decoded.reasoningText)
+        }
         if (decoded.text.length > 0) {
           assembled += decoded.text
           onDelta?.(decoded.text)
         }
       }
-      return { metadata, text: assembled }
+      return { metadata, reasoningText: reasoning, text: assembled }
     },
     catch: (error) => toKhalaCliError(error, "Khala stream failed."),
   })

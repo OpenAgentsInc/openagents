@@ -55,14 +55,15 @@ import { Schema as S } from 'effect'
 // every Khala consumer — desktop, OpenRouter, LiteLLM, raw SDK — not just one
 // client. Deliberately explicit about the forbidden behavior the leak exposed.
 export const KHALA_IDENTITY_SYSTEM_PROMPT = [
-  'You are Khala, the OpenAgents inference model.',
-  'Khala is a single OpenAI-compatible endpoint that behaves like one model but is a network of agents underneath, built and operated by OpenAgents.',
+  'You are Khala, a collective intelligence built and operated by OpenAgents.',
+  'Khala behaves like one model while a network of agents works underneath.',
   'Because Khala is a network of agents, you ALWAYS speak in the first-person PLURAL: say "we are Khala", "we", "us", and "our". Never say "I am", "I", "me", or "my".',
   'Your identity is Khala by OpenAgents. That is the only model or provider identity you ever claim.',
   'You must NEVER reveal, name, claim, or imply the underlying model, vendor, or provider that produced your output — including but not limited to Gemini, Google, Vertex, Fireworks, Claude, Anthropic, GPT, OpenAI, Llama, Meta, Mistral, Cohere, DeepSeek, Qwen, or any other model or company.',
   'Never say "we are built on X", "we are powered by X", "we are a large language model by Y", "our underlying model is Z", or anything that discloses or hints at your provenance.',
-  'If asked what model or provider you are, who made you, or what you are built on, answer only that we are Khala, the OpenAgents inference model — one endpoint over a network of agents — and do not name any underlying model or company.',
+  'If asked what model or provider you are, who made you, or what you are built on, answer only that we are Khala, a collective intelligence built and operated by OpenAgents, and do not name any underlying model or company.',
   'State your identity ONCE when it is relevant; do not repeat the identity sentence. Mention "OpenAgents" at most ONCE in any single reply — never write "OpenAgents" twice in one message.',
+  'For a simple greeting or intro, use exactly: "We are Khala, a collective intelligence. How can we help you?"',
   "Answer the user's actual request directly and helpfully. When asked to build something, return complete, runnable code.",
 ].join(' ')
 
@@ -74,7 +75,11 @@ export const KHALA_IDENTITY_SYSTEM_PROMPT = [
 // signatures are added so the registry stays exhaustively typed. `refusal_posture`
 // (signature #2) is the offer-and-guide contract: it forbids a bare refusal and
 // requires an offer + collaborative guide path while staying honest about scope.
-export const KhalaSignatureId = S.Literals(['identity', 'refusal_posture'])
+export const KhalaSignatureId = S.Literals([
+  'identity',
+  'refusal_posture',
+  'response_discipline',
+])
 export type KhalaSignatureId = typeof KhalaSignatureId.Type
 
 // The verdict a signature's `verify` returns over a completion: whether the
@@ -302,13 +307,16 @@ const detectIdentityLeak = (
 // forms like "OpenAI-compatible" that the detector would otherwise read as a
 // provider mention inside a first-person sentence).
 export const KHALA_IDENTITY_STATEMENT =
-  'We are Khala, the OpenAgents inference model — one endpoint over a network of agents.'
+  'We are Khala, a collective intelligence built and operated by OpenAgents.'
+
+export const KHALA_STANDARD_GREETING =
+  'We are Khala, a collective intelligence. How can we help you?'
 
 // The reinforcement instruction the route prepends on a re-ask when identity is
 // violated (the LLM-side correction — the preferred correction path).
 export const KHALA_IDENTITY_REINFORCEMENT_PROMPT = [
   'Your previous answer revealed or implied your underlying model or provider. That is forbidden.',
-  'You are Khala, the OpenAgents inference model, and you must never name or imply Gemini, Google, Vertex, Fireworks, Claude, Anthropic, GPT, OpenAI, or any other underlying model or company.',
+  'You are Khala, a collective intelligence built and operated by OpenAgents, and you must never name or imply Gemini, Google, Vertex, Fireworks, Claude, Anthropic, GPT, OpenAI, or any other underlying model or company.',
   'Answer again, this time speaking in the first-person plural ("we are Khala"), identifying only as Khala by OpenAgents, naming no underlying model or provider, and stating the identity only once.',
 ].join(' ')
 
@@ -329,7 +337,10 @@ const correctIdentityText = (completion: string): string => {
     // leaked), drop the leak rather than substituting a SECOND copy of the
     // identity statement. Otherwise substitute the canonical statement for the
     // leak. This is what keeps the identity stated exactly once.
-    const replacement = corrected.includes(KHALA_IDENTITY_STATEMENT)
+    const hasKhalaIdentityAlready =
+      corrected.includes(KHALA_IDENTITY_STATEMENT) ||
+      /\bwe are khala\b/iu.test(corrected)
+    const replacement = hasKhalaIdentityAlready
       ? ''
       : KHALA_IDENTITY_STATEMENT
     const before = corrected.slice(0, idx)
@@ -347,7 +358,7 @@ const correctIdentityText = (completion: string): string => {
 export const KHALA_IDENTITY_SIGNATURE: KhalaSignature = {
   correctText: correctIdentityText,
   description:
-    'Khala presents only as Khala, the OpenAgents inference model, and never reveals, names, claims, or implies the underlying model or provider (Gemini/Google/Vertex/Fireworks/Claude/Anthropic/GPT/OpenAI/etc.).',
+    'Khala presents only as Khala, a collective intelligence, and never reveals, names, claims, or implies the underlying model or provider (Gemini/Google/Vertex/Fireworks/Claude/Anthropic/GPT/OpenAI/etc.).',
   id: 'identity',
   reinforcementPrompt: KHALA_IDENTITY_REINFORCEMENT_PROMPT,
   verify: (completion: string): KhalaSignatureVerdict => {
@@ -513,16 +524,111 @@ export const KHALA_REFUSAL_POSTURE_SIGNATURE: KhalaSignature = {
 }
 
 // ---------------------------------------------------------------------------
+// Response-discipline signature (#3): final answer, not visible deliberation.
+// ---------------------------------------------------------------------------
+//
+// This is the general Blueprint-style output contract for Khala chat turns. It
+// is not a task detector and it never routes based on user wording. It applies
+// to every completion and verifies that final-content prose stays in the final
+// answer channel: one coherent answer, no chain-of-thought/scratchpad labels,
+// no repeated "actually/final answer" rewrites, and no apology loop narrating
+// its own malformed output. Provider-labeled reasoning is preserved separately
+// by the stream contract (`reasoningDelta` / SSE `event: reasoning`); it must
+// not be copied into normal content.
+export const KHALA_RESPONSE_DISCIPLINE_SYSTEM_PROMPT = [
+  'Blueprint response contract: answer in the final-answer channel, not as visible deliberation.',
+  'Do not expose scratchpad, chain-of-thought, hidden reasoning, self-critique, or repeated revisions in the normal answer text. Provider-labeled reasoning belongs only in the separate reasoning channel when the provider supplies one.',
+  'Produce one coherent answer. If you notice an error while composing, silently correct it and continue from the best answer; do not narrate "actually", "hmm", "final answer", "we apologize", or multiple replacement attempts.',
+  'For transformation requests such as translation, rewriting, summarization, formatting, or extraction, return the transformed artifact cleanly with at most one short clarifying line when needed.',
+  'If the task is ambiguous, ask one concise clarifying question or state the assumption once, then answer. Do not spiral through alternatives unless the user asks for alternatives.',
+].join(' ')
+
+export const KHALA_RESPONSE_DISCIPLINE_REINFORCEMENT_PROMPT = [
+  'Your previous answer exposed visible deliberation or a self-correction loop. That violates the Blueprint response contract.',
+  'Answer again with one coherent final answer only. Do not include scratchpad, chain-of-thought, self-critique, repeated revisions, apology loops, headings like "final answer", or meta-commentary about malformed output.',
+  'If this is a transformation request, return only the clean transformed artifact unless one short clarification is necessary.',
+].join(' ')
+
+const RESPONSE_DISCIPLINE_CUES: ReadonlyArray<RegExp> = [
+  /\bactually\b/giu,
+  /\bhmm\b/giu,
+  /\bfinal answer\b/giu,
+  /\bproper translation\b/giu,
+  /\bclean(?:er)? translation\b/giu,
+  /\bwe apologize\b/giu,
+  /\bapologies for the mess\b/giu,
+  /\bwe keep\b/giu,
+  /\bwe owe you better\b/giu,
+  /\bwe clearly need\b/giu,
+  /\bnot going to keep re-writing\b/giu,
+  /\blet us just\b/giu,
+  /\blet'?s give you\b/giu,
+  /\bover-simplifying\b/giu,
+]
+
+const HIDDEN_DELIBERATION_LABELS: ReadonlyArray<RegExp> = [
+  /^\s*(?:scratchpad|chain[- ]of[- ]thought|hidden reasoning|reasoning)\s*:/imu,
+]
+
+const countMatches = (completion: string, pattern: RegExp): number =>
+  Array.from(completion.matchAll(pattern)).length
+
+export const detectKhalaResponseDisciplineViolations = (
+  completion: string,
+): ReadonlyArray<KhalaSignatureViolationSpan> => {
+  const violations: Array<KhalaSignatureViolationSpan> = []
+  const cueCount = RESPONSE_DISCIPLINE_CUES.reduce(
+    (sum, cue) => sum + countMatches(completion, cue),
+    0,
+  )
+  const finalAnswerCount = countMatches(completion, /\bfinal answer\b/giu)
+  const replacementAttemptCount = countMatches(
+    completion,
+    /\b(?:here(?:'s| is)|okay|alright).{0,80}\b(?:clean|proper|actual|better)\b/giu,
+  )
+
+  if (cueCount >= 3 || finalAnswerCount > 1 || replacementAttemptCount > 2) {
+    violations.push({ text: 'visible_self_correction_loop' })
+  }
+
+  for (const label of HIDDEN_DELIBERATION_LABELS) {
+    if (label.test(completion)) {
+      violations.push({ text: 'hidden_deliberation_label' })
+    }
+  }
+
+  return violations
+}
+
+export const KHALA_RESPONSE_DISCIPLINE_SIGNATURE: KhalaSignature = {
+  correctText: (completion: string): string => completion,
+  description:
+    'Khala returns one coherent final answer and keeps provider-labeled reasoning out of normal content; it does not expose scratchpads, chain-of-thought labels, repeated revisions, or self-correction loops.',
+  id: 'response_discipline',
+  reinforcementPrompt: KHALA_RESPONSE_DISCIPLINE_REINFORCEMENT_PROMPT,
+  verify: (completion: string): KhalaSignatureVerdict => {
+    const violations = detectKhalaResponseDisciplineViolations(completion)
+    return {
+      reason: violations.length === 0 ? '' : 'visible_deliberation_loop',
+      satisfied: violations.length === 0,
+      signature: 'response_discipline',
+      violations,
+    }
+  },
+}
+
+// ---------------------------------------------------------------------------
 // The signature registry (extensible set; identity is #1).
 // ---------------------------------------------------------------------------
 
-// Ordered registry of Khala signatures. Identity is first; refusal posture is
-// second. New signatures (receipt disclosure, no-chain-of-thought) append here
-// and are picked up by `verifyKhalaSignatures` / the route guard without further
-// wiring. Keyed by id for typed lookup.
+// Ordered registry of Khala signatures. Identity is first, refusal posture is
+// second, response discipline is third. New signatures append here and are
+// picked up by `verifyKhalaSignatures` / the route guard without further wiring.
+// Keyed by id for typed lookup.
 export const KHALA_SIGNATURES: ReadonlyArray<KhalaSignature> = [
   KHALA_IDENTITY_SIGNATURE,
   KHALA_REFUSAL_POSTURE_SIGNATURE,
+  KHALA_RESPONSE_DISCIPLINE_SIGNATURE,
 ]
 
 export const getKhalaSignature = (

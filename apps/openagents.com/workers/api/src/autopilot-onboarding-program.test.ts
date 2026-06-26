@@ -396,7 +396,11 @@ const chunkStreamClient =
 const drain = async (source: OnboardingStreamSource): Promise<string> => {
   let text = ''
   for await (const delta of source.deltas) {
-    text += delta
+    text += typeof delta === 'string'
+      ? delta
+      : delta.kind === 'content'
+        ? delta.text
+        : ''
   }
   const final = source.final()
   return final === '' ? text : final

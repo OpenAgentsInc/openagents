@@ -25,6 +25,10 @@ export const PublicDeltaPayload = S.Struct({
   text: S.String,
 })
 
+export const PublicReasoningPayload = S.Struct({
+  text: S.String,
+})
+
 export const PublicDonePayload = S.Struct({
   done: S.Boolean,
 })
@@ -64,6 +68,8 @@ export const OpenAiStreamPayload = S.Struct({
     S.Struct({
       delta: S.Struct({
         content: S.optional(S.String),
+        reasoning: S.optional(S.String),
+        reasoning_content: S.optional(S.String),
       }),
     }),
   ),
@@ -114,10 +120,12 @@ export interface ChatClientOptions {
 export interface ChatTurnOptions extends ChatClientOptions {
   readonly messages: ReadonlyArray<KhalaChatMessage>
   readonly onDelta?: ((text: string) => void) | undefined
+  readonly onReasoning?: ((text: string) => void) | undefined
 }
 
 export interface ChatTurnResult {
   readonly text: string
+  readonly reasoningText: string
   readonly assistantMessage: KhalaChatMessage
   readonly metadata: ChatTurnMetadata
   readonly traceRef?: string | undefined

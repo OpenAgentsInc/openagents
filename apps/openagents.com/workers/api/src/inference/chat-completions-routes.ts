@@ -104,6 +104,8 @@ import {
 import {
   KHALA_IDENTITY_REINFORCEMENT_PROMPT,
   KHALA_IDENTITY_SYSTEM_PROMPT,
+  KHALA_RESPONSE_DISCIPLINE_SYSTEM_PROMPT,
+  getKhalaSignature,
   guardKhalaCompletion,
   verifyKhalaSignatures,
 } from './khala-identity'
@@ -948,6 +950,13 @@ const buildTaggedKhalaMessages = (
     tagged.push({
       message: { content: KHALA_IDENTITY_SYSTEM_PROMPT, role: 'system' },
       stableKind: 'identity' satisfies StableBlockKind,
+    })
+    tagged.push({
+      message: {
+        content: KHALA_RESPONSE_DISCIPLINE_SYSTEM_PROMPT,
+        role: 'system',
+      },
+      stableKind: 'stablePolicy' satisfies StableBlockKind,
     })
   }
 
@@ -1902,17 +1911,22 @@ const sseFrame = (payload: unknown): string =>
 
 type StreamFrameDelta = Readonly<{
   contentDelta: string
+  reasoningDelta?: string | undefined
   toolCallDeltas?: ReadonlyArray<InferenceToolCallDelta> | undefined
 }>
 
 const hasStreamFrameDelta = (delta: StreamFrameDelta): boolean =>
   delta.contentDelta !== '' ||
+  (delta.reasoningDelta !== undefined && delta.reasoningDelta !== '') ||
   (delta.toolCallDeltas !== undefined && delta.toolCallDeltas.length > 0)
 
 const openAiChunkDelta = (
   delta: StreamFrameDelta,
 ): Record<string, unknown> => ({
   ...(delta.contentDelta === '' ? {} : { content: delta.contentDelta }),
+  ...(delta.reasoningDelta === undefined || delta.reasoningDelta === ''
+    ? {}
+    : { reasoning_content: delta.reasoningDelta }),
   ...(delta.toolCallDeltas === undefined || delta.toolCallDeltas.length === 0
     ? {}
     : { tool_calls: delta.toolCallDeltas }),
@@ -3236,16 +3250,20 @@ export const handleChatCompletions = (
       // handed to `guardKhalaCompletion` (which re-verifies it and applies the
       // deterministic backstop if it STILL leaks) — keeping the dispatch in the
       // Effect topology rather than nesting `Effect.runPromise`.
-      const leaked = verifyKhalaSignatures(servedValue.content).some(
+      const signatureVerdicts = verifyKhalaSignatures(servedValue.content)
+      const firstViolation = signatureVerdicts.find(
         verdict => !verdict.satisfied,
       )
-      const reaskedContent = leaked
+      const reinforcementPrompt =
+        getKhalaSignature(firstViolation?.signature ?? 'identity')
+          ?.reinforcementPrompt ?? KHALA_IDENTITY_REINFORCEMENT_PROMPT
+      const reaskedContent = firstViolation !== undefined
         ? yield* dispatchWithOverflow(
             {
               ...inferenceRequest,
               messages: [
                 {
-                  content: KHALA_IDENTITY_REINFORCEMENT_PROMPT,
+                  content: reinforcementPrompt,
                   role: 'system',
                 },
                 ...inferenceRequest.messages,

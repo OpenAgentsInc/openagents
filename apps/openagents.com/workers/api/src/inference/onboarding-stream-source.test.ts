@@ -11,6 +11,7 @@
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
+import type { OnboardingStreamDelta } from '../autopilot-onboarding-program'
 import {
   type InferenceAdapterError,
   type InferenceProviderAdapter,
@@ -31,9 +32,9 @@ const request: InferenceRequest = {
 }
 
 const drain = async (
-  deltas: AsyncIterable<string>,
-): Promise<Array<string>> => {
-  const collected: Array<string> = []
+  deltas: AsyncIterable<OnboardingStreamDelta>,
+): Promise<Array<OnboardingStreamDelta>> => {
+  const collected: Array<OnboardingStreamDelta> = []
   for await (const delta of deltas) {
     collected.push(delta)
   }
@@ -121,5 +122,32 @@ describe('dispatchOnboardingStreamSource', () => {
     const source = await run(dispatchOnboardingStreamSource(adapter, request))
     const deltas = await drain(source.deltas)
     expect(deltas).toEqual(['only'])
+  })
+
+  test('preserves provider-labeled reasoning as a separate stream delta', async () => {
+    const adapter: InferenceProviderAdapter = {
+      complete: () => Effect.die('unused'),
+      id: 'mock-reasoning',
+      stream: () => Effect.die('mock streamSse adapter should not use buffered stream'),
+      streamSse: () =>
+        Effect.sync((): InferenceStreamSource => ({
+          frames: (async function* () {
+            yield { contentDelta: '', reasoningDelta: 'hidden provider thought' }
+            yield { contentDelta: 'Visible answer' }
+          })(),
+          terminal: () => ({
+            finishReason: 'stop',
+            servedModel: 'glm',
+            usage: { completionTokens: 3, promptTokens: 5, totalTokens: 8 },
+          }),
+        })),
+    }
+    const source = await run(dispatchOnboardingStreamSource(adapter, request))
+
+    const deltas = await drain(source.deltas)
+    expect(deltas).toEqual([
+      { kind: 'reasoning', text: 'hidden provider thought' },
+      'Visible answer',
+    ])
   })
 })
