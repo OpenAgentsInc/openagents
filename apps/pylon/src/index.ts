@@ -4442,11 +4442,19 @@ async function main() {
           optionString(options, "account") ??
           optionString(options, "account-ref")
         const accountHome = optionString(options, "account-home")
+        const emitJsonLifecycle = optionFlag(options, "json")
         const result = await runNoSpendAssignment(summary, {
           ...clientOptions,
           ...(accountRef === undefined ? {} : { accountRef }),
           ...(accountHome === undefined ? {} : { accountHome }),
           ...(assignmentRef === undefined ? {} : { assignmentRef }),
+          ...(emitJsonLifecycle
+            ? {
+                onLifecycleEvent: (event) => {
+                  process.stderr.write(`${JSON.stringify(event)}\n`)
+                },
+              }
+            : {}),
         })
         process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
         return

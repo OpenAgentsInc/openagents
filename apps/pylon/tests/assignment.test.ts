@@ -10,6 +10,7 @@ import {
   runNoSpendAssignment,
   submitAssignmentCloseout,
   trainingWorkerReceiptsPathForHome,
+  type AssignmentRunLifecycleEvent,
   type PylonAssignmentLease,
 } from "../src/assignment"
 import { sendHeartbeat } from "../src/presence"
@@ -28,6 +29,8 @@ import {
   type CodexAgentRunner,
 } from "../src/codex-agent-executor"
 
+const INDEX = join(import.meta.dir, "..", "src", "index.ts")
+const CWD = join(import.meta.dir, "..")
 const servers: ReturnType<typeof Bun.serve>[] = []
 
 afterEach(() => {
@@ -59,6 +62,8 @@ function fakeAssignmentServer(input: {
   rejectAccept?: boolean
   rejectAcceptRefs?: ReadonlyArray<string>
   cancelOnProgress?: boolean
+  authNow?: Date
+  maxSkewSeconds?: number
 } = {}) {
   const requests: { path: string; body: any; headers: Headers }[] = []
   const accepted = new Set<string>()
@@ -83,8 +88,8 @@ function fakeAssignmentServer(input: {
           // client (`now: () => new Date("2026-06-09T...")`). A wall-clock
           // `now` with a wide maxSkewSeconds was a date bomb: it expired
           // 300,000s after the fixed epoch and failed every NIP-98 test.
-          now: new Date("2026-06-09T00:00:30.000Z"),
-          maxSkewSeconds: 300,
+          now: input.authNow ?? new Date("2026-06-09T00:00:30.000Z"),
+          maxSkewSeconds: input.maxSkewSeconds ?? 300,
         })
         expect(request.headers.get("x-nip98-body-sha256")).toBeNull()
         expect(request.headers.get("x-nip98-signature")).toBeNull()
@@ -172,10 +177,12 @@ describe("Pylon assignment lease flow", () => {
       const fake = fakeAssignmentServer()
       const summary = await readySummary(home)
       await sendHeartbeat(summary, { baseUrl: fake.baseUrl, now: () => new Date("2026-06-09T00:00:00.000Z") })
+      const lifecycleEvents: AssignmentRunLifecycleEvent[] = []
 
       const result = await runNoSpendAssignment(summary, {
         baseUrl: fake.baseUrl,
         now: () => new Date("2026-06-09T00:00:30.000Z"),
+        onLifecycleEvent: (event) => lifecycleEvents.push(event),
       })
 
       expect(result.ok).toBe(true)
@@ -221,6 +228,124 @@ describe("Pylon assignment lease flow", () => {
       expect(JSON.stringify(bundle)).not.toContain(home)
       expect(JSON.stringify(bundle)).not.toContain("/Users/")
       assertPublicProjectionSafe(bundle)
+      expect(lifecycleEvents.map((event) => event.event)).toEqual([
+        "assignment_run.poll_complete",
+        "assignment_run.accepted",
+        "assignment_run.runtime_started",
+        "assignment_run.progress_submitted",
+        "assignment_run.artifacts_submitted",
+        "assignment_run.closeout_submitted",
+        "assignment_run.completed",
+      ])
+      expect(lifecycleEvents[0]).toMatchObject({
+        schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
+        leaseCount: 1,
+        candidateCount: 1,
+      })
+      expect(lifecycleEvents.at(-1)).toMatchObject({
+        assignmentRef: result.lease.assignmentRef,
+        leaseRef: result.lease.leaseRef,
+        status: "accepted",
+        closeoutRef: result.closeoutReceipt.closeoutRef,
+      })
+      const lifecycleJson = JSON.stringify(lifecycleEvents)
+      expect(lifecycleJson).not.toContain(home)
+      expect(lifecycleJson).not.toContain("/Users/")
+      expect(lifecycleJson).not.toContain("accountHome")
+      expect(lifecycleJson).not.toContain("provider")
+    })
+  })
+
+  test("lifecycle reporter failures do not fail no-spend assignment execution", async () => {
+    await withTempHome(async (home) => {
+      const fake = fakeAssignmentServer()
+      const summary = await readySummary(home)
+      await sendHeartbeat(summary, { baseUrl: fake.baseUrl, now: () => new Date("2026-06-09T00:00:00.000Z") })
+
+      const result = await runNoSpendAssignment(summary, {
+        baseUrl: fake.baseUrl,
+        now: () => new Date("2026-06-09T00:00:30.000Z"),
+        onLifecycleEvent: () => {
+          throw new Error("lifecycle sink unavailable")
+        },
+      })
+
+      expect(result.ok).toBe(true)
+      if (!result.ok) throw new Error("expected no-spend assignment to run")
+      expect(result.closeout.status).toBe("accepted")
+    })
+  })
+
+  test("CLI run-no-spend --json streams lifecycle JSONL on stderr and final result JSON on stdout", async () => {
+    await withTempHome(async (home) => {
+      const cliLease = lease({
+        assignmentRef: "assignment.public.no_spend.cli_status",
+        leaseRef: "lease.public.no_spend.cli_status",
+        expiresAt: "2026-07-09T01:00:00.000Z",
+      })
+      const fake = fakeAssignmentServer({
+        leases: [cliLease],
+        authNow: new Date(),
+        maxSkewSeconds: 300,
+      })
+      const summary = await readySummary(home)
+      await sendHeartbeat(summary, { baseUrl: fake.baseUrl })
+
+      const proc = Bun.spawn(
+        [
+          "bun",
+          INDEX,
+          "assignment",
+          "run-no-spend",
+          "--base-url",
+          fake.baseUrl,
+          "--assignment-ref",
+          cliLease.assignmentRef,
+          "--json",
+        ],
+        {
+          cwd: CWD,
+          env: {
+            ...Bun.env,
+            PYLON_HOME: home,
+          },
+          stdout: "pipe",
+          stderr: "pipe",
+        },
+      )
+      const [stdout, stderr, exitCode] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ])
+
+      expect(exitCode, stderr || stdout).toBe(0)
+      const result = JSON.parse(stdout)
+      expect(result.ok).toBe(true)
+      expect(result.lease.assignmentRef).toBe(cliLease.assignmentRef)
+      expect(stdout).not.toContain("assignment_run.")
+
+      const events = stderr.trim().split("\n").map((line) => JSON.parse(line))
+      expect(events.map((event) => event.event)).toEqual([
+        "assignment_run.poll_complete",
+        "assignment_run.accepted",
+        "assignment_run.runtime_started",
+        "assignment_run.progress_submitted",
+        "assignment_run.artifacts_submitted",
+        "assignment_run.closeout_submitted",
+        "assignment_run.completed",
+      ])
+      expect(events.every((event) => event.schema === "openagents.pylon.assignment_run_lifecycle_event.v0.1")).toBe(true)
+      expect(events.at(-1)).toMatchObject({
+        assignmentRef: cliLease.assignmentRef,
+        leaseRef: cliLease.leaseRef,
+        status: "accepted",
+        closeoutRef: `assignment.closeout.${cliLease.leaseRef}`,
+      })
+      expect(stderr).not.toContain(home)
+      expect(stderr).not.toContain("/Users/")
+      expect(stderr).not.toContain("accountHome")
+      expect(stderr).not.toContain("provider")
     })
   })
 
