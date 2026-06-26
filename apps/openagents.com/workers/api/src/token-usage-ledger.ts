@@ -2,6 +2,8 @@ import {
   InferenceAnalyticsResponse,
   PublicKhalaTokensServedAggregate,
   PublicKhalaTokensServedHistory,
+  PublicKhalaTokensServedModelMix,
+  type PublicKhalaTokensServedModelFamily,
   type PublicKhalaTokensServedHistoryBucket,
   TokenUsageAggregateResponse,
   TokenUsageCounts,
@@ -136,6 +138,12 @@ export type TokenUsageLedgerShape = Readonly<{
     filters?: TokenUsageHistoryFilters,
   ) => Effect.Effect<
     typeof PublicKhalaTokensServedHistory.Type,
+    TokenUsageLedgerStorageError | TokenUsageLedgerValidationError
+  >
+  readPublicTokensServedModelMix: (
+    filters?: TokenUsageLeaderboardFilters,
+  ) => Effect.Effect<
+    typeof PublicKhalaTokensServedModelMix.Type,
     TokenUsageLedgerStorageError | TokenUsageLedgerValidationError
   >
   readLeaderboardPreference: (
@@ -753,6 +761,21 @@ const decodePublicTokensServedHistory = (
       }),
   })
 
+const decodePublicTokensServedModelMix = (
+  value: unknown,
+): Effect.Effect<
+  typeof PublicKhalaTokensServedModelMix.Type,
+  TokenUsageLedgerValidationError
+> =>
+  Effect.try({
+    try: () => S.decodeUnknownSync(PublicKhalaTokensServedModelMix)(value),
+    catch: error =>
+      new TokenUsageLedgerValidationError({
+        field: 'public_tokens_served_model_mix',
+        message: error instanceof Error ? error.message : String(error),
+      }),
+  })
+
 const decodeLeaderboardsResponse = (
   value: unknown,
 ): Effect.Effect<
@@ -1282,6 +1305,88 @@ const normalizeHistoryTimezone = (
       }),
   })
 }
+
+const publicModelFamilyFromProviderAndModel = (
+  provider: string | null | undefined,
+  model: string | null | undefined,
+): PublicKhalaTokensServedModelFamily => {
+  const text = `${provider ?? ''} ${model ?? ''}`.trim().toLowerCase()
+
+  if (
+    text.includes('pylon-codex') ||
+    text.includes('pylon_codex') ||
+    text.includes('openagents/pylon-codex')
+  ) {
+    return 'pylon_codex'
+  }
+
+  if (
+    text.includes('anthropic') ||
+    text.includes('claude') ||
+    text.includes('sonnet') ||
+    text.includes('opus') ||
+    text.includes('haiku')
+  ) {
+    return 'anthropic'
+  }
+
+  if (
+    text.includes('google') ||
+    text.includes('gemini') ||
+    text.includes('vertex')
+  ) {
+    return 'gemini'
+  }
+
+  if (text.includes('deepseek')) {
+    return 'deepseek'
+  }
+
+  if (
+    text.includes('glm') ||
+    text.includes('z.ai') ||
+    text.includes('zai') ||
+    text.includes('zhipu')
+  ) {
+    return 'glm'
+  }
+
+  if (text.includes('llama') || text.includes('meta')) {
+    return 'llama'
+  }
+
+  if (text.includes('mistral') || text.includes('mixtral')) {
+    return 'mistral'
+  }
+
+  if (
+    text.includes('qwen') ||
+    text.includes('dashscope') ||
+    text.includes('alibaba')
+  ) {
+    return 'qwen'
+  }
+
+  if (text.includes('grok') || text.includes('xai') || text.includes('x.ai')) {
+    return 'grok'
+  }
+
+  if (
+    text.includes('openai') ||
+    text.includes('gpt-') ||
+    /\bo[134]\b/.test(text) ||
+    /\bo[134]-/.test(text)
+  ) {
+    return 'openai'
+  }
+
+  return 'other'
+}
+
+const roundedShare = (tokensServed: number, totalTokensServed: number): number =>
+  totalTokensServed <= 0
+    ? 0
+    : Math.round((tokensServed / totalTokensServed) * 1_000_000) / 1_000_000
 
 const localDayFormatter = (timezone: string): Intl.DateTimeFormat =>
   new Intl.DateTimeFormat('en-US', {
@@ -2168,6 +2273,100 @@ export const makeD1TokenUsageLedger = (
         bucket,
         series,
         timezone,
+        window,
+      })
+    }),
+
+  // Public-safe model/provider mix for /stats: raw provider and model ids are
+  // used only inside this aggregate read, then collapsed into canonical
+  // families before anything leaves the ledger boundary.
+  readPublicTokensServedModelMix: (filters = {}) =>
+    Effect.gen(function* () {
+      const window = yield* normalizeLeaderboardWindow(filters.window ?? '30d')
+      const nowIso = yield* requireTimestamp(
+        'now',
+        filters.now ?? runtime.nowIso(),
+      )
+      const since = leaderboardWindowSince(window, nowIso, runtime)
+
+      const rows = yield* d1Effect(
+        'tokenUsageEvents.publicTokensServedModelMix',
+        () =>
+          db
+            .prepare(
+              since === undefined
+                ? `SELECT
+                      provider,
+                      model,
+                      COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)
+                        AS tokens,
+                      COUNT(*) AS usage_events
+                     FROM token_usage_events
+                    GROUP BY provider, model`
+                : `SELECT
+                      provider,
+                      model,
+                      COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)
+                        AS tokens,
+                      COUNT(*) AS usage_events
+                     FROM token_usage_events
+                    WHERE observed_at >= ?
+                    GROUP BY provider, model`,
+            )
+            .bind(...(since === undefined ? [] : [since]))
+            .all<{
+              model: string | null
+              provider: string | null
+              tokens: number | null
+              usage_events: number | null
+            }>(),
+      )
+
+      const grouped = rows.results.reduce(
+        (families, row) => {
+          const family = publicModelFamilyFromProviderAndModel(
+            row.provider,
+            row.model,
+          )
+          const previous = families.get(family) ?? {
+            tokensServed: 0,
+            usageEvents: 0,
+          }
+          families.set(family, {
+            tokensServed:
+              previous.tokensServed + Math.max(0, Math.trunc(row.tokens ?? 0)),
+            usageEvents:
+              previous.usageEvents +
+              Math.max(0, Math.trunc(row.usage_events ?? 0)),
+          })
+          return families
+        },
+        new Map<
+          PublicKhalaTokensServedModelFamily,
+          { tokensServed: number; usageEvents: number }
+        >(),
+      )
+
+      const totalTokensServed = [...grouped.values()].reduce(
+        (sum, row) => sum + row.tokensServed,
+        0,
+      )
+      const families = [...grouped.entries()]
+        .map(([family, row]) => ({
+          family,
+          share: roundedShare(row.tokensServed, totalTokensServed),
+          tokensServed: row.tokensServed,
+          usageEvents: row.usageEvents,
+        }))
+        .sort(
+          (left, right) =>
+            right.tokensServed - left.tokensServed ||
+            left.family.localeCompare(right.family),
+        )
+
+      return yield* decodePublicTokensServedModelMix({
+        families,
+        totalTokensServed,
         window,
       })
     }),

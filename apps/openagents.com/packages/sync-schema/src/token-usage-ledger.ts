@@ -321,6 +321,43 @@ export class PublicKhalaTokensServedHistory extends S.Class<PublicKhalaTokensSer
   series: S.Array(PublicKhalaTokensServedHistoryPoint),
 }) {}
 
+export const PublicKhalaTokensServedModelFamily = S.Literals([
+  'anthropic',
+  'deepseek',
+  'gemini',
+  'glm',
+  'grok',
+  'llama',
+  'mistral',
+  'openai',
+  'pylon_codex',
+  'qwen',
+  'other',
+])
+export type PublicKhalaTokensServedModelFamily =
+  typeof PublicKhalaTokensServedModelFamily.Type
+
+export class PublicKhalaTokensServedModelMixFamily extends S.Class<PublicKhalaTokensServedModelMixFamily>(
+  'PublicKhalaTokensServedModelMixFamily',
+)({
+  family: PublicKhalaTokensServedModelFamily,
+  tokensServed: S.Int,
+  usageEvents: S.Int,
+  share: S.Number,
+}) {}
+
+// Public-safe model/provider mix for /stats. The ledger collapses raw provider
+// and model ids into canonical families before returning, so the public payload
+// remains aggregate-only: no raw provider ids, raw model ids, account refs,
+// actor refs, or per-event rows.
+export class PublicKhalaTokensServedModelMix extends S.Class<PublicKhalaTokensServedModelMix>(
+  'PublicKhalaTokensServedModelMix',
+)({
+  window: PublicKhalaTokensServedHistoryWindow,
+  totalTokensServed: S.Int,
+  families: S.Array(PublicKhalaTokensServedModelMixFamily),
+}) {}
+
 // ----------------------------------------------------------------------------
 // Inference cost / provider-lane analytics (issue #6232) — OWNER-GATED
 // ----------------------------------------------------------------------------

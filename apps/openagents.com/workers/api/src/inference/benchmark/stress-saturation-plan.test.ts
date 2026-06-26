@@ -9,7 +9,9 @@ import {
   GLM_STRESS_DEMAND_CLIENT,
   GLM_STRESS_DEMAND_KIND,
   GLM_STRESS_DEMAND_SOURCE,
+  buildGlmContinuousStressReport,
   buildGlmContinuousStressPlan,
+  buildGlmContinuousStressRunnerPlan,
 } from './stress-saturation-plan'
 
 const stressShape = (id: string, concurrency: number): SequenceShape => ({
@@ -110,6 +112,152 @@ describe('GLM continuous stress saturation plan (#6317 prep slice)', () => {
     expect(plan.cells.every(cell => cell.lane === 'glm-52')).toBe(true)
     expect(plan.cells.every(cell => cell.laneAvailability === 'available')).toBe(
       true,
+    )
+  })
+
+  test('runner stays fail-closed when the gated stress plan is blocked', () => {
+    const plan = buildGlmContinuousStressPlan({
+      matrixConfig: SAMPLE_DECISION_SUITE_CONFIG,
+      target: GLM_52_REAP_POOL_TARGET,
+      shapes: [stressShape('opencode-burst', 8)],
+      workloads: ['opencode-coding-task'],
+    })
+    const runnerPlan = buildGlmContinuousStressRunnerPlan({
+      generatedAt: '2026-06-26T00:00:00.000Z',
+      tickRef: 'tick.glm.stress.blocked.v1',
+      plan,
+    })
+
+    expect(runnerPlan.state).toBe('blocked')
+    expect(runnerPlan.canDispatch).toBe(false)
+    expect(runnerPlan.globalMaxConcurrency).toBe(0)
+    expect(runnerPlan.dispatchCells).toEqual([])
+    expect(runnerPlan.blockerRefs).toContain(
+      'blocker.glm_continuous_stress.missing_external_wins_preemption_evidence',
+    )
+  })
+
+  test('runner emits bounded public-safe internal_stress dispatch cells only after proof gates pass', () => {
+    const plan = buildGlmContinuousStressPlan({
+      matrixConfig: SAMPLE_DECISION_SUITE_CONFIG,
+      target: GLM_52_REAP_POOL_TARGET,
+      shapes: [stressShape('saturation-knee', 16)],
+      workloads: ['chat', 'opencode-coding-task'],
+      headroom: {
+        healthyReplicaCount: 10,
+        aggregateAvailableSlots: 10,
+        reservedExternalSlots: 3,
+        externalDemandActive: false,
+      },
+      evidence: {
+        liveHeadroomEvidenceRef: 'evidence.glm.live_headroom.oracle.v1',
+        externalWinsPreemptionEvidenceRef:
+          'evidence.glm.external_wins.preemption.v1',
+        rolloutGuardEvidenceRef: 'evidence.glm.stress.rollout_guard.v1',
+      },
+    })
+    const runnerPlan = buildGlmContinuousStressRunnerPlan({
+      generatedAt: '2026-06-26T00:00:00.000Z',
+      tickRef: 'tick.glm.stress.ready.v1',
+      plan,
+    })
+
+    expect(runnerPlan.state).toBe('ready')
+    expect(runnerPlan.canDispatch).toBe(true)
+    expect(runnerPlan.globalMaxConcurrency).toBe(7)
+    expect(runnerPlan.reservedExternalSlots).toBe(3)
+    expect(runnerPlan.evidenceRefs).toEqual([
+      'evidence.glm.live_headroom.oracle.v1',
+      'evidence.glm.external_wins.preemption.v1',
+      'evidence.glm.stress.rollout_guard.v1',
+    ])
+    expect(runnerPlan.dispatchCells).toHaveLength(4)
+    expect(
+      runnerPlan.dispatchCells.every(
+        cell =>
+          cell.demandKind === GLM_STRESS_DEMAND_KIND &&
+          cell.demandSource === GLM_STRESS_DEMAND_SOURCE &&
+          cell.demandClient === GLM_STRESS_DEMAND_CLIENT &&
+          cell.globalMaxConcurrency === 7 &&
+          cell.requestHeaders['x-openagents-demand-kind'] ===
+            GLM_STRESS_DEMAND_KIND,
+      ),
+    ).toBe(true)
+    expect(JSON.stringify(runnerPlan)).not.toMatch(
+      /prompt|completion|bearer|token|secret|https?:\/\//i,
+    )
+  })
+
+  test('report separates deferred and preempted stress load from measured goodput', () => {
+    const plan = buildGlmContinuousStressPlan({
+      matrixConfig: SAMPLE_DECISION_SUITE_CONFIG,
+      target: GLM_52_REAP_POOL_TARGET,
+      shapes: [stressShape('saturation-knee', 16)],
+      workloads: ['chat'],
+      headroom: {
+        healthyReplicaCount: 10,
+        aggregateAvailableSlots: 10,
+        reservedExternalSlots: 3,
+        externalDemandActive: false,
+      },
+      evidence: {
+        liveHeadroomEvidenceRef: 'evidence.glm.live_headroom.oracle.v1',
+        externalWinsPreemptionEvidenceRef:
+          'evidence.glm.external_wins.preemption.v1',
+        rolloutGuardEvidenceRef: 'evidence.glm.stress.rollout_guard.v1',
+      },
+    })
+    const runnerPlan = buildGlmContinuousStressRunnerPlan({
+      generatedAt: '2026-06-26T00:00:00.000Z',
+      tickRef: 'tick.glm.stress.report.v1',
+      plan,
+    })
+    const firstCell = runnerPlan.dispatchCells[0]
+    if (firstCell === undefined) {
+      throw new Error('expected a dispatch cell for report test')
+    }
+
+    const report = buildGlmContinuousStressReport({
+      generatedAt: '2026-06-26T00:00:01.000Z',
+      runnerPlan,
+      observations: [
+        {
+          cellId: firstCell.cellId,
+          replicaRef: 'replica.glm.us-central1-a.1',
+          status: 'ok',
+          outputTokens: 1200,
+          goodputTokens: 1100,
+          wallClockMs: 3000,
+        },
+        {
+          cellId: firstCell.cellId,
+          replicaRef: 'replica.glm.us-central1-a.2',
+          status: 'preempted_for_external',
+          outputTokens: 0,
+          wallClockMs: 250,
+        },
+        {
+          cellId: firstCell.cellId,
+          status: 'deferred_no_headroom',
+          outputTokens: 0,
+          wallClockMs: 0,
+        },
+      ],
+    })
+
+    expect(report.runnerState).toBe('ready')
+    expect(report.aggregateTokPerSecond).toBe(400)
+    expect(report.goodputTokPerSecond).toBeCloseTo(366.666, 2)
+    expect(report.errorRate).toBe(0)
+    expect(report.okCount).toBe(1)
+    expect(report.preemptedCount).toBe(1)
+    expect(report.deferredCount).toBe(1)
+    expect(report.replicaRefs).toEqual([
+      'replica.glm.us-central1-a.1',
+      'replica.glm.us-central1-a.2',
+    ])
+    expect(JSON.stringify(report)).not.toMatch(
+      /prompt|completion|bearer|secret|https?:\/\//i,
     )
   })
 })

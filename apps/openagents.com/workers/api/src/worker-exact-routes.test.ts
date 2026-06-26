@@ -91,6 +91,7 @@ const approvedExactRoutePaths = [
   '/api/public/pylon-stats',
   '/api/public/khala-tokens-served',
   '/api/public/khala-tokens-served/history',
+  '/api/public/khala-tokens-served/model-mix',
   '/api/pylon/codex/turns',
   '/api/pylon/codex/event-chunks',
   '/api/pylon/codex/proof',

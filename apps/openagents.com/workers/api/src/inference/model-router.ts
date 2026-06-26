@@ -515,6 +515,21 @@ export type DispatchRouteAdmissionPolicy = Readonly<{
   reason: string
 }>
 
+export type DispatchSchedulerPreemptionEvidence = Readonly<{
+  evidenceRef: string
+  reason: string
+  targetDemandClass: 'internal_stress'
+}>
+
+export type DispatchSchedulerPreemptionPolicy = Readonly<{
+  demandClass: InferenceDemandClass
+  reservedExternalHeadroomAvailable: boolean
+  reason: string
+  preempt: () => Effect.Effect<
+    DispatchSchedulerPreemptionEvidence | undefined
+  >
+}>
+
 export type DispatchHedgingPolicy = Readonly<{
   demandClass: InferenceDemandClass
   enabled: boolean
@@ -578,6 +593,10 @@ export type DispatchDeps = Readonly<{
   // the control-plane snapshot says reserved external headroom is unavailable;
   // external demand still dispatches through the normal lane plan.
   admission?: DispatchRouteAdmissionPolicy | undefined
+  // Optional typed scheduler hook. It can preempt one in-flight internal_stress
+  // request only when external demand arrives and reserved external headroom is
+  // unavailable. The hook is inert for every non-external demand class.
+  preemption?: DispatchSchedulerPreemptionPolicy | undefined
   // Optional bounded hedge. When enabled for external demand, a quarantined or
   // P99-breaching primary can be skipped once to a different warm eligible lane.
   hedging?: DispatchHedgingPolicy | undefined
@@ -594,6 +613,7 @@ export type DispatchRouteMetadata = Readonly<{
   providerHealthScore?: number | undefined
   region?: string | undefined
   fallbackAdapterRouteMetadata?: InferenceAdapterRouteMetadata | undefined
+  schedulerPreemption?: DispatchSchedulerPreemptionEvidence | undefined
   ttftP99Ms?: number | undefined
   warmState?: ProviderWarmState | undefined
 }>
@@ -744,6 +764,13 @@ const admissionError = (
     retryable: true,
   })
 
+const shouldPreemptInternalStress = (
+  preemption: DispatchSchedulerPreemptionPolicy | undefined,
+): boolean =>
+  preemption !== undefined &&
+  preemption.demandClass === 'external' &&
+  !preemption.reservedExternalHeadroomAvailable
+
 const normalizedRetryCount = (
   retry: DispatchRetryPolicy | undefined,
 ): number => {
@@ -893,6 +920,10 @@ export const dispatchWithOverflowWithMetadata = <A>(
       return yield* Effect.fail(error)
     }
 
+    const schedulerPreemption = shouldPreemptInternalStress(deps.preemption)
+      ? yield* deps.preemption!.preempt()
+      : undefined
+
     const adapterIds = planFor(request.model)
     let healthQuarantinedLaneCount = 0
     // Resolve to the lanes that are actually registered (skip absent partners).
@@ -1021,6 +1052,9 @@ export const dispatchWithOverflowWithMetadata = <A>(
             ...(fallbackAdapterRouteMetadata === undefined
               ? {}
               : { fallbackAdapterRouteMetadata }),
+            ...(schedulerPreemption === undefined
+              ? {}
+              : { schedulerPreemption }),
             ...(signals?.laneHealth === undefined
               ? {}
               : { laneHealth: signals.laneHealth }),

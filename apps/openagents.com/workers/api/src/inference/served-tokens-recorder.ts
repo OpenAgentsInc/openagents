@@ -74,6 +74,9 @@ export type ServedTokensRequestMetrics = Readonly<{
   replicaQueueDepth?: number | undefined
   replicaWarmState?: 'cold' | 'unknown' | 'warm' | undefined
   glmSaturationPolicy?: string | undefined
+  schedulerPreemptionEvidenceRef?: string | undefined
+  schedulerPreemptionReason?: string | undefined
+  schedulerPreemptionTargetDemandClass?: 'internal_stress' | undefined
   queueWaitMs?: number | undefined
   batchWaitMs?: number | undefined
   ttftMs?: number | undefined
@@ -238,6 +241,26 @@ const servedTokensSafeMetrics = (
     ...(optionalText(metrics.glmSaturationPolicy) === undefined
       ? {}
       : { glmSaturationPolicy: optionalText(metrics.glmSaturationPolicy) }),
+    ...(optionalText(metrics.schedulerPreemptionEvidenceRef) === undefined
+      ? {}
+      : {
+          schedulerPreemptionEvidenceRef: optionalText(
+            metrics.schedulerPreemptionEvidenceRef,
+          ),
+        }),
+    ...(optionalText(metrics.schedulerPreemptionReason) === undefined
+      ? {}
+      : {
+          schedulerPreemptionReason: optionalText(
+            metrics.schedulerPreemptionReason,
+          ),
+        }),
+    ...(metrics.schedulerPreemptionTargetDemandClass === undefined
+      ? {}
+      : {
+          schedulerPreemptionTargetDemandClass:
+            metrics.schedulerPreemptionTargetDemandClass,
+        }),
     ...(finiteNonNegative(metrics.queueWaitMs) === undefined
       ? {}
       : { queueWaitMs: finiteNonNegative(metrics.queueWaitMs) }),

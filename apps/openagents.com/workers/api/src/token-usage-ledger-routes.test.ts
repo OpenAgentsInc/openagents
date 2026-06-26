@@ -516,6 +516,12 @@ const makeRoutes = (
         timezone: 'UTC',
         series: [],
       }),
+    readPublicTokensServedModelMix: () =>
+      Effect.succeed({
+        window: '30d',
+        totalTokensServed: 0,
+        families: [],
+      }),
     readLeaderboardPreference: input => {
       preferenceInputs.push(input)
 

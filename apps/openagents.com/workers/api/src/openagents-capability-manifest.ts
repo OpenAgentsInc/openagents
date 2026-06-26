@@ -399,6 +399,14 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'Public-safe "Khala Tokens Served" history: window (today/7d/30d/all, default 30d), bucket (day), timezone (default UTC; accepts IANA zones such as America/Chicago), and a per-day series of { day, tokensServed } summing input + output tokens served that calendar day in the response timezone, plus generatedAt and the live_at_read staleness contract. Each point is a bare day + sum, no per-user, per-team, provider, or secret material. Read-only counter history; grants no payout, settlement, or public-claim authority.',
       },
       {
+        id: 'public_khala_tokens_served_model_mix',
+        href: 'https://openagents.com/api/public/khala-tokens-served/model-mix',
+        method: 'GET',
+        auth: 'public',
+        description:
+          'Public-safe Khala model/provider mix for /stats: window (today/7d/30d/all, default 30d), totalTokensServed, and canonical family aggregate rows { family, tokensServed, usageEvents, share }, plus generatedAt and the live_at_read staleness contract. Raw provider ids and model ids are collapsed before serving; no per-user, per-team, raw provider/model, or secret material. Read-only stats projection; grants no payout, settlement, routing, provider, or public-claim authority.',
+      },
+      {
         id: 'public_pylon_capacity_funnel',
         href: 'https://openagents.com/api/public/pylon-capacity-funnel',
         method: 'GET',

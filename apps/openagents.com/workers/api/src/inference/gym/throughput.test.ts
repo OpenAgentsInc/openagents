@@ -8,6 +8,7 @@ import {
   type GymThroughputSample,
   buildGymThroughputOwnerArmedRolloutRunArtifact,
   buildGymThroughputReport,
+  buildGymThroughputRolloutReadout,
   decodeGymThroughputEnvironmentSpec,
   decodeGymThroughputSample,
   expandGymThroughputOptimizationSweep,
@@ -399,6 +400,89 @@ describe('Gym throughput/concurrency report (#6244)', () => {
     })
     expect(JSON.stringify(artifact)).not.toContain('https://')
     expect(JSON.stringify(artifact)).not.toContain('/Users/')
+  })
+
+  test('builds an inert rollout readout with typed progress and measured lift evidence', () => {
+    const recommendation = measuredGlmRolloutRecommendation()
+    const rolloutRun = buildGymThroughputOwnerArmedRolloutRunArtifact({
+      generatedAt: '2026-06-26T13:00:00.000Z',
+      recommendation,
+      ownerArmRef: 'owner_arm.gym.glm_52.vllm_rollout.issue_6320.v1',
+    })
+
+    const readout = buildGymThroughputRolloutReadout({
+      generatedAt: '2026-06-26T13:05:00.000Z',
+      rolloutRun,
+      progressEvidence: {
+        schemaVersion:
+          'openagents.gym.throughput_rollout_progress_evidence.v1',
+        rolloutRef: 'rollout.gym.glm_52.vllm.issue_6320.measurement.001',
+        observedAt: '2026-06-26T13:04:00.000Z',
+        status: 'measured_lift',
+        ownerArmRef: 'owner_arm.gym.glm_52.vllm_rollout.issue_6320.v1',
+        progressPercent: 100,
+        publicEvidenceRefs: [
+          'report.gym.throughput.glm_52.vllm.issue_6320.measurement.001',
+        ],
+        baselineAggregateTps: recommendation.selection!.baselineAggregateTps,
+        measuredAggregateTps: recommendation.selection!.aggregateTps,
+        measuredThroughputLiftPercent:
+          recommendation.selection!.aggregateTpsLiftPercent,
+      },
+    })
+
+    expect(readout.schemaVersion).toBe(
+      'openagents.gym.throughput_rollout_readout.v1',
+    )
+    expect(readout.status).toBe('measured')
+    expect(readout.metadataOnly).toBe(true)
+    expect(readout.canMutateInfrastructure).toBe(false)
+    expect(readout.measuredLiftPercent).toBeCloseTo(96.55, 2)
+    expect(readout.blockers).toEqual([])
+    expect(JSON.stringify(readout)).not.toContain('https://')
+    expect(JSON.stringify(readout)).not.toContain('/Users/')
+  })
+
+  test('fails closed when rollout readout progress evidence is missing or mismatched', () => {
+    const recommendation = measuredGlmRolloutRecommendation()
+    const rolloutRun = buildGymThroughputOwnerArmedRolloutRunArtifact({
+      generatedAt: '2026-06-26T13:00:00.000Z',
+      recommendation,
+      ownerArmRef: 'owner_arm.gym.glm_52.vllm_rollout.issue_6320.v1',
+    })
+
+    const missingEvidence = buildGymThroughputRolloutReadout({
+      generatedAt: '2026-06-26T13:05:00.000Z',
+      rolloutRun,
+    })
+    const mismatchedOwnerArm = buildGymThroughputRolloutReadout({
+      generatedAt: '2026-06-26T13:06:00.000Z',
+      rolloutRun,
+      progressEvidence: {
+        schemaVersion:
+          'openagents.gym.throughput_rollout_progress_evidence.v1',
+        rolloutRef: 'rollout.gym.glm_52.vllm.issue_6320.measurement.002',
+        observedAt: '2026-06-26T13:05:00.000Z',
+        status: 'measured_lift',
+        ownerArmRef: 'owner_arm.gym.glm_52.vllm_rollout.other.v1',
+        progressPercent: 100,
+        publicEvidenceRefs: [
+          'report.gym.throughput.glm_52.vllm.issue_6320.measurement.002',
+        ],
+        baselineAggregateTps: 171,
+        measuredAggregateTps: 170,
+        measuredThroughputLiftPercent: -0.58,
+      },
+    })
+
+    expect(missingEvidence.status).toBe('blocked')
+    expect(missingEvidence.measuredLiftPercent).toBe(NOT_MEASURED)
+    expect(missingEvidence.blockers).toEqual(['missing_progress_evidence'])
+    expect(mismatchedOwnerArm.status).toBe('blocked')
+    expect(mismatchedOwnerArm.blockers).toEqual([
+      'owner_arm_ref_mismatch',
+      'measured_lift_not_positive',
+    ])
   })
 
   test('keeps a decision-grade recommendation inert until the owner arm ref exists', () => {

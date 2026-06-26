@@ -2260,8 +2260,13 @@ describe('POST /v1/chat/completions', () => {
     expect(dispatched).toBe(true)
   })
 
-  test('keeps external route admission dispatching when reserved headroom is unavailable', async () => {
+  test('preempts in-flight internal_stress before external dispatch when reserved headroom is unavailable', async () => {
     let dispatched = false
+    let preemptCalls = 0
+    const recorded: Array<{
+      requestAttribution?: unknown
+      requestMetrics?: unknown
+    }> = []
     const registry = new InferenceProviderRegistry()
     registry.register({
       ...echoAdapter('primary'),
@@ -2280,7 +2285,30 @@ describe('POST /v1/chat/completions', () => {
           },
         }),
         baseDeps({
+          dispatch: {
+            preemption: {
+              preempt: () =>
+                Effect.sync(() => {
+                  preemptCalls += 1
+                  return {
+                    evidenceRef:
+                      'scheduler.preemption.internal_stress.yield.fixture',
+                    reason: 'external_reserved_headroom_unavailable',
+                    targetDemandClass: 'internal_stress' as const,
+                  }
+                }),
+              reason: 'glm_aggregate_external_headroom_zero',
+              reservedExternalHeadroomAvailable: false,
+            },
+          },
           lanePlan: () => ['primary'],
+          recordTokensServed: input =>
+            Effect.sync(() => {
+              recorded.push({
+                requestAttribution: input.requestAttribution,
+                requestMetrics: input.requestMetrics,
+              })
+            }),
           registry,
           routeAdmission: {
             reason: 'glm_aggregate_external_headroom_zero',
@@ -2291,7 +2319,37 @@ describe('POST /v1/chat/completions', () => {
     )
 
     expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      openagents?: {
+        routing?: {
+          scheduler_preemption?: {
+            evidence_ref?: string
+            reason?: string
+            target_demand_class?: string
+          }
+        }
+      }
+    }
+    expect(body.openagents?.routing?.scheduler_preemption).toEqual({
+      evidence_ref: 'scheduler.preemption.internal_stress.yield.fixture',
+      reason: 'external_reserved_headroom_unavailable',
+      target_demand_class: 'internal_stress',
+    })
     expect(dispatched).toBe(true)
+    expect(preemptCalls).toBe(1)
+    expect(recorded).toHaveLength(1)
+    expect(recorded[0]).toMatchObject({
+      requestAttribution: {
+        demandKind: 'external',
+        demandSource: 'public-api',
+      },
+      requestMetrics: {
+        schedulerPreemptionEvidenceRef:
+          'scheduler.preemption.internal_stress.yield.fixture',
+        schedulerPreemptionReason: 'external_reserved_headroom_unavailable',
+        schedulerPreemptionTargetDemandClass: 'internal_stress',
+      },
+    })
   })
 
   test('wired GLM saturation proof: internal_stress yields while external overflows and records exact served tokens', async () => {

@@ -127,6 +127,7 @@ import {
   type DispatchLoadSheddingPolicy,
   type DispatchRouteAdmissionPolicy,
   type DispatchRouteMetadata,
+  type DispatchSchedulerPreemptionPolicy,
   type DispatchSuccessValidator,
   FIREWORKS_ADAPTER_ID,
   HYDRALISK_ADAPTER_ID,
@@ -339,10 +340,13 @@ export type ModelLanePlanner = (model: string) => ReadonlyArray<string>
 
 type ChatCompletionsDispatchDeps = Omit<
   DispatchDeps,
-  'hedging' | 'plan' | 'registry' | 'shedding'
+  'hedging' | 'plan' | 'preemption' | 'registry' | 'shedding'
 > &
   Readonly<{
     hedging?: Omit<DispatchHedgingPolicy, 'demandClass'> | undefined
+    preemption?:
+      | Omit<DispatchSchedulerPreemptionPolicy, 'demandClass'>
+      | undefined
     shedding?: Omit<DispatchLoadSheddingPolicy, 'demandClass'> | undefined
   }>
 
@@ -1225,6 +1229,13 @@ type OpenAgentsReceipt = Readonly<{
         replica_busy_reason?: string | null | undefined
         queue_wait_ms?: number | typeof NOT_MEASURED | undefined
         glm_saturation_policy?: string | undefined
+        scheduler_preemption?:
+          | Readonly<{
+              evidence_ref: string
+              reason: string
+              target_demand_class: 'internal_stress'
+            }>
+          | undefined
       }>
     | undefined
   // `unverified` is the HONEST default for an executable artifact we have not actually
@@ -1423,6 +1434,16 @@ const servedTokensRequestMetrics = (
     ...(input.timing?.generationWallClockMs === undefined
       ? {}
       : { generationWallClockMs: input.timing.generationWallClockMs }),
+    ...(input.routeMetadata?.schedulerPreemption === undefined
+      ? {}
+      : {
+          schedulerPreemptionEvidenceRef:
+            input.routeMetadata.schedulerPreemption.evidenceRef,
+          schedulerPreemptionReason:
+            input.routeMetadata.schedulerPreemption.reason,
+          schedulerPreemptionTargetDemandClass:
+            input.routeMetadata.schedulerPreemption.targetDemandClass,
+        }),
   }
 }
 
@@ -1563,6 +1584,16 @@ const openAgentsReceiptForResult = (
     ...(routeGlmSaturationPolicy === undefined
       ? {}
       : { glm_saturation_policy: routeGlmSaturationPolicy }),
+    ...(input.routeMetadata?.schedulerPreemption === undefined
+      ? {}
+      : {
+          scheduler_preemption: {
+            evidence_ref: input.routeMetadata.schedulerPreemption.evidenceRef,
+            reason: input.routeMetadata.schedulerPreemption.reason,
+            target_demand_class:
+              input.routeMetadata.schedulerPreemption.targetDemandClass,
+          },
+        }),
   } satisfies NonNullable<OpenAgentsReceipt['routing']>
 
   if (!isKhala) {
@@ -2773,6 +2804,14 @@ export const handleChatCompletions = (
         : {
             admission: {
               ...deps.routeAdmission,
+              demandClass: routeDemandClass,
+            },
+          }),
+      ...(deps.dispatch?.preemption === undefined
+        ? {}
+        : {
+            preemption: {
+              ...deps.dispatch.preemption,
               demandClass: routeDemandClass,
             },
           }),

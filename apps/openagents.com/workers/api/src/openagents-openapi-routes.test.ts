@@ -394,6 +394,17 @@ describe('OpenAgents OpenAPI route', () => {
     expect(khalaTokensServedOperation.description).toEqual(
       expect.stringContaining('tokensServed'),
     )
+    const khalaTokensServedModelMixOperation = operationAt(
+      body,
+      '/api/public/khala-tokens-served/model-mix',
+      'get',
+    )
+    expect(khalaTokensServedModelMixOperation.operationId).toBe(
+      'getPublicKhalaTokensServedModelMix',
+    )
+    expect(khalaTokensServedModelMixOperation.description).toEqual(
+      expect.stringContaining('canonical family aggregate rows'),
+    )
     expect(operationAt(body, '/api/agents/me', 'get').operationId).toBe(
       'getProgrammaticAgentMe',
     )
@@ -1149,6 +1160,11 @@ const srcRoot = import.meta.dirname
 // Removing a route from the OpenAPI document requires adding it here, which
 // keeps undocumented surface an explicit decision instead of silent drift.
 const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
+  // Khala app aliases and operator feedback surfaces. Public stats use the
+  // documented `/api/public/...` routes; feedback is app/operator-internal.
+  '/api/khala/feedback',
+  '/api/khala/tokens',
+  '/api/operator/khala/feedback',
   // Agency / services-business vertical pack (internal omni + operator surfaces;
   // session/operator-gated, not part of the public OpenAPI surface yet):
   '/api/workspaces',

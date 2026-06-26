@@ -117,33 +117,66 @@ describe('projectGlmFleetReadiness', () => {
       'replica.hydralisk.glm_52_reap_504b.warm-one',
     ])
     expect(projection.replicas).toEqual([
-      {
+      expect.objectContaining({
+        draining: true,
+        maxInflight: 1,
+        replicaId: 'disabled-four',
         replicaRef: 'replica.hydralisk.glm_52_reap_504b.disabled-four',
         status: 'disabled',
-      },
-      {
+      }),
+      expect.objectContaining({
+        blockerRefs: expect.arrayContaining([
+          'blocker.hydralisk_glm_52_reap_504b.missing-five.route_not_ready',
+        ]),
+        maxInflight: 0,
+        replicaId: 'missing-five',
         replicaRef: 'replica.hydralisk.glm_52_reap_504b.missing-five',
         status: 'unavailable',
-      },
-      {
+      }),
+      expect.objectContaining({
+        keepWarmStatus: 'control_plane_only',
+        maxInflight: 1,
+        replicaId: 'ready-two',
         replicaRef: 'replica.hydralisk.glm_52_reap_504b.ready-two',
         status: 'ready',
-      },
-      {
+        watchdogStatus: 'healthy',
+      }),
+      expect.objectContaining({
+        healthStatus: 'failed',
+        keepWarmStatus: 'failed',
+        maxInflight: 1,
+        replicaId: 'reclaimed-three',
         replicaRef: 'replica.hydralisk.glm_52_reap_504b.reclaimed-three',
         status: 'reclaimed',
-      },
-      {
+        watchdogStatus: 'unhealthy',
+      }),
+      expect.objectContaining({
+        armingEvidenceRefs: [
+          'preflight.hydralisk.glm.warm_one',
+          'receipt.hydralisk.glm.warm_one',
+        ],
+        keepWarmStatus: 'completed',
+        latestHeartbeatAt: observedAt,
+        maxInflight: 1,
+        replicaId: 'warm-one',
         replicaRef: 'replica.hydralisk.glm_52_reap_504b.warm-one',
         status: 'warm',
-      },
+        warmState: 'warm',
+      }),
     ])
     expect(projection.counts).toEqual({
+      activeMaxInflight: 3,
+      benchmarkReservedReplicaCount: 0,
+      configuredMaxInflight: 4,
       disabledReplicaCount: 1,
+      drainingReplicaCount: 1,
+      readyMaxInflight: 1,
       readyReplicaCount: 1,
       reclaimedReplicaCount: 1,
       totalReplicaCount: 5,
       unavailableReplicaCount: 1,
+      warmMaxInflight: 1,
+      warmOrReadyMaxInflight: 2,
       warmReplicaCount: 1,
     })
   })
@@ -184,11 +217,18 @@ describe('projectGlmFleetReadiness', () => {
     expect(projection).toMatchObject({
       configuredReplicaRefs: [],
       counts: {
+        activeMaxInflight: 0,
+        benchmarkReservedReplicaCount: 0,
+        configuredMaxInflight: 0,
         disabledReplicaCount: 0,
+        drainingReplicaCount: 0,
+        readyMaxInflight: 0,
         readyReplicaCount: 0,
         reclaimedReplicaCount: 0,
         totalReplicaCount: 0,
         unavailableReplicaCount: 0,
+        warmMaxInflight: 0,
+        warmOrReadyMaxInflight: 0,
         warmReplicaCount: 0,
       },
       replicas: [],

@@ -698,6 +698,7 @@ import { makePublicCardCreditSpendReceiptRoutes } from './public-card-credit-spe
 import { handlePublicForumActivityApiForEnv } from './public-forum-activity-routes'
 import { makePublicInferenceReceiptRoutes } from './public-inference-receipt-routes'
 import { handlePublicKhalaTokensServedHistoryApi } from './public-khala-tokens-served-history-routes'
+import { handlePublicKhalaTokensServedModelMixApi } from './public-khala-tokens-served-model-mix-routes'
 import { handlePublicKhalaTokensServedApi } from './public-khala-tokens-served-routes'
 import { handlePublicLaunchDashboardApi } from './public-launch-dashboard-routes'
 import { makePublicNip90MarketReceiptRoutes } from './public-nip90-market-receipt-routes'
@@ -10489,6 +10490,11 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/public/khala-tokens-served/history',
     handler: (request, env) =>
       handlePublicKhalaTokensServedHistoryApi(request, env),
+  },
+  {
+    path: '/api/public/khala-tokens-served/model-mix',
+    handler: (request, env) =>
+      handlePublicKhalaTokensServedModelMixApi(request, env),
   },
   {
     path: PYLON_CODEX_TURN_INGEST_PATH,

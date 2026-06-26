@@ -1702,6 +1702,9 @@ const schemaComponents = (): JsonSchema => ({
   PublicKhalaTokensServedHistory: objectSummary(
     'Public-safe "Khala Tokens Served" history: window, bucket (day), timezone (default UTC), and a per-day series of { day, tokensServed } where tokensServed is the SUM of input + output tokens served that calendar day in the response timezone, plus generatedAt and the declared live_at_read staleness contract. Each point is a bare day + sum; no per-user, per-team, provider, or secret material. Read-only counter history; grants no payout, settlement, or public-claim authority.',
   ),
+  PublicKhalaTokensServedModelMix: objectSummary(
+    'Public-safe "Khala Tokens Served" model/provider mix for /stats: window, totalTokensServed, and canonical family aggregate rows { family, tokensServed, usageEvents, share }, plus generatedAt and the declared live_at_read staleness contract. Raw provider ids and model ids are collapsed before serving; no per-user, per-team, per-account, raw provider/model, prompt, completion, or secret material. Read-only stats projection; grants no payout, settlement, routing, provider, or public-claim authority.',
+  ),
   PublicRelayHealth: objectSummary(
     'Public-safe canonical market relay health projection: current status (healthy/degraded/unhealthy, or unknown before the first probe), per-leg NIP-11 (HTTP status, latency, relay name) and websocket REQ/EOSE round-trip (outcome, latency) results, bounded retained probe history (7 days), typed status-transition events (30 days), generatedAt, probe cadence, and the declared stored_snapshot staleness contract with a staleExceeded flag. Read-only monitoring evidence; grants no relay-mutation, payout, settlement, or public-claim authority.',
   ),
@@ -9106,6 +9109,29 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Public Khala Tokens Served history.',
           '#/components/schemas/PublicKhalaTokensServedHistory',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/khala-tokens-served/model-mix': {
+    get: operation({
+      operationId: 'getPublicKhalaTokensServedModelMix',
+      summary: 'Read public Khala model/provider mix',
+      description:
+        'Returns the public-safe Khala tokens-served model/provider mix for /stats: window (today, 7d, 30d, or all; default 30d), totalTokensServed, and canonical family aggregate rows { family, tokensServed, usageEvents, share }, plus generatedAt and the declared live_at_read staleness contract. Raw provider ids and model ids are collapsed into bounded families before serving. Aggregate only; no per-user, per-team, per-account, raw provider/model, prompt, completion, API key, wallet, payment, or secret material. Read-only stats projection; grants no payout, settlement, routing, provider, or public-claim authority.',
+      tags: ['Public Proof', 'Inference'],
+      security: [],
+      parameters: [
+        queryParam(
+          'window',
+          'Time window for the mix: today, 7d, 30d, or all. Default 30d.',
+        ),
+      ],
+      responses: {
+        '200': okJson(
+          'Public Khala model/provider family mix.',
+          '#/components/schemas/PublicKhalaTokensServedModelMix',
         ),
         ...errorResponses(),
       },

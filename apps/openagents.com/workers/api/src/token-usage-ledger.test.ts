@@ -12,6 +12,7 @@ import {
   TokenUsageLedger,
   type TokenUsageLedgerFilters,
   type TokenUsageLedgerRuntime,
+  type TokenUsageLeaderboardFilters,
 } from './token-usage-ledger'
 
 const nowIso = '2026-06-08T12:00:00.000Z'
@@ -362,6 +363,44 @@ const makeMemoryD1 = (
           return Promise.resolve(makeResult<T>(series as Array<T>))
         }
 
+        if (
+          query.includes('GROUP BY provider, model') &&
+          query.includes('AS tokens') &&
+          query.includes('AS usage_events')
+        ) {
+          const byProviderModel = new Map<
+            string,
+            {
+              model: string | null
+              provider: string | null
+              tokens: number
+              usage_events: number
+            }
+          >()
+
+          for (const row of rows) {
+            const key = `${row.provider ?? 'unknown'}:${row.model ?? 'unknown'}`
+            const previous = byProviderModel.get(key) ?? {
+              model: row.model as string | null,
+              provider: row.provider as string | null,
+              tokens: 0,
+              usage_events: 0,
+            }
+            byProviderModel.set(key, {
+              ...previous,
+              tokens:
+                previous.tokens +
+                Number(row.input_tokens ?? 0) +
+                Number(row.output_tokens ?? 0),
+              usage_events: previous.usage_events + 1,
+            })
+          }
+
+          return Promise.resolve(
+            makeResult<T>([...byProviderModel.values()] as Array<T>),
+          )
+        }
+
         return Promise.resolve(makeResult<T>())
       },
       bind: (...nextValues: ReadonlyArray<unknown>) => {
@@ -529,6 +568,11 @@ const aggregate = (filters?: TokenUsageLedgerFilters) =>
 const tokensServedHistory = (filters?: TokenUsageHistoryFilters) =>
   Effect.flatMap(TokenUsageLedger, ledger =>
     ledger.readPublicTokensServedHistory(filters),
+  )
+
+const tokensServedModelMix = (filters?: TokenUsageLeaderboardFilters) =>
+  Effect.flatMap(TokenUsageLedger, ledger =>
+    ledger.readPublicTokensServedModelMix(filters),
   )
 
 const leaderboards = () =>
@@ -997,5 +1041,156 @@ describe('public tokens-served history', () => {
     )
 
     expect(exit._tag).toBe('Failure')
+  })
+})
+
+describe('public tokens-served model mix', () => {
+  const eventForFamily = (
+    eventId: string,
+    input: Readonly<{
+      model: string
+      observedAt: string
+      outputTokens: number
+      provider: string
+      inputTokens: number
+    }>,
+  ) => ({
+    schemaVersion: 'openagents.token_usage_event.v1',
+    actor: { userId: 'user_chris' },
+    eventId,
+    idempotencyKey: `model-mix:${eventId}`,
+    model: input.model,
+    observedAt: input.observedAt,
+    producerSystem: 'omega',
+    provider: input.provider,
+    sourceRoute: 'omega_hosted_gemini',
+    tokenCounts: {
+      cacheReadTokens: 0,
+      cacheWrite1hTokens: 0,
+      cacheWrite5mTokens: 0,
+      inputTokens: input.inputTokens,
+      outputTokens: input.outputTokens,
+      reasoningTokens: 0,
+      totalTokens: input.inputTokens + input.outputTokens,
+    },
+    usageTruth: 'exact',
+  })
+
+  test('collapses raw provider and model ids into canonical public families', async () => {
+    const db = makeMemoryD1()
+
+    await runLedger(
+      db,
+      Effect.gen(function* () {
+        yield* ingest(
+          eventForFamily('openai-1', {
+            inputTokens: 100,
+            model: 'gpt-4.1',
+            observedAt: '2026-06-07T10:00:00.000Z',
+            outputTokens: 50,
+            provider: 'openai',
+          }),
+        )
+        yield* ingest(
+          eventForFamily('openai-2', {
+            inputTokens: 30,
+            model: 'o3',
+            observedAt: '2026-06-07T11:00:00.000Z',
+            outputTokens: 20,
+            provider: 'broker',
+          }),
+        )
+        yield* ingest(
+          eventForFamily('gemini-1', {
+            inputTokens: 40,
+            model: 'gemini-2.5-pro',
+            observedAt: '2026-06-07T12:00:00.000Z',
+            outputTokens: 10,
+            provider: 'google_vertex',
+          }),
+        )
+        yield* ingest(
+          eventForFamily('codex-1', {
+            inputTokens: 15,
+            model: 'openagents/pylon-codex',
+            observedAt: '2026-06-07T13:00:00.000Z',
+            outputTokens: 5,
+            provider: 'pylon-codex-own-capacity',
+          }),
+        )
+      }),
+    )
+
+    const mix = await runLedger(
+      db,
+      tokensServedModelMix({ now: nowIso, window: '30d' }),
+    )
+
+    expect(mix).toEqual({
+      window: '30d',
+      totalTokensServed: 270,
+      families: [
+        {
+          family: 'openai',
+          share: 0.740741,
+          tokensServed: 200,
+          usageEvents: 2,
+        },
+        {
+          family: 'gemini',
+          share: 0.185185,
+          tokensServed: 50,
+          usageEvents: 1,
+        },
+        {
+          family: 'pylon_codex',
+          share: 0.074074,
+          tokensServed: 20,
+          usageEvents: 1,
+        },
+      ],
+    })
+  })
+
+  test('default 30d window excludes older provider/model rows', async () => {
+    const db = makeMemoryD1()
+
+    await runLedger(
+      db,
+      Effect.gen(function* () {
+        yield* ingest(
+          eventForFamily('inside', {
+            inputTokens: 50,
+            model: 'claude-3-5-sonnet',
+            observedAt: '2026-06-07T10:00:00.000Z',
+            outputTokens: 50,
+            provider: 'anthropic',
+          }),
+        )
+        yield* ingest(
+          eventForFamily('old', {
+            inputTokens: 999,
+            model: 'deepseek-chat',
+            observedAt: '2026-05-01T10:00:00.000Z',
+            outputTokens: 999,
+            provider: 'deepseek',
+          }),
+        )
+      }),
+    )
+
+    const mix = await runLedger(
+      db,
+      tokensServedModelMix({ now: nowIso, window: '30d' }),
+    )
+
+    expect(mix.families).toEqual([
+      {
+        family: 'anthropic',
+        share: 1,
+        tokensServed: 100,
+        usageEvents: 1,
+      },
+    ])
   })
 })

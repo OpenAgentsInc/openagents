@@ -321,6 +321,59 @@ export const GymThroughputOwnerArmedRolloutRunArtifact = S.Struct({
 export type GymThroughputOwnerArmedRolloutRunArtifact =
   typeof GymThroughputOwnerArmedRolloutRunArtifact.Type
 
+export const GymThroughputRolloutProgressStatus = S.Literals([
+  'blocked',
+  'awaiting_owner_arm',
+  'ready_to_apply',
+  'applying_owner_armed',
+  'measured_lift',
+])
+export type GymThroughputRolloutProgressStatus =
+  typeof GymThroughputRolloutProgressStatus.Type
+
+export const GymThroughputRolloutProgressEvidence = S.Struct({
+  schemaVersion: S.Literal(
+    'openagents.gym.throughput_rollout_progress_evidence.v1',
+  ),
+  rolloutRef: S.String,
+  observedAt: S.String,
+  status: GymThroughputRolloutProgressStatus,
+  ownerArmRef: S.Union([S.String, S.Null]),
+  progressPercent: S.Number.check(S.isBetween({ minimum: 0, maximum: 100 })),
+  publicEvidenceRefs: S.Array(S.String),
+  baselineAggregateTps: ThroughputMeasuredNumber,
+  measuredAggregateTps: ThroughputMeasuredNumber,
+  measuredThroughputLiftPercent: ThroughputMeasuredNumber,
+})
+export type GymThroughputRolloutProgressEvidence =
+  typeof GymThroughputRolloutProgressEvidence.Type
+
+export const GymThroughputRolloutReadoutBlocker = S.Literals([
+  'rollout_run_blocked',
+  'missing_progress_evidence',
+  'owner_arm_ref_mismatch',
+  'measured_lift_missing',
+  'measured_lift_not_positive',
+])
+export type GymThroughputRolloutReadoutBlocker =
+  typeof GymThroughputRolloutReadoutBlocker.Type
+
+export const GymThroughputRolloutReadout = S.Struct({
+  schemaVersion: S.Literal('openagents.gym.throughput_rollout_readout.v1'),
+  generatedAt: S.String,
+  environmentRef: S.Literal(GYM_THROUGHPUT_ENVIRONMENT_REF),
+  publicSafe: S.Literal(true),
+  metadataOnly: S.Literal(true),
+  canMutateInfrastructure: S.Literal(false),
+  status: S.Literals(['blocked', 'ready', 'measured']),
+  rolloutRun: GymThroughputOwnerArmedRolloutRunArtifact,
+  progressEvidence: S.Union([GymThroughputRolloutProgressEvidence, S.Null]),
+  measuredLiftPercent: ThroughputMeasuredNumber,
+  blockers: S.Array(GymThroughputRolloutReadoutBlocker),
+})
+export type GymThroughputRolloutReadout =
+  typeof GymThroughputRolloutReadout.Type
+
 export type GymThroughputLaneReport = Readonly<{
   lane: BenchmarkLane
   engine: BenchmarkEngine
@@ -724,6 +777,65 @@ export const buildGymThroughputOwnerArmedRolloutRunArtifact = (input: {
       selection: input.recommendation.selection,
       vllmFlags: [...input.recommendation.selection.vllmFlags],
     },
+    blockers,
+  }
+}
+
+const sameNullableRef = (
+  left: string | null,
+  right: string | null,
+): boolean => left === right
+
+export const buildGymThroughputRolloutReadout = (input: {
+  generatedAt: string
+  rolloutRun: GymThroughputOwnerArmedRolloutRunArtifact
+  progressEvidence?: GymThroughputRolloutProgressEvidence | null
+}): GymThroughputRolloutReadout => {
+  const progressEvidence = input.progressEvidence ?? null
+  const blockers: Array<GymThroughputRolloutReadoutBlocker> = []
+
+  if (input.rolloutRun.status !== 'ready_to_apply') {
+    blockers.push('rollout_run_blocked')
+  }
+  if (progressEvidence === null) {
+    blockers.push('missing_progress_evidence')
+  }
+  if (
+    progressEvidence !== null &&
+    !sameNullableRef(progressEvidence.ownerArmRef, input.rolloutRun.ownerArmRef)
+  ) {
+    blockers.push('owner_arm_ref_mismatch')
+  }
+  if (progressEvidence?.status === 'measured_lift') {
+    if (!isMeasured(progressEvidence.measuredThroughputLiftPercent)) {
+      blockers.push('measured_lift_missing')
+    } else if (progressEvidence.measuredThroughputLiftPercent <= 0) {
+      blockers.push('measured_lift_not_positive')
+    }
+  }
+
+  const measuredLiftPercent =
+    progressEvidence === null
+      ? NOT_MEASURED
+      : normalizeMeasuredNumber(progressEvidence.measuredThroughputLiftPercent)
+  const status =
+    blockers.length > 0
+      ? 'blocked'
+      : progressEvidence?.status === 'measured_lift'
+        ? 'measured'
+        : 'ready'
+
+  return {
+    schemaVersion: 'openagents.gym.throughput_rollout_readout.v1',
+    generatedAt: input.generatedAt,
+    environmentRef: GYM_THROUGHPUT_ENVIRONMENT_REF,
+    publicSafe: true,
+    metadataOnly: true,
+    canMutateInfrastructure: false,
+    status,
+    rolloutRun: input.rolloutRun,
+    progressEvidence,
+    measuredLiftPercent,
     blockers,
   }
 }
