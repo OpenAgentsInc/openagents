@@ -123,6 +123,8 @@ import {
 } from './metering-hook'
 import {
   type DispatchDeps,
+  type DispatchHedgingPolicy,
+  type DispatchLoadSheddingPolicy,
   type DispatchRouteAdmissionPolicy,
   type DispatchRouteMetadata,
   type DispatchSuccessValidator,
@@ -335,6 +337,15 @@ export const stubModelRouter: ModelRouter = () => STUB_ECHO_ADAPTER_ID
 // absent the route falls back to the single-id `router` seam (the #5476 path).
 export type ModelLanePlanner = (model: string) => ReadonlyArray<string>
 
+type ChatCompletionsDispatchDeps = Omit<
+  DispatchDeps,
+  'hedging' | 'plan' | 'registry' | 'shedding'
+> &
+  Readonly<{
+    hedging?: Omit<DispatchHedgingPolicy, 'demandClass'> | undefined
+    shedding?: Omit<DispatchLoadSheddingPolicy, 'demandClass'> | undefined
+  }>
+
 export const isToolBearingKhalaRequest = (
   input: Readonly<{
     body: ChatCompletionsRequestBody
@@ -467,7 +478,7 @@ export type ChatCompletionsDeps = Readonly<{
   // Routing overflow knobs (backoff + injected sleep) forwarded to
   // `dispatchWithOverflow`. Tests inject `sleep: () => Effect.void` so overflow
   // never waits. Ignored unless `lanePlan` is supplied.
-  dispatch?: Omit<DispatchDeps, 'registry' | 'plan'>
+  dispatch?: ChatCompletionsDispatchDeps | undefined
   routeAdmission?: Omit<DispatchRouteAdmissionPolicy, 'demandClass'> | undefined
   // Defaults to the no-op/log metering stub. The Worker supplies the live
   // ledger hook (`makeLedgerMeteringHook`, #5477) when the gateway is enabled.
@@ -2733,6 +2744,7 @@ export const handleChatCompletions = (
     // Dispatch deps for the overflow loop. The plan is pinned to `plannedIds`
     // (already resolved from lanePlan/router above) so selection + dispatch use
     // exactly the same ordering.
+    const routeDemandClass = routeDemandClassFromAttribution(requestAttribution)
     const dispatchDeps: DispatchDeps = {
       registry: deps.registry,
       plan: () => plannedIds,
@@ -2750,18 +2762,28 @@ export const handleChatCompletions = (
         : { retry: deps.dispatch.retry }),
       ...(deps.dispatch?.shedding === undefined
         ? {}
-        : { shedding: deps.dispatch.shedding }),
+        : {
+            shedding: {
+              ...deps.dispatch.shedding,
+              demandClass: routeDemandClass,
+            },
+          }),
       ...(deps.routeAdmission === undefined
         ? {}
         : {
             admission: {
               ...deps.routeAdmission,
-              demandClass: routeDemandClassFromAttribution(requestAttribution),
+              demandClass: routeDemandClass,
             },
           }),
       ...(deps.dispatch?.hedging === undefined
         ? {}
-        : { hedging: deps.dispatch.hedging }),
+        : {
+            hedging: {
+              ...deps.dispatch.hedging,
+              demandClass: routeDemandClass,
+            },
+          }),
       ...(deps.dispatch?.failureTelemetry === undefined
         ? {}
         : { failureTelemetry: deps.dispatch.failureTelemetry }),

@@ -454,10 +454,9 @@ const ingestHeartbeatRecord = (
       schemaVersion: 'openagents.token_usage_event.v1',
       actor: { accountRef: HEARTBEAT_ACCOUNT_REF },
       backendProfile: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
-      cost:
-        record.usage.totalTokens > 0
-          ? { amount: costUsdFor(record.usage), currency: 'USD' }
-          : undefined,
+      ...(record.usage.totalTokens > 0
+        ? { cost: { amount: costUsdFor(record.usage), currency: 'USD' } }
+        : {}),
       demand: {
         demandClient: HEARTBEAT_DEMAND_CLIENT,
         demandKind: 'own_capacity',
@@ -770,45 +769,50 @@ export const runGlmPoolHeartbeat = (
   )
 
   return Effect.gen(function* () {
-    const records = yield* Effect.forEach(input.replicas, replica =>
-      probeReplica({
-        benchmarkOwnershipActive: input.benchmarkOwnershipActive,
-        fetchImpl,
-        ledger: input.ledger,
-        nowMs,
-        observedAt: input.observedAt,
-        breakerPolicy,
-        probeTimeoutMs,
-        replica,
-        runRef,
-        warmCompletionEnabled: input.warmCompletionEnabled,
-      }),
+    const persistedRecords = yield* Effect.forEach(
+      input.replicas,
+      replica =>
+        Effect.gen(function* () {
+          const record = yield* probeReplica({
+            benchmarkOwnershipActive: input.benchmarkOwnershipActive,
+            fetchImpl,
+            ledger: input.ledger,
+            nowMs,
+            observedAt: input.observedAt,
+            breakerPolicy,
+            probeTimeoutMs,
+            replica,
+            runRef,
+            warmCompletionEnabled: input.warmCompletionEnabled,
+          })
+          const persistenceFailure = yield* ingestHeartbeatRecord(
+            input.ledger,
+            record,
+          ).pipe(
+            Effect.as(
+              undefined as GlmPoolHeartbeatPersistenceFailure | undefined,
+            ),
+            Effect.catch(error =>
+              Effect.succeed(
+                heartbeatPersistenceFailure({
+                  error,
+                  replicaId: record.replicaId,
+                  runRef: record.runRef,
+                  stage: 'replica_record',
+                }),
+              ),
+            ),
+          )
+
+          return { persistenceFailure, record }
+        }),
     )
-    const persistenceFailures = yield* Effect.forEach(records, record =>
-      ingestHeartbeatRecord(input.ledger, record).pipe(
-        Effect.as(
-          undefined as GlmPoolHeartbeatPersistenceFailure | undefined,
-        ),
-        Effect.catch(error =>
-          Effect.succeed(
-            heartbeatPersistenceFailure({
-              error,
-              replicaId: record.replicaId,
-              runRef: record.runRef,
-              stage: 'replica_record',
-            }),
-          ),
-        ),
-      ),
-    ).pipe(
-      Effect.map(failures =>
-        failures.filter(
-          (
-            failure,
-          ): failure is GlmPoolHeartbeatPersistenceFailure =>
-            failure !== undefined,
-        ),
-      ),
+    const records = persistedRecords.map(result => result.record)
+    const persistenceFailures = persistedRecords
+      .map(result => result.persistenceFailure)
+      .filter(
+        (failure): failure is GlmPoolHeartbeatPersistenceFailure =>
+          failure !== undefined,
     )
     recordGlmPoolHeartbeatRoutingState(records)
 
@@ -946,11 +950,13 @@ export const runScheduledGlmPoolHeartbeatForD1 = (
   input: Readonly<{
     db: D1Database
     env: HydraliskGlmPoolHeartbeatEnv
+    fetchImpl?: GlmPoolHeartbeatFetch | undefined
     scheduledTimeMs: number
   }>,
 ): Effect.Effect<GlmPoolHeartbeatRunReport> =>
   runScheduledGlmPoolHeartbeat({
     env: input.env,
+    ...(input.fetchImpl === undefined ? {} : { fetchImpl: input.fetchImpl }),
     ledger: makeD1TokenUsageLedger(input.db),
     scheduledTimeMs: input.scheduledTimeMs,
   })

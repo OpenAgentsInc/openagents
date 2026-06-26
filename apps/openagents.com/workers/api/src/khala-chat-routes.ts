@@ -28,6 +28,7 @@ import {
 import type { KhalaChatStreamClient } from './khala-chat-program'
 import { OnboardingInferenceError } from './autopilot-onboarding-program'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { logWorkerRouteError } from './observability'
 import { compactRandomId, currentEpochMillis } from './runtime-primitives'
 
 type HttpResponse = globalThis.Response
@@ -131,11 +132,11 @@ const logKhalaChatFailure = (
 ): void => {
   const reason =
     typeof error === 'object' && error !== null && 'reason' in error
-        ? String((error as { reason?: unknown }).reason)
+      ? String((error as { reason?: unknown }).reason)
       : error instanceof Error
         ? error.message
         : String(error)
-  console.error('khala_chat_inference_failure', {
+  logWorkerRouteError('khala_chat_inference_failure', error, {
     reason,
     stage,
     traceRef: trace,

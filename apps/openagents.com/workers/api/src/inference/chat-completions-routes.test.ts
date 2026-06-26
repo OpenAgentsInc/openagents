@@ -2163,7 +2163,6 @@ describe('POST /v1/chat/completions', () => {
         baseDeps({
           dispatch: {
             shedding: {
-              demandClass: 'internal_stress',
               slo: { breached: true, reason: 'external_ttft_p90' },
             },
           },
@@ -2248,7 +2247,6 @@ describe('POST /v1/chat/completions', () => {
         baseDeps({
           dispatch: {
             shedding: {
-              demandClass: 'external',
               slo: { breached: true, reason: 'external_ttft_p90' },
             },
           },
@@ -2296,6 +2294,128 @@ describe('POST /v1/chat/completions', () => {
     expect(dispatched).toBe(true)
   })
 
+  test('wired GLM saturation proof: internal_stress yields while external overflows and records exact served tokens', async () => {
+    let glmCalls = 0
+    let geminiCalls = 0
+    const recorded: Array<{
+      adapterId: string
+      requestAttribution?: unknown
+      requestMetrics?: unknown
+      usage: InferenceUsage
+    }> = []
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      ...echoAdapter(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID),
+      complete: () => {
+        glmCalls += 1
+        return Effect.fail(
+          new InferenceAdapterError({
+            adapterId: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+            adapterRouteMetadata: {
+              glmSaturationPolicy: 'queue_then_overflow',
+              queueWaitMs: 0,
+              replicaBusyReason: 'inflight_full',
+              replicaFallbackReason: 'inflight_full',
+            },
+            httpStatus: 429,
+            kind: 'glm_pool_saturated',
+            reason: 'hydralisk GLM pool saturated',
+            retryable: true,
+          }),
+        )
+      },
+    })
+    registry.register({
+      ...echoAdapter(VERTEX_GEMINI_ADAPTER_ID),
+      complete: request => {
+        geminiCalls += 1
+        return stubEchoAdapter.complete(request)
+      },
+    })
+
+    const deps = baseDeps({
+      dispatch: {
+        shedding: { slo: { breached: true, reason: 'external_ttft_p90' } },
+        sleep: () => Effect.void,
+      },
+      lanePlan: () => [
+        HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+        VERTEX_GEMINI_ADAPTER_ID,
+      ],
+      recordTokensServed: input =>
+        Effect.sync(() => {
+          recorded.push({
+            adapterId: input.adapterId,
+            requestAttribution: input.requestAttribution,
+            requestMetrics: input.requestMetrics,
+            usage: input.usage,
+          })
+        }),
+      registry,
+      routeAdmission: {
+        reason: 'glm_aggregate_external_headroom_zero',
+        reservedExternalHeadroomAvailable: false,
+      },
+    })
+
+    const stressResponse = await run(
+      handleChatCompletions(
+        chatRequest(helloBody, {
+          headers: {
+            [INFERENCE_CLIENT_HEADER]: 'stress-harness',
+            [INFERENCE_DEMAND_KIND_HEADER]: 'internal_stress',
+            [INFERENCE_DEMAND_SOURCE_HEADER]: 'glm-saturation',
+          },
+        }),
+        deps,
+      ),
+    )
+    expect(stressResponse.status).toBe(429)
+    expect(glmCalls).toBe(0)
+    expect(geminiCalls).toBe(0)
+    expect(recorded).toHaveLength(0)
+
+    const externalResponse = await run(
+      handleChatCompletions(
+        chatRequest(helloBody, {
+          headers: {
+            [INFERENCE_CLIENT_HEADER]: 'public-api',
+            [INFERENCE_DEMAND_KIND_HEADER]: 'external',
+            [INFERENCE_DEMAND_SOURCE_HEADER]: 'public-api',
+          },
+        }),
+        deps,
+      ),
+    )
+
+    expect(externalResponse.status).toBe(200)
+    const body = (await externalResponse.json()) as {
+      openagents?: {
+        routing?: { fallback_reason?: string | null }
+        worker?: string
+      }
+    }
+    expect(body.openagents?.worker).toBe(VERTEX_GEMINI_ADAPTER_ID)
+    expect(body.openagents?.routing?.fallback_reason).toBe('glm_pool_saturated')
+    expect(glmCalls).toBe(1)
+    expect(geminiCalls).toBe(1)
+    expect(recorded).toHaveLength(1)
+    expect(recorded[0]).toMatchObject({
+      adapterId: VERTEX_GEMINI_ADAPTER_ID,
+      requestAttribution: {
+        demandClient: 'public-api',
+        demandKind: 'external',
+        demandSource: 'public-api',
+      },
+      requestMetrics: {
+        fallbackReason: 'glm_pool_saturated',
+        glmSaturationPolicy: 'queue_then_overflow',
+        queueWaitMs: 0,
+      },
+    })
+    expect(recorded[0]?.usage.totalTokens).toBeGreaterThan(0)
+  })
+
   test('hedges external requests to a warm lane when route dispatch hedging is configured', async () => {
     let primaryCalls = 0
     let hedgeCalls = 0
@@ -2321,7 +2441,6 @@ describe('POST /v1/chat/completions', () => {
         baseDeps({
           dispatch: {
             hedging: {
-              demandClass: 'external',
               enabled: true,
               ttftP99ThresholdMs: 500,
             },
