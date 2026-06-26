@@ -59,6 +59,15 @@ struct ChatView: View {
                 .padding(.bottom, 8)
                 .background(.thinMaterial)
         }
+        .onAppear {
+            // New/empty chat: autofocus the composer so the keyboard opens
+            // immediately. A short delay lets the view settle so focus reliably
+            // takes and the keyboard animates up.
+            guard messages.isEmpty else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                composerFocused = true
+            }
+        }
     }
 
     private var emptyState: some View {
