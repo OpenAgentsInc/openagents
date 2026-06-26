@@ -2113,6 +2113,17 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     token-counts/freshness only, always `decisionGrade:false`/`inProgress` for
     partial phases; `local_only` runs degrade to an awaiting-authorization
     marker with no live numbers).
+  - `GET /api/public/gym/leaderboard` — stored-snapshot projection of the
+    recurring Gym benchmark ladder (`openagents.gym.ladder_leaderboard.v1`,
+    #6309) — compliant (`generatedAt`, stored-snapshot contract, refreshed on
+    the owner-armed/recurring publish transitions). Public-safe only: the three
+    rungs (Big Pickle → free → paid frontier) carry rank, lane, accepted
+    outcomes, verification-rate-bps, and cost-per-accepted-outcome-msat from
+    decision-grade rows only; fixture/synthetic numbers are never published, and
+    a rung with no measured opponent is `awaiting_owner` with its owner-gate
+    refs shown rather than a fabricated number. Serves the honest empty ladder
+    before the first decision-grade publish. No dispatch, spend, settlement, or
+    payout authority.
   - `GET /api/public/payments/contributor-accrual-bundle?economicsId=<id>` —
     live at read over one persisted accepted-outcome economics record (promise
     `payments.accepted_outcome_economics.v1`, red;

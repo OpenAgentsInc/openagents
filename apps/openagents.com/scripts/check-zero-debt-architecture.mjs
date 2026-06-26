@@ -421,7 +421,16 @@ const budgetChecks = [
     // by runRef into D1; it mints no spend/settlement/payout/public-claim
     // authority. Ratchet back down when these handlers move behind a shared
     // route mapper.
-    budget: 115,
+    // +2 (115 -> 117) on 2026-06-26 (#6309) for the recurring published Gym
+    // benchmark LADDER routes in inference/gym/ladder-routes.ts: two read-only
+    // route handlers returning `Effect.Effect<Response>`
+    // (`handlePublicGymLeaderboardApi`, `handleOperatorGymLeaderboardApi`) like
+    // the sibling public-projection handlers already counted here. They serve a
+    // public-safe `openagents.gym.ladder_leaderboard.v1` projection (the three
+    // rungs, decision-grade rows only) and mint no spend/settlement/payout/
+    // public-claim authority. Ratchet back down when these route handlers move
+    // behind a shared route mapper.
+    budget: 117,
     description:
       'Worker domain and route modules may not grow Response-returning surfaces while route mappers are extracted.',
     details: countByFile(
@@ -808,6 +817,11 @@ const publicProjectionSurfaces = [
   {
     module: 'workers/api/src/inference/gym/run-progress-routes.ts',
     route: '/api/public/gym/run-progress',
+    status: 'staleness_declared',
+  },
+  {
+    module: 'workers/api/src/inference/gym/ladder-routes.ts',
+    route: '/api/public/gym/leaderboard',
     status: 'staleness_declared',
   },
   {

@@ -1654,6 +1654,18 @@ const schemaComponents = (): JsonSchema => ({
   GymRunProgressPublicEnvelope: objectSummary(
     'Public-safe live Gym / Harbor run-progress projection: schemaVersion, scope="public", generatedAt, the declared stored_snapshot staleness contract, and the runs. web_authorized runs render live counts; local_only runs degrade to an honest awaiting-authorization marker with no live numbers.',
   ),
+  GymLadderLeaderboardPublicEnvelope: objectSummary(
+    'Public, dereferenceable Gym benchmark LADDER leaderboard: schemaVersion, scope="public", generatedAt, cadence, the stored_snapshot staleness contract (maxStalenessSeconds + rebuildsOn publish transitions, epic #4751), and the ladder. The ladder carries three deliberate rungs (Rung 1 Big Pickle baseline, Rung 2 free/open models, Rung 3 paid frontier) compared to Khala on the same OpenCode coding surface and our axes (cost-per-accepted-outcome, verified-rate, tool-call completion). Only owner-armed decision-grade real-sweep rows publish; fixture/synthetic numbers are never published as a rung measurement. A rung with no measured opponent is awaiting_owner and shows its owner-gate refs, never a fabricated number. Read-only projection; grants no dispatch, spend, settlement, payout, or public-claim authority.',
+  ),
+  GymLadderLeaderboardPublishRequest: objectSummary(
+    'Operator (or recurring scheduler) publish body for the Gym benchmark ladder: { reports: GymLeaderboardReportInput[] } from an owner-armed real sweep. The Worker re-builds the ladder via buildGymLadderLeaderboard (decision-grade + public-safety-checked rows only) and upserts the public-safe ladder by ladderRef. Anything not decision-grade or not public-safe is dropped by the builder and never stored.',
+  ),
+  GymLadderLeaderboardPublishEnvelope: objectSummary(
+    'Admin-token-gated publish receipt for the Gym benchmark ladder: schemaVersion, kind="gym_ladder_published", publishedAt, and the stored public-safe ladder. Storage/projection evidence only; grants no dispatch, spend, settlement, payout, or public-claim authority.',
+  ),
+  GymLadderLeaderboardOperatorEnvelope: objectSummary(
+    'Admin-token-gated read of the current published Gym benchmark ladder: schemaVersion, scope="operator", cadence, and the ladder. Same public-safe fields as the public projection.',
+  ),
   HarborFullTraceArchive: objectSummary(
     'Operator-only Harbor / Terminal-Bench full trace archive metadata. Points at a private R2 tarball under private/gym/harbor-full-trace-archives/... and explicitly marks containsRawPrompts/containsRawLogs/containsPrivateMaterial true. Internal evidence only; grants no accepted-work, payout, settlement, training-consent, or public-claim authority.',
   ),
@@ -4881,6 +4893,58 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Customer #1 cohort projection.',
           '#/components/schemas/CustomerOneCohortProjection',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/gym/leaderboard': {
+    get: operation({
+      operationId: 'getPublicGymLadderLeaderboard',
+      summary: 'Read the public Gym benchmark ladder leaderboard',
+      description:
+        'Returns the latest published, dereferenceable Gym benchmark ladder: the three deliberate rungs (Rung 1 Big Pickle baseline, Rung 2 free/open models, Rung 3 paid frontier) measured against Khala on the same OpenCode coding surface and our axes (cost-per-accepted-outcome, verified-rate, tool-call completion). Only owner-armed decision-grade real-sweep rows publish; a rung with no measured opponent is awaiting_owner with its owner-gate refs shown, never a fabricated number. When nothing decision-grade has been published yet the surface serves the honest empty ladder shape. No raw prompts, responses, logs, trajectories, keys, or private endpoints.',
+      tags: ['Public Proof'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Public-safe Gym benchmark ladder leaderboard.',
+          '#/components/schemas/GymLadderLeaderboardPublicEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/operator/gym/leaderboard': {
+    get: operation({
+      operationId: 'operatorGetGymLadderLeaderboard',
+      summary: 'Read the current published Gym benchmark ladder (operator)',
+      description:
+        'Admin-token-gated read of the current published Gym benchmark ladder. Same public-safe fields as the public projection.',
+      tags: ['Admin'],
+      security: adminSession,
+      responses: {
+        '200': okJson(
+          'Current published Gym benchmark ladder.',
+          '#/components/schemas/GymLadderLeaderboardOperatorEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+    post: operation({
+      operationId: 'operatorPublishGymLadderLeaderboard',
+      summary: 'Publish the Gym benchmark ladder leaderboard',
+      description:
+        'Admin-token-gated recurring publish boundary for the Gym benchmark ladder. The operator (or scheduler) POSTs the decision-grade GymLeaderboardReportInput[] from an owner-armed real sweep; the Worker re-builds the ladder via buildGymLadderLeaderboard (decision-grade + public-safety-checked rows only) and upserts the public-safe ladder by ladderRef. Anything not decision-grade or not public-safe is dropped by the builder and never stored. Projection evidence only; grants no dispatch, spend, settlement, payout, or public-claim authority.',
+      tags: ['Admin'],
+      security: adminSession,
+      requestBody: jsonContent(
+        '#/components/schemas/GymLadderLeaderboardPublishRequest',
+      ),
+      responses: {
+        '201': okJson(
+          'Published public-safe Gym benchmark ladder.',
+          '#/components/schemas/GymLadderLeaderboardPublishEnvelope',
         ),
         ...errorResponses(),
       },

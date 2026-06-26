@@ -397,6 +397,11 @@ import {
 import { makeD1GymRunProgressStore } from './inference/gym/run-progress-store'
 import { publishGymRunProgressSnapshot } from './inference/gym/run-progress-sync'
 import {
+  handleOperatorGymLeaderboardApi,
+  handlePublicGymLeaderboardApi,
+} from './inference/gym/ladder-routes'
+import { makeD1GymLadderStore } from './inference/gym/ladder-store'
+import {
   makeHydraliskVllmAdapter,
   makeHydraliskVllmPoolAdapter,
 } from './inference/hydralisk-adapter'
@@ -9666,6 +9671,20 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       }),
   },
   {
+    // Public, dereferenceable Gym benchmark LADDER leaderboard (#6309, GTM §4).
+    // The three rungs (Big Pickle -> free models -> paid frontier) on the same
+    // OpenCode coding surface + our axes (cost-per-accepted-outcome,
+    // verified-rate, tool-call completion). Returns the latest owner-armed
+    // decision-grade published snapshot; when none exists it serves the honest
+    // empty ladder shape (all rungs awaiting_owner with their owner-gate refs)
+    // so the surface never fabricates a measurement. Read-only, no auth.
+    path: '/api/public/gym/leaderboard',
+    handler: (request, env) =>
+      handlePublicGymLeaderboardApi(request, {
+        store: makeD1GymLadderStore(openAgentsDatabase(env)),
+      }),
+  },
+  {
     // Contributor accrual bundle dereference, addressed by accepted-outcome
     // economics id (?economicsId=...) for payments.accepted_outcome_economics.v1
     // (blocker.product_promises.contributor_ledger_missing). Read-only public
@@ -9995,6 +10014,21 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         // Fail-soft and off the customer path via the execution context.
         publishProgress: progress =>
           publishGymRunProgressSnapshot(env, progress, { ctx }),
+      }),
+  },
+  {
+    // Recurring publish boundary for the Gym benchmark LADDER (#6309). The
+    // operator (or the recurring scheduler) POSTs the decision-grade
+    // GymLeaderboardReportInput[] from an owner-armed real sweep; the Worker
+    // re-builds the ladder via buildGymLadderLeaderboard (decision-grade +
+    // public-safety-checked rows only) and upserts the public-safe ladder by
+    // ladderRef. GET returns the current published ladder. Admin-bearer gated.
+    path: '/api/operator/gym/leaderboard',
+    handler: (request, env) =>
+      handleOperatorGymLeaderboardApi(request, {
+        requireAdminApiToken: adminRequest =>
+          requireAdminApiToken(adminRequest, env),
+        store: makeD1GymLadderStore(openAgentsDatabase(env)),
       }),
   },
   {
