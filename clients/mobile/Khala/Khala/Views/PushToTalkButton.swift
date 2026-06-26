@@ -51,7 +51,10 @@ struct PushToTalkButton: View {
                     onPressUp()
                 }
         )
-        .disabled(state.isBusy)
+        // NOTE: never .disabled(state.isBusy) here — recording IS busy, and a
+        // disabled view drops the in-flight DragGesture so .onEnded (release)
+        // never fires, leaving the button stuck "on". The .onChanged guard
+        // (!state.isBusy) already prevents starting a NEW capture while busy.
     }
 }
 
