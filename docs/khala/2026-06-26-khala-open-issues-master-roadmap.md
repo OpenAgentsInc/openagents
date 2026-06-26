@@ -26,8 +26,9 @@ stress/benchmark load is best-effort, preemptible, instantly-yielding, and tagge
 
 ## Current status snapshot
 
-Refreshed from GitHub issue state, `origin/main`, and the local Pylon state on
-**2026-06-26 ~15:35Z** while live delegation was paused. This table is the
+Refreshed from GitHub issue state, `origin/main`, live D1/counter reads, and
+the local Pylon state on **2026-06-26 ~15:45Z** while live delegation was
+paused. This table is the
 operator view of what remains, not a public product claim.
 
 | Issue | State | Current status / next action |
@@ -36,7 +37,7 @@ operator view of what remains, not a public product claim.
 | #6323 | **Open** | Decision artifact for the full `nvidia/GLM-5.2-NVFP4` single-host pilot landed; the remaining work is the owner/fleet execution of the isolated 8x-host pilot and measured tool-call/quality/tok-s result. |
 | #6319 | **Closed** | Reliability hardening/fallback-chain repair is closed. Treat empty responses and dead fallback lanes as regression risks in later serving work. |
 | #6313 | **Closed** | Real OpenRouter fallback lane is closed. It is now a dependency assumption for further reliability and benchmark runs. |
-| #6311 | **Open** | Partial readiness/watchdog projection work landed, but the broad durable-fleet goal remains open: non-Spot capacity, all-replica keep-warm/watchdog, auto-replace, reserve, quota. A Khala -> Pylon -> Codex assignment completed a candidate canonical scheduled-skip diagnostic patch locally (3 files, not yet reviewed/merged); do not treat it as landed. |
+| #6311 | **Open** | Partial readiness/watchdog projection work landed, and the Khala -> Pylon -> Codex diagnostic slice is now merged/deployed in `856fc636d0` (Worker `785a7379-10ca-4b1c-9e86-bc734b11e2ec`): canonical zero-token scheduled-skip diagnostic rows for GLM pool heartbeat disabled/cadence/unarmed cases, with conservative safe metadata tests. Still open because the broad durable-fleet goal remains: non-Spot capacity, all-replica keep-warm/watchdog, auto-replace, reserve, quota, plus live `glm-pool-heartbeat` row proof. |
 | #6259 | **Closed** | Khala -> GLM served-worker disclosure + counter smoke is closed. |
 | #6315 | **Closed** | Zero-debit receipt-ref fix for #6259 is closed. |
 | #6320 | **Open** | A bounded routed slice landed in `85ca837413` and deployed as Worker `228ac0f9-c891-4ad2-b05f-0dd8894f3c86`: typed throughput-sweep metadata for `max-num-seqs`, prefix cache, chunked prefill, speculative decode, quant gates. Still open for actual live engine rollout and measured throughput lift. |
@@ -52,8 +53,8 @@ operator view of what remains, not a public product claim.
 | #6306 | **Closed** | Next ecosystem recipes are closed. Keep them as docs/recipe artifacts, not proof that Phase 4 benchmarks are complete. |
 | #6303 | **Open** | GTM umbrella remains open: recipe issues are closed and benchmark publication layers exist, but the real decision-grade benchmark/quality evidence and adoption scoreboard are not complete. |
 | #6316 | **Open** | Serving umbrella remains open: #6320/#6318 have partial deployed slices, but #6323 pilot, #6311 durability, #6317 stress, #6312 aggregate benchmark, and #6321 overseer are not complete. |
-| #6325 | **Closed** | Pylon/Codex delegated sessions are persisted as private traces and exact token events. |
-| #6326 | **Closed** | Complete raw Codex SDK event streams persist privately for Pylon/Codex Khala delegation. |
+| #6325 | **Closed** | Pylon/Codex delegated sessions are persisted as private traces and exact token events (`c92a5652ab`). |
+| #6326 | **Closed** | Complete raw Codex SDK event streams persist privately for Pylon/Codex Khala delegation (`48e43cee02`, deploy `4d1de2d8-6285-41fa-bd9f-7a5a88cf8275`). |
 | #6331 | **Closed** | The Pylon coding-delegation 500/unavailable path is fixed with typed diagnostics and proof surfaces. |
 
 ## Execution notes
@@ -62,11 +63,18 @@ operator view of what remains, not a public product claim.
   steering blockers ahead of the next phase item when the blocker prevents honest
   delegation, token attribution, or trace verification. This does not reorder the
   product backlog; it keeps the execution lane usable.
-- Pylon/Codex steering is now a usable lane as of `7057e61e0b`:
+- Pylon/Codex steering is a usable lane as of `7057e61e0b`:
   `assignment run-no-spend` auto-selects a ready connected Codex account when no
   explicit account is provided, while still supporting `--account` /
   `--account-ref`. On 2026-06-26, `pylon accounts list --json` showed five ready
   Codex accounts (`codex`, `codex-2`, `codex-3`, `codex-4`, and default).
+- Closed steering fixes that should stay assumed in future work: #6331 typed
+  target-Pylon unavailable diagnostics, #6332 Codex reconnect/link refresh,
+  #6333 one-shot `presence heartbeat --json`, #6334 runtime lifecycle streaming,
+  #6335 verifier sanitizer false-positive fix, #6336 capacity-gate link repair,
+  #6339 pinned checkout/verifier defaults, #6340 live runtime progress, #6341
+  `provider go-online` pylonRef/heartbeat proof, #6349 no silent fixture
+  fallback, and #6350 proof readout without direct D1 queries.
 - #6331 is closed, but its invariant stays live: a targeted linked Pylon whose
   assignment dispatch gate is full must return a typed, diagnosable
   `target_pylon_unavailable` response with gate evidence, not fall through to a
@@ -75,35 +83,46 @@ operator view of what remains, not a public product claim.
   exact `token_usage_events` rows, private `agent_traces`, and
   `pylon_codex_raw_events` rows. Verification has a first-class owner-scoped read
   path (`GET /api/pylon/codex/proof?assignmentRef=...` and
-  `pylon khala proof <assignmentRef> --json`). Counter movement alone is never
-  proof because other agents may be running.
-- Pylon state at refresh: `presence heartbeat --json` reported
-  `pylon.33afd48282a649047e3a`, `registered: true`, `linked: true`,
-  `stale: false`, heartbeat sequence `127`, and no blocker refs at
-  `2026-06-26T15:33:52.321Z`. Local account inventory showed five ready Codex
-  homes (`codex`, `codex-2`, `codex-3`, `codex-4`, and the default home) plus
-  two stale/missing Codex registry refs. `provider go-online` still reported
-  `maxInflight: 1` / `perBuyerMaxInflight: 1`, so parallel stress must first
-  publish a higher Codex concurrency through the heartbeat/capacity path.
+  `pylon khala proof --assignment-ref <assignmentRef> --json`). Counter movement
+  alone is never proof because other agents may be running.
+- Pylon state at refresh: `provider go-online --json` reported
+  `pylon.33afd48282a649047e3a`, lifecycle `online`, Codex ready, and no
+  Pylon-level blocker refs. Local account inventory showed five ready Codex homes
+  (`codex`, `codex-2`, `codex-3`, `codex-4`, and the default home) plus two
+  stale/missing Codex registry refs. However, `provider go-online` still
+  advertised `maxInflight: 1` / `perBuyerMaxInflight: 1`; before another
+  parallel stress batch, prove that the heartbeat/capacity path raises the
+  server-side assignment gate, not just local account readiness.
 - Latest paused delegation: assignment
   `assignment.public.khala_coding.chatcmpl_ffe4aef49ef94614be78bc9c8c7b3b62`
   completed locally on `codex-3` against `91edb870c3` with accepted closeout
-  `assignment.closeout.de5c448aa8a73c1639aaff89`, producing a candidate #6311
-  patch that persists canonical scheduled-skip diagnostics. It is unreviewed and
-  unmerged. The owner-scoped proof re-check in this shell returned
-  `401 unauthorized`, so the roadmap must not claim exact trace/token proof for
-  that assignment until proof is rerun successfully with valid auth.
+  `assignment.closeout.de5c448aa8a73c1639aaff89`. The patch was reviewed, tested,
+  merged as `856fc636d023f821480480f11654988ade65e9ca`, pushed to `main`, and
+  deployed through `deploy:safe` as Worker version
+  `785a7379-10ca-4b1c-9e86-bc734b11e2ec`. Verification was
+  `typecheck:web`, `typecheck:api`, focused GLM heartbeat/readiness tests, and
+  `check:deploy`, followed by live `/` and `/khala` 200 smokes.
+- Owner-scoped proof for that assignment is now good when called with the
+  explicit flag form:
+  `pylon khala proof --assignment-ref assignment.public.khala_coding.chatcmpl_ffe4aef49ef94614be78bc9c8c7b3b62 --json`.
+  It reports one exact token row (`total_tokens: 869982`,
+  `provider: pylon-codex-own-capacity`,
+  `demand_source: khala_coding_delegation`), one owner-only ATIF trace, and one
+  owner-only raw-event row with 71 Codex SDK events / 212,420 bytes.
 - Public counter state at refresh:
-  `/api/public/khala-tokens-served` returned `198,664,088` at
-  `2026-06-26T15:33:09.463Z`. That movement is aggregate and intentionally not
-  attributed to the paused #6311 assignment without the owner-scoped proof rows.
+  `/api/public/khala-tokens-served` returned `198,671,324` at
+  `2026-06-26T15:43:29.020Z`; `/` and `/khala` both returned HTTP 200. The
+  exact Pylon/Codex attribution must still come from
+  `pylon khala proof --assignment-ref ... --json` or token rows filtered to
+  `provider='pylon-codex-own-capacity'`, because public counter movement is
+  aggregate and other agents may be running.
 - Current serving observability gap: the #6311 GLM readiness route can project
   readiness from persisted routed-completion fallback rows, but canonical
   scheduled `glm-pool-heartbeat` rows have still not been observed after arming.
-  The delegated candidate patch addresses skipped/disabled/unarmed diagnostics,
-  but it still needs review, tests on current `origin/main`, merge, deploy via
-  `deploy:safe`, and live row proof before relying on scheduled watchdog
-  evidence for all replicas.
+  The delegated patch now covers skipped/disabled/unarmed diagnostics, but live
+  row proof is still absent (`SELECT ... WHERE demand_source='glm-pool-heartbeat'`
+  returned zero rows after the deploy). Do not rely on scheduled watchdog
+  evidence for all replicas until those rows appear and are inspected.
 
 ---
 
@@ -175,11 +194,11 @@ Make the fleet trustworthy before pushing load through it.
    auto-replace, an on-demand reserve, and the us-central1 quota increase. (Cross-refs
    hydralisk #95 durable host, #99 prebake-weights image.)
    - **Status (2026-06-26): OPEN.** Partial route/projection work has landed, but
-     the issue remains broad. Current codeable follow-up: review and either
-     land or reject the paused Pylon/Codex candidate patch for canonical
-     scheduled-skip GLM pool heartbeat diagnostics, then prove live scheduled
-     rows. Do not close until durability/non-Spot/reserve/quota scope is also
-     satisfied or explicitly split.
+     the issue remains broad. The Pylon/Codex diagnostic slice for canonical
+     scheduled-skip GLM pool heartbeat rows landed in `856fc636d0` and deployed
+     safely, but live `glm-pool-heartbeat` rows have not yet appeared. Current
+     next actions: prove live scheduled rows, then continue the real
+     durability/non-Spot/reserve/quota scope or explicitly split it.
 6. **#6259 + #6315 — green end-to-end GLM-serving smoke. → after #6310.** Get the
    Khala→GLM verification smoke passing for real (served-worker disclosure + counter
    increment); #6315 is the receipt-ref fix for the zero-debit operator-exempt token.
@@ -272,10 +291,10 @@ Historical full sequence:
 `#6321` → `#6253` ‖ `#6307` → `#6308` ‖ `#6309` → `#6305` [closed] →
 `#6306` [closed] → close `#6303`.
 
-Remaining active sequence after the 2026-06-26 ~15:35Z refresh:
+Remaining active sequence after the 2026-06-26 ~15:45Z refresh:
 
-`#6323`(run the full-model pilot) ‖ `#6311`(review/land canonical diagnostics,
-then durability) → `#6320`(live engine rollout + measured lift) →
+`#6323`(run the full-model pilot) ‖ `#6311`(prove live heartbeat rows, then
+durability/non-Spot/reserve/quota) → `#6320`(live engine rollout + measured lift) →
 `#6318`(finish live preemption proof) → `#6317` → `#6312` → `#6321` →
 `#6253`(decision-grade replicate/beat) ‖ `#6307`(owner-armed full comparison) →
 `#6308` ‖ `#6309`(recurring evidence) → close `#6316` / `#6303`.
@@ -307,7 +326,9 @@ GLM coding lane and leave REAP-504B on the 4x hosts.)
   dogfood/stress tokens stay segmented (#6298 demand tags) and out of external metrics.
 - Khala -> Pylon -> Codex worker status at refresh: delegation is paused by
   operator request, but the worker path is green on current `main` and should be
-  used again for codeable roadmap items once resumed. Relevant steering issues:
-  #6325/#6326 trace+raw-event persistence and #6331 typed gate diagnostics.
-  Relevant steering commits include `5188a6c187` proof readout, `18c25e9f85`
-  lifecycle streaming, and `7057e61e0b` default linked-account auto-routing.
+  used again for codeable roadmap items once resumed. Future launches should
+  record assignment refs immediately, verify `pylon khala proof --assignment-ref
+  ... --json`, and compare exact token rows instead of relying on public counter
+  movement. The next steering gap to settle is parallel capacity: local account
+  readiness shows five Codex homes, but the server policy still advertises one
+  in-flight assignment.
