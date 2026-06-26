@@ -16,7 +16,11 @@ import {
   type ClaudeAgentCheckoutRunner,
   type ClaudeAgentRunner,
 } from "./claude-agent-executor.js"
-import type { CodexAgentProbeOptions } from "./codex-agent.js"
+import {
+  loadCodexAgentConfig,
+  probeCodexAgentReadiness,
+  type CodexAgentProbeOptions,
+} from "./codex-agent.js"
 import { executeCodexAgentAssignment, type CodexAgentRunner } from "./codex-agent-executor.js"
 import { createSignedHeaders } from "./presence.js"
 import {
@@ -38,7 +42,16 @@ import {
   type PsionicQwenModelAdmission,
   type PsionicQwenTaskMode,
 } from "../packages/runtime/src/index.js"
-import { resolvePylonAccountSelection } from "./account-registry.js"
+import {
+  pylonAccountEnvironment,
+  resolvePylonAccountSelection,
+  type ResolvedPylonAccountSelection,
+} from "./account-registry.js"
+import {
+  resolvePylonAccountUsageRefreshTargets,
+  type PylonAccountUsageRefreshTarget,
+} from "./account-usage.js"
+import { isAccountAvailable, loadQuotaRecord } from "./account-quota-ledger.js"
 
 export type AssignmentPaymentMode = "no-spend" | "paid"
 export type AssignmentStatus = "offered" | "accepted" | "running" | "closed" | "rejected" | "cancelled" | "timed-out" | "stale"
@@ -167,6 +180,11 @@ export type AssignmentRunLifecycleEvent = {
 type AssignmentStore = {
   schema: "openagents.pylon.assignment_state.v0.3"
   leases: Record<string, { assignmentRef: string; status: AssignmentStatus; acceptedAt?: string; closedAt?: string }>
+}
+
+type AssignmentCodexAccountSelection = {
+  account: ResolvedPylonAccountSelection | null
+  accountRefHash?: string
 }
 
 export type TrainingWorkerReceipt = {
@@ -1119,6 +1137,59 @@ export async function submitAssignmentCloseout(
   return { closeoutRef }
 }
 
+function deterministicIndexFromRef(value: string, size: number): number {
+  if (size <= 0) return 0
+  return createHash("sha256").update(value).digest().readUInt32BE(0) % size
+}
+
+async function resolveCodexAccountForAssignment(
+  summary: BootstrapSummary,
+  lease: PylonAssignmentLease,
+  options: AssignmentClientOptions,
+  now: Date,
+): Promise<AssignmentCodexAccountSelection> {
+  if (options.accountRef !== undefined || options.accountHome !== undefined) {
+    const account = await resolvePylonAccountSelection(summary, {
+      provider: "codex",
+      ...(options.accountRef === undefined ? {} : { accountRef: options.accountRef }),
+      ...(options.accountHome === undefined ? {} : { accountHome: options.accountHome }),
+    })
+    return account === null ? { account: null } : { account, accountRefHash: account.accountRefHash }
+  }
+
+  const env = options.codexAgentProbe?.env ?? (Bun.env as Record<string, string | undefined>)
+  const { env: _ignoredProbeEnv, ...probeOverrides } = options.codexAgentProbe ?? {}
+  const config = await loadCodexAgentConfig(summary)
+  const targets = await resolvePylonAccountUsageRefreshTargets(
+    summary,
+    { accountRef: null, all: true, provider: null },
+    { env },
+  )
+  const readyTargets: PylonAccountUsageRefreshTarget[] = []
+  for (const target of targets) {
+    if (target.provider !== "codex") continue
+    const quotaRecord = await loadQuotaRecord(summary, target.accountRefHash)
+    if (!isAccountAvailable(quotaRecord, now)) continue
+    const targetEnv = pylonAccountEnvironment(env, target.account)
+    const readiness = await probeCodexAgentReadiness({
+      ...probeOverrides,
+      config,
+      env: targetEnv,
+    })
+    if (readiness.state !== "ready") continue
+    readyTargets.push(target)
+  }
+  if (readyTargets.length === 0) return { account: null }
+
+  const selected = readyTargets[
+    deterministicIndexFromRef(`${lease.assignmentRef}:${lease.leaseRef}`, readyTargets.length)
+  ]
+  return {
+    account: selected.account,
+    accountRefHash: selected.accountRefHash,
+  }
+}
+
 export async function runNoSpendAssignment(summary: BootstrapSummary, options: AssignmentClientOptions) {
   const runtimeProgressIntervalMs =
     typeof options.runtimeProgressIntervalMs === "number" &&
@@ -1235,24 +1306,23 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
 
   const observedAtDate = options.now?.() ?? new Date()
   const observedAt = observedAtDate.toISOString()
-  const codexAccount =
-    options.accountRef === undefined && options.accountHome === undefined
-      ? null
-      : await resolvePylonAccountSelection(summary, {
-          provider: "codex",
-          ...(options.accountRef === undefined ? {} : { accountRef: options.accountRef }),
-          ...(options.accountHome === undefined ? {} : { accountHome: options.accountHome }),
-        })
+  const codexAccount = await resolveCodexAccountForAssignment(
+    summary,
+    lease,
+    options,
+    observedAtDate,
+  )
   await emitLifecycleEvent({
     event: "assignment_run.runtime_started",
     assignmentRef: lease.assignmentRef,
+    ...(codexAccount.accountRefHash === undefined ? {} : { accountRefHash: codexAccount.accountRefHash }),
     leaseRef: lease.leaseRef,
   })
 
   const runtimeStartedAtMs = Date.now()
   const runtimeGate = await withRuntimeProgress({
     assignmentRef: lease.assignmentRef,
-    ...(codexAccount?.accountRefHash === undefined ? {} : { accountRefHash: codexAccount.accountRefHash }),
+    ...(codexAccount.accountRefHash === undefined ? {} : { accountRefHash: codexAccount.accountRefHash }),
     leaseRef: lease.leaseRef,
     startedAtMs: runtimeStartedAtMs,
     run: async () =>
@@ -1264,7 +1334,7 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
       })) ??
       (await executeCodexAgentAssignment(state, lease, observedAtDate, {
         ...(options.agentToken === undefined ? {} : { agentToken: options.agentToken }),
-        ...(codexAccount === null ? {} : { account: codexAccount }),
+        ...(codexAccount.account === null ? {} : { account: codexAccount.account }),
         baseUrl: options.baseUrl,
         ...(options.codexAgentRunner === undefined ? {} : { codexAgentRunner: options.codexAgentRunner }),
         ...(options.codexAgentProbe === undefined ? {} : { codexAgentProbe: options.codexAgentProbe }),
