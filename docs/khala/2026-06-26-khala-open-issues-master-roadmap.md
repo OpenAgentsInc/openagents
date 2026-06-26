@@ -77,6 +77,18 @@ This is the only phase that is an active outage. Do it first.
    route the GLM coding lane to it, keep REAP-504B on the 4× hosts. (Eval:
    `docs/inference/2026-06-26-nvidia-glm-5.2-nvfp4-evaluation.md`. Scaling the full model
    beyond one host depends on 8× Blackwell quota/capacity — #6311.)
+   - **Decision artifact landed (2026-06-26): GO for a bounded single-host pilot.** Feasible
+     today on the one `g4-standard-384` 8× host (NVFP4-capable Blackwell, ~381 GB weights +
+     unquantized shared expert + KV in 768 GB at TP-8); **not** feasible on the 4× hosts. The
+     full model is a **credible #6310 fix** (same `glm47`/`glm45` parsers as REAP → fault is
+     the pruned checkpoint, not config; full model is agentic-validated). Pilot = isolated
+     endpoint on the 8× host with the card's exact flags + a measured `--max-model-len` (96 GB
+     cards, not B200/B300 — prove the KV ceiling), primary test = OpenCode tool loop +
+     #6310 repro with **0 `provider_error`**, then quality + tok/s vs REAP's ~47 tok/s.
+     **Rollback is trivial** (separate endpoint; live `openagents/khala` stays on REAP the
+     whole pilot). Owner / serving-lane executes the run; this lane stayed **doc/decision-only**
+     (no live fleet/gateway/Pylon changes). Full plan + success criteria + conditional routing
+     precedence: the "Decision artifact (#6323)" section of the eval doc.
 
 ## Phase 1 — Reliable serving foundation
 
