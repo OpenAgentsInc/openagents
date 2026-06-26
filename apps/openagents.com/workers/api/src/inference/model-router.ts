@@ -808,6 +808,7 @@ export const dispatchWithOverflowWithMetadata = <A>(
     }
 
     const adapterIds = planFor(request.model)
+    let healthQuarantinedLaneCount = 0
     // Resolve to the lanes that are actually registered (skip absent partners).
     const adapters = adapterIds.flatMap(id => {
       const adapter = deps.registry.resolve(id)
@@ -818,6 +819,7 @@ export const dispatchWithOverflowWithMetadata = <A>(
       if (isLaneHealthEligible(signals)) {
         return [adapter]
       }
+      healthQuarantinedLaneCount += 1
       recordFailureTelemetry(deps.failureTelemetry, {
         adapterId: id,
         classifier: 'provider_error',
@@ -829,6 +831,17 @@ export const dispatchWithOverflowWithMetadata = <A>(
     })
 
     if (adapters.length === 0) {
+      if (healthQuarantinedLaneCount > 0) {
+        return yield* Effect.fail(
+          new InferenceAdapterError({
+            adapterId: 'router',
+            kind: 'lane_quorum_unhealthy',
+            reason:
+              'all registered provider lanes are quarantined or unhealthy',
+            retryable: true,
+          }),
+        )
+      }
       return yield* Effect.fail(
         new InferenceAdapterError({
           adapterId: 'router',
