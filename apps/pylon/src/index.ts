@@ -190,6 +190,7 @@ import {
   projectWalletBalance,
   preflightLegacySparkMigration,
   readCachedSparkTarget,
+  recoverLegacyMdkBalance,
   recommendSparkSweep,
   registerSparkPayoutTarget,
   reportWalletReadiness,
@@ -3952,6 +3953,43 @@ async function main() {
 
         process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
         process.exitCode = result.state === "blocked" ? 1 : 0
+        return
+      }
+      if (command === "recover-mdk") {
+        const recoveryOptions = parseKeyValueOptions(walletArgs)
+        const amountRaw = recoveryOptions.amount
+        const amountSats =
+          amountRaw === undefined || amountRaw === true
+            ? undefined
+            : Number(amountRaw)
+        if (amountSats !== undefined && (!Number.isFinite(amountSats) || amountSats <= 0)) {
+          throw new Error("wallet recover-mdk --amount must be a positive number of sats")
+        }
+        const destination =
+          optionString(recoveryOptions, "destination") ??
+          optionString(recoveryOptions, "payment-request")
+        const recovery = await recoverLegacyMdkBalance({
+          dryRun: recoveryOptions.execute !== true,
+          env: Bun.env,
+          yes: recoveryOptions.yes === true,
+          ...(amountSats === undefined ? {} : { amountSats }),
+          ...(destination === undefined ? {} : { destination }),
+        })
+        if (recovery.state === "recovered") {
+          for (const receiptRef of recovery.publicReceiptRefs) {
+            await appendLedgerEvent(state.paths, {
+              kind: "legacy-mdk-recovery",
+              ref: receiptRef,
+              data: {
+                receiptRef,
+                rail: "mdk_legacy_recovery",
+                amountSats: recovery.requestedAmountSats,
+              },
+            })
+          }
+        }
+        process.stdout.write(`${JSON.stringify({ ok: recovery.state === "recovered", recovery }, null, 2)}\n`)
+        process.exitCode = recovery.state === "recovered" || recovery.state === "ready" ? 0 : 1
         return
       }
       const options = parseKeyValueOptions(walletArgs)

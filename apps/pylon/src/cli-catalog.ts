@@ -152,7 +152,7 @@ export const PYLON_COMMAND_CATALOG: readonly PylonCommandEntry[] = [
     needsNetwork: false,
     json: true,
     args: [
-      pos("status|receive|send|admit-payout-target|register-payout-target|request-payout-target-admission|report-readiness|migrate-spark|backup-receive|backup-status|backup-claim|spark-selftest", "Subcommand."),
+      pos("status|receive|send|admit-payout-target|register-payout-target|request-payout-target-admission|report-readiness|migrate-spark|recover-mdk|backup-receive|backup-status|backup-claim|spark-selftest", "Subcommand."),
       opt("--amount", "send/receive amount in sats."),
       opt("--rail", "send rail: mdk (legacy default) or spark."),
       opt("--destination-ref", "Legacy MDK send destination ref."),
@@ -166,6 +166,8 @@ export const PYLON_COMMAND_CATALOG: readonly PylonCommandEntry[] = [
       flag("--sweep", "migrate-spark: dry-run reconcile of OWN received Spark backup funds (no consent, no movement)."),
       flag("--confirm-sweep", "migrate-spark: explicit consent to sweep OWN received Spark backup funds into OWN MDK wallet (receive-side reconcile, NOT a payout)."),
       flag("--destination-ready", "migrate-spark --confirm-sweep: assert the MDK destination is ready to receive the swept funds."),
+      flag("--execute", "recover-mdk/migrate-spark: leave dry-run mode after reviewing the local recovery plan."),
+      flag("--yes", "recover-mdk/migrate-spark: explicit owner consent for the local recovery operation."),
     ],
   },
   {

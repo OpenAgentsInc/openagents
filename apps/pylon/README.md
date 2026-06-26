@@ -368,6 +368,16 @@ local ledger records contain only digest refs, amount/fee, method, and status;
 they never print the raw invoice, Lightning Address, mnemonic, API key, or Spark
 storage path.
 
+Residual legacy MDK channel balances have a separate owner-local recovery path:
+
+```sh
+pylon wallet recover-mdk --destination <local-payment-request> --amount 2100 --yes --execute
+```
+
+This is a legacy recovery exception only. It does not re-enable
+`wallet send --rail mdk` and does not make MDK the primary/default agent payment
+rail. See `docs/legacy-mdk-balance-recovery.md`.
+
 Assignment worker commands are available for signed fake-server and live API
 smokes:
 

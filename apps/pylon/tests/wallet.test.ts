@@ -22,6 +22,7 @@ import {
   receiveWithFallback,
   receiveWithMdk,
   recommendSparkSweep,
+  recoverLegacyMdkBalance,
   reclaimStaleMdkDaemonPidfile,
   registerSparkPayoutTarget,
   reportWalletReadiness,
@@ -470,6 +471,119 @@ describe("MDK wallet readiness and ledger", () => {
       expect(migrated.publicReceiptRefs[0]).toMatch(/^receipt\.pylon\.legacy_spark_migration\.[a-f0-9]{24}$/)
       assertPublicProjectionSafe(migrated)
     })
+  })
+
+  test("requires explicit consent before residual legacy MDK balance recovery can execute", async () => {
+    const calls: string[] = []
+    const fake: WalletCommandRunner = async (args) => {
+      calls.push(args.join(" "))
+      if (args[0] === "balance") {
+        return { exitCode: 0, stdout: JSON.stringify({ balance_sats: 2500 }), stderr: "" }
+      }
+      return { exitCode: 1, stdout: "", stderr: `unexpected command: ${args.join(" ")}` }
+    }
+
+    const recovery = await recoverLegacyMdkBalance({
+      destination: "local-mdk-recovery-destination-token",
+      dryRun: false,
+      runner: fake,
+    })
+
+    expect(recovery).toMatchObject({
+      schema: "openagents.pylon.legacy_mdk_recovery.v0.1",
+      state: "consent-required",
+      legacyBalanceDetected: true,
+      legacyBalanceSats: 2500,
+      explicitConsentRequired: true,
+      primaryRailReenabled: false,
+      publicReceiptRefs: [],
+    })
+    expect(calls).toEqual(["balance"])
+    expect(recovery.destinationRef).toMatch(/^wallet\.legacy_mdk_recovery\.destination\.[a-f0-9]{24}$/)
+    expect(JSON.stringify(recovery)).not.toContain("local-mdk-recovery-destination-token")
+    assertPublicProjectionSafe(recovery)
+  })
+
+  test("recovers residual legacy MDK balance only through the explicit local recovery command", async () => {
+    const calls: string[] = []
+    const fake: WalletCommandRunner = async (args) => {
+      calls.push(args.join(" "))
+      if (args[0] === "balance") {
+        return { exitCode: 0, stdout: JSON.stringify({ balance_sats: 2500 }), stderr: "" }
+      }
+      if (args[0] === "send") {
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({ local_helper_detail: "sensitive-helper-output" }),
+          stderr: "",
+        }
+      }
+      return { exitCode: 1, stdout: "", stderr: `unexpected command: ${args.join(" ")}` }
+    }
+
+    const recovery = await recoverLegacyMdkBalance({
+      amountSats: 2000,
+      destination: "local-mdk-recovery-destination-token",
+      dryRun: false,
+      now: () => new Date("2026-06-26T12:00:00.000Z"),
+      runner: fake,
+      yes: true,
+    })
+
+    expect(calls).toEqual([
+      "balance",
+      "send local-mdk-recovery-destination-token 2000",
+    ])
+    expect(recovery).toMatchObject({
+      state: "recovered",
+      explicitConsentRequired: false,
+      primaryRailReenabled: false,
+      requestedAmountSats: 2000,
+      failureRefs: [],
+    })
+    expect(recovery.publicReceiptRefs[0]).toMatch(/^receipt\.pylon\.legacy_mdk_recovery\.[a-f0-9]{24}$/)
+    const body = JSON.stringify(recovery)
+    expect(body).not.toContain("local-mdk-recovery-destination-token")
+    expect(body).not.toContain("sensitive-helper-output")
+    assertPublicProjectionSafe(recovery)
+  })
+
+  test("redacts legacy MDK recovery send failures", async () => {
+    const recovery = await recoverLegacyMdkBalance({
+      destination: "local-mdk-recovery-destination-token",
+      dryRun: false,
+      runner: runner({
+        balance: { stdout: { balance_sats: 2500 } },
+        "send local-mdk-recovery-destination-token": {
+          exitCode: 1,
+          stderr: "failed with sensitive local helper detail",
+        },
+      }),
+      yes: true,
+    })
+
+    expect(recovery.state).toBe("recovery-failed")
+    expect(recovery.failureRefs[0]).toMatch(/^wallet\.legacy_mdk_recovery\.failure\.[a-f0-9]{24}$/)
+    const body = JSON.stringify(recovery)
+    expect(body).not.toContain("local-mdk-recovery-destination-token")
+    expect(body).not.toContain("sensitive local helper detail")
+    assertPublicProjectionSafe(recovery)
+  })
+
+  test("blocks invalid residual legacy MDK recovery amounts", async () => {
+    const recovery = await recoverLegacyMdkBalance({
+      amountSats: 0,
+      destination: "local-mdk-recovery-destination-token",
+      runner: runner({
+        balance: { stdout: { balance_sats: 2500 } },
+      }),
+      yes: true,
+    })
+
+    expect(recovery.state).toBe("blocked")
+    expect(recovery.blockerRefs).toContain("blocker.wallet.legacy_mdk.amount_invalid")
+    expect(recovery.nextActionRefs).toContain("action.wallet.legacy_mdk.provide_positive_recovery_amount")
+    assertPublicProjectionSafe(recovery)
   })
 
   test("admits only public-safe payout target refs", () => {

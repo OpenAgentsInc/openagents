@@ -224,6 +224,41 @@ export type LegacySparkMigrationOptions = {
   yes?: boolean
 }
 
+export type LegacyMdkRecoveryState =
+  | "not-detected"
+  | "blocked"
+  | "consent-required"
+  | "ready"
+  | "recovered"
+  | "recovery-failed"
+
+export type LegacyMdkRecoveryProjection = {
+  schema: "openagents.pylon.legacy_mdk_recovery.v0.1"
+  state: LegacyMdkRecoveryState
+  dryRun: boolean
+  legacyBalanceDetected: boolean
+  legacyBalanceSats: number | null
+  requestedAmountSats: number | null
+  destinationRef: string | null
+  explicitConsentRequired: boolean
+  primaryRailReenabled: false
+  blockerRefs: string[]
+  nextActionRefs: string[]
+  publicReceiptRefs: string[]
+  failureRefs: string[]
+  contentRedacted: true
+}
+
+export type LegacyMdkRecoveryOptions = {
+  amountSats?: number
+  destination?: string
+  dryRun?: boolean
+  env?: NodeJS.ProcessEnv
+  now?: () => Date
+  runner?: WalletCommandRunner
+  yes?: boolean
+}
+
 export type SendReadinessPreflight = {
   schema: "openagents.pylon.send_readiness_preflight.v0.3"
   balanceKnown: boolean
@@ -1097,6 +1132,142 @@ export async function preflightLegacySparkMigration(
         })).split(".").pop()}`]
       : [],
     contentRedacted: true,
+  })
+}
+
+function safeLegacyMdkRecovery(
+  projection: LegacyMdkRecoveryProjection,
+): LegacyMdkRecoveryProjection {
+  assertPublicProjectionSafe(projection)
+  return projection
+}
+
+function legacyMdkRecoveryBalanceFrom(data: Record<string, unknown> | null): number | null {
+  return (
+    toSatNumber(data?.balance_sats) ??
+    toSatNumber(data?.spendable_balance_sats) ??
+    toSatNumber(data?.channel_balance_sats) ??
+    toSatNumber(data?.confirmed_balance_sats)
+  )
+}
+
+export async function recoverLegacyMdkBalance(
+  options: LegacyMdkRecoveryOptions = {},
+): Promise<LegacyMdkRecoveryProjection> {
+  const env = options.env ?? process.env
+  const dryRun = options.dryRun !== false
+  const runner = options.runner ?? defaultWalletCommandRunner
+  const hintedBalance = envNumber(env, "PYLON_LEGACY_MDK_BALANCE_SATS")
+  let balanceResult: WalletCommandResult | null = null
+  try {
+    balanceResult = await runner(["balance"])
+  } catch (error) {
+    balanceResult = {
+      exitCode: 1,
+      stdout: "",
+      stderr: error instanceof Error ? error.message : String(error),
+    }
+  }
+  const balanceData = balanceResult.exitCode === 0 ? parseMaybeJson(balanceResult.stdout) : null
+  const legacyBalanceSats = legacyMdkRecoveryBalanceFrom(balanceData) ?? hintedBalance
+  const legacyBalanceDetected = legacyBalanceSats !== null && legacyBalanceSats > 0
+  const destination = typeof options.destination === "string" ? options.destination.trim() : ""
+  const destinationRef =
+    destination.length > 0
+      ? stableRef("wallet.legacy_mdk_recovery.destination", destination)
+      : null
+  const amountProvided = options.amountSats !== undefined
+  const requestedAmountSats =
+    typeof options.amountSats === "number" && Number.isFinite(options.amountSats) && options.amountSats > 0
+      ? Math.floor(options.amountSats)
+      : null
+  const amountValid = !amountProvided || requestedAmountSats !== null
+  const amountWithinBalance =
+    requestedAmountSats === null ||
+    legacyBalanceSats === null ||
+    requestedAmountSats <= legacyBalanceSats
+  const consentGiven = options.yes === true
+  const balanceReadReady = balanceResult.exitCode === 0 || hintedBalance !== null
+  const blockerRefs = [
+    ...(balanceReadReady ? [] : ["blocker.wallet.legacy_mdk.balance_read_failed"]),
+    ...(legacyBalanceDetected ? [] : ["blocker.wallet.legacy_mdk.no_residual_balance_detected"]),
+    ...(destinationRef === null ? ["blocker.wallet.legacy_mdk.destination_required"] : []),
+    ...(amountValid ? [] : ["blocker.wallet.legacy_mdk.amount_invalid"]),
+    ...(amountWithinBalance ? [] : ["blocker.wallet.legacy_mdk.amount_exceeds_detected_balance"]),
+  ]
+  const ready = blockerRefs.length === 0
+  const base: LegacyMdkRecoveryProjection = {
+    schema: "openagents.pylon.legacy_mdk_recovery.v0.1",
+    state: !legacyBalanceDetected ? "not-detected" : !ready ? "blocked" : !consentGiven ? "consent-required" : dryRun ? "ready" : "recovered",
+    dryRun,
+    legacyBalanceDetected,
+    legacyBalanceSats,
+    requestedAmountSats,
+    destinationRef,
+    explicitConsentRequired: !consentGiven,
+    primaryRailReenabled: false,
+    blockerRefs,
+    nextActionRefs: ready
+      ? ["action.wallet.legacy_mdk.review_and_confirm_local_recovery"]
+      : [
+          ...(legacyBalanceDetected ? [] : ["action.wallet.legacy_mdk.rerun_when_residual_balance_exists"]),
+          ...(destinationRef === null ? ["action.wallet.legacy_mdk.prepare_local_destination"] : []),
+          ...(amountValid ? [] : ["action.wallet.legacy_mdk.provide_positive_recovery_amount"]),
+          ...(amountWithinBalance ? [] : ["action.wallet.legacy_mdk.lower_recovery_amount"]),
+        ],
+    publicReceiptRefs: [],
+    failureRefs: [],
+    contentRedacted: true,
+  }
+
+  if (base.state !== "recovered") return safeLegacyMdkRecovery(base)
+
+  const sendArgs = requestedAmountSats === null
+    ? ["send", destination]
+    : ["send", destination, String(requestedAmountSats)]
+  let sendResult: WalletCommandResult
+  try {
+    sendResult = await runner(sendArgs)
+  } catch (error) {
+    sendResult = {
+      exitCode: 1,
+      stdout: "",
+      stderr: error instanceof Error ? error.message : String(error),
+    }
+  }
+  if (sendResult.exitCode !== 0) {
+    return safeLegacyMdkRecovery({
+      ...base,
+      state: "recovery-failed",
+      failureRefs: [
+        stableRef(
+          "wallet.legacy_mdk_recovery.failure",
+          `${sendResult.exitCode}:${sendResult.stderr || sendResult.stdout}`,
+        ),
+      ],
+      nextActionRefs: ["action.wallet.legacy_mdk.inspect_local_mdk_recovery_failure"],
+    })
+  }
+
+  const receiptDigest = stableRef(
+    "legacy-mdk-recovery",
+    JSON.stringify({
+      amount: requestedAmountSats,
+      balance: legacyBalanceSats,
+      destinationRef,
+      result: parseMaybeJson(sendResult.stdout) ?? sendResult.stdout,
+      at: options.now?.().toISOString() ?? "recovery_time_redacted",
+    }),
+  )
+    .split(".")
+    .pop()
+
+  return safeLegacyMdkRecovery({
+    ...base,
+    state: "recovered",
+    explicitConsentRequired: false,
+    nextActionRefs: ["action.wallet.legacy_mdk.verify_destination_credit_locally"],
+    publicReceiptRefs: [`receipt.pylon.legacy_mdk_recovery.${receiptDigest}`],
   })
 }
 
