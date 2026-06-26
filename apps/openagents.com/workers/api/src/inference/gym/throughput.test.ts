@@ -3,14 +3,15 @@ import { describe, expect, test } from 'vitest'
 import { NOT_MEASURED } from '../khala-telemetry'
 import {
   GLM_VLLM_THROUGHPUT_OPTIMIZATION_SWEEP,
+  type GymThroughputEnvironmentSpec,
+  type GymThroughputLeverActual,
+  type GymThroughputSample,
+  buildGymThroughputOwnerArmedRolloutRunArtifact,
   buildGymThroughputReport,
   decodeGymThroughputEnvironmentSpec,
   decodeGymThroughputSample,
   expandGymThroughputOptimizationSweep,
   recommendGymThroughputRollout,
-  type GymThroughputEnvironmentSpec,
-  type GymThroughputLeverActual,
-  type GymThroughputSample,
 } from './throughput'
 
 const spec = (
@@ -70,6 +71,78 @@ const passedActualLever = (index: number): GymThroughputLeverActual => {
       gateStatus: 'passed',
     },
   }
+}
+
+const measuredGlmRolloutRecommendation = () => {
+  const glmSpec = spec({
+    target: {
+      lane: 'glm-52',
+      engine: 'vllm',
+      modelRef: '0xSero/GLM-5.2-504B',
+    },
+    concurrencyRamp: [2, 4, 8],
+    serving: {
+      speculationMode: 'n_gram',
+      optimizationSweep: GLM_VLLM_THROUGHPUT_OPTIMIZATION_SWEEP,
+    },
+  })
+  const report = buildGymThroughputReport({
+    generatedAt: '2026-06-26T12:00:00.000Z',
+    specs: [glmSpec],
+    samples: [
+      sample(2, 0, {
+        lane: 'glm-52',
+        engine: 'vllm',
+        modelRef: '0xSero/GLM-5.2-504B',
+        perceivedTps: 42,
+        interTokenLatencyMs: 20,
+        ttftMs: 900,
+        actualThroughputLevers: passedActualLever(0),
+      }),
+      sample(2, 1, {
+        lane: 'glm-52',
+        engine: 'vllm',
+        modelRef: '0xSero/GLM-5.2-504B',
+        perceivedTps: 45,
+        interTokenLatencyMs: 21,
+        ttftMs: 920,
+        actualThroughputLevers: passedActualLever(0),
+      }),
+      sample(4, 0, {
+        lane: 'glm-52',
+        engine: 'vllm',
+        modelRef: '0xSero/GLM-5.2-504B',
+        perceivedTps: 84,
+        interTokenLatencyMs: 27,
+        ttftMs: 520,
+        actualThroughputLevers: passedActualLever(1),
+      }),
+      sample(4, 1, {
+        lane: 'glm-52',
+        engine: 'vllm',
+        modelRef: '0xSero/GLM-5.2-504B',
+        perceivedTps: 87,
+        interTokenLatencyMs: 28,
+        ttftMs: 530,
+        actualThroughputLevers: passedActualLever(1),
+      }),
+      sample(8, 0, {
+        lane: 'glm-52',
+        engine: 'vllm',
+        modelRef: '0xSero/GLM-5.2-504B',
+        perceivedTps: 90,
+        interTokenLatencyMs: 55,
+        ttftMs: 510,
+        actualThroughputLevers: passedActualLever(2),
+      }),
+    ],
+  })
+
+  return recommendGymThroughputRollout({
+    report,
+    lane: 'glm-52',
+    maxInteractiveItlP90Multiplier: 1.5,
+  })
 }
 
 describe('Gym throughput/concurrency report (#6244)', () => {
@@ -269,81 +342,13 @@ describe('Gym throughput/concurrency report (#6244)', () => {
       'vllm.max_num_seqs.16.prefix_cache.chunked_prefill.nvfp4',
     ])
     expect(lane?.expectedThroughputLevers[1]).toEqual(expectedLever)
-    expect(
-      lane?.concurrencyPoints[0]?.actualThroughputLevers[0],
-    ).toEqual(actualThroughputLevers)
+    expect(lane?.concurrencyPoints[0]?.actualThroughputLevers[0]).toEqual(
+      actualThroughputLevers,
+    )
   })
 
   test('selects a measured owner-armed rollout knee and emits public-safe vLLM flags', () => {
-    const glmSpec = spec({
-      target: {
-        lane: 'glm-52',
-        engine: 'vllm',
-        modelRef: '0xSero/GLM-5.2-504B',
-      },
-      concurrencyRamp: [2, 4, 8],
-      serving: {
-        speculationMode: 'n_gram',
-        optimizationSweep: GLM_VLLM_THROUGHPUT_OPTIMIZATION_SWEEP,
-      },
-    })
-    const report = buildGymThroughputReport({
-      generatedAt: '2026-06-26T12:00:00.000Z',
-      specs: [glmSpec],
-      samples: [
-        sample(2, 0, {
-          lane: 'glm-52',
-          engine: 'vllm',
-          modelRef: '0xSero/GLM-5.2-504B',
-          perceivedTps: 42,
-          interTokenLatencyMs: 20,
-          ttftMs: 900,
-          actualThroughputLevers: passedActualLever(0),
-        }),
-        sample(2, 1, {
-          lane: 'glm-52',
-          engine: 'vllm',
-          modelRef: '0xSero/GLM-5.2-504B',
-          perceivedTps: 45,
-          interTokenLatencyMs: 21,
-          ttftMs: 920,
-          actualThroughputLevers: passedActualLever(0),
-        }),
-        sample(4, 0, {
-          lane: 'glm-52',
-          engine: 'vllm',
-          modelRef: '0xSero/GLM-5.2-504B',
-          perceivedTps: 84,
-          interTokenLatencyMs: 27,
-          ttftMs: 520,
-          actualThroughputLevers: passedActualLever(1),
-        }),
-        sample(4, 1, {
-          lane: 'glm-52',
-          engine: 'vllm',
-          modelRef: '0xSero/GLM-5.2-504B',
-          perceivedTps: 87,
-          interTokenLatencyMs: 28,
-          ttftMs: 530,
-          actualThroughputLevers: passedActualLever(1),
-        }),
-        sample(8, 0, {
-          lane: 'glm-52',
-          engine: 'vllm',
-          modelRef: '0xSero/GLM-5.2-504B',
-          perceivedTps: 90,
-          interTokenLatencyMs: 55,
-          ttftMs: 510,
-          actualThroughputLevers: passedActualLever(2),
-        }),
-      ],
-    })
-
-    const recommendation = recommendGymThroughputRollout({
-      report,
-      lane: 'glm-52',
-      maxInteractiveItlP90Multiplier: 1.5,
-    })
+    const recommendation = measuredGlmRolloutRecommendation()
 
     expect(recommendation.decisionGrade).toBe(true)
     expect(recommendation.blockers).toEqual([])
@@ -363,6 +368,53 @@ describe('Gym throughput/concurrency report (#6244)', () => {
       },
     ])
     expect(JSON.stringify(recommendation)).not.toContain('https://')
+  })
+
+  test('builds a public-safe owner-armed GLM vLLM rollout run artifact without applying flags', () => {
+    const recommendation = measuredGlmRolloutRecommendation()
+
+    const artifact = buildGymThroughputOwnerArmedRolloutRunArtifact({
+      generatedAt: '2026-06-26T13:00:00.000Z',
+      recommendation,
+      ownerArmRef: 'owner_arm.gym.glm_52.vllm_rollout.issue_6320.v1',
+    })
+
+    expect(artifact.schemaVersion).toBe(
+      'openagents.gym.throughput_owner_armed_rollout_run.v1',
+    )
+    expect(artifact.status).toBe('ready_to_apply')
+    expect(artifact.canApplyLiveFlags).toBe(true)
+    expect(artifact.blockers).toEqual([])
+    expect(artifact.applicationPlan).toEqual({
+      target: {
+        lane: 'glm-52',
+        engine: 'vllm',
+        modelRef: '0xSero/GLM-5.2-504B',
+      },
+      sweepRef: 'sweep.gym.glm_52.vllm_throughput_levers.v1',
+      ownerArmRef: 'owner_arm.gym.glm_52.vllm_rollout.issue_6320.v1',
+      applyMode: 'owner_armed_manual',
+      selection: recommendation.selection,
+      vllmFlags: recommendation.selection?.vllmFlags,
+    })
+    expect(JSON.stringify(artifact)).not.toContain('https://')
+    expect(JSON.stringify(artifact)).not.toContain('/Users/')
+  })
+
+  test('keeps a decision-grade recommendation inert until the owner arm ref exists', () => {
+    const recommendation = measuredGlmRolloutRecommendation()
+
+    const artifact = buildGymThroughputOwnerArmedRolloutRunArtifact({
+      generatedAt: '2026-06-26T13:00:00.000Z',
+      recommendation,
+      ownerArmRef: '   ',
+    })
+
+    expect(artifact.status).toBe('blocked')
+    expect(artifact.canApplyLiveFlags).toBe(false)
+    expect(artifact.ownerArmRef).toBeNull()
+    expect(artifact.applicationPlan).toBeNull()
+    expect(artifact.blockers).toEqual(['missing_owner_arm_ref'])
   })
 
   test('blocks rollout when measured throughput violates the interactive ITL guard', () => {
@@ -410,5 +462,54 @@ describe('Gym throughput/concurrency report (#6244)', () => {
     expect(recommendation.decisionGrade).toBe(false)
     expect(recommendation.selection).toBeNull()
     expect(recommendation.blockers).toEqual(['interactive_itl_slo_exceeded'])
+  })
+
+  test('does not mint an apply-ready artifact from a blocked recommendation', () => {
+    const glmSpec = spec({
+      target: {
+        lane: 'glm-52',
+        engine: 'vllm',
+        modelRef: '0xSero/GLM-5.2-504B',
+      },
+      concurrencyRamp: [2],
+      serving: {
+        speculationMode: 'n_gram',
+        optimizationSweep: GLM_VLLM_THROUGHPUT_OPTIMIZATION_SWEEP,
+      },
+    })
+    const report = buildGymThroughputReport({
+      generatedAt: '2026-06-26T12:00:00.000Z',
+      specs: [glmSpec],
+      samples: [
+        sample(2, 0, {
+          lane: 'glm-52',
+          engine: 'vllm',
+          modelRef: '0xSero/GLM-5.2-504B',
+          perceivedTps: 40,
+          interTokenLatencyMs: NOT_MEASURED,
+          actualThroughputLevers: passedActualLever(0),
+        }),
+      ],
+    })
+    const recommendation = recommendGymThroughputRollout({
+      report,
+      lane: 'glm-52',
+      maxInteractiveItlP90Multiplier: 1.5,
+    })
+
+    const artifact = buildGymThroughputOwnerArmedRolloutRunArtifact({
+      generatedAt: '2026-06-26T13:00:00.000Z',
+      recommendation,
+      ownerArmRef: 'owner_arm.gym.glm_52.vllm_rollout.issue_6320.v1',
+    })
+
+    expect(artifact.status).toBe('blocked')
+    expect(artifact.canApplyLiveFlags).toBe(false)
+    expect(artifact.applicationPlan).toBeNull()
+    expect(artifact.blockers).toEqual([
+      'recommendation_not_decision_grade',
+      'recommendation_has_blockers',
+      'missing_selection',
+    ])
   })
 })

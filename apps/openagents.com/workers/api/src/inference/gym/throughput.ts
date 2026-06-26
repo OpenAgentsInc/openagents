@@ -13,11 +13,11 @@
 // produces the same report.
 import { Schema as S } from 'effect'
 
-import type { MeasuredNumber } from '../khala-telemetry'
-import { NOT_MEASURED, isMeasured, measured } from '../khala-telemetry'
-import { KhalaSpeculationMode } from '../khala-speculation'
 import { BenchmarkEngine, BenchmarkLane } from '../benchmark'
 import { mean, percentile } from '../benchmark/report'
+import { KhalaSpeculationMode } from '../khala-speculation'
+import type { MeasuredNumber } from '../khala-telemetry'
+import { NOT_MEASURED, isMeasured, measured } from '../khala-telemetry'
 
 export const GYM_THROUGHPUT_ENVIRONMENT_REF = 'throughput-concurrency' as const
 export const GYM_THROUGHPUT_REPORT_SCHEMA =
@@ -55,7 +55,9 @@ export type GymThroughputLowBatchSpeculativeDecodingPolicy =
   typeof GymThroughputLowBatchSpeculativeDecodingPolicy.Type
 
 export const GymThroughputKvHeadroomGate = S.Struct({
-  minFreeKvCachePercent: S.Number.check(S.isBetween({ minimum: 0, maximum: 100 })),
+  minFreeKvCachePercent: S.Number.check(
+    S.isBetween({ minimum: 0, maximum: 100 }),
+  ),
   action: S.Literals(['skip', 'degrade_max_num_seqs', 'fail']),
 })
 export type GymThroughputKvHeadroomGate =
@@ -109,9 +111,7 @@ export const GymThroughputOptimizationSweep = S.Struct({
 export type GymThroughputOptimizationSweep =
   typeof GymThroughputOptimizationSweep.Type
 
-const glmVllmLever = (
-  maxNumSeqs: number,
-): GymThroughputLeverExpectation => ({
+const glmVllmLever = (maxNumSeqs: number): GymThroughputLeverExpectation => ({
   label: `vllm.max_num_seqs.${maxNumSeqs}.prefix_cache.chunked_prefill.nvfp4`,
   maxNumSeqs,
   enablePrefixCaching: true,
@@ -192,9 +192,8 @@ export type GymThroughputSample = typeof GymThroughputSample.Type
 export const decodeGymThroughputEnvironmentSpec = S.decodeUnknownSync(
   GymThroughputEnvironmentSpec,
 )
-export const decodeGymThroughputSample = S.decodeUnknownSync(
-  GymThroughputSample,
-)
+export const decodeGymThroughputSample =
+  S.decodeUnknownSync(GymThroughputSample)
 
 export type GymThroughputMetricSummary = Readonly<{
   p50: number | null
@@ -281,6 +280,46 @@ export const GymThroughputRolloutRecommendation = S.Struct({
 })
 export type GymThroughputRolloutRecommendation =
   typeof GymThroughputRolloutRecommendation.Type
+
+export const GymThroughputOwnerArmedRolloutRunBlocker = S.Literals([
+  'recommendation_not_decision_grade',
+  'recommendation_has_blockers',
+  'missing_selection',
+  'missing_owner_arm_ref',
+])
+export type GymThroughputOwnerArmedRolloutRunBlocker =
+  typeof GymThroughputOwnerArmedRolloutRunBlocker.Type
+
+export const GymThroughputOwnerArmedRolloutFlagApplicationPlan = S.Struct({
+  target: GymThroughputTarget,
+  sweepRef: S.String,
+  ownerArmRef: S.String,
+  applyMode: S.Literal('owner_armed_manual'),
+  selection: GymThroughputRolloutSelection,
+  vllmFlags: S.Array(GymThroughputRolloutVllmFlag),
+})
+export type GymThroughputOwnerArmedRolloutFlagApplicationPlan =
+  typeof GymThroughputOwnerArmedRolloutFlagApplicationPlan.Type
+
+export const GymThroughputOwnerArmedRolloutRunArtifact = S.Struct({
+  schemaVersion: S.Literal(
+    'openagents.gym.throughput_owner_armed_rollout_run.v1',
+  ),
+  generatedAt: S.String,
+  environmentRef: S.Literal(GYM_THROUGHPUT_ENVIRONMENT_REF),
+  publicSafe: S.Literal(true),
+  status: S.Literals(['blocked', 'ready_to_apply']),
+  recommendation: GymThroughputRolloutRecommendation,
+  ownerArmRef: S.Union([S.String, S.Null]),
+  canApplyLiveFlags: S.Boolean,
+  applicationPlan: S.Union([
+    GymThroughputOwnerArmedRolloutFlagApplicationPlan,
+    S.Null,
+  ]),
+  blockers: S.Array(GymThroughputOwnerArmedRolloutRunBlocker),
+})
+export type GymThroughputOwnerArmedRolloutRunArtifact =
+  typeof GymThroughputOwnerArmedRolloutRunArtifact.Type
 
 export type GymThroughputLaneReport = Readonly<{
   lane: BenchmarkLane
@@ -530,7 +569,9 @@ export const recommendGymThroughputRollout = (input: {
       ? ['missing_optimization_sweep']
       : []
   const baseline =
-    lane === undefined ? null : pointWithMeasuredBaseline(lane.concurrencyPoints)
+    lane === undefined
+      ? null
+      : pointWithMeasuredBaseline(lane.concurrencyPoints)
   const baselineBlockers: ReadonlyArray<GymThroughputRolloutBlocker> =
     baseline === null ? ['missing_baseline_max_num_seqs_2_measurement'] : []
 
@@ -571,9 +612,7 @@ export const recommendGymThroughputRollout = (input: {
         right: GymThroughputRolloutSelection,
       ) => right.aggregateTps - left.aggregateTps,
     )[0] ?? null
-  const blockers: Array<GymThroughputRolloutBlocker> = [
-    ...missingSweepBlockers,
-  ]
+  const blockers: Array<GymThroughputRolloutBlocker> = [...missingSweepBlockers]
   if (candidates.length === 0) {
     blockers.push('missing_candidate_measurement')
   }
@@ -620,6 +659,71 @@ export const recommendGymThroughputRollout = (input: {
     publicSafe: true,
     decisionGrade: selection !== null && blockers.length === 0,
     selection,
+    blockers,
+  }
+}
+
+const normalizeOwnerArmRef = (ownerArmRef: string | null | undefined) => {
+  const trimmed = ownerArmRef?.trim()
+  return trimmed === undefined || trimmed.length === 0 ? null : trimmed
+}
+
+export const buildGymThroughputOwnerArmedRolloutRunArtifact = (input: {
+  generatedAt: string
+  recommendation: GymThroughputRolloutRecommendation
+  ownerArmRef?: string | null
+}): GymThroughputOwnerArmedRolloutRunArtifact => {
+  const ownerArmRef = normalizeOwnerArmRef(input.ownerArmRef)
+  const blockers: Array<GymThroughputOwnerArmedRolloutRunBlocker> = []
+  if (input.recommendation.decisionGrade !== true) {
+    blockers.push('recommendation_not_decision_grade')
+  }
+  if (input.recommendation.blockers.length > 0) {
+    blockers.push('recommendation_has_blockers')
+  }
+  if (input.recommendation.selection === null) {
+    blockers.push('missing_selection')
+  }
+  if (ownerArmRef === null) {
+    blockers.push('missing_owner_arm_ref')
+  }
+
+  if (
+    blockers.length > 0 ||
+    input.recommendation.selection === null ||
+    ownerArmRef === null
+  ) {
+    return {
+      schemaVersion: 'openagents.gym.throughput_owner_armed_rollout_run.v1',
+      generatedAt: input.generatedAt,
+      environmentRef: GYM_THROUGHPUT_ENVIRONMENT_REF,
+      publicSafe: true,
+      status: 'blocked',
+      recommendation: input.recommendation,
+      ownerArmRef,
+      canApplyLiveFlags: false,
+      applicationPlan: null,
+      blockers,
+    }
+  }
+
+  return {
+    schemaVersion: 'openagents.gym.throughput_owner_armed_rollout_run.v1',
+    generatedAt: input.generatedAt,
+    environmentRef: GYM_THROUGHPUT_ENVIRONMENT_REF,
+    publicSafe: true,
+    status: 'ready_to_apply',
+    recommendation: input.recommendation,
+    ownerArmRef,
+    canApplyLiveFlags: true,
+    applicationPlan: {
+      target: input.recommendation.target,
+      sweepRef: input.recommendation.sweepRef,
+      ownerArmRef,
+      applyMode: 'owner_armed_manual',
+      selection: input.recommendation.selection,
+      vllmFlags: [...input.recommendation.selection.vllmFlags],
+    },
     blockers,
   }
 }
