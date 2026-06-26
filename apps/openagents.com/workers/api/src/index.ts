@@ -549,6 +549,11 @@ import {
 import type { KhalaChatStreamClient } from './khala-chat-program'
 import { makeKhalaChatRoutes } from './khala-chat-routes'
 import {
+  handleKhalaFeedbackSubmit,
+  handleOperatorKhalaFeedback,
+  makeD1KhalaFeedbackStore,
+} from './khala-feedback-routes'
+import {
   combineMcpCatalogs,
   khalaDurableRequestIsLinkedToPrincipal,
   khalaMcpAgentPrincipal,
@@ -9602,6 +9607,22 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {
     path: '/api/public/home',
     handler: request => handlePublicHomeApi(request),
+  },
+  {
+    path: '/api/khala/feedback',
+    handler: (request, env) =>
+      handleKhalaFeedbackSubmit(request, {
+        store: makeD1KhalaFeedbackStore(openAgentsDatabase(env)),
+      }),
+  },
+  {
+    path: '/api/operator/khala/feedback',
+    handler: (request, env) =>
+      handleOperatorKhalaFeedback(request, {
+        requireAdminApiToken: adminRequest =>
+          requireAdminApiToken(adminRequest, env),
+        store: makeD1KhalaFeedbackStore(openAgentsDatabase(env)),
+      }),
   },
   {
     path: '/api/public/business-signup',

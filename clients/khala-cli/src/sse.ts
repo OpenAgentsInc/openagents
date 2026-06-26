@@ -62,7 +62,7 @@ export function decodePublicFrame(frame: SseFrame): { readonly kind: "delta"; re
   }
   if (frame.event === "error") {
     const payload = S.decodeUnknownSync(PublicErrorPayload)(data)
-    throw new KhalaCliError({ reason: payload.error, code: "stream_error" })
+    throw new KhalaCliError({ reason: payload.error, code: payload.code ?? "stream_error" })
   }
   throw new KhalaCliError({ reason: `Unknown public Khala stream event: ${frame.event ?? "(none)"}`, code: "unknown_stream_event" })
 }

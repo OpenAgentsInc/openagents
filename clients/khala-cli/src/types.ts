@@ -31,6 +31,7 @@ export const PublicDonePayload = S.Struct({
 
 export const PublicErrorPayload = S.Struct({
   error: S.String,
+  code: S.optional(S.String),
 })
 
 export const OpenAiStreamPayload = S.Struct({
@@ -46,6 +47,14 @@ export const OpenAiStreamPayload = S.Struct({
 export const OpenAiModelsResponse = S.Record(S.String, S.Unknown)
 export const FreeKeyResponse = S.Record(S.String, S.Unknown)
 
+export const KhalaFeedbackResponse = S.Struct({
+  schemaVersion: S.String,
+  feedbackRef: S.String,
+  traceRef: S.NullOr(S.String),
+  createdAt: S.String,
+})
+export type KhalaFeedbackResponse = typeof KhalaFeedbackResponse.Type
+
 export class KhalaCliError extends S.TaggedErrorClass<KhalaCliError>()("KhalaCliError", {
   reason: S.String,
   code: S.optional(S.String),
@@ -59,6 +68,7 @@ export interface ChatClientOptions {
   readonly baseUrl: string
   readonly token?: string | undefined
   readonly fetch?: typeof fetch | undefined
+  readonly onRetry?: ((event: KhalaRetryEvent) => void) | undefined
 }
 
 export interface ChatTurnOptions extends ChatClientOptions {
@@ -69,4 +79,21 @@ export interface ChatTurnOptions extends ChatClientOptions {
 export interface ChatTurnResult {
   readonly text: string
   readonly assistantMessage: KhalaChatMessage
+  readonly traceRef?: string | undefined
+}
+
+export interface KhalaRetryEvent {
+  readonly retry: number
+  readonly maxRetries: number
+  readonly delayMs: number
+  readonly error: KhalaCliError
+}
+
+export interface KhalaFeedbackSubmitOptions {
+  readonly baseUrl: string
+  readonly fetch?: typeof fetch | undefined
+  readonly feedback: string
+  readonly traceRef?: string | undefined
+  readonly source: string
+  readonly clientVersion: string
 }
