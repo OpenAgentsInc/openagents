@@ -8,6 +8,7 @@ struct ContentView: View {
     @State private var hasKey = KeychainStore.hasAPIKey
     @State private var permissionsRequested = false
     @State private var typedMessage = ""
+    @AppStorage("khala.codex.pylonRef") private var codexPylonRef = ""
     @FocusState private var composerFocused: Bool
 
     var body: some View {
@@ -53,6 +54,8 @@ struct ContentView: View {
                 .padding(.bottom, 12)
 
                 composer
+
+                codexTaskPanel
 
                 if !hasKey {
                     Button("Add a Khala key to get started") { showSettings = true }
@@ -106,10 +109,51 @@ struct ContentView: View {
         .padding(.horizontal, 4)
     }
 
+    /// Explicit coding-delegation path. The server still enforces owner-scoped
+    /// Pylon authorization; this form keeps the mobile request typed, bounded,
+    /// and separate from plain chat.
+    private var codexTaskPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("Codex task", systemImage: "hammer")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button(action: sendCodexTask) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.triangle.branch")
+                        Text("Delegate")
+                    }
+                    .font(.footnote.weight(.semibold))
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .disabled(!canSendCodexTask)
+            }
+
+            TextField("caller-owned Pylon ref", text: $codexPylonRef)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .font(.system(.footnote, design: .monospaced))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+                .disabled(voice.state.isBusy)
+        }
+        .padding(12)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal, 4)
+    }
+
     private var canSend: Bool {
         hasKey
             && !voice.state.isBusy
             && !typedMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var canSendCodexTask: Bool {
+        canSend
+            && codexPylonRef.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3
     }
 
     private func sendTyped() {
@@ -118,6 +162,14 @@ struct ContentView: View {
         composerFocused = false
         typedMessage = ""
         voice.sendText(text)
+    }
+
+    private func sendCodexTask() {
+        let text = typedMessage
+        guard canSendCodexTask else { return }
+        composerFocused = false
+        typedMessage = ""
+        voice.sendCodexTask(text, pylonRef: codexPylonRef)
     }
 
     private var header: some View {

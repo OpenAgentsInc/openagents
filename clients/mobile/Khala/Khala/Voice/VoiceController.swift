@@ -125,6 +125,18 @@ final class VoiceController: ObservableObject {
         Task { await send(trimmed) }
     }
 
+    /// Submit a typed coding delegation request through Khala to the caller's
+    /// own linked Pylon. Normal chat remains separate so coding work is always
+    /// an explicit app action with an explicit target Pylon ref.
+    func sendCodexTask(_ text: String, pylonRef: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        guard !state.isBusy else { return }
+        response = ""
+        transcript = trimmed
+        Task { await sendCodexTask(trimmed, pylonRef: pylonRef) }
+    }
+
     // MARK: - Khala API
 
     private func send(_ prompt: String) async {
@@ -136,6 +148,25 @@ final class VoiceController: ObservableObject {
         do {
             let reply = try await KhalaClient.complete(prompt: prompt, apiKey: key)
             response = reply
+            state = .idle
+        } catch {
+            state = .error((error as? LocalizedError)?.errorDescription ?? "Request failed.")
+        }
+    }
+
+    private func sendCodexTask(_ prompt: String, pylonRef: String) async {
+        guard let key = KeychainStore.loadAPIKey() else {
+            state = .error("No API key. Open Settings to add one.")
+            return
+        }
+        state = .thinking
+        do {
+            let result = try await KhalaClient.requestCodexTask(
+                prompt: prompt,
+                pylonRef: pylonRef,
+                apiKey: key
+            )
+            response = result.displayText
             state = .idle
         } catch {
             state = .error((error as? LocalizedError)?.errorDescription ?? "Request failed.")
