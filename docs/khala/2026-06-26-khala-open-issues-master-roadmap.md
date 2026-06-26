@@ -29,7 +29,7 @@ external-wins admission, not for hiding usage.
 ## Current status snapshot
 
 Refreshed from GitHub issue state, `origin/main`, live counter/proof reads, and
-the local Pylon state on **2026-06-26 ~18:02Z**. This table is the
+the local Pylon state on **2026-06-26 ~18:25Z**. This table is the
 operator view of what remains, not a public product claim.
 
 | Issue | State | Current status / next action |
@@ -52,9 +52,9 @@ operator view of what remains, not a public product claim.
 | #6309 | **Open** | Gym ladder publication/projection layer landed in `1accb3573b`. Still open for decision-grade rung data and recurrence evidence. |
 | #6305 | **Closed** | OpenCode -> Khala checklist/recipe is closed. Keep it honest if serving regresses. |
 | #6306 | **Closed** | Next ecosystem recipes are closed. Keep them as docs/recipe artifacts, not proof that Phase 4 benchmarks are complete. |
-| #6351 | **Closed** | Public model/provider mix endpoint landed in `d373eaee69` and deployed as Worker `8249b442-0a54-4747-9826-c165151bcee9`. Live `GET /api/public/khala-tokens-served/model-mix?window=30d` returned `totalTokensServed=262,631,034`; `pylon_codex=166,561,460` tokens / 102 events. |
-| #6352 | **Open** | New /stats page now depends on closed #6330 and closed #6351. Next: build the public counter, America/Chicago daily chart, and model/provider mix UI against the live endpoints. |
-| #6353 | **Open** | New /stats epic tracking #6330, #6351, and #6352. #6330 and #6351 are closed; remaining work is the #6352 page. |
+| #6351 | **Closed** | Public model/provider mix endpoint landed in `d373eaee69` and deployed as Worker `8249b442-0a54-4747-9826-c165151bcee9`. Later live verification after #6352 returned `totalTokens=253,284,874`; `pylon_codex=175,762,784` tokens / 103 events / 69.39332% for `window=30d`. |
+| #6352 | **Closed** | Public `/stats` page landed in `a282066552` and deployed via `deploy:safe` as Worker `197f381e-e1fc-4574-a5c0-a06d71c403d4`. It renders the live Khala token counter, America/Chicago daily history, and aggregate model-family mix from the public endpoints. The delegated Khala -> Pylon -> Codex assignment `assignment.public.khala_coding.chatcmpl_9bf5c69c6b53465598b45410b58a9cdd` counted `9,201,324` exact tokens and stored raw Codex events plus owner-only ATIF traces. |
+| #6353 | **Closed** | Public stats epic is closed: #6330, #6351, and #6352 are all closed and the live `/stats` route returns HTTP 200 after Worker `197f381e-e1fc-4574-a5c0-a06d71c403d4`. |
 | #6303 | **Open** | GTM umbrella remains open: recipe issues are closed and benchmark publication layers exist, but the real decision-grade benchmark/quality evidence and adoption scoreboard are not complete. |
 | #6316 | **Open** | Serving umbrella remains open: #6320/#6318 have partial slices and fresh Pylon/Codex proofs, and #6311's scheduled heartbeat rows are now live, but #6323 pilot, #6311 durability, #6318 live preemption, #6317 stress, #6312 aggregate benchmark, and #6321 overseer are not complete. |
 | #6325 | **Closed** | Pylon/Codex delegated sessions are persisted as private traces and exact token events (`c92a5652ab`), with the live raw-chunk follow-up in `74f25e77ad`. |
@@ -213,6 +213,21 @@ operator view of what remains, not a public product claim.
   events. All five assignments have owner-only ATIF traces and owner-only raw
   Codex event rows; the public counter movement was verified from exact
   assignment `task_ref` rows, not inferred from aggregate movement.
+- Public stats closeout after #6352/#6353:
+  `a282066552` is deployed as Worker
+  `197f381e-e1fc-4574-a5c0-a06d71c403d4`, and `/stats` returns HTTP 200.
+  Live `/api/public/khala-tokens-served` returned `271,894,178` at
+  `2026-06-26T18:25:04.821Z`. Live
+  `/api/public/khala-tokens-served/model-mix?window=30d` returned
+  `pylon_codex=175,762,784` tokens over `103` events, `69.39332%` of the
+  30-day public mix. The #6352 delegated assignment
+  `assignment.public.khala_coding.chatcmpl_9bf5c69c6b53465598b45410b58a9cdd`
+  emitted `9,201,324` exact tokens and stored `1` whole-turn raw Codex blob
+  (`216` events / `2,714,430` bytes), `130` streamed raw chunk rows
+  (`216` events / `2,788,923` bytes), and `131` owner-only ATIF trace rows
+  (`258` total steps). The visible homepage / `/khala` / `/stats` counter is
+  still exact-closeout based: it moves when `token_usage_events` is written,
+  while raw chunks/traces can arrive continuously during the run.
 - Current serving observability status: canonical scheduled
   `glm-pool-heartbeat` rows are now live. `5b11c6eaf5` is deployed as Worker
   `7ee46a76-f9ef-42cf-ac9f-31a472d2b3fb`; after one cron interval,
