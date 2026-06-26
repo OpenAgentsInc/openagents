@@ -120,6 +120,29 @@ export PYLON_OPENAGENTS_BASE_URL="https://openagents.com"
 export PYLON="bun apps/pylon/src/index.ts"
 ```
 
+0. Confirm the linked Codex account inventory:
+
+```sh
+$PYLON accounts list --json
+```
+
+Expected output lists each configured Codex account with
+`readiness.state: "ready"` and `capability.pylon.local_codex` before you route
+work to it. Use this before parallel delegation and after every new
+`pylon auth codex` login. If a local wrapper exposes the same inventory command
+as `codex accounts list --json`, its JSON must be equivalent before you treat it
+as proof of connected capacity. For a specific account proof, run the refresh
+path explicitly:
+
+```sh
+$PYLON accounts usage --account "<codex account ref>" --refresh --json
+```
+
+That refresh consumes a minimal provider call and should return a
+`truth.localSession.usage` record for the selected account. It proves the local
+Codex login works, but it is not the Khala counter proof; still perform the
+delegation and `token_usage_events` checks below.
+
 1. Bring the owner Pylon online and publish fresh capacity:
 
 ```sh
