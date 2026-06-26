@@ -1,6 +1,11 @@
 import { Effect, Schema as S } from 'effect'
 
 import { artanisMindComplete } from './artanis-mind'
+import type {
+  InferenceAdapterError,
+  InferenceRequest,
+  InferenceResult,
+} from './inference/provider-adapter'
 import {
   type ArtanisAskerProvenance,
   classifyAskerProvenance,
@@ -26,6 +31,13 @@ import { randomUuid } from './runtime-primitives'
 
 export const ARTANIS_RESPONDER_MAX_PER_TICK = 3
 export const ARTANIS_RESPONDER_MAX_PER_DAY = 20
+export const ARTANIS_RESPONDER_KHALA_MODEL = 'openagents/khala'
+export const ARTANIS_RESPONDER_DEMAND_SOURCE = 'artanis'
+export const ARTANIS_RESPONDER_DEMAND_CLIENT = 'artanis_forum_responder'
+
+export type ArtanisResponderKhalaClient = (
+  request: InferenceRequest,
+) => Effect.Effect<InferenceResult, InferenceAdapterError>
 
 const MindClassification = S.Struct({
   candidates: S.Array(
@@ -59,6 +71,77 @@ type CandidateTopic = Readonly<{
   actorRef: string
   createdAt: string
 }>
+
+const buildClassificationPrompt = (
+  candidates: ReadonlyArray<CandidateTopic>,
+): string =>
+  [
+    'Classify each Forum topic below. respond=true ONLY for genuine questions from Pylon contributors about device capability, training-run participation, or Pylon troubleshooting that deserve an administrator reply. Output STRICT JSON only, shaped exactly as {"candidates":[{"topicId":"...","questionClass":"device_capability|training_run|pylon_troubleshooting|not_a_pylon_question","respond":true|false}]} with one entry per topic.',
+    ...candidates.map(
+      candidate =>
+        `topicId ${candidate.topicId}\ntitle: ${candidate.title}\nexcerpt: ${candidate.excerpt.replace(/\n/g, ' ').slice(0, 400)}`,
+    ),
+  ].join('\n\n')
+
+const ARTANIS_RESPONDER_CLASSIFICATION_SYSTEM =
+  'You are Artanis, the Nexus administrator. You classify forum topics for response. You output strict JSON only - no prose, no markdown fences.'
+
+export const buildArtanisResponderKhalaRequest = (
+  input: Readonly<{ prompt: string; system: string }>,
+): InferenceRequest => ({
+  messages: [
+    { content: input.system, role: 'system' },
+    { content: input.prompt, role: 'user' },
+  ],
+  model: ARTANIS_RESPONDER_KHALA_MODEL,
+  passthroughParams: {
+    max_tokens: 4096,
+    temperature: 0.2,
+  },
+  stream: false,
+})
+
+const completeResponderMind = async (
+  deps: Readonly<{
+    geminiApiKey: string | null
+    gatewayToken?: string | undefined
+    khalaClient?: ArtanisResponderKhalaClient | undefined
+  }>,
+  input: Readonly<{ prompt: string; system: string }>,
+) => {
+  if (deps.khalaClient !== undefined) {
+    const khalaResult = await Effect.runPromiseExit(
+      deps.khalaClient(buildArtanisResponderKhalaRequest(input)),
+    )
+    if (khalaResult._tag === 'Success') {
+      const result = khalaResult.value
+      return {
+        gatewayId: null,
+        model: result.servedModel,
+        promptChars: input.prompt.length,
+        responseChars: result.content.length,
+        servedVia: 'openagents_khala' as const,
+        text: result.content,
+      }
+    }
+  }
+
+  if (deps.geminiApiKey === null || deps.geminiApiKey === '') {
+    return {
+      attempts: [],
+      error: 'artanis_mind_unavailable' as const,
+    }
+  }
+
+  return artanisMindComplete({
+    apiKey: deps.geminiApiKey,
+    ...(deps.gatewayToken === undefined || deps.gatewayToken === ''
+      ? {}
+      : { gatewayToken: deps.gatewayToken }),
+    prompt: input.prompt,
+    system: input.system,
+  })
+}
 
 const readScanCursor = async (
   db: D1Database,
@@ -127,6 +210,7 @@ export const runArtanisResponderScan = async (
   deps: Readonly<{
     geminiApiKey: string | null
     gatewayToken?: string | undefined
+    khalaClient?: ArtanisResponderKhalaClient | undefined
     artanisActorRefs: ReadonlyArray<string>
     // Owner/operator actor refs (e.g. the admin user posting test articles)
     // so they are classified owner_operator, never external_contributor.
@@ -134,7 +218,10 @@ export const runArtanisResponderScan = async (
     nowIso: string
   }>,
 ): Promise<ResponderScanOutcome> => {
-  if (deps.geminiApiKey === null || deps.geminiApiKey === '') {
+  if (
+    deps.khalaClient === undefined &&
+    (deps.geminiApiKey === null || deps.geminiApiKey === '')
+  ) {
     return {
       blocked: 0,
       dailyBudgetLeft: 0,
@@ -175,20 +262,9 @@ export const runArtanisResponderScan = async (
 
   // The mind classifies. Strict JSON contract; anything undecodable is a
   // blocked tick action, never a guess.
-  const mindResult = await artanisMindComplete({
-    apiKey: deps.geminiApiKey,
-    ...(deps.gatewayToken === undefined || deps.gatewayToken === ''
-      ? {}
-      : { gatewayToken: deps.gatewayToken }),
-    prompt: [
-      'Classify each Forum topic below. respond=true ONLY for genuine questions from Pylon contributors about device capability, training-run participation, or Pylon troubleshooting that deserve an administrator reply. Output STRICT JSON only, shaped exactly as {"candidates":[{"topicId":"...","questionClass":"device_capability|training_run|pylon_troubleshooting|not_a_pylon_question","respond":true|false}]} with one entry per topic.',
-      ...candidates.map(
-        candidate =>
-          `topicId ${candidate.topicId}\ntitle: ${candidate.title}\nexcerpt: ${candidate.excerpt.replace(/\n/g, ' ').slice(0, 400)}`,
-      ),
-    ].join('\n\n'),
-    system:
-      'You are Artanis, the Nexus administrator. You classify forum topics for response. You output strict JSON only - no prose, no markdown fences.',
+  const mindResult = await completeResponderMind(deps, {
+    prompt: buildClassificationPrompt(candidates),
+    system: ARTANIS_RESPONDER_CLASSIFICATION_SYSTEM,
   })
 
   let proposed = 0
@@ -331,6 +407,7 @@ export const runArtanisResponderScanScheduled = (
     enabled: boolean
     geminiApiKey: string | null
     gatewayToken?: string | undefined
+    khalaClient?: ArtanisResponderKhalaClient | undefined
     artanisActorRefs: ReadonlyArray<string>
     adminActorRefs?: ReadonlyArray<string>
     nowIso: string

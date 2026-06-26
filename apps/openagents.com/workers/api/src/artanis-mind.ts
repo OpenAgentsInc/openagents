@@ -19,6 +19,7 @@ export const ArtanisMindGatewayCandidates = ['openagents-ai-gateway'] as const
 export type ArtanisMindServedVia =
   | 'cloudflare_ai_gateway'
   | 'google_direct'
+  | 'openagents_khala'
 
 export type ArtanisMindResult = Readonly<{
   servedVia: ArtanisMindServedVia

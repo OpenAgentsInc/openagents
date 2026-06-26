@@ -83,7 +83,10 @@ import { deliverArtanisForumPublicationIntent } from './artanis-forum-delivery'
 import { ArtanisForumPublicationIntentRecord } from './artanis-forum-publication'
 import { exampleArtanisForumPublicationQueue } from './artanis-forum-publication'
 import {
+  ARTANIS_RESPONDER_DEMAND_CLIENT,
+  ARTANIS_RESPONDER_DEMAND_SOURCE,
   ARTANIS_REGISTERED_ACTOR_REF,
+  type ArtanisResponderKhalaClient,
   runArtanisResponderScanScheduled,
 } from './artanis-forum-responder'
 import {
@@ -450,6 +453,7 @@ import {
   HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
   HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
   dispatchWithOverflow,
+  dispatchWithOverflowWithMetadata,
   makeKhalaBackedAdapterPlan,
 } from './inference/model-router'
 import {
@@ -9316,6 +9320,62 @@ const makeKhalaChatStreamClient = (
     )
 }
 
+const makeArtanisResponderKhalaClient = (
+  env: OnboardingInferenceEnv & Pick<WorkerBindings, 'OPENAGENTS_DB' | 'SYNC_ROOM'>,
+): ArtanisResponderKhalaClient => {
+  registerPassthroughAdapters(inferenceProviderRegistry, env)
+  registerHydraliskAdapter(inferenceProviderRegistry, env)
+  registerFabricServeAdapter(inferenceProviderRegistry, env)
+  setInferenceAdapterEnv(env)
+  const laneArming = resolveSupplyLaneArming(env)
+  const recordTokensServed = makeD1ServedTokensRecorder(
+    openAgentsDatabase(env),
+    {
+      publishDelta: delta =>
+        Effect.promise(() =>
+          publishKhalaTokensServedDelta(
+            env,
+            buildKhalaTokensServedDelta(delta),
+          ).catch(() => undefined),
+        ),
+    },
+  )
+
+  return (request: InferenceRequest) =>
+    Effect.gen(function* () {
+      const responseId = randomUuid()
+      const result = yield* dispatchWithOverflowWithMetadata<InferenceResult>(
+        request,
+        (adapter, req) => adapter.complete(req),
+        {
+          plan: makeKhalaBackedAdapterPlan(laneArming.khalaBacking),
+          registry: inferenceProviderRegistry,
+        },
+      )
+      const served = result.value
+      yield* recordTokensServed({
+        accountRef: ARTANIS_REGISTERED_ACTOR_REF,
+        adapterId: result.route.servedAdapterId,
+        requestAttribution: {
+          demandClient: ARTANIS_RESPONDER_DEMAND_CLIENT,
+          demandKind: 'internal',
+          demandSource: ARTANIS_RESPONDER_DEMAND_SOURCE,
+        },
+        requestId: responseId,
+        requestMetrics: {
+          fallbackReason: result.route.fallbackReason,
+          requestClass: 'async_job',
+          supplyLane: result.route.servedAdapterId,
+        },
+        requestedModel: request.model,
+        servedModel: served.servedModel,
+        streamed: false,
+        usage: served.usage,
+      })
+      return served
+    })
+}
+
 const khalaChatRoutes = makeKhalaChatRoutes({
   makeStreamClient: env =>
     makeKhalaChatStreamClient(env as OnboardingInferenceEnv),
@@ -12509,6 +12569,7 @@ export default {
           gatewayToken: (env as { CF_AIG_TOKEN?: string }).CF_AIG_TOKEN,
           geminiApiKey:
             (env as { GEMINI_API_KEY?: string }).GEMINI_API_KEY ?? null,
+          khalaClient: makeArtanisResponderKhalaClient(env),
           nowIso: epochMillisToIsoTimestamp(event.scheduledTime),
         }),
       ),
