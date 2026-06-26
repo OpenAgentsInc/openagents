@@ -1,6 +1,10 @@
 import { Array, Schema as S } from 'effect'
 
 import {
+  GLM_VLLM_THROUGHPUT_OPTIMIZATION_SWEEP,
+  GymThroughputOptimizationSweep,
+} from './throughput'
+import {
   OPENCODE_KHALA_VS_BIGPICKLE_FIXTURE_CONFIG,
   SAMPLE_DECISION_SUITE_CONFIG,
   buildBenchmarkReport,
@@ -172,6 +176,7 @@ export const GymPolicy = S.Struct({
   serving: S.Struct({
     quantization: S.optional(GymQuantizationSpec),
     speculation: S.optional(GymSpeculationSpec),
+    optimizationSweep: S.optional(GymThroughputOptimizationSweep),
   }),
 })
 export type GymPolicy = typeof GymPolicy.Type
@@ -740,6 +745,7 @@ export const THROUGHPUT_CONCURRENCY_GYM_EXPERIMENT: GymExperiment = {
     serving: {
       quantization: { mode: 'none' },
       speculation: { mode: 'ngram', draftModelRef: 'glm-52.mtp2' },
+      optimizationSweep: GLM_VLLM_THROUGHPUT_OPTIMIZATION_SWEEP,
     },
   },
   shapes: GYM_ENVIRONMENT_REGISTRY['throughput-concurrency'].defaultShapes,

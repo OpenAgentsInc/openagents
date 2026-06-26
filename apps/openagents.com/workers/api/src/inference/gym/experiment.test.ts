@@ -106,8 +106,8 @@ describe('Gym environment registry', () => {
 describe('compileGymExperiment', () => {
   test('expands the bundled fixture experiment to the expected matrix cells', () => {
     const compiled = compileGymExperiment(BUNDLED_GYM_EXPERIMENT)
-    // 4 lanes × 4 workloads × 3 shapes × 1 transport × 1 sampling.
-    expect(compiled.expectedCellCount).toBe(48)
+    // 8 lanes × 4 workloads × 3 shapes × 1 transport × 1 sampling.
+    expect(compiled.expectedCellCount).toBe(96)
     expect(compiled.matrixConfig.id).toBe('gym:gym-fixture-decision-suite-v1')
     expect(compiled.matrixConfig.samplesPerCell).toBe(5)
     expect(compiled.policySelection.environment.verifierRef).toBe(
@@ -116,6 +116,10 @@ describe('compileGymExperiment', () => {
     expect(compiled.policySelection.coordinator).toBe('heuristic-v0')
     expect(compiled.policySelection.fanout.lanes).toEqual([
       'fireworks',
+      'gpt-oss-120b',
+      'gpt-oss-20b',
+      'vertex-gemini',
+      'glm-52',
       'vertex-anthropic',
       'pylon-whole-small',
       'psionic-shard-wan',
@@ -190,6 +194,19 @@ describe('compileGymExperiment', () => {
       mode: 'ngram',
       draftModelRef: 'glm-52.mtp2',
     })
+    expect(
+      compiled.policySelection.serving.optimizationSweep?.maxNumSeqsValues,
+    ).toEqual([2, 4, 8, 16])
+    expect(
+      compiled.policySelection.serving.optimizationSweep?.expectedLevers.map(
+        lever => lever.label,
+      ),
+    ).toEqual([
+      'vllm.max_num_seqs.2.prefix_cache.chunked_prefill.nvfp4',
+      'vllm.max_num_seqs.4.prefix_cache.chunked_prefill.nvfp4',
+      'vllm.max_num_seqs.8.prefix_cache.chunked_prefill.nvfp4',
+      'vllm.max_num_seqs.16.prefix_cache.chunked_prefill.nvfp4',
+    ])
   })
 
   test('compiles a real-seam experiment without spending', () => {

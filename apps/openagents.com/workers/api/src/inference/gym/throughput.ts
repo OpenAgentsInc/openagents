@@ -34,6 +34,112 @@ export const GymThroughputTarget = S.Struct({
 })
 export type GymThroughputTarget = typeof GymThroughputTarget.Type
 
+export const GymThroughputQuantizationMode = S.Literals([
+  'none',
+  'nvfp4',
+  'fp8',
+  'int8',
+  'nf4',
+  'awq',
+  'gptq',
+])
+export type GymThroughputQuantizationMode =
+  typeof GymThroughputQuantizationMode.Type
+
+export const GymThroughputLowBatchSpeculativeDecodingPolicy = S.Struct({
+  policy: S.Literals(['disabled', 'enabled_below_batch']),
+  maxBatchSize: S.Number.check(S.isBetween({ minimum: 1, maximum: 64 })),
+  mode: KhalaSpeculationMode,
+})
+export type GymThroughputLowBatchSpeculativeDecodingPolicy =
+  typeof GymThroughputLowBatchSpeculativeDecodingPolicy.Type
+
+export const GymThroughputKvHeadroomGate = S.Struct({
+  minFreeKvCachePercent: S.Number.check(S.isBetween({ minimum: 0, maximum: 100 })),
+  action: S.Literals(['skip', 'degrade_max_num_seqs', 'fail']),
+})
+export type GymThroughputKvHeadroomGate =
+  typeof GymThroughputKvHeadroomGate.Type
+
+export const GymThroughputLeverExpectation = S.Struct({
+  label: S.String,
+  maxNumSeqs: S.Number.check(S.isBetween({ minimum: 1, maximum: 4096 })),
+  enablePrefixCaching: S.Boolean,
+  enableChunkedPrefill: S.Boolean,
+  lowBatchSpeculativeDecoding: GymThroughputLowBatchSpeculativeDecodingPolicy,
+  quantization: S.Struct({
+    mode: GymThroughputQuantizationMode,
+    qualityGateRef: S.String,
+  }),
+  kvHeadroomGate: GymThroughputKvHeadroomGate,
+})
+export type GymThroughputLeverExpectation =
+  typeof GymThroughputLeverExpectation.Type
+
+export const GymThroughputLeverActual = S.Struct({
+  label: S.String,
+  maxNumSeqs: S.Number.check(S.isBetween({ minimum: 1, maximum: 4096 })),
+  enablePrefixCaching: S.Boolean,
+  enableChunkedPrefill: S.Boolean,
+  lowBatchSpeculativeDecoding: GymThroughputLowBatchSpeculativeDecodingPolicy,
+  quantization: S.Struct({
+    mode: GymThroughputQuantizationMode,
+    qualityGateRef: S.String,
+    gateStatus: S.Literals(['passed', 'failed', 'not_checked']),
+  }),
+  kvHeadroomGate: S.Struct({
+    minFreeKvCachePercent: S.Number.check(
+      S.isBetween({ minimum: 0, maximum: 100 }),
+    ),
+    action: S.Literals(['skip', 'degrade_max_num_seqs', 'fail']),
+    observedFreeKvCachePercent: ThroughputMeasuredNumber,
+    gateStatus: S.Literals(['passed', 'failed', 'not_checked']),
+  }),
+})
+export type GymThroughputLeverActual = typeof GymThroughputLeverActual.Type
+
+export const GymThroughputOptimizationSweep = S.Struct({
+  sweepRef: S.String,
+  publicSafeSummary: S.String,
+  maxNumSeqsValues: S.Array(
+    S.Number.check(S.isBetween({ minimum: 1, maximum: 4096 })),
+  ),
+  expectedLevers: S.Array(GymThroughputLeverExpectation),
+})
+export type GymThroughputOptimizationSweep =
+  typeof GymThroughputOptimizationSweep.Type
+
+const glmVllmLever = (
+  maxNumSeqs: number,
+): GymThroughputLeverExpectation => ({
+  label: `vllm.max_num_seqs.${maxNumSeqs}.prefix_cache.chunked_prefill.nvfp4`,
+  maxNumSeqs,
+  enablePrefixCaching: true,
+  enableChunkedPrefill: true,
+  lowBatchSpeculativeDecoding: {
+    policy: 'enabled_below_batch',
+    maxBatchSize: 4,
+    mode: 'n_gram',
+  },
+  quantization: {
+    mode: 'nvfp4',
+    qualityGateRef: 'gate.gym.glm_52.reap_504b.nvfp4.accepted_outcome.v1',
+  },
+  kvHeadroomGate: {
+    minFreeKvCachePercent: 15,
+    action: 'skip',
+  },
+})
+
+export const GLM_VLLM_THROUGHPUT_OPTIMIZATION_SWEEP: GymThroughputOptimizationSweep =
+  {
+    sweepRef: 'sweep.gym.glm_52.vllm_throughput_levers.v1',
+    publicSafeSummary:
+      'GLM vLLM declarative throughput sweep over max-num-seqs, prefix caching, chunked prefill, low-batch speculative decoding, quantization, and KV headroom gates.',
+    maxNumSeqsValues: [2, 4, 8, 16],
+    expectedLevers: [2, 4, 8, 16].map(glmVllmLever),
+  }
+
 export const GymThroughputEnvironmentSpec = S.Struct({
   schemaVersion: S.Literal('openagents.gym.throughput_environment.v1'),
   environmentRef: S.Literal(GYM_THROUGHPUT_ENVIRONMENT_REF),
@@ -50,6 +156,7 @@ export const GymThroughputEnvironmentSpec = S.Struct({
   ),
   serving: S.Struct({
     speculationMode: KhalaSpeculationMode,
+    optimizationSweep: S.optional(GymThroughputOptimizationSweep),
   }),
 })
 export type GymThroughputEnvironmentSpec =
@@ -77,6 +184,7 @@ export const GymThroughputSample = S.Struct({
   completionTokens: ThroughputMeasuredNumber,
   speculationMode: KhalaSpeculationMode,
   speculationAcceptanceRate: ThroughputMeasuredNumber,
+  actualThroughputLevers: S.optional(GymThroughputLeverActual),
   errorClass: S.optional(S.String),
 })
 export type GymThroughputSample = typeof GymThroughputSample.Type
@@ -109,6 +217,7 @@ export type GymThroughputConcurrencyPoint = Readonly<{
   completionTokens: GymThroughputMetricSummary
   aggregateTps: number | null
   speculationAcceptanceRate: GymThroughputMetricSummary
+  actualThroughputLevers: ReadonlyArray<GymThroughputLeverActual>
 }>
 
 export type GymThroughputDegradationReason =
@@ -130,6 +239,9 @@ export type GymThroughputLaneReport = Readonly<{
   samplesPerConcurrency: number
   degradationThresholdMultiplier: number
   speculationMode: KhalaSpeculationMode
+  optimizationSweep: GymThroughputOptimizationSweep | null
+  expectedThroughputLevers: ReadonlyArray<GymThroughputLeverExpectation>
+  throughputLeverLabels: ReadonlyArray<string>
   concurrencyPoints: ReadonlyArray<GymThroughputConcurrencyPoint>
   degradation: GymThroughputDegradationPoint
 }>
@@ -219,6 +331,11 @@ const aggregateConcurrencyPoint = (
     speculationAcceptanceRate: summarizeThroughputMetric(
       measuredValues(normalized, sample => sample.speculationAcceptanceRate),
     ),
+    actualThroughputLevers: normalized.flatMap(sample =>
+      sample.actualThroughputLevers === undefined
+        ? []
+        : [sample.actualThroughputLevers],
+    ),
   }
 }
 
@@ -262,6 +379,13 @@ const specKey = (spec: GymThroughputEnvironmentSpec): string =>
 const sampleKey = (sample: GymThroughputSample): string =>
   `${sample.lane}::${sample.engine}::${sample.modelRef}`
 
+export const expandGymThroughputOptimizationSweep = (
+  spec: GymThroughputEnvironmentSpec,
+): ReadonlyArray<GymThroughputLeverExpectation> => {
+  const decoded = decodeGymThroughputEnvironmentSpec(spec)
+  return decoded.serving.optimizationSweep?.expectedLevers ?? []
+}
+
 export const buildGymThroughputReport = (input: {
   generatedAt: string
   specs: ReadonlyArray<GymThroughputEnvironmentSpec>
@@ -297,6 +421,11 @@ export const buildGymThroughputReport = (input: {
       samplesPerConcurrency: spec.samplesPerConcurrency,
       degradationThresholdMultiplier: spec.degradationThresholdMultiplier,
       speculationMode: spec.serving.speculationMode,
+      optimizationSweep: spec.serving.optimizationSweep ?? null,
+      expectedThroughputLevers: expandGymThroughputOptimizationSweep(spec),
+      throughputLeverLabels: expandGymThroughputOptimizationSweep(spec).map(
+        lever => lever.label,
+      ),
       concurrencyPoints,
       degradation: detectThroughputDegradation(
         concurrencyPoints,

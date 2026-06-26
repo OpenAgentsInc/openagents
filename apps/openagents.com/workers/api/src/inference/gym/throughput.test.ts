@@ -2,9 +2,11 @@ import { describe, expect, test } from 'vitest'
 
 import { NOT_MEASURED } from '../khala-telemetry'
 import {
+  GLM_VLLM_THROUGHPUT_OPTIMIZATION_SWEEP,
   buildGymThroughputReport,
   decodeGymThroughputEnvironmentSpec,
   decodeGymThroughputSample,
+  expandGymThroughputOptimizationSweep,
   type GymThroughputEnvironmentSpec,
   type GymThroughputSample,
 } from './throughput'
@@ -163,5 +165,104 @@ describe('Gym throughput/concurrency report (#6244)', () => {
         status: 'not_a_status',
       }),
     ).toThrow()
+  })
+
+  test('expands GLM vLLM throughput optimization sweep metadata deterministically', () => {
+    const glmSpec = spec({
+      target: {
+        lane: 'glm-52',
+        engine: 'vllm',
+        modelRef: '0xSero/GLM-5.2-504B',
+      },
+      serving: {
+        speculationMode: 'n_gram',
+        optimizationSweep: GLM_VLLM_THROUGHPUT_OPTIMIZATION_SWEEP,
+      },
+    })
+
+    const expanded = expandGymThroughputOptimizationSweep(glmSpec)
+    const expandedAgain = expandGymThroughputOptimizationSweep(glmSpec)
+
+    expect(JSON.stringify(expanded)).toBe(JSON.stringify(expandedAgain))
+    expect(expanded.map(lever => lever.maxNumSeqs)).toEqual([2, 4, 8, 16])
+    expect(expanded.map(lever => lever.label)).toEqual([
+      'vllm.max_num_seqs.2.prefix_cache.chunked_prefill.nvfp4',
+      'vllm.max_num_seqs.4.prefix_cache.chunked_prefill.nvfp4',
+      'vllm.max_num_seqs.8.prefix_cache.chunked_prefill.nvfp4',
+      'vllm.max_num_seqs.16.prefix_cache.chunked_prefill.nvfp4',
+    ])
+    expect(expanded[0]?.enablePrefixCaching).toBe(true)
+    expect(expanded[0]?.enableChunkedPrefill).toBe(true)
+    expect(expanded[0]?.lowBatchSpeculativeDecoding).toEqual({
+      policy: 'enabled_below_batch',
+      maxBatchSize: 4,
+      mode: 'n_gram',
+    })
+    expect(expanded[0]?.quantization).toEqual({
+      mode: 'nvfp4',
+      qualityGateRef: 'gate.gym.glm_52.reap_504b.nvfp4.accepted_outcome.v1',
+    })
+    expect(expanded[0]?.kvHeadroomGate).toEqual({
+      minFreeKvCachePercent: 15,
+      action: 'skip',
+    })
+  })
+
+  test('reports public-safe expected and actual throughput lever fields', () => {
+    const expectedLever =
+      GLM_VLLM_THROUGHPUT_OPTIMIZATION_SWEEP.expectedLevers[1]!
+    const actualThroughputLevers = {
+      ...expectedLever,
+      quantization: {
+        ...expectedLever.quantization,
+        gateStatus: 'passed' as const,
+      },
+      kvHeadroomGate: {
+        ...expectedLever.kvHeadroomGate,
+        observedFreeKvCachePercent: 22,
+        gateStatus: 'passed' as const,
+      },
+    }
+    const report = buildGymThroughputReport({
+      generatedAt: '2026-06-26T12:00:00.000Z',
+      specs: [
+        spec({
+          target: {
+            lane: 'glm-52',
+            engine: 'vllm',
+            modelRef: '0xSero/GLM-5.2-504B',
+          },
+          concurrencyRamp: [1],
+          serving: {
+            speculationMode: 'n_gram',
+            optimizationSweep: GLM_VLLM_THROUGHPUT_OPTIMIZATION_SWEEP,
+          },
+        }),
+      ],
+      samples: [
+        sample(1, 0, {
+          lane: 'glm-52',
+          engine: 'vllm',
+          modelRef: '0xSero/GLM-5.2-504B',
+          speculationMode: 'n_gram',
+          actualThroughputLevers,
+        }),
+      ],
+    })
+
+    const lane = report.lanes[0]
+    expect(lane?.optimizationSweep?.sweepRef).toBe(
+      'sweep.gym.glm_52.vllm_throughput_levers.v1',
+    )
+    expect(lane?.throughputLeverLabels).toEqual([
+      'vllm.max_num_seqs.2.prefix_cache.chunked_prefill.nvfp4',
+      'vllm.max_num_seqs.4.prefix_cache.chunked_prefill.nvfp4',
+      'vllm.max_num_seqs.8.prefix_cache.chunked_prefill.nvfp4',
+      'vllm.max_num_seqs.16.prefix_cache.chunked_prefill.nvfp4',
+    ])
+    expect(lane?.expectedThroughputLevers[1]).toEqual(expectedLever)
+    expect(
+      lane?.concurrencyPoints[0]?.actualThroughputLevers[0],
+    ).toEqual(actualThroughputLevers)
   })
 })
