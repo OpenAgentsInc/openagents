@@ -31,9 +31,12 @@ nine-digit values such as `285,022,051` fit in the three-column `/stats`
 dashboard without horizontal page overflow.
 
 The per-day history chart must show visible day/value labels in addition to the
-SVG bars and screen-reader text fallback. Each day in the returned
-America/Chicago series appears as a compact `MM/DD` + value cell; the peak day
-is highlighted so the daily maximum is obvious without hovering.
+SVG bars and screen-reader text fallback. The compact `/stats` chart displays
+the latest contiguous America/Chicago daily run, capped at four days, so sparse
+older buckets such as an isolated `2026-06-11` event do not appear beside the
+current `2026-06-24` onward run. Each displayed day appears as a compact
+`MM/DD` + value cell; the peak day is highlighted so the daily maximum is
+obvious without hovering.
 
 ## 5b Model Mix Endpoint
 

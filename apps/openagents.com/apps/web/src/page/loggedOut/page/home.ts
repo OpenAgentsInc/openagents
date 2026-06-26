@@ -981,6 +981,7 @@ export const khalaTokensServedCounter = (
 const CHART_VIEW_WIDTH = 320
 const CHART_VIEW_HEIGHT = 96
 const CHART_BASELINE_Y = CHART_VIEW_HEIGHT - 1
+const HISTORY_CHART_MAX_DAYS = 4
 
 const compactNumberFormatter = new Intl.NumberFormat('en-US', {
   notation: 'compact',
@@ -1084,6 +1085,102 @@ const formatHistoryDayLabel = (day: string): string => {
   return month !== undefined && dayOfMonth !== undefined
     ? `${month}/${dayOfMonth}`
     : day
+}
+
+const historyDayNumber = (day: string): number | undefined => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day)
+  if (match === null) {
+    return undefined
+  }
+
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const dayOfMonth = Number(match[3])
+
+  if (
+    !Number.isInteger(year) ||
+    !Number.isInteger(month) ||
+    !Number.isInteger(dayOfMonth) ||
+    month < 1 ||
+    month > 12
+  ) {
+    return undefined
+  }
+
+  const isLeapYear =
+    year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
+  const daysInMonth =
+    month === 2
+      ? isLeapYear
+        ? 29
+        : 28
+      : month === 4 || month === 6 || month === 9 || month === 11
+        ? 30
+        : 31
+
+  if (dayOfMonth < 1 || dayOfMonth > daysInMonth) {
+    return undefined
+  }
+
+  const adjustedYear = month <= 2 ? year - 1 : year
+  const era = Math.floor(adjustedYear / 400)
+  const yearOfEra = adjustedYear - era * 400
+  const shiftedMonth = month > 2 ? month - 3 : month + 9
+  const dayOfYear =
+    Math.floor((153 * shiftedMonth + 2) / 5) + dayOfMonth - 1
+  const dayOfEra =
+    yearOfEra * 365 +
+    Math.floor(yearOfEra / 4) -
+    Math.floor(yearOfEra / 100) +
+    dayOfYear
+
+  return era * 146_097 + dayOfEra
+}
+
+const recentContiguousHistorySeries = (
+  series: ReadonlyArray<PublicKhalaTokensServedHistoryPoint>,
+): ReadonlyArray<PublicKhalaTokensServedHistoryPoint> => {
+  const points = series
+    .map(point => ({ point, dayNumber: historyDayNumber(point.day) }))
+    .filter(
+      (
+        entry,
+      ): entry is {
+        point: PublicKhalaTokensServedHistoryPoint
+        dayNumber: number
+      } => entry.dayNumber !== undefined,
+    )
+    .sort((left, right) => left.dayNumber - right.dayNumber)
+
+  if (points.length === 0) {
+    return series.slice(-HISTORY_CHART_MAX_DAYS)
+  }
+
+  const selected: Array<PublicKhalaTokensServedHistoryPoint> = []
+  let expectedDayNumber: number | undefined
+
+  for (
+    let index = points.length - 1;
+    index >= 0 && selected.length < HISTORY_CHART_MAX_DAYS;
+    index -= 1
+  ) {
+    const entry = points[index]
+    if (entry === undefined) {
+      break
+    }
+
+    if (
+      expectedDayNumber !== undefined &&
+      entry.dayNumber !== expectedDayNumber
+    ) {
+      break
+    }
+
+    selected.unshift(entry.point)
+    expectedDayNumber = entry.dayNumber - 1
+  }
+
+  return selected
 }
 
 const historyDayValueRail = (
@@ -1255,20 +1352,24 @@ export const khalaTokensServedHistoryChart = (
               historyChartPlaceholder('No tokens served yet.'),
               `Daily input + output tokens served across the network in ${history.timezone}.`,
             ),
-          onNonEmpty: series =>
-            historyChartShell(
+          onNonEmpty: series => {
+            const chartSeries = recentContiguousHistorySeries(series)
+            const peakTokens = chartSeries.reduce(
+              (max, point) =>
+                point.tokensServed > max ? point.tokensServed : max,
+              0,
+            )
+
+            return historyChartShell(
               true,
-              historyChartBars(series),
+              historyChartBars(chartSeries),
               `Daily input + output tokens served across the network in ${history.timezone}. Last ${
-                series.length
-              } ${series.length === 1 ? 'day' : 'days'}, peak ${formatCompactNumber(
-                series.reduce(
-                  (max, point) =>
-                    point.tokensServed > max ? point.tokensServed : max,
-                  0,
-                ),
+                chartSeries.length
+              } ${chartSeries.length === 1 ? 'day' : 'days'}, peak ${formatCompactNumber(
+                peakTokens,
               )} in a day.`,
-            ),
+            )
+          },
         }),
     }),
   )

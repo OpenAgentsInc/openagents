@@ -48,6 +48,18 @@ const sampleHistory = PublicKhalaTokensServedHistory.make({
   ],
 })
 
+const sparseRecentHistory = PublicKhalaTokensServedHistory.make({
+  window: '30d',
+  bucket: 'day',
+  timezone: 'America/Chicago',
+  series: [
+    { day: '2026-06-11', tokensServed: 7 },
+    { day: '2026-06-24', tokensServed: 14_700_000 },
+    { day: '2026-06-25', tokensServed: 73_300_000 },
+    { day: '2026-06-26', tokensServed: 206_200_000 },
+  ],
+})
+
 // The counter is independent of Pylon stats, so the surrounding strip can stay
 // in its Loading state (rendered as "Unavailable") with no heavy fixture.
 const homeInputWithTokens = (tokensServed: number) => ({
@@ -89,6 +101,19 @@ const statsInputWithModelMix = () => ({
         },
       ],
     },
+  }),
+})
+
+const statsInputWithHistory = (
+  history: PublicKhalaTokensServedHistory,
+  tokensServed = 1_250_000,
+) => ({
+  ...statsInputWithModelMix(),
+  publicKhalaTokensServed: LoadedPublicKhalaTokensServed({
+    served: served(tokensServed),
+  }),
+  publicKhalaTokensServedHistory: LoadedPublicKhalaTokensServedHistory({
+    history,
   }),
 })
 
@@ -233,6 +258,22 @@ describe('Khala Tokens Served history chart (#6227)', () => {
     const markup = JSON.stringify(Home.view(homeInputWithTokens(1_250_000)))
     expect(markup).toContain('"data-highlight":"peak"')
     expect(markup).toContain('"data-day":"2026-06-23"')
+  })
+
+  test('starts the compact chart at the latest contiguous daily run', () => {
+    const markup = JSON.stringify(
+      StatsPage.view(statsInputWithHistory(sparseRecentHistory)),
+    )
+
+    expect(markup).not.toContain('"data-day":"2026-06-11"')
+    expect(markup).not.toContain('2026-06-11: 7 tokens')
+    expect(markup).toContain('"data-day":"2026-06-24"')
+    expect(markup).toContain('"data-day":"2026-06-25"')
+    expect(markup).toContain('"data-day":"2026-06-26"')
+    expect(markup).toContain('06/24')
+    expect(markup).toContain('14.7M')
+    expect(markup).toContain('"data-highlight":"peak"')
+    expect(markup).toContain('Last 3 days, peak 206.2M in a day.')
   })
 
   test('renders the same per-day curve on public /stats', () => {
