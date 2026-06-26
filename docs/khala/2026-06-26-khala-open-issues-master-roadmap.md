@@ -22,7 +22,9 @@ last even though it is the business goal.
 
 The hard invariant throughout (#6318): **real external requests always win** — internal
 stress/benchmark load is best-effort, preemptible, instantly-yielding, and tagged
-`internal_stress` (excluded from the public counter).
+`internal_stress`. It must still be counted in the public Khala token counter
+when it is Khala-orchestrated; the tag exists for routing, trace filtering, and
+external-wins admission, not for hiding usage.
 
 ## Current status snapshot
 
