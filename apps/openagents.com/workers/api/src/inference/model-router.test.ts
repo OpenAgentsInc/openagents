@@ -1073,6 +1073,58 @@ describe('dispatchWithOverflow', () => {
     expect(gemini.calls()).toBe(1)
   })
 
+  test('GLM lane quorum unhealthy overflows without exposing private route data', async () => {
+    const glm = mockAdapter(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID, [
+      new InferenceAdapterError({
+        adapterId: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+        adapterRouteMetadata: {
+          glmSaturationPolicy: 'queue_then_overflow',
+          queueWaitMs: 0,
+          replicaBusyReason: 'lane_quorum_unhealthy',
+          replicaFallbackReason: 'lane_quorum_unhealthy',
+          replicaHealthScore: 0,
+        },
+        httpStatus: 503,
+        kind: 'lane_quorum_unhealthy',
+        reason: 'hydralisk GLM lane quorum unhealthy',
+        retryable: true,
+      }),
+    ])
+    const gemini = mockAdapter(VERTEX_GEMINI_ADAPTER_ID, [undefined])
+    const registry = new InferenceProviderRegistry()
+    registry.register(glm.adapter)
+    registry.register(gemini.adapter)
+
+    const result = await runResult(
+      dispatchWithOverflowWithMetadata(request(KHALA_MODEL_ID), completeOp, {
+        plan: () => [
+          HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+          VERTEX_GEMINI_ADAPTER_ID,
+        ],
+        registry,
+        sleep: noSleep,
+      }),
+    )
+
+    expect(result._tag).toBe('Success')
+    if (result._tag === 'Success') {
+      expect(result.success.route).toEqual({
+        fallbackAdapterRouteMetadata: {
+          glmSaturationPolicy: 'queue_then_overflow',
+          queueWaitMs: 0,
+          replicaBusyReason: 'lane_quorum_unhealthy',
+          replicaFallbackReason: 'lane_quorum_unhealthy',
+          replicaHealthScore: 0,
+        },
+        fallbackReason: 'lane_quorum_unhealthy',
+        primaryAdapterId: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+        servedAdapterId: VERTEX_GEMINI_ADAPTER_ID,
+      })
+    }
+    expect(glm.calls()).toBe(1)
+    expect(gemini.calls()).toBe(1)
+  })
+
   test('GLM-primary Spot-death/5xx fails over to the next armed Khala lane and returns 200, not 5xx (#6259)', async () => {
     // GLM is primary but its (preemptible Spot) replica dies — a transport error
     // and an upstream 5xx are both retryable lane errors, so dispatch must

@@ -290,8 +290,15 @@ describe('hydralisk vLLM adapter', () => {
           baseUrl: 'https://unhealthy.example.test',
           fetchImpl: captureFetch(capturedInputs),
         }),
+        replicaFixture('busy', {
+          baseUrl: 'https://busy.example.test',
+          fetchImpl: captureFetch(capturedInputs),
+        }),
       ],
-      routingStateOracle: () => ({ health: 'unhealthy' }),
+      routingStateOracle: replicaId =>
+        replicaId === 'unhealthy'
+          ? { health: 'unhealthy' }
+          : { inflightCount: 1, maxInflight: 1 },
       upstreamModel: 'openagents/glm-5.2-reap-504b',
     })
 
@@ -307,6 +314,59 @@ describe('hydralisk vLLM adapter', () => {
         replicaBusyReason: 'health_unhealthy',
       })
     }
+    expect(capturedInputs).toEqual([])
+  })
+
+  it('trips the lane-wide GLM quorum breaker from heartbeat route health without calling dead candidates', async () => {
+    const capturedInputs: Array<string> = []
+    const sleeps: Array<number> = []
+    const adapter = makeHydraliskVllmPoolAdapter({
+      id: GLM_POOL_ADAPTER_ID,
+      maxQueueWaitMs: 250,
+      replicas: [
+        replicaFixture('primary', {
+          baseUrl: 'https://primary.example.test',
+          fetchImpl: captureFetch(capturedInputs),
+        }),
+        replicaFixture('second', {
+          baseUrl: 'https://second.example.test',
+          fetchImpl: captureFetch(capturedInputs),
+        }),
+        replicaFixture('third', {
+          baseUrl: 'https://third.example.test',
+          fetchImpl: captureFetch(capturedInputs),
+        }),
+      ],
+      routingStateOracle: replicaId =>
+        replicaId === 'primary' || replicaId === 'second'
+          ? { health: 'unhealthy' }
+          : { health: 'healthy' },
+      saturationPolicy: 'queue_then_overflow',
+      sleep: ms =>
+        Effect.sync(() => {
+          sleeps.push(ms)
+        }),
+      upstreamModel: 'openagents/glm-5.2-reap-504b',
+    })
+
+    const outcome = await Effect.runPromise(
+      Effect.result(adapter.complete(request())),
+    )
+
+    expect(outcome._tag).toBe('Failure')
+    if (outcome._tag === 'Failure') {
+      expect(outcome.failure.kind).toBe('lane_quorum_unhealthy')
+      expect(outcome.failure.httpStatus).toBe(503)
+      expect(outcome.failure.retryable).toBe(true)
+      expect(outcome.failure.adapterRouteMetadata).toMatchObject({
+        glmSaturationPolicy: 'queue_then_overflow',
+        queueWaitMs: 0,
+        replicaBusyReason: 'lane_quorum_unhealthy',
+        replicaFallbackReason: 'lane_quorum_unhealthy',
+        replicaHealthScore: 0,
+      })
+    }
+    expect(sleeps).toEqual([])
     expect(capturedInputs).toEqual([])
   })
 
