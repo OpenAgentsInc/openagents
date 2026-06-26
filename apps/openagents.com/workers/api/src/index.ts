@@ -380,7 +380,10 @@ import {
   routeDurableInferenceReadRequest,
   routeDurableInferenceReadRequestDO,
 } from './inference/durable-inference-read-routes'
-import { fireworksAdapter } from './inference/fireworks-adapter'
+import {
+  KHALA_FIREWORKS_BACKING_MODEL_ID,
+  fireworksAdapter,
+} from './inference/fireworks-adapter'
 import { freeTierDataSharingDisclosure } from './inference/free-tier-data-sharing-disclosure'
 import { handleFreeTierDataSharingDisclosureApi } from './inference/free-tier-data-sharing-routes'
 import { handleGatewayReadiness } from './inference/gateway-readiness-routes'
@@ -465,6 +468,7 @@ import {
 import { makeInternalStressPreemptionRegistry } from './inference/internal-stress-preemption'
 import { makeLedgerMeteringHook } from './inference/metering-hook'
 import {
+  FIREWORKS_ADAPTER_ID,
   HYDRALISK_ADAPTER_ID,
   HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
   HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
@@ -510,6 +514,8 @@ import {
   HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
   HYDRALISK_GPT_OSS_20B_MODEL_ID,
   HYDRALISK_GPT_OSS_120B_MODEL_ID,
+  KHALA_MODEL_ID,
+  normalizeKhalaModelId,
 } from './inference/pricing'
 import {
   InferenceAdapterError,
@@ -536,6 +542,7 @@ import {
   makeVertexAnthropicAdapter,
 } from './inference/vertex-anthropic-adapter'
 import {
+  DEFAULT_GEMINI_MODEL_ID,
   VERTEX_GEMINI_ADAPTER_ID,
   makeVertexGeminiAdapter,
 } from './inference/vertex-gemini-adapter'
@@ -9430,6 +9437,25 @@ const makeOnboardingStreamClient = (
 // hop). The difference is the caller (the generic stateless `/api/khala/chat`
 // route) and the system prompt (Khala identity + generic chat instruction,
 // assembled in `khala-chat-program.ts`) — NOT the concierge intake program.
+const khalaPublicChatRequestForAdapter = (
+  request: InferenceRequest,
+  adapterId: string,
+): InferenceRequest => {
+  if (normalizeKhalaModelId(request.model) !== KHALA_MODEL_ID) {
+    return request
+  }
+  switch (adapterId) {
+    case VERTEX_GEMINI_ADAPTER_ID:
+      return { ...request, model: DEFAULT_GEMINI_MODEL_ID }
+    case FIREWORKS_ADAPTER_ID:
+      return { ...request, model: KHALA_FIREWORKS_BACKING_MODEL_ID }
+    case HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID:
+      return { ...request, model: HYDRALISK_GLM_52_REAP_504B_MODEL_ID }
+    default:
+      return request
+  }
+}
+
 const makeKhalaChatStreamClient = (
   env: OnboardingInferenceEnv,
 ): KhalaChatStreamClient => {
@@ -9446,6 +9472,7 @@ const makeKhalaChatStreamClient = (
       {
         plan: makeKhalaBackedAdapterPlan(laneArming.khalaBacking),
         registry: inferenceProviderRegistry,
+        requestForAdapter: khalaPublicChatRequestForAdapter,
       },
     ).pipe(
       Effect.map(result => ({
