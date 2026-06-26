@@ -290,7 +290,7 @@ describe('Khala Tokens Served history chart (#6227)', () => {
     expect(markup).toContain('"data-projection":"end-of-day"')
     expect(markup).toContain('"data-projected-tokens":"345265116"')
     expect(markup).toContain('repeating-linear-gradient(135deg')
-    expect(markup).toContain('EOD 345.3M')
+    expect(markup).toContain('EOD est. 345.3M')
     expect(markup).toContain(
       '2026-06-26 projected by midnight: 345,265,116 tokens',
     )

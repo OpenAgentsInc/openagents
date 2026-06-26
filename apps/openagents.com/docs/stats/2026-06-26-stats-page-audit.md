@@ -41,7 +41,7 @@ so the visible day/value number sits directly under its bar. The latest
 America/Chicago day may add a black, green-striped end-of-day projection segment
 above the observed green segment; it is calculated from the public
 `generatedAt` timestamp's Central-time elapsed day seconds through midnight and
-is labeled as an `EOD` estimate, not counted as observed tokens.
+uses the `EOD est.` label, not counted as observed tokens.
 
 ## 5b Model Mix Endpoint
 

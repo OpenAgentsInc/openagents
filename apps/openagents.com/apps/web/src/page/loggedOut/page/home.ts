@@ -1518,7 +1518,7 @@ const historyChartBars = (
                             ),
                           ],
                           [
-                            `EOD ${formatCompactNumber(
+                            `EOD est. ${formatCompactNumber(
                               pointProjection.projectedTokens,
                             )}`,
                           ],
