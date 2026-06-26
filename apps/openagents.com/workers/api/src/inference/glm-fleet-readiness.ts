@@ -1,4 +1,8 @@
-import type { GlmPoolHeartbeatReplicaRecord } from './glm-pool-heartbeat'
+import type {
+  GlmPoolHeartbeatReplicaRecord,
+  GlmPoolHeartbeatWarmState,
+  GlmPoolWatchdogStatus,
+} from './glm-pool-heartbeat'
 import {
   type HydraliskGlm52ReplicaArming,
   type SupplyLaneCredentialEnv,
@@ -38,6 +42,11 @@ export type GlmFleetReadinessProjection = Readonly<{
   counts: GlmFleetReadinessCounts
 }>
 
+export type GlmFleetReadinessHeartbeatRecord = Pick<
+  GlmPoolHeartbeatReplicaRecord,
+  'observedAt' | 'replicaId' | 'warmState' | 'watchdogStatus'
+>
+
 const REPLICA_REF_PREFIX = 'replica.hydralisk.glm_52_reap_504b'
 const INTERNAL_CONFIGURATION_REPLICA_ID = 'configuration'
 
@@ -46,7 +55,7 @@ const replicaRefFor = (replicaId: string): string =>
 
 const replicaStatus = (
   arming: HydraliskGlm52ReplicaArming,
-  heartbeat: GlmPoolHeartbeatReplicaRecord | undefined,
+  heartbeat: GlmFleetReadinessHeartbeatRecord | undefined,
 ): GlmFleetReplicaReadinessStatus => {
   if (
     arming.replica?.benchmarkReserved === true ||
@@ -150,7 +159,7 @@ export const projectGlmFleetReadiness = (
     replicaArmings: ReadonlyArray<HydraliskGlm52ReplicaArming>
     latestHeartbeatRecord: (
       replicaId: string,
-    ) => GlmPoolHeartbeatReplicaRecord | undefined
+    ) => GlmFleetReadinessHeartbeatRecord | undefined
   }>,
 ): GlmFleetReadinessProjection => {
   const replicas = input.replicaArmings
@@ -179,9 +188,37 @@ export const projectGlmFleetReadinessForEnv = (
   env: SupplyLaneCredentialEnv,
   latestHeartbeatRecord: (
     replicaId: string,
-  ) => GlmPoolHeartbeatReplicaRecord | undefined,
+  ) => GlmFleetReadinessHeartbeatRecord | undefined,
 ): GlmFleetReadinessProjection =>
   projectGlmFleetReadiness({
     latestHeartbeatRecord,
     replicaArmings: resolveHydraliskGlm52Reap504bReplicaArmings(env),
   })
+
+const warmStates = new Set<GlmPoolHeartbeatWarmState>([
+  'cold',
+  'unknown',
+  'warm',
+])
+const watchdogStatuses = new Set<GlmPoolWatchdogStatus>([
+  'degraded',
+  'healthy',
+  'skipped',
+  'unhealthy',
+])
+
+export const isGlmFleetReadinessHeartbeatRecord = (
+  value: unknown,
+): value is GlmFleetReadinessHeartbeatRecord => {
+  const candidate = value as Partial<GlmFleetReadinessHeartbeatRecord>
+  return (
+    typeof candidate.observedAt === 'string' &&
+    candidate.observedAt.trim() !== '' &&
+    typeof candidate.replicaId === 'string' &&
+    candidate.replicaId.trim() !== '' &&
+    typeof candidate.warmState === 'string' &&
+    warmStates.has(candidate.warmState as GlmPoolHeartbeatWarmState) &&
+    typeof candidate.watchdogStatus === 'string' &&
+    watchdogStatuses.has(candidate.watchdogStatus as GlmPoolWatchdogStatus)
+  )
+}

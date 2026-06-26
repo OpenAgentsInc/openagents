@@ -3,6 +3,11 @@ import { describe, expect, test } from 'vitest'
 
 import { handleGlmFleetReadiness } from './glm-fleet-readiness-routes'
 
+type FleetReadinessJson = Readonly<{
+  counts: Readonly<Record<string, number>>
+  status: string
+}>
+
 const env = {
   HYDRALISK_GLM_52_REAP_504B_REPLICA_IDS: 'primary',
   HYDRALISK_GLM_52_REAP_504B_PRIMARY_BASE_URL:
@@ -59,5 +64,51 @@ describe('handleGlmFleetReadiness', () => {
     expect(text).not.toContain('private.example.test')
     expect(text).not.toContain('secret-primary')
     expect(text).not.toContain('PRIMARY_BASE_URL')
+  })
+
+  test('uses persisted heartbeat records when isolate memory has no heartbeat yet', async () => {
+    const response = await Effect.runPromise(
+      handleGlmFleetReadiness(get(), {
+        enabled: true,
+        env,
+        readPersistedHeartbeatRecords: async () => [
+          {
+            observedAt: '2026-06-26T14:00:00.000Z',
+            replicaId: 'primary',
+            warmState: 'warm',
+            watchdogStatus: 'healthy',
+          },
+        ],
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as FleetReadinessJson
+    expect(body.counts).toMatchObject({
+      totalReplicaCount: 1,
+      warmReplicaCount: 1,
+      unavailableReplicaCount: 0,
+    })
+    expect(body.status).toBe('ready')
+  })
+
+  test('fails soft to configured replica projection when persisted read fails', async () => {
+    const response = await Effect.runPromise(
+      handleGlmFleetReadiness(get(), {
+        enabled: true,
+        env,
+        readPersistedHeartbeatRecords: async () => {
+          throw new Error('d1 unavailable')
+        },
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as FleetReadinessJson
+    expect(body.counts).toMatchObject({
+      totalReplicaCount: 1,
+      unavailableReplicaCount: 1,
+    })
+    expect(body.status).toBe('unavailable')
   })
 })

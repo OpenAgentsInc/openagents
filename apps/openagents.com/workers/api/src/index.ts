@@ -11873,6 +11873,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/v1/gateway/glm-fleet/readiness',
     handler: (request, env) =>
       handleGlmFleetReadiness(request, {
+        db: openAgentsDatabase(env),
         enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
         env,
       }),
