@@ -15,6 +15,7 @@ import {
   FREE_KEY_MINT_REASON_RATE_LIMITED,
   FREE_TIER_MAX_REQUESTS_PER_DAY,
   FREE_TIER_MAX_TOKENS_PER_DAY,
+  FREE_TIER_QUOTA_REASON_INTERNAL_EXEMPT,
   FREE_TIER_QUOTA_REASON_REQUESTS_EXCEEDED,
   FREE_TIER_QUOTA_REASON_TOKENS_EXCEEDED,
   FREE_TIER_QUOTA_REASON_WITHIN,
@@ -453,6 +454,122 @@ describe('makeFreeTierGate (balance-gate bypass)', () => {
     // Now the key has hit its 1/day request ceiling => over quota.
     expect((await gate('agent:free-user', KHALA_MODEL_ID)).free).toBe(false)
   })
+
+  test('INTERNAL-ACCOUNT EXEMPT: an allowlisted free key OVER quota is still free (never 402 on quota)', async () => {
+    const db = makeDb()
+    await run(
+      markAccountFreeTier(db, {
+        accountRef: 'agent:internal-ops',
+        nowIso: fixedNow,
+      }),
+    )
+    const internalAccountRefs = new Set(['agent:internal-ops'])
+    // A tiny quota that the account is already WAY over.
+    const quota = { maxRequestsPerDay: 1, maxTokensPerDay: 1 }
+    // Drive the internal account over the quota via the metering wrapper.
+    const inner = makeInnerSpy()
+    const wrapped = withFreeTierKhala(inner.hook, {
+      db,
+      nowIso: fixedNow,
+      quota,
+      internalAccountRefs,
+    })
+    await run(
+      wrapped(
+        meteringContext({
+          accountRef: 'agent:internal-ops',
+          requestId: 'ops-1',
+        }),
+      ),
+    )
+    const usage = await readFreeTierUsage(db, 'agent:internal-ops', '2026-06-24')
+    expect(usage.requestsToday).toBeGreaterThanOrEqual(1)
+    // The gate STILL admits it as free (quota-exempt), never falling through to
+    // the balance gate on quota grounds.
+    const gate = makeFreeTierGate({
+      db,
+      nowIso: fixedNow,
+      quota,
+      internalAccountRefs,
+    })
+    const d = await gate('agent:internal-ops', KHALA_MODEL_ID)
+    expect(d.free).toBe(true)
+    expect(d.reasonRef).toBe(FREE_TIER_QUOTA_REASON_INTERNAL_EXEMPT)
+  })
+
+  test('EXTERNAL key over quota STILL falls through (the exemption is allowlist-scoped only)', async () => {
+    const db = makeDb()
+    await run(
+      markAccountFreeTier(db, {
+        accountRef: 'agent:external-user',
+        nowIso: fixedNow,
+      }),
+    )
+    // The allowlist holds a DIFFERENT (internal) account; the external user is
+    // not on it, so the quota path is unchanged for them.
+    const internalAccountRefs = new Set(['agent:internal-ops'])
+    const quota = { maxRequestsPerDay: 1, maxTokensPerDay: 1_000_000 }
+    const gate = makeFreeTierGate({
+      db,
+      nowIso: fixedNow,
+      quota,
+      internalAccountRefs,
+    })
+    // First request fits under the quota.
+    expect((await gate('agent:external-user', KHALA_MODEL_ID)).free).toBe(true)
+    // Accrue one request so the external key hits its 1/day request ceiling.
+    const inner = makeInnerSpy()
+    const wrapped = withFreeTierKhala(inner.hook, {
+      db,
+      nowIso: fixedNow,
+      quota,
+      internalAccountRefs,
+    })
+    await run(
+      wrapped(
+        meteringContext({
+          accountRef: 'agent:external-user',
+          requestId: 'ext-1',
+        }),
+      ),
+    )
+    // Now the external key is over quota => NOT free (falls through to the 402).
+    const d = await gate('agent:external-user', KHALA_MODEL_ID)
+    expect(d.free).toBe(false)
+    expect(d.reasonRef).toBe(FREE_TIER_QUOTA_REASON_REQUESTS_EXCEEDED)
+  })
+
+  test('GUARDRAIL: an internal-account free key on a PREMIUM model is STILL never free', async () => {
+    const db = makeDb()
+    await run(
+      markAccountFreeTier(db, {
+        accountRef: 'agent:internal-ops',
+        nowIso: fixedNow,
+      }),
+    )
+    const gate = makeFreeTierGate({
+      db,
+      nowIso: fixedNow,
+      internalAccountRefs: new Set(['agent:internal-ops']),
+    })
+    const d = await gate('agent:internal-ops', 'claude-sonnet')
+    expect(d.free).toBe(false)
+    expect(d.reasonRef).toBe(FREE_TIER_REASON_PREMIUM_DENIED)
+  })
+
+  test('GUARDRAIL: an allowlisted account that is NOT a free-tier key is not made free', async () => {
+    const db = makeDb()
+    // No markAccountFreeTier — the account is allowlisted but never minted a free
+    // key, so it is not a free-tier account and the gate must not fabricate one.
+    const gate = makeFreeTierGate({
+      db,
+      nowIso: fixedNow,
+      internalAccountRefs: new Set(['agent:internal-ops']),
+    })
+    const d = await gate('agent:internal-ops', KHALA_MODEL_ID)
+    expect(d.free).toBe(false)
+    expect(d.reasonRef).toBe('reason.inference_free_tier.account_not_free_tier')
+  })
 })
 
 // ----------------------------------------------------------------------------
@@ -526,6 +643,79 @@ describe('withFreeTierKhala (metering wrapper)', () => {
     })
     await run(wrapped(meteringContext({ requestId: 'within-1' })))
     const outcome = await run(wrapped(meteringContext({ requestId: 'over-1' })))
+    expect(outcome.metered).toBe(true)
+    expect(inner.calls()).toBe(1)
+  })
+
+  test('INTERNAL-ACCOUNT EXEMPT: an allowlisted free key OVER quota STILL records a zero-debit free receipt (inner NOT called)', async () => {
+    const db = makeDb()
+    await run(
+      markAccountFreeTier(db, {
+        accountRef: 'agent:internal-ops',
+        nowIso: fixedNow,
+      }),
+    )
+    const inner = makeInnerSpy()
+    const wrapped = withFreeTierKhala(inner.hook, {
+      db,
+      nowIso: fixedNow,
+      quota: { maxRequestsPerDay: 1, maxTokensPerDay: 1 },
+      internalAccountRefs: new Set(['agent:internal-ops']),
+    })
+    // Already over both ceilings after the first request — but the internal
+    // account stays free, recording a zero-debit free receipt, never charging.
+    await run(
+      wrapped(
+        meteringContext({
+          accountRef: 'agent:internal-ops',
+          requestId: 'ops-within',
+        }),
+      ),
+    )
+    const outcome = await run(
+      wrapped(
+        meteringContext({
+          accountRef: 'agent:internal-ops',
+          requestId: 'ops-over',
+        }),
+      ),
+    )
+    expect(outcome.metered).toBe(false)
+    expect(outcome.receiptRef).toBe(freeTierReceiptRef('ops-over'))
+    expect(inner.calls()).toBe(0)
+  })
+
+  test('EXTERNAL key over quota STILL meters normally when the allowlist holds a different account', async () => {
+    const db = makeDb()
+    await run(
+      markAccountFreeTier(db, {
+        accountRef: 'agent:external-user',
+        nowIso: fixedNow,
+      }),
+    )
+    const inner = makeInnerSpy()
+    const wrapped = withFreeTierKhala(inner.hook, {
+      db,
+      nowIso: fixedNow,
+      quota: { maxRequestsPerDay: 1, maxTokensPerDay: 1_000_000 },
+      internalAccountRefs: new Set(['agent:internal-ops']),
+    })
+    await run(
+      wrapped(
+        meteringContext({
+          accountRef: 'agent:external-user',
+          requestId: 'ext-within',
+        }),
+      ),
+    )
+    const outcome = await run(
+      wrapped(
+        meteringContext({
+          accountRef: 'agent:external-user',
+          requestId: 'ext-over',
+        }),
+      ),
+    )
     expect(outcome.metered).toBe(true)
     expect(inner.calls()).toBe(1)
   })

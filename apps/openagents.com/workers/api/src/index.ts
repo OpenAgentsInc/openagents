@@ -11133,6 +11133,16 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       // the flag off — both seams are simply not wired.
       const freeTierEnabled = isFreeTierEnabled(env.INFERENCE_FREE_TIER_ENABLED)
       const freeTierQuota = resolveFreeTierQuota(env)
+      // INTERNAL/OPS ACCOUNT ALLOWLIST (#6232 / #6298). Parsed ONCE here so the
+      // demand-attribution rule, the free-tier balance-gate quota exemption, and
+      // the free-tier metering-wrapper quota exemption all read the SAME set.
+      // Internal testing accounts on this allowlist are quota-EXEMPT on the free
+      // Khala lane (never hit the per-key daily quota -> never 402 on quota
+      // grounds); external free keys keep the unchanged daily limit. Empty
+      // (unset/blank) => pure no-op.
+      const internalAccountRefs = parseInternalAccountRefs(
+        env.INFERENCE_INTERNAL_ACCOUNT_REFS,
+      )
       const laneArming = resolveSupplyLaneArming(env)
       return handleChatCompletions(request, {
         authenticate: async authRequest => {
@@ -11199,6 +11209,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
                 ? withFreeTierKhala(innerHook, {
                     db: openAgentsDatabase(env),
                     quota: freeTierQuota,
+                    internalAccountRefs,
                   })
                 : innerHook)(
               withReferralAccrual(
@@ -11235,9 +11246,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         // from the worker var; traffic from a listed account is auto-classified
         // `demand_kind=internal` (header-independent), keeping our own dogfood
         // out of the external trace corpus + demand ledger. Empty => no-op.
-        internalAccountRefs: parseInternalAccountRefs(
-          env.INFERENCE_INTERNAL_ACCOUNT_REFS,
-        ),
+        internalAccountRefs,
         codingDelegation: {
           agentStore: makeD1AgentRegistrationStore(openAgentsDatabase(env)),
           pylonStore: makeD1PylonApiStore(openAgentsDatabase(env)),
@@ -11368,6 +11377,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
               checkFreeTier: makeFreeTierGate({
                 db: openAgentsDatabase(env),
                 quota: freeTierQuota,
+                internalAccountRefs,
               }),
             }
           : {}),

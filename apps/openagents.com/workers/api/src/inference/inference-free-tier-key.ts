@@ -648,7 +648,23 @@ export type FreeTierGateDeps = Readonly<{
   db: D1Database
   quota?: FreeTierQuota
   nowIso?: (() => string) | undefined
+  // INTERNAL-ACCOUNT QUOTA EXEMPTION (#6232 / #6298). The env-configured
+  // internal/ops account allowlist (`INFERENCE_INTERNAL_ACCOUNT_REFS`, the SAME
+  // set the demand-attribution rule uses — see `inference-internal-account.ts`).
+  // A free-tier key whose account is on this allowlist is treated as
+  // quota-EXEMPT: it bypasses the balance gate as a free request on the free
+  // Khala lane WITHOUT a per-UTC-day request/token quota check, so our own
+  // sustained internal testing never hits the free-tier daily quota and never
+  // falls through to the 402 on quota grounds. This is a QUOTA exemption ONLY:
+  // a premium / non-Khala model still short-circuits to NOT-free, and an
+  // EXTERNAL (non-allowlist) free key keeps the unchanged 2.5M-token /
+  // 2,000-request daily limit. Default empty/undefined => pure no-op (external
+  // behavior is byte-for-byte unchanged).
+  internalAccountRefs?: ReadonlySet<string> | undefined
 }>
+
+export const FREE_TIER_QUOTA_REASON_INTERNAL_EXEMPT =
+  'reason.inference_free_tier.internal_account_quota_exempt' as const
 
 // A route-level balance-gate bypass: given an account ref + requested model,
 // returns whether the request may bypass the balance gate as a free-tier call.
@@ -662,6 +678,8 @@ export type FreeTierGate = (
 
 export const makeFreeTierGate = (deps: FreeTierGateDeps): FreeTierGate => {
   const nowIso = deps.nowIso ?? currentIsoTimestamp
+  const internalAccountRefs =
+    deps.internalAccountRefs ?? new Set<string>()
   return async (accountRef: string, model: string) => {
     const lane = decideFreeTierLane(model)
     if (!lane.freeLane) {
@@ -673,6 +691,17 @@ export const makeFreeTierGate = (deps: FreeTierGateDeps): FreeTierGate => {
         return {
           free: false,
           reasonRef: 'reason.inference_free_tier.account_not_free_tier',
+        }
+      }
+      // INTERNAL-ACCOUNT QUOTA EXEMPTION. A free-tier key on the internal/ops
+      // allowlist is free on the free Khala lane WITHOUT a daily-quota check, so
+      // sustained internal testing never exhausts the per-key quota and never
+      // falls through to the 402. Scoped to the explicit allowlist only; external
+      // free keys still take the quota path below unchanged.
+      if (internalAccountRefs.has(accountRef)) {
+        return {
+          free: true,
+          reasonRef: FREE_TIER_QUOTA_REASON_INTERNAL_EXEMPT,
         }
       }
       const usageDay = freeTierUsageDay(nowIso())
@@ -711,6 +740,13 @@ export type FreeTierMeteringDeps = Readonly<{
   db: D1Database
   quota?: FreeTierQuota
   nowIso?: (() => string) | undefined
+  // INTERNAL-ACCOUNT QUOTA EXEMPTION (#6232 / #6298). MUST match the gate's
+  // `internalAccountRefs` so the bypass and the zero-debit accrual agree: an
+  // internal/ops account on the allowlist is recorded as a zero-debit free
+  // receipt on the free Khala lane regardless of the per-UTC-day quota (it still
+  // accrues usage for visibility, it just never goes over-quota -> charge). An
+  // external (non-allowlist) free key is unaffected. Default empty => no-op.
+  internalAccountRefs?: ReadonlySet<string> | undefined
 }>
 
 /**
@@ -739,6 +775,7 @@ export const withFreeTierKhala = (
   deps: FreeTierMeteringDeps,
 ): MeteringHook => {
   const nowIso = deps.nowIso ?? currentIsoTimestamp
+  const internalAccountRefs = deps.internalAccountRefs ?? new Set<string>()
   return (context: MeteringContext) =>
     Effect.gen(function* () {
       // Only the free Khala lane is ever free here; premium / non-Khala meter.
@@ -763,7 +800,11 @@ export const withFreeTierKhala = (
             usageDay,
           )
           const quota = decideFreeTierQuota({ quota: deps.quota, usage })
-          if (!quota.withinQuota) {
+          // INTERNAL-ACCOUNT QUOTA EXEMPTION. An internal/ops free-tier key is
+          // free regardless of the daily quota (mirrors the gate); it still
+          // accrues usage for visibility but never goes over-quota -> charge.
+          const internalExempt = internalAccountRefs.has(context.accountRef)
+          if (!internalExempt && !quota.withinQuota) {
             return { accrued: false, free: false as const }
           }
           const accrued = await accrueFreeTierUsage(deps.db, {
