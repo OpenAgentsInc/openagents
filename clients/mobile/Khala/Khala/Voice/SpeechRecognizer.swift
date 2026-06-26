@@ -35,6 +35,17 @@ final class SpeechRecognizer {
         }
     }
 
+    /// Current Speech authorization without prompting.
+    static var isAuthorized: Bool {
+        SFSpeechRecognizer.authorizationStatus() == .authorized
+    }
+
+    /// True once the user has explicitly denied/restricted Speech access.
+    static var isDenied: Bool {
+        let status = SFSpeechRecognizer.authorizationStatus()
+        return status == .denied || status == .restricted
+    }
+
     /// Begin a streaming recognition request. Caller feeds buffers via
     /// `append(_:)` and ends with `finish()`.
     func start() throws {

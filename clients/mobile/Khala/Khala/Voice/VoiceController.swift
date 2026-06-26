@@ -44,9 +44,19 @@ final class VoiceController: ObservableObject {
     private var capturing = false
     private var lastSubmission: Submission?
 
+    /// When set (sim/CI), the system permission prompt is suppressed entirely so
+    /// cold-launch screenshots and smoke runs never show a dialog. Voice capture
+    /// simply no-ops gracefully if it isn't already authorized.
+    private var skipPermissionPrompt: Bool {
+        ProcessInfo.processInfo.environment["KHALA_SKIP_PERMISSIONS"] != nil
+    }
+
     // MARK: - Permissions
 
-    /// Request mic + speech permissions up front. Returns true if both granted.
+    /// Request mic + speech permissions. Returns true if both granted. The
+    /// prompt is DEFERRED to the first push-to-talk press (not launch), so a
+    /// cold launch shows no permission dialog.
+    @discardableResult
     func requestPermissions() async -> Bool {
         let speechOK = await SpeechRecognizer.requestAuthorization()
         let micOK = await withCheckedContinuation { continuation in
@@ -57,20 +67,71 @@ final class VoiceController: ObservableObject {
         return speechOK && micOK
     }
 
+    /// Current combined authorization without prompting.
+    private var permissionsAlreadyAuthorized: Bool {
+        SpeechRecognizer.isAuthorized
+            && AVAudioApplication.shared.recordPermission == .granted
+    }
+
+    /// True once the user has explicitly denied either permission, so we stop
+    /// re-prompting and point them at Settings instead.
+    private var permissionsExplicitlyDenied: Bool {
+        SpeechRecognizer.isDenied
+            || AVAudioApplication.shared.recordPermission == .denied
+    }
+
     // MARK: - Push-to-talk
 
     func pressDown() {
         guard !state.isBusy else { return }
+
+        // Fast path: already authorized -> start immediately, no async hop, no
+        // dialog. This is the common case after the first grant.
+        if permissionsAlreadyAuthorized {
+            beginPress()
+            startCapture()
+            return
+        }
+
+        // Already denied -> graceful, no re-prompt.
+        if permissionsExplicitlyDenied {
+            state = .error("Enable mic & speech access in Settings to talk.")
+            return
+        }
+
+        // In sim/CI we never raise the system dialog.
+        if skipPermissionPrompt {
+            state = .error("Voice is off in this build.")
+            return
+        }
+
+        // Not yet determined and the user is actively asking to talk: this is the
+        // RIGHT moment to request. Request lazily, then start capture if granted.
+        Task { @MainActor in
+            let granted = await requestPermissions()
+            if granted {
+                beginPress()
+                startCapture()
+            } else {
+                state = .error("Enable mic & speech access in Settings to talk.")
+            }
+        }
+    }
+
+    /// Reset per-capture state at the start of a press.
+    private func beginPress() {
         pressStart = Date()
         response = ""
         transcript = ""
         requestError = nil
-        startCapture()
     }
 
     func pressUp() {
         let held = pressStart.map { Date().timeIntervalSince($0) } ?? 0
         pressStart = nil
+        // If capture never started (permission denied / still resolving), there
+        // is nothing to process; leave any error state intact.
+        guard capturing else { return }
         let tooShort = held < minHoldSeconds
         Task { await stopCaptureAndProcess(discard: tooShort) }
     }

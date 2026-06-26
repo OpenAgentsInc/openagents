@@ -16,7 +16,6 @@ struct RootView: View {
     @State private var showSettings = false
     @State private var showAbout = false
     @State private var hasKey = KeychainStore.hasAPIKey
-    @State private var permissionsRequested = false
     @State private var selection: Conversation?
     /// The streaming chat view model for the active conversation. Owned here so
     /// the demo/suggestion auto-send paths and the voice transcript handoff all
@@ -201,15 +200,12 @@ struct RootView: View {
             hasKey = true
         }
 
-        guard !permissionsRequested else { return }
-        permissionsRequested = true
-        // Demo/test hook (env-gated; no-op in normal use): skip the mic/speech
-        // permission prompt so launch-render screenshots and CI smoke runs show
-        // the chat surface without the system dialog. Real users still get the
-        // prompt on first push-to-talk use.
-        if ProcessInfo.processInfo.environment["KHALA_SKIP_PERMISSIONS"] == nil {
-            _ = await voice.requestPermissions()
-        }
+        // NOTE: mic/speech permission is intentionally NOT requested here. A
+        // cold launch must show the chat surface with NO permission dialog; the
+        // prompt is deferred to the FIRST push-to-talk press (see
+        // `VoiceController.pressDown()`), so users only see it when they
+        // actually use voice. The launch-time request used to pop a Speech
+        // Recognition dialog on every cold start.
 
         // Demo/test hook (env-gated; no-op in normal use): auto-send a prompt on
         // launch so the end-to-end streaming Khala round-trip is verifiable on a
