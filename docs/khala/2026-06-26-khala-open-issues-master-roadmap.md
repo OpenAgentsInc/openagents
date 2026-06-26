@@ -67,6 +67,10 @@ operator view of what remains, not a public product claim.
   steering blockers ahead of the next phase item when the blocker prevents honest
   delegation, token attribution, or trace verification. This does not reorder the
   product backlog; it keeps the execution lane usable.
+- Pylon auth recovery landed as `ab02d4efaa`. Live delegation now uses fresh
+  Pylon ref `pylon.081964280c7710ad0820` after the previous live ref was found
+  to be tied to a stale credential; treat older-ref evidence as historical and
+  use the fresh ref for current delegation checks.
 - Pylon/Codex steering is a usable lane as of `7057e61e0b`:
   `assignment run-no-spend` auto-selects a ready connected Codex account when no
   explicit account is provided, while still supporting `--account` /
