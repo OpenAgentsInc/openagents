@@ -1093,6 +1093,16 @@ type OpenAgentsReceipt = Readonly<{
   verified?: boolean | undefined
   receipt?: string | undefined
   receipt_url?: string | undefined
+  billing?:
+    | Readonly<{
+        mode:
+          | 'receipt_backed'
+          | 'no_debit'
+          | 'zero_charge'
+        reason?: 'operator_exempt_or_unmetered' | undefined
+        receipt_required: boolean
+      }>
+    | undefined
   route?: 'coding' | undefined
   workers?: ReadonlyArray<string> | undefined
   verification_receipt?: string | undefined
@@ -1138,6 +1148,22 @@ type OpenAgentsReceipt = Readonly<{
   output_spec?: AutopilotConciergeOutputSpec | undefined
   tools?: ReadonlyArray<ConciergeToolDeclaration> | undefined
 }>
+
+const billingDisclosureFor = (
+  metering: MeteringOutcome,
+): NonNullable<OpenAgentsReceipt['billing']> => {
+  if (metering.zeroCharge === true) {
+    return { mode: 'zero_charge', receipt_required: false }
+  }
+  if (metering.receiptRef !== null) {
+    return { mode: 'receipt_backed', receipt_required: true }
+  }
+  return {
+    mode: 'no_debit',
+    reason: 'operator_exempt_or_unmetered',
+    receipt_required: false,
+  }
+}
 
 const publicInferenceReceiptUrl = (receiptRef: string): string =>
   `/api/public/inference/receipts/${encodeURIComponent(receiptRef)}`
@@ -1478,6 +1504,7 @@ const openAgentsReceiptForResult = (
       : undefined
     return {
       ...base,
+      billing: billingDisclosureFor(input.metering),
       routing,
       telemetry,
       verification: 'none' as const,
@@ -1553,6 +1580,7 @@ const openAgentsReceiptForResult = (
 
   return {
     ...base,
+    billing: billingDisclosureFor(input.metering),
     executed: verdict.executed,
     receipt,
     ...(input.metering.receiptRef === null

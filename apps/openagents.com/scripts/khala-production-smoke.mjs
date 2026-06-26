@@ -176,6 +176,17 @@ const receiptPathFrom = openagents => {
   return null
 }
 
+const isOperatorCreditReceiptRef = value =>
+  typeof value === 'string' &&
+  value.toLowerCase().includes('receipt.inference.operator_credit.')
+
+const isOperatorExemptZeroDebitOpenAgents = openagents =>
+  openagents?.billing?.mode === 'no_debit' ||
+  isOperatorCreditReceiptRef(openagents?.receipt) ||
+  isOperatorCreditReceiptRef(openagents?.receipt_url) ||
+  (Array.isArray(openagents?.telemetry?.blockerRefs) &&
+    openagents.telemetry.blockerRefs.includes('cost_not_measured'))
+
 const summarizeGatewayReadiness = readiness => ({
   hiddenModelCount: readiness?.hiddenModelCount,
   lanes: Array.isArray(readiness?.lanes)
@@ -284,6 +295,7 @@ const summarizeReceipt = (receipt, url) => ({
 })
 
 const verifyReceiptProof = async ({
+  allowOperatorExemptZeroDebit = false,
   backingExpectation,
   check,
   fetchImpl,
@@ -292,6 +304,24 @@ const verifyReceiptProof = async ({
   origin,
 }) => {
   const receiptPath = receiptPathFrom(openagents)
+  const operatorExemptZeroDebit =
+    allowOperatorExemptZeroDebit &&
+    isOperatorExemptZeroDebitOpenAgents(openagents)
+  if (receiptPath === null && operatorExemptZeroDebit) {
+    check(`${label}_receipt_ref_present`, true, {
+      billingMode: 'operator_exempt_zero_debit',
+      note: 'skipped (operator-exempt, no billable receipt)',
+      skipped: true,
+    })
+    return {
+      billingMode: 'operator_exempt_zero_debit',
+      note: 'skipped (operator-exempt, no billable receipt)',
+      receiptRef: null,
+      skipped: true,
+      url: null,
+    }
+  }
+
   check(`${label}_receipt_ref_present`, receiptPath !== null, { receiptPath })
 
   const receiptResult = await requestJson(fetchImpl, origin, receiptPath)
@@ -412,6 +442,9 @@ export const parseArgs = (argv, env = process.env) => {
       env.OPENAGENTS_KHALA_EXPECTED_SUPPLY_LANE || defaultExpectedSupplyLane,
     expectedWorker:
       env.OPENAGENTS_KHALA_EXPECTED_WORKER || defaultExpectedWorker,
+    expectOperatorExemptZeroDebit: truthy(
+      env.OPENAGENTS_KHALA_SMOKE_OPERATOR_EXEMPT_ZERO_DEBIT,
+    ),
     forbiddenPublicModelIds: [
       ...defaultForbiddenPublicModelIds,
       ...csv(env.OPENAGENTS_KHALA_FORBIDDEN_PUBLIC_MODEL_IDS),
@@ -448,6 +481,8 @@ export const parseArgs = (argv, env = process.env) => {
       }
     } else if (value === '--approve-live-spend') {
       options.approveLiveSpend = true
+    } else if (value === '--operator-exempt-zero-debit') {
+      options.expectOperatorExemptZeroDebit = true
     } else if (value === '--readiness-only') {
       options.readinessOnly = true
     } else if (value === '--help' || value === '-h') {
@@ -475,6 +510,8 @@ Options:
   --expected-served-model-contains <text>  Defaults to deepseek-v4-flash.
   --forbid-public-model <model>            Add a model id that must not appear in /v1/models.
   --approve-live-spend                     Required before authenticated completion calls.
+  --operator-exempt-zero-debit             Treat missing billable receipt refs as skipped only when
+                                           the response explicitly shows the zero-debit exemption path.
   --readiness-only                         Check readiness + public model catalog without spending.
 
 This smoke verifies /v1/gateway/readiness, /v1/models, nonstreaming chat,
@@ -492,6 +529,7 @@ export const runKhalaProductionSmoke = async ({
   expectedSelectedReplicaRef = '',
   expectedSupplyLane = defaultExpectedSupplyLane,
   expectedWorker = defaultExpectedWorker,
+  expectOperatorExemptZeroDebit = false,
   fetchImpl = globalThis.fetch,
   forbiddenSelectedReplicaRefs = [],
   forbiddenPublicModelIds = defaultForbiddenPublicModelIds,
@@ -623,6 +661,7 @@ export const runKhalaProductionSmoke = async ({
     )
   }
   const nonstreamReceipt = await verifyReceiptProof({
+    allowOperatorExemptZeroDebit: expectOperatorExemptZeroDebit,
     backingExpectation,
     check,
     fetchImpl,
@@ -676,6 +715,7 @@ export const runKhalaProductionSmoke = async ({
     )
   }
   const streamReceipt = await verifyReceiptProof({
+    allowOperatorExemptZeroDebit: expectOperatorExemptZeroDebit,
     backingExpectation,
     check,
     fetchImpl,

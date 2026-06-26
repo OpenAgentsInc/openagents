@@ -1607,16 +1607,25 @@ describe('POST /v1/chat/completions', () => {
       ),
     )
     const nonStreamedBody = (await nonStreamed.json()) as {
-      openagents?: { telemetry?: Record<string, unknown> }
+      openagents?: {
+        billing?: Record<string, unknown>
+        telemetry?: Record<string, unknown>
+      }
     }
     // The PRIOR (non-telemetry) disclosure fields are identical streamed vs
     // non-streamed — and byte-for-byte the prior contract (non-breaking).
     const stripAdditiveReceiptFields = (
       block:
-        | { routing?: unknown; supply_lane?: unknown; telemetry?: unknown }
+        | {
+            billing?: unknown
+            routing?: unknown
+            supply_lane?: unknown
+            telemetry?: unknown
+          }
         | undefined,
     ): Record<string, unknown> => {
       const {
+        billing: _billing,
         routing: _routing,
         supply_lane: _supply_lane,
         telemetry: _telemetry,
@@ -1627,20 +1636,35 @@ describe('POST /v1/chat/completions', () => {
     expect(
       stripAdditiveReceiptFields(
         finalOpenagents as
-          | { routing?: unknown; supply_lane?: unknown; telemetry?: unknown }
+          | {
+              billing?: unknown
+              routing?: unknown
+              supply_lane?: unknown
+              telemetry?: unknown
+            }
           | undefined,
       ),
     ).toEqual(
       stripAdditiveReceiptFields(
         nonStreamedBody.openagents as
-          | { routing?: unknown; supply_lane?: unknown; telemetry?: unknown }
+          | {
+              billing?: unknown
+              routing?: unknown
+              supply_lane?: unknown
+              telemetry?: unknown
+            }
           | undefined,
       ),
     )
     expect(
       stripAdditiveReceiptFields(
         finalOpenagents as
-          | { routing?: unknown; supply_lane?: unknown; telemetry?: unknown }
+          | {
+              billing?: unknown
+              routing?: unknown
+              supply_lane?: unknown
+              telemetry?: unknown
+            }
           | undefined,
       ),
     ).toEqual({
@@ -1662,6 +1686,19 @@ describe('POST /v1/chat/completions', () => {
       schemaVersion: 'openagents.khala.telemetry.v1',
       totalWallClockMs: 0,
       verificationClass: 'none',
+    })
+    expect(
+      (finalOpenagents as { billing?: Record<string, unknown> } | undefined)
+        ?.billing,
+    ).toEqual({
+      mode: 'no_debit',
+      reason: 'operator_exempt_or_unmetered',
+      receipt_required: false,
+    })
+    expect(nonStreamedBody.openagents?.billing).toEqual({
+      mode: 'no_debit',
+      reason: 'operator_exempt_or_unmetered',
+      receipt_required: false,
     })
     expect(nonStreamedBody.openagents?.telemetry).toMatchObject({
       requestClass: 'async_job',
@@ -3372,7 +3409,10 @@ describe('POST /v1/chat/completions — telemetry scorecard', () => {
       .map(
         payload =>
           JSON.parse(payload) as {
-            openagents?: { telemetry?: Record<string, unknown> }
+            openagents?: {
+              billing?: Record<string, unknown>
+              telemetry?: Record<string, unknown>
+            }
           },
       )
     const finalBlock = frames[frames.length - 1]?.openagents
@@ -3399,6 +3439,10 @@ describe('POST /v1/chat/completions — telemetry scorecard', () => {
     expect(telemetry.detailRef).toBe(
       '/api/public/inference/receipts/receipt.inference.charge.chatcmpl-telemetry',
     )
+    expect(finalBlock?.billing).toEqual({
+      mode: 'receipt_backed',
+      receipt_required: true,
+    })
 
     // The block carries the headline prefix-caching metric (cachedInputTokens,
     // book P0-2 / #6084) alongside the token counts — here honestly not_measured

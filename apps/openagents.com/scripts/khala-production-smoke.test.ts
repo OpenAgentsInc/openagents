@@ -234,6 +234,98 @@ describe('Khala production smoke', () => {
     ).rejects.toThrow('nonstream_receipt_ref_present failed')
   })
 
+  test('skips missing billable receipt refs only for explicit operator-exempt zero-debit responses', async () => {
+    const openagents = {
+      requested_model: 'openagents/khala',
+      billing: {
+        mode: 'no_debit',
+        reason: 'operator_exempt_or_unmetered',
+        receipt_required: false,
+      },
+      served_model: 'accounts/fireworks/models/deepseek-v4-flash',
+      supply_lane: 'fireworks',
+      worker: 'fireworks',
+    }
+    const fetchImpl = vi.fn(
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const url = new URL(
+          input instanceof Request ? input.url : String(input),
+        )
+
+        if (url.pathname === '/v1/gateway/readiness') {
+          return json({ servableModelCount: 1, status: 'ready' })
+        }
+
+        if (url.pathname === '/v1/models') {
+          return json({ data: [{ id: 'openagents/khala' }] })
+        }
+
+        if (url.pathname === '/v1/chat/completions') {
+          const body = JSON.parse(String(init?.body || '{}')) as {
+            stream?: boolean
+          }
+
+          if (body.stream) {
+            return sse([
+              JSON.stringify({
+                choices: [
+                  { delta: { content: 'READY' }, finish_reason: null },
+                ],
+                openagents,
+              }),
+            ])
+          }
+
+          return json({
+            choices: [{ message: { content: 'READY', role: 'assistant' } }],
+            id: 'chatcmpl_operator_exempt',
+            model: 'openagents/khala',
+            openagents,
+            usage: { total_tokens: 8 },
+          })
+        }
+
+        return json({ error: 'not found' }, { status: 404 })
+      },
+    )
+
+    const output = await smoke.runKhalaProductionSmoke({
+      approveLiveSpend: true,
+      expectOperatorExemptZeroDebit: true,
+      fetchImpl,
+      token: 'oa_agent_test',
+    })
+
+    expect(output.ok).toBe(true)
+    expect(output.nonstream.receipt).toMatchObject({
+      billingMode: 'operator_exempt_zero_debit',
+      note: 'skipped (operator-exempt, no billable receipt)',
+      receiptRef: null,
+      skipped: true,
+    })
+    expect(output.stream.receipt).toMatchObject({
+      billingMode: 'operator_exempt_zero_debit',
+      skipped: true,
+    })
+    expect(
+      output.checks.find(
+        (check: { name: string }) =>
+          check.name === 'nonstream_receipt_ref_present',
+      ),
+    ).toMatchObject({
+      details: {
+        billingMode: 'operator_exempt_zero_debit',
+        skipped: true,
+      },
+      passed: true,
+    })
+    expect(
+      fetchImpl.mock.calls.some(
+        call => new URL(String(call[0])).pathname.startsWith('/receipts/'),
+      ),
+    ).toBe(false)
+  })
+
   test('fails when the dereferenced receipt backing evidence mismatches', async () => {
     const fetchImpl = vi.fn(async (input: string | URL | Request) => {
       const url = new URL(input instanceof Request ? input.url : String(input))

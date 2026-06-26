@@ -333,6 +333,107 @@ describe('Khala GLM REAP production smoke', () => {
     })
   })
 
+  test('operator-exempt zero-debit mode skips missing billable receipt refs but keeps GLM serving checks', async () => {
+    let counterReads = 0
+    const glmOpenAgents = {
+      requested_model: 'openagents/khala',
+      billing: {
+        mode: 'no_debit',
+        reason: 'operator_exempt_or_unmetered',
+        receipt_required: false,
+      },
+      routing: {
+        selected_replica_id: 'primary',
+        selected_replica_ref: 'replica.hydralisk.glm_52_reap_504b.primary',
+      },
+      served_model: 'openagents/glm-5.2-reap-504b',
+      supply_lane: 'hydralisk',
+      worker: 'hydralisk-vllm-glm-5p2-reap-504b',
+    }
+    const fetchImpl = vi.fn(
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const url = new URL(
+          input instanceof Request ? input.url : String(input),
+        )
+
+        if (url.pathname === '/api/public/khala-tokens-served') {
+          counterReads += 1
+          return json({ tokensServed: counterReads === 1 ? 1000 : 1012 })
+        }
+
+        if (url.pathname === '/api/v1/gateway/readiness') {
+          return json({ servableModelCount: 1, status: 'ready' })
+        }
+
+        if (url.pathname === '/api/v1/models') {
+          return json({ data: [{ id: 'openagents/khala' }], object: 'list' })
+        }
+
+        if (url.pathname === '/api/v1/chat/completions') {
+          const body = JSON.parse(String(init?.body || '{}')) as {
+            stream?: boolean
+          }
+
+          if (body.stream) {
+            return sse([
+              JSON.stringify({
+                choices: [
+                  { delta: { content: 'READY' }, finish_reason: null },
+                ],
+                openagents: glmOpenAgents,
+              }),
+            ])
+          }
+
+          return json({
+            choices: [{ message: { content: 'READY', role: 'assistant' } }],
+            id: 'chatcmpl_glm_operator_exempt',
+            model: 'openagents/khala',
+            openagents: glmOpenAgents,
+            usage: { total_tokens: 12 },
+          })
+        }
+
+        return json({ error: 'not found', path: url.pathname }, { status: 404 })
+      },
+    )
+
+    const output = await smoke.runKhalaGlmReapProductionSmoke({
+      approveLiveSpend: true,
+      counterPollMs: 1,
+      env: armedEnv,
+      expectOperatorExemptZeroDebit: true,
+      fetchImpl,
+      sleep: () => Promise.resolve(),
+      token: 'oa_agent_test',
+    })
+
+    expect(output).toMatchObject({
+      counter: {
+        delta: 12,
+        requiredDelta: 9,
+        servedTokens: 12,
+      },
+      ok: true,
+      skipped: false,
+    })
+    expect(output.nonstream.receipt).toMatchObject({
+      billingMode: 'operator_exempt_zero_debit',
+      note: 'skipped (operator-exempt, no billable receipt)',
+      skipped: true,
+    })
+    expect(output.nonstream.openagents).toMatchObject({
+      served_model: 'openagents/glm-5.2-reap-504b',
+      supply_lane: 'hydralisk',
+      worker: 'hydralisk-vllm-glm-5p2-reap-504b',
+    })
+    expect(
+      fetchImpl.mock.calls.some(
+        call => new URL(String(call[0])).pathname.startsWith('/receipts/'),
+      ),
+    ).toBe(false)
+  })
+
   test('checks the whole named pool while proving the reserved primary receives no smoke traffic', async () => {
     let counterReads = 0
     const fetchImpl = vi.fn(
