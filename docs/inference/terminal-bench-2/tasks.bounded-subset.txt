@@ -1,0 +1,35 @@
+# Terminal-Bench 2.0 — fixed bounded subset for the Khala black-box runner (#6253)
+#
+# Purpose: a SMALL, DETERMINISTIC, REPRODUCIBLE slice of the official 89-task
+# Terminal-Bench 2.0 set, chosen so an isolated local run can finish in a
+# bounded window without colliding with the owner-armed full run on Hydralisk.
+#
+# This is NOT the decision-grade denominator. The decision-grade full 89-task
+# numbers come from the owner-armed Harbor run on Hydralisk (see the
+# replication doc). This subset only measures whether the *public Khala API*
+# (consumed as a black box at https://openagents.com/api/v1, model
+# openagents/khala) can drive a terminal coding agent end-to-end through the
+# real verifier, and where it currently breaks.
+#
+# Selection rule (deterministic, documented for reproducibility):
+#   - the first task by sorted name in each of several capability families,
+#     skipping the heaviest VM / multi-GB-image tasks (install-windows-3.11,
+#     qemu-*, make-doom-for-mips, compile-compcert, build-pov-ray) that are
+#     impractical for a bounded local container run.
+#   - one task per line; lines starting with '#' are comments.
+#
+# Run with the sibling runner:
+#   docs/inference/terminal-bench-2/run-khala-tb2.sh --tasks-file \
+#     docs/inference/terminal-bench-2/tasks.bounded-subset.txt --concurrent 2
+#
+# To run the FULL official set instead, pass --all (runs all 89; only do this
+# on owned capacity, coordinated so it does not collide with the live run).
+
+fix-git
+git-multibranch
+regex-log
+log-summary-date-ranges
+nginx-request-logging
+sqlite-db-truncate
+count-dataset-tokens
+openssl-selfsigned-cert
