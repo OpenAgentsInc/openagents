@@ -102,6 +102,16 @@
     "HYDRALISK_GLM_52_REAP_504B_COST_PROFILE_REF": "cost_profile.hydralisk.glm_52_reap_504b.g4_4g.spot.2026_06_25",
     "HYDRALISK_GLM_52_REAP_504B_PREFLIGHT_REF": "preflight.hydralisk.glm_52_reap_504b.g4.20260625T020559Z",
     "HYDRALISK_GLM_52_REAP_504B_RECEIPT_REF": "receipt.hydralisk.glm_52_reap_504b.g4.hydralisk-run-36f1856baa364d7bb42bd08354a2aadb",
+    // Explicit `primary` replica arming. With REPLICA_IDS set, the #6259 smoke's
+    // pool resolver does NOT fall back to the legacy unsuffixed keys for the
+    // primary replica (unlike model-serving-policy.ts, which does), so the
+    // PRIMARY_* named base_url/bearer secrets + these refs keep the Worker and
+    // the smoke in agreement that both pool replicas are armed and eligible.
+    "HYDRALISK_GLM_52_REAP_504B_PRIMARY_ENABLED": "ready",
+    "HYDRALISK_GLM_52_REAP_504B_PRIMARY_PROFILE_REF": "profile.hydralisk.glm_52_reap_504b.g4_tp4_minp.v1",
+    "HYDRALISK_GLM_52_REAP_504B_PRIMARY_COST_PROFILE_REF": "cost_profile.hydralisk.glm_52_reap_504b.g4_4g.spot.2026_06_25",
+    "HYDRALISK_GLM_52_REAP_504B_PRIMARY_PREFLIGHT_REF": "preflight.hydralisk.glm_52_reap_504b.g4.20260625T020559Z",
+    "HYDRALISK_GLM_52_REAP_504B_PRIMARY_RECEIPT_REF": "receipt.hydralisk.glm_52_reap_504b.g4.hydralisk-run-36f1856baa364d7bb42bd08354a2aadb",
     // Per-replica preflight/receipt evidence for the second pool replica
     // (true 4x G4 Spot, cloned read-only model disk — hydralisk second-endpoint).
     "HYDRALISK_GLM_52_REAP_504B_REPLICA_B_ENABLED": "ready",

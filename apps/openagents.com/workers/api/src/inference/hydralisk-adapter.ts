@@ -299,12 +299,6 @@ const firstChoice = (raw: unknown): Record<string, unknown> | undefined => {
   return recordFromUnknown(choices[0])
 }
 
-const servedModelFrom = (raw: unknown, fallback: string): string => {
-  const record = recordFromUnknown(raw)
-  const model = record?.['model']
-  return typeof model === 'string' && model.length > 0 ? model : fallback
-}
-
 const parseSseData = (line: string): Record<string, unknown> | undefined => {
   const trimmed = line.trim()
   if (!trimmed.startsWith('data:')) {
@@ -348,7 +342,6 @@ const eventForFrame = (
     toolCallDeltas?: InferenceStreamEvent['toolCallDeltas']
     finishReason?: string
     usage?: InferenceUsage
-    servedModel?: string
   } = { contentDelta: deltaContentOf(frame) }
   const toolCallDeltas = toolCallDeltasOf(frame)
   if (toolCallDeltas !== undefined) {
@@ -362,10 +355,6 @@ const eventForFrame = (
   if (usage !== undefined) {
     event.usage = usage
   }
-  const model = frame['model']
-  if (typeof model === 'string' && model.length > 0) {
-    event.servedModel = model
-  }
   return event
 }
 
@@ -376,7 +365,10 @@ const makeSseSource = (
 ): InferenceStreamSource => {
   let finishReason: string | undefined
   let usage: InferenceUsage | undefined
-  let servedModel: string | undefined = fallbackModel
+  // The terminal served-model disclosure is the canonical lane id passed in as
+  // `fallbackModel`, never the internal vLLM served-model-name in the frames
+  // (#6259). Frame events are still yielded unchanged for the client SSE.
+  const servedModel: string | undefined = fallbackModel
 
   const frames = (async function* (): AsyncIterable<InferenceStreamEvent> {
     const reader = body.getReader()
@@ -401,9 +393,6 @@ const makeSseSource = (
             if (event.usage !== undefined) {
               usage = event.usage
             }
-            if (event.servedModel !== undefined) {
-              servedModel = event.servedModel
-            }
             yield event
           }
           newlineIndex = buffer.indexOf('\n')
@@ -417,9 +406,6 @@ const makeSseSource = (
             }
             if (event.usage !== undefined) {
               usage = event.usage
-            }
-            if (event.servedModel !== undefined) {
-              servedModel = event.servedModel
             }
             yield event
           }
@@ -471,7 +457,12 @@ const toResult = (
   return Effect.succeed({
     content,
     finishReason,
-    servedModel: servedModelFrom(raw, request.model),
+    // Disclose the canonical OpenAgents lane id (e.g. `openagents/glm-5.2-reap-504b`),
+    // not the internal vLLM served-model-name (e.g. `glm-5.2-reap-504b-g4`). The
+    // public served-model disclosure (#6259) and usage receipts must name our
+    // model id, never the private infra name. `config.upstreamModel` is exactly
+    // the id we sent upstream (line ~181).
+    servedModel: config.upstreamModel ?? request.model,
     ...(toolCalls === undefined || toolCalls.length === 0 ? {} : { toolCalls }),
     usage,
   })
@@ -521,11 +512,12 @@ const streamChunks = (
 
     const contentChunks: Array<InferenceStreamChunk> = []
     let finishReason: string | undefined
-    let servedModel = request.model
+    // Public disclosure uses our canonical lane id, not the raw vLLM
+    // served-model-name returned in the stream frames (#6259).
+    const servedModel = config.upstreamModel ?? request.model
     let usage: InferenceUsage | undefined
 
     for (const frame of frames) {
-      servedModel = servedModelFrom(frame, servedModel)
       const event = eventForFrame(frame)
       if (
         event.contentDelta !== '' ||
@@ -543,9 +535,6 @@ const streamChunks = (
       }
       if (event.usage !== undefined) {
         usage = event.usage
-      }
-      if (event.servedModel !== undefined) {
-        servedModel = event.servedModel
       }
     }
 
@@ -584,7 +573,7 @@ export const makeHydraliskVllmAdapter = (
           }),
         )
       }
-      return makeSseSource(response.body, request.model)
+      return makeSseSource(response.body, config.upstreamModel ?? request.model)
     }),
 })
 

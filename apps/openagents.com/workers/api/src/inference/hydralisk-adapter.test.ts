@@ -93,6 +93,11 @@ describe('hydralisk vLLM adapter', () => {
 
     expect(adapter.id).toBe(GLM_POOL_ADAPTER_ID)
     expect(result.content).toBe('READY')
+    // Public served-model disclosure is the canonical lane id, NOT the raw vLLM
+    // served-model-name that the upstream returns in the response body (#6259).
+    // The fixture upstream returns `openai/gpt-oss-20b`; disclosure must be the
+    // configured `openagents/glm-5.2-reap-504b`.
+    expect(result.servedModel).toBe('openagents/glm-5.2-reap-504b')
     expect(result.adapterRouteMetadata).toMatchObject({
       replicaFallbackReason: null,
       replicaHealthScore: 1,
