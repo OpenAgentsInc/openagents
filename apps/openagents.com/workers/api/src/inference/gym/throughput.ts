@@ -230,6 +230,58 @@ export type GymThroughputDegradationPoint = Readonly<{
   reason: GymThroughputDegradationReason
 }>
 
+export const GymThroughputRolloutBlocker = S.Literals([
+  'missing_optimization_sweep',
+  'missing_baseline_max_num_seqs_2_measurement',
+  'missing_candidate_measurement',
+  'missing_measured_itl_p90',
+  'missing_measured_aggregate_tps',
+  'interactive_itl_slo_exceeded',
+  'no_measured_throughput_lift',
+])
+export type GymThroughputRolloutBlocker =
+  typeof GymThroughputRolloutBlocker.Type
+
+export const GymThroughputRolloutVllmFlag = S.Struct({
+  name: S.String,
+  value: S.optional(S.String),
+})
+export type GymThroughputRolloutVllmFlag =
+  typeof GymThroughputRolloutVllmFlag.Type
+
+export const GymThroughputRolloutSelection = S.Struct({
+  label: S.String,
+  maxNumSeqs: S.Number.check(S.isBetween({ minimum: 1, maximum: 4096 })),
+  concurrency: S.Number.check(S.isBetween({ minimum: 1, maximum: 64 })),
+  aggregateTps: S.Number,
+  baselineAggregateTps: S.Number,
+  aggregateTpsLiftPercent: S.Number,
+  interTokenLatencyP90Ms: S.Number,
+  baselineInterTokenLatencyP90Ms: S.Number,
+  ttftP90Ms: ThroughputMeasuredNumber,
+  prefixCachingEnabled: S.Boolean,
+  chunkedPrefillEnabled: S.Boolean,
+  lowBatchSpeculativeDecoding: GymThroughputLowBatchSpeculativeDecodingPolicy,
+  vllmFlags: S.Array(GymThroughputRolloutVllmFlag),
+})
+export type GymThroughputRolloutSelection =
+  typeof GymThroughputRolloutSelection.Type
+
+export const GymThroughputRolloutRecommendation = S.Struct({
+  schemaVersion: S.Literal(
+    'openagents.gym.throughput_rollout_recommendation.v1',
+  ),
+  environmentRef: S.Literal(GYM_THROUGHPUT_ENVIRONMENT_REF),
+  sweepRef: S.String,
+  target: GymThroughputTarget,
+  publicSafe: S.Literal(true),
+  decisionGrade: S.Boolean,
+  selection: S.Union([GymThroughputRolloutSelection, S.Null]),
+  blockers: S.Array(GymThroughputRolloutBlocker),
+})
+export type GymThroughputRolloutRecommendation =
+  typeof GymThroughputRolloutRecommendation.Type
+
 export type GymThroughputLaneReport = Readonly<{
   lane: BenchmarkLane
   engine: BenchmarkEngine
@@ -344,6 +396,86 @@ const firstMeasuredLatencyPoint = (
 ): GymThroughputConcurrencyPoint | null =>
   points.find(point => point.totalWallClockMs.p90 !== null) ?? null
 
+const actualLeverForPoint = (
+  point: GymThroughputConcurrencyPoint,
+): GymThroughputLeverActual | null =>
+  point.actualThroughputLevers.find(
+    lever =>
+      lever.quantization.gateStatus === 'passed' &&
+      lever.kvHeadroomGate.gateStatus === 'passed',
+  ) ?? null
+
+const vllmFlagsForLever = (
+  lever: GymThroughputLeverActual,
+): ReadonlyArray<GymThroughputRolloutVllmFlag> => {
+  const baseFlags: Array<GymThroughputRolloutVllmFlag> = [
+    { name: '--max-num-seqs', value: String(lever.maxNumSeqs) },
+  ]
+  if (lever.enablePrefixCaching) {
+    baseFlags.push({ name: '--enable-prefix-caching' })
+  }
+  if (lever.enableChunkedPrefill) {
+    baseFlags.push({ name: '--enable-chunked-prefill' })
+  }
+  if (lever.lowBatchSpeculativeDecoding.policy === 'enabled_below_batch') {
+    baseFlags.push({
+      name: '--speculative-config',
+      value: JSON.stringify({
+        method: lever.lowBatchSpeculativeDecoding.mode,
+        disable_at_batch_size:
+          lever.lowBatchSpeculativeDecoding.maxBatchSize + 1,
+      }),
+    })
+  }
+  return baseFlags
+}
+
+const pointWithMeasuredBaseline = (
+  points: ReadonlyArray<GymThroughputConcurrencyPoint>,
+): GymThroughputConcurrencyPoint | null =>
+  points.find(point => {
+    const lever = actualLeverForPoint(point)
+    return (
+      lever?.maxNumSeqs === 2 &&
+      point.aggregateTps !== null &&
+      point.interTokenLatencyMs.p90 !== null
+    )
+  }) ?? null
+
+const rolloutCandidateSelection = (input: {
+  baseline: GymThroughputConcurrencyPoint
+  point: GymThroughputConcurrencyPoint
+  lever: GymThroughputLeverActual
+}): GymThroughputRolloutSelection | null => {
+  if (
+    input.point.aggregateTps === null ||
+    input.baseline.aggregateTps === null ||
+    input.point.interTokenLatencyMs.p90 === null ||
+    input.baseline.interTokenLatencyMs.p90 === null
+  ) {
+    return null
+  }
+  return {
+    label: input.lever.label,
+    maxNumSeqs: input.lever.maxNumSeqs,
+    concurrency: input.point.concurrency,
+    aggregateTps: input.point.aggregateTps,
+    baselineAggregateTps: input.baseline.aggregateTps,
+    aggregateTpsLiftPercent:
+      ((input.point.aggregateTps - input.baseline.aggregateTps) /
+        input.baseline.aggregateTps) *
+      100,
+    interTokenLatencyP90Ms: input.point.interTokenLatencyMs.p90,
+    baselineInterTokenLatencyP90Ms: input.baseline.interTokenLatencyMs.p90,
+    ttftP90Ms:
+      input.point.ttftMs.p90 === null ? NOT_MEASURED : input.point.ttftMs.p90,
+    prefixCachingEnabled: input.lever.enablePrefixCaching,
+    chunkedPrefillEnabled: input.lever.enableChunkedPrefill,
+    lowBatchSpeculativeDecoding: input.lever.lowBatchSpeculativeDecoding,
+    vllmFlags: [...vllmFlagsForLever(input.lever)],
+  }
+}
+
 export const detectThroughputDegradation = (
   points: ReadonlyArray<GymThroughputConcurrencyPoint>,
   thresholdMultiplier: number,
@@ -371,6 +503,125 @@ export const detectThroughputDegradation = (
   }
 
   return { concurrency: null, reason: 'not_detected' }
+}
+
+export const recommendGymThroughputRollout = (input: {
+  report: GymThroughputReport
+  lane: BenchmarkLane
+  maxInteractiveItlP90Multiplier: number
+}): GymThroughputRolloutRecommendation => {
+  const lane = input.report.lanes.find(row => row.lane === input.lane)
+  const sweepRef =
+    lane?.optimizationSweep?.sweepRef ?? 'sweep.gym.throughput.missing'
+  const target =
+    lane === undefined
+      ? {
+          lane: input.lane,
+          engine: 'vllm' as const,
+          modelRef: 'missing',
+        }
+      : {
+          lane: lane.lane,
+          engine: lane.engine,
+          modelRef: lane.modelRef,
+        }
+  const missingSweepBlockers: ReadonlyArray<GymThroughputRolloutBlocker> =
+    lane?.optimizationSweep === undefined || lane.optimizationSweep === null
+      ? ['missing_optimization_sweep']
+      : []
+  const baseline =
+    lane === undefined ? null : pointWithMeasuredBaseline(lane.concurrencyPoints)
+  const baselineBlockers: ReadonlyArray<GymThroughputRolloutBlocker> =
+    baseline === null ? ['missing_baseline_max_num_seqs_2_measurement'] : []
+
+  if (lane === undefined || baseline === null) {
+    return {
+      schemaVersion: 'openagents.gym.throughput_rollout_recommendation.v1',
+      environmentRef: GYM_THROUGHPUT_ENVIRONMENT_REF,
+      sweepRef,
+      target,
+      publicSafe: true,
+      decisionGrade: false,
+      selection: null,
+      blockers: [...missingSweepBlockers, ...baselineBlockers],
+    }
+  }
+
+  const candidates = lane.concurrencyPoints.flatMap(point => {
+    const lever = actualLeverForPoint(point)
+    if (lever === null || lever.maxNumSeqs <= 2) {
+      return []
+    }
+    const selection = rolloutCandidateSelection({ baseline, point, lever })
+    if (selection === null) {
+      return []
+    }
+    return [selection]
+  })
+  const measuredCandidates = candidates.filter(
+    candidate =>
+      candidate.interTokenLatencyP90Ms <=
+      candidate.baselineInterTokenLatencyP90Ms *
+        input.maxInteractiveItlP90Multiplier,
+  )
+  const best =
+    [...measuredCandidates].sort(
+      (
+        left: GymThroughputRolloutSelection,
+        right: GymThroughputRolloutSelection,
+      ) => right.aggregateTps - left.aggregateTps,
+    )[0] ?? null
+  const blockers: Array<GymThroughputRolloutBlocker> = [
+    ...missingSweepBlockers,
+  ]
+  if (candidates.length === 0) {
+    blockers.push('missing_candidate_measurement')
+  }
+  if (
+    candidates.some(
+      candidate =>
+        candidate.interTokenLatencyP90Ms >
+        candidate.baselineInterTokenLatencyP90Ms *
+          input.maxInteractiveItlP90Multiplier,
+    ) &&
+    best === null
+  ) {
+    blockers.push('interactive_itl_slo_exceeded')
+  }
+  if (best !== null && best.aggregateTpsLiftPercent <= 0) {
+    blockers.push('no_measured_throughput_lift')
+  }
+  if (
+    lane.concurrencyPoints.some(
+      point =>
+        actualLeverForPoint(point) !== null &&
+        point.interTokenLatencyMs.p90 === null,
+    )
+  ) {
+    blockers.push('missing_measured_itl_p90')
+  }
+  if (
+    lane.concurrencyPoints.some(
+      point =>
+        actualLeverForPoint(point) !== null && point.aggregateTps === null,
+    )
+  ) {
+    blockers.push('missing_measured_aggregate_tps')
+  }
+
+  const selection =
+    best === null || best.aggregateTpsLiftPercent <= 0 ? null : best
+
+  return {
+    schemaVersion: 'openagents.gym.throughput_rollout_recommendation.v1',
+    environmentRef: GYM_THROUGHPUT_ENVIRONMENT_REF,
+    sweepRef,
+    target,
+    publicSafe: true,
+    decisionGrade: selection !== null && blockers.length === 0,
+    selection,
+    blockers,
+  }
 }
 
 const specKey = (spec: GymThroughputEnvironmentSpec): string =>

@@ -7,7 +7,9 @@ import {
   decodeGymThroughputEnvironmentSpec,
   decodeGymThroughputSample,
   expandGymThroughputOptimizationSweep,
+  recommendGymThroughputRollout,
   type GymThroughputEnvironmentSpec,
+  type GymThroughputLeverActual,
   type GymThroughputSample,
 } from './throughput'
 
@@ -52,6 +54,23 @@ const sample = (
   speculationAcceptanceRate: 0.7,
   ...overrides,
 })
+
+const passedActualLever = (index: number): GymThroughputLeverActual => {
+  const expectedLever =
+    GLM_VLLM_THROUGHPUT_OPTIMIZATION_SWEEP.expectedLevers[index]!
+  return {
+    ...expectedLever,
+    quantization: {
+      ...expectedLever.quantization,
+      gateStatus: 'passed',
+    },
+    kvHeadroomGate: {
+      ...expectedLever.kvHeadroomGate,
+      observedFreeKvCachePercent: 24,
+      gateStatus: 'passed',
+    },
+  }
+}
 
 describe('Gym throughput/concurrency report (#6244)', () => {
   test('builds a repeatable lane report and detects latency degradation', () => {
@@ -211,18 +230,7 @@ describe('Gym throughput/concurrency report (#6244)', () => {
   test('reports public-safe expected and actual throughput lever fields', () => {
     const expectedLever =
       GLM_VLLM_THROUGHPUT_OPTIMIZATION_SWEEP.expectedLevers[1]!
-    const actualThroughputLevers = {
-      ...expectedLever,
-      quantization: {
-        ...expectedLever.quantization,
-        gateStatus: 'passed' as const,
-      },
-      kvHeadroomGate: {
-        ...expectedLever.kvHeadroomGate,
-        observedFreeKvCachePercent: 22,
-        gateStatus: 'passed' as const,
-      },
-    }
+    const actualThroughputLevers = passedActualLever(1)
     const report = buildGymThroughputReport({
       generatedAt: '2026-06-26T12:00:00.000Z',
       specs: [
@@ -264,5 +272,143 @@ describe('Gym throughput/concurrency report (#6244)', () => {
     expect(
       lane?.concurrencyPoints[0]?.actualThroughputLevers[0],
     ).toEqual(actualThroughputLevers)
+  })
+
+  test('selects a measured owner-armed rollout knee and emits public-safe vLLM flags', () => {
+    const glmSpec = spec({
+      target: {
+        lane: 'glm-52',
+        engine: 'vllm',
+        modelRef: '0xSero/GLM-5.2-504B',
+      },
+      concurrencyRamp: [2, 4, 8],
+      serving: {
+        speculationMode: 'n_gram',
+        optimizationSweep: GLM_VLLM_THROUGHPUT_OPTIMIZATION_SWEEP,
+      },
+    })
+    const report = buildGymThroughputReport({
+      generatedAt: '2026-06-26T12:00:00.000Z',
+      specs: [glmSpec],
+      samples: [
+        sample(2, 0, {
+          lane: 'glm-52',
+          engine: 'vllm',
+          modelRef: '0xSero/GLM-5.2-504B',
+          perceivedTps: 42,
+          interTokenLatencyMs: 20,
+          ttftMs: 900,
+          actualThroughputLevers: passedActualLever(0),
+        }),
+        sample(2, 1, {
+          lane: 'glm-52',
+          engine: 'vllm',
+          modelRef: '0xSero/GLM-5.2-504B',
+          perceivedTps: 45,
+          interTokenLatencyMs: 21,
+          ttftMs: 920,
+          actualThroughputLevers: passedActualLever(0),
+        }),
+        sample(4, 0, {
+          lane: 'glm-52',
+          engine: 'vllm',
+          modelRef: '0xSero/GLM-5.2-504B',
+          perceivedTps: 84,
+          interTokenLatencyMs: 27,
+          ttftMs: 520,
+          actualThroughputLevers: passedActualLever(1),
+        }),
+        sample(4, 1, {
+          lane: 'glm-52',
+          engine: 'vllm',
+          modelRef: '0xSero/GLM-5.2-504B',
+          perceivedTps: 87,
+          interTokenLatencyMs: 28,
+          ttftMs: 530,
+          actualThroughputLevers: passedActualLever(1),
+        }),
+        sample(8, 0, {
+          lane: 'glm-52',
+          engine: 'vllm',
+          modelRef: '0xSero/GLM-5.2-504B',
+          perceivedTps: 90,
+          interTokenLatencyMs: 55,
+          ttftMs: 510,
+          actualThroughputLevers: passedActualLever(2),
+        }),
+      ],
+    })
+
+    const recommendation = recommendGymThroughputRollout({
+      report,
+      lane: 'glm-52',
+      maxInteractiveItlP90Multiplier: 1.5,
+    })
+
+    expect(recommendation.decisionGrade).toBe(true)
+    expect(recommendation.blockers).toEqual([])
+    expect(recommendation.selection?.maxNumSeqs).toBe(4)
+    expect(recommendation.selection?.aggregateTps).toBe(171)
+    expect(recommendation.selection?.aggregateTpsLiftPercent).toBeCloseTo(
+      96.55,
+      2,
+    )
+    expect(recommendation.selection?.vllmFlags).toEqual([
+      { name: '--max-num-seqs', value: '4' },
+      { name: '--enable-prefix-caching' },
+      { name: '--enable-chunked-prefill' },
+      {
+        name: '--speculative-config',
+        value: '{"method":"n_gram","disable_at_batch_size":5}',
+      },
+    ])
+    expect(JSON.stringify(recommendation)).not.toContain('https://')
+  })
+
+  test('blocks rollout when measured throughput violates the interactive ITL guard', () => {
+    const glmSpec = spec({
+      target: {
+        lane: 'glm-52',
+        engine: 'vllm',
+        modelRef: '0xSero/GLM-5.2-504B',
+      },
+      concurrencyRamp: [2, 4],
+      serving: {
+        speculationMode: 'n_gram',
+        optimizationSweep: GLM_VLLM_THROUGHPUT_OPTIMIZATION_SWEEP,
+      },
+    })
+    const report = buildGymThroughputReport({
+      generatedAt: '2026-06-26T12:00:00.000Z',
+      specs: [glmSpec],
+      samples: [
+        sample(2, 0, {
+          lane: 'glm-52',
+          engine: 'vllm',
+          modelRef: '0xSero/GLM-5.2-504B',
+          perceivedTps: 40,
+          interTokenLatencyMs: 20,
+          actualThroughputLevers: passedActualLever(0),
+        }),
+        sample(4, 0, {
+          lane: 'glm-52',
+          engine: 'vllm',
+          modelRef: '0xSero/GLM-5.2-504B',
+          perceivedTps: 120,
+          interTokenLatencyMs: 80,
+          actualThroughputLevers: passedActualLever(1),
+        }),
+      ],
+    })
+
+    const recommendation = recommendGymThroughputRollout({
+      report,
+      lane: 'glm-52',
+      maxInteractiveItlP90Multiplier: 1.5,
+    })
+
+    expect(recommendation.decisionGrade).toBe(false)
+    expect(recommendation.selection).toBeNull()
+    expect(recommendation.blockers).toEqual(['interactive_itl_slo_exceeded'])
   })
 })
