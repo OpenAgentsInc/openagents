@@ -280,7 +280,7 @@ async function prepareWorkspaceDependencies(input: {
 
   const installer = input.installer ?? runCommand
   const install = await installer({
-    args: ["bun", "install", "--frozen-lockfile"],
+    args: ["bun", "install", "--no-save", "--ignore-scripts"],
     cwd: input.workspace,
     timeoutMs: 5 * 60 * 1000,
   })
@@ -290,6 +290,20 @@ async function prepareWorkspaceDependencies(input: {
   )
   if (install.exitCode !== 0 || install.timedOut) {
     return { ok: false, receiptRef }
+  }
+  const restore = await installer({
+    args: ["git", "restore", "--source=HEAD", "--staged", "--worktree", "."],
+    cwd: input.workspace,
+    timeoutMs: 30 * 1000,
+  })
+  if (restore.exitCode !== 0 || restore.timedOut) {
+    return {
+      ok: false,
+      receiptRef: stableRef(
+        "dependency.pylon.codex_agent_task.workspace_restore",
+        `${restore.exitCode}:${restore.timedOut}:${restore.stdoutBytes}:${restore.stderrBytes}`,
+      ),
+    }
   }
   return { ok: true, prepared: true, receiptRef }
 }

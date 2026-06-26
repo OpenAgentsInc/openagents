@@ -568,11 +568,14 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
         )
       }
       let installerCalled = false
+      const dependencyCommands: Array<string> = []
       let runnerSawPreparedWorkspace = false
       const dependencyInstaller = async (input: { args: string[]; cwd: string }) => {
         installerCalled = true
-        expect(input.args).toEqual(["bun", "install", "--frozen-lockfile"])
-        await writeFile(join(input.cwd, "dependency-ready.txt"), "ready\n")
+        dependencyCommands.push(input.args.join(" "))
+        if (input.args[0] === "bun") {
+          await writeFile(join(input.cwd, "dependency-ready.txt"), "ready\n")
+        }
         return { exitCode: 0, stderrBytes: 0, stdoutBytes: 12, timedOut: false }
       }
       const observingRunner: CodexAgentRunner = async (input) => {
@@ -595,6 +598,10 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
 
       expect(record?.status).toBe("accepted")
       expect(installerCalled).toBe(true)
+      expect(dependencyCommands).toEqual([
+        "bun install --no-save --ignore-scripts",
+        "git restore --source=HEAD --staged --worktree .",
+      ])
       expect(runnerSawPreparedWorkspace).toBe(true)
       assertPublicProjectionSafe(record)
     })
