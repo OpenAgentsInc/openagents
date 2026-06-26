@@ -1,9 +1,10 @@
 import { describe, expect, test } from 'vitest'
 
-import type {
-  PylonApiAssignmentRecord,
-  PylonApiRegistrationRecord,
-  PylonApiStore,
+import {
+  type PylonApiAssignmentRecord,
+  type PylonApiRegistrationRecord,
+  type PylonApiStore,
+  PylonApiStoreError,
 } from '../pylon-api'
 import {
   type CodingDelegationAssignmentResult,
@@ -489,5 +490,46 @@ describe('coding workflow delegation', () => {
       throw new Error('expected delegated coding assignment')
     }
     expect(result.pylon.pylonRef).toBe('pylon.owner.codex')
+  })
+
+  // #6331: a Pylon-store read failure inside the gate must surface as a clean,
+  // diagnosable 503 rejection — never an unhandled throw that the chat route
+  // turns into an opaque `500 internal_server_error`.
+  test('returns a 503 store-unavailable rejection (never throws) when the store fails', async () => {
+    const failingStore = {
+      ...makeStore({ registrations: [registration()] }),
+      listRegistrationsForOwnerAgentUserIds: async () => {
+        throw new PylonApiStoreError({
+          kind: 'storage_error',
+          reason: 'D1 read failed',
+        })
+      },
+      listRegistrations: async () => {
+        throw new PylonApiStoreError({
+          kind: 'storage_error',
+          reason: 'D1 read failed',
+        })
+      },
+    } satisfies PylonApiStore
+
+    const result = await delegateCodingWorkflow({
+      classification,
+      linkedAgents: [linkedOwner],
+      makeId: () => 'id1',
+      nowIso,
+      pylonStore: failingStore,
+      rawBody: {
+        openagents: { coding: { targetPylonRef: 'pylon.owner.codex' } },
+      },
+      requestId: 'chatcmpl_coding_store_fail',
+    })
+
+    expect(result?.kind).toBe('rejected')
+    if (result?.kind !== 'rejected') {
+      throw new Error('expected a rejection, not a throw or assignment')
+    }
+    expect(result.error).toBe('coding_delegation_store_unavailable')
+    expect(result.statusCode).toBe(503)
+    expect(result.requestedPylonRef).toBe('pylon.owner.codex')
   })
 })

@@ -8,6 +8,7 @@ import {
   codingServiceCapacityFromRuntime,
   degradeStalePresence,
   presenceClientOptionsFromEnv,
+  recordAccountLinkInPresence,
   refreshPylonLink,
   registerPylon,
   sendHeartbeat,
@@ -328,6 +329,47 @@ describe("Pylon presence registration and heartbeat", () => {
         "/api/pylon-links/complete",
         "/api/pylon-links/refresh",
       ])
+    })
+  })
+
+  // #6331: `accounts connect codex --openagents-link` establishes a server-side
+  // account->owner link but never goes through completePylonLink, so the
+  // presence state the heartbeat reads stayed linked: false / linkRef: null.
+  // recordAccountLinkInPresence reconciles that so the next heartbeat reports
+  // linked: true with a stable link ref.
+  test("recordAccountLinkInPresence marks presence linked with a stable linkRef", async () => {
+    await withTempHome(async (home) => {
+      const summary = createBootstrapSummary(
+        parseBootstrapArgs(["--display-name", "Account Link Reconcile"]),
+        { PYLON_HOME: home },
+        "darwin",
+      )
+      const state = await ensurePylonLocalState(summary)
+      const before = await loadOrCreatePresenceState(state.paths, state.identity)
+      expect(before.linked).toBe(false)
+      expect(before.linkRef).toBeNull()
+
+      const linked = await recordAccountLinkInPresence(summary, {
+        providerAccountRef: "provider-account-abc",
+      })
+      expect(linked.linked).toBe(true)
+      expect(linked.linkRef).toBeTruthy()
+      expect(linked.linkRef?.startsWith("link.account.")).toBe(true)
+
+      // Persisted: a fresh read sees the linked state the heartbeat will report.
+      const persisted = await loadOrCreatePresenceState(state.paths, state.identity)
+      expect(persisted.linked).toBe(true)
+      expect(persisted.linkRef).toBe(linked.linkRef)
+
+      // Idempotent: re-running keeps the existing linkRef.
+      const again = await recordAccountLinkInPresence(summary, {
+        providerAccountRef: "provider-account-abc",
+      })
+      expect(again.linkRef).toBe(linked.linkRef)
+
+      // Public-projection safe (no raw account ref or local paths leak).
+      assertPublicProjectionSafe({ linkRef: linked.linkRef })
+      expect(linked.linkRef).not.toContain("provider-account-abc")
     })
   })
 

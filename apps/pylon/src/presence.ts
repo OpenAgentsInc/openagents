@@ -465,6 +465,35 @@ export async function refreshPylonLink(summary: BootstrapSummary, options: Prese
   return next
 }
 
+/**
+ * Persist an account-established link into the local presence state
+ * (openagents #6331). `pylon accounts connect codex --openagents-link`
+ * confirms a server-side account->OpenAuth-owner link (`pylonLink: linked`),
+ * but that import never went through `completePylonLink`, so the presence state
+ * the heartbeat reads stayed `linked: false`/`linkRef: null`. Operators (and
+ * the runbook) expect the next heartbeat to reflect that the Pylon is linked.
+ * This reconciles the two: it marks the presence state linked and records a
+ * stable, public-safe account link ref so `presence heartbeat` reports
+ * `linked: true` once a Codex account is connected with `--openagents-link`.
+ */
+export async function recordAccountLinkInPresence(
+  summary: BootstrapSummary,
+  input: { providerAccountRef: string },
+): Promise<PylonPresenceState> {
+  const state = await ensurePylonLocalState(summary)
+  const presence = await loadOrCreatePresenceState(state.paths, state.identity)
+  const linkRef =
+    presence.linkRef ??
+    `link.account.${sha256Base64Url(`${state.identity.pylonRef}:${input.providerAccountRef}`)}`
+  const next: PylonPresenceState = {
+    ...presence,
+    linked: true,
+    linkRef,
+  }
+  await writePresenceState(state.paths, next)
+  return next
+}
+
 export function degradeStalePresence(presence: PylonPresenceState, input: { now: Date; staleAfterMs: number }) {
   if (!presence.lastHeartbeatAt) {
     return {

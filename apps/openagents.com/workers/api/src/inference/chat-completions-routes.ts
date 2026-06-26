@@ -64,6 +64,7 @@ import {
 } from './cache-aware-routing'
 import { classifyCodingWorkflow } from './coding-workflow-classifier'
 import {
+  type CodingDelegationResult,
   delegateCodingWorkflow,
 } from './coding-workflow-delegation'
 import {
@@ -2323,35 +2324,61 @@ export const handleChatCompletions = (
       }
       const codingDelegation = deps.codingDelegation
 
-      const openauthUserId = yield* Effect.promise(() =>
-        codingDelegation.resolveOpenAuthUserId(session.accountRef),
-      )
+      // #6331: resolve the owner scope, linked agents, and delegation through a
+      // single guarded promise. A failure in ANY of these Pylon/agent store
+      // reads must surface as a clean, diagnosable 503 — never an opaque
+      // `500 internal_server_error`. Before this guard, a thrown store error
+      // inside `Effect.promise` became an unhandled defect and the gateway
+      // returned a bare 500 for what is really "the dispatch gate could not
+      // read capacity right now".
       const selfAgentUserId = agentUserIdFromAccountRef(session.accountRef)
       const selfLinkedAgent =
         selfAgentUserId === undefined ? [] : [{ agentUserId: selfAgentUserId }]
-      const openAuthLinkedAgents =
-        openauthUserId === undefined ||
-        codingDelegation.agentStore.listLinkedAgentsForOpenAuthUser ===
-          undefined
-          ? []
-          : yield* Effect.promise(() =>
-              codingDelegation.agentStore.listLinkedAgentsForOpenAuthUser!(
-                openauthUserId,
-                100,
-              ),
-            )
-      const linkedAgents = [...selfLinkedAgent, ...openAuthLinkedAgents]
       const nowIso = epochMillisToIsoTimestamp(created * 1000)
-      const delegation = yield* Effect.promise(() =>
-        delegateCodingWorkflow({
-          classification: codingWorkflow,
-          linkedAgents,
-          makeId: newId,
-          nowIso,
-          pylonStore: codingDelegation.pylonStore,
-          rawBody,
-          requestId: responseId,
-        }),
+      const delegation: CodingDelegationResult | null = yield* Effect.promise(
+        async () => {
+          const openauthUserId = await codingDelegation.resolveOpenAuthUserId(
+            session.accountRef,
+          )
+          const openAuthLinkedAgents =
+            openauthUserId === undefined ||
+            codingDelegation.agentStore.listLinkedAgentsForOpenAuthUser ===
+              undefined
+              ? []
+              : await codingDelegation.agentStore.listLinkedAgentsForOpenAuthUser!(
+                  openauthUserId,
+                  100,
+                )
+          const linkedAgents = [...selfLinkedAgent, ...openAuthLinkedAgents]
+          return delegateCodingWorkflow({
+            classification: codingWorkflow,
+            linkedAgents,
+            makeId: newId,
+            nowIso,
+            pylonStore: codingDelegation.pylonStore,
+            rawBody,
+            requestId: responseId,
+          })
+        },
+      ).pipe(
+        // #6331: a thrown store error inside this promise would otherwise
+        // become an unhandled defect and the gateway would return an opaque
+        // `500 internal_server_error`. Recover it into a clean, diagnosable
+        // 503 rejection — a gate refusal is never a bare 500.
+        Effect.catchDefect(
+          (): Effect.Effect<CodingDelegationResult | null> =>
+            Effect.succeed({
+              error: 'coding_delegation_store_unavailable',
+              evidenceRefs: [
+                'evidence.khala_coding.dispatch.store_unavailable',
+              ],
+              kind: 'rejected',
+              reason:
+                'The Khala coding dispatch gate could not read linked Pylon capacity right now. This is a transient gate failure, not an account problem — retry shortly.',
+              requestedPylonRef: null,
+              statusCode: 503,
+            }),
+        ),
       )
 
       if (delegation?.kind === 'rejected') {

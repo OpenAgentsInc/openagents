@@ -121,6 +121,59 @@ describe("codex agent readiness probe", () => {
       await rm(home, { recursive: true, force: true })
     }
   })
+
+  // #6331: a Codex account connected via `accounts connect codex
+  // --openagents-link` writes auth.json into an isolated per-account home, never
+  // ~/.codex. The probe must still report ready (and advertise codex capacity)
+  // so the heartbeat publishes capacity.coding.codex.* and the dispatch gate
+  // admits the work.
+  test("ready when a connected per-account codex home carries a login (empty ~/.codex)", async () => {
+    const emptyDefaultHome = await mkdtemp(join(tmpdir(), "pylon-codex-default-"))
+    const accountHome = await mkdtemp(join(tmpdir(), "pylon-codex-account-"))
+    try {
+      await writeFile(
+        join(accountHome, "auth.json"),
+        `${JSON.stringify({ tokens: "never-read-account" })}\n`,
+      )
+      // The default ~/.codex (via CODEX_HOME) has no login at all.
+      expect(await detectCodexCliLogin({ CODEX_HOME: emptyDefaultHome })).toBe(false)
+      const probed = await probeCodexAgentReadiness({
+        env: { CODEX_HOME: emptyDefaultHome },
+        platform: "darwin",
+        importer: sdkPresent,
+        codexAccountHomes: [accountHome],
+      })
+      expect(probed.state).toBe("ready")
+      expect(probed.capabilityRefs).toEqual([CODEX_AGENT_CAPABILITY_REF])
+      expect(probed.credentialSourceRef).toBe(
+        "credential.source.codex_agent.pylon_account_login",
+      )
+      expect(JSON.stringify(probed)).not.toContain("never-read-account")
+      expect(JSON.stringify(probed)).not.toContain(accountHome)
+    } finally {
+      await rm(emptyDefaultHome, { recursive: true, force: true })
+      await rm(accountHome, { recursive: true, force: true })
+    }
+  })
+
+  test("credentials_missing when no account home carries a login", async () => {
+    const emptyDefaultHome = await mkdtemp(join(tmpdir(), "pylon-codex-default-"))
+    const emptyAccountHome = await mkdtemp(join(tmpdir(), "pylon-codex-account-"))
+    try {
+      const probed = await probeCodexAgentReadiness({
+        env: { CODEX_HOME: emptyDefaultHome },
+        platform: "darwin",
+        importer: sdkPresent,
+        codexAccountHomes: [emptyAccountHome],
+      })
+      expect(probed.state).toBe("credentials_missing")
+      expect(probed.capabilityRefs).toEqual([])
+      expect(probed.credentialSourceRef).toBeNull()
+    } finally {
+      await rm(emptyDefaultHome, { recursive: true, force: true })
+      await rm(emptyAccountHome, { recursive: true, force: true })
+    }
+  })
 })
 
 describe("capability declaration", () => {

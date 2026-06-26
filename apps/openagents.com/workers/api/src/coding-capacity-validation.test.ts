@@ -725,18 +725,12 @@ describe('#6273 coding-capacity validation harness', () => {
     expect(pylonStore.createdAssignments()).toHaveLength(1)
     expect(pylonStore.createdAssignments()[0]?.ownerAgentUserId).toBe('agent_a')
     expect(pylonStore.createdAssignments()[0]?.pylonRef).toBe('pylon.a.codex')
-    expect(recordedTokens).toHaveLength(1)
-    expect(recordedTokens[0]).toMatchObject({
-      adapterId: 'pylon-codex-own-capacity',
-      requestAttribution: {
-        demandKind: 'own_capacity',
-        demandSource: 'khala_mcp_request',
-      },
-      requestId: 'chatcmpl_validate_issue',
-      requestedModel: 'openagents/khala',
-      servedModel: 'openagents/pylon-codex',
-      streamed: true,
-    })
+    // #6325: MCP delegation must NOT meter a handoff estimate at request time.
+    // The local Pylon/Codex executor records the exact downstream SDK turn usage
+    // through the registered-agent turns ingest route after Codex actually runs,
+    // so no served-token row exists at request time. (Matches the contract
+    // asserted in khala-mcp.test.ts.)
+    expect(recordedTokens).toHaveLength(0)
 
     const resumed = await catalog.callTool(
       { OPENAGENTS_DB: {} as D1Database },
