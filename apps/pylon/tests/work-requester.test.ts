@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 
 import {
   acceptPylonWorkOffer,
+  assertPublicSafe,
   buildPylonAutopilotWorkRequestBody,
   buildPylonWorkRequestBody,
   createPylonWorkRequest,
@@ -16,6 +17,18 @@ import {
 } from "../src/work-requester"
 
 describe("pylon work requester body", () => {
+  test("allows bounded verifier filenames that contain sk-adjacent substrings", () => {
+    expect(() =>
+      assertPublicSafe("src/inference/hydralisk-adapter.test.ts", "work request verification command"),
+    ).not.toThrow()
+  })
+
+  test("still rejects realistic sk-prefixed credential-shaped values", () => {
+    expect(() =>
+      assertPublicSafe("sk-1234567890abcdef1234567890abcdef", "work request verification command"),
+    ).toThrow(/private, payment/)
+  })
+
   test("builds ref-only Forum work request bodies from CLI input", () => {
     const body = buildPylonWorkRequestBody({
       budgetSats: 2_000,

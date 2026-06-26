@@ -126,6 +126,35 @@ describe("pylon khala requester body", () => {
     })
   })
 
+  test("accepts bounded hydralisk adapter verifier filenames", () => {
+    const workspace = buildPylonKhalaGitCheckoutWorkspace({
+      commit: "7ab7cb401803f6e04a6c93b7aa9102405de66419",
+      repository: "OpenAgentsInc/openagents",
+      verificationCommand: "bun --cwd apps/openagents.com/workers/api test src/inference/glm-pool-heartbeat.test.ts src/inference/hydralisk-adapter.test.ts src/inference/model-router.test.ts",
+    })
+
+    expect(workspace.verificationCommand.args).toEqual([
+      "bun",
+      "--cwd",
+      "apps/openagents.com/workers/api",
+      "test",
+      "src/inference/glm-pool-heartbeat.test.ts",
+      "src/inference/hydralisk-adapter.test.ts",
+      "src/inference/model-router.test.ts",
+    ])
+    expect(workspace.verificationCommand.commandRef).toStartWith("command.public.pylon_khala.")
+  })
+
+  test("rejects credential-shaped verifier values", () => {
+    expect(() =>
+      buildPylonKhalaGitCheckoutWorkspace({
+        commit: "7ab7cb401803f6e04a6c93b7aa9102405de66419",
+        repository: "OpenAgentsInc/openagents",
+        verificationCommand: "bun test sk-1234567890abcdef1234567890abcdef",
+      }),
+    ).toThrow(/private, payment/)
+  })
+
   test("requires an explicit workspace verification command", () => {
     expect(() =>
       buildPylonKhalaGitCheckoutWorkspace({
