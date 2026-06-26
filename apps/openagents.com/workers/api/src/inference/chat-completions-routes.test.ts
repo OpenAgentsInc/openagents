@@ -42,6 +42,7 @@ import {
   KHALA_STANDARD_GREETING,
 } from './khala-identity'
 import { NOT_MEASURED, decodeKhalaTelemetryBlock } from './khala-telemetry'
+import { makeInternalStressPreemptionRegistry } from './internal-stress-preemption'
 import { type MeteringContext, type MeteringHook } from './metering-hook'
 import {
   type DispatchFailureTelemetryEvent,
@@ -2402,6 +2403,117 @@ describe('POST /v1/chat/completions', () => {
         schedulerPreemptionTargetDemandClass: 'internal_stress',
         schedulerPreemptionTargetOutcome: 'preempted_yielded',
       },
+    })
+  })
+
+  test('production registry aborts an active internal_stress request when external demand preempts', async () => {
+    let fallbackCalls = 0
+    let stressAbortSignal: AbortSignal | undefined
+    let stressStarted: (() => void) | undefined
+    const stressStartedPromise = new Promise<void>(resolve => {
+      stressStarted = resolve
+    })
+    const preemption = makeInternalStressPreemptionRegistry()
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      ...echoAdapter('primary'),
+      complete: request => {
+        if (request.priority === 'internal_stress') {
+          stressAbortSignal = request.abortSignal
+          stressStarted?.()
+          return Effect.tryPromise({
+            catch: () =>
+              new InferenceAdapterError({
+                adapterId: 'primary',
+                kind: 'transport_error',
+                reason: 'internal_stress aborted by external preemption',
+                retryable: true,
+              }),
+            try: () =>
+              new Promise<never>((_resolve, reject) => {
+                request.abortSignal?.addEventListener(
+                  'abort',
+                  () => reject(new Error('aborted')),
+                  { once: true },
+                )
+              }),
+          })
+        }
+        return stubEchoAdapter.complete(request)
+      },
+    })
+    registry.register({
+      ...echoAdapter('fallback'),
+      complete: request => {
+        fallbackCalls += 1
+        return stubEchoAdapter.complete(request)
+      },
+    })
+
+    const stressPromise = run(
+      handleChatCompletions(
+        chatRequest(helloBody, {
+          headers: {
+            [INFERENCE_DEMAND_KIND_HEADER]: 'internal_stress',
+            [INFERENCE_DEMAND_SOURCE_HEADER]: 'glm-saturation',
+          },
+        }),
+        baseDeps({
+          internalStressPreemption: preemption,
+          lanePlan: () => ['primary', 'fallback'],
+          registry,
+        }),
+      ),
+    )
+    await stressStartedPromise
+
+    const externalResponse = await run(
+      handleChatCompletions(
+        chatRequest(helloBody, {
+          headers: {
+            [INFERENCE_DEMAND_KIND_HEADER]: 'external',
+            [INFERENCE_DEMAND_SOURCE_HEADER]: 'public-api',
+          },
+        }),
+        baseDeps({
+          internalStressPreemption: preemption,
+          lanePlan: () => ['primary', 'fallback'],
+          registry,
+          routeAdmission: {
+            reason: 'glm_aggregate_external_headroom_zero',
+            reservedExternalHeadroomAvailable: false,
+          },
+        }),
+      ),
+    )
+
+    expect(externalResponse.status).toBe(200)
+    expect(stressAbortSignal?.aborted).toBe(true)
+    const externalBody = (await externalResponse.json()) as {
+      openagents?: {
+        routing?: {
+          scheduler_preemption?: {
+            reason?: string
+            target_demand_class?: string
+            target_outcome?: string
+          }
+        }
+      }
+    }
+    expect(externalBody.openagents?.routing?.scheduler_preemption).toMatchObject({
+      reason: 'external_reserved_headroom_unavailable',
+      target_demand_class: 'internal_stress',
+      target_outcome: 'preempted_yielded',
+    })
+    const stressResponse = await stressPromise
+    expect(stressResponse.status).toBe(429)
+    expect(fallbackCalls).toBe(0)
+    const stressBody = (await stressResponse.json()) as {
+      error?: { code?: string; status?: string }
+    }
+    expect(stressBody.error).toMatchObject({
+      code: 'internal_stress_yielded',
+      status: 'yielded',
     })
   })
 

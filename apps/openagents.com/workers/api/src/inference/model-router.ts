@@ -770,6 +770,26 @@ const admissionError = (
     retryable: true,
   })
 
+const internalStressPreemptedError = (
+  request: InferenceRequest,
+): InferenceAdapterError => {
+  const reason =
+    typeof request.abortSignal?.reason === 'string' &&
+    request.abortSignal.reason.trim() !== ''
+      ? request.abortSignal.reason.trim()
+      : 'external_preemption'
+  return new InferenceAdapterError({
+    adapterId: 'router',
+    httpStatus: 429,
+    kind: 'internal_stress_yielded',
+    reason: `internal_stress yielded because external demand preempted it: ${reason}`,
+    retryable: true,
+  })
+}
+
+const wasInternalStressPreempted = (request: InferenceRequest): boolean =>
+  request.priority === 'internal_stress' && request.abortSignal?.aborted === true
+
 const shouldPreemptInternalStress = (
   preemption: DispatchSchedulerPreemptionPolicy | undefined,
 ): boolean =>
@@ -1080,6 +1100,9 @@ export const dispatchWithOverflowWithMetadata = <A>(
       }
 
       lastError = outcome.error
+      if (wasInternalStressPreempted(request)) {
+        return yield* Effect.fail(internalStressPreemptedError(request))
+      }
       // Non-retryable: surface immediately, no overflow.
       if (!outcome.error.retryable) {
         return yield* Effect.fail(outcome.error)

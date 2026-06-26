@@ -214,6 +214,9 @@ const postChatCompletions = (
         body: JSON.stringify(toRequestBody(config, request)),
         headers: headersFor(config, request),
         method: 'POST',
+        ...(request.abortSignal === undefined
+          ? {}
+          : { signal: request.abortSignal }),
       })
     },
   })

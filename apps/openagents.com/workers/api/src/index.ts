@@ -462,6 +462,7 @@ import {
   buildKhalaTokensServedDelta,
   publishKhalaTokensServedDelta,
 } from './inference/khala-tokens-served-sync'
+import { makeInternalStressPreemptionRegistry } from './inference/internal-stress-preemption'
 import { makeLedgerMeteringHook } from './inference/metering-hook'
 import {
   HYDRALISK_ADAPTER_ID,
@@ -9627,6 +9628,8 @@ const dispatchFailureTelemetry = makeBoundedDispatchFailureTelemetry({
   windowMs: 15 * 60 * 1_000,
 })
 
+const internalStressPreemption = makeInternalStressPreemptionRegistry()
+
 const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {
     path: '/',
@@ -11513,6 +11516,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         dispatch: {
           failureTelemetry: dispatchFailureTelemetry.record,
         },
+        internalStressPreemption,
         // Provider serving policy (public_paid_model_gateway_missing on
         // api.hosted_gemini.v1): the SAME presence-derived lane arming the
         // public catalog (/v1/models) and the pre-purchase quote (/v1/quote)

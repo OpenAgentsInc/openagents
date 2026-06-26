@@ -84,6 +84,7 @@ import {
   type SpendCapDecision,
 } from './inference-abuse-controls'
 import { applyInternalAccountAttribution } from './inference-internal-account'
+import type { InternalStressPreemptionRegistry } from './internal-stress-preemption'
 import { agentUserIdFromAccountRef } from './inference-owner-identity'
 import { type PremiumAccessDecision } from './inference-premium-allowlist'
 import { resolveKhalaChatTraceOptIn } from './khala-chat-trace-emitter'
@@ -174,6 +175,7 @@ import {
   type InferenceProviderRegistry,
   type InferenceRequest,
   type InferenceResult,
+  type InferenceStreamEvent,
   type InferenceStreamSource,
   type InferenceToolCallDelta,
 } from './provider-adapter'
@@ -486,6 +488,7 @@ export type ChatCompletionsDeps = Readonly<{
   // never waits. Ignored unless `lanePlan` is supplied.
   dispatch?: ChatCompletionsDispatchDeps | undefined
   routeAdmission?: Omit<DispatchRouteAdmissionPolicy, 'demandClass'> | undefined
+  internalStressPreemption?: InternalStressPreemptionRegistry | undefined
   // Defaults to the no-op/log metering stub. The Worker supplies the live
   // ledger hook (`makeLedgerMeteringHook`, #5477) when the gateway is enabled.
   meteringHook?: MeteringHook
@@ -1007,6 +1010,10 @@ const toInferenceRequest = (
   // is injected as a stable prefix block. Default false => no injection.
   componentChannelActive?: boolean,
   autopilotConcierge?: AutopilotConciergeRequestConfig | undefined,
+  scheduler?: Readonly<{
+    abortSignal?: AbortSignal | undefined
+    priority: InferenceRequest['priority']
+  }>,
 ): InferenceRequest => {
   const clientMessages: ReadonlyArray<InferenceMessage> = body.messages
   // For a non-Khala model, leave the messages exactly as the client sent them
@@ -1038,10 +1045,16 @@ const toInferenceRequest = (
     ...rest
   } = raw
   return {
+    ...(scheduler?.abortSignal === undefined
+      ? {}
+      : { abortSignal: scheduler.abortSignal }),
     messages,
     model: requestedModel,
     // Gateway-derived session affinity wins over any stray client copy.
     passthroughParams: { ...rest, ...affinityParams },
+    ...(scheduler?.priority === undefined
+      ? {}
+      : { priority: scheduler.priority }),
     stream: body.stream === true,
   }
 }
@@ -2793,6 +2806,19 @@ export const handleChatCompletions = (
     // below, and only when `deps.traceEmit` is wired + enabled.
     const traceEmitOptIn = resolveKhalaChatTraceOptIn({ rawBody, request })
 
+    const routeDemandClass = routeDemandClassFromAttribution(requestAttribution)
+    const preemptionAbortController =
+      routeDemandClass === 'internal_stress' &&
+      deps.internalStressPreemption !== undefined
+        ? new AbortController()
+        : undefined
+    const releasePreemptionSlot =
+      preemptionAbortController === undefined
+        ? () => {}
+        : deps.internalStressPreemption!.register({
+            abortController: preemptionAbortController,
+            requestId: responseId,
+          })
     const inferenceRequest = toInferenceRequest(
       body,
       rawBody,
@@ -2800,6 +2826,12 @@ export const handleChatCompletions = (
       affinity.params,
       componentChannelActive,
       autopilotConcierge?.ok === true ? autopilotConcierge.config : undefined,
+      {
+        ...(preemptionAbortController === undefined
+          ? {}
+          : { abortSignal: preemptionAbortController.signal }),
+        priority: routeDemandClass,
+      },
     )
     // The raw cache-affinity key threaded into every telemetry build site so the
     // receipt records its public-safe HASH (never the raw key). Undefined for
@@ -2808,7 +2840,22 @@ export const handleChatCompletions = (
     // Dispatch deps for the overflow loop. The plan is pinned to `plannedIds`
     // (already resolved from lanePlan/router above) so selection + dispatch use
     // exactly the same ordering.
-    const routeDemandClass = routeDemandClassFromAttribution(requestAttribution)
+    const preemptionPolicy =
+      deps.dispatch?.preemption ??
+      (deps.internalStressPreemption === undefined ||
+      deps.routeAdmission === undefined
+        ? undefined
+        : {
+            preempt: () =>
+              Effect.sync(() =>
+                deps.internalStressPreemption!.preempt({
+                  reason: 'external_reserved_headroom_unavailable',
+                }),
+              ),
+            reason: deps.routeAdmission.reason,
+            reservedExternalHeadroomAvailable:
+              deps.routeAdmission.reservedExternalHeadroomAvailable,
+          })
     const dispatchDeps: DispatchDeps = {
       registry: deps.registry,
       plan: () => plannedIds,
@@ -2840,11 +2887,11 @@ export const handleChatCompletions = (
               demandClass: routeDemandClass,
             },
           }),
-      ...(deps.dispatch?.preemption === undefined
+      ...(preemptionPolicy === undefined
         ? {}
         : {
             preemption: {
-              ...deps.dispatch.preemption,
+              ...preemptionPolicy,
               demandClass: routeDemandClass,
             },
           }),
@@ -2926,6 +2973,18 @@ export const handleChatCompletions = (
 
       if (sseDispatch.ok) {
         const { adapterId, source } = sseDispatch.served.value
+        const sourceWithPreemptionRelease: InferenceStreamSource = {
+          frames: (async function* (): AsyncIterable<InferenceStreamEvent> {
+            try {
+              for await (const frame of source.frames) {
+                yield frame
+              }
+            } finally {
+              releasePreemptionSlot()
+            }
+          })() as InferenceStreamSource['frames'],
+          terminal: source.terminal,
+        }
         // DURABLE-STREAM RANK-1 (#6058). Resolve a per-request durable store when
         // the flag is on AND a store factory is wired; a failing/absent factory
         // leaves `durableStore` undefined so the stream degrades to today's
@@ -2967,7 +3026,7 @@ export const handleChatCompletions = (
           requestStartMs,
           requestedModel,
           responseId,
-          source,
+          source: sourceWithPreemptionRelease,
           routeMetadata: sseDispatch.served.route,
         })
         return new Response(responseStream, {
@@ -2993,6 +3052,7 @@ export const handleChatCompletions = (
       // error) must surface as the 502 it is, not be retried via the buffered
       // path (which would double-dispatch and could 524 again).
       if (sseDispatch.error.kind !== 'stream_not_supported') {
+        releasePreemptionSlot()
         return providerErrorResponse(sseDispatch.error)
       }
 
@@ -3008,6 +3068,7 @@ export const handleChatCompletions = (
       ).pipe(
         Effect.map(served => ({ ok: true as const, served })),
         Effect.catch(error => Effect.succeed({ error, ok: false as const })),
+        Effect.ensuring(Effect.sync(releasePreemptionSlot)),
       )
       if (!chunks.ok) {
         return providerErrorResponse(chunks.error)
@@ -3244,6 +3305,7 @@ export const handleChatCompletions = (
     ).pipe(
       Effect.map(served => ({ ok: true as const, served })),
       Effect.catch(error => Effect.succeed({ error, ok: false as const })),
+      Effect.ensuring(Effect.sync(releasePreemptionSlot)),
     )
     if (!result.ok) {
       return providerErrorResponse(result.error)

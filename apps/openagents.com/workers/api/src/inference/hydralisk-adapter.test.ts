@@ -109,6 +109,30 @@ describe('hydralisk vLLM adapter', () => {
     ])
   })
 
+  it('passes a request abort signal to the selected GLM replica fetch', async () => {
+    let capturedSignal: AbortSignal | undefined
+    const abortController = new AbortController()
+    const adapter = makeHydraliskVllmPoolAdapter({
+      id: GLM_POOL_ADAPTER_ID,
+      replicas: [
+        replicaFixture('primary', {
+          fetchImpl: async (_input, init) => {
+            capturedSignal = init.signal ?? undefined
+            return Response.json(responseBody)
+          },
+        }),
+      ],
+      upstreamModel: 'openagents/glm-5.2-reap-504b',
+    })
+
+    const result = await Effect.runPromise(
+      adapter.complete(request({ abortSignal: abortController.signal })),
+    )
+
+    expect(result.content).toBe('READY')
+    expect(capturedSignal).toBe(abortController.signal)
+  })
+
   it('reports aggregate GLM live headroom across externally eligible replicas', async () => {
     const capturedInputs: Array<string> = []
     const adapter = makeHydraliskVllmPoolAdapter({

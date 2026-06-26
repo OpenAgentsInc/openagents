@@ -37,11 +37,19 @@ export type InferenceMessage = Readonly<{
 // standard sampling params (temperature, top_p, max_tokens, ...) that the route
 // forwards verbatim; adapters apply only the ones their provider supports.
 export type InferenceRequest = Readonly<{
+  abortSignal?: AbortSignal | undefined
   model: string
   messages: ReadonlyArray<InferenceMessage>
+  priority?: InferenceRequestPriority | undefined
   stream: boolean
   passthroughParams: Readonly<Record<string, unknown>>
 }>
+
+export type InferenceRequestPriority =
+  | 'batch'
+  | 'external'
+  | 'internal_stress'
+  | 'keep_warm'
 
 // Provider `usage` object — the receipt-first source of truth for metering.
 // Adapters MUST populate this from the provider response, never an estimate
