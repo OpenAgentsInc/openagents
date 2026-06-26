@@ -23,6 +23,13 @@ The account list must show at least one Codex account with `homeState:
 refreshes presence before claiming, so stale-presence blockers return a typed
 recovery command instead of silently failing.
 
+If `presence heartbeat` or `khala request --workflow codex_agent_task` reports
+that the Pylon registration belongs to another agent immediately after rotating
+or reissuing the local OpenAgents agent token, run `pylon auth openagents
+--json` and retry. The Worker accepts active credentials linked to the same
+OpenAuth owner and re-homes the Pylon registration on the next successful
+register/heartbeat write; unrelated agent credentials remain forbidden.
+
 ## Dry Run
 
 ```sh

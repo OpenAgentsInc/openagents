@@ -186,6 +186,10 @@ operator view of what remains, not a public product claim.
   explicit account is provided, while still supporting `--account` /
   `--account-ref`. On 2026-06-26, `pylon accounts list --json` showed five ready
   Codex accounts (`codex`, `codex-2`, `codex-3`, `codex-4`, and default).
+- Same-owner token rotation is now an explicit steering invariant: if an
+  OpenAgents agent token is reissued/rotated under the same OpenAuth owner, the
+  replacement credential may re-register/heartbeat the existing local Pylon and
+  complete same-owner assignments; unrelated agent credentials remain forbidden.
 - Closed steering fixes that should stay assumed in future work: #6331 typed
   target-Pylon unavailable diagnostics, #6332 Codex reconnect/link refresh,
   #6333 one-shot `presence heartbeat --json`, #6334 runtime lifecycle streaming,

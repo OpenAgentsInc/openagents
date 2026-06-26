@@ -656,6 +656,55 @@ const requireAdmin = <Bindings extends PylonApiRouteEnv>(
   )
 }
 
+const sameOpenAuthOwnerAgentUserIds = <Bindings extends PylonApiRouteEnv>(
+  dependencies: PylonApiRouteDependencies<Bindings>,
+  env: Bindings,
+  session: ProgrammaticAgentSession,
+): Effect.Effect<ReadonlySet<string>, PylonApiStoreError> => {
+  const ownerAgentUserIds = new Set<string>([session.user.id])
+  const openauthUserId = session.credential.openauthUserId?.trim()
+
+  if (openauthUserId === undefined || openauthUserId === '') {
+    return Effect.succeed(ownerAgentUserIds)
+  }
+
+  const listLinkedAgents =
+    routeAgentStore(dependencies, env).listLinkedAgentsForOpenAuthUser
+
+  if (listLinkedAgents === undefined) {
+    return Effect.succeed(ownerAgentUserIds)
+  }
+
+  return Effect.map(
+    Effect.tryPromise({
+      catch: pylonApiStoreErrorFromUnknown,
+      try: () => listLinkedAgents(openauthUserId, 100),
+    }),
+    linkedAgents => {
+      for (const linkedAgent of linkedAgents) {
+        if (linkedAgent.openauthUserId === openauthUserId) {
+          ownerAgentUserIds.add(linkedAgent.agentUserId)
+        }
+      }
+
+      return ownerAgentUserIds
+    },
+  )
+}
+
+const sessionOwnsAgentUserId = <Bindings extends PylonApiRouteEnv>(
+  dependencies: PylonApiRouteDependencies<Bindings>,
+  env: Bindings,
+  session: ProgrammaticAgentSession,
+  ownerAgentUserId: string,
+): Effect.Effect<boolean, PylonApiStoreError> =>
+  ownerAgentUserId === session.user.id
+    ? Effect.succeed(true)
+    : Effect.map(
+        sameOpenAuthOwnerAgentUserIds(dependencies, env, session),
+        ownerAgentUserIds => ownerAgentUserIds.has(ownerAgentUserId),
+      )
+
 const requireOwnedRegistration = <Bindings extends PylonApiRouteEnv>(
   dependencies: PylonApiRouteDependencies<Bindings>,
   env: Bindings,
@@ -678,11 +727,22 @@ const requireOwnedRegistration = <Bindings extends PylonApiRouteEnv>(
       }
 
       if (registration.ownerAgentUserId !== session.user.id) {
-        return Effect.fail(
-          new PylonApiStoreError({
-            kind: 'forbidden',
-            reason: 'Pylon registration belongs to another agent.',
-          }),
+        return Effect.flatMap(
+          sessionOwnsAgentUserId(
+            dependencies,
+            env,
+            session,
+            registration.ownerAgentUserId,
+          ),
+          owned =>
+            owned
+              ? Effect.succeed(registration)
+              : Effect.fail(
+                  new PylonApiStoreError({
+                    kind: 'forbidden',
+                    reason: 'Pylon registration belongs to another agent.',
+                  }),
+                ),
         )
       }
 
@@ -713,11 +773,22 @@ const requireOwnedAssignment = <Bindings extends PylonApiRouteEnv>(
       }
 
       if (assignment.ownerAgentUserId !== session.user.id) {
-        return Effect.fail(
-          new PylonApiStoreError({
-            kind: 'forbidden',
-            reason: 'Pylon assignment belongs to another agent.',
-          }),
+        return Effect.flatMap(
+          sessionOwnsAgentUserId(
+            dependencies,
+            env,
+            session,
+            assignment.ownerAgentUserId,
+          ),
+          owned =>
+            owned
+              ? Effect.succeed(assignment)
+              : Effect.fail(
+                  new PylonApiStoreError({
+                    kind: 'forbidden',
+                    reason: 'Pylon assignment belongs to another agent.',
+                  }),
+                ),
         )
       }
 
@@ -743,12 +814,21 @@ const routeRegister = <Bindings extends PylonApiRouteEnv>(
 
     if (existingEvent !== undefined) {
       if (existingEvent.ownerAgentUserId !== session.user.id) {
-        return routeErrorResponse(
-          new PylonApiStoreError({
-            kind: 'forbidden',
-            reason: 'Idempotency key is already bound to another agent.',
-          }),
+        const ownsExistingEvent = yield* sessionOwnsAgentUserId(
+          dependencies,
+          env,
+          session,
+          existingEvent.ownerAgentUserId,
         )
+
+        if (!ownsExistingEvent) {
+          return routeErrorResponse(
+            new PylonApiStoreError({
+              kind: 'forbidden',
+              reason: 'Idempotency key is already bound to another agent.',
+            }),
+          )
+        }
       }
 
       if (existingEvent.eventKind !== 'registration') {
@@ -820,6 +900,32 @@ const routeRegister = <Bindings extends PylonApiRouteEnv>(
           },
         }),
     })
+    const existingRegistrationForRef = yield* Effect.tryPromise({
+      catch: pylonApiStoreErrorFromUnknown,
+      try: () => store.readRegistration(registration.pylonRef),
+    })
+    const allowOwnerTransferFrom =
+      existingRegistrationForRef !== undefined &&
+      existingRegistrationForRef.ownerAgentUserId !== session.user.id
+        ? yield* Effect.flatMap(
+            sessionOwnsAgentUserId(
+              dependencies,
+              env,
+              session,
+              existingRegistrationForRef.ownerAgentUserId,
+            ),
+            owned =>
+              owned
+                ? Effect.succeed(existingRegistrationForRef.ownerAgentUserId)
+                : Effect.fail(
+                    new PylonApiStoreError({
+                      kind: 'conflict',
+                      reason:
+                        'Pylon ref is already owned by another registered agent.',
+                    }),
+                  ),
+          )
+        : undefined
     const event = yield* Effect.try({
       catch: pylonApiStoreErrorFromUnknown,
       try: () =>
@@ -848,7 +954,13 @@ const routeRegister = <Bindings extends PylonApiRouteEnv>(
     })
     const storedRegistration = yield* Effect.tryPromise({
       catch: pylonApiStoreErrorFromUnknown,
-      try: () => store.upsertRegistration(registration),
+      try: () =>
+        store.upsertRegistration(
+          registration,
+          allowOwnerTransferFrom === undefined
+            ? undefined
+            : { allowOwnerTransferFrom },
+        ),
     })
     const eventResult = yield* Effect.tryPromise({
       catch: pylonApiStoreErrorFromUnknown,
@@ -1309,14 +1421,29 @@ const routeEvent = <Bindings extends PylonApiRouteEnv>(
         nowIso,
       })
     }
-    const nextRegistration = nextRegistrationForEvent(
+    const nextRegistrationBase = nextRegistrationForEvent(
       registration,
       eventResult.record,
       nowIso,
     )
+    const nextRegistration =
+      registration.ownerAgentUserId === session.user.id
+        ? nextRegistrationBase
+        : {
+            ...nextRegistrationBase,
+            ownerAgentCredentialId: session.credential.id,
+            ownerAgentTokenPrefix: session.credential.tokenPrefix,
+            ownerAgentUserId: session.user.id,
+          }
     const storedRegistration = yield* Effect.tryPromise({
       catch: pylonApiStoreErrorFromUnknown,
-      try: () => store.upsertRegistration(nextRegistration),
+      try: () =>
+        store.upsertRegistration(
+          nextRegistration,
+          registration.ownerAgentUserId === session.user.id
+            ? undefined
+            : { allowOwnerTransferFrom: registration.ownerAgentUserId },
+        ),
     })
     const sparkReadiness = yield* resolveRouteSparkPayoutTargetReadiness(
       dependencies,
@@ -1519,14 +1646,29 @@ const routeRegisterSparkPayoutTarget = <Bindings extends PylonApiRouteEnv>(
       catch: pylonApiStoreErrorFromUnknown,
       try: () => store.createEvent(event),
     })
-    const nextRegistration = nextRegistrationForEvent(
+    const nextRegistrationBase = nextRegistrationForEvent(
       registration,
       eventResult.record,
       nowIso,
     )
+    const nextRegistration =
+      registration.ownerAgentUserId === session.user.id
+        ? nextRegistrationBase
+        : {
+            ...nextRegistrationBase,
+            ownerAgentCredentialId: session.credential.id,
+            ownerAgentTokenPrefix: session.credential.tokenPrefix,
+            ownerAgentUserId: session.user.id,
+          }
     const storedRegistration = yield* Effect.tryPromise({
       catch: pylonApiStoreErrorFromUnknown,
-      try: () => store.upsertRegistration(nextRegistration),
+      try: () =>
+        store.upsertRegistration(
+          nextRegistration,
+          registration.ownerAgentUserId === session.user.id
+            ? undefined
+            : { allowOwnerTransferFrom: registration.ownerAgentUserId },
+        ),
     })
     // Recompute readiness from the private store right after the upsert: this
     // is the moment a node-registered target becomes visible as ready (#5306).

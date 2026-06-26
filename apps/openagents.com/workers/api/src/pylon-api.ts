@@ -822,6 +822,7 @@ export type PylonApiStore = Readonly<{
   ) => Promise<PylonApiProviderJobLifecycleRecord>
   upsertRegistration: (
     record: PylonApiRegistrationRecord,
+    options?: Readonly<{ allowOwnerTransferFrom?: string | undefined }>,
   ) => Promise<PylonApiRegistrationRecord>
 }>
 
@@ -2268,14 +2269,15 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
     return record
   },
 
-  upsertRegistration: async record => {
+  upsertRegistration: async (record, options) => {
     const existing = await makeD1PylonApiStore(db).readRegistration(
       record.pylonRef,
     )
 
     if (
       existing !== undefined &&
-      existing.ownerAgentUserId !== record.ownerAgentUserId
+      existing.ownerAgentUserId !== record.ownerAgentUserId &&
+      options?.allowOwnerTransferFrom !== existing.ownerAgentUserId
     ) {
       throw new PylonApiStoreError({
         kind: 'conflict',
@@ -2337,6 +2339,7 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
       createdAt: existing.createdAt,
       id: existing.id,
     }
+    const expectedOwnerAgentUserId = existing.ownerAgentUserId
     const publicProjectionJson = JSON.stringify(
       publicPylonApiRegistrationProjection(next, record.updatedAt),
     )
@@ -2344,7 +2347,8 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
     await db
       .prepare(
         `UPDATE pylon_api_registrations
-            SET owner_agent_credential_id = ?,
+            SET owner_agent_user_id = ?,
+                owner_agent_credential_id = ?,
                 owner_agent_token_prefix = ?,
                 display_name = ?,
                 status = ?,
@@ -2371,6 +2375,7 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
             AND archived_at IS NULL`,
       )
       .bind(
+        record.ownerAgentUserId,
         record.ownerAgentCredentialId,
         record.ownerAgentTokenPrefix,
         record.displayName,
@@ -2394,7 +2399,7 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
         publicProjectionJson,
         record.updatedAt,
         record.pylonRef,
-        record.ownerAgentUserId,
+        expectedOwnerAgentUserId,
       )
       .run()
 

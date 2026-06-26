@@ -222,12 +222,16 @@ class MemoryPylonApiStore implements PylonApiStore {
     return record
   }
 
-  upsertRegistration = async (record: PylonApiRegistrationRecord) => {
+  upsertRegistration = async (
+    record: PylonApiRegistrationRecord,
+    options?: Readonly<{ allowOwnerTransferFrom?: string | undefined }>,
+  ) => {
     const existing = this.registrations.get(record.pylonRef)
 
     if (
       existing !== undefined &&
-      existing.ownerAgentUserId !== record.ownerAgentUserId
+      existing.ownerAgentUserId !== record.ownerAgentUserId &&
+      options?.allowOwnerTransferFrom !== existing.ownerAgentUserId
     ) {
       throw new PylonApiStoreError({
         kind: 'conflict',
@@ -536,28 +540,34 @@ const sessionFor = (userId: string): ProgrammaticAgentSession => ({
   },
 })
 
-const agentStoreFor = (userId: string): AgentRegistrationStore => ({
+const agentStoreFor = (
+  userId: string,
+  options: Readonly<{
+    linkedAgentUserIds?: ReadonlyArray<string>
+    openauthUserId?: string | null
+  }> = {},
+): AgentRegistrationStore => ({
   createAgentRegistration: () => Promise.resolve(),
   findAgentByTokenHash: () =>
     Promise.resolve({
       credentialId: `credential-${userId}`,
-      openauthUserId: null,
+      openauthUserId: options.openauthUserId ?? null,
       profileMetadataJson: '{}',
       tokenPrefix: 'oa_agent_test',
       user: sessionFor(userId).user,
     }),
   linkOpenAuthAgent: () => Promise.resolve(),
   listLinkedAgentsForOpenAuthUser: () =>
-    Promise.resolve([
-      {
-        agentUserId: userId,
-        credentialId: `credential-${userId}`,
-        displayName: `Agent ${userId}`,
+    Promise.resolve(
+      (options.linkedAgentUserIds ?? [userId]).map(linkedUserId => ({
+        agentUserId: linkedUserId,
+        credentialId: `credential-${linkedUserId}`,
+        displayName: `Agent ${linkedUserId}`,
         linkKind: 'credential_anchor',
-        openauthUserId: 'openauth-user-one',
+        openauthUserId: options.openauthUserId ?? 'openauth-user-one',
         tokenPrefix: 'oa_agent_test',
-      },
-    ]),
+      })),
+    ),
   touchAgentCredential: () => Promise.resolve(),
   updateAgentDisplayName: () => Promise.resolve(0),
 })
@@ -571,6 +581,8 @@ const route = async (
     idempotencyKey?: string
     method?: string
     nowIso?: string
+    linkedAgentUserIds?: ReadonlyArray<string>
+    openauthUserId?: string | null
     tokenUserId?: string
   }> = {},
 ) => {
@@ -597,8 +609,17 @@ const route = async (
   }
 
   const request = new Request(`https://openagents.com${path}`, init)
+  const agentStoreOptions = {
+    ...(options.linkedAgentUserIds === undefined
+      ? {}
+      : { linkedAgentUserIds: options.linkedAgentUserIds }),
+    ...(options.openauthUserId === undefined
+      ? {}
+      : { openauthUserId: options.openauthUserId }),
+  }
   const routes = makePylonApiRoutes({
-    agentStore: () => agentStoreFor(options.tokenUserId ?? 'agent-one'),
+    agentStore: () =>
+      agentStoreFor(options.tokenUserId ?? 'agent-one', agentStoreOptions),
     makeId: () => `test-${++counter}`,
     makeStore: () => store,
     nowIso: () => options.nowIso ?? '2026-06-07T00:10:00.000Z',
@@ -1368,6 +1389,83 @@ describe('Pylon API routes', () => {
 
     expect(response.status).toBe(400)
     expect(body.error).toBe('pylon_api_validation_error')
+  })
+
+  test('lets a same-OpenAuth rotated agent credential reclaim and heartbeat a Pylon', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store, { tokenUserId: 'agent-old' })
+
+    const reRegister = await route(store, '/api/pylons/register', {
+      body: {
+        capabilityRefs: ['capability.pylon.local_codex'],
+        clientProtocolVersion: '0.3.0',
+        clientVersion: 'openagents.pylon@1.0.5',
+        pylonRef: 'pylon.test.one',
+        resourceMode: 'background_20',
+      },
+      idempotencyKey: 'register-pylon-test-one-rotated',
+      linkedAgentUserIds: ['agent-old', 'agent-new'],
+      method: 'POST',
+      openauthUserId: 'openauth-owner-one',
+      tokenUserId: 'agent-new',
+    })
+    const heartbeat = await route(store, '/api/pylons/pylon.test.one/heartbeat', {
+      body: {
+        capacityRefs: ['capacity.coding.codex.available=1'],
+        clientProtocolVersion: '0.3.0',
+        clientVersion: 'openagents.pylon@1.0.5',
+        healthRefs: ['health.public.ok'],
+        loadRefs: ['load.coding.codex.busy=0'],
+        resourceMode: 'background_20',
+        status: 'online',
+      },
+      idempotencyKey: 'heartbeat-rotated-agent',
+      linkedAgentUserIds: ['agent-old', 'agent-new'],
+      method: 'POST',
+      openauthUserId: 'openauth-owner-one',
+      tokenUserId: 'agent-new',
+    })
+    const stored = await store.readRegistration('pylon.test.one')
+
+    expect(reRegister.status).toBe(201)
+    expect(heartbeat.status).toBe(201)
+    expect(stored?.ownerAgentUserId).toBe('agent-new')
+    expect(stored?.latestHeartbeatStatus).toBe('online')
+    expect(stored?.latestCapacityRefs).toEqual([
+      'capacity.coding.codex.available=1',
+    ])
+  })
+
+  test('keeps unrelated agent credentials from reclaiming a registered Pylon', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store, { tokenUserId: 'agent-old' })
+
+    const reRegister = await route(store, '/api/pylons/register', {
+      body: {
+        capabilityRefs: ['capability.pylon.local_codex'],
+        pylonRef: 'pylon.test.one',
+      },
+      idempotencyKey: 'register-pylon-test-one-foreign',
+      linkedAgentUserIds: ['agent-new'],
+      method: 'POST',
+      openauthUserId: 'openauth-owner-two',
+      tokenUserId: 'agent-new',
+    })
+    const heartbeat = await route(store, '/api/pylons/pylon.test.one/heartbeat', {
+      body: { healthRefs: ['health.public.ok'] },
+      idempotencyKey: 'heartbeat-foreign-agent',
+      linkedAgentUserIds: ['agent-new'],
+      method: 'POST',
+      openauthUserId: 'openauth-owner-two',
+      tokenUserId: 'agent-new',
+    })
+    const registerBody = await responseJson<PylonRouteJson>(reRegister)
+    const heartbeatBody = await responseJson<PylonRouteJson>(heartbeat)
+
+    expect(reRegister.status).toBe(409)
+    expect(registerBody.error).toBe('pylon_api_conflict')
+    expect(heartbeat.status).toBe(403)
+    expect(heartbeatBody.error).toBe('pylon_api_forbidden')
   })
 
   test('collapses duplicate idempotency keys', async () => {
