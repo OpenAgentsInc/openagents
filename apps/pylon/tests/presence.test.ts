@@ -121,7 +121,7 @@ function fakePresenceCliServer() {
       const body = text ? JSON.parse(text) : {}
       requests.push({ path: url.pathname, body, headers: request.headers })
 
-      expect(request.headers.get("authorization")).toBe("Bearer test-agent-token")
+      expect(request.headers.get("authorization")).toBe("Bearer oa_agent_test_agent_token")
       expect(request.headers.get("x-pylon-ref")).toBe(body.pylonRef)
 
       if (url.pathname === "/api/pylons/register") {
@@ -155,7 +155,7 @@ async function runPresenceCli(input: {
     cwd: CWD,
     env: {
       ...process.env,
-      OPENAGENTS_AGENT_TOKEN: "test-agent-token",
+      OPENAGENTS_AGENT_TOKEN: "oa_agent_test_agent_token",
       PYLON_DISABLE_DAEMON_ROUTING: "1",
       PYLON_DISABLE_OPENCODE_STARTUP: "1",
       PYLON_SPARK_BACKUP_DISABLED: "1",

@@ -450,6 +450,8 @@ describe("pylon khala requester API", () => {
         "OpenAgentsInc/openagents",
         "--verify",
         "bun test",
+        "--agent-token",
+        "oa_agent_cli_test",
         "--json",
       ],
       {
@@ -543,7 +545,7 @@ describe("pylon khala requester API", () => {
     servers.push(server)
 
     const result = await runPylonCli(
-      ["khala", "proof", "assignment-pylon-codex-1", "--json"],
+      ["khala", "proof", "assignment-pylon-codex-1", "--agent-token", "oa_agent_cli_test", "--json"],
       {
         OPENAGENTS_AGENT_TOKEN: "oa_agent_cli_test",
         PYLON_OPENAGENTS_BASE_URL: `http://127.0.0.1:${server.port}`,

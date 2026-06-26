@@ -23,7 +23,12 @@ export type PylonAuthArgs = {
   timeoutSeconds: number
 }
 
-type AgentTokenSource = "env" | "stored" | "registered"
+type AgentTokenSource = "cli" | "env" | "stored" | "registered"
+
+export type ResolvedOpenAgentsAgentToken = {
+  source: "cli" | "env" | "stored"
+  token: string
+}
 
 export type PylonAuthOpenAgentsProjection = {
   schema: "pylon.auth.openagents.v1"
@@ -201,13 +206,44 @@ function requireAgentTokenShape(token: string, source: string): string {
   return token
 }
 
-async function readStoredAgentToken(summary: Pick<BootstrapSummary, "paths">): Promise<string | null> {
+export async function readStoredOpenAgentsAgentToken(
+  summary: Pick<BootstrapSummary, "paths">,
+): Promise<string | null> {
   try {
     const token = (await readFile(agentTokenPath(summary), "utf8")).trim()
     return token.startsWith("oa_agent_") ? token : null
   } catch {
     return null
   }
+}
+
+export async function resolveOpenAgentsAgentToken(input: {
+  env?: Record<string, string | undefined>
+  explicitAgentToken?: string | null
+  summary: Pick<BootstrapSummary, "paths">
+}): Promise<ResolvedOpenAgentsAgentToken | null> {
+  const explicit = (input.explicitAgentToken ?? "").trim()
+  if (explicit !== "") {
+    return {
+      source: "cli",
+      token: requireAgentTokenShape(explicit, "--agent-token"),
+    }
+  }
+
+  const stored = await readStoredOpenAgentsAgentToken(input.summary)
+  if (stored !== null) {
+    return { source: "stored", token: stored }
+  }
+
+  const envToken = (input.env?.OPENAGENTS_AGENT_TOKEN ?? "").trim()
+  if (envToken !== "") {
+    return {
+      source: "env",
+      token: requireAgentTokenShape(envToken, "OPENAGENTS_AGENT_TOKEN"),
+    }
+  }
+
+  return null
 }
 
 async function writeStoredAgentToken(summary: Pick<BootstrapSummary, "paths">, token: string): Promise<void> {
@@ -223,6 +259,16 @@ async function writeStoredAgentToken(summary: Pick<BootstrapSummary, "paths">, t
 const hashRef = (value: string): string =>
   createHash("sha256").update(value).digest("hex").slice(0, 16)
 
+class OpenAgentsAuthHttpError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message)
+    this.name = "OpenAgentsAuthHttpError"
+  }
+}
+
+const isUnauthorizedAuthError = (error: unknown): boolean =>
+  error instanceof OpenAgentsAuthHttpError && error.status === 401
+
 async function readJsonResponse(response: Response): Promise<Record<string, unknown>> {
   const body = (await response.json().catch(() => ({}))) as unknown
   const record = body !== null && typeof body === "object" && !Array.isArray(body)
@@ -234,7 +280,7 @@ async function readJsonResponse(response: Response): Promise<Record<string, unkn
       : typeof record.error === "string"
         ? record.error
         : `OpenAgents request failed with status ${response.status}`
-    throw new Error(message)
+    throw new OpenAgentsAuthHttpError(response.status, message)
   }
   return record
 }
@@ -285,16 +331,35 @@ async function ensureAgentToken(input: {
   fetcher: PylonAccountsConnectFetcher
   summary: Pick<BootstrapSummary, "paths">
 }): Promise<{ source: AgentTokenSource; token: string }> {
-  const explicit = (input.args.agentToken ?? input.env.OPENAGENTS_AGENT_TOKEN ?? "").trim()
+  const explicit = (input.args.agentToken ?? "").trim()
   if (explicit !== "") {
-    const token = requireAgentTokenShape(explicit, "OPENAGENTS_AGENT_TOKEN")
+    const token = requireAgentTokenShape(explicit, "--agent-token")
     await writeStoredAgentToken(input.summary, token)
-    return { source: "env", token }
+    return { source: "cli", token }
   }
-  const stored = await readStoredAgentToken(input.summary)
+  const stored = await readStoredOpenAgentsAgentToken(input.summary)
   if (stored !== null) {
     return { source: "stored", token: stored }
   }
+  const envToken = (input.env.OPENAGENTS_AGENT_TOKEN ?? "").trim()
+  if (envToken !== "") {
+    const token = requireAgentTokenShape(envToken, "OPENAGENTS_AGENT_TOKEN")
+    await writeStoredAgentToken(input.summary, token)
+    return { source: "env", token }
+  }
+  const token = await registerAgentToken({
+    baseUrl: input.baseUrl,
+    fetcher: input.fetcher,
+  })
+  await writeStoredAgentToken(input.summary, token)
+  return { source: "registered", token }
+}
+
+async function registerFallbackAgentToken(input: {
+  baseUrl: string
+  fetcher: PylonAccountsConnectFetcher
+  summary: Pick<BootstrapSummary, "paths">
+}): Promise<{ source: "registered"; token: string }> {
   const token = await registerAgentToken({
     baseUrl: input.baseUrl,
     fetcher: input.fetcher,
@@ -407,12 +472,63 @@ export async function runPylonAuthOpenAgents(
   const fetcher = options.fetcher ?? fetch
   const sleep = options.sleep ?? defaultSleep
   const baseUrl = baseUrlFrom(args, env)
-  const token = await ensureAgentToken({ args, baseUrl, env, fetcher, summary })
-  const started = await startOpenAgentsAuth({
-    baseUrl,
-    fetcher,
-    token: token.token,
-  })
+  const tokenCandidates: Array<{ source: AgentTokenSource; token: string }> = []
+  const primary = await ensureAgentToken({ args, baseUrl, env, fetcher, summary })
+  tokenCandidates.push(primary)
+  if (args.agentToken === null) {
+    const stored = await readStoredOpenAgentsAgentToken(summary)
+    if (
+      stored !== null &&
+      !tokenCandidates.some(candidate => candidate.token === stored)
+    ) {
+      tokenCandidates.push({ source: "stored", token: stored })
+    }
+    const envToken = (env.OPENAGENTS_AGENT_TOKEN ?? "").trim()
+    if (
+      envToken !== "" &&
+      !tokenCandidates.some(candidate => candidate.token === envToken)
+    ) {
+      tokenCandidates.push({
+        source: "env",
+        token: requireAgentTokenShape(envToken, "OPENAGENTS_AGENT_TOKEN"),
+      })
+    }
+  }
+
+  let token = tokenCandidates[0]!
+  let started: OpenAgentsAuthStartResponse | null = null
+  let lastUnauthorized: unknown
+  for (const candidate of tokenCandidates) {
+    try {
+      started = await startOpenAgentsAuth({
+        baseUrl,
+        fetcher,
+        token: candidate.token,
+      })
+      token = candidate
+      await writeStoredAgentToken(summary, candidate.token)
+      break
+    } catch (error) {
+      if (!isUnauthorizedAuthError(error) || candidate.source === "cli") {
+        throw error
+      }
+      lastUnauthorized = error
+    }
+  }
+  if (started === null) {
+    token = await registerFallbackAgentToken({ baseUrl, fetcher, summary })
+    try {
+      started = await startOpenAgentsAuth({
+        baseUrl,
+        fetcher,
+        token: token.token,
+      })
+    } catch (error) {
+      throw isUnauthorizedAuthError(error) && lastUnauthorized !== undefined
+        ? lastUnauthorized
+        : error
+    }
+  }
 
   if (started.status === "linked") {
     const projection = {

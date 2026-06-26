@@ -5,6 +5,7 @@ import { tmpdir } from "node:os"
 
 import {
   parsePylonAuthArgs,
+  resolveOpenAgentsAgentToken,
   runPylonAuthCodex,
   runPylonAuthOpenAgents,
 } from "../src/auth"
@@ -269,6 +270,123 @@ describe("pylon auth", () => {
       expect(() => parsePylonAuthArgs(["claude"])).toThrow(/pylon auth openagents\|codex/)
       expect(() => parsePylonAuthArgs(["openagents", "--account", "codex-a"])).toThrow(/does not take --account/)
       expect(() => parsePylonAuthArgs(["codex", "--account", "../bad"])).toThrow(/letters, numbers/)
+    })
+  })
+
+  test("recovers stale stored and environment OpenAgents tokens by registering a fresh credential", async () => {
+    await withHome(async home => {
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), {
+        PYLON_HOME: home,
+      })
+      await mkdir(join(home, "auth"), { recursive: true })
+      await writeFile(join(home, "auth", "openagents-agent-token"), "oa_agent_stale_stored\n")
+
+      const prompts: Array<{ kind: string; userCode: string; verificationUrl: string }> = []
+      const calls: Array<{ authorization: string | null; method: string | undefined; url: string }> = []
+      const fetcher: typeof fetch = async (input, init) => {
+        const url = String(input)
+        const authorization = new Headers(init?.headers).get("authorization")
+        calls.push({ authorization, method: init?.method, url })
+        if (url === "https://openagents.example/api/pylon/auth/openagents/device/start") {
+          if (
+            authorization === "Bearer oa_agent_stale_stored" ||
+            authorization === "Bearer oa_agent_stale_env"
+          ) {
+            return jsonResponse({ error: "unauthorized" }, 401)
+          }
+          expect(authorization).toBe("Bearer oa_agent_fresh_registered")
+          return jsonResponse({
+            schema: "openagents.pylon.auth.openagents.v1",
+            status: "pending",
+            attemptId: "pylon_openauth_recovered",
+            expiresAt: "2026-06-25T12:05:00.000Z",
+            intervalSeconds: 1,
+            linkedAgent: { tokenPrefix: "oa_agent_fresh_reg" },
+            userCode: "PYLO-YES1",
+            verificationUrl: "https://openagents.example/api/pylon/auth/openagents/device/verify?attempt=pylon_openauth_recovered&code=PYLO-YES1",
+          }, 201)
+        }
+        if (url === "https://openagents.example/api/agents/register") {
+          expect(authorization).toBeNull()
+          return jsonResponse({
+            credential: { token: "oa_agent_fresh_registered" },
+          }, 201)
+        }
+        if (url === "https://openagents.example/api/pylon/auth/openagents/device/pylon_openauth_recovered") {
+          expect(authorization).toBe("Bearer oa_agent_fresh_registered")
+          return jsonResponse({
+            schema: "openagents.pylon.auth.openagents.v1",
+            status: "linked",
+            linkedAgent: { tokenPrefix: "oa_agent_fresh_reg" },
+          })
+        }
+        throw new Error(`unexpected fetch ${url}`)
+      }
+
+      const result = await runPylonAuthOpenAgents(
+        summary,
+        parsePylonAuthArgs(["openagents", "--base-url", "https://openagents.example"]),
+        {
+          env: { OPENAGENTS_AGENT_TOKEN: "oa_agent_stale_env" },
+          fetcher,
+          onDevicePrompt: prompt => prompts.push(prompt),
+          sleep: async () => undefined,
+        },
+      )
+
+      expect(result.projection.agentCredential.source).toBe("registered")
+      expect(result.projection.deviceLogin).toMatchObject({
+        status: "completed",
+        attemptId: "pylon_openauth_recovered",
+      })
+      expect(prompts).toEqual([
+        {
+          kind: "openagents",
+          userCode: "PYLO-YES1",
+          verificationUrl: "https://openagents.example/api/pylon/auth/openagents/device/verify?attempt=pylon_openauth_recovered&code=PYLO-YES1",
+        },
+      ])
+      expect(await readFile(join(home, "auth", "openagents-agent-token"), "utf8")).toBe("oa_agent_fresh_registered\n")
+      expect(calls.map(call => call.authorization)).toEqual([
+        "Bearer oa_agent_stale_stored",
+        "Bearer oa_agent_stale_env",
+        null,
+        "Bearer oa_agent_fresh_registered",
+        "Bearer oa_agent_fresh_registered",
+      ])
+      expect(JSON.stringify(result.projection)).not.toContain("oa_agent_fresh_registered")
+      assertPublicProjectionSafe(result.projection)
+    })
+  })
+
+  test("operational credential resolver prefers the stored linked token over environment fallback", async () => {
+    await withHome(async home => {
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), {
+        PYLON_HOME: home,
+      })
+      await mkdir(join(home, "auth"), { recursive: true })
+      await writeFile(join(home, "auth", "openagents-agent-token"), "oa_agent_stored_link\n")
+
+      await expect(
+        resolveOpenAgentsAgentToken({
+          env: { OPENAGENTS_AGENT_TOKEN: "oa_agent_env_stale" },
+          explicitAgentToken: null,
+          summary,
+        }),
+      ).resolves.toEqual({
+        source: "stored",
+        token: "oa_agent_stored_link",
+      })
+      await expect(
+        resolveOpenAgentsAgentToken({
+          env: { OPENAGENTS_AGENT_TOKEN: "oa_agent_env_stale" },
+          explicitAgentToken: "oa_agent_cli_override",
+          summary,
+        }),
+      ).resolves.toEqual({
+        source: "cli",
+        token: "oa_agent_cli_override",
+      })
     })
   })
 })

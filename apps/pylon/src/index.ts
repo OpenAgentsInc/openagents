@@ -96,6 +96,7 @@ import {
 } from "./account-connect.js"
 import {
   parsePylonAuthArgs,
+  resolveOpenAgentsAgentToken,
   runPylonAuthCodex,
   runPylonAuthOpenAgents,
 } from "./auth.js"
@@ -3278,9 +3279,14 @@ async function main() {
       const summary = await createPresenceBootstrapSummary(presenceArgs, Bun.env)
       const state = await ensurePylonLocalState(summary)
       const shouldProbeWallet = options["wallet-probe"] === true
+      const resolvedAgentToken = await resolveOpenAgentsAgentToken({
+        env: Bun.env,
+        explicitAgentToken: optionString(options, "agent-token") ?? null,
+        summary,
+      })
       const clientOptions = {
         ...presenceClientOptionsFromEnv({ baseUrl, env: Bun.env }),
-        ...(optionString(options, "agent-token") === undefined ? {} : { agentToken: optionString(options, "agent-token")! }),
+        ...(resolvedAgentToken === null ? {} : { agentToken: resolvedAgentToken.token }),
         ...(shouldProbeWallet ? { walletProbe: () => classifyPrimaryAgentWalletForState(state) } : {}),
       }
       const result =
@@ -3713,11 +3719,15 @@ async function main() {
         return
       }
 
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
+      const resolvedAgentToken = await resolveOpenAgentsAgentToken({
+        env: Bun.env,
+        explicitAgentToken: optionString(options, "agent-token") ?? null,
+        summary,
+      })
       await runPylonKhalaMcpStdio({
         network: {
-          agentToken:
-            optionString(options, "agent-token") ??
-            Bun.env.OPENAGENTS_AGENT_TOKEN,
+          agentToken: resolvedAgentToken?.token ?? "",
           baseUrl,
         },
       })
@@ -3738,8 +3748,14 @@ async function main() {
       const options = parseKeyValueOptions(khalaArgs)
       const baseUrl = optionString(options, "base-url") ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
       if (!baseUrl) throw new Error("khala commands require --base-url or PYLON_OPENAGENTS_BASE_URL")
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
+      const resolvedAgentToken = await resolveOpenAgentsAgentToken({
+        env: Bun.env,
+        explicitAgentToken: optionString(options, "agent-token") ?? null,
+        summary,
+      })
       const networkOptions = {
-        agentToken: optionString(options, "agent-token") ?? Bun.env.OPENAGENTS_AGENT_TOKEN,
+        agentToken: resolvedAgentToken?.token ?? "",
         baseUrl,
       }
       const emit = (payload: Record<string, unknown>) => {
@@ -4453,7 +4469,12 @@ async function main() {
         throw new Error("assignment commands require --base-url or PYLON_OPENAGENTS_BASE_URL")
       }
       const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
-      const agentToken = optionString(options, "agent-token") ?? Bun.env.OPENAGENTS_AGENT_TOKEN
+      const resolvedAgentToken = await resolveOpenAgentsAgentToken({
+        env: Bun.env,
+        explicitAgentToken: optionString(options, "agent-token") ?? null,
+        summary,
+      })
+      const agentToken = resolvedAgentToken?.token
       const clientOptions = { ...(agentToken ? { agentToken } : {}), baseUrl }
       if (command === "poll") {
         const leases = await pollAssignments(summary, clientOptions)
