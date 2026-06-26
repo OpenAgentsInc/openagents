@@ -31,6 +31,7 @@ export const PublicKhalaTokensServedHistoryResponse = S.Struct({
   schemaVersion: S.Literal('openagents.public_khala_tokens_served_history.v1'),
   window: PublicKhalaTokensServedHistoryWindow,
   bucket: PublicKhalaTokensServedHistoryBucket,
+  timezone: S.String,
   series: S.Array(PublicKhalaTokensServedHistoryPoint),
   generatedAt: S.String,
   staleness: PublicProjectionStalenessContract,
@@ -70,11 +71,13 @@ export const handlePublicKhalaTokensServedHistoryApi = (
   const url = new URL(request.url)
   const window = url.searchParams.get('window') ?? undefined
   const bucket = url.searchParams.get('bucket') ?? undefined
+  const timezone =
+    url.searchParams.get('timezone') ?? url.searchParams.get('tz') ?? undefined
 
   // Only cache the real (D1-backed) production path. Tests inject their own
   // ledger and must each see their own snapshot, so they bypass the cache.
   const cacheable = input.ledger === undefined
-  const cacheKey = `${window ?? '30d'}|${bucket ?? 'day'}`
+  const cacheKey = `${window ?? '30d'}|${bucket ?? 'day'}|${timezone ?? 'UTC'}`
 
   const cached = cacheable ? historyCache.get(cacheKey) : undefined
   if (
@@ -87,12 +90,13 @@ export const handlePublicKhalaTokensServedHistoryApi = (
   const ledger =
     input.ledger ?? makeD1TokenUsageLedger(input.OPENAGENTS_DB as D1Database)
 
-  return ledger.readPublicTokensServedHistory({ bucket, window }).pipe(
+  return ledger.readPublicTokensServedHistory({ bucket, timezone, window }).pipe(
     Effect.map(history => {
       const payload: PublicKhalaTokensServedHistoryResponse = {
         schemaVersion: 'openagents.public_khala_tokens_served_history.v1',
         window: history.window,
         bucket: history.bucket,
+        timezone: history.timezone,
         series: history.series.map(point => ({
           day: point.day,
           tokensServed: point.tokensServed,

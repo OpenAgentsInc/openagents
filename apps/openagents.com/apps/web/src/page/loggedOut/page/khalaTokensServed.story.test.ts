@@ -36,6 +36,7 @@ const served = (tokensServed: number) =>
 const sampleHistory = PublicKhalaTokensServedHistory.make({
   window: '30d',
   bucket: 'day',
+  timezone: 'UTC',
   series: [
     { day: '2026-06-20', tokensServed: 12_000 },
     { day: '2026-06-21', tokensServed: 48_500 },
@@ -200,6 +201,7 @@ describe('Khala Tokens Served history chart (#6227)', () => {
     const emptyHistory = PublicKhalaTokensServedHistory.make({
       window: '30d',
       bucket: 'day',
+      timezone: 'UTC',
       series: [],
     })
 

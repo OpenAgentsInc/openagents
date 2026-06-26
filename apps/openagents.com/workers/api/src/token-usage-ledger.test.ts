@@ -319,6 +319,27 @@ const makeMemoryD1 = (
           )
         }
 
+        if (
+          query.includes('SELECT observed_at, input_tokens, output_tokens') &&
+          query.includes('ORDER BY observed_at ASC')
+        ) {
+          return Promise.resolve(
+            makeResult<T>(
+              [...rows]
+                .sort((left, right) =>
+                  String(left.observed_at).localeCompare(
+                    String(right.observed_at),
+                  ),
+                )
+                .map(row => ({
+                  observed_at: row.observed_at,
+                  input_tokens: row.input_tokens,
+                  output_tokens: row.output_tokens,
+                })) as Array<T>,
+            ),
+          )
+        }
+
         // Public tokens-served history: per-day SUM(input + output), ordered
         // ascending by UTC day. The `since` lower bound (when present) was
         // applied by filteredRows via the bound `observed_at >= ?` value.
@@ -865,6 +886,7 @@ describe('public tokens-served history', () => {
 
     expect(history.window).toBe('30d')
     expect(history.bucket).toBe('day')
+    expect(history.timezone).toBe('UTC')
     // Ascending by day; per-day input + output sums.
     expect(history.series).toEqual([
       { day: '2026-06-06', tokensServed: 155 },
@@ -889,6 +911,48 @@ describe('public tokens-served history', () => {
     const history = await runLedger(db, tokensServedHistory({ window: '7d' }))
 
     expect(history.series).toEqual([{ day: '2026-06-07', tokensServed: 100 }])
+  })
+
+  test('can bucket history by America/Chicago local day across a UTC boundary', async () => {
+    const db = makeMemoryD1()
+
+    await runLedger(
+      db,
+      Effect.gen(function* () {
+        yield* ingest(
+          eventOnDay('late-central', '2026-06-25T04:30:00.000Z', 6, 4),
+        )
+        yield* ingest(
+          eventOnDay('next-central', '2026-06-25T05:30:00.000Z', 20, 5),
+        )
+      }),
+    )
+
+    const utcHistory = await runLedger(
+      db,
+      tokensServedHistory({
+        now: '2026-06-26T12:00:00.000Z',
+        timezone: 'UTC',
+        window: '7d',
+      }),
+    )
+    const chicagoHistory = await runLedger(
+      db,
+      tokensServedHistory({
+        now: '2026-06-26T12:00:00.000Z',
+        timezone: 'America/Chicago',
+        window: '7d',
+      }),
+    )
+
+    expect(utcHistory.series).toEqual([
+      { day: '2026-06-25', tokensServed: 35 },
+    ])
+    expect(chicagoHistory.timezone).toBe('America/Chicago')
+    expect(chicagoHistory.series).toEqual([
+      { day: '2026-06-24', tokensServed: 10 },
+      { day: '2026-06-25', tokensServed: 25 },
+    ])
   })
 
   test('empty ledger → empty series', async () => {

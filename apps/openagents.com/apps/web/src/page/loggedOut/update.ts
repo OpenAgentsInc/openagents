@@ -555,9 +555,15 @@ export const LoadPublicKhalaTokensServedHistory = Command.define(
   FailedLoadPublicKhalaTokensServedHistory,
 )(
   Effect.gen(function* () {
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+    const search = new URLSearchParams({
+      bucket: 'day',
+      timezone,
+      window: '30d',
+    })
     const response = yield* Effect.tryPromise({
       try: () =>
-        fetch('/api/public/khala-tokens-served/history?window=30d&bucket=day', {
+        fetch(`/api/public/khala-tokens-served/history?${search.toString()}`, {
           cache: 'no-store',
           headers: { accept: 'application/json' },
         }),

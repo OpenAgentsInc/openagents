@@ -79,6 +79,7 @@ const history = LoadedPublicKhalaTokensServedHistory({
   history: PublicKhalaTokensServedHistory.make({
     window: '30d',
     bucket: 'day',
+    timezone: 'UTC',
     series: variant === 'empty' ? [] : sampleSeries,
   }),
 })

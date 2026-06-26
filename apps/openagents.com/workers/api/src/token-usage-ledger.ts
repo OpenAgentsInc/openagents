@@ -23,6 +23,7 @@ import { openAgentsDatabase } from './runtime'
 import {
   currentIsoTimestamp,
   isoTimestampAfterIso,
+  isoTimestampToDate,
   utcStartOfDayIsoTimestamp,
 } from './runtime-primitives'
 
@@ -62,6 +63,7 @@ export type TokenUsageLeaderboardFilters = Readonly<{
 export type TokenUsageHistoryFilters = Readonly<{
   bucket?: 'day' | string | undefined
   now?: string | undefined
+  timezone?: string | undefined
   window?: '7d' | '30d' | 'all' | 'today' | string | undefined
 }>
 
@@ -1260,6 +1262,54 @@ const normalizeHistoryBucket = (
       )
 }
 
+const normalizeHistoryTimezone = (
+  value: string | undefined,
+): Effect.Effect<string, TokenUsageLedgerValidationError> => {
+  const timezone = optionalText(value) ?? 'UTC'
+
+  return Effect.try({
+    try: () => Intl.DateTimeFormat('en-US', { timeZone: timezone })
+      .resolvedOptions()
+      .timeZone,
+    catch: error =>
+      new TokenUsageLedgerValidationError({
+        field: 'timezone',
+        message:
+          error instanceof Error
+            ? error.message
+            : 'timezone must be a valid IANA timezone.',
+      }),
+  })
+}
+
+const localDayFormatter = (timezone: string): Intl.DateTimeFormat =>
+  new Intl.DateTimeFormat('en-US', {
+    calendar: 'iso8601',
+    day: '2-digit',
+    month: '2-digit',
+    timeZone: timezone,
+    year: 'numeric',
+  })
+
+const dayInTimezone = (
+  timestamp: string,
+  formatter: Intl.DateTimeFormat,
+): string | undefined => {
+  const date = isoTimestampToDate(timestamp)
+  if (Number.isNaN(date.getTime())) {
+    return undefined
+  }
+
+  const parts = formatter.formatToParts(date)
+  const year = parts.find(part => part.type === 'year')?.value
+  const month = parts.find(part => part.type === 'month')?.value
+  const day = parts.find(part => part.type === 'day')?.value
+
+  return year !== undefined && month !== undefined && day !== undefined
+    ? `${year}-${month}-${day}`
+    : undefined
+}
+
 type AggregateWhere = Readonly<{
   filters: TokenUsageLeaderboardFilters | TokenUsageLedgerFilters
   sql: string
@@ -2007,20 +2057,76 @@ export const makeD1TokenUsageLedger = (
     }),
 
   // Public-safe "Khala Tokens Served" history: the per-day SUM of input +
-  // output tokens over the requested window, ordered ascending by UTC day. Like
-  // the scalar above, it is aggregate only — bare day + sum, no per-user,
-  // per-actor, or provider columns. Buckets only on date(observed_at) and uses
-  // the observed_at index for the window lower bound. Default window 30d,
-  // default bucket day.
+  // output tokens over the requested window, ordered ascending by day in the
+  // requested timezone. Like the scalar above, it is aggregate only — bare day
+  // + sum, no per-user, per-actor, or provider columns. The default UTC path
+  // keeps the indexed D1 GROUP BY; named IANA timezones group public-safe rows
+  // in runtime code so DST boundaries are handled by Intl rather than by a
+  // fixed offset.
   readPublicTokensServedHistory: (filters = {}) =>
     Effect.gen(function* () {
       const window = yield* normalizeLeaderboardWindow(filters.window ?? '30d')
       const bucket = yield* normalizeHistoryBucket(filters.bucket)
+      const timezone = yield* normalizeHistoryTimezone(filters.timezone)
       const nowIso = yield* requireTimestamp(
         'now',
         filters.now ?? runtime.nowIso(),
       )
       const since = leaderboardWindowSince(window, nowIso, runtime)
+
+      if (timezone !== 'UTC') {
+        const rows = yield* d1Effect(
+          'tokenUsageEvents.publicTokensServedHistory.timezone',
+          () =>
+            db
+              .prepare(
+                since === undefined
+                  ? `SELECT observed_at, input_tokens, output_tokens
+                       FROM token_usage_events
+                      ORDER BY observed_at ASC`
+                  : `SELECT observed_at, input_tokens, output_tokens
+                       FROM token_usage_events
+                      WHERE observed_at >= ?
+                      ORDER BY observed_at ASC`,
+              )
+              .bind(...(since === undefined ? [] : [since]))
+              .all<{
+                observed_at: string | null
+                input_tokens: number | null
+                output_tokens: number | null
+              }>(),
+        )
+
+        const formatter = localDayFormatter(timezone)
+        const grouped = rows.results.reduce((days, row) => {
+          if (typeof row.observed_at !== 'string') {
+            return days
+          }
+
+          const day = dayInTimezone(row.observed_at, formatter)
+          if (day === undefined) {
+            return days
+          }
+
+          const tokens =
+            Math.max(0, Math.trunc(row.input_tokens ?? 0)) +
+            Math.max(0, Math.trunc(row.output_tokens ?? 0))
+          days.set(day, (days.get(day) ?? 0) + tokens)
+          return days
+        }, new Map<string, number>())
+
+        const series = [...grouped.entries()]
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([day, tokensServed]) => ({ day, tokensServed }))
+
+        return yield* decodePublicTokensServedHistory({
+          bucket,
+          series,
+          timezone,
+          window,
+        })
+      }
+
       const rows = yield* d1Effect(
         'tokenUsageEvents.publicTokensServedHistory',
         () =>
@@ -2060,6 +2166,7 @@ export const makeD1TokenUsageLedger = (
       return yield* decodePublicTokensServedHistory({
         bucket,
         series,
+        timezone,
         window,
       })
     }),
