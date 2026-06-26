@@ -78,6 +78,7 @@ export type SupplyLane =
   | 'vertex-gemini'
   | 'fireworks'
   | 'hydralisk'
+  | 'openrouter'
   | 'openagents-network'
 
 // Our marginal cost for a model, per 1M tokens, by billed dimension. Cost is

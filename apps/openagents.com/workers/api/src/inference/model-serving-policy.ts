@@ -74,6 +74,7 @@ export const ALL_LANES_UNARMED: SupplyLaneArming = {
   },
   hydralisk: false,
   khalaBacking: KHALA_BACKING_HYDRALISK_GPT_OSS,
+  openrouter: false,
   'openagents-network': false,
   'vertex-anthropic': false,
   'vertex-gemini': false,
@@ -100,6 +101,11 @@ export type SupplyLaneCredentialEnv = Readonly<{
   VERTEX_SA_KEY?: string | undefined
   // Fireworks open-model lane key. See config.ts.
   FIREWORKS_API_KEY?: string | undefined
+  // OpenRouter hidden Khala fallback lane. Presence-only: this policy checks
+  // whether the Worker secret and operator-selected upstream model are present,
+  // but never returns either value.
+  OPENROUTER_API_KEY?: string | undefined
+  OPENROUTER_KHALA_FALLBACK_MODEL?: string | undefined
   // Operator-only backing selector for the single public Khala model. Supported
   // values are bounded below; raw customer model selection remains closed.
   KHALA_BACKING_MODEL?: string | undefined
@@ -651,6 +657,9 @@ export const resolveSupplyLaneArming = (
       hydraliskModels[HYDRALISK_GPT_OSS_120B_MODEL_ID],
     hydraliskModels,
     khalaBacking,
+    openrouter:
+      isPresent(env.OPENROUTER_API_KEY) &&
+      isPresent(env.OPENROUTER_KHALA_FALLBACK_MODEL),
     'openagents-network': openAgentsNetwork.armed,
     'vertex-anthropic': vertex,
     'vertex-gemini': vertex,

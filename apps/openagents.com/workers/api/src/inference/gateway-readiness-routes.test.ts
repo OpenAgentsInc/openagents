@@ -12,6 +12,7 @@ import { KHALA_MODEL_ID, type SupplyLane } from './pricing'
 const ALL_ARMED: SupplyLaneArming = {
   fireworks: true,
   hydralisk: true,
+  openrouter: true,
   'openagents-network': true,
   'vertex-anthropic': true,
   'vertex-gemini': true,
@@ -60,16 +61,21 @@ describe('handleGatewayReadiness', () => {
       }),
     )
     expect(response.status).toBe(404)
-    expect(await response.json()).toEqual({ error: 'inference_gateway_disabled' })
+    expect(await response.json()).toEqual({
+      error: 'inference_gateway_disabled',
+    })
   })
 
   it('405s on a non-GET method', async () => {
     const response = await Effect.runPromise(
-      handleGatewayReadiness(new Request('https://x/v1/gateway/readiness', { method: 'POST' }), {
-        enabled: true,
-        laneArming: ALL_ARMED,
-        catalog: FIXTURE_CATALOG,
-      }),
+      handleGatewayReadiness(
+        new Request('https://x/v1/gateway/readiness', { method: 'POST' }),
+        {
+          enabled: true,
+          laneArming: ALL_ARMED,
+          catalog: FIXTURE_CATALOG,
+        },
+      ),
     )
     expect(response.status).toBe(405)
     expect(await response.json()).toEqual({ error: 'method_not_allowed' })

@@ -32,6 +32,7 @@ import {
 const ALL_ARMED: SupplyLaneArming = {
   fireworks: true,
   hydralisk: true,
+  openrouter: true,
   'openagents-network': true,
   'vertex-anthropic': true,
   'vertex-gemini': true,
@@ -442,6 +443,7 @@ describe('isLaneArmed / isModelServable', () => {
   const lanes: ReadonlyArray<SupplyLane> = [
     'fireworks',
     'hydralisk',
+    'openrouter',
     'openagents-network',
     'vertex-anthropic',
     'vertex-gemini',

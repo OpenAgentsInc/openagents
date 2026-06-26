@@ -1,21 +1,22 @@
 import { describe, expect, it } from 'vitest'
 
+import {
+  type GatewayReadiness,
+  projectGatewayReadiness,
+} from './gateway-readiness'
 import type { ModelCatalogEntry } from './model-catalog'
 import { buildModelCatalog } from './model-catalog'
-import {
-  projectGatewayReadiness,
-  type GatewayReadiness,
-} from './gateway-readiness'
 import {
   ALL_LANES_UNARMED,
   resolveSupplyLaneArming,
 } from './model-serving-policy'
-import { KHALA_MODEL_ID, type SupplyLane } from './pricing'
 import type { SupplyLaneArming } from './model-serving-policy'
+import { KHALA_MODEL_ID, type SupplyLane } from './pricing'
 
 const ALL_ARMED: SupplyLaneArming = {
   fireworks: true,
   hydralisk: true,
+  openrouter: true,
   'openagents-network': true,
   'vertex-anthropic': true,
   'vertex-gemini': true,
@@ -25,8 +26,7 @@ const HYDRALISK_ARMED_ENV = {
   HYDRALISK_BASE_URL: 'https://hydralisk.example.test',
   HYDRALISK_BEARER_TOKEN: 'secret-route-token',
   HYDRALISK_GPT_OSS_20B_ENABLED: 'ready',
-  HYDRALISK_GPT_OSS_20B_PREFLIGHT_REF:
-    'preflight.hydralisk.gpt_oss_20b.l4.v1',
+  HYDRALISK_GPT_OSS_20B_PREFLIGHT_REF: 'preflight.hydralisk.gpt_oss_20b.l4.v1',
   HYDRALISK_GPT_OSS_20B_RECEIPT_REF:
     'receipt.hydralisk.gpt_oss_20b.l4.smoke.v1',
 }
