@@ -2058,7 +2058,7 @@ describe('POST /v1/chat/completions', () => {
     expect(overflowCalls).toBe(0)
   })
 
-  test('sheds internal stress requests when route dispatch shedding is configured', async () => {
+  test('sheds internal stress requests admitted through the route demand header', async () => {
     let dispatched = false
     const registry = new InferenceProviderRegistry()
     registry.register({
@@ -2071,7 +2071,12 @@ describe('POST /v1/chat/completions', () => {
 
     const response = await run(
       handleChatCompletions(
-        chatRequest(helloBody),
+        chatRequest(helloBody, {
+          headers: {
+            [INFERENCE_DEMAND_KIND_HEADER]: 'internal_stress',
+            [INFERENCE_DEMAND_SOURCE_HEADER]: 'glm-saturation',
+          },
+        }),
         baseDeps({
           dispatch: {
             shedding: {
@@ -2091,6 +2096,42 @@ describe('POST /v1/chat/completions', () => {
     expect(body.reason).toBe(
       'request shed because SLO is breached: external_ttft_p90',
     )
+  })
+
+  test('keeps external route demand admitted when breached SLO shedding is external-labeled', async () => {
+    let dispatched = false
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      ...echoAdapter('primary'),
+      complete: request => {
+        dispatched = true
+        return stubEchoAdapter.complete(request)
+      },
+    })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(helloBody, {
+          headers: {
+            [INFERENCE_DEMAND_KIND_HEADER]: 'external',
+            [INFERENCE_DEMAND_SOURCE_HEADER]: 'public-api',
+          },
+        }),
+        baseDeps({
+          dispatch: {
+            shedding: {
+              demandClass: 'external',
+              slo: { breached: true, reason: 'external_ttft_p90' },
+            },
+          },
+          lanePlan: () => ['primary'],
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(dispatched).toBe(true)
   })
 
   test('hedges external requests to a warm lane when route dispatch hedging is configured', async () => {
