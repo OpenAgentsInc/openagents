@@ -3,10 +3,14 @@
 Small Bun + Effect terminal client for Khala.
 
 ```sh
+bunx @openagentsinc/khala --prompt "Say hello in one short sentence."
 bun run khala
 bun run khala -- --prompt "Say hello in one short sentence."
 printf 'Say OK only.' | bun run khala -- --headless --json
 ```
+
+The published npm package is `@openagentsinc/khala`; it exposes the `khala`
+command through a Bun shebang, so Bun 1.3+ must be available on `PATH`.
 
 "Khala CLI" names the command-line program surface: the `khala` command. It has
 two modes:

@@ -331,18 +331,18 @@
       },
     },
     "clients/khala-cli": {
-      "name": "@openagentsinc/khala-cli",
+      "name": "@openagentsinc/khala",
       "version": "0.1.0",
       "bin": {
-        "khala": "./src/index.ts",
+        "khala": "dist/index.js",
       },
       "dependencies": {
         "@opentui/core": "0.3.4",
-        "effect": "catalog:",
+        "effect": "4.0.0-beta.70",
       },
       "devDependencies": {
         "bun-types": "^1.0.0",
-        "typescript": "catalog:",
+        "typescript": "^6.0.3",
       },
     },
     "packages/agent-runtime-schema": {
@@ -903,7 +903,7 @@
 
     "@openagentsinc/input-bindings": ["@openagentsinc/input-bindings@workspace:packages/input-bindings"],
 
-    "@openagentsinc/khala-cli": ["@openagentsinc/khala-cli@workspace:clients/khala-cli"],
+    "@openagentsinc/khala": ["@openagentsinc/khala@workspace:clients/khala-cli"],
 
     "@openagentsinc/mcp-contract": ["@openagentsinc/mcp-contract@workspace:packages/mcp-contract"],
 
