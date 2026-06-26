@@ -17,6 +17,7 @@ import {
 } from './message'
 import { init } from './model'
 import {
+  LoadPublicKhalaTokensServedHistory,
   LoadTrace,
   TASSADAR_AGENT_INSTRUCTIONS,
   initialCommands,
@@ -30,6 +31,10 @@ const commandNames = (commands: ReadonlyArray<{ readonly name: string }>) =>
   commands.map(command => command.name)
 
 describe('logged-out nav + copy update', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   test('ClickedEnterKhala navigates to /khala', () => {
     const [, commands] = update(model, ClickedEnterKhala())
     expect(commandNames(commands)).toEqual(['NavigateToKhala'])
@@ -133,6 +138,47 @@ describe('logged-out nav + copy update', () => {
       'POST https://openagents.com/api/agents/register',
     )
     expect(TASSADAR_AGENT_INSTRUCTIONS).toContain('npx @openagentsinc/pylon')
+  })
+
+  test('LoadPublicKhalaTokensServedHistory requests viewer-local day buckets for /khala', async () => {
+    const nativeDateTimeFormat = Intl.DateTimeFormat
+    vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(
+      ((...args: ConstructorParameters<typeof Intl.DateTimeFormat>) => {
+        const formatter = new nativeDateTimeFormat(...args)
+        return {
+          ...formatter,
+          resolvedOptions: () => ({
+            ...formatter.resolvedOptions(),
+            timeZone: 'America/Chicago',
+          }),
+        }
+      }) as typeof Intl.DateTimeFormat,
+    )
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          window: '30d',
+          bucket: 'day',
+          timezone: 'America/Chicago',
+          series: [{ day: '2026-06-24', tokensServed: 14_680_776 }],
+        }),
+        { headers: { 'content-type': 'application/json' } },
+      ),
+    )
+
+    const message = await Effect.runPromise(
+      LoadPublicKhalaTokensServedHistory().effect,
+    )
+
+    expect(message._tag).toBe('SucceededLoadPublicKhalaTokensServedHistory')
+    const [requestUrl, requestInit] = fetchSpy.mock.calls[0]!
+    expect(requestUrl).toBe(
+      '/api/public/khala-tokens-served/history?bucket=day&timezone=America%2FChicago&window=30d',
+    )
+    expect(requestInit).toEqual({
+      cache: 'no-store',
+      headers: { accept: 'application/json' },
+    })
   })
 })
 
