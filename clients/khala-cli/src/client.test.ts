@@ -65,6 +65,35 @@ describe("Khala client", () => {
     expect(retryEvents).toEqual([{ maxRetries: 5, retry: 1 }])
   })
 
+  test("reports first-byte, first-token, stream, and total timing metadata", async () => {
+    const fakeFetch = (async () =>
+      new Response(new ReadableStream<Uint8Array>({
+        async start(controller) {
+          await Bun.sleep(20)
+          controller.enqueue(new TextEncoder().encode('event: delta\ndata: {"text":"ok"}\n\n'))
+          await Bun.sleep(10)
+          controller.enqueue(new TextEncoder().encode('event: done\ndata: {"done":true}\n\n'))
+          controller.close()
+        },
+      }), {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      })) as unknown as typeof fetch
+
+    const result = await Effect.runPromise(runChatTurn({
+      baseUrl: "https://example.test",
+      fetch: fakeFetch,
+      messages: [{ role: "user", content: "hi" }],
+      mode: "public",
+    }))
+
+    expect(result.text).toBe("ok")
+    expect(result.metadata.timeToFirstByteMs).toBeGreaterThanOrEqual(0)
+    expect(result.metadata.timeToFirstTokenMs).toBeGreaterThanOrEqual(1)
+    expect(result.metadata.streamDurationMs).toBeGreaterThanOrEqual(1)
+    expect(result.metadata.durationMs).toBeGreaterThanOrEqual(result.metadata.timeToFirstTokenMs ?? 0)
+  })
+
   test("fetches the global Khala tokens-served counter", async () => {
     const calls: Array<string> = []
     const fakeFetch = (async (url: Parameters<typeof fetch>[0]) => {

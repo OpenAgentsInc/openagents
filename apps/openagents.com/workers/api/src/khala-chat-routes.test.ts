@@ -73,7 +73,7 @@ describe('khala chat route', () => {
     const routes = routesWith(chunkStream(['We ', 'are ', 'Khala.']))
     const response = await run(
       routes.routeKhalaChatRequest(
-        chatRequest({ messages: [{ role: 'user', content: 'who are you?' }] }),
+        chatRequest({ messages: [{ role: 'user', content: 'tell me what changed today' }] }),
         {},
       ),
     )
@@ -107,7 +107,7 @@ describe('khala chat route', () => {
     })))
     const response = await run(
       routes.routeKhalaChatRequest(
-        chatRequest({ messages: [{ role: 'user', content: 'hi' }] }),
+        chatRequest({ messages: [{ role: 'user', content: 'summarize this route' }] }),
         {},
       ),
     )
@@ -147,7 +147,7 @@ describe('khala chat route', () => {
 
     const response = await run(
       routes.routeKhalaChatRequest(
-        chatRequest({ messages: [{ role: 'user', content: 'hi' }] }),
+        chatRequest({ messages: [{ role: 'user', content: 'count these tokens' }] }),
         {},
       ),
     )
@@ -161,6 +161,34 @@ describe('khala chat route', () => {
     expect(text.indexOf('event: meta')).toBeLessThan(text.indexOf('event: done'))
   })
 
+  test('answers initial greeting and identity prompts without opening a provider stream', async () => {
+    let openedProvider = false
+    const routes = makeKhalaChatRoutes({
+      makeStreamClient: () => () => {
+        openedProvider = true
+        return Effect.fail(new OnboardingInferenceError({ reason: 'provider should not open' }))
+      },
+      rateLimit: allowAll,
+      recordServedTokens: () => Effect.void,
+    })
+
+    const response = await run(
+      routes.routeKhalaChatRequest(
+        chatRequest({ messages: [{ role: 'user', content: 'Who are you?' }] }),
+        {},
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(openedProvider).toBe(false)
+    const text = await response.text()
+    expect(text).toContain('event: delta')
+    expect(text).toContain('We are Khala, a collective intelligence. How can we help you?')
+    expect(text).toContain('"servedAdapterId":"khala-fast-path"')
+    expect(text).toContain('"servedModel":"khala-fast-greeting"')
+    expect(text.indexOf('event: meta')).toBeLessThan(text.indexOf('event: done'))
+  })
+
   test('emits provider-labeled reasoning on a separate SSE event', async () => {
     const routes = routesWith(chunkStream([
       { kind: 'reasoning', text: 'provider thought' },
@@ -168,7 +196,7 @@ describe('khala chat route', () => {
     ]))
     const response = await run(
       routes.routeKhalaChatRequest(
-        chatRequest({ messages: [{ role: 'user', content: 'hi' }] }),
+        chatRequest({ messages: [{ role: 'user', content: 'explain provider reasoning frames' }] }),
         {},
       ),
     )
@@ -284,7 +312,7 @@ describe('khala chat route', () => {
     const routes = routesWith(failingStream)
     const response = await run(
       routes.routeKhalaChatRequest(
-        chatRequest({ messages: [{ role: 'user', content: 'hi' }] }),
+        chatRequest({ messages: [{ role: 'user', content: 'force provider failure' }] }),
         {},
       ),
     )

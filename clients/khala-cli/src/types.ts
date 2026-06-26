@@ -150,6 +150,9 @@ export interface ChatTurnMetadata {
   readonly requestedModel?: string | undefined
   readonly servedAdapterId?: string | undefined
   readonly servedModel?: string | undefined
+  readonly streamDurationMs?: number | undefined
+  readonly timeToFirstByteMs?: number | undefined
+  readonly timeToFirstTokenMs?: number | undefined
   readonly tokensPerSecond?: number | undefined
   readonly traceRef?: string | undefined
   readonly traceUrl?: string | undefined

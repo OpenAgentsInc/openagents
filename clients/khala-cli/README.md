@@ -24,7 +24,8 @@ two modes:
 
 - **Interactive terminal mode:** default `khala` opens a normal terminal chat
   transcript with `>` prompts and `Khala:` turns in scrollback. Up/Down cycles
-  through previous prompts. It does
+  through previous prompts. Ctrl-L clears the terminal and redraws the prompt.
+  While waiting for the first response bytes, it prints one dot per second. It does
   not use an alternate-screen/full-screen UI. Slash commands such as
   `/feedback`, `/info`, `/msginfo`, `/codex`, `/tokens`, `/changelog`,
   `/version`, and `/help` are handled locally instead of being sent to
@@ -61,7 +62,8 @@ that check.
   app and stores that token under the local Khala config directory.
 - `/msginfo` prints the last Khala response metadata: trace reference, Khala
   orchestrator model, backend model/adapter routing, fallback reason, token
-  counts, and tokens per second when reported by the backend.
+  counts, first-byte / first-token / stream / total latency, and tokens per
+  second when reported by the backend.
 - `/codex status` shows whether local Codex workspace delegation is connected.
 - `/codex connect` runs Codex device auth into Khala's local Codex home.
 - `/codex <task>` delegates a workspace task directly to Codex.
@@ -99,6 +101,12 @@ that check.
 - `--mint-free-key` calls `POST /api/keys/free` and prints the response once.
 
 ## Changelog
+
+### v0.1.12 - Jun 26, 2026, 2:45:49 PM CDT
+
+- Adds one-dot-per-second waiting feedback before the first Khala stream output.
+- Restores Ctrl-L screen clearing and shows first-byte, first-token, stream, and
+  total latency in `/msginfo`.
 
 ### v0.1.11 - Jun 26, 2026, 2:01:29 PM CDT
 

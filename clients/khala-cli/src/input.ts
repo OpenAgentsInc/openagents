@@ -92,6 +92,11 @@ async function readPromptWithHistory(
         settle(null)
         return
       }
+      if (key.ctrl === true && key.name === "l") {
+        stdout.write("\x1b[H\x1b[2J\x1b[3J")
+        render()
+        return
+      }
       if (key.name === "return" || key.name === "enter") {
         settle(value)
         return

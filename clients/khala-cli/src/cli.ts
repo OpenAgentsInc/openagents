@@ -312,6 +312,10 @@ async function runInteractive(args: ParsedArgs, env: Record<string, string | und
     }
 
     const prepared = prepareUserTurn(messages, prompt)
+    const waitingDots = startWaitingDots()
+    const beforeTurnOutput = (): void => {
+      waitingDots.stop()
+    }
     try {
       let streamed = false
       let reasoningStreamed = false
@@ -323,6 +327,7 @@ async function runInteractive(args: ParsedArgs, env: Record<string, string | und
         token: args.token,
         messages: prepared,
         onDelta: (delta) => {
+          beforeTurnOutput()
           if (!streamed) {
             if (reasoningStreamed) {
               process.stdout.write("\n")
@@ -335,6 +340,7 @@ async function runInteractive(args: ParsedArgs, env: Record<string, string | und
           process.stdout.write(rendered.text)
         },
         onReasoning: (delta) => {
+          beforeTurnOutput()
           if (!reasoningStreamed) {
             process.stdout.write(`${terminalStyle.meta("Khala reasoning:")} `)
             reasoningStreamed = true
@@ -344,9 +350,11 @@ async function runInteractive(args: ParsedArgs, env: Record<string, string | und
           process.stdout.write(terminalStyle.reasoning(rendered.text))
         },
         onRetry: (event) => {
+          beforeTurnOutput()
           process.stdout.write(`${streamed || reasoningStreamed ? "\n" : ""}${terminalStyle.assistant("Khala:")} ${formatRetryNotice(event)}\n`)
         },
       }))
+      beforeTurnOutput()
       if (streamed && markdownStreamBuffer.length > 0) {
         process.stdout.write(renderMarkdownForTerminal(markdownStreamBuffer))
       }
@@ -362,6 +370,7 @@ async function runInteractive(args: ParsedArgs, env: Record<string, string | und
       lastTraceRef = result.traceRef ?? lastTraceRef
       lastMessageInfo = result.metadata
     } catch (error) {
+      beforeTurnOutput()
       const khalaError = toKhalaCliError(error, "Khala turn failed.")
       lastTraceRef = khalaError.traceRef ?? lastTraceRef
       process.stdout.write(`${terminalStyle.assistant("Khala:")} ${formatInteractiveError(khalaError)}\n\n`)
@@ -624,6 +633,22 @@ function formatRetryNotice(event: {
   return `inference unavailable; retrying ${event.retry}/${event.maxRetries} in ${formatDelay(event.delayMs)}...`
 }
 
+function startWaitingDots(): { readonly stop: () => void } {
+  let printed = 0
+  const timer = setInterval(() => {
+    printed += 1
+    process.stdout.write(".")
+  }, 1_000)
+  return {
+    stop: () => {
+      clearInterval(timer)
+      if (printed > 0) {
+        process.stdout.write("\n")
+      }
+    },
+  }
+}
+
 function formatTokensServed(tokens: KhalaTokensResponse): string {
   const formatted = new Intl.NumberFormat().format(tokens.tokensServed)
   return `Khala tokens served: ${formatted}`
@@ -657,10 +682,20 @@ function formatMessageInfo(info: ChatTurnMetadata | undefined): string {
     `primary adapter: ${info.primaryAdapterId ?? "same as backend or not reported"}`,
     `route: ${formatFallback(info)}`,
     `tokens: ${info.usage.totalTokens} total (${info.usage.promptTokens} prompt, ${info.usage.completionTokens} completion${info.usage.cachedPromptTokens === undefined ? "" : `, ${info.usage.cachedPromptTokens} cached`}; ${usageNote})`,
-    `speed: ${info.tokensPerSecond === undefined ? "not measured" : `${info.tokensPerSecond.toFixed(1)} tok/s`} over ${(info.durationMs / 1_000).toFixed(2)}s`,
+    `latency: first byte ${formatOptionalMs(info.timeToFirstByteMs)}, first token ${formatOptionalMs(info.timeToFirstTokenMs)}, stream ${formatOptionalMs(info.streamDurationMs)}, total ${formatMs(info.durationMs)}`,
+    `speed: ${info.tokensPerSecond === undefined ? "not measured" : `${info.tokensPerSecond.toFixed(1)} tok/s`} over ${formatMs(info.streamDurationMs ?? info.durationMs)}`,
     `finish: ${info.finishReason ?? "not reported"}`,
   ]
   return terminalStyle.meta(lines.join("\n"))
+}
+
+function formatOptionalMs(value: number | undefined): string {
+  return value === undefined ? "not measured" : formatMs(value)
+}
+
+function formatMs(value: number): string {
+  if (value < 1_000) return `${Math.round(value)}ms`
+  return `${(value / 1_000).toFixed(2)}s`
 }
 
 function formatFallback(info: ChatTurnMetadata): string {

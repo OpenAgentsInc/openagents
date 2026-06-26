@@ -339,6 +339,11 @@ This is the invariant ledger for `openagents`.
   fast lanes for normal back-and-forth chat, ordered Vertex Gemini -> Fireworks
   -> GLM-5.2-REAP-504B -> OpenRouter `openrouter/free`, so the first public
   reply does not wait on a cold or saturated GLM pool.
+- The public stateless Khala chat route may answer only a bounded, tested
+  initial greeting/identity parser with a deterministic standard greeting before
+  opening any provider stream. This parser is exact, first-turn-only, and not a
+  general user-intent router; new task categories must still use the typed
+  Blueprint / semantic routing contracts rather than ad hoc prompt keywords.
 - Agentic/tool-bearing `openagents/khala` turns are capability/self-hosted
   first. When the request declares tools/functions or carries tool-call
   messages, the route must switch to GLM-5.2-REAP-504B -> Fireworks -> Vertex

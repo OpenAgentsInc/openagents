@@ -199,3 +199,29 @@ export const buildKhalaChatRequest = (
   stream: true,
   passthroughParams: {},
 })
+
+export const KHALA_FAST_GREETING_PROMPTS: ReadonlySet<string> = new Set([
+  'hello',
+  'hey',
+  'hey there',
+  'hi',
+  'hi there',
+  'who are you',
+  'yo',
+])
+
+export const normalizeKhalaFastPrompt = (input: string): string =>
+  input
+    .trim()
+    .toLowerCase()
+    .replace(/[!?.,]+$/g, '')
+    .replace(/\s+/g, ' ')
+
+export const isKhalaFastGreetingTurn = (
+  messages: ReadonlyArray<KhalaChatMessage>,
+): boolean => {
+  if (messages.length !== 1) return false
+  const [message] = messages
+  if (message === undefined || message.role !== 'user') return false
+  return KHALA_FAST_GREETING_PROMPTS.has(normalizeKhalaFastPrompt(message.content))
+}

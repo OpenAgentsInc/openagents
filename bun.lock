@@ -332,7 +332,7 @@
     },
     "clients/khala-cli": {
       "name": "@openagentsinc/khala",
-      "version": "0.1.11",
+      "version": "0.1.12",
       "bin": {
         "khala": "dist/index.js",
       },

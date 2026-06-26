@@ -26,10 +26,13 @@ export function runChatTurn(options: ChatTurnOptions): Effect.Effect<ChatTurnRes
   return Effect.gen(function* () {
     const startedAt = Date.now()
     const response = yield* postChat(options)
+    const responseAt = Date.now()
     const traceRef = readTraceRef(response)
     const stream = yield* consumeStream(
       response,
       options.mode,
+      startedAt,
+      responseAt,
       options.onDelta,
       options.onReasoning,
     )
@@ -41,6 +44,7 @@ export function runChatTurn(options: ChatTurnOptions): Effect.Effect<ChatTurnRes
         ...stream.metadata,
         traceRef: stream.metadata.traceRef ?? traceRef,
       },
+      timings: stream.timings,
       text: stream.text,
     })
     return {
@@ -193,9 +197,20 @@ function postChat(options: ChatTurnOptions): Effect.Effect<Response, KhalaCliErr
 function consumeStream(
   response: Response,
   mode: "public" | "api",
+  startedAt: number,
+  responseAt: number,
   onDelta: ((text: string) => void) | undefined,
   onReasoning: ((text: string) => void) | undefined,
-): Effect.Effect<{ readonly metadata: StreamFrameMetadata; readonly reasoningText: string; readonly text: string }, KhalaCliError> {
+): Effect.Effect<{
+  readonly metadata: StreamFrameMetadata
+  readonly reasoningText: string
+  readonly text: string
+  readonly timings: {
+    readonly firstTokenAt?: number | undefined
+    readonly responseAt: number
+    readonly startedAt: number
+  }
+}, KhalaCliError> {
   return Effect.tryPromise({
     try: async () => {
       if (response.body === null) {
@@ -204,6 +219,7 @@ function consumeStream(
       let assembled = ""
       let reasoning = ""
       let metadata: StreamFrameMetadata = {}
+      let firstTokenAt: number | undefined
       for await (const frame of readSseFrames(response.body)) {
         const decoded = mode === "public" ? decodePublicFrame(frame) : decodeOpenAiFrame(frame)
         if (decoded.kind === "done") break
@@ -213,15 +229,26 @@ function consumeStream(
         }
         metadata = mergeMetadata(metadata, decoded.metadata)
         if (decoded.reasoningText !== undefined && decoded.reasoningText.length > 0) {
+          firstTokenAt ??= Date.now()
           reasoning += decoded.reasoningText
           onReasoning?.(decoded.reasoningText)
         }
         if (decoded.text.length > 0) {
+          firstTokenAt ??= Date.now()
           assembled += decoded.text
           onDelta?.(decoded.text)
         }
       }
-      return { metadata, reasoningText: reasoning, text: assembled }
+      return {
+        metadata,
+        reasoningText: reasoning,
+        text: assembled,
+        timings: {
+          firstTokenAt,
+          responseAt,
+          startedAt,
+        },
+      }
     },
     catch: (error) => toKhalaCliError(error, "Khala stream failed."),
   })
@@ -375,11 +402,19 @@ function buildTurnMetadata(input: {
   readonly durationMs: number
   readonly mode: "public" | "api"
   readonly streamMetadata: StreamFrameMetadata
+  readonly timings: {
+    readonly firstTokenAt?: number | undefined
+    readonly responseAt: number
+    readonly startedAt: number
+  }
   readonly text: string
 }): ChatTurnMetadata {
   const estimatedUsage = input.streamMetadata.usage === undefined
   const usage = input.streamMetadata.usage ?? estimateUsage(input.text)
-  const seconds = input.durationMs / 1_000
+  const streamDurationMs = input.timings.firstTokenAt === undefined
+    ? undefined
+    : Math.max(0, input.timings.startedAt + input.durationMs - input.timings.firstTokenAt)
+  const seconds = (streamDurationMs ?? input.durationMs) / 1_000
   const tokensPerSecond = seconds > 0 ? usage.completionTokens / seconds : undefined
   return {
     adapterRouteMetadata: input.streamMetadata.adapterRouteMetadata,
@@ -392,6 +427,11 @@ function buildTurnMetadata(input: {
     requestedModel: input.streamMetadata.requestedModel,
     servedAdapterId: input.streamMetadata.servedAdapterId,
     servedModel: input.streamMetadata.servedModel,
+    streamDurationMs,
+    timeToFirstByteMs: Math.max(0, input.timings.responseAt - input.timings.startedAt),
+    timeToFirstTokenMs: input.timings.firstTokenAt === undefined
+      ? undefined
+      : Math.max(0, input.timings.firstTokenAt - input.timings.startedAt),
     tokensPerSecond,
     traceRef: input.streamMetadata.traceRef,
     traceUrl: input.streamMetadata.traceUrl,

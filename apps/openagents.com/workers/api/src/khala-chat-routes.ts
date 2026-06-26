@@ -23,10 +23,16 @@ import { Cause, Effect, Match as M, Schema as S } from 'effect'
 import {
   KhalaChatRequest,
   KhalaChatValidationError,
+  KHALA_CHAT_MODEL,
   buildKhalaChatRequest,
+  isKhalaFastGreetingTurn,
   validateKhalaChatRequest,
 } from './khala-chat-program'
-import type { KhalaChatStreamClient } from './khala-chat-program'
+import { KHALA_STANDARD_GREETING } from './inference/khala-identity'
+import type {
+  KhalaChatStreamClient,
+  KhalaChatStreamSource,
+} from './khala-chat-program'
 import {
   type OnboardingStreamDelta,
   OnboardingInferenceError,
@@ -166,6 +172,24 @@ const streamDeltaEvent = (
   }
 }
 
+const fastGreetingSource = (): KhalaChatStreamSource => ({
+  deltas: (async function* () {
+    yield KHALA_STANDARD_GREETING
+  })(),
+  final: () => KHALA_STANDARD_GREETING,
+  metadata: () => ({
+    finishReason: 'fast_greeting',
+    requestedModel: KHALA_CHAT_MODEL,
+    servedAdapterId: 'khala-fast-path',
+    servedModel: 'khala-fast-greeting',
+    usage: {
+      completionTokens: Math.ceil(KHALA_STANDARD_GREETING.length / 4),
+      promptTokens: 0,
+      totalTokens: Math.ceil(KHALA_STANDARD_GREETING.length / 4),
+    },
+  }),
+})
+
 // Build the SSE response body for a prepared streaming turn. Pumps prose deltas,
 // then emits the terminal `done` frame. A failure mid-stream emits a terminal
 // `error` frame and closes — the client never hangs. Stateless: there is no
@@ -304,8 +328,13 @@ export const makeKhalaChatRoutes = (
 
     return decodeJsonBody(request).pipe(
       Effect.flatMap(validateKhalaChatRequest),
-      Effect.map(buildKhalaChatRequest),
-      Effect.flatMap(inferenceRequest => streamClient(inferenceRequest)),
+      Effect.flatMap(messages =>
+        isKhalaFastGreetingTurn(messages)
+          ? Effect.succeed(fastGreetingSource())
+          : Effect.succeed(buildKhalaChatRequest(messages)).pipe(
+              Effect.flatMap(inferenceRequest => streamClient(inferenceRequest)),
+            ),
+      ),
       Effect.map(
         source =>
           new Response(

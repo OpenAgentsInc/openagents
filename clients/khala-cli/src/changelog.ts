@@ -4,9 +4,17 @@ export interface KhalaChangelogEntry {
   readonly bullets: ReadonlyArray<string>
 }
 
-export const KHALA_CLI_VERSION = "0.1.11"
+export const KHALA_CLI_VERSION = "0.1.12"
 
 export const KHALA_CHANGELOG: ReadonlyArray<KhalaChangelogEntry> = [
+  {
+    version: "0.1.12",
+    releasedAt: "2026-06-26T19:45:49.000Z",
+    bullets: [
+      "Adds one-dot-per-second waiting feedback before the first Khala stream output.",
+      "Restores Ctrl-L screen clearing and shows first-byte, first-token, stream, and total latency in /msginfo.",
+    ],
+  },
   {
     version: "0.1.11",
     releasedAt: "2026-06-26T19:01:29.000Z",
