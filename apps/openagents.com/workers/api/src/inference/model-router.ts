@@ -510,6 +510,12 @@ export type DispatchLoadSheddingPolicy = Readonly<{
   slo: DispatchSloSnapshot
 }>
 
+export type DispatchRouteAdmissionPolicy = Readonly<{
+  demandClass: InferenceDemandClass
+  reservedExternalHeadroomAvailable: boolean
+  reason: string
+}>
+
 export type DispatchHedgingPolicy = Readonly<{
   demandClass: InferenceDemandClass
   enabled: boolean
@@ -569,6 +575,10 @@ export type DispatchDeps = Readonly<{
   // Optional SLO shedding. Only non-external demand can be shed; external demand
   // continues through normal dispatch even when the SLO snapshot is breached.
   shedding?: DispatchLoadSheddingPolicy | undefined
+  // Optional typed route admission guard. It only refuses internal_stress when
+  // the control-plane snapshot says reserved external headroom is unavailable;
+  // external demand still dispatches through the normal lane plan.
+  admission?: DispatchRouteAdmissionPolicy | undefined
   // Optional bounded hedge. When enabled for external demand, a quarantined or
   // P99-breaching primary can be skipped once to a different warm eligible lane.
   hedging?: DispatchHedgingPolicy | undefined
@@ -717,6 +727,24 @@ const shedError = (
     retryable: true,
   })
 
+const shouldRejectAdmission = (
+  admission: DispatchRouteAdmissionPolicy | undefined,
+): boolean =>
+  admission !== undefined &&
+  admission.demandClass === 'internal_stress' &&
+  !admission.reservedExternalHeadroomAvailable
+
+const admissionError = (
+  admission: DispatchRouteAdmissionPolicy,
+): InferenceAdapterError =>
+  new InferenceAdapterError({
+    adapterId: 'router',
+    httpStatus: 429,
+    kind: 'route_admission_reserved_headroom_unavailable',
+    reason: `internal_stress rejected because reserved external headroom is unavailable: ${admission.reason}`,
+    retryable: true,
+  })
+
 const normalizedRetryCount = (
   retry: DispatchRetryPolicy | undefined,
 ): number => {
@@ -845,6 +873,16 @@ export const dispatchWithOverflowWithMetadata = <A>(
     const backoff = deps.backoff ?? DEFAULT_OVERFLOW_BACKOFF
     const sleep = deps.sleep ?? Effect.sleep
     const retryCount = normalizedRetryCount(deps.retry)
+
+    const admission = deps.admission
+    if (shouldRejectAdmission(admission) && admission !== undefined) {
+      const error = admissionError(admission)
+      recordFailureTelemetry(
+        deps.failureTelemetry,
+        telemetryForError(error, 'load_shed'),
+      )
+      return yield* Effect.fail(error)
+    }
 
     const shedding = deps.shedding
     if (shouldShedRequest(shedding) && shedding !== undefined) {

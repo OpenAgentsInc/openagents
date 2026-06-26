@@ -76,6 +76,9 @@ export type InferenceAdapterRouteMetadata = Readonly<{
   replicaMaxInflight?: number | undefined
   replicaQueueDepth?: number | undefined
   replicaWarmState?: 'cold' | 'unknown' | 'warm' | undefined
+  glmAggregateInflightCount?: number | undefined
+  glmAggregateMaxInflight?: number | undefined
+  glmAggregateExternalHeadroom?: number | undefined
 }>
 
 export type InferenceToolCall = Readonly<{

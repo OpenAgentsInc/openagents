@@ -679,6 +679,12 @@ type ReplicaSelection = Readonly<{
   release: () => void
 }>
 
+type GlmAggregateLiveHeadroom = Readonly<{
+  aggregateExternalHeadroom: number
+  aggregateInflightCount: number
+  aggregateMaxInflight: number
+}>
+
 const busyReasonFor = (state: GlmReplicaRoutingState): string | null => {
   if (state.benchmarkReserved) {
     return 'benchmark_reserved'
@@ -749,8 +755,12 @@ const metadataForSelection = (
   replicaBusyReason: string | null,
   queueWaitMs: number,
   saturationPolicy: GlmSaturationPolicy,
+  aggregateHeadroom: GlmAggregateLiveHeadroom,
 ): InferenceAdapterRouteMetadata => ({
   glmSaturationPolicy: saturationPolicy,
+  glmAggregateExternalHeadroom: aggregateHeadroom.aggregateExternalHeadroom,
+  glmAggregateInflightCount: aggregateHeadroom.aggregateInflightCount,
+  glmAggregateMaxInflight: aggregateHeadroom.aggregateMaxInflight,
   queueWaitMs,
   replicaBusyReason,
   replicaCapacityClass: selected.state.capacityClass,
@@ -789,6 +799,7 @@ const defaultSaturationPolicyFor = (
 const saturationError = (
   config: HydraliskPoolAdapterConfig,
   input: Readonly<{
+    aggregateHeadroom: GlmAggregateLiveHeadroom
     policy: GlmSaturationPolicy
     reason: string
     queueWaitMs: number
@@ -805,6 +816,11 @@ const saturationError = (
       retryable: input.policy !== 'queue_then_429',
       adapterRouteMetadata: {
         glmSaturationPolicy: input.policy,
+        glmAggregateExternalHeadroom:
+          input.aggregateHeadroom.aggregateExternalHeadroom,
+        glmAggregateInflightCount:
+          input.aggregateHeadroom.aggregateInflightCount,
+        glmAggregateMaxInflight: input.aggregateHeadroom.aggregateMaxInflight,
         queueWaitMs: input.queueWaitMs,
         replicaBusyReason: input.reason,
         replicaFallbackReason: input.reason,
@@ -815,6 +831,7 @@ const saturationError = (
 const laneQuorumUnhealthyError = (
   config: HydraliskPoolAdapterConfig,
   input: Readonly<{
+    aggregateHeadroom: GlmAggregateLiveHeadroom
     policy: GlmSaturationPolicy
     queueWaitMs: number
   }>,
@@ -828,6 +845,11 @@ const laneQuorumUnhealthyError = (
       retryable: true,
       adapterRouteMetadata: {
         glmSaturationPolicy: input.policy,
+        glmAggregateExternalHeadroom:
+          input.aggregateHeadroom.aggregateExternalHeadroom,
+        glmAggregateInflightCount:
+          input.aggregateHeadroom.aggregateInflightCount,
+        glmAggregateMaxInflight: input.aggregateHeadroom.aggregateMaxInflight,
         queueWaitMs: input.queueWaitMs,
         replicaBusyReason: 'lane_quorum_unhealthy',
         replicaFallbackReason: 'lane_quorum_unhealthy',
@@ -851,6 +873,33 @@ const isLaneQuorumUnhealthy = (
       candidate.routingStateObserved && candidate.state.health === 'unhealthy',
   ).length
   return unhealthyObservedCount >= quorum
+}
+
+const aggregateLiveHeadroomFor = (
+  candidates: ReadonlyArray<ReplicaCandidate>,
+): GlmAggregateLiveHeadroom => {
+  const eligibleForExternal = candidates.filter(
+    candidate =>
+      !candidate.state.benchmarkReserved &&
+      !candidate.state.draining &&
+      candidate.state.health !== 'unhealthy',
+  )
+  const aggregateMaxInflight = eligibleForExternal.reduce(
+    (sum, candidate) => sum + candidate.state.maxInflight,
+    0,
+  )
+  const aggregateInflightCount = eligibleForExternal.reduce(
+    (sum, candidate) => sum + candidate.state.inflightCount,
+    0,
+  )
+  return {
+    aggregateExternalHeadroom: Math.max(
+      0,
+      aggregateMaxInflight - aggregateInflightCount,
+    ),
+    aggregateInflightCount,
+    aggregateMaxInflight,
+  }
 }
 
 const selectedReplicaConfigOnce = (
@@ -887,6 +936,7 @@ const selectedReplicaConfigOnce = (
       const eligible = candidates.filter(
         candidate => busyReasonFor(candidate.state) === null,
       )
+      const aggregateHeadroom = aggregateLiveHeadroomFor(candidates)
 
       if (candidates.length === 0) {
         throw poolAdapterError(
@@ -897,6 +947,7 @@ const selectedReplicaConfigOnce = (
 
       if (isLaneQuorumUnhealthy(candidates)) {
         throw laneQuorumUnhealthyError(config, {
+          aggregateHeadroom,
           policy: saturationPolicy,
           queueWaitMs,
         })
@@ -908,6 +959,7 @@ const selectedReplicaConfigOnce = (
             .map(candidate => busyReasonFor(candidate.state))
             .find(Boolean) ?? 'no_eligible_replica'
         throw saturationError(config, {
+          aggregateHeadroom,
           policy: saturationPolicy,
           queueWaitMs,
           reason,
@@ -971,6 +1023,7 @@ const selectedReplicaConfigOnce = (
           replicaBusyReason,
           queueWaitMs,
           saturationPolicy,
+          aggregateHeadroom,
         ),
         release,
       }

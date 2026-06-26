@@ -109,6 +109,48 @@ describe('hydralisk vLLM adapter', () => {
     ])
   })
 
+  it('reports aggregate GLM live headroom across externally eligible replicas', async () => {
+    const capturedInputs: Array<string> = []
+    const adapter = makeHydraliskVllmPoolAdapter({
+      id: GLM_POOL_ADAPTER_ID,
+      replicas: [
+        replicaFixture('primary', {
+          baseUrl: 'https://primary.example.test',
+          fetchImpl: captureFetch(capturedInputs),
+          maxInflight: 4,
+        }),
+        replicaFixture('reserved', {
+          benchmarkReserved: true,
+          maxInflight: 8,
+        }),
+        replicaFixture('second', {
+          baseUrl: 'https://second.example.test',
+          fetchImpl: captureFetch(capturedInputs),
+          maxInflight: 2,
+        }),
+      ],
+      routingStateOracle: replicaId =>
+        replicaId === 'primary'
+          ? { inflightCount: 3, maxInflight: 4 }
+          : replicaId === 'second'
+            ? { inflightCount: 1, maxInflight: 2, warmAtEpochMs: 100 }
+            : undefined,
+      upstreamModel: 'openagents/glm-5.2-reap-504b',
+    })
+
+    const result = await Effect.runPromise(adapter.complete(request()))
+
+    expect(result.adapterRouteMetadata).toMatchObject({
+      glmAggregateExternalHeadroom: 2,
+      glmAggregateInflightCount: 4,
+      glmAggregateMaxInflight: 6,
+      selectedReplicaId: 'second',
+    })
+    expect(capturedInputs).toEqual([
+      'https://second.example.test/v1/chat/completions',
+    ])
+  })
+
   it('prefers the cache-affinity replica when it is healthy and idle', async () => {
     const capturedInputs: Array<string> = []
     const adapter = makeHydraliskVllmPoolAdapter({

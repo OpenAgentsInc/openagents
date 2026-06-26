@@ -2098,6 +2098,51 @@ describe('POST /v1/chat/completions', () => {
     )
   })
 
+  test('rejects internal_stress route admission when reserved external headroom is unavailable', async () => {
+    let dispatched = false
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      ...echoAdapter('primary'),
+      complete: request => {
+        dispatched = true
+        return stubEchoAdapter.complete(request)
+      },
+    })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(helloBody, {
+          headers: {
+            [INFERENCE_DEMAND_KIND_HEADER]: 'internal_stress',
+            [INFERENCE_DEMAND_SOURCE_HEADER]: 'glm-saturation',
+          },
+        }),
+        baseDeps({
+          lanePlan: () => ['primary'],
+          registry,
+          routeAdmission: {
+            reason: 'glm_aggregate_external_headroom_zero',
+            reservedExternalHeadroomAvailable: false,
+          },
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(429)
+    expect(response.headers.get('retry-after')).toBe('1')
+    expect(dispatched).toBe(false)
+    const body = (await response.json()) as {
+      error?: { code?: string; message?: string; retryable?: boolean }
+    }
+    expect(body.error).toEqual({
+      code: 'route_admission_reserved_headroom_unavailable',
+      message:
+        'internal_stress rejected because reserved external headroom is unavailable: glm_aggregate_external_headroom_zero',
+      retryable: true,
+      type: 'route_admission_reserved_headroom_unavailable',
+    })
+  })
+
   test('keeps external route demand admitted when breached SLO shedding is external-labeled', async () => {
     let dispatched = false
     const registry = new InferenceProviderRegistry()
@@ -2126,6 +2171,40 @@ describe('POST /v1/chat/completions', () => {
           },
           lanePlan: () => ['primary'],
           registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(dispatched).toBe(true)
+  })
+
+  test('keeps external route admission dispatching when reserved headroom is unavailable', async () => {
+    let dispatched = false
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      ...echoAdapter('primary'),
+      complete: request => {
+        dispatched = true
+        return stubEchoAdapter.complete(request)
+      },
+    })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(helloBody, {
+          headers: {
+            [INFERENCE_DEMAND_KIND_HEADER]: 'external',
+            [INFERENCE_DEMAND_SOURCE_HEADER]: 'public-api',
+          },
+        }),
+        baseDeps({
+          lanePlan: () => ['primary'],
+          registry,
+          routeAdmission: {
+            reason: 'glm_aggregate_external_headroom_zero',
+            reservedExternalHeadroomAvailable: false,
+          },
         }),
       ),
     )

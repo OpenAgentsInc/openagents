@@ -123,6 +123,7 @@ import {
 } from './metering-hook'
 import {
   type DispatchDeps,
+  type DispatchRouteAdmissionPolicy,
   type DispatchRouteMetadata,
   type DispatchSuccessValidator,
   FIREWORKS_ADAPTER_ID,
@@ -247,6 +248,16 @@ const requestAttributionFromHeaders = (
     ...(demandClient === undefined ? {} : { demandClient }),
   }
 }
+
+const routeDemandClassFromAttribution = (
+  attribution: ServedTokensRequestAttribution | undefined,
+): DispatchRouteAdmissionPolicy['demandClass'] =>
+  attribution?.demandKind === 'internal_stress'
+    ? 'internal_stress'
+    : attribution?.demandKind === 'external' ||
+        attribution?.demandKind === undefined
+      ? 'external'
+      : 'batch'
 
 const booleanBodyFlag = (body: Record<string, unknown>, key: string): boolean =>
   body[key] === true || body[key] === 'true' || body[key] === 1
@@ -457,6 +468,7 @@ export type ChatCompletionsDeps = Readonly<{
   // `dispatchWithOverflow`. Tests inject `sleep: () => Effect.void` so overflow
   // never waits. Ignored unless `lanePlan` is supplied.
   dispatch?: Omit<DispatchDeps, 'registry' | 'plan'>
+  routeAdmission?: Omit<DispatchRouteAdmissionPolicy, 'demandClass'> | undefined
   // Defaults to the no-op/log metering stub. The Worker supplies the live
   // ledger hook (`makeLedgerMeteringHook`, #5477) when the gateway is enabled.
   meteringHook?: MeteringHook
@@ -1129,6 +1141,19 @@ const resolveCacheAffinity = (
 const defaultId = () => compactRandomId('chatcmpl')
 
 const providerErrorResponse = (error: InferenceAdapterError) => {
+  if (error.kind === 'route_admission_reserved_headroom_unavailable') {
+    return noStoreJsonResponse(
+      {
+        error: {
+          code: 'route_admission_reserved_headroom_unavailable',
+          message: error.reason,
+          retryable: error.retryable,
+          type: 'route_admission_reserved_headroom_unavailable',
+        },
+      },
+      { headers: { 'retry-after': '1' }, status: 429 },
+    )
+  }
   if (error.kind === 'glm_pool_saturated') {
     const queueWaitMs = error.adapterRouteMetadata?.queueWaitMs
     return noStoreJsonResponse(
@@ -2717,6 +2742,14 @@ export const handleChatCompletions = (
       ...(deps.dispatch?.shedding === undefined
         ? {}
         : { shedding: deps.dispatch.shedding }),
+      ...(deps.routeAdmission === undefined
+        ? {}
+        : {
+            admission: {
+              ...deps.routeAdmission,
+              demandClass: routeDemandClassFromAttribution(requestAttribution),
+            },
+          }),
       ...(deps.dispatch?.hedging === undefined
         ? {}
         : { hedging: deps.dispatch.hedging }),
