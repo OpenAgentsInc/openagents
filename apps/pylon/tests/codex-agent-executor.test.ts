@@ -16,6 +16,7 @@ import { CODEX_AGENT_SDK_PACKAGE } from "../src/codex-agent"
 import type { CodexTurnReport } from "../src/codex-turn-reporter"
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
 import { ensurePylonLocalState, assertPublicProjectionSafe } from "../src/state"
+import { WorkspaceCheckoutError } from "../src/workspace-materializer"
 
 const now = new Date("2026-06-11T22:00:00.000Z")
 
@@ -705,7 +706,7 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
   test("a failed checkout produces the typed checkout refusal arm", async () => {
     await withState(async (state) => {
       const failingCheckout = async () => {
-        throw new Error("git fetch failed")
+        throw new WorkspaceCheckoutError("reason.workspace_checkout.branch_fetch_failed")
       }
       const record = await executeCodexAgentAssignment(
         state,
@@ -716,8 +717,10 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
       expect(record?.status).toBe("rejected")
       expect(record?.blockerRefs).toEqual([
         "blocker.assignment.codex_agent_workspace_checkout_failed",
+        "reason.workspace_checkout.branch_fetch_failed",
       ])
       assertPublicProjectionSafe(record)
+      expect(JSON.stringify(record)).not.toContain(state.paths.cache)
     })
   })
 })

@@ -11,6 +11,7 @@ import {
 import {
   gitCheckoutWorkspaceFrom,
   materializeGitCheckoutWorkspaceWithLease,
+  workspaceCheckoutFailureReasonRef,
   type GitCheckoutWorkspace,
   type WorkspaceCheckoutRunner,
 } from "./workspace-materializer.js"
@@ -843,11 +844,15 @@ export async function executeCodexAgentAssignment(
       state,
       task,
     })
-  } catch {
+  } catch (error) {
+    const checkoutReasonRef = workspaceCheckoutFailureReasonRef(error)
     return refusalRecord({
       lease,
       runRef,
-      blockerRefs: ["blocker.assignment.codex_agent_workspace_checkout_failed"],
+      blockerRefs: [
+        "blocker.assignment.codex_agent_workspace_checkout_failed",
+        ...(checkoutReasonRef === null ? [] : [checkoutReasonRef]),
+      ],
       resultRef: "result.public.pylon.codex_agent_task.workspace_checkout_failed",
       summaryRef: "summary.public.pylon.codex_agent_task.workspace_checkout_failed",
       message: "Local Codex thread refused because the bounded workspace checkout could not be materialized.",

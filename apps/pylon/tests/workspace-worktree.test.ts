@@ -57,6 +57,13 @@ async function createOriginRepo(root: string): Promise<{ url: string; commitSha:
   return { url: `file://${root}`, commitSha }
 }
 
+async function commitOriginChange(root: string, fileName: string, content: string): Promise<string> {
+  await writeFile(join(root, fileName), content)
+  await run(["git", "add", fileName], root)
+  await run(["git", "commit", "-m", `fixture ${fileName}`], root)
+  return (await run(["git", "rev-parse", "HEAD"], root)).trim()
+}
+
 function checkoutFor(commitSha: string, fullName = "OpenAgentsInc/worktree-fixture"): GitCheckoutWorkspace {
   return {
     kind: "git_checkout",
@@ -153,6 +160,33 @@ describe("createGitWorktreeCheckoutRunner", () => {
     }
   })
 
+  test("fetches a freshly advanced main commit into an existing bare cache", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-worktree-"))
+    try {
+      const originRoot = join(root, "origin")
+      const origin = await createOriginRepo(originRoot)
+      const repositoryCacheRoot = join(root, "git-cache")
+      const runner = createGitWorktreeCheckoutRunner({
+        repositoryCacheRoot,
+        remoteUrlFor: () => origin.url,
+      })
+
+      await runner(join(root, "worktrees", "first"), checkoutFor(origin.commitSha))
+      const secondCommit = await commitOriginChange(
+        originRoot,
+        "fresh-main.ts",
+        "export const freshMain = true\n",
+      )
+      const second = join(root, "worktrees", "second")
+      await runner(second, checkoutFor(secondCommit))
+
+      expect(existsSync(join(second, "fresh-main.ts"))).toBe(true)
+      expect((await run(["git", "rev-parse", "HEAD"], second)).trim()).toBe(secondCommit)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   test("rejects a commit object the remote cannot provide", async () => {
     const root = await mkdtemp(join(tmpdir(), "pylon-worktree-"))
     try {
@@ -162,7 +196,9 @@ describe("createGitWorktreeCheckoutRunner", () => {
         remoteUrlFor: () => origin.url,
       })
       const missing = checkoutFor("4444444444444444444444444444444444444444")
-      await expect(runner(join(root, "worktrees", "missing"), missing)).rejects.toThrow()
+      await expect(runner(join(root, "worktrees", "missing"), missing)).rejects.toThrow(
+        "reason.workspace_checkout.commit_missing_after_fetch",
+      )
       expect(existsSync(join(root, "worktrees", "missing", "sum.ts"))).toBe(false)
     } finally {
       await rm(root, { recursive: true, force: true })

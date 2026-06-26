@@ -152,9 +152,24 @@ async function runTextCommand(args: string[], cwd: string): Promise<{ exitCode: 
   return { exitCode, stdout }
 }
 
-async function runCheckedCommand(args: string[], cwd: string): Promise<void> {
+export class WorkspaceCheckoutError extends Error {
+  readonly reasonRef: string
+
+  constructor(reasonRef: string) {
+    super(`workspace checkout failed: ${reasonRef}`)
+    this.name = "WorkspaceCheckoutError"
+    this.reasonRef = reasonRef
+  }
+}
+
+export function workspaceCheckoutFailureReasonRef(error: unknown): string | null {
+  return error instanceof WorkspaceCheckoutError ? error.reasonRef : null
+}
+
+async function runCheckedCommand(args: string[], cwd: string, reasonRef?: string): Promise<void> {
   const exitCode = await runQuietCommand(args, cwd)
   if (exitCode !== 0) {
+    if (reasonRef !== undefined) throw new WorkspaceCheckoutError(reasonRef)
     throw new Error(`command failed: ${args[0] ?? "unknown"}`)
   }
 }
@@ -595,7 +610,11 @@ export function createGitWorktreeCheckoutRunner(
     await withRepositoryCacheLock(bareDirectory, async () => {
       await mkdir(options.repositoryCacheRoot, { recursive: true })
       if (!existsSync(join(bareDirectory, "HEAD"))) {
-        await runCheckedCommand(["git", "init", "--bare", bareDirectory], options.repositoryCacheRoot)
+        await runCheckedCommand(
+          ["git", "init", "--bare", bareDirectory],
+          options.repositoryCacheRoot,
+          "reason.workspace_checkout.bare_init_failed",
+        )
       }
       const commitArg = `${repository.commitSha}^{commit}`
       const cached = (await runQuietCommand(["git", "cat-file", "-e", commitArg], bareDirectory)) === 0
@@ -606,6 +625,7 @@ export function createGitWorktreeCheckoutRunner(
         await runCheckedCommand(
           ["git", "fetch", "--depth", "50", remoteUrl, branchRefSpec],
           bareDirectory,
+          "reason.workspace_checkout.branch_fetch_failed",
         )
         const branchWindowCached =
           (await runQuietCommand(["git", "cat-file", "-e", commitArg], bareDirectory)) === 0
@@ -613,9 +633,22 @@ export function createGitWorktreeCheckoutRunner(
           await runCheckedCommand(
             ["git", "fetch", "--deepen", "450", remoteUrl, branchRefSpec],
             bareDirectory,
+            "reason.workspace_checkout.branch_deepen_failed",
           )
         }
-        await runCheckedCommand(["git", "cat-file", "-e", commitArg], bareDirectory)
+        const deepenedCached =
+          (await runQuietCommand(["git", "cat-file", "-e", commitArg], bareDirectory)) === 0
+        if (!deepenedCached) {
+          await runQuietCommand(
+            ["git", "fetch", "--depth", "1", remoteUrl, repository.commitSha],
+            bareDirectory,
+          )
+        }
+        await runCheckedCommand(
+          ["git", "cat-file", "-e", commitArg],
+          bareDirectory,
+          "reason.workspace_checkout.commit_missing_after_fetch",
+        )
       }
       // best-effort gc pin; materialization correctness never depends on it
       await runQuietCommand(
@@ -629,6 +662,7 @@ export function createGitWorktreeCheckoutRunner(
       await runCheckedCommand(
         ["git", "worktree", "add", "--detach", workingDirectory, repository.commitSha],
         bareDirectory,
+        "reason.workspace_checkout.worktree_add_failed",
       )
     })
   }

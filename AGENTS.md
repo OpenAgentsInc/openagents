@@ -120,6 +120,14 @@ export PYLON_OPENAGENTS_BASE_URL="https://openagents.com"
 export PYLON="bun apps/pylon/src/index.ts"
 ```
 
+Run `$PYLON` from a clean worktree at current `origin/main`. If the normal
+`/Users/christopherdavid/work/openagents` checkout is dirty or behind, create or
+reuse a clean detached worktree and set `PYLON` from that directory instead of
+the dirty checkout. For one-shot proof runs, set `PYLON_DISABLE_DAEMON_ROUTING=1`
+so a stale loopback `pylon node` cannot answer with old source code. If a node is
+already listening from a stale checkout, stop or restart it from the clean
+current worktree before using it as evidence for Pylon/Codex delegation.
+
 0. Confirm the linked Codex account inventory:
 
 ```sh
