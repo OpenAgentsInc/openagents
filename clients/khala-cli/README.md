@@ -75,7 +75,14 @@ that check.
 
 ## Changelog
 
-### v0.1.4 - Jun 26, 2026, 12:58:00 PM CDT
+### v0.1.5 - Jun 26, 2026, 12:06:14 PM CDT
+
+- Corrected the bundled v0.1.4 release timestamp after npm publish
+  verification.
+- Kept the v0.1.4 diagnostics, Markdown, help, version, and msginfo changes as
+  the active CLI.
+
+### v0.1.4 - Jun 26, 2026, 12:05:31 PM CDT
 
 - Added `/help`, `/version`, `/msginfo`, Markdown rendering, colors, and faded
   metadata.

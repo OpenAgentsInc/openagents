@@ -4,12 +4,20 @@ export interface KhalaChangelogEntry {
   readonly bullets: ReadonlyArray<string>
 }
 
-export const KHALA_CLI_VERSION = "0.1.4"
+export const KHALA_CLI_VERSION = "0.1.5"
 
 export const KHALA_CHANGELOG: ReadonlyArray<KhalaChangelogEntry> = [
   {
+    version: "0.1.5",
+    releasedAt: "2026-06-26T17:06:14.000Z",
+    bullets: [
+      "Corrected the bundled v0.1.4 release timestamp after npm publish verification.",
+      "Kept the v0.1.4 diagnostics, Markdown, help, version, and msginfo changes as the active CLI.",
+    ],
+  },
+  {
     version: "0.1.4",
-    releasedAt: "2026-06-26T17:58:00.000Z",
+    releasedAt: "2026-06-26T17:05:31.009Z",
     bullets: [
       "Added /help, /version, /msginfo, Markdown rendering, colors, and faded metadata.",
       "Added backend trace reporting, public stream metadata, exact feedback lookup, and longer exponential retries.",
