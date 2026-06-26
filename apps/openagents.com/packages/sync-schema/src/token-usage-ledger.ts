@@ -288,20 +288,20 @@ export const PublicKhalaTokensServedHistoryWindow = S.Literals([
 export type PublicKhalaTokensServedHistoryWindow =
   typeof PublicKhalaTokensServedHistoryWindow.Type
 
-// The only supported bucket today is calendar day (UTC). Modeled as a literal
-// so a future hourly bucket is an additive, typed change rather than a free
-// string.
+// The only supported bucket today is calendar day. Modeled as a literal so a
+// future hourly bucket is an additive, typed change rather than a free string.
 export const PublicKhalaTokensServedHistoryBucket = S.Literals(['day'])
 export type PublicKhalaTokensServedHistoryBucket =
   typeof PublicKhalaTokensServedHistoryBucket.Type
 
 // One point in the public-safe tokens-served history series: a calendar day
-// (UTC, 'YYYY-MM-DD') and the SUM of input + output tokens served on that day.
-// Aggregate only — bare day + sum, no per-user/actor/provider material.
+// ('YYYY-MM-DD' in the response timezone) and the SUM of input + output tokens
+// served on that day. Aggregate only — bare day + sum, no per-user/actor/provider
+// material.
 export class PublicKhalaTokensServedHistoryPoint extends S.Class<PublicKhalaTokensServedHistoryPoint>(
   'PublicKhalaTokensServedHistoryPoint',
 )({
-  // Calendar day in UTC, ISO 'YYYY-MM-DD'.
+  // Calendar day in the response timezone, ISO 'YYYY-MM-DD'.
   day: S.String,
   // Non-negative integer SUM of input + output tokens served that day.
   tokensServed: S.Int,
@@ -316,6 +316,7 @@ export class PublicKhalaTokensServedHistory extends S.Class<PublicKhalaTokensSer
 )({
   window: PublicKhalaTokensServedHistoryWindow,
   bucket: PublicKhalaTokensServedHistoryBucket,
+  timezone: S.String,
   series: S.Array(PublicKhalaTokensServedHistoryPoint),
 }) {}
 

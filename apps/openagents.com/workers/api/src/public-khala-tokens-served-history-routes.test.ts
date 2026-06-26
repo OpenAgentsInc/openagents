@@ -19,22 +19,55 @@ const runtime: TokenUsageLedgerRuntime = {
 }
 
 type HistoryRow = { day: string; tokens: number }
+type RawTokenRow = {
+  observed_at: string
+  input_tokens: number
+  output_tokens: number
+}
 
 // A fake D1 that answers ONLY the per-day history GROUP BY query the public
 // read runs. It proves the route reaches the canonical ledger SQL path, not a
 // stub, and returns the rows already ordered ascending by day (as the SQL does).
-const fakeHistoryDb = (rows: ReadonlyArray<HistoryRow>): D1Database => {
-  const prepare = () => ({
-    bind: () => prepare(),
+const fakeHistoryDb = (
+  rows: ReadonlyArray<HistoryRow | RawTokenRow>,
+): D1Database => {
+  const prepare = (sql = '') => ({
+    bind: () => prepare(sql),
     all: <T>(): Promise<{ results: ReadonlyArray<T> }> =>
-      Promise.resolve({ results: rows as ReadonlyArray<T> }),
+      Promise.resolve({
+        results: sql.includes('date(observed_at)')
+          ? (groupRawRowsByUtcDay(rows) as ReadonlyArray<T>)
+          : (rows as ReadonlyArray<T>),
+      }),
   })
 
   return { prepare } as unknown as D1Database
 }
 
+const groupRawRowsByUtcDay = (
+  rows: ReadonlyArray<HistoryRow | RawTokenRow>,
+): ReadonlyArray<HistoryRow> => {
+  const historyRows = rows.filter((row): row is HistoryRow => 'day' in row)
+  const grouped = rows
+    .filter((row): row is RawTokenRow => !('day' in row))
+    .reduce((days, row) => {
+      const day = row.observed_at.slice(0, 10)
+      days.set(
+        day,
+        (days.get(day) ?? 0) + row.input_tokens + row.output_tokens,
+      )
+      return days
+    }, new Map<string, number>())
+
+  return historyRows.length > 0
+    ? historyRows
+    : [...grouped.entries()]
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([day, tokens]) => ({ day, tokens }))
+}
+
 const routeInput = (
-  rows: ReadonlyArray<HistoryRow>,
+  rows: ReadonlyArray<HistoryRow | RawTokenRow>,
 ): Parameters<typeof handlePublicKhalaTokensServedHistoryApi>[1] => ({
   ledger: makeD1TokenUsageLedger(fakeHistoryDb(rows), runtime),
   nowIso: () => nowIso,
@@ -92,6 +125,47 @@ describe('GET /api/public/khala-tokens-served/history', () => {
 
     expect(body.window).toBe('30d')
     expect(body.bucket).toBe('day')
+    expect(body.timezone).toBe('UTC')
+  })
+
+  test('supports America/Chicago day bucketing at the UTC day boundary', async () => {
+    const rows: ReadonlyArray<RawTokenRow> = [
+      {
+        observed_at: '2026-06-25T04:30:00.000Z',
+        input_tokens: 6,
+        output_tokens: 4,
+      },
+      {
+        observed_at: '2026-06-25T05:30:00.000Z',
+        input_tokens: 20,
+        output_tokens: 5,
+      },
+    ]
+
+    const utcResponse = await Effect.runPromise(
+      handlePublicKhalaTokensServedHistoryApi(
+        getRequest('?window=7d&bucket=day'),
+        routeInput(rows),
+      ),
+    )
+    const chicagoResponse = await Effect.runPromise(
+      handlePublicKhalaTokensServedHistoryApi(
+        getRequest('?window=7d&bucket=day&tz=America/Chicago'),
+        routeInput(rows),
+      ),
+    )
+
+    const utcBody = (await utcResponse.json()) as Record<string, unknown>
+    const chicagoBody =
+      (await chicagoResponse.json()) as Record<string, unknown>
+
+    expect(utcBody.timezone).toBe('UTC')
+    expect(utcBody.series).toEqual([{ day: '2026-06-25', tokensServed: 35 }])
+    expect(chicagoBody.timezone).toBe('America/Chicago')
+    expect(chicagoBody.series).toEqual([
+      { day: '2026-06-24', tokensServed: 10 },
+      { day: '2026-06-25', tokensServed: 25 },
+    ])
   })
 
   test('empty window → empty series', async () => {
@@ -137,6 +211,7 @@ describe('GET /api/public/khala-tokens-served/history', () => {
               provider: 'anthropic',
             } as unknown as { day: string; tokensServed: number },
           ],
+          timezone: 'UTC',
         }),
     }
 
@@ -155,6 +230,7 @@ describe('GET /api/public/khala-tokens-served/history', () => {
       'schemaVersion',
       'series',
       'staleness',
+      'timezone',
       'window',
     ])
 

@@ -236,6 +236,63 @@ describe('projectHarborResultToSnapshot — real TB2.0 .stats summary shape', ()
     expect(progress.passRateOverCompleted).toBeCloseTo(14 / 62)
   })
 
+  test('keeps Harbor summary cancellations disjoint from completed counts', () => {
+    const cancelledAfterResume = {
+      ...harborStatsResult,
+      n_total_trials: 89,
+      stats: {
+        ...harborStatsResult.stats,
+        n_completed_trials: 77,
+        n_errored_trials: 57,
+        n_running_trials: 1,
+        n_pending_trials: 11,
+        n_cancelled_trials: 1,
+        evals: {
+          'terminus-2__openagents/khala__terminal-bench': {
+            n_trials: 31,
+            n_errors: 57,
+            metrics: [{ mean: 0.18181818181818182 }],
+            pass_at_k: {},
+            reward_stats: {
+              reward: {
+                '0.0': Array.from(
+                  { length: 17 },
+                  (_, index) => `failed-${index}`,
+                ),
+                '1.0': Array.from(
+                  { length: 14 },
+                  (_, index) => `passed-${index}`,
+                ),
+              },
+            },
+          },
+        },
+      },
+    }
+
+    const snapshot = projectHarborResultToSnapshot(
+      cancelledAfterResume,
+      context,
+    )
+    expect(snapshot.completedPassed).toBe(14)
+    expect(snapshot.completedFailed).toBe(62)
+    expect(snapshot.running).toBe(1)
+    expect(snapshot.pending).toBe(11)
+    expect(snapshot.cancelled).toBe(1)
+    expect(
+      snapshot.completedPassed +
+        snapshot.completedFailed +
+        snapshot.running +
+        snapshot.pending +
+        snapshot.cancelled,
+    ).toBe(89)
+
+    const progress = buildGymRunProgress(snapshot)
+    expect(progress.counts.completed).toBe(76)
+    expect(progress.counts.cancelled).toBe(1)
+    expect(checkGymRunProgressPublicSafety(progress).safe).toBe(true)
+  })
+
   test('derives running phase while pending remains, ignoring finished_at=null', () => {
     const snapshot = projectHarborResultToSnapshot(harborStatsResult, context)
     expect(snapshot.phase).toBe('running')

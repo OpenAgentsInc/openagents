@@ -18,6 +18,9 @@ export const dashedRandomId = (prefix: string): string =>
 export const epochMillisToIsoTimestamp = (timestamp: number): string =>
   new Date(timestamp).toISOString()
 
+export const isoTimestampToDate = (timestamp: string): Date =>
+  new Date(timestamp)
+
 export const isoTimestampAfterIso = (
   timestamp: string,
   milliseconds: number,

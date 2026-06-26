@@ -683,6 +683,57 @@ describe('dispatchWithOverflow', () => {
     })
   })
 
+  test('reports a retryable lane-wide breaker failure when every registered lane is quarantined', async () => {
+    const glm = mockAdapter(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID, [undefined])
+    const fallback = mockAdapter(VERTEX_GEMINI_ADAPTER_ID, [undefined])
+    const registry = new InferenceProviderRegistry()
+    registry.register(glm.adapter)
+    registry.register(fallback.adapter)
+    const events: Array<DispatchFailureTelemetryEvent> = []
+
+    const result = await runResult(
+      dispatchWithOverflowWithMetadata(request(KHALA_MODEL_ID), completeOp, {
+        failureTelemetry: event => {
+          events.push(event)
+        },
+        plan: () => [
+          HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+          VERTEX_GEMINI_ADAPTER_ID,
+        ],
+        registry,
+        routingSignals: id =>
+          id === HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID
+            ? { laneHealth: 'quarantined' }
+            : { laneHealth: 'unhealthy' },
+        sleep: noSleep,
+      }),
+    )
+
+    expect(result._tag).toBe('Failure')
+    if (result._tag === 'Failure') {
+      expect(result.failure.kind).toBe('lane_quorum_unhealthy')
+      expect(result.failure.retryable).toBe(true)
+    }
+    expect(glm.calls()).toBe(0)
+    expect(fallback.calls()).toBe(0)
+    expect(events).toEqual([
+      {
+        adapterId: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+        classifier: 'provider_error',
+        kind: 'quarantined',
+        retryable: true,
+        stage: 'health_quarantine',
+      },
+      {
+        adapterId: VERTEX_GEMINI_ADAPTER_ID,
+        classifier: 'provider_error',
+        kind: 'unhealthy',
+        retryable: true,
+        stage: 'health_quarantine',
+      },
+    ])
+  })
+
   test('SLO shedding drops internal stress while external demand still serves', async () => {
     const internalLane = mockAdapter('internal-lane', [undefined])
     const externalLane = mockAdapter('external-lane', [undefined])

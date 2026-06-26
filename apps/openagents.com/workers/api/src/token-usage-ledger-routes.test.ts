@@ -510,7 +510,12 @@ const makeRoutes = (
     },
     readPublicTokensServed: () => Effect.succeed({ tokensServed: 0 }),
     readPublicTokensServedHistory: () =>
-      Effect.succeed({ window: '30d', bucket: 'day', series: [] }),
+      Effect.succeed({
+        window: '30d',
+        bucket: 'day',
+        timezone: 'UTC',
+        series: [],
+      }),
     readLeaderboardPreference: input => {
       preferenceInputs.push(input)
 

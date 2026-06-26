@@ -976,7 +976,7 @@ export type PublicKhalaTokensServedModel =
 // "Khala Tokens Served" history (#6227): the public-safe per-day series from
 // GET /api/public/khala-tokens-served/history, polled on the same interval as
 // the scalar counter so the /stats history chart reads live. Each point is a
-// bare UTC day + the SUM of input + output tokens served that day.
+// bare local day + the SUM of input + output tokens served that day.
 export const PublicKhalaTokensServedHistoryPoint = S.Struct({
   day: S.String,
   tokensServed: S.Number,
@@ -987,6 +987,7 @@ export type PublicKhalaTokensServedHistoryPoint =
 export const PublicKhalaTokensServedHistory = S.Struct({
   window: S.String,
   bucket: S.String,
+  timezone: S.String,
   series: S.Array(PublicKhalaTokensServedHistoryPoint),
 })
 export type PublicKhalaTokensServedHistory =
