@@ -63,20 +63,9 @@ struct RootView: View {
                         onOpenSettings: { showSettings = true }
                     )
                     .id(conversation.id)
-                    // Empty-state greeting + coding suggestions for a fresh
-                    // chat. Overlaid above the chat surface so the composer
-                    // stays usable; tapping a suggestion sends the first user
-                    // turn and the live transcript replaces this overlay.
-                    .overlay {
-                        if isEmpty(conversation) {
-                            EmptyStateView(
-                                canSend: hasKey && !voice.state.isBusy,
-                                onSelect: { sendSuggestion($0) }
-                            )
-                            .transition(.opacity)
-                        }
-                    }
-                    .animation(.easeOut(duration: 0.2), value: isEmpty(conversation))
+                    // Empty-state greeting + suggestions live INSIDE ChatView now
+                    // (in place of the scroll content), so the composer inset
+                    // stays visible on a fresh chat. See ChatView.isEmptyState.
                 } else {
                     // Should not normally happen (we ensure one exists), but never
                     // black-screen: offer a way forward.
@@ -174,27 +163,6 @@ struct RootView: View {
             created?.send(transcript)
         }
         model = created
-    }
-
-    /// A conversation is "empty" (shows the empty state) when it has no
-    /// user/assistant turns yet and no in-flight chat/codex request is rendered.
-    private func isEmpty(_ conversation: Conversation) -> Bool {
-        let hasTurns = conversation.messages.contains { $0.role != .system }
-        let chatInFlight = model?.isStreaming == true || model?.error != nil
-        let codexInFlight = voice.state.isBusy || !voice.response.isEmpty
-            || voice.requestError != nil
-        return !hasTurns && !chatInFlight && !codexInFlight
-    }
-
-    /// Start a conversation from a tapped empty-state suggestion. Streams the
-    /// canned prompt as the first user turn through the same path the composer
-    /// uses; the empty state then yields to the live streaming transcript.
-    private func sendSuggestion(_ prompt: String) {
-        guard hasKey, let conversation = activeConversation,
-              let model = modelFor(conversation), !model.isStreaming else { return }
-        let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        model.send(trimmed)
     }
 
     private func open(_ conversation: Conversation) {

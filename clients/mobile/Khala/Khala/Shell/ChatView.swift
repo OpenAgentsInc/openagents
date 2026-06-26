@@ -28,10 +28,32 @@ struct ChatView: View {
     @AppStorage("khala.codex.pylonRef") private var codexPylonRef = ""
     @FocusState private var composerFocused: Bool
 
+    /// A fresh chat with nothing in flight: show the empty-state suggestions in
+    /// place of the scroll content. The composer inset below stays visible, so
+    /// there is ALWAYS a text box to type what you want.
+    private var isEmptyState: Bool {
+        conversation.messages.isEmpty
+            && !voice.state.isBusy
+            && voice.response.isEmpty
+            && voice.transcript.isEmpty
+    }
+
     var body: some View {
         ZStack {
             AnimatedBackground(level: voice.level, accent: voice.state.accentColor)
 
+            if isEmptyState {
+                // Tapping a suggestion PREFILLS the composer (focuses + opens the
+                // keyboard) so you can edit it and say exactly what you want,
+                // rather than firing a canned prompt.
+                EmptyStateView(
+                    canSend: hasKey,
+                    onSelect: { prompt in
+                        typedMessage = prompt
+                        composerFocused = true
+                    }
+                )
+            } else {
             ScrollViewReader { proxy in
                 ScrollView {
                     VStack(spacing: 18) {
@@ -57,6 +79,7 @@ struct ChatView: View {
                 .onChange(of: model.error) { _, _ in scroll(proxy) }
                 .onChange(of: voice.response) { _, _ in scroll(proxy) }
                 .onChange(of: voice.requestError) { _, _ in scroll(proxy) }
+            }
             }
         }
         .safeAreaInset(edge: .bottom) {

@@ -53,10 +53,9 @@ struct EmptyStateView: View {
         .padding(.horizontal, 28)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .multilineTextAlignment(.center)
-        // Opaque scrim so the underlying chat surface (voice orb, panels,
-        // placeholder) does not bleed through behind the clean empty state.
-        // The composer below the overlay stays visible and usable.
-        .background(.background)
+        // No opaque background: this is rendered INSIDE ChatView (over the
+        // AnimatedBackground), in place of the scroll content, so ChatView's
+        // bottom composer inset stays visible and usable on a fresh chat.
     }
 
     private var greeting: some View {
@@ -68,7 +67,7 @@ struct EmptyStateView: View {
             Text("Khala")
                 .font(.largeTitle.weight(.semibold))
                 .foregroundStyle(.primary)
-            Text("Your coding copilot. Ask anything, or start with one of these.")
+            Text("Collective intelligence behind a free API — one mind, many models. Ask anything, or start with one of these.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
