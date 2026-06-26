@@ -132,6 +132,7 @@ export type AssignmentClientOptions = {
   codexAgentRunner?: CodexAgentRunner
   codexAgentProbe?: CodexAgentProbeOptions
   onLifecycleEvent?: (event: AssignmentRunLifecycleEvent) => void | Promise<void>
+  runtimeProgressIntervalMs?: number
 }
 
 export type AssignmentRunLifecycleEvent = {
@@ -140,6 +141,7 @@ export type AssignmentRunLifecycleEvent = {
     | "assignment_run.poll_complete"
     | "assignment_run.accepted"
     | "assignment_run.runtime_started"
+    | "assignment_run.runtime_progress"
     | "assignment_run.progress_submitted"
     | "assignment_run.artifacts_submitted"
     | "assignment_run.closeout_submitted"
@@ -155,6 +157,10 @@ export type AssignmentRunLifecycleEvent = {
   progressRef?: string
   artifactRef?: string
   closeoutRef?: string
+  accountRefHash?: string
+  elapsedMs?: number
+  phase?: "runtime_active"
+  lastProgressEvent?: AssignmentRunLifecycleEvent["event"]
   blockerRefs?: string[]
 }
 
@@ -1114,19 +1120,64 @@ export async function submitAssignmentCloseout(
 }
 
 export async function runNoSpendAssignment(summary: BootstrapSummary, options: AssignmentClientOptions) {
+  const runtimeProgressIntervalMs =
+    typeof options.runtimeProgressIntervalMs === "number" &&
+    Number.isFinite(options.runtimeProgressIntervalMs) &&
+    options.runtimeProgressIntervalMs > 0
+      ? Math.max(1, Math.floor(options.runtimeProgressIntervalMs))
+      : 10_000
+  let lastProgressEvent: AssignmentRunLifecycleEvent["event"] | undefined
   const emitLifecycleEvent = async (
     event: Omit<AssignmentRunLifecycleEvent, "schema" | "observedAt">,
   ) => {
     if (options.onLifecycleEvent === undefined) return
     try {
-      await options.onLifecycleEvent({
+      const lifecycleEvent: AssignmentRunLifecycleEvent = {
         schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
         observedAt: (options.now?.() ?? new Date()).toISOString(),
         ...event,
-      })
+      }
+      assertPublicProjectionSafe(lifecycleEvent)
+      await options.onLifecycleEvent(lifecycleEvent)
+      if (event.event !== "assignment_run.runtime_progress") {
+        lastProgressEvent = event.event
+      }
     } catch {
       // Lifecycle output is operator observability; assignment execution must
       // remain fail-soft if stderr or an injected reporter is unavailable.
+    }
+  }
+  const withRuntimeProgress = async <T>(
+    input: {
+      assignmentRef: string
+      accountRefHash?: string
+      leaseRef: string
+      startedAtMs: number
+      run: () => Promise<T>
+    },
+  ): Promise<T> => {
+    if (options.onLifecycleEvent === undefined) return input.run()
+    let stopped = false
+    const tick = async () => {
+      if (stopped) return
+      await emitLifecycleEvent({
+        event: "assignment_run.runtime_progress",
+        assignmentRef: input.assignmentRef,
+        ...(input.accountRefHash === undefined ? {} : { accountRefHash: input.accountRefHash }),
+        leaseRef: input.leaseRef,
+        phase: "runtime_active",
+        elapsedMs: Math.max(0, Date.now() - input.startedAtMs),
+        ...(lastProgressEvent === undefined ? {} : { lastProgressEvent }),
+      })
+    }
+    const interval = setInterval(() => {
+      void tick()
+    }, runtimeProgressIntervalMs)
+    try {
+      return await input.run()
+    } finally {
+      stopped = true
+      clearInterval(interval)
     }
   }
   const state = await ensurePylonLocalState(summary)
@@ -1198,22 +1249,29 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
     leaseRef: lease.leaseRef,
   })
 
-  const runtimeGate =
-    (await executeTassadarAssignment(lease, observedAtDate)) ??
-    (await executeClaudeAgentAssignment(state, lease, observedAtDate, {
-      ...(options.claudeAgentCheckoutRunner === undefined ? {} : { checkoutRunner: options.claudeAgentCheckoutRunner }),
-      ...(options.claudeAgentRunner === undefined ? {} : { claudeAgentRunner: options.claudeAgentRunner }),
-      ...(options.claudeAgentProbe === undefined ? {} : { claudeAgentProbe: options.claudeAgentProbe }),
-    })) ??
-    (await executeCodexAgentAssignment(state, lease, observedAtDate, {
-      ...(options.agentToken === undefined ? {} : { agentToken: options.agentToken }),
-      ...(codexAccount === null ? {} : { account: codexAccount }),
-      baseUrl: options.baseUrl,
-      ...(options.codexAgentRunner === undefined ? {} : { codexAgentRunner: options.codexAgentRunner }),
-      ...(options.codexAgentProbe === undefined ? {} : { codexAgentProbe: options.codexAgentProbe }),
-      ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
-    })) ??
-    (await executeRuntimeGate(state, lease, observedAtDate))
+  const runtimeStartedAtMs = Date.now()
+  const runtimeGate = await withRuntimeProgress({
+    assignmentRef: lease.assignmentRef,
+    ...(codexAccount?.accountRefHash === undefined ? {} : { accountRefHash: codexAccount.accountRefHash }),
+    leaseRef: lease.leaseRef,
+    startedAtMs: runtimeStartedAtMs,
+    run: async () =>
+      (await executeTassadarAssignment(lease, observedAtDate)) ??
+      (await executeClaudeAgentAssignment(state, lease, observedAtDate, {
+        ...(options.claudeAgentCheckoutRunner === undefined ? {} : { checkoutRunner: options.claudeAgentCheckoutRunner }),
+        ...(options.claudeAgentRunner === undefined ? {} : { claudeAgentRunner: options.claudeAgentRunner }),
+        ...(options.claudeAgentProbe === undefined ? {} : { claudeAgentProbe: options.claudeAgentProbe }),
+      })) ??
+      (await executeCodexAgentAssignment(state, lease, observedAtDate, {
+        ...(options.agentToken === undefined ? {} : { agentToken: options.agentToken }),
+        ...(codexAccount === null ? {} : { account: codexAccount }),
+        baseUrl: options.baseUrl,
+        ...(options.codexAgentRunner === undefined ? {} : { codexAgentRunner: options.codexAgentRunner }),
+        ...(options.codexAgentProbe === undefined ? {} : { codexAgentProbe: options.codexAgentProbe }),
+        ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+      })) ??
+      (await executeRuntimeGate(state, lease, observedAtDate)),
+  })
   const artifactRefs = runtimeGate?.artifactRefs ?? [stableRef("assignment.artifact", `${lease.assignmentRef}:${lease.goal}`)]
   const proofRefs = runtimeGate?.proofRefs ?? [stableRef("assignment.proof", `${lease.leaseRef}:${artifactRefs[0]}`)]
   const progress: AssignmentProgress = {

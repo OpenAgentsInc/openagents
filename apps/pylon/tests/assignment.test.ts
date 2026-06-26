@@ -415,6 +415,105 @@ describe("Pylon assignment lease flow", () => {
     })
   })
 
+  test("emits public-safe live runtime progress while Codex assignment is active", async () => {
+    await withTempHome(async (home) => {
+      const codexLease = lease({
+        assignmentRef: "assignment.public.no_spend.codex_live_progress",
+        leaseRef: "lease.public.no_spend.codex_live_progress",
+        capabilityRefs: ["capability.pylon.local_codex"],
+        codingAssignment: {
+          codex: {
+            agentKind: "codex_sdk",
+            fixtureRef: CODEX_AGENT_SUM_REPAIR_FIXTURE_REF,
+            schema: CODEX_AGENT_TASK_SCHEMA,
+          },
+        },
+      })
+      const fake = fakeAssignmentServer({ leases: [codexLease] })
+      const summary = await readySummary(home, ["capability.pylon.local_codex"])
+      const state = await ensurePylonLocalState(summary)
+      const codexHome = join(home, "accounts/codex/codex-live")
+      await mkdir(codexHome, { recursive: true })
+      await writeFile(join(codexHome, "auth.json"), "{}\n")
+      await writeFile(
+        state.paths.config,
+        `${JSON.stringify(
+          {
+            dev: {
+              accounts: [{ provider: "codex", ref: "codex-live", home: codexHome }],
+            },
+          },
+          null,
+          2,
+        )}\n`,
+      )
+      await sendHeartbeat(summary, { baseUrl: fake.baseUrl, now: () => new Date("2026-06-09T00:00:00.000Z") })
+
+      let runnerCompleted = false
+      let progressObservedWhileActive = false
+      const lifecycleEvents: AssignmentRunLifecycleEvent[] = []
+      const slowFixingCodexRunner: CodexAgentRunner = async (input) => {
+        await new Promise((resolve) => setTimeout(resolve, 30))
+        await writeFile(
+          join(input.cwd, "sum.ts"),
+          "export const sum = (left: number, right: number) => left + right\n",
+        )
+        runnerCompleted = true
+        return { commandCount: 1, editedFileCount: 1, outcome: "completed", sessionRef: null, turnCount: 1 }
+      }
+
+      const result = await runNoSpendAssignment(summary, {
+        accountRef: "codex-live",
+        baseUrl: fake.baseUrl,
+        codexAgentProbe: {
+          env: {},
+          importer: async () => ({}),
+          platform: "darwin",
+        },
+        codexAgentRunner: slowFixingCodexRunner,
+        now: () => new Date("2026-06-09T00:00:30.000Z"),
+        runtimeProgressIntervalMs: 1,
+        onLifecycleEvent: (event) => {
+          lifecycleEvents.push(event)
+          if (event.event === "assignment_run.runtime_progress" && !runnerCompleted) {
+            progressObservedWhileActive = true
+          }
+        },
+      })
+
+      expect(result.ok).toBe(true)
+      if (!result.ok) throw new Error("expected Codex assignment to run")
+      expect(progressObservedWhileActive).toBe(true)
+      const progressEvents = lifecycleEvents.filter(
+        (event) => event.event === "assignment_run.runtime_progress",
+      )
+      expect(progressEvents.length).toBeGreaterThan(0)
+      expect(progressEvents[0]).toMatchObject({
+        schema: "openagents.pylon.assignment_run_lifecycle_event.v0.1",
+        assignmentRef: codexLease.assignmentRef,
+        accountRefHash: expect.stringMatching(/^account\.pylon\.codex\.[a-f0-9]{24}$/),
+        leaseRef: codexLease.leaseRef,
+        phase: "runtime_active",
+        lastProgressEvent: "assignment_run.runtime_started",
+      })
+      expect(typeof progressEvents[0].elapsedMs).toBe("number")
+      expect(progressEvents[0].elapsedMs).toBeGreaterThanOrEqual(0)
+
+      const lifecycleJson = JSON.stringify(lifecycleEvents)
+      expect(lifecycleJson).not.toContain(home)
+      expect(lifecycleJson).not.toContain(codexHome)
+      expect(lifecycleJson).not.toContain("codex-live")
+      expect(lifecycleJson).not.toContain("/Users/")
+      expect(lifecycleJson).not.toContain("accountHome")
+      expect(lifecycleJson).not.toContain("provider")
+      expect(lifecycleJson).not.toContain("prompt")
+      expect(lifecycleJson).not.toContain("rawEvents")
+      expect(lifecycleJson).not.toContain("shell output")
+      expect(lifecycleJson).not.toContain("token")
+      for (const event of lifecycleEvents) assertPublicProjectionSafe(event)
+    })
+  })
+
   test("skips locally terminal leases that are still offered by the server", async () => {
     await withTempHome(async (home) => {
       const firstLease = lease({
