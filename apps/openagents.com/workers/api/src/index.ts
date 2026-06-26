@@ -384,6 +384,7 @@ import { fireworksAdapter } from './inference/fireworks-adapter'
 import { freeTierDataSharingDisclosure } from './inference/free-tier-data-sharing-disclosure'
 import { handleFreeTierDataSharingDisclosureApi } from './inference/free-tier-data-sharing-routes'
 import { handleGatewayReadiness } from './inference/gateway-readiness-routes'
+import { handleGlmFleetReadiness } from './inference/glm-fleet-readiness-routes'
 import {
   glmPoolHeartbeatRoutingStateOracle,
   runScheduledGlmPoolHeartbeatForD1,
@@ -11861,6 +11862,19 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       handleGatewayReadiness(request, {
         enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
         laneArming: resolveSupplyLaneArming(env),
+      }),
+  },
+  {
+    // Public GLM fleet readiness summary (GET /v1/gateway/glm-fleet/readiness).
+    // Read-only and public-safe: stable replica refs plus aggregate warm, ready,
+    // reclaimed, disabled, and unavailable counts. It reuses configured GLM
+    // replica arming and the latest in-memory heartbeat projection; it never
+    // probes hosts, returns raw origins, or changes replica state.
+    path: '/v1/gateway/glm-fleet/readiness',
+    handler: (request, env) =>
+      handleGlmFleetReadiness(request, {
+        enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
+        env,
       }),
   },
   {

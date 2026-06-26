@@ -160,6 +160,7 @@ const approvedExactRoutePaths = [
   '/v1/models',
   '/v1/quote',
   '/v1/gateway/readiness',
+  '/v1/gateway/glm-fleet/readiness',
   '/v1/gateway/dispatch-failures',
   '/api/operator/inference/pylon-fabric/smoke',
   '/v1/fine_tuning/jobs',

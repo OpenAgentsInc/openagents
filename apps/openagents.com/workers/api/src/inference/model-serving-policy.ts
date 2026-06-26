@@ -557,22 +557,36 @@ export const resolveHydraliskGptOss20bArming = (
 export const resolveHydraliskGlm52Reap504bArming = (
   env: SupplyLaneCredentialEnv,
 ): HydraliskGlm52Reap504bArming => {
-  const parsed = parseGlmReplicaIds(env.HYDRALISK_GLM_52_REAP_504B_REPLICA_IDS)
-  const replicaArmings = parsed.replicaIds.map(replicaId =>
-    resolveHydraliskGlm52ReplicaArming(env, replicaId),
-  )
+  const replicaArmings = resolveHydraliskGlm52Reap504bReplicaArmings(env)
   const replicas = replicaArmings.flatMap(arming =>
     arming.replica === undefined ? [] : [arming.replica],
   )
   return {
     armed: replicas.length > 0,
-    blockerRefs: [
-      ...parsed.blockerRefs,
-      ...replicaArmings.flatMap(arming => arming.blockerRefs),
-    ],
+    blockerRefs: replicaArmings.flatMap(arming => arming.blockerRefs),
     evidenceRefs: replicaArmings.flatMap(arming => arming.evidenceRefs),
     replicas,
   }
+}
+
+export const resolveHydraliskGlm52Reap504bReplicaArmings = (
+  env: SupplyLaneCredentialEnv,
+): ReadonlyArray<HydraliskGlm52ReplicaArming> => {
+  const parsed = parseGlmReplicaIds(env.HYDRALISK_GLM_52_REAP_504B_REPLICA_IDS)
+  const replicaArmings = parsed.replicaIds.map(replicaId =>
+    resolveHydraliskGlm52ReplicaArming(env, replicaId),
+  )
+  return parsed.blockerRefs.length === 0
+    ? replicaArmings
+    : [
+        ...replicaArmings,
+        {
+          armed: false,
+          blockerRefs: parsed.blockerRefs,
+          evidenceRefs: [],
+          replicaId: 'configuration',
+        },
+      ]
 }
 
 export const resolveHydraliskGptOss120bArming = (

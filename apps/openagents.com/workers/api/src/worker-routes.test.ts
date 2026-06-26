@@ -251,6 +251,9 @@ describe('Canonical /api gateway base alias (#6148)', () => {
       '/v1/chat/completions',
     )
     expect(gatewayLegacyPathname('/api/v1/quote')).toBe('/v1/quote')
+    expect(gatewayLegacyPathname('/api/v1/gateway/glm-fleet/readiness')).toBe(
+      '/v1/gateway/glm-fleet/readiness',
+    )
     expect(gatewayLegacyPathname('/api/v1/inference/batches')).toBe(
       '/v1/inference/batches',
     )
@@ -307,6 +310,7 @@ describe('Worker route dual-serve resolution (#6148)', () => {
     const exactRoutes: ReadonlyArray<ExactRoute<Env>> = [
       exactRoute('/v1/models'),
       exactRoute('/v1/chat/completions'),
+      exactRoute('/v1/gateway/glm-fleet/readiness'),
       exactRoute('/mpp/v1/chat/completions'),
     ]
 
@@ -432,6 +436,17 @@ describe('Worker route dual-serve resolution (#6148)', () => {
     // OpenAI client would not re-POST.
     expect(canonical.response.status).toBe(200)
     expect(canonical.observed.exactPath).toBe('/v1/chat/completions')
+  })
+
+  test('canonical /api/v1/gateway/glm-fleet/readiness resolves to the readiness handler', async () => {
+    const canonical = await runRoute(
+      new Request('https://openagents.com/api/v1/gateway/glm-fleet/readiness'),
+    )
+
+    expect(canonical.response.status).toBe(200)
+    expect(canonical.observed.exactPath).toBe(
+      '/v1/gateway/glm-fleet/readiness',
+    )
   })
 
   test('canonical /api/mpp/v1/chat/completions reaches the MPP handler', async () => {

@@ -115,6 +115,10 @@ const latestRoutingStateByReplica = new Map<
   string,
   GlmReplicaRoutingStateOverride
 >()
+const latestHeartbeatRecordByReplica = new Map<
+  string,
+  GlmPoolHeartbeatReplicaRecord
+>()
 const breakerStateByReplica = new Map<string, GlmReplicaHeartbeatBreakerState>()
 
 const DEFAULT_BREAKER_POLICY: GlmReplicaHeartbeatBreakerPolicy = {
@@ -356,6 +360,7 @@ export const recordGlmPoolHeartbeatRoutingState = (
       record.replicaId,
       recordRoutingState(record),
     )
+    latestHeartbeatRecordByReplica.set(record.replicaId, record)
   }
 }
 
@@ -363,6 +368,11 @@ export const glmPoolHeartbeatRoutingStateOracle = (
   replicaId: string,
 ): GlmReplicaRoutingStateOverride | undefined =>
   latestRoutingStateByReplica.get(replicaId)
+
+export const glmPoolHeartbeatLatestRecordOracle = (
+  replicaId: string,
+): GlmPoolHeartbeatReplicaRecord | undefined =>
+  latestHeartbeatRecordByReplica.get(replicaId)
 
 const ingestHeartbeatRecord = (
   ledger: TokenUsageLedgerShape,
