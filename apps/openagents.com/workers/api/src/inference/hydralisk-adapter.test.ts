@@ -249,6 +249,67 @@ describe('hydralisk vLLM adapter', () => {
     ])
   })
 
+  it('keeps degraded replicas eligible but ranks them below healthy replicas', async () => {
+    const capturedInputs: Array<string> = []
+    const adapter = makeHydraliskVllmPoolAdapter({
+      id: GLM_POOL_ADAPTER_ID,
+      replicas: [
+        replicaFixture('degraded', {
+          baseUrl: 'https://degraded.example.test',
+          fetchImpl: captureFetch(capturedInputs),
+        }),
+        replicaFixture('healthy', {
+          baseUrl: 'https://healthy.example.test',
+          fetchImpl: captureFetch(capturedInputs),
+        }),
+      ],
+      routingStateOracle: replicaId =>
+        replicaId === 'degraded'
+          ? { health: 'degraded', warmAtEpochMs: 1_000, warmState: 'warm' }
+          : { health: 'healthy', warmState: 'unknown' },
+      upstreamModel: 'openagents/glm-5.2-reap-504b',
+    })
+
+    const result = await Effect.runPromise(adapter.complete(request()))
+
+    expect(result.adapterRouteMetadata).toMatchObject({
+      replicaHealthScore: 1,
+      selectedReplicaId: 'healthy',
+    })
+    expect(capturedInputs).toEqual([
+      'https://healthy.example.test/v1/chat/completions',
+    ])
+  })
+
+  it('excludes unhealthy replicas from the GLM pool selector', async () => {
+    const capturedInputs: Array<string> = []
+    const adapter = makeHydraliskVllmPoolAdapter({
+      id: GLM_POOL_ADAPTER_ID,
+      replicas: [
+        replicaFixture('unhealthy', {
+          baseUrl: 'https://unhealthy.example.test',
+          fetchImpl: captureFetch(capturedInputs),
+        }),
+      ],
+      routingStateOracle: () => ({ health: 'unhealthy' }),
+      upstreamModel: 'openagents/glm-5.2-reap-504b',
+    })
+
+    const outcome = await Effect.runPromise(
+      Effect.result(adapter.complete(request())),
+    )
+
+    expect(outcome._tag).toBe('Failure')
+    if (outcome._tag === 'Failure') {
+      expect(outcome.failure.kind).toBe('glm_pool_saturated')
+      expect(outcome.failure.retryable).toBe(true)
+      expect(outcome.failure.adapterRouteMetadata).toMatchObject({
+        replicaBusyReason: 'health_unhealthy',
+      })
+    }
+    expect(capturedInputs).toEqual([])
+  })
+
   it('sends concurrent singleflight requests to different idle replicas', async () => {
     const capturedInputs: Array<string> = []
     let releasePrimary: (() => void) | undefined

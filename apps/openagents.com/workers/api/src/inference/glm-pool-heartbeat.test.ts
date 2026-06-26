@@ -67,6 +67,35 @@ const okFetch =
     return Response.json({ ok: true })
   }
 
+const failedFetch =
+  (
+    calls: Array<Readonly<{ body?: string; method: string; url: string }>>,
+  ): GlmPoolHeartbeatFetch =>
+  async (input, init) => {
+    calls.push({
+      ...(typeof init.body === 'string' ? { body: init.body } : {}),
+      method: init.method ?? 'GET',
+      url: input,
+    })
+    return Response.json({ ok: false }, { status: 503 })
+  }
+
+const warmCompletionFailureFetch =
+  (
+    calls: Array<Readonly<{ body?: string; method: string; url: string }>>,
+  ): GlmPoolHeartbeatFetch =>
+  async (input, init) => {
+    calls.push({
+      ...(typeof init.body === 'string' ? { body: init.body } : {}),
+      method: init.method ?? 'GET',
+      url: input,
+    })
+    if (String(input).endsWith('/v1/chat/completions')) {
+      return Response.json({ error: 'temporarily unavailable' }, { status: 503 })
+    }
+    return Response.json({ ok: true })
+  }
+
 describe('runGlmPoolHeartbeat', () => {
   test('records reserved and draining replicas without calling their endpoints', async () => {
     const calls: Array<
@@ -200,6 +229,194 @@ describe('runGlmPoolHeartbeat', () => {
     expect(bodies[0]?.safeMetadata).toMatchObject({
       keepWarmStatus: 'skipped_benchmark_window',
       selectedReplicaId: 'benchmark-window',
+    })
+  })
+
+  test('marks failed probes degraded before the bounded unhealthy threshold', async () => {
+    const calls: Array<
+      Readonly<{ body?: string; method: string; url: string }>
+    > = []
+    const { bodies, ledger } = captureLedger()
+    const target = replica('breaker-failure-threshold')
+
+    const first = await Effect.runPromise(
+      runGlmPoolHeartbeat({
+        benchmarkOwnershipActive: false,
+        breakerPolicy: { failureThreshold: 3, readmitSuccessThreshold: 2 },
+        fetchImpl: failedFetch(calls),
+        ledger,
+        observedAt: '2026-06-25T16:01:00.000Z',
+        replicas: [target],
+        warmCompletionEnabled: false,
+      }),
+    )
+    const second = await Effect.runPromise(
+      runGlmPoolHeartbeat({
+        benchmarkOwnershipActive: false,
+        breakerPolicy: { failureThreshold: 3, readmitSuccessThreshold: 2 },
+        fetchImpl: failedFetch(calls),
+        ledger,
+        observedAt: '2026-06-25T16:02:00.000Z',
+        replicas: [target],
+        warmCompletionEnabled: false,
+      }),
+    )
+    const third = await Effect.runPromise(
+      runGlmPoolHeartbeat({
+        benchmarkOwnershipActive: false,
+        breakerPolicy: { failureThreshold: 3, readmitSuccessThreshold: 2 },
+        fetchImpl: failedFetch(calls),
+        ledger,
+        observedAt: '2026-06-25T16:03:00.000Z',
+        replicas: [target],
+        warmCompletionEnabled: false,
+      }),
+    )
+
+    expect(first.records[0]).toMatchObject({
+      breakerConsecutiveFailures: 1,
+      healthStatus: 'failed',
+      modelsStatus: 'failed',
+      watchdogStatus: 'degraded',
+    })
+    expect(second.records[0]).toMatchObject({
+      breakerConsecutiveFailures: 2,
+      watchdogStatus: 'degraded',
+    })
+    expect(third.records[0]).toMatchObject({
+      breakerConsecutiveFailures: 3,
+      watchdogStatus: 'unhealthy',
+    })
+    expect(glmPoolHeartbeatRoutingStateOracle(target.replicaId)).toMatchObject({
+      health: 'unhealthy',
+    })
+    expect(bodies.at(-1)?.safeMetadata).toMatchObject({
+      breakerConsecutiveFailures: 3,
+      breakerFailureThreshold: 3,
+      selectedReplicaId: target.replicaId,
+      watchdogStatus: 'unhealthy',
+    })
+  })
+
+  test('counts warm completion failures as breaker failures', async () => {
+    const calls: Array<
+      Readonly<{ body?: string; method: string; url: string }>
+    > = []
+    const { bodies, ledger } = captureLedger()
+    const target = replica('breaker-warm-failure')
+    const breakerPolicy = { failureThreshold: 2, readmitSuccessThreshold: 2 }
+
+    const first = await Effect.runPromise(
+      runGlmPoolHeartbeat({
+        benchmarkOwnershipActive: false,
+        breakerPolicy,
+        fetchImpl: warmCompletionFailureFetch(calls),
+        ledger,
+        observedAt: '2026-06-25T16:03:30.000Z',
+        replicas: [target],
+        warmCompletionEnabled: true,
+      }),
+    )
+    const second = await Effect.runPromise(
+      runGlmPoolHeartbeat({
+        benchmarkOwnershipActive: false,
+        breakerPolicy,
+        fetchImpl: warmCompletionFailureFetch(calls),
+        ledger,
+        observedAt: '2026-06-25T16:03:45.000Z',
+        replicas: [target],
+        warmCompletionEnabled: true,
+      }),
+    )
+
+    expect(first.records[0]).toMatchObject({
+      breakerConsecutiveFailures: 1,
+      healthStatus: 'ok',
+      modelsStatus: 'ok',
+      warmCompletionStatus: 'failed',
+      watchdogStatus: 'degraded',
+    })
+    expect(second.records[0]).toMatchObject({
+      breakerConsecutiveFailures: 2,
+      healthStatus: 'ok',
+      modelsStatus: 'ok',
+      warmCompletionStatus: 'failed',
+      watchdogStatus: 'unhealthy',
+    })
+    expect(bodies.at(-1)?.safeMetadata).toMatchObject({
+      breakerConsecutiveFailures: 2,
+      selectedReplicaId: target.replicaId,
+      warmCompletionStatus: 'failed',
+      watchdogStatus: 'unhealthy',
+    })
+  })
+
+  test('readmits unhealthy replicas only after the bounded healthy threshold', async () => {
+    const failedCalls: Array<
+      Readonly<{ body?: string; method: string; url: string }>
+    > = []
+    const okCalls: Array<
+      Readonly<{ body?: string; method: string; url: string }>
+    > = []
+    const { ledger } = captureLedger()
+    const target = replica('breaker-readmit-threshold')
+    const breakerPolicy = { failureThreshold: 3, readmitSuccessThreshold: 2 }
+
+    for (const observedAt of [
+      '2026-06-25T16:04:00.000Z',
+      '2026-06-25T16:05:00.000Z',
+      '2026-06-25T16:06:00.000Z',
+    ]) {
+      await Effect.runPromise(
+        runGlmPoolHeartbeat({
+          benchmarkOwnershipActive: false,
+          breakerPolicy,
+          fetchImpl: failedFetch(failedCalls),
+          ledger,
+          observedAt,
+          replicas: [target],
+          warmCompletionEnabled: false,
+        }),
+      )
+    }
+
+    const firstHealthy = await Effect.runPromise(
+      runGlmPoolHeartbeat({
+        benchmarkOwnershipActive: false,
+        breakerPolicy,
+        fetchImpl: okFetch(okCalls),
+        ledger,
+        observedAt: '2026-06-25T16:07:00.000Z',
+        replicas: [target],
+        warmCompletionEnabled: false,
+      }),
+    )
+    const secondHealthy = await Effect.runPromise(
+      runGlmPoolHeartbeat({
+        benchmarkOwnershipActive: false,
+        breakerPolicy,
+        fetchImpl: okFetch(okCalls),
+        ledger,
+        observedAt: '2026-06-25T16:08:00.000Z',
+        replicas: [target],
+        warmCompletionEnabled: false,
+      }),
+    )
+
+    expect(firstHealthy.records[0]).toMatchObject({
+      breakerConsecutiveFailures: 0,
+      breakerConsecutiveSuccesses: 1,
+      healthStatus: 'ok',
+      modelsStatus: 'ok',
+      watchdogStatus: 'unhealthy',
+    })
+    expect(secondHealthy.records[0]).toMatchObject({
+      breakerConsecutiveFailures: 0,
+      breakerConsecutiveSuccesses: 0,
+      watchdogStatus: 'healthy',
+    })
+    expect(glmPoolHeartbeatRoutingStateOracle(target.replicaId)).toMatchObject({
+      health: 'healthy',
     })
   })
 })

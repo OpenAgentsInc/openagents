@@ -40,12 +40,20 @@ export type GlmPoolKeepWarmStatus =
   | 'skipped_benchmark_window'
   | 'skipped_draining'
 
-export type GlmPoolWatchdogStatus = 'healthy' | 'unhealthy' | 'skipped'
+export type GlmPoolWatchdogStatus =
+  | 'degraded'
+  | 'healthy'
+  | 'skipped'
+  | 'unhealthy'
 
 export type GlmPoolHeartbeatWarmState = 'cold' | 'unknown' | 'warm'
 
 export type GlmPoolHeartbeatReplicaRecord = Readonly<{
   benchmarkReserved: boolean
+  breakerConsecutiveFailures?: number | undefined
+  breakerConsecutiveSuccesses?: number | undefined
+  breakerFailureThreshold?: number | undefined
+  breakerReadmitSuccessThreshold?: number | undefined
   draining: boolean
   healthStatus: GlmPoolHeartbeatProbeStatus
   keepWarmStatus: GlmPoolKeepWarmStatus
@@ -76,10 +84,27 @@ export type HydraliskGlmPoolHeartbeatEnv = SupplyLaneCredentialEnv &
     HYDRALISK_GLM_52_REAP_504B_BENCHMARK_OWNERSHIP_ACTIVE?: string | undefined
     HYDRALISK_GLM_52_REAP_504B_HEARTBEAT_CADENCE_MINUTES?: string | undefined
     HYDRALISK_GLM_52_REAP_504B_HEARTBEAT_ENABLED?: string | undefined
+    HYDRALISK_GLM_52_REAP_504B_HEARTBEAT_FAILURE_THRESHOLD?:
+      | string
+      | undefined
+    HYDRALISK_GLM_52_REAP_504B_HEARTBEAT_READMIT_SUCCESS_THRESHOLD?:
+      | string
+      | undefined
     HYDRALISK_GLM_52_REAP_504B_HEARTBEAT_WARM_COMPLETION_ENABLED?:
       | string
       | undefined
   }>
+
+export type GlmReplicaHeartbeatBreakerPolicy = Readonly<{
+  failureThreshold: number
+  readmitSuccessThreshold: number
+}>
+
+type GlmReplicaHeartbeatBreakerState = Readonly<{
+  consecutiveFailures: number
+  consecutiveSuccesses: number
+  health: Exclude<GlmPoolWatchdogStatus, 'skipped'>
+}>
 
 const REPLICA_REF_PREFIX = 'replica.hydralisk.glm_52_reap_504b'
 const HEARTBEAT_ACCOUNT_REF = 'account.openagents.owned_inference'
@@ -90,6 +115,14 @@ const latestRoutingStateByReplica = new Map<
   string,
   GlmReplicaRoutingStateOverride
 >()
+const breakerStateByReplica = new Map<string, GlmReplicaHeartbeatBreakerState>()
+
+const DEFAULT_BREAKER_POLICY: GlmReplicaHeartbeatBreakerPolicy = {
+  failureThreshold: 3,
+  readmitSuccessThreshold: 2,
+}
+const MIN_BREAKER_THRESHOLD = 2
+const MAX_BREAKER_THRESHOLD = 10
 
 const isEnabledFlag = (value: string | undefined): boolean => {
   const normalized = value?.trim().toLowerCase()
@@ -108,6 +141,24 @@ const parsePositiveInteger = (
   const parsed = Number(value?.trim())
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
 }
+
+const clampBreakerThreshold = (value: number): number =>
+  Math.min(
+    MAX_BREAKER_THRESHOLD,
+    Math.max(MIN_BREAKER_THRESHOLD, Math.floor(value)),
+  )
+
+const normalizeBreakerPolicy = (
+  policy: Partial<GlmReplicaHeartbeatBreakerPolicy> | undefined,
+): GlmReplicaHeartbeatBreakerPolicy => ({
+  failureThreshold: clampBreakerThreshold(
+    policy?.failureThreshold ?? DEFAULT_BREAKER_POLICY.failureThreshold,
+  ),
+  readmitSuccessThreshold: clampBreakerThreshold(
+    policy?.readmitSuccessThreshold ??
+      DEFAULT_BREAKER_POLICY.readmitSuccessThreshold,
+  ),
+})
 
 const isoSlug = (iso: string): string =>
   iso
@@ -237,12 +288,65 @@ const recordRoutingState = (
       ? 'healthy'
       : record.watchdogStatus === 'skipped'
         ? 'degraded'
-        : 'unhealthy',
+        : record.watchdogStatus,
   warmState: record.warmState,
   ...(record.warmState === 'warm'
     ? { warmAtEpochMs: Date.parse(record.observedAt) }
     : {}),
 })
+
+const breakerStateForProbe = (
+  input: Readonly<{
+    policy: GlmReplicaHeartbeatBreakerPolicy
+    probeHealthy: boolean
+    replicaId: string
+  }>,
+): GlmReplicaHeartbeatBreakerState => {
+  const previous = breakerStateByReplica.get(input.replicaId)
+  if (input.probeHealthy) {
+    if (previous?.health === 'unhealthy') {
+      const consecutiveSuccesses = previous.consecutiveSuccesses + 1
+      return consecutiveSuccesses >= input.policy.readmitSuccessThreshold
+        ? {
+            consecutiveFailures: 0,
+            consecutiveSuccesses: 0,
+            health: 'healthy',
+          }
+        : {
+            consecutiveFailures: 0,
+            consecutiveSuccesses,
+            health: 'unhealthy',
+          }
+    }
+    return {
+      consecutiveFailures: 0,
+      consecutiveSuccesses: 0,
+      health: 'healthy',
+    }
+  }
+
+  const consecutiveFailures = (previous?.consecutiveFailures ?? 0) + 1
+  return {
+    consecutiveFailures,
+    consecutiveSuccesses: 0,
+    health:
+      consecutiveFailures >= input.policy.failureThreshold
+        ? 'unhealthy'
+        : 'degraded',
+  }
+}
+
+const applyBreakerProbe = (
+  input: Readonly<{
+    policy: GlmReplicaHeartbeatBreakerPolicy
+    probeHealthy: boolean
+    replicaId: string
+  }>,
+): GlmReplicaHeartbeatBreakerState => {
+  const next = breakerStateForProbe(input)
+  breakerStateByReplica.set(input.replicaId, next)
+  return next
+}
 
 export const recordGlmPoolHeartbeatRoutingState = (
   records: ReadonlyArray<GlmPoolHeartbeatReplicaRecord>,
@@ -287,6 +391,24 @@ const ingestHeartbeatRecord = (
       provider: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
       safeMetadata: {
         benchmarkReserved: record.benchmarkReserved,
+        ...(record.breakerConsecutiveFailures === undefined
+          ? {}
+          : { breakerConsecutiveFailures: record.breakerConsecutiveFailures }),
+        ...(record.breakerConsecutiveSuccesses === undefined
+          ? {}
+          : {
+              breakerConsecutiveSuccesses:
+                record.breakerConsecutiveSuccesses,
+            }),
+        ...(record.breakerFailureThreshold === undefined
+          ? {}
+          : { breakerFailureThreshold: record.breakerFailureThreshold }),
+        ...(record.breakerReadmitSuccessThreshold === undefined
+          ? {}
+          : {
+              breakerReadmitSuccessThreshold:
+                record.breakerReadmitSuccessThreshold,
+            }),
         demandClient: HEARTBEAT_DEMAND_CLIENT,
         demandKind: 'own_capacity',
         demandSource: HEARTBEAT_DEMAND_SOURCE,
@@ -355,6 +477,7 @@ const probeReplica = (
     ledger: TokenUsageLedgerShape
     nowMs: () => number
     observedAt: string
+    breakerPolicy: GlmReplicaHeartbeatBreakerPolicy
     replica: HydraliskGlm52Replica
     runRef: string
     warmCompletionEnabled: boolean
@@ -392,8 +515,12 @@ const probeReplica = (
       : undefined
     const totalWallClockMs = roundMs(input.nowMs() - startedAt)
     const warmOk = usage !== undefined
-    const watchdogStatus: GlmPoolWatchdogStatus =
-      healthOk && modelsOk ? 'healthy' : 'unhealthy'
+    const breakerState = applyBreakerProbe({
+      policy: input.breakerPolicy,
+      probeHealthy: healthOk && modelsOk && (!shouldWarm || warmOk),
+      replicaId: input.replica.replicaId,
+    })
+    const watchdogStatus: GlmPoolWatchdogStatus = breakerState.health
     const keepWarmStatus: GlmPoolKeepWarmStatus =
       shouldWarm && warmOk
         ? 'completed'
@@ -419,6 +546,11 @@ const probeReplica = (
 
     return {
       benchmarkReserved: input.replica.benchmarkReserved,
+      breakerConsecutiveFailures: breakerState.consecutiveFailures,
+      breakerConsecutiveSuccesses: breakerState.consecutiveSuccesses,
+      breakerFailureThreshold: input.breakerPolicy.failureThreshold,
+      breakerReadmitSuccessThreshold:
+        input.breakerPolicy.readmitSuccessThreshold,
       draining: input.replica.draining,
       healthStatus,
       keepWarmStatus,
@@ -442,6 +574,7 @@ export const runGlmPoolHeartbeat = (
     ledger: TokenUsageLedgerShape
     nowMs?: (() => number) | undefined
     observedAt: string
+    breakerPolicy?: Partial<GlmReplicaHeartbeatBreakerPolicy> | undefined
     replicas: ReadonlyArray<HydraliskGlm52Replica>
     warmCompletionEnabled: boolean
   }>,
@@ -449,6 +582,7 @@ export const runGlmPoolHeartbeat = (
   const runRef = runRefFor(input.observedAt)
   const fetchImpl = input.fetchImpl ?? globalThis.fetch
   const nowMs = input.nowMs ?? currentEpochMillis
+  const breakerPolicy = normalizeBreakerPolicy(input.breakerPolicy)
 
   return Effect.gen(function* () {
     const records = yield* Effect.forEach(input.replicas, replica =>
@@ -458,6 +592,7 @@ export const runGlmPoolHeartbeat = (
         ledger: input.ledger,
         nowMs,
         observedAt: input.observedAt,
+        breakerPolicy,
         replica,
         runRef,
         warmCompletionEnabled: input.warmCompletionEnabled,
@@ -507,6 +642,17 @@ export const runScheduledGlmPoolHeartbeat = (
     input.env.HYDRALISK_GLM_52_REAP_504B_HEARTBEAT_CADENCE_MINUTES,
     4,
   )
+  const breakerPolicy = normalizeBreakerPolicy({
+    failureThreshold: parsePositiveInteger(
+      input.env.HYDRALISK_GLM_52_REAP_504B_HEARTBEAT_FAILURE_THRESHOLD,
+      DEFAULT_BREAKER_POLICY.failureThreshold,
+    ),
+    readmitSuccessThreshold: parsePositiveInteger(
+      input.env
+        .HYDRALISK_GLM_52_REAP_504B_HEARTBEAT_READMIT_SUCCESS_THRESHOLD,
+      DEFAULT_BREAKER_POLICY.readmitSuccessThreshold,
+    ),
+  })
   const arming = resolveHydraliskGlm52Reap504bArming(input.env)
 
   if (!enabled) {
@@ -550,6 +696,7 @@ export const runScheduledGlmPoolHeartbeat = (
     ...(input.fetchImpl === undefined ? {} : { fetchImpl: input.fetchImpl }),
     ledger: input.ledger,
     observedAt,
+    breakerPolicy,
     replicas: arming.replicas,
     warmCompletionEnabled,
   })

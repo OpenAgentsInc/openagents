@@ -685,7 +685,7 @@ const busyReasonFor = (state: GlmReplicaRoutingState): string | null => {
   if (state.draining) {
     return 'draining'
   }
-  if (state.health !== 'healthy') {
+  if (state.health === 'unhealthy') {
     return `health_${state.health}`
   }
   if (state.inflightCount >= state.maxInflight) {
@@ -710,6 +710,11 @@ const rankEligibleReplicas = (
   }
   const aWarmRank = warmRank(a.state)
   const bWarmRank = warmRank(b.state)
+  const aHealthScore = healthScore(a.state.health)
+  const bHealthScore = healthScore(b.state.health)
+  if (aHealthScore !== bHealthScore) {
+    return bHealthScore - aHealthScore
+  }
   if (aWarmRank !== bWarmRank) {
     return bWarmRank - aWarmRank
   }
