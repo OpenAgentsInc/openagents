@@ -1,6 +1,6 @@
 import { existsSync, realpathSync } from "node:fs"
-import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises"
-import { join, resolve } from "node:path"
+import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises"
+import { dirname, join, resolve } from "node:path"
 import { createHash } from "node:crypto"
 import { CLAUDE_AGENT_CAPABILITY_REF } from "./claude-agent.js"
 import { CODEX_AGENT_CAPABILITY_REF } from "./codex-agent.js"
@@ -503,15 +503,73 @@ export type GitWorktreeCheckoutRunnerOptions = {
   remoteUrlFor?: (checkout: GitCheckoutWorkspace) => string
 }
 
-// One Pylon process can materialize concurrent assignments for the same
+// Multiple Pylon processes can materialize concurrent assignments for the same
 // repository; git's own lockfiles (shallow.lock, ref locks) make concurrent
 // fetch/worktree-add against one bare repo flaky, so cache operations are
-// serialized per bare directory in process.
+// serialized per bare directory across processes.
 const repositoryCacheLocks = new Map<string, Promise<unknown>>()
+const repositoryCacheProcessLockTimeoutMs = 5 * 60 * 1000
+const repositoryCacheProcessLockStaleMs = 10 * 60 * 1000
+const repositoryCacheProcessLockPollMs = 50
+
+function isNodeErrorWithCode(error: unknown, code: string): boolean {
+  return error instanceof Error && "code" in error && (error as { code?: unknown }).code === code
+}
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function acquireRepositoryCacheProcessLock(bareDirectory: string): Promise<{ lockDirectory: string }> {
+  const lockDirectory = `${bareDirectory}.pylon-lock`
+  const startedAt = Date.now()
+  await mkdir(dirname(lockDirectory), { recursive: true })
+
+  while (true) {
+    try {
+      await mkdir(lockDirectory)
+      await writeFile(
+        join(lockDirectory, "owner.json"),
+        `${JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString() }, null, 2)}\n`,
+      )
+      return { lockDirectory }
+    } catch (error) {
+      if (!isNodeErrorWithCode(error, "EEXIST")) throw error
+    }
+
+    const lockStat = await stat(lockDirectory).catch((error) => {
+      if (isNodeErrorWithCode(error, "ENOENT")) return null
+      throw error
+    })
+    if (lockStat === null) continue
+
+    const now = Date.now()
+    if (now - lockStat.mtimeMs > repositoryCacheProcessLockStaleMs) {
+      await rm(lockDirectory, { recursive: true, force: true })
+      continue
+    }
+    if (now - startedAt > repositoryCacheProcessLockTimeoutMs) {
+      throw new Error("workspace materializer timed out waiting for repository cache lock")
+    }
+    await sleep(repositoryCacheProcessLockPollMs)
+  }
+}
+
+async function withRepositoryCacheProcessLock<T>(
+  bareDirectory: string,
+  work: () => Promise<T>,
+): Promise<T> {
+  const lock = await acquireRepositoryCacheProcessLock(bareDirectory)
+  try {
+    return await work()
+  } finally {
+    await rm(lock.lockDirectory, { recursive: true, force: true })
+  }
+}
 
 async function withRepositoryCacheLock<T>(bareDirectory: string, work: () => Promise<T>): Promise<T> {
   const previous = repositoryCacheLocks.get(bareDirectory) ?? Promise.resolve()
-  const next = previous.catch(() => undefined).then(work)
+  const next = previous.catch(() => undefined).then(() => withRepositoryCacheProcessLock(bareDirectory, work))
   repositoryCacheLocks.set(bareDirectory, next.catch(() => undefined))
   return next
 }
@@ -697,8 +755,11 @@ async function cleanLeaseRecord(
     cacheRoot: record.local.cacheRoot,
     workingDirectory: record.local.workingDirectory,
   })
-  if (record.local.repositoryCacheDirectory !== undefined) {
-    await runQuietCommand(["git", "worktree", "prune"], record.local.repositoryCacheDirectory)
+  const repositoryCacheDirectory = record.local.repositoryCacheDirectory
+  if (repositoryCacheDirectory !== undefined) {
+    await withRepositoryCacheLock(repositoryCacheDirectory, async () => {
+      await runQuietCommand(["git", "worktree", "prune"], repositoryCacheDirectory)
+    })
   }
   const cleanedAt = now.toISOString()
   const cleanupReceiptRef = stableRef(

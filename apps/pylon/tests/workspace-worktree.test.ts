@@ -190,6 +190,41 @@ describe("createGitWorktreeCheckoutRunner", () => {
     }
   })
 
+  test("waits for a live process lock before mutating the shared bare cache", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-worktree-"))
+    try {
+      const origin = await createOriginRepo(join(root, "origin"))
+      const repositoryCacheRoot = join(root, "git-cache")
+      const checkout = checkoutFor(origin.commitSha)
+      const bareDirectory = join(
+        repositoryCacheRoot,
+        `${repositoryCacheKeyFor(checkout.repository.fullName)}.git`,
+      )
+      const lockDirectory = `${bareDirectory}.pylon-lock`
+      await mkdir(lockDirectory, { recursive: true })
+      const release = setTimeout(() => {
+        void rm(lockDirectory, { recursive: true, force: true })
+      }, 150)
+
+      const runner = createGitWorktreeCheckoutRunner({
+        repositoryCacheRoot,
+        remoteUrlFor: () => origin.url,
+      })
+      const startedAt = Date.now()
+      try {
+        await runner(join(root, "worktrees", "external-lock"), checkout)
+      } finally {
+        clearTimeout(release)
+        await rm(lockDirectory, { recursive: true, force: true })
+      }
+
+      expect(Date.now() - startedAt).toBeGreaterThanOrEqual(100)
+      expect(existsSync(join(root, "worktrees", "external-lock", "sum.ts"))).toBe(true)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   test("lane change capture, conflict detection, and commits stay scoped to each worktree", async () => {
     const root = await mkdtemp(join(tmpdir(), "pylon-worktree-"))
     try {
