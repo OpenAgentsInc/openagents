@@ -332,16 +332,13 @@
     },
     "clients/khala-cli": {
       "name": "@openagentsinc/khala",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "bin": {
         "khala": "dist/index.js",
       },
-      "dependencies": {
-        "@opentui/core": "0.3.4",
-        "effect": "4.0.0-beta.70",
-      },
       "devDependencies": {
         "bun-types": "^1.0.0",
+        "effect": "4.0.0-beta.70",
         "typescript": "^6.0.3",
       },
     },

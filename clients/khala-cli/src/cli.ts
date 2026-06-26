@@ -1,8 +1,10 @@
 import { Effect } from "effect"
 import { appendAssistantTurn, prepareUserTurn } from "./bounds.js"
 import { fetchModels, mintFreeKey, runChatTurn, toKhalaCliError } from "./client.js"
-import { readPromptWithOpenTui } from "./input.js"
+import { readPromptFromTerminal } from "./input.js"
 import { DEFAULT_BASE_URL, type ChatMode, type KhalaChatMessage, type KhalaCliError } from "./types.js"
+
+const KHALA_CLI_VERSION = "0.1.1"
 
 interface ParsedArgs {
   readonly help: boolean
@@ -31,7 +33,7 @@ export async function runKhalaCli(argv: ReadonlyArray<string>, env: Record<strin
     return 0
   }
   if (args.version) {
-    process.stdout.write("khala 0.1.0\n")
+    process.stdout.write(`khala ${KHALA_CLI_VERSION}\n`)
     return 0
   }
 
@@ -136,9 +138,9 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
 
 async function runInteractive(args: ParsedArgs): Promise<void> {
   let messages: ReadonlyArray<KhalaChatMessage> = []
-  process.stdout.write("Khala CLI. Type /exit to quit.\n")
+  process.stdout.write("Khala CLI. Type /exit to quit.\n\n")
   while (true) {
-    const prompt = await readPromptWithOpenTui()
+    const prompt = await readPromptFromTerminal()
     if (prompt === null) {
       process.stdout.write("\n")
       return
@@ -149,7 +151,7 @@ async function runInteractive(args: ParsedArgs): Promise<void> {
     if (prompt.trim().length === 0) {
       continue
     }
-    process.stdout.write("\nKhala: ")
+    process.stdout.write("Khala: ")
     const prepared = prepareUserTurn(messages, prompt)
     const result = await Effect.runPromise(runChatTurn({
       mode: args.mode,
@@ -158,7 +160,7 @@ async function runInteractive(args: ParsedArgs): Promise<void> {
       messages: prepared,
       onDelta: (delta) => process.stdout.write(delta),
     }))
-    process.stdout.write("\n")
+    process.stdout.write("\n\n")
     messages = appendAssistantTurn(prepared, result.text)
   }
 }

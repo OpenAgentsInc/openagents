@@ -15,8 +15,9 @@ command through a Bun shebang, so Bun 1.3+ must be available on `PATH`.
 "Khala CLI" names the command-line program surface: the `khala` command. It has
 two modes:
 
-- **Interactive terminal mode:** default `khala` opens a one-line OpenTUI prompt
-  for paste-safe input. This is intentionally not a dashboard-style TUI.
+- **Interactive terminal mode:** default `khala` opens a normal terminal chat
+  transcript with persistent `You:` and `Khala:` turns in scrollback. It does
+  not use an alternate-screen/full-screen UI.
 - **Headless CLI mode:** `--prompt`, positional text, or stdin runs one turn and
   streams the assistant response to stdout for scripts and agents.
 
