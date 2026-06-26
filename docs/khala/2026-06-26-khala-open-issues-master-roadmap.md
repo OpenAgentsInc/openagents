@@ -27,14 +27,13 @@ stress/benchmark load is best-effort, preemptible, instantly-yielding, and tagge
 ## Current status snapshot
 
 Refreshed from GitHub issue state, `origin/main`, live counter/proof reads, and
-the local Pylon state on **2026-06-26 ~16:20Z** while live delegation was
-paused by operator request. This table is the
+the local Pylon state on **2026-06-26 ~16:30Z**. This table is the
 operator view of what remains, not a public product claim.
 
 | Issue | State | Current status / next action |
 | --- | --- | --- |
 | #6310 | **Closed** | P0 OpenCode/tool-calling outage is no longer open. Keep its repro in regression coverage and do not let demand docs outrun the actual tool-call path. |
-| #6323 | **Open** | Decision artifact for the full `nvidia/GLM-5.2-NVFP4` single-host pilot landed. A delegated Pylon/Codex retry completed accepted (`assignment.public.khala_coding.chatcmpl_6a9906e622ad43caa1c9cc3fb2f20d00`, 4,371,243 exact tokens) and produced an executable pilot harness patch, but that patch is still local/unmerged in the delegated workspace. Next action: review/integrate or rerun that harness, then execute the owner/fleet isolated 8x-host pilot and record measured tool-call/quality/tok-s results. |
+| #6323 | **Open** | Decision artifact for the full `nvidia/GLM-5.2-NVFP4` single-host pilot landed. The delegated Pylon/Codex retry (`assignment.public.khala_coding.chatcmpl_6a9906e622ad43caa1c9cc3fb2f20d00`, 4,371,243 exact tokens) has now been reviewed, tightened for public-safety, merged in `c7a86d7d06`, and deployed via `deploy:safe` as Worker `12066869-4f81-4b32-ba41-ba3c50b07595`. Still open: run the owner-armed isolated 8x-host pilot and record measured tool-call/quality/max-context/tok-s results. |
 | #6319 | **Closed** | Reliability hardening/fallback-chain repair is closed. Treat empty responses and dead fallback lanes as regression risks in later serving work. |
 | #6313 | **Closed** | Real OpenRouter fallback lane is closed. It is now a dependency assumption for further reliability and benchmark runs. |
 | #6311 | **Open** | Partial readiness/watchdog projection work landed, and the Khala -> Pylon -> Codex diagnostic slice is merged/deployed in `856fc636d0` (Worker `785a7379-10ca-4b1c-9e86-bc734b11e2ec`): canonical zero-token scheduled-skip diagnostic rows for GLM pool heartbeat disabled/cadence/unarmed cases, with conservative safe metadata tests. A newer delegated slice landed on `main` in `36ee76689c` (`assignment.public.khala_coding.chatcmpl_b5a0d831027a4c779b1105be73217f29`, 6,415,202 exact tokens): bounded heartbeat probe timeouts, safe timeout metadata, and hung-replica tests. Still open because the broad durable-fleet goal remains: deploy/prove live `glm-pool-heartbeat` rows, then non-Spot capacity, all-replica keep-warm/watchdog, auto-replace, reserve, and quota. |
@@ -130,17 +129,18 @@ operator view of what remains, not a public product claim.
 - Mainline changes from that batch: `a8c12aff42` (#6320 rollout selector),
   `7bf68b4652` (Pylon own-capacity dispatch proof readout),
   `36ee76689c` (#6311 bounded heartbeat probes), plus concurrent mainline
-  commits `efaa53424b` and `96c9b91599`. The #6323 retry did **not** commit
-  its generated pilot harness; it remains dirty in delegated workspace
-  `/Users/christopherdavid/.openagents/pylon/cache/codex-agent-tasks/workspace.pylon.codex_agent_task.4b5ac3170b9e3ad1d2a4b11b`
-  with one package change and three new worker-api files.
+  commits `efaa53424b` and `96c9b91599`. The #6323 retry originally left its
+  generated pilot harness dirty in the delegated workspace; that patch has now
+  been reviewed, tightened to keep API keys env-only and URL-like refs
+  fail-closed, merged as `c7a86d7d06`, commented on #6323, and deployed through
+  `deploy:safe` as Worker version `12066869-4f81-4b32-ba41-ba3c50b07595`.
 - #6318 could not be launched in that batch: dispatch returned a typed 503
   indicating Khala could not read linked Pylon capacity at that moment, even
   after fresh heartbeat/busy-count updates. Keep #6318 open and treat this as a
   steering gap to diagnose before the next stress-harness wave.
 - Public counter state at refresh:
-  `/api/public/khala-tokens-served` returned `216,174,588` at
-  `2026-06-26T16:16:19.852Z`. The earlier batch baseline was about
+  `/api/public/khala-tokens-served` returned `216,180,935` at
+  `2026-06-26T16:26:21.021Z`. The earlier batch baseline was about
   `198,673,622`; aggregate movement was slightly larger than the exact accepted
   Pylon/Codex proof total, so some concurrent activity also contributed. The
   exact Pylon/Codex attribution must still come from
@@ -151,11 +151,16 @@ operator view of what remains, not a public product claim.
   readiness from persisted routed-completion fallback rows, but canonical
   scheduled `glm-pool-heartbeat` rows have still not been observed after arming.
   The deployed `856fc636d0` patch covers skipped/disabled/unarmed diagnostics,
-  and the newer `36ee76689c` mainline patch bounds hung replica probes. Live row
+  and the newer `36ee76689c` deployed patch bounds hung replica probes. Live row
   proof is still absent (`SELECT ... WHERE demand_source='glm-pool-heartbeat'`
-  previously returned zero rows after the deploy). Do not rely on scheduled
-  watchdog evidence for all replicas until `deploy:safe` has covered the newer
-  mainline commits and live rows appear and are inspected.
+  returned zero rows after the `12066869-4f81-4b32-ba41-ba3c50b07595` deploy).
+  Do not rely on scheduled watchdog evidence for all replicas until live rows
+  appear and are inspected.
+- Deployment/live smoke after `c7a86d7d06`: `deploy:safe` applied zero pending
+  D1 migrations, verified pending migrations were zero, built web assets, and
+  uploaded Worker version `12066869-4f81-4b32-ba41-ba3c50b07595`. Live
+  `https://openagents.com/`, `https://openagents.com/khala`, and
+  `/assets/index-DZ-c2BZu.js` returned HTTP 200.
 
 ---
 
@@ -204,11 +209,11 @@ This is the only phase that is an active outage. Do it first.
      whole pilot). Owner / serving-lane executes the run; this lane stayed **doc/decision-only**
      (no live fleet/gateway/Pylon changes). Full plan + success criteria + conditional routing
      precedence: the "Decision artifact (#6323)" section of the eval doc.
-   - **Status (2026-06-26): OPEN.** A delegated Pylon/Codex retry produced an
-     executable owner-armed pilot harness patch, but it is not on `main` yet.
-     Next action is review/integrate-or-rerun that harness, then perform the
-     actual isolated 8x-host pilot run and measured tool-call/quality/throughput
-     decision, not another planning doc.
+   - **Status (2026-06-26): OPEN.** The delegated Pylon/Codex retry produced an
+     executable owner-armed pilot harness, now merged in `c7a86d7d06` and
+     deployed. Next action is the actual isolated 8x-host pilot run with owner
+     endpoint/approval refs, then a measured tool-call/quality/max-context/
+     throughput decision, not another planning doc.
 
 ## Phase 1 — Reliable serving foundation
 
@@ -231,9 +236,10 @@ Make the fleet trustworthy before pushing load through it.
    - **Status (2026-06-26): OPEN.** Partial route/projection work has landed, but
      the issue remains broad. The Pylon/Codex diagnostic slice for canonical
      scheduled-skip GLM pool heartbeat rows landed in `856fc636d0` and deployed
-     safely, and the newer bounded-probe slice landed in `36ee76689c`. Live
+     safely, and the newer bounded-probe slice landed in `36ee76689c` and was
+     included in the `12066869-4f81-4b32-ba41-ba3c50b07595` deploy. Live
      `glm-pool-heartbeat` rows have not yet appeared. Current next actions:
-     deploy/prove live scheduled rows, then continue the real
+     prove live scheduled rows, then continue the real
      durability/non-Spot/reserve/quota scope or explicitly split it.
 6. **#6259 + #6315 — green end-to-end GLM-serving smoke. → after #6310.** Get the
    Khala→GLM verification smoke passing for real (served-worker disclosure + counter
@@ -328,10 +334,10 @@ Historical full sequence:
 `#6321` → `#6253` ‖ `#6307` → `#6308` ‖ `#6309` → `#6305` [closed] →
 `#6306` [closed] → close `#6303`.
 
-Remaining active sequence after the 2026-06-26 ~16:20Z refresh:
+Remaining active sequence after the 2026-06-26 ~16:30Z refresh:
 
-`#6323`(integrate/rerun the delegated pilot harness, then run the full-model pilot) ‖
-`#6311`(deploy/prove live heartbeat rows, then durability/non-Spot/reserve/quota) →
+`#6323`(run the owner-armed full-model pilot with the landed harness) ‖
+`#6311`(prove live heartbeat rows, then durability/non-Spot/reserve/quota) →
 `#6320`(live engine rollout + measured lift) →
 `#6318`(finish live preemption proof) → `#6317` → `#6312` → `#6321` →
 `#6253`(decision-grade replicate/beat) ‖ `#6307`(owner-armed full comparison) →
