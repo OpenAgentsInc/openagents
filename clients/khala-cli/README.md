@@ -84,6 +84,12 @@ that check.
 
 ## Changelog
 
+### v0.1.10 - Jun 26, 2026, 1:37:50 PM CDT
+
+- Fixes streamed Markdown rendering when bold spans are split across SSE chunks.
+- Records served tokens from the default public Khala chat path so `/tokens`
+  moves after successful turns.
+
 ### v0.1.9 - Jun 26, 2026, 1:30:01 PM CDT
 
 - Adds `/info` and `khala info` with a CLI thread id plus owner-token trace

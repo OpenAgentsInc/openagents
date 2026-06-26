@@ -3,7 +3,7 @@ import { appendAssistantTurn, prepareUserTurn } from "./bounds.js"
 import { KHALA_CLI_VERSION, formatKhalaChangelog } from "./changelog.js"
 import { fetchModels, fetchTokensServed, mintFreeKey, runChatTurn, submitFeedback, toKhalaCliError } from "./client.js"
 import { appendPromptHistory, readPromptFromTerminal } from "./input.js"
-import { renderMarkdownDeltaForTerminal, renderMarkdownForTerminal, renderReasoningMarkdownDeltaForTerminal, terminalStyle } from "./terminal.js"
+import { renderMarkdownForTerminal, renderReasoningMarkdownDeltaForTerminal, terminalStyle } from "./terminal.js"
 import { ensureStoredAgentToken, traceTokenPath } from "./token-store.js"
 import { DEFAULT_BASE_URL, type ChatMode, type ChatTurnMetadata, type KhalaChatMessage, type KhalaCliError, type KhalaTokensResponse } from "./types.js"
 import { startKhalaAutoUpdate } from "./updater.js"
@@ -256,6 +256,8 @@ async function runInteractive(args: ParsedArgs, env: Record<string, string | und
     try {
       let streamed = false
       let reasoningStreamed = false
+      let markdownStreamBuffer = ""
+      let reasoningStreamBuffer = ""
       const result = await Effect.runPromise(runChatTurn({
         mode: args.mode,
         baseUrl: args.baseUrl,
@@ -269,19 +271,29 @@ async function runInteractive(args: ParsedArgs, env: Record<string, string | und
             process.stdout.write(`${terminalStyle.assistant("Khala:")} `)
             streamed = true
           }
-          process.stdout.write(renderMarkdownDeltaForTerminal(delta))
+          const rendered = renderStreamingMarkdownDelta(markdownStreamBuffer, delta)
+          markdownStreamBuffer = rendered.buffer
+          process.stdout.write(rendered.text)
         },
         onReasoning: (delta) => {
           if (!reasoningStreamed) {
             process.stdout.write(`${terminalStyle.meta("Khala reasoning:")} `)
             reasoningStreamed = true
           }
-          process.stdout.write(renderReasoningMarkdownDeltaForTerminal(delta))
+          const rendered = renderStreamingMarkdownDelta(reasoningStreamBuffer, delta)
+          reasoningStreamBuffer = rendered.buffer
+          process.stdout.write(terminalStyle.reasoning(rendered.text))
         },
         onRetry: (event) => {
           process.stdout.write(`${streamed || reasoningStreamed ? "\n" : ""}${terminalStyle.assistant("Khala:")} ${formatRetryNotice(event)}\n`)
         },
       }))
+      if (streamed && markdownStreamBuffer.length > 0) {
+        process.stdout.write(renderMarkdownForTerminal(markdownStreamBuffer))
+      }
+      if (reasoningStreamed && reasoningStreamBuffer.length > 0) {
+        process.stdout.write(terminalStyle.reasoning(renderMarkdownForTerminal(reasoningStreamBuffer)))
+      }
       if (streamed || reasoningStreamed) {
         process.stdout.write("\n\n")
       } else {
@@ -456,6 +468,20 @@ function formatRetryNotice(event: {
 function formatTokensServed(tokens: KhalaTokensResponse): string {
   const formatted = new Intl.NumberFormat().format(tokens.tokensServed)
   return `Khala tokens served: ${formatted}`
+}
+
+function renderStreamingMarkdownDelta(
+  previousBuffer: string,
+  delta: string,
+): { readonly buffer: string; readonly text: string } {
+  const combined = `${previousBuffer}${delta}`.replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+  const lastNewline = combined.lastIndexOf("\n")
+  if (lastNewline < 0) {
+    return { buffer: combined, text: "" }
+  }
+  const complete = combined.slice(0, lastNewline + 1)
+  const buffer = combined.slice(lastNewline + 1)
+  return { buffer, text: renderMarkdownForTerminal(complete) }
 }
 
 function formatMessageInfo(info: ChatTurnMetadata | undefined): string {

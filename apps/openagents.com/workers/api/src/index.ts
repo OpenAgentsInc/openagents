@@ -700,6 +700,7 @@ import { makePublicInferenceReceiptRoutes } from './public-inference-receipt-rou
 import { handlePublicKhalaTokensServedHistoryApi } from './public-khala-tokens-served-history-routes'
 import { handlePublicKhalaTokensServedModelMixApi } from './public-khala-tokens-served-model-mix-routes'
 import { handlePublicKhalaTokensServedApi } from './public-khala-tokens-served-routes'
+import { recordPublicKhalaChatServedTokens } from './public-khala-chat-served-tokens'
 import { handlePublicLaunchDashboardApi } from './public-launch-dashboard-routes'
 import { makePublicNip90MarketReceiptRoutes } from './public-nip90-market-receipt-routes'
 import { handlePublicOtecProofApi } from './public-otec-proof-routes'
@@ -9523,6 +9524,7 @@ const makeArtanisResponderKhalaClient = (
 const khalaChatRoutes = makeKhalaChatRoutes({
   makeStreamClient: env =>
     makeKhalaChatStreamClient(env as OnboardingInferenceEnv),
+  recordServedTokens: recordPublicKhalaChatServedTokens,
 })
 
 // PRODUCER seam for the async batch-job submit route (Khala, #6028 / EPIC

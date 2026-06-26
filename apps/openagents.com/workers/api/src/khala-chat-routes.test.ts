@@ -118,6 +118,48 @@ describe('khala chat route', () => {
     expect(text.indexOf('event: meta')).toBeLessThan(text.indexOf('event: done'))
   })
 
+  test('records served tokens from public chat metadata before done', async () => {
+    const recorded: Array<{
+      readonly traceRef: string
+      readonly totalTokens: number | undefined
+    }> = []
+    const routes = makeKhalaChatRoutes({
+      makeStreamClient: () =>
+        chunkStream(['ok'], () => ({
+          requestedModel: 'openagents/khala',
+          servedAdapterId: 'hydralisk-vllm-glm-5p2-reap-504b',
+          servedModel: 'openagents/glm-5.2-reap-504b',
+          usage: {
+            completionTokens: 1,
+            promptTokens: 2,
+            totalTokens: 3,
+          },
+        })),
+      rateLimit: allowAll,
+      recordServedTokens: async input => {
+        recorded.push({
+          traceRef: input.traceRef,
+          totalTokens: input.metadata.usage?.totalTokens,
+        })
+      },
+    })
+
+    const response = await run(
+      routes.routeKhalaChatRequest(
+        chatRequest({ messages: [{ role: 'user', content: 'hi' }] }),
+        {},
+      ),
+    )
+    const text = await response.text()
+    expect(recorded).toEqual([
+      {
+        traceRef: expect.stringContaining('trace.khala_chat.'),
+        totalTokens: 3,
+      },
+    ])
+    expect(text.indexOf('event: meta')).toBeLessThan(text.indexOf('event: done'))
+  })
+
   test('emits provider-labeled reasoning on a separate SSE event', async () => {
     const routes = routesWith(chunkStream([
       { kind: 'reasoning', text: 'provider thought' },

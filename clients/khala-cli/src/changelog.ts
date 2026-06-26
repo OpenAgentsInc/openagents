@@ -4,9 +4,17 @@ export interface KhalaChangelogEntry {
   readonly bullets: ReadonlyArray<string>
 }
 
-export const KHALA_CLI_VERSION = "0.1.9"
+export const KHALA_CLI_VERSION = "0.1.10"
 
 export const KHALA_CHANGELOG: ReadonlyArray<KhalaChangelogEntry> = [
+  {
+    version: "0.1.10",
+    releasedAt: "2026-06-26T18:37:50.000Z",
+    bullets: [
+      "Fixes streamed Markdown rendering when bold spans are split across SSE chunks.",
+      "Records served tokens from the default public Khala chat path so /tokens moves after successful turns.",
+    ],
+  },
   {
     version: "0.1.9",
     releasedAt: "2026-06-26T18:30:01.000Z",

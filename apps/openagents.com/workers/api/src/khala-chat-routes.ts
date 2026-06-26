@@ -30,6 +30,7 @@ import type { KhalaChatStreamClient } from './khala-chat-program'
 import {
   type OnboardingStreamDelta,
   OnboardingInferenceError,
+  type OnboardingStreamMetadata,
 } from './autopilot-onboarding-program'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { logWorkerRouteError } from './observability'
@@ -65,6 +66,11 @@ export type KhalaChatRouteDependencies = Readonly<{
   // Overridable for tests; defaults to a per-IP token bucket. Returns false when
   // the caller is over budget.
   rateLimit?: ((request: Request) => boolean) | undefined
+  recordServedTokens?: ((input: {
+    env: unknown
+    metadata: OnboardingStreamMetadata
+    traceRef: string
+  }) => Promise<void>) | undefined
 }>
 
 // A narrow, self-describing SSE wire (same shape as the onboarding stream):
@@ -167,9 +173,17 @@ const streamDeltaEvent = (
 const makeKhalaChatStreamBody = (
   source: {
     readonly deltas: AsyncIterable<OnboardingStreamDelta>
-    readonly metadata?: (() => unknown) | undefined
+    readonly metadata?: (() => OnboardingStreamMetadata | undefined) | undefined
   },
   trace: string,
+  recordServedTokens:
+    | ((input: {
+        env: unknown
+        metadata: OnboardingStreamMetadata
+        traceRef: string
+      }) => Promise<void>)
+    | undefined,
+  env: unknown,
 ): ReadableStream<Uint8Array> => {
   const encoder = new TextEncoder()
   return new ReadableStream<Uint8Array>({
@@ -186,6 +200,9 @@ const makeKhalaChatStreamBody = (
         }
         const metadata = source.metadata?.()
         if (metadata !== undefined) {
+          await recordServedTokens?.({ env, metadata, traceRef: trace }).catch(
+            error => logKhalaChatFailure(trace, 'served_tokens_record', error),
+          )
           emit(sseFrame('meta', { ...metadata, traceRef: trace }))
         }
         emit(sseFrame('done', { done: true }))
@@ -274,12 +291,20 @@ export const makeKhalaChatRoutes = (
       Effect.flatMap(inferenceRequest => streamClient(inferenceRequest)),
       Effect.map(
         source =>
-          new Response(makeKhalaChatStreamBody(source, requestTraceRef), {
+          new Response(
+            makeKhalaChatStreamBody(
+              source,
+              requestTraceRef,
+              dependencies.recordServedTokens,
+              env,
+            ),
+            {
             headers: {
               ...STREAM_HEADERS,
               'x-openagents-trace-ref': requestTraceRef,
             },
-          }),
+            },
+          ),
       ),
       Effect.catch(error => {
         if (error instanceof OnboardingInferenceError) {
