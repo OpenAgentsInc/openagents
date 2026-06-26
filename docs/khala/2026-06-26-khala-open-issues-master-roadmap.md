@@ -43,7 +43,7 @@ operator view of what remains, not a public product claim.
 | #6315 | **Closed** | Zero-debit receipt-ref fix for #6259 is closed. |
 | #6320 | **Open** | A bounded routed slice landed in `85ca837413` and deployed as Worker `228ac0f9-c891-4ad2-b05f-0dd8894f3c86`: typed throughput-sweep metadata for `max-num-seqs`, prefix cache, chunked prefill, speculative decode, quant gates. Delegated slices landed on `main` in `a8c12aff42` (`assignment.public.khala_coding.chatcmpl_5ccffa5593b84cc09e414d3ad358b9b0`, 2,202,625 exact tokens) and `03b6ffa094` (`assignment.public.khala_coding.chatcmpl_7033a7cd0fff4afaaad412e783bab29a`, 4,949,572 exact tokens): typed throughput rollout recommendation/flag selection and owner-armed rollout artifact/guardrails. Current `main` is deployed as Worker `7460419e-2779-4e2e-a809-ec7646b6664a`; still open for actual live engine rollout and measured throughput lift. |
 | #6318 | **Open** | Multiple partials landed (`a26ca1e`, `8ff2e47`, `4de477190c`) covering typed `internal_stress` attribution, route-level admission coverage, and live-headroom admission that rejects stress when reserved external headroom is unavailable. The current Pylon/Codex batch accepted a verified patch for external-wins preemption (`assignment.public.khala_coding.chatcmpl_a5425fa595d642d3831f1670ffd6bb49`, 4,244,593 exact tokens). Overseer review landed only the production-relevant steering slice in `2f467e3476`: direct agent-owned Pylon dispatch now survives transient OpenAuth link-read failure, while OpenAuth-only dispatch still fails closed with typed `coding_delegation_store_unavailable`. That commit is deployed as Worker `7460419e-2779-4e2e-a809-ec7646b6664a`. The delegated workspace's standalone preemption registry was not landed because it was not wired into the live runtime. Still open for real external-wins preemption proof. |
-| #6317 | **Open** | Stress/saturation harness waits on #6318 and the live #6320 rollout. The current Pylon/Codex batch accepted a verified preparatory stress-harness patch (`assignment.public.khala_coding.chatcmpl_f06a11f5a625470bbc235a6d6ed952df`, 4,455,618 exact tokens), but that patch is still uncommitted in `workspace.pylon.codex_agent_task.2b0dec89bef6e319dbdf6aa8`; it remains pending overseer review/integration. |
+| #6317 | **Open** | Stress/saturation harness waits on #6318 and the live #6320 rollout. The current Pylon/Codex batch accepted a verified preparatory stress-harness patch (`assignment.public.khala_coding.chatcmpl_f06a11f5a625470bbc235a6d6ed952df`, 4,455,618 exact tokens). Overseer review merged the safe prep slice as `792ec3d56e`: a typed GLM continuous-stress plan builder that refuses to arm without live headroom, external-wins preemption, and rollout-guard evidence. Deployed as Worker `a8ed7b84-bfbd-40fe-b1e9-9af519e5d27f`. Still open for a real continuous stress runner after #6318/#6320 live proof. |
 | #6312 | **Open** | Decision-grade aggregate max tokens/sec benchmark waits on the stress harness. |
 | #6321 | **Open** | Artanis fleet-overseer automation waits on the scheduler/stress/reliability pieces. |
 | #6253 | **Open** | Isolated Terminal-Bench 2.0 black-box runner, bounded real measurement, and replication path landed in `da472748c5`. The separately owned full Harbor run must not be disturbed. Still open for decision-grade replicate-and-beat evidence. |
@@ -161,9 +161,8 @@ operator view of what remains, not a public product claim.
     on `codex-2` concurrently with #6311, accepted with exact tokens
     `4,455,618`, trace `ab31c0b5-eff2-4cf3-b627-25db01b4f163`, raw events
     `149` / `1,906,799` bytes
-    (`raw.pylon_codex.55dcd51577b7e5afadba8664d7c29b70`), but still
-    uncommitted in
-    `/Users/christopherdavid/.openagents/pylon/cache/codex-agent-tasks/workspace.pylon.codex_agent_task.2b0dec89bef6e319dbdf6aa8`.
+    (`raw.pylon_codex.55dcd51577b7e5afadba8664d7c29b70`). Overseer review
+    merged the typed, non-running plan-gate slice as `792ec3d56e`.
   - #6323 plain-`codex` retry
     `assignment.public.khala_coding.chatcmpl_6ea9caf0863f43488dbba5b2aaa30481`
     was rejected with `blocker.assignment.codex_agent_execution_refused`.
@@ -171,10 +170,10 @@ operator view of what remains, not a public product claim.
   account (`codex-2`) can run two assignments in parallel. Treat the plain
   `codex` account as unhealthy until revalidated.
 - Public counter state at refresh:
-  `/api/public/khala-tokens-served` returned `237,288,370` at
-  `2026-06-26T16:53:23.096Z`. In the corrected 45-minute window,
-  `token_usage_events` had six `khala_coding_delegation` rows totaling
-  `25,461,387` tokens, with the latest at `2026-06-26T16:42:00.830Z`; after
+  `/api/public/khala-tokens-served` returned `237,289,920` at
+  `2026-06-26T16:59:46.118Z`. In the corrected 30-minute window,
+  `token_usage_events` had five `khala_coding_delegation` rows totaling
+  `21,090,144` tokens, with the latest at `2026-06-26T16:42:00.830Z`; after
   that, the small visible ticks were heartbeat/canary rows. The current Pylon/
   Codex behavior is closeout-based: the public counter updates when each Codex
   turn posts its exact `token_usage_events` row, not continuously for every
@@ -199,6 +198,12 @@ operator view of what remains, not a public product claim.
   `main` matched `origin/main`, ran `check:deploy`, applied zero pending D1
   migrations, verified pending migrations were zero, built web assets, and
   uploaded Worker version `7460419e-2779-4e2e-a809-ec7646b6664a`. Live
+  `https://openagents.com/`, `https://openagents.com/khala`, and
+  `/assets/index-DZ-c2BZu.js` returned HTTP 200.
+- Deployment/live smoke after `792ec3d56e`: `deploy:safe` verified local
+  `main` matched `origin/main`, ran `check:deploy`, applied zero pending D1
+  migrations, verified pending migrations were zero, built web assets, and
+  uploaded Worker version `a8ed7b84-bfbd-40fe-b1e9-9af519e5d27f`. Live
   `https://openagents.com/`, `https://openagents.com/khala`, and
   `/assets/index-DZ-c2BZu.js` returned HTTP 200.
 - Deployment/live smoke after `c7a86d7d06`: `deploy:safe` applied zero pending
