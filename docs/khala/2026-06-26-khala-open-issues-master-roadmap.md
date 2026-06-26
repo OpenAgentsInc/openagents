@@ -29,7 +29,7 @@ external-wins admission, not for hiding usage.
 ## Current status snapshot
 
 Refreshed from GitHub issue state, `origin/main`, live counter/proof reads, and
-the local Pylon state on **2026-06-26 ~17:43Z**. This table is the
+the local Pylon state on **2026-06-26 ~18:02Z**. This table is the
 operator view of what remains, not a public product claim.
 
 | Issue | State | Current status / next action |
@@ -38,12 +38,12 @@ operator view of what remains, not a public product claim.
 | #6323 | **Open** | Decision artifact for the full `nvidia/GLM-5.2-NVFP4` single-host pilot landed. The delegated Pylon/Codex retry (`assignment.public.khala_coding.chatcmpl_6a9906e622ad43caa1c9cc3fb2f20d00`, 4,371,243 exact tokens) has now been reviewed, tightened for public-safety, merged in `c7a86d7d06`, and deployed via `deploy:safe` as Worker `12066869-4f81-4b32-ba41-ba3c50b07595`. Still open: run the owner-armed isolated 8x-host pilot and record measured tool-call/quality/max-context/tok-s results. |
 | #6319 | **Closed** | Reliability hardening/fallback-chain repair is closed. Treat empty responses and dead fallback lanes as regression risks in later serving work. |
 | #6313 | **Closed** | Real OpenRouter fallback lane is closed. It is now a dependency assumption for further reliability and benchmark runs. |
-| #6311 | **Open** | Partial readiness/watchdog projection work landed, and the Khala -> Pylon -> Codex diagnostic slices are now on `main`: `36ee76689c` (`assignment.public.khala_coding.chatcmpl_b5a0d831027a4c779b1105be73217f29`, 6,415,202 exact tokens), `7f94c0556a` (`assignment.public.khala_coding.chatcmpl_c7358576d7464620ae3da33ed2f473a0`, 7,393,396 exact tokens), and `5b11c6eaf5` (`assignment.public.khala_coding.chatcmpl_a5dc55d153ca4642b2836e0fa80005df`, 4,500,934 exact tokens for the latest follow-up). `5b11c6eaf5` is deployed as Worker `7ee46a76-f9ef-42cf-ac9f-31a472d2b3fb`; live D1 now shows `glm-pool-heartbeat` rows: 20 rows, first `2026-06-26T17:16:19.000Z`, latest `2026-06-26T17:17:19.000Z`, all sampled replicas `healthy`/`ok`. Still open because the broad durable-fleet goal remains: non-Spot capacity decision/floor, all-replica keep-warm/watchdog, auto-replace, reserve, and quota. |
+| #6311 | **Open** | Partial readiness/watchdog projection work landed, and the Khala -> Pylon -> Codex diagnostic slices are now on `main`: `36ee76689c` (`assignment.public.khala_coding.chatcmpl_b5a0d831027a4c779b1105be73217f29`, 6,415,202 exact tokens), `7f94c0556a` (`assignment.public.khala_coding.chatcmpl_c7358576d7464620ae3da33ed2f473a0`, 7,393,396 exact tokens), `5b11c6eaf5` (`assignment.public.khala_coding.chatcmpl_a5dc55d153ca4642b2836e0fa80005df`, 4,500,934 exact tokens), and `d373eaee69` (`assignment.public.khala_coding.chatcmpl_ff2b38153a9c457d8769bb6fc44ad9a5`, 3,653,854 exact tokens). `d373eaee69` is deployed as Worker `8249b442-0a54-4747-9826-c165151bcee9` and adds persisted heartbeat keep-warm/watchdog/probe evidence plus max-inflight/reserved/draining dimensions to the public readiness projection. Still open because the broad durable-fleet goal remains: non-Spot capacity decision/floor, all-replica keep-warm/watchdog, auto-replace, reserve, and quota. |
 | #6259 | **Closed** | Khala -> GLM served-worker disclosure + counter smoke is closed. |
 | #6315 | **Closed** | Zero-debit receipt-ref fix for #6259 is closed. |
-| #6320 | **Open** | A bounded routed slice landed in `85ca837413` and deployed as Worker `228ac0f9-c891-4ad2-b05f-0dd8894f3c86`: typed throughput-sweep metadata for `max-num-seqs`, prefix cache, chunked prefill, speculative decode, quant gates. Delegated slices landed on `main` in `a8c12aff42` (`assignment.public.khala_coding.chatcmpl_5ccffa5593b84cc09e414d3ad358b9b0`, 2,202,625 exact tokens) and `03b6ffa094` (`assignment.public.khala_coding.chatcmpl_7033a7cd0fff4afaaad412e783bab29a`, 4,949,572 exact tokens): typed throughput rollout recommendation/flag selection and owner-armed rollout artifact/guardrails. Current deployed `main` is Worker `7ee46a76-f9ef-42cf-ac9f-31a472d2b3fb`; still open for actual live engine rollout and measured throughput lift. |
-| #6318 | **Open** | Multiple partials landed (`a26ca1e`, `8ff2e47`, `4de477190c`) covering typed `internal_stress` attribution, route-level admission coverage, and live-headroom admission that rejects stress when reserved external headroom is unavailable. Pylon/Codex produced one earlier standalone preemption-registry patch (`assignment.public.khala_coding.chatcmpl_a5425fa595d642d3831f1670ffd6bb49`, 4,244,593 exact tokens) that was not landed because it was not wired into the live runtime; the latest follow-up (`assignment.public.khala_coding.chatcmpl_5333edc356f8454e95787f3803237bfa`, 2,103,164 exact tokens) merged the production-relevant wired demand-class/admission proof in `5b11c6eaf5`, deployed as Worker `7ee46a76-f9ef-42cf-ac9f-31a472d2b3fb`. Still open for actual live external-wins saturation proof plus mid-flight preemption/abort plumbing. |
-| #6317 | **Open** | Stress/saturation harness waits on #6318 and the live #6320 rollout. The Pylon/Codex batch accepted a verified preparatory stress-harness patch (`assignment.public.khala_coding.chatcmpl_f06a11f5a625470bbc235a6d6ed952df`, 4,455,618 exact tokens). Overseer review merged the safe prep slice as `792ec3d56e`: a typed GLM continuous-stress plan builder that refuses to arm without live headroom, external-wins preemption, and rollout-guard evidence. Current deployed `main` is Worker `7ee46a76-f9ef-42cf-ac9f-31a472d2b3fb`. Still open for a real continuous stress runner after #6318/#6320 live proof. |
+| #6320 | **Open** | A bounded routed slice landed in `85ca837413` and deployed as Worker `228ac0f9-c891-4ad2-b05f-0dd8894f3c86`: typed throughput-sweep metadata for `max-num-seqs`, prefix cache, chunked prefill, speculative decode, quant gates. Delegated slices landed on `main` in `a8c12aff42` (`assignment.public.khala_coding.chatcmpl_5ccffa5593b84cc09e414d3ad358b9b0`, 2,202,625 exact tokens), `03b6ffa094` (`assignment.public.khala_coding.chatcmpl_7033a7cd0fff4afaaad412e783bab29a`, 4,949,572 exact tokens), and `d373eaee69` (`assignment.public.khala_coding.chatcmpl_a8737564357847eca23110d319bf4edf`, 2,656,599 exact tokens): typed throughput rollout recommendation/flag selection, owner-armed rollout artifact/guardrails, and a fail-closed measured-lift rollout readout. Current deployed `main` is Worker `8249b442-0a54-4747-9826-c165151bcee9`; still open for actual live engine rollout and measured throughput lift. |
+| #6318 | **Open** | Multiple partials landed (`a26ca1e`, `8ff2e47`, `4de477190c`) covering typed `internal_stress` attribution, route-level admission coverage, and live-headroom admission that rejects stress when reserved external headroom is unavailable. Pylon/Codex produced one earlier standalone preemption-registry patch (`assignment.public.khala_coding.chatcmpl_a5425fa595d642d3831f1670ffd6bb49`, 4,244,593 exact tokens) that was not landed because it was not wired into the live runtime; later follow-ups merged wired demand-class/admission proof in `5b11c6eaf5` and typed scheduler preemption evidence propagation in `d373eaee69` (`assignment.public.khala_coding.chatcmpl_e2f9b5be81a04b529c60b04e57e95f5b`, 3,802,388 exact tokens), deployed as Worker `8249b442-0a54-4747-9826-c165151bcee9`. Still open for actual live external-wins saturation proof plus mid-flight preemption/abort plumbing. |
+| #6317 | **Open** | Stress/saturation harness waits on #6318 and the live #6320 rollout. Pylon/Codex preparatory slices landed as `792ec3d56e` and `d373eaee69` (`assignment.public.khala_coding.chatcmpl_77ede33f8f2142f88a16a3e194988e8a`, 2,427,287 exact tokens): typed GLM continuous-stress plan, fail-closed runner dispatch cells, telemetry schema, and stress report aggregation gated on live headroom, external-wins preemption, and rollout-guard evidence. Current deployed `main` is Worker `8249b442-0a54-4747-9826-c165151bcee9`. Still open for a real continuous stress runner after #6318/#6320 live proof. |
 | #6312 | **Open** | Decision-grade aggregate max tokens/sec benchmark waits on the stress harness. |
 | #6321 | **Open** | Artanis fleet-overseer automation waits on the scheduler/stress/reliability pieces. |
 | #6253 | **Open** | Isolated Terminal-Bench 2.0 black-box runner, bounded real measurement, and replication path landed in `da472748c5`. The separately owned full Harbor run must not be disturbed. Still open for decision-grade replicate-and-beat evidence. |
@@ -52,9 +52,9 @@ operator view of what remains, not a public product claim.
 | #6309 | **Open** | Gym ladder publication/projection layer landed in `1accb3573b`. Still open for decision-grade rung data and recurrence evidence. |
 | #6305 | **Closed** | OpenCode -> Khala checklist/recipe is closed. Keep it honest if serving regresses. |
 | #6306 | **Closed** | Next ecosystem recipes are closed. Keep them as docs/recipe artifacts, not proof that Phase 4 benchmarks are complete. |
-| #6351 | **Open** | New /stats dependency: public model/provider mix endpoint over `token_usage_events`, grouping GLM family, Fireworks DeepSeek, Pylon-Codex, GPT-OSS, Gemini, and other. Do before #6352. |
-| #6352 | **Open** | New /stats page depends on closed #6330 and open #6351. Build the public counter, America/Chicago daily chart, and model/provider mix once #6351 lands. |
-| #6353 | **Open** | New /stats epic tracking #6330, #6351, and #6352. #6330 is already closed; remaining work is endpoint then page. |
+| #6351 | **Closed** | Public model/provider mix endpoint landed in `d373eaee69` and deployed as Worker `8249b442-0a54-4747-9826-c165151bcee9`. Live `GET /api/public/khala-tokens-served/model-mix?window=30d` returned `totalTokensServed=262,631,034`; `pylon_codex=166,561,460` tokens / 102 events. |
+| #6352 | **Open** | New /stats page now depends on closed #6330 and closed #6351. Next: build the public counter, America/Chicago daily chart, and model/provider mix UI against the live endpoints. |
+| #6353 | **Open** | New /stats epic tracking #6330, #6351, and #6352. #6330 and #6351 are closed; remaining work is the #6352 page. |
 | #6303 | **Open** | GTM umbrella remains open: recipe issues are closed and benchmark publication layers exist, but the real decision-grade benchmark/quality evidence and adoption scoreboard are not complete. |
 | #6316 | **Open** | Serving umbrella remains open: #6320/#6318 have partial slices and fresh Pylon/Codex proofs, and #6311's scheduled heartbeat rows are now live, but #6323 pilot, #6311 durability, #6318 live preemption, #6317 stress, #6312 aggregate benchmark, and #6321 overseer are not complete. |
 | #6325 | **Closed** | Pylon/Codex delegated sessions are persisted as private traces and exact token events (`c92a5652ab`), with the live raw-chunk follow-up in `74f25e77ad`. |
@@ -200,6 +200,19 @@ operator view of what remains, not a public product claim.
   same refresh, `provider go-online --json` reported Pylon
   `pylon.33afd48282a649047e3a` with Codex `available=5`, `busy=0`, `queued=0`,
   and heartbeat sequence `144`.
+- Public counter state after the five-delegation stress batch:
+  `d373eaee69` is current deployed `main` (Worker
+  `8249b442-0a54-4747-9826-c165151bcee9`). Five Khala -> Pylon -> Codex
+  assignments completed across `codex-2`, `codex-3`, and `codex-4` with exact
+  `token_usage_events` rows totaling **17,938,519** Khala coding tokens:
+  #6311 `3,653,854`, #6320 `2,656,599`, #6318 `3,802,388`, #6317 `2,427,287`,
+  and #6351 `5,398,391`. Live `/api/public/khala-tokens-served` returned
+  `262,631,034` at `2026-06-26T18:01:30.689Z`. Live
+  `/api/public/khala-tokens-served/model-mix?window=30d` returned the same
+  `totalTokensServed`, with `pylon_codex=166,561,460` tokens over `102` usage
+  events. All five assignments have owner-only ATIF traces and owner-only raw
+  Codex event rows; the public counter movement was verified from exact
+  assignment `task_ref` rows, not inferred from aggregate movement.
 - Current serving observability status: canonical scheduled
   `glm-pool-heartbeat` rows are now live. `5b11c6eaf5` is deployed as Worker
   `7ee46a76-f9ef-42cf-ac9f-31a472d2b3fb`; after one cron interval,
@@ -453,14 +466,16 @@ GLM coding lane and leave REAP-504B on the 4x hosts.)
 - The owner-gated honesty bar still applies: any published benchmark number must come from
   the owner-armed real seam over realistic traffic (`decisionGrade:true`); internal
   dogfood/stress tokens stay segmented (#6298 demand tags) and out of external metrics.
-- Khala -> Pylon -> Codex worker status at refresh: delegation was paused by
-  operator request after the current batch. Accepted work completed across
-  multiple Codex accounts with exact owner-capacity token rows, traces, and
-  raw-event refs, and `codex-2` proved same-account parallelism by running two
-  assignments concurrently. Future launches should record assignment refs
-  immediately, verify `pylon khala proof --assignment-ref ... --json`, and
-  compare exact token rows instead of relying on public counter movement. The
-  next steering gaps to settle are (1) why the plain `codex` account refused one
-  assignment while `codex-2+` succeeded, and (2) whether the public counter
-  should increment continuously from streamed SDK events or remain
-  closeout-based over exact turn usage rows.
+- Khala -> Pylon -> Codex worker status at refresh: the five-assignment batch
+  completed and was merged/deployed after overseer review. Accepted work
+  completed across multiple Codex accounts with exact owner-capacity token rows,
+  traces, and raw-event refs, and the run proved same-account parallelism by
+  running multiple assignments on both `codex-2` and `codex-3`. Future launches
+  should record assignment refs immediately, verify
+  `pylon khala proof --assignment-ref ... --json`, and compare exact token rows
+  instead of relying on public counter movement. The next steering gaps to settle
+  are (1) auto-refreshing Pylon presence before `assignment run-no-spend` so
+  operators do not hit `blocker.assignment.presence_stale`, (2) why the plain
+  `codex` account refused one assignment while `codex-2+` succeeded, and (3)
+  whether the public counter should increment continuously from streamed SDK
+  events or remain closeout-based over exact turn usage rows.
