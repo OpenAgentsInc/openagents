@@ -84,13 +84,40 @@
     "HYDRALISK_GPT_OSS_120B_ENABLED": "ready",
     "HYDRALISK_GPT_OSS_120B_PREFLIGHT_REF": "preflight.hydralisk.gpt_oss_120b.h100.20260624T022946Z",
     "HYDRALISK_GPT_OSS_120B_RECEIPT_REF": "receipt.hydralisk.gpt_oss_120b.h100.hydralisk-run-2969ab61fcf44c3085c5e9f2bc513f11",
-    // Khala DeepSeek V4 Flash provider backing (#6198). Operator-only,
-    // non-secret routing knob: customers still see/request ONLY
-    // `openagents/khala`; this selects Fireworks
-    // `accounts/fireworks/models/deepseek-v4-flash` as the primary backing lane
-    // while retaining Hydralisk/Gemini overflow in code. Requires the
-    // FIREWORKS_API_KEY Worker secret to actually arm the lane.
-    "KHALA_BACKING_MODEL": "deepseek-v4-flash",
+    // Hydralisk GLM-5.2-REAP-504B private G4 lane — the PRIMARY Khala backing
+    // (#6259 #6253, hydralisk#94/#6262). The two replica origin URLs and bearer
+    // tokens are Worker secrets (HYDRALISK_GLM_52_REAP_504B_BASE_URL/BEARER_TOKEN
+    // for the legacy `primary` replica + HYDRALISK_GLM_52_REAP_504B_REPLICA_B_*
+    // for `replica-b`); these committed vars only arm the route after the
+    // 2026-06-25 b12x/vLLM public-HTTPS smoke produced public-safe preflight +
+    // receipt evidence. Two replicas form the #6262 singleflight pool; a GLM
+    // failure/timeout/Spot-death is a retryable lane error so dispatch overflows
+    // to GPT-OSS-120B -> GPT-OSS-20B -> Vertex Gemini (model-router.ts) and never
+    // surfaces a 5xx to the client (the 2026-06-25 outage AAR robustness bar).
+    "HYDRALISK_GLM_52_REAP_504B_ENABLED": "ready",
+    "HYDRALISK_GLM_52_REAP_504B_MODEL_ID": "openagents/glm-5.2-reap-504b",
+    "HYDRALISK_GLM_52_REAP_504B_REPLICA_IDS": "primary,replica-b",
+    "HYDRALISK_GLM_52_REAP_504B_MAX_INFLIGHT": "1",
+    "HYDRALISK_GLM_52_REAP_504B_PROFILE_REF": "profile.hydralisk.glm_52_reap_504b.g4_tp4_minp.v1",
+    "HYDRALISK_GLM_52_REAP_504B_COST_PROFILE_REF": "cost_profile.hydralisk.glm_52_reap_504b.g4_4g.spot.2026_06_25",
+    "HYDRALISK_GLM_52_REAP_504B_PREFLIGHT_REF": "preflight.hydralisk.glm_52_reap_504b.g4.20260625T020559Z",
+    "HYDRALISK_GLM_52_REAP_504B_RECEIPT_REF": "receipt.hydralisk.glm_52_reap_504b.g4.hydralisk-run-36f1856baa364d7bb42bd08354a2aadb",
+    // Per-replica preflight/receipt evidence for the second pool replica
+    // (true 4x G4 Spot, cloned read-only model disk — hydralisk second-endpoint).
+    "HYDRALISK_GLM_52_REAP_504B_REPLICA_B_ENABLED": "ready",
+    "HYDRALISK_GLM_52_REAP_504B_REPLICA_B_PROFILE_REF": "profile.hydralisk.glm_52_reap_504b.g4_tp4_minp.v1",
+    "HYDRALISK_GLM_52_REAP_504B_REPLICA_B_COST_PROFILE_REF": "cost_profile.hydralisk.glm_52_reap_504b.g4_4g.spot.2026_06_25",
+    "HYDRALISK_GLM_52_REAP_504B_REPLICA_B_PREFLIGHT_REF": "preflight.hydralisk.glm_52_reap_504b.g4.second_endpoint.20260625T111300Z",
+    "HYDRALISK_GLM_52_REAP_504B_REPLICA_B_RECEIPT_REF": "receipt.hydralisk.glm_52_reap_504b.g4.second_endpoint.hydralisk-run-36f1856baa364d7bb42bd08354a2aadb",
+    // Khala provider backing (#6198, #6259). Operator-only, non-secret routing
+    // knob: customers still see/request ONLY `openagents/khala`. Set to the
+    // Hydralisk-backed lane so the router orders the OWN-INFRA GLM-5.2-REAP-504B
+    // private G4 lane FIRST (KHALA_HYDRALISK_ADAPTER_PLAN: GLM -> GPT-OSS-120B ->
+    // GPT-OSS-20B -> Vertex Gemini), instead of Fireworks DeepSeek. Any value
+    // other than the deepseek-v4-flash aliases resolves to the Hydralisk backing
+    // (model-serving-policy.ts:resolveKhalaBackingModel); Fireworks remains armed
+    // for the OPEN class and as named-model routing, just not as the Khala primary.
+    "KHALA_BACKING_MODEL": "hydralisk-glm-5.2-reap-504b",
     // OpenAgents/Pylon serving-fabric lane (#6089). The proxy route URL and
     // bearer are Worker secrets; these committed vars only arm the route after
     // the admitted GCloud L4 Pylon's durable HTTPS canary returned public-safe

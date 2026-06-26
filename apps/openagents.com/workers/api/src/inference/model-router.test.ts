@@ -21,7 +21,11 @@ import {
   selectAdapterPlanForKhalaBacking,
   selectPrimaryAdapterId,
 } from './model-router'
-import { KHALA_BACKING_FIREWORKS_DEEPSEEK_V4_FLASH } from './model-serving-policy'
+import {
+  KHALA_BACKING_FIREWORKS_DEEPSEEK_V4_FLASH,
+  KHALA_BACKING_HYDRALISK_GPT_OSS,
+  resolveKhalaBackingModel,
+} from './model-serving-policy'
 import { openAgentsNetworkAdapter } from './openagents-network-adapter'
 import {
   AUTOPILOT_CONCIERGE_MODEL_ID,
@@ -179,6 +183,31 @@ describe('model classification', () => {
       )[0],
     ).toBe(FIREWORKS_ADAPTER_ID)
     expect(selectAdapterPlan('deepseek-v4-flash')[0]).toBe(FIREWORKS_ADAPTER_ID)
+  })
+
+  test('makes GLM-5.2-REAP-504B the PRIMARY Khala backing under the Hydralisk backing policy (#6259)', () => {
+    for (const model of [KHALA_MODEL_SLUG, KHALA_MODEL_ID]) {
+      const plan = selectAdapterPlanForKhalaBacking(
+        model,
+        KHALA_BACKING_HYDRALISK_GPT_OSS,
+      )
+      // GLM is FIRST; the existing armed Hydralisk lanes + Vertex Gemini are the
+      // graceful-degradation overflow. Fireworks is NOT in this plan.
+      expect(plan[0]).toBe(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID)
+      expect(plan).toEqual([
+        HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+        HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
+        HYDRALISK_ADAPTER_ID,
+        VERTEX_GEMINI_ADAPTER_ID,
+      ])
+      expect(plan).not.toContain(FIREWORKS_ADAPTER_ID)
+    }
+    // The committed prod backing value resolves to the Hydralisk (GLM-first) plan.
+    expect(
+      makeKhalaBackedAdapterPlan(
+        resolveKhalaBackingModel('hydralisk-glm-5.2-reap-504b'),
+      )(KHALA_MODEL_ID)[0],
+    ).toBe(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID)
   })
 
   test('does not treat old Khala split ids as the public Khala route', () => {
@@ -484,6 +513,56 @@ describe('dispatchWithOverflow', () => {
     }
     expect(glm.calls()).toBe(1)
     expect(gemini.calls()).toBe(1)
+  })
+
+  test('GLM-primary Spot-death/5xx fails over to the next armed Khala lane and returns 200, not 5xx (#6259)', async () => {
+    // GLM is primary but its (preemptible Spot) replica dies — a transport error
+    // and an upstream 5xx are both retryable lane errors, so dispatch must
+    // overflow down the real GLM-first Khala plan to an armed fallback and serve
+    // a successful completion rather than surfacing a 5xx to the client.
+    const glmDead = new InferenceAdapterError({
+      adapterId: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+      kind: 'transport_error',
+      reason: 'retryable: hydralisk transport error (spot host preempted)',
+      retryable: true,
+    })
+    const glm = mockAdapter(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID, [glmDead])
+    const gptOss120b = mockAdapter(HYDRALISK_GPT_OSS_120B_ADAPTER_ID, [
+      err(HYDRALISK_GPT_OSS_120B_ADAPTER_ID, true, 503),
+    ])
+    const gptOss20b = mockAdapter(HYDRALISK_ADAPTER_ID, [undefined])
+    const gemini = mockAdapter(VERTEX_GEMINI_ADAPTER_ID, [undefined])
+    const registry = new InferenceProviderRegistry()
+    registry.register(glm.adapter)
+    registry.register(gptOss120b.adapter)
+    registry.register(gptOss20b.adapter)
+    registry.register(gemini.adapter)
+
+    const result = await runResult(
+      dispatchWithOverflowWithMetadata(request(KHALA_MODEL_ID), completeOp, {
+        // The REAL GLM-first Khala backing plan (KHALA_HYDRALISK_ADAPTER_PLAN).
+        plan: model =>
+          selectAdapterPlanForKhalaBacking(model, KHALA_BACKING_HYDRALISK_GPT_OSS),
+        registry,
+        sleep: noSleep,
+      }),
+    )
+
+    expect(result._tag).toBe('Success')
+    if (result._tag === 'Success') {
+      expect(result.success.route.primaryAdapterId).toBe(
+        HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+      )
+      // GLM dead -> 120B 503 -> 20B serves it. Never a surfaced 5xx.
+      expect(result.success.route.servedAdapterId).toBe(HYDRALISK_ADAPTER_ID)
+      expect(result.success.value.value.servedModel).toBe(
+        `served-by-${HYDRALISK_ADAPTER_ID}`,
+      )
+    }
+    expect(glm.calls()).toBe(1)
+    expect(gptOss120b.calls()).toBe(1)
+    expect(gptOss20b.calls()).toBe(1)
+    expect(gemini.calls()).toBe(0)
   })
 
   test('a non-retryable failure surfaces immediately without overflow', async () => {
