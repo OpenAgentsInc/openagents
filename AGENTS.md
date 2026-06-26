@@ -416,15 +416,20 @@ and local Codex auth out of reports.
   original dirty checkout intact and report the conflict or blocker honestly.
 - Do not reintroduce the old Cargo or Tauri workspace unless the user asks for
   explicit historical compatibility work.
-- **Mobile build/ship policy (owner mandate): NO Expo/EAS cloud.** For
-  `clients/mobile/AutopilotRemoteControl`, native iOS `.ipa` compiles **locally
-  on this Mac** (`expo prebuild` → `xcodebuild`/`fastlane`) and TestFlight upload
-  is **Apple-native `xcrun altool`** (ASC key in `.secrets/appstoreconnect.env`).
-  JS-only changes ship **OTA via our own `updates.openagents.com`**
-  (`apps/oa-updates/scripts/publish-ota.sh`), never `eas update`/u.expo.dev.
-  Never run `eas build` / `eas submit` / `eas update`. The `expo` CLI itself
-  (`expo install`/`export`/`prebuild`) stays. Runbook:
-  `clients/mobile/AutopilotRemoteControl/TESTFLIGHT.md`.
+- **Mobile build/ship policy (owner mandate): NO Expo/EAS cloud.** The current
+  mobile app is the **native SwiftUI** voice app `clients/mobile/Khala`
+  (bundle `com.openagents.khala`) — see
+  `docs/mobile/2026-06-26-khala-voice-app-spec.md`. It is pure local Xcode:
+  build/run via `clients/mobile/Khala/Khala.xcodeproj`, archive with
+  `xcodebuild`, and upload to TestFlight with Apple-native `xcrun altool`
+  (ASC key in `.secrets/appstoreconnect.env`), under Apple Team `HQWSG26L43`.
+  Native Swift has **no OTA path** (`updates.openagents.com` / `expo-updates`
+  do not apply). Never run `eas build` / `eas submit` / `eas update`.
+  The earlier Expo React-Native app `clients/mobile/AutopilotRemoteControl`
+  was **retired** on 2026-06-26 and removed from the repo
+  (`docs/mobile/2026-06-26-autopilot-remote-control-retirement.md`); the Expo
+  prebuild + own-OTA path (`apps/oa-updates/scripts/publish-ota.sh`) and the
+  `expo` CLI only apply if an Expo app is ever reintroduced.
 - Route new user-facing and agent-facing product claim systems through
   `docs/promises/` before broadening copy.
 - Keep Claim Your Agent public identity flows tweet-first where possible:
