@@ -1,26 +1,19 @@
 import SwiftUI
 
-/// App shell: the main chat `NavigationStack` hosted inside the left slide-over
-/// `DrawerContainer`. The top bar carries the hamburger (toggles the drawer),
-/// the "Khala" model pill (single model — no fake variants), and a new-chat
-/// icon. Settings is reachable from the drawer and the pill sheet.
-///
-/// This is the foundation shell: it compiles and shows a usable chat surface
-/// today. The drawer CONTENTS (#6344) and chat-view internals (#6345) are clear
-/// seams the feature lanes fill in.
+/// App shell: a single-conversation chat `NavigationStack` inside the left
+/// slide-over `DrawerContainer`. Deliberately minimal — the top bar is the
+/// hamburger (sidebar), a small "Khala" menu (open-trace-in-web + settings), and
+/// a new-chat button. No model picker, no voice.
 struct RootView: View {
     @ObservedObject var store: ConversationStore
-    @StateObject private var voice = VoiceController()
+    @Environment(\.openURL) private var openURL
 
     @State private var drawerOpen = false
     @State private var showSettings = false
-    @State private var showAbout = false
     @State private var hasKey = KeychainStore.hasAPIKey
+    @State private var didLaunch = false
     @State private var selection: Conversation?
-    /// The streaming chat view model for the active conversation. Owned here so
-    /// the demo/suggestion auto-send paths and the voice transcript handoff all
-    /// drive the SAME model `ChatView` renders. Recreated when the active
-    /// conversation changes.
+    /// Streaming view model for the active conversation, recreated when it changes.
     @State private var model: ChatViewModel?
 
     var body: some View {
@@ -38,16 +31,9 @@ struct RootView: View {
         .sheet(isPresented: $showSettings) {
             SettingsView(hasKey: $hasKey)
         }
-        .sheet(isPresented: $showAbout) {
-            aboutSheet
-        }
         .task { await onAppear() }
-        // The drawer can change `selection` directly; keep the model in sync with
-        // the active conversation however it changed.
         .onChange(of: selection?.id) { _, _ in syncModel() }
     }
-
-    // MARK: - Chat stack + top bar
 
     private var chatStack: some View {
         NavigationStack {
@@ -55,19 +41,13 @@ struct RootView: View {
                 if let conversation = activeConversation, let model = modelFor(conversation) {
                     ChatView(
                         store: store,
-                        voice: voice,
                         model: model,
                         conversation: conversation,
                         hasKey: $hasKey,
                         onOpenSettings: { showSettings = true }
                     )
                     .id(conversation.id)
-                    // Empty-state greeting + suggestions live INSIDE ChatView now
-                    // (in place of the scroll content), so the composer inset
-                    // stays visible on a fresh chat. See ChatView.isEmptyState.
                 } else {
-                    // Should not normally happen (we ensure one exists), but never
-                    // black-screen: offer a way forward.
                     ContentUnavailableView {
                         Label("No conversation", systemImage: "bubble.left.and.bubble.right")
                     } actions: {
@@ -86,22 +66,28 @@ struct RootView: View {
                     .accessibilityLabel("Menu")
                 }
                 ToolbarItem(placement: .principal) {
-                    Button { showAbout = true } label: {
-                        HStack(spacing: 5) {
+                    Menu {
+                        Button {
+                            openTracesInWeb(conversation: activeConversation)
+                        } label: {
+                            Label("Open traces in web", systemImage: "safari")
+                        }
+                        Button {
+                            showSettings = true
+                        } label: {
+                            Label("Settings", systemImage: "gearshape")
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
                             Text("Khala")
-                                .font(.subheadline.weight(.semibold))
+                                .font(.headline)
                                 .foregroundStyle(.primary)
                             Image(systemName: "chevron.down")
                                 .font(.caption2.weight(.bold))
                                 .foregroundStyle(.secondary)
                         }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(.ultraThinMaterial, in: Capsule())
-                        .overlay(Capsule().stroke(.white.opacity(0.08), lineWidth: 1))
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Khala model. About")
+                    .accessibilityLabel("Khala menu")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: newChat) {
@@ -113,25 +99,21 @@ struct RootView: View {
         }
     }
 
-    private var aboutSheet: some View {
-        NavigationStack {
-            List {
-                Section {
-                    LabeledContent("Model", value: "openagents/khala")
-                    LabeledContent("Backend", value: "openagents.com/api/v1")
-                } footer: {
-                    Text("Khala is a single model. There are no mini/pro/code variants.")
-                }
-            }
-            .navigationTitle("About Khala")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { showAbout = false }
-                }
-            }
+    // MARK: - Traces
+
+    /// Open the owner's traces on the web, passing the API key as a token so the
+    /// owner can view their own (unshared, owner-only) traces even when not
+    /// logged into the web. The backend authorizes the token for owner-scoped
+    /// trace viewing; if a per-conversation trace ref becomes available it can be
+    /// appended here to deep-link the specific trace.
+    private func openTracesInWeb(conversation: Conversation?) {
+        var components = URLComponents(string: "https://openagents.com/traces")
+        if let key = KeychainStore.loadAPIKey() {
+            components?.queryItems = [URLQueryItem(name: "token", value: key)]
         }
-        .presentationDetents([.medium])
+        if let url = components?.url {
+            openURL(url)
+        }
     }
 
     // MARK: - State
@@ -140,32 +122,19 @@ struct RootView: View {
         selection ?? store.mostRecent
     }
 
-    /// The streaming view model for `conversation`, when it matches the current
-    /// active model. `syncModel()` keeps `model` aligned with the active
-    /// conversation; here we only hand `ChatView` a model bound to the same
-    /// conversation it is rendering.
     private func modelFor(_ conversation: Conversation) -> ChatViewModel? {
         if let model, model.conversationID == conversation.id { return model }
         return nil
     }
 
-    /// Create or recreate the active conversation's view model so the demo,
-    /// suggestion, voice, and `ChatView` paths all drive one model. Cheap and
-    /// idempotent: a no-op when the model already matches.
     private func syncModel() {
         guard let conversation = activeConversation else { model = nil; return }
         if model?.conversationID == conversation.id { return }
         model?.stop()
-        let created = ChatViewModel(store: store, conversation: conversation)
-        // Route push-to-talk transcripts into the shared streaming path.
-        voice.onTranscript = { [weak created] transcript in
-            created?.send(transcript)
-        }
-        model = created
+        model = ChatViewModel(store: store, conversation: conversation)
     }
 
     private func open(_ conversation: Conversation) {
-        // `.onChange(of: selection?.id)` recreates the model for the new chat.
         selection = conversation
         withAnimation { drawerOpen = false }
     }
@@ -177,22 +146,16 @@ struct RootView: View {
     }
 
     private func onAppear() async {
-        // Ensure there is always at least one conversation to render (non-black
-        // launch gate): create one if the store is empty, otherwise select the
-        // most recent.
+        // Always have a conversation to render (non-black launch gate).
         if store.conversations.isEmpty {
             selection = store.createConversation()
         } else if selection == nil {
             selection = store.mostRecent
         }
-        // Build the model for the initial active conversation up front so the
-        // chat surface renders immediately (the onChange may not fire if
-        // `selection` was already set before this task ran).
         syncModel()
 
         // Free dogfood app: guarantee an API key so the composer works out of the
-        // box (no manual key setup). Auto-mint a free key on first launch when
-        // none is stored; if minting fails, Settings still offers mint/paste.
+        // box. Auto-mint a free key on first launch when none is stored.
         if KeychainStore.hasAPIKey {
             hasKey = true
         } else if let token = try? await KhalaClient.mintFreeKey() {
@@ -200,16 +163,10 @@ struct RootView: View {
             hasKey = true
         }
 
-        // NOTE: mic/speech permission is intentionally NOT requested here. A
-        // cold launch must show the chat surface with NO permission dialog; the
-        // prompt is deferred to the FIRST push-to-talk press (see
-        // `VoiceController.pressDown()`), so users only see it when they
-        // actually use voice. The launch-time request used to pop a Speech
-        // Recognition dialog on every cold start.
-
+        guard !didLaunch else { return }
+        didLaunch = true
         // Demo/test hook (env-gated; no-op in normal use): auto-send a prompt on
-        // launch so the end-to-end streaming Khala round-trip is verifiable on a
-        // simulator without driving the UI. Pair with KHALA_API_KEY.
+        // launch so the streaming round-trip is verifiable on a simulator.
         if let demo = ProcessInfo.processInfo.environment["KHALA_DEMO_PROMPT"],
            !demo.isEmpty, hasKey, let conversation = activeConversation,
            let model = modelFor(conversation) {

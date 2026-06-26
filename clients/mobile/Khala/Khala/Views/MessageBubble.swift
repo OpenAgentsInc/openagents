@@ -16,9 +16,6 @@ struct MessageBubble: View {
     /// When true (an in-flight assistant turn), the response action row is
     /// hidden until the stream settles.
     var isStreaming: Bool = false
-    /// Optional regenerate hook (#6346). When present on a settled assistant
-    /// turn, the action row shows a regenerate control alongside copy.
-    var onRegenerate: (() -> Void)? = nil
 
     var body: some View {
         if outgoing {
@@ -60,7 +57,7 @@ struct MessageBubble: View {
             MarkdownMessage(content: text)
 
             if !isStreaming, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                ResponseActionRow(messageText: text, onRegenerate: onRegenerate)
+                ResponseActionRow(messageText: text)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -72,7 +69,6 @@ struct MessageBubble: View {
 /// without this file owning the request path.
 private struct ResponseActionRow: View {
     let messageText: String
-    var onRegenerate: (() -> Void)? = nil
 
     @State private var copied = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -87,15 +83,6 @@ private struct ResponseActionRow: View {
             .buttonStyle(.plain)
             .accessibilityLabel(copied ? "Response copied" : "Copy response")
 
-            if let onRegenerate {
-                Button(action: onRegenerate) {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Regenerate response")
-            }
             Spacer()
         }
         .padding(.top, 2)
