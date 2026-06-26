@@ -423,6 +423,89 @@ describe('coding delegation default-on guard', () => {
     expect(recorded).toHaveLength(0)
   })
 
+  test('direct agent-owned Pylon dispatch survives a transient OpenAuth link read failure', async () => {
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          ...helloBody,
+          openagents: {
+            coding: {
+              targetPylonRef: 'pylon.owner.codex',
+            },
+            workflowClass: 'codex_agent_task',
+          },
+        }),
+        baseDeps({
+          authenticate: async () => ({ accountRef: 'agent:agent_owner' }),
+          codingDelegation: {
+            agentStore: {
+              listLinkedAgentsForOpenAuthUser: async () => {
+                throw new Error('linked-agent read failed')
+              },
+            } as unknown as AgentRegistrationStore,
+            pylonStore: codingPylonStore([
+              codingPylonRegistration({
+                latestCapacityRefs: [
+                  'capacity.coding.codex.ready=5',
+                  'capacity.coding.codex.available=5',
+                ],
+              }),
+            ]),
+            resolveOpenAuthUserId: async () => 'user_owner',
+          },
+          newId: () => 'request_self_agent_link_read_fail_soft',
+          nowEpochSeconds: () => 0,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('openagents-coding-assignment-ref')).toBe(
+      'assignment.public.khala_coding.request_self_agent_link_read_fail_soft',
+    )
+  })
+
+  test('OpenAuth-only Pylon dispatch still fails closed when linked capacity cannot be read', async () => {
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          ...helloBody,
+          openagents: {
+            coding: {
+              targetPylonRef: 'pylon.owner.codex',
+            },
+            workflowClass: 'codex_agent_task',
+          },
+        }),
+        baseDeps({
+          authenticate: async () => ({ accountRef: 'user:user_owner' }),
+          codingDelegation: {
+            agentStore: {
+              listLinkedAgentsForOpenAuthUser: async () => {
+                throw new Error('linked-agent read failed')
+              },
+            } as unknown as AgentRegistrationStore,
+            pylonStore: codingPylonStore([codingPylonRegistration()]),
+            resolveOpenAuthUserId: async () => 'user_owner',
+          },
+          nowEpochSeconds: () => 0,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(503)
+    const body = (await response.json()) as {
+      error: string
+      evidenceRefs: ReadonlyArray<string>
+      reason: string
+    }
+    expect(body).toMatchObject({
+      error: 'coding_delegation_store_unavailable',
+      evidenceRefs: ['evidence.khala_coding.dispatch.store_unavailable'],
+    })
+    expect(body.reason).toContain('could not read linked Pylon capacity')
+  })
+
   test('delegates typed coding workflows before balance and provider supply gates', async () => {
     const response = await run(
       handleChatCompletions(

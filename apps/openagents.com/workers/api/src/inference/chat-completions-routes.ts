@@ -2350,13 +2350,11 @@ export const handleChatCompletions = (
       }
       const codingDelegation = deps.codingDelegation
 
-      // #6331: resolve the owner scope, linked agents, and delegation through a
-      // single guarded promise. A failure in ANY of these Pylon/agent store
-      // reads must surface as a clean, diagnosable 503 — never an opaque
-      // `500 internal_server_error`. Before this guard, a thrown store error
-      // inside `Effect.promise` became an unhandled defect and the gateway
-      // returned a bare 500 for what is really "the dispatch gate could not
-      // read capacity right now".
+      // #6331/#6318: resolve the owner scope, linked agents, and delegation
+      // through a single guarded promise. An agent-owned request can route
+      // through its own Pylon even if the OpenAuth link read flakes; an
+      // OpenAuth-only request still fails closed with a typed 503 instead of an
+      // opaque 500.
       const selfAgentUserId = agentUserIdFromAccountRef(session.accountRef)
       const selfLinkedAgent =
         selfAgentUserId === undefined ? [] : [{ agentUserId: selfAgentUserId }]
@@ -2366,15 +2364,26 @@ export const handleChatCompletions = (
           const openauthUserId = await codingDelegation.resolveOpenAuthUserId(
             session.accountRef,
           )
-          const openAuthLinkedAgents =
-            openauthUserId === undefined ||
-            codingDelegation.agentStore.listLinkedAgentsForOpenAuthUser ===
-              undefined
-              ? []
-              : await codingDelegation.agentStore.listLinkedAgentsForOpenAuthUser!(
-                  openauthUserId,
-                  100,
-                )
+          const openAuthLinkedAgents = await (async () => {
+            if (
+              openauthUserId === undefined ||
+              codingDelegation.agentStore.listLinkedAgentsForOpenAuthUser ===
+                undefined
+            ) {
+              return []
+            }
+            try {
+              return await codingDelegation.agentStore.listLinkedAgentsForOpenAuthUser(
+                openauthUserId,
+                100,
+              )
+            } catch (error) {
+              if (selfLinkedAgent.length > 0) {
+                return []
+              }
+              throw error
+            }
+          })()
           const linkedAgents = [...selfLinkedAgent, ...openAuthLinkedAgents]
           return delegateCodingWorkflow({
             classification: codingWorkflow,
