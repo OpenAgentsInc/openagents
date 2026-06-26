@@ -176,6 +176,37 @@ Temporary boundary exceptions:
   owning services are consumed through request layers and final compatibility
   issue #44 removes the temporary bridge allowlist.
 
+## Public Khala Chat Served-Token Bridge
+
+Date: 2026-06-26
+
+`workers/api/src/khala-chat-routes.ts` has one named `Effect.runPromise`
+bridge. Current caller evidence:
+
+```sh
+rg -n "Effect\\.runPromise\\(|recordPublicKhalaChatServedTokens|recordServedTokens" workers/api/src/khala-chat-routes.ts workers/api/src/public-khala-chat-served-tokens.ts
+```
+
+The caller is the public `/api/khala/chat` SSE path in
+`workers/api/src/khala-chat-routes.ts`. It records served-token usage after the
+provider stream drains and before emitting the terminal `meta` / `done` frames.
+The route callback is Promise-shaped because Web Streams
+`ReadableStream.start` is the current boundary, while the shared served-token
+recorder helper in `public-khala-chat-served-tokens.ts` is Effect-shaped so the
+inference gateway can `yield*` equivalent recorder work.
+
+Replacement: move the public chat stream/finalize path to an Effect Stream
+program end-to-end so the route finalizer can `yield*` the Effect-shaped
+served-token recorder without a Web Streams Promise bridge.
+
+Deletion condition: remove the `Effect.runPromise` call from
+`khala-chat-routes.ts`, then delete its allowlist entry from
+`scripts/check-zero-debt-architecture.mjs`.
+
+Guardrail: `bun run check:architecture` budgets exactly one bridge for this
+file and fails if the count grows or the entry is removed without deleting the
+bridge.
+
 ## Historical Kept Compatibility Paths From Initial Pass
 
 The table below records the original caller inventory from the zero-debt pass.

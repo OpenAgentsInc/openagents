@@ -23,6 +23,18 @@ The `/stats` page is the public product surface for live Khala usage stats. It s
 
 The page must not expose user, team, account, raw provider, raw model, prompt, completion, key, wallet, payment, settlement, or routing material. Any future authenticated or operator-only expansion must stay outside the default public projection.
 
+### Visual Rendering Contract
+
+The live Khala tokens-served total must remain inside its stat panel as the
+counter grows. The number uses card-width-aware sizing and a no-wrap display so
+nine-digit values such as `285,022,051` fit in the three-column `/stats`
+dashboard without horizontal page overflow.
+
+The per-day history chart must show visible day/value labels in addition to the
+SVG bars and screen-reader text fallback. Each day in the returned
+America/Chicago series appears as a compact `MM/DD` + value cell; the peak day
+is highlighted so the daily maximum is obvious without hovering.
+
 ## 5b Model Mix Endpoint
 
 `GET /api/public/khala-tokens-served/model-mix?window=30d` returns:

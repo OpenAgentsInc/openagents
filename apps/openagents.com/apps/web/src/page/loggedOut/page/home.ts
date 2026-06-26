@@ -897,7 +897,7 @@ export const khalaTokensServedCounter = (
     [
       h.DataAttribute('counter', 'khala-tokens-served'),
       Ui.className<Message>(
-        'flex flex-col items-center gap-2 border border-[#242424] bg-[#030303] px-4 py-6 text-center sm:py-7',
+        'flex min-w-0 flex-col items-center gap-2 overflow-hidden border border-[#242424] bg-[#030303] px-4 py-6 text-center [container-type:inline-size] sm:py-7',
       ),
     ],
     [
@@ -928,8 +928,9 @@ export const khalaTokensServedCounter = (
       h.p(
         [
           Ui.className<Message>(
-            'm-0 text-[2.4rem] font-semibold leading-none tabular-nums text-[#f1efe8] sm:text-[3.25rem]',
+            'm-0 w-full min-w-0 max-w-full font-semibold leading-none tabular-nums text-[#f1efe8]',
           ),
+          h.Attribute('style', 'font-size: clamp(2rem, 12cqw, 3.25rem);'),
         ],
         [
           // `data-value` carries the AUTHORITATIVE target string (read by tests +
@@ -947,7 +948,9 @@ export const khalaTokensServedCounter = (
             [
               h.DataAttribute('value', display),
               h.DataAttribute('counter-display', 'khala-tokens-served'),
-              h.Class(motionOdometerClass),
+              h.Class(
+                `${motionOdometerClass} block w-full max-w-full whitespace-nowrap text-center`,
+              ),
             ],
             [display],
           ),
@@ -1076,6 +1079,71 @@ const historyTextFallback = (
   )
 }
 
+const formatHistoryDayLabel = (day: string): string => {
+  const [, month, dayOfMonth] = day.split('-')
+  return month !== undefined && dayOfMonth !== undefined
+    ? `${month}/${dayOfMonth}`
+    : day
+}
+
+const historyDayValueRail = (
+  series: ReadonlyArray<PublicKhalaTokensServedHistoryPoint>,
+  maxTokens: number,
+): Html => {
+  const h = html<Message>()
+
+  return h.ul(
+    [
+      Ui.className<Message>(
+        'm-0 flex max-w-full list-none gap-1.5 overflow-x-auto p-0 pb-1',
+      ),
+    ],
+    series.map(point => {
+      const isPeak = point.tokensServed === maxTokens && maxTokens > 0
+
+      return h.li(
+        [
+          h.DataAttribute('day', point.day),
+          h.DataAttribute('highlight', isPeak ? 'peak' : 'normal'),
+          h.Attribute(
+            'title',
+            `${point.day}: ${formatNumber(point.tokensServed)} tokens`,
+          ),
+          Ui.className<Message>(
+            `grid min-w-[4.85rem] gap-1 border px-2 py-1.5 ${
+              isPeak
+                ? 'border-[#00c853] bg-[#062010]'
+                : 'border-[#1d1d1d] bg-[#050505]'
+            }`,
+          ),
+        ],
+        [
+          h.span(
+            [
+              Ui.className<Message>(
+                isPeak
+                  ? 'text-[0.58rem] uppercase leading-none text-[#9ad6b7]'
+                  : 'text-[0.58rem] uppercase leading-none text-white/35',
+              ),
+            ],
+            [formatHistoryDayLabel(point.day)],
+          ),
+          h.span(
+            [
+              Ui.className<Message>(
+                isPeak
+                  ? 'text-[0.72rem] font-semibold leading-none tabular-nums text-[#f1efe8]'
+                  : 'text-[0.72rem] font-semibold leading-none tabular-nums text-white/70',
+              ),
+            ],
+            [formatCompactNumber(point.tokensServed)],
+          ),
+        ],
+      )
+    }),
+  )
+}
+
 const historyChartBars = (
   series: ReadonlyArray<PublicKhalaTokensServedHistoryPoint>,
 ): Html => {
@@ -1150,6 +1218,7 @@ const historyChartBars = (
           ...bars,
         ],
       ),
+      historyDayValueRail(series, maxTokens),
       historyTextFallback(series),
     ],
   )

@@ -134,6 +134,16 @@ describe('Khala Tokens Served counter (#6227)', () => {
     )
   })
 
+  test('keeps the large live total constrained inside its card', () => {
+    const markup = JSON.stringify(Home.view(homeInputWithTokens(285_022_051)))
+
+    expect(markup).toContain('285,022,051')
+    expect(markup).toContain('[container-type:inline-size]')
+    expect(markup).toContain('font-size: clamp(2rem, 12cqw, 3.25rem);')
+    expect(markup).toContain('whitespace-nowrap')
+    expect(markup).toContain('max-w-full')
+  })
+
   test('renders the label even before the first total loads', () => {
     Scene.scene(
       {
@@ -214,7 +224,15 @@ describe('Khala Tokens Served history chart (#6227)', () => {
       // The visually-hidden fallback lists each day + value, so the data is
       // never locked inside the SVG.
       Scene.expect(Scene.text('2026-06-23: 96,250 tokens')).toExist(),
+      // The visible rail lists each day with its compact value, and the peak
+      // day is highlighted.
+      Scene.expect(Scene.text('06/23')).toExist(),
+      Scene.expect(Scene.text('96.3K')).toExist(),
     )
+
+    const markup = JSON.stringify(Home.view(homeInputWithTokens(1_250_000)))
+    expect(markup).toContain('"data-highlight":"peak"')
+    expect(markup).toContain('"data-day":"2026-06-23"')
   })
 
   test('renders the same per-day curve on public /stats', () => {
