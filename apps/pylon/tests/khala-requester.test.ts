@@ -145,12 +145,37 @@ describe("pylon khala requester body", () => {
     expect(workspace.verificationCommand.commandRef).toStartWith("command.public.pylon_khala.")
   })
 
+  test("accepts public relative verifier paths with invoice-like filename letters", () => {
+    const workspace = buildPylonKhalaGitCheckoutWorkspace({
+      commit: "7ab7cb401803f6e04a6c93b7aa9102405de66419",
+      repository: "OpenAgentsInc/openagents",
+      verificationCommand: "bun test apps/pylon/tests/lnbc-routing.test.ts packages/nip90/src/lntb-normalize.test.ts",
+    })
+
+    expect(workspace.verificationCommand.args).toEqual([
+      "bun",
+      "test",
+      "apps/pylon/tests/lnbc-routing.test.ts",
+      "packages/nip90/src/lntb-normalize.test.ts",
+    ])
+  })
+
   test("rejects credential-shaped verifier values", () => {
     expect(() =>
       buildPylonKhalaGitCheckoutWorkspace({
         commit: "7ab7cb401803f6e04a6c93b7aa9102405de66419",
         repository: "OpenAgentsInc/openagents",
         verificationCommand: "bun test sk-1234567890abcdef1234567890abcdef",
+      }),
+    ).toThrow(/private, payment/)
+  })
+
+  test("still rejects invoice-shaped verifier values", () => {
+    expect(() =>
+      buildPylonKhalaGitCheckoutWorkspace({
+        commit: "7ab7cb401803f6e04a6c93b7aa9102405de66419",
+        repository: "OpenAgentsInc/openagents",
+        verificationCommand: "bun test lnbc1p5exampleinvoicevalue000000",
       }),
     ).toThrow(/private, payment/)
   })

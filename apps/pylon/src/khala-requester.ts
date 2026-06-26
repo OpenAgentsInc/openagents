@@ -88,13 +88,30 @@ const githubFullNamePattern = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/
 const gitCommitShaPattern = /^[a-f0-9]{40}$/i
 const placeholderCommitShaPattern = /^(0{40}|1{40})$/i
 const verificationCommandArgPattern = /^[A-Za-z0-9_./:=@+-]{1,120}$/
+const unsafeVerificationCommandArgPattern =
+  /(^|[._/:=@+-])(access[_-]?token|bearer|cookie|gho_[A-Za-z0-9_]+|ghp_[A-Za-z0-9_]+|mdk[_-]?(access[_-]?token|mnemonic|webhook[_-]?secret)|mnemonic|payment[_-]?(hash|preimage)|preimage|private[_-]?(key|repo)|provider[_-]?(credential|grant|payload|secret|token)|raw[_-]?(command|content|invoice|payment|payload|prompt|repo|runner|state)|secret|seed[_-]?phrase|ssh:|wallet[._-]?(key|material|mnemonic|preimage|secret|seed)|xprv)([._/:=@+-]|$)|\bsk-[A-Za-z0-9_-]{16,}\b|\bln(?:bc|tb|bcrt)[A-Za-z0-9]{20,}\b/i
 
 function stableRef(prefix: string, value: string) {
   return `${prefix}.${createHash("sha256").update(value).digest("hex").slice(0, 24)}`
 }
 
-function cleanRefSegment(value: string) {
-  return value.trim().replace(/[^A-Za-z0-9_-]+/g, "_").slice(0, 80) || "request"
+function khalaPublicSafetyValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(khalaPublicSafetyValue)
+  if (value === null || typeof value !== "object") return value
+  const record = value as Record<string, unknown>
+  if (
+    Array.isArray(record.args) &&
+    typeof record.commandRef === "string" &&
+    Object.keys(record).every((key) => key === "args" || key === "commandRef")
+  ) {
+    return {
+      args: ["validated-public-verify-argv"],
+      commandRef: record.commandRef,
+    }
+  }
+  return Object.fromEntries(
+    Object.entries(record).map(([key, entry]) => [key, khalaPublicSafetyValue(entry)]),
+  )
 }
 
 function githubFullNameFromInput(repository: string | undefined): string {
@@ -112,7 +129,6 @@ function verificationArgsFromInput(command: string | undefined): string[] {
   if (!value) {
     throw new Error("khala request --verify <command> is required for workspace-backed coding requests")
   }
-  assertPublicSafe(value, "khala request verification command")
   const args = value.split(/\s+/).filter(Boolean)
   if (
     args.length === 0 ||
@@ -124,6 +140,9 @@ function verificationArgsFromInput(command: string | undefined): string[] {
     )
   ) {
     throw new Error("khala request --verify must be bounded argv tokens without absolute paths or traversal")
+  }
+  if (args.some((arg) => unsafeVerificationCommandArgPattern.test(arg))) {
+    throw new Error("khala request verification command contains private, payment, credential, wallet, or raw material")
   }
   return args
 }
@@ -168,10 +187,10 @@ export function buildPylonKhalaGitCheckoutWorkspace(input: {
     },
     verificationCommand: {
       args,
-      commandRef: `command.public.pylon_khala.${cleanRefSegment(args.join("_"))}.${stableRef("argv", args.join("\0")).slice("argv.".length)}`,
+      commandRef: `command.public.pylon_khala.verify.${stableRef("argv", args.join("\0")).slice("argv.".length)}`,
     },
   }
-  assertPublicSafe(workspace, "khala request workspace")
+  assertPublicSafe(khalaPublicSafetyValue(workspace), "khala request workspace")
   return workspace
 }
 
@@ -249,7 +268,7 @@ export function buildPylonKhalaChatRequestBody(
       ? {}
       : { targetPylonRef }),
   }
-  assertPublicSafe(body, "khala request body")
+  assertPublicSafe(khalaPublicSafetyValue(body), "khala request body")
   return body
 }
 
