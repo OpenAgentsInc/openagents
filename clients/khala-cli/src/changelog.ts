@@ -4,9 +4,17 @@ export interface KhalaChangelogEntry {
   readonly bullets: ReadonlyArray<string>
 }
 
-export const KHALA_CLI_VERSION = "0.1.6"
+export const KHALA_CLI_VERSION = "0.1.7"
 
 export const KHALA_CHANGELOG: ReadonlyArray<KhalaChangelogEntry> = [
+  {
+    version: "0.1.7",
+    releasedAt: "2026-06-26T17:36:47.000Z",
+    bullets: [
+      "Published the finalized fallback and streaming release with an accurate release timestamp.",
+      "Keeps GLM -> OpenRouter -> Gemini -> Fireworks fallback, restored streaming, and cleaner tokens output.",
+    ],
+  },
   {
     version: "0.1.6",
     releasedAt: "2026-06-26T17:24:07.000Z",
