@@ -387,6 +387,8 @@ import {
   glmPoolHeartbeatRoutingStateOracle,
   runScheduledGlmPoolHeartbeatForD1,
 } from './inference/glm-pool-heartbeat'
+import { handleOperatorHarborFullTraceArchivesApi } from './inference/gym/harbor-full-trace-archive-routes'
+import { makeD1R2HarborFullTraceArchiveStore } from './inference/gym/harbor-full-trace-archive-store'
 import {
   handleOperatorGymRunProgressApi,
   handlePublicGymRunProgressApi,
@@ -697,6 +699,11 @@ import {
   recordPylonCapacityFunnelSnapshots,
 } from './pylon-capacity-funnel-live-routes'
 import {
+  PYLON_CODEX_TURN_INGEST_PATH,
+  makeD1R2PylonCodexRawEventStore,
+  makePylonCodexTurnIngestRoutes,
+} from './pylon-codex-turn-ingest-routes'
+import {
   PylonLargestDecentralizedTrainingClaimEndpoint,
   handlePylonLargestDecentralizedTrainingClaimStatusApi,
 } from './pylon-largest-decentralized-training-claim-status-routes'
@@ -773,6 +780,10 @@ import { makeSiteRuntimeRoutes } from './site-runtime-routes'
 import { makeSitesOrchestrationRoutes } from './sites-orchestration-routes'
 import { readBillingCreditPackages } from './stripe-billing'
 import { makeD1StripeCheckoutReceiptStore } from './stripe-checkout-receipts'
+import {
+  decideHighFrequencyBroadcast,
+  highFrequencyBroadcastLastAtStorageKey,
+} from './sync-broadcast-throttle'
 import {
   type SyncNotificationContext,
   notifyAgentRunSyncScopes,
@@ -859,6 +870,7 @@ import {
   type AutopilotTokenLeaderboards,
   TokenUsageLeaderboards,
 } from './token-usage'
+import { makeD1TokenUsageLedger } from './token-usage-ledger'
 import { makeTokenUsageLedgerRoutes } from './token-usage-ledger-routes'
 import {
   makeD1TraceStore,
@@ -6881,6 +6893,19 @@ const traceStoreRoutes = makeTraceStoreRoutes({
   requireBrowserSession,
 })
 
+const pylonCodexTurnIngestRoutes = makePylonCodexTurnIngestRoutes<Env>({
+  agentStore: env => makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+  ledger: env => makeD1TokenUsageLedger(openAgentsDatabase(env)),
+  pylonStore: env => makeD1PylonApiStore(openAgentsDatabase(env)),
+  rawEventStore: env =>
+    makeD1R2PylonCodexRawEventStore(openAgentsDatabase(env), env.ARTIFACTS),
+  publishDelta: (env, delta) =>
+    Effect.promise(() =>
+      publishKhalaTokensServedDelta(env, buildKhalaTokensServedDelta(delta)),
+    ),
+  traceStore: env => makeD1TraceStore(openAgentsDatabase(env)),
+})
+
 const hostedMdkClientForEnv = (
   env: WorkerBindings & OpenAgentsWorkerConfigEnv,
 ) => {
@@ -9965,6 +9990,21 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       }),
   },
   {
+    // Operator-only Harbor full trace archive (#6253). Stores raw Harbor job
+    // tarballs in private R2 with D1 metadata. Unlike `/api/traces`, this is
+    // NOT a public-safe ATIF projection and never appears on public `/gym`.
+    path: '/api/operator/gym/full-trace-archives',
+    handler: (request, env) =>
+      handleOperatorHarborFullTraceArchivesApi(request, {
+        requireAdminApiToken: adminRequest =>
+          requireAdminApiToken(adminRequest, env),
+        store: makeD1R2HarborFullTraceArchiveStore(
+          openAgentsDatabase(env),
+          env.ARTIFACTS,
+        ),
+      }),
+  },
+  {
     path: '/api/operator/customer-one-cohort/rows',
     handler: (request, env) =>
       handleOperatorCustomerOneCohortRowsApi(request, {
@@ -10294,6 +10334,11 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/public/khala-tokens-served/history',
     handler: (request, env) =>
       handlePublicKhalaTokensServedHistoryApi(request, env),
+  },
+  {
+    path: PYLON_CODEX_TURN_INGEST_PATH,
+    handler: (request, env) =>
+      pylonCodexTurnIngestRoutes.handlePylonCodexTurnIngestApi(request, env),
   },
   {
     path: '/api/public/pylon-capacity-funnel',
@@ -11102,6 +11147,16 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       // the flag off — both seams are simply not wired.
       const freeTierEnabled = isFreeTierEnabled(env.INFERENCE_FREE_TIER_ENABLED)
       const freeTierQuota = resolveFreeTierQuota(env)
+      // INTERNAL/OPS ACCOUNT ALLOWLIST (#6232 / #6298). Parsed ONCE here so the
+      // demand-attribution rule, the free-tier balance-gate quota exemption, and
+      // the free-tier metering-wrapper quota exemption all read the SAME set.
+      // Internal testing accounts on this allowlist are quota-EXEMPT on the free
+      // Khala lane (never hit the per-key daily quota -> never 402 on quota
+      // grounds); external free keys keep the unchanged daily limit. Empty
+      // (unset/blank) => pure no-op.
+      const internalAccountRefs = parseInternalAccountRefs(
+        env.INFERENCE_INTERNAL_ACCOUNT_REFS,
+      )
       const laneArming = resolveSupplyLaneArming(env)
       return handleChatCompletions(request, {
         authenticate: async authRequest => {
@@ -11168,6 +11223,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
                 ? withFreeTierKhala(innerHook, {
                     db: openAgentsDatabase(env),
                     quota: freeTierQuota,
+                    internalAccountRefs,
                   })
                 : innerHook)(
               withReferralAccrual(
@@ -11204,9 +11260,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         // from the worker var; traffic from a listed account is auto-classified
         // `demand_kind=internal` (header-independent), keeping our own dogfood
         // out of the external trace corpus + demand ledger. Empty => no-op.
-        internalAccountRefs: parseInternalAccountRefs(
-          env.INFERENCE_INTERNAL_ACCOUNT_REFS,
-        ),
+        internalAccountRefs,
         codingDelegation: {
           agentStore: makeD1AgentRegistrationStore(openAgentsDatabase(env)),
           pylonStore: makeD1PylonApiStore(openAgentsDatabase(env)),
@@ -11337,6 +11391,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
               checkFreeTier: makeFreeTierGate({
                 db: openAgentsDatabase(env),
                 quota: freeTierQuota,
+                internalAccountRefs,
               }),
             }
           : {}),
@@ -12258,27 +12313,12 @@ export class DurableInferenceStreamObject {
   }
 }
 
-// Minimum spacing between broadcasts on the high-frequency public tokens-served
-// scope (openagents #6324): cap pushes to ≤3/sec. During the GLM surge the
-// counter scope received one poke per completion (~42/sec); coalescing trailing
-// pokes into one broadcast every ~333ms holds the client frame rate at ≤3/sec
-// while the count-up animation still interpolates smoothly between updates. The
-// authoritative running total rides every event + the summary, so a coalesced
-// (dropped-intermediate) poke loses nothing: the next broadcast carries the
-// latest total. Other scopes are unaffected — they broadcast immediately.
-const HIGH_FREQUENCY_BROADCAST_MIN_INTERVAL_MS = 334
-const isThrottledBroadcastScope = (scope: string): boolean =>
-  scope.startsWith('public-khala-tokens-served:')
-
+// High-frequency public tokens-served broadcast throttle (openagents #6324).
+// The throttle DECISION + interval + scope predicate now live in the pure,
+// unit-tested module `./sync-broadcast-throttle`. This DO only persists the
+// durable `lastBroadcastAt` and performs the fanout. See that module for the
+// hibernation/freeze-then-jump root cause and the leading-edge fix rationale.
 export class SyncRoomDurableObject {
-  // Per-scope last-broadcast wall-clock (ms) for the throttled high-frequency
-  // scopes, kept in DO memory. Each scope maps to its own DO instance, so this is
-  // effectively a single timestamp for the throttled khala scope.
-  private lastBroadcastAtMs = new Map<string, number>()
-  // Scopes with a coalesced trailing broadcast already scheduled via the alarm,
-  // so a burst of pokes collapses to ONE trailing broadcast.
-  private pendingTrailingScopes = new Set<string>()
-
   constructor(
     private readonly state: DurableObjectState,
     private readonly env: Env,
@@ -12326,7 +12366,6 @@ export class SyncRoomDurableObject {
   }
 
   private async broadcastScope(scope: string): Promise<void> {
-    this.lastBroadcastAtMs.set(scope, currentEpochMillis())
     await Promise.all(
       this.state.getWebSockets(scope).map(async socket => {
         const attachment = syncSocketAttachment(socket.deserializeAttachment())
@@ -12336,39 +12375,38 @@ export class SyncRoomDurableObject {
     )
   }
 
-  // Broadcast `scope` now if it is outside the throttle window; otherwise coalesce
-  // into a single trailing broadcast via the DO alarm so a burst of pokes on the
-  // high-frequency public counter scope collapses to ≤3 broadcasts/sec
-  // (openagents #6324). Non-throttled scopes always broadcast immediately.
+  // Hibernation-safe, burst-safe leading-edge throttle for the high-frequency
+  // public tokens-served scope (openagents #6324). The decision is made by the
+  // pure `decideHighFrequencyBroadcast` helper against a DURABLE `lastBroadcastAt`
+  // read from `state.storage`, so it survives DO hibernation between hibernatable
+  // WebSocket events and never depends on a sub-second alarm. Non-throttled scopes
+  // always broadcast immediately. A skipped intermediate poke loses nothing: the
+  // authoritative running total rides every event + the summary row, so the next
+  // poke ~334ms later carries the latest total — the counter never freezes-then-
+  // jumps, it advances in steady ≤3/sec steps.
   private async notifyScopeThrottled(scope: string): Promise<void> {
-    if (!isThrottledBroadcastScope(scope)) {
-      await this.broadcastScope(scope)
+    const storageKey = highFrequencyBroadcastLastAtStorageKey(scope)
+    const lastBroadcastAtMs =
+      (await this.state.storage.get<number>(storageKey)) ?? null
+
+    const decision = decideHighFrequencyBroadcast({
+      scope,
+      nowMs: currentEpochMillis(),
+      lastBroadcastAtMs,
+    })
+
+    if (!decision.broadcast) {
       return
     }
 
-    const now = currentEpochMillis()
-    const lastAt = this.lastBroadcastAtMs.get(scope) ?? 0
-    const sinceLast = now - lastAt
-
-    if (sinceLast >= HIGH_FREQUENCY_BROADCAST_MIN_INTERVAL_MS) {
-      await this.broadcastScope(scope)
-      return
+    if (decision.persistLastBroadcastAtMs !== undefined) {
+      await this.state.storage.put(
+        storageKey,
+        decision.persistLastBroadcastAtMs,
+      )
     }
 
-    // Inside the window: schedule (once) a trailing broadcast at the next slot.
-    this.pendingTrailingScopes.add(scope)
-    const fireAt = lastAt + HIGH_FREQUENCY_BROADCAST_MIN_INTERVAL_MS
-    const existing = await this.state.storage.getAlarm()
-    if (existing === null || existing > fireAt) {
-      await this.state.storage.setAlarm(Math.max(fireAt, now + 1))
-    }
-  }
-
-  async alarm(): Promise<void> {
-    const scopes = [...this.pendingTrailingScopes]
-    this.pendingTrailingScopes.clear()
-
-    await Promise.all(scopes.map(scope => this.broadcastScope(scope)))
+    await this.broadcastScope(scope)
   }
 
   async fetch(request: Request): Promise<Response> {

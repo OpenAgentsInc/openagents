@@ -64,6 +64,18 @@ export type CodexAgentProbeOptions = {
   config?: CodexAgentConfig
   /** Test injection for the owner's `codex login` state; presence only. */
   codexCliLoginPresent?: boolean
+  /**
+   * Per-account isolated Codex homes connected through
+   * `pylon accounts connect codex` (e.g. `<pylon home>/accounts/codex/<ref>`).
+   * The default `~/.codex` login is NOT the only valid local Codex credential:
+   * a Pylon that connected a Codex account into an isolated home (the
+   * `--openagents-link` flow, which never touches `~/.codex`) is just as
+   * Codex-capable. The probe treats a non-empty `auth.json` in ANY of these
+   * homes as a login source, so `provider go-online` advertises codex capacity
+   * even when `~/.codex` is empty (openagents #6331). Presence only — the auth
+   * files and home paths are never read into or projected from probe output.
+   */
+  codexAccountHomes?: ReadonlyArray<string>
 }
 
 const SUPPORTED_PLATFORMS = new Set(["darwin", "linux"])
@@ -79,12 +91,38 @@ export async function detectCodexCliLogin(
   const codexHome = (env.CODEX_HOME ?? "").trim().length > 0
     ? (env.CODEX_HOME as string)
     : join(homedir(), ".codex")
+  return codexHomeHasLogin(codexHome)
+}
+
+/**
+ * Presence check for a non-empty `auth.json` in a specific Codex home. The
+ * file is never read; only its presence and non-zero size are observed.
+ */
+async function codexHomeHasLogin(home: string): Promise<boolean> {
   try {
-    const info = await stat(join(codexHome, "auth.json"))
+    const info = await stat(join(home, "auth.json"))
     return info.isFile() && info.size > 0
   } catch {
     return false
   }
+}
+
+/**
+ * Detects whether ANY connected per-account Codex home carries a login
+ * (openagents #6331). `pylon accounts connect codex --openagents-link` writes
+ * its `auth.json` into an isolated per-account home, never `~/.codex`, so the
+ * default-home probe above misses it. Presence only — never reads credentials
+ * and never returns a home path.
+ */
+export async function detectCodexAccountLogin(
+  homes: ReadonlyArray<string>,
+): Promise<boolean> {
+  for (const home of homes) {
+    const trimmed = home.trim()
+    if (trimmed.length === 0) continue
+    if (await codexHomeHasLogin(trimmed)) return true
+  }
+  return false
 }
 
 /**
@@ -95,6 +133,7 @@ export async function detectCodexCliLogin(
 export function codexAgentCredentialSource(
   env: Record<string, string | undefined>,
   codexCliLoginPresent: boolean,
+  codexAccountLoginPresent = false,
 ): string | null {
   if ((env.CODEX_API_KEY ?? "").trim().length > 0) {
     return "credential.source.codex_agent.codex_api_key"
@@ -104,6 +143,12 @@ export function codexAgentCredentialSource(
   }
   if (codexCliLoginPresent) {
     return "credential.source.codex_agent.codex_cli_login"
+  }
+  // A Codex account connected into an isolated per-account home (the
+  // `--openagents-link` flow, which never touches `~/.codex`) is a valid local
+  // Codex login source even when the default home is empty (openagents #6331).
+  if (codexAccountLoginPresent) {
+    return "credential.source.codex_agent.pylon_account_login"
   }
   return null
 }
@@ -135,7 +180,15 @@ export async function probeCodexAgentReadiness(
   const platform = options.platform ?? process.platform
   const enabled = options.config?.enabled !== false
   const codexCliLoginPresent = options.codexCliLoginPresent ?? (await detectCodexCliLogin(env))
-  const credentialSourceRef = codexAgentCredentialSource(env, codexCliLoginPresent)
+  const codexAccountLoginPresent =
+    options.codexAccountHomes === undefined
+      ? false
+      : await detectCodexAccountLogin(options.codexAccountHomes)
+  const credentialSourceRef = codexAgentCredentialSource(
+    env,
+    codexCliLoginPresent,
+    codexAccountLoginPresent,
+  )
 
   if (!enabled) {
     return readiness("disabled_by_config", {

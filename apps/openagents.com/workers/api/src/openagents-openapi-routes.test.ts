@@ -166,25 +166,16 @@ describe('OpenAgents OpenAPI route', () => {
       ).operationId,
     ).toBe('getPublicTrainingVerificationChallenge')
     expect(
-      operationAt(
-        body,
-        '/api/public/training/full-pipeline-program',
-        'get',
-      ).operationId,
+      operationAt(body, '/api/public/training/full-pipeline-program', 'get')
+        .operationId,
     ).toBe('getTrainingFullPipelineProgramStatus')
     expect(
-      operationAt(
-        body,
-        '/api/public/training/marathon-operations',
-        'get',
-      ).operationId,
+      operationAt(body, '/api/public/training/marathon-operations', 'get')
+        .operationId,
     ).toBe('getTrainingMarathonOperationsStatus')
     expect(
-      operationAt(
-        body,
-        '/api/public/training/model-ladder-rungs',
-        'get',
-      ).operationId,
+      operationAt(body, '/api/public/training/model-ladder-rungs', 'get')
+        .operationId,
     ).toBe('getTrainingModelLadderRungsStatus')
     expect(
       operationAt(
@@ -201,18 +192,12 @@ describe('OpenAgents OpenAPI route', () => {
       ).operationId,
     ).toBe('getPylonLargestDecentralizedTrainingClaimStatus')
     expect(
-      operationAt(
-        body,
-        '/api/public/training/public-gradient-windows',
-        'get',
-      ).operationId,
+      operationAt(body, '/api/public/training/public-gradient-windows', 'get')
+        .operationId,
     ).toBe('getTrainingPublicGradientWindowsStatus')
     expect(
-      operationAt(
-        body,
-        '/api/public/training/ablation-derisking-ledger',
-        'get',
-      ).operationId,
+      operationAt(body, '/api/public/training/ablation-derisking-ledger', 'get')
+        .operationId,
     ).toBe('getTrainingAblationDeriskingLedger')
     expect(
       operationAt(
@@ -269,7 +254,14 @@ describe('OpenAgents OpenAPI route', () => {
     expect(
       activityTimelineOperation.parameters?.map(parameter => parameter.name),
     ).toEqual(
-      expect.arrayContaining(['since', 'from', 'to', 'limit', 'kind', 'source']),
+      expect.arrayContaining([
+        'since',
+        'from',
+        'to',
+        'limit',
+        'kind',
+        'source',
+      ]),
     )
     const activityTimelineStreamOperation = operationAt(
       body,
@@ -288,16 +280,24 @@ describe('OpenAgents OpenAPI route', () => {
     >
     expect(streamResponses['200']?.content?.['text/event-stream']).toBeDefined()
     expect(
-      activityTimelineStreamOperation.parameters?.map(parameter => parameter.name),
+      activityTimelineStreamOperation.parameters?.map(
+        parameter => parameter.name,
+      ),
     ).toEqual(
-      expect.arrayContaining(['since', 'from', 'to', 'limit', 'kind', 'source']),
+      expect.arrayContaining([
+        'since',
+        'from',
+        'to',
+        'limit',
+        'kind',
+        'source',
+      ]),
     )
     expect(operationAt(body, '/api/training/evals/a5', 'get').operationId).toBe(
       'readTrainingA5EvalDashboard',
     )
     expect(
-      operationAt(body, '/api/hygiene-lane/debt-receipts', 'post')
-        .operationId,
+      operationAt(body, '/api/hygiene-lane/debt-receipts', 'post').operationId,
     ).toBe('createHygieneLaneDebtReceipt')
     expect(operationAt(body, '/api/agents/register', 'post').operationId).toBe(
       'registerProgrammaticAgent',
@@ -668,18 +668,12 @@ describe('OpenAgents OpenAPI route', () => {
       ).security,
     ).toEqual([])
     expect(
-      operationAt(
-        body,
-        '/api/public/training/marathon-operations',
-        'get',
-      ).security,
+      operationAt(body, '/api/public/training/marathon-operations', 'get')
+        .security,
     ).toEqual([])
     expect(
-      operationAt(
-        body,
-        '/api/public/training/model-ladder-rungs',
-        'get',
-      ).security,
+      operationAt(body, '/api/public/training/model-ladder-rungs', 'get')
+        .security,
     ).toEqual([])
     expect(
       operationAt(
@@ -696,11 +690,8 @@ describe('OpenAgents OpenAPI route', () => {
       ).security,
     ).toEqual([])
     expect(
-      operationAt(
-        body,
-        '/api/public/training/public-gradient-windows',
-        'get',
-      ).security,
+      operationAt(body, '/api/public/training/public-gradient-windows', 'get')
+        .security,
     ).toEqual([])
     expect(
       operationAt(
@@ -725,9 +716,9 @@ describe('OpenAgents OpenAPI route', () => {
         'get',
       ).security,
     ).toEqual([])
-    expect(operationAt(body, '/api/public/proof-replays', 'get').security).toEqual(
-      [],
-    )
+    expect(
+      operationAt(body, '/api/public/proof-replays', 'get').security,
+    ).toEqual([])
     expect(
       operationAt(body, '/api/public/proof-replays', 'get').operationId,
     ).toBe('getPublicProofReplayBundle')
@@ -1101,9 +1092,8 @@ describe('OpenAgents OpenAPI route', () => {
       throw new Error('Missing HygieneDebtReceiptCreateRequest.sourceRefs')
     }
     expect(
-      (
-        hygieneDebtReceiptSourceRefs.items as Readonly<Record<string, unknown>>
-      ).maxLength,
+      (hygieneDebtReceiptSourceRefs.items as Readonly<Record<string, unknown>>)
+        .maxLength,
     ).toBe(261)
     expect(hygieneDebtReceiptRequest.payableSats).toEqual(
       expect.objectContaining({ minimum: 1 }),
@@ -1378,6 +1368,12 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   '/api/omni/operator/fleet',
   '/api/omni/operator/team-chat/messages',
   // Provider-account credential plumbing (owner-bound; never public contract surface):
+  '/api/pylon/auth/openagents/device/start',
+  '/api/pylon/auth/openagents/device/verify',
+  '/api/pylon/auth/openagents/device/{param}',
+  '/api/pylon/provider-accounts/chatgpt-codex/device-login/start',
+  '/api/pylon/provider-accounts/chatgpt-codex/device-login/{param}',
+  '/api/pylon/provider-accounts/chatgpt-codex/local-auth/import',
   '/api/provider-accounts',
   '/api/provider-accounts/anthropic/connect',
   '/api/provider-accounts/chatgpt-codex/device-login/start',

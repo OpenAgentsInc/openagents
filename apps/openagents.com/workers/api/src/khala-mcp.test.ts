@@ -268,20 +268,10 @@ describe('Khala MCP catalog', () => {
       },
     )
 
-    expect(recordedTokens).toHaveLength(1)
-    expect(recordedTokens[0]).toMatchObject({
-      accountRef: 'agent:agent_owner',
-      adapterId: 'pylon-codex-own-capacity',
-      requestAttribution: {
-        demandKind: 'own_capacity',
-        demandSource: 'khala_mcp_request',
-      },
-      requestId: 'chatcmpl_mcp',
-      requestedModel: 'openagents/khala',
-      servedModel: 'openagents/pylon-codex',
-      streamed: true,
-    })
-    expect(recordedTokens[0]?.usage.totalTokens).toBeGreaterThan(0)
+    // #6325: MCP delegation must not meter a handoff estimate. The local
+    // Pylon/Codex executor records exact downstream SDK turn usage through the
+    // registered-agent ingest route after Codex actually runs.
+    expect(recordedTokens).toHaveLength(0)
     expect(outcome.isError).toBeFalsy()
     expect(outcome.structuredContent).toMatchObject({
       assignmentRef: 'assignment.public.khala_coding.assignment_id',
@@ -321,6 +311,37 @@ describe('Khala MCP catalog', () => {
       ok: false,
       requestedPylonRef: 'pylon.other.codex',
       statusCode: 403,
+    })
+  })
+
+  test('khala.request returns typed gate refusal when linked Pylon capacity is consumed by an active assignment', async () => {
+    const recordedTokens: Array<ServedTokensRecorderInput> = []
+    const outcome = await catalogFor({
+      assignments: [
+        assignment({
+          assignmentRef: 'assignment.public.khala_coding.stale_active_slot',
+          id: 'pylon_api_assignment_stale_active_slot',
+          updatedAt: '2026-06-25T11:00:00.000Z',
+        }),
+      ],
+      recordedTokens,
+    }).callTool(env, request, principal, 'khala.request', {
+      prompt: 'Run the public issue task',
+      targetPylonRef: 'pylon.owner.codex',
+      workflow: 'codex_agent_task',
+    })
+
+    expect(outcome.isError).toBe(true)
+    expect(recordedTokens).toHaveLength(0)
+    expect(outcome.structuredContent).toMatchObject({
+      error: 'target_pylon_unavailable',
+      evidenceRefs: expect.arrayContaining([
+        'evidence.khala_coding.target_pylon_ref.dispatch_gate_blocked',
+        'blocker.public.pylon_dispatch.duplicate_active_assignment',
+      ]),
+      ok: false,
+      requestedPylonRef: 'pylon.owner.codex',
+      statusCode: 409,
     })
   })
 

@@ -469,8 +469,10 @@ export type DispatchHedgingPolicy = Readonly<{
 
 export type DispatchFailureTelemetryEvent = Readonly<{
   adapterId: string
+  classifier: DispatchFailureTelemetryClassifier
   stage:
     | 'adapter_error'
+    | 'fallback'
     | 'health_quarantine'
     | 'hedged'
     | 'load_shed'
@@ -483,6 +485,24 @@ export type DispatchFailureTelemetryEvent = Readonly<{
 export type DispatchFailureTelemetry = (
   event: DispatchFailureTelemetryEvent,
 ) => void
+
+export type DispatchFailureTelemetryClassifier =
+  | 'empty_content'
+  | 'fallback'
+  | 'invalid_tool'
+  | 'provider_error'
+  | 'rate_limited_429'
+
+export type DispatchFailureTelemetrySnapshot = Readonly<{
+  counts: Readonly<Record<DispatchFailureTelemetryClassifier, number>>
+  events: ReadonlyArray<DispatchFailureTelemetryEvent>
+  windowMs: number
+}>
+
+export type BoundedDispatchFailureTelemetry = Readonly<{
+  record: DispatchFailureTelemetry
+  snapshot: (nowMs?: number) => DispatchFailureTelemetrySnapshot
+}>
 
 export type DispatchDeps = Readonly<{
   registry: InferenceProviderRegistry
@@ -512,9 +532,12 @@ export type DispatchRouteMetadata = Readonly<{
   primaryAdapterId: string
   servedAdapterId: string
   fallbackReason: string | null
+  laneHealth?: ProviderLaneHealth | undefined
   providerHealthScore?: number | undefined
   region?: string | undefined
   fallbackAdapterRouteMetadata?: InferenceAdapterRouteMetadata | undefined
+  ttftP99Ms?: number | undefined
+  warmState?: ProviderWarmState | undefined
 }>
 
 export type DispatchWithOverflowResult<A> = Readonly<{
@@ -532,11 +555,96 @@ const normalizeProviderHealthScore = (
 const normalizeRegion = (value: string | undefined): string | undefined =>
   value === undefined || value.trim() === '' ? undefined : value.trim()
 
+const normalizeTtftP99Ms = (value: number | undefined): number | undefined =>
+  value === undefined || !Number.isFinite(value) || value < 0
+    ? undefined
+    : value
+
 const fallbackReasonFor = (error: InferenceAdapterError): string =>
   error.kind ??
   (error.httpStatus === undefined
     ? 'retryable_provider_error'
     : `http_${error.httpStatus}`)
+
+export const classifyDispatchFailureTelemetry = (
+  input: Readonly<{
+    httpStatus?: number | undefined
+    kind: string
+    stage: DispatchFailureTelemetryEvent['stage']
+  }>,
+): DispatchFailureTelemetryClassifier => {
+  if (input.stage === 'fallback' || input.stage === 'hedged') {
+    return 'fallback'
+  }
+  if (input.httpStatus === 429 || input.kind === 'rate_limited') {
+    return 'rate_limited_429'
+  }
+  if (input.kind === 'empty_assistant_content') {
+    return 'empty_content'
+  }
+  if (
+    input.kind === 'tool_required_no_tool_calls' ||
+    input.kind === 'invalid_tool' ||
+    input.kind.startsWith('invalid_tool_')
+  ) {
+    return 'invalid_tool'
+  }
+  return 'provider_error'
+}
+
+const emptyTelemetryCounts = (): Record<
+  DispatchFailureTelemetryClassifier,
+  number
+> => ({
+  empty_content: 0,
+  fallback: 0,
+  invalid_tool: 0,
+  provider_error: 0,
+  rate_limited_429: 0,
+})
+
+export const makeBoundedDispatchFailureTelemetry = (
+  input: Readonly<{
+    maxEvents?: number | undefined
+    nowMs: () => number
+    windowMs: number
+  }>,
+): BoundedDispatchFailureTelemetry => {
+  const maxEvents =
+    input.maxEvents === undefined ||
+    !Number.isFinite(input.maxEvents) ||
+    input.maxEvents <= 0
+      ? 128
+      : Math.floor(input.maxEvents)
+  const now = input.nowMs
+  let entries: Array<
+    Readonly<{ atMs: number; event: DispatchFailureTelemetryEvent }>
+  > = []
+  const prune = (nowMs: number): void => {
+    const floor = nowMs - input.windowMs
+    const freshEntries = entries.filter(entry => entry.atMs >= floor)
+    entries = freshEntries.slice(Math.max(0, freshEntries.length - maxEvents))
+  }
+  return {
+    record: event => {
+      entries.push({ atMs: now(), event })
+      prune(now())
+    },
+    snapshot: nowMs => {
+      const effectiveNowMs = nowMs ?? now()
+      prune(effectiveNowMs)
+      const counts = emptyTelemetryCounts()
+      for (const entry of entries) {
+        counts[entry.event.classifier] += 1
+      }
+      return {
+        counts,
+        events: entries.map(entry => entry.event),
+        windowMs: input.windowMs,
+      }
+    },
+  }
+}
 
 const isLaneHealthEligible = (
   signals: ProviderRoutingSignals | undefined,
@@ -579,13 +687,21 @@ const recordFailureTelemetry = (
 const telemetryForError = (
   error: InferenceAdapterError,
   stage: DispatchFailureTelemetryEvent['stage'],
-): DispatchFailureTelemetryEvent => ({
-  adapterId: error.adapterId,
-  httpStatus: error.httpStatus,
-  kind: fallbackReasonFor(error),
-  retryable: error.retryable,
-  stage,
-})
+): DispatchFailureTelemetryEvent => {
+  const kind = fallbackReasonFor(error)
+  return {
+    adapterId: error.adapterId,
+    classifier: classifyDispatchFailureTelemetry({
+      httpStatus: error.httpStatus,
+      kind,
+      stage,
+    }),
+    httpStatus: error.httpStatus,
+    kind,
+    retryable: error.retryable,
+    stage,
+  }
+}
 
 const shouldHedgeToWarmLane = (
   input: Readonly<{
@@ -704,6 +820,7 @@ export const dispatchWithOverflowWithMetadata = <A>(
       }
       recordFailureTelemetry(deps.failureTelemetry, {
         adapterId: id,
+        classifier: 'provider_error',
         kind: signals?.laneHealth ?? 'unhealthy',
         retryable: true,
         stage: 'health_quarantine',
@@ -742,6 +859,7 @@ export const dispatchWithOverflowWithMetadata = <A>(
       fallbackReason = 'hedged_ttft_p99_breach'
       recordFailureTelemetry(deps.failureTelemetry, {
         adapterId: primaryAdapterId,
+        classifier: 'fallback',
         kind: 'hedged_ttft_p99_breach',
         retryable: true,
         stage: 'hedged',
@@ -788,18 +906,35 @@ export const dispatchWithOverflowWithMetadata = <A>(
           signals?.providerHealthScore,
         )
         const region = normalizeRegion(signals?.region)
+        const ttftP99Ms = normalizeTtftP99Ms(signals?.ttftP99Ms)
+        if (fallbackReason !== null) {
+          recordFailureTelemetry(deps.failureTelemetry, {
+            adapterId: adapter.id,
+            classifier: 'fallback',
+            kind: fallbackReason,
+            retryable: true,
+            stage: 'fallback',
+          })
+        }
         return {
           route: {
             fallbackReason,
             ...(fallbackAdapterRouteMetadata === undefined
               ? {}
               : { fallbackAdapterRouteMetadata }),
+            ...(signals?.laneHealth === undefined
+              ? {}
+              : { laneHealth: signals.laneHealth }),
             primaryAdapterId,
             servedAdapterId: adapter.id,
             ...(providerHealthScore === undefined
               ? {}
               : { providerHealthScore }),
             ...(region === undefined ? {} : { region }),
+            ...(ttftP99Ms === undefined ? {} : { ttftP99Ms }),
+            ...(signals?.warmState === undefined
+              ? {}
+              : { warmState: signals.warmState }),
           },
           value: outcome.value,
         }

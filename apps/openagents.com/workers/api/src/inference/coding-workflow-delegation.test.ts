@@ -1,9 +1,10 @@
 import { describe, expect, test } from 'vitest'
 
-import type {
-  PylonApiAssignmentRecord,
-  PylonApiRegistrationRecord,
-  PylonApiStore,
+import {
+  type PylonApiAssignmentRecord,
+  type PylonApiRegistrationRecord,
+  type PylonApiStore,
+  PylonApiStoreError,
 } from '../pylon-api'
 import {
   type CodingDelegationAssignmentResult,
@@ -419,6 +420,44 @@ describe('coding workflow delegation', () => {
     expect(result).toBeNull()
   })
 
+  test('returns typed refusal when a targeted linked Pylon is blocked by active assignment capacity', async () => {
+    const result = await delegateCodingWorkflow({
+      classification,
+      linkedAgents: [linkedOwner],
+      makeId: () => 'id1',
+      nowIso,
+      pylonStore: makeStore({
+        activeAssignments: [
+          assignment({
+            assignmentRef: 'assignment.public.test.stale_active_slot',
+            id: 'pylon_api_assignment_stale_active_slot',
+            updatedAt: '2026-06-25T11:00:00.000Z',
+          }),
+        ],
+        registrations: [registration()],
+      }),
+      rawBody: {
+        openagents: {
+          coding: {
+            targetPylonRef: 'pylon.owner.codex',
+          },
+        },
+      },
+      requestId: 'chatcmpl_coding_target_capacity_full',
+    })
+
+    expect(result).toMatchObject({
+      error: 'target_pylon_unavailable',
+      evidenceRefs: expect.arrayContaining([
+        'evidence.khala_coding.target_pylon_ref.dispatch_gate_blocked',
+        'blocker.public.pylon_dispatch.duplicate_active_assignment',
+      ]),
+      kind: 'rejected',
+      requestedPylonRef: 'pylon.owner.codex',
+      statusCode: 409,
+    })
+  })
+
   test('does not treat submitted closeout evidence as active Codex capacity', async () => {
     const result = await delegateCodingWorkflow({
       classification,
@@ -451,5 +490,46 @@ describe('coding workflow delegation', () => {
       throw new Error('expected delegated coding assignment')
     }
     expect(result.pylon.pylonRef).toBe('pylon.owner.codex')
+  })
+
+  // #6331: a Pylon-store read failure inside the gate must surface as a clean,
+  // diagnosable 503 rejection — never an unhandled throw that the chat route
+  // turns into an opaque `500 internal_server_error`.
+  test('returns a 503 store-unavailable rejection (never throws) when the store fails', async () => {
+    const failingStore = {
+      ...makeStore({ registrations: [registration()] }),
+      listRegistrationsForOwnerAgentUserIds: async () => {
+        throw new PylonApiStoreError({
+          kind: 'storage_error',
+          reason: 'D1 read failed',
+        })
+      },
+      listRegistrations: async () => {
+        throw new PylonApiStoreError({
+          kind: 'storage_error',
+          reason: 'D1 read failed',
+        })
+      },
+    } satisfies PylonApiStore
+
+    const result = await delegateCodingWorkflow({
+      classification,
+      linkedAgents: [linkedOwner],
+      makeId: () => 'id1',
+      nowIso,
+      pylonStore: failingStore,
+      rawBody: {
+        openagents: { coding: { targetPylonRef: 'pylon.owner.codex' } },
+      },
+      requestId: 'chatcmpl_coding_store_fail',
+    })
+
+    expect(result?.kind).toBe('rejected')
+    if (result?.kind !== 'rejected') {
+      throw new Error('expected a rejection, not a throw or assignment')
+    }
+    expect(result.error).toBe('coding_delegation_store_unavailable')
+    expect(result.statusCode).toBe(503)
+    expect(result.requestedPylonRef).toBe('pylon.owner.codex')
   })
 })

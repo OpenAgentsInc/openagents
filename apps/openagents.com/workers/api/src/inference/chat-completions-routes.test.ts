@@ -148,15 +148,42 @@ const codingPylonRegistration = (
   ...overrides,
 })
 
+const codingPylonAssignment = (
+  overrides: Partial<PylonApiAssignmentRecord> = {},
+): PylonApiAssignmentRecord => ({
+  acceptanceCriteriaRefs: [],
+  acceptedWorkRefs: [],
+  artifactRefs: [],
+  assignmentRef: 'assignment.public.test.active_slot',
+  closeoutRefs: [],
+  codingAssignment: null,
+  createdAt: '2026-06-25T12:00:00.000Z',
+  id: 'pylon_api_assignment_active_slot',
+  idempotencyKeyHash: 'hash.active_slot',
+  jobKind: 'codex_agent_task',
+  leaseExpiresAt: '1970-01-01T00:10:00.000Z',
+  ownerAgentUserId: 'agent_owner',
+  proofRefs: [],
+  publicProjectionJson: '{}',
+  pylonRef: 'pylon.owner.codex',
+  rejectionRefs: [],
+  resultExpectationRefs: [],
+  state: 'accepted',
+  taskRefs: [],
+  updatedAt: '2026-06-25T12:00:00.000Z',
+  ...overrides,
+})
+
 const codingPylonStore = (
   registrations: ReadonlyArray<PylonApiRegistrationRecord>,
+  activeAssignments: ReadonlyArray<PylonApiAssignmentRecord> = [],
 ): PylonApiStore =>
   ({
     createAssignment: async (record: PylonApiAssignmentRecord) => ({
       idempotent: false,
       record,
     }),
-    listAssignmentsForPylon: async () => [],
+    listAssignmentsForPylon: async () => activeAssignments,
     listRegistrations: async () => registrations,
     listRegistrationsForOwnerAgentUserIds: async (
       ownerAgentUserIds: ReadonlyArray<string>,
@@ -294,6 +321,51 @@ describe('coding delegation default-on guard', () => {
     })
   })
 
+  test('returns typed target-unavailable when the linked Pylon assignment gate is full', async () => {
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          ...helloBody,
+          openagents: {
+            coding: {
+              targetPylonRef: 'pylon.owner.codex',
+            },
+            workflowClass: 'codex_agent_task',
+          },
+        }),
+        baseDeps({
+          authenticate: async () => ({ accountRef: 'agent:agent_owner' }),
+          codingDelegation: {
+            agentStore: {} as AgentRegistrationStore,
+            pylonStore: codingPylonStore(
+              [codingPylonRegistration()],
+              [codingPylonAssignment()],
+            ),
+            resolveOpenAuthUserId: async () => undefined,
+          },
+          nowEpochSeconds: () => 0,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(409)
+    const body = (await response.json()) as {
+      error: string
+      evidenceRefs: ReadonlyArray<string>
+      requestedPylonRef: string
+    }
+    expect(body).toMatchObject({
+      error: 'target_pylon_unavailable',
+      requestedPylonRef: 'pylon.owner.codex',
+    })
+    expect(body.evidenceRefs).toEqual(
+      expect.arrayContaining([
+        'evidence.khala_coding.target_pylon_ref.dispatch_gate_blocked',
+        'blocker.public.pylon_dispatch.duplicate_active_assignment',
+      ]),
+    )
+  })
+
   test('delegates targeted Pylon requests for the authenticated agent account', async () => {
     const recorded: Array<{
       adapterId: string
@@ -344,16 +416,10 @@ describe('coding delegation default-on guard', () => {
     expect(text).toContain(
       'Coding workflow delegated to linked Pylon pylon.owner.codex',
     )
-    expect(recorded).toHaveLength(1)
-    expect(recorded[0]).toMatchObject({
-      adapterId: 'pylon-codex-own-capacity',
-      requestAttribution: {
-        demandKind: 'own_capacity',
-        demandSource: 'khala_coding_delegation',
-      },
-      servedModel: 'openagents/pylon-codex',
-    })
-    expect(recorded[0]?.usage.totalTokens).toBeGreaterThan(32)
+    // #6325: the chat route must not write synthetic handoff estimates.
+    // Exact Pylon/Codex downstream SDK usage arrives via
+    // POST /api/pylon/codex/turns after the local Codex turn completes.
+    expect(recorded).toHaveLength(0)
   })
 
   test('delegates typed coding workflows before balance and provider supply gates', async () => {

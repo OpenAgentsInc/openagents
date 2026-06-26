@@ -23,6 +23,29 @@ The hard invariant throughout (#6318): **real external requests always win** —
 stress/benchmark load is best-effort, preemptible, instantly-yielding, and tagged
 `internal_stress` (excluded from the public counter).
 
+## Execution notes
+
+- 2026-06-26: Supervising agents may briefly prioritize Khala -> Pylon -> Codex
+  steering blockers ahead of the next phase item when the blocker prevents honest
+  delegation, token attribution, or trace verification. This does not reorder the
+  product backlog; it keeps the execution lane usable.
+- #6331 is the current steering fix: a targeted linked Pylon whose assignment
+  dispatch gate is full must return a typed, diagnosable
+  `target_pylon_unavailable` response with gate evidence, not fall through to a
+  generic unavailable/500 path. This makes parallel Pylon/Codex capacity failures
+  actionable while working the Phase 0/1 items below.
+- Raw Pylon/Codex event capture is live only when the local Pylon runner uses a
+  source/binary at or after #6326. Verification must reconcile the public counter
+  to exact `token_usage_events` rows and matching `pylon_codex_raw_events` plus
+  owner-only `agent_traces` rows for the assignment, not just observe a counter
+  increase.
+- Observed steering gaps to keep fixing as they block throughput: `presence
+  heartbeat` prints local `linked:false` even when server-side provider-account
+  linking and capacity projection are usable; `presence link-refresh` is a stale
+  404 path; `assignment run-no-spend --json` still lacks live phase/progress
+  streaming; stale accepted assignments consume advertised capacity until they
+  close out or expire.
+
 ---
 
 ## Phase 0 — STOP THE BLEEDING (P0; the OpenCode wedge is hard-down NOW)

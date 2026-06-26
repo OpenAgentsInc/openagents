@@ -38,6 +38,7 @@ export type CodingDelegationAssignmentResult = Readonly<{
 
 export type CodingDelegationRejection = Readonly<{
   error:
+    | 'coding_delegation_store_unavailable'
     | 'invalid_coding_objective_summary'
     | 'invalid_target_pylon_ref'
     | 'target_pylon_not_authorized'
@@ -46,7 +47,7 @@ export type CodingDelegationRejection = Readonly<{
   kind: 'rejected'
   reason: string
   requestedPylonRef: string | null
-  statusCode: 400 | 403 | 409
+  statusCode: 400 | 403 | 409 | 503
 }>
 
 export type CodingDelegationResult =
@@ -296,14 +297,48 @@ const hasAvailableCodexCapacity = (
     capacity => capacity.service === 'codex' && capacity.available > 0,
   )
 
+const codingDelegationStoreUnavailableRejection = (
+  requestedPylonRef: string | null,
+): CodingDelegationRejection => ({
+  error: 'coding_delegation_store_unavailable',
+  evidenceRefs: ['evidence.khala_coding.dispatch.store_unavailable'],
+  kind: 'rejected',
+  reason:
+    'The Khala coding dispatch gate could not read linked Pylon capacity right now. This is a transient gate failure, not an account problem — retry shortly.',
+  requestedPylonRef,
+  statusCode: 503,
+})
+
+/**
+ * Public delegation entry point. Any Pylon-store failure inside the gate is
+ * caught and surfaced as a clean, diagnosable 503 rejection rather than
+ * bubbling out as an unhandled defect (which the chat route turned into an
+ * opaque `500 internal_server_error` — the other half of openagents #6331). A
+ * gate refusal must always be an honest, reasoned status, never a bare 500.
+ */
 export const delegateCodingWorkflow = async (
   input: CodingDelegationInput,
 ): Promise<CodingDelegationResult | null> => {
   if (input.classification.workflowClass === 'none') {
     return null
   }
-
   const target = targetPylonRefFromBody(input.rawBody)
+  try {
+    return await delegateCodingWorkflowUnsafe(input, target)
+  } catch (error) {
+    if (error instanceof PylonApiStoreError) {
+      return codingDelegationStoreUnavailableRejection(
+        target.kind === 'target' ? target.pylonRef : null,
+      )
+    }
+    throw error
+  }
+}
+
+const delegateCodingWorkflowUnsafe = async (
+  input: CodingDelegationInput,
+  target: ReturnType<typeof targetPylonRefFromBody>,
+): Promise<CodingDelegationResult | null> => {
   if (target.kind === 'rejected') {
     return target.rejection
   }
@@ -377,6 +412,7 @@ export const delegateCodingWorkflow = async (
     }
   }
 
+  const blockedGateRefs: string[] = []
   for (const registration of candidates) {
     const body = assignmentRequestFromInput(
       input,
@@ -396,6 +432,7 @@ export const delegateCodingWorkflow = async (
     })
 
     if (!gate.dispatchAllowed) {
+      blockedGateRefs.push(...gate.blockerRefs)
       continue
     }
 
@@ -420,20 +457,22 @@ export const delegateCodingWorkflow = async (
     }
   }
 
-  return null
-}
-
-export const estimatedDelegatedCodingUsage = (
-  messages: ReadonlyArray<unknown>,
-): { completionTokens: number; promptTokens: number; totalTokens: number } => {
-  const json = JSON.stringify(messages)
-  const promptTokens = Math.max(1, Math.ceil(json.length / 4))
-  const completionTokens = 32
-  return {
-    completionTokens,
-    promptTokens,
-    totalTokens: promptTokens + completionTokens,
+  if (target.kind === 'target' && blockedGateRefs.length > 0) {
+    return {
+      error: 'target_pylon_unavailable',
+      evidenceRefs: [
+        'evidence.khala_coding.target_pylon_ref.dispatch_gate_blocked',
+        ...[...new Set(blockedGateRefs)].sort(),
+      ],
+      kind: 'rejected',
+      reason:
+        'The requested linked Pylon is available but the controlled assignment dispatch gate refused the coding lease.',
+      requestedPylonRef: target.pylonRef,
+      statusCode: 409,
+    }
   }
+
+  return null
 }
 
 export const codingDelegationUnavailableError = () =>

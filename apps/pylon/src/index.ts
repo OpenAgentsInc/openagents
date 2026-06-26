@@ -25,6 +25,7 @@ import {
   probeCodexAgentReadiness,
   withCodexAgentCapability,
 } from "./codex-agent.js"
+import { loadPylonAccountRegistry } from "./account-registry.js"
 import { withWorkspaceMaterializerCapability } from "./workspace-materializer.js"
 import { claimTipReadiness, setTipPreferences, sweepStatus, tipPost } from "./tips.js"
 import {
@@ -177,6 +178,7 @@ import { assertPublicProjectionSafe, ensurePylonLocalState, loadOrCreatePresence
 import {
   completePylonLink,
   presenceClientOptionsFromEnv,
+  recordAccountLinkInPresence,
   refreshPylonLink,
   registerPylon,
   sendHeartbeat,
@@ -3149,6 +3151,19 @@ async function main() {
         }
         const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
         const projection = await runPylonAccountsConnect(summary, options, { env: Bun.env })
+        // #6331: when the connect established (or reused) a server-side
+        // account->OpenAuth-owner link, reconcile that into the local presence
+        // state so the next `presence heartbeat` reports linked: true + a real
+        // linkRef. Without this, the connect's `pylonLink: linked` never reached
+        // the presence state the heartbeat and dispatch gate read.
+        if (
+          projection.openAgentsDeviceLogin.status === "started" ||
+          projection.openAgentsDeviceLogin.status === "polled"
+        ) {
+          await recordAccountLinkInPresence(summary, {
+            providerAccountRef: projection.openAgentsDeviceLogin.providerAccountRef,
+          })
+        }
         process.stdout.write(`${JSON.stringify(projection, null, 2)}\n`)
         return
       }
@@ -4459,8 +4474,17 @@ async function main() {
         const claudeAgentReadiness = await probeClaudeAgentReadiness({
           config: await loadClaudeAgentConfig(summary),
         })
+        // #6331: a Codex account connected via `accounts connect codex
+        // --openagents-link` writes its auth.json into an isolated per-account
+        // home, never `~/.codex`. Surface those homes so go-online declares the
+        // codex capability (and the heartbeat advertises codex capacity) even
+        // when the default `~/.codex` is empty.
+        const connectedCodexHomes = (await loadPylonAccountRegistry(summary))
+          .filter((entry) => entry.provider === "codex")
+          .map((entry) => entry.home)
         const codexAgentReadiness = await probeCodexAgentReadiness({
           config: await loadCodexAgentConfig(summary),
+          codexAccountHomes: connectedCodexHomes,
         })
         // W4.1 (#4750): the Tassadar executor capability is declared
         // only behind a passing self-test receipt — a real digest-pinned

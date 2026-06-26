@@ -23,7 +23,6 @@ import type {
 } from './crm-mcp-routes'
 import {
   delegateCodingWorkflow,
-  estimatedDelegatedCodingUsage,
   khalaCodingRequestIdRef,
   type CodingDelegationInput,
 } from './inference/coding-workflow-delegation'
@@ -583,25 +582,11 @@ export const makeKhalaMcpCatalog = <Bindings extends KhalaMcpEnv>(
               'No linked, heartbeat-fresh, Codex-capable Pylon capacity is available for this account.',
           })
         }
-        const recordTokensServed = deps.recordTokensServed?.(env)
-        if (recordTokensServed !== undefined) {
-          const messages = Array.isArray(payload.rawBody.messages)
-            ? payload.rawBody.messages
-            : []
-          await recordTokensServed({
-            accountRef: principal.subjectRef,
-            adapterId: 'pylon-codex-own-capacity',
-            requestAttribution: {
-              demandKind: 'own_capacity',
-              demandSource: 'khala_mcp_request',
-            },
-            requestId,
-            requestedModel: 'openagents/khala',
-            servedModel: 'openagents/pylon-codex',
-            streamed: true,
-            usage: estimatedDelegatedCodingUsage(messages),
-          }).catch(() => undefined)
-        }
+        // #6325: MCP delegation must NOT meter a handoff estimate at request
+        // time. The local Pylon/Codex executor records the exact downstream SDK
+        // turn usage through the registered-agent turns ingest route after Codex
+        // actually runs, so `deps.recordTokensServed` is intentionally not
+        // invoked here.
         return projectToolOutcome(name, {
           assignmentRef: delegation.assignment.assignmentRef,
           durableRequestId: requestId,

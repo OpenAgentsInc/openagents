@@ -75,6 +75,15 @@ const jsonContent = (schemaRef: string): JsonSchema => ({
   },
 })
 
+const binaryContent = (contentType: string): JsonSchema => ({
+  required: true,
+  content: {
+    [contentType]: {
+      schema: { type: 'string', format: 'binary' },
+    },
+  },
+})
+
 const errorResponses = (): Readonly<Record<string, JsonSchema>> => ({
   '400': {
     description: 'Bad request.',
@@ -1644,6 +1653,15 @@ const schemaComponents = (): JsonSchema => ({
   ),
   GymRunProgressPublicEnvelope: objectSummary(
     'Public-safe live Gym / Harbor run-progress projection: schemaVersion, scope="public", generatedAt, the declared stored_snapshot staleness contract, and the runs. web_authorized runs render live counts; local_only runs degrade to an honest awaiting-authorization marker with no live numbers.',
+  ),
+  HarborFullTraceArchive: objectSummary(
+    'Operator-only Harbor / Terminal-Bench full trace archive metadata. Points at a private R2 tarball under private/gym/harbor-full-trace-archives/... and explicitly marks containsRawPrompts/containsRawLogs/containsPrivateMaterial true. Internal evidence only; grants no accepted-work, payout, settlement, training-consent, or public-claim authority.',
+  ),
+  HarborFullTraceArchiveListEnvelope: objectSummary(
+    'Admin-token-gated Harbor full trace archive metadata list. Metadata only; downloadUrl still requires the admin bearer. Never public, never a public ATIF trace.',
+  ),
+  HarborFullTraceArchiveStoredEnvelope: objectSummary(
+    'Admin-token-gated Harbor full trace archive upload receipt. The request body is a gzip tarball, metadata is recorded in D1, and bytes are stored in private R2. Storage evidence only.',
   ),
   ProductPromiseTransitionRequest: objectSummary(
     'Operator request to evaluate and record a promise transition: promiseId, toState, optional evidenceRefs, optional explicit exception (reasonRef, approvedByRef, expiresAt).',
@@ -4913,6 +4931,63 @@ const paths = (): JsonSchema => ({
         '201': okJson(
           'Stored public-safe run-progress snapshot.',
           '#/components/schemas/GymRunProgressIngestEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/operator/gym/full-trace-archives': {
+    get: operation({
+      operationId: 'operatorListOrDownloadHarborFullTraceArchives',
+      summary: 'List or download Harbor full trace archives (operator)',
+      description:
+        'Admin-token-gated operator-only Harbor full trace archive endpoint. Without download=1, returns D1 metadata for private R2 tarballs, optionally filtered by run_ref. With archive_ref=...&download=1, streams the raw gzip tarball bytes. These archives can contain prompts, responses, commands, logs, local paths, and private material; they are never public ATIF traces and grant no public authority.',
+      tags: ['Admin'],
+      security: adminSession,
+      parameters: [
+        {
+          name: 'run_ref',
+          in: 'query',
+          required: false,
+          schema: { type: 'string' },
+          description: 'Optional run ref filter for metadata listing.',
+        },
+        {
+          name: 'archive_ref',
+          in: 'query',
+          required: false,
+          schema: { type: 'string' },
+          description: 'Archive ref required when download=1.',
+        },
+        {
+          name: 'download',
+          in: 'query',
+          required: false,
+          schema: { enum: ['1'], type: 'string' },
+          description:
+            'Set to 1 with archive_ref to stream the raw private tarball.',
+        },
+      ],
+      responses: {
+        '200': okJson(
+          'Harbor full trace archive metadata list, or a raw gzip tarball when download=1.',
+          '#/components/schemas/HarborFullTraceArchiveListEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+    post: operation({
+      operationId: 'operatorStoreHarborFullTraceArchive',
+      summary: 'Store a Harbor full trace archive tarball',
+      description:
+        'Admin-token-gated raw archive upload. The body is a gzip tarball created from a Harbor job directory. Required headers include x-openagents-run-ref, x-openagents-job-ref, x-openagents-archive-sha256, and x-openagents-archive-bytes. Stores bytes in private R2 and metadata in D1. Not public-safe; never projects raw content to /gym or /trace.',
+      tags: ['Admin'],
+      security: adminSession,
+      requestBody: binaryContent('application/gzip'),
+      responses: {
+        '201': okJson(
+          'Stored Harbor full trace archive receipt.',
+          '#/components/schemas/HarborFullTraceArchiveStoredEnvelope',
         ),
         ...errorResponses(),
       },

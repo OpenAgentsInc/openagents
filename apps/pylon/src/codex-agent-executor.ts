@@ -18,6 +18,12 @@ import {
   pylonAccountEnvironment,
   type ResolvedPylonAccountSelection,
 } from "./account-registry.js"
+import {
+  createPylonCodexTurnReporter,
+  type CodexTurnReportItem,
+  type CodexTurnReporter,
+  type CodexTurnUsage,
+} from "./codex-turn-reporter.js"
 import type { PylonLocalState } from "./state.js"
 
 /**
@@ -27,10 +33,9 @@ import type { PylonLocalState } from "./state.js"
  * Recognizes the codex_sdk coding work class on a Pylon assignment,
  * materializes a bounded fixture workspace, drives one Codex SDK thread
  * inside it, verifies the result with the fixture's real test command, and
- * digests everything into public-safe closeout refs. Raw SDK events,
- * prompts, file contents, and local paths never leave the device; the
- * instruction text lives in the locally-shipped fixture, not on the wire,
- * so assignment payloads stay ref-only.
+ * digests everything into public-safe closeout refs. The complete raw SDK
+ * event stream is posted only to the owner-scoped private Codex turn ingest
+ * store; public closeouts and ATIF traces remain redacted/ref-only.
  *
  * Boundary law (the design delta from the Claude Agent gate): the Codex
  * SDK has no PreToolUse hook. For the caller-owned Khala->Pylon->Codex lane,
@@ -66,10 +71,16 @@ export type CodexAgentTaskPayload = {
 }
 
 export type CodexAgentRunInput = {
+  assignmentRef?: string
   cwd: string
   instructions: string
+  leaseRef?: string
+  pylonRef?: string
+  runRef?: string
+  workspaceRef?: string
   account?: ResolvedPylonAccountSelection | null
   env?: Record<string, string | undefined>
+  eventReporter?: CodexTurnReporter
   networkAccessEnabled: boolean
   sandboxMode: CodexAgentRuntimeSandboxMode
   timeoutMs: number
@@ -94,9 +105,13 @@ export type CodexAgentRunner = (input: CodexAgentRunInput) => Promise<CodexAgent
 
 export type CodexAgentExecutionOptions = {
   account?: ResolvedPylonAccountSelection | null
+  agentToken?: string
+  baseUrl?: string
   checkoutRunner?: CodexAgentCheckoutRunner
   codexAgentRunner?: CodexAgentRunner
   codexAgentProbe?: CodexAgentProbeOptions
+  codexTurnReporter?: CodexTurnReporter
+  fetch?: typeof fetch
 }
 
 type CodexAgentFixture = {
@@ -210,12 +225,154 @@ async function runCommand(input: { args: string[]; cwd: string }) {
 type CodexThreadEvent = {
   type?: string
   thread_id?: string
+  usage?: {
+    input_tokens?: number
+    cached_input_tokens?: number
+    output_tokens?: number
+    reasoning_output_tokens?: number
+  }
   error?: { message?: string }
   item?: {
     type?: string
     status?: string
+    text?: string
+    command?: string
+    aggregated_output?: string
+    exit_code?: number
+    name?: string
+    tool_name?: string
+    server_name?: string
     changes?: Array<{ path?: string; kind?: string }>
   }
+}
+
+type RawCodexThreadEvent = Record<string, unknown>
+
+function finiteToken(value: number | undefined): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.trunc(value)
+    : 0
+}
+
+function usageFromTurnCompleted(event: CodexThreadEvent): CodexTurnUsage | undefined {
+  if (event.usage === undefined) return undefined
+  return {
+    inputTokens: finiteToken(event.usage.input_tokens),
+    cachedInputTokens: finiteToken(event.usage.cached_input_tokens),
+    outputTokens: finiteToken(event.usage.output_tokens),
+    reasoningOutputTokens: finiteToken(event.usage.reasoning_output_tokens),
+  }
+}
+
+function outputBytes(item: CodexThreadEvent["item"]): number | undefined {
+  if (typeof item?.aggregated_output !== "string") return undefined
+  return new TextEncoder().encode(item.aggregated_output).byteLength
+}
+
+function projectCodexItem(
+  item: CodexThreadEvent["item"],
+  ordinal: number,
+): CodexTurnReportItem | undefined {
+  if (item === undefined) return undefined
+  if (item.type === "agent_message") {
+    return {
+      ordinal,
+      itemType: "agent_message",
+      ...(typeof item.status === "string" ? { status: item.status } : {}),
+      ...(typeof item.text === "string" ? { message: item.text } : {}),
+    }
+  }
+  if (item.type === "reasoning") {
+    return {
+      ordinal,
+      itemType: "reasoning",
+      ...(typeof item.status === "string" ? { status: item.status } : {}),
+      ...(typeof item.text === "string" ? { reasoningSummary: item.text } : {}),
+    }
+  }
+  if (item.type === "command_execution") {
+    return {
+      ordinal,
+      itemType: "command_execution",
+      commandLabel: "shell_command",
+      ...(typeof item.status === "string" ? { status: item.status } : {}),
+      ...(typeof item.exit_code === "number" ? { exitCode: item.exit_code } : {}),
+      ...(outputBytes(item) === undefined ? {} : { outputBytes: outputBytes(item) }),
+    }
+  }
+  if (item.type === "file_change") {
+    const changes = Array.isArray(item.changes) ? item.changes : []
+    return {
+      ordinal,
+      itemType: "file_change",
+      ...(typeof item.status === "string" ? { status: item.status } : {}),
+      changeCount: changes.length,
+    }
+  }
+  if (item.type === "mcp_tool_call") {
+    return {
+      ordinal,
+      itemType: "mcp_tool_call",
+      ...(typeof item.status === "string" ? { status: item.status } : {}),
+      ...(typeof item.tool_name === "string"
+        ? { toolName: item.tool_name }
+        : typeof item.name === "string"
+          ? { toolName: item.name }
+          : {}),
+    }
+  }
+  if (item.type === "web_search") {
+    return {
+      ordinal,
+      itemType: "web_search",
+      ...(typeof item.status === "string" ? { status: item.status } : {}),
+    }
+  }
+  if (item.type === "error") {
+    return {
+      ordinal,
+      itemType: "error",
+      ...(typeof item.status === "string" ? { status: item.status } : {}),
+    }
+  }
+  return {
+    ordinal,
+    itemType: "unknown",
+    ...(typeof item.status === "string" ? { status: item.status } : {}),
+  }
+}
+
+async function reportCodexTurn(input: {
+  eventReporter: CodexTurnReporter | undefined
+  runInput: CodexAgentRunInput
+  sessionRef: string | undefined
+  turnIndex: number
+  usage: CodexTurnUsage | undefined
+  items: ReadonlyArray<CodexTurnReportItem>
+  rawEvents: ReadonlyArray<RawCodexThreadEvent>
+}) {
+  if (
+    input.eventReporter === undefined ||
+    input.runInput.assignmentRef === undefined ||
+    input.runInput.leaseRef === undefined ||
+    input.runInput.pylonRef === undefined ||
+    input.usage === undefined
+  ) {
+    return
+  }
+  await input.eventReporter({
+    assignmentRef: input.runInput.assignmentRef,
+    leaseRef: input.runInput.leaseRef,
+    pylonRef: input.runInput.pylonRef,
+    ...(input.runInput.runRef === undefined ? {} : { runRef: input.runInput.runRef }),
+    ...(input.sessionRef === undefined ? {} : { sessionRef: input.sessionRef }),
+    ...(input.runInput.workspaceRef === undefined ? {} : { workspaceRef: input.runInput.workspaceRef }),
+    turnIndex: input.turnIndex,
+    observedAt: new Date().toISOString(),
+    usage: input.usage,
+    items: input.items,
+    rawEvents: input.rawEvents,
+  }).catch(() => undefined)
 }
 
 /**
@@ -249,6 +406,11 @@ export async function runWithCodexSdk(input: CodexAgentRunInput): Promise<CodexA
   let turnCount = 0
   let threadId: string | null = null
   let failed = false
+  let activeTurnIndex = 0
+  let itemOrdinal = 0
+  let currentTurnItems: Array<CodexTurnReportItem> = []
+  let currentRawEvents: Array<RawCodexThreadEvent> = []
+  let pendingRawEvents: Array<RawCodexThreadEvent> = []
 
   try {
     const codex = new sdk.Codex({ env })
@@ -263,13 +425,53 @@ export async function runWithCodexSdk(input: CodexAgentRunInput): Promise<CodexA
     const { events } = await thread.runStreamed(input.instructions, { signal: abort.signal })
     for await (const raw of events) {
       const event = raw as CodexThreadEvent
+      const rawEvent = raw !== null && typeof raw === "object" ? (raw as RawCodexThreadEvent) : undefined
+      if (rawEvent !== undefined && event.type !== "turn.started") {
+        if (activeTurnIndex > 0) {
+          currentRawEvents.push(rawEvent)
+        } else {
+          pendingRawEvents.push(rawEvent)
+        }
+      }
       if (event.type === "thread.started" && typeof event.thread_id === "string") {
         threadId = event.thread_id
       }
-      if (event.type === "turn.completed") turnCount += 1
+      if (event.type === "turn.started") {
+        activeTurnIndex = turnCount + 1
+        currentTurnItems = []
+        currentRawEvents = rawEvent === undefined ? pendingRawEvents : [...pendingRawEvents, rawEvent]
+        pendingRawEvents = []
+      }
+      if (event.type === "turn.completed") {
+        const completedTurnIndex = activeTurnIndex > 0 ? activeTurnIndex : turnCount + 1
+        const completedRawEvents = activeTurnIndex > 0 ? currentRawEvents : pendingRawEvents
+        turnCount += 1
+        const sessionRef =
+          threadId === null ? undefined : stableRef("session.pylon.codex_agent", threadId)
+        await reportCodexTurn({
+          eventReporter: input.eventReporter,
+          items: currentTurnItems,
+          rawEvents: completedRawEvents,
+          runInput: input,
+          sessionRef,
+          turnIndex: completedTurnIndex,
+          usage: usageFromTurnCompleted(event),
+        })
+        currentTurnItems = []
+        currentRawEvents = []
+        pendingRawEvents = []
+        activeTurnIndex = 0
+      }
       if (event.type === "turn.failed" || event.type === "error") failed = true
       if (event.type === "item.completed" && event.item?.type === "command_execution") {
         commandCount += 1
+      }
+      if (event.type === "item.completed") {
+        const projected = projectCodexItem(event.item, itemOrdinal + 1)
+        if (projected !== undefined) {
+          itemOrdinal += 1
+          currentTurnItems.push(projected)
+        }
       }
       if (event.type === "item.completed" && event.item?.type === "file_change") {
         const changes = Array.isArray(event.item.changes) ? event.item.changes : []
@@ -444,14 +646,26 @@ export async function executeCodexAgentAssignment(
   }
 
   const runner = options.codexAgentRunner ?? runWithCodexSdk
+  const eventReporter =
+    options.codexTurnReporter ??
+    createPylonCodexTurnReporter({
+      ...(options.agentToken === undefined ? {} : { agentToken: options.agentToken }),
+      ...(options.baseUrl === undefined ? {} : { baseUrl: options.baseUrl }),
+      ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+    })
   let run: CodexAgentRunResult
   try {
     run = await runner({
+      assignmentRef: lease.assignmentRef,
       cwd: materialized.workspace,
       account: options.account,
       env,
+      ...(eventReporter === undefined ? {} : { eventReporter }),
       instructions: materialized.instructions,
+      leaseRef: lease.leaseRef,
       networkAccessEnabled: true,
+      pylonRef: state.identity.pylonRef,
+      runRef,
       sandboxMode: effectiveSandboxMode(task.sandboxMode, config.sandboxMode),
       timeoutMs:
         boundedNumber(
@@ -460,6 +674,7 @@ export async function executeCodexAgentAssignment(
           MAX_TIMEOUT_SECONDS,
         ) * 1000,
       ...(config.model === undefined ? {} : { model: config.model }),
+      workspaceRef: materialized.workspaceRef,
     })
   } catch {
     return refusalRecord({

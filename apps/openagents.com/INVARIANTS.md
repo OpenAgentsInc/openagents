@@ -424,6 +424,29 @@ This is the invariant ledger for `openagents`.
   `workers/api/src/inference/khala-chat-trace-emitter.test.ts`,
   `workers/api/src/trace-store-routes.test.ts`.
 
+## Harbor Full Trace Archive (operator-only)
+
+- Harbor / Terminal-Bench full trace archives are RAW PRIVATE EVIDENCE, not
+  shareable ATIF traces. The operator route
+  `POST|GET /api/operator/gym/full-trace-archives` may store an entire Harbor
+  job directory tarball in the private `ARTIFACTS` R2 bucket under
+  `private/gym/harbor-full-trace-archives/...`, with D1 metadata in
+  `gym_harbor_full_trace_archives` (migration
+  `0239_gym_harbor_full_trace_archives.sql`).
+- Every stored archive is `visibility=operator_only`, `demand_kind=internal`,
+  `demand_source=harbor_terminal_bench`, and explicitly marked as containing
+  raw prompts, raw logs, and private material. The route requires the admin API
+  token for upload, metadata list, and download. It must never be linked from,
+  copied into, or summarized as bytes on public `/gym`, `/trace/{uuid}`, public
+  product promises, issue comments, public docs, or public claim projections.
+- The archive metadata is evidence only. It grants no accepted-work, payout,
+  settlement, provider mutation, spend, training-consent, or public-claim
+  authority. If any material from a Harbor archive is promoted into a public
+  trace or training corpus, it must go through the separate redaction,
+  public-safe ATIF validation, owner/consent, and tripwire path first.
+- Regression coverage lives in
+  `workers/api/src/inference/gym/harbor-full-trace-archive-routes.test.ts`.
+
 ## Trace Upload Data Market
 
 - The trace upload data market (#6221, epic #6206; migrations
@@ -1580,6 +1603,17 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   paths still reject danger flags, assignment selection must remain caller-owned,
   and public closeouts must not expose raw prompts, local paths, secrets, or
   private repo content.
+- Pylon/Codex delegated turns have two separate evidence products. The
+  owner-only ATIF trace is still a redacted public-safe summary. The complete
+  ordered Codex SDK event stream (`rawEvents` on
+  `POST /api/pylon/codex/turns`) is private owner-scoped source-of-truth
+  evidence and may contain prompts, command/tool args, local paths, file-change
+  details, and shell output. It must be stored only in private raw-event storage
+  with D1 metadata rows linked by assignment/session/owner/turn refs, idempotent
+  on replay, and never exposed through `/trace/{uuid}`, public counters, public
+  sync, issue comments, Forum posts, product-promise output, or public closeout
+  refs. Raw-event storage failures are fail-soft after exact token accounting
+  and return only a private-safe diagnostic/ref.
 - Regression coverage for this policy lives in
   `workers/api/src/inference/coding-workflow-classifier.test.ts`,
   `workers/api/src/inference/coding-workflow-delegation.test.ts`,

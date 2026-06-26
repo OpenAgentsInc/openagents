@@ -18,6 +18,7 @@ import {
   classifyModel,
   dispatchWithOverflow,
   dispatchWithOverflowWithMetadata,
+  makeBoundedDispatchFailureTelemetry,
   makeKhalaBackedAdapterPlan,
   openModelsByCost,
   selectAdapterPlan,
@@ -675,6 +676,7 @@ describe('dispatchWithOverflow', () => {
     expect(gemini.calls()).toBe(1)
     expect(events).toContainEqual({
       adapterId: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+      classifier: 'provider_error',
       kind: 'quarantined',
       retryable: true,
       stage: 'health_quarantine',
@@ -822,6 +824,7 @@ describe('dispatchWithOverflow', () => {
     expect(events).toEqual([
       {
         adapterId: 'provider-failure',
+        classifier: 'provider_error',
         httpStatus: 500,
         kind: 'provider_error',
         retryable: true,
@@ -829,18 +832,91 @@ describe('dispatchWithOverflow', () => {
       },
       {
         adapterId: 'empty-lane',
+        classifier: 'empty_content',
         kind: 'empty_assistant_content',
         retryable: true,
         stage: 'validation_failure',
       },
       {
         adapterId: 'rate-limited',
+        classifier: 'rate_limited_429',
         httpStatus: 429,
         kind: 'rate_limited',
         retryable: true,
         stage: 'adapter_error',
       },
+      {
+        adapterId: 'healthy',
+        classifier: 'fallback',
+        kind: 'rate_limited',
+        retryable: true,
+        stage: 'fallback',
+      },
     ])
+  })
+
+  test('bounded failure telemetry snapshots provider, empty-content, fallback, invalid-tool, and 429 classes', () => {
+    let nowMs = 1_000
+    const telemetry = makeBoundedDispatchFailureTelemetry({
+      maxEvents: 10,
+      nowMs: () => nowMs,
+      windowMs: 1_000,
+    })
+
+    telemetry.record({
+      adapterId: 'provider',
+      classifier: 'provider_error',
+      httpStatus: 500,
+      kind: 'provider_error',
+      retryable: true,
+      stage: 'adapter_error',
+    })
+    telemetry.record({
+      adapterId: 'empty',
+      classifier: 'empty_content',
+      kind: 'empty_assistant_content',
+      retryable: true,
+      stage: 'validation_failure',
+    })
+    telemetry.record({
+      adapterId: 'fallback',
+      classifier: 'fallback',
+      kind: 'provider_error',
+      retryable: true,
+      stage: 'fallback',
+    })
+    telemetry.record({
+      adapterId: 'tools',
+      classifier: 'invalid_tool',
+      kind: 'tool_required_no_tool_calls',
+      retryable: true,
+      stage: 'validation_failure',
+    })
+    telemetry.record({
+      adapterId: 'limited',
+      classifier: 'rate_limited_429',
+      httpStatus: 429,
+      kind: 'rate_limited',
+      retryable: true,
+      stage: 'adapter_error',
+    })
+
+    expect(telemetry.snapshot().counts).toEqual({
+      empty_content: 1,
+      fallback: 1,
+      invalid_tool: 1,
+      provider_error: 1,
+      rate_limited_429: 1,
+    })
+
+    nowMs = 2_001
+    expect(telemetry.snapshot().counts).toEqual({
+      empty_content: 0,
+      fallback: 0,
+      invalid_tool: 0,
+      provider_error: 0,
+      rate_limited_429: 0,
+    })
   })
 
   test('503 overflows the same way (service overloaded)', async () => {

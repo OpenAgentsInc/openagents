@@ -929,11 +929,22 @@ export const khalaTokensServedCounter = (
           ),
         ],
         [
+          // `data-value` carries the AUTHORITATIVE target string (read by tests +
+          // the headless proof). `data-counter-display` marks the node the
+          // client count-up controller eases between the server's ≤3/sec updates
+          // (#6324): on boot `installKhalaTokensServedCountUp` (entry.ts) attaches
+          // a MutationObserver that animates this node's text from the currently
+          // shown value up to each new `data-value`, capped + reduced-motion-safe.
+          // The node is NOT keyed on the value, so it persists across updates and
+          // the controller can ease instead of the vdom snapping it. The text
+          // child stays the target so SSR / no-JS / headless still show the right
+          // number; the controller only overrides the text frame-by-frame when
+          // motion is available.
           h.span(
             [
               h.DataAttribute('value', display),
+              h.DataAttribute('counter-display', 'khala-tokens-served'),
               h.Class(motionOdometerClass),
-              h.Key(display),
             ],
             [display],
           ),
