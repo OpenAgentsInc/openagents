@@ -1940,6 +1940,31 @@ describe('Pylon API routes', () => {
     ).toBe(false)
   })
 
+  test('the Pylon payload scanner allows public token-counter refs without allowing raw token fields', () => {
+    expect(
+      pylonApiPayloadHasPrivateMaterial({
+        objectiveSummary:
+          'Implement issue #6330 for khala-tokens-served history.',
+        sourceRefs: [
+          'route:/api/public/khala-tokens-served/history',
+          'table.public.token_usage_events',
+          'src/public-khala-tokens-served-routes.test.ts',
+        ],
+      }),
+    ).toBe(false)
+
+    expect(
+      pylonApiPayloadHasPrivateMaterial({
+        token: 'private-token-value',
+      }),
+    ).toBe(true)
+    expect(
+      pylonApiPayloadHasPrivateMaterial({
+        tokenSecret: 'private-token-value',
+      }),
+    ).toBe(true)
+  })
+
   test('agent/pylon projection exposes sparkPayoutTargetReady:false with a null ref when no target is registered (#5306)', async () => {
     const store = new MemoryPylonApiStore()
     const sparkStore = new MemorySparkPayoutTargetStore()
