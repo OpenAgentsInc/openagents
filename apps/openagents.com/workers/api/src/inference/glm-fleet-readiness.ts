@@ -118,6 +118,31 @@ export type GlmFleetReadinessProjection = Readonly<{
   counts: GlmFleetReadinessCounts
 }>
 
+export type GlmFleetReadinessOperatorDimension =
+  | 'all_replica_keep_warm_watchdog'
+  | 'capacity_floor_owner_decision'
+  | 'multi_region_auto_replace'
+  | 'quota_request_tracking'
+
+export type GlmFleetReadinessOperatorDimensionReadout = Readonly<{
+  dimension: GlmFleetReadinessOperatorDimension
+  blockerRefs: ReadonlyArray<string>
+  evidenceRefs: ReadonlyArray<string>
+  missingReplicaRefs: ReadonlyArray<string>
+  status: GlmFleetAcceptanceDimensionStatus
+}>
+
+export type GlmFleetReadinessOperatorReadout = Readonly<{
+  kind: 'glm_fleet_readiness_operator_readout'
+  acceptanceStatus: GlmFleetAcceptanceDimensionStatus
+  blockerRefs: ReadonlyArray<string>
+  dimensions: ReadonlyArray<GlmFleetReadinessOperatorDimensionReadout>
+  evidenceRefs: ReadonlyArray<string>
+  missingReplicaRefs: ReadonlyArray<string>
+  servingReadyButAcceptanceNotComplete: boolean
+  servingStatus: GlmFleetReadinessStatus
+}>
+
 export type GlmFleetReadinessHeartbeatRecord = Readonly<{
   benchmarkReserved?: GlmPoolHeartbeatReplicaRecord['benchmarkReserved']
   breakerConsecutiveFailures?: GlmPoolHeartbeatReplicaRecord['breakerConsecutiveFailures']
@@ -187,6 +212,9 @@ const publicSafeCsvRefs = (
   value === undefined
     ? []
     : publicSafeRefs(value.split(',').map(ref => ref.trim()))
+
+const stableUniqueRefs = (refs: ReadonlyArray<string>): ReadonlyArray<string> =>
+  [...new Set(refs)].sort((left, right) => left.localeCompare(right))
 
 const replicaStatus = (
   arming: HydraliskGlm52ReplicaArming,
@@ -679,6 +707,82 @@ export const projectGlmFleetReadinessForEnv = (
     latestHeartbeatRecord,
     replicaArmings: resolveHydraliskGlm52Reap504bReplicaArmings(env),
   })
+
+export const summarizeGlmFleetReadinessForOperators = (
+  projection: GlmFleetReadinessProjection,
+): GlmFleetReadinessOperatorReadout => {
+  const dimensions: ReadonlyArray<GlmFleetReadinessOperatorDimensionReadout> = [
+    {
+      blockerRefs: stableUniqueRefs(
+        projection.acceptance.allReplicaKeepWarmWatchdog.blockerRefs,
+      ),
+      dimension: 'all_replica_keep_warm_watchdog',
+      evidenceRefs: stableUniqueRefs(
+        projection.acceptance.allReplicaKeepWarmWatchdog.evidenceRefs,
+      ),
+      missingReplicaRefs: stableUniqueRefs(
+        projection.acceptance.allReplicaKeepWarmWatchdog.missingReplicaRefs,
+      ),
+      status: projection.acceptance.allReplicaKeepWarmWatchdog.status,
+    },
+    {
+      blockerRefs: stableUniqueRefs(
+        projection.acceptance.capacityFloorOwnerDecision.blockerRefs,
+      ),
+      dimension: 'capacity_floor_owner_decision',
+      evidenceRefs: stableUniqueRefs(
+        projection.acceptance.capacityFloorOwnerDecision.evidenceRefs,
+      ),
+      missingReplicaRefs: [],
+      status: projection.acceptance.capacityFloorOwnerDecision.status,
+    },
+    {
+      blockerRefs: stableUniqueRefs(
+        projection.acceptance.multiRegionAutoReplace.blockerRefs,
+      ),
+      dimension: 'multi_region_auto_replace',
+      evidenceRefs: stableUniqueRefs([
+        ...projection.acceptance.multiRegionAutoReplace.evidenceRefs,
+        ...projection.acceptance.multiRegionAutoReplace.prebakeEvidenceRefs,
+        ...projection.acceptance.multiRegionAutoReplace.reserveEvidenceRefs,
+      ]),
+      missingReplicaRefs: stableUniqueRefs(
+        projection.acceptance.multiRegionAutoReplace
+          .missingReplacementReplicaRefs,
+      ),
+      status: projection.acceptance.multiRegionAutoReplace.status,
+    },
+    {
+      blockerRefs: stableUniqueRefs(
+        projection.acceptance.quotaRequestTracking.blockerRefs,
+      ),
+      dimension: 'quota_request_tracking',
+      evidenceRefs: stableUniqueRefs(
+        projection.acceptance.quotaRequestTracking.evidenceRefs,
+      ),
+      missingReplicaRefs: [],
+      status: projection.acceptance.quotaRequestTracking.status,
+    },
+  ]
+
+  return {
+    acceptanceStatus: projection.acceptance.status,
+    blockerRefs: stableUniqueRefs(
+      dimensions.flatMap(dimension => dimension.blockerRefs),
+    ),
+    dimensions,
+    evidenceRefs: stableUniqueRefs(
+      dimensions.flatMap(dimension => dimension.evidenceRefs),
+    ),
+    kind: 'glm_fleet_readiness_operator_readout',
+    missingReplicaRefs: stableUniqueRefs(
+      dimensions.flatMap(dimension => dimension.missingReplicaRefs),
+    ),
+    servingReadyButAcceptanceNotComplete:
+      projection.status === 'ready' && projection.acceptance.status !== 'complete',
+    servingStatus: projection.status,
+  }
+}
 
 const warmStates = new Set<GlmPoolHeartbeatWarmState>([
   'cold',
