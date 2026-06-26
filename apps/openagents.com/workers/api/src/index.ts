@@ -369,6 +369,7 @@ import {
   isInferenceDurableStreamEnabled,
   isInferenceGatewayEnabled,
 } from './inference/chat-completions-routes'
+import { handleDispatchFailureTelemetryReadout } from './inference/dispatch-failure-telemetry-routes'
 import {
   type DiscoverySurfacePath,
   renderDiscoverySurface,
@@ -458,6 +459,7 @@ import {
   OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
   dispatchWithOverflow,
   dispatchWithOverflowWithMetadata,
+  makeBoundedDispatchFailureTelemetry,
   makeKhalaBackedAdapterPlan,
 } from './inference/model-router'
 import {
@@ -9547,6 +9549,12 @@ inferenceProviderRegistry.register(
   }),
 )
 
+const dispatchFailureTelemetry = makeBoundedDispatchFailureTelemetry({
+  maxEvents: 256,
+  nowMs: currentEpochMillis,
+  windowMs: 15 * 60 * 1_000,
+})
+
 const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {
     path: '/',
@@ -11331,6 +11339,9 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         // retryable provider failure (429 / 503 / 5xx / transport). INERT
         // regardless — the gateway is gated by INFERENCE_GATEWAY_ENABLED above.
         lanePlan: makeKhalaBackedAdapterPlan(laneArming.khalaBacking),
+        dispatch: {
+          failureTelemetry: dispatchFailureTelemetry.record,
+        },
         // Provider serving policy (public_paid_model_gateway_missing on
         // api.hosted_gemini.v1): the SAME presence-derived lane arming the
         // public catalog (/v1/models) and the pre-purchase quote (/v1/quote)
@@ -11771,6 +11782,20 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       handleGatewayReadiness(request, {
         enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
         laneArming: resolveSupplyLaneArming(env),
+      }),
+  },
+  {
+    // Public gateway dispatch-failure telemetry (GET
+    // /v1/gateway/dispatch-failures). Live-at-read, in-memory, bounded-window
+    // counters for the typed router failure classes. The recent event sample is
+    // redacted to classifier/stage/status-class only; no raw adapter ids, prompts,
+    // completions, URLs, credentials, balances, or provider payloads are exposed.
+    path: '/v1/gateway/dispatch-failures',
+    handler: (request, env) =>
+      handleDispatchFailureTelemetryReadout(request, {
+        enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
+        nowMs: currentEpochMillis,
+        telemetry: dispatchFailureTelemetry,
       }),
   },
   {
