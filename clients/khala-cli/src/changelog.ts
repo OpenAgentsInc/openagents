@@ -11,8 +11,8 @@ export const KHALA_CHANGELOG: ReadonlyArray<KhalaChangelogEntry> = [
     version: "0.1.7",
     releasedAt: "2026-06-26T17:36:47.000Z",
     bullets: [
-      "Published the finalized fallback and streaming release with an accurate release timestamp.",
-      "Keeps GLM -> OpenRouter -> Gemini -> Fireworks fallback, restored streaming, and cleaner tokens output.",
+      "Shows the installed Khala CLI version in the interactive startup banner.",
+      "Makes /tokens and khala tokens read the live ledger total without a stale isolate cache.",
     ],
   },
   {

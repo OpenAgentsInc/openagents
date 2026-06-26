@@ -33,6 +33,20 @@ const fakeTokensServedDb = (
   return { prepare } as unknown as D1Database
 }
 
+const fakeMutableTokensServedDb = (
+  readTokensServed: () => number,
+): D1Database => {
+  const prepare = () => ({
+    bind: () => prepare(),
+    first: <T>(): Promise<T> =>
+      Promise.resolve({
+        tokens_served: readTokensServed(),
+      } as T),
+  })
+
+  return { prepare } as unknown as D1Database
+}
+
 const routeInput = (
   inputTokens: number,
   outputTokens: number,
@@ -84,6 +98,28 @@ describe('GET /api/public/khala-tokens-served', () => {
     expect(firstBody.tokensServed).toBe(15)
     expect(laterBody.tokensServed).toBe(150)
     expect(laterBody.tokensServed).toBeGreaterThan(firstBody.tokensServed)
+  })
+
+  test('production D1 path is live-at-read instead of using an isolate cache', async () => {
+    let tokensServed = 15
+    const input: Parameters<typeof handlePublicKhalaTokensServedApi>[1] = {
+      OPENAGENTS_DB: fakeMutableTokensServedDb(() => tokensServed),
+      nowIso: () => nowIso,
+    }
+
+    const first = await Effect.runPromise(
+      handlePublicKhalaTokensServedApi(getRequest(), input),
+    )
+    tokensServed = 150
+    const later = await Effect.runPromise(
+      handlePublicKhalaTokensServedApi(getRequest(), input),
+    )
+
+    const firstBody = (await first.json()) as { tokensServed: number }
+    const laterBody = (await later.json()) as { tokensServed: number }
+
+    expect(firstBody.tokensServed).toBe(15)
+    expect(laterBody.tokensServed).toBe(150)
   })
 
   test('rejects non-GET methods', async () => {

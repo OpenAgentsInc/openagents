@@ -206,7 +206,9 @@ async function runInteractive(args: ParsedArgs, env: Record<string, string | und
   let messages: ReadonlyArray<KhalaChatMessage> = []
   let lastTraceRef: string | undefined
   let lastMessageInfo: ChatTurnMetadata | undefined
-  process.stdout.write(`Khala CLI. Type /help for commands, /exit to quit.\n\n`)
+  process.stdout.write(
+    `Khala CLI v${KHALA_CLI_VERSION}. Type /help for commands, /exit to quit.\n\n`,
+  )
   startKhalaAutoUpdate({
     currentVersion: KHALA_CLI_VERSION,
     env,

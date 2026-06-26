@@ -77,10 +77,9 @@ that check.
 
 ### v0.1.7 - Jun 26, 2026, 12:36:47 PM CDT
 
-- Published the finalized fallback and streaming release with an accurate
-  release timestamp.
-- Keeps `GLM -> OpenRouter -> Gemini -> Fireworks` fallback, restored streaming,
-  and cleaner tokens output.
+- Shows the installed Khala CLI version in the interactive startup banner.
+- Makes `/tokens` and `khala tokens` read the live ledger total without a stale
+  isolate cache.
 
 ### v0.1.6 - Jun 26, 2026, 12:24:07 PM CDT
 

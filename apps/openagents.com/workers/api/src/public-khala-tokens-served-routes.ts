@@ -6,7 +6,7 @@ import {
   PublicProjectionStalenessContract,
   liveAtReadStaleness,
 } from './public-projection-staleness'
-import { currentEpochMillis, currentIsoTimestamp } from './runtime-primitives'
+import { currentIsoTimestamp } from './runtime-primitives'
 import {
   type TokenUsageLedgerShape,
   makeD1TokenUsageLedger,
@@ -15,9 +15,8 @@ import {
 // The served public projection: the aggregate scalar plus the shared
 // public-projection staleness contract (generatedAt + staleness). The counter
 // is composed LIVE from the ledger at request time (`live_at_read`), so it can
-// never be older than the request; the short in-isolate cache below is a perf
-// detail under that contract, not a stored snapshot. Public-safe: aggregate
-// only — no per-user, per-team, provider, or secret material.
+// never be older than the request. Public-safe: aggregate only — no per-user,
+// per-team, provider, or secret material.
 export const PublicKhalaTokensServedResponse = S.Struct({
   schemaVersion: S.Literal('openagents.public_khala_tokens_served.v1'),
   tokensServed: S.Int,
@@ -32,20 +31,15 @@ type PublicKhalaTokensServedRouteInput = Readonly<{
   // Tests inject an in-memory ledger; production builds the D1-backed one.
   ledger?: TokenUsageLedgerShape
   nowIso?: () => string
-  nowUnixMs?: () => number
 }>
 
-// "Khala Tokens Served" is the homepage's network-wide aggregate. As of #6231
-// the live updates come from the PUSH path (a public sync scope streams a delta
-// per served completion); this scalar endpoint is now only the one-time SEED for
-// the counter and the slow (~30s) reconcile/fallback when the socket is down. It
-// is no longer hit every second, so the in-isolate cache is WIDENED to ~10s: it
-// still caps the underlying D1 SUM under a brief burst of cold loads (e.g. many
-// visitors landing at once) without keeping a stale seed around for long. The
-// response stays `no-store` so each fetch gets the latest cached value, never a
-// frozen browser copy. (Same shape as public-pylon-stats-routes.ts.)
-const TOKENS_SERVED_CACHE_TTL_MS = 10_000
-let tokensServedCache: { at: number; payload: unknown } | null = null
+// "Khala Tokens Served" is the homepage's network-wide aggregate and the value
+// shown by `khala tokens` / `/tokens`. Keep this scalar endpoint truly
+// live-at-read: a just-served Khala turn must be visible on the next poll rather
+// than hidden behind an in-isolate cache. The response remains `no-store` so
+// browsers and CLIs never reuse a frozen copy. The homepage's high-frequency
+// live updates still use the PUSH path; this route is the canonical scalar
+// read/reconcile path.
 
 export const handlePublicKhalaTokensServedApi = (
   request: Request,
@@ -55,18 +49,7 @@ export const handlePublicKhalaTokensServedApi = (
     return Effect.succeed(methodNotAllowed(['GET']))
   }
 
-  const nowUnixMs = input.nowUnixMs ?? currentEpochMillis
   const nowIso = input.nowIso ?? currentIsoTimestamp
-
-  // Only cache the real (D1-backed) production path. Tests inject their own
-  // ledger and must each see their own snapshot, so they bypass the cache.
-  const cacheable = input.ledger === undefined
-
-  const cached = cacheable ? tokensServedCache : null
-  if (cached !== null && nowUnixMs() - cached.at < TOKENS_SERVED_CACHE_TTL_MS) {
-    return Effect.succeed(noStoreJsonResponse(cached.payload))
-  }
-
   const ledger =
     input.ledger ?? makeD1TokenUsageLedger(input.OPENAGENTS_DB as D1Database)
 
@@ -77,9 +60,6 @@ export const handlePublicKhalaTokensServedApi = (
         tokensServed: aggregate.tokensServed,
         generatedAt: nowIso(),
         staleness: liveAtReadStaleness(['token_usage_events']),
-      }
-      if (cacheable) {
-        tokensServedCache = { at: nowUnixMs(), payload }
       }
       return noStoreJsonResponse(payload)
     }),
