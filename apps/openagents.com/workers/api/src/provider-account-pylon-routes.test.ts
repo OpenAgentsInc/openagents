@@ -391,4 +391,80 @@ describe('provider account Pylon device-login routes', () => {
     expect(response.status).toBe(409)
     expect(body.error).toBe('pylon_agent_not_linked')
   })
+
+  test('imports local Codex auth under the linked OpenAuth owner without echoing credentials', async () => {
+    const token = 'oa_agent_import_token'
+    const repository = new MemoryProviderAccountRepository()
+    const connectedAuth: Array<{
+      auth: { access?: string; refresh?: string; type?: string }
+      providerAccountRef: string
+    }> = []
+    const handlers = makeProviderAccountPylonHandlers({
+      agentStore: () => agentStoreFor(token, 'openauth-user-owner'),
+      deleteStartedCodexDeviceLogin: () => () => Promise.resolve(),
+      makeProviderAccountRepository: () => repository,
+      nowIso: () => '2026-06-25T12:00:00.000Z',
+      readStartedCodexDeviceLogin: () => () => Promise.resolve(undefined),
+      storeConnectedCodexAuth: () => input => {
+        connectedAuth.push(input)
+
+        return Promise.resolve(`codex-auth://${input.providerAccountRef}`)
+      },
+      storeStartedCodexDeviceLogin: () => () => Promise.resolve(),
+    })
+
+    const response = await handlers.handlePylonProviderLocalCodexAuthImportApi(
+      new Request(
+        'https://openagents.com/api/pylon/provider-accounts/chatgpt-codex/local-auth/import',
+        {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${token}`,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            accountLabel: 'codex',
+            createNew: true,
+            auth: {
+              type: 'oauth',
+              access: 'access-secret',
+              refresh: 'refresh-secret',
+              expires: 1_800_000_000,
+              accountId: 'account-fixture',
+              idToken: 'id-secret',
+            },
+          }),
+        },
+      ),
+      env(),
+    )
+    const body = (await response.json()) as {
+      account: { providerAccountRef: string; status: string }
+      attempt: { id: string; status: string }
+      pylonLink: { owner: string; status: string }
+    }
+    const responseText = JSON.stringify(body)
+
+    expect(response.status).toBe(201)
+    expect(body.account.status).toBe('connected')
+    expect(body.attempt.status).toBe('connected')
+    expect(body.pylonLink).toEqual({ owner: 'openauth', status: 'linked' })
+    expect(repository.accounts[0]?.userId).toBe('openauth-user-owner')
+    expect(repository.accounts[0]?.authMode).toBe('codex_device_auth')
+    expect(repository.accounts[0]?.status).toBe('connected')
+    expect(repository.attempts[0]?.method).toBe('codex_device_auth')
+    expect(repository.attempts[0]?.source).toBe('pylon_local_codex_auth')
+    expect(connectedAuth).toHaveLength(1)
+    expect(connectedAuth[0]?.providerAccountRef).toBe(
+      body.account.providerAccountRef,
+    )
+    expect(connectedAuth[0]?.auth).toMatchObject({
+      type: 'oauth',
+      access: 'access-secret',
+      refresh: 'refresh-secret',
+    })
+    expect(responseText).not.toContain('access-secret')
+    expect(responseText).not.toContain('refresh-secret')
+    expect(responseText).not.toContain('id-secret')
+  })
 })

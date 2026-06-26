@@ -12,6 +12,7 @@ import {
 } from './json-boundary'
 import { logWorkerRouteError, observedPromise } from './observability'
 import {
+  type CodexOAuthAuth,
   type DeleteStartedCodexDeviceLogin,
   type PollCodexDeviceLogin,
   type ProviderAccountRepository,
@@ -19,6 +20,7 @@ import {
   type StartCodexDeviceLogin,
   type StoreConnectedCodexAuth,
   type StoreStartedCodexDeviceLogin,
+  connectChatGptCodexLocalAuthForUser,
   makeD1ProviderAccountRepository,
   pollOpenAiCodexDeviceLogin,
   refreshChatGptCodexDeviceLoginForUser,
@@ -30,6 +32,7 @@ import {
   providerAccountRouteErrorName,
   providerAccountRouteErrorStatus,
 } from './provider-account-route-errors'
+import { ProviderAccountCredentialMaterial } from './provider-account-errors'
 import { openAgentsDatabase } from './runtime'
 import { currentIsoTimestamp } from './runtime-primitives'
 
@@ -119,6 +122,54 @@ const withPylonLinkMetadata = <T extends Record<string, unknown>>(
     status: 'linked',
   },
 })
+
+const finiteNumber = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isFinite(value) ? value : undefined
+
+const requiredSecretString = (
+  record: Record<string, unknown>,
+  key: string,
+): string => {
+  const value = record[key]
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new ProviderAccountCredentialMaterial({
+      fieldName: `auth.${key}`,
+      message: 'Codex local auth material is missing a required field.',
+    })
+  }
+  return value
+}
+
+const optionalSecretString = (
+  record: Record<string, unknown>,
+  key: string,
+): string | undefined => {
+  const value = record[key]
+  return typeof value === 'string' && value.trim() !== ''
+    ? value
+    : undefined
+}
+
+const codexOAuthAuthFromBody = (
+  body: Record<string, unknown>,
+): CodexOAuthAuth => {
+  const auth =
+    body.auth !== null && typeof body.auth === 'object' && !Array.isArray(body.auth)
+      ? (body.auth as Record<string, unknown>)
+      : {}
+  const expires = finiteNumber(auth.expires)
+  const accountId = optionalSecretString(auth, 'accountId')
+  const idToken = optionalSecretString(auth, 'idToken')
+
+  return {
+    type: 'oauth',
+    access: requiredSecretString(auth, 'access'),
+    refresh: requiredSecretString(auth, 'refresh'),
+    expires: expires ?? 0,
+    ...(accountId === undefined ? {} : { accountId }),
+    ...(idToken === undefined ? {} : { idToken }),
+  }
+}
 
 export const makeProviderAccountPylonHandlers = <
   Bindings extends ProviderAccountPylonBindings,
@@ -228,5 +279,68 @@ export const makeProviderAccountPylonHandlers = <
     }
 
     return noStoreJsonResponse(withPylonLinkMetadata(result))
+  },
+
+  handlePylonProviderLocalCodexAuthImportApi: async (
+    request: Request,
+    env: Bindings,
+  ) => {
+    if (request.method !== 'POST') {
+      return methodNotAllowed(['POST'])
+    }
+
+    const session = await requireAgent(dependencies, request, env)
+    if (session === undefined) {
+      return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    }
+
+    const userId = linkedOpenAuthOwnerUserId(session)
+    if (userId === undefined) {
+      return pylonAgentNotLinkedResponse()
+    }
+
+    const body = await readJsonObject(request).catch(
+      (): Record<string, unknown> => ({}),
+    )
+    const accountLabel = optionalString(body.accountLabel)
+    const createNew = optionalBoolean(body.createNew)
+    const providerAccountRef = optionalString(body.providerAccountRef)
+    const repository = routeProviderAccountRepository(dependencies, env)
+
+    try {
+      const result = await observedPromise(
+        'ProviderAccountPylon.connectChatGptCodexLocalAuthForUser',
+        () =>
+          connectChatGptCodexLocalAuthForUser(
+            repository,
+            {
+              userId,
+              auth: codexOAuthAuthFromBody(body),
+              ...(accountLabel === undefined ? {} : { accountLabel }),
+              ...(createNew === undefined ? {} : { createNew }),
+              ...(providerAccountRef === undefined
+                ? {}
+                : { providerAccountRef }),
+            },
+            dependencies.storeConnectedCodexAuth(env.AUTH_STORAGE),
+          ),
+      )
+
+      return noStoreJsonResponse(withPylonLinkMetadata(result), { status: 201 })
+    } catch (error) {
+      logWorkerRouteError('pylon_provider_local_codex_auth_import_failed', error, {
+        createNew,
+        errorName: providerAccountRouteErrorName(error),
+        providerAccountRef,
+      })
+
+      return noStoreJsonResponse(
+        {
+          error: 'provider_local_codex_auth_import_failed',
+          message: providerAccountRouteErrorMessage(error),
+        },
+        { status: providerAccountRouteErrorStatus(error, 400) },
+      )
+    }
   },
 })

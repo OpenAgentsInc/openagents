@@ -103,9 +103,11 @@ export type ProviderConnectionAttemptSource =
   | 'worker_device_code'
   | 'manual_placeholder'
   | 'browser_api_key'
+  | 'pylon_local_codex_auth'
 
 export type ProviderConnectionAttemptMethod =
   | 'chatgpt_device_code'
+  | 'codex_device_auth'
   | 'provider_api_key'
 
 export type ProviderAccountEventKind =

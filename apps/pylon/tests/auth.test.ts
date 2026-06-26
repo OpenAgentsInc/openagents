@@ -27,20 +27,37 @@ function jsonResponse(body: unknown, status = 200): Response {
   })
 }
 
+const localCodexAuthFixture = (): Record<string, unknown> => ({
+  auth_mode: "chatgpt",
+  last_refresh: "2026-06-25T12:00:00.000Z",
+  tokens: {
+    access_token: "access-secret",
+    refresh_token: "refresh-secret",
+    account_id: "codex-account-fixture",
+    id_token: "id-secret",
+  },
+})
+
 describe("pylon auth", () => {
-  test("connects OpenAgents and Codex with only device prompts surfaced", async () => {
+  test("connects OpenAgents and Codex with only required device prompts surfaced", async () => {
     await withHome(async home => {
       const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), {
         PYLON_HOME: home,
       })
-      const prompts: Array<{ userCode: string; verificationUrl: string }> = []
-      const calls: Array<{ url: string; method: string | undefined; authorization: string | null }> = []
+      const prompts: Array<{ kind: string; userCode: string; verificationUrl: string }> = []
+      const calls: Array<{
+        authorization: string | null
+        body: string | undefined
+        method: string | undefined
+        url: string
+      }> = []
       const fetcher: typeof fetch = async (input, init) => {
         const url = String(input)
         calls.push({
           url,
           method: init?.method,
           authorization: new Headers(init?.headers).get("authorization"),
+          body: typeof init?.body === "string" ? init.body : undefined,
         })
         if (url === "https://openagents.example/api/agents/register") {
           return jsonResponse({
@@ -66,26 +83,28 @@ describe("pylon auth", () => {
             linkedAgent: { tokenPrefix: "oa_agent_fixture" },
           })
         }
-        if (url === "https://openagents.example/api/pylon/provider-accounts/chatgpt-codex/device-login/start") {
-          return jsonResponse({
-            attempt: { id: "provider_attempt_1", status: "pending" },
-            expiresAt: "2026-06-25T12:10:00.000Z",
-            intervalSeconds: 1,
-            providerAccountRef: "provider_account_codex",
-            pylonLink: { owner: "openauth", status: "linked" },
-            userCode: "CODE-X123",
-            verificationUrl: "https://auth.openai.com/device",
-          }, 201)
-        }
-        if (url === "https://openagents.example/api/pylon/provider-accounts/chatgpt-codex/device-login/provider_attempt_1") {
+        if (url === "https://openagents.example/api/pylon/provider-accounts/chatgpt-codex/local-auth/import") {
+          const body = JSON.parse(String(init?.body)) as Record<string, unknown>
+          const auth = body.auth as Record<string, unknown>
+          expect(body).toMatchObject({
+            accountLabel: "codex",
+            createNew: true,
+          })
+          expect(auth).toMatchObject({
+            type: "oauth",
+            access: "access-secret",
+            refresh: "refresh-secret",
+            accountId: "codex-account-fixture",
+            idToken: "id-secret",
+          })
           return jsonResponse({
             account: {
               status: "connected",
               providerAccountRef: "provider_account_codex",
             },
-            attempt: { id: "provider_attempt_1", status: "connected" },
+            attempt: { id: "provider_attempt_import_1", status: "connected" },
             pylonLink: { owner: "openauth", status: "linked" },
-          })
+          }, 201)
         }
         throw new Error(`unexpected fetch ${url}`)
       }
@@ -98,7 +117,8 @@ describe("pylon auth", () => {
           fetcher,
           onDevicePrompt: prompt => prompts.push(prompt),
           runCodexDeviceLogin: async input => {
-            await writeFile(join(input.home, "auth.json"), JSON.stringify({ ok: true }))
+            await mkdir(input.home, { recursive: true })
+            await writeFile(join(input.home, "auth.json"), JSON.stringify(localCodexAuthFixture()))
             return { exitCode: 0 }
           },
           sleep: async () => undefined,
@@ -111,11 +131,6 @@ describe("pylon auth", () => {
           userCode: "PYLO-NOPE",
           verificationUrl: "https://openagents.example/api/pylon/auth/openagents/device/verify?attempt=pylon_openauth_attempt_1&code=PYLO-NOPE",
         },
-        {
-          kind: "codex_provider",
-          userCode: "CODE-X123",
-          verificationUrl: "https://auth.openai.com/device",
-        },
       ])
       expect(projection).toMatchObject({
         schema: "pylon.auth.codex.v1",
@@ -126,9 +141,13 @@ describe("pylon auth", () => {
           accountStatus: "connected",
           attemptStatus: "connected",
           providerAccountRef: "provider_account_codex",
+          source: "pylon_local_codex_auth",
         },
       })
       expect(JSON.stringify(projection)).not.toContain("oa_agent_fixture_123")
+      expect(JSON.stringify(projection)).not.toContain("access-secret")
+      expect(JSON.stringify(projection)).not.toContain("refresh-secret")
+      expect(JSON.stringify(projection)).not.toContain("id-secret")
       expect(JSON.stringify(projection)).not.toContain(home)
       assertPublicProjectionSafe(projection)
 
@@ -138,8 +157,20 @@ describe("pylon auth", () => {
         "Bearer oa_agent_fixture_123",
         "Bearer oa_agent_fixture_123",
         "Bearer oa_agent_fixture_123",
-        "Bearer oa_agent_fixture_123",
       ])
+      expect(calls.map(call => call.url)).not.toContain(
+        "https://openagents.example/api/pylon/provider-accounts/chatgpt-codex/device-login/start",
+      )
+      expect(JSON.parse(await readFile(summary.paths.config, "utf8"))).toMatchObject({
+        dev: {
+          accounts: [
+            {
+              ref: "codex",
+              openAgentsProviderAccountRef: "provider_account_codex",
+            },
+          ],
+        },
+      })
     })
   })
 
@@ -160,7 +191,7 @@ describe("pylon auth", () => {
       await mkdir(join(home, "auth"), { recursive: true })
       await writeFile(join(home, "auth", "openagents-agent-token"), "oa_agent_fixture_456\n")
 
-      const fetcher: typeof fetch = async (input) => {
+      const fetcher: typeof fetch = async (input, init) => {
         const url = String(input)
         if (url === "https://openagents.example/api/pylon/auth/openagents/device/start") {
           return jsonResponse({
@@ -169,26 +200,20 @@ describe("pylon auth", () => {
             linkedAgent: { tokenPrefix: "oa_agent_fixture" },
           })
         }
-        if (url === "https://openagents.example/api/pylon/provider-accounts/chatgpt-codex/device-login/start") {
-          return jsonResponse({
-            attempt: { id: "provider_attempt_2", status: "pending" },
-            expiresAt: "2026-06-25T12:10:00.000Z",
-            intervalSeconds: 1,
-            providerAccountRef: "provider_account_codex_2",
-            pylonLink: { owner: "openauth", status: "linked" },
-            userCode: "CODE-X222",
-            verificationUrl: "https://auth.openai.com/device",
-          }, 201)
-        }
-        if (url === "https://openagents.example/api/pylon/provider-accounts/chatgpt-codex/device-login/provider_attempt_2") {
+        if (url === "https://openagents.example/api/pylon/provider-accounts/chatgpt-codex/local-auth/import") {
+          const body = JSON.parse(String(init?.body)) as Record<string, unknown>
+          expect(body).toMatchObject({
+            accountLabel: "codex-2",
+            createNew: true,
+          })
           return jsonResponse({
             account: {
               status: "connected",
               providerAccountRef: "provider_account_codex_2",
             },
-            attempt: { id: "provider_attempt_2", status: "connected" },
+            attempt: { id: "provider_attempt_import_2", status: "connected" },
             pylonLink: { owner: "openauth", status: "linked" },
-          })
+          }, 201)
         }
         throw new Error(`unexpected fetch ${url}`)
       }
@@ -200,7 +225,8 @@ describe("pylon auth", () => {
           env: {},
           fetcher,
           runCodexDeviceLogin: async input => {
-            await writeFile(join(input.home, "auth.json"), JSON.stringify({ ok: true }))
+            await mkdir(input.home, { recursive: true })
+            await writeFile(join(input.home, "auth.json"), JSON.stringify(localCodexAuthFixture()))
             return { exitCode: 0 }
           },
           sleep: async () => undefined,
@@ -208,6 +234,7 @@ describe("pylon auth", () => {
       )
 
       expect(projection.accountRef).toBe("codex-2")
+      expect(projection.openAgentsProviderAccount.providerAccountRef).toBe("provider_account_codex_2")
       assertPublicProjectionSafe(projection)
     })
   })

@@ -7325,6 +7325,13 @@ const providerAccountRoutes = makeProviderAccountRoutes({
         attemptId,
       ),
     ),
+  handlePylonProviderLocalCodexAuthImportApi: (request, env) =>
+    routeEffect('handle_pylon_provider_local_codex_auth_import_api', () =>
+      providerAccountPylonHandlers.handlePylonProviderLocalCodexAuthImportApi(
+        request,
+        env,
+      ),
+    ),
   handlePylonOpenAgentsAuthStartApi: (request, env) =>
     pylonOpenAgentsAuthHandlers.handlePylonOpenAgentsAuthStartApi(request, env),
   handlePylonOpenAgentsAuthStatusApi: (request, env, attemptId) =>

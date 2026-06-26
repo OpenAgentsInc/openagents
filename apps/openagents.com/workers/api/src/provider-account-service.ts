@@ -8,6 +8,7 @@ import {
   ANTHROPIC_CLAUDE_PROVIDER,
   CHATGPT_CODEX_PROVIDER,
   SESSION_GRANT_TTL_MS,
+  type CodexOAuthAuth,
   type DeleteStartedCodexDeviceLogin,
   type IdFactory,
   type IssueProviderAccountGrantInput,
@@ -50,6 +51,7 @@ import {
   toPublicProviderConnectionAttempt,
 } from './provider-account-domain'
 import {
+  ProviderAccountCredentialMaterial,
   ProviderAccountNotConnectedHealthy,
   type ProviderAccountError,
   ProviderAccountNotFound,
@@ -631,6 +633,197 @@ export const recordDeviceLoginFailed = async (
   return {
     account: toPublicProviderAccount(updated, [attempt], nowDate),
     attempt: toPublicProviderConnectionAttempt(attempt, updated, nowDate),
+  }
+}
+
+const requireCodexOAuthText = (
+  value: string | undefined,
+  fieldName: string,
+): string => {
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new ProviderAccountCredentialMaterial({
+      fieldName,
+      message: 'Codex local auth material is missing a required field.',
+    })
+  }
+
+  return value
+}
+
+const normalizeImportedCodexOAuthAuth = (
+  auth: CodexOAuthAuth,
+  now: Date,
+): CodexOAuthAuth => {
+  const access = requireCodexOAuthText(auth.access, 'auth.access')
+  const refresh = requireCodexOAuthText(auth.refresh, 'auth.refresh')
+  const expires =
+    Number.isFinite(auth.expires) && auth.expires > now.getTime()
+      ? auth.expires
+      : now.getTime() + 1000 * 60 * 60
+
+  return {
+    type: 'oauth',
+    access,
+    refresh,
+    expires,
+    ...(auth.accountId === undefined
+      ? {}
+      : { accountId: requireCodexOAuthText(auth.accountId, 'auth.accountId') }),
+    ...(auth.idToken === undefined
+      ? {}
+      : { idToken: requireCodexOAuthText(auth.idToken, 'auth.idToken') }),
+  }
+}
+
+export const connectChatGptCodexLocalAuthForUser = async (
+  repository: ProviderAccountRepository,
+  input: Readonly<{
+    userId: string
+    auth: CodexOAuthAuth
+    accountLabel?: string | undefined
+    createNew?: boolean | undefined
+    providerAccountRef?: string | undefined
+  }>,
+  storeConnectedAuth: StoreConnectedCodexAuth,
+  options: Readonly<{
+    now?: () => Date
+    makeId?: IdFactory
+  }> = {},
+): Promise<
+  Readonly<{
+    account: PublicProviderAccount
+    attempt: PublicProviderConnectionAttempt
+    providerAccountRef: string
+    generatedAt: string
+  }>
+> => {
+  const runtime = { ...systemProviderAccountRuntime, ...options }
+  const nowDate = runtime.now()
+  const now = nowDate.toISOString()
+  const makeId = runtime.makeId
+  const requestedProviderAccountRef = normalizeProviderAccountRef(
+    input.providerAccountRef,
+  )
+  const explicitAccount =
+    requestedProviderAccountRef === undefined
+      ? undefined
+      : await repository.findAccountByRef(
+          input.userId,
+          requestedProviderAccountRef,
+        )
+
+  if (
+    requestedProviderAccountRef !== undefined &&
+    explicitAccount === undefined
+  ) {
+    throw new ProviderAccountNotFound({
+      message: 'Provider account not found.',
+    })
+  }
+
+  if (
+    explicitAccount !== undefined &&
+    explicitAccount.provider !== CHATGPT_CODEX_PROVIDER
+  ) {
+    throw new ProviderAccountRefMismatch({
+      message: 'Provider account ref belongs to a different provider.',
+    })
+  }
+
+  const reusableAccount =
+    requestedProviderAccountRef !== undefined || input.createNew === true
+      ? undefined
+      : await repository.findReusableAccount(input.userId)
+  const previous = explicitAccount ?? reusableAccount
+  const providerAccountRef =
+    previous?.providerAccountRef ?? `provider-account_${makeId('ref')}`
+  const normalizedAuth = normalizeImportedCodexOAuthAuth(input.auth, nowDate)
+  const secretRef = await storeConnectedAuth({
+    providerAccountRef,
+    auth: normalizedAuth,
+  })
+  const accountLabel =
+    normalizeAccountLabel(input.accountLabel) ??
+    normalizeAccountLabel(normalizedAuth.accountId) ??
+    previous?.accountLabel ??
+    null
+  const account: ProviderAccountRecord = {
+    id: previous?.id ?? makeId('provider_account'),
+    userId: input.userId,
+    teamId: previous?.teamId ?? null,
+    provider: CHATGPT_CODEX_PROVIDER,
+    authMode: 'codex_device_auth',
+    status: 'connected',
+    health: 'healthy',
+    providerAccountRef,
+    secretRef,
+    accountLabel,
+    planType: previous?.planType ?? null,
+    connectedAt: now,
+    disconnectedAt: null,
+    deniedAt: null,
+    lastStatusAt: now,
+    metadataJson: providerAccountPublicMetadataJson({
+      providerAccountRef,
+      source: 'pylon_local_codex_auth',
+      status: 'connected',
+      ...(accountLabel === null ? {} : { accountLabel }),
+      ...(previous?.planType === null || previous?.planType === undefined
+        ? {}
+        : { planType: previous.planType }),
+    }),
+    createdAt: previous?.createdAt ?? now,
+    updatedAt: now,
+    deletedAt: null,
+  }
+  const attempt: ProviderConnectionAttemptRecord = {
+    id: makeId('provider_attempt'),
+    providerAccountId: account.id,
+    userId: input.userId,
+    teamId: account.teamId,
+    provider: CHATGPT_CODEX_PROVIDER,
+    method: 'codex_device_auth',
+    source: 'pylon_local_codex_auth',
+    loginRef: null,
+    verificationUrl: null,
+    userCode: null,
+    status: 'connected',
+    expiresAt: now,
+    completedAt: now,
+    failedAt: null,
+    metadataJson: providerAccountPublicMetadataJson({
+      providerAccountRef,
+      source: 'pylon_local_codex_auth',
+      status: 'connected',
+    }),
+    createdAt: now,
+    updatedAt: now,
+  }
+  const event = makeEvent({
+    id: makeId('provider_event'),
+    kind: 'login_connected',
+    providerAccountId: account.id,
+    userId: input.userId,
+    teamId: account.teamId,
+    summary:
+      'ChatGPT/Codex account connected from a linked Pylon local Codex login.',
+    targetRef: providerAccountRef,
+    metadata: {
+      source: 'pylon_local_codex_auth',
+      status: 'connected',
+    },
+    actorId: input.userId,
+    sourceRefs: [`actor:${input.userId}`, `attempt:${attempt.id}`],
+    createdAt: now,
+  })
+
+  await repository.saveStartedDeviceLogin(account, attempt, event, previous !== undefined)
+
+  return {
+    account: toPublicProviderAccount(account, [attempt], nowDate),
+    attempt: toPublicProviderConnectionAttempt(attempt, account, nowDate),
+    providerAccountRef,
+    generatedAt: now,
   }
 }
 

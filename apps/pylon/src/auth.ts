@@ -54,11 +54,12 @@ export type PylonAuthCodexProjection = {
     attemptId: string
     attemptStatus: string
     providerAccountRef: string
+    source: "pylon_local_codex_auth"
   }
   blockerRefs: string[]
 }
 
-type DevicePromptKind = "openagents" | "codex_provider"
+type DevicePromptKind = "openagents" | "codex"
 
 type PylonAuthOptions = {
   env?: Record<string, string | undefined>
@@ -483,6 +484,16 @@ async function readConfig(summary: Pick<BootstrapSummary, "paths">): Promise<Rec
   }
 }
 
+async function writeConfig(
+  summary: Pick<BootstrapSummary, "paths">,
+  config: Record<string, unknown>,
+): Promise<void> {
+  await mkdir(dirname(summary.paths.config), { recursive: true })
+  const tempPath = `${summary.paths.config}.tmp-${process.pid}-${Date.now()}`
+  await writeFile(tempPath, `${JSON.stringify(config, null, 2)}\n`)
+  await rename(tempPath, summary.paths.config)
+}
+
 async function nextCodexAccountRef(summary: Pick<BootstrapSummary, "paths">): Promise<string> {
   const config = await readConfig(summary)
   const dev = config.dev !== null && typeof config.dev === "object" && !Array.isArray(config.dev)
@@ -515,27 +526,284 @@ async function nextCodexAccountRef(summary: Pick<BootstrapSummary, "paths">): Pr
 
 function codexConnectArgs(input: {
   accountRef: string
-  agentToken: string
-  baseUrl: string
   forceDeviceLogin: boolean
-  openAgentsAttemptId: string | null
   skipDeviceLogin: boolean
 }): PylonAccountsConnectArgs {
   return {
     provider: "codex",
     accountRef: input.accountRef,
     accountLabel: input.accountRef,
-    agentToken: input.agentToken,
-    baseUrl: input.baseUrl,
+    agentToken: null,
+    baseUrl: null,
     createNewOpenAgentsAccount: true,
     home: null,
     forceDeviceLogin: input.forceDeviceLogin,
     json: true,
-    openAgentsAttemptId: input.openAgentsAttemptId,
-    openAgentsLink: true,
+    openAgentsAttemptId: null,
+    openAgentsLink: false,
     providerAccountRef: null,
     skipDeviceLogin: input.skipDeviceLogin,
   }
+}
+
+const defaultCodexAccountHome = (
+  summary: Pick<BootstrapSummary, "paths">,
+  accountRef: string,
+): string => join(summary.paths.home, "accounts", "codex", accountRef)
+
+const localCodexAuthPath = (
+  summary: Pick<BootstrapSummary, "paths">,
+  accountRef: string,
+): string => join(defaultCodexAccountHome(summary, accountRef), "auth.json")
+
+function recordAt(value: unknown, key: string): Record<string, unknown> {
+  const child =
+    value !== null && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)[key]
+      : undefined
+  return child !== null && typeof child === "object" && !Array.isArray(child)
+    ? (child as Record<string, unknown>)
+    : {}
+}
+
+function optionalStringAt(record: Record<string, unknown>, key: string): string | undefined {
+  const value = record[key]
+  return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined
+}
+
+async function readLocalCodexOAuthAuth(input: {
+  accountRef: string
+  summary: Pick<BootstrapSummary, "paths">
+}): Promise<{
+  access: string
+  accountId?: string
+  expires: number
+  idToken?: string
+  refresh: string
+  type: "oauth"
+}> {
+  const raw = await readFile(localCodexAuthPath(input.summary, input.accountRef), "utf8")
+  const parsed = JSON.parse(raw) as unknown
+  const tokens = recordAt(parsed, "tokens")
+  const access = optionalStringAt(tokens, "access_token")
+  const refresh = optionalStringAt(tokens, "refresh_token")
+  if (access === undefined || refresh === undefined) {
+    throw new Error("local Codex auth is missing OAuth tokens")
+  }
+  const top = parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+    ? (parsed as Record<string, unknown>)
+    : {}
+  const lastRefresh = optionalStringAt(top, "last_refresh")
+  const refreshedAt = lastRefresh === undefined ? Number.NaN : Date.parse(lastRefresh)
+  const expires = Number.isFinite(refreshedAt) ? refreshedAt + 1000 * 60 * 60 : Date.now() + 1000 * 60 * 60
+  const accountId = optionalStringAt(tokens, "account_id")
+  const idToken = optionalStringAt(tokens, "id_token")
+
+  return {
+    type: "oauth",
+    access,
+    refresh,
+    expires,
+    ...(accountId === undefined ? {} : { accountId }),
+    ...(idToken === undefined ? {} : { idToken }),
+  }
+}
+
+function configuredProviderAccountRef(
+  config: Record<string, unknown>,
+  accountRef: string,
+): string | null {
+  const dev = recordAt(config, "dev")
+  const accounts = Array.isArray(dev.accounts) ? dev.accounts : []
+  for (const account of accounts) {
+    if (account === null || typeof account !== "object" || Array.isArray(account)) {
+      continue
+    }
+    const record = account as Record<string, unknown>
+    if (record.provider === "codex" && record.ref === accountRef) {
+      return optionalStringAt(record, "openAgentsProviderAccountRef") ?? null
+    }
+  }
+  return null
+}
+
+async function writeConfiguredProviderAccountRef(input: {
+  accountRef: string
+  providerAccountRef: string
+  summary: Pick<BootstrapSummary, "paths">
+}): Promise<void> {
+  const config = await readConfig(input.summary)
+  const dev = recordAt(config, "dev")
+  const accounts = Array.isArray(dev.accounts) ? [...dev.accounts] : []
+  const index = accounts.findIndex(account => {
+    if (account === null || typeof account !== "object" || Array.isArray(account)) {
+      return false
+    }
+    const record = account as Record<string, unknown>
+    return record.provider === "codex" && record.ref === input.accountRef
+  })
+  if (index === -1) {
+    return
+  }
+  const existing = accounts[index]
+  accounts[index] = {
+    ...(existing !== null && typeof existing === "object" && !Array.isArray(existing) ? existing : {}),
+    openAgentsProviderAccountRef: input.providerAccountRef,
+  }
+  config.dev = { ...dev, accounts }
+  await writeConfig(input.summary, config)
+}
+
+type OpenAgentsLocalCodexAuthImportResponse = {
+  account: {
+    providerAccountRef: string
+    status: string
+  }
+  attempt: {
+    id: string
+    status: string
+  }
+  pylonLink: { owner: "openauth"; status: "linked" }
+}
+
+function parseLocalCodexAuthImportResponse(
+  body: Record<string, unknown>,
+): OpenAgentsLocalCodexAuthImportResponse {
+  const account = recordAt(body, "account")
+  const attempt = recordAt(body, "attempt")
+  const pylonLink = recordAt(body, "pylonLink")
+  if (pylonLink.owner !== "openauth" || pylonLink.status !== "linked") {
+    throw new Error("OpenAgents local Codex auth import did not confirm a linked Pylon owner")
+  }
+  return {
+    account: {
+      providerAccountRef: stringAt(account, "providerAccountRef"),
+      status: stringAt(account, "status"),
+    },
+    attempt: {
+      id: stringAt(attempt, "id"),
+      status: stringAt(attempt, "status"),
+    },
+    pylonLink: { owner: "openauth", status: "linked" },
+  }
+}
+
+async function importLocalCodexAuth(input: {
+  accountRef: string
+  agentToken: string
+  baseUrl: string
+  fetcher: PylonAccountsConnectFetcher
+  providerAccountRef: string | null
+  summary: Pick<BootstrapSummary, "paths">
+}): Promise<OpenAgentsLocalCodexAuthImportResponse> {
+  const auth = await readLocalCodexOAuthAuth({
+    accountRef: input.accountRef,
+    summary: input.summary,
+  })
+  const response = await input.fetcher(
+    `${input.baseUrl}/api/pylon/provider-accounts/chatgpt-codex/local-auth/import`,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${input.agentToken}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        accountLabel: input.accountRef,
+        createNew: input.providerAccountRef === null,
+        ...(input.providerAccountRef === null
+          ? {}
+          : { providerAccountRef: input.providerAccountRef }),
+        auth,
+      }),
+    },
+  )
+  return parseLocalCodexAuthImportResponse(await readJsonResponse(response))
+}
+
+const codexDeviceUrlPattern = /https:\/\/auth\.openai\.com\/codex\/device\b/
+const codexDeviceCodePattern = /\b[A-Z0-9]{4}-[A-Z0-9]{4,6}\b/
+
+function maybeEmitCodexDevicePrompt(input: {
+  buffer: string
+  emitted: { current: boolean }
+  onDevicePrompt: PylonAuthOptions["onDevicePrompt"]
+}): void {
+  if (input.emitted.current) {
+    return
+  }
+  const verificationUrl = input.buffer.match(codexDeviceUrlPattern)?.[0]
+  const userCode = input.buffer.match(codexDeviceCodePattern)?.[0]
+  if (verificationUrl === undefined || userCode === undefined) {
+    return
+  }
+  input.emitted.current = true
+  input.onDevicePrompt?.({
+    kind: "codex",
+    userCode,
+    verificationUrl,
+  })
+}
+
+async function collectCodexLoginStream(input: {
+  emitted: { current: boolean }
+  onDevicePrompt: PylonAuthOptions["onDevicePrompt"]
+  stream: ReadableStream<Uint8Array> | null
+}): Promise<string> {
+  if (input.stream === null) {
+    return ""
+  }
+  const reader = input.stream.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ""
+  while (true) {
+    const chunk = await reader.read()
+    if (chunk.done) {
+      buffer += decoder.decode()
+      maybeEmitCodexDevicePrompt({ ...input, buffer })
+      return buffer
+    }
+    buffer += decoder.decode(chunk.value, { stream: true })
+    maybeEmitCodexDevicePrompt({ ...input, buffer })
+  }
+}
+
+const quietCodexDeviceLoginRunner = (
+  onDevicePrompt: PylonAuthOptions["onDevicePrompt"],
+): PylonCodexDeviceLoginRunner => async input => {
+  const child = Bun.spawn(["codex", "login", "--device-auth"], {
+    env: {
+      ...process.env,
+      ...input.env,
+      CODEX_HOME: input.home,
+    },
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
+  })
+  const emitted = { current: false }
+  const [stdout, stderr, exitCode] = await Promise.all([
+    collectCodexLoginStream({
+      emitted,
+      onDevicePrompt,
+      stream: child.stdout,
+    }),
+    collectCodexLoginStream({
+      emitted,
+      onDevicePrompt,
+      stream: child.stderr,
+    }),
+    child.exited,
+  ])
+  if (exitCode !== 0 && !emitted.current) {
+    const combined = `${stdout}\n${stderr}`
+    maybeEmitCodexDevicePrompt({
+      buffer: combined,
+      emitted,
+      onDevicePrompt,
+    })
+  }
+  return { exitCode }
 }
 
 export async function runPylonAuthCodex(
@@ -549,89 +817,55 @@ export async function runPylonAuthCodex(
   const baseUrl = baseUrlFrom(args, env)
   const openAgents = await runPylonAuthOpenAgents(summary, { ...args, target: "openagents" }, options)
   const accountRef = args.accountRef ?? await nextCodexAccountRef(summary)
+  const configBeforeConnect = await readConfig(summary)
+  const previousProviderAccountRef = configuredProviderAccountRef(configBeforeConnect, accountRef)
   const started = await runPylonAccountsConnect(
     summary,
     codexConnectArgs({
       accountRef,
-      agentToken: openAgents.agentToken,
-      baseUrl,
       forceDeviceLogin: args.forceDeviceLogin,
-      openAgentsAttemptId: null,
       skipDeviceLogin: false,
     }),
     {
       env,
       fetcher,
-      ...(options.runCodexDeviceLogin === undefined
-        ? {}
-        : { runCodexDeviceLogin: options.runCodexDeviceLogin }),
+      runCodexDeviceLogin:
+        options.runCodexDeviceLogin ?? quietCodexDeviceLoginRunner(options.onDevicePrompt),
     },
   )
+  void sleep
 
-  if (started.openAgentsDeviceLogin.status !== "started") {
-    throw new Error("OpenAgents Codex provider device login did not start")
-  }
-
-  options.onDevicePrompt?.({
-    kind: "codex_provider",
-    userCode: started.openAgentsDeviceLogin.userCode,
-    verificationUrl: started.openAgentsDeviceLogin.verificationUrl,
+  const imported = await importLocalCodexAuth({
+    accountRef,
+    agentToken: openAgents.agentToken,
+    baseUrl,
+    fetcher,
+    providerAccountRef: previousProviderAccountRef,
+    summary,
+  })
+  await writeConfiguredProviderAccountRef({
+    accountRef,
+    providerAccountRef: imported.account.providerAccountRef,
+    summary,
   })
 
-  const deadline = Date.now() + args.timeoutSeconds * 1000
-  let attemptStatus = "pending"
-  let accountStatus = "connecting"
-  while (Date.now() <= deadline) {
-    await sleep(Math.max(1, started.openAgentsDeviceLogin.intervalSeconds) * 1000)
-    const polled = await runPylonAccountsConnect(
-      summary,
-      codexConnectArgs({
-        accountRef,
-        agentToken: openAgents.agentToken,
-        baseUrl,
-        forceDeviceLogin: false,
-        openAgentsAttemptId: started.openAgentsDeviceLogin.attemptId,
-        skipDeviceLogin: true,
-      }),
-      {
-        env,
-        fetcher,
-        ...(options.runCodexDeviceLogin === undefined
-          ? {}
-          : { runCodexDeviceLogin: options.runCodexDeviceLogin }),
-      },
-    )
-    if (polled.openAgentsDeviceLogin.status !== "polled") {
-      throw new Error("OpenAgents Codex provider poll returned an unexpected status")
-    }
-    attemptStatus = polled.openAgentsDeviceLogin.attemptStatus
-    accountStatus = polled.openAgentsDeviceLogin.accountStatus
-    if (attemptStatus === "connected" && accountStatus === "connected") {
-      const projection = {
-        schema: "pylon.auth.codex.v1",
-        status: "connected",
-        accountRef,
-        openAgents: openAgents.projection,
-        localCodex: {
-          deviceLoginStatus: started.deviceLogin.status,
-        },
-        openAgentsProviderAccount: {
-          accountStatus,
-          attemptId: polled.openAgentsDeviceLogin.attemptId,
-          attemptStatus,
-          providerAccountRef: polled.openAgentsDeviceLogin.providerAccountRef,
-        },
-        blockerRefs: [],
-      } satisfies PylonAuthCodexProjection
-      assertPublicProjectionSafe(projection)
-      return projection
-    }
-    if (attemptStatus === "expired" || attemptStatus === "denied") {
-      throw new Error(`OpenAgents Codex provider device login ${attemptStatus}`)
-    }
-  }
-
-  throw new Error(
-    `OpenAgents Codex provider auth timed out while account status was ${accountStatus}`,
-  )
+  const projection = {
+    schema: "pylon.auth.codex.v1",
+    status: "connected",
+    accountRef,
+    openAgents: openAgents.projection,
+    localCodex: {
+      deviceLoginStatus: started.deviceLogin.status,
+    },
+    openAgentsProviderAccount: {
+      accountStatus: imported.account.status,
+      attemptId: imported.attempt.id,
+      attemptStatus: imported.attempt.status,
+      providerAccountRef: imported.account.providerAccountRef,
+      source: "pylon_local_codex_auth",
+    },
+    blockerRefs: [],
+  } satisfies PylonAuthCodexProjection
+  assertPublicProjectionSafe(projection)
+  return projection
 }

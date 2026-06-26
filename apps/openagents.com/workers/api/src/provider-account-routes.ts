@@ -98,6 +98,10 @@ type ProviderAccountRouteDependencies<Bindings = OpenAgentsEnv> = Readonly<{
     env: Bindings,
     attemptId: string,
   ) => RouteEffect
+  handlePylonProviderLocalCodexAuthImportApi: (
+    request: Request,
+    env: Bindings,
+  ) => RouteEffect
   handlePylonOpenAgentsAuthStartApi: (
     request: Request,
     env: Bindings,
@@ -156,6 +160,15 @@ export const makeProviderAccountRoutes = <Bindings = OpenAgentsEnv>(
     ) {
       return routeEffectOrResponse(
         dependencies.handlePylonProviderDeviceLoginStartApi(request, env),
+      )
+    }
+
+    if (
+      url.pathname ===
+      '/api/pylon/provider-accounts/chatgpt-codex/local-auth/import'
+    ) {
+      return routeEffectOrResponse(
+        dependencies.handlePylonProviderLocalCodexAuthImportApi(request, env),
       )
     }
 

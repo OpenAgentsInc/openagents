@@ -436,6 +436,10 @@ describe('provider api key connect route dispatch', () => {
       handleProviderDeviceLoginStatusApi: stub('deviceStatus', calls),
       handlePylonProviderDeviceLoginStartApi: stub('pylonDeviceStart', calls),
       handlePylonProviderDeviceLoginStatusApi: stub('pylonDeviceStatus', calls),
+      handlePylonProviderLocalCodexAuthImportApi: stub(
+        'pylonLocalCodexAuthImport',
+        calls,
+      ),
       handlePylonOpenAgentsAuthStartApi: stub(
         'pylonOpenAgentsAuthStart',
         calls,
@@ -505,6 +509,7 @@ describe('provider api key connect route dispatch', () => {
     for (const path of [
       '/api/pylon/provider-accounts/chatgpt-codex/device-login/start',
       '/api/pylon/provider-accounts/chatgpt-codex/device-login/provider_attempt_1',
+      '/api/pylon/provider-accounts/chatgpt-codex/local-auth/import',
     ]) {
       const effect = router.routeProviderAccountRequest(
         new Request(`https://openagents.com${path}`, { method: 'POST' }),
@@ -519,7 +524,11 @@ describe('provider api key connect route dispatch', () => {
       }
     }
 
-    expect(calls).toEqual(['pylonDeviceStart', 'pylonDeviceStatus'])
+    expect(calls).toEqual([
+      'pylonDeviceStart',
+      'pylonDeviceStatus',
+      'pylonLocalCodexAuthImport',
+    ])
   })
 
   test('routes Pylon OpenAgents auth device-link paths to auth handlers', async () => {

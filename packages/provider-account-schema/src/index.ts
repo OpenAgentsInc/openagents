@@ -77,6 +77,7 @@ export type ProviderAccountAuthMode = typeof ProviderAccountAuthMode.Type
 
 export const ProviderConnectionAttemptMethod = S.Literals([
   'chatgpt_device_code',
+  'codex_device_auth',
   'provider_api_key',
 ])
 export type ProviderConnectionAttemptMethod =
@@ -87,6 +88,7 @@ export const ProviderConnectionAttemptSource = S.Literals([
   'worker_device_code',
   'manual_placeholder',
   'browser_api_key',
+  'pylon_local_codex_auth',
 ])
 export type ProviderConnectionAttemptSource =
   typeof ProviderConnectionAttemptSource.Type

@@ -222,12 +222,12 @@ payout target`) run from the palette and always end in an explicit
 - `pylon auth codex` is the human path for connecting Codex capacity. It first
   ensures the local Pylon agent is linked to your OpenAgents account, then
   creates an isolated local Codex home, runs `codex login --device-auth` for
-  that home when needed, starts the OpenAgents-linked ChatGPT/Codex
-  provider-account device flow, and polls until the provider account is
-  connected. The only human output is the verification URL and user code for
-  each required browser/device step; attempt IDs, tokens, JSON plumbing, and
-  local credential paths stay hidden. Re-run `pylon auth codex` to add another
-  Codex account (`codex`, `codex-2`, `codex-3`, ...), or pass
+  that home only when needed, then privately imports that local Codex auth into
+  the linked OpenAgents owner account. The only human output is the
+  verification URL and user code for required browser/device steps; attempt
+  IDs, tokens, JSON plumbing, local credential paths, and the private import
+  stay hidden. Re-run `pylon auth codex` to add another Codex account (`codex`,
+  `codex-2`, `codex-3`, ...), or pass
   `--account <ref>` for an explicit account name. `pylon auth openagents` runs
   only the OpenAgents account-link step. The older `pylon accounts connect ...`
   command remains available for lower-level automation.
