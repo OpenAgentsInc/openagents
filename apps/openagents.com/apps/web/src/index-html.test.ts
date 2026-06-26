@@ -1,6 +1,5 @@
 /// <reference types="vite/client" />
 import { readFileSync } from 'node:fs'
-
 import { describe, expect, test } from 'vitest'
 
 const indexHtml = import.meta.glob<string>('../index.html', {
@@ -79,6 +78,12 @@ describe('index html', () => {
     )
     expect(publicAssets['../public/favicon.svg']).toContain('<svg')
     expect(publicAssets['../public/icon.svg']).toContain('<svg')
+    expect(publicAssets['../public/favicon.svg']).toContain('#4fd0ff')
+    expect(publicAssets['../public/icon.svg']).toContain('#4fd0ff')
+    expect(publicAssets['../public/favicon.svg']).not.toContain(
+      'M24 9v30M9 24h30',
+    )
+    expect(publicAssets['../public/icon.svg']).not.toContain('M24 9v30M9 24h30')
     expect(publicAssets['../public/favicon.svg']).not.toContain('<html')
     expect(publicAssets['../public/icon.svg']).not.toContain('<html')
 

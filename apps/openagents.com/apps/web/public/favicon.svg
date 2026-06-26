@@ -4,17 +4,9 @@
   role="img"
   aria-label="OpenAgents"
 >
-  <rect width="48" height="48" rx="10" fill="#050505" />
-  <path
-    d="M13 24c0-6.1 4.9-11 11-11s11 4.9 11 11-4.9 11-11 11-11-4.9-11-11Z"
-    fill="none"
-    stroke="#f8fafc"
-    stroke-width="4"
-  />
-  <path
-    d="M24 9v30M9 24h30"
-    stroke="#84cc16"
-    stroke-width="4"
-    stroke-linecap="round"
-  />
+  <rect width="48" height="48" rx="10" fill="#05070a" />
+  <circle cx="24" cy="24" r="15" fill="#f8fafc" />
+  <circle cx="24" cy="24" r="9" fill="#05070a" />
+  <path d="M32 13l3-3 7 7-3 3Z" fill="#4fd0ff" />
+  <circle cx="39" cy="10" r="5" fill="#4fd0ff" />
 </svg>
