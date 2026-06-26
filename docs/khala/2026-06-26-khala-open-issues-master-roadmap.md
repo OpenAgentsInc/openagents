@@ -29,7 +29,7 @@ external-wins admission, not for hiding usage.
 ## Current status snapshot
 
 Refreshed from GitHub issue state, `origin/main`, live counter/proof reads, and
-the local Pylon state on **2026-06-26 ~17:18Z**. This table is the
+the local Pylon state on **2026-06-26 ~17:43Z**. This table is the
 operator view of what remains, not a public product claim.
 
 | Issue | State | Current status / next action |
@@ -52,10 +52,13 @@ operator view of what remains, not a public product claim.
 | #6309 | **Open** | Gym ladder publication/projection layer landed in `1accb3573b`. Still open for decision-grade rung data and recurrence evidence. |
 | #6305 | **Closed** | OpenCode -> Khala checklist/recipe is closed. Keep it honest if serving regresses. |
 | #6306 | **Closed** | Next ecosystem recipes are closed. Keep them as docs/recipe artifacts, not proof that Phase 4 benchmarks are complete. |
+| #6351 | **Open** | New /stats dependency: public model/provider mix endpoint over `token_usage_events`, grouping GLM family, Fireworks DeepSeek, Pylon-Codex, GPT-OSS, Gemini, and other. Do before #6352. |
+| #6352 | **Open** | New /stats page depends on closed #6330 and open #6351. Build the public counter, America/Chicago daily chart, and model/provider mix once #6351 lands. |
+| #6353 | **Open** | New /stats epic tracking #6330, #6351, and #6352. #6330 is already closed; remaining work is endpoint then page. |
 | #6303 | **Open** | GTM umbrella remains open: recipe issues are closed and benchmark publication layers exist, but the real decision-grade benchmark/quality evidence and adoption scoreboard are not complete. |
 | #6316 | **Open** | Serving umbrella remains open: #6320/#6318 have partial slices and fresh Pylon/Codex proofs, and #6311's scheduled heartbeat rows are now live, but #6323 pilot, #6311 durability, #6318 live preemption, #6317 stress, #6312 aggregate benchmark, and #6321 overseer are not complete. |
-| #6325 | **Closed** | Pylon/Codex delegated sessions are persisted as private traces and exact token events (`c92a5652ab`). |
-| #6326 | **Closed** | Complete raw Codex SDK event streams persist privately for Pylon/Codex Khala delegation (`48e43cee02`, deploy `4d1de2d8-6285-41fa-bd9f-7a5a88cf8275`). |
+| #6325 | **Closed** | Pylon/Codex delegated sessions are persisted as private traces and exact token events (`c92a5652ab`), with the live raw-chunk follow-up in `74f25e77ad`. |
+| #6326 | **Closed** | Complete raw Codex SDK event streams persist privately for Pylon/Codex Khala delegation (`48e43cee02`, deploy `4d1de2d8-6285-41fa-bd9f-7a5a88cf8275`), plus live chunk rows in `pylon_codex_raw_event_chunks`. |
 | #6331 | **Closed** | The Pylon coding-delegation 500/unavailable path is fixed with typed diagnostics and proof surfaces. |
 
 ## Execution notes
@@ -182,6 +185,21 @@ operator view of what remains, not a public product claim.
   `pylon khala proof --assignment-ref ... --json` or token rows filtered to
   `provider='pylon-codex-own-capacity'`, because public counter movement is
   aggregate and other agents may be running.
+- Public counter state after the raw-chunk follow-up and freshness fix:
+  `4ab28bfdfc` is current `origin/main` and fixes the public counter freshness
+  / banner path after `74f25e77ad` added live Pylon/Codex raw event chunks.
+  `/api/public/khala-tokens-served` returned `244,636,738` at
+  `2026-06-26T17:42:30.969Z`. In the preceding two hours, live D1 showed
+  `75` exact `khala_coding_delegation` rows totaling `148,621,006` tokens,
+  with the newest Pylon/Codex exact row at `2026-06-26T17:38:29.189Z`
+  (`assignment.public.khala_coding.chatcmpl_442269504f884516908431ca167d9ed9`,
+  `681,446` tokens). The live raw-event chunk table had `26` chunks / `43`
+  events / `411,609` bytes for that same assignment. After `17:38Z`, the
+  visible small ticks were canary/background rows, not active large Codex
+  sessions; `ps` showed no active `assignment run-no-spend` workers. As of the
+  same refresh, `provider go-online --json` reported Pylon
+  `pylon.33afd48282a649047e3a` with Codex `available=5`, `busy=0`, `queued=0`,
+  and heartbeat sequence `144`.
 - Current serving observability status: canonical scheduled
   `glm-pool-heartbeat` rows are now live. `5b11c6eaf5` is deployed as Worker
   `7ee46a76-f9ef-42cf-ac9f-31a472d2b3fb`; after one cron interval,
