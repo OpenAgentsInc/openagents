@@ -113,6 +113,13 @@
     "HYDRALISK_GLM_52_REAP_504B_COST_PROFILE_REF": "cost_profile.hydralisk.glm_52_reap_504b.g4_4g.spot.2026_06_25",
     "HYDRALISK_GLM_52_REAP_504B_PREFLIGHT_REF": "preflight.hydralisk.glm_52_reap_504b.g4.20260626T033107Z",
     "HYDRALISK_GLM_52_REAP_504B_RECEIPT_REF": "receipt.hydralisk.glm_52_reap_504b.g4.roster-10replica-20260626T033107Z",
+    // Public-safe scheduled fleet watchdog for #6311. Every minute the Worker
+    // cron probes each configured GLM replica's /health and /v1/models routes,
+    // records exact zero-token heartbeat rows, and projects the latest typed
+    // status through /v1/gateway/glm-fleet/readiness. Warm completions stay off
+    // by default here; serving traffic and explicit smokes are what spend tokens.
+    "HYDRALISK_GLM_52_REAP_504B_HEARTBEAT_ENABLED": "true",
+    "HYDRALISK_GLM_52_REAP_504B_HEARTBEAT_CADENCE_MINUTES": "1",
     // Per-replica arming for the 10-host fleet. With REPLICA_IDS set, the pool
     // resolver does NOT fall back to legacy unsuffixed keys, so each replica must
     // carry its own _ENABLED + evidence refs (URL/bearer live in Worker secrets).

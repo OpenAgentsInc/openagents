@@ -22,8 +22,12 @@ export type GlmFleetReadinessDeps = Readonly<{
 }>
 
 type GlmFleetReadinessHeartbeatRow = Readonly<{
+  demand_source: string | null
+  heartbeat_kind: string | null
   observed_at: string | null
+  provider: string | null
   replica_id: string | null
+  total_tokens: number | null
   warm_state: string | null
   watchdog_status: string | null
 }>
@@ -31,11 +35,23 @@ type GlmFleetReadinessHeartbeatRow = Readonly<{
 const heartbeatRecordFromRow = (
   row: GlmFleetReadinessHeartbeatRow,
 ): GlmFleetReadinessHeartbeatRecord | undefined => {
+  const routedCompletionHeartbeat =
+    row.demand_source === 'heartbeat' &&
+    row.provider === 'hydralisk-vllm-glm-5p2-reap-504b' &&
+    typeof row.total_tokens === 'number' &&
+    row.total_tokens > 0
+  const canonicalPoolHeartbeat =
+    row.demand_source === 'glm-pool-heartbeat' &&
+    row.heartbeat_kind === 'glm_pool_heartbeat'
   const candidate = {
     observedAt: row.observed_at ?? undefined,
     replicaId: row.replica_id ?? undefined,
     warmState: row.warm_state ?? undefined,
-    watchdogStatus: row.watchdog_status ?? undefined,
+    watchdogStatus:
+      row.watchdog_status ??
+      (routedCompletionHeartbeat && !canonicalPoolHeartbeat
+        ? 'healthy'
+        : undefined),
   }
   return isGlmFleetReadinessHeartbeatRecord(candidate) ? candidate : undefined
 }
@@ -47,14 +63,28 @@ export const readPersistedGlmFleetReadinessHeartbeatRecords = async (
     .prepare(
       `
         SELECT
+          demand_source,
+          json_extract(safe_metadata_json, '$.heartbeatKind') AS heartbeat_kind,
           observed_at,
+          provider,
           json_extract(safe_metadata_json, '$.selectedReplicaId') AS replica_id,
+          total_tokens,
           json_extract(safe_metadata_json, '$.replicaWarmState') AS warm_state,
           json_extract(safe_metadata_json, '$.watchdogStatus') AS watchdog_status
         FROM token_usage_events
-        WHERE demand_source = 'glm-pool-heartbeat'
-          AND model = 'openagents/glm-5.2-reap-504b'
-          AND json_extract(safe_metadata_json, '$.heartbeatKind') = 'glm_pool_heartbeat'
+        WHERE model = 'openagents/glm-5.2-reap-504b'
+          AND (
+            (
+              demand_source = 'glm-pool-heartbeat'
+              AND json_extract(safe_metadata_json, '$.heartbeatKind') = 'glm_pool_heartbeat'
+            )
+            OR (
+              demand_source = 'heartbeat'
+              AND provider = 'hydralisk-vllm-glm-5p2-reap-504b'
+              AND total_tokens > 0
+              AND json_extract(safe_metadata_json, '$.selectedReplicaId') IS NOT NULL
+            )
+          )
         ORDER BY observed_at DESC
         LIMIT 100
       `,
