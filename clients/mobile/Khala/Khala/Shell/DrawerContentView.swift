@@ -30,6 +30,9 @@ struct DrawerContentView: View {
             header
             searchField
             menu
+            if store.isUsingEphemeralFallback {
+                ephemeralNotice
+            }
             Divider()
                 .padding(.horizontal, DrawerStyle.edge)
                 .padding(.top, 4)
@@ -51,6 +54,24 @@ struct DrawerContentView: View {
     }
 
     // MARK: - Sections
+
+    /// Shown only when the on-disk store could not open and history is running
+    /// in-memory for this session, so the user knows chats won't persist a
+    /// relaunch rather than discovering it silently.
+    private var ephemeralNotice: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.caption)
+                .foregroundStyle(.orange)
+            Text("History isn't saving this session. Chats won't survive a relaunch.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, DrawerStyle.edge)
+        .padding(.top, 8)
+        .accessibilityElement(children: .combine)
+    }
 
     private var header: some View {
         Text("Khala")
@@ -219,9 +240,11 @@ struct DrawerContentView: View {
     private func delete(_ convo: Conversation) {
         let wasSelected = convo.id == selection?.id
         store.delete(convo)
-        if wasSelected {
-            selection = store.mostRecent
-        }
+        guard wasSelected else { return }
+        // Re-point the active selection. If that was the last conversation,
+        // create a fresh one (ChatGPT-style) so the chat surface never lands on
+        // the empty "No conversation" fallback after a delete.
+        selection = store.mostRecent ?? store.createConversation()
     }
 }
 

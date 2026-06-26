@@ -9,22 +9,30 @@ import SwiftUI
 /// Prose blocks (`.heading`, `.paragraph`, `.bullet`, `.numbered`) are rendered
 /// with SwiftUI-native inline markdown (`AttributedString(markdown:)`), which
 /// handles **bold**, *italics*, and `inline code` well enough for chat.
-enum MarkdownBlock: Identifiable {
+/// One list item, carrying its nesting depth so the renderer can indent nested
+/// bullets/numbers the way the Khala coding answers expect them.
+struct MarkdownListItem: Equatable {
+    /// Nesting depth: 0 = top level, 1 = one level of indent, etc.
+    let indent: Int
+    let text: String
+}
+
+enum MarkdownBlock {
     case heading(level: Int, text: String)
     case paragraph(text: String)
-    case bullet(items: [String])
-    case numbered(items: [String])
+    case bullet(items: [MarkdownListItem])
+    case numbered(items: [MarkdownListItem])
     case code(language: String?, code: String)
+}
 
-    var id: String {
-        switch self {
-        case let .heading(level, text): return "h\(level):\(text.hashValue)"
-        case let .paragraph(text): return "p:\(text.hashValue)"
-        case let .bullet(items): return "ul:\(items.joined().hashValue)"
-        case let .numbered(items): return "ol:\(items.joined().hashValue)"
-        case let .code(language, code): return "code:\(language ?? "")\(code.hashValue)"
-        }
-    }
+/// A block paired with its parse-order position. The position guarantees a
+/// stable, UNIQUE SwiftUI identity even when two blocks have identical content
+/// (e.g. two identical fenced code blocks or repeated paragraphs). The previous
+/// content-hash id collided for identical blocks, which dropped a duplicate
+/// block from the rendered message and emitted a SwiftUI "duplicate ID" warning.
+struct IdentifiedMarkdownBlock: Identifiable {
+    let id: Int
+    let block: MarkdownBlock
 }
 
 /// Splits raw assistant markdown into renderable blocks. Intentionally small
@@ -32,6 +40,11 @@ enum MarkdownBlock: Identifiable {
 /// optional language hint), and the remaining prose is grouped into headings,
 /// bullet/numbered lists, and paragraphs.
 enum MarkdownParser {
+    /// Parse into position-identified blocks for stable, unique SwiftUI identity.
+    static func parseIdentified(_ raw: String) -> [IdentifiedMarkdownBlock] {
+        parse(raw).enumerated().map { IdentifiedMarkdownBlock(id: $0.offset, block: $0.element) }
+    }
+
     static func parse(_ raw: String) -> [MarkdownBlock] {
         var blocks: [MarkdownBlock] = []
         // Normalize newlines so the line scanner is stable.
@@ -84,28 +97,36 @@ enum MarkdownParser {
                 continue
             }
 
-            // Bullet list: a run of `-`, `*`, or `+` items.
+            // Bullet list: a run of `-`, `*`, or `+` items, possibly nested.
             if isBullet(trimmed) {
                 flushParagraph()
-                var items: [String] = []
+                var items: [MarkdownListItem] = []
                 while i < lines.count {
-                    let t = lines[i].trimmingCharacters(in: .whitespaces)
+                    let raw = lines[i]
+                    let t = raw.trimmingCharacters(in: .whitespaces)
                     guard isBullet(t) else { break }
-                    items.append(stripBulletMarker(t))
+                    items.append(MarkdownListItem(
+                        indent: indentLevel(of: raw),
+                        text: stripBulletMarker(t)
+                    ))
                     i += 1
                 }
                 blocks.append(.bullet(items: items))
                 continue
             }
 
-            // Numbered list: a run of `1.`, `2)` style items.
+            // Numbered list: a run of `1.`, `2)` style items, possibly nested.
             if isNumbered(trimmed) {
                 flushParagraph()
-                var items: [String] = []
+                var items: [MarkdownListItem] = []
                 while i < lines.count {
-                    let t = lines[i].trimmingCharacters(in: .whitespaces)
+                    let raw = lines[i]
+                    let t = raw.trimmingCharacters(in: .whitespaces)
                     guard isNumbered(t) else { break }
-                    items.append(stripNumberMarker(t))
+                    items.append(MarkdownListItem(
+                        indent: indentLevel(of: raw),
+                        text: stripNumberMarker(t)
+                    ))
                     i += 1
                 }
                 blocks.append(.numbered(items: items))
@@ -157,6 +178,19 @@ enum MarkdownParser {
         let text = String(trimmed[idx...]).trimmingCharacters(in: .whitespaces)
         guard !text.isEmpty else { return nil }
         return (level, text)
+    }
+
+    /// Leading-whitespace nesting depth of a raw list line. Two spaces (or one
+    /// tab) per level, matching how assistant markdown indents nested lists.
+    /// Capped so a pathologically deep indent can't push content off-screen.
+    private static func indentLevel(of rawLine: String) -> Int {
+        var spaces = 0
+        for ch in rawLine {
+            if ch == " " { spaces += 1 }
+            else if ch == "\t" { spaces += 2 }
+            else { break }
+        }
+        return min(spaces / 2, 4)
     }
 
     private static func isBullet(_ trimmed: String) -> Bool {

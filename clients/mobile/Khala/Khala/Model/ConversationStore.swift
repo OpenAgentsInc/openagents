@@ -16,6 +16,11 @@ final class ConversationStore: ObservableObject {
     /// All conversations, sorted by `updatedAt` descending (most recent first).
     @Published private(set) var conversations: [Conversation] = []
 
+    /// True when the persistent on-disk store could not be opened and the app is
+    /// running on an in-memory fallback (history will not survive relaunch). The
+    /// UI can surface a gentle notice instead of silently losing persistence.
+    @Published private(set) var isUsingEphemeralFallback = false
+
     init(inMemory: Bool = false) {
         let schema = Schema([Conversation.self, Message.self])
         let config = ModelConfiguration(
@@ -25,19 +30,59 @@ final class ConversationStore: ObservableObject {
         do {
             container = try ModelContainer(for: schema, configurations: [config])
         } catch {
-            // A corrupt or migration-broken store should never black-screen the
-            // app. Fall back to an in-memory container so the UI still launches.
-            let fallback = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-            container = (try? ModelContainer(for: schema, configurations: [fallback]))
-                ?? {
-                    // Last-resort empty container; SwiftData guarantees this path
-                    // succeeds for an in-memory store.
-                    // swiftlint:disable:next force_try
-                    return try! ModelContainer(for: schema, configurations: [fallback])
-                }()
+            // A corrupt or migration-broken on-disk store must never
+            // black-screen the app. First try to RECOVER persistence by moving
+            // the corrupt store aside and opening a fresh on-disk store (so a
+            // one-time corruption doesn't permanently disable history); only if
+            // that also fails do we fall back to a non-persistent in-memory
+            // store so the UI still launches.
+            if !inMemory, let recovered = Self.recoverByResettingStore(schema: schema) {
+                container = recovered
+            } else {
+                let fallback = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+                container = (try? ModelContainer(for: schema, configurations: [fallback]))
+                    ?? {
+                        // Last-resort empty container; SwiftData guarantees this
+                        // path succeeds for an in-memory store.
+                        // swiftlint:disable:next force_try
+                        return try! ModelContainer(for: schema, configurations: [fallback])
+                    }()
+                isUsingEphemeralFallback = true
+            }
         }
         context = ModelContext(container)
         refresh()
+    }
+
+    /// Move the default SwiftData store files aside and open a fresh on-disk
+    /// store. Returns the new container, or `nil` if recovery is not possible
+    /// (caller then falls back to in-memory). Best-effort and non-throwing.
+    private static func recoverByResettingStore(schema: Schema) -> ModelContainer? {
+        let fileManager = FileManager.default
+        guard let appSupport = try? fileManager.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        ) else { return nil }
+
+        // SwiftData's default store is `default.store` (+ `-wal` / `-shm`).
+        let stamp = Int(Date().timeIntervalSince1970)
+        for suffix in ["", "-wal", "-shm"] {
+            let url = appSupport.appendingPathComponent("default.store\(suffix)")
+            guard fileManager.fileExists(atPath: url.path) else { continue }
+            let quarantined = appSupport.appendingPathComponent(
+                "default.corrupt-\(stamp).store\(suffix)"
+            )
+            // Prefer moving (keeps the corrupt data for diagnostics); if the move
+            // fails, delete so the fresh store can be created.
+            if (try? fileManager.moveItem(at: url, to: quarantined)) == nil {
+                try? fileManager.removeItem(at: url)
+            }
+        }
+
+        let fresh = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        return try? ModelContainer(for: schema, configurations: [fresh])
     }
 
     // MARK: - Reads

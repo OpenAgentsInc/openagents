@@ -101,6 +101,25 @@ final class KhalaStreamTests: XCTestCase {
         XCTAssertEqual(result.role, "assistant")
     }
 
+    func testStreamMapsHTTP401ToUnauthorized() async throws {
+        let session = makeSession()
+        StreamMockURLProtocol.requestHandler = { request in
+            (Self.status(request, 401), Data(#"{"error":"invalid"}"#.utf8))
+        }
+
+        do {
+            for try await _ in KhalaClient.streamCompletion(
+                messages: [.init(role: "user", content: "hi")],
+                apiKey: "oa_agent_bad_key",
+                session: session
+            ) {}
+            XCTFail("Expected unauthorized")
+        } catch let error as KhalaClient.KhalaError {
+            guard case .unauthorized = error else { return XCTFail("Got \(error)") }
+            XCTAssertFalse(error.isRetryable)
+        }
+    }
+
     func testStreamMapsHTTP402ToQuotaExceeded() async throws {
         let session = makeSession()
         StreamMockURLProtocol.requestHandler = { request in

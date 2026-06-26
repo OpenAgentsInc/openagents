@@ -15,6 +15,7 @@ enum KhalaClient {
 
     enum KhalaError: Error, LocalizedError {
         case missingKey
+        case unauthorized // HTTP 401 / 403 — key invalid, revoked, or unrecognized
         case quotaExceeded // HTTP 402
         case invalidCodingRequest(String)
         case http(Int, String)
@@ -25,6 +26,8 @@ enum KhalaClient {
             switch self {
             case .missingKey:
                 return "No API key. Mint or paste a Khala key in Settings."
+            case .unauthorized:
+                return "Key rejected. Mint or paste a valid Khala key in Settings."
             case .quotaExceeded:
                 return "Free quota reached. Add credits or wait for the UTC reset."
             case .invalidCodingRequest(let reason):
@@ -48,6 +51,8 @@ enum KhalaClient {
                 return "Connection interrupted"
             case .missingKey:
                 return "Missing API key"
+            case .unauthorized:
+                return "Key rejected"
             case .invalidCodingRequest:
                 return "Check the request"
             case .http:
@@ -67,6 +72,8 @@ enum KhalaClient {
                 return "The request did not reach Khala cleanly: \(err.localizedDescription). Check the connection and retry."
             case .missingKey:
                 return "Mint or paste a Khala key in Settings, then send the message again."
+            case .unauthorized:
+                return "Khala did not accept this API key. Open Settings to mint a free key or paste a valid one, then send again."
             case .invalidCodingRequest(let reason):
                 return reason
             case .http(let code, _):
@@ -83,7 +90,17 @@ enum KhalaClient {
             case .transport:
                 return true
             default:
+                // .unauthorized is NOT retryable: the same key will fail again;
+                // the user must fix it in Settings first.
                 return false
+            }
+        }
+
+        /// True when the right next step is to open Settings and fix the key.
+        var requiresKeyAttention: Bool {
+            switch self {
+            case .missingKey, .unauthorized: return true
+            default: return false
             }
         }
     }
@@ -180,6 +197,7 @@ enum KhalaClient {
         do {
             let (data, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse else { throw KhalaError.decoding }
+            if http.statusCode == 401 || http.statusCode == 403 { throw KhalaError.unauthorized }
             if http.statusCode == 402 { throw KhalaError.quotaExceeded }
             guard (200..<300).contains(http.statusCode) else {
                 throw KhalaError.http(http.statusCode, String(data: data, encoding: .utf8) ?? "")
@@ -231,6 +249,7 @@ enum KhalaClient {
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse else { throw KhalaError.decoding }
+            if http.statusCode == 401 || http.statusCode == 403 { throw KhalaError.unauthorized }
             if http.statusCode == 402 { throw KhalaError.quotaExceeded }
             guard (200..<300).contains(http.statusCode) else {
                 throw KhalaError.http(http.statusCode, String(data: data, encoding: .utf8) ?? "")

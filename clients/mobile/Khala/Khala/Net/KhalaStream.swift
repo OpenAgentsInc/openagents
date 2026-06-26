@@ -69,6 +69,7 @@ extension KhalaClient {
                     let request = try makeStreamRequest(messages: wire, apiKey: apiKey)
                     let (bytes, response) = try await session.bytes(for: request)
                     guard let http = response as? HTTPURLResponse else { throw KhalaError.decoding }
+                    if http.statusCode == 401 || http.statusCode == 403 { throw KhalaError.unauthorized }
                     if http.statusCode == 402 { throw KhalaError.quotaExceeded }
                     guard (200..<300).contains(http.statusCode) else {
                         // Drain a bounded amount of the error body for context.

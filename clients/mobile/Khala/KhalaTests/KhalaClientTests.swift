@@ -83,6 +83,57 @@ final class KhalaClientTests: XCTestCase {
         }
     }
 
+    func testCompleteMapsHTTP401ToUnauthorized() async throws {
+        let session = makeSession()
+
+        MockURLProtocol.requestHandler = { request in
+            return (
+                HTTPURLResponse(
+                    url: try XCTUnwrap(request.url),
+                    statusCode: 401,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )!,
+                Data(#"{ "error": "invalid key" }"#.utf8)
+            )
+        }
+
+        do {
+            _ = try await KhalaClient.complete(
+                prompt: "hello",
+                apiKey: "oa_agent_bad_key",
+                session: session
+            )
+            XCTFail("Expected unauthorized")
+        } catch let error as KhalaClient.KhalaError {
+            guard case .unauthorized = error else {
+                return XCTFail("Expected unauthorized, got \(error)")
+            }
+            XCTAssertEqual(error.recoveryTitle, "Key rejected")
+            XCTAssertFalse(error.isRetryable)
+            XCTAssertTrue(error.requiresKeyAttention)
+        }
+    }
+
+    func testCompleteMapsHTTP403ToUnauthorized() async throws {
+        let session = makeSession()
+        MockURLProtocol.requestHandler = { request in
+            (
+                HTTPURLResponse(
+                    url: try XCTUnwrap(request.url),
+                    statusCode: 403, httpVersion: nil, headerFields: nil
+                )!,
+                Data()
+            )
+        }
+        do {
+            _ = try await KhalaClient.complete(prompt: "hi", apiKey: "k", session: session)
+            XCTFail("Expected unauthorized")
+        } catch let error as KhalaClient.KhalaError {
+            guard case .unauthorized = error else { return XCTFail("Got \(error)") }
+        }
+    }
+
     func testCompleteMapsHTTP500ToRetryableServerError() async throws {
         let session = makeSession()
 
