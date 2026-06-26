@@ -295,23 +295,31 @@ const projectStatsToSnapshot = (
   const completedPassed = sumRewardListLengths(evals, reward => reward > 0)
   const rewardListedFailed = sumRewardListLengths(evals, reward => reward <= 0)
   const completedFromStats = countOrZero(stats['n_completed_trials'])
+  const running = countOrZero(stats['n_running_trials'])
+  const pending = countOrZero(stats['n_pending_trials'])
+  const rawCancelled = countOrZero(stats['n_cancelled_trials'])
+  const officialDenominator =
+    countOrZero(result['n_total_trials']) || context.officialDenominator
+  const completedIncludesCancelled =
+    completedFromStats + running + pending + rawCancelled > officialDenominator
+  const completedForProgress =
+    completedIncludesCancelled && completedFromStats >= rawCancelled
+      ? completedFromStats - rawCancelled
+      : completedFromStats
   // Some Harbor runs report the authoritative completed denominator in
   // `n_completed_trials` before every completed task appears in reward_stats.
   // Missing reward entries are completed non-pass outcomes; this matches
   // Harbor's metrics.mean (passed / n_completed_trials) and keeps `error` as a
-  // subset of completed for Worker validation.
+  // subset of completed for Worker validation. When Harbor also reports
+  // cancellations, the cancelled count is a subset of `n_completed_trials`; the
+  // public projection keeps cancellations disjoint so its buckets still add up
+  // to the official denominator.
   const completedFailed = Math.max(
     rewardListedFailed,
-    completedFromStats - completedPassed,
+    completedForProgress - completedPassed,
   )
-  const running = countOrZero(stats['n_running_trials'])
-  const pending = countOrZero(stats['n_pending_trials'])
   const error = countOrZero(stats['n_errored_trials'])
-  const cancelled = countOrZero(stats['n_cancelled_trials'])
-
-  // Prefer the official total from the file; fall back to the configured one.
-  const officialDenominator =
-    countOrZero(result['n_total_trials']) || context.officialDenominator
+  const cancelled = rawCancelled
 
   const observed = {
     completedPassed,
