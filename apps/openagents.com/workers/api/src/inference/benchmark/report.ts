@@ -556,6 +556,8 @@ export type BenchmarkReport = Readonly<{
   routingRecommendations: ReadonlyArray<BenchmarkRoutingRecommendation>
 }>
 
+// The fixture-lane notice: numbers are deterministic synthetic constants, not a
+// measurement of any real lane.
 const ILLUSTRATIVE_NOTICE =
   'ILLUSTRATIVE ONLY: produced by the deterministic FIXTURE lane (no network, ' +
   'no spend). These numbers exercise the harness and report math; they are NOT ' +
@@ -563,6 +565,20 @@ const ILLUSTRATIVE_NOTICE =
   'real sweep over REALISTIC Khala traffic (real input/output lengths, real ' +
   'cacheable prefixes, real concurrency). Synthetic-only traffic is labeled as ' +
   'such per group and is never a basis for a product claim.'
+
+// The real-but-not-decision-grade notice: a REAL lane was measured, but the run
+// does not clear the decision-grade bar (e.g. a Khala-only run with no billable
+// comparator, or a real run over synthetic shapes). The numbers ARE real
+// measurements of the executed lanes, but the run is not a basis for a
+// cross-provider product CLAIM until the full owner-armed sweep over REALISTIC
+// traffic runs (#6307).
+const REAL_NOT_DECISION_GRADE_NOTICE =
+  'REAL MEASUREMENT, NOT DECISION-GRADE: produced by a real lane seam, so the ' +
+  'numbers ARE measurements of the executed lane(s) — but this run does not ' +
+  'clear the decision-grade bar (e.g. no billable comparator ran, or a group ' +
+  'used synthetic traffic). A decision-grade Khala-vs-comparator CLAIM requires ' +
+  'an owner-armed real sweep over REALISTIC Khala traffic across the comparison ' +
+  'lanes. Synthetic-only groups are labeled as such and are never a product claim.'
 
 const WORKLOAD_ORDER: ReadonlyArray<BenchmarkWorkload> = [
   'chat',
@@ -621,7 +637,16 @@ export const buildBenchmarkReport = (
     configId: runSet.configId,
     seamId: runSet.seamId,
     decisionGrade,
-    illustrativeNotice: decisionGrade ? '' : ILLUSTRATIVE_NOTICE,
+    // An honest notice keyed on the SEAM that produced the run: the deterministic
+    // fixture lane (`seamId: 'fixture'`) is synthetic illustrative; a real lane
+    // (`seamId: 'real'`) that simply isn't decision-grade — e.g. a Khala-only run
+    // with no billable comparator — carries the real-measurement notice (the
+    // numbers ARE real, the run is just not a cross-provider claim yet).
+    illustrativeNotice: decisionGrade
+      ? ''
+      : runSet.seamId === 'real'
+        ? REAL_NOT_DECISION_GRADE_NOTICE
+        : ILLUSTRATIVE_NOTICE,
     cellsExpanded: runSet.cellsExpanded,
     cellsExecuted: runSet.cellsExecuted,
     cellsSkipped: runSet.cellsSkipped,

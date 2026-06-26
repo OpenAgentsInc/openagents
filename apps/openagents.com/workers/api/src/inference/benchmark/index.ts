@@ -14,3 +14,10 @@ export * from './report'
 export * from './fixtures'
 export * from './real-sweep-plan'
 export * from './opencode-client-runner'
+// Owner-armed real decision sweep (Open Question #5 suite / #6307): the live
+// provider executors, the concrete lane transports, the decision-grade config,
+// and the async sweep runner that produces the first decisionGrade:true report.
+export * from './real-lane-executor'
+export * from './real-lane-transports'
+export * from './real-sweep-config'
+export * from './real-sweep-runner'
