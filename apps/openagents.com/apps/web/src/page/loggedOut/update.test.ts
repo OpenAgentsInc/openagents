@@ -1,7 +1,7 @@
 import { Effect } from 'effect'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
-import { LandingRoute, TraceRoute } from '../../route'
+import { LandingRoute, StatsRoute, TraceRoute } from '../../route'
 import {
   ClickedCopyAgentInstructions,
   ClickedEnterKhala,
@@ -11,6 +11,7 @@ import {
   FailedLoadKhalaTokensServedSnapshot,
   FailedLoadTrace,
   SucceededLoadKhalaTokensServedSnapshot,
+  SucceededLoadPublicKhalaTokensServedModelMix,
   SucceededLoadTrace,
   ToggledGymLane,
   UpdatedGymSamplesPerCell,
@@ -18,6 +19,7 @@ import {
 import { init } from './model'
 import {
   LoadPublicKhalaTokensServedHistory,
+  LoadPublicKhalaTokensServedModelMix,
   LoadTrace,
   TASSADAR_AGENT_INSTRUCTIONS,
   initialCommands,
@@ -140,20 +142,7 @@ describe('logged-out nav + copy update', () => {
     expect(TASSADAR_AGENT_INSTRUCTIONS).toContain('npx @openagentsinc/pylon')
   })
 
-  test('LoadPublicKhalaTokensServedHistory requests viewer-local day buckets for /khala', async () => {
-    const nativeDateTimeFormat = Intl.DateTimeFormat
-    vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(
-      ((...args: ConstructorParameters<typeof Intl.DateTimeFormat>) => {
-        const formatter = new nativeDateTimeFormat(...args)
-        return {
-          ...formatter,
-          resolvedOptions: () => ({
-            ...formatter.resolvedOptions(),
-            timeZone: 'America/Chicago',
-          }),
-        }
-      }) as typeof Intl.DateTimeFormat,
-    )
+  test('LoadPublicKhalaTokensServedHistory requests America/Chicago day buckets', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(
         JSON.stringify({
@@ -178,6 +167,96 @@ describe('logged-out nav + copy update', () => {
     expect(requestInit).toEqual({
       cache: 'no-store',
       headers: { accept: 'application/json' },
+    })
+  })
+
+  test('Stats route loads public Khala aggregate endpoints', () => {
+    const statsModel = init(StatsRoute())
+
+    expect(commandNames(initialCommands(statsModel))).toEqual([
+      'LoadPublicPylonStats',
+      'LoadKhalaTokensServedSnapshot',
+      'LoadPublicKhalaTokensServed',
+      'LoadPublicKhalaTokensServedHistory',
+      'LoadPublicKhalaTokensServedModelMix',
+      'LoadPublicForumLaunchStatus',
+      'LoadPublicForumTipLeaderboards',
+      'LoadSettledFeedSnapshot',
+    ])
+  })
+
+  test('LoadPublicKhalaTokensServedModelMix reads canonical aggregate family mix', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          window: '30d',
+          totalTokensServed: 14_680_776,
+          generatedAt: '2026-06-24T12:00:00.000Z',
+          families: [
+            {
+              family: 'openai',
+              tokensServed: 10_000_000,
+              usageEvents: 9,
+              share: 0.6812,
+            },
+            {
+              family: 'pylon_codex',
+              tokensServed: 4_680_776,
+              usageEvents: 3,
+              share: 0.3188,
+            },
+          ],
+        }),
+        { headers: { 'content-type': 'application/json' } },
+      ),
+    )
+
+    const message = await Effect.runPromise(
+      LoadPublicKhalaTokensServedModelMix().effect,
+    )
+
+    expect(message._tag).toBe('SucceededLoadPublicKhalaTokensServedModelMix')
+    expect(fetchSpy).toHaveBeenCalledWith(
+      '/api/public/khala-tokens-served/model-mix?window=30d',
+      {
+        cache: 'no-store',
+        headers: { accept: 'application/json' },
+      },
+    )
+    if (message._tag === 'SucceededLoadPublicKhalaTokensServedModelMix') {
+      expect(message.mix.families.map(row => row.family)).toEqual([
+        'openai',
+        'pylon_codex',
+      ])
+    }
+  })
+
+  test('SucceededLoadPublicKhalaTokensServedModelMix stores aggregate family rows', () => {
+    const [next] = update(
+      init(StatsRoute()),
+      SucceededLoadPublicKhalaTokensServedModelMix({
+        mix: {
+          window: '30d',
+          totalTokensServed: 14_680_776,
+          generatedAt: '2026-06-24T12:00:00.000Z',
+          families: [
+            {
+              family: 'openai',
+              tokensServed: 14_680_776,
+              usageEvents: 12,
+              share: 1,
+            },
+          ],
+        },
+      }),
+    )
+
+    expect(next.publicKhalaTokensServedModelMix).toMatchObject({
+      _tag: 'PublicKhalaTokensServedModelMixLoaded',
+      mix: {
+        totalTokensServed: 14_680_776,
+        families: [{ family: 'openai' }],
+      },
     })
   })
 })

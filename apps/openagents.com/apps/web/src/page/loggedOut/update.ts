@@ -32,6 +32,7 @@ import {
   FailedLoadKhalaTokensServedSnapshot,
   FailedLoadPublicKhalaTokensServed,
   FailedLoadPublicKhalaTokensServedHistory,
+  FailedLoadPublicKhalaTokensServedModelMix,
   FailedLoadPublicGymRunProgress,
   FailedLoadGymRunProgressSnapshot,
   FailedLoadPublicProductPromises,
@@ -50,6 +51,7 @@ import {
   SucceededLoadKhalaTokensServedSnapshot,
   SucceededLoadPublicKhalaTokensServed,
   SucceededLoadPublicKhalaTokensServedHistory,
+  SucceededLoadPublicKhalaTokensServedModelMix,
   SucceededLoadPublicGymRunProgress,
   SucceededLoadGymRunProgressSnapshot,
   SucceededLoadPublicProductPromises,
@@ -68,6 +70,7 @@ import {
   FailedPublicForumTipLeaderboards,
   FailedPublicKhalaTokensServed,
   FailedPublicKhalaTokensServedHistory,
+  FailedPublicKhalaTokensServedModelMix,
   FailedPublicGymRunProgress,
   FailedPublicProductPromises,
   FailedPublicPromiseTransitions,
@@ -80,6 +83,7 @@ import {
   LoadedPublicForumLaunchStatus,
   LoadedPublicForumTipLeaderboards,
   LoadedPublicKhalaTokensServedHistory,
+  LoadedPublicKhalaTokensServedModelMix,
   LoadedPublicGymRunProgress,
   LoadedPublicProductPromises,
   LoadedPublicPromiseTransitions,
@@ -97,6 +101,7 @@ import {
   PublicForumTipLeaderboards,
   PublicKhalaTokensServed,
   PublicKhalaTokensServedHistory,
+  PublicKhalaTokensServedModelMix,
   PublicProductPromises,
   PublicPromiseTransitions,
   PublicPylonStats,
@@ -193,6 +198,11 @@ class PublicKhalaTokensServedLoadError extends S.TaggedErrorClass<PublicKhalaTok
 
 class PublicKhalaTokensServedHistoryLoadError extends S.TaggedErrorClass<PublicKhalaTokensServedHistoryLoadError>()(
   'PublicKhalaTokensServedHistoryLoadError',
+  { error: S.Defect },
+) {}
+
+class PublicKhalaTokensServedModelMixLoadError extends S.TaggedErrorClass<PublicKhalaTokensServedModelMixLoadError>()(
+  'PublicKhalaTokensServedModelMixLoadError',
   { error: S.Defect },
 ) {}
 
@@ -555,10 +565,9 @@ export const LoadPublicKhalaTokensServedHistory = Command.define(
   FailedLoadPublicKhalaTokensServedHistory,
 )(
   Effect.gen(function* () {
-    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
     const search = new URLSearchParams({
       bucket: 'day',
-      timezone,
+      timezone: 'America/Chicago',
       window: '30d',
     })
     const response = yield* Effect.tryPromise({
@@ -588,6 +597,50 @@ export const LoadPublicKhalaTokensServedHistory = Command.define(
     Effect.catch(error =>
       Effect.succeed(
         FailedLoadPublicKhalaTokensServedHistory({
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      ),
+    ),
+  ),
+)
+
+export const LoadPublicKhalaTokensServedModelMix = Command.define(
+  'LoadPublicKhalaTokensServedModelMix',
+  SucceededLoadPublicKhalaTokensServedModelMix,
+  FailedLoadPublicKhalaTokensServedModelMix,
+)(
+  Effect.gen(function* () {
+    const search = new URLSearchParams({ window: '30d' })
+    const response = yield* Effect.tryPromise({
+      try: () =>
+        fetch(
+          `/api/public/khala-tokens-served/model-mix?${search.toString()}`,
+          {
+            cache: 'no-store',
+            headers: { accept: 'application/json' },
+          },
+        ),
+      catch: error => new PublicKhalaTokensServedModelMixLoadError({ error }),
+    })
+
+    if (!response.ok) {
+      return yield* new PublicKhalaTokensServedModelMixLoadError({
+        error: `Public Khala tokens served model mix returned HTTP ${response.status}.`,
+      })
+    }
+
+    const payload = yield* Effect.tryPromise({
+      try: () => response.json(),
+      catch: error => new PublicKhalaTokensServedModelMixLoadError({ error }),
+    })
+    const decoded =
+      yield* S.decodeUnknownEffect(PublicKhalaTokensServedModelMix)(payload)
+
+    return SucceededLoadPublicKhalaTokensServedModelMix({ mix: decoded })
+  }).pipe(
+    Effect.catch(error =>
+      Effect.succeed(
+        FailedLoadPublicKhalaTokensServedModelMix({
           error: error instanceof Error ? error.message : String(error),
         }),
       ),
@@ -1519,14 +1572,24 @@ export const initialCommands = (
     : model.route._tag === 'Trace' &&
         model.route.uuid !== SAMPLE_TRACE_UUID
       ? [LoadTrace({ uuid: model.route.uuid })]
-    : model.route._tag === 'Home' ||
-        model.route._tag === 'Stats' ||
+    : model.route._tag === 'Home'
+      ? [
+          LoadPublicPylonStats(),
+          LoadKhalaTokensServedSnapshot(),
+          LoadPublicKhalaTokensServed(),
+          LoadPublicKhalaTokensServedHistory(),
+          LoadPublicForumLaunchStatus(),
+          LoadPublicForumTipLeaderboards(),
+          LoadSettledFeedSnapshot(),
+        ]
+      : model.route._tag === 'Stats' ||
         model.route._tag === 'PublicStatsArchive'
       ? [
           LoadPublicPylonStats(),
           LoadKhalaTokensServedSnapshot(),
           LoadPublicKhalaTokensServed(),
           LoadPublicKhalaTokensServedHistory(),
+          LoadPublicKhalaTokensServedModelMix(),
           LoadPublicForumLaunchStatus(),
           LoadPublicForumTipLeaderboards(),
           LoadSettledFeedSnapshot(),
@@ -1842,6 +1905,20 @@ export const update = (model: Model, message: Message): UpdateReturn =>
         evo(model, {
           publicKhalaTokensServedHistory: () =>
             FailedPublicKhalaTokensServedHistory({ error }),
+        }),
+        [],
+      ],
+      SucceededLoadPublicKhalaTokensServedModelMix: ({ mix }) => [
+        evo(model, {
+          publicKhalaTokensServedModelMix: () =>
+            LoadedPublicKhalaTokensServedModelMix({ mix }),
+        }),
+        [],
+      ],
+      FailedLoadPublicKhalaTokensServedModelMix: ({ error }) => [
+        evo(model, {
+          publicKhalaTokensServedModelMix: () =>
+            FailedPublicKhalaTokensServedModelMix({ error }),
         }),
         [],
       ],

@@ -680,7 +680,7 @@ describe('authenticated startup routing', () => {
     expect(commands[1]?.args).toEqual({ workspaceId: 'workspace_seed' })
   })
 
-  test('serves the former public homepage from stats', () => {
+  test('serves the public aggregate stats page', () => {
     const [model, commands] = init(
       Flags.make({ maybeAuth: Option.none() }),
       appUrl('/stats'),
@@ -695,6 +695,7 @@ describe('authenticated startup routing', () => {
       'LoadKhalaTokensServedSnapshot',
       'LoadPublicKhalaTokensServed',
       'LoadPublicKhalaTokensServedHistory',
+      'LoadPublicKhalaTokensServedModelMix',
       'LoadPublicForumLaunchStatus',
       'LoadPublicForumTipLeaderboards',
       'LoadSettledFeedSnapshot',

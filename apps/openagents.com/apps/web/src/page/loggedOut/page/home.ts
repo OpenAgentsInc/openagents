@@ -12,6 +12,8 @@ import type {
   PublicForumTipLeaderboardsModel,
   PublicKhalaTokensServedHistoryModel,
   PublicKhalaTokensServedHistoryPoint,
+  PublicKhalaTokensServedModelMixFamily,
+  PublicKhalaTokensServedModelMixModel,
   PublicKhalaTokensServedModel,
   PublicPylonStats,
   PublicPylonStatsModel,
@@ -23,6 +25,7 @@ export type HomeViewInput = {
   forumTipLeaderboards: PublicForumTipLeaderboardsModel
   publicKhalaTokensServed: PublicKhalaTokensServedModel
   publicKhalaTokensServedHistory: PublicKhalaTokensServedHistoryModel
+  publicKhalaTokensServedModelMix: PublicKhalaTokensServedModelMixModel
   publicPylonStats: PublicPylonStatsModel
   settledFeed: SettledFeedModel
 }
@@ -984,7 +987,7 @@ const compactNumberFormatter = new Intl.NumberFormat('en-US', {
 const formatCompactNumber = (value: number): string =>
   compactNumberFormatter.format(value)
 
-const historyChartHeading = (live: boolean): Html => {
+const historyChartHeading = (live: boolean, label: string): Html => {
   const h = html<Message>()
 
   return h.div(
@@ -1005,12 +1008,17 @@ const historyChartHeading = (live: boolean): Html => {
         ],
         [],
       ),
-      h.span([], ['Tokens Served / Day']),
+      h.span([], [label]),
     ],
   )
 }
 
-const historyChartShell = (live: boolean, body: Html, caption: string): Html => {
+const historyChartShell = (
+  live: boolean,
+  body: Html,
+  caption: string,
+  title = 'Tokens Served / Day',
+): Html => {
   const h = html<Message>()
 
   return h.section(
@@ -1021,7 +1029,7 @@ const historyChartShell = (live: boolean, body: Html, caption: string): Html => 
       ),
     ],
     [
-      historyChartHeading(live),
+      historyChartHeading(live, title),
       body,
       h.p(
         [Ui.className<Message>('m-0 text-[0.66rem] leading-4 text-white/35')],
@@ -1030,6 +1038,32 @@ const historyChartShell = (live: boolean, body: Html, caption: string): Html => 
     ],
   )
 }
+
+const modelFamilyLabel = (
+  family: PublicKhalaTokensServedModelMixFamily['family'],
+): string =>
+  ({
+    anthropic: 'Anthropic',
+    deepseek: 'DeepSeek',
+    gemini: 'Gemini',
+    glm: 'GLM',
+    grok: 'Grok',
+    llama: 'Llama',
+    mistral: 'Mistral',
+    openai: 'OpenAI',
+    other: 'Other',
+    pylon_codex: 'Pylon Codex',
+    qwen: 'Qwen',
+  })[family]
+
+const percentFormatter = new Intl.NumberFormat('en-US', {
+  maximumFractionDigits: 1,
+  minimumFractionDigits: 0,
+  style: 'percent',
+})
+
+const formatPercent = (value: number): string =>
+  percentFormatter.format(Math.max(0, Math.min(1, value)))
 
 const historyChartPlaceholder = (label: string): Html => {
   const h = html<Message>()
@@ -1148,19 +1182,19 @@ export const khalaTokensServedHistoryChart = (
         historyChartShell(
           false,
           historyChartPlaceholder('Waiting for data…'),
-          'Daily input + output tokens served across the network, powered by Khala.',
+          'Daily input + output tokens served across the network in America/Chicago.',
         ),
       PublicKhalaTokensServedHistoryLoading: () =>
         historyChartShell(
           false,
           historyChartPlaceholder('Loading history…'),
-          'Daily input + output tokens served across the network, powered by Khala.',
+          'Daily input + output tokens served across the network in America/Chicago.',
         ),
       PublicKhalaTokensServedHistoryFailed: () =>
         historyChartShell(
           false,
           historyChartPlaceholder('History unavailable.'),
-          'Daily input + output tokens served across the network, powered by Khala.',
+          'Daily input + output tokens served across the network in America/Chicago.',
         ),
       PublicKhalaTokensServedHistoryLoaded: ({ history }) =>
         Array.match(history.series, {
@@ -1168,13 +1202,13 @@ export const khalaTokensServedHistoryChart = (
             historyChartShell(
               true,
               historyChartPlaceholder('No tokens served yet.'),
-              'Daily input + output tokens served across the network, powered by Khala.',
+              `Daily input + output tokens served across the network in ${history.timezone}.`,
             ),
           onNonEmpty: series =>
             historyChartShell(
               true,
               historyChartBars(series),
-              `Daily input + output tokens served across the network, powered by Khala. Last ${
+              `Daily input + output tokens served across the network in ${history.timezone}. Last ${
                 series.length
               } ${series.length === 1 ? 'day' : 'days'}, peak ${formatCompactNumber(
                 series.reduce(
@@ -1188,24 +1222,163 @@ export const khalaTokensServedHistoryChart = (
     }),
   )
 
+const modelMixPlaceholder = (label: string): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [
+      h.Role('status'),
+      Ui.className<Message>(
+        'flex min-h-[9rem] items-center justify-center text-[0.7rem] text-white/35',
+      ),
+    ],
+    [label],
+  )
+}
+
+const modelMixRows = (
+  families: ReadonlyArray<PublicKhalaTokensServedModelMixFamily>,
+): Html => {
+  const h = html<Message>()
+
+  return h.ul(
+    [Ui.className<Message>('m-0 grid list-none gap-2 p-0')],
+    families.map(family =>
+      h.li(
+        [
+          Ui.className<Message>(
+            'grid gap-1 border-t border-[#1d1d1d] pt-2 first:border-t-0 first:pt-0',
+          ),
+        ],
+        [
+          h.div(
+            [
+              Ui.className<Message>(
+                'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3',
+              ),
+            ],
+            [
+              h.span(
+                [
+                  Ui.className<Message>(
+                    'min-w-0 text-[0.72rem] font-medium leading-4 text-[#f1efe8]',
+                  ),
+                ],
+                [modelFamilyLabel(family.family)],
+              ),
+              h.span(
+                [
+                  Ui.className<Message>(
+                    'text-right text-[0.72rem] leading-4 tabular-nums text-[#9ad6b7]',
+                  ),
+                ],
+                [formatPercent(family.share)],
+              ),
+            ],
+          ),
+          h.div(
+            [
+              Ui.className<Message>('h-1.5 overflow-hidden bg-[#111]'),
+            ],
+            [
+              h.div(
+                [
+                  Ui.className<Message>('h-full bg-[#00c853]'),
+                  h.Attribute(
+                    'style',
+                    `width: ${Math.max(0, Math.min(100, family.share * 100)).toFixed(2)}%;`,
+                  ),
+                ],
+                [],
+              ),
+            ],
+          ),
+          h.p(
+            [Ui.className<Message>('m-0 text-[0.66rem] leading-4 text-white/42')],
+            [
+              `${formatNumber(family.tokensServed)} tokens across ${formatNumber(
+                family.usageEvents,
+              )} events`,
+            ],
+          ),
+        ],
+      ),
+    ),
+  )
+}
+
+export const khalaTokensServedModelMixPanel = (
+  model: PublicKhalaTokensServedModelMixModel,
+): Html =>
+  M.value(model).pipe(
+    M.tagsExhaustive({
+      PublicKhalaTokensServedModelMixIdle: () =>
+        historyChartShell(
+          false,
+          modelMixPlaceholder('Waiting for model mix…'),
+          'Canonical model-family mix from aggregate token usage rows.',
+          'Model Family Mix',
+        ),
+      PublicKhalaTokensServedModelMixLoading: () =>
+        historyChartShell(
+          false,
+          modelMixPlaceholder('Loading model mix…'),
+          'Canonical model-family mix from aggregate token usage rows.',
+          'Model Family Mix',
+        ),
+      PublicKhalaTokensServedModelMixFailed: () =>
+        historyChartShell(
+          false,
+          modelMixPlaceholder('Model mix unavailable.'),
+          'Canonical model-family mix from aggregate token usage rows.',
+          'Model Family Mix',
+        ),
+      PublicKhalaTokensServedModelMixLoaded: ({ mix }) =>
+        Array.match(mix.families, {
+          onEmpty: () =>
+            historyChartShell(
+              true,
+              modelMixPlaceholder('No model-family rows yet.'),
+              `Canonical model-family mix for ${mix.window}.`,
+              'Model Family Mix',
+            ),
+          onNonEmpty: families =>
+            historyChartShell(
+              true,
+              modelMixRows(families),
+              `Canonical model-family mix for ${mix.window}. Total ${formatNumber(
+                mix.totalTokensServed,
+              )} tokens served.`,
+              'Model Family Mix',
+            ),
+        }),
+    }),
+  )
+
 // The paired "Khala Tokens Served" surface: the live counter and the
 // tokens-per-day history chart side by side on wide viewports, stacked on
 // narrow ones. Used on both the homepage and /stats.
 export const khalaTokensServedPanel = (
   counter: PublicKhalaTokensServedModel,
   history: PublicKhalaTokensServedHistoryModel,
+  modelMix?: PublicKhalaTokensServedModelMixModel,
 ): Html => {
   const h = html<Message>()
 
   return h.div(
     [
       Ui.className<Message>(
-        'grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]',
+        modelMix === undefined
+          ? 'grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]'
+          : 'grid gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.25fr)_minmax(0,1fr)]',
       ),
     ],
     [
       khalaTokensServedCounter(counter),
       khalaTokensServedHistoryChart(history),
+      ...(modelMix === undefined
+        ? []
+        : [khalaTokensServedModelMixPanel(modelMix)]),
     ],
   )
 }

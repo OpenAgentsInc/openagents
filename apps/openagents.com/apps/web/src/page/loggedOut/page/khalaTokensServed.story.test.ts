@@ -14,8 +14,10 @@ import {
   IdlePublicForumTipLeaderboards,
   IdlePublicKhalaTokensServed,
   IdlePublicKhalaTokensServedHistory,
+  IdlePublicKhalaTokensServedModelMix,
   LoadedPublicKhalaTokensServed,
   LoadedPublicKhalaTokensServedHistory,
+  LoadedPublicKhalaTokensServedModelMix,
   LoadingPublicKhalaTokensServedHistory,
   LoadingPublicPylonStats,
   PublicKhalaTokensServed,
@@ -36,7 +38,7 @@ const served = (tokensServed: number) =>
 const sampleHistory = PublicKhalaTokensServedHistory.make({
   window: '30d',
   bucket: 'day',
-  timezone: 'UTC',
+  timezone: 'America/Chicago',
   series: [
     { day: '2026-06-20', tokensServed: 12_000 },
     { day: '2026-06-21', tokensServed: 48_500 },
@@ -57,8 +59,34 @@ const homeInputWithTokens = (tokensServed: number) => ({
   publicKhalaTokensServedHistory: LoadedPublicKhalaTokensServedHistory({
     history: sampleHistory,
   }),
+  publicKhalaTokensServedModelMix: IdlePublicKhalaTokensServedModelMix(),
   publicPylonStats: LoadingPublicPylonStats(),
   settledFeed: initSettledFeedModel(),
+})
+
+const statsInputWithModelMix = () => ({
+  ...homeInputWithTokens(1_250_000),
+  publicKhalaTokensServedModelMix: LoadedPublicKhalaTokensServedModelMix({
+    mix: {
+      window: '30d',
+      totalTokensServed: 1_250_000,
+      generatedAt: '2026-06-24T12:00:00.000Z',
+      families: [
+        {
+          family: 'openai' as const,
+          tokensServed: 875_000,
+          usageEvents: 12,
+          share: 0.7,
+        },
+        {
+          family: 'pylon_codex' as const,
+          tokensServed: 375_000,
+          usageEvents: 4,
+          share: 0.3,
+        },
+      ],
+    },
+  }),
 })
 
 describe('Khala Tokens Served counter (#6227)', () => {
@@ -114,6 +142,8 @@ describe('Khala Tokens Served counter (#6227)', () => {
             publicKhalaTokensServed: IdlePublicKhalaTokensServed(),
             publicKhalaTokensServedHistory:
               IdlePublicKhalaTokensServedHistory(),
+            publicKhalaTokensServedModelMix:
+              IdlePublicKhalaTokensServedModelMix(),
             publicPylonStats: LoadingPublicPylonStats(),
             settledFeed: initSettledFeedModel(),
           }),
@@ -188,13 +218,27 @@ describe('Khala Tokens Served history chart (#6227)', () => {
     Scene.scene(
       {
         update,
-        view: () => StatsPage.view(homeInputWithTokens(1_250_000)),
+        view: () => StatsPage.view(statsInputWithModelMix()),
       },
       Scene.with(LoggedOut.init(HomeRoute())),
       Scene.expect(Scene.text('Network Stats')).toExist(),
       Scene.expect(Scene.text('Tokens Served / Day')).toExist(),
       Scene.expect(Scene.text('2026-06-23: 96,250 tokens')).toExist(),
+      Scene.expect(Scene.text('Model Family Mix')).toExist(),
+      Scene.expect(Scene.text('OpenAI')).toExist(),
+      Scene.expect(Scene.text('Pylon Codex')).toExist(),
     )
+  })
+
+  test('keeps /stats model mix aggregate-only', () => {
+    const markup = JSON.stringify(StatsPage.view(statsInputWithModelMix()))
+
+    expect(markup).toContain('Model Family Mix')
+    expect(markup).toContain('OpenAI')
+    expect(markup).toContain('Pylon Codex')
+    expect(markup).not.toContain('gpt-')
+    expect(markup).not.toContain('provider')
+    expect(markup).not.toContain('accountRef')
   })
 
   test('renders a graceful empty state when the series is empty', () => {
@@ -216,6 +260,8 @@ describe('Khala Tokens Served history chart (#6227)', () => {
             publicKhalaTokensServedHistory: LoadedPublicKhalaTokensServedHistory(
               { history: emptyHistory },
             ),
+            publicKhalaTokensServedModelMix:
+              IdlePublicKhalaTokensServedModelMix(),
             publicPylonStats: LoadingPublicPylonStats(),
             settledFeed: initSettledFeedModel(),
           }),
@@ -236,6 +282,8 @@ describe('Khala Tokens Served history chart (#6227)', () => {
             publicKhalaTokensServed: IdlePublicKhalaTokensServed(),
             publicKhalaTokensServedHistory:
               LoadingPublicKhalaTokensServedHistory(),
+            publicKhalaTokensServedModelMix:
+              IdlePublicKhalaTokensServedModelMix(),
             publicPylonStats: LoadingPublicPylonStats(),
             settledFeed: initSettledFeedModel(),
           }),

@@ -85,6 +85,7 @@ export const view = (input: HomeViewInput): Html => {
             khalaTokensServedPanel(
               input.publicKhalaTokensServed,
               input.publicKhalaTokensServedHistory,
+              input.publicKhalaTokensServedModelMix,
             ),
             h.div(
               [

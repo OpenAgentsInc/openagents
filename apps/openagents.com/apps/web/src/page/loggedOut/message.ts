@@ -16,6 +16,7 @@ import {
   PublicForumTipLeaderboards,
   PublicKhalaTokensServed,
   PublicKhalaTokensServedHistory,
+  PublicKhalaTokensServedModelMix,
   PublicProductPromises,
   PublicPromiseTransitions,
   PublicPylonStats,
@@ -208,6 +209,18 @@ export const SucceededLoadPublicKhalaTokensServedHistory = m(
 )
 export const FailedLoadPublicKhalaTokensServedHistory = m(
   'FailedLoadPublicKhalaTokensServedHistory',
+  {
+    error: S.String,
+  },
+)
+export const SucceededLoadPublicKhalaTokensServedModelMix = m(
+  'SucceededLoadPublicKhalaTokensServedModelMix',
+  {
+    mix: PublicKhalaTokensServedModelMix,
+  },
+)
+export const FailedLoadPublicKhalaTokensServedModelMix = m(
+  'FailedLoadPublicKhalaTokensServedModelMix',
   {
     error: S.String,
   },
@@ -566,6 +579,8 @@ export const Message = S.Union([
   RequestedPollKhalaTokensServedHistory,
   SucceededLoadPublicKhalaTokensServedHistory,
   FailedLoadPublicKhalaTokensServedHistory,
+  SucceededLoadPublicKhalaTokensServedModelMix,
+  FailedLoadPublicKhalaTokensServedModelMix,
   RequestedPollGymRunProgress,
   SucceededLoadPublicGymRunProgress,
   FailedLoadPublicGymRunProgress,

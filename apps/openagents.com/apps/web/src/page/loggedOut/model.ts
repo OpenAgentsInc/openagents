@@ -1022,6 +1022,69 @@ export const PublicKhalaTokensServedHistoryModel = S.Union([
 export type PublicKhalaTokensServedHistoryModel =
   typeof PublicKhalaTokensServedHistoryModel.Type
 
+export const PublicKhalaTokensServedModelFamily = S.Literals([
+  'anthropic',
+  'deepseek',
+  'gemini',
+  'glm',
+  'grok',
+  'llama',
+  'mistral',
+  'openai',
+  'pylon_codex',
+  'qwen',
+  'other',
+])
+export type PublicKhalaTokensServedModelFamily =
+  typeof PublicKhalaTokensServedModelFamily.Type
+
+export const PublicKhalaTokensServedModelMixFamily = S.Struct({
+  family: PublicKhalaTokensServedModelFamily,
+  tokensServed: S.Number,
+  usageEvents: S.Number,
+  share: S.Number,
+})
+export type PublicKhalaTokensServedModelMixFamily =
+  typeof PublicKhalaTokensServedModelMixFamily.Type
+
+export const PublicKhalaTokensServedModelMix = S.Struct({
+  window: S.String,
+  totalTokensServed: S.Number,
+  families: S.Array(PublicKhalaTokensServedModelMixFamily),
+  generatedAt: S.String,
+})
+export type PublicKhalaTokensServedModelMix =
+  typeof PublicKhalaTokensServedModelMix.Type
+
+export const IdlePublicKhalaTokensServedModelMix = ts(
+  'PublicKhalaTokensServedModelMixIdle',
+  {},
+)
+export const LoadingPublicKhalaTokensServedModelMix = ts(
+  'PublicKhalaTokensServedModelMixLoading',
+  {},
+)
+export const LoadedPublicKhalaTokensServedModelMix = ts(
+  'PublicKhalaTokensServedModelMixLoaded',
+  {
+    mix: PublicKhalaTokensServedModelMix,
+  },
+)
+export const FailedPublicKhalaTokensServedModelMix = ts(
+  'PublicKhalaTokensServedModelMixFailed',
+  {
+    error: S.String,
+  },
+)
+export const PublicKhalaTokensServedModelMixModel = S.Union([
+  IdlePublicKhalaTokensServedModelMix,
+  LoadingPublicKhalaTokensServedModelMix,
+  LoadedPublicKhalaTokensServedModelMix,
+  FailedPublicKhalaTokensServedModelMix,
+])
+export type PublicKhalaTokensServedModelMixModel =
+  typeof PublicKhalaTokensServedModelMixModel.Type
+
 export const IdlePublicForumLaunchStatus = ts('PublicForumLaunchStatusIdle', {})
 export const LoadingPublicForumLaunchStatus = ts(
   'PublicForumLaunchStatusLoading',
@@ -1438,6 +1501,7 @@ export const Model = ts('LoggedOut', {
   publicPylonStats: PublicPylonStatsModel,
   publicKhalaTokensServed: PublicKhalaTokensServedModel,
   publicKhalaTokensServedHistory: PublicKhalaTokensServedHistoryModel,
+  publicKhalaTokensServedModelMix: PublicKhalaTokensServedModelMixModel,
   khalaTokensServedStream: KhalaTokensServedStreamModel,
   publicForumLaunchStatus: PublicForumLaunchStatusModel,
   publicForumTipLeaderboards: PublicForumTipLeaderboardsModel,
@@ -1510,6 +1574,10 @@ export const init = (
       route._tag === 'PublicStatsArchive'
         ? LoadingPublicKhalaTokensServedHistory()
         : IdlePublicKhalaTokensServedHistory(),
+    publicKhalaTokensServedModelMix:
+      route._tag === 'Stats' || route._tag === 'PublicStatsArchive'
+        ? LoadingPublicKhalaTokensServedModelMix()
+        : IdlePublicKhalaTokensServedModelMix(),
     publicForumLaunchStatus:
       route._tag === 'Home' ||
       route._tag === 'Stats' ||
