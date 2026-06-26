@@ -132,6 +132,11 @@ describe('resolveSupplyLaneArming', () => {
     expect(arming['vertex-anthropic']).toBe(false)
   })
 
+  it('arms OpenRouter from API key presence without trusting an upstream model env value', () => {
+    const arming = resolveSupplyLaneArming({ OPENROUTER_API_KEY: 'or-secret' })
+    expect(arming.openrouter).toBe(true)
+  })
+
   it('selects Fireworks DeepSeek V4 Flash as the Khala backing only from the explicit operator value', () => {
     const arming = resolveSupplyLaneArming({
       FIREWORKS_API_KEY: 'fw-secret',

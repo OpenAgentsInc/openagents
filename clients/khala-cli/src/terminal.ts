@@ -10,8 +10,8 @@ const ansi = {
   meta: "\x1b[90m",
   quote: "\x1b[38;5;180m",
   strong: "\x1b[38;5;215m\x1b[1m",
-  user: "\x1b[38;5;80m\x1b[1m",
-  assistant: "\x1b[38;5;114m\x1b[1m",
+  user: "\x1b[38;2;127;220;155m\x1b[1m",
+  assistant: "\x1b[38;2;58;123;255m\x1b[1m",
 } as const
 
 export function colorEnabled(): boolean {
@@ -86,6 +86,10 @@ export function renderMarkdownForTerminal(markdown: string): string {
   }
 
   return rendered.join("\n")
+}
+
+export function renderMarkdownDeltaForTerminal(markdownDelta: string): string {
+  return renderInlineMarkdown(markdownDelta)
 }
 
 function renderInlineMarkdown(input: string): string {

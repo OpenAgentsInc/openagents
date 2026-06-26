@@ -314,9 +314,10 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // under INFERENCE_GATEWAY_ENABLED, so this is only read when the adapter is
   // actually dispatched by routing (#5482).
   FIREWORKS_API_KEY?: string | undefined
-  // OpenRouter Khala fallback lane (#6313). Worker secret + operator-selected
-  // GLM-class OpenRouter model id. This lane is a hidden Khala fallback tier:
-  // neither the key nor the upstream model id is published in /v1/models.
+  // OpenRouter Khala fallback lane (#6313). Worker secret. This lane is a
+  // hidden Khala fallback tier: neither the key nor the upstream model id is
+  // published in /v1/models. The upstream model is pinned in source to
+  // `openrouter/free`; the legacy env model field is ignored by registration.
   OPENROUTER_API_KEY?: string | undefined
   OPENROUTER_BASE_URL?: string | undefined
   OPENROUTER_KHALA_FALLBACK_MODEL?: string | undefined

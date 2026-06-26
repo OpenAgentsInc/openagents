@@ -75,6 +75,13 @@ that check.
 
 ## Changelog
 
+### v0.1.6 - Jun 26, 2026, 12:24:07 PM CDT
+
+- Restored live streaming in interactive chat while keeping Markdown color
+  rendering.
+- Removed the timestamp from `khala tokens` and aligned Khala fallback docs with
+  `GLM -> OpenRouter -> Gemini -> Fireworks`.
+
 ### v0.1.5 - Jun 26, 2026, 12:06:14 PM CDT
 
 - Corrected the bundled v0.1.4 release timestamp after npm publish

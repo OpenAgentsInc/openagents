@@ -496,7 +496,11 @@ import {
 import { makeSparkLightningInvoiceIssuer } from './inference/mpp/mpp-lightning-invoice-spark'
 import { dispatchOnboardingStreamSource } from './inference/onboarding-stream-source'
 import { makeAdmittedOpenAgentsNetworkAdapter } from './inference/openagents-network-adapter'
-import { makeOpenRouterAdapter } from './inference/openrouter-adapter'
+import {
+  OPENROUTER_DEFAULT_BASE_URL,
+  OPENROUTER_KHALA_FALLBACK_MODEL_ID,
+  makeOpenRouterAdapter,
+} from './inference/openrouter-adapter'
 import {
   type PassthroughAdapterConfig,
   makePassthroughAdapter,
@@ -9207,15 +9211,10 @@ const registerOpenRouterAdapter = (
   }
   openRouterAdaptersRegistered.add(env)
   const apiKey = env.OPENROUTER_API_KEY?.trim()
-  const baseUrl = env.OPENROUTER_BASE_URL?.trim()
-  const upstreamModel = env.OPENROUTER_KHALA_FALLBACK_MODEL?.trim()
+  const baseUrl = env.OPENROUTER_BASE_URL?.trim() || OPENROUTER_DEFAULT_BASE_URL
   if (
     apiKey === undefined ||
-    apiKey === '' ||
-    baseUrl === undefined ||
-    baseUrl === '' ||
-    upstreamModel === undefined ||
-    upstreamModel === ''
+    apiKey === ''
   ) {
     return
   }
@@ -9224,7 +9223,7 @@ const registerOpenRouterAdapter = (
       apiKey: Redacted.make(apiKey),
       baseUrl,
       id: OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
-      upstreamModel,
+      upstreamModel: OPENROUTER_KHALA_FALLBACK_MODEL_ID,
     }),
   )
 }

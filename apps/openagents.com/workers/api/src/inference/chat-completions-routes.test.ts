@@ -934,7 +934,7 @@ describe('POST /v1/chat/completions', () => {
   // OWNER BALANCE-GATE EXEMPTION (issue #6180). These exercise the route's
   // `checkOperatorExemption` seam against a real OWN-INFRA Khala request (the
   // public route only serves Khala). A registered Khala-serving adapter + armed
-  // 120B lane makes the request servable so it reaches the balance gate.
+  // GLM lane makes the request servable so it reaches the balance gate.
   const khalaExemptionDeps = (
     overrides: Partial<ChatCompletionsDeps> = {},
   ): ChatCompletionsDeps => {
@@ -944,14 +944,14 @@ describe('POST /v1/chat/completions', () => {
         Effect.sync(() => ({
           content: 'OK',
           finishReason: 'stop',
-          servedModel: HYDRALISK_GPT_OSS_120B_MODEL_ID,
+          servedModel: HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
           usage: { completionTokens: 2, promptTokens: 9, totalTokens: 11 },
         })),
-      id: HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
+      id: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
       stream: () => Effect.sync(() => []),
     })
     return baseDeps({
-      laneArming: hydralisk120bReadyArming,
+      laneArming: hydraliskGlm52ReapReadyArming,
       lanePlan: selectAdapterPlan,
       registry,
       ...overrides,
@@ -3004,10 +3004,9 @@ describe('POST /v1/chat/completions', () => {
     })
   })
 
-  test('a Khala request routes through the GPT-OSS 20B Hydralisk lane when armed', async () => {
-    // The public Khala model plans across its hydralisk lanes; with the 20B
-    // Hydralisk lane armed and registered, the Khala request serves there and
-    // discloses the concrete served GPT-OSS model.
+  test('an explicit raw GPT-OSS 20B request is rejected even when the supply lane is armed', async () => {
+    // GPT-OSS is not part of the main Khala fallback thread and is not a public
+    // chat-completions selector here.
     const registry = new InferenceProviderRegistry()
     registry.register({
       complete: () =>
@@ -3031,7 +3030,7 @@ describe('POST /v1/chat/completions', () => {
       handleChatCompletions(
         chatRequest({
           messages: [{ content: 'Say READY.', role: 'user' }],
-          model: KHALA_MODEL_ID,
+          model: HYDRALISK_GPT_OSS_20B_MODEL_ID,
         }),
         baseDeps({
           laneArming: hydraliskReadyArming,
@@ -3043,42 +3042,14 @@ describe('POST /v1/chat/completions', () => {
       ),
     )
 
-    expect(response.status).toBe(200)
+    expect(response.status).toBe(400)
     const body = (await response.json()) as {
-      choices: ReadonlyArray<{ message: { content: string } }>
+      error: string
       model: string
-      openagents?: {
-        lane: string
-        requested_model: string
-        served_model: string
-        supply_lane: string
-        worker: string
-      }
-      usage: {
-        prompt_tokens: number
-        completion_tokens: number
-        total_tokens: number
-      }
     }
-    expect(body.model).toBe(KHALA_MODEL_ID)
-    expect(body.choices[0]?.message.content).toBe('READY')
-    expect(body.usage).toEqual({
-      completion_tokens: 1,
-      prompt_tokens: 7,
-      total_tokens: 8,
-    })
-    expect(body.openagents).toMatchObject({
-      lane: 'open',
-      requested_model: KHALA_MODEL_ID,
-      served_model: 'openai/gpt-oss-20b',
-      supply_lane: 'hydralisk',
-      worker: HYDRALISK_ADAPTER_ID,
-    })
-    expect(captured).toHaveLength(1)
-    expect(captured[0]?.adapterId).toBe(HYDRALISK_ADAPTER_ID)
-    expect(captured[0]?.requestedModel).toBe(KHALA_MODEL_ID)
-    expect(captured[0]?.servedModel).toBe('openai/gpt-oss-20b')
-    expect(captured[0]?.usage.totalTokens).toBe(8)
+    expect(body.error).toBe('model_unavailable')
+    expect(body.model).toBe(HYDRALISK_GPT_OSS_20B_MODEL_ID)
+    expect(captured).toHaveLength(0)
   })
 
   test('a Khala request routes through the GLM-5.2 REAP Hydralisk lane when armed', async () => {
@@ -3377,7 +3348,7 @@ describe('POST /v1/chat/completions', () => {
     )
   })
 
-  test('a Khala request can route through the high-memory GPT-OSS 120B Hydralisk adapter when armed', async () => {
+  test('an explicit raw GPT-OSS 120B request is rejected even when the high-memory lane is armed', async () => {
     const registry = new InferenceProviderRegistry()
     registry.register({
       complete: () =>
@@ -3404,7 +3375,7 @@ describe('POST /v1/chat/completions', () => {
       handleChatCompletions(
         chatRequest({
           messages: [{ content: 'Say READY.', role: 'user' }],
-          model: KHALA_MODEL_ID,
+          model: HYDRALISK_GPT_OSS_120B_MODEL_ID,
         }),
         baseDeps({
           laneArming: hydralisk120bReadyArming,
@@ -3416,31 +3387,17 @@ describe('POST /v1/chat/completions', () => {
       ),
     )
 
-    expect(response.status).toBe(200)
+    expect(response.status).toBe(400)
     const body = (await response.json()) as {
-      choices: ReadonlyArray<{ message: { content: string } }>
+      error: string
       model: string
-      openagents?: {
-        requested_model: string
-        served_model: string
-        supply_lane: string
-        worker: string
-      }
     }
-    expect(body.model).toBe(KHALA_MODEL_ID)
-    expect(body.choices[0]?.message.content).toBe('READY-120B')
-    expect(body.openagents).toMatchObject({
-      requested_model: KHALA_MODEL_ID,
-      served_model: HYDRALISK_GPT_OSS_120B_MODEL_ID,
-      supply_lane: 'hydralisk',
-      worker: HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
-    })
-    expect(captured).toHaveLength(1)
-    expect(captured[0]?.adapterId).toBe(HYDRALISK_GPT_OSS_120B_ADAPTER_ID)
-    expect(captured[0]?.requestedModel).toBe(KHALA_MODEL_ID)
+    expect(body.error).toBe('model_unavailable')
+    expect(body.model).toBe(HYDRALISK_GPT_OSS_120B_MODEL_ID)
+    expect(captured).toHaveLength(0)
   })
 
-  test('a streaming Khala request carries Hydralisk disclosure and usage', async () => {
+  test('a streaming Khala request carries GLM Hydralisk disclosure and usage', async () => {
     const usage: InferenceUsage = {
       completionTokens: 1,
       promptTokens: 7,
@@ -3452,10 +3409,10 @@ describe('POST /v1/chat/completions', () => {
         Effect.sync(() => ({
           content: 'READY',
           finishReason: 'stop',
-          servedModel: 'openai/gpt-oss-20b',
+          servedModel: HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
           usage,
         })),
-      id: HYDRALISK_ADAPTER_ID,
+      id: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
       stream: () => Effect.sync(() => []),
       streamSse: () =>
         Effect.sync<InferenceStreamSource>(() => ({
@@ -3465,7 +3422,7 @@ describe('POST /v1/chat/completions', () => {
           })(),
           terminal: () => ({
             finishReason: 'stop',
-            servedModel: 'openai/gpt-oss-20b',
+            servedModel: HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
             usage,
           }),
         })),
@@ -3474,7 +3431,7 @@ describe('POST /v1/chat/completions', () => {
     const meteringHook: MeteringHook = context =>
       Effect.sync(() => {
         captured.push(context)
-        return { metered: true, receiptRef: 'receipt.hydralisk.stream.test' }
+        return { metered: true, receiptRef: 'receipt.hydralisk.glm.stream.test' }
       })
 
     const response = await run(
@@ -3485,10 +3442,10 @@ describe('POST /v1/chat/completions', () => {
           stream: true,
         }),
         baseDeps({
-          laneArming: hydraliskReadyArming,
+          laneArming: hydraliskGlm52ReapReadyArming,
           lanePlan: selectAdapterPlan,
           meteringHook,
-          newId: () => 'chatcmpl-hydralisk-stream',
+          newId: () => 'chatcmpl-hydralisk-glm-stream',
           registry,
         }),
       ),
@@ -3511,32 +3468,32 @@ describe('POST /v1/chat/completions', () => {
     expect(frames[frames.length - 1]?.openagents).toMatchObject({
       lane: 'open',
       requested_model: KHALA_MODEL_ID,
-      served_model: 'openai/gpt-oss-20b',
+      served_model: HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
       supply_lane: 'hydralisk',
-      worker: HYDRALISK_ADAPTER_ID,
+      worker: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
     })
     expect(captured).toHaveLength(1)
     expect(captured[0]?.streamed).toBe(true)
-    expect(captured[0]?.adapterId).toBe(HYDRALISK_ADAPTER_ID)
+    expect(captured[0]?.adapterId).toBe(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID)
     expect(captured[0]?.usage.totalTokens).toBe(8)
   })
 
   test.each(HYDRALISK_RETRYABLE_STATUS_CASES)(
-    'surfaces Hydralisk upstream %s as a provider_error on the Khala Hydralisk lane',
+    'surfaces GLM upstream %s as a provider_error on the Khala Hydralisk lane',
     async (status, kind) => {
       const registry = new InferenceProviderRegistry()
       registry.register({
         complete: () =>
           Effect.fail(
             new InferenceAdapterError({
-              adapterId: HYDRALISK_ADAPTER_ID,
+              adapterId: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
               httpStatus: status,
               kind,
-              reason: `hydralisk upstream ${status}`,
+              reason: `hydralisk GLM upstream ${status}`,
               retryable: true,
             }),
           ),
-        id: HYDRALISK_ADAPTER_ID,
+        id: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
         stream: () => Effect.sync(() => []),
       })
 
@@ -3547,7 +3504,7 @@ describe('POST /v1/chat/completions', () => {
             model: KHALA_MODEL_ID,
           }),
           baseDeps({
-            laneArming: hydraliskReadyArming,
+            laneArming: hydraliskGlm52ReapReadyArming,
             lanePlan: selectAdapterPlan,
             registry,
           }),
@@ -3560,7 +3517,7 @@ describe('POST /v1/chat/completions', () => {
         reason: string
       }
       expect(body.error).toBe('provider_error')
-      expect(body.reason).toBe(`hydralisk upstream ${status}`)
+      expect(body.reason).toBe(`hydralisk GLM upstream ${status}`)
     },
   )
 
@@ -5648,10 +5605,12 @@ describe('Khala prefix caching (book P0-2 / #6084)', () => {
   })
 
   test('6. cache-aware routing does NOT promote an unhealthy warm lane (falls back to cheapest-viable)', async () => {
-    const vllmCaptured: Array<Captured> = []
+    const glmCaptured: Array<Captured> = []
     const geminiCaptured: Array<Captured> = []
     const registry = new InferenceProviderRegistry()
-    registry.register(recordingAdapter(HYDRALISK_ADAPTER_ID, vllmCaptured))
+    registry.register(
+      recordingAdapter(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID, glmCaptured),
+    )
     registry.register(
       recordingAdapter(VERTEX_GEMINI_ADAPTER_ID, geminiCaptured),
     )
@@ -5674,8 +5633,8 @@ describe('Khala prefix caching (book P0-2 / #6084)', () => {
     expect(response.status).toBe(200)
     const body = (await response.json()) as { openagents?: { worker?: string } }
     // The sick warm lane is skipped; the cheapest-viable plan-order lane serves.
-    expect(body.openagents?.worker).toBe(HYDRALISK_ADAPTER_ID)
-    expect(vllmCaptured).toHaveLength(1)
+    expect(body.openagents?.worker).toBe(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID)
+    expect(glmCaptured).toHaveLength(1)
   })
 
   test('a non-Khala request gets NO gateway affinity params (rejected before dispatch)', async () => {

@@ -103,8 +103,10 @@
     // The full fleet forms the #6262 singleflight pool (one inflight slot per
     // replica) so up to 10 overlapping Khala requests spread across distinct G4
     // hosts instead of overflowing past GLM. A GLM failure/timeout/Spot-death is a
-    // retryable lane error so dispatch still overflows to GPT-OSS-120B ->
-    // GPT-OSS-20B -> Vertex Gemini (model-router.ts) and never surfaces a 5xx.
+    // retryable lane error so dispatch still overflows to OpenRouter free ->
+    // Vertex Gemini -> Fireworks (model-router.ts) and never surfaces a 5xx
+    // while those public fallbacks are armed. GPT-OSS is not in the main Khala
+    // fallback thread.
     "HYDRALISK_GLM_52_REAP_504B_ENABLED": "ready",
     "HYDRALISK_GLM_52_REAP_504B_MODEL_ID": "openagents/glm-5.2-reap-504b",
     "HYDRALISK_GLM_52_REAP_504B_REPLICA_IDS": "g4-4g-b-20260625154532,g4-4g-central1f-spot-20260625203000,g4-4g-east1b-spot-20260625203000,g4-4g-east1d-spot-20260625203000,g4-4g-east5a-spot-20260625203000,g4-4g-east5b-spot-20260625203000,g4-4g-east5c-spot-20260625211500,g4-4g-south1b-spot-20260625211500,g4-4g-west1a-spot-20260625203000,g4-8g-b-20260624214500",
@@ -178,8 +180,9 @@
     // Khala provider backing (#6198, #6259). Operator-only, non-secret routing
     // knob: customers still see/request ONLY `openagents/khala`. Set to the
     // Hydralisk-backed lane so the router orders the OWN-INFRA GLM-5.2-REAP-504B
-    // private G4 lane FIRST (KHALA_HYDRALISK_ADAPTER_PLAN: GLM -> GPT-OSS-120B ->
-    // GPT-OSS-20B -> Vertex Gemini), instead of Fireworks DeepSeek. Any value
+    // private G4 lane FIRST (KHALA_HYDRALISK_ADAPTER_PLAN: GLM -> OpenRouter
+    // free -> Vertex Gemini -> Fireworks), instead of Fireworks DeepSeek.
+    // GPT-OSS is not in the main Khala fallback thread. Any value
     // other than the deepseek-v4-flash aliases resolves to the Hydralisk backing
     // (model-serving-policy.ts:resolveKhalaBackingModel); Fireworks remains armed
     // for the OPEN class and as named-model routing, just not as the Khala primary.

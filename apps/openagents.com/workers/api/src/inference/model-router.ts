@@ -259,22 +259,21 @@ const LANE_PLAN_BY_CLASS: Readonly<
 const KHALA_HYDRALISK_ADAPTER_PLAN: ReadonlyArray<string> = [
   HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
   OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
-  HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
-  HYDRALISK_ADAPTER_ID,
   VERTEX_GEMINI_ADAPTER_ID,
+  FIREWORKS_ADAPTER_ID,
 ]
 
 const KHALA_FIREWORKS_DEEPSEEK_ADAPTER_PLAN: ReadonlyArray<string> = [
   FIREWORKS_ADAPTER_ID,
-  ...KHALA_HYDRALISK_ADAPTER_PLAN,
+  HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+  OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+  VERTEX_GEMINI_ADAPTER_ID,
 ]
 
 const KHALA_TOOL_SAFE_ADAPTER_PLAN: ReadonlyArray<string> = [
-  FIREWORKS_ADAPTER_ID,
   OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
-  HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
-  HYDRALISK_ADAPTER_ID,
   VERTEX_GEMINI_ADAPTER_ID,
+  FIREWORKS_ADAPTER_ID,
 ]
 
 const dedupeAdapterPlan = (
@@ -334,11 +333,11 @@ export const selectAdapterPlan = (model: string): ReadonlyArray<string> => {
   if (normalizedModel === KHALA_MODEL_ID) {
     // Khala-first: the Hydralisk owned lanes serve the collapsed public Khala
     // model, with GLM-5.2 REAP first when that private G4 route is armed, then
-    // GPT-OSS 120B, GPT-OSS 20B, and Vertex Gemini as the FINAL graceful-
-    // degradation overflow so a full Hydralisk outage degrades instead of
-    // failing the whole product with `inference_unavailable`. Explicit raw
-    // Hydralisk model ids below keep NO Gemini fallback — they are deliberate
-    // supply-lane requests, not the generic Khala lane.
+    // the hidden OpenRouter free fallback, Vertex Gemini, then Fireworks as the
+    // final graceful-degradation overflow so a full GLM/OpenRouter/Gemini outage
+    // degrades instead of failing the whole product with `inference_unavailable`.
+    // Explicit raw Hydralisk model ids below keep NO Gemini/Fireworks fallback —
+    // they are deliberate supply-lane requests, not the generic Khala lane.
     return KHALA_HYDRALISK_ADAPTER_PLAN
   }
   if (normalizedModel === HYDRALISK_GLM_52_REAP_504B_MODEL_ID) {

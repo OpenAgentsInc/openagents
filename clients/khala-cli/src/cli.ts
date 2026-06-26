@@ -3,7 +3,7 @@ import { appendAssistantTurn, prepareUserTurn } from "./bounds.js"
 import { KHALA_CLI_VERSION, formatKhalaChangelog } from "./changelog.js"
 import { fetchModels, fetchTokensServed, mintFreeKey, runChatTurn, submitFeedback, toKhalaCliError } from "./client.js"
 import { readPromptFromTerminal } from "./input.js"
-import { renderMarkdownForTerminal, terminalStyle } from "./terminal.js"
+import { renderMarkdownDeltaForTerminal, renderMarkdownForTerminal, terminalStyle } from "./terminal.js"
 import { DEFAULT_BASE_URL, type ChatMode, type ChatTurnMetadata, type KhalaChatMessage, type KhalaCliError, type KhalaTokensResponse } from "./types.js"
 import { startKhalaAutoUpdate } from "./updater.js"
 
@@ -232,16 +232,28 @@ async function runInteractive(args: ParsedArgs, env: Record<string, string | und
 
     const prepared = prepareUserTurn(messages, prompt)
     try {
+      let streamed = false
       const result = await Effect.runPromise(runChatTurn({
         mode: args.mode,
         baseUrl: args.baseUrl,
         token: args.token,
         messages: prepared,
+        onDelta: (delta) => {
+          if (!streamed) {
+            process.stdout.write(`${terminalStyle.assistant("Khala:")} `)
+            streamed = true
+          }
+          process.stdout.write(renderMarkdownDeltaForTerminal(delta))
+        },
         onRetry: (event) => {
-          process.stdout.write(`${terminalStyle.assistant("Khala:")} inference unavailable; retrying ${event.retry}/${event.maxRetries} in ${formatDelay(event.delayMs)}...\n`)
+          process.stdout.write(`${streamed ? "\n" : ""}${terminalStyle.assistant("Khala:")} ${formatRetryNotice(event)}\n`)
         },
       }))
-      process.stdout.write(`${terminalStyle.assistant("Khala:")} ${renderMarkdownForTerminal(result.text)}\n\n`)
+      if (streamed) {
+        process.stdout.write("\n\n")
+      } else {
+        process.stdout.write(`${terminalStyle.assistant("Khala:")} ${renderMarkdownForTerminal(result.text)}\n\n`)
+      }
       messages = appendAssistantTurn(prepared, result.text)
       lastTraceRef = result.traceRef ?? lastTraceRef
       lastMessageInfo = result.metadata
@@ -328,7 +340,7 @@ async function runOneTurn(
     messages,
     onDelta,
     onRetry: (event) => {
-      process.stderr.write(`khala: inference unavailable; retrying ${event.retry}/${event.maxRetries} in ${formatDelay(event.delayMs)}...\n`)
+      process.stderr.write(`khala: ${formatRetryNotice(event)}\n`)
     },
   }))
   return result.text
@@ -386,16 +398,17 @@ function formatDelay(delayMs: number): string {
   return `${(delayMs / 1_000).toFixed(1)}s`
 }
 
-function formatTokensServed(tokens: KhalaTokensResponse): string {
-  const formatted = new Intl.NumberFormat().format(tokens.tokensServed)
-  return `Khala tokens served: ${formatted} (as of ${formatTokensTimestamp(tokens.generatedAt)})`
+function formatRetryNotice(event: {
+  readonly retry: number
+  readonly maxRetries: number
+  readonly delayMs: number
+}): string {
+  return `inference unavailable; retrying ${event.retry}/${event.maxRetries} in ${formatDelay(event.delayMs)}...`
 }
 
-function formatTokensTimestamp(iso: string): string {
-  return new Intl.DateTimeFormat("en-US", {
-    dateStyle: "medium",
-    timeStyle: "medium",
-  }).format(new Date(iso))
+function formatTokensServed(tokens: KhalaTokensResponse): string {
+  const formatted = new Intl.NumberFormat().format(tokens.tokensServed)
+  return `Khala tokens served: ${formatted}`
 }
 
 function formatMessageInfo(info: ChatTurnMetadata | undefined): string {

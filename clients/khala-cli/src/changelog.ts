@@ -4,9 +4,17 @@ export interface KhalaChangelogEntry {
   readonly bullets: ReadonlyArray<string>
 }
 
-export const KHALA_CLI_VERSION = "0.1.5"
+export const KHALA_CLI_VERSION = "0.1.6"
 
 export const KHALA_CHANGELOG: ReadonlyArray<KhalaChangelogEntry> = [
+  {
+    version: "0.1.6",
+    releasedAt: "2026-06-26T17:24:07.000Z",
+    bullets: [
+      "Restored live streaming in interactive chat while keeping Markdown color rendering.",
+      "Removed the timestamp from khala tokens and aligned Khala fallback docs with GLM -> OpenRouter -> Gemini -> Fireworks.",
+    ],
+  },
   {
     version: "0.1.5",
     releasedAt: "2026-06-26T17:06:14.000Z",

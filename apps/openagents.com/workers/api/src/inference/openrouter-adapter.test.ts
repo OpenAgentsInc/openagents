@@ -2,6 +2,7 @@ import { Effect, Redacted } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import {
+  OPENROUTER_KHALA_FALLBACK_MODEL_ID,
   type OpenRouterAdapterConfig,
   type OpenRouterFetch,
   makeOpenRouterAdapter,
@@ -81,7 +82,7 @@ const adapterConfig = (
   baseUrl: 'https://openrouter.example.test/api/v1',
   fetchImpl,
   id: 'openrouter-khala-glm-fallback',
-  upstreamModel: 'openrouter/glm-class-fixture',
+  upstreamModel: OPENROUTER_KHALA_FALLBACK_MODEL_ID,
 })
 
 describe('OpenRouter Khala fallback adapter', () => {
@@ -128,5 +129,19 @@ describe('OpenRouter Khala fallback adapter', () => {
     ])
     expect(result.success.at(-1)?.finishReason).toBe('tool_calls')
     expect(result.success.at(-1)?.usage?.totalTokens).toBe(13)
+  })
+
+  it('sends the pinned OpenRouter free fallback model upstream', async () => {
+    let capturedBody: Record<string, unknown> | undefined
+    const fetchImpl: OpenRouterFetch = async (_input, init) => {
+      capturedBody = JSON.parse(init.body) as Record<string, unknown>
+      return jsonResponse(completionBody())
+    }
+    const adapter = makeOpenRouterAdapter(adapterConfig(fetchImpl))
+
+    const result = await runResult(adapter.complete(request()))
+
+    expect(result._tag).toBe('Success')
+    expect(capturedBody?.model).toBe(OPENROUTER_KHALA_FALLBACK_MODEL_ID)
   })
 })
