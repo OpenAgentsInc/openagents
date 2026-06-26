@@ -19,6 +19,7 @@ import {
   khalaTokensServedStreamAfterCursorGap,
   khalaTokensServedStreamFailed,
   khalaTokensServedStreamOpen,
+  khalaTokensServedStreamSnapshotSettled,
 } from './khala-tokens-served-feed'
 import {
   type PublicKhalaTokensServedModel,
@@ -115,6 +116,55 @@ describe('khalaTokensServedAfterSnapshot', () => {
 
     expect(tokensServed(result.counter)).toBe(2000000)
     expect(result.stream.cursor).toBe(9)
+  })
+
+  // #6324: the snapshot seed is what UNLOCKS the stream socket, so it must flip
+  // `snapshotLoaded`. Before this, the socket opened at cursor 0 ahead of the
+  // snapshot and replayed the full per-completion history (the ~42/s firehose +
+  // frozen counter). After: the socket opens once at the SEEDED cursor.
+  test('flips snapshotLoaded so the socket opens at the seeded cursor (#6324)', () => {
+    expect(initKhalaTokensServedStreamModel().snapshotLoaded).toBe(false)
+
+    const withSummary = khalaTokensServedAfterSnapshot({
+      counter: IdlePublicKhalaTokensServed(),
+      cursor: 7364,
+      stream: initKhalaTokensServedStreamModel(),
+      summary: { observedAt: '2026-06-24T00:00:00.000Z', tokensServedTotal: 88_000_000 },
+    })
+    expect(withSummary.stream.snapshotLoaded).toBe(true)
+    expect(withSummary.stream.cursor).toBe(7364)
+
+    const noSummary = khalaTokensServedAfterSnapshot({
+      counter: IdlePublicKhalaTokensServed(),
+      cursor: 12,
+      stream: initKhalaTokensServedStreamModel(),
+      summary: null,
+    })
+    expect(noSummary.stream.snapshotLoaded).toBe(true)
+    expect(noSummary.stream.cursor).toBe(12)
+  })
+})
+
+describe('khalaTokensServedStreamSnapshotSettled (#6324)', () => {
+  test('flips snapshotLoaded without moving the cursor (snapshot-load failure)', () => {
+    const settled = khalaTokensServedStreamSnapshotSettled(
+      initKhalaTokensServedStreamModel(),
+    )
+
+    expect(settled.snapshotLoaded).toBe(true)
+    // No seeded cursor on the failure path; the stream self-heals via the
+    // authoritative per-event total + the scalar reconcile.
+    expect(settled.cursor).toBe(0)
+  })
+
+  test('is idempotent once already settled', () => {
+    const once = khalaTokensServedStreamSnapshotSettled(
+      initKhalaTokensServedStreamModel(),
+    )
+    const twice = khalaTokensServedStreamSnapshotSettled(once)
+
+    expect(twice.snapshotLoaded).toBe(true)
+    expect(twice).toBe(once)
   })
 })
 

@@ -83,6 +83,7 @@ import {
   type FairShareDecision,
   type SpendCapDecision,
 } from './inference-abuse-controls'
+import { applyInternalAccountAttribution } from './inference-internal-account'
 import { agentUserIdFromAccountRef } from './inference-owner-identity'
 import { type PremiumAccessDecision } from './inference-premium-allowlist'
 import { resolveKhalaChatTraceOptIn } from './khala-chat-trace-emitter'
@@ -123,6 +124,7 @@ import {
 import {
   type DispatchDeps,
   type DispatchRouteMetadata,
+  type DispatchSuccessValidator,
   FIREWORKS_ADAPTER_ID,
   HYDRALISK_ADAPTER_ID,
   HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
@@ -133,6 +135,7 @@ import {
   classifyModel,
   dispatchWithOverflow,
   dispatchWithOverflowWithMetadata,
+  selectAdapterPlanForKhalaToolRequest,
 } from './model-router'
 import {
   type SupplyLaneArming,
@@ -167,7 +170,6 @@ import {
   type InferenceStreamSource,
   type InferenceToolCallDelta,
 } from './provider-adapter'
-import { applyInternalAccountAttribution } from './inference-internal-account'
 import {
   type ServedTokensRecorder,
   type ServedTokensRequestAttribution,
@@ -319,6 +321,35 @@ export const stubModelRouter: ModelRouter = () => STUB_ECHO_ADAPTER_ID
 // in model-router.ts. The Worker wires this to `selectAdapterPlan`; when it is
 // absent the route falls back to the single-id `router` seam (the #5476 path).
 export type ModelLanePlanner = (model: string) => ReadonlyArray<string>
+
+export const isToolBearingKhalaRequest = (
+  input: Readonly<{
+    body: ChatCompletionsRequestBody
+    rawBody: Record<string, unknown>
+    requestedModel: string
+  }>,
+): boolean => {
+  if (!isKhalaModel(input.requestedModel)) {
+    return false
+  }
+
+  const hasDeclaredTools =
+    (Array.isArray(input.rawBody['tools']) &&
+      input.rawBody['tools'].length > 0) ||
+    (Array.isArray(input.rawBody['functions']) &&
+      input.rawBody['functions'].length > 0)
+
+  if (hasDeclaredTools) {
+    return true
+  }
+
+  return input.body.messages.some(
+    message =>
+      message.role === 'tool' ||
+      message.toolCallId !== undefined ||
+      (message.toolCalls !== undefined && message.toolCalls.length > 0),
+  )
+}
 
 // Parse the INFERENCE_GATEWAY_ENABLED flag value. Default OFF: anything other
 // than an explicit truthy token leaves the gateway inert.
@@ -718,9 +749,7 @@ export type TraceRedactionMetricEvent = Readonly<{
   residualTripwireCount: number
 }>
 
-const residualTripwireCount = (
-  result: TraceEmitResultForMetrics,
-): number => {
+const residualTripwireCount = (result: TraceEmitResultForMetrics): number => {
   if (result.emitted || result.reason !== 'redaction_residual_drop') {
     return 0
   }
@@ -979,6 +1008,84 @@ const toInferenceRequest = (
   }
 }
 
+type ToolRequirementState =
+  | Readonly<{ _tag: 'tool_optional' }>
+  | Readonly<{ _tag: 'tool_required' }>
+
+type AssistantCompletionState =
+  | Readonly<{ _tag: 'assistant_content' }>
+  | Readonly<{ _tag: 'assistant_tool_calls' }>
+  | Readonly<{ _tag: 'empty_assistant' }>
+
+const requestToolRequirementState = (
+  request: InferenceRequest,
+): ToolRequirementState => {
+  const toolChoice = request.passthroughParams['tool_choice']
+  if (toolChoice === 'required') {
+    return { _tag: 'tool_required' }
+  }
+  const toolChoiceRecord = recordFromUnknown(toolChoice)
+  return toolChoiceRecord?.['type'] === 'function'
+    ? { _tag: 'tool_required' }
+    : { _tag: 'tool_optional' }
+}
+
+const assistantCompletionState = (
+  result: InferenceResult,
+): AssistantCompletionState => {
+  if (result.toolCalls !== undefined && result.toolCalls.length > 0) {
+    return { _tag: 'assistant_tool_calls' }
+  }
+  return result.content.trim() === ''
+    ? { _tag: 'empty_assistant' }
+    : { _tag: 'assistant_content' }
+}
+
+const validateChatCompletionResult: DispatchSuccessValidator<
+  Readonly<{ adapterId: string; value: InferenceResult }>
+> = ({ adapter, request, value }) => {
+  const toolRequirement = requestToolRequirementState(request)
+  const completionState = assistantCompletionState(value.value)
+
+  if (
+    toolRequirement._tag === 'tool_required' &&
+    completionState._tag !== 'assistant_tool_calls'
+  ) {
+    return {
+      _tag: 'failed',
+      error: new InferenceAdapterError({
+        adapterId: adapter.id,
+        kind: 'tool_required_no_tool_calls',
+        reason: 'adapter returned no tool calls for a tool-required request',
+        retryable: true,
+      }),
+    }
+  }
+
+  if (completionState._tag === 'empty_assistant') {
+    return {
+      _tag: 'failed',
+      error: new InferenceAdapterError({
+        adapterId: adapter.id,
+        kind: 'empty_assistant_content',
+        reason: 'adapter returned empty assistant content',
+        retryable: true,
+      }),
+    }
+  }
+
+  return { _tag: 'accepted' }
+}
+
+const validateRawChatCompletionResult: DispatchSuccessValidator<
+  InferenceResult
+> = ({ adapter, request, value }) =>
+  validateChatCompletionResult({
+    adapter,
+    request,
+    value: { adapterId: adapter.id, value },
+  })
+
 // Resolve the cache-affinity dimensions for a request from the authenticated
 // account plus client-supplied session / codebase hints (book P0-2 deliverable
 // 3). The session/codebase hints are read from the OpenAI-style `user` field and
@@ -1093,6 +1200,13 @@ type OpenAgentsReceipt = Readonly<{
   verified?: boolean | undefined
   receipt?: string | undefined
   receipt_url?: string | undefined
+  billing?:
+    | Readonly<{
+        mode: 'receipt_backed' | 'no_debit' | 'zero_charge'
+        reason?: 'operator_exempt_or_unmetered' | undefined
+        receipt_required: boolean
+      }>
+    | undefined
   route?: 'coding' | undefined
   workers?: ReadonlyArray<string> | undefined
   verification_receipt?: string | undefined
@@ -1138,6 +1252,22 @@ type OpenAgentsReceipt = Readonly<{
   output_spec?: AutopilotConciergeOutputSpec | undefined
   tools?: ReadonlyArray<ConciergeToolDeclaration> | undefined
 }>
+
+const billingDisclosureFor = (
+  metering: MeteringOutcome,
+): NonNullable<OpenAgentsReceipt['billing']> => {
+  if (metering.zeroCharge === true) {
+    return { mode: 'zero_charge', receipt_required: false }
+  }
+  if (metering.receiptRef !== null) {
+    return { mode: 'receipt_backed', receipt_required: true }
+  }
+  return {
+    mode: 'no_debit',
+    reason: 'operator_exempt_or_unmetered',
+    receipt_required: false,
+  }
+}
 
 const publicInferenceReceiptUrl = (receiptRef: string): string =>
   `/api/public/inference/receipts/${encodeURIComponent(receiptRef)}`
@@ -1478,6 +1608,7 @@ const openAgentsReceiptForResult = (
       : undefined
     return {
       ...base,
+      billing: billingDisclosureFor(input.metering),
       routing,
       telemetry,
       verification: 'none' as const,
@@ -1553,6 +1684,7 @@ const openAgentsReceiptForResult = (
 
   return {
     ...base,
+    billing: billingDisclosureFor(input.metering),
     executed: verdict.executed,
     receipt,
     ...(input.metering.receiptRef === null
@@ -2182,8 +2314,7 @@ export const handleChatCompletions = (
         return noStoreJsonResponse(
           {
             error: 'coding_delegation_unavailable',
-            reason:
-              'Coding workflow delegation is not wired on this gateway.',
+            reason: 'Coding workflow delegation is not wired on this gateway.',
           },
           { status: 503 },
         )
@@ -2195,17 +2326,17 @@ export const handleChatCompletions = (
       )
       const selfAgentUserId = agentUserIdFromAccountRef(session.accountRef)
       const selfLinkedAgent =
-        selfAgentUserId === undefined
-          ? []
-          : [{ agentUserId: selfAgentUserId }]
+        selfAgentUserId === undefined ? [] : [{ agentUserId: selfAgentUserId }]
       const openAuthLinkedAgents =
         openauthUserId === undefined ||
         codingDelegation.agentStore.listLinkedAgentsForOpenAuthUser ===
           undefined
           ? []
           : yield* Effect.promise(() =>
-              codingDelegation.agentStore
-                .listLinkedAgentsForOpenAuthUser!(openauthUserId, 100),
+              codingDelegation.agentStore.listLinkedAgentsForOpenAuthUser!(
+                openauthUserId,
+                100,
+              ),
             )
       const linkedAgents = [...selfLinkedAgent, ...openAuthLinkedAgents]
       const nowIso = epochMillisToIsoTimestamp(created * 1000)
@@ -2470,7 +2601,15 @@ export const handleChatCompletions = (
         const id = (deps.router ?? stubModelRouter)(model)
         return id === undefined ? [] : [id]
       })
-    const basePlannedIds = planFor(requestedModel)
+    const plannedIdsForModel = planFor(requestedModel)
+    const toolBearingKhalaRequest = isToolBearingKhalaRequest({
+      body,
+      rawBody,
+      requestedModel,
+    })
+    const basePlannedIds = toolBearingKhalaRequest
+      ? selectAdapterPlanForKhalaToolRequest(requestedModel, plannedIdsForModel)
+      : plannedIdsForModel
 
     // CACHE-AFFINITY RESOLUTION (book P0-2 deliverables 3+4). Compose the
     // account/session/codebase key, its public-safe hash (for the receipt), and
@@ -2939,6 +3078,7 @@ export const handleChatCompletions = (
           .complete(request)
           .pipe(Effect.map(value => ({ adapterId: adapter.id, value }))),
       dispatchDeps,
+      validateChatCompletionResult,
     ).pipe(
       Effect.map(served => ({ ok: true as const, served })),
       Effect.catch(error => Effect.succeed({ error, ok: false as const })),
@@ -2984,6 +3124,7 @@ export const handleChatCompletions = (
             },
             (adapter, request) => adapter.complete(request),
             dispatchDeps,
+            validateRawChatCompletionResult,
           ).pipe(
             Effect.map(value => value.content as string | undefined),
             Effect.orElseSucceed(() => undefined),
@@ -3088,9 +3229,10 @@ export const handleChatCompletions = (
         deps.traceEmit.resolveCaptureDefault !== undefined
       ) {
         captureDefault = yield* Effect.promise(() =>
-          deps
-            .traceEmit!.resolveCaptureDefault!(session.accountRef, requestedModel)
-            .catch(() => false),
+          deps.traceEmit!.resolveCaptureDefault!(
+            session.accountRef,
+            requestedModel,
+          ).catch(() => false),
         )
       }
       if (traceEmitOptIn || captureDefault) {

@@ -80,6 +80,19 @@ export const khalaTokensServedStreamFailed = (
   model: KhalaTokensServedStreamModel,
 ): KhalaTokensServedStreamModel => withConnection(model, 'failed')
 
+// Mark the snapshot phase complete so the stream socket may open (openagents
+// #6324), WITHOUT moving the cursor. Used on a snapshot-load FAILURE: we never
+// got a seeded cursor, but the counter is still seeded by the scalar fallback and
+// every streamed event carries its own authoritative total, so opening the stream
+// (even at cursor 0, the failure-only path) self-heals. The common success path
+// flips this via `khalaTokensServedAfterSnapshot` AFTER seeding the cursor.
+export const khalaTokensServedStreamSnapshotSettled = (
+  model: KhalaTokensServedStreamModel,
+): KhalaTokensServedStreamModel =>
+  model.snapshotLoaded
+    ? model
+    : KhalaTokensServedStreamModelSchema({ ...model, snapshotLoaded: true })
+
 // Raise the displayed total to `total` if it is higher, never lower. Monotonic by
 // construction: an authoritative total can only advance the counter. A counter
 // that has not been seeded yet (not Loaded) is left untouched — the snapshot seed
@@ -141,9 +154,13 @@ export const khalaTokensServedAfterSnapshot = (
   counter: PublicKhalaTokensServedModel
   stream: KhalaTokensServedStreamModel
 }> => {
+  // Seed the cursor AND flip `snapshotLoaded` so the stream subscription now
+  // opens the socket at this seeded cursor (openagents #6324) — only new deltas
+  // after the seed arrive, never the full per-completion history from seq 0.
   const seededStream = KhalaTokensServedStreamModelSchema({
     ...input.stream,
     cursor: Math.max(input.stream.cursor, input.cursor),
+    snapshotLoaded: true,
   })
 
   if (input.summary === null) {

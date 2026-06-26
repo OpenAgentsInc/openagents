@@ -316,6 +316,31 @@ This is the invariant ledger for `openagents`.
   `workers/api/src/atif-trace-schema.test.ts` and
   `workers/api/src/trace-store-routes.test.ts`.
 
+## Khala Backing Model Precedence
+
+- The intended primary backing for the public `openagents/khala` model is
+  GLM-5.2-REAP-504B on the owned Hydralisk pool. The committed production
+  config must keep
+  `apps/openagents.com/workers/api/wrangler.jsonc`
+  `KHALA_BACKING_MODEL=hydralisk-glm-5.2-reap-504b`, matching
+  `docs/inference/2026-06-25-glm-5.2-reap-504b-serving-audit.md` and the
+  GLM-first operator directive.
+- The selector is binary, not a GLM-specific enum:
+  `workers/api/src/inference/model-serving-policy.ts`
+  `resolveKhalaBackingModel` maps `deepseek-v4-flash`,
+  `fireworks/deepseek-v4-flash`, and
+  `accounts/fireworks/models/deepseek-v4-flash` to the Fireworks-first Khala
+  plan; every other value maps to the Hydralisk plan. For the current committed
+  value, `workers/api/src/inference/model-router.ts`
+  `selectAdapterPlanForKhalaBacking` orders
+  GLM-5.2-REAP-504B -> GPT-OSS-120B -> GPT-OSS-20B -> Vertex Gemini.
+- DeepSeek-V4-Flash is not a fallback tier in the current GLM-first Khala
+  overflow chain. It remains available through Fireworks open-model routing and
+  as the alternate Fireworks-first Khala primary when the backing value is one
+  of the DeepSeek aliases above. If DeepSeek should sit behind GLM as a real
+  fallback tier, that requires a separate routing change and tests rather than
+  flipping `KHALA_BACKING_MODEL` back to `deepseek-v4-flash`.
+
 ## Default-On Free-Tier Trace Capture (redacted, private-by-default)
 
 - The Khala chat-completions emitter (`workers/api/src/inference/

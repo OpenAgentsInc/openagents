@@ -127,6 +127,87 @@ const readAuthoritativeTokensServedTotal = async (
   }
 }
 
+// How many recent per-completion `tokens_served_deltas` rows to keep on the scope
+// (openagents #6324). The on-load snapshot reads EVERY row in the scope and the
+// stream replays from the snapshot cursor, so an untrimmed per-completion delta
+// scope grows without bound — at the GLM surge it reached thousands of rows and
+// the replay became a ~42-frame/s firehose that the client could not apply. The
+// AUTHORITATIVE running total lives on the single collapsed `summary` row, so the
+// historical per-completion deltas are NOT needed to seed or to stay correct:
+// trimming them is safe (the snapshot summary still carries the exact ledger
+// total). We keep a small recent tail purely so a just-reconnected client that
+// seeded a slightly-stale cursor still receives the last few authoritative-total
+// events instead of a cursor gap. The summary row is NEVER trimmed.
+export const KHALA_TOKENS_SERVED_DELTA_TAIL = 32
+
+// Trim the per-completion delta scope to its most-recent tail so the on-load
+// snapshot + cursor-replay stay bounded regardless of lifetime token volume
+// (openagents #6324). Deletes only `tokens_served_deltas` rows whose seq is below
+// the (max delta seq - tail) watermark; the collapsed `summary` row (a different
+// collection, carrying the authoritative running total) is never touched, so the
+// snapshot seed and monotonic convergence are preserved. Fail-soft: a trim error
+// is swallowed (an oversized scope is a perf issue, never a correctness one — the
+// summary stays authoritative), so it can never break or slow a published delta.
+const trimKhalaTokensServedDeltaScope = async (
+  db: D1Database,
+  scope: string,
+): Promise<void> => {
+  try {
+    // 1) Compact the per-completion delta collection to its recent tail.
+    const deltaWatermark = await db
+      .prepare(
+        `SELECT MAX(seq) AS max_seq
+           FROM sync_changes
+          WHERE scope = ? AND collection = ?`,
+      )
+      .bind(scope, KHALA_TOKENS_SERVED_SYNC_COLLECTION)
+      .first<{ max_seq: number | null }>()
+
+    const maxDeltaSeq = Math.max(0, Math.trunc(deltaWatermark?.max_seq ?? 0))
+    const keepDeltaFromSeq = maxDeltaSeq - KHALA_TOKENS_SERVED_DELTA_TAIL
+
+    if (keepDeltaFromSeq > 0) {
+      await db
+        .prepare(
+          `DELETE FROM sync_changes
+            WHERE scope = ? AND collection = ? AND seq < ?`,
+        )
+        .bind(scope, KHALA_TOKENS_SERVED_SYNC_COLLECTION, keepDeltaFromSeq)
+        .run()
+    }
+
+    // 2) Compact the `summary` collection to ONLY its latest row. Every publish
+    // appends a fresh `summary` put (the outbox never upserts); the snapshot
+    // collapses puts by entity id so only the highest-seq summary is ever read.
+    // Deleting the superseded summary rows keeps the scope bounded without
+    // changing what the client seeds (the latest authoritative total survives).
+    const summaryWatermark = await db
+      .prepare(
+        `SELECT MAX(seq) AS max_seq
+           FROM sync_changes
+          WHERE scope = ? AND collection = ?`,
+      )
+      .bind(scope, KHALA_TOKENS_SERVED_SUMMARY_COLLECTION)
+      .first<{ max_seq: number | null }>()
+
+    const maxSummarySeq = Math.max(0, Math.trunc(summaryWatermark?.max_seq ?? 0))
+
+    if (maxSummarySeq > 0) {
+      await db
+        .prepare(
+          `DELETE FROM sync_changes
+            WHERE scope = ? AND collection = ? AND seq < ?`,
+        )
+        .bind(scope, KHALA_TOKENS_SERVED_SUMMARY_COLLECTION, maxSummarySeq)
+        .run()
+    }
+  } catch {
+    // Swallow: trimming is a bound on replay size, never a correctness gate. The
+    // latest authoritative `summary` total is always preserved and keeps the
+    // counter honest even if a trim pass fails.
+  }
+}
+
 /**
  * Publish ONE public-safe tokens-served event to the public tokens-served scope,
  * then poke the room. The event AND a single running-total summary record carry
@@ -207,6 +288,12 @@ export const publishKhalaTokensServedDelta = async (
       scope,
       value: summary,
     })
+
+    // Keep the on-load snapshot + cursor-replay bounded regardless of lifetime
+    // token volume (openagents #6324): compact the per-completion delta tail. The
+    // authoritative running total stays on the collapsed `summary` row, so this
+    // never affects what the client seeds or converges to.
+    await trimKhalaTokensServedDeltaScope(db, scope)
 
     const notify = notifySyncScopes(env, [scope])
 

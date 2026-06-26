@@ -333,7 +333,7 @@ describe('Khala GLM REAP production smoke', () => {
     })
   })
 
-  test('treats operator-credit GLM receipts as zero-debit smoke evidence', async () => {
+  test('operator-exempt zero-debit mode skips operator-credit receipt refs but keeps GLM serving checks', async () => {
     let counterReads = 0
     let receiptReads = 0
     const fetchImpl = vi.fn(
@@ -344,7 +344,7 @@ describe('Khala GLM REAP production smoke', () => {
 
         if (url.pathname === '/api/public/khala-tokens-served') {
           counterReads += 1
-          return json({ tokensServed: counterReads === 1 ? 200 : 225 })
+          return json({ tokensServed: counterReads === 1 ? 1000 : 1012 })
         }
 
         if (url.pathname === '/api/v1/gateway/readiness') {
@@ -359,10 +359,13 @@ describe('Khala GLM REAP production smoke', () => {
           const body = JSON.parse(String(init?.body || '{}')) as {
             stream?: boolean
           }
-          const totalTokens = body.stream ? 11 : 9
-          const openagents = {
-            lane: 'open',
+          const glmOpenAgents = {
             requested_model: 'openagents/khala',
+            billing: {
+              mode: 'no_debit',
+              reason: 'operator_exempt_or_unmetered',
+              receipt_required: false,
+            },
             routing: {
               selected_replica_id: 'primary',
               selected_replica_ref:
@@ -374,27 +377,27 @@ describe('Khala GLM REAP production smoke', () => {
               detailRef: body.stream
                 ? '/api/public/inference/receipts/receipt.inference.operator_credit.glm_stream'
                 : '/api/public/inference/receipts/receipt.inference.operator_credit.glm_nonstream',
-              totalTokens,
             },
             worker: 'hydralisk-vllm-glm-5p2-reap-504b',
           }
 
           if (body.stream) {
             return sse([
-              '{"choices":[{"delta":{"content":"READY"},"finish_reason":null}]}',
               JSON.stringify({
-                choices: [{ delta: {}, finish_reason: null }],
-                openagents,
+                choices: [
+                  { delta: { content: 'READY' }, finish_reason: null },
+                ],
+                openagents: glmOpenAgents,
               }),
             ])
           }
 
           return json({
             choices: [{ message: { content: 'READY', role: 'assistant' } }],
-            id: 'chatcmpl_glm_operator_credit',
+            id: 'chatcmpl_glm_operator_exempt',
             model: 'openagents/khala',
-            openagents,
-            usage: { total_tokens: totalTokens },
+            openagents: glmOpenAgents,
+            usage: { total_tokens: 12 },
           })
         }
 
@@ -410,6 +413,7 @@ describe('Khala GLM REAP production smoke', () => {
       approveLiveSpend: true,
       counterPollMs: 1,
       env: armedEnv,
+      expectOperatorExemptZeroDebit: true,
       fetchImpl,
       sleep: () => Promise.resolve(),
       token: 'oa_agent_test',
@@ -418,23 +422,34 @@ describe('Khala GLM REAP production smoke', () => {
     expect(receiptReads).toBe(0)
     expect(output).toMatchObject({
       counter: {
-        delta: 25,
-        requiredDelta: 15,
-        servedTokens: 20,
+        delta: 12,
+        requiredDelta: 9,
+        servedTokens: 12,
       },
       ok: true,
       skipped: false,
     })
     expect(output.nonstream.receipt).toMatchObject({
-      kind: 'operator_credit',
+      billingMode: 'operator_exempt_zero_debit',
+      note: 'skipped (operator-exempt, no billable receipt)',
       receiptRef: 'receipt.inference.operator_credit.glm_nonstream',
-      zeroDebit: true,
+      skipped: true,
     })
     expect(output.stream.receipt).toMatchObject({
-      kind: 'operator_credit',
+      billingMode: 'operator_exempt_zero_debit',
       receiptRef: 'receipt.inference.operator_credit.glm_stream',
-      zeroDebit: true,
+      skipped: true,
     })
+    expect(output.nonstream.openagents).toMatchObject({
+      served_model: 'openagents/glm-5.2-reap-504b',
+      supply_lane: 'hydralisk',
+      worker: 'hydralisk-vllm-glm-5p2-reap-504b',
+    })
+    expect(
+      fetchImpl.mock.calls.some(
+        call => new URL(String(call[0])).pathname.startsWith('/receipts/'),
+      ),
+    ).toBe(false)
   })
 
   test('checks the whole named pool while proving the reserved primary receives no smoke traffic', async () => {

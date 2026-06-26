@@ -732,8 +732,15 @@ function maybeEmitCodexDevicePrompt(input: {
   if (input.emitted.current) {
     return
   }
-  const verificationUrl = input.buffer.match(codexDeviceUrlPattern)?.[0]
-  const userCode = input.buffer.match(codexDeviceCodePattern)?.[0]
+  // Codex prints the device URL + one-time code wrapped in ANSI color escapes
+  // (e.g. `\x1b[94m8260-DUG55\x1b[0m`). The leading `\x1b[94m` ends in `m` — a
+  // word char — directly before the code, which kills `codexDeviceCodePattern`'s
+  // leading `\b`, so the code never matches, `onDevicePrompt` never fires, and
+  // the spawned `codex login --device-auth` polls forever -> the CLI hangs with
+  // no output. Strip ANSI escapes before matching so the prompt is surfaced.
+  const cleaned = input.buffer.replace(/\[[0-9;]*m/g, "")
+  const verificationUrl = cleaned.match(codexDeviceUrlPattern)?.[0]
+  const userCode = cleaned.match(codexDeviceCodePattern)?.[0]
   if (verificationUrl === undefined || userCode === undefined) {
     return
   }

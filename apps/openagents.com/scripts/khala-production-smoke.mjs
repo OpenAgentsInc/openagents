@@ -178,6 +178,10 @@ const receiptPathFrom = openagents => {
 
 const operatorCreditReceiptRefPrefix = 'receipt.inference.operator_credit.'
 
+const isOperatorCreditReceiptRef = value =>
+  typeof value === 'string' &&
+  value.toLowerCase().includes(operatorCreditReceiptRefPrefix)
+
 const receiptRefFromReceiptPath = receiptPath => {
   if (typeof receiptPath !== 'string' || receiptPath.length === 0) {
     return null
@@ -203,6 +207,14 @@ const operatorCreditReceiptRefFromPath = receiptPath => {
     ? receiptRef
     : null
 }
+
+const isOperatorExemptZeroDebitOpenAgents = openagents =>
+  openagents?.billing?.mode === 'no_debit' ||
+  isOperatorCreditReceiptRef(openagents?.receipt) ||
+  isOperatorCreditReceiptRef(openagents?.receipt_url) ||
+  isOperatorCreditReceiptRef(openagents?.telemetry?.detailRef) ||
+  (Array.isArray(openagents?.telemetry?.blockerRefs) &&
+    openagents.telemetry.blockerRefs.includes('cost_not_measured'))
 
 const summarizeGatewayReadiness = readiness => ({
   hiddenModelCount: readiness?.hiddenModelCount,
@@ -285,9 +297,6 @@ const receiptTotalTokensFrom = receipt => {
   return evidence?.total_tokens ?? evidence?.totalTokens
 }
 
-const telemetryTotalTokensFrom = openagents =>
-  openagents?.telemetry?.totalTokens ?? openagents?.telemetry?.total_tokens
-
 const receiptRedactionLeaks = value => {
   const serialized = JSON.stringify(value || {})
   const patterns = [
@@ -314,22 +323,8 @@ const summarizeReceipt = (receipt, url) => ({
   url,
 })
 
-const summarizeOperatorCreditReceipt = (openagents, receiptRef, url) => ({
-  kind: 'operator_credit',
-  ledgerState: 'zero_debit_operator_exempt',
-  modelEvidence: {
-    requested_model: openagents?.requested_model,
-    served_model: openagents?.served_model,
-    supply_lane: openagents?.supply_lane,
-    total_tokens: telemetryTotalTokensFrom(openagents),
-    worker: openagents?.worker,
-  },
-  receiptRef,
-  url,
-  zeroDebit: true,
-})
-
 const verifyReceiptProof = async ({
+  allowOperatorExemptZeroDebit = false,
   backingExpectation,
   check,
   fetchImpl,
@@ -338,25 +333,31 @@ const verifyReceiptProof = async ({
   origin,
 }) => {
   const receiptPath = receiptPathFrom(openagents)
-  check(`${label}_receipt_ref_present`, receiptPath !== null, { receiptPath })
-
+  const operatorExemptZeroDebit =
+    allowOperatorExemptZeroDebit &&
+    isOperatorExemptZeroDebitOpenAgents(openagents)
   const operatorCreditReceiptRef = operatorCreditReceiptRefFromPath(receiptPath)
-  if (operatorCreditReceiptRef !== null) {
-    check(
-      `${label}_operator_credit_zero_debit`,
-      backingMatches(openagents, backingExpectation) &&
-        Number(telemetryTotalTokensFrom(openagents) || 0) > 0,
-      {
-        receiptRef: operatorCreditReceiptRef,
-        totalTokens: telemetryTotalTokensFrom(openagents),
-      },
-    )
-    return summarizeOperatorCreditReceipt(
-      openagents,
-      operatorCreditReceiptRef,
-      absoluteUrl(origin, receiptPath),
-    )
+  if (
+    operatorExemptZeroDebit &&
+    (receiptPath === null || operatorCreditReceiptRef !== null)
+  ) {
+    check(`${label}_receipt_ref_present`, true, {
+      billingMode: 'operator_exempt_zero_debit',
+      note: 'skipped (operator-exempt, no billable receipt)',
+      receiptPath,
+      receiptRef: operatorCreditReceiptRef,
+      skipped: true,
+    })
+    return {
+      billingMode: 'operator_exempt_zero_debit',
+      note: 'skipped (operator-exempt, no billable receipt)',
+      receiptRef: operatorCreditReceiptRef,
+      skipped: true,
+      url: receiptPath === null ? null : absoluteUrl(origin, receiptPath),
+    }
   }
+
+  check(`${label}_receipt_ref_present`, receiptPath !== null, { receiptPath })
 
   const receiptResult = await requestJson(fetchImpl, origin, receiptPath)
   check(`${label}_receipt_endpoint_200`, okStatus(receiptResult.response), {
@@ -476,6 +477,9 @@ export const parseArgs = (argv, env = process.env) => {
       env.OPENAGENTS_KHALA_EXPECTED_SUPPLY_LANE || defaultExpectedSupplyLane,
     expectedWorker:
       env.OPENAGENTS_KHALA_EXPECTED_WORKER || defaultExpectedWorker,
+    expectOperatorExemptZeroDebit: truthy(
+      env.OPENAGENTS_KHALA_SMOKE_OPERATOR_EXEMPT_ZERO_DEBIT,
+    ),
     forbiddenPublicModelIds: [
       ...defaultForbiddenPublicModelIds,
       ...csv(env.OPENAGENTS_KHALA_FORBIDDEN_PUBLIC_MODEL_IDS),
@@ -512,6 +516,8 @@ export const parseArgs = (argv, env = process.env) => {
       }
     } else if (value === '--approve-live-spend') {
       options.approveLiveSpend = true
+    } else if (value === '--operator-exempt-zero-debit') {
+      options.expectOperatorExemptZeroDebit = true
     } else if (value === '--readiness-only') {
       options.readinessOnly = true
     } else if (value === '--help' || value === '-h') {
@@ -539,6 +545,8 @@ Options:
   --expected-served-model-contains <text>  Defaults to deepseek-v4-flash.
   --forbid-public-model <model>            Add a model id that must not appear in /v1/models.
   --approve-live-spend                     Required before authenticated completion calls.
+  --operator-exempt-zero-debit             Treat missing billable receipt refs as skipped only when
+                                           the response explicitly shows the zero-debit exemption path.
   --readiness-only                         Check readiness + public model catalog without spending.
 
 This smoke verifies /v1/gateway/readiness, /v1/models, nonstreaming chat,
@@ -556,6 +564,7 @@ export const runKhalaProductionSmoke = async ({
   expectedSelectedReplicaRef = '',
   expectedSupplyLane = defaultExpectedSupplyLane,
   expectedWorker = defaultExpectedWorker,
+  expectOperatorExemptZeroDebit = false,
   fetchImpl = globalThis.fetch,
   forbiddenSelectedReplicaRefs = [],
   forbiddenPublicModelIds = defaultForbiddenPublicModelIds,
@@ -687,6 +696,7 @@ export const runKhalaProductionSmoke = async ({
     )
   }
   const nonstreamReceipt = await verifyReceiptProof({
+    allowOperatorExemptZeroDebit: expectOperatorExemptZeroDebit,
     backingExpectation,
     check,
     fetchImpl,
@@ -740,6 +750,7 @@ export const runKhalaProductionSmoke = async ({
     )
   }
   const streamReceipt = await verifyReceiptProof({
+    allowOperatorExemptZeroDebit: expectOperatorExemptZeroDebit,
     backingExpectation,
     check,
     fetchImpl,

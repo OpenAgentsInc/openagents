@@ -161,6 +161,7 @@ import {
   khalaTokensServedStreamClosed,
   khalaTokensServedStreamFailed,
   khalaTokensServedStreamOpen,
+  khalaTokensServedStreamSnapshotSettled,
 } from './khala-tokens-served-feed'
 import {
   GYM_RUN_PROGRESS_SCOPE,
@@ -1785,9 +1786,16 @@ export const update = (model: Model, message: Message): UpdateReturn =>
         ]
       },
       // A snapshot read failure is non-fatal: the scalar seed still establishes
-      // the displayed total and the stream still seeds the cursor on its first
-      // patch. Leave the model untouched.
-      FailedLoadKhalaTokensServedSnapshot: () => [model, []],
+      // the displayed total and every streamed event carries its own
+      // authoritative total. Flip `snapshotLoaded` so the stream socket may open
+      // (openagents #6324) — otherwise the stream would never connect and the
+      // counter would only ever move on the slow scalar reconcile.
+      FailedLoadKhalaTokensServedSnapshot: () => [
+        evo(model, {
+          khalaTokensServedStream: khalaTokensServedStreamSnapshotSettled,
+        }),
+        [],
+      ],
       // Scalar fetch failure: only surface the error if the counter has NOT yet
       // been seeded with an authoritative value. A failed reconcile must never
       // wipe out a good live total.

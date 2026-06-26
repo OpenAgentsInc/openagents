@@ -675,26 +675,53 @@ describe('Khala tokens-served live surfaces', () => {
   // counter does, so the Landing route must subscribe to the SAME live delta
   // stream + reconcile poll (no parallel data source). /home and /khala stay
   // live; /tassadar (which shows the back button, not the pill) stays inactive.
-  test('the homepage (/ Landing) subscribes to the live tokens-served stream', () => {
+  test('the homepage (/ Landing) subscribes to the live tokens-served stream once seeded (#6324)', () => {
+    // Gated on the snapshot settling so the socket opens at the seeded cursor.
+    const landingUnseeded = LoggedOut.init(LandingRoute())
     expect(
-      khalaTokensServedStreamDependenciesForModel(
-        LoggedOut.init(LandingRoute()),
-      ).isActive,
+      khalaTokensServedStreamDependenciesForModel(landingUnseeded).isActive,
+    ).toBe(false)
+
+    const landingSeeded = evo(landingUnseeded, {
+      khalaTokensServedStream: stream =>
+        evo(stream, { snapshotLoaded: () => true }),
+    })
+    expect(
+      khalaTokensServedStreamDependenciesForModel(landingSeeded).isActive,
     ).toBe(true)
+    // The reconcile poll stays route-gated (independent of the snapshot gate).
     expect(
       khalaTokensServedPollDependenciesForModel(LoggedOut.init(LandingRoute()))
         .isActive,
     ).toBe(true)
   })
 
-  test('/khala and /home stay live for the tokens-served stream', () => {
+  test('/khala and /home stay live for the tokens-served stream once the snapshot has settled (#6324)', () => {
+    // The socket is GATED on the snapshot load settling, so it opens at the
+    // SEEDED cursor instead of racing the snapshot and replaying from 0.
+    const khalaUnseeded = LoggedOut.init(KhalaRoute())
     expect(
-      khalaTokensServedStreamDependenciesForModel(LoggedOut.init(KhalaRoute()))
-        .isActive,
-    ).toBe(true)
+      khalaTokensServedStreamDependenciesForModel(khalaUnseeded).isActive,
+    ).toBe(false)
+
+    const khalaSeeded = evo(khalaUnseeded, {
+      khalaTokensServedStream: stream =>
+        evo(stream, { snapshotLoaded: () => true, cursor: () => 7364 }),
+    })
+    const khalaDeps = khalaTokensServedStreamDependenciesForModel(khalaSeeded)
+    expect(khalaDeps.isActive).toBe(true)
+    // Opens at the SEEDED cursor (not 0) — only new deltas, no full replay.
+    expect(khalaDeps.cursor).toBe(7364)
+    expect(khalaDeps.streamHref).toBe(
+      '/api/sync/public-khala-tokens-served/network/stream?cursor=7364',
+    )
+
+    const homeSeeded = evo(LoggedOut.init(HomeRoute()), {
+      khalaTokensServedStream: stream =>
+        evo(stream, { snapshotLoaded: () => true }),
+    })
     expect(
-      khalaTokensServedStreamDependenciesForModel(LoggedOut.init(HomeRoute()))
-        .isActive,
+      khalaTokensServedStreamDependenciesForModel(homeSeeded).isActive,
     ).toBe(true)
   })
 

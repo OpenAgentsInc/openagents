@@ -376,6 +376,9 @@ export const parseArgs = (argv, env = process.env) => {
       env.OPENAGENTS_KHALA_GLM_REAP_SMOKE_FAIL_WHEN_UNARMED,
     ),
     expectedReplicaId: env.OPENAGENTS_KHALA_GLM_REAP_EXPECTED_REPLICA_ID || '',
+    expectOperatorExemptZeroDebit:
+      truthy(env.OPENAGENTS_KHALA_GLM_REAP_OPERATOR_EXEMPT_ZERO_DEBIT) ||
+      truthy(env.OPENAGENTS_KHALA_SMOKE_OPERATOR_EXEMPT_ZERO_DEBIT),
     prompt: env.OPENAGENTS_KHALA_GLM_REAP_SMOKE_PROMPT || defaultPrompt,
     readinessOnly: false,
     token: env.OPENAGENTS_AGENT_TOKEN || '',
@@ -401,6 +404,8 @@ export const parseArgs = (argv, env = process.env) => {
       options.token = argv[++index] || options.token
     } else if (value === '--approve-live-spend') {
       options.approveLiveSpend = true
+    } else if (value === '--operator-exempt-zero-debit') {
+      options.expectOperatorExemptZeroDebit = true
     } else if (value === '--readiness-only') {
       options.readinessOnly = true
     } else if (value === '--fail-when-unarmed') {
@@ -443,6 +448,10 @@ Options:
   --prompt <text>           Prompt used for nonstreaming and streaming calls.
   --token <token>           Agent bearer token. Defaults to OPENAGENTS_AGENT_TOKEN.
   --approve-live-spend      Required before authenticated completion calls.
+  --operator-exempt-zero-debit
+                            Operator-exempt token mode: a missing billable
+                            receipt ref is skipped only when the response
+                            exposes the zero-debit exemption path.
   --readiness-only          Check arming, readiness, and public catalog without spending.
   --fail-when-unarmed       Return failure instead of skipped when arming env is absent.
 
@@ -573,6 +582,7 @@ export const runKhalaGlmReapProductionSmoke = async ({
   counterPolls = 8,
   env = process.env,
   expectedReplicaId = '',
+  expectOperatorExemptZeroDebit = false,
   failWhenUnarmed = false,
   fetchImpl = globalThis.fetch,
   prompt = defaultPrompt,
@@ -644,6 +654,7 @@ export const runKhalaGlmReapProductionSmoke = async ({
     expectedSelectedReplicaRef: replicaExpectation.expectedSelectedReplicaRef,
     expectedSupplyLane: 'hydralisk',
     expectedWorker: glmWorkerId,
+    expectOperatorExemptZeroDebit,
     fetchImpl,
     forbiddenSelectedReplicaRefs:
       replicaExpectation.forbiddenSelectedReplicaRefs,

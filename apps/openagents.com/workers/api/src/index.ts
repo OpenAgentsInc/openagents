@@ -12209,7 +12209,27 @@ export class DurableInferenceStreamObject {
   }
 }
 
+// Minimum spacing between broadcasts on the high-frequency public tokens-served
+// scope (openagents #6324): cap pushes to ≤3/sec. During the GLM surge the
+// counter scope received one poke per completion (~42/sec); coalescing trailing
+// pokes into one broadcast every ~333ms holds the client frame rate at ≤3/sec
+// while the count-up animation still interpolates smoothly between updates. The
+// authoritative running total rides every event + the summary, so a coalesced
+// (dropped-intermediate) poke loses nothing: the next broadcast carries the
+// latest total. Other scopes are unaffected — they broadcast immediately.
+const HIGH_FREQUENCY_BROADCAST_MIN_INTERVAL_MS = 334
+const isThrottledBroadcastScope = (scope: string): boolean =>
+  scope.startsWith('public-khala-tokens-served:')
+
 export class SyncRoomDurableObject {
+  // Per-scope last-broadcast wall-clock (ms) for the throttled high-frequency
+  // scopes, kept in DO memory. Each scope maps to its own DO instance, so this is
+  // effectively a single timestamp for the throttled khala scope.
+  private lastBroadcastAtMs = new Map<string, number>()
+  // Scopes with a coalesced trailing broadcast already scheduled via the alarm,
+  // so a burst of pokes collapses to ONE trailing broadcast.
+  private pendingTrailingScopes = new Set<string>()
+
   constructor(
     private readonly state: DurableObjectState,
     private readonly env: Env,
@@ -12257,6 +12277,7 @@ export class SyncRoomDurableObject {
   }
 
   private async broadcastScope(scope: string): Promise<void> {
+    this.lastBroadcastAtMs.set(scope, currentEpochMillis())
     await Promise.all(
       this.state.getWebSockets(scope).map(async socket => {
         const attachment = syncSocketAttachment(socket.deserializeAttachment())
@@ -12264,6 +12285,41 @@ export class SyncRoomDurableObject {
         await this.replaySocket(socket, scope, attachment?.cursor ?? 0)
       }),
     )
+  }
+
+  // Broadcast `scope` now if it is outside the throttle window; otherwise coalesce
+  // into a single trailing broadcast via the DO alarm so a burst of pokes on the
+  // high-frequency public counter scope collapses to ≤3 broadcasts/sec
+  // (openagents #6324). Non-throttled scopes always broadcast immediately.
+  private async notifyScopeThrottled(scope: string): Promise<void> {
+    if (!isThrottledBroadcastScope(scope)) {
+      await this.broadcastScope(scope)
+      return
+    }
+
+    const now = currentEpochMillis()
+    const lastAt = this.lastBroadcastAtMs.get(scope) ?? 0
+    const sinceLast = now - lastAt
+
+    if (sinceLast >= HIGH_FREQUENCY_BROADCAST_MIN_INTERVAL_MS) {
+      await this.broadcastScope(scope)
+      return
+    }
+
+    // Inside the window: schedule (once) a trailing broadcast at the next slot.
+    this.pendingTrailingScopes.add(scope)
+    const fireAt = lastAt + HIGH_FREQUENCY_BROADCAST_MIN_INTERVAL_MS
+    const existing = await this.state.storage.getAlarm()
+    if (existing === null || existing > fireAt) {
+      await this.state.storage.setAlarm(Math.max(fireAt, now + 1))
+    }
+  }
+
+  async alarm(): Promise<void> {
+    const scopes = [...this.pendingTrailingScopes]
+    this.pendingTrailingScopes.clear()
+
+    await Promise.all(scopes.map(scope => this.broadcastScope(scope)))
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -12275,7 +12331,7 @@ export class SyncRoomDurableObject {
         return badRequest('scope is required')
       }
 
-      this.state.waitUntil(this.broadcastScope(scope))
+      this.state.waitUntil(this.notifyScopeThrottled(scope))
 
       return jsonResponse({ ok: true, scope })
     }

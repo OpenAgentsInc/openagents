@@ -329,7 +329,15 @@ export const khalaTokensServedStreamDependenciesForModel = (
 ): KhalaTokensServedStreamDependencies => {
   if (
     model._tag !== 'LoggedOut' ||
-    !khalaTokensServedSurfaceIsLive(model)
+    !khalaTokensServedSurfaceIsLive(model) ||
+    // Wait for the snapshot load (or its failure fallback) to settle the seeded
+    // cursor before opening the socket (openagents #6324). Opening earlier raced
+    // the snapshot: the socket connected at the init cursor 0 and — because the
+    // keep-alive equivalence below ignores the cursor — never reopened at the
+    // seeded cursor, replaying the ENTIRE per-completion delta history (the ~42/s
+    // firehose + frozen counter). Gating here makes the socket open ONCE at the
+    // seeded cursor, so only new deltas arrive.
+    !model.khalaTokensServedStream.snapshotLoaded
   ) {
     return inactiveKhalaTokensServedStream
   }

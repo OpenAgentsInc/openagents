@@ -84,47 +84,80 @@
     "HYDRALISK_GPT_OSS_120B_ENABLED": "ready",
     "HYDRALISK_GPT_OSS_120B_PREFLIGHT_REF": "preflight.hydralisk.gpt_oss_120b.h100.20260624T022946Z",
     "HYDRALISK_GPT_OSS_120B_RECEIPT_REF": "receipt.hydralisk.gpt_oss_120b.h100.hydralisk-run-2969ab61fcf44c3085c5e9f2bc513f11",
-    // Hydralisk GLM-5.2-REAP-504B private G4 lane — the PRIMARY Khala backing
-    // (#6259 #6253, hydralisk#94/#6262). The two replica origin URLs and bearer
-    // tokens are Worker secrets (HYDRALISK_GLM_52_REAP_504B_BASE_URL/BEARER_TOKEN
-    // for the legacy `primary` replica + HYDRALISK_GLM_52_REAP_504B_REPLICA_B_*
-    // for `replica-b`); these committed vars only arm the route after the
-    // 2026-06-25 b12x/vLLM public-HTTPS smoke produced public-safe preflight +
-    // receipt evidence. Two replicas form the #6262 singleflight pool; a GLM
-    // failure/timeout/Spot-death is a retryable lane error so dispatch overflows
-    // to GPT-OSS-120B -> GPT-OSS-20B -> Vertex Gemini (model-router.ts) and never
-    // surfaces a 5xx to the client (the 2026-06-25 outage AAR robustness bar).
+    // Hydralisk GLM-5.2-REAP-504B private G4 fleet — the PRIMARY Khala backing
+    // (#6262 #6253). The 10 replica origin URLs and bearer tokens are Worker
+    // secrets (HYDRALISK_GLM_52_REAP_504B_<REPLICA_ID>_BASE_URL/_BEARER_TOKEN,
+    // uploaded via `wrangler secret put` — never committed). These committed vars
+    // only arm the route after the 2026-06-26 roster collection live-probed all 10
+    // endpoints (/health, /v1/models, and a tiny /v1/chat/completions) at HTTP 200.
+    // The full fleet forms the #6262 singleflight pool (one inflight slot per
+    // replica) so up to 10 overlapping Khala requests spread across distinct G4
+    // hosts instead of overflowing past GLM. A GLM failure/timeout/Spot-death is a
+    // retryable lane error so dispatch still overflows to GPT-OSS-120B ->
+    // GPT-OSS-20B -> Vertex Gemini (model-router.ts) and never surfaces a 5xx.
     "HYDRALISK_GLM_52_REAP_504B_ENABLED": "ready",
     "HYDRALISK_GLM_52_REAP_504B_MODEL_ID": "openagents/glm-5.2-reap-504b",
-    "HYDRALISK_GLM_52_REAP_504B_REPLICA_IDS": "primary,replica-b",
+    "HYDRALISK_GLM_52_REAP_504B_REPLICA_IDS": "g4-4g-b-20260625154532,g4-4g-central1f-spot-20260625203000,g4-4g-east1b-spot-20260625203000,g4-4g-east1d-spot-20260625203000,g4-4g-east5a-spot-20260625203000,g4-4g-east5b-spot-20260625203000,g4-4g-east5c-spot-20260625211500,g4-4g-south1b-spot-20260625211500,g4-4g-west1a-spot-20260625203000,g4-8g-b-20260624214500",
     "HYDRALISK_GLM_52_REAP_504B_MAX_INFLIGHT": "1",
     "HYDRALISK_GLM_52_REAP_504B_PROFILE_REF": "profile.hydralisk.glm_52_reap_504b.g4_tp4_minp.v1",
     "HYDRALISK_GLM_52_REAP_504B_COST_PROFILE_REF": "cost_profile.hydralisk.glm_52_reap_504b.g4_4g.spot.2026_06_25",
-    "HYDRALISK_GLM_52_REAP_504B_PREFLIGHT_REF": "preflight.hydralisk.glm_52_reap_504b.g4.20260625T020559Z",
-    "HYDRALISK_GLM_52_REAP_504B_RECEIPT_REF": "receipt.hydralisk.glm_52_reap_504b.g4.hydralisk-run-36f1856baa364d7bb42bd08354a2aadb",
-    // Explicit `primary` replica arming. With REPLICA_IDS set, the #6259 smoke's
-    // pool resolver does NOT fall back to the legacy unsuffixed keys for the
-    // primary replica (unlike model-serving-policy.ts, which does), so the
-    // PRIMARY_* named base_url/bearer secrets + these refs keep the Worker and
-    // the smoke in agreement that both pool replicas are armed and eligible.
-    "HYDRALISK_GLM_52_REAP_504B_PRIMARY_ENABLED": "ready",
-    // Endpoint 1 (8g-b) is currently RESERVED by the decision-grade Terminal-Bench
-    // run (singleflight MAX_INFLIGHT=1, so it 429s all other traffic). Mark it
-    // benchmark-reserved so the #6262 pool routes live Khala traffic to the
-    // healthy `replica-b` (endpoint 2) instead of overflowing past GLM to
-    // GPT-OSS. Flip back to false once the bench run releases endpoint 1.
-    "HYDRALISK_GLM_52_REAP_504B_PRIMARY_BENCHMARK_RESERVED": "true",
-    "HYDRALISK_GLM_52_REAP_504B_PRIMARY_PROFILE_REF": "profile.hydralisk.glm_52_reap_504b.g4_tp4_minp.v1",
-    "HYDRALISK_GLM_52_REAP_504B_PRIMARY_COST_PROFILE_REF": "cost_profile.hydralisk.glm_52_reap_504b.g4_4g.spot.2026_06_25",
-    "HYDRALISK_GLM_52_REAP_504B_PRIMARY_PREFLIGHT_REF": "preflight.hydralisk.glm_52_reap_504b.g4.20260625T020559Z",
-    "HYDRALISK_GLM_52_REAP_504B_PRIMARY_RECEIPT_REF": "receipt.hydralisk.glm_52_reap_504b.g4.hydralisk-run-36f1856baa364d7bb42bd08354a2aadb",
-    // Per-replica preflight/receipt evidence for the second pool replica
-    // (true 4x G4 Spot, cloned read-only model disk — hydralisk second-endpoint).
-    "HYDRALISK_GLM_52_REAP_504B_REPLICA_B_ENABLED": "ready",
-    "HYDRALISK_GLM_52_REAP_504B_REPLICA_B_PROFILE_REF": "profile.hydralisk.glm_52_reap_504b.g4_tp4_minp.v1",
-    "HYDRALISK_GLM_52_REAP_504B_REPLICA_B_COST_PROFILE_REF": "cost_profile.hydralisk.glm_52_reap_504b.g4_4g.spot.2026_06_25",
-    "HYDRALISK_GLM_52_REAP_504B_REPLICA_B_PREFLIGHT_REF": "preflight.hydralisk.glm_52_reap_504b.g4.second_endpoint.20260625T111300Z",
-    "HYDRALISK_GLM_52_REAP_504B_REPLICA_B_RECEIPT_REF": "receipt.hydralisk.glm_52_reap_504b.g4.second_endpoint.hydralisk-run-36f1856baa364d7bb42bd08354a2aadb",
+    "HYDRALISK_GLM_52_REAP_504B_PREFLIGHT_REF": "preflight.hydralisk.glm_52_reap_504b.g4.20260626T033107Z",
+    "HYDRALISK_GLM_52_REAP_504B_RECEIPT_REF": "receipt.hydralisk.glm_52_reap_504b.g4.roster-10replica-20260626T033107Z",
+    // Per-replica arming for the 10-host fleet. With REPLICA_IDS set, the pool
+    // resolver does NOT fall back to legacy unsuffixed keys, so each replica must
+    // carry its own _ENABLED + evidence refs (URL/bearer live in Worker secrets).
+    // No replica is benchmark-reserved: the 2026-06-26 roster shows every host as
+    // a plain SPOT serving endpoint and all 10 passed the live completion probe.
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_B_20260625154532_ENABLED": "ready",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_B_20260625154532_PROFILE_REF": "profile.hydralisk.glm_52_reap_504b.g4_tp4_minp.v1",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_B_20260625154532_COST_PROFILE_REF": "cost_profile.hydralisk.glm_52_reap_504b.g4_4g.spot.2026_06_25",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_B_20260625154532_PREFLIGHT_REF": "preflight.hydralisk.glm_52_reap_504b.g4.20260626T033107Z",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_B_20260625154532_RECEIPT_REF": "receipt.hydralisk.glm_52_reap_504b.g4.roster-10replica-20260626T033107Z",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_CENTRAL1F_SPOT_20260625203000_ENABLED": "ready",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_CENTRAL1F_SPOT_20260625203000_PROFILE_REF": "profile.hydralisk.glm_52_reap_504b.g4_tp4_minp.v1",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_CENTRAL1F_SPOT_20260625203000_COST_PROFILE_REF": "cost_profile.hydralisk.glm_52_reap_504b.g4_4g.spot.2026_06_25",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_CENTRAL1F_SPOT_20260625203000_PREFLIGHT_REF": "preflight.hydralisk.glm_52_reap_504b.g4.20260626T033107Z",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_CENTRAL1F_SPOT_20260625203000_RECEIPT_REF": "receipt.hydralisk.glm_52_reap_504b.g4.roster-10replica-20260626T033107Z",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_EAST1B_SPOT_20260625203000_ENABLED": "ready",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_EAST1B_SPOT_20260625203000_PROFILE_REF": "profile.hydralisk.glm_52_reap_504b.g4_tp4_minp.v1",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_EAST1B_SPOT_20260625203000_COST_PROFILE_REF": "cost_profile.hydralisk.glm_52_reap_504b.g4_4g.spot.2026_06_25",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_EAST1B_SPOT_20260625203000_PREFLIGHT_REF": "preflight.hydralisk.glm_52_reap_504b.g4.20260626T033107Z",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_EAST1B_SPOT_20260625203000_RECEIPT_REF": "receipt.hydralisk.glm_52_reap_504b.g4.roster-10replica-20260626T033107Z",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_EAST1D_SPOT_20260625203000_ENABLED": "ready",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_EAST1D_SPOT_20260625203000_PROFILE_REF": "profile.hydralisk.glm_52_reap_504b.g4_tp4_minp.v1",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_EAST1D_SPOT_20260625203000_COST_PROFILE_REF": "cost_profile.hydralisk.glm_52_reap_504b.g4_4g.spot.2026_06_25",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_EAST1D_SPOT_20260625203000_PREFLIGHT_REF": "preflight.hydralisk.glm_52_reap_504b.g4.20260626T033107Z",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_EAST1D_SPOT_20260625203000_RECEIPT_REF": "receipt.hydralisk.glm_52_reap_504b.g4.roster-10replica-20260626T033107Z",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_EAST5A_SPOT_20260625203000_ENABLED": "ready",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_EAST5A_SPOT_20260625203000_PROFILE_REF": "profile.hydralisk.glm_52_reap_504b.g4_tp4_minp.v1",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_EAST5A_SPOT_20260625203000_COST_PROFILE_REF": "cost_profile.hydralisk.glm_52_reap_504b.g4_4g.spot.2026_06_25",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_EAST5A_SPOT_20260625203000_PREFLIGHT_REF": "preflight.hydralisk.glm_52_reap_504b.g4.20260626T033107Z",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_EAST5A_SPOT_20260625203000_RECEIPT_REF": "receipt.hydralisk.glm_52_reap_504b.g4.roster-10replica-20260626T033107Z",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_EAST5B_SPOT_20260625203000_ENABLED": "ready",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_EAST5B_SPOT_20260625203000_PROFILE_REF": "profile.hydralisk.glm_52_reap_504b.g4_tp4_minp.v1",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_EAST5B_SPOT_20260625203000_COST_PROFILE_REF": "cost_profile.hydralisk.glm_52_reap_504b.g4_4g.spot.2026_06_25",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_EAST5B_SPOT_20260625203000_PREFLIGHT_REF": "preflight.hydralisk.glm_52_reap_504b.g4.20260626T033107Z",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_EAST5B_SPOT_20260625203000_RECEIPT_REF": "receipt.hydralisk.glm_52_reap_504b.g4.roster-10replica-20260626T033107Z",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_EAST5C_SPOT_20260625211500_ENABLED": "ready",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_EAST5C_SPOT_20260625211500_PROFILE_REF": "profile.hydralisk.glm_52_reap_504b.g4_tp4_minp.v1",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_EAST5C_SPOT_20260625211500_COST_PROFILE_REF": "cost_profile.hydralisk.glm_52_reap_504b.g4_4g.spot.2026_06_25",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_EAST5C_SPOT_20260625211500_PREFLIGHT_REF": "preflight.hydralisk.glm_52_reap_504b.g4.20260626T033107Z",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_EAST5C_SPOT_20260625211500_RECEIPT_REF": "receipt.hydralisk.glm_52_reap_504b.g4.roster-10replica-20260626T033107Z",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_SOUTH1B_SPOT_20260625211500_ENABLED": "ready",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_SOUTH1B_SPOT_20260625211500_PROFILE_REF": "profile.hydralisk.glm_52_reap_504b.g4_tp4_minp.v1",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_SOUTH1B_SPOT_20260625211500_COST_PROFILE_REF": "cost_profile.hydralisk.glm_52_reap_504b.g4_4g.spot.2026_06_25",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_SOUTH1B_SPOT_20260625211500_PREFLIGHT_REF": "preflight.hydralisk.glm_52_reap_504b.g4.20260626T033107Z",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_SOUTH1B_SPOT_20260625211500_RECEIPT_REF": "receipt.hydralisk.glm_52_reap_504b.g4.roster-10replica-20260626T033107Z",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_WEST1A_SPOT_20260625203000_ENABLED": "ready",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_WEST1A_SPOT_20260625203000_PROFILE_REF": "profile.hydralisk.glm_52_reap_504b.g4_tp4_minp.v1",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_WEST1A_SPOT_20260625203000_COST_PROFILE_REF": "cost_profile.hydralisk.glm_52_reap_504b.g4_4g.spot.2026_06_25",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_WEST1A_SPOT_20260625203000_PREFLIGHT_REF": "preflight.hydralisk.glm_52_reap_504b.g4.20260626T033107Z",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_WEST1A_SPOT_20260625203000_RECEIPT_REF": "receipt.hydralisk.glm_52_reap_504b.g4.roster-10replica-20260626T033107Z",
+    "HYDRALISK_GLM_52_REAP_504B_G4_8G_B_20260624214500_ENABLED": "ready",
+    "HYDRALISK_GLM_52_REAP_504B_G4_8G_B_20260624214500_PROFILE_REF": "profile.hydralisk.glm_52_reap_504b.g4_tp4_minp.v1",
+    "HYDRALISK_GLM_52_REAP_504B_G4_8G_B_20260624214500_COST_PROFILE_REF": "cost_profile.hydralisk.glm_52_reap_504b.g4_4g.spot.2026_06_25",
+    "HYDRALISK_GLM_52_REAP_504B_G4_8G_B_20260624214500_PREFLIGHT_REF": "preflight.hydralisk.glm_52_reap_504b.g4.20260626T033107Z",
+    "HYDRALISK_GLM_52_REAP_504B_G4_8G_B_20260624214500_RECEIPT_REF": "receipt.hydralisk.glm_52_reap_504b.g4.roster-10replica-20260626T033107Z",
     // Khala provider backing (#6198, #6259). Operator-only, non-secret routing
     // knob: customers still see/request ONLY `openagents/khala`. Set to the
     // Hydralisk-backed lane so the router orders the OWN-INFRA GLM-5.2-REAP-504B

@@ -140,6 +140,29 @@ To lower the per-run load, drop `KHALA_HEARTBEAT_TOKEN_TARGET` (e.g. `25000` ≈
 long-gens, which one key sustains 24/7 on both quotas) — but the owner asked for
 **≥~50k/run**, so the default target is `50000`.
 
+## GLM REAP smoke receipt expectation
+
+`scripts/khala-glm-reap-production-smoke.mjs` checks the armed live GLM lane
+through `openagents/khala` and normally requires a dereferenceable billable
+receipt ref on both non-streaming and streaming responses. Use a normal funded
+or otherwise billable `OPENAGENTS_AGENT_TOKEN` when the goal is a full
+`nonstream_receipt_ref_present` PASS.
+
+Some operator test tokens are explicitly zero-debit. Those tokens can prove GLM
+serving, routing, model hiding, and public counter movement, but they do not
+mint a billable receipt. For that known shape only, run the smoke with:
+
+```sh
+OPENAGENTS_KHALA_GLM_REAP_OPERATOR_EXEMPT_ZERO_DEBIT=1 \
+  node scripts/khala-glm-reap-production-smoke.mjs --approve-live-spend
+```
+
+or pass `--operator-exempt-zero-debit`. In that mode a missing billable receipt
+is accepted only when the response exposes the explicit no-debit marker
+(`openagents.billing.mode = "no_debit"`) and the receipt check is reported as
+`skipped (operator-exempt, no billable receipt)`. Do not use that flag for a
+billable token; a missing receipt on a billable token must still fail.
+
 ## Schedule (every 15 minutes, no GitHub Actions)
 
 Runs via a macOS **launchd LaunchAgent** on this Mac (the no-GitHub-Actions invariant

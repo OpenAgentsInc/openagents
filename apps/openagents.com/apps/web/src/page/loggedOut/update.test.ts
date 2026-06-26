@@ -8,7 +8,9 @@ import {
   ClickedEnterTassadar,
   ClickedExitKhala,
   CompletedCopyAgentInstructions,
+  FailedLoadKhalaTokensServedSnapshot,
   FailedLoadTrace,
+  SucceededLoadKhalaTokensServedSnapshot,
   SucceededLoadTrace,
   ToggledGymLane,
   UpdatedGymSamplesPerCell,
@@ -36,6 +38,42 @@ describe('logged-out nav + copy update', () => {
   test('ClickedEnterTassadar navigates to /tassadar', () => {
     const [, commands] = update(model, ClickedEnterTassadar())
     expect(commandNames(commands)).toEqual(['NavigateToTassadar'])
+  })
+
+  // #6324: the snapshot load (success OR failure) is what unlocks the live
+  // tokens-served socket. It must flip `snapshotLoaded`, so the stream opens at
+  // the SEEDED cursor instead of racing the snapshot and replaying from 0.
+  test('SucceededLoadKhalaTokensServedSnapshot seeds the cursor + unlocks the socket', () => {
+    expect(model.khalaTokensServedStream.snapshotLoaded).toBe(false)
+
+    const [next] = update(
+      model,
+      SucceededLoadKhalaTokensServedSnapshot({
+        cursor: 7364,
+        summary: {
+          observedAt: '2026-06-26T00:00:00.000Z',
+          tokensServedTotal: 87_900_000,
+        },
+      }),
+    )
+
+    expect(next.khalaTokensServedStream.snapshotLoaded).toBe(true)
+    expect(next.khalaTokensServedStream.cursor).toBe(7364)
+    expect(next.publicKhalaTokensServed).toMatchObject({
+      _tag: 'PublicKhalaTokensServedLoaded',
+      served: { tokensServed: 87_900_000 },
+    })
+  })
+
+  test('FailedLoadKhalaTokensServedSnapshot still unlocks the socket (scalar fallback seeds)', () => {
+    const [next] = update(
+      model,
+      FailedLoadKhalaTokensServedSnapshot({ error: 'HTTP 503' }),
+    )
+
+    expect(next.khalaTokensServedStream.snapshotLoaded).toBe(true)
+    // No seeded cursor on failure; self-heals via per-event authoritative totals.
+    expect(next.khalaTokensServedStream.cursor).toBe(0)
   })
 
   test('ClickedExitKhala returns home to / (shared by both info pages)', () => {
