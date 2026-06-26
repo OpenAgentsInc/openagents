@@ -62,6 +62,7 @@ export type KhalaFeedbackCreateInput = Readonly<{
 }>
 
 export type KhalaFeedbackListInput = Readonly<{
+  feedbackRef?: string | undefined
   limit: number
   traceRef?: string | undefined
 }>
@@ -203,9 +204,26 @@ export const makeD1KhalaFeedbackStore = (
 
   listRecent: async input => {
     const limit = Math.min(Math.max(Math.trunc(input.limit), 1), KHALA_FEEDBACK_MAX_LIMIT)
+    const feedbackRef = cleanOptionalString(input.feedbackRef)
     const traceRef = cleanOptionalString(input.traceRef)
     const query =
-      traceRef === null
+      feedbackRef !== null
+        ? db
+            .prepare(
+              `SELECT feedback_ref,
+                      trace_ref,
+                      feedback_text,
+                      source,
+                      client_version,
+                      user_agent,
+                      created_at
+                 FROM khala_feedback
+                WHERE feedback_ref = ?
+                ORDER BY created_at DESC
+                LIMIT ?`,
+            )
+            .bind(feedbackRef, limit)
+        : traceRef === null
         ? db
             .prepare(
               `SELECT feedback_ref,
@@ -324,10 +342,12 @@ export const handleOperatorKhalaFeedback = (
       ? Math.min(Math.max(Math.trunc(requestedLimit), 1), KHALA_FEEDBACK_MAX_LIMIT)
       : 50
     const traceRef = cleanOptionalString(url.searchParams.get('traceRef') ?? undefined)
+    const feedbackRef = cleanOptionalString(url.searchParams.get('feedbackRef') ?? undefined)
     const feedback = yield* Effect.tryPromise({
       try: () =>
         dependencies.store.listRecent({
           limit,
+          ...(feedbackRef === null ? {} : { feedbackRef }),
           ...(traceRef === null ? {} : { traceRef }),
         }),
       catch: error =>

@@ -7,6 +7,7 @@ bunx @openagentsinc/khala --prompt "Say hello in one short sentence."
 khala feedback "The input ate my transcript."
 khala changelog
 khala tokens
+khala version
 bun run khala
 bun run khala -- --prompt "Say hello in one short sentence."
 printf 'Say OK only.' | bun run khala -- --headless --json
@@ -21,8 +22,8 @@ two modes:
 - **Interactive terminal mode:** default `khala` opens a normal terminal chat
   transcript with persistent `You:` and `Khala:` turns in scrollback. It does
   not use an alternate-screen/full-screen UI. Slash commands such as
-  `/feedback`, `/tokens`, and `/changelog` are handled locally instead of being
-  sent to inference.
+  `/feedback`, `/msginfo`, `/tokens`, `/changelog`, `/version`, and `/help` are
+  handled locally instead of being sent to inference.
 - **Headless CLI mode:** `--prompt`, positional text, or stdin runs one turn and
   streams the assistant response to stdout for scripts and agents.
 - **Utility commands:** `khala feedback "..."` saves feedback to
@@ -40,10 +41,15 @@ that check.
 - `/feedback <text>` saves product feedback without sending the text to
   inference. When a trace reference is available, the CLI includes it with the
   feedback.
+- `/msginfo` prints the last Khala response metadata: trace reference, model and
+  adapter routing, fallback reason, token counts, and tokens per second when
+  reported by the backend.
 - `/tokens` prints the global Khala tokens-served count from the same public
   counter shown on `openagents.com` and `/khala`.
 - `/changelog` prints the five most recent CLI releases in reverse
   chronological order.
+- `/version` prints the installed CLI version.
+- `/help` lists slash commands.
 - `/exit` quits.
 
 ## Utility commands
@@ -52,6 +58,8 @@ that check.
   may not have a chat trace reference, which is expected.
 - `khala tokens` prints the current global Khala tokens-served count.
 - `khala changelog` prints recent releases.
+- `khala version` prints the installed CLI version.
+- `khala help` prints CLI usage.
 
 ## Flags
 
@@ -66,6 +74,13 @@ that check.
 - `--mint-free-key` calls `POST /api/keys/free` and prints the response once.
 
 ## Changelog
+
+### v0.1.4 - Jun 26, 2026, 12:58:00 PM CDT
+
+- Added `/help`, `/version`, `/msginfo`, Markdown rendering, colors, and faded
+  metadata.
+- Added backend trace reporting, public stream metadata, exact feedback lookup,
+  and longer exponential retries.
 
 ### v0.1.3 - Jun 26, 2026, 11:50:00 AM CDT
 

@@ -1,6 +1,6 @@
 import { Effect, Schema as S } from "effect"
 import { validatePublicConversation } from "./bounds.js"
-import { decodeOpenAiFrame, decodePublicFrame, readSseFrames } from "./sse.js"
+import { decodeOpenAiFrame, decodePublicFrame, readSseFrames, type StreamFrameMetadata } from "./sse.js"
 import {
   DEFAULT_BASE_URL,
   FreeKeyResponse,
@@ -13,20 +13,35 @@ import {
   type ChatClientOptions,
   type ChatTurnOptions,
   type ChatTurnResult,
+  type ChatTurnMetadata,
   type KhalaFeedbackSubmitOptions,
+  type KhalaStreamUsage,
 } from "./types.js"
 
-const MAX_REQUEST_RETRIES = 2
-const RETRY_DELAYS_MS = [400, 1_000] as const
+const MAX_REQUEST_RETRIES = 5
+const RETRY_DELAYS_MS = [400, 1_000, 2_000, 4_000, 8_000] as const
 
 export function runChatTurn(options: ChatTurnOptions): Effect.Effect<ChatTurnResult, KhalaCliError> {
   return Effect.gen(function* () {
+    const startedAt = Date.now()
     const response = yield* postChat(options)
-    const text = yield* consumeStream(response, options.mode, options.onDelta)
+    const traceRef = readTraceRef(response)
+    const stream = yield* consumeStream(response, options.mode, options.onDelta)
+    const durationMs = Math.max(0, Date.now() - startedAt)
+    const metadata = buildTurnMetadata({
+      durationMs,
+      mode: options.mode,
+      streamMetadata: {
+        ...stream.metadata,
+        traceRef: stream.metadata.traceRef ?? traceRef,
+      },
+      text: stream.text,
+    })
     return {
-      text,
-      assistantMessage: { role: "assistant" as const, content: text },
-      traceRef: readTraceRef(response),
+      text: stream.text,
+      assistantMessage: { role: "assistant" as const, content: stream.text },
+      metadata,
+      traceRef: metadata.traceRef,
     }
   })
 }
@@ -161,6 +176,7 @@ function postChat(options: ChatTurnOptions): Effect.Effect<Response, KhalaCliErr
           model: KHALA_MODEL_ID,
           messages: options.messages,
           stream: true,
+          stream_options: { include_usage: true },
         }),
       },
     })
@@ -171,22 +187,28 @@ function consumeStream(
   response: Response,
   mode: "public" | "api",
   onDelta: ((text: string) => void) | undefined,
-): Effect.Effect<string, KhalaCliError> {
+): Effect.Effect<{ readonly metadata: StreamFrameMetadata; readonly text: string }, KhalaCliError> {
   return Effect.tryPromise({
     try: async () => {
       if (response.body === null) {
         throw new KhalaCliError({ reason: "Khala response did not include a stream body.", code: "missing_stream_body" })
       }
       let assembled = ""
+      let metadata: StreamFrameMetadata = {}
       for await (const frame of readSseFrames(response.body)) {
         const decoded = mode === "public" ? decodePublicFrame(frame) : decodeOpenAiFrame(frame)
         if (decoded.kind === "done") break
+        if (decoded.kind === "meta") {
+          metadata = mergeMetadata(metadata, decoded.metadata)
+          continue
+        }
+        metadata = mergeMetadata(metadata, decoded.metadata)
         if (decoded.text.length > 0) {
           assembled += decoded.text
           onDelta?.(decoded.text)
         }
       }
-      return assembled
+      return { metadata, text: assembled }
     },
     catch: (error) => toKhalaCliError(error, "Khala stream failed."),
   })
@@ -223,6 +245,7 @@ function request(input: {
           reason: envelope.reason,
           ...(envelope.code === undefined ? {} : { code: envelope.code }),
           statusCode: response.status,
+          traceRef: envelope.traceRef ?? readTraceRef(response),
         })
 
         if (retry < MAX_REQUEST_RETRIES && shouldRetry(responseError)) {
@@ -258,24 +281,35 @@ function shouldRetry(error: KhalaCliError): boolean {
   return error.code === "runtime_error" || error.code === "request_failed"
 }
 
-async function readErrorEnvelope(response: Response): Promise<{ readonly reason: string; readonly code?: string | undefined }> {
+async function readErrorEnvelope(response: Response): Promise<{
+  readonly code?: string | undefined
+  readonly reason: string
+  readonly traceRef?: string | undefined
+}> {
   const text = await response.text()
   if (text.trim().length === 0) {
-    return { reason: `Khala returned HTTP ${response.status}.` }
+    return { reason: `Khala returned HTTP ${response.status}.`, traceRef: readTraceRef(response) }
   }
   try {
-    const payload = JSON.parse(text) as { readonly error?: unknown; readonly code?: unknown; readonly message?: unknown }
+    const payload = JSON.parse(text) as {
+      readonly code?: unknown
+      readonly error?: unknown
+      readonly message?: unknown
+      readonly reason?: unknown
+      readonly traceRef?: unknown
+    }
     const reason = typeof payload.error === "string"
-      ? payload.error
+      ? typeof payload.reason === "string" ? payload.reason : payload.error
       : typeof payload.message === "string"
         ? payload.message
         : `Khala returned HTTP ${response.status}.`
     return {
       reason,
       code: typeof payload.code === "string" ? payload.code : typeof payload.error === "string" ? payload.error : undefined,
+      traceRef: typeof payload.traceRef === "string" ? payload.traceRef : readTraceRef(response),
     }
   } catch {
-    return { reason: text.trim() }
+    return { reason: text.trim(), traceRef: readTraceRef(response) }
   }
 }
 
@@ -304,4 +338,58 @@ export function toKhalaCliError(error: unknown, fallback: string): KhalaCliError
     reason: error instanceof Error ? `${fallback} ${error.message}` : `${fallback} ${String(error)}`,
     code: "runtime_error",
   })
+}
+
+function mergeMetadata(
+  previous: StreamFrameMetadata,
+  next: StreamFrameMetadata | undefined,
+): StreamFrameMetadata {
+  if (next === undefined) return previous
+  return {
+    ...previous,
+    ...withoutUndefined(next),
+    usage: next.usage ?? previous.usage,
+  }
+}
+
+function withoutUndefined(record: StreamFrameMetadata): Partial<StreamFrameMetadata> {
+  return Object.fromEntries(
+    Object.entries(record).filter(([, value]) => value !== undefined),
+  ) as Partial<StreamFrameMetadata>
+}
+
+function buildTurnMetadata(input: {
+  readonly durationMs: number
+  readonly mode: "public" | "api"
+  readonly streamMetadata: StreamFrameMetadata
+  readonly text: string
+}): ChatTurnMetadata {
+  const estimatedUsage = input.streamMetadata.usage === undefined
+  const usage = input.streamMetadata.usage ?? estimateUsage(input.text)
+  const seconds = input.durationMs / 1_000
+  const tokensPerSecond = seconds > 0 ? usage.completionTokens / seconds : undefined
+  return {
+    adapterRouteMetadata: input.streamMetadata.adapterRouteMetadata,
+    durationMs: input.durationMs,
+    estimatedUsage,
+    fallbackReason: input.streamMetadata.fallbackReason,
+    finishReason: input.streamMetadata.finishReason,
+    mode: input.mode,
+    primaryAdapterId: input.streamMetadata.primaryAdapterId,
+    requestedModel: input.streamMetadata.requestedModel,
+    servedAdapterId: input.streamMetadata.servedAdapterId,
+    servedModel: input.streamMetadata.servedModel,
+    tokensPerSecond,
+    traceRef: input.streamMetadata.traceRef,
+    usage,
+  }
+}
+
+function estimateUsage(text: string): KhalaStreamUsage {
+  const completionTokens = Math.max(1, Math.ceil(text.trim().length / 4))
+  return {
+    completionTokens,
+    promptTokens: 0,
+    totalTokens: completionTokens,
+  }
 }

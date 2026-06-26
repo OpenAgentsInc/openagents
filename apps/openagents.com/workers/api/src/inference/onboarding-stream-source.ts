@@ -18,12 +18,18 @@ import { Effect } from 'effect'
 
 import type { OnboardingStreamSource } from '../autopilot-onboarding-program'
 import {
+  type InferenceAdapterRouteMetadata,
   type InferenceAdapterError,
   type InferenceProviderAdapter,
   type InferenceRequest,
   type InferenceStreamChunk,
   type InferenceStreamSource,
 } from './provider-adapter'
+
+const routeMetadata = (
+  metadata: InferenceAdapterRouteMetadata | undefined,
+): Readonly<Record<string, unknown>> | undefined =>
+  metadata === undefined ? undefined : { ...metadata }
 
 // Surface an adapter's incremental `InferenceStreamSource.frames` as the
 // onboarding `deltas` async-iterable. Empty content deltas (e.g. the terminal
@@ -40,6 +46,21 @@ export const onboardingSourceFromStreamSse = (
     }
   })(),
   final: () => '',
+  metadata: () => {
+    const terminal = source.terminal()
+    return {
+      ...(terminal.adapterRouteMetadata === undefined
+        ? {}
+        : { adapterRouteMetadata: routeMetadata(terminal.adapterRouteMetadata) }),
+      ...(terminal.finishReason === undefined
+        ? {}
+        : { finishReason: terminal.finishReason }),
+      ...(terminal.servedModel === undefined
+        ? {}
+        : { servedModel: terminal.servedModel }),
+      ...(terminal.usage === undefined ? {} : { usage: terminal.usage }),
+    }
+  },
 })
 
 // Fallback: surface a buffered chunk array as onboarding deltas. Used only for
@@ -57,6 +78,27 @@ export const onboardingSourceFromChunks = (
     }
   })(),
   final: () => chunks.map(chunk => chunk.contentDelta).join(''),
+  metadata: () => {
+    const terminal = [...chunks].reverse().find(chunk =>
+      chunk.finishReason !== undefined ||
+      chunk.usage !== undefined ||
+      chunk.servedModel !== undefined ||
+      chunk.adapterRouteMetadata !== undefined,
+    )
+    if (terminal === undefined) return undefined
+    return {
+      ...(terminal.adapterRouteMetadata === undefined
+        ? {}
+        : { adapterRouteMetadata: routeMetadata(terminal.adapterRouteMetadata) }),
+      ...(terminal.finishReason === undefined
+        ? {}
+        : { finishReason: terminal.finishReason }),
+      ...(terminal.servedModel === undefined
+        ? {}
+        : { servedModel: terminal.servedModel }),
+      ...(terminal.usage === undefined ? {} : { usage: terminal.usage }),
+    }
+  },
 })
 
 // The dispatch operation handed to `dispatchWithOverflow`: prefer the adapter's

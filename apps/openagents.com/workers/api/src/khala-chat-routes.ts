@@ -28,7 +28,7 @@ import {
 import type { KhalaChatStreamClient } from './khala-chat-program'
 import { OnboardingInferenceError } from './autopilot-onboarding-program'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
-import { currentEpochMillis } from './runtime-primitives'
+import { compactRandomId, currentEpochMillis } from './runtime-primitives'
 
 type HttpResponse = globalThis.Response
 type KhalaChatRouteEffect = Effect.Effect<HttpResponse>
@@ -103,17 +103,56 @@ const routeErrorResponse = (error: KhalaChatRouteError): HttpResponse =>
         ),
       KhalaChatRateLimited: () =>
         noStoreJsonResponse({ error: 'rate_limited' }, { status: 429 }),
-      OnboardingInferenceError: () =>
-        noStoreJsonResponse({ error: 'inference_unavailable' }, { status: 502 }),
+      OnboardingInferenceError: ({ reason }) =>
+        noStoreJsonResponse(
+          { code: 'inference_unavailable', error: 'inference_unavailable', reason },
+          { status: 502 },
+        ),
     }),
     M.exhaustive,
   )
+
+const withTraceHeader = (response: HttpResponse, traceRef: string): HttpResponse => {
+  const headers = new Headers(response.headers)
+  headers.set('x-openagents-trace-ref', traceRef)
+  return new Response(response.body, {
+    headers,
+    status: response.status,
+    statusText: response.statusText,
+  })
+}
+
+const traceRef = (): string => `trace.khala_chat.${compactRandomId('req')}`
+
+const logKhalaChatFailure = (
+  trace: string,
+  stage: string,
+  error: unknown,
+): void => {
+  const reason =
+    typeof error === 'object' && error !== null && 'reason' in error
+        ? String((error as { reason?: unknown }).reason)
+      : error instanceof Error
+        ? error.message
+        : String(error)
+  console.error('khala_chat_inference_failure', {
+    reason,
+    stage,
+    traceRef: trace,
+  })
+}
 
 // Build the SSE response body for a prepared streaming turn. Pumps prose deltas,
 // then emits the terminal `done` frame. A failure mid-stream emits a terminal
 // `error` frame and closes — the client never hangs. Stateless: there is no
 // finalize/persist step (unlike onboarding); the client owns the transcript.
-const makeKhalaChatStreamBody = (deltas: AsyncIterable<string>): ReadableStream<Uint8Array> => {
+const makeKhalaChatStreamBody = (
+  source: {
+    readonly deltas: AsyncIterable<string>
+    readonly metadata?: (() => unknown) | undefined
+  },
+  trace: string,
+): ReadableStream<Uint8Array> => {
   const encoder = new TextEncoder()
   return new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -121,14 +160,24 @@ const makeKhalaChatStreamBody = (deltas: AsyncIterable<string>): ReadableStream<
         controller.enqueue(encoder.encode(frame))
 
       try {
-        for await (const delta of deltas) {
+        for await (const delta of source.deltas) {
           if (delta !== '') {
             emit(sseFrame('delta', { text: delta }))
           }
         }
+        const metadata = source.metadata?.()
+        if (metadata !== undefined) {
+          emit(sseFrame('meta', { ...metadata, traceRef: trace }))
+        }
         emit(sseFrame('done', { done: true }))
-      } catch {
-        emit(sseFrame('error', { error: 'stream_failed' }))
+      } catch (error) {
+        logKhalaChatFailure(trace, 'stream', error)
+        emit(sseFrame('error', {
+          code: 'stream_failed',
+          error: 'stream_failed',
+          reason: error instanceof Error ? error.message : String(error),
+          traceRef: trace,
+        }))
       } finally {
         controller.close()
       }
@@ -188,8 +237,14 @@ export const makeKhalaChatRoutes = (
     request: Request,
     env: unknown,
   ): KhalaChatRouteEffect => {
+    const requestTraceRef = traceRef()
     if (!rateLimit(request)) {
-      return Effect.succeed(routeErrorResponse(new KhalaChatRateLimited({})))
+      return Effect.succeed(
+        withTraceHeader(
+          routeErrorResponse(new KhalaChatRateLimited({})),
+          requestTraceRef,
+        ),
+      )
     }
 
     const streamClient = dependencies.makeStreamClient(env)
@@ -200,11 +255,21 @@ export const makeKhalaChatRoutes = (
       Effect.flatMap(inferenceRequest => streamClient(inferenceRequest)),
       Effect.map(
         source =>
-          new Response(makeKhalaChatStreamBody(source.deltas), {
-            headers: STREAM_HEADERS,
+          new Response(makeKhalaChatStreamBody(source, requestTraceRef), {
+            headers: {
+              ...STREAM_HEADERS,
+              'x-openagents-trace-ref': requestTraceRef,
+            },
           }),
       ),
-      Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+      Effect.catch(error => {
+        if (error instanceof OnboardingInferenceError) {
+          logKhalaChatFailure(requestTraceRef, 'open', error)
+        }
+        return Effect.succeed(
+          withTraceHeader(routeErrorResponse(error), requestTraceRef),
+        )
+      }),
     )
   }
 

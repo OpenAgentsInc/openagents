@@ -293,6 +293,23 @@ export type OnboardingStreamSource = Readonly<{
   deltas: AsyncIterable<string>
   // Resolves AFTER `deltas` is exhausted, with the full accumulated reply.
   final: () => string
+  metadata?: (() => OnboardingStreamMetadata | undefined) | undefined
+}>
+
+export type OnboardingStreamMetadata = Readonly<{
+  adapterRouteMetadata?: Readonly<Record<string, unknown>> | undefined
+  fallbackReason?: string | null | undefined
+  finishReason?: string | undefined
+  primaryAdapterId?: string | undefined
+  requestedModel?: string | undefined
+  servedAdapterId?: string | undefined
+  servedModel?: string | undefined
+  usage?: Readonly<{
+    cachedPromptTokens?: number | undefined
+    completionTokens: number
+    promptTokens: number
+    totalTokens: number
+  }> | undefined
 }>
 
 export type OnboardingStreamClient = (

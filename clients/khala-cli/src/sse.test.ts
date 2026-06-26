@@ -28,6 +28,7 @@ describe("SSE parsing", () => {
       return sseResponse([
         'event: delta\ndata: {"text":"Hel"}',
         'event: delta\ndata: {"text":"lo"}',
+        'event: meta\ndata: {"traceRef":"trace_public","requestedModel":"khala","servedAdapterId":"hydralisk","servedModel":"glm-4.6","usage":{"promptTokens":3,"completionTokens":2,"totalTokens":5}}',
         'event: done\ndata: {"done":true}',
         "",
       ].join("\n\n"))
@@ -43,6 +44,13 @@ describe("SSE parsing", () => {
     }))
 
     expect(result.text).toBe("Hello")
+    expect(result.traceRef).toBe("trace_public")
+    expect(result.metadata.servedAdapterId).toBe("hydralisk")
+    expect(result.metadata.usage).toEqual({
+      completionTokens: 2,
+      promptTokens: 3,
+      totalTokens: 5,
+    })
     expect(deltas).toEqual(["Hel", "lo"])
     expect(calls[0]?.url).toBe("https://example.test/api/khala/chat")
     expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({
@@ -52,8 +60,9 @@ describe("SSE parsing", () => {
 
   test("streams OpenAI-compatible delta frames", async () => {
     const fakeFetch = (async () => sseResponse([
-      'data: {"choices":[{"delta":{"content":"Kh"}}]}',
-      'data: {"choices":[{"delta":{"content":"ala"}}]}',
+      'data: {"id":"chat_1","model":"openagents/khala","choices":[{"delta":{"content":"Kh"}}]}',
+      'data: {"id":"chat_1","model":"openagents/khala","choices":[{"delta":{"content":"ala"}}]}',
+      'data: {"id":"chat_1","model":"openagents/khala","choices":[],"usage":{"prompt_tokens":4,"completion_tokens":2,"total_tokens":6}}',
       "data: [DONE]",
       "",
     ].join("\n\n"))) as unknown as typeof fetch
@@ -67,6 +76,8 @@ describe("SSE parsing", () => {
     }))
 
     expect(result.text).toBe("Khala")
+    expect(result.metadata.usage.totalTokens).toBe(6)
+    expect(result.metadata.servedModel).toBe("openagents/khala")
   })
 })
 

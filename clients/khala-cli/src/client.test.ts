@@ -62,7 +62,7 @@ describe("Khala client", () => {
 
     expect(result.text).toBe("ok")
     expect(calls).toBe(2)
-    expect(retryEvents).toEqual([{ maxRetries: 2, retry: 1 }])
+    expect(retryEvents).toEqual([{ maxRetries: 5, retry: 1 }])
   })
 
   test("fetches the global Khala tokens-served counter", async () => {

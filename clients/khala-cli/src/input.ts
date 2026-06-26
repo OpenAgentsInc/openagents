@@ -1,6 +1,6 @@
 import readline from "node:readline"
 
-export async function readPromptFromTerminal(): Promise<string | null> {
+export async function readPromptFromTerminal(prompt = "You: "): Promise<string | null> {
   return await new Promise<string | null>((resolve) => {
     let settled = false
     const input = readline.createInterface({
@@ -21,6 +21,6 @@ export async function readPromptFromTerminal(): Promise<string | null> {
 
     input.on("SIGINT", () => settle(null))
     input.on("close", () => settle(null))
-    input.question("You: ", (answer) => settle(answer))
+    input.question(prompt, (answer) => settle(answer))
   })
 }

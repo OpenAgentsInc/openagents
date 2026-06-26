@@ -9390,7 +9390,7 @@ const makeOnboardingStreamClient = (
   setInferenceAdapterEnv(env)
   const laneArming = resolveSupplyLaneArming(env)
   return (request: InferenceRequest) =>
-    dispatchWithOverflow<OnboardingStreamSource>(
+    dispatchWithOverflowWithMetadata<OnboardingStreamSource>(
       request,
       dispatchOnboardingStreamSource,
       {
@@ -9398,6 +9398,16 @@ const makeOnboardingStreamClient = (
         registry: inferenceProviderRegistry,
       },
     ).pipe(
+      Effect.map(result => ({
+        ...result.value,
+        metadata: () => ({
+          ...(result.value.metadata?.() ?? {}),
+          fallbackReason: result.route.fallbackReason,
+          primaryAdapterId: result.route.primaryAdapterId,
+          requestedModel: request.model,
+          servedAdapterId: result.route.servedAdapterId,
+        }),
+      })),
       Effect.mapError(
         error => new OnboardingInferenceError({ reason: error.reason }),
       ),
@@ -9421,7 +9431,7 @@ const makeKhalaChatStreamClient = (
   setInferenceAdapterEnv(env)
   const laneArming = resolveSupplyLaneArming(env)
   return (request: InferenceRequest) =>
-    dispatchWithOverflow<OnboardingStreamSource>(
+    dispatchWithOverflowWithMetadata<OnboardingStreamSource>(
       request,
       dispatchOnboardingStreamSource,
       {
@@ -9429,6 +9439,16 @@ const makeKhalaChatStreamClient = (
         registry: inferenceProviderRegistry,
       },
     ).pipe(
+      Effect.map(result => ({
+        ...result.value,
+        metadata: () => ({
+          ...(result.value.metadata?.() ?? {}),
+          fallbackReason: result.route.fallbackReason,
+          primaryAdapterId: result.route.primaryAdapterId,
+          requestedModel: request.model,
+          servedAdapterId: result.route.servedAdapterId,
+        }),
+      })),
       Effect.mapError(
         error => new OnboardingInferenceError({ reason: error.reason }),
       ),

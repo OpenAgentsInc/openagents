@@ -34,7 +34,11 @@ const makeStore = (): KhalaFeedbackStore & {
     listRecent: async input =>
       records
         .filter(record =>
-          input.traceRef === undefined ? true : record.traceRef === input.traceRef,
+          input.feedbackRef === undefined
+            ? input.traceRef === undefined
+              ? true
+              : record.traceRef === input.traceRef
+            : record.feedbackRef === input.feedbackRef,
         )
         .slice(0, input.limit),
   }
@@ -179,6 +183,44 @@ describe('khala feedback routes', () => {
     })
   })
 
+  test('operator feedback reads can filter by feedbackRef', async () => {
+    const store = makeStore()
+    await store.create({
+      clientVersion: '0.1.2',
+      createdAt: '2026-06-26T16:21:00.000Z',
+      feedback: 'first',
+      feedbackRef: 'khala_feedback:fb_1',
+      source: 'khala-cli',
+      traceRef: null,
+      userAgent: 'khala-test',
+    })
+    await store.create({
+      clientVersion: '0.1.2',
+      createdAt: '2026-06-26T16:22:00.000Z',
+      feedback: 'second',
+      feedbackRef: 'khala_feedback:fb_2',
+      source: 'khala-cli-interactive',
+      traceRef: 'trace_123',
+      userAgent: 'khala-test',
+    })
+
+    const response = await run(
+      handleOperatorKhalaFeedback(
+        new Request(
+          'https://openagents.com/api/operator/khala/feedback?feedbackRef=khala_feedback:fb_2',
+        ),
+        {
+          requireAdminApiToken: async () => true,
+          store,
+        },
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as { feedback: ReadonlyArray<KhalaFeedbackRecord> }
+    expect(body.feedback.map(record => record.feedbackRef)).toEqual(['khala_feedback:fb_2'])
+  })
+
   test('blocks operator feedback reads without admin token', async () => {
     const store = makeStore()
     const response = await run(
@@ -194,4 +236,3 @@ describe('khala feedback routes', () => {
     expect(response.status).toBe(401)
   })
 })
-

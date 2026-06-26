@@ -3,14 +3,17 @@ import { appendAssistantTurn, prepareUserTurn } from "./bounds.js"
 import { KHALA_CLI_VERSION, formatKhalaChangelog } from "./changelog.js"
 import { fetchModels, fetchTokensServed, mintFreeKey, runChatTurn, submitFeedback, toKhalaCliError } from "./client.js"
 import { readPromptFromTerminal } from "./input.js"
-import { DEFAULT_BASE_URL, type ChatMode, type KhalaChatMessage, type KhalaCliError, type KhalaTokensResponse } from "./types.js"
+import { renderMarkdownForTerminal, terminalStyle } from "./terminal.js"
+import { DEFAULT_BASE_URL, type ChatMode, type ChatTurnMetadata, type KhalaChatMessage, type KhalaCliError, type KhalaTokensResponse } from "./types.js"
 import { startKhalaAutoUpdate } from "./updater.js"
 
 type ParsedCommand =
   | { readonly kind: "chat" }
   | { readonly kind: "changelog" }
   | { readonly kind: "feedback"; readonly text: string | undefined }
+  | { readonly kind: "help" }
   | { readonly kind: "tokens" }
+  | { readonly kind: "version" }
 
 interface ParsedArgs {
   readonly help: boolean
@@ -59,9 +62,17 @@ export async function runKhalaCli(argv: ReadonlyArray<string>, env: Record<strin
       process.stdout.write(`${formatKhalaChangelog()}\n`)
       return 0
     }
+    if (args.command.kind === "help") {
+      process.stdout.write(usage())
+      return 0
+    }
     if (args.command.kind === "tokens") {
       const tokens = await Effect.runPromise(fetchTokensServed({ baseUrl: args.baseUrl }))
       process.stdout.write(args.json ? `${JSON.stringify(tokens)}\n` : `${formatTokensServed(tokens)}\n`)
+      return 0
+    }
+    if (args.command.kind === "version") {
+      process.stdout.write(`khala ${KHALA_CLI_VERSION}\n`)
       return 0
     }
     if (args.command.kind === "feedback") {
@@ -166,8 +177,12 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
     }
   } else if (maybeCommand === "changelog") {
     command = { kind: "changelog" }
+  } else if (maybeCommand === "help") {
+    command = { kind: "help" }
   } else if (maybeCommand === "tokens") {
     command = { kind: "tokens" }
+  } else if (maybeCommand === "version") {
+    command = { kind: "version" }
   } else if (prompt === undefined && positional.length > 0) {
     prompt = positional.join(" ")
   }
@@ -190,14 +205,15 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
 async function runInteractive(args: ParsedArgs, env: Record<string, string | undefined>): Promise<void> {
   let messages: ReadonlyArray<KhalaChatMessage> = []
   let lastTraceRef: string | undefined
-  process.stdout.write("Khala CLI. Type /exit to quit.\n\n")
+  let lastMessageInfo: ChatTurnMetadata | undefined
+  process.stdout.write(`Khala CLI. Type /help for commands, /exit to quit.\n\n`)
   startKhalaAutoUpdate({
     currentVersion: KHALA_CLI_VERSION,
     env,
-    notify: line => process.stdout.write(`\nKhala: ${line}\n\n`),
+    notify: line => process.stdout.write(`\n${terminalStyle.assistant("Khala:")} ${line}\n\n`),
   })
   while (true) {
-    const prompt = await readPromptFromTerminal()
+    const prompt = await readPromptFromTerminal(terminalStyle.user("You: "))
     if (prompt === null) {
       process.stdout.write("\n")
       return
@@ -209,18 +225,11 @@ async function runInteractive(args: ParsedArgs, env: Record<string, string | und
       continue
     }
     if (prompt.trim().startsWith("/")) {
-      const outcome = await handleSlashCommand(args, prompt.trim(), lastTraceRef)
+      const outcome = await handleSlashCommand(args, prompt.trim(), lastTraceRef, lastMessageInfo)
       if (outcome === "exit") return
       continue
     }
 
-    let wroteAssistantPrefix = false
-    const writeAssistantPrefix = () => {
-      if (!wroteAssistantPrefix) {
-        process.stdout.write("Khala: ")
-        wroteAssistantPrefix = true
-      }
-    }
     const prepared = prepareUserTurn(messages, prompt)
     try {
       const result = await Effect.runPromise(runChatTurn({
@@ -228,21 +237,18 @@ async function runInteractive(args: ParsedArgs, env: Record<string, string | und
         baseUrl: args.baseUrl,
         token: args.token,
         messages: prepared,
-        onDelta: (delta) => {
-          writeAssistantPrefix()
-          process.stdout.write(delta)
-        },
         onRetry: (event) => {
-          process.stdout.write(`Khala: inference unavailable; retrying ${event.retry}/${event.maxRetries} in ${formatDelay(event.delayMs)}...\n`)
+          process.stdout.write(`${terminalStyle.assistant("Khala:")} inference unavailable; retrying ${event.retry}/${event.maxRetries} in ${formatDelay(event.delayMs)}...\n`)
         },
       }))
-      writeAssistantPrefix()
-      process.stdout.write("\n\n")
+      process.stdout.write(`${terminalStyle.assistant("Khala:")} ${renderMarkdownForTerminal(result.text)}\n\n`)
       messages = appendAssistantTurn(prepared, result.text)
       lastTraceRef = result.traceRef ?? lastTraceRef
+      lastMessageInfo = result.metadata
     } catch (error) {
-      writeAssistantPrefix()
-      process.stdout.write(`${formatInteractiveError(toKhalaCliError(error, "Khala turn failed."))}\n\n`)
+      const khalaError = toKhalaCliError(error, "Khala turn failed.")
+      lastTraceRef = khalaError.traceRef ?? lastTraceRef
+      process.stdout.write(`${terminalStyle.assistant("Khala:")} ${formatInteractiveError(khalaError)}\n\n`)
     }
   }
 }
@@ -251,12 +257,25 @@ async function handleSlashCommand(
   args: ParsedArgs,
   input: string,
   lastTraceRef: string | undefined,
+  lastMessageInfo: ChatTurnMetadata | undefined,
 ): Promise<"handled" | "exit"> {
   const [command = "", ...rest] = input.split(/\s+/)
   const argument = rest.join(" ").trim()
 
   if (command === "/exit" || command === "/quit") {
     return "exit"
+  }
+  if (command === "/help") {
+    process.stdout.write(`${interactiveHelp()}\n`)
+    return "handled"
+  }
+  if (command === "/version") {
+    process.stdout.write(`${terminalStyle.assistant("Khala:")} khala ${KHALA_CLI_VERSION}\n\n`)
+    return "handled"
+  }
+  if (command === "/msginfo") {
+    process.stdout.write(`${terminalStyle.assistant("Khala:")} ${formatMessageInfo(lastMessageInfo)}\n\n`)
+    return "handled"
   }
   if (command === "/changelog") {
     process.stdout.write(`${formatKhalaChangelog()}\n\n`)
@@ -265,15 +284,15 @@ async function handleSlashCommand(
   if (command === "/tokens") {
     try {
       const tokens = await Effect.runPromise(fetchTokensServed({ baseUrl: args.baseUrl }))
-      process.stdout.write(`Khala: ${formatTokensServed(tokens)}\n\n`)
+      process.stdout.write(`${terminalStyle.assistant("Khala:")} ${formatTokensServed(tokens)}\n\n`)
     } catch (error) {
-      process.stdout.write(`Khala: ${formatInteractiveError(toKhalaCliError(error, "Tokens fetch failed."))}\n\n`)
+      process.stdout.write(`${terminalStyle.assistant("Khala:")} ${formatInteractiveError(toKhalaCliError(error, "Tokens fetch failed."))}\n\n`)
     }
     return "handled"
   }
   if (command === "/feedback") {
     if (argument.length === 0) {
-      process.stdout.write("Khala: Usage: /feedback <message>\n\n")
+      process.stdout.write(`${terminalStyle.assistant("Khala:")} Usage: /feedback <message>\n\n`)
       return "handled"
     }
     try {
@@ -284,14 +303,14 @@ async function handleSlashCommand(
         source: "khala-cli-interactive",
         ...(lastTraceRef === undefined ? {} : { traceRef: lastTraceRef }),
       }))
-      process.stdout.write(`Khala: Feedback saved: ${response.feedbackRef}\n\n`)
+      process.stdout.write(`${terminalStyle.assistant("Khala:")} Feedback saved: ${response.feedbackRef}\n\n`)
     } catch (error) {
-      process.stdout.write(`Khala: ${formatInteractiveError(toKhalaCliError(error, "Feedback failed."))}\n\n`)
+      process.stdout.write(`${terminalStyle.assistant("Khala:")} ${formatInteractiveError(toKhalaCliError(error, "Feedback failed."))}\n\n`)
     }
     return "handled"
   }
 
-  process.stdout.write(`Khala: Unknown command ${command}. Try /feedback <message>, /tokens, /changelog, or /exit.\n\n`)
+  process.stdout.write(`${terminalStyle.assistant("Khala:")} Unknown command ${command}. Try /help.\n\n`)
   return "handled"
 }
 
@@ -337,7 +356,7 @@ function printError(error: KhalaCliError): void {
     : error.statusCode === 502
       ? "inference unavailable"
       : "error"
-  process.stderr.write(`khala: ${prefix}: ${humanReadableReason(error)}\n`)
+  process.stderr.write(`khala: ${prefix}: ${humanReadableReason(error)}${formatTraceSuffix(error)}\n`)
 }
 
 function formatInteractiveError(error: KhalaCliError): string {
@@ -345,9 +364,10 @@ function formatInteractiveError(error: KhalaCliError): string {
     return "Rate limited after retrying. Please wait a moment and try again."
   }
   if (error.statusCode === 502 || error.statusCode === 503 || error.statusCode === 504 || error.code === "inference_unavailable") {
-    return "Inference is unavailable after retrying. Please try again in a moment."
+    const backend = error.reason === "inference_unavailable" ? "" : ` Backend: ${error.reason}.`
+    return `Inference is unavailable after retrying.${backend}${formatTraceSuffix(error)}`
   }
-  return humanReadableReason(error)
+  return `${humanReadableReason(error)}${formatTraceSuffix(error)}`
 }
 
 function humanReadableReason(error: KhalaCliError): string {
@@ -355,6 +375,10 @@ function humanReadableReason(error: KhalaCliError): string {
     return "Inference is unavailable after retrying. Please try again in a moment."
   }
   return error.reason
+}
+
+function formatTraceSuffix(error: KhalaCliError): string {
+  return error.traceRef === undefined ? "" : ` Trace: ${error.traceRef}.`
 }
 
 function formatDelay(delayMs: number): string {
@@ -374,11 +398,43 @@ function formatTokensTimestamp(iso: string): string {
   }).format(new Date(iso))
 }
 
+function formatMessageInfo(info: ChatTurnMetadata | undefined): string {
+  if (info === undefined) {
+    return terminalStyle.meta("No Khala message metadata yet.")
+  }
+  const usageNote = info.estimatedUsage ? "estimated" : "provider-reported"
+  const lines = [
+    "Last message metadata:",
+    `trace: ${info.traceRef ?? "not reported"}`,
+    `model: requested ${info.requestedModel ?? "openagents/khala"}; served ${info.servedModel ?? "not reported"}`,
+    `adapter: ${info.servedAdapterId ?? "not reported"}${info.primaryAdapterId === undefined ? "" : ` (primary ${info.primaryAdapterId})`}`,
+    `fallback: ${info.fallbackReason ?? "none reported"}`,
+    `tokens: ${info.usage.totalTokens} total (${info.usage.promptTokens} prompt, ${info.usage.completionTokens} completion${info.usage.cachedPromptTokens === undefined ? "" : `, ${info.usage.cachedPromptTokens} cached`}; ${usageNote})`,
+    `speed: ${info.tokensPerSecond === undefined ? "not measured" : `${info.tokensPerSecond.toFixed(1)} tok/s`} over ${(info.durationMs / 1_000).toFixed(2)}s`,
+    `finish: ${info.finishReason ?? "not reported"}`,
+  ]
+  return terminalStyle.meta(lines.join("\n"))
+}
+
+function interactiveHelp(): string {
+  return `${terminalStyle.meta("Slash commands:")}
+/help              Show this command list
+/feedback <text>   Save product feedback with the last trace when available
+/msginfo           Show metadata for the last Khala response
+/tokens            Show global Khala tokens served
+/changelog         Show recent Khala CLI changes
+/version           Show the installed Khala CLI version
+/exit, /quit       Quit
+`
+}
+
 function usage(): string {
   return `Khala CLI
 
 Usage:
   khala
+  khala help
+  khala version
   khala changelog
   khala tokens
   khala feedback "The transcript disappeared"
@@ -387,9 +443,12 @@ Usage:
   khala --api --token "$OPENAGENTS_AGENT_TOKEN" --prompt "Hello"
 
 Interactive commands:
+  /help              Show slash commands
   /feedback <text>   Save product feedback without sending it to inference
+  /msginfo           Show metadata for the last Khala response
   /tokens            Show global Khala tokens served
   /changelog         Show recent Khala CLI changes
+  /version           Show the installed Khala CLI version
   /exit              Quit
 
 Flags:

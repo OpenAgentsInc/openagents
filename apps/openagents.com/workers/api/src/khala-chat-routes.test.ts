@@ -26,7 +26,7 @@ const chatRequest = (body: unknown): Request =>
 // A stub stream client that yields the given chunks as deltas, headlessly (no
 // provider, no browser). Mirrors the onboarding test's scripted-inference Layer.
 const chunkStream =
-  (chunks: ReadonlyArray<string>): KhalaChatStreamClient =>
+  (chunks: ReadonlyArray<string>, metadata?: KhalaChatStreamSource['metadata']): KhalaChatStreamClient =>
   () =>
     Effect.succeed<KhalaChatStreamSource>({
       deltas: (async function* () {
@@ -35,6 +35,7 @@ const chunkStream =
         }
       })(),
       final: () => chunks.join(''),
+      ...(metadata === undefined ? {} : { metadata }),
     })
 
 const failingStream: KhalaChatStreamClient = () =>
@@ -81,12 +82,37 @@ describe('khala chat route', () => {
     expect(text).toContain('event: delta\ndata: {"text":"are "}')
     expect(text).toContain('event: delta\ndata: {"text":"Khala."}')
     expect(text).toContain('event: done\ndata: {"done":true}')
+    expect(response.headers.get('x-openagents-trace-ref')).toContain('trace.khala_chat.')
 
     // Deltas arrive in order, before done.
     const deltaIndex = text.indexOf('"We "')
     const doneIndex = text.indexOf('event: done')
     expect(deltaIndex).toBeGreaterThanOrEqual(0)
     expect(doneIndex).toBeGreaterThan(deltaIndex)
+  })
+
+  test('emits public-safe route metadata before done', async () => {
+    const routes = routesWith(chunkStream(['ok'], () => ({
+      requestedModel: 'khala',
+      servedAdapterId: 'hydralisk',
+      servedModel: 'glm-4.6',
+      usage: {
+        completionTokens: 1,
+        promptTokens: 2,
+        totalTokens: 3,
+      },
+    })))
+    const response = await run(
+      routes.routeKhalaChatRequest(
+        chatRequest({ messages: [{ role: 'user', content: 'hi' }] }),
+        {},
+      ),
+    )
+    const text = await response.text()
+    expect(text).toContain('event: meta')
+    expect(text).toContain('"servedAdapterId":"hydralisk"')
+    expect(text).toContain('"traceRef":"trace.khala_chat.')
+    expect(text.indexOf('event: meta')).toBeLessThan(text.indexOf('event: done'))
   })
 
   test('injects the Khala identity system prompt and keeps the running conversation', async () => {
@@ -199,8 +225,10 @@ describe('khala chat route', () => {
       ),
     )
     expect(response.status).toBe(502)
-    const body = (await response.json()) as { error: string }
+    expect(response.headers.get('x-openagents-trace-ref')).toContain('trace.khala_chat.')
+    const body = (await response.json()) as { error: string; reason: string }
     expect(body.error).toBe('inference_unavailable')
+    expect(body.reason).toBe('no provider lane configured')
   })
 
   test('rate-limits over-budget callers with a 429', async () => {

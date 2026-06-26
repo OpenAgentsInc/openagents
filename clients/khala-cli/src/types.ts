@@ -32,9 +32,34 @@ export const PublicDonePayload = S.Struct({
 export const PublicErrorPayload = S.Struct({
   error: S.String,
   code: S.optional(S.String),
+  reason: S.optional(S.String),
+  traceRef: S.optional(S.String),
 })
 
+export const KhalaStreamUsage = S.Struct({
+  cachedPromptTokens: S.optional(S.Number),
+  completionTokens: S.Number,
+  promptTokens: S.Number,
+  totalTokens: S.Number,
+})
+export type KhalaStreamUsage = typeof KhalaStreamUsage.Type
+
+export const PublicMetaPayload = S.Struct({
+  adapterRouteMetadata: S.optional(S.Unknown),
+  fallbackReason: S.optional(S.NullOr(S.String)),
+  finishReason: S.optional(S.String),
+  primaryAdapterId: S.optional(S.String),
+  requestedModel: S.optional(S.String),
+  servedAdapterId: S.optional(S.String),
+  servedModel: S.optional(S.String),
+  traceRef: S.optional(S.String),
+  usage: S.optional(KhalaStreamUsage),
+})
+export type PublicMetaPayload = typeof PublicMetaPayload.Type
+
 export const OpenAiStreamPayload = S.Struct({
+  id: S.optional(S.String),
+  model: S.optional(S.String),
   choices: S.Array(
     S.Struct({
       delta: S.Struct({
@@ -42,6 +67,12 @@ export const OpenAiStreamPayload = S.Struct({
       }),
     }),
   ),
+  usage: S.optional(S.Struct({
+    cached_tokens: S.optional(S.Number),
+    completion_tokens: S.Number,
+    prompt_tokens: S.Number,
+    total_tokens: S.Number,
+  })),
 })
 
 export const OpenAiModelsResponse = S.Record(S.String, S.Unknown)
@@ -67,6 +98,7 @@ export class KhalaCliError extends S.TaggedErrorClass<KhalaCliError>()("KhalaCli
   reason: S.String,
   code: S.optional(S.String),
   statusCode: S.optional(S.Number),
+  traceRef: S.optional(S.String),
 }) {}
 
 export type ChatMode = "public" | "api"
@@ -87,7 +119,24 @@ export interface ChatTurnOptions extends ChatClientOptions {
 export interface ChatTurnResult {
   readonly text: string
   readonly assistantMessage: KhalaChatMessage
+  readonly metadata: ChatTurnMetadata
   readonly traceRef?: string | undefined
+}
+
+export interface ChatTurnMetadata {
+  readonly adapterRouteMetadata?: unknown
+  readonly durationMs: number
+  readonly estimatedUsage: boolean
+  readonly fallbackReason?: string | null | undefined
+  readonly finishReason?: string | undefined
+  readonly mode: ChatMode
+  readonly primaryAdapterId?: string | undefined
+  readonly requestedModel?: string | undefined
+  readonly servedAdapterId?: string | undefined
+  readonly servedModel?: string | undefined
+  readonly tokensPerSecond?: number | undefined
+  readonly traceRef?: string | undefined
+  readonly usage: KhalaStreamUsage
 }
 
 export interface KhalaRetryEvent {
