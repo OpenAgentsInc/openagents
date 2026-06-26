@@ -261,11 +261,11 @@ const demandKindFromText = (
     : 'unlabeled'
 }
 
-// Public Khala token counters exclude first-party dogfood/ops probes that are
-// explicitly classified as `internal` by #6298. Other demand classes, including
-// `internal_stress` and `own_capacity`, retain their existing public counter
-// semantics because they are Khala-orchestrated served work.
-const publicTokensServedDemandWhere = `(demand_kind IS NULL OR lower(demand_kind) <> 'internal')`
+// Public Khala token counters are total-only: every real served-token ledger
+// row counts, including internal dogfood, `internal_stress`, `own_capacity`,
+// external, and unlabeled demand. The public projection stays safe by returning
+// aggregate numbers only, never demand labels, accounts, prompts, or providers.
+const publicTokensServedDemandWhere = `1 = 1`
 
 const demandAttributionFromInput = (
   body: typeof TokenUsageEventIngestBody.Type,
@@ -2134,11 +2134,11 @@ export const makeD1TokenUsageLedger = (
     }),
 
   // Public-safe "Khala Tokens Served" aggregate: the running network-wide SUM
-  // of input + output tokens across public-countable ledger events. It excludes
-  // `demand_kind=internal` dogfood/ops probes, but keeps `internal_stress` and
-  // `own_capacity` countable per the Khala roadmap. No grouping, no per-actor or
-  // provider material — a single non-negative scalar. The route layer wraps it
-  // with generatedAt + the staleness contract before serving.
+  // of input + output tokens across every real served-token ledger event,
+  // including internal dogfood and `own_capacity` work. No grouping, no
+  // per-actor, demand label, or provider material — a single non-negative
+  // scalar. The route layer wraps it with generatedAt + the staleness contract
+  // before serving.
   readPublicTokensServed: () =>
     Effect.gen(function* () {
       const row = yield* d1Effect('tokenUsageEvents.publicTokensServed', () =>
@@ -2159,11 +2159,11 @@ export const makeD1TokenUsageLedger = (
     }),
 
   // Public-safe "Khala Tokens Served" history: the per-day SUM of input +
-  // output tokens over public-countable rows in the requested window, ordered
+  // output tokens over all served-token rows in the requested window, ordered
   // ascending by day in the requested timezone. Like the scalar above, it is
-  // aggregate only — bare day + sum, no per-user, per-actor, or provider
-  // columns. The default UTC path keeps the indexed D1 GROUP BY; named IANA
-  // timezones group public-safe rows in runtime code so DST boundaries are
+  // aggregate only — bare day + sum, no per-user, per-actor, demand label, or
+  // provider columns. The default UTC path keeps the indexed D1 GROUP BY; named
+  // IANA timezones group public-safe rows in runtime code so DST boundaries are
   // handled by Intl rather than by a fixed offset.
   readPublicTokensServedHistory: (filters = {}) =>
     Effect.gen(function* () {
@@ -2277,9 +2277,8 @@ export const makeD1TokenUsageLedger = (
 
   // Public-safe model/provider mix for /stats: raw provider and model ids are
   // used only inside this aggregate read, then collapsed into the bounded public
-  // group taxonomy before anything leaves the ledger boundary. Internal dogfood
-  // traffic (`demand_kind=internal`) is excluded; other typed demand classes keep
-  // their existing public counter semantics.
+  // group taxonomy before anything leaves the ledger boundary. All served-token
+  // rows count so this projection reconciles with the headline counter.
   readPublicTokensServedModelMix: (filters = {}) =>
     Effect.gen(function* () {
       const window = yield* normalizeLeaderboardWindow(filters.window ?? '30d')

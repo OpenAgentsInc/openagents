@@ -498,9 +498,10 @@ export type ChatCompletionsDeps = Readonly<{
   // SERVED-TOKENS RECORDER (issue #6227). Records one canonical
   // `token_usage_events` row per SERVED completion so the public "Khala Tokens
   // Served" counter (GET /api/public/khala-tokens-served) reflects
-  // public-countable Khala traffic. Internal dogfood rows remain exact in the
-  // ledger but do not move the public product counter. Invoked AFTER the metering
-  // hook on every completion path (non-streaming, buffered stream, true
+  // all real Khala served-token traffic. Internal dogfood rows remain exact in
+  // the ledger and move the aggregate public product counter, but demand labels
+  // are never exposed by that scalar. Invoked AFTER the metering hook on every
+  // completion path (non-streaming, buffered stream, true
   // pass-through stream) and only when the request produced real provider usage
   // — so a failed / 4xx / refused call is never recorded. It runs INDEPENDENTLY
   // of which metering wrapper handled the request, so a FREE-TIER completion

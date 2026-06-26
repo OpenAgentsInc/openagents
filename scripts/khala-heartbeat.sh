@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Khala liveness heartbeat — fires ~50k tokens across diverse configs against the
 # LIVE production endpoint every run, verifies completion success, checks public
-# counter health without requiring internal dogfood tokens to move it, and writes
-# a public-safe status + JSONL log. Designed to run on a 15-minute schedule
-# (launchd / cron). See docs/inference/2026-06-25-khala-heartbeat-runbook.md.
+# counter health including internal dogfood tokens, and writes a public-safe
+# status + JSONL log. Designed to run on a 15-minute schedule (launchd / cron).
+# See docs/inference/2026-06-25-khala-heartbeat-runbook.md.
 #
 # SECRET-SAFE: reads bearer key(s) from a gitignored secrets file; NEVER prints a
 # key. Logs carry only counts / durations / statuses — no prompts, completions, or
@@ -50,10 +50,8 @@ echo $(( (idx + 1) % 1000000 )) > "$STATE"
 # docs/inference/2026-06-25-khala-heartbeat-runbook.md ("Demand-origin self-tag").
 AUTH=(-H "Authorization: Bearer $KEY" -H "content-type: application/json" \
   -H "x-openagents-demand-kind: $DEMAND_KIND" -H "x-openagents-demand-source: $DEMAND_SOURCE")
-if [ -z "$EXPECT_PUBLIC_COUNTER" ]; then
-  if [ "$DEMAND_KIND" = "internal" ]; then EXPECT_PUBLIC_COUNTER=0; else EXPECT_PUBLIC_COUNTER=1; fi
-fi
-if [ "$EXPECT_PUBLIC_COUNTER" = "1" ]; then counter_check="required"; else counter_check="skipped_internal"; fi
+if [ -z "$EXPECT_PUBLIC_COUNTER" ]; then EXPECT_PUBLIC_COUNTER=1; fi
+if [ "$EXPECT_PUBLIC_COUNTER" = "1" ]; then counter_check="required"; else counter_check="not_required"; fi
 ok=0; fail=0; q402=0; summed=0; details=""
 
 counter_readable=1
@@ -144,9 +142,9 @@ delta=$(( after - before ))
 
 # --- verdict ---
 # DOWN: a hard failure on a config, empty success usage, unreadable/regressed
-# public counter, OR (only when explicitly required) a countable public counter
-# did not move while we served tokens. Internal heartbeat traffic is excluded
-# from the public counter by #6298/#6358, so zero public delta is not downtime.
+# public counter, OR a required public counter did not move while we served
+# tokens. Internal heartbeat traffic counts in the headline public counter; the
+# internal tag is only for segmentation, not subtraction.
 # DEGRADED: everything that ran was quota-limited (402/429) — endpoint alive, key tapped out.
 state="ok"
 if [ "$fail" -gt 0 ]; then state="down"; fi

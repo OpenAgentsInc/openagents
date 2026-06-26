@@ -7,8 +7,8 @@
 # (scripts/khala-heartbeat.sh) is too coarse and too heavy to be a fast outage
 # detector. This canary is the TIGHT loop: ONE real `openagents/khala`
 # completion every ~90s, and on a 500 / non-200 / empty usage it fires a RED
-# ALERT. Public counter movement is required only for countable probes; internal
-# dogfood is intentionally excluded from the public counter.
+# ALERT. Public counter movement is required by default, including for internal
+# dogfood, because the public headline counter is "all Khala tokens served."
 #
 # WHAT IT DOES each tick:
 #   1. Reads the public tokens-served counter.
@@ -16,8 +16,8 @@
 #   3. Re-reads the counter.
 #   4. Verdict: UP if http 200 + non-empty usage; DOWN if http 500 / any
 #      non-200 / empty usage / public counter unreadable or backward. If
-#      KHALA_CANARY_EXPECT_PUBLIC_COUNTER=1, DOWN also includes 200 with served
-#      tokens but no public counter movement.
+#      KHALA_CANARY_EXPECT_PUBLIC_COUNTER is not explicitly set to 0, DOWN also
+#      includes 200 with served tokens but no public counter movement.
 #   5. RED ALERT only on a healthy->down TRANSITION (edge-triggered, not every
 #      tick), so a sustained outage does not spam. Recovery (down->up) is logged.
 #
@@ -108,10 +108,8 @@ echo $(( (idx + 1) % 1000000 )) > "$IDX_STATE"
 # docs/inference/2026-06-25-khala-heartbeat-runbook.md ("Demand-origin self-tag").
 AUTH=(-H "Authorization: Bearer $KEY" -H "content-type: application/json" \
   -H "x-openagents-demand-kind: $DEMAND_KIND" -H "x-openagents-demand-source: $DEMAND_SOURCE")
-if [ -z "$EXPECT_PUBLIC_COUNTER" ]; then
-  if [ "$DEMAND_KIND" = "internal" ]; then EXPECT_PUBLIC_COUNTER=0; else EXPECT_PUBLIC_COUNTER=1; fi
-fi
-if [ "$EXPECT_PUBLIC_COUNTER" = "1" ]; then counter_check="required"; else counter_check="skipped_internal"; fi
+if [ -z "$EXPECT_PUBLIC_COUNTER" ]; then EXPECT_PUBLIC_COUNTER=1; fi
+if [ "$EXPECT_PUBLIC_COUNTER" = "1" ]; then counter_check="required"; else counter_check="not_required"; fi
 
 # --- one tick ----------------------------------------------------------------
 counter_readable=1
@@ -146,7 +144,7 @@ elif [ "$delta" -lt 0 ]; then
 elif [ "$EXPECT_PUBLIC_COUNTER" = "1" ] && [ "$delta" -le 0 ]; then
   state="down"; detail="counter_did_not_move http=200 served=$tok delta=$delta"
 elif [ "$EXPECT_PUBLIC_COUNTER" != "1" ]; then
-  detail="ok_counter_delta_not_required_internal_probe"
+  detail="ok_counter_delta_not_required"
 fi
 
 emit "$state" "$http" "$detail" "$delta" "$counter_check"

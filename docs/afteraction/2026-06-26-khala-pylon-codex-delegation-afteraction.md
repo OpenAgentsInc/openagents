@@ -45,6 +45,11 @@ Production smokes passed after deploy:
   `ok=10`, `fail=0`, `summedTokens=21,049`,
   `publicCounterCheck="skipped_internal"`, and `demandKind="internal"`.
 
+Follow-up correction: the `skipped_internal` interpretation was wrong for the
+headline counter. Internal dogfood is not external market demand, but it is
+still real Khala-served token volume, so it must remain included in the public
+total-only counter.
+
 ## System Under Audit
 
 The Khala -> Pylon -> Codex path is an owner-capacity coding delegation lane:
@@ -267,21 +272,20 @@ regression test.
 The same patch also fixes the #6358 counter-health failure mode that triggered
 the investigation:
 
-- public token counter projections exclude only exact
-  `demand_kind='internal'` dogfood rows;
-- `own_capacity` Pylon/Codex work remains included in the public counter;
-- `internal_stress` remains included when it is real Khala-orchestrated served
-  work;
-- sync deltas skip internal dogfood rows so the cached scalar cannot advance
-  from intentionally hidden probes;
+- public token counter projections include all real served-token rows:
+  `internal`, `internal_stress`, `own_capacity`, external, and unlabeled;
+- `demand_kind` / `demand_source` remain in the private ledger for segmentation
+  but are not subtracted from the headline public aggregate;
+- sync deltas publish internal rows too, with only event refs, timestamps, and
+  counts, so the homepage stream reconciles with the scalar;
 - `scripts/khala-heartbeat.sh` and `scripts/khala-canary.sh` now validate 200
-  status, non-empty provider usage, and readable/monotonic public counters
-  without requiring internal probes to move the public counter.
+  status, non-empty provider usage, and readable/monotonic public counters,
+  requiring counter movement by default even for internal probes.
 
-The important policy distinction is that "internal dogfood probe" and
-"owner-capacity Codex work" are different things. The former is intentionally
-excluded from public projections; the latter is real Khala-orchestrated
-capacity and must count when exact closeout usage lands.
+The important policy distinction is that "internal dogfood" is not external
+market demand, but it is still real Khala-served token volume. Public market
+claims must use segmented/private analytics; the headline token counter is a
+total served counter and must not move backward when segmentation improves.
 
 ## Live Multi-Assignment Proof
 

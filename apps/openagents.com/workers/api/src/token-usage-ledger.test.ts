@@ -127,9 +127,6 @@ const filteredRows = (
     'AND leaderboard_eligible = 1',
   )
   const requirePrivacyIncluded = query.includes('AND privacy_opt_out = 0')
-  const excludeInternalDemand = query.includes(
-    "lower(demand_kind) <> 'internal'",
-  )
   const nonNullColumns = [
     'anonymized_source_ref',
     'repository_ref',
@@ -151,8 +148,6 @@ const filteredRows = (
         asNumber(row.leaderboard_eligible) === leaderboardEligible) &&
       (privacyOptOut === undefined ||
         asNumber(row.privacy_opt_out) === privacyOptOut) &&
-      (!excludeInternalDemand ||
-        String(row.demand_kind ?? '').toLowerCase() !== 'internal') &&
       (!requireLeaderboardEligible ||
         asNumber(row.leaderboard_eligible) === 1) &&
       (!requirePrivacyIncluded || asNumber(row.privacy_opt_out) === 0) &&
@@ -727,7 +722,7 @@ describe('token usage ledger', () => {
     })
   })
 
-  test('public tokens-served scalar excludes internal dogfood but counts own-capacity and stress rows (#6358)', async () => {
+  test('public tokens-served scalar includes internal, own-capacity, and stress rows (#6358 regression)', async () => {
     const db = makeMemoryD1()
     await runLedger(
       db,
@@ -797,7 +792,7 @@ describe('token usage ledger', () => {
 
     const aggregate = await runLedger(db, tokensServedAggregate())
 
-    expect(aggregate.tokensServed).toBe(55)
+    expect(aggregate.tokensServed).toBe(2_055)
   })
 
   test('rejects unsafe prompt, provider payload, private path, and bearer material', async () => {
@@ -1091,7 +1086,7 @@ describe('public tokens-served history', () => {
     expect(history.series).toEqual([{ day: '2026-06-07', tokensServed: 100 }])
   })
 
-  test('excludes internal dogfood rows but keeps own-capacity and stress rows', async () => {
+  test('history includes internal, own-capacity, and stress rows', async () => {
     const db = makeMemoryD1()
 
     await runLedger(
@@ -1142,7 +1137,7 @@ describe('public tokens-served history', () => {
     )
 
     expect(history.series).toEqual([
-      { day: '2026-06-07', tokensServed: 140 },
+      { day: '2026-06-07', tokensServed: 2_140 },
     ])
   })
 
@@ -1364,7 +1359,7 @@ describe('public tokens-served model mix', () => {
     ).toBeCloseTo(100, 6)
   })
 
-  test('default 30d window excludes older rows and exact internal rows', async () => {
+  test('default 30d window excludes older rows but includes exact internal rows', async () => {
     const db = makeMemoryD1()
 
     await runLedger(
@@ -1408,9 +1403,16 @@ describe('public tokens-served model mix', () => {
 
     expect(mix.groups).toEqual([
       {
+        family: 'glm',
+        label: 'GLM family',
+        pct: 95.238095,
+        reqs: 1,
+        tokens: 2_000,
+      },
+      {
         family: 'gpt_oss',
         label: 'GPT-OSS',
-        pct: 100,
+        pct: 4.761905,
         reqs: 1,
         tokens: 100,
       },

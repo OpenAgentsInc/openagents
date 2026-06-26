@@ -16,9 +16,8 @@ import {
 // public-projection staleness contract (generatedAt + staleness). The counter
 // is composed LIVE from the ledger at request time (`live_at_read`), so it can
 // never be older than the request. Public-safe: aggregate only — no per-user,
-// per-team, provider, or secret material. The scalar excludes
-// `demand_kind=internal` dogfood/ops probes while keeping other
-// Khala-orchestrated demand classes public-countable.
+// per-team, demand label, provider, or secret material. The scalar includes all
+// real served-token rows, including internal dogfood and owner-capacity work.
 export const PublicKhalaTokensServedResponse = S.Struct({
   schemaVersion: S.Literal('openagents.public_khala_tokens_served.v1'),
   tokensServed: S.Int,

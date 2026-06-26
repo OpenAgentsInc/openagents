@@ -11477,9 +11477,9 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         // SERVED-TOKENS COUNTER (issue #6227/#6358). Records one canonical
         // `token_usage_events` row per SERVED completion so the public "Khala
         // Tokens Served" counter (GET /api/public/khala-tokens-served) reflects
-        // public-countable Khala traffic — paid, free-tier, own-capacity, and
-        // internal_stress. `demand_kind=internal` dogfood remains exact in the
-        // ledger but is excluded from public projections.
+        // every real Khala served-token row — paid, free-tier, own-capacity,
+        // internal_stress, and internal dogfood. Demand labels remain exact in
+        // the ledger but do not leak through the aggregate public projection.
         // Idempotent per request; never fails the completion. INERT regardless —
         // only reached when the gateway is enabled.
         recordTokensServed: makeD1ServedTokensRecorder(

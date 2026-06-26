@@ -495,7 +495,7 @@ describe('served-tokens-recorder', () => {
     expect(serialized).not.toContain('public-api')
   })
 
-  test('internal dogfood records exact ledger rows but publishes no public counter delta (#6358)', async () => {
+  test('internal dogfood records exact ledger rows and publishes a public counter delta (#6358 regression)', async () => {
     const rows: Array<Row> = []
     const published: Array<PublishedDelta> = []
     const { recorder } = recordWithPublisher(rows, published)
@@ -521,7 +521,18 @@ describe('served-tokens-recorder', () => {
       input_tokens: 20,
       output_tokens: 30,
     })
-    expect(published).toHaveLength(0)
+    expect(published).toStrictEqual([
+      {
+        eventRef: servedTokensEventId('chatcmpl-push-internal'),
+        observedAt: fixedNow(),
+        tokensServedDelta: 50,
+      },
+    ])
+    expect(Object.keys(published[0] ?? {}).sort()).toEqual([
+      'eventRef',
+      'observedAt',
+      'tokensServedDelta',
+    ])
   })
 
   test('own-capacity closeouts remain public-countable (#6358)', async () => {
