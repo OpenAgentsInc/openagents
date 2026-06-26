@@ -1,9 +1,10 @@
 # Khala Open-Issues Master Roadmap — One Solve Sequence
 
 > Status: **internal execution roadmap, 2026-06-26.** Direction-setting, not public
-> claim copy and not a product promise. It orders **every open `OpenAgentsInc/openagents`
-> issue** into a single dependency-aware sequence agents should work top-to-bottom. It
-> flips no promise state and ships no code itself.
+> claim copy and not a product promise. It orders the active
+> `OpenAgentsInc/openagents` Khala issues plus their newly closed dependencies into a
+> single dependency-aware sequence agents should work top-to-bottom. It flips no
+> promise state and ships no code itself.
 
 ## How to use this
 
@@ -23,30 +24,64 @@ The hard invariant throughout (#6318): **real external requests always win** —
 stress/benchmark load is best-effort, preemptible, instantly-yielding, and tagged
 `internal_stress` (excluded from the public counter).
 
+## Current status snapshot
+
+Refreshed from GitHub issue state on **2026-06-26 ~15:20Z** while live
+delegation was paused. This table is the operator view of what remains, not a
+public product claim.
+
+| Issue | State | Current status / next action |
+| --- | --- | --- |
+| #6310 | **Closed** | P0 OpenCode/tool-calling outage is no longer open. Keep its repro in regression coverage and do not let demand docs outrun the actual tool-call path. |
+| #6323 | **Open** | Decision artifact for the full `nvidia/GLM-5.2-NVFP4` single-host pilot landed; the remaining work is the owner/fleet execution of the isolated 8x-host pilot and measured tool-call/quality/tok-s result. |
+| #6319 | **Closed** | Reliability hardening/fallback-chain repair is closed. Treat empty responses and dead fallback lanes as regression risks in later serving work. |
+| #6313 | **Closed** | Real OpenRouter fallback lane is closed. It is now a dependency assumption for further reliability and benchmark runs. |
+| #6311 | **Open** | Partial readiness/watchdog projection work landed, but the broad durable-fleet goal remains open: non-Spot capacity, all-replica keep-warm/watchdog, auto-replace, reserve, quota. Also still needs canonical scheduled GLM pool heartbeat diagnostics; current live readiness has used routed-completion fallback rows. |
+| #6259 | **Closed** | Khala -> GLM served-worker disclosure + counter smoke is closed. |
+| #6315 | **Closed** | Zero-debit receipt-ref fix for #6259 is closed. |
+| #6320 | **Open** | Next throughput lever after the reliability base: continuous batching / chunked prefill / prefix cache / spec decode / quant. |
+| #6318 | **Open** | Must land before any continuous saturation harness: external requests win, internal stress is preemptible and excluded from the public counter. |
+| #6317 | **Open** | Stress/saturation harness waits on #6318 and ideally #6320. |
+| #6312 | **Open** | Decision-grade aggregate max tokens/sec benchmark waits on the stress harness. |
+| #6321 | **Open** | Artanis fleet-overseer automation waits on the scheduler/stress/reliability pieces. |
+| #6253 | **Open** | Terminal-Bench 2.0 / Harbor benchmark remains open; do not disturb any separately owned live Harbor run. Pick up codeable pieces only when dependencies are armed. |
+| #6307 | **Open** | Owner-armed first `decisionGrade:true` Khala-vs-Fireworks/Vertex sweep remains open. |
+| #6308 | **Open** | External recurring head-to-head remains open; depends on #6307 for the first decision-grade suite. |
+| #6309 | **Open** | Recurring gym benchmark leaderboard remains open; depends on #6307. |
+| #6305 | **Closed** | OpenCode -> Khala checklist/recipe is closed. Keep it honest if serving regresses. |
+| #6306 | **Closed** | Next ecosystem recipes are closed. Keep them as docs/recipe artifacts, not proof that Phase 4 benchmarks are complete. |
+| #6303 | **Open** | GTM umbrella remains open until the Phase 4 benchmark/quality evidence and demand scoreboard are done. |
+| #6316 | **Open** | Serving umbrella remains open until the remaining GLM durability, throughput, stress, benchmark, and overseer work lands. |
+| #6325 | **Closed** | Pylon/Codex delegated sessions are persisted as private traces and exact token events. |
+| #6326 | **Closed** | Complete raw Codex SDK event streams persist privately for Pylon/Codex Khala delegation. |
+| #6331 | **Closed** | The Pylon coding-delegation 500/unavailable path is fixed with typed diagnostics and proof surfaces. |
+
 ## Execution notes
 
 - 2026-06-26: Supervising agents may briefly prioritize Khala -> Pylon -> Codex
   steering blockers ahead of the next phase item when the blocker prevents honest
   delegation, token attribution, or trace verification. This does not reorder the
   product backlog; it keeps the execution lane usable.
-- #6331 is the current steering fix: a targeted linked Pylon whose assignment
-  dispatch gate is full must return a typed, diagnosable
+- Pylon/Codex steering is now a usable lane as of `7057e61e0b`:
+  `assignment run-no-spend` auto-selects a ready connected Codex account when no
+  explicit account is provided, while still supporting `--account` /
+  `--account-ref`. On 2026-06-26, `pylon accounts list --json` showed five ready
+  Codex accounts (`codex`, `codex-2`, `codex-3`, `codex-4`, and default).
+- #6331 is closed, but its invariant stays live: a targeted linked Pylon whose
+  assignment dispatch gate is full must return a typed, diagnosable
   `target_pylon_unavailable` response with gate evidence, not fall through to a
-  generic unavailable/500 path. This makes parallel Pylon/Codex capacity failures
-  actionable while working the Phase 0/1 items below.
-- Raw Pylon/Codex event capture is live only when the local Pylon runner uses a
-  source/binary at or after #6326. Verification now has a first-class
-  owner-scoped read path (`GET /api/pylon/codex/proof?assignmentRef=...` and
-  `pylon khala proof <assignmentRef> --json`) that reconciles exact
-  `token_usage_events` rows with matching `pylon_codex_raw_events` counts and
-  owner-only `agent_traces` refs for the assignment. Counter movement alone is
-  still not proof.
-- Observed steering gaps to keep fixing as they block throughput: `presence
-  heartbeat` prints local `linked:false` even when server-side provider-account
-  linking and capacity projection are usable; `presence link-refresh` is a stale
-  404 path; `assignment run-no-spend --json` still lacks live phase/progress
-  streaming; stale accepted assignments consume advertised capacity until they
-  close out or expire.
+  generic unavailable/500 path.
+- #6325/#6326 are closed. Pylon/Codex delegated turns must still be verified by
+  exact `token_usage_events` rows, private `agent_traces`, and
+  `pylon_codex_raw_events` rows. Verification has a first-class owner-scoped read
+  path (`GET /api/pylon/codex/proof?assignmentRef=...` and
+  `pylon khala proof <assignmentRef> --json`). Counter movement alone is never
+  proof because other agents may be running.
+- Current serving observability gap: the #6311 GLM readiness route can project
+  readiness from persisted routed-completion fallback rows, but canonical
+  scheduled `glm-pool-heartbeat` rows have still not been observed after arming.
+  Keep this as the next codeable #6311 diagnostic before relying on scheduled
+  watchdog evidence for all replicas.
 
 ---
 
@@ -65,11 +100,15 @@ This is the only phase that is an active outage. Do it first.
      parser is set but errors on tool requests).
    - **Done when:** a scripted OpenCode-style tool loop round-trips real `tool_calls` with
      **0 `provider_error`** over N consecutive requests.
+   - **Status (2026-06-26): CLOSED.** Treat as a regression gate, not the current
+     active work item.
 2. **#6319 (fallback-chain repair slice) ‖ parallel with #6310.** The fallback chain is
    itself broken — **GPT-OSS-120B (fallback #2) returns 404**, GPT-OSS-20B (#3) returns
    empty — so GLM overflow degrades two dead hops before a serving lane. At minimum, in
    Phase 0: repair/replace the dead lanes + treat empty content as a failure so a 200 is
    never an empty/no-tool response. (Full #6319 program continues in Phase 1.)
+   - **Status (2026-06-26): CLOSED.** The full reliability issue is also closed;
+     downstream work should preserve these checks as serving regressions.
 3. **#6323 — pilot `nvidia/GLM-5.2-NVFP4` (full 753B) on the 8× host ‖ parallel with #6310,
    as a candidate FIX for it.** Our REAP-504B already uses the canonical `glm47`/`glm45`
    parsers, so #6310 is the pruned checkpoint, not config. NVIDIA's full 753B NVFP4
@@ -91,6 +130,9 @@ This is the only phase that is an active outage. Do it first.
      whole pilot). Owner / serving-lane executes the run; this lane stayed **doc/decision-only**
      (no live fleet/gateway/Pylon changes). Full plan + success criteria + conditional routing
      precedence: the "Decision artifact (#6323)" section of the eval doc.
+   - **Status (2026-06-26): OPEN.** Next action is the actual isolated 8x-host
+     pilot run and measured tool-call/quality/throughput decision, not another
+     planning doc.
 
 ## Phase 1 — Reliable serving foundation
 
@@ -100,18 +142,25 @@ Make the fleet trustworthy before pushing load through it.
    empty-fallback-as-failure, SLO-based shedding, request hedging, and failure telemetry
    (provider_error / empty / fallback / invalid-tool rates) so the next breakage is visible
    without a user mailing screenshots. → continues from Phase 0 slice.
+   - **Status (2026-06-26): CLOSED.**
 4. **#6313 — real OpenRouter fallback lane ‖ parallel.** No OpenRouter inference lane
    exists today (only resale/identity refs + a key). Build the adapter + registration +
    plan entry, wired as a real fallback tier with fail-over tests. Gives the chain a
    working terminal hop.
+   - **Status (2026-06-26): CLOSED.**
 5. **#6311 — durable (non-Spot) GLM fleet + keep-warm ‖ parallel.** All 10 replicas are
    Spot; 8 lack the STOP-watchdog. Add keep-warm on every replica, multi-region
    auto-replace, an on-demand reserve, and the us-central1 quota increase. (Cross-refs
    hydralisk #95 durable host, #99 prebake-weights image.)
+   - **Status (2026-06-26): OPEN.** Partial route/projection work has landed, but
+     the issue remains broad. Current codeable follow-up: canonical scheduled GLM
+     pool heartbeat rows/diagnostics are not yet showing up; live readiness has
+     depended on routed-completion fallback evidence.
 6. **#6259 + #6315 — green end-to-end GLM-serving smoke. → after #6310.** Get the
    Khala→GLM verification smoke passing for real (served-worker disclosure + counter
    increment); #6315 is the receipt-ref fix for the zero-debit operator-exempt token.
    This is the regression gate the rest of the work leans on.
+   - **Status (2026-06-26): CLOSED.**
 
 ## Phase 2 — Maximize throughput (tokens/sec)
 
@@ -120,15 +169,20 @@ Make the fleet trustworthy before pushing load through it.
    unlock it (a multiple, not a percent), then stack chunked prefill + engine-side prefix
    caching + speculative/MTP decode + eval-gated quantization. Biggest tok/s win in the
    whole roadmap; do it before stress-testing so you measure the real ceiling.
+   - **Status (2026-06-26): OPEN.** Now eligible because #6319 is closed; keep it
+     before #6317/#6312.
 8. **#6318 — external-wins admission/priority scheduler. → before #6317.** Internal load
    must be preemptible and yield to external demand. This MUST land before any continuous
    stress so the stress harness can never starve a real user.
+   - **Status (2026-06-26): OPEN.** This is the hard gate before stress load.
 9. **#6317 — continuous max-capacity stress/saturation harness. → after #6318, #6320.**
    The self-driving load that saturates the fleet, ramps concurrency to the ceiling, and
    auto-backs-off on external pressure.
+   - **Status (2026-06-26): OPEN; blocked by #6318 and #6320.**
 10. **#6312 — max tokens-per-second benchmark. → after #6317.** The decision-grade
     aggregate-throughput number, read from the harness (concurrency sweep, per-replica +
     aggregate tok/s, TTFT, P50/P90/P99, saturation point, in-cloud vs WAN).
+    - **Status (2026-06-26): OPEN; blocked by #6317.**
 
 ## Phase 3 — Autonomous operation
 
@@ -138,40 +192,64 @@ Make the fleet trustworthy before pushing load through it.
     back-off keyed on external pressure), and triggers heal/scale/quarantine — money +
     destructive actions stay owner-gated via `artanis-approval-gates`. This is the layer
     that runs Phases 1–2 continuously without a human.
+    - **Status (2026-06-26): OPEN; blocked by #6318/#6317 and should incorporate
+      the already-closed #6319 reliability signals.**
 
 ## Phase 4 — Prove quality (now that serving is reliable + instrumented)
 
 12. **#6253 — replicate + beat GLM-REAP's 69.1% on Terminal-Bench 2.0. → after Phase 1.**
     The competitive goal: a decision-grade Khala-routed run (not the raw-GLM pilot),
     inference-method comparison, beat the baseline.
+    - **Status (2026-06-26): OPEN.** A separate agent may own a live Harbor run;
+      do not interrupt it. Codeable pieces are fair game once the GLM/Khala
+      connection they require is armed.
 13. **#6307 — owner-armed real sweep: first `decisionGrade:true` Khala-vs-Fireworks/Vertex
     report ‖ parallel.** The minimum decision suite, run for real over realistic traffic.
+    - **Status (2026-06-26): OPEN.**
 14. **#6308 — external head-to-head (recurring quality bar). → after #6307.** Khala vs the
     tools/models developers would otherwise use, on our axes (cost-per-accepted-outcome,
     verified-rate).
+    - **Status (2026-06-26): OPEN; depends on #6307.**
 15. **#6309 — gym benchmark ladder as a recurring leaderboard. → after #6307.** Big Pickle
     → free models → paid frontier, published and re-scored on every change.
+    - **Status (2026-06-26): OPEN; depends on #6307.**
 
 ## Phase 5 — Drive adoption (the demand side; GTM #6303)
 
 16. **#6305 — OpenCode → Khala verification checklist + publish. → HARD-after #6310.** Do
     NOT publish the OpenCode recipe until tool-calling actually works; publishing a broken
     coding agent burns the wedge. This is the first external "point your tool at us" win.
+    - **Status (2026-06-26): CLOSED.**
 17. **#6306 — next ecosystem recipes (Aider, Cline/Continue, Vercel AI SDK, LiteLLM,
     LangChain). → after #6305.** One tool at a time, each with its test checklist.
+    - **Status (2026-06-26): CLOSED.**
 18. **#6303 — GTM push tracking (umbrella).** Closes when 16–17 + the Phase-4 benchmarks
     land; keep it updated as the demand-side scoreboard.
+    - **Status (2026-06-26): OPEN.** Recipe work is closed, but the benchmark and
+      adoption scoreboard evidence is not complete.
 
 ---
 
 ## The single sequence (flat list)
 
-`#6310` ‖ `#6323`(full-model candidate fix) → `#6319(chain-repair)` → `#6319(full)` ‖
-`#6313` ‖ `#6311` → `#6259/#6315` → `#6320` → `#6318` → `#6317` → `#6312` → `#6321` →
-`#6253` ‖ `#6307` → `#6308` ‖ `#6309` → `#6305` → `#6306` → close `#6303`.
+Historical full sequence:
 
-(#6323 runs in parallel at the very front because it could *resolve* #6310 outright; if the
-full model tool-calls cleanly, it short-circuits much of the GLM tool-path debugging.)
+`#6310` [closed] ‖ `#6323`(full-model candidate fix) →
+`#6319(chain-repair)` [closed] → `#6319(full)` [closed] ‖ `#6313` [closed] ‖
+`#6311` → `#6259/#6315` [closed] → `#6320` → `#6318` → `#6317` → `#6312` →
+`#6321` → `#6253` ‖ `#6307` → `#6308` ‖ `#6309` → `#6305` [closed] →
+`#6306` [closed] → close `#6303`.
+
+Remaining active sequence after the 2026-06-26 refresh:
+
+`#6323`(run the full-model pilot) ‖ `#6311`(durability + canonical watchdog
+diagnostics) → `#6320` → `#6318` → `#6317` → `#6312` → `#6321` → `#6253` ‖
+`#6307` → `#6308` ‖ `#6309` → close `#6316` / `#6303`.
+
+(#6323 remains at the front because it could still become the quality/tool-call
+upgrade path even though #6310 itself is closed. If the full model tool-calls
+cleanly and beats REAP quality/throughput expectations, route it as the premium
+GLM coding lane and leave REAP-504B on the 4x hosts.)
 
 ## Dependency rationale (the non-obvious edges)
 
@@ -193,3 +271,9 @@ full model tool-calls cleanly, it short-circuits much of the GLM tool-path debug
 - The owner-gated honesty bar still applies: any published benchmark number must come from
   the owner-armed real seam over realistic traffic (`decisionGrade:true`); internal
   dogfood/stress tokens stay segmented (#6298 demand tags) and out of external metrics.
+- Khala -> Pylon -> Codex worker status at refresh: delegation is paused by
+  operator request, but the worker path is green on current `main` and should be
+  used again for codeable roadmap items once resumed. Relevant steering issues:
+  #6325/#6326 trace+raw-event persistence and #6331 typed gate diagnostics.
+  Relevant steering commits include `5188a6c187` proof readout, `18c25e9f85`
+  lifecycle streaming, and `7057e61e0b` default linked-account auto-routing.
