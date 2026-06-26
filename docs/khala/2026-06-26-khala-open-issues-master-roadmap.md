@@ -26,6 +26,83 @@ stress/benchmark load is best-effort, preemptible, instantly-yielding, and tagge
 when it is Khala-orchestrated; the tag exists for routing, trace filtering, and
 external-wins admission, not for hiding usage.
 
+## Operating model: autonomous parallel burndown + trace-driven triage (added 2026-06-26)
+
+The phases below are now driven by a **continuous parallel loop**, not one-off
+batches. Four cross-cutting tracks run *alongside* the phased sequence and feed it:
+
+- **#6355 — Parallel backlog-burndown loop (operator runner).** Spin up the MAX
+  parallel Khala -> Pylon -> Codex assignments across ALL connected Codex accounts
+  (today `codex-2..4` healthy; plain `codex` flaky), map each open slot to the next
+  open backlog issue, run `assignment run-no-spend`, then on closeout verify exact
+  token rows + traces (`pylon khala proof --assignment-ref ... --json`), review,
+  merge (`deploy:safe` for worker changes), refill the slots, and repeat. Codex is
+  the master coding agent for now; #6321 (Artanis) is the eventual in-product
+  version. Steering prerequisite: **#6354** (auto-refresh presence + project active
+  busy load) plus the already-closed steering fixes (#6331-#6341, #6349-#6350).
+- **#6356 — Trace review.** Systematically review the ATIF traces / exact token
+  rows / raw Codex events we **and external testers** are now generating: failure
+  modes, model mix, notable/novel traces, and the intents behind them -> triaged
+  backlog. Early-adopter traces are the most monetizable; actually look at them.
+- **#6357 — Unsupported-request running list.** Capture what testers try that Khala
+  **can't do yet** (Forum-first + a tracking doc), triage into bug /
+  missing-capability / won't-do, and convert real gaps into issues that thread back
+  into this roadmap. Fed by #6356.
+- **#6358 — Counter health.** Guarantee the public token counter increments
+  correctly + continuously from real closeouts: fix the false-alarming heartbeat
+  monitor (it fires from an internal/exempt key excluded by #6298), hold the
+  monotonic / no-double-count invariant (`8d66f6be09`), optional labeled in-flight
+  estimate from streamed chunks.
+
+Two standing goals the loop optimizes for **every iteration**:
+1. **Maximize the public Khala token counter** — keep real Khala-orchestrated
+   closeouts landing (each verified to exact `token_usage_events`) and keep the
+   counter honestly incrementing (#6358). Counter movement alone is never proof;
+   attribute via assignment `task_ref` / `pylon khala proof`.
+2. **Broaden the inference base / maximize GLM usage** — most served tokens today
+   are `pylon_codex` (~70%); push the GLM serving track (#6316 umbrella: #6320
+   throughput, #6311 durable fleet, #6323 full-model pilot, #6253 quality) so GLM
+   carries a growing share, with Fireworks / OpenRouter / GPT-OSS as fallback, not
+   the default lane.
+
+Each loop iteration picks work in this priority: Phase-0/1 serving blockers ->
+throughput (#6320) -> scheduler (#6318) -> stress (#6317) -> benchmark (#6312); in
+parallel, demand/quality (#6253, #6307, #6308, #6309) and the cross-cutting tracks
+(#6356/#6357). #6356 + #6357 continuously feed *new* issues back into the sequence.
+
+## Artanis: autonomous owner of this loop (epic #6359)
+
+The end state is **Artanis** — the approval-gated scheduled tick
+(`artanis-scheduled-runner.ts`; it already monitors Khala readiness read-only and
+no-spend) — **owning this whole loop autonomously**, not a human launching batches.
+Money + destructive actions stay owner-gated via `artanis-approval-gates`;
+everything else Artanis drives on its own tick.
+
+Artanis's mandate (#6359):
+- **Unblock the people trying to use Khala.** Act on the unsupported-request list
+  (#6357) and the Khala CLI feedback (#6360) — convert blockers into fixes/issues
+  fast.
+- **Keep inference solid.** Own the #6316 serving track (#6320/#6311/#6323/#6318/
+  #6317/#6312). **Once the current issue set is drained, pull the next optimization
+  ideas from `docs/inference/inference-engineering-book/`** and open issues from
+  them — continuous improvement, not a one-shot.
+- **Drive the parallel burndown loop (#6355)** — dispatch / verify / merge across
+  connected Codex accounts, keep the counter honestly incrementing.
+- **Read + act on Khala CLI feedback (#6360).** The CLI `/feedback` command writes
+  to the `khala_feedback` table (`POST /api/khala/feedback`; operator read
+  `GET /api/operator/khala/feedback`). Artanis ingests it on the tick and triages:
+  style/behavior feedback (e.g. "too wordy, prefer more conversational") → an
+  owner-reviewable Khala response-style change; capability gaps → #6357 → issues;
+  bugs → strict-bug issues.
+- **Trace review (#6356) + counter health (#6358) + the fleet-overseer loop (#6321).**
+
+Net-new for full autonomy: a tick action that selects + dispatches the #6355 work
+within bounded authority (read / dispatch own-capacity Codex / verify / merge
+non-spend code / open issues), escalating only spend/destructive via the approval
+gates; tick read access to the open issues + #6356/#6357/#6358 + the feedback
+store; and the `inference-engineering-book` consultation as the recurring
+"what's next" source after the issue set drains. #6359 subsumes #6321.
+
 ## Current status snapshot
 
 Refreshed from GitHub issue state, `origin/main`, live counter/proof reads, and
@@ -60,6 +137,14 @@ operator view of what remains, not a public product claim.
 | #6325 | **Closed** | Pylon/Codex delegated sessions are persisted as private traces and exact token events (`c92a5652ab`), with the live raw-chunk follow-up in `74f25e77ad`. |
 | #6326 | **Closed** | Complete raw Codex SDK event streams persist privately for Pylon/Codex Khala delegation (`48e43cee02`, deploy `4d1de2d8-6285-41fa-bd9f-7a5a88cf8275`), plus live chunk rows in `pylon_codex_raw_event_chunks`. |
 | #6331 | **Closed** | The Pylon coding-delegation 500/unavailable path is fixed with typed diagnostics and proof surfaces. |
+| #6354 | **Open** | Steering prerequisite for the loop: Pylon Codex delegation runner should auto-refresh presence + project active busy load (so `provider go-online` reflects active `assignment run-no-spend` runners and avoids `presence_stale`). |
+| #6355 | **Open** | **NEW** — autonomous parallel Khala->Pylon->Codex backlog-burndown loop (operator runner). Formalizes the manual stress batches into a repeatable max-parallel loop that drives the whole sequence; verify-and-merge each closeout. |
+| #6356 | **Open** | **NEW** — systematic trace review (our runs + external testers): failure modes, model mix, notable traces, user intents -> triaged backlog. |
+| #6357 | **Open** | **NEW** — running unsupported-request list (what testers try that Khala can't do) -> triage into bug / missing-capability / won't-do -> issues. |
+| #6358 | **Open** | **NEW** — public token-counter health: correct/continuous increment from real closeouts, fix the false-alarming heartbeat monitor, hold the monotonic invariant, optional labeled in-flight estimate. |
+| #6359 | **Open** | **NEW EPIC** — Artanis autonomously owns the whole Khala improvement loop (unblock users, ensure inference, drive #6355, act on feedback, consult `inference-engineering-book` once the set drains). Subsumes #6321; coordinates #6355/#6356/#6357/#6358 + the #6316 serving track. See the Artanis section. |
+| #6360 | **Open** | **NEW** — Artanis ingests + acts on Khala CLI `/feedback` (`khala_feedback` table): style→response-style change (owner-gated), capability gap→#6357→issue, bug→issue. |
+| #6321 | **Open** | Artanis fleet-overseer control loop (heal/scale/stress/external-yield). Now scoped under the broader Artanis ownership epic #6359. |
 | #6354 | **Open** | Newly opened steering blocker: `assignment run-no-spend` can still require manual `presence heartbeat` recovery, `provider go-online --json` can report `busy=0` while local Codex assignment runners are active, and the controlled assignment dispatch gate later refused a fresh targeted lease even though local projection showed five available Codex slots. This is now the top execution-lane fix before more parallel Pylon/Codex delegation, because it blocks honest scaling and makes the counter look stuck while work is merely in-flight or denied. |
 
 ## Execution notes
@@ -575,6 +660,13 @@ Remaining active sequence after the 2026-06-26 ~19:24Z refresh:
 `#6317`(run real continuous stress only after #6318/#6320 live proof) → `#6312` → `#6321` →
 `#6253`(decision-grade replicate/beat) ‖ `#6307`(owner-armed full comparison) →
 `#6308` ‖ `#6309`(recurring evidence) → close `#6316` / `#6303`.
+
+Running **continuously alongside** the above (not gated by it), per the operating
+model section: **#6355** (parallel burndown loop that *drives* the sequence),
+**#6356** (trace review), **#6357** (unsupported-request triage), and **#6358**
+(counter health), with **#6354** as the loop's steering prerequisite. #6356/#6357
+feed new issues back into the sequence as testers surface gaps. The end state is
+**Artanis owning this loop autonomously** (see the Artanis section below / #6321).
 
 (#6323 remains at the front because it could still become the quality/tool-call
 upgrade path even though #6310 itself is closed. If the full model tool-calls
