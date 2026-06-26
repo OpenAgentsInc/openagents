@@ -1,32 +1,51 @@
-# Khala — native SwiftUI voice app
+# Khala — native SwiftUI app (ChatGPT-style)
 
-Khala is a minimal **push-to-talk voice client** for the public Khala API.
-One screen: hold the button, speak, and Khala answers.
+Khala is a **ChatGPT-style mobile client** for the public Khala API with a
+retained **push-to-talk voice visualization**. A left slide-over drawer holds
+chat history; the main surface is a chat `NavigationStack`.
 
 - **Bundle id:** `com.openagents.khala`
-- **Platform:** iOS, native SwiftUI. **No Expo / React Native / EAS.**
-- **Spec:** `../../../docs/mobile/2026-06-26-khala-voice-app-spec.md`
+- **Platform:** iOS 17+, native SwiftUI. **No Expo / React Native / EAS.**
+- **Spec:** `../../../docs/mobile/2026-06-26-khala-chatgpt-style-app-spec.md`
+  (voice-runtime reference: `../../../docs/mobile/2026-06-26-khala-voice-app-spec.md`)
 - Replaces the retired Expo app `clients/mobile/AutopilotRemoteControl`
   (`../../../docs/mobile/2026-06-26-autopilot-remote-control-retirement.md`).
 
-## What it does (v1)
+## What it does
 
-Push-to-talk → on-device speech-to-text (Apple `Speech`) → send the transcript
-to the Khala API (`POST https://openagents.com/api/v1/chat/completions`, model
-`openagents/khala`) → show the response (and optionally speak it). The API key
-(an `oa_agent_…` token) is minted in-app (`POST /api/keys/free`) or pasted, and
-stored in the iOS Keychain.
+Chat with `openagents/khala` (`POST https://openagents.com/api/v1/chat/completions`)
+— typed or push-to-talk → on-device speech-to-text (Apple `Speech`). Conversations
+persist **locally on device** (SwiftData) and show up in the drawer Recents
+(new / rename / delete, sorted by most-recent). The API key (an `oa_agent_…`
+token) is minted in-app (`POST /api/keys/free`) or pasted, stored in the iOS
+Keychain.
+
+## Xcode project: file-system-synchronized group
+
+`Khala.xcodeproj` uses an Xcode 16 `PBXFileSystemSynchronizedRootGroup` for the
+`Khala/` (and `KhalaTests/`) folders. **New Swift files added under `Khala/` are
+compiled automatically — no per-file `project.pbxproj` edit is required.** This
+keeps parallel feature lanes free of `pbxproj` merge conflicts. (`Resources/Info.plist`
+is excluded from the synchronized build via a membership exception.)
 
 ## Project layout
 
 ```
 clients/mobile/Khala/
 ├── project.yml                 # XcodeGen spec (regenerates Khala.xcodeproj)
-├── Khala.xcodeproj/            # hand-authored project (opens without xcodegen)
+├── Khala.xcodeproj/            # sync-group project (opens without xcodegen)
 └── Khala/
-    ├── KhalaApp.swift          # @main app entry
-    ├── ContentView.swift       # the single screen
+    ├── KhalaApp.swift          # @main app entry (creates ConversationStore)
+    ├── ContentView.swift       # thin wrapper around RootView (preview/compat)
     ├── VoiceState.swift        # state machine + Onyx status colors
+    ├── Shell/
+    │   ├── RootView.swift            # app shell: chat NavigationStack + drawer
+    │   ├── DrawerContainer.swift     # left slide-over (scrim + drag, RM-safe)
+    │   ├── DrawerContentView.swift   # Recents/search/New Chat (#6344 seam)
+    │   └── ChatView.swift            # chat surface + composer + voice (#6345 seam)
+    ├── Model/
+    │   ├── Conversation.swift        # SwiftData @Model Conversation/Message
+    │   └── ConversationStore.swift   # local persistence façade
     ├── Views/
     │   ├── AnimatedBackground.swift  # TimelineView+Canvas backdrop
     │   ├── PushToTalkButton.swift    # press-and-hold control
@@ -38,6 +57,13 @@ clients/mobile/Khala/
     ├── Store/KeychainStore.swift
     └── Resources/Info.plist    # mic + speech usage strings, bundle id
 ```
+
+### Env demo / test hooks (env-gated; no-op in normal use)
+
+- `KHALA_API_KEY` — inject the bearer key (skips Keychain) for simulator smokes.
+- `KHALA_DEMO_PROMPT` — auto-send a prompt on launch to exercise the round-trip.
+- `KHALA_SKIP_PERMISSIONS` — skip the mic/speech prompt for launch-render
+  screenshots / CI (real users still get prompted on first push-to-talk).
 
 ## Open & run locally (Xcode)
 

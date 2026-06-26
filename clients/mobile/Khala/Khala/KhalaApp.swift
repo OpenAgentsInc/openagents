@@ -1,14 +1,19 @@
 import SwiftUI
 
-/// Khala — a minimal push-to-talk voice client for the Khala API.
+/// Khala — a ChatGPT-style mobile client for the Khala API with a retained
+/// push-to-talk voice visualization.
 ///
-/// One screen: hold the button, speak, and Khala answers. See
-/// `docs/mobile/2026-06-26-khala-voice-app-spec.md` for the full spec.
+/// The app shell (`RootView`) hosts the main chat `NavigationStack` inside a
+/// left slide-over drawer. Conversation history persists locally via SwiftData
+/// (`ConversationStore`). See
+/// `docs/mobile/2026-06-26-khala-chatgpt-style-app-spec.md`.
 @main
 struct KhalaApp: App {
+    @StateObject private var store = ConversationStore()
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            RootView(store: store)
                 .preferredColorScheme(.dark)
         }
     }
