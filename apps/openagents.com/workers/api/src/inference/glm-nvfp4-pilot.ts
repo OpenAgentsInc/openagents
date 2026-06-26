@@ -50,6 +50,18 @@ export type GlmNvfp4PilotBlocker = typeof GlmNvfp4PilotBlocker.Type
 export const GlmNvfp4PilotDecision = S.Literals(['go', 'no_go'])
 export type GlmNvfp4PilotDecision = typeof GlmNvfp4PilotDecision.Type
 
+export const GlmNvfp4PilotIssueGate = S.Literals([
+  'isolated_owner_armed_endpoint_context',
+  'tool_loop_proof',
+  'quality_parity',
+  'throughput_context_tradeoff',
+])
+export type GlmNvfp4PilotIssueGate = typeof GlmNvfp4PilotIssueGate.Type
+
+export const GlmNvfp4PilotIssueGateStatus = S.Literals(['passed', 'blocked'])
+export type GlmNvfp4PilotIssueGateStatus =
+  typeof GlmNvfp4PilotIssueGateStatus.Type
+
 export const GlmNvfp4PilotEvidenceRefField = S.Literals([
   'ownerApprovalRef',
   'endpointRef',
@@ -77,6 +89,15 @@ export const GlmNvfp4PilotEvidenceRefAudit = S.Struct({
 })
 export type GlmNvfp4PilotEvidenceRefAudit =
   typeof GlmNvfp4PilotEvidenceRefAudit.Type
+
+export const GlmNvfp4PilotIssueGateSummary = S.Struct({
+  gate: GlmNvfp4PilotIssueGate,
+  status: GlmNvfp4PilotIssueGateStatus,
+  blockerRefs: S.Array(GlmNvfp4PilotBlocker),
+  evidenceRefs: S.Array(S.String),
+})
+export type GlmNvfp4PilotIssueGateSummary =
+  typeof GlmNvfp4PilotIssueGateSummary.Type
 
 export const GlmNvfp4PilotVllmFlag = S.Struct({
   name: S.String,
@@ -143,8 +164,27 @@ export const GlmNvfp4PilotResult = S.Struct({
 })
 export type GlmNvfp4PilotResult = typeof GlmNvfp4PilotResult.Type
 
+export const GlmNvfp4PilotPublicSummary = S.Struct({
+  schemaVersion: S.Literal('openagents.khala.glm_nvfp4_pilot_public_summary.v1'),
+  generatedAt: S.String,
+  issueRef: S.Literal('github.issue.OpenAgentsInc.openagents.6323'),
+  publicSafe: S.Literal(true),
+  decision: GlmNvfp4PilotDecision,
+  canRouteCodingLane: S.Boolean,
+  gates: S.Array(GlmNvfp4PilotIssueGateSummary),
+  blockerRefs: S.Array(GlmNvfp4PilotBlocker),
+  evidenceRefs: S.Array(S.String),
+  contentRedacted: S.Literal(true),
+})
+export type GlmNvfp4PilotPublicSummary =
+  typeof GlmNvfp4PilotPublicSummary.Type
+
 export const decodeGlmNvfp4PilotResult = S.decodeUnknownSync(
   GlmNvfp4PilotResult,
+)
+
+export const decodeGlmNvfp4PilotPublicSummary = S.decodeUnknownSync(
+  GlmNvfp4PilotPublicSummary,
 )
 
 export type GlmNvfp4PilotConfig = Readonly<{
@@ -237,6 +277,43 @@ const unsafeBlockerForEvidenceField = (
   return blockersByField[field]
 }
 
+const GLM_NVFP4_PILOT_ISSUE_GATES: ReadonlyArray<GlmNvfp4PilotIssueGate> = [
+  'isolated_owner_armed_endpoint_context',
+  'tool_loop_proof',
+  'quality_parity',
+  'throughput_context_tradeoff',
+]
+
+const GLM_NVFP4_PILOT_BLOCKER_ISSUE_GATE: Record<
+  GlmNvfp4PilotBlocker,
+  GlmNvfp4PilotIssueGate
+> = {
+  owner_arm_missing: 'isolated_owner_armed_endpoint_context',
+  owner_approval_ref_missing: 'isolated_owner_armed_endpoint_context',
+  owner_approval_ref_unsafe: 'isolated_owner_armed_endpoint_context',
+  endpoint_ref_missing: 'isolated_owner_armed_endpoint_context',
+  endpoint_ref_unsafe: 'isolated_owner_armed_endpoint_context',
+  endpoint_url_missing: 'isolated_owner_armed_endpoint_context',
+  model_mismatch: 'isolated_owner_armed_endpoint_context',
+  measured_max_model_len_missing: 'throughput_context_tradeoff',
+  measured_max_model_len_evidence_ref_missing: 'throughput_context_tradeoff',
+  measured_max_model_len_evidence_ref_unsafe: 'throughput_context_tradeoff',
+  tool_loop_evidence_missing: 'tool_loop_proof',
+  tool_loop_evidence_ref_unsafe: 'tool_loop_proof',
+  tool_loop_sample_count_too_low: 'tool_loop_proof',
+  tool_loop_provider_error: 'tool_loop_proof',
+  tool_loop_missing_tool_calls: 'tool_loop_proof',
+  quality_parity_missing: 'quality_parity',
+  quality_evidence_ref_missing: 'quality_parity',
+  quality_evidence_ref_unsafe: 'quality_parity',
+  tps_measurement_missing: 'throughput_context_tradeoff',
+  tps_evidence_ref_unsafe: 'throughput_context_tradeoff',
+  tps_not_finite: 'throughput_context_tradeoff',
+  decision_ref_missing: 'isolated_owner_armed_endpoint_context',
+  decision_ref_unsafe: 'isolated_owner_armed_endpoint_context',
+  unsafe_public_ref: 'isolated_owner_armed_endpoint_context',
+}
+
 const stableRef = (prefix: string, value: string): string =>
   `${prefix}.${createHash('sha256').update(value).digest('hex').slice(0, 24)}`
 
@@ -277,6 +354,108 @@ const finitePositiveNumber = (value: number | null | undefined): number | null =
   typeof value === 'number' && Number.isFinite(value) && value > 0
     ? value
     : null
+
+const publicSafeRefs = (
+  refs: ReadonlyArray<string | null | undefined>,
+): ReadonlyArray<string> =>
+  [...new Set(refs.flatMap(ref => {
+    const publicRef = safeRefOrNull(ref)
+    return publicRef === null ? [] : [publicRef]
+  }))].sort()
+
+const pilotSummaryGateEvidenceRefs = (
+  result: GlmNvfp4PilotResult,
+  gate: GlmNvfp4PilotIssueGate,
+): ReadonlyArray<string> => {
+  const refsByGate: Record<
+    GlmNvfp4PilotIssueGate,
+    ReadonlyArray<string | null>
+  > = {
+    isolated_owner_armed_endpoint_context: [
+      result.ownerApprovalRef,
+      result.endpointRef,
+      result.decisionRef,
+    ],
+    tool_loop_proof: [result.toolLoop.evidenceRef],
+    quality_parity: [result.qualityEvidenceRef],
+    throughput_context_tradeoff: [
+      result.measuredMaxModelLenEvidenceRef,
+      result.throughput.evidenceRef,
+    ],
+  }
+  return publicSafeRefs(refsByGate[gate])
+}
+
+const pilotSummaryGateHasRequiredEvidence = (
+  result: GlmNvfp4PilotResult,
+  gate: GlmNvfp4PilotIssueGate,
+): boolean => {
+  const measuredTps = finitePositiveNumber(result.throughput.measuredTps)
+  const requiredByGate: Record<GlmNvfp4PilotIssueGate, boolean> = {
+    isolated_owner_armed_endpoint_context:
+      result.ownerArmed === true &&
+      safeRefOrNull(result.ownerApprovalRef) !== null &&
+      safeRefOrNull(result.endpointRef) !== null &&
+      safeRefOrNull(result.decisionRef) !== null,
+    tool_loop_proof:
+      safeRefOrNull(result.toolLoop.evidenceRef) !== null &&
+      result.toolLoop.sampleCount >= GLM_NVFP4_MIN_TOOL_LOOP_SAMPLES &&
+      result.toolLoop.providerErrorCount === 0 &&
+      result.toolLoop.toolCallsAttempted >= GLM_NVFP4_MIN_TOOL_LOOP_SAMPLES &&
+      result.toolLoop.toolCallsSucceeded >= GLM_NVFP4_MIN_TOOL_LOOP_SAMPLES &&
+      result.toolLoop.hallucinatedToolCallCount === 0,
+    quality_parity:
+      result.qualityParity === 'passed' &&
+      safeRefOrNull(result.qualityEvidenceRef) !== null,
+    throughput_context_tradeoff:
+      result.measuredMaxModelLen !== null &&
+      safeRefOrNull(result.measuredMaxModelLenEvidenceRef) !== null &&
+      safeRefOrNull(result.throughput.evidenceRef) !== null &&
+      result.throughput.outputTokens > 0 &&
+      measuredTps !== null,
+  }
+  return requiredByGate[gate]
+}
+
+export const summarizeGlmNvfp4PilotResult = (
+  input: unknown,
+): GlmNvfp4PilotPublicSummary => {
+  const result = decodeGlmNvfp4PilotResult(input)
+  const gates = GLM_NVFP4_PILOT_ISSUE_GATES.map(gate => {
+    const blockerRefs = result.blockerRefs.filter(
+      blocker => GLM_NVFP4_PILOT_BLOCKER_ISSUE_GATE[blocker] === gate,
+    )
+    const status: GlmNvfp4PilotIssueGateStatus =
+      blockerRefs.length === 0 &&
+      pilotSummaryGateHasRequiredEvidence(result, gate)
+        ? 'passed'
+        : 'blocked'
+    return {
+      gate,
+      status,
+      blockerRefs,
+      evidenceRefs: pilotSummaryGateEvidenceRefs(result, gate),
+    }
+  })
+  const allGatesPassed = gates.every(gate => gate.status === 'passed')
+  const decision: GlmNvfp4PilotDecision =
+    allGatesPassed && result.decision === 'go' && result.canRouteCodingLane
+      ? 'go'
+      : 'no_go'
+
+  return decodeGlmNvfp4PilotPublicSummary({
+    schemaVersion: 'openagents.khala.glm_nvfp4_pilot_public_summary.v1',
+    generatedAt: result.generatedAt,
+    issueRef: result.issueRef,
+    publicSafe: true,
+    decision,
+    canRouteCodingLane: decision === 'go',
+    gates,
+    blockerRefs: result.blockerRefs,
+    evidenceRefs: publicSafeRefs(gates.flatMap(gate => gate.evidenceRefs)),
+    contentRedacted: true,
+  })
+}
 
 export const buildGlmNvfp4PilotLaunchFlags = (
   measuredMaxModelLen: number | null,

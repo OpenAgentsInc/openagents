@@ -12,6 +12,7 @@ import {
   collectGlmNvfp4PilotObservation,
   decodeGlmNvfp4PilotResult,
   makeOpenAiCompatibleGlmNvfp4PilotExecutor,
+  summarizeGlmNvfp4PilotResult,
   type GlmNvfp4PilotConfig,
   type GlmNvfp4PilotObservation,
 } from './glm-nvfp4-pilot'
@@ -171,6 +172,71 @@ describe('GLM NVFP4 pilot preflight (#6323)', () => {
     expect(decodeGlmNvfp4PilotResult(result).schemaVersion).toBe(
       'openagents.khala.glm_nvfp4_pilot_result.v1',
     )
+  })
+
+  test('summarizes a passing pilot into four public-safe issue gates', () => {
+    const result = buildGlmNvfp4PilotResult({
+      config: baseConfig(),
+      observation: passingObservation(),
+    })
+
+    const summary = summarizeGlmNvfp4PilotResult(result)
+
+    expect(summary.decision).toBe('go')
+    expect(summary.canRouteCodingLane).toBe(true)
+    expect(summary.gates.map(gate => gate.gate)).toEqual([
+      'isolated_owner_armed_endpoint_context',
+      'tool_loop_proof',
+      'quality_parity',
+      'throughput_context_tradeoff',
+    ])
+    expect(summary.gates.every(gate => gate.status === 'passed')).toBe(true)
+    expect(summary.gates.every(gate => gate.blockerRefs.length === 0)).toBe(
+      true,
+    )
+    expect(summary.evidenceRefs).toEqual([
+      'approval.public.khala.glm_nvfp4.owner_armed.001',
+      'decision.public.khala.glm_nvfp4.issue_6323.001',
+      'endpoint.public.khala.glm_nvfp4.single_host_8x.001',
+      'evidence.public.khala.glm_nvfp4.max_model_len.65536.001',
+      'evidence.public.khala.glm_nvfp4.quality_parity.001',
+      'evidence.public.khala.glm_nvfp4.tool_loop.001',
+      'evidence.public.khala.glm_nvfp4.tps.001',
+    ])
+    expect(JSON.stringify(summary)).not.toContain(
+      'https://glm-nvfp4-pilot.example.invalid',
+    )
+  })
+
+  test('summarizer keeps missing owner evidence as no-go on the isolated endpoint/context gate', () => {
+    const result = buildGlmNvfp4PilotResult({
+      config: baseConfig({
+        ownerArmed: false,
+        ownerApprovalRef: null,
+      }),
+      observation: passingObservation(),
+    })
+
+    const summary = summarizeGlmNvfp4PilotResult(result)
+    const ownerGate = summary.gates.find(
+      gate => gate.gate === 'isolated_owner_armed_endpoint_context',
+    )
+
+    expect(summary.decision).toBe('no_go')
+    expect(summary.canRouteCodingLane).toBe(false)
+    expect(ownerGate).toMatchObject({
+      status: 'blocked',
+      blockerRefs: ['owner_approval_ref_missing', 'owner_arm_missing'],
+      evidenceRefs: [
+        'decision.public.khala.glm_nvfp4.issue_6323.001',
+        'endpoint.public.khala.glm_nvfp4.single_host_8x.001',
+      ],
+    })
+    expect(
+      summary.gates
+        .filter(gate => gate.gate !== 'isolated_owner_armed_endpoint_context')
+        .every(gate => gate.status === 'passed'),
+    ).toBe(true)
   })
 
   test('keeps the issue open/no-go when provider errors or insufficient samples remain', () => {
