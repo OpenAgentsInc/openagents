@@ -195,6 +195,47 @@ describe('projectHarborResultToSnapshot — real TB2.0 .stats summary shape', ()
     expect(snapshot.completionTokens).toBe(261591)
   })
 
+  test('uses n_completed_trials when reward_stats is only a partial completed breakdown', () => {
+    const partialRewardStats = {
+      ...harborStatsResult,
+      n_total_trials: 89,
+      stats: {
+        ...harborStatsResult.stats,
+        n_completed_trials: 62,
+        n_errored_trials: 42,
+        n_running_trials: 1,
+        n_pending_trials: 26,
+        n_input_tokens: 66728682,
+        n_output_tokens: 1622278,
+        evals: {
+          'terminus-2__openagents/khala__terminal-bench': {
+            n_trials: 31,
+            n_errors: 42,
+            metrics: [{ mean: 0.22580645161290322 }],
+            pass_at_k: {},
+            reward_stats: {
+              reward: {
+                '0.0': Array.from({ length: 17 }, (_, index) => `failed-${index}`),
+                '1.0': Array.from({ length: 14 }, (_, index) => `passed-${index}`),
+              },
+            },
+          },
+        },
+      },
+    }
+
+    const snapshot = projectHarborResultToSnapshot(partialRewardStats, context)
+    expect(snapshot.completedPassed).toBe(14)
+    expect(snapshot.completedFailed).toBe(48)
+    expect(snapshot.error).toBe(42)
+    expect(snapshot.pending).toBe(26)
+    expect(snapshot.running).toBe(1)
+    const progress = buildGymRunProgress(snapshot)
+    expect(progress.counts.completed).toBe(62)
+    expect(progress.counts.error).toBeLessThanOrEqual(progress.counts.completed)
+    expect(progress.passRateOverCompleted).toBeCloseTo(14 / 62)
+  })
+
   test('derives running phase while pending remains, ignoring finished_at=null', () => {
     const snapshot = projectHarborResultToSnapshot(harborStatsResult, context)
     expect(snapshot.phase).toBe('running')

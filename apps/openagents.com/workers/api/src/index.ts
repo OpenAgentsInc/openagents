@@ -83,9 +83,9 @@ import { deliverArtanisForumPublicationIntent } from './artanis-forum-delivery'
 import { ArtanisForumPublicationIntentRecord } from './artanis-forum-publication'
 import { exampleArtanisForumPublicationQueue } from './artanis-forum-publication'
 import {
+  ARTANIS_REGISTERED_ACTOR_REF,
   ARTANIS_RESPONDER_DEMAND_CLIENT,
   ARTANIS_RESPONDER_DEMAND_SOURCE,
-  ARTANIS_REGISTERED_ACTOR_REF,
   type ArtanisResponderKhalaClient,
   runArtanisResponderScanScheduled,
 } from './artanis-forum-responder'
@@ -414,6 +414,7 @@ import {
   sanitizeFreeKeyLabel,
   withFreeTierKhala,
 } from './inference/inference-free-tier-key'
+import { parseInternalAccountRefs } from './inference/inference-internal-account'
 import {
   isOperatorExemptionEnabled,
   makeOperatorExemptionGate,
@@ -452,6 +453,7 @@ import {
   HYDRALISK_ADAPTER_ID,
   HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
   HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
+  OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
   dispatchWithOverflow,
   dispatchWithOverflowWithMetadata,
   makeKhalaBackedAdapterPlan,
@@ -479,6 +481,7 @@ import {
 import { makeSparkLightningInvoiceIssuer } from './inference/mpp/mpp-lightning-invoice-spark'
 import { dispatchOnboardingStreamSource } from './inference/onboarding-stream-source'
 import { makeAdmittedOpenAgentsNetworkAdapter } from './inference/openagents-network-adapter'
+import { makeOpenRouterAdapter } from './inference/openrouter-adapter'
 import {
   type PassthroughAdapterConfig,
   makePassthroughAdapter,
@@ -500,7 +503,6 @@ import {
   pylonFabricHttpTransportConfigFromEnv,
   pylonGatewayAdmissionFromEnv,
 } from './inference/pylon-fabric-http-transport'
-import { parseInternalAccountRefs } from './inference/inference-internal-account'
 import { handlePylonFabricSmoke } from './inference/pylon-fabric-smoke-routes'
 import { handleQuote } from './inference/quote-routes'
 import {
@@ -9118,6 +9120,45 @@ const registerHydraliskAdapter = (
   }
 }
 
+const openRouterAdaptersRegistered = new WeakSet<object>()
+
+type OpenRouterServeEnv = Readonly<{
+  OPENROUTER_API_KEY?: string | undefined
+  OPENROUTER_BASE_URL?: string | undefined
+  OPENROUTER_KHALA_FALLBACK_MODEL?: string | undefined
+}>
+
+const registerOpenRouterAdapter = (
+  registry: InferenceProviderRegistry,
+  env: OpenRouterServeEnv,
+): void => {
+  if (openRouterAdaptersRegistered.has(env)) {
+    return
+  }
+  openRouterAdaptersRegistered.add(env)
+  const apiKey = env.OPENROUTER_API_KEY?.trim()
+  const baseUrl = env.OPENROUTER_BASE_URL?.trim()
+  const upstreamModel = env.OPENROUTER_KHALA_FALLBACK_MODEL?.trim()
+  if (
+    apiKey === undefined ||
+    apiKey === '' ||
+    baseUrl === undefined ||
+    baseUrl === '' ||
+    upstreamModel === undefined ||
+    upstreamModel === ''
+  ) {
+    return
+  }
+  registry.register(
+    makeOpenRouterAdapter({
+      apiKey: Redacted.make(apiKey),
+      baseUrl,
+      id: OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+      upstreamModel,
+    }),
+  )
+}
+
 // OpenAgents serving-fabric lane (#5483 / Khala M4 #6012 / #6089) — the
 // `openagents-network` adapter wired to a Psionic serve transport. The lane is
 // routed AHEAD of passthrough for the OPEN class (model-router.ts), but stays
@@ -9199,6 +9240,7 @@ type BatchJobConsumerEnv = OpenAgentsWorkerConfigEnv &
 const makeBatchJobConsumerDeps = (env: BatchJobConsumerEnv) => {
   registerPassthroughAdapters(inferenceProviderRegistry, env)
   registerHydraliskAdapter(inferenceProviderRegistry, env)
+  registerOpenRouterAdapter(inferenceProviderRegistry, env)
   registerFabricServeAdapter(inferenceProviderRegistry, env)
   setInferenceAdapterEnv(env)
   const laneArming = resolveSupplyLaneArming(env)
@@ -9232,6 +9274,7 @@ const makeOnboardingInferenceClient = (
 ): OnboardingInferenceClient => {
   registerPassthroughAdapters(inferenceProviderRegistry, env)
   registerHydraliskAdapter(inferenceProviderRegistry, env)
+  registerOpenRouterAdapter(inferenceProviderRegistry, env)
   registerFabricServeAdapter(inferenceProviderRegistry, env)
   setInferenceAdapterEnv(env)
   const laneArming = resolveSupplyLaneArming(env)
@@ -9272,6 +9315,7 @@ const makeOnboardingStreamClient = (
 ): OnboardingStreamClient => {
   registerPassthroughAdapters(inferenceProviderRegistry, env)
   registerHydraliskAdapter(inferenceProviderRegistry, env)
+  registerOpenRouterAdapter(inferenceProviderRegistry, env)
   registerFabricServeAdapter(inferenceProviderRegistry, env)
   setInferenceAdapterEnv(env)
   const laneArming = resolveSupplyLaneArming(env)
@@ -9302,6 +9346,7 @@ const makeKhalaChatStreamClient = (
 ): KhalaChatStreamClient => {
   registerPassthroughAdapters(inferenceProviderRegistry, env)
   registerHydraliskAdapter(inferenceProviderRegistry, env)
+  registerOpenRouterAdapter(inferenceProviderRegistry, env)
   registerFabricServeAdapter(inferenceProviderRegistry, env)
   setInferenceAdapterEnv(env)
   const laneArming = resolveSupplyLaneArming(env)
@@ -9321,10 +9366,12 @@ const makeKhalaChatStreamClient = (
 }
 
 const makeArtanisResponderKhalaClient = (
-  env: OnboardingInferenceEnv & Pick<WorkerBindings, 'OPENAGENTS_DB' | 'SYNC_ROOM'>,
+  env: OnboardingInferenceEnv &
+    Pick<WorkerBindings, 'OPENAGENTS_DB' | 'SYNC_ROOM'>,
 ): ArtanisResponderKhalaClient => {
   registerPassthroughAdapters(inferenceProviderRegistry, env)
   registerHydraliskAdapter(inferenceProviderRegistry, env)
+  registerOpenRouterAdapter(inferenceProviderRegistry, env)
   registerFabricServeAdapter(inferenceProviderRegistry, env)
   setInferenceAdapterEnv(env)
   const laneArming = resolveSupplyLaneArming(env)
@@ -11012,6 +11059,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env) => {
       registerPassthroughAdapters(inferenceProviderRegistry, env)
       registerHydraliskAdapter(inferenceProviderRegistry, env)
+      registerOpenRouterAdapter(inferenceProviderRegistry, env)
       // Serving-fabric lane (#5483 / Khala M4 #6012). No-op today (no live
       // Psionic serve transport bound); keeps the lane honestly skipped until a
       // transport lands, with no routing change required to activate it.
@@ -11464,6 +11512,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     handler: (request, env) => {
       registerPassthroughAdapters(inferenceProviderRegistry, env)
       registerHydraliskAdapter(inferenceProviderRegistry, env)
+      registerOpenRouterAdapter(inferenceProviderRegistry, env)
       registerFabricServeAdapter(inferenceProviderRegistry, env)
       setInferenceAdapterEnv(env)
       const ownerClaimStore = makeD1AgentOwnerClaimStore(

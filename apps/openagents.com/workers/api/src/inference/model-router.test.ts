@@ -3,12 +3,14 @@ import { describe, expect, test } from 'vitest'
 
 import {
   DEFAULT_OVERFLOW_BACKOFF,
+  type DispatchFailureTelemetryEvent,
   type DispatchSuccessValidator,
   FIREWORKS_ADAPTER_ID,
   HYDRALISK_ADAPTER_ID,
   HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
   HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
   OPENAGENTS_NETWORK_ADAPTER_ID,
+  OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
   PASSTHROUGH_ANTHROPIC_ADAPTER_ID,
   PASSTHROUGH_OPENAI_ADAPTER_ID,
   VERTEX_ANTHROPIC_ADAPTER_ID,
@@ -190,6 +192,7 @@ describe('model classification', () => {
       expect(classifyModel(model)).toBe('open')
       expect(selectAdapterPlan(model)).toEqual([
         HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+        OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
         HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
         HYDRALISK_ADAPTER_ID,
         VERTEX_GEMINI_ADAPTER_ID,
@@ -207,6 +210,7 @@ describe('model classification', () => {
       ).toEqual([
         FIREWORKS_ADAPTER_ID,
         HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+        OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
         HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
         HYDRALISK_ADAPTER_ID,
         VERTEX_GEMINI_ADAPTER_ID,
@@ -231,6 +235,7 @@ describe('model classification', () => {
       expect(plan[0]).toBe(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID)
       expect(plan).toEqual([
         HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+        OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
         HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
         HYDRALISK_ADAPTER_ID,
         VERTEX_GEMINI_ADAPTER_ID,
@@ -256,6 +261,7 @@ describe('model classification', () => {
       ),
     ).toEqual([
       FIREWORKS_ADAPTER_ID,
+      OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
       HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
       HYDRALISK_ADAPTER_ID,
       VERTEX_GEMINI_ADAPTER_ID,
@@ -593,6 +599,250 @@ describe('dispatchWithOverflow', () => {
     }
   })
 
+  test('retries a retryable GLM lane failure once before overflowing', async () => {
+    const glm = mockAdapter(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID, [
+      new InferenceAdapterError({
+        adapterId: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+        httpStatus: 500,
+        kind: 'provider_error',
+        reason: 'provider_error: transient GLM replica fault',
+        retryable: true,
+      }),
+      undefined,
+    ])
+    const fallback = mockAdapter(VERTEX_GEMINI_ADAPTER_ID, [undefined])
+    const registry = new InferenceProviderRegistry()
+    registry.register(glm.adapter)
+    registry.register(fallback.adapter)
+
+    const result = await runResult(
+      dispatchWithOverflowWithMetadata(request(KHALA_MODEL_ID), completeOp, {
+        plan: () => [
+          HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+          VERTEX_GEMINI_ADAPTER_ID,
+        ],
+        registry,
+        retry: { maxRetriesPerLane: 1 },
+        sleep: noSleep,
+      }),
+    )
+
+    expect(result._tag).toBe('Success')
+    if (result._tag === 'Success') {
+      expect(result.success.route.servedAdapterId).toBe(
+        HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+      )
+      expect(result.success.route.fallbackReason).toBe(null)
+    }
+    expect(glm.calls()).toBe(2)
+    expect(fallback.calls()).toBe(0)
+  })
+
+  test('quarantines an unhealthy GLM lane before dispatch and overflows to a healthy lane', async () => {
+    const glm = mockAdapter(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID, [undefined])
+    const gemini = mockAdapter(VERTEX_GEMINI_ADAPTER_ID, [undefined])
+    const registry = new InferenceProviderRegistry()
+    registry.register(glm.adapter)
+    registry.register(gemini.adapter)
+    const events: Array<DispatchFailureTelemetryEvent> = []
+
+    const result = await runResult(
+      dispatchWithOverflowWithMetadata(request(KHALA_MODEL_ID), completeOp, {
+        failureTelemetry: event => {
+          events.push(event)
+        },
+        plan: () => [
+          HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+          VERTEX_GEMINI_ADAPTER_ID,
+        ],
+        registry,
+        routingSignals: id =>
+          id === HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID
+            ? { laneHealth: 'quarantined', providerHealthScore: 0.1 }
+            : { laneHealth: 'healthy', providerHealthScore: 0.91 },
+        sleep: noSleep,
+      }),
+    )
+
+    expect(result._tag).toBe('Success')
+    if (result._tag === 'Success') {
+      expect(result.success.route.primaryAdapterId).toBe(
+        VERTEX_GEMINI_ADAPTER_ID,
+      )
+      expect(result.success.route.servedAdapterId).toBe(VERTEX_GEMINI_ADAPTER_ID)
+    }
+    expect(glm.calls()).toBe(0)
+    expect(gemini.calls()).toBe(1)
+    expect(events).toContainEqual({
+      adapterId: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+      kind: 'quarantined',
+      retryable: true,
+      stage: 'health_quarantine',
+    })
+  })
+
+  test('SLO shedding drops internal stress while external demand still serves', async () => {
+    const internalLane = mockAdapter('internal-lane', [undefined])
+    const externalLane = mockAdapter('external-lane', [undefined])
+    const internalRegistry = new InferenceProviderRegistry()
+    const externalRegistry = new InferenceProviderRegistry()
+    internalRegistry.register(internalLane.adapter)
+    externalRegistry.register(externalLane.adapter)
+
+    const internalResult = await runResult(
+      dispatchWithOverflow(request(KHALA_MODEL_ID), completeOp, {
+        plan: () => ['internal-lane'],
+        registry: internalRegistry,
+        shedding: {
+          demandClass: 'internal_stress',
+          slo: { breached: true, reason: 'external_ttft_p90' },
+        },
+        sleep: noSleep,
+      }),
+    )
+    const externalResult = await runResult(
+      dispatchWithOverflow(request(KHALA_MODEL_ID), completeOp, {
+        plan: () => ['external-lane'],
+        registry: externalRegistry,
+        shedding: {
+          demandClass: 'external',
+          slo: { breached: true, reason: 'external_ttft_p90' },
+        },
+        sleep: noSleep,
+      }),
+    )
+
+    expect(internalResult._tag).toBe('Failure')
+    if (internalResult._tag === 'Failure') {
+      expect(internalResult.failure.kind).toBe('slo_shed_internal_stress')
+    }
+    expect(externalResult._tag).toBe('Success')
+    expect(internalLane.calls()).toBe(0)
+    expect(externalLane.calls()).toBe(1)
+  })
+
+  test('bounded external hedging uses one different warm lane when primary TTFT breaches P99', async () => {
+    const slowPrimary = mockAdapter('slow-primary', [undefined])
+    const warmHedge = mockAdapter('warm-hedge', [undefined])
+    const coldOverflow = mockAdapter('cold-overflow', [undefined])
+    const registry = new InferenceProviderRegistry()
+    registry.register(slowPrimary.adapter)
+    registry.register(warmHedge.adapter)
+    registry.register(coldOverflow.adapter)
+
+    const result = await runResult(
+      dispatchWithOverflowWithMetadata(request(KHALA_MODEL_ID), completeOp, {
+        hedging: {
+          demandClass: 'external',
+          enabled: true,
+          ttftP99ThresholdMs: 750,
+        },
+        plan: () => ['slow-primary', 'warm-hedge', 'cold-overflow'],
+        registry,
+        routingSignals: id =>
+          id === 'slow-primary'
+            ? { laneHealth: 'healthy', ttftP99Ms: 1_200, warmState: 'warm' }
+            : id === 'warm-hedge'
+              ? { laneHealth: 'healthy', ttftP99Ms: 180, warmState: 'warm' }
+              : { laneHealth: 'healthy', ttftP99Ms: 200, warmState: 'cold' },
+        sleep: noSleep,
+      }),
+    )
+
+    expect(result._tag).toBe('Success')
+    if (result._tag === 'Success') {
+      expect(result.success.route).toMatchObject({
+        fallbackReason: 'hedged_ttft_p99_breach',
+        primaryAdapterId: 'slow-primary',
+        servedAdapterId: 'warm-hedge',
+      })
+    }
+    expect(slowPrimary.calls()).toBe(0)
+    expect(warmHedge.calls()).toBe(1)
+    expect(coldOverflow.calls()).toBe(0)
+  })
+
+  test('failure telemetry records public-safe provider, empty-content, and 429 shapes', async () => {
+    const providerFailure = mockAdapter('provider-failure', [
+      new InferenceAdapterError({
+        adapterId: 'provider-failure',
+        httpStatus: 500,
+        kind: 'provider_error',
+        reason: 'provider_error',
+        retryable: true,
+      }),
+    ])
+    const emptyLane = mockAdapter('empty-lane', [
+      {
+        content: '',
+        finishReason: 'stop',
+        servedModel: 'empty-model',
+        usage: { completionTokens: 0, promptTokens: 1, totalTokens: 1 },
+      },
+    ])
+    const rateLimited = mockAdapter('rate-limited', [
+      new InferenceAdapterError({
+        adapterId: 'rate-limited',
+        httpStatus: 429,
+        kind: 'rate_limited',
+        reason: 'singleflight saturated',
+        retryable: true,
+      }),
+    ])
+    const healthy = mockAdapter('healthy', [undefined])
+    const registry = new InferenceProviderRegistry()
+    registry.register(providerFailure.adapter)
+    registry.register(emptyLane.adapter)
+    registry.register(rateLimited.adapter)
+    registry.register(healthy.adapter)
+    const events: Array<DispatchFailureTelemetryEvent> = []
+
+    const result = await runResult(
+      dispatchWithOverflowWithMetadata(
+        request(KHALA_MODEL_ID),
+        completeOp,
+        {
+          failureTelemetry: event => {
+            events.push(event)
+          },
+          plan: () => [
+            'provider-failure',
+            'empty-lane',
+            'rate-limited',
+            'healthy',
+          ],
+          registry,
+          sleep: noSleep,
+        },
+        nonEmptyAssistantValidator,
+      ),
+    )
+
+    expect(result._tag).toBe('Success')
+    expect(events).toEqual([
+      {
+        adapterId: 'provider-failure',
+        httpStatus: 500,
+        kind: 'provider_error',
+        retryable: true,
+        stage: 'adapter_error',
+      },
+      {
+        adapterId: 'empty-lane',
+        kind: 'empty_assistant_content',
+        retryable: true,
+        stage: 'validation_failure',
+      },
+      {
+        adapterId: 'rate-limited',
+        httpStatus: 429,
+        kind: 'rate_limited',
+        retryable: true,
+        stage: 'adapter_error',
+      },
+    ])
+  })
+
   test('503 overflows the same way (service overloaded)', async () => {
     const fireworks = mockAdapter(FIREWORKS_ADAPTER_ID, [
       err(FIREWORKS_ADAPTER_ID, true, 503),
@@ -703,7 +953,8 @@ describe('dispatchWithOverflow', () => {
       expect(result.success.route.primaryAdapterId).toBe(
         HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
       )
-      // GLM dead -> 120B 503 -> 20B serves it. Never a surfaced 5xx.
+      // GLM dead; OpenRouter is unregistered in this test, so the historical
+      // GPT-OSS fallbacks still serve it. Never a surfaced 5xx.
       expect(result.success.route.servedAdapterId).toBe(HYDRALISK_ADAPTER_ID)
       expect(result.success.value.value.servedModel).toBe(
         `served-by-${HYDRALISK_ADAPTER_ID}`,
@@ -713,6 +964,61 @@ describe('dispatchWithOverflow', () => {
     expect(gptOss120b.calls()).toBe(1)
     expect(gptOss20b.calls()).toBe(1)
     expect(gemini.calls()).toBe(0)
+  })
+
+  test('GLM-primary outage fails over to registered OpenRouter GLM-class fallback before GPT-OSS (#6313)', async () => {
+    const glmDead = new InferenceAdapterError({
+      adapterId: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+      kind: 'transport_error',
+      reason: 'retryable: hydralisk transport error (spot host preempted)',
+      retryable: true,
+    })
+    const glm = mockAdapter(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID, [glmDead])
+    const openRouter = mockAdapter(OPENROUTER_KHALA_FALLBACK_ADAPTER_ID, [
+      {
+        content: 'OpenRouter GLM fallback answer',
+        finishReason: 'stop',
+        servedModel: 'openrouter/glm-class',
+        usage: { completionTokens: 6, promptTokens: 4, totalTokens: 10 },
+      },
+    ])
+    const gptOss120b = mockAdapter(HYDRALISK_GPT_OSS_120B_ADAPTER_ID, [
+      undefined,
+    ])
+    const registry = new InferenceProviderRegistry()
+    registry.register(glm.adapter)
+    registry.register(openRouter.adapter)
+    registry.register(gptOss120b.adapter)
+
+    const result = await runResult(
+      dispatchWithOverflowWithMetadata(request(KHALA_MODEL_ID), completeOp, {
+        plan: model =>
+          selectAdapterPlanForKhalaBacking(
+            model,
+            KHALA_BACKING_HYDRALISK_GPT_OSS,
+          ),
+        registry,
+        sleep: noSleep,
+      }),
+    )
+
+    expect(result._tag).toBe('Success')
+    if (result._tag === 'Success') {
+      expect(result.success.route).toMatchObject({
+        fallbackReason: 'transport_error',
+        primaryAdapterId: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+        servedAdapterId: OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+      })
+      expect(result.success.value.value.content).toBe(
+        'OpenRouter GLM fallback answer',
+      )
+      expect(result.success.value.value.servedModel).toBe(
+        'openrouter/glm-class',
+      )
+    }
+    expect(glm.calls()).toBe(1)
+    expect(openRouter.calls()).toBe(1)
+    expect(gptOss120b.calls()).toBe(0)
   })
 
   test('a non-retryable failure surfaces immediately without overflow', async () => {

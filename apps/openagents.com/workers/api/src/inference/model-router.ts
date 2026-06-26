@@ -73,6 +73,8 @@ export const VERTEX_GEMINI_ADAPTER_ID = 'vertex-gemini'
 export const FIREWORKS_ADAPTER_ID = 'fireworks'
 export const HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID =
   'hydralisk-vllm-glm-5p2-reap-504b'
+export const OPENROUTER_KHALA_FALLBACK_ADAPTER_ID =
+  'openrouter-khala-glm-fallback'
 export const HYDRALISK_ADAPTER_ID = 'hydralisk-vllm'
 export const HYDRALISK_GPT_OSS_120B_ADAPTER_ID = 'hydralisk-vllm-gpt-oss-120b'
 export const PASSTHROUGH_ANTHROPIC_ADAPTER_ID = 'passthrough-anthropic'
@@ -107,6 +109,7 @@ const LANE_ADAPTER_IDS: Readonly<Record<RouterLane, ReadonlyArray<string>>> = {
   'vertex-gemini': [VERTEX_GEMINI_ADAPTER_ID],
   fireworks: [FIREWORKS_ADAPTER_ID],
   hydralisk: [HYDRALISK_ADAPTER_ID],
+  openrouter: [OPENROUTER_KHALA_FALLBACK_ADAPTER_ID],
   'openagents-network': [OPENAGENTS_NETWORK_ADAPTER_ID],
   passthrough: [
     PASSTHROUGH_ANTHROPIC_ADAPTER_ID,
@@ -130,6 +133,7 @@ const classForPricedLane = (lane: SupplyLane): ModelClass => {
       return 'gemini'
     case 'fireworks':
     case 'hydralisk':
+    case 'openrouter':
     case 'openagents-network':
       return 'open'
   }
@@ -253,6 +257,7 @@ const LANE_PLAN_BY_CLASS: Readonly<
 
 const KHALA_HYDRALISK_ADAPTER_PLAN: ReadonlyArray<string> = [
   HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+  OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
   HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
   HYDRALISK_ADAPTER_ID,
   VERTEX_GEMINI_ADAPTER_ID,
@@ -265,6 +270,7 @@ const KHALA_FIREWORKS_DEEPSEEK_ADAPTER_PLAN: ReadonlyArray<string> = [
 
 const KHALA_TOOL_SAFE_ADAPTER_PLAN: ReadonlyArray<string> = [
   FIREWORKS_ADAPTER_ID,
+  OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
   HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
   HYDRALISK_ADAPTER_ID,
   VERTEX_GEMINI_ADAPTER_ID,
@@ -404,6 +410,11 @@ export type DispatchSuccessValidator<A> = (
 export const acceptDispatchLane: DispatchLaneValidation = { _tag: 'accepted' }
 
 export type ProviderRoutingSignals = Readonly<{
+  // Coarse circuit-breaker state. `unhealthy` and `quarantined` remove the lane
+  // from eligibility just like a draining GLM replica; `degraded` remains
+  // eligible so a lane-wide breaker only trips when the control plane says the
+  // lane/quorum is no longer safe to serve.
+  laneHealth?: ProviderLaneHealth | undefined
   // Public-safe provider health score in [0, 1], where 1 means the lane is fully
   // healthy according to the injected control-plane snapshot. Undefined means
   // the gateway has no measured score for this lane.
@@ -411,11 +422,67 @@ export type ProviderRoutingSignals = Readonly<{
   // Coarse serving region exposed by the lane/control plane. Undefined means the
   // provider did not disclose a region to the gateway.
   region?: string | undefined
+  // Public-safe warm/cold state used only for bounded external hedging.
+  warmState?: ProviderWarmState | undefined
+  // Measured first-token latency for this lane/replica class. Undefined means
+  // hedging has no evidence and stays inert.
+  ttftP99Ms?: number | undefined
 }>
 
 export type ProviderRoutingSignalsOracle = (
   adapterId: string,
 ) => ProviderRoutingSignals | undefined
+
+export type ProviderLaneHealth =
+  | 'degraded'
+  | 'healthy'
+  | 'quarantined'
+  | 'unhealthy'
+
+export type ProviderWarmState = 'cold' | 'unknown' | 'warm'
+
+export type InferenceDemandClass =
+  | 'batch'
+  | 'external'
+  | 'internal_stress'
+  | 'keep_warm'
+
+export type DispatchRetryPolicy = Readonly<{
+  maxRetriesPerLane: number
+}>
+
+export type DispatchSloSnapshot = Readonly<{
+  breached: boolean
+  reason: string
+}>
+
+export type DispatchLoadSheddingPolicy = Readonly<{
+  demandClass: InferenceDemandClass
+  slo: DispatchSloSnapshot
+}>
+
+export type DispatchHedgingPolicy = Readonly<{
+  demandClass: InferenceDemandClass
+  enabled: boolean
+  ttftP99ThresholdMs: number
+}>
+
+export type DispatchFailureTelemetryEvent = Readonly<{
+  adapterId: string
+  stage:
+    | 'adapter_error'
+    | 'health_quarantine'
+    | 'hedged'
+    | 'load_shed'
+    | 'validation_failure'
+  kind: string
+  retryable: boolean
+  httpStatus?: number | undefined
+}>
+
+export type DispatchFailureTelemetry = (
+  event: DispatchFailureTelemetryEvent,
+) => void
 
 export type DispatchDeps = Readonly<{
   registry: InferenceProviderRegistry
@@ -427,6 +494,18 @@ export type DispatchDeps = Readonly<{
   // Optional inert-by-default control-plane snapshot. When absent, dispatch
   // behavior is unchanged and receipts use honest not_measured sentinels.
   routingSignals?: ProviderRoutingSignalsOracle | undefined
+  // Optional typed same-lane retry. Defaults to zero retries, preserving the
+  // existing overflow-on-first-retryable-failure behavior.
+  retry?: DispatchRetryPolicy | undefined
+  // Optional SLO shedding. Only non-external demand can be shed; external demand
+  // continues through normal dispatch even when the SLO snapshot is breached.
+  shedding?: DispatchLoadSheddingPolicy | undefined
+  // Optional bounded hedge. When enabled for external demand, a quarantined or
+  // P99-breaching primary can be skipped once to a different warm eligible lane.
+  hedging?: DispatchHedgingPolicy | undefined
+  // Optional public-safe failure telemetry. The event shape carries counts and
+  // neutral classifiers only: never prompts, completions, URLs, IPs, or tokens.
+  failureTelemetry?: DispatchFailureTelemetry | undefined
 }>
 
 export type DispatchRouteMetadata = Readonly<{
@@ -459,6 +538,132 @@ const fallbackReasonFor = (error: InferenceAdapterError): string =>
     ? 'retryable_provider_error'
     : `http_${error.httpStatus}`)
 
+const isLaneHealthEligible = (
+  signals: ProviderRoutingSignals | undefined,
+): boolean =>
+  signals?.laneHealth !== 'quarantined' && signals?.laneHealth !== 'unhealthy'
+
+const shouldShedRequest = (
+  shedding: DispatchLoadSheddingPolicy | undefined,
+): boolean =>
+  shedding !== undefined &&
+  shedding.slo.breached &&
+  shedding.demandClass !== 'external'
+
+const shedError = (
+  shedding: DispatchLoadSheddingPolicy,
+): InferenceAdapterError =>
+  new InferenceAdapterError({
+    adapterId: 'router',
+    kind: `slo_shed_${shedding.demandClass}`,
+    reason: `request shed because SLO is breached: ${shedding.slo.reason}`,
+    retryable: true,
+  })
+
+const normalizedRetryCount = (
+  retry: DispatchRetryPolicy | undefined,
+): number => {
+  const value = retry?.maxRetriesPerLane
+  return value === undefined || !Number.isFinite(value) || value <= 0
+    ? 0
+    : Math.floor(value)
+}
+
+const recordFailureTelemetry = (
+  telemetry: DispatchFailureTelemetry | undefined,
+  event: DispatchFailureTelemetryEvent,
+): void => {
+  telemetry?.(event)
+}
+
+const telemetryForError = (
+  error: InferenceAdapterError,
+  stage: DispatchFailureTelemetryEvent['stage'],
+): DispatchFailureTelemetryEvent => ({
+  adapterId: error.adapterId,
+  httpStatus: error.httpStatus,
+  kind: fallbackReasonFor(error),
+  retryable: error.retryable,
+  stage,
+})
+
+const shouldHedgeToWarmLane = (
+  input: Readonly<{
+    hedging: DispatchHedgingPolicy | undefined
+    primarySignals: ProviderRoutingSignals | undefined
+    hedgeSignals: ProviderRoutingSignals | undefined
+  }>,
+): boolean => {
+  if (
+    input.hedging?.enabled !== true ||
+    input.hedging.demandClass !== 'external'
+  ) {
+    return false
+  }
+  const primaryTtft = input.primarySignals?.ttftP99Ms
+  return (
+    primaryTtft !== undefined &&
+    Number.isFinite(primaryTtft) &&
+    primaryTtft > input.hedging.ttftP99ThresholdMs &&
+    input.hedgeSignals?.warmState === 'warm' &&
+    isLaneHealthEligible(input.hedgeSignals)
+  )
+}
+
+const attemptAdapterWithRetry = <A>(
+  input: Readonly<{
+    adapter: InferenceProviderAdapter
+    request: InferenceRequest
+    operation: AdapterOperation<A>
+    retryCount: number
+    backoff: OverflowBackoff
+    sleep: (ms: number) => Effect.Effect<void>
+    failureTelemetry?: DispatchFailureTelemetry | undefined
+  }>,
+): Effect.Effect<
+  | Readonly<{ ok: true; value: A }>
+  | Readonly<{ error: InferenceAdapterError; ok: false }>,
+  never
+> =>
+  Effect.gen(function* () {
+    let latestError: InferenceAdapterError | undefined
+    for (let attempt = 0; attempt <= input.retryCount; attempt += 1) {
+      if (attempt > 0) {
+        yield* input.sleep(backoffDelayMs(input.backoff, attempt - 1))
+      }
+      const outcome = yield* input
+        .operation(input.adapter, input.request)
+        .pipe(
+          Effect.map(value => ({ ok: true as const, value })),
+          Effect.catch(error =>
+            Effect.succeed({ error, ok: false as const }),
+          ),
+        )
+      if (outcome.ok) {
+        return outcome
+      }
+      latestError = outcome.error
+      recordFailureTelemetry(
+        input.failureTelemetry,
+        telemetryForError(outcome.error, 'adapter_error'),
+      )
+      if (!outcome.error.retryable || attempt >= input.retryCount) {
+        return outcome
+      }
+    }
+    return {
+      error:
+        latestError ??
+        new InferenceAdapterError({
+          adapterId: input.adapter.id,
+          kind: 'upstream_error',
+          reason: 'provider lane retry exhausted without a terminal error',
+          retryable: true,
+        }),
+      ok: false as const,
+    }
+  })
+
 // Run an adapter operation across the model's lane plan with bounded-backoff
 // overflow. Lanes that are not registered (e.g. an absent partner secret) are
 // skipped. A retryable failure backs off and overflows to the next lane; a
@@ -474,12 +679,37 @@ export const dispatchWithOverflowWithMetadata = <A>(
     const planFor = deps.plan ?? selectAdapterPlan
     const backoff = deps.backoff ?? DEFAULT_OVERFLOW_BACKOFF
     const sleep = deps.sleep ?? Effect.sleep
+    const retryCount = normalizedRetryCount(deps.retry)
+
+    const shedding = deps.shedding
+    if (shouldShedRequest(shedding) && shedding !== undefined) {
+      const error = shedError(shedding)
+      recordFailureTelemetry(
+        deps.failureTelemetry,
+        telemetryForError(error, 'load_shed'),
+      )
+      return yield* Effect.fail(error)
+    }
 
     const adapterIds = planFor(request.model)
     // Resolve to the lanes that are actually registered (skip absent partners).
-    const adapters = adapterIds
-      .map(id => deps.registry.resolve(id))
-      .filter((a): a is InferenceProviderAdapter => a !== undefined)
+    const adapters = adapterIds.flatMap(id => {
+      const adapter = deps.registry.resolve(id)
+      if (adapter === undefined) {
+        return []
+      }
+      const signals = deps.routingSignals?.(id)
+      if (isLaneHealthEligible(signals)) {
+        return [adapter]
+      }
+      recordFailureTelemetry(deps.failureTelemetry, {
+        adapterId: id,
+        kind: signals?.laneHealth ?? 'unhealthy',
+        retryable: true,
+        stage: 'health_quarantine',
+      })
+      return []
+    })
 
     if (adapters.length === 0) {
       return yield* Effect.fail(
@@ -496,20 +726,45 @@ export const dispatchWithOverflowWithMetadata = <A>(
     let overflowCount = 0
     let fallbackReason: string | null = null
     let fallbackAdapterRouteMetadata: InferenceAdapterRouteMetadata | undefined
+    let startIndex = 0
     const primaryAdapterId = adapters[0]!.id
+    const primarySignals = deps.routingSignals?.(primaryAdapterId)
+    const hedgeAdapter = adapters[1]
+    if (
+      hedgeAdapter !== undefined &&
+      shouldHedgeToWarmLane({
+        hedgeSignals: deps.routingSignals?.(hedgeAdapter.id),
+        hedging: deps.hedging,
+        primarySignals,
+      })
+    ) {
+      startIndex = 1
+      fallbackReason = 'hedged_ttft_p99_breach'
+      recordFailureTelemetry(deps.failureTelemetry, {
+        adapterId: primaryAdapterId,
+        kind: 'hedged_ttft_p99_breach',
+        retryable: true,
+        stage: 'hedged',
+      })
+    }
 
-    for (let index = 0; index < adapters.length; index += 1) {
+    for (let index = startIndex; index < adapters.length; index += 1) {
       const adapter = adapters[index]!
       // Back off before an overflow attempt (never before the first attempt).
-      if (index > 0) {
+      if (index > startIndex) {
         yield* sleep(backoffDelayMs(backoff, overflowCount))
         overflowCount += 1
       }
 
-      const outcome = yield* operation(adapter, request).pipe(
-        Effect.map(value => ({ ok: true as const, value })),
-        Effect.catch(error => Effect.succeed({ error, ok: false as const })),
-      )
+      const outcome = yield* attemptAdapterWithRetry({
+        adapter,
+        backoff,
+        failureTelemetry: deps.failureTelemetry,
+        operation,
+        request,
+        retryCount,
+        sleep,
+      })
 
       if (outcome.ok) {
         const validation =
@@ -517,6 +772,10 @@ export const dispatchWithOverflowWithMetadata = <A>(
           acceptDispatchLane
         if (validation._tag === 'failed') {
           lastError = validation.error
+          recordFailureTelemetry(
+            deps.failureTelemetry,
+            telemetryForError(validation.error, 'validation_failure'),
+          )
           if (!validation.error.retryable) {
             return yield* Effect.fail(validation.error)
           }

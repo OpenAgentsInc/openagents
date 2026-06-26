@@ -92,6 +92,20 @@ session. The deeper smoke doc is
 ledger is `apps/openagents.com/INVARIANTS.md` under "Khala Coding Delegation
 Through Pylons".
 
+> **DO NOT clobber the owner's live Codex session.** NEVER run `codex login` /
+> `codex login --device-auth` (or `pylon auth codex`) against the **default
+> `~/.codex` home**. `codex login` CLEARS `~/.codex/auth.json` at flow-start, so
+> running it (or killing it mid-flow) against the default home **wipes the
+> owner's live `codex` session** and breaks their active work with
+> "access token could not be refreshed ... sign in again". When testing or
+> debugging Pylon auth / the codex device-login, ALWAYS isolate it to a throwaway
+> `CODEX_HOME` (e.g. `CODEX_HOME=$(mktemp -d) codex login --device-auth`). The
+> real `pylon auth codex` flow already uses isolated per-account homes
+> (`<pylon home>/accounts/codex/<ref>`) and must never write to `~/.codex`.
+> To inspect connected accounts, use `pylon accounts list` (human view: email +
+> last linked) or `pylon accounts list --json` (public-safe) — never re-run a
+> login to "check".
+
 Prerequisites:
 
 - The caller has a valid `OPENAGENTS_AGENT_TOKEN` in the environment. Never
@@ -105,6 +119,29 @@ Prerequisites:
 export PYLON_OPENAGENTS_BASE_URL="https://openagents.com"
 export PYLON="bun apps/pylon/src/index.ts"
 ```
+
+0. Confirm the linked Codex account inventory:
+
+```sh
+$PYLON accounts list --json
+```
+
+Expected output lists each configured Codex account with
+`readiness.state: "ready"` and `capability.pylon.local_codex` before you route
+work to it. Use this before parallel delegation and after every new
+`pylon auth codex` login. If a local wrapper exposes the same inventory command
+as `codex accounts list --json`, its JSON must be equivalent before you treat it
+as proof of connected capacity. For a specific account proof, run the refresh
+path explicitly:
+
+```sh
+$PYLON accounts usage --account "<codex account ref>" --refresh --json
+```
+
+That refresh consumes a minimal provider call and should return a
+`truth.localSession.usage` record for the selected account. It proves the local
+Codex login works, but it is not the Khala counter proof; still perform the
+delegation and `token_usage_events` checks below.
 
 1. Bring the owner Pylon online and publish fresh capacity:
 

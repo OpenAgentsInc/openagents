@@ -130,6 +130,7 @@ import {
   HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
   HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
   OPENAGENTS_NETWORK_ADAPTER_ID,
+  OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
   VERTEX_ANTHROPIC_ADAPTER_ID,
   VERTEX_GEMINI_ADAPTER_ID,
   classifyModel,
@@ -1280,6 +1281,8 @@ const supplyLaneForAdapterId = (adapterId: string): SupplyLane | undefined => {
     case HYDRALISK_ADAPTER_ID:
     case HYDRALISK_GPT_OSS_120B_ADAPTER_ID:
       return 'hydralisk'
+    case OPENROUTER_KHALA_FALLBACK_ADAPTER_ID:
+      return 'openrouter'
     case OPENAGENTS_NETWORK_ADAPTER_ID:
       return 'openagents-network'
     case VERTEX_ANTHROPIC_ADAPTER_ID:

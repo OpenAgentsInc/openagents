@@ -314,6 +314,12 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // under INFERENCE_GATEWAY_ENABLED, so this is only read when the adapter is
   // actually dispatched by routing (#5482).
   FIREWORKS_API_KEY?: string | undefined
+  // OpenRouter Khala fallback lane (#6313). Worker secret + operator-selected
+  // GLM-class OpenRouter model id. This lane is a hidden Khala fallback tier:
+  // neither the key nor the upstream model id is published in /v1/models.
+  OPENROUTER_API_KEY?: string | undefined
+  OPENROUTER_BASE_URL?: string | undefined
+  OPENROUTER_KHALA_FALLBACK_MODEL?: string | undefined
   // Operator-only backing selector for the single public Khala model. This is a
   // non-secret routing knob, not a public model selector; supported values are
   // bounded in model-serving-policy.ts. Absent defaults to the Hydralisk-owned

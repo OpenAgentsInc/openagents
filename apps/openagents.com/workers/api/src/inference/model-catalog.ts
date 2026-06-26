@@ -17,7 +17,11 @@
 // provenance). It moves no money and reveals no prompts, completions, or
 // credentials. The route handler (`handleModelsList`, models-routes.ts) injects
 // the `created` timestamp and serves this as the OpenAI `/v1/models` payload.
-
+import {
+  DEFAULT_FREE_TIER_QUOTA,
+  type FreeTierQuota,
+  decideFreeTierLane,
+} from './inference-free-tier-key'
 import {
   BASE_CREDIT_USD,
   CACHED_INPUT_FRACTION,
@@ -25,11 +29,6 @@ import {
   MODEL_PRICING_TABLE,
   type SupplyLane,
 } from './pricing'
-import {
-  DEFAULT_FREE_TIER_QUOTA,
-  type FreeTierQuota,
-  decideFreeTierLane,
-} from './inference-free-tier-key'
 
 // Human-legible provider label for each supply lane (the OpenAI `owned_by`
 // field). All lanes are served THROUGH OpenAgents, so the label names the
@@ -38,6 +37,7 @@ import {
 const LANE_OWNED_BY: Readonly<Record<SupplyLane, string>> = {
   fireworks: 'openagents/fireworks',
   hydralisk: 'openagents/hydralisk',
+  openrouter: 'openagents/openrouter',
   'openagents-network': 'openagents/serving-fabric',
   'vertex-anthropic': 'openagents/vertex-anthropic',
   'vertex-gemini': 'openagents/vertex-gemini',
@@ -111,8 +111,7 @@ const round = (value: number, decimals: number): number => {
   return Math.round(value * factor) / factor
 }
 
-const FREE_TIER_DISABLED_REASON =
-  'reason.inference_free_tier.disabled' as const
+const FREE_TIER_DISABLED_REASON = 'reason.inference_free_tier.disabled' as const
 
 const disabledFreeTier = (): PublishedModelFreeTier => ({
   eligible: false,

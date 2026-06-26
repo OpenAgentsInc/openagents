@@ -734,6 +734,75 @@ export async function collectPylonAccountsList(
   return projection
 }
 
+// Local-only (NOT public-safe) view of connected Codex accounts for the operator
+// CLI: reads each account home's auth.json for the ChatGPT email (id_token claim)
+// and when it was last linked/refreshed. Deliberately kept OUT of the public-safe
+// projection because it surfaces the owner's own account email (PII).
+export type PylonCodexAccountLocal = {
+  accountRef: string | null
+  home: string
+  email: string | null
+  lastLinkedAt: string | null
+  homeState: "present" | "missing"
+}
+
+const decodeCodexIdTokenEmail = (idToken: string): string | null => {
+  try {
+    const payload = idToken.split(".")[1]
+    if (payload === undefined) return null
+    const claims = JSON.parse(
+      Buffer.from(payload, "base64url").toString("utf8"),
+    ) as Record<string, unknown>
+    const profile = claims["https://api.openai.com/profile"]
+    const auth = claims["https://api.openai.com/auth"]
+    const candidates: unknown[] = [
+      claims.email,
+      typeof profile === "object" && profile !== null ? (profile as Record<string, unknown>).email : undefined,
+      typeof auth === "object" && auth !== null ? (auth as Record<string, unknown>).email : undefined,
+    ]
+    const email = candidates.find((value) => typeof value === "string" && value.includes("@"))
+    return typeof email === "string" ? email : null
+  } catch {
+    return null
+  }
+}
+
+export async function collectPylonCodexAccountsLocal(
+  summary: Pick<BootstrapSummary, "paths">,
+  options: { env?: Record<string, string | undefined> } = {},
+): Promise<PylonCodexAccountLocal[]> {
+  const env = options.env ?? (Bun.env as Record<string, string | undefined>)
+  const accounts: PylonCodexAccountLocal[] = []
+  for (const target of await discoverAccountTargets(summary, env)) {
+    if (target.provider !== "codex") continue
+    const authPath = join(target.home, "auth.json")
+    let email: string | null = null
+    let lastLinkedAt: string | null = null
+    let present = false
+    try {
+      const raw = JSON.parse(await readFile(authPath, "utf8")) as Record<string, unknown>
+      present = true
+      const tokens = typeof raw.tokens === "object" && raw.tokens !== null ? (raw.tokens as Record<string, unknown>) : {}
+      const idToken = tokens.id_token ?? raw.id_token
+      if (typeof idToken === "string") email = decodeCodexIdTokenEmail(idToken)
+      const lastRefresh = raw.last_refresh ?? tokens.last_refresh
+      lastLinkedAt = typeof lastRefresh === "string"
+        ? lastRefresh
+        : (await stat(authPath)).mtime.toISOString()
+    } catch {
+      // missing / unreadable home -> reported as not present
+    }
+    accounts.push({
+      accountRef: target.accountRef,
+      home: target.home,
+      email,
+      lastLinkedAt,
+      homeState: present ? "present" : "missing",
+    })
+  }
+  return accounts
+}
+
 function ageSeconds(observedAt: string | null, now: Date): number | null {
   if (!observedAt) return null
   const parsed = Date.parse(observedAt)

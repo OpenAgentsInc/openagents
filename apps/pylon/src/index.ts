@@ -99,6 +99,7 @@ import {
 } from "./auth.js"
 import {
   collectPylonAccountsList,
+  collectPylonCodexAccountsLocal,
   collectPylonAccountsUsage,
   parsePylonAccountsUsageArgs,
   resolvePylonAccountUsageRefreshTargets,
@@ -3074,6 +3075,13 @@ async function main() {
       })
       if (options.json) {
         process.stdout.write(`${JSON.stringify(projection, null, 2)}\n`)
+      } else {
+        const codexAccounts = await collectPylonCodexAccountsLocal(summary, { env: Bun.env })
+        const linked = codexAccounts.find((account) => account.accountRef === projection.accountRef)
+        const email = linked?.email ?? null
+        process.stdout.write(
+          `✓ Linked Codex account${email ? `: ${email}` : ""} (${projection.accountRef})\n`,
+        )
       }
       return
     } catch (error) {
@@ -3087,10 +3095,28 @@ async function main() {
     try {
       const command = args[1]
       if (command === "list") {
-        if (!args.includes("--json")) throw new Error("usage: pylon accounts list --json")
         const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
-        const projection = await collectPylonAccountsList(summary, { env: Bun.env })
-        process.stdout.write(`${JSON.stringify(projection, null, 2)}\n`)
+        if (args.includes("--json")) {
+          const projection = await collectPylonAccountsList(summary, { env: Bun.env })
+          process.stdout.write(`${JSON.stringify(projection, null, 2)}\n`)
+          return
+        }
+        // Human-readable view: connected Codex accounts with email + last linked.
+        const codex = await collectPylonCodexAccountsLocal(summary, { env: Bun.env })
+        const present = codex.filter((account) => account.homeState === "present")
+        if (present.length === 0) {
+          process.stdout.write("No connected Codex accounts.\n")
+          return
+        }
+        process.stdout.write(`Connected Codex accounts (${present.length}):\n`)
+        for (const account of present) {
+          const ref = account.accountRef ?? "(default)"
+          const email = account.email ?? "(email unavailable)"
+          const when = account.lastLinkedAt
+            ? new Date(account.lastLinkedAt).toLocaleString()
+            : "unknown"
+          process.stdout.write(`  ${ref.padEnd(14)} ${email.padEnd(34)} linked ${when}\n`)
+        }
         return
       }
       if (command === "usage") {
