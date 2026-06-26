@@ -412,4 +412,100 @@ describe("pylon khala requester API", () => {
       text: "cli delegated",
     })
   }, 15_000)
+
+  test("local CLI refuses codex_agent_task without fixture intent or complete workspace pins before gateway calls", async () => {
+    const requests: string[] = []
+    const server = Bun.serve({
+      port: 0,
+      fetch(request) {
+        requests.push(request.url)
+        return new Response("unexpected")
+      },
+    })
+    servers.push(server)
+
+    const result = await runPylonCli(
+      [
+        "khala",
+        "request",
+        "--prompt",
+        "Implement public issue #6349",
+        "--workflow",
+        "codex_agent_task",
+        "--pylon-ref",
+        "pylon.owner.codex",
+        "--repo",
+        "OpenAgentsInc/openagents",
+        "--json",
+      ],
+      {
+        OPENAGENTS_AGENT_TOKEN: "oa_agent_cli_test",
+        PYLON_OPENAGENTS_BASE_URL: `http://127.0.0.1:${server.port}`,
+      },
+    )
+
+    expect(result.timedOut).toBe(false)
+    expect(result.exitCode).not.toBe(0)
+    expect(requests).toHaveLength(0)
+    const output = `${result.stdout}\n${result.stderr}`
+    expect(output).toContain("requires explicit fixture intent")
+    expect(output).toContain("--commit")
+    expect(output).toContain("--verify")
+  }, 15_000)
+
+  test("local CLI preserves an explicit codex fixture smoke request without workspace pins", async () => {
+    const requests: Array<{ body: Record<string, unknown>; path: string }> = []
+    const server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url)
+        const body = JSON.parse(await request.text()) as Record<string, unknown>
+        requests.push({ body, path: url.pathname })
+        return new Response(sse("chatcmpl_fixture", "fixture delegated"), {
+          headers: {
+            "openagents-durable-stream-url": "/v1/chat/completions/durable/chatcmpl_fixture",
+          },
+        })
+      },
+    })
+    servers.push(server)
+
+    const result = await runPylonCli(
+      [
+        "khala",
+        "request",
+        "--prompt",
+        "Run the CLI fixture task",
+        "--workflow",
+        "codex_agent_task",
+        "--pylon-ref",
+        "pylon.owner.codex",
+        "--fixture",
+        "--json",
+      ],
+      {
+        OPENAGENTS_AGENT_TOKEN: "oa_agent_cli_test",
+        PYLON_OPENAGENTS_BASE_URL: `http://127.0.0.1:${server.port}`,
+      },
+    )
+
+    expect(result.timedOut).toBe(false)
+    expect(result.exitCode).toBe(0)
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.path).toBe("/v1/chat/completions")
+    expect(requests[0]?.body).toMatchObject({
+      openagents: {
+        coding: { targetPylonRef: "pylon.owner.codex" },
+        workflowClass: "codex_agent_task",
+      },
+      workflowClass: "codex_agent_task",
+    })
+    expect(JSON.stringify(requests[0]?.body)).not.toContain("workspace")
+    const body = JSON.parse(result.stdout) as Record<string, unknown>
+    expect(body).toMatchObject({
+      durableRequestId: "chatcmpl_fixture",
+      ok: true,
+      text: "fixture delegated",
+    })
+  }, 15_000)
 })

@@ -195,6 +195,7 @@ $PYLON khala request \
   --prompt "Run the public-safe fixture task through my linked local Codex Pylon." \
   --workflow codex_agent_task \
   --pylon-ref "<owner pylon ref>" \
+  --fixture \
   --json
 ```
 

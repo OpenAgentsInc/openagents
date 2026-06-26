@@ -3751,8 +3751,14 @@ async function main() {
           optionString(options, "pylon-ref") ??
           optionString(options, "target-pylon-ref")
         const commit = optionString(options, "commit")
+        const repository = optionString(options, "repo")
+        const verificationCommand = optionString(options, "verify")
+        const explicitFixture =
+          optionFlag(options, "fixture") ||
+          optionFlag(options, "fixture-smoke") ||
+          optionFlag(options, "codex-fixture")
         if (!prompt) {
-          throw new Error("usage: pylon khala request --prompt <text> [--workflow cloud_coding_session|codex_agent_task] [--pylon-ref <pylonRef>] [--commit <sha> --repo <owner/repo> --verify <argv>] [--json]; workspace-backed coding requests require --verify")
+          throw new Error("usage: pylon khala request --prompt <text> [--workflow cloud_coding_session|codex_agent_task] [--pylon-ref <pylonRef>] [--fixture | --commit <sha> --repo <owner/repo> --verify <argv>] [--json]; public issue/repo codex_agent_task requests require complete workspace pins")
         }
         if (
           workflow !== undefined &&
@@ -3761,23 +3767,39 @@ async function main() {
         ) {
           throw new Error("khala request --workflow must be cloud_coding_session or codex_agent_task")
         }
+        const hasWorkspacePin = commit !== undefined || repository !== undefined || verificationCommand !== undefined
+        if (explicitFixture && hasWorkspacePin) {
+          throw new Error("khala request --fixture cannot be combined with --commit, --repo, or --verify")
+        }
+        if (workflow === "codex_agent_task" && !explicitFixture) {
+          const missingPins = [
+            commit === undefined ? "--commit" : null,
+            repository === undefined ? "--repo" : null,
+            verificationCommand === undefined ? "--verify" : null,
+          ].filter((pin): pin is string => pin !== null)
+          if (missingPins.length > 0) {
+            throw new Error(
+              `khala request --workflow codex_agent_task requires explicit fixture intent (--fixture) or complete workspace pins (--commit, --repo, --verify); missing ${missingPins.join(", ")}`,
+            )
+          }
+        }
         const result = await issuePylonKhalaRequest(networkOptions, {
           prompt,
           ...(targetPylonRef === undefined
             ? {}
             : { targetPylonRef }),
           ...(workflow === undefined ? {} : { workflow: workflow as PylonKhalaWorkflow }),
-          ...(commit === undefined
-            ? {}
-            : {
+          ...(hasWorkspacePin
+            ? {
                 objectiveSummary: prompt,
                 workspace: buildPylonKhalaGitCheckoutWorkspace({
                   branch: optionString(options, "branch"),
                   commit,
-                  repository: optionString(options, "repo"),
-                  verificationCommand: optionString(options, "verify"),
+                  repository,
+                  verificationCommand,
                 }),
-              }),
+              }
+            : {}),
         })
         emit(result)
         return

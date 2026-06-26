@@ -88,6 +88,34 @@ PYLON_OPENAGENTS_BASE_URL="https://openagents.com" \
 pylon assignment run-no-spend
 ```
 
+For the equivalent CLI request path, fixture smoke intent must be explicit:
+
+```sh
+OPENAGENTS_AGENT_TOKEN="<owner agent token>" \
+PYLON_OPENAGENTS_BASE_URL="https://openagents.com" \
+pylon khala request \
+  --prompt "Repair the public fixture through my linked Pylon." \
+  --workflow codex_agent_task \
+  --pylon-ref "<owner linked pylon ref>" \
+  --fixture \
+  --json
+```
+
+Public issue or repository work must use complete workspace pins instead of the
+fixture flag:
+
+```sh
+pylon khala request \
+  --prompt "Implement public issue #NNNN and run the named verification." \
+  --workflow codex_agent_task \
+  --pylon-ref "<owner linked pylon ref>" \
+  --repo OpenAgentsInc/openagents \
+  --branch main \
+  --commit "<current origin/main sha>" \
+  --verify "bun test apps/pylon/tests/khala-requester.test.ts" \
+  --json
+```
+
 Resume from the durable handle returned by `khala.request`:
 
 ```json
