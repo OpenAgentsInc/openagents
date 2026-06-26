@@ -8,6 +8,7 @@ const approvedExactRoutePaths = [
   '/api/khala/feedback',
   '/api/khala/tokens',
   '/api/operator/khala/feedback',
+  '/api/operator/khala/trace-review',
   '/api/public/business-signup',
   '/api/public/tassadar-run-summary',
   '/api/public/training/public-distributed-run-scale',

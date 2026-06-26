@@ -566,6 +566,10 @@ import {
   makeD1KhalaFeedbackStore,
 } from './khala-feedback-routes'
 import {
+  handleOperatorKhalaTraceReview,
+  makeD1KhalaTraceReviewStore,
+} from './khala-trace-review-routes'
+import {
   combineMcpCatalogs,
   khalaDurableRequestIsLinkedToPrincipal,
   khalaMcpAgentPrincipal,
@@ -9685,6 +9689,15 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         requireAdminApiToken: adminRequest =>
           requireAdminApiToken(adminRequest, env),
         store: makeD1KhalaFeedbackStore(openAgentsDatabase(env)),
+      }),
+  },
+  {
+    path: '/api/operator/khala/trace-review',
+    handler: (request, env) =>
+      handleOperatorKhalaTraceReview(request, {
+        requireAdminApiToken: adminRequest =>
+          requireAdminApiToken(adminRequest, env),
+        store: makeD1KhalaTraceReviewStore(openAgentsDatabase(env)),
       }),
   },
   {
