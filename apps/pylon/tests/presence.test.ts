@@ -182,6 +182,41 @@ async function runPresenceCli(input: {
   return { ...exit, stderr, stdout }
 }
 
+async function runProviderCli(input: {
+  args: string[]
+  env: Record<string, string>
+  timeoutMs?: number
+}): Promise<{ exitCode: number | null; stdout: string; stderr: string; timedOut: boolean }> {
+  const proc = Bun.spawn(["bun", INDEX, "provider", ...input.args], {
+    cwd: CWD,
+    env: {
+      ...process.env,
+      PYLON_DISABLE_DAEMON_ROUTING: "1",
+      PYLON_DISABLE_OPENCODE_STARTUP: "1",
+      PYLON_SPARK_BACKUP_DISABLED: "1",
+      ...input.env,
+    },
+    stderr: "pipe",
+    stdout: "pipe",
+  })
+  let timeout: ReturnType<typeof setTimeout> | undefined
+  const exit = await Promise.race([
+    proc.exited.then((exitCode) => ({ exitCode, timedOut: false as const })),
+    new Promise<{ exitCode: null; timedOut: true }>((resolve) => {
+      timeout = setTimeout(() => {
+        proc.kill()
+        resolve({ exitCode: null, timedOut: true })
+      }, input.timeoutMs ?? 10_000)
+    }),
+  ])
+  if (timeout !== undefined) clearTimeout(timeout)
+  const [stdout, stderr] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ])
+  return { ...exit, stderr, stdout }
+}
+
 describe("Pylon presence registration and heartbeat", () => {
   test("builds headless presence client options from OPENAGENTS_AGENT_TOKEN (#5122)", () => {
     const tokenEnv = {
@@ -600,6 +635,26 @@ describe("Pylon presence registration and heartbeat", () => {
     expect(() => assertPublicProjectionSafe({ heartbeat: { reason: "Use bearer abc123 to inspect status" } })).toThrow(
       "private-data-shaped",
     )
+  })
+
+  test("provider go-online JSON includes pylonRef and no local evidence path (#6341)", async () => {
+    await withTempHome(async (home) => {
+      const result = await runProviderCli({
+        args: ["go-online", "--json"],
+        env: { PYLON_HOME: home },
+        timeoutMs: 20_000,
+      })
+
+      expect(result.timedOut).toBe(false)
+      expect(result.exitCode).toBe(0)
+      const json = JSON.parse(result.stdout)
+      expect(json.ok).toBe(true)
+      expect(json.pylonRef).toMatch(/^pylon\.[a-f0-9]{20}$/)
+      expect(json.tassadar.evidencePath).toBeUndefined()
+      expect(json.tassadar.evidenceRef === null || typeof json.tassadar.evidenceRef === "string").toBe(true)
+      expect(result.stdout).not.toContain(home)
+      assertPublicProjectionSafe(json)
+    })
   })
 
   test("accepts post-start heartbeat diagnostics that name absent private material", () => {

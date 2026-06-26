@@ -4495,7 +4495,7 @@ async function main() {
         // only behind a passing self-test receipt — a real digest-pinned
         // execution on this device — never by configuration assertion.
         const tassadarDeclaration = await declareTassadarExecutorCapability()
-        const evidencePath = await writeTassadarCapabilityEvidence(
+        await writeTassadarCapabilityEvidence(
           state.paths.home,
           tassadarDeclaration,
         )
@@ -4524,8 +4524,9 @@ async function main() {
           ])],
         }
         await writeRuntimeState(state.paths, nextRuntime)
-        process.stdout.write(`${JSON.stringify({
+        const result = {
           ok: true,
+          pylonRef: state.identity.pylonRef,
           lifecycle: nextRuntime.lifecycle,
           capabilityRefs: nextRuntime.capabilityRefs,
           claudeAgent: {
@@ -4545,12 +4546,14 @@ async function main() {
             replayClassId: tassadarDeclaration.replayClassId,
             matrixRow: tassadarDeclaration.matrixRow,
             blockerRefs: tassadarDeclaration.blockerRefs,
-            evidencePath,
+            evidenceRef: tassadarDeclaration.selfTestReceiptRef,
           },
           relayUrls: relaysFromEnv(Bun.env),
           policy: policyFromEnv(Bun.env),
           stateRef: "state.public.pylon.nip90_provider.online",
-        }, null, 2)}\n`)
+        }
+        assertPublicProjectionSafe(result)
+        process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
         return
       }
       if (command === "approve-labor") {
