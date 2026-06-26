@@ -54,6 +54,20 @@ struct RootView: View {
                         onOpenSettings: { showSettings = true }
                     )
                     .id(conversation.id)
+                    // Empty-state greeting + coding suggestions for a fresh
+                    // chat. Overlaid above the chat surface so the composer
+                    // stays usable; tapping a suggestion sends the first user
+                    // turn and the live transcript replaces this overlay.
+                    .overlay {
+                        if isEmpty(conversation) {
+                            EmptyStateView(
+                                canSend: hasKey && !voice.state.isBusy,
+                                onSelect: { sendSuggestion($0) }
+                            )
+                            .transition(.opacity)
+                        }
+                    }
+                    .animation(.easeOut(duration: 0.2), value: isEmpty(conversation))
                 } else {
                     // Should not normally happen (we ensure one exists), but never
                     // black-screen: offer a way forward.
@@ -76,14 +90,21 @@ struct RootView: View {
                 }
                 ToolbarItem(placement: .principal) {
                     Button { showAbout = true } label: {
-                        HStack(spacing: 4) {
-                            Text("Khala").font(.headline)
+                        HStack(spacing: 5) {
+                            Text("Khala")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.primary)
                             Image(systemName: "chevron.down")
-                                .font(.caption2.weight(.semibold))
+                                .font(.caption2.weight(.bold))
                                 .foregroundStyle(.secondary)
                         }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .overlay(Capsule().stroke(.white.opacity(0.08), lineWidth: 1))
                     }
-                    .accessibilityLabel("Khala model")
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Khala model. About")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: newChat) {
@@ -120,6 +141,26 @@ struct RootView: View {
 
     private var activeConversation: Conversation? {
         selection ?? store.mostRecent
+    }
+
+    /// A conversation is "empty" (shows the empty state) when it has no
+    /// user/assistant turns yet and no in-flight request is being rendered.
+    private func isEmpty(_ conversation: Conversation) -> Bool {
+        let hasTurns = conversation.messages.contains { $0.role != .system }
+        let inFlight = voice.state.isBusy || !voice.response.isEmpty
+            || !voice.transcript.isEmpty || voice.requestError != nil
+        return !hasTurns && !inFlight
+    }
+
+    /// Start a conversation from a tapped empty-state suggestion. Sends the
+    /// canned prompt as the first user turn through the same Khala round-trip
+    /// the composer uses; the empty state then yields to the live transcript.
+    private func sendSuggestion(_ prompt: String) {
+        guard hasKey, !voice.state.isBusy, let conversation = activeConversation else { return }
+        let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        store.appendMessage(.user, content: trimmed, to: conversation)
+        voice.sendText(trimmed)
     }
 
     private func open(_ conversation: Conversation) {
