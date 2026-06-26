@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
 
 import {
+  KHALA_TOKENS_SERVED_DELTA_TAIL,
   KHALA_TOKENS_SERVED_SUMMARY_COLLECTION,
   KHALA_TOKENS_SERVED_SUMMARY_ENTITY_ID,
   KHALA_TOKENS_SERVED_SYNC_COLLECTION,
@@ -71,6 +72,21 @@ const makeStatement = (
         ) as T
       }
 
+      // The delta-scope trim watermark read (#6324): MAX(seq) of the delta
+      // collection rows currently stored for this scope.
+      if (query.includes('AS max_seq')) {
+        const [scope, collection] = values
+        const maxSeq = state.changes
+          .filter(
+            change =>
+              change.scope === String(scope) &&
+              change.collection === String(collection),
+          )
+          .reduce((max, change) => Math.max(max, change.seq), 0)
+
+        return JSON.parse(JSON.stringify({ max_seq: maxSeq })) as T
+      }
+
       return null
     },
     raw: async () => [] as never,
@@ -86,6 +102,22 @@ const makeStatement = (
           seq: Number(seq),
           value_json: valueJson === null ? null : String(valueJson),
         })
+      }
+
+      // The delta-scope trim DELETE (#6324): drop delta rows below the keep
+      // watermark for this scope + collection.
+      if (query.includes('DELETE FROM sync_changes')) {
+        const [scope, collection, keepFromSeq] = values
+        for (let index = state.changes.length - 1; index >= 0; index = index - 1) {
+          const change = state.changes[index] as StoredChange
+          if (
+            change.scope === String(scope) &&
+            change.collection === String(collection) &&
+            change.seq < Number(keepFromSeq)
+          ) {
+            state.changes.splice(index, 1)
+          }
+        }
       }
 
       return makeResult<T>()
@@ -234,6 +266,57 @@ describe('publishKhalaTokensServedDelta', () => {
 
     expect(db.changes).toHaveLength(0)
     expect(notifiedScopes).toHaveLength(0)
+  })
+
+  test('trims the per-completion delta scope to a bounded tail, never the summary (#6324)', async () => {
+    const db = makeMemoryD1(1_000)
+    const notifiedScopes: Array<string> = []
+    const env = { OPENAGENTS_DB: db, SYNC_ROOM: makeSyncRoom(notifiedScopes) }
+
+    const publishCount = KHALA_TOKENS_SERVED_DELTA_TAIL + 25
+    for (let index = 0; index < publishCount; index = index + 1) {
+      await publishKhalaTokensServedDelta(
+        env,
+        buildKhalaTokensServedDelta({
+          eventRef: `event.inference.served-tokens.chatcmpl-${index}`,
+          observedAt: '2026-06-24T00:00:00.000Z',
+          tokensServedDelta: 10,
+        }),
+      )
+    }
+
+    const deltaRows = db.changes.filter(
+      change => change.collection === KHALA_TOKENS_SERVED_SYNC_COLLECTION,
+    )
+    const summaryRows = db.changes.filter(
+      change => change.collection === KHALA_TOKENS_SERVED_SUMMARY_COLLECTION,
+    )
+
+    // Replay stays BOUNDED regardless of lifetime volume: at most ~the tail of
+    // delta rows survive (a few above the watermark from the most recent publishes).
+    expect(deltaRows.length).toBeLessThanOrEqual(KHALA_TOKENS_SERVED_DELTA_TAIL + 2)
+    expect(deltaRows.length).toBeGreaterThan(0)
+
+    // The summary is compacted to ONLY its latest row (the snapshot collapses
+    // puts by entity id, so superseded summary rows are dead weight). The latest
+    // authoritative running total the client seeds from always survives.
+    expect(summaryRows).toHaveLength(1)
+    expect(
+      summaryRows.every(
+        change => change.entity_id === KHALA_TOKENS_SERVED_SUMMARY_ENTITY_ID,
+      ),
+    ).toBe(true)
+
+    // Only the most-recent delta refs remain (oldest deltas were compacted away).
+    const survivingRefs = deltaRows.map(change => change.entity_id)
+    expect(
+      survivingRefs.includes('event.inference.served-tokens.chatcmpl-0'),
+    ).toBe(false)
+    expect(
+      survivingRefs.includes(
+        `event.inference.served-tokens.chatcmpl-${publishCount - 1}`,
+      ),
+    ).toBe(true)
   })
 
   test('a payload that smuggles secret-shaped material is rejected before write', async () => {

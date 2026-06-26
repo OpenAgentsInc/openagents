@@ -1349,6 +1349,16 @@ export const KhalaTokensServedStreamModel = ts('LoggedOutKhalaTokensServedStream
   connection: SettledFeedConnection,
   cursor: S.Number,
   appliedEventRefs: S.Array(S.String),
+  // The WebSocket must open at the SEEDED cursor, never at 0 (openagents #6324).
+  // The stream subscription opened at the init cursor 0 before the snapshot load
+  // resolved (and its keep-alive equivalence intentionally ignores the live
+  // cursor), so it replayed the ENTIRE per-completion delta history from seq 1 on
+  // every load — a flood that, combined with old-format pre-authoritative-total
+  // rows, the client could not apply past the seed (the frozen counter). We gate
+  // socket activation on this flag: the snapshot load (or its failure fallback)
+  // flips it true AFTER it has seeded `cursor`, so the socket opens once at the
+  // seeded cursor and delivers ONLY new deltas. Bounded replay; live increments.
+  snapshotLoaded: S.Boolean,
 })
 export type KhalaTokensServedStreamModel =
   typeof KhalaTokensServedStreamModel.Type
@@ -1358,6 +1368,7 @@ export const initKhalaTokensServedStreamModel = (): KhalaTokensServedStreamModel
     connection: 'idle',
     cursor: 0,
     appliedEventRefs: [],
+    snapshotLoaded: false,
   })
 
 // Live Gym / Harbor run-progress follow-along (#6261). The `/gym` route polls
