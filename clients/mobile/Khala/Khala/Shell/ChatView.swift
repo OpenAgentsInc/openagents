@@ -72,7 +72,7 @@ struct ChatView: View {
                     .padding(.vertical, 32)
             } else {
                 ForEach(persisted) { message in
-                    messageBubble(
+                    MessageBubble(
                         title: message.role == .user ? "You" : "Khala",
                         text: message.content,
                         outgoing: message.role == .user
@@ -82,10 +82,15 @@ struct ChatView: View {
                 // Live in-flight turn (not yet persisted).
                 if voice.state.isBusy || !voice.response.isEmpty || voice.requestError != nil {
                     if !voice.transcript.isEmpty, lastPersistedUserDiffers(voice.transcript) {
-                        messageBubble(title: "You", text: voice.transcript, outgoing: true)
+                        MessageBubble(title: "You", text: voice.transcript, outgoing: true)
                     }
                     if !voice.response.isEmpty {
-                        messageBubble(title: "Khala", text: voice.response, outgoing: false)
+                        MessageBubble(
+                            title: "Khala",
+                            text: voice.response,
+                            outgoing: false,
+                            isStreaming: voice.state.isBusy
+                        )
                     }
                     if let requestError = voice.requestError {
                         errorNotice(requestError)
@@ -119,29 +124,6 @@ struct ChatView: View {
                 onPressUp: { voice.pressUp() }
             )
             .padding(.bottom, 4)
-        }
-    }
-
-    private func messageBubble(title: String, text: String, outgoing: Bool) -> some View {
-        HStack {
-            if outgoing { Spacer(minLength: 34) }
-            VStack(alignment: .leading, spacing: 6) {
-                Text(title)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Text(text)
-                    .font(.body)
-                    .foregroundStyle(.primary)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(14)
-            .frame(maxWidth: 520, alignment: .leading)
-            .background(
-                outgoing ? AnyShapeStyle(.thinMaterial) : AnyShapeStyle(.regularMaterial),
-                in: RoundedRectangle(cornerRadius: 14)
-            )
-            if !outgoing { Spacer(minLength: 34) }
         }
     }
 
