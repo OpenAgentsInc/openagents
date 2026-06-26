@@ -188,14 +188,14 @@ describe('model classification', () => {
     }
   })
 
-  test('routes the single Khala model through GLM, OpenRouter, Gemini, then Fireworks on full outage', () => {
+  test('routes conversational Khala through Gemini, Fireworks, GLM, then OpenRouter', () => {
     for (const model of [KHALA_MODEL_SLUG, KHALA_MODEL_ID]) {
       expect(classifyModel(model)).toBe('open')
       expect(selectAdapterPlan(model)).toEqual([
-        HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
-        OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
         VERTEX_GEMINI_ADAPTER_ID,
         FIREWORKS_ADAPTER_ID,
+        HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+        OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
       ])
     }
   })
@@ -210,8 +210,8 @@ describe('model classification', () => {
       ).toEqual([
         FIREWORKS_ADAPTER_ID,
         HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
-        OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
         VERTEX_GEMINI_ADAPTER_ID,
+        OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
       ])
     }
     expect(
@@ -222,33 +222,33 @@ describe('model classification', () => {
     expect(selectAdapterPlan('deepseek-v4-flash')[0]).toBe(FIREWORKS_ADAPTER_ID)
   })
 
-  test('makes GLM-5.2-REAP-504B the PRIMARY Khala backing under the Hydralisk backing policy (#6259)', () => {
+  test('makes fast lanes primary for conversational Khala while keeping GPT-OSS out (#6259)', () => {
     for (const model of [KHALA_MODEL_SLUG, KHALA_MODEL_ID]) {
       const plan = selectAdapterPlanForKhalaBacking(
         model,
         KHALA_BACKING_HYDRALISK_GPT_OSS,
       )
-      // GLM is FIRST; OpenRouter, Vertex Gemini, then Fireworks are the
-      // graceful-degradation overflow. GPT-OSS is NOT in this plan.
-      expect(plan[0]).toBe(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID)
+      // Conversational Khala is fast-first. GLM remains in the overflow chain,
+      // and GPT-OSS is NOT in this plan.
+      expect(plan[0]).toBe(VERTEX_GEMINI_ADAPTER_ID)
       expect(plan).toEqual([
-        HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
-        OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
         VERTEX_GEMINI_ADAPTER_ID,
         FIREWORKS_ADAPTER_ID,
+        HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+        OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
       ])
       expect(plan).not.toContain(HYDRALISK_GPT_OSS_120B_ADAPTER_ID)
       expect(plan).not.toContain(HYDRALISK_ADAPTER_ID)
     }
-    // The committed prod backing value resolves to the Hydralisk (GLM-first) plan.
+    // The committed prod backing value resolves to the fast conversational plan.
     expect(
       makeKhalaBackedAdapterPlan(
         resolveKhalaBackingModel('hydralisk-glm-5.2-reap-504b'),
       )(KHALA_MODEL_ID)[0],
-    ).toBe(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID)
+    ).toBe(VERTEX_GEMINI_ADAPTER_ID)
   })
 
-  test('routes tool-bearing Khala requests off the GLM tool path while keeping typed fallbacks', () => {
+  test('routes tool-bearing Khala requests GLM/self-hosted first while keeping typed fallbacks', () => {
     expect(
       selectAdapterPlanForKhalaToolRequest(
         KHALA_MODEL_ID,
@@ -258,9 +258,10 @@ describe('model classification', () => {
         ),
       ),
     ).toEqual([
-      OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
-      VERTEX_GEMINI_ADAPTER_ID,
+      HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
       FIREWORKS_ADAPTER_ID,
+      VERTEX_GEMINI_ADAPTER_ID,
+      OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
     ])
   })
 
@@ -1124,11 +1125,9 @@ describe('dispatchWithOverflow', () => {
     expect(gemini.calls()).toBe(1)
   })
 
-  test('GLM-primary Spot-death/5xx skips GPT-OSS and falls through to Gemini when OpenRouter is absent (#6259)', async () => {
-    // GLM is primary but its (preemptible Spot) replica dies — a transport error
-    // and an upstream 5xx are both retryable lane errors, so dispatch must
-    // overflow down the real GLM-first Khala plan to an armed fallback and serve
-    // a successful completion rather than surfacing a 5xx to the client.
+  test('tool/agent Khala Spot-death/5xx skips GPT-OSS and falls through to Fireworks when GLM dies (#6259)', async () => {
+    // Tool/agent Khala is GLM/self-hosted first, but a retryable Hydralisk death
+    // must still overflow to an armed tool-capable fallback and never hit GPT-OSS.
     const glmDead = new InferenceAdapterError({
       adapterId: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
       kind: 'transport_error',
@@ -1140,20 +1139,22 @@ describe('dispatchWithOverflow', () => {
       err(HYDRALISK_GPT_OSS_120B_ADAPTER_ID, true, 503),
     ])
     const gptOss20b = mockAdapter(HYDRALISK_ADAPTER_ID, [undefined])
-    const gemini = mockAdapter(VERTEX_GEMINI_ADAPTER_ID, [undefined])
+    const fireworks = mockAdapter(FIREWORKS_ADAPTER_ID, [undefined])
     const registry = new InferenceProviderRegistry()
     registry.register(glm.adapter)
     registry.register(gptOss120b.adapter)
     registry.register(gptOss20b.adapter)
-    registry.register(gemini.adapter)
+    registry.register(fireworks.adapter)
 
     const result = await runResult(
       dispatchWithOverflowWithMetadata(request(KHALA_MODEL_ID), completeOp, {
-        // The REAL GLM-first Khala backing plan (KHALA_HYDRALISK_ADAPTER_PLAN).
         plan: model =>
-          selectAdapterPlanForKhalaBacking(
+          selectAdapterPlanForKhalaToolRequest(
             model,
-            KHALA_BACKING_HYDRALISK_GPT_OSS,
+            selectAdapterPlanForKhalaBacking(
+              model,
+              KHALA_BACKING_HYDRALISK_GPT_OSS,
+            ),
           ),
         registry,
         sleep: noSleep,
@@ -1165,20 +1166,18 @@ describe('dispatchWithOverflow', () => {
       expect(result.success.route.primaryAdapterId).toBe(
         HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
       )
-      // GLM dead and OpenRouter unregistered: the main Khala thread skips GPT-OSS
-      // and continues to Gemini. Never a surfaced 5xx.
-      expect(result.success.route.servedAdapterId).toBe(VERTEX_GEMINI_ADAPTER_ID)
+      expect(result.success.route.servedAdapterId).toBe(FIREWORKS_ADAPTER_ID)
       expect(result.success.value.value.servedModel).toBe(
-        `served-by-${VERTEX_GEMINI_ADAPTER_ID}`,
+        `served-by-${FIREWORKS_ADAPTER_ID}`,
       )
     }
     expect(glm.calls()).toBe(1)
     expect(gptOss120b.calls()).toBe(0)
     expect(gptOss20b.calls()).toBe(0)
-    expect(gemini.calls()).toBe(1)
+    expect(fireworks.calls()).toBe(1)
   })
 
-  test('GLM-primary outage fails over to OpenRouter before Gemini and keeps GPT-OSS out of the main Khala thread', async () => {
+  test('conversational Khala starts on Gemini before GLM/OpenRouter and keeps GPT-OSS out of the main thread', async () => {
     const glmDead = new InferenceAdapterError({
       adapterId: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
       kind: 'transport_error',
@@ -1194,11 +1193,18 @@ describe('dispatchWithOverflow', () => {
         usage: { completionTokens: 6, promptTokens: 4, totalTokens: 10 },
       },
     ])
+    const gemini = mockAdapter(VERTEX_GEMINI_ADAPTER_ID, [
+      {
+        content: 'Gemini warm overflow answer',
+        finishReason: 'stop',
+        servedModel: 'gemini-3.5-flash',
+        usage: { completionTokens: 5, promptTokens: 4, totalTokens: 9 },
+      },
+    ])
     const gptOss120b = mockAdapter(HYDRALISK_GPT_OSS_120B_ADAPTER_ID, [
       undefined,
     ])
     const gptOss20b = mockAdapter(HYDRALISK_ADAPTER_ID, [undefined])
-    const gemini = mockAdapter(VERTEX_GEMINI_ADAPTER_ID, [undefined])
     const registry = new InferenceProviderRegistry()
     registry.register(glm.adapter)
     registry.register(openRouter.adapter)
@@ -1221,35 +1227,37 @@ describe('dispatchWithOverflow', () => {
     expect(result._tag).toBe('Success')
     if (result._tag === 'Success') {
       expect(result.success.route).toMatchObject({
-        fallbackReason: 'transport_error',
-        primaryAdapterId: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
-        servedAdapterId: OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+        fallbackReason: null,
+        primaryAdapterId: VERTEX_GEMINI_ADAPTER_ID,
+        servedAdapterId: VERTEX_GEMINI_ADAPTER_ID,
       })
       expect(result.success.value.value.content).toBe(
-        'OpenRouter GLM fallback answer',
+        'Gemini warm overflow answer',
       )
       expect(result.success.value.value.servedModel).toBe(
-        'openrouter/glm-class',
+        'gemini-3.5-flash',
       )
     }
-    expect(glm.calls()).toBe(1)
-    expect(openRouter.calls()).toBe(1)
+    expect(glm.calls()).toBe(0)
+    expect(openRouter.calls()).toBe(0)
     expect(gptOss120b.calls()).toBe(0)
     expect(gptOss20b.calls()).toBe(0)
-    expect(gemini.calls()).toBe(0)
+    expect(gemini.calls()).toBe(1)
   })
 
-  test('Khala falls through Gemini to Fireworks only after GLM and OpenRouter also fail', async () => {
+  test('conversational Khala falls through Gemini and Fireworks before trying GLM/OpenRouter', async () => {
     const glm = mockAdapter(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID, [
       err(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID, true, 503),
-    ])
-    const openRouter = mockAdapter(OPENROUTER_KHALA_FALLBACK_ADAPTER_ID, [
-      err(OPENROUTER_KHALA_FALLBACK_ADAPTER_ID, true, 503),
     ])
     const gemini = mockAdapter(VERTEX_GEMINI_ADAPTER_ID, [
       err(VERTEX_GEMINI_ADAPTER_ID, true, 503),
     ])
-    const fireworks = mockAdapter(FIREWORKS_ADAPTER_ID, [undefined])
+    const fireworks = mockAdapter(FIREWORKS_ADAPTER_ID, [
+      err(FIREWORKS_ADAPTER_ID, true, 503),
+    ])
+    const openRouter = mockAdapter(OPENROUTER_KHALA_FALLBACK_ADAPTER_ID, [
+      undefined,
+    ])
     const registry = new InferenceProviderRegistry()
     registry.register(glm.adapter)
     registry.register(openRouter.adapter)
@@ -1271,16 +1279,18 @@ describe('dispatchWithOverflow', () => {
     expect(result._tag).toBe('Success')
     if (result._tag === 'Success') {
       expect(result.success.route.primaryAdapterId).toBe(
-        HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+        VERTEX_GEMINI_ADAPTER_ID,
       )
-      expect(result.success.route.servedAdapterId).toBe(FIREWORKS_ADAPTER_ID)
+      expect(result.success.route.servedAdapterId).toBe(
+        OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+      )
       expect(result.success.value.value.servedModel).toBe(
-        `served-by-${FIREWORKS_ADAPTER_ID}`,
+        `served-by-${OPENROUTER_KHALA_FALLBACK_ADAPTER_ID}`,
       )
     }
     expect(glm.calls()).toBe(1)
-    expect(openRouter.calls()).toBe(1)
     expect(gemini.calls()).toBe(1)
+    expect(openRouter.calls()).toBe(1)
     expect(fireworks.calls()).toBe(1)
   })
 

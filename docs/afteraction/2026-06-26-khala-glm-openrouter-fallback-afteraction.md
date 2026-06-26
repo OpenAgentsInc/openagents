@@ -4,12 +4,21 @@
 
 Fixed in the same change as this after-action.
 
-The public Khala route now uses this main fallback thread:
+The public Khala route now splits conversational and agent/tool routing:
+
+Conversational turns:
+
+1. Vertex Gemini
+2. Fireworks
+3. GLM-5.2 REAP 504B private Hydralisk G4 fleet
+4. OpenRouter hidden fallback, pinned in source to upstream model `openrouter/free`
+
+Agent/tool-bearing turns:
 
 1. GLM-5.2 REAP 504B private Hydralisk G4 fleet
-2. OpenRouter hidden fallback, pinned in source to upstream model `openrouter/free`
+2. Fireworks
 3. Vertex Gemini
-4. Fireworks
+4. OpenRouter hidden fallback, pinned in source to upstream model `openrouter/free`
 
 GPT-OSS is not in the main Khala fallback thread. Raw GPT-OSS model ids remain
 separate explicit supply-lane requests only.
@@ -53,12 +62,13 @@ Gemini, or Fireworks.
   `openrouter/free`.
 - Armed OpenRouter from `OPENROUTER_API_KEY` presence only; the legacy model env
   is ignored by registration.
-- Set the main Khala adapter plan to
-  `GLM -> OpenRouter -> Vertex Gemini -> Fireworks`.
+- Split Khala routing so conversational turns prioritize fast lanes
+  (`Gemini -> Fireworks -> GLM -> OpenRouter`) while agent/tool turns prioritize
+  self-hosted GLM (`GLM -> Fireworks -> Gemini -> OpenRouter`).
 - Rewrote router tests so GPT-OSS adapters registered in the test process are
   not called by the main Khala thread.
-- Added a regression that forces GLM, OpenRouter, and Gemini to fail and proves
-  Fireworks is the final fallback.
+- Added regressions proving conversational fast-first routing, agent/tool
+  GLM-first routing, GPT-OSS exclusion, and the final overflow legs.
 - Updated Worker config comments so the deployed environment documentation
   matches the code.
 - Shipped CLI v0.1.6 with restored streaming output and cleaner token counter
@@ -74,4 +84,3 @@ Required checks for this incident class:
   by a mutable model env.
 - Live smoke should verify `/api/khala/chat` streams and returns metadata with
   `primaryAdapterId` set to GLM and no GPT-OSS adapter id in the main route.
-

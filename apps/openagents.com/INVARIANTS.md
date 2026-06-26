@@ -335,13 +335,20 @@ This is the invariant ledger for `openagents`.
 
 ## Khala Backing Model Precedence
 
-- The intended primary backing for the public `openagents/khala` model is
-  GLM-5.2-REAP-504B on the owned Hydralisk pool. The committed production
-  config must keep
+- Conversational `openagents/khala` turns are latency-first. They must prefer
+  fast lanes for normal back-and-forth chat, ordered Vertex Gemini -> Fireworks
+  -> GLM-5.2-REAP-504B -> OpenRouter `openrouter/free`, so the first public
+  reply does not wait on a cold or saturated GLM pool.
+- Agentic/tool-bearing `openagents/khala` turns are capability/self-hosted
+  first. When the request declares tools/functions or carries tool-call
+  messages, the route must switch to GLM-5.2-REAP-504B -> Fireworks -> Vertex
+  Gemini -> OpenRouter `openrouter/free`.
+- The intended self-hosted backing for agent/tool Khala is GLM-5.2-REAP-504B on
+  the owned Hydralisk pool. The committed production config must keep
   `apps/openagents.com/workers/api/wrangler.jsonc`
   `KHALA_BACKING_MODEL=hydralisk-glm-5.2-reap-504b`, matching
   `docs/inference/2026-06-25-glm-5.2-reap-504b-serving-audit.md` and the
-  GLM-first operator directive.
+  GLM-first agent/tool directive.
 - The selector is binary, not a GLM-specific enum:
   `workers/api/src/inference/model-serving-policy.ts`
   `resolveKhalaBackingModel` maps `deepseek-v4-flash`,
@@ -349,10 +356,11 @@ This is the invariant ledger for `openagents`.
   `accounts/fireworks/models/deepseek-v4-flash` to the Fireworks-first Khala
   plan; every other value maps to the Hydralisk plan. For the current committed
   value, `workers/api/src/inference/model-router.ts`
-  `selectAdapterPlanForKhalaBacking` orders
-  GLM-5.2-REAP-504B -> OpenRouter `openrouter/free` -> Vertex Gemini ->
-  Fireworks. GPT-OSS is not in the main Khala fallback thread; raw GPT-OSS model
-  ids remain explicit named-model routes only.
+  `selectAdapterPlanForKhalaBacking` orders the conversational plan fast-first,
+  while `selectAdapterPlanForKhalaToolRequest` reorders the same public Khala
+  model to GLM/self-hosted-first for tools. GPT-OSS is not in either main Khala
+  fallback thread; raw GPT-OSS model ids remain explicit named-model routes
+  only.
 - DeepSeek-V4-Flash is not a fallback tier in the current GLM-first Khala
   overflow chain. It remains available through Fireworks open-model routing and
   as the alternate Fireworks-first Khala primary when the backing value is one

@@ -256,24 +256,25 @@ const LANE_PLAN_BY_CLASS: Readonly<
   unknown: ['passthrough'],
 }
 
-const KHALA_HYDRALISK_ADAPTER_PLAN: ReadonlyArray<string> = [
-  HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
-  OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+const KHALA_CONVERSATIONAL_ADAPTER_PLAN: ReadonlyArray<string> = [
   VERTEX_GEMINI_ADAPTER_ID,
   FIREWORKS_ADAPTER_ID,
+  HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+  OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
 ]
 
 const KHALA_FIREWORKS_DEEPSEEK_ADAPTER_PLAN: ReadonlyArray<string> = [
   FIREWORKS_ADAPTER_ID,
   HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
-  OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
   VERTEX_GEMINI_ADAPTER_ID,
+  OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
 ]
 
-const KHALA_TOOL_SAFE_ADAPTER_PLAN: ReadonlyArray<string> = [
-  OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
-  VERTEX_GEMINI_ADAPTER_ID,
+const KHALA_AGENT_TOOL_ADAPTER_PLAN: ReadonlyArray<string> = [
+  HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
   FIREWORKS_ADAPTER_ID,
+  VERTEX_GEMINI_ADAPTER_ID,
+  OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
 ]
 
 const dedupeAdapterPlan = (
@@ -297,7 +298,7 @@ export const selectAdapterPlanForKhalaBacking = (
   if (normalizedModel === KHALA_MODEL_ID) {
     return khalaBacking === KHALA_BACKING_FIREWORKS_DEEPSEEK_V4_FLASH
       ? KHALA_FIREWORKS_DEEPSEEK_ADAPTER_PLAN
-      : KHALA_HYDRALISK_ADAPTER_PLAN
+      : KHALA_CONVERSATIONAL_ADAPTER_PLAN
   }
   return selectAdapterPlan(model)
 }
@@ -311,9 +312,13 @@ export const selectAdapterPlanForKhalaToolRequest = (
     return basePlan
   }
   return dedupeAdapterPlan([
-    ...KHALA_TOOL_SAFE_ADAPTER_PLAN,
+    ...KHALA_AGENT_TOOL_ADAPTER_PLAN,
     ...basePlan.filter(
-      adapterId => adapterId !== HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+      adapterId =>
+        adapterId !== HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID &&
+        adapterId !== FIREWORKS_ADAPTER_ID &&
+        adapterId !== VERTEX_GEMINI_ADAPTER_ID &&
+        adapterId !== OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
     ),
   ])
 }
@@ -331,14 +336,14 @@ export const makeKhalaBackedAdapterPlan =
 export const selectAdapterPlan = (model: string): ReadonlyArray<string> => {
   const normalizedModel = normalizeKhalaModelId(model)
   if (normalizedModel === KHALA_MODEL_ID) {
-    // Khala-first: the Hydralisk owned lanes serve the collapsed public Khala
-    // model, with GLM-5.2 REAP first when that private G4 route is armed, then
-    // the hidden OpenRouter free fallback, Vertex Gemini, then Fireworks as the
-    // final graceful-degradation overflow so a full GLM/OpenRouter/Gemini outage
-    // degrades instead of failing the whole product with `inference_unavailable`.
+    // Conversational Khala is latency-first: start with fast Vertex Gemini,
+    // then Fireworks, then the owned GLM lane once warm, with OpenRouter free as
+    // the final hidden overflow. Tool/agentic Khala requests use
+    // `selectAdapterPlanForKhalaToolRequest`, which flips the plan to
+    // self-hosted GLM-first.
     // Explicit raw Hydralisk model ids below keep NO Gemini/Fireworks fallback —
     // they are deliberate supply-lane requests, not the generic Khala lane.
-    return KHALA_HYDRALISK_ADAPTER_PLAN
+    return KHALA_CONVERSATIONAL_ADAPTER_PLAN
   }
   if (normalizedModel === HYDRALISK_GLM_52_REAP_504B_MODEL_ID) {
     return [HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID]

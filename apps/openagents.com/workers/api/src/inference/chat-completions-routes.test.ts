@@ -3335,26 +3335,43 @@ describe('POST /v1/chat/completions', () => {
     expect(captured[0]?.requestedModel).toBe(KHALA_MODEL_ID)
   })
 
-  test('a tool-bearing Khala request avoids the broken GLM tool path and returns tool calls', async () => {
+  test('a tool-bearing Khala request prioritizes GLM/self-hosted and returns tool calls', async () => {
     const registry = new InferenceProviderRegistry()
     let glmCalls = 0
     let fireworksCalls = 0
     registry.register({
-      complete: () =>
+      complete: request =>
         Effect.sync(() => {
           glmCalls += 1
-        }).pipe(
-          Effect.flatMap(() =>
-            Effect.fail(
-              new InferenceAdapterError({
-                adapterId: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
-                kind: 'request_rejected',
-                reason: 'GLM tool parser failed',
-                retryable: false,
-              }),
-            ),
-          ),
-        ),
+          expect(request.passthroughParams.tools).toEqual([
+            {
+              function: {
+                description: 'Run a shell command.',
+                name: 'bash',
+                parameters: {
+                  additionalProperties: false,
+                  properties: { command: { type: 'string' } },
+                  required: ['command'],
+                  type: 'object',
+                },
+              },
+              type: 'function',
+            },
+          ])
+          return {
+            content: '',
+            finishReason: 'tool_calls',
+            servedModel: HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
+            toolCalls: [
+              {
+                function: { arguments: '{"command":"pwd"}', name: 'bash' },
+                id: 'call_bash',
+                type: 'function' as const,
+              },
+            ],
+            usage: { completionTokens: 3, promptTokens: 11, totalTokens: 14 },
+          }
+        }),
       id: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
       stream: () => Effect.sync(() => []),
     })
@@ -3420,7 +3437,7 @@ describe('POST /v1/chat/completions', () => {
         baseDeps({
           laneArming: hydraliskGlm52ReapReadyArming,
           lanePlan: selectAdapterPlan,
-          newId: () => 'chatcmpl-khala-tool-fireworks',
+          newId: () => 'chatcmpl-khala-tool-glm',
           registry,
         }),
       ),
@@ -3445,12 +3462,12 @@ describe('POST /v1/chat/completions', () => {
         type: 'function',
       },
     ])
-    expect(body.openagents?.worker).toBe(FIREWORKS_ADAPTER_ID)
-    expect(glmCalls).toBe(0)
-    expect(fireworksCalls).toBe(1)
+    expect(body.openagents?.worker).toBe(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID)
+    expect(glmCalls).toBe(1)
+    expect(fireworksCalls).toBe(0)
   })
 
-  test('a non-tool Khala request still prefers GLM over Fireworks when both are armed', async () => {
+  test('a non-tool conversational Khala request prefers fast Fireworks over GLM when Gemini is absent', async () => {
     const registry = new InferenceProviderRegistry()
     let glmCalls = 0
     let fireworksCalls = 0
@@ -3492,7 +3509,7 @@ describe('POST /v1/chat/completions', () => {
         baseDeps({
           laneArming: hydraliskGlm52ReapReadyArming,
           lanePlan: selectAdapterPlan,
-          newId: () => 'chatcmpl-khala-plain-glm',
+          newId: () => 'chatcmpl-khala-plain-fast',
           registry,
         }),
       ),
@@ -3503,10 +3520,10 @@ describe('POST /v1/chat/completions', () => {
       choices: ReadonlyArray<{ message: { content: string } }>
       openagents?: { worker: string }
     }
-    expect(body.choices[0]?.message.content).toBe('READY-GLM')
-    expect(body.openagents?.worker).toBe(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID)
-    expect(glmCalls).toBe(1)
-    expect(fireworksCalls).toBe(0)
+    expect(body.choices[0]?.message.content).toBe('READY-FIREWORKS')
+    expect(body.openagents?.worker).toBe(FIREWORKS_ADAPTER_ID)
+    expect(glmCalls).toBe(0)
+    expect(fireworksCalls).toBe(1)
   })
 
   test('a Fireworks-backed Khala request discloses the concrete Fireworks supply lane', async () => {
