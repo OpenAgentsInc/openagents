@@ -20,17 +20,19 @@
 	<string>1.0.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Khala records your voice so you can talk to it push-to-talk.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Khala turns your speech into text on-device to send to the Khala model.</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 	</array>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>Khala records your voice so you can talk to it push-to-talk.</string>
-	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Khala turns your speech into text on-device to send to the Khala model.</string>
 </dict>
 </plist>

@@ -34,7 +34,6 @@ clients/mobile/Khala/
     ├── Voice/
     │   ├── VoiceController.swift      # mic capture + orchestration
     │   ├── SpeechRecognizer.swift     # SFSpeechRecognizer (on-device STT)
-    │   └── SpeechSynthesizer.swift    # AVSpeechSynthesizer (optional TTS)
     ├── Net/KhalaClient.swift   # URLSession -> Khala API
     ├── Store/KeychainStore.swift
     └── Resources/Info.plist    # mic + speech usage strings, bundle id

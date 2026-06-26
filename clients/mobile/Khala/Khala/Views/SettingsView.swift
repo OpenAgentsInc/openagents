@@ -5,7 +5,6 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var hasKey: Bool
-    @Binding var speakResponses: Bool
 
     @State private var pastedKey: String = ""
     @State private var minting = false
@@ -60,10 +59,6 @@ struct SettingsView: View {
                         Text("Free key minted and stored.")
                             .foregroundStyle(.green).font(.footnote)
                     }
-                }
-
-                Section("Voice") {
-                    Toggle("Speak responses aloud", isOn: $speakResponses)
                 }
 
                 Section("Free-tier data sharing") {

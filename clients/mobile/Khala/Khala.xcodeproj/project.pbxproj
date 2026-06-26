@@ -13,11 +13,11 @@
 		A1000014000000000000F004 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000004000000000000F004 /* KeychainStore.swift */; };
 		A1000015000000000000F005 /* KhalaClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000005000000000000F005 /* KhalaClient.swift */; };
 		A1000016000000000000F006 /* SpeechRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000006000000000000F006 /* SpeechRecognizer.swift */; };
-		A1000017000000000000F007 /* SpeechSynthesizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000007000000000000F007 /* SpeechSynthesizer.swift */; };
 		A1000018000000000000F008 /* VoiceController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000008000000000000F008 /* VoiceController.swift */; };
 		A1000019000000000000F009 /* AnimatedBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000009000000000000F009 /* AnimatedBackground.swift */; };
 		A100001A000000000000F00A /* PushToTalkButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000A000000000000F00A /* PushToTalkButton.swift */; };
 		A100001B000000000000F00B /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000B000000000000F00B /* SettingsView.swift */; };
+		A100001C000000000000F00D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A100000D000000000000F00D /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -27,12 +27,12 @@
 		A1000004000000000000F004 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Store/KeychainStore.swift; sourceTree = "<group>"; };
 		A1000005000000000000F005 /* KhalaClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Net/KhalaClient.swift; sourceTree = "<group>"; };
 		A1000006000000000000F006 /* SpeechRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Voice/SpeechRecognizer.swift; sourceTree = "<group>"; };
-		A1000007000000000000F007 /* SpeechSynthesizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Voice/SpeechSynthesizer.swift; sourceTree = "<group>"; };
 		A1000008000000000000F008 /* VoiceController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Voice/VoiceController.swift; sourceTree = "<group>"; };
 		A1000009000000000000F009 /* AnimatedBackground.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/AnimatedBackground.swift; sourceTree = "<group>"; };
 		A100000A000000000000F00A /* PushToTalkButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/PushToTalkButton.swift; sourceTree = "<group>"; };
 		A100000B000000000000F00B /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/SettingsView.swift; sourceTree = "<group>"; };
 		A100000C000000000000F00C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Resources/Info.plist; sourceTree = "<group>"; };
+		A100000D000000000000F00D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A1000000000000000000FAPP /* Khala.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Khala.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -73,11 +73,11 @@
 				A100000A000000000000F00A /* PushToTalkButton.swift */,
 				A100000B000000000000F00B /* SettingsView.swift */,
 				A1000006000000000000F006 /* SpeechRecognizer.swift */,
-				A1000007000000000000F007 /* SpeechSynthesizer.swift */,
 				A1000008000000000000F008 /* VoiceController.swift */,
 				A1000005000000000000F005 /* KhalaClient.swift */,
 				A1000004000000000000F004 /* KeychainStore.swift */,
 				A100000C000000000000F00C /* Info.plist */,
+				A100000D000000000000F00D /* Assets.xcassets */,
 			);
 			path = Khala;
 			sourceTree = "<group>";
@@ -140,6 +140,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A100001C000000000000F00D /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -156,7 +157,6 @@
 				A1000014000000000000F004 /* KeychainStore.swift in Sources */,
 				A1000015000000000000F005 /* KhalaClient.swift in Sources */,
 				A1000016000000000000F006 /* SpeechRecognizer.swift in Sources */,
-				A1000017000000000000F007 /* SpeechSynthesizer.swift in Sources */,
 				A1000018000000000000F008 /* VoiceController.swift in Sources */,
 				A1000019000000000000F009 /* AnimatedBackground.swift in Sources */,
 				A100001A000000000000F00A /* PushToTalkButton.swift in Sources */,
@@ -215,6 +215,7 @@
 		A1000000000000000000TDBG /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -239,6 +240,7 @@
 		A1000000000000000000TREL /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;

@@ -63,7 +63,7 @@ struct ContentView: View {
             .padding()
         }
         .sheet(isPresented: $showSettings) {
-            SettingsView(hasKey: $hasKey, speakResponses: $voice.speakResponses)
+            SettingsView(hasKey: $hasKey)
         }
         .task {
             guard !permissionsRequested else { return }

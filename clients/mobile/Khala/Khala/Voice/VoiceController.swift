@@ -16,11 +16,9 @@ final class VoiceController: ObservableObject {
     @Published private(set) var response: String = ""
     /// Smoothed 0...1 microphone level for the animated background.
     @Published private(set) var level: Double = 0
-    @Published var speakResponses: Bool = true
 
     private let engine = AVAudioEngine()
     private let recognizer = SpeechRecognizer()
-    private let synthesizer = SpeechSynthesizer()
 
     /// Onyx default: ignore presses shorter than 200ms.
     private let minHoldSeconds: TimeInterval = 0.2
@@ -139,7 +137,6 @@ final class VoiceController: ObservableObject {
             let reply = try await KhalaClient.complete(prompt: prompt, apiKey: key)
             response = reply
             state = .idle
-            if speakResponses { synthesizer.speak(reply) }
         } catch {
             state = .error((error as? LocalizedError)?.errorDescription ?? "Request failed.")
         }
