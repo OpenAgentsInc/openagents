@@ -31,6 +31,13 @@ type HeartbeatRow = Readonly<{
 }>
 
 type FleetReadinessJson = Readonly<{
+  acceptance?: Readonly<{
+    allReplicaKeepWarmWatchdog?: Readonly<Record<string, unknown>>
+    capacityFloorOwnerDecision?: Readonly<Record<string, unknown>>
+    multiRegionAutoReplace?: Readonly<Record<string, unknown>>
+    quotaRequestTracking?: Readonly<Record<string, unknown>>
+    status?: string
+  }>
   counts: Readonly<Record<string, number>>
   replicas?: ReadonlyArray<Record<string, unknown>>
   status: string
@@ -95,10 +102,59 @@ describe('handleGlmFleetReadiness', () => {
     expect(response.headers.get('cache-control')).toBe('no-store')
     const text = await response.text()
     expect(text).toContain('replica.hydralisk.glm_52_reap_504b.primary')
+    expect(text).toContain('capacityFloorOwnerDecision')
     expect(text).toContain('unavailableReplicaCount')
     expect(text).not.toContain('private.example.test')
     expect(text).not.toContain('secret-primary')
     expect(text).not.toContain('PRIMARY_BASE_URL')
+  })
+
+  test('public route reports durable fleet acceptance blockers when proof evidence is absent', async () => {
+    const response = await Effect.runPromise(
+      handleGlmFleetReadiness(get(), {
+        enabled: true,
+        env,
+        readPersistedHeartbeatRecords: async () => [
+          {
+            keepWarmStatus: 'control_plane_only',
+            observedAt: '2026-06-26T14:00:00.000Z',
+            replicaId: 'primary',
+            warmState: 'unknown',
+            watchdogStatus: 'healthy',
+          },
+        ],
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as FleetReadinessJson
+    expect(body.acceptance).toMatchObject({
+      allReplicaKeepWarmWatchdog: {
+        blockerRefs: [
+          'blocker.hydralisk_glm_52_reap_504b.all_replica_keep_warm_watchdog_incomplete',
+        ],
+        coveredReplicaCount: 0,
+        missingReplicaRefs: [
+          'replica.hydralisk.glm_52_reap_504b.primary',
+        ],
+        status: 'blocked',
+      },
+      capacityFloorOwnerDecision: {
+        blockerRefs: [
+          'blocker.hydralisk_glm_52_reap_504b.capacity_floor_owner_decision_missing',
+        ],
+        decision: 'missing',
+        status: 'blocked',
+      },
+      multiRegionAutoReplace: {
+        status: 'blocked',
+      },
+      quotaRequestTracking: {
+        requestState: 'missing',
+        status: 'blocked',
+      },
+      status: 'blocked',
+    })
   })
 
   test('uses persisted heartbeat records when isolate memory has no heartbeat yet', async () => {

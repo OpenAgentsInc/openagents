@@ -331,6 +331,52 @@ export const GymThroughputRolloutProgressStatus = S.Literals([
 export type GymThroughputRolloutProgressStatus =
   typeof GymThroughputRolloutProgressStatus.Type
 
+export const GymThroughputRolloutMeasuredConfiguration = S.Struct({
+  maxNumSeqs: S.Number.check(S.isBetween({ minimum: 1, maximum: 4096 })),
+  prefixCachingEnabled: S.Boolean,
+  chunkedPrefillEnabled: S.Boolean,
+  speculativeDecodeEnabled: S.Boolean,
+  lowBatchSpeculativeDecoding: GymThroughputLowBatchSpeculativeDecodingPolicy,
+})
+export type GymThroughputRolloutMeasuredConfiguration =
+  typeof GymThroughputRolloutMeasuredConfiguration.Type
+
+export const GymThroughputRolloutMeasuredPoint = S.Struct({
+  configuration: GymThroughputRolloutMeasuredConfiguration,
+  aggregateTokensPerSecond: ThroughputMeasuredNumber,
+  interTokenLatencyP90Ms: ThroughputMeasuredNumber,
+})
+export type GymThroughputRolloutMeasuredPoint =
+  typeof GymThroughputRolloutMeasuredPoint.Type
+
+export const GymThroughputRolloutExpectedVsActualEvidence = S.Struct({
+  expectedAfter: GymThroughputRolloutMeasuredPoint,
+  actualAfter: GymThroughputRolloutMeasuredPoint,
+  expectedAggregateTpsLiftPercent: ThroughputMeasuredNumber,
+  actualAggregateTpsLiftPercent: ThroughputMeasuredNumber,
+  maxNumSeqsMatches: S.Boolean,
+  prefixCachingMatches: S.Boolean,
+  chunkedPrefillMatches: S.Boolean,
+  speculativeDecodingMatches: S.Boolean,
+})
+export type GymThroughputRolloutExpectedVsActualEvidence =
+  typeof GymThroughputRolloutExpectedVsActualEvidence.Type
+
+export const GymThroughputRolloutMeasurementEvidence = S.Struct({
+  schemaVersion: S.Literal(
+    'openagents.gym.throughput_rollout_measurement_evidence.v1',
+  ),
+  evidenceRef: S.String,
+  evidenceKind: S.Literal('measured_rollout'),
+  publicSafe: S.Literal(true),
+  before: GymThroughputRolloutMeasuredPoint,
+  after: GymThroughputRolloutMeasuredPoint,
+  expectedVsActual: GymThroughputRolloutExpectedVsActualEvidence,
+  publicEvidenceRefs: S.Array(S.String),
+})
+export type GymThroughputRolloutMeasurementEvidence =
+  typeof GymThroughputRolloutMeasurementEvidence.Type
+
 export const GymThroughputRolloutProgressEvidence = S.Struct({
   schemaVersion: S.Literal(
     'openagents.gym.throughput_rollout_progress_evidence.v1',
@@ -344,6 +390,9 @@ export const GymThroughputRolloutProgressEvidence = S.Struct({
   baselineAggregateTps: ThroughputMeasuredNumber,
   measuredAggregateTps: ThroughputMeasuredNumber,
   measuredThroughputLiftPercent: ThroughputMeasuredNumber,
+  rolloutMeasurementEvidence: S.optional(
+    GymThroughputRolloutMeasurementEvidence,
+  ),
 })
 export type GymThroughputRolloutProgressEvidence =
   typeof GymThroughputRolloutProgressEvidence.Type
@@ -352,6 +401,11 @@ export const GymThroughputRolloutReadoutBlocker = S.Literals([
   'rollout_run_blocked',
   'missing_progress_evidence',
   'owner_arm_ref_mismatch',
+  'missing_rollout_measurement_evidence',
+  'rollout_measurement_incomplete',
+  'rollout_measurement_selection_mismatch',
+  'expected_actual_evidence_mismatch',
+  'progress_measurement_mismatch',
   'measured_lift_missing',
   'measured_lift_not_positive',
 ])
@@ -368,6 +422,10 @@ export const GymThroughputRolloutReadout = S.Struct({
   status: S.Literals(['blocked', 'ready', 'measured']),
   rolloutRun: GymThroughputOwnerArmedRolloutRunArtifact,
   progressEvidence: S.Union([GymThroughputRolloutProgressEvidence, S.Null]),
+  rolloutMeasurementEvidence: S.Union([
+    GymThroughputRolloutMeasurementEvidence,
+    S.Null,
+  ]),
   measuredLiftPercent: ThroughputMeasuredNumber,
   blockers: S.Array(GymThroughputRolloutReadoutBlocker),
 })
@@ -781,10 +839,104 @@ export const buildGymThroughputOwnerArmedRolloutRunArtifact = (input: {
   }
 }
 
-const sameNullableRef = (
-  left: string | null,
-  right: string | null,
-): boolean => left === right
+const sameNullableRef = (left: string | null, right: string | null): boolean =>
+  left === right
+
+const measuredConfigurationFromSelection = (
+  selection: GymThroughputRolloutSelection,
+): GymThroughputRolloutMeasuredConfiguration => ({
+  maxNumSeqs: selection.maxNumSeqs,
+  prefixCachingEnabled: selection.prefixCachingEnabled,
+  chunkedPrefillEnabled: selection.chunkedPrefillEnabled,
+  speculativeDecodeEnabled:
+    selection.lowBatchSpeculativeDecoding.policy === 'enabled_below_batch',
+  lowBatchSpeculativeDecoding: selection.lowBatchSpeculativeDecoding,
+})
+
+const sameLowBatchSpeculativeDecoding = (
+  left: GymThroughputLowBatchSpeculativeDecodingPolicy,
+  right: GymThroughputLowBatchSpeculativeDecodingPolicy,
+): boolean =>
+  left.policy === right.policy &&
+  left.maxBatchSize === right.maxBatchSize &&
+  left.mode === right.mode
+
+const sameMeasuredConfiguration = (
+  left: GymThroughputRolloutMeasuredConfiguration,
+  right: GymThroughputRolloutMeasuredConfiguration,
+): boolean =>
+  left.maxNumSeqs === right.maxNumSeqs &&
+  left.prefixCachingEnabled === right.prefixCachingEnabled &&
+  left.chunkedPrefillEnabled === right.chunkedPrefillEnabled &&
+  left.speculativeDecodeEnabled === right.speculativeDecodeEnabled &&
+  sameLowBatchSpeculativeDecoding(
+    left.lowBatchSpeculativeDecoding,
+    right.lowBatchSpeculativeDecoding,
+  )
+
+const sameMeasuredNumber = (
+  left: MeasuredNumber,
+  right: MeasuredNumber,
+): boolean => {
+  if (left === NOT_MEASURED || right === NOT_MEASURED) {
+    return left === right
+  }
+  return Math.abs(left - right) < 0.000001
+}
+
+const rolloutMeasurementHasBeforeAfter = (
+  evidence: GymThroughputRolloutMeasurementEvidence,
+): boolean =>
+  isMeasured(evidence.before.aggregateTokensPerSecond) &&
+  isMeasured(evidence.before.interTokenLatencyP90Ms) &&
+  isMeasured(evidence.after.aggregateTokensPerSecond) &&
+  isMeasured(evidence.after.interTokenLatencyP90Ms)
+
+const rolloutMeasurementMatchesSelection = (
+  evidence: GymThroughputRolloutMeasurementEvidence,
+  selection: GymThroughputRolloutSelection,
+): boolean => {
+  const selectedConfiguration = measuredConfigurationFromSelection(selection)
+  return (
+    sameMeasuredConfiguration(
+      evidence.expectedVsActual.expectedAfter.configuration,
+      selectedConfiguration,
+    ) &&
+    sameMeasuredConfiguration(
+      evidence.after.configuration,
+      selectedConfiguration,
+    )
+  )
+}
+
+const rolloutExpectedActualMatches = (
+  evidence: GymThroughputRolloutMeasurementEvidence,
+): boolean =>
+  evidence.expectedVsActual.maxNumSeqsMatches &&
+  evidence.expectedVsActual.prefixCachingMatches &&
+  evidence.expectedVsActual.chunkedPrefillMatches &&
+  evidence.expectedVsActual.speculativeDecodingMatches &&
+  sameMeasuredConfiguration(
+    evidence.expectedVsActual.actualAfter.configuration,
+    evidence.after.configuration,
+  )
+
+const rolloutProgressMatchesMeasurement = (
+  progress: GymThroughputRolloutProgressEvidence,
+  evidence: GymThroughputRolloutMeasurementEvidence,
+): boolean =>
+  sameMeasuredNumber(
+    progress.baselineAggregateTps,
+    evidence.before.aggregateTokensPerSecond,
+  ) &&
+  sameMeasuredNumber(
+    progress.measuredAggregateTps,
+    evidence.after.aggregateTokensPerSecond,
+  ) &&
+  sameMeasuredNumber(
+    progress.measuredThroughputLiftPercent,
+    evidence.expectedVsActual.actualAggregateTpsLiftPercent,
+  )
 
 export const buildGymThroughputRolloutReadout = (input: {
   generatedAt: string
@@ -792,6 +944,8 @@ export const buildGymThroughputRolloutReadout = (input: {
   progressEvidence?: GymThroughputRolloutProgressEvidence | null
 }): GymThroughputRolloutReadout => {
   const progressEvidence = input.progressEvidence ?? null
+  const rolloutMeasurementEvidence =
+    progressEvidence?.rolloutMeasurementEvidence ?? null
   const blockers: Array<GymThroughputRolloutReadoutBlocker> = []
 
   if (input.rolloutRun.status !== 'ready_to_apply') {
@@ -811,6 +965,34 @@ export const buildGymThroughputRolloutReadout = (input: {
       blockers.push('measured_lift_missing')
     } else if (progressEvidence.measuredThroughputLiftPercent <= 0) {
       blockers.push('measured_lift_not_positive')
+    }
+    if (rolloutMeasurementEvidence === null) {
+      blockers.push('missing_rollout_measurement_evidence')
+    } else {
+      if (!rolloutMeasurementHasBeforeAfter(rolloutMeasurementEvidence)) {
+        blockers.push('rollout_measurement_incomplete')
+      }
+      if (
+        input.rolloutRun.recommendation.selection === null ||
+        !rolloutMeasurementMatchesSelection(
+          rolloutMeasurementEvidence,
+          input.rolloutRun.recommendation.selection,
+        )
+      ) {
+        blockers.push('rollout_measurement_selection_mismatch')
+      }
+      if (!rolloutExpectedActualMatches(rolloutMeasurementEvidence)) {
+        blockers.push('expected_actual_evidence_mismatch')
+      }
+      if (
+        progressEvidence !== null &&
+        !rolloutProgressMatchesMeasurement(
+          progressEvidence,
+          rolloutMeasurementEvidence,
+        )
+      ) {
+        blockers.push('progress_measurement_mismatch')
+      }
     }
   }
 
@@ -835,6 +1017,7 @@ export const buildGymThroughputRolloutReadout = (input: {
     status,
     rolloutRun: input.rolloutRun,
     progressEvidence,
+    rolloutMeasurementEvidence,
     measuredLiftPercent,
     blockers,
   }

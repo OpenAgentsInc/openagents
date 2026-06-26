@@ -1178,6 +1178,20 @@ const providerErrorResponse = (error: InferenceAdapterError) => {
       { headers: { 'retry-after': '1' }, status: 429 },
     )
   }
+  if (error.kind === 'internal_stress_yielded') {
+    return noStoreJsonResponse(
+      {
+        error: {
+          code: 'internal_stress_yielded',
+          message: error.reason,
+          retryable: error.retryable,
+          status: 'yielded',
+          type: 'internal_stress_yielded',
+        },
+      },
+      { headers: { 'retry-after': '1' }, status: 429 },
+    )
+  }
   if (error.kind === 'glm_pool_saturated') {
     const queueWaitMs = error.adapterRouteMetadata?.queueWaitMs
     return noStoreJsonResponse(
@@ -1243,6 +1257,7 @@ type OpenAgentsReceipt = Readonly<{
               evidence_ref: string
               reason: string
               target_demand_class: 'internal_stress'
+              target_outcome: 'preempted_yielded'
             }>
           | undefined
       }>
@@ -1452,6 +1467,8 @@ const servedTokensRequestMetrics = (
             input.routeMetadata.schedulerPreemption.reason,
           schedulerPreemptionTargetDemandClass:
             input.routeMetadata.schedulerPreemption.targetDemandClass,
+          schedulerPreemptionTargetOutcome:
+            input.routeMetadata.schedulerPreemption.targetOutcome,
         }),
   }
 }
@@ -1601,6 +1618,8 @@ const openAgentsReceiptForResult = (
             reason: input.routeMetadata.schedulerPreemption.reason,
             target_demand_class:
               input.routeMetadata.schedulerPreemption.targetDemandClass,
+            target_outcome:
+              input.routeMetadata.schedulerPreemption.targetOutcome,
           },
         }),
   } satisfies NonNullable<OpenAgentsReceipt['routing']>

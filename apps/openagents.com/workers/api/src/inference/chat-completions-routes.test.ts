@@ -2142,7 +2142,7 @@ describe('POST /v1/chat/completions', () => {
     expect(overflowCalls).toBe(0)
   })
 
-  test('sheds internal stress requests admitted through the route demand header', async () => {
+  test('yields internal stress requests admitted through the route demand header', async () => {
     let dispatched = false
     const registry = new InferenceProviderRegistry()
     registry.register({
@@ -2173,12 +2173,26 @@ describe('POST /v1/chat/completions', () => {
       ),
     )
 
-    expect(response.status).toBe(502)
+    expect(response.status).toBe(429)
+    expect(response.headers.get('retry-after')).toBe('1')
     expect(dispatched).toBe(false)
-    const body = (await response.json()) as { reason: string }
-    expect(body.reason).toBe(
-      'request shed because SLO is breached: external_ttft_p90',
-    )
+    const body = (await response.json()) as {
+      error?: {
+        code?: string
+        message?: string
+        retryable?: boolean
+        status?: string
+        type?: string
+      }
+    }
+    expect(body.error).toEqual({
+      code: 'internal_stress_yielded',
+      message:
+        'internal_stress yielded because external SLO is breached: external_ttft_p90',
+      retryable: true,
+      status: 'yielded',
+      type: 'internal_stress_yielded',
+    })
   })
 
   test('rejects internal_stress route admission when reserved external headroom is unavailable', async () => {
@@ -2261,6 +2275,40 @@ describe('POST /v1/chat/completions', () => {
     expect(dispatched).toBe(true)
   })
 
+  test('keeps external route demand admitted when reserved stress headroom is unavailable', async () => {
+    let dispatched = false
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      ...echoAdapter('primary'),
+      complete: request => {
+        dispatched = true
+        return stubEchoAdapter.complete(request)
+      },
+    })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(helloBody, {
+          headers: {
+            [INFERENCE_DEMAND_KIND_HEADER]: 'external',
+            [INFERENCE_DEMAND_SOURCE_HEADER]: 'public-api',
+          },
+        }),
+        baseDeps({
+          lanePlan: () => ['primary'],
+          registry,
+          routeAdmission: {
+            reason: 'glm_aggregate_external_headroom_zero',
+            reservedExternalHeadroomAvailable: false,
+          },
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(dispatched).toBe(true)
+  })
+
   test('preempts in-flight internal_stress before external dispatch when reserved headroom is unavailable', async () => {
     let dispatched = false
     let preemptCalls = 0
@@ -2296,6 +2344,7 @@ describe('POST /v1/chat/completions', () => {
                       'scheduler.preemption.internal_stress.yield.fixture',
                     reason: 'external_reserved_headroom_unavailable',
                     targetDemandClass: 'internal_stress' as const,
+                    targetOutcome: 'preempted_yielded' as const,
                   }
                 }),
               reason: 'glm_aggregate_external_headroom_zero',
@@ -2327,6 +2376,7 @@ describe('POST /v1/chat/completions', () => {
             evidence_ref?: string
             reason?: string
             target_demand_class?: string
+            target_outcome?: string
           }
         }
       }
@@ -2335,6 +2385,7 @@ describe('POST /v1/chat/completions', () => {
       evidence_ref: 'scheduler.preemption.internal_stress.yield.fixture',
       reason: 'external_reserved_headroom_unavailable',
       target_demand_class: 'internal_stress',
+      target_outcome: 'preempted_yielded',
     })
     expect(dispatched).toBe(true)
     expect(preemptCalls).toBe(1)
@@ -2349,6 +2400,7 @@ describe('POST /v1/chat/completions', () => {
           'scheduler.preemption.internal_stress.yield.fixture',
         schedulerPreemptionReason: 'external_reserved_headroom_unavailable',
         schedulerPreemptionTargetDemandClass: 'internal_stress',
+        schedulerPreemptionTargetOutcome: 'preempted_yielded',
       },
     })
   })

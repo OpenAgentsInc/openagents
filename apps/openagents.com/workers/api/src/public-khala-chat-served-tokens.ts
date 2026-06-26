@@ -1,4 +1,5 @@
 import { type WorkerBindings } from '@openagentsinc/sync-worker'
+import { Effect } from 'effect'
 
 import type { OnboardingStreamMetadata } from './autopilot-onboarding-program'
 import type { OpenAgentsWorkerConfigEnv } from './config'
@@ -77,7 +78,7 @@ const publicKhalaChatServedTokenMetrics = (
     : { queueWaitMs: adapterRouteMetadata.queueWaitMs }),
 })
 
-export const recordPublicKhalaChatServedTokens = async ({
+export const recordPublicKhalaChatServedTokens = ({
   env: rawEnv,
   metadata,
   traceRef,
@@ -85,7 +86,7 @@ export const recordPublicKhalaChatServedTokens = async ({
   env: unknown
   metadata: OnboardingStreamMetadata
   traceRef: string
-}): Promise<void> => {
+}): Effect.Effect<void, unknown> => {
   const usage = metadata.usage as InferenceUsage | undefined
   const servedAdapterId = metadata.servedAdapterId
   const servedModel = metadata.servedModel
@@ -96,16 +97,16 @@ export const recordPublicKhalaChatServedTokens = async ({
     servedModel === undefined ||
     requestedModel === undefined
   ) {
-    return
+    return Effect.sync(() => undefined)
   }
   const env = rawEnv as PublicKhalaChatServedTokenEnv | undefined
   if (env === undefined) {
-    return
+    return Effect.sync(() => undefined)
   }
   const inputTokens = Math.max(0, Math.trunc(usage.promptTokens))
   const outputTokens = Math.max(0, Math.trunc(usage.completionTokens))
   if (inputTokens + outputTokens <= 0) {
-    return
+    return Effect.sync(() => undefined)
   }
 
   const observedAt = currentIsoTimestamp()
@@ -128,90 +129,91 @@ export const recordPublicKhalaChatServedTokens = async ({
     servedModel,
     usage,
   })
+  return Effect.promise(async () => {
+    const result = await openAgentsDatabase(env)
+      .prepare(
+        `INSERT OR IGNORE INTO token_usage_events (
+          id,
+          idempotency_key,
+          observed_at,
+          ingested_at,
+          producer_system,
+          source_route,
+          actor_user_id,
+          actor_team_id,
+          account_ref,
+          anonymized_source_ref,
+          run_ref,
+          session_ref,
+          task_ref,
+          repository_ref,
+          provider,
+          model,
+          backend_profile,
+          input_tokens,
+          output_tokens,
+          reasoning_tokens,
+          cache_read_tokens,
+          cache_write_5m_tokens,
+          cache_write_1h_tokens,
+          total_tokens,
+          usage_truth,
+          cost_amount,
+          currency,
+          demand_kind,
+          demand_source,
+          demand_client,
+          leaderboard_eligible,
+          privacy_opt_out,
+          safe_metadata_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        body.eventId,
+        body.idempotencyKey,
+        body.observedAt,
+        currentIsoTimestamp(),
+        body.producerSystem,
+        body.sourceRoute,
+        null,
+        null,
+        body.actor?.accountRef ?? null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        body.provider ?? null,
+        body.model ?? null,
+        body.backendProfile ?? null,
+        body.tokenCounts.inputTokens,
+        body.tokenCounts.outputTokens,
+        body.tokenCounts.reasoningTokens,
+        body.tokenCounts.cacheReadTokens,
+        body.tokenCounts.cacheWrite5mTokens,
+        body.tokenCounts.cacheWrite1hTokens,
+        body.tokenCounts.totalTokens,
+        body.usageTruth,
+        body.cost?.amount ?? null,
+        body.cost?.currency ?? null,
+        body.demand?.demandKind ?? 'unlabeled',
+        body.demand?.demandSource ?? null,
+        body.demand?.demandClient ?? null,
+        body.privacy?.leaderboardEligible === false ? 0 : 1,
+        body.privacy?.privacyOptOut === true ? 1 : 0,
+        JSON.stringify(body.safeMetadata ?? {}),
+      )
+      .run()
 
-  const result = await openAgentsDatabase(env)
-    .prepare(
-      `INSERT OR IGNORE INTO token_usage_events (
-        id,
-        idempotency_key,
-        observed_at,
-        ingested_at,
-        producer_system,
-        source_route,
-        actor_user_id,
-        actor_team_id,
-        account_ref,
-        anonymized_source_ref,
-        run_ref,
-        session_ref,
-        task_ref,
-        repository_ref,
-        provider,
-        model,
-        backend_profile,
-        input_tokens,
-        output_tokens,
-        reasoning_tokens,
-        cache_read_tokens,
-        cache_write_5m_tokens,
-        cache_write_1h_tokens,
-        total_tokens,
-        usage_truth,
-        cost_amount,
-        currency,
-        demand_kind,
-        demand_source,
-        demand_client,
-        leaderboard_eligible,
-        privacy_opt_out,
-        safe_metadata_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .bind(
-      body.eventId,
-      body.idempotencyKey,
-      body.observedAt,
-      currentIsoTimestamp(),
-      body.producerSystem,
-      body.sourceRoute,
-      null,
-      null,
-      body.actor?.accountRef ?? null,
-      null,
-      null,
-      null,
-      null,
-      null,
-      body.provider ?? null,
-      body.model ?? null,
-      body.backendProfile ?? null,
-      body.tokenCounts.inputTokens,
-      body.tokenCounts.outputTokens,
-      body.tokenCounts.reasoningTokens,
-      body.tokenCounts.cacheReadTokens,
-      body.tokenCounts.cacheWrite5mTokens,
-      body.tokenCounts.cacheWrite1hTokens,
-      body.tokenCounts.totalTokens,
-      body.usageTruth,
-      body.cost?.amount ?? null,
-      body.cost?.currency ?? null,
-      body.demand?.demandKind ?? 'unlabeled',
-      body.demand?.demandSource ?? null,
-      body.demand?.demandClient ?? null,
-      body.privacy?.leaderboardEligible === false ? 0 : 1,
-      body.privacy?.privacyOptOut === true ? 1 : 0,
-      JSON.stringify(body.safeMetadata ?? {}),
-    )
-    .run()
-
-  if (Number(result.meta.changes ?? 0) > 0) {
-    await publishKhalaTokensServedDelta(
-      env,
-      buildKhalaTokensServedDelta({
-        eventRef: body.eventId,
-        observedAt,
-        tokensServedDelta: inputTokens + outputTokens,
-      }),
-    ).catch(() => undefined)
-  }
+    if (Number(result.meta.changes ?? 0) > 0) {
+      await publishKhalaTokensServedDelta(
+        env,
+        buildKhalaTokensServedDelta({
+          eventRef: body.eventId,
+          observedAt,
+          tokensServedDelta: inputTokens + outputTokens,
+        }),
+      ).catch(() => undefined)
+    }
+  })
 }

@@ -234,6 +234,127 @@ describe('projectGlmFleetReadiness', () => {
       replicas: [],
       status: 'unavailable',
     })
+    expect(projection.acceptance).toMatchObject({
+      allReplicaKeepWarmWatchdog: {
+        blockerRefs: [
+          'blocker.hydralisk_glm_52_reap_504b.all_replica_keep_warm_watchdog_no_required_replicas',
+        ],
+        status: 'blocked',
+      },
+      capacityFloorOwnerDecision: {
+        blockerRefs: [
+          'blocker.hydralisk_glm_52_reap_504b.capacity_floor_owner_decision_missing',
+        ],
+        decision: 'missing',
+        status: 'blocked',
+      },
+      multiRegionAutoReplace: {
+        blockerRefs: [
+          'blocker.hydralisk_glm_52_reap_504b.multi_region_auto_replace_evidence_missing',
+        ],
+        status: 'blocked',
+      },
+      quotaRequestTracking: {
+        blockerRefs: [
+          'blocker.hydralisk_glm_52_reap_504b.quota_request_tracking_missing',
+        ],
+        requestState: 'missing',
+        status: 'blocked',
+      },
+      status: 'blocked',
+    })
+  })
+
+  test('fails closed on missing durable fleet acceptance evidence', () => {
+    const projection = projectGlmFleetReadinessForEnv(readyEnv, replicaId =>
+      replicaId === 'warm-one' ? heartbeat(replicaId) : undefined,
+    )
+
+    expect(projection.acceptance).toMatchObject({
+      allReplicaKeepWarmWatchdog: {
+        coveredReplicaCount: 1,
+        missingReplicaRefs: [
+          'replica.hydralisk.glm_52_reap_504b.missing-five',
+          'replica.hydralisk.glm_52_reap_504b.ready-two',
+          'replica.hydralisk.glm_52_reap_504b.reclaimed-three',
+        ],
+        status: 'incomplete',
+        totalRequiredReplicaCount: 4,
+      },
+      capacityFloorOwnerDecision: {
+        decision: 'missing',
+        status: 'blocked',
+      },
+      multiRegionAutoReplace: {
+        status: 'blocked',
+      },
+      quotaRequestTracking: {
+        requestState: 'missing',
+        status: 'blocked',
+      },
+      status: 'blocked',
+    })
+  })
+
+  test('projects durable fleet acceptance dimensions only from public-safe evidence', () => {
+    const env = {
+      ...readyEnv,
+      HYDRALISK_GLM_52_REAP_504B_CAPACITY_FLOOR_DECISION:
+        'owner_accepted_all_spot',
+      HYDRALISK_GLM_52_REAP_504B_CAPACITY_FLOOR_DECISION_REF:
+        'decision.hydralisk.glm_52_reap_504b.capacity_floor.owner_20260626',
+      HYDRALISK_GLM_52_REAP_504B_MULTI_REGION_AUTO_REPLACE_REF:
+        'evidence.hydralisk.glm_52_reap_504b.multi_region_auto_replace.plan_20260626',
+      HYDRALISK_GLM_52_REAP_504B_QUOTA_REQUEST_REF:
+        'quota_request.gcp.us_central1.rtx_pro_6000.20260626',
+      HYDRALISK_GLM_52_REAP_504B_QUOTA_REQUEST_STATE: 'pending',
+    } as const
+
+    const projection = projectGlmFleetReadinessForEnv(env, replicaId =>
+      heartbeat(replicaId),
+    )
+
+    expect(projection.acceptance).toEqual({
+      allReplicaKeepWarmWatchdog: {
+        blockerRefs: [],
+        coveredReplicaCount: 4,
+        evidenceRefs: [
+          'replica.hydralisk.glm_52_reap_504b.missing-five',
+          'replica.hydralisk.glm_52_reap_504b.ready-two',
+          'replica.hydralisk.glm_52_reap_504b.reclaimed-three',
+          'replica.hydralisk.glm_52_reap_504b.warm-one',
+        ],
+        missingReplicaRefs: [],
+        status: 'complete',
+        totalRequiredReplicaCount: 4,
+      },
+      capacityFloorOwnerDecision: {
+        blockerRefs: [],
+        decision: 'owner_accepted_all_spot',
+        evidenceRefs: [
+          'decision.hydralisk.glm_52_reap_504b.capacity_floor.owner_20260626',
+        ],
+        status: 'complete',
+      },
+      multiRegionAutoReplace: {
+        blockerRefs: [],
+        evidenceRefs: [
+          'evidence.hydralisk.glm_52_reap_504b.multi_region_auto_replace.plan_20260626',
+        ],
+        status: 'complete',
+      },
+      quotaRequestTracking: {
+        blockerRefs: [
+          'blocker.hydralisk_glm_52_reap_504b.quota_request_pending',
+        ],
+        evidenceRefs: ['quota_request.gcp.us_central1.rtx_pro_6000.20260626'],
+        requestState: 'pending',
+        status: 'incomplete',
+      },
+      status: 'incomplete',
+    })
+    expect(JSON.stringify(projection)).not.toContain('private.example.test')
+    expect(JSON.stringify(projection)).not.toContain('secret-')
   })
 
   test('uses only stable replica refs from configured armings', () => {

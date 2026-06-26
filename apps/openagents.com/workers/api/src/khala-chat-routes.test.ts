@@ -136,12 +136,13 @@ describe('khala chat route', () => {
           },
         })),
       rateLimit: allowAll,
-      recordServedTokens: async input => {
-        recorded.push({
-          traceRef: input.traceRef,
-          totalTokens: input.metadata.usage?.totalTokens,
-        })
-      },
+      recordServedTokens: input =>
+        Effect.sync(() => {
+          recorded.push({
+            traceRef: input.traceRef,
+            totalTokens: input.metadata.usage?.totalTokens,
+          })
+        }),
     })
 
     const response = await run(

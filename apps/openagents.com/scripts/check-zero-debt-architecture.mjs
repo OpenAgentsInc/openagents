@@ -567,6 +567,13 @@ const runPromiseAllowlist = new Map([
   // streaming must flow incrementally). Named bridge; ratchet down if the
   // onboarding stream is expressed as an Effect Stream program end-to-end.
   ['workers/api/src/autopilot-onboarding-routes.ts', 1],
+  // Added 2026-06-26: the public Khala chat SSE route bridges
+  // the Effect-returning served-token recorder into the Web Streams
+  // `ReadableStream.start` controller callback once, after the upstream stream
+  // drains and terminal usage metadata is available. Same receipt-first
+  // streaming boundary as chat-completions and onboarding; ratchet down if the
+  // public Khala chat stream becomes an Effect Stream program end-to-end.
+  ['workers/api/src/khala-chat-routes.ts', 1],
 ])
 
 const runPromiseDetails = countByFile(sourceFiles, /Effect\.runPromise\(/g)

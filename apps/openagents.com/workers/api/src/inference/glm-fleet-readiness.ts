@@ -58,10 +58,57 @@ export type GlmFleetReadinessCounts = Readonly<{
   warmReplicaCount: number
 }>
 
+export type GlmFleetAcceptanceDimensionStatus =
+  | 'blocked'
+  | 'complete'
+  | 'incomplete'
+
+export type GlmFleetCapacityFloorDecision =
+  | 'missing'
+  | 'non_spot_floor_approved'
+  | 'owner_accepted_all_spot'
+
+export type GlmFleetQuotaRequestState =
+  | 'approved'
+  | 'missing'
+  | 'pending'
+  | 'rejected'
+  | 'unknown'
+
+export type GlmFleetReadinessAcceptance = Readonly<{
+  allReplicaKeepWarmWatchdog: Readonly<{
+    blockerRefs: ReadonlyArray<string>
+    coveredReplicaCount: number
+    evidenceRefs: ReadonlyArray<string>
+    missingReplicaRefs: ReadonlyArray<string>
+    status: GlmFleetAcceptanceDimensionStatus
+    totalRequiredReplicaCount: number
+  }>
+  capacityFloorOwnerDecision: Readonly<{
+    blockerRefs: ReadonlyArray<string>
+    decision: GlmFleetCapacityFloorDecision
+    evidenceRefs: ReadonlyArray<string>
+    status: GlmFleetAcceptanceDimensionStatus
+  }>
+  multiRegionAutoReplace: Readonly<{
+    blockerRefs: ReadonlyArray<string>
+    evidenceRefs: ReadonlyArray<string>
+    status: GlmFleetAcceptanceDimensionStatus
+  }>
+  quotaRequestTracking: Readonly<{
+    blockerRefs: ReadonlyArray<string>
+    evidenceRefs: ReadonlyArray<string>
+    requestState: GlmFleetQuotaRequestState
+    status: GlmFleetAcceptanceDimensionStatus
+  }>
+  status: GlmFleetAcceptanceDimensionStatus
+}>
+
 export type GlmFleetReadinessProjection = Readonly<{
   kind: 'glm_fleet_readiness'
   model: typeof HYDRALISK_GLM_52_REAP_504B_MODEL_ID
   status: GlmFleetReadinessStatus
+  acceptance: GlmFleetReadinessAcceptance
   configuredReplicaRefs: ReadonlyArray<string>
   replicas: ReadonlyArray<GlmFleetReadinessReplica>
   counts: GlmFleetReadinessCounts
@@ -89,9 +136,40 @@ export type GlmFleetReadinessHeartbeatRecord = Readonly<{
 
 const REPLICA_REF_PREFIX = 'replica.hydralisk.glm_52_reap_504b'
 const INTERNAL_CONFIGURATION_REPLICA_ID = 'configuration'
+const PUBLIC_SAFE_REF = /^[a-z0-9][a-z0-9._:-]{1,199}$/iu
+
+type GlmFleetReadinessEnv = SupplyLaneCredentialEnv &
+  Readonly<{
+    HYDRALISK_GLM_52_REAP_504B_CAPACITY_FLOOR_DECISION?: string | undefined
+    HYDRALISK_GLM_52_REAP_504B_CAPACITY_FLOOR_DECISION_REF?:
+      | string
+      | undefined
+    HYDRALISK_GLM_52_REAP_504B_MULTI_REGION_AUTO_REPLACE_REF?:
+      | string
+      | undefined
+    HYDRALISK_GLM_52_REAP_504B_QUOTA_REQUEST_REF?: string | undefined
+    HYDRALISK_GLM_52_REAP_504B_QUOTA_REQUEST_STATE?: string | undefined
+  }>
 
 const replicaRefFor = (replicaId: string): string =>
   `${REPLICA_REF_PREFIX}.${replicaId}`
+
+const isPublicSafeRef = (value: string | undefined): value is string => {
+  if (typeof value !== 'string' || value.trim() === '') {
+    return false
+  }
+  const trimmed = value.trim()
+  return (
+    trimmed === value &&
+    PUBLIC_SAFE_REF.test(trimmed) &&
+    !trimmed.includes('://') &&
+    !trimmed.toLowerCase().startsWith('sk-')
+  )
+}
+
+const publicSafeRefs = (
+  values: ReadonlyArray<string | undefined>,
+): ReadonlyArray<string> => values.filter(isPublicSafeRef)
 
 const replicaStatus = (
   arming: HydraliskGlm52ReplicaArming,
@@ -254,8 +332,190 @@ const fleetStatus = (
   return 'unavailable'
 }
 
+const normalizeCapacityFloorDecision = (
+  value: string | undefined,
+): GlmFleetCapacityFloorDecision => {
+  const normalized = value?.trim().toLowerCase()
+  if (
+    normalized === 'non_spot_floor_approved' ||
+    normalized === 'owner_accepted_all_spot'
+  ) {
+    return normalized
+  }
+  return 'missing'
+}
+
+const normalizeQuotaRequestState = (
+  value: string | undefined,
+): GlmFleetQuotaRequestState => {
+  const normalized = value?.trim().toLowerCase()
+  if (
+    normalized === 'approved' ||
+    normalized === 'pending' ||
+    normalized === 'rejected'
+  ) {
+    return normalized
+  }
+  return normalized === undefined || normalized === '' ? 'missing' : 'unknown'
+}
+
+const dimensionStatus = (
+  statuses: ReadonlyArray<GlmFleetAcceptanceDimensionStatus>,
+): GlmFleetAcceptanceDimensionStatus => {
+  if (statuses.some(status => status === 'blocked')) {
+    return 'blocked'
+  }
+  if (statuses.some(status => status === 'incomplete')) {
+    return 'incomplete'
+  }
+  return 'complete'
+}
+
+const acceptanceFor = (
+  input: Readonly<{
+    env: GlmFleetReadinessEnv
+    replicas: ReadonlyArray<GlmFleetReadinessReplica>
+  }>,
+): GlmFleetReadinessAcceptance => {
+  const capacityFloorEvidenceRefs = publicSafeRefs([
+    input.env.HYDRALISK_GLM_52_REAP_504B_CAPACITY_FLOOR_DECISION_REF,
+  ])
+  const capacityFloorDecision = normalizeCapacityFloorDecision(
+    input.env.HYDRALISK_GLM_52_REAP_504B_CAPACITY_FLOOR_DECISION,
+  )
+  const capacityFloorOwnerDecision =
+    capacityFloorDecision === 'missing' || capacityFloorEvidenceRefs.length === 0
+      ? {
+          blockerRefs: [
+            'blocker.hydralisk_glm_52_reap_504b.capacity_floor_owner_decision_missing',
+          ],
+          decision: capacityFloorDecision,
+          evidenceRefs: capacityFloorEvidenceRefs,
+          status: 'blocked' as const,
+        }
+      : {
+          blockerRefs: [],
+          decision: capacityFloorDecision,
+          evidenceRefs: capacityFloorEvidenceRefs,
+          status: 'complete' as const,
+        }
+
+  const requiredReplicas = input.replicas.filter(
+    replica => !replica.benchmarkReserved && !replica.draining,
+  )
+  const coveredReplicas = requiredReplicas.filter(
+    replica =>
+      replica.keepWarmStatus === 'completed' &&
+      replica.watchdogStatus === 'healthy',
+  )
+  const missingReplicaRefs = requiredReplicas
+    .filter(replica => {
+      return !coveredReplicas.some(
+        covered => covered.replicaRef === replica.replicaRef,
+      )
+    })
+    .map(replica => replica.replicaRef)
+  const allReplicaKeepWarmWatchdog: GlmFleetReadinessAcceptance['allReplicaKeepWarmWatchdog'] =
+    requiredReplicas.length === 0
+      ? {
+          blockerRefs: [
+            'blocker.hydralisk_glm_52_reap_504b.all_replica_keep_warm_watchdog_no_required_replicas',
+          ],
+          coveredReplicaCount: 0,
+          evidenceRefs: [],
+          missingReplicaRefs: [],
+          status: 'blocked' as const,
+          totalRequiredReplicaCount: 0,
+        }
+      : missingReplicaRefs.length === 0
+        ? {
+            blockerRefs: [],
+            coveredReplicaCount: coveredReplicas.length,
+            evidenceRefs: coveredReplicas.map(replica => replica.replicaRef),
+            missingReplicaRefs,
+            status: 'complete' as const,
+            totalRequiredReplicaCount: requiredReplicas.length,
+          }
+        : {
+            blockerRefs: [
+              'blocker.hydralisk_glm_52_reap_504b.all_replica_keep_warm_watchdog_incomplete',
+            ],
+            coveredReplicaCount: coveredReplicas.length,
+            evidenceRefs: coveredReplicas.map(replica => replica.replicaRef),
+            missingReplicaRefs,
+            status:
+              coveredReplicas.length === 0
+                ? ('blocked' as const)
+                : ('incomplete' as const),
+            totalRequiredReplicaCount: requiredReplicas.length,
+          }
+
+  const autoReplaceEvidenceRefs = publicSafeRefs([
+    input.env.HYDRALISK_GLM_52_REAP_504B_MULTI_REGION_AUTO_REPLACE_REF,
+  ])
+  const multiRegionAutoReplace =
+    autoReplaceEvidenceRefs.length === 0
+      ? {
+          blockerRefs: [
+            'blocker.hydralisk_glm_52_reap_504b.multi_region_auto_replace_evidence_missing',
+          ],
+          evidenceRefs: [],
+          status: 'blocked' as const,
+        }
+      : {
+          blockerRefs: [],
+          evidenceRefs: autoReplaceEvidenceRefs,
+          status: 'complete' as const,
+        }
+
+  const quotaRequestEvidenceRefs = publicSafeRefs([
+    input.env.HYDRALISK_GLM_52_REAP_504B_QUOTA_REQUEST_REF,
+  ])
+  const quotaRequestState = normalizeQuotaRequestState(
+    input.env.HYDRALISK_GLM_52_REAP_504B_QUOTA_REQUEST_STATE,
+  )
+  const quotaRequestTracking =
+    quotaRequestEvidenceRefs.length === 0 || quotaRequestState === 'missing'
+      ? {
+          blockerRefs: [
+            'blocker.hydralisk_glm_52_reap_504b.quota_request_tracking_missing',
+          ],
+          evidenceRefs: quotaRequestEvidenceRefs,
+          requestState: quotaRequestState,
+          status: 'blocked' as const,
+        }
+      : {
+          blockerRefs:
+            quotaRequestState === 'approved'
+              ? []
+              : [
+                  `blocker.hydralisk_glm_52_reap_504b.quota_request_${quotaRequestState}`,
+                ],
+          evidenceRefs: quotaRequestEvidenceRefs,
+          requestState: quotaRequestState,
+          status:
+            quotaRequestState === 'approved'
+              ? ('complete' as const)
+              : ('incomplete' as const),
+        }
+
+  return {
+    allReplicaKeepWarmWatchdog,
+    capacityFloorOwnerDecision,
+    multiRegionAutoReplace,
+    quotaRequestTracking,
+    status: dimensionStatus([
+      allReplicaKeepWarmWatchdog.status,
+      capacityFloorOwnerDecision.status,
+      multiRegionAutoReplace.status,
+      quotaRequestTracking.status,
+    ]),
+  }
+}
+
 export const projectGlmFleetReadiness = (
   input: Readonly<{
+    env?: GlmFleetReadinessEnv | undefined
     replicaArmings: ReadonlyArray<HydraliskGlm52ReplicaArming>
     latestHeartbeatRecord: (
       replicaId: string,
@@ -309,8 +569,10 @@ export const projectGlmFleetReadiness = (
     })
     .sort((left, right) => left.replicaRef.localeCompare(right.replicaRef))
   const counts = countReplicas(replicas)
+  const acceptance = acceptanceFor({ env: input.env ?? {}, replicas })
 
   return {
+    acceptance,
     configuredReplicaRefs: replicas.map(replica => replica.replicaRef),
     counts,
     kind: 'glm_fleet_readiness',
@@ -321,12 +583,13 @@ export const projectGlmFleetReadiness = (
 }
 
 export const projectGlmFleetReadinessForEnv = (
-  env: SupplyLaneCredentialEnv,
+  env: GlmFleetReadinessEnv,
   latestHeartbeatRecord: (
     replicaId: string,
   ) => GlmFleetReadinessHeartbeatRecord | undefined,
 ): GlmFleetReadinessProjection =>
   projectGlmFleetReadiness({
+    env,
     latestHeartbeatRecord,
     replicaArmings: resolveHydraliskGlm52Reap504bReplicaArmings(env),
   })

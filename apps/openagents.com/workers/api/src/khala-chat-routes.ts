@@ -18,7 +18,7 @@
 // is intentionally lightweight for a public demo; a durable cross-isolate limit
 // would need a Durable Object and is out of scope here.
 
-import { Effect, Match as M, Schema as S } from 'effect'
+import { Cause, Effect, Match as M, Schema as S } from 'effect'
 
 import {
   KhalaChatRequest,
@@ -70,7 +70,7 @@ export type KhalaChatRouteDependencies = Readonly<{
     env: unknown
     metadata: OnboardingStreamMetadata
     traceRef: string
-  }) => Promise<void>) | undefined
+  }) => Effect.Effect<void, unknown>) | undefined
 }>
 
 // A narrow, self-describing SSE wire (same shape as the onboarding stream):
@@ -181,7 +181,7 @@ const makeKhalaChatStreamBody = (
         env: unknown
         metadata: OnboardingStreamMetadata
         traceRef: string
-      }) => Promise<void>)
+      }) => Effect.Effect<void, unknown>)
     | undefined,
   env: unknown,
 ): ReadableStream<Uint8Array> => {
@@ -200,9 +200,26 @@ const makeKhalaChatStreamBody = (
         }
         const metadata = source.metadata?.()
         if (metadata !== undefined) {
-          await recordServedTokens?.({ env, metadata, traceRef: trace }).catch(
-            error => logKhalaChatFailure(trace, 'served_tokens_record', error),
-          )
+          const recordEffect = recordServedTokens?.({
+            env,
+            metadata,
+            traceRef: trace,
+          })
+          if (recordEffect !== undefined) {
+            await Effect.runPromise(
+              recordEffect.pipe(
+                Effect.catchCause(cause =>
+                  Effect.sync(() =>
+                    logKhalaChatFailure(
+                      trace,
+                      'served_tokens_record',
+                      Cause.pretty(cause),
+                    ),
+                  ),
+                ),
+              ),
+            )
+          }
           emit(sseFrame('meta', { ...metadata, traceRef: trace }))
         }
         emit(sseFrame('done', { done: true }))

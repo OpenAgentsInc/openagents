@@ -763,7 +763,7 @@ describe('dispatchWithOverflow', () => {
     ])
   })
 
-  test('SLO shedding drops internal stress while external demand still serves', async () => {
+  test('SLO shedding yields internal stress while external demand still serves', async () => {
     const internalLane = mockAdapter('internal-lane', [undefined])
     const externalLane = mockAdapter('external-lane', [undefined])
     const internalRegistry = new InferenceProviderRegistry()
@@ -796,7 +796,11 @@ describe('dispatchWithOverflow', () => {
 
     expect(internalResult._tag).toBe('Failure')
     if (internalResult._tag === 'Failure') {
-      expect(internalResult.failure.kind).toBe('slo_shed_internal_stress')
+      expect(internalResult.failure.kind).toBe('internal_stress_yielded')
+      expect(internalResult.failure.httpStatus).toBe(429)
+      expect(internalResult.failure.reason).toBe(
+        'internal_stress yielded because external SLO is breached: external_ttft_p90',
+      )
     }
     expect(externalResult._tag).toBe('Success')
     expect(internalLane.calls()).toBe(0)

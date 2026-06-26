@@ -77,6 +77,7 @@ export type ServedTokensRequestMetrics = Readonly<{
   schedulerPreemptionEvidenceRef?: string | undefined
   schedulerPreemptionReason?: string | undefined
   schedulerPreemptionTargetDemandClass?: 'internal_stress' | undefined
+  schedulerPreemptionTargetOutcome?: 'preempted_yielded' | undefined
   queueWaitMs?: number | undefined
   batchWaitMs?: number | undefined
   ttftMs?: number | undefined
@@ -260,6 +261,12 @@ const servedTokensSafeMetrics = (
       : {
           schedulerPreemptionTargetDemandClass:
             metrics.schedulerPreemptionTargetDemandClass,
+        }),
+    ...(metrics.schedulerPreemptionTargetOutcome === undefined
+      ? {}
+      : {
+          schedulerPreemptionTargetOutcome:
+            metrics.schedulerPreemptionTargetOutcome,
         }),
     ...(finiteNonNegative(metrics.queueWaitMs) === undefined
       ? {}

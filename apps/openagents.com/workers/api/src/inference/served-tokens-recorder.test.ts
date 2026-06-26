@@ -450,6 +450,51 @@ describe('served-tokens-recorder', () => {
     expect(serialized).not.toContain('hydralisk')
   })
 
+  test('scheduler preemption metadata does not widen the public counter delta', async () => {
+    const rows: Array<Row> = []
+    const published: Array<PublishedDelta> = []
+    const { recorder } = recordWithPublisher(rows, published)
+
+    await runRecorder(recorder, {
+      accountRef: 'agent:push-preemption',
+      adapterId: 'vertex-gemini',
+      requestId: 'chatcmpl-push-aggregate',
+      requestAttribution: {
+        demandKind: 'external',
+        demandSource: 'public-api',
+      },
+      requestMetrics: {
+        schedulerPreemptionEvidenceRef:
+          'scheduler.preemption.internal_stress.yield.fixture',
+        schedulerPreemptionReason: 'external_reserved_headroom_unavailable',
+        schedulerPreemptionTargetDemandClass: 'internal_stress',
+        schedulerPreemptionTargetOutcome: 'preempted_yielded',
+      },
+      requestedModel: 'openagents/khala',
+      servedModel: 'openagents/khala',
+      streamed: false,
+      usage: { completionTokens: 30, promptTokens: 20, totalTokens: 50 },
+    })
+
+    expect(rows).toHaveLength(1)
+    expect(JSON.parse(String(rows[0]!.safe_metadata_json))).toMatchObject({
+      schedulerPreemptionTargetDemandClass: 'internal_stress',
+      schedulerPreemptionTargetOutcome: 'preempted_yielded',
+    })
+    expect(published).toStrictEqual([
+      {
+        eventRef: servedTokensEventId('chatcmpl-push-aggregate'),
+        observedAt: fixedNow(),
+        tokensServedDelta: 50,
+      },
+    ])
+    const serialized = JSON.stringify(published[0])
+    expect(serialized).not.toContain('internal_stress')
+    expect(serialized).not.toContain('preempt')
+    expect(serialized).not.toContain('yield')
+    expect(serialized).not.toContain('public-api')
+  })
+
   test('a duplicate (no-op) insert does NOT publish a second delta', async () => {
     const rows: Array<Row> = []
     const published: Array<PublishedDelta> = []

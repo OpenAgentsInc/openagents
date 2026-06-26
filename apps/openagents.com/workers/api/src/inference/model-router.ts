@@ -519,6 +519,7 @@ export type DispatchSchedulerPreemptionEvidence = Readonly<{
   evidenceRef: string
   reason: string
   targetDemandClass: 'internal_stress'
+  targetOutcome: 'preempted_yielded'
 }>
 
 export type DispatchSchedulerPreemptionPolicy = Readonly<{
@@ -741,8 +742,13 @@ const shedError = (
 ): InferenceAdapterError =>
   new InferenceAdapterError({
     adapterId: 'router',
-    kind: `slo_shed_${shedding.demandClass}`,
-    reason: `request shed because SLO is breached: ${shedding.slo.reason}`,
+    ...(shedding.demandClass === 'internal_stress'
+      ? { httpStatus: 429, kind: 'internal_stress_yielded' }
+      : { kind: `slo_shed_${shedding.demandClass}` }),
+    reason:
+      shedding.demandClass === 'internal_stress'
+        ? `internal_stress yielded because external SLO is breached: ${shedding.slo.reason}`
+        : `request shed because SLO is breached: ${shedding.slo.reason}`,
     retryable: true,
   })
 
