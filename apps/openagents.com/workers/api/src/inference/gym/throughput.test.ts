@@ -536,6 +536,49 @@ describe('Gym throughput/concurrency report (#6244)', () => {
     expect(
       readout.rolloutMeasurementEvidence?.expectedVsActual.maxNumSeqsMatches,
     ).toBe(true)
+    expect(readout.evidenceChecklist.map(item => item.check)).toEqual([
+      'owner_arm_ref',
+      'live_max_num_seqs',
+      'prefix_cache',
+      'chunked_prefill',
+      'speculative_decode',
+      'before_tokens_per_second',
+      'after_tokens_per_second',
+      'before_inter_token_latency_p90',
+      'after_inter_token_latency_p90',
+      'expected_vs_actual_configuration',
+      'expected_vs_actual_lift',
+      'progress_totals_match_measurement',
+      'public_evidence_refs',
+    ])
+    expect(readout.evidenceChecklist.map(item => item.status)).toEqual(
+      Array.from({ length: 13 }, () => 'satisfied'),
+    )
+    expect(
+      readout.evidenceChecklist.find(item => item.check === 'live_max_num_seqs'),
+    ).toMatchObject({
+      expected: 4,
+      actual: 4,
+      publicEvidenceRefs: [
+        'report.gym.throughput.glm_52.vllm.issue_6320.measurement.001',
+        'receipt.gym.throughput.glm_52.vllm.issue_6320.before_after.001',
+      ],
+    })
+    expect(
+      readout.evidenceChecklist.find(
+        item => item.check === 'prefix_cache',
+      ),
+    ).toMatchObject({ expected: true, actual: true })
+    expect(
+      readout.evidenceChecklist.find(
+        item => item.check === 'chunked_prefill',
+      ),
+    ).toMatchObject({ expected: true, actual: true })
+    expect(
+      readout.evidenceChecklist.find(
+        item => item.check === 'speculative_decode',
+      ),
+    ).toMatchObject({ expected: true, actual: true })
     expect(readout.blockers).toEqual([])
     expect(JSON.stringify(readout)).not.toContain('https://')
     expect(JSON.stringify(readout)).not.toContain('/Users/')
@@ -594,17 +637,36 @@ describe('Gym throughput/concurrency report (#6244)', () => {
     expect(missingEvidence.status).toBe('blocked')
     expect(missingEvidence.measuredLiftPercent).toBe(NOT_MEASURED)
     expect(missingEvidence.blockers).toEqual(['missing_progress_evidence'])
+    expect(
+      missingEvidence.evidenceChecklist.find(
+        item => item.check === 'after_tokens_per_second',
+      ),
+    ).toMatchObject({ status: 'missing', expected: 171, actual: null })
     expect(missingMeasurement.status).toBe('blocked')
     expect(missingMeasurement.rolloutMeasurementEvidence).toBeNull()
     expect(missingMeasurement.blockers).toEqual([
       'missing_rollout_measurement_evidence',
     ])
+    expect(
+      missingMeasurement.evidenceChecklist.find(
+        item => item.check === 'live_max_num_seqs',
+      ),
+    ).toMatchObject({ status: 'missing', expected: 4, actual: null })
     expect(mismatchedOwnerArm.status).toBe('blocked')
     expect(mismatchedOwnerArm.blockers).toEqual([
       'owner_arm_ref_mismatch',
       'measured_lift_not_positive',
       'missing_rollout_measurement_evidence',
     ])
+    expect(
+      mismatchedOwnerArm.evidenceChecklist.find(
+        item => item.check === 'owner_arm_ref',
+      ),
+    ).toMatchObject({
+      status: 'mismatch',
+      expected: 'owner_arm.gym.glm_52.vllm_rollout.issue_6320.v1',
+      actual: 'owner_arm.gym.glm_52.vllm_rollout.other.v1',
+    })
   })
 
   test('fails closed when measured rollout evidence does not match the selected levers or progress totals', () => {
@@ -667,6 +729,18 @@ describe('Gym throughput/concurrency report (#6244)', () => {
       'expected_actual_evidence_mismatch',
       'progress_measurement_mismatch',
     ])
+    expect(
+      readout.evidenceChecklist.find(item => item.check === 'live_max_num_seqs'),
+    ).toMatchObject({ status: 'mismatch', expected: 4, actual: 8 })
+    expect(
+      readout.evidenceChecklist.find(
+        item => item.check === 'progress_totals_match_measurement',
+      ),
+    ).toMatchObject({
+      status: 'mismatch',
+      expected: 'measurement_totals',
+      actual: 'progress_totals',
+    })
   })
 
   test('keeps a decision-grade recommendation inert until the owner arm ref exists', () => {

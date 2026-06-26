@@ -412,6 +412,51 @@ export const GymThroughputRolloutReadoutBlocker = S.Literals([
 export type GymThroughputRolloutReadoutBlocker =
   typeof GymThroughputRolloutReadoutBlocker.Type
 
+export const GymThroughputRolloutEvidenceChecklistCheck = S.Literals([
+  'owner_arm_ref',
+  'live_max_num_seqs',
+  'prefix_cache',
+  'chunked_prefill',
+  'speculative_decode',
+  'before_tokens_per_second',
+  'after_tokens_per_second',
+  'before_inter_token_latency_p90',
+  'after_inter_token_latency_p90',
+  'expected_vs_actual_configuration',
+  'expected_vs_actual_lift',
+  'progress_totals_match_measurement',
+  'public_evidence_refs',
+])
+export type GymThroughputRolloutEvidenceChecklistCheck =
+  typeof GymThroughputRolloutEvidenceChecklistCheck.Type
+
+export const GymThroughputRolloutEvidenceChecklistStatus = S.Literals([
+  'satisfied',
+  'missing',
+  'mismatch',
+])
+export type GymThroughputRolloutEvidenceChecklistStatus =
+  typeof GymThroughputRolloutEvidenceChecklistStatus.Type
+
+const GymThroughputRolloutEvidenceChecklistValue = S.Union([
+  S.String,
+  S.Number,
+  S.Boolean,
+  S.Null,
+])
+export type GymThroughputRolloutEvidenceChecklistValue =
+  typeof GymThroughputRolloutEvidenceChecklistValue.Type
+
+export const GymThroughputRolloutEvidenceChecklistItem = S.Struct({
+  check: GymThroughputRolloutEvidenceChecklistCheck,
+  status: GymThroughputRolloutEvidenceChecklistStatus,
+  expected: GymThroughputRolloutEvidenceChecklistValue,
+  actual: GymThroughputRolloutEvidenceChecklistValue,
+  publicEvidenceRefs: S.Array(S.String),
+})
+export type GymThroughputRolloutEvidenceChecklistItem =
+  typeof GymThroughputRolloutEvidenceChecklistItem.Type
+
 export const GymThroughputRolloutReadout = S.Struct({
   schemaVersion: S.Literal('openagents.gym.throughput_rollout_readout.v1'),
   generatedAt: S.String,
@@ -426,6 +471,7 @@ export const GymThroughputRolloutReadout = S.Struct({
     GymThroughputRolloutMeasurementEvidence,
     S.Null,
   ]),
+  evidenceChecklist: S.Array(GymThroughputRolloutEvidenceChecklistItem),
   measuredLiftPercent: ThroughputMeasuredNumber,
   blockers: S.Array(GymThroughputRolloutReadoutBlocker),
 })
@@ -938,6 +984,186 @@ const rolloutProgressMatchesMeasurement = (
     evidence.expectedVsActual.actualAggregateTpsLiftPercent,
   )
 
+const checklistItem = (
+  input: Omit<
+    GymThroughputRolloutEvidenceChecklistItem,
+    'publicEvidenceRefs'
+  > & {
+    publicEvidenceRefs?: ReadonlyArray<string>
+  },
+): GymThroughputRolloutEvidenceChecklistItem => ({
+  ...input,
+  publicEvidenceRefs: [...(input.publicEvidenceRefs ?? [])],
+})
+
+const measuredChecklistStatus = (
+  value: MeasuredNumber | null,
+): GymThroughputRolloutEvidenceChecklistStatus =>
+  value !== null && isMeasured(value) ? 'satisfied' : 'missing'
+
+const matchedChecklistStatus = (
+  available: boolean,
+  matched: boolean,
+): GymThroughputRolloutEvidenceChecklistStatus =>
+  available ? (matched ? 'satisfied' : 'mismatch') : 'missing'
+
+const rolloutEvidenceChecklist = (input: {
+  rolloutRun: GymThroughputOwnerArmedRolloutRunArtifact
+  progressEvidence: GymThroughputRolloutProgressEvidence | null
+  rolloutMeasurementEvidence: GymThroughputRolloutMeasurementEvidence | null
+}): ReadonlyArray<GymThroughputRolloutEvidenceChecklistItem> => {
+  const selection = input.rolloutRun.recommendation.selection
+  const evidence = input.rolloutMeasurementEvidence
+  const progress = input.progressEvidence
+  const publicEvidenceRefs = [
+    ...new Set([
+      ...(progress?.publicEvidenceRefs ?? []),
+      ...(evidence?.publicEvidenceRefs ?? []),
+    ]),
+  ]
+  const expectedConfiguration =
+    selection === null ? null : measuredConfigurationFromSelection(selection)
+  const actualConfiguration = evidence?.expectedVsActual.actualAfter.configuration
+  const ownerArmRefStatus =
+    input.rolloutRun.ownerArmRef === null
+      ? 'missing'
+      : progress !== null &&
+          !sameNullableRef(progress.ownerArmRef, input.rolloutRun.ownerArmRef)
+        ? 'mismatch'
+        : 'satisfied'
+  const expectedLift =
+    evidence?.expectedVsActual.expectedAggregateTpsLiftPercent ?? null
+  const actualLift =
+    evidence?.expectedVsActual.actualAggregateTpsLiftPercent ?? null
+
+  return [
+    checklistItem({
+      check: 'owner_arm_ref',
+      status: ownerArmRefStatus,
+      expected: input.rolloutRun.ownerArmRef,
+      actual: progress?.ownerArmRef ?? null,
+      publicEvidenceRefs,
+    }),
+    checklistItem({
+      check: 'live_max_num_seqs',
+      status: matchedChecklistStatus(
+        evidence !== null,
+        evidence?.expectedVsActual.maxNumSeqsMatches ?? false,
+      ),
+      expected: expectedConfiguration?.maxNumSeqs ?? null,
+      actual: actualConfiguration?.maxNumSeqs ?? null,
+      publicEvidenceRefs,
+    }),
+    checklistItem({
+      check: 'prefix_cache',
+      status: matchedChecklistStatus(
+        evidence !== null,
+        evidence?.expectedVsActual.prefixCachingMatches ?? false,
+      ),
+      expected: expectedConfiguration?.prefixCachingEnabled ?? null,
+      actual: actualConfiguration?.prefixCachingEnabled ?? null,
+      publicEvidenceRefs,
+    }),
+    checklistItem({
+      check: 'chunked_prefill',
+      status: matchedChecklistStatus(
+        evidence !== null,
+        evidence?.expectedVsActual.chunkedPrefillMatches ?? false,
+      ),
+      expected: expectedConfiguration?.chunkedPrefillEnabled ?? null,
+      actual: actualConfiguration?.chunkedPrefillEnabled ?? null,
+      publicEvidenceRefs,
+    }),
+    checklistItem({
+      check: 'speculative_decode',
+      status: matchedChecklistStatus(
+        evidence !== null,
+        evidence?.expectedVsActual.speculativeDecodingMatches ?? false,
+      ),
+      expected: expectedConfiguration?.speculativeDecodeEnabled ?? null,
+      actual: actualConfiguration?.speculativeDecodeEnabled ?? null,
+      publicEvidenceRefs,
+    }),
+    checklistItem({
+      check: 'before_tokens_per_second',
+      status: measuredChecklistStatus(
+        evidence?.before.aggregateTokensPerSecond ?? null,
+      ),
+      expected: selection?.baselineAggregateTps ?? null,
+      actual: evidence?.before.aggregateTokensPerSecond ?? null,
+      publicEvidenceRefs,
+    }),
+    checklistItem({
+      check: 'after_tokens_per_second',
+      status: measuredChecklistStatus(
+        evidence?.after.aggregateTokensPerSecond ?? null,
+      ),
+      expected: selection?.aggregateTps ?? null,
+      actual: evidence?.after.aggregateTokensPerSecond ?? null,
+      publicEvidenceRefs,
+    }),
+    checklistItem({
+      check: 'before_inter_token_latency_p90',
+      status: measuredChecklistStatus(
+        evidence?.before.interTokenLatencyP90Ms ?? null,
+      ),
+      expected: selection?.baselineInterTokenLatencyP90Ms ?? null,
+      actual: evidence?.before.interTokenLatencyP90Ms ?? null,
+      publicEvidenceRefs,
+    }),
+    checklistItem({
+      check: 'after_inter_token_latency_p90',
+      status: measuredChecklistStatus(
+        evidence?.after.interTokenLatencyP90Ms ?? null,
+      ),
+      expected: selection?.interTokenLatencyP90Ms ?? null,
+      actual: evidence?.after.interTokenLatencyP90Ms ?? null,
+      publicEvidenceRefs,
+    }),
+    checklistItem({
+      check: 'expected_vs_actual_configuration',
+      status: matchedChecklistStatus(
+        evidence !== null,
+        evidence === null ? false : rolloutExpectedActualMatches(evidence),
+      ),
+      expected: expectedConfiguration === null ? null : 'selected_configuration',
+      actual: evidence === null ? null : 'measured_configuration',
+      publicEvidenceRefs,
+    }),
+    checklistItem({
+      check: 'expected_vs_actual_lift',
+      status:
+        expectedLift === null || actualLift === null
+          ? 'missing'
+          : sameMeasuredNumber(expectedLift, actualLift)
+            ? 'satisfied'
+            : 'mismatch',
+      expected: expectedLift,
+      actual: actualLift,
+      publicEvidenceRefs,
+    }),
+    checklistItem({
+      check: 'progress_totals_match_measurement',
+      status:
+        progress === null || evidence === null
+          ? 'missing'
+          : rolloutProgressMatchesMeasurement(progress, evidence)
+            ? 'satisfied'
+            : 'mismatch',
+      expected: evidence === null ? null : 'measurement_totals',
+      actual: progress === null ? null : 'progress_totals',
+      publicEvidenceRefs,
+    }),
+    checklistItem({
+      check: 'public_evidence_refs',
+      status: publicEvidenceRefs.length > 0 ? 'satisfied' : 'missing',
+      expected: 'public_refs',
+      actual: publicEvidenceRefs.length,
+      publicEvidenceRefs,
+    }),
+  ]
+}
+
 export const buildGymThroughputRolloutReadout = (input: {
   generatedAt: string
   rolloutRun: GymThroughputOwnerArmedRolloutRunArtifact
@@ -1006,6 +1232,11 @@ export const buildGymThroughputRolloutReadout = (input: {
       : progressEvidence?.status === 'measured_lift'
         ? 'measured'
         : 'ready'
+  const evidenceChecklist = rolloutEvidenceChecklist({
+    rolloutRun: input.rolloutRun,
+    progressEvidence,
+    rolloutMeasurementEvidence,
+  })
 
   return {
     schemaVersion: 'openagents.gym.throughput_rollout_readout.v1',
@@ -1018,6 +1249,7 @@ export const buildGymThroughputRolloutReadout = (input: {
     rolloutRun: input.rolloutRun,
     progressEvidence,
     rolloutMeasurementEvidence,
+    evidenceChecklist,
     measuredLiftPercent,
     blockers,
   }
