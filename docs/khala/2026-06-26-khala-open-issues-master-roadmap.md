@@ -45,6 +45,15 @@ This is the only phase that is an active outage. Do it first.
    empty — so GLM overflow degrades two dead hops before a serving lane. At minimum, in
    Phase 0: repair/replace the dead lanes + treat empty content as a failure so a 200 is
    never an empty/no-tool response. (Full #6319 program continues in Phase 1.)
+3. **#6323 — pilot `nvidia/GLM-5.2-NVFP4` (full 753B) on the 8× host ‖ parallel with #6310,
+   as a candidate FIX for it.** Our REAP-504B already uses the canonical `glm47`/`glm45`
+   parsers, so #6310 is the pruned checkpoint, not config. NVIDIA's full 753B NVFP4
+   (near-FP8, agentic-tool-use-validated, MIT) fits our one `g4-standard-384` 8× RTX PRO 6000
+   host (TP-8, ~381 GB weights in 768 GB). Deploy it there and test: does it tool-call clean
+   where REAP `provider_error`s? If yes, it's both the #6310 fix and the quality upgrade —
+   route the GLM coding lane to it, keep REAP-504B on the 4× hosts. (Eval:
+   `docs/inference/2026-06-26-nvidia-glm-5.2-nvfp4-evaluation.md`. Scaling the full model
+   beyond one host depends on 8× Blackwell quota/capacity — #6311.)
 
 ## Phase 1 — Reliable serving foundation
 
@@ -120,9 +129,12 @@ Make the fleet trustworthy before pushing load through it.
 
 ## The single sequence (flat list)
 
-`#6310` → `#6319(chain-repair)` → `#6319(full)` ‖ `#6313` ‖ `#6311` → `#6259/#6315` →
-`#6320` → `#6318` → `#6317` → `#6312` → `#6321` → `#6253` ‖ `#6307` → `#6308` ‖ `#6309` →
-`#6305` → `#6306` → close `#6303`.
+`#6310` ‖ `#6323`(full-model candidate fix) → `#6319(chain-repair)` → `#6319(full)` ‖
+`#6313` ‖ `#6311` → `#6259/#6315` → `#6320` → `#6318` → `#6317` → `#6312` → `#6321` →
+`#6253` ‖ `#6307` → `#6308` ‖ `#6309` → `#6305` → `#6306` → close `#6303`.
+
+(#6323 runs in parallel at the very front because it could *resolve* #6310 outright; if the
+full model tool-calls cleanly, it short-circuits much of the GLM tool-path debugging.)
 
 ## Dependency rationale (the non-obvious edges)
 
