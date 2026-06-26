@@ -21,6 +21,7 @@ import {
   withClaudeAgentCapability,
 } from "./claude-agent.js"
 import {
+  CODEX_AGENT_CAPABILITY_REF,
   loadCodexAgentConfig,
   probeCodexAgentReadiness,
   withCodexAgentCapability,
@@ -177,6 +178,9 @@ import {
 import { assertPublicProjectionSafe, ensurePylonLocalState, loadOrCreatePresenceState, projectPublicStatus, writePresenceState, writeRuntimeState, type PylonLocalState, type PylonPaths } from "./state.js"
 import {
   completePylonLink,
+  codingServiceCapacityFromRuntime,
+  codingServiceCapacityRefs,
+  localCodingServiceReadyCounts,
   presenceClientOptionsFromEnv,
   refreshPylonLink,
   registerPylon,
@@ -4567,11 +4571,25 @@ async function main() {
           ])],
         }
         await writeRuntimeState(state.paths, nextRuntime)
+        const codingCapacity = codingServiceCapacityFromRuntime(
+          { ...state, runtime: nextRuntime },
+          Bun.env,
+          await localCodingServiceReadyCounts(summary, Bun.env),
+        )
+        const codingRefs = codingServiceCapacityRefs(codingCapacity)
+        const codexCapacity = codingCapacity.find((item) => item.service === "codex") ?? {
+          available: 0,
+          busy: 0,
+          queued: 0,
+          ready: 0,
+          service: "codex" as const,
+        }
         const result = {
           ok: true,
           pylonRef: state.identity.pylonRef,
           lifecycle: nextRuntime.lifecycle,
           capabilityRefs: nextRuntime.capabilityRefs,
+          codingCapacity,
           claudeAgent: {
             state: claudeAgentReadiness.state,
             credentialSourceRef: claudeAgentReadiness.credentialSourceRef,
@@ -4579,6 +4597,21 @@ async function main() {
           codexAgent: {
             state: codexAgentReadiness.state,
             credentialSourceRef: codexAgentReadiness.credentialSourceRef,
+          },
+          ownCapacityDispatch: {
+            schema: "openagents.pylon.own_capacity_dispatch.v1",
+            codex: codexCapacity,
+            assignmentGateRef: "gate.public.pylon.assignment_dispatch.controlled.v1",
+            capacityRefs: codingRefs.capacityRefs.filter((ref) =>
+              ref.startsWith("capacity.coding.codex."),
+            ),
+            loadRefs: codingRefs.loadRefs.filter((ref) =>
+              ref.startsWith("load.coding.codex."),
+            ),
+            policyRefs: ["policy.public.khala_coding.own_capacity_only"],
+            requiredCapabilityRefs: [CODEX_AGENT_CAPABILITY_REF],
+            maxCodexAssignments: codexCapacity.ready,
+            availableCodexAssignments: codexCapacity.available,
           },
           tassadar: {
             declared: tassadarDeclaration.declared,

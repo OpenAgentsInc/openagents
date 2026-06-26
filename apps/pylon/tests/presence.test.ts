@@ -721,6 +721,58 @@ describe("Pylon presence registration and heartbeat", () => {
     })
   })
 
+  test("provider go-online JSON distinguishes own Codex dispatch slots from NIP-90 policy", async () => {
+    await withTempHome(async (home) => {
+      const codexHome = join(home, "codex-home")
+      await mkdir(codexHome, { recursive: true })
+      await writeFile(join(codexHome, "auth.json"), "{}")
+
+      const result = await runProviderCli({
+        args: ["go-online", "--json"],
+        env: {
+          CODEX_HOME: codexHome,
+          OPENAGENTS_PYLON_CODEX_BUSY: "0",
+          OPENAGENTS_PYLON_CODEX_CONCURRENCY: "5",
+          OPENAGENTS_PYLON_CODEX_QUEUED: "0",
+          PYLON_HOME: home,
+          PYLON_NIP90_MAX_INFLIGHT: "1",
+          PYLON_NIP90_PER_BUYER_MAX_INFLIGHT: "1",
+        },
+        timeoutMs: 20_000,
+      })
+
+      expect(result.timedOut).toBe(false)
+      expect(result.exitCode).toBe(0)
+      const json = JSON.parse(result.stdout)
+      expect(json.codexAgent.state).toBe("ready")
+      expect(json.policy.maxInflight).toBe(1)
+      expect(json.policy.perBuyerMaxInflight).toBe(1)
+      expect(json.ownCapacityDispatch).toMatchObject({
+        assignmentGateRef: "gate.public.pylon.assignment_dispatch.controlled.v1",
+        availableCodexAssignments: 5,
+        maxCodexAssignments: 5,
+        policyRefs: ["policy.public.khala_coding.own_capacity_only"],
+        requiredCapabilityRefs: [CODEX_AGENT_CAPABILITY_REF],
+      })
+      expect(json.ownCapacityDispatch.capacityRefs).toEqual([
+        "capacity.coding.codex.ready=5",
+        "capacity.coding.codex.available=5",
+      ])
+      expect(json.ownCapacityDispatch.loadRefs).toEqual([
+        "load.coding.codex.busy=0",
+        "load.coding.codex.queued=0",
+      ])
+      expect(json.codingCapacity).toContainEqual({
+        available: 5,
+        busy: 0,
+        queued: 0,
+        ready: 5,
+        service: "codex",
+      })
+      assertPublicProjectionSafe(json)
+    })
+  })
+
   test("accepts post-start heartbeat diagnostics that name absent private material", () => {
     expect(() =>
       assertPublicProjectionSafe({
