@@ -410,7 +410,15 @@ export const PYLON_COMMAND_CATALOG: readonly PylonCommandEntry[] = [
     spends: false,
     needsNetwork: true,
     json: true,
-    args: [pos("poll|accept|progress|closeout|run-no-spend", "Subcommand."), opt("--base-url", "OpenAgents base URL.")],
+    args: [
+      pos("poll|accept|progress|closeout|run-no-spend", "Subcommand."),
+      opt("--account", "run-no-spend: Codex account ref to use for codex_agent_task leases."),
+      opt("--account-home", "run-no-spend: direct Codex home path when no registered account ref is used."),
+      opt("--assignment-ref", "run-no-spend: accept only this assignment ref; prevents stale leases from being claimed."),
+      opt("--base-url", "OpenAgents base URL."),
+      opt("--lease-ref", "run-no-spend: alias for --assignment-ref."),
+      flag("--json", "Emit JSON."),
+    ],
   },
   {
     command: "work",
@@ -464,7 +472,13 @@ export const PYLON_COMMAND_CATALOG: readonly PylonCommandEntry[] = [
     spends: false,
     needsNetwork: true,
     json: true,
-    args: [pos("register|heartbeat|link-complete|link-refresh", "Subcommand."), opt("--base-url", "OpenAgents base URL.")],
+    args: [
+      pos("register|heartbeat|link-complete|link-refresh", "Subcommand."),
+      opt("--agent-token", "OpenAgents agent token or OPENAGENTS_AGENT_TOKEN."),
+      opt("--base-url", "OpenAgents base URL."),
+      flag("--json", "Emit JSON."),
+      flag("--wallet-probe", "presence heartbeat: include a live wallet readiness probe; omitted by default so one-shot heartbeats exit cleanly."),
+    ],
   },
   {
     command: "provider",

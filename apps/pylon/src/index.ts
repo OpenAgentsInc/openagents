@@ -1246,18 +1246,7 @@ const runtimeCommandNamespaces = new Set([
 ])
 
 function parsePresenceOptions(args: string[]) {
-  const options: Record<string, string> = {}
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index]
-    if (!arg.startsWith("--")) continue
-    const value = args[index + 1]
-    if (!value || value.startsWith("--")) {
-      throw new Error(`${arg} requires a value`)
-    }
-    options[arg.slice(2)] = value
-    index += 1
-  }
-  return options
+  return parseCliOptions(args)
 }
 
 // Key/value option parser for user commands (forum/tip/work/wallet/balance/
@@ -1316,10 +1305,11 @@ function parsePresenceBootstrapArgs(args: string[]) {
     const arg = args[index]
     if (!arg.startsWith("--")) continue
     const key = arg.slice(2)
-    if (key === "base-url") {
+    if (key === "agent-token" || key === "base-url") {
       index += 1
       continue
     }
+    if (key === "json" || key === "wallet-probe") continue
     if (presenceBootstrapFlagOptions.has(key)) {
       bootstrapArgs.push(arg)
       continue
@@ -3278,9 +3268,11 @@ async function main() {
       }
       const summary = await createPresenceBootstrapSummary(presenceArgs, Bun.env)
       const state = await ensurePylonLocalState(summary)
+      const shouldProbeWallet = options["wallet-probe"] === true
       const clientOptions = {
         ...presenceClientOptionsFromEnv({ baseUrl, env: Bun.env }),
-        walletProbe: () => classifyPrimaryAgentWalletForState(state),
+        ...(optionString(options, "agent-token") === undefined ? {} : { agentToken: optionString(options, "agent-token")! }),
+        ...(shouldProbeWallet ? { walletProbe: () => classifyPrimaryAgentWalletForState(state) } : {}),
       }
       const result =
         command === "register"
@@ -3761,7 +3753,7 @@ async function main() {
           optionString(options, "target-pylon-ref")
         const commit = optionString(options, "commit")
         if (!prompt) {
-          throw new Error("usage: pylon khala request --prompt <text> [--workflow cloud_coding_session|codex_agent_task] [--pylon-ref <pylonRef>] [--commit <sha> --repo <owner/repo> --verify <argv>] [--json]")
+          throw new Error("usage: pylon khala request --prompt <text> [--workflow cloud_coding_session|codex_agent_task] [--pylon-ref <pylonRef>] [--commit <sha> --repo <owner/repo> --verify <argv>] [--json]; workspace-backed coding requests require --verify")
         }
         if (
           workflow !== undefined &&
@@ -4447,8 +4439,14 @@ async function main() {
         const assignmentRef =
           optionString(options, "assignment-ref") ??
           optionString(options, "lease-ref")
+        const accountRef =
+          optionString(options, "account") ??
+          optionString(options, "account-ref")
+        const accountHome = optionString(options, "account-home")
         const result = await runNoSpendAssignment(summary, {
           ...clientOptions,
+          ...(accountRef === undefined ? {} : { accountRef }),
+          ...(accountHome === undefined ? {} : { accountHome }),
           ...(assignmentRef === undefined ? {} : { assignmentRef }),
         })
         process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)

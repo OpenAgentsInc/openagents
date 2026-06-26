@@ -505,6 +505,40 @@ describe('dispatchWithOverflow', () => {
     expect(healthyLane.calls()).toBe(1)
   })
 
+  test('treats an empty assistant result as a retryable lane failure by default', async () => {
+    const emptyLane = mockAdapter('empty-default-lane', [
+      {
+        content: '',
+        finishReason: 'stop',
+        servedModel: 'empty-default-model',
+        usage: { completionTokens: 0, promptTokens: 1, totalTokens: 1 },
+      },
+    ])
+    const healthyLane = mockAdapter('healthy-default-lane', [undefined])
+    const registry = new InferenceProviderRegistry()
+    registry.register(emptyLane.adapter)
+    registry.register(healthyLane.adapter)
+
+    const result = await runResult(
+      dispatchWithOverflowWithMetadata(request(KHALA_MODEL_ID), completeOp, {
+        plan: () => ['empty-default-lane', 'healthy-default-lane'],
+        registry,
+        sleep: noSleep,
+      }),
+    )
+
+    expect(result._tag).toBe('Success')
+    if (result._tag === 'Success') {
+      expect(result.success.route).toMatchObject({
+        fallbackReason: 'empty_assistant_content',
+        primaryAdapterId: 'empty-default-lane',
+        servedAdapterId: 'healthy-default-lane',
+      })
+    }
+    expect(emptyLane.calls()).toBe(1)
+    expect(healthyLane.calls()).toBe(1)
+  })
+
   test('treats a tool-required response without tool calls as a failed lane', async () => {
     const noToolLane = mockAdapter('no-tool-lane', [
       {

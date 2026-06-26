@@ -2710,6 +2710,18 @@ export const handleChatCompletions = (
       ...(deps.dispatch?.routingSignals === undefined
         ? {}
         : { routingSignals: deps.dispatch.routingSignals }),
+      ...(deps.dispatch?.retry === undefined
+        ? {}
+        : { retry: deps.dispatch.retry }),
+      ...(deps.dispatch?.shedding === undefined
+        ? {}
+        : { shedding: deps.dispatch.shedding }),
+      ...(deps.dispatch?.hedging === undefined
+        ? {}
+        : { hedging: deps.dispatch.hedging }),
+      ...(deps.dispatch?.failureTelemetry === undefined
+        ? {}
+        : { failureTelemetry: deps.dispatch.failureTelemetry }),
     }
 
     if (inferenceRequest.stream) {

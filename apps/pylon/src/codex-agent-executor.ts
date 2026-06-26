@@ -1,5 +1,5 @@
-import { mkdir, writeFile } from "node:fs/promises"
-import { isAbsolute, join, resolve } from "node:path"
+import { access, mkdir, readFile, writeFile } from "node:fs/promises"
+import { dirname, isAbsolute, join, resolve } from "node:path"
 import { createHash } from "node:crypto"
 import {
   CODEX_AGENT_SDK_PACKAGE,
@@ -103,6 +103,15 @@ export type CodexAgentRunResult = {
 
 export type CodexAgentRunner = (input: CodexAgentRunInput) => Promise<CodexAgentRunResult>
 
+type LocalCommandResult = {
+  exitCode: number
+  stderrBytes: number
+  stdoutBytes: number
+  timedOut: boolean
+}
+
+type LocalCommandRunner = (input: { args: string[]; cwd: string; timeoutMs?: number }) => Promise<LocalCommandResult>
+
 export type CodexAgentExecutionOptions = {
   account?: ResolvedPylonAccountSelection | null
   agentToken?: string
@@ -111,6 +120,7 @@ export type CodexAgentExecutionOptions = {
   codexAgentRunner?: CodexAgentRunner
   codexAgentProbe?: CodexAgentProbeOptions
   codexTurnReporter?: CodexTurnReporter
+  dependencyInstaller?: LocalCommandRunner
   fetch?: typeof fetch
 }
 
@@ -212,14 +222,213 @@ export function fileChangeEscapesWorkspace(path: string, workspace: string): boo
   return resolved !== workspaceRoot && !resolved.startsWith(`${workspaceRoot}/`)
 }
 
-async function runCommand(input: { args: string[]; cwd: string }) {
+async function runCommand(input: { args: string[]; cwd: string; timeoutMs?: number }): Promise<LocalCommandResult> {
   const proc = Bun.spawn(input.args, { cwd: input.cwd, stderr: "pipe", stdout: "pipe" })
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).arrayBuffer(),
-    new Response(proc.stderr).arrayBuffer(),
-    proc.exited,
-  ])
-  return { exitCode, stderrBytes: stderr.byteLength, stdoutBytes: stdout.byteLength }
+  let timedOut = false
+  const timer =
+    input.timeoutMs === undefined
+      ? undefined
+      : setTimeout(() => {
+          timedOut = true
+          proc.kill()
+        }, input.timeoutMs)
+  try {
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).arrayBuffer(),
+      new Response(proc.stderr).arrayBuffer(),
+      proc.exited,
+    ])
+    return { exitCode, stderrBytes: stderr.byteLength, stdoutBytes: stdout.byteLength, timedOut }
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
+  }
+}
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await access(path)
+    return true
+  } catch {
+    return false
+  }
+}
+
+type DependencyPreparation =
+  | { ok: true; prepared: boolean; receiptRef?: string }
+  | { ok: false; receiptRef: string }
+
+type PackageManifest = {
+  dependencies?: Record<string, unknown>
+  devDependencies?: Record<string, unknown>
+  scripts?: Record<string, string>
+  workspaces?: unknown
+}
+
+async function readPackageManifest(directory: string): Promise<PackageManifest | null> {
+  try {
+    const parsed = JSON.parse(await readFile(join(directory, "package.json"), "utf8")) as unknown
+    return parsed !== null && typeof parsed === "object" ? (parsed as PackageManifest) : null
+  } catch {
+    return null
+  }
+}
+
+function verificationCwdFromArgs(workspace: string, args: string[]): string | null {
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index]
+    if (arg === "--cwd" || arg === "-C") {
+      const value = args[index + 1]
+      if (typeof value !== "string" || value.length === 0) return null
+      const resolved = resolve(workspace, value)
+      const workspaceRoot = resolve(workspace)
+      return resolved === workspaceRoot || resolved.startsWith(`${workspaceRoot}/`) ? resolved : null
+    }
+    if (arg.startsWith("--cwd=")) {
+      const resolved = resolve(workspace, arg.slice("--cwd=".length))
+      const workspaceRoot = resolve(workspace)
+      return resolved === workspaceRoot || resolved.startsWith(`${workspaceRoot}/`) ? resolved : null
+    }
+  }
+  return null
+}
+
+function bunScriptNameFromArgs(args: string[]): string | null {
+  if (args[0] !== "bun") return null
+  for (let index = 1; index < args.length; index += 1) {
+    const arg = args[index]
+    if (arg === "--cwd" || arg === "-C") {
+      index += 1
+      continue
+    }
+    if (arg.startsWith("--cwd=") || arg.startsWith("-")) continue
+    if (arg === "run") continue
+    return arg
+  }
+  return null
+}
+
+function packageProvidesVerifierTool(
+  manifest: PackageManifest,
+  verificationArgs: string[],
+  scriptCommand: string | undefined,
+): boolean {
+  const devDependencies = manifest.devDependencies ?? {}
+  const evidence = `${verificationArgs.join(" ")} ${scriptCommand ?? ""}`
+  if (/\b(test|vitest)\b/.test(evidence) && Object.hasOwn(devDependencies, "vitest")) return true
+  if (/\b(typecheck|tsc)\b/.test(evidence) && Object.hasOwn(devDependencies, "typescript")) return true
+  if (/\b(deploy|wrangler)\b/.test(evidence) && Object.hasOwn(devDependencies, "wrangler")) return true
+  if (
+    /\bplaywright\b/.test(evidence) &&
+    (Object.hasOwn(devDependencies, "playwright") ||
+      Object.hasOwn(devDependencies, "@playwright/test"))
+  ) {
+    return true
+  }
+  return false
+}
+
+async function dependencyInstallDirectories(input: {
+  verificationArgs: string[]
+  workspace: string
+}): Promise<string[]> {
+  const workspaceRoot = resolve(input.workspace)
+  const dirs = [workspaceRoot]
+  const verifierCwd = verificationCwdFromArgs(workspaceRoot, input.verificationArgs)
+  if (verifierCwd === null || verifierCwd === workspaceRoot) return dirs
+
+  const scriptName = bunScriptNameFromArgs(input.verificationArgs)
+  const verifierManifest = await readPackageManifest(verifierCwd)
+  const scriptCommand =
+    scriptName === null ? undefined : verifierManifest?.scripts?.[scriptName]
+  const candidates: string[] = []
+  let current = verifierCwd
+  while (current !== workspaceRoot && current.startsWith(`${workspaceRoot}/`)) {
+    candidates.push(current)
+    current = dirname(current)
+  }
+  for (const candidate of candidates.reverse()) {
+    const manifest = await readPackageManifest(candidate)
+    if (manifest === null) continue
+    if (
+      manifest.workspaces !== undefined ||
+      packageProvidesVerifierTool(manifest, input.verificationArgs, scriptCommand)
+    ) {
+      dirs.push(candidate)
+    }
+  }
+  return [...new Set(dirs)]
+}
+
+async function prepareWorkspaceDependencies(input: {
+  installer?: LocalCommandRunner
+  verificationArgs: string[]
+  workspace: string
+}): Promise<DependencyPreparation> {
+  const hasPackageJson = await pathExists(join(input.workspace, "package.json"))
+  const hasBunLock =
+    (await pathExists(join(input.workspace, "bun.lock"))) ||
+    (await pathExists(join(input.workspace, "bun.lockb")))
+  if (!hasPackageJson || !hasBunLock) {
+    return { ok: true, prepared: false }
+  }
+
+  const installDirectories = await dependencyInstallDirectories({
+    verificationArgs: input.verificationArgs,
+    workspace: input.workspace,
+  })
+  const missingInstallDirectories: string[] = []
+  for (const directory of installDirectories) {
+    if (!(await pathExists(join(directory, "node_modules")))) {
+      missingInstallDirectories.push(directory)
+    }
+  }
+  if (missingInstallDirectories.length === 0) {
+    return {
+      ok: true,
+      prepared: false,
+      receiptRef: "dependency.pylon.codex_agent_task.node_modules_present",
+    }
+  }
+
+  const installer = input.installer ?? runCommand
+  const installReceipts: string[] = []
+  for (const directory of missingInstallDirectories) {
+    const install = await installer({
+      args: ["bun", "install", "--no-save", "--ignore-scripts"],
+      cwd: directory,
+      timeoutMs: 5 * 60 * 1000,
+    })
+    const receiptRef = stableRef(
+      "dependency.pylon.codex_agent_task.bun_install",
+      `${directory}:${install.exitCode}:${install.timedOut}:${install.stdoutBytes}:${install.stderrBytes}`,
+    )
+    installReceipts.push(receiptRef)
+    if (install.exitCode !== 0 || install.timedOut) {
+      return { ok: false, receiptRef }
+    }
+  }
+  const restore = await installer({
+    args: ["git", "restore", "--source=HEAD", "--staged", "--worktree", "."],
+    cwd: input.workspace,
+    timeoutMs: 30 * 1000,
+  })
+  if (restore.exitCode !== 0 || restore.timedOut) {
+    return {
+      ok: false,
+      receiptRef: stableRef(
+        "dependency.pylon.codex_agent_task.workspace_restore",
+        `${restore.exitCode}:${restore.timedOut}:${restore.stdoutBytes}:${restore.stderrBytes}`,
+      ),
+    }
+  }
+  return {
+    ok: true,
+    prepared: true,
+    receiptRef: stableRef(
+      "dependency.pylon.codex_agent_task.bun_install",
+      installReceipts.join(":"),
+    ),
+  }
 }
 
 type CodexThreadEvent = {
@@ -642,6 +851,22 @@ export async function executeCodexAgentAssignment(
       resultRef: "result.public.pylon.codex_agent_task.workspace_checkout_failed",
       summaryRef: "summary.public.pylon.codex_agent_task.workspace_checkout_failed",
       message: "Local Codex thread refused because the bounded workspace checkout could not be materialized.",
+    })
+  }
+
+  const dependencies = await prepareWorkspaceDependencies({
+    ...(options.dependencyInstaller === undefined ? {} : { installer: options.dependencyInstaller }),
+    verificationArgs: materialized.verificationArgs,
+    workspace: materialized.workspace,
+  })
+  if (!dependencies.ok) {
+    return refusalRecord({
+      lease,
+      runRef,
+      blockerRefs: ["blocker.assignment.codex_agent_workspace_dependency_install_failed"],
+      resultRef: "result.public.pylon.codex_agent_task.workspace_dependency_install_failed",
+      summaryRef: "summary.public.pylon.codex_agent_task.workspace_dependency_install_failed",
+      message: "Local Codex thread refused because workspace dependencies could not be prepared.",
     })
   }
 

@@ -1,6 +1,6 @@
 import { describe, expect, mock, test } from "bun:test"
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
-import { join } from "node:path"
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { join, relative } from "node:path"
 import { tmpdir } from "node:os"
 import {
   CODEX_AGENT_SUM_REPAIR_FIXTURE_REF,
@@ -541,6 +541,164 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
       const projected = JSON.stringify(record)
       expect(projected).not.toContain(state.paths.cache)
       expect(projected).not.toContain("Repair the failing sum test.")
+    })
+  })
+
+  test("prepares locked Bun checkout dependencies before running Codex", async () => {
+    await withState(async (state) => {
+      let checkoutRoot = ""
+      const checkoutRunner = async (workspace: string) => {
+        checkoutRoot = workspace
+        await mkdir(workspace, { recursive: true })
+        await writeFile(
+          join(workspace, "package.json"),
+          `${JSON.stringify({ private: true, type: "module" })}\n`,
+        )
+        await writeFile(join(workspace, "bun.lock"), "")
+        await mkdir(join(workspace, "apps/openagents.com/workers/api"), { recursive: true })
+        await writeFile(
+          join(workspace, "apps/openagents.com/package.json"),
+          `${JSON.stringify(
+            {
+              private: true,
+              devDependencies: { vitest: "^4.1.8" },
+              workspaces: ["workers/*"],
+            },
+            null,
+            2,
+          )}\n`,
+        )
+        await writeFile(
+          join(workspace, "apps/openagents.com/workers/api/package.json"),
+          `${JSON.stringify(
+            {
+              private: true,
+              scripts: { test: "bun test sum.test.ts" },
+              dependencies: { "@openagentsinc/atif": "workspace:*" },
+            },
+            null,
+            2,
+          )}\n`,
+        )
+        await writeFile(
+          join(workspace, "sum.ts"),
+          "export const sum = (left: number, right: number) => left - right\n",
+        )
+        await writeFile(
+          join(workspace, "sum.test.ts"),
+          [
+            'import { describe, expect, test } from "bun:test"',
+            'import { sum } from "./sum"',
+            'describe("sum", () => { test("adds", () => { expect(sum(2, 3)).toBe(5) }) })',
+            "",
+          ].join("\n"),
+        )
+        await writeFile(
+          join(workspace, "apps/openagents.com/workers/api/sum.test.ts"),
+          [
+            'import { describe, expect, test } from "bun:test"',
+            'import { sum } from "../../../../sum"',
+            'describe("nested sum", () => { test("adds", () => { expect(sum(2, 3)).toBe(5) }) })',
+            "",
+          ].join("\n"),
+        )
+      }
+      const nestedVerifierAssignment = {
+        ...checkoutAssignment,
+        workspace: {
+          ...checkoutAssignment.workspace,
+          verificationCommand: {
+            args: ["bun", "--cwd", "apps/openagents.com/workers/api", "test"],
+            commandRef: "command.public.autopilot_coder.nested_bun_test",
+          },
+        },
+      }
+      let installerCalled = false
+      const dependencyCommands: Array<string> = []
+      let runnerSawPreparedWorkspace = false
+      const dependencyInstaller = async (input: { args: string[]; cwd: string }) => {
+        installerCalled = true
+        dependencyCommands.push(`${relative(checkoutRoot, input.cwd) || "."}: ${input.args.join(" ")}`)
+        if (input.args[0] === "bun") {
+          await writeFile(join(input.cwd, "dependency-ready.txt"), "ready\n")
+        }
+        return { exitCode: 0, stderrBytes: 0, stdoutBytes: 12, timedOut: false }
+      }
+      const observingRunner: CodexAgentRunner = async (input) => {
+        const rootReady =
+          (await readFile(join(input.cwd, "dependency-ready.txt"), "utf8")) === "ready\n"
+        const appReady =
+          (await readFile(join(input.cwd, "apps/openagents.com/dependency-ready.txt"), "utf8")) ===
+          "ready\n"
+        runnerSawPreparedWorkspace = rootReady && appReady
+        return fixingRunner(input)
+      }
+
+      const record = await executeCodexAgentAssignment(
+        state,
+        { ...lease, codingAssignment: nestedVerifierAssignment },
+        now,
+        {
+          checkoutRunner,
+          codexAgentProbe: readyProbe,
+          codexAgentRunner: observingRunner,
+          dependencyInstaller,
+        },
+      )
+
+      expect(record?.status).toBe("accepted")
+      expect(installerCalled).toBe(true)
+      expect(dependencyCommands).toEqual([
+        ".: bun install --no-save --ignore-scripts",
+        "apps/openagents.com: bun install --no-save --ignore-scripts",
+        ".: git restore --source=HEAD --staged --worktree .",
+      ])
+      expect(runnerSawPreparedWorkspace).toBe(true)
+      assertPublicProjectionSafe(record)
+    })
+  })
+
+  test("dependency preparation failure returns a typed public-safe blocker", async () => {
+    await withState(async (state) => {
+      const checkoutRunner = async (workspace: string) => {
+        await mkdir(workspace, { recursive: true })
+        await writeFile(
+          join(workspace, "package.json"),
+          `${JSON.stringify({ private: true, type: "module" })}\n`,
+        )
+        await writeFile(join(workspace, "bun.lock"), "")
+      }
+      let runnerCalled = false
+      const record = await executeCodexAgentAssignment(
+        state,
+        { ...lease, codingAssignment: checkoutAssignment },
+        now,
+        {
+          checkoutRunner,
+          codexAgentProbe: readyProbe,
+          codexAgentRunner: async () => {
+            runnerCalled = true
+            return idleRunner()
+          },
+          dependencyInstaller: async () => ({
+            exitCode: 1,
+            stderrBytes: 24,
+            stdoutBytes: 0,
+            timedOut: false,
+          }),
+        },
+      )
+
+      expect(record?.status).toBe("rejected")
+      expect(record?.blockerRefs).toEqual([
+        "blocker.assignment.codex_agent_workspace_dependency_install_failed",
+      ])
+      expect(record?.resultRefs).toContain(
+        "result.public.pylon.codex_agent_task.workspace_dependency_install_failed",
+      )
+      expect(runnerCalled).toBe(false)
+      assertPublicProjectionSafe(record)
+      expect(JSON.stringify(record)).not.toContain(state.paths.cache)
     })
   })
 
