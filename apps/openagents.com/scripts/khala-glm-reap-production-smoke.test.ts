@@ -63,6 +63,111 @@ describe('Khala GLM REAP production smoke', () => {
     expect(fetchImpl).not.toHaveBeenCalled()
   })
 
+  test('readiness-only uses deployed public readiness and catalog evidence when local GLM arming is absent', async () => {
+    const fetchImpl = vi.fn(async (input: string | URL | Request) => {
+      const url = new URL(input instanceof Request ? input.url : String(input))
+
+      if (url.pathname === '/api/v1/gateway/readiness') {
+        return json({
+          hiddenModelCount: 0,
+          lanes: [
+            {
+              armed: true,
+              hiddenModelCount: 0,
+              lane: 'hydralisk',
+              servableModelCount: 1,
+            },
+          ],
+          reasonRefs: ['gateway.readiness.ready.all_models_servable'],
+          servableModelCount: 1,
+          status: 'ready',
+          totalModelCount: 1,
+        })
+      }
+
+      if (url.pathname === '/api/v1/models') {
+        return json({ data: [{ id: 'openagents/khala' }], object: 'list' })
+      }
+
+      return json(
+        { error: 'unexpected spend path', path: url.pathname },
+        { status: 500 },
+      )
+    })
+
+    const output = await smoke.runKhalaGlmReapProductionSmoke({
+      env: {},
+      fetchImpl,
+      readinessOnly: true,
+    })
+
+    expect(output).toMatchObject({
+      arming: {
+        armed: false,
+        evidenceSource: 'deployed_public_readiness_catalog',
+      },
+      counter: null,
+      ok: true,
+      reason: 'local_glm_reap_lane_not_armed_read_deployed_public_evidence',
+      skipped: false,
+    })
+    expect(output.arming.blockerRefs).toContain(
+      'HYDRALISK_GLM_52_REAP_504B_ENABLED',
+    )
+    expect(output.readiness).toMatchObject({
+      lanes: [
+        {
+          armed: true,
+          lane: 'hydralisk',
+          servableModelCount: 1,
+        },
+      ],
+      servableModelCount: 1,
+      status: 'ready',
+    })
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+    expect(
+      fetchImpl.mock.calls.map(call => new URL(String(call[0])).pathname),
+    ).toEqual(['/api/v1/gateway/readiness', '/api/v1/models'])
+  })
+
+  test('readiness-only rejects deployed evidence that does not prove a servable Hydralisk lane', async () => {
+    const fetchImpl = vi.fn(async (input: string | URL | Request) => {
+      const url = new URL(input instanceof Request ? input.url : String(input))
+
+      if (url.pathname === '/api/v1/gateway/readiness') {
+        return json({
+          lanes: [
+            {
+              armed: true,
+              hiddenModelCount: 0,
+              lane: 'fireworks',
+              servableModelCount: 1,
+            },
+          ],
+          servableModelCount: 1,
+          status: 'ready',
+        })
+      }
+
+      if (url.pathname === '/api/v1/models') {
+        return json({ data: [{ id: 'openagents/khala' }], object: 'list' })
+      }
+
+      return json({ error: 'unexpected' }, { status: 500 })
+    })
+
+    await expect(
+      smoke.runKhalaGlmReapProductionSmoke({
+        env: {},
+        fetchImpl,
+        readinessOnly: true,
+      }),
+    ).rejects.toThrow(
+      'deployed_glm_reap_readiness_public_evidence_present failed',
+    )
+  })
+
   test('resolves a named pool with the benchmark primary excluded and the second replica eligible', () => {
     const arming = smoke.resolveGlmReapSmokeArming(poolEnv)
 

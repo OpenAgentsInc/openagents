@@ -176,6 +176,24 @@ const receiptPathFrom = openagents => {
   return null
 }
 
+const summarizeGatewayReadiness = readiness => ({
+  hiddenModelCount: readiness?.hiddenModelCount,
+  lanes: Array.isArray(readiness?.lanes)
+    ? readiness.lanes.map(lane => ({
+        armed: lane?.armed,
+        hiddenModelCount: lane?.hiddenModelCount,
+        lane: lane?.lane,
+        servableModelCount: lane?.servableModelCount,
+      }))
+    : undefined,
+  reasonRefs: Array.isArray(readiness?.reasonRefs)
+    ? readiness.reasonRefs.filter(ref => typeof ref === 'string')
+    : undefined,
+  servableModelCount: readiness?.servableModelCount,
+  status: readiness?.status,
+  totalModelCount: readiness?.totalModelCount,
+})
+
 const routingSummaryFrom = openagents => {
   const routing = openagents?.routing
   if (typeof routing !== 'object' || routing === null) {
@@ -530,10 +548,7 @@ export const runKhalaProductionSmoke = async ({
       checks,
       model,
       ok: true,
-      readiness: {
-        servableModelCount: readiness.body?.servableModelCount,
-        status: readiness.body?.status,
-      },
+      readiness: summarizeGatewayReadiness(readiness.body),
     }
   }
 
@@ -679,10 +694,7 @@ export const runKhalaProductionSmoke = async ({
       totalTokens: completion.body?.usage?.total_tokens,
     },
     ok: true,
-    readiness: {
-      servableModelCount: readiness.body?.servableModelCount,
-      status: readiness.body?.status,
-    },
+    readiness: summarizeGatewayReadiness(readiness.body),
     stream: {
       frameCount: frames.length,
       openagents: summarizeOpenAgents(terminalOpenAgents),

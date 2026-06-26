@@ -550,6 +550,20 @@ const resolveReplicaRoutingExpectation = (arming, expectedReplicaId) => {
   }
 }
 
+const hydraliskLaneReadinessFrom = readiness =>
+  Array.isArray(readiness?.lanes)
+    ? readiness.lanes.find(lane => lane?.lane === 'hydralisk')
+    : undefined
+
+const assertDeployedGlmReapReadinessEvidence = readiness => {
+  const hydraliskLane = hydraliskLaneReadinessFrom(readiness)
+  assert(
+    hydraliskLane?.armed === true &&
+      Number(hydraliskLane?.servableModelCount || 0) > 0,
+    'deployed_glm_reap_readiness_public_evidence_present failed',
+  )
+}
+
 export const runKhalaGlmReapProductionSmoke = async ({
   approveLiveSpend = false,
   apiBasePath = defaultApiBasePath,
@@ -570,6 +584,31 @@ export const runKhalaGlmReapProductionSmoke = async ({
 
   const arming = resolveGlmReapSmokeArming(env)
   if (!arming.armed) {
+    if (readinessOnly) {
+      const origin = trimBaseUrl(baseUrl)
+      const khalaSmoke = await runKhalaProductionSmoke({
+        apiBasePath,
+        baseUrl: origin,
+        fetchImpl,
+        forbiddenPublicModelIds,
+        model: khalaModel,
+        readinessOnly: true,
+      })
+      assertDeployedGlmReapReadinessEvidence(khalaSmoke.readiness)
+      return {
+        arming: {
+          armed: false,
+          blockerRefs: arming.blockerRefs,
+          evidenceSource: 'deployed_public_readiness_catalog',
+        },
+        ...khalaSmoke,
+        counter: null,
+        pool: poolSummaryFromArming(arming),
+        reason: 'local_glm_reap_lane_not_armed_read_deployed_public_evidence',
+        skipped: false,
+      }
+    }
+
     const skipped = {
       arming: {
         armed: false,
