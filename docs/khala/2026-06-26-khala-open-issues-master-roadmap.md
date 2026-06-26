@@ -209,7 +209,7 @@ operator view of what remains, not a public product claim.
   and #6351 `5,398,391`. Live `/api/public/khala-tokens-served` returned
   `262,631,034` at `2026-06-26T18:01:30.689Z`. Live
   `/api/public/khala-tokens-served/model-mix?window=30d` returned the same
-  `totalTokensServed`, with `pylon_codex=166,561,460` tokens over `102` usage
+  `totalTokens`, with `pylon_codex=166,561,460` tokens over `102` usage
   events. All five assignments have owner-only ATIF traces and owner-only raw
   Codex event rows; the public counter movement was verified from exact
   assignment `task_ref` rows, not inferred from aggregate movement.

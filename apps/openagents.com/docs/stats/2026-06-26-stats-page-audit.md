@@ -9,13 +9,17 @@ This note tracks the public `/stats` rollout covering the Khala tokens-served co
 | Issue | Scope | Status |
 | --- | --- | --- |
 | #6330 | Central-time token history endpoint dependency | Closed before this slice; `/api/public/khala-tokens-served/history` remains the history source for `/stats`. |
-| #6351 | Public model/provider mix endpoint | Implemented by this slice. |
-| #6352 | Public `/stats` page | Pending follow-up slice in this rollout. |
-| #6353 | Public stats epic | Pending until #6351 and #6352 are both closed. |
+| #6351 | Public model/provider mix endpoint | Closed in commit `8c853f2df9`; `/api/public/khala-tokens-served/model-mix` is live for the page. |
+| #6352 | Public `/stats` page | Closed in commit `a282066552`; `/stats` renders the live Khala counter, America/Chicago day chart, and aggregate model-family mix. |
+| #6353 | Public stats epic | Closed after #6330, #6351, and #6352 were all closed and `/stats` returned HTTP 200. |
 
 ## 5a /stats Page
 
-The `/stats` page is the intended public product surface for live Khala usage stats. It should show the network-wide token counter, a Central-time per-day history chart, model/provider mix, and a public/all toggle that defaults to public.
+The `/stats` page is the public product surface for live Khala usage stats. It shows the network-wide token counter, an America/Chicago per-day history chart, and model/provider mix from the aggregate public endpoints:
+
+- `GET /api/public/khala-tokens-served`
+- `GET /api/public/khala-tokens-served/history?bucket=day&timezone=America%2FChicago&window=30d`
+- `GET /api/public/khala-tokens-served/model-mix?window=30d`
 
 The page must not expose user, team, account, raw provider, raw model, prompt, completion, key, wallet, payment, settlement, or routing material. Any future authenticated or operator-only expansion must stay outside the default public projection.
 

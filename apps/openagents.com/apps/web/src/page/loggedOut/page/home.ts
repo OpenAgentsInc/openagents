@@ -1039,31 +1039,13 @@ const historyChartShell = (
   )
 }
 
-const modelFamilyLabel = (
-  family: PublicKhalaTokensServedModelMixFamily['family'],
-): string =>
-  ({
-    anthropic: 'Anthropic',
-    deepseek: 'DeepSeek',
-    gemini: 'Gemini',
-    glm: 'GLM',
-    grok: 'Grok',
-    llama: 'Llama',
-    mistral: 'Mistral',
-    openai: 'OpenAI',
-    other: 'Other',
-    pylon_codex: 'Pylon Codex',
-    qwen: 'Qwen',
-  })[family]
-
 const percentFormatter = new Intl.NumberFormat('en-US', {
   maximumFractionDigits: 1,
   minimumFractionDigits: 0,
-  style: 'percent',
 })
 
 const formatPercent = (value: number): string =>
-  percentFormatter.format(Math.max(0, Math.min(1, value)))
+  `${percentFormatter.format(Math.max(0, value))}%`
 
 const historyChartPlaceholder = (label: string): Html => {
   const h = html<Message>()
@@ -1237,13 +1219,13 @@ const modelMixPlaceholder = (label: string): Html => {
 }
 
 const modelMixRows = (
-  families: ReadonlyArray<PublicKhalaTokensServedModelMixFamily>,
+  groups: ReadonlyArray<PublicKhalaTokensServedModelMixFamily>,
 ): Html => {
   const h = html<Message>()
 
   return h.ul(
     [Ui.className<Message>('m-0 grid list-none gap-2 p-0')],
-    families.map(family =>
+    groups.map(group =>
       h.li(
         [
           Ui.className<Message>(
@@ -1264,7 +1246,7 @@ const modelMixRows = (
                     'min-w-0 text-[0.72rem] font-medium leading-4 text-[#f1efe8]',
                   ),
                 ],
-                [modelFamilyLabel(family.family)],
+                [group.label],
               ),
               h.span(
                 [
@@ -1272,7 +1254,7 @@ const modelMixRows = (
                     'text-right text-[0.72rem] leading-4 tabular-nums text-[#9ad6b7]',
                   ),
                 ],
-                [formatPercent(family.share)],
+                [formatPercent(group.pct)],
               ),
             ],
           ),
@@ -1286,7 +1268,7 @@ const modelMixRows = (
                   Ui.className<Message>('h-full bg-[#00c853]'),
                   h.Attribute(
                     'style',
-                    `width: ${Math.max(0, Math.min(100, family.share * 100)).toFixed(2)}%;`,
+                    `width: ${Math.max(0, Math.min(100, group.pct)).toFixed(2)}%;`,
                   ),
                 ],
                 [],
@@ -1296,8 +1278,8 @@ const modelMixRows = (
           h.p(
             [Ui.className<Message>('m-0 text-[0.66rem] leading-4 text-white/42')],
             [
-              `${formatNumber(family.tokensServed)} tokens across ${formatNumber(
-                family.usageEvents,
+              `${formatNumber(group.tokens)} tokens across ${formatNumber(
+                group.reqs,
               )} events`,
             ],
           ),
@@ -1334,7 +1316,7 @@ export const khalaTokensServedModelMixPanel = (
           'Model Family Mix',
         ),
       PublicKhalaTokensServedModelMixLoaded: ({ mix }) =>
-        Array.match(mix.families, {
+        Array.match(mix.groups, {
           onEmpty: () =>
             historyChartShell(
               true,
@@ -1342,12 +1324,12 @@ export const khalaTokensServedModelMixPanel = (
               `Canonical model-family mix for ${mix.window}.`,
               'Model Family Mix',
             ),
-          onNonEmpty: families =>
+          onNonEmpty: groups =>
             historyChartShell(
               true,
-              modelMixRows(families),
+              modelMixRows(groups),
               `Canonical model-family mix for ${mix.window}. Total ${formatNumber(
-                mix.totalTokensServed,
+                mix.totalTokens,
               )} tokens served.`,
               'Model Family Mix',
             ),

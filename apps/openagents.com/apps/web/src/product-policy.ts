@@ -206,7 +206,7 @@ export const browserRouteProductIntents = {
   SiteCheckoutDemoReturn: 'public.sites.demo-checkout-return',
   Settings: 'account.settings',
   SettingsSection: 'account.settings.section',
-  Stats: 'admin.token-usage.stats',
+  Stats: 'public.stats',
   TeamChat: 'workroom.chat.team',
   TeamFile: 'files.team.detail',
   TeamFiles: 'files.team.index',
@@ -288,6 +288,10 @@ export const browserCommandProductIntents = {
   LoadKhalaTokensServedSnapshot: 'public.khala.tokens-served.snapshot.load',
   LoadPublicKhalaTokensServedHistory:
     'public.khala.tokens-served.history.load',
+  LoadPublicKhalaTokensServedModelMix:
+    'public.khala.tokens-served.model-mix.load',
+  LoadPublicGymRunProgress: 'public.gym.run-progress.load',
+  LoadGymRunProgressSnapshot: 'public.gym.run-progress.snapshot.load',
   LoadPublicProductPromises: 'public.product-promises.load',
   LoadPublicPromiseTransitions: 'public.product-promises.load-transitions',
   LoadPublicPylonStats: 'public.pylon.stats.load',

@@ -115,12 +115,27 @@ describe('startup route policy', () => {
     })
   })
 
-  test('keeps moved public stats routes available while logged out', () => {
-    expect(startupRouteForLoggedOut(StatsRoute())).toEqual({
+  test('keeps the public Khala stats route public for every auth state', () => {
+    const statsRoute = StatsRoute()
+
+    expect(startupRouteForLoggedOut(statsRoute)).toEqual({
       _tag: 'LoggedOutStartupRoute',
       redirect: Option.none(),
-      route: { _tag: 'Stats' },
+      route: statsRoute,
     })
+    expect(startupRouteForLoggedIn(statsRoute, completeAuth)).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: Option.none(),
+      route: statsRoute,
+    })
+    expect(startupRouteForLoggedIn(statsRoute, incompleteAuth)).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: Option.none(),
+      route: statsRoute,
+    })
+  })
+
+  test('keeps moved public stats archive route available while logged out', () => {
     expect(startupRouteForLoggedOut(PublicStatsArchiveRoute())).toEqual({
       _tag: 'LoggedOutStartupRoute',
       redirect: Option.none(),
@@ -705,6 +720,7 @@ describe('startup route policy', () => {
         TassadarReplayRoute({ replaySlug: 'first-real-settlement' }),
       ),
     ).toBe(false)
+    expect(routeRequiresAuthBootstrap(StatsRoute())).toBe(false)
     expect(routeRequiresAuthBootstrap(PublicStatsArchiveRoute())).toBe(false)
     expect(
       routeRequiresAuthBootstrap(

@@ -189,23 +189,27 @@ describe('logged-out nav + copy update', () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(
         JSON.stringify({
+          schemaVersion: 'openagents.public_khala_model_mix.v1',
           window: '30d',
-          totalTokensServed: 14_680_776,
+          totalTokens: 14_680_776,
           generatedAt: '2026-06-24T12:00:00.000Z',
-          families: [
+          groups: [
             {
-              family: 'openai',
-              tokensServed: 10_000_000,
-              usageEvents: 9,
-              share: 0.6812,
+              family: 'glm',
+              label: 'GLM family',
+              tokens: 10_000_000,
+              reqs: 9,
+              pct: 68.12,
             },
             {
               family: 'pylon_codex',
-              tokensServed: 4_680_776,
-              usageEvents: 3,
-              share: 0.3188,
+              label: 'Pylon-Codex',
+              tokens: 4_680_776,
+              reqs: 3,
+              pct: 31.88,
             },
           ],
+          staleness: { mode: 'live_at_read' },
         }),
         { headers: { 'content-type': 'application/json' } },
       ),
@@ -224,8 +228,8 @@ describe('logged-out nav + copy update', () => {
       },
     )
     if (message._tag === 'SucceededLoadPublicKhalaTokensServedModelMix') {
-      expect(message.mix.families.map(row => row.family)).toEqual([
-        'openai',
+      expect(message.mix.groups.map(row => row.family)).toEqual([
+        'glm',
         'pylon_codex',
       ])
     }
@@ -236,15 +240,17 @@ describe('logged-out nav + copy update', () => {
       init(StatsRoute()),
       SucceededLoadPublicKhalaTokensServedModelMix({
         mix: {
+          schemaVersion: 'openagents.public_khala_model_mix.v1',
           window: '30d',
-          totalTokensServed: 14_680_776,
+          totalTokens: 14_680_776,
           generatedAt: '2026-06-24T12:00:00.000Z',
-          families: [
+          groups: [
             {
-              family: 'openai',
-              tokensServed: 14_680_776,
-              usageEvents: 12,
-              share: 1,
+              family: 'glm',
+              label: 'GLM family',
+              tokens: 14_680_776,
+              reqs: 12,
+              pct: 100,
             },
           ],
         },
@@ -254,8 +260,8 @@ describe('logged-out nav + copy update', () => {
     expect(next.publicKhalaTokensServedModelMix).toMatchObject({
       _tag: 'PublicKhalaTokensServedModelMixLoaded',
       mix: {
-        totalTokensServed: 14_680_776,
-        families: [{ family: 'openai' }],
+        totalTokens: 14_680_776,
+        groups: [{ family: 'glm' }],
       },
     })
   })

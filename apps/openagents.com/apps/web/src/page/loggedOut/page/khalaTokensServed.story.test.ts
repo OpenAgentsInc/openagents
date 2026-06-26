@@ -68,21 +68,24 @@ const statsInputWithModelMix = () => ({
   ...homeInputWithTokens(1_250_000),
   publicKhalaTokensServedModelMix: LoadedPublicKhalaTokensServedModelMix({
     mix: {
+      schemaVersion: 'openagents.public_khala_model_mix.v1',
       window: '30d',
-      totalTokensServed: 1_250_000,
+      totalTokens: 1_250_000,
       generatedAt: '2026-06-24T12:00:00.000Z',
-      families: [
+      groups: [
         {
-          family: 'openai' as const,
-          tokensServed: 875_000,
-          usageEvents: 12,
-          share: 0.7,
+          family: 'glm' as const,
+          label: 'GLM family',
+          tokens: 875_000,
+          reqs: 12,
+          pct: 70,
         },
         {
           family: 'pylon_codex' as const,
-          tokensServed: 375_000,
-          usageEvents: 4,
-          share: 0.3,
+          label: 'Pylon-Codex',
+          tokens: 375_000,
+          reqs: 4,
+          pct: 30,
         },
       ],
     },
@@ -225,8 +228,8 @@ describe('Khala Tokens Served history chart (#6227)', () => {
       Scene.expect(Scene.text('Tokens Served / Day')).toExist(),
       Scene.expect(Scene.text('2026-06-23: 96,250 tokens')).toExist(),
       Scene.expect(Scene.text('Model Family Mix')).toExist(),
-      Scene.expect(Scene.text('OpenAI')).toExist(),
-      Scene.expect(Scene.text('Pylon Codex')).toExist(),
+      Scene.expect(Scene.text('GLM family')).toExist(),
+      Scene.expect(Scene.text('Pylon-Codex')).toExist(),
     )
   })
 
@@ -234,8 +237,8 @@ describe('Khala Tokens Served history chart (#6227)', () => {
     const markup = JSON.stringify(StatsPage.view(statsInputWithModelMix()))
 
     expect(markup).toContain('Model Family Mix')
-    expect(markup).toContain('OpenAI')
-    expect(markup).toContain('Pylon Codex')
+    expect(markup).toContain('GLM family')
+    expect(markup).toContain('Pylon-Codex')
     expect(markup).not.toContain('gpt-')
     expect(markup).not.toContain('provider')
     expect(markup).not.toContain('accountRef')

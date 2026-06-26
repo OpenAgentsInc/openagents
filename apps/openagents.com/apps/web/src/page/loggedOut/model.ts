@@ -1023,16 +1023,11 @@ export type PublicKhalaTokensServedHistoryModel =
   typeof PublicKhalaTokensServedHistoryModel.Type
 
 export const PublicKhalaTokensServedModelFamily = S.Literals([
-  'anthropic',
-  'deepseek',
-  'gemini',
   'glm',
-  'grok',
-  'llama',
-  'mistral',
-  'openai',
+  'fireworks_deepseek',
   'pylon_codex',
-  'qwen',
+  'gpt_oss',
+  'gemini',
   'other',
 ])
 export type PublicKhalaTokensServedModelFamily =
@@ -1040,18 +1035,21 @@ export type PublicKhalaTokensServedModelFamily =
 
 export const PublicKhalaTokensServedModelMixFamily = S.Struct({
   family: PublicKhalaTokensServedModelFamily,
-  tokensServed: S.Number,
-  usageEvents: S.Number,
-  share: S.Number,
+  label: S.String,
+  tokens: S.Number,
+  reqs: S.Number,
+  pct: S.Number,
 })
 export type PublicKhalaTokensServedModelMixFamily =
   typeof PublicKhalaTokensServedModelMixFamily.Type
 
 export const PublicKhalaTokensServedModelMix = S.Struct({
+  schemaVersion: S.Literal('openagents.public_khala_model_mix.v1'),
   window: S.String,
-  totalTokensServed: S.Number,
-  families: S.Array(PublicKhalaTokensServedModelMixFamily),
+  totalTokens: S.Number,
+  groups: S.Array(PublicKhalaTokensServedModelMixFamily),
   generatedAt: S.String,
+  staleness: S.optionalKey(S.Unknown),
 })
 export type PublicKhalaTokensServedModelMix =
   typeof PublicKhalaTokensServedModelMix.Type

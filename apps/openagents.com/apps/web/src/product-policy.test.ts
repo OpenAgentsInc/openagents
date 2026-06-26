@@ -196,14 +196,16 @@ describe('browser product policy', () => {
       'public.sites.demo-checkout',
     )
     expect(browserRouteProductIntent(MulletRoute())).toBe('mullet.runner')
-    expect(browserRouteProductIntent(StatsRoute())).toBe(
-      'admin.token-usage.stats',
-    )
+    expect(browserRouteProductIntent(StatsRoute())).toBe('public.stats')
     expect(browserRouteProductIntent(KhalaRoute())).toBe('public.khala')
   })
 
   test('keeps the public Khala route bootstrap-free', () => {
     expect(routeRequiresAuthBootstrap(KhalaRoute())).toBe(false)
+  })
+
+  test('keeps the public stats route bootstrap-free', () => {
+    expect(routeRequiresAuthBootstrap(StatsRoute())).toBe(false)
   })
 
   test('keeps the public Gym route bootstrap-free', () => {
