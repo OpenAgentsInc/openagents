@@ -26,9 +26,9 @@ stress/benchmark load is best-effort, preemptible, instantly-yielding, and tagge
 
 ## Current status snapshot
 
-Refreshed from GitHub issue state on **2026-06-26 ~15:20Z** while live
-delegation was paused. This table is the operator view of what remains, not a
-public product claim.
+Refreshed from GitHub issue state, `origin/main`, and the local Pylon state on
+**2026-06-26 ~15:35Z** while live delegation was paused. This table is the
+operator view of what remains, not a public product claim.
 
 | Issue | State | Current status / next action |
 | --- | --- | --- |
@@ -36,22 +36,22 @@ public product claim.
 | #6323 | **Open** | Decision artifact for the full `nvidia/GLM-5.2-NVFP4` single-host pilot landed; the remaining work is the owner/fleet execution of the isolated 8x-host pilot and measured tool-call/quality/tok-s result. |
 | #6319 | **Closed** | Reliability hardening/fallback-chain repair is closed. Treat empty responses and dead fallback lanes as regression risks in later serving work. |
 | #6313 | **Closed** | Real OpenRouter fallback lane is closed. It is now a dependency assumption for further reliability and benchmark runs. |
-| #6311 | **Open** | Partial readiness/watchdog projection work landed, but the broad durable-fleet goal remains open: non-Spot capacity, all-replica keep-warm/watchdog, auto-replace, reserve, quota. Also still needs canonical scheduled GLM pool heartbeat diagnostics; current live readiness has used routed-completion fallback rows. |
+| #6311 | **Open** | Partial readiness/watchdog projection work landed, but the broad durable-fleet goal remains open: non-Spot capacity, all-replica keep-warm/watchdog, auto-replace, reserve, quota. A Khala -> Pylon -> Codex assignment completed a candidate canonical scheduled-skip diagnostic patch locally (3 files, not yet reviewed/merged); do not treat it as landed. |
 | #6259 | **Closed** | Khala -> GLM served-worker disclosure + counter smoke is closed. |
 | #6315 | **Closed** | Zero-debit receipt-ref fix for #6259 is closed. |
-| #6320 | **Open** | Next throughput lever after the reliability base: continuous batching / chunked prefill / prefix cache / spec decode / quant. |
-| #6318 | **Open** | Must land before any continuous saturation harness: external requests win, internal stress is preemptible and excluded from the public counter. |
+| #6320 | **Open** | A bounded routed slice landed in `85ca837413` and deployed as Worker `228ac0f9-c891-4ad2-b05f-0dd8894f3c86`: typed throughput-sweep metadata for `max-num-seqs`, prefix cache, chunked prefill, speculative decode, quant gates. Still open for actual live engine rollout and measured throughput lift. |
+| #6318 | **Open** | Multiple partials landed (`a26ca1e`, `8ff2e47`, `4de477190c`) covering typed `internal_stress` attribution, route-level admission coverage, and live-headroom admission that rejects stress when reserved external headroom is unavailable. Still open for live mid-flight preemption proof under the continuous stress harness. |
 | #6317 | **Open** | Stress/saturation harness waits on #6318 and ideally #6320. |
 | #6312 | **Open** | Decision-grade aggregate max tokens/sec benchmark waits on the stress harness. |
 | #6321 | **Open** | Artanis fleet-overseer automation waits on the scheduler/stress/reliability pieces. |
-| #6253 | **Open** | Terminal-Bench 2.0 / Harbor benchmark remains open; do not disturb any separately owned live Harbor run. Pick up codeable pieces only when dependencies are armed. |
-| #6307 | **Open** | Owner-armed first `decisionGrade:true` Khala-vs-Fireworks/Vertex sweep remains open. |
-| #6308 | **Open** | External recurring head-to-head remains open; depends on #6307 for the first decision-grade suite. |
-| #6309 | **Open** | Recurring gym benchmark leaderboard remains open; depends on #6307. |
+| #6253 | **Open** | Isolated Terminal-Bench 2.0 black-box runner, bounded real measurement, and replication path landed in `da472748c5`. The separately owned full Harbor run must not be disturbed. Still open for decision-grade replicate-and-beat evidence. |
+| #6307 | **Open** | Owner-armed real sweep harness and Khala-side run landed in `ff89ecf498`; spendful Fireworks/Vertex comparison remains owner-gated. Still open for the first `decisionGrade:true` full report. |
+| #6308 | **Open** | Recurring external head-to-head publication layer landed in `2f2d011c64`. Still open for recurring decision-grade data from #6307-style owner-armed runs. |
+| #6309 | **Open** | Gym ladder publication/projection layer landed in `1accb3573b`. Still open for decision-grade rung data and recurrence evidence. |
 | #6305 | **Closed** | OpenCode -> Khala checklist/recipe is closed. Keep it honest if serving regresses. |
 | #6306 | **Closed** | Next ecosystem recipes are closed. Keep them as docs/recipe artifacts, not proof that Phase 4 benchmarks are complete. |
-| #6303 | **Open** | GTM umbrella remains open until the Phase 4 benchmark/quality evidence and demand scoreboard are done. |
-| #6316 | **Open** | Serving umbrella remains open until the remaining GLM durability, throughput, stress, benchmark, and overseer work lands. |
+| #6303 | **Open** | GTM umbrella remains open: recipe issues are closed and benchmark publication layers exist, but the real decision-grade benchmark/quality evidence and adoption scoreboard are not complete. |
+| #6316 | **Open** | Serving umbrella remains open: #6320/#6318 have partial deployed slices, but #6323 pilot, #6311 durability, #6317 stress, #6312 aggregate benchmark, and #6321 overseer are not complete. |
 | #6325 | **Closed** | Pylon/Codex delegated sessions are persisted as private traces and exact token events. |
 | #6326 | **Closed** | Complete raw Codex SDK event streams persist privately for Pylon/Codex Khala delegation. |
 | #6331 | **Closed** | The Pylon coding-delegation 500/unavailable path is fixed with typed diagnostics and proof surfaces. |
@@ -77,11 +77,33 @@ public product claim.
   path (`GET /api/pylon/codex/proof?assignmentRef=...` and
   `pylon khala proof <assignmentRef> --json`). Counter movement alone is never
   proof because other agents may be running.
+- Pylon state at refresh: `presence heartbeat --json` reported
+  `pylon.33afd48282a649047e3a`, `registered: true`, `linked: true`,
+  `stale: false`, heartbeat sequence `127`, and no blocker refs at
+  `2026-06-26T15:33:52.321Z`. Local account inventory showed five ready Codex
+  homes (`codex`, `codex-2`, `codex-3`, `codex-4`, and the default home) plus
+  two stale/missing Codex registry refs. `provider go-online` still reported
+  `maxInflight: 1` / `perBuyerMaxInflight: 1`, so parallel stress must first
+  publish a higher Codex concurrency through the heartbeat/capacity path.
+- Latest paused delegation: assignment
+  `assignment.public.khala_coding.chatcmpl_ffe4aef49ef94614be78bc9c8c7b3b62`
+  completed locally on `codex-3` against `91edb870c3` with accepted closeout
+  `assignment.closeout.de5c448aa8a73c1639aaff89`, producing a candidate #6311
+  patch that persists canonical scheduled-skip diagnostics. It is unreviewed and
+  unmerged. The owner-scoped proof re-check in this shell returned
+  `401 unauthorized`, so the roadmap must not claim exact trace/token proof for
+  that assignment until proof is rerun successfully with valid auth.
+- Public counter state at refresh:
+  `/api/public/khala-tokens-served` returned `198,664,088` at
+  `2026-06-26T15:33:09.463Z`. That movement is aggregate and intentionally not
+  attributed to the paused #6311 assignment without the owner-scoped proof rows.
 - Current serving observability gap: the #6311 GLM readiness route can project
   readiness from persisted routed-completion fallback rows, but canonical
   scheduled `glm-pool-heartbeat` rows have still not been observed after arming.
-  Keep this as the next codeable #6311 diagnostic before relying on scheduled
-  watchdog evidence for all replicas.
+  The delegated candidate patch addresses skipped/disabled/unarmed diagnostics,
+  but it still needs review, tests on current `origin/main`, merge, deploy via
+  `deploy:safe`, and live row proof before relying on scheduled watchdog
+  evidence for all replicas.
 
 ---
 
@@ -153,9 +175,11 @@ Make the fleet trustworthy before pushing load through it.
    auto-replace, an on-demand reserve, and the us-central1 quota increase. (Cross-refs
    hydralisk #95 durable host, #99 prebake-weights image.)
    - **Status (2026-06-26): OPEN.** Partial route/projection work has landed, but
-     the issue remains broad. Current codeable follow-up: canonical scheduled GLM
-     pool heartbeat rows/diagnostics are not yet showing up; live readiness has
-     depended on routed-completion fallback evidence.
+     the issue remains broad. Current codeable follow-up: review and either
+     land or reject the paused Pylon/Codex candidate patch for canonical
+     scheduled-skip GLM pool heartbeat diagnostics, then prove live scheduled
+     rows. Do not close until durability/non-Spot/reserve/quota scope is also
+     satisfied or explicitly split.
 6. **#6259 + #6315 — green end-to-end GLM-serving smoke. → after #6310.** Get the
    Khala→GLM verification smoke passing for real (served-worker disclosure + counter
    increment); #6315 is the receipt-ref fix for the zero-debit operator-exempt token.
@@ -169,12 +193,15 @@ Make the fleet trustworthy before pushing load through it.
    unlock it (a multiple, not a percent), then stack chunked prefill + engine-side prefix
    caching + speculative/MTP decode + eval-gated quantization. Biggest tok/s win in the
    whole roadmap; do it before stress-testing so you measure the real ceiling.
-   - **Status (2026-06-26): OPEN.** Now eligible because #6319 is closed; keep it
-     before #6317/#6312.
+   - **Status (2026-06-26): OPEN.** Bounded sweep metadata landed in
+     `85ca837413`, but live engine flags and measured throughput lift have not.
+     Keep it before #6317/#6312.
 8. **#6318 — external-wins admission/priority scheduler. → before #6317.** Internal load
    must be preemptible and yield to external demand. This MUST land before any continuous
    stress so the stress harness can never starve a real user.
-   - **Status (2026-06-26): OPEN.** This is the hard gate before stress load.
+   - **Status (2026-06-26): OPEN.** Admission/attribution slices landed and were
+     deployed, but the issue remains the hard gate before stress load until
+     live mid-flight preemption is proven.
 9. **#6317 — continuous max-capacity stress/saturation harness. → after #6318, #6320.**
    The self-driving load that saturates the fleet, ramps concurrency to the ceiling, and
    auto-backs-off on external pressure.
@@ -200,19 +227,23 @@ Make the fleet trustworthy before pushing load through it.
 12. **#6253 — replicate + beat GLM-REAP's 69.1% on Terminal-Bench 2.0. → after Phase 1.**
     The competitive goal: a decision-grade Khala-routed run (not the raw-GLM pilot),
     inference-method comparison, beat the baseline.
-    - **Status (2026-06-26): OPEN.** A separate agent may own a live Harbor run;
-      do not interrupt it. Codeable pieces are fair game once the GLM/Khala
-      connection they require is armed.
+    - **Status (2026-06-26): OPEN.** Black-box runner and bounded public-safe
+      measurement path landed in `da472748c5`. A separate agent may own a live
+      Harbor run; do not interrupt it. Remaining work is decision-grade
+      replicate-and-beat evidence.
 13. **#6307 — owner-armed real sweep: first `decisionGrade:true` Khala-vs-Fireworks/Vertex
     report ‖ parallel.** The minimum decision suite, run for real over realistic traffic.
-    - **Status (2026-06-26): OPEN.**
+    - **Status (2026-06-26): OPEN.** Harness/seam and Khala-side run landed in
+      `ff89ecf498`; spendful external lanes remain owner-gated.
 14. **#6308 — external head-to-head (recurring quality bar). → after #6307.** Khala vs the
     tools/models developers would otherwise use, on our axes (cost-per-accepted-outcome,
     verified-rate).
-    - **Status (2026-06-26): OPEN; depends on #6307.**
+    - **Status (2026-06-26): OPEN.** Publication layer landed in `2f2d011c64`;
+      decision-grade recurring data still depends on #6307.
 15. **#6309 — gym benchmark ladder as a recurring leaderboard. → after #6307.** Big Pickle
     → free models → paid frontier, published and re-scored on every change.
-    - **Status (2026-06-26): OPEN; depends on #6307.**
+    - **Status (2026-06-26): OPEN.** Ladder publication/projection layer landed
+      in `1accb3573b`; decision-grade rung data still depends on #6307.
 
 ## Phase 5 — Drive adoption (the demand side; GTM #6303)
 
@@ -225,8 +256,9 @@ Make the fleet trustworthy before pushing load through it.
     - **Status (2026-06-26): CLOSED.**
 18. **#6303 — GTM push tracking (umbrella).** Closes when 16–17 + the Phase-4 benchmarks
     land; keep it updated as the demand-side scoreboard.
-    - **Status (2026-06-26): OPEN.** Recipe work is closed, but the benchmark and
-      adoption scoreboard evidence is not complete.
+    - **Status (2026-06-26): OPEN.** Recipe work and publication layers are
+      present, but benchmark evidence and adoption scoreboard evidence are not
+      complete.
 
 ---
 
@@ -240,11 +272,13 @@ Historical full sequence:
 `#6321` → `#6253` ‖ `#6307` → `#6308` ‖ `#6309` → `#6305` [closed] →
 `#6306` [closed] → close `#6303`.
 
-Remaining active sequence after the 2026-06-26 refresh:
+Remaining active sequence after the 2026-06-26 ~15:35Z refresh:
 
-`#6323`(run the full-model pilot) ‖ `#6311`(durability + canonical watchdog
-diagnostics) → `#6320` → `#6318` → `#6317` → `#6312` → `#6321` → `#6253` ‖
-`#6307` → `#6308` ‖ `#6309` → close `#6316` / `#6303`.
+`#6323`(run the full-model pilot) ‖ `#6311`(review/land canonical diagnostics,
+then durability) → `#6320`(live engine rollout + measured lift) →
+`#6318`(finish live preemption proof) → `#6317` → `#6312` → `#6321` →
+`#6253`(decision-grade replicate/beat) ‖ `#6307`(owner-armed full comparison) →
+`#6308` ‖ `#6309`(recurring evidence) → close `#6316` / `#6303`.
 
 (#6323 remains at the front because it could still become the quality/tool-call
 upgrade path even though #6310 itself is closed. If the full model tool-calls
