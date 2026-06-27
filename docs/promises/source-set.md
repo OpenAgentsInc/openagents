@@ -65,6 +65,9 @@ promise candidates, not proof that a promise is green.
 | [`232.md`](../transcripts/232.md) | Energy-aware compute orchestration, agentic inference flexibility, accepted outcomes per kilowatt hour, miner economics, and unified profitability/orchestration model direction.                 |
 | [`233.md`](../transcripts/233.md) | OpenAgents monorepo consolidation, Bun/Effect/TypeScript/Cloudflare Worker direction, product homes for Autopilot/Pylon/Forum/Sites, and repo issue/PR routing.                                   |
 | [`236.md`](../transcripts/236.md) | Planned large decentralized training run, Pylon v0.3 as Bitcoin-paid node software, Percepta Executor Class model support, and Tassadar training/model direction.                                 |
+| [`242.md`](../transcripts/242.md) | Khala as the flagship collective-intelligence product, the free OpenAI-compatible API, single public Khala model, open-source infrastructure, contributor compute/data/labor/verification markets, pay-for-privacy direction, and confidential-compute aspirations. |
+| [`243.md`](../transcripts/243.md) | Khala dogfooding through OpenCode, free self-serve API key limits, public token counter honesty, stale `khala-mini` model-id correction, provider/model mix, stats-page direction, and free-tier trace/data disclosure constraints. |
+| [`244.md`](../transcripts/244.md) | Khala -> Pylon -> Codex own-capacity delegation, caller-owned Pylon/account linking, no-resale boundary, typed/semantic routing requirement, exact token-counter growth, `/stats` model mix, and Khala CLI sneak peek. |
 
 ## Verified Closed Issue Set
 

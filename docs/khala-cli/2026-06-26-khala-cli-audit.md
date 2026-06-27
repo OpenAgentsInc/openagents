@@ -3,6 +3,13 @@
 > Status: **internal audit, 2026-06-26.** Reference for the build plan in
 > [`2026-06-26-khala-cli-roadmap.md`](./2026-06-26-khala-cli-roadmap.md). Not a
 > product promise; flips no promise state.
+>
+> Superseded note, 2026-06-27: this audit records the original simple OpenTUI
+> plan. The shipped `@openagentsinc/khala` v0.1.16 client does not use OpenTUI;
+> it uses normal terminal scrollback/raw-mode input and now includes metadata,
+> login/logout, optional Codex delegation, and owner-authenticated Artanis
+> commands. Use [`README.md`](./README.md), `clients/khala-cli/README.md`, and
+> `clients/khala-cli/src/changelog.ts` for current behavior.
 
 The goal is a "dirt-simple" terminal client for Khala: read one line, stream the
 answer. Before designing it, this audits the two server surfaces a CLI can hit

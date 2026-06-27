@@ -3,6 +3,13 @@
 > Status: **internal execution roadmap, 2026-06-26.** Pairs with
 > [`2026-06-26-khala-cli-audit.md`](./2026-06-26-khala-cli-audit.md). Direction
 > and implementation record; flips no promise state.
+>
+> Superseded note, 2026-06-27: this roadmap is the original execution record.
+> The shipped v0.1.16 client lives in `clients/khala-cli/`, uses normal terminal
+> scrollback/raw-mode input instead of OpenTUI, and has grown beyond the M0-M4
+> plan to include login/logout, metadata commands, public token counter,
+> optional local Codex delegation, and the owner-authenticated Artanis channel.
+> Treat the milestone text below as history, not current product copy.
 
 A single Bun + Effect client that reads one line of input (OpenTUI) and streams
 a Khala answer to stdout. It now ships from `clients/khala-cli/`; the original

@@ -377,8 +377,10 @@ Live proof:
    local stale closeout. Complete.
 6. Confirm exact `token_usage_events` rows for real Codex assignments before
    treating public counter movement as proof. Complete.
-7. Confirm the public counter remains monotonic and excludes only
-   `demand_kind='internal'`, while preserving `own_capacity` Pylon/Codex usage.
+7. Confirm the public counter remains monotonic and includes all real served
+   token rows, including `demand_kind='internal'` dogfood and `own_capacity`
+   Pylon/Codex usage. Keep internal/external/unlabeled provenance in segmented
+   analytics; do not use the headline counter alone as external-demand proof.
    Complete after Worker deploy `95d3fcee-f740-477d-b3c4-368f198e8255`:
    public counter/model-mix read live, internal canary/heartbeat stayed green
    without requiring public counter movement, and Pylon-Codex exact rows remain

@@ -9,8 +9,11 @@ khala changelog
 khala tokens
 khala info
 khala version
+khala login
+khala logout
 khala auth codex
 khala codex "read README.md"
+khala --artanis --prompt "status"
 bun run khala
 bun run khala -- --prompt "Say hello in one short sentence."
 printf 'Say OK only.' | bun run khala -- --headless --json
@@ -45,6 +48,12 @@ two modes:
   `POST /api/khala/feedback`, `khala tokens` reads the public Khala
   tokens-served counter, and `khala changelog` prints the recent package
   changelog.
+- **Owner/operator auth:** `khala login` and `/login` use OpenAgents device
+  auth; `khala logout` and `/logout` clear the local token. Auth enables
+  owner/operator flows such as Artanis. It is not a billing or wallet console.
+- **Artanis operator channel:** `khala --artanis`, `khala artanis`, and
+  `/artanis` talk to the owner-authenticated Artanis operator channel when the
+  local login has access. This is not a public agent endpoint.
 
 Interactive mode checks npm for a newer `@openagentsinc/khala` in the
 background. If a newer version installs successfully, it prints one line and
@@ -71,6 +80,12 @@ that check.
   counter shown on `openagents.com` and `/khala`.
 - `/changelog` prints the five most recent CLI releases in reverse
   chronological order.
+- `/login` starts OpenAgents device auth.
+- `/logout` clears the local OpenAgents token.
+- `/artanis <message>` sends an owner-authenticated operator message to
+  Artanis.
+- `/khala <message>` switches a slash-prefixed message back to the normal Khala
+  channel.
 - `/version` prints the installed CLI version.
 - `/help` lists slash commands.
 - `/exit` quits.
@@ -80,9 +95,12 @@ that check.
 - `khala feedback "text"` sends feedback from scripts or a shell. This command
   may not have a chat trace reference, which is expected.
 - `khala info` prints a one-shot CLI thread id and trace viewing link.
+- `khala login` starts OpenAgents device auth.
+- `khala logout` clears the local OpenAgents token.
 - `khala auth codex` connects a Codex account for local workspace delegation.
 - `khala codex status` shows the active local Codex credential source.
 - `khala codex "task"` delegates directly to local Codex.
+- `khala artanis "message"` sends an owner-authenticated operator message.
 - `khala tokens` prints the current global Khala tokens-served count.
 - `khala changelog` prints recent releases.
 - `khala version` prints the installed CLI version.
@@ -99,8 +117,27 @@ that check.
 - `--json` prints `{"text":"..."}` after the turn instead of streaming deltas.
 - `--models` prints `/api/v1/models`.
 - `--mint-free-key` calls `POST /api/keys/free` and prints the response once.
+- `--artanis` uses the owner-authenticated Artanis operator channel.
 
 ## Changelog
+
+### v0.1.16 - Jun 26, 2026, 11:43:28 PM CDT
+
+- Shows the logged-in OpenAgents account email instead of conflating the user
+  identity with Artanis.
+- Clarifies that Artanis is the owner/operator agent reached through `/artanis`.
+
+### v0.1.15 - Jun 26, 2026, 11:00:14 PM CDT
+
+- Adds `khala login` / `/login` through OpenAgents device auth.
+- Adds `khala logout` / `/logout`.
+- Points Artanis owner-only and `--api` messages at `khala login`.
+
+### v0.1.14 - Jun 26, 2026, 10:26:46 PM CDT
+
+- Adds the owner-authenticated Artanis operator channel through `/artanis`,
+  `khala artanis`, and `--artanis`.
+- Reads the displayed version from `package.json`.
 
 ### v0.1.12 - Jun 26, 2026, 2:45:49 PM CDT
 

@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-25.1'
+export const PublicProductPromisesVersion = '2026-06-27.1'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -42,6 +42,15 @@ const sourceRefs = [
   'docs/transcripts/199.md',
   'docs/transcripts/217.md',
   'docs/transcripts/236.md',
+  'docs/transcripts/242.md',
+  'docs/transcripts/243.md',
+  'docs/transcripts/244.md',
+  'docs/inference/2026-06-25-khala-inference-gtm-push.md',
+  'docs/khala/2026-06-25-pylon-linked-coding-capacity-routing-spec.md',
+  'docs/afteraction/2026-06-26-khala-pylon-codex-delegation-afteraction.md',
+  'docs/traces/2026-06-27-pylon-codex-live-trace-status-audit.md',
+  'docs/khala-cli/README.md',
+  'clients/khala-cli/README.md',
   'docs/promises/2026-06-14-registry-reality-reconciliation-audit.md',
   'docs/promises/2026-06-17-training-monday-simulation-settlement-policy.md',
   'docs/promises/2026-06-18-training-monday-real-settlement-gate-met.md',
@@ -133,7 +142,7 @@ export const publicProductPromisesDocument = () => {
     generatedAt: currentIsoTimestamp(),
     maxStalenessSeconds: staleness.maxStalenessSeconds,
     staleness,
-    lastUpdated: '2026-06-25',
+    lastUpdated: '2026-06-27',
     canonicalDocsUrl:
       'https://github.com/OpenAgentsInc/openagents/tree/main/docs/promises',
     sourceRefs,
@@ -217,6 +226,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-23.2: artanis.labor_requester.v1 (DE-8, EPIC #5531) gains the missing green-readiness surface that maps the labor receipt feed onto its TWO named green-flip blockers; STAYS yellow, no green flip, green count unchanged. The receipt machinery was already complete (requester surface → tick driver → content-addressed receipt → tamper-evident D1 store → public re-verifying feed at GET /api/public/artanis/labor-receipts), but nothing folded that feed onto the named blockers so a reviewer or the operator recording the transition could read a single dereferenceable JSON to see whether the gate is met — exactly the surface the responder (responder-support) and evolution-loop (tick-streak) promises already have. That surface now exists at GET /api/public/artanis/labor-green-readiness (apps/openagents.com/workers/api/src/artanis-labor-green-readiness.ts + the handler in artanis-labor-receipt-routes.ts), reusing the SAME feed projection the public receipt feed serves (no fork): it counts PLACED unattended request receipts (terminalState requested_pending_delivery / accepted_released / rejected_refunded — states only an operator-ENABLED tick can reach; a config-disabled tick is sealed skipped_config_disabled and never places), and reports liveEnablementProven (≥1 placed receipt — proof a real enabled tick reserved escrow, clearing blocker.product_promises.artanis_labor_live_enablement_missing), unattendedRequestReceiptsProven (≥10 placed receipts, clearing blocker.product_promises.artanis_labor_unattended_request_receipts_missing), and greenGateMet (both, the mechanical receipt-evidence predicate only — never the owner sign-off). Each placed receipt is dereferenceable at GET /api/public/artanis/labor-receipts?receiptRef=<ref> for independent content-address re-verification. 17 passing tests (artanis-labor-green-readiness.test.ts + artanis-labor-receipt-routes.test.ts); the new route is added to the worker exact-routes manifest. Safe-by-construction: read-only, no-store, mints no dispatch/spend/escrow/settlement/registry authority and cannot create a receipt, enable a tick, or flip a blocker. The promise STAYS yellow: green requires the owner to (1) operator-enable Artanis labor and let ≥10 unattended ticks accrue placed receipts so /api/public/artanis/labor-green-readiness reports greenGateMet:true, then (2) record the owner-signed yellow→green promise_transition via POST /api/operator/product-promises/transitions citing the live readiness surface. NO promise changes state; zero green flips; any future green flip remains receipt-first and owner-signed per proof.claim_upgrade_receipts.v1.',
         'Registry 2026-06-24.1: program-focus note, NO state flips, green count unchanged, NO evidence removed. The "Weekend Promise Assault" push (drive all non-green promises green; parent EPIC #5523, closed) is PAUSED. The active program focus is the Khala launch — Khala on Machine Payments (MPP) + Stripe Directory discovery and the head-to-head inference demo (EPICs #6049, #6017). The ten DE domain epics — #5524 DE-1 revenue loop, #5525 DE-2 inference gateway + cloud primitives, #5526 DE-3 Autopilot coding surface, #5527 DE-4 Pylon network, #5528 DE-5 training/Tassadar, #5529 DE-6 open markets, #5530 DE-7 mobile+voice, #5531 DE-8 identity/proof spine, #5532 DE-9 workrooms/sites, #5533 DE-10 energy/metrics/world-firsts — and the Episode 239 "Let\'s Make Money" revenue-loop tracker (#5510 plus children #5520, #5521, #5511, #5512, #5508) are closed as PARKED / not-planned-for-now — NOT abandoned. This is a tracker/focus decision only: every affected promise KEEPS its honest current state (red/yellow/planned), so parking changes no promise state, flips nothing green, and removes no evidence or blocker. There is deliberately NO new "parked" promise state — parking lives in this program note, not in promise truth. The live paid-inference path (POST /v1/chat/completions, free inference works) plus the Bitcoin contributor-payout rail carry forward in the Khala MPP work (#6049); the broad referral / partner-ledger / paid-credits-collection / fine-tuning / sandbox assault is paused until explicitly resumed. The registry stays the source of truth for promise state; any future green flip remains receipt-first and owner-signed per proof.claim_upgrade_receipts.v1. The parked epics reopen when the broad promise push resumes.',
         'Registry 2026-06-25.1 adds data.free_tier_capture_disclosure.v1 (yellow) as the honest data-sharing disclosure backing default-on free-tier trace capture (#6293/#6294/#6295, EPIC #6206). Default-on capture is going live: free-tier /api/v1/chat/completions traffic is captured by default as REDACTED, PRIVATE (owner_only) ATIF traces that may be used to improve/train OpenAgents models; paying for privacy / confidential compute opts the caller OUT (fail-closed to not-captured, inference-privacy-entitlement.ts); public sharing of a captured trace is owner opt-in only; and capture grants NO payout/settlement (the data-market reward marker stays inert and owner-gated, #6221). The canonical disclosure is a single source of truth (inference/free-tier-data-sharing-disclosure.ts) surfaced at three honest places: the POST /api/keys/free mint response (dataSharing field), the public agent-readable GET /api/public/free-tier-data-sharing endpoint, and the public AGENTS.md inference section. The record is YELLOW (not green): the disclosure text is implemented and discoverable, but the underlying default-on capture flip (KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT) is owner-gated and the public copy is owner-approval-gated per the audit. This is disclosure only — it ships no capture behavior, no authority, and no money. Evidence: docs/promises/2026-06-25-free-tier-data-sharing-disclosure.md, docs/traces/2026-06-25-default-on-trace-capture-audit.md.',
+        'Registry 2026-06-27.1 reconciles Episodes 242-244, the shipped Khala CLI v0.1.16, and the Khala -> Pylon -> Codex owner-capacity runbook. It adds green scoped records for the free OpenAI-compatible Khala API, the public Khala tokens-served counter/history, and the shipped terminal CLI; yellow records for public model-family mix stats, explicit owner-capacity Codex delegation, free-tier trace capture, and paid/confidential privacy opt-out; and keeps no-resale/no-payout boundaries explicit. Exact own-capacity Codex token rows count in the headline token counter after closeout, but counter movement alone is not proof: assignment proof requires rows with provider pylon-codex-own-capacity, model openagents/pylon-codex, usage_truth exact, demand_kind own_capacity, and demand_source khala_coding_delegation. Broad automatic semantic routing, pooled third-party capacity, paid resale, public raw Codex traces, live assignment trace UI, and guaranteed dispatch availability remain blocked. The stale Khala CLI OpenTUI/single-line plan is superseded by the v0.1.16 scrollback/raw-mode CLI docs.',
       ],
     },
     promises: [
@@ -1002,6 +1012,66 @@ export const publicProductPromisesDocument = () => {
       },
       {
         ...basePromiseFields,
+        promiseId: 'data.khala_free_tier_trace_capture.v1',
+        productArea: 'data',
+        audience: ['user', 'agent', 'operator', 'public'],
+        state: 'yellow',
+        claim:
+          'Free Khala API usage can be captured as redacted, private-by-default traces for model improvement.',
+        safeCopy:
+          'The free-tier trace-capture seams exist and are intentionally private/redacted by default when armed: captured traces are owner_only unless the owner opts into public sharing, and trace capture does not create payout or settlement eligibility. This is yellow because the behavior is owner-gated by KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT and must remain aligned with the public disclosure and paid-privacy exclusion path.',
+        unsafeCopy:
+          'Do not claim all free-tier traffic is currently captured unless the production gate is armed, do not claim captured traces are public by default, and do not claim capture pays users or contributors.',
+        evidenceRefs: [
+          'apps/openagents.com/workers/api/src/inference/khala-chat-trace-emitter.ts',
+          'apps/openagents.com/workers/api/src/inference/free-tier-data-sharing-disclosure.ts',
+          'apps/openagents.com/workers/api/src/inference/inference-privacy-entitlement.ts',
+          'docs/traces/2026-06-25-default-on-trace-capture-audit.md',
+          'docs/promises/2026-06-25-free-tier-data-sharing-disclosure.md',
+          'docs/transcripts/242.md',
+          'docs/transcripts/243.md',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.free_tier_capture_default_owner_gated',
+          'blocker.product_promises.trace_capture_public_disclosure_alignment_required',
+          'blocker.product_promises.trace_capture_reward_marker_inert',
+        ],
+        verification:
+          'Yellow requires the capture emitter, disclosure surface, and privacy-entitlement exclusion code to agree. Green requires production gate evidence, redaction/private-owner scoping evidence, public-copy owner sign-off, and no payout/settlement implication.',
+        authorityBoundary:
+          'Trace capture is data-retention behavior only. It grants no public trace publication, training-data sale, payout, settlement, billing, or confidential-compute authority.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'privacy.khala_paid_capture_optout.v1',
+        productArea: 'privacy',
+        audience: ['user', 'agent', 'customer', 'public'],
+        state: 'yellow',
+        claim:
+          'Paid privacy and confidential compute opt callers out of free-tier trace capture.',
+        safeCopy:
+          'The privacy entitlement seam is designed to fail closed to not-captured for paid privacy or confidential-compute callers, and the free-tier disclosure tells users that paying for privacy or using confidential compute opts out. This remains yellow: the entitlement policy exists as a boundary, but broad paid privacy/confidential-compute product copy is not green until the paid product path, purchase/entitlement proof, and confidential execution path have their own receipts.',
+        unsafeCopy:
+          'Do not claim paid privacy, confidential compute, or privacy-preserving paid Khala is broadly live merely because the opt-out policy seam exists. Do not claim a paid user will be billed, entitled, or run in confidential compute without receipt-backed product proof.',
+        evidenceRefs: [
+          'apps/openagents.com/workers/api/src/inference/inference-privacy-entitlement.ts',
+          'apps/openagents.com/workers/api/src/inference/free-tier-data-sharing-disclosure.ts',
+          'docs/promises/2026-06-25-free-tier-data-sharing-disclosure.md',
+          'docs/inference/2026-06-25-khala-inference-gtm-push.md',
+          'docs/transcripts/242.md',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.paid_privacy_purchase_receipt_missing',
+          'blocker.product_promises.confidential_compute_execution_receipt_missing',
+          'blocker.product_promises.paid_khala_business_loop_not_green',
+        ],
+        verification:
+          'Verify the entitlement function excludes paid-privacy/confidential-compute requests from trace capture fail-closed. Green requires a real paid privacy entitlement or confidential compute receipt, endpoint smoke, public-safe projection, and owner sign-off.',
+        authorityBoundary:
+          'An opt-out policy seam is not a paid product, billing, settlement, privacy guarantee, or confidential-compute runtime proof.',
+      },
+      {
+        ...basePromiseFields,
         promiseId: 'pylon.data_trace_revenue.v1',
         productArea: 'data',
         audience: ['contributor', 'public'],
@@ -1214,6 +1284,146 @@ export const publicProductPromisesDocument = () => {
           'A local Autopilot route smoke can price a hosted_gemini request, return L402, accept a paid retry, run an injected hosted executor, persist a public-safe delivered closeout, and expose delivered events. A live hosted Gemini claim still needs a registered-agent production smoke, executor binding, billing, entitlement, provider policy, quota, metering, and settlement refs.',
         authorityBoundary:
           'API-driven product surfaces are not generic provider-capacity resale authority.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'inference.khala_free_openai_compatible_api.v1',
+        productArea: 'agent API',
+        audience: ['agent', 'developer', 'user', 'public'],
+        state: 'green',
+        claim:
+          'Khala is available through a free, OpenAI-compatible API at openagents.com.',
+        safeCopy:
+          'Khala is live as a free, rate-limited OpenAI-compatible API: mint a free key with POST /api/keys/free, call POST /api/v1/chat/completions with model openagents/khala, or inspect GET /api/v1/models. The public model catalog intentionally exposes one model id, openagents/khala. Free quota is limited and metered; this is not a paid-capacity, marketplace-resale, guaranteed-availability, confidential-compute, or verified-code-execution claim.',
+        unsafeCopy:
+          'Do not advertise stale public model ids such as openagents/khala-mini or openagents/khala-code, do not claim unlimited free API usage, and do not claim the paid Khala business loop, MPP funding, privacy upsell, or contributor payouts are green because free inference works.',
+        evidenceRefs: [
+          'route:/api/keys/free',
+          'route:/api/v1/chat/completions',
+          'route:/api/v1/models',
+          'docs/inference/2026-06-25-khala-inference-gtm-push.md',
+          'docs/promises/2026-06-25-khala-inference-push-promise-review.md',
+          'docs/transcripts/242.md',
+          'docs/transcripts/243.md',
+        ],
+        blockerRefs: [],
+        verification:
+          'Green scope is limited to the free key + OpenAI-compatible chat-completions surface and the single public model id. Verification requires POST /api/keys/free to return an oa_agent_ bearer with the published free-tier limits, GET /api/v1/models to include openagents/khala, and a streamed POST /api/v1/chat/completions call to return assistant tokens under the free quota.',
+        authorityBoundary:
+          'This grants no paid inference, balance, revenue, settlement, privacy, confidential-compute, code-execution, provider-resale, or uptime guarantee authority.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'metrics.khala_tokens_served_public.v1',
+        productArea: 'metrics',
+        audience: ['agent', 'user', 'public'],
+        state: 'green',
+        claim:
+          'OpenAgents publishes a live public Khala tokens-served counter and history.',
+        safeCopy:
+          'The public Khala tokens-served counter is live at GET /api/public/khala-tokens-served and is shown on openagents.com surfaces including /khala and /stats. It is a source-agnostic headline total of real served tokens, including internal dogfood and owner-capacity Codex rows after exact closeout ingestion. Use segmented analytics or assignment proof for provenance; the headline counter alone is not proof of external demand, revenue, assignment success, payout, or model quality.',
+        unsafeCopy:
+          'Do not describe the headline total as external customer demand, revenue, paid usage, contributor payout, or assignment-specific proof. Do not infer a Khala -> Pylon -> Codex assignment from counter movement without matching exact token_usage_events rows.',
+        evidenceRefs: [
+          'route:/api/public/khala-tokens-served',
+          'route:/api/public/khala-token-history',
+          'docs/inference/2026-06-25-khala-inference-gtm-push.md',
+          'docs/stats/2026-06-26-stats-page-audit.md',
+          'docs/afteraction/2026-06-26-khala-pylon-codex-delegation-afteraction.md',
+          'docs/traces/2026-06-27-pylon-codex-live-trace-status-audit.md',
+          'docs/transcripts/243.md',
+          'docs/transcripts/244.md',
+        ],
+        blockerRefs: [],
+        verification:
+          'GET /api/public/khala-tokens-served must return schemaVersion openagents.public_khala_tokens_served.v1 with tokensServed and live_at_read staleness. Token history and page projections must preserve the policy that all real served tokens count in the headline while provenance/demand segmentation remains separate.',
+        authorityBoundary:
+          'A public aggregate counter does not expose private traces, raw provider events, D1 rows, payment data, or assignment-level proof, and it does not authorize external-demand or revenue claims.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'metrics.khala_model_family_mix_public.v1',
+        productArea: 'metrics',
+        audience: ['agent', 'operator', 'public'],
+        state: 'yellow',
+        claim:
+          'The Khala stats surface shows model-family/provider mix and daily token volume.',
+        safeCopy:
+          'The /stats direction includes public model-family/provider mix and daily token-volume views for Khala, including Pylon-Codex owner-capacity volume where exact token rows exist. Treat this as a yellow transparency surface: it is useful for reading the mix of served work, but it must preserve staleness, model-family normalization, and internal/external/unlabeled demand caveats.',
+        unsafeCopy:
+          'Do not use model-mix percentages as proof of external customer demand, revenue, model preference, paid provider resale, or marketplace health. Do not hide internal dogfood or own-capacity provenance when making demand claims.',
+        evidenceRefs: [
+          'docs/stats/2026-06-26-stats-page-audit.md',
+          'docs/inference/2026-06-25-khala-inference-gtm-push.md',
+          'docs/transcripts/244.md',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.model_mix_staleness_methodology_pending',
+          'blocker.product_promises.model_mix_demand_segmentation_copy_pending',
+        ],
+        verification:
+          'Yellow until the public /stats model-mix route/page has a documented staleness contract, stable model-family normalization, and copy that distinguishes headline served volume from external demand and revenue.',
+        authorityBoundary:
+          'Model-mix transparency is not routing authority, provider resale authority, benchmark proof, revenue proof, or public raw-event disclosure.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'khala.cli_terminal_client.v1',
+        productArea: 'Khala',
+        audience: ['agent', 'developer', 'operator', 'user'],
+        state: 'green',
+        claim:
+          '@openagentsinc/khala ships a terminal client for Khala chat and operator utilities.',
+        safeCopy:
+          '@openagentsinc/khala v0.1.16 exposes the khala command: interactive scrollback chat, headless prompt/stdin mode, /info and /msginfo metadata, feedback, changelog, version, public token counter, background update checks, OpenAgents login/logout for owner/operator flows, optional local Codex workspace delegation when local credentials are connected, and the owner-authenticated Artanis operator channel. The CLI uses a normal terminal scrollback/raw-mode input, not the superseded OpenTUI single-line plan.',
+        unsafeCopy:
+          'Do not claim the CLI is a full TUI, a billing/account console, a wallet, a guaranteed local-code executor, or a public Artanis access path. Do not cite old v0.1.11 sneak-peek output as the current version without the v0.1.16 source/changelog.',
+        evidenceRefs: [
+          'clients/khala-cli/package.json',
+          'clients/khala-cli/README.md',
+          'clients/khala-cli/src/cli.ts',
+          'clients/khala-cli/src/input.ts',
+          'clients/khala-cli/src/changelog.ts',
+          'docs/khala-cli/README.md',
+          'docs/transcripts/244.md',
+        ],
+        blockerRefs: [],
+        verification:
+          'khala --version reports 0.1.16; CLI source exposes the documented commands and flags; changelog.ts records v0.1.14 Artanis, v0.1.15 login/logout, and v0.1.16 identity wording; README docs carry the current scoped copy and supersede the old OpenTUI plan.',
+        authorityBoundary:
+          'The CLI is a client surface only. Authentication, trace visibility, Codex delegation, Artanis access, spend, and account authority are still enforced by their respective server/local credential gates.',
+      },
+      {
+        ...basePromiseFields,
+        promiseId: 'khala.own_capacity_codex_delegation.v1',
+        productArea: 'Khala',
+        audience: ['operator', 'agent', 'developer'],
+        state: 'yellow',
+        claim:
+          'A typed Khala coding request can delegate to the caller’s own linked Pylon and run local Codex no-spend work.',
+        safeCopy:
+          'Owner-capacity Khala -> Pylon -> Codex delegation is live for explicit typed requests: use pylon khala request --workflow codex_agent_task --pylon-ref <caller-owned-pylon> and run the assigned lease with pylon assignment run-no-spend. Accepted closeouts produce exact token_usage_events rows with provider pylon-codex-own-capacity, model openagents/pylon-codex, usage_truth exact, demand_kind own_capacity, and demand_source khala_coding_delegation. This is no-spend, owner-local capacity only; it is not subscription resale, third-party pooling, payout eligibility, or automatic routing of every coding-ish chat prompt.',
+        unsafeCopy:
+          'Do not claim public users can sell Codex subscription capacity, route to other people’s Pylons, receive payouts, see raw Codex events publicly, watch a guaranteed live assignment trace UI, or rely on automatic broad semantic routing without the typed workflow and fresh caller-owned capacity gate.',
+        evidenceRefs: [
+          'docs/khala/2026-06-25-pylon-linked-coding-capacity-routing-spec.md',
+          'docs/afteraction/2026-06-26-khala-pylon-codex-delegation-afteraction.md',
+          'docs/traces/2026-06-27-pylon-codex-live-trace-status-audit.md',
+          'apps/pylon/docs/khala-burndown-runbook.md',
+          'apps/pylon/docs/codex-bridge.md',
+          'docs/transcripts/244.md',
+        ],
+        blockerRefs: [
+          'blocker.product_promises.khala_codex_dispatch_capacity_read_reliability',
+          'blocker.product_promises.assignment_trace_status_ui_missing',
+          'blocker.product_promises.pylon_codex_owner_trace_read_scope_mismatch',
+          'blocker.product_promises.broad_semantic_router_not_green',
+          'blocker.product_promises.third_party_capacity_pooling_not_live',
+        ],
+        verification:
+          'Green scope today requires explicit --workflow codex_agent_task, explicit caller-owned --pylon-ref, fresh provider go-online and presence heartbeat, assignment run-no-spend accepted closeout, and exact token rows. The broad product stays yellow until dispatch 503/capacity-read failures are resolved, owner-only trace read scope works for Pylon/Codex traces, an assignment-level status/timeline surface exists, and the central typed/semantic router is verified without ad hoc keyword matching.',
+        authorityBoundary:
+          'The local owner runner may use full local Codex execution authority, but that authority is never public wire authority and never applies to untrusted labor/provider work. This promise grants no payout, resale, third-party capacity, raw-event publication, or guaranteed availability.',
       },
       {
         ...basePromiseFields,

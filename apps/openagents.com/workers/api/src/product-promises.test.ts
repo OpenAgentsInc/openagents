@@ -350,9 +350,13 @@ describe('public product promises document', () => {
     // The 2026-06-21.4 Tassadar CPU-transform receipt-status pass adds a
     // public missing-gate projection without clearing the remaining
     // CPU-transform blocker, so green remains exactly 27.
+    // The 2026-06-27.1 Khala reconciliation adds three scoped green records for
+    // the free OpenAI-compatible Khala API, the public tokens-served counter,
+    // and the shipped Khala terminal client. The broader own-capacity routing,
+    // model-mix, trace-capture, and paid-privacy records stay yellow.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
-    ).toBe(27)
+    ).toBe(30)
     expect(decoded.verificationSummary.evidenceRefCount).toBeGreaterThan(0)
     expect(decoded.verificationSummary.uniqueBlockerCount).toBeGreaterThan(0)
     expect(

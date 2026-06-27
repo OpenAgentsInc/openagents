@@ -1166,6 +1166,7 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   '/api/khala/tokens',
   '/api/operator/khala/feedback',
   '/api/operator/khala/trace-review',
+  '/api/operator/khala/unsupported-requests',
   // Agency / services-business vertical pack (internal omni + operator surfaces;
   // session/operator-gated, not part of the public OpenAPI surface yet):
   '/api/workspaces',
