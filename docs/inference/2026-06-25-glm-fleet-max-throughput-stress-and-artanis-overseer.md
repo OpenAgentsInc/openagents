@@ -434,6 +434,13 @@ This keeps the invariant that **intelligence never upgrades authority**: the
 overseer's mind proposes, typed schemas validate, and approval gates hold for
 anything that costs money or removes capacity.
 
+**Safe-prep note (2026-06-27).** The rollback-required `fleet_mutation` risky
+kind is now modeled in `artanis-approval-gates.ts` with regression coverage and
+an invariant-ledger entry. This is authority scaffolding only: no fleet-overseer
+scheduled tick is registered, no stress traffic is armed, and no quarantine,
+paid scale-out, spend, or other live fleet action is executed until the #6317
+stress and #6318 external-wins proof gates are accepted.
+
 ### Why this is the right foundation
 
 - The **GPU fleet sensor already exists** (`glm-pool-heartbeat.ts`) — the

@@ -106,6 +106,27 @@ This is the invariant ledger for `openagents`.
 - Regression coverage for this policy lives in
   `workers/api/src/artanis-work-directions.test.ts`.
 
+## Artanis Fleet Overseer Authority
+
+- The Artanis fleet overseer must remain default-off until the live scheduler,
+  stress, and reliability proof for #6317/#6318 is accepted. Local scaffolding
+  may prepare typed records, health projections, approval gates, or docs, but it
+  must not run live fleet actions, stress traffic, spend, paid scale-out, or
+  quarantine.
+- Destructive fleet changes such as replica quarantine or drain are
+  `fleet_mutation` risky actions. They require a pending
+  `ArtanisApprovalGateRecord`, rollback plan or receipt refs, and
+  `artanisApprovalGateEffective` before any executor may treat them as
+  authorized. A mind proposal, health report, public ref, or D1 row is never
+  execution authority by itself.
+- Fleet health, throughput, scheduler-preemption, and stress-readiness signals
+  are read-only evidence. Public/operator projections must not expose raw origin
+  URLs, IPs, bearer material, prompts, private provider payloads, or wallet
+  material, and must not grant dispatch, spend, scale-out, or quarantine
+  authority.
+- Regression coverage for the rollback-required `fleet_mutation` approval kind
+  lives in `workers/api/src/artanis-approval-gates.test.ts`.
+
 ## Tassadar Module Library Demand Ranking
 
 - Demand-price signals, module-library ranking, and dedupe projections are

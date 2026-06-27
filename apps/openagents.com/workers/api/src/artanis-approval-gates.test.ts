@@ -187,4 +187,89 @@ describe('Artanis approval gates', () => {
       state: 'expired',
     })
   })
+
+  test('keeps fleet mutations rollback-required and ineffective without operator approval', () => {
+    const pendingFleetMutation = new ArtanisApprovalGateRecord({
+      ...approvedGate,
+      actionRef: 'action.public.artanis.fleet_mutation.quarantine_replica',
+      authorityReceiptRefs: [],
+      authoritySourceKinds: ['operator_policy'],
+      caveatRefs: [
+        'caveat.public.fleet_mutation_not_execution_authority',
+        'caveat.public.replica_quarantine_requires_operator_approval',
+      ],
+      gateRef: 'gate.public.artanis.fleet_mutation_quarantine_pending',
+      idempotencyKey: 'artanis-approval:fleet-mutation-quarantine:v1',
+      kind: 'fleet_mutation',
+      operatorReceiptRefs: [
+        'receipt.operator.artanis.open_fleet_mutation_review',
+      ],
+      policyRefs: [
+        'policy.public.artanis.fleet_mutation_requires_operator_approval',
+      ],
+      publicStatusRefs: [
+        'approval.public.artanis.fleet_mutation_quarantine_pending',
+      ],
+      resolvedAtIso: null,
+      rollbackPosture: 'rollback_plan_recorded',
+      rollbackRefs: [
+        'rollback.public.artanis.restore_replica_routing_eligibility',
+      ],
+      sourceRefs: [
+        'health.public.artanis.glm_fleet',
+        'scheduler.public.glm_external_wins_proof',
+      ],
+      state: 'pending',
+      updatedAtIso: '2026-06-07T02:18:00.000Z',
+    })
+    const missingRollback = new ArtanisApprovalGateRecord({
+      ...pendingFleetMutation,
+      gateRef: 'gate.public.artanis.fleet_mutation_missing_rollback',
+      idempotencyKey: 'artanis-approval:fleet-mutation-missing-rollback:v1',
+      rollbackPosture: 'rollback_not_applicable',
+      rollbackRefs: [],
+    })
+
+    expect(() =>
+      projectArtanisApprovalGateLedger(
+        ledgerWithGate(missingRollback),
+        'operator',
+        nowIso,
+      ),
+    ).toThrow(ArtanisApprovalGateUnsafe)
+
+    const operator = projectArtanisApprovalGateLedger(
+      ledgerWithGate(pendingFleetMutation),
+      'operator',
+      nowIso,
+    )
+    const publicArtanis = projectArtanisApprovalGateLedger(
+      ledgerWithGate(pendingFleetMutation),
+      'public_artanis',
+      nowIso,
+    )
+
+    expect(ARTANIS_RISKY_ACTION_KINDS).toContain('fleet_mutation')
+    expect(artanisApprovalGateEffective(pendingFleetMutation, nowIso)).toBe(
+      false,
+    )
+    expect(operator.gates[0]).toMatchObject({
+      effective: false,
+      kind: 'fleet_mutation',
+      rollbackPosture: 'rollback_plan_recorded',
+      rollbackRefs: [
+        'rollback.public.artanis.restore_replica_routing_eligibility',
+      ],
+      state: 'pending',
+    })
+    expect(publicArtanis.gates[0]).toMatchObject({
+      effective: false,
+      kind: 'fleet_mutation',
+      rollbackRefs: [],
+      state: 'pending',
+    })
+    expect(artanisApprovalGateProjectionHasPrivateMaterial(publicArtanis)).toBe(
+      false,
+    )
+  })
 })
