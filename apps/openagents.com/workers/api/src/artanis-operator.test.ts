@@ -6,6 +6,8 @@ import {
   ARTANIS_OPERATOR_MAX_TOOL_ITERATIONS,
   ARTANIS_OPERATOR_SYSTEM_PROMPT,
   type ArtanisMemoryEntry,
+  type ArtanisOperatorGatedResult,
+  type ArtanisOperatorGatedTool,
   type ArtanisOperatorKhalaClient,
   type ArtanisOperatorReadTool,
   type ArtanisOperatorRiskyTool,
@@ -454,6 +456,35 @@ const makeFakeRiskyTool = (): {
   return { planned, tool }
 }
 
+// A gated tool that records its args and returns a scripted outcome (executed
+// or deferred). Mirrors the real `dispatch_codex_task` gated shape.
+const makeFakeGatedTool = (
+  outcome: ArtanisOperatorGatedResult,
+): {
+  tool: ArtanisOperatorGatedTool
+  ran: Array<unknown>
+} => {
+  const ran: Array<unknown> = []
+  const tool: ArtanisOperatorGatedTool = {
+    definition: {
+      description: 'dispatch a codex task',
+      name: 'dispatch_codex_task',
+      parameters: {
+        properties: { objective: { type: 'string' } },
+        required: ['objective'],
+        type: 'object',
+      },
+    },
+    kind: 'gated',
+    riskyActionKind: 'pylon_job_dispatch',
+    run: (args: unknown) => {
+      ran.push(args)
+      return Effect.succeed(outcome)
+    },
+  }
+  return { ran, tool }
+}
+
 // A scripted Khala client: returns the queued InferenceResults in order. Each
 // call captures the request so tests can assert tools were advertised + the tool
 // result round-tripped back into the conversation.
@@ -525,6 +556,7 @@ describe('#6364 artanis operator bounded tool-calling loop', () => {
       {
         deferredToApprovalGate: false,
         executed: true,
+        executedRef: null,
         name: 'read_repo_file',
         riskyActionKind: null,
       },
@@ -573,6 +605,83 @@ describe('#6364 artanis operator bounded tool-calling loop', () => {
       {
         deferredToApprovalGate: true,
         executed: false,
+        executedRef: null,
+        name: 'dispatch_codex_task',
+        riskyActionKind: 'pylon_job_dispatch',
+      },
+    ])
+  })
+
+  test('a gated tool that EXECUTES reports the created assignment ref', async () => {
+    const { ran, tool } = makeFakeGatedTool({
+      assignmentRef: 'assignment.public.khala_coding.abc123',
+      durableRequestId: 'req-abc123',
+      outcome: 'executed',
+      summary: 'assignmentRef: assignment.public.khala_coding.abc123',
+    })
+    const { client } = makeScriptedKhalaClient([
+      toolCallResult('dispatch_codex_task', '{"objective":"burn down #6320"}'),
+      textResult('Dispatched. The assignment is running on your linked Pylon.'),
+    ])
+
+    const result = await Effect.runPromise(
+      artanisOperatorTurn({
+        awareness: exampleAwareness,
+        khalaClient: client,
+        memory: exampleMemory,
+        messages: [{ content: 'dispatch the backlog', role: 'user' }],
+        ownerId: 'owner:github:14167547',
+        tools: [tool],
+      }),
+    )
+
+    expect('error' in result).toBe(false)
+    if ('error' in result) return
+    // The gated tool ran (it really fired), and reports the created ref.
+    expect(ran).toEqual([{ objective: 'burn down #6320' }])
+    expect(result.deferredToApprovalGate).toBe(false)
+    expect(result.toolInvocations).toEqual([
+      {
+        deferredToApprovalGate: false,
+        executed: true,
+        executedRef: 'assignment.public.khala_coding.abc123',
+        name: 'dispatch_codex_task',
+        riskyActionKind: 'pylon_job_dispatch',
+      },
+    ])
+  })
+
+  test('a gated tool that DEFERS returns the plan and never executes', async () => {
+    const { ran, tool } = makeFakeGatedTool({
+      outcome: 'deferred',
+      plan: 'pylon khala request --workflow codex_agent_task ...',
+      reason: 'no_effective_owner_approval',
+    })
+    const { client } = makeScriptedKhalaClient([
+      toolCallResult('dispatch_codex_task', '{"objective":"burn down #6320"}'),
+      textResult('That dispatch needs your approval before it runs.'),
+    ])
+
+    const result = await Effect.runPromise(
+      artanisOperatorTurn({
+        awareness: exampleAwareness,
+        khalaClient: client,
+        memory: exampleMemory,
+        messages: [{ content: 'dispatch the backlog', role: 'user' }],
+        ownerId: 'owner:github:14167547',
+        tools: [tool],
+      }),
+    )
+
+    expect('error' in result).toBe(false)
+    if ('error' in result) return
+    expect(ran).toEqual([{ objective: 'burn down #6320' }])
+    expect(result.deferredToApprovalGate).toBe(true)
+    expect(result.toolInvocations).toEqual([
+      {
+        deferredToApprovalGate: true,
+        executed: false,
+        executedRef: null,
         name: 'dispatch_codex_task',
         riskyActionKind: 'pylon_job_dispatch',
       },

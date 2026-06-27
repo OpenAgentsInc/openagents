@@ -23,8 +23,9 @@
 import { Effect } from 'effect'
 
 import type {
+  ArtanisOperatorGatedResult,
+  ArtanisOperatorGatedTool,
   ArtanisOperatorReadTool,
-  ArtanisOperatorRiskyTool,
   ArtanisOperatorTool,
 } from './artanis-operator'
 
@@ -240,8 +241,23 @@ export const makeArtanisListRepoDirTool = (
 }
 
 // ---------------------------------------------------------------------------
-// #6366 — dispatch_codex_task (RISKY: pylon_job_dispatch; plan-only).
+// #6366 — dispatch_codex_task (GATED: pylon_job_dispatch).
 // ---------------------------------------------------------------------------
+//
+// #6366 follow-up: this tool was originally plan-only (it returned the exact
+// `pylon khala request --workflow codex_agent_task …` it WOULD run but never
+// fired). It is now a GATED tool: it can actually CREATE the Khala -> Pylon ->
+// Codex `codex_agent_task` assignment, but ONLY behind an effective owner
+// approval and ONLY through a wired execution seam. Everything stays
+// conservative by construction:
+//   - own-capacity + no-spend ONLY (the seam targets the OWNER's linked Pylon
+//     and uses the `unpaid_smoke` coding-delegation path; it moves no money,
+//     grants no payout, and never touches pooled/third-party capacity);
+//   - default DEFER: with no execution seam wired, or no effective owner
+//     approval, or no eligible linked Pylon, it returns the public-safe plan
+//     plus a typed reason and never fires;
+//   - never fake: an `executed` outcome is returned ONLY when the seam really
+//     created an assignment, and it carries the real `assignmentRef`.
 
 const asString = (value: unknown): string | undefined =>
   typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
@@ -259,18 +275,155 @@ const DISPATCH_UNSAFE_PATTERN =
 const dispatchFieldIsSafe = (value: string): boolean =>
   !DISPATCH_UNSAFE_PATTERN.test(value)
 
-// dispatch_codex_task — a risky (pylon_job_dispatch) tool. It does NOT execute;
-// `plan` returns the exact, public-safe Khala -> Pylon -> Codex dispatch it
-// WOULD run so the owner can approve the scope. Live execution stays gated.
+// The validated, public-safe plan input the gated tool hands to the execution
+// seam. Every field has already passed the public-safety gate.
+export type ArtanisDispatchPlanInput = Readonly<{
+  objective: string
+  branch: string
+  verify: string | undefined
+  issue: number | undefined
+  filePaths: ReadonlyArray<string>
+  // The composed public-safe prompt the Pylon/Codex runner receives.
+  prompt: string
+}>
+
+// What the execution seam returns: a real created assignment, or a typed
+// rejection (mapped to a deferral so Artanis never fakes an execution).
+export type ArtanisDispatchCreateResult =
+  | Readonly<{
+      kind: 'created'
+      assignmentRef: string
+      durableRequestId: string | null
+      pylonRef: string
+    }>
+  | Readonly<{ kind: 'rejected'; reason: string }>
+
+// The owner-scoped execution seam injected by the route. `isOwnerApproved`
+// reports whether an effective owner approval for `pylon_job_dispatch` exists
+// right now; `createCodexAssignment` actually creates the own-capacity,
+// no-spend assignment via the server coding-delegation route, targeting the
+// OWNER's linked Pylon. When absent, the tool stays plan-only (defers).
+export type ArtanisDispatchExecution = Readonly<{
+  isOwnerApproved: () => Effect.Effect<boolean>
+  createCodexAssignment: (
+    plan: ArtanisDispatchPlanInput,
+  ) => Effect.Effect<ArtanisDispatchCreateResult>
+}>
+
+// Build (and public-safety-gate) the dispatch plan from model-produced args.
+// Returns either the validated plan input + the public-safe plan text, or an
+// honest message (invalid args / blocked field) used as the deferral reason.
+const buildArtanisDispatchPlan = (
+  args: unknown,
+  defaultBranch: string,
+):
+  | Readonly<{ ok: true; input: ArtanisDispatchPlanInput; planText: string }>
+  | Readonly<{ ok: false; message: string }> => {
+  const record =
+    typeof args === 'object' && args !== null
+      ? (args as Record<string, unknown>)
+      : {}
+  const objective = asString(record.objective)
+  if (objective === undefined) {
+    return {
+      message:
+        '(invalid arguments: a public-safe "objective" string is required)',
+      ok: false,
+    }
+  }
+  const branch = asString(record.branch) ?? defaultBranch
+  const verify = asString(record.verify)
+  const issue =
+    typeof record.issue === 'number' && Number.isFinite(record.issue)
+      ? Math.trunc(record.issue)
+      : undefined
+  const filePaths = asStringArray(record.filePaths)
+
+  // Public-safety gate over every text field.
+  const unsafe = [objective, branch, verify ?? '', ...filePaths].find(
+    field => field !== '' && !dispatchFieldIsSafe(field),
+  )
+  if (unsafe !== undefined) {
+    return {
+      message:
+        '(blocked: a dispatch field contained non-public-safe material; rephrase with public issue numbers, public file paths, and public verification commands only)',
+      ok: false,
+    }
+  }
+  const badPath = filePaths.find(path => !isSafeArtanisRepoPath(path))
+  if (badPath !== undefined) {
+    return {
+      message: `(blocked: "${badPath}" is not an allowed public repo path)`,
+      ok: false,
+    }
+  }
+
+  const promptParts = [objective]
+  if (issue !== undefined) {
+    promptParts.unshift(`Implement public issue #${issue}.`)
+  }
+  if (filePaths.length > 0) {
+    promptParts.push(`Files: ${filePaths.join(', ')}.`)
+  }
+  if (verify !== undefined) {
+    promptParts.push(`Run the named verification.`)
+  }
+  const prompt = promptParts.join(' ')
+
+  const lines: Array<string> = [
+    'Planned Khala -> Pylon -> Codex dispatch (own-capacity only, no spend):',
+    '',
+    '  pylon khala request \\',
+    `    --prompt "${prompt}" \\`,
+    '    --workflow codex_agent_task \\',
+    '    --pylon-ref "<owner pylon ref>" \\',
+    `    --repo ${ARTANIS_REPO_READ_OWNER}/${ARTANIS_REPO_READ_REPO} \\`,
+    `    --branch ${branch} \\`,
+    '    --commit "<current origin/main sha>" \\',
+  ]
+  if (verify !== undefined) {
+    lines.push(`    --verify "${verify}" \\`)
+  }
+  lines.push('    --json')
+  lines.push('')
+  lines.push(
+    '  Then execute locally with no spend: pylon assignment run-no-spend --json',
+  )
+  lines.push('')
+  lines.push(
+    'For parallel burndown, set OPENAGENTS_PYLON_CODEX_CONCURRENCY=N and publish capacity (pylon presence heartbeat), then run-no-spend per assignment ref. Verify each closeout against the exact token_usage_events + agent_traces rows before merging non-spend code.',
+  )
+  if (issue !== undefined) {
+    lines.push(`Targets public issue #${issue}.`)
+  }
+
+  return {
+    input: { branch, filePaths, issue, objective, prompt, verify },
+    ok: true,
+    planText: lines.join('\n'),
+  }
+}
+
+// dispatch_codex_task — a GATED (pylon_job_dispatch) tool. With no execution
+// seam wired (or no effective owner approval, or no eligible linked Pylon) it
+// DEFERS and returns the exact public-safe Khala -> Pylon -> Codex dispatch it
+// WOULD run. Behind an effective owner approval AND a wired execution seam it
+// actually CREATES the own-capacity, no-spend assignment and reports the real
+// `assignmentRef`. It never spends, grants payout, fakes an execution, or uses
+// pooled/third-party capacity.
 export const makeArtanisDispatchCodexTaskTool = (
-  config: Readonly<{ defaultBranch?: string | undefined }> = {},
-): ArtanisOperatorRiskyTool => {
+  config: Readonly<{
+    defaultBranch?: string | undefined
+    execution?: ArtanisDispatchExecution | undefined
+  }> = {},
+): ArtanisOperatorGatedTool => {
   const defaultBranch = config.defaultBranch ?? 'main'
+  const execution = config.execution
 
   return {
     definition: {
       description:
-        'Plan a parallel Codex coding task dispatch through the Khala -> Pylon -> Codex burndown loop against the owner\'s linked Codex accounts. This is a gated (pylon_job_dispatch) action: it is NOT executed; it returns the exact public-safe dispatch that would run, pending owner approval. Inputs MUST be public-safe (public issue numbers, public file paths, public verification commands) — no secrets, tokens, or private content.',
+        'Dispatch a Codex coding task through the Khala -> Pylon -> Codex burndown loop against the OWNER\'s own linked Pylon (own-capacity, NO spend, no payout). This is a gated (pylon_job_dispatch) action: it executes ONLY behind an effective owner approval; otherwise it returns the exact public-safe dispatch that would run, pending approval. Inputs MUST be public-safe (public issue numbers, public file paths, public verification commands) — no secrets, tokens, or private content.',
       name: 'dispatch_codex_task',
       parameters: {
         additionalProperties: false,
@@ -303,78 +456,77 @@ export const makeArtanisDispatchCodexTaskTool = (
         type: 'object',
       },
     },
-    kind: 'risky',
-    plan: (args: unknown) =>
-      Effect.sync(() => {
-        const record =
-          typeof args === 'object' && args !== null
-            ? (args as Record<string, unknown>)
-            : {}
-        const objective = asString(record.objective)
-        if (objective === undefined) {
-          return '(invalid arguments: a public-safe "objective" string is required)'
-        }
-        const branch = asString(record.branch) ?? defaultBranch
-        const verify = asString(record.verify)
-        const issue =
-          typeof record.issue === 'number' && Number.isFinite(record.issue)
-            ? Math.trunc(record.issue)
-            : undefined
-        const filePaths = asStringArray(record.filePaths)
-
-        // Public-safety gate over every text field.
-        const unsafe = [objective, branch, verify ?? '', ...filePaths].find(
-          field => field !== '' && !dispatchFieldIsSafe(field),
-        )
-        if (unsafe !== undefined) {
-          return '(blocked: a dispatch field contained non-public-safe material; rephrase with public issue numbers, public file paths, and public verification commands only)'
-        }
-        const badPath = filePaths.find(path => !isSafeArtanisRepoPath(path))
-        if (badPath !== undefined) {
-          return `(blocked: "${badPath}" is not an allowed public repo path)`
-        }
-
-        const promptParts = [objective]
-        if (issue !== undefined) {
-          promptParts.unshift(`Implement public issue #${issue}.`)
-        }
-        if (filePaths.length > 0) {
-          promptParts.push(`Files: ${filePaths.join(', ')}.`)
-        }
-        if (verify !== undefined) {
-          promptParts.push(`Run the named verification.`)
-        }
-        const prompt = promptParts.join(' ')
-
-        const lines: Array<string> = [
-          'Planned Khala -> Pylon -> Codex dispatch (own-capacity only, no spend):',
-          '',
-          '  pylon khala request \\',
-          `    --prompt "${prompt}" \\`,
-          '    --workflow codex_agent_task \\',
-          '    --pylon-ref "<owner pylon ref>" \\',
-          `    --repo ${ARTANIS_REPO_READ_OWNER}/${ARTANIS_REPO_READ_REPO} \\`,
-          `    --branch ${branch} \\`,
-          '    --commit "<current origin/main sha>" \\',
-        ]
-        if (verify !== undefined) {
-          lines.push(`    --verify "${verify}" \\`)
-        }
-        lines.push('    --json')
-        lines.push('')
-        lines.push(
-          '  Then execute locally with no spend: pylon assignment run-no-spend --json',
-        )
-        lines.push('')
-        lines.push(
-          'For parallel burndown, set OPENAGENTS_PYLON_CODEX_CONCURRENCY=N and publish capacity (pylon presence heartbeat), then run-no-spend per assignment ref. Verify each closeout against the exact token_usage_events + agent_traces rows before merging non-spend code.',
-        )
-        if (issue !== undefined) {
-          lines.push(`Targets public issue #${issue}.`)
-        }
-        return lines.join('\n')
-      }),
+    kind: 'gated',
     riskyActionKind: 'pylon_job_dispatch',
+    run: (args: unknown): Effect.Effect<ArtanisOperatorGatedResult> =>
+      Effect.gen(function* () {
+        const built = buildArtanisDispatchPlan(args, defaultBranch)
+        if (!built.ok) {
+          // Invalid/blocked args never execute; defer with the honest message.
+          return {
+            outcome: 'deferred',
+            plan: built.message,
+            reason: 'invalid_arguments',
+          }
+        }
+
+        // No execution seam wired -> stay plan-only (the original behavior).
+        if (execution === undefined) {
+          return {
+            outcome: 'deferred',
+            plan: built.planText,
+            reason: 'execution_not_wired',
+          }
+        }
+
+        // Owner-approval gate. Default conservative: any failure reads as
+        // "not approved" and defers — never an accidental execution.
+        const approved = yield* execution
+          .isOwnerApproved()
+          .pipe(Effect.orElseSucceed(() => false))
+        if (!approved) {
+          return {
+            outcome: 'deferred',
+            plan: built.planText,
+            reason: 'no_effective_owner_approval',
+          }
+        }
+
+        // Approved: actually create the own-capacity, no-spend assignment. A
+        // seam defect degrades to an honest deferral, never a fabricated ref.
+        const created = yield* execution
+          .createCodexAssignment(built.input)
+          .pipe(
+            Effect.orElseSucceed(
+              () =>
+                ({
+                  kind: 'rejected',
+                  reason: 'dispatch_execution_failed',
+                }) as const,
+            ),
+          )
+        if (created.kind === 'rejected') {
+          return {
+            outcome: 'deferred',
+            plan: built.planText,
+            reason: created.reason,
+          }
+        }
+
+        const summary = [
+          `assignmentRef: ${created.assignmentRef}`,
+          `pylonRef: ${created.pylonRef}`,
+          `durableRequestId: ${created.durableRequestId ?? '(none)'}`,
+          'paymentMode: unpaid_smoke (no spend, own_capacity)',
+          'settlement: not_applicable; payoutClaimAllowed: false',
+        ].join('\n')
+        return {
+          assignmentRef: created.assignmentRef,
+          durableRequestId: created.durableRequestId,
+          outcome: 'executed',
+          summary,
+        }
+      }),
   }
 }
 
@@ -383,15 +535,21 @@ export const makeArtanisDispatchCodexTaskTool = (
 // ---------------------------------------------------------------------------
 
 // Build the standard Artanis operator tool set: the two public repo-read tools
-// (#6365) plus the plan-only Codex dispatch tool (#6366). The route wires this
-// into `artanisOperatorTurn`.
+// (#6365) plus the gated Codex dispatch tool (#6366). The route wires this into
+// `artanisOperatorTurn`, optionally passing a `dispatchExecution` seam so the
+// gated dispatch can execute behind an effective owner approval. With no seam,
+// the dispatch tool stays plan-only.
 export const makeArtanisOperatorTools = (
   config: Readonly<{
     repoRead?: ArtanisRepoReadConfig | undefined
     defaultBranch?: string | undefined
+    dispatchExecution?: ArtanisDispatchExecution | undefined
   }> = {},
 ): ReadonlyArray<ArtanisOperatorTool> => [
   makeArtanisReadRepoFileTool(config.repoRead),
   makeArtanisListRepoDirTool(config.repoRead),
-  makeArtanisDispatchCodexTaskTool({ defaultBranch: config.defaultBranch }),
+  makeArtanisDispatchCodexTaskTool({
+    defaultBranch: config.defaultBranch,
+    execution: config.dispatchExecution,
+  }),
 ]

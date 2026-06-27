@@ -377,21 +377,69 @@ export type ArtanisOperatorRiskyTool = Readonly<{
   plan: (args: unknown) => Effect.Effect<string>
 }>
 
+// The two-way outcome of a GATED tool's attempt to act behind the approval gate.
+// `executed` means it REALLY performed the owner-approved action and carries the
+// resulting public-safe refs; `deferred` means it did NOT act and returns the
+// public-safe plan plus a typed reason. A gated tool must NEVER fabricate an
+// `executed` outcome — honest absence (defer) over invention.
+export type ArtanisOperatorGatedExecuted = Readonly<{
+  outcome: 'executed'
+  // Public-safe summary of what was created (no secrets, prompts, or paths).
+  summary: string
+  // The created assignment ref the loop reports back (public-safe).
+  assignmentRef: string
+  // The durable resume id, when the seam returned one.
+  durableRequestId: string | null
+}>
+
+export type ArtanisOperatorGatedDeferred = Readonly<{
+  outcome: 'deferred'
+  // The public-safe plan of what WOULD run once approved.
+  plan: string
+  // A typed, public-safe reason it did not execute (e.g.
+  // 'no_effective_owner_approval', 'no_linked_pylon', 'execution_not_wired').
+  reason: string
+}>
+
+export type ArtanisOperatorGatedResult =
+  | ArtanisOperatorGatedExecuted
+  | ArtanisOperatorGatedDeferred
+
+// A gated tool: it MAY execute, but ONLY behind an effective owner approval for
+// its `riskyActionKind`. Unlike a risky tool (which is structurally plan-only),
+// a gated tool exposes a single `run` that internally decides — given the owner
+// approval envelope and the wired execution seam — whether to act or defer. It
+// must default conservative (defer when the approval signal, execution seam, or
+// target capacity is missing) and must never fake an execution or move money.
+export type ArtanisOperatorGatedTool = Readonly<{
+  kind: 'gated'
+  // The approval-gate risky-action kind this tool's execution is gated behind.
+  riskyActionKind: ArtanisRiskyActionKind
+  definition: ArtanisOperatorToolDefinition
+  // Attempt the gated action; returns the executed refs or a deferred plan.
+  run: (args: unknown) => Effect.Effect<ArtanisOperatorGatedResult>
+}>
+
 export type ArtanisOperatorTool =
   | ArtanisOperatorReadTool
   | ArtanisOperatorRiskyTool
+  | ArtanisOperatorGatedTool
 
 // Public-safe summary of one tool invocation in a turn. Surfaced on the turn
 // result so the route/UI can show what Artanis did without re-deriving it.
 export type ArtanisOperatorToolInvocation = Readonly<{
   name: string
-  // True when the tool actually executed (a read tool that ran).
+  // True when the tool actually executed (a read tool that ran, OR a gated tool
+  // that fired behind an effective owner approval).
   executed: boolean
   // True when the tool deferred to the approval gate (a risky tool that was
-  // planned, not executed).
+  // planned, or a gated tool that declined to fire and returned a plan).
   deferredToApprovalGate: boolean
-  // The risky-action kind when deferred, else null.
+  // The risky-action kind for risky/gated tools, else null.
   riskyActionKind: ArtanisRiskyActionKind | null
+  // The public-safe ref the tool created when it executed (e.g. a gated Codex
+  // dispatch's assignmentRef), else null. Lets the route report the real ref.
+  executedRef: string | null
 }>
 
 // The base operator conversation as normalized inference messages: persona
@@ -571,8 +619,70 @@ const runToolCall = (
         invocation: {
           deferredToApprovalGate: false,
           executed: result._tag === 'Success',
+          executedRef: null,
           name: tool.definition.name,
           riskyActionKind: null,
+        },
+      }
+    }
+
+    if (tool.kind === 'gated') {
+      // Gated tool: it MAY execute, but only behind an effective owner approval.
+      // The tool's `run` makes that decision internally and returns either an
+      // executed outcome (with the real created ref) or a deferred plan. An
+      // executor defect degrades to an honest deferral, never a thrown turn and
+      // never a fabricated execution.
+      const ran = yield* Effect.exit(tool.run(args))
+      if (ran._tag === 'Failure') {
+        return {
+          content: [
+            `REQUIRES OWNER APPROVAL — NOT EXECUTED.`,
+            `This action (${tool.definition.name}) is a ${tool.riskyActionKind} action gated by ${ARTANIS_OPERATOR_APPROVAL_GATE_REF}. I could not build or run it just now, so I did not execute it.`,
+          ].join('\n'),
+          invocation: {
+            deferredToApprovalGate: true,
+            executed: false,
+            executedRef: null,
+            name: tool.definition.name,
+            riskyActionKind: tool.riskyActionKind,
+          },
+        }
+      }
+
+      const outcome = ran.value
+      if (outcome.outcome === 'executed') {
+        const content = [
+          `EXECUTED — own-capacity, no spend.`,
+          `I created the Khala -> Pylon -> Codex assignment (${tool.definition.name}) on your linked Pylon. It runs at no spend and grants no payout.`,
+          '',
+          outcome.summary,
+        ].join('\n')
+        return {
+          content,
+          invocation: {
+            deferredToApprovalGate: false,
+            executed: true,
+            executedRef: outcome.assignmentRef,
+            name: tool.definition.name,
+            riskyActionKind: tool.riskyActionKind,
+          },
+        }
+      }
+
+      const content = [
+        `REQUIRES OWNER APPROVAL — NOT EXECUTED (${outcome.reason}).`,
+        `This action (${tool.definition.name}) is a ${tool.riskyActionKind} action and must be approved via ${ARTANIS_OPERATOR_APPROVAL_GATE_REF} before it runs. I did not execute it. Below is exactly what I would run once approved:`,
+        '',
+        outcome.plan,
+      ].join('\n')
+      return {
+        content,
+        invocation: {
+          deferredToApprovalGate: true,
+          executed: false,
+          executedRef: null,
+          name: tool.definition.name,
+          riskyActionKind: tool.riskyActionKind,
         },
       }
     }
@@ -595,6 +705,7 @@ const runToolCall = (
       invocation: {
         deferredToApprovalGate: true,
         executed: false,
+        executedRef: null,
         name: tool.definition.name,
         riskyActionKind: tool.riskyActionKind,
       },

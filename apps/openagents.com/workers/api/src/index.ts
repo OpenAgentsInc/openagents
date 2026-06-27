@@ -100,6 +100,11 @@ import { makeD1ArtanisLaborUnattendedReceiptStore } from './artanis-labor-receip
 import { ArtanisMindSmokeSystem, artanisMindComplete } from './artanis-mind'
 import { makeOperatorArtanisChatRoutes } from './artanis-operator-chat-routes'
 import { makeOperatorArtanisConsoleRoutes } from './artanis-operator-console-routes'
+import {
+  makeArtanisDispatchExecution,
+  readEffectiveArtanisPylonDispatchApproval,
+} from './artanis-operator-dispatch-execution'
+import { makeArtanisOperatorTools } from './artanis-operator-tools'
 import { saveArtanisForumPublicationIntent } from './artanis-persistence'
 import { handlePublicArtanisReportApi } from './artanis-public-report-routes'
 import { runArtanisComposerScheduled } from './artanis-reply-composer'
@@ -8497,6 +8502,63 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
   appendRefreshedSessionCookies,
   isOpenAgentsAdminEmail,
   makeKhalaClient: env => makeArtanisResponderKhalaClient(env),
+  // #6366 follow-up: wire the gated Codex dispatch tool to LIVE execution. The
+  // owner SESSION is threaded in so the execution seam is owner-scoped:
+  // own-capacity only (the owner's own linked Pylons via `delegateCodingWorkflow`),
+  // no-spend (`unpaid_smoke`), and gated behind an effective `pylon_job_dispatch`
+  // owner approval. With no effective approval (the default today), the tool
+  // returns the plan and defers — it never fires.
+  makeOperatorTools: (env, session) =>
+    makeArtanisOperatorTools({
+      defaultBranch: 'main',
+      dispatchExecution: makeArtanisDispatchExecution({
+        listLinkedAgentUserIds: async ownerOpenAuthUserId => {
+          const agentStore = makeD1AgentRegistrationStore(
+            openAgentsDatabase(env),
+          )
+          if (agentStore.listLinkedAgentsForOpenAuthUser === undefined) {
+            return []
+          }
+          const linked = await agentStore.listLinkedAgentsForOpenAuthUser(
+            ownerOpenAuthUserId,
+            100,
+          )
+          return linked.map(agent => agent.agentUserId)
+        },
+        makeId: () => compactRandomId('artanis_dispatch'),
+        nowIso: currentIsoTimestamp,
+        ownerOpenAuthUserId: session.user.userId,
+        pylonStore: makeD1PylonApiStore(openAgentsDatabase(env)),
+        readEffectivePylonDispatchApproval: () =>
+          readEffectiveArtanisPylonDispatchApproval(
+            openAgentsDatabase(env),
+            currentIsoTimestamp(),
+          ),
+        // Resolve the current branch tip so a pinned-workspace dispatch uses a
+        // real commit; on any failure the dispatch falls back to the bounded
+        // public fixture. Public repo only, public-safe.
+        resolveCommitSha: async branch => {
+          try {
+            const response = await fetch(
+              `https://api.github.com/repos/OpenAgentsInc/openagents/commits/${encodeURIComponent(branch)}`,
+              {
+                headers: {
+                  Accept: 'application/vnd.github+json',
+                  'User-Agent': 'artanis-operator',
+                },
+              },
+            )
+            if (!response.ok) {
+              return undefined
+            }
+            const body = (await response.json()) as { sha?: unknown }
+            return typeof body.sha === 'string' ? body.sha : undefined
+          } catch {
+            return undefined
+          }
+        },
+      }),
+    }),
   requireAdminApiToken,
   requireBrowserSession,
   // Accept an `oa_agent_` bearer (the Khala CLI's token from `khala login`) when

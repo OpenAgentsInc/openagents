@@ -1704,11 +1704,32 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   sync, issue comments, Forum posts, product-promise output, or public closeout
   refs. Raw-event storage failures are fail-soft after exact token accounting
   and return only a private-safe diagnostic/ref.
+- The Artanis operator agent may CREATE a Khala -> Pylon -> Codex
+  `codex_agent_task` assignment through its gated `dispatch_codex_task` tool
+  (#6366 follow-up), but only through this same own-capacity coding-delegation
+  seam and only behind an effective owner approval. The gated tool executes ONLY
+  when (a) the caller is the authenticated owner (the `/api/operator/artanis/chat`
+  route admits only the admin API token, an owner-linked admin agent bearer, or
+  an admin browser session), (b) a wired execution seam is present, AND (c) an
+  effective `pylon_job_dispatch` Artanis approval gate exists (an approved,
+  non-expired, non-superseded gate carrying `operator_approval` authority plus an
+  authority receipt ref, per `artanisApprovalGateEffective`). If any precondition
+  is missing — no seam, no effective approval, no eligible linked Pylon — it
+  returns the public-safe plan and defers (`deferredToApprovalGate`); it never
+  fires and never fabricates an `assignmentRef`. The dispatch carries no spend
+  authority: it rides the `unpaid_smoke` coding-delegation path
+  (`paymentMode='unpaid_smoke'`, settlement `not_applicable`,
+  `payoutClaimAllowed=false`), targets only the owner's own linked Pylons, and
+  must never use pooled/third-party/marketplace capacity, move money, or grant
+  payout. Dispatch fields stay public-safe (public issue numbers, public file
+  paths, public verification commands only).
 - Regression coverage for this policy lives in
   `workers/api/src/inference/coding-workflow-classifier.test.ts`,
   `workers/api/src/inference/coding-workflow-delegation.test.ts`,
   `workers/api/src/inference/chat-completions-routes.test.ts`,
-  `workers/api/src/inference/served-tokens-recorder.test.ts`, and
+  `workers/api/src/inference/served-tokens-recorder.test.ts`,
+  `workers/api/src/artanis-operator-tools.test.ts`,
+  `workers/api/src/artanis-operator-dispatch-execution.test.ts`, and
   `../pylon/tests/presence.test.ts`.
 
 ## Spark Address Payout Target Registration

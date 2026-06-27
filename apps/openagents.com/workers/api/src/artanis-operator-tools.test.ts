@@ -147,19 +147,20 @@ describe('isSafeArtanisRepoPath', () => {
   })
 })
 
-describe('#6366 dispatch_codex_task (risky, plan-only)', () => {
+describe('#6366 dispatch_codex_task (gated; plan-only without a seam)', () => {
   const tool = makeArtanisDispatchCodexTaskTool()
 
-  test('is a risky pylon_job_dispatch tool (never executes)', () => {
-    expect(tool.kind).toBe('risky')
+  test('is a gated pylon_job_dispatch tool with a run() entry point', () => {
+    expect(tool.kind).toBe('gated')
     expect(tool.riskyActionKind).toBe('pylon_job_dispatch')
-    // The risky tool exposes plan(), not execute() — the boundary is structural.
+    expect(typeof tool.run).toBe('function')
+    // No bare execute(): execution is decided inside run() behind the gate.
     expect('execute' in tool).toBe(false)
   })
 
-  test('plan returns the exact public-safe Khala -> Pylon -> Codex dispatch', async () => {
-    const plan = await Effect.runPromise(
-      tool.plan({
+  test('with NO execution seam it DEFERS and returns the public-safe plan', async () => {
+    const result = await Effect.runPromise(
+      tool.run({
         branch: 'main',
         filePaths: ['apps/openagents.com/workers/api/src/foo.ts'],
         issue: 6320,
@@ -168,26 +169,151 @@ describe('#6366 dispatch_codex_task (risky, plan-only)', () => {
           'bun run --cwd apps/openagents.com/workers/api test -- src/foo.test.ts',
       }),
     )
-    expect(plan).toContain('pylon khala request')
-    expect(plan).toContain('--workflow codex_agent_task')
-    expect(plan).toContain('--repo OpenAgentsInc/openagents')
-    expect(plan).toContain('run-no-spend')
-    expect(plan).toContain('#6320')
-    expect(plan).toContain('src/foo.test.ts')
+    expect(result.outcome).toBe('deferred')
+    if (result.outcome !== 'deferred') return
+    expect(result.reason).toBe('execution_not_wired')
+    expect(result.plan).toContain('pylon khala request')
+    expect(result.plan).toContain('--workflow codex_agent_task')
+    expect(result.plan).toContain('--repo OpenAgentsInc/openagents')
+    expect(result.plan).toContain('run-no-spend')
+    expect(result.plan).toContain('#6320')
+    expect(result.plan).toContain('src/foo.test.ts')
   })
 
-  test('blocks a dispatch field carrying non-public-safe material', async () => {
-    const plan = await Effect.runPromise(
-      tool.plan({
+  test('blocks a dispatch field carrying non-public-safe material (deferred)', async () => {
+    const result = await Effect.runPromise(
+      tool.run({
         objective: 'use the bearer token sk-abc123 to pay the payout',
       }),
     )
-    expect(plan).toContain('blocked')
+    expect(result.outcome).toBe('deferred')
+    if (result.outcome !== 'deferred') return
+    expect(result.reason).toBe('invalid_arguments')
+    expect(result.plan).toContain('blocked')
   })
 
-  test('requires a public-safe objective', async () => {
-    const plan = await Effect.runPromise(tool.plan({}))
-    expect(plan).toContain('invalid arguments')
+  test('requires a public-safe objective (deferred invalid_arguments)', async () => {
+    const result = await Effect.runPromise(tool.run({}))
+    expect(result.outcome).toBe('deferred')
+    if (result.outcome !== 'deferred') return
+    expect(result.reason).toBe('invalid_arguments')
+    expect(result.plan).toContain('invalid arguments')
+  })
+})
+
+describe('#6366 dispatch_codex_task (gated; LIVE execution behind the gate)', () => {
+  test('owner-approved dispatch CREATES an assignment and returns the real ref', async () => {
+    const createCalls: Array<unknown> = []
+    const tool = makeArtanisDispatchCodexTaskTool({
+      execution: {
+        createCodexAssignment: plan => {
+          createCalls.push(plan)
+          return Effect.succeed({
+            assignmentRef: 'assignment.public.khala_coding.live123',
+            durableRequestId: 'req-live123',
+            kind: 'created',
+            pylonRef: 'pylon.owner.alpha',
+          } as const)
+        },
+        isOwnerApproved: () => Effect.succeed(true),
+      },
+    })
+
+    const result = await Effect.runPromise(
+      tool.run({ objective: 'Burn down public issue work per the roadmap.' }),
+    )
+    expect(result.outcome).toBe('executed')
+    if (result.outcome !== 'executed') return
+    expect(result.assignmentRef).toBe('assignment.public.khala_coding.live123')
+    expect(result.durableRequestId).toBe('req-live123')
+    expect(createCalls).toHaveLength(1)
+    // No-spend invariant is asserted in the public-safe summary.
+    expect(result.summary).toContain('unpaid_smoke')
+    expect(result.summary).toContain('settlement: not_applicable')
+    expect(result.summary).toContain('payoutClaimAllowed: false')
+    expect(result.summary).toContain('pylonRef: pylon.owner.alpha')
+  })
+
+  test('NO owner approval -> DEFERS without ever calling the create seam', async () => {
+    const createCalls: Array<unknown> = []
+    const tool = makeArtanisDispatchCodexTaskTool({
+      execution: {
+        createCodexAssignment: plan => {
+          createCalls.push(plan)
+          return Effect.succeed({
+            assignmentRef: 'assignment.public.khala_coding.should_not_happen',
+            durableRequestId: null,
+            kind: 'created',
+            pylonRef: 'pylon.owner.alpha',
+          } as const)
+        },
+        isOwnerApproved: () => Effect.succeed(false),
+      },
+    })
+
+    const result = await Effect.runPromise(
+      tool.run({ objective: 'Burn down public issue work per the roadmap.' }),
+    )
+    expect(result.outcome).toBe('deferred')
+    if (result.outcome !== 'deferred') return
+    expect(result.reason).toBe('no_effective_owner_approval')
+    // The create seam must NOT run when approval is missing.
+    expect(createCalls).toHaveLength(0)
+    expect(result.plan).toContain('pylon khala request')
+  })
+
+  test('approved but NO eligible Pylon -> DEFERS with the typed reason', async () => {
+    const tool = makeArtanisDispatchCodexTaskTool({
+      execution: {
+        createCodexAssignment: () =>
+          Effect.succeed({
+            kind: 'rejected',
+            reason: 'no_eligible_linked_pylon',
+          } as const),
+        isOwnerApproved: () => Effect.succeed(true),
+      },
+    })
+
+    const result = await Effect.runPromise(
+      tool.run({ objective: 'Burn down public issue work per the roadmap.' }),
+    )
+    expect(result.outcome).toBe('deferred')
+    if (result.outcome !== 'deferred') return
+    expect(result.reason).toBe('no_eligible_linked_pylon')
+  })
+
+  test('a non-public-safe objective never reaches the seam', async () => {
+    const createCalls: Array<unknown> = []
+    const approvalCalls: Array<unknown> = []
+    const tool = makeArtanisDispatchCodexTaskTool({
+      execution: {
+        createCodexAssignment: plan => {
+          createCalls.push(plan)
+          return Effect.succeed({
+            assignmentRef: 'assignment.public.khala_coding.should_not_happen',
+            durableRequestId: null,
+            kind: 'created',
+            pylonRef: 'pylon.owner.alpha',
+          } as const)
+        },
+        isOwnerApproved: () => {
+          approvalCalls.push(true)
+          return Effect.succeed(true)
+        },
+      },
+    })
+
+    const result = await Effect.runPromise(
+      tool.run({
+        objective: 'use the bearer token sk-abc123 to pay the payout',
+      }),
+    )
+    expect(result.outcome).toBe('deferred')
+    if (result.outcome !== 'deferred') return
+    expect(result.reason).toBe('invalid_arguments')
+    // Neither the approval gate nor the create seam is consulted for bad input.
+    expect(approvalCalls).toHaveLength(0)
+    expect(createCalls).toHaveLength(0)
   })
 })
 

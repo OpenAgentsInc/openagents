@@ -98,9 +98,15 @@ export type OperatorArtanisChatDependencies<
   makeMemoryStore?: (env: Bindings) => ArtanisOwnerMemoryStore
   awarenessReaders?: (env: Bindings) => ArtanisAwarenessReaders
   // The owner-scoped tool table Artanis can invoke in the bounded tool-calling
-  // loop (#6364): public repo-read tools (#6365) + the plan-only Codex dispatch
-  // tool (#6366). Defaults to `makeArtanisOperatorTools()`; tests override it.
-  makeOperatorTools?: (env: Bindings) => ReadonlyArray<ArtanisOperatorTool>
+  // loop (#6364): public repo-read tools (#6365) + the gated Codex dispatch tool
+  // (#6366). It receives the authenticated owner SESSION so the gated dispatch
+  // can wire an owner-scoped execution seam (own-capacity, no-spend, behind the
+  // approval gate). Defaults to `makeArtanisOperatorTools()` (plan-only); tests
+  // override it.
+  makeOperatorTools?: (
+    env: Bindings,
+    session: Session,
+  ) => ReadonlyArray<ArtanisOperatorTool>
 }>
 
 class OperatorArtanisChatUnauthorized extends S.TaggedErrorClass<OperatorArtanisChatUnauthorized>()(
@@ -327,7 +333,8 @@ export const makeOperatorArtanisChatRoutes = <
       })
 
       const tools =
-        dependencies.makeOperatorTools?.(env) ?? makeArtanisOperatorTools()
+        dependencies.makeOperatorTools?.(env, session) ??
+        makeArtanisOperatorTools()
 
       const turn = yield* artanisOperatorTurn({
         awareness,
