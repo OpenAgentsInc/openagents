@@ -114,6 +114,8 @@ describe('Khala code verifier — honest downgrade (EPIC #6017)', () => {
     expect(verdict.reward.handoffRef).toContain(
       'accepted_outcome.khala_code.crossy_road.',
     )
+    expect(verdict.integrity.passed).toBe(true)
+    expect(verdict.integrity.effectiveIndependentVotes).toBe(1)
   })
 
   test('an executed acceptance suite that did not fully pass is failed with a dense reward', () => {
@@ -124,6 +126,34 @@ describe('Khala code verifier — honest downgrade (EPIC #6017)', () => {
     expect(verdict.scalarReward).toBeGreaterThan(0)
     expect(verdict.scalarReward).toBeLessThan(1)
     expect(verdict.failedChecks.length).toBeGreaterThan(0)
+  })
+
+  test('same-family model verifier panel blocks certification even when execution passed', () => {
+    const verdict = verifyKhalaCodeCompletion({
+      acceptance: executedVerdict(true),
+      content: GOOD_CROSSY_ROAD_HTML,
+      meteringReceiptRef: 'receipt.inference.charge.chatcmpl-fixture',
+      requestId: 'chatcmpl-fixture',
+      servedModel: 'openai/gpt-4.1-mini',
+      verifierPanel: [
+        {
+          model: 'openai/gpt-4.1',
+          verifierRef: 'verifier.public.same_family_gpt',
+        },
+      ],
+      worker: 'fireworks',
+    })
+
+    expect(verdict.executed).toBe(true)
+    expect(verdict.verification).toBe('failed')
+    expect(verdict.verified).toBe(false)
+    expect(verdict.scalarReward).toBe(0)
+    expect(verdict.failedChecks).toContain(
+      'blocker.public.verification_integrity.same_model_family_verifier',
+    )
+    expect(verdict.sourceRefs).toContain(
+      'blocker.public.verification_integrity.same_model_family_verifier',
+    )
   })
 })
 
