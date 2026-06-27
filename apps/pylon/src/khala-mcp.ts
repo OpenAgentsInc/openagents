@@ -125,7 +125,7 @@ const toolDefinitions = () =>
               pylonRef: { type: "string" },
               targetPylonRef: { type: "string" },
               workflow: {
-                enum: ["cloud_coding_session", "codex_agent_task"],
+                enum: ["claude_agent_task", "cloud_coding_session", "codex_agent_task"],
                 type: "string",
               },
             },
@@ -148,7 +148,7 @@ const toolDefinitions = () =>
                 targetPylonRef: { type: "string" },
                 verify: { type: "string" },
                 workflow: {
-                  enum: ["cloud_coding_session", "codex_agent_task"],
+                  enum: ["claude_agent_task", "cloud_coding_session", "codex_agent_task"],
                   type: "string",
                 },
               },

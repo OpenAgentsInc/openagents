@@ -76,6 +76,18 @@ describe("pylon khala MCP stdio handler", () => {
       handlerKind: "coding_session_control",
       readOnlyHint: false,
     })
+    const requestSchema = tools.find((tool) => tool.name === "khala.request") as
+      | { inputSchema?: { properties?: { workflow?: { enum?: string[] } } } }
+      | undefined
+    const spawnSchema = tools.find((tool) => tool.name === "khala.spawn") as
+      | { inputSchema?: { properties?: { workflow?: { enum?: string[] } } } }
+      | undefined
+    expect(requestSchema?.inputSchema?.properties?.workflow?.enum).toContain(
+      "claude_agent_task",
+    )
+    expect(spawnSchema?.inputSchema?.properties?.workflow?.enum).toContain(
+      "claude_agent_task",
+    )
   })
 
   test("khala.request drives the OpenAI-compatible request path and returns a durable handle", async () => {
@@ -134,6 +146,53 @@ describe("pylon khala MCP stdio handler", () => {
       schema: "openagents.pylon.khala_request.v1",
       text: "mcp delegated",
       workflow: "codex_agent_task",
+    })
+  })
+
+  test("khala.request accepts claude_agent_task workflow through MCP", async () => {
+    const requests: Array<{ body: Record<string, unknown>; path: string }> = []
+    const server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url)
+        requests.push({
+          body: JSON.parse(await request.text()) as Record<string, unknown>,
+          path: url.pathname,
+        })
+        return new Response(sse("chatcmpl_mcp_claude", "claude delegated"), {
+          headers: {
+            "openagents-coding-assignment-ref": "assignment.public.mcp.claude",
+            "openagents-durable-stream-url":
+              "/v1/chat/completions/durable/chatcmpl_mcp_claude",
+          },
+        })
+      },
+    })
+    servers.push(server)
+
+    const response = await callMcp(
+      buildToolCallRequest("khala.request", {
+        prompt: "Run the MCP Claude fixture task",
+        targetPylonRef: "pylon.owner.claude",
+        workflow: "claude_agent_task",
+      }),
+      `http://127.0.0.1:${server.port}`,
+    )
+
+    const body = parseJsonContent(response.result as McpToolCallResult)
+    expect(body).toMatchObject({
+      assignmentRef: "assignment.public.mcp.claude",
+      ok: true,
+      workflow: "claude_agent_task",
+    })
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.path).toBe("/v1/chat/completions")
+    expect(requests[0]?.body).toMatchObject({
+      openagents: {
+        coding: { targetPylonRef: "pylon.owner.claude" },
+        workflowClass: "claude_agent_task",
+      },
+      workflowClass: "claude_agent_task",
     })
   })
 

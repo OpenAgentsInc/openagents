@@ -16,7 +16,7 @@ import {
   sha256Base64Url,
   withPresenceRetry,
 } from "../src/presence"
-import { hashPylonAccountRef } from "../src/account-registry"
+import { hashPylonAccountRef, PYLON_CLAUDE_OAUTH_TOKEN_FILE } from "../src/account-registry"
 import { verifyNip98Authorization } from "../src/nostr-identity"
 import { PYLON_NIP90_PROVIDER_CAPABILITY_REF, providerNip90LaneRefs } from "../src/provider-nip90"
 import { assertPublicProjectionSafe, ensurePylonLocalState, loadOrCreatePresenceState, writePresenceState } from "../src/state"
@@ -729,11 +729,16 @@ describe("Pylon presence registration and heartbeat", () => {
       const codexHome = join(home, "codex-home")
       await mkdir(codexHome, { recursive: true })
       await writeFile(join(codexHome, "auth.json"), "{}")
+      await writeFile(
+        join(home, "config.json"),
+        `${JSON.stringify({ claudeAgent: { enabled: false } }, null, 2)}\n`,
+      )
 
       const result = await runProviderCli({
         args: ["go-online", "--json"],
         env: {
           CODEX_HOME: codexHome,
+          OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY: "5",
           OPENAGENTS_PYLON_CODEX_BUSY: "0",
           OPENAGENTS_PYLON_CODEX_CONCURRENCY: "5",
           OPENAGENTS_PYLON_CODEX_QUEUED: "0",
@@ -755,8 +760,8 @@ describe("Pylon presence registration and heartbeat", () => {
         availableCodexAssignments: 5,
         maxCodexAssignments: 5,
         policyRefs: ["policy.public.khala_coding.own_capacity_only"],
-        requiredCapabilityRefs: [CODEX_AGENT_CAPABILITY_REF],
       })
+      expect(json.ownCapacityDispatch.requiredCapabilityRefs).toContain(CODEX_AGENT_CAPABILITY_REF)
       // #6354: the default Codex account (no registry entries) advertises its
       // own per-account slots alongside the pooled refs.
       const defaultKey = codexAccountCapacityKey(
@@ -789,11 +794,81 @@ describe("Pylon presence registration and heartbeat", () => {
     })
   })
 
+  test("provider go-online JSON exposes Claude own-capacity dispatch slots", async () => {
+    await withTempHome(async (home) => {
+      const claudeHome = join(home, "accounts", "claude", "claude-a")
+      await mkdir(claudeHome, { recursive: true })
+      await writeFile(join(claudeHome, PYLON_CLAUDE_OAUTH_TOKEN_FILE), "oauth-token-test\n")
+      await writeFile(
+        join(home, "config.json"),
+        `${JSON.stringify({
+          dev: {
+            accounts: [
+              { provider: "claude_agent", ref: "claude-a", home: claudeHome },
+            ],
+          },
+        }, null, 2)}\n`,
+      )
+
+      const result = await runProviderCli({
+        args: ["go-online", "--json"],
+        env: {
+          ANTHROPIC_API_KEY: "sk-ant-test-key",
+          OPENAGENTS_PYLON_CLAUDE_BUSY: "0",
+          OPENAGENTS_PYLON_CLAUDE_CONCURRENCY: "2",
+          OPENAGENTS_PYLON_CLAUDE_QUEUED: "0",
+          PYLON_HOME: home,
+        },
+        timeoutMs: 20_000,
+      })
+
+      expect(result.timedOut).toBe(false)
+      expect(result.exitCode).toBe(0)
+      const json = JSON.parse(result.stdout)
+      expect(json.claudeAgent.state).toBe("ready")
+      expect(json.ownCapacityDispatch).toMatchObject({
+        availableClaudeAssignments: 2,
+        maxClaudeAssignments: 2,
+      })
+      expect(json.ownCapacityDispatch.requiredCapabilityRefs).toContain(CLAUDE_AGENT_CAPABILITY_REF)
+      const accountKey = codexAccountCapacityKey(hashPylonAccountRef("claude_agent", "claude-a"))
+      expect(json.ownCapacityDispatch.capacityRefs).toContain("capacity.coding.claude.ready=2")
+      expect(json.ownCapacityDispatch.capacityRefs).toContain("capacity.coding.claude.available=2")
+      expect(json.ownCapacityDispatch.capacityRefs).toContain(
+        `capacity.coding.claude.account.${accountKey}.ready=2`,
+      )
+      expect(json.ownCapacityDispatch.capacityRefs).toContain(
+        `capacity.coding.claude.account.${accountKey}.available=2`,
+      )
+      expect(json.ownCapacityDispatch.loadRefs).toContain("load.coding.claude.busy=0")
+      expect(json.ownCapacityDispatch.loadRefs).toContain("load.coding.claude.queued=0")
+      expect(json.ownCapacityDispatch.claudeAccounts).toEqual([
+        { accountKey, available: 2, busy: 0, queued: 0, ready: 2 },
+      ])
+      expect(json.ownCapacityDispatch.totalAvailableClaudeAssignments).toBe(2)
+      expect(json.ownCapacityDispatch.totalMaxClaudeAssignments).toBe(2)
+      expect(json.codingCapacity).toContainEqual({
+        available: 2,
+        busy: 0,
+        queued: 0,
+        ready: 2,
+        service: "claude",
+      })
+      expect(result.stdout).not.toContain(home)
+      expect(result.stdout).not.toContain("oauth-token-test")
+      assertPublicProjectionSafe(json)
+    })
+  })
+
   test("provider go-online JSON projects active local Codex assignment runs as busy (#6354)", async () => {
     await withTempHome(async (home) => {
       const codexHome = join(home, "codex-home")
       await mkdir(codexHome, { recursive: true })
       await writeFile(join(codexHome, "auth.json"), "{}")
+      await writeFile(
+        join(home, "config.json"),
+        `${JSON.stringify({ claudeAgent: { enabled: false } }, null, 2)}\n`,
+      )
       const summary = createBootstrapSummary(
         parseBootstrapArgs([
           "--display-name",
@@ -825,6 +900,7 @@ describe("Pylon presence registration and heartbeat", () => {
         args: ["go-online", "--json"],
         env: {
           CODEX_HOME: codexHome,
+          OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY: "5",
           OPENAGENTS_PYLON_CODEX_BUSY: "0",
           OPENAGENTS_PYLON_CODEX_CONCURRENCY: "5",
           OPENAGENTS_PYLON_CODEX_QUEUED: "0",
