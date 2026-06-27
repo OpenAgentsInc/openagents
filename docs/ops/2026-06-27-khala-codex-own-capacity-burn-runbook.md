@@ -323,6 +323,95 @@ PYLON_HOME=$HOME/.pylon-fable pylon codex accounts list --json
 # each codex account: readiness.state == "ready", capability.pylon.local_codex present
 ```
 
+### Offload Codex accounts to Tailnet Macs (#6432)
+
+Use this when the owner desktop is CPU-saturated but the Codex account homes are
+already authenticated under `~/.pylon-fable/accounts/codex/<ref>`. The goal is
+to split the 12-ish concurrent turns across multiple Macs without re-login:
+keep a subset on the desktop, ship selected serialized account homes to
+`imac-pro-bertha` and `macbook-pro-m2`, then launch one supervisor per machine.
+
+**Do not run any Codex login flow for this.** The helper copies only selected
+isolated homes from `<pylon home>/accounts/codex/<ref>`, refuses `~/.codex`, and
+registers the imported homes with `accounts connect codex --skip-device-login`.
+Agent tokens are not copied; the remote host must source its own
+`OPENAGENTS_AGENT_TOKEN` env file.
+
+Preflight on the desktop:
+
+```sh
+PYLON_HOME=$HOME/.pylon-fable bun apps/pylon/src/index.ts codex accounts list --json
+# choose only accounts with readiness.state == "ready"
+```
+
+Dry-run the split plan:
+
+```sh
+apps/pylon/scripts/codex-fleet-offload/offload-codex-accounts.sh \
+  --host imac-pro-bertha \
+  --accounts codex-4,codex-5 \
+  --start-supervisor \
+  --dry-run
+
+apps/pylon/scripts/codex-fleet-offload/offload-codex-accounts.sh \
+  --host macbook-pro-m2 \
+  --accounts codex-6,codex-7 \
+  --start-supervisor \
+  --dry-run
+```
+
+Execute only after the account refs and remote checkout paths are correct:
+
+```sh
+PYLON_HOME=$HOME/.pylon-fable \
+apps/pylon/scripts/codex-fleet-offload/offload-codex-accounts.sh \
+  --host imac-pro-bertha \
+  --accounts codex-4,codex-5 \
+  --remote-repo ~/work/openagents \
+  --remote-pylon-home ~/.pylon-fable \
+  --remote-token-env ~/work/.secrets/openagents-artanis-agent.env \
+  --sup-max-slots 4 \
+  --sup-per-account 2 \
+  --start-supervisor \
+  --execute
+
+PYLON_HOME=$HOME/.pylon-fable \
+apps/pylon/scripts/codex-fleet-offload/offload-codex-accounts.sh \
+  --host macbook-pro-m2 \
+  --accounts codex-6,codex-7 \
+  --remote-repo ~/work/openagents \
+  --remote-pylon-home ~/.pylon-fable \
+  --remote-token-env ~/work/.secrets/openagents-artanis-agent.env \
+  --sup-max-slots 4 \
+  --sup-per-account 2 \
+  --start-supervisor \
+  --execute
+```
+
+Remote proof after each import:
+
+```sh
+ssh imac-pro-bertha 'cd ~/work/openagents && PYLON_HOME=$HOME/.pylon-fable bun apps/pylon/src/index.ts codex accounts list --json'
+ssh imac-pro-bertha 'bash ~/work/openagents/apps/pylon/scripts/codex-supervisor/launch.sh status'
+
+ssh macbook-pro-m2 'cd ~/work/openagents && PYLON_HOME=$HOME/.pylon-fable bun apps/pylon/src/index.ts codex accounts list --json'
+ssh macbook-pro-m2 'bash ~/work/openagents/apps/pylon/scripts/codex-supervisor/launch.sh status'
+```
+
+If a remote host already has a supervisor running, stop it before changing its
+account set:
+
+```sh
+ssh imac-pro-bertha 'bash ~/work/openagents/apps/pylon/scripts/codex-supervisor/launch.sh stop'
+ssh macbook-pro-m2 'bash ~/work/openagents/apps/pylon/scripts/codex-supervisor/launch.sh stop'
+```
+
+Capacity guidance: with two ready Codex accounts per remote and
+`SUP_PER_ACCOUNT=2`, each remote should advertise up to four Codex slots. Keep
+the desktop at the remaining account count so the total advertised slots match
+the true machine capacity. Do not run two supervisors against the same copied
+account ref at the same time; that just contends for the same provider budget.
+
 ### Launch / stop / status the supervisor
 ```sh
 # (fetch live SUP_PYLON_REF first — see §2b)
