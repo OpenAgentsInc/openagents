@@ -25,6 +25,7 @@ import {
   ForumForumRoute,
   ForumReceiptRoute,
   GymRoute,
+  MirrorCodeRoute,
   GymOssRoute,
   HomeRoute,
   InviteRoute,
@@ -307,10 +308,11 @@ describe('startup route policy', () => {
     })
   })
 
-  test('keeps Khala, Gym, and legal pages public for every auth state', () => {
+  test('keeps Khala, Gym, MirrorCode, and legal pages public for every auth state', () => {
     for (const publicRoute of [
       KhalaRoute(),
       GymRoute(),
+      MirrorCodeRoute(),
       TermsRoute(),
       PrivacyRoute(),
     ]) {
