@@ -398,6 +398,64 @@ describe('served-tokens-recorder', () => {
     ).resolves.toBeUndefined()
   })
 
+  test('retries a transient ledger insert failure before dropping served tokens (#6317 closeout)', async () => {
+    const rows: Array<Row> = []
+    const published: Array<PublishedDelta> = []
+    const baseLedger = makeD1TokenUsageLedger(makeFakeDb(rows))
+    let attempts = 0
+    const flakyLedger: TokenUsageLedgerShape = {
+      ...baseLedger,
+      ingestEvent: body => {
+        attempts += 1
+
+        return attempts === 1
+          ? Effect.fail(
+              new TokenUsageLedgerStorageError({
+                error: new Error('transient D1 insert failure'),
+                operation: 'tokenUsageEvents.insert',
+              }),
+            )
+          : baseLedger.ingestEvent(body)
+      },
+    }
+    const recorder = makeServedTokensRecorder({
+      ledger: flakyLedger,
+      ledgerRetryDelaysMs: [0],
+      nowIso: fixedNow,
+      publishDelta: delta =>
+        Effect.sync(() => {
+          published.push(delta)
+        }),
+    })
+
+    await runRecorder(recorder, {
+      accountRef: 'agent:retry-1',
+      adapterId: 'hydralisk',
+      requestId: 'chatcmpl-retry-1',
+      requestAttribution: {
+        demandClient: 'stress-harness',
+        demandKind: 'internal_stress',
+        demandSource: 'glm-saturation',
+      },
+      requestedModel: 'openagents/khala',
+      servedModel: 'openagents/khala',
+      streamed: true,
+      usage: { completionTokens: 30, promptTokens: 12, totalTokens: 42 },
+    })
+
+    expect(attempts).toBe(2)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.id).toBe(servedTokensEventId('chatcmpl-retry-1'))
+    expect(await readServed(baseLedger)).toBe(42)
+    expect(published).toStrictEqual([
+      {
+        eventRef: servedTokensEventId('chatcmpl-retry-1'),
+        observedAt: fixedNow(),
+        tokensServedDelta: 42,
+      },
+    ])
+  })
+
   // Live-counter PUSH (#6231): the recorder publishes ONE public-safe delta per
   // REAL new ledger row, and only then. ----------------------------------------
 

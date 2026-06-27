@@ -1058,8 +1058,8 @@ const insertEventRow = (
   db: D1Database,
   row: TokenUsageEventRow,
 ): Effect.Effect<void, TokenUsageLedgerStorageError> =>
-  d1Effect('tokenUsageEvents.insert', () =>
-    db
+  d1Effect('tokenUsageEvents.insert', async () => {
+    const result = await db
       .prepare(
         `INSERT INTO token_usage_events (
           id,
@@ -1098,8 +1098,14 @@ const insertEventRow = (
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(...insertBindings(row))
-      .run(),
-  ).pipe(Effect.asVoid)
+      .run()
+
+    if (!result.success) {
+      return Promise.reject({
+        reason: 'd1_token_usage_events_insert_success_false',
+      })
+    }
+  }).pipe(Effect.asVoid)
 
 const aggregateWhere = (
   filters: TokenUsageLedgerFilters,

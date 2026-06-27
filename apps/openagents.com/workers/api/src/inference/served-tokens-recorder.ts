@@ -372,6 +372,33 @@ export type ServedTokensDeltaPublisher = (
   }>,
 ) => Effect.Effect<void>
 
+const DEFAULT_LEDGER_RETRY_DELAYS_MS = [100, 250] as const
+
+const ingestServedTokensWithRetry = (
+  input: Readonly<{
+    body: ReturnType<typeof buildServedTokensIngestBody>
+    ledger: TokenUsageLedgerShape
+    retryDelaysMs: ReadonlyArray<number>
+  }>,
+): ReturnType<TokenUsageLedgerShape['ingestEvent']> => {
+  const run = (
+    attemptIndex: number,
+  ): ReturnType<TokenUsageLedgerShape['ingestEvent']> =>
+    input.ledger.ingestEvent(input.body).pipe(
+      Effect.catch(error => {
+        const delayMs = input.retryDelaysMs[attemptIndex]
+
+        return delayMs === undefined
+          ? Effect.fail(error)
+          : Effect.sleep(`${Math.max(0, Math.trunc(delayMs))} millis`).pipe(
+              Effect.flatMap(() => run(attemptIndex + 1)),
+            )
+      }),
+    )
+
+  return run(0)
+}
+
 // Build the served-tokens recorder over a token usage ledger. The recorder
 // writes one canonical ledger row per served completion, idempotently, and never
 // throws: any validation/persistence failure is logged public-safe and swallowed
@@ -380,12 +407,15 @@ export const makeServedTokensRecorder = (
   deps: Readonly<{
     ledger: TokenUsageLedgerShape
     nowIso?: () => string
+    ledgerRetryDelaysMs?: ReadonlyArray<number> | undefined
     // Optional live-counter publisher (#6231). Wired in production; omitted in
     // tests that only assert ledger behavior.
     publishDelta?: ServedTokensDeltaPublisher
   }>,
 ): ServedTokensRecorder => {
   const nowIso = deps.nowIso ?? currentIsoTimestamp
+  const ledgerRetryDelaysMs =
+    deps.ledgerRetryDelaysMs ?? DEFAULT_LEDGER_RETRY_DELAYS_MS
   return input =>
     Effect.gen(function* () {
       // Only a completion that actually served tokens moves the counter. A
@@ -414,7 +444,11 @@ export const makeServedTokensRecorder = (
         usage: input.usage,
       })
 
-      yield* deps.ledger.ingestEvent(body).pipe(
+      yield* ingestServedTokensWithRetry({
+        body,
+        ledger: deps.ledger,
+        retryDelaysMs: ledgerRetryDelaysMs,
+      }).pipe(
         Effect.matchEffect({
           onFailure: error =>
             // Public-safe diagnostic only (refs + token counts, never prompt
@@ -474,12 +508,16 @@ export const makeServedTokensRecorder = (
 export const makeD1ServedTokensRecorder = (
   db: D1Database,
   options: Readonly<{
+    ledgerRetryDelaysMs?: ReadonlyArray<number> | undefined
     nowIso?: () => string
     publishDelta?: ServedTokensDeltaPublisher
   }> = {},
 ): ServedTokensRecorder =>
   makeServedTokensRecorder({
     ledger: makeD1TokenUsageLedger(db),
+    ...(options.ledgerRetryDelaysMs === undefined
+      ? {}
+      : { ledgerRetryDelaysMs: options.ledgerRetryDelaysMs }),
     ...(options.nowIso === undefined ? {} : { nowIso: options.nowIso }),
     ...(options.publishDelta === undefined
       ? {}

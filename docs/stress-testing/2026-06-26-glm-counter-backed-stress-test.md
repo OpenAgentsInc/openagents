@@ -862,6 +862,13 @@ number and the `5683524` runner total as exact GLM provider receipts generated;
 the missing `17` rows are now a follow-up for ledger closeout/catch-up under
 post-target drain.
 
+2026-06-27 follow-up: the closeout patch makes `token_usage_events` insertion
+fail when D1 returns `success=false` instead of silently treating that result as
+recorded, and adds bounded served-token recorder retry before the existing
+fail-soft swallow. This does not recreate the already-missing `17` rows without
+the raw per-response request ids, but it directly guards the two plausible
+loss modes found during the audit.
+
 Non-counted / stopped run ids:
 
 - `issue6317-glm-postdrain-20260627T1001Z`: stopped after the first 30s showed
@@ -896,8 +903,9 @@ What this taught us:
 
 Current next reliability work:
 
-- Investigate the `17` successful final tuned-run receipts that appeared in the
-  runner artifact but were not present in D1 after the final remote recheck.
+- Keep run artifacts with public-safe response ids or a dedicated closeout
+  checksum so any future D1/runner mismatch can be reconciled without raw
+  prompts or completions.
 - Add a cleaner saturation yield/backoff path for public-gateway GLM stress
   traffic so the gateway returns controlled overload rather than large bursts of
   HTTP `500`/`502`.

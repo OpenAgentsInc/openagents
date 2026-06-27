@@ -37,10 +37,13 @@ const d1Meta = (): D1Meta & Record<string, unknown> => ({
   timings: { sql_duration_ms: 0 },
 })
 
-const makeResult = <T>(results: Array<T> = []): D1Result<T> => ({
+const makeResult = <T>(
+  results: Array<T> = [],
+  success = true,
+): D1Result<T> => ({
   meta: d1Meta(),
   results,
-  success: true,
+  success: success as true,
 })
 
 const asNumber = (value: string | number | null | undefined): number =>
@@ -223,7 +226,11 @@ const actorGroupRows = (
 
 const makeMemoryD1 = (
   store: TokenUsageLedgerMemory = { preferences: [], rows: [] },
+  options: Readonly<{
+    failFirstTokenUsageEventInsertWithSuccessFalse?: boolean | undefined
+  }> = {},
 ): D1Database & TokenUsageLedgerMemory => {
+  let failedTokenUsageInsert = false
   const prepare = (query: string) => {
     let values: ReadonlyArray<unknown> = []
 
@@ -491,6 +498,14 @@ const makeMemoryD1 = (
           const idempotencyKey = String(values[1])
 
           if (
+            options.failFirstTokenUsageEventInsertWithSuccessFalse === true &&
+            !failedTokenUsageInsert
+          ) {
+            failedTokenUsageInsert = true
+            return Promise.resolve(makeResult<T>([], false))
+          }
+
+          if (
             store.rows.some(
               row => row.id === id || row.idempotency_key === idempotencyKey,
             )
@@ -720,6 +735,21 @@ describe('token usage ledger', () => {
       demand_kind: 'internal_stress',
       demand_source: 'glm-saturation',
     })
+  })
+
+  test('treats D1 insert success=false as a storage failure, not a recorded event (#6317 closeout)', async () => {
+    const store: TokenUsageLedgerMemory = { preferences: [], rows: [] }
+    const db = makeMemoryD1(store, {
+      failFirstTokenUsageEventInsertWithSuccessFalse: true,
+    })
+    const result = await Effect.runPromiseExit(
+      Effect.flatMap(TokenUsageLedger, ledger =>
+        ledger.ingestEvent(validProbeEvent),
+      ).pipe(Effect.provide(TokenUsageLedger.live(db, runtime))),
+    )
+
+    expect(result._tag).toBe('Failure')
+    expect(store.rows).toHaveLength(0)
   })
 
   test('public tokens-served scalar includes internal, own-capacity, and stress rows (#6358 regression)', async () => {
