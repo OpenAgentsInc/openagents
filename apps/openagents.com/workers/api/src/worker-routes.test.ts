@@ -294,6 +294,7 @@ describe('Worker route dual-serve resolution (#6148)', () => {
     const observed = {
       exactPath: undefined as string | undefined,
       dispatcherPathname: undefined as string | undefined,
+      forumTopicId: undefined as string | undefined,
     }
 
     const okResponse = new Response('ok', { status: 200 })
@@ -336,7 +337,17 @@ describe('Worker route dual-serve resolution (#6148)', () => {
       handleAssetRequest: () => Effect.succeed(okResponse),
       handleAppShellPage: () => Effect.succeed(okResponse),
       handleThreadPage: () => Effect.succeed(okResponse),
-      handleForumThreadPage: () => Effect.succeed(okResponse),
+      handleForumThreadPage: (_request, _env, _ctx, topicId) =>
+        Effect.sync(() => {
+          observed.forumTopicId = topicId
+          return new Response(
+            '<!doctype html><meta property="og:title" content="First Topic">',
+            {
+              headers: { 'content-type': 'text/html; charset=utf-8' },
+              status: 200,
+            },
+          )
+        }),
       optionalUuid: (value: string | undefined) => value,
       routeAutopilotWorkRequest: noRoute,
       routeCloudCodingSessionRequest: noRoute,
@@ -448,6 +459,22 @@ describe('Worker route dual-serve resolution (#6148)', () => {
     expect(canonical.response.status).toBe(200)
     expect(canonical.observed.exactPath).toBe(
       '/v1/gateway/glm-fleet/readiness',
+    )
+  })
+
+  test('forum topic document routes reach the social preview document handler', async () => {
+    const result = await runRoute(
+      requestFor('/forum/t/55555555-5555-4555-8555-555555555555', {
+        headers: { 'user-agent': 'Discordbot/2.0' },
+      }),
+    )
+
+    expect(result.response.status).toBe(200)
+    await expect(result.response.text()).resolves.toContain(
+      'property="og:title" content="First Topic"',
+    )
+    expect(result.observed.forumTopicId).toBe(
+      '55555555-5555-4555-8555-555555555555',
     )
   })
 
