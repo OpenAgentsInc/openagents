@@ -269,7 +269,7 @@ describe('readEffectiveArtanisPylonDispatchApprovalForOwner (owner promotion)', 
     expect(queried).toBe(false)
   })
 
-  test('a non-promoted owner falls back to the armed D1 gate (none -> false)', async () => {
+  test('a non-promoted owner carries standing approval for own-capacity dispatch', async () => {
     let queried = false
     const approved = await readEffectiveArtanisPylonDispatchApprovalForOwner(
       emptyGatesDb(() => {
@@ -278,8 +278,21 @@ describe('readEffectiveArtanisPylonDispatchApprovalForOwner (owner promotion)', 
       nowIso,
       'user_some_other_owner',
     )
+    expect(approved).toBe(true)
+    // The per-tenant standing approval short-circuits before the D1 gate query.
+    expect(queried).toBe(false)
+  })
+
+  test('an empty owner scope still fails closed through the armed D1 gate', async () => {
+    let queried = false
+    const approved = await readEffectiveArtanisPylonDispatchApprovalForOwner(
+      emptyGatesDb(() => {
+        queried = true
+      }),
+      nowIso,
+      '   ',
+    )
     expect(approved).toBe(false)
-    // The armed-gate path WAS consulted for a non-promoted owner.
     expect(queried).toBe(true)
   })
 })
