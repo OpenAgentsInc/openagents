@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import { mkdtemp, rm } from "node:fs/promises"
+import { existsSync } from "node:fs"
+import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 
@@ -317,6 +318,52 @@ describe("Codex composer SDK stream", () => {
     expect(result.threadId).toBe("thread.test.codex")
     expect(clientEnv).toMatchObject({ PATH: "/bin", CODEX_HOME: "/tmp/codex-home-a" })
     expect(Bun.env.CODEX_HOME).toBe(original)
+  })
+
+  test("injects the ripgrep guard into the Codex environment", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-codex-composer-rg-"))
+    try {
+      const realRg = join(root, "real-rg")
+      const guardBin = join(root, "guard-bin")
+      await writeFile(realRg, "#!/usr/bin/env bash\nexit 0\n")
+      await chmod(realRg, 0o755)
+
+      let clientEnv: Record<string, string | undefined> | null = null
+      const importer = async (specifier: string) => {
+        if (specifier !== CODEX_AGENT_SDK_PACKAGE) throw new Error(`unexpected import: ${specifier}`)
+        return {
+          Codex: class {
+            constructor(options?: { env?: Record<string, string | undefined> }) {
+              clientEnv = options?.env ?? null
+            }
+            startThread() {
+              return {
+                runStreamed: async () => ({ events: fakeCodexEvents() }),
+              }
+            }
+          },
+        }
+      }
+
+      await runCodexComposerStream("fix", {
+        codexCliLoginPresent: true,
+        cwd: "/tmp/current-repo",
+        env: {
+          OPENAGENTS_CODEX_REAL_RG: realRg,
+          OPENAGENTS_CODEX_RG_GUARD_BIN_DIR: guardBin,
+          PATH: "/bin",
+        },
+        importer,
+        platform: "darwin",
+      })
+
+      expect(clientEnv?.OPENAGENTS_CODEX_RG_GUARD).toBe("1")
+      expect(clientEnv?.OPENAGENTS_CODEX_REAL_RG).toBe(realRg)
+      expect(clientEnv?.PATH?.startsWith(`${guardBin}:`)).toBe(true)
+      expect(existsSync(join(guardBin, "rg"))).toBe(true)
+    } finally {
+      await rm(root, { force: true, recursive: true })
+    }
   })
 
   test("persists streamed usage snapshots when a Pylon home is provided", async () => {
