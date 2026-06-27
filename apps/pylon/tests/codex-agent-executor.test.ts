@@ -677,6 +677,86 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
     })
   })
 
+  test("records the opened PR refs in the closeout for a verified diff (#6439)", async () => {
+    await withState(async (state) => {
+      const checkoutRunner = async (workspace: string) => {
+        const { mkdir } = await import("node:fs/promises")
+        await mkdir(workspace, { recursive: true })
+        await writeFile(
+          join(workspace, "package.json"),
+          `${JSON.stringify({ private: true, type: "module" })}\n`,
+        )
+        await writeFile(
+          join(workspace, "sum.ts"),
+          "export const sum = (left: number, right: number) => left - right\n",
+        )
+        await writeFile(
+          join(workspace, "sum.test.ts"),
+          [
+            'import { describe, expect, test } from "bun:test"',
+            'import { sum } from "./sum"',
+            'describe("sum", () => { test("adds", () => { expect(sum(2, 3)).toBe(5) }) })',
+            "",
+          ].join("\n"),
+        )
+      }
+      const seen: Array<{ assignmentRef: string; passed: boolean }> = []
+      const record = await executeCodexAgentAssignment(
+        state,
+        { ...lease, codingAssignment: checkoutAssignment },
+        now,
+        {
+          checkoutRunner,
+          codexAgentRunner: fixingRunner,
+          codexAgentProbe: readyProbe,
+          pullRequestPublisher: async (input) => {
+            seen.push({ assignmentRef: input.assignmentRef, passed: input.verification.passed })
+            return {
+              state: "opened",
+              prUrl: "https://github.com/OpenAgentsInc/openagents/pull/99001",
+              prNumber: 99001,
+              branch: "pylon/assignment-deadbeefdeadbeef",
+              changedCount: 1,
+              reused: false,
+            }
+          },
+        },
+      )
+      expect(record?.status).toBe("accepted")
+      expect(seen.length).toBe(1)
+      expect(seen[0]?.passed).toBe(true)
+      expect(record?.resultRefs).toContain(
+        "result.public.pylon.codex_agent_task.pull_request_opened",
+      )
+      expect(record?.resultRefs).toContain(
+        "result.public.pylon.codex_agent_task.pull_request_changed_files.1",
+      )
+      expect(record?.previewRefs).toContain(
+        "https://github.com/OpenAgentsInc/openagents/pull/99001",
+      )
+      assertPublicProjectionSafe(record)
+    })
+  })
+
+  test("does not open a PR for the public fixture lane (no workspace)", async () => {
+    await withState(async (state) => {
+      let publisherCalls = 0
+      const record = await executeCodexAgentAssignment(state, lease, now, {
+        codexAgentRunner: fixingRunner,
+        codexAgentProbe: readyProbe,
+        pullRequestPublisher: async () => {
+          publisherCalls += 1
+          return { state: "no_change" }
+        },
+      })
+      expect(record?.status).toBe("accepted")
+      expect(publisherCalls).toBe(0)
+      expect(
+        (record?.resultRefs ?? []).some((ref) => ref.includes("pull_request")),
+      ).toBe(false)
+    })
+  })
+
   test("prepares locked Bun checkout dependencies before running Codex", async () => {
     await withState(async (state) => {
       let checkoutRoot = ""

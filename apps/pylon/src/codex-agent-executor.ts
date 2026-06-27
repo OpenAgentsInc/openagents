@@ -20,6 +20,10 @@ import {
   type ResolvedPylonAccountSelection,
 } from "./account-registry.js"
 import {
+  publishAssignmentPullRequest,
+  type AssignmentPullRequestPublisher,
+} from "./codex-pr-publisher.js"
+import {
   createPylonCodexEventChunkReporter,
   createPylonCodexTurnReporter,
   type CodexEventChunkReporter,
@@ -127,6 +131,12 @@ export type CodexAgentExecutionOptions = {
   codexTurnReporter?: CodexTurnReporter
   dependencyInstaller?: LocalCommandRunner
   fetch?: typeof fetch
+  /**
+   * Test/override seam for the assignment pull-request publisher (#6439).
+   * Production uses the default real publisher, which commits the verified
+   * diff, pushes a scoped branch, and opens one PR against the base branch.
+   */
+  pullRequestPublisher?: AssignmentPullRequestPublisher
 }
 
 type CodexAgentFixture = {
@@ -1072,20 +1082,37 @@ export async function executeCodexAgentAssignment(
   const passed = verification.exitCode === 0
   const sessionRefs = run.sessionRef === null ? [] : [run.sessionRef]
 
+  // PR-per-assignment (#6439). When a git_checkout assignment produces a
+  // verified, non-empty diff, open exactly one scoped pull request and record
+  // the public-safe PR refs back into the closeout. Fixture tasks have no
+  // workspace and never open PRs. The publisher is fail-soft: PR-creation
+  // problems never flip an otherwise-accepted closeout to rejected.
+  const pullRequest = await maybePublishAssignmentPullRequest({
+    task,
+    materialized,
+    lease,
+    state,
+    verification,
+    passed,
+    now,
+    publisher: options.pullRequestPublisher,
+  })
+
   return {
     artifactRefs: [artifactRef],
     blockerRefs: passed ? [] : ["blocker.assignment.codex_agent_test_failed"],
     buildRefs: [commandRef],
     message: passed
-      ? `Local Codex completed the bounded coding task: ${run.editedFileCount} file edit(s), ${run.commandCount} command(s), ${run.turnCount} turn(s), verification test passed on this device.`
+      ? `Local Codex completed the bounded coding task: ${run.editedFileCount} file edit(s), ${run.commandCount} command(s), ${run.turnCount} turn(s), verification test passed on this device.${pullRequest.messageSuffix}`
       : "Local Codex thread completed but the verification test command failed; the change is not accepted.",
-    previewRefs: [materialized.workspaceRef],
+    previewRefs: [materialized.workspaceRef, ...pullRequest.previewRefs],
     proofRefs: [proofRef],
     resultRefs: [
       passed
         ? `result.public.pylon.codex_agent_task.${materialized.acceptanceResultRef}_passed`
         : `result.public.pylon.codex_agent_task.${materialized.acceptanceResultRef}_failed`,
       `result.public.pylon.codex_agent_task.edited_files.${run.editedFileCount}`,
+      ...pullRequest.resultRefs,
     ],
     runRefs: [runRef, ...sessionRefs],
     status: passed ? ("accepted" as const) : ("rejected" as const),
@@ -1095,5 +1122,107 @@ export async function executeCodexAgentAssignment(
         : `summary.public.pylon.codex_agent_task.${materialized.acceptanceResultRef}_failed`,
     ],
     testRefs: [commandRef],
+  }
+}
+
+type PullRequestCloseoutContribution = {
+  resultRefs: string[]
+  previewRefs: string[]
+  messageSuffix: string
+}
+
+const EMPTY_PULL_REQUEST_CONTRIBUTION: PullRequestCloseoutContribution = {
+  resultRefs: [],
+  previewRefs: [],
+  messageSuffix: "",
+}
+
+/**
+ * Opens one scoped pull request for a verified, non-empty git_checkout diff and
+ * maps the typed outcome to public-safe closeout refs. Only git_checkout tasks
+ * are eligible (fixtures have no workspace). Honors the
+ * `OPENAGENTS_PYLON_DISABLE_ASSIGNMENT_PR` kill switch. Never throws.
+ */
+async function maybePublishAssignmentPullRequest(input: {
+  task: CodexAgentTaskPayload
+  materialized: Awaited<ReturnType<typeof materializeCodexAgentWorkspace>>
+  lease: CodexAgentLease
+  state: PylonLocalState
+  verification: LocalCommandResult
+  passed: boolean
+  now: Date
+  publisher?: AssignmentPullRequestPublisher
+}): Promise<PullRequestCloseoutContribution> {
+  if (!input.passed) return EMPTY_PULL_REQUEST_CONTRIBUTION
+  const workspace = input.task.workspace
+  if (workspace === undefined) return EMPTY_PULL_REQUEST_CONTRIBUTION
+  if (Bun.env.OPENAGENTS_PYLON_DISABLE_ASSIGNMENT_PR === "1") {
+    return {
+      resultRefs: ["result.public.pylon.codex_agent_task.pull_request_disabled"],
+      previewRefs: [],
+      messageSuffix: "",
+    }
+  }
+
+  const publisher = input.publisher ?? publishAssignmentPullRequest
+  let result: Awaited<ReturnType<AssignmentPullRequestPublisher>>
+  try {
+    result = await publisher({
+      cacheRoot: join(input.state.paths.cache, "codex-agent-tasks"),
+      workingDirectory: input.materialized.workspace,
+      workspaceRef: input.materialized.workspaceRef,
+      sourceRef: input.materialized.artifactSourceRef,
+      repository: {
+        branch: workspace.repository.branch,
+        commitSha: workspace.repository.commitSha,
+        fullName: workspace.repository.fullName,
+      },
+      assignmentRef: input.lease.assignmentRef,
+      ...(input.task.objectiveSummary === undefined ? {} : { objectiveSummary: input.task.objectiveSummary }),
+      verification: {
+        args: input.materialized.verificationArgs,
+        exitCode: input.verification.exitCode,
+        passed: input.passed,
+      },
+      now: input.now,
+    })
+  } catch {
+    return {
+      resultRefs: ["result.public.pylon.codex_agent_task.pull_request_failed"],
+      previewRefs: [],
+      messageSuffix: " PR creation failed; the verified diff remains in the local workspace.",
+    }
+  }
+
+  if (result.state === "opened") {
+    return {
+      resultRefs: [
+        result.reused
+          ? "result.public.pylon.codex_agent_task.pull_request_reused"
+          : "result.public.pylon.codex_agent_task.pull_request_opened",
+        `result.public.pylon.codex_agent_task.pull_request_changed_files.${result.changedCount}`,
+      ],
+      previewRefs: [result.prUrl],
+      messageSuffix: ` Opened PR ${result.prUrl} (branch ${result.branch}, ${result.changedCount} file(s) changed).`,
+    }
+  }
+  if (result.state === "no_change") {
+    return {
+      resultRefs: ["result.public.pylon.codex_agent_task.pull_request_no_change"],
+      previewRefs: [],
+      messageSuffix: " No diff produced; no PR opened.",
+    }
+  }
+  if (result.state === "skipped") {
+    return {
+      resultRefs: ["result.public.pylon.codex_agent_task.pull_request_skipped"],
+      previewRefs: [],
+      messageSuffix: "",
+    }
+  }
+  return {
+    resultRefs: ["result.public.pylon.codex_agent_task.pull_request_failed"],
+    previewRefs: [],
+    messageSuffix: " PR creation failed; the verified diff remains in the local workspace.",
   }
 }
