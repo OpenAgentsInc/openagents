@@ -128,7 +128,16 @@ const KHALA_ROLEPLAY_LEAK_TERMS: ReadonlyArray<string> = [
   'aiur',
   'en taro',
   'my life for aiur',
-  'the khala', // the psionic link lore; "Khala" the product is fine, "the Khala" lore is not
+  // StarCraft "Khala" psionic-link LORE only. We must NOT flag the legitimate
+  // product references the operator persona is REQUIRED to use ("the Khala
+  // improvement loop", "the Khala API/pool", "the Khala surface") — the bare
+  // "the khala" substring collided with all of those and falsely failed the
+  // persona check on grounded replies (#6363). These phrasings are specific to
+  // the psionic-link roleplay and never appear in legitimate product copy.
+  'psionic link',
+  'severed from the khala',
+  'one with the khala',
+  'joined in the khala',
   'we are khala',
   'collective intelligence',
 ]

@@ -194,6 +194,21 @@ describe('artanis operator persona (NOT the public Khala identity)', () => {
     expect(verdict.leaks).toEqual([])
   })
 
+  test('persona guard accepts legitimate "the Khala …" product references (#6363)', () => {
+    // The operator persona is REQUIRED to talk about "the Khala improvement
+    // loop" / "the Khala API" / "the Khala surface". The earlier bare "the
+    // khala" guard term falsely failed these grounded replies. They must pass.
+    for (const reply of [
+      'I run the Khala improvement loop and keep the Khala API solid.',
+      'My current goal is driving the Khala surface to ship.',
+      'I dispatch and verify work through the Khala -> Pylon -> Codex burndown.',
+    ]) {
+      const verdict = verifyArtanisOperatorPersona(reply)
+      expect(verdict.satisfied).toBe(true)
+      expect(verdict.leaks).toEqual([])
+    }
+  })
+
   test('persona guard flags StarCraft / collective-intelligence roleplay leaks', () => {
     const verdict = verifyArtanisOperatorPersona(
       'En Taro Adun! I am Hierarch Artanis of the Daelaam, leading the Protoss.',
