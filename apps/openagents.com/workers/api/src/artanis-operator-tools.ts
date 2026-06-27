@@ -37,6 +37,11 @@ import type {
   ArtanisOperatorReadTool,
   ArtanisOperatorTool,
 } from './artanis-operator'
+import {
+  type ArtanisNetworkStatsConfig,
+  fetchArtanisNetworkStats,
+  formatArtanisTokenPaceLine,
+} from './artanis-token-pace'
 
 // ---------------------------------------------------------------------------
 // #6365 — repo-read tools (public OpenAgentsInc/openagents only).
@@ -779,6 +784,59 @@ export const makeArtanisDispatchCodexTaskTool = (
 }
 
 // ---------------------------------------------------------------------------
+// get_network_stats — LIVE public stats + token pace (epic #6359).
+// ---------------------------------------------------------------------------
+//
+// A READ tool that fetches the three live public stats endpoints used by /stats
+// (all-time scalar, per-day history in America/Chicago, model-mix) and returns a
+// compact public-safe snapshot WITH the computed pace block. This is how Artanis
+// checks, on demand, whether today is on track for the daily token target (at
+// least 4x the prior day, goal 10x). Public-safe aggregates only; no per-user,
+// provider, secret, or wallet material. Fail-soft: an unreachable endpoint
+// degrades to an honest "(could not fetch …)" string, never invention.
+export const makeArtanisGetNetworkStatsTool = (
+  config: ArtanisNetworkStatsConfig = {},
+): ArtanisOperatorReadTool => ({
+  definition: {
+    description:
+      "Fetch the LIVE public Khala network stats (the /stats data): all-time tokens served, the last few days of per-day tokens served (America/Chicago), the model-family mix, and a computed PACE block \u2014 today's tokens so far, the fraction of the Central day elapsed, the projected total by midnight Central at the current pace, yesterday's tokens, the 4x daily floor and 10x stretch-goal targets, the gap to the 4x floor, and whether we are BEHIND pace. Use this to judge whether today is on track for the daily token target (at least 4x the prior day, goal 10x). Takes no arguments.",
+    name: 'get_network_stats',
+    parameters: {
+      additionalProperties: false,
+      properties: {},
+      type: 'object',
+    },
+  },
+  execute: (_args: unknown) =>
+    Effect.promise(() => fetchArtanisNetworkStats(config)).pipe(
+      Effect.map(stats => {
+        const paceLine =
+          stats.pace === null
+            ? 'Token pace: (not enough Central-day history to project a target yet).'
+            : formatArtanisTokenPaceLine(stats.pace)
+        const snapshot = {
+          allTimeTokensServed: stats.allTimeTokensServed,
+          history: stats.history,
+          modelMix: stats.modelMix.slice(0, 6),
+          pace: stats.pace,
+          timezone: stats.timezone,
+          todayTokens: stats.todayTokens,
+        }
+        return [
+          paceLine,
+          '',
+          `All-time tokens served: ${stats.allTimeTokensServed.toLocaleString(
+            'en-US',
+          )}.`,
+          'Public stats snapshot (JSON, public-safe aggregates only):',
+          JSON.stringify(snapshot),
+        ].join('\n')
+      }),
+    ),
+  kind: 'read',
+})
+
+// ---------------------------------------------------------------------------
 // The default owner-scoped operator tool table.
 // ---------------------------------------------------------------------------
 
@@ -796,6 +854,7 @@ export const makeArtanisOperatorTools = (
     repoRead?: ArtanisRepoReadConfig | undefined
     issueRead?: ArtanisIssueReadConfig | undefined
     defaultBranch?: string | undefined
+    networkStats?: ArtanisNetworkStatsConfig | undefined
     dispatchExecution?: ArtanisDispatchExecution | undefined
   }> = {},
 ): ReadonlyArray<ArtanisOperatorTool> => {
@@ -808,6 +867,7 @@ export const makeArtanisOperatorTools = (
     makeArtanisReadRepoFileTool(config.repoRead),
     makeArtanisListRepoDirTool(config.repoRead),
     makeArtanisReadGithubIssueTool(issueRead),
+    makeArtanisGetNetworkStatsTool(config.networkStats),
     makeArtanisDispatchCodexTaskTool({
       defaultBranch: config.defaultBranch,
       execution: config.dispatchExecution,

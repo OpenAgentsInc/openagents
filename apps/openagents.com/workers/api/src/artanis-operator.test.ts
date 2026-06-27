@@ -2,6 +2,7 @@ import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import {
+  ARTANIS_OPERATOR_EMPTY_REPLY_FALLBACK,
   ARTANIS_OPERATOR_KHALA_MODEL,
   ARTANIS_OPERATOR_MAX_TOOL_ITERATIONS,
   ARTANIS_OPERATOR_SYSTEM_PROMPT,
@@ -84,6 +85,17 @@ const exampleAwareness: ArtanisSituationalAwareness = {
     fleetReadiness: { readyReplicas: 3, status: 'ready', totalReplicas: 3 },
     publicCounter: null,
     recentDeploys: [],
+    tokenPace: {
+      behindPace: true,
+      day: '2026-06-27',
+      fractionOfCentralDayElapsed: 0.5,
+      gapToTarget4x: 1_112_400_000,
+      paceProjection: 200_000_000,
+      target10x: 3_281_000_000,
+      target4x: 1_312_400_000,
+      todayTokens: 100_000_000,
+      yesterdayTokens: 328_100_000,
+    },
   },
   ownerId: 'owner:github:14167547',
   ownerOnly: true,
@@ -115,6 +127,7 @@ const emptyAwareness: ArtanisSituationalAwareness = {
     fleetReadiness: null,
     publicCounter: null,
     recentDeploys: [],
+    tokenPace: null,
   },
   ownerId: 'owner:x',
   ownerOnly: true,
@@ -732,5 +745,118 @@ describe('#6364 artanis operator bounded tool-calling loop', () => {
     if ('error' in result) return
     expect(result.iterations).toBe(1)
     expect(result.toolInvocations).toEqual([])
+  })
+})
+
+
+// ---------------------------------------------------------------------------
+// epic #6359 — live token-pace awareness + mission framing.
+// ---------------------------------------------------------------------------
+
+describe('#6359 token-pace mission framing + awareness injection', () => {
+  test('persona makes the daily token target explicit (>=4x prior day, goal 10x)', () => {
+    const lower = ARTANIS_OPERATOR_SYSTEM_PROMPT.toLowerCase()
+    expect(lower).toContain('at least 4x the prior day')
+    expect(lower).toContain('goal of 10x')
+    expect(lower).toContain('behindpace')
+    // The biggest token-per-action levers are named so Artanis knows what to do.
+    expect(lower).toContain('mirrorcode')
+  })
+
+  test('a behind-pace tokenPace block renders into the grounded context with URGENT framing', () => {
+    const block = buildArtanisOperatorContextBlock({
+      awareness: exampleAwareness,
+      memory: exampleMemory,
+    })
+    expect(block).toContain('token pace')
+    expect(block).toContain('BEHIND PACE')
+    expect(block).toContain('[URGENT]')
+    expect(block).toContain('2026-06-27')
+  })
+
+  test('a null tokenPace renders no pace line (honest absence)', () => {
+    const block = buildArtanisOperatorContextBlock({
+      awareness: emptyAwareness,
+      memory: [],
+    })
+    expect(block).not.toContain('[token pace]')
+    expect(block).not.toContain('[URGENT]')
+  })
+})
+
+describe('#6359 the turn never returns an empty reply (cap / blank-completion guard)', () => {
+  test('a blank completion (no tool calls) forces a final tools-suppressed answer', async () => {
+    const { tool } = makeFakeReadTool('some file body')
+    // First completion: blank text, no tool calls, while tools are advertised.
+    // The guard must force ONE more tools-suppressed call that answers.
+    const { client, requests } = makeScriptedKhalaClient([
+      textResult(''),
+      textResult('Here is my real answer about the token pace.'),
+    ])
+
+    const result = await Effect.runPromise(
+      artanisOperatorTurn({
+        awareness: exampleAwareness,
+        khalaClient: client,
+        memory: exampleMemory,
+        messages: [{ content: 'what is our token pace?', role: 'user' }],
+        ownerId: 'owner:github:14167547',
+        tools: [tool],
+      }),
+    )
+
+    expect('error' in result).toBe(false)
+    if ('error' in result) return
+    expect(result.reply).toBe('Here is my real answer about the token pace.')
+    expect(result.reply.length).toBeGreaterThan(0)
+    expect(result.iterations).toBe(2)
+    // The forced final call suppressed tools.
+    expect(requests[1]?.passthroughParams.tools).toBeUndefined()
+  })
+
+  test('when every completion is blank, the reply is the fallback, never empty', async () => {
+    const { tool } = makeFakeReadTool('body')
+    const { client } = makeScriptedKhalaClient([textResult(''), textResult('')])
+
+    const result = await Effect.runPromise(
+      artanisOperatorTurn({
+        awareness: exampleAwareness,
+        khalaClient: client,
+        memory: exampleMemory,
+        messages: [{ content: 'status?', role: 'user' }],
+        ownerId: 'owner:github:14167547',
+        tools: [tool],
+      }),
+    )
+
+    expect('error' in result).toBe(false)
+    if ('error' in result) return
+    expect(result.reply).toBe(ARTANIS_OPERATOR_EMPTY_REPLY_FALLBACK)
+    expect(result.reply.trim().length).toBeGreaterThan(0)
+  })
+
+  test('hitting the iteration cap still yields a non-empty reply', async () => {
+    const { tool } = makeFakeReadTool('file body')
+    // Always asks for a tool (content empty); the cap forces termination and the
+    // final tools-suppressed completion is also empty -> fallback, not empty.
+    const alwaysToolClient: ArtanisOperatorKhalaClient = () =>
+      Effect.succeed(toolCallResult('read_repo_file', '{"path":"docs/x.md"}'))
+
+    const result = await Effect.runPromise(
+      artanisOperatorTurn({
+        awareness: exampleAwareness,
+        khalaClient: alwaysToolClient,
+        memory: exampleMemory,
+        messages: [{ content: 'keep reading forever', role: 'user' }],
+        ownerId: 'owner:github:14167547',
+        tools: [tool],
+      }),
+    )
+
+    expect('error' in result).toBe(false)
+    if ('error' in result) return
+    expect(result.iterations).toBe(ARTANIS_OPERATOR_MAX_TOOL_ITERATIONS + 1)
+    expect(result.reply.trim().length).toBeGreaterThan(0)
+    expect(result.reply).toBe(ARTANIS_OPERATOR_EMPTY_REPLY_FALLBACK)
   })
 })

@@ -32,6 +32,17 @@ describe('buildArtanisSituationalAwareness', () => {
         asOf: '2026-06-26T11:59:00.000Z',
         tokensServed: 123_456,
       }),
+      readTokenPace: async () => ({
+        behindPace: true,
+        day: '2026-06-26',
+        fractionOfCentralDayElapsed: 0.5,
+        gapToTarget4x: 900_000,
+        paceProjection: 100_000,
+        target10x: 2_500_000,
+        target4x: 1_000_000,
+        todayTokens: 50_000,
+        yesterdayTokens: 250_000,
+      }),
       readRecentAssignments: async (ownerId, _limit) => {
         expect(ownerId).toBe('owner-1')
         return [
@@ -97,6 +108,8 @@ describe('buildArtanisSituationalAwareness', () => {
     expect(awareness.ongoingOps.recentDeploys[0]!.workerVersion).toBe('v123')
     expect(awareness.ongoingOps.fleetReadiness?.status).toBe('ready')
     expect(awareness.ongoingOps.publicCounter?.tokensServed).toBe(123_456)
+    expect(awareness.ongoingOps.tokenPace?.behindPace).toBe(true)
+    expect(awareness.ongoingOps.tokenPace?.paceProjection).toBe(100_000)
   })
 
   test('degrades to empty buckets and default goals when no readers wired', async () => {
@@ -112,6 +125,7 @@ describe('buildArtanisSituationalAwareness', () => {
     expect(awareness.ongoingOps.recentDeploys).toEqual([])
     expect(awareness.ongoingOps.fleetReadiness).toBeNull()
     expect(awareness.ongoingOps.publicCounter).toBeNull()
+    expect(awareness.ongoingOps.tokenPace).toBeNull()
     // Goals fall back to the code-anchored defaults rather than going empty.
     expect(awareness.goals).toEqual(ARTANIS_DEFAULT_GOALS)
   })

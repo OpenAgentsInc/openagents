@@ -99,6 +99,7 @@ import {
 import { makeD1ArtanisLaborUnattendedReceiptStore } from './artanis-labor-receipt-store'
 import { ArtanisMindSmokeSystem, artanisMindComplete } from './artanis-mind'
 import { makeOperatorArtanisChatRoutes } from './artanis-operator-chat-routes'
+import { fetchArtanisNetworkStats } from './artanis-token-pace'
 import { makeOperatorArtanisConsoleRoutes } from './artanis-operator-console-routes'
 import {
   makeArtanisDispatchExecution,
@@ -8500,6 +8501,17 @@ const operatorArtanisConsoleRoutes = makeOperatorArtanisConsoleRoutes({
 // so referencing the (later-declared) builder here is safe.
 const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
   appendRefreshedSessionCookies,
+  // Inject the LIVE daily token-pace block into EVERY Artanis turn (epic #6359)
+  // so he sees whether today is on track for the target (at least 4x the prior
+  // day, goal 10x) without calling a tool. Read-only, fail-soft: an unreachable
+  // public stats endpoint degrades the pace block to null, never an error.
+  awarenessReaders: () => ({
+    readTokenPace: () =>
+      fetchArtanisNetworkStats({}).then(
+        stats => stats.pace,
+        () => null,
+      ),
+  }),
   isOpenAgentsAdminEmail,
   makeKhalaClient: env => makeArtanisResponderKhalaClient(env),
   // #6366 follow-up: wire the gated Codex dispatch tool to LIVE execution. The

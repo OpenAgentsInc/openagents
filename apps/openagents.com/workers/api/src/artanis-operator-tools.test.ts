@@ -6,6 +6,7 @@ import {
   ARTANIS_REPO_READ_MAX_BYTES,
   isSafeArtanisRepoPath,
   makeArtanisDispatchCodexTaskTool,
+  makeArtanisGetNetworkStatsTool,
   makeArtanisListRepoDirTool,
   makeArtanisOperatorTools,
   makeArtanisReadGithubIssueTool,
@@ -472,12 +473,78 @@ describe('parseArtanisIssueNumber', () => {
   })
 })
 
+describe('#6359 get_network_stats (live public stats + token pace)', () => {
+  const statsFetch = (): typeof fetch =>
+    (async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input.toString()
+      if (url.includes('/khala-tokens-served/history')) {
+        return new Response(
+          JSON.stringify({
+            series: [
+              { day: '2026-06-26', tokensServed: 328_100_000 },
+              { day: '2026-06-27', tokensServed: 100_000_000 },
+            ],
+          }),
+          { status: 200 },
+        )
+      }
+      if (url.includes('/khala-tokens-served/model-mix')) {
+        return new Response(
+          JSON.stringify({
+            groups: [
+              { family: 'glm', label: 'GLM', pct: 100, reqs: 1, tokens: 500 },
+            ],
+          }),
+          { status: 200 },
+        )
+      }
+      if (url.includes('/khala-tokens-served')) {
+        return new Response(JSON.stringify({ tokensServed: 5_000_000_000 }), {
+          status: 200,
+        })
+      }
+      return new Response('not found', { status: 404 })
+    }) as typeof fetch
+
+  test('returns a public-safe snapshot with the pace block and flags behind-pace', async () => {
+    const tool = makeArtanisGetNetworkStatsTool({
+      fetchImpl: statsFetch(),
+      // 17:00 UTC = 12:00 CDT -> 50% of the Central day elapsed.
+      nowIso: () => '2026-06-27T17:00:00.000Z',
+    })
+    expect(tool.kind).toBe('read')
+    expect(tool.definition.name).toBe('get_network_stats')
+
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toContain('BEHIND PACE')
+    expect(result).toContain('All-time tokens served: 5,000,000,000')
+    // The JSON snapshot carries the structured pace block.
+    expect(result).toContain('"behindPace":true')
+    expect(result).toContain('"paceProjection":200000000')
+    expect(result).toContain('"yesterdayTokens":328100000')
+  })
+
+  test('degrades to an honest message when the stats endpoints are unreachable', async () => {
+    const failing = (async () => {
+      throw new Error('network down')
+    }) as typeof fetch
+    const tool = makeArtanisGetNetworkStatsTool({
+      fetchImpl: failing,
+      nowIso: () => '2026-06-27T17:00:00.000Z',
+    })
+    const result = await Effect.runPromise(tool.execute({}))
+    // Fail-soft: zeroed all-time + an empty-ish pace, never a thrown turn.
+    expect(result).toContain('All-time tokens served: 0')
+  })
+})
+
 describe('makeArtanisOperatorTools default table', () => {
   test('includes the repo-read tools, the issue-read tool, and the dispatch tool', () => {
     const tools = makeArtanisOperatorTools()
     const names = tools.map(tool => tool.definition.name).sort()
     expect(names).toEqual([
       'dispatch_codex_task',
+      'get_network_stats',
       'list_repo_dir',
       'read_github_issue',
       'read_repo_file',

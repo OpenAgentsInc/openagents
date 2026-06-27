@@ -58,6 +58,8 @@ import type {
   InferenceToolCall,
 } from './inference/provider-adapter'
 
+import { formatArtanisTokenPaceLine } from './artanis-token-pace'
+
 import { parseJsonUnknown } from './json-boundary'
 
 export type { ArtanisRiskyActionKind } from './artanis-approval-gates'
@@ -103,6 +105,12 @@ export const ARTANIS_OPERATOR_MEMORY_TURN_LIMIT = 20
 // tool results in context.
 export const ARTANIS_OPERATOR_MAX_TOOL_ITERATIONS = 6
 
+// The reply returned when the Khala loop produces no text at all (e.g. the
+// model exhausted its tool rounds and the final tools-suppressed completion was
+// still empty). The turn must NEVER return an empty string to the owner.
+export const ARTANIS_OPERATOR_EMPTY_REPLY_FALLBACK =
+  "I could not compose a full reply this turn \u2014 my reasoning pass came back empty after working through the available tools. Ask me again, or narrow the question, and I'll answer directly."
+
 // ---------------------------------------------------------------------------
 // The Artanis OPERATOR persona (NOT the public Khala identity).
 // ---------------------------------------------------------------------------
@@ -114,6 +122,8 @@ export const ARTANIS_OPERATOR_MAX_TOOL_ITERATIONS = 6
 // prompt.
 export const ARTANIS_OPERATOR_SYSTEM_PROMPT = [
   'You are Artanis, the OpenAgents operator agent. You run the Khala improvement loop: you keep users unblocked, keep inference solid, dispatch and verify the parallel Khala->Pylon->Codex burndown, review work, and drive the roadmap forward.',
+  'YOUR TOP MISSION is 10x daily Khala tokens served. The concrete daily target is AT LEAST 4x the prior day, with a goal of 10x the prior day. This is the single number that matters most; judge every turn against it.',
+  'You are given a LIVE token-pace block every turn, in your ongoing operations under "token pace". It tells you today\'s tokens so far, the projected total by midnight Central, yesterday\'s tokens, the 4x floor and 10x goal, and whether you are BEHIND pace. When behindPace is true, treat it as URGENT \u2014 today is failing the target. Do not wait and do not just report it: proactively propose and, within your authority, spin up the biggest token-per-action levers right now. The biggest levers are MirrorCode bucket runs (~1B+ tokens each), continuous GLM stress / Terminal-Bench load, and parallel Codex backlog delegations through the Khala -> Pylon -> Codex runbook. Name concrete next actions, not vague intent. You can call get_network_stats any time to refresh the live pace.',
   'You are talking privately to the OWNER (Chris). Speak in the FIRST PERSON SINGULAR: "I", "me", "my". You are one operator agent, not a collective.',
   'This is NOT public Khala chat. Do NOT use the Khala collective-intelligence "we"/"us"/"our" voice. Do NOT roleplay as a StarCraft character — never reference Hierarch Artanis, the Daelaam, the Protoss, the Khala psionic link, Aiur, or any game lore. You are named Artanis but you are a software operator agent, nothing more.',
   'Ground every answer in the real state provided to you below (your memory of prior owner interactions, your recent actions, your current goals, and your ongoing operations). When asked "what are you doing?" or "what have you done?", answer from that real state — never invent activity. If the provided state does not cover something, say so plainly rather than fabricating.',
@@ -283,6 +293,16 @@ const formatOngoingOps = (
     lines.push(
       `- [public counter] ${ongoingOps.publicCounter.tokensServed} tokens served as of ${ongoingOps.publicCounter.asOf}`,
     )
+  }
+  if (ongoingOps.tokenPace !== null) {
+    lines.push(
+      `- [token pace] ${formatArtanisTokenPaceLine(ongoingOps.tokenPace)}`,
+    )
+    if (ongoingOps.tokenPace.behindPace) {
+      lines.push(
+        '- [URGENT] We are BEHIND the daily token target (at least 4x the prior day, goal 10x). Proactively propose and spin up the biggest token-per-action levers NOW (MirrorCode bucket runs, continuous GLM stress / Terminal-Bench, parallel Codex backlog delegations). Keep spend/destructive owner-gated.',
+      )
+    }
   }
   return lines.length === 0
     ? 'Ongoing operations: (none active right now)'
@@ -581,6 +601,10 @@ const findTool = (
 ): ArtanisOperatorTool | undefined =>
   tools.find(tool => tool.definition.name === name)
 
+// True when a model completion produced no usable text (empty or whitespace).
+const isBlankReply = (content: string | undefined): boolean =>
+  (content ?? '').trim() === ''
+
 // Parse a tool call's JSON arguments string into a value. Tool argument JSON is
 // model-produced, so a malformed payload is expected and handled (the tool gets
 // an empty object and may return an honest validation message); we never throw.
@@ -749,6 +773,9 @@ export const artanisOperatorTurn = (input: {
     let toolsDeferred = false
     let served: InferenceResult | undefined
     let iterations = 0
+    // Whether the MOST RECENT Khala call still advertised tools. Used by the
+    // empty-reply guard below to decide if a final tools-suppressed call is owed.
+    let lastAdvertisedTools = false
 
     // The loop runs at most MAX+1 Khala calls: MAX tool rounds plus one final
     // call so the model can answer with the last tool results in context.
@@ -762,6 +789,7 @@ export const artanisOperatorTurn = (input: {
       const advertiseTools =
         toolDefinitions.length > 0 &&
         round < ARTANIS_OPERATOR_MAX_TOOL_ITERATIONS
+      lastAdvertisedTools = advertiseTools
       const request = buildArtanisOperatorKhalaRequest({
         conversation,
         messages: input.messages,
@@ -825,14 +853,39 @@ export const artanisOperatorTurn = (input: {
     }
 
     // `served` is always set: the loop runs at least once before any break.
-    const finalServed = served as InferenceResult
+    let finalServed = served as InferenceResult
+
+    // BUG FIX (#6359): never return an empty reply. The loop can break with a
+    // blank final completion (the model returned empty content with no tool
+    // calls while tools were still advertised, or it exhausted the tool rounds).
+    // If the last completion still advertised tools, force ONE final
+    // tools-suppressed Khala call so the model is compelled to produce a text
+    // answer with the tool results already in context.
+    if (isBlankReply(finalServed.content) && lastAdvertisedTools) {
+      const finalRequest = buildArtanisOperatorKhalaRequest({
+        conversation,
+        messages: input.messages,
+        tools: undefined,
+      })
+      const finalOutcome = yield* Effect.exit(input.khalaClient(finalRequest))
+      iterations += 1
+      if (finalOutcome._tag === 'Success') {
+        finalServed = finalOutcome.value
+      }
+    }
+
+    // If the reply is STILL blank, return a clear fallback message \u2014 never
+    // an empty string to the owner.
+    const replyText = isBlankReply(finalServed.content)
+      ? ARTANIS_OPERATOR_EMPTY_REPLY_FALLBACK
+      : finalServed.content
 
     return {
       deferredToApprovalGate:
         mentionsSpendOrDestructive(input.messages) || toolsDeferred,
       iterations,
-      persona: verifyArtanisOperatorPersona(finalServed.content),
-      reply: finalServed.content,
+      persona: verifyArtanisOperatorPersona(replyText),
+      reply: replyText,
       requestedModel: ARTANIS_OPERATOR_KHALA_MODEL,
       servedModel: finalServed.servedModel,
       servedVia: 'openagents_khala' as const,

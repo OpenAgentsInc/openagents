@@ -29,6 +29,7 @@
 //     Readers are expected to return already-redacted/public-safe summaries; the
 //     builder additionally bounds list sizes.
 
+import type { ArtanisTokenPaceBlock } from './artanis-token-pace'
 import { currentIsoTimestamp } from './runtime-primitives'
 
 // Typed validation error for the awareness builder so callers can branch on the
@@ -132,11 +133,20 @@ export type ArtanisPublicCounter = Readonly<{
   asOf: string
 }>
 
+// Re-export the token-pace block type so awareness consumers import it from
+// one place. The pace block tells Artanis whether today is on track for the
+// daily token target (at least 4x the prior day, goal 10x).
+export type { ArtanisTokenPaceBlock } from './artanis-token-pace'
+
 export type ArtanisOngoingOps = Readonly<{
   activeAssignments: ReadonlyArray<ArtanisActiveAssignment>
   recentDeploys: ReadonlyArray<ArtanisRecentDeploy>
   fleetReadiness: ArtanisFleetReadiness | null
   publicCounter: ArtanisPublicCounter | null
+  // Live daily token-pace block: today's tokens, the midnight projection,
+  // yesterday's baseline, the 4x/10x targets, and whether we are behind pace.
+  // Injected into EVERY Artanis turn so he sees the gap without calling a tool.
+  tokenPace: ArtanisTokenPaceBlock | null
 }>
 
 // ---------------------------------------------------------------------------
@@ -193,6 +203,11 @@ export type ArtanisAwarenessReaders = Readonly<{
     | undefined
   readPublicCounter?:
     | (() => Promise<ArtanisPublicCounter | null>)
+    | undefined
+  // Live token-pace reader (read-only, fail-soft). Returns the computed pace
+  // block or null when the public stats cannot ground a projection.
+  readTokenPace?:
+    | (() => Promise<ArtanisTokenPaceBlock | null>)
     | undefined
 }>
 
@@ -301,6 +316,7 @@ export const buildArtanisSituationalAwareness = async (
     recentDeploys,
     fleetReadiness,
     publicCounter,
+    tokenPace,
   ] = await Promise.all([
     safeRead(
       readers.readRecentCommits
@@ -342,6 +358,7 @@ export const buildArtanisSituationalAwareness = async (
     ),
     safeRead(readers.readFleetReadiness, null as ArtanisFleetReadiness | null),
     safeRead(readers.readPublicCounter, null as ArtanisPublicCounter | null),
+    safeRead(readers.readTokenPace, null as ArtanisTokenPaceBlock | null),
   ])
 
   return {
@@ -356,6 +373,7 @@ export const buildArtanisSituationalAwareness = async (
       fleetReadiness,
       publicCounter,
       recentDeploys: boundList(recentDeploys, bounds.recentDeploys),
+      tokenPace,
     },
     ownerId: owner,
     ownerOnly: true,
