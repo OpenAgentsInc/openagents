@@ -27,7 +27,10 @@ import {
   resolveSparkPayoutDestination,
   resolveSparkPayoutTargetReadiness,
 } from './pylon-api'
-import { makePylonApiRoutes } from './pylon-api-routes'
+import {
+  controlledPylonAssignmentDispatchGate,
+  makePylonApiRoutes,
+} from './pylon-api-routes'
 
 type PylonRouteJson = Readonly<{
   assignment?: Readonly<{
@@ -2561,6 +2564,94 @@ describe('Pylon API routes', () => {
     expect(second.status).toBe(201)
     expect(third.status).toBe(409)
     expect(thirdBody.dispatchGate?.blockerRefs).toContain(
+      'blocker.public.pylon_dispatch.duplicate_active_assignment',
+    )
+  })
+
+  test('#6388: a saturated Codex lane does not block an available Claude lease on the same Pylon', () => {
+    const nowIso = '2026-06-27T12:00:00.000Z'
+    const leaseExpiresAt = '2026-06-27T12:30:00.000Z'
+    const registration = {
+      capabilityRefs: [
+        'capability.pylon.local_codex',
+        'capability.pylon.local_claude_agent',
+      ],
+      clientVersion: '0.3.0',
+      latestCapacityRefs: [
+        'capacity.coding.codex.ready=6',
+        'capacity.coding.codex.available=0',
+        'capacity.coding.claude.ready=3',
+        'capacity.coding.claude.available=3',
+      ],
+      latestHeartbeatAt: nowIso,
+      latestHeartbeatStatus: 'online',
+      latestLoadRefs: [
+        'load.coding.codex.busy=6',
+        'load.coding.claude.busy=0',
+      ],
+      status: 'active',
+      walletReady: true,
+    } as unknown as PylonApiRegistrationRecord
+    // Six active Codex leases fully saturate the Codex lane.
+    const activeCodexAssignments = Array.from({ length: 6 }, (_, index) =>
+      ({
+        assignmentRef: `assignment.public.codex_busy_${index}`,
+        codingAssignment: { codex: { agentKind: 'codex_sdk' } },
+        jobKind: 'codex_agent_task',
+        leaseExpiresAt,
+        state: 'running',
+      }) as unknown as PylonApiAssignmentRecord,
+    )
+    const claudeBody = {
+      campaignPaused: false,
+      campaignPolicyRefs: ['policy.public.khala_coding.own_capacity_only'],
+      campaignRef: 'campaign.public.khala_coding.own_capacity',
+      closeoutPathRefs: ['closeout.public.khala_coding.durable_stream'],
+      codingAssignment: { claudeAgent: { agentKind: 'claude_agent_sdk' } },
+      forumAutoPublishAllowed: false,
+      idempotencyRefs: ['idempotency.public.khala_coding.request'],
+      jobKind: 'claude_agent_task' as const,
+      noDuplicateAssignmentRefs: ['dedupe.public.pylon_assignment.active_lease'],
+      noForumAutoPublishRefs: ['policy.public.no_forum_auto_publish'],
+      operatorPauseRefs: ['pause.public.khala_coding.kill_switch_default_off'],
+      paymentMode: 'unpaid_smoke',
+      pylonRef: 'pylon.test.one',
+      requiredCapabilityRefs: ['capability.pylon.local_claude_agent'],
+      resultExpectationRefs: ['result.public.khala_coding.worker_closeout'],
+      rollbackRefs: ['rollback.public.khala_coding.assignment_cancel'],
+      selectionPolicyRefs: ['selection.public.khala_coding.claude_first'],
+      spendCapRefs: [],
+      taskRefs: ['task.public.khala_coding.claude'],
+    } as unknown as Parameters<
+      typeof controlledPylonAssignmentDispatchGate
+    >[0]['body']
+
+    const claudeGate = controlledPylonAssignmentDispatchGate({
+      activeAssignments: activeCodexAssignments,
+      assignmentRef: 'assignment.public.claude_one',
+      body: claudeBody,
+      nowIso,
+      registration,
+    })
+    expect(claudeGate.blockerRefs).not.toContain(
+      'blocker.public.pylon_dispatch.duplicate_active_assignment',
+    )
+    expect(claudeGate.dispatchAllowed).toBe(true)
+
+    // A Codex request against the same saturated lane is still correctly blocked.
+    const codexGate = controlledPylonAssignmentDispatchGate({
+      activeAssignments: activeCodexAssignments,
+      assignmentRef: 'assignment.public.codex_one',
+      body: {
+        ...claudeBody,
+        codingAssignment: { codex: { agentKind: 'codex_sdk' } },
+        jobKind: 'codex_agent_task',
+        requiredCapabilityRefs: ['capability.pylon.local_codex'],
+      },
+      nowIso,
+      registration,
+    })
+    expect(codexGate.blockerRefs).toContain(
       'blocker.public.pylon_dispatch.duplicate_active_assignment',
     )
   })

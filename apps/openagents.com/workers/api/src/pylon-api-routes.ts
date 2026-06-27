@@ -377,12 +377,46 @@ const codexAccountKeyFromCodingAssignment = (
     codexAccountRefHashFromCodingAssignment(codingAssignment),
   )
 
+const codingServiceByCapabilityRef = new Map<string, 'claude' | 'codex'>([
+  ['capability.pylon.local_claude_agent', 'claude'],
+  ['capability.pylon.local_codex', 'codex'],
+])
+
+// #6388: the coding service an existing assignment occupies, so duplicate/lease
+// accounting is scoped per-service. A Claude lease must not consume a Codex slot
+// (and vice versa) on a Pylon that advertises both. Read from the on-assignment
+// coding sub-object first (codex | claudeAgent), then fall back to jobKind.
+const codingServiceOfAssignment = (
+  assignment: PylonApiAssignmentRecord,
+): 'claude' | 'codex' | null => {
+  const coding = assignment.codingAssignment
+  if (coding !== null && typeof coding === 'object') {
+    if (typeof (coding as Record<string, unknown>).claudeAgent === 'object') {
+      return 'claude'
+    }
+    if (typeof (coding as Record<string, unknown>).codex === 'object') {
+      return 'codex'
+    }
+  }
+  if (assignment.jobKind === 'claude_agent_task') {
+    return 'claude'
+  }
+  if (assignment.jobKind === 'codex_agent_task') {
+    return 'codex'
+  }
+  return null
+}
+
 const activeDuplicateAssignmentRefs = (
   assignments: ReadonlyArray<PylonApiAssignmentRecord>,
   nowIso: string,
   // When set, only active leases pinned to the SAME Codex account count toward
   // the requested account's slots; one account's leases never block another's.
   requestedAccountKey: string | null = null,
+  // #6388: when set, only active leases of the SAME coding service (claude|codex)
+  // count toward this request's slots. Untyped (legacy) assignments still count
+  // so non-coding duplicate policies are unchanged.
+  requestedService: 'claude' | 'codex' | null = null,
 ): ReadonlyArray<string> =>
   assignments
     .filter(assignment => pylonAssignmentHasActiveLease(assignment, nowIso))
@@ -392,12 +426,16 @@ const activeDuplicateAssignmentRefs = (
         : codexAccountKeyFromCodingAssignment(assignment.codingAssignment) ===
           requestedAccountKey,
     )
+    .filter(assignment => {
+      if (requestedService === null) {
+        return true
+      }
+      const service = codingServiceOfAssignment(assignment)
+      // Count same-service leases and untyped legacy leases; never let a
+      // different coding service's lease consume this service's slot.
+      return service === null || service === requestedService
+    })
     .map(assignment => assignment.assignmentRef)
-
-const codingServiceByCapabilityRef = new Map<string, 'claude' | 'codex'>([
-  ['capability.pylon.local_claude_agent', 'claude'],
-  ['capability.pylon.local_codex', 'codex'],
-])
 
 const activeDuplicateCapacitySlots = (
   input: Readonly<{
@@ -536,10 +574,23 @@ export const controlledPylonAssignmentDispatchGate = (
   const requestedAccountKey = codexAccountKeyFromCodingAssignment(
     body.codingAssignment ?? null,
   )
+  // #6388: scope duplicate/lease accounting to the request's coding service so a
+  // saturated Codex lane does not block an available Claude lane on the same
+  // Pylon. Derived from the request's required capability refs.
+  const requestedCodingServices = new Set(
+    gateRefs(body.requiredCapabilityRefs)
+      .map(ref => codingServiceByCapabilityRef.get(ref))
+      .filter((service): service is 'claude' | 'codex' => service !== undefined),
+  )
+  const requestedCodingService =
+    requestedCodingServices.size === 1
+      ? [...requestedCodingServices][0]!
+      : null
   const duplicateRefs = activeDuplicateAssignmentRefs(
     input.activeAssignments,
     input.nowIso,
     requestedAccountKey,
+    requestedCodingService,
   )
   const duplicateCapacitySlots = activeDuplicateCapacitySlots({
     body,
