@@ -102,7 +102,7 @@ const runRoute = async (
   return Effect.runPromise(effect!)
 }
 
-describe('POST /api/operator/artanis/chat — owner auth', () => {
+describe('POST /api/operator/artanis/chat — per-user auth', () => {
   test('only matches the chat path', () => {
     const { deps } = baseDeps()
     const routes = makeOperatorArtanisChatRoutes(deps)
@@ -135,8 +135,8 @@ describe('POST /api/operator/artanis/chat — owner auth', () => {
     expect(response.status).toBe(401)
   })
 
-  test('403 when the session email is not an admin', async () => {
-    const { deps } = baseDeps({
+  test('200 when the browser session email is not an admin', async () => {
+    const { deps, fake } = baseDeps({
       requireBrowserSession: async () => ({
         user: { email: 'someone@example.com', userId: 'github:9' },
       }),
@@ -145,14 +145,19 @@ describe('POST /api/operator/artanis/chat — owner auth', () => {
       deps,
       post({ messages: [{ content: 'hi', role: 'user' }] }),
     )
-    expect(response.status).toBe(403)
+    expect(response.status).toBe(200)
+    expect(
+      fake.entries.every(entry => entry.ownerId === 'owner:github:9'),
+    ).toBe(true)
   })
 
-  test('200 when an owner-linked agent bearer resolves (no browser session needed)', async () => {
+  test('does not consult the admin email gate for authenticated browser sessions', async () => {
     const { deps } = baseDeps({
-      requireBrowserSession: async () => undefined,
-      resolveOwnerAgentBearer: async () => ({
-        user: { email: 'chris@openagents.com', userId: 'github:14167547' },
+      isOpenAgentsAdminEmail: () => {
+        throw new Error('admin gate should not run for Artanis chat')
+      },
+      requireBrowserSession: async () => ({
+        user: { email: 'someone@example.com', userId: 'github:9' },
       }),
     })
     const response = await runRoute(
@@ -162,7 +167,21 @@ describe('POST /api/operator/artanis/chat — owner auth', () => {
     expect(response.status).toBe(200)
   })
 
-  test('401 when the agent bearer is not owner-linked and there is no session', async () => {
+  test('200 when a linked agent bearer resolves (no browser session needed)', async () => {
+    const { deps } = baseDeps({
+      requireBrowserSession: async () => undefined,
+      resolveOwnerAgentBearer: async () => ({
+        user: { email: 'someone@example.com', userId: 'github:9' },
+      }),
+    })
+    const response = await runRoute(
+      deps,
+      post({ messages: [{ content: 'hi', role: 'user' }] }),
+    )
+    expect(response.status).toBe(200)
+  })
+
+  test('401 when the agent bearer is not linked and there is no session', async () => {
     const { deps } = baseDeps({
       requireBrowserSession: async () => undefined,
       resolveOwnerAgentBearer: async () => undefined,

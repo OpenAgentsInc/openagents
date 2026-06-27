@@ -8720,8 +8720,10 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
   requireAdminApiToken,
   requireBrowserSession,
   // Accept an `oa_agent_` bearer (the Khala CLI's token from `khala login`) when
-  // its linked OpenAuth account email is an OpenAgents admin. Resolves the agent
-  // credential -> its linked owner user id -> that user's email -> admin check.
+  // it is linked to an OpenAuth account. Resolves the agent credential -> linked
+  // owner user id -> that user's email so Artanis can scope memory/awareness to
+  // the authenticated user. The owner-promoted internal Artanis agent remains
+  // admitted by its own agent identity for standing owner automation.
   resolveOwnerAgentBearer: async (request, env) => {
     const bearer = readBearerToken(request)
     if (bearer === undefined) {
@@ -8734,9 +8736,8 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
     // The owner-promoted operator agent (Artanis, owner-directed 2026-06-27) is
     // admitted by his OWN agent identity (his agent user id forms his actorRef
     // `agent:<userId>`), independent of any linked OpenAuth account — his
-    // credential carries no OpenAuth link. Every other owner uses the original
-    // Khala-CLI owner path: a linked OpenAuth account whose email is an
-    // OpenAgents admin.
+    // credential carries no OpenAuth link. Every other user enters through a
+    // linked OpenAuth account.
     const agentOwnUserId = agent?.user.id
     if (agentOwnUserId === undefined) {
       return undefined
@@ -8747,28 +8748,29 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
       isOpenAgentsOwnerAgentOpenAuthUserId(agentOwnUserId) ||
       isOpenAgentsOwnerAgentOpenAuthUserId(linkedOpenAuthUserId)
 
-    // Original admin-email path: only consulted when there is a linked OpenAuth
-    // account to resolve an email for.
-    let adminEmail: string | undefined
+    // Linked-user path: only consulted when there is a linked OpenAuth account
+    // to resolve an email for. This is no longer admin-email gated; the owner
+    // scope is the linked user id.
+    let linkedEmail: string | undefined
     if (linkedOpenAuthUserId !== null) {
       const row = await openAgentsDatabase(env)
         .prepare(`SELECT primary_email FROM users WHERE id = ?`)
         .bind(linkedOpenAuthUserId)
         .first<Readonly<{ primary_email: string | null }>>()
       const email = row?.primary_email?.trim().toLowerCase()
-      if (email !== undefined && email !== '' && isOpenAgentsAdminEmail(email)) {
-        adminEmail = email
+      if (email !== undefined && email !== '') {
+        linkedEmail = email
       }
     }
 
-    if (!isOwnerAgent && adminEmail === undefined) {
+    if (!isOwnerAgent && linkedOpenAuthUserId === null) {
       return undefined
     }
 
     // Owner-scope user id: for the owner-promoted agent key on his OWN
     // owner-promoted user id (so the standing pylon_job_dispatch approval and his
     // own-capacity resolution key consistently on his agent user id); for the
-    // admin-email path preserve the original linked-OpenAuth owner id.
+    // linked-user path preserve the original linked-OpenAuth owner id.
     const ownerScopeUserId = isOwnerAgent
       ? agentOwnUserId
       : (linkedOpenAuthUserId ?? agentOwnUserId)
@@ -8777,7 +8779,7 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
     // Session is the full human-session shape; fill the unused fields so the
     // owner-agent-bearer return type matches the browser-session return type.
     const sessionEmail =
-      adminEmail ??
+      linkedEmail ??
       agent?.user.primaryEmail?.trim().toLowerCase() ??
       'artanis@agents.openagents.com'
     return {
