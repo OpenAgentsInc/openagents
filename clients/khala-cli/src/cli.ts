@@ -9,6 +9,7 @@ import {
   selectKhalaRoute,
   type KhalaCodexDisplayEvent,
   type KhalaCodexStatus,
+  type KhalaRouteSelection,
 } from "./codex.js"
 import { appendPromptHistory, readPromptFromTerminal } from "./input.js"
 import { openVerificationUrl, runKhalaLogin, type KhalaLoginResult } from "./login.js"
@@ -806,6 +807,9 @@ async function maybeRunLocalCodexTurn(
     prompt,
     token: args.token,
   })
+  if (selection.route === "spawn_khala") {
+    return await runSelectedKhalaSpawnTurn(args, env, prompt, selection, options)
+  }
   if (selection.route !== "local_codex") {
     return { handled: false }
   }
@@ -837,6 +841,62 @@ async function maybeRunLocalCodexTurn(
     process.stdout.write("\n")
   }
   return { handled: true, text: result.text }
+}
+
+async function runSelectedKhalaSpawnTurn(
+  args: ParsedArgs,
+  env: Record<string, string | undefined>,
+  prompt: string,
+  selection: Extract<KhalaRouteSelection, { readonly route: "spawn_khala" }>,
+  options: {
+    readonly silent?: boolean | undefined
+  } = {},
+): Promise<{ readonly handled: true; readonly text: string }> {
+  if (selection.intent === "explain_capability") {
+    const text = formatKhalaSpawnCapabilityAnswer()
+    if (options.silent !== true) {
+      process.stdout.write(`${terminalStyle.assistant("Khala:")} ${renderMarkdownForTerminal(text)}\n\n`)
+    }
+    return { handled: true, text }
+  }
+
+  const objective = selection.objective?.trim() || prompt.trim()
+  if (objective.length === 0) {
+    const text = "Khala spawn needs a worker objective. Try `/spawn 5 audit this workspace` or `khala spawn --count 5 --objective \"audit this workspace\"`."
+    if (options.silent !== true) {
+      process.stdout.write(`${terminalStyle.assistant("Khala:")} ${text}\n\n`)
+    }
+    return { handled: true, text }
+  }
+
+  const count = selection.count ?? args.spawnCount ?? 1
+  if (options.silent !== true) {
+    process.stdout.write(`${terminalStyle.assistant("Khala:")} ${terminalStyle.meta(`Blueprint selected Khala spawn: ${selection.reason}`)}\n`)
+  }
+  const run = await runKhalaSpawn({
+    count,
+    cwd: process.cwd(),
+    env,
+    maxParallel: args.spawnMaxParallel ?? count,
+    objective,
+    onEvent: options.silent === true ? undefined : event => writeSpawnEvent(event),
+    strategy: args.spawnStrategy,
+    ...(args.spawnTimeoutMs === undefined ? {} : { timeoutMs: args.spawnTimeoutMs }),
+  })
+  const text = `Spawn complete.\n${summarizeSpawnRun(run)}`
+  if (options.silent !== true) {
+    process.stdout.write(`${terminalStyle.assistant("Khala:")} ${terminalStyle.meta("Spawn complete.")}\n${summarizeSpawnRun(run)}\n\n`)
+  }
+  return { handled: true, text }
+}
+
+export function formatKhalaSpawnCapabilityAnswer(): string {
+  return [
+    "Yes. In this CLI, we can spawn supervised Khala child workers.",
+    "Use `/spawn 5 audit X` in interactive mode or `khala spawn --count 5 --objective \"audit X\"` from the shell.",
+    "Runs are bounded, recorded under the local Khala home, inspectable with `/workers` or `khala workers`, and cancellable with `/cancel` or `khala cancel`.",
+    "Public/browser chat can explain that path, but it cannot execute local workers on your machine.",
+  ].join(" ")
 }
 
 async function readStdinPrompt(): Promise<string> {

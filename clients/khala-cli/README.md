@@ -54,8 +54,13 @@ two modes:
   Codex workers in isolated worktrees when the current directory is a Git
   checkout. Use `khala workers`, `khala worker <workerRef>`,
   `khala join <runRef>`, and `khala cancel <runRef|workerRef>` to inspect and
-  control runs. Pylon-backed durable fanout is tracked separately and will use
-  the same command surface once armed.
+  control runs. Normal chat turns such as `spin up 5 subagents to audit X` are
+  routed through the same typed selector and start the supervisor when selected.
+  Capability questions answer with the `/spawn` and `khala spawn --count`
+  command paths instead of falling through to a generic chat refusal. The
+  CLI-local strategy is armed; durable Pylon fanout is available through the
+  reviewed Worker/MCP surfaces and will use the same command surface once the
+  CLI strategy bridge is armed.
 - **Utility commands:** `khala feedback "..."` saves feedback to
   `POST /api/khala/feedback`, `khala tokens` reads the public Khala
   tokens-served counter, and `khala changelog` prints the recent package

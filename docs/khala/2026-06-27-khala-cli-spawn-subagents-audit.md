@@ -179,30 +179,36 @@ Relevant files:
 
 Findings:
 
-- Command parsing recognizes `feedback`, `changelog`, `auth codex`, `codex`,
-  `help`, `info`, `login`, `logout`, `tokens`, and `version`. There is no
-  spawn/subagent command.
-- Interactive slash commands include `/codex`, `/tokens`, `/feedback`,
-  `/msginfo`, `/info`, `/changelog`, `/login`, `/logout`, `/artanis`, `/khala`,
-  `/version`, `/help`, and `/exit`. There is no `/spawn`, `/workers`, `/join`,
-  or `/cancel`.
-- `maybeRunLocalCodexTurn()` calls `selectKhalaRoute()` and can route one
-  workspace-like user turn to `runKhalaCodexTask()`.
-- `selectKhalaRoute()` asks Khala to return a typed JSON route of `chat` or
-  `local_codex`. There is no third route for `spawn_khala`.
+- Command parsing recognizes `spawn`, `workers`, `worker`, `join`, and
+  `cancel` beside the older chat, feedback, auth, Codex, token, login, logout,
+  and utility commands.
+- Interactive slash commands include `/spawn`, `/workers`, `/worker`, `/join`,
+  and `/cancel` beside `/codex`, `/tokens`, `/feedback`, `/msginfo`, `/info`,
+  `/changelog`, `/login`, `/logout`, `/artanis`, `/khala`, `/version`,
+  `/help`, and `/exit`.
+- `maybeRunLocalCodexTurn()` calls `selectKhalaRoute()` and can route one turn
+  to normal chat, local Codex workspace delegation, or the local Khala spawn
+  supervisor.
+- `selectKhalaRoute()` asks Khala to return a schema-validated typed JSON route
+  of `chat`, `local_codex`, or `spawn_khala`, including spawn intent, count,
+  objective, and workspace requirement when present.
 - `runKhalaCodexTask()` starts one Codex SDK thread in the current working
   directory. It tracks final text, command count, edited file count, turn count,
-  and session ref. It does not create child process records, isolate per-worker
-  git worktrees, aggregate multiple workers, cancel long-running siblings, or
-  report exact SDK token usage to the Pylon/Codex ingest path.
+  and session ref. The local spawn supervisor now uses that delegate to create
+  supervised child worker records, isolate per-worker git worktrees when the
+  current directory is a Git checkout, aggregate worker states, and cancel
+  active workers. Exact SDK token usage for Pylon/Codex ingest remains a Pylon
+  assignment surface concern.
 - `connectKhalaCodex()` correctly avoids the default `~/.codex` destructive
   login path by using Khala's own Codex home unless a configured account is
   present. This must be preserved for spawn.
 
 Conclusion:
 
-The Khala CLI has a working single local executor. It does not yet have the
-supervisor layer that makes "new Khalas" real.
+The Khala CLI now has both a working single local executor and a bounded local
+spawn supervisor. The remaining work is hardening the natural-language routing,
+public/browser capability copy, and the CLI strategy bridge to durable Pylon
+fanout.
 
 ### Pylon Khala Requester And Burndown
 
@@ -396,11 +402,12 @@ Required flags:
 - `--timeout <seconds>`: bounded per-worker timeout.
 - `--json`: machine-readable output.
 
-Do not implement natural-language spawn detection with string matching. Extend
-`selectKhalaRoute()` to return a typed union such as
+Do not implement natural-language spawn detection with string matching.
+`selectKhalaRoute()` returns a typed union of
 `chat | local_codex | spawn_khala`, with fields for `count`, `objective`,
-`requiresWorkspace`, and confidence. That selector can still be model-backed
-like the current route selector, but it must return a schema-validated object.
+`requiresWorkspace`, and spawn intent. That selector stays model-backed like
+the current route selector, but its output is schema-validated before the CLI
+acts on it.
 
 ### 3. Build The Local Supervisor
 
@@ -653,10 +660,12 @@ Files:
 Work:
 
 - Extend route selection schema from `chat|local_codex` to include
-  `spawn_khala`.
+  `spawn_khala`. Done in issue #6374.
 - Add a CLI-context response fixture for "can you spawn subprocesses of
-  yourself".
-- Update help text and README to show spawn commands.
+  yourself". Done in issue #6374.
+- Update help text and README to show spawn commands. Help text landed with the
+  local supervisor; README natural-language routing notes landed in issue
+  #6374.
 
 Acceptance:
 

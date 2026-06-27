@@ -4,7 +4,7 @@ import { mkdir, readFile, stat, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 
-import { Effect } from "effect"
+import { Effect, Schema as S } from "effect"
 
 import { runChatTurn } from "./client.js"
 import { type ChatMode, type KhalaChatMessage } from "./types.js"
@@ -50,6 +50,14 @@ export type KhalaCodexRunResult = {
 export type KhalaRouteSelection =
   | { readonly route: "chat"; readonly reason: string }
   | { readonly route: "local_codex"; readonly reason: string }
+  | {
+      readonly route: "spawn_khala"
+      readonly count?: number | undefined
+      readonly intent: "execute" | "explain_capability"
+      readonly objective?: string | undefined
+      readonly reason: string
+      readonly requiresWorkspace: boolean
+    }
 
 type KhalaCodexCredentialSource =
   | "khala_codex_home"
@@ -59,6 +67,26 @@ type KhalaCodexCredentialSource =
 
 const CODEX_AGENT_SDK_PACKAGE = "@openai/codex-sdk"
 const DEFAULT_CODEX_TIMEOUT_MS = 10 * 60 * 1000
+
+const KhalaRouteSelectionJson = S.Union([
+  S.Struct({
+    route: S.Literal("chat"),
+    reason: S.optional(S.String),
+  }),
+  S.Struct({
+    route: S.Literal("local_codex"),
+    reason: S.optional(S.String),
+  }),
+  S.Struct({
+    route: S.Literal("spawn_khala"),
+    count: S.optional(S.Number),
+    intent: S.optional(S.Literals(["execute", "explain_capability"])),
+    objective: S.optional(S.String),
+    reason: S.optional(S.String),
+    requiresWorkspace: S.optional(S.Boolean),
+  }),
+])
+type KhalaRouteSelectionJson = typeof KhalaRouteSelectionJson.Type
 
 type CodexThreadEvent = {
   type?: string
@@ -254,10 +282,14 @@ export async function selectKhalaRoute(input: {
     return { route: "chat", reason: "local Codex auto-routing disabled" }
   }
   const selectorPrompt = [
-    "Blueprint route selector. Return only minified JSON with shape",
-    "{\"route\":\"chat\"|\"local_codex\",\"reason\":\"short\"}.",
+    "Blueprint route selector. Return only minified JSON matching exactly one of these schema shapes:",
+    "{\"route\":\"chat\",\"reason\":\"short\"}",
+    "{\"route\":\"local_codex\",\"reason\":\"short\"}",
+    "{\"route\":\"spawn_khala\",\"reason\":\"short\",\"intent\":\"execute\"|\"explain_capability\",\"count\":5,\"objective\":\"task for child workers\",\"requiresWorkspace\":true}",
     "Choose local_codex only when the user's newest request requires local workspace, filesystem, shell, git, code editing, tests, or reading project files.",
-    "Choose chat for general conversation, explanation, brainstorming, math, writing not requiring local files, or questions about Khala itself.",
+    "Choose spawn_khala when the user is in the Khala CLI and asks to start, spin up, launch, create, or coordinate supervised Khala workers/subagents/instances, or asks whether this CLI can spawn them.",
+    "For spawn_khala, set intent=execute only when the user wants workers started now. Set intent=explain_capability for capability questions. Include count only when explicit, objective only when there is a task to give workers, and requiresWorkspace when the task needs repository/filesystem work.",
+    "Choose chat for general conversation, explanation, brainstorming, math, writing not requiring local files, or questions about Khala itself that are not about CLI spawning.",
     "Newest request:",
     JSON.stringify(input.prompt),
   ].join("\n")
@@ -275,17 +307,54 @@ export async function selectKhalaRoute(input: {
   }
 }
 
-function parseRouteSelection(text: string): KhalaRouteSelection {
+export function parseRouteSelection(text: string): KhalaRouteSelection {
   const match = /\{[\s\S]*\}/.exec(text)
   if (match === null) return { route: "chat", reason: "selector returned prose" }
   try {
-    const parsed = JSON.parse(match[0]) as { route?: unknown; reason?: unknown }
-    return parsed.route === "local_codex"
-      ? { route: "local_codex", reason: typeof parsed.reason === "string" ? parsed.reason : "workspace capability selected" }
-      : { route: "chat", reason: typeof parsed.reason === "string" ? parsed.reason : "chat selected" }
+    const parsed = S.decodeUnknownSync(KhalaRouteSelectionJson)(JSON.parse(match[0]))
+    if (parsed.route === "local_codex") {
+      return { route: "local_codex", reason: routeReason(parsed.reason, "workspace capability selected") }
+    }
+    if (parsed.route === "spawn_khala") {
+      return normalizeSpawnRouteSelection(parsed)
+    }
+    return { route: "chat", reason: routeReason(parsed.reason, "chat selected") }
   } catch {
-    return { route: "chat", reason: "selector JSON parse failed" }
+    return { route: "chat", reason: "selector JSON schema parse failed" }
   }
+}
+
+function normalizeSpawnRouteSelection(
+  parsed: Extract<KhalaRouteSelectionJson, { readonly route: "spawn_khala" }>,
+): KhalaRouteSelection {
+  const count = parsed.count === undefined ? undefined : normalizedSpawnCount(parsed.count)
+  const objective = normalizedOptionalText(parsed.objective)
+  const intent = parsed.intent ?? (objective === undefined ? "explain_capability" : "execute")
+  return {
+    route: "spawn_khala",
+    ...(count === undefined ? {} : { count }),
+    intent,
+    ...(objective === undefined ? {} : { objective }),
+    reason: routeReason(parsed.reason, intent === "execute" ? "spawn requested" : "spawn capability question"),
+    requiresWorkspace: parsed.requiresWorkspace ?? false,
+  }
+}
+
+function normalizedSpawnCount(value: number): number {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error("spawn count must be a positive integer")
+  }
+  return value
+}
+
+function normalizedOptionalText(value: string | undefined): string | undefined {
+  const trimmed = value?.trim()
+  return trimmed === undefined || trimmed.length === 0 ? undefined : trimmed
+}
+
+function routeReason(value: string | undefined, fallback: string): string {
+  const trimmed = normalizedOptionalText(value)
+  return trimmed ?? fallback
 }
 
 function localCodexInstructions(prompt: string): string {
