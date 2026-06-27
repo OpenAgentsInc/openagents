@@ -39,6 +39,10 @@ import { exampleArtanisRuntime } from './artanis-runtime'
 import {
   ArtanisWorkRoutingProposalRecord,
 } from './artanis-work-routing'
+import type {
+  ArtanisKhalaFeedbackReader,
+  ArtanisKhalaFeedbackRecord,
+} from './artanis-operator-tools'
 import {
   epochMillisToIsoTimestamp,
   isoTimestampAfterIso,
@@ -47,8 +51,19 @@ import {
   TassadarExactTraceReplayVerificationClass,
   TassadarExecutorTraceJobKind,
 } from './tassadar-executor-trace-homework'
+import type { KhalaTraceReviewReport } from './khala-trace-review-routes'
+import type {
+  KhalaUnsupportedRequestCreateInput,
+  KhalaUnsupportedRequestRecord,
+  KhalaUnsupportedRequestStore,
+} from './khala-unsupported-request-routes'
 
 export type ArtanisScheduledRunnerState = 'blocked' | 'completed' | 'disabled'
+
+type ActionableKhalaTraceReviewTriageItem =
+  KhalaTraceReviewReport['triageItems'][number] & {
+    kind: 'bug' | 'missing_capability'
+  }
 
 export type ArtanisScheduledRunnerContext = Readonly<{
   modelLabPrivateContractRefs: ReadonlyArray<string>
@@ -70,7 +85,10 @@ export type ArtanisScheduledRunnerInput = Readonly<{
   context?: Partial<ArtanisScheduledRunnerContext> | undefined
   db: D1Database
   enabled: boolean
+  khalaFeedbackReader?: ArtanisKhalaFeedbackReader | undefined
   khalaReadinessObservation?: ArtanisKhalaReadinessObservation | undefined
+  khalaTraceReviewLoader?: (() => Promise<KhalaTraceReviewReport>) | undefined
+  khalaUnsupportedRequestStore?: KhalaUnsupportedRequestStore | undefined
   nowIso: string
   scheduleRef: string
   scopeRef?: string | undefined
@@ -105,6 +123,7 @@ export type ArtanisScheduledRunnerResult = Readonly<{
   state: ArtanisScheduledRunnerState
   storageReceipts: ReadonlyArray<ArtanisPersistenceWriteReceipt>
   tickRef: string | null
+  unsupportedRequestRefs: ReadonlyArray<string>
   workProposalRefs: ReadonlyArray<string>
 }>
 
@@ -367,7 +386,171 @@ const disabledResult = (
   state: 'disabled',
   storageReceipts: [],
   tickRef: null,
+  unsupportedRequestRefs: [],
   workProposalRefs: [],
+})
+
+const KHALA_TRIAGE_FEEDBACK_LIMIT = 50
+const KHALA_TRIAGE_MAX_TITLE_CHARS = 160
+const KHALA_TRIAGE_MAX_SUMMARY_CHARS = 1_000
+const KHALA_TRIAGE_MIN_RECURRING_FEEDBACK = 2
+
+const compactPublicText = (value: string, maxChars: number): string =>
+  value
+    .replace(/[\u0000-\u001f\u007f]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxChars)
+
+const feedbackGroupingKey = (value: string): string =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+const scheduledTriageRequestRef = (
+  sourceKind: 'trace_review' | 'khala_feedback',
+  sourceRef: string,
+): string =>
+  `khala_unsupported:${sourceKind}:${refSuffix(sourceRef).slice(0, 80)}`
+
+const actionableTraceReviewTriageKind = (
+  kind: KhalaTraceReviewReport['triageItems'][number]['kind'],
+): kind is 'bug' | 'missing_capability' =>
+  kind === 'bug' || kind === 'missing_capability'
+
+const traceReviewTriageInputs = (
+  report: KhalaTraceReviewReport,
+  nowIso: string,
+): ReadonlyArray<KhalaUnsupportedRequestCreateInput> =>
+  report.triageItems
+    .filter((item): item is ActionableKhalaTraceReviewTriageItem =>
+      actionableTraceReviewTriageKind(item.kind)
+    )
+    .map(item => {
+      const title = compactPublicText(item.title, KHALA_TRIAGE_MAX_TITLE_CHARS)
+      const sourceRef = item.triageRef
+      return {
+        createdAt: nowIso,
+        evidenceRefs: uniqueRefs([
+          report.reportRef,
+          sourceRef,
+          ...item.evidenceRefs,
+        ]),
+        forumTopicRef: null,
+        githubIssueRef: null,
+        requestRef: scheduledTriageRequestRef('trace_review', sourceRef),
+        sourceKind: 'trace_review',
+        sourceRef,
+        status: 'needs_issue',
+        suggestedIssueTitle: compactPublicText(
+          item.suggestedIssueTitle,
+          KHALA_TRIAGE_MAX_TITLE_CHARS,
+        ),
+        summary: compactPublicText(
+          `Scheduled trace-review triage found recurring ${item.kind} signal ${sourceRef} with ${item.priority} priority.`,
+          KHALA_TRIAGE_MAX_SUMMARY_CHARS,
+        ),
+        title,
+        triageKind: item.kind,
+        updatedAt: nowIso,
+      }
+    })
+
+const recurringFeedbackTriageInputs = (
+  feedback: ReadonlyArray<ArtanisKhalaFeedbackRecord>,
+  nowIso: string,
+): ReadonlyArray<KhalaUnsupportedRequestCreateInput> => {
+  const groups = new Map<string, Array<ArtanisKhalaFeedbackRecord>>()
+  for (const record of feedback) {
+    const key = feedbackGroupingKey(record.feedback)
+    if (key.length < 12) continue
+    groups.set(key, [...(groups.get(key) ?? []), record])
+  }
+
+  return [...groups.entries()]
+    .filter(([, records]) => records.length >= KHALA_TRIAGE_MIN_RECURRING_FEEDBACK)
+    .map(([key, records]) => {
+      const first = records[0]!
+      const title = compactPublicText(
+        `Recurring Khala feedback: ${first.feedback}`,
+        KHALA_TRIAGE_MAX_TITLE_CHARS,
+      )
+      const sourceRef = `khala_feedback_recurring:${refSuffix(key).slice(0, 80)}`
+      return {
+        createdAt: nowIso,
+        evidenceRefs: uniqueRefs(records.map(record => record.feedbackRef)),
+        forumTopicRef: null,
+        githubIssueRef: null,
+        requestRef: scheduledTriageRequestRef('khala_feedback', sourceRef),
+        sourceKind: 'khala_feedback',
+        sourceRef,
+        status: 'needs_issue',
+        suggestedIssueTitle: compactPublicText(
+          `[Khala feedback] ${title}`,
+          KHALA_TRIAGE_MAX_TITLE_CHARS,
+        ),
+        summary: compactPublicText(
+          `Scheduled feedback triage grouped ${records.length} matching Khala feedback submissions from ${first.source}.`,
+          KHALA_TRIAGE_MAX_SUMMARY_CHARS,
+        ),
+        title,
+        triageKind: 'missing_capability',
+        updatedAt: nowIso,
+      }
+    })
+}
+
+const runKhalaUnsupportedRequestTriage = Effect.fn(
+  'runKhalaUnsupportedRequestTriage',
+)(function* (
+  input: ArtanisScheduledRunnerInput,
+) {
+  const store = input.khalaUnsupportedRequestStore
+  if (store === undefined) {
+    return []
+  }
+
+  const traceReviewInputs = input.khalaTraceReviewLoader === undefined
+    ? []
+    : yield* Effect.tryPromise({
+        try: () => input.khalaTraceReviewLoader!(),
+        catch: () => 'khala_trace_review_unavailable' as const,
+      }).pipe(
+        Effect.map(report => traceReviewTriageInputs(report, input.nowIso)),
+        Effect.catch(() => Effect.succeed([])),
+      )
+
+  const feedbackInputs = input.khalaFeedbackReader === undefined
+    ? []
+    : yield* Effect.tryPromise({
+        try: () => input.khalaFeedbackReader!(KHALA_TRIAGE_FEEDBACK_LIMIT),
+        catch: () => 'khala_feedback_unavailable' as const,
+      }).pipe(
+        Effect.map(records => recurringFeedbackTriageInputs(records, input.nowIso)),
+        Effect.catch(() => Effect.succeed([])),
+      )
+
+  const dedupedInputs = [
+    ...new Map(
+      [...traceReviewInputs, ...feedbackInputs].map(candidate => [
+        `${candidate.sourceKind}:${candidate.sourceRef}`,
+        candidate,
+      ]),
+    ).values(),
+  ]
+
+  const upserts = yield* Effect.forEach(dedupedInputs, candidate =>
+    Effect.tryPromise({
+      try: () => store.upsert(candidate),
+      catch: () => 'khala_unsupported_request_upsert_failed' as const,
+    }).pipe(Effect.catch(() => Effect.succeed(null))),
+  )
+
+  return upserts.filter(
+    (record): record is KhalaUnsupportedRequestRecord => record !== null,
+  )
 })
 
 const scheduledLoop = (
@@ -781,6 +964,7 @@ export const runArtanisScheduledTick = Effect.fn('runArtanisScheduledTick')(
       loop.loopRef,
       tick.tickRef,
     )
+    const unsupportedRequests = yield* runKhalaUnsupportedRequestTriage(input)
 
     const runtimeReceipt = yield* saveArtanisRuntimeSnapshot(
       input.db,
@@ -863,6 +1047,9 @@ export const runArtanisScheduledTick = Effect.fn('runArtanisScheduledTick')(
       state: 'completed',
       storageReceipts,
       tickRef: tick.tickRef,
+      unsupportedRequestRefs: uniqueRefs(
+        unsupportedRequests.map(record => record.requestRef),
+      ),
       workProposalRefs: [workProposal.proposalRef],
     }
 
@@ -873,7 +1060,10 @@ export const runArtanisScheduledTick = Effect.fn('runArtanisScheduledTick')(
 export const runArtanisScheduledTickForWorker = (
   input: Readonly<{
     db: D1Database
+    khalaFeedbackReader?: ArtanisKhalaFeedbackReader | undefined
     khalaReadinessObservation?: ArtanisKhalaReadinessObservation | undefined
+    khalaTraceReviewLoader?: (() => Promise<KhalaTraceReviewReport>) | undefined
+    khalaUnsupportedRequestStore?: KhalaUnsupportedRequestStore | undefined
     scheduledRunnerEnabled: boolean
     scheduledTime: number
   }>,
@@ -883,7 +1073,10 @@ export const runArtanisScheduledTickForWorker = (
   return runArtanisScheduledTick({
     db: input.db,
     enabled: input.scheduledRunnerEnabled,
+    khalaFeedbackReader: input.khalaFeedbackReader,
     khalaReadinessObservation: input.khalaReadinessObservation,
+    khalaTraceReviewLoader: input.khalaTraceReviewLoader,
+    khalaUnsupportedRequestStore: input.khalaUnsupportedRequestStore,
     nowIso,
     scheduleRef: `cron.public.artanis.${refSuffix(nowIso)}`,
   })
