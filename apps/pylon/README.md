@@ -387,6 +387,7 @@ pylon work status <autopilot-work-order-ref> --events
 pylon work review <autopilot-work-order-ref> --action request_changes
 pylon assignment poll --base-url https://openagents.com
 pylon assignment run-no-spend --base-url https://openagents.com
+pylon khala request --workflow codex_agent_task --fixture --prompt "Run the public-safe fixture through my linked Pylon." --base-url https://openagents.com --json
 ```
 
 `pylon work submit` is the network Autopilot work-order lane. It requires a
@@ -394,6 +395,12 @@ real pinned commit, rejects placeholder or unresolvable commits before
 submission, and accepts `--adapter codex|claude_agent|fable` to carry explicit
 runner intent into assignment synthesis. Fable is currently a Claude Agent
 profile request, not a separate adapter.
+
+`pylon khala request --workflow codex_agent_task` is the caller-owned
+Khala-to-Pylon route. When the gateway returns an assignment ref, the CLI runs
+that exact no-spend assignment locally by default and includes `autoRun` plus
+`assignmentRun` in JSON output. Pass `--no-run` only for diagnostics or manual
+lease recovery.
 
 `run-no-spend` polls for a no-spend lease, applies local admission gates,
 accepts idempotently, submits progress with artifact/proof refs, and closes the

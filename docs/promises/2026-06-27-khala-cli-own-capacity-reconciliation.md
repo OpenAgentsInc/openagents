@@ -35,8 +35,14 @@ typed delegation only:
 
 ```sh
 pylon khala request --workflow codex_agent_task --pylon-ref <caller-owned-pylon>
-pylon assignment run-no-spend --assignment-ref <assignment-ref> --json
 ```
+
+As of the #6362 follow-up, the CLI request path auto-runs the returned
+no-spend assignment by default and includes `autoRun` plus `assignmentRun` in
+the JSON output. Operators can still pass `--no-run` for diagnostics, and MCP /
+bare-agent flows may still call
+`pylon assignment run-no-spend --assignment-ref <assignment-ref> --json`
+explicitly after a request creates the lease.
 
 Green proof for a particular assignment requires an accepted closeout and exact
 `token_usage_events` rows with:
@@ -102,14 +108,16 @@ Do not claim:
 
 - third-party Pylon capacity pooling or resale;
 - payout eligibility for owner-local Codex no-spend work;
-- guaranteed continuous dispatch availability;
+- guaranteed continuous dispatch availability beyond the caller-owned linked
+  Pylon's fresh advertised capacity and server lease window;
 - public raw Codex event visibility;
 - a live full-assignment trace/status UI;
 - broad automatic coding-prompt routing without the typed/semantic selector and
   caller-owned capacity resolver.
 
-The main blockers are dispatch/auto-execution reliability (#6362),
-master-default workspace materialization (#6361), assignment-level trace/status
+The main blockers are live production smoke for the default CLI auto-run path
+(#6362 partially reduced by source/test coverage), master-default workspace
+materialization (#6361), assignment-level trace/status
 presentation plus deployed smoke (#6368, partially reduced by the CLI status
 reader and operator route shell), proof/status closeout ergonomics (#6369,
 partially reduced by the proof checklist), and the broad semantic router being

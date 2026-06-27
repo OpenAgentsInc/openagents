@@ -80,7 +80,7 @@ From the bare agent MCP client, call `khala.request` with:
 }
 ```
 
-Run the no-spend local assignment loop:
+Run the no-spend local assignment loop for MCP-issued leases:
 
 ```sh
 OPENAGENTS_AGENT_TOKEN="<owner agent token>" \
@@ -100,6 +100,10 @@ pylon khala request \
   --fixture \
   --json
 ```
+
+The CLI path auto-runs the returned no-spend assignment unless `--no-run` is
+present, so successful JSON includes both `autoRun` and `assignmentRun`. Use
+`--no-run` only when intentionally testing lease creation or manual recovery.
 
 Public issue or repository work must use complete workspace pins instead of the
 fixture flag:

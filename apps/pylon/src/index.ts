@@ -3861,7 +3861,7 @@ async function main() {
           optionFlag(options, "fixture-smoke") ||
           optionFlag(options, "codex-fixture")
         if (!prompt) {
-          throw new Error("usage: pylon khala request --prompt <text> [--workflow cloud_coding_session|codex_agent_task] [--pylon-ref <pylonRef>] [--fixture | --commit <sha> --repo <owner/repo> --verify <argv>] [--json]; public issue/repo codex_agent_task requests require complete workspace pins")
+          throw new Error("usage: pylon khala request --prompt <text> [--workflow cloud_coding_session|codex_agent_task] [--pylon-ref <pylonRef>] [--fixture | --commit <sha> --repo <owner/repo> --verify <argv>] [--no-run] [--json]; public issue/repo codex_agent_task requests require complete workspace pins")
         }
         if (
           workflow !== undefined &&
@@ -3904,7 +3904,49 @@ async function main() {
               }
             : {}),
         })
-        emit(result)
+        const assignmentRef = result.assignmentRef
+        const shouldRunAssignment = assignmentRef !== null && !optionFlag(options, "no-run")
+        if (!shouldRunAssignment) {
+          emit({
+            ...result,
+            assignmentRun: null,
+            autoRun: {
+              attempted: false,
+              reason: assignmentRef === null
+                ? "no_assignment_ref"
+                : "disabled_by_no_run",
+              schema: "openagents.pylon.khala_request_auto_run.v0.1",
+            },
+          })
+          return
+        }
+        const accountRef =
+          optionString(options, "account") ??
+          optionString(options, "account-ref")
+        const accountHome = optionString(options, "account-home")
+        const assignmentRun = await runNoSpendAssignment(summary, {
+          ...networkOptions,
+          assignmentRef,
+          ...(accountRef === undefined ? {} : { accountRef }),
+          ...(accountHome === undefined ? {} : { accountHome }),
+          ...(optionFlag(options, "json")
+            ? {
+                onLifecycleEvent: (event) => {
+                  process.stderr.write(`${JSON.stringify(event)}\n`)
+                },
+              }
+            : {}),
+        })
+        emit({
+          ...result,
+          assignmentRun,
+          autoRun: {
+            assignmentRef,
+            attempted: true,
+            ok: assignmentRun.ok,
+            schema: "openagents.pylon.khala_request_auto_run.v0.1",
+          },
+        })
         return
       }
 

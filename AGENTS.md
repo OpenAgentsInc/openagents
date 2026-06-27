@@ -201,9 +201,13 @@ $PYLON khala request \
 
 Expected output includes `ok: true`, `assignmentRef`,
 `durableRequestId`, `durableStreamUrl`, `workflow: "codex_agent_task"`, and a
-delegation frame naming the targeted Pylon. If the request falls through to a
-model/provider path instead of returning a delegation frame, stop and debug the
-delegation preconditions before running spendful or unrelated work.
+delegation frame naming the targeted Pylon. The CLI immediately follows a
+returned assignment ref by running the matching local no-spend assignment and
+adds `autoRun` plus `assignmentRun` to the JSON output; use `--no-run` only for
+diagnostics when you intentionally want to create a lease without executing it.
+If the request falls through to a model/provider path instead of returning a
+delegation frame, stop and debug the delegation preconditions before running
+spendful or unrelated work.
 
 For real repository work, pin the public checkout and verification command so
 the Pylon materializes a fresh bounded Git workspace instead of the fixture:
@@ -232,16 +236,21 @@ access is an owner-local executor invariant so Codex can do real Git/GitHub work
 do not add it as a public wire field or use it for untrusted labor/provider
 work.
 
-4. Execute the assignment locally with no spend:
+4. Verify the local no-spend execution:
+
+For the CLI path above, execution already happened in the same command. Expected
+`assignmentRun` output: the lease is accepted, progress reaches `proof-ready`,
+and the closeout status is `accepted` with
+`settlementState: "not_applicable"` and `payoutClaimAllowed: false`. For the
+public fixture, a successful run includes
+`result.public.pylon.codex_agent_task.fixture_repair_passed`.
+
+For MCP, bare-agent, or explicit `--no-run` diagnostic paths, execute the
+assignment locally with no spend:
 
 ```sh
 $PYLON assignment run-no-spend --json
 ```
-
-Expected output: the lease is accepted, progress reaches `proof-ready`, and the
-closeout status is `accepted` with `settlementState: "not_applicable"` and
-`payoutClaimAllowed: false`. For the public fixture, a successful run includes
-`result.public.pylon.codex_agent_task.fixture_repair_passed`.
 
 For parallel delegation, run each assignment with an explicit assignment ref and
 publish capacity first:

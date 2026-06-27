@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test"
+import { mkdtemp, rm, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
 import { join } from "node:path"
 
+import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
 import {
   buildPylonKhalaGitCheckoutWorkspace,
   buildPylonKhalaChatRequestBody,
@@ -12,6 +15,7 @@ import {
   readPylonKhalaStatus,
   resumePylonKhalaRequest,
 } from "../src/khala-requester"
+import { ensurePylonLocalState } from "../src/state"
 
 const sse = (id: string, content: string) =>
   `data: ${JSON.stringify({
@@ -27,6 +31,15 @@ const CWD = join(import.meta.dir, "..")
 afterEach(() => {
   for (const server of servers.splice(0)) server.stop(true)
 })
+
+async function withTempHome<T>(fn: (home: string) => Promise<T>) {
+  const home = await mkdtemp(join(tmpdir(), "pylon-khala-requester-test-"))
+  try {
+    return await fn(home)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+}
 
 async function runPylonCli(args: string[], env: Record<string, string>) {
   const proc = Bun.spawn(["bun", INDEX, ...args], {
@@ -57,6 +70,82 @@ async function runPylonCli(args: string[], env: Record<string, string>) {
     new Response(proc.stderr).text(),
   ])
   return { ...exit, stderr, stdout }
+}
+
+async function markAssignmentReady(home: string) {
+  const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), {
+    PYLON_HOME: home,
+  })
+  const state = await ensurePylonLocalState(summary)
+  await writeFile(
+    state.paths.runtimeState,
+    `${JSON.stringify({
+      lifecycle: "assignment-ready",
+      displayName: "Khala Requester Test",
+      resourceMode: "background_20",
+      capabilityRefs: [],
+      blockerRefs: [],
+      updatedAt: "2026-06-27T00:00:00.000Z",
+    })}\n`,
+  )
+}
+
+function khalaAutoRunServer() {
+  const assignmentRef = "assignment.public.khala_coding.cli_auto_run"
+  const leaseRef = "lease.public.khala_coding.cli_auto_run"
+  const requests: Array<{ body: Record<string, unknown>; method: string; path: string }> = []
+  const server = Bun.serve({
+    port: 0,
+    async fetch(request) {
+      const url = new URL(request.url)
+      const text = await request.text()
+      const body = text.trim() === "" ? {} : JSON.parse(text)
+      requests.push({ body, method: request.method, path: url.pathname })
+
+      if (url.pathname === "/v1/chat/completions") {
+        return new Response(sse("chatcmpl_auto_run", "delegated"), {
+          headers: {
+            "openagents-coding-assignment-ref": assignmentRef,
+            "openagents-durable-stream-url": "/v1/chat/completions/durable/chatcmpl_auto_run",
+          },
+        })
+      }
+      if (url.pathname.includes("/heartbeat")) {
+        return Response.json({ heartbeatRef: `heartbeat.${body.pylonRef}.${body.sequence}` })
+      }
+      if (url.pathname.endsWith("/assignments")) {
+        return Response.json({
+          schema: "openagents.pylon.assignment_poll_response.v0.3",
+          assignments: [
+            {
+              schema: "openagents.pylon.assignment_lease.v0.3",
+              assignmentRef,
+              leaseRef,
+              goal: "Return a public-safe proof ref for this fake no-spend assignment.",
+              paymentMode: "no-spend",
+              capabilityRefs: [],
+              expiresAt: "2099-01-01T00:00:00.000Z",
+            },
+          ],
+        })
+      }
+      if (url.pathname.endsWith("/accept")) {
+        return Response.json({ statusRef: `assignment.accepted.${assignmentRef}` })
+      }
+      if (url.pathname.endsWith("/progress")) {
+        return Response.json({ progressRef: `assignment.progress.${leaseRef}.${body.sequence}` })
+      }
+      if (url.pathname.endsWith("/artifacts")) {
+        return Response.json({ artifactRef: `assignment.artifacts.${leaseRef}` })
+      }
+      if (url.pathname.endsWith("/closeout")) {
+        return Response.json({ closeoutRef: `assignment.closeout.${leaseRef}` })
+      }
+      return Response.json({ errorRef: "error.not_found" }, { status: 404 })
+    },
+  })
+  servers.push(server)
+  return { assignmentRef, baseUrl: `http://127.0.0.1:${server.port}`, requests }
 }
 
 describe("pylon khala requester body", () => {
@@ -202,6 +291,103 @@ describe("pylon khala requester body", () => {
 })
 
 describe("pylon khala requester API", () => {
+  test("CLI request auto-runs the returned no-spend assignment unless disabled", async () => {
+    await withTempHome(async (home) => {
+      await markAssignmentReady(home)
+      const fake = khalaAutoRunServer()
+
+      const proc = await runPylonCli(
+        [
+          "khala",
+          "request",
+          "--workflow",
+          "codex_agent_task",
+          "--fixture",
+          "--prompt",
+          "Run the public-safe fixture through my linked local Pylon.",
+          "--base-url",
+          fake.baseUrl,
+          "--json",
+        ],
+        {
+          OPENAGENTS_AGENT_TOKEN: "oa_agent_test",
+          PYLON_HOME: home,
+        },
+      )
+
+      expect(proc.timedOut).toBe(false)
+      expect(proc.exitCode).toBe(0)
+      const output = JSON.parse(proc.stdout)
+      expect(output).toMatchObject({
+        assignmentRef: fake.assignmentRef,
+        autoRun: {
+          assignmentRef: fake.assignmentRef,
+          attempted: true,
+          ok: true,
+          schema: "openagents.pylon.khala_request_auto_run.v0.1",
+        },
+        assignmentRun: {
+          ok: true,
+          closeout: {
+            assignmentRef: fake.assignmentRef,
+            paymentMode: "no-spend",
+            settlementState: "not_applicable",
+          },
+        },
+      })
+      const paths = fake.requests.map((request) => request.path)
+      expect(paths).toContain("/v1/chat/completions")
+      expect(paths.some((path) => path.endsWith("/assignments"))).toBe(true)
+      expect(paths.some((path) => path.endsWith("/accept"))).toBe(true)
+      expect(paths.some((path) => path.endsWith("/closeout"))).toBe(true)
+      expect(proc.stderr)
+        .toContain('"event":"assignment_run.completed"')
+    })
+  })
+
+  test("CLI request can leave the lease un-run for diagnostics with --no-run", async () => {
+    await withTempHome(async (home) => {
+      await markAssignmentReady(home)
+      const fake = khalaAutoRunServer()
+
+      const proc = await runPylonCli(
+        [
+          "khala",
+          "request",
+          "--workflow",
+          "codex_agent_task",
+          "--fixture",
+          "--prompt",
+          "Create the lease but do not run it yet.",
+          "--base-url",
+          fake.baseUrl,
+          "--no-run",
+          "--json",
+        ],
+        {
+          OPENAGENTS_AGENT_TOKEN: "oa_agent_test",
+          PYLON_HOME: home,
+        },
+      )
+
+      expect(proc.timedOut).toBe(false)
+      expect(proc.exitCode).toBe(0)
+      const output = JSON.parse(proc.stdout)
+      expect(output).toMatchObject({
+        assignmentRef: fake.assignmentRef,
+        assignmentRun: null,
+        autoRun: {
+          attempted: false,
+          reason: "disabled_by_no_run",
+          schema: "openagents.pylon.khala_request_auto_run.v0.1",
+        },
+      })
+      expect(fake.requests.map((request) => request.path)).toEqual([
+        "/v1/chat/completions",
+      ])
+    })
+  })
+
   test("request posts to /v1/chat/completions with bearer auth and projects the durable handle", async () => {
     const calls: Array<{ init: RequestInit; url: string }> = []
     const fetcher = async (url: URL | RequestInfo, init?: RequestInit) => {
