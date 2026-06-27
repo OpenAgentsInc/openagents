@@ -1,4 +1,7 @@
 #!/usr/bin/env bun
+import { mkdir } from 'node:fs/promises'
+import { join } from 'node:path'
+
 import {
   GLM_NVFP4_MIN_TOOL_LOOP_SAMPLES,
   GLM_NVFP4_PILOT_MODEL,
@@ -9,6 +12,11 @@ import {
   type GlmNvfp4PilotConfig,
   type GlmNvfp4PilotObservation,
 } from '../src/inference/glm-nvfp4-pilot'
+import {
+  buildGlmNvfp4PilotOperatorBundle,
+  buildGlmNvfp4PilotOwnerArmedCommand,
+  formatGlmNvfp4PilotOperatorReadme,
+} from '../src/inference/glm-nvfp4-pilot-operator'
 
 const args = process.argv.slice(2)
 
@@ -20,6 +28,34 @@ const option = (name: string): string | undefined => {
 }
 
 const flag = (name: string): boolean => args.includes(name)
+
+const help = (): string => [
+  'Usage: bun run scripts/khala-glm-nvfp4-pilot.ts [options]',
+  '',
+  'Owner-armed #6323 pilot runner for nvidia/GLM-5.2-NVFP4.',
+  'Without owner arm, endpoint, and public refs it emits a public-safe no_go result and exits 2.',
+  '',
+  'Options:',
+  '  --arm',
+  '  --endpoint-url <private OpenAI-compatible base URL>',
+  '  --endpoint-ref <public ref>',
+  '  --owner-approval-ref <public ref>',
+  '  --decision-ref <public ref>',
+  '  --measured-max-model-len <number>',
+  '  --measured-max-model-len-evidence-ref <public ref>',
+  '  --quality-parity <passed|failed|not_measured>',
+  '  --quality-evidence-ref <public ref>',
+  '  --samples <number>',
+  '  --output-dir <dir>       Write public-safe result, summary, bundle, and README files.',
+  '  --summary                Print the public summary JSON to stdout instead of the full result.',
+  '  --print-owner-command    Print the owner-armed command template and exit 0.',
+  '  --help',
+  '',
+  'Owner-armed command template:',
+  '',
+  buildGlmNvfp4PilotOwnerArmedCommand(),
+  '',
+].join('\n')
 
 const numberOption = (name: string): number | null => {
   const value = option(name)
@@ -48,6 +84,22 @@ const samples =
   (Number.isFinite(samplesFromEnv) && samplesFromEnv > 0
     ? samplesFromEnv
     : GLM_NVFP4_MIN_TOOL_LOOP_SAMPLES)
+const outputDir = option('--output-dir')
+
+if (flag('--help')) {
+  process.stdout.write(help())
+  process.exit(0)
+}
+
+if (flag('--print-owner-command')) {
+  process.stdout.write(`${buildGlmNvfp4PilotOwnerArmedCommand({
+    outputDir,
+    samples,
+    measuredMaxModelLen:
+      numberOption('--measured-max-model-len') ?? undefined,
+  })}\n`)
+  process.exit(0)
+}
 
 const config: GlmNvfp4PilotConfig = {
   generatedAt: new Date().toISOString(),
@@ -133,7 +185,49 @@ try {
 }
 
 const result = buildGlmNvfp4PilotResult({ config, observation })
-process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
+const bundle = buildGlmNvfp4PilotOperatorBundle({
+  config,
+  result,
+  outputDir,
+})
+
+if (outputDir !== undefined) {
+  await mkdir(outputDir, { recursive: true })
+  await Promise.all([
+    Bun.write(
+      join(outputDir, 'glm-nvfp4-pilot-result.public.json'),
+      `${JSON.stringify(bundle.result, null, 2)}\n`,
+    ),
+    Bun.write(
+      join(outputDir, 'glm-nvfp4-pilot-summary.public.json'),
+      `${JSON.stringify(bundle.summary, null, 2)}\n`,
+    ),
+    Bun.write(
+      join(outputDir, 'glm-nvfp4-pilot-operator-bundle.public.json'),
+      `${JSON.stringify(bundle, null, 2)}\n`,
+    ),
+    Bun.write(
+      join(outputDir, 'README.public.md'),
+      formatGlmNvfp4PilotOperatorReadme(bundle),
+    ),
+  ])
+}
+
+process.stderr.write(
+  [
+    `[glm-nvfp4-pilot] decision=${bundle.summary.decision}`,
+    `[glm-nvfp4-pilot] canRouteCodingLane=${String(bundle.summary.canRouteCodingLane)}`,
+    `[glm-nvfp4-pilot] missingOperatorInputs=${bundle.missingOperatorInputs.map(input => input.env).join(', ') || 'none'}`,
+    '[glm-nvfp4-pilot] liveRoutingChanged=false',
+    ...(outputDir === undefined
+      ? []
+      : [`[glm-nvfp4-pilot] wrotePublicSafeEvidenceDir=${outputDir}`]),
+  ].join('\n') + '\n',
+)
+
+process.stdout.write(
+  `${JSON.stringify(flag('--summary') ? bundle.summary : result, null, 2)}\n`,
+)
 if (result.decision !== 'go') {
   process.exitCode = 2
 }
