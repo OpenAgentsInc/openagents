@@ -1420,6 +1420,58 @@ global-ledger concurrency/noise between two public reads. Assignment-scoped
 `khala proof` is therefore the right source for exact per-run accounting, while
 the public counter is the live global projection.
 
+## Token Counter Timing Clarification
+
+The token counter does **not** update continuously as a Pylon/Codex assignment
+streams raw SDK chunks, emits ATIF trace chunks, or runs local shell/verifier
+commands. Those intermediate artifacts can be written while the assignment is
+still active, but they are not final usage truth.
+
+The public counter moves when the Codex turn closes and Pylon posts the final
+usage block. At that closeout point the server inserts the canonical
+`token_usage_events` row for the assignment, with exact input/output/reasoning
+and cache-read token counts. The public `/api/public/khala-tokens-served`
+projection is live-at-read over that ledger, so it can reflect the new row as
+soon as the row is committed. It cannot honestly include in-flight estimates
+unless a separate estimated/provisional counter is added and labeled as such.
+
+That is why the owner saw the counter finally update after the assignment
+finished. During a long run, the correct live status indicators are assignment
+progress, raw-chunk counts, ATIF trace counts, and the eventual proof endpoint.
+The counter itself is closeout-based exact accounting.
+
+## Current Delegation Working Set
+
+The concrete sequence that got delegation working in this continuation was:
+
+1. use a clean worktree from current `origin/main`, then run
+   `bun install --frozen-lockfile` so the fresh checkout has the same workspace
+   dependencies as the main repo;
+2. read the local Khala agent token into `OPENAGENTS_AGENT_TOKEN` without
+   printing it;
+3. run the Pylon CLI from the current worktree with
+   `PYLON_DISABLE_DAEMON_ROUTING=1` so stale daemon code cannot handle the
+   request;
+4. set `PYLON_OPENAGENTS_BASE_URL=https://openagents.com`;
+5. run `pylon codex accounts list --json`, `pylon provider go-online --json`,
+   and `pylon presence heartbeat --json` immediately before dispatch;
+6. create the assignment with explicit `--workflow codex_agent_task`,
+   explicit `--pylon-ref`, exact repo/branch/commit, and a bounded verifier;
+7. run the returned assignment with
+   `pylon assignment run-no-spend --assignment-ref ... --json`;
+8. verify the result with `pylon khala proof --assignment-ref ... --json`;
+9. reconcile public-counter movement only against assignment-scoped proof, not
+   against the aggregate counter delta alone.
+
+The main reasons other agents were getting stuck were operational, not
+mysterious: stale daemon routing, missing fresh-worktree dependencies,
+stale/missing heartbeat capacity, skipped `run-no-spend`, overlong Khala
+request prompts, and backend dispatch/validation stages that previously
+collapsed distinct failures into misleading "linked registration" errors. The
+later fixes split those stages and fixed the workspace scanner false positive,
+so a real workspace assignment can now get to local Codex and produce exact
+proof.
+
 ## Bottom Line
 
 This assignment proves the backend evidence path mostly works:

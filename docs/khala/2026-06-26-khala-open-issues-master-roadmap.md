@@ -134,7 +134,7 @@ in what it has actually been doing — not training-data roleplay.
 ## Current status snapshot
 
 Refreshed from GitHub issue state, `origin/main`, live counter/proof reads, and
-the local Pylon state on **2026-06-27 ~07:29Z**. This table is the
+the local Pylon state on **2026-06-27 ~08:34Z**. This table is the
 operator view of what remains, not a public product claim.
 
 | Issue | State | Current status / next action |
@@ -215,6 +215,20 @@ operator view of what remains, not a public product claim.
   closeout. This does not close #6323; it confirms the issue is blocked on the
   owner-armed isolated 8x-host endpoint/evidence run, not on a remaining local
   harness/doc implementation gap.
+- 2026-06-27T08:34Z #6323 continuation check from a fresh current worktree:
+  after installing pinned workspace dependencies with
+  `bun install --frozen-lockfile`, the local environment still exposed no
+  `KHALA_GLM_NVFP4_*` owner-run variables. The unarmed
+  `pilot:glm-nvfp4 --summary --output-dir <tmp>` path exited `2` with
+  `decision:"no_go"` and the expected blocked gates
+  (`isolated_owner_armed_endpoint_context`, `tool_loop_proof`,
+  `quality_parity`, and `throughput_context_tradeoff`). Focused verification
+  passed:
+  `bun run --cwd apps/openagents.com/workers/api test -- src/inference/glm-nvfp4-pilot.test.ts src/inference/glm-nvfp4-pilot-operator.test.ts`
+  (`19` tests). This adds no closeout evidence and does not close #6323; the
+  remaining requirement is still the owner-armed isolated 8x-host pilot with
+  public-safe boot/load, tool-loop, quality, max-context, and throughput
+  evidence.
 - 2026-06-27T03:34Z #6311 refresh: live
   `/v1/gateway/glm-fleet/readiness` now reports `status:"degraded"` with
   `totalReplicaCount:10`, `readyReplicaCount:2`, `reclaimedReplicaCount:8`,
