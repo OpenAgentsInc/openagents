@@ -276,13 +276,18 @@ describe('projectGlmFleetReadiness', () => {
 
     expect(projection.acceptance).toMatchObject({
       allReplicaKeepWarmWatchdog: {
+        blockerRefs: [
+          'blocker.hydralisk_glm_52_reap_504b.all_replica_keep_warm_watchdog_incomplete',
+          'blocker.hydralisk_glm_52_reap_504b.forced_stop_recovery_evidence_missing',
+        ],
         coveredReplicaCount: 1,
+        forcedStopRecoveryEvidenceRefs: [],
         missingReplicaRefs: [
           'replica.hydralisk.glm_52_reap_504b.missing-five',
           'replica.hydralisk.glm_52_reap_504b.ready-two',
           'replica.hydralisk.glm_52_reap_504b.reclaimed-three',
         ],
-        status: 'incomplete',
+        status: 'blocked',
         totalRequiredReplicaCount: 4,
       },
       capacityFloorOwnerDecision: {
@@ -322,6 +327,7 @@ describe('projectGlmFleetReadiness', () => {
       acceptanceStatus: 'blocked',
       blockerRefs: [
         'blocker.hydralisk_glm_52_reap_504b.capacity_floor_owner_decision_missing',
+        'blocker.hydralisk_glm_52_reap_504b.forced_stop_recovery_evidence_missing',
         'blocker.hydralisk_glm_52_reap_504b.multi_region_auto_replace_evidence_missing',
         'blocker.hydralisk_glm_52_reap_504b.multi_region_auto_replace_prebake_evidence_missing',
         'blocker.hydralisk_glm_52_reap_504b.multi_region_auto_replace_replacement_region_missing',
@@ -330,11 +336,13 @@ describe('projectGlmFleetReadiness', () => {
       ],
       dimensions: [
         {
-          blockerRefs: [],
+          blockerRefs: [
+            'blocker.hydralisk_glm_52_reap_504b.forced_stop_recovery_evidence_missing',
+          ],
           dimension: 'all_replica_keep_warm_watchdog',
           evidenceRefs: ['replica.hydralisk.glm_52_reap_504b.warm-one'],
           missingReplicaRefs: [],
-          status: 'complete',
+          status: 'blocked',
         },
         {
           blockerRefs: [
@@ -398,6 +406,8 @@ describe('projectGlmFleetReadiness', () => {
         'owner_accepted_all_spot',
       HYDRALISK_GLM_52_REAP_504B_CAPACITY_FLOOR_DECISION_REF:
         'decision.hydralisk.glm_52_reap_504b.capacity_floor.owner_20260626',
+      HYDRALISK_GLM_52_REAP_504B_FORCED_STOP_RECOVERY_REFS:
+        'evidence.hydralisk.glm_52_reap_504b.forced_stop_recovery.owner_20260626',
       HYDRALISK_GLM_52_REAP_504B_MULTI_REGION_AUTO_REPLACE_REF:
         'evidence.hydralisk.glm_52_reap_504b.multi_region_auto_replace.plan_20260626',
       HYDRALISK_GLM_52_REAP_504B_MULTI_REGION_AUTO_REPLACE_PREBAKE_REFS:
@@ -422,6 +432,9 @@ describe('projectGlmFleetReadiness', () => {
           'replica.hydralisk.glm_52_reap_504b.ready-two',
           'replica.hydralisk.glm_52_reap_504b.reclaimed-three',
           'replica.hydralisk.glm_52_reap_504b.warm-one',
+        ],
+        forcedStopRecoveryEvidenceRefs: [
+          'evidence.hydralisk.glm_52_reap_504b.forced_stop_recovery.owner_20260626',
         ],
         missingReplicaRefs: [],
         status: 'complete',
@@ -487,6 +500,8 @@ describe('projectGlmFleetReadiness', () => {
         'owner_accepted_all_spot',
       HYDRALISK_GLM_52_REAP_504B_CAPACITY_FLOOR_DECISION_REF:
         'decision.hydralisk.glm_52_reap_504b.capacity_floor.owner_20260626',
+      HYDRALISK_GLM_52_REAP_504B_FORCED_STOP_RECOVERY_REFS:
+        'evidence.hydralisk.glm_52_reap_504b.forced_stop_recovery.owner_20260626',
       HYDRALISK_GLM_52_REAP_504B_MULTI_REGION_AUTO_REPLACE_REF:
         'evidence.hydralisk.glm_52_reap_504b.multi_region_auto_replace.plan_20260626',
       HYDRALISK_GLM_52_REAP_504B_MULTI_REGION_AUTO_REPLACE_PREBAKE_REFS:
@@ -515,6 +530,7 @@ describe('projectGlmFleetReadiness', () => {
     ])
     expect(readout.evidenceRefs).toEqual([
       'decision.hydralisk.glm_52_reap_504b.capacity_floor.owner_20260626',
+      'evidence.hydralisk.glm_52_reap_504b.forced_stop_recovery.owner_20260626',
       'evidence.hydralisk.glm_52_reap_504b.multi_region_auto_replace.plan_20260626',
       'prebake.hydralisk.glm_52_reap_504b.reserved_six.20260626',
       'preflight.hydralisk.glm.reserved_six',
@@ -659,6 +675,8 @@ describe('projectGlmFleetReadiness', () => {
           'owner_accepted_all_spot',
         HYDRALISK_GLM_52_REAP_504B_CAPACITY_FLOOR_DECISION_REF:
           'decision.hydralisk.glm_52_reap_504b.capacity_floor.owner_20260626',
+        HYDRALISK_GLM_52_REAP_504B_FORCED_STOP_RECOVERY_REFS:
+          'evidence.hydralisk.glm_52_reap_504b.forced_stop_recovery.owner_20260626',
         HYDRALISK_GLM_52_REAP_504B_MULTI_REGION_AUTO_REPLACE_REF:
           'evidence.hydralisk.glm_52_reap_504b.multi_region_auto_replace.plan_20260626',
         HYDRALISK_GLM_52_REAP_504B_MULTI_REGION_AUTO_REPLACE_PREBAKE_REFS:

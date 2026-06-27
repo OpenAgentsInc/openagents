@@ -80,6 +80,7 @@ export type GlmFleetReadinessAcceptance = Readonly<{
     blockerRefs: ReadonlyArray<string>
     coveredReplicaCount: number
     evidenceRefs: ReadonlyArray<string>
+    forcedStopRecoveryEvidenceRefs: ReadonlyArray<string>
     missingReplicaRefs: ReadonlyArray<string>
     status: GlmFleetAcceptanceDimensionStatus
     totalRequiredReplicaCount: number
@@ -171,6 +172,9 @@ type GlmFleetReadinessEnv = SupplyLaneCredentialEnv &
   Readonly<{
     HYDRALISK_GLM_52_REAP_504B_CAPACITY_FLOOR_DECISION?: string | undefined
     HYDRALISK_GLM_52_REAP_504B_CAPACITY_FLOOR_DECISION_REF?:
+      | string
+      | undefined
+    HYDRALISK_GLM_52_REAP_504B_FORCED_STOP_RECOVERY_REFS?:
       | string
       | undefined
     HYDRALISK_GLM_52_REAP_504B_MULTI_REGION_AUTO_REPLACE_REF?:
@@ -468,36 +472,56 @@ const acceptanceFor = (
       )
     })
     .map(replica => replica.replicaRef)
+  const forcedStopRecoveryEvidenceRefs = publicSafeCsvRefs(
+    input.env.HYDRALISK_GLM_52_REAP_504B_FORCED_STOP_RECOVERY_REFS,
+  )
+  const allReplicaKeepWarmWatchdogBlockerRefs =
+    requiredReplicas.length === 0
+      ? [
+          'blocker.hydralisk_glm_52_reap_504b.all_replica_keep_warm_watchdog_no_required_replicas',
+        ]
+      : [
+          ...(missingReplicaRefs.length === 0
+            ? []
+            : [
+                'blocker.hydralisk_glm_52_reap_504b.all_replica_keep_warm_watchdog_incomplete',
+              ]),
+          ...(forcedStopRecoveryEvidenceRefs.length === 0
+            ? [
+                'blocker.hydralisk_glm_52_reap_504b.forced_stop_recovery_evidence_missing',
+              ]
+            : []),
+        ]
   const allReplicaKeepWarmWatchdog: GlmFleetReadinessAcceptance['allReplicaKeepWarmWatchdog'] =
     requiredReplicas.length === 0
       ? {
-          blockerRefs: [
-            'blocker.hydralisk_glm_52_reap_504b.all_replica_keep_warm_watchdog_no_required_replicas',
-          ],
+          blockerRefs: allReplicaKeepWarmWatchdogBlockerRefs,
           coveredReplicaCount: 0,
           evidenceRefs: [],
+          forcedStopRecoveryEvidenceRefs,
           missingReplicaRefs: [],
           status: 'blocked' as const,
           totalRequiredReplicaCount: 0,
         }
-      : missingReplicaRefs.length === 0
+      : allReplicaKeepWarmWatchdogBlockerRefs.length === 0
         ? {
             blockerRefs: [],
             coveredReplicaCount: coveredReplicas.length,
             evidenceRefs: coveredReplicas.map(replica => replica.replicaRef),
+            forcedStopRecoveryEvidenceRefs,
             missingReplicaRefs,
             status: 'complete' as const,
             totalRequiredReplicaCount: requiredReplicas.length,
           }
         : {
-            blockerRefs: [
-              'blocker.hydralisk_glm_52_reap_504b.all_replica_keep_warm_watchdog_incomplete',
-            ],
+            blockerRefs: allReplicaKeepWarmWatchdogBlockerRefs,
             coveredReplicaCount: coveredReplicas.length,
             evidenceRefs: coveredReplicas.map(replica => replica.replicaRef),
+            forcedStopRecoveryEvidenceRefs,
             missingReplicaRefs,
             status:
-              coveredReplicas.length === 0
+              coveredReplicas.length === 0 ||
+              forcedStopRecoveryEvidenceRefs.length === 0
                 ? ('blocked' as const)
                 : ('incomplete' as const),
             totalRequiredReplicaCount: requiredReplicas.length,
@@ -718,7 +742,11 @@ export const summarizeGlmFleetReadinessForOperators = (
       ),
       dimension: 'all_replica_keep_warm_watchdog',
       evidenceRefs: stableUniqueRefs(
-        projection.acceptance.allReplicaKeepWarmWatchdog.evidenceRefs,
+        [
+          ...projection.acceptance.allReplicaKeepWarmWatchdog.evidenceRefs,
+          ...(projection.acceptance.allReplicaKeepWarmWatchdog
+            .forcedStopRecoveryEvidenceRefs ?? []),
+        ],
       ),
       missingReplicaRefs: stableUniqueRefs(
         projection.acceptance.allReplicaKeepWarmWatchdog.missingReplicaRefs,

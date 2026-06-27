@@ -132,8 +132,10 @@ describe('handleGlmFleetReadiness', () => {
       allReplicaKeepWarmWatchdog: {
         blockerRefs: [
           'blocker.hydralisk_glm_52_reap_504b.all_replica_keep_warm_watchdog_incomplete',
+          'blocker.hydralisk_glm_52_reap_504b.forced_stop_recovery_evidence_missing',
         ],
         coveredReplicaCount: 0,
+        forcedStopRecoveryEvidenceRefs: [],
         missingReplicaRefs: [
           'replica.hydralisk.glm_52_reap_504b.primary',
         ],
