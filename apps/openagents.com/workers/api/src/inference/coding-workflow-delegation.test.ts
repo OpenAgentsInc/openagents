@@ -717,7 +717,7 @@ describe('coding workflow delegation', () => {
           assignment({
             assignmentRef: 'assignment.public.test.running_active_slot',
             id: 'pylon_api_assignment_running_active_slot',
-            state: 'accepted',
+            state: 'running',
             updatedAt: '2026-06-25T11:58:00.000Z',
           }),
         ],

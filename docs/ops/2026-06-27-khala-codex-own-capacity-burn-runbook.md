@@ -285,11 +285,11 @@ sub-condition (see §2c table).
   process alive after a successful heartbeat. The standing loop uses
   `go-online`; any heartbeat-based loop must background + `timeout` it. **A
   wedged heartbeat process stalls the whole loop** — we found one wedged ~30h.
-- **The dispatch gate is pylon-level, not per-account.** With N advertised slots,
-  **one** account can win all N (same-account parallelism) while others get
-  409-refused + back off. True multi-account parallel *spread* is an **open
-  gap**. It degrades gracefully (if the hot account 429s, round-robin shifts to
-  another), but the advertised concurrency is **shared**, not per-account.
+- **The dispatch gate is per account when per-account refs are advertised.**
+  Current Worker delegation picks an advertised account slot for unpinned
+  requests and persists `codingAssignment.codex.accountRefHash`, so one hot
+  Codex account does not consume another account's slots on the same Pylon.
+  Heartbeats without per-account refs still use the legacy pooled accounting.
 - **Over-spawning requesters thrashes.** Firing more concurrent requesters than
   advertised slots just 409-thrashes. Right-size requesters to advertised
   concurrency. The supervisor self-throttles via backoff; **manual loops do
