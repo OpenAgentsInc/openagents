@@ -161,7 +161,7 @@ operator view of what remains, not a public product claim.
 | #6352 | **Closed** | Public `/stats` page landed in `a282066552` and deployed via `deploy:safe` as Worker `197f381e-e1fc-4574-a5c0-a06d71c403d4`. It renders the live Khala token counter, America/Chicago daily history, and aggregate model-family mix from the public endpoints. The delegated Khala -> Pylon -> Codex assignment `assignment.public.khala_coding.chatcmpl_9bf5c69c6b53465598b45410b58a9cdd` counted `9,201,324` exact tokens and stored raw Codex events plus owner-only ATIF traces. |
 | #6353 | **Closed** | Public stats epic is closed: #6330, #6351, and #6352 are all closed and the live `/stats` route returns HTTP 200 after Worker `197f381e-e1fc-4574-a5c0-a06d71c403d4`. |
 | #6303 | **Open** | GTM umbrella remains open: recipe issues are closed and benchmark publication layers exist, but the real decision-grade benchmark/quality evidence and adoption scoreboard are not complete. A 2026-06-27 closeability audit through Khala/Pylon/Codex (`assignment.public.khala_coding.chatcmpl_3438e82cb13a46a79b0232b66a1e281d`, `1,516,751` exact own-capacity tokens; `49` owner-only ATIF traces; one private raw Codex archive with `82` SDK events / `1,627,984` bytes) made `0` edits and passed `check:public-projection-freshness`, confirming #6303 should not close until #6253/#6307/#6308/#6309 produce the required decision-grade recurring evidence and the demand/adoption scoreboard is complete. |
-| #6316 | **Open** | Serving umbrella remains open: #6320/#6318 have partial slices and fresh Pylon/Codex proofs, and #6311's scheduled heartbeat rows plus fail-closed readiness acceptance are live. Current deployed Worker before this integration is `d3571d83-ecdb-40e0-8af4-08fe14f7ed1e`, but #6323 pilot, #6311 durability, #6320 live rollout, #6318 live saturation/preemption proof, #6317 stress, #6312 aggregate benchmark, and #6321 overseer are not complete. |
+| #6316 | **Open** | Serving umbrella remains open: #6320/#6318 have partial slices and fresh Pylon/Codex proofs, and #6311's scheduled heartbeat rows plus fail-closed readiness acceptance are live. Current deployed Worker before this integration is `d3571d83-ecdb-40e0-8af4-08fe14f7ed1e`, but #6323 pilot, #6311 durability, #6320 live rollout, #6318 live saturation/preemption proof, #6317 stress, #6312 aggregate benchmark, #6321 overseer, and #6359 Artanis ownership epic are not complete. A 2026-06-27 closeability audit through Khala/Pylon/Codex (`assignment.public.khala_coding.chatcmpl_61eda5f58a7b474cbbfead317a485aaa`, `1,034,814` exact own-capacity tokens; `34` owner-only ATIF traces; one private raw Codex archive with `56` SDK events / `1,347,723` bytes) confirmed #6316 and all named serving blockers remain open; no local code gap was found. |
 | #6325 | **Closed** | Pylon/Codex delegated sessions are persisted as private traces and exact token events (`c92a5652ab`), with the live raw-chunk follow-up in `74f25e77ad`. |
 | #6326 | **Closed** | Complete raw Codex SDK event streams persist privately for Pylon/Codex Khala delegation (`48e43cee02`, deploy `4d1de2d8-6285-41fa-bd9f-7a5a88cf8275`), plus live chunk rows in `pylon_codex_raw_event_chunks`. The 2026-06-27 follow-up adds the first owner-scoped assignment status read API, `GET /api/pylon/codex/trace-status?assignmentRef=...`, which reports assignment lifecycle, assignment event/progress counts, exact-token row status, owner-only trace counts/final trace UUID, live raw-chunk counts, final raw archive metadata, and derived progress without exposing raw SDK payloads. Frontend `/trace/{uuid}` live assignment rendering remains a follow-up. |
 | #6331 | **Closed** | The Pylon coding-delegation 500/unavailable path is fixed with typed diagnostics and proof surfaces. |
@@ -178,6 +178,16 @@ operator view of what remains, not a public product claim.
 
 ## Execution notes
 
+- 2026-06-27 #6316 closeability audit at public commit
+  `4b02c1c1016d93d6482d8597c71a28d6aa160d7e`: live GitHub issue state shows
+  #6316 still open. The serving blockers checked for this audit are also open:
+  #6323 full-model pilot, #6311 durability, #6320 live throughput rollout,
+  #6318 external-wins saturation/preemption proof, #6317 continuous stress,
+  #6312 aggregate max tok/s benchmark, #6321 fleet-overseer tick, and #6359
+  Artanis autonomous ownership. Older #6316 body children #6313/#6314/#6315
+  and related #6310/#6259 are closed, but they are not sufficient closeout
+  evidence for the expanded serving umbrella. No live model/provider calls were
+  made for this audit.
 - 2026-06-27T13:00Z #6317 live stress continuation: after draining the
   terminated `g4-4g-b-20260625154532` replica in Worker config
   (`2c8aaae59e2e85e7629da576825ab48d641695f2`, deployed as Worker
