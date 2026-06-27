@@ -745,6 +745,7 @@ const createAssignment = async (
     campaignPolicyRefs?: ReadonlyArray<string>
     forumAutoPublishAllowed?: boolean
     idempotencyKey?: string
+    jobKind?: string
     leaseSeconds?: number
     noDuplicateAssignmentRefs?: ReadonlyArray<string>
     nowIso?: string
@@ -752,10 +753,10 @@ const createAssignment = async (
     pylonRef?: string
     requiredCapabilityRefs?: ReadonlyArray<string>
     spendCapRefs?: ReadonlyArray<string>
+    tokenUserId?: string
   }> = {},
 ) =>
   route(store, '/api/operator/pylons/assignments', {
-    adminToken: true,
     body: {
       acceptanceCriteriaRefs: ['acceptance.public.echo_result'],
       assignmentRef: input.assignmentRef ?? 'assignment.public.issue502.echo',
@@ -767,7 +768,7 @@ const createAssignment = async (
       closeoutPathRefs: ['closeout.public.operator_review_required'],
       forumAutoPublishAllowed: input.forumAutoPublishAllowed ?? false,
       idempotencyRefs: ['idempotency.public.pylon_assignment.request_key'],
-      jobKind: 'healthcheck_echo',
+      jobKind: input.jobKind ?? 'healthcheck_echo',
       leaseSeconds: input.leaseSeconds ?? 600,
       noDuplicateAssignmentRefs: input.noDuplicateAssignmentRefs ?? [
         'dedupe.public.pylon_assignment.active_lease',
@@ -788,6 +789,9 @@ const createAssignment = async (
     idempotencyKey: input.idempotencyKey ?? 'assignment-create-echo',
     method: 'POST',
     ...(input.nowIso === undefined ? {} : { nowIso: input.nowIso }),
+    ...(input.tokenUserId === undefined
+      ? { adminToken: true }
+      : { tokenUserId: input.tokenUserId }),
   })
 
 describe('Pylon API routes', () => {
@@ -2482,6 +2486,75 @@ describe('Pylon API routes', () => {
     expect(paidWithoutSpendCapBody.dispatchGate?.blockerRefs).toContain(
       'blocker.public.pylon_dispatch.paid_mode_missing_spend_cap',
     )
+  })
+
+  test('allows non-admin agents to dispatch no-spend Codex assignments only to their own Pylon (#6382)', async () => {
+    const store = new MemoryPylonApiStore()
+    const pylonRef = 'pylon.owner.codex'
+    const requiredCapabilityRefs = ['capability.public.codex_agent_task']
+    await registerPylon(store, {
+      capabilityRefs: requiredCapabilityRefs,
+      idempotencyKey: 'register-owner-codex-pylon',
+      pylonRef,
+      tokenUserId: 'agent-owner',
+    })
+    await markOnline(store, {
+      pylonRef,
+      tokenUserId: 'agent-owner',
+    })
+    await markWalletReady(store, pylonRef, 'agent-owner')
+
+    const ownerDispatch = await createAssignment(store, {
+      assignmentRef: 'assignment.public.codex_owner',
+      idempotencyKey: 'assignment-owner-codex',
+      jobKind: 'codex_agent_task',
+      pylonRef,
+      requiredCapabilityRefs,
+      tokenUserId: 'agent-owner',
+    })
+    const ownerReplay = await createAssignment(store, {
+      assignmentRef: 'assignment.public.codex_owner',
+      idempotencyKey: 'assignment-owner-codex',
+      jobKind: 'codex_agent_task',
+      pylonRef,
+      requiredCapabilityRefs,
+      tokenUserId: 'agent-owner',
+    })
+    const crossTenantDispatch = await createAssignment(store, {
+      assignmentRef: 'assignment.public.codex_cross_tenant',
+      idempotencyKey: 'assignment-cross-tenant-codex',
+      jobKind: 'codex_agent_task',
+      pylonRef,
+      requiredCapabilityRefs,
+      tokenUserId: 'agent-other',
+    })
+    const crossTenantList = await route(
+      store,
+      `/api/pylons/${pylonRef}/assignments`,
+      {
+        tokenUserId: 'agent-other',
+      },
+    )
+    const ownerBody = await responseJson<PylonRouteJson>(ownerDispatch)
+    const replayBody = await responseJson<PylonRouteJson>(ownerReplay)
+    const crossTenantDispatchBody =
+      await responseJson<PylonRouteJson>(crossTenantDispatch)
+    const crossTenantListBody =
+      await responseJson<PylonRouteJson>(crossTenantList)
+
+    expect(ownerDispatch.status).toBe(201)
+    expect(ownerBody.assignment?.state).toBe('offered')
+    expect(ownerBody.dispatchGate?.dispatchAllowed).toBe(true)
+    expect(ownerBody.dispatchGate?.noSpendDispatch).toBe(true)
+    expect(ownerBody.dispatchGate?.walletSpendAllowed).toBe(false)
+    expect(ownerBody.dispatchGate?.settlementMutationAllowed).toBe(false)
+    expect(ownerBody.dispatchGate?.forumAutoPublishAllowed).toBe(false)
+    expect(ownerReplay.status).toBe(200)
+    expect(replayBody.idempotent).toBe(true)
+    expect(crossTenantDispatch.status).toBe(403)
+    expect(crossTenantDispatchBody.error).toBe('pylon_api_forbidden')
+    expect(crossTenantList.status).toBe(403)
+    expect(crossTenantListBody.error).toBe('pylon_api_forbidden')
   })
 
   test('does not let expired active leases consume future dispatch capacity', async () => {

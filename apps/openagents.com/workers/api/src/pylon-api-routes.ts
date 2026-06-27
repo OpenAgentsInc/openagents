@@ -819,6 +819,45 @@ const requireAdmin = <Bindings extends PylonApiRouteEnv>(
   )
 }
 
+type PylonAssignmentDispatcher =
+  | Readonly<{ kind: 'admin' }>
+  | Readonly<{ kind: 'agent'; session: ProgrammaticAgentSession }>
+
+const requireAssignmentDispatcher = <Bindings extends PylonApiRouteEnv>(
+  dependencies: PylonApiRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+): Effect.Effect<PylonAssignmentDispatcher, PylonApiUnauthorized> => {
+  const requireAdminApiToken = dependencies.requireAdminApiToken
+
+  if (requireAdminApiToken === undefined) {
+    return Effect.map(
+      requireAgent(dependencies, request, env),
+      (session): PylonAssignmentDispatcher => ({
+        kind: 'agent',
+        session,
+      }),
+    )
+  }
+
+  return Effect.flatMap(
+    Effect.tryPromise({
+      catch: () => new PylonApiUnauthorized({}),
+      try: () => requireAdminApiToken(request, env),
+    }),
+    (allowed): Effect.Effect<PylonAssignmentDispatcher, PylonApiUnauthorized> =>
+      allowed
+        ? Effect.succeed({ kind: 'admin' })
+        : Effect.map(
+            requireAgent(dependencies, request, env),
+            (session): PylonAssignmentDispatcher => ({
+              kind: 'agent',
+              session,
+            }),
+          ),
+  )
+}
+
 const sameOpenAuthOwnerAgentUserIds = <Bindings extends PylonApiRouteEnv>(
   dependencies: PylonApiRouteDependencies<Bindings>,
   env: Bindings,
@@ -1160,7 +1199,11 @@ const routeCreateAssignment = <Bindings extends PylonApiRouteEnv>(
   env: Bindings,
 ) =>
   Effect.gen(function* () {
-    yield* requireAdmin(dependencies, request, env)
+    const dispatcher = yield* requireAssignmentDispatcher(
+      dependencies,
+      request,
+      env,
+    )
     const idempotencyKeyHash = yield* requireIdempotencyHash(request)
     const body = yield* decodeBody(request, PylonApiCreateAssignmentRequest)
     const nowIso = routeNowIso(dependencies)
@@ -1171,6 +1214,23 @@ const routeCreateAssignment = <Bindings extends PylonApiRouteEnv>(
     })
 
     if (existing !== undefined) {
+      if (
+        dispatcher.kind === 'agent' &&
+        !(yield* sessionOwnsAgentUserId(
+          dependencies,
+          env,
+          dispatcher.session,
+          existing.ownerAgentUserId,
+        ))
+      ) {
+        return routeErrorResponse(
+          new PylonApiStoreError({
+            kind: 'forbidden',
+            reason: 'Assignment idempotency key belongs to another agent.',
+          }),
+        )
+      }
+
       if (
         existing.pylonRef !== body.pylonRef ||
         (body.assignmentRef !== undefined &&
@@ -1216,6 +1276,24 @@ const routeCreateAssignment = <Bindings extends PylonApiRouteEnv>(
       catch: pylonApiStoreErrorFromUnknown,
       try: () => store.readRegistration(body.pylonRef),
     })
+
+    if (
+      dispatcher.kind === 'agent' &&
+      registration !== undefined &&
+      !(yield* sessionOwnsAgentUserId(
+        dependencies,
+        env,
+        dispatcher.session,
+        registration.ownerAgentUserId,
+      ))
+    ) {
+      return routeErrorResponse(
+        new PylonApiStoreError({
+          kind: 'forbidden',
+          reason: 'Pylon registration belongs to another agent.',
+        }),
+      )
+    }
 
     const activeAssignments =
       registration === undefined
