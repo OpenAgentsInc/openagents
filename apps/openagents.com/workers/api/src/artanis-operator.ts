@@ -105,11 +105,87 @@ export const ARTANIS_OPERATOR_MEMORY_TURN_LIMIT = 20
 // tool results in context.
 export const ARTANIS_OPERATOR_MAX_TOOL_ITERATIONS = 6
 
-// The reply returned when the Khala loop produces no text at all (e.g. the
-// model exhausted its tool rounds and the final tools-suppressed completion was
-// still empty). The turn must NEVER return an empty string to the owner.
+// The reply returned ONLY as the absolute last resort: when the Khala loop
+// produced no text at all AND no tool work was gathered to ground a reply on
+// (e.g. a no-tool turn whose every completion came back empty). The turn must
+// NEVER return an empty string to the owner, and this apology must NEVER be the
+// first thing tried \u2014 it is reached only after the forced composition retries
+// below all fail AND there is no gathered tool state to synthesize from.
 export const ARTANIS_OPERATOR_EMPTY_REPLY_FALLBACK =
   "I could not compose a full reply this turn \u2014 my reasoning pass came back empty after working through the available tools. Ask me again, or narrow the question, and I'll answer directly."
+
+// Max characters of a SINGLE tool result fed back into the agentic conversation.
+// Read tools can return large bodies (e.g. a 256KB repo file, a long issue
+// thread); appending several verbatim bloats the request until a LATER Khala
+// call fails outright (the live `artanis_operator_mind_unavailable` recurrence).
+// We bound each tool result so the loop stays within the model/gateway request
+// budget while still giving the model the substance it needs to reason.
+export const ARTANIS_OPERATOR_TOOL_RESULT_CONTEXT_MAX_CHARS = 16_000
+
+// Tighter per-tool bound for the COMPACT final-composition request and the
+// grounded synthesis fallback, so the recovery path stays small and robust even
+// when the full agentic conversation has grown too large to re-send.
+export const ARTANIS_OPERATOR_TOOL_RESULT_SUMMARY_MAX_CHARS = 4_000
+
+// Overall character budget for the gathered-results block in the compact
+// composition request / synthesis fallback, so recovery never re-bloats.
+export const ARTANIS_OPERATOR_GATHERED_SUMMARY_TOTAL_MAX_CHARS = 24_000
+
+// Bound a string to `max` chars with an explicit truncation marker so the model
+// (and the owner) knows the read was cut, never silently dropped.
+const boundArtanisText = (value: string, max: number): string =>
+  value.length > max
+    ? `${value.slice(0, max)}\n(\u2026truncated at ${max} chars)`
+    : value
+
+// One gathered tool result captured during the loop: the tool name and its
+// (context-bounded) result text. Used to (a) re-ground the compact composition
+// retry and (b) synthesize a grounded last-resort reply.
+type ArtanisGatheredToolResult = Readonly<{ name: string; content: string }>
+
+// Build the gathered-results summary block for the compact composition request /
+// synthesis fallback. Bounds each result and the total so the recovery request
+// is small and robust even when the full agentic conversation is too large to
+// re-send. Returns null when nothing was gathered.
+const formatGatheredToolResults = (
+  gathered: ReadonlyArray<ArtanisGatheredToolResult>,
+): string | null => {
+  if (gathered.length === 0) return null
+  const lines: Array<string> = []
+  let budget = ARTANIS_OPERATOR_GATHERED_SUMMARY_TOTAL_MAX_CHARS
+  for (const result of gathered) {
+    if (budget <= 0) {
+      lines.push('', `(\u2026more tool results omitted for length)`)
+      break
+    }
+    const perTool = Math.min(
+      ARTANIS_OPERATOR_TOOL_RESULT_SUMMARY_MAX_CHARS,
+      budget,
+    )
+    const snippet = boundArtanisText(result.content.trim(), perTool)
+    budget -= snippet.length
+    lines.push('', `[${result.name}]`, snippet)
+  }
+  return lines.join('\n')
+}
+
+// Synthesize a grounded reply directly from the tool results Artanis already
+// gathered this turn. This is the LAST resort when the model's final
+// composition pass(es) returned no text (or the composition call itself failed)
+// but real tool work exists \u2014 so the owner gets the concrete state Artanis
+// learned, never an empty string and never a bare "couldn't compose" apology.
+// With NO gathered results we fall back to the documented empty-reply message
+// (the true last resort). Exported so the regression tests can assert it.
+export const synthesizeArtanisGroundedReply = (
+  gathered: ReadonlyArray<ArtanisGatheredToolResult>,
+): string => {
+  const summary = formatGatheredToolResults(gathered)
+  if (summary === null) return ARTANIS_OPERATOR_EMPTY_REPLY_FALLBACK
+  return [
+    "My final composition pass didn't return text this turn, so here is exactly what I gathered from the tools I ran \u2014 read it as my grounded status, and tell me which thread to push on:",
+    summary,
+  ].join('\n')
+}
 
 // ---------------------------------------------------------------------------
 // The Artanis OPERATOR persona (NOT the public Khala identity).
@@ -493,6 +569,36 @@ const buildArtanisOperatorBaseMessages = (input: {
   })),
 ]
 
+// Build a COMPACT, tools-suppressed final-composition conversation. Instead of
+// re-sending the entire (possibly huge) agentic tool-message history — which is
+// exactly what makes a late Khala call fail from context bloat — we re-send only
+// the grounded base (persona + context + owner conversation) plus a BOUNDED
+// summary of the tool results gathered this turn, then an explicit instruction
+// to answer in plain text with no tools. This keeps the recovery request small
+// and robust so Artanis can always compose a final grounded answer.
+const buildArtanisCompositionConversation = (input: {
+  baseMessages: ReadonlyArray<InferenceMessage>
+  gathered: ReadonlyArray<ArtanisGatheredToolResult>
+  explicit: boolean
+}): ReadonlyArray<InferenceMessage> => {
+  const summary = formatGatheredToolResults(input.gathered)
+  const instruction = input.explicit
+    ? 'Compose your final answer to the owner NOW, in plain text. Do NOT call any tools. Answer directly and decisively from the tool results above and the state in your context: summarize what you found and state your decision. Do not return an empty message.'
+    : 'Now write your final answer to the owner in plain text, grounded in the tool results above and your current state. Do not call any tools.'
+  return [
+    ...input.baseMessages,
+    ...(summary === null
+      ? []
+      : [
+          {
+            content: `You ran tools this turn and got these results:\n${summary}`,
+            role: 'system' as const,
+          },
+        ]),
+    { content: instruction, role: 'user' as const },
+  ]
+}
+
 // Build the typed Khala request: persona system + grounded context system + the
 // owner conversation, optionally carrying an OpenAI-style `tools` array and the
 // running tool-call/tool-result message history. `max_tokens`/`temperature`
@@ -781,21 +887,27 @@ export const artanisOperatorTurn = (input: {
       memory: input.memory,
     })
 
+    // The grounded base conversation (persona + context + owner turns). Kept
+    // separately so the compact final-composition retry can re-ground on it
+    // WITHOUT re-sending the (possibly huge) accumulated tool-message history.
+    const baseMessages = buildArtanisOperatorBaseMessages({
+      contextBlock,
+      messages: input.messages,
+    })
+
     // Mutable working conversation: starts as the grounded base, grows with
     // assistant-tool-call + tool-result messages as the loop runs.
-    let conversation: ReadonlyArray<InferenceMessage> =
-      buildArtanisOperatorBaseMessages({
-        contextBlock,
-        messages: input.messages,
-      })
+    let conversation: ReadonlyArray<InferenceMessage> = baseMessages
 
     const toolInvocations: Array<ArtanisOperatorToolInvocation> = []
+    // Bounded record of the tool results gathered this turn. Drives the compact
+    // composition retry and the grounded synthesis fallback so a blown-up
+    // conversation (or a failed late Khala call) never costs the owner a reply.
+    const gathered: Array<ArtanisGatheredToolResult> = []
     let toolsDeferred = false
     let served: InferenceResult | undefined
+
     let iterations = 0
-    // Whether the MOST RECENT Khala call still advertised tools. Used by the
-    // empty-reply guard below to decide if a final tools-suppressed call is owed.
-    let lastAdvertisedTools = false
 
     // The loop runs at most MAX+1 Khala calls: MAX tool rounds plus one final
     // call so the model can answer with the last tool results in context.
@@ -809,7 +921,6 @@ export const artanisOperatorTurn = (input: {
       const advertiseTools =
         toolDefinitions.length > 0 &&
         round < ARTANIS_OPERATOR_MAX_TOOL_ITERATIONS
-      lastAdvertisedTools = advertiseTools
       const request = buildArtanisOperatorKhalaRequest({
         conversation,
         messages: input.messages,
@@ -820,9 +931,19 @@ export const artanisOperatorTurn = (input: {
       iterations += 1
 
       if (outcome._tag === 'Failure') {
-        return {
-          error: 'artanis_operator_mind_unavailable' as const,
-        } satisfies ArtanisOperatorTurnFailure
+        // A Khala call failed. If this is the very first call and we have no
+        // prior completion AND no gathered tool work, the mind is genuinely
+        // unavailable \u2014 return the typed failure (never a provider fallback).
+        if (served === undefined && gathered.length === 0) {
+          return {
+            error: 'artanis_operator_mind_unavailable' as const,
+          } satisfies ArtanisOperatorTurnFailure
+        }
+        // Otherwise we already gathered real tool results (the common live
+        // failure: a LATER call fails from context bloat). Do NOT hard-bail and
+        // throw that work away \u2014 stop looping and compose a grounded final reply
+        // from what we have via the compact composition / synthesis below.
+        break
       }
 
       served = outcome.value
@@ -861,8 +982,18 @@ export const artanisOperatorTurn = (input: {
         if (invocation.deferredToApprovalGate) {
           toolsDeferred = true
         }
-        nextMessages.push({
+        // Bound the tool result fed back into the conversation. Large bodies
+        // (e.g. a 256KB repo file) accumulated verbatim are what push a later
+        // Khala call past the request budget and make it fail \u2014 the live
+        // empty/unavailable recurrence. We keep a bounded copy for both the
+        // conversation and the gathered-results recovery record.
+        const boundedContent = boundArtanisText(
           content,
+          ARTANIS_OPERATOR_TOOL_RESULT_CONTEXT_MAX_CHARS,
+        )
+        gathered.push({ content: boundedContent, name: toolCall.function.name })
+        nextMessages.push({
+          content: boundedContent,
           name: toolCall.function.name,
           role: 'tool',
           toolCallId: toolCall.id,
@@ -872,33 +1003,77 @@ export const artanisOperatorTurn = (input: {
       conversation = nextMessages
     }
 
-    // `served` is always set: the loop runs at least once before any break.
-    let finalServed = served as InferenceResult
+    // Composition stage (the robust empty-reply guard). `served` is set unless
+    // the very first call failed (handled above with an early return).
+    let finalServed: InferenceResult | undefined = served
 
-    // BUG FIX (#6359): never return an empty reply. The loop can break with a
-    // blank final completion (the model returned empty content with no tool
-    // calls while tools were still advertised, or it exhausted the tool rounds).
-    // If the last completion still advertised tools, force ONE final
-    // tools-suppressed Khala call so the model is compelled to produce a text
-    // answer with the tool results already in context.
-    if (isBlankReply(finalServed.content) && lastAdvertisedTools) {
-      const finalRequest = buildArtanisOperatorKhalaRequest({
-        conversation,
-        messages: input.messages,
-        tools: undefined,
-      })
-      const finalOutcome = yield* Effect.exit(input.khalaClient(finalRequest))
+    // If we have no usable final text \u2014 the model exhausted its tool rounds with
+    // no answer, returned a blank completion, or a late call failed after we
+    // gathered tool work \u2014 FORCE a final, tools-suppressed composition. We use a
+    // COMPACT request (grounded base + bounded tool-result summary + an explicit
+    // "answer in plain text, no tools" instruction) so it stays small and robust
+    // even when the full agentic conversation grew too large to re-send.
+    if (finalServed === undefined || isBlankReply(finalServed.content)) {
+      const firstComposition = yield* Effect.exit(
+        input.khalaClient(
+          buildArtanisOperatorKhalaRequest({
+            conversation: buildArtanisCompositionConversation({
+              baseMessages,
+              explicit: false,
+              gathered,
+            }),
+            messages: input.messages,
+            tools: undefined,
+          }),
+        ),
+      )
       iterations += 1
-      if (finalOutcome._tag === 'Success') {
-        finalServed = finalOutcome.value
+      if (
+        firstComposition._tag === 'Success' &&
+        !isBlankReply(firstComposition.value.content)
+      ) {
+        finalServed = firstComposition.value
+      } else {
+        // Still nothing \u2014 retry ONCE with an explicit "compose your final answer
+        // now in plain text, no tools" instruction before giving up on the model.
+        const retryComposition = yield* Effect.exit(
+          input.khalaClient(
+            buildArtanisOperatorKhalaRequest({
+              conversation: buildArtanisCompositionConversation({
+                baseMessages,
+                explicit: true,
+                gathered,
+              }),
+              messages: input.messages,
+              tools: undefined,
+            }),
+          ),
+        )
+        iterations += 1
+        if (
+          retryComposition._tag === 'Success' &&
+          !isBlankReply(retryComposition.value.content)
+        ) {
+          finalServed = retryComposition.value
+        }
       }
     }
 
-    // If the reply is STILL blank, return a clear fallback message \u2014 never
-    // an empty string to the owner.
-    const replyText = isBlankReply(finalServed.content)
-      ? ARTANIS_OPERATOR_EMPTY_REPLY_FALLBACK
-      : finalServed.content
+    // Final reply text. If the model produced text, use it. Otherwise synthesize
+    // a GROUNDED reply from the tool results we gathered (the concrete state
+    // Artanis learned) \u2014 never an empty string, and the bare "couldn't compose"
+    // apology only when there is genuinely nothing gathered to report.
+    const replyText =
+      finalServed !== undefined && !isBlankReply(finalServed.content)
+        ? finalServed.content
+        : synthesizeArtanisGroundedReply(gathered)
+
+    // The provider-native model id to report. Prefer the model that produced the
+    // final reply; fall back to the last successful completion, then the alias.
+    const servedModel =
+      finalServed?.servedModel ??
+      served?.servedModel ??
+      ARTANIS_OPERATOR_KHALA_MODEL
 
     return {
       deferredToApprovalGate:
@@ -907,7 +1082,7 @@ export const artanisOperatorTurn = (input: {
       persona: verifyArtanisOperatorPersona(replyText),
       reply: replyText,
       requestedModel: ARTANIS_OPERATOR_KHALA_MODEL,
-      servedModel: finalServed.servedModel,
+      servedModel,
       servedVia: 'openagents_khala' as const,
       toolInvocations,
     } satisfies ArtanisOperatorTurnResult

@@ -6,6 +6,7 @@ import {
   ARTANIS_OPERATOR_KHALA_MODEL,
   ARTANIS_OPERATOR_MAX_TOOL_ITERATIONS,
   ARTANIS_OPERATOR_SYSTEM_PROMPT,
+  ARTANIS_OPERATOR_TOOL_RESULT_CONTEXT_MAX_CHARS,
   type ArtanisMemoryEntry,
   type ArtanisOperatorGatedResult,
   type ArtanisOperatorGatedTool,
@@ -857,9 +858,11 @@ describe('#6364 artanis operator bounded tool-calling loop', () => {
 
     expect('error' in result).toBe(false)
     if ('error' in result) return
-    // Bounded: at most MAX tool rounds + one final (tools-suppressed) call.
-    expect(result.iterations).toBe(ARTANIS_OPERATOR_MAX_TOOL_ITERATIONS + 1)
-    expect(calls).toBe(ARTANIS_OPERATOR_MAX_TOOL_ITERATIONS + 1)
+    // Bounded: the LOOP caps at MAX tool rounds + one final (tools-suppressed)
+    // call; the robust empty-reply guard then makes at most two more compact
+    // composition calls. Everything terminates — it never spins forever.
+    expect(result.iterations).toBe(ARTANIS_OPERATOR_MAX_TOOL_ITERATIONS + 3)
+    expect(calls).toBe(ARTANIS_OPERATOR_MAX_TOOL_ITERATIONS + 3)
   })
 
   test('with no tools configured the turn is a single Khala call (unchanged behavior)', async () => {
@@ -967,10 +970,12 @@ describe('#6359 the turn never returns an empty reply (cap / blank-completion gu
     expect(result.reply.trim().length).toBeGreaterThan(0)
   })
 
-  test('hitting the iteration cap still yields a non-empty reply', async () => {
-    const { tool } = makeFakeReadTool('file body')
+  test('hitting the iteration cap with real tool work yields a GROUNDED synthesized reply (not the apology)', async () => {
+    const { tool } = makeFakeReadTool('FILE-BODY-CONTENT from the roadmap')
     // Always asks for a tool (content empty); the cap forces termination and the
-    // final tools-suppressed completion is also empty -> fallback, not empty.
+    // forced compositions also come back empty. Because real tool work WAS
+    // gathered, the reply must SYNTHESIZE from that gathered state — never the
+    // bare "couldn't compose" apology, and never empty.
     const alwaysToolClient: ArtanisOperatorKhalaClient = () =>
       Effect.succeed(toolCallResult('read_repo_file', '{"path":"docs/x.md"}'))
 
@@ -987,8 +992,148 @@ describe('#6359 the turn never returns an empty reply (cap / blank-completion gu
 
     expect('error' in result).toBe(false)
     if ('error' in result) return
-    expect(result.iterations).toBe(ARTANIS_OPERATOR_MAX_TOOL_ITERATIONS + 1)
+    // MAX+1 loop calls, then two forced (empty) composition retries.
+    expect(result.iterations).toBe(ARTANIS_OPERATOR_MAX_TOOL_ITERATIONS + 3)
     expect(result.reply.trim().length).toBeGreaterThan(0)
-    expect(result.reply).toBe(ARTANIS_OPERATOR_EMPTY_REPLY_FALLBACK)
+    // It is the grounded synthesis, citing the gathered tool result, NOT apology.
+    expect(result.reply).not.toBe(ARTANIS_OPERATOR_EMPTY_REPLY_FALLBACK)
+    expect(result.reply).toContain('FILE-BODY-CONTENT from the roadmap')
+    expect(result.reply).toContain('read_repo_file')
+    // The dogfood proof is intact even on the synthesized path.
+    expect(result.servedVia).toBe('openagents_khala')
+    expect(result.persona.satisfied).toBe(true)
+  })
+
+  test('a LATE Khala failure after gathering tool work recovers with a grounded reply, never mind_unavailable', async () => {
+    // The live failure mode: the FIRST call succeeds and triggers a tool; the
+    // tool returns real content; then EVERY subsequent Khala call fails (context
+    // bloat). The turn must NOT hard-bail with artanis_operator_mind_unavailable
+    // — it must compose/synthesize a grounded reply from the gathered work.
+    const { tool } = makeFakeReadTool('TOOL-RESULT: the burndown has 4 open lanes')
+    let call = 0
+    const failAfterFirstToolClient: ArtanisOperatorKhalaClient = () => {
+      call += 1
+      if (call === 1) {
+        return Effect.succeed(
+          toolCallResult('read_repo_file', '{"path":"docs/roadmap.md"}'),
+        )
+      }
+      return Effect.fail(
+        new InferenceAdapterError({
+          adapterId: 'test',
+          httpStatus: 413,
+          kind: 'service_overloaded',
+          reason: 'context_too_large',
+          retryable: false,
+        }),
+      )
+    }
+
+    const result = await Effect.runPromise(
+      artanisOperatorTurn({
+        awareness: exampleAwareness,
+        khalaClient: failAfterFirstToolClient,
+        memory: exampleMemory,
+        messages: [{ content: 'assess the burndown', role: 'user' }],
+        ownerId: 'owner:github:14167547',
+        tools: [tool],
+      }),
+    )
+
+    // Critically: NOT a hard failure.
+    expect('error' in result).toBe(false)
+    if ('error' in result) return
+    expect(result.reply.trim().length).toBeGreaterThan(0)
+    expect(result.reply).not.toBe(ARTANIS_OPERATOR_EMPTY_REPLY_FALLBACK)
+    // The reply is grounded in the real tool result that was gathered.
+    expect(result.reply).toContain('TOOL-RESULT: the burndown has 4 open lanes')
+    expect(result.servedVia).toBe('openagents_khala')
+    expect(result.toolInvocations).toHaveLength(1)
+    expect(result.persona.satisfied).toBe(true)
+  })
+
+  test('a LATE Khala failure recovers via a SUCCESSFUL compact composition when the model can still answer small requests', async () => {
+    // The first call triggers a tool; the second (full-conversation) call fails
+    // from bloat; but the compact composition request is small enough to answer.
+    const { tool } = makeFakeReadTool('gathered detail')
+    let call = 0
+    const client: ArtanisOperatorKhalaClient = () => {
+      call += 1
+      if (call === 1) {
+        return Effect.succeed(
+          toolCallResult('read_repo_file', '{"path":"docs/roadmap.md"}'),
+        )
+      }
+      if (call === 2) {
+        return Effect.fail(
+          new InferenceAdapterError({
+            adapterId: 'test',
+            httpStatus: 413,
+            kind: 'service_overloaded',
+            reason: 'context_too_large',
+            retryable: false,
+          }),
+        )
+      }
+      // The compact composition call succeeds.
+      return Effect.succeed(
+        textResult('Decision: focus the next window on the #6316 track.'),
+      )
+    }
+
+    const result = await Effect.runPromise(
+      artanisOperatorTurn({
+        awareness: exampleAwareness,
+        khalaClient: client,
+        memory: exampleMemory,
+        messages: [{ content: 'assess and decide', role: 'user' }],
+        ownerId: 'owner:github:14167547',
+        tools: [tool],
+      }),
+    )
+
+    expect('error' in result).toBe(false)
+    if ('error' in result) return
+    expect(result.reply).toBe(
+      'Decision: focus the next window on the #6316 track.',
+    )
+    expect(result.servedVia).toBe('openagents_khala')
+  })
+
+  test('a large tool result is bounded before it is fed back into the conversation', async () => {
+    // A tool returning a huge body must NOT be re-sent verbatim (that is what
+    // bloats a later call into failing); it is truncated with an explicit marker.
+    const huge = 'X'.repeat(
+      ARTANIS_OPERATOR_TOOL_RESULT_CONTEXT_MAX_CHARS + 50_000,
+    )
+    const { tool } = makeFakeReadTool(huge)
+    const { client, requests } = makeScriptedKhalaClient([
+      toolCallResult('read_repo_file', '{"path":"docs/big.md"}'),
+      textResult('Summarized the large file.'),
+    ])
+
+    const result = await Effect.runPromise(
+      artanisOperatorTurn({
+        awareness: exampleAwareness,
+        khalaClient: client,
+        memory: exampleMemory,
+        messages: [{ content: 'read the big file', role: 'user' }],
+        ownerId: 'owner:github:14167547',
+        tools: [tool],
+      }),
+    )
+
+    expect('error' in result).toBe(false)
+    if ('error' in result) return
+    const secondConversation = requests[1]?.messages ?? []
+    const toolMessage = secondConversation.find(
+      message => message.role === 'tool',
+    )
+    expect(toolMessage).toBeDefined()
+    // Bounded well under the raw size, with the truncation marker.
+    expect((toolMessage?.content.length ?? 0)).toBeLessThan(
+      ARTANIS_OPERATOR_TOOL_RESULT_CONTEXT_MAX_CHARS + 200,
+    )
+    expect(toolMessage?.content).toContain('truncated at')
   })
 })
