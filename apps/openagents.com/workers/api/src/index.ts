@@ -105,6 +105,7 @@ import {
   makeArtanisDispatchExecution,
   readEffectiveArtanisPylonDispatchApproval,
 } from './artanis-operator-dispatch-execution'
+import { makeArtanisPylonJobStatusReader } from './artanis-operator-pylon-job-status'
 import { makeArtanisOperatorTools } from './artanis-operator-tools'
 import { saveArtanisForumPublicationIntent } from './artanis-persistence'
 import { handlePublicArtanisReportApi } from './artanis-public-report-routes'
@@ -8528,8 +8529,23 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
   // no-spend (`unpaid_smoke`), and gated behind an effective `pylon_job_dispatch`
   // owner approval. With no effective approval (the default today), the tool
   // returns the plan and defers — it never fires.
-  makeOperatorTools: (env, session) =>
-    makeArtanisOperatorTools({
+  makeOperatorTools: (env, session) => {
+    // Owner-scope resolver shared by the gated dispatch seam and the
+    // owner-scoped Pylon job-status reader: resolve the owner's linked agent
+    // user ids (their Pylon-owning credentials) so both stay strictly
+    // own-capacity / owner-scoped.
+    const listLinkedAgentUserIds = async (ownerOpenAuthUserId: string) => {
+      const agentStore = makeD1AgentRegistrationStore(openAgentsDatabase(env))
+      if (agentStore.listLinkedAgentsForOpenAuthUser === undefined) {
+        return []
+      }
+      const linked = await agentStore.listLinkedAgentsForOpenAuthUser(
+        ownerOpenAuthUserId,
+        100,
+      )
+      return linked.map(agent => agent.agentUserId)
+    }
+    return makeArtanisOperatorTools({
       defaultBranch: 'main',
       // get_network_stats reads the token-usage ledger directly (the worker
       // cannot reliably HTTP-fetch its own public /stats zone).
@@ -8539,20 +8555,19 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
             makeD1TokenUsageLedger(openAgentsDatabase(env)),
           ),
       },
+      // iteration-3: the owner-scoped Pylon job-status read tool. Reads the
+      // public-safe closeout/proof status of ONE of the owner's own linked-Pylon
+      // assignments. Read-only, owner-scoped, no spend/authority.
+      pylonJobStatus: {
+        reader: makeArtanisPylonJobStatusReader({
+          listLinkedAgentUserIds,
+          nowIso: currentIsoTimestamp,
+          ownerOpenAuthUserId: session.user.userId,
+          pylonStore: makeD1PylonApiStore(openAgentsDatabase(env)),
+        }),
+      },
       dispatchExecution: makeArtanisDispatchExecution({
-        listLinkedAgentUserIds: async ownerOpenAuthUserId => {
-          const agentStore = makeD1AgentRegistrationStore(
-            openAgentsDatabase(env),
-          )
-          if (agentStore.listLinkedAgentsForOpenAuthUser === undefined) {
-            return []
-          }
-          const linked = await agentStore.listLinkedAgentsForOpenAuthUser(
-            ownerOpenAuthUserId,
-            100,
-          )
-          return linked.map(agent => agent.agentUserId)
-        },
+        listLinkedAgentUserIds,
         makeId: () => compactRandomId('artanis_dispatch'),
         nowIso: currentIsoTimestamp,
         ownerOpenAuthUserId: session.user.userId,
@@ -8586,7 +8601,8 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
           }
         },
       }),
-    }),
+    })
+  },
   requireAdminApiToken,
   requireBrowserSession,
   // Accept an `oa_agent_` bearer (the Khala CLI's token from `khala login`) when

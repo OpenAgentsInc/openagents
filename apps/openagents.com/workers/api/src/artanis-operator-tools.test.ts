@@ -4,13 +4,17 @@ import { describe, expect, test } from 'vitest'
 import {
   ARTANIS_ISSUE_BODY_MAX_CHARS,
   ARTANIS_REPO_READ_MAX_BYTES,
+  type ArtanisPylonJobStatus,
+  isSafeArtanisAssignmentRef,
   isSafeArtanisRepoPath,
   makeArtanisDispatchCodexTaskTool,
   makeArtanisGetNetworkStatsTool,
+  makeArtanisGetPylonJobStatusTool,
   makeArtanisListRepoDirTool,
   makeArtanisOperatorTools,
   makeArtanisReadGithubIssueTool,
   makeArtanisReadRepoFileTool,
+  parseArtanisAssignmentRef,
   parseArtanisIssueNumber,
 } from './artanis-operator-tools'
 
@@ -447,6 +451,169 @@ describe('read_github_issue (public OpenAgentsInc/openagents only)', () => {
   })
 })
 
+// A known public-safe status fixture for the injected reader.
+const passingStatus: ArtanisPylonJobStatus = {
+  artifactRefs: ['artifact.public.pylon_assignment.codex.001'],
+  assignmentRef: 'assignment.public.pylon_api.known_001',
+  blockerRefs: [],
+  closeoutRefs: ['closeout.public.pylon_assignment.001'],
+  closeoutSubmitted: true,
+  failureSummary: null,
+  jobKind: 'codex_agent_task',
+  leaseState: 'terminal',
+  proofObserved: true,
+  proofRefs: ['proof.public.pylon_assignment.001'],
+  rejectionRefs: [],
+  state: 'closeout_submitted',
+  updatedAt: 'a few minutes ago',
+  verifyResult: 'pass',
+}
+
+describe('get_pylon_job_status (owner-scoped Pylon job status read)', () => {
+  test('resolves a known assignmentRef to a public-safe PASS status from the injected reader', async () => {
+    const seen: Array<string> = []
+    const tool = makeArtanisGetPylonJobStatusTool({
+      reader: async ref => {
+        seen.push(ref)
+        return ref === passingStatus.assignmentRef ? passingStatus : null
+      },
+    })
+
+    const result = await Effect.runPromise(
+      tool.execute({ assignmentRef: passingStatus.assignmentRef }),
+    )
+
+    // It is a READ tool (executes freely, never gated/risky).
+    expect(tool.kind).toBe('read')
+    expect(seen).toEqual([passingStatus.assignmentRef])
+    expect(result).toContain(
+      `Pylon job status for ${passingStatus.assignmentRef}`,
+    )
+    expect(result).toContain('Job kind: codex_agent_task')
+    expect(result).toContain('State: closeout_submitted (lease: terminal)')
+    expect(result).toContain('Closeout: submitted')
+    expect(result).toContain('Proof observed: yes')
+    expect(result).toContain('PASS')
+    expect(result).toContain('proof.public.pylon_assignment.001')
+    // A passing job has no failure summary line.
+    expect(result).not.toContain('Failure summary')
+  })
+
+  test('renders a redacted failure summary for a FAIL closeout', async () => {
+    const tool = makeArtanisGetPylonJobStatusTool({
+      reader: async () => ({
+        ...passingStatus,
+        blockerRefs: ['blocker.public.pylon_assignment.verify_failed'],
+        failureSummary:
+          'rejected (rejection.public.pylon_assignment.verify_failed)',
+        proofObserved: true,
+        rejectionRefs: ['rejection.public.pylon_assignment.verify_failed'],
+        verifyResult: 'fail',
+      }),
+    })
+    const result = await Effect.runPromise(
+      tool.execute({ assignmentRef: passingStatus.assignmentRef }),
+    )
+    expect(result).toContain('FAIL')
+    expect(result).toContain('Failure summary:')
+    expect(result).toContain('verify_failed')
+  })
+
+  test('an unknown/other-owner assignment reads as honest "(no assignment found …)"', async () => {
+    const tool = makeArtanisGetPylonJobStatusTool({ reader: async () => null })
+    const result = await Effect.runPromise(
+      tool.execute({ assignmentRef: 'assignment.public.pylon_api.missing' }),
+    )
+    expect(result).toContain('no assignment found')
+  })
+
+  test('blocks an unsafe assignment ref and never calls the reader', async () => {
+    let called = false
+    const tool = makeArtanisGetPylonJobStatusTool({
+      reader: async () => {
+        called = true
+        return passingStatus
+      },
+    })
+    for (const ref of [
+      '../../etc/passwd',
+      'assignment with spaces',
+      'assignment.with.bearer.token',
+      'sk-secretmaterial',
+    ]) {
+      const result = await Effect.runPromise(tool.execute({ assignmentRef: ref }))
+      expect(result).toContain('blocked')
+    }
+    expect(called).toBe(false)
+  })
+
+  test('absent argument returns an honest "invalid arguments" message', async () => {
+    const tool = makeArtanisGetPylonJobStatusTool({ reader: async () => null })
+    const result = await Effect.runPromise(tool.execute({ notARef: 1 }))
+    expect(result).toContain('invalid arguments')
+  })
+
+  test('a reader rejection reads as a soft "(could not read status …)", never a throw', async () => {
+    const tool = makeArtanisGetPylonJobStatusTool({
+      reader: async () => {
+        throw new Error('d1 down')
+      },
+    })
+    const result = await Effect.runPromise(
+      tool.execute({ assignmentRef: 'assignment.public.pylon_api.x' }),
+    )
+    expect(result).toContain('could not read status')
+    expect(result).not.toMatch(/Error:/)
+  })
+
+  test('with no reader wired the tool is honest, not inventive', async () => {
+    const tool = makeArtanisGetPylonJobStatusTool({})
+    const result = await Effect.runPromise(
+      tool.execute({ assignmentRef: 'assignment.public.pylon_api.x' }),
+    )
+    expect(result).toContain('could not read status')
+  })
+})
+
+describe('parseArtanisAssignmentRef + isSafeArtanisAssignmentRef', () => {
+  test('accepts a ref under several key aliases', () => {
+    expect(parseArtanisAssignmentRef({ assignmentRef: 'a.b.c' })).toEqual({
+      kind: 'ref',
+      value: 'a.b.c',
+    })
+    expect(parseArtanisAssignmentRef({ assignment_ref: 'a.b.c' })).toEqual({
+      kind: 'ref',
+      value: 'a.b.c',
+    })
+    expect(parseArtanisAssignmentRef({ ref: 'a.b.c' })).toEqual({
+      kind: 'ref',
+      value: 'a.b.c',
+    })
+  })
+
+  test('distinguishes absent from invalid', () => {
+    expect(parseArtanisAssignmentRef({}).kind).toBe('absent')
+    expect(parseArtanisAssignmentRef({ assignmentRef: '   ' }).kind).toBe(
+      'absent',
+    )
+    expect(parseArtanisAssignmentRef({ assignmentRef: '../x' }).kind).toBe(
+      'invalid',
+    )
+    expect(parseArtanisAssignmentRef({ assignmentRef: 42 }).kind).toBe('invalid')
+  })
+
+  test('isSafeArtanisAssignmentRef accepts real refs and rejects unsafe ones', () => {
+    expect(isSafeArtanisAssignmentRef('assignment.public.pylon_api.abc_123')).toBe(
+      true,
+    )
+    expect(isSafeArtanisAssignmentRef('artanis_dispatch:codex/main#1')).toBe(true)
+    expect(isSafeArtanisAssignmentRef('')).toBe(false)
+    expect(isSafeArtanisAssignmentRef('../../etc/passwd')).toBe(false)
+    expect(isSafeArtanisAssignmentRef('has space')).toBe(false)
+    expect(isSafeArtanisAssignmentRef('contains-secret-token')).toBe(false)
+  })
+})
+
 describe('parseArtanisIssueNumber', () => {
   test('accepts positive integers and numeric strings', () => {
     expect(parseArtanisIssueNumber({ issue_number: 6311 })).toEqual({
@@ -573,12 +740,13 @@ describe('#6359 get_network_stats (live public stats + token pace)', () => {
 })
 
 describe('makeArtanisOperatorTools default table', () => {
-  test('includes the repo-read tools, the issue-read tool, and the dispatch tool', () => {
+  test('includes the repo-read tools, the issue-read tool, the network-stats tool, the job-status tool, and the dispatch tool', () => {
     const tools = makeArtanisOperatorTools()
     const names = tools.map(tool => tool.definition.name).sort()
     expect(names).toEqual([
       'dispatch_codex_task',
       'get_network_stats',
+      'get_pylon_job_status',
       'list_repo_dir',
       'read_github_issue',
       'read_repo_file',

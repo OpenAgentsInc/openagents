@@ -494,6 +494,245 @@ export const makeArtanisReadGithubIssueTool = (
 }
 
 // ---------------------------------------------------------------------------
+// get_pylon_job_status — read the public-safe closeout/proof status for ONE
+// owner-scoped Pylon/Codex assignment ref. Side-effect-free, owner-only,
+// public-state-only. This is Artanis's iteration-3 self-improvement capability:
+// it closes the loop on his parallel dispatch. He can already DRAFT a dispatch
+// (dispatch_codex_task) and see a broad recent-assignment LIST in situational
+// awareness, but he could not pull the closeout state, proof/verify result, and
+// redacted failure summary for ONE specific assignment ref on demand during a
+// turn. With it he can verify whether a delegated burndown task actually passed,
+// read the failing check, and iterate the next dispatch autonomously.
+// ---------------------------------------------------------------------------
+
+// Max refs of each kind rendered for one status read, so a single read stays
+// bounded even for a chatty assignment.
+export const ARTANIS_JOB_STATUS_MAX_REFS = 10
+
+// The verify/proof verdict derived from the assignment's real closeout state.
+// 'pass' = an accepted closeout with retained proof/artifacts and no blockers;
+// 'fail' = a rejected/blocked closeout (or a blocked progress event); 'unknown'
+// = still in progress (offered/accepted/running/proof-submitted, not yet closed
+// out). Honest absence over invention: a state we cannot resolve reads 'unknown'.
+export type ArtanisPylonJobVerifyResult = 'pass' | 'fail' | 'unknown'
+
+// The public-safe status of ONE Pylon/Codex assignment. Every field is a
+// public-safe projection of real D1 state (the assignment record + its events);
+// it never carries raw prompts, shell output, credentials, wallet material, or
+// local paths. The production reader builds this from the Pylon API store; tests
+// inject a fake reader.
+export type ArtanisPylonJobStatus = Readonly<{
+  assignmentRef: string
+  // The job kind, e.g. 'codex_agent_task'.
+  jobKind: string
+  // The assignment lifecycle state, e.g. 'closeout_submitted' | 'running' |
+  // 'rejected' | 'blocked'.
+  state: string
+  // The lease state: 'active' | 'expired' | 'terminal'.
+  leaseState: string
+  // True once a worker closeout has been submitted (state 'closeout_submitted').
+  closeoutSubmitted: boolean
+  // True once artifact/proof metadata has been observed for the assignment.
+  proofObserved: boolean
+  // The derived verify/proof verdict.
+  verifyResult: ArtanisPylonJobVerifyResult
+  // A short, public-safe, redacted failure summary when the work failed/blocked,
+  // else null. Built from public-safe rejection/blocker refs only.
+  failureSummary: string | null
+  // Public-safe evidence refs (already store-projected; bounded by the tool).
+  artifactRefs: ReadonlyArray<string>
+  proofRefs: ReadonlyArray<string>
+  closeoutRefs: ReadonlyArray<string>
+  rejectionRefs: ReadonlyArray<string>
+  blockerRefs: ReadonlyArray<string>
+  // Public-safe "last updated" display string (not a raw timestamp).
+  updatedAt: string
+}>
+
+// The injected, owner-scoped reader seam. Given an assignment ref it resolves
+// the public-safe status, or `null` when no assignment matches FOR THIS OWNER
+// (honest absence — it must never return another owner's assignment). A thrown
+// rejection is treated by the tool as a soft read failure, never a fabricated
+// status. The production reader (`artanis-operator-pylon-job-status.ts`) reads
+// the owner's own linked-Pylon assignments from the Pylon API store.
+export type ArtanisPylonJobStatusReader = (
+  assignmentRef: string,
+) => Promise<ArtanisPylonJobStatus | null>
+
+export type ArtanisPylonJobStatusConfig = Readonly<{
+  reader?: ArtanisPylonJobStatusReader | undefined
+  maxRefs?: number | undefined
+}>
+
+// A safe assignment ref: a public-safe ref-shaped token with no traversal, no
+// secret material. Mirrors the proof-trace ref discipline; only such a ref is
+// ever turned into a store lookup.
+export const isSafeArtanisAssignmentRef = (ref: string): boolean => {
+  if (typeof ref !== 'string') return false
+  const trimmed = ref.trim()
+  if (trimmed === '') return false
+  if (trimmed.length > 300) return false
+  if (trimmed.includes('..')) return false
+  if (!dispatchFieldIsSafe(trimmed)) return false
+  return /^[A-Za-z0-9][A-Za-z0-9_.:/#-]*$/.test(trimmed)
+}
+
+// The parse outcome for a model-produced assignment-ref argument. ABSENT (no
+// ref field at all -> honest "invalid arguments"); INVALID (a present but
+// unsafe/empty value -> honest "(blocked …)"); VALID (a safe ref).
+type ArtanisAssignmentRefArg =
+  | Readonly<{ kind: 'ref'; value: string }>
+  | Readonly<{ kind: 'absent' }>
+  | Readonly<{ kind: 'invalid'; raw: string }>
+
+// Coerce a model-produced argument into a safe assignment ref. Accepts the
+// `assignmentRef` / `assignment_ref` / `assignment` / `ref` keys as a string.
+export const parseArtanisAssignmentRef = (
+  args: unknown,
+): ArtanisAssignmentRefArg => {
+  if (typeof args !== 'object' || args === null) return { kind: 'absent' }
+  const record = args as Record<string, unknown>
+  const raw =
+    record.assignmentRef ??
+    record.assignment_ref ??
+    record.assignment ??
+    record.ref
+  if (raw === undefined || raw === null) return { kind: 'absent' }
+  if (typeof raw !== 'string') return { kind: 'invalid', raw: String(raw) }
+  const trimmed = raw.trim()
+  if (trimmed === '') return { kind: 'absent' }
+  return isSafeArtanisAssignmentRef(trimmed)
+    ? { kind: 'ref', value: trimmed }
+    : { kind: 'invalid', raw: trimmed }
+}
+
+// Drop any ref that fails the public-safety gate, then bound the list. The store
+// projection should already be public-safe; this is a defensive second pass so a
+// regression upstream can never leak private material into Artanis's context.
+const boundedSafeRefs = (
+  refs: ReadonlyArray<string>,
+  maxRefs: number,
+): ReadonlyArray<string> =>
+  refs.filter(ref => dispatchFieldIsSafe(ref)).slice(0, maxRefs)
+
+const formatRefLine = (
+  label: string,
+  refs: ReadonlyArray<string>,
+): string =>
+  refs.length === 0 ? `${label}: (none)` : `${label}: ${refs.join(', ')}`
+
+const verifyResultLabel = (
+  result: ArtanisPylonJobVerifyResult,
+): string =>
+  result === 'pass'
+    ? 'PASS (accepted closeout, proof retained, no blockers)'
+    : result === 'fail'
+      ? 'FAIL (rejected/blocked closeout)'
+      : 'in progress / not yet closed out (unknown)'
+
+// get_pylon_job_status(assignmentRef) — reads the public-safe closeout/proof
+// status for ONE owner-scoped assignment via the injected reader. Returns a
+// bounded text block: state, lease state, closeout state, verify/proof verdict,
+// a redacted failure summary, and public-safe evidence refs. Honest absence: a
+// missing/other-owner assignment reads "(no assignment found …)"; a read failure
+// reads "(could not read status …)"; an absent/unsafe ref is blocked. Never
+// invents a status. Side-effect-free.
+export const makeArtanisGetPylonJobStatusTool = (
+  config: ArtanisPylonJobStatusConfig = {},
+): ArtanisOperatorReadTool => {
+  const reader = config.reader
+  const maxRefs = config.maxRefs ?? ARTANIS_JOB_STATUS_MAX_REFS
+
+  return {
+    definition: {
+      description:
+        'Read the public-safe closeout/proof STATUS of ONE Pylon/Codex assignment by its assignment ref. Returns the lifecycle state, lease state, whether a worker closeout was submitted, the verify/proof verdict (PASS/FAIL/in-progress), a redacted failure summary when it failed, and public-safe evidence refs. Use this to verify whether a delegated burndown task you dispatched actually passed, read the failing check, and decide the next dispatch. Owner-scoped (only your own linked-Pylon assignments); a missing/other-owner assignment reads as "(no assignment found …)".',
+      name: 'get_pylon_job_status',
+      parameters: {
+        additionalProperties: false,
+        properties: {
+          assignmentRef: {
+            description:
+              'The assignment ref to read, e.g. "assignment.public.pylon_api.…". A public-safe ref string; no secrets or local paths.',
+            type: 'string',
+          },
+        },
+        required: ['assignmentRef'],
+        type: 'object',
+      },
+    },
+    execute: (args: unknown) =>
+      Effect.gen(function* () {
+        const parsed = parseArtanisAssignmentRef(args)
+        if (parsed.kind === 'absent') {
+          return '(invalid arguments: a string "assignmentRef" is required)'
+        }
+        if (parsed.kind === 'invalid') {
+          return `(blocked: "${parsed.raw}" is not an allowed public-safe assignment ref)`
+        }
+        const ref = parsed.value
+
+        if (reader === undefined) {
+          return `(could not read status for "${ref}": no status reader is wired)`
+        }
+
+        const exit = yield* Effect.exit(Effect.tryPromise(() => reader(ref)))
+        if (exit._tag === 'Failure') {
+          return `(could not read status for "${ref}")`
+        }
+        const status = exit.value
+        if (status === null) {
+          return `(no assignment found for "${ref}")`
+        }
+
+        const lines: Array<string> = [
+          `Pylon job status for ${status.assignmentRef}:`,
+          `- Job kind: ${status.jobKind}`,
+          `- State: ${status.state} (lease: ${status.leaseState})`,
+          `- Closeout: ${status.closeoutSubmitted ? 'submitted' : 'not yet submitted'}`,
+          `- Proof observed: ${status.proofObserved ? 'yes' : 'no'}`,
+          `- Verify/proof: ${verifyResultLabel(status.verifyResult)}`,
+        ]
+        if (status.failureSummary !== null && status.failureSummary !== '') {
+          // The summary is built from public-safe refs only; defensively gate it.
+          lines.push(
+            `- Failure summary: ${
+              dispatchFieldIsSafe(status.failureSummary)
+                ? status.failureSummary
+                : '(redacted)'
+            }`,
+          )
+        }
+        lines.push(
+          formatRefLine(
+            '- Artifact refs',
+            boundedSafeRefs(status.artifactRefs, maxRefs),
+          ),
+          formatRefLine(
+            '- Proof refs',
+            boundedSafeRefs(status.proofRefs, maxRefs),
+          ),
+          formatRefLine(
+            '- Closeout refs',
+            boundedSafeRefs(status.closeoutRefs, maxRefs),
+          ),
+          formatRefLine(
+            '- Rejection refs',
+            boundedSafeRefs(status.rejectionRefs, maxRefs),
+          ),
+          formatRefLine(
+            '- Blocker refs',
+            boundedSafeRefs(status.blockerRefs, maxRefs),
+          ),
+          `- Last updated: ${status.updatedAt}`,
+        )
+        return lines.join('\n')
+      }),
+    kind: 'read',
+  }
+}
+
+// ---------------------------------------------------------------------------
 // #6366 — dispatch_codex_task (GATED: pylon_job_dispatch).
 // ---------------------------------------------------------------------------
 //
@@ -845,18 +1084,22 @@ export const makeArtanisGetNetworkStatsTool = (
 // ---------------------------------------------------------------------------
 
 // Build the standard Artanis operator tool set: the two public repo-read tools
-// (#6365), the public issue-read tool (read_github_issue), plus the gated Codex
+// (#6365), the public issue-read tool (read_github_issue), the owner-scoped
+// Pylon job-status read tool (get_pylon_job_status), plus the gated Codex
 // dispatch tool (#6366). The route wires this into `artanisOperatorTurn`,
 // optionally passing a `dispatchExecution` seam so the gated dispatch can
 // execute behind an effective owner approval; with no seam the dispatch tool
 // stays plan-only. `issueRead` defaults to the same fetch/owner/repo as
-// `repoRead` so a single test/override seam covers all the read tools; pass it
-// explicitly only when the issue API needs a different fetch stub than the
-// raw-content fetch.
+// `repoRead` so a single test/override seam covers all the GitHub read tools;
+// pass it explicitly only when the issue API needs a different fetch stub than
+// the raw-content fetch. `pylonJobStatus.reader` is the owner-scoped status
+// reader; with no reader wired the status tool returns an honest
+// "(could not read status …)" rather than inventing a status.
 export const makeArtanisOperatorTools = (
   config: Readonly<{
     repoRead?: ArtanisRepoReadConfig | undefined
     issueRead?: ArtanisIssueReadConfig | undefined
+    pylonJobStatus?: ArtanisPylonJobStatusConfig | undefined
     defaultBranch?: string | undefined
     networkStats?: ArtanisGetNetworkStatsConfig | undefined
     dispatchExecution?: ArtanisDispatchExecution | undefined
@@ -872,6 +1115,7 @@ export const makeArtanisOperatorTools = (
     makeArtanisListRepoDirTool(config.repoRead),
     makeArtanisReadGithubIssueTool(issueRead),
     makeArtanisGetNetworkStatsTool(config.networkStats),
+    makeArtanisGetPylonJobStatusTool(config.pylonJobStatus),
     makeArtanisDispatchCodexTaskTool({
       defaultBranch: config.defaultBranch,
       execution: config.dispatchExecution,

@@ -694,3 +694,209 @@ describe('POST /api/operator/artanis/chat — read_github_issue acceptance', () 
   })
 })
 
+// ---------------------------------------------------------------------------
+// get_pylon_job_status acceptance — Artanis's iteration-3 self-improvement
+// capability drives the REAL bounded tool-calling loop through the chat
+// endpoint. He pulls the public-safe closeout/proof status of ONE specific
+// owner-scoped assignment ref, reads the verify verdict, and summarizes it —
+// owner-scoped, Khala-powered, NON-RISKY (a read tool, never the approval gate).
+// ---------------------------------------------------------------------------
+
+const KNOWN_ASSIGNMENT_REF = 'assignment.public.pylon_api.known_001'
+
+// A scripted Khala client: round 1 asks for get_pylon_job_status(assignmentRef);
+// round 2 reads the tool result and replies with the State + verify lines it
+// received. The reply only carries the real status IF the loop executed the tool
+// and fed the result back — that is the end-to-end acceptance.
+const makeStatusThenSummarizeKhalaClient = (assignmentRef: string) => {
+  const requests: Array<InferenceRequest> = []
+  let round = 0
+  const client = (request: InferenceRequest) => {
+    requests.push(request)
+    round += 1
+    if (round === 1) {
+      return Effect.succeed(
+        toolCallResult(
+          'get_pylon_job_status',
+          JSON.stringify({ assignmentRef }),
+        ),
+      )
+    }
+    const toolResult = lastToolResultContent(request) ?? ''
+    const stateLine =
+      toolResult.split('\n').find(line => line.startsWith('- State:')) ?? ''
+    const verifyLine =
+      toolResult.split('\n').find(line => line.startsWith('- Verify/proof:')) ??
+      ''
+    return Effect.succeed({
+      content: `Status for that assignment. ${stateLine} ${verifyLine}`,
+      finishReason: 'stop' as const,
+      servedModel:
+        request.model === 'openagents/khala' ? 'gpt-oss-120b' : 'wrong',
+      usage: { completionTokens: 20, promptTokens: 300, totalTokens: 320 },
+    } satisfies InferenceResult)
+  }
+  return { client, requests }
+}
+
+describe('POST /api/operator/artanis/chat — get_pylon_job_status acceptance', () => {
+  test('reads ONE assignment status through the loop and summarizes its real verdict (non-risky, executed)', async () => {
+    const { client, requests } =
+      makeStatusThenSummarizeKhalaClient(KNOWN_ASSIGNMENT_REF)
+    const { deps } = baseDeps({
+      makeKhalaClient: () => client,
+      makeOperatorTools: () =>
+        makeArtanisOperatorTools({
+          pylonJobStatus: {
+            // Injected reader: resolves the KNOWN ref to a public-safe PASS
+            // status; any other ref is honest absence.
+            reader: async ref =>
+              ref === KNOWN_ASSIGNMENT_REF
+                ? {
+                    artifactRefs: ['artifact.public.pylon_assignment.001'],
+                    assignmentRef: KNOWN_ASSIGNMENT_REF,
+                    blockerRefs: [],
+                    closeoutRefs: ['closeout.public.pylon_assignment.001'],
+                    closeoutSubmitted: true,
+                    failureSummary: null,
+                    jobKind: 'codex_agent_task',
+                    leaseState: 'terminal',
+                    proofObserved: true,
+                    proofRefs: ['proof.public.pylon_assignment.001'],
+                    rejectionRefs: [],
+                    state: 'closeout_submitted',
+                    updatedAt: 'a few minutes ago',
+                    verifyResult: 'pass',
+                  }
+                : null,
+          },
+        }),
+    })
+
+    const response = await runRoute(
+      deps,
+      post({
+        messages: [
+          {
+            content: `What is the status of assignment ${KNOWN_ASSIGNMENT_REF}?`,
+            role: 'user',
+          },
+        ],
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    const json = (await response.json()) as Record<string, unknown>
+
+    // The loop executed get_pylon_job_status — executed:true, NON-RISKY (a read
+    // tool: not deferred to the approval gate, no risky-action kind).
+    const invocations = json.toolInvocations as ReadonlyArray<{
+      name: string
+      executed: boolean
+      deferredToApprovalGate: boolean
+      riskyActionKind: string | null
+    }>
+    const statusInvocation = invocations.find(
+      invocation => invocation.name === 'get_pylon_job_status',
+    )
+    expect(statusInvocation).toBeDefined()
+    expect(statusInvocation?.executed).toBe(true)
+    expect(statusInvocation?.deferredToApprovalGate).toBe(false)
+    expect(statusInvocation?.riskyActionKind).toBeNull()
+
+    // At least two Khala calls (request the tool -> feed result -> reply).
+    expect(json.iterations as number).toBeGreaterThanOrEqual(2)
+
+    // The final reply summarizes the REAL status sourced from the tool: the
+    // closeout state and the verify PASS verdict — not invented.
+    expect(json.reply as string).toContain('closeout_submitted')
+    expect(json.reply as string).toContain('PASS')
+
+    // Persona separation holds; dogfood via Khala; not deferred to a gate.
+    expect((json.persona as { satisfied: boolean }).satisfied).toBe(true)
+    expect(json.servedVia).toBe('openagents_khala')
+    expect(json.requestedModel).toBe('openagents/khala')
+    expect(json.deferredToApprovalGate).toBe(false)
+
+    // The second Khala request carried the real status block back into context.
+    expect(
+      requests[1]?.messages.some(
+        message =>
+          message.role === 'tool' &&
+          message.content.includes(
+            `Pylon job status for ${KNOWN_ASSIGNMENT_REF}`,
+          ) &&
+          message.content.includes('proof.public.pylon_assignment.001'),
+      ),
+    ).toBe(true)
+  })
+
+  test('an other-owner / unknown assignment reads as honest "(no assignment found …)"', async () => {
+    // A client that echoes the FULL tool result so the honest not-found string
+    // is observable both in the loop context and the final reply.
+    const requests: Array<InferenceRequest> = []
+    let round = 0
+    const client = (request: InferenceRequest) => {
+      requests.push(request)
+      round += 1
+      if (round === 1) {
+        return Effect.succeed(
+          toolCallResult(
+            'get_pylon_job_status',
+            JSON.stringify({
+              assignmentRef: 'assignment.public.pylon_api.not_mine',
+            }),
+          ),
+        )
+      }
+      return Effect.succeed({
+        content: lastToolResultContent(request) ?? '',
+        finishReason: 'stop' as const,
+        servedModel: 'gpt-oss-120b',
+        usage: { completionTokens: 5, promptTokens: 50, totalTokens: 55 },
+      } satisfies InferenceResult)
+    }
+    const { deps } = baseDeps({
+      makeKhalaClient: () => client,
+      makeOperatorTools: () =>
+        makeArtanisOperatorTools({
+          pylonJobStatus: { reader: async () => null },
+        }),
+    })
+
+    const response = await runRoute(
+      deps,
+      post({
+        messages: [
+          {
+            content:
+              'What is the status of assignment assignment.public.pylon_api.not_mine?',
+            role: 'user',
+          },
+        ],
+      }),
+    )
+    expect(response.status).toBe(200)
+    const json = (await response.json()) as Record<string, unknown>
+    const invocations = json.toolInvocations as ReadonlyArray<{
+      name: string
+      executed: boolean
+    }>
+    expect(
+      invocations.find(
+        invocation => invocation.name === 'get_pylon_job_status',
+      )?.executed,
+    ).toBe(true)
+    expect(json.reply as string).toContain('no assignment found')
+    expect(
+      requests[1]?.messages.some(
+        message =>
+          message.role === 'tool' &&
+          message.content.includes(
+            '(no assignment found for "assignment.public.pylon_api.not_mine")',
+          ),
+      ),
+    ).toBe(true)
+  })
+})
+
