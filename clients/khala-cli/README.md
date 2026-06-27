@@ -166,6 +166,15 @@ that check.
 
 ## Changelog
 
+### v0.1.18 - Jun 27, 2026, 8:05:24 AM CDT
+
+- Stops `khala info` from printing raw agent tokens or token-bearing trace URLs.
+- Keeps `khala info` diagnostic-only: it no longer mints a new trace token just
+  to show session details.
+- Uses the stored `khala login` token for `khala --api` and
+  `khala spawn --strategy pylon` when no `--token` flag or
+  `OPENAGENTS_AGENT_TOKEN` is provided.
+
 ### v0.1.17 - Jun 27, 2026, 7:42:24 AM CDT
 
 - Adds supervised Khala spawn workers for local Codex-backed subagent fanout.

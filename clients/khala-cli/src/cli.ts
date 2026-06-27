@@ -28,7 +28,7 @@ import {
   type KhalaSpawnWorkflow,
 } from "./spawn.js"
 import { renderMarkdownForTerminal, renderReasoningMarkdownDeltaForTerminal, terminalStyle } from "./terminal.js"
-import { clearStoredAgentToken, ensureStoredAgentToken, traceTokenPath } from "./token-store.js"
+import { clearStoredAgentToken, ensureStoredAgentToken, readStoredAgentToken, traceTokenPath } from "./token-store.js"
 import { DEFAULT_BASE_URL, type ChatMode, type ChatTurnMetadata, type KhalaChatMessage, type KhalaCliError, type KhalaTokensResponse } from "./types.js"
 import { startKhalaAutoUpdate } from "./updater.js"
 
@@ -238,6 +238,7 @@ export async function runKhalaCli(argv: ReadonlyArray<string>, env: Record<strin
       const prompt = args.prompt ?? await readStdinPrompt()
       const text = await runOneTurn(
         args,
+        env,
         [],
         prompt,
         args.json ? undefined : (delta) => process.stdout.write(delta),
@@ -538,7 +539,8 @@ async function runInteractive(args: ParsedArgs, env: Record<string, string | und
       continue
     }
 
-    const routed = await maybeRunLocalCodexTurn(args, env, messages, prompt)
+    const resolvedArgs = await withStoredApiToken(args, env)
+    const routed = await maybeRunLocalCodexTurn(resolvedArgs, env, messages, prompt)
     if (routed.handled) {
       messages = appendAssistantTurn(
         prepareUserTurn(messages, prompt),
@@ -558,9 +560,9 @@ async function runInteractive(args: ParsedArgs, env: Record<string, string | und
       let markdownStreamBuffer = ""
       let reasoningStreamBuffer = ""
       const result = await Effect.runPromise(runChatTurn({
-        mode: args.mode,
-        baseUrl: args.baseUrl,
-        token: args.token,
+        mode: resolvedArgs.mode,
+        baseUrl: resolvedArgs.baseUrl,
+        token: resolvedArgs.token,
         messages: prepared,
         onDelta: (delta) => {
           beforeTurnOutput()
@@ -811,6 +813,7 @@ async function handleSlashCommand(
 
 async function runOneTurn(
   args: ParsedArgs,
+  env: Record<string, string | undefined>,
   history: ReadonlyArray<KhalaChatMessage>,
   prompt: string,
   onDelta?: (text: string) => void,
@@ -819,7 +822,7 @@ async function runOneTurn(
   if (args.channel === "artanis") {
     const token = await ensureStoredAgentToken({
       baseUrl: args.baseUrl,
-      env: Bun.env,
+      env,
       explicitToken: args.token,
     })
     const result = await Effect.runPromise(runArtanisTurn({
@@ -831,7 +834,8 @@ async function runOneTurn(
     return result.text
   }
 
-  const routed = await maybeRunLocalCodexTurn(args, Bun.env, history, prompt, {
+  const resolvedArgs = await withStoredApiToken(args, env)
+  const routed = await maybeRunLocalCodexTurn(resolvedArgs, env, history, prompt, {
     silent: args.json,
     onEvent: onDelta === undefined
       ? undefined
@@ -843,9 +847,9 @@ async function runOneTurn(
   if (routed.handled) return routed.text
   const messages = prepareUserTurn(history, prompt)
   const result = await Effect.runPromise(runChatTurn({
-    mode: args.mode,
-    baseUrl: args.baseUrl,
-    token: args.token,
+    mode: resolvedArgs.mode,
+    baseUrl: resolvedArgs.baseUrl,
+    token: resolvedArgs.token,
     messages,
     onDelta,
     onReasoning,
@@ -854,6 +858,24 @@ async function runOneTurn(
     },
   }))
   return result.text
+}
+
+async function withStoredApiToken(
+  args: ParsedArgs,
+  env: Record<string, string | undefined>,
+): Promise<ParsedArgs> {
+  if (args.mode !== "api") return args
+  const storedToken = await resolveConfiguredAgentToken(args.token, env)
+  return storedToken === undefined ? args : { ...args, token: storedToken }
+}
+
+async function resolveConfiguredAgentToken(
+  token: string | undefined,
+  env: Record<string, string | undefined>,
+): Promise<string | undefined> {
+  const explicit = token?.trim()
+  if (explicit !== undefined && explicit.length > 0) return explicit
+  return await readStoredAgentToken(env)
 }
 
 async function maybeRunLocalCodexTurn(
@@ -988,6 +1010,7 @@ async function runSpawnCommand(
   if (objective === undefined || objective.length === 0) {
     throw new Error("khala spawn requires an objective, for example: khala spawn --count 5 --objective \"audit this workspace\"")
   }
+  const token = await resolveConfiguredAgentToken(args.token, env)
   return runKhalaSpawn({
     baseUrl: args.baseUrl,
     ...(args.spawnBranch === undefined ? {} : { branch: args.spawnBranch }),
@@ -1003,7 +1026,7 @@ async function runSpawnCommand(
     ...(args.spawnRepo === undefined ? {} : { repo: args.spawnRepo }),
     strategy: args.spawnStrategy,
     ...(args.spawnTimeoutMs === undefined ? {} : { timeoutMs: args.spawnTimeoutMs }),
-    token: args.token,
+    ...(token === undefined ? {} : { token }),
     ...(args.spawnVerify === undefined ? {} : { verify: args.spawnVerify }),
     workflow: args.spawnWorkflow,
   })
@@ -1409,13 +1432,17 @@ async function formatInfo(input: {
   }
 
   try {
-    const token = await ensureStoredAgentToken({
-      baseUrl: input.args.baseUrl,
-      env: input.env,
-      explicitToken: input.args.token,
-    })
-    lines.push(`traces: ${baseUrlFor(input.args.baseUrl)}/traces?token=${encodeURIComponent(token)}`)
-    lines.push(`token store: ${traceTokenPath(input.env)}`)
+    const explicitToken = input.args.token?.trim()
+    const storedToken = explicitToken === undefined || explicitToken.length === 0
+      ? await readStoredAgentToken(input.env)
+      : undefined
+    if ((explicitToken !== undefined && explicitToken.length > 0) || storedToken !== undefined) {
+      lines.push(`traces: agent token configured for ${baseUrlFor(input.args.baseUrl)}/traces (token redacted; validity not checked)`)
+      lines.push(`token store: ${explicitToken === undefined || explicitToken.length === 0 ? traceTokenPath(input.env) : "explicit token provided"}`)
+    } else {
+      lines.push(`traces: sign in with khala login to view owner-only traces at ${baseUrlFor(input.args.baseUrl)}/traces`)
+      lines.push(`token store: not configured (${traceTokenPath(input.env)})`)
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     lines.push(`traces: unavailable (${message})`)
@@ -1425,13 +1452,31 @@ async function formatInfo(input: {
 
 function resolveTraceUrl(baseUrl: string, info: ChatTurnMetadata | undefined): string | undefined {
   if (info?.traceUrl !== undefined) {
-    if (info.traceUrl.startsWith("http://") || info.traceUrl.startsWith("https://")) return info.traceUrl
-    return `${baseUrlFor(baseUrl)}${info.traceUrl.startsWith("/") ? "" : "/"}${info.traceUrl}`
+    const traceUrl = info.traceUrl.startsWith("http://") || info.traceUrl.startsWith("https://")
+      ? info.traceUrl
+      : `${baseUrlFor(baseUrl)}${info.traceUrl.startsWith("/") ? "" : "/"}${info.traceUrl}`
+    return redactTraceTokenQuery(traceUrl)
   }
   if (info?.traceUuid !== undefined) {
     return `${baseUrlFor(baseUrl)}/trace/${encodeURIComponent(info.traceUuid)}`
   }
   return undefined
+}
+
+function redactTraceTokenQuery(traceUrl: string): string {
+  try {
+    const parsed = new URL(traceUrl)
+    if (!parsed.searchParams.has("token")) return traceUrl
+    parsed.searchParams.delete("token")
+    return `${parsed.toString()} (token redacted)`
+  } catch {
+    if (!/[?&]token=/i.test(traceUrl)) return traceUrl
+    const redacted = traceUrl
+      .replace(/([?&])token=[^&#]*&?/i, "$1")
+      .replace(/[?&]($|#)/, "$1")
+      .replace(/[?&]$/, "")
+    return `${redacted} (token redacted)`
+  }
 }
 
 function baseUrlFor(baseUrl: string): string {

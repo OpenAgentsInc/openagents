@@ -20,6 +20,15 @@ export const KHALA_CLI_VERSION = packageJson.version
 
 export const KHALA_CHANGELOG: ReadonlyArray<KhalaChangelogEntry> = [
   {
+    version: "0.1.18",
+    releasedAt: "2026-06-27T13:05:24.000Z",
+    bullets: [
+      "`khala info` no longer prints raw agent tokens or token-bearing trace URLs; it reports configured trace access with the token redacted.",
+      "`khala info` no longer mints a new trace token just to show diagnostics.",
+      "`khala --api` and `khala spawn --strategy pylon` now honor the stored `khala login` token when no `--token` flag or `OPENAGENTS_AGENT_TOKEN` is provided.",
+    ],
+  },
+  {
     version: "0.1.17",
     releasedAt: "2026-06-27T12:42:24.000Z",
     bullets: [
