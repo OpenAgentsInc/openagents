@@ -28,6 +28,11 @@ export type WorkerBindings = Readonly<{
   // offset log. Absent (or the INFERENCE_DURABLE_STREAM_ENABLED flag off) => the
   // streaming path is today's non-durable pass-through (fail-safe).
   INFERENCE_DURABLE_STREAM?: DurableObjectNamespace
+  // GLM internal-stress scheduler (#6318). Optional SQLite-class DO namespace;
+  // one named DO coordinates short-lived `internal_stress` leases so external
+  // demand can preempt stress across Worker isolates. Absent => same-isolate
+  // in-memory preemption only.
+  GLM_STRESS_SCHEDULER?: DurableObjectNamespace
   MARKET_RELAY_SERVICE?: Fetcher
   ARTIFACTS: R2Bucket
   RUNNER_EVENTS: Queue

@@ -368,6 +368,13 @@
         "name": "INFERENCE_DURABLE_STREAM",
         "class_name": "DurableInferenceStreamObject",
       },
+      // GLM internal-stress scheduler (#6318). One named SQLite-class DO
+      // coordinates short-lived stress leases so external traffic can preempt
+      // internal stress across Worker isolates.
+      {
+        "name": "GLM_STRESS_SCHEDULER",
+        "class_name": "GlmStressSchedulerDurableObject",
+      },
     ],
   },
   "migrations": [
@@ -390,6 +397,10 @@
     {
       "tag": "v5",
       "new_sqlite_classes": ["DurableInferenceStreamObject"],
+    },
+    {
+      "tag": "v6",
+      "new_sqlite_classes": ["GlmStressSchedulerDurableObject"],
     },
   ],
   "env": {
@@ -527,6 +538,10 @@
             "name": "INFERENCE_DURABLE_STREAM",
             "class_name": "DurableInferenceStreamObject",
           },
+          {
+            "name": "GLM_STRESS_SCHEDULER",
+            "class_name": "GlmStressSchedulerDurableObject",
+          },
         ],
       },
       "migrations": [
@@ -537,6 +552,10 @@
         {
           "tag": "v2",
           "new_sqlite_classes": ["DurableInferenceStreamObject"],
+        },
+        {
+          "tag": "v3",
+          "new_sqlite_classes": ["GlmStressSchedulerDurableObject"],
         },
       ],
     },

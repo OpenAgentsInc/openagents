@@ -189,6 +189,43 @@ archive containing `99` SDK events / `3,399,098` bytes. The reviewed integration
 landed as commit `7a3c97a737` and was commented back to issue #6311 without
 closing it, because live fleet durability remained degraded.
 
+## Current Follow-Up Delegation Failure Mode
+
+The same runbook was attempted again for the #6318 scheduler follow-up after the
+local Pylon was brought online from the clean worktree:
+
+- `codex accounts list --json` showed the default local Codex account ready.
+- `provider go-online --json` returned Pylon ref `pylon.33afd48282a649047e3a`
+  with `capacity.coding.codex.available=1`.
+- `presence heartbeat --json` returned a fresh registered heartbeat.
+- Two client-side request-shape mistakes were caught before dispatch:
+  an abbreviated commit SHA and an unsupported verifier shape.
+
+After correcting those, the typed `khala request --workflow codex_agent_task`
+failed repeatedly with HTTP `503`:
+
+```text
+pylon khala request failed (503): The Khala coding dispatch gate could not read
+linked Pylon capacity right now. This is a transient gate failure, not an
+account problem -- retry shortly.
+```
+
+This is distinct from the earlier runbook success. The local executor and Codex
+credential were ready; the blocking condition was the production dispatch gate's
+capacity-read path, before an assignment ref was created. Because no assignment
+was created, there was no `assignment run-no-spend`, no Codex turn closeout, no
+Pylon/Codex exact token row, and no owner-only Pylon/Codex trace for this failed
+attempt.
+
+Operationally, this is the condition other agents should recognize:
+
+- keep the clean-worktree, daemon-disabled Pylon setup;
+- rerun heartbeat immediately before dispatch;
+- if the gate still returns this `503`, do not invent a model fallback or count
+  it as a Pylon/Codex run;
+- continue local supervised implementation only when the user has asked not to
+  stall, and record the gate failure in the audit/issue comment.
+
 ## Token Accounting
 
 The assignment has one exact downstream Codex token row:
@@ -253,6 +290,11 @@ So the visible counter bump happens at the end of the Codex turn/closeout path,
 when exact SDK usage has been received and accepted. The counter does not
 increment once per streamed event chunk and does not move just because the local
 runner is active.
+
+The later #6318 live stress/external probe showed the same shape for normal
+gateway chat traffic: the public counter moved after the metered requests
+closed and exact usage rows existed. It did not provide a visible per-second or
+per-chunk in-flight increment while the stress stream was still active.
 
 Streaming raw SDK event chunks are posted during the run to:
 

@@ -468,7 +468,12 @@ import {
   buildKhalaTokensServedDelta,
   publishKhalaTokensServedDelta,
 } from './inference/khala-tokens-served-sync'
-import { makeInternalStressPreemptionRegistry } from './inference/internal-stress-preemption'
+import {
+  type InternalStressSchedulerNamespace,
+  makeInternalStressPreemptionCoordinatorDO,
+  makeInternalStressPreemptionRegistry,
+} from './inference/internal-stress-preemption'
+export { GlmStressSchedulerDurableObject } from './inference/internal-stress-preemption-do'
 import { makeLedgerMeteringHook } from './inference/metering-hook'
 import {
   FIREWORKS_ADAPTER_ID,
@@ -11444,6 +11449,12 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       )
       const laneArming = resolveSupplyLaneArming(env)
       const routeAdmission = hydraliskGlm52RouteAdmissionForEnv(env)
+      const internalStressCoordinator =
+        env.GLM_STRESS_SCHEDULER === undefined
+          ? undefined
+          : makeInternalStressPreemptionCoordinatorDO(
+              env.GLM_STRESS_SCHEDULER as unknown as InternalStressSchedulerNamespace,
+            )
       return handleChatCompletions(request, {
         authenticate: async authRequest => {
           const token = readBearerToken(authRequest)
@@ -11623,6 +11634,9 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         },
         ...(routeAdmission === undefined ? {} : { routeAdmission }),
         internalStressPreemption,
+        ...(internalStressCoordinator === undefined
+          ? {}
+          : { internalStressCoordinator }),
         // Provider serving policy (public_paid_model_gateway_missing on
         // api.hosted_gemini.v1): the SAME presence-derived lane arming the
         // public catalog (/v1/models) and the pre-purchase quote (/v1/quote)

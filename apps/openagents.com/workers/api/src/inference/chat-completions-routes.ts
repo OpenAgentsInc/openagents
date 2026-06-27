@@ -85,7 +85,10 @@ import {
   type SpendCapDecision,
 } from './inference-abuse-controls'
 import { applyInternalAccountAttribution } from './inference-internal-account'
-import type { InternalStressPreemptionRegistry } from './internal-stress-preemption'
+import type {
+  InternalStressPreemptionCoordinator,
+  InternalStressPreemptionRegistry,
+} from './internal-stress-preemption'
 import { agentUserIdFromAccountRef } from './inference-owner-identity'
 import { type PremiumAccessDecision } from './inference-premium-allowlist'
 import { resolveKhalaChatTraceOptIn } from './khala-chat-trace-emitter'
@@ -492,6 +495,7 @@ export type ChatCompletionsDeps = Readonly<{
   dispatch?: ChatCompletionsDispatchDeps | undefined
   routeAdmission?: Omit<DispatchRouteAdmissionPolicy, 'demandClass'> | undefined
   internalStressPreemption?: InternalStressPreemptionRegistry | undefined
+  internalStressCoordinator?: InternalStressPreemptionCoordinator | undefined
   // Defaults to the no-op/log metering stub. The Worker supplies the live
   // ledger hook (`makeLedgerMeteringHook`, #5477) when the gateway is enabled.
   meteringHook?: MeteringHook
@@ -2848,16 +2852,39 @@ export const handleChatCompletions = (
     const routeDemandClass = routeDemandClassFromAttribution(requestAttribution)
     const preemptionAbortController =
       routeDemandClass === 'internal_stress' &&
-      deps.internalStressPreemption !== undefined
+      (deps.internalStressPreemption !== undefined ||
+        deps.internalStressCoordinator !== undefined)
         ? new AbortController()
         : undefined
-    const releasePreemptionSlot =
+    const releasePreemptionSlot: () => Promise<void> =
       preemptionAbortController === undefined
-        ? () => {}
-        : deps.internalStressPreemption!.register({
-            abortController: preemptionAbortController,
-            requestId: responseId,
-          })
+        ? async () => {}
+        : deps.internalStressCoordinator !== undefined
+          ? yield* Effect.tryPromise({
+              catch: () => 'internal_stress_scheduler_register_failed' as const,
+              try: () =>
+                deps.internalStressCoordinator!.register({
+                  abortController: preemptionAbortController,
+                  nowMs: requestStartMs,
+                  requestId: responseId,
+                }),
+            }).pipe(
+              Effect.catch(() =>
+                Effect.sync(() => {
+                  preemptionAbortController.abort(
+                    'internal_stress_global_scheduler_unavailable',
+                  )
+                  return async () => {}
+                }),
+              ),
+            )
+          : (() => {
+              const release = deps.internalStressPreemption!.register({
+                abortController: preemptionAbortController,
+                requestId: responseId,
+              })
+              return async () => release()
+            })()
     const inferenceRequest = toInferenceRequest(
       body,
       rawBody,
@@ -2879,21 +2906,51 @@ export const handleChatCompletions = (
     // Dispatch deps for the overflow loop. The plan is pinned to `plannedIds`
     // (already resolved from lanePlan/router above) so selection + dispatch use
     // exactly the same ordering.
+    const coordinatorSnapshot =
+      routeDemandClass === 'external' &&
+      deps.internalStressCoordinator !== undefined
+        ? yield* Effect.tryPromise({
+            catch: () => undefined,
+            try: () =>
+              deps.internalStressCoordinator!.snapshot({
+                nowMs: nowEpochMillis(),
+              }),
+          }).pipe(Effect.orElseSucceed(() => undefined))
+        : undefined
+    const effectiveRouteAdmission =
+      routeDemandClass === 'external' &&
+      coordinatorSnapshot !== undefined &&
+      coordinatorSnapshot.activeStressCount > 0
+        ? {
+            reason: 'glm_global_internal_stress_active',
+            reservedExternalHeadroomAvailable: false,
+          }
+        : deps.routeAdmission
     const preemptionPolicy =
       deps.dispatch?.preemption ??
-      (deps.internalStressPreemption === undefined ||
-      deps.routeAdmission === undefined
+      ((deps.internalStressPreemption === undefined &&
+        deps.internalStressCoordinator === undefined) ||
+      effectiveRouteAdmission === undefined
         ? undefined
         : {
             preempt: () =>
-              Effect.sync(() =>
-                deps.internalStressPreemption!.preempt({
-                  reason: 'external_reserved_headroom_unavailable',
-                }),
-              ),
-            reason: deps.routeAdmission.reason,
+              deps.internalStressCoordinator !== undefined
+                ? Effect.tryPromise({
+                    catch: () => undefined,
+                    try: () =>
+                      deps.internalStressCoordinator!.preempt({
+                        nowMs: nowEpochMillis(),
+                        reason: 'external_reserved_headroom_unavailable',
+                      }),
+                  }).pipe(Effect.orElseSucceed(() => undefined))
+                : Effect.sync(() =>
+                    deps.internalStressPreemption!.preempt({
+                      reason: 'external_reserved_headroom_unavailable',
+                    }),
+                  ),
+            reason: effectiveRouteAdmission.reason,
             reservedExternalHeadroomAvailable:
-              deps.routeAdmission.reservedExternalHeadroomAvailable,
+              effectiveRouteAdmission.reservedExternalHeadroomAvailable,
           })
     const dispatchDeps: DispatchDeps = {
       registry: deps.registry,
@@ -2919,11 +2976,11 @@ export const handleChatCompletions = (
               demandClass: routeDemandClass,
             },
           }),
-      ...(deps.routeAdmission === undefined
+      ...(effectiveRouteAdmission === undefined
         ? {}
         : {
             admission: {
-              ...deps.routeAdmission,
+              ...effectiveRouteAdmission,
               demandClass: routeDemandClass,
             },
           }),
@@ -3020,7 +3077,7 @@ export const handleChatCompletions = (
                 yield frame
               }
             } finally {
-              releasePreemptionSlot()
+              await releasePreemptionSlot()
             }
           })() as InferenceStreamSource['frames'],
           terminal: source.terminal,
@@ -3092,7 +3149,7 @@ export const handleChatCompletions = (
       // error) must surface as the 502 it is, not be retried via the buffered
       // path (which would double-dispatch and could 524 again).
       if (sseDispatch.error.kind !== 'stream_not_supported') {
-        releasePreemptionSlot()
+        yield* Effect.promise(() => releasePreemptionSlot())
         return providerErrorResponse(sseDispatch.error)
       }
 
@@ -3108,7 +3165,7 @@ export const handleChatCompletions = (
       ).pipe(
         Effect.map(served => ({ ok: true as const, served })),
         Effect.catch(error => Effect.succeed({ error, ok: false as const })),
-        Effect.ensuring(Effect.sync(releasePreemptionSlot)),
+        Effect.ensuring(Effect.promise(() => releasePreemptionSlot())),
       )
       if (!chunks.ok) {
         return providerErrorResponse(chunks.error)
@@ -3345,7 +3402,7 @@ export const handleChatCompletions = (
     ).pipe(
       Effect.map(served => ({ ok: true as const, served })),
       Effect.catch(error => Effect.succeed({ error, ok: false as const })),
-      Effect.ensuring(Effect.sync(releasePreemptionSlot)),
+      Effect.ensuring(Effect.promise(() => releasePreemptionSlot())),
     )
     if (!result.ok) {
       return providerErrorResponse(result.error)

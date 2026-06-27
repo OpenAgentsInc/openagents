@@ -45,7 +45,10 @@ import {
   KHALA_STANDARD_GREETING,
 } from './khala-identity'
 import { NOT_MEASURED, decodeKhalaTelemetryBlock } from './khala-telemetry'
-import { makeInternalStressPreemptionRegistry } from './internal-stress-preemption'
+import {
+  type InternalStressPreemptionCoordinator,
+  makeInternalStressPreemptionRegistry,
+} from './internal-stress-preemption'
 import { type MeteringContext, type MeteringHook } from './metering-hook'
 import {
   type DispatchFailureTelemetryEvent,
@@ -1894,7 +1897,7 @@ describe('POST /v1/chat/completions', () => {
     ).toEqual({
       lane: 'open',
       requested_model: KHALA_MODEL_ID,
-      served_model: KHALA_MODEL_ID,
+      served_model: DEFAULT_GEMINI_MODEL_ID,
       verification: 'none',
       worker: VERTEX_GEMINI_ADAPTER_ID,
     })
@@ -2552,6 +2555,131 @@ describe('POST /v1/chat/completions', () => {
     expect(stressBody.error).toMatchObject({
       code: 'internal_stress_yielded',
       status: 'yielded',
+    })
+  })
+
+  test('global coordinator preempts internal_stress even when local route headroom appears available', async () => {
+    let stressStarted: (() => void) | undefined
+    const stressStartedPromise = new Promise<void>(resolve => {
+      stressStarted = resolve
+    })
+    const active = new Map<string, AbortController>()
+    const coordinator: InternalStressPreemptionCoordinator = {
+      preempt: async input => {
+        const target = [...active.entries()][0]
+        if (target === undefined) {
+          return undefined
+        }
+        const [requestId, controller] = target
+        active.delete(requestId)
+        controller.abort(input.reason)
+        return {
+          evidenceRef: `scheduler.preemption.internal_stress.${requestId}`,
+          reason: input.reason,
+          targetDemandClass: 'internal_stress',
+          targetOutcome: 'preempted_yielded',
+        }
+      },
+      register: async input => {
+        active.set(input.requestId, input.abortController)
+        return async () => {
+          if (active.get(input.requestId) === input.abortController) {
+            active.delete(input.requestId)
+          }
+        }
+      },
+      snapshot: async () => ({ activeStressCount: active.size }),
+    }
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      ...echoAdapter('primary'),
+      complete: request => {
+        if (request.priority === 'internal_stress') {
+          stressStarted?.()
+          return Effect.tryPromise({
+            catch: () =>
+              new InferenceAdapterError({
+                adapterId: 'primary',
+                kind: 'transport_error',
+                reason: 'internal_stress aborted by global coordinator',
+                retryable: true,
+              }),
+            try: () =>
+              new Promise<never>((_resolve, reject) => {
+                request.abortSignal?.addEventListener(
+                  'abort',
+                  () => reject(new Error('aborted')),
+                  { once: true },
+                )
+              }),
+          })
+        }
+        return stubEchoAdapter.complete(request)
+      },
+    })
+
+    const stressPromise = run(
+      handleChatCompletions(
+        chatRequest(helloBody, {
+          headers: {
+            [INFERENCE_DEMAND_KIND_HEADER]: 'internal_stress',
+            [INFERENCE_DEMAND_SOURCE_HEADER]: 'glm-saturation',
+          },
+        }),
+        baseDeps({
+          internalStressCoordinator: coordinator,
+          lanePlan: () => ['primary'],
+          registry,
+        }),
+      ),
+    )
+    await stressStartedPromise
+
+    const externalResponse = await run(
+      handleChatCompletions(
+        chatRequest(helloBody, {
+          headers: {
+            [INFERENCE_DEMAND_KIND_HEADER]: 'external',
+            [INFERENCE_DEMAND_SOURCE_HEADER]: 'public-api',
+          },
+        }),
+        baseDeps({
+          internalStressCoordinator: coordinator,
+          lanePlan: () => ['primary'],
+          registry,
+          routeAdmission: {
+            reason: 'glm_reserved_external_headroom_available',
+            reservedExternalHeadroomAvailable: true,
+          },
+        }),
+      ),
+    )
+
+    expect(externalResponse.status).toBe(200)
+    const externalBody = (await externalResponse.json()) as {
+      openagents?: {
+        routing?: {
+          scheduler_preemption?: {
+            reason?: string
+            target_demand_class?: string
+            target_outcome?: string
+          }
+        }
+      }
+    }
+    expect(externalBody.openagents?.routing?.scheduler_preemption).toMatchObject({
+      reason: 'external_reserved_headroom_unavailable',
+      target_demand_class: 'internal_stress',
+      target_outcome: 'preempted_yielded',
+    })
+
+    const stressResponse = await stressPromise
+    expect(stressResponse.status).toBe(429)
+    expect(await stressResponse.json()).toMatchObject({
+      error: {
+        code: 'internal_stress_yielded',
+        status: 'yielded',
+      },
     })
   })
 
@@ -3244,11 +3372,12 @@ describe('POST /v1/chat/completions', () => {
       }
     }
     expect(body.model).toBe(KHALA_MODEL_ID)
-    // The prior disclosure fields are byte-for-byte unchanged (non-breaking).
+    // The disclosure block names Khala as the requested orchestrator and the
+    // concrete fast backend that served the conversational turn.
     expect(body.openagents).toMatchObject({
       lane: 'open',
       requested_model: KHALA_MODEL_ID,
-      served_model: KHALA_MODEL_ID,
+      served_model: DEFAULT_GEMINI_MODEL_ID,
       verification: 'none',
       worker: VERTEX_GEMINI_ADAPTER_ID,
     })
@@ -5934,7 +6063,7 @@ describe('Khala prefix caching (book P0-2 / #6084)', () => {
     expect(vllmCaptured).toHaveLength(0)
   })
 
-  test('6. cache-aware routing does NOT promote an unhealthy warm lane (falls back to cheapest-viable)', async () => {
+  test('6. cache-aware routing does NOT promote an unhealthy warm lane (falls back to plan-order primary)', async () => {
     const glmCaptured: Array<Captured> = []
     const geminiCaptured: Array<Captured> = []
     const registry = new InferenceProviderRegistry()
@@ -5952,9 +6081,11 @@ describe('Khala prefix caching (book P0-2 / #6084)', () => {
           user: 'sess-sick',
         }),
         baseDeps({
-          cacheWarmthOracle: () => VERTEX_GEMINI_ADAPTER_ID,
+          cacheWarmthOracle: () => HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
           laneHealthOracle: lane =>
-            lane === VERTEX_GEMINI_ADAPTER_ID ? 'unhealthy' : 'healthy',
+            lane === HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID
+              ? 'unhealthy'
+              : 'healthy',
           lanePlan: selectAdapterPlan,
           registry,
         }),
@@ -5962,9 +6093,11 @@ describe('Khala prefix caching (book P0-2 / #6084)', () => {
     )
     expect(response.status).toBe(200)
     const body = (await response.json()) as { openagents?: { worker?: string } }
-    // The sick warm lane is skipped; the cheapest-viable plan-order lane serves.
-    expect(body.openagents?.worker).toBe(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID)
-    expect(glmCaptured).toHaveLength(1)
+    // The sick GLM warm hint is skipped; conversational Khala keeps the
+    // latency-first Gemini plan-order primary.
+    expect(body.openagents?.worker).toBe(VERTEX_GEMINI_ADAPTER_ID)
+    expect(geminiCaptured).toHaveLength(1)
+    expect(glmCaptured).toHaveLength(0)
   })
 
   test('a non-Khala request gets NO gateway affinity params (rejected before dispatch)', async () => {

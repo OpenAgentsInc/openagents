@@ -484,6 +484,24 @@ This is the invariant ledger for `openagents`.
   `workers/api/src/inference/khala-chat-trace-emitter.test.ts`,
   `workers/api/src/trace-store-routes.test.ts`.
 
+## Khala Internal-Stress External-Wins Scheduler
+
+- `internal_stress` traffic is best-effort capacity exercise only. Real external
+  demand must be able to preempt in-flight `internal_stress` across Worker
+  isolates when reserved external headroom is not available.
+- The global scheduler Durable Object may store only short-lived stress lease
+  metadata: request refs, registration/expiry/preemption timestamps, bounded
+  preemption reasons, and public-safe scheduler evidence refs. It must not store
+  prompts, completions, provider payloads, bearer tokens, local paths, private
+  traces, raw SDK events, customer material, or raw backend diagnostics.
+- A scheduler outage may make `internal_stress` fail closed or yield, but it
+  must not block normal external completion dispatch. Successful
+  Khala-orchestrated `internal_stress` completions still count in the canonical
+  token ledger like any other real served-token row.
+- Regression coverage for this policy lives in
+  `workers/api/src/inference/chat-completions-routes.test.ts` and
+  `workers/api/src/inference/hydralisk-adapter.test.ts`.
+
 ## Harbor Full Trace Archive (operator-only)
 
 - Harbor / Terminal-Bench full trace archives are RAW PRIVATE EVIDENCE, not

@@ -216,9 +216,28 @@ external request, but it is **not** #6318 acceptance evidence:
 
 The route-admission bug found by this probe: Hydralisk route-admission headroom
 was still allowed to count degraded/reclaimed heartbeat states as external
-capacity. The follow-up code fix excludes degraded replicas from reserved
-external headroom. Post-deploy proof still must rerun this external-wins probe
-and require scheduler-preemption metadata before #6318 can close.
+capacity. The first follow-up code fix excluded degraded replicas from reserved
+external headroom and deployed as Worker version
+`6c81fc7a-5d3c-49af-93a4-1f6876bbed07`.
+
+The post-deploy proof against that Worker still failed #6318. In three bounded
+attempts, each pair started one authenticated `internal_stress` stream and then
+sent one authenticated external request. All three external requests returned
+HTTP `200`, and each pair moved the public token counter by `1972` tokens at
+request closeout, but none of the external responses included
+`scheduler_preemption` metadata and all three stress streams completed normally.
+That proved the remaining bug was not degraded-replica headroom alone: the
+preemption/in-flight registry was still per Worker isolate, so an external
+request landing on a different isolate could not see or abort the active stress
+stream.
+
+The current follow-up adds a SQLite Durable Object scheduler
+(`GLM_STRESS_SCHEDULER`) that stores short-lived `internal_stress` leases and
+lets external requests preempt stress across isolates. The DO stores only
+request refs, timestamps, bounded reasons, and scheduler evidence refs; it does
+not store prompts, completions, provider payloads, or raw traces. Post-deploy
+proof must rerun the same external-wins probe and require scheduler-preemption
+metadata before #6318 can close.
 
 ## 2026-06-27 Ramp Continuation
 
