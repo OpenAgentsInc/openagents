@@ -408,6 +408,15 @@ assignment with `settlementState: not_applicable` and
 `payoutClaimAllowed: false`. Paid leases are blocked unless wallet send
 readiness is explicitly proven.
 
+After an assignment closes, `pylon khala closeout <assignmentRef> --json`
+combines the owner-scoped trace-status and proof reads into one local closeout
+checklist. It fails closed unless the assignment has final owner-only trace
+evidence, owner-only raw-event refs, exact recorded own-capacity token rows, a
+closed-out lifecycle, and a green proof checklist. The narrower
+`pylon khala status --assignment-ref <assignmentRef> --json` and
+`pylon khala proof <assignmentRef> --json` commands remain available for
+inspecting the underlying projections.
+
 Before claiming a lease, `run-no-spend` refreshes Pylon presence so a short
 operator delay does not trip `blocker.assignment.presence_stale`. If that
 refresh fails and local admission is still blocked on stale presence, the

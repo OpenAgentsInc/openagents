@@ -204,6 +204,23 @@ export type PylonKhalaProofChecklist = {
   schema: "openagents.pylon.khala_proof_checklist.v0.1"
 }
 
+export type PylonKhalaCloseoutChecklist = {
+  blockerRefs: string[]
+  caveatRefs: string[]
+  items: PylonKhalaProofChecklistItem[]
+  ok: boolean
+  schema: "openagents.pylon.khala_closeout_checklist.v0.1"
+}
+
+export type PylonKhalaCloseoutResult = {
+  assignmentRef: string
+  closeoutChecklist: PylonKhalaCloseoutChecklist
+  ok: true
+  proof: PylonKhalaProofResult
+  schema: "openagents.pylon.khala_closeout.v0.1"
+  status: PylonKhalaAssignmentTraceStatusResult
+}
+
 const durablePrefix = "/v1/chat/completions/durable/"
 const codexAssignmentProofPath = "/api/pylon/codex/proof"
 const codexAssignmentTraceStatusPath = "/api/pylon/codex/trace-status"
@@ -413,6 +430,95 @@ export function evaluatePylonKhalaProofChecklist(
     items,
     ok: blockerRefs.length === 0,
     schema: "openagents.pylon.khala_proof_checklist.v0.1",
+  }
+}
+
+export function evaluatePylonKhalaCloseoutChecklist(
+  status: PylonKhalaAssignmentTraceStatusResult,
+  proof: PylonKhalaProofResult,
+): PylonKhalaCloseoutChecklist {
+  const items = [
+    checklistItem(
+      "check.khala_closeout.status_schema.codex_assignment_trace_status_v1",
+      status.schemaVersion === "openagents.pylon.codex_assignment_trace_status.v1",
+    ),
+    checklistItem(
+      "check.khala_closeout.proof_schema.codex_assignment_proof_v1",
+      proof.schemaVersion === "openagents.pylon.codex_assignment_proof.v1",
+    ),
+    checklistItem(
+      "check.khala_closeout.assignment_ref_consistent",
+      status.assignmentRef === proof.assignmentRef,
+    ),
+    checklistItem(
+      "check.khala_closeout.pylon_ref_consistent",
+      status.pylonRef === proof.pylonRef,
+    ),
+    checklistItem(
+      "check.khala_closeout.owner_consistent",
+      status.owner.agentUserRef === proof.owner.agentUserRef &&
+        status.owner.openauthUserRef === proof.owner.openauthUserRef,
+    ),
+    checklistItem(
+      "check.khala_closeout.lifecycle.closed_out",
+      status.progress.state === "closed_out" &&
+        status.progress.closeoutReady &&
+        status.lifecycle.closeoutRefs.length > 0 &&
+        status.lifecycle.rejectionRefs.length === 0,
+    ),
+    checklistItem(
+      "check.khala_closeout.trace_status.final_owner_trace_present",
+      status.progress.hasFinalTrace &&
+        status.traces.visibility === "owner_only" &&
+        status.traces.count > 0 &&
+        status.traces.finalTraceUuid !== null &&
+        status.traces.refs.length >= status.traces.count,
+    ),
+    checklistItem(
+      "check.khala_closeout.trace_status.raw_events_owner_only_present",
+      status.rawEvents.visibility === "owner_only" &&
+        status.rawEvents.count > 0 &&
+        status.rawEvents.eventCount > 0 &&
+        status.rawEvents.byteLength > 0 &&
+        status.rawEvents.refs.length >= status.rawEvents.count,
+    ),
+    checklistItem(
+      "check.khala_closeout.trace_status.token_usage_recorded",
+      status.progress.hasTokenUsage &&
+        status.tokenUsage.status === "recorded" &&
+        status.tokenUsage.rowCount > 0 &&
+        status.tokenUsage.totalTokens > 0 &&
+        status.tokenUsage.provider === proof.tokenUsage.provider &&
+        status.tokenUsage.model === proof.tokenUsage.model &&
+        status.tokenUsage.usageTruth === proof.tokenUsage.usageTruth &&
+        status.tokenUsage.demandKind === proof.tokenUsage.demandKind &&
+        status.tokenUsage.demandSource === proof.tokenUsage.demandSource,
+    ),
+    checklistItem(
+      "check.khala_closeout.proof_checklist.ok",
+      proof.proofChecklist.ok,
+    ),
+    checklistItem(
+      "check.khala_closeout.generated_at.iso_timestamps",
+      !Number.isNaN(Date.parse(status.generatedAt)) &&
+        !Number.isNaN(Date.parse(proof.generatedAt)),
+    ),
+  ]
+  const blockerRefs = [
+    ...items
+      .filter((item) => !item.ok)
+      .map((item) => item.ref.replace(/^check\./, "blocker.")),
+    ...proof.proofChecklist.blockerRefs,
+  ]
+  return {
+    blockerRefs: [...new Set(blockerRefs)].sort(),
+    caveatRefs: [
+      "caveat.khala_closeout.no_spend_payment_fields_not_in_remote_projection",
+      "caveat.khala_closeout.public_token_counter_is_supporting_not_assignment_proof",
+    ],
+    items,
+    ok: blockerRefs.length === 0,
+    schema: "openagents.pylon.khala_closeout_checklist.v0.1",
   }
 }
 
@@ -685,4 +791,25 @@ export async function readPylonKhalaProof(
     ok: true,
     proofChecklist: evaluatePylonKhalaProofChecklist(payload),
   }
+}
+
+export async function readPylonKhalaCloseout(
+  options: TipsNetworkOptions,
+  assignmentRefInput: string,
+): Promise<PylonKhalaCloseoutResult> {
+  const assignmentRef = cleanAssignmentRef(assignmentRefInput)
+  const [status, proof] = await Promise.all([
+    readPylonKhalaAssignmentTraceStatus(options, assignmentRef),
+    readPylonKhalaProof(options, assignmentRef),
+  ])
+  const result: PylonKhalaCloseoutResult = {
+    assignmentRef,
+    closeoutChecklist: evaluatePylonKhalaCloseoutChecklist(status, proof),
+    ok: true,
+    proof,
+    schema: "openagents.pylon.khala_closeout.v0.1",
+    status,
+  }
+  assertPublicSafe(result, "khala closeout response")
+  return result
 }

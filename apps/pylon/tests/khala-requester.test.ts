@@ -8,9 +8,11 @@ import {
   buildPylonKhalaGitCheckoutWorkspace,
   buildPylonKhalaChatRequestBody,
   durableRequestIdFromUrl,
+  evaluatePylonKhalaCloseoutChecklist,
   evaluatePylonKhalaProofChecklist,
   issuePylonKhalaRequest,
   readPylonKhalaAssignmentTraceStatus,
+  readPylonKhalaCloseout,
   readPylonKhalaProof,
   readPylonKhalaStatus,
   resumePylonKhalaRequest,
@@ -27,6 +29,9 @@ const sse = (id: string, content: string) =>
 const servers: ReturnType<typeof Bun.serve>[] = []
 const INDEX = join(import.meta.dir, "..", "src", "index.ts")
 const CWD = join(import.meta.dir, "..")
+type CloseoutProofResult = Parameters<typeof evaluatePylonKhalaCloseoutChecklist>[1]
+type CloseoutTraceStatus = Parameters<typeof evaluatePylonKhalaCloseoutChecklist>[0]
+type ProofPayload = Parameters<typeof evaluatePylonKhalaProofChecklist>[0]
 
 afterEach(() => {
   for (const server of servers.splice(0)) server.stop(true)
@@ -88,6 +93,123 @@ async function markAssignmentReady(home: string) {
       updatedAt: "2026-06-27T00:00:00.000Z",
     })}\n`,
   )
+}
+
+function completeTraceStatus(overrides: Record<string, unknown> = {}) {
+  return {
+    schemaVersion: "openagents.pylon.codex_assignment_trace_status.v1",
+    assignmentRef: "assignment-pylon-codex-1",
+    pylonRef: "pylon-local-codex-1",
+    owner: {
+      agentUserRef: "agent:agent-user-1",
+      openauthUserRef: "user-openauth-1",
+    },
+    lifecycle: {
+      state: "closeout_submitted",
+      createdAt: "2026-06-26T12:00:00.000Z",
+      updatedAt: "2026-06-26T12:00:05.000Z",
+      acceptedWorkRefs: ["accepted.pylon_codex.assignment_1"],
+      artifactRefs: ["artifact.pylon_codex.assignment_1"],
+      closeoutRefs: ["assignment.closeout.assignment_1"],
+      proofRefs: ["proof.pylon_codex.assignment_1"],
+      rejectionRefs: [],
+    },
+    events: {
+      count: 6,
+      progressCount: 3,
+      latestEventKind: "worker_closeout",
+      latestStatus: "closeout_submitted",
+      latestObservedAt: "2026-06-26T12:00:05.000Z",
+    },
+    tokenUsage: {
+      rowCount: 1,
+      provider: "pylon-codex-own-capacity",
+      model: "openagents/pylon-codex",
+      usageTruth: "exact",
+      demandKind: "own_capacity",
+      demandSource: "khala_coding_delegation",
+      inputTokens: 100,
+      outputTokens: 40,
+      reasoningTokens: 10,
+      cacheReadTokens: 5,
+      totalTokens: 140,
+      status: "recorded",
+    },
+    traces: {
+      count: 2,
+      visibility: "owner_only",
+      schemaVersion: "ATIF-v1.7",
+      latestTraceUuid: "trace-final-1",
+      finalTraceUuid: "trace-final-1",
+      refs: ["trace-chunk-1", "trace-final-1"],
+    },
+    rawEventChunks: {
+      count: 2,
+      eventCount: 8,
+      byteLength: 4096,
+      latestChunkRef: "raw_chunk.pylon_codex.002",
+      latestObservedAt: "2026-06-26T12:00:05.000Z",
+      visibility: "owner_only",
+    },
+    rawEvents: {
+      count: 2,
+      eventCount: 8,
+      byteLength: 4096,
+      latestRawEventRef: "raw.pylon_codex.bbb",
+      latestObservedAt: "2026-06-26T12:00:05.000Z",
+      visibility: "owner_only",
+      refs: ["raw.pylon_codex.aaa", "raw.pylon_codex.bbb"],
+    },
+    progress: {
+      state: "closed_out",
+      closeoutReady: true,
+      hasLiveChunks: true,
+      hasFinalTrace: true,
+      hasTokenUsage: true,
+    },
+    generatedAt: "2026-06-26T12:00:06.000Z",
+    ...overrides,
+  }
+}
+
+function completeProof(overrides: Record<string, unknown> = {}) {
+  return {
+    schemaVersion: "openagents.pylon.codex_assignment_proof.v1",
+    assignmentRef: "assignment-pylon-codex-1",
+    pylonRef: "pylon-local-codex-1",
+    owner: {
+      agentUserRef: "agent:agent-user-1",
+      openauthUserRef: "user-openauth-1",
+    },
+    tokenUsage: {
+      rowCount: 1,
+      provider: "pylon-codex-own-capacity",
+      model: "openagents/pylon-codex",
+      usageTruth: "exact",
+      demandKind: "own_capacity",
+      demandSource: "khala_coding_delegation",
+      inputTokens: 100,
+      outputTokens: 40,
+      reasoningTokens: 10,
+      cacheReadTokens: 5,
+      totalTokens: 140,
+    },
+    traces: {
+      count: 2,
+      visibility: "owner_only",
+      schemaVersion: "ATIF-v1.7",
+      refs: ["trace-chunk-1", "trace-final-1"],
+    },
+    rawEvents: {
+      count: 2,
+      eventCount: 8,
+      byteLength: 4096,
+      visibility: "owner_only",
+      refs: ["raw.pylon_codex.aaa", "raw.pylon_codex.bbb"],
+    },
+    generatedAt: "2026-06-26T12:00:06.000Z",
+    ...overrides,
+  }
 }
 
 function khalaAutoRunServer() {
@@ -774,6 +896,148 @@ describe("pylon khala requester API", () => {
     )
   })
 
+  test("closeout checklist composes trace status and proof gates", () => {
+    const proofPayload = completeProof()
+    const proofChecklist = evaluatePylonKhalaProofChecklist(proofPayload as ProofPayload)
+    const checklist = evaluatePylonKhalaCloseoutChecklist(
+      completeTraceStatus() as CloseoutTraceStatus,
+      { ...proofPayload, ok: true, proofChecklist } as CloseoutProofResult,
+    )
+
+    expect(checklist).toMatchObject({
+      blockerRefs: [],
+      caveatRefs: [
+        "caveat.khala_closeout.no_spend_payment_fields_not_in_remote_projection",
+        "caveat.khala_closeout.public_token_counter_is_supporting_not_assignment_proof",
+      ],
+      ok: true,
+      schema: "openagents.pylon.khala_closeout_checklist.v0.1",
+    })
+  })
+
+  test("closeout checklist fails closed before final trace and recorded token rows", () => {
+    const proofPayload = completeProof({
+      tokenUsage: {
+        ...completeProof().tokenUsage,
+        rowCount: 0,
+        totalTokens: 0,
+      },
+    })
+    const proofChecklist = evaluatePylonKhalaProofChecklist(proofPayload as ProofPayload)
+    const checklist = evaluatePylonKhalaCloseoutChecklist(
+      completeTraceStatus({
+        lifecycle: {
+          ...completeTraceStatus().lifecycle,
+          closeoutRefs: [],
+        },
+        progress: {
+          state: "streaming_chunks",
+          closeoutReady: false,
+          hasLiveChunks: true,
+          hasFinalTrace: false,
+          hasTokenUsage: false,
+        },
+        rawEvents: {
+          ...completeTraceStatus().rawEvents,
+          count: 0,
+          eventCount: 0,
+          byteLength: 0,
+          refs: [],
+        },
+        tokenUsage: {
+          ...completeTraceStatus().tokenUsage,
+          rowCount: 0,
+          status: "pending",
+          totalTokens: 0,
+        },
+        traces: {
+          ...completeTraceStatus().traces,
+          finalTraceUuid: null,
+        },
+      }) as CloseoutTraceStatus,
+      { ...proofPayload, ok: true, proofChecklist } as CloseoutProofResult,
+    )
+
+    expect(checklist.ok).toBe(false)
+    expect(checklist.blockerRefs).toContain(
+      "blocker.khala_closeout.lifecycle.closed_out",
+    )
+    expect(checklist.blockerRefs).toContain(
+      "blocker.khala_closeout.trace_status.final_owner_trace_present",
+    )
+    expect(checklist.blockerRefs).toContain(
+      "blocker.khala_closeout.trace_status.raw_events_owner_only_present",
+    )
+    expect(checklist.blockerRefs).toContain(
+      "blocker.khala_closeout.trace_status.token_usage_recorded",
+    )
+    expect(checklist.blockerRefs).toContain(
+      "blocker.khala_closeout.proof_checklist.ok",
+    )
+    expect(checklist.blockerRefs).toContain(
+      "blocker.khala_proof.token_usage.rows_and_tokens_present",
+    )
+  })
+
+  test("closeout reads owner-scoped trace status and proof as one JSON projection", async () => {
+    const calls: Array<{ init: RequestInit; url: string }> = []
+    const result = await readPylonKhalaCloseout(
+      {
+        agentToken: "oa_agent_test",
+        baseUrl: "https://openagents.test",
+        fetch: async (url: URL | RequestInfo, init?: RequestInit) => {
+          calls.push({ init: init ?? {}, url: String(url) })
+          const pathname = new URL(String(url)).pathname
+          return new Response(
+            JSON.stringify(
+              pathname.endsWith("/trace-status")
+                ? completeTraceStatus()
+                : completeProof(),
+            ),
+            { headers: { "content-type": "application/json" } },
+          )
+        },
+      },
+      "assignment-pylon-codex-1",
+    )
+
+    expect(calls.map((call) => new URL(call.url).pathname).sort()).toEqual([
+      "/api/pylon/codex/proof",
+      "/api/pylon/codex/trace-status",
+    ])
+    expect(calls.every((call) => call.init.method === "GET")).toBe(true)
+    expect(
+      calls.every(
+        (call) =>
+          (call.init.headers as Record<string, string>).Authorization ===
+          "Bearer oa_agent_test",
+      ),
+    ).toBe(true)
+    expect(result).toMatchObject({
+      assignmentRef: "assignment-pylon-codex-1",
+      closeoutChecklist: {
+        blockerRefs: [],
+        ok: true,
+      },
+      ok: true,
+      proof: {
+        proofChecklist: {
+          ok: true,
+        },
+      },
+      schema: "openagents.pylon.khala_closeout.v0.1",
+      status: {
+        progress: {
+          closeoutReady: true,
+          state: "closed_out",
+        },
+      },
+    })
+    expect(JSON.stringify(result)).not.toMatch(
+      /rawEventsJson|trajectory_json|safe_metadata_json|r2_key|prompt|shell|\/Users|secret|access[_-]?token|bearer/i,
+    )
+  })
+
   test("parses durable request ids from relative and absolute resume URLs", () => {
     expect(durableRequestIdFromUrl("/v1/chat/completions/durable/chatcmpl_123")).toBe("chatcmpl_123")
     expect(durableRequestIdFromUrl("https://openagents.test/v1/chat/completions/durable/chatcmpl_456")).toBe("chatcmpl_456")
@@ -935,6 +1199,66 @@ describe("pylon khala requester API", () => {
       },
       traces: { visibility: "owner_only" },
       rawEvents: { eventCount: 3, visibility: "owner_only" },
+    })
+    expect(JSON.stringify(body)).not.toMatch(
+      /rawEventsJson|trajectory_json|safe_metadata_json|r2_key|prompt|shell|\/Users|secret|access[_-]?token|bearer/i,
+    )
+  }, 15_000)
+
+  test("local CLI reads Khala closeout checklist as JSON", async () => {
+    const requests: Array<{ headers: Headers; path: string; search: string }> = []
+    const server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url)
+        requests.push({ headers: request.headers, path: url.pathname, search: url.search })
+        return new Response(
+          JSON.stringify(
+            url.pathname.endsWith("/trace-status")
+              ? completeTraceStatus()
+              : completeProof(),
+          ),
+          { headers: { "content-type": "application/json" } },
+        )
+      },
+    })
+    servers.push(server)
+
+    const result = await runPylonCli(
+      ["khala", "closeout", "assignment-pylon-codex-1", "--agent-token", "oa_agent_cli_test", "--json"],
+      {
+        OPENAGENTS_AGENT_TOKEN: "oa_agent_cli_test",
+        PYLON_OPENAGENTS_BASE_URL: `http://127.0.0.1:${server.port}`,
+      },
+    )
+
+    expect(result.timedOut).toBe(false)
+    expect(result.exitCode).toBe(0)
+    expect(requests.map((request) => request.path).sort()).toEqual([
+      "/api/pylon/codex/proof",
+      "/api/pylon/codex/trace-status",
+    ])
+    expect(requests.every((request) => request.search === "?assignmentRef=assignment-pylon-codex-1")).toBe(true)
+    expect(requests.every((request) => request.headers.get("authorization") === "Bearer oa_agent_cli_test")).toBe(true)
+    const body = JSON.parse(result.stdout) as Record<string, unknown>
+    expect(body).toMatchObject({
+      assignmentRef: "assignment-pylon-codex-1",
+      closeoutChecklist: {
+        blockerRefs: [],
+        ok: true,
+        schema: "openagents.pylon.khala_closeout_checklist.v0.1",
+      },
+      ok: true,
+      proof: {
+        proofChecklist: { ok: true },
+      },
+      schema: "openagents.pylon.khala_closeout.v0.1",
+      status: {
+        progress: {
+          closeoutReady: true,
+          state: "closed_out",
+        },
+      },
     })
     expect(JSON.stringify(body)).not.toMatch(
       /rawEventsJson|trajectory_json|safe_metadata_json|r2_key|prompt|shell|\/Users|secret|access[_-]?token|bearer/i,

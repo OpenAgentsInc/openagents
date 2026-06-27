@@ -272,6 +272,7 @@ import {
   buildPylonKhalaGitCheckoutWorkspace,
   issuePylonKhalaRequest,
   readPylonKhalaAssignmentTraceStatus,
+  readPylonKhalaCloseout,
   readPylonKhalaProof,
   readPylonKhalaStatus,
   resumePylonKhalaRequest,
@@ -3998,7 +3999,20 @@ async function main() {
         return
       }
 
-      throw new Error("usage: pylon khala request|resume|status|proof|burndown ...")
+      if (command === "closeout") {
+        const assignmentRef =
+          args[2] !== undefined && !args[2].startsWith("--")
+            ? args[2]
+            : optionString(options, "assignment-ref")
+        if (!assignmentRef) {
+          throw new Error("usage: pylon khala closeout <assignmentRef> [--json]")
+        }
+        const result = await readPylonKhalaCloseout(networkOptions, assignmentRef)
+        emit(result)
+        return
+      }
+
+      throw new Error("usage: pylon khala request|resume|status|proof|closeout|burndown ...")
     } catch (error) {
       process.stdout.write(`${JSON.stringify({ error: error instanceof Error ? error.message : String(error), ok: false }, null, 2)}\n`)
       process.exitCode = 1

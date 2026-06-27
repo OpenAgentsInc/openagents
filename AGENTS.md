@@ -245,6 +245,20 @@ and the closeout status is `accepted` with
 public fixture, a successful run includes
 `result.public.pylon.codex_agent_task.fixture_repair_passed`.
 
+Then read the owner-scoped closeout proof:
+
+```sh
+$PYLON khala closeout "<assignmentRef>" --json
+```
+
+Expected `closeoutChecklist.ok: true` means the assignment trace-status and
+proof projections agree on assignment, Pylon, and owner refs; final owner-only
+trace and raw-event summaries exist; exact own-capacity token rows are
+recorded; and the lifecycle is closed out without rejection refs. Use
+`$PYLON khala status --assignment-ref "<assignmentRef>" --json` and
+`$PYLON khala proof "<assignmentRef>" --json` only when inspecting the two
+underlying projections separately.
+
 For MCP, bare-agent, or explicit `--no-run` diagnostic paths, execute the
 assignment locally with no spend:
 

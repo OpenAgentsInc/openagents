@@ -56,13 +56,35 @@ Green proof for a particular assignment requires an accepted closeout and exact
 The public headline token counter includes those exact rows after closeout, but
 counter movement alone is not assignment proof.
 
-As of `3429704d8a` plus the follow-up Pylon CLI change, `pylon khala proof
-<assignment-ref> --json` includes a local `proofChecklist` projection. The
-checklist fails closed unless the remote proof has exact own-capacity token
-usage, owner-only trace refs, owner-only raw event refs, positive rows/tokens,
-and a valid generation timestamp. The checklist is still assignment-scoped
-evidence; it does not replace the dispatch runner or deployed assignment-status
-surface.
+As of `3429704d8a` plus follow-up Pylon CLI changes, the preferred operator
+closeout proof is now:
+
+```sh
+pylon khala closeout <assignment-ref> --json
+```
+
+That command composes the owner-scoped trace-status projection and the
+assignment proof projection into one local `closeoutChecklist`. The checklist
+fails closed unless the assignment status and proof agree on assignment ref,
+Pylon ref, and owner refs; the lifecycle is closed out with closeout refs and no
+rejection refs; the final owner-only trace and raw events are present; token
+usage is recorded with exact own-capacity fields; and the underlying proof
+checklist is green. The result keeps two caveats explicit: the remote
+status/proof projections do not yet expose the local `paymentMode: "no-spend"`
+/ `payoutClaimAllowed: false` closeout fields, and the public token counter is
+supporting evidence only, not assignment proof.
+
+The underlying proof command remains available:
+
+```sh
+pylon khala proof <assignment-ref> --json
+```
+
+It includes a local `proofChecklist` projection. The checklist fails closed
+unless the remote proof has exact own-capacity token usage, owner-only trace
+refs, owner-only raw event refs, positive rows/tokens, and a valid generation
+timestamp. The checklist is still assignment-scoped evidence; it does not
+replace the dispatch runner or deployed assignment-status surface.
 
 The Pylon CLI also has an assignment status read path:
 
@@ -121,11 +143,12 @@ master-default workspace materialization (#6361 partially reduced by source/test
 coverage: stale branch fetch now falls back to the pinned commit), assignment-level trace/status
 presentation plus deployed smoke (#6368, partially reduced by the CLI status
 reader and operator route shell), proof/status closeout ergonomics (#6369,
-partially reduced by the proof checklist), and the broad semantic router being
-verified without ad hoc keyword routing. The original owner-only Pylon/Codex
-trace read-scope mismatch is fixed for individual trace reads; the remaining
-status gap is deployed smoke plus a browser-session auth bridge if the web page
-is expected to fetch live owner-only status directly.
+partially reduced by the proof checklist and the composed `khala closeout`
+command), and the broad semantic router being verified without ad hoc keyword
+routing. The original owner-only Pylon/Codex trace read-scope mismatch is fixed
+for individual trace reads; the remaining status gap is deployed smoke plus a
+browser-session auth bridge if the web page is expected to fetch live
+owner-only status directly.
 
 ## CLI Boundary
 

@@ -129,7 +129,20 @@ Resume from the durable handle returned by `khala.request`:
 }
 ```
 
-Resolve the owner-scoped Pylon/Codex proof for the assignment:
+Resolve the owner-scoped Pylon/Codex closeout proof for the assignment:
+
+```sh
+OPENAGENTS_AGENT_TOKEN="<owner agent token>" \
+PYLON_OPENAGENTS_BASE_URL="https://openagents.com" \
+pylon khala closeout "<assignmentRef>" --json
+```
+
+The closeout projection composes assignment trace status and assignment proof.
+Its `closeoutChecklist.ok` should be `true` only after the final owner-only
+trace, raw event summary, exact token rows, and closed-out lifecycle all agree.
+
+The underlying proof projection is still available when a narrower token/trace
+proof is useful:
 
 ```sh
 OPENAGENTS_AGENT_TOKEN="<owner agent token>" \
