@@ -51,10 +51,10 @@ batches. Four cross-cutting tracks run *alongside* the phased sequence and feed 
   missing-capability / won't-do, and convert real gaps into issues that thread back
   into this roadmap. Fed by #6356.
 - **#6358 — Counter health.** Guarantee the public token counter increments
-  correctly + continuously from real closeouts: fix the false-alarming heartbeat
-  monitor (it fires from an internal/exempt key excluded by #6298), hold the
-  monotonic / no-double-count invariant (`8d66f6be09`), optional labeled in-flight
-  estimate from streamed chunks.
+  correctly + continuously from real closeouts: the heartbeat is internal demand
+  but still counts in the all-demand public scalar, the corpus/analytics split is
+  what keeps it distinguishable, hold the monotonic / no-double-count invariant
+  (`8d66f6be09`), optional labeled in-flight estimate from streamed chunks.
 
 Two standing goals the loop optimizes for **every iteration**:
 1. **Maximize the public Khala token counter** — keep real Khala-orchestrated

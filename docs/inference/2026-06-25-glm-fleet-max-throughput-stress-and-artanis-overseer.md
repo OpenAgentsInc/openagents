@@ -78,9 +78,10 @@ Concretely the invariant has three enforceable clauses:
    internal-stress in-flight work (returning its slot) rather than queueing or
    overflowing the external request to a weaker lane.
 3. **Accounting honesty.** Internal stress carries a distinct, typed demand tag
-   so it is never confused with real demand in `token_usage_events`, the public
-   tokens-served counter, goodput metrics, or GTM claims. Preempted/cancelled
-   stress requests are recorded as such, not as failures of the external SLO.
+   so it is never confused with external market demand in `token_usage_events`,
+   goodput metrics, or GTM claims. Served internal-stress tokens still count in
+   the public all-demand tokens-served counter. Preempted/cancelled stress
+   requests are recorded as such, not as failures of the external SLO.
 
 ### Priority / admission model
 
@@ -92,8 +93,8 @@ Every request carries a typed **demand class** with a **priority** and a
 | external (`external`, `unlabeled`) | guaranteed | no | yes (real) | end-user / OpenCode |
 | own-capacity coding (`own_capacity`) | high | no | yes (real) | Khala→Pylon→Codex |
 | internal dogfood (`internal`) | normal | no | yes (real, internal) | internal accounts |
-| **internal stress (NEW: `internal_stress`)** | **best-effort** | **YES** | **no (excluded)** | stress harness |
-| keep-warm heartbeat (`own_capacity` / `glm-pool-heartbeat`) | minimal | yes | excluded | cron |
+| **internal stress (NEW: `internal_stress`)** | **best-effort** | **YES** | **yes (real, internal stress)** | stress harness |
+| keep-warm heartbeat (`own_capacity` / `glm-pool-heartbeat`) | minimal | yes | yes when tokens are served | cron |
 
 Today the demand-kind enum is `external | internal | own_capacity | unlabeled`
 (`sync-schema/src/token-usage-ledger.ts`). The internal-account allowlist forces
@@ -153,8 +154,9 @@ A **continuous load generator** that:
   inter-token latency at P50/P90/P99, **goodput** (useful tokens delivered
   within the interactive ITL SLA, not just raw tokens), error rate, singleflight-
   429/overflow rate, and in-cloud vs WAN deltas.
-- **Tags every request `internal_stress`** so it is excluded from the public
-  counter and real-demand metrics, and is preemptible per §1.
+- **Tags every request `internal_stress`** so it is included in the public
+  all-demand counter while remaining distinguishable from external-market
+  demand metrics, and is preemptible per §1.
 - **Auto-backs-off the instant external demand rises** — the harness reads the
   same live-headroom signal the admission check uses; when external pressure
   climbs, it lowers its target concurrency (and its in-flight requests are

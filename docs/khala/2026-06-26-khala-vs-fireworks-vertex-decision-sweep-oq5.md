@@ -66,8 +66,8 @@ public-safety on a real-lane report. Full `benchmark/` suite: 70 pass.
 - A Khala-only run is honestly `decisionGrade: false` (no billable comparator).
 - No synthetic shape is published as a measurement; the report flags any
   synthetic-only group and stays out of decision-grade.
-- The sweep's own Khala inference is tagged internal + segmented (#6298) and is
-  excluded from the public counter.
+- The sweep's own Khala inference is tagged internal + segmented (#6298) and
+  still counts in the public all-demand counter when Khala serves tokens.
 
 ## NEEDS-OWNER: arm the real spendful sweep
 

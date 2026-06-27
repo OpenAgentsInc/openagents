@@ -42,8 +42,9 @@ import type { KhalaVerificationClass, KhalaExecutedVerdict } from '../khala-tele
 export const BENCHMARK_REAL_SWEEP_DEMAND_SOURCE = 'benchmark_real_sweep' as const
 
 // The attribution header the Khala lane request attaches so the sweep's own
-// Khala inference is tagged internal and excluded from the public counter (#6298,
-// roadmap §"real external requests always win"). Only the Khala lane carries this
+// Khala inference is tagged internal for segmentation/corpus hygiene (#6298,
+// roadmap §"real external requests always win"). It still counts in the
+// all-demand public tokens-served scalar. Only the Khala lane carries this
 // — third-party provider lanes (Fireworks/Vertex) are billed by the provider and
 // never touch the Khala served-tokens ledger.
 export const benchmarkRealSweepAttribution = (): ServedTokensRequestAttribution => ({

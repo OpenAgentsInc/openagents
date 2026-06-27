@@ -157,6 +157,11 @@ describe('Khala Tokens Served counter (#6227)', () => {
       Scene.with(LoggedOut.init(HomeRoute())),
       Scene.expect(Scene.text('Khala Tokens Served')).toExist(),
       Scene.expect(Scene.text('1,250,000')).toExist(),
+      Scene.expect(
+        Scene.text(
+          'All real input + output tokens served across the network, including internal and external demand.',
+        ),
+      ).toExist(),
     )
   })
 
@@ -319,6 +324,7 @@ describe('Khala Tokens Served history chart (#6227)', () => {
     expect(markup).toContain('Model Family Mix')
     expect(markup).toContain('GLM family')
     expect(markup).toContain('Pylon-Codex')
+    expect(markup).toContain('all demand included')
     expect(markup).not.toContain('gpt-')
     expect(markup).not.toContain('provider')
     expect(markup).not.toContain('accountRef')

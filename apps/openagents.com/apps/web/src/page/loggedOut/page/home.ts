@@ -962,7 +962,9 @@ export const khalaTokensServedCounter = (
             'm-0 text-[0.66rem] leading-4 text-white/35',
           ),
         ],
-        ['Total input + output tokens served across the network, powered by Khala.'],
+        [
+          'All real input + output tokens served across the network, including internal and external demand.',
+        ],
       ),
     ],
   )
@@ -1544,19 +1546,19 @@ export const khalaTokensServedHistoryChart = (
         historyChartShell(
           false,
           historyChartPlaceholder('Waiting for data…'),
-          'Daily input + output tokens served across the network in America/Chicago.',
+          'Daily all-demand input + output tokens served across the network in America/Chicago.',
         ),
       PublicKhalaTokensServedHistoryLoading: () =>
         historyChartShell(
           false,
           historyChartPlaceholder('Loading history…'),
-          'Daily input + output tokens served across the network in America/Chicago.',
+          'Daily all-demand input + output tokens served across the network in America/Chicago.',
         ),
       PublicKhalaTokensServedHistoryFailed: () =>
         historyChartShell(
           false,
           historyChartPlaceholder('History unavailable.'),
-          'Daily input + output tokens served across the network in America/Chicago.',
+          'Daily all-demand input + output tokens served across the network in America/Chicago.',
         ),
       PublicKhalaTokensServedHistoryLoaded: ({ history }) =>
         Array.match(history.series, {
@@ -1564,7 +1566,7 @@ export const khalaTokensServedHistoryChart = (
             historyChartShell(
               true,
               historyChartPlaceholder('No tokens served yet.'),
-              `Daily input + output tokens served across the network in ${history.timezone}.`,
+              `Daily all-demand input + output tokens served across the network in ${history.timezone}.`,
             ),
           onNonEmpty: series => {
             const chartSeries = recentContiguousHistorySeries(series)
@@ -1582,7 +1584,7 @@ export const khalaTokensServedHistoryChart = (
             return historyChartShell(
               true,
               historyChartBars(chartSeries, projection),
-              `Daily input + output tokens served across the network in ${history.timezone}. Last ${
+              `Daily all-demand input + output tokens served across the network in ${history.timezone}. Last ${
                 chartSeries.length
               } ${chartSeries.length === 1 ? 'day' : 'days'}, peak ${formatCompactNumber(
                 peakTokens,
@@ -1693,21 +1695,21 @@ export const khalaTokensServedModelMixPanel = (
         historyChartShell(
           false,
           modelMixPlaceholder('Waiting for model mix…'),
-          'Canonical model-family mix from aggregate token usage rows.',
+          'Canonical model-family mix from all real aggregate token usage rows.',
           'Model Family Mix',
         ),
       PublicKhalaTokensServedModelMixLoading: () =>
         historyChartShell(
           false,
           modelMixPlaceholder('Loading model mix…'),
-          'Canonical model-family mix from aggregate token usage rows.',
+          'Canonical model-family mix from all real aggregate token usage rows.',
           'Model Family Mix',
         ),
       PublicKhalaTokensServedModelMixFailed: () =>
         historyChartShell(
           false,
           modelMixPlaceholder('Model mix unavailable.'),
-          'Canonical model-family mix from aggregate token usage rows.',
+          'Canonical model-family mix from all real aggregate token usage rows.',
           'Model Family Mix',
         ),
       PublicKhalaTokensServedModelMixLoaded: ({ mix }) =>
@@ -1716,14 +1718,14 @@ export const khalaTokensServedModelMixPanel = (
             historyChartShell(
               true,
               modelMixPlaceholder('No model-family rows yet.'),
-              `Canonical model-family mix for ${mix.window}.`,
+              `Canonical model-family mix for ${mix.window}, all demand included.`,
               'Model Family Mix',
             ),
           onNonEmpty: groups =>
             historyChartShell(
               true,
               modelMixRows(groups),
-              `Canonical model-family mix for ${mix.window}. Total ${formatNumber(
+              `Canonical model-family mix for ${mix.window}, all demand included. Total ${formatNumber(
                 mix.totalTokens,
               )} tokens served.`,
               'Model Family Mix',

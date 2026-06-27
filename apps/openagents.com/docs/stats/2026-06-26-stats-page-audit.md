@@ -2,7 +2,7 @@
 
 Date: 2026-06-26
 
-This note tracks the public `/stats` rollout covering the Khala tokens-served counter, Central-time history, model/provider mix, and public/all viewing mode.
+This note tracks the public `/stats` rollout covering the Khala tokens-served counter, Central-time history, and model/provider mix. The public projection is the all-demand aggregate; any internal/external segmentation stays out of the default public scalar.
 
 ## Status
 
@@ -70,7 +70,7 @@ uses the `EOD est.` label, not counted as observed tokens.
 
 Supported windows are `today`, `7d`, `30d`, and `all`; the default is `30d`.
 
-The projection is live-at-read over `token_usage_events`, aggregates input plus output tokens, and excludes exact `demand_kind=internal` rows. It remains public-safe by collapsing provider/model identifiers before serving.
+The projection is live-at-read over `token_usage_events`, aggregates input plus output tokens, and includes all real demand kinds (`internal`, `internal_stress`, `own_capacity`, `external`, and unlabeled). It remains public-safe by collapsing provider/model identifiers before serving and exposing no per-user, per-team, demand label, prompt, raw provider/model, key, wallet, payment, settlement, or routing material.
 
 ## 5c Canonical Model Grouping
 
@@ -85,7 +85,7 @@ The public grouping vocabulary is intentionally small:
 | `gemini` | Gemini | Gemini, Google, and Vertex rows. |
 | `other` | Other | Public-safe fallback for everything else. |
 
-Percentages are rounded percentages of the public token total. Tests cover family grouping, percentage totals near 100%, internal-row exclusion, and staleness wrapping.
+Percentages are rounded percentages of the public all-demand token total. Tests cover family grouping, percentage totals near 100%, internal/all-demand inclusion, and staleness wrapping.
 
 ## Public Safety
 

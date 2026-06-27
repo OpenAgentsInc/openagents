@@ -90,9 +90,10 @@ demand_kind split: `own_capacity` 141.3M · `unlabeled` 77.5M · `internal` 18.4
 - **Model grouping is required**: the "GLM family" spans **3** ids/providers
   (`openagents/glm-5.2-reap-504b`, `z-ai/glm-5.2-20260616` via OpenRouter
   fallback, `glm-5.2-reap-504b-g4`). Group to a canonical family for the %.
-- **internal vs public**: the public counter excludes `demand_kind=internal`
-  (heartbeat/canary/dogfood). /stats must use the **same exclusion** for its
-  public numbers, or expose an explicit public/all toggle.
+- **all real demand counts**: the public counter and `/stats` projections include
+  `internal`, `internal_stress`, `own_capacity`, `external`, and unlabeled rows.
+  They stay public-safe by exposing only aggregate totals and grouped families,
+  never demand labels, per-user rows, prompts, provider payloads, or secrets.
 
 ---
 
@@ -117,7 +118,9 @@ demand_kind split: `own_capacity` 141.3M · `unlabeled` 77.5M · `internal` 18.4
 3. **Model / provider mix** — a donut or 100%-stacked bar of the grouped
    families (GLM family · Fireworks DeepSeek · Pylon-Codex · GPT-OSS · Gemini ·
    OpenRouter-GLM-fallback) + a small table with tokens, reqs, %.
-4. Public/all toggle (default **public** = excludes `internal`).
+4. No public/all split in the default public projection: the public numbers are
+   the all-demand aggregate. Internal/external segmentation belongs in
+   authenticated analytics, not in the public scalar.
 - Three.js / `@openagentsinc/three-effect` is the house first choice for the
   chart/visualization per workspace UI guidance; a clean SVG/canvas bar chart is
   an acceptable fallback. Reuse the `/khala` styling.
@@ -132,7 +135,7 @@ demand_kind split: `own_capacity` 141.3M · `unlabeled` 77.5M · `internal` 18.4
 2. **New** `GET /api/public/khala-tokens-served/model-mix?window=30d` —
    `{ schemaVersion:"openagents.public_khala_model_mix.v1", window, totalTokens,
    groups:[{ family, label, tokens, reqs, pct }], staleness:{…} }`. Public-safe:
-   aggregates only, **no per-user**, excludes `internal` (matches the counter),
+   aggregates only, **no per-user**, all demand included (matches the counter),
    reuse the ledger's public-safety redactor + `projection_staleness.v1`. Derive
    `family` from a canonical model→family map (below).
 3. Headline reuses the existing counter (1a).
@@ -155,8 +158,10 @@ Keep this map server-side; the page renders labels + colors from the response.
 ## 6. Privacy / invariants (do not regress)
 - Public-safe **aggregates only** — never per-user rows, never raw prompts/
   completions/credentials. Reuse the ledger public-safety redactor.
-- Exclude `demand_kind=internal` from the default public numbers (consistent
-  with the public counter; #6298 segmentation).
+- Include every real served-token row in the public aggregate (`internal`,
+  `internal_stress`, `own_capacity`, `external`, and unlabeled). #6298
+  segmentation remains available for authenticated analytics/corpus hygiene, not
+  for subtracting internal rows from the public scalar.
 - `projection_staleness.v1` (`live_at_read`) on every projection; register the
   new surface in the projection-freshness inventory + OpenAPI + exact-route
   manifest (the repo's `check:deploy` enforces these).
@@ -170,9 +175,8 @@ Keep this map server-side; the page renders labels + colors from the response.
   history endpoint (#6330) and the new public `…/model-mix` endpoint with the
   family map, public-safety, staleness, OpenAPI + manifest + freshness registration,
   tests (UTC vs Chicago bucketing differs at the day boundary; mix percentages
-  sum to 100; internal excluded).
+  sum to 100; internal/all demand included).
 - **S2 — the `/stats` page**: counter + Central per-day chart + model-mix
-  visualization + public/all toggle, reusing the `/khala` realtime countup and
-  styling.
+  visualization, reusing the `/khala` realtime countup and styling.
 - Depends on / relates to: #6330 (Central history), #6298 (demand segmentation),
   #6324 (counter realtime/throttle), the token-usage ledger aggregate.

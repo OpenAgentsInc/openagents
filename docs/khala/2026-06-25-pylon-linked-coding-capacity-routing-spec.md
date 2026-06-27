@@ -37,8 +37,8 @@
 > speculative; **DEFAULT-ON** = armed and live by default (no owner flip needed).
 >
 > Owner decisions applied (override all prior recommendations in this doc):
-> (1) counter counts all public-countable Khala-orchestrated tokens,
-> source-agnostic except `demand_kind=internal` dogfood/ops probes, with a
+> (1) counter counts all real Khala-served tokens, including internal dogfood,
+> stress, own-capacity, external, and unlabeled rows, with a
 > `demand_kind`/source tag for honest analytics; (2) build OpenAuth
 > account ↔ many-Pylons + many-keys linking NOW; (3) coding-workflow classifier:
 > full typed/semantic version (no keyword routing); (4) execution rides our
@@ -360,7 +360,7 @@ pull** (the Pylon already polls `/assignments`), so no new server→node push ch
 is strictly required for P1–P4 — the router just *creates* the assignment and the
 caller's Pylon picks it up. Results return via the existing closeout/artifacts path.
 
-### 1.8 Accounting + invariants — **own-capacity is allowed; counter counts public-countable orchestrated tokens**
+### 1.8 Accounting + invariants — **own-capacity is allowed; counter counts every real served token**
 
 - **No-resale (INVARIANTS.md, Provider Capacity Marketplace Gate ≈L981–1043).**
   Exact scope: *"The no-resale rule stays scoped to consumer SUBSCRIPTION accounts
@@ -611,12 +611,14 @@ durable, resumable stream of the same shape.
 
 ### P5 — Accounting, invariant enforcement, tests (NOW)
 
-- **P5a — Count public-countable Khala-orchestrated tokens on the public counter
+- **P5a — Count all real Khala-served tokens on the public counter
   (owner decision, source-agnostic).** Record own-capacity coding tokens in
   `token_usage_events` with an honest `own_capacity` `demand_kind` and
   `demand_source` tag, **and include them in the public `khala-tokens-served`
-  scalar** — they are orchestrated through Khala, so they count. Exclude only
-  `demand_kind=internal` dogfood/ops probes. Seam: `token-usage-ledger.ts`,
+  scalar** — they are orchestrated through Khala, so they count. Internal
+  dogfood and stress also count when tokens are actually served; the
+  `demand_kind` split is for analytics and corpus hygiene, not subtraction from
+  the public scalar. Seam: `token-usage-ledger.ts`,
   `served-tokens-recorder.ts`, `public-khala-tokens-served-routes.ts`,
   `khala-tokens-served-sync.ts`.
   Acceptance: a test that an own-capacity coding completion **does** move the public

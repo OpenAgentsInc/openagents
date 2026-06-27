@@ -535,7 +535,7 @@ describe('served-tokens-recorder', () => {
     ])
   })
 
-  test('own-capacity closeouts remain public-countable (#6358)', async () => {
+  test('own-capacity closeouts remain counted in the all-demand public scalar (#6358)', async () => {
     const rows: Array<Row> = []
     const published: Array<PublishedDelta> = []
     const { recorder } = recordWithPublisher(rows, published)
