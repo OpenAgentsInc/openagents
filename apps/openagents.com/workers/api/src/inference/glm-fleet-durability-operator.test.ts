@@ -79,6 +79,14 @@ describe('GLM fleet durability operator bundle', () => {
       'HYDRALISK_GLM_52_REAP_504B_MULTI_REGION_AUTO_REPLACE_RESERVE_REFS',
       'HYDRALISK_GLM_52_REAP_504B_QUOTA_REQUEST_STATE',
     ])
+    expect(
+      bundle.readiness.operatorActionItems.map(item => item.action),
+    ).toEqual([
+      'record_forced_stop_recovery_evidence',
+      'record_capacity_floor_owner_decision',
+      'record_multi_region_auto_replace_evidence',
+      'record_quota_request_tracking',
+    ])
     expect(bundle.ownerArmedCommand).toContain(
       '.pilot-evidence/glm-fleet-durability-6311',
     )
@@ -129,9 +137,63 @@ describe('GLM fleet durability operator bundle', () => {
 
     expect(bundle.readiness.acceptanceStatus).toBe('complete')
     expect(bundle.missingOperatorInputs).toEqual([])
+    expect(bundle.readiness.operatorActionItems).toEqual([])
     expect(readme).toContain('- total replicas: 2')
     expect(readme).toContain('- warm replicas: 1')
     expect(readme).toContain('- none')
+    expect(JSON.stringify(bundle)).not.toContain('private.example.test')
+    expect(JSON.stringify(bundle)).not.toContain('secret-')
+  })
+
+  test('prints reclaimed replica recovery actions in retained README', () => {
+    const env = {
+      ...baseEnv,
+      HYDRALISK_GLM_52_REAP_504B_REPLICA_IDS: 'warm-one,reclaimed-two',
+      HYDRALISK_GLM_52_REAP_504B_RECLAIMED_TWO_BASE_URL:
+        'https://reclaimed-two.private.example.test',
+      HYDRALISK_GLM_52_REAP_504B_RECLAIMED_TWO_BEARER_TOKEN:
+        'secret-reclaimed-two',
+      HYDRALISK_GLM_52_REAP_504B_RECLAIMED_TWO_ENABLED: 'ready',
+      HYDRALISK_GLM_52_REAP_504B_RECLAIMED_TWO_PREFLIGHT_REF:
+        'preflight.hydralisk.glm.reclaimed_two',
+      HYDRALISK_GLM_52_REAP_504B_RECLAIMED_TWO_RECEIPT_REF:
+        'receipt.hydralisk.glm.reclaimed_two',
+    } as const
+    const projection = projectGlmFleetReadinessForEnv(env, replicaId =>
+      heartbeat(replicaId, {
+        ...(replicaId === 'reclaimed-two'
+          ? {
+              healthStatus: 'failed',
+              keepWarmStatus: 'failed',
+              modelsStatus: 'failed',
+              warmCompletionStatus: 'failed',
+              warmState: 'cold',
+              watchdogStatus: 'unhealthy',
+            }
+          : {}),
+      }),
+    )
+    const bundle = buildGlmFleetDurabilityOperatorBundle({
+      generatedAt: '2026-06-26T17:10:00.000Z',
+      projection,
+    })
+    const readme = formatGlmFleetDurabilityOperatorReadme(bundle)
+
+    expect(bundle.readiness.operatorActionItems[0]).toEqual({
+      action: 'recover_reclaimed_replicas',
+      blockerRefs: [
+        'blocker.hydralisk_glm_52_reap_504b.reclaimed_replicas_present',
+      ],
+      label:
+        'recover reclaimed GLM replicas before treating current serving capacity as durable',
+      replicaRefs: ['replica.hydralisk.glm_52_reap_504b.reclaimed-two'],
+      severity: 'degraded',
+    })
+    expect(readme).toContain('## Operator action items')
+    expect(readme).toContain('- recover_reclaimed_replicas (degraded)')
+    expect(readme).toContain(
+      'replica.hydralisk.glm_52_reap_504b.reclaimed-two',
+    )
     expect(JSON.stringify(bundle)).not.toContain('private.example.test')
     expect(JSON.stringify(bundle)).not.toContain('secret-')
   })

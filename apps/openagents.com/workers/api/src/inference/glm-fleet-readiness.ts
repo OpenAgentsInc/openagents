@@ -125,12 +125,33 @@ export type GlmFleetReadinessOperatorDimension =
   | 'multi_region_auto_replace'
   | 'quota_request_tracking'
 
+export type GlmFleetReadinessOperatorAction =
+  | 'attach_all_replica_keep_warm_watchdog'
+  | 'recover_reclaimed_replicas'
+  | 'record_capacity_floor_owner_decision'
+  | 'record_forced_stop_recovery_evidence'
+  | 'record_multi_region_auto_replace_evidence'
+  | 'record_quota_request_tracking'
+
+export type GlmFleetReadinessOperatorActionSeverity =
+  | 'blocked'
+  | 'degraded'
+  | 'incomplete'
+
 export type GlmFleetReadinessOperatorDimensionReadout = Readonly<{
   dimension: GlmFleetReadinessOperatorDimension
   blockerRefs: ReadonlyArray<string>
   evidenceRefs: ReadonlyArray<string>
   missingReplicaRefs: ReadonlyArray<string>
   status: GlmFleetAcceptanceDimensionStatus
+}>
+
+export type GlmFleetReadinessOperatorActionItem = Readonly<{
+  action: GlmFleetReadinessOperatorAction
+  blockerRefs: ReadonlyArray<string>
+  label: string
+  replicaRefs: ReadonlyArray<string>
+  severity: GlmFleetReadinessOperatorActionSeverity
 }>
 
 export type GlmFleetReadinessOperatorReadout = Readonly<{
@@ -142,6 +163,7 @@ export type GlmFleetReadinessOperatorReadout = Readonly<{
   dimensions: ReadonlyArray<GlmFleetReadinessOperatorDimensionReadout>
   evidenceRefs: ReadonlyArray<string>
   missingReplicaRefs: ReadonlyArray<string>
+  operatorActionItems: ReadonlyArray<GlmFleetReadinessOperatorActionItem>
   readyReplicaRefs: ReadonlyArray<string>
   reclaimedReplicaRefs: ReadonlyArray<string>
   servingReadyButAcceptanceNotComplete: boolean
@@ -806,6 +828,104 @@ export const summarizeGlmFleetReadinessForOperators = (
       status: projection.acceptance.quotaRequestTracking.status,
     },
   ]
+  const dimension = (
+    name: GlmFleetReadinessOperatorDimension,
+  ): GlmFleetReadinessOperatorDimensionReadout =>
+    dimensions.find(readout => readout.dimension === name)!
+  const reclaimedReplicaRefs = replicaRefsByStatus('reclaimed')
+  const allReplicaKeepWarmWatchdog = dimension(
+    'all_replica_keep_warm_watchdog',
+  )
+  const capacityFloorOwnerDecision = dimension(
+    'capacity_floor_owner_decision',
+  )
+  const multiRegionAutoReplace = dimension('multi_region_auto_replace')
+  const quotaRequestTracking = dimension('quota_request_tracking')
+  const operatorActionItems: ReadonlyArray<GlmFleetReadinessOperatorActionItem> =
+    [
+      ...(reclaimedReplicaRefs.length === 0
+        ? []
+        : [
+            {
+              action: 'recover_reclaimed_replicas' as const,
+              blockerRefs: [
+                'blocker.hydralisk_glm_52_reap_504b.reclaimed_replicas_present',
+              ],
+              label:
+                'recover reclaimed GLM replicas before treating current serving capacity as durable',
+              replicaRefs: reclaimedReplicaRefs,
+              severity: 'degraded' as const,
+            },
+          ]),
+      ...(allReplicaKeepWarmWatchdog.missingReplicaRefs.length === 0
+        ? []
+        : [
+            {
+              action: 'attach_all_replica_keep_warm_watchdog' as const,
+              blockerRefs: allReplicaKeepWarmWatchdog.blockerRefs.filter(ref =>
+                ref.includes('all_replica_keep_warm_watchdog'),
+              ),
+              label:
+                'attach keep-warm timer plus STOP-watchdog evidence to every required GLM replica',
+              replicaRefs: allReplicaKeepWarmWatchdog.missingReplicaRefs,
+              severity: 'blocked' as const,
+            },
+          ]),
+      ...(projection.acceptance.allReplicaKeepWarmWatchdog
+        .forcedStopRecoveryEvidenceRefs.length > 0
+        ? []
+        : [
+            {
+              action: 'record_forced_stop_recovery_evidence' as const,
+              blockerRefs: allReplicaKeepWarmWatchdog.blockerRefs.filter(ref =>
+                ref.includes('forced_stop_recovery_evidence_missing'),
+              ),
+              label:
+                'record a public forced Spot STOP auto-recovery evidence ref before marking watchdog acceptance complete',
+              replicaRefs: [],
+              severity: 'blocked' as const,
+            },
+          ]),
+      ...(capacityFloorOwnerDecision.blockerRefs.length === 0
+        ? []
+        : [
+            {
+              action: 'record_capacity_floor_owner_decision' as const,
+              blockerRefs: capacityFloorOwnerDecision.blockerRefs,
+              label:
+                'record public-safe capacity-floor owner decision evidence',
+              replicaRefs: [],
+              severity: 'blocked' as const,
+            },
+          ]),
+      ...(multiRegionAutoReplace.blockerRefs.length === 0
+        ? []
+        : [
+            {
+              action: 'record_multi_region_auto_replace_evidence' as const,
+              blockerRefs: multiRegionAutoReplace.blockerRefs,
+              label:
+                'record public-safe multi-region replacement, reserve, and prebake evidence',
+              replicaRefs: multiRegionAutoReplace.missingReplicaRefs,
+              severity: 'blocked' as const,
+            },
+          ]),
+      ...(quotaRequestTracking.blockerRefs.length === 0
+        ? []
+        : [
+            {
+              action: 'record_quota_request_tracking' as const,
+              blockerRefs: quotaRequestTracking.blockerRefs,
+              label:
+                'record public-safe quota request state and evidence ref',
+              replicaRefs: [],
+              severity:
+                quotaRequestTracking.status === 'incomplete'
+                  ? ('incomplete' as const)
+                  : ('blocked' as const),
+            },
+          ]),
+    ]
 
   return {
     acceptanceStatus: projection.acceptance.status,
@@ -822,8 +942,9 @@ export const summarizeGlmFleetReadinessForOperators = (
     missingReplicaRefs: stableUniqueRefs(
       dimensions.flatMap(dimension => dimension.missingReplicaRefs),
     ),
+    operatorActionItems,
     readyReplicaRefs: replicaRefsByStatus('ready'),
-    reclaimedReplicaRefs: replicaRefsByStatus('reclaimed'),
+    reclaimedReplicaRefs,
     servingReadyButAcceptanceNotComplete:
       projection.status === 'ready' && projection.acceptance.status !== 'complete',
     servingStatus: projection.status,

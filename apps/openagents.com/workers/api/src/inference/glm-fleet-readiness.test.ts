@@ -398,6 +398,51 @@ describe('projectGlmFleetReadiness', () => {
       missingReplicaRefs: [
         'replica.hydralisk.glm_52_reap_504b.replacement-region.missing',
       ],
+      operatorActionItems: [
+        {
+          action: 'record_forced_stop_recovery_evidence',
+          blockerRefs: [
+            'blocker.hydralisk_glm_52_reap_504b.forced_stop_recovery_evidence_missing',
+          ],
+          label:
+            'record a public forced Spot STOP auto-recovery evidence ref before marking watchdog acceptance complete',
+          replicaRefs: [],
+          severity: 'blocked',
+        },
+        {
+          action: 'record_capacity_floor_owner_decision',
+          blockerRefs: [
+            'blocker.hydralisk_glm_52_reap_504b.capacity_floor_owner_decision_missing',
+          ],
+          label: 'record public-safe capacity-floor owner decision evidence',
+          replicaRefs: [],
+          severity: 'blocked',
+        },
+        {
+          action: 'record_multi_region_auto_replace_evidence',
+          blockerRefs: [
+            'blocker.hydralisk_glm_52_reap_504b.multi_region_auto_replace_evidence_missing',
+            'blocker.hydralisk_glm_52_reap_504b.multi_region_auto_replace_prebake_evidence_missing',
+            'blocker.hydralisk_glm_52_reap_504b.multi_region_auto_replace_replacement_region_missing',
+            'blocker.hydralisk_glm_52_reap_504b.multi_region_auto_replace_reserve_evidence_missing',
+          ],
+          label:
+            'record public-safe multi-region replacement, reserve, and prebake evidence',
+          replicaRefs: [
+            'replica.hydralisk.glm_52_reap_504b.replacement-region.missing',
+          ],
+          severity: 'blocked',
+        },
+        {
+          action: 'record_quota_request_tracking',
+          blockerRefs: [
+            'blocker.hydralisk_glm_52_reap_504b.quota_request_state_missing',
+          ],
+          label: 'record public-safe quota request state and evidence ref',
+          replicaRefs: [],
+          severity: 'blocked',
+        },
+      ],
       readyReplicaRefs: [],
       reclaimedReplicaRefs: [],
       servingReadyButAcceptanceNotComplete: true,
@@ -572,6 +617,17 @@ describe('projectGlmFleetReadiness', () => {
       status: 'incomplete',
     })
     expect(readout.missingReplicaRefs).toEqual([])
+    expect(readout.operatorActionItems).toEqual([
+      {
+        action: 'record_quota_request_tracking',
+        blockerRefs: [
+          'blocker.hydralisk_glm_52_reap_504b.quota_request_pending',
+        ],
+        label: 'record public-safe quota request state and evidence ref',
+        replicaRefs: [],
+        severity: 'incomplete',
+      },
+    ])
     expect(readout.counts).toMatchObject({
       reclaimedReplicaCount: 0,
       totalReplicaCount: 6,
@@ -591,6 +647,59 @@ describe('projectGlmFleetReadiness', () => {
       'replica.hydralisk.glm_52_reap_504b.missing-five',
     ])
     expect(readout.servingReadyButAcceptanceNotComplete).toBe(false)
+    expect(JSON.stringify(readout)).not.toContain('private.example.test')
+    expect(JSON.stringify(readout)).not.toContain('secret-')
+  })
+
+  test('summarizes reclaimed replicas as explicit operator recovery actions', () => {
+    const latest = new Map([
+      ['warm-one', heartbeat('warm-one')],
+      [
+        'reclaimed-three',
+        heartbeat('reclaimed-three', {
+          healthStatus: 'failed',
+          keepWarmStatus: 'failed',
+          modelsStatus: 'failed',
+          warmCompletionStatus: 'failed',
+          warmState: 'cold',
+          watchdogStatus: 'unhealthy',
+        }),
+      ],
+    ])
+    const projection = projectGlmFleetReadinessForEnv(readyEnv, replicaId =>
+      latest.get(replicaId),
+    )
+    const readout = summarizeGlmFleetReadinessForOperators(projection)
+
+    expect(readout.servingStatus).toBe('degraded')
+    expect(readout.reclaimedReplicaRefs).toEqual([
+      'replica.hydralisk.glm_52_reap_504b.reclaimed-three',
+    ])
+    expect(readout.operatorActionItems).toEqual(
+      expect.arrayContaining([
+        {
+          action: 'recover_reclaimed_replicas',
+          blockerRefs: [
+            'blocker.hydralisk_glm_52_reap_504b.reclaimed_replicas_present',
+          ],
+          label:
+            'recover reclaimed GLM replicas before treating current serving capacity as durable',
+          replicaRefs: [
+            'replica.hydralisk.glm_52_reap_504b.reclaimed-three',
+          ],
+          severity: 'degraded',
+        },
+        expect.objectContaining({
+          action: 'attach_all_replica_keep_warm_watchdog',
+          replicaRefs: [
+            'replica.hydralisk.glm_52_reap_504b.missing-five',
+            'replica.hydralisk.glm_52_reap_504b.ready-two',
+            'replica.hydralisk.glm_52_reap_504b.reclaimed-three',
+          ],
+          severity: 'blocked',
+        }),
+      ]),
+    )
     expect(JSON.stringify(readout)).not.toContain('private.example.test')
     expect(JSON.stringify(readout)).not.toContain('secret-')
   })

@@ -198,12 +198,18 @@ operator view of what remains, not a public product claim.
   `replica.hydralisk.glm_52_reap_504b.g4-4g-east1b-spot-20260625203000`,
   `replica.hydralisk.glm_52_reap_504b.g4-4g-east1d-spot-20260625203000`, and
   `replica.hydralisk.glm_52_reap_504b.g4-4g-east5c-spot-20260625211500`.
-  `glm-fleet:durability --summary` now includes aggregate counts and
-  status-specific replica refs in the headless readout. Focused verification:
+  `glm-fleet:durability --summary` now includes aggregate counts,
+  status-specific replica refs, and typed operator action items in the
+  headless readout, so reclaimed replicas and missing forced-STOP proof refs
+  cannot be mistaken for completed durability. Focused verification:
   `glm-fleet-readiness`, `glm-fleet-readiness-routes`, and
-  `glm-fleet-durability-operator` tests passed (`25` tests), and
+  `glm-fleet-durability-operator` tests passed (`27` tests), and
   `bun run --cwd apps/openagents.com/workers/api typecheck` passed with only
-  the pre-existing `Effect.void` language-service advisories.
+  the pre-existing `Effect.void` language-service advisories. This slice was
+  delegated through Khala -> Pylon -> Codex as
+  `assignment.public.khala_coding.chatcmpl_c075da5d2d7545b480cf23b9b362e77c`;
+  exact own-capacity proof reported `3,286,127` total tokens, `80` owner-only
+  traces, and `1` owner-only raw-event closeout row.
 - 2026-06-27T01:22Z #6318 refresh: the production chat route had the
   `internalStressPreemption` registry wired but did not pass a live
   `routeAdmission` snapshot, so the generic scheduler could not form the
@@ -635,8 +641,12 @@ Make the fleet trustworthy before pushing load through it.
      multi-region auto-replace, and quota tracking.
    - 2026-06-27 refresh: the live fleet-health readout is now degraded, not just
      acceptance-blocked (`7` ready, `3` reclaimed). The headless durability
-     summary names the reclaimed public replica refs so the operator can target
-     recovery without opening the full bundle.
+     summary names the reclaimed public replica refs and emits typed
+     `operatorActionItems` so the operator can target recovery and missing
+     durability proof refs without opening the full bundle. Khala -> Pylon ->
+     Codex proof for this public-safe slice:
+     `assignment.public.khala_coding.chatcmpl_c075da5d2d7545b480cf23b9b362e77c`,
+     `3,286,127` exact own-capacity tokens.
 6. **#6259 + #6315 — green end-to-end GLM-serving smoke. → after #6310.** Get the
    Khala→GLM verification smoke passing for real (served-worker disclosure + counter
    increment); #6315 is the receipt-ref fix for the zero-debit operator-exempt token.

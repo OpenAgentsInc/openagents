@@ -267,6 +267,9 @@ const statusLine = (
   status: GlmFleetAcceptanceDimensionStatus,
 ): string => `- ${label}: ${status}`
 
+const listOrNone = (values: ReadonlyArray<string>): string =>
+  values.length === 0 ? 'none' : values.join(', ')
+
 export const formatGlmFleetDurabilityOperatorReadme = (
   bundle: GlmFleetDurabilityOperatorBundle,
 ): string => {
@@ -276,6 +279,13 @@ export const formatGlmFleetDurabilityOperatorReadme = (
       : bundle.missingOperatorInputs.map(
           input =>
             `- ${input.env} (${input.status}) - ${input.label} [${input.flag}]`,
+        )
+  const actionItems =
+    bundle.readiness.operatorActionItems.length === 0
+      ? ['- none']
+      : bundle.readiness.operatorActionItems.map(
+          item =>
+            `- ${item.action} (${item.severity}) - ${item.label}; replicas: ${listOrNone(item.replicaRefs)}; blockers: ${listOrNone(item.blockerRefs)}`,
         )
   return [
     '# GLM fleet durability operator bundle',
@@ -313,6 +323,10 @@ export const formatGlmFleetDurabilityOperatorReadme = (
       'quota request tracking',
       bundle.acceptance.quotaRequestTracking.status,
     ),
+    '',
+    '## Operator action items',
+    '',
+    ...actionItems,
     '',
     '## Missing operator inputs',
     '',

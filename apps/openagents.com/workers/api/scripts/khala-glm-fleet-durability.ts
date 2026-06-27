@@ -107,6 +107,7 @@ process.stderr.write(
     `[glm-fleet-durability] acceptance=${bundle.readiness.acceptanceStatus}`,
     `[glm-fleet-durability] serving=${bundle.readiness.servingStatus}`,
     `[glm-fleet-durability] missingOperatorInputs=${bundle.missingOperatorInputs.map(input => input.env).join(', ') || 'none'}`,
+    `[glm-fleet-durability] operatorActionItems=${bundle.readiness.operatorActionItems.map(item => item.action).join(', ') || 'none'}`,
     '[glm-fleet-durability] liveRoutingChanged=false',
     ...(outputDir === undefined
       ? []
