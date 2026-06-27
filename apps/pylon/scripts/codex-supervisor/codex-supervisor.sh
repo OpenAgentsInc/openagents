@@ -1,0 +1,246 @@
+#!/usr/bin/env bash
+#
+# codex-supervisor.sh
+#
+# Durable, around-the-clock supervisor for the Khala -> Pylon -> Codex
+# own-capacity coding delegation lane (see the "Khala -> Pylon -> Codex Coding
+# Delegation Runbook" in CLAUDE.md / AGENTS.md). It maintains a saturated pool
+# of no-spend Codex coding sessions and refills each slot as it finishes, so the
+# public Khala token counter keeps climbing from the owner's own local Codex
+# capacity. NO paid API, NO spend, own-capacity only.
+#
+# ARCHITECTURE (account-aware N-worker pool):
+#   * Enumerates READY Codex accounts (`codex accounts list --json`).
+#   * Target concurrency = min(SUP_MAX_SLOTS, ready_accounts * SUP_PER_ACCOUNT).
+#     With 4 ready Codex logins and SUP_PER_ACCOUNT=2 this is >=8 concurrent.
+#   * Runs SUP_MAX_SLOTS worker loops. Each active worker continuously fires a
+#     `khala request --workflow codex_agent_task` (which auto-runs the matching
+#     local `assignment run-no-spend` to closeout), pinned to a real backlog
+#     issue + the current origin/main commit, round-robined across ready
+#     accounts via `--account-ref`. When a session closes, the worker IMMEDIATELY
+#     fires the next one -> continuous refill.
+#   * A background heartbeater republishes presence + advertised Codex capacity
+#     on a timer so presence never goes stale (#6354) and the dispatch gate sees
+#     current availability.
+#
+# WHY THE PLATFORM TOOLS ALONE ARE NOT ENOUGH:
+#   `khala burndown` / `khala spawn` cap lanes at the number of ready accounts
+#   (one lane per account), so they cannot do >1 same-account parallel session.
+#   This supervisor drives same-account parallelism (SUP_PER_ACCOUNT>1) via
+#   independent worker loops, which is the proven manual-parallel path.
+#
+# SELF-THROTTLING (critical):
+#   A single Codex/ChatGPT login has a real concurrency ceiling. When the
+#   dispatch gate refuses (HTTP 409 / target_pylon_unavailable / rate limit), the
+#   worker backs off exponentially. The pool therefore self-settles at the
+#   login's true headroom instead of rate-limit-fighting itself or other drivers.
+#   => Do NOT run this as a second driver against a login that another runner
+#      (e.g. standing-pylon.sh) is already saturating; it will only contend.
+#      The throughput win comes from MORE DISTINCT logins, not more runners.
+#
+# HARD SAFETY:
+#   * NEVER runs `codex login` / `pylon auth codex`. Only READS existing logins.
+#     If it detects the owner's live ~/.codex was broken ("access token could not
+#     be refreshed" / "sign in again"), it PAUSES and writes a NEEDS_OWNER note.
+#   * Uses PYLON_DISABLE_DAEMON_ROUTING=1 so a stale `pylon node` cannot answer
+#     with old source.
+#   * No spend / payout / destructive git on the live repo: each assignment runs
+#     in its own bounded throwaway workspace materialized by Pylon.
+#
+# Stop with:  kill "$(cat "$SUP_STATE_DIR/supervisor.pid")"
+#
+set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
+
+# --- Config (all overridable via env) ---
+export PYLON_OPENAGENTS_BASE_URL="${PYLON_OPENAGENTS_BASE_URL:-https://openagents.com}"
+# Default pylon home is the registered owner home (~/.pylon). A fresh/unknown
+# home 404s on heartbeat (no registration); do not point this at an unregistered
+# home, and do not run `pylon auth openagents` here to create one.
+export PYLON_HOME="${PYLON_HOME:-$HOME/.pylon}"
+export PYLON_DISABLE_DAEMON_ROUTING="${PYLON_DISABLE_DAEMON_ROUTING:-1}"
+
+# The token-linked owner Pylon to target. The local home's resolved target ref
+# can drift from the server registration, so we pin it explicitly.
+SUP_PYLON_REF="${SUP_PYLON_REF:-pylon.33afd48282a649047e3a}"
+
+SUP_STATE_DIR="${SUP_STATE_DIR:-$HOME/.codex-supervisor}"
+SUP_LOG="${SUP_LOG:-$SUP_STATE_DIR/supervisor.log}"
+
+# Same-account parallel sessions per READY Codex login (owner intent: >=2/acct).
+SUP_PER_ACCOUNT="${SUP_PER_ACCOUNT:-2}"
+# Hard ceiling on total concurrent sessions across all accounts.
+SUP_MAX_SLOTS="${SUP_MAX_SLOTS:-8}"
+SUP_REPO="${SUP_REPO:-OpenAgentsInc/openagents}"
+# Lightweight, sanctioned-shape verification run inside each throwaway workspace.
+SUP_VERIFY="${SUP_VERIFY:-bun run --cwd apps/openagents.com/workers/api test -- src/labor-earnings-routes.test.ts}"
+# Presence heartbeat cadence (s) — keeps presence fresh + capacity advertised.
+SUP_HEARTBEAT_SECS="${SUP_HEARTBEAT_SECS:-45}"
+# Backoff bounds for refused/rate-limited dispatch.
+SUP_BACKOFF_MIN="${SUP_BACKOFF_MIN:-15}"
+SUP_BACKOFF_MAX="${SUP_BACKOFF_MAX:-300}"
+
+# Rotated real backlog (public-safe issue numbers). Codex does real work against
+# the pinned origin/main commit in a bounded throwaway workspace.
+#   #6310 GLM tool-calling (also wins MirrorCode + GLM) | #6311 / #6320 follow-ups
+#   #6354 presence_stale | #6355 burndown | #6358 counter-health
+SUP_ISSUES="${SUP_ISSUES:-6310 6311 6320 6354 6355 6358}"
+
+PYLON=(bun "$REPO_ROOT/apps/pylon/src/index.ts")
+mkdir -p "$SUP_STATE_DIR"
+DESIRED_FILE="$SUP_STATE_DIR/desired-slots"
+PAUSE_FILE="$SUP_STATE_DIR/paused"
+echo 0 > "$DESIRED_FILE"
+rm -f "$PAUSE_FILE"
+
+log() { printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >> "$SUP_LOG"; }
+
+bound_log() {
+  if [ -f "$SUP_LOG" ] && [ "$(wc -c < "$SUP_LOG" 2>/dev/null || echo 0)" -gt 4194304 ]; then
+    tail -c 2097152 "$SUP_LOG" > "$SUP_LOG.tmp" 2>/dev/null && mv "$SUP_LOG.tmp" "$SUP_LOG"
+  fi
+}
+
+counter_now() {
+  curl -fsS "$PYLON_OPENAGENTS_BASE_URL/api/public/khala-tokens-served" 2>/dev/null \
+    | sed -n 's/.*"tokensServed":\([0-9]*\).*/\1/p' | head -1
+}
+
+# Print ready Codex account refs, one per line. Default-home account (accountRef
+# null) is printed as the literal token "default".
+ready_codex_account_refs() {
+  "${PYLON[@]}" codex accounts list --json 2>/dev/null | python3 -c "import sys,json
+try: d=json.load(sys.stdin)
+except Exception: sys.exit(0)
+for a in d.get('accounts',[]):
+    if a.get('provider')=='codex' and a.get('readiness',{}).get('state')=='ready':
+        print(a.get('accountRef') or 'default')" 2>/dev/null
+}
+
+owner_session_broken() {
+  grep -qiE "access token could not be refreshed|please sign in again|reauthenticate" "$@" 2>/dev/null
+}
+
+global_pause() {
+  touch "$PAUSE_FILE"
+  log "!!! GLOBAL PAUSE: owner Codex session appears broken; not hammering."
+  {
+    echo ""
+    echo "## NEEDS-OWNER ($(date -u +%Y-%m-%dT%H:%M:%SZ)): Codex login broken"
+    echo "codex-supervisor saw 'access token could not be refreshed / sign in again'."
+    echo "Re-authenticate the local Codex (~/.codex) yourself (\`codex login\`);"
+    echo "the supervisor will NEVER do this. It is paused until you clear"
+    echo "$PAUSE_FILE."
+  } >> "$REPO_ROOT/NEEDS_OWNER.md" 2>/dev/null || true
+}
+
+# --- Heartbeater: recompute desired slots + advertise capacity on a timer. ---
+heartbeater_loop() {
+  while true; do
+    [ -f "$PAUSE_FILE" ] && { sleep "$SUP_HEARTBEAT_SECS"; continue; }
+    local ready desired
+    ready=$(ready_codex_account_refs | grep -c . || echo 0)
+    desired=$(( ready * SUP_PER_ACCOUNT ))
+    [ "$desired" -gt "$SUP_MAX_SLOTS" ] && desired="$SUP_MAX_SLOTS"
+    echo "$desired" > "$DESIRED_FILE"
+    OPENAGENTS_PYLON_CODEX_CONCURRENCY="$desired" \
+    OPENAGENTS_PYLON_CODEX_BUSY=0 \
+    OPENAGENTS_PYLON_CODEX_QUEUED=0 \
+      "${PYLON[@]}" presence heartbeat --json >> "$SUP_LOG" 2>&1 || true
+    log "heartbeat ready_codex=$ready desired_slots=$desired"
+    bound_log
+    sleep "$SUP_HEARTBEAT_SECS"
+  done
+}
+
+# --- Worker: one continuously-refilling Codex session slot. ---
+worker_loop() {
+  local slot="$1"
+  local backoff="$SUP_BACKOFF_MIN"
+  local iter=0
+  # spread issue rotation per slot
+  local issues=($SUP_ISSUES)
+  while true; do
+    if [ -f "$PAUSE_FILE" ]; then sleep 30; continue; fi
+    local desired; desired=$(cat "$DESIRED_FILE" 2>/dev/null || echo 0)
+    if [ "$slot" -ge "$desired" ]; then sleep 10; continue; fi
+
+    # Round-robin account across the live ready set; default omits --account-ref.
+    local refs=(); while IFS= read -r r; do refs+=("$r"); done < <(ready_codex_account_refs)
+    [ "${#refs[@]}" -eq 0 ] && { sleep 20; continue; }
+    local acc="${refs[$(( slot % ${#refs[@]} ))]}"
+    local acc_args=(); [ "$acc" != "default" ] && acc_args=(--account-ref "$acc")
+
+    local issue="${issues[$(( (slot + iter) % ${#issues[@]} ))]}"
+    iter=$(( iter + 1 ))
+    local commit; commit=$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null)
+    [ -z "$commit" ] && { sleep 15; continue; }
+
+    local out="$SUP_STATE_DIR/slot.$slot.json"
+    "${PYLON[@]}" khala request \
+      --prompt "Implement public issue #$issue and run the named verification." \
+      --workflow codex_agent_task \
+      --pylon-ref "$SUP_PYLON_REF" \
+      "${acc_args[@]}" \
+      --repo "$SUP_REPO" --branch main --commit "$commit" \
+      --verify "$SUP_VERIFY" \
+      --json > "$out" 2>>"$SUP_LOG"
+    local rc=$?
+
+    if owner_session_broken "$out"; then global_pause; continue; fi
+
+    if grep -qiE '"ok": ?true|"closeout"|accepted' "$out" 2>/dev/null && [ "$rc" -eq 0 ]; then
+      backoff="$SUP_BACKOFF_MIN"
+      log "slot=$slot acc=$acc issue=#$issue OK (rc=$rc)"
+      continue
+    fi
+
+    # Refused / unavailable / rate-limited / error -> exponential backoff so the
+    # pool settles at the login's real headroom.
+    local sig="other"
+    grep -qiE '409|dispatch gate refused|target_pylon_unavailable' "$out" 2>/dev/null && sig="refused"
+    grep -qiE '429|rate.?limit|too many requests|quota' "$out" 2>/dev/null && sig="rate_limited"
+    log "slot=$slot acc=$acc issue=#$issue NO-DISPATCH ($sig rc=$rc); backoff ${backoff}s"
+    sleep "$backoff"
+    backoff=$(( backoff * 2 )); [ "$backoff" -gt "$SUP_BACKOFF_MAX" ] && backoff="$SUP_BACKOFF_MAX"
+  done
+}
+
+cleanup() {
+  log "supervisor stopping (pid $$); terminating children"
+  pkill -P $$ 2>/dev/null
+  rm -f "$SUP_STATE_DIR/supervisor.pid"
+  exit 0
+}
+trap cleanup INT TERM
+
+# --- Preconditions ---
+if [ -z "${OPENAGENTS_AGENT_TOKEN:-}" ]; then
+  echo "FATAL: OPENAGENTS_AGENT_TOKEN is not set" >&2
+  exit 1
+fi
+
+echo $$ > "$SUP_STATE_DIR/supervisor.pid"
+log "=== codex-supervisor START pid=$$ repo=$REPO_ROOT pylon=$SUP_PYLON_REF per_account=$SUP_PER_ACCOUNT max_slots=$SUP_MAX_SLOTS ==="
+
+"${PYLON[@]}" provider go-online >> "$SUP_LOG" 2>&1 || log "provider go-online nonzero (continuing)"
+
+heartbeater_loop &
+log "heartbeater pid=$! cadence=${SUP_HEARTBEAT_SECS}s"
+
+# Give the first heartbeat a moment to publish desired slots.
+sleep 5
+
+for slot in $(seq 0 $(( SUP_MAX_SLOTS - 1 ))); do
+  worker_loop "$slot" &
+  log "worker slot=$slot pid=$!"
+done
+
+# Periodic public-counter progress line for observability.
+while true; do
+  bound_log
+  log "counter tokensServed=$(counter_now) desired_slots=$(cat "$DESIRED_FILE" 2>/dev/null)"
+  sleep 120
+done
