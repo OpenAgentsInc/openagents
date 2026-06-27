@@ -655,6 +655,90 @@ describe('coding workflow delegation', () => {
     })
   })
 
+  test('diagnoses a stale-capability target as not Codex-capable (#6354)', async () => {
+    // The Pylon advertises live codex capacity via heartbeat, is active and
+    // fresh, but its registration capabilityRefs lost the local Codex
+    // capability (e.g. codex linked after the initial register, before the
+    // capability-refreshing heartbeat). The refusal must name exactly that.
+    const result = await delegateCodingWorkflow({
+      classification,
+      linkedAgents: [linkedOwner],
+      makeId: () => 'id1',
+      nowIso,
+      pylonStore: makeStore({
+        registrations: [
+          registration({
+            capabilityRefs: ['capability.public.inference'],
+          }),
+        ],
+      }),
+      rawBody: {
+        openagents: { coding: { targetPylonRef: 'pylon.owner.codex' } },
+      },
+      requestId: 'chatcmpl_coding_stale_capability',
+    })
+
+    expect(result).toMatchObject({
+      error: 'target_pylon_unavailable',
+      evidenceRefs: expect.arrayContaining([
+        'evidence.khala_coding.target_pylon_ref.unavailable',
+        'evidence.khala_coding.target_pylon_ref.unavailable.not_codex_capable',
+      ]),
+      kind: 'rejected',
+      requestedPylonRef: 'pylon.owner.codex',
+      statusCode: 409,
+    })
+    if (result?.kind !== 'rejected') {
+      throw new Error('expected a rejection')
+    }
+    expect(result.reason).toContain('Codex-capable')
+  })
+
+  test('diagnoses a stale-heartbeat target as not heartbeat-fresh (#6354)', async () => {
+    const result = await delegateCodingWorkflow({
+      classification,
+      linkedAgents: [linkedOwner],
+      makeId: () => 'id1',
+      nowIso,
+      pylonStore: makeStore({
+        registrations: [
+          registration({
+            latestHeartbeatAt: '2026-06-25T11:00:00.000Z',
+          }),
+        ],
+      }),
+      rawBody: {
+        openagents: { coding: { targetPylonRef: 'pylon.owner.codex' } },
+      },
+      requestId: 'chatcmpl_coding_stale_heartbeat',
+    })
+
+    expect(result).toMatchObject({
+      error: 'target_pylon_unavailable',
+      evidenceRefs: expect.arrayContaining([
+        'evidence.khala_coding.target_pylon_ref.unavailable.stale_or_missing_heartbeat',
+      ]),
+      kind: 'rejected',
+      statusCode: 409,
+    })
+  })
+
+  test('admits a fresh Codex-capable target that advertises codex capacity (#6354)', async () => {
+    const result = await delegateCodingWorkflow({
+      classification,
+      linkedAgents: [linkedOwner],
+      makeId: () => 'id1',
+      nowIso,
+      pylonStore: makeStore({ registrations: [registration()] }),
+      rawBody: {
+        openagents: { coding: { targetPylonRef: 'pylon.owner.codex' } },
+      },
+      requestId: 'chatcmpl_coding_fresh_codex_target',
+    })
+    const assigned = expectAssigned(result)
+    expect(assigned.pylon.pylonRef).toBe('pylon.owner.codex')
+  })
+
   test('does not treat submitted closeout evidence as active Codex capacity', async () => {
     const result = await delegateCodingWorkflow({
       classification,

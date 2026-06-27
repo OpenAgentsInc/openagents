@@ -9,6 +9,7 @@ import {
 } from './public-ref-scanner-safety'
 import { PylonResourceMode } from './pylon-resource-mode-setup'
 import { isoTimestampAfterIso } from './runtime-primitives'
+import { admitTassadarExecutorCapabilityClaim } from './tassadar-capability-admission'
 
 const TrimmedString = S.Trim
 const NonEmptyTrimmedString = TrimmedString.check(S.isNonEmpty())
@@ -187,6 +188,14 @@ export type PylonApiRegistrationRequest =
   typeof PylonApiRegistrationRequest.Type
 
 export const PylonApiHeartbeatRequest = S.Struct({
+  // #6354: the live node re-publishes its full publishable capability set on
+  // every heartbeat. Accept it here so a capability gained AFTER the initial
+  // register (e.g. a Codex account linked into the Pylon home) propagates into
+  // `registration.capabilityRefs` without forcing an explicit re-register.
+  // Without this field the heartbeat could only refresh capacity/load refs,
+  // leaving the dispatch gate's capability view frozen at register time and
+  // rejecting a genuinely Codex-capable, heartbeat-fresh Pylon with a 409.
+  capabilityRefs: S.optionalKey(PublicSafeRefs),
   capacityRefs: PublicSafeRefs,
   clientProtocolVersion: S.optionalKey(PylonClientVersion),
   clientVersion: S.optionalKey(PylonClientVersion),
@@ -1605,8 +1614,34 @@ export const nextRegistrationForEvent = (
       )
     : registration.providerNip90LaneRefs
   const isHeartbeat = event.eventKind === 'heartbeat'
+  // #6354: refresh the registration's capability set from a heartbeat that
+  // carries a non-empty `capabilityRefs`. The live node sends its full
+  // publishable capability set on every heartbeat (self-test-gated client
+  // side, the same as register), so this lets a capability gained after the
+  // initial register — e.g. a Codex account linked into the Pylon home — reach
+  // `registration.capabilityRefs` (and thus the dispatch capability gate)
+  // without an explicit re-register. An absent or empty `capabilityRefs`
+  // (older clients, partial bodies) leaves the last known set untouched, so a
+  // heartbeat can never silently strip the registration's capabilities.
+  const heartbeatCapabilityRefs =
+    isHeartbeat && Array.isArray(body.capabilityRefs)
+      ? body.capabilityRefs.filter(
+          (ref): ref is string => typeof ref === 'string',
+        )
+      : null
+  // W4.1 (#4750): mirror the register-time admission so a heartbeat cannot
+  // inject an unreceipted Tassadar executor capability into dispatchable
+  // registry state. The server never trusts the client's stripping.
+  const capabilityRefs =
+    heartbeatCapabilityRefs !== null && heartbeatCapabilityRefs.length > 0
+      ? uniqueRefs(
+          admitTassadarExecutorCapabilityClaim(heartbeatCapabilityRefs)
+            .admittedCapabilityRefs,
+        )
+      : registration.capabilityRefs
   const next: PylonApiRegistrationRecord = {
     ...registration,
+    capabilityRefs,
     clientProtocolVersion,
     clientVersion,
     latestHeartbeatAt: isHeartbeat

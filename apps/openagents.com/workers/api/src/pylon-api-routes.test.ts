@@ -1148,6 +1148,103 @@ describe('Pylon API routes', () => {
     ])
   })
 
+  test('refreshes capability refs from a heartbeat without re-registration (#6354)', async () => {
+    const store = new MemoryPylonApiStore()
+    // Register BEFORE a Codex account is linked: the registration carries no
+    // local Codex capability.
+    await registerPylon(store, {
+      capabilityRefs: ['capability.public.inference'],
+    })
+    const before = store.registrations.get('pylon.test.one')
+    expect(before?.capabilityRefs).toEqual(['capability.public.inference'])
+
+    // A later heartbeat advertises the newly-linked Codex capability and its
+    // codex capacity. The dispatch gate must see the Pylon as Codex-capable.
+    const heartbeat = await route(
+      store,
+      '/api/pylons/pylon.test.one/heartbeat',
+      {
+        body: {
+          capabilityRefs: [
+            'capability.public.inference',
+            'capability.pylon.local_codex',
+          ],
+          capacityRefs: [
+            'capacity.public.pylon_cli.available',
+            'capacity.coding.codex.ready=2',
+            'capacity.coding.codex.available=2',
+          ],
+          healthRefs: ['health.public.pylon_cli.ok'],
+          loadRefs: [
+            'load.public.pylon_cli.low',
+            'load.coding.codex.busy=0',
+            'load.coding.codex.queued=0',
+          ],
+          status: 'online',
+        },
+        idempotencyKey: 'heartbeat-capability-refresh-6354',
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
+
+    expect(heartbeat.status).toBe(201)
+    const stored = store.registrations.get('pylon.test.one')
+    expect(stored?.capabilityRefs).toContain('capability.pylon.local_codex')
+    expect(stored?.capabilityRefs).toContain('capability.public.inference')
+  })
+
+  test('a heartbeat cannot inject an unreceipted Tassadar executor capability (#6354/W4.1)', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store, {
+      capabilityRefs: ['capability.public.inference'],
+    })
+
+    const heartbeat = await route(
+      store,
+      '/api/pylons/pylon.test.one/heartbeat',
+      {
+        body: {
+          capabilityRefs: [
+            'capability.public.inference',
+            'capability.tassadar_poc.numeric_model_executor',
+          ],
+          capacityRefs: ['capacity.public.pylon_cli.available'],
+          healthRefs: ['health.public.pylon_cli.ok'],
+          loadRefs: ['load.public.pylon_cli.low'],
+          status: 'online',
+        },
+        idempotencyKey: 'heartbeat-unreceipted-executor-6354',
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
+
+    expect(heartbeat.status).toBe(201)
+    const stored = store.registrations.get('pylon.test.one')
+    expect(stored?.capabilityRefs).toContain('capability.public.inference')
+    expect(stored?.capabilityRefs).not.toContain(
+      'capability.tassadar_poc.numeric_model_executor',
+    )
+  })
+
+  test('a heartbeat without capability refs leaves the stored set intact (#6354)', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store, {
+      capabilityRefs: [
+        'capability.public.inference',
+        'capability.pylon.local_codex',
+      ],
+    })
+
+    // An older client that omits `capabilityRefs` must not silently strip the
+    // registration's capabilities.
+    await markOnline(store)
+    const stored = store.registrations.get('pylon.test.one')
+    expect(stored?.capabilityRefs).toContain('capability.pylon.local_codex')
+    expect(stored?.capabilityRefs).toContain('capability.public.inference')
+  })
+
   test('rejects malformed provider discovery identity fields (#4864)', async () => {
     const store = new MemoryPylonApiStore()
     const rejected = await registerPylon(store, {

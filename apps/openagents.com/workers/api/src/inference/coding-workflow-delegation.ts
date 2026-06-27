@@ -380,13 +380,95 @@ const hasFreshOnlineHeartbeat = (
   )
 }
 
+const hasCodexCapability = (
+  registration: PylonApiRegistrationRecord,
+): boolean =>
+  registration.capabilityRefs.includes(CODEX_AGENT_CAPABILITY_REF)
+
 const hasAvailableCodexCapacity = (
   registration: PylonApiRegistrationRecord,
 ): boolean =>
-  registration.capabilityRefs.includes(CODEX_AGENT_CAPABILITY_REF) &&
+  hasCodexCapability(registration) &&
   pylonCodingServiceCapacityProjection(registration).some(
     capacity => capacity.service === 'codex' && capacity.available > 0,
   )
+
+// #6354: name exactly which admission sub-condition failed so a refused
+// caller-owned coding delegation is debuggable instead of an opaque 409. The
+// gate admits a Pylon only when it is active AND heartbeat-fresh AND
+// Codex-capable AND advertising codex `available>0`; this reports the failing
+// sub-conditions for the targeted Pylon ("active" vs "fresh" vs "codex-capable"
+// vs "available"), preferring the registration that is closest to dispatchable.
+type CodexAdmissionSubCondition =
+  | 'not_active'
+  | 'stale_or_missing_heartbeat'
+  | 'not_codex_capable'
+  | 'no_available_codex_capacity'
+
+const codexAdmissionFailures = (
+  registration: PylonApiRegistrationRecord,
+  nowIso: string,
+): ReadonlyArray<CodexAdmissionSubCondition> => {
+  const failures: CodexAdmissionSubCondition[] = []
+  if (registration.status !== 'active') {
+    failures.push('not_active')
+  }
+  if (!hasFreshOnlineHeartbeat(registration, nowIso)) {
+    failures.push('stale_or_missing_heartbeat')
+  }
+  if (!hasCodexCapability(registration)) {
+    failures.push('not_codex_capable')
+  }
+  if (
+    !pylonCodingServiceCapacityProjection(registration).some(
+      capacity => capacity.service === 'codex' && capacity.available > 0,
+    )
+  ) {
+    failures.push('no_available_codex_capacity')
+  }
+  return failures
+}
+
+const diagnoseCodexUnavailability = (
+  registrations: ReadonlyArray<PylonApiRegistrationRecord>,
+  nowIso: string,
+): Readonly<{
+  evidenceRefs: ReadonlyArray<string>
+  reason: string
+}> => {
+  const reasonText: Record<CodexAdmissionSubCondition, string> = {
+    no_available_codex_capacity:
+      'it is not advertising any available Codex capacity (heartbeat codex available=0)',
+    not_active: 'it is not active',
+    not_codex_capable:
+      'it is not Codex-capable (the heartbeat is not publishing the local Codex capability)',
+    stale_or_missing_heartbeat: 'its online heartbeat is stale or missing',
+  }
+  const best =
+    registrations.length === 0
+      ? null
+      : registrations
+          .map(registration => ({
+            failures: codexAdmissionFailures(registration, nowIso),
+          }))
+          .sort((left, right) => left.failures.length - right.failures.length)[0]
+  const failures =
+    best === null || best === undefined
+      ? (['not_active'] as ReadonlyArray<CodexAdmissionSubCondition>)
+      : best.failures
+  return {
+    evidenceRefs: [
+      'evidence.khala_coding.target_pylon_ref.unavailable',
+      ...failures.map(
+        failure =>
+          `evidence.khala_coding.target_pylon_ref.unavailable.${failure}`,
+      ),
+    ],
+    reason:
+      'The requested linked Pylon cannot take a Codex coding assignment because ' +
+      `${failures.map(failure => reasonText[failure]).join('; ')}.`,
+  }
+}
 
 const codingDelegationStoreUnavailableRejection = (
   requestedPylonRef: string | null,
@@ -589,12 +671,15 @@ const delegateCodingWorkflowUnsafe = async (
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
 
   if (target.kind === 'target' && candidates.length === 0) {
+    const diagnosis = diagnoseCodexUnavailability(
+      authorizedRegistrations,
+      input.nowIso,
+    )
     return {
       error: 'target_pylon_unavailable',
-      evidenceRefs: ['evidence.khala_coding.target_pylon_ref.unavailable'],
+      evidenceRefs: diagnosis.evidenceRefs,
       kind: 'rejected',
-      reason:
-        'The requested linked Pylon is not active, heartbeat-fresh, Codex-capable, and available.',
+      reason: diagnosis.reason,
       requestedPylonRef: target.pylonRef,
       statusCode: 409,
     }
