@@ -37,6 +37,8 @@ import {
   type PylonApiStore,
   PylonApiStoreError,
   PylonApiWalletReadinessRequest,
+  PylonExecutorQuarantineRequest,
+  type PylonExecutorQuarantineRecord,
   type PylonSparkPayoutTargetReadiness,
   type PylonSparkPayoutTargetStore,
   SPARK_PAYOUT_TARGET_NOT_READY,
@@ -766,6 +768,45 @@ const controlledDispatchGateBlockedResponse = (
     { status: 409 },
   )
 
+const pylonQuarantinedResponse = (
+  quarantine: PylonExecutorQuarantineRecord,
+): HttpResponse =>
+  noStoreJsonResponse(
+    {
+      error: 'pylon_executor_quarantined',
+      pylonRef: quarantine.pylonRef,
+      quarantine: {
+        quarantineRef: quarantine.quarantineRef,
+        reasonRefs: quarantine.reasonRefs,
+        sourceRefs: quarantine.sourceRefs,
+        status: quarantine.status,
+      },
+      reason:
+        'Pylon executor is quarantined by the Cloudflare-native control plane.',
+    },
+    { status: 423 },
+  )
+
+const readActiveQuarantine = <Bindings extends PylonApiRouteEnv>(
+  dependencies: PylonApiRouteDependencies<Bindings>,
+  env: Bindings,
+  pylonRef: string,
+): Effect.Effect<
+  PylonExecutorQuarantineRecord | undefined,
+  PylonApiStoreError
+> => {
+  const store = routeStore(dependencies, env)
+
+  if (store.readActiveQuarantine === undefined) {
+    return Effect.succeed(undefined)
+  }
+
+  return Effect.tryPromise({
+    catch: pylonApiStoreErrorFromUnknown,
+    try: () => store.readActiveQuarantine!(pylonRef),
+  })
+}
+
 const requireAgent = <Bindings extends PylonApiRouteEnv>(
   dependencies: PylonApiRouteDependencies<Bindings>,
   request: Request,
@@ -1276,6 +1317,11 @@ const routeCreateAssignment = <Bindings extends PylonApiRouteEnv>(
       catch: pylonApiStoreErrorFromUnknown,
       try: () => store.readRegistration(body.pylonRef),
     })
+    const quarantine = yield* readActiveQuarantine(
+      dependencies,
+      env,
+      body.pylonRef,
+    )
 
     if (
       dispatcher.kind === 'agent' &&
@@ -1307,8 +1353,34 @@ const routeCreateAssignment = <Bindings extends PylonApiRouteEnv>(
       assignmentRef: requestedAssignmentRef ?? null,
       body,
       nowIso,
-      registration,
+      registration:
+        quarantine === undefined || registration === undefined
+          ? registration
+          : {
+              ...registration,
+              status: 'blocked',
+              latestHeartbeatStatus: 'quarantined',
+              latestHealthRefs: uniqueRouteRefs([
+                ...registration.latestHealthRefs,
+                'health.public.pylon_executor.quarantined',
+                ...quarantine.reasonRefs,
+              ]),
+            },
     })
+
+    if (quarantine !== undefined) {
+      return controlledDispatchGateBlockedResponse({
+        ...dispatchGate,
+        blockerRefs: uniqueRouteRefs([
+          ...dispatchGate.blockerRefs,
+          'blocker.public.pylon_dispatch.executor_quarantined',
+          ...quarantine.reasonRefs,
+        ]),
+        dispatchAllowed: false,
+        state: 'blocked',
+        stateLabel: 'Blocked by active Pylon executor quarantine',
+      })
+    }
 
     if (!dispatchGate.dispatchAllowed) {
       return controlledDispatchGateBlockedResponse(dispatchGate)
@@ -1358,6 +1430,12 @@ const routeListAssignments = <Bindings extends PylonApiRouteEnv>(
   Effect.gen(function* () {
     const session = yield* requireAgent(dependencies, request, env)
     yield* requireOwnedRegistration(dependencies, env, pylonRef, session)
+    const quarantine = yield* readActiveQuarantine(dependencies, env, pylonRef)
+
+    if (quarantine !== undefined) {
+      return pylonQuarantinedResponse(quarantine)
+    }
+
     const nowIso = routeNowIso(dependencies)
     const assignments = yield* Effect.tryPromise({
       catch: pylonApiStoreErrorFromUnknown,
@@ -1415,6 +1493,89 @@ const routeCloseoutAssignment = <Bindings extends PylonApiRouteEnv>(
     return noStoreJsonResponse({
       assignment: publicPylonApiAssignmentProjection(storedAssignment, nowIso),
     })
+  })
+
+const routeQuarantinePylon = <Bindings extends PylonApiRouteEnv>(
+  dependencies: PylonApiRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  pylonRef: string,
+) =>
+  Effect.gen(function* () {
+    yield* requireAdmin(dependencies, request, env)
+    const idempotencyKeyHash = yield* requireIdempotencyHash(request)
+    const body = yield* decodeBody(request, PylonExecutorQuarantineRequest)
+    const nowIso = routeNowIso(dependencies)
+    const store = routeStore(dependencies, env)
+    const reasonRefs = uniqueRouteRefs(body.reasonRefs)
+
+    if (reasonRefs.length === 0) {
+      return routeErrorResponse(
+        new PylonApiStoreError({
+          kind: 'validation_error',
+          reason: 'Pylon executor quarantine requires at least one reason ref.',
+        }),
+      )
+    }
+
+    if (store.upsertQuarantine === undefined) {
+      return noStoreJsonResponse(
+        {
+          error: 'pylon_executor_quarantine_store_unavailable',
+          reason: 'Pylon executor quarantine store is not configured.',
+        },
+        { status: 501 },
+      )
+    }
+
+    const registration = yield* Effect.tryPromise({
+      catch: pylonApiStoreErrorFromUnknown,
+      try: () => store.readRegistration(pylonRef),
+    })
+
+    if (registration === undefined) {
+      return routeErrorResponse(
+        new PylonApiStoreError({
+          kind: 'not_found',
+          reason: 'Pylon registration was not found.',
+        }),
+      )
+    }
+
+    const quarantine: PylonExecutorQuarantineRecord = {
+      createdAt: nowIso,
+      id: routeMakeId(dependencies),
+      operatorAgentUserId: 'operator.admin_api',
+      pylonRef,
+      quarantineRef: `quarantine.public.pylon_executor.${pylonRef}.${idempotencyKeyHash.slice(
+        0,
+        24,
+      )}`,
+      reasonRefs,
+      sourceRefs: uniqueRouteRefs([
+        'issue.public.openagents.6424',
+        'route:/api/operator/pylons/{pylonRef}/quarantine',
+        ...(body.sourceRefs ?? []),
+      ]),
+      status: body.status ?? 'active',
+    }
+    const stored = yield* Effect.tryPromise({
+      catch: pylonApiStoreErrorFromUnknown,
+      try: () => store.upsertQuarantine!(quarantine),
+    })
+
+    return noStoreJsonResponse(
+      {
+        quarantine: {
+          pylonRef: stored.pylonRef,
+          quarantineRef: stored.quarantineRef,
+          reasonRefs: stored.reasonRefs,
+          sourceRefs: stored.sourceRefs,
+          status: stored.status,
+        },
+      },
+      { status: 201 },
+    )
   })
 
 const eventStatusFromBody = (
@@ -1545,6 +1706,12 @@ const routeEvent = <Bindings extends PylonApiRouteEnv>(
       pylonRef,
       session,
     )
+    const quarantine = yield* readActiveQuarantine(dependencies, env, pylonRef)
+
+    if (quarantine !== undefined) {
+      return pylonQuarantinedResponse(quarantine)
+    }
+
     const nowIso = routeNowIso(dependencies)
     const assignment =
       input.assignmentRef === undefined
@@ -2262,6 +2429,22 @@ export const makePylonApiRoutes = <Bindings extends PylonApiRouteEnv>(
         request,
         env,
         decodeURIComponent(operatorCloseoutMatch[1]!),
+      ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+    }
+
+    const operatorQuarantineMatch =
+      /^\/api\/operator\/pylons\/([^/]+)\/quarantine$/.exec(url.pathname)
+
+    if (operatorQuarantineMatch !== null) {
+      if (request.method !== 'POST') {
+        return Effect.succeed(methodNotAllowed(['POST']))
+      }
+
+      return routeQuarantinePylon(
+        dependencies,
+        request,
+        env,
+        decodeURIComponent(operatorQuarantineMatch[1]!),
       ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
     }
 

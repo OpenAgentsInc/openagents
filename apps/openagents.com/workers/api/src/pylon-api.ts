@@ -601,6 +601,14 @@ export const PylonApiCreateAssignmentRequest = S.Struct({
 export type PylonApiCreateAssignmentRequest =
   typeof PylonApiCreateAssignmentRequest.Type
 
+export const PylonExecutorQuarantineRequest = S.Struct({
+  reasonRefs: S.Array(PublicSafeRef),
+  sourceRefs: PublicSafeRefs,
+  status: S.optionalKey(PylonEventStatus),
+})
+export type PylonExecutorQuarantineRequest =
+  typeof PylonExecutorQuarantineRequest.Type
+
 export const PylonApiAssignmentCloseoutRequest = S.Struct({
   accepted: S.Boolean,
   acceptedWorkRefs: PublicSafeRefs,
@@ -675,6 +683,17 @@ export type PylonApiAssignmentRecord = Readonly<{
   state: PylonApiAssignmentState
   taskRefs: ReadonlyArray<string>
   updatedAt: string
+}>
+
+export type PylonExecutorQuarantineRecord = Readonly<{
+  createdAt: string
+  id: string
+  operatorAgentUserId: string
+  pylonRef: string
+  quarantineRef: string
+  reasonRefs: ReadonlyArray<string>
+  sourceRefs: ReadonlyArray<string>
+  status: string
 }>
 
 export type PylonApiRegistrationProjection = Readonly<{
@@ -835,9 +854,15 @@ export type PylonApiStore = Readonly<{
   readRegistration: (
     pylonRef: string,
   ) => Promise<PylonApiRegistrationRecord | undefined>
+  readActiveQuarantine?: (
+    pylonRef: string,
+  ) => Promise<PylonExecutorQuarantineRecord | undefined>
   updateAssignment: (
     record: PylonApiAssignmentRecord,
   ) => Promise<PylonApiAssignmentRecord>
+  upsertQuarantine?: (
+    record: PylonExecutorQuarantineRecord,
+  ) => Promise<PylonExecutorQuarantineRecord>
   updateAssignmentIfState: (
     record: PylonApiAssignmentRecord,
     expectedState: PylonApiAssignmentState,
@@ -931,6 +956,17 @@ type PylonApiAssignmentRow = Readonly<{
   updated_at: string
 }>
 
+type PylonExecutorQuarantineRow = Readonly<{
+  created_at: string
+  id: string
+  operator_agent_user_id: string
+  pylon_ref: string
+  quarantine_ref: string
+  reason_refs_json: string
+  source_refs_json: string
+  status: string
+}>
+
 type PylonProviderJobLifecycleRow = Readonly<{
   accepted_work_refs_json: string
   artifact_refs_json: string
@@ -1006,6 +1042,19 @@ const mergeRowsByUpdatedAtDesc = <Row extends Readonly<{ updated_at: string }>>(
   [...rows]
     .sort((left, right) => right.updated_at.localeCompare(left.updated_at))
     .slice(0, Math.max(1, Math.trunc(limit)))
+
+const rowToQuarantine = (
+  row: PylonExecutorQuarantineRow,
+): PylonExecutorQuarantineRecord => ({
+  createdAt: row.created_at,
+  id: row.id,
+  operatorAgentUserId: row.operator_agent_user_id,
+  pylonRef: row.pylon_ref,
+  quarantineRef: row.quarantine_ref,
+  reasonRefs: parseJsonStringArray(row.reason_refs_json),
+  sourceRefs: parseJsonStringArray(row.source_refs_json),
+  status: row.status,
+})
 
 export const pylonApiPayloadHasPrivateMaterial = (value: unknown): boolean => {
   const json = safeFalseTracePolicyJsonReplacements.reduce(
@@ -2305,6 +2354,22 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
     return row === null ? undefined : rowToRegistration(row)
   },
 
+  readActiveQuarantine: async pylonRef => {
+    const row = await db
+      .prepare(
+        `SELECT *
+           FROM pylon_executor_quarantines
+          WHERE pylon_ref = ?
+            AND status = 'active'
+          ORDER BY created_at DESC
+          LIMIT 1`,
+      )
+      .bind(pylonRef)
+      .first<PylonExecutorQuarantineRow>()
+
+    return row === null ? undefined : rowToQuarantine(row)
+  },
+
   updateAssignment: async record => {
     const publicProjectionJson = JSON.stringify(
       publicPylonApiAssignmentProjection(record, record.updatedAt),
@@ -2416,6 +2481,41 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
 
   upsertProviderJobLifecycle: async record => {
     await upsertProviderJobLifecycleStatement(db, record).run()
+
+    return record
+  },
+
+  upsertQuarantine: async record => {
+    assertPylonApiPayloadSafe('Pylon executor quarantine', {
+      pylonRef: record.pylonRef,
+      quarantineRef: record.quarantineRef,
+      reasonRefs: record.reasonRefs,
+      sourceRefs: record.sourceRefs,
+      status: record.status,
+    })
+
+    await db
+      .prepare(
+        `INSERT INTO pylon_executor_quarantines
+          (id, quarantine_ref, pylon_ref, operator_agent_user_id, status,
+           reason_refs_json, source_refs_json, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(quarantine_ref) DO UPDATE SET
+           status = excluded.status,
+           reason_refs_json = excluded.reason_refs_json,
+           source_refs_json = excluded.source_refs_json`,
+      )
+      .bind(
+        record.id,
+        record.quarantineRef,
+        record.pylonRef,
+        record.operatorAgentUserId,
+        record.status,
+        JSON.stringify(uniqueRefs(record.reasonRefs)),
+        JSON.stringify(uniqueRefs(record.sourceRefs)),
+        record.createdAt,
+      )
+      .run()
 
     return record
   },
