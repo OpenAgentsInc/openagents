@@ -16,6 +16,8 @@ export const GLM_LIVE_ADAPTIVE_STRESS_ARTIFACT_SCHEMA =
 
 export const GLM_REAP_SERVED_MODEL = 'openagents/glm-5.2-reap-504b' as const
 
+export const GLM_LIVE_ADAPTIVE_STRESS_WINDOW_BREAKER_MAX_OBSERVATIONS = 3
+
 export type GlmLiveAdaptiveStressOutcomeStatus =
   | 'ok'
   | 'failed'
@@ -90,6 +92,16 @@ export type GlmLiveAdaptiveStressSummary = Readonly<{
     p90: number | null
     p99: number | null
   }>
+}>
+
+export type GlmLiveAdaptiveStressWindowBreakerDecision = Readonly<{
+  tripped: boolean
+  observedCount: number
+  failedCount: number
+  preemptedCount: number
+  overloadFailureCount: number
+  observedErrorRate: number | null
+  reasonRefs: ReadonlyArray<string>
 }>
 
 export type GlmLiveAdaptiveStressWindow = Readonly<{
@@ -181,25 +193,27 @@ export const classifyGlmLiveAdaptiveStressFailure = (
   return 'unknown'
 }
 
-export const decideGlmLiveAdaptiveStressConcurrency = (
-  input: GlmLiveAdaptiveStressDecisionInput,
-): GlmLiveAdaptiveStressDecision => {
-  const currentConcurrency = boundedConcurrency(
-    input.currentConcurrency,
-    input.minConcurrency,
-    input.maxConcurrency,
-  )
-  const observedCount = input.observations.length
-  const okCount = input.observations.filter(
+const observationStats = (
+  observations: ReadonlyArray<GlmLiveAdaptiveStressObservation>,
+): Readonly<{
+  observedCount: number
+  okCount: number
+  failedCount: number
+  preemptedCount: number
+  overloadFailureCount: number
+  observedErrorRate: number | null
+}> => {
+  const observedCount = observations.length
+  const okCount = observations.filter(
     observation => observation.status === 'ok',
   ).length
-  const failedCount = input.observations.filter(
+  const failedCount = observations.filter(
     observation => observation.status === 'failed',
   ).length
-  const preemptedCount = input.observations.filter(
+  const preemptedCount = observations.filter(
     observation => observation.status === 'preempted_for_external',
   ).length
-  const overloadFailureCount = input.observations.filter(
+  const overloadFailureCount = observations.filter(
     observation =>
       observation.status === 'failed' &&
       (observation.failureKind === 'gateway_overload' ||
@@ -209,6 +223,78 @@ export const decideGlmLiveAdaptiveStressConcurrency = (
   ).length
   const observedErrorRate =
     observedCount === 0 ? null : failedCount / observedCount
+
+  return {
+    observedCount,
+    okCount,
+    failedCount,
+    preemptedCount,
+    overloadFailureCount,
+    observedErrorRate,
+  }
+}
+
+export const decideGlmLiveAdaptiveStressWindowBreaker = (input: {
+  readonly currentConcurrency: number
+  readonly observations: ReadonlyArray<GlmLiveAdaptiveStressObservation>
+}): GlmLiveAdaptiveStressWindowBreakerDecision => {
+  const {
+    observedCount,
+    failedCount,
+    preemptedCount,
+    overloadFailureCount,
+    observedErrorRate,
+  } = observationStats(input.observations)
+  const minObservedBeforeTrip = Math.max(
+    1,
+    Math.min(
+      positiveIntegerOr(input.currentConcurrency, 1),
+      GLM_LIVE_ADAPTIVE_STRESS_WINDOW_BREAKER_MAX_OBSERVATIONS,
+    ),
+  )
+  const reasons: Array<GlmLiveAdaptiveStressDecisionReason> = []
+
+  if (preemptedCount > 0) {
+    reasons.push('external_preemption_observed')
+  }
+  if (overloadFailureCount >= minObservedBeforeTrip) {
+    reasons.push('overload_failures_observed')
+  }
+  if (
+    observedCount >= minObservedBeforeTrip &&
+    observedErrorRate !== null &&
+    observedErrorRate > GLM_STRESS_ERROR_RATE_BACKOFF_THRESHOLD
+  ) {
+    reasons.push('error_rate_over_budget')
+  }
+
+  return {
+    tripped: reasons.length > 0,
+    observedCount,
+    failedCount,
+    preemptedCount,
+    overloadFailureCount,
+    observedErrorRate,
+    reasonRefs: reasonRefs([...new Set(reasons)]),
+  }
+}
+
+export const decideGlmLiveAdaptiveStressConcurrency = (
+  input: GlmLiveAdaptiveStressDecisionInput,
+): GlmLiveAdaptiveStressDecision => {
+  const currentConcurrency = boundedConcurrency(
+    input.currentConcurrency,
+    input.minConcurrency,
+    input.maxConcurrency,
+  )
+  const {
+    observedCount,
+    okCount,
+    failedCount,
+    preemptedCount,
+    overloadFailureCount,
+    observedErrorRate,
+  } = observationStats(input.observations)
 
   if (preemptedCount > 0) {
     return {

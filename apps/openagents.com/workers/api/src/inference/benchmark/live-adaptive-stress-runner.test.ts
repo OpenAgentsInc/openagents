@@ -6,6 +6,7 @@ import {
   buildGlmLiveAdaptiveStressArtifact,
   classifyGlmLiveAdaptiveStressFailure,
   decideGlmLiveAdaptiveStressConcurrency,
+  decideGlmLiveAdaptiveStressWindowBreaker,
   glmLiveAdaptiveStressHeaders,
   summarizeGlmLiveAdaptiveStress,
   type GlmLiveAdaptiveStressObservation,
@@ -192,6 +193,57 @@ describe('GLM live adaptive stress runner utilities (#6317)', () => {
       preemptedCount: 1,
       reasonRefs: ['runner.glm_live_adaptive_stress.external_preemption_observed'],
     })
+  })
+
+  test('trips an intra-window breaker before a fast overload storm can refill', () => {
+    const cleanProbe = decideGlmLiveAdaptiveStressWindowBreaker({
+      currentConcurrency: 5,
+      observations: [
+        okObservation('ok-before-breaker-1'),
+        okObservation('ok-before-breaker-2'),
+      ],
+    })
+    const overloadBreaker = decideGlmLiveAdaptiveStressWindowBreaker({
+      currentConcurrency: 5,
+      observations: [
+        overloadObservation('fast-overload-1'),
+        overloadObservation('fast-overload-2'),
+        overloadObservation('fast-overload-3'),
+      ],
+    })
+    const mixedBreaker = decideGlmLiveAdaptiveStressWindowBreaker({
+      currentConcurrency: 5,
+      observations: [
+        okObservation('mixed-ok-1'),
+        okObservation('mixed-ok-2'),
+        overloadObservation('mixed-overload-1'),
+      ],
+    })
+
+    expect(cleanProbe).toMatchObject({
+      failedCount: 0,
+      observedCount: 2,
+      tripped: false,
+    })
+    expect(overloadBreaker).toMatchObject({
+      failedCount: 3,
+      observedCount: 3,
+      overloadFailureCount: 3,
+      tripped: true,
+    })
+    expect(overloadBreaker.reasonRefs).toEqual([
+      'runner.glm_live_adaptive_stress.overload_failures_observed',
+      'runner.glm_live_adaptive_stress.error_rate_over_budget',
+    ])
+    expect(mixedBreaker).toMatchObject({
+      failedCount: 1,
+      observedCount: 3,
+      overloadFailureCount: 1,
+      tripped: true,
+    })
+    expect(mixedBreaker.reasonRefs).toEqual([
+      'runner.glm_live_adaptive_stress.error_rate_over_budget',
+    ])
   })
 
   test('summarizes exact GLM receipts separately from non-GLM fallback receipts', () => {

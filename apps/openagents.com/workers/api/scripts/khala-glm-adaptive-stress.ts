@@ -8,6 +8,7 @@ import {
   buildGlmLiveAdaptiveStressArtifact,
   classifyGlmLiveAdaptiveStressFailure,
   decideGlmLiveAdaptiveStressConcurrency,
+  decideGlmLiveAdaptiveStressWindowBreaker,
   glmLiveAdaptiveStressHeaders,
   type GlmLiveAdaptiveStressObservation,
   type GlmLiveAdaptiveStressWindow,
@@ -274,6 +275,7 @@ const observations: Array<GlmLiveAdaptiveStressObservation> = []
 let windowObservations: Array<GlmLiveAdaptiveStressObservation> = []
 const windows: Array<GlmLiveAdaptiveStressWindow> = []
 const inFlight = new Set<Promise<void>>()
+let windowBreakerTripped = false
 
 const sleep = (ms: number): Promise<void> =>
   new Promise(resolve => setTimeout(resolve, ms))
@@ -293,6 +295,26 @@ const launch = (): void => {
           `servedModel=${observation.servedModel ?? 'none'}`,
         ].join(' ') + '\n',
       )
+      if (!windowBreakerTripped) {
+        const breaker = decideGlmLiveAdaptiveStressWindowBreaker({
+          currentConcurrency,
+          observations: windowObservations,
+        })
+        if (breaker.tripped) {
+          windowBreakerTripped = true
+          process.stderr.write(
+            [
+              '[glm-adaptive-stress] window-breaker=tripped',
+              `observed=${breaker.observedCount}`,
+              `failed=${breaker.failedCount}`,
+              `preempted=${breaker.preemptedCount}`,
+              `overload=${breaker.overloadFailureCount}`,
+              `errorRate=${breaker.observedErrorRate ?? 'none'}`,
+              `reasons=${breaker.reasonRefs.join(',')}`,
+            ].join(' ') + '\n',
+          )
+        }
+      }
     })
     .finally(() => {
       inFlight.delete(promise)
@@ -316,6 +338,7 @@ const closeWindow = (completedAtMs: number): void => {
   })
   currentConcurrency = decision.nextConcurrency
   consecutiveCleanWindows = decision.nextConsecutiveCleanWindows
+  windowBreakerTripped = false
   process.stderr.write(
     [
       `[glm-adaptive-stress] window action=${decision.action}`,
@@ -359,11 +382,18 @@ if (flag('--dry-run')) {
 }
 
 while (Date.now() < deadline || inFlight.size > 0) {
-  while (Date.now() < deadline && inFlight.size < currentConcurrency) {
+  while (
+    Date.now() < deadline &&
+    !windowBreakerTripped &&
+    inFlight.size < currentConcurrency
+  ) {
     launch()
   }
   const now = Date.now()
-  if (now >= nextWindowAt) {
+  if (
+    now >= nextWindowAt ||
+    (windowBreakerTripped && inFlight.size === 0 && windowObservations.length > 0)
+  ) {
     closeWindow(now)
   }
   if (inFlight.size === 0) {

@@ -247,6 +247,26 @@ operator view of what remains, not a public product claim.
   `/stats` returned HTTP `200`. This narrows #6317 to the real remaining gap:
   schedule/publish the adaptive loop continuously and prove a controlled
   external-demand spike with zero external failure.
+- 2026-06-27T14:51Z #6317 adaptive breaker validation: a longer adaptive run
+  (`issue6317-adaptive-long-20260627T142739Z`) showed that fast HTTP `500`
+  overload failures at concurrency `5` could refill inside the same window and
+  create a local failure burst before normal window backoff. Its scoped D1
+  proof still recorded `61` exact GLM rows, `37210` input tokens, `93696`
+  output tokens, and `130906` total tokens with `0` non-GLM rows. The follow-up
+  intra-window breaker stops launching inside a window as soon as bounded
+  overload/preemption/error-rate evidence trips. Validation run
+  `issue6317-breaker-live-20260627T144100Z` ran clean at concurrency `5` then
+  `6`: `105` OK, `0` failed, `0` preempted, `64050` input tokens, `161280`
+  output tokens, `225330` exact GLM tokens, and `0` non-GLM rows. The public
+  counter read after the clean run was `566222631` at
+  `2026-06-27T14:51:45.307Z`, with `/khala` and `/stats` both HTTP `200`.
+  The current aggregate D1 proof for `internal_stress` / `glm-saturation` is
+  `9349166` total saturation-bucket tokens, including `9170475` hard GLM model
+  tokens and `178691` non-GLM/fallback tokens from earlier fallback/probe
+  behavior, so the GLM stress ledger is now over the owner-requested
+  `5,000,000` token threshold.
+  #6317 remains open for continuous scheduling/public telemetry and a
+  controlled external-demand spike with zero external failure.
 - 2026-06-27T11:03Z #6323 isolated live-host attempt: `us-central1` could not
   allocate another 8x RTX PRO 6000 Spot host because regional preemptible quota
   was exhausted, but a separate `us-west1-b` `g4-standard-384` host was
@@ -324,6 +344,21 @@ operator view of what remains, not a public product claim.
   endpoint URLs, host paths, or shape-stack payloads. Focused pilot/operator
   coverage passed (`21` tests). This still does not close #6323; it makes the
   next isolated-host retry auditable without overstating a failed boot/load.
+- 2026-06-27T15:18Z #6323 west1a restored-host retry: the stopped west1b boot
+  disk was snapshotted/restored into an isolated west1a 8x host, preserving the
+  `433G` checkpoint cache. SGLang `dev-glm52-nvfp4` with the no-autotune /
+  no-CUDA-graph TRTLLM-MoE path got past the earlier `w13` load failure and
+  served `/v1/models` for `nvidia/GLM-5.2-NVFP4` with `max_model_len=65536`.
+  Generation still failed: TRTLLM DSA hit an SM120 unsupported-architecture
+  path, `flashmla_sparse` prefill supports SM90a/SM100f but not SM120, and
+  TileLang failed compiling its SM120 kernel. The pilot contract now records
+  those as public-safe `failed_during_generation` findings:
+  `sglang_trtllm_sm120_unsupported`,
+  `sglang_flashmla_sparse_sm120_unsupported`, and
+  `sglang_tilelang_sm120_compile_failure`; focused NVFP4/adaptive tests passed
+  (`43` tests). #6323 remains **NO-GO for routing**: there is still no N>=20
+  tool-loop proof, no quality parity proof, and no throughput comparison
+  against REAP from a generation-capable NVFP4 endpoint.
 - 2026-06-27T03:34Z #6311 refresh: live
   `/v1/gateway/glm-fleet/readiness` now reports `status:"degraded"` with
   `totalReplicaCount:10`, `readyReplicaCount:2`, `reclaimedReplicaCount:8`,

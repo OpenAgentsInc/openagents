@@ -309,6 +309,95 @@ describe('GLM NVFP4 pilot preflight (#6323)', () => {
     )
   })
 
+  test('records model-list healthy SGLang generation failures without marking boot/load failed', () => {
+    const result = buildGlmNvfp4PilotResult({
+      config: baseConfig({
+        bootLoadStatus: 'passed',
+        servingStackFindings: [
+          {
+            engine: 'sglang',
+            status: 'failed_during_generation',
+            failureCode: 'sglang_trtllm_sm120_unsupported',
+            evidenceRef:
+              'evidence.public.khala.glm_nvfp4.sglang_trtllm_sm120.20260627',
+          },
+          {
+            engine: 'sglang',
+            status: 'failed_during_generation',
+            failureCode: 'sglang_flashmla_sparse_sm120_unsupported',
+            evidenceRef:
+              'evidence.public.khala.glm_nvfp4.sglang_flashmla_sparse_sm120.20260627',
+          },
+          {
+            engine: 'sglang',
+            status: 'failed_during_generation',
+            failureCode: 'sglang_tilelang_sm120_compile_failure',
+            evidenceRef:
+              'evidence.public.khala.glm_nvfp4.sglang_tilelang_sm120.20260627',
+          },
+        ],
+      }),
+    })
+    const summary = summarizeGlmNvfp4PilotResult(result)
+    const ownerGate = summary.gates.find(
+      gate => gate.gate === 'isolated_owner_armed_endpoint_context',
+    )
+    const toolGate = summary.gates.find(
+      gate => gate.gate === 'tool_loop_proof',
+    )
+
+    expect(result.bootLoadStatus).toBe('passed')
+    expect(result.blockerRefs).not.toContain('boot_load_failed')
+    expect(result.decision).toBe('no_go')
+    expect(result.canRouteCodingLane).toBe(false)
+    expect(result.servingStackFindings).toEqual([
+      {
+        engine: 'sglang',
+        status: 'failed_during_generation',
+        failureCode: 'sglang_trtllm_sm120_unsupported',
+        evidenceRef:
+          'evidence.public.khala.glm_nvfp4.sglang_trtllm_sm120.20260627',
+      },
+      {
+        engine: 'sglang',
+        status: 'failed_during_generation',
+        failureCode: 'sglang_flashmla_sparse_sm120_unsupported',
+        evidenceRef:
+          'evidence.public.khala.glm_nvfp4.sglang_flashmla_sparse_sm120.20260627',
+      },
+      {
+        engine: 'sglang',
+        status: 'failed_during_generation',
+        failureCode: 'sglang_tilelang_sm120_compile_failure',
+        evidenceRef:
+          'evidence.public.khala.glm_nvfp4.sglang_tilelang_sm120.20260627',
+      },
+    ])
+    expect(ownerGate).toMatchObject({
+      status: 'passed',
+      evidenceRefs: [
+        'approval.public.khala.glm_nvfp4.owner_armed.001',
+        'decision.public.khala.glm_nvfp4.issue_6323.001',
+        'endpoint.public.khala.glm_nvfp4.single_host_8x.001',
+        'evidence.public.khala.glm_nvfp4.boot_load.001',
+        'evidence.public.khala.glm_nvfp4.sglang_flashmla_sparse_sm120.20260627',
+        'evidence.public.khala.glm_nvfp4.sglang_tilelang_sm120.20260627',
+        'evidence.public.khala.glm_nvfp4.sglang_trtllm_sm120.20260627',
+      ],
+    })
+    expect(toolGate).toMatchObject({
+      status: 'blocked',
+      blockerRefs: [
+        'tool_loop_evidence_missing',
+        'tool_loop_missing_tool_calls',
+        'tool_loop_sample_count_too_low',
+      ],
+    })
+    expect(JSON.stringify(result)).not.toMatch(
+      /TllmGenFmhaRunner|Sparse Attention Forward Kernel|wait_wgmma|\/models\/glm-5\.2-nvfp4|https?:\/\//i,
+    )
+  })
+
   test('redacts unsafe serving-stack evidence refs before public reporting', () => {
     const result = buildGlmNvfp4PilotResult({
       config: baseConfig({

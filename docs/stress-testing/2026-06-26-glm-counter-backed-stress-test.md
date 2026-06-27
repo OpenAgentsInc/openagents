@@ -1236,3 +1236,94 @@ What this taught us:
 - This run adds `83028` hard-counted GLM tokens. #6317 still remains open for a
   true continuous scheduler/telemetry publication loop and a controlled
   external-demand spike with zero external failure.
+
+## 2026-06-27 Adaptive Breaker Follow-Up
+
+After the committed adaptive runner landed, a longer run showed a new failure
+mode: once the runner reached concurrency `5`, fast HTTP `500` overload errors
+could refill within the same 60s window before the next normal backoff decision.
+That made the run noisier than useful and produced a burst of failures even
+though every successful receipt still recorded exact GLM tokens.
+
+Interrupted long-run proof:
+
+- run id: `issue6317-adaptive-long-20260627T142739Z`
+- D1 rows: `61`
+- provider/model: `hydralisk-vllm-glm-5p2-reap-504b` /
+  `openagents/glm-5.2-reap-504b`
+- usage truth: `exact`
+- demand: `internal_stress` / `glm-saturation`
+- input tokens: `37210`
+- output tokens: `93696`
+- total exact GLM tokens: `130906`
+- non-GLM rows/tokens: `0`
+
+The runner was then patched with an intra-window breaker. It now stops launching
+new requests inside the current window as soon as bounded evidence shows
+external preemption, overload failures, or an over-budget error rate, then lets
+the existing in-flight set drain before applying the usual window backoff. This
+keeps the adaptive loop from turning a fast overload edge into a local failure
+storm.
+
+Verification for the breaker patch:
+
+- `bun run --cwd apps/openagents.com/workers/api test --
+  src/inference/benchmark/live-adaptive-stress-runner.test.ts
+  src/inference/benchmark/stress-saturation-plan.test.ts`: `21` tests passed.
+- CLI dry-run:
+  `issue6317-breaker-dry-run-20260627T143814Z`.
+- `bun run --cwd apps/openagents.com/workers/api typecheck`: passed, with the
+  pre-existing `Effect.void` advisories in `mirrorcode-routes.test.ts`.
+- `git diff --check`: passed.
+
+Clean breaker validation run:
+
+- run id: `issue6317-breaker-live-20260627T144100Z`
+- duration: `600000ms`
+- initial concurrency: `5`
+- min/max concurrency: `2` / `6`
+- max completion tokens: `1536`
+- output artifact:
+  `/tmp/issue6317-breaker-live-20260627T144100Z/issue6317-breaker-live-20260627T144100Z.public.json`
+
+| Run id | OK receipts | Failed requests | Preempted | Input | Output | Total exact runner tokens | Non-GLM tokens | TTFT p50 / p90 / p99 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `issue6317-breaker-live-20260627T144100Z` | `105` | `0` | `0` | `64050` | `161280` | `225330` | `0` | `33825ms` / `36004ms` / `36868ms` |
+
+Hard D1 proof for the clean run matched the runner totals exactly:
+
+- provider/model: `hydralisk-vllm-glm-5p2-reap-504b` /
+  `openagents/glm-5.2-reap-504b`
+- usage truth: `exact`
+- demand: `internal_stress` / `glm-saturation`
+- rows: `105`
+- input tokens: `64050`
+- output tokens: `161280`
+- total exact GLM tokens: `225330`
+- non-GLM rows/tokens: `0`
+
+Adaptive windows for the clean run held at concurrency `5`, then increased to
+`6` and stayed clean through the rest of the run. Across the interrupted
+long-run proof and the clean breaker validation, this follow-up adds `356236`
+more exact public-ledger GLM tokens. Counting the earlier #6317 D1-proven
+stress rows in this document, the current #6317 stress ledger is over the
+owner-requested `5,000,000` token threshold. The issue is still not closed:
+the remaining acceptance work is continuous scheduling/public telemetry and a
+controlled external-demand spike with zero external failure.
+
+Current aggregate D1 proof for `demand_kind = 'internal_stress'` and
+`demand_source = 'glm-saturation'`:
+
+- rows: `4005`
+- input tokens: `2462305`
+- output tokens: `6886861`
+- total tokens in the saturation bucket: `9349166`
+- non-GLM/fallback tokens in that bucket: `178691`
+- hard GLM tokens in that bucket: `9170475`
+
+Counter/page proof after the clean breaker run:
+
+- `GET /api/public/khala-tokens-served`: `566222631` at
+  `2026-06-27T14:51:45.307Z`
+- `/khala`: HTTP `200`
+- `/stats`: HTTP `200`

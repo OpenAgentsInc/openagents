@@ -99,6 +99,7 @@ const servingStackAttemptStatus = (
 ): GlmNvfp4ServingStackAttemptStatus | null =>
   value === 'not_attempted' ||
   value === 'failed_before_endpoint' ||
+  value === 'failed_during_generation' ||
   value === 'endpoint_healthy'
     ? value
     : null
@@ -108,6 +109,9 @@ const servingStackFailureCode = (
 ): GlmNvfp4ServingStackFailureCode | null =>
   value === 'vllm_sparse_mla_backend_unavailable' ||
   value === 'sglang_moe_w13_shape_mismatch' ||
+  value === 'sglang_trtllm_sm120_unsupported' ||
+  value === 'sglang_flashmla_sparse_sm120_unsupported' ||
+  value === 'sglang_tilelang_sm120_compile_failure' ||
   value === 'unknown'
     ? value
     : null

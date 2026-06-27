@@ -68,6 +68,7 @@ export type GlmNvfp4ServingStackEngine =
 export const GlmNvfp4ServingStackAttemptStatus = S.Literals([
   'not_attempted',
   'failed_before_endpoint',
+  'failed_during_generation',
   'endpoint_healthy',
 ])
 export type GlmNvfp4ServingStackAttemptStatus =
@@ -76,6 +77,9 @@ export type GlmNvfp4ServingStackAttemptStatus =
 export const GlmNvfp4ServingStackFailureCode = S.Literals([
   'vllm_sparse_mla_backend_unavailable',
   'sglang_moe_w13_shape_mismatch',
+  'sglang_trtllm_sm120_unsupported',
+  'sglang_flashmla_sparse_sm120_unsupported',
+  'sglang_tilelang_sm120_compile_failure',
   'unknown',
 ])
 export type GlmNvfp4ServingStackFailureCode =
