@@ -342,10 +342,14 @@ describe('Khala MCP catalog', () => {
     const recordedTokens: Array<ServedTokensRecorderInput> = []
     const outcome = await catalogFor({
       assignments: [
+        // a5ce0fc50c (#6386): an `offered` lease only consumes a slot inside the
+        // fresh-offered claim window, so this seed must be freshly touched
+        // (updatedAt = now) to represent capacity actually held by an active
+        // assignment. A stale offered lease is intentionally NOT counted.
         assignment({
-          assignmentRef: 'assignment.public.khala_coding.stale_active_slot',
-          id: 'pylon_api_assignment_stale_active_slot',
-          updatedAt: '2026-06-25T11:00:00.000Z',
+          assignmentRef: 'assignment.public.khala_coding.fresh_active_slot',
+          id: 'pylon_api_assignment_fresh_active_slot',
+          updatedAt: nowIso,
         }),
       ],
       recordedTokens,

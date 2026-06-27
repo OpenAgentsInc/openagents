@@ -1142,3 +1142,173 @@ describe('#6354 per-account Codex dispatch division-of-labor', () => {
     expect(rejected.error).toBe('invalid_target_account_ref')
   })
 })
+
+// ----------------------------------------------------------------------------
+// #6421 — per-account CLAUDE capacity: mirrors the #6354 Codex lane so the
+// claude-supervisor can run several distinct Claude accounts on one owner Pylon.
+// A saturated Claude account must NOT block another Claude account, and a Codex
+// account hash must NOT be admissible on a claude_agent_task (cross-provider).
+// ----------------------------------------------------------------------------
+
+const CLAUDE_A_HASH = 'account.pylon.claude_agent.cccccccccccc'
+const CLAUDE_A_KEY = 'cccccccccccc'
+const CLAUDE_B_HASH = 'account.pylon.claude_agent.dddddddddddd'
+const CLAUDE_B_KEY = 'dddddddddddd'
+
+const claudePerAccountRegistration = (): PylonApiRegistrationRecord =>
+  registration({
+    ownerAgentUserId: 'agent_a',
+    pylonRef: 'pylon.a.claude',
+    capabilityRefs: ['capability.pylon.local_claude_agent'],
+    latestCapacityRefs: [
+      `capacity.coding.claude.account.${CLAUDE_A_KEY}.ready=2`,
+      `capacity.coding.claude.account.${CLAUDE_A_KEY}.available=2`,
+      `capacity.coding.claude.account.${CLAUDE_B_KEY}.ready=2`,
+      `capacity.coding.claude.account.${CLAUDE_B_KEY}.available=2`,
+    ],
+    latestLoadRefs: [
+      `load.coding.claude.account.${CLAUDE_A_KEY}.busy=0`,
+      `load.coding.claude.account.${CLAUDE_A_KEY}.queued=0`,
+      `load.coding.claude.account.${CLAUDE_B_KEY}.busy=0`,
+      `load.coding.claude.account.${CLAUDE_B_KEY}.queued=0`,
+    ],
+  })
+
+const activeClaudeLease = (
+  pylonRef: string,
+  index: number,
+  accountRefHash: string,
+): PylonApiAssignmentRecord => ({
+  ...activeCodexLease(pylonRef, index, accountRefHash),
+  assignmentRef: `assignment.public.khala_coding.claude_${accountRefHash}_${index}`,
+  codingAssignment: {
+    claudeAgent: { accountRefHash, agentKind: 'claude_agent_sdk' },
+    requiredCapabilityRefs: ['capability.pylon.local_claude_agent'],
+  },
+  id: `pylon_api_assignment_claude_${accountRefHash}_${index}`,
+  idempotencyKeyHash: `claude_seed:${accountRefHash}:${index}`,
+  jobKind: 'claude_agent_task',
+})
+
+const delegateToClaudeAccount = (
+  pylonStore: PylonApiStore,
+  accountRefHash: string | undefined,
+  requestId: string,
+) =>
+  delegateCodingWorkflow({
+    classification: {
+      confidence: 1,
+      evidenceRefs: ['evidence.coding_workflow.structured_body'],
+      workflowClass: 'claude_agent_task',
+    },
+    linkedAgents: [linkedAgentA],
+    makeId: () => `id_${requestId}`,
+    nowIso: NOW_ISO,
+    pylonStore,
+    rawBody: {
+      openagents: {
+        coding: {
+          targetPylonRef: 'pylon.a.claude',
+          ...(accountRefHash === undefined ? {} : { targetAccountRefHash: accountRefHash }),
+        },
+        workflowClass: 'claude_agent_task',
+      },
+    },
+    requestId,
+  })
+
+describe('#6421 per-account Claude dispatch division-of-labor', () => {
+  test('projection: per-Claude-account refs project per account and sum to pooled', () => {
+    const projection = pylonCodingServiceCapacityProjection(
+      claudePerAccountRegistration(),
+    )
+    const claude = projection.find(item => item.service === 'claude')
+    expect(claude).toBeDefined()
+    expect(claude).toMatchObject({ available: 4, busy: 0, queued: 0, ready: 4 })
+    expect(claude?.accounts).toEqual([
+      { accountKey: CLAUDE_A_KEY, available: 2, busy: 0, queued: 0, ready: 2 },
+      { accountKey: CLAUDE_B_KEY, available: 2, busy: 0, queued: 0, ready: 2 },
+    ])
+  })
+
+  test('Claude account A saturated by its own leases does NOT block Claude account B', async () => {
+    const pylonStore = makePylonStore([claudePerAccountRegistration()])
+    for (let index = 0; index < 2; index += 1) {
+      await pylonStore.createAssignment(
+        activeClaudeLease('pylon.a.claude', index, CLAUDE_A_HASH),
+      )
+    }
+
+    const refusedA = await delegateToClaudeAccount(pylonStore, CLAUDE_A_HASH, 'c_req_a')
+    expect(refusedA?.kind).toBe('rejected')
+    if (refusedA?.kind !== 'rejected') {
+      throw new Error('expected Claude account A to be refused')
+    }
+    expect(refusedA.statusCode).toBe(409)
+    expect(refusedA.error).toBe('target_pylon_unavailable')
+
+    const admittedB = await delegateToClaudeAccount(pylonStore, CLAUDE_B_HASH, 'c_req_b')
+    expect(admittedB?.kind).toBe('assigned')
+    if (admittedB?.kind !== 'assigned') {
+      throw new Error('expected Claude account B to be admitted')
+    }
+    expect(admittedB.assignment.jobKind).toBe('claude_agent_task')
+    expect(
+      (admittedB.assignment.codingAssignment?.claudeAgent as {
+        accountRefHash?: string
+      })?.accountRefHash,
+    ).toBe(CLAUDE_B_HASH)
+  })
+
+  test('per-account capacity admission: account A advertising available=0 is refused while B is admitted', async () => {
+    // Heartbeat directly advertises account A as saturated (available=0) and B
+    // as free (available=2). This exercises the per-account capacity ADMISSION
+    // path (pylonCodingServiceAccountCapacity), not just the dispatch gate.
+    const pylonStore = makePylonStore([
+      registration({
+        ownerAgentUserId: 'agent_a',
+        pylonRef: 'pylon.a.claude',
+        capabilityRefs: ['capability.pylon.local_claude_agent'],
+        latestCapacityRefs: [
+          `capacity.coding.claude.account.${CLAUDE_A_KEY}.ready=2`,
+          `capacity.coding.claude.account.${CLAUDE_A_KEY}.available=0`,
+          `capacity.coding.claude.account.${CLAUDE_B_KEY}.ready=2`,
+          `capacity.coding.claude.account.${CLAUDE_B_KEY}.available=2`,
+        ],
+        latestLoadRefs: [
+          `load.coding.claude.account.${CLAUDE_A_KEY}.busy=2`,
+          `load.coding.claude.account.${CLAUDE_A_KEY}.queued=0`,
+          `load.coding.claude.account.${CLAUDE_B_KEY}.busy=0`,
+          `load.coding.claude.account.${CLAUDE_B_KEY}.queued=0`,
+        ],
+      }),
+    ])
+    const refusedA = await delegateToClaudeAccount(pylonStore, CLAUDE_A_HASH, 'c_cap_a')
+    expect(refusedA?.kind).toBe('rejected')
+    if (refusedA?.kind !== 'rejected') {
+      throw new Error('expected account A capacity refusal')
+    }
+    expect(refusedA.statusCode).toBe(409)
+    expect(refusedA.evidenceRefs).toContain(
+      'evidence.khala_coding.target_pylon_ref.unavailable.no_available_claude_capacity',
+    )
+
+    const admittedB = await delegateToClaudeAccount(pylonStore, CLAUDE_B_HASH, 'c_cap_b')
+    expect(admittedB?.kind).toBe('assigned')
+  })
+
+  test('a Codex account hash is rejected on a claude_agent_task (cross-provider guard)', async () => {
+    const pylonStore = makePylonStore([claudePerAccountRegistration()])
+    const rejected = await delegateToClaudeAccount(
+      pylonStore,
+      ACCOUNT_A_HASH, // account.pylon.codex.* — wrong provider for the Claude lane
+      'c_req_xprov',
+    )
+    expect(rejected?.kind).toBe('rejected')
+    if (rejected?.kind !== 'rejected') {
+      throw new Error('expected cross-provider account ref rejection')
+    }
+    expect(rejected.statusCode).toBe(400)
+    expect(rejected.error).toBe('invalid_target_account_ref')
+  })
+})

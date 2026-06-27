@@ -8,7 +8,7 @@ import {
   PylonApiStoreError,
   buildPylonApiAssignmentRecord,
   codexAccountCapacityKeyFromAccountRefHash,
-  pylonCodexAccountCapacity,
+  pylonCodingServiceAccountCapacity,
   pylonCodingServiceCapacityProjection,
 } from '../pylon-api'
 import { controlledPylonAssignmentDispatchGate } from '../pylon-api-routes'
@@ -36,6 +36,10 @@ type CodingAgentProfile = Readonly<{
   agentAssignmentKey: 'claudeAgent' | 'codex'
   // The agentKind the Pylon executor validates on that sub-object.
   agentKind: 'claude_agent_sdk' | 'codex_sdk'
+  // #6421: the Pylon account provider whose per-account hash this lane accepts
+  // (`account.pylon.codex.<hex>` for Codex, `account.pylon.claude_agent.<hex>`
+  // for Claude). The wire never carries a raw ref, email, or home path.
+  accountProvider: 'claude_agent' | 'codex'
   // Heartbeat-advertised capability ref that must be present to dispatch.
   capabilityRef: string
   // Counted capacity service projected from the heartbeat capacity refs.
@@ -55,6 +59,7 @@ type CodingAgentProfile = Readonly<{
 }>
 
 const CODEX_AGENT_PROFILE: CodingAgentProfile = {
+  accountProvider: 'codex',
   agentAssignmentKey: 'codex',
   agentKind: 'codex_sdk',
   capabilityRef: CODEX_AGENT_CAPABILITY_REF,
@@ -69,6 +74,7 @@ const CODEX_AGENT_PROFILE: CodingAgentProfile = {
 }
 
 const CLAUDE_AGENT_PROFILE: CodingAgentProfile = {
+  accountProvider: 'claude_agent',
   agentAssignmentKey: 'claudeAgent',
   agentKind: 'claude_agent_sdk',
   capabilityRef: CLAUDE_AGENT_CAPABILITY_REF,
@@ -218,13 +224,18 @@ const objectiveSummaryFromBody = (
 const pylonRefPattern = /^[a-z0-9][a-z0-9_.:-]{2,119}$/
 const spawnRunRefPattern = /^spawn\.public\.khala_coding\.[A-Za-z0-9_.:-]{2,160}$/
 const spawnWorkerRefPattern = /^worker\.public\.khala_coding\.[A-Za-z0-9_.:-]{2,160}$/
-// #6354: public-safe Codex account-ref hash (`account.pylon.codex.<hex>`). The
-// caller's Pylon computes this from its local account ref; the wire never
-// carries a raw account ref, email, or home path.
-const codexAccountRefHashPattern = /^account\.pylon\.codex\.[a-f0-9]{6,64}$/
+// #6354/#6421: public-safe per-account hash (`account.pylon.<provider>.<hex>`).
+// The caller's Pylon computes this from its local account ref; the wire never
+// carries a raw account ref, email, or home path. The accepted provider is the
+// lane's own (`codex` for Codex, `claude_agent` for Claude) so a Codex hash can
+// never be pinned to a Claude assignment and vice versa.
+const accountRefHashPatternFor = (
+  provider: CodingAgentProfile['accountProvider'],
+): RegExp => new RegExp(`^account\\.pylon\\.${provider}\\.[a-f0-9]{6,64}$`)
 
 const targetAccountRefHashFromBody = (
   body: unknown,
+  profile: CodingAgentProfile,
 ):
   | Readonly<{ kind: 'none' }>
   | Readonly<{ kind: 'account'; accountRefHash: string }>
@@ -245,14 +256,14 @@ const targetAccountRefHashFromBody = (
         ],
         kind: 'rejected',
         reason:
-          'openagents.coding.targetAccountRefHash must be a public-safe Codex account-ref hash string.',
+          'openagents.coding.targetAccountRefHash must be a public-safe per-account hash string.',
         requestedPylonRef: null,
         statusCode: 400,
       },
     }
   }
   const accountRefHash = rawValue.trim()
-  if (!codexAccountRefHashPattern.test(accountRefHash)) {
+  if (!accountRefHashPatternFor(profile.accountProvider).test(accountRefHash)) {
     return {
       kind: 'rejected',
       rejection: {
@@ -262,7 +273,7 @@ const targetAccountRefHashFromBody = (
         ],
         kind: 'rejected',
         reason:
-          'openagents.coding.targetAccountRefHash must match the public-safe account.pylon.codex.<hex> contract.',
+          `openagents.coding.targetAccountRefHash must match the public-safe account.pylon.${profile.accountProvider}.<hex> contract.`,
         requestedPylonRef: null,
         statusCode: 400,
       },
@@ -428,9 +439,10 @@ const codingAssignmentFromInput = (
       agentKind: profile.agentKind,
       schema: profile.taskSchema,
       ...(workspace === null ? { fixtureRef: profile.fixtureRef } : {}),
-      // #6354: pin the target account so the dispatch gate scopes
-      // capacity/leases to it and the Pylon runs on that account's home.
-      // Per-account capacity is currently Codex-only; for Claude this is null.
+      // #6354/#6421: pin the target account so the dispatch gate scopes
+      // capacity/leases to it and the Pylon runs on that account's home. Both
+      // the Codex and Claude lanes now carry per-account capacity; null when no
+      // account was pinned.
       ...(accountRefHash === null ? {} : { accountRefHash }),
       timeoutSeconds: 1200,
     },
@@ -520,13 +532,12 @@ const hasAgentCapability = (
   profile: CodingAgentProfile,
 ): boolean => registration.capabilityRefs.includes(profile.capabilityRef)
 
-// #6354/#6388: capacity admission, per-agent (Codex|Claude) and, for Codex,
-// per-account. When a Codex account is requested AND the heartbeat advertises
-// per-account capacity for it, availability is checked against THAT account's
-// slots so a saturated account A does not hide account B's free capacity.
-// Otherwise (no requested account, no per-account refs, or the Claude lane,
-// which has no per-account capacity yet) this falls back to the pooled
-// per-service availability.
+// #6354/#6388/#6421: capacity admission, per-agent (Codex|Claude) and
+// per-account (both lanes). When an account is requested AND the heartbeat
+// advertises per-account capacity for it, availability is checked against THAT
+// account's slots so a saturated account A does not hide account B's free
+// capacity. Otherwise (no requested account or no per-account refs advertised)
+// this falls back to the pooled per-service availability.
 const hasPooledServiceCapacity = (
   registration: PylonApiRegistrationRecord,
   profile: CodingAgentProfile,
@@ -544,8 +555,12 @@ const hasAvailableAgentCapacity = (
   if (!hasAgentCapability(registration, profile)) {
     return false
   }
-  if (profile.capacityService === 'codex' && accountKey !== null) {
-    const accountCapacity = pylonCodexAccountCapacity(registration, accountKey)
+  if (accountKey !== null) {
+    const accountCapacity = pylonCodingServiceAccountCapacity(
+      registration,
+      profile.capacityService,
+      accountKey,
+    )
     if (accountCapacity !== null) {
       return accountCapacity.available > 0
     }
@@ -584,8 +599,12 @@ const agentAdmissionFailures = (
     failures.push('not_agent_capable')
   }
   const accountCapacity =
-    profile.capacityService === 'codex' && accountKey !== null
-      ? pylonCodexAccountCapacity(registration, accountKey)
+    accountKey !== null
+      ? pylonCodingServiceAccountCapacity(
+          registration,
+          profile.capacityService,
+          accountKey,
+        )
       : null
   const hasCapacity =
     accountCapacity !== null
@@ -793,7 +812,7 @@ const delegateCodingWorkflowUnsafe = async (
   if (spawnRefs.kind === 'rejected') {
     return spawnRefs.rejection
   }
-  const targetAccount = targetAccountRefHashFromBody(input.rawBody)
+  const targetAccount = targetAccountRefHashFromBody(input.rawBody, profile)
   if (targetAccount.kind === 'rejected') {
     return targetAccount.rejection
   }

@@ -4057,10 +4057,15 @@ async function main() {
             )
           }
         }
-        // #6354: resolve the requested Codex account to its public-safe
+        // #6354/#6421: resolve the requested account to its public-safe
         // account-ref hash BEFORE the request so the server gate admits against
         // that account's per-account capacity. The same selector then runs the
-        // local no-spend assignment on that account's isolated home.
+        // local no-spend assignment on that account's isolated home. The
+        // provider is derived from the workflow so a claude_agent_task resolves a
+        // `claude_agent` account (otherwise the selector would reject a Claude
+        // ref with "not registered for this provider").
+        const accountProvider =
+          workflow === "claude_agent_task" ? "claude_agent" : "codex"
         const accountRef =
           optionString(options, "account") ??
           optionString(options, "account-ref")
@@ -4069,7 +4074,7 @@ async function main() {
           accountRef === undefined && accountHome === undefined
             ? null
             : await resolvePylonAccountSelection(summary, {
-                provider: "codex",
+                provider: accountProvider,
                 ...(accountRef === undefined ? {} : { accountRef }),
                 ...(accountHome === undefined ? {} : { accountHome }),
               })

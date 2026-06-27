@@ -8,6 +8,7 @@ import {
   hashPylonAccountRef,
   loadPylonAccountRegistry,
   normalizeAccountHome,
+  PYLON_CLAUDE_OAUTH_TOKEN_FILE,
 } from "./account-registry.js"
 import {
   PYLON_NIP90_PROVIDER_CAPABILITY_REF,
@@ -429,6 +430,105 @@ export function codexBusyByAccount(
   return out
 }
 
+// #6421: per-Claude-account capacity, mirroring the Codex per-account lane
+// (#6354) so the claude-supervisor can run several distinct Claude accounts on
+// one owner Pylon, each advertising its own concurrent slots. A linked Claude
+// account's isolated home carries a `claude-oauth-token` file (the per-account
+// analogue of a Codex home's `auth.json`); a non-empty token file is the
+// public-safe readiness signal. The wire only carries the trailing hex of the
+// account-ref hash, never a raw ref, email, home path, or token.
+async function claudeHomeHasAuth(home: string): Promise<boolean> {
+  try {
+    const info = await stat(join(home, PYLON_CLAUDE_OAUTH_TOKEN_FILE))
+    return info.isFile() && info.size > 0
+  } catch {
+    return false
+  }
+}
+
+// Enumerate the linked Claude accounts and whether each one's isolated home
+// holds a usable per-account login. Registry accounts are keyed by their ref
+// (matching `resolvePylonAccountSelection`'s registry_ref hash and the
+// per-assignment account hash). Unlike Codex, no default-home account is
+// synthesized: the default Claude home authenticates via the macOS Keychain,
+// which cannot be cleanly probed per-account, and is already covered by the
+// pooled `capacity.coding.claude` projection. Only registry accounts that carry
+// a token file advertise a per-account slot, so the gate never sees a phantom.
+export async function localClaudeAccountReadiness(
+  summary: Pick<BootstrapSummary, "paths">,
+): Promise<PylonCodexAccountReadiness[]> {
+  const registry = await loadPylonAccountRegistry(summary)
+  const readiness: PylonCodexAccountReadiness[] = []
+  for (const entry of registry) {
+    if (entry.provider !== "claude_agent") continue
+    readiness.push({
+      accountRefHash: hashPylonAccountRef("claude_agent", entry.ref),
+      ready: await claudeHomeHasAuth(entry.home),
+    })
+  }
+  return readiness
+}
+
+export const claudeAccountCapacityRefs = (
+  accounts: ReadonlyArray<PylonCodexAccountCapacity>,
+): { capacityRefs: string[]; loadRefs: string[] } => ({
+  capacityRefs: accounts.flatMap(account => [
+    `capacity.coding.claude.account.${account.accountKey}.ready=${account.ready}`,
+    `capacity.coding.claude.account.${account.accountKey}.available=${account.available}`,
+  ]),
+  loadRefs: accounts.flatMap(account => [
+    `load.coding.claude.account.${account.accountKey}.busy=${account.busy}`,
+    `load.coding.claude.account.${account.accountKey}.queued=${account.queued}`,
+  ]),
+})
+
+// Per-account Claude concurrency. Reuses the existing
+// `OPENAGENTS_PYLON_CLAUDE_CONCURRENCY` (pooled today) as the per-account default
+// so an operator who already runs "N concurrent" gets N per account, while
+// `OPENAGENTS_PYLON_CLAUDE_ACCOUNT_CONCURRENCY` can override it explicitly.
+export function claudePerAccountConcurrency(
+  env: NodeJS.ProcessEnv = process.env,
+): number {
+  const explicit = env.OPENAGENTS_PYLON_CLAUDE_ACCOUNT_CONCURRENCY?.trim()
+  if (explicit !== undefined && explicit !== "") {
+    return nonNegativeEnvInteger(env, "OPENAGENTS_PYLON_CLAUDE_ACCOUNT_CONCURRENCY", 1)
+  }
+  return nonNegativeEnvInteger(env, "OPENAGENTS_PYLON_CLAUDE_CONCURRENCY", 1)
+}
+
+// Build the per-account Claude capacity for the heartbeat from live readiness
+// and active-run busy load. Returns [] when the node is not Claude-capable.
+export async function localClaudeAccountCapacities(
+  state: PylonLocalState,
+  summary: Pick<BootstrapSummary, "paths">,
+  env: NodeJS.ProcessEnv = process.env,
+  accountBusyCounts: Record<string, number> = {},
+): Promise<PylonCodexAccountCapacity[]> {
+  const capabilityRefs = publishableCapabilityRefs(state.runtime.capabilityRefs)
+  if (!capabilityRefs.includes(CLAUDE_AGENT_CAPABILITY_REF)) {
+    return []
+  }
+  return codexAccountCapacities({
+    busyByAccount: accountBusyCounts,
+    perAccountConcurrency: claudePerAccountConcurrency(env),
+    readiness: await localClaudeAccountReadiness(summary),
+  })
+}
+
+// Flatten per-service per-account active-run counts into a single
+// accountRefHash->count map for the Claude service (dropping the unkeyed bucket,
+// which cannot be attributed to a specific account).
+export function claudeBusyByAccount(
+  counts: PylonActiveCodingRunAccountCounts,
+): Record<string, number> {
+  const out: Record<string, number> = {}
+  for (const [accountRefHash, count] of Object.entries(counts.claude ?? {})) {
+    if (accountRefHash === UNKEYED_ACTIVE_RUN_ACCOUNT) continue
+    out[accountRefHash] = count
+  }
+  return out
+}
+
 export async function createSignedHeaders(input: {
   method: string
   url: string
@@ -594,16 +694,30 @@ export async function sendHeartbeat(summary: BootstrapSummary, options: Presence
       ),
     ),
   )
-  // #6354: per-Codex-account capacity so each linked account dispatches its own
-  // concurrent assignments. Busy is the account's own fresh active local runs.
+  // #6354/#6421: per-account capacity so each linked Codex or Claude account
+  // dispatches its own concurrent assignments. Busy is the account's own fresh
+  // active local runs, read once and split per service.
+  const activeRunCountsByAccount = await activeCodingRunCountsByAccount(
+    state.paths,
+    { now: options.now?.() },
+  )
   const codexAccountRefs = codexAccountCapacityRefs(
     await localCodexAccountCapacities(
       state,
       summary,
       presenceEnv,
-      codexBusyByAccount(
-        await activeCodingRunCountsByAccount(state.paths, { now: options.now?.() }),
-      ),
+      codexBusyByAccount(activeRunCountsByAccount),
+    ),
+  )
+  // #6421: per-Claude-account capacity, mirroring Codex, so the claude-supervisor
+  // can target distinct Claude accounts via `--account-ref` and the dispatch gate
+  // admits each account against its own slots.
+  const claudeAccountRefs = claudeAccountCapacityRefs(
+    await localClaudeAccountCapacities(
+      state,
+      summary,
+      presenceEnv,
+      claudeBusyByAccount(activeRunCountsByAccount),
     ),
   )
   const body: PylonHeartbeatRequest = {
@@ -616,6 +730,7 @@ export async function sendHeartbeat(summary: BootstrapSummary, options: Presence
       "capacity.public.pylon_cli.available",
       ...codingRefs.capacityRefs,
       ...codexAccountRefs.capacityRefs,
+      ...claudeAccountRefs.capacityRefs,
     ],
     clientProtocolVersion: "0.3.0",
     clientVersion: PYLON_CLIENT_VERSION,
@@ -624,6 +739,7 @@ export async function sendHeartbeat(summary: BootstrapSummary, options: Presence
       "load.public.pylon_cli.low",
       ...codingRefs.loadRefs,
       ...codexAccountRefs.loadRefs,
+      ...claudeAccountRefs.loadRefs,
     ],
     resourceMode: state.runtime.resourceMode,
     status: "online",

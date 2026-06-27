@@ -50,7 +50,7 @@ import {
   publicPylonApiEventProjection,
   publicPylonApiRegistrationProjection,
   codexAccountCapacityKeyFromAccountRefHash,
-  pylonCodexAccountCapacity,
+  pylonCodingServiceAccountCapacity,
   pylonCodingServiceCapacityProjection,
   pylonApiStoreErrorFromUnknown,
   pylonClientVersionMeetsMinimum,
@@ -386,22 +386,29 @@ const pylonAssignmentHasActiveLease = (
   return true
 }
 
-// #6354: read the public-safe Codex account-ref hash a coding assignment is
+// #6354/#6421: read the public-safe per-account hash a coding assignment is
 // pinned to, so the dispatch gate can scope active leases and capacity to the
-// requested account instead of pooling them at the Pylon level. Returns null for
-// untagged (legacy) assignments, which keeps the pooled accounting path.
+// requested account instead of pooling them at the Pylon level. Reads from the
+// Codex (`codex`) or Claude (`claudeAgent`) sub-object — whichever the lane
+// populated. Returns null for untagged (legacy) assignments, which keeps the
+// pooled accounting path.
 export const codexAccountRefHashFromCodingAssignment = (
   codingAssignment: Record<string, unknown> | null | undefined,
 ): string | null => {
-  const codex =
-    codingAssignment !== null &&
-    codingAssignment !== undefined &&
-    typeof codingAssignment.codex === 'object' &&
-    codingAssignment.codex !== null
-      ? (codingAssignment.codex as Record<string, unknown>)
-      : null
-  const raw = codex?.accountRefHash
-  return typeof raw === 'string' && raw.trim() !== '' ? raw.trim() : null
+  if (codingAssignment === null || codingAssignment === undefined) {
+    return null
+  }
+  for (const key of ['codex', 'claudeAgent'] as const) {
+    const sub =
+      typeof codingAssignment[key] === 'object' && codingAssignment[key] !== null
+        ? (codingAssignment[key] as Record<string, unknown>)
+        : null
+    const raw = sub?.accountRefHash
+    if (typeof raw === 'string' && raw.trim() !== '') {
+      return raw.trim()
+    }
+  }
+  return null
 }
 
 const codexAccountKeyFromCodingAssignment = (
@@ -444,8 +451,9 @@ const codingServiceOfAssignment = (
 const activeDuplicateAssignmentRefs = (
   assignments: ReadonlyArray<PylonApiAssignmentRecord>,
   nowIso: string,
-  // When set, only active leases pinned to the SAME Codex account count toward
-  // the requested account's slots; one account's leases never block another's.
+  // When set, only active leases pinned to the SAME account (Codex or Claude)
+  // count toward the requested account's slots; one account's leases never block
+  // another's.
   requestedAccountKey: string | null = null,
   // #6388: when set, only active leases of the SAME coding service (claude|codex)
   // count toward this request's slots. Untyped (legacy) assignments still count
@@ -475,9 +483,9 @@ const activeDuplicateCapacitySlots = (
   input: Readonly<{
     body: PylonApiCreateAssignmentRequest
     registration: PylonApiRegistrationRecord | undefined
-    // #6354: when the request pins a Codex account that the heartbeat advertises
-    // per-account capacity for, admit against THAT account's slots so a
-    // saturated account A does not consume account B's slots.
+    // #6354/#6421: when the request pins an account (Codex or Claude) the
+    // heartbeat advertises per-account capacity for, admit against THAT account's
+    // slots so a saturated account A does not consume account B's slots.
     requestedAccountKey?: string | null
   }>,
 ): number => {
@@ -496,20 +504,25 @@ const activeDuplicateCapacitySlots = (
   }
 
   const [requestedService] = requestedServices
+  if (requestedService === undefined) {
+    return 1
+  }
 
-  if (requestedService === 'codex') {
-    const accountCapacity = pylonCodexAccountCapacity(
-      input.registration,
-      input.requestedAccountKey ?? null,
+  // #6354/#6421: when the request pins an account the heartbeat advertises
+  // per-account capacity for (Codex OR Claude), admit against THAT account's
+  // slots so a saturated account A never consumes account B's slots.
+  const accountCapacity = pylonCodingServiceAccountCapacity(
+    input.registration,
+    requestedService,
+    input.requestedAccountKey ?? null,
+  )
+  if (accountCapacity !== null) {
+    return Math.max(
+      1,
+      accountCapacity.ready > 0
+        ? accountCapacity.ready
+        : accountCapacity.available,
     )
-    if (accountCapacity !== null) {
-      return Math.max(
-        1,
-        accountCapacity.ready > 0
-          ? accountCapacity.ready
-          : accountCapacity.available,
-      )
-    }
   }
 
   const capacity = pylonCodingServiceCapacityProjection(input.registration).find(

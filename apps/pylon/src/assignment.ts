@@ -12,6 +12,8 @@ import {
 import type { BootstrapSummary } from "./bootstrap.js"
 import {
   CLAUDE_AGENT_CAPABILITY_REF,
+  loadClaudeAgentConfig,
+  probeClaudeAgentReadiness,
   type ClaudeAgentProbeOptions,
 } from "./claude-agent.js"
 import {
@@ -56,6 +58,7 @@ import {
 import {
   pylonAccountEnvironment,
   resolvePylonAccountSelection,
+  type PylonAccountProvider,
   type ResolvedPylonAccountSelection,
 } from "./account-registry.js"
 import {
@@ -1463,24 +1466,41 @@ async function closeoutInterruptedNoSpendLeases(
   }
 }
 
-async function resolveCodexAccountForAssignment(
+// #6421: resolve the linked account for an assignment, provider-aware by the
+// lease's coding service. A claude_agent_task lease resolves a `claude_agent`
+// account (its isolated home + per-account OAuth token); a codex lease resolves
+// a `codex` account, exactly as before. This is what lets the claude-supervisor
+// pass `--account-ref <claude account>` without hitting "Pylon account ref is
+// not registered for this provider" (the selector previously hardcoded codex).
+async function resolveAgentAccountForAssignment(
   summary: BootstrapSummary,
   lease: PylonAssignmentLease,
   options: AssignmentClientOptions,
   now: Date,
 ): Promise<AssignmentCodexAccountSelection> {
+  const provider: PylonAccountProvider =
+    codingRunServiceForLease(lease) === "claude" ? "claude_agent" : "codex"
+
   if (options.accountRef !== undefined || options.accountHome !== undefined) {
     const account = await resolvePylonAccountSelection(summary, {
-      provider: "codex",
+      provider,
       ...(options.accountRef === undefined ? {} : { accountRef: options.accountRef }),
       ...(options.accountHome === undefined ? {} : { accountHome: options.accountHome }),
     })
     return account === null ? { account: null } : { account, accountRefHash: account.accountRefHash }
   }
 
-  const env = options.codexAgentProbe?.env ?? (Bun.env as Record<string, string | undefined>)
-  const { env: _ignoredProbeEnv, ...probeOverrides } = options.codexAgentProbe ?? {}
-  const config = await loadCodexAgentConfig(summary)
+  // Auto-select (no explicit ref/home): deterministically round-robin across the
+  // quota-available, login-ready accounts of the lease's provider. Mirrors the
+  // Codex auto-select; the Claude probe reads each account's isolated home env.
+  const probeOptions =
+    provider === "claude_agent" ? options.claudeAgentProbe : options.codexAgentProbe
+  const env = probeOptions?.env ?? (Bun.env as Record<string, string | undefined>)
+  const { env: _ignoredProbeEnv, ...probeOverrides } = probeOptions ?? {}
+  const codexConfig =
+    provider === "codex" ? await loadCodexAgentConfig(summary) : undefined
+  const claudeConfig =
+    provider === "claude_agent" ? await loadClaudeAgentConfig(summary) : undefined
   const targets = await resolvePylonAccountUsageRefreshTargets(
     summary,
     { accountRef: null, all: true, provider: null },
@@ -1488,15 +1508,22 @@ async function resolveCodexAccountForAssignment(
   )
   const readyTargets: PylonAccountUsageRefreshTarget[] = []
   for (const target of targets) {
-    if (target.provider !== "codex") continue
+    if (target.provider !== provider) continue
     const quotaRecord = await loadQuotaRecord(summary, target.accountRefHash)
     if (!isAccountAvailable(quotaRecord, now)) continue
     const targetEnv = pylonAccountEnvironment(env, target.account)
-    const readiness = await probeCodexAgentReadiness({
-      ...probeOverrides,
-      config,
-      env: targetEnv,
-    })
+    const readiness =
+      provider === "claude_agent"
+        ? await probeClaudeAgentReadiness({
+            ...(probeOverrides as Partial<ClaudeAgentProbeOptions>),
+            ...(claudeConfig === undefined ? {} : { config: claudeConfig }),
+            env: targetEnv,
+          })
+        : await probeCodexAgentReadiness({
+            ...(probeOverrides as Partial<CodexAgentProbeOptions>),
+            ...(codexConfig === undefined ? {} : { config: codexConfig }),
+            env: targetEnv,
+          })
     if (readiness.state !== "ready") continue
     readyTargets.push(target)
   }
@@ -1671,7 +1698,7 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
   const localLeaseHeartbeat = startLocalLeaseHeartbeat(state, lease.leaseRef, options)
 
   const observedAt = observedAtDate.toISOString()
-  const codexAccount = await resolveCodexAccountForAssignment(
+  const agentAccount = await resolveAgentAccountForAssignment(
     summary,
     lease,
     options,
@@ -1680,7 +1707,7 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
   await emitLifecycleEvent({
     event: "assignment_run.runtime_started",
     assignmentRef: lease.assignmentRef,
-    ...(codexAccount.accountRefHash === undefined ? {} : { accountRefHash: codexAccount.accountRefHash }),
+    ...(agentAccount.accountRefHash === undefined ? {} : { accountRefHash: agentAccount.accountRefHash }),
     leaseRef: lease.leaseRef,
   })
 
@@ -1690,7 +1717,7 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
     ? null
     : await registerActiveCodingRun(state.paths, {
         assignmentRef: lease.assignmentRef,
-        ...(codexAccount.accountRefHash === undefined ? {} : { accountRefHash: codexAccount.accountRefHash }),
+        ...(agentAccount.accountRefHash === undefined ? {} : { accountRefHash: agentAccount.accountRefHash }),
         leaseRef: lease.leaseRef,
         now: observedAtDate,
         service: codingRunService,
@@ -1720,16 +1747,20 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
   try {
     runtimeGate = await withRuntimeProgress({
       assignmentRef: lease.assignmentRef,
-      ...(codexAccount.accountRefHash === undefined ? {} : { accountRefHash: codexAccount.accountRefHash }),
+      ...(agentAccount.accountRefHash === undefined ? {} : { accountRefHash: agentAccount.accountRefHash }),
       leaseRef: lease.leaseRef,
       startedAtMs: runtimeStartedAtMs,
       run: async () =>
         (await executeTassadarAssignment(lease, observedAtDate)) ??
         (await executeClaudeAgentAssignment(state, lease, observedAtDate, {
           // agentToken + baseUrl + fetch let the executor post the exact
-          // own-capacity Claude turn token usage (#6391). Account env stays the
-          // executor's prior default-resolution path (not the codex-resolved
-          // account) so Claude credentials are not crossed with Codex.
+          // own-capacity Claude turn token usage (#6391). #6421: pass the
+          // provider-resolved account so a claude_agent_task lease runs against
+          // the selected Claude account's isolated home + OAuth token. The
+          // account is null for codex leases or when none resolves, leaving the
+          // executor's default-resolution path; it is only ever a `claude_agent`
+          // account here, so Claude credentials are never crossed with Codex.
+          ...(agentAccount.account === null ? {} : { account: agentAccount.account }),
           ...(options.agentToken === undefined ? {} : { agentToken: options.agentToken }),
           baseUrl: options.baseUrl,
           ...(options.claudeAgentCheckoutRunner === undefined ? {} : { checkoutRunner: options.claudeAgentCheckoutRunner }),
@@ -1739,7 +1770,7 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
         })) ??
         (await executeCodexAgentAssignment(state, lease, observedAtDate, {
           ...(options.agentToken === undefined ? {} : { agentToken: options.agentToken }),
-          ...(codexAccount.account === null ? {} : { account: codexAccount.account }),
+          ...(agentAccount.account === null ? {} : { account: agentAccount.account }),
           baseUrl: options.baseUrl,
           ...(options.codexAgentRunner === undefined ? {} : { codexAgentRunner: options.codexAgentRunner }),
           ...(options.codexAgentProbe === undefined ? {} : { codexAgentProbe: options.codexAgentProbe }),

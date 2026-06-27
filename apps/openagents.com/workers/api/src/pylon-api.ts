@@ -1193,20 +1193,22 @@ export const pylonCodingServiceCapacityProjection = (
     .sort((left, right) => left.service.localeCompare(right.service))
 }
 
-// #6354: resolve the per-account Codex capacity slot for a requested account, or
-// null when the heartbeat does not advertise per-account refs for it (the gate
-// then falls back to pooled capacity, preserving legacy behavior).
-export const pylonCodexAccountCapacity = (
+// #6354/#6421: resolve the per-account capacity slot for a requested account on a
+// given coding service (codex | claude), or null when the heartbeat does not
+// advertise per-account refs for it (the gate then falls back to pooled capacity,
+// preserving legacy behavior).
+export const pylonCodingServiceAccountCapacity = (
   record: PylonApiRegistrationRecord,
+  service: PylonCodingServiceCapacityProjection['service'],
   accountKey: string | null,
 ): PylonCodingServiceAccountCapacityProjection | null => {
   if (accountKey === null) {
     return null
   }
-  const codex = pylonCodingServiceCapacityProjection(record).find(
-    capacity => capacity.service === 'codex',
+  const capacity = pylonCodingServiceCapacityProjection(record).find(
+    item => item.service === service,
   )
-  return codex?.accounts.find(a => a.accountKey === accountKey) ?? null
+  return capacity?.accounts.find(a => a.accountKey === accountKey) ?? null
 }
 
 export const publicPylonApiRegistrationProjection = (

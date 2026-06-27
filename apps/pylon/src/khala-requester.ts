@@ -627,9 +627,13 @@ export function buildPylonKhalaChatRequestBody(
 
   const targetAccountRefHash = input.targetAccountRefHash?.trim()
   if (targetAccountRefHash !== undefined && targetAccountRefHash !== "") {
-    if (!/^account\.pylon\.codex\.[a-f0-9]{6,64}$/.test(targetAccountRefHash)) {
+    // #6421: accept both the Codex and Claude per-account hash shapes
+    // (`account.pylon.codex.<hex>` / `account.pylon.claude_agent.<hex>`) so the
+    // claude-supervisor can pin a Claude account; the wire never carries a raw
+    // ref, email, or home path.
+    if (!/^account\.pylon\.(codex|claude_agent)\.[a-f0-9]{6,64}$/.test(targetAccountRefHash)) {
       throw new Error(
-        "khala request --account-ref must resolve to a public-safe account.pylon.codex.<hex> hash",
+        "khala request --account-ref must resolve to a public-safe account.pylon.<codex|claude_agent>.<hex> hash",
       )
     }
     assertPublicSafe(targetAccountRefHash, "khala request target account ref hash")
