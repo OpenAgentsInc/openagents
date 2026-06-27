@@ -53,7 +53,7 @@ preemptible behind real external demand (#6318).
 ## Usage
 
 ```sh
-# Cheapest smoke (false_c): mints a free Khala key, builds images, runs end-to-end.
+# Phase-0 S-target smoke (cal_python): mints a free Khala key, builds images, runs end-to-end.
 ./run.sh
 
 # Pick a different public task (sample id = "<target>_<language>"):
@@ -65,12 +65,13 @@ OPENAI_API_KEY=oa_agent_xxx ./run.sh --task numfmt_python
 
 `<target>_<language>` where language ∈ `python,c,go,rust,ocaml,ada`.
 
-- **Smoke / endpoint validation:** `false_c` — the lightest target (reimplement
-  `/usr/bin/false`). It is a *trivial, benchmark-excluded* target chosen
-  deliberately to exercise the full loop (Docker build → agent tool loop →
-  four-container scoring) with minimal tokens and wall-clock.
-- **Smallest *real* S-bucket targets** (for the first measured runs):
-  `uuidparse_python`, `numfmt_python`, `cal_python`.
+- **Phase-0 issue proof:** `cal_python` — a small public S-bucket target, used
+  as the default because #6377 requires a real S-target smoke.
+- **Endpoint-only validation:** `false_c` — the lightest target (reimplement
+  `/usr/bin/false`). It is a *trivial, benchmark-excluded* target and requires
+  `--allow-trivial-smoke`; do not use it as the #6377 proof.
+- **Other small real S-bucket targets:** `uuidparse_python`, `numfmt_python`,
+  `choose_python`.
 - S bucket: `qsv_select, jq_simple, gron, bitwise, hexyl, uuidparse, numfmt,
   cal, choose`. M bucket: `giac, tex, gotree, mailauth, brotli, wren_cli,
   nonogrid, sed, tssql, bib2json`. **L bucket is off-limits in this runner.**
@@ -81,13 +82,14 @@ OPENAI_API_KEY=oa_agent_xxx ./run.sh --task numfmt_python
 |---|---|---|
 | `MC_CLONE` | `~/work/projects/repos/MirrorCode` | Read-only MirrorCode clone |
 | `OPENAI_API_KEY` | minted free key | Khala key (bearer) |
-| `MC_TASK_ID` | `false_c` | Sample id `<target>_<language>` |
-| `MC_TOKEN_LIMIT` | `250000` | Hard per-sample token cap |
-| `MC_TIME_LIMIT` | `1800` | Hard per-sample wall-clock cap (s) |
-| `MC_MESSAGE_LIMIT` | `120` | Hard per-sample message cap |
+| `MC_TASK_ID` | `cal_python` | Sample id `<target>_<language>` |
+| `MC_TOKEN_LIMIT` | `20000000` | Hard per-sample token cap |
+| `MC_TIME_LIMIT` | `7200` | Hard per-sample wall-clock cap (s) |
+| `MC_MESSAGE_LIMIT` | `250` | Hard per-sample message cap |
 | `MC_OUT` | `./mirrorcode-phase0-result.json` | Result JSON path |
 | `MC_LOG_DIR` | Inspect default (`./logs`) | Inspect eval log dir |
 | `MC_VENV` / `MC_KEEP_VENV` | fresh mktemp / removed | Reuse/keep the throwaway venv |
+| `MC_ALLOW_TRIVIAL_SMOKE` | `0` | Set to `1` only for benchmark-excluded endpoint checks such as `false_c` |
 
 The venv is **throwaway** (a `mktemp` dir, auto-removed) and is never committed.
 
@@ -97,15 +99,18 @@ The venv is **throwaway** (a `mktemp` dir, auto-removed) and is never committed.
 {
   "runId": "mc-phase0-<utc>-<rand>",
   "model": "openagents/khala",
-  "taskId": "false_c",
-  "bucket": "S | M | L | trivial_excluded",
+  "taskId": "cal_python",
+  "bucket": "S | M",
+  "language": "python",
   "status": "passed | failed | error",
   "passRate": 0.0,
   "tokens": { "total": 0, "input": 0, "output": 0, "reasoning": 0,
               "cacheRead": 0, "cacheWrite": 0 },
   "startedAt": "<iso8601>",
   "finishedAt": "<iso8601>",
-  "summary": "..."
+  "summary": "...",
+  "grade": "smoke",
+  "decisionGrade": false
 }
 ```
 
