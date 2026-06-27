@@ -1074,6 +1074,18 @@ describe('docs and blog routes', () => {
       Scene.expect(Scene.text('Omega Pylon stats')).toExist(),
       Scene.expect(Scene.text('Pylons online')).toExist(),
       Scene.expect(Scene.text('Earning gate')).toExist(),
+      Scene.expect(
+        Scene.role('heading', { name: 'Have Codex or Claude? Join the fleet.' }),
+      ).toExist(),
+      Scene.expect(Scene.text('khala fleet connect')).toExist(),
+      Scene.expect(Scene.text('khala fleet status')).toExist(),
+      Scene.expect(Scene.role('link', { name: 'Fleet docs' })).toHaveAttr(
+        'href',
+        '/docs/connect-codex-fleet',
+      ),
+      Scene.expect(
+        Scene.role('link', { name: 'Read the setup guide' }),
+      ).toHaveAttr('href', '/docs/connect-codex-fleet'),
       Scene.expect(Scene.role('link', { name: 'Artanis Forum' })).toHaveAttr(
         'href',
         '/forum/f/artanis',
@@ -1088,6 +1100,33 @@ describe('docs and blog routes', () => {
       Scene.expect(Scene.text('authGrantRef')).toBeAbsent(),
       Scene.expect(Scene.text('payloadJson')).toBeAbsent(),
       Scene.expect(Scene.text('hiddenSteering')).toBeAbsent(),
+    )
+  })
+
+  test('renders the Codex fleet connection docs page', () => {
+    Scene.scene(
+      { update, view },
+      Scene.with(LoggedOut.init(DocsPageRoute({ slug: 'connect-codex-fleet' }))),
+      Scene.expect(
+        Scene.role('heading', { name: 'Connect Your Codex Fleet' }),
+      ).toExist(),
+      Scene.expect(Scene.text('khala fleet connect')).toExist(),
+      Scene.expect(Scene.text('khala fleet status')).toExist(),
+      Scene.expect(
+        Scene.text('The own-capacity coding path routes only through capacity linked to the same owner scope. It is not third-party pooled labor and it is not a settlement-bearing marketplace path.'),
+      ).toExist(),
+      Scene.expect(
+        Scene.role('link', { name: 'Khala CLI fleet docs' }),
+      ).toHaveAttr(
+        'href',
+        'https://github.com/OpenAgentsInc/openagents/blob/main/clients/khala-cli/README.md#connect-your-codex-fleet',
+      ),
+      Scene.expect(
+        Scene.role('link', { name: 'Fleet contribution plan' }),
+      ).toHaveAttr(
+        'href',
+        'https://github.com/OpenAgentsInc/openagents/blob/main/docs/ops/2026-06-27-artanis-as-a-service-multi-tenant-codex-fleet-enablement.md',
+      ),
     )
   })
 
