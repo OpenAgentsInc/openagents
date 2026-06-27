@@ -693,8 +693,9 @@ describe('coding workflow delegation', () => {
       pylonStore: makeStore({
         activeAssignments: [
           assignment({
-            assignmentRef: 'assignment.public.test.stale_active_slot',
-            id: 'pylon_api_assignment_stale_active_slot',
+            assignmentRef: 'assignment.public.test.active_slot',
+            id: 'pylon_api_assignment_active_slot',
+            state: 'accepted',
             updatedAt: '2026-06-25T11:00:00.000Z',
           }),
         ],

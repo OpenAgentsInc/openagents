@@ -204,8 +204,8 @@ local Pylon and the dispatch gate can see the fleet.
 - `--repo <owner/repo>`, `--branch <name>`, `--commit <sha>`, and
   `--verify <command>` describe public repository work for `--strategy pylon`.
   `--repo`, `--commit`, and `--verify` must be supplied together.
-- `--workflow codex_agent_task|cloud_coding_session` selects the Pylon coding
-  workflow for `--strategy pylon`.
+- `--workflow claude_agent_task|codex_agent_task|cloud_coding_session` selects
+  the Pylon coding workflow for `--strategy pylon`.
 - `--timeout <seconds>` sets the per-worker timeout for `khala spawn`.
 
 ## Changelog
