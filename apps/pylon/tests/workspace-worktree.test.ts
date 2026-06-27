@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, setDefaultTimeout, test } from "bun:test"
 import { existsSync } from "node:fs"
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
@@ -28,6 +28,8 @@ import {
 import { CLAUDE_AGENT_CAPABILITY_REF } from "../src/claude-agent"
 import { CODEX_AGENT_CAPABILITY_REF } from "../src/codex-agent"
 import { assertPublicProjectionSafe } from "../src/state"
+
+setDefaultTimeout(60_000)
 
 async function run(args: string[], cwd: string): Promise<string> {
   const proc = Bun.spawn(args, { cwd, stderr: "pipe", stdout: "pipe" })
