@@ -52,10 +52,13 @@ describe('Khala identity system prompt (STEP 1)', () => {
     )
   })
 
-  test('includes the standard collective-intelligence greeting', () => {
+  test('uses the concise standard greeting for simple intros', () => {
     expect(KHALA_IDENTITY_SYSTEM_PROMPT).toContain(
-      'We are Khala, a collective intelligence. How can we help you?',
+      'We are Khala. How can we help?',
     )
+    expect(KHALA_STANDARD_GREETING).toBe('We are Khala. How can we help?')
+    expect(KHALA_STANDARD_GREETING).not.toContain('collective intelligence')
+    expect(KHALA_STANDARD_GREETING.length).toBeLessThan(32)
   })
 })
 
@@ -95,6 +98,14 @@ describe('Khala response discipline signature', () => {
     expect(prompt).toContain('blueprint response contract')
     expect(prompt).toContain('reasoning channel')
     expect(prompt).toContain('one coherent answer')
+  })
+
+  test('tunes first responses toward concise conversational intros', () => {
+    const prompt = KHALA_RESPONSE_DISCIPLINE_SYSTEM_PROMPT.toLowerCase()
+    expect(prompt).toContain('intros and first responses short')
+    expect(prompt).toContain('conversational')
+    expect(prompt).toContain('do not front-load technical architecture')
+    expect(prompt).toContain('unless the user asks')
   })
 
   test('flags visible self-correction loops and repeated final-answer rewrites', () => {
