@@ -143,7 +143,7 @@ operator view of what remains, not a public product claim.
 | #6323 | **Open** | Decision artifact for the full `nvidia/GLM-5.2-NVFP4` single-host pilot landed. The delegated Pylon/Codex retry (`assignment.public.khala_coding.chatcmpl_6a9906e622ad43caa1c9cc3fb2f20d00`, 4,371,243 exact tokens) has now been reviewed, tightened for public-safety, merged in `c7a86d7d06`, and deployed via `deploy:safe` as Worker `12066869-4f81-4b32-ba41-ba3c50b07595`. A later supervised Pylon/Codex pair (`assignment.public.khala_coding.chatcmpl_6bb60a39d229481e9837bd08ce25f8a6`, 1,533,834 exact tokens; `assignment.public.khala_coding.chatcmpl_dac3ccd7c09f4591b42f2528ef43aff6`, 975,671 exact tokens) was reviewed and folded into the current integration patch to add typed public evidence-ref audits, fail-closed observation ref redaction, and stricter tool-call-name validation. Fresh supervised Pylon/Codex work landed `ac94c1afa1` from `assignment.public.khala_coding.chatcmpl_865394ecde434183b28654df6c306617` on `codex-2` (`1,971,655` exact tokens; `64` owner-only ATIF traces; `104` raw SDK events / `635,252` bytes), adding the fail-closed public NVFP4 pilot gate summary. Deployed through `deploy:safe` as Worker `8c03f302-8186-468d-a2b8-cd8d3489ae0b`. This bounded checkout now adds the operator-safe `pilot:glm-nvfp4` evidence-retention path and the latest Pylon/Codex run (`assignment.public.khala_coding.chatcmpl_f17c7a883dbe4c26abf8380b8ad512be`, 3,649,823 exact tokens; 80 owner-only ATIF traces; 132 raw SDK events / 1,503,898 bytes) tightens the fixture executor so `toolCallsSucceeded` requires a clean second tool-result turn, not just first-turn `tool_calls` emission. The current local environment has no `KHALA_GLM_NVFP4_PILOT_ARM`, endpoint URL, endpoint ref, or owner approval ref, so any local run remains `no_go`. Still open: owner runs the exact armed command in `docs/inference/2026-06-26-nvidia-glm-5.2-nvfp4-evaluation.md`, then records measured tool-call/quality/max-context/tok-s results. |
 | #6319 | **Closed** | Reliability hardening/fallback-chain repair is closed. Treat empty responses and dead fallback lanes as regression risks in later serving work. |
 | #6313 | **Closed** | Real OpenRouter fallback lane is closed. It is now a dependency assumption for further reliability and benchmark runs. |
-| #6311 | **Open** | Partial readiness/watchdog projection work landed, and the Khala -> Pylon -> Codex diagnostic slices are now on `main`: `36ee76689c` (`assignment.public.khala_coding.chatcmpl_b5a0d831027a4c779b1105be73217f29`, 6,415,202 exact tokens), `7f94c0556a` (`assignment.public.khala_coding.chatcmpl_c7358576d7464620ae3da33ed2f473a0`, 7,393,396 exact tokens), `5b11c6eaf5` (`assignment.public.khala_coding.chatcmpl_a5dc55d153ca4642b2836e0fa80005df`, 4,500,934 exact tokens), `d373eaee69` (`assignment.public.khala_coding.chatcmpl_ff2b38153a9c457d8769bb6fc44ad9a5`, 3,653,854 exact tokens), and `88f60cb924` (`assignment.public.khala_coding.chatcmpl_b2051745aee042d08f6d5348282215dc`, 2,905,828 exact tokens). `88f60cb924` is deployed as Worker `ba4ed1d7-f81a-4c82-b63c-2042b6bb4ad3` and adds the fail-closed typed acceptance projection for all-replica watchdog, capacity-floor owner decision, multi-region auto-replace, and quota tracking. The current supervised integration folded in three more accepted Pylon/Codex slices (`assignment.public.khala_coding.chatcmpl_efb67743f96f44b9ad0078763e224fe6`, 1,571,076 exact tokens; `assignment.public.khala_coding.chatcmpl_bfe667383900474aa93652ad09e5d2e8`, 3,136,839 exact tokens; `assignment.public.khala_coding.chatcmpl_8132762906104faaa5fa9a68e7920bec`, 1,209,821 exact tokens) for typed quota state, capacity-floor evidence, all-replica watchdog readability, and multi-region replacement/reserve/prebake evidence. Fresh supervised Pylon/Codex work landed `bb386d8173` from `assignment.public.khala_coding.chatcmpl_f07a0d9b3b684abc80284aa0c818ca8c` on `codex-3` (`963,220` exact tokens; `55` owner-only ATIF traces; `92` raw SDK events / `173,848` bytes), adding the operator-facing readiness readout. Deployed through `deploy:safe` as Worker `8c03f302-8186-468d-a2b8-cd8d3489ae0b`. This follow-up adds the headless `glm-fleet:durability` operator bundle and tightens acceptance so all-replica watchdog requires a public-safe forced Spot STOP recovery ref (`HYDRALISK_GLM_52_REAP_504B_FORCED_STOP_RECOVERY_REFS`). Live `/v1/gateway/glm-fleet/readiness` is serving `status:"ready"`, but `acceptance.status:"blocked"` until the durable fleet proofs are complete. |
+| #6311 | **Open** | Partial readiness/watchdog projection work landed, and the Khala -> Pylon -> Codex diagnostic slices are now on `main`: `36ee76689c` (`assignment.public.khala_coding.chatcmpl_b5a0d831027a4c779b1105be73217f29`, 6,415,202 exact tokens), `7f94c0556a` (`assignment.public.khala_coding.chatcmpl_c7358576d7464620ae3da33ed2f473a0`, 7,393,396 exact tokens), `5b11c6eaf5` (`assignment.public.khala_coding.chatcmpl_a5dc55d153ca4642b2836e0fa80005df`, 4,500,934 exact tokens), `d373eaee69` (`assignment.public.khala_coding.chatcmpl_ff2b38153a9c457d8769bb6fc44ad9a5`, 3,653,854 exact tokens), and `88f60cb924` (`assignment.public.khala_coding.chatcmpl_b2051745aee042d08f6d5348282215dc`, 2,905,828 exact tokens). `88f60cb924` is deployed as Worker `ba4ed1d7-f81a-4c82-b63c-2042b6bb4ad3` and adds the fail-closed typed acceptance projection for all-replica watchdog, capacity-floor owner decision, multi-region auto-replace, and quota tracking. The current supervised integration folded in three more accepted Pylon/Codex slices (`assignment.public.khala_coding.chatcmpl_efb67743f96f44b9ad0078763e224fe6`, 1,571,076 exact tokens; `assignment.public.khala_coding.chatcmpl_bfe667383900474aa93652ad09e5d2e8`, 3,136,839 exact tokens; `assignment.public.khala_coding.chatcmpl_8132762906104faaa5fa9a68e7920bec`, 1,209,821 exact tokens) for typed quota state, capacity-floor evidence, all-replica watchdog readability, and multi-region replacement/reserve/prebake evidence. Fresh supervised Pylon/Codex work landed `bb386d8173` from `assignment.public.khala_coding.chatcmpl_f07a0d9b3b684abc80284aa0c818ca8c` on `codex-3` (`963,220` exact tokens; `55` owner-only ATIF traces; `92` raw SDK events / `173,848` bytes), adding the operator-facing readiness readout. Deployed through `deploy:safe` as Worker `8c03f302-8186-468d-a2b8-cd8d3489ae0b`. This follow-up adds the headless `glm-fleet:durability` operator bundle and tightens acceptance so all-replica watchdog requires a public-safe forced Spot STOP recovery ref (`HYDRALISK_GLM_52_REAP_504B_FORCED_STOP_RECOVERY_REFS`). Current live `/v1/gateway/glm-fleet/readiness` is serving `status:"degraded"` with `acceptance.status:"blocked"`, `totalReplicaCount:10`, `readyReplicaCount:2`, `reclaimedReplicaCount:8`, and `warmOrReadyMaxInflight:2`; #6311 stays open until the durable fleet proofs and owner/infra blockers are complete. |
 | #6259 | **Closed** | Khala -> GLM served-worker disclosure + counter smoke is closed. |
 | #6315 | **Closed** | Zero-debit receipt-ref fix for #6259 is closed. |
 | #6320 | **Open** | A bounded routed slice landed in `85ca837413` and deployed as Worker `228ac0f9-c891-4ad2-b05f-0dd8894f3c86`: typed throughput-sweep metadata for `max-num-seqs`, prefix cache, chunked prefill, speculative decode, quant gates. Delegated slices landed on `main` in `a8c12aff42` (`assignment.public.khala_coding.chatcmpl_5ccffa5593b84cc09e414d3ad358b9b0`, 2,202,625 exact tokens), `03b6ffa094` (`assignment.public.khala_coding.chatcmpl_7033a7cd0fff4afaaad412e783bab29a`, 4,949,572 exact tokens), `d373eaee69` (`assignment.public.khala_coding.chatcmpl_a8737564357847eca23110d319bf4edf`, 2,656,599 exact tokens), `88f60cb924` (`assignment.public.khala_coding.chatcmpl_9a27a65fa4f5434db8715bcb1288c91d`, 5,505,826 exact tokens), and `7a73ab8d95` (`assignment.public.khala_coding.chatcmpl_ec4be93966804054a0775f1099465a8f`, 2,090,306 exact tokens): typed throughput rollout recommendation/flag selection, owner-armed rollout artifact/guardrails, fail-closed measured-lift rollout readout, and a fail-closed public-safe evidence checklist for owner arm ref, live engine config, before/after throughput, ITL, progress, and public refs. This bounded local slice adds typed operator acceptance evidence that also exposes live vLLM flags, before/after TTFT, progress status/percent, and the exact remaining checks that block #6317/#6312; Khala -> Pylon -> Codex proof: `assignment.public.khala_coding.chatcmpl_a46b5dc9bb4249df8809ac46a23948ea`, `3,672,787` exact own-capacity tokens, `83` owner-only traces, `1` owner-only raw-event closeout row. Current deployed Worker is `d3571d83-ecdb-40e0-8af4-08fe14f7ed1e`; still open for actual live engine rollout and measured throughput lift. |
@@ -191,25 +191,20 @@ operator view of what remains, not a public product claim.
   rows and no raw-event closeout. This does not close #6323. The remaining
   close condition is still the owner-armed isolated 8x-host pilot with measured
   tool-loop, quality, max-context, and tok/s evidence.
-- 2026-06-27T01:07Z #6311 refresh: live
+- 2026-06-27T03:34Z #6311 refresh: live
   `/v1/gateway/glm-fleet/readiness` now reports `status:"degraded"` with
-  `readyReplicaCount:7`, `reclaimedReplicaCount:3`, and
-  `warmOrReadyMaxInflight:7`. The reclaimed public refs are
-  `replica.hydralisk.glm_52_reap_504b.g4-4g-east1b-spot-20260625203000`,
-  `replica.hydralisk.glm_52_reap_504b.g4-4g-east1d-spot-20260625203000`, and
-  `replica.hydralisk.glm_52_reap_504b.g4-4g-east5c-spot-20260625211500`.
+  `totalReplicaCount:10`, `readyReplicaCount:2`, `reclaimedReplicaCount:8`,
+  `warmOrReadyMaxInflight:2`, and `acceptance.status:"blocked"`.
   `glm-fleet:durability --summary` now includes aggregate counts,
   status-specific replica refs, and typed operator action items in the
   headless readout, so reclaimed replicas and missing forced-STOP proof refs
   cannot be mistaken for completed durability. Focused verification:
   `glm-fleet-readiness`, `glm-fleet-readiness-routes`, and
-  `glm-fleet-durability-operator` tests passed (`27` tests), and
-  `bun run --cwd apps/openagents.com/workers/api typecheck` passed with only
-  the pre-existing `Effect.void` language-service advisories. This slice was
-  delegated through Khala -> Pylon -> Codex as
-  `assignment.public.khala_coding.chatcmpl_c075da5d2d7545b480cf23b9b362e77c`;
-  exact own-capacity proof reported `3,286,127` total tokens, `80` owner-only
-  traces, and `1` owner-only raw-event closeout row.
+  `glm-fleet-durability-operator` tests passed on the delegated runner. This
+  slice was delegated through Khala -> Pylon -> Codex as
+  `assignment.public.khala_coding.chatcmpl_8c5d5c98f2544913aea50facfb81ee30`;
+  exact own-capacity proof reported `2,780,444` total tokens, `59` owner-only
+  traces, and `99` private raw SDK events / `3,399,098` bytes.
 - 2026-06-27T01:22Z #6318 refresh: the production chat route had the
   `internalStressPreemption` registry wired but did not pass a live
   `routeAdmission` snapshot, so the generic scheduler could not form the
@@ -631,22 +626,24 @@ Make the fleet trustworthy before pushing load through it.
      `7f94c0556a`, the D1-wrapper/persistence-order proof landed in
      `5b11c6eaf5`, and the typed fail-closed acceptance projection landed in
      `88f60cb924`. Live `glm-pool-heartbeat` rows are proven on the deployed
-     Worker, and live readiness now reports serving `status:"ready"` while
-     durable acceptance is `blocked`. This follow-up adds
+     Worker, and live readiness now reports serving `status:"degraded"` with
+     durable acceptance `blocked` (`10` total replicas, `2` ready, `8`
+     reclaimed, `warmOrReadyMaxInflight:2`). This follow-up adds
      `bun run --cwd apps/openagents.com/workers/api glm-fleet:durability` as
      the headless evidence bundle and requires a public-safe forced Spot STOP
      recovery ref before all-replica watchdog can go complete. Current next
      action is the real durability scope: non-Spot/reserve owner decision,
      all-replica STOP-watchdog/keep-warm, forced STOP recovery proof,
      multi-region auto-replace, and quota tracking.
-   - 2026-06-27 refresh: the live fleet-health readout is now degraded, not just
-     acceptance-blocked (`7` ready, `3` reclaimed). The headless durability
+   - 2026-06-27T03:34Z refresh: the live fleet-health readout is now degraded, not just
+     acceptance-blocked (`10` total replicas, `2` ready, `8` reclaimed,
+     `warmOrReadyMaxInflight:2`). The headless durability
      summary names the reclaimed public replica refs and emits typed
      `operatorActionItems` so the operator can target recovery and missing
      durability proof refs without opening the full bundle. Khala -> Pylon ->
      Codex proof for this public-safe slice:
-     `assignment.public.khala_coding.chatcmpl_c075da5d2d7545b480cf23b9b362e77c`,
-     `3,286,127` exact own-capacity tokens.
+     `assignment.public.khala_coding.chatcmpl_8c5d5c98f2544913aea50facfb81ee30`,
+     `2,780,444` exact own-capacity tokens.
 6. **#6259 + #6315 — green end-to-end GLM-serving smoke. → after #6310.** Get the
    Khala→GLM verification smoke passing for real (served-worker disclosure + counter
    increment); #6315 is the receipt-ref fix for the zero-debit operator-exempt token.

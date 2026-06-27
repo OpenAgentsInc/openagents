@@ -18,18 +18,20 @@
 
 ---
 
-## 0. Current live state (today, 2026-06-25)
+## 0. Current live state (updated 2026-06-27)
 
 - **GLM-5.2-REAP-504B is the live PRIMARY** backing model for the single public
   model id `openagents/khala` (`KHALA_BACKING_MODEL=hydralisk-glm-5.2-reap-504b`,
   GLM ordered first).
-- **10 healthy GLM replicas** serve (44× RTX PRO 6000, 5 GCP regions, **all
-  Spot**). On-host single-flight micro-benchmark: ~47 completion tok/s,
-  ~0.28s TTFT; dual-host snapshot ≈ 67 aggregate tok/s. Roster:
-  `~/work/.secrets/hydralisk-glm-endpoints.env` (owner-local, not committed).
+- The configured GLM pool has **10 total G4 replicas**, but the current public
+  readiness state is degraded: `2` ready replicas, `8` reclaimed replicas,
+  `warmOrReadyMaxInflight:2`, and durable acceptance `blocked`. The ten-replica
+  throughput target in this plan is a recovery/optimization goal, not the
+  current serving ceiling.
 - Each 4× replica is intentionally **single-flight** (`--max-num-seqs 2`,
-  singleflight 429 gate in the pool adapter). So **aggregate today ≈
-  replica_count × per-replica decode** — per-replica batching is OFF.
+  singleflight 429 gate in the pool adapter). So **aggregate available GLM
+  capacity today is bounded by the ready replica count** until reclaimed hosts
+  recover; per-replica batching is still OFF.
 - Fallback chain (proven live, HTTP 200 not 5xx with GLM dead):
   **GLM → GPT-OSS-120B → GPT-OSS-20B → Vertex-Gemini.** No OpenRouter lane
   exists in the repo (#6313).

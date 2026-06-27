@@ -42,17 +42,25 @@ These legacy variables now resolve to a pool of one with replica id `primary`.
 That keeps the first production smoke path stable while letting Khala broaden
 capacity without exposing any new public model selector.
 
-As of 2026-06-26 (#6262) the production Khala GLM pool is armed to the full
+As of 2026-06-26 (#6262) the production Khala GLM pool was armed to the full
 10-replica G4 fleet from the live roster, keyed by stable roster replica ids
 (e.g. `g4-4g-b-20260625154532` ... `g4-8g-b-20260624214500`). Each replica's
 origin URL and bearer are uploaded as Worker secrets
 (`HYDRALISK_GLM_52_REAP_504B_<REPLICA_ID>_BASE_URL` / `_BEARER_TOKEN`, hyphens
 become underscores, uppercased) and `HYDRALISK_GLM_52_REAP_504B_REPLICA_IDS`
-lists all ten. With one inflight slot per replica, up to ten overlapping Khala
-requests spread across distinct G4 hosts instead of overflowing to the
-GPT-OSS/Gemini fallback. No replica is benchmark-reserved: the roster collection
-live-probed all ten endpoints (`/health`, `/v1/models`, and a tiny
-`/v1/chat/completions`) at HTTP 200 before arming.
+lists all ten. When all replicas are healthy, one inflight slot per replica
+lets up to ten overlapping Khala requests spread across distinct G4 hosts
+instead of overflowing to the GPT-OSS/Gemini fallback. No replica was
+benchmark-reserved at arming time: the roster collection live-probed all ten
+endpoints (`/health`, `/v1/models`, and a tiny `/v1/chat/completions`) at HTTP
+200 before arming.
+
+Current live state (2026-06-27): the configured pool still has `10` total
+replicas, but serving is degraded and durability acceptance is blocked. The
+public `/v1/gateway/glm-fleet/readiness` projection reports `2` ready replicas,
+`8` reclaimed replicas, and `warmOrReadyMaxInflight:2`. Do not describe the
+fleet as ten healthy serving slots again until the reclaimed replicas recover
+and the #6311 durability blockers are satisfied.
 
 For two or more replicas, set a comma-separated pool and use the named variable
 form. Replica ids must be lower-case alphanumeric or hyphenated; hyphens become
