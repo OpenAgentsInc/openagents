@@ -4,7 +4,7 @@
   "jobName": "khala-tb2-measured-20260626T130803Z",
   "dataset": "terminal-bench@2.0",
   "model": "openagents/khala",
-  "servingPath": "public Khala API (black box); tool-bearing requests may route to a non-GLM tool-caller",
+  "servingPath": "public Khala API black-box route; backing model/lane intentionally not asserted by this runner",
   "counts": {
     "selected": 3,
     "completed": 3,

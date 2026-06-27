@@ -1,7 +1,8 @@
 # Terminal-Bench 2.0 — Khala black-box runner, replication, and path-to-beat (#6253)
 
 Status: **measured baseline + replication methodology + path-to-beat**, as of
-2026-06-26. This subtree is an **isolated, Terminal-Bench-2.0-specific** lane.
+2026-06-26. The measured values below are a **historical snapshot**, not current
+liveness evidence. This subtree is an **isolated, Terminal-Bench-2.0-specific** lane.
 It consumes the **public Khala API as a black box** and does **not** touch the
 gateway / GLM-serving / Pylon code, the shared Gym/eval harness, the gym
 leaderboard, or the Fireworks/Vertex sweep.
@@ -24,40 +25,43 @@ What's here:
 
 `0xSero/GLM-5.2-504B` (Z.ai GLM-5.2, REAP-pruned keep-168, NVFP4, MIT) is
 reported at **69.1% on Terminal-Bench 2.0** — claimed as the highest TB-2.0
-score for a model that fits on 4× RTX PRO 6000. We serve this exact checkpoint
-on Hydralisk behind `openagents/khala`. The question is whether we can (a)
-replicate 69.1% honestly over the official 89-task denominator, (b) understand
-how serving/inference method moves the number, and (c) **beat it with the Khala
+score for a model that fits on 4× RTX PRO 6000. Owner-armed Hydralisk
+replication lanes are the evidence surface for this checkpoint. The public
+`openagents/khala` is a router and must be measured as a black box; docs and
+runner output must not assert its current backing model/lane without fresh
+owner-armed evidence. The question is whether we can (a) replicate 69.1%
+honestly over the official 89-task denominator, (b) understand how
+serving/inference method moves the number, and (c) **beat it with the Khala
 orchestrator**.
 
-## Headline numbers (honest, as measured)
+## Historical snapshot (honest, as measured on 2026-06-26)
 
 Two sources of truth, kept strictly separate:
 
 1. **Owner-armed full-89 Harbor runs on Hydralisk** (decision-grade target;
-   live `/api/public/gym/run-progress`). As of 2026-06-26 12:53 UTC:
+   then-visible in `/api/public/gym/run-progress`). As of 2026-06-26 12:53 UTC:
    - **Raw GLM-5.2-REAP baseline** (`openagents/glm-5.2-reap-504b`, TP4, MTP-2
      speculative decoding, rep-penalty 1.05): **partial 19/89 completed, 10
-     passed → 52.6% over completed so far** (6 errored). Still running; trending
+     passed → 52.6% over completed so far** (6 errored). It was still running; trending
      toward the ~69% claim region but **not yet a complete decision-grade
      number**.
    - **Khala public route** (`openagents/khala`, heuristic public router):
      **88/89 completed, 22 passed → 25% pass-rate over completed**, with **57
-     errored** trials. The public route is currently **worse** than raw GLM —
+     errored** trials. In that snapshot, the public route was **worse** than raw GLM —
      dominated by serving/tool-calling *errors* (Phase 0), not model quality.
 2. **This subtree's isolated black-box probe** against the public Khala API —
    a bounded subset, used to independently confirm the end-to-end path works
    and to localize where it breaks. See `replication-and-path-to-beat.md` for
    the measured per-task results.
 
-Neither number is presented as the final 69.1% replication. The decision-grade
-claim requires the **owner-armed full-89 GLM-REAP run to finish** over the
-official denominator.
+Neither number is presented as the final 69.1% replication or as current route
+state. The decision-grade claim requires fresh **owner-armed full-89 GLM-REAP
+evidence** over the official denominator.
 
-## Why the public Khala route currently underperforms raw GLM (the real finding)
+## What the 2026-06-26 public Khala route snapshot showed
 
-A black-box probe of the public endpoint shows the **open lane splits routing by
-request shape**:
+A black-box probe of the public endpoint on 2026-06-26 showed the **open lane
+split routing by request shape**:
 
 - A plain completion routed to `served_model: openagents/glm-5.2-reap-504b`
   (`supply_lane: hydralisk`).
@@ -65,13 +69,11 @@ request shape**:
   `served_model: accounts/fireworks/models/deepseek-v4-flash`
   (`supply_lane: fireworks`).
 
-So today's public `openagents/khala` is **not** a pure GLM-REAP run — its
-tool-calling path falls off GLM (the #6310 Phase-0 GLM tool-calling outage) onto
-a different backing model, and the high error count on the live Khala run is
-consistent with fallback-chain breakage (#6319). **This is the honest headline:
-Khala's measured TB-2.0 baseline is currently serving-limited, not
-model-limited.** The path-to-beat is therefore mostly a *serving-reliability*
-story before it is an *orchestration* story.
+So that dated public `openagents/khala` snapshot was **not** a pure GLM-REAP run
+for tool-bearing Terminal-Bench traffic. Treat this as historical evidence about
+the 2026-06-26 route, not as a current serving claim. The durable finding is
+that the measured TB-2.0 baseline was serving-limited before it could become an
+orchestration claim.
 
 ## Run it
 
@@ -84,8 +86,8 @@ docs/inference/terminal-bench-2/run-khala-tb2.sh \
 # a single named task
 docs/inference/terminal-bench-2/run-khala-tb2.sh --include fix-git
 
-# the full official set (owned capacity only; coordinate to avoid colliding
-# with the live owner-armed run)
+# the full official set (owner-armed capacity only; do not run until the owner
+# explicitly arms a decision-grade run and confirms it will not collide)
 docs/inference/terminal-bench-2/run-khala-tb2.sh --all --concurrent 4
 ```
 

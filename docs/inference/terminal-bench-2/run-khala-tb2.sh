@@ -6,16 +6,17 @@
 # coding agent against the PUBLIC Khala API, consumed strictly as a black box:
 #   - base URL https://openagents.com/api/v1
 #   - model    openagents/khala
-#   - auth     a free key from POST /api/keys/free (or $OPENAGENTS_API_KEY)
+#   - auth     a runtime key from $OPENAGENTS_API_KEY or POST /api/keys/free
 #
 # It does NOT touch any gateway / GLM-serving / pylon / gym-harness code, and it
 # does NOT touch the owner-armed full-89 run on Hydralisk. It uses its own
 # isolated jobs dir and an explicit named-task subset, so it cannot collide with
-# the broad live run.
+# an owner-armed decision-grade run.
 #
 # Output is public-safe: only aggregate counts + per-task reward + token totals
 # are summarized to stdout / the summary JSON. Raw Harbor trajectories, prompts,
-# and responses stay in the local jobs dir and are NOT committed.
+# responses, and key material stay in the local jobs dir/process env and are NOT
+# printed or committed.
 #
 # Honesty note (#6310 / #6319, Phase 0): the coding/tool-calling surface may be
 # partially hard-down. If tool calls fail, Terminal-Bench scores will be low.
@@ -111,7 +112,7 @@ if [[ -z "$KEY" ]]; then
         | python3 -c 'import sys,json;print(json.load(sys.stdin)["credential"]["token"])')"
 fi
 [[ -n "$KEY" ]] || { echo "could not obtain a Khala key" >&2; exit 6; }
-echo "[run-khala-tb2] key acquired (prefix ${KEY:0:16}...)."
+echo "[run-khala-tb2] key acquired (value redacted)."
 
 # ---- assemble the harbor invocation -----------------------------------------
 LLM_KWARGS='llm_call_kwargs={"extra_headers":{"x-openagents-demand-kind":"internal","x-openagents-demand-source":"harbor_terminal_bench","x-openagents-client":"tb2-6253-blackbox-runner"}}'
@@ -212,7 +213,7 @@ summary={
   "jobName":job,
   "dataset":"terminal-bench@2.0",
   "model":model,
-  "servingPath":"public Khala API (black box); tool-bearing requests may route to a non-GLM tool-caller",
+  "servingPath":"public Khala API black-box route; backing model/lane intentionally not asserted by this runner",
   "counts":{
      "selected":len(trials),
      "completed":n_completed,

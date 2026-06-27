@@ -1612,6 +1612,99 @@ runs, assignment-scoped proof is the exact attribution source and the public
 counter is a live aggregate projection that updates after final token-row
 insertion.
 
+## Fresh #6253 Delegation: Terminal-Bench Public-Safety Hardening
+
+The #6253 continuation used the same working delegation set on current `main`.
+Preflight refreshed Pylon presence, confirmed one ready local Codex slot, and
+recorded public counter baseline `470,723,862`; the request was pinned to commit
+`396ce3e5384f1daa7ab1a61d782805b5ce75b2ab` and targeted
+`pylon.33afd48282a649047e3a` with `--workflow codex_agent_task`.
+
+Assignment:
+
+`assignment.public.khala_coding.chatcmpl_6d884178bc734b46911818a4d2d622f8`
+
+Durable Khala request:
+
+`chatcmpl_b663652d524c404495f6c30b5e9796c9`
+
+Closeout:
+
+`assignment.closeout.7a1e1bd126d2d224de00d45e`
+
+The delegated run completed accepted with a passing bounded verifier:
+
+```text
+bash -n docs/inference/terminal-bench-2/run-khala-tb2.sh
+```
+
+The materialized patch was reviewed before integration. The useful scoped
+change was to prevent the isolated Terminal-Bench black-box runner and docs from
+leaking or over-claiming:
+
+- `run-khala-tb2.sh` no longer prints even an API-key prefix after obtaining a
+  runtime key;
+- the public-safe summary now says the runner intentionally does not assert the
+  current backing model/lane;
+- the 2026-06-26 measured docs now label route/model observations as dated
+  snapshots, not current serving truth;
+- a small `bun:test` guard keeps those public-safety constraints from
+  regressing.
+
+Local verification after integration:
+
+```text
+bun test docs/inference/terminal-bench-2/run-khala-tb2.test.ts
+bash -n docs/inference/terminal-bench-2/run-khala-tb2.sh
+bun run --cwd apps/openagents.com/workers/api test -- \
+  src/inference/gym/terminal-bench-comparison.test.ts \
+  src/inference/gym/terminal-bench-khala-orchestration.test.ts \
+  src/inference/gym/run-progress-routes.test.ts
+```
+
+`khala proof` reported one exact `token_usage_events` row:
+
+```json
+{
+  "tokenUsage": {
+    "provider": "pylon-codex-own-capacity",
+    "model": "openagents/pylon-codex",
+    "usageTruth": "exact",
+    "demandKind": "own_capacity",
+    "demandSource": "khala_coding_delegation",
+    "inputTokens": 6687923,
+    "outputTokens": 31418,
+    "reasoningTokens": 6522,
+    "cacheReadTokens": 6490880,
+    "totalTokens": 6719341
+  },
+  "traces": {
+    "count": 122,
+    "visibility": "owner_only",
+    "schemaVersion": "ATIF-v1.7"
+  },
+  "rawEvents": {
+    "count": 1,
+    "eventCount": 206,
+    "byteLength": 1483284,
+    "visibility": "owner_only"
+  }
+}
+```
+
+The CLI proof checklist currently marks
+`blocker.khala_proof.traces.owner_only_present` even when the server proof is
+`ok:true` and owner-only traces are present. That reads like a local proof
+checklist naming/semantics problem rather than a missing evidence row: exact
+tokens, owner-only ATIF traces, and the private raw event archive all exist.
+
+The public counter read after closeout was `477,906,377`. The global delta from
+the preflight baseline was `7,182,515`, while this assignment's exact proof
+accounts for `6,719,341` tokens. The extra `463,174` tokens are ordinary
+global-ledger concurrency between public reads. This confirms the owner's
+observation again: the public token counter moved after closeout/final usage-row
+insertion, not continuously while Codex was streaming.
+
 ## Bottom Line
 
 This assignment proves the backend evidence path mostly works:

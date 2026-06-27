@@ -4,6 +4,8 @@ Status: 2026-06-26. Honesty bar (from #6253): published numbers come only from
 the owner-armed real seam over the official TB-2.0 task set; pilot/attempted-only
 denominators are never presented as the full score; the GLM model is attributed
 to **Z.ai (REAP-pruned)**, not a serving vendor.
+This is a dated evidence snapshot and methodology note; it does not assert the
+current backing lane for public `openagents/khala`.
 
 This document has three parts, matching the issue's three goals:
 
@@ -20,7 +22,9 @@ This document has three parts, matching the issue's three goals:
 `0xSero/GLM-5.2-504B` — Z.ai GLM-5.2, REAP-pruned keep-168, NVFP4, MIT — is
 reported at **69.1% on Terminal-Bench 2.0**, claimed as the highest TB-2.0 score
 for a model that fits on 4× RTX PRO 6000 (source: the 0xSero model card
-`REPORT.md` + the X post in #6253). We serve this exact checkpoint on Hydralisk.
+`REPORT.md` + the X post in #6253). Owner-armed Hydralisk replication lanes
+serve this checkpoint for evidence runs; the public Khala route remains a
+black-box router unless fresh owner-armed route evidence says otherwise.
 
 ### The official denominator
 
@@ -60,7 +64,7 @@ harbor run \
   errored tasks to inflate the rate — report errors separately *and* keep them
   in the denominator.
 
-### Replication status (live, owner-armed)
+### Replication status (2026-06-26 owner-armed snapshot)
 
 The owner-armed full-89 Harbor run on Hydralisk is the only decision-grade
 source. From `GET /api/public/gym/run-progress` at **2026-06-26 12:53 UTC**:
@@ -85,27 +89,24 @@ serving/tool-calling failure mode, not model quality — see §C).
 
 ### B.1 Black-box probe of the public route (this subtree)
 
-The public `openagents/khala` endpoint **routes by request shape** — confirmed
-by reading the `openagents.{served_model,supply_lane}` envelope on real
-responses:
+The 2026-06-26 public route snapshot **routed by request shape** — confirmed by
+reading the `openagents.{served_model,supply_lane}` envelope on real responses.
+This records the dated measurement and does not assert the current backing lane:
 
 | request shape | served_model | supply_lane |
 |---|---|---|
 | plain chat completion | `openagents/glm-5.2-reap-504b` | hydralisk |
 | **tool-bearing** completion | `accounts/fireworks/models/deepseek-v4-flash` | fireworks |
 
-So the public Khala route's **Terminal-Bench path (which is entirely
-tool-driven) does not run on GLM-REAP today** — it falls onto a Fireworks
-DeepSeek-V4-Flash tool-caller because the primary GLM tool-calling lane is in
-the Phase-0 #6310 outage. **This is the single most important measured fact:**
-Khala's TB-2.0 baseline is currently a *serving-routing* result, not a pure
-GLM-REAP result.
+So the public Khala route's **Terminal-Bench path in that snapshot** was a
+serving-routing result, not a pure GLM-REAP result. Do not carry this forward as
+a current serving claim without a fresh owner-armed route probe.
 
 The isolated bounded probe (`run-khala-tb2.sh`, 89-task dataset confirmed,
 named-task subset, separate jobs dir) measures the end-to-end path through the
-real Harbor verifier without colliding with the live run. Per-task results land
-in `last-run-summary.json` (public-safe). See `MEASURED-RUN.md` for the recorded
-numbers from this environment.
+real Harbor verifier without colliding with an owner-armed decision-grade run.
+Per-task results land in `last-run-summary.json` (public-safe). See
+`MEASURED-RUN.md` for the recorded numbers from this environment.
 
 ### B.2 Inference-method comparison axes (issue goal B)
 
@@ -142,10 +143,10 @@ single-model GLM-REAP score on the same TB-2.0 tasks, on **solve-rate and/or
 cost-per-accepted-outcome**. Based on the measured findings above, the path has
 two stages — and the first is *not* orchestration, it's **un-breaking serving**.
 
-### Stage 1 — Close the serving gap (Phase 0/1; this is why Khala is behind today)
+### Stage 1 — Close the serving gap (Phase 0/1; why the dated Khala snapshot lagged)
 
-Right now the public Khala route scores **25%** vs the raw GLM lane's partial
-**~53%+**, entirely because of errors/fallback, not model quality:
+In the 2026-06-26 snapshot the public Khala route scored **25%** vs the raw GLM
+lane's partial **~53%+**, with errors/fallback dominating the gap:
 
 1. **Fix GLM tool-calling (#6310).** Tool requests to the primary GLM lane
    `provider_error` ~100%, so every TB-2.0 task (all tool-driven) either errors

@@ -9,7 +9,7 @@
 # replication doc). This subset only measures whether the *public Khala API*
 # (consumed as a black box at https://openagents.com/api/v1, model
 # openagents/khala) can drive a terminal coding agent end-to-end through the
-# real verifier, and where it currently breaks.
+# real verifier, and where a dated bounded probe broke.
 #
 # Selection rule (deterministic, documented for reproducibility):
 #   - the first task by sorted name in each of several capability families,
@@ -23,7 +23,8 @@
 #     docs/inference/terminal-bench-2/tasks.bounded-subset.txt --concurrent 2
 #
 # To run the FULL official set instead, pass --all (runs all 89; only do this
-# on owned capacity, coordinated so it does not collide with the live run).
+# after explicit owner arming, coordinated so it does not collide with any
+# decision-grade run).
 
 fix-git
 git-multibranch
