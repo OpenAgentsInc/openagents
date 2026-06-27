@@ -23,6 +23,7 @@ export const KHALA_CHANGELOG: ReadonlyArray<KhalaChangelogEntry> = [
     version: "0.1.20",
     releasedAt: "2026-06-27T15:43:41.000Z",
     bullets: [
+      "Adds `khala fleet link` - link this local Pylon fleet to your OpenAgents account with the browser + short-code flow and no manual token copying.",
       "Adds `khala fleet connect` — connect your own Codex account to Khala with one short command and a paste-free device login (browser + short code, no long auth strings).",
       "Adds `khala fleet status` — see your connected Codex fleet and readiness; run `khala fleet connect` again to add more accounts (auto-assigned codex, codex-2, …) for more throughput.",
       "Accounts use isolated per-account homes and are registered into your Pylon config; the flow never touches `~/.codex` and never prints tokens.",

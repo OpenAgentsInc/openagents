@@ -14,8 +14,10 @@ import {
 import {
   CodexCliMissingError,
   connectFleetAccount,
+  linkFleetToKhala,
   listFleetAccounts,
   type KhalaFleetConnectResult,
+  type KhalaFleetLinkResult,
   type KhalaFleetStatus,
 } from "./fleet.js"
 import { appendPromptHistory, readPromptFromTerminal } from "./input.js"
@@ -65,6 +67,7 @@ type ParsedCommand =
   | { readonly kind: "changelog" }
   | { readonly kind: "feedback"; readonly text: string | undefined }
   | { readonly kind: "fleetConnect"; readonly accountRef: string | undefined; readonly force: boolean }
+  | { readonly kind: "fleetLink" }
   | { readonly kind: "fleetStatus" }
   | { readonly kind: "help" }
   | { readonly kind: "info" }
@@ -179,6 +182,27 @@ export async function runKhalaCli(argv: ReadonlyArray<string>, env: Record<strin
           process.stderr.write(`${terminalStyle.meta(error.message)}\n`)
           return 1
         }
+        throw error
+      }
+    }
+    if (args.command.kind === "fleetLink") {
+      let waitingDots: { readonly stop: () => void } | undefined
+      try {
+        const result = await linkFleetToKhala({
+          baseUrl: args.baseUrl,
+          env,
+          explicitToken: args.token,
+          openBrowser: openVerificationUrl,
+          onPrompt: prompt => {
+            process.stdout.write(`${formatFleetLinkPrompt(prompt)}\n`)
+            waitingDots = startWaitingDots()
+          },
+        })
+        waitingDots?.stop()
+        process.stdout.write(args.json ? `${JSON.stringify(result)}\n` : `${formatFleetLink(result)}\n`)
+        return 0
+      } catch (error) {
+        waitingDots?.stop()
         throw error
       }
     }
@@ -473,7 +497,9 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
     const sub = positional[1]?.trim().toLowerCase()
     if (sub === "status" || sub === "list" || sub === "ls") {
       command = { kind: "fleetStatus" }
-    } else if (sub === undefined || sub === "connect" || sub === "add" || sub === "link") {
+    } else if (sub === "link") {
+      command = { kind: "fleetLink" }
+    } else if (sub === undefined || sub === "connect" || sub === "add") {
       // `khala fleet`, `khala fleet connect`, `khala fleet add` all connect.
       // Optional positional ref: `khala fleet connect codex-2` (or --account).
       command = {
@@ -482,7 +508,7 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
         force: fleetForce,
       }
     } else {
-      throw new Error(`Unknown fleet command: ${sub}. Use \`khala fleet connect\` or \`khala fleet status\`.`)
+      throw new Error(`Unknown fleet command: ${sub}. Use \`khala fleet link\`, \`khala fleet connect\`, or \`khala fleet status\`.`)
     }
   } else if (maybeCommand === "codex") {
     command = positional[1] === "status"
@@ -1625,11 +1651,46 @@ function formatFleetConnect(result: KhalaFleetConnectResult): string {
   ].join("\n"))
 }
 
+function formatFleetLinkPrompt(prompt: {
+  readonly userCode: string
+  readonly verificationUrl: string
+  readonly expiresAt: string | undefined
+}): string {
+  const lines = [
+    "To link this local Pylon fleet to your OpenAgents account, open this URL:",
+    `  ${terminalStyle.assistant(prompt.verificationUrl)}`,
+    `Then confirm this code: ${terminalStyle.assistant(prompt.userCode)}`,
+  ]
+  const expiry = formatLoginExpiry(prompt.expiresAt)
+  if (expiry !== undefined) {
+    lines.push(terminalStyle.meta(`The code expires ${expiry}.`))
+  }
+  lines.push(terminalStyle.meta("Waiting for you to finish linking in the browser..."))
+  return lines.join("\n")
+}
+
+function formatFleetLink(result: KhalaFleetLinkResult): string {
+  const who = result.email ?? result.displayName
+  const linkedAs = who === undefined ? "" : ` as ${who}`
+  const status = result.alreadyLinked ? "Already linked" : "Linked"
+  return terminalStyle.meta([
+    `${terminalStyle.assistant("Khala fleet:")} ${status} this local Pylon fleet to OpenAgents${linkedAs}.`,
+    `Pylon home: ${result.pylonHome}`,
+    result.tokenPrefix === undefined ? "Agent token: stored locally" : `Agent token: ${result.tokenPrefix}... stored locally`,
+    "",
+    "Next:",
+    "  khala fleet connect       Connect a Codex account",
+    "  khala fleet status        See your Codex fleet",
+    "  pylon provider go-online  Advertise this Pylon's capacity",
+  ].join("\n"))
+}
+
 function formatFleetStatus(status: KhalaFleetStatus): string {
   if (status.accounts.length === 0) {
     return terminalStyle.meta([
       `${terminalStyle.assistant("Khala fleet:")} No Codex accounts connected yet.`,
-      "Connect one (paste-free device login):",
+      "Link this Pylon to OpenAgents, then connect a Codex account:",
+      "  khala fleet link",
       "  khala fleet connect",
     ].join("\n"))
   }
@@ -1849,6 +1910,7 @@ Usage:
   khala version
   khala changelog
   khala tokens
+  khala fleet link
   khala fleet connect
   khala fleet connect --account codex-2
   khala fleet status

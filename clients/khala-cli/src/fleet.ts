@@ -3,7 +3,9 @@ import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 
+import { runKhalaLogin, type KhalaLoginPrompt, type KhalaLoginResult } from "./login.js"
 import { spawnProcess } from "./proc.js"
+import { DEFAULT_BASE_URL } from "./types.js"
 
 // `khala fleet` is the dead-simple onboarding surface for connecting your own
 // Codex accounts to Khala so a per-user Artanis can burn down a backlog across
@@ -46,6 +48,14 @@ export type KhalaFleetConnectResult = {
   readonly pylonHome: string
   readonly configPath: string
   readonly status: "connected" | "already_connected"
+}
+
+export type KhalaFleetLinkResult = {
+  readonly alreadyLinked: boolean
+  readonly displayName: string | undefined
+  readonly email: string | undefined
+  readonly pylonHome: string
+  readonly tokenPrefix: string | undefined
 }
 
 export type KhalaCodexDeviceLoginRunner = (input: {
@@ -358,5 +368,44 @@ export async function connectFleetAccount(
     pylonHome,
     configPath,
     status,
+  }
+}
+
+// Link this local Khala/Pylon token to the signed-in OpenAgents account. This
+// is the paste-free Pylon<->Khala ownership step: browser + short code only,
+// no raw token copying. The same linked token is stored in the Khala token
+// store so `khala spawn --strategy pylon` and related calls resolve caller
+// ownership without asking the user to manage OPENAGENTS_AGENT_TOKEN manually.
+export async function linkFleetToKhala(
+  options: {
+    readonly baseUrl?: string | undefined
+    readonly env?: Record<string, string | undefined>
+    readonly explicitToken?: string | undefined
+    readonly fetch?: typeof fetch | undefined
+    readonly onPending?: (() => void) | undefined
+    readonly onPrompt: (prompt: KhalaLoginPrompt) => void
+    readonly openBrowser?: ((url: string) => void) | undefined
+    readonly sleep?: ((ms: number) => Promise<void>) | undefined
+    readonly timeoutSeconds?: number | undefined
+  },
+): Promise<KhalaFleetLinkResult> {
+  const env = options.env ?? process.env
+  const linked: KhalaLoginResult = await runKhalaLogin({
+    baseUrl: options.baseUrl ?? DEFAULT_BASE_URL,
+    env,
+    explicitToken: options.explicitToken,
+    fetch: options.fetch,
+    onPending: options.onPending,
+    onPrompt: options.onPrompt,
+    openBrowser: options.openBrowser,
+    sleep: options.sleep,
+    timeoutSeconds: options.timeoutSeconds,
+  })
+  return {
+    alreadyLinked: linked.alreadyLinked,
+    displayName: linked.displayName,
+    email: linked.email,
+    pylonHome: resolvePylonHome(env),
+    tokenPrefix: linked.tokenPrefix,
   }
 }
