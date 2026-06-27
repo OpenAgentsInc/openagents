@@ -20,6 +20,14 @@ export const KHALA_CLI_VERSION = packageJson.version
 
 export const KHALA_CHANGELOG: ReadonlyArray<KhalaChangelogEntry> = [
   {
+    version: "0.1.17",
+    releasedAt: "2026-06-27T12:42:24.000Z",
+    bullets: [
+      "Adds supervised Khala spawn workers for local Codex-backed subagent fanout, with status polling and join support.",
+      "Routes natural-language spawn requests to the typed `spawn_khala` tool and bridges `--strategy pylon` to caller-owned Pylon coding capacity.",
+    ],
+  },
+  {
     version: "0.1.16",
     releasedAt: "2026-06-27T04:43:28.000Z",
     bullets: [

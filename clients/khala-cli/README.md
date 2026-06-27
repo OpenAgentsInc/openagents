@@ -166,6 +166,12 @@ that check.
 
 ## Changelog
 
+### v0.1.17 - Jun 27, 2026, 7:42:24 AM CDT
+
+- Adds supervised Khala spawn workers for local Codex-backed subagent fanout.
+- Routes natural-language spawn requests to the typed `spawn_khala` tool.
+- Bridges `--strategy pylon` to caller-owned Pylon coding capacity.
+
 ### v0.1.16 - Jun 26, 2026, 11:43:28 PM CDT
 
 - Shows the logged-in OpenAgents account email instead of conflating the user
