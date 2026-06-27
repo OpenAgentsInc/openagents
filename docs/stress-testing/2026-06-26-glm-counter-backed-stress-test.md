@@ -1027,3 +1027,105 @@ Verification:
 This does not by itself close #6317. It gives the next stress runner a
 machine-readable public-safe control signal so future GLM pressure ramps can
 back off near the saturation knee instead of continuing into 500/502 storms.
+
+## 2026-06-27 Live Adaptive Curl Stress Leg
+
+After the adaptive report code shipped, a fresh live run used the
+non-bot-flagged curl-shaped client path rather than the earlier Python urllib
+shape. The run stayed authenticated, public-gateway routed, and tagged:
+
+- `x-openagents-demand-kind: internal_stress`
+- `x-openagents-demand-source: glm-saturation`
+- `x-openagents-client: issue6317-adaptive-curl-20260627T135210Z`
+
+Runner configuration:
+
+- initial concurrency: `6`
+- final concurrency after adaptive backoff: `2`
+- max completion tokens: `512`
+- configured launch window: `420000ms`
+- prompt shape: public-safe synthetic engineering notes, no raw user prompts,
+  no private data, no endpoints or credentials in the public artifact
+
+Live fleet state before the run:
+
+- gateway readiness: `ready`
+- GLM fleet readiness: `status=degraded`
+- ready replicas: `8`
+- ready max inflight: `9`
+- unavailable replicas: `0`
+- durability acceptance: still `blocked`
+
+Runner result:
+
+| Run id | OK receipts | Failed requests | Failure status/kind | Input | Output | Total exact runner tokens | Receipt tok/s | Output tok/s | TTFT p50 / p90 / p99 |
+| --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | --- |
+| `issue6317-adaptive-curl-20260627T135210Z` | `99` | `31` | `31` x HTTP `502` / `gateway_overload` | `61380` | `50688` | `112068` | `260.87` | `117.99` | `13317ms` / `14572ms` / `16140ms` |
+
+Adaptive behavior observed:
+
+- First window at concurrency `6`: `23` OK / `12` overload failures, backed
+  off to `4`.
+- Second overloaded window at concurrency `4`: `21` OK / `11` overload
+  failures, backed off to `3`.
+- Concurrency `3` had one clean hold window (`16` OK / `0` failed), then a
+  later burst (`14` OK / `8` overload failures) backed off to `2`.
+- Concurrency `2` produced the first stable repeated clean windows:
+  `10` OK / `0` failed, then another `10` OK / `0` failed.
+
+Hard D1/public-ledger proof:
+
+```sql
+SELECT provider, model, usage_truth, demand_kind, demand_source, demand_client,
+       COUNT(*) AS rows,
+       SUM(input_tokens) AS input_tokens,
+       SUM(output_tokens) AS output_tokens,
+       SUM(input_tokens + output_tokens) AS total_tokens
+  FROM token_usage_events
+ WHERE demand_client = 'issue6317-adaptive-curl-20260627T135210Z'
+ GROUP BY provider, model, usage_truth, demand_kind, demand_source, demand_client;
+```
+
+returned exactly:
+
+- provider/model: `hydralisk-vllm-glm-5p2-reap-504b` /
+  `openagents/glm-5.2-reap-504b`
+- usage truth: `exact`
+- demand: `internal_stress` / `glm-saturation`
+- rows: `99`
+- input tokens: `61380`
+- output tokens: `50688`
+- total exact GLM tokens: `112068`
+- non-GLM/fallback rows for the run id: `0`
+
+Counter/page proof:
+
+- run baseline `GET /api/public/khala-tokens-served`: `539115655`
+- post-run read: `539387608`
+- global scalar delta during the window: `271953`
+- scoped D1 row total is the hard run count because concurrent Khala/Pylon/Codex
+  traffic can move the global scalar at the same time
+
+What this taught us:
+
+- The deployed ledger retry/failure-detection patch worked for this run: runner
+  exact receipts and D1 exact rows match exactly.
+- The adaptive control loop is useful in live traffic. It walked down from
+  overload at `6`/`4`/bursty `3` into stable `2`-wide pressure instead of
+  continuing into a larger 502 storm.
+- Today's safe curl-shaped stress knee is lower than the earlier best curl
+  window. With the fleet still degraded and durability acceptance blocked,
+  concurrency `2` is the first clean repeated window; concurrency `3` is bursty;
+  `4` and `6` overload.
+- This run adds `112068` hard counted GLM tokens. It does not close #6317,
+  because the issue still needs a committed continuous runner, external-demand
+  spike proof with zero external failure, and sustained telemetry publication.
+
+Next reliability work:
+
+- Promote the curl-shaped adaptive runner into the committed harness so it can
+  drive repeated ticks without a throwaway local script.
+- Treat initial concurrency as a live variable seeded by recent backoff reports,
+  not a hardcoded value.
+- Keep public D1 scoped totals as the hard token count and use the public scalar
+  only as a liveness/counter smoke when concurrent traffic is present.

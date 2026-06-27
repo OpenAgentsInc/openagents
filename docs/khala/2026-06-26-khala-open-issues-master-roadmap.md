@@ -213,6 +213,25 @@ operator view of what remains, not a public product claim.
   counter path itself is confirmed working for `/khala` and `/stats`. #6317
   remains open for cleaner overload/yield behavior and the final-row ledger
   discrepancy, not for lack of stress volume.
+- 2026-06-27T14:00Z #6317 adaptive curl-shaped stress follow-up: with live
+  gateway readiness `ready` and GLM fleet readiness still `degraded`, a bounded
+  authenticated public-gateway run
+  `issue6317-adaptive-curl-20260627T135210Z` started at concurrency `6` and
+  adaptively backed off to `2`. Runner receipts reported `99` successful GLM
+  responses, `31` HTTP `502` / `gateway_overload` failures, `61380` input
+  tokens, `50688` output tokens, and `112068` exact total GLM tokens. The
+  scoped D1 proof for `demand_client =
+  'issue6317-adaptive-curl-20260627T135210Z'` matched exactly: `99` rows,
+  provider `hydralisk-vllm-glm-5p2-reap-504b`, model
+  `openagents/glm-5.2-reap-504b`, usage truth `exact`, demand
+  `internal_stress` / `glm-saturation`, and `112068` total tokens with `0`
+  non-GLM rows. Public scalar reads moved from `539115655` before the run to
+  `539387608` after it; the hard run count remains the scoped D1 total because
+  concurrent Khala/Pylon/Codex traffic can move the shared scalar. The useful
+  saturation finding is that concurrency `6` and `4` overloaded, concurrency
+  `3` was bursty, and concurrency `2` produced repeated clean windows. #6317
+  still remains open for a committed continuous runner, external-demand spike
+  proof with zero external failure, and sustained telemetry publication.
 - 2026-06-27T11:03Z #6323 isolated live-host attempt: `us-central1` could not
   allocate another 8x RTX PRO 6000 Spot host because regional preemptible quota
   was exhausted, but a separate `us-west1-b` `g4-standard-384` host was
