@@ -19,6 +19,7 @@ import { describe, expect, test } from 'vitest'
 
 import { buildAutopilotConciergeSystemPrompt } from './autopilot-concierge-model'
 import {
+  KHALA_CAPABILITY_TRUTH_SYSTEM_PROMPT,
   KHALA_REFUSAL_NON_PROMISE_RULE,
   KHALA_REFUSAL_POSTURE_REINFORCEMENT_PROMPT,
   KHALA_REFUSAL_POSTURE_SIGNATURE,
@@ -153,7 +154,7 @@ describe('Concierge non-promise rule adopted VERBATIM (#6178)', () => {
 })
 
 describe('buildKhalaChatMessages injects the refusal-posture clause (#6178)', () => {
-  test('the leading system message contains identity AND refusal posture AND the non-promise rule', () => {
+  test('the leading system message contains identity, refusal posture, capability truth, and the non-promise rule', () => {
     const assembled = buildKhalaChatMessages([
       { role: 'user', content: DECLINE_FIXTURES[0]!.prompt },
     ])
@@ -164,6 +165,8 @@ describe('buildKhalaChatMessages injects the refusal-posture clause (#6178)', ()
     expect(content.toLowerCase()).toContain('we are khala')
     // Refusal posture present.
     expect(content).toContain(KHALA_REFUSAL_POSTURE_SYSTEM_PROMPT)
+    // Capability truth present (#6399).
+    expect(content).toContain(KHALA_CAPABILITY_TRUTH_SYSTEM_PROMPT)
     // Concierge non-promise rule present.
     expect(content).toContain(KHALA_REFUSAL_NON_PROMISE_RULE)
   })

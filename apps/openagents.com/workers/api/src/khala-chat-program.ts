@@ -11,7 +11,8 @@
 //   - System prompt = the Khala identity contract (`KHALA_IDENTITY_SYSTEM_PROMPT`
 //     from `inference/khala-identity.ts`, first-person plural "we are Khala",
 //     NEVER naming an underlying provider) + the refusal posture + Blueprint
-//     response discipline contracts + a light generic chat instruction. API
+//     response discipline + capability-truth contracts + a light generic chat
+//     instruction. API
 //     mechanics are only volunteered when explicitly asked — this is NOT the
 //     onboarding/concierge intake program.
 //   - Stateless: the client sends the running message list each turn. There is
@@ -31,6 +32,7 @@ import {
   type InferenceRequest,
 } from './inference/provider-adapter'
 import {
+  KHALA_CAPABILITY_TRUTH_SYSTEM_PROMPT,
   KHALA_IDENTITY_SYSTEM_PROMPT,
   KHALA_REFUSAL_POSTURE_SYSTEM_PROMPT,
   KHALA_RESPONSE_DISCIPLINE_SYSTEM_PROMPT,
@@ -183,7 +185,7 @@ export const buildKhalaChatMessages = (
 ): ReadonlyArray<InferenceMessage> => [
   {
     role: 'system',
-    content: `${KHALA_IDENTITY_SYSTEM_PROMPT} ${KHALA_REFUSAL_POSTURE_SYSTEM_PROMPT} ${KHALA_RESPONSE_DISCIPLINE_SYSTEM_PROMPT} ${KHALA_CHAT_INSTRUCTION}`,
+    content: `${KHALA_IDENTITY_SYSTEM_PROMPT} ${KHALA_REFUSAL_POSTURE_SYSTEM_PROMPT} ${KHALA_RESPONSE_DISCIPLINE_SYSTEM_PROMPT} ${KHALA_CAPABILITY_TRUTH_SYSTEM_PROMPT} ${KHALA_CHAT_INSTRUCTION}`,
   },
   ...messages.map(message => ({ role: message.role, content: message.content })),
 ]

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
 
 import {
+  KHALA_CAPABILITY_TRUTH_SYSTEM_PROMPT,
   KHALA_IDENTITY_SIGNATURE,
   KHALA_IDENTITY_STATEMENT,
   KHALA_IDENTITY_SYSTEM_PROMPT,
@@ -117,6 +118,26 @@ describe('Khala response discipline signature', () => {
     const answer =
       'C’est parti. Qu’est-ce qu’on construit, casse ou clarifie aujourd’hui ? Balancez-nous ça.'
     expect(KHALA_RESPONSE_DISCIPLINE_SIGNATURE.verify(answer).satisfied).toBe(true)
+  })
+})
+
+describe('Khala capability-truth system prompt (#6399)', () => {
+  test('keeps capability summaries accurate about shipped surfaces and blueprint contracts', () => {
+    const prompt = KHALA_CAPABILITY_TRUTH_SYSTEM_PROMPT.toLowerCase()
+
+    expect(prompt).toContain('capability-truth contract')
+    expect(prompt).toContain('shipped user-visible capabilities')
+    expect(prompt).toContain('openai-compatible chat completions')
+    expect(prompt).toContain('linked local pylon')
+    expect(prompt).toContain('blueprint system')
+    expect(prompt).toContain('typed signature and response contracts')
+    expect(prompt).toContain('identity')
+    expect(prompt).toContain('refusal posture')
+    expect(prompt).toContain('final-answer discipline')
+    expect(prompt).toContain('do not claim')
+    expect(prompt).toContain('automatically design, install, train, deploy, or run')
+    expect(prompt).toContain('capability gap')
+    expect(prompt).toContain('never summarize planned, internal, operator-only, or gated work as already available')
   })
 })
 
