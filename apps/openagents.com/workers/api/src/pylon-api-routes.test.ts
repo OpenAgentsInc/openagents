@@ -2641,6 +2641,99 @@ describe('Pylon API routes', () => {
     )
   })
 
+  test('#6386: a saturated Codex account lane does not block another linked Codex account on the same Pylon', () => {
+    const nowIso = '2026-06-27T18:00:00.000Z'
+    const leaseExpiresAt = '2026-06-27T18:30:00.000Z'
+    const accountAKey = '651c03fed68925d7acb2c02f'
+    const accountBKey = '753dd52e6f378732e812a78a'
+    const accountARefHash = `account.pylon.codex.${accountAKey}`
+    const accountBRefHash = `account.pylon.codex.${accountBKey}`
+    const registration = {
+      capabilityRefs: ['capability.pylon.local_codex'],
+      clientVersion: '0.3.0',
+      latestCapacityRefs: [
+        `capacity.coding.codex.account.${accountAKey}.ready=8`,
+        `capacity.coding.codex.account.${accountAKey}.available=0`,
+        `capacity.coding.codex.account.${accountBKey}.ready=8`,
+        `capacity.coding.codex.account.${accountBKey}.available=8`,
+      ],
+      latestHeartbeatAt: nowIso,
+      latestHeartbeatStatus: 'online',
+      latestLoadRefs: [
+        `load.coding.codex.account.${accountAKey}.busy=8`,
+        `load.coding.codex.account.${accountBKey}.busy=0`,
+      ],
+      status: 'active',
+      walletReady: true,
+    } as unknown as PylonApiRegistrationRecord
+    const saturatedAccountAAssignments = Array.from(
+      { length: 8 },
+      (_, index) =>
+        ({
+          assignmentRef: `assignment.public.codex_account_a_busy_${index}`,
+          codingAssignment: {
+            codex: { agentKind: 'codex_sdk', accountRefHash: accountARefHash },
+          },
+          jobKind: 'codex_agent_task',
+          leaseExpiresAt,
+          state: 'running',
+        }) as unknown as PylonApiAssignmentRecord,
+    )
+    const codexBody = {
+      campaignPaused: false,
+      campaignPolicyRefs: ['policy.public.khala_coding.own_capacity_only'],
+      campaignRef: 'campaign.public.khala_coding.own_capacity',
+      closeoutPathRefs: ['closeout.public.khala_coding.durable_stream'],
+      codingAssignment: {
+        codex: { agentKind: 'codex_sdk', accountRefHash: accountBRefHash },
+      },
+      forumAutoPublishAllowed: false,
+      idempotencyRefs: ['idempotency.public.khala_coding.request'],
+      jobKind: 'codex_agent_task' as const,
+      noDuplicateAssignmentRefs: ['dedupe.public.pylon_assignment.active_lease'],
+      noForumAutoPublishRefs: ['policy.public.no_forum_auto_publish'],
+      operatorPauseRefs: ['pause.public.khala_coding.kill_switch_default_off'],
+      paymentMode: 'unpaid_smoke',
+      pylonRef: 'pylon.test.one',
+      requiredCapabilityRefs: ['capability.pylon.local_codex'],
+      resultExpectationRefs: ['result.public.khala_coding.worker_closeout'],
+      rollbackRefs: ['rollback.public.khala_coding.assignment_cancel'],
+      selectionPolicyRefs: ['selection.public.khala_coding.codex_first'],
+      spendCapRefs: [],
+      taskRefs: ['task.public.khala_coding.codex'],
+    } as unknown as Parameters<
+      typeof controlledPylonAssignmentDispatchGate
+    >[0]['body']
+
+    const accountBGate = controlledPylonAssignmentDispatchGate({
+      activeAssignments: saturatedAccountAAssignments,
+      assignmentRef: 'assignment.public.codex_account_b_new',
+      body: codexBody,
+      nowIso,
+      registration,
+    })
+    expect(accountBGate.blockerRefs).not.toContain(
+      'blocker.public.pylon_dispatch.duplicate_active_assignment',
+    )
+    expect(accountBGate.dispatchAllowed).toBe(true)
+
+    const accountAGate = controlledPylonAssignmentDispatchGate({
+      activeAssignments: saturatedAccountAAssignments,
+      assignmentRef: 'assignment.public.codex_account_a_new',
+      body: {
+        ...codexBody,
+        codingAssignment: {
+          codex: { agentKind: 'codex_sdk', accountRefHash: accountARefHash },
+        },
+      },
+      nowIso,
+      registration,
+    })
+    expect(accountAGate.blockerRefs).toContain(
+      'blocker.public.pylon_dispatch.duplicate_active_assignment',
+    )
+  })
+
   test('#6388: a saturated Codex lane does not block an available Claude lease on the same Pylon', () => {
     const nowIso = '2026-06-27T12:00:00.000Z'
     const leaseExpiresAt = '2026-06-27T12:30:00.000Z'
