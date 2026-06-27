@@ -6,6 +6,7 @@ import { userFacingCopy } from '../../../display-copy'
 import { friendlyRelativeTime } from '../../../time-format'
 import * as Ui from '../../../ui'
 import type { Message } from '../message'
+import { artanisTokenBurnPulsePanel } from './home'
 import type {
   Model,
   PublicAdjutantActivityMilestone,
@@ -20,6 +21,8 @@ import type {
   PublicArtanisReport,
   PublicArtanisReportClaimSummary,
   PublicArtanisReportModel,
+  PublicKhalaTokensServedHistoryModel,
+  PublicKhalaTokensServedModel,
   PublicPylonStats,
   PublicPylonStatsModel,
   PublicPylonV02OmegaReleaseGate,
@@ -1172,6 +1175,8 @@ const loadedView = (
   pylonStats: PublicPylonStatsModel,
   artanisReport: PublicArtanisReportModel,
   adjutantActivity: PublicAdjutantActivityModel,
+  khalaTokensServed: PublicKhalaTokensServedModel,
+  khalaTokensServedHistory: PublicKhalaTokensServedHistoryModel,
 ): Html => {
   const h = html<Message>()
   const agentName = displayName(agentRef)
@@ -1284,6 +1289,12 @@ const loadedView = (
         ],
       ),
       isArtanis ? artanisReportView(artanisReport) : null,
+      isArtanis
+        ? artanisTokenBurnPulsePanel(
+            khalaTokensServed,
+            khalaTokensServedHistory,
+          )
+        : null,
       isArtanis ? pylonStatsView(pylonStats) : null,
       isAdjutant ? adjutantActivityView(adjutantActivity) : null,
       h.section(
@@ -1319,6 +1330,8 @@ export const view = (model: Model, agentRef: string): Html => {
       model.publicPylonStats,
       model.publicArtanisReport,
       model.publicAdjutantActivity,
+      model.publicKhalaTokensServed,
+      model.publicKhalaTokensServedHistory,
     )
   }
 
@@ -1348,6 +1361,8 @@ export const view = (model: Model, agentRef: string): Html => {
       model.publicPylonStats,
       model.publicArtanisReport,
       model.publicAdjutantActivity,
+      model.publicKhalaTokensServed,
+      model.publicKhalaTokensServedHistory,
     )
   }
 

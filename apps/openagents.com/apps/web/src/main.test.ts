@@ -735,6 +735,9 @@ describe('authenticated startup routing', () => {
       'LoadPublicAgentGoal',
       'LoadPublicArtanisReport',
       'LoadPublicPylonStats',
+      'LoadKhalaTokensServedSnapshot',
+      'LoadPublicKhalaTokensServed',
+      'LoadPublicKhalaTokensServedHistory',
     ])
     expect(commands[0]?.args).toEqual({
       agentId: 'agent_artanis',
@@ -801,6 +804,9 @@ describe('authenticated startup routing', () => {
       'LoadPublicAgentGoal',
       'LoadPublicArtanisReport',
       'LoadPublicPylonStats',
+      'LoadKhalaTokensServedSnapshot',
+      'LoadPublicKhalaTokensServed',
+      'LoadPublicKhalaTokensServedHistory',
     ])
   })
 

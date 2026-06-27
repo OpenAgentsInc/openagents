@@ -276,7 +276,8 @@ const khalaTokensServedSurfaceIsLive = (
 ): boolean =>
   settledFeedRouteIsLive(model) ||
   model.route._tag === 'Khala' ||
-  model.route._tag === 'Landing'
+  model.route._tag === 'Landing' ||
+  (model.route._tag === 'PublicAgent' && model.route.agentRef === 'artanis')
 
 export const settledFeedDependenciesForModel = (
   model: Model,

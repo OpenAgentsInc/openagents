@@ -1601,6 +1601,316 @@ export const khalaTokensServedHistoryChart = (
     }),
   )
 
+const pulseProgressStyle = (value: number): string =>
+  `width: ${Math.max(0, Math.min(100, value)).toFixed(2)}%;`
+
+const pulseSparklinePath = (
+  series: ReadonlyArray<PublicKhalaTokensServedHistoryPoint>,
+): string => {
+  const width = 320
+  const height = 88
+  const maxTokens = series.reduce(
+    (max, point) => (point.tokensServed > max ? point.tokensServed : max),
+    0,
+  )
+
+  if (series.length === 0 || maxTokens <= 0) {
+    return `M 0 ${height} L ${width} ${height}`
+  }
+
+  return series
+    .map((point, index) => {
+      const x =
+        series.length === 1 ? width : (index / (series.length - 1)) * width
+      const y = height - (point.tokensServed / maxTokens) * (height - 8) - 4
+      return `${index === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`
+    })
+    .join(' ')
+}
+
+const pulseSparkline = (
+  series: ReadonlyArray<PublicKhalaTokensServedHistoryPoint>,
+  projection: HistoryProjection | undefined,
+): Html => {
+  const h = html<Message>()
+  const path = pulseSparklinePath(series)
+  const latest = series[series.length - 1]
+  const maxTokens = series.reduce(
+    (max, point) => (point.tokensServed > max ? point.tokensServed : max),
+    0,
+  )
+  const ariaLabel =
+    latest === undefined
+      ? 'Token burn sparkline has no public data yet.'
+      : `Token burn sparkline across ${series.length} days. Latest ${formatNumber(
+          latest.tokensServed,
+        )} tokens on ${latest.day}. Peak ${formatNumber(maxTokens)} tokens.${
+          projection === undefined
+            ? ''
+            : ` Current pace projects ${formatNumber(
+                projection.projectedTokens,
+              )} tokens by midnight.`
+        }`
+
+  return h.div(
+    [h.Role('img'), h.AriaLabel(ariaLabel), Ui.className<Message>('grid gap-2')],
+    [
+      h.svg(
+        [
+          h.ViewBox('0 0 320 88'),
+          h.Attribute('preserveAspectRatio', 'none'),
+          Ui.className<Message>(
+            'h-24 w-full overflow-visible border border-[#1d2530] bg-[#0a0d12]',
+          ),
+        ],
+        [
+          h.path(
+            [
+              h.D('M 0 66 L 320 66'),
+              h.Attribute('fill', 'none'),
+              h.Attribute('stroke', 'rgba(255,255,255,.16)'),
+              h.Attribute('stroke-width', '1'),
+            ],
+            [],
+          ),
+          h.path(
+            [
+              h.D(path),
+              h.Attribute('fill', 'none'),
+              h.Attribute('stroke', '#4fd0ff'),
+              h.Attribute('stroke-width', '2.4'),
+              h.Attribute('stroke-linecap', 'round'),
+              h.Attribute('stroke-linejoin', 'round'),
+            ],
+            [],
+          ),
+        ],
+      ),
+      latest === undefined
+        ? h.p(
+            [Ui.className<Message>('m-0 text-[0.66rem] text-white/35')],
+            ['No public burn data yet.'],
+          )
+        : h.p(
+            [Ui.className<Message>('m-0 text-[0.66rem] text-white/45')],
+            [
+              `${formatHistoryDayLabel(latest.day)} burn ${formatCompactNumber(
+                latest.tokensServed,
+              )}${
+                projection === undefined
+                  ? ''
+                  : ` / EOD pace ${formatCompactNumber(
+                      projection.projectedTokens,
+                    )}`
+              }`,
+            ],
+          ),
+    ],
+  )
+}
+
+const pulsePacePanel = (
+  series: ReadonlyArray<PublicKhalaTokensServedHistoryPoint>,
+  generatedAt: string | undefined,
+  timezone: string,
+): Html => {
+  const h = html<Message>()
+  const projection = latestDayProjection(series, generatedAt, timezone)
+  const latest = series[series.length - 1]
+  const previous = series.length >= 2 ? series[series.length - 2] : undefined
+  const yesterdayTokens = previous?.tokensServed ?? 0
+  const floorTarget = yesterdayTokens * 4
+  const stretchTarget = yesterdayTokens * 10
+  const projectedTokens = projection?.projectedTokens ?? latest?.tokensServed ?? 0
+  const currentProgress =
+    floorTarget <= 0 ? 0 : ((latest?.tokensServed ?? 0) / floorTarget) * 100
+  const projectedProgress =
+    floorTarget <= 0 ? 0 : (projectedTokens / floorTarget) * 100
+  const state =
+    floorTarget <= 0
+      ? 'Baseline pending'
+      : projectedTokens >= floorTarget
+        ? 'On pace'
+        : 'Behind pace'
+
+  return h.div(
+    [
+      Ui.className<Message>(
+        'grid content-between gap-4 border border-[#1d2530] bg-[#0a0d12] p-4',
+      ),
+    ],
+    [
+      h.div(
+        [Ui.className<Message>('grid gap-1')],
+        [
+          h.div(
+            [
+              Ui.className<Message>(
+                'flex flex-wrap items-center justify-between gap-3',
+              ),
+            ],
+            [
+              h.p(
+                [
+                  Ui.className<Message>(
+                    'm-0 text-[0.72rem] font-semibold uppercase leading-none text-[#f1efe8]',
+                  ),
+                ],
+                ['Daily Pace'],
+              ),
+              h.span(
+                [
+                  h.DataAttribute('pace', state.toLowerCase().replace(/\s+/g, '-')),
+                  Ui.className<Message>(
+                    `text-[0.68rem] tabular-nums ${
+                      state === 'On pace' ? 'text-[#00c853]' : 'text-[#ffb400]'
+                    }`,
+                  ),
+                ],
+                [state],
+              ),
+            ],
+          ),
+          h.p(
+            [Ui.className<Message>('m-0 text-[0.66rem] leading-4 text-white/45')],
+            [
+              floorTarget <= 0
+                ? 'Needs a prior Central-day public bucket before the 4x floor can be drawn.'
+                : `4x floor ${formatCompactNumber(
+                    floorTarget,
+                  )}; 10x goal ${formatCompactNumber(stretchTarget)}.`,
+            ],
+          ),
+        ],
+      ),
+      h.div([Ui.className<Message>('grid gap-2')], [
+        h.div(
+          [
+            Ui.className<Message>(
+              'h-2 overflow-hidden border border-[#1d2530] bg-[#05070a]',
+            ),
+          ],
+          [
+            h.div(
+              [
+                h.Attribute('style', pulseProgressStyle(projectedProgress)),
+                Ui.className<Message>('h-full bg-[#3a7bff]'),
+              ],
+              [],
+            ),
+            h.div(
+              [
+                h.Attribute('style', pulseProgressStyle(currentProgress)),
+                Ui.className<Message>('-mt-2 h-full bg-[#00c853]'),
+              ],
+              [],
+            ),
+          ],
+        ),
+        h.div(
+          [
+            Ui.className<Message>(
+              'grid grid-cols-3 gap-2 text-[0.64rem] leading-4 text-white/40',
+            ),
+          ],
+          [
+            h.span([], [`Today ${formatCompactNumber(latest?.tokensServed ?? 0)}`]),
+            h.span([Ui.className<Message>('text-center')], [
+              `Pace ${formatCompactNumber(projectedTokens)}`,
+            ]),
+            h.span([Ui.className<Message>('text-right')], [
+              `Floor ${formatCompactNumber(floorTarget)}`,
+            ]),
+          ],
+        ),
+      ]),
+    ],
+  )
+}
+
+export const artanisTokenBurnPulsePanel = (
+  counter: PublicKhalaTokensServedModel,
+  history: PublicKhalaTokensServedHistoryModel,
+): Html => {
+  const h = html<Message>()
+
+  return h.section(
+    [
+      h.DataAttribute('component', 'artanis-token-burn-pulse'),
+      Ui.className<Message>('grid gap-3 border-b border-[#222] pb-6'),
+    ],
+    [
+      h.div([Ui.className<Message>(Ui.eyebrowClass)], ['The Pulse']),
+      h.div(
+        [
+          Ui.className<Message>(
+            'grid gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.4fr)]',
+          ),
+        ],
+        [
+          khalaTokensServedCounter(counter),
+          M.value(history).pipe(
+            M.tagsExhaustive({
+              PublicKhalaTokensServedHistoryIdle: () =>
+                historyChartShell(
+                  false,
+                  historyChartPlaceholder('Waiting for burn data…'),
+                  'Public-safe token burn history is loading from aggregate rows only.',
+                  'Burn Sparkline',
+                ),
+              PublicKhalaTokensServedHistoryLoading: () =>
+                historyChartShell(
+                  false,
+                  historyChartPlaceholder('Loading burn data…'),
+                  'Public-safe token burn history is loading from aggregate rows only.',
+                  'Burn Sparkline',
+                ),
+              PublicKhalaTokensServedHistoryFailed: () =>
+                historyChartShell(
+                  false,
+                  historyChartPlaceholder('Burn data unavailable.'),
+                  'Public-safe token burn history is temporarily unavailable.',
+                  'Burn Sparkline',
+                ),
+              PublicKhalaTokensServedHistoryLoaded: ({ history }) => {
+                const series = recentContiguousHistorySeries(history.series)
+                const projection = latestDayProjection(
+                  series,
+                  history.generatedAt,
+                  history.timezone,
+                )
+
+                return h.div(
+                  [
+                    Ui.className<Message>(
+                      'grid gap-3 border border-[#242424] bg-[#030303] p-4',
+                    ),
+                  ],
+                  [
+                    historyChartHeading(true, 'Burn Sparkline'),
+                    pulseSparkline(series, projection),
+                    pulsePacePanel(series, history.generatedAt, history.timezone),
+                    h.p(
+                      [
+                        Ui.className<Message>(
+                          'm-0 text-[0.66rem] leading-4 text-white/35',
+                        ),
+                      ],
+                      [
+                        `Live aggregate input + output token burn in ${history.timezone}; no per-user, prompt, diff, credential, or wallet material.`,
+                      ],
+                    ),
+                  ],
+                )
+              },
+            }),
+          ),
+        ],
+      ),
+    ],
+  )
+}
+
 const modelMixPlaceholder = (label: string): Html => {
   const h = html<Message>()
 

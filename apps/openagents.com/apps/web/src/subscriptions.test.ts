@@ -31,6 +31,7 @@ import {
   HomeRoute,
   KhalaRoute,
   LandingRoute,
+  PublicAgentRoute,
   PublicStatsArchiveRoute,
   StatsRoute,
   TassadarRoute,
@@ -725,6 +726,22 @@ describe('Khala tokens-served live surfaces', () => {
     })
     expect(
       khalaTokensServedStreamDependenciesForModel(homeSeeded).isActive,
+    ).toBe(true)
+
+    const artanisSeeded = evo(
+      LoggedOut.init(PublicAgentRoute({ agentRef: 'artanis' })),
+      {
+        khalaTokensServedStream: stream =>
+          evo(stream, { snapshotLoaded: () => true, cursor: () => 7364 }),
+      },
+    )
+    expect(
+      khalaTokensServedStreamDependenciesForModel(artanisSeeded).isActive,
+    ).toBe(true)
+    expect(
+      khalaTokensServedPollDependenciesForModel(
+        LoggedOut.init(PublicAgentRoute({ agentRef: 'artanis' })),
+      ).isActive,
     ).toBe(true)
   })
 
