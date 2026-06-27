@@ -9,6 +9,7 @@ import {
 } from './agent-registration'
 import {
   PYLON_CODEX_ASSIGNMENT_PROOF_PATH,
+  PYLON_CODEX_ASSIGNMENT_TRACE_STATUS_PATH,
   PYLON_CODEX_EVENT_CHUNK_INGEST_PATH,
   PYLON_CODEX_TURN_INGEST_PATH,
   codexTurnUsageTokenCounts,
@@ -20,6 +21,8 @@ import {
   pylonCodexRawEventRef,
   type PylonCodexAssignmentProof,
   type PylonCodexAssignmentProofStore,
+  type PylonCodexAssignmentTraceStatus,
+  type PylonCodexAssignmentTraceStatusStore,
   type PylonCodexRawEventChunkStore,
   type PylonCodexRawEventChunkStoreInput,
   type PylonCodexRawEventChunkStoreResult,
@@ -131,7 +134,9 @@ class MemoryPylonStore {
     assignmentRef === this.assignment.assignmentRef ? this.assignment : undefined
 }
 
-class MemoryProofStore implements PylonCodexAssignmentProofStore {
+class MemoryProofStore
+  implements PylonCodexAssignmentProofStore, PylonCodexAssignmentTraceStatusStore
+{
   readonly inputs: Array<{
     assignmentRef: string
     nowIso: string
@@ -177,6 +182,86 @@ class MemoryProofStore implements PylonCodexAssignmentProofStore {
         byteLength: 2048,
         visibility: 'owner_only',
         refs: ['raw.pylon_codex.abc123', 'raw.pylon_codex.def456'],
+      },
+      generatedAt: input.nowIso,
+    })
+  }
+
+  readAssignmentTraceStatus(
+    input: Parameters<
+      PylonCodexAssignmentTraceStatusStore['readAssignmentTraceStatus']
+    >[0],
+  ): Promise<PylonCodexAssignmentTraceStatus> {
+    return Promise.resolve({
+      schemaVersion: 'openagents.pylon.codex_assignment_trace_status.v1',
+      assignmentRef: input.assignment.assignmentRef,
+      pylonRef: input.assignment.pylonRef,
+      owner: {
+        agentUserRef: `agent:${input.ownerAgentUserId}`,
+        openauthUserRef: input.ownerUserId,
+      },
+      lifecycle: {
+        acceptedWorkRefs: input.assignment.acceptedWorkRefs,
+        artifactRefs: input.assignment.artifactRefs,
+        closeoutRefs: input.assignment.closeoutRefs,
+        createdAt: input.assignment.createdAt,
+        proofRefs: input.assignment.proofRefs,
+        rejectionRefs: input.assignment.rejectionRefs,
+        state: input.assignment.state,
+        updatedAt: input.assignment.updatedAt,
+      },
+      events: {
+        count: 2,
+        progressCount: 1,
+        latestEventKind: 'assignment_progress',
+        latestStatus: 'proof-ready',
+        latestObservedAt: nowIso,
+      },
+      tokenUsage: {
+        rowCount: 0,
+        provider: 'pylon-codex-own-capacity',
+        model: 'openagents/pylon-codex',
+        usageTruth: 'exact',
+        demandKind: 'own_capacity',
+        demandSource: 'khala_coding_delegation',
+        inputTokens: 0,
+        outputTokens: 0,
+        reasoningTokens: 0,
+        cacheReadTokens: 0,
+        totalTokens: 0,
+        status: 'pending',
+      },
+      traces: {
+        count: 1,
+        visibility: 'owner_only',
+        schemaVersion: 'ATIF-v1.7',
+        latestTraceUuid: 'trace-pylon-codex-latest',
+        finalTraceUuid: null,
+        refs: ['trace-pylon-codex-latest'],
+      },
+      rawEventChunks: {
+        count: 3,
+        eventCount: 9,
+        byteLength: 1234,
+        latestChunkRef: 'raw_chunk.pylon_codex.latest',
+        latestObservedAt: nowIso,
+        visibility: 'owner_only',
+      },
+      rawEvents: {
+        count: 0,
+        eventCount: 0,
+        byteLength: 0,
+        latestRawEventRef: null,
+        latestObservedAt: null,
+        visibility: 'owner_only',
+        refs: [],
+      },
+      progress: {
+        closeoutReady: false,
+        hasFinalTrace: false,
+        hasLiveChunks: true,
+        hasTokenUsage: false,
+        state: 'streaming_chunks',
       },
       generatedAt: input.nowIso,
     })
@@ -494,10 +579,34 @@ type ProofRawEventRow = Readonly<{
   demand_kind: string
   demand_source: string
   event_count: number
+  observed_at: string
   owner_user_id: string
   pylon_ref: string
   raw_event_ref: string
   turn_index: number
+}>
+
+type ProofRawEventChunkRow = Readonly<{
+  assignment_ref: string
+  byte_length: number
+  chunk_index: number
+  chunk_ref: string
+  demand_kind: string
+  demand_source: string
+  event_count: number
+  observed_at: string
+  owner_user_id: string
+  pylon_ref: string
+  turn_index: number
+}>
+
+type ProofPylonEventRow = Readonly<{
+  archived_at: string | null
+  assignment_ref: string
+  created_at: string
+  event_kind: string
+  owner_agent_user_id: string
+  status: string
 }>
 
 const makeFakeRawEventD1 = (): D1Database & {
@@ -725,6 +834,8 @@ const makeFakeRawEventChunkD1 = (): D1Database & {
 }
 
 const makeFakeProofD1 = (): D1Database & {
+  eventRows: Array<ProofPylonEventRow>
+  rawChunkRows: Array<ProofRawEventChunkRow>
   rawRows: Array<ProofRawEventRow>
   tokenRows: Array<ProofTokenUsageRow>
   traceRows: Array<ProofTraceRow>
@@ -732,6 +843,8 @@ const makeFakeProofD1 = (): D1Database & {
   const tokenRows: Array<ProofTokenUsageRow> = []
   const traceRows: Array<ProofTraceRow> = []
   const rawRows: Array<ProofRawEventRow> = []
+  const rawChunkRows: Array<ProofRawEventChunkRow> = []
+  const eventRows: Array<ProofPylonEventRow> = []
 
   const matchTrace = (
     row: ProofTraceRow,
@@ -756,7 +869,7 @@ const makeFakeProofD1 = (): D1Database & {
   }
 
   const matchRaw = (
-    row: ProofRawEventRow,
+    row: ProofRawEventRow | ProofRawEventChunkRow,
     values: ReadonlyArray<unknown>,
   ): boolean => {
     const [ownerUserId, assignmentRef, pylonRef, demandKind, demandSource] =
@@ -781,7 +894,28 @@ const makeFakeProofD1 = (): D1Database & {
               .filter(row => matchTrace(row, bound))
               .sort((left, right) => right.created_at.localeCompare(left.created_at))
               .slice(0, 100)
-              .map(row => ({ trace_uuid: row.trace_uuid })) as unknown as T[],
+              .map(row => ({
+                trace_uuid: row.trace_uuid,
+                trajectory_id: row.trajectory_id,
+              })) as unknown as T[],
+            success: true as const,
+          }
+        }
+        if (query.includes('SELECT chunk_ref')) {
+          return {
+            meta: {} as D1Meta & Record<string, unknown>,
+            results: rawChunkRows
+              .filter(row => matchRaw(row, bound))
+              .sort(
+                (left, right) =>
+                  right.turn_index - left.turn_index ||
+                  right.chunk_index - left.chunk_index,
+              )
+              .slice(0, 100)
+              .map(row => ({
+                chunk_ref: row.chunk_ref,
+                observed_at: row.observed_at,
+              })) as unknown as T[],
             success: true as const,
           }
         }
@@ -792,7 +926,10 @@ const makeFakeProofD1 = (): D1Database & {
               .filter(row => matchRaw(row, bound))
               .sort((left, right) => left.turn_index - right.turn_index)
               .slice(0, 100)
-              .map(row => ({ raw_event_ref: row.raw_event_ref })) as unknown as T[],
+              .map(row => ({
+                observed_at: row.observed_at,
+                raw_event_ref: row.raw_event_ref,
+              })) as unknown as T[],
             success: true as const,
           }
         }
@@ -848,6 +985,47 @@ const makeFakeProofD1 = (): D1Database & {
             ),
           } as T
         }
+        if (query.includes('FROM pylon_api_events')) {
+          const [
+            latestEventAssignmentRef,
+            latestEventOwnerId,
+            latestStatusAssignmentRef,
+            latestStatusOwnerId,
+            assignmentRef,
+            ownerAgentUserId,
+          ] = bound.map(String)
+          const activeRows = eventRows.filter(row => row.archived_at === null)
+          const matches = activeRows
+            .filter(
+              row =>
+                row.assignment_ref === assignmentRef &&
+                row.owner_agent_user_id === ownerAgentUserId,
+            )
+            .sort((left, right) => right.created_at.localeCompare(left.created_at))
+          const latestEvent = activeRows
+            .filter(
+              row =>
+                row.assignment_ref === latestEventAssignmentRef &&
+                row.owner_agent_user_id === latestEventOwnerId,
+            )
+            .sort((left, right) => right.created_at.localeCompare(left.created_at))[0]
+          const latestStatus = activeRows
+            .filter(
+              row =>
+                row.assignment_ref === latestStatusAssignmentRef &&
+                row.owner_agent_user_id === latestStatusOwnerId,
+            )
+            .sort((left, right) => right.created_at.localeCompare(left.created_at))[0]
+          return {
+            event_count: matches.length,
+            latest_event_kind: latestEvent?.event_kind ?? null,
+            latest_observed_at: matches[0]?.created_at ?? null,
+            latest_status: latestStatus?.status ?? null,
+            progress_count: matches.filter(
+              row => row.event_kind === 'assignment_progress',
+            ).length,
+          } as T
+        }
         if (
           query.includes('FROM agent_traces') &&
           query.includes('COUNT(*) AS row_count')
@@ -873,6 +1051,38 @@ const makeFakeProofD1 = (): D1Database & {
             row_count: matches.length,
           } as T
         }
+        if (
+          query.includes('FROM pylon_codex_raw_event_chunks') &&
+          query.includes('SUM(event_count)')
+        ) {
+          const matches = rawChunkRows.filter(row => matchRaw(row, bound))
+          return {
+            byte_length: matches.reduce(
+              (total, row) => total + row.byte_length,
+              0,
+            ),
+            event_count: matches.reduce(
+              (total, row) => total + row.event_count,
+              0,
+            ),
+            row_count: matches.length,
+          } as T
+        }
+        if (query.includes('FROM pylon_codex_raw_event_chunks')) {
+          return (
+            rawChunkRows
+              .filter(row => matchRaw(row, bound))
+              .sort(
+                (left, right) =>
+                  right.turn_index - left.turn_index ||
+                  right.chunk_index - left.chunk_index,
+              )
+              .map(row => ({
+                chunk_ref: row.chunk_ref,
+                observed_at: row.observed_at,
+              }))[0] ?? null
+          ) as T | null
+        }
         throw new Error(`unexpected proof first query: ${query}`)
       },
       raw: async () => {
@@ -890,6 +1100,8 @@ const makeFakeProofD1 = (): D1Database & {
     dump: () => Promise.reject(new Error('dump unused')),
     exec: () => Promise.reject(new Error('exec unused')),
     prepare: (query: string) => statement(query),
+    eventRows,
+    rawChunkRows,
     rawRows,
     tokenRows,
     traceRows,
@@ -897,6 +1109,8 @@ const makeFakeProofD1 = (): D1Database & {
       throw new Error('session unused')
     },
   } as unknown as D1Database & {
+    eventRows: Array<ProofPylonEventRow>
+    rawChunkRows: Array<ProofRawEventChunkRow>
     rawRows: Array<ProofRawEventRow>
     tokenRows: Array<ProofTokenUsageRow>
     traceRows: Array<ProofTraceRow>
@@ -1034,6 +1248,15 @@ const getProof = (assignmentRef: string, token = agentToken): Request =>
     },
   )
 
+const getTraceStatus = (assignmentRef: string, token = agentToken): Request =>
+  new Request(
+    `https://openagents.com${PYLON_CODEX_ASSIGNMENT_TRACE_STATUS_PATH}?assignmentRef=${encodeURIComponent(assignmentRef)}`,
+    {
+      headers: { authorization: `Bearer ${token}` },
+      method: 'GET',
+    },
+  )
+
 const makeHarness = async (
   overrides: Readonly<{
     assignment?: PylonApiAssignmentRecord
@@ -1069,6 +1292,7 @@ const makeHarness = async (
     pylonStore: () =>
       pylonStore as unknown as Pick<PylonApiStore, 'readAssignment'>,
     proofStore: () => proofStore,
+    traceStatusStore: () => proofStore,
     rawEventChunkStore: () => rawEventChunkStore,
     rawEventStore: () => rawEventStore,
     traceStore: () => traceStore,
@@ -1238,6 +1462,7 @@ describe('GET /api/pylon/codex/proof', () => {
         demand_kind: 'own_capacity',
         demand_source: 'khala_coding_delegation',
         event_count: 1 + index,
+        observed_at: `2026-06-26T12:${padded.slice(0, 2)}:${padded.slice(1)}.000Z`,
         owner_user_id: linkedOpenAuthUserId,
         pylon_ref: 'pylon-local-codex-1',
         raw_event_ref: `raw.pylon_codex.${padded}`,
@@ -1250,6 +1475,7 @@ describe('GET /api/pylon/codex/proof', () => {
       demand_kind: 'own_capacity',
       demand_source: 'khala_coding_delegation',
       event_count: 9999,
+      observed_at: '2026-06-26T12:99:99.000Z',
       owner_user_id: 'other-user',
       pylon_ref: 'pylon-local-codex-1',
       raw_event_ref: 'raw.pylon_codex.other',
@@ -1283,6 +1509,252 @@ describe('GET /api/pylon/codex/proof', () => {
     })
     expect(proof.rawEvents.refs).toHaveLength(100)
     expect(JSON.stringify(proof)).not.toMatch(
+      /trajectory_json|safe_metadata_json|r2_key|prompt|command|shell|\/Users|secret|access[_-]?token|bearer/i,
+    )
+  })
+})
+
+describe('GET /api/pylon/codex/trace-status', () => {
+  test('returns owner-scoped in-progress assignment status without raw payloads', async () => {
+    const { routes } = await makeHarness()
+    const response = await Effect.runPromise(
+      routes.handlePylonCodexAssignmentTraceStatusApi(
+        getTraceStatus('assignment-pylon-codex-1'),
+        {},
+      ),
+    )
+    const body = (await response.json()) as PylonCodexAssignmentTraceStatus
+
+    expect(response.status).toBe(200)
+    expect(body).toMatchObject({
+      schemaVersion: 'openagents.pylon.codex_assignment_trace_status.v1',
+      assignmentRef: 'assignment-pylon-codex-1',
+      lifecycle: {
+        state: 'running',
+      },
+      events: {
+        count: 2,
+        latestEventKind: 'assignment_progress',
+        latestStatus: 'proof-ready',
+        progressCount: 1,
+      },
+      owner: {
+        agentUserRef: `agent:${agentUserId}`,
+        openauthUserRef: linkedOpenAuthUserId,
+      },
+      progress: {
+        closeoutReady: false,
+        hasFinalTrace: false,
+        hasLiveChunks: true,
+        hasTokenUsage: false,
+        state: 'streaming_chunks',
+      },
+      rawEventChunks: {
+        count: 3,
+        eventCount: 9,
+        latestChunkRef: 'raw_chunk.pylon_codex.latest',
+        visibility: 'owner_only',
+      },
+      tokenUsage: {
+        rowCount: 0,
+        status: 'pending',
+      },
+    })
+    expect(JSON.stringify(body)).not.toMatch(
+      /trajectory_json|safe_metadata_json|r2_key|prompt|command|shell|\/Users|secret|access[_-]?token|bearer/i,
+    )
+  })
+
+  test('does not read trace status for another agent owner', async () => {
+    const { routes } = await makeHarness({
+      assignment: assignmentRecord({ ownerAgentUserId: 'agent-user-other' }),
+    })
+    const response = await Effect.runPromise(
+      routes.handlePylonCodexAssignmentTraceStatusApi(
+        getTraceStatus('assignment-pylon-codex-1'),
+        {},
+      ),
+    )
+    const body = (await response.json()) as { error?: string }
+
+    expect(response.status).toBe(403)
+    expect(body.error).toBe('pylon_codex_forbidden')
+  })
+
+  test('D1 trace status distinguishes live chunks from final exact closeout rows', async () => {
+    const db = makeFakeProofD1()
+    const store = makeD1PylonCodexAssignmentProofStore(
+      db as unknown as D1Database,
+    )
+
+    db.rawChunkRows.push(
+      {
+        assignment_ref: 'assignment-pylon-codex-1',
+        byte_length: 50,
+        chunk_index: 1,
+        chunk_ref: 'raw_chunk.pylon_codex.001',
+        demand_kind: 'own_capacity',
+        demand_source: 'khala_coding_delegation',
+        event_count: 2,
+        observed_at: '2026-06-26T12:00:01.000Z',
+        owner_user_id: linkedOpenAuthUserId,
+        pylon_ref: 'pylon-local-codex-1',
+        turn_index: 1,
+      },
+      {
+        assignment_ref: 'assignment-pylon-codex-1',
+        byte_length: 70,
+        chunk_index: 2,
+        chunk_ref: 'raw_chunk.pylon_codex.002',
+        demand_kind: 'own_capacity',
+        demand_source: 'khala_coding_delegation',
+        event_count: 3,
+        observed_at: '2026-06-26T12:00:02.000Z',
+        owner_user_id: linkedOpenAuthUserId,
+        pylon_ref: 'pylon-local-codex-1',
+        turn_index: 1,
+      },
+    )
+    db.eventRows.push(
+      {
+        archived_at: null,
+        assignment_ref: 'assignment-pylon-codex-1',
+        created_at: '2026-06-26T12:00:01.000Z',
+        event_kind: 'assignment_accepted',
+        owner_agent_user_id: agentUserId,
+        status: 'accepted',
+      },
+      {
+        archived_at: null,
+        assignment_ref: 'assignment-pylon-codex-1',
+        created_at: '2026-06-26T12:00:02.000Z',
+        event_kind: 'assignment_progress',
+        owner_agent_user_id: agentUserId,
+        status: 'runtime_active',
+      },
+      {
+        archived_at: '2026-06-26T12:00:03.000Z',
+        assignment_ref: 'assignment-pylon-codex-1',
+        created_at: '2026-06-26T12:00:03.000Z',
+        event_kind: 'assignment_progress',
+        owner_agent_user_id: agentUserId,
+        status: 'archived',
+      },
+    )
+    db.traceRows.push({
+      agent_ref: `agent:${agentUserId}`,
+      created_at: '2026-06-26T12:00:02.000Z',
+      demand_kind: 'own_capacity',
+      demand_source: 'khala_coding_delegation',
+      owner_user_id: linkedOpenAuthUserId,
+      schema_version: 'ATIF-v1.7',
+      trace_uuid: 'trace-chunk-2',
+      trajectory_id: 'pylon_codex:assignment-pylon-codex-1:turn:1:chunk:2',
+      visibility: 'owner_only',
+    })
+
+    const inProgress = await store.readAssignmentTraceStatus({
+      assignment: assignmentRecord(),
+      nowIso,
+      ownerAgentUserId: agentUserId,
+      ownerUserId: linkedOpenAuthUserId,
+    })
+
+    expect(inProgress.progress).toEqual({
+      closeoutReady: false,
+      hasFinalTrace: false,
+      hasLiveChunks: true,
+      hasTokenUsage: false,
+      state: 'streaming_chunks',
+    })
+    expect(inProgress.rawEventChunks).toMatchObject({
+      byteLength: 120,
+      count: 2,
+      eventCount: 5,
+      latestChunkRef: 'raw_chunk.pylon_codex.002',
+      latestObservedAt: '2026-06-26T12:00:02.000Z',
+    })
+    expect(inProgress.events).toMatchObject({
+      count: 2,
+      latestEventKind: 'assignment_progress',
+      latestObservedAt: '2026-06-26T12:00:02.000Z',
+      latestStatus: 'runtime_active',
+      progressCount: 1,
+    })
+    expect(inProgress.tokenUsage.status).toBe('pending')
+
+    db.tokenRows.push({
+      account_ref: `agent:${agentUserId}`,
+      actor_user_id: linkedOpenAuthUserId,
+      cache_read_tokens: 3,
+      demand_kind: 'own_capacity',
+      demand_source: 'khala_coding_delegation',
+      input_tokens: 100,
+      model: 'openagents/pylon-codex',
+      output_tokens: 50,
+      provider: 'pylon-codex-own-capacity',
+      reasoning_tokens: 10,
+      task_ref: 'assignment-pylon-codex-1',
+      total_tokens: 150,
+      usage_truth: 'exact',
+    })
+    db.traceRows.push({
+      agent_ref: `agent:${agentUserId}`,
+      created_at: '2026-06-26T12:00:05.000Z',
+      demand_kind: 'own_capacity',
+      demand_source: 'khala_coding_delegation',
+      owner_user_id: linkedOpenAuthUserId,
+      schema_version: 'ATIF-v1.7',
+      trace_uuid: 'trace-final-turn',
+      trajectory_id: 'pylon_codex:assignment-pylon-codex-1:turn:1',
+      visibility: 'owner_only',
+    })
+    db.rawRows.push({
+      assignment_ref: 'assignment-pylon-codex-1',
+      byte_length: 500,
+      demand_kind: 'own_capacity',
+      demand_source: 'khala_coding_delegation',
+      event_count: 5,
+      observed_at: '2026-06-26T12:00:05.000Z',
+      owner_user_id: linkedOpenAuthUserId,
+      pylon_ref: 'pylon-local-codex-1',
+      raw_event_ref: 'raw.pylon_codex.final',
+      turn_index: 1,
+    })
+
+    const complete = await store.readAssignmentTraceStatus({
+      assignment: assignmentRecord({
+        acceptedWorkRefs: ['accepted.public.fixture'],
+        closeoutRefs: ['assignment.closeout.fixture'],
+        state: 'accepted_work',
+      }),
+      nowIso,
+      ownerAgentUserId: agentUserId,
+      ownerUserId: linkedOpenAuthUserId,
+    })
+
+    expect(complete.progress).toEqual({
+      closeoutReady: true,
+      hasFinalTrace: true,
+      hasLiveChunks: true,
+      hasTokenUsage: true,
+      state: 'closed_out',
+    })
+    expect(complete.tokenUsage).toMatchObject({
+      rowCount: 1,
+      status: 'recorded',
+      totalTokens: 150,
+    })
+    expect(complete.traces).toMatchObject({
+      finalTraceUuid: 'trace-final-turn',
+      latestTraceUuid: 'trace-final-turn',
+    })
+    expect(complete.rawEvents).toMatchObject({
+      count: 1,
+      latestRawEventRef: 'raw.pylon_codex.final',
+      visibility: 'owner_only',
+    })
+    expect(JSON.stringify(complete)).not.toMatch(
       /trajectory_json|safe_metadata_json|r2_key|prompt|command|shell|\/Users|secret|access[_-]?token|bearer/i,
     )
   })

@@ -163,7 +163,7 @@ operator view of what remains, not a public product claim.
 | #6303 | **Open** | GTM umbrella remains open: recipe issues are closed and benchmark publication layers exist, but the real decision-grade benchmark/quality evidence and adoption scoreboard are not complete. |
 | #6316 | **Open** | Serving umbrella remains open: #6320/#6318 have partial slices and fresh Pylon/Codex proofs, and #6311's scheduled heartbeat rows plus fail-closed readiness acceptance are live. Current deployed Worker before this integration is `d3571d83-ecdb-40e0-8af4-08fe14f7ed1e`, but #6323 pilot, #6311 durability, #6320 live rollout, #6318 live saturation/preemption proof, #6317 stress, #6312 aggregate benchmark, and #6321 overseer are not complete. |
 | #6325 | **Closed** | Pylon/Codex delegated sessions are persisted as private traces and exact token events (`c92a5652ab`), with the live raw-chunk follow-up in `74f25e77ad`. |
-| #6326 | **Closed** | Complete raw Codex SDK event streams persist privately for Pylon/Codex Khala delegation (`48e43cee02`, deploy `4d1de2d8-6285-41fa-bd9f-7a5a88cf8275`), plus live chunk rows in `pylon_codex_raw_event_chunks`. |
+| #6326 | **Closed** | Complete raw Codex SDK event streams persist privately for Pylon/Codex Khala delegation (`48e43cee02`, deploy `4d1de2d8-6285-41fa-bd9f-7a5a88cf8275`), plus live chunk rows in `pylon_codex_raw_event_chunks`. The 2026-06-27 follow-up adds the first owner-scoped assignment status read API, `GET /api/pylon/codex/trace-status?assignmentRef=...`, which reports assignment lifecycle, assignment event/progress counts, exact-token row status, owner-only trace counts/final trace UUID, live raw-chunk counts, final raw archive metadata, and derived progress without exposing raw SDK payloads. Frontend `/trace/{uuid}` live assignment rendering remains a follow-up. |
 | #6331 | **Closed** | The Pylon coding-delegation 500/unavailable path is fixed with typed diagnostics and proof surfaces. |
 | #6354 | **Closed** | Pylon `assignment run-no-spend` now refreshes presence before claiming, emits a typed heartbeat recovery diagnostic if stale presence cannot be refreshed, records public-safe active local assignment run markers, and projects those active Codex/Claude runners into heartbeat/go-online busy capacity. Focused Pylon typecheck and assignment/presence regressions passed. |
 | #6355 | **Closed** | `pylon khala burndown` formalizes the manual stress batches into a repeatable max-parallel operator loop: dry-run plan, optional `--execute` dispatch/run/proof, exact token-proof verification, public counter before/after evidence, and explicit `operator_review_required` merge closeout. Runbook: `apps/pylon/docs/khala-burndown-runbook.md`. |
@@ -292,6 +292,18 @@ operator view of what remains, not a public product claim.
   ran local Codex with `0` edits, passed `model-router.test.ts`, and proved
   `514,462` exact own-capacity tokens, `28` owner-only ATIF traces, and one
   private raw Codex archive (`45` SDK events / `755,150` bytes).
+- 2026-06-27T06:51Z trace-status audit slice: the clean-worktree
+  Pylon/Codex runbook accepted
+  `assignment.public.khala_coding.chatcmpl_8010cf9064ce400fbd74f4e08969ffa8`,
+  ran local Codex with `10` edits, passed the focused trace-status verifier,
+  and proved `5,242,969` exact own-capacity tokens, `96` owner-only ATIF traces,
+  and one private raw Codex archive (`157` SDK events / `3,558,909` bytes).
+  This is the current reproduction of what made delegation work: local token in
+  `OPENAGENTS_AGENT_TOKEN`, daemon routing disabled, fresh heartbeat, explicit
+  `--workflow codex_agent_task`, explicit Pylon ref, exact commit pin, local
+  `assignment run-no-spend`, then assignment-scoped proof. The visible public
+  token counter updates at exact closeout/token-row insertion, not continuously
+  during raw chunk streaming.
 - 2026-06-27T01:30Z #6317 prep: stress and real-sweep dispatch attribution now
   use the canonical `x-openagents-client` header instead of the stale
   `x-openagents-demand-client` field, matching the chat route's typed demand

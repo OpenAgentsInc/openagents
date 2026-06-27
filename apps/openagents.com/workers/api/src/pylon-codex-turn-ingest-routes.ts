@@ -47,6 +47,8 @@ export const PYLON_CODEX_TURN_INGEST_PATH = '/api/pylon/codex/turns'
 export const PYLON_CODEX_EVENT_CHUNK_INGEST_PATH =
   '/api/pylon/codex/event-chunks'
 export const PYLON_CODEX_ASSIGNMENT_PROOF_PATH = '/api/pylon/codex/proof'
+export const PYLON_CODEX_ASSIGNMENT_TRACE_STATUS_PATH =
+  '/api/pylon/codex/trace-status'
 
 const PYLON_CODEX_SCHEMA_VERSION = 'openagents.pylon.codex_turn.v1' as const
 const PYLON_CODEX_EVENT_CHUNK_SCHEMA_VERSION =
@@ -148,6 +150,9 @@ type PylonCodexTurnIngestDependencies<Bindings> = Readonly<{
   nowIso?: () => string
   pylonStore: (env: Bindings) => Pick<PylonApiStore, 'readAssignment'>
   proofStore?: (env: Bindings) => PylonCodexAssignmentProofStore
+  traceStatusStore?: (
+    env: Bindings,
+  ) => PylonCodexAssignmentTraceStatusStore
   rawEventChunkStore?: (
     env: Bindings,
   ) => PylonCodexRawEventChunkStore | undefined
@@ -200,6 +205,74 @@ export type PylonCodexAssignmentProof = Readonly<{
   generatedAt: string
 }>
 
+export type PylonCodexAssignmentTraceStatus = Readonly<{
+  schemaVersion: 'openagents.pylon.codex_assignment_trace_status.v1'
+  assignmentRef: string
+  pylonRef: string
+  owner: Readonly<{
+    agentUserRef: string
+    openauthUserRef: string
+  }>
+  lifecycle: Readonly<{
+    state: PylonApiAssignmentRecord['state']
+    createdAt: string
+    updatedAt: string
+    acceptedWorkRefs: ReadonlyArray<string>
+    artifactRefs: ReadonlyArray<string>
+    closeoutRefs: ReadonlyArray<string>
+    proofRefs: ReadonlyArray<string>
+    rejectionRefs: ReadonlyArray<string>
+  }>
+  events: Readonly<{
+    count: number
+    progressCount: number
+    latestEventKind: string | null
+    latestStatus: string | null
+    latestObservedAt: string | null
+  }>
+  tokenUsage: PylonCodexAssignmentProof['tokenUsage'] &
+    Readonly<{ status: 'pending' | 'recorded' }>
+  traces: Readonly<{
+    count: number
+    visibility: 'owner_only'
+    schemaVersion: typeof ATIF_PINNED_SCHEMA_VERSION
+    latestTraceUuid: string | null
+    finalTraceUuid: string | null
+    refs: ReadonlyArray<string>
+  }>
+  rawEventChunks: Readonly<{
+    count: number
+    eventCount: number
+    byteLength: number
+    latestChunkRef: string | null
+    latestObservedAt: string | null
+    visibility: 'owner_only'
+  }>
+  rawEvents: Readonly<{
+    count: number
+    eventCount: number
+    byteLength: number
+    latestRawEventRef: string | null
+    latestObservedAt: string | null
+    visibility: 'owner_only'
+    refs: ReadonlyArray<string>
+  }>
+  progress: Readonly<{
+    state:
+      | 'assignment_created'
+      | 'streaming_chunks'
+      | 'final_trace_recorded'
+      | 'tokens_recorded'
+      | 'closed_out'
+      | 'rejected'
+    closeoutReady: boolean
+    hasLiveChunks: boolean
+    hasFinalTrace: boolean
+    hasTokenUsage: boolean
+  }>
+  generatedAt: string
+}>
+
 export type PylonCodexAssignmentProofStore = Readonly<{
   readAssignmentProof: (
     input: Readonly<{
@@ -210,6 +283,17 @@ export type PylonCodexAssignmentProofStore = Readonly<{
       nowIso: string
     }>,
   ) => Promise<PylonCodexAssignmentProof>
+}>
+
+export type PylonCodexAssignmentTraceStatusStore = Readonly<{
+  readAssignmentTraceStatus: (
+    input: Readonly<{
+      assignment: PylonApiAssignmentRecord
+      ownerAgentUserId: string
+      ownerUserId: string
+      nowIso: string
+    }>,
+  ) => Promise<PylonCodexAssignmentTraceStatus>
 }>
 
 export type PylonCodexRawEventStoreInput = Readonly<{
@@ -329,6 +413,7 @@ type PylonCodexTokenProofRow = Readonly<{
 
 type PylonCodexTraceProofRow = Readonly<{
   trace_uuid: string
+  trajectory_id?: string
 }>
 
 type PylonCodexCountProofRow = Readonly<{
@@ -343,6 +428,20 @@ type PylonCodexRawEventAggregateProofRow = Readonly<{
 
 type PylonCodexRawEventProofRow = Readonly<{
   raw_event_ref: string
+  observed_at?: string
+}>
+
+type PylonCodexRawEventChunkProofRow = Readonly<{
+  chunk_ref: string
+  observed_at?: string
+}>
+
+type PylonCodexAssignmentEventAggregateRow = Readonly<{
+  event_count: number
+  progress_count: number
+  latest_event_kind: string | null
+  latest_status: string | null
+  latest_observed_at: string | null
 }>
 
 const boundedProofRefs = (
@@ -356,7 +455,7 @@ const boundedProofRefs = (
 
 export const makeD1PylonCodexAssignmentProofStore = (
   db: D1Database,
-): PylonCodexAssignmentProofStore => ({
+): PylonCodexAssignmentProofStore & PylonCodexAssignmentTraceStatusStore => ({
   readAssignmentProof: async input => {
     const tokenRow = await db
       .prepare(
@@ -506,6 +605,294 @@ export const makeD1PylonCodexAssignmentProofStore = (
         byteLength: Number(rawAggregateRow?.byte_length ?? 0),
         visibility: 'owner_only',
         refs: boundedProofRefs(rawEvents, 'raw_event_ref'),
+      },
+      generatedAt: input.nowIso,
+    }
+  },
+  readAssignmentTraceStatus: async input => {
+    const tokenRow = await db
+      .prepare(
+        `
+          SELECT
+            COUNT(*) AS row_count,
+            COALESCE(SUM(input_tokens), 0) AS input_tokens,
+            COALESCE(SUM(output_tokens), 0) AS output_tokens,
+            COALESCE(SUM(reasoning_tokens), 0) AS reasoning_tokens,
+            COALESCE(SUM(cache_read_tokens), 0) AS cache_read_tokens,
+            COALESCE(SUM(total_tokens), 0) AS total_tokens
+          FROM token_usage_events
+          WHERE provider = ?
+            AND model = ?
+            AND usage_truth = 'exact'
+            AND demand_kind = ?
+            AND demand_source = ?
+            AND task_ref = ?
+            AND account_ref = ?
+            AND actor_user_id = ?
+        `,
+      )
+      .bind(
+        PYLON_CODEX_PROVIDER,
+        PYLON_CODEX_MODEL_NAME,
+        PYLON_CODEX_DEMAND_KIND,
+        PYLON_CODEX_DEMAND_SOURCE,
+        input.assignment.assignmentRef,
+        `agent:${input.ownerAgentUserId}`,
+        input.ownerUserId,
+      )
+      .first<PylonCodexTokenProofRow>()
+
+    const eventRow = await db
+      .prepare(
+        `
+          SELECT
+            COUNT(*) AS event_count,
+            COALESCE(
+              SUM(CASE WHEN event_kind = 'assignment_progress' THEN 1 ELSE 0 END),
+              0
+            ) AS progress_count,
+            (
+              SELECT event_kind
+              FROM pylon_api_events
+              WHERE assignment_ref = ?
+                AND owner_agent_user_id = ?
+                AND archived_at IS NULL
+              ORDER BY created_at DESC
+              LIMIT 1
+            ) AS latest_event_kind,
+            (
+              SELECT status
+              FROM pylon_api_events
+              WHERE assignment_ref = ?
+                AND owner_agent_user_id = ?
+                AND archived_at IS NULL
+              ORDER BY created_at DESC
+              LIMIT 1
+            ) AS latest_status,
+            MAX(created_at) AS latest_observed_at
+          FROM pylon_api_events
+          WHERE assignment_ref = ?
+            AND owner_agent_user_id = ?
+            AND archived_at IS NULL
+        `,
+      )
+      .bind(
+        input.assignment.assignmentRef,
+        input.ownerAgentUserId,
+        input.assignment.assignmentRef,
+        input.ownerAgentUserId,
+        input.assignment.assignmentRef,
+        input.ownerAgentUserId,
+      )
+      .first<PylonCodexAssignmentEventAggregateRow>()
+
+    const traceTrajectoryPrefix = `pylon_codex:${input.assignment.assignmentRef}:`
+    const traceFilter = `
+      owner_user_id = ?
+      AND agent_ref = ?
+      AND visibility = 'owner_only'
+      AND schema_version = ?
+      AND demand_kind = ?
+      AND demand_source = ?
+      AND substr(trajectory_id, 1, ?) = ?
+    `
+    const traceBindings = [
+      input.ownerUserId,
+      `agent:${input.ownerAgentUserId}`,
+      ATIF_PINNED_SCHEMA_VERSION,
+      PYLON_CODEX_DEMAND_KIND,
+      PYLON_CODEX_DEMAND_SOURCE,
+      traceTrajectoryPrefix.length,
+      traceTrajectoryPrefix,
+    ] as const
+
+    const traceCountRow = await db
+      .prepare(`SELECT COUNT(*) AS row_count FROM agent_traces WHERE ${traceFilter}`)
+      .bind(...traceBindings)
+      .first<PylonCodexCountProofRow>()
+
+    const traceRows = await db
+      .prepare(
+        `
+          SELECT trace_uuid, trajectory_id
+          FROM agent_traces
+          WHERE ${traceFilter}
+          ORDER BY created_at DESC
+          LIMIT 100
+        `,
+      )
+      .bind(...traceBindings)
+      .all<PylonCodexTraceProofRow>()
+
+    const rawEventFilter = `
+      owner_user_id = ?
+      AND assignment_ref = ?
+      AND pylon_ref = ?
+      AND demand_kind = ?
+      AND demand_source = ?
+    `
+    const rawEventBindings = [
+      input.ownerUserId,
+      input.assignment.assignmentRef,
+      input.assignment.pylonRef,
+      PYLON_CODEX_DEMAND_KIND,
+      PYLON_CODEX_DEMAND_SOURCE,
+    ] as const
+
+    const rawChunkAggregateRow = await db
+      .prepare(
+        `
+          SELECT
+            COUNT(*) AS row_count,
+            COALESCE(SUM(event_count), 0) AS event_count,
+            COALESCE(SUM(byte_length), 0) AS byte_length
+          FROM pylon_codex_raw_event_chunks
+          WHERE ${rawEventFilter}
+        `,
+      )
+      .bind(...rawEventBindings)
+      .first<PylonCodexRawEventAggregateProofRow>()
+
+    const latestChunkRow = await db
+      .prepare(
+        `
+          SELECT chunk_ref, observed_at
+          FROM pylon_codex_raw_event_chunks
+          WHERE ${rawEventFilter}
+          ORDER BY turn_index DESC, chunk_index DESC
+          LIMIT 1
+        `,
+      )
+      .bind(...rawEventBindings)
+      .first<PylonCodexRawEventChunkProofRow>()
+
+    const rawAggregateRow = await db
+      .prepare(
+        `
+          SELECT
+            COUNT(*) AS row_count,
+            COALESCE(SUM(event_count), 0) AS event_count,
+            COALESCE(SUM(byte_length), 0) AS byte_length
+          FROM pylon_codex_raw_events
+          WHERE ${rawEventFilter}
+        `,
+      )
+      .bind(...rawEventBindings)
+      .first<PylonCodexRawEventAggregateProofRow>()
+
+    const rawRows = await db
+      .prepare(
+        `
+          SELECT raw_event_ref, observed_at
+          FROM pylon_codex_raw_events
+          WHERE ${rawEventFilter}
+          ORDER BY turn_index ASC
+          LIMIT 100
+        `,
+      )
+      .bind(...rawEventBindings)
+      .all<PylonCodexRawEventProofRow>()
+
+    const traces = traceRows.results ?? []
+    const rawEvents = rawRows.results ?? []
+    const finalTraceUuid =
+      traces.find(row => !String(row.trajectory_id ?? '').includes(':chunk:'))
+        ?.trace_uuid ?? null
+    const latestTraceUuid = traces[0]?.trace_uuid ?? null
+    const tokenRowCount = Number(tokenRow?.row_count ?? 0)
+    const chunkCount = Number(rawChunkAggregateRow?.row_count ?? 0)
+    const rawEventCount = Number(rawAggregateRow?.row_count ?? 0)
+    const hasTokenUsage = tokenRowCount > 0
+    const hasLiveChunks = chunkCount > 0
+    const hasFinalTrace = finalTraceUuid !== null
+    const rejected = input.assignment.rejectionRefs.length > 0
+    const closedOut =
+      input.assignment.closeoutRefs.length > 0 ||
+      input.assignment.acceptedWorkRefs.length > 0
+    const progressState =
+      rejected
+        ? 'rejected'
+        : closedOut
+          ? 'closed_out'
+          : hasTokenUsage
+            ? 'tokens_recorded'
+            : hasFinalTrace
+              ? 'final_trace_recorded'
+              : hasLiveChunks
+                ? 'streaming_chunks'
+                : 'assignment_created'
+
+    return {
+      schemaVersion: 'openagents.pylon.codex_assignment_trace_status.v1',
+      assignmentRef: input.assignment.assignmentRef,
+      pylonRef: input.assignment.pylonRef,
+      owner: {
+        agentUserRef: `agent:${input.ownerAgentUserId}`,
+        openauthUserRef: input.ownerUserId,
+      },
+      lifecycle: {
+        acceptedWorkRefs: input.assignment.acceptedWorkRefs,
+        artifactRefs: input.assignment.artifactRefs,
+        closeoutRefs: input.assignment.closeoutRefs,
+        createdAt: input.assignment.createdAt,
+        proofRefs: input.assignment.proofRefs,
+        rejectionRefs: input.assignment.rejectionRefs,
+        state: input.assignment.state,
+        updatedAt: input.assignment.updatedAt,
+      },
+      events: {
+        count: Number(eventRow?.event_count ?? 0),
+        latestEventKind: eventRow?.latest_event_kind ?? null,
+        latestObservedAt: eventRow?.latest_observed_at ?? null,
+        latestStatus: eventRow?.latest_status ?? null,
+        progressCount: Number(eventRow?.progress_count ?? 0),
+      },
+      tokenUsage: {
+        rowCount: tokenRowCount,
+        provider: PYLON_CODEX_PROVIDER,
+        model: PYLON_CODEX_MODEL_NAME,
+        usageTruth: 'exact',
+        demandKind: PYLON_CODEX_DEMAND_KIND,
+        demandSource: PYLON_CODEX_DEMAND_SOURCE,
+        inputTokens: Number(tokenRow?.input_tokens ?? 0),
+        outputTokens: Number(tokenRow?.output_tokens ?? 0),
+        reasoningTokens: Number(tokenRow?.reasoning_tokens ?? 0),
+        cacheReadTokens: Number(tokenRow?.cache_read_tokens ?? 0),
+        totalTokens: Number(tokenRow?.total_tokens ?? 0),
+        status: hasTokenUsage ? 'recorded' : 'pending',
+      },
+      traces: {
+        count: Number(traceCountRow?.row_count ?? 0),
+        finalTraceUuid,
+        latestTraceUuid,
+        refs: boundedProofRefs(traces, 'trace_uuid'),
+        schemaVersion: ATIF_PINNED_SCHEMA_VERSION,
+        visibility: 'owner_only',
+      },
+      rawEventChunks: {
+        byteLength: Number(rawChunkAggregateRow?.byte_length ?? 0),
+        count: chunkCount,
+        eventCount: Number(rawChunkAggregateRow?.event_count ?? 0),
+        latestChunkRef: latestChunkRow?.chunk_ref ?? null,
+        latestObservedAt: latestChunkRow?.observed_at ?? null,
+        visibility: 'owner_only',
+      },
+      rawEvents: {
+        byteLength: Number(rawAggregateRow?.byte_length ?? 0),
+        count: rawEventCount,
+        eventCount: Number(rawAggregateRow?.event_count ?? 0),
+        latestObservedAt: rawEvents[rawEvents.length - 1]?.observed_at ?? null,
+        latestRawEventRef:
+          rawEvents[rawEvents.length - 1]?.raw_event_ref ?? null,
+        refs: boundedProofRefs(rawEvents, 'raw_event_ref'),
+        visibility: 'owner_only',
+      },
+      progress: {
+        closeoutReady: closedOut,
+        hasFinalTrace,
+        hasLiveChunks,
+        hasTokenUsage,
+        state: progressState,
       },
       generatedAt: input.nowIso,
     }
@@ -1723,6 +2110,47 @@ const routeProof = <Bindings>(
     return noStoreJsonResponse(proof)
   })
 
+const routeTraceStatus = <Bindings>(
+  dependencies: PylonCodexTurnIngestDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+): Effect.Effect<HttpResponse, PylonCodexRouteError> =>
+  Effect.gen(function* () {
+    if (request.method !== 'GET') {
+      return methodNotAllowed(['GET'])
+    }
+    const statusStore = dependencies.traceStatusStore?.(env)
+    if (statusStore === undefined) {
+      return yield* new PylonCodexStorageError({
+        operation: 'pylon_codex_assignment_trace_status_read',
+        reason: 'trace_status_store_unconfigured',
+      })
+    }
+
+    const session = yield* requireAgent(dependencies, request, env)
+    const assignmentRef = yield* assignmentRefFromProofRequest(request)
+    const assignment = yield* requireOwnedAssignment(dependencies, env, session, {
+      assignmentRef,
+    })
+    const ownerUserId = ownerUserIdForAgent(session)
+    const status = yield* Effect.tryPromise({
+      catch: error =>
+        new PylonCodexStorageError({
+          operation: 'pylon_codex_assignment_trace_status_read',
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+      try: () =>
+        statusStore.readAssignmentTraceStatus({
+          assignment,
+          nowIso: routeNowIso(dependencies),
+          ownerAgentUserId: session.user.id,
+          ownerUserId,
+        }),
+    })
+
+    return noStoreJsonResponse(status)
+  })
+
 const routeEventChunkIngest = <Bindings>(
   dependencies: PylonCodexTurnIngestDependencies<Bindings>,
   request: Request,
@@ -2037,6 +2465,19 @@ export const makePylonCodexTurnIngestRoutes = <Bindings>(
       return Effect.succeed(noStoreJsonResponse({ error: 'not_found' }, { status: 404 }))
     }
     return routeProof(dependencies, request, env).pipe(
+      Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+    )
+  },
+  handlePylonCodexAssignmentTraceStatusApi: (
+    request: Request,
+    env: Bindings,
+  ): Effect.Effect<HttpResponse> => {
+    if (
+      new URL(request.url).pathname !== PYLON_CODEX_ASSIGNMENT_TRACE_STATUS_PATH
+    ) {
+      return Effect.succeed(noStoreJsonResponse({ error: 'not_found' }, { status: 404 }))
+    }
+    return routeTraceStatus(dependencies, request, env).pipe(
       Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
     )
   },

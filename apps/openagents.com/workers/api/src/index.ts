@@ -750,6 +750,7 @@ import {
 } from './pylon-capacity-funnel-live-routes'
 import {
   PYLON_CODEX_ASSIGNMENT_PROOF_PATH,
+  PYLON_CODEX_ASSIGNMENT_TRACE_STATUS_PATH,
   PYLON_CODEX_EVENT_CHUNK_INGEST_PATH,
   PYLON_CODEX_TURN_INGEST_PATH,
   makeD1PylonCodexAssignmentProofStore,
@@ -6976,6 +6977,8 @@ const pylonCodexTurnIngestRoutes = makePylonCodexTurnIngestRoutes<Env>({
   ledger: env => makeD1TokenUsageLedger(openAgentsDatabase(env)),
   pylonStore: env => makeD1PylonApiStore(openAgentsDatabase(env)),
   proofStore: env => makeD1PylonCodexAssignmentProofStore(openAgentsDatabase(env)),
+  traceStatusStore: env =>
+    makeD1PylonCodexAssignmentProofStore(openAgentsDatabase(env)),
   rawEventChunkStore: env =>
     makeD1R2PylonCodexRawEventChunkStore(
       openAgentsDatabase(env),
@@ -10667,6 +10670,14 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: PYLON_CODEX_ASSIGNMENT_PROOF_PATH,
     handler: (request, env) =>
       pylonCodexTurnIngestRoutes.handlePylonCodexAssignmentProofApi(
+        request,
+        env,
+      ),
+  },
+  {
+    path: PYLON_CODEX_ASSIGNMENT_TRACE_STATUS_PATH,
+    handler: (request, env) =>
+      pylonCodexTurnIngestRoutes.handlePylonCodexAssignmentTraceStatusApi(
         request,
         env,
       ),

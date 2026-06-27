@@ -642,6 +642,64 @@ So when the token count "finally" updates after a quiet wait, that means the
 final exact usage row landed and the public sync/scalar projection saw it. It
 does not mean the counter was incrementing throughout the in-flight Codex run.
 
+## Latest Trace-Status Delegation Run
+
+For this trace-status endpoint slice, the runbook worked again from:
+
+`/Users/christopherdavid/work/openagents-worktrees/khala-roadmap-goal-20260627-050244`
+
+The exact preflight/setup that made it work was:
+
+- clean worktree from `origin/main`;
+- local dependencies installed with `bun install --frozen-lockfile`;
+- local Khala/OpenAgents token exported as `OPENAGENTS_AGENT_TOKEN`;
+- `PYLON_OPENAGENTS_BASE_URL=https://openagents.com`;
+- `PYLON_DISABLE_DAEMON_ROUTING=1`;
+- current Pylon brought online and heartbeated immediately before dispatch;
+- explicit target Pylon `pylon.33afd48282a649047e3a`;
+- explicit `--workflow codex_agent_task`;
+- exact repo, branch, and commit pin:
+  `OpenAgentsInc/openagents`, `main`,
+  `c540608c053b03dfc87c7765d0a8d3cf40df7fc0`;
+- local runner invoked with `assignment run-no-spend --assignment-ref ...`;
+- proof read after accepted closeout.
+
+The delegated request was:
+
+- durable request: `chatcmpl_5959923d80f8450f967b289b6fb0f775`;
+- assignment:
+  `assignment.public.khala_coding.chatcmpl_8010cf9064ce400fbd74f4e08969ffa8`;
+- closeout: `assignment.closeout.6f5a49601f06edefe1ed725b`;
+- runner result: `10` edits, `51` commands, `1` Codex turn, verifier passed.
+
+The exact proof was:
+
+```json
+{
+  "provider": "pylon-codex-own-capacity",
+  "model": "openagents/pylon-codex",
+  "usageTruth": "exact",
+  "demandKind": "own_capacity",
+  "demandSource": "khala_coding_delegation",
+  "inputTokens": 5222264,
+  "outputTokens": 20705,
+  "reasoningTokens": 1034,
+  "cacheReadTokens": 5014016,
+  "totalTokens": 5242969
+}
+```
+
+The same proof reported `96` owner-only ATIF traces and one private raw Codex
+archive containing `157` SDK events / `3,558,909` bytes.
+
+This run is the most recent concrete answer to why other agents have had
+trouble delegating: the mechanism works, but only when the task is sent through
+the typed coding-delegation path and then actually claimed by the local runner.
+Generic Khala chat, a missing local token, stale daemon routing, a stale Pylon
+heartbeat, a missing `--pylon-ref`, a missing `--workflow codex_agent_task`, or
+skipping `assignment run-no-spend` will look like "Khala was used" while never
+creating a Pylon/Codex assignment, token row, or trace bundle.
+
 ## Trace And Raw Event Persistence
 
 The first-class proof command reports:
@@ -713,6 +771,49 @@ produces many trace UUIDs: one per chunk and one final turn trace. There is no
 single assignment-session trace UUID or manifest page that composes all 80 rows
 into one coherent live assignment view.
 
+## First Assignment Status Endpoint
+
+The first backend slice of that manifest gap now exists as:
+
+`GET /api/pylon/codex/trace-status?assignmentRef=<assignmentRef>`
+
+It is owner-scoped with the same local OpenAgents agent bearer token used by the
+Pylon/Codex ingest and proof routes. It resolves the assignment through the
+caller-owned Pylon assignment store before reading any rows, so another agent's
+assignment returns `403` and never reaches trace/token/raw-event aggregation.
+
+The status payload is intentionally metadata-only and public-safe:
+
+- assignment ref and Pylon ref;
+- owner refs (`agent:<agentUserId>` and linked OpenAuth owner ref);
+- assignment lifecycle state plus public-safe closeout/proof/artifact refs;
+- public-safe assignment event count, progress event count, latest event kind,
+  latest status, and latest event timestamp;
+- exact token row status and totals when a final row exists;
+- owner-only ATIF trace count, latest trace UUID, and final-turn trace UUID when
+  available;
+- streamed raw chunk counts/event counts/bytes and latest chunk ref;
+- final raw archive counts/event counts/bytes and latest raw archive ref;
+- derived progress state:
+  `assignment_created`, `streaming_chunks`, `final_trace_recorded`,
+  `tokens_recorded`, `closed_out`, or `rejected`.
+
+The endpoint does **not** return raw SDK payloads, R2 keys, command text, shell
+output, prompts, local paths, provider credentials, or trace JSON. Raw SDK
+payloads remain private owner-only audit evidence in R2/D1 metadata and are not
+rendered by this status surface.
+
+Focused coverage in `pylon-codex-turn-ingest-routes.test.ts` proves:
+
+- a live chunk-only assignment reports `progress.state: "streaming_chunks"` with
+  token usage still `pending`;
+- after the final token row, final trace, final raw archive, and closeout refs
+  exist, the same store reports `progress.state: "closed_out"` and exact token
+  totals;
+- another agent owner cannot read the status;
+- the JSON payload does not expose raw payload/R2 key/prompt/shell/secret
+  material.
+
 ## Can We View This Assignment Through `/trace/{uuid}` Right Now?
 
 The trace rows existed, but the owner-token read path did not expose them during
@@ -774,13 +875,12 @@ What exists:
 What is missing for the desired live page:
 
 - one stable assignment/session view URL created at assignment creation time;
-- a route/API that resolves assignment ref or durable request id to all related
-  trace UUIDs, raw chunk metadata, final raw archive metadata, token row status,
-  verifier status, closeout status, and public-safe progress;
+- frontend integration that resolves assignment ref or durable request id to the
+  new trace-status API and renders it in a coherent timeline;
 - front-end polling or streaming for that assignment/session view;
-- owner-token read-scope fix for linked OpenAuth-owned traces;
-- proof endpoint expansion to include raw chunk counts and chunk refs, not just
-  final raw event archive refs;
+- proof/status endpoint expansion to include verifier-specific progress and
+  bounded recent activity labels, beyond the current event/trace/chunk/token/
+  archive counts;
 - a public-safe rollup renderer that composes many chunk/final traces into one
   coherent timeline without exposing raw SDK payloads.
 
@@ -790,21 +890,15 @@ What is missing for the desired live page:
    `resolveReadScopeOwner` now prefers `session.credential.openauthUserId` when
    present, falling back to `session.user.id`.
 
-2. Add assignment-level trace proof/read API:
-   `GET /api/pylon/codex/proof` should include raw chunk aggregate counts and
-   optionally bounded chunk refs.
+2. Build the assignment trace-status page:
+   the backend status endpoint exists at
+   `GET /api/pylon/codex/trace-status?assignmentRef=...`; the next slice should
+   connect it to an owner-token web view.
 
-3. Add a stable assignment/session status endpoint:
-   `GET /api/pylon/codex/assignments/{assignmentRef}/trace-status` or equivalent
-   owner-scoped endpoint returning:
-   - assignment ref;
-   - durable request id when known;
-   - current lifecycle / closeout state;
-   - token row status and totals;
-   - chunk count/event count/byte count;
-   - final raw archive status;
-   - trace row count and final trace UUID;
-   - public-safe recent progress.
+3. Add durable request/session lookup:
+   the current status endpoint keys by assignment ref. The UI still needs a
+   stable creation-time link from durable request id or `/trace/{uuid}` manifest
+   id to assignment ref.
 
 4. Update `/trace/{uuid}` or introduce a trace manifest variant so the existing
    route can render a whole assignment, not only one immutable ATIF row.
