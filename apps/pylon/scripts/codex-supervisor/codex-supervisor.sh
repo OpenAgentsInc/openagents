@@ -82,6 +82,18 @@ SUP_HEARTBEAT_SECS="${SUP_HEARTBEAT_SECS:-45}"
 SUP_BACKOFF_MIN="${SUP_BACKOFF_MIN:-15}"
 SUP_BACKOFF_MAX="${SUP_BACKOFF_MAX:-300}"
 
+# --- Self-heal watchdog (#6408): "fleet never silently stalls". ---
+# If the pool sees this many consecutive NO-DISPATCH lines with ZERO OK in
+# between, the loop has stalled (e.g. the dispatch gate is poisoned into
+# duplicate_active_assignment by our own abandoned leases). Instead of backing
+# off into silence, the watchdog logs a LOUD FLEET-STALL line and self-recovers:
+# (a) re-asserts advertisement via `provider go-online`, (b) sweeps our own
+# interrupted/stale local leases via `assignment run-no-spend` so they stop
+# poisoning the gate. Then it cools down before checking again.
+SUP_STALL_REFUSALS="${SUP_STALL_REFUSALS:-20}"
+SUP_SELFHEAL_COOLDOWN_SECS="${SUP_SELFHEAL_COOLDOWN_SECS:-300}"
+SUP_SELFHEAL_CHECK_SECS="${SUP_SELFHEAL_CHECK_SECS:-30}"
+
 # Rotated real backlog (public-safe issue numbers). Codex does real work against
 # the pinned origin/main commit in a bounded throwaway workspace.
 #   #6310 GLM tool-calling (also wins MirrorCode + GLM) | #6311 / #6320 follow-ups
@@ -134,6 +146,35 @@ global_pause() {
     echo "the supervisor will NEVER do this. It is paused until you clear"
     echo "$PAUSE_FILE."
   } >> "$REPO_ROOT/NEEDS_OWNER.md" 2>/dev/null || true
+}
+
+# --- Self-heal watchdog: count consecutive NO-DISPATCH since the last OK. ---
+# Reads the recent log tail; resets on an OK turn or a completed self-heal.
+consecutive_refusals() {
+  tail -n 800 "$SUP_LOG" 2>/dev/null | awk '
+    /OK \(rc=/                          { c=0; next }
+    /FLEET-STALL: self-heal complete/   { c=0; next }
+    /NO-DISPATCH/                       { c++ }
+    END                                 { print c+0 }'
+}
+
+selfheal_watchdog_loop() {
+  while true; do
+    sleep "$SUP_SELFHEAL_CHECK_SECS"
+    [ -f "$PAUSE_FILE" ] && continue
+    local n; n=$(consecutive_refusals)
+    if [ "${n:-0}" -ge "$SUP_STALL_REFUSALS" ]; then
+      log "!!!!!! FLEET-STALL: $n consecutive NO-DISPATCH with 0 OK -> self-healing (re-advertise + stale-closeout sweep)"
+      # (a) re-assert advertisement so a dropped/ignored heartbeat is refreshed.
+      "${PYLON[@]}" provider go-online >> "$SUP_LOG" 2>&1 || true
+      # (b) clear our OWN abandoned/interrupted local leases so they stop
+      #     poisoning the dispatch gate into duplicate_active_assignment. The
+      #     no-spend runner submits public-safe stale closeouts at load.
+      "${PYLON[@]}" assignment run-no-spend --json >> "$SUP_LOG" 2>&1 || true
+      log "FLEET-STALL: self-heal complete (re-advertised + swept stale closeouts); cooldown ${SUP_SELFHEAL_COOLDOWN_SECS}s"
+      sleep "$SUP_SELFHEAL_COOLDOWN_SECS"
+    fi
+  done
 }
 
 # --- Heartbeater: recompute desired slots + advertise capacity on a timer. ---
@@ -229,6 +270,9 @@ log "=== codex-supervisor START pid=$$ repo=$REPO_ROOT pylon=$SUP_PYLON_REF per_
 
 heartbeater_loop &
 log "heartbeater pid=$! cadence=${SUP_HEARTBEAT_SECS}s"
+
+selfheal_watchdog_loop &
+log "selfheal-watchdog pid=$! stall_refusals=$SUP_STALL_REFUSALS cooldown=${SUP_SELFHEAL_COOLDOWN_SECS}s"
 
 # Give the first heartbeat a moment to publish desired slots.
 sleep 5

@@ -407,6 +407,7 @@ import {
   KHALA_FIREWORKS_BACKING_MODEL_ID,
   fireworksAdapter,
 } from './inference/fireworks-adapter'
+import { runFleetBurnStallDetectorScheduled } from './inference/fleet-burn-stall-detector'
 import { freeTierDataSharingDisclosure } from './inference/free-tier-data-sharing-disclosure'
 import { handleFreeTierDataSharingDisclosureApi } from './inference/free-tier-data-sharing-routes'
 import { handleGatewayReadiness } from './inference/gateway-readiness-routes'
@@ -13417,6 +13418,26 @@ export default {
       sweepActiveAgentRunBilling(env, ctx),
       sendPendingReviewReadyArtifactNotifications(env),
       sendPendingReviewReadySiteNotifications(env),
+      // #6408: "fleet never silently stalls" watchdog. Every minute, measure the
+      // own-capacity Codex burn rate vs active coding leases; on a stall (burn
+      // below threshold WHILE work is leased) write a loud fleet_alerts row and
+      // auto-flush abandoned leases that poison the dispatch gate. Idle-no-work
+      // and healthy ticks are silent. Does NOT touch the dispatch-gate dedup.
+      observedEffect(
+        'FleetBurnStallDetector.tick',
+        Effect.promise(() =>
+          runFleetBurnStallDetectorScheduled(
+            openAgentsDatabase(env),
+            env,
+            { scheduledTimeMs: event.scheduledTime },
+            (line, fields) =>
+              logWorkerRouteWarning('fleet_burn_stall_watchdog', {
+                line,
+                ...fields,
+              }),
+          ),
+        ),
+      ),
       observedEffect(
         'ArtanisScheduledRunner.runTick',
         runArtanisScheduledTickScheduled(

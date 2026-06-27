@@ -447,6 +447,95 @@ The three levers:
 
 ---
 
+## 10. "Fleet never silently stalls" watchdog (#6408)
+
+Owner mandate: **nothing may stop the fleet**; if it ever stalls it must
+auto-detect and auto-recover within minutes. This is built in three Cloudflare-
+native layers (no third-party services).
+
+### 10a. Server detector + auto-recovery (Worker cron, 1-min)
+
+`apps/openagents.com/workers/api/src/inference/fleet-burn-stall-detector.ts`
+runs every minute from the existing scheduled handler. Each tick it:
+
+1. measures the live own-capacity burn over a rolling window from
+   `token_usage_events` (`demand_kind='own_capacity'`,
+   `demand_source='khala_coding_delegation'`), and reads active coding leases;
+2. classifies: **healthy** (burn ≥ threshold), **idle_no_work** (burn below
+   threshold but no active leases — NOT an alarm), or **stalled** (burn below
+   threshold WHILE leases are held — the gate-poison failure mode);
+3. on **stalled** only: writes a loud `fleet_alerts` D1 row + a
+   `fleet_burn_stall_watchdog` warning log, and (when configured) force-flushes
+   abandoned leases for the owner pylon(s) by marking them `cancelled` +
+   expiring the lease so they stop tripping the gate's
+   `duplicate_active_assignment`. It does **not** touch the dedup gate logic.
+
+Config (Worker `vars`, all overridable):
+
+| Var | Default | Meaning |
+|---|---|---|
+| `FLEET_WATCHDOG_ENABLED` | `true` | Master switch for detection. |
+| `FLEET_WATCHDOG_RECOVERY_ENABLED` | `true` | Allow auto-flush on a stall. |
+| `FLEET_WATCHDOG_WINDOW_MINUTES` | `5` | Rolling burn window. |
+| `FLEET_WATCHDOG_STALL_THRESHOLD_TOKENS` | `1000000` | Min tokens/window = healthy. |
+| `FLEET_WATCHDOG_STALE_LEASE_MIN_AGE_MINUTES` | `10` | Lease must be idle this long before it's flushable. |
+| `FLEET_WATCHDOG_OWNER_PYLON_REFS` | `""` | **Set this** (comma/space list) to enable auto-recovery; empty = alert only. |
+
+> Auto-recovery is intentionally a **no-op until owner pylon refs are
+> configured** — a safety scoping so the watchdog never flushes a pylon it was
+> not told to own. Detection (alerting) works regardless. Coordinates with the
+> lease-TTL sweep (#6410): if that lands, prefer its sweep; this minimal flush
+> clears the same poisoned rows in the meantime.
+
+Audit a stall:
+
+```sql
+SELECT detected_at, classification, reason_ref, burn_tokens_window,
+       active_assignments, queued_assignments, recovered_lease_count,
+       recovery_actions_json
+  FROM fleet_alerts
+ ORDER BY detected_at DESC LIMIT 20;
+```
+
+### 10b. launchd KeepAlive for the supervisors (closes the crash hole)
+
+The codex + claude supervisors are now launchd-managed so they auto-restart if
+they die (previously hand-launched → a crash went unnoticed). Mirrors the
+standing-pylon job `com.openagents.pylon.fable`. Plists + wrappers live in
+`apps/pylon/scripts/supervisor-launchd/`. The wrapper sources the owner-linked
+Artanis token from `~/work/.secrets/openagents-artanis-agent.env` (never in the
+plist), resolves the live pylon ref, and `exec`s the supervisor in the
+foreground (so KeepAlive restarts it), all under `caffeinate -i`.
+
+Install:
+
+```sh
+# from the repo root
+bash apps/pylon/scripts/supervisor-launchd/install.sh install both
+# under the hood: sed-substitutes repo root/home into the plist, copies it to
+# ~/Library/LaunchAgents, then:
+#   launchctl bootout   gui/$(id -u)/com.openagents.<codex|claude>-supervisor  (idempotent)
+#   launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.openagents.<...>.plist
+#   launchctl enable    gui/$(id -u)/com.openagents.<...>-supervisor
+
+bash apps/pylon/scripts/supervisor-launchd/install.sh status      # list loaded jobs
+bash apps/pylon/scripts/supervisor-launchd/install.sh uninstall both
+tail -f ~/.codex-supervisor/supervisor.log ~/.claude-supervisor/supervisor.log
+```
+
+### 10c. In-loop self-heal in the supervisors
+
+Each supervisor now runs a `selfheal_watchdog_loop`: if it sees
+`SUP_STALL_REFUSALS` (default **20**) consecutive `NO-DISPATCH` log lines with
+**zero `OK`** in between, it logs a loud `FLEET-STALL` line and self-recovers —
+(a) re-asserts advertisement with `provider go-online`, (b) sweeps its own
+interrupted/stale local leases via `assignment run-no-spend` (which submits the
+public-safe stale closeouts) — then cools down `SUP_SELFHEAL_COOLDOWN_SECS`
+(default 300s) before re-checking. So the local loop tries to self-recover
+instead of backing off into silence.
+
+---
+
 ## Appendix — verification status of this runbook
 
 Verified against the repo / live system on 2026-06-27:

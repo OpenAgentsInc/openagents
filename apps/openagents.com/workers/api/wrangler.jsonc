@@ -39,6 +39,17 @@
     "GITHUB_CLIENT_ID": "Ov23lirHI1DWTzZ1zT1u",
     "INFERENCE_GATEWAY_ENABLED": "true",
     "INFERENCE_FREE_TIER_ENABLED": "true",
+    // #6408 "fleet never silently stalls" watchdog (1-min cron). Detection is
+    // default-ON so a live stall is flagged immediately. Recovery is also ON but
+    // is a no-op unless FLEET_WATCHDOG_OWNER_PYLON_REFS lists the owner pylon(s)
+    // whose abandoned leases may be auto-flushed (a safety scoping). Window /
+    // threshold default to a rolling 5-min window and ~1M own-capacity tokens.
+    "FLEET_WATCHDOG_ENABLED": "true",
+    "FLEET_WATCHDOG_RECOVERY_ENABLED": "true",
+    "FLEET_WATCHDOG_WINDOW_MINUTES": "5",
+    "FLEET_WATCHDOG_STALL_THRESHOLD_TOKENS": "1000000",
+    "FLEET_WATCHDOG_STALE_LEASE_MIN_AGE_MINUTES": "10",
+    "FLEET_WATCHDOG_OWNER_PYLON_REFS": "",
     // Default-ON redacted, private-by-default trace capture for free-tier traffic
     // (#6293, EPIC redaction #6219). The master switch arms the Khala chat->ATIF
     // trace emitter; the free-tier flag makes capture default-on for free traffic
