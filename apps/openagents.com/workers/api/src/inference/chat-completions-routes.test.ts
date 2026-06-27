@@ -2064,6 +2064,40 @@ describe('POST /v1/chat/completions', () => {
       ),
   })
 
+  test('routes GLM saturation internal_stress Khala traffic through the GLM-first plan', async () => {
+    const registry = new InferenceProviderRegistry()
+    registry.register(echoAdapter(FIREWORKS_ADAPTER_ID))
+    registry.register(echoAdapter(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID))
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(helloBody, {
+          headers: {
+            [INFERENCE_CLIENT_HEADER]: 'stress-harness',
+            [INFERENCE_DEMAND_KIND_HEADER]: 'internal_stress',
+            [INFERENCE_DEMAND_SOURCE_HEADER]: 'glm-saturation',
+          },
+        }),
+        baseDeps({
+          dispatch: { sleep: () => Effect.void },
+          lanePlan: () => [
+            FIREWORKS_ADAPTER_ID,
+            HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+          ],
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      openagents?: { worker?: string }
+    }
+    expect(body.openagents?.worker).toBe(
+      HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+    )
+  })
+
   test('overflows to the next lane on a retryable failure and meters the served lane', async () => {
     const captured: Array<MeteringContext> = []
     const meteringHook: MeteringHook = context =>

@@ -2777,7 +2777,12 @@ export const handleChatCompletions = (
       rawBody,
       requestedModel,
     })
-    const basePlannedIds = toolBearingKhalaRequest
+    const glmSaturationStressKhalaRequest =
+      isKhalaModel(requestedModel) &&
+      requestAttribution?.demandKind === 'internal_stress' &&
+      requestAttribution.demandSource === 'glm-saturation'
+    const basePlannedIds =
+      toolBearingKhalaRequest || glmSaturationStressKhalaRequest
       ? selectAdapterPlanForKhalaToolRequest(requestedModel, plannedIdsForModel)
       : plannedIdsForModel
 
