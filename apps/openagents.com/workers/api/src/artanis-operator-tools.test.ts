@@ -28,6 +28,7 @@ import {
   makeArtanisListPylonAssignmentsTool,
   makeArtanisListRepoDirTool,
   makeArtanisOperatorTools,
+  makeArtanisPostForumUpdateTool,
   makeArtanisReadGithubIssueTool,
   makeArtanisReadRepoFileTool,
   makeArtanisTriggerSyntheticLoadTool,
@@ -353,6 +354,145 @@ describe('#6366 dispatch_codex_task (gated; LIVE execution behind the gate)', ()
     // Neither the approval gate nor the create seam is consulted for bad input.
     expect(approvalCalls).toHaveLength(0)
     expect(createCalls).toHaveLength(0)
+  })
+})
+
+describe('#6435 post_forum_update (gated Artanis Forum writer)', () => {
+  test('is a gated forum_post tool with a run() entry point', () => {
+    const tool = makeArtanisPostForumUpdateTool()
+
+    expect(tool.kind).toBe('gated')
+    expect(tool.riskyActionKind).toBe('forum_post')
+    expect(typeof tool.run).toBe('function')
+    expect('execute' in tool).toBe(false)
+  })
+
+  test('with NO execution seam it DEFERS and returns the public-safe plan', async () => {
+    const tool = makeArtanisPostForumUpdateTool()
+
+    const result = await Effect.runPromise(
+      tool.run({
+        action: 'reply',
+        bodyText: 'Fleet update: public issue burndown continues.',
+        idempotencyKey: 'artanis-forum-update-6435-a',
+        topicId: '88888888-4001-4001-8001-888888888888',
+      }),
+    )
+
+    expect(result.outcome).toBe('deferred')
+    if (result.outcome !== 'deferred') return
+    expect(result.reason).toBe('execution_not_wired')
+    expect(result.plan).toContain('Planned Artanis Forum update')
+    expect(result.plan).toContain('authority: forum_post')
+  })
+
+  test('NO owner approval defers without calling the Forum seam', async () => {
+    const calls: Array<unknown> = []
+    const tool = makeArtanisPostForumUpdateTool({
+      execution: {
+        isOwnerApproved: () => Effect.succeed(false),
+        postForumUpdate: input => {
+          calls.push(input)
+          return Effect.succeed({
+            action: 'reply',
+            forumRef: 'artanis',
+            idempotent: false,
+            kind: 'created',
+            postId: 'post-1',
+            postRef: 'post.public.forum.artanis.1',
+            publicUrl: '/forum/t/topic-1#post-post-1',
+            topicId: 'topic-1',
+            topicRef: 'topic.public.forum.artanis.topic-1',
+          } as const)
+        },
+      },
+    })
+
+    const result = await Effect.runPromise(
+      tool.run({
+        action: 'reply',
+        bodyText: 'Fleet update: public issue burndown continues.',
+        idempotencyKey: 'artanis-forum-update-6435-b',
+        topicId: '88888888-4001-4001-8001-888888888888',
+      }),
+    )
+
+    expect(result.outcome).toBe('deferred')
+    if (result.outcome !== 'deferred') return
+    expect(result.reason).toBe('no_effective_owner_approval')
+    expect(calls).toHaveLength(0)
+  })
+
+  test('owner-approved create_topic posts and returns public Forum refs', async () => {
+    const calls: Array<unknown> = []
+    const tool = makeArtanisPostForumUpdateTool({
+      execution: {
+        isOwnerApproved: () => Effect.succeed(true),
+        postForumUpdate: input => {
+          calls.push(input)
+          return Effect.succeed({
+            action: 'create_topic',
+            forumRef: input.forumRef,
+            idempotent: false,
+            kind: 'created',
+            postId: 'post-created',
+            postRef: 'post.public.forum.artanis.1',
+            publicUrl: '/forum/t/topic-created#post-post-created',
+            topicId: 'topic-created',
+            topicRef: 'topic.public.forum.artanis.topic-created',
+          } as const)
+        },
+      },
+    })
+
+    const result = await Effect.runPromise(
+      tool.run({
+        action: 'create_topic',
+        bodyText: 'Fleet update: #6435 is now wired for autonomous Forum posts.',
+        idempotencyKey: 'artanis-forum-update-6435-c',
+        title: 'Artanis fleet update',
+      }),
+    )
+
+    expect(result.outcome).toBe('executed')
+    if (result.outcome !== 'executed') return
+    expect(result.assignmentRef).toBe('post.public.forum.artanis.1')
+    expect(result.summary).toContain('forumAction: create_topic')
+    expect(result.summary).toContain('topic.public.forum.artanis.topic-created')
+    expect(result.summary).toContain('walletSpendAllowed=false')
+    expect(calls).toHaveLength(1)
+  })
+
+  test('blocks non-public-safe Forum body before approval or execution', async () => {
+    const approvalCalls: Array<unknown> = []
+    const tool = makeArtanisPostForumUpdateTool({
+      execution: {
+        isOwnerApproved: () => {
+          approvalCalls.push(true)
+          return Effect.succeed(true)
+        },
+        postForumUpdate: () =>
+          Effect.succeed({
+            kind: 'rejected',
+            reason: 'should_not_happen',
+          } as const),
+      },
+    })
+
+    const result = await Effect.runPromise(
+      tool.run({
+        action: 'reply',
+        bodyText: 'Use bearer token sk-abc123 and payout wallet now.',
+        idempotencyKey: 'artanis-forum-update-6435-d',
+        topicId: '88888888-4001-4001-8001-888888888888',
+      }),
+    )
+
+    expect(result.outcome).toBe('deferred')
+    if (result.outcome !== 'deferred') return
+    expect(result.reason).toBe('invalid_arguments')
+    expect(result.plan).toContain('blocked')
+    expect(approvalCalls).toHaveLength(0)
   })
 })
 
@@ -2232,6 +2372,7 @@ describe('makeArtanisOperatorTools default table', () => {
       'list_github_issues',
       'list_pylon_assignments',
       'list_repo_dir',
+      'post_forum_update',
       'read_github_issue',
       'read_repo_file',
       'trigger_synthetic_load',
@@ -2303,6 +2444,13 @@ describe('makeArtanisOperatorTools default table', () => {
     )
     expect(tool).toBeDefined()
     expect(tool?.kind).toBe('risky')
+  })
+
+  test('the default table includes a gated post_forum_update tool', () => {
+    const tools = makeArtanisOperatorTools()
+    const tool = tools.find(t => t.definition.name === 'post_forum_update')
+    expect(tool).toBeDefined()
+    expect(tool?.kind).toBe('gated')
   })
 
   test('a shared repoRead fetch stub also drives the issue-read tool', async () => {

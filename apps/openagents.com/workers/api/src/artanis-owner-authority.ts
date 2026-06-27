@@ -15,15 +15,18 @@
 //      owner-agent set below, alongside the human admin email set and the admin
 //      API token. He no longer needs the human admin email to reach his own
 //      operator surface.
-//   2. A STANDING owner approval for his own `pylon_job_dispatch` actions, so the
-//      gated `dispatch_codex_task` tool EXECUTES for him without a separately
-//      armed `artanis_approval_gates` row. This is equivalent to a permanent
-//      owner approval for his own-capacity, no-spend Codex dispatch.
+//   2. A STANDING owner approval for his own `pylon_job_dispatch` and
+//      `forum_post` actions, so the gated `dispatch_codex_task` and
+//      `post_forum_update` tools EXECUTE for him without a separately armed
+//      `artanis_approval_gates` row. This is equivalent to a permanent owner
+//      approval for his own-capacity, no-spend Codex dispatch and public-safe
+//      Forum updates under his own agent identity.
 //
 // THE BOUNDS (NEVER-WAIVABLE — these hold even for owner-Artanis)
 // --------------------------------------------------------------
-//   - The standing approval is scoped to `pylon_job_dispatch` ONLY. `wallet_spend`,
-//     `settlement`, `l402_redemption`, and every other money-movement /
+//   - The standing approval is scoped to `pylon_job_dispatch` and `forum_post`
+//     ONLY. `wallet_spend`, `settlement`, `l402_redemption`, and every other
+//     money-movement /
 //     payout-bearing risky-action kind remain GATED and still require an explicit
 //     effective `artanisApprovalGateEffective` gate. The promotion grants NO new
 //     payout authority and invents NO new custody path.
@@ -90,12 +93,14 @@ export const isOpenAgentsOwnerAgentActorRef = (
   OPENAGENTS_OWNER_AGENT_ACTOR_REFS.some(ref => sameId(ref, actorRef))
 
 // True when the owner-promoted operator agent holds a STANDING owner approval for
-// the given risky-action kind. The promotion standing-approves `pylon_job_dispatch`
-// ONLY; every money-movement / payout-bearing kind stays gated and returns false
-// here (it must still go through an explicit effective approval gate).
+// the given risky-action kind. The promotion standing-approves
+// `pylon_job_dispatch` and `forum_post` ONLY; every money-movement /
+// payout-bearing kind stays gated and returns false here (it must still go
+// through an explicit effective approval gate).
 export const ownerAgentHasStandingApprovalForRiskyAction = (
   openAuthUserId: string | null | undefined,
   riskyActionKind: string,
 ): boolean =>
-  riskyActionKind === 'pylon_job_dispatch' &&
+  (riskyActionKind === 'pylon_job_dispatch' ||
+    riskyActionKind === 'forum_post') &&
   isOpenAgentsOwnerAgentOpenAuthUserId(openAuthUserId)

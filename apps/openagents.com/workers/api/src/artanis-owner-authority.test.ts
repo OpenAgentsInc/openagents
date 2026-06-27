@@ -61,12 +61,18 @@ describe('artanis owner promotion identity', () => {
   })
 })
 
-describe('owner promotion is bounded to pylon_job_dispatch only', () => {
-  test('standing approval covers pylon_job_dispatch for owner-Artanis', () => {
+describe('owner promotion standing approvals stay bounded', () => {
+  test('standing approval covers pylon_job_dispatch and forum_post for owner-Artanis', () => {
     expect(
       ownerAgentHasStandingApprovalForRiskyAction(
         ARTANIS_OWNER_OPENAUTH_USER_ID,
         'pylon_job_dispatch',
+      ),
+    ).toBe(true)
+    expect(
+      ownerAgentHasStandingApprovalForRiskyAction(
+        ARTANIS_OWNER_OPENAUTH_USER_ID,
+        'forum_post',
       ),
     ).toBe(true)
   })
@@ -90,11 +96,17 @@ describe('owner promotion is bounded to pylon_job_dispatch only', () => {
     }
   })
 
-  test('does not standing-approve pylon_job_dispatch for a non-promoted owner', () => {
+  test('does not standing-approve bounded actions for a non-promoted owner', () => {
     expect(
       ownerAgentHasStandingApprovalForRiskyAction(
         'github:14167547',
         'pylon_job_dispatch',
+      ),
+    ).toBe(false)
+    expect(
+      ownerAgentHasStandingApprovalForRiskyAction(
+        'github:14167547',
+        'forum_post',
       ),
     ).toBe(false)
   })

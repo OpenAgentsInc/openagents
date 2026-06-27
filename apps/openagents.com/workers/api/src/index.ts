@@ -105,7 +105,10 @@ import {
   makeArtanisDispatchExecution,
   readEffectiveArtanisPylonDispatchApprovalForOwner,
 } from './artanis-operator-dispatch-execution'
-import { isOpenAgentsOwnerAgentOpenAuthUserId } from './artanis-owner-authority'
+import {
+  isOpenAgentsOwnerAgentOpenAuthUserId,
+  ownerAgentHasStandingApprovalForRiskyAction,
+} from './artanis-owner-authority'
 import {
   makeArtanisPylonAssignmentsLister,
   makeArtanisPylonJobStatusReader,
@@ -113,7 +116,10 @@ import {
 import { makeArtanisGlmFleetStatusLoader } from './artanis-operator-glm-fleet-status'
 import { makeArtanisKhalaFeedbackReader } from './artanis-operator-khala-feedback'
 import { makeArtanisTraceReviewLoader } from './artanis-operator-trace-review'
-import { makeArtanisOperatorTools } from './artanis-operator-tools'
+import {
+  makeArtanisForumPostExecution,
+  makeArtanisOperatorTools,
+} from './artanis-operator-tools'
 import {
   makeArtanisUnsupportedRequestsReader,
   makeArtanisUnsupportedRequestWriter,
@@ -8673,6 +8679,18 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
       unsupportedRequestWriter: makeArtanisUnsupportedRequestWriter({
         nowIso: currentIsoTimestamp,
         store: makeD1KhalaUnsupportedRequestStore(openAgentsDatabase(env)),
+      }),
+      forumPostExecution: makeArtanisForumPostExecution({
+        db: openAgentsDatabase(env),
+        isOwnerApproved: () =>
+          Effect.succeed(
+            ownerAgentHasStandingApprovalForRiskyAction(
+              session.user.userId,
+              'forum_post',
+            ),
+          ),
+        makeId: randomUuid,
+        nowIso: currentIsoTimestamp,
       }),
       dispatchExecution: makeArtanisDispatchExecution({
         listLinkedAgentUserIds,
