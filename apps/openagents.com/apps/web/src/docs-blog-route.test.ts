@@ -124,9 +124,7 @@ describe('docs and blog routes', () => {
     Scene.scene(
       { update, view },
       Scene.with(LoggedOut.init(DocsPageRoute({ slug: 'autonomous-qa' }))),
-      Scene.expect(
-        Scene.role('heading', { name: 'Autonomous QA' }),
-      ).toExist(),
+      Scene.expect(Scene.role('heading', { name: 'Autonomous QA' })).toExist(),
       Scene.expect(
         Scene.text(
           'The core path is free, local-first, and runtime-agnostic. You run it on your own machine, against your own server, driven by any OpenAI-compatible model you bring — OpenAI, OpenRouter, a local llama.cpp / vLLM / Ollama server, or openagents/khala if you want it. No OpenAgents account, login, or key is required.',
@@ -285,9 +283,7 @@ describe('docs and blog routes', () => {
       ).toExist(),
       Scene.expect(Scene.role('link', { name: 'Docs' })).toExist(),
       Scene.expect(Scene.role('link', { name: 'Blog' })).toExist(),
-      Scene.expect(
-        Scene.selector('[data-account-menu-trigger]'),
-      ).toExist(),
+      Scene.expect(Scene.selector('[data-account-menu-trigger]')).toExist(),
       Scene.expect(Scene.role('menuitem', { name: 'Log out' })).toExist(),
       Scene.expect(
         Scene.role('navigation', { name: 'OpenAgents navigation' }),
@@ -504,6 +500,18 @@ describe('docs and blog routes', () => {
         report: {
           agentId: 'agent_artanis',
           agentRef: 'artanis',
+          activityLog: [
+            {
+              actorRef: 'Codex-1',
+              detail: 'completed public loop tick retained',
+              entryRef: 'activity.public.artanis.loop_tick_projection',
+              publicIssueNumber: 6415,
+              repoRef: 'OpenAgentsInc/openagents',
+              sourceRefs: ['loop.public.artanis.primary'],
+              status: 'projected',
+              title: 'Loop tick projected',
+            },
+          ],
           artifactRefs: ['artifact.public.artanis.status_packet'],
           autonomousLoop: {
             active: true,
@@ -518,6 +526,32 @@ describe('docs and blog routes', () => {
             receiptRefs: ['receipt.public.artanis.tick_closeout'],
             state: 'running',
             tickCount: 1,
+          },
+          brainSummary: {
+            decisionLog: [
+              {
+                decisionRef: 'decision.public.artanis.dispatch_gate',
+                evidenceRefs: ['gate.public.artanis.production_launch.v1'],
+                outcome: 'blocked',
+                publicIssueNumber: 6415,
+                reason:
+                  'Keep dispatch blocked until the public authority gate changes',
+                title: 'Dispatch gate',
+              },
+            ],
+            failureModes: [
+              {
+                count: 1,
+                failureModeRef:
+                  'failure_mode.public.artanis.authority_blockers',
+                label: 'Authority blockers',
+                publicIssueNumber: 6415,
+                recoveryRefs: [
+                  'blocker.public.artanis.dispatch_authority_not_granted',
+                ],
+              },
+            ],
+            sourceRefs: ['gate.public.artanis.production_launch.v1'],
           },
           campaignRef: 'campaign.r10_pylon',
           claimStateCaveats: [

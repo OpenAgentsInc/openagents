@@ -13,6 +13,10 @@ import type {
   PublicAdjutantDeployedSite,
   PublicAgentGoal,
   PublicAgentGoalEvent,
+  PublicArtanisActivityLogEntry,
+  PublicArtanisBrainSummary,
+  PublicArtanisDecisionLogEntry,
+  PublicArtanisFailureModeSummary,
   PublicArtanisForumRewardSmoke,
   PublicArtanisForumRewardVisibility,
   PublicArtanisProductionLaunchGate,
@@ -900,6 +904,243 @@ const artanisOmegaReleaseGateView = (
   )
 }
 
+const issueLabel = (issueNumber: number | null): string =>
+  issueNumber === null ? 'no public issue' : `#${issueNumber}`
+
+const artanisActivityEntryView = (
+  entry: PublicArtanisActivityLogEntry,
+): Html => {
+  const h = html<Message>()
+
+  return h.li(
+    [
+      Ui.className<Message>(
+        'grid gap-2 border-b border-[#1b1b1b] py-3 last:border-b-0',
+      ),
+    ],
+    [
+      h.div(
+        [Ui.className<Message>('grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]')],
+        [
+          h.div(
+            [Ui.className<Message>('min-w-0')],
+            [
+              h.div(
+                [
+                  Ui.className<Message>(
+                    'truncate text-[0.8125rem] text-[#f1efe8]',
+                  ),
+                ],
+                [entry.title],
+              ),
+              h.div(
+                [
+                  Ui.className<Message>(
+                    'break-words text-[0.75rem] leading-5 text-white/45',
+                  ),
+                ],
+                [entry.detail],
+              ),
+            ],
+          ),
+          h.div(
+            [
+              Ui.className<Message>(
+                'flex flex-wrap items-start gap-2 text-[0.6875rem] text-white/35 sm:justify-end',
+              ),
+            ],
+            [
+              h.span(
+                [Ui.className<Message>('border border-[#333] px-2 py-1')],
+                [entry.actorRef],
+              ),
+              h.span(
+                [Ui.className<Message>('border border-[#333] px-2 py-1')],
+                [entry.status],
+              ),
+              h.span(
+                [Ui.className<Message>('border border-[#333] px-2 py-1')],
+                [issueLabel(entry.publicIssueNumber)],
+              ),
+            ],
+          ),
+        ],
+      ),
+      h.div(
+        [Ui.className<Message>('text-[0.75rem] text-white/35')],
+        [compactRefs(entry.sourceRefs)],
+      ),
+    ],
+  )
+}
+
+const artanisDecisionEntryView = (
+  decision: PublicArtanisDecisionLogEntry,
+): Html => {
+  const h = html<Message>()
+
+  return h.li(
+    [
+      Ui.className<Message>(
+        'grid gap-2 border-b border-[#1b1b1b] py-3 last:border-b-0',
+      ),
+    ],
+    [
+      h.div(
+        [Ui.className<Message>('flex flex-wrap items-center gap-2')],
+        [
+          h.span(
+            [Ui.className<Message>('text-[0.8125rem] text-[#f1efe8]')],
+            [decision.title],
+          ),
+          h.span(
+            [
+              Ui.className<Message>(
+                'border border-[#333] px-2 py-1 text-[0.6875rem] text-white/45',
+              ),
+            ],
+            [decision.outcome],
+          ),
+          h.span(
+            [
+              Ui.className<Message>(
+                'border border-[#333] px-2 py-1 text-[0.6875rem] text-white/35',
+              ),
+            ],
+            [issueLabel(decision.publicIssueNumber)],
+          ),
+        ],
+      ),
+      h.div(
+        [Ui.className<Message>('break-words text-[0.75rem] text-white/45')],
+        [decision.reason],
+      ),
+      h.div(
+        [Ui.className<Message>('text-[0.75rem] text-white/35')],
+        [compactRefs(decision.evidenceRefs)],
+      ),
+    ],
+  )
+}
+
+const artanisFailureModeView = (
+  failureMode: PublicArtanisFailureModeSummary,
+): Html => {
+  const h = html<Message>()
+
+  return h.li(
+    [
+      Ui.className<Message>(
+        'grid gap-1 border-b border-[#1b1b1b] py-2 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_auto]',
+      ),
+    ],
+    [
+      h.div(
+        [Ui.className<Message>('min-w-0')],
+        [
+          h.div(
+            [Ui.className<Message>('text-[0.75rem] text-[#f1efe8]')],
+            [failureMode.label],
+          ),
+          h.div(
+            [Ui.className<Message>('break-words text-[0.75rem] text-white/35')],
+            [compactRefs(failureMode.recoveryRefs)],
+          ),
+        ],
+      ),
+      h.div(
+        [
+          Ui.className<Message>(
+            'flex items-start gap-2 text-[0.6875rem] text-white/35 sm:justify-end',
+          ),
+        ],
+        [
+          h.span(
+            [Ui.className<Message>('border border-[#333] px-2 py-1')],
+            [`${formatNumber(failureMode.count)} total`],
+          ),
+          h.span(
+            [Ui.className<Message>('border border-[#333] px-2 py-1')],
+            [issueLabel(failureMode.publicIssueNumber)],
+          ),
+        ],
+      ),
+    ],
+  )
+}
+
+const artanisActivityBrainView = (
+  activityLog: ReadonlyArray<PublicArtanisActivityLogEntry>,
+  brain: PublicArtanisBrainSummary,
+): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [
+      Ui.className<Message>(
+        'grid gap-3 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]',
+      ),
+    ],
+    [
+      h.section(
+        [
+          Ui.className<Message>(
+            'grid gap-3 border border-[#222] bg-[#010102] p-3',
+          ),
+        ],
+        [
+          h.div(
+            [Ui.className<Message>('flex items-center justify-between gap-3')],
+            [
+              h.div(
+                [Ui.className<Message>('text-[0.75rem] text-white/45')],
+                ['The Log'],
+              ),
+              h.div(
+                [Ui.className<Message>('text-[0.6875rem] text-white/35')],
+                [`${formatNumber(activityLog.length)} entries`],
+              ),
+            ],
+          ),
+          h.ol(
+            [Ui.className<Message>('max-h-[28rem] overflow-hidden')],
+            activityLog.map(artanisActivityEntryView),
+          ),
+        ],
+      ),
+      h.section(
+        [
+          Ui.className<Message>(
+            'grid gap-3 border border-[#222] bg-[#010102] p-3',
+          ),
+        ],
+        [
+          h.div(
+            [Ui.className<Message>('text-[0.75rem] text-white/45')],
+            ['The Brain'],
+          ),
+          h.ol(
+            [Ui.className<Message>('grid')],
+            brain.decisionLog.map(artanisDecisionEntryView),
+          ),
+          h.div(
+            [Ui.className<Message>('text-[0.75rem] text-white/45')],
+            ['Failure modes'],
+          ),
+          h.ol(
+            [Ui.className<Message>('grid')],
+            brain.failureModes.map(artanisFailureModeView),
+          ),
+          h.div(
+            [Ui.className<Message>('text-[0.75rem] text-white/35')],
+            [compactRefs(brain.sourceRefs)],
+          ),
+        ],
+      ),
+    ],
+  )
+}
+
 const artanisReportLoadedView = (report: PublicArtanisReport): Html => {
   const h = html<Message>()
   const blockers = report.publicBlockerRefs.slice(0, 5)
@@ -1065,6 +1306,7 @@ const artanisReportLoadedView = (report: PublicArtanisReport): Html => {
           ),
         ],
       ),
+      artanisActivityBrainView(report.activityLog, report.brainSummary),
       artanisPylonLaunchView(report.pylonLaunchCommunication),
       artanisOmegaReleaseGateView(report.pylonOmegaReleaseGate),
       artanisProductionLaunchGateView(report.productionLaunchGate),

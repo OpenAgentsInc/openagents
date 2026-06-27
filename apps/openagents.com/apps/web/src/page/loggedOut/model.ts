@@ -2,11 +2,14 @@ import { ShareProjectionV1 } from '@openagentsinc/sync-schema'
 import { Option, Schema as S } from 'effect'
 import { ts } from 'foldkit/schema'
 
-import { LoggedOutRoute } from '../../route'
 import { Session } from '../../domain/session'
+import { LoggedOutRoute } from '../../route'
 import { FlowModel, initFlowModel } from '../autopilot-onboarding/flow'
 import { KhalaChatModel, initKhalaChatModel } from '../khala-chat/flow'
-import { BlobRef as AtifBlobRef, Trajectory as AtifTrajectory } from '../trace/atif'
+import {
+  BlobRef as AtifBlobRef,
+  Trajectory as AtifTrajectory,
+} from '../trace/atif'
 import { SAMPLE_TRACE_UUID } from '../trace/sample'
 import { GymModel, initGymModel } from './gym/flow'
 import { GymRunProgressPublicProjection } from './gym/runProgress'
@@ -868,11 +871,54 @@ export const PublicArtanisReportStateCaveat = S.Struct({
 export type PublicArtanisReportStateCaveat =
   typeof PublicArtanisReportStateCaveat.Type
 
+export const PublicArtanisActivityLogEntry = S.Struct({
+  actorRef: S.String,
+  detail: S.String,
+  entryRef: S.String,
+  publicIssueNumber: S.NullOr(S.Number),
+  repoRef: S.String,
+  sourceRefs: S.Array(S.String),
+  status: S.String,
+  title: S.String,
+})
+export type PublicArtanisActivityLogEntry =
+  typeof PublicArtanisActivityLogEntry.Type
+
+export const PublicArtanisDecisionLogEntry = S.Struct({
+  decisionRef: S.String,
+  evidenceRefs: S.Array(S.String),
+  outcome: S.String,
+  publicIssueNumber: S.NullOr(S.Number),
+  reason: S.String,
+  title: S.String,
+})
+export type PublicArtanisDecisionLogEntry =
+  typeof PublicArtanisDecisionLogEntry.Type
+
+export const PublicArtanisFailureModeSummary = S.Struct({
+  count: S.Number,
+  failureModeRef: S.String,
+  label: S.String,
+  publicIssueNumber: S.NullOr(S.Number),
+  recoveryRefs: S.Array(S.String),
+})
+export type PublicArtanisFailureModeSummary =
+  typeof PublicArtanisFailureModeSummary.Type
+
+export const PublicArtanisBrainSummary = S.Struct({
+  decisionLog: S.Array(PublicArtanisDecisionLogEntry),
+  failureModes: S.Array(PublicArtanisFailureModeSummary),
+  sourceRefs: S.Array(S.String),
+})
+export type PublicArtanisBrainSummary = typeof PublicArtanisBrainSummary.Type
+
 export const PublicArtanisReport = S.Struct({
   agentId: S.String,
   agentRef: S.String,
+  activityLog: S.Array(PublicArtanisActivityLogEntry),
   artifactRefs: S.Array(S.String),
   autonomousLoop: PublicArtanisReportLoopSummary,
+  brainSummary: PublicArtanisBrainSummary,
   campaignRef: S.String,
   claimStateCaveats: S.Array(PublicArtanisReportStateCaveat),
   displayName: S.String,
@@ -945,10 +991,7 @@ export const PublicKhalaTokensServed = S.Struct({
 })
 export type PublicKhalaTokensServed = typeof PublicKhalaTokensServed.Type
 
-export const IdlePublicKhalaTokensServed = ts(
-  'PublicKhalaTokensServedIdle',
-  {},
-)
+export const IdlePublicKhalaTokensServed = ts('PublicKhalaTokensServedIdle', {})
 export const LoadingPublicKhalaTokensServed = ts(
   'PublicKhalaTokensServedLoading',
   {},
@@ -1410,31 +1453,35 @@ export const initSettledFeedModel = (): SettledFeedModel =>
 // socket-down fallback seed (monotone: it only ever raises the displayed total).
 // This slice is purely live transport state; the total lives on
 // `publicKhalaTokensServed`.
-export const KhalaTokensServedStreamModel = ts('LoggedOutKhalaTokensServedStream', {
-  connection: SettledFeedConnection,
-  cursor: S.Number,
-  appliedEventRefs: S.Array(S.String),
-  // The WebSocket must open at the SEEDED cursor, never at 0 (openagents #6324).
-  // The stream subscription opened at the init cursor 0 before the snapshot load
-  // resolved (and its keep-alive equivalence intentionally ignores the live
-  // cursor), so it replayed the ENTIRE per-completion delta history from seq 1 on
-  // every load — a flood that, combined with old-format pre-authoritative-total
-  // rows, the client could not apply past the seed (the frozen counter). We gate
-  // socket activation on this flag: the snapshot load (or its failure fallback)
-  // flips it true AFTER it has seeded `cursor`, so the socket opens once at the
-  // seeded cursor and delivers ONLY new deltas. Bounded replay; live increments.
-  snapshotLoaded: S.Boolean,
-})
+export const KhalaTokensServedStreamModel = ts(
+  'LoggedOutKhalaTokensServedStream',
+  {
+    connection: SettledFeedConnection,
+    cursor: S.Number,
+    appliedEventRefs: S.Array(S.String),
+    // The WebSocket must open at the SEEDED cursor, never at 0 (openagents #6324).
+    // The stream subscription opened at the init cursor 0 before the snapshot load
+    // resolved (and its keep-alive equivalence intentionally ignores the live
+    // cursor), so it replayed the ENTIRE per-completion delta history from seq 1 on
+    // every load — a flood that, combined with old-format pre-authoritative-total
+    // rows, the client could not apply past the seed (the frozen counter). We gate
+    // socket activation on this flag: the snapshot load (or its failure fallback)
+    // flips it true AFTER it has seeded `cursor`, so the socket opens once at the
+    // seeded cursor and delivers ONLY new deltas. Bounded replay; live increments.
+    snapshotLoaded: S.Boolean,
+  },
+)
 export type KhalaTokensServedStreamModel =
   typeof KhalaTokensServedStreamModel.Type
 
-export const initKhalaTokensServedStreamModel = (): KhalaTokensServedStreamModel =>
-  KhalaTokensServedStreamModel({
-    connection: 'idle',
-    cursor: 0,
-    appliedEventRefs: [],
-    snapshotLoaded: false,
-  })
+export const initKhalaTokensServedStreamModel =
+  (): KhalaTokensServedStreamModel =>
+    KhalaTokensServedStreamModel({
+      connection: 'idle',
+      cursor: 0,
+      appliedEventRefs: [],
+      snapshotLoaded: false,
+    })
 
 // Live Gym / Harbor run-progress follow-along (#6261). The `/gym` route polls
 // `GET /api/public/gym/run-progress` and renders EVERY returned run live
@@ -1473,8 +1520,7 @@ export const GymRunProgressStreamModel = ts('LoggedOutGymRunProgressStream', {
   cursor: S.Number,
   appliedEventRefs: S.Array(S.String),
 })
-export type GymRunProgressStreamModel =
-  typeof GymRunProgressStreamModel.Type
+export type GymRunProgressStreamModel = typeof GymRunProgressStreamModel.Type
 
 export const initGymRunProgressStreamModel = (): GymRunProgressStreamModel =>
   GymRunProgressStreamModel({

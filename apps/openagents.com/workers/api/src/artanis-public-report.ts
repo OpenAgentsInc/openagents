@@ -259,6 +259,48 @@ export class ArtanisPublicReportAuthoritySummary extends S.Class<ArtanisPublicRe
   statusProjectionAllowed: S.Boolean,
 }) {}
 
+export class ArtanisPublicActivityLogEntry extends S.Class<ArtanisPublicActivityLogEntry>(
+  'ArtanisPublicActivityLogEntry',
+)({
+  actorRef: S.String,
+  detail: S.String,
+  entryRef: S.String,
+  publicIssueNumber: S.NullOr(S.Number),
+  repoRef: S.String,
+  sourceRefs: S.Array(S.String),
+  status: S.String,
+  title: S.String,
+}) {}
+
+export class ArtanisPublicDecisionLogEntry extends S.Class<ArtanisPublicDecisionLogEntry>(
+  'ArtanisPublicDecisionLogEntry',
+)({
+  decisionRef: S.String,
+  evidenceRefs: S.Array(S.String),
+  outcome: S.String,
+  publicIssueNumber: S.NullOr(S.Number),
+  reason: S.String,
+  title: S.String,
+}) {}
+
+export class ArtanisPublicFailureModeSummary extends S.Class<ArtanisPublicFailureModeSummary>(
+  'ArtanisPublicFailureModeSummary',
+)({
+  count: S.Number,
+  failureModeRef: S.String,
+  label: S.String,
+  publicIssueNumber: S.NullOr(S.Number),
+  recoveryRefs: S.Array(S.String),
+}) {}
+
+export class ArtanisPublicBrainSummary extends S.Class<ArtanisPublicBrainSummary>(
+  'ArtanisPublicBrainSummary',
+)({
+  decisionLog: S.Array(ArtanisPublicDecisionLogEntry),
+  failureModes: S.Array(ArtanisPublicFailureModeSummary),
+  sourceRefs: S.Array(S.String),
+}) {}
+
 export class ArtanisPublicReportClaimSummary extends S.Class<ArtanisPublicReportClaimSummary>(
   'ArtanisPublicReportClaimSummary',
 )({
@@ -288,8 +330,10 @@ export class ArtanisPublicReport extends S.Class<ArtanisPublicReport>(
   agentId: S.String,
   agentRef: S.String,
   artifactRefs: S.Array(S.String),
+  activityLog: S.Array(ArtanisPublicActivityLogEntry),
   authoritySummary: ArtanisPublicReportAuthoritySummary,
   autonomousLoop: ArtanisPublicReportLoopSummary,
+  brainSummary: ArtanisPublicBrainSummary,
   campaignRef: S.String,
   claimStateCaveats: S.Array(ArtanisPublicReportStateCaveat),
   displayName: S.String,
@@ -348,6 +392,186 @@ const safeRefSuffix = (value: string): string =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '') || 'unknown'
+
+const genericActorRef = (index: number): string => `Codex-${index + 1}`
+
+const publicActivityLog = (input: {
+  authority: ArtanisPublicReportAuthoritySummary
+  autonomousLoop: ArtanisPublicReportLoopSummary
+  health: ArtanisPublicReportHealthSummary
+  modelLab: ArtanisPublicReportModelLabSummary
+  pylon: ArtanisPublicReportPylonSummary
+  productionLaunchGate: ArtanisProductionLaunchGateProjection
+}): ReadonlyArray<ArtanisPublicActivityLogEntry> => {
+  const entries = [
+    new ArtanisPublicActivityLogEntry({
+      actorRef: genericActorRef(0),
+      detail:
+        input.autonomousLoop.latestTickState === null
+          ? `${input.autonomousLoop.tickCount} public loop ticks retained`
+          : `${input.autonomousLoop.latestTickState.replace(/_/g, ' ')} public loop tick retained`,
+      entryRef: 'activity.public.artanis.loop_tick_projection',
+      publicIssueNumber: 6415,
+      repoRef: 'OpenAgentsInc/openagents',
+      sourceRefs: uniqueRefs([
+        input.autonomousLoop.loopRef,
+        ...(input.autonomousLoop.latestTickRef === null
+          ? []
+          : [input.autonomousLoop.latestTickRef]),
+      ]),
+      status: input.autonomousLoop.projectionStale ? 'stale' : 'projected',
+      title: 'Loop tick projected',
+    }),
+    new ArtanisPublicActivityLogEntry({
+      actorRef: genericActorRef(1),
+      detail: `${input.pylon.pylonsOnlineNow} public Pylons online, ${input.pylon.assignmentReadyPylonsOnlineNow} assignment-ready`,
+      entryRef: 'activity.public.artanis.pylon_capacity_review',
+      publicIssueNumber: 6359,
+      repoRef: 'OpenAgentsInc/openagents',
+      sourceRefs: input.pylon.sourceRefs,
+      status: input.pylon.feedStatus,
+      title: 'Capacity reviewed',
+    }),
+    new ArtanisPublicActivityLogEntry({
+      actorRef: genericActorRef(2),
+      detail: `${input.modelLab.completeSectionCount} of ${input.modelLab.sectionCount} public Model Lab sections complete`,
+      entryRef: 'activity.public.artanis.model_lab_review',
+      publicIssueNumber: 6386,
+      repoRef: 'OpenAgentsInc/openagents',
+      sourceRefs: uniqueRefs([
+        ...(input.modelLab.reportRef === null
+          ? []
+          : [input.modelLab.reportRef]),
+        ...input.modelLab.publicForumSummaryReportRefs,
+      ]),
+      status: input.modelLab.readiness,
+      title: 'Model Lab reviewed',
+    }),
+    new ArtanisPublicActivityLogEntry({
+      actorRef: genericActorRef(3),
+      detail: input.authority.dispatchAuthorityAllowed
+        ? 'Dispatch authority is currently allowed by public gate state'
+        : 'Dispatch authority remains blocked by public gate state',
+      entryRef: 'activity.public.artanis.authority_gate_review',
+      publicIssueNumber: 6415,
+      repoRef: 'OpenAgentsInc/openagents',
+      sourceRefs: uniqueRefs([
+        input.productionLaunchGate.gateRef,
+        ...input.authority.authorityBlockerRefs.slice(0, 6),
+      ]),
+      status: input.authority.dispatchAuthorityAllowed ? 'allowed' : 'blocked',
+      title: 'Authority gate reviewed',
+    }),
+    new ArtanisPublicActivityLogEntry({
+      actorRef: genericActorRef(4),
+      detail:
+        input.health.staleOrBlockedSignalCount === 0
+          ? 'Public health summary has no stale or blocked signals'
+          : `${input.health.staleOrBlockedSignalCount} public health signals need attention`,
+      entryRef: 'activity.public.artanis.health_triage',
+      publicIssueNumber: 6415,
+      repoRef: 'OpenAgentsInc/openagents',
+      sourceRefs: input.health.publicStatusRefs.slice(0, 8),
+      status: input.health.overallState,
+      title: 'Health triaged',
+    }),
+  ]
+
+  return entries
+}
+
+const publicBrainSummary = (input: {
+  authority: ArtanisPublicReportAuthoritySummary
+  health: ArtanisPublicReportHealthSummary
+  modelLab: ArtanisPublicReportModelLabSummary
+  publicBlockerRefs: ReadonlyArray<string>
+  pylon: ArtanisPublicReportPylonSummary
+  productionLaunchGate: ArtanisProductionLaunchGateProjection
+}): ArtanisPublicBrainSummary => {
+  const dispatchDecision = input.authority.dispatchAuthorityAllowed
+    ? 'Dispatch can proceed inside the current public gate'
+    : 'Keep dispatch blocked until the public authority gate changes'
+  const pylonDecision = input.pylon.earningLaunchGate.publicEarningCopyAllowed
+    ? 'Use Pylon readiness in public recruitment copy'
+    : 'Keep Pylon earning copy behind readiness caveats'
+  const modelLabDecision =
+    input.modelLab.readiness === 'ready'
+      ? 'Treat Model Lab summary as ready public evidence'
+      : 'Keep Model Lab summary in blocker review'
+  const failureModes = [
+    new ArtanisPublicFailureModeSummary({
+      count: input.authority.authorityBlockerRefs.length,
+      failureModeRef: 'failure_mode.public.artanis.authority_blockers',
+      label: 'Authority blockers',
+      publicIssueNumber: 6415,
+      recoveryRefs: input.authority.authorityBlockerRefs.slice(0, 6),
+    }),
+    new ArtanisPublicFailureModeSummary({
+      count: input.health.staleOrBlockedSignalCount,
+      failureModeRef: 'failure_mode.public.artanis.health_attention',
+      label: 'Health signals needing attention',
+      publicIssueNumber: 6415,
+      recoveryRefs: input.health.publicRecoveryActionRefs.slice(0, 6),
+    }),
+    new ArtanisPublicFailureModeSummary({
+      count: input.publicBlockerRefs.length,
+      failureModeRef: 'failure_mode.public.artanis.public_blockers',
+      label: 'Public blockers',
+      publicIssueNumber: 6415,
+      recoveryRefs: input.publicBlockerRefs.slice(0, 6),
+    }),
+  ]
+
+  return new ArtanisPublicBrainSummary({
+    decisionLog: [
+      new ArtanisPublicDecisionLogEntry({
+        decisionRef: 'decision.public.artanis.dispatch_gate',
+        evidenceRefs: uniqueRefs([
+          input.productionLaunchGate.gateRef,
+          ...input.authority.authorityBlockerRefs.slice(0, 6),
+        ]),
+        outcome: input.authority.dispatchAuthorityAllowed
+          ? 'allowed'
+          : 'blocked',
+        publicIssueNumber: 6415,
+        reason: dispatchDecision,
+        title: 'Dispatch gate',
+      }),
+      new ArtanisPublicDecisionLogEntry({
+        decisionRef: 'decision.public.artanis.pylon_recruitment_copy',
+        evidenceRefs: uniqueRefs([
+          ...input.pylon.sourceRefs,
+          ...input.pylon.earningLaunchGate.blockerRefs.slice(0, 4),
+        ]),
+        outcome: input.pylon.earningLaunchGate.publicEarningCopyAllowed
+          ? 'use'
+          : 'hold',
+        publicIssueNumber: 6359,
+        reason: pylonDecision,
+        title: 'Pylon recruitment copy',
+      }),
+      new ArtanisPublicDecisionLogEntry({
+        decisionRef: 'decision.public.artanis.model_lab_evidence',
+        evidenceRefs: uniqueRefs([
+          ...(input.modelLab.reportRef === null
+            ? []
+            : [input.modelLab.reportRef]),
+          ...input.modelLab.missingEvidenceRefs.slice(0, 4),
+        ]),
+        outcome: input.modelLab.readiness,
+        publicIssueNumber: 6386,
+        reason: modelLabDecision,
+        title: 'Model Lab evidence',
+      }),
+    ],
+    failureModes,
+    sourceRefs: uniqueRefs([
+      input.productionLaunchGate.gateRef,
+      ...input.health.sourceRefs,
+      ...input.pylon.sourceRefs,
+    ]),
+  })
+}
 
 const publicReportStrings = (value: unknown): ReadonlyArray<string> => {
   if (typeof value === 'string') {
@@ -778,7 +1002,7 @@ const persistedLoopTerminalStates = new Set<ArtanisLoopState>([
 
 const persistedLoopStateForLatestTick = (
   tick: ArtanisLoopTickRecord,
-): ArtanisLoopState => tick.state === 'completed' ? 'running' : tick.state
+): ArtanisLoopState => (tick.state === 'completed' ? 'running' : tick.state)
 
 const sortLoopTicks = (
   ticks: ReadonlyArray<ArtanisLoopTickRecord>,
@@ -873,14 +1097,11 @@ const artanisLoopLedgerForReport = (
   }
 
   const latestTick = sortedTicks[sortedTicks.length - 1]!
-  const ticksByLoopRef = sortedTicks.reduce(
-    (groups, tick) => {
-      groups.set(tick.loopRef, [...(groups.get(tick.loopRef) ?? []), tick])
+  const ticksByLoopRef = sortedTicks.reduce((groups, tick) => {
+    groups.set(tick.loopRef, [...(groups.get(tick.loopRef) ?? []), tick])
 
-      return groups
-    },
-    new Map<string, ReadonlyArray<ArtanisLoopTickRecord>>(),
-  )
+    return groups
+  }, new Map<string, ReadonlyArray<ArtanisLoopTickRecord>>())
   const loops = [...ticksByLoopRef.entries()].map(([loopRef, ticks]) => {
     const first = ticks[0]!
     const newest = ticks[ticks.length - 1]!
@@ -1312,6 +1533,84 @@ export const artanisPublicReportSnapshot = (input: {
     walletReadyPylonsOnlineNow: input.pylonStats.pylonsWalletReadyNow,
   }
   const modelLabReport = modelLab.publicReport
+  const healthSummary: ArtanisPublicReportHealthSummary = {
+    attentionLabels: uniqueRefs(healthAttentionLabels),
+    blockerRefs: uniqueRefs([
+      ...health.blockerRefs,
+      ...health.overclaimBlockerRefs,
+      ...health.signals.flatMap(signal => signal.blockerRefs),
+    ]),
+    overclaimBlocked: health.overclaimBlocked,
+    overallState: health.overallState,
+    pendingApprovalCount: health.pendingApprovalCount,
+    publicRecoveryActionRefs: healthRecoveryRefs,
+    publicStatusRefs: uniqueRefs([
+      ...health.publicStatusRefs,
+      ...health.signals.flatMap(signal => signal.publicStatusRefs),
+    ]),
+    sourceRefs: health.sourceRefs,
+    staleOrBlockedSignalCount: health.staleOrBlockedSignalCount,
+    updatedAtDisplay: health.updatedAtDisplay,
+  }
+  const modelLabSummary: ArtanisPublicReportModelLabSummary = {
+    blockerRefs: modelLab.blockerRefs,
+    claimState: modelLabReport?.claimState ?? null,
+    completeSectionCount: modelLabReport?.completeSectionCount ?? 0,
+    consumedContractRefs: modelLab.consumedContractRefs,
+    missingContractRefs: modelLab.missingContractRefs,
+    missingEvidenceRefs: modelLab.missingEvidenceRefs,
+    publicForumSummaryReportRefs: modelLab.publicForumSummaryReportRefs,
+    publicPromotionClaimRefs: modelLab.publicPromotionClaimRefs,
+    readiness: modelLab.readiness,
+    reportRef: modelLabReport?.reportRef ?? null,
+    sectionCount: modelLabReport?.sectionCount ?? 0,
+    updatedAtDisplay: modelLab.updatedAtDisplay,
+  }
+  const autonomousLoopSummary: ArtanisPublicReportLoopSummary = {
+    active: activeLoop?.active ?? false,
+    artifactRefs: latestTick?.artifactRefs ?? [],
+    blockerRefs: uniqueRefs([
+      ...(activeLoop?.blockerRefs ?? []),
+      ...(latestTick?.blockerRefs ?? []),
+    ]),
+    caveatRefs: uniqueRefs([
+      ...(activeLoop?.caveatRefs ?? []),
+      ...(latestTick?.caveatRefs ?? []),
+      ...loopFreshnessCaveatRefs,
+    ]),
+    forumPublicationIntentRefs: latestTick?.forumPublicationIntentRefs ?? [],
+    latestTickAgeSeconds: loopFreshness.latestTickAgeSeconds,
+    latestTickRef: latestTick?.tickRef ?? null,
+    latestTickState: latestTick?.state ?? null,
+    loopRef: activeLoop?.loopRef ?? 'loop.public.artanis.none',
+    nextTickDisplay: latestTick?.nextTickDisplay ?? null,
+    nextTickOverdue: loopFreshness.nextTickOverdue,
+    projectionStale: loopFreshness.projectionStale,
+    receiptRefs: uniqueRefs([
+      ...(latestTick?.receiptRefs ?? []),
+      ...(latestTick?.closeoutReceiptRefs ?? []),
+    ]),
+    source: loopFreshness.source,
+    staleness: ARTANIS_LOOP_TICK_PROJECTION_STALENESS,
+    state: activeLoop?.state ?? 'blocked',
+    tickCount: activeLoop?.tickCount ?? 0,
+  }
+  const activityLog = publicActivityLog({
+    authority: authoritySummary,
+    autonomousLoop: autonomousLoopSummary,
+    health: healthSummary,
+    modelLab: modelLabSummary,
+    pylon: pylonSummary,
+    productionLaunchGate,
+  })
+  const brainSummary = publicBrainSummary({
+    authority: authoritySummary,
+    health: healthSummary,
+    modelLab: modelLabSummary,
+    publicBlockerRefs,
+    pylon: pylonSummary,
+    productionLaunchGate,
+  })
   const report: ArtanisPublicReport = {
     agentId: runtime.agentId,
     agentRef: runtime.agentRef,
@@ -1320,36 +1619,10 @@ export const artanisPublicReportSnapshot = (input: {
       ...publicationQueue.intents.flatMap(intent => intent.artifactRefs),
       ...(modelLabReport?.artifactRefs ?? []),
     ]),
+    activityLog,
     authoritySummary,
-    autonomousLoop: {
-      active: activeLoop?.active ?? false,
-      artifactRefs: latestTick?.artifactRefs ?? [],
-      blockerRefs: uniqueRefs([
-        ...(activeLoop?.blockerRefs ?? []),
-        ...(latestTick?.blockerRefs ?? []),
-      ]),
-      caveatRefs: uniqueRefs([
-        ...(activeLoop?.caveatRefs ?? []),
-        ...(latestTick?.caveatRefs ?? []),
-        ...loopFreshnessCaveatRefs,
-      ]),
-      forumPublicationIntentRefs: latestTick?.forumPublicationIntentRefs ?? [],
-      latestTickAgeSeconds: loopFreshness.latestTickAgeSeconds,
-      latestTickRef: latestTick?.tickRef ?? null,
-      latestTickState: latestTick?.state ?? null,
-      loopRef: activeLoop?.loopRef ?? 'loop.public.artanis.none',
-      nextTickDisplay: latestTick?.nextTickDisplay ?? null,
-      nextTickOverdue: loopFreshness.nextTickOverdue,
-      projectionStale: loopFreshness.projectionStale,
-      receiptRefs: uniqueRefs([
-        ...(latestTick?.receiptRefs ?? []),
-        ...(latestTick?.closeoutReceiptRefs ?? []),
-      ]),
-      source: loopFreshness.source,
-      staleness: ARTANIS_LOOP_TICK_PROJECTION_STALENESS,
-      state: activeLoop?.state ?? 'blocked',
-      tickCount: activeLoop?.tickCount ?? 0,
-    },
+    autonomousLoop: autonomousLoopSummary,
+    brainSummary,
     campaignRef: campaign.campaignRef,
     claimStateCaveats,
     displayName: runtime.displayName,
@@ -1357,39 +1630,8 @@ export const artanisPublicReportSnapshot = (input: {
     forumRewardSmoke,
     forumRewardVisibility,
     generatedAtUnixMs: Date.parse(nowIso),
-    healthSummary: {
-      attentionLabels: uniqueRefs(healthAttentionLabels),
-      blockerRefs: uniqueRefs([
-        ...health.blockerRefs,
-        ...health.overclaimBlockerRefs,
-        ...health.signals.flatMap(signal => signal.blockerRefs),
-      ]),
-      overclaimBlocked: health.overclaimBlocked,
-      overallState: health.overallState,
-      pendingApprovalCount: health.pendingApprovalCount,
-      publicRecoveryActionRefs: healthRecoveryRefs,
-      publicStatusRefs: uniqueRefs([
-        ...health.publicStatusRefs,
-        ...health.signals.flatMap(signal => signal.publicStatusRefs),
-      ]),
-      sourceRefs: health.sourceRefs,
-      staleOrBlockedSignalCount: health.staleOrBlockedSignalCount,
-      updatedAtDisplay: health.updatedAtDisplay,
-    },
-    modelLabSummary: {
-      blockerRefs: modelLab.blockerRefs,
-      claimState: modelLabReport?.claimState ?? null,
-      completeSectionCount: modelLabReport?.completeSectionCount ?? 0,
-      consumedContractRefs: modelLab.consumedContractRefs,
-      missingContractRefs: modelLab.missingContractRefs,
-      missingEvidenceRefs: modelLab.missingEvidenceRefs,
-      publicForumSummaryReportRefs: modelLab.publicForumSummaryReportRefs,
-      publicPromotionClaimRefs: modelLab.publicPromotionClaimRefs,
-      readiness: modelLab.readiness,
-      reportRef: modelLabReport?.reportRef ?? null,
-      sectionCount: modelLabReport?.sectionCount ?? 0,
-      updatedAtDisplay: modelLab.updatedAtDisplay,
-    },
+    healthSummary,
+    modelLabSummary,
     nexusPublicRefs: pylonSummary.nexusPublicRefs,
     gepaScheduledRunner,
     probeGepaProductionSmoke,

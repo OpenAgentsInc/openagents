@@ -112,6 +112,36 @@ describe('Artanis public report', () => {
         latestTickState: 'completed',
         state: 'running',
       },
+      activityLog: expect.arrayContaining([
+        expect.objectContaining({
+          actorRef: 'Codex-1',
+          publicIssueNumber: 6415,
+          repoRef: 'OpenAgentsInc/openagents',
+          title: 'Loop tick projected',
+        }),
+        expect.objectContaining({
+          actorRef: 'Codex-2',
+          publicIssueNumber: 6359,
+          title: 'Capacity reviewed',
+        }),
+      ]),
+      brainSummary: {
+        decisionLog: expect.arrayContaining([
+          expect.objectContaining({
+            publicIssueNumber: 6415,
+            title: 'Dispatch gate',
+          }),
+        ]),
+        failureModes: expect.arrayContaining([
+          expect.objectContaining({
+            failureModeRef: 'failure_mode.public.artanis.authority_blockers',
+            publicIssueNumber: 6415,
+          }),
+        ]),
+        sourceRefs: expect.arrayContaining([
+          'gate.public.artanis.production_launch.v1',
+        ]),
+      },
       modelLabSummary: {
         readiness: 'ready',
         reportRef: 'report.public.model_lab_autopilot_v2',
@@ -633,9 +663,7 @@ describe('Artanis public report', () => {
       })
 
       expect(report.autonomousLoop.source).toBe('persisted_loop_ticks')
-      expect(report.autonomousLoop.latestTickAgeSeconds).toBeGreaterThan(
-        86_400,
-      )
+      expect(report.autonomousLoop.latestTickAgeSeconds).toBeGreaterThan(86_400)
       expect(report.autonomousLoop.nextTickOverdue).toBe(true)
       expect(report.autonomousLoop.projectionStale).toBe(true)
       expect(report.autonomousLoop.caveatRefs).toContain(
