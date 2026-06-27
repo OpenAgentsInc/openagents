@@ -1350,6 +1350,76 @@ usage and the server inserts the canonical `token_usage_events` row. The public
 projection is live-at-read over that ledger, so the website can move
 immediately after insertion, but not before exact usage exists.
 
+## Post-Deploy Full Workspace Proof
+
+After deploying the scanner/stage patch as Worker version
+`4792c15e-7015-4889-ae2e-93cc647a9f59`, Pylon presence was refreshed with:
+
+- `provider go-online`: Pylon `pylon.33afd48282a649047e3a` online, local Codex
+  ready/available `1`;
+- `presence heartbeat`: linked, not stale, heartbeat sequence `511`;
+- public counter baseline: `438,085,453` tokens served at
+  `2026-06-27T08:23:41.254Z`.
+
+The first full workspace retry used a mistyped commit SHA
+`885af518c3902ef9316858aa8b53573de0d7c375`; the runner correctly refused with
+`reason.workspace_checkout.commit_missing_after_fetch` and produced zero token
+usage. That was operator error in the diagnostic command, not a Pylon or Codex
+failure. The correct pushed commit was
+`885af518c3bbd89ff1c2368971aab5d4578bcafa`.
+
+The corrected full workspace request created:
+
+```text
+assignment.public.khala_coding.chatcmpl_f939b6f3fd284b1aab866394420c63c1
+```
+
+The local Pylon/Codex runner accepted the assignment, materialized the public
+Git checkout at the exact pushed commit, ran the requested verification command,
+and closed out accepted:
+
+- edits: `0`;
+- commands: `31`;
+- turns: `1`;
+- verification: passed;
+- closeout ref: `assignment.closeout.c59796b91a6723c981c0eff5`;
+- durable request id: `chatcmpl_16833e81f2984fb49c6528d50880cc0a`.
+
+`khala proof` for that assignment reported:
+
+```json
+{
+  "tokenUsage": {
+    "rowCount": 1,
+    "usageTruth": "exact",
+    "inputTokens": 1619223,
+    "outputTokens": 6112,
+    "reasoningTokens": 494,
+    "cacheReadTokens": 1481344,
+    "totalTokens": 1625335
+  },
+  "traces": {
+    "count": 47,
+    "visibility": "owner_only",
+    "schemaVersion": "ATIF-v1.7"
+  },
+  "rawEvents": {
+    "count": 1,
+    "eventCount": 78,
+    "byteLength": 1988928,
+    "visibility": "owner_only"
+  }
+}
+```
+
+The public counter read after closeout was `439,711,922` at
+`2026-06-27T08:27:40.120Z`, with `composition: "live_at_read"`. The observed
+global delta from the pre-run baseline was `1,626,469`; the assignment proof
+accounts for `1,625,335` exact tokens. The remaining `1,134` tokens are ordinary
+global-ledger concurrency/noise between two public reads. Assignment-scoped
+`khala proof` is therefore the right source for exact per-run accounting, while
+the public counter is the live global projection.
+
 ## Bottom Line
 
 This assignment proves the backend evidence path mostly works:
