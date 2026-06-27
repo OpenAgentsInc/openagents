@@ -611,6 +611,70 @@ describe('coding workflow delegation', () => {
     expect(result.pylon.pylonRef).toBe('pylon.owner.codex')
   })
 
+  test('returns staged 503 when assignment list read fails', async () => {
+    const failingStore = {
+      ...makeStore({ registrations: [registration()] }),
+      listAssignmentsForPylon: async () => {
+        throw new Error('assignment read temporarily unavailable')
+      },
+    } satisfies PylonApiStore
+
+    const result = await delegateCodingWorkflow({
+      classification,
+      linkedAgents: [linkedOwner],
+      makeId: () => 'id1',
+      nowIso,
+      pylonStore: failingStore,
+      rawBody: {
+        openagents: { coding: { targetPylonRef: 'pylon.owner.codex' } },
+      },
+      requestId: 'chatcmpl_coding_assignment_list_fail',
+    })
+
+    expect(result).toMatchObject({
+      error: 'coding_delegation_store_unavailable',
+      evidenceRefs: expect.arrayContaining([
+        'evidence.khala_coding.dispatch.store_unavailable',
+        'evidence.khala_coding.dispatch.assignment_list_read_unavailable',
+      ]),
+      kind: 'rejected',
+      requestedPylonRef: 'pylon.owner.codex',
+      statusCode: 503,
+    })
+  })
+
+  test('returns staged 503 when assignment create fails', async () => {
+    const failingStore = {
+      ...makeStore({ registrations: [registration()] }),
+      createAssignment: async () => {
+        throw new Error('assignment write temporarily unavailable')
+      },
+    } satisfies PylonApiStore
+
+    const result = await delegateCodingWorkflow({
+      classification,
+      linkedAgents: [linkedOwner],
+      makeId: () => 'id1',
+      nowIso,
+      pylonStore: failingStore,
+      rawBody: {
+        openagents: { coding: { targetPylonRef: 'pylon.owner.codex' } },
+      },
+      requestId: 'chatcmpl_coding_assignment_create_fail',
+    })
+
+    expect(result).toMatchObject({
+      error: 'coding_delegation_store_unavailable',
+      evidenceRefs: expect.arrayContaining([
+        'evidence.khala_coding.dispatch.store_unavailable',
+        'evidence.khala_coding.dispatch.assignment_create_unavailable',
+      ]),
+      kind: 'rejected',
+      requestedPylonRef: 'pylon.owner.codex',
+      statusCode: 503,
+    })
+  })
+
   // #6331: a Pylon-store read failure inside the gate must surface as a clean,
   // diagnosable 503 rejection — never an unhandled throw that the chat route
   // turns into an opaque `500 internal_server_error`.
@@ -642,6 +706,12 @@ describe('coding workflow delegation', () => {
       throw new Error('expected a rejection, not a throw or assignment')
     }
     expect(result.error).toBe('coding_delegation_store_unavailable')
+    expect(result.evidenceRefs).toEqual(
+      expect.arrayContaining([
+        'evidence.khala_coding.dispatch.store_unavailable',
+        'evidence.khala_coding.dispatch.linked_owner_registration_read_unavailable',
+      ]),
+    )
     expect(result.statusCode).toBe(503)
     expect(result.requestedPylonRef).toBe('pylon.owner.codex')
   })

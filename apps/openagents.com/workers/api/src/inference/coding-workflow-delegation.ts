@@ -50,6 +50,11 @@ export type CodingDelegationRejection = Readonly<{
   statusCode: 400 | 403 | 409 | 503
 }>
 
+type CodingDelegationStoreUnavailableStage =
+  | 'assignment_create'
+  | 'assignment_list_read'
+  | 'linked_owner_registration_read'
+
 export type CodingDelegationResult =
   | CodingDelegationAssignmentResult
   | CodingDelegationRejection
@@ -299,15 +304,23 @@ const hasAvailableCodexCapacity = (
 
 const codingDelegationStoreUnavailableRejection = (
   requestedPylonRef: string | null,
-): CodingDelegationRejection => ({
-  error: 'coding_delegation_store_unavailable',
-  evidenceRefs: ['evidence.khala_coding.dispatch.store_unavailable'],
-  kind: 'rejected',
-  reason:
-    'The Khala coding dispatch gate could not read linked Pylon capacity right now. This is a transient gate failure, not an account problem — retry shortly.',
-  requestedPylonRef,
-  statusCode: 503,
-})
+  stage: CodingDelegationStoreUnavailableStage,
+): CodingDelegationRejection => {
+  const stageLabel = stage.replaceAll('_', ' ')
+  return {
+    error: 'coding_delegation_store_unavailable',
+    evidenceRefs: [
+      'evidence.khala_coding.dispatch.store_unavailable',
+      `evidence.khala_coding.dispatch.${stage}_unavailable`,
+    ],
+    kind: 'rejected',
+    reason:
+      `The Khala coding dispatch gate could not read linked Pylon capacity right now at stage "${stageLabel}". ` +
+      'This is a transient gate failure, not an account problem — retry shortly.',
+    requestedPylonRef,
+    statusCode: 503,
+  }
+}
 
 const listRegistrationsForLinkedOwnerAgents = async (
   pylonStore: PylonApiStore,
@@ -363,6 +376,7 @@ export const delegateCodingWorkflow = async (
     if (error instanceof PylonApiStoreError) {
       return codingDelegationStoreUnavailableRejection(
         target.kind === 'target' ? target.pylonRef : null,
+        'linked_owner_registration_read',
       )
     }
     throw error
@@ -448,10 +462,22 @@ const delegateCodingWorkflowUnsafe = async (
       objectiveSummary.summary,
       registration.pylonRef,
     )
-    const activeAssignments = await input.pylonStore.listAssignmentsForPylon(
-      registration.pylonRef,
-      100,
-    )
+    const activeAssignments = await (async () => {
+      try {
+        return await input.pylonStore.listAssignmentsForPylon(
+          registration.pylonRef,
+          100,
+        )
+      } catch {
+        return null
+      }
+    })()
+    if (activeAssignments === null) {
+      return codingDelegationStoreUnavailableRejection(
+        registration.pylonRef,
+        'assignment_list_read',
+      )
+    }
     const gate = controlledPylonAssignmentDispatchGate({
       activeAssignments,
       assignmentRef: body.assignmentRef ?? null,
@@ -472,7 +498,19 @@ const delegateCodingWorkflowUnsafe = async (
       ownerAgentUserId: registration.ownerAgentUserId,
       request: body,
     })
-    const result = await input.pylonStore.createAssignment(assignment)
+    const result = await (async () => {
+      try {
+        return await input.pylonStore.createAssignment(assignment)
+      } catch {
+        return null
+      }
+    })()
+    if (result === null) {
+      return codingDelegationStoreUnavailableRejection(
+        registration.pylonRef,
+        'assignment_create',
+      )
+    }
 
     return {
       assignment: result.record,

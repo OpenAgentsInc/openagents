@@ -2487,10 +2487,24 @@ export const handleChatCompletions = (
       const nowIso = epochMillisToIsoTimestamp(created * 1000)
       const delegation: CodingDelegationResult | null = yield* Effect.promise(
         async () => {
+          let failureStage:
+            | 'delegation_gate'
+            | 'linked_agent_read'
+            | 'openauth_owner_resolution' = 'openauth_owner_resolution'
           try {
-            const openauthUserId = await codingDelegation.resolveOpenAuthUserId(
-              session.accountRef,
-            )
+            const openauthUserId = await (async () => {
+              try {
+                return await codingDelegation.resolveOpenAuthUserId(
+                  session.accountRef,
+                )
+              } catch (error) {
+                if (selfLinkedAgent.length > 0) {
+                  return undefined
+                }
+                throw error
+              }
+            })()
+            failureStage = 'linked_agent_read'
             const openAuthLinkedAgents = await (async () => {
               if (
                 openauthUserId === undefined ||
@@ -2512,6 +2526,7 @@ export const handleChatCompletions = (
               }
             })()
             const linkedAgents = [...selfLinkedAgent, ...openAuthLinkedAgents]
+            failureStage = 'delegation_gate'
             return await delegateCodingWorkflow({
               classification: codingWorkflow,
               linkedAgents,
@@ -2526,10 +2541,12 @@ export const handleChatCompletions = (
               error: 'coding_delegation_store_unavailable',
               evidenceRefs: [
                 'evidence.khala_coding.dispatch.store_unavailable',
+                `evidence.khala_coding.dispatch.${failureStage}_unavailable`,
               ],
               kind: 'rejected',
               reason:
-                'The Khala coding dispatch gate could not read linked Pylon capacity right now. This is a transient gate failure, not an account problem — retry shortly.',
+                `The Khala coding dispatch gate could not read linked Pylon capacity right now at stage "${failureStage.replaceAll('_', ' ')}". ` +
+                'This is a transient gate failure, not an account problem — retry shortly.',
               requestedPylonRef: null,
               statusCode: 503,
             } as const

@@ -921,6 +921,49 @@ This is a dispatch reliability fix, not #6318 completion. #6318 remains open
 until live saturation proof shows external demand preempts/yields internal load
 without premature overflow to a weaker lane.
 
+## Post-Deploy #6318 Retry And Stage Diagnostics
+
+The dispatch-gate fallback patch was deployed as Worker
+`ea97d32f-05e5-4fb0-906a-f9f94495acb9`. After deploy, the runbook was retried
+against #6318:
+
+- token baseline: `437,835,971`;
+- `provider go-online --json`: Pylon `pylon.33afd48282a649047e3a`, Codex
+  `available=1`, `busy=0`, `queued=0`, `ready=1`;
+- `presence heartbeat --json`: linked, registered, non-stale heartbeat sequence
+  `505`;
+- the typed #6318 `khala request --workflow codex_agent_task` still returned
+  the same store-unavailable 503 before assignment creation.
+
+Production D1 inspection showed the registration and owner link were present and
+healthy:
+
+- `pylon_api_registrations`: target Pylon active, latest heartbeat online, local
+  Codex capability present;
+- `openauth_agent_links`: active `credential_anchor` link from the OpenAuth owner
+  to the Pylon agent user;
+- `users`: Pylon agent user active with `kind='agent'`;
+- `pylon_api_assignments`: historical closeout rows existed, but the shared
+  dispatch gate excludes `closeout_submitted` from duplicate-active assignment
+  blocking.
+
+That means the previous public 503 still hid the exact failing stage. The next
+hardening patch adds public-safe stage evidence refs and one missing fallback:
+
+- agent-owned requests now continue through self-agent scope if OpenAuth owner
+  resolution flakes;
+- assignment-list read failures return
+  `evidence.khala_coding.dispatch.assignment_list_read_unavailable`;
+- assignment-create failures return
+  `evidence.khala_coding.dispatch.assignment_create_unavailable`;
+- linked-owner registration failures keep
+  `evidence.khala_coding.dispatch.linked_owner_registration_read_unavailable`;
+- OpenAuth/link read failures keep their own route-level stage evidence.
+
+The expected behavior after this patch is either successful assignment creation
+or a 503 that says which public-safe stage failed. A pre-assignment 503 still
+does not create a trace, raw-event stream, token row, or assignment proof.
+
 ## Token Counter Timing Clarification
 
 The token counter finally updates when canonical usage is inserted, not while a

@@ -474,6 +474,39 @@ describe('coding delegation default-on guard', () => {
     )
   })
 
+  test('direct agent-owned Pylon dispatch survives transient OpenAuth owner resolution failure', async () => {
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          ...helloBody,
+          openagents: {
+            coding: {
+              targetPylonRef: 'pylon.owner.codex',
+            },
+            workflowClass: 'codex_agent_task',
+          },
+        }),
+        baseDeps({
+          authenticate: async () => ({ accountRef: 'agent:agent_owner' }),
+          codingDelegation: {
+            agentStore: linkedCodingAgentStore,
+            pylonStore: codingPylonStore([codingPylonRegistration()]),
+            resolveOpenAuthUserId: async () => {
+              throw new Error('owner resolution temporarily unavailable')
+            },
+          },
+          newId: () => 'request_self_agent_owner_read_fail_soft',
+          nowEpochSeconds: () => 0,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('openagents-coding-assignment-ref')).toBe(
+      'assignment.public.khala_coding.request_self_agent_owner_read_fail_soft',
+    )
+  })
+
   test('OpenAuth-only Pylon dispatch still fails closed when linked capacity cannot be read', async () => {
     const response = await run(
       handleChatCompletions(
@@ -510,7 +543,10 @@ describe('coding delegation default-on guard', () => {
     }
     expect(body).toMatchObject({
       error: 'coding_delegation_store_unavailable',
-      evidenceRefs: ['evidence.khala_coding.dispatch.store_unavailable'],
+      evidenceRefs: expect.arrayContaining([
+        'evidence.khala_coding.dispatch.store_unavailable',
+        'evidence.khala_coding.dispatch.linked_agent_read_unavailable',
+      ]),
     })
     expect(body.reason).toContain('could not read linked Pylon capacity')
   })
@@ -596,7 +632,10 @@ describe('coding delegation default-on guard', () => {
     }
     expect(body).toMatchObject({
       error: 'coding_delegation_store_unavailable',
-      evidenceRefs: ['evidence.khala_coding.dispatch.store_unavailable'],
+      evidenceRefs: expect.arrayContaining([
+        'evidence.khala_coding.dispatch.store_unavailable',
+        'evidence.khala_coding.dispatch.linked_owner_registration_read_unavailable',
+      ]),
     })
     expect(body.reason).toContain('could not read linked Pylon capacity')
   })
