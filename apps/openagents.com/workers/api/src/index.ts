@@ -8404,6 +8404,36 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
   makeKhalaClient: env => makeArtanisResponderKhalaClient(env),
   requireAdminApiToken,
   requireBrowserSession,
+  // Accept an `oa_agent_` bearer (the Khala CLI's token from `khala login`) when
+  // its linked OpenAuth account email is an OpenAgents admin. Resolves the agent
+  // credential -> its linked owner user id -> that user's email -> admin check.
+  resolveOwnerAgentBearer: async (request, env) => {
+    const bearer = readBearerToken(request)
+    if (bearer === undefined) {
+      return undefined
+    }
+    const agent = await authenticateProgrammaticAgent(
+      makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+      bearer,
+    )
+    const ownerUserId = agent?.credential.openauthUserId
+    if (ownerUserId === undefined) {
+      return undefined
+    }
+    const row = await openAgentsDatabase(env)
+      .prepare(`SELECT primary_email FROM users WHERE id = ?`)
+      .bind(ownerUserId)
+      .first<Readonly<{ primary_email: string | null }>>()
+    const email = row?.primary_email?.trim().toLowerCase()
+    if (
+      email === undefined ||
+      email === '' ||
+      !isOpenAgentsAdminEmail(email)
+    ) {
+      return undefined
+    }
+    return { user: { email, userId: ownerUserId } }
+  },
 })
 
 const operatorPylonMarketplaceRoutes = makeOperatorPylonMarketplaceRoutes({

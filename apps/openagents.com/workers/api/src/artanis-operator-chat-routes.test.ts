@@ -139,6 +139,29 @@ describe('POST /api/operator/artanis/chat — owner auth', () => {
     expect(response.status).toBe(403)
   })
 
+  test('200 when an owner-linked agent bearer resolves (no browser session needed)', async () => {
+    const { deps } = baseDeps({
+      requireBrowserSession: async () => undefined,
+      resolveOwnerAgentBearer: async () => ({
+        user: { email: 'chris@openagents.com', userId: 'github:14167547' },
+      }),
+    })
+    const response = await runRoute(
+      deps,
+      post({ messages: [{ content: 'hi', role: 'user' }] }),
+    )
+    expect(response.status).toBe(200)
+  })
+
+  test('401 when the agent bearer is not owner-linked and there is no session', async () => {
+    const { deps } = baseDeps({
+      requireBrowserSession: async () => undefined,
+      resolveOwnerAgentBearer: async () => undefined,
+    })
+    const response = await runRoute(deps, post({ messages: [] }))
+    expect(response.status).toBe(401)
+  })
+
   test('400 on an empty / owner-less body', async () => {
     const { deps } = baseDeps()
     const empty = await runRoute(deps, post({ messages: [] }))

@@ -77,6 +77,15 @@ export type OperatorArtanisChatDependencies<
   // route returns a typed unavailability instead of falling back to a provider.
   makeKhalaClient: (env: Bindings) => ArtanisOperatorKhalaClient | undefined
   requireAdminApiToken?: (request: Request, env: Bindings) => Promise<boolean>
+  // Resolves an agent bearer token to an owner session when the token's linked
+  // OpenAuth account email is an OpenAgents admin. Lets the Khala CLI (which
+  // authenticates with an `oa_agent_` bearer linked via `khala login`) reach the
+  // owner-only Artanis channel, alongside the admin API token and an admin
+  // browser session. Returns undefined for non-owner or unlinked tokens.
+  resolveOwnerAgentBearer?: (
+    request: Request,
+    env: Bindings,
+  ) => Promise<Session | undefined>
   requireBrowserSession: (
     request: Request,
     env: Bindings,
@@ -179,6 +188,18 @@ const requireAdminSession = <
             userId: 'github:14167547',
           },
         } as Session
+      }
+    }
+
+    const resolveOwnerAgentBearer = dependencies.resolveOwnerAgentBearer
+    if (resolveOwnerAgentBearer !== undefined) {
+      const ownerAgentSession = yield* Effect.tryPromise({
+        catch: error => new OperatorArtanisChatSessionError({ error }),
+        try: () => resolveOwnerAgentBearer(request, env),
+      })
+
+      if (ownerAgentSession !== undefined) {
+        return ownerAgentSession
       }
     }
 
