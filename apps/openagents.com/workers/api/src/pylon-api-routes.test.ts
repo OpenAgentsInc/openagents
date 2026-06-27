@@ -2656,6 +2656,108 @@ describe('Pylon API routes', () => {
     )
   })
 
+  test('#6386: stale over-admitted `offered` leases do not deadlock a per-account Codex lane that advertises free capacity', () => {
+    const nowIso = '2026-06-27T17:00:00.000Z'
+    const accountKey = '651c03fed68925d7acb2c02f'
+    const accountRefHash = `account.pylon.codex.${accountKey}`
+    // Heartbeat advertises real free per-account capacity (busy counts only
+    // RUNNING work, so the orphaned `offered` backlog is invisible to it).
+    const registration = {
+      capabilityRefs: ['capability.pylon.local_codex'],
+      clientVersion: '0.3.0',
+      latestCapacityRefs: [
+        `capacity.coding.codex.account.${accountKey}.ready=8`,
+        `capacity.coding.codex.account.${accountKey}.available=8`,
+      ],
+      latestHeartbeatAt: nowIso,
+      latestHeartbeatStatus: 'online',
+      latestLoadRefs: [`load.coding.codex.account.${accountKey}.busy=0`],
+      status: 'active',
+      walletReady: true,
+    } as unknown as PylonApiRegistrationRecord
+    // 11 `offered` leases for this account, created/updated ~40 minutes ago and
+    // never claimed (over-admitted by a concurrent burst), each still holding a
+    // 1-hour lease. This is well above the per-account ceiling of 8.
+    const staleOffered = Array.from(
+      { length: 11 },
+      (_, index) =>
+        ({
+          assignmentRef: `assignment.public.stale_offered_${index}`,
+          codingAssignment: {
+            codex: { agentKind: 'codex_sdk', accountRefHash },
+          },
+          createdAt: '2026-06-27T16:20:00.000Z',
+          updatedAt: '2026-06-27T16:20:00.000Z',
+          jobKind: 'codex_agent_task',
+          leaseExpiresAt: '2026-06-27T17:20:00.000Z',
+          state: 'offered',
+        }) as unknown as PylonApiAssignmentRecord,
+    )
+    const codexBody = {
+      campaignPaused: false,
+      campaignPolicyRefs: ['policy.public.khala_coding.own_capacity_only'],
+      campaignRef: 'campaign.public.khala_coding.own_capacity',
+      closeoutPathRefs: ['closeout.public.khala_coding.durable_stream'],
+      codingAssignment: { codex: { agentKind: 'codex_sdk', accountRefHash } },
+      forumAutoPublishAllowed: false,
+      idempotencyRefs: ['idempotency.public.khala_coding.request'],
+      jobKind: 'codex_agent_task' as const,
+      noDuplicateAssignmentRefs: ['dedupe.public.pylon_assignment.active_lease'],
+      noForumAutoPublishRefs: ['policy.public.no_forum_auto_publish'],
+      operatorPauseRefs: ['pause.public.khala_coding.kill_switch_default_off'],
+      paymentMode: 'unpaid_smoke',
+      pylonRef: 'pylon.test.one',
+      requiredCapabilityRefs: ['capability.pylon.local_codex'],
+      resultExpectationRefs: ['result.public.khala_coding.worker_closeout'],
+      rollbackRefs: ['rollback.public.khala_coding.assignment_cancel'],
+      selectionPolicyRefs: ['selection.public.khala_coding.codex_first'],
+      spendCapRefs: [],
+      taskRefs: ['task.public.khala_coding.codex'],
+    } as unknown as Parameters<
+      typeof controlledPylonAssignmentDispatchGate
+    >[0]['body']
+
+    const staleGate = controlledPylonAssignmentDispatchGate({
+      activeAssignments: staleOffered,
+      assignmentRef: 'assignment.public.codex_new',
+      body: codexBody,
+      nowIso,
+      registration,
+    })
+    expect(staleGate.blockerRefs).not.toContain(
+      'blocker.public.pylon_dispatch.duplicate_active_assignment',
+    )
+    expect(staleGate.dispatchAllowed).toBe(true)
+
+    // Fresh `offered` leases (claimed-imminent) still throttle: 8 fresh offered
+    // == the per-account ceiling, so the 9th is correctly refused.
+    const freshOffered = Array.from(
+      { length: 8 },
+      (_, index) =>
+        ({
+          assignmentRef: `assignment.public.fresh_offered_${index}`,
+          codingAssignment: {
+            codex: { agentKind: 'codex_sdk', accountRefHash },
+          },
+          createdAt: nowIso,
+          updatedAt: nowIso,
+          jobKind: 'codex_agent_task',
+          leaseExpiresAt: '2026-06-27T18:00:00.000Z',
+          state: 'offered',
+        }) as unknown as PylonApiAssignmentRecord,
+    )
+    const freshGate = controlledPylonAssignmentDispatchGate({
+      activeAssignments: freshOffered,
+      assignmentRef: 'assignment.public.codex_new_two',
+      body: codexBody,
+      nowIso,
+      registration,
+    })
+    expect(freshGate.blockerRefs).toContain(
+      'blocker.public.pylon_dispatch.duplicate_active_assignment',
+    )
+  })
+
   test('does not treat remaining available Codex slots as the total parallel ceiling', async () => {
     const store = new MemoryPylonApiStore()
     await registerPylon(store, {

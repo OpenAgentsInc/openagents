@@ -345,12 +345,46 @@ const paidAssignmentPaymentModes = new Set([
   'settled_bitcoin',
 ])
 
+// #6386: an `offered` assignment is a dispatched-but-unclaimed lease. A live
+// Pylon claims it within seconds (offered -> running via the first reported
+// event), so a FRESH `offered` rightly holds a dispatch slot and throttles
+// within-heartbeat over-admission. But an `offered` lease that has not progressed
+// for well beyond that claim window is an over-admitted / abandoned dispatch:
+// e.g. a concurrent burst (~40 parallel khala requests across one Pylon) that
+// all raced past the per-account ceiling before any of their leases committed,
+// then was never executed. Those rows then hold their full (1-hour) lease while
+// the heartbeat still advertises free `available` slots (heartbeat `busy` counts
+// only RUNNING work, not the orphaned `offered` backlog). Counting them for the
+// whole lease deadlocks every account at its ceiling for an hour even though
+// real capacity is free. After the claim window a stale `offered` stops counting,
+// mirroring the closeout slot-release fix (299bc363ec) that dropped
+// `closeout_submitted` from the blocking set. Real held work
+// (running/accepted/proof_submitted/blocked) and the live heartbeat `available`
+// remain the capacity authority, so admission still tops out at advertised slots.
+const OFFERED_DISPATCH_SLOT_CLAIM_WINDOW_MS = 2 * 60 * 1000
+
 const pylonAssignmentHasActiveLease = (
   assignment: PylonApiAssignmentRecord,
   nowIso: string,
-): boolean =>
-  duplicateBlockingAssignmentStates.has(assignment.state) &&
-  Date.parse(assignment.leaseExpiresAt) > Date.parse(nowIso)
+): boolean => {
+  if (!duplicateBlockingAssignmentStates.has(assignment.state)) {
+    return false
+  }
+  const now = Date.parse(nowIso)
+  if (!(Date.parse(assignment.leaseExpiresAt) > now)) {
+    return false
+  }
+  if (assignment.state === 'offered') {
+    const lastTouch = Date.parse(assignment.updatedAt ?? assignment.createdAt)
+    if (
+      Number.isFinite(lastTouch) &&
+      now - lastTouch > OFFERED_DISPATCH_SLOT_CLAIM_WINDOW_MS
+    ) {
+      return false
+    }
+  }
+  return true
+}
 
 // #6354: read the public-safe Codex account-ref hash a coding assignment is
 // pinned to, so the dispatch gate can scope active leases and capacity to the

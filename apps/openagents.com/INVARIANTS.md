@@ -1668,6 +1668,21 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   Pylons, stale heartbeat Pylons, below-minimum client versions, wrong
   capability refs, and duplicate unexpired active assignments. Paid assignment
   modes must also deny wallet-not-ready Pylons.
+- An `offered` lease (dispatched but not yet claimed by the Pylon executor)
+  counts as an active capacity-consuming lease only while it is fresh, i.e.
+  within the bounded claim window after its last update
+  (`OFFERED_DISPATCH_SLOT_CLAIM_WINDOW_MS`). A live Pylon transitions
+  `offered -> running` within seconds, so a fresh `offered` rightly throttles
+  within-heartbeat over-admission. An `offered` lease that has not progressed
+  past that window is an over-admitted / abandoned dispatch (e.g. a concurrent
+  burst that raced past the per-account ceiling before its leases committed) and
+  must NOT keep consuming per-account capacity for the remainder of its lease,
+  or a single burst deadlocks the account at its ceiling while the heartbeat
+  still advertises free `available` slots (#6386). Real held work
+  (`running`/`accepted`/`proof_submitted`/`blocked`) and the live
+  heartbeat-advertised `available` slots remain the capacity authority, so
+  admission still tops out at the advertised slots. This mirrors the earlier
+  slot-release that dropped `closeout_submitted` from the blocking set.
 - Paid assignment modes require public-safe spend-cap refs and wallet readiness
   at dispatch time. `unpaid_smoke` / no-spend local-agent assignments do not
   require wallet readiness because they cannot spend, settle, or pay out.
