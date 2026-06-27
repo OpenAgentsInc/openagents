@@ -37,6 +37,10 @@ export const GLM_STRESS_DEMAND_CLIENT = 'stress-harness' as const
 export const GLM_STRESS_EXTERNAL_WINS_POLICY =
   'external_wins_reserved_headroom_and_preemption_required' as const
 
+export const GLM_STRESS_ERROR_RATE_BACKOFF_THRESHOLD = 0.02
+
+export const GLM_STRESS_BACKOFF_STEP_FRACTION = 0.25
+
 export const GLM_STRESS_ROLLOUT_STATE = S.Literals([
   'blocked_missing_live_scheduler_evidence',
   'armed',
@@ -154,10 +158,19 @@ export type GlmStressObservationStatus =
   | 'preempted_for_external'
   | 'failed'
 
+export type GlmStressFailureKind =
+  | 'gateway_overload'
+  | 'provider_overload'
+  | 'rate_limited'
+  | 'timeout'
+  | 'unknown'
+
 export type GlmStressObservation = Readonly<{
   cellId: string
   replicaRef?: string | undefined
   status: GlmStressObservationStatus
+  httpStatus?: number | undefined
+  failureKind?: GlmStressFailureKind | undefined
   outputTokens: number
   wallClockMs: number
   ttftMs?: number | undefined
@@ -180,6 +193,26 @@ export type GlmStressLatencyRollup = Readonly<{
   interTokenLatencyP50Ms: GlmStressLatencySummary
   interTokenLatencyP90Ms: GlmStressLatencySummary
   interTokenLatencyP99Ms: GlmStressLatencySummary
+}>
+
+export type GlmStressBackoffAction = 'hold' | 'decrease' | 'pause'
+
+export type GlmStressBackoffReason =
+  | 'none'
+  | 'runner_not_ready'
+  | 'all_dispatch_failed'
+  | 'error_rate_over_budget'
+  | 'overload_failures_observed'
+
+export type GlmStressBackoffRecommendation = Readonly<{
+  action: GlmStressBackoffAction
+  currentConcurrency: number
+  recommendedNextConcurrency: number
+  maxStressConcurrency: number
+  errorRateBackoffThreshold: number
+  observedErrorRate: number | null
+  overloadFailureCount: number
+  reasonRefs: ReadonlyArray<string>
 }>
 
 export type GlmStressReplicaRollup = Readonly<{
@@ -221,7 +254,9 @@ export type GlmStressReport = Readonly<{
   deferredCount: number
   preemptedCount: number
   failedCount: number
+  overloadFailureCount: number
   okCount: number
+  backoff: GlmStressBackoffRecommendation
   replicaRefs: ReadonlyArray<string>
   latencyMs: GlmStressLatencyRollup
   replicaRollups: ReadonlyArray<GlmStressReplicaRollup>
@@ -515,6 +550,100 @@ const observationsWithStatus = (
 ): ReadonlyArray<GlmStressObservation> =>
   observations.filter(observation => observation.status === status)
 
+const isOverloadFailure = (observation: GlmStressObservation): boolean => {
+  if (observation.status !== 'failed') {
+    return false
+  }
+  if (
+    observation.failureKind === 'gateway_overload' ||
+    observation.failureKind === 'provider_overload' ||
+    observation.failureKind === 'rate_limited' ||
+    observation.failureKind === 'timeout'
+  ) {
+    return true
+  }
+  const httpStatus = observation.httpStatus
+  return (
+    httpStatus !== undefined &&
+    Number.isFinite(httpStatus) &&
+    (httpStatus === 429 || (httpStatus >= 500 && httpStatus <= 599))
+  )
+}
+
+const backoffReasonRefs = (
+  reasons: ReadonlyArray<GlmStressBackoffReason>,
+): ReadonlyArray<string> =>
+  reasons.map(reason => `backoff.glm_continuous_stress.${reason}`)
+
+const nextLowerConcurrency = (currentConcurrency: number): number => {
+  const step = Math.max(
+    1,
+    Math.ceil(currentConcurrency * GLM_STRESS_BACKOFF_STEP_FRACTION),
+  )
+  return Math.max(0, currentConcurrency - step)
+}
+
+const buildBackoffRecommendation = (
+  runnerPlan: GlmStressRunnerPlan,
+  failedCount: number,
+  observedCount: number,
+  overloadFailureCount: number,
+): GlmStressBackoffRecommendation => {
+  const currentConcurrency = safePositiveInteger(runnerPlan.globalMaxConcurrency)
+  const observedErrorRate = rateOrNull(failedCount, observedCount)
+
+  if (runnerPlan.state !== 'ready' || currentConcurrency === 0) {
+    return {
+      action: 'pause',
+      currentConcurrency,
+      recommendedNextConcurrency: 0,
+      maxStressConcurrency: currentConcurrency,
+      errorRateBackoffThreshold: GLM_STRESS_ERROR_RATE_BACKOFF_THRESHOLD,
+      observedErrorRate,
+      overloadFailureCount,
+      reasonRefs: backoffReasonRefs(['runner_not_ready']),
+    }
+  }
+
+  const reasons: Array<GlmStressBackoffReason> = [
+    ...(observedCount > 0 && failedCount === observedCount
+      ? (['all_dispatch_failed'] as const)
+      : []),
+    ...(observedErrorRate !== null &&
+    observedErrorRate > GLM_STRESS_ERROR_RATE_BACKOFF_THRESHOLD
+      ? (['error_rate_over_budget'] as const)
+      : []),
+    ...(overloadFailureCount > 0
+      ? (['overload_failures_observed'] as const)
+      : []),
+  ]
+  const uniqueReasons = [...new Set(reasons)]
+
+  if (uniqueReasons.length === 0) {
+    return {
+      action: 'hold',
+      currentConcurrency,
+      recommendedNextConcurrency: currentConcurrency,
+      maxStressConcurrency: currentConcurrency,
+      errorRateBackoffThreshold: GLM_STRESS_ERROR_RATE_BACKOFF_THRESHOLD,
+      observedErrorRate,
+      overloadFailureCount,
+      reasonRefs: backoffReasonRefs(['none']),
+    }
+  }
+
+  return {
+    action: currentConcurrency <= 1 ? 'pause' : 'decrease',
+    currentConcurrency,
+    recommendedNextConcurrency: nextLowerConcurrency(currentConcurrency),
+    maxStressConcurrency: currentConcurrency,
+    errorRateBackoffThreshold: GLM_STRESS_ERROR_RATE_BACKOFF_THRESHOLD,
+    observedErrorRate,
+    overloadFailureCount,
+    reasonRefs: backoffReasonRefs(uniqueReasons),
+  }
+}
+
 const reportThroughput = (
   ok: ReadonlyArray<GlmStressObservation>,
   throughputMeasurementWindowMs: number,
@@ -598,6 +727,14 @@ export const buildGlmContinuousStressReport = (
     input.throughputMeasurementWindowMs,
   )
   const throughput = reportThroughput(ok, throughputMeasurementWindowMs)
+  const overloadFailureCount = input.observations.filter(isOverloadFailure)
+    .length
+  const backoff = buildBackoffRecommendation(
+    input.runnerPlan,
+    failed.length,
+    input.observations.length,
+    overloadFailureCount,
+  )
   const replicaRefs = [
     ...new Set(
       input.observations.flatMap(observation =>
@@ -626,7 +763,9 @@ export const buildGlmContinuousStressReport = (
     deferredCount: deferred.length,
     preemptedCount: preempted.length,
     failedCount: failed.length,
+    overloadFailureCount,
     okCount: ok.length,
+    backoff,
     replicaRefs,
     latencyMs: latencyRollup(ok),
     replicaRollups: replicaRefs.map(replicaRef =>

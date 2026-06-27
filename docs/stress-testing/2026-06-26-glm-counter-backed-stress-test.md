@@ -994,3 +994,36 @@ report):
 - The single-flight per-replica admission ceiling remains the real throughput
   limiter; raising it needs more/larger replicas or higher `maxInflight`, not a
   restart.
+
+## 2026-06-27 Adaptive Backoff Report Follow-Up
+
+The next harness-side fix is now in code: the GLM continuous stress report has
+a public-safe adaptive backoff recommendation. The report still computes
+throughput only from `ok` observations, but failed observations may now carry a
+bounded `httpStatus` and `failureKind` such as `gateway_overload`,
+`provider_overload`, `rate_limited`, or `timeout`.
+
+When overload failures or an error rate above `2%` appear, the report returns:
+
+- `overloadFailureCount`
+- `backoff.action` (`hold`, `decrease`, or `pause`)
+- `backoff.currentConcurrency`
+- `backoff.recommendedNextConcurrency`
+- `backoff.reasonRefs`
+
+This is meant to turn the observed concurrency-10/11 knee into a controlled
+loop: clean windows hold the current stress level; overload windows reduce the
+next tick by a bounded 25% step; blocked runner plans pause. Failed responses do
+not increase aggregate or goodput tok/s even if a caller accidentally attaches
+token-like counters to a failed observation.
+
+Verification:
+
+- `bun run --cwd apps/openagents.com/workers/api test src/inference/benchmark/stress-saturation-plan.test.ts`
+- result: `13` tests passed, including the regression that a `502`/timeout
+  overload window recommends concurrency `7 -> 5` and does not count failed
+  observations in tok/s.
+
+This does not by itself close #6317. It gives the next stress runner a
+machine-readable public-safe control signal so future GLM pressure ramps can
+back off near the saturation knee instead of continuing into 500/502 storms.

@@ -9,6 +9,7 @@ import {
   GLM_STRESS_DEMAND_CLIENT,
   GLM_STRESS_DEMAND_KIND,
   GLM_STRESS_DEMAND_SOURCE,
+  GLM_STRESS_ERROR_RATE_BACKOFF_THRESHOLD,
   buildGlmContinuousStressReport,
   buildGlmContinuousStressPlan,
   buildGlmContinuousStressRunnerPlan,
@@ -347,6 +348,17 @@ describe('GLM continuous stress saturation plan (#6317 prep slice)', () => {
     expect(report.okCount).toBe(2)
     expect(report.preemptedCount).toBe(1)
     expect(report.deferredCount).toBe(1)
+    expect(report.overloadFailureCount).toBe(0)
+    expect(report.backoff).toMatchObject({
+      action: 'hold',
+      currentConcurrency: 7,
+      recommendedNextConcurrency: 7,
+      maxStressConcurrency: 7,
+      errorRateBackoffThreshold: GLM_STRESS_ERROR_RATE_BACKOFF_THRESHOLD,
+      observedErrorRate: 0,
+      overloadFailureCount: 0,
+      reasonRefs: ['backoff.glm_continuous_stress.none'],
+    })
     expect(report.replicaRefs).toEqual([
       'replica.glm.us-central1-a.1',
       'replica.glm.us-central1-a.2',
@@ -464,6 +476,101 @@ describe('GLM continuous stress saturation plan (#6317 prep slice)', () => {
       outputTokens: 1200,
       goodputTokens: 1100,
     })
+  })
+
+  test('report recommends a lower next concurrency when overload failures appear', () => {
+    const plan = buildGlmContinuousStressPlan({
+      matrixConfig: SAMPLE_DECISION_SUITE_CONFIG,
+      target: GLM_52_REAP_POOL_TARGET,
+      shapes: [stressShape('saturation-knee', 16)],
+      workloads: ['chat'],
+      headroom: {
+        healthyReplicaCount: 10,
+        aggregateAvailableSlots: 10,
+        reservedExternalSlots: 3,
+        externalDemandActive: false,
+      },
+      evidence: {
+        liveHeadroomEvidenceRef: 'evidence.glm.live_headroom.oracle.v1',
+        externalWinsPreemptionEvidenceRef:
+          'evidence.glm.external_wins.preemption.v1',
+        externalWinsProofStatus: 'accepted',
+        rolloutGuardEvidenceRef: 'evidence.glm.stress.rollout_guard.v1',
+        throughputRolloutCanStartIssue6317Stress: true,
+      },
+    })
+    const runnerPlan = buildGlmContinuousStressRunnerPlan({
+      generatedAt: '2026-06-26T00:00:00.000Z',
+      tickRef: 'tick.glm.stress.report.overload_window.v1',
+      plan,
+    })
+    const firstCell = runnerPlan.dispatchCells[0]
+    if (firstCell === undefined) {
+      throw new Error('expected a dispatch cell for overload report test')
+    }
+
+    const report = buildGlmContinuousStressReport({
+      generatedAt: '2026-06-26T00:00:02.000Z',
+      runnerPlan,
+      throughputMeasurementWindowMs: 2000,
+      observations: [
+        {
+          cellId: firstCell.cellId,
+          replicaRef: 'replica.glm.us-central1-a.1',
+          status: 'ok',
+          outputTokens: 1000,
+          goodputTokens: 900,
+          wallClockMs: 2000,
+        },
+        {
+          cellId: firstCell.cellId,
+          replicaRef: 'replica.glm.us-central1-a.2',
+          status: 'ok',
+          outputTokens: 1000,
+          goodputTokens: 900,
+          wallClockMs: 2000,
+        },
+        {
+          cellId: firstCell.cellId,
+          replicaRef: 'replica.glm.us-central1-a.3',
+          status: 'failed',
+          httpStatus: 502,
+          failureKind: 'gateway_overload',
+          outputTokens: 9999,
+          wallClockMs: 500,
+        },
+        {
+          cellId: firstCell.cellId,
+          replicaRef: 'replica.glm.us-central1-a.4',
+          status: 'failed',
+          failureKind: 'timeout',
+          outputTokens: 9999,
+          wallClockMs: 10_000,
+        },
+      ],
+    })
+
+    expect(report.aggregateTokPerSecond).toBe(1000)
+    expect(report.goodputTokPerSecond).toBe(900)
+    expect(report.errorRate).toBe(0.5)
+    expect(report.failedCount).toBe(2)
+    expect(report.overloadFailureCount).toBe(2)
+    expect(report.backoff).toMatchObject({
+      action: 'decrease',
+      currentConcurrency: 7,
+      recommendedNextConcurrency: 5,
+      maxStressConcurrency: 7,
+      errorRateBackoffThreshold: GLM_STRESS_ERROR_RATE_BACKOFF_THRESHOLD,
+      observedErrorRate: 0.5,
+      overloadFailureCount: 2,
+    })
+    expect(report.backoff.reasonRefs).toEqual([
+      'backoff.glm_continuous_stress.error_rate_over_budget',
+      'backoff.glm_continuous_stress.overload_failures_observed',
+    ])
+    expect(JSON.stringify(report)).not.toMatch(
+      /prompt|completion|bearer|secret|https?:\/\//i,
+    )
   })
 
   test('accepts external-wins proof only when preempted external demand stays on GLM primary', () => {
