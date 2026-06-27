@@ -150,6 +150,42 @@ final class KhalaStreamTests: XCTestCase {
         }
     }
 
+    func testArtanisStreamUsesOwnerEndpointAndYieldsSSEDeltas() async throws {
+        let session = makeSession()
+        let apiKey = "oa_agent_owner_key"
+
+        StreamMockURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.url?.absoluteString, "https://openagents.com/api/operator/artanis/chat")
+            XCTAssertEqual(request.httpMethod, "POST")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "text/event-stream")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer \(apiKey)")
+
+            let body = try XCTUnwrap(request.httpBodyStream.flatMap(Self.data(from:)))
+            let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            let messages = try XCTUnwrap(json["messages"] as? [[String: String]])
+            XCTAssertEqual(messages, [["role": "user", "content": "status"]])
+
+            return (
+                Self.ok(request),
+                Self.sse([
+                    #"data: {"choices":[{"delta":{"role":"assistant"}}]}"#,
+                    #"data: {"choices":[{"delta":{"content":"Working"}}]}"#,
+                    "data: [DONE]",
+                ])
+            )
+        }
+
+        var deltas: [String] = []
+        for try await delta in KhalaClient.streamArtanisCompletion(
+            messages: [.init(role: "user", content: "status")],
+            apiKey: apiKey,
+            session: session
+        ) {
+            deltas.append(delta)
+        }
+        XCTAssertEqual(deltas, ["Working"])
+    }
+
     func testCancellationStopsStreamCleanly() async throws {
         let session = makeSession()
         StreamMockURLProtocol.requestHandler = { request in

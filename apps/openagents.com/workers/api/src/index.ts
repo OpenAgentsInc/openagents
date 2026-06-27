@@ -8733,6 +8733,31 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
   },
   requireAdminApiToken,
   requireBrowserSession,
+  emitOwnerTrace: async (input, env) => {
+    await emitKhalaChatTrace(
+      {
+        requestedModel: 'openagents/khala',
+        requestMessages: input.requestMessages,
+        responseId: input.responseId,
+        result: input.result,
+      },
+      {
+        enabled: isKhalaChatTraceEmitEnabled(env.KHALA_CHAT_TRACE_EMIT_ENABLED),
+        optedIn: false,
+        captureDefault: true,
+        store: makeD1TraceStore(openAgentsDatabase(env)),
+        owner: {
+          ownerUserId: input.ownerUserId,
+          agentRef: 'operator.artanis.chat',
+          uploadSource: 'user_session',
+        },
+        demandAttribution: {
+          demandKind: 'internal',
+          demandSource: 'artanis_operator_channel',
+        },
+      },
+    )
+  },
   // Accept an `oa_agent_` bearer (the Khala CLI's token from `khala login`) when
   // it is linked to an OpenAuth account. Resolves the agent credential -> its
   // linked owner user id -> that user's email and scopes Artanis to that owner.
