@@ -14,6 +14,7 @@ khala logout
 khala auth codex
 khala codex "read README.md"
 khala spawn --count 5 --objective "audit this workspace" --strategy local
+khala spawn --strategy pylon --count 5 --objective "implement public issue #123" --repo OpenAgentsInc/openagents --commit <sha> --verify "bun test"
 khala workers
 khala join <runRef>
 khala cancel <runRef|workerRef>
@@ -48,19 +49,20 @@ two modes:
   connects Codex with device auth, and existing Pylon Codex account homes are
   reused automatically when present. Set `KHALA_CODEX_AUTO=off` to disable
   automatic delegation.
-- **Local Khala spawn supervisor:** `khala spawn --count N --objective "..."`
+- **Khala spawn supervisor:** `khala spawn --count N --objective "..."`
   starts a bounded parent run with supervised child workers recorded under the
-  local Khala home. The initial strategy is `local`/`auto`, backed by local
-  Codex workers in isolated worktrees when the current directory is a Git
-  checkout. Use `khala workers`, `khala worker <workerRef>`,
+  local Khala home. The default `local`/`auto` strategy is backed by local Codex
+  workers in isolated worktrees when the current directory is a Git checkout.
+  `--strategy pylon` dispatches child assignments through caller-owned linked
+  Pylon Codex capacity via the reviewed `khala.spawn` MCP surface; pass
+  `--pylon-ref` to target one owned Pylon, and pass `--repo`, `--commit`, and
+  `--verify` together for public repository work. Use `khala workers`,
+  `khala worker <workerRef>`,
   `khala join <runRef>`, and `khala cancel <runRef|workerRef>` to inspect and
   control runs. Normal chat turns such as `spin up 5 subagents to audit X` are
   routed through the same typed selector and start the supervisor when selected.
   Capability questions answer with the `/spawn` and `khala spawn --count`
-  command paths instead of falling through to a generic chat refusal. The
-  CLI-local strategy is armed; durable Pylon fanout is available through the
-  reviewed Worker/MCP surfaces and will use the same command surface once the
-  CLI strategy bridge is armed.
+  command paths instead of falling through to a generic chat refusal.
 - **Utility commands:** `khala feedback "..."` saves feedback to
   `POST /api/khala/feedback`, `khala tokens` reads the public Khala
   tokens-served counter, and `khala changelog` prints the recent package
@@ -145,12 +147,21 @@ that check.
 - `--models` prints `/api/v1/models`.
 - `--mint-free-key` calls `POST /api/keys/free` and prints the response once.
 - `--artanis` uses the owner-authenticated Artanis operator channel.
-- `--count <n>` sets the worker count for `khala spawn` (default 1, local cap
-  10).
-- `--max-parallel <n>` bounds concurrent local workers for `khala spawn`.
+- `--count <n>` sets the worker count for `khala spawn` (default 1; local cap
+  10, Pylon cap 20).
+- `--max-parallel <n>` bounds concurrent workers for `khala spawn`.
 - `--objective <text>` supplies the `khala spawn` objective.
 - `--strategy auto|local|pylon` selects the spawn strategy. `auto` currently
-  resolves to local Codex workers; Pylon fanout is the next tracked slice.
+  resolves to local Codex workers; `pylon` dispatches through caller-owned
+  linked Pylon capacity and requires an agent token from `khala login`,
+  `OPENAGENTS_AGENT_TOKEN`, or `--token`.
+- `--pylon-ref <ref>` targets one caller-owned Pylon for `--strategy pylon`.
+- `--fixture` uses the bounded public fixture for `--strategy pylon`.
+- `--repo <owner/repo>`, `--branch <name>`, `--commit <sha>`, and
+  `--verify <command>` describe public repository work for `--strategy pylon`.
+  `--repo`, `--commit`, and `--verify` must be supplied together.
+- `--workflow codex_agent_task|cloud_coding_session` selects the Pylon coding
+  workflow for `--strategy pylon`.
 - `--timeout <seconds>` sets the per-worker timeout for `khala spawn`.
 
 ## Changelog

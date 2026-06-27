@@ -8,9 +8,11 @@ import {
   cancelKhalaSpawn,
   listKhalaSpawnRuns,
   readKhalaSpawnRun,
+  refreshKhalaPylonSpawnRun,
   runKhalaSpawn,
   summarizeSpawnRun,
   type KhalaSpawnLifecycleEvent,
+  type KhalaSpawnMcpCaller,
   type KhalaSpawnWorkerRunner,
 } from "./spawn.js"
 
@@ -139,5 +141,146 @@ describe("Khala spawn supervisor", () => {
     const run = await running
     expect(run.state).toBe("cancelled")
     expect(run.workers.map(worker => worker.state)).toEqual(["accepted", "cancelled"])
+  })
+
+  test("dispatches pylon strategy through khala.spawn MCP and persists child assignments", async () => {
+    const home = await mkdtemp(join(tmpdir(), "khala-spawn-pylon-test-"))
+    const env = { KHALA_HOME: home }
+    const calls: Array<{ readonly args: Record<string, unknown>; readonly tool: string }> = []
+    const mcpCaller: KhalaSpawnMcpCaller = async input => {
+      calls.push({ args: input.args, tool: input.tool })
+      expect(input.baseUrl).toBe("https://example.test")
+      expect(input.token).toBe("oa_agent_test")
+      expect(input.tool).toBe("khala.spawn")
+      return {
+        assignedCount: 2,
+        blockerRefs: [],
+        children: [
+          {
+            assignmentRef: "assignment.public.khala_coding.one",
+            durableRequestId: "chatcmpl_one",
+            durableStreamUrl: "/v1/chat/completions/durable/chatcmpl_one",
+            ok: true,
+            pylonRef: "pylon.owner.codex",
+            slotIndex: 0,
+            state: "running",
+            workerRef: "worker.public.khala_coding.spawn.01",
+          },
+          {
+            assignmentRef: "assignment.public.khala_coding.two",
+            durableRequestId: "chatcmpl_two",
+            durableStreamUrl: "/v1/chat/completions/durable/chatcmpl_two",
+            ok: true,
+            pylonRef: "pylon.owner.codex",
+            slotIndex: 1,
+            state: "offered",
+            workerRef: "worker.public.khala_coding.spawn.02",
+          },
+        ],
+        ok: true,
+        requestedCount: 2,
+        schema: "openagents.khala_mcp.spawn.v1",
+        spawnRef: "spawn.public.khala_coding.test_spawn",
+      }
+    }
+
+    const run = await runKhalaSpawn({
+      baseUrl: "https://example.test",
+      count: 2,
+      cwd: home,
+      env,
+      fixture: true,
+      maxParallel: 2,
+      mcpCaller,
+      objective: "audit the public fixture",
+      pylonRef: "pylon.owner.codex",
+      strategy: "pylon",
+      token: "oa_agent_test",
+    })
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.args).toMatchObject({
+      count: 2,
+      fixture: true,
+      maxParallel: 2,
+      objective: "audit the public fixture",
+      targetPylonRef: "pylon.owner.codex",
+      workflow: "codex_agent_task",
+    })
+    expect(run.runRef).toBe("spawn.public.khala_coding.test_spawn")
+    expect(run.strategy).toBe("pylon_codex_assignments")
+    expect(run.workers).toHaveLength(2)
+    expect(run.workers.map(worker => worker.assignmentRef)).toEqual([
+      "assignment.public.khala_coding.one",
+      "assignment.public.khala_coding.two",
+    ])
+    expect(run.workers.every(worker => worker.state === "running")).toBe(true)
+
+    const stored = await readKhalaSpawnRun(env, run.runRef)
+    expect(stored.workers[0]?.durableRequestId).toBe("chatcmpl_one")
+    expect(summarizeSpawnRun(stored)).toContain("strategy: pylon_codex_assignments")
+  })
+
+  test("refreshes pylon spawn status through khala.spawnStatus", async () => {
+    const home = await mkdtemp(join(tmpdir(), "khala-spawn-pylon-refresh-test-"))
+    const env = { KHALA_HOME: home }
+    const spawnCaller: KhalaSpawnMcpCaller = async () => ({
+      assignedCount: 1,
+      blockerRefs: [],
+      children: [
+        {
+          assignmentRef: "assignment.public.khala_coding.one",
+          durableRequestId: "chatcmpl_one",
+          ok: true,
+          pylonRef: "pylon.owner.codex",
+          slotIndex: 0,
+          state: "running",
+          workerRef: "worker.public.khala_coding.spawn.01",
+        },
+      ],
+      ok: true,
+      requestedCount: 1,
+      schema: "openagents.khala_mcp.spawn.v1",
+      spawnRef: "spawn.public.khala_coding.refresh",
+    })
+    const run = await runKhalaSpawn({
+      baseUrl: "https://example.test",
+      count: 1,
+      cwd: home,
+      env,
+      mcpCaller: spawnCaller,
+      objective: "audit status",
+      strategy: "pylon",
+      token: "oa_agent_test",
+    })
+    const refreshed = await refreshKhalaPylonSpawnRun({
+      baseUrl: "https://example.test",
+      env,
+      mcpCaller: async input => {
+        expect(input.tool).toBe("khala.spawnStatus")
+        expect(input.args).toEqual({ spawnRef: run.runRef })
+        return {
+          childCount: 1,
+          children: [
+            {
+              assignmentRef: "assignment.public.khala_coding.one",
+              durableRequestId: "chatcmpl_one",
+              pylonRef: "pylon.owner.codex",
+              state: "accepted",
+            },
+          ],
+          ok: true,
+          schema: "openagents.khala_mcp.spawn_status.v1",
+          spawnRef: run.runRef,
+          state: "accepted",
+        }
+      },
+      run,
+      token: "oa_agent_test",
+    })
+
+    expect(refreshed.state).toBe("completed")
+    expect(refreshed.workers[0]?.state).toBe("accepted")
+    expect(refreshed.workers[0]?.resultText).toContain("pylon assignment state: accepted")
   })
 })

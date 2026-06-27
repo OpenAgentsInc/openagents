@@ -4,6 +4,7 @@ import { mkdir, readdir, readFile, writeFile } from "node:fs/promises"
 import { dirname, join, resolve } from "node:path"
 
 import { khalaHome, runKhalaCodexTask, type KhalaCodexRunResult } from "./codex.js"
+import { DEFAULT_BASE_URL } from "./types.js"
 
 export const KHALA_SPAWN_RUN_SCHEMA = "openagents.khala.spawn_run.v0.1"
 export const KHALA_SPAWN_WORKER_SCHEMA = "openagents.khala.spawn_worker.v0.1"
@@ -73,18 +74,40 @@ export type KhalaSpawnCancelProjection = {
 }
 
 export type KhalaSpawnRunOptions = {
+  readonly baseUrl?: string | undefined
+  readonly branch?: string | undefined
+  readonly commit?: string | undefined
   readonly count: number
   readonly cwd: string
   readonly env?: Record<string, string | undefined> | undefined
+  readonly fixture?: boolean | undefined
   readonly maxParallel?: number | undefined
+  readonly mcpCaller?: KhalaSpawnMcpCaller | undefined
   readonly objective: string
+  readonly pylonRef?: string | undefined
+  readonly repo?: string | undefined
   readonly strategy?: KhalaSpawnStrategy | undefined
   readonly timeoutMs?: number | undefined
+  readonly token?: string | undefined
+  readonly verify?: string | undefined
+  readonly workflow?: KhalaSpawnWorkflow | undefined
   readonly runner?: KhalaSpawnWorkerRunner | undefined
   readonly workspaceFactory?: KhalaSpawnWorkspaceFactory | undefined
   readonly now?: (() => Date) | undefined
   readonly onEvent?: ((event: KhalaSpawnLifecycleEvent) => void | Promise<void>) | undefined
 }
+
+export type KhalaSpawnWorkflow = "cloud_coding_session" | "codex_agent_task"
+
+export type KhalaSpawnMcpToolName = "khala.spawn" | "khala.spawnStatus"
+
+export type KhalaSpawnMcpCaller = (input: {
+  readonly args: Record<string, unknown>
+  readonly baseUrl: string
+  readonly env: Record<string, string | undefined>
+  readonly token: string
+  readonly tool: KhalaSpawnMcpToolName
+}) => Promise<unknown>
 
 export type KhalaSpawnWorkerRunner = (input: {
   readonly signal: AbortSignal
@@ -111,6 +134,7 @@ export type KhalaSpawnLifecycleEvent = {
 }
 
 const DEFAULT_MAX_COUNT = 10
+const PYLON_MAX_COUNT = 20
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000
 const TERMINAL_WORKER_STATES = new Set<KhalaSpawnWorkerState>([
   "accepted",
@@ -121,11 +145,19 @@ const TERMINAL_WORKER_STATES = new Set<KhalaSpawnWorkerState>([
 const runWriteQueues = new Map<string, Promise<KhalaSpawnRun>>()
 
 export function boundedSpawnCount(value: number, label = "count"): number {
+  return boundedSpawnCountFor(value, label, DEFAULT_MAX_COUNT, "local supervised workers")
+}
+
+function boundedPylonSpawnCount(value: number, label = "count"): number {
+  return boundedSpawnCountFor(value, label, PYLON_MAX_COUNT, "Pylon supervised workers")
+}
+
+function boundedSpawnCountFor(value: number, label: string, max: number, surface: string): number {
   if (!Number.isFinite(value) || value <= 0 || Math.floor(value) !== value) {
     throw new Error(`khala spawn ${label} must be a positive integer`)
   }
-  if (value > DEFAULT_MAX_COUNT) {
-    throw new Error(`khala spawn ${label} is capped at ${DEFAULT_MAX_COUNT} for local supervised workers`)
+  if (value > max) {
+    throw new Error(`khala spawn ${label} is capped at ${max} for ${surface}`)
   }
   return value
 }
@@ -148,13 +180,13 @@ export function spawnRunDir(env: Record<string, string | undefined>, runRef: str
 
 export async function runKhalaSpawn(options: KhalaSpawnRunOptions): Promise<KhalaSpawnRun> {
   const env = options.env ?? Bun.env
+  const requestedStrategy = options.strategy ?? "auto"
+  if (requestedStrategy === "pylon") {
+    return runPylonKhalaSpawn(options, env)
+  }
   const count = boundedSpawnCount(options.count)
   const maxParallel = boundedSpawnCount(Math.min(options.maxParallel ?? count, count), "max-parallel")
   const objective = cleanSpawnObjective(options.objective)
-  const requestedStrategy = options.strategy ?? "auto"
-  if (requestedStrategy === "pylon") {
-    throw new Error("khala spawn --strategy pylon is tracked by issue #6372; use --strategy local for this CLI-local slice")
-  }
   const strategy: KhalaSpawnResolvedStrategy = "local_codex_threads"
   const now = options.now ?? (() => new Date())
   const createdAt = now().toISOString()
@@ -241,6 +273,438 @@ export async function runKhalaSpawn(options: KhalaSpawnRunOptions): Promise<Khal
   } finally {
     runWriteQueues.delete(spawnRunDir(env, run.runRef))
   }
+}
+
+async function runPylonKhalaSpawn(
+  options: KhalaSpawnRunOptions,
+  env: Record<string, string | undefined>,
+): Promise<KhalaSpawnRun> {
+  const count = boundedPylonSpawnCount(options.count)
+  const maxParallel = boundedPylonSpawnCount(Math.min(options.maxParallel ?? count, count), "max-parallel")
+  const objective = cleanSpawnObjective(options.objective)
+  const now = options.now ?? (() => new Date())
+  const createdAt = now().toISOString()
+  const projection = decodePylonSpawnProjection(await callKhalaSpawnMcpTool(options, env, "khala.spawn", {
+    count,
+    maxParallel,
+    objective,
+    workflow: options.workflow ?? "codex_agent_task",
+    ...(options.branch === undefined ? {} : { branch: options.branch }),
+    ...(options.commit === undefined ? {} : { commit: options.commit }),
+    ...(options.fixture === undefined ? {} : { fixture: options.fixture }),
+    ...(options.pylonRef === undefined ? {} : { targetPylonRef: options.pylonRef }),
+    ...(options.repo === undefined ? {} : { repo: options.repo }),
+    ...(options.verify === undefined ? {} : { verify: options.verify }),
+  }))
+  const run = pylonRunFromProjection({
+    count,
+    createdAt,
+    maxParallel,
+    objective,
+    projection,
+    requestedStrategy: options.strategy ?? "pylon",
+  })
+  await writeSpawnRun(env, run)
+  for (const worker of run.workers) {
+    await appendWorkerEvent(env, run.runRef, worker.workerRef, {
+      assignmentRef: worker.assignmentRef,
+      durableRequestId: worker.durableRequestId,
+      observedAt: run.updatedAt,
+      pylonRef: worker.pylonRef,
+      state: worker.state,
+      workerRef: worker.workerRef,
+    })
+  }
+  await emit(options, {
+    message: `pylon spawn dispatched ${projection.assignedCount} of ${count} requested worker(s)`,
+    observedAt: run.updatedAt,
+    runRef: run.runRef,
+    state: run.state,
+  })
+  return run
+}
+
+export async function refreshKhalaPylonSpawnRun(input: {
+  readonly baseUrl?: string | undefined
+  readonly env?: Record<string, string | undefined> | undefined
+  readonly mcpCaller?: KhalaSpawnMcpCaller | undefined
+  readonly run: KhalaSpawnRun
+  readonly token?: string | undefined
+}): Promise<KhalaSpawnRun> {
+  if (input.run.strategy !== "pylon_codex_assignments") return input.run
+  const env = input.env ?? Bun.env
+  const projection = decodePylonSpawnStatusProjection(await callKhalaSpawnMcpTool({
+    baseUrl: input.baseUrl,
+    env,
+    mcpCaller: input.mcpCaller,
+    token: input.token,
+  }, env, "khala.spawnStatus", { spawnRef: input.run.runRef }))
+  const updatedAt = new Date().toISOString()
+  const statusByAssignment = new Map(
+    projection.children
+      .filter(child => child.assignmentRef !== undefined)
+      .map(child => [child.assignmentRef!, child]),
+  )
+  const workers = input.run.workers.map(worker => {
+    const status = worker.assignmentRef === undefined
+      ? undefined
+      : statusByAssignment.get(worker.assignmentRef)
+    if (status === undefined) return worker
+    const state = pylonAssignmentStateToWorkerState(status.state)
+    return updateWorker(worker, {
+      blockerRefs: state === "rejected" || state === "failed"
+        ? [...new Set([...worker.blockerRefs, "blocker.khala_spawn.pylon_assignment_not_accepted"])]
+        : worker.blockerRefs,
+      completedAt: TERMINAL_WORKER_STATES.has(state) ? worker.completedAt ?? updatedAt : worker.completedAt,
+      durableRequestId: status.durableRequestId ?? worker.durableRequestId,
+      pylonRef: status.pylonRef ?? worker.pylonRef,
+      resultText: pylonWorkerResultText(status),
+      state,
+    })
+  })
+  const run = updateRun(input.run, {
+    state: projection.state === "accepted"
+      ? "completed"
+      : projection.state === "rejected"
+        ? "failed"
+        : finalRunState(workers),
+    updatedAt,
+    workers,
+  })
+  await writeSpawnRun(env, run)
+  return run
+}
+
+type PylonSpawnChildProjection = {
+  readonly assignmentRef?: string | undefined
+  readonly durableRequestId?: string | undefined
+  readonly durableStreamUrl?: string | undefined
+  readonly error?: string | undefined
+  readonly ok: boolean
+  readonly pylonRef?: string | undefined
+  readonly reason?: string | undefined
+  readonly slotIndex?: number | undefined
+  readonly state?: string | undefined
+  readonly workerRef?: string | undefined
+}
+
+type PylonSpawnProjection = {
+  readonly assignedCount: number
+  readonly blockerRefs: readonly string[]
+  readonly children: readonly PylonSpawnChildProjection[]
+  readonly ok: boolean
+  readonly requestedCount: number
+  readonly spawnRef: string
+}
+
+type PylonSpawnStatusChildProjection = {
+  readonly assignmentRef?: string | undefined
+  readonly durableRequestId?: string | undefined
+  readonly pylonRef?: string | undefined
+  readonly state?: string | undefined
+}
+
+type PylonSpawnStatusProjection = {
+  readonly children: readonly PylonSpawnStatusChildProjection[]
+  readonly spawnRef: string
+  readonly state: "active" | "accepted" | "rejected"
+}
+
+async function callKhalaSpawnMcpTool(
+  options: Pick<KhalaSpawnRunOptions, "baseUrl" | "env" | "mcpCaller" | "token">,
+  env: Record<string, string | undefined>,
+  tool: KhalaSpawnMcpToolName,
+  args: Record<string, unknown>,
+): Promise<unknown> {
+  const baseUrl = options.baseUrl ?? env.KHALA_BASE_URL ?? DEFAULT_BASE_URL
+  const token = options.token?.trim() || env.OPENAGENTS_AGENT_TOKEN?.trim()
+  if (token === undefined || token.length === 0) {
+    throw new Error("khala spawn --strategy pylon requires OPENAGENTS_AGENT_TOKEN, `khala login`, or --token")
+  }
+  const caller = options.mcpCaller ?? remoteKhalaSpawnMcpCaller
+  return caller({ args, baseUrl, env, token, tool })
+}
+
+const remoteKhalaSpawnMcpCaller: KhalaSpawnMcpCaller = async input => {
+  const response = await fetch(new URL("/api/mcp", normalizedBaseUrl(input.baseUrl)), {
+    body: JSON.stringify({
+      id: `khala-cli.${input.tool}.${randomUUID()}`,
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: {
+        arguments: input.args,
+        name: input.tool,
+      },
+    }),
+    headers: {
+      accept: "application/json",
+      authorization: `Bearer ${input.token}`,
+      "content-type": "application/json",
+    },
+    method: "POST",
+  })
+  const text = await response.text()
+  if (!response.ok) {
+    throw new Error(`remote ${input.tool} failed (${response.status}): ${text.trim() || response.statusText}`)
+  }
+  const envelope = parseJsonRecord(text, `remote ${input.tool} response`)
+  const error = recordValue(envelope, "error")
+  if (isRecord(error)) {
+    throw new Error(stringValue(error, "message") ?? `remote ${input.tool} returned an error`)
+  }
+  const result = recordValue(envelope, "result")
+  if (!isRecord(result)) {
+    throw new Error(`remote ${input.tool} returned no result`)
+  }
+  return structuredMcpContent(result, input.tool)
+}
+
+function structuredMcpContent(result: Record<string, unknown>, tool: string): unknown {
+  if ("structuredContent" in result) return result.structuredContent
+  const content = arrayValue(result, "content")
+  const text = content
+    .map(item => isRecord(item) && item.type === "text" ? stringValue(item, "text") : undefined)
+    .find(item => item !== undefined)
+  if (text !== undefined) {
+    try {
+      return JSON.parse(text)
+    } catch {
+      if (result.isError === true) throw new Error(text)
+      return { text }
+    }
+  }
+  if (result.isError === true) {
+    throw new Error(`remote ${tool} returned an error`)
+  }
+  return result
+}
+
+function decodePylonSpawnProjection(value: unknown): PylonSpawnProjection {
+  const record = expectRecord(value, "khala.spawn output")
+  const spawnRef = requiredStringValue(record, "spawnRef")
+  return {
+    assignedCount: integerValue(record, "assignedCount", 0),
+    blockerRefs: stringArrayValue(record, "blockerRefs"),
+    children: arrayValue(record, "children").map(decodePylonSpawnChildProjection),
+    ok: record.ok === true,
+    requestedCount: integerValue(record, "requestedCount", 0),
+    spawnRef,
+  }
+}
+
+function decodePylonSpawnChildProjection(value: unknown): PylonSpawnChildProjection {
+  const record = expectRecord(value, "khala.spawn child")
+  return {
+    assignmentRef: stringValue(record, "assignmentRef"),
+    durableRequestId: stringValue(record, "durableRequestId"),
+    durableStreamUrl: stringValue(record, "durableStreamUrl"),
+    error: stringValue(record, "error"),
+    ok: record.ok === true,
+    pylonRef: stringValue(record, "pylonRef"),
+    reason: stringValue(record, "reason"),
+    slotIndex: optionalIntegerValue(record, "slotIndex"),
+    state: stringValue(record, "state"),
+    workerRef: stringValue(record, "workerRef"),
+  }
+}
+
+function decodePylonSpawnStatusProjection(value: unknown): PylonSpawnStatusProjection {
+  const record = expectRecord(value, "khala.spawnStatus output")
+  const state = stringValue(record, "state")
+  return {
+    children: arrayValue(record, "children").map(child => {
+      const childRecord = expectRecord(child, "khala.spawnStatus child")
+      return {
+        assignmentRef: stringValue(childRecord, "assignmentRef"),
+        durableRequestId: childRecord.durableRequestId === null ? undefined : stringValue(childRecord, "durableRequestId"),
+        pylonRef: stringValue(childRecord, "pylonRef"),
+        state: stringValue(childRecord, "state"),
+      }
+    }),
+    spawnRef: requiredStringValue(record, "spawnRef"),
+    state: state === "accepted" || state === "rejected" ? state : "active",
+  }
+}
+
+function pylonRunFromProjection(input: {
+  readonly count: number
+  readonly createdAt: string
+  readonly maxParallel: number
+  readonly objective: string
+  readonly projection: PylonSpawnProjection
+  readonly requestedStrategy: KhalaSpawnStrategy
+}): KhalaSpawnRun {
+  const childBySlot = new Map<number, PylonSpawnChildProjection>()
+  input.projection.children.forEach((child, index) => {
+    const slot = child.slotIndex === undefined ? index + 1 : child.slotIndex + 1
+    childBySlot.set(slot, child)
+  })
+  const workers = Array.from({ length: input.count }, (_, index): KhalaSpawnWorker => {
+    const slotIndex = index + 1
+    const child = childBySlot.get(slotIndex)
+    if (child === undefined) {
+      return pylonMissingWorker({
+        blockerRefs: input.projection.blockerRefs,
+        objective: input.objective,
+        runRef: input.projection.spawnRef,
+        slotIndex,
+        total: input.count,
+      })
+    }
+    return pylonWorkerFromChild({
+      child,
+      objective: input.objective,
+      runRef: input.projection.spawnRef,
+      slotIndex,
+      total: input.count,
+    })
+  })
+  return {
+    schema: KHALA_SPAWN_RUN_SCHEMA,
+    createdAt: input.createdAt,
+    maxParallel: input.maxParallel,
+    objective: input.objective,
+    requestedCount: input.count,
+    requestedStrategy: input.requestedStrategy,
+    runRef: input.projection.spawnRef,
+    state: input.projection.ok ? finalRunState(workers) : finalRunState(workers),
+    strategy: "pylon_codex_assignments",
+    updatedAt: input.createdAt,
+    workers,
+  }
+}
+
+function pylonWorkerFromChild(input: {
+  readonly child: PylonSpawnChildProjection
+  readonly objective: string
+  readonly runRef: string
+  readonly slotIndex: number
+  readonly total: number
+}): KhalaSpawnWorker {
+  const state = input.child.ok
+    ? pylonAssignmentStateToWorkerState(input.child.state)
+    : "rejected"
+  const blockerRefs = [
+    ...(input.child.ok ? [] : ["blocker.khala_spawn.pylon_assignment_not_started"]),
+    ...(input.child.error === undefined ? [] : [`blocker.khala_mcp.spawn.${input.child.error}`]),
+  ]
+  return {
+    schema: KHALA_SPAWN_WORKER_SCHEMA,
+    assignmentRef: input.child.assignmentRef,
+    blockerRefs,
+    completedAt: TERMINAL_WORKER_STATES.has(state) ? new Date().toISOString() : undefined,
+    durableRequestId: input.child.durableRequestId,
+    error: input.child.error ?? input.child.reason,
+    objective: workerObjective(input.objective, input.slotIndex, input.total),
+    pylonRef: input.child.pylonRef,
+    resultText: pylonWorkerResultText(input.child),
+    runRef: input.runRef,
+    slotIndex: input.slotIndex,
+    startedAt: input.child.ok ? new Date().toISOString() : undefined,
+    state,
+    workerRef: input.child.workerRef ?? `${input.runRef}.worker.${String(input.slotIndex).padStart(2, "0")}`,
+  }
+}
+
+function pylonMissingWorker(input: {
+  readonly blockerRefs: readonly string[]
+  readonly objective: string
+  readonly runRef: string
+  readonly slotIndex: number
+  readonly total: number
+}): KhalaSpawnWorker {
+  return {
+    schema: KHALA_SPAWN_WORKER_SCHEMA,
+    blockerRefs: input.blockerRefs.length === 0
+      ? ["blocker.khala_mcp.spawn.capacity_shortfall"]
+      : input.blockerRefs,
+    completedAt: new Date().toISOString(),
+    objective: workerObjective(input.objective, input.slotIndex, input.total),
+    runRef: input.runRef,
+    slotIndex: input.slotIndex,
+    state: "rejected",
+    workerRef: `${input.runRef}.worker.${String(input.slotIndex).padStart(2, "0")}`,
+  }
+}
+
+function pylonAssignmentStateToWorkerState(state: string | undefined): KhalaSpawnWorkerState {
+  if (state === "accepted") return "accepted"
+  if (state === "cancelled") return "cancelled"
+  if (state === "blocked" || state === "rejected" || state === "stale") return "rejected"
+  return "running"
+}
+
+function pylonWorkerResultText(child: {
+  readonly assignmentRef?: string | undefined
+  readonly durableRequestId?: string | undefined
+  readonly pylonRef?: string | undefined
+  readonly state?: string | undefined
+}): string {
+  return [
+    `pylon assignment state: ${child.state ?? "unknown"}`,
+    ...(child.assignmentRef === undefined ? [] : [`assignment: ${child.assignmentRef}`]),
+    ...(child.durableRequestId === undefined ? [] : [`durable request: ${child.durableRequestId}`]),
+    ...(child.pylonRef === undefined ? [] : [`pylon: ${child.pylonRef}`]),
+  ].join("\n")
+}
+
+function normalizedBaseUrl(baseUrl: string): string {
+  return baseUrl.replace(/\/+$/, "")
+}
+
+function parseJsonRecord(text: string, label: string): Record<string, unknown> {
+  try {
+    return expectRecord(JSON.parse(text), label)
+  } catch (error) {
+    throw new Error(`${label} was not valid JSON: ${error instanceof Error ? error.message : String(error)}`)
+  }
+}
+
+function expectRecord(value: unknown, label: string): Record<string, unknown> {
+  if (!isRecord(value)) throw new Error(`${label} was not an object`)
+  return value
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function recordValue(record: Record<string, unknown>, key: string): unknown {
+  return record[key]
+}
+
+function arrayValue(record: Record<string, unknown>, key: string): readonly unknown[] {
+  const value = record[key]
+  return Array.isArray(value) ? value : []
+}
+
+function stringValue(record: Record<string, unknown>, key: string): string | undefined {
+  const value = record[key]
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined
+}
+
+function requiredStringValue(record: Record<string, unknown>, key: string): string {
+  const value = stringValue(record, key)
+  if (value === undefined) throw new Error(`${key} is required`)
+  return value
+}
+
+function optionalIntegerValue(record: Record<string, unknown>, key: string): number | undefined {
+  const value = record[key]
+  if (typeof value === "number" && Number.isFinite(value)) return Math.trunc(value)
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number.parseInt(value, 10)
+    return Number.isFinite(parsed) ? parsed : undefined
+  }
+  return undefined
+}
+
+function integerValue(record: Record<string, unknown>, key: string, fallback: number): number {
+  return optionalIntegerValue(record, key) ?? fallback
+}
+
+function stringArrayValue(record: Record<string, unknown>, key: string): readonly string[] {
+  return arrayValue(record, key).filter((value): value is string => typeof value === "string")
 }
 
 export async function listKhalaSpawnRuns(

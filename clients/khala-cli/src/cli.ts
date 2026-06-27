@@ -18,12 +18,14 @@ import {
   listKhalaSpawnRuns,
   readKhalaSpawnRun,
   readKhalaSpawnWorker,
+  refreshKhalaPylonSpawnRun,
   runKhalaSpawn,
   summarizeSpawnRun,
   type KhalaSpawnLifecycleEvent,
   type KhalaSpawnRun,
   type KhalaSpawnStrategy,
   type KhalaSpawnWorker,
+  type KhalaSpawnWorkflow,
 } from "./spawn.js"
 import { renderMarkdownForTerminal, renderReasoningMarkdownDeltaForTerminal, terminalStyle } from "./terminal.js"
 import { clearStoredAgentToken, ensureStoredAgentToken, traceTokenPath } from "./token-store.js"
@@ -68,10 +70,17 @@ interface ParsedArgs {
   readonly models: boolean
   readonly mintFreeKey: boolean
   readonly spawnCount: number | undefined
+  readonly spawnBranch: string | undefined
+  readonly spawnCommit: string | undefined
+  readonly spawnFixture: boolean
   readonly spawnMaxParallel: number | undefined
   readonly spawnObjective: string | undefined
+  readonly spawnPylonRef: string | undefined
+  readonly spawnRepo: string | undefined
   readonly spawnStrategy: KhalaSpawnStrategy
   readonly spawnTimeoutMs: number | undefined
+  readonly spawnVerify: string | undefined
+  readonly spawnWorkflow: KhalaSpawnWorkflow
 }
 
 export async function runKhalaCli(argv: ReadonlyArray<string>, env: Record<string, string | undefined> = Bun.env): Promise<number> {
@@ -164,7 +173,7 @@ export async function runKhalaCli(argv: ReadonlyArray<string>, env: Record<strin
     if (args.command.kind === "spawnJoin") {
       const runRef = args.command.runRef?.trim()
       if (!runRef) throw new Error("khala join requires a run ref")
-      const result = await readKhalaSpawnRun(env, runRef)
+      const result = await readSpawnRunCommand(args, env, runRef)
       process.stdout.write(args.json ? `${JSON.stringify(result, null, 2)}\n` : `${summarizeSpawnRun(result)}\n`)
       return 0
     }
@@ -266,11 +275,18 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
   let json = false
   let models = false
   let mintFreeKey = false
+  let spawnBranch: string | undefined
+  let spawnCommit: string | undefined
   let spawnCount: number | undefined
+  let spawnFixture = false
   let spawnMaxParallel: number | undefined
   let spawnObjective: string | undefined
+  let spawnPylonRef: string | undefined
+  let spawnRepo: string | undefined
   let spawnStrategy: KhalaSpawnStrategy = "auto"
   let spawnTimeoutMs: number | undefined
+  let spawnVerify: string | undefined
+  let spawnWorkflow: KhalaSpawnWorkflow = "codex_agent_task"
   const positional: Array<string> = []
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -286,6 +302,7 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
     else if (arg === "--json" || arg === "--no-stream") json = true
     else if (arg === "--models") models = true
     else if (arg === "--mint-free-key") mintFreeKey = true
+    else if (arg === "--fixture") spawnFixture = true
     else if (arg === "--count") {
       spawnCount = parsePositiveInteger(requireValue(argv, index, arg), arg)
       index += 1
@@ -301,6 +318,40 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
       index += 1
     } else if (arg.startsWith("--objective=")) {
       spawnObjective = arg.slice("--objective=".length)
+    } else if (arg === "--pylon-ref" || arg === "--target-pylon-ref") {
+      spawnPylonRef = requireValue(argv, index, arg)
+      index += 1
+    } else if (arg.startsWith("--pylon-ref=")) {
+      spawnPylonRef = arg.slice("--pylon-ref=".length)
+    } else if (arg.startsWith("--target-pylon-ref=")) {
+      spawnPylonRef = arg.slice("--target-pylon-ref=".length)
+    } else if (arg === "--repo" || arg === "--repository") {
+      spawnRepo = requireValue(argv, index, arg)
+      index += 1
+    } else if (arg.startsWith("--repo=")) {
+      spawnRepo = arg.slice("--repo=".length)
+    } else if (arg.startsWith("--repository=")) {
+      spawnRepo = arg.slice("--repository=".length)
+    } else if (arg === "--branch") {
+      spawnBranch = requireValue(argv, index, arg)
+      index += 1
+    } else if (arg.startsWith("--branch=")) {
+      spawnBranch = arg.slice("--branch=".length)
+    } else if (arg === "--commit") {
+      spawnCommit = requireValue(argv, index, arg)
+      index += 1
+    } else if (arg.startsWith("--commit=")) {
+      spawnCommit = arg.slice("--commit=".length)
+    } else if (arg === "--verify") {
+      spawnVerify = requireValue(argv, index, arg)
+      index += 1
+    } else if (arg.startsWith("--verify=")) {
+      spawnVerify = arg.slice("--verify=".length)
+    } else if (arg === "--workflow") {
+      spawnWorkflow = parseSpawnWorkflow(requireValue(argv, index, arg))
+      index += 1
+    } else if (arg.startsWith("--workflow=")) {
+      spawnWorkflow = parseSpawnWorkflow(arg.slice("--workflow=".length))
     } else if (arg === "--strategy") {
       spawnStrategy = parseSpawnStrategy(requireValue(argv, index, arg))
       index += 1
@@ -391,10 +442,17 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
     models,
     mintFreeKey,
     spawnCount,
+    spawnBranch,
+    spawnCommit,
+    spawnFixture,
     spawnMaxParallel,
     spawnObjective,
+    spawnPylonRef,
+    spawnRepo,
     spawnStrategy,
     spawnTimeoutMs,
+    spawnVerify,
+    spawnWorkflow,
   }
 }
 
@@ -635,13 +693,22 @@ async function handleSlashCommand(
     try {
       const parsed = parseInteractiveSpawn(argument)
       const result = await runKhalaSpawn({
+        baseUrl: args.baseUrl,
+        ...(args.spawnBranch === undefined ? {} : { branch: args.spawnBranch }),
+        ...(args.spawnCommit === undefined ? {} : { commit: args.spawnCommit }),
         count: parsed.count,
         cwd: process.cwd(),
         env,
+        fixture: args.spawnFixture,
         maxParallel: parsed.count,
         objective: parsed.objective,
         onEvent: event => writeSpawnEvent(event),
-        strategy: "local",
+        ...(args.spawnPylonRef === undefined ? {} : { pylonRef: args.spawnPylonRef }),
+        ...(args.spawnRepo === undefined ? {} : { repo: args.spawnRepo }),
+        strategy: args.spawnStrategy,
+        token: args.token,
+        ...(args.spawnVerify === undefined ? {} : { verify: args.spawnVerify }),
+        workflow: args.spawnWorkflow,
       })
       process.stdout.write(`${terminalStyle.assistant("Khala:")} ${terminalStyle.meta("Spawn complete.")}\n${summarizeSpawnRun(result)}\n\n`)
     } catch (error) {
@@ -672,7 +739,7 @@ async function handleSlashCommand(
       return "handled"
     }
     try {
-      process.stdout.write(`${terminalStyle.assistant("Khala:")} ${summarizeSpawnRun(await readKhalaSpawnRun(env, argument))}\n\n`)
+      process.stdout.write(`${terminalStyle.assistant("Khala:")} ${summarizeSpawnRun(await readSpawnRunCommand(args, env, argument))}\n\n`)
     } catch (error) {
       process.stdout.write(`${terminalStyle.assistant("Khala:")} ${String(error instanceof Error ? error.message : error)}\n\n`)
     }
@@ -874,14 +941,23 @@ async function runSelectedKhalaSpawnTurn(
     process.stdout.write(`${terminalStyle.assistant("Khala:")} ${terminalStyle.meta(`Blueprint selected Khala spawn: ${selection.reason}`)}\n`)
   }
   const run = await runKhalaSpawn({
+    baseUrl: args.baseUrl,
+    ...(args.spawnBranch === undefined ? {} : { branch: args.spawnBranch }),
+    ...(args.spawnCommit === undefined ? {} : { commit: args.spawnCommit }),
     count,
     cwd: process.cwd(),
     env,
+    fixture: args.spawnFixture,
     maxParallel: args.spawnMaxParallel ?? count,
     objective,
     onEvent: options.silent === true ? undefined : event => writeSpawnEvent(event),
+    ...(args.spawnPylonRef === undefined ? {} : { pylonRef: args.spawnPylonRef }),
+    ...(args.spawnRepo === undefined ? {} : { repo: args.spawnRepo }),
     strategy: args.spawnStrategy,
     ...(args.spawnTimeoutMs === undefined ? {} : { timeoutMs: args.spawnTimeoutMs }),
+    token: args.token,
+    ...(args.spawnVerify === undefined ? {} : { verify: args.spawnVerify }),
+    workflow: args.spawnWorkflow,
   })
   const text = `Spawn complete.\n${summarizeSpawnRun(run)}`
   if (options.silent !== true) {
@@ -913,15 +989,43 @@ async function runSpawnCommand(
     throw new Error("khala spawn requires an objective, for example: khala spawn --count 5 --objective \"audit this workspace\"")
   }
   return runKhalaSpawn({
+    baseUrl: args.baseUrl,
+    ...(args.spawnBranch === undefined ? {} : { branch: args.spawnBranch }),
+    ...(args.spawnCommit === undefined ? {} : { commit: args.spawnCommit }),
     count: args.spawnCount ?? 1,
     cwd: process.cwd(),
     env,
+    fixture: args.spawnFixture,
     ...(args.spawnMaxParallel === undefined ? {} : { maxParallel: args.spawnMaxParallel }),
     objective,
     onEvent: args.json ? undefined : event => writeSpawnEvent(event),
+    ...(args.spawnPylonRef === undefined ? {} : { pylonRef: args.spawnPylonRef }),
+    ...(args.spawnRepo === undefined ? {} : { repo: args.spawnRepo }),
     strategy: args.spawnStrategy,
     ...(args.spawnTimeoutMs === undefined ? {} : { timeoutMs: args.spawnTimeoutMs }),
+    token: args.token,
+    ...(args.spawnVerify === undefined ? {} : { verify: args.spawnVerify }),
+    workflow: args.spawnWorkflow,
   })
+}
+
+async function readSpawnRunCommand(
+  args: ParsedArgs,
+  env: Record<string, string | undefined>,
+  runRef: string,
+): Promise<KhalaSpawnRun> {
+  const run = await readKhalaSpawnRun(env, runRef)
+  if (run.strategy !== "pylon_codex_assignments") return run
+  try {
+    return await refreshKhalaPylonSpawnRun({
+      baseUrl: args.baseUrl,
+      env,
+      run,
+      token: args.token,
+    })
+  } catch {
+    return run
+  }
 }
 
 function parseInteractiveSpawn(argument: string): { readonly count: number; readonly objective: string } {
@@ -953,6 +1057,11 @@ function parsePositiveInteger(value: string, flag: string): number {
 function parseSpawnStrategy(value: string): KhalaSpawnStrategy {
   if (value === "auto" || value === "local" || value === "pylon") return value
   throw new Error("--strategy must be auto, local, or pylon")
+}
+
+function parseSpawnWorkflow(value: string): KhalaSpawnWorkflow {
+  if (value === "cloud_coding_session" || value === "codex_agent_task") return value
+  throw new Error("--workflow must be cloud_coding_session or codex_agent_task")
 }
 
 function requireValue(argv: ReadonlyArray<string>, index: number, flag: string): string {
@@ -1374,6 +1483,7 @@ Usage:
   khala codex status
   khala codex "read README.md"
   khala spawn --count 5 --objective "audit this workspace" --strategy local
+  khala spawn --strategy pylon --count 5 --objective "implement public issue #123" --repo OpenAgentsInc/openagents --commit <sha> --verify "bun test"
   khala workers
   khala worker <workerRef>
   khala join <runRef>
@@ -1419,10 +1529,17 @@ Flags:
   --json, --no-stream  Print final JSON instead of streaming deltas
   --models             Print /api/v1/models JSON
   --mint-free-key      Call POST /api/keys/free and print the response once
-  --count <n>          Worker count for khala spawn (default: 1, max: 10)
-  --max-parallel <n>   Max concurrent local workers for khala spawn
+  --count <n>          Worker count for khala spawn (default: 1; max: 10 local, 20 pylon)
+  --max-parallel <n>   Max concurrent workers for khala spawn
   --objective <text>   Objective text for khala spawn
   --strategy <mode>    Spawn strategy: auto, local, or pylon
+  --pylon-ref <ref>    Caller-owned target Pylon ref for --strategy pylon
+  --fixture            Use the bounded public fixture for --strategy pylon
+  --repo <owner/repo>  Public GitHub repo for --strategy pylon workspace work
+  --branch <name>      Public repo branch for --strategy pylon (default: main)
+  --commit <sha>       Pinned public repo commit for --strategy pylon
+  --verify <command>   Bounded verification command for --strategy pylon
+  --workflow <name>    Pylon workflow: codex_agent_task or cloud_coding_session
   --timeout <seconds>  Per-worker timeout for khala spawn
   --help, -h           Show this help
 `

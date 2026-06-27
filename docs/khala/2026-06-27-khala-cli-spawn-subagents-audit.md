@@ -197,18 +197,20 @@ Findings:
   and session ref. The local spawn supervisor now uses that delegate to create
   supervised child worker records, isolate per-worker git worktrees when the
   current directory is a Git checkout, aggregate worker states, and cancel
-  active workers. Exact SDK token usage for Pylon/Codex ingest remains a Pylon
-  assignment surface concern.
+  active workers. `--strategy pylon` now calls the reviewed Worker MCP
+  `khala.spawn` / `khala.spawnStatus` surface, persists parent/child assignment
+  refs locally, and lets `khala join` refresh remote child status when an agent
+  token is available. Exact SDK token usage remains recorded by the Pylon/Codex
+  assignment ingest path after local Pylon executes the delegated Codex turns.
 - `connectKhalaCodex()` correctly avoids the default `~/.codex` destructive
   login path by using Khala's own Codex home unless a configured account is
   present. This must be preserved for spawn.
 
 Conclusion:
 
-The Khala CLI now has both a working single local executor and a bounded local
-spawn supervisor. The remaining work is hardening the natural-language routing,
-public/browser capability copy, and the CLI strategy bridge to durable Pylon
-fanout.
+The Khala CLI now has a working single local executor, a bounded local spawn
+supervisor, semantic spawn routing, honest public/browser capability copy, and
+an explicit CLI bridge to durable caller-owned Pylon fanout.
 
 ### Pylon Khala Requester And Burndown
 
@@ -600,28 +602,38 @@ Acceptance:
 - It never exceeds advertised available capacity.
 - It emits per-worker lifecycle JSONL and aggregate proof.
 
-### Slice C: Khala CLI Uses Pylon Strategy By Default
+### Slice C: Khala CLI Pylon Strategy Bridge
 
 Files:
 
 - `clients/khala-cli/src/spawn.ts`
-- `clients/khala-cli/src/token-store.ts`
-- `apps/pylon/src/khala-requester.ts`
+- `clients/khala-cli/src/cli.ts`
+- `clients/khala-cli/src/spawn.test.ts`
 
 Work:
 
-- From `khala spawn --strategy auto`, prefer Pylon when token and capacity are
-  available.
-- Fall back to local direct only when Pylon is unavailable or `--strategy local`
-  is explicit.
-- Aggregate `readPylonKhalaProof()` results.
+- Add `khala spawn --strategy pylon` as an explicit bridge to Worker MCP
+  `khala.spawn`.
+- Pass caller-owned targeting and public workspace pins:
+  `--pylon-ref`, `--fixture`, `--repo`, `--branch`, `--commit`, `--verify`, and
+  `--workflow`.
+- Persist returned `spawnRef`, child `workerRef`, `assignmentRef`,
+  `durableRequestId`, and `pylonRef` into the CLI spawn store.
+- Refresh Pylon child assignment state through `khala.spawnStatus` when
+  `khala join <runRef>` is called with auth available.
+- Keep `auto` on local direct execution until a separate capacity-policy change
+  explicitly promotes Pylon as the automatic default.
 
 Acceptance:
 
-- `khala spawn --count 2 --fixture --strategy pylon --json` returns two
-  assignment refs and exact proof rows.
-- Public counter delta reconciles to exact `token_usage_events` rows for the
-  assignments.
+- `khala spawn --count 2 --fixture --strategy pylon --json` returns and
+  persists two assignment refs.
+- `khala join <spawnRef>` refreshes assignment state from `khala.spawnStatus`.
+- Downstream exact proof rows remain the Pylon/Codex assignment contract:
+  `provider = "pylon-codex-own-capacity"`,
+  `model = "openagents/pylon-codex"`, `usage_truth = "exact"`,
+  `demand_kind = "own_capacity"`, and
+  `demand_source = "khala_coding_delegation"` after Pylon executes the children.
 
 ### Slice D: MCP And Worker API Parity
 
@@ -693,8 +705,9 @@ The feature is not done until all of these are true:
 - Public counters move only from exact rows, not estimates.
 - `khala join <runRef>` prints an aggregate answer that distinguishes each
   worker's result.
-- `khala cancel <runRef>` stops queued/running local workers and submits safe
-  interrupted closeouts for Pylon assignments where applicable.
+- `khala cancel <runRef>` stops queued/running local workers. Pylon assignment
+  interruption remains represented by the Pylon assignment closeout contract;
+  the CLI does not fabricate remote closeouts.
 - Cross-owner target Pylon refs are rejected.
 - Natural-language spawn routing uses a typed semantic selector, not keyword
   matching.
@@ -703,8 +716,8 @@ The feature is not done until all of these are true:
 ## Open Decisions
 
 - Default count cap: recommend 10 local workers until capacity/load UX is proven.
-- Default strategy: recommend `auto`, with Pylon durable assignments preferred
-  when authenticated and ready.
+- Default strategy: `auto` currently resolves to local direct execution; promote
+  Pylon to automatic default only with a separate capacity-policy change.
 - Local direct token accounting: either do not count it publicly, or add exact
   SDK usage capture and a reviewed ingest path before counting it.
 - Merge policy for editing workers: default should be independent worktrees plus
@@ -714,9 +727,9 @@ The feature is not done until all of these are true:
 
 ## Bottom Line
 
-Khala already has enough local Codex and Pylon/Codex machinery to make "spawn 5
-Khalas" real. The missing layer is a named spawn supervisor and a product
-contract around it: typed CLI commands, durable child-worker records, bounded
-parallelism, cancellation, capacity-aware Pylon assignment fanout, exact proof,
-and prompt/tests that stop Khala from denying the capability once the reviewed
+Khala now has enough local Codex and Pylon/Codex machinery to make "spawn 5
+Khalas" real on the reviewed CLI surface: typed commands, durable child-worker
+records, bounded parallelism, local cancellation, capacity-aware Pylon
+assignment fanout, exact Pylon/Codex proof after downstream execution, and
+prompt/tests that stop Khala from denying the capability once the reviewed
 surface exists.
