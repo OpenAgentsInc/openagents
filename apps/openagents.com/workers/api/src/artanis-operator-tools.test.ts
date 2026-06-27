@@ -11,12 +11,14 @@ import {
   type ArtanisKhalaFeedbackRecord,
   type ArtanisPylonAssignmentSummary,
   type ArtanisPylonJobStatus,
+  type ArtanisSyntheticLoadRun,
   type ArtanisUnsupportedRequestRecord,
   buildArtanisSyntheticLoadPlan,
   isSafeArtanisAssignmentRef,
   isSafeArtanisRepoPath,
   makeArtanisDispatchCodexTaskTool,
   makeArtanisGetGlmFleetStatusTool,
+  makeArtanisGetSyntheticLoadStatusTool,
   makeArtanisGetKhalaFeedbackTool,
   makeArtanisGetNetworkStatsTool,
   makeArtanisGetPylonJobStatusTool,
@@ -1876,6 +1878,113 @@ describe('get_glm_fleet_status (live GLM inference-fleet readiness) - iteration 
   })
 })
 
+describe('get_synthetic_load_status (active synthetic-load runs) - iteration 12', () => {
+  test('with a stubbed source returning one active run, returns a public-safe summary with run ref, state, and token-burn progress', async () => {
+    const tool = makeArtanisGetSyntheticLoadStatusTool({
+      reader: async (): Promise<ReadonlyArray<ArtanisSyntheticLoadRun>> => [
+        {
+          runRef: 'synthetic_load.terminal_bench.2026_06_27_01',
+          runType: 'terminal-bench',
+          state: 'running',
+          targetTokens: 10_000_000,
+          tokensBurned: 4_200_000,
+        },
+      ],
+    })
+    // It is a READ tool (executes freely, never gated/risky).
+    expect(tool.kind).toBe('read')
+    expect(tool.definition.name).toBe('get_synthetic_load_status')
+
+    const result = await Effect.runPromise(tool.execute({}))
+    // run ref
+    expect(result).toContain('synthetic_load.terminal_bench.2026_06_27_01')
+    // run type + state
+    expect(result).toContain('[terminal-bench]')
+    expect(result).toContain('state=running')
+    // token-burn progress (burned/target + percent)
+    expect(result).toContain('4,200,000/10,000,000 tokens burned (42%)')
+    expect(result).toContain('Synthetic-load runs (1 active):')
+  })
+
+  test('a run without a reported target shows burned tokens without a fabricated percent', async () => {
+    const tool = makeArtanisGetSyntheticLoadStatusTool({
+      reader: async () => [
+        {
+          runRef: 'synthetic_load.glm_stress.2026_06_27_09',
+          runType: 'glm-stress',
+          state: 'queued',
+          targetTokens: null,
+          tokensBurned: 1_500_000,
+        },
+      ],
+    })
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toContain('1,500,000 tokens burned')
+    expect(result).not.toContain('%')
+  })
+
+  test('no reader wired reads as an honest "(no active synthetic-load runs)"', async () => {
+    const tool = makeArtanisGetSyntheticLoadStatusTool()
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toBe('(no active synthetic-load runs)')
+  })
+
+  test('a reader returning no runs reads as honest absence', async () => {
+    const tool = makeArtanisGetSyntheticLoadStatusTool({
+      reader: async () => [],
+    })
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toBe('(no active synthetic-load runs)')
+  })
+
+  test('a reader rejection reads as an honest soft failure, never a throw', async () => {
+    const tool = makeArtanisGetSyntheticLoadStatusTool({
+      reader: async () => {
+        throw new Error('d1 down')
+      },
+    })
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toBe('(could not read synthetic-load status)')
+    expect(result).not.toMatch(/Error:/)
+  })
+
+  test('defensively redacts a non-public-safe run field, never leaking it into context', async () => {
+    const tool = makeArtanisGetSyntheticLoadStatusTool({
+      reader: async () => [
+        {
+          runRef: 'synthetic_load.bearer sk-abc123',
+          runType: 'terminal-bench',
+          state: 'running',
+          targetTokens: 1_000_000,
+          tokensBurned: 500_000,
+        },
+      ],
+    })
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toContain('(redacted)')
+    expect(result).not.toContain('sk-abc123')
+  })
+
+  test('bounds the number of summarized runs to the configured cap', async () => {
+    const tool = makeArtanisGetSyntheticLoadStatusTool({
+      maxRuns: 2,
+      reader: async () =>
+        Array.from({ length: 5 }, (_, index) => ({
+          runRef: `synthetic_load.terminal_bench.run_${index}`,
+          runType: 'terminal-bench',
+          state: 'running',
+          targetTokens: 1_000_000,
+          tokensBurned: 100_000,
+        })),
+    })
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toContain('Synthetic-load runs (2 active):')
+    expect(result).toContain('run_0')
+    expect(result).toContain('run_1')
+    expect(result).not.toContain('run_2')
+  })
+})
+
 // A public-safe trace-review report fixture matching the live route shape
 // (`buildKhalaTraceReviewReport` output): window + aggregates + modelMix +
 // outcomes + failureModes. Used to drive the get_trace_review read tool.
@@ -2117,6 +2226,7 @@ describe('makeArtanisOperatorTools default table', () => {
       'get_khala_feedback',
       'get_network_stats',
       'get_pylon_job_status',
+      'get_synthetic_load_status',
       'get_trace_review',
       'get_unsupported_requests',
       'list_github_issues',
@@ -2159,6 +2269,15 @@ describe('makeArtanisOperatorTools default table', () => {
   test('the default table includes a read-kind get_glm_fleet_status tool', () => {
     const tools = makeArtanisOperatorTools()
     const tool = tools.find(t => t.definition.name === 'get_glm_fleet_status')
+    expect(tool).toBeDefined()
+    expect(tool?.kind).toBe('read')
+  })
+
+  test('the default table includes a read-kind get_synthetic_load_status tool', () => {
+    const tools = makeArtanisOperatorTools()
+    const tool = tools.find(
+      t => t.definition.name === 'get_synthetic_load_status',
+    )
     expect(tool).toBeDefined()
     expect(tool?.kind).toBe('read')
   })

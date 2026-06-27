@@ -3109,6 +3109,174 @@ export const makeArtanisTriggerSyntheticLoadTool = (
 }
 
 // ---------------------------------------------------------------------------
+// get_synthetic_load_status — read ACTIVE synthetic-load runs (iteration 12).
+// ---------------------------------------------------------------------------
+//
+// Artanis named this his ONE highest-value next tool in iteration 12 of his
+// self-improvement loop. He already has a PLAN-ONLY `trigger_synthetic_load`
+// tool (iteration 4) that, behind owner approval, scales up background
+// synthetic load to burn idle Khala capacity toward the daily 10x served-token
+// goal. What he lacked was the READ counterpart: an on-demand look at which
+// synthetic-load runs are ACTIVE right now and how far each has burned toward
+// its token target. Without it the loop has a "duplicate-key placeholder" — he
+// can plan a burn but cannot see the burn he (or the owner) already started, so
+// he risks planning a redundant run on top of one already in flight.
+//
+// This is the read half of that pair, and it stays conservative by construction:
+//   - READ-ONLY + SIDE-EFFECT-FREE. It only reports the status of runs an
+//     injected owner-scoped reader returns. It never starts, scales, pauses, or
+//     cancels a run, and it touches no GLM serving / admission / model-router
+//     path.
+//   - PUBLIC-SAFE. Only a bounded run ref, run type, state, and aggregate
+//     token-burn progress are surfaced. No host origins, credentials, prompts,
+//     completions, prices, payout targets, or wallet material ever enter the
+//     summary; each free-text field is run through the same public-safety gate
+//     the dispatch tool uses and redacted to "(redacted)" if it ever regresses.
+//   - HONEST ABSENCE over invention. With no reader wired (the default today —
+//     synthetic-load runs are plan-only/owner-gated and there is no live run
+//     registry yet) or a reader that returns no runs, it reports an honest
+//     "(no active synthetic-load runs)" rather than fabricating a run. A reader
+//     rejection degrades to an honest "(could not read synthetic-load status)".
+
+// The default cap on how many active runs are summarized in one read, so a
+// surprising upstream cannot flood Artanis's bounded context.
+export const ARTANIS_SYNTHETIC_LOAD_STATUS_MAX_RUNS = 20
+
+// A public-safe view of a single synthetic-load run. Aggregate progress only —
+// never host-level detail, prompts, or spend material.
+export type ArtanisSyntheticLoadRun = Readonly<{
+  // A bounded, public-safe run ref, e.g.
+  // "synthetic_load.terminal_bench.2026_06_27_01".
+  runRef: string
+  // The synthetic-load run type, e.g. "terminal-bench" | "glm-stress".
+  runType: string
+  // The run state, e.g. "running" | "queued" | "completed" | "failed".
+  state: string
+  // Tokens burned so far by this run (own-capacity background work; no spend).
+  tokensBurned: number
+  // The run's token-burn target, or null when not reported.
+  targetTokens: number | null
+}>
+
+// The injected, owner-scoped reader seam. Resolves the ACTIVE synthetic-load
+// runs (own-capacity background work). A thrown rejection is treated by the tool
+// as a soft read failure, never a fabricated status. With no reader wired the
+// tool reports honest absence.
+export type ArtanisSyntheticLoadStatusReader = () => Promise<
+  ReadonlyArray<ArtanisSyntheticLoadRun>
+>
+
+export type ArtanisSyntheticLoadStatusConfig = Readonly<{
+  reader?: ArtanisSyntheticLoadStatusReader | undefined
+  maxRuns?: number | undefined
+}>
+
+// Coerce an unknown value into a non-negative integer token count, or null when
+// it is not a usable count. Never invents a number from a missing/garbage field.
+const coerceSyntheticLoadTokens = (value: unknown): number | null =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? Math.trunc(value)
+    : null
+
+// Public-safe-gate a free-text run field: trim it, and redact to "(redacted)"
+// if it ever carries non-public-safe material (it should not — these are
+// bounded refs/enums — but an upstream regression must never leak private
+// material into Artanis's context).
+const safeSyntheticLoadField = (value: unknown): string => {
+  const trimmed = typeof value === 'string' ? value.trim() : ''
+  if (trimmed === '') return '(unknown)'
+  return dispatchFieldIsSafe(trimmed) ? trimmed : '(redacted)'
+}
+
+// Normalize an unknown run into the public-safe shape. Tolerant of camelCase and
+// snake_case token fields; honest absence for a missing target.
+const normalizeSyntheticLoadRun = (
+  run: unknown,
+): ArtanisSyntheticLoadRun | null => {
+  if (typeof run !== 'object' || run === null) return null
+  const record = run as Record<string, unknown>
+  const tokensBurned =
+    coerceSyntheticLoadTokens(record.tokensBurned) ??
+    coerceSyntheticLoadTokens(record.tokens_burned) ??
+    0
+  const targetTokens =
+    coerceSyntheticLoadTokens(record.targetTokens) ??
+    coerceSyntheticLoadTokens(record.target_tokens)
+  return {
+    runRef: safeSyntheticLoadField(record.runRef ?? record.run_ref),
+    runType: safeSyntheticLoadField(record.runType ?? record.run_type),
+    state: safeSyntheticLoadField(record.state),
+    targetTokens,
+    tokensBurned,
+  }
+}
+
+// Format one run as a public-safe line naming the run ref, type, state, and
+// token-burn progress (with a percent when a target is reported).
+const formatSyntheticLoadRunLine = (run: ArtanisSyntheticLoadRun): string => {
+  const burned = run.tokensBurned.toLocaleString('en-US')
+  const progress =
+    run.targetTokens === null
+      ? `${burned} tokens burned`
+      : `${burned}/${run.targetTokens.toLocaleString('en-US')} tokens burned (${
+          run.targetTokens > 0
+            ? Math.min(
+                100,
+                Math.round((run.tokensBurned / run.targetTokens) * 100),
+              )
+            : 0
+        }%)`
+  return `${run.runRef} [${run.runType}] state=${run.state}, ${progress}.`
+}
+
+// get_synthetic_load_status() — reads the ACTIVE synthetic-load runs and returns
+// a concise public-safe summary naming each run's ref, type, state, and
+// token-burn progress. Honest absence: no reader / no runs reads as "(no active
+// synthetic-load runs)"; a reader rejection reads as "(could not read
+// synthetic-load status)". Side-effect-free, read-only, no spend; takes no args.
+export const makeArtanisGetSyntheticLoadStatusTool = (
+  config: ArtanisSyntheticLoadStatusConfig = {},
+): ArtanisOperatorReadTool => {
+  const reader = config.reader
+  const maxRuns = config.maxRuns ?? ARTANIS_SYNTHETIC_LOAD_STATUS_MAX_RUNS
+
+  return {
+    definition: {
+      description:
+        'Read the ACTIVE synthetic-load runs (own-capacity background work that burns idle Khala capacity toward the daily served-token goal). For each active run it returns a public-safe summary: the run ref, run type, state, and token-burn progress. Use this BEFORE you plan a new synthetic-load burn so you do not stack a redundant run on top of one already in flight. Read-only, side-effect-free, public-safe (run refs + states + aggregate token progress only; no host origins, prompts, prices, or spend material). Takes no arguments; no active runs reads as "(no active synthetic-load runs)".',
+      name: 'get_synthetic_load_status',
+      parameters: {
+        additionalProperties: false,
+        properties: {},
+        type: 'object',
+      },
+    },
+    execute: (_args: unknown) =>
+      Effect.gen(function* () {
+        if (reader === undefined) {
+          return '(no active synthetic-load runs)'
+        }
+        const exit = yield* Effect.exit(Effect.tryPromise(() => reader()))
+        if (exit._tag === 'Failure') {
+          return '(could not read synthetic-load status)'
+        }
+        const runs = exit.value
+          .map(normalizeSyntheticLoadRun)
+          .filter((run): run is ArtanisSyntheticLoadRun => run !== null)
+          .slice(0, maxRuns)
+        if (runs.length === 0) {
+          return '(no active synthetic-load runs)'
+        }
+        const header = `Synthetic-load runs (${runs.length} active):`
+        return [header, ...runs.map(run => `- ${formatSyntheticLoadRunLine(run)}`)].join(
+          '\n',
+        )
+      }),
+    kind: 'read',
+  }
+}
+
+// ---------------------------------------------------------------------------
 // The default owner-scoped operator tool table.
 // ---------------------------------------------------------------------------
 
@@ -3139,6 +3307,10 @@ export const makeArtanisTriggerSyntheticLoadTool = (
 // to an HTTP fetch of the public-safe readiness route, and an unreachable source
 // reads as an honest "(could not fetch GLM fleet status …)" rather than
 // inventing replica numbers.
+// `syntheticLoadStatus.reader` is the owner-scoped ACTIVE synthetic-load run
+// reader behind the iteration-12 `get_synthetic_load_status` read tool (the read
+// half of the plan-only `trigger_synthetic_load` pair); with no reader wired it
+// reports an honest "(no active synthetic-load runs)" rather than inventing one.
 // `traceReview.loadReport` is the in-worker trace-review report loader behind the
 // iteration-11 `get_trace_review` read tool (the live
 // GET /api/operator/khala/trace-review report, #6356; the Worker cannot reliably
@@ -3170,6 +3342,7 @@ export const makeArtanisOperatorTools = (
     defaultBranch?: string | undefined
     networkStats?: ArtanisGetNetworkStatsConfig | undefined
     glmFleetStatus?: ArtanisGlmFleetStatusConfig | undefined
+    syntheticLoadStatus?: ArtanisSyntheticLoadStatusConfig | undefined
     dispatchExecution?: ArtanisDispatchExecution | undefined
     syntheticLoad?:
       | Readonly<{
@@ -3195,6 +3368,7 @@ export const makeArtanisOperatorTools = (
     }),
     makeArtanisGetNetworkStatsTool(config.networkStats),
     makeArtanisGetGlmFleetStatusTool(config.glmFleetStatus),
+    makeArtanisGetSyntheticLoadStatusTool(config.syntheticLoadStatus),
     makeArtanisGetPylonJobStatusTool(config.pylonJobStatus),
     makeArtanisListPylonAssignmentsTool(config.pylonAssignments),
     makeArtanisGetKhalaFeedbackTool(config.khalaFeedback),

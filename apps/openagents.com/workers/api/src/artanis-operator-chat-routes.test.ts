@@ -1223,3 +1223,112 @@ describe('POST /api/operator/artanis/chat — get_trace_review acceptance', () =
   })
 })
 
+// ---------------------------------------------------------------------------
+// get_synthetic_load_status acceptance — Artanis's iteration-12 self-improvement
+// capability drives the REAL bounded tool-calling loop through the chat
+// endpoint. A turn asking to show active synthetic loads invokes
+// get_synthetic_load_status, which reads the active runs and feeds their
+// public-safe summary back into the loop. Owner-scoped, Khala-powered, read-only
+// (no spend/destructive/outward authority). Proves makeArtanisOperatorTools()
+// now includes get_synthetic_load_status.
+// ---------------------------------------------------------------------------
+
+// A scripted Khala client: round 1 asks for get_synthetic_load_status(); round 2
+// reads the tool result it received and echoes its first line. The reply only
+// carries the real summary IF the loop executed the tool and fed the bytes back.
+const makeSyntheticLoadStatusThenEchoKhalaClient = () => {
+  const requests: Array<InferenceRequest> = []
+  let round = 0
+  const client = (request: InferenceRequest) => {
+    requests.push(request)
+    round += 1
+    if (round === 1) {
+      return Effect.succeed(toolCallResult('get_synthetic_load_status', '{}'))
+    }
+    const firstLine = (lastToolResultContent(request) ?? '').split('\n')[0] ?? ''
+    return Effect.succeed({
+      content: `Active synthetic loads: ${firstLine}`,
+      finishReason: 'stop' as const,
+      servedModel:
+        request.model === 'openagents/khala' ? 'gpt-oss-120b' : 'wrong',
+      usage: { completionTokens: 20, promptTokens: 300, totalTokens: 320 },
+    } satisfies InferenceResult)
+  }
+  return { client, requests }
+}
+
+describe('POST /api/operator/artanis/chat — get_synthetic_load_status acceptance', () => {
+  test('asking "show active synthetic loads" executes get_synthetic_load_status (executed:true, deferredToApprovalGate:false)', async () => {
+    const { client, requests } = makeSyntheticLoadStatusThenEchoKhalaClient()
+    const { deps } = baseDeps({
+      makeKhalaClient: () => client,
+      // Inject a stubbed synthetic-load status source returning one active run.
+      makeOperatorTools: () =>
+        makeArtanisOperatorTools({
+          syntheticLoadStatus: {
+            reader: async () => [
+              {
+                runRef: 'synthetic_load.terminal_bench.2026_06_27_01',
+                runType: 'terminal-bench',
+                state: 'running',
+                targetTokens: 10_000_000,
+                tokensBurned: 4_200_000,
+              },
+            ],
+          },
+        }),
+    })
+
+    const response = await runRoute(
+      deps,
+      post({
+        messages: [{ content: 'show active synthetic loads', role: 'user' }],
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    const json = (await response.json()) as Record<string, unknown>
+
+    // The loop executed get_synthetic_load_status — read, executed, not deferred.
+    const invocations = json.toolInvocations as ReadonlyArray<{
+      name: string
+      executed: boolean
+      deferredToApprovalGate: boolean
+      riskyActionKind: string | null
+    }>
+    const invocation = invocations.find(
+      entry => entry.name === 'get_synthetic_load_status',
+    )
+    expect(invocation).toBeDefined()
+    expect(invocation?.executed).toBe(true)
+    expect(invocation?.deferredToApprovalGate).toBe(false)
+    expect(invocation?.riskyActionKind).toBeNull()
+
+    // At least two Khala calls (request the tool -> feed result -> reply).
+    expect(json.iterations as number).toBeGreaterThanOrEqual(2)
+
+    // The final reply carries the REAL summary header sourced from the tool.
+    expect(json.reply as string).toContain('Synthetic-load runs (1 active):')
+
+    // Persona separation holds; dogfood via Khala; not deferred to a gate.
+    expect((json.persona as { satisfied: boolean }).satisfied).toBe(true)
+    expect(json.servedVia).toBe('openagents_khala')
+    expect(json.requestedModel).toBe('openagents/khala')
+    expect(json.deferredToApprovalGate).toBe(false)
+
+    // The second Khala request carried the real run bytes back into context
+    // (run ref + state + token-burn progress), not a fabrication.
+    expect(
+      requests[1]?.messages.some(
+        message =>
+          message.role === 'tool' &&
+          message.content.includes(
+            'synthetic_load.terminal_bench.2026_06_27_01',
+          ) &&
+          message.content.includes('state=running') &&
+          message.content.includes('4,200,000/10,000,000 tokens burned (42%)'),
+      ),
+    ).toBe(true)
+  })
+})
+

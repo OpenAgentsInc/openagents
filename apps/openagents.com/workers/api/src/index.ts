@@ -8577,6 +8577,14 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
           env,
         }),
       },
+      // iteration-12: the ACTIVE synthetic-load run READ tool
+      // (get_synthetic_load_status) — the read half of the plan-only
+      // `trigger_synthetic_load` pair, so Artanis can see runs already in flight
+      // before planning a new burn. Synthetic-load runs are plan-only /
+      // owner-gated today and there is no live run registry yet, so we wire NO
+      // reader: the tool reports an honest "(no active synthetic-load runs)"
+      // rather than inventing one. When a real own-capacity synthetic-load run
+      // registry lands, wire its owner-scoped reader here.
       // iteration-3: the owner-scoped Pylon job-status read tool. Reads the
       // public-safe closeout/proof status of ONE of the owner's own linked-Pylon
       // assignments. Read-only, owner-scoped, no spend/authority.
