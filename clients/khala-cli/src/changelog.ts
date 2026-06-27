@@ -1,12 +1,32 @@
+import { readFileSync } from "node:fs"
+
 export interface KhalaChangelogEntry {
   readonly version: string
   readonly releasedAt: string
   readonly bullets: ReadonlyArray<string>
 }
 
-export const KHALA_CLI_VERSION = "0.1.12"
+// The CLI version is the single source of truth read from package.json — the
+// actually deployed/installed package — never a hardcoded constant that drifts.
+// This keeps the startup banner, `khala --version`, and the auto-updater's
+// version comparison honest about what is really installed. Resolves relative to
+// this module: both the `src/` dev entry and the bundled `dist/` build sit one
+// level under the package root, so `../package.json` is the package root in both.
+const packageJson = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+) as { readonly version: string }
+
+export const KHALA_CLI_VERSION = packageJson.version
 
 export const KHALA_CHANGELOG: ReadonlyArray<KhalaChangelogEntry> = [
+  {
+    version: "0.1.14",
+    releasedAt: "2026-06-27T03:26:46.000Z",
+    bullets: [
+      "Adds the /artanis owner-only operator channel (talk to the real Artanis operator agent, powered by Khala).",
+      "Reads the CLI version from package.json instead of a hardcoded constant, so the banner and auto-updater always match what is actually installed.",
+    ],
+  },
   {
     version: "0.1.12",
     releasedAt: "2026-06-26T19:45:49.000Z",
