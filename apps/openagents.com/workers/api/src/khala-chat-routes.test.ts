@@ -189,6 +189,63 @@ describe('khala chat route', () => {
     expect(text.indexOf('event: meta')).toBeLessThan(text.indexOf('event: done'))
   })
 
+  test('answers Artanis questions through the read-only Blueprint signature without opening a provider stream', async () => {
+    let openedProvider = false
+    const routes = makeKhalaChatRoutes({
+      makeStreamClient: () => () => {
+        openedProvider = true
+        return Effect.fail(new OnboardingInferenceError({ reason: 'provider should not open' }))
+      },
+      rateLimit: allowAll,
+      recordServedTokens: () => Effect.void,
+    })
+
+    const response = await run(
+      routes.routeKhalaChatRequest(
+        chatRequest({ messages: [{ role: 'user', content: 'How can I talk to Artanis?' }] }),
+        {},
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(openedProvider).toBe(false)
+    const text = await response.text()
+    expect(text).toContain('Artanis is the OpenAgents operator agent.')
+    expect(text).toContain('https://openagents.com/artanis')
+    expect(text).toContain('cannot command Artanis')
+    expect(text).toContain('"servedAdapterId":"khala-artanis-read-only"')
+    expect(text).toContain('"signatureRef":"blueprint.public.khala.artanis_interaction.read_only.v1"')
+    expect(text).not.toContain('Hierarch')
+    expect(text).not.toContain('Daelaam')
+  })
+
+  test('sets a larger default max_tokens budget on provider-backed public chat', async () => {
+    let captured:
+      | { passthroughParams: Readonly<Record<string, unknown>> }
+      | undefined
+    const routes = makeKhalaChatRoutes({
+      makeStreamClient: () => request => {
+        captured = request
+        return Effect.succeed<KhalaChatStreamSource>({
+          deltas: (async function* () {
+            yield 'ok'
+          })(),
+          final: () => 'ok',
+        })
+      },
+      rateLimit: allowAll,
+    })
+
+    await run(
+      routes.routeKhalaChatRequest(
+        chatRequest({ messages: [{ role: 'user', content: 'Write a detailed launch note.' }] }),
+        {},
+      ),
+    )
+
+    expect(captured?.passthroughParams.max_tokens).toBe(8192)
+  })
+
   test('emits provider-labeled reasoning on a separate SSE event', async () => {
     const routes = routesWith(chunkStream([
       { kind: 'reasoning', text: 'provider thought' },

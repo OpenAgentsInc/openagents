@@ -37,7 +37,7 @@ export const terminalStyle = {
 }
 
 export function renderMarkdownForTerminal(markdown: string): string {
-  const lines = markdown.replace(/\r\n?/g, "\n").split("\n")
+  const lines = normalizeMarkdownSpacing(markdown).split("\n")
   const rendered: Array<string> = []
   let inFence = false
 
@@ -92,6 +92,13 @@ export function renderMarkdownForTerminal(markdown: string): string {
 
 export function renderMarkdownDeltaForTerminal(markdownDelta: string): string {
   return renderInlineMarkdown(markdownDelta)
+}
+
+export function normalizeMarkdownSpacing(markdown: string): string {
+  return markdown
+    .replace(/\r\n?/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
 }
 
 export function renderReasoningMarkdownDeltaForTerminal(markdownDelta: string): string {

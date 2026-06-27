@@ -84,6 +84,7 @@ export const OpenAiStreamPayload = S.Struct({
         reasoning: S.optional(S.String),
         reasoning_content: S.optional(S.String),
       }),
+      finish_reason: S.optional(S.NullOr(S.String)),
     }),
   ),
   usage: S.optional(S.Struct({

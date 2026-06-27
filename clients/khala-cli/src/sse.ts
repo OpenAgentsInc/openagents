@@ -113,6 +113,9 @@ export function decodeOpenAiFrame(frame: SseFrame): DecodedStreamFrame {
   const reasoningText = payload.choices
     .map((choice) => choice.delta.reasoning_content ?? choice.delta.reasoning ?? "")
     .join("")
+  const finishReason = payload.choices
+    .map(choice => choice.finish_reason)
+    .find(reason => typeof reason === "string")
   const openagents = extractOpenAgentsReceipt(payload.openagents)
   return {
     kind: "delta",
@@ -120,6 +123,7 @@ export function decodeOpenAiFrame(frame: SseFrame): DecodedStreamFrame {
       adapterRouteMetadata: openagents?.routing,
       fallbackReason: openagents?.fallbackReason,
       id: payload.id,
+      finishReason,
       primaryAdapterId: openagents?.primaryAdapterId,
       requestedModel: payload.model,
       servedAdapterId: openagents?.servedAdapterId,

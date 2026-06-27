@@ -95,6 +95,47 @@ describe("Khala client", () => {
     expect(result.metadata.durationMs).toBeGreaterThanOrEqual(result.metadata.timeToFirstTokenMs ?? 0)
   })
 
+  test("continues a streamed answer when the provider stops at the length cap", async () => {
+    const requestBodies: Array<{ readonly messages: ReadonlyArray<{ readonly role: string; readonly content: string }> }> = []
+    const fakeFetch = (async (_url: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as {
+        readonly messages: ReadonlyArray<{ readonly role: string; readonly content: string }>
+      }
+      requestBodies.push(body)
+      if (requestBodies.length === 1) {
+        return sseResponse([
+          'event: delta\ndata: {"text":"Which of these paths were"}',
+          'event: meta\ndata: {"finishReason":"length","usage":{"promptTokens":3,"completionTokens":5,"totalTokens":8}}',
+          'event: done\ndata: {"done":true}',
+          "",
+        ].join("\n\n"))
+      }
+      return sseResponse([
+        'event: delta\ndata: {"text":" most useful for the launch."}',
+        'event: meta\ndata: {"finishReason":"stop","usage":{"promptTokens":9,"completionTokens":7,"totalTokens":16}}',
+        'event: done\ndata: {"done":true}',
+        "",
+      ].join("\n\n"))
+    }) as unknown as typeof fetch
+
+    const result = await Effect.runPromise(runChatTurn({
+      baseUrl: "https://example.test",
+      fetch: fakeFetch,
+      messages: [{ role: "user", content: "Summarize options" }],
+      mode: "public",
+    }))
+
+    expect(result.text).toBe("Which of these paths were most useful for the launch.")
+    expect(result.metadata.finishReason).toBe("stop")
+    expect(result.metadata.usage).toEqual({
+      completionTokens: 12,
+      promptTokens: 12,
+      totalTokens: 24,
+    })
+    expect(requestBodies).toHaveLength(2)
+    expect(requestBodies[1]?.messages.at(-1)?.content).toContain("Continue exactly where you stopped")
+  })
+
   test("fetches the global Khala tokens-served counter", async () => {
     const calls: Array<string> = []
     const fakeFetch = (async (url: Parameters<typeof fetch>[0]) => {

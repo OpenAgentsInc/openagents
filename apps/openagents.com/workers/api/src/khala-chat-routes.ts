@@ -21,10 +21,13 @@
 import { Cause, Effect, Match as M, Schema as S } from 'effect'
 
 import {
+  ARTANIS_INTERACTION_BLUEPRINT_SIGNATURE,
+  ARTANIS_READ_ONLY_ANSWER,
   KhalaChatRequest,
   KhalaChatValidationError,
   KHALA_CHAT_MODEL,
   buildKhalaChatRequest,
+  isArtanisInteractionTurn,
   isKhalaFastGreetingTurn,
   validateKhalaChatRequest,
 } from './khala-chat-program'
@@ -190,6 +193,25 @@ const fastGreetingSource = (): KhalaChatStreamSource => ({
   }),
 })
 
+const artanisReadOnlySource = (): KhalaChatStreamSource => ({
+  deltas: (async function* () {
+    yield ARTANIS_READ_ONLY_ANSWER
+  })(),
+  final: () => ARTANIS_READ_ONLY_ANSWER,
+  metadata: () => ({
+    adapterRouteMetadata: ARTANIS_INTERACTION_BLUEPRINT_SIGNATURE,
+    finishReason: 'read_only_artanis_signature',
+    requestedModel: KHALA_CHAT_MODEL,
+    servedAdapterId: 'khala-artanis-read-only',
+    servedModel: 'khala-artanis-interaction-blueprint',
+    usage: {
+      completionTokens: Math.ceil(ARTANIS_READ_ONLY_ANSWER.length / 4),
+      promptTokens: 0,
+      totalTokens: Math.ceil(ARTANIS_READ_ONLY_ANSWER.length / 4),
+    },
+  }),
+})
+
 // Build the SSE response body for a prepared streaming turn. Pumps prose deltas,
 // then emits the terminal `done` frame. A failure mid-stream emits a terminal
 // `error` frame and closes — the client never hangs. Stateless: there is no
@@ -331,6 +353,8 @@ export const makeKhalaChatRoutes = (
       Effect.flatMap(messages =>
         isKhalaFastGreetingTurn(messages)
           ? Effect.succeed(fastGreetingSource())
+          : isArtanisInteractionTurn(messages)
+            ? Effect.succeed(artanisReadOnlySource())
           : Effect.succeed(buildKhalaChatRequest(messages)).pipe(
               Effect.flatMap(inferenceRequest => streamClient(inferenceRequest)),
             ),

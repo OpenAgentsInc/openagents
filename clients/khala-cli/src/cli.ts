@@ -35,7 +35,7 @@ import {
   type KhalaSpawnWorker,
   type KhalaSpawnWorkflow,
 } from "./spawn.js"
-import { renderMarkdownForTerminal, renderReasoningMarkdownDeltaForTerminal, terminalStyle } from "./terminal.js"
+import { normalizeMarkdownSpacing, renderMarkdownForTerminal, renderReasoningMarkdownDeltaForTerminal, terminalStyle } from "./terminal.js"
 import { clearStoredAgentToken, ensureStoredAgentToken, readStoredAgentToken, traceTokenPath } from "./token-store.js"
 import {
   clearProviderKey,
@@ -1543,7 +1543,7 @@ function renderStreamingMarkdownDelta(
   previousBuffer: string,
   delta: string,
 ): { readonly buffer: string; readonly text: string } {
-  const combined = `${previousBuffer}${delta}`.replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+  const combined = normalizeMarkdownSpacing(`${previousBuffer}${delta}`)
   const lastNewline = combined.lastIndexOf("\n")
   if (lastNewline < 0) {
     return { buffer: combined, text: "" }

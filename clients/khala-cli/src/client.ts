@@ -24,47 +24,95 @@ import {
   type ChatTurnMetadata,
   type FreeKeyResponse as FreeKeyResponseType,
   type KhalaFeedbackSubmitOptions,
+  type KhalaChatMessage,
   type KhalaStreamUsage,
 } from "./types.js"
 
 const MAX_REQUEST_RETRIES = 5
+const MAX_LENGTH_CONTINUATIONS = 3
 const RETRY_DELAYS_MS = [400, 1_000, 2_000, 4_000, 8_000] as const
 
 export function runChatTurn(options: ChatTurnOptions): Effect.Effect<ChatTurnResult, KhalaCliError> {
   return Effect.gen(function* () {
     const startedAt = Date.now()
-    const response = yield* postChat(options)
-    const responseAt = Date.now()
-    const traceRef = readTraceRef(response)
-    const byokAck = response.headers.get(BYOK_ACK_HEADER)?.trim() || undefined
-    const stream = yield* consumeStream(
-      response,
-      options.mode,
-      startedAt,
-      responseAt,
-      options.onDelta,
-      options.onReasoning,
-    )
+    let byokAck: string | undefined
+    let messages: ReadonlyArray<KhalaChatMessage> = [...options.messages]
+    let reasoningText = ""
+    let streamMetadata: StreamFrameMetadata = {}
+    let text = ""
+    let timings: {
+      readonly firstTokenAt?: number | undefined
+      readonly responseAt: number
+      readonly startedAt: number
+    } | undefined
+    let traceRef: string | undefined
+
+    for (let turn = 0; turn <= MAX_LENGTH_CONTINUATIONS; turn += 1) {
+      const response = yield* postChat({ ...options, messages })
+      const responseAt = Date.now()
+      traceRef = traceRef ?? readTraceRef(response)
+      byokAck = byokAck ?? (response.headers.get(BYOK_ACK_HEADER)?.trim() || undefined)
+      const stream = yield* consumeStream(
+        response,
+        options.mode,
+        startedAt,
+        responseAt,
+        options.onDelta,
+        options.onReasoning,
+      )
+      reasoningText += stream.reasoningText
+      streamMetadata = mergeMetadataWithUsage(streamMetadata, stream.metadata)
+      text += stream.text
+      timings = {
+        firstTokenAt: timings?.firstTokenAt ?? stream.timings.firstTokenAt,
+        responseAt: timings?.responseAt ?? stream.timings.responseAt,
+        startedAt,
+      }
+
+      if (!isLengthFinish(stream.metadata.finishReason) || turn === MAX_LENGTH_CONTINUATIONS) {
+        break
+      }
+      messages = continuationMessages(options.messages, text)
+    }
+
     const durationMs = Math.max(0, Date.now() - startedAt)
     const metadata = buildTurnMetadata({
       durationMs,
       mode: options.mode,
       streamMetadata: {
-        ...stream.metadata,
-        traceRef: stream.metadata.traceRef ?? traceRef,
+        ...streamMetadata,
+        traceRef: streamMetadata.traceRef ?? traceRef,
       },
-      timings: stream.timings,
-      text: stream.text,
+      timings: timings ?? { responseAt: startedAt, startedAt },
+      text,
     })
     return {
-      text: stream.text,
-      reasoningText: stream.reasoningText,
-      assistantMessage: { role: "assistant" as const, content: stream.text },
+      text,
+      reasoningText,
+      assistantMessage: { role: "assistant" as const, content: text },
       metadata,
       traceRef: metadata.traceRef,
       ...(byokAck === undefined ? {} : { byokAck }),
     }
   })
+}
+
+function continuationMessages(
+  originalMessages: ReadonlyArray<KhalaChatMessage>,
+  partialText: string,
+): ReadonlyArray<KhalaChatMessage> {
+  return [
+    ...originalMessages,
+    { role: "assistant", content: partialText },
+    {
+      role: "user",
+      content: "Continue exactly where you stopped. Finish the answer naturally without repeating earlier text.",
+    },
+  ]
+}
+
+function isLengthFinish(reason: string | undefined): boolean {
+  return reason === "length" || reason === "max_tokens" || reason === "MAX_TOKENS"
 }
 
 // Owner-authenticated Artanis operator channel (#6363, epic #6359).
@@ -463,6 +511,32 @@ function mergeMetadata(
     ...previous,
     ...withoutUndefined(next),
     usage: next.usage ?? previous.usage,
+  }
+}
+
+function mergeMetadataWithUsage(
+  previous: StreamFrameMetadata,
+  next: StreamFrameMetadata | undefined,
+): StreamFrameMetadata {
+  const merged = mergeMetadata(previous, next)
+  const usage = addUsage(previous.usage, next?.usage)
+  return usage === undefined ? merged : { ...merged, usage }
+}
+
+function addUsage(
+  previous: KhalaStreamUsage | undefined,
+  next: KhalaStreamUsage | undefined,
+): KhalaStreamUsage | undefined {
+  if (previous === undefined) return next
+  if (next === undefined) return previous
+  const cachedPromptTokens = previous.cachedPromptTokens === undefined && next.cachedPromptTokens === undefined
+    ? undefined
+    : (previous.cachedPromptTokens ?? 0) + (next.cachedPromptTokens ?? 0)
+  return {
+    ...(cachedPromptTokens === undefined ? {} : { cachedPromptTokens }),
+    completionTokens: previous.completionTokens + next.completionTokens,
+    promptTokens: previous.promptTokens + next.promptTokens,
+    totalTokens: previous.totalTokens + next.totalTokens,
   }
 }
 

@@ -48,6 +48,7 @@ export const KHALA_CHAT_MODEL = 'khala'
 export const KHALA_CHAT_MAX_MESSAGE_CHARS = 8_000
 export const KHALA_CHAT_MAX_MESSAGES = 40
 export const KHALA_CHAT_MAX_TOTAL_CHARS = 24_000
+export const KHALA_CHAT_MAX_OUTPUT_TOKENS = 8_192
 
 // A single chat turn from the client. Only user/assistant roles cross the
 // boundary; the system prompt is rebuilt server-side every turn and never
@@ -75,9 +76,25 @@ export const KHALA_CHAT_INSTRUCTION = [
   'You are answering in a public chat demo on the OpenAgents website.',
   `For a simple greeting or intro, answer exactly: "${KHALA_STANDARD_GREETING}"`,
   'You are a general-purpose assistant. Answer the user directly and helpfully.',
+  'If the user asks about Artanis, route to the OpenAgents Artanis interaction signature: Artanis is the OpenAgents operator agent, not a fictional character. Keep the answer read-only and public-safe: users may observe Artanis status, public decisions, fleet activity, and report links, but they cannot command Artanis, dispatch work, spend money, mutate fleet state, or access owner-only memory from this chat.',
   'Do not volunteer base URLs, model ids, endpoint details, or Server-Sent Events mechanics in normal conversation. Explain API usage only when the user explicitly asks how to call the API or integrate Khala programmatically.',
   'When API details are explicitly requested, you may say that Khala is available as an OpenAI-compatible Chat Completions API at https://openagents.com/api/v1 with model id openagents/khala.',
   'Do not run an intake interview, do not ask a fixed script of onboarding questions, and do not collect a business profile. Just have a normal, helpful conversation.',
+].join(' ')
+
+export const ARTANIS_INTERACTION_BLUEPRINT_SIGNATURE = {
+  authorityBoundary:
+    'observe_only_no_commands_no_dispatch_no_spend_no_owner_memory',
+  input: 'Artanis-related public question',
+  output: 'Public-safe, read-only Artanis status and interaction guidance',
+  signatureRef: 'blueprint.public.khala.artanis_interaction.read_only.v1',
+} as const
+
+export const ARTANIS_READ_ONLY_ANSWER = [
+  'Artanis is the OpenAgents operator agent.',
+  'In this public Khala chat, you can ask read-only questions about Artanis status, public decisions, fleet activity, and what the OpenAgents fleet is doing.',
+  'The public status surface is https://openagents.com/artanis and the agent-readable report is https://openagents.com/api/public/artanis/report.',
+  'This channel cannot command Artanis, dispatch coding work, spend money, mutate fleet state, or expose owner-only memory. Owner control stays behind the operator console and approval gates.',
 ].join(' ')
 
 // STREAMING INFERENCE SEAM ------------------------------------------------
@@ -189,15 +206,15 @@ export const buildKhalaChatMessages = (
 ]
 
 // Build the streaming inference request for a turn. `stream: true` so the
-// provider-adapter opens an incremental stream; `passthroughParams` is empty
-// (the demo does not forward arbitrary OpenAI params).
+// provider-adapter opens an incremental stream. The public CLI relies on a large
+// default output budget so answers do not routinely end on provider length caps.
 export const buildKhalaChatRequest = (
   messages: ReadonlyArray<KhalaChatMessage>,
 ): InferenceRequest => ({
   model: KHALA_CHAT_MODEL,
   messages: buildKhalaChatMessages(messages),
   stream: true,
-  passthroughParams: {},
+  passthroughParams: { max_tokens: KHALA_CHAT_MAX_OUTPUT_TOKENS },
 })
 
 export const KHALA_FAST_GREETING_PROMPTS: ReadonlySet<string> = new Set([
@@ -224,4 +241,12 @@ export const isKhalaFastGreetingTurn = (
   const [message] = messages
   if (message === undefined || message.role !== 'user') return false
   return KHALA_FAST_GREETING_PROMPTS.has(normalizeKhalaFastPrompt(message.content))
+}
+
+export const isArtanisInteractionTurn = (
+  messages: ReadonlyArray<KhalaChatMessage>,
+): boolean => {
+  const last = messages[messages.length - 1]
+  if (last?.role !== 'user') return false
+  return /\bartanis\b/i.test(last.content)
 }
