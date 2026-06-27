@@ -2260,10 +2260,11 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
   - `GET /api/public/khala/head-to-head` — stored-snapshot projection of the
     recurring Khala external head-to-head quality bar
     (`openagents.khala.head_to_head.v1`, #6308) — compliant (`generatedAt`,
-    stored-snapshot contract, refreshed on the owner-armed/recurring publish
-    transitions). Public-safe only: Khala vs the tools/models a developer would
-    otherwise reach for (default coding model → free/open → paid frontier), each
-    matchup scored on BOTH solve-rate (verified-rate-bps) AND
+    stored-snapshot contract, stored `publishedAt`, `dataAgeSeconds`, and
+    `staleExceeded`, refreshed on the owner-armed/recurring publish transitions).
+    Public-safe only: Khala vs the tools/models a developer would otherwise reach
+    for (default coding model → free/open → paid frontier), each matchup scored on
+    BOTH solve-rate (verified-rate-bps) AND
     cost-per-accepted-outcome-msat with an honest two-axis verdict, from
     decision-grade rows only; fixture/synthetic numbers are never published, and
     a matchup with no measured comparator is `awaiting_owner` with its owner-gate

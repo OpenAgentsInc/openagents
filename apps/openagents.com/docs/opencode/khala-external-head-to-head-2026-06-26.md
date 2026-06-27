@@ -81,6 +81,16 @@ re-builds the bar through `buildKhalaHeadToHead` (which runs the flat projection
 decision-grade + public-safety-checked rows only) and upserts the public-safe
 artifact by `headToHeadRef`. The public route serves the latest snapshot.
 
+The public and operator read envelopes deliberately distinguish **read time**
+from **snapshot time**:
+
+- `generatedAt` is when the API response was composed.
+- `publishedAt` is the stored snapshot's publish timestamp (or `null` for the
+  honest empty pre-publish shape).
+- `dataAgeSeconds` and `staleExceeded` are computed from `publishedAt` against
+  the declared stored-snapshot staleness contract, so an old recurring
+  head-to-head cannot look fresh just because someone read it today.
+
 ## Honesty / owner-arm gate (NEEDS-OWNER)
 
 Numbers are published **only** from a `decisionGrade: true`, public-safety-checked

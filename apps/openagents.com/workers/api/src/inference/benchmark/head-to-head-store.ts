@@ -82,12 +82,17 @@ export const KhalaHeadToHeadStored = S.Struct({
   caveatRefs: S.Array(S.String),
 })
 
+export type KhalaHeadToHeadSnapshot = Readonly<{
+  headToHead: KhalaHeadToHead
+  publishedAt: string | null
+}>
+
 // Read side: the public projection route only needs to fetch the latest
 // head-to-head by ref. Kept narrow so the public route takes a read-only source.
 export type KhalaHeadToHeadSourceStore = Readonly<{
   getHeadToHead: (
     headToHeadRef: string,
-  ) => Effect.Effect<KhalaHeadToHead | undefined>
+  ) => Effect.Effect<KhalaHeadToHeadSnapshot | undefined>
 }>
 
 // Write side: the operator publish route upserts a built head-to-head snapshot.
@@ -101,6 +106,7 @@ export type KhalaHeadToHeadStore = KhalaHeadToHeadSourceStore &
 
 type KhalaHeadToHeadD1Row = Readonly<{
   head_to_head_json: string
+  published_at: string | null
 }>
 
 const parseStored = (json: string): KhalaHeadToHead | undefined => {
@@ -121,7 +127,7 @@ export const makeD1KhalaHeadToHeadStore = (
     Effect.promise(async () => {
       const row = await db
         .prepare(
-          `SELECT head_to_head_json
+          `SELECT head_to_head_json, published_at
             FROM khala_head_to_head_snapshots
             WHERE head_to_head_ref = ?`,
         )
@@ -130,7 +136,10 @@ export const makeD1KhalaHeadToHeadStore = (
       if (row === null) {
         return undefined
       }
-      return parseStored(row.head_to_head_json)
+      const headToHead = parseStored(row.head_to_head_json)
+      return headToHead === undefined
+        ? undefined
+        : { headToHead, publishedAt: row.published_at ?? null }
     }),
   upsertHeadToHead: (headToHead, publishedAtIso) =>
     Effect.promise(async () => {

@@ -22,7 +22,11 @@
 import { Effect } from 'effect'
 
 import { methodNotAllowed, noStoreJsonResponse } from '../../http/responses'
-import { storedSnapshotStaleness } from '../../public-projection-staleness'
+import {
+  projectionDataAgeSeconds,
+  projectionStalenessExceeded,
+  storedSnapshotStaleness,
+} from '../../public-projection-staleness'
 import { currentIsoTimestamp } from '../../runtime-primitives'
 import {
   buildKhalaHeadToHead,
@@ -31,6 +35,7 @@ import {
   type KhalaHeadToHeadRecurringConfig,
 } from './head-to-head'
 import type {
+  KhalaHeadToHeadSnapshot,
   KhalaHeadToHeadSourceStore,
   KhalaHeadToHeadStore,
 } from './head-to-head-store'
@@ -89,18 +94,21 @@ const publishUnavailable = () =>
 // It is the honest "machinery shipped, no decision-grade run yet" surface.
 const emptyHeadToHead = (
   config: KhalaHeadToHeadRecurringConfig,
-): KhalaHeadToHead => buildKhalaHeadToHead([], config)
+): KhalaHeadToHeadSnapshot => ({
+  headToHead: buildKhalaHeadToHead([], config),
+  publishedAt: null,
+})
 
 const resolvePublished = (
   input: KhalaHeadToHeadRouteInput,
   config: KhalaHeadToHeadRecurringConfig,
-): Effect.Effect<KhalaHeadToHead> => {
+): Effect.Effect<KhalaHeadToHeadSnapshot> => {
   if (input.store === undefined) {
     return Effect.succeed(emptyHeadToHead(config))
   }
   return input.store
     .getHeadToHead(config.headToHeadRef)
-    .pipe(Effect.map(headToHead => headToHead ?? emptyHeadToHead(config)))
+    .pipe(Effect.map(snapshot => snapshot ?? emptyHeadToHead(config)))
 }
 
 // Public-safe projection: returns the latest published head-to-head, or the
@@ -113,17 +121,29 @@ export const handlePublicKhalaHeadToHeadApi = (
     return Effect.succeed(methodNotAllowed(['GET']))
   }
   const config = input.config ?? KHALA_HEAD_TO_HEAD_RECURRING_CONFIG
+  const nowIso = (input.nowIso ?? currentIsoTimestamp)()
+  const staleness = headToHeadStaleness()
   return resolvePublished(input, config).pipe(
-    Effect.map(headToHead =>
-      noStoreJsonResponse({
-        schemaVersion: headToHead.schemaVersion,
+    Effect.map(snapshot => {
+      const dataAgeSeconds = projectionDataAgeSeconds(
+        snapshot.publishedAt,
+        nowIso,
+      )
+      return noStoreJsonResponse({
+        schemaVersion: snapshot.headToHead.schemaVersion,
         scope: 'public',
-        generatedAt: (input.nowIso ?? currentIsoTimestamp)(),
+        generatedAt: nowIso,
         cadence: config.cadence,
-        staleness: headToHeadStaleness(),
-        headToHead,
-      }),
-    ),
+        publishedAt: snapshot.publishedAt,
+        dataAgeSeconds,
+        staleExceeded: projectionStalenessExceeded(
+          staleness,
+          dataAgeSeconds,
+        ),
+        staleness,
+        headToHead: snapshot.headToHead,
+      })
+    }),
   )
 }
 
@@ -184,12 +204,26 @@ export const handleOperatorKhalaHeadToHeadApi = (
       return unauthorized()
     }
     if (request.method === 'GET') {
-      const headToHead = yield* resolvePublished(input, config)
+      const nowIso = (input.nowIso ?? currentIsoTimestamp)()
+      const staleness = headToHeadStaleness()
+      const snapshot = yield* resolvePublished(input, config)
+      const dataAgeSeconds = projectionDataAgeSeconds(
+        snapshot.publishedAt,
+        nowIso,
+      )
       return noStoreJsonResponse({
-        schemaVersion: headToHead.schemaVersion,
+        schemaVersion: snapshot.headToHead.schemaVersion,
         scope: 'operator',
         cadence: config.cadence,
-        headToHead,
+        generatedAt: nowIso,
+        publishedAt: snapshot.publishedAt,
+        dataAgeSeconds,
+        staleExceeded: projectionStalenessExceeded(
+          staleness,
+          dataAgeSeconds,
+        ),
+        staleness,
+        headToHead: snapshot.headToHead,
       })
     }
     const store = input.store

@@ -26,14 +26,18 @@ import type { KhalaHeadToHeadStore } from './head-to-head-store'
 const makeMemoryStore = (): KhalaHeadToHeadStore & {
   snapshot: () => KhalaHeadToHead | undefined
 } => {
-  const byRef = new Map<string, KhalaHeadToHead>()
+  const byRef = new Map<
+    string,
+    Readonly<{ headToHead: KhalaHeadToHead; publishedAt: string | null }>
+  >()
   return {
     getHeadToHead: ref => Effect.succeed(byRef.get(ref)),
     snapshot: () =>
-      byRef.get(KHALA_HEAD_TO_HEAD_RECURRING_CONFIG.headToHeadRef),
-    upsertHeadToHead: headToHead =>
+      byRef.get(KHALA_HEAD_TO_HEAD_RECURRING_CONFIG.headToHeadRef)
+        ?.headToHead,
+    upsertHeadToHead: (headToHead, publishedAt) =>
       Effect.sync(() => {
-        byRef.set(headToHead.headToHeadRef, headToHead)
+        byRef.set(headToHead.headToHeadRef, { headToHead, publishedAt })
       }),
   }
 }
@@ -119,10 +123,16 @@ describe('GET /api/public/khala/head-to-head', () => {
     expect(response.status).toBe(200)
     const body = (await response.json()) as {
       scope: string
+      publishedAt: string | null
+      dataAgeSeconds: number | null
+      staleExceeded: boolean
       staleness: { composition: string; contractVersion: string }
       headToHead: KhalaHeadToHead
     }
     expect(body.scope).toBe('public')
+    expect(body.publishedAt).toBeNull()
+    expect(body.dataAgeSeconds).toBeNull()
+    expect(body.staleExceeded).toBe(false)
     expect(body.staleness.composition).toBe('stored_snapshot')
     expect(body.staleness.contractVersion).toBe('projection_staleness.v1')
     expect(body.headToHead.khala).toBeNull()
@@ -147,6 +157,7 @@ describe('POST /api/operator/khala/head-to-head', () => {
     const store = makeMemoryStore()
     const khala = decisionGradeReport(400)
     const bigPickle = decisionGradeReport(900)
+    const publishedAt = '2026-06-27T12:00:00.000Z'
     const publishResponse = await Effect.runPromise(
       handleOperatorKhalaHeadToHeadApi(
         new Request('https://x/', {
@@ -168,7 +179,11 @@ describe('POST /api/operator/khala/head-to-head', () => {
             ],
           }),
         }),
-        { store, requireAdminApiToken: adminAllowed },
+        {
+          store,
+          requireAdminApiToken: adminAllowed,
+          nowIso: () => publishedAt,
+        },
       ),
     )
     expect(publishResponse.status).toBe(201)
@@ -185,15 +200,77 @@ describe('POST /api/operator/khala/head-to-head', () => {
 
     // Now the public surface serves it.
     const publicResponse = await Effect.runPromise(
-      handlePublicKhalaHeadToHeadApi(new Request('https://x/'), { store }),
+      handlePublicKhalaHeadToHeadApi(new Request('https://x/'), {
+        store,
+        nowIso: () => '2026-06-27T12:10:00.000Z',
+      }),
     )
     const publicBody = (await publicResponse.json()) as {
+      publishedAt: string | null
+      dataAgeSeconds: number | null
+      staleExceeded: boolean
       headToHead: KhalaHeadToHead
     }
+    expect(publicBody.publishedAt).toBe(publishedAt)
+    expect(publicBody.dataAgeSeconds).toBe(600)
+    expect(publicBody.staleExceeded).toBe(false)
     expect(
       publicBody.headToHead.matchups.find(m => m.lane === 'bigpickle')?.state,
     ).toBe('published')
     expect(publicBody.headToHead.khala?.lane).toBe('khala')
+  })
+
+  test('flags an old published head-to-head as stale instead of making read time look fresh', async () => {
+    const store = makeMemoryStore()
+    const khala = decisionGradeReport(400)
+    const bigPickle = decisionGradeReport(900)
+    const publishedAt = '2026-06-01T00:00:00.000Z'
+    const publishResponse = await Effect.runPromise(
+      handleOperatorKhalaHeadToHeadApi(
+        new Request('https://x/', {
+          method: 'POST',
+          body: JSON.stringify({
+            reports: [
+              {
+                ...khala,
+                reportRef: 'report.khala.head_to_head.stale.khala',
+                receiptRef: 'receipt.khala.head_to_head.stale.khala',
+                candidateRef: 'khala.head_to_head.stale',
+              },
+              {
+                ...bigPickle,
+                reportRef: 'report.khala.head_to_head.stale.bigpickle',
+                receiptRef: 'receipt.khala.head_to_head.stale.bigpickle',
+                candidateRef: 'bigpickle.head_to_head.stale',
+              },
+            ],
+          }),
+        }),
+        {
+          store,
+          requireAdminApiToken: adminAllowed,
+          nowIso: () => publishedAt,
+        },
+      ),
+    )
+    expect(publishResponse.status).toBe(201)
+
+    const publicResponse = await Effect.runPromise(
+      handlePublicKhalaHeadToHeadApi(new Request('https://x/'), {
+        store,
+        nowIso: () => '2026-06-16T00:00:01.000Z',
+      }),
+    )
+    const publicBody = (await publicResponse.json()) as {
+      generatedAt: string
+      publishedAt: string | null
+      dataAgeSeconds: number | null
+      staleExceeded: boolean
+    }
+    expect(publicBody.generatedAt).toBe('2026-06-16T00:00:01.000Z')
+    expect(publicBody.publishedAt).toBe(publishedAt)
+    expect(publicBody.dataAgeSeconds).toBe(1_296_001)
+    expect(publicBody.staleExceeded).toBe(true)
   })
 
   test('rejects unauthorized publish', async () => {
