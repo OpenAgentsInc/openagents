@@ -2,6 +2,9 @@ import { Effect, Schema as S } from "effect"
 import { validatePublicConversation } from "./bounds.js"
 import { decodeOpenAiFrame, decodePublicFrame, readSseFrames, type StreamFrameMetadata } from "./sse.js"
 import {
+  ARTANIS_CHAT_PATH,
+  ArtanisChatRequest,
+  ArtanisChatResponse,
   DEFAULT_BASE_URL,
   FreeKeyResponse,
   KHALA_MODEL_ID,
@@ -10,6 +13,8 @@ import {
   KhalaPublicChatRequest,
   KhalaTokensResponse,
   OpenAiModelsResponse,
+  type ArtanisTurnOptions,
+  type ArtanisTurnResult,
   type ChatClientOptions,
   type ChatTurnOptions,
   type ChatTurnResult,
@@ -53,6 +58,57 @@ export function runChatTurn(options: ChatTurnOptions): Effect.Effect<ChatTurnRes
       assistantMessage: { role: "assistant" as const, content: stream.text },
       metadata,
       traceRef: metadata.traceRef,
+    }
+  })
+}
+
+// Owner-authenticated Artanis operator channel (#6363, epic #6359).
+//
+// This is a THIN client of the shared `POST /api/operator/artanis/chat`
+// endpoint owned by the core lane. The Worker route is the single home of the
+// Artanis operator logic, persona, situational awareness, and memory; the CLI
+// only posts the conversation with the owner's bearer token and renders the
+// reply. The contract is non-streaming: `{ messages }` in, `{ reply }` out.
+//
+// Unlike the public Khala paths, an unauthenticated or non-owner caller is
+// expected to receive 401/403 here. The CLI surfaces that as a typed,
+// graceful "owner-only channel" error rather than falling back to public Khala.
+export function runArtanisTurn(options: ArtanisTurnOptions): Effect.Effect<ArtanisTurnResult, KhalaCliError> {
+  return Effect.gen(function* () {
+    const token = options.token.trim()
+    if (!token) {
+      return yield* new KhalaCliError({
+        reason: "Talking to Artanis requires the owner agent token. Pass --token or set OPENAGENTS_AGENT_TOKEN.",
+        code: "missing_token",
+      })
+    }
+
+    const body = S.encodeSync(ArtanisChatRequest)({ messages: [...options.messages] })
+    const response = yield* request({
+      fetch: options.fetch,
+      url: urlFor(options.baseUrl, ARTANIS_CHAT_PATH),
+      init: {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(body),
+      },
+    })
+    const payload = yield* readJsonResponse(response, "Artanis response")
+    const decoded = yield* Effect.try({
+      try: () => S.decodeUnknownSync(ArtanisChatResponse)(payload),
+      catch: (error) => new KhalaCliError({
+        reason: `Unexpected Artanis response: ${String(error)}`,
+        code: "schema_mismatch",
+        traceRef: readTraceRef(response),
+      }),
+    })
+    return {
+      text: decoded.reply,
+      traceRef: decoded.traceRef ?? readTraceRef(response),
     }
   })
 }

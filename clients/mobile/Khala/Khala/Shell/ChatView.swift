@@ -29,7 +29,7 @@ struct ChatView: View {
                         } else {
                             ForEach(messages) { message in
                                 MessageBubble(
-                                    title: message.role == .user ? "You" : "Khala",
+                                    title: message.role == .user ? "You" : model.channel.speaker,
                                     text: message.content,
                                     outgoing: message.role == .user,
                                     isStreaming: message.id == model.streamingMessageID
@@ -72,18 +72,33 @@ struct ChatView: View {
 
     private var emptyState: some View {
         VStack(spacing: 8) {
-            Text("Khala")
+            Text(model.channel.speaker)
                 .font(.largeTitle.weight(.semibold))
                 .foregroundStyle(.primary)
-            Text("Collective intelligence behind a free API. Ask anything.")
+            Text(emptyStateSubtitle)
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
+            if model.channel == .artanis {
+                Label("Owner-only operator channel", systemImage: "lock.shield")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 4)
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 140)
         .padding(.horizontal, 24)
+    }
+
+    private var emptyStateSubtitle: String {
+        switch model.channel {
+        case .khala:
+            return "Collective intelligence behind a free API. Ask anything."
+        case .artanis:
+            return "You are talking to the operator agent that runs the loop — not the public Khala collective. Ask what it's working on."
+        }
     }
 
     private func chatErrorNotice(_ error: ChatViewModel.ChatError) -> some View {
@@ -119,7 +134,7 @@ struct ChatView: View {
 
     private var composer: some View {
         HStack(spacing: 8) {
-            TextField("Ask Khala", text: $typedMessage, axis: .vertical)
+            TextField("Ask \(model.channel.speaker)", text: $typedMessage, axis: .vertical)
                 .lineLimit(1...5)
                 .textFieldStyle(.plain)
                 .padding(.horizontal, 12)

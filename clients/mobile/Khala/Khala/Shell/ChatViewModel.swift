@@ -22,6 +22,25 @@ import SwiftUI
 /// user turn that streams a reply into the same transcript.
 @MainActor
 final class ChatViewModel: ObservableObject {
+    /// Which conversational channel this turn streams over.
+    /// `.khala` is the public collective-intelligence model; `.artanis` is the
+    /// owner-only operator channel (#6363, epic #6359) that talks to the real
+    /// Artanis operator persona via `POST /api/operator/artanis/chat`. Both
+    /// surfaces (this app and the Khala CLI) call the SAME endpoint, so the
+    /// operator logic is shared.
+    enum Channel: Equatable {
+        case khala
+        case artanis
+
+        /// The name shown on the assistant's bubbles for this channel.
+        var speaker: String {
+            switch self {
+            case .khala: return "Khala"
+            case .artanis: return "Artanis"
+            }
+        }
+    }
+
     struct ChatError: Equatable {
         let title: String
         let message: String
@@ -46,13 +65,20 @@ final class ChatViewModel: ObservableObject {
     private let conversation: Conversation
     private var task: Task<Void, Never>?
 
+    /// The active channel for this conversation. Fixed for the lifetime of the
+    /// model: switching channels recreates the model (and starts a fresh
+    /// conversation) so the operator persona and the public model never share
+    /// transcript context.
+    let channel: Channel
+
     /// The last user prompt sent, kept so a transport/HTTP error can be retried
     /// without re-reading the transcript.
     private var lastUserPrompt: String?
 
-    init(store: ConversationStore, conversation: Conversation) {
+    init(store: ConversationStore, conversation: Conversation, channel: Channel = .khala) {
         self.store = store
         self.conversation = conversation
+        self.channel = channel
     }
 
     /// The conversation this model is bound to, so the shell can tell whether the
@@ -152,10 +178,13 @@ final class ChatViewModel: ObservableObject {
         isStreaming = true
         streamTick &+= 1
 
+        let activeChannel = channel
         task = Task { [weak self] in
             guard let self else { return }
             do {
-                let stream = KhalaClient.streamCompletion(messages: history, apiKey: apiKey)
+                let stream = activeChannel == .artanis
+                    ? KhalaClient.streamArtanisCompletion(messages: history, apiKey: apiKey)
+                    : KhalaClient.streamCompletion(messages: history, apiKey: apiKey)
                 for try await delta in stream {
                     // Append live; the SwiftData model is observable so the
                     // bubble grows token-by-token.

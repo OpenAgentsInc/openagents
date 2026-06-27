@@ -13,6 +13,11 @@ struct RootView: View {
     @State private var hasKey = KeychainStore.hasAPIKey
     @State private var didLaunch = false
     @State private var selection: Conversation?
+    /// Active conversation channel. `.khala` is the public collective model;
+    /// `.artanis` is the owner-only operator channel (#6363). Toggled from the
+    /// title menu; switching starts a fresh conversation so the two personas
+    /// never share transcript context.
+    @State private var channel: ChatViewModel.Channel = .khala
     /// Streaming view model for the active conversation, recreated when it changes.
     @State private var model: ChatViewModel?
 
@@ -67,6 +72,19 @@ struct RootView: View {
                 }
                 ToolbarItem(placement: .principal) {
                     Menu {
+                        if channel == .khala {
+                            Button {
+                                switchChannel(to: .artanis)
+                            } label: {
+                                Label("Talk to Artanis", systemImage: "person.crop.circle.badge.checkmark")
+                            }
+                        } else {
+                            Button {
+                                switchChannel(to: .khala)
+                            } label: {
+                                Label("Back to Khala", systemImage: "bubble.left.and.bubble.right")
+                            }
+                        }
                         Button {
                             openTracesInWeb(conversation: activeConversation)
                         } label: {
@@ -79,7 +97,7 @@ struct RootView: View {
                         }
                     } label: {
                         HStack(spacing: 4) {
-                            Text("Khala")
+                            Text(channel.speaker)
                                 .font(.headline)
                                 .foregroundStyle(.primary)
                             Image(systemName: "chevron.down")
@@ -87,7 +105,7 @@ struct RootView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
-                    .accessibilityLabel("Khala menu")
+                    .accessibilityLabel(channel == .artanis ? "Artanis menu" : "Khala menu")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: newChat) {
@@ -123,15 +141,15 @@ struct RootView: View {
     }
 
     private func modelFor(_ conversation: Conversation) -> ChatViewModel? {
-        if let model, model.conversationID == conversation.id { return model }
+        if let model, model.conversationID == conversation.id, model.channel == channel { return model }
         return nil
     }
 
     private func syncModel() {
         guard let conversation = activeConversation else { model = nil; return }
-        if model?.conversationID == conversation.id { return }
+        if model?.conversationID == conversation.id, model?.channel == channel { return }
         model?.stop()
-        model = ChatViewModel(store: store, conversation: conversation)
+        model = ChatViewModel(store: store, conversation: conversation, channel: channel)
     }
 
     private func open(_ conversation: Conversation) {
@@ -145,7 +163,27 @@ struct RootView: View {
         withAnimation { drawerOpen = false }
     }
 
+    /// Switch the active channel. Starts a fresh conversation so the owner-only
+    /// Artanis operator persona and the public Khala model never share
+    /// transcript context, then rebuilds the streaming model for the new channel.
+    private func switchChannel(to next: ChatViewModel.Channel) {
+        guard next != channel else { return }
+        model?.stop()
+        channel = next
+        let convo = store.createConversation()
+        selection = convo
+        syncModel()
+        withAnimation { drawerOpen = false }
+    }
+
     private func onAppear() async {
+        // Demo/test hook (env-gated; a no-op in normal use): open straight into a
+        // given channel so the Artanis operator surface is screenshot-verifiable
+        // on a simulator without driving the title menu.
+        if ProcessInfo.processInfo.environment["KHALA_DEMO_CHANNEL"] == "artanis" {
+            channel = .artanis
+        }
+
         // Always have a conversation to render (non-black launch gate).
         if store.conversations.isEmpty {
             selection = store.createConversation()

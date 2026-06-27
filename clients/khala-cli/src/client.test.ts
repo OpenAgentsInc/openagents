@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
-import { fetchTokensServed, runChatTurn, submitFeedback } from "./client.js"
+import { fetchTokensServed, runArtanisTurn, runChatTurn, submitFeedback } from "./client.js"
+import { KhalaCliError } from "./types.js"
 
 describe("Khala client", () => {
   test("submits feedback to the public feedback endpoint", async () => {
@@ -113,6 +114,61 @@ describe("Khala client", () => {
 
     expect(response.tokensServed).toBe(1_250_000)
     expect(calls).toEqual(["https://example.test/api/khala/tokens"])
+  })
+
+  test("posts the Artanis operator channel to the owner-auth endpoint and returns the reply", async () => {
+    const calls: Array<{ readonly url: string; readonly auth: string | null; readonly body: string | null }> = []
+    const fakeFetch = (async (url: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const headers = new Headers(init?.headers)
+      calls.push({
+        url: String(url),
+        auth: headers.get("authorization"),
+        body: typeof init?.body === "string" ? init.body : null,
+      })
+      return Response.json({ reply: "I just pushed the GLM admission fix and opened #6363." })
+    }) as unknown as typeof fetch
+
+    const result = await Effect.runPromise(runArtanisTurn({
+      baseUrl: "https://example.test",
+      fetch: fakeFetch,
+      token: "oa_agent_owner",
+      messages: [{ role: "user", content: "What are you doing?" }],
+    }))
+
+    expect(result.text).toBe("I just pushed the GLM admission fix and opened #6363.")
+    expect(calls[0]?.url).toBe("https://example.test/api/operator/artanis/chat")
+    expect(calls[0]?.auth).toBe("Bearer oa_agent_owner")
+    expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({
+      messages: [{ role: "user", content: "What are you doing?" }],
+    })
+  })
+
+  test("requires an owner token for the Artanis channel", async () => {
+    const error = await Effect.runPromise(
+      runArtanisTurn({
+        baseUrl: "https://example.test",
+        token: "   ",
+        messages: [{ role: "user", content: "hi" }],
+      }).pipe(Effect.flip),
+    )
+    expect(error).toBeInstanceOf(KhalaCliError)
+    expect(error.code).toBe("missing_token")
+  })
+
+  test("surfaces a non-owner 403 from the Artanis channel as a typed error", async () => {
+    const fakeFetch = (async () =>
+      Response.json({ error: "forbidden", reason: "owner_only" }, { status: 403 })) as unknown as typeof fetch
+
+    const error = await Effect.runPromise(
+      runArtanisTurn({
+        baseUrl: "https://example.test",
+        fetch: fakeFetch,
+        token: "oa_agent_not_owner",
+        messages: [{ role: "user", content: "hi" }],
+      }).pipe(Effect.flip),
+    )
+    expect(error).toBeInstanceOf(KhalaCliError)
+    expect(error.statusCode).toBe(403)
   })
 })
 

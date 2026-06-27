@@ -1,7 +1,7 @@
 import { Effect } from "effect"
 import { appendAssistantTurn, prepareUserTurn } from "./bounds.js"
 import { KHALA_CLI_VERSION, formatKhalaChangelog } from "./changelog.js"
-import { fetchModels, fetchTokensServed, mintFreeKey, runChatTurn, submitFeedback, toKhalaCliError } from "./client.js"
+import { fetchModels, fetchTokensServed, mintFreeKey, runArtanisTurn, runChatTurn, submitFeedback, toKhalaCliError } from "./client.js"
 import {
   connectKhalaCodex,
   resolveKhalaCodexStatus,
@@ -15,6 +15,11 @@ import { renderMarkdownForTerminal, renderReasoningMarkdownDeltaForTerminal, ter
 import { ensureStoredAgentToken, traceTokenPath } from "./token-store.js"
 import { DEFAULT_BASE_URL, type ChatMode, type ChatTurnMetadata, type KhalaChatMessage, type KhalaCliError, type KhalaTokensResponse } from "./types.js"
 import { startKhalaAutoUpdate } from "./updater.js"
+
+// Conversation channel. "khala" is the public collective-intelligence model;
+// "artanis" is the owner-only operator channel (#6363, epic #6359) that talks
+// to the real Artanis operator persona via POST /api/operator/artanis/chat.
+type Channel = "khala" | "artanis"
 
 type ParsedCommand =
   | { readonly kind: "chat" }
@@ -33,6 +38,7 @@ interface ParsedArgs {
   readonly version: boolean
   readonly command: ParsedCommand
   readonly mode: ChatMode
+  readonly channel: Channel
   readonly baseUrl: string
   readonly token: string | undefined
   readonly prompt: string | undefined
@@ -183,6 +189,7 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
   let help = false
   let version = false
   let mode: ChatMode = "public"
+  let channel: Channel = "khala"
   let baseUrl = env.KHALA_BASE_URL ?? DEFAULT_BASE_URL
   let token = env.OPENAGENTS_AGENT_TOKEN
   let prompt: string | undefined
@@ -199,6 +206,8 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
     else if (arg === "--version") version = true
     else if (arg === "--public") mode = "public"
     else if (arg === "--api") mode = "api"
+    else if (arg === "--artanis") channel = "artanis"
+    else if (arg === "--khala") channel = "khala"
     else if (arg === "--headless") headless = true
     else if (arg === "--json" || arg === "--no-stream") json = true
     else if (arg === "--models") models = true
@@ -257,6 +266,7 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
     help,
     version,
     mode,
+    channel,
     baseUrl,
     token,
     prompt,
@@ -272,10 +282,17 @@ async function runInteractive(args: ParsedArgs, env: Record<string, string | und
   let promptHistory: ReadonlyArray<string> = []
   let lastTraceRef: string | undefined
   let lastMessageInfo: ChatTurnMetadata | undefined
+  // Active conversation channel. Starts from the parsed flag; flipped live by
+  // the /artanis and /khala slash commands. Switching channels resets the
+  // transcript so the two personas never share conversation context.
+  let channel: Channel = args.channel
   const sessionId = createCliSessionId()
   process.stdout.write(
     `Khala CLI v${KHALA_CLI_VERSION}. Type /help for commands, /exit to quit.\n\n`,
   )
+  if (channel === "artanis") {
+    process.stdout.write(`${artanisBanner()}\n\n`)
+  }
   startKhalaAutoUpdate({
     currentVersion: KHALA_CLI_VERSION,
     env,
@@ -297,8 +314,48 @@ async function runInteractive(args: ParsedArgs, env: Record<string, string | und
     }
     promptHistory = appendPromptHistory(promptHistory, prompt)
     if (prompt.trim().startsWith("/")) {
+      // Channel toggles are handled here because they mutate loop-local state.
+      const channelSwitch = parseChannelSwitch(prompt.trim())
+      if (channelSwitch !== undefined) {
+        if (channelSwitch === channel) {
+          process.stdout.write(`${terminalStyle.assistant(speakerLabel(channel))} Already in the ${channelName(channel)} channel.\n\n`)
+        } else {
+          channel = channelSwitch
+          messages = []
+          lastMessageInfo = undefined
+          process.stdout.write(`${channelSwitchNotice(channel)}\n\n`)
+        }
+        continue
+      }
       const outcome = await handleSlashCommand(args, env, prompt.trim(), lastTraceRef, lastMessageInfo, sessionId)
       if (outcome === "exit") return
+      continue
+    }
+
+    if (channel === "artanis") {
+      const prepared = prepareUserTurn(messages, prompt)
+      const waitingDots = startWaitingDots()
+      try {
+        const token = await ensureStoredAgentToken({
+          baseUrl: args.baseUrl,
+          env,
+          explicitToken: args.token,
+        })
+        const result = await Effect.runPromise(runArtanisTurn({
+          baseUrl: args.baseUrl,
+          token,
+          messages: prepared,
+        }))
+        waitingDots.stop()
+        process.stdout.write(`${terminalStyle.assistant("Artanis:")} ${renderMarkdownForTerminal(result.text)}\n\n`)
+        messages = appendAssistantTurn(prepared, result.text)
+        lastTraceRef = result.traceRef ?? lastTraceRef
+      } catch (error) {
+        waitingDots.stop()
+        const artanisError = toKhalaCliError(error, "Artanis turn failed.")
+        lastTraceRef = artanisError.traceRef ?? lastTraceRef
+        process.stdout.write(`${terminalStyle.assistant("Artanis:")} ${formatArtanisError(artanisError)}\n\n`)
+      }
       continue
     }
 
@@ -497,6 +554,21 @@ async function runOneTurn(
   onDelta?: (text: string) => void,
   onReasoning?: (text: string) => void,
 ): Promise<string> {
+  if (args.channel === "artanis") {
+    const token = await ensureStoredAgentToken({
+      baseUrl: args.baseUrl,
+      env: Bun.env,
+      explicitToken: args.token,
+    })
+    const result = await Effect.runPromise(runArtanisTurn({
+      baseUrl: args.baseUrl,
+      token,
+      messages: prepareUserTurn(history, prompt),
+    }))
+    onDelta?.(result.text)
+    return result.text
+  }
+
   const routed = await maybeRunLocalCodexTurn(args, Bun.env, history, prompt, {
     silent: args.json,
     onEvent: onDelta === undefined
@@ -614,6 +686,46 @@ function humanReadableReason(error: KhalaCliError): string {
     return "Inference is unavailable after retrying. Please try again in a moment."
   }
   return error.reason
+}
+
+// ARTANIS OPERATOR CHANNEL (#6363, epic #6359)
+
+function parseChannelSwitch(input: string): Channel | undefined {
+  const [command = ""] = input.split(/\s+/)
+  if (command === "/artanis") return "artanis"
+  if (command === "/khala") return "khala"
+  return undefined
+}
+
+function channelName(channel: Channel): string {
+  return channel === "artanis" ? "Artanis operator" : "Khala"
+}
+
+function speakerLabel(channel: Channel): string {
+  return channel === "artanis" ? "Artanis:" : "Khala:"
+}
+
+function artanisBanner(): string {
+  return terminalStyle.meta(
+    "Artanis operator channel (owner-only). You are talking to the real operator agent, not the public Khala collective. Type /khala to switch back.",
+  )
+}
+
+function channelSwitchNotice(channel: Channel): string {
+  if (channel === "artanis") {
+    return `${terminalStyle.assistant("Artanis:")} ${artanisBanner()}`
+  }
+  return `${terminalStyle.assistant("Khala:")} ${terminalStyle.meta("Back on the public Khala channel.")}`
+}
+
+function formatArtanisError(error: KhalaCliError): string {
+  if (error.statusCode === 401 || error.statusCode === 403) {
+    return `This is the owner-only Artanis channel and your token is not authorized for it. Sign in as the owner or set OPENAGENTS_AGENT_TOKEN to the owner agent token, then try again.${formatTraceSuffix(error)}`
+  }
+  if (error.statusCode === 404 || error.code === "schema_mismatch") {
+    return `The Artanis operator endpoint is not available yet. It ships with the core Artanis lane; until then, /khala chat still works.${formatTraceSuffix(error)}`
+  }
+  return formatInteractiveError(error)
 }
 
 function formatTraceSuffix(error: KhalaCliError): string {
@@ -809,6 +921,8 @@ function createCliSessionId(): string {
 function interactiveHelp(): string {
   return `${terminalStyle.meta("Slash commands:")}
 /help              Show this command list
+/artanis           Switch to the owner-only Artanis operator channel
+/khala             Switch back to the public Khala channel
 /feedback <text>   Save product feedback with the last trace when available
 /info              Show this CLI session and trace viewing link
 /msginfo           Show metadata for the last Khala response
@@ -839,9 +953,12 @@ Usage:
   khala --prompt "Say hello"
   khala --headless --json < prompt.txt
   khala --api --token "$OPENAGENTS_AGENT_TOKEN" --prompt "Hello"
+  khala --artanis --prompt "What are you working on right now?"
 
 Interactive commands:
   /help              Show slash commands
+  /artanis           Switch to the owner-only Artanis operator channel
+  /khala             Switch back to the public Khala channel
   /feedback <text>   Save product feedback without sending it to inference
   /info              Show this CLI session and trace viewing link
   /msginfo           Show metadata for the last Khala response
@@ -856,6 +973,9 @@ Interactive commands:
 Flags:
   --public             Use /api/khala/chat (default, no auth)
   --api                Use /api/v1/chat/completions with openagents/khala
+  --artanis            Talk to the owner-only Artanis operator channel
+                       (POST /api/operator/artanis/chat, owner token required)
+  --khala              Use the public Khala channel (default)
   --base-url <url>     Override ${DEFAULT_BASE_URL}
   --token <token>      Bearer token for --api (env: OPENAGENTS_AGENT_TOKEN)
   --prompt, -p <text>  Run one headless prompt

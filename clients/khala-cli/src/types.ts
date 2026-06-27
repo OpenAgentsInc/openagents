@@ -108,6 +108,24 @@ export const KhalaTokensResponse = S.Struct({
 })
 export type KhalaTokensResponse = typeof KhalaTokensResponse.Type
 
+// Owner-authenticated Artanis operator channel (#6363, epic #6359).
+// Shared contract with the mobile app and the core Worker route:
+//   POST /api/operator/artanis/chat
+//   body  { messages: [{ role, content }] }
+//   ->    { reply }   (owner-only operator persona, NOT public Khala roleplay)
+export const ARTANIS_CHAT_PATH = "/api/operator/artanis/chat"
+
+export const ArtanisChatRequest = S.Struct({
+  messages: S.Array(KhalaChatMessage),
+})
+export type ArtanisChatRequest = typeof ArtanisChatRequest.Type
+
+export const ArtanisChatResponse = S.Struct({
+  reply: S.String,
+  traceRef: S.optional(S.String),
+})
+export type ArtanisChatResponse = typeof ArtanisChatResponse.Type
+
 export class KhalaCliError extends S.TaggedErrorClass<KhalaCliError>()("KhalaCliError", {
   reason: S.String,
   code: S.optional(S.String),
@@ -174,4 +192,16 @@ export interface KhalaFeedbackSubmitOptions {
   readonly traceRef?: string | undefined
   readonly source: string
   readonly clientVersion: string
+}
+
+export interface ArtanisTurnOptions {
+  readonly baseUrl: string
+  readonly token: string
+  readonly messages: ReadonlyArray<KhalaChatMessage>
+  readonly fetch?: typeof fetch | undefined
+}
+
+export interface ArtanisTurnResult {
+  readonly text: string
+  readonly traceRef?: string | undefined
 }
