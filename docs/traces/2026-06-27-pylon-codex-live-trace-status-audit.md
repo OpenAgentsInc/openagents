@@ -19,6 +19,11 @@ Short answer:
   `session.credential.openauthUserId` first and falling back to `session.user.id`.
 - Public token count updates at final Codex turn closeout, not continuously for
   streamed raw event chunks.
+- The latest successful continuation runs kept working only when the local agent
+  used the runbook literally: local Khala token in the environment, fresh
+  worktree, daemon routing disabled, fresh heartbeat, explicit Pylon ref,
+  explicit `codex_agent_task`, exact commit pin, local `run-no-spend`, and
+  assignment-scoped proof after closeout.
 
 ## Audited Assignment
 
@@ -315,6 +320,86 @@ clean current worktree, local dependencies installed, daemon routing disabled,
 fresh heartbeat immediately before dispatch, explicit `codex_agent_task`
 workflow, explicit Pylon ref, exact commit pin, local `run-no-spend`, then
 assignment-scoped proof.
+
+## Latest Successful #6311 And #6320 Continuation Delegations
+
+After the #6323 proof, two more continuation slices succeeded from the current
+fresh worktree:
+
+`/Users/christopherdavid/work/openagents-worktrees/khala-roadmap-goal-20260627-050244`
+
+The working command environment stayed the same:
+
+```sh
+OPENAGENTS_AGENT_TOKEN="$(cat /Users/christopherdavid/.config/khala/agent-token)"
+PYLON_OPENAGENTS_BASE_URL=https://openagents.com
+PYLON_DISABLE_DAEMON_ROUTING=1
+bun apps/pylon/src/index.ts ...
+```
+
+The crucial detail is that the token was provided to the local Pylon CLI and the
+daemon was bypassed. Other agents that only invoke generic Khala chat, omit the
+explicit Pylon ref, use stale daemon routing, dispatch from a dirty checkout, or
+skip `assignment run-no-spend` will not create a real local Codex assignment and
+therefore will not produce exact Pylon/Codex token rows.
+
+The #6311 recovered-capacity/durability-blocker slice used:
+
+- assignment:
+  `assignment.public.khala_coding.chatcmpl_5abf9492392c45bfa04d0620b1dd0949`
+- closeout: `assignment.closeout.449ee26126ab3e3137eff427`
+- commit integrated to `main`: `17a8c70e68036c2950249faf3027e0cd0d2075d6`
+- exact own-capacity proof: `3,568,906` total tokens
+- owner-only trace proof: `69` ATIF traces
+- private raw Codex archive: `112` SDK events / `1,750,286` bytes
+
+That patch clarified the live #6311 shape: the public GLM fleet readout is still
+`status:"degraded"` and durability acceptance remains blocked, but material
+serving capacity has recovered (`readyReplicaCount:8`,
+`reclaimedReplicaCount:0`, `warmOrReadyMaxInflight:9`). The issue stayed open
+because the remaining durability acceptance blockers are owner/infra evidence,
+not missing local code.
+
+The #6320 throughput-readout dependency slice used:
+
+- assignment:
+  `assignment.public.khala_coding.chatcmpl_071d621d4cd94788875d83020a7bc5b9`
+- durable request: `chatcmpl_110c3d7165af4793896ad00d0f372b33`
+- closeout: `assignment.closeout.f44607a9a5409bc439ab2778`
+- commit integrated to `main`: `40e08df70b94caab8e198971902c348fa7ab0b59`
+- exact own-capacity proof: `2,813,295` total tokens
+- owner-only trace proof: `56` ATIF traces
+- private raw Codex archive: `92` SDK events / `2,387,478` bytes
+
+That patch made #6320 consume #6311's degraded-but-recovered capacity shape.
+Throughput rollout, #6317 stress, and #6312 benchmark now stay blocked in typed
+readouts when serving is degraded or durability acceptance is incomplete, while
+still showing the operator the recovered serving-capacity summary and remaining
+blocker refs.
+
+These two latest runs are the current best reproduction of what was required to
+get delegation working reliably:
+
+1. Read the local Khala/OpenAgents agent token into `OPENAGENTS_AGENT_TOKEN`.
+2. Run Pylon from the clean current worktree, not from a stale daemon.
+3. Keep `PYLON_DISABLE_DAEMON_ROUTING=1` and
+   `PYLON_OPENAGENTS_BASE_URL=https://openagents.com` set for every command.
+4. Run `provider go-online --json` and `presence heartbeat --json` immediately
+   before dispatch and confirm linked, non-stale Codex capacity.
+5. Dispatch with `khala request --workflow codex_agent_task --pylon-ref ...`
+   plus explicit repo, branch, exact commit, bounded prompt, and verifier.
+6. Execute the returned assignment with
+   `assignment run-no-spend --assignment-ref ... --json`.
+7. Inspect and integrate the materialized patch manually; the supervising agent
+   still owns review, tests, commit, push, and issue comments.
+8. Run `khala proof --assignment-ref ... --json`; use that proof as the
+   assignment-scoped source of truth for exact tokens, trace counts, and raw
+   archive counts.
+
+Token counter behavior in these runs matched the earlier audit: the public
+counter did not rise while Codex was still streaming raw SDK chunks. It moved
+only after the local Codex turn closed out and the server accepted the exact
+`token_usage_events` row.
 
 ## Earlier Follow-Up Delegation Failure Mode
 
