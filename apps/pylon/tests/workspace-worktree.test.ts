@@ -86,6 +86,9 @@ const stubRunner: WorkspaceCheckoutRunner = async (workingDirectory) => {
   await writeFile(join(workingDirectory, "checked-out"), "ok\n")
 }
 
+const gitWorktreeTestTimeoutMs = 30_000
+const gitWorktreeStressTestTimeoutMs = 90_000
+
 function leaseInput(root: string, overrides: Record<string, unknown> = {}) {
   return {
     cacheRoot: join(root, "adapter-tasks"),
@@ -134,7 +137,7 @@ describe("createGitWorktreeCheckoutRunner", () => {
     } finally {
       await rm(root, { recursive: true, force: true })
     }
-  })
+  }, gitWorktreeTestTimeoutMs)
 
   test("reuses the cached commit without contacting the remote again", async () => {
     const root = await mkdtemp(join(tmpdir(), "pylon-worktree-"))
@@ -158,7 +161,7 @@ describe("createGitWorktreeCheckoutRunner", () => {
     } finally {
       await rm(root, { recursive: true, force: true })
     }
-  })
+  }, gitWorktreeTestTimeoutMs)
 
   test("fetches a freshly advanced main commit into an existing bare cache", async () => {
     const root = await mkdtemp(join(tmpdir(), "pylon-worktree-"))
@@ -185,7 +188,7 @@ describe("createGitWorktreeCheckoutRunner", () => {
     } finally {
       await rm(root, { recursive: true, force: true })
     }
-  })
+  }, gitWorktreeTestTimeoutMs)
 
   test("materializes a pinned commit when the requested branch is absent", async () => {
     const root = await mkdtemp(join(tmpdir(), "pylon-worktree-"))
@@ -206,7 +209,7 @@ describe("createGitWorktreeCheckoutRunner", () => {
     } finally {
       await rm(root, { recursive: true, force: true })
     }
-  })
+  }, gitWorktreeTestTimeoutMs)
 
   test("rejects a commit object the remote cannot provide", async () => {
     const root = await mkdtemp(join(tmpdir(), "pylon-worktree-"))
@@ -224,7 +227,7 @@ describe("createGitWorktreeCheckoutRunner", () => {
     } finally {
       await rm(root, { recursive: true, force: true })
     }
-  })
+  }, gitWorktreeTestTimeoutMs)
 
   test("two concurrent assignments for the same repository get separate worktrees", async () => {
     const root = await mkdtemp(join(tmpdir(), "pylon-worktree-"))
@@ -243,7 +246,7 @@ describe("createGitWorktreeCheckoutRunner", () => {
     } finally {
       await rm(root, { recursive: true, force: true })
     }
-  })
+  }, gitWorktreeTestTimeoutMs)
 
   test("waits for a live process lock before mutating the shared bare cache", async () => {
     const root = await mkdtemp(join(tmpdir(), "pylon-worktree-"))
@@ -278,7 +281,7 @@ describe("createGitWorktreeCheckoutRunner", () => {
     } finally {
       await rm(root, { recursive: true, force: true })
     }
-  })
+  }, gitWorktreeStressTestTimeoutMs)
 
   test("lane change capture, conflict detection, and commits stay scoped to each worktree", async () => {
     const root = await mkdtemp(join(tmpdir(), "pylon-worktree-"))
@@ -403,7 +406,7 @@ describe("createGitWorktreeCheckoutRunner", () => {
     } finally {
       await rm(root, { recursive: true, force: true })
     }
-  })
+  }, gitWorktreeTestTimeoutMs)
 })
 
 describe("materializeGitCheckoutWorkspaceWithLease", () => {
@@ -456,7 +459,7 @@ describe("materializeGitCheckoutWorkspaceWithLease", () => {
     } finally {
       await rm(root, { recursive: true, force: true })
     }
-  })
+  }, gitWorktreeTestTimeoutMs)
 
   test("serializes parallel bare-cache materialization for the same repository", async () => {
     const root = await mkdtemp(join(tmpdir(), "pylon-worktree-lease-"))
@@ -506,7 +509,7 @@ describe("materializeGitCheckoutWorkspaceWithLease", () => {
     } finally {
       await rm(root, { recursive: true, force: true })
     }
-  })
+  }, gitWorktreeTestTimeoutMs)
 
   test("many concurrent same-repo materializations all succeed with isolated worktrees (regression #6434)", async () => {
     const root = await mkdtemp(join(tmpdir(), "pylon-worktree-concurrent-"))
@@ -552,7 +555,7 @@ describe("materializeGitCheckoutWorkspaceWithLease", () => {
     } finally {
       await rm(root, { recursive: true, force: true })
     }
-  })
+  }, gitWorktreeStressTestTimeoutMs)
 
   test("TTL expiry produces a cleanup receipt and removes only the expired workspace", async () => {
     const root = await mkdtemp(join(tmpdir(), "pylon-worktree-lease-"))
@@ -645,7 +648,7 @@ describe("materializeGitCheckoutWorkspaceWithLease", () => {
     } finally {
       await rm(root, { recursive: true, force: true })
     }
-  })
+  }, gitWorktreeTestTimeoutMs)
 
   test("each materialization sweeps expired workspaces opportunistically", async () => {
     const root = await mkdtemp(join(tmpdir(), "pylon-worktree-lease-"))
