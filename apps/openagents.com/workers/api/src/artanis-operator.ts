@@ -497,7 +497,8 @@ export type ArtanisOperatorGatedExecuted = Readonly<{
   outcome: 'executed'
   // Public-safe summary of what was created (no secrets, prompts, or paths).
   summary: string
-  // The created assignment ref the loop reports back (public-safe).
+  // The public-safe ref the loop reports back. For Codex dispatch this is the
+  // assignment ref; other gated tools may use their own created public ref.
   assignmentRef: string
   // The durable resume id, when the seam returned one.
   durableRequestId: string | null
@@ -802,8 +803,8 @@ const runToolCall = (
       const outcome = ran.value
       if (outcome.outcome === 'executed') {
         const content = [
-          `EXECUTED — own-capacity, no spend.`,
-          `I created the Khala -> Pylon -> Codex assignment (${tool.definition.name}) on your linked Pylon. It runs at no spend and grants no payout.`,
+          `EXECUTED.`,
+          `I ran ${tool.definition.name} and recorded its public-safe result ref: ${outcome.assignmentRef}.`,
           '',
           outcome.summary,
         ].join('\n')

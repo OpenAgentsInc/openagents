@@ -27,6 +27,7 @@ import {
   makeArtanisListGithubIssuesTool,
   makeArtanisListPylonAssignmentsTool,
   makeArtanisListRepoDirTool,
+  makeArtanisOpenUnsupportedRequestIssueTool,
   makeArtanisOperatorTools,
   makeArtanisReadGithubIssueTool,
   makeArtanisReadRepoFileTool,
@@ -1469,6 +1470,83 @@ describe('update_unsupported_request (owner-scoped ledger triage WRITE) — iter
   })
 })
 
+describe('open_unsupported_request_issue (gated GitHub issue opener) — issue #6394', () => {
+  test('is a gated provider_call tool because it reaches GitHub', () => {
+    const tool = makeArtanisOpenUnsupportedRequestIssueTool({})
+    expect(tool.kind).toBe('gated')
+    expect(tool.riskyActionKind).toBe('provider_call')
+    expect(tool.definition.name).toBe('open_unsupported_request_issue')
+  })
+
+  test('opens and links one needs_issue ledger entry through the injected opener', async () => {
+    const updated: ArtanisUnsupportedRequestRecord = {
+      ...unsupportedRows[0]!,
+      githubIssueRef: 'OpenAgentsInc/openagents#6394',
+      nextAction: 'none',
+      status: 'issue_opened',
+    }
+    const calls: Array<unknown> = []
+    const tool = makeArtanisOpenUnsupportedRequestIssueTool({
+      opener: input => {
+        calls.push(input)
+        return Effect.succeed({
+          issueNumber: 6394,
+          issueRef: 'OpenAgentsInc/openagents#6394',
+          issueUrl: 'https://github.com/OpenAgentsInc/openagents/issues/6394',
+          kind: 'opened',
+          updated,
+        })
+      },
+    })
+
+    const result = await Effect.runPromise(
+      tool.run({ ref: 'khala_unsupported:ur_aaa111' }),
+    )
+
+    expect(calls).toEqual([{ ref: 'khala_unsupported:ur_aaa111' }])
+    expect(result).toMatchObject({
+      assignmentRef: 'OpenAgentsInc/openagents#6394',
+      durableRequestId: null,
+      outcome: 'executed',
+    })
+    expect(result.outcome === 'executed' ? result.summary : '').toContain(
+      'ledgerStatus: issue_opened',
+    )
+  })
+
+  test('defers with a public-safe plan when no opener is wired', async () => {
+    const tool = makeArtanisOpenUnsupportedRequestIssueTool({})
+    const result = await Effect.runPromise(
+      tool.run({ ref: 'khala_unsupported:ur_aaa111' }),
+    )
+    expect(result).toMatchObject({
+      outcome: 'deferred',
+      reason: 'execution_not_wired',
+    })
+    expect(result.outcome === 'deferred' ? result.plan : '').toContain(
+      'Open a GitHub issue',
+    )
+  })
+
+  test('blocks unsafe refs before the opener seam is called', async () => {
+    const calls: Array<unknown> = []
+    const tool = makeArtanisOpenUnsupportedRequestIssueTool({
+      opener: input => {
+        calls.push(input)
+        return Effect.succeed({ kind: 'rejected', reason: 'should_not_run' })
+      },
+    })
+    const result = await Effect.runPromise(
+      tool.run({ ref: '../../etc/passwd' }),
+    )
+    expect(result).toMatchObject({
+      outcome: 'deferred',
+      reason: 'invalid_arguments',
+    })
+    expect(calls).toEqual([])
+  })
+})
+
 describe('parseArtanisAssignmentRef + isSafeArtanisAssignmentRef', () => {
   test('accepts a ref under several key aliases', () => {
     expect(parseArtanisAssignmentRef({ assignmentRef: 'a.b.c' })).toEqual({
@@ -2232,6 +2310,7 @@ describe('makeArtanisOperatorTools default table', () => {
       'list_github_issues',
       'list_pylon_assignments',
       'list_repo_dir',
+      'open_unsupported_request_issue',
       'read_github_issue',
       'read_repo_file',
       'trigger_synthetic_load',
@@ -2255,6 +2334,15 @@ describe('makeArtanisOperatorTools default table', () => {
     )
     expect(tool).toBeDefined()
     expect(tool?.kind).toBe('read')
+  })
+
+  test('the default table includes a gated open_unsupported_request_issue tool', () => {
+    const tools = makeArtanisOperatorTools()
+    const tool = tools.find(
+      t => t.definition.name === 'open_unsupported_request_issue',
+    )
+    expect(tool).toBeDefined()
+    expect(tool?.kind).toBe('gated')
   })
 
   test('the default table includes a read-kind list_pylon_assignments tool', () => {

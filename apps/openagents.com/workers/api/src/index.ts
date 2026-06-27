@@ -115,6 +115,7 @@ import { makeArtanisKhalaFeedbackReader } from './artanis-operator-khala-feedbac
 import { makeArtanisTraceReviewLoader } from './artanis-operator-trace-review'
 import { makeArtanisOperatorTools } from './artanis-operator-tools'
 import {
+  makeArtanisUnsupportedRequestIssueOpener,
   makeArtanisUnsupportedRequestsReader,
   makeArtanisUnsupportedRequestWriter,
 } from './artanis-operator-unsupported-requests'
@@ -8671,6 +8672,11 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
       // the gap (#6357). Owner-scoped, internal-ledger-only: no spend, payout,
       // deploy, delete, or outward action.
       unsupportedRequestWriter: makeArtanisUnsupportedRequestWriter({
+        nowIso: currentIsoTimestamp,
+        store: makeD1KhalaUnsupportedRequestStore(openAgentsDatabase(env)),
+      }),
+      unsupportedRequestIssueOpener: makeArtanisUnsupportedRequestIssueOpener({
+        githubToken: env.ARTANIS_GITHUB_ISSUE_TOKEN,
         nowIso: currentIsoTimestamp,
         store: makeD1KhalaUnsupportedRequestStore(openAgentsDatabase(env)),
       }),

@@ -2,6 +2,9 @@ import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import {
+  makeArtanisUnsupportedRequestIssueOpener,
+} from './artanis-operator-unsupported-requests'
+import {
   type KhalaUnsupportedRequestCreateInput,
   type KhalaUnsupportedRequestRecord,
   type KhalaUnsupportedRequestStore,
@@ -279,5 +282,86 @@ describe('khala unsupported-request operator routes', () => {
 
     expect(response.status).toBe(405)
     expect(response.headers.get('allow')).toBe('GET, POST')
+  })
+
+  test('GitHub issue opener creates an issue from a needs_issue row and links it', async () => {
+    const store = makeStore()
+    await store.upsert({
+      createdAt: '2026-06-27T10:00:00.000Z',
+      evidenceRefs: ['triage.intent.khala_trace_review.local_diff'],
+      forumTopicRef: null,
+      githubIssueRef: null,
+      requestRef: 'khala_unsupported:local_diff',
+      sourceKind: 'trace_review',
+      sourceRef: 'triage.intent.khala_trace_review.local_diff',
+      status: 'needs_issue',
+      suggestedIssueTitle: '[Khala unsupported] local diff reads',
+      summary: 'Users ask Khala to inspect a local git diff before answering.',
+      title: 'Khala cannot read local git diffs',
+      triageKind: 'missing_capability',
+      updatedAt: '2026-06-27T10:00:00.000Z',
+    })
+
+    const calls: Array<Readonly<{ body: unknown; url: string }>> = []
+    const opener = makeArtanisUnsupportedRequestIssueOpener({
+      fetchImpl: (async (input: RequestInfo | URL, init?: RequestInit) => {
+        calls.push({
+          body: JSON.parse(String(init?.body ?? '{}')) as unknown,
+          url: String(input),
+        })
+        return Response.json({
+          html_url:
+            'https://github.com/OpenAgentsInc/openagents/issues/7001',
+          number: 7001,
+        })
+      }) as typeof fetch,
+      githubToken: 'gho_test_token_never_logged',
+      nowIso: () => '2026-06-27T10:05:00.000Z',
+      store,
+    })
+
+    const result = await Effect.runPromise(
+      opener({ ref: 'khala_unsupported:local_diff' }),
+    )
+
+    expect(result).toMatchObject({
+      issueNumber: 7001,
+      issueRef: 'OpenAgentsInc/openagents#7001',
+      issueUrl: 'https://github.com/OpenAgentsInc/openagents/issues/7001',
+      kind: 'opened',
+    })
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.url).toBe(
+      'https://api.github.com/repos/OpenAgentsInc/openagents/issues',
+    )
+    expect(calls[0]?.body).toMatchObject({
+      title: '[Khala unsupported] local diff reads',
+    })
+    expect(JSON.stringify(calls[0]?.body)).toContain(
+      'triage.intent.khala_trace_review.local_diff',
+    )
+    expect(JSON.stringify(calls[0]?.body)).not.toContain(
+      'gho_test_token_never_logged',
+    )
+    expect(store.records[0]).toMatchObject({
+      githubIssueRef: 'OpenAgentsInc/openagents#7001',
+      requestRef: 'khala_unsupported:local_diff',
+      status: 'issue_opened',
+      updatedAt: '2026-06-27T10:05:00.000Z',
+    })
+  })
+
+  test('GitHub issue opener is inert without a configured token', async () => {
+    const store = makeStore()
+    const opener = makeArtanisUnsupportedRequestIssueOpener({
+      githubToken: undefined,
+      store,
+    })
+    await expect(
+      Effect.runPromise(opener({ ref: 'khala_unsupported:missing' })),
+    ).resolves.toEqual({
+      kind: 'rejected',
+      reason: 'github_issue_token_not_configured',
+    })
   })
 })

@@ -1785,6 +1785,28 @@ export type ArtanisUpdateUnsupportedRequestConfig = Readonly<{
   writer?: ArtanisUnsupportedRequestWriter | undefined
 }>
 
+export type ArtanisUnsupportedRequestIssueOpenInput = Readonly<{
+  ref: string
+}>
+
+export type ArtanisUnsupportedRequestIssueOpenResult =
+  | Readonly<{
+      kind: 'opened'
+      issueNumber: number
+      issueRef: string
+      issueUrl: string
+      updated: ArtanisUnsupportedRequestRecord
+    }>
+  | Readonly<{ kind: 'rejected'; reason: string }>
+
+export type ArtanisUnsupportedRequestIssueOpener = (
+  input: ArtanisUnsupportedRequestIssueOpenInput,
+) => Effect.Effect<ArtanisUnsupportedRequestIssueOpenResult>
+
+export type ArtanisOpenUnsupportedRequestIssueConfig = Readonly<{
+  opener?: ArtanisUnsupportedRequestIssueOpener | undefined
+}>
+
 // The parse outcome for the model-produced ref argument: ABSENT (no ref field ->
 // honest "invalid arguments"), INVALID (present but unsafe/empty -> honest
 // "(blocked …)"), or VALID.
@@ -2021,6 +2043,112 @@ export const makeArtanisUpdateUnsupportedRequestTool = (
         return formatUpdatedUnsupportedRequest(updated)
       }),
     kind: 'write',
+  }
+}
+
+// ---------------------------------------------------------------------------
+// open_unsupported_request_issue — GATED outward GitHub issue creation (#6394).
+// ---------------------------------------------------------------------------
+//
+// This is separate from `update_unsupported_request` because opening a GitHub
+// issue is an outward third-party side effect. The model can request it for ONE
+// unsupported-request ledger entry, but execution only happens through the
+// injected opener seam. The opener owns the GitHub credential boundary and must
+// update the ledger row to `issue_opened` with the real issue ref after GitHub
+// returns a real issue number. With no opener wired, the tool returns the exact
+// public-safe plan and does not fabricate an issue.
+export const makeArtanisOpenUnsupportedRequestIssueTool = (
+  config: ArtanisOpenUnsupportedRequestIssueConfig = {},
+): ArtanisOperatorGatedTool => {
+  const opener = config.opener
+
+  return {
+    definition: {
+      description:
+        'Open a REAL public GitHub issue for one unsupported-request ledger entry that is already marked needs_issue, then link that real issue back to the ledger as issue_opened. This is an outward provider_call action and executes only through the wired GitHub issue opener; otherwise it returns the public-safe plan. Pass the ledger entry ref only.',
+      name: 'open_unsupported_request_issue',
+      parameters: {
+        additionalProperties: false,
+        properties: {
+          ref: {
+            description:
+              'The unsupported-request ledger entry ref to open an issue for, e.g. "khala_unsupported:ur_...".',
+            type: 'string',
+          },
+        },
+        required: ['ref'],
+        type: 'object',
+      },
+    },
+    kind: 'gated',
+    riskyActionKind: 'provider_call',
+    run: (args: unknown): Effect.Effect<ArtanisOperatorGatedResult> =>
+      Effect.gen(function* () {
+        const record =
+          typeof args === 'object' && args !== null
+            ? (args as Record<string, unknown>)
+            : {}
+        const ref = parseUpdateRef(record)
+        if (ref.kind === 'absent') {
+          return {
+            outcome: 'deferred',
+            plan: '(invalid arguments: a string "ref" is required)',
+            reason: 'invalid_arguments',
+          }
+        }
+        if (ref.kind === 'invalid') {
+          return {
+            outcome: 'deferred',
+            plan: `(blocked: "${ref.raw}" is not an allowed public-safe ledger ref)`,
+            reason: 'invalid_arguments',
+          }
+        }
+
+        const plan = [
+          `Open a GitHub issue in ${ARTANIS_UNSUPPORTED_REQUEST_ISSUE_REPO} for unsupported-request ${ref.value}.`,
+          'Use only the ledger title, bounded summary, and public-safe evidence refs in the issue body.',
+          'After GitHub returns a real issue number, update the ledger row to status=issue_opened and githubIssueRef=<repo>#<number>.',
+        ].join('\n')
+
+        if (opener === undefined) {
+          return {
+            outcome: 'deferred',
+            plan,
+            reason: 'execution_not_wired',
+          }
+        }
+
+        const opened = yield* opener({ ref: ref.value }).pipe(
+          Effect.orElseSucceed(
+            () =>
+              ({
+                kind: 'rejected',
+                reason: 'github_issue_open_failed',
+              }) as const,
+          ),
+        )
+        if (opened.kind === 'rejected') {
+          return {
+            outcome: 'deferred',
+            plan: `${plan}\n\nBlocked/rejected: ${opened.reason}`,
+            reason: opened.reason,
+          }
+        }
+
+        const summary = [
+          `issueRef: ${opened.issueRef}`,
+          `issueUrl: ${opened.issueUrl}`,
+          `ledgerRef: ${opened.updated.requestRef}`,
+          `ledgerStatus: ${opened.updated.status}`,
+          `linkedIssue: ${opened.updated.githubIssueRef ?? '(none)'}`,
+        ].join('\n')
+        return {
+          assignmentRef: opened.issueRef,
+          durableRequestId: null,
+          outcome: 'executed',
+          summary,
+        }
+      }),
   }
 }
 
@@ -3329,6 +3457,9 @@ export const makeArtanisGetSyntheticLoadStatusTool = (
 // is honest ("(could not update …: no ledger writer is wired)") rather than
 // inventive. It is a WRITE tool, not risky/gated: owner-scoped, internal-ledger-
 // only, with no spend/payout/deploy/delete/outward authority.
+// `unsupportedRequestIssueOpener` is the outward GitHub issue opener behind
+// #6394. It is a gated provider_call tool: it creates a real public issue only
+// through the wired opener seam, then links the ledger row to the real issue.
 export const makeArtanisOperatorTools = (
   config: Readonly<{
     repoRead?: ArtanisRepoReadConfig | undefined
@@ -3339,6 +3470,9 @@ export const makeArtanisOperatorTools = (
     traceReview?: ArtanisTraceReviewConfig | undefined
     unsupportedRequests?: ArtanisUnsupportedRequestsConfig | undefined
     unsupportedRequestWriter?: ArtanisUnsupportedRequestWriter | undefined
+    unsupportedRequestIssueOpener?:
+      | ArtanisUnsupportedRequestIssueOpener
+      | undefined
     defaultBranch?: string | undefined
     networkStats?: ArtanisGetNetworkStatsConfig | undefined
     glmFleetStatus?: ArtanisGlmFleetStatusConfig | undefined
@@ -3376,6 +3510,9 @@ export const makeArtanisOperatorTools = (
     makeArtanisGetUnsupportedRequestsTool(config.unsupportedRequests),
     makeArtanisUpdateUnsupportedRequestTool({
       writer: config.unsupportedRequestWriter,
+    }),
+    makeArtanisOpenUnsupportedRequestIssueTool({
+      opener: config.unsupportedRequestIssueOpener,
     }),
     makeArtanisDispatchCodexTaskTool({
       defaultBranch: config.defaultBranch,

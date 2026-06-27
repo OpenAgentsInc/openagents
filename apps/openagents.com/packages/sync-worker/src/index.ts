@@ -42,6 +42,7 @@ export type WorkerBindings = Readonly<{
   AUTH_STORAGE: KVNamespace
   GITHUB_CLIENT_ID: string
   GITHUB_CLIENT_SECRET: string
+  ARTANIS_GITHUB_ISSUE_TOKEN?: string
   GEMINI_API_KEY?: string
   OPENAUTH_CLIENT_ID: string
   OPENAUTH_ISSUER_URL: string

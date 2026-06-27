@@ -25,7 +25,10 @@
 //   - OWNER-SCOPED. It is only wired into the owner-authenticated operator chat
 //     (`makeArtanisOperatorTools`), the same admin path as the other read tools.
 
+import { Effect } from 'effect'
+
 import type {
+  ArtanisUnsupportedRequestIssueOpener,
   ArtanisUnsupportedRequestRecord,
   ArtanisUnsupportedRequestsReader,
   ArtanisUnsupportedRequestWriter,
@@ -131,4 +134,158 @@ export const makeArtanisUnsupportedRequestWriter = (
     })
     return projectUnsupportedRequestRecord(updated)
   }
+}
+
+export type ArtanisUnsupportedRequestIssueOpenerDeps = Readonly<{
+  store: KhalaUnsupportedRequestStore
+  githubToken: string | undefined
+  fetchImpl?: typeof fetch | undefined
+  nowIso?: (() => string) | undefined
+  maxScan?: number | undefined
+}>
+
+type GitHubCreatedIssueResponse = Readonly<{
+  html_url?: unknown
+  number?: unknown
+}>
+
+const OPENAGENTS_ISSUE_REPO = 'OpenAgentsInc/openagents'
+
+const githubIssueRef = (issueNumber: number): string =>
+  `${OPENAGENTS_ISSUE_REPO}#${issueNumber}`
+
+const githubIssueBodyFor = (
+  record: KhalaUnsupportedRequestRecord,
+): string => {
+  const evidence =
+    record.evidenceRefs.length === 0
+      ? '- (none)'
+      : record.evidenceRefs.map(ref => `- ${ref}`).join('\n')
+  return [
+    'Auto-created from the Khala unsupported-request ledger.',
+    '',
+    `Ledger ref: ${record.requestRef}`,
+    `Source: ${record.sourceKind} ${record.sourceRef}`,
+    `Triage kind: ${record.triageKind}`,
+    '',
+    'Summary:',
+    record.summary.trim() === '' ? '(none)' : record.summary,
+    '',
+    'Public-safe evidence refs:',
+    evidence,
+    '',
+    'Acceptance:',
+    '- Reproduce or validate the gap using public-safe refs only.',
+    '- Implement the fix without exposing raw prompts, private paths, provider payloads, credentials, or wallet material.',
+    '- Keep the unsupported-request ledger linked to this issue.',
+  ].join('\n')
+}
+
+export const makeArtanisUnsupportedRequestIssueOpener = (
+  deps: ArtanisUnsupportedRequestIssueOpenerDeps,
+): ArtanisUnsupportedRequestIssueOpener => {
+  const fetchImpl = deps.fetchImpl ?? globalThis.fetch
+  const nowIso = deps.nowIso ?? currentIsoTimestamp
+  const maxScan = deps.maxScan ?? 100
+  const writer = makeArtanisUnsupportedRequestWriter({
+    maxScan,
+    nowIso,
+    store: deps.store,
+  })
+
+  return input =>
+    Effect.gen(function* () {
+      const token = deps.githubToken?.trim()
+      if (token === undefined || token === '') {
+        return { kind: 'rejected', reason: 'github_issue_token_not_configured' }
+      }
+
+      const records = yield* Effect.tryPromise(() =>
+        deps.store.listRecent({ limit: maxScan, status: 'needs_issue' }),
+      ).pipe(
+        Effect.orElseSucceed(
+          () => [] as ReadonlyArray<KhalaUnsupportedRequestRecord>,
+        ),
+      )
+      const record = records.find(row => row.requestRef === input.ref)
+      if (record === undefined) {
+        return { kind: 'rejected', reason: 'unsupported_request_not_found' }
+      }
+      if (record.githubIssueRef !== null) {
+        return { kind: 'rejected', reason: 'unsupported_request_already_linked' }
+      }
+
+      const response = yield* Effect.tryPromise(() =>
+        fetchImpl(
+          `https://api.github.com/repos/${OPENAGENTS_ISSUE_REPO}/issues`,
+          {
+            body: JSON.stringify({
+              body: githubIssueBodyFor(record),
+              title: record.suggestedIssueTitle,
+            }),
+            headers: {
+              Accept: 'application/vnd.github+json',
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+              'User-Agent': 'openagents-artanis-unsupported-request-issue-opener',
+              'X-GitHub-Api-Version': '2022-11-28',
+            },
+            method: 'POST',
+          },
+        ),
+      ).pipe(
+        Effect.orElseSucceed(
+          () => new Response('', { status: 599, statusText: 'fetch failed' }),
+        ),
+      )
+      if (!response.ok) {
+        return {
+          kind: 'rejected',
+          reason: `github_issue_http_${response.status}`,
+        }
+      }
+
+      const body = yield* Effect.tryPromise(
+        () => response.json() as Promise<GitHubCreatedIssueResponse>,
+      ).pipe(
+        Effect.orElseSucceed(
+          (): GitHubCreatedIssueResponse => ({
+            html_url: undefined,
+            number: undefined,
+          }),
+        ),
+      )
+      const issueNumber =
+        typeof body.number === 'number' && Number.isInteger(body.number)
+          ? body.number
+          : null
+      const issueUrl =
+        typeof body.html_url === 'string' &&
+        body.html_url.startsWith('https://github.com/')
+          ? body.html_url
+          : null
+      if (issueNumber === null || issueNumber <= 0 || issueUrl === null) {
+        return { kind: 'rejected', reason: 'github_issue_response_invalid' }
+      }
+
+      const issueRef = githubIssueRef(issueNumber)
+      const updated = yield* Effect.tryPromise(() =>
+        writer({
+          githubIssueRef: issueRef,
+          ref: record.requestRef,
+          status: 'issue_opened',
+        }),
+      ).pipe(Effect.orElseSucceed(() => null))
+      if (updated === null) {
+        return { kind: 'rejected', reason: 'ledger_link_failed' }
+      }
+
+      return {
+        issueNumber,
+        issueRef,
+        issueUrl,
+        kind: 'opened',
+        updated,
+      }
+    })
 }
