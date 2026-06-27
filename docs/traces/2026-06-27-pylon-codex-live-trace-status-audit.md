@@ -1264,6 +1264,92 @@ What is missing for the desired live page:
    only. Raw R2 event payloads remain owner-only audit material and should not be
    downloaded or rendered by the public trace page.
 
+## Delegation Repair Continuation
+
+The `2026-06-27T08:05Z` targeted Pylon-registration fallback made the minimal
+typed Khala request work: a direct `POST /v1/chat/completions` with
+`workflowClass: "codex_agent_task"` and
+`targetPylonRef: "pylon.33afd48282a649047e3a"` produced
+`assignment.public.khala_coding.chatcmpl_4b28eda4b2304ad38e60d6afab7605c0`.
+Running that assignment through the local Pylon/Codex runner succeeded and
+`khala proof` reconciled it to `126,282` exact tokens, `12` owner-only traces,
+and one raw-event archive.
+
+That proved the agent token, Pylon heartbeat, owner-agent link, direct
+registration fallback, assignment runner, closeout, proof, and exact token
+ledger path were working for a minimal public fixture assignment. It did not
+prove full workspace-backed delegation, because the minimal body omitted
+`openagents.coding.workspace` and therefore fell back to the smoke fixture.
+
+The next direct production probe used the full workspace-shaped body generated
+by `apps/pylon/src/khala-requester.ts`: public GitHub repo, branch, pinned
+commit, public verification command, explicit workflow class, and explicit
+target Pylon. That still returned the old 503:
+
+```json
+{
+  "error": "coding_delegation_store_unavailable",
+  "evidenceRefs": [
+    "evidence.khala_coding.dispatch.store_unavailable",
+    "evidence.khala_coding.dispatch.linked_owner_registration_read_unavailable"
+  ],
+  "requestedPylonRef": "pylon.33afd48282a649047e3a"
+}
+```
+
+The server was not actually failing to find the linked Pylon at that point. The
+root cause was a false-positive in the Pylon public-payload scanner. The
+workspace verification command included:
+
+```text
+src/inference/hydralisk-adapter.test.ts
+```
+
+The scanner's local Pylon regex treated the substring `sk-a` inside
+`hydralisk-adapter` as a raw `sk-...` API key. The shared
+`provider-account-schema` detector was already stricter
+(`sk-[A-Za-z0-9_-]{16,}`), but `apps/openagents.com/workers/api/src/pylon-api.ts`
+still carried the old short `sk-[a-z0-9]` marker. Because
+`buildPylonApiAssignmentRecord` throws `PylonApiStoreError` for scanner
+validation failures, the broad outer `delegateCodingWorkflow` catch mislabeled
+the assignment-request validation error as
+`linked_owner_registration_read`.
+
+The follow-up patch:
+
+- tightened the Pylon scanner to require a key-shaped
+  `sk-[A-Za-z0-9_-]{16,}` token;
+- added a scanner regression showing `hydralisk-adapter.test.ts` is allowed
+  while `OPENAI_API_KEY=sk-testsecret000000000` is still rejected;
+- added a full workspace delegation regression that includes the hydralisk test
+  path;
+- added a delegation regression showing truly unsafe workspace command args are
+  now reported as `assignment_request_validation`, not linked-registration
+  failure.
+
+This explains why other agents had trouble delegating: the registration and
+heartbeat were present, but the full workspace request died while building the
+assignment payload, then the error stage lied. The sequence that made it work
+was:
+
+1. disable daemon routing for local Pylon CLI execution;
+2. load the local Khala agent token without printing it;
+3. heartbeat the linked Pylon so production sees Codex capacity;
+4. use explicit `--workflow codex_agent_task` and `--pylon-ref`;
+5. patch production to read the explicit target registration when indexed
+   owner registration reads fail;
+6. isolate the difference between minimal and workspace bodies;
+7. fix the `hydralisk`/`sk-` scanner false positive;
+8. split assignment-request validation from linked-registration failures so the
+   next blocker is observable.
+
+The token counter behavior remains exact-closeout based. It does not increment
+continuously while Codex streams raw SDK chunks, runs commands, or writes
+owner-only ATIF chunk traces. It increments when a completed turn posts exact
+usage and the server inserts the canonical `token_usage_events` row. The public
+projection is live-at-read over that ledger, so the website can move
+immediately after insertion, but not before exact usage exists.
+
 ## Bottom Line
 
 This assignment proves the backend evidence path mostly works:

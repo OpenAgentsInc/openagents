@@ -2063,6 +2063,34 @@ describe('Pylon API routes', () => {
     ).toBe(true)
   })
 
+  test('the Pylon payload scanner does not mistake hydralisk file paths for sk secrets', () => {
+    expect(
+      pylonApiPayloadHasPrivateMaterial({
+        verificationCommand: {
+          args: [
+            'bun',
+            'run',
+            '--cwd',
+            'apps/openagents.com/workers/api',
+            'test',
+            '--',
+            'src/inference/hydralisk-adapter.test.ts',
+          ],
+          commandRef: 'command.public.pylon_khala.verify.hydralisk_adapter',
+        },
+      }),
+    ).toBe(false)
+
+    expect(
+      pylonApiPayloadHasPrivateMaterial({
+        verificationCommand: {
+          args: ['OPENAI_API_KEY=sk-testsecret000000000'],
+          commandRef: 'command.public.pylon_khala.verify.secret_rejected',
+        },
+      }),
+    ).toBe(true)
+  })
+
   test('agent/pylon projection exposes sparkPayoutTargetReady:false with a null ref when no target is registered (#5306)', async () => {
     const store = new MemoryPylonApiStore()
     const sparkStore = new MemorySparkPayoutTargetStore()

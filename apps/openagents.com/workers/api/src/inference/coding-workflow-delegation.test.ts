@@ -300,6 +300,7 @@ describe('coding workflow delegation', () => {
           'test',
           '--',
           'src/inference/coding-workflow-delegation.test.ts',
+          'src/inference/hydralisk-adapter.test.ts',
         ],
         commandRef: 'command.public.pylon_khala.delegation_test',
       },
@@ -338,6 +339,51 @@ describe('coding workflow delegation', () => {
     expect(assigned.assignment.codingAssignment?.codex).not.toHaveProperty(
       'fixtureRef',
     )
+  })
+
+  test('labels unsafe workspace assignment requests as assignment validation failures', async () => {
+    const result = await delegateCodingWorkflow({
+      classification,
+      linkedAgents: [linkedOwner],
+      makeId: () => 'id1',
+      nowIso,
+      pylonStore: makeStore({ registrations: [registration()] }),
+      rawBody: {
+        openagents: {
+          coding: {
+            objectiveSummary:
+              'Run the named verification command against the public checkout.',
+            targetPylonRef: 'pylon.owner.codex',
+            workspace: {
+              kind: 'git_checkout',
+              repository: {
+                branch: 'main',
+                commitSha: '7ab7cb401803f6e04a6c93b7aa9102405de66419',
+                fullName: 'OpenAgentsInc/openagents',
+                provider: 'github',
+                visibility: 'public',
+              },
+              verificationCommand: {
+                args: ['bun', 'test', 'OPENAI_API_KEY=sk-testsecret000000000'],
+                commandRef: 'command.public.pylon_khala.unsafe_secret_arg',
+              },
+            },
+          },
+        },
+      },
+      requestId: 'chatcmpl_coding_workspace_unsafe_arg',
+    })
+
+    expect(result).toMatchObject({
+      error: 'coding_delegation_store_unavailable',
+      evidenceRefs: expect.arrayContaining([
+        'evidence.khala_coding.dispatch.store_unavailable',
+        'evidence.khala_coding.dispatch.assignment_request_validation_unavailable',
+      ]),
+      kind: 'rejected',
+      requestedPylonRef: 'pylon.owner.codex',
+      statusCode: 503,
+    })
   })
 
   test('rejects unsafe objective summaries before assignment creation', async () => {

@@ -53,7 +53,9 @@ export type CodingDelegationRejection = Readonly<{
 type CodingDelegationStoreUnavailableStage =
   | 'assignment_create'
   | 'assignment_list_read'
+  | 'assignment_request_validation'
   | 'linked_owner_registration_read'
+  | 'unknown_store_operation'
 
 export type CodingDelegationResult =
   | CodingDelegationAssignmentResult
@@ -414,7 +416,7 @@ export const delegateCodingWorkflow = async (
     if (error instanceof PylonApiStoreError) {
       return codingDelegationStoreUnavailableRejection(
         target.kind === 'target' ? target.pylonRef : null,
-        'linked_owner_registration_read',
+        'unknown_store_operation',
       )
     }
     throw error
@@ -451,11 +453,27 @@ const delegateCodingWorkflowUnsafe = async (
       : null
   }
 
-  const registrations = await listRegistrationsForLinkedOwnerAgents(
-    input.pylonStore,
-    ownerAgentUserIds,
-    target.kind === 'target' ? target.pylonRef : null,
-  )
+  const registrationsOrRejection = await (async () => {
+    try {
+      return await listRegistrationsForLinkedOwnerAgents(
+        input.pylonStore,
+        ownerAgentUserIds,
+        target.kind === 'target' ? target.pylonRef : null,
+      )
+    } catch (error) {
+      if (error instanceof PylonApiStoreError) {
+        return codingDelegationStoreUnavailableRejection(
+          target.kind === 'target' ? target.pylonRef : null,
+          'linked_owner_registration_read',
+        )
+      }
+      throw error
+    }
+  })()
+  if ('kind' in registrationsOrRejection) {
+    return registrationsOrRejection
+  }
+  const registrations = registrationsOrRejection
 
   const authorizedRegistrations =
     target.kind === 'target'
@@ -530,13 +548,29 @@ const delegateCodingWorkflowUnsafe = async (
       continue
     }
 
-    const assignment = buildPylonApiAssignmentRecord({
-      idempotencyKeyHash: `khala-coding:${input.requestId}`,
-      makeId: input.makeId,
-      nowIso: input.nowIso,
-      ownerAgentUserId: registration.ownerAgentUserId,
-      request: body,
-    })
+    const assignmentOrRejection = await (async () => {
+      try {
+        return buildPylonApiAssignmentRecord({
+          idempotencyKeyHash: `khala-coding:${input.requestId}`,
+          makeId: input.makeId,
+          nowIso: input.nowIso,
+          ownerAgentUserId: registration.ownerAgentUserId,
+          request: body,
+        })
+      } catch (error) {
+        if (error instanceof PylonApiStoreError) {
+          return codingDelegationStoreUnavailableRejection(
+            registration.pylonRef,
+            'assignment_request_validation',
+          )
+        }
+        throw error
+      }
+    })()
+    if ('kind' in assignmentOrRejection) {
+      return assignmentOrRejection
+    }
+    const assignment = assignmentOrRejection
     const result = await (async () => {
       try {
         return await input.pylonStore.createAssignment(assignment)
