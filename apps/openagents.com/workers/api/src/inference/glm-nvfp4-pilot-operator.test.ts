@@ -24,6 +24,7 @@ const config = (
   endpointRef: null,
   model: GLM_NVFP4_PILOT_MODEL,
   decisionRef: null,
+  bootLoadEvidenceRef: null,
   measuredMaxModelLen: null,
   measuredMaxModelLenEvidenceRef: null,
   qualityParity: 'not_measured',
@@ -72,6 +73,7 @@ describe('GLM NVFP4 pilot operator path (#6323)', () => {
     expect(missingEnvs).toContain('KHALA_GLM_NVFP4_ENDPOINT_REF')
     expect(missingEnvs).toContain('KHALA_GLM_NVFP4_OWNER_APPROVAL_REF')
     expect(missingEnvs).toContain('KHALA_GLM_NVFP4_DECISION_REF')
+    expect(missingEnvs).toContain('KHALA_GLM_NVFP4_BOOT_LOAD_EVIDENCE_REF')
     expect(bundle.ownerArmedCommand).toContain(
       'bun run --cwd apps/openagents.com/workers/api pilot:glm-nvfp4',
     )
@@ -93,6 +95,9 @@ describe('GLM NVFP4 pilot operator path (#6323)', () => {
     expect(command).toContain('KHALA_GLM_NVFP4_PILOT_ARM=1')
     expect(command).toContain(
       'KHALA_GLM_NVFP4_ENDPOINT_URL="<redacted OpenAI-compatible pilot base URL>"',
+    )
+    expect(command).toContain(
+      'KHALA_GLM_NVFP4_BOOT_LOAD_EVIDENCE_REF="evidence.public.khala.glm_nvfp4.boot_load.<owner-issued>"',
     )
     expect(command).toContain('KHALA_GLM_NVFP4_MODEL="nvidia/GLM-5.2-NVFP4"')
     expect(command).toContain('--samples 24')
@@ -118,6 +123,7 @@ describe('GLM NVFP4 pilot operator path (#6323)', () => {
       endpointUrl: 'https://pilot.internal.example.invalid/v1',
       endpointRef: 'https://pilot.internal.example.invalid/endpoint',
       decisionRef: 'decision.public.khala.glm_nvfp4.issue_6323.001',
+      bootLoadEvidenceRef: 'wallet.private.boot.load',
       measuredMaxModelLen: 65536,
       measuredMaxModelLenEvidenceRef:
         'evidence.public.khala.glm_nvfp4.max_model_len.65536.001',
@@ -150,10 +156,12 @@ describe('GLM NVFP4 pilot operator path (#6323)', () => {
 
     expect(bundle.summary.decision).toBe('no_go')
     expect(rejectedEnvs).toContain('KHALA_GLM_NVFP4_ENDPOINT_REF')
+    expect(rejectedEnvs).toContain('KHALA_GLM_NVFP4_BOOT_LOAD_EVIDENCE_REF')
     expect(rejectedEnvs).toContain('KHALA_GLM_NVFP4_QUALITY_EVIDENCE_REF')
     expect(rejectedEnvs).toContain('generated_by_cli')
     expect(retained).not.toContain('pilot.internal.example.invalid')
     expect(retained).not.toContain('/Users/operator')
     expect(retained).not.toContain('prompt.private.quality')
+    expect(retained).not.toContain('wallet.private.boot.load')
   })
 })

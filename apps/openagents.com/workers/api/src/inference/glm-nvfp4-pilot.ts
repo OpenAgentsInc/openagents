@@ -27,6 +27,8 @@ export const GlmNvfp4PilotBlocker = S.Literals([
   'endpoint_ref_unsafe',
   'endpoint_url_missing',
   'model_mismatch',
+  'boot_load_evidence_ref_missing',
+  'boot_load_evidence_ref_unsafe',
   'measured_max_model_len_missing',
   'measured_max_model_len_evidence_ref_missing',
   'measured_max_model_len_evidence_ref_unsafe',
@@ -66,6 +68,7 @@ export const GlmNvfp4PilotEvidenceRefField = S.Literals([
   'ownerApprovalRef',
   'endpointRef',
   'decisionRef',
+  'bootLoadEvidenceRef',
   'measuredMaxModelLenEvidenceRef',
   'qualityEvidenceRef',
   'toolLoopEvidenceRef',
@@ -138,6 +141,7 @@ export const GlmNvfp4PilotResult = S.Struct({
   endpointRef: S.Union([S.String, S.Null]),
   ownerApprovalRef: S.Union([S.String, S.Null]),
   decisionRef: S.Union([S.String, S.Null]),
+  bootLoadEvidenceRef: S.Union([S.String, S.Null]),
   measuredMaxModelLen: S.Union([S.Number, S.Null]),
   measuredMaxModelLenEvidenceRef: S.Union([S.String, S.Null]),
   qualityParity: S.Literals(['passed', 'failed', 'not_measured']),
@@ -195,6 +199,7 @@ export type GlmNvfp4PilotConfig = Readonly<{
   endpointRef?: string | null
   model?: string | null
   decisionRef?: string | null
+  bootLoadEvidenceRef?: string | null
   measuredMaxModelLen?: number | null
   measuredMaxModelLenEvidenceRef?: string | null
   qualityParity?: 'passed' | 'failed' | 'not_measured'
@@ -268,6 +273,7 @@ const unsafeBlockerForEvidenceField = (
     ownerApprovalRef: 'owner_approval_ref_unsafe',
     endpointRef: 'endpoint_ref_unsafe',
     decisionRef: 'decision_ref_unsafe',
+    bootLoadEvidenceRef: 'boot_load_evidence_ref_unsafe',
     measuredMaxModelLenEvidenceRef:
       'measured_max_model_len_evidence_ref_unsafe',
     qualityEvidenceRef: 'quality_evidence_ref_unsafe',
@@ -295,6 +301,8 @@ const GLM_NVFP4_PILOT_BLOCKER_ISSUE_GATE: Record<
   endpoint_ref_unsafe: 'isolated_owner_armed_endpoint_context',
   endpoint_url_missing: 'isolated_owner_armed_endpoint_context',
   model_mismatch: 'isolated_owner_armed_endpoint_context',
+  boot_load_evidence_ref_missing: 'isolated_owner_armed_endpoint_context',
+  boot_load_evidence_ref_unsafe: 'isolated_owner_armed_endpoint_context',
   measured_max_model_len_missing: 'throughput_context_tradeoff',
   measured_max_model_len_evidence_ref_missing: 'throughput_context_tradeoff',
   measured_max_model_len_evidence_ref_unsafe: 'throughput_context_tradeoff',
@@ -394,6 +402,7 @@ const pilotSummaryGateEvidenceRefs = (
       result.ownerApprovalRef,
       result.endpointRef,
       result.decisionRef,
+      result.bootLoadEvidenceRef,
     ],
     tool_loop_proof: [result.toolLoop.evidenceRef],
     quality_parity: [result.qualityEvidenceRef],
@@ -415,7 +424,8 @@ const pilotSummaryGateHasRequiredEvidence = (
       result.ownerArmed === true &&
       safeRefOrNull(result.ownerApprovalRef) !== null &&
       safeRefOrNull(result.endpointRef) !== null &&
-      safeRefOrNull(result.decisionRef) !== null,
+      safeRefOrNull(result.decisionRef) !== null &&
+      safeRefOrNull(result.bootLoadEvidenceRef) !== null,
     tool_loop_proof:
       safeRefOrNull(result.toolLoop.evidenceRef) !== null &&
       result.toolLoop.sampleCount >= GLM_NVFP4_MIN_TOOL_LOOP_SAMPLES &&
@@ -494,6 +504,7 @@ export const buildGlmNvfp4PilotResult = (input: {
   const ownerApprovalRef = safeRefOrNull(config.ownerApprovalRef)
   const endpointRef = safeRefOrNull(config.endpointRef)
   const decisionRef = safeRefOrNull(config.decisionRef)
+  const bootLoadEvidenceRef = safeRefOrNull(config.bootLoadEvidenceRef)
   const measuredMaxModelLen = finitePositiveInteger(config.measuredMaxModelLen)
   const measuredMaxModelLenEvidenceRef = safeRefOrNull(
     config.measuredMaxModelLenEvidenceRef,
@@ -535,6 +546,11 @@ export const buildGlmNvfp4PilotResult = (input: {
       publicRef: decisionRef,
     }),
     evidenceRefAudit({
+      field: 'bootLoadEvidenceRef',
+      rawRef: config.bootLoadEvidenceRef,
+      publicRef: bootLoadEvidenceRef,
+    }),
+    evidenceRefAudit({
       field: 'measuredMaxModelLenEvidenceRef',
       rawRef: config.measuredMaxModelLenEvidenceRef,
       publicRef: measuredMaxModelLenEvidenceRef,
@@ -564,6 +580,9 @@ export const buildGlmNvfp4PilotResult = (input: {
   }
   if ((config.model ?? GLM_NVFP4_PILOT_MODEL) !== GLM_NVFP4_PILOT_MODEL) {
     blockerRefs.add('model_mismatch')
+  }
+  if (bootLoadEvidenceRef === null) {
+    blockerRefs.add('boot_load_evidence_ref_missing')
   }
   if (measuredMaxModelLen === null) {
     blockerRefs.add('measured_max_model_len_missing')
@@ -610,6 +629,7 @@ export const buildGlmNvfp4PilotResult = (input: {
     ownerApprovalRef,
     endpointRef,
     decisionRef,
+    bootLoadEvidenceRef,
     measuredMaxModelLenEvidenceRef,
     qualityEvidenceRef,
     publicToolLoop.evidenceRef,
@@ -628,6 +648,7 @@ export const buildGlmNvfp4PilotResult = (input: {
     endpointRef,
     ownerApprovalRef,
     decisionRef,
+    bootLoadEvidenceRef,
     measuredMaxModelLen,
     measuredMaxModelLenEvidenceRef,
     qualityParity,

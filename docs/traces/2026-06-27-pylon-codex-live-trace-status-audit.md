@@ -258,6 +258,64 @@ The reliable sequence remains:
 7. Run the returned assignment ref with `assignment run-no-spend --json`.
 8. Verify the closeout with assignment-scoped proof, not only the global counter.
 
+## Latest Successful #6323 Delegation After Capacity Returned
+
+After the trace read-scope fix landed, the same runbook sequence worked again
+for the next #6323 GLM NVFP4 pilot slice from the clean worktree at
+`54951e811bc5bbdd02e21c8e7f98b011656d03a1`.
+
+Fresh preflight showed:
+
+- Pylon ref `pylon.33afd48282a649047e3a`;
+- heartbeat sequence `410`;
+- linked, non-stale presence;
+- `capacity.coding.codex.available=1`;
+- daemon routing disabled so the current worktree source was used.
+
+The typed request created:
+
+`assignment.public.khala_coding.chatcmpl_44a4a0608a1049d59b41fae44b840433`
+
+with durable request:
+
+`chatcmpl_6e32740eb2594360bc15536853d9e221`
+
+`assignment run-no-spend --json` completed accepted with closeout:
+
+`assignment.closeout.02d6bb1b7c18e8ad84972294`
+
+The accepted patch added a public boot/load evidence reference to the #6323
+isolated-owner gate. That means the owner-armed NVFP4 pilot cannot pass on
+endpoint URL, endpoint ref, owner approval, and decision ref alone; it now also
+requires a public-safe `KHALA_GLM_NVFP4_BOOT_LOAD_EVIDENCE_REF` proving the
+isolated 8x host actually booted and loaded the full-model endpoint.
+
+The exact proof for this latest delegation reported:
+
+```json
+{
+  "provider": "pylon-codex-own-capacity",
+  "model": "openagents/pylon-codex",
+  "usageTruth": "exact",
+  "demandKind": "own_capacity",
+  "demandSource": "khala_coding_delegation",
+  "inputTokens": 2729097,
+  "outputTokens": 9508,
+  "reasoningTokens": 438,
+  "cacheReadTokens": 2556288,
+  "totalTokens": 2738605
+}
+```
+
+It also reported `67` owner-only ATIF traces and one owner-only raw Codex event
+archive containing `109` SDK events / `2,623,114` bytes.
+
+This is the concrete path that got delegation working for the latest slice:
+clean current worktree, local dependencies installed, daemon routing disabled,
+fresh heartbeat immediately before dispatch, explicit `codex_agent_task`
+workflow, explicit Pylon ref, exact commit pin, local `run-no-spend`, then
+assignment-scoped proof.
+
 ## Earlier Follow-Up Delegation Failure Mode
 
 The same runbook was attempted again for the #6318 scheduler follow-up after the

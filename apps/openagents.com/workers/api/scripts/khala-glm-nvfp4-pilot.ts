@@ -41,6 +41,7 @@ const help = (): string => [
   '  --endpoint-ref <public ref>',
   '  --owner-approval-ref <public ref>',
   '  --decision-ref <public ref>',
+  '  --boot-load-evidence-ref <public ref>',
   '  --measured-max-model-len <number>',
   '  --measured-max-model-len-evidence-ref <public ref>',
   '  --quality-parity <passed|failed|not_measured>',
@@ -77,6 +78,10 @@ const ownerApprovalRef =
   null
 const decisionRef =
   option('--decision-ref') ?? Bun.env.KHALA_GLM_NVFP4_DECISION_REF ?? null
+const bootLoadEvidenceRef =
+  option('--boot-load-evidence-ref') ??
+  Bun.env.KHALA_GLM_NVFP4_BOOT_LOAD_EVIDENCE_REF ??
+  null
 const apiKey = Bun.env.KHALA_GLM_NVFP4_API_KEY ?? undefined
 const samplesFromEnv = Number(Bun.env.KHALA_GLM_NVFP4_TOOL_LOOP_SAMPLES ?? '')
 const samples =
@@ -110,6 +115,7 @@ const config: GlmNvfp4PilotConfig = {
   endpointRef,
   model: option('--model') ?? Bun.env.KHALA_GLM_NVFP4_MODEL ?? GLM_NVFP4_PILOT_MODEL,
   decisionRef,
+  bootLoadEvidenceRef,
   measuredMaxModelLen:
     numberOption('--measured-max-model-len') ??
     (() => {

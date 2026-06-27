@@ -91,6 +91,11 @@ const evidenceInputByField: Record<
     flag: '--decision-ref',
     label: 'public #6323 decision ref',
   },
+  bootLoadEvidenceRef: {
+    env: 'KHALA_GLM_NVFP4_BOOT_LOAD_EVIDENCE_REF',
+    flag: '--boot-load-evidence-ref',
+    label: 'public boot/load evidence ref for the isolated 8x host',
+  },
   measuredMaxModelLenEvidenceRef: {
     env: 'KHALA_GLM_NVFP4_MAX_MODEL_LEN_EVIDENCE_REF',
     flag: '--measured-max-model-len-evidence-ref',
@@ -129,6 +134,7 @@ const ownerArmedCommandLines = (
   'KHALA_GLM_NVFP4_ENDPOINT_REF="endpoint.public.khala.glm_nvfp4.single_host_8x.<owner-issued>" \\',
   'KHALA_GLM_NVFP4_OWNER_APPROVAL_REF="approval.public.khala.glm_nvfp4.owner_armed.<owner-issued>" \\',
   'KHALA_GLM_NVFP4_DECISION_REF="decision.public.khala.glm_nvfp4.issue_6323.<owner-issued>" \\',
+  'KHALA_GLM_NVFP4_BOOT_LOAD_EVIDENCE_REF="evidence.public.khala.glm_nvfp4.boot_load.<owner-issued>" \\',
   `KHALA_GLM_NVFP4_MEASURED_MAX_MODEL_LEN=${input.measuredMaxModelLen} \\`,
   'KHALA_GLM_NVFP4_MAX_MODEL_LEN_EVIDENCE_REF="evidence.public.khala.glm_nvfp4.max_model_len.<owner-issued>" \\',
   'KHALA_GLM_NVFP4_QUALITY_PARITY=passed \\',

@@ -27,6 +27,7 @@ const baseConfig = (
   endpointRef: 'endpoint.public.khala.glm_nvfp4.single_host_8x.001',
   model: GLM_NVFP4_PILOT_MODEL,
   decisionRef: 'decision.public.khala.glm_nvfp4.issue_6323.001',
+  bootLoadEvidenceRef: 'evidence.public.khala.glm_nvfp4.boot_load.001',
   measuredMaxModelLen: 65536,
   measuredMaxModelLenEvidenceRef:
     'evidence.public.khala.glm_nvfp4.max_model_len.65536.001',
@@ -64,6 +65,7 @@ describe('GLM NVFP4 pilot preflight (#6323)', () => {
       ownerApprovalRef: null,
       endpointUrl: null,
       endpointRef: null,
+      bootLoadEvidenceRef: null,
       measuredMaxModelLen: null,
       measuredMaxModelLenEvidenceRef: null,
       qualityParity: 'not_measured',
@@ -80,6 +82,7 @@ describe('GLM NVFP4 pilot preflight (#6323)', () => {
     expect(result.canRouteCodingLane).toBe(false)
     expect(result.routingOutcome).toBe('keep_reap_live_lane')
     expect(result.blockerRefs).toEqual([
+      'boot_load_evidence_ref_missing',
       'decision_ref_missing',
       'endpoint_ref_missing',
       'endpoint_url_missing',
@@ -146,6 +149,11 @@ describe('GLM NVFP4 pilot preflight (#6323)', () => {
         publicRef: 'decision.public.khala.glm_nvfp4.issue_6323.001',
       },
       {
+        field: 'bootLoadEvidenceRef',
+        status: 'accepted',
+        publicRef: 'evidence.public.khala.glm_nvfp4.boot_load.001',
+      },
+      {
         field: 'measuredMaxModelLenEvidenceRef',
         status: 'accepted',
         publicRef: 'evidence.public.khala.glm_nvfp4.max_model_len.65536.001',
@@ -198,6 +206,7 @@ describe('GLM NVFP4 pilot preflight (#6323)', () => {
       'approval.public.khala.glm_nvfp4.owner_armed.001',
       'decision.public.khala.glm_nvfp4.issue_6323.001',
       'endpoint.public.khala.glm_nvfp4.single_host_8x.001',
+      'evidence.public.khala.glm_nvfp4.boot_load.001',
       'evidence.public.khala.glm_nvfp4.max_model_len.65536.001',
       'evidence.public.khala.glm_nvfp4.quality_parity.001',
       'evidence.public.khala.glm_nvfp4.tool_loop.001',
@@ -206,6 +215,31 @@ describe('GLM NVFP4 pilot preflight (#6323)', () => {
     expect(JSON.stringify(summary)).not.toContain(
       'https://glm-nvfp4-pilot.example.invalid',
     )
+  })
+
+  test('requires public boot/load evidence before isolated 8x acceptance', () => {
+    const result = buildGlmNvfp4PilotResult({
+      config: baseConfig({ bootLoadEvidenceRef: null }),
+      observation: passingObservation(),
+    })
+    const summary = summarizeGlmNvfp4PilotResult(result)
+    const ownerGate = summary.gates.find(
+      gate => gate.gate === 'isolated_owner_armed_endpoint_context',
+    )
+
+    expect(result.decision).toBe('no_go')
+    expect(result.canRouteCodingLane).toBe(false)
+    expect(result.blockerRefs).toContain('boot_load_evidence_ref_missing')
+    expect(result.evidenceRefAudit).toContainEqual({
+      field: 'bootLoadEvidenceRef',
+      status: 'missing',
+      publicRef: null,
+    })
+    expect(summary.decision).toBe('no_go')
+    expect(ownerGate).toMatchObject({
+      status: 'blocked',
+      blockerRefs: ['boot_load_evidence_ref_missing'],
+    })
   })
 
   test('summarizer keeps missing owner evidence as no-go on the isolated endpoint/context gate', () => {
@@ -230,6 +264,7 @@ describe('GLM NVFP4 pilot preflight (#6323)', () => {
       evidenceRefs: [
         'decision.public.khala.glm_nvfp4.issue_6323.001',
         'endpoint.public.khala.glm_nvfp4.single_host_8x.001',
+        'evidence.public.khala.glm_nvfp4.boot_load.001',
       ],
     })
     expect(
@@ -309,6 +344,27 @@ describe('GLM NVFP4 pilot preflight (#6323)', () => {
       publicRef: null,
     })
     expect(JSON.stringify(result)).not.toContain('pilot.internal')
+  })
+
+  test('blocks unsafe boot/load evidence refs from isolated 8x acceptance', () => {
+    const result = buildGlmNvfp4PilotResult({
+      config: baseConfig({
+        bootLoadEvidenceRef: 'private.prompt.boot.load',
+      }),
+      observation: passingObservation(),
+    })
+
+    expect(result.decision).toBe('no_go')
+    expect(result.bootLoadEvidenceRef).toBeNull()
+    expect(result.blockerRefs).toContain('unsafe_public_ref')
+    expect(result.blockerRefs).toContain('boot_load_evidence_ref_unsafe')
+    expect(result.blockerRefs).toContain('boot_load_evidence_ref_missing')
+    expect(result.evidenceRefAudit).toContainEqual({
+      field: 'bootLoadEvidenceRef',
+      status: 'rejected_unsafe',
+      publicRef: null,
+    })
+    expect(JSON.stringify(result)).not.toContain('private.prompt.boot.load')
   })
 
   test('redacts unsafe live observation evidence refs before public reporting', () => {
