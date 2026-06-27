@@ -11,8 +11,9 @@ import {
   type KhalaCodexStatus,
 } from "./codex.js"
 import { appendPromptHistory, readPromptFromTerminal } from "./input.js"
+import { openVerificationUrl, runKhalaLogin, type KhalaLoginResult } from "./login.js"
 import { renderMarkdownForTerminal, renderReasoningMarkdownDeltaForTerminal, terminalStyle } from "./terminal.js"
-import { ensureStoredAgentToken, traceTokenPath } from "./token-store.js"
+import { clearStoredAgentToken, ensureStoredAgentToken, traceTokenPath } from "./token-store.js"
 import { DEFAULT_BASE_URL, type ChatMode, type ChatTurnMetadata, type KhalaChatMessage, type KhalaCliError, type KhalaTokensResponse } from "./types.js"
 import { startKhalaAutoUpdate } from "./updater.js"
 
@@ -30,6 +31,8 @@ type ParsedCommand =
   | { readonly kind: "feedback"; readonly text: string | undefined }
   | { readonly kind: "help" }
   | { readonly kind: "info" }
+  | { readonly kind: "login" }
+  | { readonly kind: "logout" }
   | { readonly kind: "tokens" }
   | { readonly kind: "version" }
 
@@ -126,6 +129,18 @@ export async function runKhalaCli(argv: ReadonlyArray<string>, env: Record<strin
         lastTraceRef: undefined,
         sessionId: createCliSessionId(),
       })}\n`)
+      return 0
+    }
+    if (args.command.kind === "login") {
+      return await runLoginCommand(args, env)
+    }
+    if (args.command.kind === "logout") {
+      const cleared = await clearStoredAgentToken(env)
+      process.stdout.write(
+        cleared
+          ? `Signed out. Cleared the stored Khala token (${traceTokenPath(env)}).\n`
+          : "You were not signed in (no stored Khala token to clear).\n",
+      )
       return 0
     }
     if (args.command.kind === "tokens") {
@@ -253,6 +268,10 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
     command = { kind: "help" }
   } else if (maybeCommand === "info") {
     command = { kind: "info" }
+  } else if (maybeCommand === "login") {
+    command = { kind: "login" }
+  } else if (maybeCommand === "logout") {
+    command = { kind: "logout" }
   } else if (maybeCommand === "tokens") {
     command = { kind: "tokens" }
   } else if (maybeCommand === "version") {
@@ -455,6 +474,20 @@ async function handleSlashCommand(
   }
   if (command === "/version") {
     process.stdout.write(`${terminalStyle.assistant("Khala:")} khala ${KHALA_CLI_VERSION}\n\n`)
+    return "handled"
+  }
+  if (command === "/login") {
+    await runLoginCommand(args, env)
+    process.stdout.write("\n")
+    return "handled"
+  }
+  if (command === "/logout") {
+    const cleared = await clearStoredAgentToken(env)
+    process.stdout.write(`${terminalStyle.assistant("Khala:")} ${
+      cleared
+        ? "Signed out. Cleared the stored Khala token."
+        : "You were not signed in (no stored Khala token to clear)."
+    }\n\n`)
     return "handled"
   }
   if (command === "/codex") {
@@ -688,6 +721,74 @@ function humanReadableReason(error: KhalaCliError): string {
   return error.reason
 }
 
+// OPENAGENTS DEVICE-AUTH LOGIN (#6363, epic #6359)
+
+// Shared login runner for `khala login`, `khala --headless login`, and the
+// interactive `/login` slash command. Starts the standard OpenAgents
+// device-auth flow, prints the verification URL + user code (and opens the
+// browser when possible), polls until the browser sign-in links the token to
+// the owner account, then re-stores the now-owner-linked token.
+async function runLoginCommand(
+  args: ParsedArgs,
+  env: Record<string, string | undefined>,
+): Promise<number> {
+  let waitingDots: { readonly stop: () => void } | undefined
+  try {
+    const result = await runKhalaLogin({
+      baseUrl: args.baseUrl,
+      env,
+      explicitToken: args.token,
+      openBrowser: openVerificationUrl,
+      onPrompt: prompt => {
+        process.stdout.write(`${formatLoginPrompt(prompt)}\n`)
+        waitingDots = startWaitingDots()
+      },
+    })
+    waitingDots?.stop()
+    process.stdout.write(`${formatLoginSuccess(result)}\n`)
+    return 0
+  } catch (error) {
+    waitingDots?.stop()
+    printError(toKhalaCliError(error, "Login failed."))
+    return 1
+  }
+}
+
+function formatLoginPrompt(prompt: {
+  readonly userCode: string
+  readonly verificationUrl: string
+  readonly expiresAt: string | undefined
+}): string {
+  const lines = [
+    "To sign in to OpenAgents, open this URL in your browser:",
+    `  ${terminalStyle.assistant(prompt.verificationUrl)}`,
+    `Then confirm this code: ${terminalStyle.assistant(prompt.userCode)}`,
+  ]
+  const expiry = formatLoginExpiry(prompt.expiresAt)
+  if (expiry !== undefined) {
+    lines.push(terminalStyle.meta(`The code expires ${expiry}.`))
+  }
+  lines.push(terminalStyle.meta("Waiting for you to finish signing in..."))
+  return lines.join("\n")
+}
+
+function formatLoginExpiry(expiresAt: string | undefined): string | undefined {
+  if (expiresAt === undefined) return undefined
+  const parsed = Date.parse(expiresAt)
+  if (Number.isNaN(parsed)) return undefined
+  const minutes = Math.max(1, Math.round((parsed - Date.now()) / 60_000))
+  return `in about ${minutes} minute${minutes === 1 ? "" : "s"}`
+}
+
+function formatLoginSuccess(result: KhalaLoginResult): string {
+  const identity = result.email ?? result.displayName
+  const who = identity !== undefined ? `Signed in as ${identity}.` : "Signed in."
+  const linkNote = result.alreadyLinked
+    ? "Your Khala token was already linked to your OpenAgents account."
+    : "Your Khala token is now linked to your OpenAgents account."
+  return `${who} ${linkNote}`
+}
+
 // ARTANIS OPERATOR CHANNEL (#6363, epic #6359)
 
 function parseChannelSwitch(input: string): Channel | undefined {
@@ -720,7 +821,7 @@ function channelSwitchNotice(channel: Channel): string {
 
 function formatArtanisError(error: KhalaCliError): string {
   if (error.statusCode === 401 || error.statusCode === 403) {
-    return `This is the owner-only Artanis channel and your token is not authorized for it. Sign in as the owner or set OPENAGENTS_AGENT_TOKEN to the owner agent token, then try again.${formatTraceSuffix(error)}`
+    return `This is the owner-only Artanis channel and your token is not authorized for it. Run \`khala login\` to sign in as the owner (or set OPENAGENTS_AGENT_TOKEN to the owner agent token), then try again.${formatTraceSuffix(error)}`
   }
   if (error.statusCode === 404 || error.code === "schema_mismatch") {
     return `The Artanis operator endpoint is not available yet. It ships with the core Artanis lane; until then, /khala chat still works.${formatTraceSuffix(error)}`
@@ -921,6 +1022,8 @@ function createCliSessionId(): string {
 function interactiveHelp(): string {
   return `${terminalStyle.meta("Slash commands:")}
 /help              Show this command list
+/login             Sign in as the owner (then you can talk to Artanis)
+/logout            Clear the stored Khala token
 /artanis           Switch to the owner-only Artanis operator channel
 /khala             Switch back to the public Khala channel
 /feedback <text>   Save product feedback with the last trace when available
@@ -942,6 +1045,8 @@ function usage(): string {
 Usage:
   khala
   khala help
+  khala login
+  khala logout
   khala info
   khala version
   khala changelog
@@ -957,6 +1062,8 @@ Usage:
 
 Interactive commands:
   /help              Show slash commands
+  /login             Sign in as the owner (then you can talk to Artanis)
+  /logout            Clear the stored Khala token
   /artanis           Switch to the owner-only Artanis operator channel
   /khala             Switch back to the public Khala channel
   /feedback <text>   Save product feedback without sending it to inference

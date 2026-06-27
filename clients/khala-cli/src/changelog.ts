@@ -20,6 +20,14 @@ export const KHALA_CLI_VERSION = packageJson.version
 
 export const KHALA_CHANGELOG: ReadonlyArray<KhalaChangelogEntry> = [
   {
+    version: "0.1.15",
+    releasedAt: "2026-06-27T04:00:14.000Z",
+    bullets: [
+      "Adds `khala login` (and the interactive /login command) using the standard OpenAgents device-auth flow, so you can sign in as the owner and then talk to Artanis.",
+      "Adds `khala logout` / /logout to clear the stored Khala token, and points the Artanis owner-only and --api messages at `khala login`.",
+    ],
+  },
+  {
     version: "0.1.14",
     releasedAt: "2026-06-27T03:26:46.000Z",
     bullets: [

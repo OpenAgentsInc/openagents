@@ -126,6 +126,79 @@ export const ArtanisChatResponse = S.Struct({
 })
 export type ArtanisChatResponse = typeof ArtanisChatResponse.Type
 
+// OpenAgents device-auth (`khala login`, #6363, epic #6359).
+//
+// This mirrors the shared, already-deployed server contract owned by the core
+// lane (apps/openagents.com/workers/api/src/pylon-openagents-auth-routes.ts),
+// the same flow the Pylon CLI uses. The CLI authenticates with its existing
+// agent token (auto-minted free key or --token), starts a link attempt, prints
+// the verification URL + user code, and polls the status endpoint until the
+// browser sign-in links that token to the owner's OpenAgents account.
+//
+//   POST /api/pylon/auth/openagents/device/start   (Bearer agent token)
+//     -> 201 { status: "pending", attemptId, expiresAt, intervalSeconds,
+//              userCode, verificationUrl, linkedAgent: { tokenPrefix } }
+//     -> 200 { status: "linked", linkedAgent: { tokenPrefix } } (already linked)
+//   GET  /api/pylon/auth/openagents/device/{attemptId}  (Bearer agent token)
+//     -> 200 { status: "pending" | "linked", ... }
+//     -> 410 { status: "expired", attemptId }
+//
+// On link the SAME agent token becomes the owner-linked token; the server does
+// not mint a new credential here, so the CLI keeps and re-stores the token it
+// authenticated with.
+export const OPENAGENTS_DEVICE_AUTH_START_PATH =
+  "/api/pylon/auth/openagents/device/start"
+export const openAgentsDeviceAuthStatusPath = (attemptId: string): string =>
+  `/api/pylon/auth/openagents/device/${encodeURIComponent(attemptId)}`
+
+const DeviceAuthLinkedAgent = S.Struct({
+  tokenPrefix: S.optional(S.String),
+})
+
+export const DeviceAuthStartResponse = S.Struct({
+  schema: S.optional(S.String),
+  status: S.Literals(["pending", "linked"]),
+  attemptId: S.optional(S.String),
+  expiresAt: S.optional(S.String),
+  intervalSeconds: S.optional(S.Number),
+  userCode: S.optional(S.String),
+  verificationUrl: S.optional(S.String),
+  linkedAgent: S.optional(DeviceAuthLinkedAgent),
+})
+export type DeviceAuthStartResponse = typeof DeviceAuthStartResponse.Type
+
+export const DeviceAuthStatusResponse = S.Struct({
+  schema: S.optional(S.String),
+  status: S.Literals(["pending", "linked", "expired"]),
+  attemptId: S.optional(S.String),
+  expiresAt: S.optional(S.String),
+  intervalSeconds: S.optional(S.Number),
+  linkedAgent: S.optional(DeviceAuthLinkedAgent),
+})
+export type DeviceAuthStatusResponse = typeof DeviceAuthStatusResponse.Type
+
+// GET /api/agents/me identity projection (Bearer agent token). Used after a
+// successful login to print "Signed in as <displayName>." The agent display
+// name and (optional) agent email are what the token resolves to; the owner
+// email itself is not exposed on this surface.
+export const AGENTS_ME_PATH = "/api/agents/me"
+
+export const AgentMeResponse = S.Struct({
+  authenticated: S.optional(S.Boolean),
+  agent: S.optional(
+    S.Struct({
+      user: S.optional(
+        S.Struct({
+          displayName: S.optional(S.NullOr(S.String)),
+          primaryEmail: S.optional(S.NullOr(S.String)),
+        }),
+      ),
+      tokenPrefix: S.optional(S.String),
+    }),
+  ),
+})
+export type AgentMeResponse = typeof AgentMeResponse.Type
+
 export class KhalaCliError extends S.TaggedErrorClass<KhalaCliError>()("KhalaCliError", {
   reason: S.String,
   code: S.optional(S.String),

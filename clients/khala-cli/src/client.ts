@@ -78,7 +78,7 @@ export function runArtanisTurn(options: ArtanisTurnOptions): Effect.Effect<Artan
     const token = options.token.trim()
     if (!token) {
       return yield* new KhalaCliError({
-        reason: "Talking to Artanis requires the owner agent token. Pass --token or set OPENAGENTS_AGENT_TOKEN.",
+        reason: "Talking to Artanis requires the owner agent token. Run `khala login` to sign in as the owner (or pass --token / set OPENAGENTS_AGENT_TOKEN).",
         code: "missing_token",
       })
     }
@@ -223,7 +223,7 @@ function postChat(options: ChatTurnOptions): Effect.Effect<Response, KhalaCliErr
     const token = options.token?.trim()
     if (!token) {
       return yield* new KhalaCliError({
-        reason: "--api requires --token or OPENAGENTS_AGENT_TOKEN. Use --mint-free-key to request a free key when that endpoint is armed.",
+        reason: "--api requires an agent token. Run `khala login` to sign in (or pass --token / set OPENAGENTS_AGENT_TOKEN). Use --mint-free-key to request a free key when that endpoint is armed.",
         code: "missing_token",
       })
     }

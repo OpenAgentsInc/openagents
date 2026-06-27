@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises"
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import { homedir } from "node:os"
 import { Effect } from "effect"
@@ -46,10 +46,24 @@ export async function readStoredAgentToken(env: Record<string, string | undefine
   }
 }
 
-async function writeStoredAgentToken(env: Record<string, string | undefined>, token: string): Promise<void> {
+// Exported so `khala login` can overwrite the stored token with the
+// owner-linked credential after the device-auth flow completes, and so
+// `khala logout` and tests can manage the same store the rest of the CLI reads.
+export async function writeStoredAgentToken(env: Record<string, string | undefined>, token: string): Promise<void> {
   const path = traceTokenPath(env)
   await mkdir(dirname(path), { mode: 0o700, recursive: true })
   await writeFile(path, `${token}\n`, { mode: 0o600 })
+}
+
+// Clears the stored agent token (used by `khala logout` / `/logout`). Returns
+// true when a stored token was removed, false when there was nothing to clear.
+export async function clearStoredAgentToken(env: Record<string, string | undefined>): Promise<boolean> {
+  try {
+    await rm(traceTokenPath(env))
+    return true
+  } catch {
+    return false
+  }
 }
 
 function isAgentToken(token: string | undefined): token is string {
