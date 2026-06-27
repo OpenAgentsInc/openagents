@@ -1481,6 +1481,48 @@ later fixes split those stages and fixed the workspace scanner false positive,
 so a real workspace assignment can now get to local Codex and produce exact
 proof.
 
+## Fresh #6318 Delegation Replay
+
+The same working set was replayed after current `main` advanced to
+`3429704d8a1af0916c1d6a2487daa616e35c67ac`.
+
+Preflight on 2026-06-27T09:00Z showed:
+
+- local Codex default home ready;
+- Pylon `pylon.33afd48282a649047e3a` online;
+- coding capacity `codex.available=1`, `codex.ready=1`;
+- presence heartbeat linked, registered, non-stale, sequence `546`;
+- public counter baseline `444,922,456`.
+
+The typed request used explicit `--workflow codex_agent_task`, explicit
+`--pylon-ref pylon.33afd48282a649047e3a`, exact repo/commit pins, and a bounded
+#6318 verifier. It created assignment
+`assignment.public.khala_coding.chatcmpl_c6fc3a68cf5742f194110baf60232fc2`
+with durable request `chatcmpl_0dc1011296824febba066999811520aa`.
+
+`assignment run-no-spend` accepted the lease, ran local Codex, and closed out as
+accepted with zero edits, `35` commands, one Codex turn, and a passing verifier:
+
+```text
+bun run --cwd apps/openagents.com/workers/api test -- \
+  src/inference/coding-workflow-delegation.test.ts \
+  src/inference/chat-completions-routes.test.ts \
+  src/inference/model-router.test.ts \
+  src/inference/benchmark/stress-saturation-plan.test.ts
+```
+
+`khala proof` reported one exact `token_usage_events` row for `2,060,598`
+own-capacity tokens (`2,053,941` input, `6,657` output, `464` reasoning,
+`1,929,600` cache-read), `52` owner-only ATIF traces, and one owner-only raw
+Codex archive containing `87` SDK events / `2,267,589` bytes.
+
+The public counter read after closeout was `446,988,289`. The global delta from
+the baseline was `2,065,833`, while assignment proof accounts for `2,060,598`
+exact tokens. The extra `5,235` tokens are ordinary global-ledger concurrency
+between public reads. This confirms again that exact attribution comes from the
+assignment proof, while the public counter is an all-demand projection that
+updates after final token-row insertion.
+
 ## Bottom Line
 
 This assignment proves the backend evidence path mostly works:
