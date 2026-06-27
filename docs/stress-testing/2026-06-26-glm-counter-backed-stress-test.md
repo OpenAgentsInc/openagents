@@ -507,3 +507,115 @@ What this taught us:
   public stress and the direct GLM responses returned early. More repaired GLM
   replicas, or a stricter GLM-only stress admission mode, are needed before
   increasing public GLM concurrency without fallback.
+
+## 2026-06-27 GCE Repair And 8-Replica Saturation
+
+After non-interactive `gcloud` auth was restored, the fleet was repaired at the
+VM/service level before the next stress pass:
+
+- Recovered and verified serving for `8` replicas: seven 4-GPU G4 replicas plus
+  `g4-8g-b-20260624214500` with `maxInflight=2`.
+- Kept `g4-4g-central1f-spot-20260625203000` and
+  `g4-4g-south1b-spot-20260625211500` drained because GCE returned
+  `ZONE_RESOURCE_POOL_EXHAUSTED_WITH_DETAILS` on start attempts.
+- Restored missing proxy/systemd wiring on the six restarted spot VMs and
+  restarted the existing Hydralisk containers; the 4-GPU central1-b replica was
+  reset from a false-ready/stopping state and came back serving.
+- Deployed the undrained Worker config from `12cb5a75f2` as Worker version
+  `ad237cc5-be2b-4677-8eae-e99d632cc92d`.
+
+Live readiness after deploy:
+
+- `readyReplicaCount=8`
+- `readyMaxInflight=9`
+- `drainingReplicaCount=2`
+- `disabledReplicaCount=2`
+- overall `status=degraded` only because the two stockout replicas remain
+  configured but intentionally drained.
+
+Counter-backed smoke after the repair:
+
+| Probe | Worker | Selected replica | Exact GLM tokens | Counter path |
+| --- | --- | --- | ---: | --- |
+| non-streaming smoke | `hydralisk-vllm-glm-5p2-reap-504b` | `g4-4g-b-20260625154532` | `698` | D1 row + public counter |
+| streaming smoke | `hydralisk-vllm-glm-5p2-reap-504b` | `g4-4g-b-20260625154532` | `694` | D1 row + public counter |
+
+Main public-gateway saturation run:
+
+- run id: `issue6317-8replica-saturation-20260627T053819Z`
+- endpoint: `POST https://openagents.com/api/v1/chat/completions`
+- model: `openagents/khala`
+- labels: `internal_stress` / `glm-saturation`
+- prompt class: public-safe synthetic marker text only
+- local result artifact:
+  `/tmp/issue6317-8replica-saturation-20260627T053819Z.json`
+
+Stage results:
+
+| Stage | Internal concurrency | External probes | GLM calls | GLM tokens | Non-GLM tokens | Failures | External failures | Observed GLM tok/s |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `ramp-9x4096` | `9` | `6` | `29` | `137025` | `13394` | `0` | `0` | `349.38` |
+| `overfill-12x4096` | `12` | `12` | `45` | `212625` | `43674` | `3` | `3` | `496.38` |
+| `saturate-15x4096` | `15` | `12` | `44` | `207944` | `73988` | `0` | `0` | `484.34` |
+
+Hard D1-scoped totals for this run:
+
+| Demand/client scope | Provider | Rows | Tokens | Output tokens |
+| --- | --- | ---: | ---: | ---: |
+| main internal stress run | GLM / Hydralisk | `118` | `557594` | `483328` |
+| main internal stress fallback | Fireworks DeepSeek | `22` | `103832` | `90112` |
+| external probe traffic | Fireworks DeepSeek | `27` | `17784` | `1728` |
+
+The hard public-gateway GLM total generated in this continuation is
+`558986` tokens:
+
+- `557594` from the main saturation run;
+- `698` from the non-streaming post-repair smoke;
+- `694` from the streaming post-repair smoke.
+
+Latency and per-replica rollup for the main run:
+
+- aggregate GLM observed throughput: `446.08` total tokens/sec over the run
+  wall window.
+- aggregate GLM completion goodput by request wall time: `59.85` output
+  tokens/sec.
+- TTFT: p50 `2573ms`, p90 `5195ms`, p99 `13131ms` across `118` GLM calls.
+- SSE delta-gap ITL proxy: p50 `43ms`, p90 `71ms`, p99 `122ms`.
+- All `8` ready replicas served traffic. Per-replica totals ranged from
+  `66156` to `70881` tokens; per-replica output goodput clustered around
+  `59`-`61` output tokens/sec.
+
+What this taught us:
+
+- The repaired 8-replica fleet can sustain useful public-gateway GLM pressure.
+  The best observed aggregate GLM token/sec in this bounded run was at
+  concurrency `12`, but that tier also produced the only external probe
+  failures.
+- The practical safe knee is still around the deployed active budget of `9`
+  internal streams: it had zero failures and hit every ready replica.
+- The issue #6317 external-wins acceptance is not green yet. During
+  `overfill-12x4096`, the first external burst returned three HTTP `500`s, so
+  measured external failure rate was not `0`.
+- Several internal stress streams returned HTTP `200` with SSE frames but no
+  terminal usage/openagents metadata. Those did not create served-token rows.
+  Treat them as partial/yielded stress work, not counted output.
+- Tagged `internal_stress` / `glm-saturation` still overflowed some internal
+  requests to Fireworks on GLM rate limiting. That is bad stress hygiene:
+  it moves the topline counter, but it does not stress GLM.
+
+Follow-up fix from this run:
+
+- `internal_stress` / `glm-saturation` Khala traffic is now pinned to the GLM
+  adapter when the production lane plan contains the GLM adapter.
+- Under GLM saturation, stress traffic should now return/yield on GLM
+  saturation instead of overflowing to Fireworks.
+- Tool-bearing Khala requests keep their existing GLM-first overflow behavior;
+  only the explicit GLM saturation stress label is GLM-only.
+
+Verification for that fix:
+
+- `chat-completions-routes.test.ts -t "GLM saturation|external|internal_stress"`:
+  `14` passed.
+- Full `chat-completions-routes.test.ts`: `160` passed.
+- `glm-fleet-readiness.test.ts`, `model-serving-policy.test.ts`, and
+  `benchmark/stress-saturation-plan.test.ts`: `61` passed.

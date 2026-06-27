@@ -2101,6 +2101,69 @@ describe('POST /v1/chat/completions', () => {
     )
   })
 
+  test('keeps GLM saturation internal_stress on GLM instead of overflowing to Fireworks', async () => {
+    let fireworksCalls = 0
+    let glmCalls = 0
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      ...echoAdapter(FIREWORKS_ADAPTER_ID),
+      complete: request => {
+        fireworksCalls += 1
+        return stubEchoAdapter.complete(request)
+      },
+    })
+    registry.register({
+      ...echoAdapter(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID),
+      complete: () => {
+        glmCalls += 1
+        return Effect.fail(
+          new InferenceAdapterError({
+            adapterId: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+            adapterRouteMetadata: {
+              glmSaturationPolicy: 'queue_then_overflow',
+              queueWaitMs: 0,
+              replicaBusyReason: 'inflight_full',
+            },
+            httpStatus: 429,
+            kind: 'glm_pool_saturated',
+            reason: 'hydralisk GLM pool saturated',
+            retryable: true,
+          }),
+        )
+      },
+    })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(helloBody, {
+          headers: {
+            [INFERENCE_CLIENT_HEADER]: 'stress-harness',
+            [INFERENCE_DEMAND_KIND_HEADER]: 'internal_stress',
+            [INFERENCE_DEMAND_SOURCE_HEADER]: 'glm-saturation',
+          },
+        }),
+        baseDeps({
+          dispatch: { sleep: () => Effect.void },
+          lanePlan: () => [
+            FIREWORKS_ADAPTER_ID,
+            HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+          ],
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(429)
+    expect(glmCalls).toBe(1)
+    expect(fireworksCalls).toBe(0)
+    expect(await response.json()).toMatchObject({
+      error: {
+        code: 'glm_pool_saturated',
+        type: 'glm_pool_saturated',
+      },
+    })
+  })
+
   test('overflows to the next lane on a retryable failure and meters the served lane', async () => {
     const captured: Array<MeteringContext> = []
     const meteringHook: MeteringHook = context =>

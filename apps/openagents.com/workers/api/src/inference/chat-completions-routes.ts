@@ -2786,9 +2786,15 @@ export const handleChatCompletions = (
       requestAttribution?.demandKind === 'internal_stress' &&
       requestAttribution.demandSource === 'glm-saturation'
     const basePlannedIds =
-      toolBearingKhalaRequest || glmSaturationStressKhalaRequest
-      ? selectAdapterPlanForKhalaToolRequest(requestedModel, plannedIdsForModel)
-      : plannedIdsForModel
+      glmSaturationStressKhalaRequest &&
+      plannedIdsForModel.includes(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID)
+        ? [HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID]
+        : toolBearingKhalaRequest || glmSaturationStressKhalaRequest
+          ? selectAdapterPlanForKhalaToolRequest(
+              requestedModel,
+              plannedIdsForModel,
+            )
+          : plannedIdsForModel
 
     // CACHE-AFFINITY RESOLUTION (book P0-2 deliverables 3+4). Compose the
     // account/session/codebase key, its public-safe hash (for the receipt), and
