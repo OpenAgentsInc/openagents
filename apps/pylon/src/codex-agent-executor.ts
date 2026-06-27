@@ -11,6 +11,7 @@ import {
 import {
   gitCheckoutWorkspaceFrom,
   materializeGitCheckoutWorkspaceWithLease,
+  releaseWorkspace,
   workspaceCheckoutFailureReasonRef,
   type GitCheckoutWorkspace,
   type WorkspaceCheckoutRunner,
@@ -66,6 +67,12 @@ export type CodexAgentRuntimeSandboxMode = CodexAgentSandboxMode | "danger-full-
 
 export const CODEX_AGENT_OWNER_LOCAL_SANDBOX_MODE = "danger-full-access" as const
 export const CODEX_AGENT_OWNER_LOCAL_APPROVAL_POLICY = "never" as const
+export const CODEX_AGENT_BOUNDED_SEARCH_INSTRUCTION = [
+  "Workspace boundary: all file search, grep, find, list, and verification commands must run from the active checkout only.",
+  "Use the current working directory as the search root; prefer workspace-relative paths such as `.` or repo-relative subpaths.",
+  "Never search or traverse the Pylon home, parent directories, sibling cache workspaces, `$PYLON_HOME`, `~/.pylon-fable`, `/Users/*/.pylon-fable`, or `..`.",
+  "If a requested search path escapes this checkout, reject it or relativize it back inside the checkout before running the command.",
+].join(" ")
 
 export type CodexAgentTaskPayload = {
   schema: typeof CODEX_AGENT_TASK_SCHEMA
@@ -811,12 +818,14 @@ async function materializeCodexAgentWorkspace(input: {
       leaseRef: input.leaseRef,
       refPrefix: "workspace.pylon.codex_agent_task",
       repositoryCacheRoot: join(input.state.paths.cache, "workspace-git-cache"),
+      retentionPolicy: "remove_on_closeout",
       workspaceStateRoot: join(input.state.paths.cache, "workspace-leases"),
     })
     return {
       acceptanceResultRef: "git_checkout_verified",
       artifactSourceRef: materialized.sourceRef,
       instructions: [
+        CODEX_AGENT_BOUNDED_SEARCH_INSTRUCTION,
         "You are working in a bounded public repository checkout.",
         `Task objective: ${input.task.objectiveSummary ?? "complete the referenced Autopilot task"}.`,
         "Only modify files inside this checkout.",
@@ -1097,11 +1106,17 @@ export async function executeCodexAgentAssignment(
     now,
     publisher: options.pullRequestPublisher,
   })
+  const workspaceRelease = await maybeReleaseCodexAgentWorkspace({
+    materialized,
+    now,
+    state,
+    task,
+  })
 
   return {
     artifactRefs: [artifactRef],
     blockerRefs: passed ? [] : ["blocker.assignment.codex_agent_test_failed"],
-    buildRefs: [commandRef],
+    buildRefs: [commandRef, ...workspaceRelease.buildRefs],
     message: passed
       ? `Local Codex completed the bounded coding task: ${run.editedFileCount} file edit(s), ${run.commandCount} command(s), ${run.turnCount} turn(s), verification test passed on this device.${pullRequest.messageSuffix}`
       : "Local Codex thread completed but the verification test command failed; the change is not accepted.",
@@ -1113,6 +1128,7 @@ export async function executeCodexAgentAssignment(
         : `result.public.pylon.codex_agent_task.${materialized.acceptanceResultRef}_failed`,
       `result.public.pylon.codex_agent_task.edited_files.${run.editedFileCount}`,
       ...pullRequest.resultRefs,
+      ...workspaceRelease.resultRefs,
     ],
     runRefs: [runRef, ...sessionRefs],
     status: passed ? ("accepted" as const) : ("rejected" as const),
@@ -1123,6 +1139,50 @@ export async function executeCodexAgentAssignment(
     ],
     testRefs: [commandRef],
   }
+}
+
+type WorkspaceReleaseCloseoutContribution = {
+  buildRefs: string[]
+  resultRefs: string[]
+}
+
+const EMPTY_WORKSPACE_RELEASE_CONTRIBUTION: WorkspaceReleaseCloseoutContribution = {
+  buildRefs: [],
+  resultRefs: [],
+}
+
+async function maybeReleaseCodexAgentWorkspace(input: {
+  task: CodexAgentTaskPayload
+  materialized: Awaited<ReturnType<typeof materializeCodexAgentWorkspace>>
+  state: PylonLocalState
+  now: Date
+}): Promise<WorkspaceReleaseCloseoutContribution> {
+  if (input.task.workspace === undefined) return EMPTY_WORKSPACE_RELEASE_CONTRIBUTION
+  try {
+    const result = await releaseWorkspace({
+      workspaceRef: input.materialized.workspaceRef,
+      workspaceStateRoot: join(input.state.paths.cache, "workspace-leases"),
+      now: input.now,
+    })
+    if (result?.cleanupReceiptRef !== undefined) {
+      return {
+        buildRefs: [result.cleanupReceiptRef],
+        resultRefs: ["result.public.pylon.codex_agent_task.workspace_cleaned"],
+      }
+    }
+    if (result?.retentionReasonRef !== undefined) {
+      return {
+        buildRefs: [result.retentionReasonRef],
+        resultRefs: ["result.public.pylon.codex_agent_task.workspace_retained"],
+      }
+    }
+  } catch {
+    return {
+      buildRefs: [],
+      resultRefs: ["result.public.pylon.codex_agent_task.workspace_cleanup_failed"],
+    }
+  }
+  return EMPTY_WORKSPACE_RELEASE_CONTRIBUTION
 }
 
 type PullRequestCloseoutContribution = {

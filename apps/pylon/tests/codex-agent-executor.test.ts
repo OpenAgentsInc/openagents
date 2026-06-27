@@ -1,8 +1,10 @@
 import { describe, expect, mock, test } from "bun:test"
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { existsSync } from "node:fs"
 import { join, relative } from "node:path"
 import { tmpdir } from "node:os"
 import {
+  CODEX_AGENT_BOUNDED_SEARCH_INSTRUCTION,
   CODEX_AGENT_SUM_REPAIR_FIXTURE_REF,
   CODEX_AGENT_TASK_SCHEMA,
   codexAgentTaskFrom,
@@ -639,7 +641,9 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
 
   test("executes a checkout task end to end with an injected checkout runner", async () => {
     await withState(async (state) => {
+      let workspaceDir: string | null = null
       const checkoutRunner = async (workspace: string) => {
+        workspaceDir = workspace
         const { mkdir } = await import("node:fs/promises")
         await mkdir(workspace, { recursive: true })
         await writeFile(
@@ -660,16 +664,32 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
           ].join("\n"),
         )
       }
+      let runnerSawBoundedSearchInstruction = false
+      const observingRunner: CodexAgentRunner = async (input) => {
+        runnerSawBoundedSearchInstruction = input.instructions.includes(
+          CODEX_AGENT_BOUNDED_SEARCH_INSTRUCTION,
+        )
+        expect(input.instructions).toContain("Only modify files inside this checkout.")
+        expect(input.instructions).toContain("command.public.autopilot_coder.bun_test")
+        return fixingRunner(input)
+      }
       const record = await executeCodexAgentAssignment(
         state,
         { ...lease, codingAssignment: checkoutAssignment },
         now,
-        { checkoutRunner, codexAgentRunner: fixingRunner, codexAgentProbe: readyProbe },
+        { checkoutRunner, codexAgentRunner: observingRunner, codexAgentProbe: readyProbe },
       )
       expect(record?.status).toBe("accepted")
       expect(record?.resultRefs).toContain(
         "result.public.pylon.codex_agent_task.git_checkout_verified_passed",
       )
+      expect(record?.resultRefs).toContain(
+        "result.public.pylon.codex_agent_task.workspace_cleaned",
+      )
+      expect(record?.buildRefs.some(ref => ref.startsWith("receipt.pylon.workspace_cleanup."))).toBe(true)
+      expect(runnerSawBoundedSearchInstruction).toBe(true)
+      expect(workspaceDir).not.toBeNull()
+      expect(existsSync(workspaceDir as unknown as string)).toBe(false)
       assertPublicProjectionSafe(record)
       const projected = JSON.stringify(record)
       expect(projected).not.toContain(state.paths.cache)
