@@ -24,6 +24,10 @@ Short answer:
   worktree, daemon routing disabled, fresh heartbeat, explicit Pylon ref,
   explicit `codex_agent_task`, exact commit pin, local `run-no-spend`, and
   assignment-scoped proof after closeout.
+- After the production dispatch-gate fix was deployed, a fresh post-deploy
+  smoke accepted, ran local Codex, passed verification, stored owner-only traces,
+  and inserted an exact token row. That confirms the same runbook is currently
+  working when the linked Pylon has an available Codex slot.
 
 ## Audited Assignment
 
@@ -437,6 +441,73 @@ Operationally, this is the condition other agents should recognize:
   it as a Pylon/Codex run;
 - continue local supervised implementation only when the user has asked not to
   stall, and record the gate failure in the audit/issue comment.
+
+The local follow-up fixed a narrower production-gate bug that made one version
+of this path opaque. The coding-delegation branch now wraps owner-scope
+resolution, linked-agent capacity reads, and assignment delegation in a plain
+async `try/catch`. Generic storage/capacity-read failures return the typed
+`coding_delegation_store_unavailable` 503 instead of escaping as an opaque 500.
+
+## Post-Deploy Dispatch-Gate Re-Smoke
+
+After that fix was committed as `ca2b2e30919744a053e0832047013d3a2a61d171`
+and deployed as Worker `2accb9cf-01de-4701-ac0e-00af67380217`, the same
+runbook succeeded from this worktree.
+
+Preflight:
+
+- `codex accounts list --json`: default local Codex ready; two extra registered
+  Codex homes still `credentials_missing`;
+- `provider go-online --json`: Pylon `pylon.33afd48282a649047e3a`, Codex
+  `ready=1`, `busy=0`, `available=1`;
+- `presence heartbeat --json`: registered, linked, non-stale heartbeat sequence
+  `448`.
+
+Dispatch:
+
+- durable request: `chatcmpl_0377a2089b5d40e0aec5efc04ad296a0`
+- assignment:
+  `assignment.public.khala_coding.chatcmpl_4ee7c89308d345ff8a40ad96e174c9bd`
+- closeout: `assignment.closeout.f50d9d54997fc2c0ebec9dd3`
+- verifier:
+  `bun run --cwd apps/openagents.com/workers/api test -- src/inference/benchmark/stress-saturation-plan.test.ts src/inference/chat-completions-routes.test.ts`
+
+The runner reported:
+
+- status `accepted`;
+- `0` file edits;
+- `19` commands;
+- `1` Codex turn;
+- verification passed;
+- no blocker refs.
+
+Proof:
+
+```json
+{
+  "provider": "pylon-codex-own-capacity",
+  "model": "openagents/pylon-codex",
+  "usageTruth": "exact",
+  "demandKind": "own_capacity",
+  "demandSource": "khala_coding_delegation",
+  "inputTokens": 711274,
+  "outputTokens": 4310,
+  "reasoningTokens": 336,
+  "cacheReadTokens": 665728,
+  "totalTokens": 715584
+}
+```
+
+The same proof reported `32` owner-only ATIF traces and one private raw Codex
+archive containing `51` SDK events / `163,196` bytes. A live public scalar read
+after closeout returned `tokensServed: 428,419,989` with
+`composition: "live_at_read"` over `token_usage_events`.
+
+This is the clearest current recipe for other agents: delegation is not just
+"call Khala." It requires a linked, heartbeat-fresh Pylon with available Codex
+capacity, explicit coding workflow dispatch, local no-spend execution, and proof
+after closeout. The token counter movement appears only after that closeout path
+posts exact usage.
 
 ## Token Accounting
 
