@@ -11,6 +11,13 @@ import {
   type KhalaCodexStatus,
   type KhalaRouteSelection,
 } from "./codex.js"
+import {
+  CodexCliMissingError,
+  connectFleetAccount,
+  listFleetAccounts,
+  type KhalaFleetConnectResult,
+  type KhalaFleetStatus,
+} from "./fleet.js"
 import { appendPromptHistory, readPromptFromTerminal } from "./input.js"
 import { readStdinText } from "./proc.js"
 import { openVerificationUrl, runKhalaLogin, type KhalaLoginResult } from "./login.js"
@@ -57,6 +64,8 @@ type ParsedCommand =
   | { readonly kind: "codexStatus" }
   | { readonly kind: "changelog" }
   | { readonly kind: "feedback"; readonly text: string | undefined }
+  | { readonly kind: "fleetConnect"; readonly accountRef: string | undefined; readonly force: boolean }
+  | { readonly kind: "fleetStatus" }
   | { readonly kind: "help" }
   | { readonly kind: "info" }
   | {
@@ -150,6 +159,32 @@ export async function runKhalaCli(argv: ReadonlyArray<string>, env: Record<strin
     }
     if (args.command.kind === "codexStatus") {
       process.stdout.write(`${formatCodexStatus(await resolveKhalaCodexStatus(env))}\n`)
+      return 0
+    }
+    if (args.command.kind === "fleetConnect") {
+      try {
+        const result = await connectFleetAccount({
+          env,
+          accountRef: args.command.accountRef,
+          force: args.command.force,
+        })
+        if (args.json) {
+          process.stdout.write(`${JSON.stringify(result)}\n`)
+        } else {
+          process.stdout.write(`${formatFleetConnect(result)}\n`)
+        }
+        return 0
+      } catch (error) {
+        if (error instanceof CodexCliMissingError) {
+          process.stderr.write(`${terminalStyle.meta(error.message)}\n`)
+          return 1
+        }
+        throw error
+      }
+    }
+    if (args.command.kind === "fleetStatus") {
+      const status = await listFleetAccounts({ env })
+      process.stdout.write(args.json ? `${JSON.stringify(status)}\n` : `${formatFleetStatus(status)}\n`)
       return 0
     }
     if (args.command.kind === "codex") {
@@ -317,6 +352,8 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
   let spawnTimeoutMs: number | undefined
   let spawnVerify: string | undefined
   let spawnWorkflow: KhalaSpawnWorkflow = "codex_agent_task"
+  let fleetAccount: string | undefined
+  let fleetForce = false
   const positional: Array<string> = []
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -407,6 +444,13 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
       index += 1
     } else if (arg.startsWith("--prompt=")) {
       prompt = arg.slice("--prompt=".length)
+    } else if (arg === "--account") {
+      fleetAccount = requireValue(argv, index, arg)
+      index += 1
+    } else if (arg.startsWith("--account=")) {
+      fleetAccount = arg.slice("--account=".length)
+    } else if (arg === "--force") {
+      fleetForce = true
     } else if (arg.startsWith("-")) {
       throw new Error(`Unknown flag: ${arg}`)
     } else {
@@ -425,6 +469,21 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
     command = { kind: "changelog" }
   } else if (maybeCommand === "auth" && positional[1] === "codex") {
     command = { kind: "codexAuth" }
+  } else if (maybeCommand === "fleet") {
+    const sub = positional[1]?.trim().toLowerCase()
+    if (sub === "status" || sub === "list" || sub === "ls") {
+      command = { kind: "fleetStatus" }
+    } else if (sub === undefined || sub === "connect" || sub === "add" || sub === "link") {
+      // `khala fleet`, `khala fleet connect`, `khala fleet add` all connect.
+      // Optional positional ref: `khala fleet connect codex-2` (or --account).
+      command = {
+        kind: "fleetConnect",
+        accountRef: fleetAccount ?? (positional[2]?.trim() || undefined),
+        force: fleetForce,
+      }
+    } else {
+      throw new Error(`Unknown fleet command: ${sub}. Use \`khala fleet connect\` or \`khala fleet status\`.`)
+    }
   } else if (maybeCommand === "codex") {
     command = positional[1] === "status"
       ? { kind: "codexStatus" }
@@ -1553,6 +1612,42 @@ function formatCodexStatus(status: KhalaCodexStatus): string {
   return terminalStyle.meta(lines.join("\n"))
 }
 
+function formatFleetConnect(result: KhalaFleetConnectResult): string {
+  const verb = result.status === "already_connected" ? "Already connected" : "Connected"
+  const who = result.email ? `: ${result.email}` : ""
+  return terminalStyle.meta([
+    `${terminalStyle.assistant("Khala fleet:")} ${verb} Codex account ${result.accountRef}${who}`,
+    "Your Codex credentials stay on this machine; OpenAgents orchestrates, your local Pylon executes.",
+    "",
+    "Next:",
+    "  khala fleet status        See your fleet",
+    "  khala fleet connect       Add another account for more throughput",
+  ].join("\n"))
+}
+
+function formatFleetStatus(status: KhalaFleetStatus): string {
+  if (status.accounts.length === 0) {
+    return terminalStyle.meta([
+      `${terminalStyle.assistant("Khala fleet:")} No Codex accounts connected yet.`,
+      "Connect one (paste-free device login):",
+      "  khala fleet connect",
+    ].join("\n"))
+  }
+  const rows = status.accounts.map(account => {
+    const ready = account.readiness === "ready" ? "ready" : "credentials-missing"
+    const email = account.email ?? "(email unavailable)"
+    return `  ${account.accountRef.padEnd(12)} ${ready.padEnd(18)} ${email}`
+  })
+  return terminalStyle.meta([
+    `${terminalStyle.assistant("Khala fleet:")} ${status.accounts.length} Codex account(s), ${status.readyCount} ready`,
+    `  ${"ACCOUNT".padEnd(12)} ${"READINESS".padEnd(18)} EMAIL`,
+    ...rows,
+    "",
+    "Add another account for more throughput:",
+    "  khala fleet connect",
+  ].join("\n"))
+}
+
 function formatCodexCredentialSource(source: Extract<KhalaCodexStatus, { readonly ready: true }>["credentialSource"]): string {
   if (source === "khala_codex_home") return "Khala Codex account"
   if (source === "codex_home_env") return "CODEX_HOME"
@@ -1754,6 +1849,9 @@ Usage:
   khala version
   khala changelog
   khala tokens
+  khala fleet connect
+  khala fleet connect --account codex-2
+  khala fleet status
   khala auth codex
   khala codex status
   khala codex "read README.md"
@@ -1816,6 +1914,8 @@ Flags:
   --verify <command>   Bounded verification command for --strategy pylon
   --workflow <name>    Pylon workflow: codex_agent_task or cloud_coding_session
   --timeout <seconds>  Per-worker timeout for khala spawn
+  --account <ref>      Codex account ref for khala fleet connect (auto-assigned if omitted)
+  --force              Re-run device login for khala fleet connect even if already linked
   --help, -h           Show this help
 `
 }

@@ -23,6 +23,9 @@ khala info
 khala version
 khala login
 khala logout
+khala fleet connect           # connect your own Codex account (paste-free device login)
+khala fleet connect --account codex-2   # add another distinct account for more throughput
+khala fleet status            # list your connected Codex fleet + readiness
 khala auth codex
 khala codex "read README.md"
 khala spawn --count 5 --objective "audit this workspace" --strategy local
@@ -130,6 +133,29 @@ that check.
 - `/help` lists slash commands.
 - `/exit` quits.
 
+## Connect your Codex fleet
+
+`khala fleet` is the dead-simple way to connect your own Codex account(s) so a
+per-user Artanis can burn down a backlog across your fleet. One short command,
+no long-string pasting:
+
+- `khala fleet connect` connects a Codex account via the standard
+  `codex login --device-auth` flow — it opens the browser to the device URL and
+  shows a SHORT code to enter, then confirms with the linked account email.
+  Requires the `codex` CLI (`npm install -g @openai/codex`); a friendly hint is
+  printed if it is missing.
+- Run it again to add more accounts (auto-assigned `codex`, `codex-2`,
+  `codex-3`, …), or pass `--account <ref>` to name one. Distinct ChatGPT
+  accounts have distinct rate budgets, so each new distinct account is real
+  added throughput.
+- `khala fleet status` (alias `khala fleet list`) prints a table of connected
+  accounts with readiness and email.
+
+Each account uses an isolated home under `<pylon home>/accounts/codex/<ref>`; the
+flow never touches the default `~/.codex` home, credentials stay on your machine,
+and tokens are never printed. Accounts are registered into your Pylon config so a
+local Pylon and the dispatch gate can see the fleet.
+
 ## Utility commands
 
 - `khala feedback "text"` sends feedback from scripts or a shell. This command
@@ -137,6 +163,8 @@ that check.
 - `khala info` prints a one-shot CLI thread id and trace viewing link.
 - `khala login` starts OpenAgents device auth.
 - `khala logout` clears the local OpenAgents token.
+- `khala fleet connect` connects a Codex account to your fleet (paste-free).
+- `khala fleet status` lists your connected Codex fleet and readiness.
 - `khala auth codex` connects a Codex account for local workspace delegation.
 - `khala codex status` shows the active local Codex credential source.
 - `khala codex "task"` delegates directly to local Codex.

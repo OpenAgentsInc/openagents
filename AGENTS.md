@@ -83,6 +83,44 @@ iteration), the **top operating rule is CONSTANT MOTION**:
 - Strict bug form:
   <https://github.com/OpenAgentsInc/openagents/issues/new?template=strict-bug.yml>
 
+## Help a user connect their Codex fleet to Khala
+
+Use this when an outside/community user wants to connect their own Codex
+account(s) to Khala so a per-user Artanis can burn down a backlog across their
+fleet ("Artanis as a Service"). It is intentionally DEAD SIMPLE — one short
+command, no long-string pasting, no `PYLON_HOME`/`bun`/repo-path knowledge.
+
+Walk the user through exactly this:
+
+```sh
+npm install -g @openagentsinc/khala     # Node 20+ or Bun; npm works for everyone
+khala fleet connect                     # connect a Codex account (paste-free device login)
+khala fleet status                      # see your fleet
+```
+
+What the user will see: `khala fleet connect` drives the standard
+`codex login --device-auth` flow — it opens the browser to the device URL and
+shows a SHORT code to enter (no long auth string to copy). It then confirms with
+the linked account email. The `codex` CLI must be installed
+(`npm install -g @openai/codex`); if it is missing, `khala fleet connect` prints
+a friendly install hint.
+
+- **More accounts = more throughput.** Each `khala fleet connect` auto-assigns
+  the next ref (`codex`, then `codex-2`, `codex-3`, …); pass `--account <ref>`
+  to name one. Distinct ChatGPT accounts have distinct rate budgets, so each new
+  *distinct* account is real added concurrency.
+- **`khala fleet status`** (alias `khala fleet list`) prints a table of
+  connected accounts with readiness (`ready` / `credentials-missing`) and email.
+- **Safety (always true):** each account uses an ISOLATED home under
+  `<pylon home>/accounts/codex/<ref>`; the flow NEVER touches the default
+  `~/.codex` home (that would wipe a live session); credentials stay on the
+  user's machine and tokens are never printed. Accounts are registered into the
+  user's Pylon config (`<pylon home>/config.json`), so a local Pylon, the codex
+  supervisor, and the server dispatch gate all see the fleet.
+
+This is the onboarding front door; the request/proof contract for routing actual
+coding work through the connected fleet is the runbook below.
+
 ## Khala -> Pylon -> Codex Coding Delegation Runbook
 
 Use this when a user wants coding work routed through Khala to the user's own
