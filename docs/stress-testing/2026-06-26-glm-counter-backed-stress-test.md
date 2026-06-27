@@ -638,3 +638,144 @@ That post-deploy proof means the explicit GLM saturation stress label now fails
 closed on GLM pressure instead of silently overflowing to Fireworks. The hard
 public-gateway GLM total generated in this continuation, including the final
 verification, is `565576` tokens.
+
+## 2026-06-27 South1B Recovery And Counted Saturation Continuation
+
+After local `gcloud` auth was repaired, a later continuation restored one more
+live GLM serving instance before resuming #6317 stress:
+
+- `g4-4g-south1b-spot-20260625211500` was started successfully in
+  `us-south1-b`.
+- The south1b Hydralisk container was restarted, the missing private-proxy
+  systemd unit/run script was installed, and `/v1/models` returned HTTP `200`
+  through the private proxy.
+- `g4-4g-b-20260625154532` and
+  `g4-4g-central1f-spot-20260625203000` could not be started or recovered
+  because GCE returned `ZONE_RESOURCE_POOL_EXHAUSTED_WITH_DETAILS`; central1f
+  remained draining/disabled and central1-b was later reported as reclaimed.
+- The south1b drain flag was removed from Worker config in
+  `6a832a4af1125460bd3c7fef16596dcb3503e91e`, and `deploy:safe` deployed
+  Worker version `353c304a-4407-443b-956f-914a74691ba4`.
+
+Focused verification before deploy:
+
+- `bun run --cwd apps/openagents.com/workers/api test -- src/inference/glm-fleet-readiness.test.ts src/inference/model-serving-policy.test.ts src/inference/hydralisk-adapter.test.ts`
+- result: `87` tests passed.
+
+Live readiness before the stress pass:
+
+- `readyReplicaCount=8`
+- `readyMaxInflight=9`
+- `disabledReplicaCount=1`
+- `drainingReplicaCount=1`
+- `unavailableReplicaCount=1`
+
+Final readiness after the stress pass remained degraded but usable:
+
+- `readyReplicaCount=8`
+- `readyMaxInflight=9`
+- `reclaimedReplicaCount=1` (`g4-4g-b-20260625154532`)
+- `disabledReplicaCount=1` / `drainingReplicaCount=1`
+  (`g4-4g-central1f-spot-20260625203000`)
+- `g4-4g-south1b-spot-20260625211500` was ready and served traffic.
+
+Counter/path smoke:
+
+- run id: `issue6317-smoke-20260627T0903Z`
+- endpoint: `POST https://openagents.com/api/v1/chat/completions`
+- model: `openagents/khala`
+- labels: `internal_stress` / `glm-saturation`
+- exact D1 row: `1`
+- exact D1 tokens: `854` (`598` input, `256` output)
+- provider/model: `hydralisk-vllm-glm-5p2-reap-504b` /
+  `openagents/glm-5.2-reap-504b`
+
+The smoke confirmed that tagged GLM stress rows land in `token_usage_events` as
+`usage_truth=exact`, `demand_kind=internal_stress`,
+`demand_source=glm-saturation`, and the public counter path includes them.
+`/khala` and `/stats` both returned HTTP `200`; both consume the same
+live-at-read scalar endpoint, `GET /api/public/khala-tokens-served`.
+
+Main counted stress runs from this continuation:
+
+| Run id | Shape | D1 rows | Input tokens | Output tokens | Total exact GLM tokens |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `issue6317-glm-saturation-20260627T090602Z` | ramp `9` -> `10`, brief overfill `11`, stopped after 11-way failure storm | `58` | `36830` | `233350` | `270180` |
+| `issue6317-glm-knee10-20260627T091940Z` | fixed concurrency `10`, `4096` max completion tokens, 17.5m launch + drain | `111` | `68709` | `454656` | `523365` |
+| `issue6317-smoke-20260627T0903Z` | single streaming smoke | `1` | `598` | `256` | `854` |
+
+Hard D1-scoped total for this continuation:
+
+| Provider | Model | Demand | Usage truth | Rows | Input | Output | Total |
+| --- | --- | --- | --- | ---: | ---: | ---: | ---: |
+| `hydralisk-vllm-glm-5p2-reap-504b` | `openagents/glm-5.2-reap-504b` | `internal_stress` / `glm-saturation` | `exact` | `170` | `106137` | `688262` | `794399` |
+
+No rows for these run ids were served by Fireworks or any non-GLM provider.
+That confirms the GLM-only saturation label now fails closed on GLM pressure
+instead of silently overflowing counted stress to Fireworks.
+
+Local run artifacts:
+
+- `/tmp/issue6317-glm-saturation-20260627T090602Z.public.json`
+- `/tmp/issue6317-glm-knee10-20260627T091940Z.public.json`
+
+Public counter reads during this continuation:
+
+- Before the second fixed-knee batch:
+  `GET /api/public/khala-tokens-served` returned `452561702`.
+- During a `/khala` and `/stats` confirmation read, both pages returned HTTP
+  `200`, and the scalar endpoint returned `452864730`.
+- Final scalar read after the run returned `462976825`.
+
+The scalar moved by much more than this run's exact `794399` because other
+Khala/Pylon/Codex traffic was concurrently inserting ledger rows. For stress
+accounting, the hard source is therefore the run-scoped D1 query by
+`demand_client`, not raw page delta.
+
+Best sustained local slice:
+
+- run id: `issue6317-glm-knee10-20260627T091940Z`
+- fixed concurrency: `10`
+- launched requests: `155`
+- HTTP `200` streams: `113`
+- HTTP `502` failures: `42`
+- D1 exact rows: `111`
+- exact GLM tokens: `523365`
+- exact output tokens: `454656`
+- receipt throughput: `460.2` total tokens/sec over run wall time
+- output throughput: `399.79` output tokens/sec over run wall time
+- TTFT: p50 `21669ms`, p90 `24064ms`, p99 `26209ms`
+- request wall time: p50 `88604ms`, p90 `97408ms`, p99 `104363ms`
+
+Per-replica token totals from the fixed-knee local artifact:
+
+| Replica | Tokens |
+| --- | ---: |
+| `g4-4g-east1b-spot-20260625203000` | `70725` |
+| `g4-4g-east1d-spot-20260625203000` | `70725` |
+| `g4-4g-east5a-spot-20260625203000` | `70725` |
+| `g4-4g-east5b-spot-20260625203000` | `66010` |
+| `g4-4g-east5c-spot-20260625211500` | `66010` |
+| `g4-4g-south1b-spot-20260625211500` | `61295` |
+| `g4-4g-west1a-spot-20260625203000` | `61295` |
+| `g4-8g-b-20260624214500` | `56580` |
+
+What this taught us:
+
+- The current counted public-gateway GLM stress ceiling is roughly
+  `400`-`460` exact receipt tokens/sec with `8` ready replicas and
+  `readyMaxInflight=9`.
+- Concurrency `10` is the productive pressure point for this degraded fleet:
+  it produces the best sustained token rate but still has a material HTTP `502`
+  rate.
+- Concurrency `11` is past the current knee. The first run's 11-way overfill
+  phase rapidly drove failures from `23` to `49`, so continuing at that tier
+  would have mostly measured rejected work.
+- The 30-minute expectation of `5M` exact GLM tokens is not reachable with this
+  fleet state. At the measured `460` total tokens/sec knee, 30 minutes is about
+  `828k` theoretical tokens before failures; the actual exact D1 result was
+  `794399`.
+- The remaining reliability bug is not counter recording or Fireworks fallback:
+  it is public-gateway `502` behavior under saturation. The stress path is now
+  counted and GLM-only, but it still needs cleaner yield/backoff behavior at or
+  above the concurrency knee.
