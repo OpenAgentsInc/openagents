@@ -35,8 +35,10 @@ import {
   ARTANIS_OPERATOR_MEMORY_TURN_LIMIT,
   type ArtanisOperatorKhalaClient,
   ArtanisOperatorMessage,
+  type ArtanisOperatorTool,
   artanisOperatorTurn,
 } from './artanis-operator'
+import { makeArtanisOperatorTools } from './artanis-operator-tools'
 import {
   appendArtanisMemory,
   type ArtanisOwnerMemoryStore,
@@ -95,6 +97,10 @@ export type OperatorArtanisChatDependencies<
   // awareness build (honest-absence buckets + code-anchored goals).
   makeMemoryStore?: (env: Bindings) => ArtanisOwnerMemoryStore
   awarenessReaders?: (env: Bindings) => ArtanisAwarenessReaders
+  // The owner-scoped tool table Artanis can invoke in the bounded tool-calling
+  // loop (#6364): public repo-read tools (#6365) + the plan-only Codex dispatch
+  // tool (#6366). Defaults to `makeArtanisOperatorTools()`; tests override it.
+  makeOperatorTools?: (env: Bindings) => ReadonlyArray<ArtanisOperatorTool>
 }>
 
 class OperatorArtanisChatUnauthorized extends S.TaggedErrorClass<OperatorArtanisChatUnauthorized>()(
@@ -320,12 +326,16 @@ export const makeOperatorArtanisChatRoutes = <
         try: () => buildArtanisSituationalAwareness(ownerId, awarenessReaders),
       })
 
+      const tools =
+        dependencies.makeOperatorTools?.(env) ?? makeArtanisOperatorTools()
+
       const turn = yield* artanisOperatorTurn({
         awareness,
         khalaClient,
         memory,
         messages: body.messages,
         ownerId,
+        tools,
       })
 
       if ('error' in turn) {
@@ -360,11 +370,13 @@ export const makeOperatorArtanisChatRoutes = <
           approvalGateRef: ARTANIS_OPERATOR_APPROVAL_GATE_REF,
           channelRef: ARTANIS_OPERATOR_CHANNEL_REF,
           deferredToApprovalGate: turn.deferredToApprovalGate,
+          iterations: turn.iterations,
           persona: turn.persona,
           reply: turn.reply,
           requestedModel: turn.requestedModel,
           servedModel: turn.servedModel,
           servedVia: turn.servedVia,
+          toolInvocations: turn.toolInvocations,
         }),
         session,
       )

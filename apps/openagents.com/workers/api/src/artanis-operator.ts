@@ -47,13 +47,20 @@
 import { Effect, Schema as S } from 'effect'
 
 import { ARTANIS_RISKY_ACTION_KINDS } from './artanis-approval-gates'
+import type { ArtanisRiskyActionKind } from './artanis-approval-gates'
 import type { ArtanisMemoryEntry } from './artanis-owner-memory'
 import type { ArtanisSituationalAwareness } from './artanis-situational-awareness'
 import type {
   InferenceAdapterError,
+  InferenceMessage,
   InferenceRequest,
   InferenceResult,
+  InferenceToolCall,
 } from './inference/provider-adapter'
+
+import { parseJsonUnknown } from './json-boundary'
+
+export type { ArtanisRiskyActionKind } from './artanis-approval-gates'
 
 // Re-export the real grounding types so the surface + memory lanes have a single
 // import site for the operator-core contract.
@@ -87,6 +94,14 @@ export const ARTANIS_OPERATOR_RISKY_ACTION_KINDS = ARTANIS_RISKY_ACTION_KINDS
 
 // How many prior memory entries we inject into a single operator turn's context.
 export const ARTANIS_OPERATOR_MEMORY_TURN_LIMIT = 20
+
+// Bounded tool-calling loop cap (#6364). Each iteration is ONE `openagents/khala`
+// completion; if the model asks for tools we execute them and re-call Khala. The
+// cap guarantees the loop always terminates with a final text reply (it never
+// spins forever on a model that keeps requesting tools). One extra Khala call
+// past the cap is allowed so the model can produce a final answer with the last
+// tool results in context.
+export const ARTANIS_OPERATOR_MAX_TOOL_ITERATIONS = 6
 
 // ---------------------------------------------------------------------------
 // The Artanis OPERATOR persona (NOT the public Khala identity).
@@ -312,28 +327,135 @@ export type ArtanisOperatorKhalaClient = (
   request: InferenceRequest,
 ) => Effect.Effect<InferenceResult, InferenceAdapterError>
 
-// Build the typed Khala request: persona system + grounded context system + the
-// owner conversation. `max_tokens`/`temperature` mirror the responder so the
-// dogfood path is consistent.
-export const buildArtanisOperatorKhalaRequest = (input: {
+// ---------------------------------------------------------------------------
+// Tool-calling primitives (#6364).
+// ---------------------------------------------------------------------------
+//
+// The bounded tool-calling loop in `artanisOperatorTurn` advertises a typed
+// owner-scoped tool table to Khala and executes the tools the model requests.
+// Two tool flavours, distinguished at the TYPE level so the boundary is
+// structurally enforced (not just convention):
+//
+//   - READ tools execute freely. They read public state (e.g. a public repo
+//     file) and return text. They never spend or mutate.
+//   - RISKY tools (spend/destructive) NEVER execute in the loop. They expose a
+//     pure `plan(args)` that returns a public-safe description of what they
+//     WOULD do; the loop wraps that in an explicit "requires owner approval —
+//     not executed" frame, sets `deferredToApprovalGate`, and feeds the plan
+//     back to the model. Execution authority is granted only through
+//     `artanis-approval-gates`; this core adds none.
+//
+// The model only ever sees the OpenAI-style function `definition`; the read vs.
+// risky distinction is an internal authority property of the executor.
+
+// OpenAI function-calling tool definition advertised to Khala.
+export type ArtanisOperatorToolDefinition = Readonly<{
+  name: string
+  description: string
+  // JSON-schema parameters object (OpenAI function-calling `parameters` shape).
+  parameters: Readonly<Record<string, unknown>>
+}>
+
+// A read tool: executes freely, returns the text fed back as the `tool` message.
+export type ArtanisOperatorReadTool = Readonly<{
+  kind: 'read'
+  definition: ArtanisOperatorToolDefinition
+  // Execute with the parsed arguments and return the tool result text. Read
+  // tools must be side-effect-free beyond reading public state; an empty/absent
+  // result returns an honest "(none)"-style string, never invention.
+  execute: (args: unknown) => Effect.Effect<string>
+}>
+
+// A risky (spend/destructive) tool: NEVER executes in the loop. `plan` is pure
+// and returns a public-safe description of the exact action it WOULD take.
+export type ArtanisOperatorRiskyTool = Readonly<{
+  kind: 'risky'
+  // The approval-gate risky-action kind this tool would require.
+  riskyActionKind: ArtanisRiskyActionKind
+  definition: ArtanisOperatorToolDefinition
+  // Produce the public-safe PLAN (no spend/dispatch/destructive side-effects).
+  plan: (args: unknown) => Effect.Effect<string>
+}>
+
+export type ArtanisOperatorTool =
+  | ArtanisOperatorReadTool
+  | ArtanisOperatorRiskyTool
+
+// Public-safe summary of one tool invocation in a turn. Surfaced on the turn
+// result so the route/UI can show what Artanis did without re-deriving it.
+export type ArtanisOperatorToolInvocation = Readonly<{
+  name: string
+  // True when the tool actually executed (a read tool that ran).
+  executed: boolean
+  // True when the tool deferred to the approval gate (a risky tool that was
+  // planned, not executed).
+  deferredToApprovalGate: boolean
+  // The risky-action kind when deferred, else null.
+  riskyActionKind: ArtanisRiskyActionKind | null
+}>
+
+// The base operator conversation as normalized inference messages: persona
+// system + grounded context system + the owner conversation. The tool-calling
+// loop appends assistant-tool-call and tool-result messages onto this base.
+const buildArtanisOperatorBaseMessages = (input: {
   contextBlock: string
   messages: ReadonlyArray<ArtanisOperatorMessage>
-}): InferenceRequest => ({
-  messages: [
-    { content: ARTANIS_OPERATOR_SYSTEM_PROMPT, role: 'system' },
-    { content: input.contextBlock, role: 'system' },
-    ...input.messages.map(message => ({
-      content: message.content,
-      role: message.role,
-    })),
-  ],
-  model: ARTANIS_OPERATOR_KHALA_MODEL,
-  passthroughParams: {
-    max_tokens: 4096,
-    temperature: 0.3,
-  },
-  stream: false,
-})
+}): ReadonlyArray<InferenceMessage> => [
+  { content: ARTANIS_OPERATOR_SYSTEM_PROMPT, role: 'system' },
+  { content: input.contextBlock, role: 'system' },
+  ...input.messages.map(message => ({
+    content: message.content,
+    role: message.role,
+  })),
+]
+
+// Build the typed Khala request: persona system + grounded context system + the
+// owner conversation, optionally carrying an OpenAI-style `tools` array and the
+// running tool-call/tool-result message history. `max_tokens`/`temperature`
+// mirror the responder so the dogfood path is consistent. When `tools` is
+// non-empty we forward them verbatim via `passthroughParams.tools` (the Khala
+// substrate already forwards these through to the model — see
+// `inference/provider-adapter.ts`) with `tool_choice: 'auto'`.
+export const buildArtanisOperatorKhalaRequest = (input: {
+  contextBlock?: string | undefined
+  messages: ReadonlyArray<ArtanisOperatorMessage>
+  // Pre-built normalized message history (overrides the contextBlock+messages
+  // base build). Used by the loop to re-call Khala with tool results appended.
+  conversation?: ReadonlyArray<InferenceMessage> | undefined
+  tools?: ReadonlyArray<ArtanisOperatorToolDefinition> | undefined
+}): InferenceRequest => {
+  const conversation =
+    input.conversation ??
+    buildArtanisOperatorBaseMessages({
+      contextBlock: input.contextBlock ?? '',
+      messages: input.messages,
+    })
+  const tools = input.tools ?? []
+  return {
+    messages: conversation,
+    model: ARTANIS_OPERATOR_KHALA_MODEL,
+    passthroughParams:
+      tools.length > 0
+        ? {
+            max_tokens: 4096,
+            temperature: 0.3,
+            tool_choice: 'auto',
+            tools: tools.map(tool => ({
+              function: {
+                description: tool.description,
+                name: tool.name,
+                parameters: tool.parameters,
+              },
+              type: 'function' as const,
+            })),
+          }
+        : {
+            max_tokens: 4096,
+            temperature: 0.3,
+          },
+    stream: false,
+  }
+}
 
 // ---------------------------------------------------------------------------
 // The turn result.
@@ -352,9 +474,16 @@ export type ArtanisOperatorTurnResult = Readonly<{
   // The persona-separation verdict over the final reply.
   persona: ArtanisPersonaSeparationVerdict
   // True when the LATEST owner message names an action that must defer to the
-  // approval gate (spend/destructive). The core never grants authority; this is
-  // a HINT for the surface/route to surface the gate.
+  // approval gate (spend/destructive), OR a risky tool was planned (not
+  // executed) during the loop. The core never grants authority; this is a HINT
+  // for the surface/route to surface the gate.
   deferredToApprovalGate: boolean
+  // Public-safe summaries of the tools Artanis invoked during the loop (empty
+  // when no tools were used or no tools were configured).
+  toolInvocations: ReadonlyArray<ArtanisOperatorToolInvocation>
+  // How many Khala completions the turn made (1 for a no-tool turn, more when
+  // the loop executed tools and re-called Khala).
+  iterations: number
 }>
 
 export type ArtanisOperatorTurnFailure = Readonly<{
@@ -397,45 +526,205 @@ const mentionsSpendOrDestructive = (
 // The core entry point: artanisOperatorTurn.
 // ---------------------------------------------------------------------------
 //
+// Find a configured tool by the name the model asked for.
+const findTool = (
+  tools: ReadonlyArray<ArtanisOperatorTool>,
+  name: string,
+): ArtanisOperatorTool | undefined =>
+  tools.find(tool => tool.definition.name === name)
+
+// Parse a tool call's JSON arguments string into a value. Tool argument JSON is
+// model-produced, so a malformed payload is expected and handled (the tool gets
+// an empty object and may return an honest validation message); we never throw.
+const parseToolArguments = (raw: string): unknown => {
+  const trimmed = raw.trim()
+  if (trimmed === '') return {}
+  try {
+    return parseJsonUnknown(trimmed)
+  } catch {
+    return {}
+  }
+}
+
+// Run one requested tool call. Read tools execute; risky tools are PLANNED, not
+// executed (the result is framed as requiring owner approval and sets the
+// deferral flag). Returns the tool-result text + a public-safe invocation
+// summary. An executor defect degrades to an honest error string for the model,
+// never a thrown turn.
+const runToolCall = (
+  tool: ArtanisOperatorTool,
+  toolCall: InferenceToolCall,
+): Effect.Effect<
+  Readonly<{ content: string; invocation: ArtanisOperatorToolInvocation }>
+> =>
+  Effect.gen(function* () {
+    const args = parseToolArguments(toolCall.function.arguments)
+
+    if (tool.kind === 'read') {
+      const result = yield* Effect.exit(tool.execute(args))
+      const content =
+        result._tag === 'Success'
+          ? result.value
+          : `(tool error: ${tool.definition.name} could not complete)`
+      return {
+        content,
+        invocation: {
+          deferredToApprovalGate: false,
+          executed: result._tag === 'Success',
+          name: tool.definition.name,
+          riskyActionKind: null,
+        },
+      }
+    }
+
+    // Risky tool: never executed. Build the public-safe plan and frame it as a
+    // pending approval gate.
+    const planned = yield* Effect.exit(tool.plan(args))
+    const planText =
+      planned._tag === 'Success'
+        ? planned.value
+        : `(could not build a plan for ${tool.definition.name})`
+    const content = [
+      `REQUIRES OWNER APPROVAL — NOT EXECUTED.`,
+      `This action (${tool.definition.name}) is a ${tool.riskyActionKind} risky action and must be approved via ${ARTANIS_OPERATOR_APPROVAL_GATE_REF} before it runs. I did not execute it. Below is exactly what I would run once approved:`,
+      '',
+      planText,
+    ].join('\n')
+    return {
+      content,
+      invocation: {
+        deferredToApprovalGate: true,
+        executed: false,
+        name: tool.definition.name,
+        riskyActionKind: tool.riskyActionKind,
+      },
+    }
+  })
+
 // Pure-ish core: given the owner id, the conversation, the loaded memory, the
-// built awareness, and the Khala client, it assembles the Blueprint-style
-// grounded program, runs ONE Khala turn (dogfood), guards persona separation,
-// and returns the typed result. Memory persistence is the route's job (it calls
-// `appendArtanisMemory` for both the owner message and Artanis's reply) so this
-// core stays a single, testable unit.
+// built awareness, the Khala client, and (optionally) an owner-scoped tool
+// table, it assembles the Blueprint-style grounded program and runs a BOUNDED
+// tool-calling loop (#6364): each iteration is ONE `openagents/khala` completion
+// (dogfood); when the model requests tools we execute the read tools / plan the
+// risky tools, append the results, and re-call Khala, up to
+// `ARTANIS_OPERATOR_MAX_TOOL_ITERATIONS`. It guards persona separation over the
+// FINAL reply and returns the typed result. With no tools configured this is the
+// original single-turn behaviour. Memory persistence stays the route's job.
 export const artanisOperatorTurn = (input: {
   ownerId: string
   messages: ReadonlyArray<ArtanisOperatorMessage>
   memory: ReadonlyArray<ArtanisMemoryEntry>
   awareness: ArtanisSituationalAwareness
   khalaClient: ArtanisOperatorKhalaClient
+  tools?: ReadonlyArray<ArtanisOperatorTool> | undefined
 }): Effect.Effect<ArtanisOperatorTurnResult | ArtanisOperatorTurnFailure> =>
   Effect.gen(function* () {
+    const tools = input.tools ?? []
+    const toolDefinitions = tools.map(tool => tool.definition)
     const contextBlock = buildArtanisOperatorContextBlock({
       awareness: input.awareness,
       memory: input.memory,
     })
-    const request = buildArtanisOperatorKhalaRequest({
-      contextBlock,
-      messages: input.messages,
-    })
 
-    const outcome = yield* Effect.exit(input.khalaClient(request))
+    // Mutable working conversation: starts as the grounded base, grows with
+    // assistant-tool-call + tool-result messages as the loop runs.
+    let conversation: ReadonlyArray<InferenceMessage> =
+      buildArtanisOperatorBaseMessages({
+        contextBlock,
+        messages: input.messages,
+      })
 
-    if (outcome._tag === 'Failure') {
-      return {
-        error: 'artanis_operator_mind_unavailable' as const,
-      } satisfies ArtanisOperatorTurnFailure
+    const toolInvocations: Array<ArtanisOperatorToolInvocation> = []
+    let toolsDeferred = false
+    let served: InferenceResult | undefined
+    let iterations = 0
+
+    // The loop runs at most MAX+1 Khala calls: MAX tool rounds plus one final
+    // call so the model can answer with the last tool results in context.
+    for (
+      let round = 0;
+      round <= ARTANIS_OPERATOR_MAX_TOOL_ITERATIONS;
+      round += 1
+    ) {
+      // On the final allowed iteration we stop advertising tools so the model is
+      // forced to produce a text answer rather than request more work.
+      const advertiseTools =
+        toolDefinitions.length > 0 &&
+        round < ARTANIS_OPERATOR_MAX_TOOL_ITERATIONS
+      const request = buildArtanisOperatorKhalaRequest({
+        conversation,
+        messages: input.messages,
+        tools: advertiseTools ? toolDefinitions : undefined,
+      })
+
+      const outcome = yield* Effect.exit(input.khalaClient(request))
+      iterations += 1
+
+      if (outcome._tag === 'Failure') {
+        return {
+          error: 'artanis_operator_mind_unavailable' as const,
+        } satisfies ArtanisOperatorTurnFailure
+      }
+
+      served = outcome.value
+
+      const requestedToolCalls = served.toolCalls ?? []
+      // No tool calls (or we already stopped advertising tools): this is the
+      // final text reply.
+      if (requestedToolCalls.length === 0 || !advertiseTools) {
+        break
+      }
+
+      // Append the assistant turn that requested the tools, then each tool
+      // result, and loop to re-call Khala with the results in context.
+      const nextMessages: Array<InferenceMessage> = [
+        ...conversation,
+        {
+          content: served.content,
+          role: 'assistant',
+          toolCalls: requestedToolCalls,
+        },
+      ]
+
+      for (const toolCall of requestedToolCalls) {
+        const tool = findTool(tools, toolCall.function.name)
+        if (tool === undefined) {
+          nextMessages.push({
+            content: `(unknown tool: ${toolCall.function.name})`,
+            name: toolCall.function.name,
+            role: 'tool',
+            toolCallId: toolCall.id,
+          })
+          continue
+        }
+        const { content, invocation } = yield* runToolCall(tool, toolCall)
+        toolInvocations.push(invocation)
+        if (invocation.deferredToApprovalGate) {
+          toolsDeferred = true
+        }
+        nextMessages.push({
+          content,
+          name: toolCall.function.name,
+          role: 'tool',
+          toolCallId: toolCall.id,
+        })
+      }
+
+      conversation = nextMessages
     }
 
-    const served = outcome.value
+    // `served` is always set: the loop runs at least once before any break.
+    const finalServed = served as InferenceResult
 
     return {
-      deferredToApprovalGate: mentionsSpendOrDestructive(input.messages),
-      persona: verifyArtanisOperatorPersona(served.content),
-      reply: served.content,
+      deferredToApprovalGate:
+        mentionsSpendOrDestructive(input.messages) || toolsDeferred,
+      iterations,
+      persona: verifyArtanisOperatorPersona(finalServed.content),
+      reply: finalServed.content,
       requestedModel: ARTANIS_OPERATOR_KHALA_MODEL,
-      servedModel: served.servedModel,
+      servedModel: finalServed.servedModel,
       servedVia: 'openagents_khala' as const,
+      toolInvocations,
     } satisfies ArtanisOperatorTurnResult
   })

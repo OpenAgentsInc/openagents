@@ -3,9 +3,12 @@ import { describe, expect, test } from 'vitest'
 
 import {
   ARTANIS_OPERATOR_KHALA_MODEL,
+  ARTANIS_OPERATOR_MAX_TOOL_ITERATIONS,
   ARTANIS_OPERATOR_SYSTEM_PROMPT,
   type ArtanisMemoryEntry,
   type ArtanisOperatorKhalaClient,
+  type ArtanisOperatorReadTool,
+  type ArtanisOperatorRiskyTool,
   type ArtanisSituationalAwareness,
   artanisOperatorTurn,
   buildArtanisOperatorContextBlock,
@@ -394,5 +397,231 @@ describe('artanis operator authority boundary (defers spend/destructive)', () =>
     expect('error' in result).toBe(false)
     if ('error' in result) return
     expect(result.deferredToApprovalGate).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// #6364 — bounded tool-calling loop.
+// ---------------------------------------------------------------------------
+
+// A read tool that returns a canned file body and records its calls.
+const makeFakeReadTool = (
+  body: string,
+): { tool: ArtanisOperatorReadTool; calls: Array<unknown> } => {
+  const calls: Array<unknown> = []
+  const tool: ArtanisOperatorReadTool = {
+    definition: {
+      description: 'read a repo file',
+      name: 'read_repo_file',
+      parameters: {
+        properties: { path: { type: 'string' } },
+        required: ['path'],
+        type: 'object',
+      },
+    },
+    execute: (args: unknown) => {
+      calls.push(args)
+      return Effect.succeed(body)
+    },
+    kind: 'read',
+  }
+  return { calls, tool }
+}
+
+// A risky tool that records whether plan() ran (and asserts it NEVER executes).
+const makeFakeRiskyTool = (): {
+  tool: ArtanisOperatorRiskyTool
+  planned: Array<unknown>
+} => {
+  const planned: Array<unknown> = []
+  const tool: ArtanisOperatorRiskyTool = {
+    definition: {
+      description: 'dispatch a codex task',
+      name: 'dispatch_codex_task',
+      parameters: {
+        properties: { objective: { type: 'string' } },
+        required: ['objective'],
+        type: 'object',
+      },
+    },
+    kind: 'risky',
+    plan: (args: unknown) => {
+      planned.push(args)
+      return Effect.succeed('pylon khala request --workflow codex_agent_task ...')
+    },
+    riskyActionKind: 'pylon_job_dispatch',
+  }
+  return { planned, tool }
+}
+
+// A scripted Khala client: returns the queued InferenceResults in order. Each
+// call captures the request so tests can assert tools were advertised + the tool
+// result round-tripped back into the conversation.
+const makeScriptedKhalaClient = (
+  script: ReadonlyArray<InferenceResult>,
+): {
+  client: ArtanisOperatorKhalaClient
+  requests: Array<InferenceRequest>
+} => {
+  const requests: Array<InferenceRequest> = []
+  let index = 0
+  const fallback = textResult('(end of script)')
+  const client: ArtanisOperatorKhalaClient = (request: InferenceRequest) => {
+    requests.push(request)
+    const result = script[index] ?? script[script.length - 1] ?? fallback
+    index += 1
+    return Effect.succeed(result)
+  }
+  return { client, requests }
+}
+
+const toolCallResult = (
+  name: string,
+  args: string,
+): InferenceResult => ({
+  content: '',
+  finishReason: 'tool_calls',
+  servedModel: 'gpt-oss-120b',
+  toolCalls: [
+    { function: { arguments: args, name }, id: `call_${name}`, type: 'function' },
+  ],
+  usage: { completionTokens: 4, promptTokens: 100, totalTokens: 104 },
+})
+
+const textResult = (content: string): InferenceResult => ({
+  content,
+  finishReason: 'stop',
+  servedModel: 'gpt-oss-120b',
+  usage: { completionTokens: 20, promptTokens: 300, totalTokens: 320 },
+})
+
+describe('#6364 artanis operator bounded tool-calling loop', () => {
+  test('a tool_calls round-trips: read tool executes, then a final text reply', async () => {
+    const { calls, tool } = makeFakeReadTool('First priority: the #6316 track.')
+    const { client, requests } = makeScriptedKhalaClient([
+      toolCallResult('read_repo_file', '{"path":"docs/roadmap.md"}'),
+      textResult('The roadmap says the first priority is the #6316 track.'),
+    ])
+
+    const result = await Effect.runPromise(
+      artanisOperatorTurn({
+        awareness: exampleAwareness,
+        khalaClient: client,
+        memory: exampleMemory,
+        messages: [{ content: 'read docs/roadmap.md and summarize', role: 'user' }],
+        ownerId: 'owner:github:14167547',
+        tools: [tool],
+      }),
+    )
+
+    expect('error' in result).toBe(false)
+    if ('error' in result) return
+    // The read tool was actually executed with the model's arguments.
+    expect(calls).toEqual([{ path: 'docs/roadmap.md' }])
+    // Two Khala calls: one that requested the tool, one that produced the reply.
+    expect(result.iterations).toBe(2)
+    expect(result.reply).toContain('#6316')
+    expect(result.toolInvocations).toEqual([
+      {
+        deferredToApprovalGate: false,
+        executed: true,
+        name: 'read_repo_file',
+        riskyActionKind: null,
+      },
+    ])
+    // First request advertised the tools; second carried the tool result back.
+    expect(requests[0]?.passthroughParams.tools).toBeDefined()
+    const secondConversation = requests[1]?.messages ?? []
+    expect(
+      secondConversation.some(
+        message =>
+          message.role === 'tool' &&
+          message.content.includes('First priority'),
+      ),
+    ).toBe(true)
+    expect(
+      secondConversation.some(
+        message => message.role === 'assistant' && message.toolCalls !== undefined,
+      ),
+    ).toBe(true)
+  })
+
+  test('a risky tool is PLANNED, never executed, and defers to the approval gate', async () => {
+    const { planned, tool } = makeFakeRiskyTool()
+    const { client } = makeScriptedKhalaClient([
+      toolCallResult('dispatch_codex_task', '{"objective":"burn down #6320"}'),
+      textResult('I planned the dispatch; it needs your approval before it runs.'),
+    ])
+
+    const result = await Effect.runPromise(
+      artanisOperatorTurn({
+        awareness: exampleAwareness,
+        khalaClient: client,
+        memory: exampleMemory,
+        messages: [{ content: 'dispatch the backlog', role: 'user' }],
+        ownerId: 'owner:github:14167547',
+        tools: [tool],
+      }),
+    )
+
+    expect('error' in result).toBe(false)
+    if ('error' in result) return
+    // plan() ran (the public-safe plan was built) but nothing was executed.
+    expect(planned).toEqual([{ objective: 'burn down #6320' }])
+    expect(result.deferredToApprovalGate).toBe(true)
+    expect(result.toolInvocations).toEqual([
+      {
+        deferredToApprovalGate: true,
+        executed: false,
+        name: 'dispatch_codex_task',
+        riskyActionKind: 'pylon_job_dispatch',
+      },
+    ])
+  })
+
+  test('the loop caps iterations when the model keeps asking for tools', async () => {
+    const { tool } = makeFakeReadTool('some file body')
+    // A client that ALWAYS asks for the tool — the cap must force termination.
+    const alwaysToolClient: ArtanisOperatorKhalaClient = () =>
+      Effect.succeed(toolCallResult('read_repo_file', '{"path":"docs/x.md"}'))
+    let calls = 0
+    const counted: ArtanisOperatorKhalaClient = request => {
+      calls += 1
+      return alwaysToolClient(request)
+    }
+
+    const result = await Effect.runPromise(
+      artanisOperatorTurn({
+        awareness: exampleAwareness,
+        khalaClient: counted,
+        memory: exampleMemory,
+        messages: [{ content: 'keep reading forever', role: 'user' }],
+        ownerId: 'owner:github:14167547',
+        tools: [tool],
+      }),
+    )
+
+    expect('error' in result).toBe(false)
+    if ('error' in result) return
+    // Bounded: at most MAX tool rounds + one final (tools-suppressed) call.
+    expect(result.iterations).toBe(ARTANIS_OPERATOR_MAX_TOOL_ITERATIONS + 1)
+    expect(calls).toBe(ARTANIS_OPERATOR_MAX_TOOL_ITERATIONS + 1)
+  })
+
+  test('with no tools configured the turn is a single Khala call (unchanged behavior)', async () => {
+    const { client } = makeRecordingKhalaClient('All green.')
+    const result = await Effect.runPromise(
+      artanisOperatorTurn({
+        awareness: exampleAwareness,
+        khalaClient: client,
+        memory: exampleMemory,
+        messages: [{ content: 'status?', role: 'user' }],
+        ownerId: 'owner:github:14167547',
+      }),
+    )
+    expect('error' in result).toBe(false)
+    if ('error' in result) return
+    expect(result.iterations).toBe(1)
+    expect(result.toolInvocations).toEqual([])
   })
 })
