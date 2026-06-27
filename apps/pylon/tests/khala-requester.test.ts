@@ -5,6 +5,7 @@ import { join } from "node:path"
 
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
 import {
+  buildPylonKhalaReproductionFixture,
   buildPylonKhalaGitCheckoutWorkspace,
   buildPylonKhalaChatRequestBody,
   durableRequestIdFromUrl,
@@ -1026,6 +1027,68 @@ describe("pylon khala requester API", () => {
     ])
   })
 
+  test("reproduction fixture extracts public-safe trace evidence refs", () => {
+    const fixture = buildPylonKhalaReproductionFixture(
+      completeTraceStatus() as CloseoutTraceStatus,
+    )
+
+    expect(fixture).toMatchObject({
+      assignmentRef: "assignment-pylon-codex-1",
+      evidenceRefs: {
+        rawEventRefs: ["raw.pylon_codex.aaa", "raw.pylon_codex.bbb"],
+        traceRefs: ["trace-chunk-1", "trace-final-1"],
+      },
+      expectedOutput: {
+        closeoutReady: true,
+        lifecycleState: "closeout_submitted",
+        tokenUsage: {
+          provider: "pylon-codex-own-capacity",
+          rowCount: 1,
+          status: "recorded",
+          totalTokens: 140,
+          usageTruth: "exact",
+        },
+      },
+      input: {
+        progressState: "closed_out",
+        sourceTraceRefs: ["trace-chunk-1", "trace-final-1"],
+      },
+      ok: true,
+      reproductionChecklist: {
+        blockerRefs: [],
+        ok: true,
+        schema: "openagents.pylon.khala_reproduction_fixture_checklist.v0.1",
+      },
+      schema: "openagents.pylon.khala_reproduction_fixture.v0.1",
+    })
+    expect(JSON.stringify(fixture)).not.toMatch(
+      /rawEventsJson|trajectory_json|safe_metadata_json|r2_key|prompt|shell|\/Users|secret|access[_-]?token|bearer/i,
+    )
+  })
+
+  test("reproduction fixture fails closed when evidence refs are absent", () => {
+    const fixture = buildPylonKhalaReproductionFixture(
+      completeTraceStatus({
+        rawEvents: {
+          ...completeTraceStatus().rawEvents,
+          refs: [],
+        },
+        traces: {
+          ...completeTraceStatus().traces,
+          refs: [],
+        },
+      }) as CloseoutTraceStatus,
+    )
+
+    expect(fixture.reproductionChecklist.ok).toBe(false)
+    expect(fixture.reproductionChecklist.blockerRefs).toContain(
+      "blocker.khala_reproduction_fixture.trace_evidence_refs_present",
+    )
+    expect(fixture.reproductionChecklist.blockerRefs).toContain(
+      "blocker.khala_reproduction_fixture.raw_event_refs_present",
+    )
+  })
+
   test("closeout reads owner-scoped trace status and proof as one JSON projection", async () => {
     const calls: Array<{ init: RequestInit; url: string }> = []
     const result = await readPylonKhalaCloseout(
@@ -1424,6 +1487,53 @@ describe("pylon khala requester API", () => {
       rawEventChunks: {
         visibility: "owner_only",
       },
+    })
+    expect(JSON.stringify(body)).not.toMatch(
+      /rawEventsJson|trajectory_json|safe_metadata_json|r2_key|prompt|shell|\/Users|secret|access[_-]?token|bearer/i,
+    )
+  }, 15_000)
+
+  test("local CLI generates a public-safe Khala reproduction fixture", async () => {
+    const requests: Array<{ headers: Headers; path: string; search: string }> = []
+    const server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url)
+        requests.push({ headers: request.headers, path: url.pathname, search: url.search })
+        return new Response(JSON.stringify(completeTraceStatus()), {
+          headers: { "content-type": "application/json" },
+        })
+      },
+    })
+    servers.push(server)
+
+    const result = await runPylonCli(
+      ["khala", "fixture", "assignment-pylon-codex-1", "--agent-token", "oa_agent_cli_test", "--json"],
+      {
+        OPENAGENTS_AGENT_TOKEN: "oa_agent_cli_test",
+        PYLON_OPENAGENTS_BASE_URL: `http://127.0.0.1:${server.port}`,
+      },
+    )
+
+    expect(result.timedOut).toBe(false)
+    expect(result.exitCode).toBe(0)
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.path).toBe("/api/pylon/codex/trace-status")
+    expect(requests[0]?.search).toBe("?assignmentRef=assignment-pylon-codex-1")
+    expect(requests[0]?.headers.get("authorization")).toBe("Bearer oa_agent_cli_test")
+    const body = JSON.parse(result.stdout) as Record<string, unknown>
+    expect(body).toMatchObject({
+      assignmentRef: "assignment-pylon-codex-1",
+      evidenceRefs: {
+        rawEventRefs: ["raw.pylon_codex.aaa", "raw.pylon_codex.bbb"],
+        traceRefs: ["trace-chunk-1", "trace-final-1"],
+      },
+      ok: true,
+      reproductionChecklist: {
+        ok: true,
+        schema: "openagents.pylon.khala_reproduction_fixture_checklist.v0.1",
+      },
+      schema: "openagents.pylon.khala_reproduction_fixture.v0.1",
     })
     expect(JSON.stringify(body)).not.toMatch(
       /rawEventsJson|trajectory_json|safe_metadata_json|r2_key|prompt|shell|\/Users|secret|access[_-]?token|bearer/i,

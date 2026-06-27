@@ -234,6 +234,50 @@ export type PylonKhalaCloseoutResult = {
   status: PylonKhalaAssignmentTraceStatusResult
 }
 
+export type PylonKhalaReproductionFixtureChecklist = {
+  blockerRefs: string[]
+  items: PylonKhalaProofChecklistItem[]
+  ok: boolean
+  schema: "openagents.pylon.khala_reproduction_fixture_checklist.v0.1"
+}
+
+export type PylonKhalaReproductionFixture = {
+  assignmentRef: string
+  evidenceRefs: {
+    acceptedWorkRefs: string[]
+    artifactRefs: string[]
+    closeoutRefs: string[]
+    proofRefs: string[]
+    rawEventRefs: string[]
+    traceRefs: string[]
+  }
+  expectedOutput: {
+    closeoutReady: boolean
+    lifecycleState: string
+    tokenUsage: Pick<
+      PylonKhalaAssignmentTraceStatusResult["tokenUsage"],
+      | "demandKind"
+      | "demandSource"
+      | "model"
+      | "provider"
+      | "rowCount"
+      | "status"
+      | "totalTokens"
+      | "usageTruth"
+    >
+  }
+  generatedAt: string
+  input: {
+    owner: PylonKhalaAssignmentTraceStatusResult["owner"]
+    progressState: PylonKhalaAssignmentTraceStatusResult["progress"]["state"]
+    pylonRef: string
+    sourceTraceRefs: string[]
+  }
+  ok: true
+  reproductionChecklist: PylonKhalaReproductionFixtureChecklist
+  schema: "openagents.pylon.khala_reproduction_fixture.v0.1"
+}
+
 const durablePrefix = "/v1/chat/completions/durable/"
 const codexAssignmentProofPath = "/api/pylon/codex/proof"
 const codexAssignmentTraceStatusPath = "/api/pylon/codex/trace-status"
@@ -608,6 +652,93 @@ export function evaluatePylonKhalaCloseoutChecklist(
   }
 }
 
+function uniquePublicSafeRefs(refs: readonly string[]): string[] {
+  const cleanRefs = refs
+    .map((ref) => ref.trim())
+    .filter((ref) => ref !== "" && publicSafeDiagnosticRefPattern.test(ref))
+  return [...new Set(cleanRefs)].sort()
+}
+
+export function buildPylonKhalaReproductionFixture(
+  status: PylonKhalaAssignmentTraceStatusResult,
+): PylonKhalaReproductionFixture {
+  const evidenceRefs = {
+    acceptedWorkRefs: uniquePublicSafeRefs(status.lifecycle.acceptedWorkRefs),
+    artifactRefs: uniquePublicSafeRefs(status.lifecycle.artifactRefs),
+    closeoutRefs: uniquePublicSafeRefs(status.lifecycle.closeoutRefs),
+    proofRefs: uniquePublicSafeRefs(status.lifecycle.proofRefs),
+    rawEventRefs: uniquePublicSafeRefs(status.rawEvents.refs),
+    traceRefs: uniquePublicSafeRefs(status.traces.refs),
+  }
+  const items = [
+    checklistItem(
+      "check.khala_reproduction_fixture.schema.codex_assignment_trace_status_v1",
+      status.schemaVersion === "openagents.pylon.codex_assignment_trace_status.v1",
+    ),
+    checklistItem(
+      "check.khala_reproduction_fixture.assignment_ref_present",
+      status.assignmentRef.trim() !== "",
+    ),
+    checklistItem(
+      "check.khala_reproduction_fixture.trace_evidence_refs_present",
+      evidenceRefs.traceRefs.length > 0,
+    ),
+    checklistItem(
+      "check.khala_reproduction_fixture.raw_event_refs_present",
+      evidenceRefs.rawEventRefs.length > 0,
+    ),
+    checklistItem(
+      "check.khala_reproduction_fixture.expected_output_recorded",
+      status.progress.closeoutReady &&
+        status.tokenUsage.status === "recorded" &&
+        status.tokenUsage.rowCount > 0,
+    ),
+    checklistItem(
+      "check.khala_reproduction_fixture.owner_scoped_evidence",
+      status.traces.visibility === "owner_only" &&
+        status.rawEvents.visibility === "owner_only",
+    ),
+  ]
+  const blockerRefs = items
+    .filter((item) => !item.ok)
+    .map((item) => item.ref.replace(/^check\./, "blocker."))
+  const fixture: PylonKhalaReproductionFixture = {
+    assignmentRef: status.assignmentRef,
+    evidenceRefs,
+    expectedOutput: {
+      closeoutReady: status.progress.closeoutReady,
+      lifecycleState: status.lifecycle.state,
+      tokenUsage: {
+        demandKind: status.tokenUsage.demandKind,
+        demandSource: status.tokenUsage.demandSource,
+        model: status.tokenUsage.model,
+        provider: status.tokenUsage.provider,
+        rowCount: status.tokenUsage.rowCount,
+        status: status.tokenUsage.status,
+        totalTokens: status.tokenUsage.totalTokens,
+        usageTruth: status.tokenUsage.usageTruth,
+      },
+    },
+    generatedAt: status.generatedAt,
+    input: {
+      owner: status.owner,
+      progressState: status.progress.state,
+      pylonRef: status.pylonRef,
+      sourceTraceRefs: evidenceRefs.traceRefs,
+    },
+    ok: true,
+    reproductionChecklist: {
+      blockerRefs,
+      items,
+      ok: blockerRefs.length === 0,
+      schema: "openagents.pylon.khala_reproduction_fixture_checklist.v0.1",
+    },
+    schema: "openagents.pylon.khala_reproduction_fixture.v0.1",
+  }
+  assertPublicSafe(fixture, "khala reproduction fixture")
+  return fixture
+}
+
 export function buildPylonKhalaChatRequestBody(
   input: PylonKhalaRequestInput,
 ): Record<string, unknown> {
@@ -905,4 +1036,12 @@ export async function readPylonKhalaCloseout(
   }
   assertPublicSafe(result, "khala closeout response")
   return result
+}
+
+export async function readPylonKhalaReproductionFixture(
+  options: TipsNetworkOptions,
+  assignmentRefInput: string,
+): Promise<PylonKhalaReproductionFixture> {
+  const status = await readPylonKhalaAssignmentTraceStatus(options, assignmentRefInput)
+  return buildPylonKhalaReproductionFixture(status)
 }

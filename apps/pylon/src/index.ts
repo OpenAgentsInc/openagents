@@ -283,6 +283,7 @@ import {
   readPylonKhalaAssignmentTraceStatus,
   readPylonKhalaCloseout,
   readPylonKhalaProof,
+  readPylonKhalaReproductionFixture,
   readPylonKhalaStatus,
   resumePylonKhalaRequest,
   type PylonKhalaWorkflow,
@@ -4203,7 +4204,20 @@ async function main() {
         return
       }
 
-      throw new Error("usage: pylon khala request|resume|status|proof|closeout|spawn|burndown ...")
+      if (command === "fixture") {
+        const assignmentRef =
+          args[2] !== undefined && !args[2].startsWith("--")
+            ? args[2]
+            : optionString(options, "assignment-ref")
+        if (!assignmentRef) {
+          throw new Error("usage: pylon khala fixture <assignmentRef> [--json]")
+        }
+        const result = await readPylonKhalaReproductionFixture(networkOptions, assignmentRef)
+        emit(result)
+        return
+      }
+
+      throw new Error("usage: pylon khala request|resume|status|proof|closeout|fixture|spawn|burndown ...")
     } catch (error) {
       process.stdout.write(`${JSON.stringify({ error: error instanceof Error ? error.message : String(error), ok: false }, null, 2)}\n`)
       process.exitCode = 1
