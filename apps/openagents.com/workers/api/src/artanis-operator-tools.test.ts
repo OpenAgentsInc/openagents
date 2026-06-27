@@ -27,6 +27,7 @@ import {
   makeArtanisListGithubIssuesTool,
   makeArtanisListPylonAssignmentsTool,
   makeArtanisListRepoDirTool,
+  makeArtanisOpenUnsupportedRequestIssueTool,
   makeArtanisOperatorTools,
   makeArtanisReadGithubIssueTool,
   makeArtanisReadRepoFileTool,
@@ -1469,6 +1470,140 @@ describe('update_unsupported_request (owner-scoped ledger triage WRITE) — iter
   })
 })
 
+describe('open_unsupported_request_issue (#6394 create + link needs_issue rows)', () => {
+  const needsIssueRow: ArtanisUnsupportedRequestRecord = {
+    githubIssueRef: null,
+    nextAction: 'open_github_issue',
+    requestRef: 'khala_unsupported:ur_issue_001',
+    sourceKind: 'trace_review',
+    status: 'needs_issue',
+    summary:
+      'Users ask Khala to inspect a public-safe local git diff summary before answering.',
+    title: 'Khala cannot inspect local diff summaries',
+    triageKind: 'missing_capability',
+    updatedAt: '2026-06-27T13:00:00.000Z',
+  }
+
+  test('opens a public GitHub issue for one needs_issue row and marks the ledger issue_opened', async () => {
+    const openedDrafts: Array<unknown> = []
+    const updates: Array<unknown> = []
+    const tool = makeArtanisOpenUnsupportedRequestIssueTool({
+      opener: async draft => {
+        openedDrafts.push(draft)
+        return {
+          issueNumber: 6395,
+          issueRef: 'OpenAgentsInc/openagents#6395',
+          issueUrl: 'https://github.com/OpenAgentsInc/openagents/issues/6395',
+        }
+      },
+      reader: async input => {
+        expect(input).toEqual({ limit: 100, status: 'needs_issue' })
+        return [needsIssueRow]
+      },
+      writer: async update => {
+        updates.push(update)
+        return {
+          ...needsIssueRow,
+          githubIssueRef: update.githubIssueRef ?? null,
+          nextAction: 'none',
+          status: update.status ?? needsIssueRow.status,
+          updatedAt: '2026-06-27T13:05:00.000Z',
+        }
+      },
+    })
+
+    expect(tool.kind).toBe('write')
+    expect(tool.definition.name).toBe('open_unsupported_request_issue')
+
+    const result = await Effect.runPromise(
+      tool.execute({ ref: 'khala_unsupported:ur_issue_001' }),
+    )
+
+    expect(openedDrafts).toEqual([
+      {
+        body: expect.stringContaining('khala_unsupported:ur_issue_001'),
+        labels: ['khala', 'unsupported-request'],
+        title: '[Khala unsupported] Khala cannot inspect local diff summaries',
+      },
+    ])
+    expect(updates).toEqual([
+      {
+        githubIssueRef: 'OpenAgentsInc/openagents#6395',
+        ref: 'khala_unsupported:ur_issue_001',
+        status: 'issue_opened',
+      },
+    ])
+    expect(result).toContain(
+      'Opened GitHub issue OpenAgentsInc/openagents#6395',
+    )
+    expect(result).toContain('status: issue_opened')
+    expect(result).toContain('next action: none')
+  })
+
+  test('fails closed when the GitHub opener is not wired', async () => {
+    const tool = makeArtanisOpenUnsupportedRequestIssueTool({
+      reader: async () => [needsIssueRow],
+      writer: async () => needsIssueRow,
+    })
+    const result = await Effect.runPromise(
+      tool.execute({ ref: 'khala_unsupported:ur_issue_001' }),
+    )
+    expect(result).toContain('no GitHub issue opener is wired')
+  })
+
+  test('does not open issues for rows outside needs_issue', async () => {
+    const openedDrafts: Array<unknown> = []
+    const tool = makeArtanisOpenUnsupportedRequestIssueTool({
+      opener: async draft => {
+        openedDrafts.push(draft)
+        return {
+          issueNumber: 6395,
+          issueRef: 'OpenAgentsInc/openagents#6395',
+          issueUrl: 'https://github.com/OpenAgentsInc/openagents/issues/6395',
+        }
+      },
+      reader: async () => [
+        {
+          ...needsIssueRow,
+          githubIssueRef: 'OpenAgentsInc/openagents#6310',
+          status: 'issue_opened',
+        },
+      ],
+      writer: async () => needsIssueRow,
+    })
+
+    const result = await Effect.runPromise(
+      tool.execute({ ref: 'khala_unsupported:ur_issue_001' }),
+    )
+
+    expect(result).toContain('not waiting for an issue')
+    expect(openedDrafts).toEqual([])
+  })
+
+  test('blocks unsafe refs before reading or opening', async () => {
+    const openedDrafts: Array<unknown> = []
+    const tool = makeArtanisOpenUnsupportedRequestIssueTool({
+      opener: async draft => {
+        openedDrafts.push(draft)
+        return {
+          issueNumber: 1,
+          issueRef: 'OpenAgentsInc/openagents#1',
+          issueUrl: 'https://github.com/OpenAgentsInc/openagents/issues/1',
+        }
+      },
+      reader: async () => [needsIssueRow],
+      writer: async () => needsIssueRow,
+    })
+
+    const result = await Effect.runPromise(
+      tool.execute({ ref: '../../etc/passwd' }),
+    )
+
+    expect(result).toContain('blocked')
+    expect(openedDrafts).toEqual([])
+  })
+})
+
 describe('parseArtanisAssignmentRef + isSafeArtanisAssignmentRef', () => {
   test('accepts a ref under several key aliases', () => {
     expect(parseArtanisAssignmentRef({ assignmentRef: 'a.b.c' })).toEqual({
@@ -2232,6 +2367,7 @@ describe('makeArtanisOperatorTools default table', () => {
       'list_github_issues',
       'list_pylon_assignments',
       'list_repo_dir',
+      'open_unsupported_request_issue',
       'read_github_issue',
       'read_repo_file',
       'trigger_synthetic_load',
@@ -2246,6 +2382,20 @@ describe('makeArtanisOperatorTools default table', () => {
     )
     expect(tool).toBeDefined()
     expect(tool?.kind).toBe('write')
+  })
+
+  test('the default table includes a fail-closed write-kind open_unsupported_request_issue tool', async () => {
+    const tools = makeArtanisOperatorTools()
+    const tool = tools.find(
+      t => t.definition.name === 'open_unsupported_request_issue',
+    )
+    expect(tool).toBeDefined()
+    expect(tool?.kind).toBe('write')
+    if (tool?.kind !== 'write') return
+    const result = await Effect.runPromise(
+      tool.execute({ ref: 'khala_unsupported:ur_issue_001' }),
+    )
+    expect(result).toContain('no ledger reader is wired')
   })
 
   test('the default table includes a read-kind get_unsupported_requests tool', () => {

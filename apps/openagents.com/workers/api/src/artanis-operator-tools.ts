@@ -2025,6 +2025,210 @@ export const makeArtanisUpdateUnsupportedRequestTool = (
 }
 
 // ---------------------------------------------------------------------------
+// open_unsupported_request_issue — CREATE + LINK one needs_issue ledger row.
+// ---------------------------------------------------------------------------
+//
+// The update tool above can only record a GitHub issue after an issue already
+// exists. This tool is the bounded outward-action companion for #6394: it reads
+// one `needs_issue` row, builds a public-safe strict-issue draft from the row,
+// asks an injected GitHub opener to create the issue, then marks the same ledger
+// row `issue_opened` with the returned public issue ref. If any seam is missing
+// or any step fails, it returns an honest blocker and never fabricates a link.
+
+export type ArtanisUnsupportedRequestIssueDraft = Readonly<{
+  body: string
+  labels: ReadonlyArray<string>
+  title: string
+}>
+
+export type ArtanisUnsupportedRequestIssueReceipt = Readonly<{
+  issueNumber: number
+  issueRef: string
+  issueUrl: string
+}>
+
+export type ArtanisUnsupportedRequestIssueOpener = (
+  draft: ArtanisUnsupportedRequestIssueDraft,
+) => Promise<ArtanisUnsupportedRequestIssueReceipt>
+
+export type ArtanisOpenUnsupportedRequestIssueConfig = Readonly<{
+  reader?: ArtanisUnsupportedRequestsReader | undefined
+  opener?: ArtanisUnsupportedRequestIssueOpener | undefined
+  writer?: ArtanisUnsupportedRequestWriter | undefined
+}>
+
+const unsupportedRequestIssueTitle = (
+  record: ArtanisUnsupportedRequestRecord,
+): string => {
+  const prefix = '[Khala unsupported] '
+  const collapsed = record.title.replace(/\s+/g, ' ').trim()
+  return `${prefix}${collapsed}`.slice(0, 180)
+}
+
+const unsupportedRequestIssueBody = (
+  record: ArtanisUnsupportedRequestRecord,
+): string =>
+  [
+    '## Unsupported request',
+    '',
+    record.summary.trim() === ''
+      ? record.title.trim()
+      : record.summary.replace(/\s+/g, ' ').trim(),
+    '',
+    '## Ledger link',
+    '',
+    `- Unsupported request ref: \`${record.requestRef}\``,
+    `- Triage kind: \`${record.triageKind}\``,
+    `- Source kind: \`${record.sourceKind}\``,
+    `- Opened by: \`open_unsupported_request_issue\``,
+    '',
+    'This issue was opened from the unsupported-request ledger. Keep discussion public-safe and move loose product-promise commentary back to the Product Promises Forum.',
+  ].join('\n')
+
+const buildUnsupportedRequestIssueDraft = (
+  record: ArtanisUnsupportedRequestRecord,
+): ArtanisUnsupportedRequestIssueDraft | null => {
+  const title = unsupportedRequestIssueTitle(record)
+  const body = unsupportedRequestIssueBody(record)
+  const labels = ['khala', 'unsupported-request']
+  const unsafe = [title, body, ...labels].find(
+    field => !dispatchFieldIsSafe(field),
+  )
+  if (unsafe !== undefined) return null
+  return { body, labels, title }
+}
+
+const formatOpenedUnsupportedRequestIssue = (
+  input: Readonly<{
+    issue: ArtanisUnsupportedRequestIssueReceipt
+    record: ArtanisUnsupportedRequestRecord
+    updated: ArtanisUnsupportedRequestRecord
+  }>,
+): string =>
+  [
+    `Opened GitHub issue ${input.issue.issueRef} for unsupported request ${input.record.requestRef}.`,
+    `- issue URL: ${input.issue.issueUrl}`,
+    `- status: ${input.updated.status}`,
+    `- linked issue: ${input.updated.githubIssueRef ?? input.issue.issueRef}`,
+    `- next action: ${input.updated.nextAction}`,
+  ].join('\n')
+
+export const makeArtanisOpenUnsupportedRequestIssueTool = (
+  config: ArtanisOpenUnsupportedRequestIssueConfig = {},
+): ArtanisOperatorWriteTool => {
+  const reader = config.reader
+  const opener = config.opener
+  const writer = config.writer
+
+  return {
+    definition: {
+      description:
+        'Open a real public GitHub issue for ONE unsupported-request ledger row whose status is needs_issue, then mark that row issue_opened with the returned issue ref. This is an outward write to the fixed public OpenAgents issue tracker plus an internal ledger update: it only runs through wired seams, only for bug/missing_capability rows, and never spends, deploys, or writes private material.',
+      name: 'open_unsupported_request_issue',
+      parameters: {
+        additionalProperties: false,
+        properties: {
+          ref: {
+            description:
+              'The unsupported-request ledger entry ref to open an issue for, e.g. "khala_unsupported:ur_...".',
+            type: 'string',
+          },
+        },
+        required: ['ref'],
+        type: 'object',
+      },
+    },
+    execute: (args: unknown) =>
+      Effect.gen(function* () {
+        const record =
+          typeof args === 'object' && args !== null
+            ? (args as Record<string, unknown>)
+            : {}
+        const ref = parseUpdateRef(record)
+        if (ref.kind === 'absent') {
+          return '(invalid arguments: a string "ref" is required)'
+        }
+        if (ref.kind === 'invalid') {
+          return `(blocked: "${ref.raw}" is not an allowed public-safe ledger ref)`
+        }
+        if (reader === undefined) {
+          return `(could not open issue for "${ref.value}": no ledger reader is wired)`
+        }
+        if (opener === undefined) {
+          return `(could not open issue for "${ref.value}": no GitHub issue opener is wired)`
+        }
+        if (writer === undefined) {
+          return `(could not open issue for "${ref.value}": no ledger writer is wired)`
+        }
+
+        const readExit = yield* Effect.exit(
+          Effect.tryPromise(() =>
+            reader({ limit: ARTANIS_UNSUPPORTED_REQUESTS_MAX_LIMIT, status: 'needs_issue' }),
+          ),
+        )
+        if (readExit._tag === 'Failure') {
+          return `(could not read unsupported-request ledger before opening issue for "${ref.value}")`
+        }
+        const existing = readExit.value.find(row => row.requestRef === ref.value)
+        if (existing === undefined) {
+          return `(not found: no needs_issue unsupported request matches ref "${ref.value}")`
+        }
+        if (existing.githubIssueRef !== null || existing.status !== 'needs_issue') {
+          return `(blocked: unsupported request "${ref.value}" is not waiting for an issue)`
+        }
+        if (
+          existing.triageKind !== 'bug' &&
+          existing.triageKind !== 'missing_capability'
+        ) {
+          return `(blocked: unsupported request "${ref.value}" must be triaged as bug or missing_capability before opening a GitHub issue)`
+        }
+        const draft = buildUnsupportedRequestIssueDraft(existing)
+        if (draft === null) {
+          return `(blocked: unsupported request "${ref.value}" cannot produce a public-safe GitHub issue draft)`
+        }
+
+        const issueExit = yield* Effect.exit(Effect.tryPromise(() => opener(draft)))
+        if (issueExit._tag === 'Failure') {
+          return `(could not open GitHub issue for "${ref.value}")`
+        }
+        const issue = issueExit.value
+        if (
+          !Number.isInteger(issue.issueNumber) ||
+          issue.issueNumber <= 0 ||
+          !dispatchFieldIsSafe(issue.issueRef) ||
+          !dispatchFieldIsSafe(issue.issueUrl)
+        ) {
+          return `(blocked: GitHub issue opener returned an invalid public issue receipt for "${ref.value}")`
+        }
+
+        const updateExit = yield* Effect.exit(
+          Effect.tryPromise(() =>
+            writer({
+              githubIssueRef: issue.issueRef,
+              ref: ref.value,
+              status: 'issue_opened',
+            }),
+          ),
+        )
+        if (updateExit._tag === 'Failure') {
+          return `(opened ${issue.issueRef}, but could not update unsupported-request ledger for "${ref.value}")`
+        }
+        const updated = updateExit.value
+        if (updated === null) {
+          return `(opened ${issue.issueRef}, but unsupported request "${ref.value}" was not found during ledger update)`
+        }
+
+        return formatOpenedUnsupportedRequestIssue({
+          issue,
+          record: existing,
+          updated,
+        })
+      }),
+    kind: 'write',
+  }
+}
+
+// ---------------------------------------------------------------------------
 // #6366 — dispatch_codex_task (GATED: pylon_job_dispatch).
 // ---------------------------------------------------------------------------
 //
@@ -3329,6 +3533,11 @@ export const makeArtanisGetSyntheticLoadStatusTool = (
 // is honest ("(could not update …: no ledger writer is wired)") rather than
 // inventive. It is a WRITE tool, not risky/gated: owner-scoped, internal-ledger-
 // only, with no spend/payout/deploy/delete/outward authority.
+// `unsupportedRequestIssueOpener` is the outward GitHub issue creation seam
+// behind `open_unsupported_request_issue` (#6394). With no opener wired the tool
+// is honest and does not mutate anything; when wired it opens a public issue only
+// after reading a needs_issue row and links the ledger row only after the opener
+// returns a concrete issue receipt.
 export const makeArtanisOperatorTools = (
   config: Readonly<{
     repoRead?: ArtanisRepoReadConfig | undefined
@@ -3339,6 +3548,9 @@ export const makeArtanisOperatorTools = (
     traceReview?: ArtanisTraceReviewConfig | undefined
     unsupportedRequests?: ArtanisUnsupportedRequestsConfig | undefined
     unsupportedRequestWriter?: ArtanisUnsupportedRequestWriter | undefined
+    unsupportedRequestIssueOpener?:
+      | ArtanisUnsupportedRequestIssueOpener
+      | undefined
     defaultBranch?: string | undefined
     networkStats?: ArtanisGetNetworkStatsConfig | undefined
     glmFleetStatus?: ArtanisGlmFleetStatusConfig | undefined
@@ -3375,6 +3587,11 @@ export const makeArtanisOperatorTools = (
     makeArtanisGetTraceReviewTool(config.traceReview),
     makeArtanisGetUnsupportedRequestsTool(config.unsupportedRequests),
     makeArtanisUpdateUnsupportedRequestTool({
+      writer: config.unsupportedRequestWriter,
+    }),
+    makeArtanisOpenUnsupportedRequestIssueTool({
+      opener: config.unsupportedRequestIssueOpener,
+      reader: config.unsupportedRequests?.reader,
       writer: config.unsupportedRequestWriter,
     }),
     makeArtanisDispatchCodexTaskTool({
