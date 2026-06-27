@@ -105,6 +105,32 @@ gates; tick read access to the open issues + #6356/#6357/#6358 + the feedback
 store; and the `inference-engineering-book` consultation as the recurring
 "what's next" source after the issue set drains. #6359 subsumes #6321.
 
+### Talking to Artanis (the operator channel) — #6363
+
+`I need to speak to Artanis` in the mobile app currently returns **Khala
+collective-intelligence roleplay** (the public `inference/khala-identity.ts`
+prompt treats "Artanis" as the StarCraft Hierarch — "Hierarch Artanis, leader of
+the Protoss... what message do you wish to send to the Hierarch?"), not the real
+operator agent. The owner must be able to converse with the **actual Artanis** and
+have it know itself. Required (#6363, under #6359):
+- **Owner-authenticated Artanis channel.** A "Talk to Artanis" mode/route (mobile +
+  CLI) that routes the OWNER to a grounded Artanis operator persona, bypassing the
+  public Khala identity. No roleplay; first person as the operator agent.
+- **Situational awareness.** Artanis answers "what are you doing?" from live state:
+  recent actions (its tick log, recent commits, Pylon-Codex assignments, issues
+  opened/closed), current goals (this roadmap + #6359/#6316/#6303), and ongoing
+  operations (active assignments, deploys, fleet readiness, public counter).
+- **Persistent owner-interaction memory.** Artanis remembers prior owner
+  conversations, decisions, and stated preferences across sessions (owner-scoped
+  memory store the channel reads + writes).
+- **Persona separation.** The public Khala identity stays collective-intelligence;
+  the Artanis operator persona is distinct + owner-only; spend/destructive still
+  gated by `artanis-approval-gates`.
+
+This is the human-facing front of the #6359 mandate: the owner steers the
+autonomous loop by talking to the agent that runs it, and Artanis answers grounded
+in what it has actually been doing — not training-data roleplay.
+
 ## Current status snapshot
 
 Refreshed from GitHub issue state, `origin/main`, live counter/proof reads, and
@@ -146,6 +172,7 @@ operator view of what remains, not a public product claim.
 | #6358 | **Closed** | Counter-health patch deployed through `deploy:safe` as Worker `95d3fcee-f740-477d-b3c4-368f198e8255`, then corrected by the monotonic-counter follow-up: public token-counter projections include all real served-token rows (`internal`, `internal_stress`, `own_capacity`, external, and unlabeled) while keeping demand labels out of the public payload; live sync deltas publish every fresh served-token row as refs + timestamps + counts; `scripts/khala-heartbeat.sh` / `scripts/khala-canary.sh` validate 200 + non-empty usage and monotonic/readable counter health, requiring counter movement by default even for internal probes. The local patched Pylon recovered stale assignment `assignment.public.khala_coding.chatcmpl_fd33103f7b4349218f9b0760e8ca5632` with closeout `assignment.closeout.cfd5d6dd9b2a6140f361a836`, then ran two same-Pylon assignments concurrently to accepted exact-token closeout (`assignment.public.khala_coding.chatcmpl_6d190807e87c4a558dac39a098a9d268`, 161,832 tokens; `assignment.public.khala_coding.chatcmpl_a2bd2121c00d4a2f8e63eb26f48f9148`, 128,873 tokens). Optional labeled in-flight estimate remains deferred. |
 | #6359 | **Open** | **NEW EPIC** — Artanis autonomously owns the whole Khala improvement loop (unblock users, ensure inference, drive #6355, act on feedback, consult `inference-engineering-book` once the set drains). Subsumes #6321; coordinates #6355/#6356/#6357/#6358 + the #6316 serving track. See the Artanis section. |
 | #6360 | **Open** | **NEW** — Artanis ingests + acts on Khala CLI `/feedback` (`khala_feedback` table): style→response-style change (owner-gated), capability gap→#6357→issue, bug→issue. |
+| #6363 | **Open** | **NEW** — operator console: speak to Artanis directly (owner-auth channel + situational awareness of recent actions/goals/ongoing ops + persistent owner-interaction memory), **not** the Khala collective-intelligence roleplay. The human-facing front of epic #6359. |
 | #6321 | **Open** | Artanis fleet-overseer control loop (heal/scale/stress/external-yield). Now scoped under the broader Artanis ownership epic #6359. |
 | #6354 | **Closed** | The execution-lane blocker is implemented: `assignment run-no-spend` publishes a best-effort heartbeat before polling/claiming, returns `diagnostic.assignment.presence_heartbeat_required` with the exact heartbeat command when refresh fails and admission remains stale, and maintains per-run active local assignment markers so `provider go-online --json` and heartbeat `load.coding.*.busy` reflect in-flight Codex/Claude runners. |
 
