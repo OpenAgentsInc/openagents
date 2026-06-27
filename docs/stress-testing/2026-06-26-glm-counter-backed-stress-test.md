@@ -220,17 +220,106 @@ capacity. The follow-up code fix excludes degraded replicas from reserved
 external headroom. Post-deploy proof still must rerun this external-wins probe
 and require scheduler-preemption metadata before #6318 can close.
 
+## 2026-06-27 Ramp Continuation
+
+Readiness immediately before the continuation:
+
+- `GET /v1/gateway/readiness` was ready with one servable Hydralisk model.
+- `GET /v1/gateway/glm-fleet/readiness` reported `10` configured replicas,
+  `2` ready replicas, `2` total ready inflight slots, `8` reclaimed replicas,
+  and `0` warm replicas.
+- The ready replicas were `g4-4g-b-20260625154532` and
+  `g4-8g-b-20260624214500`, each with `maxInflight=1`.
+
+Public-gateway ramp through `POST /v1/chat/completions`, model
+`openagents/khala`, and
+`internal_stress` / `glm-saturation` / `stress-harness-ramp`:
+
+| Wave | Concurrency | Max tokens | Requests OK | Response tokens | Served backend | Public counter proof |
+| --- | ---: | ---: | ---: | ---: | --- | --- |
+| 1 | `1` | `512` | `1` | `1134` | Fireworks DeepSeek | exact `+1134` |
+| 2 | `2` | `2048` | `2` | `5340` | Fireworks DeepSeek | counter moved `+5965`; `5340` attributable to these responses, remainder concurrent live traffic |
+| 3 | `4` | `4096` | `4` | `16898` | Fireworks DeepSeek | exact `+16898` |
+
+Gateway ramp total from completed waves: `23372` counted tokens, all served by
+Fireworks DeepSeek, `0` served by GLM. The public counter path held, but the
+deployed stress route still did not land on GLM. Wave 4 was stopped after the
+pattern was clear to avoid burning fallback capacity.
+
+Direct Hydralisk GLM saturation then targeted the two ready replicas directly
+for an eight-minute single-flight pass. These direct calls are raw replica
+diagnostics, not public-gateway acceptance traffic, unless and until exact usage
+is written to the served-token ledger.
+
+| Replica | Result | Exact tokens |
+| --- | --- | ---: |
+| `g4-4g-b-20260625154532` | `93` requests, `0` OK, `93` HTTP `500`; the public readiness endpoint marked it ready, but completions were functionally unavailable | `0` |
+| `g4-8g-b-20260624214500` | `6` requests, `5` OK, `1` timeout; three full `8192`-completion responses, one short early-stop response, and a tiny probe | `25130` |
+
+The useful 8-GPU replica produced:
+
+- input tokens: `438`
+- output tokens: `24692`
+- total tokens: `25130`
+- long full-budget successes: three responses of `8280` total tokens each
+  (`88` prompt + `8192` completion)
+- long-response latency: roughly `146s` to `161s` per full decode
+
+I inserted the exact direct GLM usage as one idempotent retro row in production
+D1:
+
+- idempotency key:
+  `inference:served-tokens:retro.issue-6317.direct-glm.ramp-20260627T041023Z`
+- provider/backend: `hydralisk-vllm-glm-5p2-reap-504b`
+- model: `openagents/glm-5.2-reap-504b`
+- usage truth: `exact`
+- demand label: `internal_stress` / `glm-saturation` /
+  `direct-hydralisk-stress-ramp`
+- tokens: `438` input + `24692` output = `25130`
+
+Public projection proof for that row:
+
+- before backfill: `416298311`
+- after backfill: `416323441`
+- exact delta: `25130`
+
+Follow-up public reads after the continuation:
+
+- `GET /api/public/khala-tokens-served` returned `416324542` at
+  `2026-06-27T04:21:08.122Z`.
+- `GET /api/public/khala-tokens-served/model-mix?window=all` returned
+  `GLM family = 75874053` tokens and `totalTokens = 416324542` at
+  `2026-06-27T04:21:33.257Z`.
+
+Continuation totals:
+
+- public-gateway ramp tokens generated and counted: `23372`
+- public-gateway GLM tokens: `0`
+- direct GLM tokens generated: `25130`
+- direct GLM tokens retro-recorded into the public counter: `25130`
+- current-session direct GLM total including the earlier `4298`: `29428`
+
+Most important finding: the problem is no longer whether stress traffic can
+increment `/stats` and `/khala`; it can. The active blocker is GLM routing and
+replica health. Public tagged stress traffic still falls through to Fireworks,
+and the fleet readiness projection has at least one false-ready 4-GPU replica
+that returns fast `500`s under completions.
+
 ## Next Stress Step
 
-For the next stress pass, rerun the counter proof with a larger bounded
-completion shape:
+For the next stress pass, fix the GLM lane before increasing public-gateway
+concurrency:
 
-1. Read `/api/public/khala-tokens-served`.
-2. Send `openagents/khala` via `/v1/chat/completions` with
-   `internal_stress` / `glm-saturation` / `stress-harness`.
-3. Require `openagents.worker === hydralisk-vllm-glm-5p2-reap-504b`.
-4. Require the public counter delta to be at least `usage.total_tokens`.
-5. Only then scale concurrency.
+1. Make tagged `internal_stress` / `glm-saturation` Khala requests select the
+   GLM pool in production, not Fireworks, unless every GLM candidate fails.
+2. Mark or route around `g4-4g-b-20260625154532` until a real completion probe
+   succeeds; `/health` + `/v1/models` readiness is not enough.
+3. Retry within the GLM pool across ready replicas before falling back to
+   non-GLM providers.
+4. Re-run the public counter proof and require
+   `openagents.worker === hydralisk-vllm-glm-5p2-reap-504b`.
+5. Require the public counter delta to be at least `usage.total_tokens`, then
+   scale concurrency.
 
 Do not count direct Hydralisk tokens toward #6317 acceptance unless a separate
 server-side recorder path writes the same public-safe served-token ledger rows.
