@@ -900,3 +900,196 @@ describe('POST /api/operator/artanis/chat — get_pylon_job_status acceptance', 
   })
 })
 
+// ---------------------------------------------------------------------------
+// update_unsupported_request acceptance — Artanis's iteration-9 self-improvement
+// capability drives the REAL bounded tool-calling loop through the chat
+// endpoint. iteration-8 lets him READ the unsupported-request ledger; this lets
+// him ACT on it in the same turn — moving a gap entry through its lifecycle and
+// linking the GitHub issue he dispatched to fix it. Owner-scoped, Khala-powered,
+// internal-ledger-only (no spend/destructive/outward authority).
+// ---------------------------------------------------------------------------
+
+// A scripted Khala client: round 1 asks for update_unsupported_request with the
+// triage change; round 2 reads the tool result it received and summarizes the
+// change. The reply only carries the real updated state IF the loop executed the
+// write tool and fed the result back — that is the end-to-end acceptance.
+const makeTriageThenSummarizeKhalaClient = (args: unknown) => {
+  const requests: Array<InferenceRequest> = []
+  let round = 0
+  const client = (request: InferenceRequest) => {
+    requests.push(request)
+    round += 1
+    if (round === 1) {
+      return Effect.succeed(
+        toolCallResult('update_unsupported_request', JSON.stringify(args)),
+      )
+    }
+    const toolResult = lastToolResultContent(request) ?? ''
+    const statusLine =
+      toolResult.split('\n').find(line => line.startsWith('- status:')) ?? ''
+    const issueLine =
+      toolResult
+        .split('\n')
+        .find(line => line.startsWith('- linked issue:')) ?? ''
+    return Effect.succeed({
+      content: `Done. I moved that gap to ${statusLine.replace('- status: ', '')} and ${issueLine.replace('- ', '')}.`,
+      finishReason: 'stop' as const,
+      servedModel: 'gpt-oss-120b',
+      usage: { completionTokens: 20, promptTokens: 300, totalTokens: 320 },
+    } satisfies InferenceResult)
+  }
+  return { client, requests }
+}
+
+describe('POST /api/operator/artanis/chat — update_unsupported_request acceptance', () => {
+  test('triages gap_987 to issue_opened and links issue 6310 through the loop (write, executed, non-risky)', async () => {
+    const KNOWN_REF = 'gap_987'
+    const { client, requests } = makeTriageThenSummarizeKhalaClient({
+      issue: 6310,
+      ref: KNOWN_REF,
+      status: 'issue_opened',
+    })
+
+    let received: unknown
+    const { deps } = baseDeps({
+      makeKhalaClient: () => client,
+      makeOperatorTools: () =>
+        makeArtanisOperatorTools({
+          // Injected writer: resolves the KNOWN ref, applies the merge, and
+          // returns the updated public-safe record (issue_opened -> next 'none').
+          unsupportedRequestWriter: async update => {
+            received = update
+            if (update.ref !== KNOWN_REF) return null
+            return {
+              githubIssueRef:
+                update.githubIssueRef ?? null,
+              nextAction: 'none',
+              requestRef: KNOWN_REF,
+              sourceKind: 'trace_review',
+              status: update.status ?? 'needs_issue',
+              summary:
+                'Users want Khala to read their local git diff before answering.',
+              title: 'Khala cannot read the local git diff',
+              triageKind: 'missing_capability',
+              updatedAt: 'just now',
+            }
+          },
+        }),
+    })
+
+    const response = await runRoute(
+      deps,
+      post({
+        messages: [
+          {
+            content:
+              'Triage unsupported request gap_987 to issue_opened and link issue 6310',
+            role: 'user',
+          },
+        ],
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    const json = (await response.json()) as Record<string, unknown>
+
+    // The loop executed update_unsupported_request — executed:true, NON-RISKY (a
+    // write tool: not deferred to the approval gate, no risky-action kind).
+    const invocations = json.toolInvocations as ReadonlyArray<{
+      name: string
+      executed: boolean
+      deferredToApprovalGate: boolean
+      riskyActionKind: string | null
+    }>
+    const triageInvocation = invocations.find(
+      invocation => invocation.name === 'update_unsupported_request',
+    )
+    expect(triageInvocation).toBeDefined()
+    expect(triageInvocation?.executed).toBe(true)
+    expect(triageInvocation?.deferredToApprovalGate).toBe(false)
+    expect(triageInvocation?.riskyActionKind).toBeNull()
+
+    // The tool handed the writer the validated, normalized update.
+    expect(received).toEqual({
+      githubIssueRef: 'OpenAgentsInc/openagents#6310',
+      ref: 'gap_987',
+      status: 'issue_opened',
+      triageKind: undefined,
+    })
+
+    // At least two Khala calls (request the tool -> feed result -> reply).
+    expect(json.iterations as number).toBeGreaterThanOrEqual(2)
+
+    // The final reply summarizes the REAL triage change sourced from the tool.
+    expect(json.reply as string).toContain('issue_opened')
+    expect(json.reply as string).toContain('OpenAgentsInc/openagents#6310')
+
+    // Persona separation holds; dogfood via Khala; not deferred to a gate.
+    expect((json.persona as { satisfied: boolean }).satisfied).toBe(true)
+    expect(json.servedVia).toBe('openagents_khala')
+    expect(json.requestedModel).toBe('openagents/khala')
+    expect(json.deferredToApprovalGate).toBe(false)
+
+    // The second Khala request carried the updated record block back into context.
+    expect(
+      requests[1]?.messages.some(
+        message =>
+          message.role === 'tool' &&
+          message.content.includes('Updated unsupported request gap_987') &&
+          message.content.includes('OpenAgentsInc/openagents#6310'),
+      ),
+    ).toBe(true)
+  })
+
+  test('an unknown ref reads as honest "(not found …)", never a fabricated update', async () => {
+    const requests: Array<InferenceRequest> = []
+    let round = 0
+    const client = (request: InferenceRequest) => {
+      requests.push(request)
+      round += 1
+      if (round === 1) {
+        return Effect.succeed(
+          toolCallResult(
+            'update_unsupported_request',
+            JSON.stringify({ ref: 'gap_missing', status: 'closed' }),
+          ),
+        )
+      }
+      return Effect.succeed({
+        content: lastToolResultContent(request) ?? '',
+        finishReason: 'stop' as const,
+        servedModel: 'gpt-oss-120b',
+        usage: { completionTokens: 5, promptTokens: 50, totalTokens: 55 },
+      } satisfies InferenceResult)
+    }
+    const { deps } = baseDeps({
+      makeKhalaClient: () => client,
+      makeOperatorTools: () =>
+        makeArtanisOperatorTools({
+          unsupportedRequestWriter: async () => null,
+        }),
+    })
+
+    const response = await runRoute(
+      deps,
+      post({
+        messages: [
+          { content: 'Close unsupported request gap_missing', role: 'user' },
+        ],
+      }),
+    )
+    expect(response.status).toBe(200)
+    const json = (await response.json()) as Record<string, unknown>
+    const invocations = json.toolInvocations as ReadonlyArray<{
+      name: string
+      executed: boolean
+    }>
+    expect(
+      invocations.find(
+        invocation => invocation.name === 'update_unsupported_request',
+      )?.executed,
+    ).toBe(true)
+    expect(json.reply as string).toContain('not found')
+  })
+})
+

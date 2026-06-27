@@ -112,7 +112,10 @@ import {
 import { makeArtanisGlmFleetStatusLoader } from './artanis-operator-glm-fleet-status'
 import { makeArtanisKhalaFeedbackReader } from './artanis-operator-khala-feedback'
 import { makeArtanisOperatorTools } from './artanis-operator-tools'
-import { makeArtanisUnsupportedRequestsReader } from './artanis-operator-unsupported-requests'
+import {
+  makeArtanisUnsupportedRequestsReader,
+  makeArtanisUnsupportedRequestWriter,
+} from './artanis-operator-unsupported-requests'
 import { saveArtanisForumPublicationIntent } from './artanis-persistence'
 import { handlePublicArtanisReportApi } from './artanis-public-report-routes'
 import { runArtanisComposerScheduled } from './artanis-reply-composer'
@@ -8619,6 +8622,16 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
           store: makeD1KhalaUnsupportedRequestStore(openAgentsDatabase(env)),
         }),
       },
+      // iteration-9: the owner-scoped unsupported-request ledger WRITE/TRIAGE
+      // tool. Lets Artanis move a capability-gap entry through its lifecycle
+      // (e.g. needs_issue -> issue_opened -> closed), set its triage kind, and
+      // link the GitHub issue dispatched to fix it — in the SAME turn he reads
+      // the gap (#6357). Owner-scoped, internal-ledger-only: no spend, payout,
+      // deploy, delete, or outward action.
+      unsupportedRequestWriter: makeArtanisUnsupportedRequestWriter({
+        nowIso: currentIsoTimestamp,
+        store: makeD1KhalaUnsupportedRequestStore(openAgentsDatabase(env)),
+      }),
       dispatchExecution: makeArtanisDispatchExecution({
         listLinkedAgentUserIds,
         makeId: () => compactRandomId('artanis_dispatch'),

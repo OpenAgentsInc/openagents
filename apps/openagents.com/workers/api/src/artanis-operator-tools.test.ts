@@ -27,6 +27,7 @@ import {
   makeArtanisReadGithubIssueTool,
   makeArtanisReadRepoFileTool,
   makeArtanisTriggerSyntheticLoadTool,
+  makeArtanisUpdateUnsupportedRequestTool,
   normalizeArtanisGlmFleetStatus,
   parseArtanisAssignmentRef,
   parseArtanisIssueNumber,
@@ -1175,6 +1176,183 @@ describe('get_unsupported_requests (owner-scoped unsupported-request ledger read
   })
 })
 
+describe('update_unsupported_request (owner-scoped ledger triage WRITE) — iteration 9', () => {
+  // The existing ledger entry the fake writer triages. The writer echoes the
+  // merged change back as the updated record, mirroring the real store.
+  const baseRow: ArtanisUnsupportedRequestRecord = {
+    githubIssueRef: null,
+    nextAction: 'open_github_issue',
+    requestRef: 'gap_987',
+    sourceKind: 'trace_review',
+    status: 'needs_issue',
+    summary: 'Users want Khala to read their local git diff before answering.',
+    title: 'Khala cannot read the local git diff',
+    triageKind: 'missing_capability',
+    updatedAt: '2026-06-27T11:00:00.000Z',
+  }
+
+  // A fake writer that resolves ONLY the known ref, applies the merged change,
+  // and recomputes nextAction the way the real ledger does (issue_opened ->
+  // 'none'). Any other ref is honest absence (null).
+  const makeFakeWriter = () => {
+    const calls: Array<unknown> = []
+    const writer = async (
+      update: import('./artanis-operator-tools').ArtanisUnsupportedRequestUpdate,
+    ): Promise<ArtanisUnsupportedRequestRecord | null> => {
+      calls.push(update)
+      if (update.ref !== baseRow.requestRef) return null
+      const status = update.status ?? baseRow.status
+      const githubIssueRef = update.githubIssueRef ?? baseRow.githubIssueRef
+      const triageKind = update.triageKind ?? baseRow.triageKind
+      const nextAction =
+        status === 'issue_opened' || status === 'closed' || status === 'wont_do'
+          ? ('none' as const)
+          : baseRow.nextAction
+      return {
+        ...baseRow,
+        githubIssueRef,
+        nextAction,
+        status,
+        triageKind,
+        updatedAt: '2026-06-27T12:00:00.000Z',
+      }
+    }
+    return { calls, writer }
+  }
+
+  test('it is a WRITE tool (executes freely; not gated/risky)', () => {
+    const tool = makeArtanisUpdateUnsupportedRequestTool({})
+    expect(tool.kind).toBe('write')
+    expect(tool.definition.name).toBe('update_unsupported_request')
+  })
+
+  test('triages a known entry to issue_opened and links the issue, returning the updated record', async () => {
+    const { calls, writer } = makeFakeWriter()
+    const tool = makeArtanisUpdateUnsupportedRequestTool({ writer })
+    const result = await Effect.runPromise(
+      tool.execute({ issue: 6310, ref: 'gap_987', status: 'issue_opened' }),
+    )
+    // The writer received the validated, normalized update.
+    expect(calls).toEqual([
+      {
+        githubIssueRef: 'OpenAgentsInc/openagents#6310',
+        ref: 'gap_987',
+        status: 'issue_opened',
+        triageKind: undefined,
+      },
+    ])
+    expect(result).toContain('Updated unsupported request gap_987')
+    expect(result).toContain('status: issue_opened')
+    expect(result).toContain('linked issue: OpenAgentsInc/openagents#6310')
+    expect(result).toContain('next action: none')
+  })
+
+  test('validates the ref: absent reads invalid arguments; unsafe reads blocked', async () => {
+    const { writer } = makeFakeWriter()
+    const tool = makeArtanisUpdateUnsupportedRequestTool({ writer })
+    expect(
+      await Effect.runPromise(tool.execute({ status: 'closed' })),
+    ).toContain('invalid arguments')
+    const blocked = await Effect.runPromise(
+      tool.execute({ ref: '../../etc/passwd', status: 'closed' }),
+    )
+    expect(blocked).toContain('blocked')
+    expect(blocked).not.toMatch(/Error:/)
+  })
+
+  test('rejects an unknown status value (blocked, never coerced)', async () => {
+    const { calls, writer } = makeFakeWriter()
+    const tool = makeArtanisUpdateUnsupportedRequestTool({ writer })
+    const result = await Effect.runPromise(
+      tool.execute({ ref: 'gap_987', status: 'banana' }),
+    )
+    expect(result).toContain('blocked')
+    expect(result).toContain('not a valid status')
+    // It never reached the writer.
+    expect(calls).toEqual([])
+  })
+
+  test('rejects an unknown triage kind (blocked, never coerced)', async () => {
+    const { calls, writer } = makeFakeWriter()
+    const tool = makeArtanisUpdateUnsupportedRequestTool({ writer })
+    const result = await Effect.runPromise(
+      tool.execute({ ref: 'gap_987', triageKind: 'whatever' }),
+    )
+    expect(result).toContain('blocked')
+    expect(result).toContain('not a valid triage kind')
+    expect(calls).toEqual([])
+  })
+
+  test('rejects a non-public-safe linked-issue field (blocked)', async () => {
+    const { calls, writer } = makeFakeWriter()
+    const tool = makeArtanisUpdateUnsupportedRequestTool({ writer })
+    const result = await Effect.runPromise(
+      tool.execute({
+        githubIssueRef: 'token=bearer_secret_leak',
+        ref: 'gap_987',
+      }),
+    )
+    expect(result).toContain('blocked')
+    expect(result).not.toContain('bearer')
+    expect(calls).toEqual([])
+  })
+
+  test('requires at least one change field', async () => {
+    const { calls, writer } = makeFakeWriter()
+    const tool = makeArtanisUpdateUnsupportedRequestTool({ writer })
+    const result = await Effect.runPromise(tool.execute({ ref: 'gap_987' }))
+    expect(result).toContain('at least one')
+    expect(calls).toEqual([])
+  })
+
+  test('an unknown ref reads as honest "(not found …)", never invention', async () => {
+    const { writer } = makeFakeWriter()
+    const tool = makeArtanisUpdateUnsupportedRequestTool({ writer })
+    const result = await Effect.runPromise(
+      tool.execute({ ref: 'gap_does_not_exist', status: 'closed' }),
+    )
+    expect(result).toContain('not found')
+    expect(result).toContain('gap_does_not_exist')
+  })
+
+  test('a writer rejection reads as a soft failure, never a throw', async () => {
+    const tool = makeArtanisUpdateUnsupportedRequestTool({
+      writer: async () => {
+        throw new Error('d1 down')
+      },
+    })
+    const result = await Effect.runPromise(
+      tool.execute({ ref: 'gap_987', status: 'closed' }),
+    )
+    expect(result).toContain('could not update')
+    expect(result).not.toMatch(/Error:/)
+  })
+
+  test('with no writer wired the tool is honest, not inventive', async () => {
+    const tool = makeArtanisUpdateUnsupportedRequestTool({})
+    const result = await Effect.runPromise(
+      tool.execute({ ref: 'gap_987', status: 'closed' }),
+    )
+    expect(result).toContain('no ledger writer is wired')
+  })
+
+  test('accepts an explicit bare numeric githubIssueRef and normalizes it', async () => {
+    const { calls, writer } = makeFakeWriter()
+    const tool = makeArtanisUpdateUnsupportedRequestTool({ writer })
+    await Effect.runPromise(
+      tool.execute({ githubIssueRef: '6310', ref: 'gap_987' }),
+    )
+    expect(calls).toEqual([
+      {
+        githubIssueRef: 'OpenAgentsInc/openagents#6310',
+        ref: 'gap_987',
+        status: undefined,
+        triageKind: undefined,
+      },
+    ])
+  })
+})
+
 describe('parseArtanisAssignmentRef + isSafeArtanisAssignmentRef', () => {
   test('accepts a ref under several key aliases', () => {
     expect(parseArtanisAssignmentRef({ assignmentRef: 'a.b.c' })).toEqual({
@@ -1600,7 +1778,17 @@ describe('makeArtanisOperatorTools default table', () => {
       'read_github_issue',
       'read_repo_file',
       'trigger_synthetic_load',
+      'update_unsupported_request',
     ])
+  })
+
+  test('the default table includes a write-kind update_unsupported_request tool', () => {
+    const tools = makeArtanisOperatorTools()
+    const tool = tools.find(
+      t => t.definition.name === 'update_unsupported_request',
+    )
+    expect(tool).toBeDefined()
+    expect(tool?.kind).toBe('write')
   })
 
   test('the default table includes a read-kind get_unsupported_requests tool', () => {

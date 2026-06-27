@@ -386,6 +386,21 @@ export type ArtanisOperatorReadTool = Readonly<{
   execute: (args: unknown) => Effect.Effect<string>
 }>
 
+// A write tool: like a read tool it executes freely in the loop (it is NOT
+// gated/risky), but it is allowed to MUTATE owner-scoped, NON-spend,
+// NON-destructive, NON-outward internal state (e.g. moving an unsupported-request
+// ledger entry through its triage lifecycle). It returns the public-safe result
+// text fed back as the `tool` message. The authority boundary still holds:
+// anything that spends, deploys, pays out, deletes, or reaches outside our own
+// owner-scoped ledgers MUST be a `risky`/`gated` tool instead — a write tool
+// must never carry that authority. An empty/absent/not-found result returns an
+// honest "(…)"-style string, never invention.
+export type ArtanisOperatorWriteTool = Readonly<{
+  kind: 'write'
+  definition: ArtanisOperatorToolDefinition
+  execute: (args: unknown) => Effect.Effect<string>
+}>
+
 // A risky (spend/destructive) tool: NEVER executes in the loop. `plan` is pure
 // and returns a public-safe description of the exact action it WOULD take.
 export type ArtanisOperatorRiskyTool = Readonly<{
@@ -442,6 +457,7 @@ export type ArtanisOperatorGatedTool = Readonly<{
 
 export type ArtanisOperatorTool =
   | ArtanisOperatorReadTool
+  | ArtanisOperatorWriteTool
   | ArtanisOperatorRiskyTool
   | ArtanisOperatorGatedTool
 
@@ -632,7 +648,11 @@ const runToolCall = (
   Effect.gen(function* () {
     const args = parseToolArguments(toolCall.function.arguments)
 
-    if (tool.kind === 'read') {
+    // Read and write tools both execute freely and return text. A write tool is
+    // allowed to mutate owner-scoped, non-spend/non-destructive internal state
+    // (e.g. the unsupported-request triage ledger); neither carries spend,
+    // payout, deploy, delete, or outward authority — that stays risky/gated.
+    if (tool.kind === 'read' || tool.kind === 'write') {
       const result = yield* Effect.exit(tool.execute(args))
       const content =
         result._tag === 'Success'

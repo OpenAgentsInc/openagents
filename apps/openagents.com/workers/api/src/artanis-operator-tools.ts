@@ -37,6 +37,7 @@ import type {
   ArtanisOperatorReadTool,
   ArtanisOperatorRiskyTool,
   ArtanisOperatorTool,
+  ArtanisOperatorWriteTool,
   ArtanisRiskyActionKind,
 } from './artanis-operator'
 import {
@@ -1401,6 +1402,321 @@ export const makeArtanisGetUnsupportedRequestsTool = (
 }
 
 // ---------------------------------------------------------------------------
+// update_unsupported_request — WRITE/TRIAGE the live unsupported-request ledger
+// (the user-facing capability gaps that block Khala adoption, #6357).
+//
+// This is Artanis's iteration-9 self-improvement capability. iteration-8
+// (`get_unsupported_requests`) lets him READ the ledger but he could not ACT on
+// it — every triage decision had to round-trip through a human updating the
+// ledger out of band. This WRITE tool closes that loop: in the SAME turn he
+// reads a gap he can move it through its lifecycle (e.g. needs_issue ->
+// issue_opened -> closed), reset its triage kind, and link the GitHub issue he
+// dispatched to fix it. That directly accelerates flip-product-promises-green
+// and adoption — the levers behind the 10x-daily-Khala-token goal — instead of
+// leaving the loop open.
+//
+// Authority discipline — this is a WRITE tool, NOT a risky/gated one, and it is
+// safe to execute freely BECAUSE every effect is conservative by construction:
+//   - OWNER-SCOPED + INTERNAL ONLY. It only mutates rows in the same admin-gated
+//     `khala_unsupported_requests` ledger the operator route owns. It NEVER
+//     spends, pays out, deploys, deletes, opens a real GitHub issue, posts to a
+//     forum, or reaches any outward/third-party surface. (Opening the GitHub
+//     issue itself stays a separate gated/manual action; this tool only RECORDS
+//     the link once the issue exists.)
+//   - BOUNDED + VALIDATED. The ref must be a public-safe ref-shaped token; the
+//     status and triage-kind must be members of the bounded enums; the linked
+//     issue must normalize to a public-safe `owner/repo#N` ref. An unknown enum
+//     value or non-public-safe field is BLOCKED (never silently coerced), and at
+//     least one change field is required.
+//   - HONEST ABSENCE. An unknown ref reads "(not found …)"; a writer rejection
+//     reads "(could not update …)"; with no writer wired it is honest rather
+//     than inventive. It NEVER fabricates an "updated" result.
+// ---------------------------------------------------------------------------
+
+// The bounded set of triage kinds a model may set on a ledger entry. Mirrors the
+// `KhalaUnsupportedRequestTriageKind` literals in `khala-unsupported-request-
+// routes.ts`. Anything else is BLOCKED (never coerced).
+export const ARTANIS_UNSUPPORTED_REQUEST_TRIAGE_KINDS = [
+  'needs_triage',
+  'bug',
+  'missing_capability',
+  'wont_do',
+] as const
+export type ArtanisUnsupportedRequestTriageKind =
+  (typeof ARTANIS_UNSUPPORTED_REQUEST_TRIAGE_KINDS)[number]
+
+// The fixed public repo a bare issue NUMBER is linked against (mirrors the
+// repo-read tools). A model passing `issue: 6310` links
+// `OpenAgentsInc/openagents#6310`.
+const ARTANIS_UNSUPPORTED_REQUEST_ISSUE_REPO = `${ARTANIS_REPO_READ_OWNER}/${ARTANIS_REPO_READ_REPO}`
+
+// The validated, public-safe triage update the write tool hands to the writer
+// seam. `ref` is the ledger entry to mutate; the optional fields are the changes
+// to apply (only the present ones change). Every field has already passed the
+// public-safety + enum gates.
+export type ArtanisUnsupportedRequestUpdate = Readonly<{
+  ref: string
+  status?: ArtanisUnsupportedRequestStatus | undefined
+  triageKind?: ArtanisUnsupportedRequestTriageKind | undefined
+  // The public-safe linked GitHub issue ref, e.g. `OpenAgentsInc/openagents#6310`.
+  githubIssueRef?: string | undefined
+}>
+
+// The injected, owner-scoped writer seam. Given a validated update it applies the
+// change to the owner's `khala_unsupported_requests` ledger and resolves the
+// UPDATED public-safe record projection, or `null` when no entry matches the ref
+// (honest absence — it must never fabricate or create a row). A thrown rejection
+// is treated by the tool as a soft write failure, never a fabricated result. The
+// production writer (`artanis-operator-unsupported-requests.ts`) reads the
+// existing row from the admin-gated store, merges the change, and upserts it.
+export type ArtanisUnsupportedRequestWriter = (
+  update: ArtanisUnsupportedRequestUpdate,
+) => Promise<ArtanisUnsupportedRequestRecord | null>
+
+export type ArtanisUpdateUnsupportedRequestConfig = Readonly<{
+  writer?: ArtanisUnsupportedRequestWriter | undefined
+}>
+
+// The parse outcome for the model-produced ref argument: ABSENT (no ref field ->
+// honest "invalid arguments"), INVALID (present but unsafe/empty -> honest
+// "(blocked …)"), or VALID.
+type ArtanisUpdateRefArg =
+  | Readonly<{ kind: 'ref'; value: string }>
+  | Readonly<{ kind: 'absent' }>
+  | Readonly<{ kind: 'invalid'; raw: string }>
+
+const parseUpdateRef = (record: Record<string, unknown>): ArtanisUpdateRefArg => {
+  const raw = record.ref ?? record.requestRef ?? record.request_ref
+  if (raw === undefined || raw === null) return { kind: 'absent' }
+  if (typeof raw !== 'string') return { kind: 'invalid', raw: String(raw) }
+  const trimmed = raw.trim()
+  if (trimmed === '') return { kind: 'absent' }
+  // A ledger ref is the same public-safe ref shape the read tool validates.
+  return isSafeArtanisAssignmentRef(trimmed)
+    ? { kind: 'ref', value: trimmed }
+    : { kind: 'invalid', raw: trimmed }
+}
+
+// The parse outcome for an optional enum field: ABSENT (not provided), INVALID
+// (provided but not in the bounded enum -> BLOCKED), or VALID. Unlike the READ
+// tool's optional status filter (which silently ignores an unknown value), the
+// WRITE tool BLOCKS an unknown enum so it can never persist a bogus state.
+type ArtanisUpdateEnumArg<T> =
+  | Readonly<{ kind: 'value'; value: T }>
+  | Readonly<{ kind: 'absent' }>
+  | Readonly<{ kind: 'invalid'; raw: string }>
+
+const parseUpdateEnum = <T extends string>(
+  raw: unknown,
+  allowed: ReadonlyArray<T>,
+): ArtanisUpdateEnumArg<T> => {
+  if (raw === undefined || raw === null) return { kind: 'absent' }
+  if (typeof raw !== 'string') return { kind: 'invalid', raw: String(raw) }
+  const trimmed = raw.trim().toLowerCase()
+  if (trimmed === '') return { kind: 'absent' }
+  return (allowed as ReadonlyArray<string>).includes(trimmed)
+    ? { kind: 'value', value: trimmed as T }
+    : { kind: 'invalid', raw: trimmed }
+}
+
+// The parse outcome for the optional linked-issue field. ABSENT, INVALID
+// (BLOCKED — not a positive number / not a public-safe ref), or VALID (a
+// normalized public-safe `owner/repo#N` or a passed-through public-safe ref).
+type ArtanisUpdateIssueArg =
+  | Readonly<{ kind: 'ref'; value: string }>
+  | Readonly<{ kind: 'absent' }>
+  | Readonly<{ kind: 'invalid'; raw: string }>
+
+// Accepts `issue` as a positive integer (or `#`/bare numeric string) and
+// normalizes it to `OpenAgentsInc/openagents#N`, OR an explicit public-safe issue
+// ref string via `githubIssueRef`/`issue_ref`. A non-public-safe or malformed
+// value is BLOCKED.
+const parseUpdateIssue = (
+  record: Record<string, unknown>,
+): ArtanisUpdateIssueArg => {
+  const numeric = record.issue ?? record.issueNumber ?? record.issue_number
+  if (typeof numeric === 'number') {
+    return Number.isInteger(numeric) && numeric > 0
+      ? { kind: 'ref', value: `${ARTANIS_UNSUPPORTED_REQUEST_ISSUE_REPO}#${numeric}` }
+      : { kind: 'invalid', raw: String(numeric) }
+  }
+  const explicit =
+    record.githubIssueRef ?? record.github_issue_ref ?? record.issueRef ??
+    record.issue_ref ?? (typeof numeric === 'string' ? numeric : undefined)
+  if (explicit === undefined || explicit === null) return { kind: 'absent' }
+  if (typeof explicit !== 'string') {
+    return { kind: 'invalid', raw: String(explicit) }
+  }
+  const trimmed = explicit.trim()
+  if (trimmed === '') return { kind: 'absent' }
+  // A bare `6310` or `#6310` -> normalized repo ref.
+  if (/^#?\d+$/.test(trimmed)) {
+    const n = Number.parseInt(trimmed.replace(/^#/, ''), 10)
+    return n > 0
+      ? { kind: 'ref', value: `${ARTANIS_UNSUPPORTED_REQUEST_ISSUE_REPO}#${n}` }
+      : { kind: 'invalid', raw: trimmed }
+  }
+  // An explicit ref must be public-safe AND ref-shaped.
+  return dispatchFieldIsSafe(trimmed) && isSafeArtanisAssignmentRef(trimmed)
+    ? { kind: 'ref', value: trimmed }
+    : { kind: 'invalid', raw: trimmed }
+}
+
+// Format the UPDATED ledger record as a bounded, public-safe confirmation block
+// naming the new triage/status/next-action/linked-issue so the model can
+// summarize the change honestly. Defensively gates each structured field.
+const formatUpdatedUnsupportedRequest = (
+  record: ArtanisUnsupportedRequestRecord,
+): string => {
+  const issue =
+    record.githubIssueRef !== null && dispatchFieldIsSafe(record.githubIssueRef)
+      ? record.githubIssueRef
+      : '(none)'
+  const safe = (value: string): string =>
+    dispatchFieldIsSafe(value) ? value : '(redacted)'
+  return [
+    `Updated unsupported request ${record.requestRef}:`,
+    `- status: ${safe(record.status)}`,
+    `- triage kind: ${safe(record.triageKind)}`,
+    `- next action: ${safe(record.nextAction)}`,
+    `- linked issue: ${issue}`,
+    `- title: ${safe(record.title)}`,
+  ].join('\n')
+}
+
+// update_unsupported_request(ref, status?, triageKind?, issue?) — TRIAGES one
+// unsupported-request ledger entry via the injected writer. Validates the ref +
+// enums, requires at least one change, normalizes a linked issue to a public-safe
+// ref, applies the change, and returns the UPDATED public-safe record block.
+// Honest absence: an unknown ref reads "(not found …)"; a writer rejection reads
+// "(could not update …)"; with no writer wired it is honest rather than
+// inventive. WRITE tool: owner-scoped, internal-ledger-only, NO spend/payout/
+// deploy/delete/outward authority.
+export const makeArtanisUpdateUnsupportedRequestTool = (
+  config: ArtanisUpdateUnsupportedRequestConfig = {},
+): ArtanisOperatorWriteTool => {
+  const writer = config.writer
+
+  return {
+    definition: {
+      description: `TRIAGE the live unsupported-request ledger (#6357): move ONE capability-gap entry through its lifecycle, set its triage kind, and link the GitHub issue you dispatched to fix it. Use this right after get_unsupported_requests to ACT on a gap in the same turn instead of leaving it for a human. Pass the entry "ref"; optionally a new "status" (${ARTANIS_UNSUPPORTED_REQUEST_STATUSES.join(
+        ', ',
+      )}), a new "triageKind" (${ARTANIS_UNSUPPORTED_REQUEST_TRIAGE_KINDS.join(
+        ', ',
+      )}), and/or the public GitHub "issue" number you opened to link it (e.g. issue 6310, recorded as ${ARTANIS_UNSUPPORTED_REQUEST_ISSUE_REPO}#6310). At least one change is required. This RECORDS triage state in our own owner-scoped ledger only — it does NOT open the GitHub issue, spend, deploy, or take any outward/destructive action. An unknown ref reads "(not found …)".`,
+      name: 'update_unsupported_request',
+      parameters: {
+        additionalProperties: false,
+        properties: {
+          issue: {
+            description: `Public GitHub issue NUMBER to link (e.g. 6310), recorded as ${ARTANIS_UNSUPPORTED_REQUEST_ISSUE_REPO}#6310. Omit to leave the linked issue unchanged.`,
+            type: 'number',
+          },
+          ref: {
+            description:
+              'The unsupported-request ledger entry ref to update, e.g. "khala_unsupported:ur_…". A public-safe ref string.',
+            type: 'string',
+          },
+          status: {
+            description: `Optional new lifecycle status, one of ${ARTANIS_UNSUPPORTED_REQUEST_STATUSES.join(
+              ', ',
+            )}. An unknown value is rejected.`,
+            enum: [...ARTANIS_UNSUPPORTED_REQUEST_STATUSES],
+            type: 'string',
+          },
+          triageKind: {
+            description: `Optional new triage kind, one of ${ARTANIS_UNSUPPORTED_REQUEST_TRIAGE_KINDS.join(
+              ', ',
+            )}. An unknown value is rejected.`,
+            enum: [...ARTANIS_UNSUPPORTED_REQUEST_TRIAGE_KINDS],
+            type: 'string',
+          },
+        },
+        required: ['ref'],
+        type: 'object',
+      },
+    },
+    execute: (args: unknown) =>
+      Effect.gen(function* () {
+        const record =
+          typeof args === 'object' && args !== null
+            ? (args as Record<string, unknown>)
+            : {}
+
+        const ref = parseUpdateRef(record)
+        if (ref.kind === 'absent') {
+          return '(invalid arguments: a string "ref" is required)'
+        }
+        if (ref.kind === 'invalid') {
+          return `(blocked: "${ref.raw}" is not an allowed public-safe ledger ref)`
+        }
+
+        const status = parseUpdateEnum(
+          record.status,
+          ARTANIS_UNSUPPORTED_REQUEST_STATUSES,
+        )
+        if (status.kind === 'invalid') {
+          return `(blocked: "${status.raw}" is not a valid status; use one of ${ARTANIS_UNSUPPORTED_REQUEST_STATUSES.join(
+            ', ',
+          )})`
+        }
+
+        const triageKind = parseUpdateEnum(
+          record.triageKind ?? record.triage_kind ?? record.kind,
+          ARTANIS_UNSUPPORTED_REQUEST_TRIAGE_KINDS,
+        )
+        if (triageKind.kind === 'invalid') {
+          return `(blocked: "${triageKind.raw}" is not a valid triage kind; use one of ${ARTANIS_UNSUPPORTED_REQUEST_TRIAGE_KINDS.join(
+            ', ',
+          )})`
+        }
+
+        const issue = parseUpdateIssue(record)
+        if (issue.kind === 'invalid') {
+          // The raw value may itself carry non-public-safe material, so it is
+          // gated before being echoed back into the model's context.
+          const shown = dispatchFieldIsSafe(issue.raw)
+            ? `"${issue.raw}" `
+            : ''
+          return `(blocked: ${shown}is not a valid public-safe GitHub issue to link; pass a positive issue number like 6310)`
+        }
+
+        if (
+          status.kind === 'absent' &&
+          triageKind.kind === 'absent' &&
+          issue.kind === 'absent'
+        ) {
+          return '(invalid arguments: provide at least one of "status", "triageKind", or "issue" to change)'
+        }
+
+        if (writer === undefined) {
+          return `(could not update "${ref.value}": no ledger writer is wired)`
+        }
+
+        const update: ArtanisUnsupportedRequestUpdate = {
+          githubIssueRef: issue.kind === 'ref' ? issue.value : undefined,
+          ref: ref.value,
+          status: status.kind === 'value' ? status.value : undefined,
+          triageKind: triageKind.kind === 'value' ? triageKind.value : undefined,
+        }
+
+        const exit = yield* Effect.exit(
+          Effect.tryPromise(() => writer(update)),
+        )
+        if (exit._tag === 'Failure') {
+          return `(could not update "${ref.value}")`
+        }
+        const updated = exit.value
+        if (updated === null) {
+          return `(not found: no unsupported request matches ref "${ref.value}")`
+        }
+        return formatUpdatedUnsupportedRequest(updated)
+      }),
+    kind: 'write',
+  }
+}
+
+// ---------------------------------------------------------------------------
 // #6366 — dispatch_codex_task (GATED: pylon_job_dispatch).
 // ---------------------------------------------------------------------------
 //
@@ -2172,6 +2488,13 @@ export const makeArtanisTriggerSyntheticLoadTool = (
 // `khala_unsupported_requests` ledger of user-facing capability gaps, #6357);
 // with no reader wired it returns an honest "(could not read unsupported
 // requests …)" rather than inventing one.
+// `unsupportedRequestWriter` is the owner-scoped ledger WRITER behind the
+// iteration-9 `update_unsupported_request` write tool (it triages an entry
+// through its lifecycle, sets the triage kind, and links a GitHub issue in the
+// same `khala_unsupported_requests` ledger #6357); with no writer wired the tool
+// is honest ("(could not update …: no ledger writer is wired)") rather than
+// inventive. It is a WRITE tool, not risky/gated: owner-scoped, internal-ledger-
+// only, with no spend/payout/deploy/delete/outward authority.
 export const makeArtanisOperatorTools = (
   config: Readonly<{
     repoRead?: ArtanisRepoReadConfig | undefined
@@ -2180,6 +2503,7 @@ export const makeArtanisOperatorTools = (
     pylonAssignments?: ArtanisPylonAssignmentsConfig | undefined
     khalaFeedback?: ArtanisKhalaFeedbackConfig | undefined
     unsupportedRequests?: ArtanisUnsupportedRequestsConfig | undefined
+    unsupportedRequestWriter?: ArtanisUnsupportedRequestWriter | undefined
     defaultBranch?: string | undefined
     networkStats?: ArtanisGetNetworkStatsConfig | undefined
     glmFleetStatus?: ArtanisGlmFleetStatusConfig | undefined
@@ -2207,6 +2531,9 @@ export const makeArtanisOperatorTools = (
     makeArtanisListPylonAssignmentsTool(config.pylonAssignments),
     makeArtanisGetKhalaFeedbackTool(config.khalaFeedback),
     makeArtanisGetUnsupportedRequestsTool(config.unsupportedRequests),
+    makeArtanisUpdateUnsupportedRequestTool({
+      writer: config.unsupportedRequestWriter,
+    }),
     makeArtanisDispatchCodexTaskTool({
       defaultBranch: config.defaultBranch,
       execution: config.dispatchExecution,
