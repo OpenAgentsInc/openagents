@@ -800,6 +800,11 @@ export type PylonApiStore = Readonly<{
     pylonRef: string,
     limit: number,
   ) => Promise<ReadonlyArray<PylonApiAssignmentRecord>>
+  sweepStaleAssignmentLeases?: (
+    pylonRef: string,
+    nowIso: string,
+    staleBeforeIso: string,
+  ) => Promise<ReadonlyArray<string>>
   listAssignmentsForPylons?: (
     pylonRefs: ReadonlyArray<string>,
     limit: number,
@@ -2112,6 +2117,42 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
       .all<PylonApiAssignmentRow>()
 
     return (result.results ?? []).map(rowToAssignment)
+  },
+
+  sweepStaleAssignmentLeases: async (pylonRef, nowIso, staleBeforeIso) => {
+    const staleRows = await db
+      .prepare(
+        `SELECT assignment_ref
+           FROM pylon_api_assignments
+          WHERE pylon_ref = ?
+            AND state IN ('accepted', 'blocked', 'offered', 'proof_submitted', 'running')
+            AND lease_expires_at > ?
+            AND updated_at < ?
+            AND archived_at IS NULL`,
+      )
+      .bind(pylonRef, nowIso, staleBeforeIso)
+      .all<{ assignment_ref: string }>()
+    const refs = (staleRows.results ?? []).map(row => row.assignment_ref)
+    if (refs.length === 0) {
+      return []
+    }
+
+    await db
+      .prepare(
+        `UPDATE pylon_api_assignments
+            SET state = 'stale',
+                lease_expires_at = ?,
+                updated_at = ?
+          WHERE pylon_ref = ?
+            AND state IN ('accepted', 'blocked', 'offered', 'proof_submitted', 'running')
+            AND lease_expires_at > ?
+            AND updated_at < ?
+            AND archived_at IS NULL`,
+      )
+      .bind(nowIso, nowIso, pylonRef, nowIso, staleBeforeIso)
+      .run()
+
+    return refs
   },
 
   listAssignmentsForPylons: async (pylonRefs, limit) => {
