@@ -1598,7 +1598,8 @@ export const init = (
     publicKhalaTokensServedHistory:
       route._tag === 'Home' ||
       route._tag === 'Stats' ||
-      route._tag === 'PublicStatsArchive'
+      route._tag === 'PublicStatsArchive' ||
+      (route._tag === 'PublicAgent' && route.agentRef === 'artanis')
         ? LoadingPublicKhalaTokensServedHistory()
         : IdlePublicKhalaTokensServedHistory(),
     publicKhalaTokensServedModelMix:

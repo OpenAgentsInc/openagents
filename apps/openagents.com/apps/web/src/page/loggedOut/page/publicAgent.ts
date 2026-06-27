@@ -20,6 +20,8 @@ import type {
   PublicArtanisReport,
   PublicArtanisReportClaimSummary,
   PublicArtanisReportModel,
+  PublicKhalaTokensServedHistoryModel,
+  PublicKhalaTokensServedHistoryPoint,
   PublicPylonStats,
   PublicPylonStatsModel,
   PublicPylonV02OmegaReleaseGate,
@@ -57,6 +59,515 @@ const usageText = (goal: PublicAgentGoal): string =>
     : `${goal.tokensUsed} / ${goal.tokenBudget ?? 0} tokens`
 
 const formatNumber = (value: number): string => numberFormatter.format(value)
+
+const formatCompactNumber = (value: number): string =>
+  new Intl.NumberFormat('en-US', {
+    maximumFractionDigits: value >= 10_000 ? 1 : 0,
+    notation: 'compact',
+  }).format(value)
+
+const tokenPaceDaySeconds = 24 * 60 * 60
+
+type TokenPaceParts = Readonly<{
+  day: string
+  elapsedSeconds: number
+  priorDay: string
+}>
+
+type TokenPace = Readonly<{
+  day: string
+  todayTokens: number
+  yesterdayTokens: number
+  paceProjection: number
+  target4x: number
+  target10x: number
+  progressPct: number
+  floorPct: number
+  behindPace: boolean
+}>
+
+const pad2 = (value: number): string => value.toString().padStart(2, '0')
+
+const isoTimestampMs = (value: string | undefined): number | undefined => {
+  if (value === undefined) {
+    return undefined
+  }
+
+  const match =
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?Z$/.exec(
+      value,
+    )
+  if (match === null) {
+    return undefined
+  }
+
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const hour = Number(match[4])
+  const minute = Number(match[5])
+  const second = Number(match[6])
+  const millisecond = Number((match[7] ?? '0').padEnd(3, '0'))
+
+  if (
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > 31 ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59 ||
+    millisecond > 999
+  ) {
+    return undefined
+  }
+
+  return Date.UTC(year, month - 1, day, hour, minute, second, millisecond)
+}
+
+const timezoneParts = (
+  timestampMs: number,
+  timezone: string,
+): Readonly<{
+  year: number
+  month: number
+  day: number
+  hour: number
+  minute: number
+  second: number
+}> | undefined => {
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      day: '2-digit',
+      hour: '2-digit',
+      hourCycle: 'h23',
+      minute: '2-digit',
+      month: '2-digit',
+      second: '2-digit',
+      timeZone: timezone,
+      year: 'numeric',
+    })
+    const parts = formatter.formatToParts(timestampMs)
+    const numberPart = (type: Intl.DateTimeFormatPartTypes): number =>
+      Number(parts.find(part => part.type === type)?.value ?? '0')
+
+    return {
+      day: numberPart('day'),
+      hour: numberPart('hour'),
+      minute: numberPart('minute'),
+      month: numberPart('month'),
+      second: numberPart('second'),
+      year: numberPart('year'),
+    }
+  } catch {
+    return undefined
+  }
+}
+
+const dayString = (
+  parts: Readonly<{ year: number; month: number; day: number }>,
+): string => `${parts.year}-${pad2(parts.month)}-${pad2(parts.day)}`
+
+const tokenPaceParts = (
+  generatedAt: string | undefined,
+  timezone: string,
+): TokenPaceParts | undefined => {
+  const timestampMs = isoTimestampMs(generatedAt)
+  if (timestampMs === undefined) {
+    return undefined
+  }
+
+  const today = timezoneParts(timestampMs, timezone)
+  const prior = timezoneParts(
+    timestampMs - tokenPaceDaySeconds * 1000,
+    timezone,
+  )
+  if (today === undefined || prior === undefined) {
+    return undefined
+  }
+
+  return {
+    day: dayString(today),
+    elapsedSeconds: today.hour * 60 * 60 + today.minute * 60 + today.second,
+    priorDay: dayString(prior),
+  }
+}
+
+const maybePointTokensForDay = (
+  series: ReadonlyArray<PublicKhalaTokensServedHistoryPoint>,
+  day: string,
+): number | undefined => {
+  const point = series.find(
+    entry => entry.day === day && Number.isFinite(entry.tokensServed),
+  )
+
+  return point === undefined
+    ? undefined
+    : Math.max(0, Math.trunc(point.tokensServed))
+}
+
+const latestEarlierTokens = (
+  series: ReadonlyArray<PublicKhalaTokensServedHistoryPoint>,
+  day: string,
+): number => {
+  const latest = series
+    .filter(point => point.day < day && Number.isFinite(point.tokensServed))
+    .sort((left, right) => left.day.localeCompare(right.day))
+    .at(-1)
+
+  return Math.max(0, Math.trunc(latest?.tokensServed ?? 0))
+}
+
+const tokenPaceFromHistory = (
+  model: PublicKhalaTokensServedHistoryModel,
+): TokenPace | null => {
+  if (model._tag !== 'PublicKhalaTokensServedHistoryLoaded') {
+    return null
+  }
+
+  const parts = tokenPaceParts(model.history.generatedAt, model.history.timezone)
+  if (parts === undefined) {
+    return null
+  }
+
+  const todayTokens =
+    maybePointTokensForDay(model.history.series, parts.day) ?? 0
+  const exactYesterday = maybePointTokensForDay(
+    model.history.series,
+    parts.priorDay,
+  )
+  const yesterdayTokens =
+    exactYesterday ?? latestEarlierTokens(model.history.series, parts.day)
+  const fraction =
+    parts.elapsedSeconds <= 0 || parts.elapsedSeconds >= tokenPaceDaySeconds
+      ? 0
+      : parts.elapsedSeconds / tokenPaceDaySeconds
+  const paceProjection =
+    fraction <= 0
+      ? todayTokens
+      : Math.max(todayTokens, Math.round(todayTokens / fraction))
+  const target4x = 4 * yesterdayTokens
+  const target10x = 10 * yesterdayTokens
+  const progressPct =
+    target10x <= 0 ? 0 : Math.min(100, (todayTokens / target10x) * 100)
+  const floorPct =
+    target10x <= 0 ? 0 : Math.min(100, (target4x / target10x) * 100)
+
+  return {
+    behindPace: paceProjection < target4x,
+    day: parts.day,
+    floorPct,
+    paceProjection,
+    progressPct,
+    target10x,
+    target4x,
+    todayTokens,
+    yesterdayTokens,
+  }
+}
+
+const tokenPaceProgressStyle = (pct: number): string =>
+  `width: ${Math.max(0, Math.min(100, pct)).toFixed(2)}%;`
+
+const tokenPaceFloorStyle = (pct: number): string =>
+  `left: ${Math.max(0, Math.min(100, pct)).toFixed(2)}%;`
+
+const tokenPaceSparklinePoints = (
+  series: ReadonlyArray<PublicKhalaTokensServedHistoryPoint>,
+): string => {
+  const values = series.slice(-14).map(point => Math.max(0, point.tokensServed))
+  const points = values.length < 2 ? [0, 0, ...values] : values
+  const max = Math.max(...points, 1)
+  const min = Math.min(...points, 0)
+  const span = max - min || 1
+  const width = 240
+  const height = 64
+  const step = points.length <= 1 ? width : width / (points.length - 1)
+
+  return points
+    .map((value, index) => {
+      const x = (index * step).toFixed(1)
+      const y = (height - ((value - min) / span) * height).toFixed(1)
+      return `${x},${y}`
+    })
+    .join(' ')
+}
+
+const tokenPaceSparkline = (
+  series: ReadonlyArray<PublicKhalaTokensServedHistoryPoint>,
+): Html => {
+  const h = html<Message>()
+  const recent = series.slice(-14)
+  const peak = recent.reduce(
+    (max, point) => (point.tokensServed > max ? point.tokensServed : max),
+    0,
+  )
+  const ariaLabel = `Recent daily token burn sparkline, ${recent.length} ${
+    recent.length === 1 ? 'day' : 'days'
+  }, peak ${formatNumber(peak)} tokens.`
+
+  return h.div(
+    [Ui.className<Message>('grid gap-2')],
+    [
+      h.svg(
+        [
+          h.ViewBox('0 0 240 64'),
+          h.Role('img'),
+          h.AriaLabel(ariaLabel),
+          h.Attribute('preserveAspectRatio', 'none'),
+          Ui.className<Message>(
+            'h-16 w-full border border-[#222] bg-[#050505]',
+          ),
+        ],
+        [
+          h.line(
+            [
+              h.Attribute('x1', '0'),
+              h.Attribute('y1', '32'),
+              h.Attribute('x2', '240'),
+              h.Attribute('y2', '32'),
+              h.Attribute('stroke', '#1d1d1d'),
+              h.Attribute('stroke-width', '1'),
+            ],
+            [],
+          ),
+          h.polyline(
+            [
+              h.Attribute('points', tokenPaceSparklinePoints(recent)),
+              h.Attribute('fill', 'none'),
+              h.Attribute('stroke', '#00c853'),
+              h.Attribute('stroke-width', '2'),
+              h.Attribute('stroke-linecap', 'round'),
+              h.Attribute('stroke-linejoin', 'round'),
+            ],
+            [],
+          ),
+        ],
+      ),
+      h.ul(
+        [Ui.className<Message>('sr-only')],
+        recent.map(point =>
+          h.li([], [
+            `${point.day}: ${formatNumber(point.tokensServed)} tokens`,
+          ]),
+        ),
+      ),
+    ],
+  )
+}
+
+const artanisPulsePlaceholder = (label: string): Html => {
+  const h = html<Message>()
+
+  return h.section(
+    [Ui.className<Message>('grid gap-3 border-b border-[#222] pb-6')],
+    [
+      h.div([Ui.className<Message>(Ui.eyebrowClass)], ['The Pulse']),
+      h.div(
+        [
+          h.Role('status'),
+          Ui.className<Message>(
+            'border border-[#222] bg-[#010102] p-4 text-sm text-white/45',
+          ),
+        ],
+        [label],
+      ),
+    ],
+  )
+}
+
+const artanisPulseLoadedView = (
+  history: PublicKhalaTokensServedHistoryModel,
+  pace: TokenPace,
+): Html => {
+  const h = html<Message>()
+  const series =
+    history._tag === 'PublicKhalaTokensServedHistoryLoaded'
+      ? history.history.series
+      : []
+  const status = pace.behindPace ? 'Behind 4x floor' : 'On 4x floor'
+  const gap = Math.max(0, pace.target4x - pace.paceProjection)
+
+  return h.section(
+    [Ui.className<Message>('grid gap-4 border-b border-[#222] pb-6')],
+    [
+      h.div(
+        [
+          Ui.className<Message>(
+            'flex flex-wrap items-end justify-between gap-3',
+          ),
+        ],
+        [
+          h.div(
+            [Ui.className<Message>('grid gap-2')],
+            [
+              h.div([Ui.className<Message>(Ui.eyebrowClass)], ['The Pulse']),
+              h.h2(
+                [
+                  Ui.className<Message>(
+                    'text-xl font-semibold tracking-normal text-[#f1efe8]',
+                  ),
+                ],
+                ['Live token burn'],
+              ),
+            ],
+          ),
+          h.div(
+            [
+              Ui.className<Message>(
+                pace.behindPace
+                  ? 'border border-[#ff6f00]/60 px-2.5 py-1 text-[0.75rem] text-[#ffb26b]'
+                  : 'border border-[#00c853]/60 px-2.5 py-1 text-[0.75rem] text-[#9ad6b7]',
+              ),
+            ],
+            [status],
+          ),
+        ],
+      ),
+      h.div(
+        [
+          Ui.className<Message>(
+            'grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,0.74fr)]',
+          ),
+        ],
+        [
+          h.div(
+            [
+              Ui.className<Message>(
+                'grid gap-3 border border-[#222] bg-[#010102] p-3',
+              ),
+            ],
+            [
+              h.div(
+                [Ui.className<Message>('text-[0.75rem] text-white/45')],
+                ['Burn rate'],
+              ),
+              tokenPaceSparkline(series),
+              h.div(
+                [
+                  Ui.className<Message>(
+                    'grid gap-2 text-[0.75rem] text-white/45 sm:grid-cols-3',
+                  ),
+                ],
+                [
+                  h.div([], [
+                    `Today ${formatCompactNumber(pace.todayTokens)}`,
+                  ]),
+                  h.div([], [
+                    `Projected ${formatCompactNumber(pace.paceProjection)}`,
+                  ]),
+                  h.div([], [
+                    `Yesterday ${formatCompactNumber(pace.yesterdayTokens)}`,
+                  ]),
+                ],
+              ),
+            ],
+          ),
+          h.div(
+            [
+              Ui.className<Message>(
+                'grid content-between gap-4 border border-[#222] bg-[#010102] p-3',
+              ),
+            ],
+            [
+              h.div(
+                [Ui.className<Message>('grid gap-1')],
+                [
+                  h.div(
+                    [Ui.className<Message>('text-[0.75rem] text-white/45')],
+                    ['Daily target'],
+                  ),
+                  h.div(
+                    [
+                      Ui.className<Message>(
+                        'text-3xl font-semibold tabular-nums tracking-normal text-[#f1efe8]',
+                      ),
+                    ],
+                    [formatCompactNumber(pace.target10x)],
+                  ),
+                  h.div(
+                    [Ui.className<Message>('text-[0.75rem] text-white/35')],
+                    [`10x yesterday / 4x floor ${formatCompactNumber(pace.target4x)}`],
+                  ),
+                ],
+              ),
+              h.div([Ui.className<Message>('grid gap-2')], [
+                h.div(
+                  [
+                    Ui.className<Message>(
+                      'relative h-3 overflow-hidden border border-[#333] bg-[#050505]',
+                    ),
+                  ],
+                  [
+                    h.div(
+                      [
+                        h.Attribute(
+                          'style',
+                          tokenPaceProgressStyle(pace.progressPct),
+                        ),
+                        Ui.className<Message>('h-full bg-[#00c853]'),
+                      ],
+                      [],
+                    ),
+                    h.div(
+                      [
+                        h.Attribute('style', tokenPaceFloorStyle(pace.floorPct)),
+                        Ui.className<Message>(
+                          'absolute top-[-0.25rem] h-5 border-l border-[#ffb400]',
+                        ),
+                      ],
+                      [],
+                    ),
+                  ],
+                ),
+                h.div(
+                  [
+                    Ui.className<Message>(
+                      'flex flex-wrap justify-between gap-2 text-[0.75rem] text-white/45',
+                    ),
+                  ],
+                  [
+                    h.span([], [`${Math.round(pace.progressPct)}% of 10x`]),
+                    h.span([], [
+                      pace.behindPace
+                        ? `Gap ${formatCompactNumber(gap)}`
+                        : '4x floor cleared',
+                    ]),
+                  ],
+                ),
+              ]),
+              h.div(
+                [Ui.className<Message>('text-[0.75rem] text-white/35')],
+                [
+                  `${pace.day} / aggregate public token ledger / no user, prompt, or provider rows exposed`,
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    ],
+  )
+}
+
+const artanisPulseView = (
+  history: PublicKhalaTokensServedHistoryModel,
+): Html => {
+  if (history._tag === 'PublicKhalaTokensServedHistoryLoading') {
+    return artanisPulsePlaceholder('Loading public token-burn history.')
+  }
+
+  if (history._tag === 'PublicKhalaTokensServedHistoryFailed') {
+    return artanisPulsePlaceholder('Token-burn history unavailable.')
+  }
+
+  const pace = tokenPaceFromHistory(history)
+  if (pace === null) {
+    return artanisPulsePlaceholder('Token pace unavailable.')
+  }
+
+  return artanisPulseLoadedView(history, pace)
+}
 
 const publicRefsLabel = (
   label: string,
@@ -1171,6 +1682,7 @@ const loadedView = (
   events: ReadonlyArray<PublicAgentGoalEvent>,
   pylonStats: PublicPylonStatsModel,
   artanisReport: PublicArtanisReportModel,
+  khalaTokensServedHistory: PublicKhalaTokensServedHistoryModel,
   adjutantActivity: PublicAdjutantActivityModel,
 ): Html => {
   const h = html<Message>()
@@ -1283,6 +1795,7 @@ const loadedView = (
           ),
         ],
       ),
+      isArtanis ? artanisPulseView(khalaTokensServedHistory) : null,
       isArtanis ? artanisReportView(artanisReport) : null,
       isArtanis ? pylonStatsView(pylonStats) : null,
       isAdjutant ? adjutantActivityView(adjutantActivity) : null,
@@ -1318,6 +1831,7 @@ export const view = (model: Model, agentRef: string): Html => {
       model.publicAgent.response.events,
       model.publicPylonStats,
       model.publicArtanisReport,
+      model.publicKhalaTokensServedHistory,
       model.publicAdjutantActivity,
     )
   }
@@ -1347,6 +1861,7 @@ export const view = (model: Model, agentRef: string): Html => {
       ],
       model.publicPylonStats,
       model.publicArtanisReport,
+      model.publicKhalaTokensServedHistory,
       model.publicAdjutantActivity,
     )
   }
