@@ -186,3 +186,54 @@ describe("Khala CLI info diagnostics", () => {
     expect(parsed.state).toBe("completed")
   })
 })
+
+describe("Khala CLI fleet", () => {
+  test("prints connected Codex account readiness from the Pylon fleet config", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "khala-cli-fleet-test-"))
+    const pylonHome = join(dir, ".openagents", "pylon")
+    const codexHome = join(pylonHome, "accounts", "codex", "codex")
+    mkdirSync(codexHome, { recursive: true })
+    writeFileSync(
+      join(pylonHome, "config.json"),
+      JSON.stringify({
+        dev: {
+          accounts: [
+            { ref: "codex", provider: "codex", home: codexHome },
+            { ref: "claude", provider: "claude_agent", home: join(pylonHome, "accounts", "claude") },
+          ],
+        },
+      }),
+    )
+    const header = Buffer.from(JSON.stringify({ alg: "none" })).toString("base64url")
+    const payload = Buffer.from(JSON.stringify({ email: "fleet-user@example.com" })).toString("base64url")
+    writeFileSync(join(codexHome, "auth.json"), JSON.stringify({ tokens: { id_token: `${header}.${payload}.` } }))
+
+    const originalWrite = process.stdout.write
+    let stdout = ""
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      stdout += String(chunk)
+      return true
+    }) as typeof process.stdout.write
+    try {
+      const exitCode = await runKhalaCli(["--json", "fleet", "status"], {
+        PYLON_HOME: pylonHome,
+      })
+      expect(exitCode).toBe(0)
+    } finally {
+      process.stdout.write = originalWrite
+    }
+
+    const parsed = JSON.parse(stdout)
+    expect(parsed.pylonHome).toBe(pylonHome)
+    expect(parsed.readyCount).toBe(1)
+    expect(parsed.accounts).toEqual([
+      {
+        accountRef: "codex",
+        home: codexHome,
+        email: "fleet-user@example.com",
+        readiness: "ready",
+        lastLinkedAt: expect.any(String),
+      },
+    ])
+  })
+})
