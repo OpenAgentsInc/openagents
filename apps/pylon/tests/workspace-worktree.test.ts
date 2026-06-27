@@ -508,6 +508,52 @@ describe("materializeGitCheckoutWorkspaceWithLease", () => {
     }
   })
 
+  test("many concurrent same-repo materializations all succeed with isolated worktrees (regression #6434)", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-worktree-concurrent-"))
+    try {
+      const origin = await createOriginRepo(join(root, "origin"))
+      const checkout = checkoutFor(origin.commitSha)
+      const cacheRoot = join(root, "adapter-tasks")
+      const workspaceStateRoot = join(root, "workspace-leases")
+      const repositoryCacheRoot = join(root, "git-cache")
+      const concurrency = 12
+
+      const settled = await Promise.allSettled(
+        Array.from({ length: concurrency }, (_value, index) =>
+          materializeGitCheckoutWorkspaceWithLease({
+            cacheRoot,
+            checkout,
+            // undefined runner exercises the real git_worktree shared-bare-cache strategy
+            leaseRef: `lease.public.worktree.concurrent.${index}`,
+            refPrefix: "workspace.pylon.codex_agent_task",
+            repositoryCacheRoot,
+            workspaceStateRoot,
+            remoteUrlFor: () => origin.url,
+          }),
+        ),
+      )
+
+      const failures = settled.filter((result) => result.status === "rejected")
+      // the whole point of #6434: zero workspace_checkout_failed under concurrency
+      expect(failures).toEqual([])
+
+      const dirs = new Set<string>()
+      for (const result of settled) {
+        if (result.status !== "fulfilled") continue
+        const materialized = result.value
+        dirs.add(materialized.workingDirectory)
+        expect(existsSync(join(materialized.workingDirectory, "sum.ts"))).toBe(true)
+        expect((await run(["git", "rev-parse", "HEAD"], materialized.workingDirectory)).trim()).toBe(
+          origin.commitSha,
+        )
+      }
+      // every assignment got its own isolated working tree
+      expect(dirs.size).toBe(concurrency)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   test("TTL expiry produces a cleanup receipt and removes only the expired workspace", async () => {
     const root = await mkdtemp(join(tmpdir(), "pylon-worktree-lease-"))
     try {

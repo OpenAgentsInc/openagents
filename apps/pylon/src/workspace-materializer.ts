@@ -1,5 +1,5 @@
 import { existsSync, realpathSync } from "node:fs"
-import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises"
+import { mkdir, readdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises"
 import { dirname, join, resolve } from "node:path"
 import { createHash } from "node:crypto"
 import { CLAUDE_AGENT_CAPABILITY_REF } from "./claude-agent.js"
@@ -141,14 +141,62 @@ export function gitCheckoutWorkspaceFrom(codingAssignment: unknown): GitCheckout
   return safeArgs ? payload : null
 }
 
-async function runQuietCommand(args: string[], cwd: string): Promise<number> {
+// Concurrent assignments materialize against a shared bare object store, so
+// git operations can transiently lose a race for an internal lockfile
+// (index.lock, ref locks, packed-refs.lock, shallow.lock, config.lock) or
+// collide with a background `git gc --auto` that escaped the critical section.
+// These are recoverable: retry the same git command a bounded number of times
+// with exponential backoff instead of surfacing a hard checkout failure.
+const gitCommandMaxAttempts = 6
+const gitCommandRetryBaseMs = 40
+const gitCommandRetryMaxMs = 1_500
+
+const transientGitLockPattern =
+  /(?:index|config|shallow|packed-refs|HEAD|ORIG_HEAD|FETCH_HEAD)\.lock|unable to create '[^']*\.lock'|cannot lock ref|unable to lock|could not lock|gc is already running|another git process seems to be running|Unable to create '[^']*': File exists|fatal: Unable to create/i
+
+function isTransientGitLockStderr(stderr: string): boolean {
+  return transientGitLockPattern.test(stderr)
+}
+
+async function spawnGitCommand(
+  args: string[],
+  cwd: string,
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   const proc = Bun.spawn(args, { cwd, stderr: "pipe", stdout: "pipe" })
-  return proc.exited
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ])
+  return { exitCode, stdout, stderr }
+}
+
+/**
+ * Runs a git command, retrying with bounded exponential backoff only when the
+ * failure is a transient git lock collision. Non-lock failures (a missing
+ * commit, an unreachable remote, a `cat-file -e` "not present" probe) return
+ * immediately so existence checks and hard errors are never masked or delayed.
+ */
+async function runGitCommand(
+  args: string[],
+  cwd: string,
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  let result = await spawnGitCommand(args, cwd)
+  for (let attempt = 1; attempt < gitCommandMaxAttempts; attempt += 1) {
+    if (result.exitCode === 0 || !isTransientGitLockStderr(result.stderr)) return result
+    const backoff = Math.min(gitCommandRetryBaseMs * 2 ** (attempt - 1), gitCommandRetryMaxMs)
+    await sleep(backoff + Math.floor(Math.random() * gitCommandRetryBaseMs))
+    result = await spawnGitCommand(args, cwd)
+  }
+  return result
+}
+
+async function runQuietCommand(args: string[], cwd: string): Promise<number> {
+  return (await runGitCommand(args, cwd)).exitCode
 }
 
 async function runTextCommand(args: string[], cwd: string): Promise<{ exitCode: number; stdout: string }> {
-  const proc = Bun.spawn(args, { cwd, stderr: "pipe", stdout: "pipe" })
-  const [stdout, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
+  const { exitCode, stdout } = await runGitCommand(args, cwd)
   return { exitCode, stdout }
 }
 
@@ -398,7 +446,10 @@ export const defaultGitCheckoutRunner: WorkspaceCheckoutRunner = async (
 ) => {
   await rm(workingDirectory, { recursive: true, force: true })
   await mkdir(workingDirectory, { recursive: true })
-  await runCheckedCommand(["git", "init"], workingDirectory)
+  await runCheckedCommand(["git", "init"], workingDirectory, "reason.workspace_checkout.init_failed")
+  // Each detached checkout is isolated, but disabling auto maintenance keeps a
+  // background `git gc` from ever racing a concurrent sibling materialization.
+  await disableGitAutoMaintenance(workingDirectory)
   await runCheckedCommand(
     [
       "git",
@@ -408,15 +459,30 @@ export const defaultGitCheckoutRunner: WorkspaceCheckoutRunner = async (
       `https://github.com/${checkout.repository.fullName}.git`,
     ],
     workingDirectory,
+    "reason.workspace_checkout.remote_add_failed",
   )
   await runCheckedCommand(
     ["git", "fetch", "--depth", "1", "origin", checkout.repository.commitSha],
     workingDirectory,
+    "reason.workspace_checkout.fetch_failed",
   )
   await runCheckedCommand(
     ["git", "checkout", "--detach", checkout.repository.commitSha],
     workingDirectory,
+    "reason.workspace_checkout.checkout_failed",
   )
+}
+
+/**
+ * Turns off git's background auto-gc/auto-maintenance for a repository. Auto
+ * maintenance can fire asynchronously after a fetch/worktree command, escape
+ * the materializer's critical section, and then collide with a concurrent
+ * sibling materialization on the shared object store. Best-effort: a failure
+ * to set config never fails the checkout.
+ */
+async function disableGitAutoMaintenance(gitDirectory: string): Promise<void> {
+  await runQuietCommand(["git", "config", "gc.auto", "0"], gitDirectory)
+  await runQuietCommand(["git", "config", "maintenance.auto", "false"], gitDirectory)
 }
 
 /**
@@ -526,7 +592,11 @@ export type GitWorktreeCheckoutRunnerOptions = {
 // serialized per bare directory across processes.
 const repositoryCacheLocks = new Map<string, Promise<unknown>>()
 const repositoryCacheProcessLockTimeoutMs = 5 * 60 * 1000
-const repositoryCacheProcessLockStaleMs = 10 * 60 * 1000
+// The live holder heartbeats the lock directory mtime, so a still-running but
+// slow holder is never considered stale. Only a holder that has stopped
+// heartbeating (crashed/killed) for longer than this window is reclaimed.
+const repositoryCacheProcessLockStaleMs = 30 * 1000
+const repositoryCacheProcessLockHeartbeatMs = 5 * 1000
 const repositoryCacheProcessLockPollMs = 50
 
 function isNodeErrorWithCode(error: unknown, code: string): boolean {
@@ -537,7 +607,9 @@ async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-async function acquireRepositoryCacheProcessLock(bareDirectory: string): Promise<{ lockDirectory: string }> {
+type RepositoryCacheProcessLock = { lockDirectory: string; heartbeat: ReturnType<typeof setInterval> }
+
+async function acquireRepositoryCacheProcessLock(bareDirectory: string): Promise<RepositoryCacheProcessLock> {
   const lockDirectory = `${bareDirectory}.pylon-lock`
   const startedAt = Date.now()
   await mkdir(dirname(lockDirectory), { recursive: true })
@@ -549,7 +621,14 @@ async function acquireRepositoryCacheProcessLock(bareDirectory: string): Promise
         join(lockDirectory, "owner.json"),
         `${JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString() }, null, 2)}\n`,
       )
-      return { lockDirectory }
+      // Refresh the lock directory mtime while we hold it so a concurrent waiter
+      // never mistakes a slow-but-live holder for a crashed one and steals it.
+      const heartbeat = setInterval(() => {
+        const stamp = new Date()
+        void utimes(lockDirectory, stamp, stamp).catch(() => undefined)
+      }, repositoryCacheProcessLockHeartbeatMs)
+      if (typeof heartbeat.unref === "function") heartbeat.unref()
+      return { lockDirectory, heartbeat }
     } catch (error) {
       if (!isNodeErrorWithCode(error, "EEXIST")) throw error
     }
@@ -566,7 +645,7 @@ async function acquireRepositoryCacheProcessLock(bareDirectory: string): Promise
       continue
     }
     if (now - startedAt > repositoryCacheProcessLockTimeoutMs) {
-      throw new Error("workspace materializer timed out waiting for repository cache lock")
+      throw new WorkspaceCheckoutError("reason.workspace_checkout.cache_lock_timeout")
     }
     await sleep(repositoryCacheProcessLockPollMs)
   }
@@ -580,6 +659,7 @@ async function withRepositoryCacheProcessLock<T>(
   try {
     return await work()
   } finally {
+    clearInterval(lock.heartbeat)
     await rm(lock.lockDirectory, { recursive: true, force: true })
   }
 }
@@ -617,6 +697,12 @@ export function createGitWorktreeCheckoutRunner(
           "reason.workspace_checkout.bare_init_failed",
         )
       }
+      // Auto-gc on the shared bare object store is the main source of
+      // out-of-lock contention: a background gc triggered by one assignment's
+      // fetch can hold pack/ref locks while the next assignment's worktree add
+      // runs. Disable it on every materialization so pre-existing caches that
+      // were created before this fix are also covered.
+      await disableGitAutoMaintenance(bareDirectory)
       const commitArg = `${repository.commitSha}^{commit}`
       const cached = (await runQuietCommand(["git", "cat-file", "-e", commitArg], bareDirectory)) === 0
       if (!cached) {

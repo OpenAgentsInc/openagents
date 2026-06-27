@@ -12,6 +12,7 @@ import {
   defaultGitCheckoutRunner,
   gitCheckoutWorkspaceFrom,
   materializeGitCheckoutWorkspaceWithLease,
+  workspaceCheckoutFailureReasonRef,
   type GitCheckoutWorkspace,
   type WorkspaceCheckoutRunner,
 } from "./workspace-materializer.js"
@@ -544,11 +545,15 @@ export async function executeClaudeAgentAssignment(
       state,
       task,
     })
-  } catch {
+  } catch (error) {
+    const checkoutReasonRef = workspaceCheckoutFailureReasonRef(error)
     return refusalRecord({
       lease,
       runRef,
-      blockerRefs: ["blocker.assignment.claude_agent_workspace_checkout_failed"],
+      blockerRefs: [
+        "blocker.assignment.claude_agent_workspace_checkout_failed",
+        ...(checkoutReasonRef === null ? [] : [checkoutReasonRef]),
+      ],
       resultRef: "result.public.pylon.claude_agent_task.workspace_checkout_failed",
       summaryRef: "summary.public.pylon.claude_agent_task.workspace_checkout_failed",
       message: "Local Claude Agent session refused because the bounded workspace checkout could not be materialized.",
