@@ -9,6 +9,7 @@ import {
   codexConfigWithFileCredentialStore,
   connectFleetAccount,
   decodeCodexIdTokenEmail,
+  linkFleetPylon,
   listFleetAccounts,
   nextCodexAccountRef,
   parseCodexAccounts,
@@ -29,6 +30,67 @@ describe("fleet ref assignment", () => {
     expect(nextCodexAccountRef(["codex"])).toBe("codex-2")
     expect(nextCodexAccountRef(["codex", "codex-2"])).toBe("codex-3")
     expect(nextCodexAccountRef(["codex", "codex-3"])).toBe("codex-2")
+  })
+})
+
+describe("fleet Pylon link", () => {
+  test("links the local Pylon to the signed-in Khala token without printing or reading Codex credentials", async () => {
+    const base = await mkdtemp(join(tmpdir(), "khala-fleet-link-"))
+    const pylonHome = join(base, ".openagents", "pylon")
+    const tokenPath = join(base, "khala-token")
+    const env = { PYLON_HOME: pylonHome, KHALA_TOKEN_PATH: tokenPath }
+    await mkdir(pylonHome, { recursive: true })
+    await writeFile(tokenPath, "oa_agent_owner_link\n")
+
+    const codexHome = codexAccountHome(pylonHome, "codex")
+    await mkdir(codexHome, { recursive: true })
+    await writeFile(join(codexHome, "auth.json"), JSON.stringify({ tokens: { id_token: idTokenFor("fleet@example.com") } }))
+    await writeFile(
+      pylonConfigPath(pylonHome),
+      JSON.stringify({ dev: { accounts: [{ ref: "codex", provider: "codex", home: codexHome }] } }),
+    )
+
+    const requests: Array<{ url: string; init: RequestInit; body: Record<string, unknown> }> = []
+    const result = await linkFleetPylon({
+      env,
+      baseUrl: "https://openagents.test",
+      fetch: (async (url: Parameters<typeof fetch>[0], init: Parameters<typeof fetch>[1]) => {
+        const requestInit = init ?? {}
+        requests.push({
+          url: String(url),
+          init: requestInit,
+          body: JSON.parse(String(requestInit.body)) as Record<string, unknown>,
+        })
+        return new Response(JSON.stringify({ registrationRef: "registration.pylon.linked" }), { status: 201 })
+      }) as unknown as typeof fetch,
+    })
+
+    expect(result.linked).toBe(true)
+    expect(result.registrationRef).toBe("registration.pylon.linked")
+    expect(result.pylonRef).toStartWith("pylon.")
+    expect(result.publicKey).toMatch(/^[0-9a-f]{64}$/)
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.url).toBe("https://openagents.test/api/pylons/register")
+    expect((requests[0]?.init.headers as Record<string, string>).authorization).toBe("Bearer oa_agent_owner_link")
+    expect(requests[0]?.body).toMatchObject({
+      schema: "openagents.pylon.register.v0.3",
+      pylonRef: result.pylonRef,
+      providerNostrPubkey: result.publicKey,
+      statusRefs: ["status.public.khala_fleet_linked"],
+    })
+    expect(requests[0]?.body.capabilityRefs).toContain("capability.pylon.local_codex")
+    expect(JSON.stringify(requests[0]?.body)).not.toContain("fleet@example.com")
+    expect(JSON.stringify(requests[0]?.body)).not.toContain(codexHome)
+  })
+
+  test("requires khala login before linking", async () => {
+    const base = await mkdtemp(join(tmpdir(), "khala-fleet-link-"))
+    await expect(
+      linkFleetPylon({
+        env: { PYLON_HOME: join(base, ".openagents", "pylon"), KHALA_TOKEN_PATH: join(base, "missing-token") },
+        fetch: (async () => new Response("{}", { status: 201 })) as unknown as typeof fetch,
+      }),
+    ).rejects.toThrow("khala fleet link requires a signed-in Khala account")
   })
 })
 
