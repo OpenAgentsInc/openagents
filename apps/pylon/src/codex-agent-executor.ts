@@ -1,5 +1,6 @@
 import { access, mkdir, readFile, writeFile } from "node:fs/promises"
-import { dirname, isAbsolute, join, resolve } from "node:path"
+import { homedir } from "node:os"
+import { basename, dirname, isAbsolute, join, resolve } from "node:path"
 import { createHash } from "node:crypto"
 import {
   CODEX_AGENT_SDK_PACKAGE,
@@ -11,6 +12,7 @@ import {
 import {
   gitCheckoutWorkspaceFrom,
   materializeGitCheckoutWorkspaceWithLease,
+  releaseWorkspace,
   workspaceCheckoutFailureReasonRef,
   type GitCheckoutWorkspace,
   type WorkspaceCheckoutRunner,
@@ -235,6 +237,79 @@ export function fileChangeEscapesWorkspace(path: string, workspace: string): boo
   const workspaceRoot = resolve(workspace)
   const resolved = isAbsolute(path) ? resolve(path) : resolve(workspaceRoot, path)
   return resolved !== workspaceRoot && !resolved.startsWith(`${workspaceRoot}/`)
+}
+
+function shellWords(command: string): string[] {
+  const words: string[] = []
+  let word = ""
+  let quote: "'" | '"' | null = null
+  let escaping = false
+  for (const char of command) {
+    if (escaping) {
+      word += char
+      escaping = false
+      continue
+    }
+    if (char === "\\" && quote !== "'") {
+      escaping = true
+      continue
+    }
+    if ((char === "'" || char === '"') && quote === null) {
+      quote = char
+      continue
+    }
+    if (quote === char) {
+      quote = null
+      continue
+    }
+    if (quote === null && /\s/.test(char)) {
+      if (word.length > 0) words.push(word)
+      word = ""
+      continue
+    }
+    if (quote === null && /[;&|()]/.test(char)) {
+      if (word.length > 0) words.push(word)
+      words.push(char)
+      word = ""
+      continue
+    }
+    word += char
+  }
+  if (word.length > 0) words.push(word)
+  return words
+}
+
+function shellPathEscapesWorkspace(path: string, workspace: string): boolean {
+  if (path.startsWith("~/")) return fileChangeEscapesWorkspace(resolve(homedir(), path.slice(2)), workspace)
+  if (/^~[^/]*($|\/)/.test(path)) return true
+  if (!isAbsolute(path)) return false
+  return fileChangeEscapesWorkspace(path, workspace)
+}
+
+function tokenLooksLikeSearchPath(token: string): boolean {
+  if (token.length === 0 || token.startsWith("-")) return false
+  if (token.includes("*") || token.includes("?") || token.includes("[") || token.includes("]")) return false
+  return token.startsWith("/") || token.startsWith("~")
+}
+
+/**
+ * Codex runs owner-local full access for caller-owned assignments, so shell
+ * search commands are independently audited. Absolute or home-relative search
+ * roots outside the assignment checkout are treated as workspace escapes.
+ */
+export function searchCommandEscapesWorkspace(command: string, workspace: string): boolean {
+  const words = shellWords(command)
+  for (let index = 0; index < words.length; index += 1) {
+    const commandName = basename(words[index] ?? "")
+    if (!["rg", "ripgrep", "find", "grep"].includes(commandName)) continue
+    for (let cursor = index + 1; cursor < words.length; cursor += 1) {
+      const token = words[cursor] ?? ""
+      if (/[;&|()]/.test(token)) break
+      if (!tokenLooksLikeSearchPath(token)) continue
+      if (shellPathEscapesWorkspace(token, workspace)) return true
+    }
+  }
+  return false
 }
 
 async function runCommand(input: { args: string[]; cwd: string; timeoutMs?: number }): Promise<LocalCommandResult> {
@@ -751,6 +826,13 @@ export async function runWithCodexSdk(input: CodexAgentRunInput): Promise<CodexA
       if (event.type === "turn.failed" || event.type === "error") failed = true
       if (event.type === "item.completed" && event.item?.type === "command_execution") {
         commandCount += 1
+        if (
+          typeof event.item.command === "string" &&
+          searchCommandEscapesWorkspace(event.item.command, input.cwd)
+        ) {
+          escaped = true
+          abort.abort()
+        }
       }
       if (event.type === "item.completed") {
         const projected = projectCodexItem(event.item, itemOrdinal + 1)
@@ -811,6 +893,7 @@ async function materializeCodexAgentWorkspace(input: {
       leaseRef: input.leaseRef,
       refPrefix: "workspace.pylon.codex_agent_task",
       repositoryCacheRoot: join(input.state.paths.cache, "workspace-git-cache"),
+      retentionPolicy: "remove_on_closeout",
       workspaceStateRoot: join(input.state.paths.cache, "workspace-leases"),
     })
     return {
@@ -820,6 +903,7 @@ async function materializeCodexAgentWorkspace(input: {
         "You are working in a bounded public repository checkout.",
         `Task objective: ${input.task.objectiveSummary ?? "complete the referenced Autopilot task"}.`,
         "Only modify files inside this checkout.",
+        "Run every search, grep, find, and verification command from this checkout; do not search parent directories, the Pylon home, or sibling cache workspaces.",
         `Run the verification command ref ${input.task.workspace.verificationCommand.commandRef} before finishing.`,
       ].join(" "),
       verificationArgs: input.task.workspace.verificationCommand.args,
@@ -1097,6 +1181,13 @@ export async function executeCodexAgentAssignment(
     now,
     publisher: options.pullRequestPublisher,
   })
+  const workspaceRelease = await maybeReleaseCodexAgentWorkspace(state, materialized.workspaceRef)
+  const workspaceResultRefs =
+    workspaceRelease === null
+      ? []
+      : workspaceRelease.cleanupReceiptRef !== undefined
+        ? ["result.public.pylon.codex_agent_task.workspace_cleaned_on_closeout"]
+        : ["result.public.pylon.codex_agent_task.workspace_retained_on_closeout"]
 
   return {
     artifactRefs: [artifactRef],
@@ -1113,6 +1204,7 @@ export async function executeCodexAgentAssignment(
         : `result.public.pylon.codex_agent_task.${materialized.acceptanceResultRef}_failed`,
       `result.public.pylon.codex_agent_task.edited_files.${run.editedFileCount}`,
       ...pullRequest.resultRefs,
+      ...workspaceResultRefs,
     ],
     runRefs: [runRef, ...sessionRefs],
     status: passed ? ("accepted" as const) : ("rejected" as const),
@@ -1122,6 +1214,20 @@ export async function executeCodexAgentAssignment(
         : `summary.public.pylon.codex_agent_task.${materialized.acceptanceResultRef}_failed`,
     ],
     testRefs: [commandRef],
+  }
+}
+
+async function maybeReleaseCodexAgentWorkspace(
+  state: PylonLocalState,
+  workspaceRef: string,
+): Promise<{ cleanupReceiptRef?: string; retainedWorkspaceRef?: string; retentionReasonRef?: string } | null> {
+  try {
+    return await releaseWorkspace({
+      workspaceRef,
+      workspaceStateRoot: join(state.paths.cache, "workspace-leases"),
+    })
+  } catch {
+    return null
   }
 }
 

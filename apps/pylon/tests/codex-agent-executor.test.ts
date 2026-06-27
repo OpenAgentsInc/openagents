@@ -10,6 +10,7 @@ import {
   executeCodexAgentAssignment,
   fileChangeEscapesWorkspace,
   runWithCodexSdk,
+  searchCommandEscapesWorkspace,
   type CodexAgentRunner,
 } from "../src/codex-agent-executor"
 import { CODEX_AGENT_SDK_PACKAGE } from "../src/codex-agent"
@@ -569,6 +570,52 @@ describe("codex agent task recognition", () => {
     })
     expect(turns[0]?.rawEvents).toHaveLength(5)
   })
+
+  test("blocks Codex search commands that target the Pylon home instead of the workspace", async () => {
+    mock.module(CODEX_AGENT_SDK_PACKAGE, () => ({
+      Codex: class {
+        startThread() {
+          return {
+            runStreamed: async () => ({
+              events: (async function* () {
+                yield { type: "thread.started", thread_id: "thread-codex-search-escape" }
+                yield { type: "turn.started" }
+                yield {
+                  type: "item.completed",
+                  item: {
+                    command: "rg -n marker /Users/christopherdavid/.pylon-fable --glob '*.ts'",
+                    exit_code: 0,
+                    status: "completed",
+                    type: "command_execution",
+                  },
+                }
+                yield {
+                  type: "turn.completed",
+                  usage: {
+                    input_tokens: 1,
+                    output_tokens: 1,
+                  },
+                }
+              })(),
+            }),
+          }
+        }
+      },
+    }))
+
+    const result = await runWithCodexSdk({
+      cwd: "/Users/christopherdavid/.pylon-fable/cache/codex-agent-tasks/workspace.current",
+      instructions: "Run a mocked Codex turn.",
+      networkAccessEnabled: true,
+      sandboxMode: "danger-full-access",
+      timeoutMs: 1_000,
+    })
+
+    expect(result).toMatchObject({
+      commandCount: 1,
+      outcome: "workspace_escape_blocked",
+    })
+  })
 })
 
 describe("sandbox mode resolution", () => {
@@ -589,6 +636,15 @@ describe("post-hoc workspace boundary checks", () => {
     expect(fileChangeEscapesWorkspace("../outside.ts", workspace)).toBe(true)
     expect(fileChangeEscapesWorkspace("sum.ts", workspace)).toBe(false)
     expect(fileChangeEscapesWorkspace(`${workspace}-sibling/sum.ts`, workspace)).toBe(true)
+  })
+
+  test("search commands may use the checkout but not the Pylon home or sibling caches", () => {
+    expect(searchCommandEscapesWorkspace("rg -n marker .", workspace)).toBe(false)
+    expect(searchCommandEscapesWorkspace(`rg -n marker ${workspace}/apps`, workspace)).toBe(false)
+    expect(searchCommandEscapesWorkspace("find ./apps -name '*.ts'", workspace)).toBe(false)
+    expect(searchCommandEscapesWorkspace("rg -n marker /var/pylon-test", workspace)).toBe(true)
+    expect(searchCommandEscapesWorkspace("find ~/.pylon-fable -name package.json", workspace)).toBe(true)
+    expect(searchCommandEscapesWorkspace(`grep -R marker ${workspace}-sibling`, workspace)).toBe(true)
   })
 })
 
@@ -669,6 +725,9 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
       expect(record?.status).toBe("accepted")
       expect(record?.resultRefs).toContain(
         "result.public.pylon.codex_agent_task.git_checkout_verified_passed",
+      )
+      expect(record?.resultRefs).toContain(
+        "result.public.pylon.codex_agent_task.workspace_cleaned_on_closeout",
       )
       assertPublicProjectionSafe(record)
       const projected = JSON.stringify(record)
