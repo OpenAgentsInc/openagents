@@ -96,6 +96,13 @@ export type InferenceToolCall = Readonly<{
     name: string
     arguments: string
   }>
+  // Provider-specific opaque signature that MUST be echoed back with the tool
+  // call when it is replayed in the next request. Gemini 3 returns a
+  // `thoughtSignature` on each functionCall part and rejects (HTTP 400
+  // INVALID_ARGUMENT) a follow-up turn that replays the call without it. Other
+  // providers leave this undefined; the Gemini adapter is the only producer and
+  // consumer. Carried here so the agentic loop can round-trip it transparently.
+  thoughtSignature?: string | undefined
 }>
 
 export type InferenceToolCallDelta = Readonly<{

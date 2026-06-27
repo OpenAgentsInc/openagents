@@ -297,6 +297,7 @@ describe('vertex gemini adapter function calling (#6364)', () => {
                     args: { path: 'docs/roadmap.md' },
                     name: 'read_repo_file',
                   },
+                  thoughtSignature: 'sig-abc',
                 },
               ],
             },
@@ -330,6 +331,8 @@ describe('vertex gemini adapter function calling (#6364)', () => {
       JSON.stringify({ path: 'docs/roadmap.md' }),
     )
     expect(result.toolCalls?.[0]?.type).toBe('function')
+    // Gemini 3 thoughtSignature is captured so it can be replayed next turn.
+    expect(result.toolCalls?.[0]?.thoughtSignature).toBe('sig-abc')
   })
 
   test('round-trips a tool result back as a Gemini functionResponse', async () => {
@@ -355,6 +358,7 @@ describe('vertex gemini adapter function calling (#6364)', () => {
                     name: 'read_repo_file',
                   },
                   id: 'call_1',
+                  thoughtSignature: 'sig-abc',
                   type: 'function',
                 },
               ],
@@ -382,6 +386,8 @@ describe('vertex gemini adapter function calling (#6364)', () => {
     expect(modelParts[0]!['functionCall']).toMatchObject({
       name: 'read_repo_file',
     })
+    // The Gemini 3 thoughtSignature is replayed on the part.
+    expect(modelParts[0]!['thoughtSignature']).toBe('sig-abc')
     // The tool result became a user functionResponse part.
     const responseTurn = contents.find(content => {
       const parts = content['parts'] as Array<Record<string, unknown>>

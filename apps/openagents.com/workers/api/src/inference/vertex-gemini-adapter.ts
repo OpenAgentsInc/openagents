@@ -305,6 +305,11 @@ const geminiContentForMessage = (
           args: parsed ?? {},
           name: toolCall.function.name,
         },
+        // Replay Gemini's thoughtSignature on the PART so the follow-up turn is
+        // accepted (Gemini 3 requirement; see extractToolCalls).
+        ...(toolCall.thoughtSignature === undefined
+          ? {}
+          : { thoughtSignature: toolCall.thoughtSignature }),
       })
     }
     return { parts, role: 'model' }
@@ -455,6 +460,9 @@ const extractToolCalls = (
     const name = typeof record['name'] === 'string' ? record['name'] : null
     if (name === null) return
     const args = record['args']
+    // Gemini 3 returns a `thoughtSignature` on the PART alongside `functionCall`;
+    // it MUST be replayed with the call or the next turn 400s. Capture it.
+    const signature = (part as Record<string, unknown>)['thoughtSignature']
     calls.push({
       function: {
         arguments: JSON.stringify(args ?? {}),
@@ -462,6 +470,9 @@ const extractToolCalls = (
       },
       id: `gemini_call_${index}_${name}`,
       type: 'function',
+      ...(typeof signature === 'string' && signature !== ''
+        ? { thoughtSignature: signature }
+        : {}),
     })
   })
   return calls.length === 0 ? undefined : calls
