@@ -70,6 +70,26 @@ export type KhalaTraceReviewRawEventHighlight = Readonly<{
   rawEventRef: string
 }>
 
+export type KhalaTraceReviewBackendSignalKind =
+  | 'unhandled_exception'
+  | 'gateway_timeout'
+  | 'agent_crash'
+
+export type KhalaTraceReviewBackendSignalBucket = Readonly<{
+  signalKind: KhalaTraceReviewBackendSignalKind
+  surface: string
+  count: number
+  latestObservedAt: string
+  evidenceRefs: ReadonlyArray<string>
+}>
+
+export type KhalaTraceReviewBackendSignalSummary = Readonly<{
+  signalCount: number
+  unhandledExceptionCount: number
+  gatewayTimeoutCount: number
+  agentCrashCount: number
+}>
+
 export type KhalaTraceReviewFailureMode = Readonly<{
   failureRef: string
   label: string
@@ -124,6 +144,8 @@ export type KhalaTraceReviewFacts = Readonly<{
     byteLength: number
   }
   rawEventHighlights: ReadonlyArray<KhalaTraceReviewRawEventHighlight>
+  backendSignalSummary: KhalaTraceReviewBackendSignalSummary
+  backendSignalBuckets: ReadonlyArray<KhalaTraceReviewBackendSignalBucket>
 }>
 
 export type KhalaTraceReviewReport = Readonly<{
@@ -132,13 +154,18 @@ export type KhalaTraceReviewReport = Readonly<{
   generatedAt: string
   window: KhalaTraceReviewWindow
   sourceTables: ReadonlyArray<
-    'agent_traces' | 'token_usage_events' | 'pylon_codex_raw_events'
+    | 'agent_traces'
+    | 'token_usage_events'
+    | 'pylon_codex_raw_events'
+    | 'backend_exception_signals'
   >
   aggregates: {
     tokens: KhalaTraceReviewFacts['tokenSummary']
     traces: KhalaTraceReviewFacts['traceSummary']
     rawCodexEvents: KhalaTraceReviewFacts['rawEventSummary']
+    backendSignals: KhalaTraceReviewFacts['backendSignalSummary']
   }
+  backendSignals: ReadonlyArray<KhalaTraceReviewBackendSignalBucket>
   modelMix: ReadonlyArray<KhalaTraceReviewModelBucket>
   demandSources: ReadonlyArray<KhalaTraceReviewBucket>
   outcomes: ReadonlyArray<KhalaTraceReviewOutcomeBucket>
@@ -157,6 +184,30 @@ export type KhalaTraceReviewStore = Readonly<{
     limit: number
     window: KhalaTraceReviewWindow
   }) => Promise<KhalaTraceReviewFacts>
+}>
+
+export type BackendExceptionSignalInput = Readonly<{
+  signalRef: string
+  observedAt: string
+  signalKind: KhalaTraceReviewBackendSignalKind
+  source: 'worker_tail' | 'workers_logs' | 'logpush' | 'queue' | 'worker_catch'
+  surface: string
+  outcome: string
+  statusCode?: number | null | undefined
+  traceRef?: string | null | undefined
+  requestRef?: string | null | undefined
+  agentRef?: string | null | undefined
+  assignmentRef?: string | null | undefined
+  errorClass?: string | null | undefined
+  sanitizedMessage?: string | null | undefined
+  fingerprint: string
+}>
+
+export type BackendExceptionSignalRuntimeInput = Readonly<{
+  error: unknown
+  observedAt: string
+  request: Request
+  signalRef: string
 }>
 
 export type OperatorKhalaTraceReviewDependencies = Readonly<{
@@ -237,6 +288,116 @@ const stableLabelRef = (prefix: string, label: string): string =>
     .replace(/^_+|_+$/g, '')
     .slice(0, 80) || 'unknown'}`
 
+const stableSignalRefPart = (value: string): string =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 80) || 'unknown'
+
+const backendSignalKindLabel = (
+  kind: KhalaTraceReviewBackendSignalKind,
+): string => {
+  switch (kind) {
+    case 'agent_crash':
+      return 'Silent agent crash signals'
+    case 'gateway_timeout':
+      return 'Gateway timeout signals'
+    case 'unhandled_exception':
+      return 'Unhandled backend exceptions'
+  }
+}
+
+const backendSignalKindRef = (
+  kind: KhalaTraceReviewBackendSignalKind,
+): string => `failure.khala_trace_review.backend_${kind}`
+
+const backendSignalKindFrom = (
+  value: unknown,
+): KhalaTraceReviewBackendSignalKind => {
+  switch (value) {
+    case 'agent_crash':
+    case 'gateway_timeout':
+    case 'unhandled_exception':
+      return value
+    default:
+      return 'unhandled_exception'
+  }
+}
+
+const nullableString = (value: string | null | undefined): string | null => {
+  const text = typeof value === 'string' ? value.trim() : ''
+  return text.length === 0 ? null : text
+}
+
+export const backendExceptionSignalFromWorkerError = (
+  input: BackendExceptionSignalRuntimeInput,
+): BackendExceptionSignalInput => {
+  const url = new URL(input.request.url)
+  const errorClass =
+    input.error instanceof Error && input.error.name.trim().length > 0
+      ? input.error.name.trim().slice(0, 80)
+      : 'Error'
+  const surface = url.pathname === '' ? '/' : url.pathname
+
+  return {
+    errorClass,
+    fingerprint: `worker_catch:${surface}:${errorClass}`,
+    observedAt: input.observedAt,
+    outcome: 'exception',
+    requestRef: input.request.headers.get('cf-ray'),
+    sanitizedMessage: 'Unhandled Worker exception captured by backend signal sink.',
+    signalKind: 'unhandled_exception',
+    signalRef: input.signalRef,
+    source: 'worker_catch',
+    statusCode: 500,
+    surface,
+  }
+}
+
+export const insertBackendExceptionSignal = async (
+  db: D1Database,
+  input: BackendExceptionSignalInput,
+): Promise<void> => {
+  const sanitizedMessage = nullableString(input.sanitizedMessage)
+  if (
+    sanitizedMessage !== null &&
+    containsProviderSecretMaterial(sanitizedMessage)
+  ) {
+    throw new KhalaTraceReviewStorageError({
+      reason: 'backend exception signal contained private-data-shaped material',
+    })
+  }
+
+  await db
+    .prepare(
+      `INSERT OR IGNORE INTO backend_exception_signals (
+         signal_ref, observed_at, signal_kind, source, surface, outcome,
+         status_code, trace_ref, request_ref, agent_ref, assignment_ref,
+         error_class, sanitized_message, fingerprint, created_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .bind(
+      input.signalRef,
+      input.observedAt,
+      input.signalKind,
+      input.source,
+      input.surface,
+      input.outcome,
+      input.statusCode ?? null,
+      nullableString(input.traceRef),
+      nullableString(input.requestRef),
+      nullableString(input.agentRef),
+      nullableString(input.assignmentRef),
+      nullableString(input.errorClass),
+      sanitizedMessage,
+      input.fingerprint,
+      currentIsoTimestamp(),
+    )
+    .run()
+}
+
 const publicSafeReport = (report: KhalaTraceReviewReport): KhalaTraceReviewReport => {
   // Defensive secret-material backstop. The report is aggregate/ref-only by
   // construction, but we double-check before returning. We EXCLUDE the bounded
@@ -269,7 +430,7 @@ export const makeD1KhalaTraceReviewStore = (
   db: D1Database,
 ): KhalaTraceReviewStore => ({
   readFacts: async input => {
-    const [tokenSummary, demandRows, modelRows, outcomeRows, traceSummary, traceDemandRows, notableRows, rawSummary, rawRows] = await Promise.all([
+    const [tokenSummary, demandRows, modelRows, outcomeRows, traceSummary, traceDemandRows, notableRows, rawSummary, rawRows, backendSignalSummary, backendSignalRows] = await Promise.all([
       db
         .prepare(
           `SELECT COUNT(*) AS event_count,
@@ -397,9 +558,54 @@ export const makeD1KhalaTraceReviewStore = (
         )
         .bind(input.window.since, input.window.until, input.limit)
         .all<Record<string, unknown>>(),
+      db
+        .prepare(
+          `SELECT COUNT(*) AS signal_count,
+                  COALESCE(SUM(CASE WHEN signal_kind = 'unhandled_exception' THEN 1 ELSE 0 END), 0) AS unhandled_exception_count,
+                  COALESCE(SUM(CASE WHEN signal_kind = 'gateway_timeout' THEN 1 ELSE 0 END), 0) AS gateway_timeout_count,
+                  COALESCE(SUM(CASE WHEN signal_kind = 'agent_crash' THEN 1 ELSE 0 END), 0) AS agent_crash_count
+             FROM backend_exception_signals
+            WHERE observed_at >= ? AND observed_at < ?`,
+        )
+        .bind(input.window.since, input.window.until)
+        .first<Record<string, unknown>>(),
+      db
+        .prepare(
+          `SELECT signal_kind,
+                  COALESCE(NULLIF(surface, ''), 'unknown') AS surface,
+                  COUNT(*) AS count,
+                  MAX(observed_at) AS latest_observed_at,
+                  GROUP_CONCAT(signal_ref, ',') AS signal_refs
+             FROM backend_exception_signals
+            WHERE observed_at >= ? AND observed_at < ?
+            GROUP BY signal_kind, COALESCE(NULLIF(surface, ''), 'unknown')
+            ORDER BY count DESC, latest_observed_at DESC
+            LIMIT ?`,
+        )
+        .bind(input.window.since, input.window.until, input.limit)
+        .all<Record<string, unknown>>(),
     ])
 
     return {
+      backendSignalBuckets: (backendSignalRows.results ?? []).map(row => ({
+        count: n(row.count),
+        evidenceRefs: s(row.signal_refs, '')
+          .split(',')
+          .map(ref => ref.trim())
+          .filter(ref => ref.length > 0)
+          .slice(0, 5),
+        latestObservedAt: s(row.latest_observed_at),
+        signalKind: backendSignalKindFrom(row.signal_kind),
+        surface: s(row.surface),
+      })),
+      backendSignalSummary: {
+        agentCrashCount: n(backendSignalSummary?.agent_crash_count),
+        gatewayTimeoutCount: n(backendSignalSummary?.gateway_timeout_count),
+        signalCount: n(backendSignalSummary?.signal_count),
+        unhandledExceptionCount: n(
+          backendSignalSummary?.unhandled_exception_count,
+        ),
+      },
       modelMix: (modelRows.results ?? []).map(row => ({
         count: n(row.count),
         model: s(row.model),
@@ -523,6 +729,21 @@ export const buildKhalaTraceReviewReport = (input: {
     })
   }
 
+  for (const bucket of input.facts.backendSignalBuckets) {
+    failureModes.push({
+      count: bucket.count,
+      evidenceRefs:
+        bucket.evidenceRefs.length === 0
+          ? [
+              `table.backend_exception_signals.${bucket.signalKind}.${stableSignalRefPart(bucket.surface)}`,
+            ]
+          : bucket.evidenceRefs,
+      failureRef: `${backendSignalKindRef(bucket.signalKind)}.${stableSignalRefPart(bucket.surface)}`,
+      label: `${backendSignalKindLabel(bucket.signalKind)} on ${bucket.surface}`,
+      severity: 'critical',
+    })
+  }
+
   const userIntents = input.facts.traceByDemandSource.map(bucket => ({
     count: bucket.count,
     evidenceRefs: [`demand_source.${bucket.label}`],
@@ -564,6 +785,7 @@ export const buildKhalaTraceReviewReport = (input: {
 
   return publicSafeReport({
     aggregates: {
+      backendSignals: input.facts.backendSignalSummary,
       rawCodexEvents: input.facts.rawEventSummary,
       tokens: input.facts.tokenSummary,
       traces: input.facts.traceSummary,
@@ -572,6 +794,7 @@ export const buildKhalaTraceReviewReport = (input: {
       itemRefs: triageItems.map(item => item.triageRef),
       producedItemCount: triageItems.length,
     },
+    backendSignals: input.facts.backendSignalBuckets,
     demandSources,
     failureModes,
     generatedAt: input.generatedAt,
@@ -590,6 +813,7 @@ export const buildKhalaTraceReviewReport = (input: {
       'agent_traces',
       'token_usage_events',
       'pylon_codex_raw_events',
+      'backend_exception_signals',
     ],
     triageItems,
     userIntents,

@@ -2,15 +2,25 @@ import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import {
+  type BackendExceptionSignalInput,
   type KhalaTraceReviewFacts,
+  backendExceptionSignalFromWorkerError,
   buildKhalaTraceReviewReport,
   handleOperatorKhalaTraceReview,
+  insertBackendExceptionSignal,
 } from './khala-trace-review-routes'
 
 const run = (effect: Effect.Effect<Response>): Promise<Response> =>
   Effect.runPromise(effect)
 
 const facts: KhalaTraceReviewFacts = {
+  backendSignalBuckets: [],
+  backendSignalSummary: {
+    agentCrashCount: 0,
+    gatewayTimeoutCount: 0,
+    signalCount: 0,
+    unhandledExceptionCount: 0,
+  },
   modelMix: [
     {
       count: 3,
@@ -113,6 +123,141 @@ describe('Khala trace review report', () => {
     expect(report.triageItems.length).toBeGreaterThan(0)
     expect(JSON.stringify(report)).not.toContain('trajectory_json')
     expect(JSON.stringify(report)).not.toContain('raw_payload')
+  })
+
+  test('backend exception, timeout, and crash signals feed trace-review triage without raw payloads', () => {
+    const report = buildKhalaTraceReviewReport({
+      facts: {
+        ...facts,
+        backendSignalBuckets: [
+          {
+            count: 2,
+            evidenceRefs: [
+              'backend_exception_signal.public.sig_unhandled_checkout',
+            ],
+            latestObservedAt: '2026-06-26T20:30:00.000Z',
+            signalKind: 'unhandled_exception',
+            surface: '/api/v1/chat/completions',
+          },
+          {
+            count: 1,
+            evidenceRefs: ['backend_exception_signal.public.sig_gateway_504'],
+            latestObservedAt: '2026-06-26T20:35:00.000Z',
+            signalKind: 'gateway_timeout',
+            surface: 'inference.gateway',
+          },
+          {
+            count: 1,
+            evidenceRefs: ['backend_exception_signal.public.sig_agent_crash'],
+            latestObservedAt: '2026-06-26T20:40:00.000Z',
+            signalKind: 'agent_crash',
+            surface: 'artanis.scheduled_runner',
+          },
+        ],
+        backendSignalSummary: {
+          agentCrashCount: 1,
+          gatewayTimeoutCount: 1,
+          signalCount: 4,
+          unhandledExceptionCount: 2,
+        },
+      },
+      generatedAt: '2026-06-26T21:00:00.000Z',
+      window: {
+        hours: 24,
+        since: '2026-06-25T21:00:00.000Z',
+        until: '2026-06-26T21:00:00.000Z',
+      },
+    })
+
+    expect(report.sourceTables).toContain('backend_exception_signals')
+    expect(report.aggregates.backendSignals).toEqual({
+      agentCrashCount: 1,
+      gatewayTimeoutCount: 1,
+      signalCount: 4,
+      unhandledExceptionCount: 2,
+    })
+    expect(report.failureModes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          failureRef:
+            'failure.khala_trace_review.backend_unhandled_exception.api_v1_chat_completions',
+          label:
+            'Unhandled backend exceptions on /api/v1/chat/completions',
+          severity: 'critical',
+        }),
+        expect.objectContaining({
+          failureRef:
+            'failure.khala_trace_review.backend_gateway_timeout.inference_gateway',
+          label: 'Gateway timeout signals on inference.gateway',
+          severity: 'critical',
+        }),
+        expect.objectContaining({
+          failureRef:
+            'failure.khala_trace_review.backend_agent_crash.artanis_scheduled_runner',
+          label: 'Silent agent crash signals on artanis.scheduled_runner',
+          severity: 'critical',
+        }),
+      ]),
+    )
+    expect(report.triageItems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          priority: 'high',
+          triageRef:
+            'triage.khala_trace_review.backend_gateway_timeout.inference_gateway',
+        }),
+      ]),
+    )
+    expect(JSON.stringify(report)).not.toContain('Error:')
+    expect(JSON.stringify(report)).not.toContain('stack')
+  })
+
+  test('backend exception signal insert rejects secret-shaped sanitized messages', async () => {
+    const input: BackendExceptionSignalInput = {
+      fingerprint: 'fp_secret',
+      observedAt: '2026-06-26T20:30:00.000Z',
+      outcome: 'exception',
+      sanitizedMessage: 'provider returned sk-abcdef0123456789ABCDEF',
+      signalKind: 'unhandled_exception',
+      signalRef: 'backend_exception_signal.public.secret',
+      source: 'worker_tail',
+      surface: '/api/private',
+    }
+    const db = {
+      prepare: () => {
+        throw new Error('prepare should not run when the backstop rejects')
+      },
+    } as unknown as D1Database
+
+    await expect(insertBackendExceptionSignal(db, input)).rejects.toMatchObject({
+      reason: 'backend exception signal contained private-data-shaped material',
+    })
+  })
+
+  test('worker error capture stores bounded signal metadata without raw error text', () => {
+    const signal = backendExceptionSignalFromWorkerError({
+      error: new TypeError(
+        'raw stack detail with private prompt and sk-abcdef0123456789ABCDEF',
+      ),
+      observedAt: '2026-06-26T20:30:00.000Z',
+      request: new Request('https://openagents.com/api/v1/chat/completions', {
+        headers: { 'cf-ray': 'abc123-DFW' },
+      }),
+      signalRef: 'backend_exception_signal.public.worker_catch.test',
+    })
+
+    expect(signal).toMatchObject({
+      errorClass: 'TypeError',
+      fingerprint: 'worker_catch:/api/v1/chat/completions:TypeError',
+      outcome: 'exception',
+      requestRef: 'abc123-DFW',
+      signalKind: 'unhandled_exception',
+      source: 'worker_catch',
+      statusCode: 500,
+      surface: '/api/v1/chat/completions',
+    })
+    expect(signal.sanitizedMessage).not.toContain('private prompt')
+    expect(signal.sanitizedMessage).not.toContain('sk-')
   })
 
   test('a legitimate serving provider id with an sk-shaped substring does not trip the secret-material backstop', async () => {

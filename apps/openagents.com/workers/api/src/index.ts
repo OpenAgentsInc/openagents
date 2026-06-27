@@ -606,7 +606,9 @@ import {
   makeD1KhalaFeedbackStore,
 } from './khala-feedback-routes'
 import {
+  backendExceptionSignalFromWorkerError,
   handleOperatorKhalaTraceReview,
+  insertBackendExceptionSignal,
   makeD1KhalaTraceReviewStore,
 } from './khala-trace-review-routes'
 import {
@@ -13331,7 +13333,27 @@ const runWorkerFetch = (
     workerFetchProgram.pipe(
       Effect.provide(WorkerRequestLayer({ ctx, env, request })),
     ),
-  )
+  ).catch(error => {
+    const observedAt = currentIsoTimestamp()
+    ctx.waitUntil(
+      insertBackendExceptionSignal(
+        openAgentsDatabase(env),
+        backendExceptionSignalFromWorkerError({
+          error,
+          observedAt,
+          request,
+          signalRef: `backend_exception_signal.public.worker_catch.${observedAt.replace(/[^0-9A-Za-z]+/g, '_')}.${randomUuid()}`,
+        }),
+      ).catch(insertError => {
+        logWorkerRouteWarning('backend_exception_signal_persistence_failed', {
+          errorClass:
+            insertError instanceof Error ? insertError.name : 'unknown',
+          signalKind: 'unhandled_exception',
+        })
+      }),
+    )
+    throw error
+  })
 
 export default {
   fetch: runWorkerFetch,
