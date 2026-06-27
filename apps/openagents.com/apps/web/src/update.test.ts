@@ -31,6 +31,7 @@ import {
 import {
   ChatRoute,
   DocsRoute,
+  ForumForumRoute,
   HomeRoute,
   InviteRoute,
   LandingRoute,
@@ -178,6 +179,22 @@ describe('app link routing', () => {
       'LoadPublicKhalaTokensServed',
       'RedirectToHome',
     ])
+  })
+
+  test('keeps unknown Forum URL changes on the NotFound route while logged out', () => {
+    const [model, commands] = update(
+      LoggedOut.init(ForumForumRoute({ forumRef: 'product-promises' })),
+      ChangedUrl({ url: appUrl('/forum/f/product-promises/not-a-topic') }),
+    )
+
+    expect(model).toMatchObject({
+      _tag: 'LoggedOut',
+      route: {
+        _tag: 'NotFound',
+        path: '/forum/f/product-promises/not-a-topic',
+      },
+    })
+    expect(commands.map(command => command.name)).toEqual([])
   })
 
   test('keeps team room routes as internal navigation', () => {

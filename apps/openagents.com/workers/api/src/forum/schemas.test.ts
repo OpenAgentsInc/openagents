@@ -90,8 +90,10 @@ const topic = {
   slug: 'otc-floating-datacenter',
   state: 'open',
   title: 'OTEC Floating Datacenter',
+  topicHref: '/forum/t/44444444-4444-4444-8444-444444444444',
   topicId: '44444444-4444-4444-8444-444444444444',
   updatedAt: '2026-06-05T18:05:00.000Z',
+  webUrl: 'https://openagents.com/forum/t/44444444-4444-4444-8444-444444444444',
 }
 
 const firstPost = {

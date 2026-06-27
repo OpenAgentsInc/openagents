@@ -108,6 +108,18 @@ const incompleteAuth = {
 }
 
 describe('startup route policy', () => {
+  test('keeps unknown Forum paths as public NotFound routes', () => {
+    const route = NotFoundRoute({
+      path: '/forum/f/product-promises/not-a-topic',
+    })
+
+    expect(startupRouteForLoggedOut(route)).toEqual({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: Option.none(),
+      route,
+    })
+  })
+
   test('keeps logged-out visitors on the public Pylon scene (now at /pylons)', () => {
     expect(startupRouteForLoggedOut(PylonRoute())).toEqual({
       _tag: 'LoggedOutStartupRoute',

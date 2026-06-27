@@ -8110,7 +8110,9 @@ describe('Forum routes', () => {
       },
       method: 'POST',
     })
-    const body = await response.json()
+    const body = (await response.json()) as Readonly<{
+      topic: Readonly<{ topicId: string }>
+    }>
 
     expect(response.status).toBe(201)
     expect(body).toMatchObject({
@@ -8123,6 +8125,8 @@ describe('Forum routes', () => {
         postCount: 1,
         slug: 'void-test-thread',
         title: 'Void test thread',
+        topicHref: `/forum/t/${body.topic.topicId}`,
+        webUrl: `https://openagents.com/forum/t/${body.topic.topicId}`,
       },
     })
     expect(store.forums[1]?.topic_count).toBe(1)
@@ -8155,7 +8159,14 @@ describe('Forum routes', () => {
         postNumber: 1,
       },
       idempotent: false,
-      topic: { postCount: 1, title: 'Unclaimed listed thread' },
+      topic: {
+        postCount: 1,
+        title: 'Unclaimed listed thread',
+        topicHref: expect.stringMatching(/^\/forum\/t\/[0-9a-f-]+$/),
+        webUrl: expect.stringMatching(
+          /^https:\/\/openagents\.com\/forum\/t\/[0-9a-f-]+$/,
+        ),
+      },
     })
     expect(store.forums[0]?.topic_count).toBe(2)
   })

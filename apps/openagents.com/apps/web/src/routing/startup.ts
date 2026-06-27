@@ -17,6 +17,7 @@ import {
   LandingRoute,
   LoggedInRoute,
   LoggedOutRoute,
+  type NotFoundRoute,
   OnboardingRoute,
   homeRouter,
   inviteRouter,
@@ -67,6 +68,9 @@ export const StartupRoute = S.Union([
 export type StartupRoute = typeof StartupRoute.Type
 
 export { routeRequiresAuthBootstrap } from '../product-policy'
+
+const notFoundIsPublicForumRoute = (route: NotFoundRoute): boolean =>
+  route.path === '/forum' || route.path.startsWith('/forum/')
 
 export const startupRouteForLoggedOut = (
   route: AppRoute,
@@ -129,11 +133,18 @@ export const startupRouteForLoggedOut = (
           redirect: Option.none(),
         }),
     ),
-    M.tag('NotFound', () =>
-      LoggedOutStartupRoute({
-        route: LandingRoute(),
-        redirect: Option.some(StartupRedirectToHome({ href: homeRouter() })),
-      }),
+    M.tag('NotFound', route =>
+      notFoundIsPublicForumRoute(route)
+        ? LoggedOutStartupRoute({
+            route,
+            redirect: Option.none(),
+          })
+        : LoggedOutStartupRoute({
+            route: LandingRoute(),
+            redirect: Option.some(
+              StartupRedirectToHome({ href: homeRouter() }),
+            ),
+          }),
     ),
     M.orElse(() =>
       LoggedOutStartupRoute({
