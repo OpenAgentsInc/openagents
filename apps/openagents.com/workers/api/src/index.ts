@@ -111,6 +111,7 @@ import {
 } from './artanis-operator-pylon-job-status'
 import { makeArtanisGlmFleetStatusLoader } from './artanis-operator-glm-fleet-status'
 import { makeArtanisKhalaFeedbackReader } from './artanis-operator-khala-feedback'
+import { makeArtanisTraceReviewLoader } from './artanis-operator-trace-review'
 import { makeArtanisOperatorTools } from './artanis-operator-tools'
 import {
   makeArtanisUnsupportedRequestsReader,
@@ -8608,6 +8609,20 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
       khalaFeedback: {
         reader: makeArtanisKhalaFeedbackReader({
           store: makeD1KhalaFeedbackStore(openAgentsDatabase(env)),
+        }),
+      },
+      // iteration-11: the owner-scoped Khala trace-review READ tool. Reads the
+      // SAME public-safe report the GET /api/operator/khala/trace-review route
+      // serves (#6356), IN-WORKER (the Worker cannot reliably HTTP-fetch its own
+      // admin-gated zone), so Artanis can spot recurring failure modes and unmet
+      // user intents in-loop, triage them into the unsupported-request ledger,
+      // and plan targeted Codex burndown at the gaps that block adoption.
+      // Read-only, side-effect-free, public-safe (aggregate counts + bounded
+      // buckets only; no raw trajectories, prompts, or private refs).
+      traceReview: {
+        loadReport: makeArtanisTraceReviewLoader({
+          nowIso: currentIsoTimestamp,
+          store: makeD1KhalaTraceReviewStore(openAgentsDatabase(env)),
         }),
       },
       // iteration-8: the owner-scoped unsupported-request ledger READ tool. Reads

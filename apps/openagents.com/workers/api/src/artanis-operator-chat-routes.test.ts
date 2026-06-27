@@ -1093,3 +1093,133 @@ describe('POST /api/operator/artanis/chat — update_unsupported_request accepta
   })
 })
 
+// ---------------------------------------------------------------------------
+// get_trace_review acceptance — Artanis's iteration-11 self-improvement
+// capability drives the REAL bounded tool-calling loop through the chat
+// endpoint. A turn asking for the latest trace review invokes get_trace_review,
+// which reads the live trace-review report and feeds its real bytes back into
+// the loop. Owner-scoped, Khala-powered, read-only (no spend/destructive/outward
+// authority). Proves makeArtanisOperatorTools() now includes get_trace_review.
+// ---------------------------------------------------------------------------
+
+// A scripted Khala client: round 1 asks for get_trace_review(); round 2 reads
+// the tool result it received and echoes its first line. The reply only carries
+// the real report header IF the loop executed the tool and fed the bytes back.
+const makeTraceReviewThenEchoKhalaClient = () => {
+  const requests: Array<InferenceRequest> = []
+  let round = 0
+  const client = (request: InferenceRequest) => {
+    requests.push(request)
+    round += 1
+    if (round === 1) {
+      return Effect.succeed(toolCallResult('get_trace_review', '{}'))
+    }
+    const firstLine = (lastToolResultContent(request) ?? '').split('\n')[0] ?? ''
+    return Effect.succeed({
+      content: `Here is the latest trace review: ${firstLine}`,
+      finishReason: 'stop' as const,
+      servedModel:
+        request.model === 'openagents/khala' ? 'gpt-oss-120b' : 'wrong',
+      usage: { completionTokens: 20, promptTokens: 300, totalTokens: 320 },
+    } satisfies InferenceResult)
+  }
+  return { client, requests }
+}
+
+describe('POST /api/operator/artanis/chat — get_trace_review acceptance', () => {
+  test('reads the live trace-review report through the loop and replies with its real summary', async () => {
+    const { client, requests } = makeTraceReviewThenEchoKhalaClient()
+    const { deps } = baseDeps({
+      makeKhalaClient: () => client,
+      // Inject an in-worker loadReport seam returning the live report shape, so
+      // the route does not depend on an HTTP hop to its own admin-gated zone.
+      makeOperatorTools: () =>
+        makeArtanisOperatorTools({
+          traceReview: {
+            loadReport: async () => ({
+              aggregates: {
+                rawCodexEvents: { rowCount: 3 },
+                tokens: { eventCount: 42, totalTokens: 12000 },
+                traces: { traceCount: 17 },
+              },
+              failureModes: [
+                {
+                  count: 4,
+                  failureRef: 'failure.khala_trace_review.empty_response',
+                  label: 'Token rows with zero completion/output tokens',
+                  severity: 'warning',
+                },
+              ],
+              modelMix: [
+                {
+                  count: 30,
+                  model: 'khala',
+                  provider: 'openagents',
+                  totalTokens: 9000,
+                },
+              ],
+              outcomes: [{ count: 38, outcome: 'stop', totalTokens: 11000 }],
+              window: {
+                hours: 24,
+                since: '2026-06-26T00:00:00.000Z',
+                until: '2026-06-27T00:00:00.000Z',
+              },
+            }),
+          },
+        }),
+    })
+
+    const response = await runRoute(
+      deps,
+      post({
+        messages: [
+          { content: 'show the latest trace review', role: 'user' },
+        ],
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    const json = (await response.json()) as Record<string, unknown>
+
+    // The loop executed get_trace_review — read, executed, not deferred/risky.
+    const invocations = json.toolInvocations as ReadonlyArray<{
+      name: string
+      executed: boolean
+      deferredToApprovalGate: boolean
+      riskyActionKind: string | null
+    }>
+    const traceInvocation = invocations.find(
+      invocation => invocation.name === 'get_trace_review',
+    )
+    expect(traceInvocation).toBeDefined()
+    expect(traceInvocation?.executed).toBe(true)
+    expect(traceInvocation?.deferredToApprovalGate).toBe(false)
+    expect(traceInvocation?.riskyActionKind).toBeNull()
+
+    // At least two Khala calls (request the tool -> feed result -> reply).
+    expect(json.iterations as number).toBeGreaterThanOrEqual(2)
+
+    // The final reply carries the REAL report header sourced from the tool.
+    expect(json.reply as string).toContain('Khala trace review (last 24h')
+
+    // Persona separation holds; dogfood via Khala; not deferred to a gate.
+    expect((json.persona as { satisfied: boolean }).satisfied).toBe(true)
+    expect(json.servedVia).toBe('openagents_khala')
+    expect(json.requestedModel).toBe('openagents/khala')
+    expect(json.deferredToApprovalGate).toBe(false)
+
+    // The second Khala request carried the real report bytes back into context
+    // (model mix + outcome/failure buckets), not a fabrication.
+    expect(
+      requests[1]?.messages.some(
+        message =>
+          message.role === 'tool' &&
+          message.content.includes('Model mix (1):') &&
+          message.content.includes('openagents/khala: 30 calls, 9,000 tokens') &&
+          message.content.includes('Outcomes (1):') &&
+          message.content.includes('Failure modes (1):'),
+      ),
+    ).toBe(true)
+  })
+})
+

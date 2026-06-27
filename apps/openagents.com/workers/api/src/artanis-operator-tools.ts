@@ -2557,6 +2557,338 @@ export const makeArtanisGetGlmFleetStatusTool = (
 }
 
 // ---------------------------------------------------------------------------
+// get_trace_review — read the LIVE Khala trace-review report (iteration-11).
+// ---------------------------------------------------------------------------
+//
+// Artanis named this his ONE highest-value next tool in iteration 11 of his
+// self-improvement loop: an on-demand READ of the existing live trace-review
+// report (`GET /api/operator/khala/trace-review`, #6356), which already
+// aggregates ATIF trace refs, exact token rows, the model mix, and the
+// failure/outcome buckets over a recent window. Reading it IN-LOOP lets him spot
+// recurring failure modes and unmet user intents, triage them into the
+// unsupported-request ledger (#6357) via `update_unsupported_request`, and plan
+// targeted Codex burndown (`dispatch_codex_task`) to fix the gaps that block
+// adoption — directly serving the 10x-daily-Khala-token goal.
+//
+// It stays conservative by construction:
+//   - READ-ONLY + SIDE-EFFECT-FREE. It reads the SAME public-safe report the
+//     admin-gated operator route serves (built by `buildKhalaTraceReviewReport`
+//     over `agent_traces` / `token_usage_events` / `pylon_codex_raw_events`).
+//     It never returns raw trajectories, raw SDK payloads, prompts, or private
+//     refs; it only surfaces aggregate counts + bounded buckets.
+//   - IN-WORKER. The Worker cannot reliably HTTP-fetch its OWN admin-gated zone,
+//     so production wires an in-worker `loadReport` seam that builds the report
+//     directly (mirroring get_network_stats / get_glm_fleet_status). The HTTP
+//     path against the public route is a test/override fallback only.
+//   - BOUNDED + FAIL-SOFT + HONEST. Each section surfaces at most `maxBuckets`
+//     rows. An unreachable source (or an unexpected payload shape) degrades to an
+//     honest "(could not fetch trace review ...)" string and NEVER fabricates
+//     numbers. An empty section reads "(none)" rather than inventing buckets.
+//   - PUBLIC-SAFE. The report is public-safe by construction on the route; the
+//     tool applies a defensive second pass so an upstream regression cannot leak
+//     private material into a free-text bucket field surfaced to Artanis.
+
+// The default live source for the trace-review read (the admin-gated operator
+// route). Used only on the HTTP fallback path (no `loadReport` override).
+export const ARTANIS_TRACE_REVIEW_URL =
+  'https://openagents.com/api/operator/khala/trace-review'
+
+// Max buckets surfaced per section (model mix / outcomes / failure modes) so a
+// single read stays bounded and cheap even when the report is large.
+export const ARTANIS_TRACE_REVIEW_MAX_BUCKETS = 8
+
+// A public-safe one-row projection of ONE model-mix bucket.
+export type ArtanisTraceReviewModelBucket = Readonly<{
+  provider: string
+  model: string
+  count: number
+  totalTokens: number
+}>
+
+// A public-safe one-row projection of ONE outcome bucket.
+export type ArtanisTraceReviewOutcomeBucket = Readonly<{
+  outcome: string
+  count: number
+  totalTokens: number
+}>
+
+// A public-safe one-row projection of ONE failure-mode bucket.
+export type ArtanisTraceReviewFailureBucket = Readonly<{
+  label: string
+  count: number
+  severity: string
+  failureRef: string
+}>
+
+// The bounded, public-safe normalized projection of the trace-review report the
+// tool surfaces into Artanis's context. Aggregate counts + bounded buckets only.
+export type ArtanisTraceReviewSummary = Readonly<{
+  windowHours: number | null
+  since: string | null
+  until: string | null
+  tokenEventCount: number
+  totalTokens: number
+  traceCount: number
+  rawEventRowCount: number
+  modelMix: ReadonlyArray<ArtanisTraceReviewModelBucket>
+  outcomes: ReadonlyArray<ArtanisTraceReviewOutcomeBucket>
+  failureModes: ReadonlyArray<ArtanisTraceReviewFailureBucket>
+}>
+
+export type ArtanisTraceReviewConfig = Readonly<{
+  // The trace-review URL to fetch (default the operator route). HTTP path only.
+  url?: string | undefined
+  // Injected for testability; defaults to the global fetch.
+  fetchImpl?: typeof fetch | undefined
+  // In-worker override that resolves the report directly (the Worker cannot
+  // reliably HTTP-fetch its OWN admin-gated zone). When provided it is used
+  // instead of an HTTP fetch. It returns the raw report object the route serves;
+  // the tool normalizes it defensively.
+  loadReport?: (() => Promise<unknown>) | undefined
+  // Max buckets surfaced per section (default ARTANIS_TRACE_REVIEW_MAX_BUCKETS).
+  maxBuckets?: number | undefined
+}>
+
+// Coerce an unknown value into a non-negative integer, defaulting to 0 (so a
+// missing aggregate reads as 0, never NaN/invented). Trace-review aggregates are
+// counts/totals and are never negative.
+const traceReviewCount = (value: unknown): number =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? Math.trunc(value)
+    : 0
+
+// Pull a non-empty trimmed string field, or a fallback. Defensively redact a
+// value that carries non-public-safe material so an upstream regression cannot
+// leak secrets into a bucket field surfaced to Artanis.
+const traceReviewSafeField = (value: unknown, fallback: string): string => {
+  const text = typeof value === 'string' ? value.trim() : ''
+  if (text === '') return fallback
+  return dispatchFieldIsSafe(text) ? text : '(redacted)'
+}
+
+const traceReviewRecord = (value: unknown): Record<string, unknown> =>
+  typeof value === 'object' && value !== null
+    ? (value as Record<string, unknown>)
+    : {}
+
+// Normalize an unknown trace-review payload into the bounded, public-safe
+// summary, or null when the body is not an object at all. It is tolerant of the
+// live route shape (`{ window, aggregates: { tokens, traces, rawCodexEvents },
+// modelMix, outcomes, failureModes }`): a missing section degrades to empty / 0
+// (honest absence over invention), never a throw.
+export const normalizeArtanisTraceReview = (
+  body: unknown,
+  maxBuckets: number = ARTANIS_TRACE_REVIEW_MAX_BUCKETS,
+): ArtanisTraceReviewSummary | null => {
+  if (typeof body !== 'object' || body === null) return null
+  const record = body as Record<string, unknown>
+
+  const window = traceReviewRecord(record.window)
+  const aggregates = traceReviewRecord(record.aggregates)
+  const tokens = traceReviewRecord(aggregates.tokens)
+  const traces = traceReviewRecord(aggregates.traces)
+  const rawEvents = traceReviewRecord(aggregates.rawCodexEvents)
+
+  const windowHours =
+    typeof window.hours === 'number' && Number.isFinite(window.hours)
+      ? Math.trunc(window.hours)
+      : null
+  const since = typeof window.since === 'string' ? window.since : null
+  const until = typeof window.until === 'string' ? window.until : null
+
+  const modelMix = (Array.isArray(record.modelMix) ? record.modelMix : [])
+    .slice(0, maxBuckets)
+    .map(raw => {
+      const row = traceReviewRecord(raw)
+      return {
+        count: traceReviewCount(row.count),
+        model: traceReviewSafeField(row.model, 'unknown'),
+        provider: traceReviewSafeField(row.provider, 'unknown'),
+        totalTokens: traceReviewCount(row.totalTokens),
+      }
+    })
+
+  const outcomes = (Array.isArray(record.outcomes) ? record.outcomes : [])
+    .slice(0, maxBuckets)
+    .map(raw => {
+      const row = traceReviewRecord(raw)
+      return {
+        count: traceReviewCount(row.count),
+        outcome: traceReviewSafeField(row.outcome, 'unknown'),
+        totalTokens: traceReviewCount(row.totalTokens),
+      }
+    })
+
+  const failureModes = (
+    Array.isArray(record.failureModes) ? record.failureModes : []
+  )
+    .slice(0, maxBuckets)
+    .map(raw => {
+      const row = traceReviewRecord(raw)
+      return {
+        count: traceReviewCount(row.count),
+        failureRef: traceReviewSafeField(row.failureRef, 'unknown'),
+        label: traceReviewSafeField(row.label, 'unknown'),
+        severity: traceReviewSafeField(row.severity, 'info'),
+      }
+    })
+
+  return {
+    failureModes,
+    modelMix,
+    outcomes,
+    rawEventRowCount: traceReviewCount(rawEvents.rowCount),
+    since,
+    tokenEventCount: traceReviewCount(tokens.eventCount),
+    totalTokens: traceReviewCount(tokens.totalTokens),
+    traceCount: traceReviewCount(traces.traceCount),
+    until,
+    windowHours,
+  }
+}
+
+// Format the public-safe trace-review summary as a bounded multi-line report
+// covering the window, the aggregate counts, the model mix, the outcome buckets,
+// and the failure buckets. Empty sections read "(none)".
+const formatTraceReviewSummary = (
+  summary: ArtanisTraceReviewSummary,
+): string => {
+  const windowLine =
+    summary.windowHours === null
+      ? 'Khala trace review (window: unknown):'
+      : `Khala trace review (last ${summary.windowHours}h${
+          summary.since !== null && summary.until !== null
+            ? `, ${summary.since} -> ${summary.until}`
+            : ''
+        }):`
+
+  const aggregatesLine = `Aggregates: ${summary.tokenEventCount.toLocaleString(
+    'en-US',
+  )} token rows, ${summary.totalTokens.toLocaleString(
+    'en-US',
+  )} tokens; ${summary.traceCount.toLocaleString(
+    'en-US',
+  )} traces; ${summary.rawEventRowCount.toLocaleString(
+    'en-US',
+  )} raw Codex event rows.`
+
+  const modelMixBlock =
+    summary.modelMix.length === 0
+      ? 'Model mix: (none)'
+      : [
+          `Model mix (${summary.modelMix.length}):`,
+          ...summary.modelMix.map(
+            bucket =>
+              `- ${bucket.provider}/${bucket.model}: ${bucket.count.toLocaleString(
+                'en-US',
+              )} calls, ${bucket.totalTokens.toLocaleString('en-US')} tokens`,
+          ),
+        ].join('\n')
+
+  const outcomesBlock =
+    summary.outcomes.length === 0
+      ? 'Outcomes: (none)'
+      : [
+          `Outcomes (${summary.outcomes.length}):`,
+          ...summary.outcomes.map(
+            bucket =>
+              `- ${bucket.outcome}: ${bucket.count.toLocaleString(
+                'en-US',
+              )} (${bucket.totalTokens.toLocaleString('en-US')} tokens)`,
+          ),
+        ].join('\n')
+
+  const failuresBlock =
+    summary.failureModes.length === 0
+      ? 'Failure modes: (none)'
+      : [
+          `Failure modes (${summary.failureModes.length}):`,
+          ...summary.failureModes.map(
+            bucket =>
+              `- [${bucket.severity}] ${bucket.label}: ${bucket.count.toLocaleString(
+                'en-US',
+              )} (${bucket.failureRef})`,
+          ),
+        ].join('\n')
+
+  return [
+    windowLine,
+    aggregatesLine,
+    modelMixBlock,
+    outcomesBlock,
+    failuresBlock,
+  ].join('\n')
+}
+
+// get_trace_review() — reads the LIVE Khala trace-review report. Returns a
+// bounded, public-safe summary naming the window, the aggregate counts, the
+// model mix, and the outcome/failure buckets. Honest absence: an unreachable
+// source, a non-OK response, or an unexpected payload shape reads as
+// "(could not fetch trace review ...)" and never fabricates numbers; an empty
+// section reads "(none)". Side-effect-free, read-only, owner-scoped, no spend;
+// takes no arguments.
+export const makeArtanisGetTraceReviewTool = (
+  config: ArtanisTraceReviewConfig = {},
+): ArtanisOperatorReadTool => {
+  const url = config.url ?? ARTANIS_TRACE_REVIEW_URL
+  const fetchImpl = config.fetchImpl ?? globalThis.fetch
+  const loadReport = config.loadReport
+  const maxBuckets = config.maxBuckets ?? ARTANIS_TRACE_REVIEW_MAX_BUCKETS
+
+  return {
+    definition: {
+      description:
+        'Read the LIVE Khala TRACE-REVIEW report: the recurring review over recent agent traces, exact token-usage rows, and Pylon/Codex raw-event metadata. Returns the review window, aggregate counts (token rows, total tokens, traces, raw Codex event rows), the MODEL MIX (provider/model calls + tokens), the OUTCOME buckets (finish reasons + tokens), and the FAILURE-MODE buckets (recurring problems with severity). Use this in-loop to spot recurring failure modes and unmet user intents, triage them into the unsupported-request ledger (update_unsupported_request), and plan targeted Codex burndown (dispatch_codex_task) at the gaps that block adoption - driving the 10x-daily-token goal. Read-only, side-effect-free, owner-scoped, public-safe (aggregate counts + bounded buckets only; no raw trajectories, prompts, or private refs). Takes no arguments; an empty section reads "(none)" and an unreachable source reads as "(could not fetch trace review ...)".',
+      name: 'get_trace_review',
+      parameters: {
+        additionalProperties: false,
+        properties: {},
+        type: 'object',
+      },
+    },
+    execute: (_args: unknown) =>
+      Effect.gen(function* () {
+        // In-worker override first (the Worker cannot reliably HTTP-fetch its own
+        // admin-gated zone). A loader rejection degrades to an honest soft
+        // failure, never a throw or fabricated numbers.
+        if (loadReport !== undefined) {
+          const exit = yield* Effect.exit(Effect.tryPromise(() => loadReport()))
+          if (exit._tag === 'Failure') {
+            return '(could not fetch trace review)'
+          }
+          const normalized = normalizeArtanisTraceReview(exit.value, maxBuckets)
+          if (normalized === null) {
+            return '(could not fetch trace review: unexpected report shape)'
+          }
+          return formatTraceReviewSummary(normalized)
+        }
+
+        const response = yield* Effect.tryPromise(() =>
+          fetchImpl(url, { headers: { 'User-Agent': 'artanis-operator' } }),
+        ).pipe(Effect.orElseSucceed(() => undefined))
+
+        if (response === undefined) {
+          return `(could not fetch trace review from ${url})`
+        }
+        if (!response.ok) {
+          return `(could not fetch trace review from ${url}: status ${response.status})`
+        }
+
+        const body = yield* Effect.tryPromise(
+          () => response.json() as Promise<unknown>,
+        ).pipe(Effect.orElseSucceed(() => undefined))
+
+        const normalized = normalizeArtanisTraceReview(body, maxBuckets)
+        if (normalized === null) {
+          return `(could not fetch trace review from ${url}: unexpected response shape)`
+        }
+        return formatTraceReviewSummary(normalized)
+      }),
+    kind: 'read',
+  }
+}
+
+// ---------------------------------------------------------------------------
 // trigger_synthetic_load (RISKY: plan-only) — iteration-4 self-improvement.
 // ---------------------------------------------------------------------------
 //
@@ -2794,6 +3126,12 @@ export const makeArtanisTriggerSyntheticLoadTool = (
 // to an HTTP fetch of the public-safe readiness route, and an unreachable source
 // reads as an honest "(could not fetch GLM fleet status …)" rather than
 // inventing replica numbers.
+// `traceReview.loadReport` is the in-worker trace-review report loader behind the
+// iteration-11 `get_trace_review` read tool (the live
+// GET /api/operator/khala/trace-review report, #6356; the Worker cannot reliably
+// HTTP-fetch its own admin-gated zone); with no override wired it falls back to an
+// HTTP fetch of the operator route, and an unreachable source reads as an honest
+// "(could not fetch trace review …)" rather than inventing buckets.
 // `unsupportedRequests.reader` is the owner-scoped unsupported-request ledger
 // reader behind the iteration-8 `get_unsupported_requests` read tool (the live
 // `khala_unsupported_requests` ledger of user-facing capability gaps, #6357);
@@ -2813,6 +3151,7 @@ export const makeArtanisOperatorTools = (
     pylonJobStatus?: ArtanisPylonJobStatusConfig | undefined
     pylonAssignments?: ArtanisPylonAssignmentsConfig | undefined
     khalaFeedback?: ArtanisKhalaFeedbackConfig | undefined
+    traceReview?: ArtanisTraceReviewConfig | undefined
     unsupportedRequests?: ArtanisUnsupportedRequestsConfig | undefined
     unsupportedRequestWriter?: ArtanisUnsupportedRequestWriter | undefined
     defaultBranch?: string | undefined
@@ -2846,6 +3185,7 @@ export const makeArtanisOperatorTools = (
     makeArtanisGetPylonJobStatusTool(config.pylonJobStatus),
     makeArtanisListPylonAssignmentsTool(config.pylonAssignments),
     makeArtanisGetKhalaFeedbackTool(config.khalaFeedback),
+    makeArtanisGetTraceReviewTool(config.traceReview),
     makeArtanisGetUnsupportedRequestsTool(config.unsupportedRequests),
     makeArtanisUpdateUnsupportedRequestTool({
       writer: config.unsupportedRequestWriter,

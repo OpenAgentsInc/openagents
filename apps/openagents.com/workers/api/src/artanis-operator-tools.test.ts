@@ -20,6 +20,7 @@ import {
   makeArtanisGetKhalaFeedbackTool,
   makeArtanisGetNetworkStatsTool,
   makeArtanisGetPylonJobStatusTool,
+  makeArtanisGetTraceReviewTool,
   makeArtanisGetUnsupportedRequestsTool,
   makeArtanisListGithubIssuesTool,
   makeArtanisListPylonAssignmentsTool,
@@ -30,6 +31,7 @@ import {
   makeArtanisTriggerSyntheticLoadTool,
   makeArtanisUpdateUnsupportedRequestTool,
   normalizeArtanisGlmFleetStatus,
+  normalizeArtanisTraceReview,
   parseArtanisAssignmentRef,
   parseArtanisIssueNumber,
 } from './artanis-operator-tools'
@@ -1874,6 +1876,217 @@ describe('get_glm_fleet_status (live GLM inference-fleet readiness) - iteration 
   })
 })
 
+// A public-safe trace-review report fixture matching the live route shape
+// (`buildKhalaTraceReviewReport` output): window + aggregates + modelMix +
+// outcomes + failureModes. Used to drive the get_trace_review read tool.
+const TRACE_REVIEW_REPORT_FIXTURE = {
+  aggregates: {
+    rawCodexEvents: { byteLength: 4096, eventCount: 9, rowCount: 3 },
+    tokens: {
+      eventCount: 42,
+      inputTokens: 5000,
+      outputTokens: 7000,
+      totalTokens: 12000,
+    },
+    traces: { traceCount: 17, zeroStepCount: 1 },
+  },
+  failureModes: [
+    {
+      count: 4,
+      evidenceRefs: ['table.token_usage_events.output_tokens_zero'],
+      failureRef: 'failure.khala_trace_review.empty_response',
+      label: 'Token rows with zero completion/output tokens',
+      severity: 'warning',
+    },
+  ],
+  generatedAt: '2026-06-27T00:00:00.000Z',
+  modelMix: [
+    {
+      count: 30,
+      model: 'khala',
+      provider: 'openagents',
+      totalTokens: 9000,
+    },
+    {
+      count: 12,
+      model: 'pylon-codex',
+      provider: 'pylon-codex-own-capacity',
+      totalTokens: 3000,
+    },
+  ],
+  outcomes: [
+    { count: 38, outcome: 'stop', totalTokens: 11000 },
+    { count: 4, outcome: 'unknown', totalTokens: 1000 },
+  ],
+  reportRef: 'khala_trace_review.2026_06_27',
+  schemaVersion: 'openagents.khala.trace_review.v1',
+  window: {
+    hours: 24,
+    since: '2026-06-26T00:00:00.000Z',
+    until: '2026-06-27T00:00:00.000Z',
+  },
+} as const
+
+describe('get_trace_review (live Khala trace-review report) - iteration 11', () => {
+  test('returns a bounded summary covering window, model mix, and outcome/failure buckets from the injected fetch', async () => {
+    const urls: Array<string> = []
+    const fetchImpl = (async (input: RequestInfo | URL) => {
+      urls.push(typeof input === 'string' ? input : input.toString())
+      return new Response(JSON.stringify(TRACE_REVIEW_REPORT_FIXTURE), {
+        status: 200,
+      })
+    }) as typeof fetch
+
+    const tool = makeArtanisGetTraceReviewTool({ fetchImpl })
+    // It is a READ tool (executes freely, never gated/risky).
+    expect(tool.kind).toBe('read')
+    expect(tool.definition.name).toBe('get_trace_review')
+
+    const result = await Effect.runPromise(tool.execute({}))
+    // Window.
+    expect(result).toContain('Khala trace review (last 24h')
+    expect(result).toContain('2026-06-26T00:00:00.000Z -> 2026-06-27T00:00:00.000Z')
+    // Aggregates.
+    expect(result).toContain('42 token rows')
+    expect(result).toContain('12,000 tokens')
+    expect(result).toContain('17 traces')
+    expect(result).toContain('3 raw Codex event rows')
+    // Model mix.
+    expect(result).toContain('Model mix (2):')
+    expect(result).toContain('openagents/khala: 30 calls, 9,000 tokens')
+    expect(result).toContain(
+      'pylon-codex-own-capacity/pylon-codex: 12 calls, 3,000 tokens',
+    )
+    // Outcomes.
+    expect(result).toContain('Outcomes (2):')
+    expect(result).toContain('stop: 38 (11,000 tokens)')
+    // Failure modes.
+    expect(result).toContain('Failure modes (1):')
+    expect(result).toContain('[warning] Token rows with zero completion')
+    expect(result).toContain('failure.khala_trace_review.empty_response')
+    // It hit the operator trace-review route by default.
+    expect(urls[0]).toBe(
+      'https://openagents.com/api/operator/khala/trace-review',
+    )
+  })
+
+  test('empty model-mix / outcome / failure sections read "(none)", never fabricated buckets', async () => {
+    const fetchImpl = (async () =>
+      new Response(
+        JSON.stringify({
+          aggregates: {
+            rawCodexEvents: { rowCount: 0 },
+            tokens: { eventCount: 0, totalTokens: 0 },
+            traces: { traceCount: 0 },
+          },
+          failureModes: [],
+          modelMix: [],
+          outcomes: [],
+          window: { hours: 24, since: 's', until: 'u' },
+        }),
+        { status: 200 },
+      )) as typeof fetch
+    const tool = makeArtanisGetTraceReviewTool({ fetchImpl })
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toContain('Model mix: (none)')
+    expect(result).toContain('Outcomes: (none)')
+    expect(result).toContain('Failure modes: (none)')
+    expect(result).toContain('0 token rows')
+  })
+
+  test('a failing/unreachable fetch returns an honest "(could not fetch trace review ...)" string, never fabricated numbers', async () => {
+    const failing = (async () => {
+      throw new Error('network down')
+    }) as typeof fetch
+    const tool = makeArtanisGetTraceReviewTool({ fetchImpl: failing })
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toContain('could not fetch trace review')
+    expect(result).not.toMatch(/token rows/)
+    expect(result).not.toMatch(/Error:/)
+  })
+
+  test('a non-OK response reads as an honest soft failure, never invention', async () => {
+    const fetchImpl = (async () =>
+      new Response('unauthorized', { status: 401 })) as typeof fetch
+    const tool = makeArtanisGetTraceReviewTool({ fetchImpl })
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toContain('could not fetch trace review')
+    expect(result).toContain('status 401')
+  })
+
+  test('a non-object payload reads as an honest soft failure', async () => {
+    const fetchImpl = (async () =>
+      new Response(JSON.stringify('nope'), { status: 200 })) as typeof fetch
+    const tool = makeArtanisGetTraceReviewTool({ fetchImpl })
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toContain('unexpected response shape')
+  })
+
+  test('uses the in-worker loadReport override instead of HTTP when provided', async () => {
+    let httpCalled = false
+    const httpFetch = (async () => {
+      httpCalled = true
+      return new Response('{}', { status: 200 })
+    }) as typeof fetch
+    const tool = makeArtanisGetTraceReviewTool({
+      fetchImpl: httpFetch,
+      loadReport: async () => TRACE_REVIEW_REPORT_FIXTURE,
+    })
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(httpCalled).toBe(false)
+    expect(result).toContain('Khala trace review (last 24h')
+    expect(result).toContain('openagents/khala: 30 calls, 9,000 tokens')
+  })
+
+  test('a loadReport rejection reads as an honest soft failure, never a throw', async () => {
+    const tool = makeArtanisGetTraceReviewTool({
+      loadReport: async () => {
+        throw new Error('d1 down')
+      },
+    })
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toBe('(could not fetch trace review)')
+    expect(result).not.toMatch(/Error:/)
+  })
+
+  test('bounds the buckets surfaced per section to maxBuckets', async () => {
+    const tool = makeArtanisGetTraceReviewTool({
+      maxBuckets: 1,
+      loadReport: async () => TRACE_REVIEW_REPORT_FIXTURE,
+    })
+    const result = await Effect.runPromise(tool.execute({}))
+    // Only the top model-mix / outcome bucket survives the bound.
+    expect(result).toContain('Model mix (1):')
+    expect(result).toContain('openagents/khala')
+    expect(result).not.toContain('pylon-codex-own-capacity/pylon-codex')
+    expect(result).toContain('Outcomes (1):')
+    expect(result).not.toContain('unknown: 4')
+  })
+
+  test('normalizeArtanisTraceReview defensively redacts a non-public-safe bucket field', () => {
+    const normalized = normalizeArtanisTraceReview({
+      aggregates: {},
+      modelMix: [
+        { count: 1, model: 'bearer sk-abc123', provider: 'p', totalTokens: 1 },
+      ],
+      window: {},
+    })
+    expect(normalized).not.toBeNull()
+    expect(normalized?.modelMix[0]?.model).toBe('(redacted)')
+  })
+
+  test('normalizeArtanisTraceReview returns null only for a non-object body', () => {
+    expect(normalizeArtanisTraceReview(null)).toBeNull()
+    expect(normalizeArtanisTraceReview('x')).toBeNull()
+    // An object missing sections degrades to empty/0, never null.
+    const empty = normalizeArtanisTraceReview({})
+    expect(empty).not.toBeNull()
+    expect(empty?.modelMix).toEqual([])
+    expect(empty?.totalTokens).toBe(0)
+    expect(empty?.windowHours).toBeNull()
+  })
+})
+
 describe('makeArtanisOperatorTools default table', () => {
   test('includes the repo-read tools, the issue-read tool, the network-stats tool, the job-status tool, and the dispatch tool', () => {
     const tools = makeArtanisOperatorTools()
@@ -1884,6 +2097,7 @@ describe('makeArtanisOperatorTools default table', () => {
       'get_khala_feedback',
       'get_network_stats',
       'get_pylon_job_status',
+      'get_trace_review',
       'get_unsupported_requests',
       'list_github_issues',
       'list_pylon_assignments',
@@ -1932,6 +2146,13 @@ describe('makeArtanisOperatorTools default table', () => {
   test('the default table includes a read-kind get_khala_feedback tool', () => {
     const tools = makeArtanisOperatorTools()
     const tool = tools.find(t => t.definition.name === 'get_khala_feedback')
+    expect(tool).toBeDefined()
+    expect(tool?.kind).toBe('read')
+  })
+
+  test('the default table includes a read-kind get_trace_review tool', () => {
+    const tools = makeArtanisOperatorTools()
+    const tool = tools.find(t => t.definition.name === 'get_trace_review')
     expect(tool).toBeDefined()
     expect(tool?.kind).toBe('read')
   })
