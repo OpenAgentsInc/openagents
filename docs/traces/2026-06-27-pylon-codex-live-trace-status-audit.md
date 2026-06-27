@@ -36,6 +36,12 @@ Short answer:
   production `404` for the sampled assignment, even though the endpoint exists
   in local code/tests. Treat that as a deploy/route parity gap until a deployed
   smoke returns the metadata payload.
+- A later #6318 attempt proved another important non-trace case: local Pylon
+  capacity and heartbeat can be fresh while the production dispatch gate fails
+  before assignment creation. In that state there is no trace or token event
+  yet. This change hardens the gate so a generic failure in the scoped linked-
+  owner registration read falls back to the broad registration read before
+  returning the typed store-unavailable 503.
 - The trace read token and proof token are not interchangeable in every case:
   a Khala/local token linked to the same OpenAuth owner can read owner-only
   traces, while the Pylon/Codex proof route requires the exact assignment-owning
@@ -863,6 +869,57 @@ run still creates trace/proof/accounting evidence when it actually goes through
 Pylon/Codex. Conversely, a failed pre-assignment gate, a plain chat response, or
 an unclaimed assignment will not and should not move the assignment-scoped proof
 surface.
+
+## Latest #6318 Dispatch-Gate Hardening
+
+After the #6320 zero-edit run, the same runbook was used for a #6318 scheduler
+follow-up from the fresh worktree at
+`6a29d474e48f87716a0a79b886c6b9ad25c6b567`.
+
+Preflight again showed the local side was ready:
+
+- `codex accounts list --json`: default Codex ready;
+- `provider go-online --json`: Pylon `pylon.33afd48282a649047e3a` with Codex
+  `available=1`, `busy=0`, `queued=0`, `ready=1`;
+- `presence heartbeat --json`: linked, registered, non-stale heartbeat
+  sequences `503` and `504`;
+- public token scalar baseline: `437,816,571`.
+
+The typed request still failed twice before assignment creation:
+
+```text
+pylon khala request failed (503): The Khala coding dispatch gate could not read
+linked Pylon capacity right now. This is a transient gate failure, not an
+account problem -- retry shortly.
+```
+
+Because the failure happened before `assignmentRef` creation, the correct audit
+answer is: no, there is no `/trace/{uuid}` view, raw Codex chunk stream, exact
+Pylon/Codex `token_usage_events` row, or proof endpoint record for that attempt.
+The public counter did not move for that failed dispatch because no local Codex
+turn closed out.
+
+The local code audit found one dispatch-gate reliability gap that matched this
+shape. The gate already intended to fall back from
+`listRegistrationsForOwnerAgentUserIds` to the broad `listRegistrations` read,
+but it only did so for `PylonApiStoreError`. The D1-backed store methods can
+surface generic platform errors. A generic scoped-read failure therefore skipped
+the fallback and bubbled to the route-level typed 503 even when the broad read
+could still have found the same linked Pylon capacity.
+
+This patch makes that fallback unconditional for scoped registration-read
+failures and normalizes a failing broad fallback read into the existing
+`coding_delegation_store_unavailable` typed 503. Focused coverage now proves:
+
+- the pure delegation gate falls back when the scoped read throws a generic
+  error;
+- the chat route creates the coding assignment when that broad fallback succeeds;
+- the chat route still fails closed with typed 503 when both scoped and broad
+  reads fail.
+
+This is a dispatch reliability fix, not #6318 completion. #6318 remains open
+until live saturation proof shows external demand preempts/yields internal load
+without premature overflow to a weaker lane.
 
 ## Token Counter Timing Clarification
 

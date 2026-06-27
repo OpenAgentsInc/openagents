@@ -313,10 +313,21 @@ const listRegistrationsForLinkedOwnerAgents = async (
   pylonStore: PylonApiStore,
   ownerAgentUserIds: ReadonlyArray<string>,
 ): Promise<ReadonlyArray<PylonApiRegistrationRecord>> => {
-  const listAllAndFilter = async () =>
-    (await pylonStore.listRegistrations(200)).filter(registration =>
-      ownerAgentUserIds.includes(registration.ownerAgentUserId),
-    )
+  const listAllAndFilter = async () => {
+    try {
+      return (await pylonStore.listRegistrations(200)).filter(registration =>
+        ownerAgentUserIds.includes(registration.ownerAgentUserId),
+      )
+    } catch (error) {
+      if (error instanceof PylonApiStoreError) {
+        throw error
+      }
+      throw new PylonApiStoreError({
+        kind: 'storage_error',
+        reason: 'linked Pylon registration fallback read failed',
+      })
+    }
+  }
 
   if (pylonStore.listRegistrationsForOwnerAgentUserIds === undefined) {
     return listAllAndFilter()
@@ -327,11 +338,8 @@ const listRegistrationsForLinkedOwnerAgents = async (
       ownerAgentUserIds,
       200,
     )
-  } catch (error) {
-    if (error instanceof PylonApiStoreError) {
-      return listAllAndFilter()
-    }
-    throw error
+  } catch {
+    return listAllAndFilter()
   }
 }
 

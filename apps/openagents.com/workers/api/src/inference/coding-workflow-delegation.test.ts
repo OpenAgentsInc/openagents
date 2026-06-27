@@ -199,6 +199,35 @@ describe('coding workflow delegation', () => {
     expect(assigned.assignment.ownerAgentUserId).toBe('agent_owner')
   })
 
+  test('falls back to the broad registration read when the scoped capacity read throws generically', async () => {
+    const fallbackStore = {
+      ...makeStore({ registrations: [registration()] }),
+      listRegistrationsForOwnerAgentUserIds: async () => {
+        throw new Error('owner registration index temporarily unavailable')
+      },
+    } satisfies PylonApiStore
+
+    const result = await delegateCodingWorkflow({
+      classification,
+      linkedAgents: [linkedOwner],
+      makeId: () => 'id1',
+      nowIso,
+      pylonStore: fallbackStore,
+      rawBody: {
+        openagents: {
+          coding: {
+            targetPylonRef: 'pylon.owner.codex',
+          },
+        },
+      },
+      requestId: 'chatcmpl_coding_generic_scoped_read_fallback',
+    })
+    const assigned = expectAssigned(result)
+
+    expect(assigned.pylon.pylonRef).toBe('pylon.owner.codex')
+    expect(assigned.assignment.ownerAgentUserId).toBe('agent_owner')
+  })
+
   test('does not require wallet readiness for unpaid local Codex delegation', async () => {
     const result = await delegateCodingWorkflow({
       classification,
@@ -589,16 +618,10 @@ describe('coding workflow delegation', () => {
     const failingStore = {
       ...makeStore({ registrations: [registration()] }),
       listRegistrationsForOwnerAgentUserIds: async () => {
-        throw new PylonApiStoreError({
-          kind: 'storage_error',
-          reason: 'D1 read failed',
-        })
+        throw new Error('D1 scoped read failed')
       },
       listRegistrations: async () => {
-        throw new PylonApiStoreError({
-          kind: 'storage_error',
-          reason: 'D1 read failed',
-        })
+        throw new Error('D1 broad read failed')
       },
     } satisfies PylonApiStore
 

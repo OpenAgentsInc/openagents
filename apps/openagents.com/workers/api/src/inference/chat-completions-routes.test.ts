@@ -515,7 +515,7 @@ describe('coding delegation default-on guard', () => {
     expect(body.reason).toContain('could not read linked Pylon capacity')
   })
 
-  test('agent-owned Pylon dispatch returns typed 503 when capacity read rejects generically', async () => {
+  test('agent-owned Pylon dispatch falls back when scoped capacity read rejects generically', async () => {
     const response = await run(
       handleChatCompletions(
         chatRequest({
@@ -535,6 +535,50 @@ describe('coding delegation default-on guard', () => {
               ...codingPylonStore([codingPylonRegistration()]),
               listRegistrationsForOwnerAgentUserIds: async () => {
                 throw new Error('capacity index temporarily unavailable')
+              },
+            } as unknown as PylonApiStore,
+            resolveOpenAuthUserId: async () => undefined,
+          },
+          newId: () => 'request_generic_capacity_read_fallback',
+          nowEpochSeconds: () => 0,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toContain('text/event-stream')
+    expect(response.headers.get('openagents-coding-assignment-ref')).toBe(
+      'assignment.public.khala_coding.request_generic_capacity_read_fallback',
+    )
+    const text = await response.text()
+    expect(text).toContain(
+      'Coding workflow delegated to linked Pylon pylon.owner.codex',
+    )
+  })
+
+  test('agent-owned Pylon dispatch returns typed 503 when all capacity reads reject generically', async () => {
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          ...helloBody,
+          openagents: {
+            coding: {
+              targetPylonRef: 'pylon.owner.codex',
+            },
+            workflowClass: 'codex_agent_task',
+          },
+        }),
+        baseDeps({
+          authenticate: async () => ({ accountRef: 'agent:agent_owner' }),
+          codingDelegation: {
+            agentStore: linkedCodingAgentStore,
+            pylonStore: {
+              ...codingPylonStore([codingPylonRegistration()]),
+              listRegistrationsForOwnerAgentUserIds: async () => {
+                throw new Error('capacity index temporarily unavailable')
+              },
+              listRegistrations: async () => {
+                throw new Error('capacity table temporarily unavailable')
               },
             } as unknown as PylonApiStore,
             resolveOpenAuthUserId: async () => undefined,
