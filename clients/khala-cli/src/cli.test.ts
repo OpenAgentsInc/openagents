@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 
-import { formatKhalaSpawnCapabilityAnswer, runKhalaCli } from "./cli.js"
+import { formatKhalaSpawnCapabilityAnswer, formatOperatorFleetStatusDashboard, runKhalaCli } from "./cli.js"
 
 describe("Khala CLI spawn capability answer", () => {
   test("answers the original subprocess capability question with the reviewed CLI path", () => {
@@ -48,6 +48,76 @@ describe("Khala CLI info diagnostics", () => {
     expect(stdout).toContain("token redacted")
     expect(stdout).not.toContain("oa_agent_secret_for_info_test")
     expect(stdout).not.toContain("token=")
+  })
+
+  test("renders a one-shot live fleet dashboard from the operator status endpoint", async () => {
+    const authHeaders: Array<string | null> = []
+    const server = Bun.serve({
+      port: 0,
+      fetch: request => {
+        authHeaders.push(request.headers.get("authorization"))
+        expect(new URL(request.url).pathname).toBe("/api/operator/fleet/status")
+        return Response.json({
+          generatedAt: "2026-06-27T12:00:00.000Z",
+          blocks: {
+            pace: { burnRate: "9 issues/hour", paceToFloor: "above floor" },
+            fleet: { concurrency: 7, inFlightIssues: ["#6429", "#6408"] },
+            watchdog: { state: "ready", leases: 2, alerts: 0 },
+            glm: { readiness: "ready", replicasReady: 4, replicasTotal: 4 },
+            brain: { loopHealth: "active", goals: 3, recentDecisions: ["ship status"] },
+          },
+        })
+      },
+    })
+
+    const originalWrite = process.stdout.write
+    let stdout = ""
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      stdout += String(chunk)
+      return true
+    }) as typeof process.stdout.write
+    try {
+      const exitCode = await runKhalaCli([
+        "fleet",
+        "status",
+        "--live",
+        "--base-url",
+        `http://127.0.0.1:${server.port}`,
+        "--token",
+        "oa_agent_owner",
+      ], {
+        KHALA_FLEET_LIVE_MAX_TICKS: "1",
+      })
+      expect(exitCode).toBe(0)
+    } finally {
+      process.stdout.write = originalWrite
+      server.stop(true)
+    }
+
+    expect(authHeaders).toEqual(["Bearer oa_agent_owner"])
+    expect(stdout).toContain("Khala fleet live")
+    expect(stdout).toContain("Pace")
+    expect(stdout).toContain("Fleet")
+    expect(stdout).toContain("Watchdog")
+    expect(stdout).toContain("GLM")
+    expect(stdout).toContain("Brain")
+    expect(stdout).toContain("9 issues/hour")
+  })
+
+  test("formats the live dashboard when some blocks are absent", () => {
+    const output = formatOperatorFleetStatusDashboard({
+      generatedAt: "2026-06-27T12:00:00.000Z",
+      blocks: {
+        fleet: { concurrency: 2 },
+        artanis: { loopHealth: "active" },
+      },
+    }, new Date("2026-06-27T12:00:05.000Z"))
+
+    expect(output).toContain("Khala fleet live")
+    expect(output).toContain("Pace")
+    expect(output).toContain("unavailable")
+    expect(output).toContain("concurrency")
+    expect(output).toContain("loop health")
   })
 
   test("uses the stored login token for --api when no env or flag token is present", async () => {

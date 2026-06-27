@@ -124,6 +124,7 @@ export type KhalaTokensResponse = typeof KhalaTokensResponse.Type
 //   body  { messages: [{ role, content }] }
 //   ->    { reply }   (owner-only operator persona, NOT public Khala roleplay)
 export const ARTANIS_CHAT_PATH = "/api/operator/artanis/chat"
+export const OPERATOR_FLEET_STATUS_PATH = "/api/operator/fleet/status"
 
 export const ArtanisChatRequest = S.Struct({
   messages: S.Array(KhalaChatMessage),
@@ -294,5 +295,17 @@ export interface ArtanisTurnOptions {
 
 export interface ArtanisTurnResult {
   readonly text: string
+  readonly traceRef?: string | undefined
+}
+
+export interface OperatorFleetStatusOptions {
+  readonly baseUrl: string
+  readonly token: string
+  readonly fetch?: typeof fetch | undefined
+}
+
+export interface OperatorFleetStatusResult {
+  readonly generatedAt?: string | undefined
+  readonly payload: unknown
   readonly traceRef?: string | undefined
 }

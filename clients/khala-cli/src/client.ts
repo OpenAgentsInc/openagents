@@ -11,6 +11,7 @@ import {
   DEFAULT_BASE_URL,
   FreeKeyResponse,
   KHALA_MODEL_ID,
+  OPERATOR_FLEET_STATUS_PATH,
   KhalaFeedbackResponse,
   KhalaCliError,
   KhalaPublicChatRequest,
@@ -25,6 +26,8 @@ import {
   type FreeKeyResponse as FreeKeyResponseType,
   type KhalaFeedbackSubmitOptions,
   type KhalaStreamUsage,
+  type OperatorFleetStatusOptions,
+  type OperatorFleetStatusResult,
 } from "./types.js"
 
 const MAX_REQUEST_RETRIES = 5
@@ -202,6 +205,35 @@ export function fetchTokensServed(options: Pick<ChatClientOptions, "baseUrl" | "
         code: "schema_mismatch",
       }),
     })
+  })
+}
+
+export function fetchOperatorFleetStatus(options: OperatorFleetStatusOptions): Effect.Effect<OperatorFleetStatusResult, KhalaCliError> {
+  return Effect.gen(function* () {
+    const token = options.token.trim()
+    if (!token) {
+      return yield* new KhalaCliError({
+        reason: "Fleet live status requires the owner agent token. Run `khala login` or pass --token / set OPENAGENTS_AGENT_TOKEN.",
+        code: "missing_token",
+      })
+    }
+    const response = yield* request({
+      fetch: options.fetch,
+      url: urlFor(options.baseUrl, OPERATOR_FLEET_STATUS_PATH),
+      init: {
+        method: "GET",
+        headers: {
+          accept: "application/json",
+          authorization: `Bearer ${token}`,
+        },
+      },
+    })
+    const payload = yield* readJsonResponse(response, "operator fleet status response")
+    return {
+      generatedAt: readGeneratedAt(payload),
+      payload,
+      traceRef: readTraceRef(response),
+    }
   })
 }
 
@@ -444,6 +476,12 @@ function readTraceRef(response: Response): string | undefined {
     response.headers.get("x-oa-trace-ref") ??
     response.headers.get("x-trace-id") ??
     undefined
+}
+
+function readGeneratedAt(payload: unknown): string | undefined {
+  if (typeof payload !== "object" || payload === null) return undefined
+  const value = (payload as { readonly generatedAt?: unknown }).generatedAt
+  return typeof value === "string" ? value : undefined
 }
 
 export function toKhalaCliError(error: unknown, fallback: string): KhalaCliError {

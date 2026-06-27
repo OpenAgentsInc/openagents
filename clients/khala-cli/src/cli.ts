@@ -1,7 +1,7 @@
 import { Effect } from "effect"
 import { appendAssistantTurn, prepareUserTurn } from "./bounds.js"
 import { KHALA_CLI_VERSION, formatKhalaChangelog } from "./changelog.js"
-import { fetchModels, fetchTokensServed, mintFreeKey, runArtanisTurn, runChatTurn, submitFeedback, toKhalaCliError } from "./client.js"
+import { fetchModels, fetchOperatorFleetStatus, fetchTokensServed, mintFreeKey, runArtanisTurn, runChatTurn, submitFeedback, toKhalaCliError } from "./client.js"
 import {
   connectKhalaCodex,
   resolveKhalaCodexStatus,
@@ -65,7 +65,7 @@ type ParsedCommand =
   | { readonly kind: "changelog" }
   | { readonly kind: "feedback"; readonly text: string | undefined }
   | { readonly kind: "fleetConnect"; readonly accountRef: string | undefined; readonly force: boolean }
-  | { readonly kind: "fleetStatus" }
+  | { readonly kind: "fleetStatus"; readonly live: boolean }
   | { readonly kind: "help" }
   | { readonly kind: "info" }
   | {
@@ -183,6 +183,16 @@ export async function runKhalaCli(argv: ReadonlyArray<string>, env: Record<strin
       }
     }
     if (args.command.kind === "fleetStatus") {
+      if (args.command.live) {
+        const token = await resolveConfiguredAgentToken(args.token, env)
+        await runFleetLiveStatus({
+          baseUrl: args.baseUrl,
+          env,
+          json: args.json,
+          token,
+        })
+        return 0
+      }
       const status = await listFleetAccounts({ env })
       process.stdout.write(args.json ? `${JSON.stringify(status)}\n` : `${formatFleetStatus(status)}\n`)
       return 0
@@ -354,6 +364,7 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
   let spawnWorkflow: KhalaSpawnWorkflow = "codex_agent_task"
   let fleetAccount: string | undefined
   let fleetForce = false
+  let fleetLive = false
   const positional: Array<string> = []
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -451,6 +462,8 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
       fleetAccount = arg.slice("--account=".length)
     } else if (arg === "--force") {
       fleetForce = true
+    } else if (arg === "--live") {
+      fleetLive = true
     } else if (arg.startsWith("-")) {
       throw new Error(`Unknown flag: ${arg}`)
     } else {
@@ -472,7 +485,7 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
   } else if (maybeCommand === "fleet") {
     const sub = positional[1]?.trim().toLowerCase()
     if (sub === "status" || sub === "list" || sub === "ls") {
-      command = { kind: "fleetStatus" }
+      command = { kind: "fleetStatus", live: fleetLive }
     } else if (sub === undefined || sub === "connect" || sub === "add" || sub === "link") {
       // `khala fleet`, `khala fleet connect`, `khala fleet add` all connect.
       // Optional positional ref: `khala fleet connect codex-2` (or --account).
@@ -1648,6 +1661,156 @@ function formatFleetStatus(status: KhalaFleetStatus): string {
   ].join("\n"))
 }
 
+async function runFleetLiveStatus(options: {
+  readonly baseUrl: string
+  readonly env: Record<string, string | undefined>
+  readonly json: boolean
+  readonly token: string | undefined
+}): Promise<void> {
+  const token = options.token?.trim()
+  if (token === undefined || token.length === 0) {
+    throw new Error("khala fleet status --live requires an owner token. Run `khala login` or pass --token / set OPENAGENTS_AGENT_TOKEN.")
+  }
+
+  const intervalMs = parseOptionalPositiveInteger(options.env.KHALA_FLEET_LIVE_INTERVAL_MS, 5_000)
+  const maxTicks = parseOptionalPositiveInteger(options.env.KHALA_FLEET_LIVE_MAX_TICKS, Number.POSITIVE_INFINITY)
+  let interrupted = false
+  const onSigint = (): void => {
+    interrupted = true
+  }
+  process.once("SIGINT", onSigint)
+  try {
+    for (let tick = 0; tick < maxTicks && !interrupted; tick += 1) {
+      const status = await Effect.runPromise(fetchOperatorFleetStatus({
+        baseUrl: options.baseUrl,
+        token,
+      }))
+      if (options.json) {
+        process.stdout.write(`${JSON.stringify(status.payload)}\n`)
+      } else {
+        if (tick > 0 && process.stdout.isTTY) process.stdout.write("\x1b[2J\x1b[H")
+        process.stdout.write(`${formatOperatorFleetStatusDashboard(status.payload, new Date())}\n`)
+      }
+      if (tick + 1 >= maxTicks || interrupted) break
+      await sleep(intervalMs)
+    }
+  } finally {
+    process.off("SIGINT", onSigint)
+  }
+}
+
+export function formatOperatorFleetStatusDashboard(payload: unknown, now: Date = new Date()): string {
+  const root = asRecord(payload)
+  const blocks = asRecord(root?.blocks)
+  const generatedAt = readString(root, "generatedAt") ?? readString(root, "updatedAt") ?? readString(root, "observedAt")
+  const sections: Array<{ readonly title: string; readonly value: unknown }> = [
+    { title: "Pace", value: blocks?.pace ?? root?.pace },
+    { title: "Fleet", value: blocks?.fleet ?? root?.fleet },
+    { title: "Watchdog", value: blocks?.watchdog ?? root?.watchdog },
+    { title: "GLM", value: blocks?.glm ?? root?.glm },
+    { title: "Brain", value: blocks?.brain ?? blocks?.artanis ?? root?.brain ?? root?.artanis },
+  ]
+
+  const lines = [
+    terminalStyle.assistant("Khala fleet live"),
+    terminalStyle.meta(`source: /api/operator/fleet/status   refreshed: ${now.toISOString()}${generatedAt === undefined ? "" : `   generated: ${generatedAt}`}`),
+    "",
+  ]
+  for (const section of sections) {
+    lines.push(...formatOperatorFleetStatusBlock(section.title, section.value), "")
+  }
+  const extra = formatOperatorFleetStatusExtras(root, blocks, sections.map(section => section.title.toLowerCase()))
+  if (extra.length > 0) {
+    lines.push(terminalStyle.heading("Other"), ...extra)
+  }
+  return terminalStyle.meta(lines.join("\n").trimEnd())
+}
+
+function formatOperatorFleetStatusBlock(title: string, value: unknown): Array<string> {
+  const record = asRecord(value)
+  if (record === undefined) {
+    return [terminalStyle.heading(title), "  unavailable"]
+  }
+  const entries = Object.entries(record)
+    .filter(([, entryValue]) => entryValue !== undefined && typeof entryValue !== "function")
+    .slice(0, 12)
+  if (entries.length === 0) {
+    return [terminalStyle.heading(title), "  no data"]
+  }
+  return [
+    terminalStyle.heading(title),
+    ...entries.map(([key, entryValue]) => `  ${formatOperatorFleetLabel(key).padEnd(18)} ${formatOperatorFleetValue(entryValue)}`),
+  ]
+}
+
+function formatOperatorFleetStatusExtras(
+  root: Record<string, unknown> | undefined,
+  blocks: Record<string, unknown> | undefined,
+  knownBlockLabels: ReadonlyArray<string>,
+): Array<string> {
+  if (root === undefined) return []
+  const skipped = new Set(["blocks", "generatedAt", "updatedAt", "observedAt", ...knownBlockLabels, "artanis"])
+  const rootEntries = Object.entries(root)
+    .filter(([key, value]) => !skipped.has(key) && value !== undefined && typeof value !== "function")
+    .slice(0, 8)
+  const blockEntries = Object.entries(blocks ?? {})
+    .filter(([key, value]) => !knownBlockLabels.includes(key) && key !== "artanis" && value !== undefined && typeof value !== "function")
+    .slice(0, 8)
+  return [...rootEntries, ...blockEntries]
+    .map(([key, value]) => `  ${formatOperatorFleetLabel(key).padEnd(18)} ${formatOperatorFleetValue(value)}`)
+}
+
+function formatOperatorFleetValue(value: unknown): string {
+  if (value === null) return "null"
+  if (typeof value === "string") return value.length === 0 ? "-" : value
+  if (typeof value === "number" || typeof value === "boolean") return String(value)
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "[]"
+    return value
+      .slice(0, 4)
+      .map(item => formatOperatorFleetValue(item))
+      .join(", ")
+  }
+  const record = asRecord(value)
+  if (record !== undefined) {
+    const compact = Object.entries(record)
+      .filter(([, entryValue]) => entryValue !== undefined && typeof entryValue !== "function")
+      .slice(0, 5)
+      .map(([key, entryValue]) => `${formatOperatorFleetLabel(key)}=${formatOperatorFleetValue(entryValue)}`)
+      .join("  ")
+    return compact.length === 0 ? "{}" : compact
+  }
+  return String(value)
+}
+
+function formatOperatorFleetLabel(label: string): string {
+  return label
+    .replace(/[_-]+/g, " ")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .toLowerCase()
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined
+}
+
+function readString(record: Record<string, unknown> | undefined, key: string): string | undefined {
+  const value = record?.[key]
+  return typeof value === "string" ? value : undefined
+}
+
+function parseOptionalPositiveInteger(value: string | undefined, fallback: number): number {
+  if (value === undefined || value.trim().length === 0) return fallback
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
 function formatCodexCredentialSource(source: Extract<KhalaCodexStatus, { readonly ready: true }>["credentialSource"]): string {
   if (source === "khala_codex_home") return "Khala Codex account"
   if (source === "codex_home_env") return "CODEX_HOME"
@@ -1852,6 +2015,7 @@ Usage:
   khala fleet connect
   khala fleet connect --account codex-2
   khala fleet status
+  khala fleet status --live
   khala auth codex
   khala codex status
   khala codex "read README.md"
@@ -1915,6 +2079,7 @@ Flags:
   --workflow <name>    Pylon workflow: codex_agent_task or cloud_coding_session
   --timeout <seconds>  Per-worker timeout for khala spawn
   --account <ref>      Codex account ref for khala fleet connect (auto-assigned if omitted)
+  --live               Poll /api/operator/fleet/status for khala fleet status
   --force              Re-run device login for khala fleet connect even if already linked
   --help, -h           Show this help
 `

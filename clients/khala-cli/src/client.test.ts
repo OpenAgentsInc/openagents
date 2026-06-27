@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
-import { fetchTokensServed, runArtanisTurn, runChatTurn, submitFeedback } from "./client.js"
+import { fetchOperatorFleetStatus, fetchTokensServed, runArtanisTurn, runChatTurn, submitFeedback } from "./client.js"
 import { KhalaCliError } from "./types.js"
 
 describe("Khala client", () => {
@@ -141,6 +141,39 @@ describe("Khala client", () => {
     expect(JSON.parse(calls[0]?.body ?? "{}")).toEqual({
       messages: [{ role: "user", content: "What are you doing?" }],
     })
+  })
+
+  test("fetches the operator fleet status with bearer auth", async () => {
+    const calls: Array<{ readonly url: string; readonly auth: string | null }> = []
+    const fakeFetch = (async (url: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const headers = new Headers(init?.headers)
+      calls.push({ url: String(url), auth: headers.get("authorization") })
+      return Response.json({
+        generatedAt: "2026-06-27T12:00:00.000Z",
+        blocks: {
+          pace: { burnRate: "12 issues/hour" },
+          fleet: { concurrency: 5 },
+          watchdog: { state: "ready" },
+          glm: { readiness: "ready" },
+          brain: { health: "active" },
+        },
+      }, {
+        headers: { "x-openagents-trace-ref": "trace_fleet" },
+      })
+    }) as unknown as typeof fetch
+
+    const result = await Effect.runPromise(fetchOperatorFleetStatus({
+      baseUrl: "https://example.test",
+      fetch: fakeFetch,
+      token: "oa_agent_owner",
+    }))
+
+    expect(calls).toEqual([{
+      url: "https://example.test/api/operator/fleet/status",
+      auth: "Bearer oa_agent_owner",
+    }])
+    expect(result.generatedAt).toBe("2026-06-27T12:00:00.000Z")
+    expect(result.traceRef).toBe("trace_fleet")
   })
 
   test("requires an owner token for the Artanis channel", async () => {
