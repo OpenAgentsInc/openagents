@@ -353,6 +353,7 @@ describe('Worker route dual-serve resolution (#6148)', () => {
       routeForumRequest: noRoute,
       routeImageGenerationRequest: noRoute,
       routeModelRetrieveRequest,
+      routeMirrorCodeRunByIdRequest: noRoute,
       routeDurableInferenceReadRequest: noRoute,
       routeMulletRequest: noRoute,
       routeOmniRequest: noRoute,

@@ -588,6 +588,18 @@ export const routeTable = {
     inLoggedInUnion: true,
     render: 'loggedInOnly',
   },
+  // `/mirrorcode` — public "MirrorCode, powered by Khala" page (#6378). Same
+  // public, logged-out, served-document posture as bare `/gym`.
+  MirrorCode: {
+    surface: 'spaDocument',
+    serverDocument: /^\/mirrorcode$/,
+    examplePaths: ['/mirrorcode'],
+    requiresAuthBootstrap: false,
+    loggedInGate: 'open',
+    inLoggedOutUnion: true,
+    inLoggedInUnion: false,
+    render: 'submodel',
+  },
   Tassadar: {
     surface: 'spaDocument',
     serverDocument: /^\/tassadar$/,

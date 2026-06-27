@@ -1,0 +1,14 @@
+{
+  "runId": "mc-phase0-cal-py-0001",
+  "model": "openagents/khala",
+  "taskId": "cal",
+  "bucket": "S",
+  "language": "python",
+  "status": "queued",
+  "passRate": null,
+  "tokens": { "total": 0 },
+  "startedAt": "2026-06-27T00:00:00.000Z",
+  "finishedAt": null,
+  "summary": "Phase-0 smoke: a single S-bucket target (cal) launched against openagents/khala to validate endpoint compatibility before any spendful bucket run. Public tasks only; never published as a frontier measurement.",
+  "grade": "smoke"
+}

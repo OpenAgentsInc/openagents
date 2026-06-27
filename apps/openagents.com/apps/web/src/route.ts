@@ -73,6 +73,9 @@ export const ActivityRoute = r('Activity')
 export const RunRoute = r('Run')
 export const GymRoute = r('Gym')
 export const GymOssRoute = r('GymOss')
+// `/mirrorcode` — public "MirrorCode, powered by Khala" page (#6378). Same
+// public, logged-out posture as `/gym`.
+export const MirrorCodeRoute = r('MirrorCode')
 export const TassadarRoute = r('Tassadar')
 export const TassadarReplayRoute = r('TassadarReplay', {
   replaySlug: S.String,
@@ -186,6 +189,7 @@ export type ActivityRoute = typeof ActivityRoute.Type
 export type RunRoute = typeof RunRoute.Type
 export type GymRoute = typeof GymRoute.Type
 export type GymOssRoute = typeof GymOssRoute.Type
+export type MirrorCodeRoute = typeof MirrorCodeRoute.Type
 export type TassadarRoute = typeof TassadarRoute.Type
 export type TassadarReplayRoute = typeof TassadarReplayRoute.Type
 export type LoginRoute = typeof LoginRoute.Type
@@ -258,6 +262,7 @@ export const LoggedOutRoute = S.Union([
   ActivityRoute,
   RunRoute,
   GymRoute,
+  MirrorCodeRoute,
   TassadarRoute,
   TassadarReplayRoute,
   LoginRoute,
@@ -381,6 +386,7 @@ export const AppRoute = S.Union([
   RunRoute,
   GymRoute,
   GymOssRoute,
+  MirrorCodeRoute,
   TassadarRoute,
   TassadarReplayRoute,
   LoginRoute,
@@ -620,6 +626,10 @@ export const gymOssRouter = pipe(
   literal('gym'),
   slash(literal('oss')),
   Route.mapTo(GymOssRoute),
+)
+export const mirrorCodeRouter = pipe(
+  literal('mirrorcode'),
+  Route.mapTo(MirrorCodeRoute),
 )
 export const tassadarRouter = pipe(
   literal('tassadar'),
@@ -917,6 +927,7 @@ const orderedParserRouters = [
   activityRouter,
   tassadarReplayRouter,
   tassadarRouter,
+  mirrorCodeRouter,
   gymOssRouter,
   gymRouter,
   loginRouter,

@@ -463,6 +463,7 @@ export const startupCompleteDisposition = {
   Activity: 'public',
   Run: 'gated',
   Gym: 'public',
+  MirrorCode: 'public',
   GymOss: 'gated',
   Tassadar: 'gated',
   TassadarReplay: 'gated',

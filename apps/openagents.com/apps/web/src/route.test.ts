@@ -369,6 +369,7 @@ const CANONICAL_URL_TO_TAG: ReadonlyArray<readonly [string, string]> = [
   ['/run', 'Run'],
   ['/gym', 'Gym'],
   ['/gym/oss', 'GymOss'],
+  ['/mirrorcode', 'MirrorCode'],
   ['/tassadar', 'Tassadar'],
   ['/tassadar/replay/s1', 'TassadarReplay'],
   ['/login', 'Login'],

@@ -35,6 +35,7 @@ import {
   GymTransport,
 } from './gym/flow'
 import { GymRunProgressPublicProjection } from './gym/runProgress'
+import { MirrorCodeRunsResponse } from './mirrorcode/runs'
 
 // MESSAGE
 
@@ -277,6 +278,15 @@ export const ReceivedGymRunProgressCursorGap = m(
     gap: CursorGap,
   },
 )
+// MirrorCode runs (#6378). The `/mirrorcode` route cold-reads
+// `GET /api/gym/mirrorcode/runs` once on entry; these carry the decoded
+// projection or a public-safe error string.
+export const SucceededLoadMirrorCodeRuns = m('SucceededLoadMirrorCodeRuns', {
+  response: MirrorCodeRunsResponse,
+})
+export const FailedLoadMirrorCodeRuns = m('FailedLoadMirrorCodeRuns', {
+  error: S.String,
+})
 export const SucceededLoadPublicForumLaunchStatus = m(
   'SucceededLoadPublicForumLaunchStatus',
   {
@@ -591,6 +601,8 @@ export const Message = S.Union([
   FailedGymRunProgressStream,
   ReceivedGymRunProgressPatch,
   ReceivedGymRunProgressCursorGap,
+  SucceededLoadMirrorCodeRuns,
+  FailedLoadMirrorCodeRuns,
   SucceededLoadPublicForumLaunchStatus,
   FailedLoadPublicForumLaunchStatus,
   SucceededLoadPublicForumTipLeaderboards,

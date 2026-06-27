@@ -35,6 +35,7 @@ import {
   FailedLoadPublicKhalaTokensServedModelMix,
   FailedLoadPublicGymRunProgress,
   FailedLoadGymRunProgressSnapshot,
+  FailedLoadMirrorCodeRuns,
   FailedLoadPublicProductPromises,
   FailedLoadPublicPromiseTransitions,
   FailedLoadPublicPylonStats,
@@ -54,6 +55,7 @@ import {
   SucceededLoadPublicKhalaTokensServedModelMix,
   SucceededLoadPublicGymRunProgress,
   SucceededLoadGymRunProgressSnapshot,
+  SucceededLoadMirrorCodeRuns,
   SucceededLoadPublicProductPromises,
   SucceededLoadPublicPromiseTransitions,
   SucceededLoadPublicPylonStats,
@@ -72,6 +74,7 @@ import {
   FailedPublicKhalaTokensServedHistory,
   FailedPublicKhalaTokensServedModelMix,
   FailedPublicGymRunProgress,
+  FailedMirrorCodeRuns,
   FailedPublicProductPromises,
   FailedPublicPromiseTransitions,
   FailedPublicPylonStats,
@@ -85,6 +88,7 @@ import {
   LoadedPublicKhalaTokensServedHistory,
   LoadedPublicKhalaTokensServedModelMix,
   LoadedPublicGymRunProgress,
+  LoadedMirrorCodeRuns,
   LoadedPublicProductPromises,
   LoadedPublicPromiseTransitions,
   LoadedPublicPylonStats,
@@ -140,6 +144,7 @@ import {
   GymRunProgressPublicProjection,
   GymRunProgressResponse,
 } from './gym/runProgress'
+import { MirrorCodeRunsResponse } from './mirrorcode/runs'
 import { BlobRef as AtifBlobRef, Trajectory as AtifTrajectory } from '../trace/atif'
 import { SAMPLE_TRACE_UUID } from '../trace/sample'
 import { recordFromUnknown } from '../../json-boundary'
@@ -686,6 +691,56 @@ export const LoadPublicGymRunProgress = Command.define(
     Effect.catch(error =>
       Effect.succeed(
         FailedLoadPublicGymRunProgress({
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      ),
+    ),
+  ),
+)
+
+class MirrorCodeRunsLoadError extends S.TaggedErrorClass<MirrorCodeRunsLoadError>()(
+  'MirrorCodeRunsLoadError',
+  {
+    error: S.Defect,
+  },
+) {}
+
+// MirrorCode runs (#6378). Cold-reads the public-safe MirrorCode runs
+// projection for the `/mirrorcode` page on route entry. Public read: no-store,
+// no auth, already redacted. Decodes through `MirrorCodeRunsResponse` (excess
+// envelope fields are tolerated) and surfaces the whole response.
+export const LoadMirrorCodeRuns = Command.define(
+  'LoadMirrorCodeRuns',
+  SucceededLoadMirrorCodeRuns,
+  FailedLoadMirrorCodeRuns,
+)(
+  Effect.gen(function* () {
+    const response = yield* Effect.tryPromise({
+      try: () =>
+        fetch('/api/gym/mirrorcode/runs', {
+          cache: 'no-store',
+          headers: { accept: 'application/json' },
+        }),
+      catch: error => new MirrorCodeRunsLoadError({ error }),
+    })
+
+    if (!response.ok) {
+      return yield* new MirrorCodeRunsLoadError({
+        error: `Public MirrorCode runs returned HTTP ${response.status}.`,
+      })
+    }
+
+    const payload = yield* Effect.tryPromise({
+      try: () => response.json(),
+      catch: error => new MirrorCodeRunsLoadError({ error }),
+    })
+    const decoded = yield* S.decodeUnknownEffect(MirrorCodeRunsResponse)(payload)
+
+    return SucceededLoadMirrorCodeRuns({ response: decoded })
+  }).pipe(
+    Effect.catch(error =>
+      Effect.succeed(
+        FailedLoadMirrorCodeRuns({
           error: error instanceof Error ? error.message : String(error),
         }),
       ),
@@ -1602,6 +1657,8 @@ export const initialCommands = (
           [LoadKhalaTokensServedSnapshot(), LoadPublicKhalaTokensServed()]
       : model.route._tag === 'Gym'
         ? [LoadGymRunProgressSnapshot(), LoadPublicGymRunProgress()]
+      : model.route._tag === 'MirrorCode'
+        ? [LoadMirrorCodeRuns()]
       : model.route._tag === 'ProductPromises'
         ? [LoadPublicProductPromises(), LoadPublicPromiseTransitions()]
         : model.route._tag === 'PublicTrainingRuns'
@@ -2005,6 +2062,19 @@ export const update = (model: Model, message: Message): UpdateReturn =>
         evo(model, {
           gymRunProgressStream: stream =>
             gymRunProgressStreamAfterCursorGap(stream, gap),
+        }),
+        [],
+      ],
+      // MirrorCode runs (#6378): one cold read on `/mirrorcode` entry.
+      SucceededLoadMirrorCodeRuns: ({ response }) => [
+        evo(model, {
+          mirrorCodeRuns: () => LoadedMirrorCodeRuns({ response }),
+        }),
+        [],
+      ],
+      FailedLoadMirrorCodeRuns: ({ error }) => [
+        evo(model, {
+          mirrorCodeRuns: () => FailedMirrorCodeRuns({ error }),
         }),
         [],
       ],

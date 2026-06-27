@@ -28,9 +28,11 @@ describe('/gym route', () => {
       _tag: 'LoggedOut',
       route: { _tag: 'Gym' },
     })
-    // #6261: entering /gym fetches the live public run-progress projection so
-    // the follow-along renders live runs instead of a permanent empty state.
+    // #6261: entering /gym seeds the run cards + cursor from the public sync
+    // snapshot and cold-reads the live public run-progress projection, so the
+    // follow-along renders live runs instead of a permanent empty state.
     expect(commands.map(command => command.name)).toEqual([
+      'LoadGymRunProgressSnapshot',
       'LoadPublicGymRunProgress',
     ])
   })

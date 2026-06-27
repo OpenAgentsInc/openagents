@@ -41,6 +41,7 @@ const PUBLIC_ROUTE_PARSE_COVERAGE: ReadonlyArray<readonly [string, string]> = [
   ['/clients-preview', 'ClientsPreview'],
   ['/gym', 'Gym'],
   ['/gym/oss', 'GymOss'],
+  ['/mirrorcode', 'MirrorCode'],
   // The public shareable ATIF trace render (#6209). Parses regardless of
   // session; it is public-safe with no auth to view a shared trace.
   ['/trace/0e08d2db-2026-4624-9a39-f1efe8000001', 'Trace'],
@@ -94,9 +95,10 @@ describe('public route parser coverage', () => {
     // the public shareable `/trace/compare/{ids}` comparison (#6211). The four
     // `/pro/runs` + `/pro/evals` fixture subpages were retired in #6215, so the
     // covered count dropped from 40 to 36; the public `/gym` Terminal-Bench
-    // visualizer brought the parser-covered surface to 37, and the Pylon Codex
-    // assignment-status operator shell brings it to 38.
-    expect(PUBLIC_ROUTE_PARSE_COVERAGE.length).toBe(38)
+    // visualizer brought the parser-covered surface to 37, the Pylon Codex
+    // assignment-status operator shell brought it to 38, and the public
+    // `/mirrorcode` (MirrorCode, powered by Khala) page brings it to 39.
+    expect(PUBLIC_ROUTE_PARSE_COVERAGE.length).toBe(39)
   })
 
   // The public shareable trace render (#6209) must capture the uuid param so the

@@ -1666,6 +1666,18 @@ const schemaComponents = (): JsonSchema => ({
   GymLadderLeaderboardOperatorEnvelope: objectSummary(
     'Admin-token-gated read of the current published Gym benchmark ladder: schemaVersion, scope="operator", cadence, and the ladder. Same public-safe fields as the public projection.',
   ),
+  MirrorCodeRunsPublicEnvelope: objectSummary(
+    'Public-safe MirrorCode-as-a-service leaderboard (openagents.gym.mirrorcode_runs.v1, #6378): schemaVersion, scope="public", generatedAt, the live_at_read staleness contract, model="openagents/khala", the benchmark label ("Epoch Research MirrorCode", public tasks only — private set excluded), the recorded Khala runs (runId, taskId, bucket, language, status, passRate, tokensTotal, started/finished, a bounded public-safe summary, grade smoke|decision_grade, decisionGrade, demand attribution), and the LABELED illustrative paper-reference comparators (forward-dated placeholder model ids, not a head-to-head). Never carries task source, test data, prompts, responses, logs, trajectories, keys, or canary strings. Read-only projection; grants no dispatch, spend, settlement, payout, or public-claim authority.',
+  ),
+  MirrorCodeRunPublicEnvelope: objectSummary(
+    'Public-safe single MirrorCode run (#6378): schemaVersion, scope="public", generatedAt, the live_at_read staleness contract, and the one run object, or a typed 404 when the runId is unknown. Same public-safe fields as the leaderboard run rows; never carries task contents or canary strings.',
+  ),
+  MirrorCodeRunRecordRequest: objectSummary(
+    'Owner-gated (admin bearer) launch/record body for a Khala MirrorCode run (#6378): the public-safe result contract { runId, model:"openagents/khala", taskId, bucket, language?, status, passRate?, tokens:{total}, startedAt, finishedAt?, summary, grade? }. The Worker rebuilds it through the no-task-contents / no-canary public-safety boundary and upserts by runId; anything carrying task source, test data, prompts, or canary strings is rejected with a typed 400 and never stored. A smoke (Phase-0) run is always decisionGrade:false.',
+  ),
+  MirrorCodeRunRecordEnvelope: objectSummary(
+    'Admin-bearer-gated record receipt for a MirrorCode run (#6378): schemaVersion, kind="mirrorcode_run_recorded", and the stored public-safe run object. Storage/projection evidence only; grants no dispatch, spend, settlement, payout, or public-claim authority.',
+  ),
   KhalaHeadToHeadPublicEnvelope: objectSummary(
     'Public, dereferenceable Khala external HEAD-TO-HEAD quality bar: schemaVersion, scope="public", generatedAt, cadence, the stored_snapshot staleness contract (maxStalenessSeconds + rebuildsOn publish transitions, epic #4751), and the headToHead. The headToHead pairs Khala against the tools/models a developer would otherwise reach for (default coding model, free/open, paid frontier), each matchup scored on solve-rate AND cost-per-accepted-outcome with an honest two-axis verdict. Only owner-armed decision-grade real-sweep rows publish; fixture/synthetic numbers are never published. A matchup with no measured comparator is awaiting_owner and shows its owner-gate refs, never a fabricated number. Read-only projection; grants no dispatch, spend, settlement, payout, or public-claim authority.',
   ),
@@ -4960,6 +4972,57 @@ const paths = (): JsonSchema => ({
         '201': okJson(
           'Published public-safe Gym benchmark ladder.',
           '#/components/schemas/GymLadderLeaderboardPublishEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/gym/mirrorcode/runs': {
+    get: operation({
+      operationId: 'getPublicMirrorCodeRuns',
+      summary: 'Read the public MirrorCode-as-a-service leaderboard',
+      description:
+        'Returns the public-safe MirrorCode demo leaderboard (#6378, epic #6376): the recorded Khala (openagents/khala) runs plus the LABELED illustrative paper-reference comparators (forward-dated placeholder ids, not a head-to-head). MirrorCode (Epoch Research) reimplements a real tool from scratch in a sandbox and scores it against a held-out test suite; this surface reports PUBLIC tasks only (private set excluded). Honestly empty until a run is recorded. No task source, test data, prompts, responses, logs, trajectories, keys, or canary strings. Read-only projection; grants no dispatch, spend, settlement, payout, or public-claim authority.',
+      tags: ['Public Proof'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Public-safe MirrorCode demo leaderboard.',
+          '#/components/schemas/MirrorCodeRunsPublicEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+    post: operation({
+      operationId: 'recordMirrorCodeRun',
+      summary: 'Launch / record a Khala MirrorCode run (owner-gated)',
+      description:
+        'Admin-bearer-gated launch/record boundary for a Khala MirrorCode run (#6378). The owner POSTs the public-safe result contract; the Worker rebuilds it through the no-task-contents / no-canary public-safety boundary and upserts by runId. Anything carrying task source, test data, prompts, or canary strings is rejected with a typed 400 and never stored. Owner-scoped: no public spend, settlement, or payout — recording a run row is in-progress / measurement evidence only. A smoke (Phase-0) run is always decisionGrade:false.',
+      tags: ['Admin'],
+      security: adminBearer,
+      requestBody: jsonContent('#/components/schemas/MirrorCodeRunRecordRequest'),
+      responses: {
+        '201': okJson(
+          'Recorded public-safe MirrorCode run.',
+          '#/components/schemas/MirrorCodeRunRecordEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/gym/mirrorcode/runs/{id}': {
+    get: operation({
+      operationId: 'getPublicMirrorCodeRun',
+      summary: "Read one MirrorCode run's public-safe status/result",
+      description:
+        'Returns the public-safe single MirrorCode run by runId (#6378), or a typed 404 when unknown. Same public-safe fields as the leaderboard rows; never carries task contents or canary strings. Read-only projection.',
+      tags: ['Public Proof'],
+      security: publicRead,
+      parameters: [pathParam('id', 'The public-safe MirrorCode runId.')],
+      responses: {
+        '200': okJson(
+          'Public-safe single MirrorCode run.',
+          '#/components/schemas/MirrorCodeRunPublicEnvelope',
         ),
         ...errorResponses(),
       },

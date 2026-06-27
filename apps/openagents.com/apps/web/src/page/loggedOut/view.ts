@@ -39,6 +39,7 @@ import {
 import { Model } from './model'
 import * as Home from './page/home'
 import * as Gym from './page/gym'
+import * as MirrorCode from './page/mirrorcode'
 import * as Moksha from './page/moksha'
 import * as Moksha2 from './page/moksha2'
 import * as Onboarding from './page/onboarding'
@@ -299,6 +300,7 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
               Activity: () => Activity.view({ _tag: 'LoggedOut' }),
               DemoLegal: () => DemoLegal.view({ _tag: 'LoggedOut' }),
               Gym: () => Gym.view(model.gym, model.gymRunProgress),
+              MirrorCode: () => MirrorCode.view(model.mirrorCodeRuns),
               Run: () => Run.view({ _tag: 'LoggedOut' }),
               TassadarReplay: route =>
                 Run.view({ _tag: 'LoggedOut' }, route.replaySlug),

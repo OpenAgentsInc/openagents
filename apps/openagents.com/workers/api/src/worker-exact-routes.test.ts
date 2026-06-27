@@ -58,6 +58,7 @@ const approvedExactRoutePaths = [
   '/api/operator/gym/run-progress',
   '/api/operator/gym/leaderboard',
   '/api/operator/khala/head-to-head',
+  '/api/gym/mirrorcode/runs',
   '/api/operator/gym/full-trace-archives',
   '/api/operator/customer-one-cohort/rows',
   '/api/operator/product-promises/transitions',

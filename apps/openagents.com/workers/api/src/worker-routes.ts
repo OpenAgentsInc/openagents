@@ -63,6 +63,10 @@ type WorkerRouteDependencies = Readonly<{
   routeForumRequest: OptionalEffectRoute
   routeImageGenerationRequest: OptionalEffectRoute
   routeModelRetrieveRequest: OptionalEffectRoute
+  // MirrorCode demo single-run read GET /api/gym/mirrorcode/runs/{id} (#6378 —
+  // the path-param surface the exact-route registry cannot match). Public-safe;
+  // reads one stored run or 404.
+  routeMirrorCodeRunByIdRequest: OptionalEffectRoute
   // Durable inference resume read GET /v1/chat/completions/durable/{requestId}
   // (durable-stream Rank-1, #6058 — the path-param resume surface the exact-route
   // registry cannot match). Reads stored bytes only; NEVER meters.
@@ -293,6 +297,15 @@ export const makeWorkerRouteRequest =
 
       if (modelRetrieveResponse !== undefined) {
         return yield* modelRetrieveResponse
+      }
+
+      // MirrorCode demo single-run read GET /api/gym/mirrorcode/runs/{id}
+      // (#6378). Public-safe path-param read; undefined for any other path.
+      const mirrorCodeRunByIdResponse =
+        dependencies.routeMirrorCodeRunByIdRequest(request, env, ctx)
+
+      if (mirrorCodeRunByIdResponse !== undefined) {
+        return yield* mirrorCodeRunByIdResponse
       }
 
       // Durable inference resume read (durable-stream Rank-1, #6058): the

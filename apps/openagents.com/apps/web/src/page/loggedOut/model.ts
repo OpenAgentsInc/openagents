@@ -10,6 +10,7 @@ import { BlobRef as AtifBlobRef, Trajectory as AtifTrajectory } from '../trace/a
 import { SAMPLE_TRACE_UUID } from '../trace/sample'
 import { GymModel, initGymModel } from './gym/flow'
 import { GymRunProgressPublicProjection } from './gym/runProgress'
+import { MirrorCodeRunsResponse } from './mirrorcode/runs'
 
 // MODEL
 
@@ -1481,6 +1482,27 @@ export const initGymRunProgressStreamModel = (): GymRunProgressStreamModel =>
     appliedEventRefs: [],
   })
 
+// MirrorCode runs (#6378). The `/mirrorcode` route cold-reads
+// `GET /api/gym/mirrorcode/runs` once on entry and renders the live run
+// set, latest-run panel, and the leaderboard + illustrative paper comparators.
+// The honest empty state (machinery shipped, awaiting first Phase-0 run) shows
+// whenever the endpoint returns `runs: []`.
+export const IdleMirrorCodeRuns = ts('MirrorCodeRunsIdle', {})
+export const LoadingMirrorCodeRuns = ts('MirrorCodeRunsLoading', {})
+export const LoadedMirrorCodeRuns = ts('MirrorCodeRunsLoaded', {
+  response: MirrorCodeRunsResponse,
+})
+export const FailedMirrorCodeRuns = ts('MirrorCodeRunsFailed', {
+  error: S.String,
+})
+export const MirrorCodeRunsModel = S.Union([
+  IdleMirrorCodeRuns,
+  LoadingMirrorCodeRuns,
+  LoadedMirrorCodeRuns,
+  FailedMirrorCodeRuns,
+])
+export type MirrorCodeRunsModel = typeof MirrorCodeRunsModel.Type
+
 export const Model = ts('LoggedOut', {
   route: LoggedOutRoute,
   onboarding: OnboardingModel,
@@ -1494,6 +1516,7 @@ export const Model = ts('LoggedOut', {
   gym: GymModel,
   gymRunProgress: PublicGymRunProgressModel,
   gymRunProgressStream: GymRunProgressStreamModel,
+  mirrorCodeRuns: MirrorCodeRunsModel,
   publicAgent: PublicAgentModel,
   publicArtanisReport: PublicArtanisReportModel,
   publicAdjutantActivity: PublicAdjutantActivityModel,
@@ -1542,6 +1565,10 @@ export const init = (
         ? LoadingPublicGymRunProgress()
         : IdlePublicGymRunProgress(),
     gymRunProgressStream: initGymRunProgressStreamModel(),
+    mirrorCodeRuns:
+      route._tag === 'MirrorCode'
+        ? LoadingMirrorCodeRuns()
+        : IdleMirrorCodeRuns(),
     publicAgent:
       route._tag === 'PublicAgent'
         ? LoadingPublicAgent({ agentRef: route.agentRef })

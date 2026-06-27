@@ -454,7 +454,16 @@ const budgetChecks = [
     // here. It mints a fresh credential for an EXISTING agent entity only and
     // grants no new authority. Ratchet back down when these handlers move behind
     // a shared route mapper.
-    budget: 120,
+    // +3 (120 -> 123) on 2026-06-27 (#6378) for the MirrorCode-as-a-service demo
+    // route handlers in inference/gym/mirrorcode-routes.ts: read-only public
+    // projection + owner-gated record handlers returning `Effect.Effect<Response>`
+    // (`handleMirrorCodeRunsApi`, `handleMirrorCodeRunByIdApi`) like the sibling
+    // gym public-projection handlers already counted here. They serve a
+    // public-safe `openagents.gym.mirrorcode_runs.v1` projection (Khala runs +
+    // labeled illustrative paper-reference comparators, never task contents) and
+    // mint no spend/settlement/payout/public-claim authority. Ratchet back down
+    // when these route handlers move behind a shared route mapper.
+    budget: 123,
     description:
       'Worker domain and route modules may not grow Response-returning surfaces while route mappers are extracted.',
     details: countByFile(

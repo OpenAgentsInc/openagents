@@ -417,6 +417,12 @@ import {
 } from './inference/gym/ladder-routes'
 import { makeD1GymLadderStore } from './inference/gym/ladder-store'
 import {
+  handleMirrorCodeRunByIdApi,
+  handleMirrorCodeRunsApi,
+  matchMirrorCodeRunByIdRequest,
+} from './inference/gym/mirrorcode-routes'
+import { makeD1MirrorCodeRunStore } from './inference/gym/mirrorcode-store'
+import {
   handleOperatorKhalaHeadToHeadApi,
   handlePublicKhalaHeadToHeadApi,
 } from './inference/benchmark/head-to-head-routes'
@@ -10469,6 +10475,22 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       }),
   },
   {
+    // MirrorCode-as-a-service demo runs (#6378, epic #6376). GET is the
+    // public-safe leaderboard/list (stored Khala runs + LABELED illustrative
+    // paper-reference comparators); POST is the owner-gated (admin bearer)
+    // launch/record path that rebuilds each run through the no-task-contents /
+    // no-canary public-safety boundary before upserting by runId. The
+    // path-param `/api/gym/mirrorcode/runs/{id}` read is wired in the worker
+    // route cascade (the exact-route registry cannot match a path param).
+    path: '/api/gym/mirrorcode/runs',
+    handler: (request, env) =>
+      handleMirrorCodeRunsApi(request, {
+        requireAdminApiToken: adminRequest =>
+          requireAdminApiToken(adminRequest, env),
+        store: makeD1MirrorCodeRunStore(openAgentsDatabase(env)),
+      }),
+  },
+  {
     // Operator-only Harbor full trace archive (#6253). Stores raw Harbor job
     // tarballs in private R2 with D1 metadata. Unlike `/api/traces`, this is
     // NOT a public-safe ATIF projection and never appears on public `/gym`.
@@ -12540,6 +12562,19 @@ const routeRequest = makeWorkerRouteRequest({
       freeTierQuota: resolveFreeTierQuota(env),
       laneArming: resolveSupplyLaneArming(env),
     }),
+  // MirrorCode demo: GET /api/gym/mirrorcode/runs/{id} (#6378). The public-safe
+  // single-run read — the path-param surface the exact-route registry cannot
+  // match. Returns undefined for any non-matching path so the cascade falls
+  // through; the base /api/gym/mirrorcode/runs list+launch is an exact route.
+  routeMirrorCodeRunByIdRequest: (request, env) => {
+    const runId = matchMirrorCodeRunByIdRequest(request)
+    if (runId === undefined) {
+      return undefined
+    }
+    return handleMirrorCodeRunByIdApi(request, runId, {
+      store: makeD1MirrorCodeRunStore(openAgentsDatabase(env)),
+    })
+  },
   // Durable inference resume read GET /v1/chat/completions/durable/{requestId}
   // (durable-stream Rank-1, #6058). Reads stored bytes only — NEVER meters.
   // Shares the gateway flag AND the durable-stream flag. LIVE when both are on

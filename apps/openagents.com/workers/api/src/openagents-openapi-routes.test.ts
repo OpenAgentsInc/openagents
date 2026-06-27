@@ -1199,6 +1199,9 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   // Owner/admin and operator consoles (admin session or admin bearer only):
   '/api/admin/overview',
   '/api/admin/cf-browser-smoke',
+  // Owner/admin agent token reissue console (admin bearer only): operator
+  // credential surface, not part of the public OpenAPI contract.
+  '/api/admin/agents/reissue-token',
   // Owner-gated inference cost / provider-lane analytics (#6232): internal cost
   // + provider data, owner session only, not part of the public OpenAPI surface.
   '/api/admin/inference-analytics',
