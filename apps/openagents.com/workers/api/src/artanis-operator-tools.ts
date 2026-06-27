@@ -2666,6 +2666,19 @@ const traceReviewSafeField = (value: unknown, fallback: string): string => {
   return dispatchFieldIsSafe(text) ? text : '(redacted)'
 }
 
+// Pull a bounded model/provider IDENTIFIER field. These are controlled routing
+// identifiers from `token_usage_events.provider/model` (the route already serves
+// them public-safe) and legitimately contain `sk-`-shaped substrings (e.g.
+// `hydralisk-vllm-glm-5p2-reap-504b`), so the blunt secret-redaction heuristic
+// would false-positive them to "(redacted)" and hide the real top model. We only
+// trim, collapse whitespace, and length-bound them; no secret-pattern redaction.
+const traceReviewIdentifier = (value: unknown, fallback: string): string => {
+  const text =
+    typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : ''
+  if (text === '') return fallback
+  return text.length > 120 ? `${text.slice(0, 120)}...` : text
+}
+
 const traceReviewRecord = (value: unknown): Record<string, unknown> =>
   typeof value === 'object' && value !== null
     ? (value as Record<string, unknown>)
@@ -2702,8 +2715,8 @@ export const normalizeArtanisTraceReview = (
       const row = traceReviewRecord(raw)
       return {
         count: traceReviewCount(row.count),
-        model: traceReviewSafeField(row.model, 'unknown'),
-        provider: traceReviewSafeField(row.provider, 'unknown'),
+        model: traceReviewIdentifier(row.model, 'unknown'),
+        provider: traceReviewIdentifier(row.provider, 'unknown'),
         totalTokens: traceReviewCount(row.totalTokens),
       }
     })

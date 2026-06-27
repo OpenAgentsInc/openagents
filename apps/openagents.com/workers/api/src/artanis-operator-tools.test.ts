@@ -2063,16 +2063,36 @@ describe('get_trace_review (live Khala trace-review report) - iteration 11', () 
     expect(result).not.toContain('unknown: 4')
   })
 
-  test('normalizeArtanisTraceReview defensively redacts a non-public-safe bucket field', () => {
+  test('preserves bounded provider/model identifiers with sk-shaped substrings, never "(redacted)"', () => {
     const normalized = normalizeArtanisTraceReview({
       aggregates: {},
       modelMix: [
-        { count: 1, model: 'bearer sk-abc123', provider: 'p', totalTokens: 1 },
+        {
+          count: 1,
+          model: 'openagents/glm-5.2-reap-504b',
+          provider: 'hydralisk-vllm-glm-5p2-reap-504b',
+          totalTokens: 1,
+        },
       ],
       window: {},
     })
     expect(normalized).not.toBeNull()
-    expect(normalized?.modelMix[0]?.model).toBe('(redacted)')
+    // The legitimate serving provider id (which contains `sk-vllm-...`) survives.
+    expect(normalized?.modelMix[0]?.provider).toBe(
+      'hydralisk-vllm-glm-5p2-reap-504b',
+    )
+    expect(normalized?.modelMix[0]?.model).toBe('openagents/glm-5.2-reap-504b')
+  })
+
+  test('normalizeArtanisTraceReview defensively redacts a non-public-safe outcome field', () => {
+    const normalized = normalizeArtanisTraceReview({
+      aggregates: {},
+      modelMix: [],
+      outcomes: [{ count: 1, outcome: 'bearer sk-abcdef0123456789', totalTokens: 1 }],
+      window: {},
+    })
+    expect(normalized).not.toBeNull()
+    expect(normalized?.outcomes[0]?.outcome).toBe('(redacted)')
   })
 
   test('normalizeArtanisTraceReview returns null only for a non-object body', () => {
