@@ -146,7 +146,7 @@ function commitSubject(objectiveSummary: string | undefined, issueRef: string | 
   const base = cleaned.length === 0 ? "Pylon Codex assignment change" : cleaned
   const suffix = issueRef === null ? "" : ` (${issueRef})`
   const room = Math.max(8, MAX_SUBJECT_LENGTH - suffix.length)
-  const trimmed = base.length > room ? `${base.slice(0, room - 1).trimEnd()}…` : base
+  const trimmed = base.length > room ? `${base.slice(0, room - 3).trimEnd()}...` : base
   return `pylon: ${trimmed}${suffix}`
 }
 
@@ -289,8 +289,6 @@ export async function publishAssignmentPullRequest(
       subject,
       "-m",
       `Assignment: ${input.assignmentRef}`,
-      "-m",
-      "Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>",
     ],
     cwd: workingDirectory,
     timeoutMs: GIT_TIMEOUT_MS,

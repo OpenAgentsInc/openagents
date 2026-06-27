@@ -1137,6 +1137,11 @@ const EMPTY_PULL_REQUEST_CONTRIBUTION: PullRequestCloseoutContribution = {
   messageSuffix: "",
 }
 
+function publicRefSegment(value: string): string {
+  const sanitized = value.toLowerCase().replace(/[^a-z0-9._-]+/g, ".").replace(/^\.+|\.+$/g, "")
+  return sanitized.length === 0 ? "unknown" : sanitized.slice(0, 80)
+}
+
 /**
  * Opens one scoped pull request for a verified, non-empty git_checkout diff and
  * maps the typed outcome to public-safe closeout refs. Only git_checkout tasks
@@ -1200,6 +1205,9 @@ async function maybePublishAssignmentPullRequest(input: {
         result.reused
           ? "result.public.pylon.codex_agent_task.pull_request_reused"
           : "result.public.pylon.codex_agent_task.pull_request_opened",
+        `branch.public.pylon.codex_agent_task.${publicRefSegment(result.branch)}`,
+        `pull_request.public.pylon.codex_agent_task.${result.prNumber}`,
+        `verification.public.pylon.codex_agent_task.passed.exit_${input.verification.exitCode}`,
         `result.public.pylon.codex_agent_task.pull_request_changed_files.${result.changedCount}`,
       ],
       previewRefs: [result.prUrl],

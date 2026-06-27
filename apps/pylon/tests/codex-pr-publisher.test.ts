@@ -11,13 +11,22 @@ import {
 
 async function git(args: string[], cwd: string): Promise<void> {
   const proc = Bun.spawn(["git", ...args], { cwd, stderr: "pipe", stdout: "pipe" })
-  const code = await proc.exited
-  if (code !== 0) throw new Error(`git ${args.join(" ")} failed (${code})`)
+  const [, err, code] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ])
+  if (code !== 0) throw new Error(`git ${args.join(" ")} failed (${code}): ${err}`)
 }
 
 async function headSha(cwd: string): Promise<string> {
   const proc = Bun.spawn(["git", "rev-parse", "HEAD"], { cwd, stderr: "pipe", stdout: "pipe" })
-  const [out] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
+  const [out, , code] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ])
+  if (code !== 0) throw new Error(`git rev-parse HEAD failed (${code})`)
   return out.trim()
 }
 

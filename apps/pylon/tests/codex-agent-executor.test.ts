@@ -731,6 +731,15 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
       expect(record?.resultRefs).toContain(
         "result.public.pylon.codex_agent_task.pull_request_changed_files.1",
       )
+      expect(record?.resultRefs).toContain(
+        "branch.public.pylon.codex_agent_task.pylon.assignment-deadbeefdeadbeef",
+      )
+      expect(record?.resultRefs).toContain(
+        "pull_request.public.pylon.codex_agent_task.99001",
+      )
+      expect(record?.resultRefs).toContain(
+        "verification.public.pylon.codex_agent_task.passed.exit_0",
+      )
       expect(record?.previewRefs).toContain(
         "https://github.com/OpenAgentsInc/openagents/pull/99001",
       )
