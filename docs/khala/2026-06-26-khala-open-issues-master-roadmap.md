@@ -237,7 +237,7 @@ operator view of what remains, not a public product claim.
   still registered a DO lease, so the metadata looked like an in-flight
   preemption even though stress had already yielded. The follow-up patch blocks
   global lease registration when route admission will reject stress.
-- 2026-06-27T05:58Z final #6318 scheduler probe after deploy
+- 2026-06-27T05:00Z final #6318 scheduler probe after deploy
   `ac5af10d-ee04-437b-bfd9-7f7c56354105`: live readiness was still
   `degraded` / `blocked` with `10` configured replicas, `1` ready replica, and
   `9` draining replicas, but the bounded probe admitted stress
