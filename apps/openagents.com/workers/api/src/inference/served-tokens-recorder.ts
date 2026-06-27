@@ -35,7 +35,7 @@
 // customer's inference response: a persistence error logs a public-safe
 // diagnostic and is swallowed (the counter is a projection, not the source of
 // the served answer).
-import { Effect } from 'effect'
+import { Cause, Effect } from 'effect'
 
 import { workerLogEntry } from '../observability'
 import { currentIsoTimestamp } from '../runtime-primitives'
@@ -485,3 +485,36 @@ export const makeD1ServedTokensRecorder = (
       ? {}
       : { publishDelta: options.publishDelta }),
   })
+
+// FAIL-SOFT SERVED-TOKENS METERING (issue #6363).
+//
+// Recording a served-token row is a downstream PROJECTION of an already-served
+// completion. When the served reply is produced INSIDE an Effect that a caller
+// later converts with `Effect.exit` (the Artanis operator core does exactly
+// this), a metering FAILURE *or DEFECT* (D1 write error, sync-push throw,
+// ingest-body build throw) would otherwise turn a perfectly good answer into an
+// `artanis_operator_mind_unavailable` 503. The served-tokens counter must never
+// be load-bearing for whether the customer/owner gets their reply.
+//
+// `meterServedTokensFailSoft` runs the recorder, swallows ALL failures and
+// defects (logging a public-safe diagnostic — refs + token counts only), and
+// always succeeds with `void`. This is the single shared helper the Artanis
+// responder client uses so the fail-soft behavior is testable in isolation.
+export const meterServedTokensFailSoft = (
+  recordTokensServed: ServedTokensRecorder,
+  input: ServedTokensRecorderInput,
+): Effect.Effect<void> =>
+  recordTokensServed(input).pipe(
+    Effect.catchCause(cause =>
+      Effect.logWarning(
+        workerLogEntry('inference.served_tokens.record_failed_fail_soft', {
+          accountRef: input.accountRef,
+          adapterId: input.adapterId,
+          reason: Cause.pretty(cause),
+          requestId: input.requestId,
+          servedModel: input.servedModel,
+          totalTokens: input.usage.totalTokens,
+        }),
+      ),
+    ),
+  )

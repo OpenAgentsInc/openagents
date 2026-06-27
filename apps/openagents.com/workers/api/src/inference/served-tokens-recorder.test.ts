@@ -7,8 +7,11 @@ import {
   makeD1TokenUsageLedger,
 } from '../token-usage-ledger'
 import {
+  type ServedTokensRecorder,
+  type ServedTokensRecorderInput,
   buildServedTokensIngestBody,
   makeServedTokensRecorder,
+  meterServedTokensFailSoft,
   servedTokensCostUsd,
   servedTokensEventId,
   servedTokensIdempotencyKey,
@@ -749,5 +752,77 @@ describe('served-tokens-recorder', () => {
 
     expect(body.cost.currency).toBe('USD')
     expect(body.cost.amount).toBeCloseTo(0.42, 6)
+  })
+
+  // FAIL-SOFT METERING REGRESSION (#6363). The Artanis operator turn returns
+  // the served reply even when the served-tokens write fails, because the
+  // Khala-backed client meters through `meterServedTokensFailSoft`, which
+  // swallows BOTH a recorder failure AND a recorder defect. Before this fix the
+  // metering write rode inside the client Effect that the operator core converts
+  // with `Effect.exit`, so any write error became a 503
+  // `artanis_operator_mind_unavailable` despite Khala serving the answer.
+  describe('meterServedTokensFailSoft (#6363)', () => {
+    const exampleInput: ServedTokensRecorderInput = {
+      accountRef: 'agent:artanis',
+      adapterId: 'hydralisk',
+      requestAttribution: {
+        demandClient: 'artanis_operator_chat',
+        demandKind: 'internal',
+        demandSource: 'artanis',
+      },
+      requestId: 'chatcmpl-artanis-1',
+      requestedModel: 'openagents/khala',
+      servedModel: 'openagents/khala',
+      streamed: false,
+      usage: { completionTokens: 30, promptTokens: 12, totalTokens: 42 },
+    }
+
+    test('a metering WRITE FAILURE never fails the turn (succeeds with void)', async () => {
+      // The recorder type pins the error channel to `never`, but at runtime a
+      // ledger error can still escape as a typed failure (e.g. a recorder that
+      // was composed without the swallowing matchEffect). Inject one via an
+      // explicit `unknown` cast to prove the helper still succeeds.
+      const failingRecorder: ServedTokensRecorder = () =>
+        Effect.fail(
+          new TokenUsageLedgerStorageError({
+            error: 'd1 write failed',
+            operation: 'ingestEvent',
+          }),
+        ) as unknown as ReturnType<ServedTokensRecorder>
+
+      const outcome = await Effect.runPromiseExit(
+        meterServedTokensFailSoft(failingRecorder, exampleInput),
+      )
+
+      expect(outcome._tag).toBe('Success')
+    })
+
+    test('a metering DEFECT never fails the turn (succeeds with void)', async () => {
+      // The realistic production failure mode: the recorder dies with a DEFECT
+      // (a synchronous throw in ingest-body build, a D1 binding throw, or a
+      // sync-push throw). `Effect.exit` in the operator core captures defects,
+      // so the helper MUST swallow them too.
+      const dyingRecorder: ServedTokensRecorder = () =>
+        Effect.die(new Error('synchronous metering defect'))
+
+      const outcome = await Effect.runPromiseExit(
+        meterServedTokensFailSoft(dyingRecorder, exampleInput),
+      )
+
+      expect(outcome._tag).toBe('Success')
+    })
+
+    test('the happy path still delegates the served-token row to the recorder', async () => {
+      const rows: Array<Row> = []
+      const db = makeFakeDb(rows)
+      const ledger = makeD1TokenUsageLedger(db)
+      const recorder = makeServedTokensRecorder({ ledger, nowIso: fixedNow })
+
+      await Effect.runPromise(meterServedTokensFailSoft(recorder, exampleInput))
+
+      expect(rows).toHaveLength(1)
+      expect(rows[0]!.id).toBe(servedTokensEventId('chatcmpl-artanis-1'))
+      expect(await readServed(ledger)).toBe(42)
+    })
   })
 })

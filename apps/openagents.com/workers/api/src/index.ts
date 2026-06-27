@@ -537,6 +537,7 @@ import {
   type ServedTokensRecorderInput,
   buildServedTokensIngestBody,
   makeD1ServedTokensRecorder,
+  meterServedTokensFailSoft,
   servedTokensRowIsPublicCountable,
 } from './inference/served-tokens-recorder'
 import { stubEchoAdapter } from './inference/stub-echo-adapter'
@@ -9566,7 +9567,17 @@ const makeArtanisResponderKhalaClient = (
         },
       )
       const served = result.value
-      yield* recordTokensServed({
+      // FAIL-SOFT METERING (issue #6363). The Khala dispatch already produced
+      // the served reply; recording the served-token ledger row + publishing the
+      // live-counter delta is a downstream PROJECTION and must NEVER fail the
+      // turn. The Artanis operator core wraps this whole client in `Effect.exit`,
+      // so a metering FAILURE *or DEFECT* (D1 write, sync push, ingest-body
+      // build) would otherwise surface to the owner as a 503
+      // `artanis_operator_mind_unavailable` even though Khala served the answer.
+      // `meterServedTokensFailSoft` swallows both failures and defects (mirrors
+      // the public completions path's fail-soft metering) so Artanis always
+      // returns the served reply.
+      yield* meterServedTokensFailSoft(recordTokensServed, {
         accountRef: ARTANIS_REGISTERED_ACTOR_REF,
         adapterId: result.route.servedAdapterId,
         requestAttribution: {
