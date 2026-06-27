@@ -903,3 +903,86 @@ Current next reliability work:
   HTTP `500`/`502`.
 - Preserve run-scoped D1 accounting as the hard source of truth; public scalar
   deltas are useful for smoke checks but include concurrent Pylon/Codex traffic.
+
+## 2026-06-27 False-Ready Triage: Edge Bot-Fight, Not A Dead Origin
+
+A later "GLM is false-ready, 502s under any concurrency, 0 served" escalation
+was triaged end to end. The headline conclusion is that the GLM fleet was
+**not** dead and did **not** need a VM/vLLM repair; the catastrophic
+"0 served" measurements were dominated by a Cloudflare **edge** block of the
+stress client, not by the origin GLM pool.
+
+Live state at triage time:
+
+- `GET /v1/gateway/readiness`: ready, one Hydralisk servable model.
+- `GET /v1/gateway/glm-fleet/readiness`: `readyReplicaCount=8`,
+  `readyMaxInflight=9`, `drainingReplicaCount=2`, `disabledReplicaCount=2`,
+  all eight ready replicas `health=ok` / `watchdog=healthy` with fresh
+  heartbeats.
+
+Ground-truth VM sweep (direct, over IAP SSH, public-safe synthetic prompts):
+
+- All 8 ready replicas had the vLLM container running, `127.0.0.1:8000/v1/models`
+  serving, the bearer-gated private proxy listening on the VM private IP, and
+  Caddy active on `:443`.
+- A real local completion (`127.0.0.1:8000/v1/chat/completions`,
+  `max_tokens=8`) returned HTTP `200` with exact usage on **all 8** replicas.
+- All GCE ingress was intact: per-replica `0.0.0.0/0` `80/443` firewall rules
+  present and tag-targeted, per-replica reserved static IPs `IN_USE` and
+  attached. east1b and the other seven were configured identically.
+
+The decisive client comparison:
+
+| Client | Shape | Result |
+| --- | --- | --- |
+| python `urllib` rapid-fire (the stress harness / `glm_burn.py`) | conc-8/10, short prompts | `0` served; every request HTTP `403` Cloudflare **error 1010** (banned client/TLS signature). Requests never reached the origin Worker. The running `glm_burn.py` had logged `ok=0 err=448` over ~21 minutes for the same reason. |
+| `curl`, browser-like UA, single-flight | `max_tokens<=64` | HTTP `200`, GLM-served. |
+| `curl`, browser-like UA, conc-8, 24 reqs | `max_tokens=256` | `24/24` HTTP `200`, **all GLM**, `0` fallback, `0` 502, spread across all 8 replicas. |
+| `curl`, browser-like UA, conc-8, ~104s sustained | `max_tokens=512` | `48/48` HTTP `200`, **all GLM**, `0` fallback, `0` 502, `51,524` GLM tokens, `495` tok/s. |
+
+So the "false-ready 502 / 0 served under concurrency" signature was a **measurement
+artifact**: the rapid headless python `urllib` client trips Cloudflare bot-fight
+(error `1010`, surfaced as HTTP `403`) at the edge and never reaches the Worker.
+`0` served (rather than partial success) is the tell of an edge block, not an
+origin single-flight exhaustion. A legitimate client (curl with a normal UA, or
+any real SDK client at reasonable concurrency) is served cleanly by all eight
+GLM replicas.
+
+A continuous own-capacity driver was switched from the edge-blocked python
+harness to a legit-client `curl` driver (`internal_stress` / `glm-saturation`,
+conc-6, `max_tokens=512`). First slice: `29` OK / `1` HTTP `429` (single-flight,
+retryable) over `77s`, all `29` served by `hydralisk-vllm-glm-5p2-reap-504b`,
+`31,199` exact GLM tokens at `405` tok/s, `0` 502, `0` edge 403. The public
+counter advanced over the window (`524,578,077` baseline to `527,927,902`,
+including concurrent Pylon/Codex traffic).
+
+What is and is not "fixed":
+
+- The fleet did not need repair. All 8 ready replicas serve real GLM
+  completions under concurrency right now; before/after a legit-client probe is
+  `0` served (edge-blocked python) vs `100%` GLM served at ~`495` tok/s (curl).
+- The genuine residual ceiling is unchanged and is **capacity/admission**, not
+  liveness: the 4-GPU replicas are single-flight (`maxInflight=1`), so the fleet
+  is ~`8`-`9` concurrent GLM slots at ~`400`-`535` tok/s. Long-decode
+  (`2048`-`4096` token) high-concurrency runs still produce real origin
+  `429`/`502` from single-flight exhaustion, as recorded in the prior section.
+- The actionable correction is methodological and edge-side, not VM-side:
+  stress and real high-volume API clients must use a non-bot-flagged client
+  signature, or the Cloudflare bot-fight / WAF posture for
+  `POST /api/v1/chat/completions` must explicitly allow authenticated API
+  clients. A bearer-authenticated inference call being `1010`-banned at the edge
+  is the real risk to own-capacity volume and to MirrorCode-style clients, and
+  it can masquerade as "GLM is dead."
+
+Next reliability work (supersedes the raw 502 framing for the false-ready
+report):
+
+- Confirm the Cloudflare zone bot-fight / managed-rules posture on the
+  `/api/v1/chat/completions` route and ensure authenticated inference clients
+  are not `1010`-banned by JA3/UA signature under volume.
+- Keep using a legit-client signature for all GLM stress/own-capacity drivers;
+  treat any `0`-served result as a suspected edge block, not an origin outage,
+  and confirm with a single curl `200` before declaring the fleet down.
+- The single-flight per-replica admission ceiling remains the real throughput
+  limiter; raising it needs more/larger replicas or higher `maxInflight`, not a
+  restart.
