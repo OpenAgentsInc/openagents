@@ -396,7 +396,7 @@ const resolveReadScopeOwner = <Bindings, Session extends TraceBrowserSession>(
           token,
           dependencies.nowIso,
         ),
-    }).pipe(Effect.catch(() => Effect.succeed(undefined)))
+    }).pipe(Effect.catch(() => Effect.sync(() => undefined)))
     return session === undefined ? undefined : session.user.id
   })
 
@@ -469,7 +469,7 @@ const requireUploader = <Bindings, Session extends TraceBrowserSession>(
     const session = yield* Effect.tryPromise({
       catch: () => new TraceUnauthorized({}),
       try: () => dependencies.requireBrowserSession(request, env, ctx),
-    }).pipe(Effect.catch(() => Effect.succeed(undefined)))
+    }).pipe(Effect.catch(() => Effect.sync(() => undefined)))
 
     if (session === undefined) {
       return yield* new TraceUnauthorized({})
@@ -542,7 +542,7 @@ const requireTraceOwnerOrAdmin = <Bindings, Session extends TraceBrowserSession>
     const session = yield* Effect.tryPromise({
       catch: () => new TraceUnauthorized({}),
       try: () => dependencies.requireBrowserSession(request, env, ctx),
-    }).pipe(Effect.catch(() => Effect.succeed(undefined)))
+    }).pipe(Effect.catch(() => Effect.sync(() => undefined)))
 
     if (session === undefined) {
       return yield* new TraceUnauthorized({})
@@ -675,7 +675,7 @@ const routeIngest = <Bindings, Session extends TraceBrowserSession>(
         (yield* Effect.tryPromise({
           catch: traceStoreErrorFromUnknown,
           try: () => store.readTraceByUuid(idempotencyKey),
-        }).pipe(Effect.catch(() => Effect.succeed(undefined)))) !== undefined
+        }).pipe(Effect.catch(() => Effect.sync(() => undefined)))) !== undefined
       if (!replayExempt) {
         return yield* new TraceRateLimited({})
       }
@@ -866,7 +866,7 @@ const routeRead = <Bindings, Session extends TraceBrowserSession>(
     const session = yield* Effect.tryPromise({
       catch: () => new TraceForbidden({}),
       try: () => dependencies.requireBrowserSession(request, env, ctx),
-    }).pipe(Effect.catch(() => Effect.succeed(undefined)))
+    }).pipe(Effect.catch(() => Effect.sync(() => undefined)))
 
     if (session === undefined) {
       // No web login: allow the OWNER to read THEIR OWN owner_only trace with an
@@ -1032,7 +1032,7 @@ const authorizeTraceForBlobRead = <
     const session = yield* Effect.tryPromise({
       catch: () => new TraceForbidden({}),
       try: () => dependencies.requireBrowserSession(request, env, ctx),
-    }).pipe(Effect.catch(() => Effect.succeed(undefined)))
+    }).pipe(Effect.catch(() => Effect.sync(() => undefined)))
 
     if (session === undefined) {
       // No web login: allow the OWNER to read THEIR OWN owner_only trace's media
@@ -1223,7 +1223,7 @@ const routeBlobServe = <Bindings, Session extends TraceBrowserSession>(
     const session = yield* Effect.tryPromise({
       catch: () => new TraceForbidden({}),
       try: () => dependencies.requireBrowserSession(request, env, ctx),
-    }).pipe(Effect.catch(() => Effect.succeed(undefined)))
+    }).pipe(Effect.catch(() => Effect.sync(() => undefined)))
     return session === undefined
       ? response
       : dependencies.appendRefreshedSessionCookies(response, session)
@@ -1245,7 +1245,7 @@ const routeOwnerList = <Bindings, Session extends TraceBrowserSession>(
     const session = yield* Effect.tryPromise({
       catch: () => new TraceUnauthorized({}),
       try: () => dependencies.requireBrowserSession(request, env, ctx),
-    }).pipe(Effect.catch(() => Effect.succeed(undefined)))
+    }).pipe(Effect.catch(() => Effect.sync(() => undefined)))
 
     // Resolve the owner scope: the browser session if signed in, otherwise an
     // `oa_agent_` read-scope token (header or `?token=`, mobile "Open traces in
@@ -1410,7 +1410,7 @@ const routeTracesPage = <Bindings, Session extends TraceBrowserSession>(
     const session = yield* Effect.tryPromise({
       catch: () => undefined,
       try: () => dependencies.requireBrowserSession(request, env, ctx),
-    }).pipe(Effect.catch(() => Effect.succeed(undefined)))
+    }).pipe(Effect.catch(() => Effect.sync(() => undefined)))
 
     const tokenOwner =
       session === undefined

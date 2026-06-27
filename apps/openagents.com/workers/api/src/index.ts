@@ -8417,7 +8417,7 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
       bearer,
     )
     const ownerUserId = agent?.credential.openauthUserId
-    if (ownerUserId === undefined) {
+    if (ownerUserId === undefined || ownerUserId === null) {
       return undefined
     }
     const row = await openAgentsDatabase(env)
@@ -8432,7 +8432,18 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
     ) {
       return undefined
     }
-    return { user: { email, userId: ownerUserId } }
+    // The Artanis route only reads user.email + user.userId, but the inferred
+    // Session is the full human-session shape; fill the unused fields so the
+    // owner-agent-bearer return type matches the browser-session return type.
+    return {
+      user: {
+        avatarUrl: '',
+        email,
+        name: email,
+        provider: 'github' as const,
+        userId: ownerUserId,
+      },
+    }
   },
 })
 
