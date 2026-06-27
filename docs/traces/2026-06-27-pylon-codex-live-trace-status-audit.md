@@ -1042,6 +1042,13 @@ The first-class proof command reports:
 }
 ```
 
+The Pylon CLI now annotates that remote proof with a local
+`proofChecklist` when running `pylon khala proof <assignment-ref> --json`.
+The checklist is green only when exact own-capacity token usage, owner-only
+trace refs, owner-only raw event refs, positive evidence counts, and a valid
+generation timestamp are all present. Missing rows, empty trace/raw evidence,
+or malformed freshness metadata produce blocker refs instead of a green proof.
+
 Remote D1 read-only verification confirmed:
 
 | Store | Rows | Events | Bytes |
@@ -1231,9 +1238,9 @@ What is missing for the desired live page:
   current source mounts the route and exact-route manifest, but green still
   needs live metadata payload proof and a coherent owner-facing status surface;
 - front-end polling or streaming for that assignment/session view;
-- proof/status endpoint expansion to include verifier-specific progress and
-  bounded recent activity labels, beyond the current event/trace/chunk/token/
-  archive counts;
+- status endpoint expansion to include verifier-specific progress and bounded
+  recent activity labels, beyond the current event/trace/chunk/token/archive
+  counts and the CLI proof checklist;
 - a public-safe rollup renderer that composes many chunk/final traces into one
   coherent timeline without exposing raw SDK payloads.
 

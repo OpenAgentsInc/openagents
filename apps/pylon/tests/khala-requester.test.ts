@@ -5,6 +5,7 @@ import {
   buildPylonKhalaGitCheckoutWorkspace,
   buildPylonKhalaChatRequestBody,
   durableRequestIdFromUrl,
+  evaluatePylonKhalaProofChecklist,
   issuePylonKhalaRequest,
   readPylonKhalaProof,
   readPylonKhalaStatus,
@@ -392,6 +393,11 @@ describe("pylon khala requester API", () => {
     expect(result).toMatchObject({
       assignmentRef: "assignment-pylon-codex-1",
       ok: true,
+      proofChecklist: {
+        blockerRefs: [],
+        ok: true,
+        schema: "openagents.pylon.khala_proof_checklist.v0.1",
+      },
       rawEvents: {
         eventCount: 8,
         visibility: "owner_only",
@@ -408,6 +414,59 @@ describe("pylon khala requester API", () => {
     })
     expect(JSON.stringify(result)).not.toMatch(
       /rawEventsJson|trajectory_json|safe_metadata_json|r2_key|prompt|shell|\/Users|secret|access[_-]?token|bearer/i,
+    )
+  })
+
+  test("proof checklist fails closed when owner trace or exact usage evidence is missing", () => {
+    const checklist = evaluatePylonKhalaProofChecklist({
+      assignmentRef: "assignment-pylon-codex-1",
+      generatedAt: "not-a-date",
+      owner: {
+        agentUserRef: "agent:agent-user-1",
+        openauthUserRef: "user-openauth-1",
+      },
+      pylonRef: "pylon-local-codex-1",
+      rawEvents: {
+        byteLength: 0,
+        count: 0,
+        eventCount: 0,
+        refs: [],
+        visibility: "owner_only",
+      },
+      schemaVersion: "openagents.pylon.codex_assignment_proof.v1",
+      tokenUsage: {
+        cacheReadTokens: 0,
+        demandKind: "own_capacity",
+        demandSource: "khala_coding_delegation",
+        inputTokens: 0,
+        model: "openagents/pylon-codex",
+        outputTokens: 0,
+        provider: "pylon-codex-own-capacity",
+        reasoningTokens: 0,
+        rowCount: 0,
+        totalTokens: 0,
+        usageTruth: "exact",
+      },
+      traces: {
+        count: 0,
+        refs: [],
+        schemaVersion: "ATIF-v1.7",
+        visibility: "owner_only",
+      },
+    })
+
+    expect(checklist.ok).toBe(false)
+    expect(checklist.blockerRefs).toContain(
+      "blocker.khala_proof.token_usage.rows_and_tokens_present",
+    )
+    expect(checklist.blockerRefs).toContain(
+      "blocker.khala_proof.traces.owner_only_present",
+    )
+    expect(checklist.blockerRefs).toContain(
+      "blocker.khala_proof.raw_events.owner_only_present",
+    )
+    expect(checklist.blockerRefs).toContain(
+      "blocker.khala_proof.generated_at.iso_timestamp",
     )
   })
 
@@ -562,6 +621,10 @@ describe("pylon khala requester API", () => {
     expect(body).toMatchObject({
       assignmentRef: "assignment-pylon-codex-1",
       ok: true,
+      proofChecklist: {
+        blockerRefs: [],
+        ok: true,
+      },
       tokenUsage: {
         totalTokens: 15,
         usageTruth: "exact",

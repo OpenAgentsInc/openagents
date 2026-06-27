@@ -88,6 +88,7 @@ export type PylonKhalaProofResult = {
     refs: string[]
     visibility: "owner_only"
   }
+  proofChecklist: PylonKhalaProofChecklist
   schemaVersion: "openagents.pylon.codex_assignment_proof.v1"
   tokenUsage: {
     cacheReadTokens: number
@@ -108,6 +109,18 @@ export type PylonKhalaProofResult = {
     schemaVersion: string
     visibility: "owner_only"
   }
+}
+
+export type PylonKhalaProofChecklistItem = {
+  ok: boolean
+  ref: string
+}
+
+export type PylonKhalaProofChecklist = {
+  blockerRefs: string[]
+  items: PylonKhalaProofChecklistItem[]
+  ok: boolean
+  schema: "openagents.pylon.khala_proof_checklist.v0.1"
 }
 
 const durablePrefix = "/v1/chat/completions/durable/"
@@ -262,6 +275,63 @@ function cleanAssignmentRef(value: string): string {
   }
   assertPublicSafe(assignmentRef, "khala proof assignment ref")
   return assignmentRef
+}
+
+const checklistItem = (ref: string, ok: boolean): PylonKhalaProofChecklistItem => ({
+  ok,
+  ref,
+})
+
+export function evaluatePylonKhalaProofChecklist(
+  proof: Omit<PylonKhalaProofResult, "ok" | "proofChecklist">,
+): PylonKhalaProofChecklist {
+  const items = [
+    checklistItem(
+      "check.khala_proof.schema.codex_assignment_proof_v1",
+      proof.schemaVersion === "openagents.pylon.codex_assignment_proof.v1",
+    ),
+    checklistItem(
+      "check.khala_proof.token_usage.exact_own_capacity",
+      proof.tokenUsage.provider === "pylon-codex-own-capacity" &&
+        proof.tokenUsage.model === "openagents/pylon-codex" &&
+        proof.tokenUsage.usageTruth === "exact" &&
+        proof.tokenUsage.demandKind === "own_capacity" &&
+        proof.tokenUsage.demandSource === "khala_coding_delegation",
+    ),
+    checklistItem(
+      "check.khala_proof.token_usage.rows_and_tokens_present",
+      proof.tokenUsage.rowCount > 0 &&
+        proof.tokenUsage.totalTokens > 0 &&
+        proof.tokenUsage.totalTokens >= proof.tokenUsage.inputTokens + proof.tokenUsage.outputTokens,
+    ),
+    checklistItem(
+      "check.khala_proof.traces.owner_only_present",
+      proof.traces.visibility === "owner_only" &&
+        proof.traces.count > 0 &&
+        proof.traces.refs.length >= proof.traces.count,
+    ),
+    checklistItem(
+      "check.khala_proof.raw_events.owner_only_present",
+      proof.rawEvents.visibility === "owner_only" &&
+        proof.rawEvents.count > 0 &&
+        proof.rawEvents.eventCount > 0 &&
+        proof.rawEvents.byteLength > 0 &&
+        proof.rawEvents.refs.length >= proof.rawEvents.count,
+    ),
+    checklistItem(
+      "check.khala_proof.generated_at.iso_timestamp",
+      !Number.isNaN(Date.parse(proof.generatedAt)),
+    ),
+  ]
+  const blockerRefs = items
+    .filter((item) => !item.ok)
+    .map((item) => item.ref.replace(/^check\./, "blocker."))
+  return {
+    blockerRefs,
+    items,
+    ok: blockerRefs.length === 0,
+    schema: "openagents.pylon.khala_proof_checklist.v0.1",
+  }
 }
 
 export function buildPylonKhalaChatRequestBody(
@@ -509,10 +579,11 @@ export async function readPylonKhalaProof(
     method: "GET",
     path: `${codexAssignmentProofPath}?assignmentRef=${encodeURIComponent(assignmentRef)}`,
   })
-  const payload = (await response.json()) as Omit<PylonKhalaProofResult, "ok">
+  const payload = (await response.json()) as Omit<PylonKhalaProofResult, "ok" | "proofChecklist">
   assertPublicSafe(payload, "khala proof response")
   return {
     ...payload,
     ok: true,
+    proofChecklist: evaluatePylonKhalaProofChecklist(payload),
   }
 }

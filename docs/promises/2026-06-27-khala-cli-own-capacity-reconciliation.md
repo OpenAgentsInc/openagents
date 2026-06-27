@@ -50,6 +50,14 @@ Green proof for a particular assignment requires an accepted closeout and exact
 The public headline token counter includes those exact rows after closeout, but
 counter movement alone is not assignment proof.
 
+As of `3429704d8a` plus the follow-up Pylon CLI change, `pylon khala proof
+<assignment-ref> --json` includes a local `proofChecklist` projection. The
+checklist fails closed unless the remote proof has exact own-capacity token
+usage, owner-only trace refs, owner-only raw event refs, positive rows/tokens,
+and a valid generation timestamp. The checklist is still assignment-scoped
+evidence; it does not replace the dispatch runner or deployed assignment-status
+surface.
+
 Fresh dummy runbook delegation from this reconciliation pass, 2026-06-27:
 
 - Pylon preflight: `pylon.33afd48282a649047e3a`, Codex ready, owner-capacity
@@ -83,9 +91,10 @@ Do not claim:
 The main blockers are dispatch/auto-execution reliability (#6362),
 master-default workspace materialization (#6361), assignment-level trace/status
 presentation plus deployed smoke (#6368), proof/status closeout ergonomics
-(#6369), and the broad semantic router being verified without ad hoc keyword
-routing. The original owner-only Pylon/Codex trace read-scope mismatch is fixed
-for individual trace reads; a whole-assignment status surface is still needed.
+(#6369, now partially reduced by the proof checklist), and the broad semantic
+router being verified without ad hoc keyword routing. The original owner-only
+Pylon/Codex trace read-scope mismatch is fixed for individual trace reads; a
+whole-assignment status surface is still needed.
 
 ## CLI Boundary
 
