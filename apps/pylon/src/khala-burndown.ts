@@ -4,7 +4,6 @@ import type { TipsNetworkOptions } from "./tips.js"
 import {
   buildPylonKhalaGitCheckoutWorkspace,
   issuePylonKhalaRequest,
-  readPylonKhalaProof,
   type PylonKhalaProofResult,
   type PylonKhalaRequestInput,
   type PylonKhalaRequestResult,
@@ -18,6 +17,15 @@ import {
   type PylonLocalState,
 } from "./state.js"
 import type { PylonAccountsListProjection } from "./account-usage.js"
+import {
+  PYLON_KHALA_SPAWN_PLAN_SCHEMA,
+  readPublicKhalaTokensServed,
+  readyCodexAccounts,
+  runPylonKhalaSpawnPlan,
+  type PylonKhalaSpawnProofProjection,
+} from "./khala-spawn.js"
+
+export { readPublicKhalaTokensServed } from "./khala-spawn.js"
 
 export const PYLON_KHALA_BURNDOWN_PLAN_SCHEMA = "openagents.pylon.khala_burndown_plan.v0.1"
 export const PYLON_KHALA_BURNDOWN_RUN_SCHEMA = "openagents.pylon.khala_burndown_run.v0.1"
@@ -55,6 +63,7 @@ export type PylonKhalaBurndownPlan = {
   commit: string
   verificationCommand: string
   targetPylonRef: string
+  advertisedCodexAvailability: number
   readyCodexAccountCount: number
   issueCount: number
   slots: PylonKhalaBurndownSlot[]
@@ -80,7 +89,10 @@ export type PylonKhalaBurndownSlotResult = {
   slotIndex: number
 }
 
-type PylonKhalaBurndownProofProjection = NonNullable<PylonKhalaBurndownSlotResult["proof"]>
+type PylonKhalaBurndownProofProjection = Pick<
+  PylonKhalaSpawnProofProjection,
+  "rawEventCount" | "tokenRows" | "totalTokens" | "traceCount" | "usageTruth"
+>
 
 export type PylonKhalaBurndownCounterEvidence = {
   after: number | null
@@ -163,21 +175,6 @@ const quoteArg = (value: string): string =>
 const accountCommandArgs = (account: PylonKhalaBurndownAccount): string =>
   account.accountRef === null ? "" : ` --account ${quoteArg(account.accountRef)}`
 
-const readyCodexAccounts = (
-  accounts: PylonAccountsListProjection,
-): PylonKhalaBurndownAccount[] =>
-  accounts.accounts
-    .filter((account) =>
-      account.provider === "codex" &&
-      account.homeState === "present" &&
-      account.readiness.state === "ready" &&
-      account.blockerRefs.length === 0
-    )
-    .map((account) => ({
-      accountRef: account.accountRef,
-      accountRefHash: account.accountRefHash,
-    }))
-
 export function buildKhalaBurndownObjective(issueNumber: number): string {
   return [
     `Implement OpenAgents issue #${issueNumber} from the Khala roadmap.`,
@@ -194,17 +191,23 @@ export function buildPylonKhalaBurndownPlan(input: {
   issueNumbers: number[]
   iterations?: number
   maxParallel?: number
+  advertisedCodexAvailability?: number
   repository: string
   targetPylonRef: string
   verificationCommand: string
 }): PylonKhalaBurndownPlan {
   const accounts = readyCodexAccounts(input.accounts)
   const maxParallel = Math.max(1, Math.floor(input.maxParallel ?? accounts.length))
+  const advertisedCodexAvailability = Math.max(
+    0,
+    Math.floor(input.advertisedCodexAvailability ?? accounts.length),
+  )
   const iterations = Math.max(1, Math.floor(input.iterations ?? 1))
-  const selectedParallel = Math.min(maxParallel, accounts.length)
+  const selectedParallel = Math.min(maxParallel, accounts.length, advertisedCodexAvailability)
   const issueNumbers = uniqueIssueNumbers(input.issueNumbers).slice(0, selectedParallel * iterations)
   const blockerRefs = [
     ...(accounts.length === 0 ? ["blocker.khala_burndown.no_ready_codex_accounts"] : []),
+    ...(advertisedCodexAvailability === 0 ? ["blocker.khala_burndown.no_advertised_codex_availability"] : []),
     ...(issueNumbers.length === 0 ? ["blocker.khala_burndown.no_issue_numbers"] : []),
   ]
   const slots: PylonKhalaBurndownSlot[] = selectedParallel === 0
@@ -263,6 +266,7 @@ export function buildPylonKhalaBurndownPlan(input: {
     commit: input.commit,
     verificationCommand: input.verificationCommand,
     targetPylonRef: input.targetPylonRef,
+    advertisedCodexAvailability,
     readyCodexAccountCount: accounts.length,
     issueCount: issueNumbers.length,
     slots,
@@ -273,126 +277,64 @@ export function buildPylonKhalaBurndownPlan(input: {
   return plan
 }
 
-export async function readPublicKhalaTokensServed(network: TipsNetworkOptions): Promise<number | null> {
-  const fetcher = network.fetch ?? fetch
-  const response = await fetcher(new URL("/api/public/khala-tokens-served", network.baseUrl))
-  if (!response.ok) return null
-  const body = (await response.json()) as { tokensServed?: unknown }
-  return typeof body.tokensServed === "number" && Number.isFinite(body.tokensServed)
-    ? body.tokensServed
-    : null
-}
-
-const proofProjection = (proof: PylonKhalaProofResult): PylonKhalaBurndownProofProjection => ({
-  rawEventCount: proof.rawEvents.eventCount,
-  tokenRows: proof.tokenUsage.rowCount,
-  totalTokens: proof.tokenUsage.totalTokens,
-  traceCount: proof.traces.count,
-  usageTruth: proof.tokenUsage.usageTruth,
-})
-
 export async function runPylonKhalaBurndownPlan(input: {
   network: TipsNetworkOptions
   plan: PylonKhalaBurndownPlan
   summary: BootstrapSummary
   deps?: PylonKhalaBurndownRunDeps
 }): Promise<PylonKhalaBurndownRunResult> {
-  const issueRequest = input.deps?.issueRequest ?? issuePylonKhalaRequest
-  const runAssignment = input.deps?.runAssignment ?? runNoSpendAssignment
-  const readProof = input.deps?.readProof ?? readPylonKhalaProof
-  const readTokensServed = input.deps?.readTokensServed ?? readPublicKhalaTokensServed
-  const results: PylonKhalaBurndownSlotResult[] = []
-  const counterBefore = await readTokensServed(input.network).catch(() => null)
-
-  for (let iteration = 1; iteration <= input.plan.iterations; iteration += 1) {
-    const batch = input.plan.slots.filter((slot) => slot.iteration === iteration)
-    const batchResults = await Promise.all(
-      batch.map(async (slot): Promise<PylonKhalaBurndownSlotResult> => {
-        const blockerRefs: string[] = []
-        let assignmentRef: string | null = null
-        let durableRequestId: string | null = null
-        let runAccepted: boolean | null = null
-        let proof: PylonKhalaBurndownSlotResult["proof"] = null
-        try {
-          const request = await issueRequest(input.network, slot.requestInput, slot)
-          assignmentRef = request.assignmentRef
-          durableRequestId = request.durableRequestId
-          if (assignmentRef === null) {
-            blockerRefs.push("blocker.khala_burndown.assignment_ref_missing")
-          } else {
-            const run = await runAssignment(
-              input.summary,
-              {
-                ...(input.network.agentToken === undefined ? {} : { agentToken: input.network.agentToken }),
-                ...(slot.account.accountRef === null ? {} : { accountRef: slot.account.accountRef }),
-                assignmentRef,
-                baseUrl: input.network.baseUrl,
-                ...(input.network.fetch === undefined ? {} : { fetch: input.network.fetch }),
-              },
-              slot,
-            )
-            runAccepted = run.ok === true || run.closeout?.status === "accepted"
-            if (!runAccepted) {
-              blockerRefs.push(...(run.closeout?.blockerRefs ?? run.acceptance?.blockerRefs ?? ["blocker.khala_burndown.assignment_not_accepted"]))
-            } else {
-              const slotProof = proofProjection(await readProof(input.network, assignmentRef, slot))
-              proof = slotProof
-              if (slotProof.usageTruth !== "exact" || slotProof.tokenRows <= 0 || slotProof.totalTokens <= 0) {
-                blockerRefs.push("blocker.khala_burndown.proof_not_exact")
-              }
-            }
-          }
-        } catch {
-          blockerRefs.push("blocker.khala_burndown.slot_failed")
+  const spawnRun = await runPylonKhalaSpawnPlan<PylonKhalaBurndownSlot>({
+    blockerNamespace: "khala_burndown",
+    deps: {
+      ...(input.deps?.issueRequest === undefined ? {} : { requestAssignment: input.deps.issueRequest }),
+      ...(input.deps?.readProof === undefined ? {} : { readProof: input.deps.readProof }),
+      ...(input.deps?.readTokensServed === undefined ? {} : { readTokensServed: input.deps.readTokensServed }),
+      ...(input.deps?.runAssignment === undefined ? {} : { runAssignment: input.deps.runAssignment }),
+    },
+    network: input.network,
+    plan: {
+      schema: PYLON_KHALA_SPAWN_PLAN_SCHEMA,
+      advertisedCodexAvailability: input.plan.advertisedCodexAvailability,
+      baseUrl: input.plan.baseUrl,
+      blockerRefs: input.plan.blockerRefs,
+      maxParallel: input.plan.maxParallel,
+      objectiveCount: input.plan.issueCount,
+      readyCodexAccountCount: input.plan.readyCodexAccountCount,
+      requestedCount: input.plan.issueCount,
+      slots: input.plan.slots,
+      targetPylonRef: input.plan.targetPylonRef,
+    },
+    summary: input.summary,
+  })
+  const results: PylonKhalaBurndownSlotResult[] = spawnRun.results.map((result, index) => {
+    const slot = input.plan.slots[index]
+    const proof: PylonKhalaBurndownProofProjection | null = result.proof === null
+      ? null
+      : {
+          rawEventCount: result.proof.rawEventCount,
+          tokenRows: result.proof.tokenRows,
+          totalTokens: result.proof.totalTokens,
+          traceCount: result.proof.traceCount,
+          usageTruth: result.proof.usageTruth,
         }
-        return {
-          accountRefHash: slot.account.accountRefHash,
-          assignmentRef,
-          blockerRefs,
-          durableRequestId,
-          issueRef: slot.issue.issueRef,
-          ok: blockerRefs.length === 0,
-          proof,
-          runAccepted,
-          slotIndex: slot.slotIndex,
-        }
-      }),
-    )
-    results.push(...batchResults)
-  }
-
-  const totalVerifiedTokens = results.reduce((sum, result) => sum + (result.proof?.totalTokens ?? 0), 0)
-  const counterAfter = totalVerifiedTokens > 0
-    ? await readTokensServed(input.network).catch(() => null)
-    : counterBefore
-  const counterDelta = counterBefore === null || counterAfter === null
-    ? null
-    : counterAfter - counterBefore
-  const counterBlockerRefs =
-    totalVerifiedTokens > 0 &&
-    counterBefore !== null &&
-    counterAfter !== null &&
-    counterAfter <= counterBefore
-      ? ["blocker.khala_burndown.counter_not_incremented"]
-      : []
-  const counter: PylonKhalaBurndownCounterEvidence = {
-    after: counterAfter,
-    before: counterBefore,
-    blockerRefs: counterBlockerRefs,
-    delta: counterDelta,
-    expectedMinimumDelta: totalVerifiedTokens,
-    state: totalVerifiedTokens <= 0
-      ? "not_checked"
-      : counterBefore === null || counterAfter === null
-        ? "unavailable"
-        : counterAfter > counterBefore
-          ? "increment_observed"
-          : "unchanged",
-  }
+    return {
+      accountRefHash: result.accountRefHash,
+      assignmentRef: result.assignmentRef,
+      blockerRefs: result.blockerRefs,
+      durableRequestId: result.durableRequestId,
+      issueRef: slot?.issue.issueRef ?? `slot.${result.slotIndex}`,
+      ok: result.ok,
+      proof,
+      runAccepted: result.runAccepted,
+      slotIndex: result.slotIndex,
+    }
+  })
+  const totalVerifiedTokens = spawnRun.aggregate.totalVerifiedTokens
+  const counter = spawnRun.counter
   const blockerRefs = [
     ...input.plan.blockerRefs,
     ...results.flatMap((result) => result.blockerRefs),
-    ...counterBlockerRefs,
+    ...counter.blockerRefs,
   ]
   const run: PylonKhalaBurndownRunResult = {
     schema: PYLON_KHALA_BURNDOWN_RUN_SCHEMA,

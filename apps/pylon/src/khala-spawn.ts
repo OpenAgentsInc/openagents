@@ -1,0 +1,576 @@
+import type { BootstrapSummary } from "./bootstrap.js"
+import type { AssignmentClientOptions, AssignmentRunLifecycleEvent } from "./assignment.js"
+import { runNoSpendAssignment } from "./assignment.js"
+import type { PylonAccountsListProjection } from "./account-usage.js"
+import type { TipsNetworkOptions } from "./tips.js"
+import {
+  issuePylonKhalaRequest,
+  readPylonKhalaProof,
+  type PylonKhalaGitCheckoutWorkspace,
+  type PylonKhalaProofResult,
+  type PylonKhalaRequestInput,
+  type PylonKhalaRequestResult,
+} from "./khala-requester.js"
+import { assertPublicProjectionSafe } from "./state.js"
+
+export const PYLON_KHALA_SPAWN_PLAN_SCHEMA = "openagents.pylon.khala_spawn_plan.v0.1"
+export const PYLON_KHALA_SPAWN_RUN_SCHEMA = "openagents.pylon.khala_spawn_run.v0.1"
+export const PYLON_KHALA_SPAWN_WORKER_EVENT_SCHEMA = "openagents.pylon.khala_spawn_worker_event.v0.1"
+
+export type PylonKhalaSpawnWorkerState =
+  | "queued"
+  | "requesting"
+  | "assignment_created"
+  | "running"
+  | "closeout_submitted"
+  | "proof_checked"
+  | "accepted"
+  | "rejected"
+  | "failed"
+  | "cancelled"
+
+export type PylonKhalaSpawnAccount = {
+  accountRef: string | null
+  accountRefHash: string
+}
+
+export type PylonKhalaSpawnObjective = {
+  objective: string
+  objectiveRef: string
+}
+
+export type PylonKhalaSpawnCommands = {
+  proof: string
+  request: string
+  runNoSpend: string
+}
+
+export type PylonKhalaSpawnSlot = {
+  account: PylonKhalaSpawnAccount
+  commands: PylonKhalaSpawnCommands
+  objective: PylonKhalaSpawnObjective
+  requestInput: PylonKhalaRequestInput
+  slotIndex: number
+}
+
+export type PylonKhalaSpawnSlotLike = {
+  account: PylonKhalaSpawnAccount
+  requestInput: PylonKhalaRequestInput
+  slotIndex: number
+}
+
+export type PylonKhalaSpawnPlan = {
+  schema: typeof PYLON_KHALA_SPAWN_PLAN_SCHEMA
+  advertisedCodexAvailability: number
+  baseUrl: string
+  blockerRefs: string[]
+  maxParallel: number
+  objectiveCount: number
+  readyCodexAccountCount: number
+  requestedCount: number
+  slots: readonly PylonKhalaSpawnSlot[]
+  targetPylonRef: string
+}
+
+export type PylonKhalaSpawnPlanLike<Slot extends PylonKhalaSpawnSlotLike = PylonKhalaSpawnSlot> =
+  Omit<PylonKhalaSpawnPlan, "slots"> & {
+    slots: readonly Slot[]
+  }
+
+export type PylonKhalaSpawnWorkerEvent = {
+  schema: typeof PYLON_KHALA_SPAWN_WORKER_EVENT_SCHEMA
+  assignmentEvent?: AssignmentRunLifecycleEvent["event"]
+  assignmentRef?: string
+  closeoutRef?: string
+  leaseRef?: string
+  message: string
+  observedAt: string
+  slotIndex: number
+  state: PylonKhalaSpawnWorkerState
+  status?: string
+}
+
+export type PylonKhalaSpawnProofProjection = {
+  cacheReadTokens: number
+  demandKind: PylonKhalaProofResult["tokenUsage"]["demandKind"]
+  demandSource: PylonKhalaProofResult["tokenUsage"]["demandSource"]
+  inputTokens: number
+  model: PylonKhalaProofResult["tokenUsage"]["model"]
+  outputTokens: number
+  provider: PylonKhalaProofResult["tokenUsage"]["provider"]
+  rawEventCount: number
+  rawEventRows: number
+  reasoningTokens: number
+  tokenRows: number
+  totalTokens: number
+  traceCount: number
+  usageTruth: PylonKhalaProofResult["tokenUsage"]["usageTruth"]
+}
+
+export type PylonKhalaSpawnSlotResult = {
+  accountRefHash: string
+  assignmentRef: string | null
+  blockerRefs: string[]
+  closeoutStatus: string | null
+  durableRequestId: string | null
+  lifecycleEvents: PylonKhalaSpawnWorkerEvent[]
+  ok: boolean
+  proof: PylonKhalaSpawnProofProjection | null
+  runAccepted: boolean | null
+  slotIndex: number
+  state: PylonKhalaSpawnWorkerState
+}
+
+export type PylonKhalaSpawnCounterEvidence = {
+  after: number | null
+  before: number | null
+  blockerRefs: string[]
+  delta: number | null
+  expectedMinimumDelta: number
+  state: "increment_observed" | "not_checked" | "unchanged" | "unavailable"
+}
+
+export type PylonKhalaSpawnAggregate = {
+  acceptedCount: number
+  assignmentRefs: string[]
+  durableRequestIds: string[]
+  ownerOnlyRawEventCount: number
+  ownerOnlyTraceCount: number
+  totalTokenRows: number
+  totalVerifiedTokens: number
+}
+
+export type PylonKhalaSpawnRunResult = {
+  schema: typeof PYLON_KHALA_SPAWN_RUN_SCHEMA
+  aggregate: PylonKhalaSpawnAggregate
+  blockerRefs: string[]
+  counter: PylonKhalaSpawnCounterEvidence
+  ok: boolean
+  plan: PylonKhalaSpawnPlan
+  results: PylonKhalaSpawnSlotResult[]
+}
+
+export type PylonKhalaSpawnRunResultForPlan<Slot extends PylonKhalaSpawnSlotLike = PylonKhalaSpawnSlot> =
+  Omit<PylonKhalaSpawnRunResult, "plan"> & {
+    plan: PylonKhalaSpawnPlanLike<Slot>
+  }
+
+export type PylonKhalaSpawnAssignmentRunResult = {
+  acceptance?: { blockerRefs?: readonly string[] }
+  closeout?: { blockerRefs?: readonly string[]; status?: string }
+  ok: boolean
+}
+
+export type PylonKhalaSpawnRunDeps<Slot extends PylonKhalaSpawnSlotLike = PylonKhalaSpawnSlot> = {
+  onWorkerLifecycle?: (event: PylonKhalaSpawnWorkerEvent, slot: Slot) => void | Promise<void>
+  readProof?: (
+    network: TipsNetworkOptions,
+    assignmentRef: string,
+    slot: Slot,
+  ) => Promise<PylonKhalaProofResult>
+  readTokensServed?: (network: TipsNetworkOptions) => Promise<number | null>
+  requestAssignment?: (
+    network: TipsNetworkOptions,
+    input: PylonKhalaRequestInput,
+    slot: Slot,
+  ) => Promise<PylonKhalaRequestResult>
+  runAssignment?: (
+    summary: BootstrapSummary,
+    options: AssignmentClientOptions,
+    slot: Slot,
+  ) => Promise<PylonKhalaSpawnAssignmentRunResult>
+}
+
+const quoteArg = (value: string): string => JSON.stringify(value)
+
+const accountCommandArgs = (account: PylonKhalaSpawnAccount): string =>
+  account.accountRef === null ? "" : ` --account ${quoteArg(account.accountRef)}`
+
+const blocker = (namespace: string, suffix: string) => `blocker.${namespace}.${suffix}`
+
+function nonNegativeInteger(value: number | undefined, fallback: number): number {
+  if (value === undefined || !Number.isFinite(value)) return fallback
+  return Math.max(0, Math.floor(value))
+}
+
+export function readyCodexAccounts(
+  accounts: PylonAccountsListProjection,
+): PylonKhalaSpawnAccount[] {
+  return accounts.accounts
+    .filter((account) =>
+      account.provider === "codex" &&
+      account.homeState === "present" &&
+      account.readiness.state === "ready" &&
+      account.blockerRefs.length === 0
+    )
+    .map((account) => ({
+      accountRef: account.accountRef,
+      accountRefHash: account.accountRefHash,
+    }))
+}
+
+export function repeatedKhalaSpawnObjectives(input: {
+  count: number
+  objective: string
+}): PylonKhalaSpawnObjective[] {
+  const count = Math.max(1, Math.floor(input.count))
+  return Array.from({ length: count }, (_, index) => ({
+    objective: [
+      `Worker ${index + 1}/${count}.`,
+      input.objective.trim(),
+      "Work independently and return a concise public-safe closeout with evidence refs, blockers, and next step.",
+    ].join(" "),
+    objectiveRef: `objective.khala_spawn.${String(index + 1).padStart(2, "0")}`,
+  }))
+}
+
+export function buildPylonKhalaSpawnPlan(input: {
+  accounts: PylonAccountsListProjection
+  advertisedCodexAvailability?: number
+  baseUrl: string
+  branch?: string
+  commit?: string
+  fixture?: boolean
+  maxParallel?: number
+  objectives: readonly PylonKhalaSpawnObjective[]
+  repository?: string
+  targetPylonRef: string
+  verificationCommand?: string
+  workspace?: PylonKhalaGitCheckoutWorkspace
+}): PylonKhalaSpawnPlan {
+  const accounts = readyCodexAccounts(input.accounts)
+  const advertisedCodexAvailability = nonNegativeInteger(input.advertisedCodexAvailability, accounts.length)
+  const requestedMaxParallel = Math.max(1, Math.floor(input.maxParallel ?? accounts.length))
+  const selectedParallel = Math.min(requestedMaxParallel, accounts.length, advertisedCodexAvailability)
+  const blockerRefs = [
+    ...(accounts.length === 0 ? [blocker("khala_spawn", "no_ready_codex_accounts")] : []),
+    ...(advertisedCodexAvailability === 0 ? [blocker("khala_spawn", "no_advertised_codex_availability")] : []),
+    ...(input.objectives.length === 0 ? [blocker("khala_spawn", "no_objectives")] : []),
+  ]
+
+  const slots: PylonKhalaSpawnSlot[] = selectedParallel === 0
+    ? []
+    : input.objectives.map((objective, index) => {
+        const account = accounts[index % selectedParallel]
+        const requestInput: PylonKhalaRequestInput = {
+          objectiveSummary: objective.objective,
+          prompt: objective.objective,
+          targetPylonRef: input.targetPylonRef,
+          workflow: "codex_agent_task",
+          ...(input.workspace === undefined ? {} : { workspace: input.workspace }),
+        }
+        const workspaceArgs = input.workspace === undefined || input.fixture === true
+          ? ["--fixture"]
+          : [
+              `--repo ${quoteArg(input.repository ?? input.workspace.repository.fullName)}`,
+              `--commit ${quoteArg(input.commit ?? input.workspace.repository.commitSha)}`,
+              `--verify ${quoteArg(input.verificationCommand ?? input.workspace.verificationCommand.args.join(" "))}`,
+              `--branch ${quoteArg(input.branch ?? input.workspace.repository.branch)}`,
+            ]
+        return {
+          account,
+          commands: {
+            proof: "pylon khala proof --assignment-ref <assignmentRef> --json",
+            request: [
+              "pylon khala request",
+              "--workflow codex_agent_task",
+              `--pylon-ref ${quoteArg(input.targetPylonRef)}`,
+              `--prompt ${quoteArg(objective.objective)}`,
+              ...workspaceArgs,
+              "--json",
+            ].join(" "),
+            runNoSpend: `pylon assignment run-no-spend --base-url ${quoteArg(input.baseUrl)}${accountCommandArgs(account)} --assignment-ref <assignmentRef> --json`,
+          },
+          objective,
+          requestInput,
+          slotIndex: index,
+        }
+      })
+
+  const plan: PylonKhalaSpawnPlan = {
+    schema: PYLON_KHALA_SPAWN_PLAN_SCHEMA,
+    advertisedCodexAvailability,
+    baseUrl: input.baseUrl,
+    blockerRefs,
+    maxParallel: selectedParallel,
+    objectiveCount: input.objectives.length,
+    readyCodexAccountCount: accounts.length,
+    requestedCount: input.objectives.length,
+    slots,
+    targetPylonRef: input.targetPylonRef,
+  }
+  assertPublicProjectionSafe(plan)
+  return plan
+}
+
+export async function readPublicKhalaTokensServed(network: TipsNetworkOptions): Promise<number | null> {
+  const fetcher = network.fetch ?? fetch
+  const response = await fetcher(new URL("/api/public/khala-tokens-served", network.baseUrl))
+  if (!response.ok) return null
+  const body = (await response.json()) as { tokensServed?: unknown }
+  return typeof body.tokensServed === "number" && Number.isFinite(body.tokensServed)
+    ? body.tokensServed
+    : null
+}
+
+export function pylonKhalaProofProjection(proof: PylonKhalaProofResult): PylonKhalaSpawnProofProjection {
+  return {
+    cacheReadTokens: proof.tokenUsage.cacheReadTokens,
+    demandKind: proof.tokenUsage.demandKind,
+    demandSource: proof.tokenUsage.demandSource,
+    inputTokens: proof.tokenUsage.inputTokens,
+    model: proof.tokenUsage.model,
+    outputTokens: proof.tokenUsage.outputTokens,
+    provider: proof.tokenUsage.provider,
+    rawEventCount: proof.rawEvents.eventCount,
+    rawEventRows: proof.rawEvents.count,
+    reasoningTokens: proof.tokenUsage.reasoningTokens,
+    tokenRows: proof.tokenUsage.rowCount,
+    totalTokens: proof.tokenUsage.totalTokens,
+    traceCount: proof.traces.count,
+    usageTruth: proof.tokenUsage.usageTruth,
+  }
+}
+
+function proofBlockerRefs(
+  proof: PylonKhalaSpawnProofProjection,
+  namespace: string,
+): string[] {
+  const exactOwnCapacity =
+    proof.provider === "pylon-codex-own-capacity" &&
+    proof.model === "openagents/pylon-codex" &&
+    proof.usageTruth === "exact" &&
+    proof.demandKind === "own_capacity" &&
+    proof.demandSource === "khala_coding_delegation"
+  return [
+    ...(!exactOwnCapacity ? [blocker(namespace, "proof_not_exact_own_capacity")] : []),
+    ...(proof.tokenRows <= 0 || proof.totalTokens <= 0 ? [blocker(namespace, "proof_token_rows_missing")] : []),
+    ...(proof.traceCount <= 0 ? [blocker(namespace, "owner_trace_missing")] : []),
+    ...(proof.rawEventCount <= 0 ? [blocker(namespace, "raw_events_missing")] : []),
+  ]
+}
+
+export async function runPylonKhalaSpawnPlan<Slot extends PylonKhalaSpawnSlotLike>(input: {
+  blockerNamespace?: string
+  deps?: PylonKhalaSpawnRunDeps<Slot>
+  network: TipsNetworkOptions
+  plan: PylonKhalaSpawnPlanLike<Slot>
+  summary: BootstrapSummary
+}): Promise<PylonKhalaSpawnRunResultForPlan<Slot>> {
+  const namespace = input.blockerNamespace ?? "khala_spawn"
+  const requestAssignment = input.deps?.requestAssignment ?? issuePylonKhalaRequest
+  const runAssignment = input.deps?.runAssignment ?? runNoSpendAssignment
+  const readProof = input.deps?.readProof ?? readPylonKhalaProof
+  const readTokensServed = input.deps?.readTokensServed ?? readPublicKhalaTokensServed
+  const counterBefore = await readTokensServed(input.network).catch(() => null)
+  const results: PylonKhalaSpawnSlotResult[] = new Array(input.plan.slots.length)
+  let nextIndex = 0
+
+  const runNext = async (): Promise<void> => {
+    while (nextIndex < input.plan.slots.length) {
+      const slot = input.plan.slots[nextIndex]
+      const resultIndex = nextIndex
+      nextIndex += 1
+      if (slot === undefined) return
+      results[resultIndex] = await runPylonKhalaSpawnSlot({
+        deps: input.deps,
+        namespace,
+        network: input.network,
+        readProof,
+        requestAssignment,
+        runAssignment,
+        slot,
+        summary: input.summary,
+      })
+    }
+  }
+
+  const laneCount = Math.min(input.plan.maxParallel, input.plan.slots.length)
+  await Promise.all(Array.from({ length: laneCount }, () => runNext()))
+  const completedResults = results.filter((result): result is PylonKhalaSpawnSlotResult => result !== undefined)
+  const aggregate = aggregateSpawnResults(completedResults)
+  const counterAfter = aggregate.totalVerifiedTokens > 0
+    ? await readTokensServed(input.network).catch(() => null)
+    : counterBefore
+  const counterDelta = counterBefore === null || counterAfter === null
+    ? null
+    : counterAfter - counterBefore
+  const counterBlockerRefs =
+    aggregate.totalVerifiedTokens > 0 &&
+    counterBefore !== null &&
+    counterAfter !== null &&
+    counterAfter <= counterBefore
+      ? [blocker(namespace, "counter_not_incremented")]
+      : []
+  const counter: PylonKhalaSpawnCounterEvidence = {
+    after: counterAfter,
+    before: counterBefore,
+    blockerRefs: counterBlockerRefs,
+    delta: counterDelta,
+    expectedMinimumDelta: aggregate.totalVerifiedTokens,
+    state: aggregate.totalVerifiedTokens <= 0
+      ? "not_checked"
+      : counterBefore === null || counterAfter === null
+        ? "unavailable"
+        : counterAfter > counterBefore
+          ? "increment_observed"
+          : "unchanged",
+  }
+  const blockerRefs = [
+    ...input.plan.blockerRefs,
+    ...completedResults.flatMap((result) => result.blockerRefs),
+    ...counterBlockerRefs,
+  ]
+  const run: PylonKhalaSpawnRunResultForPlan<Slot> = {
+    schema: PYLON_KHALA_SPAWN_RUN_SCHEMA,
+    aggregate,
+    blockerRefs,
+    counter,
+    ok: blockerRefs.length === 0 && completedResults.length > 0,
+    plan: input.plan,
+    results: completedResults,
+  }
+  assertPublicProjectionSafe(run)
+  return run
+}
+
+async function runPylonKhalaSpawnSlot<Slot extends PylonKhalaSpawnSlotLike>(input: {
+  deps: PylonKhalaSpawnRunDeps<Slot> | undefined
+  namespace: string
+  network: TipsNetworkOptions
+  readProof: NonNullable<PylonKhalaSpawnRunDeps<Slot>["readProof"]>
+  requestAssignment: NonNullable<PylonKhalaSpawnRunDeps<Slot>["requestAssignment"]>
+  runAssignment: NonNullable<PylonKhalaSpawnRunDeps<Slot>["runAssignment"]>
+  slot: Slot
+  summary: BootstrapSummary
+}): Promise<PylonKhalaSpawnSlotResult> {
+  const events: PylonKhalaSpawnWorkerEvent[] = []
+  const emit = async (
+    state: PylonKhalaSpawnWorkerState,
+    message: string,
+    patch: Partial<PylonKhalaSpawnWorkerEvent> = {},
+  ) => {
+    const event: PylonKhalaSpawnWorkerEvent = {
+      schema: PYLON_KHALA_SPAWN_WORKER_EVENT_SCHEMA,
+      message,
+      observedAt: new Date().toISOString(),
+      slotIndex: input.slot.slotIndex,
+      state,
+      ...patch,
+    }
+    assertPublicProjectionSafe(event)
+    events.push(event)
+    await input.deps?.onWorkerLifecycle?.(event, input.slot)
+  }
+
+  const blockerRefs: string[] = []
+  let assignmentRef: string | null = null
+  let durableRequestId: string | null = null
+  let proof: PylonKhalaSpawnProofProjection | null = null
+  let runAccepted: boolean | null = null
+  let closeoutStatus: string | null = null
+  let state: PylonKhalaSpawnWorkerState = "queued"
+
+  try {
+    await emit("queued", "worker queued")
+    state = "requesting"
+    await emit("requesting", "requesting Khala durable assignment")
+    const request = await input.requestAssignment(input.network, input.slot.requestInput, input.slot)
+    assignmentRef = request.assignmentRef
+    durableRequestId = request.durableRequestId
+    if (assignmentRef === null) {
+      blockerRefs.push(blocker(input.namespace, "assignment_ref_missing"))
+      state = "failed"
+      await emit("failed", "Khala request did not return an assignment ref")
+    } else {
+      state = "assignment_created"
+      await emit("assignment_created", "Khala assignment ref created", { assignmentRef })
+      const run = await input.runAssignment(
+        input.summary,
+        {
+          ...(input.network.agentToken === undefined ? {} : { agentToken: input.network.agentToken }),
+          ...(input.slot.account.accountRef === null ? {} : { accountRef: input.slot.account.accountRef }),
+          assignmentRef,
+          baseUrl: input.network.baseUrl,
+          ...(input.network.fetch === undefined ? {} : { fetch: input.network.fetch }),
+          onLifecycleEvent: async (assignmentEvent) => {
+            const mapped = lifecycleState(assignmentEvent)
+            if (mapped !== null) {
+              await emit(mapped, "assignment lifecycle event", {
+                assignmentEvent: assignmentEvent.event,
+                ...(assignmentEvent.assignmentRef === undefined ? {} : { assignmentRef: assignmentEvent.assignmentRef }),
+                ...(assignmentEvent.closeoutRef === undefined ? {} : { closeoutRef: assignmentEvent.closeoutRef }),
+                ...(assignmentEvent.leaseRef === undefined ? {} : { leaseRef: assignmentEvent.leaseRef }),
+                ...(assignmentEvent.status === undefined ? {} : { status: assignmentEvent.status }),
+              })
+            }
+          },
+        },
+        input.slot,
+      )
+      closeoutStatus = run.closeout?.status ?? null
+      runAccepted = run.ok === true || run.closeout?.status === "accepted"
+      if (!runAccepted) {
+        blockerRefs.push(
+          ...(run.closeout?.blockerRefs ?? run.acceptance?.blockerRefs ?? [blocker(input.namespace, "assignment_not_accepted")]),
+        )
+        state = closeoutStatus === "cancelled" ? "cancelled" : "rejected"
+        await emit(state, "assignment did not close as accepted", {
+          assignmentRef,
+          ...(closeoutStatus === null ? {} : { status: closeoutStatus }),
+        })
+      } else {
+        const projectedProof = pylonKhalaProofProjection(await input.readProof(input.network, assignmentRef, input.slot))
+        proof = projectedProof
+        blockerRefs.push(...proofBlockerRefs(projectedProof, input.namespace))
+        state = blockerRefs.length === 0 ? "accepted" : "failed"
+        await emit("proof_checked", "assignment proof checked", { assignmentRef })
+        await emit(state, state === "accepted" ? "worker accepted" : "worker proof failed", { assignmentRef })
+      }
+    }
+  } catch {
+    blockerRefs.push(blocker(input.namespace, "slot_failed"))
+    state = "failed"
+    await emit("failed", "worker failed")
+  }
+
+  return {
+    accountRefHash: input.slot.account.accountRefHash,
+    assignmentRef,
+    blockerRefs,
+    closeoutStatus,
+    durableRequestId,
+    lifecycleEvents: events,
+    ok: blockerRefs.length === 0,
+    proof,
+    runAccepted,
+    slotIndex: input.slot.slotIndex,
+    state,
+  }
+}
+
+function lifecycleState(event: AssignmentRunLifecycleEvent): PylonKhalaSpawnWorkerState | null {
+  if (event.event === "assignment_run.runtime_started" || event.event === "assignment_run.runtime_progress") {
+    return "running"
+  }
+  if (event.event === "assignment_run.closeout_submitted") return "closeout_submitted"
+  if (event.event === "assignment_run.completed") {
+    if (event.status === "accepted") return "accepted"
+    if (event.status === "cancelled") return "cancelled"
+    return "rejected"
+  }
+  return null
+}
+
+function aggregateSpawnResults(results: readonly PylonKhalaSpawnSlotResult[]): PylonKhalaSpawnAggregate {
+  const proofs = results.flatMap((result) => result.proof === null ? [] : [result.proof])
+  return {
+    acceptedCount: results.filter((result) => result.ok && result.runAccepted).length,
+    assignmentRefs: results.flatMap((result) => result.assignmentRef === null ? [] : [result.assignmentRef]),
+    durableRequestIds: results.flatMap((result) => result.durableRequestId === null ? [] : [result.durableRequestId]),
+    ownerOnlyRawEventCount: proofs.reduce((sum, proof) => sum + proof.rawEventCount, 0),
+    ownerOnlyTraceCount: proofs.reduce((sum, proof) => sum + proof.traceCount, 0),
+    totalTokenRows: proofs.reduce((sum, proof) => sum + proof.tokenRows, 0),
+    totalVerifiedTokens: proofs.reduce((sum, proof) => sum + proof.totalTokens, 0),
+  }
+}

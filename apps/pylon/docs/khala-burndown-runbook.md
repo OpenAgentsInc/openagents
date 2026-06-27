@@ -5,6 +5,12 @@ Khala roadmap into parallel `codex_agent_task` assignments across ready local
 Codex accounts, runs each no-spend assignment, and verifies the owner-only proof
 surface before reporting closeout refs.
 
+The burndown command is now a specialization of the generic
+`pylon khala spawn` runner. Both surfaces plan against ready Codex accounts and
+current advertised Codex availability, then execute through the existing
+`run-no-spend` active-run heartbeat path so busy/available capacity reflects
+real in-flight work.
+
 It does not auto-merge arbitrary coding-agent diffs. The JSON plan and run
 result carry `mergePolicy: "operator_review_required"` so an operator can review
 the produced work, run the repo gate, commit, push, comment, and close the issue.

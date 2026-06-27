@@ -286,6 +286,11 @@ import {
   runPylonKhalaBurndownPlan,
 } from "./khala-burndown.js"
 import {
+  buildPylonKhalaSpawnPlan,
+  repeatedKhalaSpawnObjectives,
+  runPylonKhalaSpawnPlan,
+} from "./khala-spawn.js"
+import {
   pylonKhalaMcpConfig,
   runPylonKhalaMcpStdio,
 } from "./khala-mcp.js"
@@ -2057,6 +2062,16 @@ function positiveIntegerOption(options: Record<string, string | true>, key: stri
   return parsed
 }
 
+async function availableCodexAssignments(summary: BootstrapSummary, state: PylonLocalState): Promise<number> {
+  const codingCapacity = codingServiceCapacityFromRuntime(
+    state,
+    Bun.env,
+    await localCodingServiceReadyCounts(summary, Bun.env),
+    await activeCodingRunCounts(state.paths),
+  )
+  return codingCapacity.find((item) => item.service === "codex")?.available ?? 0
+}
+
 async function localGitText(args: string[], cwd = process.cwd()): Promise<string> {
   const proc = Bun.spawn(["git", ...args], { cwd, stderr: "pipe", stdout: "pipe" })
   const [stdout, stderr, exitCode] = await Promise.all([
@@ -3779,6 +3794,100 @@ async function main() {
         process.stdout.write(`${text}\n`)
       }
 
+      if (command === "spawn") {
+        const objective =
+          optionString(options, "objective") ??
+          optionString(options, "prompt") ??
+          (args[2] !== undefined && !args[2].startsWith("--") ? args[2] : undefined)
+        if (!objective) {
+          throw new Error("usage: pylon khala spawn --count <n> --objective <text> [--fixture | --commit <sha> --repo owner/repo --verify <argv>] [--pylon-ref <pylonRef>] [--max-parallel n] [--execute] [--json]")
+        }
+        const count = positiveIntegerOption(options, "count", "khala spawn --count") ?? 1
+        const maxParallel = positiveIntegerOption(options, "max-parallel", "khala spawn --max-parallel")
+        const commit = optionString(options, "commit")
+        const repository = optionString(options, "repo") ?? "OpenAgentsInc/openagents"
+        const verificationCommand = optionString(options, "verify")
+        const explicitFixture =
+          optionFlag(options, "fixture") ||
+          optionFlag(options, "fixture-smoke") ||
+          optionFlag(options, "codex-fixture")
+        const hasWorkspacePin = commit !== undefined || verificationCommand !== undefined || optionString(options, "repo") !== undefined
+        if (explicitFixture && hasWorkspacePin) {
+          throw new Error("khala spawn --fixture cannot be combined with --commit, --repo, or --verify")
+        }
+        if (!explicitFixture) {
+          const missingPins = [
+            commit === undefined ? "--commit" : null,
+            verificationCommand === undefined ? "--verify" : null,
+          ].filter((pin): pin is string => pin !== null)
+          if (missingPins.length > 0) {
+            throw new Error(
+              `khala spawn requires explicit fixture intent (--fixture) or complete workspace pins (--commit, --repo, --verify); missing ${missingPins.join(", ")}`,
+            )
+          }
+        }
+        const state = await ensurePylonLocalState(summary)
+        const targetPylonRef =
+          optionString(options, "pylon-ref") ??
+          optionString(options, "target-pylon-ref") ??
+          localPylonTargetRef(state)
+        if (optionFlag(options, "execute")) {
+          try {
+            await sendHeartbeat(summary, {
+              ...presenceClientOptionsFromEnv({ baseUrl, env: Bun.env }),
+              ...(resolvedAgentToken === null ? {} : { agentToken: resolvedAgentToken.token }),
+            })
+          } catch {
+            // Presence freshness is rechecked by run-no-spend; this best-effort
+            // push keeps advertised capacity current for the spawn planner.
+          }
+        }
+        const accounts = await collectPylonAccountsList(summary, { env: Bun.env })
+        const advertisedCodexAvailability = await availableCodexAssignments(summary, state)
+        const workspace = explicitFixture
+          ? undefined
+          : buildPylonKhalaGitCheckoutWorkspace({
+              branch: optionString(options, "branch"),
+              commit,
+              repository,
+              verificationCommand,
+            })
+        const plan = buildPylonKhalaSpawnPlan({
+          accounts,
+          advertisedCodexAvailability,
+          baseUrl,
+          ...(optionString(options, "branch") === undefined ? {} : { branch: optionString(options, "branch") }),
+          ...(commit === undefined ? {} : { commit }),
+          fixture: explicitFixture,
+          ...(maxParallel === undefined ? {} : { maxParallel }),
+          objectives: repeatedKhalaSpawnObjectives({ count, objective }),
+          repository,
+          targetPylonRef,
+          ...(verificationCommand === undefined ? {} : { verificationCommand }),
+          ...(workspace === undefined ? {} : { workspace }),
+        })
+        if (!optionFlag(options, "execute")) {
+          emit(plan)
+          return
+        }
+        const result = await runPylonKhalaSpawnPlan({
+          ...(optionFlag(options, "json")
+            ? {
+                deps: {
+                  onWorkerLifecycle: (event) => {
+                    process.stderr.write(`${JSON.stringify(event)}\n`)
+                  },
+                },
+              }
+            : {}),
+          network: networkOptions,
+          plan,
+          summary,
+        })
+        emit(result)
+        return
+      }
+
       if (command === "burndown") {
         const commit = optionString(options, "commit")
         const repository = optionString(options, "repo") ?? "OpenAgentsInc/openagents"
@@ -3797,6 +3906,7 @@ async function main() {
           optionString(options, "pylon-ref") ??
           optionString(options, "target-pylon-ref") ??
           localPylonTargetRef(state)
+        const advertisedCodexAvailability = await availableCodexAssignments(summary, state)
         if (optionFlag(options, "execute")) {
           try {
             await sendHeartbeat(summary, {
@@ -3825,6 +3935,7 @@ async function main() {
           baseUrl,
           ...(branch === undefined ? {} : { branch }),
           commit,
+          advertisedCodexAvailability,
           issueNumbers,
           ...(iterations === undefined ? {} : { iterations }),
           ...(maxParallel === undefined ? {} : { maxParallel }),
@@ -4012,7 +4123,7 @@ async function main() {
         return
       }
 
-      throw new Error("usage: pylon khala request|resume|status|proof|closeout|burndown ...")
+      throw new Error("usage: pylon khala request|resume|status|proof|closeout|spawn|burndown ...")
     } catch (error) {
       process.stdout.write(`${JSON.stringify({ error: error instanceof Error ? error.message : String(error), ok: false }, null, 2)}\n`)
       process.exitCode = 1

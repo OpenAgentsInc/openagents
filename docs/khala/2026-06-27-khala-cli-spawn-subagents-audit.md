@@ -2,6 +2,20 @@
 
 Status: audit and implementation specification, 2026-06-27.
 
+Implementation progress:
+
+- #6371 added the local Khala CLI spawn supervisor, local worker persistence,
+  CLI/slash commands, cancellation, and focused CLI tests.
+- #6372 extracted the Pylon-backed generic spawn runner under
+  `apps/pylon/src/khala-spawn.ts`, added `pylon khala spawn`, and kept
+  `pylon khala burndown` as a specialization over that runner. The Pylon slice
+  plans against ready Codex accounts plus advertised availability, executes
+  no-spend assignments through the existing active-run heartbeat path, and
+  aggregates exact token rows, durable request ids, assignment refs,
+  owner-only trace counts, raw event counts, and blockers.
+- Remaining tracked slices are MCP/Worker exposure (#6373) and natural-language
+  spawn routing plus Khala response copy (#6374).
+
 Owner problem statement:
 
 > `khala`
