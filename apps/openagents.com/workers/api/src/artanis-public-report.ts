@@ -91,6 +91,12 @@ import {
   PublicPylonEarningLaunchGate,
   PublicPylonStats,
 } from './public-pylon-stats'
+import {
+  publicPylonApiAssignmentProjection,
+  pylonCodingServiceCapacityProjection,
+  type PylonApiAssignmentRecord,
+  type PylonApiRegistrationRecord,
+} from './pylon-api'
 import { publicRefTriggersAgentSecretScanner } from './public-ref-scanner-safety'
 import {
   PylonV02OmegaReleaseGateProjection,
@@ -241,6 +247,40 @@ export class ArtanisPublicReportHealthSummary extends S.Class<ArtanisPublicRepor
   updatedAtDisplay: S.String,
 }) {}
 
+export class ArtanisFleetMapSlot extends S.Class<ArtanisFleetMapSlot>(
+  'ArtanisFleetMapSlot',
+)({
+  activeAssignmentRef: S.NullOr(S.String),
+  issueNumber: S.NullOr(S.Number),
+  issueTitle: S.NullOr(S.String),
+  label: S.String,
+  pylonRef: S.String,
+  service: S.Literals(['claude', 'codex']),
+  state: S.Literals(['available', 'busy', 'queued', 'stale']),
+  updatedAtDisplay: S.String,
+}) {}
+
+export class ArtanisActiveIssueBoardItem extends S.Class<ArtanisActiveIssueBoardItem>(
+  'ArtanisActiveIssueBoardItem',
+)({
+  activeAssignmentRefs: S.Array(S.String),
+  issueNumber: S.Number,
+  issueTitle: S.String,
+  repositoryRef: S.NullOr(S.String),
+  serviceLabels: S.Array(S.String),
+  state: S.String,
+}) {}
+
+export class ArtanisFleetActivitySummary extends S.Class<ArtanisFleetActivitySummary>(
+  'ArtanisFleetActivitySummary',
+)({
+  activeIssueCount: S.Number,
+  activeIssues: S.Array(ArtanisActiveIssueBoardItem),
+  caveatRefs: S.Array(S.String),
+  generatedFromRefs: S.Array(S.String),
+  slots: S.Array(ArtanisFleetMapSlot),
+}) {}
+
 export class ArtanisPublicReportAuthoritySummary extends S.Class<ArtanisPublicReportAuthoritySummary>(
   'ArtanisPublicReportAuthoritySummary',
 )({
@@ -301,6 +341,7 @@ export class ArtanisPublicReport extends S.Class<ArtanisPublicReport>(
    * in string fields; epoch milliseconds carry the same fact safely.
    */
   generatedAtUnixMs: S.Number,
+  fleetActivity: ArtanisFleetActivitySummary,
   healthSummary: ArtanisPublicReportHealthSummary,
   modelLabSummary: ArtanisPublicReportModelLabSummary,
   nexusPublicRefs: S.Array(S.String),
@@ -335,6 +376,15 @@ export class ArtanisPublicReportUnsafe extends S.TaggedErrorClass<ArtanisPublicR
 const unsafePublicReportPattern =
   /(@|\/Users\/|(^|https:\/\/openagents\.com)\/autopilot($|[/?#])|\/home\/|access[_-]?token|auth\.json|authGrantRef|bearer|callback[_-]?token|cookie|customer[_-]?(email|name|phone|prompt|record|value)|dataset\.raw|email[_-]?(address|body|html|raw|text)|full[_-]?(prompt|source|trace)|gho_[A-Za-z0-9_]+|ghp_[A-Za-z0-9_]+|github\.com\/[^:/]+\/private|hiddenSteering|invoice[_-]?(id|raw)|lnbc|lntb|lnbcrt|lno1|lnurl|macaroon|mdk[_-]?(access[_-]?token|mnemonic|webhook[_-]?secret)|mnemonic|model[_-]?(weights|raw|secret)|oauth|opencode_auth_content|payloadJson|payment[_-]?(hash|id|invoice|preimage|proof|secret)|payout[_-]?(address|destination|private|raw)|payout[_-]?target[_-]?raw|preimage|private[_-]?(archive|customer|dataset|key|prompt|source|trace|wallet)|provider[_-]?(account|credential|grant|payload|secret|token)|raw[_-]?(artifact|auth|customer|dataset|email|invoice|log|model|payment|payload|payout|prompt|provider|record|repo|runner|run[_-]?log|source|state|target|telemetry|text|trace|training|weights|webhook)|raw[_-]?payout[_-]?target|recovery[_-]?phrase|runner[_-]?(payload|secret|token)|secret|seed[_-]?phrase|sk-[a-z0-9]|source[_-]?(archive|raw)|token|wallet[._-]?(key|material|mnemonic|payment|preimage|secret|seed|spend)|weights\.(bin|gguf|safetensors|pt|pth))/i
 const rawTimestampPattern = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/
+const activeCodingAssignmentStates = new Set([
+  'accepted',
+  'offered',
+  'proof_submitted',
+  'running',
+])
+const issueNumberPattern =
+  /(?:github\.issue\.OpenAgentsInc\.openagents\.|issue\.github\.openagents\.|issue[ #:]+|#)(\d{1,7})/i
+const githubRepoPattern = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/
 
 const unique = <A>(values: ReadonlyArray<A>): ReadonlyArray<A> => [
   ...new Set(values),
@@ -348,6 +398,228 @@ const safeRefSuffix = (value: string): string =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '') || 'unknown'
+
+const serviceLabel = (service: 'claude' | 'codex', index: number): string =>
+  `${service === 'codex' ? 'Codex' : 'Claude'}-${index}`
+
+const publicSummarySafe = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null
+  }
+  const trimmed = value.trim().replace(/\s+/g, ' ')
+
+  if (
+    trimmed.length === 0 ||
+    trimmed.length > 180 ||
+    containsProviderSecretMaterial(trimmed) ||
+    publicRefTriggersAgentSecretScanner(trimmed) ||
+    unsafePublicReportPattern.test(trimmed) ||
+    rawTimestampPattern.test(trimmed)
+  ) {
+    return null
+  }
+
+  return trimmed
+}
+
+const recordFromUnknown = (value: unknown): Record<string, unknown> | null =>
+  typeof value === 'object' && value !== null
+    ? (value as Record<string, unknown>)
+    : null
+
+const codingObjectiveSummary = (
+  assignment: PylonApiAssignmentRecord,
+): string | null => {
+  const coding = recordFromUnknown(assignment.codingAssignment)
+  const objective = recordFromUnknown(coding?.objective)
+
+  return publicSummarySafe(objective?.publicSummary)
+}
+
+const codingRepositoryRef = (
+  assignment: PylonApiAssignmentRecord,
+): string | null => {
+  const coding = recordFromUnknown(assignment.codingAssignment)
+  const workspace = recordFromUnknown(coding?.workspace)
+  const repository = recordFromUnknown(workspace?.repository)
+  const fullName = repository?.fullName
+
+  return typeof fullName === 'string' && githubRepoPattern.test(fullName)
+    ? fullName
+    : null
+}
+
+const assignmentIssueNumber = (
+  assignment: PylonApiAssignmentRecord,
+): number | null => {
+  const candidates = [
+    codingObjectiveSummary(assignment),
+    ...assignment.taskRefs,
+    ...assignment.acceptanceCriteriaRefs,
+  ].filter((value): value is string => value !== null)
+
+  for (const candidate of candidates) {
+    const match = issueNumberPattern.exec(candidate)
+
+    if (match !== null) {
+      const parsed = Number.parseInt(match[1]!, 10)
+
+      return Number.isSafeInteger(parsed) ? parsed : null
+    }
+  }
+
+  return null
+}
+
+const assignmentIssueTitle = (
+  assignment: PylonApiAssignmentRecord,
+  issueNumber: number,
+): string => {
+  const summary = codingObjectiveSummary(assignment)
+
+  if (summary !== null) {
+    return summary
+  }
+
+  return `Public issue #${issueNumber}`
+}
+
+const serviceForAssignment = (
+  assignment: PylonApiAssignmentRecord,
+): 'claude' | 'codex' | null =>
+  assignment.jobKind === 'codex_agent_task'
+    ? 'codex'
+    : assignment.jobKind === 'claude_agent_task'
+      ? 'claude'
+      : null
+
+export const artanisFleetActivitySummary = (input: {
+  assignments: ReadonlyArray<PylonApiAssignmentRecord>
+  nowIso: string
+  registrations: ReadonlyArray<PylonApiRegistrationRecord>
+}): ArtanisFleetActivitySummary => {
+  const activeAssignments = input.assignments
+    .filter(assignment => activeCodingAssignmentStates.has(assignment.state))
+    .filter(assignment => Date.parse(assignment.leaseExpiresAt) > Date.parse(input.nowIso))
+    .filter(assignment => serviceForAssignment(assignment) !== null)
+  const assignmentsByPylon = new Map<string, ReadonlyArray<PylonApiAssignmentRecord>>()
+
+  for (const registration of input.registrations) {
+    assignmentsByPylon.set(
+      registration.pylonRef,
+      activeAssignments.filter(
+        assignment => assignment.pylonRef === registration.pylonRef,
+      ),
+    )
+  }
+
+  const serviceCounts = new Map<'claude' | 'codex', number>()
+  const slots = input.registrations.flatMap(registration =>
+    pylonCodingServiceCapacityProjection(registration).flatMap(capacity => {
+      const service = capacity.service
+      const activeForService = (
+        assignmentsByPylon.get(registration.pylonRef) ?? []
+      ).filter(assignment => serviceForAssignment(assignment) === service)
+      const activeSlots = activeForService.map(assignment => {
+        const nextIndex = (serviceCounts.get(service) ?? 0) + 1
+        serviceCounts.set(service, nextIndex)
+        const issueNumber = assignmentIssueNumber(assignment)
+        const projection = publicPylonApiAssignmentProjection(
+          assignment,
+          input.nowIso,
+        )
+
+        return new ArtanisFleetMapSlot({
+          activeAssignmentRef: assignment.assignmentRef,
+          issueNumber,
+          issueTitle:
+            issueNumber === null
+              ? null
+              : assignmentIssueTitle(assignment, issueNumber),
+          label: serviceLabel(service, nextIndex),
+          pylonRef: registration.pylonRef,
+          service,
+          state: projection.state === 'stale' ? 'stale' : 'busy',
+          updatedAtDisplay: projection.updatedAtDisplay,
+        })
+      })
+      const availableCount = Math.max(0, capacity.available)
+
+      return [
+        ...activeSlots,
+        ...Array.from({ length: Math.min(availableCount, 12) }, () => {
+          const nextIndex = (serviceCounts.get(service) ?? 0) + 1
+          serviceCounts.set(service, nextIndex)
+
+          return new ArtanisFleetMapSlot({
+            activeAssignmentRef: null,
+            issueNumber: null,
+            issueTitle: null,
+            label: serviceLabel(service, nextIndex),
+            pylonRef: registration.pylonRef,
+            service,
+            state: 'available' as const,
+            updatedAtDisplay:
+              registration.latestHeartbeatAt === null
+                ? 'not seen'
+                : friendlyBlueprintMissionBriefingTime(
+                    registration.latestHeartbeatAt,
+                    input.nowIso,
+                  ),
+          })
+        }),
+      ]
+    }),
+  )
+  const issuesByNumber = new Map<number, ArtanisActiveIssueBoardItem>()
+
+  for (const assignment of activeAssignments) {
+    const issueNumber = assignmentIssueNumber(assignment)
+    const service = serviceForAssignment(assignment)
+
+    if (issueNumber === null || service === null) {
+      continue
+    }
+
+    const existing = issuesByNumber.get(issueNumber)
+    const label = service === 'codex' ? 'Codex' : 'Claude'
+
+    issuesByNumber.set(
+      issueNumber,
+      new ArtanisActiveIssueBoardItem({
+        activeAssignmentRefs: uniqueRefs([
+          ...(existing?.activeAssignmentRefs ?? []),
+          assignment.assignmentRef,
+        ]),
+        issueNumber,
+        issueTitle: existing?.issueTitle ?? assignmentIssueTitle(assignment, issueNumber),
+        repositoryRef: existing?.repositoryRef ?? codingRepositoryRef(assignment),
+        serviceLabels: uniqueRefs([...(existing?.serviceLabels ?? []), label]),
+        state: existing?.state ?? assignment.state,
+      }),
+    )
+  }
+
+  const activeIssues = [...issuesByNumber.values()].sort(
+    (left, right) => left.issueNumber - right.issueNumber,
+  )
+
+  return new ArtanisFleetActivitySummary({
+    activeIssueCount: activeIssues.length,
+    activeIssues,
+    caveatRefs: [
+      'caveat.public.artanis.fleet_activity_public_projection_only',
+      'caveat.public.artanis.fleet_activity_generic_slot_ids',
+      'caveat.public.artanis.fleet_activity_no_raw_prompts_or_diffs',
+    ],
+    generatedFromRefs: [
+      'table.public.pylon_api_registrations',
+      'table.public.pylon_api_assignments',
+      'issue.github.openagents.6414',
+    ],
+    slots: slots.slice(0, 48),
+  })
+}
 
 const publicReportStrings = (value: unknown): ReadonlyArray<string> => {
   if (typeof value === 'string') {
@@ -984,6 +1256,7 @@ const exampleProbeGepaOutcomeMetricsProjection =
     })
 
 export const artanisPublicReportSnapshot = (input: {
+  fleetActivity?: ArtanisFleetActivitySummary | undefined
   forumPublicationQueue?: ArtanisForumPublicationQueueRecord | undefined
   loopTicks?: ReadonlyArray<ArtanisLoopTickRecord> | undefined
   nowIso?: string | undefined
@@ -1357,6 +1630,17 @@ export const artanisPublicReportSnapshot = (input: {
     forumRewardSmoke,
     forumRewardVisibility,
     generatedAtUnixMs: Date.parse(nowIso),
+    fleetActivity:
+      input.fleetActivity ??
+      new ArtanisFleetActivitySummary({
+        activeIssueCount: 0,
+        activeIssues: [],
+        caveatRefs: [
+          'caveat.public.artanis.fleet_activity_no_live_store_attached',
+        ],
+        generatedFromRefs: ['issue.github.openagents.6414'],
+        slots: [],
+      }),
     healthSummary: {
       attentionLabels: uniqueRefs(healthAttentionLabels),
       blockerRefs: uniqueRefs([

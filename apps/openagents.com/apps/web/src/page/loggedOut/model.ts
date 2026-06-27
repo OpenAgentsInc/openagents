@@ -845,6 +845,40 @@ export const PublicArtanisReportHealthSummary = S.Struct({
 export type PublicArtanisReportHealthSummary =
   typeof PublicArtanisReportHealthSummary.Type
 
+export const PublicArtanisFleetMapSlot = S.Struct({
+  activeAssignmentRef: S.NullOr(S.String),
+  issueNumber: S.NullOr(S.Number),
+  issueTitle: S.NullOr(S.String),
+  label: S.String,
+  pylonRef: S.String,
+  service: S.Literals(['claude', 'codex']),
+  state: S.Literals(['available', 'busy', 'queued', 'stale']),
+  updatedAtDisplay: S.String,
+})
+export type PublicArtanisFleetMapSlot =
+  typeof PublicArtanisFleetMapSlot.Type
+
+export const PublicArtanisActiveIssueBoardItem = S.Struct({
+  activeAssignmentRefs: S.Array(S.String),
+  issueNumber: S.Number,
+  issueTitle: S.String,
+  repositoryRef: S.NullOr(S.String),
+  serviceLabels: S.Array(S.String),
+  state: S.String,
+})
+export type PublicArtanisActiveIssueBoardItem =
+  typeof PublicArtanisActiveIssueBoardItem.Type
+
+export const PublicArtanisFleetActivitySummary = S.Struct({
+  activeIssueCount: S.Number,
+  activeIssues: S.Array(PublicArtanisActiveIssueBoardItem),
+  caveatRefs: S.Array(S.String),
+  generatedFromRefs: S.Array(S.String),
+  slots: S.Array(PublicArtanisFleetMapSlot),
+})
+export type PublicArtanisFleetActivitySummary =
+  typeof PublicArtanisFleetActivitySummary.Type
+
 export const PublicArtanisReportClaimSummary = S.Struct({
   area: S.String,
   blockedByRefs: S.Array(S.String),
@@ -879,6 +913,7 @@ export const PublicArtanisReport = S.Struct({
   forumLinks: S.Array(PublicArtanisReportForumLink),
   forumRewardSmoke: PublicArtanisForumRewardSmoke,
   forumRewardVisibility: PublicArtanisForumRewardVisibility,
+  fleetActivity: PublicArtanisFleetActivitySummary,
   healthSummary: PublicArtanisReportHealthSummary,
   modelLabSummary: PublicArtanisReportModelLabSummary,
   nexusPublicRefs: S.Array(S.String),

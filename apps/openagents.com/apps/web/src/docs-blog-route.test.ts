@@ -688,6 +688,42 @@ describe('docs and blog routes', () => {
             usedLiveBitcoin: false,
             walletAuthorityRefs: [],
           },
+          fleetActivity: {
+            activeIssueCount: 1,
+            activeIssues: [
+              {
+                activeAssignmentRefs: [
+                  'assignment.public.khala_coding.issue_6414',
+                ],
+                issueNumber: 6414,
+                issueTitle:
+                  'Web: /artanis Fleet Map grid + Active Task Board',
+                repositoryRef: 'OpenAgentsInc/openagents',
+                serviceLabels: ['Codex'],
+                state: 'running',
+              },
+            ],
+            caveatRefs: [
+              'caveat.public.artanis.fleet_activity_public_projection_only',
+            ],
+            generatedFromRefs: [
+              'table.public.pylon_api_registrations',
+              'table.public.pylon_api_assignments',
+            ],
+            slots: [
+              {
+                activeAssignmentRef: 'assignment.public.khala_coding.issue_6414',
+                issueNumber: 6414,
+                issueTitle:
+                  'Web: /artanis Fleet Map grid + Active Task Board',
+                label: 'Codex-1',
+                pylonRef: 'pylon.public.codex_one',
+                service: 'codex',
+                state: 'busy',
+                updatedAtDisplay: 'just now',
+              },
+            ],
+          },
           healthSummary: {
             attentionLabels: ['Model Lab report is stale'],
             blockerRefs: ['blocker.public.artanis.model_lab_report_stale'],

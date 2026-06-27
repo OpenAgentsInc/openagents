@@ -13,6 +13,9 @@ import type {
   PublicAdjutantDeployedSite,
   PublicAgentGoal,
   PublicAgentGoalEvent,
+  PublicArtanisActiveIssueBoardItem,
+  PublicArtanisFleetActivitySummary,
+  PublicArtanisFleetMapSlot,
   PublicArtanisForumRewardSmoke,
   PublicArtanisForumRewardVisibility,
   PublicArtanisProductionLaunchGate,
@@ -532,6 +535,202 @@ const bitcoinPrimary = (value: string): string => value.replace(/ \(.+\)$/, '')
 const bitcoinDenomination = (value: string): string | null =>
   value.match(/\((.+)\)$/)?.[1] ?? null
 
+const fleetSlotStateClass = (slot: PublicArtanisFleetMapSlot): string =>
+  slot.state === 'available'
+    ? 'border-[#164729] bg-[#041108] text-[#b9f6ca]'
+    : slot.state === 'stale'
+      ? 'border-[#4a2a00] bg-[#130b00] text-[#ffcc80]'
+      : 'border-[#4b3a00] bg-[#120e00] text-[#ffe08a]'
+
+const artanisFleetSlotView = (slot: PublicArtanisFleetMapSlot): Html => {
+  const h = html<Message>()
+
+  return h.li(
+    [
+      Ui.className<Message>(
+        `grid min-h-24 content-between gap-2 border p-3 ${fleetSlotStateClass(slot)}`,
+      ),
+    ],
+    [
+      h.div(
+        [Ui.className<Message>('flex items-center justify-between gap-2')],
+        [
+          h.span(
+            [Ui.className<Message>('text-[0.8125rem] font-semibold')],
+            [slot.label],
+          ),
+          h.span(
+            [
+              Ui.className<Message>(
+                'text-[0.6875rem] uppercase text-white/45',
+              ),
+            ],
+            [slot.state],
+          ),
+        ],
+      ),
+      h.div(
+        [Ui.className<Message>('min-w-0 text-[0.75rem] text-white/55')],
+        [
+          slot.issueNumber === null
+            ? slot.pylonRef
+            : `#${slot.issueNumber} ${slot.issueTitle ?? 'public issue'}`,
+        ],
+      ),
+      h.div(
+        [Ui.className<Message>('truncate text-[0.6875rem] text-white/35')],
+        [slot.activeAssignmentRef ?? slot.updatedAtDisplay],
+      ),
+    ],
+  )
+}
+
+const artanisActiveIssueRow = (
+  issue: PublicArtanisActiveIssueBoardItem,
+): Html => {
+  const h = html<Message>()
+
+  return h.li(
+    [
+      Ui.className<Message>(
+        'grid gap-2 border-b border-[#1b1b1b] py-3 last:border-b-0 sm:grid-cols-[auto_minmax(0,1fr)_auto]',
+      ),
+    ],
+    [
+      h.a(
+        [
+          h.Href(
+            `https://github.com/OpenAgentsInc/openagents/issues/${issue.issueNumber}`,
+          ),
+          h.Target('_blank'),
+          h.Rel('noreferrer'),
+          Ui.className<Message>(
+            'tabular-nums text-[0.8125rem] text-[#ffb400] underline-offset-4 hover:underline',
+          ),
+        ],
+        [`#${issue.issueNumber}`],
+      ),
+      h.div(
+        [Ui.className<Message>('min-w-0')],
+        [
+          h.div(
+            [Ui.className<Message>('truncate text-[0.8125rem] text-[#f1efe8]')],
+            [issue.issueTitle],
+          ),
+          h.div(
+            [Ui.className<Message>('truncate text-[0.75rem] text-white/35')],
+            [
+              `${issue.repositoryRef ?? 'public repo'} / ${compactRefs(issue.activeAssignmentRefs)}`,
+            ],
+          ),
+        ],
+      ),
+      h.div(
+        [
+          Ui.className<Message>(
+            'text-[0.75rem] text-white/45 sm:text-right',
+          ),
+        ],
+        [`${issue.serviceLabels.join('+')} / ${issue.state}`],
+      ),
+    ],
+  )
+}
+
+const artanisFleetActivityView = (
+  activity: PublicArtanisFleetActivitySummary,
+): Html => {
+  const h = html<Message>()
+  const slots = activity.slots.slice(0, 24)
+
+  return h.div(
+    [
+      Ui.className<Message>(
+        'grid gap-3 border border-[#222] bg-[#010102] p-3',
+      ),
+    ],
+    [
+      h.div(
+        [
+          Ui.className<Message>(
+            'flex flex-wrap items-end justify-between gap-3',
+          ),
+        ],
+        [
+          h.div(
+            [Ui.className<Message>('grid gap-1')],
+            [
+              h.div(
+                [Ui.className<Message>('text-[0.75rem] text-white/45')],
+                ['The Grid'],
+              ),
+              h.h3(
+                [
+                  Ui.className<Message>(
+                    'text-base font-semibold text-[#f1efe8]',
+                  ),
+                ],
+                ['Fleet slots and backlog in flight'],
+              ),
+            ],
+          ),
+          h.div(
+            [Ui.className<Message>('text-[0.75rem] text-white/45')],
+            [`${formatNumber(activity.activeIssueCount)} active issues`],
+          ),
+        ],
+      ),
+      Array.match(slots, {
+        onEmpty: () =>
+          h.p(
+            [Ui.className<Message>('text-[0.75rem] text-white/35')],
+            ['No public coding slots are active right now.'],
+          ),
+        onNonEmpty: rows =>
+          h.ol(
+            [
+              Ui.className<Message>(
+                'grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4',
+              ),
+            ],
+            rows.map(artanisFleetSlotView),
+          ),
+      }),
+      h.div(
+        [
+          Ui.className<Message>(
+            'grid gap-2 border-t border-[#1b1b1b] pt-3',
+          ),
+        ],
+        [
+          h.div(
+            [Ui.className<Message>('text-[0.75rem] text-white/45')],
+            ['Active issues'],
+          ),
+          Array.match(activity.activeIssues.slice(0, 8), {
+            onEmpty: () =>
+              h.p(
+                [Ui.className<Message>('text-[0.75rem] text-white/35')],
+                ['No public issue-backed coding assignments are in flight.'],
+              ),
+            onNonEmpty: issues =>
+              h.ol(
+                [Ui.className<Message>('grid')],
+                issues.map(artanisActiveIssueRow),
+              ),
+          }),
+        ],
+      ),
+      h.div(
+        [Ui.className<Message>('text-[0.6875rem] text-white/35')],
+        [
+          `Public-safe only / ${compactRefs(activity.caveatRefs, compactRefs(activity.generatedFromRefs))}`,
+        ],
+      ),
+    ],
+  )
+}
+
 const artanisClaimRow = (claim: PublicArtanisReportClaimSummary): Html => {
   const h = html<Message>()
 
@@ -988,6 +1187,7 @@ const artanisReportLoadedView = (report: PublicArtanisReport): Html => {
           ),
         ],
       ),
+      artanisFleetActivityView(report.fleetActivity),
       h.div(
         [
           Ui.className<Message>(

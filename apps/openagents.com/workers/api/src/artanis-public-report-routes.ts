@@ -2,6 +2,7 @@ import { Effect } from 'effect'
 
 import {
   ArtanisPublicReportUnsafe,
+  artanisFleetActivitySummary,
   artanisPublicReportSnapshot,
 } from './artanis-public-report'
 import { ArtanisLoopTickRecord, type ArtanisLoopState } from './artanis-loop'
@@ -20,7 +21,8 @@ import {
   type PublicPylonStatsStore,
   publicPylonStatsSnapshot,
 } from './public-pylon-stats'
-import { makeD1PylonApiStore } from './pylon-api'
+import { makeD1PylonApiStore, type PylonApiStore } from './pylon-api'
+import { currentIsoTimestamp } from './runtime-primitives'
 
 const routeErrorResponse = (error: ArtanisPublicReportUnsafe) =>
   noStoreJsonResponse(
@@ -34,6 +36,7 @@ const routeErrorResponse = (error: ArtanisPublicReportUnsafe) =>
 type PublicArtanisReportRouteInput = Readonly<{
   OPENAGENTS_DB?: D1Database
   loopTicks?: ReadonlyArray<ArtanisLoopTickRecord>
+  pylonApiStore?: PylonApiStore
   store?: PublicPylonStatsStore
 }>
 
@@ -124,6 +127,39 @@ const loopTicksForRoute = (
           ),
         )
 
+const fleetActivityForRoute = async (
+  input: PublicArtanisReportRouteInput,
+) => {
+  const store =
+    input.pylonApiStore ??
+    (input.OPENAGENTS_DB === undefined
+      ? undefined
+      : makeD1PylonApiStore(input.OPENAGENTS_DB))
+
+  if (store === undefined) {
+    return undefined
+  }
+
+  const registrations = await store.listRegistrations(100)
+  const pylonRefs = registrations.map(registration => registration.pylonRef)
+  const assignments =
+    store.listAssignmentsForPylons === undefined
+      ? (
+          await Promise.all(
+            pylonRefs.map(pylonRef =>
+              store.listAssignmentsForPylon(pylonRef, 25),
+            ),
+          )
+        ).flat()
+      : await store.listAssignmentsForPylons(pylonRefs, 250)
+
+  return artanisFleetActivitySummary({
+    assignments,
+    nowIso: currentIsoTimestamp(),
+    registrations,
+  })
+}
+
 export const handlePublicArtanisReportApi = (
   request: Request,
   input: PublicArtanisReportRouteInput,
@@ -131,17 +167,28 @@ export const handlePublicArtanisReportApi = (
   request.method !== 'GET'
     ? Effect.succeed(methodNotAllowed(['GET']))
     : Effect.all({
+        fleetActivity: Effect.tryPromise({
+          catch: error =>
+            new ArtanisPublicReportUnsafe({
+              reason:
+                error instanceof Error
+                  ? `Artanis fleet activity unavailable: ${error.message}`
+                  : 'Artanis fleet activity unavailable.',
+            }),
+          try: () => fleetActivityForRoute(input),
+        }).pipe(Effect.catch(() => Effect.succeed(undefined))),
         loopTicks: loopTicksForRoute(input),
         pylonStats: publicPylonStatsSnapshot({
           store:
             input.store ?? makeD1PylonApiStore(input.OPENAGENTS_DB as D1Database),
         }),
       }).pipe(
-        Effect.flatMap(({ loopTicks, pylonStats }) =>
+        Effect.flatMap(({ fleetActivity, loopTicks, pylonStats }) =>
           Effect.try({
             try: () =>
               noStoreJsonResponse(
                 artanisPublicReportSnapshot({
+                  fleetActivity,
                   loopTicks,
                   pylonStats,
                 }),

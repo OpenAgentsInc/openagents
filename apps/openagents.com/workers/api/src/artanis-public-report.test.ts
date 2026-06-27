@@ -7,6 +7,7 @@ import {
 } from './artanis-forum-publication'
 import { ArtanisLoopTickRecord } from './artanis-loop'
 import {
+  artanisFleetActivitySummary,
   artanisPublicReportHasPrivateMaterial,
   artanisPublicReportSnapshot,
   publicNexusPylonReceiptRouteRefsFromRefs,
@@ -14,6 +15,10 @@ import {
 import { handlePublicArtanisReportApi } from './artanis-public-report-routes'
 import { publicPylonStatsFromNexusPayload } from './public-pylon-stats'
 import { publicScannerSafeRef } from './public-ref-scanner-safety'
+import type {
+  PylonApiAssignmentRecord,
+  PylonApiRegistrationRecord,
+} from './pylon-api'
 
 const nowIso = '2026-06-07T02:00:00.000Z'
 const scannerShapedBridgeRef = 'artanis-mdk-bridge-8b378373002501f3e896dcd3'
@@ -38,6 +43,75 @@ const deliveredForumQueue = (): ArtanisForumPublicationQueueRecord => {
     updatedAtIso: '2026-06-07T01:24:00.000Z',
   }
 }
+
+const fleetRegistration = (
+  overrides: Partial<PylonApiRegistrationRecord> = {},
+): PylonApiRegistrationRecord => ({
+  capabilityRefs: ['capability.pylon.local_codex'],
+  clientProtocolVersion: '0.2.5',
+  clientVersion: 'openagents.pylon@0.2.5',
+  createdAt: '2026-06-07T01:00:00.000Z',
+  displayName: 'Owner Pylon',
+  id: 'pylon_api_registration_test',
+  latestHeartbeatAt: '2026-06-07T01:59:00.000Z',
+  latestHeartbeatStatus: 'online',
+  latestCapacityRefs: ['capacity.coding.codex.available=1'],
+  latestHealthRefs: ['health.public.ready'],
+  latestLoadRefs: ['load.coding.codex.busy=1'],
+  latestResourceMode: 'background_20',
+  ownerAgentCredentialId: 'credential_test',
+  ownerAgentTokenPrefix: 'oa_agent_test',
+  ownerAgentUserId: 'agent_user_test',
+  providerMarketRelayRefs: [],
+  providerNip90LaneRefs: [],
+  providerNostrNpub: null,
+  providerNostrPubkey: null,
+  publicProjectionJson: '{}',
+  pylonRef: 'pylon.public.codex_one',
+  resourceMode: 'background_20',
+  status: 'active',
+  updatedAt: '2026-06-07T01:59:00.000Z',
+  walletReady: false,
+  walletRef: null,
+  ...overrides,
+})
+
+const fleetAssignment = (
+  overrides: Partial<PylonApiAssignmentRecord> = {},
+): PylonApiAssignmentRecord => ({
+  acceptanceCriteriaRefs: ['acceptance.public.issue_6414'],
+  acceptedWorkRefs: [],
+  artifactRefs: [],
+  assignmentRef: 'assignment.public.khala_coding.issue_6414',
+  closeoutRefs: [],
+  codingAssignment: {
+    objective: {
+      publicSummary: 'Web: /artanis Fleet Map grid + Active Task Board (#6414)',
+    },
+    workspace: {
+      repository: {
+        fullName: 'OpenAgentsInc/openagents',
+        provider: 'github',
+        visibility: 'public',
+      },
+    },
+  },
+  createdAt: '2026-06-07T01:40:00.000Z',
+  id: 'pylon_api_assignment_test',
+  idempotencyKeyHash: 'khala-coding:test',
+  jobKind: 'codex_agent_task',
+  leaseExpiresAt: '2026-06-07T02:40:00.000Z',
+  ownerAgentUserId: 'agent_user_test',
+  proofRefs: [],
+  publicProjectionJson: '{}',
+  pylonRef: 'pylon.public.codex_one',
+  rejectionRefs: [],
+  resultExpectationRefs: ['result.public.khala_coding.worker_closeout'],
+  state: 'running',
+  taskRefs: ['task.public.issue_6414'],
+  updatedAt: '2026-06-07T01:50:00.000Z',
+  ...overrides,
+})
 
 describe('Artanis public report', () => {
   afterEach(() => {
@@ -458,6 +532,46 @@ describe('Artanis public report', () => {
     expect(serialized).not.toContain('Pylon v0.2 is shipped')
     expect(serialized).not.toContain('Pylon v0.2 is ready for everyone')
     expect(serialized).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)
+  })
+
+  test('projects generic fleet slots and active public issue board without private assignment fields', () => {
+    const fleetActivity = artanisFleetActivitySummary({
+      assignments: [fleetAssignment()],
+      nowIso,
+      registrations: [fleetRegistration()],
+    })
+    const serialized = JSON.stringify(fleetActivity)
+
+    expect(fleetActivity.slots).toContainEqual(
+      expect.objectContaining({
+        activeAssignmentRef: 'assignment.public.khala_coding.issue_6414',
+        issueNumber: 6414,
+        label: 'Codex-1',
+        service: 'codex',
+        state: 'busy',
+      }),
+    )
+    expect(fleetActivity.slots).toContainEqual(
+      expect.objectContaining({
+        activeAssignmentRef: null,
+        label: 'Codex-2',
+        service: 'codex',
+        state: 'available',
+      }),
+    )
+    expect(fleetActivity.activeIssues).toEqual([
+      expect.objectContaining({
+        activeAssignmentRefs: ['assignment.public.khala_coding.issue_6414'],
+        issueNumber: 6414,
+        repositoryRef: 'OpenAgentsInc/openagents',
+        serviceLabels: ['Codex'],
+      }),
+    ])
+    expect(serialized).not.toContain('agent_user_test')
+    expect(serialized).not.toContain('credential_test')
+    expect(serialized).not.toContain('oa_agent_test')
+    expect(serialized).not.toContain('provider')
+    expect(serialized).not.toContain('visibility')
   })
 
   test('serves the same public-safe projection to anonymous and authenticated visitors', async () => {
