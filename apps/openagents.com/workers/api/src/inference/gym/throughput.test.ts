@@ -187,11 +187,13 @@ const measuredRolloutEvidence = (
     configuration: beforeConfiguration,
     aggregateTokensPerSecond: selection.baselineAggregateTps,
     interTokenLatencyP90Ms: selection.baselineInterTokenLatencyP90Ms,
+    ttftP90Ms: selection.baselineTtftP90Ms,
   }
   const after = {
     configuration: afterConfiguration,
     aggregateTokensPerSecond: selection.aggregateTps,
     interTokenLatencyP90Ms: selection.interTokenLatencyP90Ms,
+    ttftP90Ms: selection.ttftP90Ms,
   }
 
   return {
@@ -199,6 +201,7 @@ const measuredRolloutEvidence = (
     evidenceRef: 'evidence.gym.glm_52.vllm.issue_6320.measured_rollout.001',
     evidenceKind: 'measured_rollout',
     publicSafe: true,
+    liveVllmFlags: [...selection.vllmFlags],
     before,
     after,
     expectedVsActual: {
@@ -533,12 +536,22 @@ describe('Gym throughput/concurrency report (#6244)', () => {
     expect(
       readout.rolloutMeasurementEvidence?.after.interTokenLatencyP90Ms,
     ).toBe(recommendation.selection!.interTokenLatencyP90Ms)
+    expect(readout.rolloutMeasurementEvidence?.before.ttftP90Ms).toBe(
+      recommendation.selection!.baselineTtftP90Ms,
+    )
+    expect(readout.rolloutMeasurementEvidence?.after.ttftP90Ms).toBe(
+      recommendation.selection!.ttftP90Ms,
+    )
+    expect(readout.rolloutMeasurementEvidence?.liveVllmFlags).toEqual(
+      recommendation.selection!.vllmFlags,
+    )
     expect(
       readout.rolloutMeasurementEvidence?.expectedVsActual.maxNumSeqsMatches,
     ).toBe(true)
     expect(readout.evidenceChecklist.map(item => item.check)).toEqual([
       'owner_arm_ref',
       'live_max_num_seqs',
+      'live_vllm_flags',
       'prefix_cache',
       'chunked_prefill',
       'speculative_decode',
@@ -546,13 +559,17 @@ describe('Gym throughput/concurrency report (#6244)', () => {
       'after_tokens_per_second',
       'before_inter_token_latency_p90',
       'after_inter_token_latency_p90',
+      'before_ttft_p90',
+      'after_ttft_p90',
       'expected_vs_actual_configuration',
       'expected_vs_actual_lift',
+      'rollout_progress_status',
+      'rollout_progress_percent',
       'progress_totals_match_measurement',
       'public_evidence_refs',
     ])
     expect(readout.evidenceChecklist.map(item => item.status)).toEqual(
-      Array.from({ length: 13 }, () => 'satisfied'),
+      Array.from({ length: 18 }, () => 'satisfied'),
     )
     expect(
       readout.evidenceChecklist.find(item => item.check === 'live_max_num_seqs'),
@@ -579,9 +596,80 @@ describe('Gym throughput/concurrency report (#6244)', () => {
         item => item.check === 'speculative_decode',
       ),
     ).toMatchObject({ expected: true, actual: true })
+    expect(
+      readout.evidenceChecklist.find(
+        item => item.check === 'live_vllm_flags',
+      ),
+    ).toMatchObject({
+      status: 'satisfied',
+      expected:
+        '--max-num-seqs=4 --enable-prefix-caching --enable-chunked-prefill --speculative-config={"method":"n_gram","disable_at_batch_size":5}',
+      actual:
+        '--max-num-seqs=4 --enable-prefix-caching --enable-chunked-prefill --speculative-config={"method":"n_gram","disable_at_batch_size":5}',
+    })
     expect(readout.blockers).toEqual([])
+    expect(readout.operatorAcceptance).toMatchObject({
+      status: 'accepted_for_stress_and_benchmark',
+      canStartIssue6317Stress: true,
+      canStartIssue6312Benchmark: true,
+      remainingChecks: [],
+    })
+    expect(
+      readout.operatorAcceptance.requirements.every(requirement =>
+        requirement.blocksIssueRefs.includes('#6317') &&
+        requirement.blocksIssueRefs.includes('#6312'),
+      ),
+    ).toBe(true)
     expect(JSON.stringify(readout)).not.toContain('https://')
     expect(JSON.stringify(readout)).not.toContain('/Users/')
+  })
+
+  test('treats equivalent live vLLM flags as satisfied regardless of report order', () => {
+    const recommendation = measuredGlmRolloutRecommendation()
+    const rolloutRun = buildGymThroughputOwnerArmedRolloutRunArtifact({
+      generatedAt: '2026-06-26T13:00:00.000Z',
+      recommendation,
+      ownerArmRef: 'owner_arm.gym.glm_52.vllm_rollout.issue_6320.v1',
+    })
+    const evidence = measuredRolloutEvidence(recommendation)
+    const reorderedEvidence: GymThroughputRolloutMeasurementEvidence = {
+      ...evidence,
+      liveVllmFlags: [...evidence.liveVllmFlags].reverse(),
+    }
+
+    const readout = buildGymThroughputRolloutReadout({
+      generatedAt: '2026-06-26T13:09:00.000Z',
+      rolloutRun,
+      progressEvidence: {
+        schemaVersion: 'openagents.gym.throughput_rollout_progress_evidence.v1',
+        rolloutRef: 'rollout.gym.glm_52.vllm.issue_6320.measurement.001',
+        observedAt: '2026-06-26T13:08:00.000Z',
+        status: 'measured_lift',
+        ownerArmRef: 'owner_arm.gym.glm_52.vllm_rollout.issue_6320.v1',
+        progressPercent: 100,
+        publicEvidenceRefs: [
+          'report.gym.throughput.glm_52.vllm.issue_6320.measurement.001',
+        ],
+        baselineAggregateTps: recommendation.selection!.baselineAggregateTps,
+        measuredAggregateTps: recommendation.selection!.aggregateTps,
+        measuredThroughputLiftPercent:
+          recommendation.selection!.aggregateTpsLiftPercent,
+        rolloutMeasurementEvidence: reorderedEvidence,
+      },
+    })
+
+    expect(readout.blockers).not.toContain('live_engine_flags_mismatch')
+    expect(
+      readout.evidenceChecklist.find(
+        item => item.check === 'live_vllm_flags',
+      ),
+    ).toMatchObject({ status: 'satisfied' })
+    expect(readout.operatorAcceptance).toMatchObject({
+      status: 'accepted_for_stress_and_benchmark',
+      canStartIssue6317Stress: true,
+      canStartIssue6312Benchmark: true,
+      remainingChecks: [],
+    })
   })
 
   test('fails closed when rollout readout progress evidence is missing, mismatched, or lacks real measurement', () => {
@@ -642,6 +730,14 @@ describe('Gym throughput/concurrency report (#6244)', () => {
         item => item.check === 'after_tokens_per_second',
       ),
     ).toMatchObject({ status: 'missing', expected: 171, actual: null })
+    expect(missingEvidence.operatorAcceptance).toMatchObject({
+      status: 'blocked_before_stress_and_benchmark',
+      canStartIssue6317Stress: false,
+      canStartIssue6312Benchmark: false,
+    })
+    expect(missingEvidence.operatorAcceptance.remainingChecks).toContain(
+      'rollout_progress_status',
+    )
     expect(missingMeasurement.status).toBe('blocked')
     expect(missingMeasurement.rolloutMeasurementEvidence).toBeNull()
     expect(missingMeasurement.blockers).toEqual([
@@ -740,6 +836,88 @@ describe('Gym throughput/concurrency report (#6244)', () => {
       status: 'mismatch',
       expected: 'measurement_totals',
       actual: 'progress_totals',
+    })
+  })
+
+  test('keeps #6317 and #6312 blocked when live flags, TTFT, or progress are incomplete', () => {
+    const recommendation = measuredGlmRolloutRecommendation()
+    const rolloutRun = buildGymThroughputOwnerArmedRolloutRunArtifact({
+      generatedAt: '2026-06-26T13:00:00.000Z',
+      recommendation,
+      ownerArmRef: 'owner_arm.gym.glm_52.vllm_rollout.issue_6320.v1',
+    })
+    const evidence = measuredRolloutEvidence(recommendation)
+    const incompleteEvidence: GymThroughputRolloutMeasurementEvidence = {
+      ...evidence,
+      liveVllmFlags: [{ name: '--max-num-seqs', value: '2' }],
+      before: {
+        ...evidence.before,
+        ttftP90Ms: NOT_MEASURED,
+      },
+      after: {
+        ...evidence.after,
+        ttftP90Ms: NOT_MEASURED,
+      },
+    }
+
+    const readout = buildGymThroughputRolloutReadout({
+      generatedAt: '2026-06-26T13:09:00.000Z',
+      rolloutRun,
+      progressEvidence: {
+        schemaVersion: 'openagents.gym.throughput_rollout_progress_evidence.v1',
+        rolloutRef: 'rollout.gym.glm_52.vllm.issue_6320.measurement.004',
+        observedAt: '2026-06-26T13:08:00.000Z',
+        status: 'measured_lift',
+        ownerArmRef: 'owner_arm.gym.glm_52.vllm_rollout.issue_6320.v1',
+        progressPercent: 75,
+        publicEvidenceRefs: [
+          'report.gym.throughput.glm_52.vllm.issue_6320.measurement.004',
+        ],
+        baselineAggregateTps: recommendation.selection!.baselineAggregateTps,
+        measuredAggregateTps: recommendation.selection!.aggregateTps,
+        measuredThroughputLiftPercent:
+          recommendation.selection!.aggregateTpsLiftPercent,
+        rolloutMeasurementEvidence: incompleteEvidence,
+      },
+    })
+
+    expect(readout.status).toBe('blocked')
+    expect(readout.blockers).toEqual([
+      'rollout_progress_incomplete',
+      'rollout_measurement_incomplete',
+      'live_engine_flags_mismatch',
+    ])
+    expect(
+      readout.evidenceChecklist.find(
+        item => item.check === 'live_vllm_flags',
+      ),
+    ).toMatchObject({
+      status: 'mismatch',
+      expected:
+        '--max-num-seqs=4 --enable-prefix-caching --enable-chunked-prefill --speculative-config={"method":"n_gram","disable_at_batch_size":5}',
+      actual: '--max-num-seqs=2',
+    })
+    expect(
+      readout.evidenceChecklist.find(item => item.check === 'before_ttft_p90'),
+    ).toMatchObject({ status: 'missing' })
+    expect(
+      readout.evidenceChecklist.find(item => item.check === 'after_ttft_p90'),
+    ).toMatchObject({ status: 'missing' })
+    expect(
+      readout.evidenceChecklist.find(
+        item => item.check === 'rollout_progress_percent',
+      ),
+    ).toMatchObject({ status: 'mismatch', expected: 100, actual: 75 })
+    expect(readout.operatorAcceptance).toMatchObject({
+      status: 'blocked_before_stress_and_benchmark',
+      canStartIssue6317Stress: false,
+      canStartIssue6312Benchmark: false,
+      remainingChecks: [
+        'live_vllm_flags',
+        'before_ttft_p90',
+        'after_ttft_p90',
+        'rollout_progress_percent',
+      ],
     })
   })
 

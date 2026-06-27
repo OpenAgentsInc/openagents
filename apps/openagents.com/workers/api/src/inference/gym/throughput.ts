@@ -258,6 +258,7 @@ export const GymThroughputRolloutSelection = S.Struct({
   interTokenLatencyP90Ms: S.Number,
   baselineInterTokenLatencyP90Ms: S.Number,
   ttftP90Ms: ThroughputMeasuredNumber,
+  baselineTtftP90Ms: ThroughputMeasuredNumber,
   prefixCachingEnabled: S.Boolean,
   chunkedPrefillEnabled: S.Boolean,
   lowBatchSpeculativeDecoding: GymThroughputLowBatchSpeculativeDecodingPolicy,
@@ -345,6 +346,7 @@ export const GymThroughputRolloutMeasuredPoint = S.Struct({
   configuration: GymThroughputRolloutMeasuredConfiguration,
   aggregateTokensPerSecond: ThroughputMeasuredNumber,
   interTokenLatencyP90Ms: ThroughputMeasuredNumber,
+  ttftP90Ms: ThroughputMeasuredNumber,
 })
 export type GymThroughputRolloutMeasuredPoint =
   typeof GymThroughputRolloutMeasuredPoint.Type
@@ -369,6 +371,7 @@ export const GymThroughputRolloutMeasurementEvidence = S.Struct({
   evidenceRef: S.String,
   evidenceKind: S.Literal('measured_rollout'),
   publicSafe: S.Literal(true),
+  liveVllmFlags: S.Array(GymThroughputRolloutVllmFlag),
   before: GymThroughputRolloutMeasuredPoint,
   after: GymThroughputRolloutMeasuredPoint,
   expectedVsActual: GymThroughputRolloutExpectedVsActualEvidence,
@@ -400,10 +403,12 @@ export type GymThroughputRolloutProgressEvidence =
 export const GymThroughputRolloutReadoutBlocker = S.Literals([
   'rollout_run_blocked',
   'missing_progress_evidence',
+  'rollout_progress_incomplete',
   'owner_arm_ref_mismatch',
   'missing_rollout_measurement_evidence',
   'rollout_measurement_incomplete',
   'rollout_measurement_selection_mismatch',
+  'live_engine_flags_mismatch',
   'expected_actual_evidence_mismatch',
   'progress_measurement_mismatch',
   'measured_lift_missing',
@@ -415,6 +420,7 @@ export type GymThroughputRolloutReadoutBlocker =
 export const GymThroughputRolloutEvidenceChecklistCheck = S.Literals([
   'owner_arm_ref',
   'live_max_num_seqs',
+  'live_vllm_flags',
   'prefix_cache',
   'chunked_prefill',
   'speculative_decode',
@@ -422,8 +428,12 @@ export const GymThroughputRolloutEvidenceChecklistCheck = S.Literals([
   'after_tokens_per_second',
   'before_inter_token_latency_p90',
   'after_inter_token_latency_p90',
+  'before_ttft_p90',
+  'after_ttft_p90',
   'expected_vs_actual_configuration',
   'expected_vs_actual_lift',
+  'rollout_progress_status',
+  'rollout_progress_percent',
   'progress_totals_match_measurement',
   'public_evidence_refs',
 ])
@@ -457,6 +467,38 @@ export const GymThroughputRolloutEvidenceChecklistItem = S.Struct({
 export type GymThroughputRolloutEvidenceChecklistItem =
   typeof GymThroughputRolloutEvidenceChecklistItem.Type
 
+export const GymThroughputRolloutOperatorAcceptanceStatus = S.Literals([
+  'accepted_for_stress_and_benchmark',
+  'blocked_before_stress_and_benchmark',
+])
+export type GymThroughputRolloutOperatorAcceptanceStatus =
+  typeof GymThroughputRolloutOperatorAcceptanceStatus.Type
+
+export const GymThroughputRolloutOperatorAcceptanceRequirement = S.Struct({
+  check: GymThroughputRolloutEvidenceChecklistCheck,
+  status: GymThroughputRolloutEvidenceChecklistStatus,
+  blocksIssueRefs: S.Array(S.String),
+  expected: GymThroughputRolloutEvidenceChecklistValue,
+  actual: GymThroughputRolloutEvidenceChecklistValue,
+  publicEvidenceRefs: S.Array(S.String),
+})
+export type GymThroughputRolloutOperatorAcceptanceRequirement =
+  typeof GymThroughputRolloutOperatorAcceptanceRequirement.Type
+
+export const GymThroughputRolloutOperatorAcceptance = S.Struct({
+  schemaVersion: S.Literal(
+    'openagents.gym.throughput_rollout_operator_acceptance.v1',
+  ),
+  status: GymThroughputRolloutOperatorAcceptanceStatus,
+  canStartIssue6317Stress: S.Boolean,
+  canStartIssue6312Benchmark: S.Boolean,
+  remainingChecks: S.Array(GymThroughputRolloutEvidenceChecklistCheck),
+  requirements: S.Array(GymThroughputRolloutOperatorAcceptanceRequirement),
+  publicEvidenceRefs: S.Array(S.String),
+})
+export type GymThroughputRolloutOperatorAcceptance =
+  typeof GymThroughputRolloutOperatorAcceptance.Type
+
 export const GymThroughputRolloutReadout = S.Struct({
   schemaVersion: S.Literal('openagents.gym.throughput_rollout_readout.v1'),
   generatedAt: S.String,
@@ -472,6 +514,7 @@ export const GymThroughputRolloutReadout = S.Struct({
     S.Null,
   ]),
   evidenceChecklist: S.Array(GymThroughputRolloutEvidenceChecklistItem),
+  operatorAcceptance: GymThroughputRolloutOperatorAcceptance,
   measuredLiftPercent: ThroughputMeasuredNumber,
   blockers: S.Array(GymThroughputRolloutReadoutBlocker),
 })
@@ -665,6 +708,10 @@ const rolloutCandidateSelection = (input: {
     baselineInterTokenLatencyP90Ms: input.baseline.interTokenLatencyMs.p90,
     ttftP90Ms:
       input.point.ttftMs.p90 === null ? NOT_MEASURED : input.point.ttftMs.p90,
+    baselineTtftP90Ms:
+      input.baseline.ttftMs.p90 === null
+        ? NOT_MEASURED
+        : input.baseline.ttftMs.p90,
     prefixCachingEnabled: input.lever.enablePrefixCaching,
     chunkedPrefillEnabled: input.lever.enableChunkedPrefill,
     lowBatchSpeculativeDecoding: input.lever.lowBatchSpeculativeDecoding,
@@ -935,8 +982,10 @@ const rolloutMeasurementHasBeforeAfter = (
 ): boolean =>
   isMeasured(evidence.before.aggregateTokensPerSecond) &&
   isMeasured(evidence.before.interTokenLatencyP90Ms) &&
+  isMeasured(evidence.before.ttftP90Ms) &&
   isMeasured(evidence.after.aggregateTokensPerSecond) &&
-  isMeasured(evidence.after.interTokenLatencyP90Ms)
+  isMeasured(evidence.after.interTokenLatencyP90Ms) &&
+  isMeasured(evidence.after.ttftP90Ms)
 
 const rolloutMeasurementMatchesSelection = (
   evidence: GymThroughputRolloutMeasurementEvidence,
@@ -966,6 +1015,30 @@ const rolloutExpectedActualMatches = (
     evidence.expectedVsActual.actualAfter.configuration,
     evidence.after.configuration,
   )
+
+const sameVllmFlags = (
+  left: ReadonlyArray<GymThroughputRolloutVllmFlag>,
+  right: ReadonlyArray<GymThroughputRolloutVllmFlag>,
+): boolean => {
+  if (left.length !== right.length) {
+    return false
+  }
+  const rightKeys = new Set(
+    right.map(flag => `${flag.name}\u0000${flag.value ?? ''}`),
+  )
+  return left.every(flag =>
+    rightKeys.has(`${flag.name}\u0000${flag.value ?? ''}`),
+  )
+}
+
+const vllmFlagsFingerprint = (
+  flags: ReadonlyArray<GymThroughputRolloutVllmFlag>,
+): string =>
+  flags
+    .map(flag =>
+      flag.value === undefined ? flag.name : `${flag.name}=${flag.value}`,
+    )
+    .join(' ')
 
 const rolloutProgressMatchesMeasurement = (
   progress: GymThroughputRolloutProgressEvidence,
@@ -1024,6 +1097,8 @@ const rolloutEvidenceChecklist = (input: {
   const expectedConfiguration =
     selection === null ? null : measuredConfigurationFromSelection(selection)
   const actualConfiguration = evidence?.expectedVsActual.actualAfter.configuration
+  const expectedVllmFlags = selection?.vllmFlags ?? []
+  const actualVllmFlags = evidence?.liveVllmFlags ?? []
   const ownerArmRefStatus =
     input.rolloutRun.ownerArmRef === null
       ? 'missing'
@@ -1052,6 +1127,24 @@ const rolloutEvidenceChecklist = (input: {
       ),
       expected: expectedConfiguration?.maxNumSeqs ?? null,
       actual: actualConfiguration?.maxNumSeqs ?? null,
+      publicEvidenceRefs,
+    }),
+    checklistItem({
+      check: 'live_vllm_flags',
+      status: matchedChecklistStatus(
+        evidence !== null,
+        evidence === null
+          ? false
+          : sameVllmFlags(expectedVllmFlags, actualVllmFlags),
+      ),
+      expected:
+        expectedVllmFlags.length === 0
+          ? null
+          : vllmFlagsFingerprint(expectedVllmFlags),
+      actual:
+        actualVllmFlags.length === 0
+          ? null
+          : vllmFlagsFingerprint(actualVllmFlags),
       publicEvidenceRefs,
     }),
     checklistItem({
@@ -1121,6 +1214,20 @@ const rolloutEvidenceChecklist = (input: {
       publicEvidenceRefs,
     }),
     checklistItem({
+      check: 'before_ttft_p90',
+      status: measuredChecklistStatus(evidence?.before.ttftP90Ms ?? null),
+      expected: selection?.baselineTtftP90Ms ?? null,
+      actual: evidence?.before.ttftP90Ms ?? null,
+      publicEvidenceRefs,
+    }),
+    checklistItem({
+      check: 'after_ttft_p90',
+      status: measuredChecklistStatus(evidence?.after.ttftP90Ms ?? null),
+      expected: selection?.ttftP90Ms ?? null,
+      actual: evidence?.after.ttftP90Ms ?? null,
+      publicEvidenceRefs,
+    }),
+    checklistItem({
       check: 'expected_vs_actual_configuration',
       status: matchedChecklistStatus(
         evidence !== null,
@@ -1140,6 +1247,30 @@ const rolloutEvidenceChecklist = (input: {
             : 'mismatch',
       expected: expectedLift,
       actual: actualLift,
+      publicEvidenceRefs,
+    }),
+    checklistItem({
+      check: 'rollout_progress_status',
+      status:
+        progress === null
+          ? 'missing'
+          : progress.status === 'measured_lift'
+            ? 'satisfied'
+            : 'mismatch',
+      expected: 'measured_lift',
+      actual: progress?.status ?? null,
+      publicEvidenceRefs,
+    }),
+    checklistItem({
+      check: 'rollout_progress_percent',
+      status:
+        progress === null
+          ? 'missing'
+          : progress.progressPercent >= 100
+            ? 'satisfied'
+            : 'mismatch',
+      expected: 100,
+      actual: progress?.progressPercent ?? null,
       publicEvidenceRefs,
     }),
     checklistItem({
@@ -1164,6 +1295,42 @@ const rolloutEvidenceChecklist = (input: {
   ]
 }
 
+const rolloutOperatorAcceptance = (input: {
+  status: GymThroughputRolloutReadout['status']
+  evidenceChecklist: ReadonlyArray<GymThroughputRolloutEvidenceChecklistItem>
+}): GymThroughputRolloutOperatorAcceptance => {
+  const remainingChecks = input.evidenceChecklist
+    .filter(item => item.status !== 'satisfied')
+    .map(item => item.check)
+  const accepted =
+    input.status === 'measured' && remainingChecks.length === 0
+  const publicEvidenceRefs = [
+    ...new Set(
+      input.evidenceChecklist.flatMap(item => item.publicEvidenceRefs),
+    ),
+  ]
+
+  return {
+    schemaVersion:
+      'openagents.gym.throughput_rollout_operator_acceptance.v1',
+    status: accepted
+      ? 'accepted_for_stress_and_benchmark'
+      : 'blocked_before_stress_and_benchmark',
+    canStartIssue6317Stress: accepted,
+    canStartIssue6312Benchmark: accepted,
+    remainingChecks,
+    requirements: input.evidenceChecklist.map(item => ({
+      check: item.check,
+      status: item.status,
+      blocksIssueRefs: ['#6317', '#6312'],
+      expected: item.expected,
+      actual: item.actual,
+      publicEvidenceRefs: [...item.publicEvidenceRefs],
+    })),
+    publicEvidenceRefs,
+  }
+}
+
 export const buildGymThroughputRolloutReadout = (input: {
   generatedAt: string
   rolloutRun: GymThroughputOwnerArmedRolloutRunArtifact
@@ -1186,6 +1353,13 @@ export const buildGymThroughputRolloutReadout = (input: {
   ) {
     blockers.push('owner_arm_ref_mismatch')
   }
+  if (
+    progressEvidence !== null &&
+    (progressEvidence.status !== 'measured_lift' ||
+      progressEvidence.progressPercent < 100)
+  ) {
+    blockers.push('rollout_progress_incomplete')
+  }
   if (progressEvidence?.status === 'measured_lift') {
     if (!isMeasured(progressEvidence.measuredThroughputLiftPercent)) {
       blockers.push('measured_lift_missing')
@@ -1206,6 +1380,15 @@ export const buildGymThroughputRolloutReadout = (input: {
         )
       ) {
         blockers.push('rollout_measurement_selection_mismatch')
+      }
+      if (
+        input.rolloutRun.recommendation.selection !== null &&
+        !sameVllmFlags(
+          input.rolloutRun.recommendation.selection.vllmFlags,
+          rolloutMeasurementEvidence.liveVllmFlags,
+        )
+      ) {
+        blockers.push('live_engine_flags_mismatch')
       }
       if (!rolloutExpectedActualMatches(rolloutMeasurementEvidence)) {
         blockers.push('expected_actual_evidence_mismatch')
@@ -1237,6 +1420,10 @@ export const buildGymThroughputRolloutReadout = (input: {
     progressEvidence,
     rolloutMeasurementEvidence,
   })
+  const operatorAcceptance = rolloutOperatorAcceptance({
+    status,
+    evidenceChecklist,
+  })
 
   return {
     schemaVersion: 'openagents.gym.throughput_rollout_readout.v1',
@@ -1250,6 +1437,7 @@ export const buildGymThroughputRolloutReadout = (input: {
     progressEvidence,
     rolloutMeasurementEvidence,
     evidenceChecklist,
+    operatorAcceptance,
     measuredLiftPercent,
     blockers,
   }
