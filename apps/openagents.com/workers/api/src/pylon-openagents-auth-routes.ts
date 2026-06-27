@@ -77,7 +77,12 @@ const bearerTokenFromRequest = (request: Request): string | undefined => {
 }
 
 const makeUserCode = (seed: string): string => {
+  // Derive the code from the RANDOM part of the attempt id. The attempt id is
+  // always `pylon_openauth_<uuid>`, so slicing the literal prefix yielded the
+  // constant "PYLO-NOPE" for every attempt. Strip the prefix + all dashes first
+  // so the code comes from the uuid's entropy.
   const compact = seed
+    .replace(/^pylon_openauth_/, '')
     .replace(/[^A-Za-z0-9]/g, '')
     .toUpperCase()
     .slice(0, 8)

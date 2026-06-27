@@ -137,7 +137,9 @@ describe('Pylon OpenAgents auth device-link routes', () => {
     expect(startBody).toMatchObject({
       attemptId: 'pylon_openauth_attempt-1',
       status: 'pending',
-      userCode: 'PYLO-NOPE',
+      // Derived from the attempt id's random suffix ("attempt-1"), NOT the
+      // constant "pylon_openauth_" prefix (which used to yield "PYLO-NOPE").
+      userCode: 'ATTE-MPT1',
     })
     expect(startBody.verificationUrl).toContain(
       '/api/pylon/auth/openagents/device/verify',
