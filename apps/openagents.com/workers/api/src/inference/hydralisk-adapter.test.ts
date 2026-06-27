@@ -134,6 +134,133 @@ describe('hydralisk vLLM adapter', () => {
     expect(capturedSignal).toBe(abortController.signal)
   })
 
+  it('tries the next GLM replica when the selected replica returns a retryable 500', async () => {
+    const capturedInputs: Array<string> = []
+    const adapter = makeHydraliskVllmPoolAdapter({
+      id: GLM_POOL_ADAPTER_ID,
+      replicas: [
+        replicaFixture('false-ready', {
+          baseUrl: 'https://false-ready.example.test',
+          fetchImpl: async input => {
+            capturedInputs.push(input)
+            return new Response('{}', { status: 500 })
+          },
+        }),
+        replicaFixture('serving', {
+          baseUrl: 'https://serving.example.test',
+          fetchImpl: captureFetch(capturedInputs),
+        }),
+      ],
+      upstreamModel: 'openagents/glm-5.2-reap-504b',
+    })
+
+    const result = await Effect.runPromise(adapter.complete(request()))
+
+    expect(result.content).toBe('READY')
+    expect(result.adapterRouteMetadata).toMatchObject({
+      replicaFallbackReason: 'replica_failover_upstream_error',
+      selectedReplicaId: 'serving',
+      selectedReplicaRef: 'replica.hydralisk.glm_52_reap_504b.serving',
+    })
+    expect(capturedInputs).toEqual([
+      'https://false-ready.example.test/v1/chat/completions',
+      'https://serving.example.test/v1/chat/completions',
+    ])
+  })
+
+  it('does not try another GLM replica after a non-retryable request rejection', async () => {
+    const capturedInputs: Array<string> = []
+    const adapter = makeHydraliskVllmPoolAdapter({
+      id: GLM_POOL_ADAPTER_ID,
+      replicas: [
+        replicaFixture('rejecting', {
+          baseUrl: 'https://rejecting.example.test',
+          fetchImpl: async input => {
+            capturedInputs.push(input)
+            return new Response('{}', { status: 400 })
+          },
+        }),
+        replicaFixture('serving', {
+          baseUrl: 'https://serving.example.test',
+          fetchImpl: captureFetch(capturedInputs),
+        }),
+      ],
+      upstreamModel: 'openagents/glm-5.2-reap-504b',
+    })
+
+    const outcome = await Effect.runPromise(
+      Effect.result(adapter.complete(request())),
+    )
+
+    expect(outcome._tag).toBe('Failure')
+    if (outcome._tag === 'Failure') {
+      expect(outcome.failure.kind).toBe('request_rejected')
+      expect(outcome.failure.retryable).toBe(false)
+    }
+    expect(capturedInputs).toEqual([
+      'https://rejecting.example.test/v1/chat/completions',
+    ])
+  })
+
+  it('tries the next GLM replica after a retryable streamSse connect failure', async () => {
+    const capturedInputs: Array<string> = []
+    const encoder = new TextEncoder()
+    const sse = [
+      'data: {"choices":[{"delta":{"content":"RE"},"finish_reason":null}]}',
+      'data: {"choices":[{"delta":{"content":"ADY"},"finish_reason":null}]}',
+      'data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":7,"completion_tokens":1,"total_tokens":8}}',
+      'data: [DONE]',
+    ].join('\n\n')
+    const adapter = makeHydraliskVllmPoolAdapter({
+      id: GLM_POOL_ADAPTER_ID,
+      replicas: [
+        replicaFixture('false-ready', {
+          baseUrl: 'https://false-ready.example.test',
+          fetchImpl: async input => {
+            capturedInputs.push(input)
+            return new Response('{}', { status: 503 })
+          },
+        }),
+        replicaFixture('serving', {
+          baseUrl: 'https://serving.example.test',
+          fetchImpl: async input => {
+            capturedInputs.push(input)
+            return new Response(
+              new ReadableStream<Uint8Array>({
+                start(controller) {
+                  controller.enqueue(encoder.encode(sse))
+                  controller.close()
+                },
+              }),
+              { headers: { 'content-type': 'text/event-stream' }, status: 200 },
+            )
+          },
+        }),
+      ],
+      upstreamModel: 'openagents/glm-5.2-reap-504b',
+    })
+
+    const source = await Effect.runPromise(
+      adapter.streamSse!(request({ stream: true })),
+    )
+    const deltas: Array<string> = []
+    for await (const frame of source.frames) {
+      if (frame.contentDelta !== '') {
+        deltas.push(frame.contentDelta)
+      }
+    }
+
+    expect(deltas.join('')).toBe('READY')
+    expect(source.terminal().adapterRouteMetadata).toMatchObject({
+      replicaFallbackReason: 'replica_failover_service_overloaded',
+      selectedReplicaId: 'serving',
+    })
+    expect(capturedInputs).toEqual([
+      'https://false-ready.example.test/v1/chat/completions',
+      'https://serving.example.test/v1/chat/completions',
+    ])
+  })
+
   it('reports aggregate GLM live headroom across externally eligible replicas', async () => {
     const capturedInputs: Array<string> = []
     const adapter = makeHydraliskVllmPoolAdapter({

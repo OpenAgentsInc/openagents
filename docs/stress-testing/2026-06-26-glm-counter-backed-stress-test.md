@@ -323,3 +323,47 @@ concurrency:
 
 Do not count direct Hydralisk tokens toward #6317 acceptance unless a separate
 server-side recorder path writes the same public-safe served-token ledger rows.
+
+## 2026-06-27 GLM Pool Fix And Fleet Triage
+
+A live replica probe after the Fireworks fallthrough showed that the configured
+10-replica GLM roster was not actually a 10-replica serving fleet:
+
+| Replica | Zone | `/health` | `/v1/models` | Completion | Finding |
+| --- | --- | ---: | ---: | ---: | --- |
+| `g4-4g-b-20260625154532` | `us-central1-b` | `200` | `200` | `500` | false-ready |
+| `g4-4g-central1f-spot-20260625203000` | `us-central1-f` | `000` | `000` | `000` | unreachable |
+| `g4-4g-east1b-spot-20260625203000` | `us-east1-b` | `000` | `000` | `000` | unreachable |
+| `g4-4g-east1d-spot-20260625203000` | `us-east1-d` | `000` | `000` | `000` | unreachable |
+| `g4-4g-east5a-spot-20260625203000` | `us-east5-a` | `000` | `000` | `000` | unreachable |
+| `g4-4g-east5b-spot-20260625203000` | `us-east5-b` | `000` | `000` | `000` | unreachable |
+| `g4-4g-east5c-spot-20260625211500` | `us-east5-c` | `000` | `000` | `000` | unreachable |
+| `g4-4g-south1b-spot-20260625211500` | `us-south1-b` | `000` | `000` | `000` | unreachable |
+| `g4-4g-west1a-spot-20260625203000` | `us-west1-a` | `000` | `000` | `000` | unreachable |
+| `g4-8g-b-20260624214500` | `us-central1-b` | `200` | `200` | `200` | serving |
+
+`gcloud` VM-level repair was blocked in this shell by expired non-interactive
+Google auth, so the immediate gateway fix is route safety:
+
+- The Hydralisk pool now retries inside the GLM replica pool before overflowing
+  to non-GLM Khala fallbacks. A retryable selected-replica failure
+  (`500`, `503`, `429`, transport) excludes that replica for the current
+  request and selects the next eligible replica.
+- Connect-time `streamSse` failures use the same in-pool retry path; mid-stream
+  failures still cannot be replayed safely after bytes have been emitted.
+- The nine non-serving replicas are marked `DRAINING` in Worker config while
+  staying listed for readiness/accounting.
+- The serving `g4-8g-b-20260624214500` replica is given a temporary
+  gateway-admission budget of `maxInflight=2` so `internal_stress` is not
+  rejected solely by the reserved-headroom guard while the rest of the fleet is
+  drained.
+
+Verification before deploy:
+
+- `hydralisk-adapter.test.ts`: `32` passed, including new non-streaming and
+  `streamSse` pool-failover regressions.
+- `model-serving-policy.test.ts` + `glm-fleet-readiness.test.ts`: `55` passed.
+- `chat-completions-routes.test.ts -t "GLM saturation|GLM"`: `13` passed.
+- `model-router.test.ts`: `45` passed.
+- API `typecheck`: exit `0`; it still prints pre-existing Effect lint messages
+  in `src/trace-store-routes.ts`.

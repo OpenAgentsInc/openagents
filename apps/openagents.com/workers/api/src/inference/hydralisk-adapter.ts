@@ -995,6 +995,7 @@ const selectedReplicaConfigOnce = (
   config: HydraliskPoolAdapterConfig,
   request: InferenceRequest,
   inflight: Map<string, number>,
+  excludedReplicaIds: ReadonlySet<string>,
   queueWaitMs: number,
   saturationPolicy: GlmSaturationPolicy,
 ): Effect.Effect<ReplicaSelection, InferenceAdapterError> =>
@@ -1008,9 +1009,6 @@ const selectedReplicaConfigOnce = (
           ),
     try: () => {
       const candidates = replicaCandidatesFor(config, inflight)
-      const eligible = candidates.filter(
-        candidate => busyReasonFor(candidate.state) === null,
-      )
       const aggregateHeadroom = aggregateLiveHeadroomFor(candidates)
 
       if (candidates.length === 0) {
@@ -1028,11 +1026,19 @@ const selectedReplicaConfigOnce = (
         })
       }
 
+      const selectable = candidates.filter(
+        candidate => !excludedReplicaIds.has(candidate.replica.replicaId),
+      )
+      const eligible = selectable.filter(
+        candidate => busyReasonFor(candidate.state) === null,
+      )
       if (eligible.length === 0) {
         const reason =
-          candidates
-            .map(candidate => busyReasonFor(candidate.state))
-            .find(Boolean) ?? 'no_eligible_replica'
+          selectable.length === 0
+            ? 'replica_failover_exhausted'
+            : selectable
+              .map(candidate => busyReasonFor(candidate.state))
+              .find(Boolean) ?? 'no_eligible_replica'
         throw saturationError(config, {
           aggregateHeadroom,
           policy: saturationPolicy,
@@ -1045,16 +1051,19 @@ const selectedReplicaConfigOnce = (
       const affinityReplicaId =
         affinity === undefined ? undefined : config.affinityOracle?.(affinity)
       const affinityCandidate =
-        affinityReplicaId === undefined
+        affinityReplicaId === undefined ||
+        excludedReplicaIds.has(affinityReplicaId)
           ? undefined
-          : candidates.find(
+          : selectable.find(
               candidate => candidate.replica.replicaId === affinityReplicaId,
             )
       const affinityBusy =
         affinityCandidate === undefined
           ? affinityReplicaId === undefined
             ? null
-            : 'affinity_replica_missing'
+            : excludedReplicaIds.has(affinityReplicaId)
+              ? 'replica_failover_excluded'
+              : 'affinity_replica_missing'
           : busyReasonFor(affinityCandidate.state)
       const selected =
         affinityCandidate !== undefined && affinityBusy === null
@@ -1109,6 +1118,7 @@ const selectedReplicaConfig = (
   config: HydraliskPoolAdapterConfig,
   request: InferenceRequest,
   inflight: Map<string, number>,
+  excludedReplicaIds: ReadonlySet<string> = new Set(),
 ): Effect.Effect<ReplicaSelection, InferenceAdapterError> =>
   Effect.gen(function* () {
     const policy =
@@ -1121,6 +1131,7 @@ const selectedReplicaConfig = (
       config,
       request,
       inflight,
+      excludedReplicaIds,
       0,
       policy,
     ).pipe(Effect.result)
@@ -1142,6 +1153,7 @@ const selectedReplicaConfig = (
       config,
       request,
       inflight,
+      excludedReplicaIds,
       measuredQueueWaitMs,
       policy,
     )
@@ -1198,56 +1210,195 @@ const attachMetadataToSource = (
   }
 }
 
+const replicaFailoverReasonFor = (error: InferenceAdapterError): string => {
+  const reason =
+    error.kind !== undefined && error.kind !== ''
+      ? error.kind
+      : error.httpStatus === undefined
+        ? 'retryable_provider_error'
+        : `http_${error.httpStatus}`
+  return `replica_failover_${reason}`
+}
+
+const metadataAfterReplicaFailover = (
+  metadata: InferenceAdapterRouteMetadata,
+  replicaFailoverReason: string | null,
+): InferenceAdapterRouteMetadata =>
+  replicaFailoverReason === null
+    ? metadata
+    : { ...metadata, replicaFallbackReason: replicaFailoverReason }
+
+const selectReplicaAfterPriorFailures = (
+  config: HydraliskPoolAdapterConfig,
+  request: InferenceRequest,
+  inflight: Map<string, number>,
+  excludedReplicaIds: ReadonlySet<string>,
+  lastRetryableError: InferenceAdapterError | undefined,
+): Effect.Effect<ReplicaSelection, InferenceAdapterError> =>
+  selectedReplicaConfig(config, request, inflight, excludedReplicaIds).pipe(
+    Effect.catch((error: InferenceAdapterError) =>
+      lastRetryableError === undefined
+        ? Effect.fail(error)
+        : Effect.fail(lastRetryableError),
+    ),
+  )
+
+const runReplicaOperationWithFailover = <A>(
+  config: HydraliskPoolAdapterConfig,
+  request: InferenceRequest,
+  inflight: Map<string, number>,
+  operation: (
+    selection: ReplicaSelection,
+    metadata: InferenceAdapterRouteMetadata,
+  ) => Effect.Effect<A, InferenceAdapterError>,
+): Effect.Effect<A, InferenceAdapterError> =>
+  Effect.gen(function* () {
+    const excludedReplicaIds = new Set<string>()
+    let lastRetryableError: InferenceAdapterError | undefined
+    let replicaFailoverReason: string | null = null
+
+    for (;;) {
+      const selection = yield* selectReplicaAfterPriorFailures(
+        config,
+        request,
+        inflight,
+        excludedReplicaIds,
+        lastRetryableError,
+      )
+      const metadata = metadataAfterReplicaFailover(
+        selection.metadata,
+        replicaFailoverReason,
+      )
+      const outcome = yield* operation(selection, metadata).pipe(
+        Effect.map(value => ({ _tag: 'Success' as const, value })),
+        Effect.catch((error: InferenceAdapterError) =>
+          Effect.succeed({ _tag: 'Failure' as const, error }),
+        ),
+        Effect.ensuring(Effect.sync(selection.release)),
+      )
+
+      if (outcome._tag === 'Success') {
+        return outcome.value
+      }
+
+      if (outcome.error.retryable !== true) {
+        return yield* Effect.fail(outcome.error)
+      }
+
+      const selectedReplicaId = selection.metadata.selectedReplicaId
+      if (
+        selectedReplicaId === undefined ||
+        excludedReplicaIds.has(selectedReplicaId)
+      ) {
+        return yield* Effect.fail(outcome.error)
+      }
+
+      excludedReplicaIds.add(selectedReplicaId)
+      lastRetryableError = outcome.error
+      replicaFailoverReason = replicaFailoverReasonFor(outcome.error)
+
+      if (excludedReplicaIds.size >= config.replicas.length) {
+        return yield* Effect.fail(outcome.error)
+      }
+    }
+  })
+
+const connectStreamSourceWithReplicaFailover = (
+  config: HydraliskPoolAdapterConfig,
+  request: InferenceRequest,
+  inflight: Map<string, number>,
+): Effect.Effect<InferenceStreamSource, InferenceAdapterError> =>
+  Effect.gen(function* () {
+    const excludedReplicaIds = new Set<string>()
+    let lastRetryableError: InferenceAdapterError | undefined
+    let replicaFailoverReason: string | null = null
+
+    for (;;) {
+      const selection = yield* selectReplicaAfterPriorFailures(
+        config,
+        request,
+        inflight,
+        excludedReplicaIds,
+        lastRetryableError,
+      )
+      const metadata = metadataAfterReplicaFailover(
+        selection.metadata,
+        replicaFailoverReason,
+      )
+      const outcome = yield* makeHydraliskVllmAdapter(
+        selection.adapterConfig,
+      ).streamSse!(request).pipe(
+        Effect.map(source => ({ _tag: 'Success' as const, source })),
+        Effect.catch((error: InferenceAdapterError) =>
+          Effect.sync(selection.release).pipe(
+            Effect.map(() => ({ _tag: 'Failure' as const, error })),
+          ),
+        ),
+      )
+
+      if (outcome._tag === 'Success') {
+        return attachMetadataToSource(
+          outcome.source,
+          metadata,
+          selection.release,
+        )
+      }
+
+      if (outcome.error.retryable !== true) {
+        return yield* Effect.fail(outcome.error)
+      }
+
+      const selectedReplicaId = selection.metadata.selectedReplicaId
+      if (
+        selectedReplicaId === undefined ||
+        excludedReplicaIds.has(selectedReplicaId)
+      ) {
+        return yield* Effect.fail(outcome.error)
+      }
+
+      excludedReplicaIds.add(selectedReplicaId)
+      lastRetryableError = outcome.error
+      replicaFailoverReason = replicaFailoverReasonFor(outcome.error)
+
+      if (excludedReplicaIds.size >= config.replicas.length) {
+        return yield* Effect.fail(outcome.error)
+      }
+    }
+  })
+
 export const makeHydraliskVllmPoolRuntime = (
   config: HydraliskPoolAdapterConfig,
 ): HydraliskVllmPoolRuntime => {
   const inflight = new Map<string, number>()
   const adapter: InferenceProviderAdapter = {
     complete: request =>
-      selectedReplicaConfig(config, request, inflight).pipe(
-        Effect.flatMap(selection =>
+      runReplicaOperationWithFailover(
+        config,
+        request,
+        inflight,
+        (selection, metadata) =>
           complete(selection.adapterConfig, request).pipe(
             Effect.map(result => ({
               ...result,
-              adapterRouteMetadata: selection.metadata,
+              adapterRouteMetadata: metadata,
             })),
-            Effect.ensuring(Effect.sync(selection.release)),
           ),
-        ),
       ),
     id: config.id,
     stream: request =>
-      selectedReplicaConfig(config, request, inflight).pipe(
-        Effect.flatMap(selection =>
+      runReplicaOperationWithFailover(
+        config,
+        request,
+        inflight,
+        (selection, metadata) =>
           streamChunks(selection.adapterConfig, request).pipe(
             Effect.map(chunks =>
-              attachMetadataToStreamChunks(chunks, selection.metadata),
+              attachMetadataToStreamChunks(chunks, metadata),
             ),
-            Effect.ensuring(Effect.sync(selection.release)),
           ),
-        ),
       ),
     streamSse: request =>
-      selectedReplicaConfig(config, request, inflight).pipe(
-        Effect.flatMap(selection =>
-          makeHydraliskVllmAdapter(selection.adapterConfig).streamSse!(
-            request,
-          ).pipe(
-            Effect.map(source =>
-              attachMetadataToSource(
-                source,
-                selection.metadata,
-                selection.release,
-              ),
-            ),
-            Effect.catch((error: InferenceAdapterError) =>
-              Effect.sync(selection.release).pipe(
-                Effect.flatMap(() => Effect.fail(error)),
-              ),
-            ),
-          ),
-        ),
-      ),
+      connectStreamSourceWithReplicaFailover(config, request, inflight),
   }
   return {
     adapter,
