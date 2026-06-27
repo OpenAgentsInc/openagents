@@ -151,6 +151,19 @@ operator view of what remains, not a public product claim.
 
 ## Execution notes
 
+- 2026-06-27T01:00Z #6323 refresh from a clean detached worktree at
+  `0d67f2ae5b1a1605d608aa69478dd8e86da4cb71`: the local environment still has
+  no `KHALA_GLM_NVFP4_*` owner-run variables. `pilot:glm-nvfp4 --summary
+  --output-dir <tmp>` produced the expected public-safe `decision:"no_go"`
+  bundle with all four gates blocked, and the focused pilot/operator tests
+  passed (`16` tests). A follow-up Khala -> Pylon -> Codex audit assignment
+  (`assignment.public.khala_coding.chatcmpl_4e158d9b7d34452c92d2ee562921cdbd`)
+  was interrupted after ~270s of runtime-heartbeat-only progress, then closed as
+  stale with `blocker.assignment.local_run_interrupted` and closeout
+  `assignment.closeout.d266b387510afb76aef2e2b2`; proof shows `0` exact token
+  rows and no raw-event closeout. This does not close #6323. The remaining
+  close condition is still the owner-armed isolated 8x-host pilot with measured
+  tool-loop, quality, max-context, and tok/s evidence.
 - Latest live counter/proof checkpoint after the supervised #6311/#6323 pair:
   `e681fe6ab3` is current `origin/main` and is deployed as Worker
   `8c03f302-8186-468d-a2b8-cd8d3489ae0b`. Live
