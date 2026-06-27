@@ -66,6 +66,11 @@ import {
   type PylonAccountUsageRefreshTarget,
 } from "./account-usage.js"
 import { isAccountAvailable, loadQuotaRecord } from "./account-quota-ledger.js"
+import {
+  admitPylonDelegation,
+  pylonDelegationChainFrom,
+  type PylonDelegationChain,
+} from "./capability-delegation.js"
 
 export type AssignmentPaymentMode = "no-spend" | "paid"
 export type AssignmentStatus = "offered" | "accepted" | "running" | "closed" | "rejected" | "cancelled" | "timed-out" | "stale"
@@ -78,6 +83,8 @@ export type PylonAssignmentLease = {
   paymentMode: AssignmentPaymentMode
   capabilityRefs: string[]
   codingAssignment?: AutopilotCodingAssignmentPayload
+  delegation?: PylonDelegationChain
+  delegationInvalid?: boolean
   backendRef?: string
   gepaRequirements?: PylonGepaAssignmentRequirements
   psionicQwenRequirements?: PylonPsionicQwenAssignmentRequirements
@@ -996,6 +1003,10 @@ function normalizeProjectedAssignment(
     typeof assignment.codingAssignment === "object"
       ? assignment.codingAssignment as AutopilotCodingAssignmentPayload
       : undefined
+  const rawDelegation =
+    (assignment as { delegation?: unknown }).delegation ??
+    (codingAssignment as { delegation?: unknown } | undefined)?.delegation
+  const delegation = pylonDelegationChainFrom(rawDelegation)
   const expiresInSeconds =
     typeof assignment.leaseExpiresInSeconds === "number" &&
     Number.isFinite(assignment.leaseExpiresInSeconds)
@@ -1011,8 +1022,21 @@ function normalizeProjectedAssignment(
     paymentMode: codingAssignmentPaymentMode(codingAssignment),
     capabilityRefs: codingAssignmentCapabilityRefs(codingAssignment),
     ...(codingAssignment === undefined ? {} : { codingAssignment }),
+    ...(delegation === null ? {} : { delegation }),
+    ...(rawDelegation !== undefined && delegation === null ? { delegationInvalid: true } : {}),
     expiresAt: new Date(now.getTime() + expiresInSeconds * 1000).toISOString(),
   }
+}
+
+function normalizeLeaseDelegation(lease: PylonAssignmentLease): PylonAssignmentLease {
+  const rawDelegation = (lease as { delegation?: unknown }).delegation
+  if (rawDelegation === undefined) return lease
+  const delegation = pylonDelegationChainFrom(rawDelegation)
+  if (delegation === null) {
+    const { delegation: _dropped, ...rest } = lease
+    return { ...rest, delegationInvalid: true }
+  }
+  return { ...lease, delegation }
 }
 
 function normalizePollResponse(value: unknown, now: Date): PylonAssignmentLease[] {
@@ -1023,7 +1047,7 @@ function normalizePollResponse(value: unknown, now: Date): PylonAssignmentLease[
   if (Array.isArray(assignments)) {
     return assignments.flatMap((assignment) => {
       if (isLegacyLease(assignment)) {
-        return [assignment]
+        return [normalizeLeaseDelegation(assignment)]
       }
 
       const normalized = normalizeProjectedAssignment(
@@ -1035,7 +1059,7 @@ function normalizePollResponse(value: unknown, now: Date): PylonAssignmentLease[
     })
   }
 
-  return leases.filter(isLegacyLease)
+  return leases.filter(isLegacyLease).map(normalizeLeaseDelegation)
 }
 
 function hasRequiredCapabilities(state: PylonLocalState, lease: PylonAssignmentLease) {
@@ -1068,6 +1092,20 @@ export async function computeAssignmentAdmission(
   if (!hasRequiredCapabilities(state, lease)) blockerRefs.add("blocker.assignment.wrong_capability")
   if (lease.backendRef && !state.runtime.capabilityRefs.includes(lease.backendRef)) {
     blockerRefs.add("blocker.assignment.unsupported_backend")
+  }
+  if (lease.delegationInvalid) {
+    blockerRefs.add("blocker.delegation.invalid_chain")
+  }
+  if (lease.delegation) {
+    const delegationAdmission = admitPylonDelegation({
+      chain: lease.delegation,
+      localCapabilityRefs: state.runtime.capabilityRefs,
+      localPylonRef: state.identity.pylonRef,
+      now,
+      objectiveText: lease.goal,
+      requestedCapabilityRefs: lease.capabilityRefs,
+    })
+    for (const blockerRef of delegationAdmission.blockerRefs) blockerRefs.add(blockerRef)
   }
   if (lease.gepaRequirements) {
     const envelope = options.gepaEnvelope ?? createDefaultGepaCapabilityEnvelope()
