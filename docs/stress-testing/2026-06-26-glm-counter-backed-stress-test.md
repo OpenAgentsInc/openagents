@@ -247,11 +247,24 @@ tokens. It also exposed a precision bug in the first coordinator wiring: the
 `internal_stress` request had already been rejected by route admission before
 the external request arrived, so it should not have registered a global stress
 lease. The follow-up patch prevents route-admission-rejected stress from
-creating a DO lease. While the live GLM fleet remains degraded enough that
-`internal_stress` is rejected at admission, this proves admission-yield and
-counter accounting but still cannot honestly close the in-flight preemption
-condition; that requires a live admitted stress request plus external
-`scheduler_preemption` and stress yield in the same probe.
+creating a DO lease.
+
+Final follow-up deploy `ac5af10d-ee04-437b-bfd9-7f7c56354105` proved the
+in-flight scheduler path rather than only admission-yield. Live readiness was
+still `degraded` / `blocked` with `10` configured replicas, `1` ready replica,
+`9` draining replicas, and `readyMaxInflight=2`. The authenticated probe
+admitted the `internal_stress` stream as
+`chatcmpl_9d1bce603c054ad28f65fed0f8711866`; the external request returned
+HTTP `200`, carried `scheduler_preemption.evidence_ref =
+scheduler.preemption.internal_stress.chatcmpl_9d1bce603c054ad28f65fed0f8711866`,
+and reported `target_outcome: preempted_yielded`. The public counter moved from
+`416491612` to `416493494` (`+1882`) only after request closeout. The external
+response's own `usage.total_tokens` was `614`, so the remainder came from
+concurrent/paired live traffic, including the admitted stress response. This is
+real in-flight cross-isolate preemption evidence. It still does not fully close
+#6318 because the external response served through Fireworks after
+`fallback_reason: empty_assistant_content`; the issue's acceptance requires no
+premature overflow to a weaker lane under saturation.
 
 ## 2026-06-27 Ramp Continuation
 
