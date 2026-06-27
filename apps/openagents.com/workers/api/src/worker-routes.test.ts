@@ -377,6 +377,7 @@ describe('Worker route dual-serve resolution (#6148)', () => {
       routeInferenceReferralRequest: noRoute,
       routeSiteReferralRequest: noRoute,
       routeOperatorAdjutantRequest: noRoute,
+      routeOperatorArtanisChatRequest: noRoute,
       routeOperatorArtanisConsoleRequest: noRoute,
       routeOperatorEmailInspectionRequest: noRoute,
       routeOperatorOrderTriageRequest: noRoute,

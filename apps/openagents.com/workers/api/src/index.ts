@@ -95,6 +95,7 @@ import {
 } from './artanis-labor-receipt-routes'
 import { makeD1ArtanisLaborUnattendedReceiptStore } from './artanis-labor-receipt-store'
 import { ArtanisMindSmokeSystem, artanisMindComplete } from './artanis-mind'
+import { makeOperatorArtanisChatRoutes } from './artanis-operator-chat-routes'
 import { makeOperatorArtanisConsoleRoutes } from './artanis-operator-console-routes'
 import { saveArtanisForumPublicationIntent } from './artanis-persistence'
 import { handlePublicArtanisReportApi } from './artanis-public-report-routes'
@@ -8385,6 +8386,19 @@ const operatorArtanisConsoleRoutes = makeOperatorArtanisConsoleRoutes({
   requireBrowserSession,
 })
 
+// Owner-only Artanis operator chat channel (#6363). Artanis's reasoning is
+// powered ONLY by the Khala API — `makeArtanisResponderKhalaClient` dogfoods the
+// `openagents/khala` pool and meters the call as Khala usage, so this channel
+// never calls a provider directly. `makeKhalaClient` is invoked at request time,
+// so referencing the (later-declared) builder here is safe.
+const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
+  appendRefreshedSessionCookies,
+  isOpenAgentsAdminEmail,
+  makeKhalaClient: env => makeArtanisResponderKhalaClient(env),
+  requireAdminApiToken,
+  requireBrowserSession,
+})
+
 const operatorPylonMarketplaceRoutes = makeOperatorPylonMarketplaceRoutes({
   appendRefreshedSessionCookies,
   isOpenAgentsAdminEmail,
@@ -12476,6 +12490,8 @@ const routeRequest = makeWorkerRouteRequest({
   routeSiteReferralRequest: siteReferralRoutes.routeSiteReferralRequest,
   routeOperatorAdjutantRequest:
     operatorAdjutantRoutes.routeOperatorAdjutantRequest,
+  routeOperatorArtanisChatRequest:
+    operatorArtanisChatRoutes.routeOperatorArtanisChatRequest,
   routeOperatorArtanisConsoleRequest:
     operatorArtanisConsoleRoutes.routeOperatorArtanisConsoleRequest,
   routeOperatorEmailInspectionRequest:

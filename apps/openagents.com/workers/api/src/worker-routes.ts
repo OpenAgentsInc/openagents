@@ -90,6 +90,7 @@ type WorkerRouteDependencies = Readonly<{
   routeInferenceReferralRequest: OptionalEffectRoute
   routeSiteReferralRequest: OptionalEffectRoute
   routeOperatorAdjutantRequest: OptionalEffectRoute
+  routeOperatorArtanisChatRequest: OptionalEffectRoute
   routeOperatorArtanisConsoleRequest: OptionalEffectRoute
   routeOperatorEmailInspectionRequest: OptionalEffectRoute
   routeOperatorOrderTriageRequest: OptionalEffectRoute
@@ -627,6 +628,13 @@ export const makeWorkerRouteRequest =
 
       if (operatorAdjutantResponse !== undefined) {
         return yield* operatorAdjutantResponse
+      }
+
+      const operatorArtanisChatResponse =
+        dependencies.routeOperatorArtanisChatRequest(request, env, ctx)
+
+      if (operatorArtanisChatResponse !== undefined) {
+        return yield* operatorArtanisChatResponse
       }
 
       const operatorArtanisConsoleResponse =
