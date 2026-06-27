@@ -176,14 +176,43 @@ const receiptPathFrom = openagents => {
   return null
 }
 
+const operatorCreditReceiptRefPrefix = 'receipt.inference.operator_credit.'
+
 const isOperatorCreditReceiptRef = value =>
   typeof value === 'string' &&
-  value.toLowerCase().includes('receipt.inference.operator_credit.')
+  value.toLowerCase().includes(operatorCreditReceiptRefPrefix)
+
+const receiptRefFromReceiptPath = receiptPath => {
+  if (typeof receiptPath !== 'string' || receiptPath.length === 0) {
+    return null
+  }
+  const publicReceiptPrefix = '/api/public/inference/receipts/'
+  if (receiptPath.startsWith(publicReceiptPrefix)) {
+    return decodeURIComponent(receiptPath.slice(publicReceiptPrefix.length))
+  }
+  try {
+    const url = new URL(receiptPath)
+    if (url.pathname.startsWith(publicReceiptPrefix)) {
+      return decodeURIComponent(url.pathname.slice(publicReceiptPrefix.length))
+    }
+  } catch {
+    // Relative paths are common in the Worker disclosure block.
+  }
+  return receiptPath.startsWith('receipt.inference.') ? receiptPath : null
+}
+
+const operatorCreditReceiptRefFromPath = receiptPath => {
+  const receiptRef = receiptRefFromReceiptPath(receiptPath)
+  return receiptRef?.startsWith(operatorCreditReceiptRefPrefix)
+    ? receiptRef
+    : null
+}
 
 const isOperatorExemptZeroDebitOpenAgents = openagents =>
   openagents?.billing?.mode === 'no_debit' ||
   isOperatorCreditReceiptRef(openagents?.receipt) ||
   isOperatorCreditReceiptRef(openagents?.receipt_url) ||
+  isOperatorCreditReceiptRef(openagents?.telemetry?.detailRef) ||
   (Array.isArray(openagents?.telemetry?.blockerRefs) &&
     openagents.telemetry.blockerRefs.includes('cost_not_measured'))
 
@@ -307,18 +336,24 @@ const verifyReceiptProof = async ({
   const operatorExemptZeroDebit =
     allowOperatorExemptZeroDebit &&
     isOperatorExemptZeroDebitOpenAgents(openagents)
-  if (receiptPath === null && operatorExemptZeroDebit) {
+  const operatorCreditReceiptRef = operatorCreditReceiptRefFromPath(receiptPath)
+  if (
+    operatorExemptZeroDebit &&
+    (receiptPath === null || operatorCreditReceiptRef !== null)
+  ) {
     check(`${label}_receipt_ref_present`, true, {
       billingMode: 'operator_exempt_zero_debit',
       note: 'skipped (operator-exempt, no billable receipt)',
+      receiptPath,
+      receiptRef: operatorCreditReceiptRef,
       skipped: true,
     })
     return {
       billingMode: 'operator_exempt_zero_debit',
       note: 'skipped (operator-exempt, no billable receipt)',
-      receiptRef: null,
+      receiptRef: operatorCreditReceiptRef,
       skipped: true,
-      url: null,
+      url: receiptPath === null ? null : absoluteUrl(origin, receiptPath),
     }
   }
 

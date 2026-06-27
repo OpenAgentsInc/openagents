@@ -333,23 +333,9 @@ describe('Khala GLM REAP production smoke', () => {
     })
   })
 
-  test('operator-exempt zero-debit mode skips missing billable receipt refs but keeps GLM serving checks', async () => {
+  test('operator-exempt zero-debit mode skips operator-credit receipt refs but keeps GLM serving checks', async () => {
     let counterReads = 0
-    const glmOpenAgents = {
-      requested_model: 'openagents/khala',
-      billing: {
-        mode: 'no_debit',
-        reason: 'operator_exempt_or_unmetered',
-        receipt_required: false,
-      },
-      routing: {
-        selected_replica_id: 'primary',
-        selected_replica_ref: 'replica.hydralisk.glm_52_reap_504b.primary',
-      },
-      served_model: 'openagents/glm-5.2-reap-504b',
-      supply_lane: 'hydralisk',
-      worker: 'hydralisk-vllm-glm-5p2-reap-504b',
-    }
+    let receiptReads = 0
     const fetchImpl = vi.fn(
       async (input: string | URL | Request, init?: RequestInit) => {
         const url = new URL(
@@ -373,6 +359,27 @@ describe('Khala GLM REAP production smoke', () => {
           const body = JSON.parse(String(init?.body || '{}')) as {
             stream?: boolean
           }
+          const glmOpenAgents = {
+            requested_model: 'openagents/khala',
+            billing: {
+              mode: 'no_debit',
+              reason: 'operator_exempt_or_unmetered',
+              receipt_required: false,
+            },
+            routing: {
+              selected_replica_id: 'primary',
+              selected_replica_ref:
+                'replica.hydralisk.glm_52_reap_504b.primary',
+            },
+            served_model: 'openagents/glm-5.2-reap-504b',
+            supply_lane: 'hydralisk',
+            telemetry: {
+              detailRef: body.stream
+                ? '/api/public/inference/receipts/receipt.inference.operator_credit.glm_stream'
+                : '/api/public/inference/receipts/receipt.inference.operator_credit.glm_nonstream',
+            },
+            worker: 'hydralisk-vllm-glm-5p2-reap-504b',
+          }
 
           if (body.stream) {
             return sse([
@@ -394,6 +401,10 @@ describe('Khala GLM REAP production smoke', () => {
           })
         }
 
+        if (url.pathname.startsWith('/api/public/inference/receipts/')) {
+          receiptReads += 1
+        }
+
         return json({ error: 'not found', path: url.pathname }, { status: 404 })
       },
     )
@@ -408,6 +419,7 @@ describe('Khala GLM REAP production smoke', () => {
       token: 'oa_agent_test',
     })
 
+    expect(receiptReads).toBe(0)
     expect(output).toMatchObject({
       counter: {
         delta: 12,
@@ -420,6 +432,12 @@ describe('Khala GLM REAP production smoke', () => {
     expect(output.nonstream.receipt).toMatchObject({
       billingMode: 'operator_exempt_zero_debit',
       note: 'skipped (operator-exempt, no billable receipt)',
+      receiptRef: 'receipt.inference.operator_credit.glm_nonstream',
+      skipped: true,
+    })
+    expect(output.stream.receipt).toMatchObject({
+      billingMode: 'operator_exempt_zero_debit',
+      receiptRef: 'receipt.inference.operator_credit.glm_stream',
       skipped: true,
     })
     expect(output.nonstream.openagents).toMatchObject({
