@@ -566,7 +566,7 @@ Hard D1-scoped totals for this run:
 | main internal stress fallback | Fireworks DeepSeek | `22` | `103832` | `90112` |
 | external probe traffic | Fireworks DeepSeek | `27` | `17784` | `1728` |
 
-The hard public-gateway GLM total generated in this continuation is
+The hard public-gateway GLM total generated before the GLM-only routing fix was
 `558986` tokens:
 
 - `557594` from the main saturation run;
@@ -619,3 +619,22 @@ Verification for that fix:
 - Full `chat-completions-routes.test.ts`: `160` passed.
 - `glm-fleet-readiness.test.ts`, `model-serving-policy.test.ts`, and
   `benchmark/stress-saturation-plan.test.ts`: `61` passed.
+
+The fix was committed to `main` as `fce0033bdfae` and deployed as Worker
+version `b7874868-4f72-4c30-9e7e-da9070f36b62`.
+
+Post-deploy GLM-only verification:
+
+- run id: `issue6317-glm-only-verify-20260627T060545Z`
+- shape: `12` concurrent public-gateway `internal_stress` /
+  `glm-saturation` requests, `max_tokens=1024`
+- result: `8` GLM HTTP `200` responses, `4` HTTP `502 provider_error`
+  responses, `0` Fireworks fallbacks
+- exact D1 rows: `8`
+- exact D1 GLM tokens: `6590`
+- public counter delta during the verification: `+6590`
+
+That post-deploy proof means the explicit GLM saturation stress label now fails
+closed on GLM pressure instead of silently overflowing to Fireworks. The hard
+public-gateway GLM total generated in this continuation, including the final
+verification, is `565576` tokens.
