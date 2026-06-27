@@ -1066,6 +1066,18 @@ describe('docs and blog routes', () => {
       ).toExist(),
       Scene.expect(Scene.text('Multi-Pylon proof')).toExist(),
       Scene.expect(Scene.text('1 / 2 distinct Pylons')).toExist(),
+      Scene.expect(Scene.text('Have Codex or Claude? Put it to work.')).toExist(),
+      Scene.expect(Scene.text('npm install -g @openagentsinc/khala')).toExist(),
+      Scene.expect(Scene.text('khala fleet connect')).toExist(),
+      Scene.expect(Scene.text('khala fleet status')).toExist(),
+      Scene.expect(Scene.role('link', { name: 'Fleet docs' })).toHaveAttr(
+        'href',
+        '/docs/khala-cli',
+      ),
+      Scene.expect(Scene.text('Private material')).toExist(),
+      Scene.expect(
+        Scene.text('Public pages show generic fleet refs and public issues only.'),
+      ).toExist(),
       Scene.expect(Scene.text('Forum bitcoin')).toExist(),
       Scene.expect(Scene.text('2 content rewards')).toExist(),
       Scene.expect(

@@ -532,6 +532,128 @@ const bitcoinPrimary = (value: string): string => value.replace(/ \(.+\)$/, '')
 const bitcoinDenomination = (value: string): string | null =>
   value.match(/\((.+)\)$/)?.[1] ?? null
 
+const artanisFleetCommand = (command: string, label: string): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [
+      Ui.className<Message>(
+        'grid gap-2 border border-[#222] bg-black p-3 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.4fr)]',
+      ),
+    ],
+    [
+      h.div([Ui.className<Message>('text-[0.75rem] text-white/45')], [label]),
+      h.code(
+        [
+          Ui.className<Message>(
+            'break-words text-[0.8125rem] leading-6 text-[#f1efe8]',
+          ),
+        ],
+        [command],
+      ),
+    ],
+  )
+}
+
+const artanisFleetRecruitmentView = (): Html => {
+  const h = html<Message>()
+
+  return h.section(
+    [
+      h.DataAttribute('artanis-fleet-recruitment', ''),
+      Ui.className<Message>('grid gap-4 border-b border-[#222] pb-6'),
+    ],
+    [
+      h.div(
+        [
+          Ui.className<Message>(
+            'flex flex-wrap items-end justify-between gap-3',
+          ),
+        ],
+        [
+          h.div(
+            [Ui.className<Message>('grid gap-2')],
+            [
+              h.div([Ui.className<Message>(Ui.eyebrowClass)], ['Join the fleet']),
+              h.h2(
+                [
+                  Ui.className<Message>(
+                    'text-xl font-semibold tracking-normal text-[#f1efe8]',
+                  ),
+                ],
+                ['Have Codex or Claude? Put it to work.'],
+              ),
+            ],
+          ),
+          h.a(
+            [
+              h.Href('/docs/khala-cli'),
+              Ui.className<Message>(
+                'border border-[#333] px-3 py-2 text-[0.75rem] text-white/70 underline-offset-4 hover:border-white/35 hover:text-[#f1efe8] hover:underline',
+              ),
+            ],
+            ['Fleet docs'],
+          ),
+        ],
+      ),
+      h.div(
+        [
+          Ui.className<Message>(
+            'grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]',
+          ),
+        ],
+        [
+          h.div(
+            [
+              Ui.className<Message>(
+                'grid gap-3 border border-[#222] bg-[#010102] p-3',
+              ),
+            ],
+            [
+              h.p(
+                [Ui.className<Message>('text-sm leading-6 text-[#f1efe8]')],
+                [
+                  'Connect your local coding accounts and Artanis can route public issue work through your own Pylon capacity.',
+                ],
+              ),
+              artanisFleetCommand(
+                'npm install -g @openagentsinc/khala',
+                'Install',
+              ),
+              artanisFleetCommand('khala fleet connect', 'Connect'),
+              artanisFleetCommand('khala fleet status', 'Check'),
+            ],
+          ),
+          h.div(
+            [
+              Ui.className<Message>(
+                'grid gap-3 border border-[#222] bg-[#010102] p-3',
+              ),
+            ],
+            [
+              statsMetric(
+                'Paste-free login',
+                'device code',
+                'Codex opens the browser and shows a short code.',
+              ),
+              statsMetric(
+                'More accounts',
+                'more slots',
+                'Each distinct account adds its own local throughput.',
+              ),
+              statsMetric(
+                'Private material',
+                'stays local',
+                'Public pages show generic fleet refs and public issues only.',
+              ),
+            ],
+          ),
+        ],
+      ),
+    ],
+  )
+}
+
 const artanisClaimRow = (claim: PublicArtanisReportClaimSummary): Html => {
   const h = html<Message>()
 
@@ -1284,6 +1406,7 @@ const loadedView = (
         ],
       ),
       isArtanis ? artanisReportView(artanisReport) : null,
+      isArtanis ? artanisFleetRecruitmentView() : null,
       isArtanis ? pylonStatsView(pylonStats) : null,
       isAdjutant ? adjutantActivityView(adjutantActivity) : null,
       h.section(
