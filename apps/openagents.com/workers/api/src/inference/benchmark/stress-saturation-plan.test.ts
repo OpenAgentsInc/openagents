@@ -12,6 +12,7 @@ import {
   buildGlmContinuousStressReport,
   buildGlmContinuousStressPlan,
   buildGlmContinuousStressRunnerPlan,
+  evaluateGlmExternalWinsProbe,
 } from './stress-saturation-plan'
 
 const stressShape = (id: string, concurrency: number): SequenceShape => ({
@@ -316,5 +317,63 @@ describe('GLM continuous stress saturation plan (#6317 prep slice)', () => {
     expect(JSON.stringify(report)).not.toMatch(
       /prompt|completion|bearer|secret|https?:\/\//i,
     )
+  })
+
+  test('accepts external-wins proof only when preempted external demand stays on GLM primary', () => {
+    const proof = evaluateGlmExternalWinsProbe({
+      externalHttpStatus: 200,
+      fallbackReason: null,
+      schedulerPreemptionEvidenceRef:
+        'scheduler.preemption.internal_stress.request_123',
+      schedulerPreemptionTargetOutcome: 'preempted_yielded',
+      servedLane: 'glm_primary',
+      usageTotalTokens: 614,
+    })
+
+    expect(proof.status).toBe('accepted')
+    expect(proof.blockerRefs).toEqual([])
+    expect(proof.evidenceRefs).toEqual([
+      'scheduler.preemption.internal_stress.request_123',
+    ])
+    expect(proof.usageTotalTokens).toBe(614)
+    expect(JSON.stringify(proof)).not.toMatch(
+      /prompt|completion|bearer|secret|https?:\/\//i,
+    )
+  })
+
+  test('blocks #6318 proof when empty GLM content falls through to weaker fallback', () => {
+    const proof = evaluateGlmExternalWinsProbe({
+      externalHttpStatus: 200,
+      fallbackReason: 'empty_assistant_content',
+      schedulerPreemptionEvidenceRef:
+        'scheduler.preemption.internal_stress.request_empty',
+      schedulerPreemptionTargetOutcome: 'preempted_yielded',
+      servedLane: 'weaker_fallback',
+      usageTotalTokens: 614,
+    })
+
+    expect(proof.status).toBe('blocked')
+    expect(proof.reasons).toEqual([
+      'fallback_after_preemption',
+      'served_lane_not_glm_primary',
+      'empty_glm_content_after_preemption',
+    ])
+    expect(proof.blockerRefs).toEqual([
+      'blocker.glm_external_wins.fallback_after_preemption',
+      'blocker.glm_external_wins.served_lane_not_glm_primary',
+      'blocker.glm_external_wins.empty_glm_content_after_preemption',
+    ])
+  })
+
+  test('blocks #6318 proof when scheduler preemption evidence is missing', () => {
+    const proof = evaluateGlmExternalWinsProbe({
+      externalHttpStatus: 200,
+      fallbackReason: null,
+      servedLane: 'glm_primary',
+    })
+
+    expect(proof.status).toBe('blocked')
+    expect(proof.reasons).toEqual(['missing_scheduler_preemption'])
+    expect(proof.schedulerPreemptionTargetOutcome).toBe('missing')
   })
 })

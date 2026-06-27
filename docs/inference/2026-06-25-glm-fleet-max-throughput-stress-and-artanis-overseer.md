@@ -85,6 +85,13 @@ Concretely the invariant has three enforceable clauses:
    the public all-demand tokens-served counter. Preempted/cancelled stress
    requests are recorded as such, not as failures of the external SLO.
 
+The live proof has an additional fail-closed acceptance rule: scheduler
+preemption is not enough by itself. The external response must remain on the GLM
+primary lane with `fallbackReason:null`. A response that carries
+`scheduler_preemption` but then serves through Fireworks/OpenRouter/Gemini after
+`fallback_reason: empty_assistant_content` is a useful diagnostic, not an
+external-wins pass.
+
 ### Priority / admission model
 
 Every request carries a typed **demand class** with a **priority** and a
@@ -139,6 +146,14 @@ preemption registry, and abort signal plumbing, but a registry without a live
 admission snapshot cannot trigger the scheduler's external-demand preemption
 branch. This is still not live saturation evidence; it is the wiring prerequisite
 that makes the later #6317 stress proof meaningful.
+
+**Acceptance note (2026-06-27).** The bounded proof evaluator is
+`openagents.khala.glm_external_wins_proof.v0_1`. It accepts only when the probe
+has scheduler-preemption evidence, external HTTP success, `servedLane:
+"glm_primary"`, and `fallbackReason:null`. The observed live shape where GLM
+returned empty assistant content and the external response fell through to a
+weaker fallback is blocked as `fallback_after_preemption`,
+`served_lane_not_glm_primary`, and `empty_glm_content_after_preemption`.
 
 ---
 

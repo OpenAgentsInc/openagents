@@ -515,6 +515,48 @@ describe('coding delegation default-on guard', () => {
     expect(body.reason).toContain('could not read linked Pylon capacity')
   })
 
+  test('agent-owned Pylon dispatch returns typed 503 when capacity read rejects generically', async () => {
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          ...helloBody,
+          openagents: {
+            coding: {
+              targetPylonRef: 'pylon.owner.codex',
+            },
+            workflowClass: 'codex_agent_task',
+          },
+        }),
+        baseDeps({
+          authenticate: async () => ({ accountRef: 'agent:agent_owner' }),
+          codingDelegation: {
+            agentStore: linkedCodingAgentStore,
+            pylonStore: {
+              ...codingPylonStore([codingPylonRegistration()]),
+              listRegistrationsForOwnerAgentUserIds: async () => {
+                throw new Error('capacity index temporarily unavailable')
+              },
+            } as unknown as PylonApiStore,
+            resolveOpenAuthUserId: async () => undefined,
+          },
+          nowEpochSeconds: () => 0,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(503)
+    const body = (await response.json()) as {
+      error: string
+      evidenceRefs: ReadonlyArray<string>
+      reason: string
+    }
+    expect(body).toMatchObject({
+      error: 'coding_delegation_store_unavailable',
+      evidenceRefs: ['evidence.khala_coding.dispatch.store_unavailable'],
+    })
+    expect(body.reason).toContain('could not read linked Pylon capacity')
+  })
+
   test('delegates typed coding workflows before balance and provider supply gates', async () => {
     const response = await run(
       handleChatCompletions(

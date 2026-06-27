@@ -2487,48 +2487,42 @@ export const handleChatCompletions = (
       const nowIso = epochMillisToIsoTimestamp(created * 1000)
       const delegation: CodingDelegationResult | null = yield* Effect.promise(
         async () => {
-          const openauthUserId = await codingDelegation.resolveOpenAuthUserId(
-            session.accountRef,
-          )
-          const openAuthLinkedAgents = await (async () => {
-            if (
-              openauthUserId === undefined ||
-              codingDelegation.agentStore.listLinkedAgentsForOpenAuthUser ===
-                undefined
-            ) {
-              return []
-            }
-            try {
-              return await codingDelegation.agentStore.listLinkedAgentsForOpenAuthUser(
-                openauthUserId,
-                100,
-              )
-            } catch (error) {
-              if (selfLinkedAgent.length > 0) {
+          try {
+            const openauthUserId = await codingDelegation.resolveOpenAuthUserId(
+              session.accountRef,
+            )
+            const openAuthLinkedAgents = await (async () => {
+              if (
+                openauthUserId === undefined ||
+                codingDelegation.agentStore.listLinkedAgentsForOpenAuthUser ===
+                  undefined
+              ) {
                 return []
               }
-              throw error
-            }
-          })()
-          const linkedAgents = [...selfLinkedAgent, ...openAuthLinkedAgents]
-          return delegateCodingWorkflow({
-            classification: codingWorkflow,
-            linkedAgents,
-            makeId: newId,
-            nowIso,
-            pylonStore: codingDelegation.pylonStore,
-            rawBody,
-            requestId: responseId,
-          })
-        },
-      ).pipe(
-        // #6331: a thrown store error inside this promise would otherwise
-        // become an unhandled defect and the gateway would return an opaque
-        // `500 internal_server_error`. Recover it into a clean, diagnosable
-        // 503 rejection — a gate refusal is never a bare 500.
-        Effect.catchDefect(
-          (): Effect.Effect<CodingDelegationResult | null> =>
-            Effect.succeed({
+              try {
+                return await codingDelegation.agentStore.listLinkedAgentsForOpenAuthUser(
+                  openauthUserId,
+                  100,
+                )
+              } catch (error) {
+                if (selfLinkedAgent.length > 0) {
+                  return []
+                }
+                throw error
+              }
+            })()
+            const linkedAgents = [...selfLinkedAgent, ...openAuthLinkedAgents]
+            return await delegateCodingWorkflow({
+              classification: codingWorkflow,
+              linkedAgents,
+              makeId: newId,
+              nowIso,
+              pylonStore: codingDelegation.pylonStore,
+              rawBody,
+              requestId: responseId,
+            })
+          } catch {
+            return {
               error: 'coding_delegation_store_unavailable',
               evidenceRefs: [
                 'evidence.khala_coding.dispatch.store_unavailable',
@@ -2538,8 +2532,9 @@ export const handleChatCompletions = (
                 'The Khala coding dispatch gate could not read linked Pylon capacity right now. This is a transient gate failure, not an account problem — retry shortly.',
               requestedPylonRef: null,
               statusCode: 503,
-            }),
-        ),
+            } as const
+          }
+        },
       )
 
       if (delegation?.kind === 'rejected') {

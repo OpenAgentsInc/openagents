@@ -22,6 +22,9 @@ export const GLM_CONTINUOUS_STRESS_RUNNER_PLAN_SCHEMA =
 export const GLM_CONTINUOUS_STRESS_REPORT_SCHEMA =
   'openagents.khala.glm_continuous_stress_report.v0_1' as const
 
+export const GLM_EXTERNAL_WINS_PROOF_SCHEMA =
+  'openagents.khala.glm_external_wins_proof.v0_1' as const
+
 export const GLM_CONTINUOUS_STRESS_TELEMETRY_SCHEMA =
   'openagents.khala.telemetry.v1' as const
 
@@ -216,6 +219,44 @@ export type GlmStressReport = Readonly<{
   replicaRefs: ReadonlyArray<string>
   latencyMs: GlmStressLatencyRollup
   replicaRollups: ReadonlyArray<GlmStressReplicaRollup>
+}>
+
+export type GlmExternalWinsServedLane =
+  | 'glm_primary'
+  | 'unknown'
+  | 'weaker_fallback'
+
+export type GlmExternalWinsProofStatus = 'accepted' | 'blocked'
+
+export type GlmExternalWinsProofBlockerReason =
+  | 'empty_glm_content_after_preemption'
+  | 'external_request_failed'
+  | 'fallback_after_preemption'
+  | 'missing_scheduler_preemption'
+  | 'served_lane_not_glm_primary'
+
+export type GlmExternalWinsProbeInput = Readonly<{
+  externalHttpStatus: number
+  fallbackReason: string | null
+  schedulerPreemptionEvidenceRef?: string | undefined
+  schedulerPreemptionTargetOutcome?: 'preempted_yielded' | undefined
+  servedLane: GlmExternalWinsServedLane
+  usageTotalTokens?: number | undefined
+}>
+
+export type GlmExternalWinsProofReadout = Readonly<{
+  schema: typeof GLM_EXTERNAL_WINS_PROOF_SCHEMA
+  status: GlmExternalWinsProofStatus
+  publicSafe: true
+  externalWinsPolicy: typeof GLM_STRESS_EXTERNAL_WINS_POLICY
+  blockerRefs: ReadonlyArray<string>
+  reasons: ReadonlyArray<GlmExternalWinsProofBlockerReason>
+  evidenceRefs: ReadonlyArray<string>
+  externalHttpStatus: number
+  servedLane: GlmExternalWinsServedLane
+  fallbackReason: string | null
+  schedulerPreemptionTargetOutcome: 'preempted_yielded' | 'missing'
+  usageTotalTokens: number | null
 }>
 
 const safePositiveInteger = (value: number): number =>
@@ -551,5 +592,58 @@ export const buildGlmContinuousStressReport = (
     replicaRollups: replicaRefs.map(replicaRef =>
       replicaRollup(replicaRef, input.observations),
     ),
+  }
+}
+
+export const evaluateGlmExternalWinsProbe = (
+  input: GlmExternalWinsProbeInput,
+): GlmExternalWinsProofReadout => {
+  const schedulerPreemptionMissing =
+    !isNonEmptyRef(input.schedulerPreemptionEvidenceRef) ||
+    input.schedulerPreemptionTargetOutcome !== 'preempted_yielded'
+  const externalRequestFailed =
+    !Number.isFinite(input.externalHttpStatus) ||
+    input.externalHttpStatus < 200 ||
+    input.externalHttpStatus >= 300
+  const fallbackAfterPreemption = input.fallbackReason !== null
+  const servedLaneNotGlmPrimary = input.servedLane !== 'glm_primary'
+  const emptyGlmContentAfterPreemption =
+    input.fallbackReason === 'empty_assistant_content'
+
+  const reasons: GlmExternalWinsProofBlockerReason[] = [
+    ...(schedulerPreemptionMissing
+      ? (['missing_scheduler_preemption'] as const)
+      : []),
+    ...(externalRequestFailed ? (['external_request_failed'] as const) : []),
+    ...(fallbackAfterPreemption ? (['fallback_after_preemption'] as const) : []),
+    ...(servedLaneNotGlmPrimary
+      ? (['served_lane_not_glm_primary'] as const)
+      : []),
+    ...(emptyGlmContentAfterPreemption
+      ? (['empty_glm_content_after_preemption'] as const)
+      : []),
+  ]
+
+  return {
+    schema: GLM_EXTERNAL_WINS_PROOF_SCHEMA,
+    status: reasons.length === 0 ? 'accepted' : 'blocked',
+    publicSafe: true,
+    externalWinsPolicy: GLM_STRESS_EXTERNAL_WINS_POLICY,
+    blockerRefs: reasons.map(reason => `blocker.glm_external_wins.${reason}`),
+    reasons,
+    evidenceRefs: isNonEmptyRef(input.schedulerPreemptionEvidenceRef)
+      ? [input.schedulerPreemptionEvidenceRef]
+      : [],
+    externalHttpStatus: input.externalHttpStatus,
+    servedLane: input.servedLane,
+    fallbackReason: input.fallbackReason,
+    schedulerPreemptionTargetOutcome:
+      input.schedulerPreemptionTargetOutcome ?? 'missing',
+    usageTotalTokens:
+      input.usageTotalTokens === undefined ||
+      !Number.isFinite(input.usageTotalTokens) ||
+      input.usageTotalTokens < 0
+        ? null
+        : input.usageTotalTokens,
   }
 }
