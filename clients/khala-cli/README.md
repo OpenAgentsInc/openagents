@@ -26,6 +26,7 @@ khala logout
 khala fleet connect           # connect your own Codex account (paste-free device login)
 khala fleet connect --account codex-2   # add another distinct account for more throughput
 khala fleet status            # list your connected Codex fleet + readiness
+khala fleet run --repo owner/repo --issues 123,124 --verify "bun test" --dry-run
 khala auth codex
 khala codex "read README.md"
 khala spawn --count 5 --objective "audit this workspace" --strategy local
@@ -150,6 +151,12 @@ no long-string pasting:
   added throughput.
 - `khala fleet status` (alias `khala fleet list`) prints a table of connected
   accounts with readiness and email.
+- `khala fleet run --repo owner/repo --issues 123,124 --verify "bun test"`
+  starts the turnkey Pylon/Codex supervisor against your public repo backlog.
+  It auto-resolves your local Pylon ref, computes slots as ready accounts times
+  `--per-account` capped by `--max-parallel`, advertises that capacity, and
+  routes issue work through your local no-spend Pylon. Use `--dry-run` to inspect
+  the resolved plan first, or `--once` to run one refill round and exit.
 
 Each account uses an isolated home under `<pylon home>/accounts/codex/<ref>`; the
 flow never touches the default `~/.codex` home, credentials stay on your machine,
@@ -165,6 +172,8 @@ local Pylon and the dispatch gate can see the fleet.
 - `khala logout` clears the local OpenAgents token.
 - `khala fleet connect` connects a Codex account to your fleet (paste-free).
 - `khala fleet status` lists your connected Codex fleet and readiness.
+- `khala fleet run --repo owner/repo --issues 123,124 --verify "bun test"`
+  starts or plans the backlog supervisor for your connected fleet.
 - `khala auth codex` connects a Codex account for local workspace delegation.
 - `khala codex status` shows the active local Codex credential source.
 - `khala codex "task"` delegates directly to local Codex.
