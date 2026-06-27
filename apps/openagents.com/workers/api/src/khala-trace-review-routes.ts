@@ -238,7 +238,25 @@ const stableLabelRef = (prefix: string, label: string): string =>
     .slice(0, 80) || 'unknown'}`
 
 const publicSafeReport = (report: KhalaTraceReviewReport): KhalaTraceReviewReport => {
-  const serialized = JSON.stringify(report)
+  // Defensive secret-material backstop. The report is aggregate/ref-only by
+  // construction, but we double-check before returning. We EXCLUDE the bounded
+  // model/provider IDENTIFIER fields from the scan: those are controlled routing
+  // identifiers read straight from `token_usage_events.provider/model` (never
+  // credential input), and a legitimate serving identifier such as
+  // `hydralisk-vllm-glm-5p2-reap-504b` contains an `sk-...`-shaped substring
+  // (`sk-vllm-glm-5p2-reap-504b`) that the blunt OpenAI-key heuristic would
+  // otherwise false-positive on, throwing and taking the whole operator report
+  // down with a 500. Every OTHER field (refs, demand sources, outcomes, titles,
+  // notable traces) is still scanned for real secret material.
+  const scanProjection = {
+    ...report,
+    modelMix: report.modelMix.map(bucket => ({
+      ...bucket,
+      model: '',
+      provider: '',
+    })),
+  }
+  const serialized = JSON.stringify(scanProjection)
   if (containsProviderSecretMaterial(serialized)) {
     throw new KhalaTraceReviewStorageError({
       reason: 'trace review report contained private-data-shaped material',

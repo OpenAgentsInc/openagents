@@ -115,6 +115,83 @@ describe('Khala trace review report', () => {
     expect(JSON.stringify(report)).not.toContain('raw_payload')
   })
 
+  test('a legitimate serving provider id with an sk-shaped substring does not trip the secret-material backstop', async () => {
+    // Regression: `hydralisk-vllm-glm-5p2-reap-504b` contains `sk-vllm-glm-5p2-
+    // reap-504b`, which the blunt OpenAI-key heuristic false-positived on,
+    // throwing and taking the whole operator report down with a 500. The bounded
+    // model/provider identifier fields must be excluded from the backstop scan.
+    const reportFacts: KhalaTraceReviewFacts = {
+      ...facts,
+      modelMix: [
+        {
+          count: 5,
+          model: 'openagents/glm-5.2-reap-504b',
+          provider: 'hydralisk-vllm-glm-5p2-reap-504b',
+          totalTokens: 9000,
+        },
+      ],
+    }
+
+    // It builds (does not throw) and preserves the real provider/model ids.
+    const report = buildKhalaTraceReviewReport({
+      facts: reportFacts,
+      generatedAt: '2026-06-26T21:00:00.000Z',
+      window: {
+        hours: 24,
+        since: '2026-06-25T21:00:00.000Z',
+        until: '2026-06-26T21:00:00.000Z',
+      },
+    })
+    expect(report.modelMix[0]?.provider).toBe('hydralisk-vllm-glm-5p2-reap-504b')
+
+    // And the route serves it 200 instead of khala_trace_review_unavailable 500.
+    const response = await run(
+      handleOperatorKhalaTraceReview(
+        new Request('https://openagents.com/api/operator/khala/trace-review'),
+        {
+          nowIso: () => '2026-06-26T21:00:00.000Z',
+          requireAdminApiToken: async () => true,
+          store: { readFacts: async () => reportFacts },
+        },
+      ),
+    )
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      modelMix: ReadonlyArray<{ provider: string }>
+    }
+    expect(body.modelMix[0]?.provider).toBe('hydralisk-vllm-glm-5p2-reap-504b')
+  })
+
+  test('a genuine secret in a non-identifier free-text field still trips the backstop (500)', async () => {
+    // The backstop must remain active for fields other than the bounded
+    // model/provider identifiers: a real OpenAI-key-shaped value in a demand
+    // source must still fail closed rather than leak into the operator report.
+    const leakyFacts: KhalaTraceReviewFacts = {
+      ...facts,
+      tokenByDemandSource: [
+        {
+          count: 1,
+          label: 'sk-abcdef0123456789ABCDEF',
+          totalTokens: 10,
+        },
+      ],
+    }
+    const response = await run(
+      handleOperatorKhalaTraceReview(
+        new Request('https://openagents.com/api/operator/khala/trace-review'),
+        {
+          nowIso: () => '2026-06-26T21:00:00.000Z',
+          requireAdminApiToken: async () => true,
+          store: { readFacts: async () => leakyFacts },
+        },
+      ),
+    )
+    expect(response.status).toBe(500)
+    expect((await response.json()) as unknown).toEqual({
+      error: 'khala_trace_review_unavailable',
+    })
+  })
+
   test('operator route requires admin auth', async () => {
     const response = await run(
       handleOperatorKhalaTraceReview(
