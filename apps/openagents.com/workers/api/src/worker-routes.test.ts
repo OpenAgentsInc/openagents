@@ -294,6 +294,7 @@ describe('Worker route dual-serve resolution (#6148)', () => {
     const observed = {
       exactPath: undefined as string | undefined,
       dispatcherPathname: undefined as string | undefined,
+      forumTopicId: undefined as string | undefined,
     }
 
     const okResponse = new Response('ok', { status: 200 })
@@ -336,7 +337,17 @@ describe('Worker route dual-serve resolution (#6148)', () => {
       handleAssetRequest: () => Effect.succeed(okResponse),
       handleAppShellPage: () => Effect.succeed(okResponse),
       handleThreadPage: () => Effect.succeed(okResponse),
-      handleForumThreadPage: () => Effect.succeed(okResponse),
+      handleForumThreadPage: (_request, _env, _ctx, topicId) =>
+        Effect.sync(() => {
+          observed.forumTopicId = topicId
+          return new Response(
+            '<!doctype html><html><head><meta property="og:title" content="Fleet update: 1B+ Khala tokens"></head><body></body></html>',
+            {
+              headers: { 'content-type': 'text/html; charset=utf-8' },
+              status: 200,
+            },
+          )
+        }),
       optionalUuid: (value: string | undefined) => value,
       routeAutopilotWorkRequest: noRoute,
       routeCloudCodingSessionRequest: noRoute,
@@ -477,5 +488,24 @@ describe('Worker route dual-serve resolution (#6148)', () => {
     // object itself to be rewritten to the legacy path — not just the pathname
     // passed to the exact-route matcher.
     expect(canonical.observed.dispatcherPathname).toBe('/v1/models/gpt-x')
+  })
+
+  test('forum topic document requests reach the social-preview handler without a browser Accept header', async () => {
+    const topicId = '55555555-5555-4555-8555-555555555555'
+    const result = await runRoute(
+      new Request(`https://openagents.com/forum/t/${topicId}`, {
+        headers: {
+          accept: 'application/json',
+          'user-agent': 'Discordbot/2.0',
+        },
+      }),
+    )
+    const html = await result.response.text()
+
+    expect(result.response.status).toBe(200)
+    expect(result.observed.forumTopicId).toBe(topicId)
+    expect(html).toContain(
+      'property="og:title" content="Fleet update: 1B+ Khala tokens"',
+    )
   })
 })

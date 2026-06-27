@@ -708,8 +708,7 @@ export const makeWorkerRouteRequest =
       // request (including the `/og/forum/...svg` image and all `/api/forum`
       // calls) flows through routeForumRequest unchanged.
       const forumThreadPageMatch =
-        (request.method === 'GET' || request.method === 'HEAD') &&
-        acceptsDocument(request)
+        request.method === 'GET' || request.method === 'HEAD'
           ? /^\/forum\/t\/([^/]+)$/.exec(url.pathname)
           : null
 
