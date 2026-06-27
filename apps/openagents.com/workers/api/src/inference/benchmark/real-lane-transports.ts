@@ -174,7 +174,7 @@ export const makeOpenAICompatibleTransport = (
                 : { 'x-openagents-demand-source': attribution.demandSource }),
               ...(attribution.demandClient === undefined
                 ? {}
-                : { 'x-openagents-demand-client': attribution.demandClient }),
+                : { 'x-openagents-client': attribution.demandClient }),
             }),
       }
       const start = options.deps.now()

@@ -180,11 +180,13 @@ describe('GLM continuous stress saturation plan (#6317 prep slice)', () => {
           cell.demandClient === GLM_STRESS_DEMAND_CLIENT &&
           cell.globalMaxConcurrency === 7 &&
           cell.requestHeaders['x-openagents-demand-kind'] ===
-            GLM_STRESS_DEMAND_KIND,
+            GLM_STRESS_DEMAND_KIND &&
+          cell.requestHeaders['x-openagents-client'] ===
+            GLM_STRESS_DEMAND_CLIENT,
       ),
     ).toBe(true)
     expect(JSON.stringify(runnerPlan)).not.toMatch(
-      /prompt|completion|bearer|token|secret|https?:\/\//i,
+      /x-openagents-demand-client|prompt|completion|bearer|token|secret|https?:\/\//i,
     )
   })
 
@@ -228,6 +230,22 @@ describe('GLM continuous stress saturation plan (#6317 prep slice)', () => {
           outputTokens: 1200,
           goodputTokens: 1100,
           wallClockMs: 3000,
+          ttftMs: 120,
+          interTokenLatencyP50Ms: 6,
+          interTokenLatencyP90Ms: 18,
+          interTokenLatencyP99Ms: 32,
+        },
+        {
+          cellId: firstCell.cellId,
+          replicaRef: 'replica.glm.us-central1-a.1',
+          status: 'ok',
+          outputTokens: 800,
+          goodputTokens: 700,
+          wallClockMs: 2000,
+          ttftMs: 240,
+          interTokenLatencyP50Ms: 8,
+          interTokenLatencyP90Ms: 24,
+          interTokenLatencyP99Ms: 40,
         },
         {
           cellId: firstCell.cellId,
@@ -247,15 +265,54 @@ describe('GLM continuous stress saturation plan (#6317 prep slice)', () => {
 
     expect(report.runnerState).toBe('ready')
     expect(report.aggregateTokPerSecond).toBe(400)
-    expect(report.goodputTokPerSecond).toBeCloseTo(366.666, 2)
+    expect(report.goodputTokPerSecond).toBe(360)
     expect(report.errorRate).toBe(0)
-    expect(report.okCount).toBe(1)
+    expect(report.okCount).toBe(2)
     expect(report.preemptedCount).toBe(1)
     expect(report.deferredCount).toBe(1)
     expect(report.replicaRefs).toEqual([
       'replica.glm.us-central1-a.1',
       'replica.glm.us-central1-a.2',
     ])
+    expect(report.latencyMs.ttftMs).toEqual({
+      p50: 120,
+      p90: 240,
+      p99: 240,
+      mean: 180,
+      sampleCount: 2,
+    })
+    expect(report.latencyMs.interTokenLatencyP90Ms).toEqual({
+      p50: 18,
+      p90: 24,
+      p99: 24,
+      mean: 21,
+      sampleCount: 2,
+    })
+    expect(report.replicaRollups).toHaveLength(2)
+    expect(report.replicaRollups[0]).toMatchObject({
+      replicaRef: 'replica.glm.us-central1-a.1',
+      aggregateTokPerSecond: 400,
+      goodputTokPerSecond: 360,
+      outputTokens: 2000,
+      goodputTokens: 1800,
+      okCount: 2,
+      deferredCount: 0,
+      preemptedCount: 0,
+      failedCount: 0,
+    })
+    expect(report.replicaRollups[0]?.latencyMs.ttftMs.sampleCount).toBe(2)
+    expect(report.replicaRollups[1]).toMatchObject({
+      replicaRef: 'replica.glm.us-central1-a.2',
+      aggregateTokPerSecond: null,
+      goodputTokPerSecond: null,
+      outputTokens: 0,
+      goodputTokens: 0,
+      okCount: 0,
+      deferredCount: 0,
+      preemptedCount: 1,
+      failedCount: 0,
+    })
+    expect(report.replicaRollups[1]?.latencyMs.ttftMs.sampleCount).toBe(0)
     expect(JSON.stringify(report)).not.toMatch(
       /prompt|completion|bearer|secret|https?:\/\//i,
     )

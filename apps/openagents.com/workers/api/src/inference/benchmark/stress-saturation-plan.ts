@@ -8,6 +8,7 @@ import type {
   SequenceShape,
 } from './matrix'
 import { expandMatrix } from './matrix'
+import { mean, percentile } from './report'
 
 export const GLM_CONTINUOUS_STRESS_PLAN_SCHEMA =
   'openagents.khala.glm_continuous_stress_plan.v0_1' as const
@@ -118,7 +119,7 @@ export type GlmStressRunnerDispatchCell = Readonly<{
   requestHeaders: Readonly<{
     'x-openagents-demand-kind': typeof GLM_STRESS_DEMAND_KIND
     'x-openagents-demand-source': typeof GLM_STRESS_DEMAND_SOURCE
-    'x-openagents-demand-client': typeof GLM_STRESS_DEMAND_CLIENT
+    'x-openagents-client': typeof GLM_STRESS_DEMAND_CLIENT
   }>
 }>
 
@@ -159,6 +160,34 @@ export type GlmStressObservation = Readonly<{
   goodputTokens?: number | undefined
 }>
 
+export type GlmStressLatencySummary = Readonly<{
+  p50: number | null
+  p90: number | null
+  p99: number | null
+  mean: number | null
+  sampleCount: number
+}>
+
+export type GlmStressLatencyRollup = Readonly<{
+  ttftMs: GlmStressLatencySummary
+  interTokenLatencyP50Ms: GlmStressLatencySummary
+  interTokenLatencyP90Ms: GlmStressLatencySummary
+  interTokenLatencyP99Ms: GlmStressLatencySummary
+}>
+
+export type GlmStressReplicaRollup = Readonly<{
+  replicaRef: string
+  aggregateTokPerSecond: number | null
+  goodputTokPerSecond: number | null
+  outputTokens: number
+  goodputTokens: number
+  okCount: number
+  deferredCount: number
+  preemptedCount: number
+  failedCount: number
+  latencyMs: GlmStressLatencyRollup
+}>
+
 export type GlmStressReportInput = Readonly<{
   generatedAt: string
   runnerPlan: GlmStressRunnerPlan
@@ -185,6 +214,8 @@ export type GlmStressReport = Readonly<{
   failedCount: number
   okCount: number
   replicaRefs: ReadonlyArray<string>
+  latencyMs: GlmStressLatencyRollup
+  replicaRollups: ReadonlyArray<GlmStressReplicaRollup>
 }>
 
 const safePositiveInteger = (value: number): number =>
@@ -314,7 +345,7 @@ const runnerDispatchCell = (
   requestHeaders: {
     'x-openagents-demand-kind': GLM_STRESS_DEMAND_KIND,
     'x-openagents-demand-source': GLM_STRESS_DEMAND_SOURCE,
-    'x-openagents-demand-client': GLM_STRESS_DEMAND_CLIENT,
+    'x-openagents-client': GLM_STRESS_DEMAND_CLIENT,
   },
 })
 
@@ -369,19 +400,56 @@ const measuredPositive = (value: number | undefined): number =>
 const rateOrNull = (numerator: number, denominator: number): number | null =>
   denominator <= 0 ? null : numerator / denominator
 
-export const buildGlmContinuousStressReport = (
-  input: GlmStressReportInput,
-): GlmStressReport => {
-  const ok = input.observations.filter(observation => observation.status === 'ok')
-  const failed = input.observations.filter(
-    observation => observation.status === 'failed',
-  )
-  const deferred = input.observations.filter(
-    observation => observation.status === 'deferred_no_headroom',
-  )
-  const preempted = input.observations.filter(
-    observation => observation.status === 'preempted_for_external',
-  )
+const latencySummary = (
+  values: ReadonlyArray<number>,
+): GlmStressLatencySummary => ({
+  p50: percentile(values, 50),
+  p90: percentile(values, 90),
+  p99: percentile(values, 99),
+  mean: mean(values),
+  sampleCount: values.length,
+})
+
+const measuredLatencyValues = (
+  observations: ReadonlyArray<GlmStressObservation>,
+  pick: (observation: GlmStressObservation) => number | undefined,
+): ReadonlyArray<number> =>
+  observations.flatMap(observation => {
+    const value = pick(observation)
+    return value === undefined || !Number.isFinite(value) || value <= 0
+      ? []
+      : [value]
+  })
+
+const latencyRollup = (
+  observations: ReadonlyArray<GlmStressObservation>,
+): GlmStressLatencyRollup => ({
+  ttftMs: latencySummary(measuredLatencyValues(observations, o => o.ttftMs)),
+  interTokenLatencyP50Ms: latencySummary(
+    measuredLatencyValues(observations, o => o.interTokenLatencyP50Ms),
+  ),
+  interTokenLatencyP90Ms: latencySummary(
+    measuredLatencyValues(observations, o => o.interTokenLatencyP90Ms),
+  ),
+  interTokenLatencyP99Ms: latencySummary(
+    measuredLatencyValues(observations, o => o.interTokenLatencyP99Ms),
+  ),
+})
+
+const observationsWithStatus = (
+  observations: ReadonlyArray<GlmStressObservation>,
+  status: GlmStressObservationStatus,
+): ReadonlyArray<GlmStressObservation> =>
+  observations.filter(observation => observation.status === status)
+
+const reportThroughput = (
+  ok: ReadonlyArray<GlmStressObservation>,
+): Readonly<{
+  aggregateTokPerSecond: number | null
+  goodputTokPerSecond: number | null
+  outputTokens: number
+  goodputTokens: number
+}> => {
   const wallClockMs = ok.reduce(
     (sum, observation) => sum + measuredPositive(observation.wallClockMs),
     0,
@@ -396,6 +464,61 @@ export const buildGlmContinuousStressReport = (
       measuredPositive(observation.goodputTokens ?? observation.outputTokens),
     0,
   )
+
+  return {
+    aggregateTokPerSecond:
+      wallClockMs === 0 ? null : outputTokens / (wallClockMs / 1000),
+    goodputTokPerSecond:
+      wallClockMs === 0 ? null : goodputTokens / (wallClockMs / 1000),
+    outputTokens,
+    goodputTokens,
+  }
+}
+
+const replicaRollup = (
+  replicaRef: string,
+  observations: ReadonlyArray<GlmStressObservation>,
+): GlmStressReplicaRollup => {
+  const scoped = observations.filter(
+    observation => observation.replicaRef === replicaRef,
+  )
+  const ok = observationsWithStatus(scoped, 'ok')
+  const throughput = reportThroughput(ok)
+
+  return {
+    replicaRef,
+    aggregateTokPerSecond: throughput.aggregateTokPerSecond,
+    goodputTokPerSecond: throughput.goodputTokPerSecond,
+    outputTokens: throughput.outputTokens,
+    goodputTokens: throughput.goodputTokens,
+    okCount: ok.length,
+    deferredCount: observationsWithStatus(
+      scoped,
+      'deferred_no_headroom',
+    ).length,
+    preemptedCount: observationsWithStatus(
+      scoped,
+      'preempted_for_external',
+    ).length,
+    failedCount: observationsWithStatus(scoped, 'failed').length,
+    latencyMs: latencyRollup(ok),
+  }
+}
+
+export const buildGlmContinuousStressReport = (
+  input: GlmStressReportInput,
+): GlmStressReport => {
+  const ok = observationsWithStatus(input.observations, 'ok')
+  const failed = observationsWithStatus(input.observations, 'failed')
+  const deferred = observationsWithStatus(
+    input.observations,
+    'deferred_no_headroom',
+  )
+  const preempted = observationsWithStatus(
+    input.observations,
+    'preempted_for_external',
+  )
+  const throughput = reportThroughput(ok)
   const replicaRefs = [
     ...new Set(
       input.observations.flatMap(observation =>
@@ -416,15 +539,17 @@ export const buildGlmContinuousStressReport = (
     telemetrySchema: GLM_CONTINUOUS_STRESS_TELEMETRY_SCHEMA,
     blockerRefs: input.runnerPlan.blockerRefs,
     evidenceRefs: input.runnerPlan.evidenceRefs,
-    aggregateTokPerSecond:
-      wallClockMs === 0 ? null : outputTokens / (wallClockMs / 1000),
-    goodputTokPerSecond:
-      wallClockMs === 0 ? null : goodputTokens / (wallClockMs / 1000),
+    aggregateTokPerSecond: throughput.aggregateTokPerSecond,
+    goodputTokPerSecond: throughput.goodputTokPerSecond,
     errorRate: rateOrNull(failed.length, input.observations.length),
     deferredCount: deferred.length,
     preemptedCount: preempted.length,
     failedCount: failed.length,
     okCount: ok.length,
     replicaRefs,
+    latencyMs: latencyRollup(ok),
+    replicaRollups: replicaRefs.map(replicaRef =>
+      replicaRollup(replicaRef, input.observations),
+    ),
   }
 }

@@ -122,7 +122,7 @@ operator view of what remains, not a public product claim.
 | #6315 | **Closed** | Zero-debit receipt-ref fix for #6259 is closed. |
 | #6320 | **Open** | A bounded routed slice landed in `85ca837413` and deployed as Worker `228ac0f9-c891-4ad2-b05f-0dd8894f3c86`: typed throughput-sweep metadata for `max-num-seqs`, prefix cache, chunked prefill, speculative decode, quant gates. Delegated slices landed on `main` in `a8c12aff42` (`assignment.public.khala_coding.chatcmpl_5ccffa5593b84cc09e414d3ad358b9b0`, 2,202,625 exact tokens), `03b6ffa094` (`assignment.public.khala_coding.chatcmpl_7033a7cd0fff4afaaad412e783bab29a`, 4,949,572 exact tokens), `d373eaee69` (`assignment.public.khala_coding.chatcmpl_a8737564357847eca23110d319bf4edf`, 2,656,599 exact tokens), `88f60cb924` (`assignment.public.khala_coding.chatcmpl_9a27a65fa4f5434db8715bcb1288c91d`, 5,505,826 exact tokens), and `7a73ab8d95` (`assignment.public.khala_coding.chatcmpl_ec4be93966804054a0775f1099465a8f`, 2,090,306 exact tokens): typed throughput rollout recommendation/flag selection, owner-armed rollout artifact/guardrails, fail-closed measured-lift rollout readout, and a fail-closed public-safe evidence checklist for owner arm ref, live engine config, before/after throughput, ITL, progress, and public refs. Current deployed Worker is `d3571d83-ecdb-40e0-8af4-08fe14f7ed1e`; still open for actual live engine rollout and measured throughput lift. |
 | #6318 | **Open** | Multiple partials landed (`a26ca1e`, `8ff2e47`, `4de477190c`) covering typed `internal_stress` attribution, route-level admission coverage, and live-headroom admission that rejects stress when reserved external headroom is unavailable. Pylon/Codex produced one earlier standalone preemption-registry patch (`assignment.public.khala_coding.chatcmpl_a5425fa595d642d3831f1670ffd6bb49`, 4,244,593 exact tokens) that was not landed because it was not wired into the live runtime; later follow-ups merged wired demand-class/admission proof in `5b11c6eaf5`, typed scheduler preemption evidence propagation in `d373eaee69` (`assignment.public.khala_coding.chatcmpl_e2f9b5be81a04b529c60b04e57e95f5b`, 3,802,388 exact tokens), typed stress-yield/preemption metadata in `88f60cb924` (`assignment.public.khala_coding.chatcmpl_da50ac2185dd438c82ea05192f27ac56`, 4,656,781 exact tokens), and production route-level abort/preemption wiring in `713b715f8d` (`assignment.public.khala_coding.chatcmpl_00d5a5d8fd7f42e384b6632dfa75d159`, 6,920,836 exact tokens). Current deployed Worker is `d3571d83-ecdb-40e0-8af4-08fe14f7ed1e`; the 2026-06-27 follow-up wires the live `routeAdmission` snapshot from the same Hydralisk pool runtime/in-flight map used for GLM dispatch. Still open for actual live external-wins saturation/preemption proof. |
-| #6317 | **Open** | Stress/saturation harness waits on #6318 and the live #6320 rollout. Pylon/Codex preparatory slices landed as `792ec3d56e` and `d373eaee69` (`assignment.public.khala_coding.chatcmpl_77ede33f8f2142f88a16a3e194988e8a`, 2,427,287 exact tokens): typed GLM continuous-stress plan, fail-closed runner dispatch cells, telemetry schema, and stress report aggregation gated on live headroom, external-wins preemption, and rollout-guard evidence. Current deployed `main` is Worker `8249b442-0a54-4747-9826-c165151bcee9`. Still open for a real continuous stress runner after #6318/#6320 live proof. |
+| #6317 | **Open** | Stress/saturation harness waits on #6318 and the live #6320 rollout. Pylon/Codex preparatory slices landed as `792ec3d56e` and `d373eaee69` (`assignment.public.khala_coding.chatcmpl_77ede33f8f2142f88a16a3e194988e8a`, 2,427,287 exact tokens): typed GLM continuous-stress plan, fail-closed runner dispatch cells, telemetry schema, and stress report aggregation gated on live headroom, external-wins preemption, and rollout-guard evidence. The 2026-06-27 prep follow-up adds canonical `x-openagents-client` dispatch attribution for stress/real-sweep traffic plus TTFT/ITL and per-replica stress-report rollups so the future live run can identify slow replicas without prompt/secret leakage. Current deployed `main` is Worker `8249b442-0a54-4747-9826-c165151bcee9`. Still open for a real continuous stress runner after #6318/#6320 live proof. |
 | #6312 | **Open** | Decision-grade aggregate max tokens/sec benchmark waits on the stress harness. |
 | #6321 | **Open** | Artanis fleet-overseer automation waits on the scheduler/stress/reliability pieces. |
 | #6253 | **Open** | Isolated Terminal-Bench 2.0 black-box runner, bounded real measurement, and replication path landed in `da472748c5`. The separately owned full Harbor run must not be disturbed. Still open for decision-grade replicate-and-beat evidence. |
@@ -190,6 +190,14 @@ operator view of what remains, not a public product claim.
   `Effect.void` language-service advisories. This still does not close #6318;
   live saturation/preemption proof remains required before #6317 can run real
   continuous stress.
+- 2026-06-27T01:30Z #6317 prep: stress and real-sweep dispatch attribution now
+  use the canonical `x-openagents-client` header instead of the stale
+  `x-openagents-demand-client` field, matching the chat route's typed demand
+  attribution. The public-safe stress report now carries overall and
+  per-replica TTFT/ITL P50/P90/P99/mean/sample-count rollups plus per-replica
+  ok/deferred/preempted/failed counts and goodput/TPS. This is still local
+  harness preparation only; live continuous stress remains blocked on #6318 and
+  #6320 proof.
 - Latest live counter/proof checkpoint after the supervised #6311/#6323 pair:
   `e681fe6ab3` is current `origin/main` and is deployed as Worker
   `8c03f302-8186-468d-a2b8-cd8d3489ae0b`. Live
@@ -641,8 +649,10 @@ Make the fleet trustworthy before pushing load through it.
    auto-backs-off on external pressure.
    - **Status (2026-06-26): OPEN; blocked by #6318 and live #6320 rollout.**
      The verified preparatory Pylon/Codex patch was integrated as `792ec3d56e`
-     and is deployed. Do not run continuous stress until the external-wins guard
-     is real and the throughput rollout has live measured proof.
+     and is deployed. The 2026-06-27 local prep adds canonical stress/real-sweep
+     attribution and latency/per-replica report rollups. Do not run continuous
+     stress until the external-wins guard is real and the throughput rollout has
+     live measured proof.
 10. **#6312 — max tokens-per-second benchmark. → after #6317.** The decision-grade
     aggregate-throughput number, read from the harness (concurrency sweep, per-replica +
     aggregate tok/s, TTFT, P50/P90/P99, saturation point, in-cloud vs WAN).

@@ -152,6 +152,10 @@ describe('Khala public transport', () => {
     expect(calls[0]!.headers.get('x-openagents-demand-source')).toBe(
       'benchmark_real_sweep',
     )
+    expect(calls[0]!.headers.get('x-openagents-client')).toBe(
+      'khala_benchmark_real_sweep',
+    )
+    expect(calls[0]!.headers.get('x-openagents-demand-client')).toBeNull()
     expect(calls[0]!.headers.get('authorization')).toBe('Bearer agent-token-xyz')
   })
 

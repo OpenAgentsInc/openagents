@@ -171,6 +171,13 @@ A **continuous load generator** that:
   abortable by the scheduler regardless). It ramps back up when external demand
   falls. This is the closed loop that makes "always saturated, never in the way."
 
+**Implementation note (2026-06-27).** The fail-closed harness prep now emits
+canonical `x-openagents-client` attribution for stress/real-sweep dispatches and
+the report schema carries public-safe overall plus per-replica TTFT/ITL
+P50/P90/P99/mean/sample-count rollups, ok/deferred/preempted/failed counts, and
+goodput/TPS. This is measurement plumbing only; the live continuous stress run
+still waits on #6318 external-wins proof and #6320 throughput-rollout proof.
+
 ### Why continuous (not one-off)
 
 - **Keep-warm by traffic.** Spot replicas that go idle cool down; continuous
