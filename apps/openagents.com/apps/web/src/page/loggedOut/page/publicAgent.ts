@@ -15,7 +15,9 @@ import type {
   PublicAgentGoalEvent,
   PublicArtanisForumRewardSmoke,
   PublicArtanisForumRewardVisibility,
+  PublicArtanisReportActivityTickerEntry,
   PublicArtanisProductionLaunchGate,
+  PublicArtanisReportDecisionFailureMode,
   PublicArtanisPylonLaunchCommunication,
   PublicArtanisReport,
   PublicArtanisReportClaimSummary,
@@ -526,6 +528,187 @@ const compactRefs = (
   refs: ReadonlyArray<string>,
   fallback = 'No public refs',
 ): string => (refs.length === 0 ? fallback : refs.slice(0, 3).join(', '))
+
+const tickerIssueLabel = (issueNumber: number | null): string =>
+  issueNumber === null ? 'No linked issue' : `Issue #${issueNumber}`
+
+const artanisTickerRow = (
+  entry: PublicArtanisReportActivityTickerEntry,
+): Html => {
+  const h = html<Message>()
+
+  return h.li(
+    [
+      Ui.className<Message>(
+        'grid min-w-[16rem] gap-2 border border-[#222] bg-[#010102] p-3 sm:min-w-[20rem]',
+      ),
+    ],
+    [
+      h.div(
+        [
+          Ui.className<Message>(
+            'flex items-center justify-between gap-3 text-[0.6875rem] text-white/35',
+          ),
+        ],
+        [
+          h.span([Ui.className<Message>('uppercase')], [entry.state]),
+          h.span([Ui.className<Message>('tabular-nums')], [
+            entry.createdAtDisplay,
+          ]),
+        ],
+      ),
+      h.div(
+        [Ui.className<Message>('text-[0.8125rem] text-[#f1efe8]')],
+        [entry.label],
+      ),
+      h.div([Ui.className<Message>('text-[0.75rem] text-white/45')], [
+        entry.assignmentRef ?? entry.activityRef,
+      ]),
+      h.div([Ui.className<Message>('text-[0.75rem] text-white/35')], [
+        tickerIssueLabel(entry.issueNumber),
+      ]),
+    ],
+  )
+}
+
+const artanisFailureModeRow = (
+  mode: PublicArtanisReportDecisionFailureMode,
+): Html => {
+  const h = html<Message>()
+
+  return h.li(
+    [
+      Ui.className<Message>(
+        'grid gap-2 border-b border-[#1b1b1b] py-3 last:border-b-0',
+      ),
+    ],
+    [
+      h.div(
+        [
+          Ui.className<Message>(
+            'flex flex-wrap items-center justify-between gap-3',
+          ),
+        ],
+        [
+          h.span(
+            [Ui.className<Message>('text-[0.8125rem] text-[#f1efe8]')],
+            [mode.label],
+          ),
+          h.span(
+            [Ui.className<Message>('tabular-nums text-[0.75rem] text-white/45')],
+            [formatNumber(mode.count)],
+          ),
+        ],
+      ),
+      h.div([Ui.className<Message>('text-[0.75rem] text-white/35')], [
+        `${tickerIssueLabel(mode.resultingPublicIssueNumber)} / ${
+          mode.latestDecisionRef ?? mode.failureModeRef
+        }`,
+      ]),
+    ],
+  )
+}
+
+const artanisDecisionLogView = (
+  report: PublicArtanisReport,
+): Html | null => {
+  const h = html<Message>()
+  const decisionLog = report.decisionLog
+
+  if (decisionLog === undefined) {
+    return null
+  }
+
+  return h.div(
+    [
+      Ui.className<Message>(
+        'grid gap-3 border border-[#222] bg-[#010102] p-3',
+      ),
+    ],
+    [
+      h.div(
+        [
+          Ui.className<Message>(
+            'flex flex-wrap items-end justify-between gap-3',
+          ),
+        ],
+        [
+          h.div(
+            [Ui.className<Message>('grid gap-1')],
+            [
+              h.div([Ui.className<Message>(Ui.eyebrowClass)], ['The Log']),
+              h.h3(
+                [
+                  Ui.className<Message>(
+                    'text-lg font-semibold tracking-normal text-[#f1efe8]',
+                  ),
+                ],
+                ['Live Artanis decisions'],
+              ),
+            ],
+          ),
+          h.div(
+            [Ui.className<Message>('text-[0.75rem] text-white/45')],
+            [`Generated ${decisionLog.generatedAtDisplay}`],
+          ),
+        ],
+      ),
+      Array.match(decisionLog.ticker, {
+        onEmpty: () =>
+          h.p(
+            [Ui.className<Message>('text-[0.75rem] text-white/35')],
+            ['No public Artanis decisions are published yet.'],
+          ),
+        onNonEmpty: entries =>
+          h.ol(
+            [
+              Ui.className<Message>(
+                'flex gap-2 overflow-x-auto pb-1 [scrollbar-width:thin]',
+              ),
+            ],
+            entries.map(artanisTickerRow),
+          ),
+      }),
+      h.div(
+        [
+          Ui.className<Message>(
+            'grid gap-3 border-t border-[#222] pt-3 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]',
+          ),
+        ],
+        [
+          h.div(
+            [Ui.className<Message>('grid gap-2')],
+            [
+              h.div([Ui.className<Message>(Ui.eyebrowClass)], ['The Brain']),
+              h.div(
+                [Ui.className<Message>('text-[0.8125rem] text-[#f1efe8]')],
+                ['Autonomous triage summary'],
+              ),
+              h.div(
+                [Ui.className<Message>('text-[0.75rem] text-white/35')],
+                [
+                  `Dispatches ${formatNumber(decisionLog.countsByState.dispatched ?? 0)} / blocked ${formatNumber(decisionLog.countsByState.blocked ?? 0)} / failed ${formatNumber(decisionLog.countsByState.dispatch_failed ?? 0)}`,
+                ],
+              ),
+            ],
+          ),
+          Array.match(decisionLog.failureModes, {
+            onEmpty: () =>
+              h.p(
+                [Ui.className<Message>('text-[0.75rem] text-white/35')],
+                ['No triaged failure modes in the public decision window.'],
+              ),
+            onNonEmpty: modes =>
+              h.ol([Ui.className<Message>('grid')], modes.map(artanisFailureModeRow)),
+          }),
+        ],
+      ),
+      h.div([Ui.className<Message>('text-[0.75rem] text-white/35')], [
+        decisionLog.authorityBoundary,
+      ]),
+    ],
+  )
+}
 
 const bitcoinPrimary = (value: string): string => value.replace(/ \(.+\)$/, '')
 
@@ -1065,6 +1248,7 @@ const artanisReportLoadedView = (report: PublicArtanisReport): Html => {
           ),
         ],
       ),
+      artanisDecisionLogView(report),
       artanisPylonLaunchView(report.pylonLaunchCommunication),
       artanisOmegaReleaseGateView(report.pylonOmegaReleaseGate),
       artanisProductionLaunchGateView(report.productionLaunchGate),
