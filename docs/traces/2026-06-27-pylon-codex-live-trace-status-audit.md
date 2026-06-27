@@ -785,6 +785,97 @@ heartbeat, a missing `--pylon-ref`, a missing `--workflow codex_agent_task`, or
 skipping `assignment run-no-spend` will look like "Khala was used" while never
 creating a Pylon/Codex assignment, token row, or trace bundle.
 
+## What Actually Made Delegation Work
+
+The successful runs were not magic "ask Khala to code" turns. They were a very
+specific local-supervisor flow:
+
+1. Start from a clean worktree pinned to current `origin/main`.
+2. Install that worktree's dependencies with `bun install --frozen-lockfile`.
+3. Read the local Khala/OpenAgents agent token into
+   `OPENAGENTS_AGENT_TOKEN` without printing it.
+4. Run the Pylon CLI from that worktree's source:
+   `bun apps/pylon/src/index.ts ...`.
+5. Set `PYLON_OPENAGENTS_BASE_URL=https://openagents.com`.
+6. Set `PYLON_DISABLE_DAEMON_ROUTING=1` so a stale long-lived local daemon
+   cannot intercept the command.
+7. Immediately before dispatch, run:
+   - `codex accounts list --json`
+   - `provider go-online --json`
+   - `presence heartbeat --json`
+8. Confirm the returned Pylon is linked, heartbeat-fresh, and has at least one
+   available Codex slot.
+9. Dispatch with the typed coding workflow, not generic chat:
+   `khala request --workflow codex_agent_task --pylon-ref <pylon-ref> ...`.
+10. Pin repo, branch, and exact commit in the request.
+11. Keep the prompt bounded and public-safe; prompts over the accepted request
+    length were rejected before assignment creation.
+12. Run the returned assignment locally with
+    `assignment run-no-spend --assignment-ref <assignment-ref> --json`.
+13. Wait for accepted closeout, inspect the materialized patch, and run local
+    verification before committing.
+14. Read assignment-scoped truth with
+    `khala proof --assignment-ref <assignment-ref> --json`.
+
+That exact flow is what produced accepted Pylon/Codex assignments, owner-only
+ATIF traces, private raw Codex archives, and exact `token_usage_events` rows.
+
+The most common false-positive states were:
+
+- **Generic Khala chat**: can answer normally but does not create a local Codex
+  assignment.
+- **No local token in `OPENAGENTS_AGENT_TOKEN`**: the CLI may run, but it cannot
+  prove the owner/agent scope needed by production assignment surfaces.
+- **Stale daemon routing**: commands may hit old local code and produce behavior
+  that does not match the current worktree.
+- **Fresh heartbeat but no available Codex slot**: dispatch correctly returns
+  admission failure before assignment creation.
+- **Assignment created but `run-no-spend` skipped**: nothing local claims and
+  executes the work, so there is no Codex closeout.
+- **Waiting for the public counter instead of proof**: the global counter is
+  aggregate and can move because of unrelated activity; proof is the
+  assignment-scoped source of truth.
+
+The most recent post-audit #6311 zero-edit delegation used the same flow:
+
+- assignment:
+  `assignment.public.khala_coding.chatcmpl_50871eacbf1647439bc273f7b4f118f3`
+- closeout: `assignment.closeout.025cc2fde96f601dc661f1a0`
+- result: accepted, `0` edits, `26` commands, `1` Codex turn, verifier passed
+- exact usage: `917,278` total tokens (`913,476` input, `3,802` output,
+  `100` reasoning, `799,488` cache read)
+- trace proof: `38` owner-only ATIF traces
+- raw-event proof: `64` private SDK events / `795,253` bytes
+
+This confirmed the important operational point: a "no code change needed" run
+still creates trace/proof/accounting evidence when it actually goes through
+Pylon/Codex. Conversely, a failed pre-assignment gate, a plain chat response, or
+an unclaimed assignment will not and should not move the assignment-scoped proof
+surface.
+
+## Token Counter Timing Clarification
+
+The token counter finally updates when canonical usage is inserted, not while a
+Codex process is merely active.
+
+For Pylon/Codex runs, streamed SDK chunks are saved during execution as
+owner-only observability evidence. Those chunks are not exact usage records and
+do not update the public served-token counter. The public ledger updates only
+after Codex emits final SDK usage for a turn, the Pylon/Codex closeout path posts
+that completed turn, and the server inserts the exact `token_usage_events` row.
+
+So the behavior observed in the browser is expected for exact accounting:
+
+- while Codex is thinking, running commands, and streaming raw events, trace
+  chunks may be accumulating privately, but the exact public token count can
+  stay flat;
+- when the turn closes and exact usage lands, the public scalar is immediately
+  live-at-read over the ledger and the website's live counter can animate to the
+  new authoritative total;
+- if several assignments or chats finish close together, the global counter can
+  jump by aggregate ledger movement, which is why assignment-scoped proof is the
+  only reliable way to audit one run.
+
 ## Trace And Raw Event Persistence
 
 The first-class proof command reports:
