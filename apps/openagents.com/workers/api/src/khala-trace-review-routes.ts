@@ -70,6 +70,24 @@ export type KhalaTraceReviewRawEventHighlight = Readonly<{
   rawEventRef: string
 }>
 
+export type KhalaTraceReviewBackendIncidentBucket = Readonly<{
+  kind: 'unhandled_exception' | 'gateway_timeout' | 'silent_agent_crash'
+  source: string
+  count: number
+  criticalCount: number
+}>
+
+export type KhalaTraceReviewBackendIncidentHighlight = Readonly<{
+  errorName: string
+  incidentRef: string
+  kind: 'unhandled_exception' | 'gateway_timeout' | 'silent_agent_crash'
+  method: string
+  observedAt: string
+  routePattern: string
+  source: string
+  statusCode: number | null
+}>
+
 export type KhalaTraceReviewFailureMode = Readonly<{
   failureRef: string
   label: string
@@ -124,6 +142,15 @@ export type KhalaTraceReviewFacts = Readonly<{
     byteLength: number
   }
   rawEventHighlights: ReadonlyArray<KhalaTraceReviewRawEventHighlight>
+  backendIncidentSummary: {
+    rowCount: number
+    criticalCount: number
+    unhandledExceptionCount: number
+    gatewayTimeoutCount: number
+    silentAgentCrashCount: number
+  }
+  backendIncidentBuckets: ReadonlyArray<KhalaTraceReviewBackendIncidentBucket>
+  backendIncidentHighlights: ReadonlyArray<KhalaTraceReviewBackendIncidentHighlight>
 }>
 
 export type KhalaTraceReviewReport = Readonly<{
@@ -132,16 +159,22 @@ export type KhalaTraceReviewReport = Readonly<{
   generatedAt: string
   window: KhalaTraceReviewWindow
   sourceTables: ReadonlyArray<
-    'agent_traces' | 'token_usage_events' | 'pylon_codex_raw_events'
+    | 'agent_traces'
+    | 'token_usage_events'
+    | 'pylon_codex_raw_events'
+    | 'backend_incident_events'
   >
   aggregates: {
     tokens: KhalaTraceReviewFacts['tokenSummary']
     traces: KhalaTraceReviewFacts['traceSummary']
     rawCodexEvents: KhalaTraceReviewFacts['rawEventSummary']
+    backendIncidents: KhalaTraceReviewFacts['backendIncidentSummary']
   }
   modelMix: ReadonlyArray<KhalaTraceReviewModelBucket>
   demandSources: ReadonlyArray<KhalaTraceReviewBucket>
   outcomes: ReadonlyArray<KhalaTraceReviewOutcomeBucket>
+  backendIncidentBuckets: ReadonlyArray<KhalaTraceReviewBackendIncidentBucket>
+  backendIncidentHighlights: ReadonlyArray<KhalaTraceReviewBackendIncidentHighlight>
   notableTraces: ReadonlyArray<KhalaTraceReviewNotableTrace>
   userIntents: ReadonlyArray<KhalaTraceReviewUserIntent>
   failureModes: ReadonlyArray<KhalaTraceReviewFailureMode>
@@ -269,7 +302,20 @@ export const makeD1KhalaTraceReviewStore = (
   db: D1Database,
 ): KhalaTraceReviewStore => ({
   readFacts: async input => {
-    const [tokenSummary, demandRows, modelRows, outcomeRows, traceSummary, traceDemandRows, notableRows, rawSummary, rawRows] = await Promise.all([
+    const [
+      tokenSummary,
+      demandRows,
+      modelRows,
+      outcomeRows,
+      traceSummary,
+      traceDemandRows,
+      notableRows,
+      rawSummary,
+      rawRows,
+      backendIncidentSummary,
+      backendIncidentBucketRows,
+      backendIncidentRows,
+    ] = await Promise.all([
       db
         .prepare(
           `SELECT COUNT(*) AS event_count,
@@ -397,9 +443,80 @@ export const makeD1KhalaTraceReviewStore = (
         )
         .bind(input.window.since, input.window.until, input.limit)
         .all<Record<string, unknown>>(),
+      db
+        .prepare(
+          `SELECT COUNT(*) AS row_count,
+                  COALESCE(SUM(CASE WHEN severity = 'critical' THEN occurrence_count ELSE 0 END), 0) AS critical_count,
+                  COALESCE(SUM(CASE WHEN kind = 'unhandled_exception' THEN occurrence_count ELSE 0 END), 0) AS unhandled_exception_count,
+                  COALESCE(SUM(CASE WHEN kind = 'gateway_timeout' THEN occurrence_count ELSE 0 END), 0) AS gateway_timeout_count,
+                  COALESCE(SUM(CASE WHEN kind = 'silent_agent_crash' THEN occurrence_count ELSE 0 END), 0) AS silent_agent_crash_count
+             FROM backend_incident_events
+            WHERE observed_at >= ? AND observed_at < ?`,
+        )
+        .bind(input.window.since, input.window.until)
+        .first<Record<string, unknown>>(),
+      db
+        .prepare(
+          `SELECT kind,
+                  source,
+                  COALESCE(SUM(occurrence_count), 0) AS count,
+                  COALESCE(SUM(CASE WHEN severity = 'critical' THEN occurrence_count ELSE 0 END), 0) AS critical_count
+             FROM backend_incident_events
+            WHERE observed_at >= ? AND observed_at < ?
+            GROUP BY kind, source
+            ORDER BY critical_count DESC, count DESC
+            LIMIT ?`,
+        )
+        .bind(input.window.since, input.window.until, input.limit)
+        .all<Record<string, unknown>>(),
+      db
+        .prepare(
+          `SELECT incident_ref,
+                  kind,
+                  source,
+                  route_pattern,
+                  method,
+                  status_code,
+                  error_name,
+                  observed_at
+             FROM backend_incident_events
+            WHERE observed_at >= ? AND observed_at < ?
+            ORDER BY observed_at DESC
+            LIMIT ?`,
+        )
+        .bind(input.window.since, input.window.until, input.limit)
+        .all<Record<string, unknown>>(),
     ])
 
     return {
+      backendIncidentBuckets: (backendIncidentBucketRows.results ?? []).map(row => ({
+        count: n(row.count),
+        criticalCount: n(row.critical_count),
+        kind: s(row.kind) as KhalaTraceReviewBackendIncidentBucket['kind'],
+        source: s(row.source),
+      })),
+      backendIncidentHighlights: (backendIncidentRows.results ?? []).map(row => ({
+        errorName: s(row.error_name),
+        incidentRef: s(row.incident_ref),
+        kind: s(row.kind) as KhalaTraceReviewBackendIncidentHighlight['kind'],
+        method: s(row.method, 'UNKNOWN'),
+        observedAt: s(row.observed_at),
+        routePattern: s(row.route_pattern),
+        source: s(row.source),
+        statusCode:
+          row.status_code === null || row.status_code === undefined
+            ? null
+            : n(row.status_code),
+      })),
+      backendIncidentSummary: {
+        criticalCount: n(backendIncidentSummary?.critical_count),
+        gatewayTimeoutCount: n(backendIncidentSummary?.gateway_timeout_count),
+        rowCount: n(backendIncidentSummary?.row_count),
+        silentAgentCrashCount: n(backendIncidentSummary?.silent_agent_crash_count),
+        unhandledExceptionCount: n(
+          backendIncidentSummary?.unhandled_exception_count,
+        ),
+      },
       modelMix: (modelRows.results ?? []).map(row => ({
         count: n(row.count),
         model: s(row.model),
@@ -523,6 +640,36 @@ export const buildKhalaTraceReviewReport = (input: {
     })
   }
 
+  if (input.facts.backendIncidentSummary.unhandledExceptionCount > 0) {
+    failureModes.push({
+      count: input.facts.backendIncidentSummary.unhandledExceptionCount,
+      evidenceRefs: ['table.backend_incident_events.kind.unhandled_exception'],
+      failureRef: 'failure.khala_trace_review.backend_unhandled_exception',
+      label: 'Unhandled backend exceptions captured by Cloudflare incident sink',
+      severity: 'critical',
+    })
+  }
+
+  if (input.facts.backendIncidentSummary.gatewayTimeoutCount > 0) {
+    failureModes.push({
+      count: input.facts.backendIncidentSummary.gatewayTimeoutCount,
+      evidenceRefs: ['table.backend_incident_events.kind.gateway_timeout'],
+      failureRef: 'failure.khala_trace_review.backend_gateway_timeout',
+      label: 'Gateway timeout incidents captured by Cloudflare incident sink',
+      severity: 'critical',
+    })
+  }
+
+  if (input.facts.backendIncidentSummary.silentAgentCrashCount > 0) {
+    failureModes.push({
+      count: input.facts.backendIncidentSummary.silentAgentCrashCount,
+      evidenceRefs: ['table.backend_incident_events.kind.silent_agent_crash'],
+      failureRef: 'failure.khala_trace_review.silent_agent_crash',
+      label: 'Silent agent crash incidents captured by Cloudflare incident sink',
+      severity: 'critical',
+    })
+  }
+
   const userIntents = input.facts.traceByDemandSource.map(bucket => ({
     count: bucket.count,
     evidenceRefs: [`demand_source.${bucket.label}`],
@@ -564,6 +711,7 @@ export const buildKhalaTraceReviewReport = (input: {
 
   return publicSafeReport({
     aggregates: {
+      backendIncidents: input.facts.backendIncidentSummary,
       rawCodexEvents: input.facts.rawEventSummary,
       tokens: input.facts.tokenSummary,
       traces: input.facts.traceSummary,
@@ -572,6 +720,8 @@ export const buildKhalaTraceReviewReport = (input: {
       itemRefs: triageItems.map(item => item.triageRef),
       producedItemCount: triageItems.length,
     },
+    backendIncidentBuckets: input.facts.backendIncidentBuckets,
+    backendIncidentHighlights: input.facts.backendIncidentHighlights,
     demandSources,
     failureModes,
     generatedAt: input.generatedAt,
@@ -588,6 +738,7 @@ export const buildKhalaTraceReviewReport = (input: {
     schemaVersion: 'openagents.khala.trace_review.v1',
     sourceTables: [
       'agent_traces',
+      'backend_incident_events',
       'token_usage_events',
       'pylon_codex_raw_events',
     ],

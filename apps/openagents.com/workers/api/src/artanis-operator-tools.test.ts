@@ -1990,6 +1990,13 @@ describe('get_synthetic_load_status (active synthetic-load runs) - iteration 12'
 // outcomes + failureModes. Used to drive the get_trace_review read tool.
 const TRACE_REVIEW_REPORT_FIXTURE = {
   aggregates: {
+    backendIncidents: {
+      criticalCount: 2,
+      gatewayTimeoutCount: 0,
+      rowCount: 2,
+      silentAgentCrashCount: 0,
+      unhandledExceptionCount: 2,
+    },
     rawCodexEvents: { byteLength: 4096, eventCount: 9, rowCount: 3 },
     tokens: {
       eventCount: 42,
@@ -2060,6 +2067,7 @@ describe('get_trace_review (live Khala trace-review report) - iteration 11', () 
     expect(result).toContain('12,000 tokens')
     expect(result).toContain('17 traces')
     expect(result).toContain('3 raw Codex event rows')
+    expect(result).toContain('2 backend incident rows (2 critical)')
     // Model mix.
     expect(result).toContain('Model mix (2):')
     expect(result).toContain('openagents/khala: 30 calls, 9,000 tokens')
@@ -2084,6 +2092,7 @@ describe('get_trace_review (live Khala trace-review report) - iteration 11', () 
       new Response(
         JSON.stringify({
           aggregates: {
+            backendIncidents: { criticalCount: 0, rowCount: 0 },
             rawCodexEvents: { rowCount: 0 },
             tokens: { eventCount: 0, totalTokens: 0 },
             traces: { traceCount: 0 },
@@ -2101,6 +2110,7 @@ describe('get_trace_review (live Khala trace-review report) - iteration 11', () 
     expect(result).toContain('Outcomes: (none)')
     expect(result).toContain('Failure modes: (none)')
     expect(result).toContain('0 token rows')
+    expect(result).toContain('0 backend incident rows')
   })
 
   test('a failing/unreachable fetch returns an honest "(could not fetch trace review ...)" string, never fabricated numbers', async () => {
@@ -2212,6 +2222,7 @@ describe('get_trace_review (live Khala trace-review report) - iteration 11', () 
     expect(empty).not.toBeNull()
     expect(empty?.modelMix).toEqual([])
     expect(empty?.totalTokens).toBe(0)
+    expect(empty?.backendIncidentCount).toBe(0)
     expect(empty?.windowHours).toBeNull()
   })
 })
