@@ -760,12 +760,37 @@ async function executeRuntimeGate(
   }
 }
 
+const emptyAssignmentStore = (): AssignmentStore => ({
+  schema: "openagents.pylon.assignment_state.v0.3",
+  leases: {},
+})
+
 async function loadAssignmentStore(state: PylonLocalState): Promise<AssignmentStore> {
   await ensureStateDirectories(state.paths)
   if (!existsSync(state.paths.assignmentState)) {
-    return { schema: "openagents.pylon.assignment_state.v0.3", leases: {} }
+    return emptyAssignmentStore()
   }
-  return JSON.parse(await readFile(state.paths.assignmentState, "utf8")) as AssignmentStore
+  // Fail-soft: a truncated/corrupt local assignment-state file (e.g. a process
+  // killed mid-write during a previous run) must not brick every future
+  // run-no-spend with an uncaught JSON parse error. Treat an unreadable store as
+  // empty; the next write re-materializes a valid store, and server-side lease
+  // expiry still reconciles any abandoned leases.
+  try {
+    const parsed = JSON.parse(
+      await readFile(state.paths.assignmentState, "utf8"),
+    ) as unknown
+    if (
+      parsed !== null &&
+      typeof parsed === "object" &&
+      typeof (parsed as AssignmentStore).leases === "object" &&
+      (parsed as AssignmentStore).leases !== null
+    ) {
+      return parsed as AssignmentStore
+    }
+    return emptyAssignmentStore()
+  } catch {
+    return emptyAssignmentStore()
+  }
 }
 
 async function writeAssignmentStore(state: PylonLocalState, store: AssignmentStore) {
