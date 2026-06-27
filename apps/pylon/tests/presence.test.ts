@@ -124,6 +124,13 @@ function fakePresenceCliServer() {
       const body = text ? JSON.parse(text) : {}
       requests.push({ path: url.pathname, body, headers: request.headers })
 
+      if (request.method === "GET" && url.pathname.includes("/assignments")) {
+        return Response.json({
+          schema: "openagents.pylon.assignment_poll_response.v0.3",
+          leases: [],
+        })
+      }
+
       expect(request.headers.get("authorization")).toBe("Bearer oa_agent_test_agent_token")
       expect(request.headers.get("x-pylon-ref")).toBe(body.pylonRef)
 
@@ -159,6 +166,7 @@ async function runPresenceCli(input: {
     env: {
       ...process.env,
       OPENAGENTS_AGENT_TOKEN: "oa_agent_test_agent_token",
+      PYLON_ASSIGNMENT_WORKER: "0",
       PYLON_DISABLE_DAEMON_ROUTING: "1",
       PYLON_DISABLE_OPENCODE_STARTUP: "1",
       PYLON_SPARK_BACKUP_DISABLED: "1",
@@ -194,6 +202,7 @@ async function runProviderCli(input: {
     cwd: CWD,
     env: {
       ...process.env,
+      PYLON_ASSIGNMENT_WORKER: "0",
       PYLON_DISABLE_DAEMON_ROUTING: "1",
       PYLON_DISABLE_OPENCODE_STARTUP: "1",
       PYLON_SPARK_BACKUP_DISABLED: "1",
@@ -571,7 +580,11 @@ describe("Pylon presence registration and heartbeat", () => {
         pylonRef = body.pylonRef
       }
 
-      expect(fake.requests.map((request) => request.path)).toEqual([
+      expect(
+        fake.requests
+          .map((request) => request.path)
+          .filter((path) => !path.includes("/assignments")),
+      ).toEqual([
         "/api/pylons/register",
         `/api/pylons/${encodeURIComponent(pylonRef)}/heartbeat`,
         "/api/pylon-links/complete",
@@ -598,7 +611,11 @@ describe("Pylon presence registration and heartbeat", () => {
       expect(result.stderr).toBe("")
       const body = JSON.parse(result.stdout)
       expect(body.heartbeatSequence).toBe(1)
-      expect(fake.requests.map((request) => request.path)).toEqual([
+      expect(
+        fake.requests
+          .map((request) => request.path)
+          .filter((path) => !path.includes("/assignments")),
+      ).toEqual([
         `/api/pylons/${encodeURIComponent(body.pylonRef)}/heartbeat`,
       ])
     })
@@ -734,6 +751,13 @@ describe("Pylon presence registration and heartbeat", () => {
         args: ["go-online", "--json"],
         env: {
           CODEX_HOME: codexHome,
+          ANTHROPIC_API_KEY: "",
+          CLAUDE_CODE_OAUTH_TOKEN: "",
+          CLAUDE_CONFIG_DIR: join(home, "missing-claude"),
+          OPENAGENTS_PYLON_CLAUDE_BUSY: "0",
+          OPENAGENTS_PYLON_CLAUDE_CONCURRENCY: "0",
+          OPENAGENTS_PYLON_CLAUDE_QUEUED: "0",
+          OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY: "5",
           OPENAGENTS_PYLON_CODEX_BUSY: "0",
           OPENAGENTS_PYLON_CODEX_CONCURRENCY: "5",
           OPENAGENTS_PYLON_CODEX_QUEUED: "0",
@@ -753,9 +777,14 @@ describe("Pylon presence registration and heartbeat", () => {
       expect(json.ownCapacityDispatch).toMatchObject({
         assignmentGateRef: "gate.public.pylon.assignment_dispatch.controlled.v1",
         availableCodexAssignments: 5,
+        availableClaudeAssignments: 0,
         maxCodexAssignments: 5,
+        maxClaudeAssignments: 0,
         policyRefs: ["policy.public.khala_coding.own_capacity_only"],
-        requiredCapabilityRefs: [CODEX_AGENT_CAPABILITY_REF],
+        requiredCapabilityRefs: [
+          CODEX_AGENT_CAPABILITY_REF,
+          CLAUDE_AGENT_CAPABILITY_REF,
+        ],
       })
       // #6354: the default Codex account (no registry entries) advertises its
       // own per-account slots alongside the pooled refs.
@@ -777,7 +806,16 @@ describe("Pylon presence registration and heartbeat", () => {
       expect(json.ownCapacityDispatch.codexAccounts).toEqual([
         { accountKey: defaultKey, available: 5, busy: 0, queued: 0, ready: 5 },
       ])
+      expect(json.ownCapacityDispatch.claude).toEqual({
+        available: 0,
+        busy: 0,
+        queued: 0,
+        ready: 0,
+        service: "claude",
+      })
+      expect(json.ownCapacityDispatch.claudeAccounts).toEqual([])
       expect(json.ownCapacityDispatch.totalAvailableCodexAssignments).toBe(5)
+      expect(json.ownCapacityDispatch.totalAvailableClaudeAssignments).toBe(0)
       expect(json.codingCapacity).toContainEqual({
         available: 5,
         busy: 0,
@@ -825,6 +863,13 @@ describe("Pylon presence registration and heartbeat", () => {
         args: ["go-online", "--json"],
         env: {
           CODEX_HOME: codexHome,
+          ANTHROPIC_API_KEY: "",
+          CLAUDE_CODE_OAUTH_TOKEN: "",
+          CLAUDE_CONFIG_DIR: join(home, "missing-claude"),
+          OPENAGENTS_PYLON_CLAUDE_BUSY: "0",
+          OPENAGENTS_PYLON_CLAUDE_CONCURRENCY: "0",
+          OPENAGENTS_PYLON_CLAUDE_QUEUED: "0",
+          OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY: "5",
           OPENAGENTS_PYLON_CODEX_BUSY: "0",
           OPENAGENTS_PYLON_CODEX_CONCURRENCY: "5",
           OPENAGENTS_PYLON_CODEX_QUEUED: "0",

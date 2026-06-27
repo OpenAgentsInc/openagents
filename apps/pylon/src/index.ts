@@ -16,6 +16,7 @@ import {
   writeTassadarCapabilityEvidence,
 } from "./tassadar-capability.js"
 import {
+  CLAUDE_AGENT_CAPABILITY_REF,
   loadClaudeAgentConfig,
   probeClaudeAgentReadiness,
   withClaudeAgentCapability,
@@ -185,11 +186,14 @@ import {
   type PylonActiveCodingRunCounts,
 } from "./active-assignment-runs.js"
 import {
+  claudeAccountCapacityRefs,
+  claudeBusyByAccount,
   completePylonLink,
   codexAccountCapacityRefs,
   codexBusyByAccount,
   codingServiceCapacityFromRuntime,
   codingServiceCapacityRefs,
+  localClaudeAccountCapacities,
   localCodexAccountCapacities,
   localCodingServiceReadyCounts,
   presenceClientOptionsFromEnv,
@@ -4941,21 +4945,34 @@ async function main() {
         const codingRefs = codingServiceCapacityRefs(codingCapacity)
         // #6354: per-Codex-account capacity so `provider go-online --json`
         // exposes each linked account's own concurrent slots and busy load.
+        const activeCountsByAccount = await activeCodingRunCountsByAccount(state.paths)
         const codexAccounts = await localCodexAccountCapacities(
           { ...state, runtime: nextRuntime },
           summary,
           Bun.env,
-          codexBusyByAccount(
-            await activeCodingRunCountsByAccount(state.paths),
-          ),
+          codexBusyByAccount(activeCountsByAccount),
+        )
+        const claudeAccounts = await localClaudeAccountCapacities(
+          { ...state, runtime: nextRuntime },
+          summary,
+          Bun.env,
+          claudeBusyByAccount(activeCountsByAccount),
         )
         const codexAccountRefs = codexAccountCapacityRefs(codexAccounts)
+        const claudeAccountRefs = claudeAccountCapacityRefs(claudeAccounts)
         const codexCapacity = codingCapacity.find((item) => item.service === "codex") ?? {
           available: 0,
           busy: 0,
           queued: 0,
           ready: 0,
           service: "codex" as const,
+        }
+        const claudeCapacity = codingCapacity.find((item) => item.service === "claude") ?? {
+          available: 0,
+          busy: 0,
+          queued: 0,
+          ready: 0,
+          service: "claude" as const,
         }
         const result = {
           ok: true,
@@ -4974,23 +4991,33 @@ async function main() {
           ownCapacityDispatch: {
             schema: "openagents.pylon.own_capacity_dispatch.v1",
             codex: codexCapacity,
+            claude: claudeCapacity,
             assignmentGateRef: "gate.public.pylon.assignment_dispatch.controlled.v1",
             capacityRefs: [
               ...codingRefs.capacityRefs.filter((ref) =>
-                ref.startsWith("capacity.coding.codex."),
+                ref.startsWith("capacity.coding.codex.") ||
+                ref.startsWith("capacity.coding.claude."),
               ),
               ...codexAccountRefs.capacityRefs,
+              ...claudeAccountRefs.capacityRefs,
             ],
             loadRefs: [
               ...codingRefs.loadRefs.filter((ref) =>
-                ref.startsWith("load.coding.codex."),
+                ref.startsWith("load.coding.codex.") ||
+                ref.startsWith("load.coding.claude."),
               ),
               ...codexAccountRefs.loadRefs,
+              ...claudeAccountRefs.loadRefs,
             ],
             policyRefs: ["policy.public.khala_coding.own_capacity_only"],
-            requiredCapabilityRefs: [CODEX_AGENT_CAPABILITY_REF],
+            requiredCapabilityRefs: [
+              CODEX_AGENT_CAPABILITY_REF,
+              CLAUDE_AGENT_CAPABILITY_REF,
+            ],
             maxCodexAssignments: codexCapacity.ready,
             availableCodexAssignments: codexCapacity.available,
+            maxClaudeAssignments: claudeCapacity.ready,
+            availableClaudeAssignments: claudeCapacity.available,
             // #6354: per-account breakdown; pooled `codex` totals above sum
             // these once the heartbeat advertises per-account refs.
             codexAccounts: codexAccounts.map((account) => ({
@@ -5005,6 +5032,24 @@ async function main() {
               0,
             ),
             totalMaxCodexAssignments: codexAccounts.reduce(
+              (sum, account) => sum + account.ready,
+              0,
+            ),
+            // #6390/#6421: same public-safe per-account projection for Claude,
+            // so a separate claude-supervisor can target and refill Claude
+            // accounts without parsing pooled Codex-only fields.
+            claudeAccounts: claudeAccounts.map((account) => ({
+              accountKey: account.accountKey,
+              available: account.available,
+              busy: account.busy,
+              queued: account.queued,
+              ready: account.ready,
+            })),
+            totalAvailableClaudeAssignments: claudeAccounts.reduce(
+              (sum, account) => sum + account.available,
+              0,
+            ),
+            totalMaxClaudeAssignments: claudeAccounts.reduce(
               (sum, account) => sum + account.ready,
               0,
             ),
