@@ -201,6 +201,21 @@ describe('Worker document route fallback', () => {
     ).toBe(false)
   })
 
+  test('does not redirect unknown forum document paths to the homepage', () => {
+    expect(
+      shouldRedirectUnknownDocumentToHome(
+        requestFor('/forum/f/product-promises/not-a-topic'),
+        '/forum/f/product-promises/not-a-topic',
+      ),
+    ).toBe(false)
+    expect(
+      shouldRedirectUnknownDocumentToHome(
+        requestFor('/forum/not-a-real-route'),
+        '/forum/not-a-real-route',
+      ),
+    ).toBe(false)
+  })
+
   test('does not redirect the forum OG image route (treated as a file)', () => {
     expect(
       shouldRedirectUnknownDocumentToHome(

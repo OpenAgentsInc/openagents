@@ -178,6 +178,7 @@ export const shouldRedirectUnknownDocumentToHome = (
     pathname.startsWith('/assets/') ||
     pathname.startsWith('/auth/') ||
     pathname.startsWith('/checkout') ||
+    pathname.startsWith('/forum/') ||
     pathname.startsWith('/openagents-agent-claim')
   ) {
     return false

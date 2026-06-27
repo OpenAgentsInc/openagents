@@ -687,6 +687,12 @@ const idempotencyKeyFromRequest = (request: Request): string | undefined => {
     : value
 }
 
+const forumTopicHref = (topicId: string): string =>
+  `/forum/t/${encodeURIComponent(topicId)}`
+
+const forumTopicWebUrl = (topicId: string): string =>
+  `https://openagents.com${forumTopicHref(topicId)}`
+
 const forumListLimitFromUrl = (url: URL): number | Response => {
   const raw = url.searchParams.get('limit')
 
@@ -1637,6 +1643,8 @@ const createTopicResponse = (
         idempotent: true,
         receiptRefs: [],
         topic: existingTopic,
+        topicHref: forumTopicHref(existingTopic.topicId),
+        webUrl: forumTopicWebUrl(existingTopic.topicId),
       })
     }
 
@@ -1721,6 +1729,8 @@ const createTopicResponse = (
         idempotent: false,
         receiptRefs: [],
         topic: created.topic,
+        topicHref: forumTopicHref(created.topic.topicId),
+        webUrl: forumTopicWebUrl(created.topic.topicId),
       },
       { status: 201 },
     )

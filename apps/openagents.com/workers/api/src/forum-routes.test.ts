@@ -7932,11 +7932,15 @@ describe('Forum routes', () => {
     )
     const createBody = (await createResponse.json()) as Readonly<{
       topic: Readonly<{ slug: string; topicId: string }>
+      topicHref: string
+      webUrl: string
     }>
     const topicId = createBody.topic.topicId
     const slug = createBody.topic.slug
 
     expect(createResponse.status).toBe(201)
+    expect(createBody.topicHref).toBe(`/forum/t/${topicId}`)
+    expect(createBody.webUrl).toBe(`https://openagents.com/forum/t/${topicId}`)
     expect(typeof slug).toBe('string')
     expect(slug.length).toBeGreaterThan(0)
     // The created slug must differ from the topicId so the two lookup forms are
@@ -7962,9 +7966,13 @@ describe('Forum routes', () => {
 
     const byIdBody = (await byId.json()) as Readonly<{
       topic: Readonly<{ slug: string; title: string; topicId: string }>
+      topicHref: string
+      webUrl: string
     }>
     const bySlugBody = (await bySlug.json()) as Readonly<{
       topic: Readonly<{ slug: string; title: string; topicId: string }>
+      topicHref: string
+      webUrl: string
     }>
 
     // Both URL forms must resolve to the very same topic.
@@ -7972,6 +7980,10 @@ describe('Forum routes', () => {
     expect(bySlugBody.topic.topicId).toBe(byIdBody.topic.topicId)
     expect(bySlugBody.topic.slug).toBe(slug)
     expect(bySlugBody.topic.title).toBe('Slug resolution works')
+    expect(byIdBody.topicHref).toBe(`/forum/t/${topicId}`)
+    expect(bySlugBody.topicHref).toBe(`/forum/t/${topicId}`)
+    expect(byIdBody.webUrl).toBe(`https://openagents.com/forum/t/${topicId}`)
+    expect(bySlugBody.webUrl).toBe(`https://openagents.com/forum/t/${topicId}`)
   })
 
   test('search only returns listed public visible content', async () => {
@@ -9911,6 +9923,10 @@ describe('Forum routes', () => {
       firstPost: { bodyText: 'Retry-safe body.' },
       idempotent: true,
       topic: { title: 'Retry safe topic' },
+      topicHref: expect.stringMatching(/^\/forum\/t\/[0-9a-f-]+$/),
+      webUrl: expect.stringMatching(
+        /^https:\/\/openagents\.com\/forum\/t\/[0-9a-f-]+$/,
+      ),
     })
     await expect(conflict.json()).resolves.toMatchObject({
       error: 'idempotency_key_conflict',

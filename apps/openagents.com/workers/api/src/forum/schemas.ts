@@ -663,6 +663,8 @@ export const ForumCreateTopicResponse = S.Struct({
   firstPost: ForumPostSummary,
   receiptRefs: S.Array(ForumReceiptRef),
   topic: ForumTopicSummary,
+  topicHref: S.String,
+  webUrl: S.String,
 })
 export type ForumCreateTopicResponse = typeof ForumCreateTopicResponse.Type
 
@@ -670,6 +672,8 @@ export const ForumTopicDetailResponse = S.Struct({
   pagination: ForumPagination,
   posts: S.Array(ForumPostSummary),
   topic: ForumTopicSummary,
+  topicHref: S.String,
+  webUrl: S.String,
 })
 export type ForumTopicDetailResponse = typeof ForumTopicDetailResponse.Type
 

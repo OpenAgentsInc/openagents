@@ -1270,6 +1270,10 @@ describe('Forum repository foundation', () => {
       firstPost.postId,
       reply.postId,
     ])
+    expect(topicDetail).toMatchObject({
+      topicHref: `/forum/t/${topic.topicId}`,
+      webUrl: `https://openagents.com/forum/t/${topic.topicId}`,
+    })
     expect(
       newestFirstTopicDetail?.posts.map(post => post.postId),
     ).toStrictEqual([reply.postId, firstPost.postId])

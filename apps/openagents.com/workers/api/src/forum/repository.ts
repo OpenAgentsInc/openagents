@@ -2824,6 +2824,8 @@ export const readForumTopicDetail = (
       },
       posts: postsWithTipStats(topicPosts, tipStats),
       topic: topicWithLastPost(topicWithLiveCounts, lastPost),
+      topicHref: `/forum/t/${encodeURIComponent(topic.topicId)}`,
+      webUrl: forumTopicPublicUrl(topic.topicId),
     })
   })
 
