@@ -231,6 +231,7 @@ export type PylonKhalaCloseoutResult = {
 const durablePrefix = "/v1/chat/completions/durable/"
 const codexAssignmentProofPath = "/api/pylon/codex/proof"
 const codexAssignmentTraceStatusPath = "/api/pylon/codex/trace-status"
+const publicSafeDiagnosticRefPattern = /^[A-Za-z0-9_.:/=-]{1,200}$/
 
 function requireAgentToken(options: TipsNetworkOptions): string {
   const token = options.agentToken ?? process.env.OPENAGENTS_AGENT_TOKEN
@@ -238,6 +239,56 @@ function requireAgentToken(options: TipsNetworkOptions): string {
     throw new Error("OPENAGENTS_AGENT_TOKEN or --agent-token is required for Khala requests")
   }
   return token
+}
+
+function publicSafeDiagnosticRefs(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .filter((item): item is string => typeof item === "string")
+    .map(item => item.trim())
+    .filter(item => item !== "" && publicSafeDiagnosticRefPattern.test(item))
+    .slice(0, 20)
+}
+
+function khalaApiErrorReason(status: number, text: string): string {
+  const rawReason = text.trim() || String(status)
+  try {
+    const payload = JSON.parse(text) as {
+      dispatchGate?: { blockerRefs?: unknown }
+      error?: unknown
+      evidenceRefs?: unknown
+      reason?: unknown
+      requestedPylonRef?: unknown
+    }
+    const reason =
+      typeof payload.reason === "string"
+        ? payload.reason
+        : typeof payload.error === "string"
+          ? payload.error
+          : rawReason
+    const evidenceRefs = [
+      ...publicSafeDiagnosticRefs(payload.evidenceRefs),
+      ...publicSafeDiagnosticRefs(payload.dispatchGate?.blockerRefs),
+    ]
+    const uniqueEvidenceRefs = [...new Set(evidenceRefs)]
+    const requestedPylonRef =
+      typeof payload.requestedPylonRef === "string" &&
+      pylonRefPattern.test(payload.requestedPylonRef)
+        ? payload.requestedPylonRef
+        : null
+
+    return [
+      reason,
+      requestedPylonRef === null ? null : `requestedPylonRef=${requestedPylonRef}`,
+      uniqueEvidenceRefs.length === 0
+        ? null
+        : `evidenceRefs=${uniqueEvidenceRefs.join(",")}`,
+    ]
+      .filter((item): item is string => item !== null)
+      .join("; ")
+  } catch {
+    return rawReason
+  }
 }
 
 const byteLength = (value: string): number => new TextEncoder().encode(value).byteLength
@@ -697,18 +748,7 @@ async function khalaApiRequest(
   })
   if (!response.ok) {
     const text = await response.text()
-    let reason = text.trim() || String(response.status)
-    try {
-      const payload = JSON.parse(text) as { error?: unknown; reason?: unknown }
-      reason =
-        typeof payload.reason === "string"
-          ? payload.reason
-          : typeof payload.error === "string"
-            ? payload.error
-            : reason
-    } catch {
-      // Keep the raw bounded response text as the reason.
-    }
+    const reason = khalaApiErrorReason(response.status, text)
     throw new Error(`pylon khala request failed (${response.status}): ${reason}`)
   }
   return response

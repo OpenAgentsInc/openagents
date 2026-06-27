@@ -22,7 +22,14 @@ export type PylonActiveAssignmentRun = {
 
 export type PylonActiveCodingRunCounts = Partial<Record<PylonCodingServiceRef, number>>
 
+export type PylonAssignmentLeaseLike = Readonly<{
+  capabilityRefs?: ReadonlyArray<string>
+  expiresAt?: string
+}>
+
 const DEFAULT_ACTIVE_RUN_TTL_MS = 120_000
+const CODEX_CAPABILITY_REF = "capability.pylon.local_codex"
+const CLAUDE_CAPABILITY_REF = "capability.pylon.local_claude_agent"
 
 const stableRef = (prefix: string, value: string) =>
   `${prefix}.${createHash("sha256").update(value).digest("hex").slice(0, 32)}`
@@ -132,4 +139,46 @@ export async function activeCodingRunCounts(
   }
 
   return counts
+}
+
+const leaseIsUnexpired = (lease: PylonAssignmentLeaseLike, now: Date): boolean => {
+  if (typeof lease.expiresAt !== "string") return false
+  const expiresAt = Date.parse(lease.expiresAt)
+  return Number.isFinite(expiresAt) && expiresAt > now.getTime()
+}
+
+export function activeCodingRunCountsFromAssignmentLeases(
+  leases: ReadonlyArray<PylonAssignmentLeaseLike>,
+  input: { now?: Date } = {},
+): PylonActiveCodingRunCounts {
+  const now = input.now ?? new Date()
+  const counts: PylonActiveCodingRunCounts = {}
+
+  for (const lease of leases) {
+    if (!leaseIsUnexpired(lease, now)) continue
+    const capabilityRefs = lease.capabilityRefs ?? []
+    if (capabilityRefs.includes(CODEX_CAPABILITY_REF)) {
+      counts.codex = (counts.codex ?? 0) + 1
+    }
+    if (capabilityRefs.includes(CLAUDE_CAPABILITY_REF)) {
+      counts.claude = (counts.claude ?? 0) + 1
+    }
+  }
+
+  return counts
+}
+
+export function maxActiveCodingRunCounts(
+  ...counts: ReadonlyArray<PylonActiveCodingRunCounts | undefined>
+): PylonActiveCodingRunCounts {
+  const maxCounts: PylonActiveCodingRunCounts = {}
+
+  for (const count of counts) {
+    if (count === undefined) continue
+    for (const service of ["claude", "codex"] as const) {
+      maxCounts[service] = Math.max(maxCounts[service] ?? 0, count[service] ?? 0)
+    }
+  }
+
+  return maxCounts
 }

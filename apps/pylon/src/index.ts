@@ -177,7 +177,12 @@ import {
   type BootstrapSummary,
 } from "./bootstrap.js"
 import { assertPublicProjectionSafe, ensurePylonLocalState, loadOrCreatePresenceState, projectPublicStatus, writePresenceState, writeRuntimeState, type PylonLocalState, type PylonPaths } from "./state.js"
-import { activeCodingRunCounts } from "./active-assignment-runs.js"
+import {
+  activeCodingRunCounts,
+  activeCodingRunCountsFromAssignmentLeases,
+  maxActiveCodingRunCounts,
+  type PylonActiveCodingRunCounts,
+} from "./active-assignment-runs.js"
 import {
   completePylonLink,
   codingServiceCapacityFromRuntime,
@@ -2062,13 +2067,49 @@ function positiveIntegerOption(options: Record<string, string | true>, key: stri
   return parsed
 }
 
-async function availableCodexAssignments(summary: BootstrapSummary, state: PylonLocalState): Promise<number> {
+type AssignmentLeaseNetworkOptions = {
+  agentToken?: string
+  baseUrl: string
+}
+
+async function serverActiveCodingRunCounts(
+  summary: BootstrapSummary,
+  options: AssignmentLeaseNetworkOptions | undefined,
+): Promise<PylonActiveCodingRunCounts> {
+  if (options === undefined) return {}
+  try {
+    return activeCodingRunCountsFromAssignmentLeases(
+      await pollAssignments(summary, options),
+    )
+  } catch {
+    return {}
+  }
+}
+
+async function codingCapacityForDispatch(
+  summary: BootstrapSummary,
+  state: PylonLocalState,
+  options?: AssignmentLeaseNetworkOptions,
+) {
+  const activeCounts = maxActiveCodingRunCounts(
+    await activeCodingRunCounts(state.paths),
+    await serverActiveCodingRunCounts(summary, options),
+  )
   const codingCapacity = codingServiceCapacityFromRuntime(
     state,
     Bun.env,
     await localCodingServiceReadyCounts(summary, Bun.env),
-    await activeCodingRunCounts(state.paths),
+    activeCounts,
   )
+  return codingCapacity
+}
+
+async function availableCodexAssignments(
+  summary: BootstrapSummary,
+  state: PylonLocalState,
+  options?: AssignmentLeaseNetworkOptions,
+): Promise<number> {
+  const codingCapacity = await codingCapacityForDispatch(summary, state, options)
   return codingCapacity.find((item) => item.service === "codex")?.available ?? 0
 }
 
@@ -3313,6 +3354,14 @@ async function main() {
         ...presenceClientOptionsFromEnv({ baseUrl, env: Bun.env }),
         ...(resolvedAgentToken === null ? {} : { agentToken: resolvedAgentToken.token }),
         ...(shouldProbeWallet ? { walletProbe: () => classifyPrimaryAgentWalletForState(state) } : {}),
+        ...(command === "heartbeat"
+          ? {
+              activeRunCounts: await serverActiveCodingRunCounts(summary, {
+                ...(resolvedAgentToken === null ? {} : { agentToken: resolvedAgentToken.token }),
+                baseUrl,
+              }),
+            }
+          : {}),
       }
       const result =
         command === "register"
@@ -3836,6 +3885,7 @@ async function main() {
             await sendHeartbeat(summary, {
               ...presenceClientOptionsFromEnv({ baseUrl, env: Bun.env }),
               ...(resolvedAgentToken === null ? {} : { agentToken: resolvedAgentToken.token }),
+              activeRunCounts: await serverActiveCodingRunCounts(summary, networkOptions),
             })
           } catch {
             // Presence freshness is rechecked by run-no-spend; this best-effort
@@ -3843,7 +3893,7 @@ async function main() {
           }
         }
         const accounts = await collectPylonAccountsList(summary, { env: Bun.env })
-        const advertisedCodexAvailability = await availableCodexAssignments(summary, state)
+        const advertisedCodexAvailability = await availableCodexAssignments(summary, state, networkOptions)
         const workspace = explicitFixture
           ? undefined
           : buildPylonKhalaGitCheckoutWorkspace({
@@ -3906,12 +3956,13 @@ async function main() {
           optionString(options, "pylon-ref") ??
           optionString(options, "target-pylon-ref") ??
           localPylonTargetRef(state)
-        const advertisedCodexAvailability = await availableCodexAssignments(summary, state)
+        const advertisedCodexAvailability = await availableCodexAssignments(summary, state, networkOptions)
         if (optionFlag(options, "execute")) {
           try {
             await sendHeartbeat(summary, {
               ...presenceClientOptionsFromEnv({ baseUrl, env: Bun.env }),
               ...(resolvedAgentToken === null ? {} : { agentToken: resolvedAgentToken.token }),
+              activeRunCounts: await serverActiveCodingRunCounts(summary, networkOptions),
             })
           } catch {
             // #6355: execution still proceeds; run-no-spend reports the precise
@@ -4791,6 +4842,19 @@ async function main() {
       const options = parseKeyValueOptions(args.slice(2))
       const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
       const state = await ensurePylonLocalState(summary)
+      const providerBaseUrl = optionString(options, "base-url") ?? Bun.env.PYLON_OPENAGENTS_BASE_URL
+      const providerAgentToken =
+        providerBaseUrl === undefined
+          ? null
+          : await resolveOpenAgentsAgentToken({
+              env: Bun.env,
+              explicitAgentToken: optionString(options, "agent-token") ?? null,
+              summary,
+            })
+      const providerNetworkOptions =
+        providerBaseUrl === undefined || providerAgentToken === null
+          ? undefined
+          : { agentToken: providerAgentToken.token, baseUrl: providerBaseUrl }
       if (command === "go-online" || command === "online") {
         const claudeAgentReadiness = await probeClaudeAgentReadiness({
           config: await loadClaudeAgentConfig(summary),
@@ -4840,11 +4904,10 @@ async function main() {
           ])],
         }
         await writeRuntimeState(state.paths, nextRuntime)
-        const codingCapacity = codingServiceCapacityFromRuntime(
+        const codingCapacity = await codingCapacityForDispatch(
+          summary,
           { ...state, runtime: nextRuntime },
-          Bun.env,
-          await localCodingServiceReadyCounts(summary, Bun.env),
-          await activeCodingRunCounts(state.paths),
+          providerNetworkOptions,
         )
         const codingRefs = codingServiceCapacityRefs(codingCapacity)
         const codexCapacity = codingCapacity.find((item) => item.service === "codex") ?? {

@@ -204,11 +204,12 @@ export function buildPylonKhalaBurndownPlan(input: {
   )
   const iterations = Math.max(1, Math.floor(input.iterations ?? 1))
   const selectedParallel = Math.min(maxParallel, accounts.length, advertisedCodexAvailability)
-  const issueNumbers = uniqueIssueNumbers(input.issueNumbers).slice(0, selectedParallel * iterations)
+  const requestedIssueNumbers = uniqueIssueNumbers(input.issueNumbers)
+  const issueNumbers = requestedIssueNumbers.slice(0, selectedParallel * iterations)
   const blockerRefs = [
     ...(accounts.length === 0 ? ["blocker.khala_burndown.no_ready_codex_accounts"] : []),
     ...(advertisedCodexAvailability === 0 ? ["blocker.khala_burndown.no_advertised_codex_availability"] : []),
-    ...(issueNumbers.length === 0 ? ["blocker.khala_burndown.no_issue_numbers"] : []),
+    ...(requestedIssueNumbers.length === 0 ? ["blocker.khala_burndown.no_issue_numbers"] : []),
   ]
   const slots: PylonKhalaBurndownSlot[] = selectedParallel === 0
     ? []
@@ -268,7 +269,7 @@ export function buildPylonKhalaBurndownPlan(input: {
     targetPylonRef: input.targetPylonRef,
     advertisedCodexAvailability,
     readyCodexAccountCount: accounts.length,
-    issueCount: issueNumbers.length,
+    issueCount: requestedIssueNumbers.length,
     slots,
     mergePolicy: "operator_review_required",
     blockerRefs,

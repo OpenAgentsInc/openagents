@@ -30,6 +30,7 @@ import type { WalletStatusProjection } from "./wallet.js"
 import { PresenceRequestError } from "./presence-error.js"
 import {
   activeCodingRunCounts,
+  maxActiveCodingRunCounts,
   type PylonActiveCodingRunCounts,
 } from "./active-assignment-runs.js"
 
@@ -53,6 +54,10 @@ export type PresenceClientOptions = {
   // separate `wallet report-readiness` (openagents #5151). The live node injects
   // the Spark-primary probe; no default probe is run.
   walletProbe?: () => Promise<HeartbeatWalletProbe>
+  // Best-effort server-side active assignment lease counts, computed by CLI
+  // orchestration from the assignment poll route. This keeps heartbeat capacity
+  // honest when a prior no-spend lease exists but no fresh local marker remains.
+  activeRunCounts?: PylonActiveCodingRunCounts
 }
 
 // Map the local wallet probe to the heartbeat's public readiness fields. The
@@ -426,7 +431,10 @@ export async function sendHeartbeat(summary: BootstrapSummary, options: Presence
       state,
       options.env ?? process.env,
       await localCodingServiceReadyCounts(summary, options.env ?? process.env),
-      await activeCodingRunCounts(state.paths, { now: options.now?.() }),
+      maxActiveCodingRunCounts(
+        await activeCodingRunCounts(state.paths, { now: options.now?.() }),
+        options.activeRunCounts,
+      ),
     ),
   )
   const body: PylonHeartbeatRequest = {

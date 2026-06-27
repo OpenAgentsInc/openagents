@@ -1779,6 +1779,134 @@ The focused benchmark test run passed `41` tests, and `check:deploy` exited
 green. This does not close #6307: the first live `decisionGrade:true`
 Khala-vs-Fireworks/Vertex report still requires the owner-armed spendful sweep.
 
+## #6359/#6366 Dispatch-Capacity Audit
+
+The next continuation audited the Artanis autonomous-dispatch epic (#6359) and
+the live `dispatch_codex_task` tool (#6366) from a clean, current worktree:
+
+`/Users/christopherdavid/work/openagents-worktrees/khala-roadmap-next-20260627-1042`
+
+The worktree was rebased to current `origin/main` at:
+
+`2e5937497ec2d7a6b5256e7265042b0e78cd294f`
+
+Runbook preflight initially looked healthy:
+
+- `pylon codex accounts list --json`: default Codex home ready;
+- `pylon provider go-online --json`: Pylon `pylon.33afd48282a649047e3a`,
+  Codex `ready=1`, `busy=0`, `available=1`;
+- `pylon presence heartbeat --json`: linked, registered, non-stale heartbeat
+  sequence `721`.
+
+But a small fixture dispatch still failed before assignment creation:
+
+```json
+{
+  "error": "pylon khala request failed (409): The requested linked Pylon is available but the controlled assignment dispatch gate refused the coding lease.",
+  "ok": false
+}
+```
+
+The first local fix was observability: the Pylon Khala requester now preserves
+public-safe server diagnostics in error text. Re-running the same fixture request
+showed the real blocker:
+
+```text
+requestedPylonRef=pylon.33afd48282a649047e3a
+evidenceRefs=evidence.khala_coding.target_pylon_ref.dispatch_gate_blocked,
+blocker.public.pylon_dispatch.duplicate_active_assignment
+```
+
+So the server was not confused about credentials, OpenAuth linkage, model
+routing, or Codex readiness. It was seeing an active non-expired coding lease for
+the same Pylon while the local client was still advertising a free Codex slot.
+
+`pylon assignment poll --json` confirmed the mismatch: the server assignment
+surface still listed non-expired no-spend Codex leases for the Pylon, including
+recent spawn, Artanis, roadmap, and closeability/audit assignments. No matching
+local `assignment run-no-spend` or `codex exec` process was visible, but those
+leases were not force-closed here. Per the multi-agent runbook, another agent's
+or a sibling process's lease must not be clobbered merely to free capacity.
+
+Root cause:
+
+- `provider go-online`, `presence heartbeat`, and the Khala burndown/spawn
+  planners computed availability from local ready accounts plus local active-run
+  marker files.
+- They did **not** subtract the server's current non-expired assignment leases.
+- The Worker dispatch gate does subtract those leases through
+  `controlledPylonAssignmentDispatchGate`, so the client could publish
+  `capacity.coding.codex.available=1` while the server correctly blocked a new
+  lease with `duplicate_active_assignment`.
+
+The local fix makes Pylon capacity publishing server-aware without widening any
+authority:
+
+- added a pure active-lease counter that turns polled assignment leases into
+  Codex/Claude busy counts;
+- merged server lease counts with local active-run marker counts by max, not
+  sum, to avoid double-counting a lease that has both server and local evidence;
+- fed those counts into `provider go-online`, `presence heartbeat`,
+  `khala spawn`, and `khala burndown`;
+- kept the assignment poll fail-soft, so a temporary poll outage falls back to
+  the prior local-only calculation instead of breaking heartbeat.
+
+Post-fix live smoke from the same worktree reported:
+
+```json
+{
+  "ownCapacityDispatch": {
+    "codex": {
+      "available": 0,
+      "busy": 1,
+      "queued": 0,
+      "ready": 1,
+      "service": "codex"
+    },
+    "availableCodexAssignments": 0,
+    "capacityRefs": [
+      "capacity.coding.codex.ready=1",
+      "capacity.coding.codex.available=0"
+    ],
+    "loadRefs": [
+      "load.coding.codex.busy=1",
+      "load.coding.codex.queued=0"
+    ]
+  }
+}
+```
+
+The same fixture request then failed honestly as unavailable instead of
+"available but refused":
+
+```text
+requestedPylonRef=pylon.33afd48282a649047e3a
+evidenceRefs=evidence.khala_coding.target_pylon_ref.unavailable
+```
+
+`pylon khala burndown --issues "#6359,#6366" ... --json` also kept the requested
+issue count visible (`issueCount: 2`) while producing
+`advertisedCodexAvailability: 0` and
+`blocker.khala_burndown.no_advertised_codex_availability`, which is the behavior
+Artanis and future burndown agents need before attempting dispatch.
+
+No Pylon/Codex assignment was created by the failed probes, so there is no
+assignment-scoped trace, raw event archive, exact token row, or proof for those
+attempts. This does not regress the earlier successful Artanis dispatch proof
+(`assignment.public.khala_coding.artanis_dispatch_b67343b299a1413c8d68751d6ef67c3f`);
+it explains why sustained autonomous burn is still open: standing capacity must
+either wait for non-expired leases to drain, recover genuinely stale leases
+safely, or advertise enough real concurrency for the desired parallelism.
+
+Verification for this slice:
+
+```text
+bun test apps/pylon/src/active-assignment-runs.test.ts apps/pylon/src/khala-requester.test.ts apps/pylon/src/khala-burndown.test.ts
+bun run --cwd apps/pylon typecheck
+git diff --check
+bun run --cwd apps/openagents.com check:public-projection-freshness
+```
+
 ## Bottom Line
 
 This assignment proves the backend evidence path mostly works:
