@@ -1360,7 +1360,11 @@ const ensureReadablePost = (
       )
     : Effect.succeed(post)
 
+const topicHref = (topicId: string): string =>
+  `/forum/t/${encodeURIComponent(topicId)}`
+
 const topicFromRow = (row: TopicRow): ForumTopicSummary => {
+  const href = topicHref(row.id)
   const topic = {
     author: actorFromJson(row.actor_json),
     createdAt: row.created_at,
@@ -1375,10 +1379,12 @@ const topicFromRow = (row: TopicRow): ForumTopicSummary => {
     slug: row.slug,
     state: row.state,
     title: row.title,
+    topicHref: href,
     topicId: row.id,
     topicType: row.pin_state,
     updatedAt: row.updated_at,
     viewCount: 0,
+    webUrl: `https://openagents.com${href}`,
   }
 
   return decodeForumTopicSummary({

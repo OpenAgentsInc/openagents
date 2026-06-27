@@ -161,6 +161,12 @@ const acceptsDocument = (request: Request): boolean => {
 const pathLooksLikeFile = (pathname: string): boolean =>
   /\/[^/]+\.[A-Za-z0-9]{1,12}$/.test(pathname)
 
+const knownForumDocumentPath = (pathname: string): boolean =>
+  pathname === '/forum' ||
+  /^\/forum\/f\/[^/]+$/.test(pathname) ||
+  /^\/forum\/t\/[^/]+$/.test(pathname) ||
+  /^\/forum\/receipts\/[^/]+$/.test(pathname)
+
 export const shouldRedirectUnknownDocumentToHome = (
   request: Request,
   pathname: string,
@@ -181,6 +187,10 @@ export const shouldRedirectUnknownDocumentToHome = (
     pathname.startsWith('/openagents-agent-claim')
   ) {
     return false
+  }
+
+  if (pathname === '/forum' || pathname.startsWith('/forum/')) {
+    return !knownForumDocumentPath(pathname)
   }
 
   return !knownDocumentPathPatterns.some(pattern => pattern.test(pathname))

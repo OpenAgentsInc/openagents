@@ -199,6 +199,30 @@ describe('Worker document route fallback', () => {
         '/forum/t/55555555-5555-4555-8555-555555555555',
       ),
     ).toBe(false)
+    expect(
+      shouldRedirectUnknownDocumentToHome(
+        requestFor('/forum/f/product-promises'),
+        '/forum/f/product-promises',
+      ),
+    ).toBe(false)
+    expect(
+      shouldRedirectUnknownDocumentToHome(requestFor('/forum'), '/forum'),
+    ).toBe(false)
+  })
+
+  test('redirects malformed forum document paths instead of serving the homepage shell', () => {
+    expect(
+      shouldRedirectUnknownDocumentToHome(
+        requestFor('/forum/f/product-promises/not-a-topic'),
+        '/forum/f/product-promises/not-a-topic',
+      ),
+    ).toBe(true)
+    expect(
+      shouldRedirectUnknownDocumentToHome(
+        requestFor('/forum/unknown/path'),
+        '/forum/unknown/path',
+      ),
+    ).toBe(true)
   })
 
   test('does not redirect the forum OG image route (treated as a file)', () => {
