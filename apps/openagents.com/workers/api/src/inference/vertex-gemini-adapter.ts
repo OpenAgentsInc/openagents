@@ -51,12 +51,14 @@ import { parseJsonRecord } from '../json-boundary'
 import { AUTOPILOT_CONCIERGE_MODEL_ID, KHALA_MINI_MODEL_ID } from './pricing'
 import {
   InferenceAdapterError,
+  type InferenceMessage,
   type InferenceProviderAdapter,
   type InferenceRequest,
   type InferenceResult,
   type InferenceStreamChunk,
   type InferenceStreamEvent,
   type InferenceStreamSource,
+  type InferenceToolCall,
   type InferenceUsage,
 } from './provider-adapter'
 import {
@@ -179,6 +181,141 @@ const buildGenerationConfig = (
   return config
 }
 
+// ---------------------------------------------------------------------------
+// Function calling (#6364): translate OpenAI-style `tools` / `tool_choice` and
+// the tool-call/tool-result message history into Gemini's wire format, and
+// parse Gemini `functionCall` parts back into OpenAI-compatible `toolCalls`.
+// This is what lets the Khala operator tool-calling loop fire when the Gemini
+// lane serves it.
+// ---------------------------------------------------------------------------
+
+// Gemini function-declaration parameter schemas reject some JSON-Schema keywords
+// our tool definitions carry (e.g. `additionalProperties`, `$schema`). Strip
+// them recursively so a standard OpenAI `parameters` schema is accepted.
+const sanitizeGeminiSchema = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    return value.map(sanitizeGeminiSchema)
+  }
+  if (typeof value === 'object' && value !== null) {
+    const out: Record<string, unknown> = {}
+    for (const [key, child] of Object.entries(value)) {
+      if (key === 'additionalProperties' || key === '$schema') {
+        continue
+      }
+      out[key] = sanitizeGeminiSchema(child)
+    }
+    return out
+  }
+  return value
+}
+
+type OpenAiToolDefinition = Readonly<{
+  type?: unknown
+  function?:
+    | Readonly<{ name?: unknown; description?: unknown; parameters?: unknown }>
+    | undefined
+}>
+
+// Build Gemini `tools` (functionDeclarations) + `toolConfig` from the OpenAI
+// `tools` / `tool_choice` passthrough params. Returns undefined when no usable
+// function tools were supplied.
+const buildGeminiTools = (
+  passthrough: Readonly<Record<string, unknown>>,
+):
+  | Readonly<{ tools: ReadonlyArray<unknown>; toolConfig?: unknown }>
+  | undefined => {
+  const rawTools = passthrough['tools']
+  if (!Array.isArray(rawTools) || rawTools.length === 0) {
+    return undefined
+  }
+  const declarations = rawTools
+    .map((tool): Record<string, unknown> | null => {
+      const fn = (tool as OpenAiToolDefinition).function
+      const name = typeof fn?.name === 'string' ? fn.name : null
+      if (name === null) return null
+      const declaration: Record<string, unknown> = { name }
+      if (typeof fn?.description === 'string') {
+        declaration['description'] = fn.description
+      }
+      if (
+        typeof fn?.parameters === 'object' &&
+        fn.parameters !== null
+      ) {
+        declaration['parameters'] = sanitizeGeminiSchema(fn.parameters)
+      }
+      return declaration
+    })
+    .filter((value): value is Record<string, unknown> => value !== null)
+
+  if (declarations.length === 0) {
+    return undefined
+  }
+
+  // Map OpenAI tool_choice -> Gemini functionCallingConfig.mode.
+  const choice = passthrough['tool_choice']
+  let mode: 'AUTO' | 'ANY' | 'NONE' = 'AUTO'
+  if (choice === 'none') {
+    mode = 'NONE'
+  } else if (choice === 'required' || choice === 'any') {
+    mode = 'ANY'
+  }
+
+  return {
+    toolConfig: { functionCallingConfig: { mode } },
+    tools: [{ functionDeclarations: declarations }],
+  }
+}
+
+// Translate one normalized message into the Gemini content parts that represent
+// it. Assistant tool-call messages become `functionCall` parts (role model);
+// `tool` result messages become `functionResponse` parts (role user). Plain
+// messages become a single text part.
+const geminiContentForMessage = (
+  message: InferenceMessage,
+): Record<string, unknown> | null => {
+  if (message.role === 'tool') {
+    // A tool result. Gemini wants a functionResponse whose `name` matches the
+    // earlier functionCall, with an object `response`.
+    return {
+      parts: [
+        {
+          functionResponse: {
+            name: message.name ?? 'tool',
+            response: { content: message.content },
+          },
+        },
+      ],
+      role: 'user',
+    }
+  }
+
+  if (
+    message.role === 'assistant' &&
+    message.toolCalls !== undefined &&
+    message.toolCalls.length > 0
+  ) {
+    const parts: Array<Record<string, unknown>> = []
+    if (message.content !== '') {
+      parts.push({ text: message.content })
+    }
+    for (const toolCall of message.toolCalls) {
+      const parsed = parseJsonRecord(toolCall.function.arguments)
+      parts.push({
+        functionCall: {
+          args: parsed ?? {},
+          name: toolCall.function.name,
+        },
+      })
+    }
+    return { parts, role: 'model' }
+  }
+
+  return {
+    parts: [{ text: message.content }],
+    role: toGeminiRole(message.role),
+  }
+}
+
 const buildGeminiBody = (
   request: InferenceRequest,
 ): Record<string, unknown> => {
@@ -194,10 +331,10 @@ const buildGeminiBody = (
       }
       continue
     }
-    contents.push({
-      parts: [{ text: message.content }],
-      role: toGeminiRole(message.role),
-    })
+    const content = geminiContentForMessage(message)
+    if (content !== null) {
+      contents.push(content)
+    }
   }
 
   const passthroughSystem = request.passthroughParams['system']
@@ -214,6 +351,15 @@ const buildGeminiBody = (
       parts: systemTexts.map(text => ({ text })),
     }
   }
+
+  const toolingConfig = buildGeminiTools(request.passthroughParams)
+  if (toolingConfig !== undefined) {
+    body['tools'] = toolingConfig.tools
+    if (toolingConfig.toolConfig !== undefined) {
+      body['toolConfig'] = toolingConfig.toolConfig
+    }
+  }
+
   return body
 }
 
@@ -276,6 +422,49 @@ const extractText = (candidates: unknown): string => {
       return ''
     })
     .join('')
+}
+
+// Extract OpenAI-compatible tool calls from a Gemini candidate's
+// `content.parts[].functionCall` (#6364). Gemini does not return a call id, so
+// we synthesize a stable one per call. `arguments` is JSON-stringified to match
+// the OpenAI shape the operator loop + other adapters consume.
+const extractToolCalls = (
+  candidates: unknown,
+): ReadonlyArray<InferenceToolCall> | undefined => {
+  if (!Array.isArray(candidates) || candidates.length === 0) {
+    return undefined
+  }
+  const first = candidates[0]
+  if (typeof first !== 'object' || first === null) {
+    return undefined
+  }
+  const content = (first as Record<string, unknown>)['content']
+  if (typeof content !== 'object' || content === null) {
+    return undefined
+  }
+  const parts = (content as Record<string, unknown>)['parts']
+  if (!Array.isArray(parts)) {
+    return undefined
+  }
+  const calls: Array<InferenceToolCall> = []
+  parts.forEach((part, index) => {
+    if (typeof part !== 'object' || part === null) return
+    const functionCall = (part as Record<string, unknown>)['functionCall']
+    if (typeof functionCall !== 'object' || functionCall === null) return
+    const record = functionCall as Record<string, unknown>
+    const name = typeof record['name'] === 'string' ? record['name'] : null
+    if (name === null) return
+    const args = record['args']
+    calls.push({
+      function: {
+        arguments: JSON.stringify(args ?? {}),
+        name,
+      },
+      id: `gemini_call_${index}_${name}`,
+      type: 'function',
+    })
+  })
+  return calls.length === 0 ? undefined : calls
 }
 
 // Pull the finishReason from the first candidate (Gemini values: "STOP",
@@ -424,14 +613,22 @@ export const makeVertexGeminiAdapter = (
           )
         }
         const candidates = json['candidates']
+        const toolCalls = extractToolCalls(candidates)
         const result: InferenceResult = {
           content: extractText(candidates),
-          finishReason: extractFinishReason(candidates),
+          // When Gemini returns function calls, normalize the finish reason to
+          // the OpenAI `tool_calls` value the operator loop + route key off
+          // (Gemini reports "STOP" even when it emits a functionCall).
+          finishReason:
+            toolCalls !== undefined
+              ? 'tool_calls'
+              : extractFinishReason(candidates),
           servedModel:
             typeof json['modelVersion'] === 'string'
               ? (json['modelVersion'] as string)
               : resolveModelId(request.model),
           usage: parseUsage(json['usageMetadata']),
+          ...(toolCalls === undefined ? {} : { toolCalls }),
         }
         return result
       }),

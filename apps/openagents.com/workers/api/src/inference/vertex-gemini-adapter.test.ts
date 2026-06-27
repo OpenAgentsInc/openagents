@@ -236,3 +236,161 @@ describe('vertex gemini adapter streamSse — incremental pass-through', () => {
     expect(result).toMatchObject({ retryable: true })
   })
 })
+
+describe('vertex gemini adapter function calling (#6364)', () => {
+  const tools = [
+    {
+      function: {
+        description: 'Read a public repo file',
+        name: 'read_repo_file',
+        parameters: {
+          additionalProperties: false,
+          properties: { path: { type: 'string' } },
+          required: ['path'],
+          type: 'object',
+        },
+      },
+      type: 'function',
+    },
+  ]
+
+  test('forwards OpenAI tools as Gemini functionDeclarations (additionalProperties stripped)', async () => {
+    const { calls, fetchImpl } = recordingFetch(okJson(geminiResponse))
+    const adapter = makeVertexGeminiAdapter({
+      fetchImpl,
+      project: 'openagentsgemini',
+      tokenProvider: fixedToken,
+    })
+
+    await run(
+      adapter.complete(
+        baseRequest({ passthroughParams: { tool_choice: 'auto', tools } }),
+      ),
+    )
+
+    const body = JSON.parse(calls[0]!.init.body as string) as Record<
+      string,
+      unknown
+    >
+    const geminiTools = body['tools'] as Array<Record<string, unknown>>
+    const declarations = geminiTools[0]!['functionDeclarations'] as Array<
+      Record<string, unknown>
+    >
+    expect(declarations[0]!['name']).toBe('read_repo_file')
+    const params = declarations[0]!['parameters'] as Record<string, unknown>
+    expect(params['additionalProperties']).toBeUndefined()
+    expect(params['properties']).toBeDefined()
+    expect(body['toolConfig']).toEqual({
+      functionCallingConfig: { mode: 'AUTO' },
+    })
+  })
+
+  test('parses a Gemini functionCall response into OpenAI-compatible toolCalls', async () => {
+    const { fetchImpl } = recordingFetch(
+      okJson({
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  functionCall: {
+                    args: { path: 'docs/roadmap.md' },
+                    name: 'read_repo_file',
+                  },
+                },
+              ],
+            },
+            finishReason: 'STOP',
+          },
+        ],
+        modelVersion: DEFAULT_GEMINI_MODEL_ID,
+        usageMetadata: {
+          candidatesTokenCount: 4,
+          promptTokenCount: 10,
+          totalTokenCount: 14,
+        },
+      }),
+    )
+    const adapter = makeVertexGeminiAdapter({
+      fetchImpl,
+      project: 'openagentsgemini',
+      tokenProvider: fixedToken,
+    })
+
+    const result = await run(
+      adapter.complete(
+        baseRequest({ passthroughParams: { tools } }),
+      ),
+    )
+
+    expect(result.finishReason).toBe('tool_calls')
+    expect(result.toolCalls).toHaveLength(1)
+    expect(result.toolCalls?.[0]?.function.name).toBe('read_repo_file')
+    expect(result.toolCalls?.[0]?.function.arguments).toBe(
+      JSON.stringify({ path: 'docs/roadmap.md' }),
+    )
+    expect(result.toolCalls?.[0]?.type).toBe('function')
+  })
+
+  test('round-trips a tool result back as a Gemini functionResponse', async () => {
+    const { calls, fetchImpl } = recordingFetch(okJson(geminiResponse))
+    const adapter = makeVertexGeminiAdapter({
+      fetchImpl,
+      project: 'openagentsgemini',
+      tokenProvider: fixedToken,
+    })
+
+    await run(
+      adapter.complete(
+        baseRequest({
+          messages: [
+            { content: 'read the roadmap', role: 'user' },
+            {
+              content: '',
+              role: 'assistant',
+              toolCalls: [
+                {
+                  function: {
+                    arguments: JSON.stringify({ path: 'docs/roadmap.md' }),
+                    name: 'read_repo_file',
+                  },
+                  id: 'call_1',
+                  type: 'function',
+                },
+              ],
+            },
+            {
+              content: 'First priority: the #6316 serving track.',
+              name: 'read_repo_file',
+              role: 'tool',
+              toolCallId: 'call_1',
+            },
+          ],
+          passthroughParams: { tools },
+        }),
+      ),
+    )
+
+    const body = JSON.parse(calls[0]!.init.body as string) as Record<
+      string,
+      unknown
+    >
+    const contents = body['contents'] as Array<Record<string, unknown>>
+    // The assistant tool call became a model functionCall part.
+    const modelTurn = contents.find(content => content['role'] === 'model')!
+    const modelParts = modelTurn['parts'] as Array<Record<string, unknown>>
+    expect(modelParts[0]!['functionCall']).toMatchObject({
+      name: 'read_repo_file',
+    })
+    // The tool result became a user functionResponse part.
+    const responseTurn = contents.find(content => {
+      const parts = content['parts'] as Array<Record<string, unknown>>
+      return parts.some(part => 'functionResponse' in part)
+    })!
+    const responseParts = responseTurn['parts'] as Array<Record<string, unknown>>
+    expect(responseParts[0]!['functionResponse']).toMatchObject({
+      name: 'read_repo_file',
+      response: { content: 'First priority: the #6316 serving track.' },
+    })
+  })
+})
