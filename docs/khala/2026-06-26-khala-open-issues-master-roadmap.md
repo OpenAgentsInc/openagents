@@ -134,7 +134,7 @@ in what it has actually been doing — not training-data roleplay.
 ## Current status snapshot
 
 Refreshed from GitHub issue state, `origin/main`, live counter/proof reads, and
-the local Pylon state on **2026-06-27 ~10:31Z**. This table is the
+the local Pylon state on **2026-06-27 ~13:00Z**. This table is the
 operator view of what remains, not a public product claim.
 
 | Issue | State | Current status / next action |
@@ -178,6 +178,44 @@ operator view of what remains, not a public product claim.
 
 ## Execution notes
 
+- 2026-06-27T13:00Z #6317 live stress continuation: after draining the
+  terminated `g4-4g-b-20260625154532` replica in Worker config
+  (`2c8aaae59e2e85e7629da576825ab48d641695f2`, deployed as Worker
+  `6f694bdc-e0f2-4ebf-8670-823e4b2181b3`) and restarting the stuck private
+  proxies on the seven 4-GPU Spot origins, the public gateway again recorded
+  exact GLM stress rows in `token_usage_events`. The authenticated tuned run
+  `issue6317-glm-tuned2048-20260627T1049Z` ran at concurrency `9` with
+  `max_tokens=2048` until its target completed: local artifact final was
+  `4859` launches, `1570` successful GLM receipts, `3289` failures, `105`
+  HTTP `500`s, `3184` HTTP `502`s, `4222404` exact GLM receipt tokens,
+  `534.51` receipt tok/s, and `0` non-GLM receipt tokens. Final D1 proof across
+  the four tracked #6317 run ids shows `5637616` exact public-ledger GLM tokens
+  (`303153` initial mixed run + `1157398` post-fix 4096-token run + `569`
+  authenticated smoke + `4176496` tuned-run persisted total). The local runner
+  receipts imply `5683524` exact generated GLM tokens, leaving a follow-up
+  ledger closeout gap of `45908` tokens / `17` tuned-run success rows not yet
+  present in D1 after the final remote recheck. `GET
+  /api/public/khala-tokens-served` returned `507438257` at
+  `2026-06-27T12:58:58.821Z` and still rebuilds on `token_usage_events`, so the
+  counter path itself is confirmed working for `/khala` and `/stats`. #6317
+  remains open for cleaner overload/yield behavior and the final-row ledger
+  discrepancy, not for lack of stress volume.
+- 2026-06-27T11:03Z #6323 isolated live-host attempt: `us-central1` could not
+  allocate another 8x RTX PRO 6000 Spot host because regional preemptible quota
+  was exhausted, but a separate `us-west1-b` `g4-standard-384` host was
+  provisioned, loaded with the `433G` / `57`-file
+  `nvidia/GLM-5.2-NVFP4` checkpoint, and kept isolated from live Khala routing.
+  The existing REAP vLLM image rejected the older card flags and then failed
+  model config validation on `deepseek_sparse_attention`; the current official
+  `vllm/vllm-openai:v0.23.0` image failed sparse-MLA backend selection on the
+  RTX PRO 6000 Blackwell `sm_120` host. The
+  `lmsysorg/sglang:dev-glm52-nvfp4` image got farther (DSA attention, fp8_e4m3
+  KV, TRTLLM DSA prefill/decode, `flashinfer_cutlass` ModelOpt FP4 MoE) but
+  failed near the end of weight loading with a MoE `w13` tensor shape mismatch
+  (`3072` vs `6144`). No healthy endpoint, tool-loop, quality, context, or
+  throughput pass is claimed; the isolated containers were removed and the
+  8-GPU VM was stopped. #6323 remains open, now narrowed to the SGLang
+  weight-load compatibility path rather than another planning/harness gap.
 - 2026-06-27T01:00Z #6323 refresh from a clean detached worktree at
   `0d67f2ae5b1a1605d608aa69478dd8e86da4cb71`: the local environment still has
   no `KHALA_GLM_NVFP4_*` owner-run variables. `pilot:glm-nvfp4 --summary

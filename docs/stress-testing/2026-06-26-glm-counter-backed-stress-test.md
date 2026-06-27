@@ -779,3 +779,127 @@ What this taught us:
   it is public-gateway `502` behavior under saturation. The stress path is now
   counted and GLM-only, but it still needs cleaner yield/backoff behavior at or
   above the concurrency knee.
+
+## 2026-06-27 Drained Replica Fix, Proxy Restarts, And Authenticated 5M Attempt
+
+The next continuation started from the post-south1b state and found two more
+fleet-serving problems before resuming long counted stress.
+
+First, `g4-4g-b-20260625154532` was still configured as ready, but the GCE VM
+was `TERMINATED`. Starting it failed with
+`ZONE_RESOURCE_POOL_EXHAUSTED_WITH_DETAILS` for the `g4-standard-192` /
+`nvidia-rtx-pro-6000` shape in `us-central1-b`. The Worker config was updated
+to mark that host draining/disabled while keeping the newer recovered Spot
+origins active. Focused GLM readiness/route tests passed (`56` tests), the
+change landed as `2c8aaae59e2e85e7629da576825ab48d641695f2`, and
+`deploy:safe` deployed Worker version
+`6f694bdc-e0f2-4ebf-8670-823e4b2181b3`.
+
+Second, direct-origin probes showed the seven 4-GPU Spot replicas returning
+HTTP `429` with `hydralisk_inflight_saturated`, `maxInflightRequests=1`,
+`queueTimeoutSeconds=0`, and `singleFlight=true`, even after the gateway config
+fix. Restarting `hydralisk-glm52-reap-private-proxy.service` on all seven 4-GPU
+origins cleared that stuck admission state. After the restarts, every non-drained
+4-GPU origin plus the 8-GPU origin returned HTTP `200` for a tiny direct
+completion smoke; the public gateway smoke returned HTTP `200` and recorded
+`565` exact tokens.
+
+Post-fix live readiness:
+
+- `readyReplicaCount=8`
+- `readyMaxInflight=9`
+- `activeMaxInflight=9`
+- `disabledReplicaCount=2`
+- `drainingReplicaCount=2`
+- `unavailableReplicaCount=0`
+
+Counter/path confirmation:
+
+- Current stress requests are authenticated with the ops heartbeat `oa_agent_`
+  key, tagged `internal_stress` / `glm-saturation`, and include a stable
+  `x-openagents-client` run id.
+- Successful completions write exact `token_usage_events` rows with provider
+  `hydralisk-vllm-glm-5p2-reap-504b`, model
+  `openagents/glm-5.2-reap-504b`, and `usage_truth=exact`.
+- `GET /api/public/khala-tokens-served`, `/khala`, and `/stats` consume that
+  same public ledger scalar. Failed HTTP `500`/`502`/`401` requests do **not**
+  add tokens because they do not produce a terminal provider usage receipt.
+
+Final run-scoped D1 check after the authenticated target run finished:
+
+| Run id | Shape | D1 rows | Input tokens | Output tokens | Total exact GLM tokens |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `issue6317-glm-5m-20260627T094634Z` | initial 5M attempt, concurrency `10`, `4096` max tokens; mixed pre/post-fix behavior | `65` | `41470` | `261683` | `303153` |
+| `issue6317-glm-postfix-20260627T1006Z` | post-drain/proxy-restored run, concurrency `8`, `4096` max tokens; intentionally interrupted after 37.5m | `249` | `162633` | `994765` | `1157398` |
+| `issue6317-heartbeat-auth-smoke-20260627T1049Z` | authenticated one-request smoke | `1` | `554` | `15` | `569` |
+| `issue6317-glm-tuned2048-20260627T1049Z` | authenticated tuned run, concurrency `9`, `2048` max tokens; completed target and drained in-flight requests | `1553` | `1012871` | `3163625` | `4176496` |
+
+Hard D1 total across those four run ids after the target run: `5637616` exact
+GLM tokens (`1217528` input, `4420088` output). The public counter endpoint
+read `tokensServed: 507438257` at `2026-06-27T12:58:58.821Z` and still
+reported `rebuildsOn: ["token_usage_events"]`.
+
+The completed tuned-run local public artifact ended at:
+
+- launched attempts: `4859`
+- successful GLM receipts: `1570`
+- failed requests: `3289`
+- HTTP `500`s: `105`
+- HTTP `502`s: `3184`
+- exact receipt tokens: `4222404`
+- exact prompt tokens: `1023963`
+- exact output tokens: `3198441`
+- receipt throughput: `534.51` tokens/sec
+- output throughput: `404.89` tokens/sec
+- TTFT p50 / p90: `40577ms` / `42642ms`
+- non-GLM receipt tokens: `0`
+
+That local receipt artifact implies `5683524` exact GLM tokens across the four
+tracked run ids. D1 remained lower by `45908` tokens / `17` active-run rows
+after the final recheck (`1553` persisted active rows versus `1570` local
+successful receipts). Treat the `5637616` D1 total as the hard public-ledger
+number and the `5683524` runner total as exact GLM provider receipts generated;
+the missing `17` rows are now a follow-up for ledger closeout/catch-up under
+post-target drain.
+
+Non-counted / stopped run ids:
+
+- `issue6317-glm-postdrain-20260627T1001Z`: stopped after the first 30s showed
+  `46` HTTP `502`s and `0` exact tokens. This was before the private-proxy
+  restarts.
+- `issue6317-glm-tuned2048-20260627T1046Z`: launched without the bearer header,
+  got only HTTP `401`s, and recorded `0` ledger tokens. It was stopped and
+  replaced by the authenticated `20260627T1049Z` run.
+
+What this taught us:
+
+- The public counter path is no longer the blocker. The exact ledger rows are
+  present and the `/khala` / `/stats` topline includes these internal stress
+  rows by design.
+- The productive measured public-gateway ceiling in the completed run was about
+  `534` exact receipt tokens/sec / `405` output tokens/sec with the current
+  8-ready-replica GLM fleet.
+- The `4096`-token run had worse request wall time (TTFT around `70s`) but
+  similar or slightly better counted throughput before long non-streaming
+  failures accumulated.
+- The `2048`-token authenticated run lowered TTFT to about `40.6s` p50 /
+  `42.6s` p90, but still produced high HTTP `500`/`502` failure volume under
+  concurrency `9` (`105` / `3184` respectively).
+- Readiness being green (`8` ready, `0` unavailable) is necessary but not
+  sufficient. Under bursty public traffic, independent Worker isolates still
+  collide against single-flight replica admission and/or edge timeout behavior.
+- A 30-minute slice at the measured slope generated about `955723` local exact
+  GLM receipt tokens in the tuned run (`939525` persisted in D1 at the spot
+  check). The original 30-minute `5M` expectation is not reachable on this
+  fleet state without materially higher per-replica throughput and cleaner
+  admission behavior.
+
+Current next reliability work:
+
+- Investigate the `17` successful final tuned-run receipts that appeared in the
+  runner artifact but were not present in D1 after the final remote recheck.
+- Add a cleaner saturation yield/backoff path for public-gateway GLM stress
+  traffic so the gateway returns controlled overload rather than large bursts of
+  HTTP `500`/`502`.
+- Preserve run-scoped D1 accounting as the hard source of truth; public scalar
+  deltas are useful for smoke checks but include concurrent Pylon/Codex traffic.
