@@ -116,8 +116,9 @@ Do not claim:
   caller-owned capacity resolver.
 
 The main blockers are live production smoke for the default CLI auto-run path
-(#6362 partially reduced by source/test coverage), master-default workspace
-materialization (#6361), assignment-level trace/status
+(#6362 partially reduced by source/test coverage), live production smoke for
+master-default workspace materialization (#6361 partially reduced by source/test
+coverage: stale branch fetch now falls back to the pinned commit), assignment-level trace/status
 presentation plus deployed smoke (#6368, partially reduced by the CLI status
 reader and operator route shell), proof/status closeout ergonomics (#6369,
 partially reduced by the proof checklist), and the broad semantic router being

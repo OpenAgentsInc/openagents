@@ -40,7 +40,7 @@ async function run(args: string[], cwd: string): Promise<string> {
   return stdout
 }
 
-async function createOriginRepo(root: string): Promise<{ url: string; commitSha: string }> {
+async function createOriginRepo(root: string, branch = "main"): Promise<{ url: string; commitSha: string }> {
   await mkdir(root, { recursive: true })
   await run(["git", "init"], root)
   await run(["git", "config", "user.email", "fixture@test.local"], root)
@@ -52,7 +52,7 @@ async function createOriginRepo(root: string): Promise<{ url: string; commitSha:
   await writeFile(join(root, "sum.ts"), "export const sum = (left: number, right: number) => left - right\n")
   await run(["git", "add", "."], root)
   await run(["git", "commit", "-m", "fixture"], root)
-  await run(["git", "branch", "-M", "main"], root)
+  await run(["git", "branch", "-M", branch], root)
   const commitSha = (await run(["git", "rev-parse", "HEAD"], root)).trim()
   return { url: `file://${root}`, commitSha }
 }
@@ -182,6 +182,27 @@ describe("createGitWorktreeCheckoutRunner", () => {
 
       expect(existsSync(join(second, "fresh-main.ts"))).toBe(true)
       expect((await run(["git", "rev-parse", "HEAD"], second)).trim()).toBe(secondCommit)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  test("materializes a pinned commit when the requested branch is absent", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-worktree-"))
+    try {
+      const origin = await createOriginRepo(join(root, "origin"), "master")
+      const repositoryCacheRoot = join(root, "git-cache")
+      const runner = createGitWorktreeCheckoutRunner({
+        repositoryCacheRoot,
+        remoteUrlFor: () => origin.url,
+      })
+      const checkout = checkoutFor(origin.commitSha)
+      const workingDirectory = join(root, "worktrees", "master-default")
+
+      await runner(workingDirectory, checkout)
+
+      expect(existsSync(join(workingDirectory, "sum.ts"))).toBe(true)
+      expect((await run(["git", "rev-parse", "HEAD"], workingDirectory)).trim()).toBe(origin.commitSha)
     } finally {
       await rm(root, { recursive: true, force: true })
     }

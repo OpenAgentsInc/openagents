@@ -593,10 +593,11 @@ async function withRepositoryCacheLock<T>(bareDirectory: string, work: () => Pro
 
 /**
  * Builds the worktree checkout strategy: ensure the shared bare cache for
- * the repository, fetch the pinned commit only when its object is missing,
- * verify the commit object exists before any worktree work, then add an
- * isolated detached worktree at the assignment-scoped path. The pinned
- * commit gets a cache-local ref so gc can never collect it while cached.
+ * the repository, fetch the branch window as an optimization, fall back to the
+ * pinned commit when the branch name is stale or too shallow, verify the commit
+ * object exists before any worktree work, then add an isolated detached
+ * worktree at the assignment-scoped path. The pinned commit gets a cache-local
+ * ref so gc can never collect it while cached.
  */
 export function createGitWorktreeCheckoutRunner(
   options: GitWorktreeCheckoutRunnerOptions,
@@ -622,18 +623,16 @@ export function createGitWorktreeCheckoutRunner(
         const remoteUrl =
           options.remoteUrlFor?.(checkout) ?? `https://github.com/${repository.fullName}.git`
         const branchRefSpec = `+refs/heads/${repository.branch}:refs/remotes/pylon/${repository.branch}`
-        await runCheckedCommand(
+        const branchFetchOk = (await runQuietCommand(
           ["git", "fetch", "--depth", "50", remoteUrl, branchRefSpec],
           bareDirectory,
-          "reason.workspace_checkout.branch_fetch_failed",
-        )
+        )) === 0
         const branchWindowCached =
           (await runQuietCommand(["git", "cat-file", "-e", commitArg], bareDirectory)) === 0
-        if (!branchWindowCached) {
-          await runCheckedCommand(
+        if (branchFetchOk && !branchWindowCached) {
+          await runQuietCommand(
             ["git", "fetch", "--deepen", "450", remoteUrl, branchRefSpec],
             bareDirectory,
-            "reason.workspace_checkout.branch_deepen_failed",
           )
         }
         const deepenedCached =
