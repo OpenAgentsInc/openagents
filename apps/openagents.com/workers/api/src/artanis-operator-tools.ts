@@ -1244,6 +1244,123 @@ export const makeArtanisListPylonAssignmentsTool = (
 }
 
 // ---------------------------------------------------------------------------
+// get_fleet_status — unified Artanis operator fleet snapshot.
+// ---------------------------------------------------------------------------
+//
+// Issue #6428 asks for one high-context Artanis read in place of scattered
+// get_network_stats / get_glm_fleet_status / list_pylon_assignments /
+// get_synthetic_load_status / trace-review / unsupported-request calls. This
+// tool deliberately composes the existing public-safe read seams instead of
+// opening a new authority path: every subsection is still read-only,
+// owner-scoped where applicable, bounded, fail-soft, and already defensively
+// redacted by its source tool.
+
+export type ArtanisFleetStatusConfig = Readonly<{
+  networkStats?: ArtanisGetNetworkStatsConfig | undefined
+  glmFleetStatus?: ArtanisGlmFleetStatusConfig | undefined
+  syntheticLoadStatus?: ArtanisSyntheticLoadStatusConfig | undefined
+  pylonAssignments?: ArtanisPylonAssignmentsConfig | undefined
+  traceReview?: ArtanisTraceReviewConfig | undefined
+  unsupportedRequests?: ArtanisUnsupportedRequestsConfig | undefined
+  pylonAssignmentLimit?: number | undefined
+}>
+
+const fleetSection = (title: string, body: string): string =>
+  [`## ${title}`, body.trim() === '' ? '(no data)' : body.trim()].join('\n')
+
+const executeFleetRead = (
+  label: string,
+  effect: Effect.Effect<string>,
+): Effect.Effect<string> =>
+  Effect.gen(function* () {
+    const exit = yield* Effect.exit(effect)
+    if (exit._tag === 'Failure') {
+      return `(could not read ${label})`
+    }
+    return exit.value
+  })
+
+// get_fleet_status() — reads a single bounded fleet-status snapshot for
+// Artanis. The result is intentionally sectioned around the operator decision
+// loop from #6428: Pace, Fleet, Watchdog, GLM, and Brain. It carries no mutation
+// authority and grants no spend/dispatch/quarantine ability.
+export const makeArtanisGetFleetStatusTool = (
+  config: ArtanisFleetStatusConfig = {},
+): ArtanisOperatorReadTool => {
+  const assignmentLimit = Math.max(
+    1,
+    Math.min(config.pylonAssignmentLimit ?? 25, 100),
+  )
+  const networkStatsTool = makeArtanisGetNetworkStatsTool(config.networkStats)
+  const assignmentsTool = makeArtanisListPylonAssignmentsTool(
+    config.pylonAssignments,
+  )
+  const glmFleetStatusTool = makeArtanisGetGlmFleetStatusTool(
+    config.glmFleetStatus,
+  )
+  const syntheticLoadStatusTool = makeArtanisGetSyntheticLoadStatusTool(
+    config.syntheticLoadStatus,
+  )
+  const traceReviewTool = makeArtanisGetTraceReviewTool(config.traceReview)
+  const unsupportedRequestsTool = makeArtanisGetUnsupportedRequestsTool(
+    config.unsupportedRequests,
+  )
+
+  return {
+    definition: {
+      description:
+        'Read ONE unified Artanis fleet-status snapshot from the /api/operator/fleet/status operator payload shape: Pace (token burn rate + pace-to-floor), Fleet (owner-scoped Pylon/Codex assignments and spread), Watchdog (active synthetic-load/lease alerts), GLM (live readiness counts), and Brain (Khala trace-review + unsupported-request health). Use this instead of scattered get_network_stats, get_glm_fleet_status, list_pylon_assignments, get_synthetic_load_status, get_trace_review, and get_unsupported_requests calls when deciding the next operator move. Read-only, bounded, fail-soft, owner-scoped where applicable, public-safe; no spend, dispatch, or fleet mutation authority.',
+      name: 'get_fleet_status',
+      parameters: {
+        additionalProperties: false,
+        properties: {},
+        type: 'object',
+      },
+    },
+    execute: (_args: unknown) =>
+      Effect.gen(function* () {
+        const pace = yield* executeFleetRead(
+          'pace',
+          networkStatsTool.execute({}),
+        )
+        const fleet = yield* executeFleetRead(
+          'Pylon assignments',
+          assignmentsTool.execute({ limit: assignmentLimit }),
+        )
+        const watchdog = yield* executeFleetRead(
+          'watchdog',
+          syntheticLoadStatusTool.execute({}),
+        )
+        const glm = yield* executeFleetRead(
+          'GLM readiness',
+          glmFleetStatusTool.execute({}),
+        )
+        const traceReview = yield* executeFleetRead(
+          'trace review',
+          traceReviewTool.execute({}),
+        )
+        const unsupportedRequests = yield* executeFleetRead(
+          'unsupported requests',
+          unsupportedRequestsTool.execute({}),
+        )
+
+        return [
+          'Artanis unified fleet status (/api/operator/fleet/status):',
+          fleetSection('Pace', pace),
+          fleetSection('Fleet', fleet),
+          fleetSection('Watchdog', watchdog),
+          fleetSection('GLM', glm),
+          fleetSection(
+            'Brain',
+            [traceReview, '', unsupportedRequests].join('\n'),
+          ),
+        ].join('\n\n')
+      }),
+    kind: 'read',
+  }
+}
+
+// ---------------------------------------------------------------------------
 // get_khala_feedback — read a bounded, public-safe LIST of the most recent
 // user feedback submitted through the Khala CLI `/feedback` command.
 //
@@ -3317,6 +3434,9 @@ export const makeArtanisGetSyntheticLoadStatusTool = (
 // HTTP-fetch its own admin-gated zone); with no override wired it falls back to an
 // HTTP fetch of the operator route, and an unreachable source reads as an honest
 // "(could not fetch trace review …)" rather than inventing buckets.
+// `fleetStatus` is the unified #6428 `get_fleet_status` read tool config. When
+// omitted it composes the same section configs above so Artanis can pull Pace,
+// Fleet, Watchdog, GLM, and Brain in one call without widening authority.
 // `unsupportedRequests.reader` is the owner-scoped unsupported-request ledger
 // reader behind the iteration-8 `get_unsupported_requests` read tool (the live
 // `khala_unsupported_requests` ledger of user-facing capability gaps, #6357);
@@ -3336,6 +3456,7 @@ export const makeArtanisOperatorTools = (
     pylonJobStatus?: ArtanisPylonJobStatusConfig | undefined
     pylonAssignments?: ArtanisPylonAssignmentsConfig | undefined
     khalaFeedback?: ArtanisKhalaFeedbackConfig | undefined
+    fleetStatus?: ArtanisFleetStatusConfig | undefined
     traceReview?: ArtanisTraceReviewConfig | undefined
     unsupportedRequests?: ArtanisUnsupportedRequestsConfig | undefined
     unsupportedRequestWriter?: ArtanisUnsupportedRequestWriter | undefined
@@ -3357,6 +3478,14 @@ export const makeArtanisOperatorTools = (
     owner: config.repoRead?.owner,
     repo: config.repoRead?.repo,
   }
+  const fleetStatus: ArtanisFleetStatusConfig = config.fleetStatus ?? {
+    glmFleetStatus: config.glmFleetStatus,
+    networkStats: config.networkStats,
+    pylonAssignments: config.pylonAssignments,
+    syntheticLoadStatus: config.syntheticLoadStatus,
+    traceReview: config.traceReview,
+    unsupportedRequests: config.unsupportedRequests,
+  }
   return [
     makeArtanisReadRepoFileTool(config.repoRead),
     makeArtanisListRepoDirTool(config.repoRead),
@@ -3366,6 +3495,7 @@ export const makeArtanisOperatorTools = (
       owner: issueRead.owner,
       repo: issueRead.repo,
     }),
+    makeArtanisGetFleetStatusTool(fleetStatus),
     makeArtanisGetNetworkStatsTool(config.networkStats),
     makeArtanisGetGlmFleetStatusTool(config.glmFleetStatus),
     makeArtanisGetSyntheticLoadStatusTool(config.syntheticLoadStatus),

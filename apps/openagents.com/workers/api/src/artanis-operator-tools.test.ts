@@ -17,6 +17,7 @@ import {
   isSafeArtanisAssignmentRef,
   isSafeArtanisRepoPath,
   makeArtanisDispatchCodexTaskTool,
+  makeArtanisGetFleetStatusTool,
   makeArtanisGetGlmFleetStatusTool,
   makeArtanisGetSyntheticLoadStatusTool,
   makeArtanisGetKhalaFeedbackTool,
@@ -862,6 +863,144 @@ describe('list_pylon_assignments (owner-scoped bulk assignment list) — iterati
     const tool = makeArtanisListPylonAssignmentsTool({})
     const result = await Effect.runPromise(tool.execute({}))
     expect(result).toContain('could not list assignments')
+  })
+})
+
+describe('get_fleet_status (unified Artanis operator fleet snapshot) — issue #6428', () => {
+  test('returns one bounded status block covering Pace, Fleet, Watchdog, GLM, and Brain', async () => {
+    const tool = makeArtanisGetFleetStatusTool({
+      glmFleetStatus: {
+        loadFleetStatus: async (): Promise<ArtanisGlmFleetStatus> => ({
+          readyReplicas: 4,
+          status: 'ready',
+          totalReplicas: 5,
+          warmReplicas: 1,
+        }),
+      },
+      networkStats: {
+        loadStats: async () => ({
+          allTimeTokensServed: 123_456,
+          generatedAt: '2026-06-27T12:00:00.000Z',
+          history: [
+            { day: '2026-06-26', tokensServed: 10_000 },
+            { day: '2026-06-27', tokensServed: 20_000 },
+          ],
+          modelMix: [],
+          pace: {
+            behindPace: false,
+            day: '2026-06-27',
+            fractionOfCentralDayElapsed: 0.5,
+            gapToTarget4x: 0,
+            paceProjection: 40_000,
+            target10x: 100_000,
+            target4x: 40_000,
+            todayTokens: 20_000,
+            yesterdayTokens: 10_000,
+          },
+          timezone: 'America/Chicago',
+          todayTokens: 20_000,
+        }),
+      },
+      pylonAssignments: { lister: async () => assignmentRows },
+      syntheticLoadStatus: {
+        reader: async () => [
+          {
+            runRef: 'run.public.synthetic.glm_001',
+            runType: 'glm-stress',
+            state: 'running',
+            targetTokens: 1_000_000,
+            tokensBurned: 250_000,
+          },
+        ],
+      },
+      traceReview: {
+        loadReport: async () => ({
+          failureModes: [
+            {
+              count: 2,
+              failureRef: 'failure.public.tool_timeout',
+              label: 'tool_timeout',
+              severity: 'medium',
+            },
+          ],
+          modelMix: [
+            {
+              count: 3,
+              model: 'openagents/khala',
+              provider: 'khala',
+              totalTokens: 900,
+            },
+          ],
+          outcomes: [{ count: 3, outcome: 'success', totalTokens: 900 }],
+          rawEventRowCount: 0,
+          tokenEventCount: 3,
+          totalTokens: 900,
+          traceCount: 3,
+          window: {
+            since: '2026-06-27T11:00:00.000Z',
+            until: '2026-06-27T12:00:00.000Z',
+            windowHours: 1,
+          },
+        }),
+      },
+      unsupportedRequests: {
+        reader: async () => [
+          {
+            githubIssueRef: 'issue.public.github.6428',
+            nextAction: 'triage',
+            requestRef: 'unsupported.public.status_tool',
+            sourceKind: 'khala_cli',
+            status: 'issue_opened',
+            summary: 'Need a unified operator fleet status read.',
+            title: 'Unified fleet status',
+            triageKind: 'product_gap',
+            updatedAt: '2026-06-27T11:45:00.000Z',
+          },
+        ],
+      },
+    })
+
+    expect(tool.kind).toBe('read')
+    expect(tool.definition.name).toBe('get_fleet_status')
+
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toContain(
+      'Artanis unified fleet status (/api/operator/fleet/status):',
+    )
+    for (const section of ['## Pace', '## Fleet', '## Watchdog', '## GLM', '## Brain']) {
+      expect(result).toContain(section)
+    }
+    expect(result).toContain('Token pace for')
+    expect(result).toContain('Recent Pylon/Codex assignments')
+    expect(result).toContain('run.public.synthetic.glm_001')
+    expect(result).toContain('GLM inference fleet: status=ready')
+    expect(result).toContain('Khala trace review')
+    expect(result).toContain('unsupported.public.status_tool')
+    expect(result).not.toContain('sk-')
+    expect(result).not.toContain('bearer')
+  })
+
+  test('a failing subsection degrades in place instead of failing the unified read', async () => {
+    const tool = makeArtanisGetFleetStatusTool({
+      glmFleetStatus: {
+        loadFleetStatus: async () => {
+          throw new Error('d1 down')
+        },
+      },
+      networkStats: {
+        loadStats: async () => {
+          throw new Error('stats down')
+        },
+      },
+      pylonAssignments: { lister: async () => assignmentRows.slice(0, 1) },
+      traceReview: { loadReport: async () => ({}) },
+      unsupportedRequests: { reader: async () => [] },
+    })
+
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toContain('could not read pace')
+    expect(result).toContain('could not fetch GLM fleet status')
+    expect(result).toContain('assignment.public.pylon_api.accepted_001')
   })
 })
 
@@ -2222,6 +2361,7 @@ describe('makeArtanisOperatorTools default table', () => {
     const names = tools.map(tool => tool.definition.name).sort()
     expect(names).toEqual([
       'dispatch_codex_task',
+      'get_fleet_status',
       'get_glm_fleet_status',
       'get_khala_feedback',
       'get_network_stats',
@@ -2262,6 +2402,13 @@ describe('makeArtanisOperatorTools default table', () => {
     const tool = tools.find(
       t => t.definition.name === 'list_pylon_assignments',
     )
+    expect(tool).toBeDefined()
+    expect(tool?.kind).toBe('read')
+  })
+
+  test('the default table includes a read-kind get_fleet_status tool', () => {
+    const tools = makeArtanisOperatorTools()
+    const tool = tools.find(t => t.definition.name === 'get_fleet_status')
     expect(tool).toBeDefined()
     expect(tool?.kind).toBe('read')
   })
