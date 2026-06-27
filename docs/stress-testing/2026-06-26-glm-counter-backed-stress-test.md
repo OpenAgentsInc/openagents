@@ -187,6 +187,39 @@ Post-deploy public-gateway proof:
   so it proves the counter path but not successful GLM saturation. The GLM pool
   still needs intra-pool failover/replica selection work before scaling stress.
 
+## External-Wins Probe
+
+A bounded #6318 probe on 2026-06-27 attempted to prove live external-wins
+preemption:
+
+1. Start one authenticated `internal_stress` / `glm-saturation` streaming
+   request with public-safe synthetic content.
+2. Send one authenticated `external` / `public-api` request while the stress
+   request is active.
+3. Require the external response to include scheduler-preemption metadata and
+   the stress response to yield.
+
+The first two attempts did not reach routing:
+
+- unauthenticated requests returned HTTP `401`;
+- the local Pylon agent token returned HTTP `402 insufficient_credits`.
+
+Using the local Khala CLI token reached the inference path. The external request
+returned HTTP `200`, served through `fireworks`, reported `599` exact tokens,
+and moved the public counter by `599`. That is valid counter evidence for the
+external request, but it is **not** #6318 acceptance evidence:
+
+- the external response did not include scheduler-preemption metadata;
+- the internal stress stream was still active after the bounded `30s` local
+  wait and was aborted by the local client;
+- therefore, the live external-wins preemption invariant was not proven.
+
+The route-admission bug found by this probe: Hydralisk route-admission headroom
+was still allowed to count degraded/reclaimed heartbeat states as external
+capacity. The follow-up code fix excludes degraded replicas from reserved
+external headroom. Post-deploy proof still must rerun this external-wins probe
+and require scheduler-preemption metadata before #6318 can close.
+
 ## Next Stress Step
 
 For the next stress pass, rerun the counter proof with a larger bounded

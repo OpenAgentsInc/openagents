@@ -915,7 +915,7 @@ const aggregateLiveHeadroomFor = (
     candidate =>
       !candidate.state.benchmarkReserved &&
       !candidate.state.draining &&
-      candidate.state.health !== 'unhealthy',
+      candidate.state.health === 'healthy',
   )
   const aggregateMaxInflight = eligibleForExternal.reduce(
     (sum, candidate) => sum + candidate.state.maxInflight,

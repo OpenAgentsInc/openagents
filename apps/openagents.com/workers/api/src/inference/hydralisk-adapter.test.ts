@@ -221,6 +221,58 @@ describe('hydralisk vLLM adapter', () => {
     })
   })
 
+  it('does not count degraded replicas as reserved external route headroom', async () => {
+    let releaseFetch: (() => void) | undefined
+    let startedFetch: (() => void) | undefined
+    const startedFetchPromise = new Promise<void>(resolve => {
+      startedFetch = resolve
+    })
+    const runtime = makeHydraliskVllmPoolRuntime({
+      id: GLM_POOL_ADAPTER_ID,
+      replicas: [
+        replicaFixture('healthy-primary', {
+          fetchImpl: async () => {
+            startedFetch?.()
+            await new Promise<void>(resolve => {
+              releaseFetch = resolve
+            })
+            return Response.json(responseBody)
+          },
+          maxInflight: 2,
+        }),
+        replicaFixture('degraded-padding-must-not-count', {
+          maxInflight: 8,
+        }),
+      ],
+      routingStateOracle: replicaId =>
+        replicaId === 'degraded-padding-must-not-count'
+          ? { health: 'degraded', maxInflight: 8 }
+          : undefined,
+      upstreamModel: 'openagents/glm-5.2-reap-504b',
+    })
+
+    expect(runtime.routeAdmission()).toEqual({
+      reason: 'glm_reserved_external_headroom_available',
+      reservedExternalHeadroomAvailable: true,
+    })
+
+    const pending = Effect.runPromise(runtime.adapter.complete(request()))
+    await startedFetchPromise
+
+    expect(runtime.routeAdmission()).toEqual({
+      reason: 'glm_reserved_external_headroom_unavailable',
+      reservedExternalHeadroomAvailable: false,
+    })
+
+    releaseFetch?.()
+    await pending
+
+    expect(runtime.routeAdmission()).toEqual({
+      reason: 'glm_reserved_external_headroom_available',
+      reservedExternalHeadroomAvailable: true,
+    })
+  })
+
   it('prefers the cache-affinity replica when it is healthy and idle', async () => {
     const capturedInputs: Array<string> = []
     const adapter = makeHydraliskVllmPoolAdapter({
