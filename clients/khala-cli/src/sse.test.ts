@@ -84,13 +84,17 @@ describe("SSE parsing", () => {
   })
 
   test("streams OpenAI-compatible delta frames", async () => {
-    const fakeFetch = (async () => sseResponse([
+    const bodies: Array<Record<string, unknown>> = []
+    const fakeFetch = (async (_url: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      bodies.push(JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>)
+      return sseResponse([
       'data: {"id":"chat_1","model":"openagents/khala","choices":[{"delta":{"content":"Kh"}}]}',
       'data: {"id":"chat_1","model":"openagents/khala","choices":[{"delta":{"content":"ala"}}]}',
-      'data: {"id":"chat_1","model":"openagents/khala","choices":[],"usage":{"prompt_tokens":4,"completion_tokens":2,"total_tokens":6}}',
+      'data: {"id":"chat_1","model":"openagents/khala","choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":4,"completion_tokens":2,"total_tokens":6}}',
       "data: [DONE]",
       "",
-    ].join("\n\n"))) as unknown as typeof fetch
+    ].join("\n\n"))
+    }) as unknown as typeof fetch
 
     const result = await Effect.runPromise(runChatTurn({
       mode: "api",
@@ -101,8 +105,54 @@ describe("SSE parsing", () => {
     }))
 
     expect(result.text).toBe("Khala")
+    expect(result.metadata.finishReason).toBe("stop")
     expect(result.metadata.usage.totalTokens).toBe(6)
     expect(result.metadata.servedModel).toBe("openagents/khala")
+    expect(bodies[0]?.max_tokens).toBe(8192)
+  })
+
+  test("continues OpenAI-compatible chats that stop at finish_reason length", async () => {
+    const bodies: Array<{ readonly messages?: ReadonlyArray<{ readonly role?: string; readonly content?: string }> }> = []
+    const fakeFetch = (async (_url: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      bodies.push(JSON.parse(String(init?.body ?? "{}")))
+      if (bodies.length === 1) {
+        return sseResponse([
+          'data: {"id":"chat_1","model":"openagents/khala","choices":[{"delta":{"content":"Which of these paths were"},"finish_reason":"length"}]}',
+          'data: {"id":"chat_1","model":"openagents/khala","choices":[],"usage":{"prompt_tokens":4,"completion_tokens":5,"total_tokens":9}}',
+          "data: [DONE]",
+          "",
+        ].join("\n\n"))
+      }
+      return sseResponse([
+        'data: {"id":"chat_2","model":"openagents/khala","choices":[{"delta":{"content":" changed depends on the selected task."},"finish_reason":"stop"}]}',
+        'data: {"id":"chat_2","model":"openagents/khala","choices":[],"usage":{"prompt_tokens":8,"completion_tokens":7,"total_tokens":15}}',
+        "data: [DONE]",
+        "",
+      ].join("\n\n"))
+    }) as unknown as typeof fetch
+
+    const deltas: Array<string> = []
+    const result = await Effect.runPromise(runChatTurn({
+      mode: "api",
+      baseUrl: "https://example.test",
+      token: "oa_agent_test",
+      fetch: fakeFetch,
+      messages: [{ role: "user", content: "Summarize changed paths" }],
+      onDelta: delta => deltas.push(delta),
+    }))
+
+    expect(result.text).toBe("Which of these paths were changed depends on the selected task.")
+    expect(result.metadata.finishReason).toBe("stop")
+    expect(deltas).toEqual([
+      "Which of these paths were",
+      " changed depends on the selected task.",
+    ])
+    expect(bodies.length).toBe(2)
+    expect(bodies[1]?.messages?.at(-2)).toEqual({
+      role: "assistant",
+      content: "Which of these paths were",
+    })
+    expect(bodies[1]?.messages?.at(-1)?.content).toContain("Continue the previous answer")
   })
 
   test("extracts Khala orchestration metadata from OpenAI-compatible openagents receipt", async () => {

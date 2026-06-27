@@ -2,6 +2,8 @@ import { Schema as S } from "effect"
 
 export const DEFAULT_BASE_URL = "https://openagents.com"
 export const KHALA_MODEL_ID = "openagents/khala"
+export const KHALA_CHAT_MAX_OUTPUT_TOKENS = 8_192
+export const KHALA_CHAT_MAX_CONTINUATIONS = 2
 
 // BYOK (bring-your-own-key) wire headers, sent on the authenticated chat path
 // when the user has configured their own upstream provider API key. The key is
@@ -84,6 +86,7 @@ export const OpenAiStreamPayload = S.Struct({
         reasoning: S.optional(S.String),
         reasoning_content: S.optional(S.String),
       }),
+      finish_reason: S.optional(S.NullOr(S.String)),
     }),
   ),
   usage: S.optional(S.Struct({

@@ -1037,6 +1037,13 @@ async function maybeRunLocalCodexTurn(
   if (selection.route === "spawn_khala") {
     return await runSelectedKhalaSpawnTurn(args, env, prompt, selection, options)
   }
+  if (selection.route === "artanis_readonly") {
+    const text = formatArtanisReadonlyAnswer(prompt)
+    if (options.silent !== true) {
+      process.stdout.write(`${terminalStyle.assistant("Khala:")} ${renderMarkdownForTerminal(text)}\n\n`)
+    }
+    return { handled: true, text }
+  }
   if (selection.route !== "local_codex") {
     return { handled: false }
   }
@@ -1068,6 +1075,18 @@ async function maybeRunLocalCodexTurn(
     process.stdout.write("\n")
   }
   return { handled: true, text: result.text }
+}
+
+export function formatArtanisReadonlyAnswer(_prompt: string): string {
+  return [
+    "Artanis is the OpenAgents operator agent, not the StarCraft character.",
+    "",
+    "You can observe public-safe Artanis state from the OpenAgents surfaces: `/artanis` for the operator page, `/khala` for Khala activity, and `khala fleet status` for your own connected Codex fleet.",
+    "",
+    "In this public Khala chat I can answer read-only questions about Artanis status, recent decisions, and what the fleet is doing when those public projections are available. Commands, dispatch, spend, quarantine, and owner operations stay behind the owner-only Artanis channel.",
+    "",
+    "If you are the owner and want the operator channel, run `khala login`, then use `/artanis` in interactive Khala or `khala --artanis --prompt \"...\"`.",
+  ].join("\n")
 }
 
 async function runSelectedKhalaSpawnTurn(

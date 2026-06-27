@@ -34,6 +34,16 @@ describe("Khala route selector", () => {
     })
   })
 
+  test("parses the read-only Artanis route", () => {
+    expect(parseRouteSelection(JSON.stringify({
+      route: "artanis_readonly",
+      reason: "user asked how to talk to Artanis",
+    }))).toEqual({
+      route: "artanis_readonly",
+      reason: "user asked how to talk to Artanis",
+    })
+  })
+
   test("falls back to chat when the selector returns an invalid spawn count", () => {
     expect(parseRouteSelection(JSON.stringify({
       route: "spawn_khala",
@@ -81,6 +91,8 @@ describe("Khala route selector", () => {
         requiresWorkspace: true,
       })
       expect(selectorPrompt).toContain("spawn_khala")
+      expect(selectorPrompt).toContain("artanis_readonly")
+      expect(selectorPrompt).toContain("read-only")
       expect(selectorPrompt).toContain("intent")
       expect(selectorPrompt).toContain("count")
       expect(selectorPrompt).toContain("objective")

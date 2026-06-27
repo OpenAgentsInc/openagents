@@ -10,6 +10,8 @@ import {
   BYOK_PROVIDER_HEADER,
   DEFAULT_BASE_URL,
   FreeKeyResponse,
+  KHALA_CHAT_MAX_CONTINUATIONS,
+  KHALA_CHAT_MAX_OUTPUT_TOKENS,
   KHALA_MODEL_ID,
   KhalaFeedbackResponse,
   KhalaCliError,
@@ -19,6 +21,7 @@ import {
   type ArtanisTurnOptions,
   type ArtanisTurnResult,
   type ChatClientOptions,
+  type KhalaChatMessage,
   type ChatTurnOptions,
   type ChatTurnResult,
   type ChatTurnMetadata,
@@ -33,6 +36,60 @@ const RETRY_DELAYS_MS = [400, 1_000, 2_000, 4_000, 8_000] as const
 export function runChatTurn(options: ChatTurnOptions): Effect.Effect<ChatTurnResult, KhalaCliError> {
   return Effect.gen(function* () {
     const startedAt = Date.now()
+    const firstTurn = yield* runChatRequest(options, startedAt)
+    let byokAck = firstTurn.byokAck
+    let stream = firstTurn.stream
+    for (let continuation = 0; continuation < KHALA_CHAT_MAX_CONTINUATIONS && isLengthFinish(stream.metadata.finishReason); continuation += 1) {
+      const continuedMessages = continuationMessages(options.messages, stream.text)
+      const continued = yield* runChatRequest({ ...options, messages: continuedMessages }, startedAt)
+      byokAck = byokAck ?? continued.byokAck
+      stream = {
+        metadata: mergeMetadata(stream.metadata, continued.stream.metadata),
+        reasoningText: `${stream.reasoningText}${continued.stream.reasoningText}`,
+        text: `${stream.text}${continued.stream.text}`,
+        timings: {
+          firstTokenAt: stream.timings.firstTokenAt ?? continued.stream.timings.firstTokenAt,
+          responseAt: firstTurn.stream.timings.responseAt,
+          startedAt,
+        },
+      }
+    }
+    const durationMs = Math.max(0, Date.now() - startedAt)
+    const metadata = buildTurnMetadata({
+      durationMs,
+      mode: options.mode,
+      streamMetadata: stream.metadata,
+      timings: stream.timings,
+      text: stream.text,
+    })
+    return {
+      text: stream.text,
+      reasoningText: stream.reasoningText,
+      assistantMessage: { role: "assistant" as const, content: stream.text },
+      metadata,
+      traceRef: metadata.traceRef,
+      ...(byokAck === undefined ? {} : { byokAck }),
+    }
+  })
+}
+
+function runChatRequest(
+  options: ChatTurnOptions,
+  startedAt: number,
+): Effect.Effect<{
+  readonly byokAck?: string | undefined
+  readonly stream: {
+    readonly metadata: StreamFrameMetadata
+    readonly reasoningText: string
+    readonly text: string
+    readonly timings: {
+      readonly firstTokenAt?: number | undefined
+      readonly responseAt: number
+      readonly startedAt: number
+    }
+  }
+}, KhalaCliError> {
+  return Effect.gen(function* () {
     const response = yield* postChat(options)
     const responseAt = Date.now()
     const traceRef = readTraceRef(response)
@@ -45,24 +102,15 @@ export function runChatTurn(options: ChatTurnOptions): Effect.Effect<ChatTurnRes
       options.onDelta,
       options.onReasoning,
     )
-    const durationMs = Math.max(0, Date.now() - startedAt)
-    const metadata = buildTurnMetadata({
-      durationMs,
-      mode: options.mode,
-      streamMetadata: {
-        ...stream.metadata,
-        traceRef: stream.metadata.traceRef ?? traceRef,
-      },
-      timings: stream.timings,
-      text: stream.text,
-    })
     return {
-      text: stream.text,
-      reasoningText: stream.reasoningText,
-      assistantMessage: { role: "assistant" as const, content: stream.text },
-      metadata,
-      traceRef: metadata.traceRef,
       ...(byokAck === undefined ? {} : { byokAck }),
+      stream: {
+        ...stream,
+        metadata: {
+          ...stream.metadata,
+          traceRef: stream.metadata.traceRef ?? traceRef,
+        },
+      },
     }
   })
 }
@@ -260,12 +308,31 @@ function postChat(options: ChatTurnOptions): Effect.Effect<Response, KhalaCliErr
         body: JSON.stringify({
           model: KHALA_MODEL_ID,
           messages: options.messages,
+          max_tokens: KHALA_CHAT_MAX_OUTPUT_TOKENS,
           stream: true,
           stream_options: { include_usage: true },
         }),
       },
     })
   })
+}
+
+function isLengthFinish(finishReason: string | undefined): boolean {
+  return finishReason === "length" || finishReason === "MAX_TOKENS"
+}
+
+function continuationMessages(
+  messages: ReadonlyArray<KhalaChatMessage>,
+  partialText: string,
+): ReadonlyArray<KhalaChatMessage> {
+  return [
+    ...messages,
+    { role: "assistant" as const, content: partialText },
+    {
+      role: "user" as const,
+      content: "Continue the previous answer from exactly where it stopped. Finish the sentence and complete the answer without repeating earlier text.",
+    },
+  ]
 }
 
 function consumeStream(

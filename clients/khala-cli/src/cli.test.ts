@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 
-import { formatKhalaSpawnCapabilityAnswer, runKhalaCli } from "./cli.js"
+import { formatArtanisReadonlyAnswer, formatKhalaSpawnCapabilityAnswer, runKhalaCli } from "./cli.js"
 
 describe("Khala CLI spawn capability answer", () => {
   test("answers the original subprocess capability question with the reviewed CLI path", () => {
@@ -18,6 +18,20 @@ describe("Khala CLI spawn capability answer", () => {
     expect(lower).toContain("cannot execute local workers on your machine")
     expect(lower).not.toContain("capability we don't yet expose")
     expect(lower).not.toContain("we do not yet expose")
+  })
+})
+
+describe("Khala CLI Artanis read-only answer", () => {
+  test("describes the OpenAgents operator agent without roleplay or owner commands", () => {
+    const answer = formatArtanisReadonlyAnswer("how can I talk to Artanis?")
+    const lower = answer.toLowerCase()
+
+    expect(answer).toContain("OpenAgents operator agent")
+    expect(answer).toContain("read-only")
+    expect(answer).toContain("/artanis")
+    expect(lower).toContain("owner-only")
+    expect(lower).not.toContain("daelaam")
+    expect(lower).not.toContain("character.ai")
   })
 })
 
