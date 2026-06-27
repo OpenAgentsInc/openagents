@@ -334,6 +334,22 @@ describe('projectGlmFleetReadiness', () => {
         'blocker.hydralisk_glm_52_reap_504b.multi_region_auto_replace_reserve_evidence_missing',
         'blocker.hydralisk_glm_52_reap_504b.quota_request_state_missing',
       ],
+      counts: {
+        activeMaxInflight: 1,
+        benchmarkReservedReplicaCount: 0,
+        configuredMaxInflight: 1,
+        disabledReplicaCount: 0,
+        drainingReplicaCount: 0,
+        readyMaxInflight: 0,
+        readyReplicaCount: 0,
+        reclaimedReplicaCount: 0,
+        totalReplicaCount: 1,
+        unavailableReplicaCount: 0,
+        warmMaxInflight: 1,
+        warmOrReadyMaxInflight: 1,
+        warmReplicaCount: 1,
+      },
+      disabledReplicaRefs: [],
       dimensions: [
         {
           blockerRefs: [
@@ -382,8 +398,12 @@ describe('projectGlmFleetReadiness', () => {
       missingReplicaRefs: [
         'replica.hydralisk.glm_52_reap_504b.replacement-region.missing',
       ],
+      readyReplicaRefs: [],
+      reclaimedReplicaRefs: [],
       servingReadyButAcceptanceNotComplete: true,
       servingStatus: 'ready',
+      unavailableReplicaRefs: [],
+      warmReplicaRefs: ['replica.hydralisk.glm_52_reap_504b.warm-one'],
     })
   })
 
@@ -552,6 +572,24 @@ describe('projectGlmFleetReadiness', () => {
       status: 'incomplete',
     })
     expect(readout.missingReplicaRefs).toEqual([])
+    expect(readout.counts).toMatchObject({
+      reclaimedReplicaCount: 0,
+      totalReplicaCount: 6,
+      unavailableReplicaCount: 1,
+      warmReplicaCount: 3,
+    })
+    expect(readout.disabledReplicaRefs).toEqual([
+      'replica.hydralisk.glm_52_reap_504b.disabled-four',
+      'replica.hydralisk.glm_52_reap_504b.reserved-six',
+    ])
+    expect(readout.warmReplicaRefs).toEqual([
+      'replica.hydralisk.glm_52_reap_504b.ready-two',
+      'replica.hydralisk.glm_52_reap_504b.reclaimed-three',
+      'replica.hydralisk.glm_52_reap_504b.warm-one',
+    ])
+    expect(readout.unavailableReplicaRefs).toEqual([
+      'replica.hydralisk.glm_52_reap_504b.missing-five',
+    ])
     expect(readout.servingReadyButAcceptanceNotComplete).toBe(false)
     expect(JSON.stringify(readout)).not.toContain('private.example.test')
     expect(JSON.stringify(readout)).not.toContain('secret-')

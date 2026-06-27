@@ -164,6 +164,19 @@ operator view of what remains, not a public product claim.
   rows and no raw-event closeout. This does not close #6323. The remaining
   close condition is still the owner-armed isolated 8x-host pilot with measured
   tool-loop, quality, max-context, and tok/s evidence.
+- 2026-06-27T01:07Z #6311 refresh: live
+  `/v1/gateway/glm-fleet/readiness` now reports `status:"degraded"` with
+  `readyReplicaCount:7`, `reclaimedReplicaCount:3`, and
+  `warmOrReadyMaxInflight:7`. The reclaimed public refs are
+  `replica.hydralisk.glm_52_reap_504b.g4-4g-east1b-spot-20260625203000`,
+  `replica.hydralisk.glm_52_reap_504b.g4-4g-east1d-spot-20260625203000`, and
+  `replica.hydralisk.glm_52_reap_504b.g4-4g-east5c-spot-20260625211500`.
+  `glm-fleet:durability --summary` now includes aggregate counts and
+  status-specific replica refs in the headless readout. Focused verification:
+  `glm-fleet-readiness`, `glm-fleet-readiness-routes`, and
+  `glm-fleet-durability-operator` tests passed (`25` tests), and
+  `bun run --cwd apps/openagents.com/workers/api typecheck` passed with only
+  the pre-existing `Effect.void` language-service advisories.
 - Latest live counter/proof checkpoint after the supervised #6311/#6323 pair:
   `e681fe6ab3` is current `origin/main` and is deployed as Worker
   `8c03f302-8186-468d-a2b8-cd8d3489ae0b`. Live
@@ -572,6 +585,10 @@ Make the fleet trustworthy before pushing load through it.
      action is the real durability scope: non-Spot/reserve owner decision,
      all-replica STOP-watchdog/keep-warm, forced STOP recovery proof,
      multi-region auto-replace, and quota tracking.
+   - 2026-06-27 refresh: the live fleet-health readout is now degraded, not just
+     acceptance-blocked (`7` ready, `3` reclaimed). The headless durability
+     summary names the reclaimed public replica refs so the operator can target
+     recovery without opening the full bundle.
 6. **#6259 + #6315 — green end-to-end GLM-serving smoke. → after #6310.** Get the
    Khala→GLM verification smoke passing for real (served-worker disclosure + counter
    increment); #6315 is the receipt-ref fix for the zero-debit operator-exempt token.

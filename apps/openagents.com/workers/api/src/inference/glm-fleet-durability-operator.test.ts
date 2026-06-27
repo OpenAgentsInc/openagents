@@ -66,6 +66,10 @@ describe('GLM fleet durability operator bundle', () => {
       'openagents.khala.glm_fleet_durability_operator_bundle.v1',
     )
     expect(bundle.readiness.acceptanceStatus).toBe('blocked')
+    expect(bundle.readiness.counts).toMatchObject({
+      totalReplicaCount: 1,
+      warmReplicaCount: 1,
+    })
     expect(bundle.missingOperatorInputs.map(input => input.env)).toEqual([
       'HYDRALISK_GLM_52_REAP_504B_CAPACITY_FLOOR_DECISION',
       'HYDRALISK_GLM_52_REAP_504B_FORCED_STOP_RECOVERY_REFS',
@@ -125,6 +129,8 @@ describe('GLM fleet durability operator bundle', () => {
 
     expect(bundle.readiness.acceptanceStatus).toBe('complete')
     expect(bundle.missingOperatorInputs).toEqual([])
+    expect(readme).toContain('- total replicas: 2')
+    expect(readme).toContain('- warm replicas: 1')
     expect(readme).toContain('- none')
     expect(JSON.stringify(bundle)).not.toContain('private.example.test')
     expect(JSON.stringify(bundle)).not.toContain('secret-')

@@ -137,11 +137,17 @@ export type GlmFleetReadinessOperatorReadout = Readonly<{
   kind: 'glm_fleet_readiness_operator_readout'
   acceptanceStatus: GlmFleetAcceptanceDimensionStatus
   blockerRefs: ReadonlyArray<string>
+  counts: GlmFleetReadinessCounts
+  disabledReplicaRefs: ReadonlyArray<string>
   dimensions: ReadonlyArray<GlmFleetReadinessOperatorDimensionReadout>
   evidenceRefs: ReadonlyArray<string>
   missingReplicaRefs: ReadonlyArray<string>
+  readyReplicaRefs: ReadonlyArray<string>
+  reclaimedReplicaRefs: ReadonlyArray<string>
   servingReadyButAcceptanceNotComplete: boolean
   servingStatus: GlmFleetReadinessStatus
+  unavailableReplicaRefs: ReadonlyArray<string>
+  warmReplicaRefs: ReadonlyArray<string>
 }>
 
 export type GlmFleetReadinessHeartbeatRecord = Readonly<{
@@ -735,6 +741,14 @@ export const projectGlmFleetReadinessForEnv = (
 export const summarizeGlmFleetReadinessForOperators = (
   projection: GlmFleetReadinessProjection,
 ): GlmFleetReadinessOperatorReadout => {
+  const replicaRefsByStatus = (
+    status: GlmFleetReplicaReadinessStatus,
+  ): ReadonlyArray<string> =>
+    stableUniqueRefs(
+      projection.replicas
+        .filter(replica => replica.status === status)
+        .map(replica => replica.replicaRef),
+    )
   const dimensions: ReadonlyArray<GlmFleetReadinessOperatorDimensionReadout> = [
     {
       blockerRefs: stableUniqueRefs(
@@ -798,6 +812,8 @@ export const summarizeGlmFleetReadinessForOperators = (
     blockerRefs: stableUniqueRefs(
       dimensions.flatMap(dimension => dimension.blockerRefs),
     ),
+    counts: projection.counts,
+    disabledReplicaRefs: replicaRefsByStatus('disabled'),
     dimensions,
     evidenceRefs: stableUniqueRefs(
       dimensions.flatMap(dimension => dimension.evidenceRefs),
@@ -806,9 +822,13 @@ export const summarizeGlmFleetReadinessForOperators = (
     missingReplicaRefs: stableUniqueRefs(
       dimensions.flatMap(dimension => dimension.missingReplicaRefs),
     ),
+    readyReplicaRefs: replicaRefsByStatus('ready'),
+    reclaimedReplicaRefs: replicaRefsByStatus('reclaimed'),
     servingReadyButAcceptanceNotComplete:
       projection.status === 'ready' && projection.acceptance.status !== 'complete',
     servingStatus: projection.status,
+    unavailableReplicaRefs: replicaRefsByStatus('unavailable'),
+    warmReplicaRefs: replicaRefsByStatus('warm'),
   }
 }
 
