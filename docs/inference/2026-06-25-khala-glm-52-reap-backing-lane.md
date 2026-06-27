@@ -55,12 +55,14 @@ benchmark-reserved at arming time: the roster collection live-probed all ten
 endpoints (`/health`, `/v1/models`, and a tiny `/v1/chat/completions`) at HTTP
 200 before arming.
 
-Current live state (2026-06-27): the configured pool still has `10` total
-replicas, but serving is degraded and durability acceptance is blocked. The
-public `/v1/gateway/glm-fleet/readiness` projection reports `2` ready replicas,
-`8` reclaimed replicas, and `warmOrReadyMaxInflight:2`. Do not describe the
-fleet as ten healthy serving slots again until the reclaimed replicas recover
-and the #6311 durability blockers are satisfied.
+Current live state (2026-06-27): serving capacity has recovered, but durability
+acceptance is still blocked. The public `/v1/gateway/glm-fleet/readiness`
+projection reports `8` ready replicas, `0` reclaimed replicas, and
+`warmOrReadyMaxInflight:9`; the operator summary should not emit
+`recover_reclaimed_replicas` while reclaimed count is zero. Do not describe
+#6311 as complete until the forced STOP recovery evidence, capacity-floor owner
+decision evidence, multi-region reserve/prebake auto-replace evidence, and
+quota request tracking blockers are satisfied.
 
 For two or more replicas, set a comma-separated pool and use the named variable
 form. Replica ids must be lower-case alphanumeric or hyphenated; hyphens become

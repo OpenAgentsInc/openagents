@@ -294,6 +294,8 @@ export const formatGlmFleetDurabilityOperatorReadme = (
     `Issue: ${bundle.issueRef}`,
     `Acceptance: ${bundle.readiness.acceptanceStatus}`,
     `Serving: ${bundle.readiness.servingStatus}`,
+    `Serving capacity summary: ${bundle.readiness.servingCapacitySummary}`,
+    `Serving ready but durability acceptance incomplete: ${bundle.readiness.servingReadyButAcceptanceNotComplete}`,
     '',
     '## Serving counts',
     '',

@@ -445,6 +445,8 @@ describe('projectGlmFleetReadiness', () => {
       ],
       readyReplicaRefs: [],
       reclaimedReplicaRefs: [],
+      servingCapacitySummary:
+        'serving capacity recovered: ready=0, warm=1, reclaimed=0, warmOrReadyMaxInflight=1; durability acceptance remains blocked',
       servingReadyButAcceptanceNotComplete: true,
       servingStatus: 'ready',
       unavailableReplicaRefs: [],

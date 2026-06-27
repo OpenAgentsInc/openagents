@@ -145,6 +145,90 @@ describe('GLM fleet durability operator bundle', () => {
     expect(JSON.stringify(bundle)).not.toContain('secret-')
   })
 
+  test('distinguishes recovered serving capacity from incomplete durability acceptance', () => {
+    const replicaIds = [
+      'ready-one',
+      'ready-two',
+      'ready-three',
+      'ready-four',
+      'ready-five',
+      'ready-six',
+      'ready-seven',
+      'ready-eight',
+      'warm-nine',
+    ]
+    const env = {
+      HYDRALISK_GLM_52_REAP_504B_REPLICA_IDS: replicaIds.join(','),
+      ...Object.fromEntries(
+        replicaIds.flatMap(replicaId => {
+          const key = replicaId.toUpperCase().replaceAll('-', '_')
+          return [
+            [
+              `HYDRALISK_GLM_52_REAP_504B_${key}_BASE_URL`,
+              `https://${replicaId}.private.example.test`,
+            ],
+            [
+              `HYDRALISK_GLM_52_REAP_504B_${key}_BEARER_TOKEN`,
+              `secret-${replicaId}`,
+            ],
+            [`HYDRALISK_GLM_52_REAP_504B_${key}_ENABLED`, 'ready'],
+            [
+              `HYDRALISK_GLM_52_REAP_504B_${key}_PREFLIGHT_REF`,
+              `preflight.hydralisk.glm.${replicaId}`,
+            ],
+            [
+              `HYDRALISK_GLM_52_REAP_504B_${key}_RECEIPT_REF`,
+              `receipt.hydralisk.glm.${replicaId}`,
+            ],
+          ]
+        }),
+      ),
+    }
+    const projection = projectGlmFleetReadinessForEnv(env, replicaId =>
+      heartbeat(replicaId, {
+        warmState: replicaId === 'warm-nine' ? 'warm' : 'cold',
+      }),
+    )
+    const bundle = buildGlmFleetDurabilityOperatorBundle({
+      generatedAt: '2026-06-27T18:00:00.000Z',
+      projection,
+    })
+    const readme = formatGlmFleetDurabilityOperatorReadme(bundle)
+
+    expect(bundle.readiness.acceptanceStatus).toBe('blocked')
+    expect(bundle.readiness.servingStatus).toBe('ready')
+    expect(bundle.readiness.servingReadyButAcceptanceNotComplete).toBe(true)
+    expect(bundle.readiness.counts).toMatchObject({
+      readyReplicaCount: 8,
+      reclaimedReplicaCount: 0,
+      warmOrReadyMaxInflight: 9,
+      warmReplicaCount: 1,
+    })
+    expect(bundle.readiness.servingCapacitySummary).toBe(
+      'serving capacity recovered: ready=8, warm=1, reclaimed=0, warmOrReadyMaxInflight=9; durability acceptance remains blocked',
+    )
+    expect(
+      bundle.readiness.operatorActionItems.map(item => item.action),
+    ).not.toContain('recover_reclaimed_replicas')
+    expect(
+      bundle.readiness.operatorActionItems.map(item => item.action),
+    ).toEqual([
+      'record_forced_stop_recovery_evidence',
+      'record_capacity_floor_owner_decision',
+      'record_multi_region_auto_replace_evidence',
+      'record_quota_request_tracking',
+    ])
+    expect(readme).toContain('Serving: ready')
+    expect(readme).toContain('Acceptance: blocked')
+    expect(readme).toContain(
+      'Serving ready but durability acceptance incomplete: true',
+    )
+    expect(readme).toContain('- reclaimed replicas: 0')
+    expect(readme).not.toContain('recover_reclaimed_replicas')
+    expect(JSON.stringify(bundle)).not.toContain('private.example.test')
+    expect(JSON.stringify(bundle)).not.toContain('secret-')
+  })
+
   test('prints reclaimed replica recovery actions in retained README', () => {
     const env = {
       ...baseEnv,

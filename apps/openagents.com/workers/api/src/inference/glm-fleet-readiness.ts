@@ -166,6 +166,7 @@ export type GlmFleetReadinessOperatorReadout = Readonly<{
   operatorActionItems: ReadonlyArray<GlmFleetReadinessOperatorActionItem>
   readyReplicaRefs: ReadonlyArray<string>
   reclaimedReplicaRefs: ReadonlyArray<string>
+  servingCapacitySummary: string
   servingReadyButAcceptanceNotComplete: boolean
   servingStatus: GlmFleetReadinessStatus
   unavailableReplicaRefs: ReadonlyArray<string>
@@ -841,6 +842,11 @@ export const summarizeGlmFleetReadinessForOperators = (
   )
   const multiRegionAutoReplace = dimension('multi_region_auto_replace')
   const quotaRequestTracking = dimension('quota_request_tracking')
+  const servingReadyButAcceptanceNotComplete =
+    projection.status === 'ready' && projection.acceptance.status !== 'complete'
+  const servingCapacitySummary = servingReadyButAcceptanceNotComplete
+    ? `serving capacity recovered: ready=${projection.counts.readyReplicaCount}, warm=${projection.counts.warmReplicaCount}, reclaimed=${projection.counts.reclaimedReplicaCount}, warmOrReadyMaxInflight=${projection.counts.warmOrReadyMaxInflight}; durability acceptance remains ${projection.acceptance.status}`
+    : `serving ${projection.status}: ready=${projection.counts.readyReplicaCount}, warm=${projection.counts.warmReplicaCount}, reclaimed=${projection.counts.reclaimedReplicaCount}, warmOrReadyMaxInflight=${projection.counts.warmOrReadyMaxInflight}; durability acceptance ${projection.acceptance.status}`
   const operatorActionItems: ReadonlyArray<GlmFleetReadinessOperatorActionItem> =
     [
       ...(reclaimedReplicaRefs.length === 0
@@ -945,8 +951,8 @@ export const summarizeGlmFleetReadinessForOperators = (
     operatorActionItems,
     readyReplicaRefs: replicaRefsByStatus('ready'),
     reclaimedReplicaRefs,
-    servingReadyButAcceptanceNotComplete:
-      projection.status === 'ready' && projection.acceptance.status !== 'complete',
+    servingCapacitySummary,
+    servingReadyButAcceptanceNotComplete,
     servingStatus: projection.status,
     unavailableReplicaRefs: replicaRefsByStatus('unavailable'),
     warmReplicaRefs: replicaRefsByStatus('warm'),
