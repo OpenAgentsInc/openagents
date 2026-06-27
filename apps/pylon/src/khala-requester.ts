@@ -74,7 +74,7 @@ export type PylonKhalaStatusResult = PylonKhalaStreamProjection & {
 
 export type PylonKhalaAssignmentTraceStatusResult = {
   assignmentRef: string
-  closeoutPolicy: {
+  closeoutPolicy?: {
     paymentMode: "no-spend" | "paid" | "unknown"
     payoutClaimAllowed: boolean | null
     settlementState: "not_applicable" | "pending" | "settled" | "unknown"
@@ -161,7 +161,7 @@ export type PylonKhalaAssignmentTraceStatusResult = {
 
 export type PylonKhalaProofResult = {
   assignmentRef: string
-  closeoutPolicy: PylonKhalaAssignmentTraceStatusResult["closeoutPolicy"]
+  closeoutPolicy?: PylonKhalaAssignmentTraceStatusResult["closeoutPolicy"]
   generatedAt: string
   ok: true
   owner: {
@@ -440,10 +440,22 @@ export function evaluatePylonKhalaProofChecklist(
   }
 }
 
+const unavailableCloseoutPolicy = {
+  paymentMode: "unknown",
+  payoutClaimAllowed: null,
+  settlementState: "unknown",
+  source: "unavailable",
+} as const satisfies NonNullable<
+  PylonKhalaAssignmentTraceStatusResult["closeoutPolicy"]
+>
+
 export function evaluatePylonKhalaCloseoutChecklist(
   status: PylonKhalaAssignmentTraceStatusResult,
   proof: PylonKhalaProofResult,
 ): PylonKhalaCloseoutChecklist {
+  const statusCloseoutPolicy =
+    status.closeoutPolicy ?? unavailableCloseoutPolicy
+  const proofCloseoutPolicy = proof.closeoutPolicy ?? unavailableCloseoutPolicy
   const items = [
     checklistItem(
       "check.khala_closeout.status_schema.codex_assignment_trace_status_v1",
@@ -507,14 +519,14 @@ export function evaluatePylonKhalaCloseoutChecklist(
     ),
     checklistItem(
       "check.khala_closeout.no_spend_payout_false",
-      status.closeoutPolicy.source === "worker_closeout_event" &&
-        proof.closeoutPolicy.source === "worker_closeout_event" &&
-        status.closeoutPolicy.paymentMode === "no-spend" &&
-        proof.closeoutPolicy.paymentMode === "no-spend" &&
-        status.closeoutPolicy.settlementState === "not_applicable" &&
-        proof.closeoutPolicy.settlementState === "not_applicable" &&
-        status.closeoutPolicy.payoutClaimAllowed === false &&
-        proof.closeoutPolicy.payoutClaimAllowed === false,
+      statusCloseoutPolicy.source === "worker_closeout_event" &&
+        proofCloseoutPolicy.source === "worker_closeout_event" &&
+        statusCloseoutPolicy.paymentMode === "no-spend" &&
+        proofCloseoutPolicy.paymentMode === "no-spend" &&
+        statusCloseoutPolicy.settlementState === "not_applicable" &&
+        proofCloseoutPolicy.settlementState === "not_applicable" &&
+        statusCloseoutPolicy.payoutClaimAllowed === false &&
+        proofCloseoutPolicy.payoutClaimAllowed === false,
     ),
     checklistItem(
       "check.khala_closeout.generated_at.iso_timestamps",

@@ -1005,6 +1005,27 @@ describe("pylon khala requester API", () => {
     )
   })
 
+  test("closeout checklist fails closed instead of throwing when remote closeout policy is absent", () => {
+    const { closeoutPolicy: _proofCloseoutPolicy, ...proofPayload } =
+      completeProof()
+    const {
+      closeoutPolicy: _statusCloseoutPolicy,
+      ...traceStatusPayload
+    } = completeTraceStatus()
+    const proofChecklist = evaluatePylonKhalaProofChecklist(
+      proofPayload as ProofPayload,
+    )
+    const checklist = evaluatePylonKhalaCloseoutChecklist(
+      traceStatusPayload as CloseoutTraceStatus,
+      { ...proofPayload, ok: true, proofChecklist } as CloseoutProofResult,
+    )
+
+    expect(checklist.ok).toBe(false)
+    expect(checklist.blockerRefs).toEqual([
+      "blocker.khala_closeout.no_spend_payout_false",
+    ])
+  })
+
   test("closeout reads owner-scoped trace status and proof as one JSON projection", async () => {
     const calls: Array<{ init: RequestInit; url: string }> = []
     const result = await readPylonKhalaCloseout(
