@@ -260,6 +260,45 @@ describe('Artanis operator console routes', () => {
     expect(serialized).not.toMatch(/\/Users\/|auth\.json|bearer [A-Za-z0-9._-]+|sk-[a-z0-9]/i)
   })
 
+  test('console survives stale/undecodable persisted rows', async () => {
+    const { db, store } = await seedStore()
+    // Simulate a row written under an older record schema that no longer
+    // decodes. It must be skipped, not crash the whole operator console.
+    store.rows('artanis_approval_gates').push({
+      active: 0,
+      agent_id: 'agent_artanis',
+      closed_at: null,
+      closeout_json: null,
+      content_hash: 'stale',
+      created_at: '2026-06-08T00:00:00.000Z',
+      id: 'approval_gate:gate.public.artanis.stale_legacy',
+      idempotency_key: 'artanis-approval:stale-legacy:v1',
+      parent_ref: null,
+      public_projection_json: '{}',
+      record_json: '{"legacyOnlyField":true}',
+      record_ref: 'gate.public.artanis.stale_legacy',
+      scope_ref: 'pylon_job_dispatch',
+      source_kind: 'approval_gate',
+      state: 'approved',
+      updated_at: '2026-06-08T00:00:00.000Z',
+    } as never)
+
+    const response = await Effect.runPromise(
+      route({ adminToken: true })(
+        new Request('https://openagents.com/api/operator/artanis/console', {
+          headers: { authorization: 'Bearer admin' },
+        }),
+        { OPENAGENTS_DB: db },
+        executionContext,
+      )!,
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      consoleRef: 'operator.artanis.console',
+    })
+  })
+
   test('rejects a non-POST arm request', async () => {
     const { db } = await seedStore()
     const response = await Effect.runPromise(

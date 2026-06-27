@@ -198,19 +198,43 @@ const readRows = (
   limit = 12,
 ) => readLatestArtanisPersistedRows(db, kind, limit)
 
+// Decode one stored record, returning null instead of throwing when the row
+// predates the current schema. The Artanis console projects long-lived
+// persistence tables; stale rows written under an older record shape must be
+// skipped, not allowed to crash the whole operator console (the otherwise
+// opaque internal_server_error seen on GET /api/operator/artanis/console).
+const safeDecodeRow = <A>(
+  row: ArtanisPersistenceStoredRow,
+  schema: S.Decoder<A>,
+): A | null => {
+  try {
+    return decodeUnknownWithSchema(schema, row.record)
+  } catch {
+    return null
+  }
+}
+
 const decodeRows = <A>(
   rows: ReadonlyArray<ArtanisPersistenceStoredRow>,
   schema: S.Decoder<A>,
 ): ReadonlyArray<A> =>
-  rows.map(row => decodeUnknownWithSchema(schema, row.record))
+  rows.flatMap(row => {
+    const decoded = safeDecodeRow(row, schema)
+    return decoded === null ? [] : [decoded]
+  })
 
 const maybeDecodeLatest = <A>(
   rows: ReadonlyArray<ArtanisPersistenceStoredRow>,
   schema: S.Decoder<A>,
-): A | null =>
-  rows[0] === undefined
-    ? null
-    : decodeUnknownWithSchema(schema, rows[0].record)
+): A | null => {
+  for (const row of rows) {
+    const decoded = safeDecodeRow(row, schema)
+    if (decoded !== null) {
+      return decoded
+    }
+  }
+  return null
+}
 
 const rowSummary = (
   row: ArtanisPersistenceStoredRow,
@@ -661,10 +685,13 @@ const armPylonDispatchGate = (
 
     yield* saveArtanisApprovalGate(db, record, nowIso)
 
-    const console = yield* loadConsole(db, nowIso)
+    // Persisting the gate is the authoritative result; the console snapshot is a
+    // convenience echo. Never let a console-projection failure or defect (e.g.
+    // stale rows) turn a successful arm into a 500 — degrade the echo to null.
+    const consoleExit = yield* Effect.exit(loadConsole(db, nowIso))
+    const console = consoleExit._tag === 'Success' ? consoleExit.value : null
 
     return {
-      ...console,
       armedGate: {
         expiresAtDisplay: friendlyBlueprintMissionBriefingTime(
           record.expiresAtIso,
@@ -674,6 +701,8 @@ const armPylonDispatchGate = (
         kind: record.kind,
         state: record.state,
       },
+      console,
+      ok: true,
     }
   })
 
