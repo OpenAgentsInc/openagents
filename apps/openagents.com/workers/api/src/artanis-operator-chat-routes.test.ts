@@ -88,6 +88,16 @@ const post = (body: unknown): Request =>
     method: 'POST',
   })
 
+const postStream = (body: unknown): Request =>
+  new Request('https://openagents.com/api/operator/artanis/chat', {
+    body: JSON.stringify(body),
+    headers: {
+      accept: 'text/event-stream',
+      'content-type': 'application/json',
+    },
+    method: 'POST',
+  })
+
 const runRoute = async (
   deps: ReturnType<typeof baseDeps>['deps'],
   request: Request,
@@ -218,6 +228,33 @@ describe('POST /api/operator/artanis/chat — grounded Khala-powered reply', () 
     )
     // Owner-scoped.
     expect(owner?.ownerId).toBe('owner:github:14167547')
+  })
+
+  test('streams signed Artanis operator frames when SSE is requested', async () => {
+    const { deps, fake } = baseDeps()
+    const response = await runRoute(
+      deps,
+      postStream({ messages: [{ content: 'stream status', role: 'user' }] }),
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toContain('text/event-stream')
+
+    const body = await response.text()
+    expect(body).toContain('signature.operator.artanis.interaction.v1')
+    expect(body).toContain('"channelRef":"operator.artanis.chat"')
+    expect(body).toContain('"servedVia":"openagents_khala"')
+    expect(body).toContain(
+      '"content":"I dispatched two Codex assignments this morning.',
+    )
+    expect(body).toContain('data: [DONE]')
+
+    const owner = fake.entries.find(entry => entry.role === 'owner')
+    const artanis = fake.entries.find(entry => entry.role === 'artanis')
+    expect(owner?.body).toBe('stream status')
+    expect(artanis?.body).toBe(
+      'I dispatched two Codex assignments this morning.',
+    )
   })
 
   test('a spend ask surfaces the approval-gate hint', async () => {

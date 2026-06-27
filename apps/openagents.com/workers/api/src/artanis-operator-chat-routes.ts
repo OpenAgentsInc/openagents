@@ -35,6 +35,7 @@ import {
   ARTANIS_OPERATOR_MEMORY_TURN_LIMIT,
   type ArtanisOperatorKhalaClient,
   ArtanisOperatorMessage,
+  type ArtanisOperatorTurnResult,
   type ArtanisOperatorTool,
   artanisOperatorTurn,
 } from './artanis-operator'
@@ -241,6 +242,83 @@ const ChatRequestBody = S.Struct({
   messages: S.Array(ArtanisOperatorMessage),
 })
 
+const wantsEventStream = (request: Request): boolean =>
+  request.headers.get('accept')?.toLowerCase().includes('text/event-stream') ===
+  true
+
+const sseData = (value: unknown): string =>
+  `data: ${JSON.stringify(value)}\n\n`
+
+const chunkReply = (reply: string): ReadonlyArray<string> => {
+  const chunks: Array<string> = []
+  let remaining = reply
+  while (remaining.length > 0) {
+    const candidate = remaining.slice(0, 240)
+    const splitAt = candidate.length === remaining.length
+      ? candidate.length
+      : Math.max(
+          candidate.lastIndexOf(' '),
+          candidate.lastIndexOf('\n'),
+          candidate.lastIndexOf('. '),
+        )
+    const take = splitAt > 48 ? splitAt + 1 : candidate.length
+    chunks.push(remaining.slice(0, take))
+    remaining = remaining.slice(take)
+  }
+  return chunks
+}
+
+const operatorArtanisSseResponse = (
+  turn: ArtanisOperatorTurnResult,
+): Response => {
+  const signatureRef = 'signature.operator.artanis.interaction.v1'
+  const lines: Array<string> = [
+    sseData({
+      channelRef: ARTANIS_OPERATOR_CHANNEL_REF,
+      servedModel: turn.servedModel,
+      servedVia: turn.servedVia,
+      signatureRef,
+      type: 'signature',
+    }),
+  ]
+
+  for (const chunk of chunkReply(turn.reply)) {
+    lines.push(
+      sseData({
+        choices: [{ delta: { content: chunk } }],
+        channelRef: ARTANIS_OPERATOR_CHANNEL_REF,
+        signatureRef,
+        type: 'delta',
+      }),
+    )
+  }
+
+  lines.push(
+    sseData({
+      approvalGateRef: ARTANIS_OPERATOR_APPROVAL_GATE_REF,
+      channelRef: ARTANIS_OPERATOR_CHANNEL_REF,
+      deferredToApprovalGate: turn.deferredToApprovalGate,
+      iterations: turn.iterations,
+      persona: turn.persona,
+      requestedModel: turn.requestedModel,
+      servedModel: turn.servedModel,
+      servedVia: turn.servedVia,
+      signatureRef,
+      toolInvocations: turn.toolInvocations,
+      type: 'done',
+    }),
+  )
+  lines.push('data: [DONE]\n\n')
+
+  return new Response(lines.join(''), {
+    headers: {
+      'Cache-Control': 'no-store',
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'X-Accel-Buffering': 'no',
+    },
+  })
+}
+
 const parseBody = (request: Request) =>
   Effect.gen(function* () {
     const raw = yield* Effect.tryPromise({
@@ -372,21 +450,22 @@ export const makeOperatorArtanisChatRoutes = <
         }),
       ).pipe(Effect.catch(() => Effect.void))
 
-      return dependencies.appendRefreshedSessionCookies(
-        noStoreJsonResponse({
-          approvalGateRef: ARTANIS_OPERATOR_APPROVAL_GATE_REF,
-          channelRef: ARTANIS_OPERATOR_CHANNEL_REF,
-          deferredToApprovalGate: turn.deferredToApprovalGate,
-          iterations: turn.iterations,
-          persona: turn.persona,
-          reply: turn.reply,
-          requestedModel: turn.requestedModel,
-          servedModel: turn.servedModel,
-          servedVia: turn.servedVia,
-          toolInvocations: turn.toolInvocations,
-        }),
-        session,
-      )
+      const response = wantsEventStream(request)
+        ? operatorArtanisSseResponse(turn)
+        : noStoreJsonResponse({
+            approvalGateRef: ARTANIS_OPERATOR_APPROVAL_GATE_REF,
+            channelRef: ARTANIS_OPERATOR_CHANNEL_REF,
+            deferredToApprovalGate: turn.deferredToApprovalGate,
+            iterations: turn.iterations,
+            persona: turn.persona,
+            reply: turn.reply,
+            requestedModel: turn.requestedModel,
+            servedModel: turn.servedModel,
+            servedVia: turn.servedVia,
+            toolInvocations: turn.toolInvocations,
+          })
+
+      return dependencies.appendRefreshedSessionCookies(response, session)
     }).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
   },
 })

@@ -101,6 +101,51 @@ final class KhalaStreamTests: XCTestCase {
         XCTAssertEqual(result.role, "assistant")
     }
 
+    func testArtanisStreamUsesOwnerEndpointAndYieldsSignedDeltas() async throws {
+        let session = makeSession()
+        let apiKey = "oa_agent_owner_key"
+
+        StreamMockURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.url?.absoluteString, "https://openagents.com/api/operator/artanis/chat")
+            XCTAssertEqual(request.httpMethod, "POST")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "text/event-stream")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer \(apiKey)")
+
+            let body = try XCTUnwrap(request.httpBodyStream.flatMap(Self.data(from:)))
+            let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            let messages = try XCTUnwrap(json["messages"] as? [[String: String]])
+            XCTAssertEqual(messages.count, 2)
+            XCTAssertEqual(messages[0]["role"], "user")
+            XCTAssertEqual(messages[0]["content"], "status")
+            XCTAssertEqual(messages[1]["role"], "assistant")
+
+            return (
+                Self.ok(request),
+                Self.sse([
+                    #"data: {"type":"signature","signatureRef":"signature.operator.artanis.interaction.v1","channelRef":"operator.artanis.chat"}"#,
+                    #"data: {"type":"delta","signatureRef":"signature.operator.artanis.interaction.v1","choices":[{"delta":{"content":"Fleet "}}]}"#,
+                    #"data: {"type":"delta","signatureRef":"signature.operator.artanis.interaction.v1","choices":[{"delta":{"content":"online"}}]}"#,
+                    #"data: {"type":"done","signatureRef":"signature.operator.artanis.interaction.v1"}"#,
+                    "data: [DONE]",
+                ])
+            )
+        }
+
+        var deltas: [String] = []
+        for try await delta in KhalaClient.streamArtanisCompletion(
+            messages: [
+                .init(role: "user", content: "status"),
+                .init(role: "assistant", content: "previous"),
+            ],
+            apiKey: apiKey,
+            session: session
+        ) {
+            deltas.append(delta)
+        }
+
+        XCTAssertEqual(deltas, ["Fleet ", "online"])
+    }
+
     func testStreamMapsHTTP401ToUnauthorized() async throws {
         let session = makeSession()
         StreamMockURLProtocol.requestHandler = { request in
