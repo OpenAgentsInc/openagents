@@ -25,6 +25,7 @@ import {
   type InferenceRequest,
   type InferenceResult,
 } from './inference/provider-adapter'
+import { makeArtanisTriggerSyntheticLoadTool } from './artanis-operator-tools'
 
 // Real owner-memory entries (most-recent-first, as the store returns them).
 const exampleMemory: ReadonlyArray<ArtanisMemoryEntry> = [
@@ -623,6 +624,57 @@ describe('#6364 artanis operator bounded tool-calling loop', () => {
         riskyActionKind: 'pylon_job_dispatch',
       },
     ])
+  })
+
+  test('the REAL trigger_synthetic_load tool defers (planned, never run live)', async () => {
+    const tool = makeArtanisTriggerSyntheticLoadTool()
+    const { client, requests } = makeScriptedKhalaClient([
+      toolCallResult(
+        'trigger_synthetic_load',
+        '{"type":"terminal-bench","targetTokens":500000000}',
+      ),
+      textResult(
+        'I planned a Terminal-Bench synthetic-load run; it needs your approval before it runs.',
+      ),
+    ])
+
+    const result = await Effect.runPromise(
+      artanisOperatorTurn({
+        awareness: exampleAwareness,
+        khalaClient: client,
+        memory: exampleMemory,
+        messages: [
+          { content: "we're behind pace, spin up synthetic load", role: 'user' },
+        ],
+        ownerId: 'owner:github:14167547',
+        tools: [tool],
+      }),
+    )
+
+    expect('error' in result).toBe(false)
+    if ('error' in result) return
+    // It deferred to the approval gate and never executed live.
+    expect(result.deferredToApprovalGate).toBe(true)
+    expect(result.toolInvocations).toEqual([
+      {
+        deferredToApprovalGate: true,
+        executed: false,
+        executedRef: null,
+        name: 'trigger_synthetic_load',
+        riskyActionKind: 'eval_launch',
+      },
+    ])
+    // The plan round-tripped back to the model as a tool message that names the
+    // bounded run AND the "REQUIRES OWNER APPROVAL — NOT EXECUTED" framing.
+    const secondConversation = requests[1]?.messages ?? []
+    expect(
+      secondConversation.some(
+        message =>
+          message.role === 'tool' &&
+          message.content.includes('type=terminal-bench') &&
+          message.content.includes('NOT EXECUTED'),
+      ),
+    ).toBe(true)
   })
 
   test('a gated tool that EXECUTES reports the created assignment ref', async () => {

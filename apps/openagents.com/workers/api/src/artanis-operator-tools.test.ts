@@ -4,7 +4,11 @@ import { describe, expect, test } from 'vitest'
 import {
   ARTANIS_ISSUE_BODY_MAX_CHARS,
   ARTANIS_REPO_READ_MAX_BYTES,
+  ARTANIS_SYNTHETIC_LOAD_MAX_TARGET_TOKENS,
+  ARTANIS_SYNTHETIC_LOAD_RISKY_ACTION_KIND,
+  ARTANIS_SYNTHETIC_LOAD_RUN_TYPES,
   type ArtanisPylonJobStatus,
+  buildArtanisSyntheticLoadPlan,
   isSafeArtanisAssignmentRef,
   isSafeArtanisRepoPath,
   makeArtanisDispatchCodexTaskTool,
@@ -14,9 +18,11 @@ import {
   makeArtanisOperatorTools,
   makeArtanisReadGithubIssueTool,
   makeArtanisReadRepoFileTool,
+  makeArtanisTriggerSyntheticLoadTool,
   parseArtanisAssignmentRef,
   parseArtanisIssueNumber,
 } from './artanis-operator-tools'
+import { ARTANIS_RISKY_ACTION_KINDS } from './artanis-approval-gates'
 
 // A fetch stub that records the URL it was asked for and returns a canned
 // Response. This is the only seam the read tools touch the network through.
@@ -739,6 +745,119 @@ describe('#6359 get_network_stats (live public stats + token pace)', () => {
   })
 })
 
+describe('trigger_synthetic_load (RISKY plan-only) — iteration 4', () => {
+  const tool = makeArtanisTriggerSyntheticLoadTool()
+
+  test('is a risky tool whose riskyActionKind is an enumerated kind', () => {
+    expect(tool.kind).toBe('risky')
+    expect(tool.definition.name).toBe('trigger_synthetic_load')
+    // It carries a riskyActionKind, and that kind is part of the approval-gate
+    // vocabulary (synthetic load maps to eval_launch).
+    expect(tool.riskyActionKind).toBe(ARTANIS_SYNTHETIC_LOAD_RISKY_ACTION_KIND)
+    expect(tool.riskyActionKind).toBe('eval_launch')
+    expect(ARTANIS_RISKY_ACTION_KINDS).toContain(tool.riskyActionKind)
+    // Structurally plan-only: no execute()/run() seam exists at all.
+    expect(typeof tool.plan).toBe('function')
+    expect('execute' in tool).toBe(false)
+    expect('run' in tool).toBe(false)
+  })
+
+  test('plan() returns a bounded public-safe run description naming type and target', async () => {
+    const plan = await Effect.runPromise(
+      tool.plan({ targetTokens: 500_000_000, type: 'terminal-bench' }),
+    )
+    expect(plan).toContain('type=terminal-bench')
+    expect(plan).toContain('target=500,000,000 tokens')
+    // Public-safe framing: no spend authority, owner-gated.
+    expect(plan).toContain('NO spend')
+    expect(plan).toContain('owner-gated')
+    // Bounded: a single short block, not an unbounded dump.
+    expect(plan.length).toBeLessThan(1200)
+  })
+
+  test('out-of-range and negative targetTokens are rejected with a typed string', async () => {
+    const tooBig = await Effect.runPromise(
+      tool.plan({
+        targetTokens: ARTANIS_SYNTHETIC_LOAD_MAX_TARGET_TOKENS + 1,
+        type: 'glm-stress',
+      }),
+    )
+    expect(tooBig).toContain('blocked')
+    expect(tooBig).toContain('out of range')
+
+    const negative = await Effect.runPromise(
+      tool.plan({ targetTokens: -5, type: 'glm-stress' }),
+    )
+    expect(negative).toContain('blocked')
+
+    const tooSmall = await Effect.runPromise(
+      tool.plan({ targetTokens: 10, type: 'glm-stress' }),
+    )
+    expect(tooSmall).toContain('blocked')
+  })
+
+  test('a missing targetTokens reads as an honest invalid-arguments message', async () => {
+    const result = await Effect.runPromise(
+      tool.plan({ type: 'terminal-bench' }),
+    )
+    expect(result).toContain('invalid arguments')
+  })
+
+  test('an unknown run type is rejected with a typed blocked string', async () => {
+    const unknown = await Effect.runPromise(
+      tool.plan({ targetTokens: 500_000_000, type: 'mine-bitcoin' }),
+    )
+    expect(unknown).toContain('blocked')
+    expect(unknown).toContain('not a known synthetic-load run type')
+
+    const absentType = await Effect.runPromise(
+      tool.plan({ targetTokens: 500_000_000 }),
+    )
+    expect(absentType).toContain('invalid arguments')
+  })
+
+  test('a non-public-safe note is redacted, never echoed into the plan', async () => {
+    const plan = await Effect.runPromise(
+      tool.plan({
+        note: 'use the bearer token sk-abc123 to authorize',
+        targetTokens: 500_000_000,
+        type: 'terminal-bench',
+      }),
+    )
+    expect(plan).toContain('(redacted)')
+    expect(plan).not.toContain('sk-abc123')
+    expect(plan).not.toContain('bearer')
+  })
+
+  test('a public-safe note is kept verbatim in the plan', async () => {
+    const plan = await Effect.runPromise(
+      tool.plan({
+        note: 'behind the 4x floor at midday',
+        targetTokens: 1_000_000_000,
+        type: 'glm-stress',
+      }),
+    )
+    expect(plan).toContain('behind the 4x floor at midday')
+    expect(plan).toContain('type=glm-stress')
+  })
+
+  test('run-type set is exactly the two bounded synthetic-load types', () => {
+    expect([...ARTANIS_SYNTHETIC_LOAD_RUN_TYPES]).toEqual([
+      'terminal-bench',
+      'glm-stress',
+    ])
+  })
+
+  test('buildArtanisSyntheticLoadPlan honors injected bounds', () => {
+    const result = buildArtanisSyntheticLoadPlan(
+      { targetTokens: 5, type: 'terminal-bench' },
+      { maxTargetTokens: 10, minTargetTokens: 1 },
+    )
+    expect(result).toContain('type=terminal-bench')
+    expect(result).toContain('target=5 tokens')
+  })
+})
+
 describe('makeArtanisOperatorTools default table', () => {
   test('includes the repo-read tools, the issue-read tool, the network-stats tool, the job-status tool, and the dispatch tool', () => {
     const tools = makeArtanisOperatorTools()
@@ -750,7 +869,17 @@ describe('makeArtanisOperatorTools default table', () => {
       'list_repo_dir',
       'read_github_issue',
       'read_repo_file',
+      'trigger_synthetic_load',
     ])
+  })
+
+  test('the default table includes a trigger_synthetic_load tool', () => {
+    const tools = makeArtanisOperatorTools()
+    const tool = tools.find(
+      t => t.definition.name === 'trigger_synthetic_load',
+    )
+    expect(tool).toBeDefined()
+    expect(tool?.kind).toBe('risky')
   })
 
   test('a shared repoRead fetch stub also drives the issue-read tool', async () => {

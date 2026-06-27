@@ -35,7 +35,9 @@ import type {
   ArtanisOperatorGatedResult,
   ArtanisOperatorGatedTool,
   ArtanisOperatorReadTool,
+  ArtanisOperatorRiskyTool,
   ArtanisOperatorTool,
+  ArtanisRiskyActionKind,
 } from './artanis-operator'
 import {
   type ArtanisGetNetworkStatsConfig,
@@ -1080,6 +1082,213 @@ export const makeArtanisGetNetworkStatsTool = (
 })
 
 // ---------------------------------------------------------------------------
+// trigger_synthetic_load (RISKY: plan-only) — iteration-4 self-improvement.
+// ---------------------------------------------------------------------------
+//
+// Artanis named this his ONE highest-value next tool in iteration 4 of his
+// self-improvement loop: when the live token-pace block shows the fleet is
+// BEHIND the daily Khala-token target, he can programmatically scale up
+// background SYNTHETIC LOAD (Terminal-Bench agent stress runs or GLM serving
+// stress load) to saturate idle capacity and burn tokens toward the 10x-daily
+// mission, instead of waiting for a manual owner action.
+//
+// Authority discipline: this is a RISKY tool modeled exactly like the original
+// plan-only `dispatch_codex_task` shape — it is STRUCTURALLY plan-only. It has
+// no execute()/run() seam at all; the bounded loop only ever calls `plan(args)`,
+// which returns a public-safe description of the synthetic-load run it WOULD
+// trigger. The loop frames that as "REQUIRES OWNER APPROVAL — NOT EXECUTED" and
+// sets `deferredToApprovalGate`. No new spend authority enters the loop: live
+// triggering stays owner-gated via `artanis-approval-gates`. The run is
+// own-capacity background work and grants no payout. Inputs are bounded and
+// public-safe; non-public-safe free-text is redacted.
+
+// The approval-gate risky-action kind this plan-only tool would require. A
+// synthetic-load run is a benchmark/eval workload (Terminal-Bench / GLM stress),
+// so it maps to the enumerated `eval_launch` risky kind — keeping the tool
+// inside the existing approval-gate vocabulary without minting a new authority
+// kind. (The capability is colloquially "synthetic_load_dispatch"; the gated
+// authority it would consume is `eval_launch`.)
+export const ARTANIS_SYNTHETIC_LOAD_RISKY_ACTION_KIND: ArtanisRiskyActionKind =
+  'eval_launch'
+
+// The bounded set of synthetic-load run types Artanis may plan. Anything else is
+// rejected as an unknown run type (never silently coerced).
+export const ARTANIS_SYNTHETIC_LOAD_RUN_TYPES = [
+  'terminal-bench',
+  'glm-stress',
+] as const
+export type ArtanisSyntheticLoadRunType =
+  (typeof ARTANIS_SYNTHETIC_LOAD_RUN_TYPES)[number]
+
+// Public-safe human labels for each run type, used in the plan description.
+const SYNTHETIC_LOAD_RUN_LABELS: Record<ArtanisSyntheticLoadRunType, string> = {
+  'glm-stress': 'GLM serving stress load',
+  'terminal-bench': 'Terminal-Bench agent stress runs',
+}
+
+// The bounded token-budget window for a single synthetic-load plan. A request
+// below the floor is too small to matter for the daily target; one above the
+// ceiling is rejected so a model typo cannot plan an unboundedly large burn.
+export const ARTANIS_SYNTHETIC_LOAD_MIN_TARGET_TOKENS = 1_000_000
+export const ARTANIS_SYNTHETIC_LOAD_MAX_TARGET_TOKENS = 10_000_000_000
+
+const isSyntheticLoadRunType = (
+  value: string,
+): value is ArtanisSyntheticLoadRunType =>
+  (ARTANIS_SYNTHETIC_LOAD_RUN_TYPES as ReadonlyArray<string>).includes(value)
+
+// Coerce a model-produced target-tokens argument into a finite positive integer,
+// or `null` when it is not a usable number. Accepts a number or a bare numeric
+// string; rejects floats, NaN, Infinity, and non-numeric strings.
+const coerceTargetTokens = (value: unknown): number | null => {
+  if (typeof value === 'number') {
+    return Number.isInteger(value) ? value : null
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!/^-?\d+$/.test(trimmed)) return null
+    const parsed = Number.parseInt(trimmed, 10)
+    return Number.isInteger(parsed) ? parsed : null
+  }
+  return null
+}
+
+// Build the public-safe synthetic-load PLAN text from model-produced args, or an
+// honest typed message ("(invalid arguments: …)" for an absent required field,
+// "(blocked: …)" for a present-but-rejected value). The plan is plan-only: it
+// describes the run Artanis WOULD trigger and never starts any load itself.
+export const buildArtanisSyntheticLoadPlan = (
+  args: unknown,
+  bounds: Readonly<{ minTargetTokens: number; maxTargetTokens: number }>,
+): string => {
+  const record =
+    typeof args === 'object' && args !== null
+      ? (args as Record<string, unknown>)
+      : {}
+
+  // Run type (required; must be one of the bounded set).
+  const typeRaw = record.type ?? record.runType ?? record.run_type
+  if (typeRaw === undefined || typeRaw === null) {
+    return `(invalid arguments: a "type" is required, one of ${ARTANIS_SYNTHETIC_LOAD_RUN_TYPES.join(
+      ', ',
+    )})`
+  }
+  if (typeof typeRaw !== 'string' || !isSyntheticLoadRunType(typeRaw.trim())) {
+    return `(blocked: "${String(typeRaw)}" is not a known synthetic-load run type; use one of ${ARTANIS_SYNTHETIC_LOAD_RUN_TYPES.join(
+      ', ',
+    )})`
+  }
+  const runType = typeRaw.trim() as ArtanisSyntheticLoadRunType
+
+  // Target tokens (required; bounded positive integer).
+  const targetRaw =
+    record.targetTokens ?? record.target_tokens ?? record.target
+  if (targetRaw === undefined || targetRaw === null) {
+    return '(invalid arguments: a numeric "targetTokens" is required)'
+  }
+  const targetTokens = coerceTargetTokens(targetRaw)
+  if (targetTokens === null) {
+    return `(blocked: "${String(
+      targetRaw,
+    )}" is not a valid token target; pass a positive integer)`
+  }
+  if (
+    targetTokens < bounds.minTargetTokens ||
+    targetTokens > bounds.maxTargetTokens
+  ) {
+    return `(blocked: targetTokens ${targetTokens.toLocaleString(
+      'en-US',
+    )} is out of range; allowed ${bounds.minTargetTokens.toLocaleString(
+      'en-US',
+    )}..${bounds.maxTargetTokens.toLocaleString('en-US')})`
+  }
+
+  // Optional free-text note. Public-safe by gate; redacted if it carries unsafe
+  // material so a model-supplied note can never leak secrets into the plan.
+  const noteRaw = asString(record.note ?? record.reason ?? record.label)
+  const note =
+    noteRaw === undefined
+      ? '(none)'
+      : dispatchFieldIsSafe(noteRaw)
+        ? noteRaw
+        : '(redacted)'
+
+  const lines: Array<string> = [
+    'Planned synthetic-load dispatch (own-capacity background work; NO spend, no payout). Requires owner approval before it runs:',
+    '',
+    `- type=${runType}`,
+    `- lever=${SYNTHETIC_LOAD_RUN_LABELS[runType]}`,
+    `- target=${targetTokens.toLocaleString('en-US')} tokens`,
+    `- note: ${note}`,
+    '',
+    'Effect once approved: scale up background synthetic load to saturate idle Khala capacity and burn tokens toward the daily 10x served-token goal. This grants NO new spend authority; live triggering stays owner-gated via artanis-approval-gates (eval_launch).',
+  ]
+  return lines.join('\n')
+}
+
+// trigger_synthetic_load — a RISKY (plan-only) tool. It NEVER executes in the
+// loop: the bounded loop only calls `plan(args)`, which returns the exact
+// public-safe synthetic-load run it WOULD trigger. The loop frames that as
+// pending owner approval and sets `deferredToApprovalGate`. No spend authority
+// is granted here; live triggering stays gated behind `artanis-approval-gates`.
+export const makeArtanisTriggerSyntheticLoadTool = (
+  config: Readonly<{
+    minTargetTokens?: number | undefined
+    maxTargetTokens?: number | undefined
+  }> = {},
+): ArtanisOperatorRiskyTool => {
+  const minTargetTokens =
+    config.minTargetTokens ?? ARTANIS_SYNTHETIC_LOAD_MIN_TARGET_TOKENS
+  const maxTargetTokens =
+    config.maxTargetTokens ?? ARTANIS_SYNTHETIC_LOAD_MAX_TARGET_TOKENS
+
+  return {
+    definition: {
+      description: `Plan a SYNTHETIC-LOAD run to saturate idle Khala capacity and burn tokens toward the daily 10x served-token goal when you are BEHIND pace. Choose a run "type" (${ARTANIS_SYNTHETIC_LOAD_RUN_TYPES.join(
+        ' or ',
+      )}) and a "targetTokens" budget (${minTargetTokens.toLocaleString(
+        'en-US',
+      )}..${maxTargetTokens.toLocaleString(
+        'en-US',
+      )}). This is a RISKY (eval_launch) action: it NEVER runs by itself — it returns the exact public-safe run it WOULD trigger, pending owner approval. Own-capacity background work only; NO spend, no payout. Inputs must be public-safe.`,
+      name: 'trigger_synthetic_load',
+      parameters: {
+        additionalProperties: false,
+        properties: {
+          note: {
+            description:
+              'Optional short PUBLIC-SAFE note on why the load is needed (e.g. "behind 4x floor at midday"). No secrets.',
+            type: 'string',
+          },
+          targetTokens: {
+            description: `Token budget to burn with this run, a positive integer in [${minTargetTokens}, ${maxTargetTokens}], e.g. 500000000.`,
+            type: 'number',
+          },
+          type: {
+            description: `The synthetic-load run type: ${ARTANIS_SYNTHETIC_LOAD_RUN_TYPES.join(
+              ' or ',
+            )}.`,
+            enum: [...ARTANIS_SYNTHETIC_LOAD_RUN_TYPES],
+            type: 'string',
+          },
+        },
+        required: ['type', 'targetTokens'],
+        type: 'object',
+      },
+    },
+    kind: 'risky',
+    plan: (args: unknown) =>
+      Effect.succeed(
+        buildArtanisSyntheticLoadPlan(args, {
+          maxTargetTokens,
+          minTargetTokens,
+        }),
+      ),
+    riskyActionKind: ARTANIS_SYNTHETIC_LOAD_RISKY_ACTION_KIND,
+  }
+}
+
+// ---------------------------------------------------------------------------
 // The default owner-scoped operator tool table.
 // ---------------------------------------------------------------------------
 
@@ -1103,6 +1312,12 @@ export const makeArtanisOperatorTools = (
     defaultBranch?: string | undefined
     networkStats?: ArtanisGetNetworkStatsConfig | undefined
     dispatchExecution?: ArtanisDispatchExecution | undefined
+    syntheticLoad?:
+      | Readonly<{
+          minTargetTokens?: number | undefined
+          maxTargetTokens?: number | undefined
+        }>
+      | undefined
   }> = {},
 ): ReadonlyArray<ArtanisOperatorTool> => {
   const issueRead: ArtanisIssueReadConfig = config.issueRead ?? {
@@ -1120,5 +1335,6 @@ export const makeArtanisOperatorTools = (
       defaultBranch: config.defaultBranch,
       execution: config.dispatchExecution,
     }),
+    makeArtanisTriggerSyntheticLoadTool(config.syntheticLoad),
   ]
 }
