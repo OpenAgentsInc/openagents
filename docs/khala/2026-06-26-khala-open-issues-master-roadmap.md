@@ -232,6 +232,21 @@ operator view of what remains, not a public product claim.
   `3` was bursty, and concurrency `2` produced repeated clean windows. #6317
   still remains open for a committed continuous runner, external-demand spike
   proof with zero external failure, and sustained telemetry publication.
+- 2026-06-27T14:22Z #6317 committed adaptive runner: the curl-shaped manual
+  stress loop is now a repo script, `glm-stress:adaptive`, backed by
+  `live-adaptive-stress-runner` utilities and focused tests. Its first live run
+  `issue6317-committed-adaptive-20260627T1415Z` started at concurrency `2`,
+  held through three clean windows, probed to `3`, observed the present overload
+  edge (`13` OK / `6` HTTP `502`), backed down to `2`, and returned to clean
+  windows. Runner receipts and scoped D1 proof matched exactly: `74` exact GLM
+  rows, provider `hydralisk-vllm-glm-5p2-reap-504b`, model
+  `openagents/glm-5.2-reap-504b`, usage truth `exact`, demand
+  `internal_stress` / `glm-saturation`, `45140` input tokens, `37888` output
+  tokens, `83028` total tokens, and `0` non-GLM rows. The post-run public
+  counter read was `540191491` at `2026-06-27T14:21:36.792Z`; `/khala` and
+  `/stats` returned HTTP `200`. This narrows #6317 to the real remaining gap:
+  schedule/publish the adaptive loop continuously and prove a controlled
+  external-demand spike with zero external failure.
 - 2026-06-27T11:03Z #6323 isolated live-host attempt: `us-central1` could not
   allocate another 8x RTX PRO 6000 Spot host because regional preemptible quota
   was exhausted, but a separate `us-west1-b` `g4-standard-384` host was

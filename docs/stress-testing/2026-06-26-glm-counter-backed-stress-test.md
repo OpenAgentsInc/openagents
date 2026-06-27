@@ -1129,3 +1129,110 @@ Next reliability work:
   not a hardcoded value.
 - Keep public D1 scoped totals as the hard token count and use the public scalar
   only as a liveness/counter smoke when concurrent traffic is present.
+
+## 2026-06-27 Committed Adaptive Runner And Live Proof
+
+The throwaway curl-shaped stress loop has now been promoted into the committed
+Worker API harness:
+
+- `workers/api/src/inference/benchmark/live-adaptive-stress-runner.ts`
+- `workers/api/src/inference/benchmark/live-adaptive-stress-runner.test.ts`
+- `workers/api/scripts/khala-glm-adaptive-stress.ts`
+- package script: `bun run --cwd apps/openagents.com/workers/api
+  glm-stress:adaptive`
+
+The runner keeps the successful curl client signature, emits only public-safe
+artifacts, writes no prompt/completion text into the artifact, tags every
+request with `internal_stress` / `glm-saturation`, and adapts concurrency per
+window:
+
+- overload or error-rate windows decrease by the same bounded 25% step used in
+  the stress report;
+- external-preemption windows pause to the configured floor;
+- clean windows hold until three consecutive clean windows allow a one-step
+  probe upward.
+
+Verification before live use:
+
+- `bun run --cwd apps/openagents.com/workers/api test --
+  src/inference/benchmark/live-adaptive-stress-runner.test.ts`: `7` tests
+  passed.
+- `bun run --cwd apps/openagents.com/workers/api typecheck`: passed, with the
+  pre-existing `Effect.void` advisories in `mirrorcode-routes.test.ts`.
+- CLI dry-run:
+  `bun run --cwd apps/openagents.com/workers/api glm-stress:adaptive --
+  --dry-run --summary ...`: wrote a public-safe empty artifact and honored
+  `--summary`.
+
+Live run:
+
+- run id: `issue6317-committed-adaptive-20260627T1415Z`
+- duration: `420000ms`
+- initial concurrency: `2`
+- min/max concurrency: `2` / `5`
+- max completion tokens: `512`
+- output artifact:
+  `/tmp/issue6317-committed-adaptive-20260627T1415Z/issue6317-committed-adaptive-20260627T1415Z.public.json`
+
+Runner result:
+
+| Run id | OK receipts | Failed requests | Failure status/kind | Input | Output | Total exact runner tokens | Non-GLM tokens | TTFT p50 / p90 / p99 |
+| --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | --- |
+| `issue6317-committed-adaptive-20260627T1415Z` | `74` | `6` | `6` x HTTP `502` / `gateway_overload` | `45140` | `37888` | `83028` | `0` | `12189ms` / `12827ms` / `14708ms` |
+
+Adaptive windows:
+
+- concurrency `2`: `8` OK / `0` failed, held at `2`.
+- concurrency `2`: `10` OK / `0` failed, held at `2`.
+- concurrency `2`: `10` OK / `0` failed, increased to `3`.
+- concurrency `3`: `13` OK / `6` overload failures, decreased to `2`.
+- concurrency `2`: `11` OK / `0` failed, held at `2`.
+- concurrency `2`: `10` OK / `0` failed, held at `2`.
+- concurrency `2`: `10` OK / `0` failed, increased to `3`.
+- final partial concurrency `3` drain: `2` OK / `0` failed.
+
+Hard D1/public-ledger proof:
+
+```sql
+SELECT provider, model, usage_truth, demand_kind, demand_source, demand_client,
+       COUNT(*) AS rows,
+       COALESCE(SUM(input_tokens),0) AS input_tokens,
+       COALESCE(SUM(output_tokens),0) AS output_tokens,
+       COALESCE(SUM(input_tokens + output_tokens),0) AS total_tokens
+  FROM token_usage_events
+ WHERE demand_client = 'issue6317-committed-adaptive-20260627T1415Z'
+ GROUP BY provider, model, usage_truth, demand_kind, demand_source, demand_client;
+```
+
+returned exactly:
+
+- provider/model: `hydralisk-vllm-glm-5p2-reap-504b` /
+  `openagents/glm-5.2-reap-504b`
+- usage truth: `exact`
+- demand: `internal_stress` / `glm-saturation`
+- rows: `74`
+- input tokens: `45140`
+- output tokens: `37888`
+- total exact GLM tokens: `83028`
+- non-GLM/fallback rows for the run id: `0`
+
+Counter/page proof after the run:
+
+- `GET /api/public/khala-tokens-served`: `540191491` at
+  `2026-06-27T14:21:36.792Z`
+- `/khala`: HTTP `200`
+- `/stats`: HTTP `200`
+- the counter response still reports `rebuildsOn: ["token_usage_events"]`
+
+What this taught us:
+
+- The committed runner reproduces the earlier manual finding but with a
+  reusable, test-covered harness: concurrency `2` is stable on the current
+  degraded fleet, while concurrency `3` is the present overload edge.
+- The adaptive loop now probes upward only after clean evidence and backs down
+  automatically when the overload window appears.
+- The ledger hardening continues to hold: runner exact receipts and scoped D1
+  exact rows match exactly for this run.
+- This run adds `83028` hard-counted GLM tokens. #6317 still remains open for a
+  true continuous scheduler/telemetry publication loop and a controlled
+  external-demand spike with zero external failure.
