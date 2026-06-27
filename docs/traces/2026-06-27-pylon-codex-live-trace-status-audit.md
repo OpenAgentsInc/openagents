@@ -527,6 +527,24 @@ capacity-read gate still has an intermittent admission race. In an owner-directe
 "do not stall" session, the supervising agent may continue locally after
 recording that the attempted delegation did not create an assignment.
 
+After the #6318 router hardening landed in `12ae92954633c80cac14c541cf63fbcb71a5764b`
+and deployed as Worker `e7cb0683-58f4-48ac-836e-8bca3082d0ab`, a final
+post-deploy smoke used the same runbook successfully again:
+
+- durable request: `chatcmpl_558cd3edabb1425aa19b315d049a9008`
+- assignment:
+  `assignment.public.khala_coding.chatcmpl_b5ccba76058f48d58b903948cd396672`
+- closeout: `assignment.closeout.af82664bae77efc3991e62e2`
+- runner result: `0` edits, `17` commands, `1` Codex turn, verifier passed
+- exact own-capacity proof: `514,462` total tokens
+- owner-only trace proof: `28` ATIF traces
+- private raw Codex archive: `45` SDK events / `755,150` bytes
+
+So the latest observed state is not "delegation never works." It works when the
+gate admits the request, stores exact usage at closeout, and records private
+trace/raw-event evidence; it also still has an intermittent pre-assignment
+capacity-read failure that agents must identify honestly.
+
 ## Token Accounting
 
 The assignment has one exact downstream Codex token row:
