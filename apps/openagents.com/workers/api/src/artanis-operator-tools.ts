@@ -1126,6 +1126,281 @@ export const makeArtanisGetKhalaFeedbackTool = (
 }
 
 // ---------------------------------------------------------------------------
+// get_unsupported_requests — read a bounded, public-safe LIST of the live
+// unsupported-request ledger (the user-facing capability gaps that block Khala
+// adoption).
+//
+// This is Artanis's iteration-8 self-improvement capability. The
+// `GET /api/operator/khala/unsupported-requests` route (#6357), backed by
+// `makeD1KhalaUnsupportedRequestStore.listRecent`, maintains the running ledger
+// of what testers try that Khala cannot do yet — fed by trace reviews, Khala
+// CLI feedback, and forum reports. This tool lets Artanis READ that ledger
+// himself during a turn so he can see exactly which capability gaps are
+// suppressing usage, match each to an open issue, and target Codex
+// dispatch / forum mobilization at the highest-leverage gaps — directly
+// speeding the 10x-daily-Khala-token goal by closing the gaps that block usage.
+//
+// It stays conservative by construction:
+//   - READ-ONLY + SIDE-EFFECT-FREE. It only calls the injected ledger reader
+//     (backed by the same admin-gated store the operator route uses); it never
+//     writes, mutates, dispatches, or spends. It grants no new authority and
+//     fits the existing read-tool boundary.
+//   - OWNER-SCOPED. It is only ever wired into the owner-authenticated operator
+//     chat (the same admin-gated path as the other read tools).
+//   - BOUNDED + FAIL-SOFT. A single read returns at most `maxLimit` records,
+//     each summary truncated, so a chatty ledger stays cheap. A reader rejection
+//     degrades to an honest "(could not read unsupported requests)"; no reader
+//     wired is honest rather than inventive; an empty ledger reads
+//     "(no unsupported requests ...)".
+//   - PUBLIC-SAFE. The ledger already enforces public-safe summaries/refs on
+//     write; the tool applies a defensive second pass so an upstream regression
+//     cannot leak private material into Artanis's context.
+// ---------------------------------------------------------------------------
+
+// The default and max number of ledger records returned for one read, so a
+// single read stays bounded even when the ledger is large.
+export const ARTANIS_UNSUPPORTED_REQUESTS_DEFAULT_LIMIT = 25
+export const ARTANIS_UNSUPPORTED_REQUESTS_MAX_LIMIT = 100
+
+// Max characters of a single ledger summary surfaced into Artanis's context; a
+// longer summary is truncated with an explicit marker so one long entry cannot
+// blow the context budget.
+export const ARTANIS_UNSUPPORTED_REQUESTS_SUMMARY_MAX_CHARS = 400
+
+// The bounded set of ledger lifecycle states a model may filter on. Anything
+// else is ignored (the read returns the unfiltered recent set).
+export const ARTANIS_UNSUPPORTED_REQUEST_STATUSES = [
+  'open',
+  'needs_issue',
+  'issue_opened',
+  'closed',
+  'wont_do',
+] as const
+export type ArtanisUnsupportedRequestStatus =
+  (typeof ARTANIS_UNSUPPORTED_REQUEST_STATUSES)[number]
+
+// A public-safe one-record projection of ONE unsupported-request ledger row.
+// The production reader builds this from the `khala_unsupported_requests` store;
+// tests inject a fake reader. Every field is a public-safe projection of real D1
+// state; it never carries raw traces, raw feedback transcripts, private paths,
+// or provider payloads.
+export type ArtanisUnsupportedRequestRecord = Readonly<{
+  // The opaque request ref, e.g. `khala_unsupported:ur_...`.
+  requestRef: string
+  // A short public-safe title naming the gap.
+  title: string
+  // A bounded public-safe summary (kept verbatim; truncated if long).
+  summary: string
+  // The triage kind, e.g. 'missing_capability' | 'bug' | 'needs_triage' |
+  // 'wont_do'.
+  triageKind: string
+  // The lifecycle status, e.g. 'open' | 'needs_issue' | 'issue_opened'.
+  status: string
+  // The source the gap came in through, e.g. 'trace_review' | 'forum'.
+  sourceKind: string
+  // The linked GitHub issue ref when one exists, else null.
+  githubIssueRef: string | null
+  // The next action the ledger derived, e.g. 'open_github_issue' | 'triage'.
+  nextAction: string
+  // Public-safe "last updated" display string.
+  updatedAt: string
+}>
+
+// The injected, owner-scoped reader seam. Given a max count and an optional
+// status filter it resolves the most recent ledger records as public-safe
+// projections, newest first. Returns `[]` when the ledger is empty (honest
+// absence). A thrown rejection is treated by the tool as a soft read failure,
+// never a fabricated list. The production reader
+// (`artanis-operator-unsupported-requests.ts`) reads the admin-gated
+// `khala_unsupported_requests` store.
+export type ArtanisUnsupportedRequestsReader = (
+  input: Readonly<{
+    limit: number
+    status?: ArtanisUnsupportedRequestStatus | undefined
+  }>,
+) => Promise<ReadonlyArray<ArtanisUnsupportedRequestRecord>>
+
+export type ArtanisUnsupportedRequestsConfig = Readonly<{
+  reader?: ArtanisUnsupportedRequestsReader | undefined
+  defaultLimit?: number | undefined
+  maxLimit?: number | undefined
+  maxSummaryChars?: number | undefined
+}>
+
+// Coerce a model-produced `limit`/`count`/`max` arg into a bounded positive
+// integer, clamped into [1, maxLimit]; an absent/invalid value falls back to the
+// default. A model typo can never request an unboundedly large read.
+const parseUnsupportedRequestsLimit = (
+  args: unknown,
+  defaultLimit: number,
+  maxLimit: number,
+): number => {
+  const record =
+    typeof args === 'object' && args !== null
+      ? (args as Record<string, unknown>)
+      : {}
+  const raw = record.limit ?? record.count ?? record.max
+  let value: number | undefined
+  if (typeof raw === 'number' && Number.isInteger(raw)) {
+    value = raw
+  } else if (typeof raw === 'string' && /^\d+$/.test(raw.trim())) {
+    value = Number.parseInt(raw.trim(), 10)
+  }
+  if (value === undefined || value < 1) {
+    return defaultLimit
+  }
+  return Math.min(value, maxLimit)
+}
+
+// Pull an optional bounded `status` filter out of model-produced args; a value
+// outside the bounded enum is ignored (the read returns the unfiltered set).
+const parseUnsupportedRequestsStatus = (
+  args: unknown,
+): ArtanisUnsupportedRequestStatus | undefined => {
+  if (typeof args !== 'object' || args === null) return undefined
+  const record = args as Record<string, unknown>
+  const raw = record.status
+  if (typeof raw !== 'string') return undefined
+  const trimmed = raw.trim().toLowerCase()
+  return (
+    ARTANIS_UNSUPPORTED_REQUEST_STATUSES as ReadonlyArray<string>
+  ).includes(trimmed)
+    ? (trimmed as ArtanisUnsupportedRequestStatus)
+    : undefined
+}
+
+// Collapse internal whitespace and truncate a ledger summary to a bounded length
+// with an explicit marker, so one long entry stays cheap and renders readably.
+const truncateUnsupportedSummary = (text: string, maxChars: number): string => {
+  const collapsed = text.replace(/\s+/g, ' ').trim()
+  if (collapsed.length <= maxChars) return collapsed
+  return `${collapsed.slice(0, maxChars)}...[truncated]`
+}
+
+// A ledger record is renderable only if its STRUCTURED fields pass the
+// public-safety gate: the ref is ref-shaped and the triage/status/source/title/
+// next-action fields are safe. The free-text summary is intentionally NOT gated
+// (the owner is entitled to read it); it is only truncated. This is a defensive
+// second pass so an upstream store regression cannot leak private material into
+// a structured field surfaced to Artanis.
+const unsupportedRequestRecordIsSafe = (
+  record: ArtanisUnsupportedRequestRecord,
+): boolean =>
+  isSafeArtanisAssignmentRef(record.requestRef) &&
+  typeof record.title === 'string' &&
+  record.title.trim() !== '' &&
+  dispatchFieldIsSafe(record.title) &&
+  dispatchFieldIsSafe(record.triageKind) &&
+  dispatchFieldIsSafe(record.status) &&
+  dispatchFieldIsSafe(record.sourceKind) &&
+  dispatchFieldIsSafe(record.nextAction) &&
+  (record.githubIssueRef === null ||
+    dispatchFieldIsSafe(record.githubIssueRef))
+
+// Format ONE ledger record as a bounded, public-safe entry carrying the
+// updated-at display, triage/status, source, next action, linked issue (when
+// present), ref, title, and the (truncated) summary.
+const formatUnsupportedRequestLine = (
+  record: ArtanisUnsupportedRequestRecord,
+  maxSummaryChars: number,
+): string => {
+  const issue =
+    record.githubIssueRef !== null &&
+    dispatchFieldIsSafe(record.githubIssueRef)
+      ? ` issue=${record.githubIssueRef}`
+      : ''
+  const summary =
+    record.summary.trim() === ''
+      ? ''
+      : ` — ${truncateUnsupportedSummary(record.summary, maxSummaryChars)}`
+  return `- [${record.updatedAt}] (${record.triageKind}/${record.status}; from ${record.sourceKind}; next=${record.nextAction})${issue} ${record.requestRef}: ${record.title}${summary}`
+}
+
+// get_unsupported_requests(limit?, status?) — reads a bounded, public-safe LIST
+// of the live unsupported-request ledger via the injected reader. Returns one
+// entry per record (updated-at + triage/status + ref + title + truncated
+// summary). Honest absence: an empty ledger reads "(no unsupported requests
+// ...)"; a read failure reads "(could not read unsupported requests)"; with no
+// reader wired it is honest rather than inventive. Side-effect-free,
+// owner-scoped, no spend.
+export const makeArtanisGetUnsupportedRequestsTool = (
+  config: ArtanisUnsupportedRequestsConfig = {},
+): ArtanisOperatorReadTool => {
+  const reader = config.reader
+  const defaultLimit =
+    config.defaultLimit ?? ARTANIS_UNSUPPORTED_REQUESTS_DEFAULT_LIMIT
+  const maxLimit = config.maxLimit ?? ARTANIS_UNSUPPORTED_REQUESTS_MAX_LIMIT
+  const maxSummaryChars =
+    config.maxSummaryChars ?? ARTANIS_UNSUPPORTED_REQUESTS_SUMMARY_MAX_CHARS
+
+  return {
+    definition: {
+      description: `Read the live UNSUPPORTED-REQUEST ledger: the running list of user-facing capability gaps that block Khala adoption (what testers try that Khala cannot do yet), fed by trace reviews, Khala CLI feedback, and forum reports. Returns one bounded entry per gap with its updated-at time, triage kind, lifecycle status, source, next action, any linked GitHub issue, ref, title, and a truncated summary. Use this to see exactly which gaps suppress usage, match each to an open issue, and target Codex dispatch / forum mobilization at the highest-leverage gaps to drive the 10x-daily-token goal. Read-only, side-effect-free, owner-scoped. Optional "limit" bounds the count (default ${defaultLimit}, max ${maxLimit}); optional "status" filters to one lifecycle state (${ARTANIS_UNSUPPORTED_REQUEST_STATUSES.join(
+        ', ',
+      )}).`,
+      name: 'get_unsupported_requests',
+      parameters: {
+        additionalProperties: false,
+        properties: {
+          limit: {
+            description: `Max number of ledger records to return, a positive integer up to ${maxLimit} (default ${defaultLimit}).`,
+            type: 'number',
+          },
+          status: {
+            description: `Optional lifecycle-status filter, one of ${ARTANIS_UNSUPPORTED_REQUEST_STATUSES.join(
+              ', ',
+            )}. Omit to list all recent statuses (e.g. "needs_issue" to find gaps that still need an issue opened).`,
+            type: 'string',
+          },
+        },
+        required: [],
+        type: 'object',
+      },
+    },
+    execute: (args: unknown) =>
+      Effect.gen(function* () {
+        if (reader === undefined) {
+          return '(could not read unsupported requests: no ledger reader is wired)'
+        }
+        const limit = parseUnsupportedRequestsLimit(
+          args,
+          defaultLimit,
+          maxLimit,
+        )
+        const status = parseUnsupportedRequestsStatus(args)
+
+        const exit = yield* Effect.exit(
+          Effect.tryPromise(() => reader({ limit, status })),
+        )
+        if (exit._tag === 'Failure') {
+          return '(could not read unsupported requests)'
+        }
+
+        const safe = exit.value
+          .filter(unsupportedRequestRecordIsSafe)
+          .slice(0, limit)
+        if (safe.length === 0) {
+          return status === undefined
+            ? '(no unsupported requests found in the ledger)'
+            : `(no unsupported requests found with status "${status}")`
+        }
+
+        const header =
+          status === undefined
+            ? `Unsupported-request ledger (${safe.length}):`
+            : `Unsupported-request ledger with status "${status}" (${safe.length}):`
+        return [
+          header,
+          ...safe.map(record =>
+            formatUnsupportedRequestLine(record, maxSummaryChars),
+          ),
+        ].join('\n')
+      }),
+    kind: 'read',
+  }
+}
+
+// ---------------------------------------------------------------------------
 // #6366 — dispatch_codex_task (GATED: pylon_job_dispatch).
 // ---------------------------------------------------------------------------
 //
@@ -1892,6 +2167,11 @@ export const makeArtanisTriggerSyntheticLoadTool = (
 // to an HTTP fetch of the public-safe readiness route, and an unreachable source
 // reads as an honest "(could not fetch GLM fleet status …)" rather than
 // inventing replica numbers.
+// `unsupportedRequests.reader` is the owner-scoped unsupported-request ledger
+// reader behind the iteration-8 `get_unsupported_requests` read tool (the live
+// `khala_unsupported_requests` ledger of user-facing capability gaps, #6357);
+// with no reader wired it returns an honest "(could not read unsupported
+// requests …)" rather than inventing one.
 export const makeArtanisOperatorTools = (
   config: Readonly<{
     repoRead?: ArtanisRepoReadConfig | undefined
@@ -1899,6 +2179,7 @@ export const makeArtanisOperatorTools = (
     pylonJobStatus?: ArtanisPylonJobStatusConfig | undefined
     pylonAssignments?: ArtanisPylonAssignmentsConfig | undefined
     khalaFeedback?: ArtanisKhalaFeedbackConfig | undefined
+    unsupportedRequests?: ArtanisUnsupportedRequestsConfig | undefined
     defaultBranch?: string | undefined
     networkStats?: ArtanisGetNetworkStatsConfig | undefined
     glmFleetStatus?: ArtanisGlmFleetStatusConfig | undefined
@@ -1925,6 +2206,7 @@ export const makeArtanisOperatorTools = (
     makeArtanisGetPylonJobStatusTool(config.pylonJobStatus),
     makeArtanisListPylonAssignmentsTool(config.pylonAssignments),
     makeArtanisGetKhalaFeedbackTool(config.khalaFeedback),
+    makeArtanisGetUnsupportedRequestsTool(config.unsupportedRequests),
     makeArtanisDispatchCodexTaskTool({
       defaultBranch: config.defaultBranch,
       execution: config.dispatchExecution,

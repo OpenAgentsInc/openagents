@@ -112,6 +112,7 @@ import {
 import { makeArtanisGlmFleetStatusLoader } from './artanis-operator-glm-fleet-status'
 import { makeArtanisKhalaFeedbackReader } from './artanis-operator-khala-feedback'
 import { makeArtanisOperatorTools } from './artanis-operator-tools'
+import { makeArtanisUnsupportedRequestsReader } from './artanis-operator-unsupported-requests'
 import { saveArtanisForumPublicationIntent } from './artanis-persistence'
 import { handlePublicArtanisReportApi } from './artanis-public-report-routes'
 import { runArtanisComposerScheduled } from './artanis-reply-composer'
@@ -8604,6 +8605,18 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
       khalaFeedback: {
         reader: makeArtanisKhalaFeedbackReader({
           store: makeD1KhalaFeedbackStore(openAgentsDatabase(env)),
+        }),
+      },
+      // iteration-8: the owner-scoped unsupported-request ledger READ tool. Reads
+      // the live `khala_unsupported_requests` ledger of user-facing capability
+      // gaps that block Khala adoption (#6357) — the same admin-gated store the
+      // GET /api/operator/khala/unsupported-requests route uses — so Artanis can
+      // see exactly which gaps suppress usage, match them to open issues, and
+      // target Codex dispatch / forum mobilization at the highest-leverage gaps.
+      // Read-only, side-effect-free, no spend/authority.
+      unsupportedRequests: {
+        reader: makeArtanisUnsupportedRequestsReader({
+          store: makeD1KhalaUnsupportedRequestStore(openAgentsDatabase(env)),
         }),
       },
       dispatchExecution: makeArtanisDispatchExecution({

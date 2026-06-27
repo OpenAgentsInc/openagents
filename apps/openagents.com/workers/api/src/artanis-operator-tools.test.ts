@@ -11,6 +11,7 @@ import {
   type ArtanisKhalaFeedbackRecord,
   type ArtanisPylonAssignmentSummary,
   type ArtanisPylonJobStatus,
+  type ArtanisUnsupportedRequestRecord,
   buildArtanisSyntheticLoadPlan,
   isSafeArtanisAssignmentRef,
   isSafeArtanisRepoPath,
@@ -19,6 +20,7 @@ import {
   makeArtanisGetKhalaFeedbackTool,
   makeArtanisGetNetworkStatsTool,
   makeArtanisGetPylonJobStatusTool,
+  makeArtanisGetUnsupportedRequestsTool,
   makeArtanisListPylonAssignmentsTool,
   makeArtanisListRepoDirTool,
   makeArtanisOperatorTools,
@@ -29,6 +31,16 @@ import {
   parseArtanisAssignmentRef,
   parseArtanisIssueNumber,
 } from './artanis-operator-tools'
+import {
+  type ArtanisMemoryEntry,
+  type ArtanisOperatorKhalaClient,
+  type ArtanisSituationalAwareness,
+  artanisOperatorTurn,
+} from './artanis-operator'
+import type {
+  InferenceRequest,
+  InferenceResult,
+} from './inference/provider-adapter'
 import { ARTANIS_RISKY_ACTION_KINDS } from './artanis-approval-gates'
 
 // A fetch stub that records the URL it was asked for and returns a canned
@@ -861,6 +873,308 @@ describe('get_khala_feedback (owner-scoped Khala CLI feedback read) — iteratio
   })
 })
 
+// Two real-shaped unsupported-request ledger entries: capability gaps with
+// status needs_issue, each with a distinct public-safe title + summary.
+const unsupportedRows: ReadonlyArray<ArtanisUnsupportedRequestRecord> = [
+  {
+    githubIssueRef: null,
+    nextAction: 'open_github_issue',
+    requestRef: 'khala_unsupported:ur_aaa111',
+    sourceKind: 'trace_review',
+    status: 'needs_issue',
+    summary:
+      'Users repeatedly ask Khala to read their local git diff before answering and it cannot.',
+    title: 'Khala cannot read the local git diff',
+    triageKind: 'missing_capability',
+    updatedAt: '2026-06-27T11:00:00.000Z',
+  },
+  {
+    githubIssueRef: null,
+    nextAction: 'open_github_issue',
+    requestRef: 'khala_unsupported:ur_bbb222',
+    sourceKind: 'forum',
+    status: 'needs_issue',
+    summary:
+      'Testers want Khala to attach uploaded PDFs to a chat turn for extraction.',
+    title: 'Khala cannot ingest uploaded PDF attachments',
+    triageKind: 'missing_capability',
+    updatedAt: '2026-06-27T10:30:00.000Z',
+  },
+]
+
+describe('get_unsupported_requests (owner-scoped unsupported-request ledger read) — iteration 8', () => {
+  test('returns a bounded public-safe entry per ledger record (ref + triage/status + title + summary)', async () => {
+    let asked: { limit: number; status?: string | undefined } | undefined
+    const tool = makeArtanisGetUnsupportedRequestsTool({
+      reader: async input => {
+        asked = input
+        return unsupportedRows
+      },
+    })
+
+    // It is a READ tool (executes freely, never gated/risky).
+    expect(tool.kind).toBe('read')
+    expect(tool.definition.name).toBe('get_unsupported_requests')
+
+    const result = await Effect.runPromise(tool.execute({}))
+
+    // Both gap titles + summaries are surfaced.
+    expect(result).toContain('Khala cannot read the local git diff')
+    expect(result).toContain('read their local git diff')
+    expect(result).toContain('Khala cannot ingest uploaded PDF attachments')
+    expect(result).toContain('attach uploaded PDFs')
+    // Each record carries its ref + triage/status.
+    for (const row of unsupportedRows) {
+      expect(result).toContain(row.requestRef)
+    }
+    expect(result).toContain('missing_capability/needs_issue')
+    // Header reports the bounded count; default bounded limit (25) was passed.
+    expect(result).toContain(`Unsupported-request ledger (${unsupportedRows.length}):`)
+    expect(asked).toEqual({ limit: 25, status: undefined })
+  })
+
+  test('passes a bounded status filter through to the reader', async () => {
+    let asked: { limit: number; status?: string | undefined } | undefined
+    const tool = makeArtanisGetUnsupportedRequestsTool({
+      reader: async input => {
+        asked = input
+        return unsupportedRows
+      },
+    })
+    const result = await Effect.runPromise(
+      tool.execute({ status: 'needs_issue' }),
+    )
+    expect(asked).toEqual({ limit: 25, status: 'needs_issue' })
+    expect(result).toContain(
+      `Unsupported-request ledger with status "needs_issue" (${unsupportedRows.length}):`,
+    )
+  })
+
+  test('an unknown status filter is ignored (no filter passed)', async () => {
+    let asked: { limit: number; status?: string | undefined } | undefined
+    const tool = makeArtanisGetUnsupportedRequestsTool({
+      reader: async input => {
+        asked = input
+        return unsupportedRows
+      },
+    })
+    await Effect.runPromise(tool.execute({ status: 'banana' }))
+    expect(asked).toEqual({ limit: 25, status: undefined })
+  })
+
+  test('a limit arg is clamped to the bounded max and floored at the default', async () => {
+    const limits: Array<number> = []
+    const tool = makeArtanisGetUnsupportedRequestsTool({
+      reader: async input => {
+        limits.push(input.limit)
+        return unsupportedRows.slice(0, input.limit)
+      },
+    })
+    await Effect.runPromise(tool.execute({ limit: 100000 }))
+    await Effect.runPromise(tool.execute({ limit: 0 }))
+    await Effect.runPromise(tool.execute({ limit: 2 }))
+    // clamped to max (100), floored to default (25) for <1, honored otherwise.
+    expect(limits).toEqual([100, 25, 2])
+  })
+
+  test('a long summary is truncated with an explicit marker', async () => {
+    const tool = makeArtanisGetUnsupportedRequestsTool({
+      maxSummaryChars: 40,
+      reader: async () => [
+        { ...unsupportedRows[0]!, summary: 'y'.repeat(2_000) },
+      ],
+    })
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toContain('...[truncated]')
+    expect(result).not.toContain('y'.repeat(100))
+  })
+
+  test('defensively drops a row whose structured ref leaks unsafe material', async () => {
+    const tool = makeArtanisGetUnsupportedRequestsTool({
+      reader: async () => [
+        unsupportedRows[0]!,
+        {
+          ...unsupportedRows[1]!,
+          // A regression upstream tries to leak a secret into the ref field.
+          requestRef: 'khala_unsupported:bearer_token_leak',
+        },
+      ],
+    })
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toContain('khala_unsupported:ur_aaa111')
+    expect(result).not.toContain('bearer')
+  })
+
+  test('an empty ledger reads as honest absence, never invention', async () => {
+    const tool = makeArtanisGetUnsupportedRequestsTool({ reader: async () => [] })
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toContain('no unsupported requests found in the ledger')
+  })
+
+  test('a reader rejection reads as a soft failure, never a throw', async () => {
+    const tool = makeArtanisGetUnsupportedRequestsTool({
+      reader: async () => {
+        throw new Error('d1 down')
+      },
+    })
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toContain('could not read unsupported requests')
+    expect(result).not.toMatch(/Error:/)
+  })
+
+  test('with no reader wired the tool is honest, not inventive', async () => {
+    const tool = makeArtanisGetUnsupportedRequestsTool({})
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toContain('could not read unsupported requests')
+  })
+
+  // ACCEPTANCE: a full artanisOperatorTurn where the model requests
+  // get_unsupported_requests. The tool executes (read, executed, not deferred),
+  // both gap summaries round-trip into the conversation, and nothing leaks.
+  test('a full operator turn: the model requests get_unsupported_requests and it executes, returning both gaps', async () => {
+    const exampleMemory: ReadonlyArray<ArtanisMemoryEntry> = [
+      {
+        body: 'Owner prefers concise direct answers, no marketing copy.',
+        createdAt: '2026-06-26T09:00:00.000Z',
+        kind: 'note',
+        memoryRef: 'mem-0',
+        noteCategory: 'preference',
+        ownerId: 'owner:github:14167547',
+        role: null,
+      },
+    ]
+    const exampleAwareness: ArtanisSituationalAwareness = {
+      generatedAt: '2026-06-27T12:00:00.000Z',
+      goals: {
+        epics: [
+          {
+            mandate: 'Own the Khala improvement loop autonomously.',
+            number: 6359,
+            title: 'Artanis: autonomous owner of the loop',
+          },
+        ],
+        roadmapRef: 'docs/khala/2026-06-26-khala-open-issues-master-roadmap.md',
+        roadmapSummary: 'Master roadmap for the open Khala issue set.',
+      },
+      kind: 'artanis_situational_awareness',
+      ongoingOps: {
+        activeAssignments: [],
+        fleetReadiness: { readyReplicas: 3, status: 'ready', totalReplicas: 3 },
+        publicCounter: null,
+        recentDeploys: [],
+        tokenPace: null,
+      },
+      ownerId: 'owner:github:14167547',
+      ownerOnly: true,
+      recentActions: {
+        assignments: [],
+        commits: [],
+        issueChanges: [],
+        ticks: [],
+      },
+    }
+
+    const toolCallResult = (name: string, args: string): InferenceResult => ({
+      content: '',
+      finishReason: 'tool_calls',
+      servedModel: 'gpt-oss-120b',
+      toolCalls: [
+        {
+          function: { arguments: args, name },
+          id: `call_${name}`,
+          type: 'function',
+        },
+      ],
+      usage: { completionTokens: 4, promptTokens: 100, totalTokens: 104 },
+    })
+    const textResult = (content: string): InferenceResult => ({
+      content,
+      finishReason: 'stop',
+      servedModel: 'gpt-oss-120b',
+      usage: { completionTokens: 20, promptTokens: 300, totalTokens: 320 },
+    })
+
+    const script: ReadonlyArray<InferenceResult> = [
+      toolCallResult('get_unsupported_requests', '{"status":"needs_issue"}'),
+      textResult(
+        'Two needs_issue gaps: local git diff reads and PDF attachment ingest.',
+      ),
+    ]
+    const requests: Array<InferenceRequest> = []
+    let index = 0
+    const khalaClient: ArtanisOperatorKhalaClient = (
+      request: InferenceRequest,
+    ) => {
+      requests.push(request)
+      const result = script[index] ?? script[script.length - 1]!
+      index += 1
+      return Effect.succeed(result)
+    }
+
+    let askedStatus: string | undefined
+    const tool = makeArtanisGetUnsupportedRequestsTool({
+      reader: async input => {
+        askedStatus = input.status
+        return unsupportedRows
+      },
+    })
+
+    const result = await Effect.runPromise(
+      artanisOperatorTurn({
+        awareness: exampleAwareness,
+        khalaClient,
+        memory: exampleMemory,
+        messages: [
+          {
+            content: 'What capability gaps are blocking Khala adoption right now?',
+            role: 'user',
+          },
+        ],
+        ownerId: 'owner:github:14167547',
+        tools: [tool],
+      }),
+    )
+
+    expect('error' in result).toBe(false)
+    if ('error' in result) return
+
+    // The read tool was actually executed with the model's status filter, and
+    // it executed freely (not deferred to the approval gate).
+    expect(askedStatus).toBe('needs_issue')
+    expect(result.toolInvocations).toEqual([
+      {
+        deferredToApprovalGate: false,
+        executed: true,
+        executedRef: null,
+        name: 'get_unsupported_requests',
+        riskyActionKind: null,
+      },
+    ])
+
+    // The tool result round-tripped back into the second Khala call, carrying
+    // BOTH gap summaries.
+    const secondConversation = requests[1]?.messages ?? []
+    const toolMessage = secondConversation.find(
+      message =>
+        message.role === 'tool' &&
+        message.content.includes('Unsupported-request ledger'),
+    )
+    expect(toolMessage).toBeDefined()
+    const toolText = toolMessage?.content ?? ''
+    expect(toolText).toContain('Khala cannot read the local git diff')
+    expect(toolText).toContain('read their local git diff')
+    expect(toolText).toContain('Khala cannot ingest uploaded PDF attachments')
+    expect(toolText).toContain('attach uploaded PDFs')
+    expect(toolText).toContain('khala_unsupported:ur_aaa111')
+    expect(toolText).toContain('khala_unsupported:ur_bbb222')
+
+    // No secrets / raw private content leaked into the tool output.
+    expect(toolText).not.toMatch(
+      /bearer|mnemonic|wallet|secret|sk-[a-z0-9]|\/Users\/|access[_-]?token/i,
+    )
+  })
+})
+
 describe('parseArtanisAssignmentRef + isSafeArtanisAssignmentRef', () => {
   test('accepts a ref under several key aliases', () => {
     expect(parseArtanisAssignmentRef({ assignmentRef: 'a.b.c' })).toEqual({
@@ -1280,12 +1594,22 @@ describe('makeArtanisOperatorTools default table', () => {
       'get_khala_feedback',
       'get_network_stats',
       'get_pylon_job_status',
+      'get_unsupported_requests',
       'list_pylon_assignments',
       'list_repo_dir',
       'read_github_issue',
       'read_repo_file',
       'trigger_synthetic_load',
     ])
+  })
+
+  test('the default table includes a read-kind get_unsupported_requests tool', () => {
+    const tools = makeArtanisOperatorTools()
+    const tool = tools.find(
+      t => t.definition.name === 'get_unsupported_requests',
+    )
+    expect(tool).toBeDefined()
+    expect(tool?.kind).toBe('read')
   })
 
   test('the default table includes a read-kind list_pylon_assignments tool', () => {
