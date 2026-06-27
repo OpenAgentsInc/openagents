@@ -21,6 +21,7 @@ import {
   makeArtanisGetNetworkStatsTool,
   makeArtanisGetPylonJobStatusTool,
   makeArtanisGetUnsupportedRequestsTool,
+  makeArtanisListGithubIssuesTool,
   makeArtanisListPylonAssignmentsTool,
   makeArtanisListRepoDirTool,
   makeArtanisOperatorTools,
@@ -474,6 +475,117 @@ describe('read_github_issue (public OpenAgentsInc/openagents only)', () => {
     )
     expect(result).toContain('Issue #6311')
     expect(result).toContain('could not be fetched')
+  })
+})
+
+describe('list_github_issues (public OpenAgentsInc/openagents only)', () => {
+  // A fake GitHub issues payload mixing real issues (one Khala-labeled) with a
+  // pull request (carries `pull_request`) that MUST be filtered out.
+  const issuesPayload = JSON.stringify([
+    {
+      labels: [{ name: 'khala' }, { name: 'bug' }],
+      number: 6401,
+      pull_request: undefined,
+      state: 'open',
+      title: 'Khala CLI hangs on /feedback submit',
+    },
+    {
+      labels: ['khala'],
+      number: 6402,
+      state: 'open',
+      title: 'Khala token counter lags behind exact rows',
+    },
+    {
+      // A pull request — has a `pull_request` object; must NOT appear.
+      labels: [{ name: 'khala' }],
+      number: 6403,
+      pull_request: { url: 'https://api.github.com/.../pulls/6403' },
+      state: 'open',
+      title: 'PR: wire khala counter feed',
+    },
+  ])
+
+  test('formats open Khala issues (numbers+titles+state), filters out PRs, bounds the count', async () => {
+    const { fetchImpl, urls } = stubFetch(
+      () => new Response(issuesPayload, { status: 200 }),
+    )
+    // maxLimit:2 also proves the count is bounded even before PR filtering.
+    const tool = makeArtanisListGithubIssuesTool({ fetchImpl, maxLimit: 2 })
+    const result = await Effect.runPromise(
+      tool.execute({ labels: 'khala', state: 'open' }),
+    )
+
+    // Numbers + titles + state for the two real issues.
+    expect(result).toContain('#6401')
+    expect(result).toContain('Khala CLI hangs on /feedback submit')
+    expect(result).toContain('[open]')
+    expect(result).toContain('#6402')
+    expect(result).toContain('Khala token counter lags behind exact rows')
+    // The pull request is filtered out.
+    expect(result).not.toContain('#6403')
+    expect(result).not.toContain('PR: wire khala counter feed')
+    // Labels are surfaced.
+    expect(result).toContain('labels: khala, bug')
+
+    // The request hit the public issues API with the right state/label filters
+    // and a bounded per_page (clamped to maxLimit:2).
+    expect(urls[0]).toContain(
+      'https://api.github.com/repos/OpenAgentsInc/openagents/issues?',
+    )
+    expect(urls[0]).toContain('state=open')
+    expect(urls[0]).toContain('labels=khala')
+    expect(urls[0]).toContain('per_page=2')
+  })
+
+  test('defaults to open state and bounds the count to the limit', async () => {
+    const many = JSON.stringify(
+      Array.from({ length: 10 }, (_value, index) => ({
+        labels: [],
+        number: 7000 + index,
+        state: 'open',
+        title: `issue ${index}`,
+      })),
+    )
+    const { fetchImpl, urls } = stubFetch(
+      () => new Response(many, { status: 200 }),
+    )
+    const tool = makeArtanisListGithubIssuesTool({ fetchImpl })
+    const result = await Effect.runPromise(tool.execute({ limit: 3 }))
+    expect(urls[0]).toContain('state=open')
+    const renderedNumbers = result
+      .split('\n')
+      .filter(line => line.startsWith('- #'))
+    expect(renderedNumbers).toHaveLength(3)
+  })
+
+  test('an empty result reads as honest "(no open issues …)" not invention', async () => {
+    const { fetchImpl } = stubFetch(
+      () => new Response('[]', { status: 200 }),
+    )
+    const tool = makeArtanisListGithubIssuesTool({ fetchImpl })
+    const result = await Effect.runPromise(
+      tool.execute({ labels: 'nonexistent' }),
+    )
+    expect(result).toContain('no open issues found')
+    expect(result).toContain('OpenAgentsInc/openagents')
+  })
+
+  test('a fetch failure reads as honest "(could not list issues)"', async () => {
+    const fetchImpl = (async () => {
+      throw new Error('network down')
+    }) as typeof fetch
+    const tool = makeArtanisListGithubIssuesTool({ fetchImpl })
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toBe('(could not list issues)')
+  })
+
+  test('the default tool table exposes list_github_issues as a read tool', () => {
+    const tools = makeArtanisOperatorTools()
+    const listIssues = tools.find(
+      tool => tool.definition.name === 'list_github_issues',
+    )
+    expect(listIssues).toBeDefined()
+    expect(listIssues?.kind).toBe('read')
   })
 })
 
@@ -1773,6 +1885,7 @@ describe('makeArtanisOperatorTools default table', () => {
       'get_network_stats',
       'get_pylon_job_status',
       'get_unsupported_requests',
+      'list_github_issues',
       'list_pylon_assignments',
       'list_repo_dir',
       'read_github_issue',

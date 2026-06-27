@@ -497,6 +497,314 @@ export const makeArtanisReadGithubIssueTool = (
 }
 
 // ---------------------------------------------------------------------------
+// list_github_issues — read a bounded, filterable LIST of issues in the PUBLIC
+// OpenAgentsInc/openagents repo (title, number, state, labels). Side-effect-free,
+// public-state-only.
+//
+// This is Artanis's iteration-10 self-improvement capability. read_github_issue
+// (above) pulls ONE issue he already knows the number of; this gives him the
+// CANDIDATE SET to triage. A read-only, filterable list of open issues lets him
+// programmatically identify high-priority bugs/feature gaps to fan out across the
+// parallel Khala -> Pylon -> Codex burndown — the core lever for flipping product
+// promises green and 10x-ing Khala token usage. He can filter by state (default
+// open) and by labels (e.g. "khala") to scope the triage.
+//
+// It stays conservative by construction:
+//   - READ-ONLY + SIDE-EFFECT-FREE. It only GETs the public GitHub issues API for
+//     the fixed public repo; it never writes, mutates, dispatches, or spends. It
+//     grants no new authority and fits the existing read-tool boundary.
+//   - PUBLIC REPO ONLY. The owner/repo are fixed to OpenAgentsInc/openagents like
+//     the other GitHub read tools; the model cannot name an arbitrary repo.
+//   - FILTERS OUT PULL REQUESTS. The GitHub issues endpoint returns PRs too (they
+//     carry a `pull_request` field); those are dropped so the list is real issues.
+//   - BOUNDED + FAIL-SOFT. A single read returns at most `maxLimit` issues, each
+//     title truncated, so a busy repo stays cheap. A fetch failure degrades to an
+//     honest "(could not list issues)"; an empty result reads "(no … issues …)".
+// ---------------------------------------------------------------------------
+
+// The default and max number of issues returned for one list read, so a single
+// read stays bounded even when the repo has many open issues.
+export const ARTANIS_ISSUE_LIST_DEFAULT_LIMIT = 30
+export const ARTANIS_ISSUE_LIST_MAX_LIMIT = 100
+
+// Max characters of a single issue title surfaced into Artanis's context; a
+// longer title is truncated with an explicit marker so one essay-length title
+// cannot blow the context budget.
+export const ARTANIS_ISSUE_LIST_TITLE_MAX_CHARS = 200
+
+// Max distinct label filters honored for one read; extra labels are ignored so a
+// model typo cannot build an unboundedly long query string.
+export const ARTANIS_ISSUE_LIST_MAX_LABELS = 10
+
+// The bounded set of issue states a model may filter on. Anything else falls back
+// to 'open' (the high-leverage default for burndown triage).
+export const ARTANIS_ISSUE_LIST_STATES = ['open', 'closed', 'all'] as const
+export type ArtanisIssueListState = (typeof ARTANIS_ISSUE_LIST_STATES)[number]
+
+export type ArtanisIssueListConfig = Readonly<{
+  owner?: string | undefined
+  repo?: string | undefined
+  defaultLimit?: number | undefined
+  maxLimit?: number | undefined
+  // Injected for testability; defaults to the global fetch.
+  fetchImpl?: typeof fetch | undefined
+}>
+
+const resolveIssueListConfig = (config: ArtanisIssueListConfig) => {
+  const maxLimit = config.maxLimit ?? ARTANIS_ISSUE_LIST_MAX_LIMIT
+  return {
+    // The default is itself bounded by maxLimit so an absent `limit` arg can
+    // never request more than the configured ceiling.
+    defaultLimit: Math.min(
+      config.defaultLimit ?? ARTANIS_ISSUE_LIST_DEFAULT_LIMIT,
+      maxLimit,
+    ),
+    fetchImpl: config.fetchImpl ?? globalThis.fetch,
+    maxLimit,
+    owner: config.owner ?? ARTANIS_REPO_READ_OWNER,
+    repo: config.repo ?? ARTANIS_REPO_READ_REPO,
+  }
+}
+
+// Coerce a model-produced `state` arg into a bounded GitHub issue state; an
+// absent/invalid value falls back to 'open'.
+const parseIssueListState = (args: unknown): ArtanisIssueListState => {
+  if (typeof args !== 'object' || args === null) return 'open'
+  const raw = (args as Record<string, unknown>).state
+  if (typeof raw !== 'string') return 'open'
+  const trimmed = raw.trim().toLowerCase()
+  return (ARTANIS_ISSUE_LIST_STATES as ReadonlyArray<string>).includes(trimmed)
+    ? (trimmed as ArtanisIssueListState)
+    : 'open'
+}
+
+// A safe label filter token: GitHub labels are short tags. We keep a
+// conservative character set (letters, digits, space, and a few separators) so
+// the query string can never carry traversal/control material. Unsafe labels are
+// dropped rather than fetched.
+const isSafeIssueLabel = (label: string): boolean =>
+  label.length > 0 &&
+  label.length <= 80 &&
+  /^[A-Za-z0-9][A-Za-z0-9 ._:/-]*$/.test(label)
+
+// Coerce a model-produced `labels`/`label` arg (a comma-separated string or an
+// array of strings) into a bounded, deduped, safe label list.
+const parseIssueListLabels = (args: unknown): ReadonlyArray<string> => {
+  if (typeof args !== 'object' || args === null) return []
+  const record = args as Record<string, unknown>
+  const raw = record.labels ?? record.label
+  const parts: Array<string> =
+    typeof raw === 'string'
+      ? raw.split(',')
+      : Array.isArray(raw)
+        ? raw.filter((part): part is string => typeof part === 'string')
+        : []
+  const seen = new Set<string>()
+  const labels: Array<string> = []
+  for (const part of parts) {
+    const trimmed = part.trim()
+    if (!isSafeIssueLabel(trimmed)) continue
+    if (seen.has(trimmed)) continue
+    seen.add(trimmed)
+    labels.push(trimmed)
+    if (labels.length >= ARTANIS_ISSUE_LIST_MAX_LABELS) break
+  }
+  return labels
+}
+
+// Coerce a model-produced `limit`/`count`/`max` arg into a bounded positive
+// integer, clamped into [1, maxLimit]; an absent/invalid value falls back to the
+// default. A model typo can never request an unboundedly large list.
+const parseIssueListLimit = (
+  args: unknown,
+  defaultLimit: number,
+  maxLimit: number,
+): number => {
+  const record =
+    typeof args === 'object' && args !== null
+      ? (args as Record<string, unknown>)
+      : {}
+  const raw = record.limit ?? record.count ?? record.max
+  let value: number | undefined
+  if (typeof raw === 'number' && Number.isInteger(raw)) {
+    value = raw
+  } else if (typeof raw === 'string' && /^\d+$/.test(raw.trim())) {
+    value = Number.parseInt(raw.trim(), 10)
+  }
+  if (value === undefined || value < 1) {
+    return defaultLimit
+  }
+  return Math.min(value, maxLimit)
+}
+
+type GitHubIssueListEntry = Readonly<{
+  number?: unknown
+  title?: unknown
+  state?: unknown
+  pull_request?: unknown
+  labels?: unknown
+}>
+
+// True when a list entry is a pull request, not an issue. The GitHub issues
+// endpoint returns BOTH; PRs carry a `pull_request` object. We drop them so the
+// list is real issues only.
+const isPullRequestEntry = (entry: GitHubIssueListEntry): boolean =>
+  typeof entry.pull_request === 'object' && entry.pull_request !== null
+
+// Extract the public-safe label names from a list entry (each label is a string
+// or an object with a string `name`). Unsafe label values are dropped.
+const issueEntryLabelNames = (
+  entry: GitHubIssueListEntry,
+): ReadonlyArray<string> => {
+  const labels = entry.labels
+  if (!Array.isArray(labels)) return []
+  return labels
+    .map(label => {
+      if (typeof label === 'string') return label
+      if (typeof label === 'object' && label !== null) {
+        const name = (label as Record<string, unknown>).name
+        return typeof name === 'string' ? name : null
+      }
+      return null
+    })
+    .filter(
+      (name): name is string => name !== null && isSafeIssueLabel(name),
+    )
+}
+
+// Format ONE issue as a bounded, public-safe one-line entry: number, state,
+// (truncated) title, and its labels.
+const formatIssueListLine = (entry: GitHubIssueListEntry): string => {
+  const number =
+    typeof entry.number === 'number' && Number.isInteger(entry.number)
+      ? entry.number
+      : null
+  if (number === null) return ''
+  const state =
+    typeof entry.state === 'string' && entry.state.trim() !== ''
+      ? entry.state
+      : 'unknown'
+  const rawTitle =
+    typeof entry.title === 'string' && entry.title.trim() !== ''
+      ? entry.title.trim()
+      : '(no title)'
+  const title = boundText(rawTitle, ARTANIS_ISSUE_LIST_TITLE_MAX_CHARS).replace(
+    /\s+/g,
+    ' ',
+  )
+  const labels = issueEntryLabelNames(entry)
+  const labelSuffix =
+    labels.length > 0 ? ` (labels: ${labels.join(', ')})` : ''
+  return `- #${number} [${state}] ${title}${labelSuffix}`
+}
+
+// list_github_issues(state?, labels?, limit?) — reads a bounded, filterable LIST
+// of issues from the fixed PUBLIC repo via the GitHub issues API. Returns one
+// public-safe line per issue (number + state + title + labels), with pull
+// requests filtered out and the count bounded. Honest absence: an empty result
+// reads "(no <state> issues found …)"; a fetch failure reads "(could not list
+// issues)". Public repo only; side-effect-free.
+export const makeArtanisListGithubIssuesTool = (
+  config: ArtanisIssueListConfig = {},
+): ArtanisOperatorReadTool => {
+  const { defaultLimit, fetchImpl, maxLimit, owner, repo } =
+    resolveIssueListConfig(config)
+
+  return {
+    definition: {
+      description: `List issues in the PUBLIC ${owner}/${repo} repo so you can triage the candidate set (vs. read_github_issue, which reads ONE issue you already know the number of). Returns one bounded line per issue with its number, state, title, and labels; pull requests are filtered out. Use this to scan the open backlog, spot high-priority bugs and feature gaps, and decide which issues to fan out across the Khala -> Pylon -> Codex burndown, then call read_github_issue on a specific number for the full requirements. Optional "state" ("open" (default), "closed", or "all"), "labels" (comma-separated, e.g. "khala"), and "limit" (default ${defaultLimit}, max ${maxLimit}).`,
+      name: 'list_github_issues',
+      parameters: {
+        additionalProperties: false,
+        properties: {
+          labels: {
+            description:
+              'Optional comma-separated label filter, e.g. "khala" or "bug,khala". Only issues carrying ALL named labels are returned. Omit to list all labels.',
+            type: 'string',
+          },
+          limit: {
+            description: `Max number of issues to return, a positive integer up to ${maxLimit} (default ${defaultLimit}).`,
+            type: 'number',
+          },
+          state: {
+            description:
+              'Issue state filter: "open" (default), "closed", or "all".',
+            type: 'string',
+          },
+        },
+        required: [],
+        type: 'object',
+      },
+    },
+    execute: (args: unknown) =>
+      Effect.gen(function* () {
+        const state = parseIssueListState(args)
+        const labels = parseIssueListLabels(args)
+        const limit = parseIssueListLimit(args, defaultLimit, maxLimit)
+
+        const params = new URLSearchParams()
+        params.set('state', state)
+        params.set('per_page', String(Math.min(limit, 100)))
+        params.set('sort', 'created')
+        params.set('direction', 'desc')
+        if (labels.length > 0) {
+          params.set('labels', labels.join(','))
+        }
+        const url = `https://api.github.com/repos/${owner}/${repo}/issues?${params.toString()}`
+
+        const response = yield* Effect.tryPromise(() =>
+          fetchImpl(url, {
+            headers: {
+              Accept: 'application/vnd.github+json',
+              'User-Agent': 'artanis-operator',
+            },
+          }),
+        ).pipe(Effect.orElseSucceed(() => undefined))
+
+        if (response === undefined) {
+          return '(could not list issues)'
+        }
+        if (response.status === 404) {
+          return `(repo not found: ${owner}/${repo})`
+        }
+        if (!response.ok) {
+          return `(list failed: status ${response.status})`
+        }
+
+        const body = yield* Effect.tryPromise(
+          () => response.json() as Promise<unknown>,
+        ).pipe(Effect.orElseSucceed(() => undefined))
+
+        if (!Array.isArray(body)) {
+          return '(list failed: unexpected response shape)'
+        }
+
+        const labelLabel =
+          labels.length > 0 ? ` with labels [${labels.join(', ')}]` : ''
+        const lines = (body as ReadonlyArray<GitHubIssueListEntry>)
+          .filter(entry => !isPullRequestEntry(entry))
+          .slice(0, limit)
+          .map(formatIssueListLine)
+          .filter(line => line !== '')
+
+        if (lines.length === 0) {
+          return `(no ${state} issues found in ${owner}/${repo}${labelLabel})`
+        }
+
+        const stateLabel =
+          state === 'all'
+            ? 'Issues'
+            : state === 'open'
+              ? 'Open issues'
+              : 'Closed issues'
+        const header = `${stateLabel} in ${owner}/${repo}${labelLabel} (${lines.length}):`
+        return [header, ...lines].join('\n')
+      }),
+    kind: 'read',
+  }
+}
+
+// ---------------------------------------------------------------------------
 // get_pylon_job_status — read the public-safe closeout/proof status for ONE
 // owner-scoped Pylon/Codex assignment ref. Side-effect-free, owner-only,
 // public-state-only. This is Artanis's iteration-3 self-improvement capability:
@@ -2468,7 +2776,10 @@ export const makeArtanisTriggerSyntheticLoadTool = (
 // stays plan-only. `issueRead` defaults to the same fetch/owner/repo as
 // `repoRead` so a single test/override seam covers all the GitHub read tools;
 // pass it explicitly only when the issue API needs a different fetch stub than
-// the raw-content fetch. `pylonJobStatus.reader` is the owner-scoped status
+// the raw-content fetch. The same `issueRead` fetch/owner/repo also backs the
+// iteration-10 `list_github_issues` read tool (a bounded, filterable LIST of
+// public issues for burndown triage; pull requests filtered out, count bounded).
+// `pylonJobStatus.reader` is the owner-scoped status
 // reader; with no reader wired the status tool returns an honest
 // "(could not read status …)" rather than inventing a status.
 // `pylonAssignments.lister` is the owner-scoped bulk assignments lister behind
@@ -2525,6 +2836,11 @@ export const makeArtanisOperatorTools = (
     makeArtanisReadRepoFileTool(config.repoRead),
     makeArtanisListRepoDirTool(config.repoRead),
     makeArtanisReadGithubIssueTool(issueRead),
+    makeArtanisListGithubIssuesTool({
+      fetchImpl: issueRead.fetchImpl,
+      owner: issueRead.owner,
+      repo: issueRead.repo,
+    }),
     makeArtanisGetNetworkStatsTool(config.networkStats),
     makeArtanisGetGlmFleetStatusTool(config.glmFleetStatus),
     makeArtanisGetPylonJobStatusTool(config.pylonJobStatus),
