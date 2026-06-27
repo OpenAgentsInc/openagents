@@ -443,8 +443,17 @@ export const GymThroughputGlmFleetDurabilityDependencyEvidence = S.Struct({
   publicSafe: S.Literal(true),
   servingStatus: GymThroughputGlmFleetServingStatus,
   acceptanceStatus: GymThroughputGlmFleetDurabilityAcceptanceStatus,
+  servingCapacitySummary: S.String,
+  readyReplicaCount: S.Number.check(S.isBetween({ minimum: 0, maximum: 4096 })),
+  reclaimedReplicaCount: S.Number.check(
+    S.isBetween({ minimum: 0, maximum: 4096 }),
+  ),
+  warmOrReadyMaxInflight: S.Number.check(
+    S.isBetween({ minimum: 0, maximum: 4096 }),
+  ),
   servingReadyButAcceptanceNotComplete: S.Boolean,
   blockerRefs: S.Array(S.String),
+  remainingDurabilityBlockerRefs: S.Array(S.String),
   publicEvidenceRefs: S.Array(S.String),
 })
 export type GymThroughputGlmFleetDurabilityDependencyEvidence =

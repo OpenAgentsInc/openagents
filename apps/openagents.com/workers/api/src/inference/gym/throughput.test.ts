@@ -231,8 +231,14 @@ const glmFleetDurabilityDependencyEvidence = (
   publicSafe: true,
   servingStatus: 'ready',
   acceptanceStatus: 'complete',
+  servingCapacitySummary:
+    'serving ready: ready=8, warm=1, reclaimed=0, warmOrReadyMaxInflight=9; durability acceptance complete',
+  readyReplicaCount: 8,
+  reclaimedReplicaCount: 0,
+  warmOrReadyMaxInflight: 9,
   servingReadyButAcceptanceNotComplete: false,
   blockerRefs: [],
+  remainingDurabilityBlockerRefs: [],
   publicEvidenceRefs: [
     'readiness.public.khala.glm_fleet_durability.issue_6311.accepted.001',
   ],
@@ -821,6 +827,106 @@ describe('Gym throughput/concurrency report (#6244)', () => {
           ),
       ),
     ).toBe(true)
+  })
+
+  test('surfaces recovered serving capacity while public GLM fleet status and #6311 acceptance stay blocked', () => {
+    const recommendation = measuredGlmRolloutRecommendation()
+    const rolloutRun = buildGymThroughputOwnerArmedRolloutRunArtifact({
+      generatedAt: '2026-06-27T15:00:00.000Z',
+      recommendation,
+      ownerArmRef: 'owner_arm.gym.glm_52.vllm_rollout.issue_6320.v1',
+    })
+    const progressEvidence = {
+      schemaVersion: 'openagents.gym.throughput_rollout_progress_evidence.v1',
+      rolloutRef: 'rollout.gym.glm_52.vllm.issue_6320.measurement.005',
+      observedAt: '2026-06-27T15:08:00.000Z',
+      status: 'measured_lift',
+      ownerArmRef: 'owner_arm.gym.glm_52.vllm_rollout.issue_6320.v1',
+      progressPercent: 100,
+      publicEvidenceRefs: [
+        'report.gym.throughput.glm_52.vllm.issue_6320.measurement.005',
+      ],
+      baselineAggregateTps: recommendation.selection!.baselineAggregateTps,
+      measuredAggregateTps: recommendation.selection!.aggregateTps,
+      measuredThroughputLiftPercent:
+        recommendation.selection!.aggregateTpsLiftPercent,
+      rolloutMeasurementEvidence: measuredRolloutEvidence(recommendation),
+    } as const
+    const remainingDurabilityBlockerRefs = [
+      'blocker.hydralisk_glm_52_reap_504b.forced_stop_recovery_evidence_missing',
+      'blocker.hydralisk_glm_52_reap_504b.capacity_floor_owner_decision_missing',
+      'blocker.hydralisk_glm_52_reap_504b.multi_region_auto_replace_evidence_missing',
+      'blocker.hydralisk_glm_52_reap_504b.quota_request_pending',
+    ]
+
+    const readout = buildGymThroughputRolloutReadout({
+      generatedAt: '2026-06-27T15:09:00.000Z',
+      rolloutRun,
+      progressEvidence,
+      glmFleetDurabilityDependencyEvidence:
+        glmFleetDurabilityDependencyEvidence({
+          servingStatus: 'degraded',
+          acceptanceStatus: 'blocked',
+          servingCapacitySummary:
+            'serving capacity materially recovered: ready=8, warm=1, reclaimed=0, warmOrReadyMaxInflight=9; public status remains degraded and durability acceptance remains blocked',
+          readyReplicaCount: 8,
+          reclaimedReplicaCount: 0,
+          warmOrReadyMaxInflight: 9,
+          servingReadyButAcceptanceNotComplete: false,
+          blockerRefs: [
+            'blocker.hydralisk_glm_52_reap_504b.acceptance_blocked',
+            ...remainingDurabilityBlockerRefs,
+          ],
+          remainingDurabilityBlockerRefs,
+          publicEvidenceRefs: [
+            'readiness.public.khala.glm_fleet_durability.issue_6311.2026_06_27',
+          ],
+        }),
+    })
+
+    expect(readout.status).toBe('blocked')
+    expect(readout.blockers).toEqual([
+      'glm_fleet_serving_not_ready',
+      'glm_fleet_durability_acceptance_not_complete',
+    ])
+    expect(readout.glmFleetDurabilityDependencyEvidence).toMatchObject({
+      servingStatus: 'degraded',
+      acceptanceStatus: 'blocked',
+      servingCapacitySummary:
+        'serving capacity materially recovered: ready=8, warm=1, reclaimed=0, warmOrReadyMaxInflight=9; public status remains degraded and durability acceptance remains blocked',
+      readyReplicaCount: 8,
+      reclaimedReplicaCount: 0,
+      warmOrReadyMaxInflight: 9,
+      servingReadyButAcceptanceNotComplete: false,
+      remainingDurabilityBlockerRefs,
+    })
+    expect(
+      readout.evidenceChecklist.find(
+        item => item.check === 'glm_fleet_serving_ready',
+      ),
+    ).toMatchObject({
+      status: 'mismatch',
+      expected: 'ready',
+      actual: 'degraded',
+    })
+    expect(
+      readout.evidenceChecklist.find(
+        item => item.check === 'glm_fleet_durability_6311_acceptance',
+      ),
+    ).toMatchObject({
+      status: 'mismatch',
+      expected: 'complete',
+      actual: 'blocked',
+    })
+    expect(readout.operatorAcceptance).toMatchObject({
+      status: 'blocked_before_stress_and_benchmark',
+      canStartIssue6317Stress: false,
+      canStartIssue6312Benchmark: false,
+      remainingChecks: [
+        'glm_fleet_serving_ready',
+        'glm_fleet_durability_6311_acceptance',
+      ],
+    })
   })
 
   test('fails closed when rollout readout progress evidence is missing, mismatched, or lacks real measurement', () => {
