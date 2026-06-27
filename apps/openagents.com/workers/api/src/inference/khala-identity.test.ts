@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
 
 import {
+  KHALA_CAPABILITY_SUMMARY_SYSTEM_PROMPT,
   KHALA_IDENTITY_SIGNATURE,
   KHALA_IDENTITY_STATEMENT,
   KHALA_IDENTITY_SYSTEM_PROMPT,
@@ -117,6 +118,33 @@ describe('Khala response discipline signature', () => {
     const answer =
       'C’est parti. Qu’est-ce qu’on construit, casse ou clarifie aujourd’hui ? Balancez-nous ça.'
     expect(KHALA_RESPONSE_DISCIPLINE_SIGNATURE.verify(answer).satisfied).toBe(true)
+  })
+})
+
+describe('Khala capability-summary prompt', () => {
+  test('describes Blueprint as contracts and verification without over-claiming execution', () => {
+    const prompt = KHALA_CAPABILITY_SUMMARY_SYSTEM_PROMPT.toLowerCase()
+
+    expect(prompt).toContain('capability-summary contract')
+    expect(prompt).toContain('current surface')
+    expect(prompt).toContain('typed contract and verification layer')
+    expect(prompt).toContain('not a magical autonomous executor')
+    expect(prompt).toContain('not a guarantee')
+    expect(prompt).toContain('routed tool')
+    expect(prompt).toContain('pylon assignment')
+    expect(prompt).toContain('explicit local cli command')
+  })
+
+  test('keeps public/browser chat honest about local workspace and spawn capabilities', () => {
+    const prompt = KHALA_CAPABILITY_SUMMARY_SYSTEM_PROMPT.toLowerCase()
+
+    expect(prompt).toContain('public/browser chat')
+    expect(prompt).toContain('local filesystem')
+    expect(prompt).toContain('run shell commands')
+    expect(prompt).toContain('spawn local workers')
+    expect(prompt).toContain('/spawn <count> <task>')
+    expect(prompt).toContain('khala spawn --count n --objective')
+    expect(prompt).toContain('can only explain that path')
   })
 })
 
