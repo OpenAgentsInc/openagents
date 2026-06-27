@@ -413,9 +413,42 @@ export const GymThroughputRolloutReadoutBlocker = S.Literals([
   'progress_measurement_mismatch',
   'measured_lift_missing',
   'measured_lift_not_positive',
+  'glm_fleet_serving_not_ready',
+  'glm_fleet_durability_acceptance_not_complete',
 ])
 export type GymThroughputRolloutReadoutBlocker =
   typeof GymThroughputRolloutReadoutBlocker.Type
+
+export const GymThroughputGlmFleetServingStatus = S.Literals([
+  'degraded',
+  'ready',
+  'unavailable',
+])
+export type GymThroughputGlmFleetServingStatus =
+  typeof GymThroughputGlmFleetServingStatus.Type
+
+export const GymThroughputGlmFleetDurabilityAcceptanceStatus = S.Literals([
+  'blocked',
+  'complete',
+  'incomplete',
+])
+export type GymThroughputGlmFleetDurabilityAcceptanceStatus =
+  typeof GymThroughputGlmFleetDurabilityAcceptanceStatus.Type
+
+export const GymThroughputGlmFleetDurabilityDependencyEvidence = S.Struct({
+  schemaVersion: S.Literal(
+    'openagents.gym.throughput_glm_fleet_durability_dependency_evidence.v1',
+  ),
+  issueRef: S.Literal('github.issue.OpenAgentsInc.openagents.6311'),
+  publicSafe: S.Literal(true),
+  servingStatus: GymThroughputGlmFleetServingStatus,
+  acceptanceStatus: GymThroughputGlmFleetDurabilityAcceptanceStatus,
+  servingReadyButAcceptanceNotComplete: S.Boolean,
+  blockerRefs: S.Array(S.String),
+  publicEvidenceRefs: S.Array(S.String),
+})
+export type GymThroughputGlmFleetDurabilityDependencyEvidence =
+  typeof GymThroughputGlmFleetDurabilityDependencyEvidence.Type
 
 export const GymThroughputRolloutEvidenceChecklistCheck = S.Literals([
   'owner_arm_ref',
@@ -436,6 +469,8 @@ export const GymThroughputRolloutEvidenceChecklistCheck = S.Literals([
   'rollout_progress_percent',
   'progress_totals_match_measurement',
   'public_evidence_refs',
+  'glm_fleet_serving_ready',
+  'glm_fleet_durability_6311_acceptance',
 ])
 export type GymThroughputRolloutEvidenceChecklistCheck =
   typeof GymThroughputRolloutEvidenceChecklistCheck.Type
@@ -511,6 +546,10 @@ export const GymThroughputRolloutReadout = S.Struct({
   progressEvidence: S.Union([GymThroughputRolloutProgressEvidence, S.Null]),
   rolloutMeasurementEvidence: S.Union([
     GymThroughputRolloutMeasurementEvidence,
+    S.Null,
+  ]),
+  glmFleetDurabilityDependencyEvidence: S.Union([
+    GymThroughputGlmFleetDurabilityDependencyEvidence,
     S.Null,
   ]),
   evidenceChecklist: S.Array(GymThroughputRolloutEvidenceChecklistItem),
@@ -1084,16 +1123,45 @@ const rolloutEvidenceChecklist = (input: {
   rolloutRun: GymThroughputOwnerArmedRolloutRunArtifact
   progressEvidence: GymThroughputRolloutProgressEvidence | null
   rolloutMeasurementEvidence: GymThroughputRolloutMeasurementEvidence | null
+  glmFleetDurabilityDependencyEvidence:
+    | GymThroughputGlmFleetDurabilityDependencyEvidence
+    | null
 }): ReadonlyArray<GymThroughputRolloutEvidenceChecklistItem> => {
   const selection = input.rolloutRun.recommendation.selection
   const evidence = input.rolloutMeasurementEvidence
   const progress = input.progressEvidence
+  const dependencyEvidence = input.glmFleetDurabilityDependencyEvidence
   const publicEvidenceRefs = [
     ...new Set([
       ...(progress?.publicEvidenceRefs ?? []),
       ...(evidence?.publicEvidenceRefs ?? []),
     ]),
   ]
+  const dependencyChecks =
+    dependencyEvidence === null
+      ? []
+      : [
+          checklistItem({
+            check: 'glm_fleet_serving_ready',
+            status:
+              dependencyEvidence.servingStatus === 'ready'
+                ? 'satisfied'
+                : 'mismatch',
+            expected: 'ready',
+            actual: dependencyEvidence.servingStatus,
+            publicEvidenceRefs: dependencyEvidence.publicEvidenceRefs,
+          }),
+          checklistItem({
+            check: 'glm_fleet_durability_6311_acceptance',
+            status:
+              dependencyEvidence.acceptanceStatus === 'complete'
+                ? 'satisfied'
+                : 'mismatch',
+            expected: 'complete',
+            actual: dependencyEvidence.acceptanceStatus,
+            publicEvidenceRefs: dependencyEvidence.publicEvidenceRefs,
+          }),
+        ]
   const expectedConfiguration =
     selection === null ? null : measuredConfigurationFromSelection(selection)
   const actualConfiguration = evidence?.expectedVsActual.actualAfter.configuration
@@ -1292,6 +1360,7 @@ const rolloutEvidenceChecklist = (input: {
       actual: publicEvidenceRefs.length,
       publicEvidenceRefs,
     }),
+    ...dependencyChecks,
   ]
 }
 
@@ -1335,8 +1404,13 @@ export const buildGymThroughputRolloutReadout = (input: {
   generatedAt: string
   rolloutRun: GymThroughputOwnerArmedRolloutRunArtifact
   progressEvidence?: GymThroughputRolloutProgressEvidence | null
+  glmFleetDurabilityDependencyEvidence?:
+    | GymThroughputGlmFleetDurabilityDependencyEvidence
+    | null
 }): GymThroughputRolloutReadout => {
   const progressEvidence = input.progressEvidence ?? null
+  const glmFleetDurabilityDependencyEvidence =
+    input.glmFleetDurabilityDependencyEvidence ?? null
   const rolloutMeasurementEvidence =
     progressEvidence?.rolloutMeasurementEvidence ?? null
   const blockers: Array<GymThroughputRolloutReadoutBlocker> = []
@@ -1404,6 +1478,18 @@ export const buildGymThroughputRolloutReadout = (input: {
       }
     }
   }
+  if (
+    glmFleetDurabilityDependencyEvidence !== null &&
+    glmFleetDurabilityDependencyEvidence.servingStatus !== 'ready'
+  ) {
+    blockers.push('glm_fleet_serving_not_ready')
+  }
+  if (
+    glmFleetDurabilityDependencyEvidence !== null &&
+    glmFleetDurabilityDependencyEvidence.acceptanceStatus !== 'complete'
+  ) {
+    blockers.push('glm_fleet_durability_acceptance_not_complete')
+  }
 
   const measuredLiftPercent =
     progressEvidence === null
@@ -1419,6 +1505,7 @@ export const buildGymThroughputRolloutReadout = (input: {
     rolloutRun: input.rolloutRun,
     progressEvidence,
     rolloutMeasurementEvidence,
+    glmFleetDurabilityDependencyEvidence,
   })
   const operatorAcceptance = rolloutOperatorAcceptance({
     status,
@@ -1436,6 +1523,7 @@ export const buildGymThroughputRolloutReadout = (input: {
     rolloutRun: input.rolloutRun,
     progressEvidence,
     rolloutMeasurementEvidence,
+    glmFleetDurabilityDependencyEvidence,
     evidenceChecklist,
     operatorAcceptance,
     measuredLiftPercent,

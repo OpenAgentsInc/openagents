@@ -4,6 +4,7 @@ import { NOT_MEASURED } from '../khala-telemetry'
 import {
   GLM_VLLM_THROUGHPUT_OPTIMIZATION_SWEEP,
   type GymThroughputEnvironmentSpec,
+  type GymThroughputGlmFleetDurabilityDependencyEvidence,
   type GymThroughputLeverActual,
   type GymThroughputRolloutMeasuredConfiguration,
   type GymThroughputRolloutMeasurementEvidence,
@@ -220,6 +221,23 @@ const measuredRolloutEvidence = (
     ],
   }
 }
+
+const glmFleetDurabilityDependencyEvidence = (
+  overrides: Partial<GymThroughputGlmFleetDurabilityDependencyEvidence> = {},
+): GymThroughputGlmFleetDurabilityDependencyEvidence => ({
+  schemaVersion:
+    'openagents.gym.throughput_glm_fleet_durability_dependency_evidence.v1',
+  issueRef: 'github.issue.OpenAgentsInc.openagents.6311',
+  publicSafe: true,
+  servingStatus: 'ready',
+  acceptanceStatus: 'complete',
+  servingReadyButAcceptanceNotComplete: false,
+  blockerRefs: [],
+  publicEvidenceRefs: [
+    'readiness.public.khala.glm_fleet_durability.issue_6311.accepted.001',
+  ],
+  ...overrides,
+})
 
 describe('Gym throughput/concurrency report (#6244)', () => {
   test('builds a repeatable lane report and detects latency degradation', () => {
@@ -670,6 +688,139 @@ describe('Gym throughput/concurrency report (#6244)', () => {
       canStartIssue6312Benchmark: true,
       remainingChecks: [],
     })
+  })
+
+  test('keeps #6317 and #6312 blocked when GLM fleet serving or #6311 durability acceptance is unhealthy', () => {
+    const recommendation = measuredGlmRolloutRecommendation()
+    const rolloutRun = buildGymThroughputOwnerArmedRolloutRunArtifact({
+      generatedAt: '2026-06-26T13:00:00.000Z',
+      recommendation,
+      ownerArmRef: 'owner_arm.gym.glm_52.vllm_rollout.issue_6320.v1',
+    })
+    const progressEvidence = {
+      schemaVersion: 'openagents.gym.throughput_rollout_progress_evidence.v1',
+      rolloutRef: 'rollout.gym.glm_52.vllm.issue_6320.measurement.001',
+      observedAt: '2026-06-26T13:08:00.000Z',
+      status: 'measured_lift',
+      ownerArmRef: 'owner_arm.gym.glm_52.vllm_rollout.issue_6320.v1',
+      progressPercent: 100,
+      publicEvidenceRefs: [
+        'report.gym.throughput.glm_52.vllm.issue_6320.measurement.001',
+      ],
+      baselineAggregateTps: recommendation.selection!.baselineAggregateTps,
+      measuredAggregateTps: recommendation.selection!.aggregateTps,
+      measuredThroughputLiftPercent:
+        recommendation.selection!.aggregateTpsLiftPercent,
+      rolloutMeasurementEvidence: measuredRolloutEvidence(recommendation),
+    } as const
+
+    const healthyReadout = buildGymThroughputRolloutReadout({
+      generatedAt: '2026-06-26T13:09:00.000Z',
+      rolloutRun,
+      progressEvidence,
+      glmFleetDurabilityDependencyEvidence:
+        glmFleetDurabilityDependencyEvidence(),
+    })
+    const servingDegradedReadout = buildGymThroughputRolloutReadout({
+      generatedAt: '2026-06-26T13:10:00.000Z',
+      rolloutRun,
+      progressEvidence,
+      glmFleetDurabilityDependencyEvidence:
+        glmFleetDurabilityDependencyEvidence({
+          servingStatus: 'degraded',
+          blockerRefs: [
+            'blocker.hydralisk_glm_52_reap_504b.all_replica_keep_warm_watchdog_incomplete',
+          ],
+          publicEvidenceRefs: [
+            'readiness.public.khala.glm_fleet_durability.issue_6311.degraded.001',
+          ],
+        }),
+    })
+    const acceptanceBlockedReadout = buildGymThroughputRolloutReadout({
+      generatedAt: '2026-06-26T13:11:00.000Z',
+      rolloutRun,
+      progressEvidence,
+      glmFleetDurabilityDependencyEvidence:
+        glmFleetDurabilityDependencyEvidence({
+          acceptanceStatus: 'blocked',
+          blockerRefs: [
+            'blocker.hydralisk_glm_52_reap_504b.capacity_floor_owner_decision_missing',
+          ],
+          publicEvidenceRefs: [
+            'readiness.public.khala.glm_fleet_durability.issue_6311.blocked.001',
+          ],
+        }),
+    })
+
+    expect(healthyReadout.status).toBe('measured')
+    expect(healthyReadout.operatorAcceptance).toMatchObject({
+      status: 'accepted_for_stress_and_benchmark',
+      canStartIssue6317Stress: true,
+      canStartIssue6312Benchmark: true,
+      remainingChecks: [],
+    })
+    expect(healthyReadout.evidenceChecklist.slice(-2)).toMatchObject([
+      { check: 'glm_fleet_serving_ready', status: 'satisfied' },
+      {
+        check: 'glm_fleet_durability_6311_acceptance',
+        status: 'satisfied',
+      },
+    ])
+
+    expect(servingDegradedReadout.status).toBe('blocked')
+    expect(servingDegradedReadout.blockers).toEqual([
+      'glm_fleet_serving_not_ready',
+    ])
+    expect(
+      servingDegradedReadout.evidenceChecklist.find(
+        item => item.check === 'glm_fleet_serving_ready',
+      ),
+    ).toMatchObject({
+      status: 'mismatch',
+      expected: 'ready',
+      actual: 'degraded',
+      publicEvidenceRefs: [
+        'readiness.public.khala.glm_fleet_durability.issue_6311.degraded.001',
+      ],
+    })
+    expect(servingDegradedReadout.operatorAcceptance).toMatchObject({
+      status: 'blocked_before_stress_and_benchmark',
+      canStartIssue6317Stress: false,
+      canStartIssue6312Benchmark: false,
+      remainingChecks: ['glm_fleet_serving_ready'],
+    })
+
+    expect(acceptanceBlockedReadout.status).toBe('blocked')
+    expect(acceptanceBlockedReadout.blockers).toEqual([
+      'glm_fleet_durability_acceptance_not_complete',
+    ])
+    expect(
+      acceptanceBlockedReadout.evidenceChecklist.find(
+        item => item.check === 'glm_fleet_durability_6311_acceptance',
+      ),
+    ).toMatchObject({
+      status: 'mismatch',
+      expected: 'complete',
+      actual: 'blocked',
+    })
+    expect(acceptanceBlockedReadout.operatorAcceptance).toMatchObject({
+      status: 'blocked_before_stress_and_benchmark',
+      canStartIssue6317Stress: false,
+      canStartIssue6312Benchmark: false,
+      remainingChecks: ['glm_fleet_durability_6311_acceptance'],
+    })
+    expect(
+      [servingDegradedReadout, acceptanceBlockedReadout].every(readout =>
+        readout.operatorAcceptance.requirements
+          .filter(requirement =>
+            requirement.check.startsWith('glm_fleet_'),
+          )
+          .every(requirement =>
+            requirement.blocksIssueRefs.includes('#6317') &&
+            requirement.blocksIssueRefs.includes('#6312'),
+          ),
+      ),
+    ).toBe(true)
   })
 
   test('fails closed when rollout readout progress evidence is missing, mismatched, or lacks real measurement', () => {
