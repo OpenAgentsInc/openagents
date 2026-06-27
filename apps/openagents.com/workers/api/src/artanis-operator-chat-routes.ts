@@ -106,6 +106,7 @@ export type OperatorArtanisChatDependencies<
   makeOperatorTools?: (
     env: Bindings,
     session: Session,
+    request: Request,
   ) => ReadonlyArray<ArtanisOperatorTool>
 }>
 
@@ -333,7 +334,7 @@ export const makeOperatorArtanisChatRoutes = <
       })
 
       const tools =
-        dependencies.makeOperatorTools?.(env, session) ??
+        dependencies.makeOperatorTools?.(env, session, request) ??
         makeArtanisOperatorTools()
 
       const turn = yield* artanisOperatorTurn({

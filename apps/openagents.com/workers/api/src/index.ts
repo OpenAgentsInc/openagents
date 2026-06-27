@@ -79,6 +79,10 @@ import {
   runArtanisCloseoutVerifierScheduled,
 } from './artanis-administrator-tick'
 import {
+  ArtanisApprovalGateRecord,
+  artanisApprovalGateEffective,
+} from './artanis-approval-gates'
+import {
   boundedDistillationDatasetLimit,
   readArtanisDistillationDatasetReceipt,
 } from './artanis-distillation-dataset-receipt'
@@ -594,6 +598,7 @@ import {
   optionalInteger,
   optionalNestedString,
   optionalString,
+  parseJsonUnknown,
   readJsonObject,
   safeJsonRecord,
   stringArrayFromUnknown,
@@ -8521,6 +8526,48 @@ const operatorArtanisConsoleRoutes = makeOperatorArtanisConsoleRoutes({
 // `openagents/khala` pool and meters the call as Khala usage, so this channel
 // never calls a provider directly. `makeKhalaClient` is invoked at request time,
 // so referencing the (later-declared) builder here is safe.
+const readEffectiveArtanisPublicClaimApprovalForOwner = async (
+  db: D1Database,
+  nowIso: string,
+  ownerOpenAuthUserId: string,
+): Promise<boolean> => {
+  if (isOpenAgentsOwnerAgentOpenAuthUserId(ownerOpenAuthUserId)) {
+    return true
+  }
+  const result = await db
+    .prepare(
+      `SELECT record_json
+         FROM artanis_approval_gates
+        ORDER BY updated_at DESC
+        LIMIT 50`,
+    )
+    .all<{ record_json: string }>()
+    .catch(() => ({ results: [] as ReadonlyArray<{ record_json: string }> }))
+
+  for (const row of result.results ?? []) {
+    try {
+      const parsed = parseJsonUnknown(row.record_json)
+      const record = S.decodeUnknownSync(ArtanisApprovalGateRecord)(parsed)
+      if (
+        record.kind === 'public_claim_upgrade' &&
+        artanisApprovalGateEffective(record, nowIso)
+      ) {
+        return true
+      }
+    } catch {
+      // Undecodable legacy row: skip it, never treat it as approval.
+    }
+  }
+  return false
+}
+
+const forumUrlForTopic = (topicId: string, postId: string | null): string =>
+  postId === null
+    ? `https://openagents.com/forum/t/${encodeURIComponent(topicId)}`
+    : `https://openagents.com/forum/t/${encodeURIComponent(
+        topicId,
+      )}#post-${encodeURIComponent(postId)}`
+
 const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
   appendRefreshedSessionCookies,
   // Inject the LIVE daily token-pace block into EVERY Artanis turn (epic #6359)
@@ -8544,7 +8591,7 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
   // no-spend (`unpaid_smoke`), and gated behind an effective `pylon_job_dispatch`
   // owner approval. With no effective approval (the default today), the tool
   // returns the plan and defers — it never fires.
-  makeOperatorTools: (env, session) => {
+  makeOperatorTools: (env, session, request) => {
     // Owner-scope resolver shared by the gated dispatch seam and the
     // owner-scoped Pylon job-status reader: resolve the owner's linked agent
     // user ids (their Pylon-owning credentials) so both stay strictly
@@ -8715,6 +8762,96 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
           }
         },
       }),
+      forumUpdateExecution: {
+        isOwnerApproved: () =>
+          Effect.tryPromise({
+            catch: () => false,
+            try: () =>
+              readEffectiveArtanisPublicClaimApprovalForOwner(
+                openAgentsDatabase(env),
+                currentIsoTimestamp(),
+                session.user.userId,
+              ),
+          }).pipe(Effect.orElseSucceed(() => false)),
+        postForumUpdate: plan =>
+          Effect.tryPromise(async () => {
+            const bearer = readBearerToken(request)
+            if (bearer === undefined) {
+              return {
+                kind: 'rejected',
+                reason: 'forum_agent_bearer_missing',
+              } as const
+            }
+            const path =
+              plan.action === 'create_topic'
+                ? `/api/forum/forums/${encodeURIComponent(
+                    plan.forumSlug ?? 'product-promises',
+                  )}/topics`
+                : `/api/forum/topics/${encodeURIComponent(
+                    plan.topicId ?? '',
+                  )}/posts`
+            const body =
+              plan.action === 'create_topic'
+                ? { bodyText: plan.bodyText, title: plan.title ?? '' }
+                : { bodyText: plan.bodyText }
+            const response = await fetch(`https://openagents.com${path}`, {
+              body: JSON.stringify(body),
+              headers: {
+                Authorization: `Bearer ${bearer}`,
+                'Content-Type': 'application/json',
+                'Idempotency-Key': plan.idempotencyKey,
+                'User-Agent': 'artanis-operator',
+              },
+              method: 'POST',
+            })
+            if (!response.ok) {
+              return {
+                kind: 'rejected',
+                reason: `forum_status_${response.status}`,
+              } as const
+            }
+            const parsed = (await response.json().catch(() => null)) as
+              | {
+                  firstPost?: { id?: unknown }
+                  post?: { id?: unknown }
+                  topic?: { id?: unknown; forumId?: unknown }
+                }
+              | null
+            const topicId =
+              typeof parsed?.topic?.id === 'string'
+                ? parsed.topic.id
+                : (plan.topicId ?? '')
+            if (topicId === '') {
+              return {
+                kind: 'rejected',
+                reason: 'forum_response_missing_topic_id',
+              } as const
+            }
+            const postId =
+              typeof parsed?.post?.id === 'string'
+                ? parsed.post.id
+                : typeof parsed?.firstPost?.id === 'string'
+                  ? parsed.firstPost.id
+                  : null
+            const forumSlug =
+              plan.forumSlug ??
+              (typeof parsed?.topic?.forumId === 'string'
+                ? parsed.topic.forumId
+                : null)
+            return {
+              action: plan.action,
+              forumSlug,
+              kind: 'created',
+              postId,
+              topicId,
+              url: forumUrlForTopic(topicId, postId),
+            } as const
+          }).pipe(
+            Effect.orElseSucceed(
+              () => ({ kind: 'rejected', reason: 'forum_execution_failed' }) as const,
+            ),
+          ),
+      },
     })
   },
   requireAdminApiToken,

@@ -28,6 +28,7 @@ import {
   makeArtanisListPylonAssignmentsTool,
   makeArtanisListRepoDirTool,
   makeArtanisOperatorTools,
+  makeArtanisPostForumUpdateTool,
   makeArtanisReadGithubIssueTool,
   makeArtanisReadRepoFileTool,
   makeArtanisTriggerSyntheticLoadTool,
@@ -353,6 +354,141 @@ describe('#6366 dispatch_codex_task (gated; LIVE execution behind the gate)', ()
     // Neither the approval gate nor the create seam is consulted for bad input.
     expect(approvalCalls).toHaveLength(0)
     expect(createCalls).toHaveLength(0)
+  })
+})
+
+describe('#6435 post_forum_update (gated; public Forum publication)', () => {
+  test('with NO execution seam it DEFERS and returns the exact Forum API plan', async () => {
+    const tool = makeArtanisPostForumUpdateTool()
+
+    const result = await Effect.runPromise(
+      tool.run({
+        action: 'create_topic',
+        bodyText:
+          'Fleet update: Codex burndown is running against public issues only.',
+        forumSlug: 'product-promises',
+        title: 'Artanis fleet update',
+      }),
+    )
+
+    expect(tool.kind).toBe('gated')
+    expect(tool.riskyActionKind).toBe('public_claim_upgrade')
+    expect(result.outcome).toBe('deferred')
+    if (result.outcome !== 'deferred') return
+    expect(result.reason).toBe('execution_not_wired')
+    expect(result.plan).toContain(
+      'POST /api/forum/forums/product-promises/topics',
+    )
+    expect(result.plan).toContain('Idempotency-Key: artanis-forum-update-')
+    expect(result.plan).toContain('"title":"Artanis fleet update"')
+  })
+
+  test('owner-approved execution creates a topic under the forum identity seam', async () => {
+    const posted: Array<unknown> = []
+    const tool = makeArtanisPostForumUpdateTool({
+      execution: {
+        isOwnerApproved: () => Effect.succeed(true),
+        postForumUpdate: plan => {
+          posted.push(plan)
+          return Effect.succeed({
+            action: 'create_topic',
+            forumSlug: plan.forumSlug ?? null,
+            kind: 'created',
+            postId: 'post_123',
+            topicId: 'topic_123',
+            url: 'https://openagents.com/forum/t/topic_123',
+          } as const)
+        },
+      },
+    })
+
+    const result = await Effect.runPromise(
+      tool.run({
+        bodyText:
+          'Fleet update: public issue #6435 is now wired for gated Forum posts.',
+        forumSlug: 'product-promises',
+        title: 'Artanis forum-post tool update',
+      }),
+    )
+
+    expect(result.outcome).toBe('executed')
+    if (result.outcome !== 'executed') return
+    expect(posted).toHaveLength(1)
+    expect(result.assignmentRef).toBe('forum.post.post_123')
+    expect(result.summary).toContain('topicId: topic_123')
+    expect(result.summary).toContain('author: Artanis forum agent identity')
+  })
+
+  test('NO owner approval defers without calling the posting seam', async () => {
+    const posted: Array<unknown> = []
+    const tool = makeArtanisPostForumUpdateTool({
+      execution: {
+        isOwnerApproved: () => Effect.succeed(false),
+        postForumUpdate: plan => {
+          posted.push(plan)
+          return Effect.succeed({
+            action: 'reply',
+            forumSlug: null,
+            kind: 'created',
+            postId: 'post_should_not_happen',
+            topicId: 'topic_123',
+            url: 'https://openagents.com/forum/t/topic_123#post-post_should_not_happen',
+          } as const)
+        },
+      },
+    })
+
+    const result = await Effect.runPromise(
+      tool.run({
+        action: 'reply',
+        bodyText: 'Fleet update reply.',
+        topicId: 'topic_123',
+      }),
+    )
+
+    expect(result.outcome).toBe('deferred')
+    if (result.outcome !== 'deferred') return
+    expect(result.reason).toBe('no_effective_owner_approval')
+    expect(posted).toHaveLength(0)
+    expect(result.plan).toContain('POST /api/forum/topics/topic_123/posts')
+  })
+
+  test('blocks private material and never consults approval or posting seams', async () => {
+    const approvalCalls: Array<unknown> = []
+    const posted: Array<unknown> = []
+    const tool = makeArtanisPostForumUpdateTool({
+      execution: {
+        isOwnerApproved: () => {
+          approvalCalls.push(true)
+          return Effect.succeed(true)
+        },
+        postForumUpdate: plan => {
+          posted.push(plan)
+          return Effect.succeed({
+            action: 'create_topic',
+            forumSlug: 'product-promises',
+            kind: 'created',
+            postId: null,
+            topicId: 'topic_should_not_happen',
+            url: 'https://openagents.com/forum/t/topic_should_not_happen',
+          } as const)
+        },
+      },
+    })
+
+    const result = await Effect.runPromise(
+      tool.run({
+        bodyText: 'Use bearer sk-abc123 from /Users/local/auth.json',
+        title: 'Unsafe update',
+      }),
+    )
+
+    expect(result.outcome).toBe('deferred')
+    if (result.outcome !== 'deferred') return
+    expect(result.reason).toBe('invalid_arguments')
+    expect(result.plan).toContain('blocked')
+    expect(approvalCalls).toHaveLength(0)
+    expect(posted).toHaveLength(0)
   })
 })
 
@@ -2232,6 +2368,7 @@ describe('makeArtanisOperatorTools default table', () => {
       'list_github_issues',
       'list_pylon_assignments',
       'list_repo_dir',
+      'post_forum_update',
       'read_github_issue',
       'read_repo_file',
       'trigger_synthetic_load',
@@ -2303,6 +2440,16 @@ describe('makeArtanisOperatorTools default table', () => {
     )
     expect(tool).toBeDefined()
     expect(tool?.kind).toBe('risky')
+  })
+
+  test('the default table includes a gated post_forum_update tool', () => {
+    const tools = makeArtanisOperatorTools()
+    const tool = tools.find(t => t.definition.name === 'post_forum_update')
+    expect(tool).toBeDefined()
+    expect(tool?.kind).toBe('gated')
+    if (tool?.kind === 'gated') {
+      expect(tool.riskyActionKind).toBe('public_claim_upgrade')
+    }
   })
 
   test('a shared repoRead fetch stub also drives the issue-read tool', async () => {
