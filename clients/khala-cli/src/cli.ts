@@ -13,9 +13,12 @@ import {
 } from "./codex.js"
 import {
   CodexCliMissingError,
+  PylonCliMissingError,
   connectFleetAccount,
   listFleetAccounts,
+  runFleetSupervisor,
   type KhalaFleetConnectResult,
+  type KhalaFleetRunResult,
   type KhalaFleetStatus,
 } from "./fleet.js"
 import { appendPromptHistory, readPromptFromTerminal } from "./input.js"
@@ -65,6 +68,7 @@ type ParsedCommand =
   | { readonly kind: "changelog" }
   | { readonly kind: "feedback"; readonly text: string | undefined }
   | { readonly kind: "fleetConnect"; readonly accountRef: string | undefined; readonly force: boolean }
+  | { readonly kind: "fleetRun" }
   | { readonly kind: "fleetStatus" }
   | { readonly kind: "help" }
   | { readonly kind: "info" }
@@ -109,6 +113,11 @@ interface ParsedArgs {
   readonly spawnTimeoutMs: number | undefined
   readonly spawnVerify: string | undefined
   readonly spawnWorkflow: KhalaSpawnWorkflow
+  readonly fleetDryRun: boolean
+  readonly fleetIssues: ReadonlyArray<number>
+  readonly fleetLoop: boolean
+  readonly fleetMaxSlots: number | undefined
+  readonly fleetPerAccount: number | undefined
 }
 
 export async function runKhalaCli(argv: ReadonlyArray<string>, env: Record<string, string | undefined> = process.env): Promise<number> {
@@ -186,6 +195,32 @@ export async function runKhalaCli(argv: ReadonlyArray<string>, env: Record<strin
       const status = await listFleetAccounts({ env })
       process.stdout.write(args.json ? `${JSON.stringify(status)}\n` : `${formatFleetStatus(status)}\n`)
       return 0
+    }
+    if (args.command.kind === "fleetRun") {
+      try {
+        const token = await resolveConfiguredAgentToken(args.token, env)
+        const result = await runFleetSupervisor({
+          branch: args.spawnBranch,
+          commit: args.spawnCommit,
+          dryRun: args.fleetDryRun,
+          env: token === undefined ? env : { ...env, OPENAGENTS_AGENT_TOKEN: token },
+          issues: args.fleetIssues,
+          loop: args.fleetLoop,
+          maxSlots: args.fleetMaxSlots,
+          perAccount: args.fleetPerAccount,
+          pylonRef: args.spawnPylonRef,
+          repo: args.spawnRepo,
+          verify: args.spawnVerify,
+        })
+        process.stdout.write(args.json ? `${JSON.stringify(result, null, 2)}\n` : `${formatFleetRun(result)}\n`)
+        return result.dispatched.some(issue => issue.state === "failed") ? 1 : 0
+      } catch (error) {
+        if (error instanceof PylonCliMissingError) {
+          process.stderr.write(`${terminalStyle.meta(error.message)}\n`)
+          return 1
+        }
+        throw error
+      }
     }
     if (args.command.kind === "codex") {
       const prompt = args.command.text?.trim()
@@ -353,7 +388,12 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
   let spawnVerify: string | undefined
   let spawnWorkflow: KhalaSpawnWorkflow = "codex_agent_task"
   let fleetAccount: string | undefined
+  let fleetDryRun = false
   let fleetForce = false
+  let fleetIssues: number[] = []
+  let fleetLoop = false
+  let fleetMaxSlots: number | undefined
+  let fleetPerAccount: number | undefined
   const positional: Array<string> = []
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -370,7 +410,29 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
     else if (arg === "--models") models = true
     else if (arg === "--mint-free-key") mintFreeKey = true
     else if (arg === "--fixture") spawnFixture = true
-    else if (arg === "--count") {
+    else if (arg === "--dry-run") fleetDryRun = true
+    else if (arg === "--loop") fleetLoop = true
+    else if (arg === "--issue") {
+      fleetIssues.push(parsePositiveInteger(requireValue(argv, index, arg), arg))
+      index += 1
+    } else if (arg.startsWith("--issue=")) {
+      fleetIssues.push(parsePositiveInteger(arg.slice("--issue=".length), "--issue"))
+    } else if (arg === "--issues") {
+      fleetIssues = fleetIssues.concat(parseIssueList(requireValue(argv, index, arg), arg))
+      index += 1
+    } else if (arg.startsWith("--issues=")) {
+      fleetIssues = fleetIssues.concat(parseIssueList(arg.slice("--issues=".length), "--issues"))
+    } else if (arg === "--per-account") {
+      fleetPerAccount = parsePositiveInteger(requireValue(argv, index, arg), arg)
+      index += 1
+    } else if (arg.startsWith("--per-account=")) {
+      fleetPerAccount = parsePositiveInteger(arg.slice("--per-account=".length), "--per-account")
+    } else if (arg === "--max-slots") {
+      fleetMaxSlots = parsePositiveInteger(requireValue(argv, index, arg), arg)
+      index += 1
+    } else if (arg.startsWith("--max-slots=")) {
+      fleetMaxSlots = parsePositiveInteger(arg.slice("--max-slots=".length), "--max-slots")
+    } else if (arg === "--count") {
       spawnCount = parsePositiveInteger(requireValue(argv, index, arg), arg)
       index += 1
     } else if (arg.startsWith("--count=")) {
@@ -473,6 +535,12 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
     const sub = positional[1]?.trim().toLowerCase()
     if (sub === "status" || sub === "list" || sub === "ls") {
       command = { kind: "fleetStatus" }
+    } else if (sub === "run" || sub === "start") {
+      const positionalIssues = positional.slice(2).flatMap(value =>
+        /^#?\d+$/.test(value.trim()) ? [parsePositiveInteger(value.trim().replace(/^#/, ""), "issue")] : [],
+      )
+      command = { kind: "fleetRun" }
+      fleetIssues = fleetIssues.concat(positionalIssues)
     } else if (sub === undefined || sub === "connect" || sub === "add" || sub === "link") {
       // `khala fleet`, `khala fleet connect`, `khala fleet add` all connect.
       // Optional positional ref: `khala fleet connect codex-2` (or --account).
@@ -482,7 +550,7 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
         force: fleetForce,
       }
     } else {
-      throw new Error(`Unknown fleet command: ${sub}. Use \`khala fleet connect\` or \`khala fleet status\`.`)
+      throw new Error(`Unknown fleet command: ${sub}. Use \`khala fleet connect\`, \`khala fleet status\`, or \`khala fleet run\`.`)
     }
   } else if (maybeCommand === "codex") {
     command = positional[1] === "status"
@@ -552,6 +620,11 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
     spawnTimeoutMs,
     spawnVerify,
     spawnWorkflow,
+    fleetDryRun,
+    fleetIssues,
+    fleetLoop,
+    fleetMaxSlots,
+    fleetPerAccount,
   }
 }
 
@@ -1215,6 +1288,12 @@ function parsePositiveInteger(value: string, flag: string): number {
   return parsed
 }
 
+function parseIssueList(value: string, flag: string): ReadonlyArray<number> {
+  const parts = value.split(/[,\s]+/).map(part => part.trim()).filter(part => part.length > 0)
+  if (parts.length === 0) throw new Error(`${flag} requires at least one issue number`)
+  return parts.map(part => parsePositiveInteger(part.replace(/^#/, ""), flag))
+}
+
 function parseSpawnStrategy(value: string): KhalaSpawnStrategy {
   if (value === "auto" || value === "local" || value === "pylon") return value
   throw new Error("--strategy must be auto, local, or pylon")
@@ -1648,6 +1727,32 @@ function formatFleetStatus(status: KhalaFleetStatus): string {
   ].join("\n"))
 }
 
+function formatFleetRun(result: KhalaFleetRunResult): string {
+  const plan = result.plan
+  const lines = [
+    `${terminalStyle.assistant("Khala fleet:")} ${result.dryRun ? "Dry run planned" : "Run dispatched"}`,
+    `pylon: ${plan.pylonRef}`,
+    `repo: ${plan.repo} @ ${plan.commit.slice(0, 12)} (${plan.branch})`,
+    `verify: ${plan.verify}`,
+    `capacity: ${plan.readyAccounts.length} ready account(s) x ${plan.perAccount}, max ${plan.maxSlots} => ${plan.desiredSlots} slot(s)`,
+    `issues: ${plan.issues.map(issue => `#${issue}`).join(", ")}`,
+  ]
+  if (result.dryRun) {
+    lines.push("No assignments were created because --dry-run was set.")
+    return terminalStyle.meta(lines.join("\n"))
+  }
+  for (const entry of result.dispatched) {
+    const suffix = entry.state === "dispatched"
+      ? `assignment ${entry.assignmentRef ?? "not reported"}`
+      : `failed: ${entry.error ?? "unknown error"}`
+    lines.push(`#${entry.issue} via ${entry.accountRef}: ${suffix}`)
+  }
+  if (result.loop) {
+    lines.push("Loop mode requested; this CLI build runs one refill cycle per invocation.")
+  }
+  return terminalStyle.meta(lines.join("\n"))
+}
+
 function formatCodexCredentialSource(source: Extract<KhalaCodexStatus, { readonly ready: true }>["credentialSource"]): string {
   if (source === "khala_codex_home") return "Khala Codex account"
   if (source === "codex_home_env") return "CODEX_HOME"
@@ -1852,6 +1957,7 @@ Usage:
   khala fleet connect
   khala fleet connect --account codex-2
   khala fleet status
+  khala fleet run --repo <owner/repo> --commit <sha> --verify "bun test" --issue 123
   khala auth codex
   khala codex status
   khala codex "read README.md"
@@ -1916,6 +2022,12 @@ Flags:
   --timeout <seconds>  Per-worker timeout for khala spawn
   --account <ref>      Codex account ref for khala fleet connect (auto-assigned if omitted)
   --force              Re-run device login for khala fleet connect even if already linked
+  --issue <n>          Public issue for khala fleet run; repeat or use --issues
+  --issues <list>      Comma/space-separated public issues for khala fleet run
+  --per-account <n>    Fleet run slots per ready Codex account (default: 1)
+  --max-slots <n>      Fleet run total slot cap (default: 10)
+  --dry-run            Plan khala fleet run without creating assignments
+  --loop               Mark fleet run as a long-running supervisor request
   --help, -h           Show this help
 `
 }

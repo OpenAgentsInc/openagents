@@ -53,6 +53,44 @@ export type KhalaCodexDeviceLoginRunner = (input: {
   readonly home: string
 }) => Promise<{ readonly exitCode: number }>
 
+export type KhalaFleetRunIssue = {
+  readonly issue: number
+  readonly accountRef: string
+  readonly state: "planned" | "dispatched" | "failed" | "skipped"
+  readonly assignmentRef?: string | undefined
+  readonly durableRequestId?: string | undefined
+  readonly error?: string | undefined
+}
+
+export type KhalaFleetRunPlan = {
+  readonly schema: "openagents.khala.fleet_run_plan.v0.1"
+  readonly pylonHome: string
+  readonly configPath: string
+  readonly pylonRef: string
+  readonly repo: string
+  readonly branch: string
+  readonly commit: string
+  readonly verify: string
+  readonly readyAccounts: ReadonlyArray<KhalaFleetAccount>
+  readonly perAccount: number
+  readonly maxSlots: number
+  readonly desiredSlots: number
+  readonly issues: ReadonlyArray<number>
+}
+
+export type KhalaFleetRunResult = {
+  readonly schema: "openagents.khala.fleet_run.v0.1"
+  readonly plan: KhalaFleetRunPlan
+  readonly dryRun: boolean
+  readonly loop: boolean
+  readonly dispatched: ReadonlyArray<KhalaFleetRunIssue>
+}
+
+export type KhalaFleetRunCommandRunner = (input: {
+  readonly command: ReadonlyArray<string>
+  readonly env: Record<string, string | undefined>
+}) => Promise<{ readonly exitCode: number; readonly stdout: string; readonly stderr: string }>
+
 type ConfigRecord = Record<string, unknown>
 
 // Raised when the `codex` CLI is not installed. The CLI catches this and prints
@@ -67,6 +105,17 @@ export class CodexCliMissingError extends Error {
         "  (or see https://github.com/openai/codex)",
     )
     this.name = "CodexCliMissingError"
+  }
+}
+
+export class PylonCliMissingError extends Error {
+  readonly _tag = "PylonCliMissingError"
+  constructor() {
+    super(
+      "The `pylon` CLI is required to run your Khala fleet but was not found on your PATH.\n" +
+        "Install or expose Pylon, then re-run `khala fleet run`.",
+    )
+    this.name = "PylonCliMissingError"
   }
 }
 
@@ -107,6 +156,16 @@ export function pylonConfigPath(pylonHome: string): string {
 
 export function codexAccountHome(pylonHome: string, accountRef: string): string {
   return join(pylonHome, "accounts", "codex", accountRef)
+}
+
+function splitCommand(value: string | undefined, fallback: ReadonlyArray<string>): ReadonlyArray<string> {
+  const trimmed = value?.trim()
+  if (trimmed === undefined || trimmed.length === 0) return fallback
+  return trimmed.split(/\s+/).filter(part => part.length > 0)
+}
+
+function pylonCommand(env: Record<string, string | undefined>): ReadonlyArray<string> {
+  return splitCommand(env.KHALA_PYLON_COMMAND ?? env.PYLON_COMMAND, ["pylon"])
 }
 
 function asRecord(value: unknown): ConfigRecord | null {
@@ -271,6 +330,16 @@ const defaultCodexDeviceLoginRunner: KhalaCodexDeviceLoginRunner = async input =
   return { exitCode: await child.exited }
 }
 
+const defaultFleetRunCommandRunner: KhalaFleetRunCommandRunner = async input => {
+  const child = spawnProcess(input.command, {
+    env: { ...process.env, ...input.env },
+    stdout: "pipe",
+    stderr: "pipe",
+  })
+  const [exitCode, stdout, stderr] = await Promise.all([child.exited, child.stdout, child.stderr])
+  return { exitCode, stdout, stderr }
+}
+
 // List the connected Codex accounts in the user's fleet with readiness.
 export async function listFleetAccounts(
   options: { readonly env?: Record<string, string | undefined> } = {},
@@ -358,5 +427,274 @@ export async function connectFleetAccount(
     pylonHome,
     configPath,
     status,
+  }
+}
+
+function positiveInteger(value: number | undefined, fallback: number, label: string): number {
+  const next = value ?? fallback
+  if (!Number.isSafeInteger(next) || next <= 0) {
+    throw new Error(`khala fleet run ${label} must be a positive integer`)
+  }
+  return next
+}
+
+function cleanIssueList(issues: ReadonlyArray<number>): ReadonlyArray<number> {
+  const out: number[] = []
+  const seen = new Set<number>()
+  for (const issue of issues) {
+    if (!Number.isSafeInteger(issue) || issue <= 0) {
+      throw new Error("khala fleet run issue numbers must be positive integers")
+    }
+    if (!seen.has(issue)) {
+      seen.add(issue)
+      out.push(issue)
+    }
+  }
+  if (out.length === 0) {
+    throw new Error("khala fleet run requires at least one issue: pass --issue 123 or --issues 123,124")
+  }
+  return out
+}
+
+function cleanRepo(repo: string | undefined): string {
+  const value = repo?.trim()
+  if (value === undefined || value.length === 0) {
+    throw new Error("khala fleet run requires --repo <owner/repo>")
+  }
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value)) {
+    throw new Error("khala fleet run --repo must look like owner/repo")
+  }
+  return value
+}
+
+function cleanBranch(branch: string | undefined): string {
+  const value = branch?.trim() || "main"
+  if (!/^[A-Za-z0-9._/-]{1,120}$/.test(value) || value.includes("..")) {
+    throw new Error("khala fleet run --branch must be a bounded public branch name")
+  }
+  return value
+}
+
+function cleanCommit(commit: string | undefined): string {
+  const value = commit?.trim()
+  if (value === undefined || value.length === 0) {
+    throw new Error("khala fleet run requires --commit <sha> for bounded public repo work")
+  }
+  if (!/^[a-f0-9]{40}$/i.test(value)) {
+    throw new Error("khala fleet run --commit must be a 40-character git SHA")
+  }
+  return value
+}
+
+function cleanVerify(verify: string | undefined): string {
+  const value = verify?.trim()
+  if (value === undefined || value.length === 0) {
+    throw new Error("khala fleet run requires --verify <command>")
+  }
+  return value
+}
+
+function parsePylonRef(stdout: string): string | null {
+  try {
+    const parsed = JSON.parse(stdout) as Record<string, unknown>
+    for (const key of ["pylonRef", "ref", "providerRef"]) {
+      const value = parsed[key]
+      if (typeof value === "string" && value.trim().length > 0) return value.trim()
+    }
+    const nested = parsed.provider
+    if (nested !== null && typeof nested === "object") {
+      const value = (nested as Record<string, unknown>).pylonRef
+      if (typeof value === "string" && value.trim().length > 0) return value.trim()
+    }
+  } catch {
+    const match = stdout.match(/pylon[.:][a-z0-9_.:-]+/i)
+    if (match !== null) return match[0]
+  }
+  return null
+}
+
+async function resolveFleetRunPylonRef(input: {
+  readonly env: Record<string, string | undefined>
+  readonly explicit: string | undefined
+  readonly runner: KhalaFleetRunCommandRunner
+}): Promise<string> {
+  const explicit = input.explicit?.trim()
+  if (explicit !== undefined && explicit.length > 0) return explicit
+  const command = [...pylonCommand(input.env), "provider", "go-online", "--json"]
+  const result = await input.runner({ command, env: input.env })
+  if (result.exitCode === 127) throw new PylonCliMissingError()
+  if (result.exitCode !== 0) {
+    throw new Error(`pylon provider go-online failed with status ${result.exitCode}: ${result.stderr.trim() || result.stdout.trim()}`)
+  }
+  const pylonRef = parsePylonRef(result.stdout)
+  if (pylonRef === null) {
+    throw new Error("pylon provider go-online did not report a pylonRef; pass --pylon-ref explicitly")
+  }
+  return pylonRef
+}
+
+export async function planFleetRun(options: {
+  readonly env?: Record<string, string | undefined> | undefined
+  readonly branch?: string | undefined
+  readonly commit?: string | undefined
+  readonly issues: ReadonlyArray<number>
+  readonly maxSlots?: number | undefined
+  readonly perAccount?: number | undefined
+  readonly pylonRef?: string | undefined
+  readonly repo?: string | undefined
+  readonly verify?: string | undefined
+  readonly runner?: KhalaFleetRunCommandRunner | undefined
+}): Promise<KhalaFleetRunPlan> {
+  const env = options.env ?? process.env
+  const status = await listFleetAccounts({ env })
+  const readyAccounts = status.accounts.filter(account => account.readiness === "ready")
+  if (readyAccounts.length === 0) {
+    throw new Error("khala fleet run needs at least one ready Codex account. Run `khala fleet connect` first.")
+  }
+  const perAccount = positiveInteger(options.perAccount, 1, "--per-account")
+  const maxSlots = positiveInteger(options.maxSlots, 10, "--max-slots")
+  const desiredSlots = Math.min(maxSlots, readyAccounts.length * perAccount)
+  return {
+    schema: "openagents.khala.fleet_run_plan.v0.1",
+    branch: cleanBranch(options.branch),
+    commit: cleanCommit(options.commit),
+    configPath: status.configPath,
+    desiredSlots,
+    issues: cleanIssueList(options.issues),
+    maxSlots,
+    perAccount,
+    pylonHome: status.pylonHome,
+    pylonRef: await resolveFleetRunPylonRef({
+      env,
+      explicit: options.pylonRef,
+      runner: options.runner ?? defaultFleetRunCommandRunner,
+    }),
+    readyAccounts,
+    repo: cleanRepo(options.repo),
+    verify: cleanVerify(options.verify),
+  }
+}
+
+async function publishFleetCapacity(input: {
+  readonly env: Record<string, string | undefined>
+  readonly plan: KhalaFleetRunPlan
+  readonly runner: KhalaFleetRunCommandRunner
+}): Promise<void> {
+  const command = [...pylonCommand(input.env), "presence", "heartbeat", "--json"]
+  const result = await input.runner({
+    command,
+    env: {
+      ...input.env,
+      OPENAGENTS_PYLON_CODEX_CONCURRENCY: String(input.plan.desiredSlots),
+      OPENAGENTS_PYLON_CODEX_BUSY: "0",
+      OPENAGENTS_PYLON_CODEX_QUEUED: "0",
+    },
+  })
+  if (result.exitCode === 127) throw new PylonCliMissingError()
+  if (result.exitCode !== 0) {
+    throw new Error(`pylon presence heartbeat failed with status ${result.exitCode}: ${result.stderr.trim() || result.stdout.trim()}`)
+  }
+}
+
+async function dispatchFleetIssue(input: {
+  readonly accountRef: string
+  readonly env: Record<string, string | undefined>
+  readonly issue: number
+  readonly plan: KhalaFleetRunPlan
+  readonly runner: KhalaFleetRunCommandRunner
+}): Promise<KhalaFleetRunIssue> {
+  const prompt = `Implement public issue #${input.issue} and run the named verification.`
+  const command = [
+    ...pylonCommand(input.env),
+    "khala",
+    "request",
+    "--prompt",
+    prompt,
+    "--workflow",
+    "codex_agent_task",
+    "--pylon-ref",
+    input.plan.pylonRef,
+    "--account-ref",
+    input.accountRef,
+    "--repo",
+    input.plan.repo,
+    "--branch",
+    input.plan.branch,
+    "--commit",
+    input.plan.commit,
+    "--verify",
+    input.plan.verify,
+    "--json",
+  ]
+  const result = await input.runner({ command, env: input.env })
+  if (result.exitCode === 127) throw new PylonCliMissingError()
+  if (result.exitCode !== 0) {
+    return {
+      accountRef: input.accountRef,
+      error: result.stderr.trim() || result.stdout.trim() || `pylon exited ${result.exitCode}`,
+      issue: input.issue,
+      state: "failed",
+    }
+  }
+  try {
+    const parsed = JSON.parse(result.stdout) as Record<string, unknown>
+    return {
+      accountRef: input.accountRef,
+      assignmentRef: typeof parsed.assignmentRef === "string" ? parsed.assignmentRef : undefined,
+      durableRequestId: typeof parsed.durableRequestId === "string" ? parsed.durableRequestId : undefined,
+      issue: input.issue,
+      state: "dispatched",
+    }
+  } catch {
+    return {
+      accountRef: input.accountRef,
+      error: "pylon returned non-JSON output for khala request",
+      issue: input.issue,
+      state: "failed",
+    }
+  }
+}
+
+export async function runFleetSupervisor(options: {
+  readonly env?: Record<string, string | undefined> | undefined
+  readonly branch?: string | undefined
+  readonly commit?: string | undefined
+  readonly dryRun?: boolean | undefined
+  readonly issues: ReadonlyArray<number>
+  readonly loop?: boolean | undefined
+  readonly maxSlots?: number | undefined
+  readonly perAccount?: number | undefined
+  readonly pylonRef?: string | undefined
+  readonly repo?: string | undefined
+  readonly runner?: KhalaFleetRunCommandRunner | undefined
+  readonly verify?: string | undefined
+}): Promise<KhalaFleetRunResult> {
+  const env = options.env ?? process.env
+  const runner = options.runner ?? defaultFleetRunCommandRunner
+  const plan = await planFleetRun({ ...options, env, runner })
+  if (options.dryRun === true) {
+    return { schema: "openagents.khala.fleet_run.v0.1", plan, dryRun: true, loop: options.loop === true, dispatched: [] }
+  }
+  await publishFleetCapacity({ env, plan, runner })
+  const slots = Math.min(plan.desiredSlots, plan.issues.length)
+  const dispatched: KhalaFleetRunIssue[] = []
+  for (let slot = 0; slot < slots; slot += 1) {
+    const account = plan.readyAccounts[slot % plan.readyAccounts.length]
+    const issue = plan.issues[slot]
+    if (account === undefined || issue === undefined) continue
+    dispatched.push(await dispatchFleetIssue({
+      accountRef: account.accountRef,
+      env,
+      issue,
+      plan,
+      runner,
+    }))
+  }
+  return {
+    schema: "openagents.khala.fleet_run.v0.1",
+    plan,
+    dryRun: false,
+    loop: options.loop === true,
+    dispatched,
   }
 }

@@ -26,6 +26,7 @@ khala logout
 khala fleet connect           # connect your own Codex account (paste-free device login)
 khala fleet connect --account codex-2   # add another distinct account for more throughput
 khala fleet status            # list your connected Codex fleet + readiness
+khala fleet run --repo OpenAgentsInc/openagents --commit <sha> --verify "bun test" --issue 6384
 khala auth codex
 khala codex "read README.md"
 khala spawn --count 5 --objective "audit this workspace" --strategy local
@@ -150,6 +151,13 @@ no long-string pasting:
   added throughput.
 - `khala fleet status` (alias `khala fleet list`) prints a table of connected
   accounts with readiness and email.
+- `khala fleet run --repo <owner/repo> --commit <sha> --verify "<command>"
+  --issue <n>` plans a caller-owned Pylon/Codex burndown cycle for your public
+  issue backlog. It auto-resolves your local Pylon ref with
+  `pylon provider go-online --json`, scales slots from ready account count
+  (`--per-account`, capped by `--max-slots`), publishes Codex capacity, and
+  round-robins assignments across your isolated account refs. Use `--dry-run` to
+  inspect the plan without creating assignments.
 
 Each account uses an isolated home under `<pylon home>/accounts/codex/<ref>`; the
 flow never touches the default `~/.codex` home, credentials stay on your machine,
@@ -206,6 +214,9 @@ local Pylon and the dispatch gate can see the fleet.
   `--repo`, `--commit`, and `--verify` must be supplied together.
 - `--workflow codex_agent_task|cloud_coding_session` selects the Pylon coding
   workflow for `--strategy pylon`.
+- `--issue <n>` / `--issues <list>` provide the public issue backlog for
+  `khala fleet run`; `--per-account`, `--max-slots`, `--dry-run`, and `--loop`
+  tune the supervisor cycle.
 - `--timeout <seconds>` sets the per-worker timeout for `khala spawn`.
 
 ## Changelog

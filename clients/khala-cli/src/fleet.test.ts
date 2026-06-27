@@ -11,9 +11,11 @@ import {
   decodeCodexIdTokenEmail,
   listFleetAccounts,
   nextCodexAccountRef,
+  planFleetRun,
   parseCodexAccounts,
   pylonConfigPath,
   resolvePylonHome,
+  runFleetSupervisor,
   upsertCodexAccount,
 } from "./fleet.js"
 
@@ -29,6 +31,115 @@ describe("fleet ref assignment", () => {
     expect(nextCodexAccountRef(["codex"])).toBe("codex-2")
     expect(nextCodexAccountRef(["codex", "codex-2"])).toBe("codex-3")
     expect(nextCodexAccountRef(["codex", "codex-3"])).toBe("codex-2")
+  })
+})
+
+describe("fleet run planning and dispatch", () => {
+  async function writeReadyFleet(pylonHome: string, refs: ReadonlyArray<string>): Promise<void> {
+    const accounts = []
+    for (const ref of refs) {
+      const home = codexAccountHome(pylonHome, ref)
+      await mkdir(home, { recursive: true })
+      await writeFile(
+        join(home, "auth.json"),
+        JSON.stringify({ tokens: { id_token: idTokenFor(`${ref}@example.com`) } }),
+      )
+      accounts.push({ ref, provider: "codex", home })
+    }
+    await mkdir(pylonHome, { recursive: true })
+    await writeFile(pylonConfigPath(pylonHome), JSON.stringify({ dev: { accounts } }))
+  }
+
+  test("plans tenant fleet work from ready accounts and auto-resolved pylon ref", async () => {
+    const base = await mkdtemp(join(tmpdir(), "khala-fleet-run-plan-"))
+    const pylonHome = join(base, ".openagents", "pylon")
+    await writeReadyFleet(pylonHome, ["codex", "codex-2"])
+    const commands: string[] = []
+
+    const plan = await planFleetRun({
+      commit: "0123456789abcdef0123456789abcdef01234567",
+      env: { PYLON_HOME: pylonHome },
+      issues: [6384, 6385],
+      maxSlots: 8,
+      perAccount: 2,
+      repo: "ExampleCo/example",
+      runner: async input => {
+        commands.push(input.command.join(" "))
+        return { exitCode: 0, stdout: JSON.stringify({ pylonRef: "pylon.tenant.local" }), stderr: "" }
+      },
+      verify: "bun test",
+    })
+
+    expect(plan.pylonRef).toBe("pylon.tenant.local")
+    expect(plan.desiredSlots).toBe(4)
+    expect(plan.readyAccounts.map(account => account.accountRef)).toEqual(["codex", "codex-2"])
+    expect(commands).toEqual(["pylon provider go-online --json"])
+  })
+
+  test("dry-run returns a plan without dispatching assignments", async () => {
+    const base = await mkdtemp(join(tmpdir(), "khala-fleet-run-dry-"))
+    const pylonHome = join(base, ".openagents", "pylon")
+    await writeReadyFleet(pylonHome, ["codex"])
+    const commands: string[] = []
+
+    const result = await runFleetSupervisor({
+      commit: "0123456789abcdef0123456789abcdef01234567",
+      dryRun: true,
+      env: { PYLON_HOME: pylonHome },
+      issues: [6384],
+      repo: "ExampleCo/example",
+      runner: async input => {
+        commands.push(input.command.join(" "))
+        return { exitCode: 0, stdout: JSON.stringify({ pylonRef: "pylon.tenant.local" }), stderr: "" }
+      },
+      verify: "bun test",
+    })
+
+    expect(result.dryRun).toBe(true)
+    expect(result.dispatched).toEqual([])
+    expect(commands).toEqual(["pylon provider go-online --json"])
+  })
+
+  test("one refill cycle publishes capacity and round-robins account refs", async () => {
+    const base = await mkdtemp(join(tmpdir(), "khala-fleet-run-dispatch-"))
+    const pylonHome = join(base, ".openagents", "pylon")
+    await writeReadyFleet(pylonHome, ["codex", "codex-2"])
+    const commands: string[] = []
+
+    const result = await runFleetSupervisor({
+      commit: "0123456789abcdef0123456789abcdef01234567",
+      env: { PYLON_HOME: pylonHome },
+      issues: [6384, 6385],
+      maxSlots: 2,
+      perAccount: 2,
+      pylonRef: "pylon.tenant.local",
+      repo: "ExampleCo/example",
+      runner: async input => {
+        commands.push(input.command.join(" "))
+        if (input.command.includes("heartbeat")) {
+          expect(input.env.OPENAGENTS_PYLON_CODEX_CONCURRENCY).toBe("2")
+          return { exitCode: 0, stdout: JSON.stringify({ ok: true }), stderr: "" }
+        }
+        const issue = input.command[input.command.indexOf("--prompt") + 1]?.match(/#(\d+)/)?.[1] ?? "unknown"
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({
+            assignmentRef: `assignment.public.${issue}`,
+            durableRequestId: `chatcmpl_${issue}`,
+          }),
+          stderr: "",
+        }
+      },
+      verify: "bun test",
+    })
+
+    expect(result.dispatched.map(entry => [entry.issue, entry.accountRef, entry.assignmentRef])).toEqual([
+      [6384, "codex", "assignment.public.6384"],
+      [6385, "codex-2", "assignment.public.6385"],
+    ])
+    expect(commands[0]).toBe("pylon presence heartbeat --json")
+    expect(commands[1]).toContain("--account-ref codex")
+    expect(commands[2]).toContain("--account-ref codex-2")
   })
 })
 

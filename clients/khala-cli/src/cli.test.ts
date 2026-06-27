@@ -22,6 +22,60 @@ describe("Khala CLI spawn capability answer", () => {
 })
 
 describe("Khala CLI info diagnostics", () => {
+  test("plans khala fleet run with stored fleet accounts and JSON output", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "khala-fleet-run-cli-"))
+    const pylonHome = join(dir, "pylon")
+    const accountHome = join(pylonHome, "accounts", "codex", "codex")
+    mkdirSync(accountHome, { recursive: true })
+    const header = Buffer.from(JSON.stringify({ alg: "none" })).toString("base64url")
+    const payload = Buffer.from(JSON.stringify({ email: "fleet-cli@example.com" })).toString("base64url")
+    writeFileSync(join(accountHome, "auth.json"), JSON.stringify({ tokens: { id_token: `${header}.${payload}.` } }))
+    writeFileSync(
+      join(pylonHome, "config.json"),
+      JSON.stringify({ dev: { accounts: [{ ref: "codex", provider: "codex", home: accountHome }] } }),
+    )
+    const pylonScript = join(dir, "fake-pylon.js")
+    writeFileSync(
+      pylonScript,
+      "if (process.argv.slice(2).join(' ') === 'provider go-online --json') console.log(JSON.stringify({pylonRef:'pylon.cli.test'})); else process.exit(2);\n",
+    )
+
+    const originalWrite = process.stdout.write
+    let stdout = ""
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      stdout += String(chunk)
+      return true
+    }) as typeof process.stdout.write
+    try {
+      const exitCode = await runKhalaCli([
+        "--json",
+        "fleet",
+        "run",
+        "--dry-run",
+        "--repo",
+        "ExampleCo/example",
+        "--commit",
+        "0123456789abcdef0123456789abcdef01234567",
+        "--verify",
+        "bun test",
+        "--issue",
+        "6384",
+      ], {
+        KHALA_PYLON_COMMAND: `node ${pylonScript}`,
+        PYLON_HOME: pylonHome,
+      })
+      expect(exitCode).toBe(0)
+    } finally {
+      process.stdout.write = originalWrite
+    }
+
+    const parsed = JSON.parse(stdout)
+    expect(parsed.schema).toBe("openagents.khala.fleet_run.v0.1")
+    expect(parsed.dryRun).toBe(true)
+    expect(parsed.plan.pylonRef).toBe("pylon.cli.test")
+    expect(parsed.plan.issues).toEqual([6384])
+  })
+
   test("does not print raw agent tokens or token-bearing trace URLs", async () => {
     const dir = mkdtempSync(join(tmpdir(), "khala-info-test-"))
     const tokenPath = join(dir, "agent-token")
