@@ -77,6 +77,14 @@ export const HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID =
 export const OPENROUTER_KHALA_FALLBACK_ADAPTER_ID =
   'openrouter-khala-glm-fallback'
 export const HYDRALISK_ADAPTER_ID = 'hydralisk-vllm'
+// A SECOND registration of the Fireworks adapter, reserved for the strongest
+// tool-capable coding lane. index.ts registers an overflow-safe alias adapter
+// under this id whose model is rewritten (by the chat route's
+// `requestForAdapter`) to the full frontier GLM coding model. It exists so a
+// frontier coding lane can sit AHEAD of the normal Fireworks Khala backing in
+// the plan while still overflowing to that proven backing — the same adapter id
+// cannot otherwise appear twice with two different backing models.
+export const FIREWORKS_STRONG_CODING_ADAPTER_ID = 'fireworks-strong-coding'
 export const HYDRALISK_GPT_OSS_120B_ADAPTER_ID = 'hydralisk-vllm-gpt-oss-120b'
 export const PASSTHROUGH_ANTHROPIC_ADAPTER_ID = 'passthrough-anthropic'
 export const PASSTHROUGH_OPENAI_ADAPTER_ID = 'passthrough-openai'
@@ -277,6 +285,21 @@ const KHALA_AGENT_TOOL_ADAPTER_PLAN: ReadonlyArray<string> = [
   OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
 ]
 
+// Strongest tool-capable coding plan for Khala. Used ONLY for internal,
+// honestly-tagged frontier-coding eval load (e.g. the MirrorCode gym rung) where
+// we deliberately want the best coding model Khala can serve rather than the
+// latency-first conversational backing. The frontier GLM coding lane leads;
+// it overflows to the proven Fireworks Khala backing, then Vertex Gemini, then
+// the hidden OpenRouter free lane. The owned GLM-5.2-REAP lane is intentionally
+// EXCLUDED here because its tool-calling is unreliable for agentic coding loops
+// (see #6310), which is exactly what dumps these runs onto a weak fallback.
+const KHALA_STRONG_CODING_ADAPTER_PLAN: ReadonlyArray<string> = [
+  FIREWORKS_STRONG_CODING_ADAPTER_ID,
+  FIREWORKS_ADAPTER_ID,
+  VERTEX_GEMINI_ADAPTER_ID,
+  OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+]
+
 const dedupeAdapterPlan = (
   adapterIds: ReadonlyArray<string>,
 ): ReadonlyArray<string> => {
@@ -322,6 +345,18 @@ export const selectAdapterPlanForKhalaToolRequest = (
     ),
   ])
 }
+
+// Resolve the STRONGEST tool-capable coding plan for a Khala request. Only the
+// public Khala alias is upgraded; any other id keeps its base plan. Deterministic
+// + pure; the caller gates this on internal frontier-coding attribution so it
+// never changes normal conversational or external Khala routing.
+export const selectAdapterPlanForKhalaStrongCodingRequest = (
+  model: string,
+  basePlan: ReadonlyArray<string> = selectAdapterPlan(model),
+): ReadonlyArray<string> =>
+  normalizeKhalaModelId(model) === KHALA_MODEL_ID
+    ? KHALA_STRONG_CODING_ADAPTER_PLAN
+    : basePlan
 
 export const makeKhalaBackedAdapterPlan =
   (khalaBacking: KhalaBackingModel | undefined) =>

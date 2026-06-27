@@ -26,8 +26,12 @@ import {
   handleChatCompletions,
   isInferenceGatewayEnabled,
   khalaRequestForAdapter,
+  khalaStrongCodingRequestForAdapter,
 } from './chat-completions-routes'
-import { KHALA_FIREWORKS_BACKING_MODEL_ID } from './fireworks-adapter'
+import {
+  KHALA_FIREWORKS_BACKING_MODEL_ID,
+  KHALA_STRONG_CODING_FIREWORKS_MODEL_ID,
+} from './fireworks-adapter'
 import { DEFAULT_GEMINI_MODEL_ID } from './vertex-gemini-adapter'
 import { replayFromOffset } from './durable-inference-proxy'
 import { decideFairShare, decideSpendCap } from './inference-abuse-controls'
@@ -53,6 +57,7 @@ import { type MeteringContext, type MeteringHook } from './metering-hook'
 import {
   type DispatchFailureTelemetryEvent,
   FIREWORKS_ADAPTER_ID,
+  FIREWORKS_STRONG_CODING_ADAPTER_ID,
   HYDRALISK_ADAPTER_ID,
   HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
   HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
@@ -2273,6 +2278,52 @@ describe('POST /v1/chat/completions', () => {
     expect(body.openagents?.worker).toBe(
       HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
     )
+  })
+
+  test('routes internal gym_mirrorcode tool-bearing Khala traffic to the strong-coding lane first', async () => {
+    const registry = new InferenceProviderRegistry()
+    registry.register(echoAdapter(FIREWORKS_STRONG_CODING_ADAPTER_ID))
+    registry.register(echoAdapter(FIREWORKS_ADAPTER_ID))
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(
+          {
+            ...helloBody,
+            tools: [
+              {
+                function: {
+                  description: 'Run a command',
+                  name: 'bash',
+                  parameters: { type: 'object' },
+                },
+                type: 'function',
+              },
+            ],
+          },
+          {
+            headers: {
+              [INFERENCE_CLIENT_HEADER]: 'mirrorcode-phase0',
+              [INFERENCE_DEMAND_KIND_HEADER]: 'internal',
+              [INFERENCE_DEMAND_SOURCE_HEADER]: 'gym_mirrorcode',
+            },
+          },
+        ),
+        baseDeps({
+          dispatch: { sleep: () => Effect.void },
+          // The override ignores this base plan and uses the fixed strong-coding
+          // plan; supplying the conversational plan proves the override wins.
+          lanePlan: () => [VERTEX_GEMINI_ADAPTER_ID, FIREWORKS_ADAPTER_ID],
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      openagents?: { worker?: string }
+    }
+    expect(body.openagents?.worker).toBe(FIREWORKS_STRONG_CODING_ADAPTER_ID)
   })
 
   test('keeps GLM saturation internal_stress on GLM instead of overflowing to Fireworks', async () => {
@@ -6838,5 +6889,32 @@ describe('khalaRequestForAdapter (#6363)', () => {
   test('leaves a non-Khala request untouched', () => {
     const raw = { ...khalaRequest, model: 'some/other-model' }
     expect(khalaRequestForAdapter(raw, VERTEX_GEMINI_ADAPTER_ID)).toBe(raw)
+  })
+
+  // STRONG-CODING VARIANT (MirrorCode gym rung). The internal frontier-coding
+  // mapper rewrites the strong-coding Fireworks alias to the frontier GLM coding
+  // model, but keeps the standard Khala backing for every other lane so the plan
+  // can overflow safely.
+  test('strong-coding mapper rewrites the strong alias to the frontier GLM coding model', () => {
+    expect(
+      khalaStrongCodingRequestForAdapter(
+        khalaRequest,
+        FIREWORKS_STRONG_CODING_ADAPTER_ID,
+      ).model,
+    ).toBe(KHALA_STRONG_CODING_FIREWORKS_MODEL_ID)
+  })
+
+  test('strong-coding mapper keeps the proven Fireworks backing for the overflow lane', () => {
+    expect(
+      khalaStrongCodingRequestForAdapter(khalaRequest, FIREWORKS_ADAPTER_ID)
+        .model,
+    ).toBe(KHALA_FIREWORKS_BACKING_MODEL_ID)
+  })
+
+  test('strong-coding mapper leaves a non-Khala request untouched', () => {
+    const raw = { ...khalaRequest, model: 'some/other-model' }
+    expect(
+      khalaStrongCodingRequestForAdapter(raw, FIREWORKS_STRONG_CODING_ADAPTER_ID),
+    ).toBe(raw)
   })
 })

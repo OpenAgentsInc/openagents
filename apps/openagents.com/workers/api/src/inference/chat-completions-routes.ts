@@ -79,7 +79,10 @@ import {
   seedDurableInferenceStream,
   teeUpstreamToDurable,
 } from './durable-inference-proxy'
-import { KHALA_FIREWORKS_BACKING_MODEL_ID } from './fireworks-adapter'
+import {
+  KHALA_FIREWORKS_BACKING_MODEL_ID,
+  KHALA_STRONG_CODING_FIREWORKS_MODEL_ID,
+} from './fireworks-adapter'
 import {
   type FairShareDecision,
   type SpendCapDecision,
@@ -137,6 +140,7 @@ import {
   type DispatchSchedulerPreemptionPolicy,
   type DispatchSuccessValidator,
   FIREWORKS_ADAPTER_ID,
+  FIREWORKS_STRONG_CODING_ADAPTER_ID,
   HYDRALISK_ADAPTER_ID,
   HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
   HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
@@ -147,6 +151,7 @@ import {
   classifyModel,
   dispatchWithOverflow,
   dispatchWithOverflowWithMetadata,
+  selectAdapterPlanForKhalaStrongCodingRequest,
   selectAdapterPlanForKhalaToolRequest,
 } from './model-router'
 import {
@@ -1371,6 +1376,7 @@ const publicInferenceReceiptUrl = (receiptRef: string): string =>
 const supplyLaneForAdapterId = (adapterId: string): SupplyLane | undefined => {
   switch (adapterId) {
     case FIREWORKS_ADAPTER_ID:
+    case FIREWORKS_STRONG_CODING_ADAPTER_ID:
       return 'fireworks'
     case HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID:
     case HYDRALISK_ADAPTER_ID:
@@ -1415,6 +1421,24 @@ export const khalaRequestForAdapter = (
     default:
       return request
   }
+}
+
+// Variant of `khalaRequestForAdapter` for the internal strong-coding lane. It is
+// identical EXCEPT that the strong-coding Fireworks alias is rewritten to the
+// frontier GLM coding model instead of the default Khala Fireworks backing, so
+// the frontier lane and the proven backing can both appear in one plan. Every
+// other adapter keeps the standard Khala backing mapping (overflow safety).
+export const khalaStrongCodingRequestForAdapter = (
+  request: InferenceRequest,
+  adapterId: string,
+): InferenceRequest => {
+  if (
+    adapterId === FIREWORKS_STRONG_CODING_ADAPTER_ID &&
+    normalizeKhalaModelId(request.model) === KHALA_MODEL_ID
+  ) {
+    return { ...request, model: KHALA_STRONG_CODING_FIREWORKS_MODEL_ID }
+  }
+  return khalaRequestForAdapter(request, adapterId)
 }
 
 const servedTokensRequestMetrics = (
@@ -2797,9 +2821,25 @@ export const handleChatCompletions = (
       isKhalaModel(requestedModel) &&
       requestAttribution?.demandKind === 'internal_stress' &&
       requestAttribution.demandSource === 'glm-saturation'
-    const basePlannedIds =
-      glmSaturationStressKhalaRequest &&
-      plannedIdsForModel.includes(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID)
+    // INTERNAL FRONTIER-CODING OVERRIDE (MirrorCode gym rung). Honestly-tagged
+    // internal frontier-coding eval load (`demand_kind=internal`,
+    // `demand_source=gym_mirrorcode`) that is tool-bearing is routed to the
+    // strongest tool-capable coding lane instead of the latency-first
+    // conversational backing or the unreliable owned GLM-REAP tool lane (#6310).
+    // It is gated on internal attribution only, so normal conversational and
+    // external Khala routing is unchanged, and it overflows to the proven Khala
+    // backing if the frontier lane is unavailable.
+    const mirrorcodeStrongCodingKhalaRequest =
+      toolBearingKhalaRequest &&
+      requestAttribution?.demandKind === 'internal' &&
+      requestAttribution.demandSource === 'gym_mirrorcode'
+    const basePlannedIds = mirrorcodeStrongCodingKhalaRequest
+      ? selectAdapterPlanForKhalaStrongCodingRequest(
+          requestedModel,
+          plannedIdsForModel,
+        )
+      : glmSaturationStressKhalaRequest &&
+          plannedIdsForModel.includes(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID)
         ? [HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID]
         : toolBearingKhalaRequest || glmSaturationStressKhalaRequest
           ? selectAdapterPlanForKhalaToolRequest(
@@ -2978,7 +3018,9 @@ export const handleChatCompletions = (
     const dispatchDeps: DispatchDeps = {
       registry: deps.registry,
       plan: () => plannedIds,
-      requestForAdapter: khalaRequestForAdapter,
+      requestForAdapter: mirrorcodeStrongCodingKhalaRequest
+        ? khalaStrongCodingRequestForAdapter
+        : khalaRequestForAdapter,
       ...(deps.dispatch?.backoff === undefined
         ? {}
         : { backoff: deps.dispatch.backoff }),

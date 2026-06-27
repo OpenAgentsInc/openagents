@@ -52,6 +52,12 @@ export const FIREWORKS_DEFAULT_BASE_URL =
 const FIREWORKS_MODEL_PREFIX = 'accounts/fireworks/models/'
 const KHALA_CODE_BACKING_MODEL_ID = `${FIREWORKS_MODEL_PREFIX}kimi-k2p7-code`
 export const KHALA_FIREWORKS_BACKING_MODEL_ID = `${FIREWORKS_MODEL_PREFIX}deepseek-v4-flash`
+// The strongest frontier GLM coding model the gateway can serve over Fireworks.
+// Used only for internal frontier-coding eval load (the MirrorCode gym rung): the
+// chat route rewrites a Khala request to this id when it is routed to the
+// strong-coding alias lane. Bare-aliased so `toFireworksModelId` applies the
+// Fireworks account prefix; priced in `pricing.ts` (`glm-5p2`).
+export const KHALA_STRONG_CODING_FIREWORKS_MODEL_ID = 'glm-5p2'
 
 const toFireworksModelId = (model: string): string => {
   const id = model.trim()

@@ -6,6 +6,7 @@ import {
   type DispatchFailureTelemetryEvent,
   type DispatchSuccessValidator,
   FIREWORKS_ADAPTER_ID,
+  FIREWORKS_STRONG_CODING_ADAPTER_ID,
   HYDRALISK_ADAPTER_ID,
   HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
   HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
@@ -23,6 +24,7 @@ import {
   openModelsByCost,
   selectAdapterPlan,
   selectAdapterPlanForKhalaBacking,
+  selectAdapterPlanForKhalaStrongCodingRequest,
   selectAdapterPlanForKhalaToolRequest,
   selectPrimaryAdapterId,
 } from './model-router'
@@ -263,6 +265,35 @@ describe('model classification', () => {
       VERTEX_GEMINI_ADAPTER_ID,
       OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
     ])
+  })
+
+  test('routes internal strong-coding Khala requests to the frontier GLM coding lane first, overflowing to the proven Fireworks backing', () => {
+    expect(
+      selectAdapterPlanForKhalaStrongCodingRequest(
+        KHALA_MODEL_ID,
+        selectAdapterPlanForKhalaBacking(
+          KHALA_MODEL_ID,
+          KHALA_BACKING_HYDRALISK_GPT_OSS,
+        ),
+      ),
+    ).toEqual([
+      FIREWORKS_STRONG_CODING_ADAPTER_ID,
+      FIREWORKS_ADAPTER_ID,
+      VERTEX_GEMINI_ADAPTER_ID,
+      OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+    ])
+    // The unreliable owned GLM-REAP tool lane (#6310) is excluded from the
+    // strong-coding plan on purpose.
+    expect(
+      selectAdapterPlanForKhalaStrongCodingRequest(KHALA_MODEL_ID),
+    ).not.toContain(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID)
+  })
+
+  test('leaves non-Khala models untouched for the strong-coding selector', () => {
+    const basePlan = selectAdapterPlan('gpt-oss-120b')
+    expect(
+      selectAdapterPlanForKhalaStrongCodingRequest('gpt-oss-120b', basePlan),
+    ).toEqual(basePlan)
   })
 
   test('does not treat old Khala split ids as the public Khala route', () => {

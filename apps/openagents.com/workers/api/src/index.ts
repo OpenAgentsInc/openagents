@@ -503,6 +503,7 @@ export { GlmStressSchedulerDurableObject } from './inference/internal-stress-pre
 import { makeLedgerMeteringHook } from './inference/metering-hook'
 import {
   FIREWORKS_ADAPTER_ID,
+  FIREWORKS_STRONG_CODING_ADAPTER_ID,
   HYDRALISK_ADAPTER_ID,
   HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
   HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
@@ -553,6 +554,7 @@ import {
 } from './inference/pricing'
 import {
   InferenceAdapterError,
+  type InferenceProviderAdapter,
   InferenceProviderRegistry,
   type InferenceRequest,
   type InferenceResult,
@@ -9431,6 +9433,46 @@ const recordPublicAgentFunnelRead = (
 const inferenceProviderRegistry = new InferenceProviderRegistry()
 inferenceProviderRegistry.register(stubEchoAdapter)
 inferenceProviderRegistry.register(fireworksAdapter)
+// Strong-coding alias of the Fireworks adapter for the internal MirrorCode
+// frontier-coding gym rung. It serves the frontier GLM coding model (the chat
+// route rewrites the request model via `khalaStrongCodingRequestForAdapter`) and
+// FORCES every failure to be retryable so dispatch always overflows to the
+// proven Fireworks Khala backing if the frontier coding model is unavailable —
+// the strong lane is best-effort, never a hard-fail.
+const toRetryableStrongCodingError = (
+  error: InferenceAdapterError,
+): InferenceAdapterError =>
+  error.retryable
+    ? error
+    : new InferenceAdapterError({
+        adapterId: FIREWORKS_STRONG_CODING_ADAPTER_ID,
+        kind: error.kind ?? 'strong_coding_lane_unavailable',
+        reason: error.reason,
+        retryable: true,
+        ...(error.httpStatus === undefined
+          ? {}
+          : { httpStatus: error.httpStatus }),
+      })
+const fireworksStrongCodingAdapter: InferenceProviderAdapter = {
+  complete: request =>
+    fireworksAdapter
+      .complete(request)
+      .pipe(Effect.mapError(toRetryableStrongCodingError)),
+  id: FIREWORKS_STRONG_CODING_ADAPTER_ID,
+  stream: request =>
+    fireworksAdapter
+      .stream(request)
+      .pipe(Effect.mapError(toRetryableStrongCodingError)),
+  ...(fireworksAdapter.streamSse === undefined
+    ? {}
+    : {
+        streamSse: request =>
+          fireworksAdapter
+            .streamSse!(request)
+            .pipe(Effect.mapError(toRetryableStrongCodingError)),
+      }),
+}
+inferenceProviderRegistry.register(fireworksStrongCodingAdapter)
 
 // Partner passthrough adapters (#5481). Registered from Worker secrets at
 // request time (env is per-request in Workers); `register` replaces by id, so
