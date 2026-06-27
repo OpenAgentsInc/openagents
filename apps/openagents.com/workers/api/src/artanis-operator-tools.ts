@@ -38,7 +38,7 @@ import type {
   ArtanisOperatorTool,
 } from './artanis-operator'
 import {
-  type ArtanisNetworkStatsConfig,
+  type ArtanisGetNetworkStatsConfig,
   fetchArtanisNetworkStats,
   formatArtanisTokenPaceLine,
 } from './artanis-token-pace'
@@ -795,7 +795,7 @@ export const makeArtanisDispatchCodexTaskTool = (
 // provider, secret, or wallet material. Fail-soft: an unreachable endpoint
 // degrades to an honest "(could not fetch …)" string, never invention.
 export const makeArtanisGetNetworkStatsTool = (
-  config: ArtanisNetworkStatsConfig = {},
+  config: ArtanisGetNetworkStatsConfig = {},
 ): ArtanisOperatorReadTool => ({
   definition: {
     description:
@@ -808,7 +808,11 @@ export const makeArtanisGetNetworkStatsTool = (
     },
   },
   execute: (_args: unknown) =>
-    Effect.promise(() => fetchArtanisNetworkStats(config)).pipe(
+    Effect.promise(() =>
+      // In the Worker the loadStats override reads D1 directly (the worker cannot
+      // reliably HTTP-fetch its own public zone); otherwise fall back to HTTP.
+      (config.loadStats ?? (() => fetchArtanisNetworkStats(config)))(),
+    ).pipe(
       Effect.map(stats => {
         const paceLine =
           stats.pace === null
@@ -854,7 +858,7 @@ export const makeArtanisOperatorTools = (
     repoRead?: ArtanisRepoReadConfig | undefined
     issueRead?: ArtanisIssueReadConfig | undefined
     defaultBranch?: string | undefined
-    networkStats?: ArtanisNetworkStatsConfig | undefined
+    networkStats?: ArtanisGetNetworkStatsConfig | undefined
     dispatchExecution?: ArtanisDispatchExecution | undefined
   }> = {},
 ): ReadonlyArray<ArtanisOperatorTool> => {

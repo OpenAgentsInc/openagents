@@ -99,7 +99,7 @@ import {
 import { makeD1ArtanisLaborUnattendedReceiptStore } from './artanis-labor-receipt-store'
 import { ArtanisMindSmokeSystem, artanisMindComplete } from './artanis-mind'
 import { makeOperatorArtanisChatRoutes } from './artanis-operator-chat-routes'
-import { fetchArtanisNetworkStats } from './artanis-token-pace'
+import { loadArtanisNetworkStatsFromLedger } from './artanis-network-stats-d1'
 import { makeOperatorArtanisConsoleRoutes } from './artanis-operator-console-routes'
 import {
   makeArtanisDispatchExecution,
@@ -8511,9 +8511,11 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
   // so he sees whether today is on track for the target (at least 4x the prior
   // day, goal 10x) without calling a tool. Read-only, fail-soft: an unreachable
   // public stats endpoint degrades the pace block to null, never an error.
-  awarenessReaders: () => ({
+  awarenessReaders: env => ({
     readTokenPace: () =>
-      fetchArtanisNetworkStats({}).then(
+      loadArtanisNetworkStatsFromLedger(
+        makeD1TokenUsageLedger(openAgentsDatabase(env)),
+      ).then(
         stats => stats.pace,
         () => null,
       ),
@@ -8529,6 +8531,14 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
   makeOperatorTools: (env, session) =>
     makeArtanisOperatorTools({
       defaultBranch: 'main',
+      // get_network_stats reads the token-usage ledger directly (the worker
+      // cannot reliably HTTP-fetch its own public /stats zone).
+      networkStats: {
+        loadStats: () =>
+          loadArtanisNetworkStatsFromLedger(
+            makeD1TokenUsageLedger(openAgentsDatabase(env)),
+          ),
+      },
       dispatchExecution: makeArtanisDispatchExecution({
         listLinkedAgentUserIds: async ownerOpenAuthUserId => {
           const agentStore = makeD1AgentRegistrationStore(

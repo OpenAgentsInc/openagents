@@ -597,6 +597,15 @@ const runPromiseAllowlist = new Map([
   // streaming boundary as chat-completions and onboarding; ratchet down if the
   // public Khala chat stream becomes an Effect Stream program end-to-end.
   ['workers/api/src/khala-chat-routes.ts', 1],
+  // Added 2026-06-27 (#6359): the Artanis network-stats D1 reader runs the
+  // combined token-usage ledger reads once to assemble the live token-pace
+  // snapshot for the operator agent (situational awareness + the
+  // get_network_stats tool). The openagents.com Worker cannot reliably
+  // HTTP-fetch its OWN public /stats zone (a same-zone loopback subrequest
+  // returns empty), so it reads the ledger from D1 directly; the awareness
+  // reader and the tool are Promise-shaped while the ledger reads are Effects.
+  // Named bridge; ratchet down if these move to an Effect program.
+  ['workers/api/src/artanis-network-stats-d1.ts', 1],
 ])
 
 const runPromiseDetails = countByFile(sourceFiles, /Effect\.runPromise\(/g)

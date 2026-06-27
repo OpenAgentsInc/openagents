@@ -524,6 +524,40 @@ describe('#6359 get_network_stats (live public stats + token pace)', () => {
     expect(result).toContain('"yesterdayTokens":328100000')
   })
 
+  test('uses the loadStats override (D1 path) instead of HTTP when provided', async () => {
+    let httpCalled = false
+    const httpFetch = (async () => {
+      httpCalled = true
+      return new Response('{}', { status: 200 })
+    }) as typeof fetch
+    const tool = makeArtanisGetNetworkStatsTool({
+      fetchImpl: httpFetch,
+      loadStats: async () => ({
+        allTimeTokensServed: 777,
+        generatedAt: '2026-06-27T17:00:00.000Z',
+        history: [{ day: '2026-06-27', tokensServed: 50 }],
+        modelMix: [],
+        pace: {
+          behindPace: true,
+          day: '2026-06-27',
+          fractionOfCentralDayElapsed: 0.5,
+          gapToTarget4x: 999,
+          paceProjection: 100,
+          target10x: 1000,
+          target4x: 400,
+          todayTokens: 50,
+          yesterdayTokens: 100,
+        },
+        timezone: 'America/Chicago',
+        todayTokens: 50,
+      }),
+    })
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(httpCalled).toBe(false)
+    expect(result).toContain('All-time tokens served: 777')
+    expect(result).toContain('BEHIND PACE')
+  })
+
   test('degrades to an honest message when the stats endpoints are unreachable', async () => {
     const failing = (async () => {
       throw new Error('network down')

@@ -292,6 +292,50 @@ export type ArtanisNetworkStatsConfig = Readonly<{
   modelMixWindow?: string | undefined
 }>
 
+// Config for the get_network_stats tool: the HTTP fetch config plus an optional
+// `loadStats` override. In the Worker the override reads D1 directly (the worker
+// cannot reliably HTTP-fetch its own public zone); tests/other contexts fall
+// back to the HTTP fetch.
+export type ArtanisGetNetworkStatsConfig = ArtanisNetworkStatsConfig &
+  Readonly<{ loadStats?: (() => Promise<ArtanisNetworkStats>) | undefined }>
+
+// assembleArtanisNetworkStats — the pure snapshot assembler shared by the HTTP
+// fetch and the D1 reader. Sorts the series, bounds the history tail, and
+// computes the pace block from the Worker clock.
+export const assembleArtanisNetworkStats = (
+  input: Readonly<{
+    allTimeTokensServed: number
+    series: ReadonlyArray<ArtanisTokenHistoryPoint>
+    modelMix: ReadonlyArray<
+      Readonly<{ family: string; label: string; tokens: number; pct: number }>
+    >
+    nowIso: string
+    timezone?: string | undefined
+    historyDays?: number | undefined
+  }>,
+): ArtanisNetworkStats => {
+  const timezone = input.timezone ?? ARTANIS_TOKEN_PACE_TIMEZONE
+  const historyDays = input.historyDays ?? 5
+  const sortedSeries = [...input.series].sort((a, b) =>
+    a.day < b.day ? -1 : a.day > b.day ? 1 : 0,
+  )
+  const history = sortedSeries.slice(-Math.max(1, historyDays))
+  const pace = computeArtanisTokenPaceBlock({
+    nowIso: input.nowIso,
+    series: sortedSeries,
+    timezone,
+  })
+  return {
+    allTimeTokensServed: input.allTimeTokensServed,
+    generatedAt: input.nowIso,
+    history,
+    modelMix: input.modelMix,
+    pace,
+    timezone,
+    todayTokens: pace?.todayTokens ?? 0,
+  }
+}
+
 const safeJson = async (
   fetchImpl: typeof fetch,
   url: string,
@@ -404,26 +448,12 @@ export const fetchArtanisNetworkStats = async (
       ? asInt((scalarBody as Record<string, unknown>).tokensServed)
       : 0
 
-  const fullSeries = parseHistorySeries(historyBody)
-  const sortedSeries = [...fullSeries].sort((a, b) =>
-    a.day < b.day ? -1 : a.day > b.day ? 1 : 0,
-  )
-  const history = sortedSeries.slice(-Math.max(1, historyDays))
-  const modelMix = parseModelMix(mixBody)
-
-  const pace = computeArtanisTokenPaceBlock({
+  return assembleArtanisNetworkStats({
+    allTimeTokensServed,
+    historyDays,
+    modelMix: parseModelMix(mixBody),
     nowIso,
-    series: sortedSeries,
+    series: parseHistorySeries(historyBody),
     timezone,
   })
-
-  return {
-    allTimeTokensServed,
-    generatedAt: nowIso,
-    history,
-    modelMix,
-    pace,
-    timezone,
-    todayTokens: pace?.todayTokens ?? 0,
-  }
 }
