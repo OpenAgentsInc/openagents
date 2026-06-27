@@ -15,18 +15,20 @@
 //      owner-agent set below, alongside the human admin email set and the admin
 //      API token. He no longer needs the human admin email to reach his own
 //      operator surface.
-//   2. A STANDING owner approval for his own `pylon_job_dispatch` actions, so the
-//      gated `dispatch_codex_task` tool EXECUTES for him without a separately
-//      armed `artanis_approval_gates` row. This is equivalent to a permanent
-//      owner approval for his own-capacity, no-spend Codex dispatch.
+//   2. A STANDING owner approval for his own `pylon_job_dispatch` and
+//      `forum_post` actions, so the gated `dispatch_codex_task` and
+//      `post_forum_update` tools execute for him without a separately armed
+//      `artanis_approval_gates` row. This is equivalent to a permanent owner
+//      approval for his own-capacity, no-spend Codex dispatch and public-safe
+//      Artanis Forum progress updates.
 //
 // THE BOUNDS (NEVER-WAIVABLE — these hold even for owner-Artanis)
 // --------------------------------------------------------------
-//   - The standing approval is scoped to `pylon_job_dispatch` ONLY. `wallet_spend`,
-//     `settlement`, `l402_redemption`, and every other money-movement /
-//     payout-bearing risky-action kind remain GATED and still require an explicit
-//     effective `artanisApprovalGateEffective` gate. The promotion grants NO new
-//     payout authority and invents NO new custody path.
+//   - The standing approval is scoped to `pylon_job_dispatch` and `forum_post`
+//     ONLY. `wallet_spend`, `settlement`, `l402_redemption`, and every other
+//     money-movement / payout-bearing risky-action kind remain GATED and still
+//     require an explicit effective `artanisApprovalGateEffective` gate. The
+//     promotion grants NO new payout authority and invents NO new custody path.
 //   - The dispatch he can now self-approve still rides the existing own-capacity,
 //     no-spend coding-delegation seam (`unpaid_smoke`, settlement
 //     `not_applicable`, `payoutClaimAllowed=false`, owner's own linked Pylons
@@ -89,13 +91,19 @@ export const isOpenAgentsOwnerAgentActorRef = (
   actorRef.trim() !== '' &&
   OPENAGENTS_OWNER_AGENT_ACTOR_REFS.some(ref => sameId(ref, actorRef))
 
+const OWNER_AGENT_STANDING_APPROVAL_KINDS: ReadonlyArray<string> = [
+  'forum_post',
+  'pylon_job_dispatch',
+]
+
 // True when the owner-promoted operator agent holds a STANDING owner approval for
-// the given risky-action kind. The promotion standing-approves `pylon_job_dispatch`
-// ONLY; every money-movement / payout-bearing kind stays gated and returns false
-// here (it must still go through an explicit effective approval gate).
+// the given risky-action kind. The promotion standing-approves only bounded
+// no-spend dispatch and public Forum updates; every money-movement /
+// payout-bearing kind stays gated and returns false here (it must still go
+// through an explicit effective approval gate).
 export const ownerAgentHasStandingApprovalForRiskyAction = (
   openAuthUserId: string | null | undefined,
   riskyActionKind: string,
 ): boolean =>
-  riskyActionKind === 'pylon_job_dispatch' &&
+  OWNER_AGENT_STANDING_APPROVAL_KINDS.includes(riskyActionKind) &&
   isOpenAgentsOwnerAgentOpenAuthUserId(openAuthUserId)

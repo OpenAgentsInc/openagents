@@ -107,7 +107,11 @@ import {
   readEffectiveArtanisApproval,
   readEffectiveArtanisPylonDispatchApprovalForOwner,
 } from './artanis-operator-dispatch-execution'
-import { isOpenAgentsOwnerAgentOpenAuthUserId } from './artanis-owner-authority'
+import { makeArtanisForumUpdateWriter } from './artanis-operator-forum-update'
+import {
+  isOpenAgentsOwnerAgentOpenAuthUserId,
+  ownerAgentHasStandingApprovalForRiskyAction,
+} from './artanis-owner-authority'
 import {
   makeArtanisPylonAssignmentsLister,
   makeArtanisPylonJobStatusReader,
@@ -8717,6 +8721,23 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
           ),
         opener: makeArtanisGithubIssueOpener({
           token: env.ARTANIS_GITHUB_ISSUE_TOKEN,
+        }),
+      },
+      // #6435: gated outward Forum posting as Artanis. The writer uses
+      // Artanis's own forum actor (`agent_artanis`) and the existing Forum
+      // repository path to create a topic or reply with idempotency. It executes
+      // only for owner-promoted Artanis's standing `forum_post` approval; other
+      // owners defer until a future explicit `forum_post` gate path is wired.
+      forumUpdate: {
+        isOwnerApproved: () =>
+          Effect.succeed(
+            ownerAgentHasStandingApprovalForRiskyAction(
+              session.user.userId,
+              'forum_post',
+            ),
+          ),
+        writer: makeArtanisForumUpdateWriter({
+          db: openAgentsDatabase(env),
         }),
       },
       dispatchExecution: makeArtanisDispatchExecution({
