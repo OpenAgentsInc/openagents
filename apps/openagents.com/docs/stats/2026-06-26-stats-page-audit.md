@@ -81,6 +81,7 @@ The public grouping vocabulary is intentionally small:
 | `glm` | GLM family | Reap, GLM-4, Z.ai/Zhipu, and Hydralisk GLM routes. |
 | `fireworks_deepseek` | Fireworks DeepSeek | Fireworks-hosted or DeepSeek model/provider rows. |
 | `pylon_codex` | Pylon-Codex | Pylon-Codex and ChatGPT-Codex rows. |
+| `pylon_claude` | Pylon-Claude | Pylon own-capacity Claude rows (`pylon-claude-own-capacity` / `openagents/pylon-claude`). |
 | `gpt_oss` | GPT-OSS | GPT-OSS model/provider rows. |
 | `gemini` | Gemini | Gemini, Google, and Vertex rows. |
 | `other` | Other | Public-safe fallback for everything else. |

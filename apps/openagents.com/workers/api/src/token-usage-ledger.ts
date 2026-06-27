@@ -1340,6 +1340,14 @@ const publicModelFamilyFromProviderAndModel = (
   }
 
   if (
+    text.includes('pylon-claude') ||
+    text.includes('pylon_claude') ||
+    text.includes('openagents/pylon-claude')
+  ) {
+    return 'pylon_claude'
+  }
+
+  if (
     text.includes('pylon-codex') ||
     text.includes('pylon_codex') ||
     text.includes('openagents/pylon-codex') ||
@@ -1376,7 +1384,9 @@ const publicModelFamilyLabel = (
       ? 'Fireworks DeepSeek'
       : family === 'pylon_codex'
         ? 'Pylon-Codex'
-        : family === 'gpt_oss'
+        : family === 'pylon_claude'
+          ? 'Pylon-Claude'
+          : family === 'gpt_oss'
           ? 'GPT-OSS'
           : family === 'gemini'
             ? 'Gemini'

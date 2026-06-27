@@ -51,6 +51,18 @@ export const PYLON_CODEX_ASSIGNMENT_PROOF_PATH = '/api/pylon/codex/proof'
 export const PYLON_CODEX_ASSIGNMENT_TRACE_STATUS_PATH =
   '/api/pylon/codex/trace-status'
 
+// #6388/#6391: the Claude own-capacity coding lane mirrors the Codex token
+// ingest. It reuses this module's authenticated, assignment-owned, idempotent
+// `token_usage_events` insert path (the same `requireAgent` /
+// `requireOwnedAssignment` / `ledger.ingestEvent` / `publishDelta` helpers) but
+// records the row under the Claude own-capacity provider/model so the served
+// counter and model-mix attribute Claude turns to their own family. The Codex
+// constants and route are untouched.
+export const PYLON_CLAUDE_TURN_INGEST_PATH = '/api/pylon/claude/turns'
+const PYLON_CLAUDE_SCHEMA_VERSION = 'openagents.pylon.claude_turn.v1' as const
+const PYLON_CLAUDE_MODEL_NAME = 'openagents/pylon-claude' as const
+const PYLON_CLAUDE_PROVIDER = 'pylon-claude-own-capacity' as const
+
 const PYLON_CODEX_SCHEMA_VERSION = 'openagents.pylon.codex_turn.v1' as const
 const PYLON_CODEX_EVENT_CHUNK_SCHEMA_VERSION =
   'openagents.pylon.codex_event_chunk.v1' as const
@@ -114,6 +126,22 @@ class PylonCodexTurnIngestBody extends S.Class<PylonCodexTurnIngestBody>(
   usage: PylonCodexUsage,
   items: S.Array(PylonCodexTurnItem),
   rawEvents: S.optionalKey(S.Array(RawCodexEventPayload)),
+}) {}
+
+class PylonClaudeTurnIngestBody extends S.Class<PylonClaudeTurnIngestBody>(
+  'PylonClaudeTurnIngestBody',
+)({
+  schemaVersion: S.Literal(PYLON_CLAUDE_SCHEMA_VERSION),
+  assignmentRef: NonEmptyString,
+  leaseRef: NonEmptyString,
+  pylonRef: NonEmptyString,
+  runRef: S.optionalKey(NonEmptyString),
+  sessionRef: S.optionalKey(NonEmptyString),
+  workspaceRef: S.optionalKey(NonEmptyString),
+  turnIndex: PositiveInt,
+  observedAt: S.optionalKey(S.String.check(S.isMaxLength(80))),
+  usage: PylonCodexUsage,
+  items: S.optionalKey(S.Array(PylonCodexTurnItem)),
 }) {}
 
 class PylonCodexEventChunkIngestBody extends S.Class<PylonCodexEventChunkIngestBody>(
@@ -2541,6 +2569,189 @@ const routeIngest = <Bindings>(
     })
   })
 
+const claudeTokenUsageEventBody = (
+  input: Readonly<{
+    body: PylonClaudeTurnIngestBody
+    digest: string
+    observedAt: string
+    ownerUserId: string
+    session: ProgrammaticAgentSession
+  }>,
+) => {
+  const counts = codexTurnUsageTokenCounts(input.body.usage)
+  return {
+    schemaVersion: 'openagents.token_usage_event.v1' as const,
+    actor: {
+      accountRef: `agent:${input.session.user.id}`,
+      userId: input.ownerUserId,
+    },
+    backendProfile: PYLON_CLAUDE_PROVIDER,
+    demand: {
+      demandKind: PYLON_CODEX_DEMAND_KIND,
+      demandSource: PYLON_CODEX_DEMAND_SOURCE,
+    },
+    eventId: `event.inference.served-tokens.pylon-claude.${input.digest.slice(0, 32)}`,
+    idempotencyKey: `khala:pylon-claude:turn:${input.digest}`,
+    model: PYLON_CLAUDE_MODEL_NAME,
+    observedAt: input.observedAt,
+    privacy: { leaderboardEligible: false, privacyOptOut: false },
+    producerSystem: PYLON_CODEX_PRODUCER_SYSTEM,
+    provider: PYLON_CLAUDE_PROVIDER,
+    safeMetadata: {
+      assignmentRef: input.body.assignmentRef,
+      leaseRef: input.body.leaseRef,
+      pylonRef: input.body.pylonRef,
+      claudeUsageSplit: {
+        cachedInputTokens: input.body.usage.cachedInputTokens ?? 0,
+        inputTokens: input.body.usage.inputTokens,
+        outputTokens: input.body.usage.outputTokens,
+        reasoningOutputTokens: input.body.usage.reasoningOutputTokens ?? 0,
+      },
+      costCaveat: 'owner_capacity_provider_cost_unknown',
+      usageBasis: 'claude_agent_sdk_turn_completed',
+    },
+    sourceRefs: {
+      ...(input.body.runRef === undefined ? {} : { runRef: input.body.runRef }),
+      ...(input.body.sessionRef === undefined
+        ? {}
+        : { sessionRef: input.body.sessionRef }),
+      taskRef: input.body.assignmentRef,
+      ...(input.body.workspaceRef === undefined
+        ? {}
+        : { repositoryRef: input.body.workspaceRef }),
+    },
+    sourceRoute: PYLON_CODEX_SOURCE_ROUTE,
+    tokenCounts: {
+      cacheReadTokens: counts.cacheReadTokens,
+      cacheWrite1hTokens: 0,
+      cacheWrite5mTokens: 0,
+      inputTokens: counts.inputTokens,
+      outputTokens: counts.outputTokens,
+      reasoningTokens: counts.reasoningTokens,
+      totalTokens: counts.totalTokens,
+    },
+    usageTruth: 'exact' as const,
+  }
+}
+
+const stableClaudeTurnDigest = (
+  body: PylonClaudeTurnIngestBody,
+): Effect.Effect<string> =>
+  Effect.promise(() =>
+    sha256Hex(
+      [
+        'pylon-claude',
+        body.assignmentRef,
+        body.leaseRef,
+        body.pylonRef,
+        body.sessionRef ?? 'session.pending',
+        String(body.turnIndex),
+      ].join(':'),
+    ),
+  )
+
+// #6391: the Claude own-capacity turn ingest. Authenticates the posting Pylon
+// agent, confirms it owns the assignment, then inserts the exact own-capacity
+// `token_usage_events` row for the completed Claude Agent SDK turn (idempotent
+// by stable digest) and publishes the served-counter delta. Token accounting is
+// the proof of this lane; raw-event/trace parity with the Codex lane is tracked
+// as follow-up and is fail-soft.
+const routeClaudeIngest = <Bindings>(
+  dependencies: PylonCodexTurnIngestDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+): Effect.Effect<HttpResponse, PylonCodexRouteError> =>
+  Effect.gen(function* () {
+    if (request.method !== 'POST') {
+      return methodNotAllowed(['POST'])
+    }
+
+    const session = yield* requireAgent(dependencies, request, env)
+
+    const rawBody = yield* Effect.tryPromise({
+      catch: () =>
+        new PylonCodexValidationError({
+          reason: 'Request body could not be read.',
+        }),
+      try: () => request.text(),
+    })
+    if (new TextEncoder().encode(rawBody).length > MAX_BODY_BYTES) {
+      return yield* new PylonCodexValidationError({
+        reason: `Pylon Claude turn payload exceeds the ${MAX_BODY_BYTES}-byte limit.`,
+      })
+    }
+
+    const body = yield* Effect.try({
+      catch: error =>
+        new PylonCodexValidationError({
+          reason:
+            error instanceof Error
+              ? error.message
+              : 'Request body does not match the Pylon Claude turn schema.',
+        }),
+      try: () =>
+        decodeUnknownWithSchema(
+          PylonClaudeTurnIngestBody,
+          rawBody.trim() === '' ? {} : parseJsonUnknown(rawBody),
+        ),
+    })
+
+    yield* requireOwnedAssignment(dependencies, env, session, {
+      assignmentRef: body.assignmentRef,
+      pylonRef: body.pylonRef,
+    })
+
+    const ownerUserId = ownerUserIdForAgent(session)
+    const observedAt = body.observedAt ?? routeNowIso(dependencies)
+    const digest = yield* stableClaudeTurnDigest(body)
+    const tokenBody = claudeTokenUsageEventBody({
+      body,
+      digest,
+      observedAt,
+      ownerUserId,
+      session,
+    })
+    const counts = codexTurnUsageTokenCounts(body.usage)
+
+    const tokenResult = yield* dependencies
+      .ledger(env)
+      .ingestEvent(tokenBody)
+      .pipe(
+        Effect.mapError(
+          error =>
+            new PylonCodexStorageError({
+              operation: 'token_usage_ingest',
+              reason: storageReason(error),
+            }),
+        ),
+      )
+
+    if (
+      tokenResult.inserted &&
+      dependencies.publishDelta !== undefined &&
+      counts.inputTokens + counts.outputTokens > 0
+    ) {
+      yield* dependencies
+        .publishDelta(env, {
+          eventRef: tokenBody.eventId,
+          observedAt,
+          tokensServedDelta: counts.inputTokens + counts.outputTokens,
+        })
+        .pipe(Effect.catch(() => Effect.void))
+    }
+
+    return noStoreJsonResponse({
+      schemaVersion: 'openagents.pylon.claude_turn_ingest_result.v1',
+      assignmentRef: body.assignmentRef,
+      insertedTokenUsage: tokenResult.inserted,
+      tokensServedDelta: tokenResult.inserted
+        ? counts.inputTokens + counts.outputTokens
+        : 0,
+      tokenUsageEventRef: tokenBody.eventId,
+      turnIndex: body.turnIndex,
+    })
+  })
+
 export const makePylonCodexTurnIngestRoutes = <Bindings>(
   dependencies: PylonCodexTurnIngestDependencies<Bindings>,
 ) => ({
@@ -2587,6 +2798,17 @@ export const makePylonCodexTurnIngestRoutes = <Bindings>(
       return Effect.succeed(noStoreJsonResponse({ error: 'not_found' }, { status: 404 }))
     }
     return routeIngest(dependencies, request, env).pipe(
+      Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
+    )
+  },
+  handlePylonClaudeTurnIngestApi: (
+    request: Request,
+    env: Bindings,
+  ): Effect.Effect<HttpResponse> => {
+    if (new URL(request.url).pathname !== PYLON_CLAUDE_TURN_INGEST_PATH) {
+      return Effect.succeed(noStoreJsonResponse({ error: 'not_found' }, { status: 404 }))
+    }
+    return routeClaudeIngest(dependencies, request, env).pipe(
       Effect.catch(error => Effect.succeed(routeErrorResponse(error))),
     )
   },

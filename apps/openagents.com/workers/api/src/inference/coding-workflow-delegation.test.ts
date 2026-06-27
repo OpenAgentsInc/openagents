@@ -167,6 +167,73 @@ describe('coding workflow delegation', () => {
     })
   })
 
+  test('creates a controlled assignment on caller-owned Claude capacity (#6388)', async () => {
+    const claudeRegistration = registration({
+      capabilityRefs: ['capability.pylon.local_claude_agent'],
+      displayName: 'Linked Claude Pylon',
+      latestCapacityRefs: [
+        'capacity.coding.claude.ready=1',
+        'capacity.coding.claude.available=1',
+      ],
+      latestLoadRefs: [
+        'load.coding.claude.busy=0',
+        'load.coding.claude.queued=0',
+      ],
+      pylonRef: 'pylon.owner.claude',
+    })
+    const result = await delegateCodingWorkflow({
+      classification: {
+        confidence: 1,
+        evidenceRefs: ['evidence.coding_workflow.structured_body'],
+        workflowClass: 'claude_agent_task',
+      },
+      linkedAgents: [linkedOwner],
+      makeId: () => 'idclaude',
+      nowIso,
+      pylonStore: makeStore({ registrations: [claudeRegistration] }),
+      rawBody: { openagents: { coding: { targetPylonRef: 'pylon.owner.claude' } } },
+      requestId: 'chatcmpl_coding_claude_1',
+    })
+    const assigned = expectAssigned(result)
+
+    expect(assigned.assignment.pylonRef).toBe('pylon.owner.claude')
+    expect(assigned.assignment.jobKind).toBe('claude_agent_task')
+    expect(
+      assigned.assignment.codingAssignment?.requiredCapabilityRefs,
+    ).toContain('capability.pylon.local_claude_agent')
+    expect(assigned.assignment.codingAssignment?.claudeAgent).toMatchObject({
+      agentKind: 'claude_agent_sdk',
+      schema: 'openagents.pylon.claude_agent_task.v0.3',
+    })
+    expect(assigned.assignment.codingAssignment?.codex).toBeUndefined()
+  })
+
+  test('refuses a Claude request against a Codex-only Pylon with a claude-specific diagnosis (#6388)', async () => {
+    const result = await delegateCodingWorkflow({
+      classification: {
+        confidence: 1,
+        evidenceRefs: ['evidence.coding_workflow.structured_body'],
+        workflowClass: 'claude_agent_task',
+      },
+      linkedAgents: [linkedOwner],
+      makeId: () => 'idclaude2',
+      nowIso,
+      // Default registration advertises Codex capability/capacity only.
+      pylonStore: makeStore({
+        registrations: [registration({ pylonRef: 'pylon.owner.codex' })],
+      }),
+      rawBody: { openagents: { coding: { targetPylonRef: 'pylon.owner.codex' } } },
+      requestId: 'chatcmpl_coding_claude_2',
+    })
+    expect(result?.kind).toBe('rejected')
+    if (result?.kind !== 'rejected') throw new Error('expected rejection')
+    expect(result.error).toBe('target_pylon_unavailable')
+    expect(result.statusCode).toBe(409)
+    expect(result.evidenceRefs).toContain(
+      'evidence.khala_coding.target_pylon_ref.unavailable.not_claude_capable',
+    )
+  })
+
   test('falls back to the broad registration read when the scoped capacity read is transiently unavailable', async () => {
     const fallbackStore = {
       ...makeStore({ registrations: [registration()] }),

@@ -325,6 +325,7 @@ export const PublicKhalaTokensServedModelFamily = S.Literals([
   'glm',
   'fireworks_deepseek',
   'pylon_codex',
+  'pylon_claude',
   'gpt_oss',
   'gemini',
   'other',

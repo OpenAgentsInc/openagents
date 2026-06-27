@@ -96,7 +96,7 @@ const ciFixingRunner: ClaudeAgentRunner = async (input) => {
     join(input.cwd, "sum.ts"),
     "export const sum = (left: number, right: number) => left + right\n",
   )
-  return { outcome: "completed", turnCount: 3, editedFileCount: 1, commandCount: 1, sessionRef: null }
+  return { outcome: "completed", turnCount: 3, editedFileCount: 1, commandCount: 1, sessionRef: null , usage: null }
 }
 
 function ciHarness(lease: PylonAssignmentLease) {

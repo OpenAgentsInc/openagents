@@ -19,6 +19,10 @@ import {
   pylonAccountEnvironment,
   type ResolvedPylonAccountSelection,
 } from "./account-registry.js"
+import {
+  createPylonClaudeTurnReporter,
+  type ClaudeTurnReporter,
+} from "./claude-turn-reporter.js"
 import type { PylonLocalState } from "./state.js"
 
 /**
@@ -74,21 +78,38 @@ export type ClaudeAgentRunOutcome =
   | "workspace_escape_blocked"
   | "refused"
 
+export type ClaudeAgentTurnUsage = {
+  inputTokens: number
+  cachedInputTokens: number
+  outputTokens: number
+}
+
 export type ClaudeAgentRunResult = {
   outcome: ClaudeAgentRunOutcome
   turnCount: number
   editedFileCount: number
   commandCount: number
   sessionRef: string | null
+  // Cumulative exact token usage for the Claude Agent SDK session, read from
+  // the SDK `result` message. `null` when the SDK did not surface usage.
+  usage: ClaudeAgentTurnUsage | null
 }
 
 export type ClaudeAgentRunner = (input: ClaudeAgentRunInput) => Promise<ClaudeAgentRunResult>
 
 export type ClaudeAgentExecutionOptions = {
   account?: ResolvedPylonAccountSelection | null
+  agentToken?: string
+  baseUrl?: string
   checkoutRunner?: WorkspaceCheckoutRunner
   claudeAgentRunner?: ClaudeAgentRunner
   claudeAgentProbe?: ClaudeAgentProbeOptions
+  // Injectable reporter override (tests). When omitted, a default reporter is
+  // built from agentToken + baseUrl and posts the exact own-capacity Claude turn
+  // token usage to /api/pylon/claude/turns. Fail-soft: a reporter failure never
+  // aborts the local coding task.
+  claudeTurnReporter?: ClaudeTurnReporter
+  fetch?: typeof fetch
 }
 
 type ClaudeAgentFixture = {
@@ -304,6 +325,37 @@ async function materializeClaudeAgentWorkspace(input: {
   }
 }
 
+const finiteToken = (value: unknown): number =>
+  typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.trunc(value)
+    : 0
+
+/**
+ * Reads cumulative exact token usage from the Claude Agent SDK `result`
+ * message. The SDK reports usage with Anthropic-native field names
+ * (`input_tokens`, `output_tokens`, `cache_read_input_tokens`). Returns null
+ * when no positive usage is present so a missing/zero usage does not post a
+ * fabricated token row.
+ */
+export function claudeUsageFrom(value: unknown): ClaudeAgentTurnUsage | null {
+  if (value === null || typeof value !== "object") return null
+  const usage = value as {
+    input_tokens?: unknown
+    output_tokens?: unknown
+    cache_read_input_tokens?: unknown
+    cache_creation_input_tokens?: unknown
+  }
+  const inputTokens = finiteToken(usage.input_tokens)
+  const outputTokens = finiteToken(usage.output_tokens)
+  const cachedInputTokens =
+    finiteToken(usage.cache_read_input_tokens) +
+    finiteToken(usage.cache_creation_input_tokens)
+  if (inputTokens === 0 && outputTokens === 0 && cachedInputTokens === 0) {
+    return null
+  }
+  return { cachedInputTokens, inputTokens, outputTokens }
+}
+
 /**
  * The production runner: one Claude Agent SDK session with the workspace
  * boundary enforced by a PreToolUse hook (deny + abort on first escape
@@ -328,6 +380,7 @@ export async function runWithClaudeAgentSdk(
   let turnCount = 0
   let sessionId: string | null = null
   let resultSubtype: string | null = null
+  let usage: ClaudeAgentTurnUsage | null = null
 
   const guard = async (hookInput: unknown) => {
     const record = hookInput as { tool_name?: string; tool_input?: unknown }
@@ -374,19 +427,28 @@ export async function runWithClaudeAgentSdk(
       },
     })
     for await (const message of session) {
-      const record = message as { type?: string; subtype?: string; session_id?: string }
+      const record = message as {
+        type?: string
+        subtype?: string
+        session_id?: string
+        usage?: unknown
+      }
       if (record.type === "system" && record.subtype === "init" && typeof record.session_id === "string") {
         sessionId = record.session_id
       }
       if (record.type === "assistant") turnCount += 1
-      if (record.type === "result") resultSubtype = record.subtype ?? null
+      if (record.type === "result") {
+        resultSubtype = record.subtype ?? null
+        const captured = claudeUsageFrom(record.usage)
+        if (captured !== null) usage = captured
+      }
     }
   } catch (error) {
     if (escaped) {
-      return { outcome: "workspace_escape_blocked", turnCount, editedFileCount, commandCount, sessionRef: null }
+      return { outcome: "workspace_escape_blocked", turnCount, editedFileCount, commandCount, sessionRef: null , usage }
     }
     if (abort.signal.aborted) {
-      return { outcome: "budget_exceeded", turnCount, editedFileCount, commandCount, sessionRef: null }
+      return { outcome: "budget_exceeded", turnCount, editedFileCount, commandCount, sessionRef: null , usage }
     }
     throw error
   } finally {
@@ -395,15 +457,15 @@ export async function runWithClaudeAgentSdk(
 
   const sessionRef = sessionId === null ? null : stableRef("session.pylon.claude_agent", sessionId)
   if (escaped) {
-    return { outcome: "workspace_escape_blocked", turnCount, editedFileCount, commandCount, sessionRef }
+    return { outcome: "workspace_escape_blocked", turnCount, editedFileCount, commandCount, sessionRef , usage }
   }
   if (resultSubtype !== null && resultSubtype.includes("max_turns")) {
-    return { outcome: "budget_exceeded", turnCount, editedFileCount, commandCount, sessionRef }
+    return { outcome: "budget_exceeded", turnCount, editedFileCount, commandCount, sessionRef , usage }
   }
   if (resultSubtype !== null && resultSubtype.startsWith("error")) {
-    return { outcome: "refused", turnCount, editedFileCount, commandCount, sessionRef }
+    return { outcome: "refused", turnCount, editedFileCount, commandCount, sessionRef , usage }
   }
-  return { outcome: "completed", turnCount, editedFileCount, commandCount, sessionRef }
+  return { outcome: "completed", turnCount, editedFileCount, commandCount, sessionRef , usage }
 }
 
 type ClaudeAgentLease = {
@@ -551,6 +613,43 @@ export async function executeClaudeAgentAssignment(
       summaryRef: "summary.public.pylon.claude_agent_task.execution_refused",
       message: "Local Claude Agent session ended with an execution error before completing the task.",
     })
+  }
+
+  // #6391: post the exact own-capacity Claude Agent SDK token usage for this
+  // completed turn so a `token_usage_events` row exists (provider
+  // `pylon-claude-own-capacity`, model `openagents/pylon-claude`). Fail-soft: a
+  // reporter outage must never fail the local coding task. Skipped when the SDK
+  // surfaced no usage (never fabricate a row).
+  if (run.usage != null) {
+    const reporter =
+      options.claudeTurnReporter ??
+      createPylonClaudeTurnReporter({
+        ...(options.agentToken === undefined ? {} : { agentToken: options.agentToken }),
+        ...(options.baseUrl === undefined ? {} : { baseUrl: options.baseUrl }),
+        ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+      })
+    if (reporter !== undefined) {
+      try {
+        await reporter({
+          assignmentRef: lease.assignmentRef,
+          leaseRef: lease.leaseRef,
+          pylonRef: state.identity.pylonRef,
+          runRef,
+          ...(run.sessionRef === null ? {} : { sessionRef: run.sessionRef }),
+          workspaceRef: materialized.workspaceRef,
+          turnIndex: 1,
+          observedAt: now.toISOString(),
+          usage: {
+            inputTokens: run.usage.inputTokens,
+            cachedInputTokens: run.usage.cachedInputTokens,
+            outputTokens: run.usage.outputTokens,
+          },
+        })
+      } catch {
+        // Fail-soft: token-ingest outage does not abort the local coding task.
+        // The exact token row can be reconciled/retried; the local work stands.
+      }
+    }
   }
 
   const verification = await runCommand({ args: materialized.verificationArgs, cwd: materialized.workspace })

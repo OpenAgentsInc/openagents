@@ -778,6 +778,7 @@ import {
   recordPylonCapacityFunnelSnapshots,
 } from './pylon-capacity-funnel-live-routes'
 import {
+  PYLON_CLAUDE_TURN_INGEST_PATH,
   PYLON_CODEX_ASSIGNMENT_PROOF_PATH,
   PYLON_CODEX_ASSIGNMENT_TRACE_STATUS_PATH,
   PYLON_CODEX_EVENT_CHUNK_INGEST_PATH,
@@ -11053,6 +11054,11 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: PYLON_CODEX_TURN_INGEST_PATH,
     handler: (request, env) =>
       pylonCodexTurnIngestRoutes.handlePylonCodexTurnIngestApi(request, env),
+  },
+  {
+    path: PYLON_CLAUDE_TURN_INGEST_PATH,
+    handler: (request, env) =>
+      pylonCodexTurnIngestRoutes.handlePylonClaudeTurnIngestApi(request, env),
   },
   {
     path: PYLON_CODEX_EVENT_CHUNK_INGEST_PATH,

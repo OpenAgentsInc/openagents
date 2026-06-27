@@ -173,7 +173,7 @@ const REQUEST_SCHEMA: Record<string, unknown> = {
     },
     workflow: {
       description: 'Typed coding workflow class.',
-      enum: ['cloud_coding_session', 'codex_agent_task'],
+      enum: ['claude_agent_task', 'cloud_coding_session', 'codex_agent_task'],
       type: 'string',
     },
   },
@@ -229,7 +229,7 @@ const SPAWN_SCHEMA: Record<string, unknown> = {
     },
     workflow: {
       description: 'Typed coding workflow class.',
-      enum: ['cloud_coding_session', 'codex_agent_task'],
+      enum: ['claude_agent_task', 'cloud_coding_session', 'codex_agent_task'],
       type: 'string',
     },
   },
@@ -292,11 +292,15 @@ const optionalOffset = (
 
 const workflowFromArgs = (args: Record<string, unknown>): Exclude<CodingWorkflowClass, 'none'> => {
   const value = optionalString(args, 'workflow') ?? 'codex_agent_task'
-  if (value === 'cloud_coding_session' || value === 'codex_agent_task') {
+  if (
+    value === 'claude_agent_task' ||
+    value === 'cloud_coding_session' ||
+    value === 'codex_agent_task'
+  ) {
     return value
   }
   throw new KhalaMcpToolError(
-    'workflow must be cloud_coding_session or codex_agent_task',
+    'workflow must be claude_agent_task, cloud_coding_session, or codex_agent_task',
   )
 }
 

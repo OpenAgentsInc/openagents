@@ -8,6 +8,7 @@ import {
   sha256Hex,
 } from './agent-registration'
 import {
+  PYLON_CLAUDE_TURN_INGEST_PATH,
   PYLON_CODEX_ASSIGNMENT_PROOF_PATH,
   PYLON_CODEX_ASSIGNMENT_TRACE_STATUS_PATH,
   PYLON_CODEX_EVENT_CHUNK_INGEST_PATH,
@@ -2268,5 +2269,123 @@ describe('POST /api/pylon/codex/turns', () => {
       ownerUserId: linkedOpenAuthUserId,
       rawEventChunkRef: first.ref,
     })
+  })
+})
+
+// #6388/#6391: the Claude own-capacity coding lane reuses the same authenticated,
+// assignment-owned, idempotent token ingest helpers as Codex, but records the
+// exact `token_usage_events` row under the Claude provider/model.
+const claudeTurnBody = () => ({
+  schemaVersion: 'openagents.pylon.claude_turn.v1',
+  assignmentRef: 'assignment-pylon-codex-1',
+  leaseRef: 'lease-pylon-claude-1',
+  pylonRef: 'pylon-local-codex-1',
+  runRef: 'run-pylon-claude-1',
+  sessionRef: 'session-pylon-claude-1',
+  workspaceRef: 'workspace.public.pylon-claude-1',
+  turnIndex: 1,
+  observedAt: nowIso,
+  usage: {
+    cachedInputTokens: 11,
+    inputTokens: 200,
+    outputTokens: 80,
+  },
+})
+
+const postClaudeTurn = (body: unknown, token = agentToken): Request =>
+  new Request(`https://openagents.com${PYLON_CLAUDE_TURN_INGEST_PATH}`, {
+    body: JSON.stringify(body),
+    headers: {
+      authorization: `Bearer ${token}`,
+      'content-type': 'application/json',
+    },
+    method: 'POST',
+  })
+
+describe('POST /api/pylon/claude/turns', () => {
+  test('records the exact own-capacity Claude token row and a counter delta', async () => {
+    const { deltas, ledger, routes } = await makeHarness()
+    const response = await Effect.runPromise(
+      routes.handlePylonClaudeTurnIngestApi(postClaudeTurn(claudeTurnBody()), {}),
+    )
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      insertedTokenUsage: boolean
+      tokensServedDelta: number
+      tokenUsageEventRef: string
+    }
+    expect(body.insertedTokenUsage).toBe(true)
+    // input(200) + output(80); cached input is not part of served tokens.
+    expect(body.tokensServedDelta).toBe(280)
+    expect(body.tokenUsageEventRef).toContain('pylon-claude')
+
+    const event = ledger.events[0]
+    expect(event).toMatchObject({
+      backendProfile: 'pylon-claude-own-capacity',
+      demand: {
+        demandKind: 'own_capacity',
+        demandSource: 'khala_coding_delegation',
+      },
+      model: 'openagents/pylon-claude',
+      provider: 'pylon-claude-own-capacity',
+      usageTruth: 'exact',
+    })
+    expect(event?.tokenCounts).toMatchObject({
+      cacheReadTokens: 11,
+      inputTokens: 200,
+      outputTokens: 80,
+      totalTokens: 280,
+    })
+    // Owner attribution: the row is owned by the linked OpenAuth user while the
+    // account ref stays the local Pylon agent account.
+    expect(event?.actor).toMatchObject({
+      accountRef: `agent:${agentUserId}`,
+      userId: linkedOpenAuthUserId,
+    })
+    expect(event?.safeMetadata).toMatchObject({
+      claudeUsageSplit: {
+        cachedInputTokens: 11,
+        inputTokens: 200,
+        outputTokens: 80,
+      },
+      usageBasis: 'claude_agent_sdk_turn_completed',
+    })
+    expect(deltas).toHaveLength(1)
+    expect(deltas[0]?.tokensServedDelta).toBe(280)
+  })
+
+  test('is idempotent on replay (no second row, no second delta)', async () => {
+    const { deltas, ledger, routes } = await makeHarness()
+    await Effect.runPromise(
+      routes.handlePylonClaudeTurnIngestApi(postClaudeTurn(claudeTurnBody()), {}),
+    )
+    const second = await Effect.runPromise(
+      routes.handlePylonClaudeTurnIngestApi(postClaudeTurn(claudeTurnBody()), {}),
+    )
+    const secondBody = (await second.json()) as { insertedTokenUsage: boolean }
+    expect(secondBody.insertedTokenUsage).toBe(false)
+    expect(ledger.events).toHaveLength(1)
+    expect(deltas).toHaveLength(1)
+  })
+
+  test('rejects a turn for an assignment owned by another agent', async () => {
+    const { routes } = await makeHarness({
+      assignment: assignmentRecord({ ownerAgentUserId: 'agent-user-someone-else' }),
+    })
+    const response = await Effect.runPromise(
+      routes.handlePylonClaudeTurnIngestApi(postClaudeTurn(claudeTurnBody()), {}),
+    )
+    expect(response.status).toBe(403)
+  })
+
+  test('rejects an unauthenticated turn', async () => {
+    const { routes } = await makeHarness()
+    const response = await Effect.runPromise(
+      routes.handlePylonClaudeTurnIngestApi(
+        postClaudeTurn(claudeTurnBody(), 'oa_agent_wrong_token'),
+        {},
+      ),
+    )
+    expect(response.status).toBe(401)
   })
 })

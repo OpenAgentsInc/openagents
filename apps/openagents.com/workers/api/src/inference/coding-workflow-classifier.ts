@@ -1,4 +1,5 @@
 export type CodingWorkflowClass =
+  | 'claude_agent_task'
   | 'cloud_coding_session'
   | 'codex_agent_task'
   | 'none'
@@ -22,6 +23,7 @@ type CodingWorkflowClassificationInput = Readonly<{
 }>
 
 const explicitWorkflowClasses = new Set<CodingWorkflowClass>([
+  'claude_agent_task',
   'cloud_coding_session',
   'codex_agent_task',
 ])

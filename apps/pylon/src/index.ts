@@ -4028,20 +4028,24 @@ async function main() {
           optionFlag(options, "fixture-smoke") ||
           optionFlag(options, "codex-fixture")
         if (!prompt) {
-          throw new Error("usage: pylon khala request --prompt <text> [--workflow cloud_coding_session|codex_agent_task] [--pylon-ref <pylonRef>] [--fixture | --commit <sha> --repo <owner/repo> --verify <argv>] [--no-run] [--json]; public issue/repo codex_agent_task requests require complete workspace pins")
+          throw new Error("usage: pylon khala request --prompt <text> [--workflow claude_agent_task|cloud_coding_session|codex_agent_task] [--pylon-ref <pylonRef>] [--fixture | --commit <sha> --repo <owner/repo> --verify <argv>] [--no-run] [--json]; public issue/repo codex_agent_task and claude_agent_task requests require complete workspace pins")
         }
         if (
           workflow !== undefined &&
+          workflow !== "claude_agent_task" &&
           workflow !== "cloud_coding_session" &&
           workflow !== "codex_agent_task"
         ) {
-          throw new Error("khala request --workflow must be cloud_coding_session or codex_agent_task")
+          throw new Error("khala request --workflow must be claude_agent_task, cloud_coding_session, or codex_agent_task")
         }
         const hasWorkspacePin = commit !== undefined || repository !== undefined || verificationCommand !== undefined
         if (explicitFixture && hasWorkspacePin) {
           throw new Error("khala request --fixture cannot be combined with --commit, --repo, or --verify")
         }
-        if (workflow === "codex_agent_task" && !explicitFixture) {
+        if (
+          (workflow === "codex_agent_task" || workflow === "claude_agent_task") &&
+          !explicitFixture
+        ) {
           const missingPins = [
             commit === undefined ? "--commit" : null,
             repository === undefined ? "--repo" : null,
@@ -4049,7 +4053,7 @@ async function main() {
           ].filter((pin): pin is string => pin !== null)
           if (missingPins.length > 0) {
             throw new Error(
-              `khala request --workflow codex_agent_task requires explicit fixture intent (--fixture) or complete workspace pins (--commit, --repo, --verify); missing ${missingPins.join(", ")}`,
+              `khala request --workflow ${workflow} requires explicit fixture intent (--fixture) or complete workspace pins (--commit, --repo, --verify); missing ${missingPins.join(", ")}`,
             )
           }
         }

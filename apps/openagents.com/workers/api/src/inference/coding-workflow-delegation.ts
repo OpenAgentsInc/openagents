@@ -4,6 +4,7 @@ import {
   type PylonApiCreateAssignmentRequest,
   type PylonApiRegistrationRecord,
   type PylonApiStore,
+  type PylonCodingServiceCapacityProjection,
   PylonApiStoreError,
   buildPylonApiAssignmentRecord,
   codexAccountCapacityKeyFromAccountRefHash,
@@ -17,6 +18,76 @@ const CODEX_AGENT_CAPABILITY_REF = 'capability.pylon.local_codex'
 const CODEX_AGENT_TASK_SCHEMA = 'openagents.pylon.codex_agent_task.v0.3'
 const CODEX_AGENT_SUM_REPAIR_FIXTURE_REF =
   'fixture.public.pylon.codex_agent.sum_repair.v1'
+
+const CLAUDE_AGENT_CAPABILITY_REF = 'capability.pylon.local_claude_agent'
+const CLAUDE_AGENT_TASK_SCHEMA = 'openagents.pylon.claude_agent_task.v0.3'
+const CLAUDE_AGENT_SUM_REPAIR_FIXTURE_REF =
+  'fixture.public.pylon.claude_agent.sum_repair.v1'
+
+// #6388: a coding workflow class resolves to one local-agent execution profile.
+// The Codex lane (`cloud_coding_session`, `codex_agent_task`) and the Claude
+// lane (`claude_agent_task`) share the entire request/dispatch pipeline; only
+// the advertised capability, the assignment job kind, the bounded fixture, the
+// capacity service projection key, and the on-assignment coding sub-object differ.
+// Keying the gate per-capability (instead of hardcoding Codex) is the wiring that
+// lets a caller route Claude work to their own linked Claude-capable Pylon.
+type CodingAgentProfile = Readonly<{
+  // The key under `codingAssignment` the Pylon executor reads (claudeAgent | codex).
+  agentAssignmentKey: 'claudeAgent' | 'codex'
+  // The agentKind the Pylon executor validates on that sub-object.
+  agentKind: 'claude_agent_sdk' | 'codex_sdk'
+  // Heartbeat-advertised capability ref that must be present to dispatch.
+  capabilityRef: string
+  // Counted capacity service projected from the heartbeat capacity refs.
+  capacityService: PylonCodingServiceCapacityProjection['service']
+  // Bounded public fixture used when the request carries no pinned workspace.
+  fixtureRef: string
+  // Assignment job kind persisted on the Pylon assignment row.
+  jobKind: 'claude_agent_task' | 'codex_agent_task'
+  // Lowercase agent label used in diagnosable refusals ("Codex" / "Claude").
+  label: string
+  // Public-safe objective fallback summary.
+  objectiveFallback: string
+  // Codex-first vs Claude-first selection policy ref.
+  selectionPolicyRef: string
+  // Public assignment-task schema ref for the agent sub-object.
+  taskSchema: string
+}>
+
+const CODEX_AGENT_PROFILE: CodingAgentProfile = {
+  agentAssignmentKey: 'codex',
+  agentKind: 'codex_sdk',
+  capabilityRef: CODEX_AGENT_CAPABILITY_REF,
+  capacityService: 'codex',
+  fixtureRef: CODEX_AGENT_SUM_REPAIR_FIXTURE_REF,
+  jobKind: 'codex_agent_task',
+  label: 'Codex',
+  objectiveFallback:
+    'Run the caller-owned Khala coding workflow on a linked local Codex Pylon.',
+  selectionPolicyRef: 'selection.public.khala_coding.codex_first',
+  taskSchema: CODEX_AGENT_TASK_SCHEMA,
+}
+
+const CLAUDE_AGENT_PROFILE: CodingAgentProfile = {
+  agentAssignmentKey: 'claudeAgent',
+  agentKind: 'claude_agent_sdk',
+  capabilityRef: CLAUDE_AGENT_CAPABILITY_REF,
+  capacityService: 'claude',
+  fixtureRef: CLAUDE_AGENT_SUM_REPAIR_FIXTURE_REF,
+  jobKind: 'claude_agent_task',
+  label: 'Claude',
+  objectiveFallback:
+    'Run the caller-owned Khala coding workflow on a linked local Claude Agent Pylon.',
+  selectionPolicyRef: 'selection.public.khala_coding.claude_first',
+  taskSchema: CLAUDE_AGENT_TASK_SCHEMA,
+}
+
+const codingAgentProfileFor = (
+  classification: CodingWorkflowClassification,
+): CodingAgentProfile =>
+  classification.workflowClass === 'claude_agent_task'
+    ? CLAUDE_AGENT_PROFILE
+    : CODEX_AGENT_PROFILE
 
 export type CodingDelegationInput = Readonly<{
   classification: CodingWorkflowClassification
@@ -347,30 +418,28 @@ const spawnRefsFromBody = (
 const codingAssignmentFromInput = (
   input: CodingDelegationInput,
   objectiveSummary: string | null,
+  profile: CodingAgentProfile,
   accountRefHash: string | null,
 ): Record<string, unknown> => {
   const workspace = rawWorkspaceFromBody(input.rawBody)
 
   return {
-    codex: {
-      agentKind: 'codex_sdk',
-      schema: CODEX_AGENT_TASK_SCHEMA,
-      ...(workspace === null
-        ? { fixtureRef: CODEX_AGENT_SUM_REPAIR_FIXTURE_REF }
-        : {}),
-      // #6354: pin the target Codex account so the dispatch gate scopes
+    [profile.agentAssignmentKey]: {
+      agentKind: profile.agentKind,
+      schema: profile.taskSchema,
+      ...(workspace === null ? { fixtureRef: profile.fixtureRef } : {}),
+      // #6354: pin the target account so the dispatch gate scopes
       // capacity/leases to it and the Pylon runs on that account's home.
+      // Per-account capacity is currently Codex-only; for Claude this is null.
       ...(accountRefHash === null ? {} : { accountRefHash }),
       timeoutSeconds: 1200,
     },
     objective: {
       objectiveRef: workflowRef(input.classification),
-      publicSummary:
-        objectiveSummary ??
-        'Run the caller-owned Khala coding workflow on a linked local Codex Pylon.',
+      publicSummary: objectiveSummary ?? profile.objectiveFallback,
     },
     ...(workspace === null ? {} : { workspace }),
-    requiredCapabilityRefs: [CODEX_AGENT_CAPABILITY_REF],
+    requiredCapabilityRefs: [profile.capabilityRef],
     routing: {
       durableStreamRef: khalaCodingRequestIdRef(input.requestId),
       schema: 'openagents.khala.coding_delegation.v1',
@@ -383,6 +452,7 @@ const assignmentRequestFromInput = (
   objectiveSummary: string | null,
   pylonRef: string,
   spawnRefs: ReadonlyArray<string>,
+  profile: CodingAgentProfile,
   accountRefHash: string | null,
 ): PylonApiCreateAssignmentRequest => ({
   acceptanceCriteriaRefs: [
@@ -400,21 +470,22 @@ const assignmentRequestFromInput = (
   codingAssignment: codingAssignmentFromInput(
     input,
     objectiveSummary,
+    profile,
     accountRefHash,
   ),
   forumAutoPublishAllowed: false,
   idempotencyRefs: ['idempotency.public.khala_coding.request'],
-  jobKind: 'codex_agent_task',
+  jobKind: profile.jobKind,
   leaseSeconds: 3600,
   noDuplicateAssignmentRefs: ['dedupe.public.pylon_assignment.active_lease'],
   noForumAutoPublishRefs: ['policy.public.no_forum_auto_publish'],
   operatorPauseRefs: ['pause.public.khala_coding.kill_switch_default_off'],
   paymentMode: 'unpaid_smoke',
   pylonRef,
-  requiredCapabilityRefs: [CODEX_AGENT_CAPABILITY_REF],
+  requiredCapabilityRefs: [profile.capabilityRef],
   resultExpectationRefs: ['result.public.khala_coding.worker_closeout'],
   rollbackRefs: ['rollback.public.khala_coding.assignment_cancel'],
-  selectionPolicyRefs: ['selection.public.khala_coding.codex_first'],
+  selectionPolicyRefs: [profile.selectionPolicyRef],
   spendCapRefs: [],
   taskRefs: [
     workflowRef(input.classification),
@@ -444,85 +515,101 @@ const hasFreshOnlineHeartbeat = (
   )
 }
 
-const hasCodexCapability = (
+const hasAgentCapability = (
   registration: PylonApiRegistrationRecord,
-): boolean =>
-  registration.capabilityRefs.includes(CODEX_AGENT_CAPABILITY_REF)
+  profile: CodingAgentProfile,
+): boolean => registration.capabilityRefs.includes(profile.capabilityRef)
 
-// #6354: when an account is requested AND the heartbeat advertises per-account
-// capacity for it, availability is checked against THAT account's slots so a
-// saturated account A does not hide account B's free capacity. With no requested
-// account (or no per-account refs advertised), this falls back to the pooled
-// codex availability, preserving legacy behavior.
-const hasAvailableCodexCapacity =
-  (accountKey: string | null) =>
-  (registration: PylonApiRegistrationRecord): boolean => {
-    if (!hasCodexCapability(registration)) {
-      return false
-    }
+// #6354/#6388: capacity admission, per-agent (Codex|Claude) and, for Codex,
+// per-account. When a Codex account is requested AND the heartbeat advertises
+// per-account capacity for it, availability is checked against THAT account's
+// slots so a saturated account A does not hide account B's free capacity.
+// Otherwise (no requested account, no per-account refs, or the Claude lane,
+// which has no per-account capacity yet) this falls back to the pooled
+// per-service availability.
+const hasPooledServiceCapacity = (
+  registration: PylonApiRegistrationRecord,
+  profile: CodingAgentProfile,
+): boolean =>
+  pylonCodingServiceCapacityProjection(registration).some(
+    capacity =>
+      capacity.service === profile.capacityService && capacity.available > 0,
+  )
+
+const hasAvailableAgentCapacity = (
+  registration: PylonApiRegistrationRecord,
+  profile: CodingAgentProfile,
+  accountKey: string | null,
+): boolean => {
+  if (!hasAgentCapability(registration, profile)) {
+    return false
+  }
+  if (profile.capacityService === 'codex' && accountKey !== null) {
     const accountCapacity = pylonCodexAccountCapacity(registration, accountKey)
     if (accountCapacity !== null) {
       return accountCapacity.available > 0
     }
-    return pylonCodingServiceCapacityProjection(registration).some(
-      capacity => capacity.service === 'codex' && capacity.available > 0,
-    )
   }
+  return hasPooledServiceCapacity(registration, profile)
+}
 
-// #6354: name exactly which admission sub-condition failed so a refused
+// #6354/#6388: name exactly which admission sub-condition failed so a refused
 // caller-owned coding delegation is debuggable instead of an opaque 409. The
 // gate admits a Pylon only when it is active AND heartbeat-fresh AND
-// Codex-capable AND advertising codex `available>0`; this reports the failing
-// sub-conditions for the targeted Pylon ("active" vs "fresh" vs "codex-capable"
-// vs "available"), preferring the registration that is closest to dispatchable.
-type CodexAdmissionSubCondition =
+// agent-capable (Codex or Claude) AND advertising that service's `available>0`;
+// this reports the failing sub-conditions for the targeted Pylon ("active" vs
+// "fresh" vs "agent-capable" vs "available"), preferring the registration that
+// is closest to dispatchable. Sub-condition names are kept service-neutral so
+// the same diagnosis covers both the Codex and Claude lanes.
+type AgentAdmissionSubCondition =
   | 'not_active'
   | 'stale_or_missing_heartbeat'
-  | 'not_codex_capable'
-  | 'no_available_codex_capacity'
+  | 'not_agent_capable'
+  | 'no_available_agent_capacity'
 
-const codexAdmissionFailures = (
+const agentAdmissionFailures = (
   registration: PylonApiRegistrationRecord,
   nowIso: string,
+  profile: CodingAgentProfile,
   accountKey: string | null,
-): ReadonlyArray<CodexAdmissionSubCondition> => {
-  const failures: CodexAdmissionSubCondition[] = []
+): ReadonlyArray<AgentAdmissionSubCondition> => {
+  const failures: AgentAdmissionSubCondition[] = []
   if (registration.status !== 'active') {
     failures.push('not_active')
   }
   if (!hasFreshOnlineHeartbeat(registration, nowIso)) {
     failures.push('stale_or_missing_heartbeat')
   }
-  if (!hasCodexCapability(registration)) {
-    failures.push('not_codex_capable')
+  if (!hasAgentCapability(registration, profile)) {
+    failures.push('not_agent_capable')
   }
-  const accountCapacity = pylonCodexAccountCapacity(registration, accountKey)
+  const accountCapacity =
+    profile.capacityService === 'codex' && accountKey !== null
+      ? pylonCodexAccountCapacity(registration, accountKey)
+      : null
   const hasCapacity =
     accountCapacity !== null
       ? accountCapacity.available > 0
-      : pylonCodingServiceCapacityProjection(registration).some(
-          capacity => capacity.service === 'codex' && capacity.available > 0,
-        )
+      : hasPooledServiceCapacity(registration, profile)
   if (!hasCapacity) {
-    failures.push('no_available_codex_capacity')
+    failures.push('no_available_agent_capacity')
   }
   return failures
 }
 
-const diagnoseCodexUnavailability = (
+const diagnoseAgentUnavailability = (
   registrations: ReadonlyArray<PylonApiRegistrationRecord>,
   nowIso: string,
+  profile: CodingAgentProfile,
   accountKey: string | null,
 ): Readonly<{
   evidenceRefs: ReadonlyArray<string>
   reason: string
 }> => {
-  const reasonText: Record<CodexAdmissionSubCondition, string> = {
-    no_available_codex_capacity:
-      'it is not advertising any available Codex capacity (heartbeat codex available=0)',
+  const reasonText: Record<AgentAdmissionSubCondition, string> = {
+    no_available_agent_capacity: `it is not advertising any available ${profile.label} capacity (heartbeat ${profile.capacityService} available=0)`,
     not_active: 'it is not active',
-    not_codex_capable:
-      'it is not Codex-capable (the heartbeat is not publishing the local Codex capability)',
+    not_agent_capable: `it is not ${profile.label}-capable (the heartbeat is not publishing the local ${profile.label} capability)`,
     stale_or_missing_heartbeat: 'its online heartbeat is stale or missing',
   }
   const best =
@@ -530,23 +617,42 @@ const diagnoseCodexUnavailability = (
       ? null
       : registrations
           .map(registration => ({
-            failures: codexAdmissionFailures(registration, nowIso, accountKey),
+            failures: agentAdmissionFailures(
+              registration,
+              nowIso,
+              profile,
+              accountKey,
+            ),
           }))
           .sort((left, right) => left.failures.length - right.failures.length)[0]
   const failures =
     best === null || best === undefined
-      ? (['not_active'] as ReadonlyArray<CodexAdmissionSubCondition>)
+      ? (['not_active'] as ReadonlyArray<AgentAdmissionSubCondition>)
       : best.failures
+  // Emit service-specific evidence ref suffixes (`not_codex_capable` /
+  // `no_available_codex_capacity` for the Codex lane, the `claude` equivalents
+  // for the Claude lane) so each lane's refusal is grep-able on its own and the
+  // pre-existing Codex contract is preserved verbatim.
+  const failureRefSuffix = (failure: AgentAdmissionSubCondition): string => {
+    switch (failure) {
+      case 'not_agent_capable':
+        return `not_${profile.capacityService}_capable`
+      case 'no_available_agent_capacity':
+        return `no_available_${profile.capacityService}_capacity`
+      default:
+        return failure
+    }
+  }
   return {
     evidenceRefs: [
       'evidence.khala_coding.target_pylon_ref.unavailable',
       ...failures.map(
         failure =>
-          `evidence.khala_coding.target_pylon_ref.unavailable.${failure}`,
+          `evidence.khala_coding.target_pylon_ref.unavailable.${failureRefSuffix(failure)}`,
       ),
     ],
     reason:
-      'The requested linked Pylon cannot take a Codex coding assignment because ' +
+      `The requested linked Pylon cannot take a ${profile.label} coding assignment because ` +
       `${failures.map(failure => reasonText[failure]).join('; ')}.`,
   }
 }
@@ -678,6 +784,7 @@ const delegateCodingWorkflowUnsafe = async (
     return target.rejection
   }
 
+  const profile = codingAgentProfileFor(input.classification)
   const objectiveSummary = objectiveSummaryFromBody(input.rawBody)
   if (objectiveSummary.kind === 'rejected') {
     return objectiveSummary.rejection
@@ -757,13 +864,16 @@ const delegateCodingWorkflowUnsafe = async (
   const candidates = authorizedRegistrations
     .filter(registration => registration.status === 'active')
     .filter(registration => hasFreshOnlineHeartbeat(registration, input.nowIso))
-    .filter(hasAvailableCodexCapacity(targetAccountKey))
+    .filter(registration =>
+      hasAvailableAgentCapacity(registration, profile, targetAccountKey),
+    )
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
 
   if (target.kind === 'target' && candidates.length === 0) {
-    const diagnosis = diagnoseCodexUnavailability(
+    const diagnosis = diagnoseAgentUnavailability(
       authorizedRegistrations,
       input.nowIso,
+      profile,
       targetAccountKey,
     )
     return {
@@ -783,6 +893,7 @@ const delegateCodingWorkflowUnsafe = async (
       objectiveSummary.summary,
       registration.pylonRef,
       spawnRefs.refs,
+      profile,
       targetAccountRefHash,
     )
     const activeAssignments = await (async () => {

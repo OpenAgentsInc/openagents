@@ -202,10 +202,16 @@ const workflowArg = (
 ): PylonKhalaWorkflow | undefined => {
   const value = stringArg(args, "workflow")
   if (value === undefined) return undefined
-  if (value === "cloud_coding_session" || value === "codex_agent_task") {
+  if (
+    value === "claude_agent_task" ||
+    value === "cloud_coding_session" ||
+    value === "codex_agent_task"
+  ) {
     return value
   }
-  throw new Error("workflow must be cloud_coding_session or codex_agent_task")
+  throw new Error(
+    "workflow must be claude_agent_task, cloud_coding_session, or codex_agent_task",
+  )
 }
 
 const requireAgentToken = (network: TipsNetworkOptions): string => {

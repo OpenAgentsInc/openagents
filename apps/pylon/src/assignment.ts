@@ -1701,9 +1701,16 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
       run: async () =>
         (await executeTassadarAssignment(lease, observedAtDate)) ??
         (await executeClaudeAgentAssignment(state, lease, observedAtDate, {
+          // agentToken + baseUrl + fetch let the executor post the exact
+          // own-capacity Claude turn token usage (#6391). Account env stays the
+          // executor's prior default-resolution path (not the codex-resolved
+          // account) so Claude credentials are not crossed with Codex.
+          ...(options.agentToken === undefined ? {} : { agentToken: options.agentToken }),
+          baseUrl: options.baseUrl,
           ...(options.claudeAgentCheckoutRunner === undefined ? {} : { checkoutRunner: options.claudeAgentCheckoutRunner }),
           ...(options.claudeAgentRunner === undefined ? {} : { claudeAgentRunner: options.claudeAgentRunner }),
           ...(options.claudeAgentProbe === undefined ? {} : { claudeAgentProbe: options.claudeAgentProbe }),
+          ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
         })) ??
         (await executeCodexAgentAssignment(state, lease, observedAtDate, {
           ...(options.agentToken === undefined ? {} : { agentToken: options.agentToken }),

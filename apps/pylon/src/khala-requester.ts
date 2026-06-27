@@ -6,6 +6,7 @@ import { assertPublicSafe } from "./work-requester.js"
 export const KHALA_REQUEST_MODEL = "openagents/khala"
 
 export type PylonKhalaWorkflow =
+  | "claude_agent_task"
   | "cloud_coding_session"
   | "codex_agent_task"
 

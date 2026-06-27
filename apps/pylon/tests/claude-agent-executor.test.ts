@@ -83,7 +83,7 @@ const fixingRunner: ClaudeAgentRunner = async (input) => {
     join(input.cwd, "sum.ts"),
     "export const sum = (left: number, right: number) => left + right\n",
   )
-  return { outcome: "completed", turnCount: 3, editedFileCount: 1, commandCount: 1, sessionRef: null }
+  return { outcome: "completed", turnCount: 3, editedFileCount: 1, commandCount: 1, sessionRef: null , usage: { inputTokens: 1200, cachedInputTokens: 0, outputTokens: 340 } }
 }
 
 const checkoutRunner: ClaudeAgentCheckoutRunner = async (workspace) => {
@@ -115,6 +115,7 @@ const idleRunner: ClaudeAgentRunner = async () => ({
   editedFileCount: 0,
   commandCount: 0,
   sessionRef: null,
+  usage: null,
 })
 
 async function withState<T>(fn: (state: Awaited<ReturnType<typeof ensurePylonLocalState>>) => Promise<T>) {
@@ -248,6 +249,7 @@ describe("claude agent task recognition", () => {
           editedFileCount: 0,
           commandCount: 0,
           sessionRef: null,
+          usage: null,
         })
         const record = await executeClaudeAgentAssignment(state, lease, now, {
           claudeAgentRunner: runner,
