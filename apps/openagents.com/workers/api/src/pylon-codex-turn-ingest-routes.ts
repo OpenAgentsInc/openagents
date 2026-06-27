@@ -469,9 +469,10 @@ const boundedProofRefs = (
 
 const closeoutPolicyFromEvents = (
   events: ReadonlyArray<PylonApiEventRecord>,
+  assignment: PylonApiAssignmentRecord,
 ): PylonCodexAssignmentCloseoutPolicy => {
-  const event = events.find(row => row.eventKind === 'worker_closeout')
-  if (event === undefined) {
+  const closeoutEvent = events.find(row => row.eventKind === 'worker_closeout')
+  if (closeoutEvent === undefined) {
     return {
       paymentMode: 'unknown',
       payoutClaimAllowed: null,
@@ -479,20 +480,29 @@ const closeoutPolicyFromEvents = (
       source: 'unavailable',
     }
   }
-  const body = event.eventBody
+  const body = closeoutEvent.eventBody
+  const codingAssignment = assignment.codingAssignment as
+    | { readonly budget?: { readonly paymentMode?: unknown } }
+    | null
   const paymentMode =
     body.paymentMode === 'no-spend' || body.paymentMode === 'paid'
       ? body.paymentMode
-      : 'unknown'
+      : codingAssignment?.budget?.paymentMode === 'buyer_funded'
+        ? 'paid'
+        : 'no-spend'
   const settlementState =
     body.settlementState === 'not_applicable' ||
     body.settlementState === 'pending' ||
     body.settlementState === 'settled'
       ? body.settlementState
+      : paymentMode === 'no-spend'
+        ? 'not_applicable'
       : 'unknown'
   const payoutClaimAllowed =
     typeof body.payoutClaimAllowed === 'boolean'
       ? body.payoutClaimAllowed
+      : paymentMode === 'no-spend'
+        ? false
       : null
   return {
     paymentMode,
@@ -2122,6 +2132,7 @@ const assignmentRefFromProofRequest = (
 const readCloseoutPolicy = <Bindings>(
   dependencies: PylonCodexTurnIngestDependencies<Bindings>,
   env: Bindings,
+  assignment: PylonApiAssignmentRecord,
   assignmentRef: string,
   operation: string,
 ): Effect.Effect<PylonCodexAssignmentCloseoutPolicy, PylonCodexStorageError> =>
@@ -2135,7 +2146,7 @@ const readCloseoutPolicy = <Bindings>(
       const events = await dependencies
         .pylonStore(env)
         .listEventsForAssignment(assignmentRef, 25)
-      return closeoutPolicyFromEvents(events)
+      return closeoutPolicyFromEvents(events, assignment)
     },
   })
 
@@ -2165,6 +2176,7 @@ const routeProof = <Bindings>(
     const closeoutPolicy = yield* readCloseoutPolicy(
       dependencies,
       env,
+      assignment,
       assignmentRef,
       'pylon_codex_assignment_proof_read',
     )
@@ -2214,6 +2226,7 @@ const routeTraceStatus = <Bindings>(
     const closeoutPolicy = yield* readCloseoutPolicy(
       dependencies,
       env,
+      assignment,
       assignmentRef,
       'pylon_codex_assignment_trace_status_read',
     )

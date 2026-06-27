@@ -146,9 +146,7 @@ class MemoryPylonStore {
             assignmentRef,
             createdAt: nowIso,
             eventBody: {
-              paymentMode: 'no-spend',
-              payoutClaimAllowed: false,
-              settlementState: 'not_applicable',
+              closeoutRefs: ['assignment.closeout.summary.fixture'],
             },
             eventKind: 'worker_closeout',
             eventRef: 'event.pylon_codex.worker_closeout',
