@@ -312,3 +312,14 @@ runner (Option B) until the S/M economics and endpoint behavior are proven.
   (`inspect.aisi.org.uk`); METR Hawk (`github.com/metr/hawk`).
 </content>
 </invoke>
+
+## Addendum — MirrorCode paper insights (MirrorCode_8ae911f.pdf, Epoch AI et al.; read 2026-06-27)
+
+- **Definition:** reimplement entire CLI programs **from behavior alone** — execute-only access to the reference binary + visible tests + docs, **no source, no internet**; output must match byte-exact on end-to-end tests, including ~**34% HIDDEN** held-out tests (cheat-proof). 25 targets (Unix utils, serialization/query, bioinformatics, interpreters, static analysis, crypto, compression) across 6 languages (Python/C/Rust/Go/OCaml/Ada). **22/25 public** (132 task instances); 3 private held out. Buckets **S=10, M=11, L=4**.
+- **Scaffold (what our runner uses):** Inspect **ReAct** agent + `text_editor` + `evaluate_testcases` (scores vs visible tests, non-terminal) + `submit`, in a **Docker** sandbox (execute-only target binary + language toolchain). Run with `openagents/khala` as the Inspect model.
+- **Token budgets = THE burn lever:** **1B tokens per S/M task, 10B per L task.** One S/M run ≈ our entire **4x daily target (~1.3B) in a single useful job**; on Khala's own fleet that is our serving cost, not frontier $$. (Reference: 10B ≈ $5,000 on a frontier model; `gotree` (16K-line Go) solved in 14h / $251 / 2000-2001 tests.)
+- **Scoring:** 100%-tests-passing = solved (stringent); ≥99% = near-perfect.
+- **Frontier baselines (paper-reference; model ids forward-dated/illustrative — LABEL as such):** Claude Opus 4.7 **56%** perfect / 77% ≥99% (only model to solve Large); GPT-5.5 **44%** / 57%; Gemini 3.1 Pro Preview **32%** / 44%. 17/25 had ≥1 perfect run; `ruff` hardest. Solve rates ~equal across languages (generalized skill, not syntax memorization).
+- **Official leaderboard:** Epoch is launching one at **epoch.ai/MirrorCode** — frame ours as **"Khala on MirrorCode"** next to those baselines.
+- **Common failure modes:** edge cases (~40%), missing requirements (~10%), brittle/narrow (~5%), premature submission.
+- **Product framing ("MirrorCode-as-a-Service"):** "point Khala at a CLI tool → it reimplements it from behavior alone, verified by tests." Hero demo = Khala reproducing real software (gotree-style). The benchmark validates the product.
