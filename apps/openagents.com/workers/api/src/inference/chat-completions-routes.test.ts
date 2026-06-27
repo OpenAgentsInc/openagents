@@ -592,6 +592,55 @@ describe('coding delegation default-on guard', () => {
     )
   })
 
+  test('agent-owned Pylon dispatch uses explicit target read when indexed capacity reads fail', async () => {
+    const targetRegistration = codingPylonRegistration()
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          ...helloBody,
+          openagents: {
+            coding: {
+              targetPylonRef: 'pylon.owner.codex',
+            },
+            workflowClass: 'codex_agent_task',
+          },
+        }),
+        baseDeps({
+          authenticate: async () => ({ accountRef: 'agent:agent_owner' }),
+          codingDelegation: {
+            agentStore: linkedCodingAgentStore,
+            pylonStore: {
+              ...codingPylonStore([targetRegistration]),
+              listRegistrationsForOwnerAgentUserIds: async () => {
+                throw new Error('capacity index temporarily unavailable')
+              },
+              listRegistrations: async () => {
+                throw new Error('capacity table temporarily unavailable')
+              },
+              readRegistration: async (pylonRef: string) =>
+                pylonRef === targetRegistration.pylonRef
+                  ? targetRegistration
+                  : undefined,
+            } as unknown as PylonApiStore,
+            resolveOpenAuthUserId: async () => undefined,
+          },
+          newId: () => 'request_target_capacity_read_fallback',
+          nowEpochSeconds: () => 0,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toContain('text/event-stream')
+    expect(response.headers.get('openagents-coding-assignment-ref')).toBe(
+      'assignment.public.khala_coding.request_target_capacity_read_fallback',
+    )
+    const text = await response.text()
+    expect(text).toContain(
+      'Coding workflow delegated to linked Pylon pylon.owner.codex',
+    )
+  })
+
   test('agent-owned Pylon dispatch returns typed 503 when all capacity reads reject generically', async () => {
     const response = await run(
       handleChatCompletions(

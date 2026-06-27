@@ -327,6 +327,17 @@ operator view of what remains, not a public product claim.
   linked-agent read, linked-owner registration read, assignment-list read, and
   assignment-create failures, and lets direct agent-token requests continue
   through self-agent scope if OpenAuth owner resolution is transiently down.
+- 2026-06-27T08:00Z #6318 staged retry after Worker
+  `85ebf9c1-6c3a-4d58-87ed-933e64efd46c`: the typed Pylon/Codex dispatch still
+  failed before assignment, but now reported the exact stage:
+  `linked owner registration read`. That produced no assignment, trace, proof,
+  raw-event row, or token row. The current local fix adds an explicit-target
+  registration fallback: when `--pylon-ref` is present and indexed linked-owner
+  reads fail, the gate reads `readRegistration(targetPylonRef)`, filters it by
+  the caller's linked owner-agent ids, and only then admits it as candidate
+  capacity. Focused coverage proves the pure gate and chat route recover when
+  scoped and broad reads both fail but the direct target read succeeds; if all
+  three reads fail, the route still returns typed store-unavailable evidence.
 - 2026-06-27T06:28Z #6318 post-deploy smoke after Worker
   `e7cb0683-58f4-48ac-836e-8bca3082d0ab`: Pylon/Codex assignment
   `assignment.public.khala_coding.chatcmpl_b5ccba76058f48d58b903948cd396672`
@@ -832,8 +843,9 @@ Make the fleet trustworthy before pushing load through it.
      `d3571d83-ecdb-40e0-8af4-08fe14f7ed1e` deployment; the issue remains the
      hard gate before stress load until actual live saturation/preemption proof
      exists. The current dispatch-gate fix is reliability hardening for
-     Khala/Pylon assignment creation only; it does not satisfy the #6318 live
-     scheduler proof.
+     Khala/Pylon assignment creation only; it now includes staged diagnostics
+     and explicit-target registration recovery for typed Pylon/Codex dispatch,
+     but it does not satisfy the #6318 live scheduler proof.
 9. **#6317 — continuous max-capacity stress/saturation harness. → after #6318, #6320.**
    The self-driving load that saturates the fleet, ramps concurrency to the ceiling, and
    auto-backs-off on external pressure.

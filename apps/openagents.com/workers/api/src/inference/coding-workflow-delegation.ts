@@ -325,7 +325,37 @@ const codingDelegationStoreUnavailableRejection = (
 const listRegistrationsForLinkedOwnerAgents = async (
   pylonStore: PylonApiStore,
   ownerAgentUserIds: ReadonlyArray<string>,
+  targetPylonRef: string | null,
 ): Promise<ReadonlyArray<PylonApiRegistrationRecord>> => {
+  const readTargetAndFilter = async () => {
+    if (targetPylonRef === null) {
+      return null
+    }
+    try {
+      const registration = await pylonStore.readRegistration(targetPylonRef)
+      return registration !== undefined &&
+        ownerAgentUserIds.includes(registration.ownerAgentUserId)
+        ? [registration]
+        : []
+    } catch (error) {
+      if (error instanceof PylonApiStoreError) {
+        throw error
+      }
+      throw new PylonApiStoreError({
+        kind: 'storage_error',
+        reason: 'target linked Pylon registration read failed',
+      })
+    }
+  }
+
+  const tryReadTargetAndFilter = async () => {
+    try {
+      return await readTargetAndFilter()
+    } catch {
+      return null
+    }
+  }
+
   const listAllAndFilter = async () => {
     try {
       return (await pylonStore.listRegistrations(200)).filter(registration =>
@@ -343,6 +373,10 @@ const listRegistrationsForLinkedOwnerAgents = async (
   }
 
   if (pylonStore.listRegistrationsForOwnerAgentUserIds === undefined) {
+    const targetRegistration = await tryReadTargetAndFilter()
+    if (targetRegistration !== null) {
+      return targetRegistration
+    }
     return listAllAndFilter()
   }
 
@@ -352,6 +386,10 @@ const listRegistrationsForLinkedOwnerAgents = async (
       200,
     )
   } catch {
+    const targetRegistration = await tryReadTargetAndFilter()
+    if (targetRegistration !== null) {
+      return targetRegistration
+    }
     return listAllAndFilter()
   }
 }
@@ -416,6 +454,7 @@ const delegateCodingWorkflowUnsafe = async (
   const registrations = await listRegistrationsForLinkedOwnerAgents(
     input.pylonStore,
     ownerAgentUserIds,
+    target.kind === 'target' ? target.pylonRef : null,
   )
 
   const authorizedRegistrations =

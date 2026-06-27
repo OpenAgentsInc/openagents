@@ -42,6 +42,12 @@ Short answer:
   yet. This change hardens the gate so a generic failure in the scoped linked-
   owner registration read falls back to the broad registration read before
   returning the typed store-unavailable 503.
+- The next #6318 retry used those stage diagnostics and proved the failing
+  production stage was `linked owner registration read`. The explicit
+  `--pylon-ref` path now has a targeted recovery read:
+  `readRegistration(targetPylonRef)` filtered by the caller's linked owner agent
+  ids. That keeps caller-owned scoping intact while avoiding a failing owner
+  index or broad scan when the request already names the target Pylon.
 - The trace read token and proof token are not interchangeable in every case:
   a Khala/local token linked to the same OpenAuth owner can read owner-only
   traces, while the Pylon/Codex proof route requires the exact assignment-owning
@@ -963,6 +969,34 @@ hardening patch adds public-safe stage evidence refs and one missing fallback:
 The expected behavior after this patch is either successful assignment creation
 or a 503 that says which public-safe stage failed. A pre-assignment 503 still
 does not create a trace, raw-event stream, token row, or assignment proof.
+
+The `2026-06-27T08:00Z` retry after this stage-diagnostic deploy returned:
+
+```text
+503: The Khala coding dispatch gate could not read linked Pylon capacity right
+now at stage "linked owner registration read".
+```
+
+That confirmed the production failure was still pre-assignment and specifically
+inside the linked-owner registration read path. The local D1 inspection already
+showed the target Pylon registration and OpenAuth-agent link existed, so the
+right recovery is not a broader authorization rule. The targeted fix is:
+
+- when the request carries an explicit `targetPylonRef`, attempt
+  `readRegistration(targetPylonRef)` after a scoped owner-registration read
+  fails or is unavailable;
+- filter that direct registration by the exact caller-linked
+  `ownerAgentUserId` set before it can become a candidate;
+- use the existing broad registration fallback only when no explicit target
+  registration can be read;
+- if all registration reads fail, keep the same typed
+  `coding_delegation_store_unavailable` / `linked_owner_registration_read`
+  evidence instead of creating an opaque 500.
+
+Focused coverage now includes both the pure delegation gate and the chat route:
+scoped read fails, broad read fails, target read succeeds, and the route still
+returns the coding-delegation SSE with an assignment ref. The failure case now
+requires all three reads to fail.
 
 ## Token Counter Timing Clarification
 
