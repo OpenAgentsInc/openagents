@@ -7,6 +7,7 @@ import { dirname, join, resolve } from "node:path"
 import { Effect, Schema as S } from "effect"
 
 import { runChatTurn } from "./client.js"
+import { spawnProcess } from "./proc.js"
 import { type ChatMode, type KhalaChatMessage } from "./types.js"
 
 export type KhalaCodexStatus =
@@ -103,13 +104,13 @@ type CodexThreadEvent = {
   }
 }
 
-export function khalaHome(env: Record<string, string | undefined> = Bun.env): string {
+export function khalaHome(env: Record<string, string | undefined> = process.env): string {
   const explicit = env.KHALA_HOME?.trim()
   if (explicit) return resolveHome(explicit)
   return join(homedir(), ".khala")
 }
 
-export function defaultKhalaCodexHome(env: Record<string, string | undefined> = Bun.env): string {
+export function defaultKhalaCodexHome(env: Record<string, string | undefined> = process.env): string {
   return join(khalaHome(env), "codex", "default")
 }
 
@@ -118,13 +119,13 @@ export async function connectKhalaCodex(input: {
   readonly force?: boolean | undefined
   readonly home?: string | undefined
 } = {}): Promise<{ readonly codexHome: string; readonly status: "connected" | "already_connected" }> {
-  const env = input.env ?? Bun.env
+  const env = input.env ?? process.env
   const codexHome = resolveHome(input.home?.trim() || defaultKhalaCodexHome(env))
   await forceCodexFileCredentialStore(codexHome)
   if (!input.force && await codexHomeHasLogin(codexHome)) {
     return { codexHome, status: "already_connected" }
   }
-  const child = Bun.spawn(["codex", "login", "--device-auth"], {
+  const child = spawnProcess(["codex", "login", "--device-auth"], {
     env: {
       ...process.env,
       ...env,
@@ -145,7 +146,7 @@ export async function connectKhalaCodex(input: {
 }
 
 export async function resolveKhalaCodexStatus(
-  env: Record<string, string | undefined> = Bun.env,
+  env: Record<string, string | undefined> = process.env,
 ): Promise<KhalaCodexStatus> {
   const sdk = await codexSdkAvailable() ? "available" : "missing"
   const homes = await candidateCodexHomes(env)
@@ -176,7 +177,7 @@ export async function resolveKhalaCodexStatus(
 }
 
 export async function runKhalaCodexTask(options: KhalaCodexRunOptions): Promise<KhalaCodexRunResult> {
-  const env = options.env ?? Bun.env
+  const env = options.env ?? process.env
   const status = await resolveKhalaCodexStatus(env)
   if (!status.ready) {
     throw new Error(status.blocker === "codex_sdk_missing"
@@ -278,7 +279,7 @@ export async function selectKhalaRoute(input: {
   readonly prompt: string
   readonly token?: string | undefined
 }): Promise<KhalaRouteSelection> {
-  if ((input.env ?? Bun.env).KHALA_CODEX_AUTO === "off") {
+  if ((input.env ?? process.env).KHALA_CODEX_AUTO === "off") {
     return { route: "chat", reason: "local Codex auto-routing disabled" }
   }
   const selectorPrompt = [

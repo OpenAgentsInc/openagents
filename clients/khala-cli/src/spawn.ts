@@ -4,6 +4,7 @@ import { mkdir, readdir, readFile, writeFile } from "node:fs/promises"
 import { dirname, join, resolve } from "node:path"
 
 import { khalaHome, runKhalaCodexTask, type KhalaCodexRunResult } from "./codex.js"
+import { spawnProcess } from "./proc.js"
 import { DEFAULT_BASE_URL } from "./types.js"
 
 export const KHALA_SPAWN_RUN_SCHEMA = "openagents.khala.spawn_run.v0.1"
@@ -170,7 +171,7 @@ export function cleanSpawnObjective(value: string): string {
   return objective
 }
 
-export function spawnRoot(env: Record<string, string | undefined> = Bun.env): string {
+export function spawnRoot(env: Record<string, string | undefined> = process.env): string {
   return join(khalaHome(env), "spawn")
 }
 
@@ -179,7 +180,7 @@ export function spawnRunDir(env: Record<string, string | undefined>, runRef: str
 }
 
 export async function runKhalaSpawn(options: KhalaSpawnRunOptions): Promise<KhalaSpawnRun> {
-  const env = options.env ?? Bun.env
+  const env = options.env ?? process.env
   const requestedStrategy = options.strategy ?? "auto"
   if (requestedStrategy === "pylon") {
     return runPylonKhalaSpawn(options, env)
@@ -332,7 +333,7 @@ export async function refreshKhalaPylonSpawnRun(input: {
   readonly token?: string | undefined
 }): Promise<KhalaSpawnRun> {
   if (input.run.strategy !== "pylon_codex_assignments") return input.run
-  const env = input.env ?? Bun.env
+  const env = input.env ?? process.env
   const projection = decodePylonSpawnStatusProjection(await callKhalaSpawnMcpTool({
     baseUrl: input.baseUrl,
     env,
@@ -708,7 +709,7 @@ function stringArrayValue(record: Record<string, unknown>, key: string): readonl
 }
 
 export async function listKhalaSpawnRuns(
-  env: Record<string, string | undefined> = Bun.env,
+  env: Record<string, string | undefined> = process.env,
 ): Promise<KhalaSpawnRunsProjection> {
   const dir = join(spawnRoot(env), "runs")
   await mkdir(dir, { recursive: true })
@@ -966,19 +967,19 @@ async function createLocalWorkerWorkspace(input: {
   const root = resolve(input.cwd)
   const workspace = join(spawnRoot(input.env), "worktrees", safeFilename(input.runRef), safeFilename(input.workerRef))
   await mkdir(dirname(workspace), { recursive: true })
-  const rev = Bun.spawn(["git", "rev-parse", "--is-inside-work-tree"], {
+  const rev = spawnProcess(["git", "rev-parse", "--is-inside-work-tree"], {
     cwd: root,
     stderr: "ignore",
     stdout: "ignore",
   })
   if (await rev.exited !== 0) return root
   if (existsSync(workspace)) return workspace
-  const proc = Bun.spawn(["git", "worktree", "add", "--detach", workspace, "HEAD"], {
+  const proc = spawnProcess(["git", "worktree", "add", "--detach", workspace, "HEAD"], {
     cwd: root,
     stderr: "pipe",
     stdout: "ignore",
   })
-  const stderr = await new Response(proc.stderr).text()
+  const stderr = await proc.stderr
   const exitCode = await proc.exited
   if (exitCode !== 0) {
     throw new Error(`git worktree add failed (${exitCode}): ${stderr.trim()}`)

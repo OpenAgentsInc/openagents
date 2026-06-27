@@ -1,8 +1,20 @@
 # Khala CLI
 
-Small Bun + Effect terminal client for Khala.
+A collective intelligence you chat with from your terminal. Free to use,
+streams answers live, no signup or API key required. Built with Effect; runs on
+plain Node or Bun.
 
 ```sh
+# Install and run (Node or Bun; npm works for everyone)
+npm install -g @openagentsinc/khala
+khala
+khala --prompt "Say hello in one short sentence."
+
+# Bring your own provider key (BYOK): run usage on your own provider account
+khala key add openrouter sk-or-v1-...
+khala key list
+khala key remove
+
 bunx @openagentsinc/khala --prompt "Say hello in one short sentence."
 khala feedback "The input ate my transcript."
 khala changelog
@@ -25,7 +37,11 @@ printf 'Say OK only.' | bun run khala -- --headless --json
 ```
 
 The published npm package is `@openagentsinc/khala`; it exposes the `khala`
-command through a Bun shebang, so Bun 1.3+ must be available on `PATH`.
+command through a Node shebang and is bundled for Node, so a global
+`npm install -g @openagentsinc/khala` works with either Node 20+ or Bun on
+`PATH`. The local Codex delegation features additionally need the optional
+`@openai/codex-sdk` dependency (installed with the package) plus a connected
+Codex account.
 
 "Khala CLI" names the command-line program surface: the `khala` command. It has
 two modes:

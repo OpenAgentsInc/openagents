@@ -1,6 +1,6 @@
 {
   "name": "@openagentsinc/khala",
-  "version": "0.1.18",
+  "version": "0.1.19",
   "description": "Khala terminal client with interactive and headless CLI modes",
   "private": false,
   "type": "module",
@@ -13,7 +13,7 @@
     "README.md"
   ],
   "scripts": {
-    "build": "bun build src/index.ts --target=bun --format=esm --outdir=dist",
+    "build": "bun build src/index.ts --target=node --format=esm --outdir=dist",
     "khala": "bun src/index.ts",
     "prepack": "bun run build",
     "test": "bun test src",

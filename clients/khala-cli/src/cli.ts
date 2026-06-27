@@ -12,6 +12,7 @@ import {
   type KhalaRouteSelection,
 } from "./codex.js"
 import { appendPromptHistory, readPromptFromTerminal } from "./input.js"
+import { readStdinText } from "./proc.js"
 import { openVerificationUrl, runKhalaLogin, type KhalaLoginResult } from "./login.js"
 import {
   cancelKhalaSpawn,
@@ -29,6 +30,18 @@ import {
 } from "./spawn.js"
 import { renderMarkdownForTerminal, renderReasoningMarkdownDeltaForTerminal, terminalStyle } from "./terminal.js"
 import { clearStoredAgentToken, ensureStoredAgentToken, readStoredAgentToken, traceTokenPath } from "./token-store.js"
+import {
+  clearProviderKey,
+  describeStoredProviderKey,
+  normalizeProviderName,
+  providerKeyPath,
+  readProviderKey,
+  redactProviderKey,
+  validateProviderKeyShape,
+  writeProviderKey,
+  type StoredProviderKey,
+  BYOK_PROVIDERS,
+} from "./provider-key.js"
 import { DEFAULT_BASE_URL, type ChatMode, type ChatTurnMetadata, type KhalaChatMessage, type KhalaCliError, type KhalaTokensResponse } from "./types.js"
 import { startKhalaAutoUpdate } from "./updater.js"
 
@@ -46,6 +59,12 @@ type ParsedCommand =
   | { readonly kind: "feedback"; readonly text: string | undefined }
   | { readonly kind: "help" }
   | { readonly kind: "info" }
+  | {
+      readonly kind: "key"
+      readonly action: "add" | "list" | "remove"
+      readonly provider: string | undefined
+      readonly key: string | undefined
+    }
   | { readonly kind: "login" }
   | { readonly kind: "logout" }
   | { readonly kind: "spawn"; readonly text: string | undefined }
@@ -83,7 +102,7 @@ interface ParsedArgs {
   readonly spawnWorkflow: KhalaSpawnWorkflow
 }
 
-export async function runKhalaCli(argv: ReadonlyArray<string>, env: Record<string, string | undefined> = Bun.env): Promise<number> {
+export async function runKhalaCli(argv: ReadonlyArray<string>, env: Record<string, string | undefined> = process.env): Promise<number> {
   let args: ParsedArgs
   try {
     args = parseArgs(argv, env)
@@ -194,6 +213,9 @@ export async function runKhalaCli(argv: ReadonlyArray<string>, env: Record<strin
       })}\n`)
       return 0
     }
+    if (args.command.kind === "key") {
+      return await runKeyCommand(args, env, args.command)
+    }
     if (args.command.kind === "login") {
       return await runLoginCommand(args, env)
     }
@@ -259,7 +281,14 @@ export async function runKhalaCli(argv: ReadonlyArray<string>, env: Record<strin
     await runInteractive(args, env)
     return 0
   } catch (error) {
-    printError(toKhalaCliError(error, "Khala CLI failed."))
+    const khalaError = toKhalaCliError(error, "Khala CLI failed.")
+    if (args.channel === "artanis") {
+      // Keep the headless --artanis failure as friendly as the interactive one:
+      // explain it is an owner-only channel instead of printing "unauthorized".
+      process.stderr.write(`khala: ${formatArtanisError(khalaError)}\n`)
+    } else {
+      printError(khalaError)
+    }
     return 1
   }
 }
@@ -404,6 +433,16 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
     command = { kind: "help" }
   } else if (maybeCommand === "info") {
     command = { kind: "info" }
+  } else if (maybeCommand === "key") {
+    const action = positional[1]?.trim().toLowerCase()
+    command = {
+      kind: "key",
+      action: action === "add" || action === "remove" || action === "rm" || action === "delete"
+        ? (action === "rm" || action === "delete" ? "remove" : action)
+        : "list",
+      provider: positional[2],
+      key: positional[3],
+    }
   } else if (maybeCommand === "login") {
     command = { kind: "login" }
   } else if (maybeCommand === "logout") {
@@ -467,9 +506,7 @@ async function runInteractive(args: ParsedArgs, env: Record<string, string | und
   // transcript so the two personas never share conversation context.
   let channel: Channel = args.channel
   const sessionId = createCliSessionId()
-  process.stdout.write(
-    `Khala CLI v${KHALA_CLI_VERSION}. Type /help for commands, /exit to quit.\n\n`,
-  )
+  process.stdout.write(`${welcomeBanner()}\n\n`)
   if (channel === "artanis") {
     process.stdout.write(`${artanisBanner()}\n\n`)
   }
@@ -550,6 +587,9 @@ async function runInteractive(args: ParsedArgs, env: Record<string, string | und
     }
 
     const prepared = prepareUserTurn(messages, prompt)
+    // Resolve BYOK per-turn so /key add and /key remove take effect live.
+    // Built on resolvedArgs so a stored `khala login` token is still honored.
+    const exec = await resolveChatExecution(resolvedArgs, env)
     const waitingDots = startWaitingDots()
     const beforeTurnOutput = (): void => {
       waitingDots.stop()
@@ -560,9 +600,11 @@ async function runInteractive(args: ParsedArgs, env: Record<string, string | und
       let markdownStreamBuffer = ""
       let reasoningStreamBuffer = ""
       const result = await Effect.runPromise(runChatTurn({
-        mode: resolvedArgs.mode,
+        mode: exec.mode,
         baseUrl: resolvedArgs.baseUrl,
-        token: resolvedArgs.token,
+        token: exec.token,
+        ...(exec.providerName === undefined ? {} : { providerName: exec.providerName }),
+        ...(exec.providerKey === undefined ? {} : { providerKey: exec.providerKey }),
         messages: prepared,
         onDelta: (delta) => {
           beforeTurnOutput()
@@ -650,6 +692,40 @@ async function handleSlashCommand(
         ? "Signed out. Cleared the stored Khala token."
         : "You were not signed in (no stored Khala token to clear)."
     }\n\n`)
+    return "handled"
+  }
+  if (command === "/key") {
+    const [sub = "", ...keyRest] = argument.split(/\s+/).filter(part => part.length > 0)
+    const action = sub.toLowerCase()
+    try {
+      if (action === "" || action === "list" || action === "status") {
+        process.stdout.write(`${terminalStyle.assistant("Khala:")} ${formatKeyStatus(await readProviderKey(env))}\n\n`)
+        return "handled"
+      }
+      if (action === "remove" || action === "rm" || action === "delete") {
+        const cleared = await clearProviderKey(env)
+        process.stdout.write(`${terminalStyle.assistant("Khala:")} ${
+          cleared
+            ? "Removed your stored provider key. Khala chats use the shared collective again."
+            : "No provider key was stored."
+        }\n\n`)
+        return "handled"
+      }
+      if (action === "add") {
+        const provider = normalizeProviderName(keyRest[0])
+        if (provider === undefined) {
+          process.stdout.write(`${terminalStyle.assistant("Khala:")} Usage: /key add <provider> <api-key>. Known providers: ${BYOK_PROVIDERS.join(", ")}.\n\n`)
+          return "handled"
+        }
+        const key = validateProviderKeyShape(keyRest.slice(1).join(" "))
+        const record = await writeProviderKey(env, { provider, key })
+        process.stdout.write(`${terminalStyle.assistant("Khala:")} ${formatKeyAdded(record, env)}\n\n`)
+        return "handled"
+      }
+      process.stdout.write(`${terminalStyle.assistant("Khala:")} Usage: /key, /key add <provider> <api-key>, or /key remove\n\n`)
+    } catch (error) {
+      process.stdout.write(`${terminalStyle.assistant("Khala:")} ${String(error instanceof Error ? error.message : error)}\n\n`)
+    }
     return "handled"
   }
   if (command === "/codex") {
@@ -846,10 +922,13 @@ async function runOneTurn(
   })
   if (routed.handled) return routed.text
   const messages = prepareUserTurn(history, prompt)
+  const exec = await resolveChatExecution(resolvedArgs, env)
   const result = await Effect.runPromise(runChatTurn({
-    mode: resolvedArgs.mode,
+    mode: exec.mode,
     baseUrl: resolvedArgs.baseUrl,
-    token: resolvedArgs.token,
+    token: exec.token,
+    ...(exec.providerName === undefined ? {} : { providerName: exec.providerName }),
+    ...(exec.providerKey === undefined ? {} : { providerKey: exec.providerKey }),
     messages,
     onDelta,
     onReasoning,
@@ -998,7 +1077,7 @@ export function formatKhalaSpawnCapabilityAnswer(): string {
 }
 
 async function readStdinPrompt(): Promise<string> {
-  return await new Response(Bun.stdin.stream()).text()
+  return await readStdinText()
 }
 
 async function runSpawnCommand(
@@ -1096,30 +1175,155 @@ function requireValue(argv: ReadonlyArray<string>, index: number, flag: string):
 }
 
 function printError(error: KhalaCliError): void {
-  const prefix = error.statusCode === 429
-    ? "rate limited"
-    : error.statusCode === 502
-      ? "inference unavailable"
-      : "error"
-  process.stderr.write(`khala: ${prefix}: ${humanReadableReason(error)}${formatTraceSuffix(error)}\n`)
+  process.stderr.write(`khala: ${friendlyErrorMessage(error)}${formatTraceSuffix(error)}\n`)
 }
 
 function formatInteractiveError(error: KhalaCliError): string {
+  return `${friendlyErrorMessage(error)}${formatTraceSuffix(error)}`
+}
+
+// One human-friendly message for every error surface (headless stderr and the
+// interactive transcript both use it). New users should never see a raw
+// "fetch failed" or "unauthorized"; map the common failures to plain language
+// with a clear next step.
+function friendlyErrorMessage(error: KhalaCliError): string {
   if (error.statusCode === 429) {
     return "Rate limited after retrying. Please wait a moment and try again."
   }
-  if (error.statusCode === 502 || error.statusCode === 503 || error.statusCode === 504 || error.code === "inference_unavailable") {
-    const backend = error.reason === "inference_unavailable" ? "" : ` Backend: ${error.reason}.`
-    return `Inference is unavailable after retrying.${backend}${formatTraceSuffix(error)}`
+  if (error.statusCode === 401 || error.statusCode === 403) {
+    return "Not authorized. Run `khala login` to sign in (or pass --token / set OPENAGENTS_AGENT_TOKEN)."
   }
-  return `${humanReadableReason(error)}${formatTraceSuffix(error)}`
-}
-
-function humanReadableReason(error: KhalaCliError): string {
-  if (error.reason === "inference_unavailable" || error.code === "inference_unavailable") {
+  if (
+    error.statusCode === 502 ||
+    error.statusCode === 503 ||
+    error.statusCode === 504 ||
+    error.code === "inference_unavailable" ||
+    error.reason === "inference_unavailable"
+  ) {
     return "Inference is unavailable after retrying. Please try again in a moment."
   }
+  if (isNetworkError(error)) {
+    return "Could not reach Khala. Check your internet connection and try again."
+  }
   return error.reason
+}
+
+function isNetworkError(error: KhalaCliError): boolean {
+  if (error.code !== "request_failed" && error.code !== "runtime_error") return false
+  return /fetch failed|network|ENOTFOUND|ECONNREFUSED|EAI_AGAIN|getaddrinfo|timed out|timeout|socket/i.test(error.reason)
+}
+
+// BYOK (BRING-YOUR-OWN-KEY) PROVIDER KEYS
+//
+// `khala key add/list/remove` and the interactive `/key` command let a user
+// attach their own upstream provider API key so their usage runs on their own
+// provider account (OpenRouter-style). The key is stored 0600 beside the agent
+// token, never printed in full, and only sent over TLS in the BYOK header.
+
+async function runKeyCommand(
+  args: ParsedArgs,
+  env: Record<string, string | undefined>,
+  command: Extract<ParsedCommand, { readonly kind: "key" }>,
+): Promise<number> {
+  if (command.action === "list") {
+    const record = await readProviderKey(env)
+    if (args.json) {
+      process.stdout.write(`${JSON.stringify(formatKeyJson(record, env))}\n`)
+    } else {
+      process.stdout.write(`${formatKeyStatus(record)}\n`)
+    }
+    return 0
+  }
+
+  if (command.action === "remove") {
+    const cleared = await clearProviderKey(env)
+    process.stdout.write(
+      cleared
+        ? "Removed your stored provider key. Khala chats use the shared collective again.\n"
+        : "No provider key was stored.\n",
+    )
+    return 0
+  }
+
+  // add
+  const provider = normalizeProviderName(command.provider)
+  if (provider === undefined) {
+    throw new Error(
+      `Usage: khala key add <provider> <api-key>\nKnown providers: ${BYOK_PROVIDERS.join(", ")} (aliases like claude, gemini, grok also work).`,
+    )
+  }
+  const key = validateProviderKeyShape(command.key)
+  const record = await writeProviderKey(env, { provider, key })
+  process.stdout.write(`${formatKeyAdded(record, env)}\n`)
+  return 0
+}
+
+function formatKeyAdded(record: StoredProviderKey, env: Record<string, string | undefined>): string {
+  return [
+    `Saved your ${record.provider} key (${redactProviderKey(record.key)}).`,
+    terminalStyle.meta(`Stored locally at ${providerKeyPath(env)} (only you can read it).`),
+    terminalStyle.meta("Khala now sends this key with your chats so usage can run on your own provider account."),
+    terminalStyle.meta("Full upstream BYOK routing is rolling out; until then the server acknowledges the key and chats use the shared collective. Run `khala key remove` to stop sending it."),
+  ].join("\n")
+}
+
+function formatKeyStatus(record: StoredProviderKey | undefined): string {
+  if (record === undefined) {
+    return [
+      "No provider key configured. Khala chats use the shared collective (free, no key needed).",
+      terminalStyle.meta("Add your own provider key with: khala key add <provider> <api-key>"),
+      terminalStyle.meta(`Known providers: ${BYOK_PROVIDERS.join(", ")}`),
+    ].join("\n")
+  }
+  return [
+    `Provider key: ${describeStoredProviderKey(record)} (added ${record.addedAt}).`,
+    terminalStyle.meta("Sent with your chats so usage can run on your own provider account."),
+    terminalStyle.meta("Remove it any time with: khala key remove"),
+  ].join("\n")
+}
+
+function formatKeyJson(
+  record: StoredProviderKey | undefined,
+  env: Record<string, string | undefined>,
+): Record<string, unknown> {
+  // NEVER include the raw key in JSON output: only the redacted tail.
+  if (record === undefined) {
+    return { configured: false, path: providerKeyPath(env) }
+  }
+  return {
+    configured: true,
+    provider: record.provider,
+    keyRedacted: redactProviderKey(record.key),
+    addedAt: record.addedAt,
+    path: providerKeyPath(env),
+  }
+}
+
+// Resolve the effective chat execution context. When the user has a BYOK
+// provider key, route through the authenticated path with an ensured agent
+// token so the key can be attached; otherwise use the parsed mode/token.
+async function resolveChatExecution(
+  args: ParsedArgs,
+  env: Record<string, string | undefined>,
+): Promise<{
+  readonly mode: ChatMode
+  readonly token: string | undefined
+  readonly providerName: string | undefined
+  readonly providerKey: string | undefined
+}> {
+  const record = await readProviderKey(env)
+  if (record === undefined) {
+    return { mode: args.mode, token: args.token, providerName: undefined, providerKey: undefined }
+  }
+  // BYOK present: the key only attaches on the authenticated path, which needs
+  // an agent token. Auto-mint/reuse the stored free key so this stays seamless.
+  let token: string | undefined
+  try {
+    token = await ensureStoredAgentToken({ baseUrl: args.baseUrl, env, explicitToken: args.token })
+  } catch {
+    token = args.token
+  }
+  return { mode: "api", token, providerName: record.provider, providerKey: record.key }
 }
 
 // OPENAGENTS DEVICE-AUTH LOGIN (#6363, epic #6359)
@@ -1487,9 +1691,24 @@ function createCliSessionId(): string {
   return `khala_cli.${crypto.randomUUID()}`
 }
 
+// First-run welcome shown at the top of every interactive session. Kept short,
+// clean, and inviting so a brand-new user immediately knows what Khala is and
+// how to start.
+function welcomeBanner(): string {
+  return [
+    `${terminalStyle.assistant(`Khala v${KHALA_CLI_VERSION}`)}${terminalStyle.meta(" — collective intelligence from OpenAgents")}`,
+    "Ask anything and the answer streams back. No signup, no API key needed.",
+    terminalStyle.meta("Type /help for commands, /exit to quit."),
+  ].join("\n")
+}
+
 function interactiveHelp(): string {
-  return `${terminalStyle.meta("Slash commands:")}
+  return `${terminalStyle.assistant("Khala")} is a collective intelligence you chat with from your terminal.
+Just type a message and press Enter — answers stream back live. It's free to use.
+
+${terminalStyle.meta("Slash commands:")}
 /help              Show this command list
+/key               Add or manage a bring-your-own provider API key (BYOK)
 /login             Sign in as the owner (then you can talk to Artanis)
 /logout            Clear the stored Khala token
 /artanis           Switch to the owner-only Artanis operator channel
@@ -1509,11 +1728,19 @@ function interactiveHelp(): string {
 /changelog         Show recent Khala CLI changes
 /version           Show the installed Khala CLI version
 /exit, /quit       Quit
+
+${terminalStyle.meta("Tell a friend:")} npm install -g @openagentsinc/khala
 `
 }
 
 function usage(): string {
-  return `Khala CLI
+  return `Khala CLI — a collective intelligence you chat with from your terminal.
+Free to use, streams answers live, no signup or API key required.
+
+Get started:
+  khala                       Start an interactive chat
+  khala --prompt "hello"      Ask one question and print the answer
+  npm install -g @openagentsinc/khala   Install / share
 
 Usage:
   khala
@@ -1521,6 +1748,9 @@ Usage:
   khala login
   khala logout
   khala info
+  khala key add <provider> <api-key>
+  khala key list
+  khala key remove
   khala version
   khala changelog
   khala tokens

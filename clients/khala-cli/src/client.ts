@@ -5,6 +5,9 @@ import {
   ARTANIS_CHAT_PATH,
   ArtanisChatRequest,
   ArtanisChatResponse,
+  BYOK_ACK_HEADER,
+  BYOK_KEY_HEADER,
+  BYOK_PROVIDER_HEADER,
   DEFAULT_BASE_URL,
   FreeKeyResponse,
   KHALA_MODEL_ID,
@@ -33,6 +36,7 @@ export function runChatTurn(options: ChatTurnOptions): Effect.Effect<ChatTurnRes
     const response = yield* postChat(options)
     const responseAt = Date.now()
     const traceRef = readTraceRef(response)
+    const byokAck = response.headers.get(BYOK_ACK_HEADER)?.trim() || undefined
     const stream = yield* consumeStream(
       response,
       options.mode,
@@ -58,6 +62,7 @@ export function runChatTurn(options: ChatTurnOptions): Effect.Effect<ChatTurnRes
       assistantMessage: { role: "assistant" as const, content: stream.text },
       metadata,
       traceRef: metadata.traceRef,
+      ...(byokAck === undefined ? {} : { byokAck }),
     }
   })
 }
@@ -228,6 +233,18 @@ function postChat(options: ChatTurnOptions): Effect.Effect<Response, KhalaCliErr
       })
     }
 
+    const providerKey = options.providerKey?.trim()
+    const providerName = options.providerName?.trim()
+    const byokHeaders =
+      providerKey !== undefined && providerKey.length > 0
+        ? {
+            [BYOK_KEY_HEADER]: providerKey,
+            ...(providerName === undefined || providerName.length === 0
+              ? {}
+              : { [BYOK_PROVIDER_HEADER]: providerName }),
+          }
+        : {}
+
     return yield* request({
       fetch: options.fetch,
       onRetry: options.onRetry,
@@ -238,6 +255,7 @@ function postChat(options: ChatTurnOptions): Effect.Effect<Response, KhalaCliErr
           accept: "text/event-stream",
           authorization: `Bearer ${token}`,
           "content-type": "application/json",
+          ...byokHeaders,
         },
         body: JSON.stringify({
           model: KHALA_MODEL_ID,

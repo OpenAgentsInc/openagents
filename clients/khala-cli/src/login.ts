@@ -1,6 +1,7 @@
 import { Effect, Schema as S } from "effect"
 import { mintFreeKey, toKhalaCliError } from "./client.js"
 import { readStoredAgentToken, writeStoredAgentToken } from "./token-store.js"
+import { spawnProcess } from "./proc.js"
 import {
   AGENTS_ME_PATH,
   AgentMeResponse,
@@ -385,12 +386,13 @@ export function openVerificationUrl(url: string): void {
     const command =
       platform === "darwin" ? "open" : platform === "win32" ? "cmd" : "xdg-open"
     const args = platform === "win32" ? ["/c", "start", "", url] : [url]
-    const child = Bun.spawn([command, ...args], {
+    const child = spawnProcess([command, ...args], {
+      detached: true,
       stdin: "ignore",
       stdout: "ignore",
       stderr: "ignore",
     })
-    child.unref?.()
+    child.unref()
   } catch {
     // Ignore: printing the URL is the reliable path.
   }

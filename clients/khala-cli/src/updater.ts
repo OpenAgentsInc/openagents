@@ -1,4 +1,5 @@
 import { changelogTeaser, firstWords } from "./changelog.js"
+import { spawnProcess } from "./proc.js"
 
 const KHALA_PACKAGE_NAME = "@openagentsinc/khala"
 const NPM_REGISTRY_LATEST_URL = "https://registry.npmjs.org/@openagentsinc%2Fkhala/latest"
@@ -107,7 +108,7 @@ async function installLatestVersion(spawn: SpawnInstall): Promise<number> {
 }
 
 const spawnInstall: SpawnInstall = command =>
-  Bun.spawn([...command], {
+  spawnProcess([...command], {
     stdin: "ignore",
     stdout: "ignore",
     stderr: "ignore",

@@ -3,6 +3,16 @@ import { Schema as S } from "effect"
 export const DEFAULT_BASE_URL = "https://openagents.com"
 export const KHALA_MODEL_ID = "openagents/khala"
 
+// BYOK (bring-your-own-key) wire headers, sent on the authenticated chat path
+// when the user has configured their own upstream provider API key. The key is
+// a secret: it is only ever placed in this request header over TLS, never
+// logged, echoed, persisted in plaintext anywhere it can leak, or printed.
+export const BYOK_PROVIDER_HEADER = "x-openagents-provider"
+export const BYOK_KEY_HEADER = "x-openagents-provider-key"
+// The server echoes this header to acknowledge it received and validated a BYOK
+// key (e.g. "accepted" while full upstream routing is in preview).
+export const BYOK_ACK_HEADER = "x-openagents-byok"
+
 export const KHALA_CHAT_MAX_MESSAGE_CHARS = 8_000
 export const KHALA_CHAT_MAX_MESSAGES = 40
 export const KHALA_CHAT_MAX_TOTAL_CHARS = 24_000
@@ -220,6 +230,10 @@ export interface ChatTurnOptions extends ChatClientOptions {
   readonly messages: ReadonlyArray<KhalaChatMessage>
   readonly onDelta?: ((text: string) => void) | undefined
   readonly onReasoning?: ((text: string) => void) | undefined
+  // BYOK: when set, the authenticated (`api`) chat request carries the user's
+  // own upstream provider key so usage runs against their account.
+  readonly providerName?: string | undefined
+  readonly providerKey?: string | undefined
 }
 
 export interface ChatTurnResult {
@@ -228,6 +242,10 @@ export interface ChatTurnResult {
   readonly assistantMessage: KhalaChatMessage
   readonly metadata: ChatTurnMetadata
   readonly traceRef?: string | undefined
+  // Server acknowledgment of a sent BYOK key (from the BYOK_ACK_HEADER), e.g.
+  // "accepted" while full upstream routing is in preview. Undefined when no
+  // BYOK key was sent or the server did not acknowledge it.
+  readonly byokAck?: string | undefined
 }
 
 export interface ChatTurnMetadata {

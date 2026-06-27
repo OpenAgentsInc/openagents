@@ -20,6 +20,14 @@ export const KHALA_CLI_VERSION = packageJson.version
 
 export const KHALA_CHANGELOG: ReadonlyArray<KhalaChangelogEntry> = [
   {
+    version: "0.1.19",
+    releasedAt: "2026-06-27T13:20:06.000Z",
+    bullets: [
+      "Runs on plain Node now (not just Bun), so `npm install -g @openagentsinc/khala` and `khala` just work for anyone.",
+      "Adds bring-your-own-key: `khala key add <provider> <api-key>` (and /key) stores a provider key locally and sends it with your chats; friendlier first-run welcome, /help, and network/auth/quota error messages.",
+    ],
+  },
+  {
     version: "0.1.18",
     releasedAt: "2026-06-27T13:05:24.000Z",
     bullets: [
