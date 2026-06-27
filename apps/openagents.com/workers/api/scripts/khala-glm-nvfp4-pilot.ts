@@ -9,8 +9,13 @@ import {
   buildGlmNvfp4PilotResult,
   collectGlmNvfp4PilotObservation,
   makeOpenAiCompatibleGlmNvfp4PilotExecutor,
+  type GlmNvfp4BootLoadStatus,
   type GlmNvfp4PilotConfig,
   type GlmNvfp4PilotObservation,
+  type GlmNvfp4ServingStackEngine,
+  type GlmNvfp4ServingStackFailureCode,
+  type GlmNvfp4ServingStackFinding,
+  type GlmNvfp4ServingStackAttemptStatus,
 } from '../src/inference/glm-nvfp4-pilot'
 import {
   buildGlmNvfp4PilotOperatorBundle,
@@ -27,6 +32,13 @@ const option = (name: string): string | undefined => {
   return value === undefined || value.startsWith('--') ? undefined : value
 }
 
+const options = (name: string): ReadonlyArray<string> =>
+  args.flatMap((arg, index) => {
+    if (arg !== name) return []
+    const value = args[index + 1]
+    return value === undefined || value.startsWith('--') ? [] : [value]
+  })
+
 const flag = (name: string): boolean => args.includes(name)
 
 const help = (): string => [
@@ -41,7 +53,9 @@ const help = (): string => [
   '  --endpoint-ref <public ref>',
   '  --owner-approval-ref <public ref>',
   '  --decision-ref <public ref>',
+  '  --boot-load-status <not_attempted|failed|passed>',
   '  --boot-load-evidence-ref <public ref>',
+  '  --serving-stack-finding <engine:status:failureCode:publicRef>',
   '  --measured-max-model-len <number>',
   '  --measured-max-model-len-evidence-ref <public ref>',
   '  --quality-parity <passed|failed|not_measured>',
@@ -67,6 +81,61 @@ const numberOption = (name: string): number | null => {
 
 const boolFromEnv = (value: string | undefined): boolean =>
   value === '1' || value === 'true' || value === 'yes'
+
+const bootLoadStatus = (
+  value: string | undefined,
+): GlmNvfp4BootLoadStatus | null =>
+  value === 'not_attempted' || value === 'failed' || value === 'passed'
+    ? value
+    : null
+
+const servingStackEngine = (
+  value: string | undefined,
+): GlmNvfp4ServingStackEngine | null =>
+  value === 'vllm' || value === 'sglang' ? value : null
+
+const servingStackAttemptStatus = (
+  value: string | undefined,
+): GlmNvfp4ServingStackAttemptStatus | null =>
+  value === 'not_attempted' ||
+  value === 'failed_before_endpoint' ||
+  value === 'endpoint_healthy'
+    ? value
+    : null
+
+const servingStackFailureCode = (
+  value: string | undefined,
+): GlmNvfp4ServingStackFailureCode | null =>
+  value === 'vllm_sparse_mla_backend_unavailable' ||
+  value === 'sglang_moe_w13_shape_mismatch' ||
+  value === 'unknown'
+    ? value
+    : null
+
+const servingStackFinding = (
+  value: string,
+): GlmNvfp4ServingStackFinding | null => {
+  const [rawEngine, rawStatus, rawFailureCode, rawEvidenceRef] = value.split(':')
+  const engine = servingStackEngine(rawEngine)
+  const status = servingStackAttemptStatus(rawStatus)
+  const failureCode =
+    rawFailureCode === 'none'
+      ? null
+      : servingStackFailureCode(rawFailureCode)
+  if (
+    engine === null ||
+    status === null ||
+    (rawFailureCode !== 'none' && failureCode === null)
+  ) {
+    return null
+  }
+  return {
+    engine,
+    status,
+    failureCode,
+    evidenceRef: rawEvidenceRef ?? null,
+  }
+}
 
 const endpointUrl =
   option('--endpoint-url') ?? Bun.env.KHALA_GLM_NVFP4_ENDPOINT_URL ?? null
@@ -115,7 +184,14 @@ const config: GlmNvfp4PilotConfig = {
   endpointRef,
   model: option('--model') ?? Bun.env.KHALA_GLM_NVFP4_MODEL ?? GLM_NVFP4_PILOT_MODEL,
   decisionRef,
+  bootLoadStatus:
+    bootLoadStatus(option('--boot-load-status')) ??
+    bootLoadStatus(Bun.env.KHALA_GLM_NVFP4_BOOT_LOAD_STATUS),
   bootLoadEvidenceRef,
+  servingStackFindings: options('--serving-stack-finding').flatMap(value => {
+    const finding = servingStackFinding(value)
+    return finding === null ? [] : [finding]
+  }),
   measuredMaxModelLen:
     numberOption('--measured-max-model-len') ??
     (() => {

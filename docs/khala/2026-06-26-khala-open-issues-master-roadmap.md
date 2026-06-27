@@ -277,6 +277,16 @@ operator view of what remains, not a public product claim.
   remaining requirement is still the owner-armed isolated 8x-host pilot with
   public-safe boot/load, tool-loop, quality, max-context, and throughput
   evidence.
+- 2026-06-27T13:40Z #6323 serving-stack evidence hardening from a fresh
+  worktree: the pilot artifact now carries `bootLoadStatus` plus typed
+  `servingStackFindings` for bounded no-go evidence such as
+  `vllm_sparse_mla_backend_unavailable` and
+  `sglang_moe_w13_shape_mismatch`. Unsafe finding refs are redacted, failed
+  pre-endpoint attempts keep the isolated endpoint gate blocked, and public
+  output stores only failure codes plus evidence refs rather than raw logs,
+  endpoint URLs, host paths, or shape-stack payloads. Focused pilot/operator
+  coverage passed (`21` tests). This still does not close #6323; it makes the
+  next isolated-host retry auditable without overstating a failed boot/load.
 - 2026-06-27T03:34Z #6311 refresh: live
   `/v1/gateway/glm-fleet/readiness` now reports `status:"degraded"` with
   `totalReplicaCount:10`, `readyReplicaCount:2`, `reclaimedReplicaCount:8`,
@@ -817,9 +827,12 @@ This is the only phase that is an active outage. Do it first.
      `KHALA_GLM_NVFP4_PILOT_ARM`, `KHALA_GLM_NVFP4_ENDPOINT_URL`,
      `KHALA_GLM_NVFP4_ENDPOINT_REF`, `KHALA_GLM_NVFP4_OWNER_APPROVAL_REF`, and
      `KHALA_GLM_NVFP4_BOOT_LOAD_EVIDENCE_REF`, so no pilot pass is claimed.
-     Next action is the actual isolated 8x-host pilot run with owner endpoint/
-     approval/boot-load refs, then a measured tool-call/quality/max-context/
-     throughput decision, not another planning doc.
+     The latest hardening also records failed vLLM/SGLang boot attempts as
+     bounded serving-stack failure codes plus public evidence refs while
+     redacting unsafe refs and keeping failed-before-endpoint attempts blocked.
+     Next action is the actual isolated 8x-host serving-stack fix and pilot run
+     with owner endpoint/approval/boot-load refs, then a measured tool-call/
+     quality/max-context/throughput decision, not another planning doc.
 
 ## Phase 1 — Reliable serving foundation
 

@@ -29,6 +29,8 @@ export const GlmNvfp4PilotBlocker = S.Literals([
   'model_mismatch',
   'boot_load_evidence_ref_missing',
   'boot_load_evidence_ref_unsafe',
+  'boot_load_failed',
+  'serving_stack_evidence_ref_unsafe',
   'measured_max_model_len_missing',
   'measured_max_model_len_evidence_ref_missing',
   'measured_max_model_len_evidence_ref_unsafe',
@@ -51,6 +53,42 @@ export type GlmNvfp4PilotBlocker = typeof GlmNvfp4PilotBlocker.Type
 
 export const GlmNvfp4PilotDecision = S.Literals(['go', 'no_go'])
 export type GlmNvfp4PilotDecision = typeof GlmNvfp4PilotDecision.Type
+
+export const GlmNvfp4BootLoadStatus = S.Literals([
+  'not_attempted',
+  'failed',
+  'passed',
+])
+export type GlmNvfp4BootLoadStatus = typeof GlmNvfp4BootLoadStatus.Type
+
+export const GlmNvfp4ServingStackEngine = S.Literals(['vllm', 'sglang'])
+export type GlmNvfp4ServingStackEngine =
+  typeof GlmNvfp4ServingStackEngine.Type
+
+export const GlmNvfp4ServingStackAttemptStatus = S.Literals([
+  'not_attempted',
+  'failed_before_endpoint',
+  'endpoint_healthy',
+])
+export type GlmNvfp4ServingStackAttemptStatus =
+  typeof GlmNvfp4ServingStackAttemptStatus.Type
+
+export const GlmNvfp4ServingStackFailureCode = S.Literals([
+  'vllm_sparse_mla_backend_unavailable',
+  'sglang_moe_w13_shape_mismatch',
+  'unknown',
+])
+export type GlmNvfp4ServingStackFailureCode =
+  typeof GlmNvfp4ServingStackFailureCode.Type
+
+export const GlmNvfp4ServingStackFinding = S.Struct({
+  engine: GlmNvfp4ServingStackEngine,
+  status: GlmNvfp4ServingStackAttemptStatus,
+  failureCode: S.Union([GlmNvfp4ServingStackFailureCode, S.Null]),
+  evidenceRef: S.Union([S.String, S.Null]),
+})
+export type GlmNvfp4ServingStackFinding =
+  typeof GlmNvfp4ServingStackFinding.Type
 
 export const GlmNvfp4PilotIssueGate = S.Literals([
   'isolated_owner_armed_endpoint_context',
@@ -141,7 +179,9 @@ export const GlmNvfp4PilotResult = S.Struct({
   endpointRef: S.Union([S.String, S.Null]),
   ownerApprovalRef: S.Union([S.String, S.Null]),
   decisionRef: S.Union([S.String, S.Null]),
+  bootLoadStatus: GlmNvfp4BootLoadStatus,
   bootLoadEvidenceRef: S.Union([S.String, S.Null]),
+  servingStackFindings: S.Array(GlmNvfp4ServingStackFinding),
   measuredMaxModelLen: S.Union([S.Number, S.Null]),
   measuredMaxModelLenEvidenceRef: S.Union([S.String, S.Null]),
   qualityParity: S.Literals(['passed', 'failed', 'not_measured']),
@@ -199,7 +239,9 @@ export type GlmNvfp4PilotConfig = Readonly<{
   endpointRef?: string | null
   model?: string | null
   decisionRef?: string | null
+  bootLoadStatus?: GlmNvfp4BootLoadStatus | null
   bootLoadEvidenceRef?: string | null
+  servingStackFindings?: ReadonlyArray<GlmNvfp4ServingStackFinding> | undefined
   measuredMaxModelLen?: number | null
   measuredMaxModelLenEvidenceRef?: string | null
   qualityParity?: 'passed' | 'failed' | 'not_measured'
@@ -303,6 +345,8 @@ const GLM_NVFP4_PILOT_BLOCKER_ISSUE_GATE: Record<
   model_mismatch: 'isolated_owner_armed_endpoint_context',
   boot_load_evidence_ref_missing: 'isolated_owner_armed_endpoint_context',
   boot_load_evidence_ref_unsafe: 'isolated_owner_armed_endpoint_context',
+  boot_load_failed: 'isolated_owner_armed_endpoint_context',
+  serving_stack_evidence_ref_unsafe: 'isolated_owner_armed_endpoint_context',
   measured_max_model_len_missing: 'throughput_context_tradeoff',
   measured_max_model_len_evidence_ref_missing: 'throughput_context_tradeoff',
   measured_max_model_len_evidence_ref_unsafe: 'throughput_context_tradeoff',
@@ -372,6 +416,31 @@ const defaultThroughput = (
   evidenceRef: null,
 })
 
+const servingStackFindings = (
+  input: ReadonlyArray<GlmNvfp4ServingStackFinding> | undefined,
+): Readonly<{
+  publicFindings: ReadonlyArray<GlmNvfp4ServingStackFinding>
+  hasUnsafeEvidenceRef: boolean
+  hasFailedBeforeEndpoint: boolean
+}> => {
+  const findings = input ?? []
+  const publicFindings = findings.map(finding => ({
+    ...finding,
+    evidenceRef: safeRefOrNull(finding.evidenceRef),
+  }))
+  return {
+    publicFindings,
+    hasUnsafeEvidenceRef: findings.some(
+      finding =>
+        nullIfBlank(finding.evidenceRef) !== null &&
+        safeRefOrNull(finding.evidenceRef) === null,
+    ),
+    hasFailedBeforeEndpoint: publicFindings.some(
+      finding => finding.status === 'failed_before_endpoint',
+    ),
+  }
+}
+
 const finitePositiveInteger = (value: number | null | undefined): number | null =>
   typeof value === 'number' && Number.isFinite(value) && value > 0
     ? Math.trunc(value)
@@ -403,6 +472,7 @@ const pilotSummaryGateEvidenceRefs = (
       result.endpointRef,
       result.decisionRef,
       result.bootLoadEvidenceRef,
+      ...result.servingStackFindings.map(finding => finding.evidenceRef),
     ],
     tool_loop_proof: [result.toolLoop.evidenceRef],
     quality_parity: [result.qualityEvidenceRef],
@@ -425,7 +495,8 @@ const pilotSummaryGateHasRequiredEvidence = (
       safeRefOrNull(result.ownerApprovalRef) !== null &&
       safeRefOrNull(result.endpointRef) !== null &&
       safeRefOrNull(result.decisionRef) !== null &&
-      safeRefOrNull(result.bootLoadEvidenceRef) !== null,
+      safeRefOrNull(result.bootLoadEvidenceRef) !== null &&
+      result.bootLoadStatus === 'passed',
     tool_loop_proof:
       safeRefOrNull(result.toolLoop.evidenceRef) !== null &&
       result.toolLoop.sampleCount >= GLM_NVFP4_MIN_TOOL_LOOP_SAMPLES &&
@@ -505,6 +576,15 @@ export const buildGlmNvfp4PilotResult = (input: {
   const endpointRef = safeRefOrNull(config.endpointRef)
   const decisionRef = safeRefOrNull(config.decisionRef)
   const bootLoadEvidenceRef = safeRefOrNull(config.bootLoadEvidenceRef)
+  const stackFindings = servingStackFindings(config.servingStackFindings)
+  const bootLoadStatus: GlmNvfp4BootLoadStatus =
+    config.bootLoadStatus === 'failed' || stackFindings.hasFailedBeforeEndpoint
+      ? 'failed'
+      : config.bootLoadStatus === 'passed' ||
+          (config.bootLoadStatus !== 'not_attempted' &&
+            bootLoadEvidenceRef !== null)
+        ? 'passed'
+        : 'not_attempted'
   const measuredMaxModelLen = finitePositiveInteger(config.measuredMaxModelLen)
   const measuredMaxModelLenEvidenceRef = safeRefOrNull(
     config.measuredMaxModelLenEvidenceRef,
@@ -584,6 +664,13 @@ export const buildGlmNvfp4PilotResult = (input: {
   if (bootLoadEvidenceRef === null) {
     blockerRefs.add('boot_load_evidence_ref_missing')
   }
+  if (bootLoadStatus === 'failed') {
+    blockerRefs.add('boot_load_failed')
+  }
+  if (stackFindings.hasUnsafeEvidenceRef) {
+    blockerRefs.add('unsafe_public_ref')
+    blockerRefs.add('serving_stack_evidence_ref_unsafe')
+  }
   if (measuredMaxModelLen === null) {
     blockerRefs.add('measured_max_model_len_missing')
   }
@@ -630,6 +717,7 @@ export const buildGlmNvfp4PilotResult = (input: {
     endpointRef,
     decisionRef,
     bootLoadEvidenceRef,
+    ...stackFindings.publicFindings.map(finding => finding.evidenceRef),
     measuredMaxModelLenEvidenceRef,
     qualityEvidenceRef,
     publicToolLoop.evidenceRef,
@@ -648,7 +736,9 @@ export const buildGlmNvfp4PilotResult = (input: {
     endpointRef,
     ownerApprovalRef,
     decisionRef,
+    bootLoadStatus,
     bootLoadEvidenceRef,
+    servingStackFindings: stackFindings.publicFindings,
     measuredMaxModelLen,
     measuredMaxModelLenEvidenceRef,
     qualityParity,

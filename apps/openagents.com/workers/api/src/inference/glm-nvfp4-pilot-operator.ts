@@ -134,6 +134,7 @@ const ownerArmedCommandLines = (
   'KHALA_GLM_NVFP4_ENDPOINT_REF="endpoint.public.khala.glm_nvfp4.single_host_8x.<owner-issued>" \\',
   'KHALA_GLM_NVFP4_OWNER_APPROVAL_REF="approval.public.khala.glm_nvfp4.owner_armed.<owner-issued>" \\',
   'KHALA_GLM_NVFP4_DECISION_REF="decision.public.khala.glm_nvfp4.issue_6323.<owner-issued>" \\',
+  'KHALA_GLM_NVFP4_BOOT_LOAD_STATUS=passed \\',
   'KHALA_GLM_NVFP4_BOOT_LOAD_EVIDENCE_REF="evidence.public.khala.glm_nvfp4.boot_load.<owner-issued>" \\',
   `KHALA_GLM_NVFP4_MEASURED_MAX_MODEL_LEN=${input.measuredMaxModelLen} \\`,
   'KHALA_GLM_NVFP4_MAX_MODEL_LEN_EVIDENCE_REF="evidence.public.khala.glm_nvfp4.max_model_len.<owner-issued>" \\',

@@ -242,6 +242,101 @@ describe('GLM NVFP4 pilot preflight (#6323)', () => {
     })
   })
 
+  test('records failed vLLM/SGLang boot-load attempts as public-safe no-go evidence', () => {
+    const result = buildGlmNvfp4PilotResult({
+      config: baseConfig({
+        bootLoadStatus: 'failed',
+        bootLoadEvidenceRef:
+          'evidence.public.khala.glm_nvfp4.boot_load.failed_20260627',
+        servingStackFindings: [
+          {
+            engine: 'vllm',
+            status: 'failed_before_endpoint',
+            failureCode: 'vllm_sparse_mla_backend_unavailable',
+            evidenceRef:
+              'evidence.public.khala.glm_nvfp4.vllm_sparse_mla_sm120.20260627',
+          },
+          {
+            engine: 'sglang',
+            status: 'failed_before_endpoint',
+            failureCode: 'sglang_moe_w13_shape_mismatch',
+            evidenceRef:
+              'evidence.public.khala.glm_nvfp4.sglang_w13_shape.20260627',
+          },
+        ],
+      }),
+      observation: passingObservation(),
+    })
+    const summary = summarizeGlmNvfp4PilotResult(result)
+    const ownerGate = summary.gates.find(
+      gate => gate.gate === 'isolated_owner_armed_endpoint_context',
+    )
+
+    expect(result.decision).toBe('no_go')
+    expect(result.canRouteCodingLane).toBe(false)
+    expect(result.bootLoadStatus).toBe('failed')
+    expect(result.blockerRefs).toContain('boot_load_failed')
+    expect(result.servingStackFindings).toEqual([
+      {
+        engine: 'vllm',
+        status: 'failed_before_endpoint',
+        failureCode: 'vllm_sparse_mla_backend_unavailable',
+        evidenceRef:
+          'evidence.public.khala.glm_nvfp4.vllm_sparse_mla_sm120.20260627',
+      },
+      {
+        engine: 'sglang',
+        status: 'failed_before_endpoint',
+        failureCode: 'sglang_moe_w13_shape_mismatch',
+        evidenceRef:
+          'evidence.public.khala.glm_nvfp4.sglang_w13_shape.20260627',
+      },
+    ])
+    expect(ownerGate).toMatchObject({
+      status: 'blocked',
+      blockerRefs: ['boot_load_failed'],
+      evidenceRefs: [
+        'approval.public.khala.glm_nvfp4.owner_armed.001',
+        'decision.public.khala.glm_nvfp4.issue_6323.001',
+        'endpoint.public.khala.glm_nvfp4.single_host_8x.001',
+        'evidence.public.khala.glm_nvfp4.boot_load.failed_20260627',
+        'evidence.public.khala.glm_nvfp4.sglang_w13_shape.20260627',
+        'evidence.public.khala.glm_nvfp4.vllm_sparse_mla_sm120.20260627',
+      ],
+    })
+    expect(JSON.stringify(result)).not.toMatch(
+      /RuntimeError|3072|6144|No valid attention backend|\/opt\/hydralisk|https?:\/\//i,
+    )
+  })
+
+  test('redacts unsafe serving-stack evidence refs before public reporting', () => {
+    const result = buildGlmNvfp4PilotResult({
+      config: baseConfig({
+        bootLoadStatus: 'failed',
+        servingStackFindings: [
+          {
+            engine: 'sglang',
+            status: 'failed_before_endpoint',
+            failureCode: 'sglang_moe_w13_shape_mismatch',
+            evidenceRef: '/opt/hydralisk/models/glm-5.2-nvfp4/log.txt',
+          },
+        ],
+      }),
+      observation: passingObservation(),
+    })
+
+    expect(result.decision).toBe('no_go')
+    expect(result.blockerRefs).toContain('serving_stack_evidence_ref_unsafe')
+    expect(result.blockerRefs).toContain('unsafe_public_ref')
+    expect(result.servingStackFindings[0]).toMatchObject({
+      engine: 'sglang',
+      status: 'failed_before_endpoint',
+      failureCode: 'sglang_moe_w13_shape_mismatch',
+      evidenceRef: null,
+    })
+    expect(JSON.stringify(result)).not.toContain('/opt/hydralisk')
+  })
+
   test('summarizer keeps missing owner evidence as no-go on the isolated endpoint/context gate', () => {
     const result = buildGlmNvfp4PilotResult({
       config: baseConfig({

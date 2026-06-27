@@ -99,6 +99,7 @@ describe('GLM NVFP4 pilot operator path (#6323)', () => {
     expect(command).toContain(
       'KHALA_GLM_NVFP4_BOOT_LOAD_EVIDENCE_REF="evidence.public.khala.glm_nvfp4.boot_load.<owner-issued>"',
     )
+    expect(command).toContain('KHALA_GLM_NVFP4_BOOT_LOAD_STATUS=passed')
     expect(command).toContain('KHALA_GLM_NVFP4_MODEL="nvidia/GLM-5.2-NVFP4"')
     expect(command).toContain('--samples 24')
     expect(command).toContain('--output-dir .evidence/glm')
