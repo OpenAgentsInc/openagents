@@ -1,0 +1,37 @@
+{
+  "runId": "mc-phase0-20260627T101647Z-21cfd6b6",
+  "model": "openagents/khala",
+  "taskId": "uuidparse_python",
+  "bucket": "S",
+  "status": "failed",
+  "passRate": 0.13592233009708737,
+  "tokens": {
+    "input": 3731689,
+    "output": 256557,
+    "total": 3988246,
+    "reasoning": 0,
+    "cacheRead": 0,
+    "cacheWrite": 0
+  },
+  "startedAt": "2026-06-27T10:17:38+00:00",
+  "finishedAt": "2026-06-27T10:56:45+00:00",
+  "summary": "Khala completed the MirrorCode agent loop; implementation did not fully reproduce the target behavior.",
+  "benchmark": "Epoch Research MirrorCode (public tasks only; private set excluded)",
+  "scoreGroups": {
+    "all": 0.1425233644859813,
+    "visible": 0.14864864864864866,
+    "ablated": null,
+    "hidden": 0.13592233009708737,
+    "withheld": 0.13592233009708737
+  },
+  "caps": {
+    "tokenLimit": 20000000,
+    "timeLimitSeconds": 7200,
+    "messageLimit": 250
+  },
+  "demand": {
+    "kind": "internal",
+    "source": "gym_mirrorcode",
+    "client": "mirrorcode-phase0"
+  }
+}
