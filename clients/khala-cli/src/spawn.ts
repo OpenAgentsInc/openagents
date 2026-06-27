@@ -98,7 +98,7 @@ export type KhalaSpawnRunOptions = {
   readonly onEvent?: ((event: KhalaSpawnLifecycleEvent) => void | Promise<void>) | undefined
 }
 
-export type KhalaSpawnWorkflow = "cloud_coding_session" | "codex_agent_task"
+export type KhalaSpawnWorkflow = "claude_agent_task" | "cloud_coding_session" | "codex_agent_task"
 
 export type KhalaSpawnMcpToolName = "khala.spawn" | "khala.spawnStatus"
 

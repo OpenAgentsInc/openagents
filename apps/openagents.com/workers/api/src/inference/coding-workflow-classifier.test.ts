@@ -17,6 +17,20 @@ describe('coding workflow classifier', () => {
     })
   })
 
+  test('classifies explicit claude_agent_task workflow markers', () => {
+    expect(
+      classifyCodingWorkflow({
+        messages: [{ content: 'hello', role: 'user' }],
+        rawBody: {
+          openagents: { workflowClass: 'claude_agent_task' },
+        },
+      }),
+    ).toMatchObject({
+      confidence: 1,
+      workflowClass: 'claude_agent_task',
+    })
+  })
+
   test('does not route prose by keyword', () => {
     expect(
       classifyCodingWorkflow({

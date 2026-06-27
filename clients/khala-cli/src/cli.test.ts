@@ -185,4 +185,79 @@ describe("Khala CLI info diagnostics", () => {
     expect(parsed.runRef).toBe("spawn.public.khala_coding.stored_pylon_token_test")
     expect(parsed.state).toBe("completed")
   })
+
+  test("accepts claude_agent_task workflow for pylon spawn", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "khala-pylon-claude-workflow-test-"))
+    const tokenPath = join(dir, "agent-token")
+    mkdirSync(dirname(tokenPath), { recursive: true })
+    writeFileSync(tokenPath, "oa_agent_stored_pylon_test\n", { mode: 0o600 })
+
+    const workflows: Array<unknown> = []
+    const server = Bun.serve({
+      port: 0,
+      fetch: async request => {
+        const body = await request.json() as {
+          readonly id?: string
+          readonly params?: {
+            readonly arguments?: Record<string, unknown>
+          }
+        }
+        workflows.push(body.params?.arguments?.workflow)
+        return Response.json({
+          jsonrpc: "2.0",
+          id: body.id,
+          result: {
+            structuredContent: {
+              ok: true,
+              spawnRef: "spawn.public.khala_coding.claude_workflow_test",
+              requestedCount: 1,
+              assignedCount: 1,
+              children: [{
+                ok: true,
+                workerRef: "worker.public.khala_coding.spawn.01",
+                slotIndex: 0,
+                assignmentRef: "assignment.public.khala_coding.claude_workflow_test",
+                durableRequestId: "chatcmpl_claude_workflow_test",
+                pylonRef: "pylon.owner.claude",
+                state: "accepted",
+              }],
+            },
+          },
+        })
+      },
+    })
+
+    const originalWrite = process.stdout.write
+    let stdout = ""
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      stdout += String(chunk)
+      return true
+    }) as typeof process.stdout.write
+    try {
+      const exitCode = await runKhalaCli([
+        "--json",
+        "spawn",
+        "--strategy",
+        "pylon",
+        "--workflow",
+        "claude_agent_task",
+        "--count",
+        "1",
+        "--fixture",
+        "--base-url",
+        `http://127.0.0.1:${server.port}`,
+        "--objective",
+        "stored pylon claude workflow smoke",
+      ], {
+        KHALA_TOKEN_PATH: tokenPath,
+      })
+      expect(exitCode).toBe(0)
+    } finally {
+      process.stdout.write = originalWrite
+      server.stop(true)
+    }
+
+    expect(workflows).toContain("claude_agent_task")
+    expect(JSON.parse(stdout).state).toBe("completed")
+  })
 })
