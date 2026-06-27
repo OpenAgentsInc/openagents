@@ -16,12 +16,13 @@
 // only base URL + key. Anthropic Messages compatibility is a parallel surface;
 // a clean spot is left for it (see ANTHROPIC SEAM below) but is out of scope for
 // #5476.
-import { Effect } from 'effect'
+import { Effect, Redacted } from 'effect'
 
 import type { AgentRegistrationStore } from '../agent-registration'
 import { noStoreJsonResponse } from '../http/responses'
 import { recordFromUnknown } from '../json-boundary'
 import type { PylonApiStore } from '../pylon-api'
+import { requireProviderApiKeyShape } from '../provider-account-api-key'
 import {
   compactRandomId,
   currentEpochMillis,
@@ -206,6 +207,54 @@ export const DEFAULT_CHAT_MODEL = KHALA_MODEL_ID
 export const INFERENCE_DEMAND_KIND_HEADER = 'x-openagents-demand-kind'
 export const INFERENCE_DEMAND_SOURCE_HEADER = 'x-openagents-demand-source'
 export const INFERENCE_CLIENT_HEADER = 'x-openagents-client'
+export const INFERENCE_BYOK_PROVIDER_HEADER = 'x-openagents-provider'
+export const INFERENCE_BYOK_PROVIDER_KEY_HEADER = 'x-openagents-provider-key'
+export const INFERENCE_BYOK_ACK_HEADER = 'x-openagents-byok'
+
+type CallerProviderKey = Readonly<{
+  provider: 'openrouter'
+  key: Redacted.Redacted<string>
+}>
+
+type CallerProviderKeyParseResult =
+  | Readonly<{ _tag: 'absent' }>
+  | Readonly<{ _tag: 'invalid'; reason: string }>
+  | Readonly<{ _tag: 'valid'; value: CallerProviderKey }>
+
+const callerProviderKeyFromHeaders = (
+  headers: Headers,
+): CallerProviderKeyParseResult => {
+  const rawProvider = headers.get(INFERENCE_BYOK_PROVIDER_HEADER)
+  const rawKey = headers.get(INFERENCE_BYOK_PROVIDER_KEY_HEADER)
+  if (rawProvider === null && rawKey === null) {
+    return { _tag: 'absent' }
+  }
+  const provider = rawProvider?.trim().toLowerCase()
+  if (provider !== 'openrouter') {
+    return { _tag: 'invalid', reason: 'unsupported_provider' }
+  }
+  try {
+    return {
+      _tag: 'valid',
+      value: {
+        key: Redacted.make(requireProviderApiKeyShape(rawKey)),
+        provider,
+      },
+    }
+  } catch {
+    return { _tag: 'invalid', reason: 'invalid_provider_key' }
+  }
+}
+
+const byokAckHeaders = (state: 'accepted' | 'invalid' | 'routed'): Headers =>
+  new Headers({ [INFERENCE_BYOK_ACK_HEADER]: state })
+
+const callerByokMeteringHook: MeteringHook = () =>
+  Effect.succeed({
+    metered: true,
+    noDebitReason: 'caller_byok',
+    receiptRef: null,
+  } satisfies MeteringOutcome)
 
 const safeAttributionToken = (value: string | null): string | undefined => {
   const trimmed = value?.trim()
@@ -1027,6 +1076,7 @@ const toInferenceRequest = (
   autopilotConcierge?: AutopilotConciergeRequestConfig | undefined,
   scheduler?: Readonly<{
     abortSignal?: AbortSignal | undefined
+    callerProviderKey?: InferenceRequest['callerProviderKey']
     priority: InferenceRequest['priority']
   }>,
 ): InferenceRequest => {
@@ -1063,6 +1113,9 @@ const toInferenceRequest = (
     ...(scheduler?.abortSignal === undefined
       ? {}
       : { abortSignal: scheduler.abortSignal }),
+    ...(scheduler?.callerProviderKey === undefined
+      ? {}
+      : { callerProviderKey: scheduler.callerProviderKey }),
     messages,
     model: requestedModel,
     // Gateway-derived session affinity wins over any stray client copy.
@@ -1304,7 +1357,7 @@ type OpenAgentsReceipt = Readonly<{
   billing?:
     | Readonly<{
         mode: 'receipt_backed' | 'no_debit' | 'zero_charge'
-        reason?: 'operator_exempt_or_unmetered' | undefined
+        reason?: 'caller_byok' | 'operator_exempt_or_unmetered' | undefined
         receipt_required: boolean
       }>
     | undefined
@@ -1365,7 +1418,7 @@ const billingDisclosureFor = (
   }
   return {
     mode: 'no_debit',
-    reason: 'operator_exempt_or_unmetered',
+    reason: metering.noDebitReason ?? 'operator_exempt_or_unmetered',
     receipt_required: false,
   }
 }
@@ -2405,6 +2458,15 @@ export const handleChatCompletions = (
       session.accountRef,
       deps.internalAccountRefs ?? new Set<string>(),
     )
+    const callerProviderKey = callerProviderKeyFromHeaders(request.headers)
+    if (callerProviderKey._tag === 'invalid') {
+      return noStoreJsonResponse(
+        { error: 'invalid_byok_provider_key', reason: callerProviderKey.reason },
+        { headers: byokAckHeaders('invalid'), status: 400 },
+      )
+    }
+    const callerByok =
+      callerProviderKey._tag === 'valid' ? callerProviderKey.value : undefined
 
     // FAIR-SHARE GATE (#5486). Keyed to the authenticated account so one customer
     // cannot starve the shared Vertex quota / Fireworks limits. Open (no-op) when
@@ -2718,7 +2780,7 @@ export const handleChatCompletions = (
     const availableMsat = yield* Effect.promise(() =>
       deps.readAvailableMsat(session.accountRef),
     )
-    if (availableMsat < minimum) {
+    if (availableMsat < minimum && callerByok === undefined) {
       // FREE-ALLOWANCE BYPASS (EPIC #5474 §1). A zero/insufficient-balance
       // account is NOT rejected when the request is free-eligible AND the
       // resolving owner still has remaining free allowance — that request would
@@ -2775,7 +2837,7 @@ export const handleChatCompletions = (
     // can be flush with credits yet still be capped at a configurable per-window
     // spend ceiling so a compromised key cannot drain the whole balance. Open
     // (no-op) when unwired or when no cap is configured for the account.
-    if (deps.checkSpendCap !== undefined) {
+    if (deps.checkSpendCap !== undefined && callerByok === undefined) {
       const spendCap = yield* Effect.promise(() =>
         deps.checkSpendCap!(session.accountRef),
       )
@@ -2793,7 +2855,10 @@ export const handleChatCompletions = (
       }
     }
 
-    const meteringHook = deps.meteringHook ?? stubMeteringHook
+    const meteringHook =
+      callerByok === undefined
+        ? (deps.meteringHook ?? stubMeteringHook)
+        : callerByokMeteringHook
     const resolveFundingKind =
       deps.resolveFundingKind ?? defaultCardFundingResolver
     const fundingKind = yield* Effect.promise(() =>
@@ -2811,7 +2876,12 @@ export const handleChatCompletions = (
         const id = (deps.router ?? stubModelRouter)(model)
         return id === undefined ? [] : [id]
       })
-    const plannedIdsForModel = planFor(requestedModel)
+    const plannedIdsForModel =
+      callerByok === undefined
+        ? planFor(requestedModel)
+        : planFor(requestedModel).filter(
+            id => id === OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+          )
     const toolBearingKhalaRequest = isToolBearingKhalaRequest({
       body,
       rawBody,
@@ -2956,6 +3026,9 @@ export const handleChatCompletions = (
       componentChannelActive,
       autopilotConcierge?.ok === true ? autopilotConcierge.config : undefined,
       {
+        ...(callerByok === undefined
+          ? {}
+          : { callerProviderKey: callerByok.key }),
         ...(preemptionAbortController === undefined
           ? {}
           : { abortSignal: preemptionAbortController.signal }),
@@ -3195,6 +3268,9 @@ export const handleChatCompletions = (
           headers: {
             'cache-control': 'no-store',
             'content-type': 'text/event-stream; charset=utf-8',
+            ...(callerByok === undefined
+              ? {}
+              : { [INFERENCE_BYOK_ACK_HEADER]: 'routed' }),
             // Advertise the resumable read URL only when the completion is being
             // persisted. The opaque request id carries no prompt/credential
             // material, so this header is safe (INVARIANTS: no leakage).
@@ -3451,6 +3527,9 @@ export const handleChatCompletions = (
         headers: {
           'cache-control': 'no-store',
           'content-type': 'text/event-stream; charset=utf-8',
+          ...(callerByok === undefined
+            ? {}
+            : { [INFERENCE_BYOK_ACK_HEADER]: 'routed' }),
         },
         status: 200,
       })
@@ -3689,5 +3768,8 @@ export const handleChatCompletions = (
         }),
         result: guardedResult,
       }),
+      callerByok === undefined
+        ? {}
+        : { headers: byokAckHeaders('routed') },
     )
   })

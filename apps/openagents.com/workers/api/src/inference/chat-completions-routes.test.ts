@@ -1,5 +1,5 @@
 import { MemoryStreamStore } from '@openagentsinc/durable-stream'
-import { Effect, Option } from 'effect'
+import { Effect, Option, Redacted } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import type { AgentRegistrationStore } from '../agent-registration'
@@ -17,7 +17,10 @@ import {
 } from './acceptance-spec'
 import {
   type ChatCompletionsDeps,
+  INFERENCE_BYOK_ACK_HEADER,
   INFERENCE_CLIENT_HEADER,
+  INFERENCE_BYOK_PROVIDER_HEADER,
+  INFERENCE_BYOK_PROVIDER_KEY_HEADER,
   INFERENCE_DEMAND_KIND_HEADER,
   INFERENCE_DEMAND_SOURCE_HEADER,
   type InferenceAuth,
@@ -61,6 +64,7 @@ import {
   HYDRALISK_ADAPTER_ID,
   HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
   HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
+  OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
   VERTEX_GEMINI_ADAPTER_ID,
   selectAdapterPlan,
 } from './model-router'
@@ -1514,6 +1518,112 @@ describe('POST /v1/chat/completions', () => {
     expect(recorded[0]?.requestMetrics).toMatchObject({
       requestClass: 'async_job',
       totalWallClockMs: 0,
+    })
+  })
+
+  test('rejects malformed BYOK headers with a typed 400 acknowledgment', async () => {
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(helloBody, {
+          headers: {
+            [INFERENCE_BYOK_PROVIDER_HEADER]: 'openrouter',
+            [INFERENCE_BYOK_PROVIDER_KEY_HEADER]: 'short',
+          },
+        }),
+        baseDeps(),
+      ),
+    )
+
+    expect(response.status).toBe(400)
+    expect(response.headers.get(INFERENCE_BYOK_ACK_HEADER)).toBe('invalid')
+    const body = (await response.json()) as { error: string; reason: string }
+    expect(body).toEqual({
+      error: 'invalid_byok_provider_key',
+      reason: 'invalid_provider_key',
+    })
+  })
+
+  test('routes valid OpenRouter BYOK without credit debit while still recording served tokens', async () => {
+    const registry = new InferenceProviderRegistry()
+    registry.register(stubEchoAdapter)
+    let callerKey: string | undefined
+    registry.register({
+      complete: request =>
+        Effect.sync(() => {
+          callerKey =
+            request.callerProviderKey === undefined
+              ? undefined
+              : Redacted.value(request.callerProviderKey)
+          return {
+            content: 'BYOK response',
+            finishReason: 'stop',
+            servedModel: 'openrouter/free',
+            usage: { completionTokens: 3, promptTokens: 5, totalTokens: 8 },
+          }
+        }),
+      id: OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+      stream: () => Effect.sync(() => []),
+    })
+    let meteringCalled = false
+    let spendCapCalled = false
+    const recorded: Array<InferenceUsage> = []
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(helloBody, {
+          headers: {
+            [INFERENCE_BYOK_PROVIDER_HEADER]: 'openrouter',
+            [INFERENCE_BYOK_PROVIDER_KEY_HEADER]: 'caller-openrouter-key',
+          },
+        }),
+        baseDeps({
+          checkSpendCap: async () => {
+            spendCapCalled = true
+            return decideSpendCap({
+              cap: { maxSpendMsatPerWindow: 1, windowSeconds: 60 },
+              spentMsatInWindow: 2,
+            })
+          },
+          lanePlan: () => [
+            STUB_ECHO_ADAPTER_ID,
+            OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+          ],
+          meteringHook: () =>
+            Effect.sync(() => {
+              meteringCalled = true
+              return { metered: true, receiptRef: 'should-not-run' }
+            }),
+          readAvailableMsat: emptyBalance,
+          recordTokensServed: input =>
+            Effect.sync(() => {
+              recorded.push(input.usage)
+            }),
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get(INFERENCE_BYOK_ACK_HEADER)).toBe('routed')
+    expect(callerKey).toBe('caller-openrouter-key')
+    expect(meteringCalled).toBe(false)
+    expect(spendCapCalled).toBe(false)
+    expect(recorded).toEqual([
+      { completionTokens: 3, promptTokens: 5, totalTokens: 8 },
+    ])
+    const body = (await response.json()) as {
+      openagents?: {
+        billing?: { mode: string; reason?: string; receipt_required: boolean }
+        supply_lane?: string
+        worker?: string
+      }
+    }
+    expect(body.openagents?.worker).toBe(OPENROUTER_KHALA_FALLBACK_ADAPTER_ID)
+    expect(body.openagents?.supply_lane).toBe('openrouter')
+    expect(body.openagents?.billing).toEqual({
+      mode: 'no_debit',
+      reason: 'caller_byok',
+      receipt_required: false,
     })
   })
 

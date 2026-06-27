@@ -105,6 +105,7 @@ export type MeteringOutcome = Readonly<{
   // Public-safe ledger/usage receipt ref when metering is live; null for the
   // stub. Never a raw amount, destination, or payment material here.
   receiptRef: string | null
+  noDebitReason?: 'caller_byok' | 'operator_exempt_or_unmetered' | undefined
   // True when the live hook ran but the priced charge rounded to zero msat (no
   // billable tokens) so no ledger row was written. Distinguishes "metered, $0"
   // from "not metered" without exposing the amount.

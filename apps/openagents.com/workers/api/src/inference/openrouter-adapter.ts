@@ -154,11 +154,12 @@ const postChatCompletions = (
       const signal = safeSignal(
         config.timeoutMs ?? OPENROUTER_DEFAULT_TIMEOUT_MS,
       )
+      const apiKey = request.callerProviderKey ?? config.apiKey
       return fetcher(endpointFor(config.baseUrl), {
         body: JSON.stringify(requestBody(config, request)),
         headers: {
           accept: 'application/json',
-          authorization: `Bearer ${Redacted.value(config.apiKey)}`,
+          authorization: `Bearer ${Redacted.value(apiKey)}`,
           'content-type': 'application/json',
         },
         method: 'POST',

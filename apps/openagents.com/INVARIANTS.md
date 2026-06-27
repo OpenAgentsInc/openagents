@@ -1233,6 +1233,16 @@ This is the invariant ledger for `openagents`.
   gateway resale. Converting a consumer subscription login into resale remains
   blocked; API-inference gateway resale is allowed only through an explicit
   policy path such as this gate, with tests.
+- Caller-supplied Khala BYOK provider keys (`x-openagents-provider` /
+  `x-openagents-provider-key`) are caller-paid upstream API keys, not OpenAgents
+  resale and not subscription-capacity resale. A valid BYOK request may route
+  only through the matching API-key adapter path, must never debit OpenAgents
+  inference credits or spend-cap budget for upstream cost, and must still record
+  exact served tokens in the canonical Khala token ledger. The raw provider key
+  remains request-local secret material and must not enter logs, D1, traces,
+  receipts, public refs, or token usage rows. Regression coverage:
+  `workers/api/src/inference/chat-completions-routes.test.ts` and
+  `workers/api/src/inference/openrouter-adapter.test.ts`.
 - The authorizing policy required by the previous clause is
   `workers/api/src/inference-resale-authorization.ts`
   (`authorizeInferenceMonetization`, tests in
