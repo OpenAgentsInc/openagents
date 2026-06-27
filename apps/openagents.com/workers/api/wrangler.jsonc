@@ -99,11 +99,10 @@
     // secrets (HYDRALISK_GLM_52_REAP_504B_<REPLICA_ID>_BASE_URL/_BEARER_TOKEN,
     // uploaded via `wrangler secret put` — never committed). These committed vars
     // keep the route armed only for completion-capable replicas. A 2026-06-27
-    // live completion probe found `g4-8g-b-20260624214500` serving HTTP 200,
-    // `g4-4g-b-20260625154532` false-ready (health/models 200, completion 500),
-    // and the eight newer 4-GPU Spot origins unreachable. Those nine stay listed
-    // for readiness/accounting but are marked draining below until host-level
-    // repair re-proves `/health`, `/v1/models`, and `/v1/chat/completions`.
+    // live completion probes recovered the newer Spot origins; the terminated
+    // `g4-4g-b-20260625154532` host remains listed for readiness/accounting but
+    // is marked draining until capacity returns and host-level repair re-proves
+    // `/health`, `/v1/models`, and `/v1/chat/completions`.
     // A GLM replica failure is retryable inside the pool first, then the lane can
     // still overflow to Khala fallbacks. GPT-OSS is not in the main Khala fallback
     // thread.
@@ -128,6 +127,7 @@
     // Draining means "do not route" while keeping the replica visible to the
     // readiness surface until it is host-repaired and re-smoked.
     "HYDRALISK_GLM_52_REAP_504B_G4_4G_B_20260625154532_ENABLED": "ready",
+    "HYDRALISK_GLM_52_REAP_504B_G4_4G_B_20260625154532_DRAINING": "true",
     "HYDRALISK_GLM_52_REAP_504B_G4_4G_B_20260625154532_PROFILE_REF": "profile.hydralisk.glm_52_reap_504b.g4_tp4_minp.v1",
     "HYDRALISK_GLM_52_REAP_504B_G4_4G_B_20260625154532_COST_PROFILE_REF": "cost_profile.hydralisk.glm_52_reap_504b.g4_4g.spot.2026_06_25",
     "HYDRALISK_GLM_52_REAP_504B_G4_4G_B_20260625154532_PREFLIGHT_REF": "preflight.hydralisk.glm_52_reap_504b.g4.20260626T033107Z",
