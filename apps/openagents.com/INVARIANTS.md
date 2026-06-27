@@ -1279,6 +1279,15 @@ This is the invariant ledger for `openagents`.
   accounts and never pools credentials across customers. Raw key material
   lives only in the auth KV under `provider-auth:<providerAccountRef>`;
   durable rows, events, grants, and projections carry secret refs only.
+- Khala gateway caller-paid BYOK (`x-openagents-provider: openrouter` plus
+  `x-openagents-provider-key`) is not provider-capacity resale: the caller's
+  own upstream API key pays the upstream provider directly, the key is accepted
+  only as redacted per-request material, the request is routed only to the
+  matching OpenRouter adapter, and OpenAgents credit/billing metering is skipped.
+  The served-token recorder still writes exact Khala-served token rows so public
+  counters remain complete. BYOK headers must never authorize subscription
+  resale, pooled credentials, settlement-bearing provider capacity, or raw-key
+  persistence in D1, traces, logs, receipts, or public projections.
 - Pack B credential-boundary projections may join provider accounts, auth
   grants, active lease refs, artifact refs, and receipt refs only as refs.
   Revoked grants, expired grants, disconnected accounts, reauth-required

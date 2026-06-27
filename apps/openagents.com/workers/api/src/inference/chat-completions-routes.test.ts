@@ -1,5 +1,5 @@
 import { MemoryStreamStore } from '@openagentsinc/durable-stream'
-import { Effect, Option } from 'effect'
+import { Effect, Option, Redacted } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import type { AgentRegistrationStore } from '../agent-registration'
@@ -20,6 +20,9 @@ import {
   INFERENCE_CLIENT_HEADER,
   INFERENCE_DEMAND_KIND_HEADER,
   INFERENCE_DEMAND_SOURCE_HEADER,
+  OPENAGENTS_BYOK_ACK_HEADER,
+  OPENAGENTS_BYOK_PROVIDER_HEADER,
+  OPENAGENTS_BYOK_PROVIDER_KEY_HEADER,
   type InferenceAuth,
   type InferenceBalanceReader,
   codingDelegationDisabled,
@@ -61,6 +64,7 @@ import {
   HYDRALISK_ADAPTER_ID,
   HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
   HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
+  OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
   VERTEX_GEMINI_ADAPTER_ID,
   selectAdapterPlan,
 } from './model-router'
@@ -842,6 +846,106 @@ describe('POST /v1/chat/completions', () => {
     }
     expect(body.error).toBe('insufficient_credits')
     expect(body.availableMsat).toBe(0)
+  })
+
+  test('rejects malformed caller BYOK headers with a typed 400 and invalid acknowledgment', async () => {
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(helloBody, {
+          headers: {
+            [OPENAGENTS_BYOK_PROVIDER_HEADER]: 'openrouter',
+            [OPENAGENTS_BYOK_PROVIDER_KEY_HEADER]: 'bad key with spaces',
+          },
+        }),
+        baseDeps(),
+      ),
+    )
+
+    expect(response.status).toBe(400)
+    expect(response.headers.get(OPENAGENTS_BYOK_ACK_HEADER)).toBe('invalid')
+    const body = (await response.json()) as { error: string }
+    expect(body.error).toBe('invalid_provider_key')
+  })
+
+  test('routes OpenRouter BYOK with the caller key, skips OpenAgents billing gates, and still records served tokens', async () => {
+    const registry = new InferenceProviderRegistry()
+    const meteringCalls: Array<MeteringContext> = []
+    const recordedTokens: Array<Readonly<{ adapterId: string; total: number }>> =
+      []
+    let capturedRequest: InferenceRequest | undefined
+    let spendCapCalls = 0
+    registry.register({
+      complete: request =>
+        Effect.sync(() => {
+          capturedRequest = request
+          return {
+            content: 'BYOK response',
+            finishReason: 'stop',
+            servedModel: 'openrouter/free',
+            usage: {
+              completionTokens: 3,
+              promptTokens: 5,
+              totalTokens: 8,
+            },
+          }
+        }),
+      id: OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+      stream: () => Effect.sync(() => []),
+    })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(helloBody, {
+          headers: {
+            [OPENAGENTS_BYOK_PROVIDER_HEADER]: 'openrouter',
+            [OPENAGENTS_BYOK_PROVIDER_KEY_HEADER]: 'caller-openrouter-key',
+          },
+        }),
+        baseDeps({
+          checkSpendCap: async () => {
+            spendCapCalls += 1
+            return {
+              allowed: false,
+              capMsat: 1,
+              estimatedChargeMsat: 1,
+              reasonRef: 'test.spend_cap',
+              remainingMsat: 0,
+              spentMsatInWindow: 1,
+              status: 'spend_cap_exceeded',
+              statusCode: 402,
+              windowSeconds: 60,
+            }
+          },
+          meteringHook: context =>
+            Effect.sync(() => {
+              meteringCalls.push(context)
+              return { metered: true, receiptRef: 'should-not-charge' }
+            }),
+          readAvailableMsat: emptyBalance,
+          recordTokensServed: input =>
+            Effect.sync(() => {
+              recordedTokens.push({
+                adapterId: input.adapterId,
+                total: input.usage.totalTokens,
+              })
+            }),
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get(OPENAGENTS_BYOK_ACK_HEADER)).toBe('routed')
+    expect(spendCapCalls).toBe(0)
+    expect(meteringCalls).toHaveLength(0)
+    expect(recordedTokens).toEqual([
+      { adapterId: OPENROUTER_KHALA_FALLBACK_ADAPTER_ID, total: 8 },
+    ])
+    expect(
+      capturedRequest?.callerProviderKey === undefined
+        ? undefined
+        : Redacted.value(capturedRequest.callerProviderKey),
+    ).toBe('caller-openrouter-key')
   })
 
   test('zero-balance + free-allowance eligible => NOT 402 (free bypass)', async () => {

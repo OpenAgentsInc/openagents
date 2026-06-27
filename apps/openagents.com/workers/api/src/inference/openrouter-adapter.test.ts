@@ -144,4 +144,22 @@ describe('OpenRouter Khala fallback adapter', () => {
     expect(result._tag).toBe('Success')
     expect(capturedBody?.model).toBe(OPENROUTER_KHALA_FALLBACK_MODEL_ID)
   })
+
+  it('uses a caller-supplied provider key instead of the configured key', async () => {
+    let authorization: string | undefined
+    const fetchImpl: OpenRouterFetch = async (_input, init) => {
+      authorization = init.headers.authorization
+      return jsonResponse(completionBody())
+    }
+    const adapter = makeOpenRouterAdapter(adapterConfig(fetchImpl))
+
+    const result = await runResult(
+      adapter.complete(
+        request({ callerProviderKey: Redacted.make('caller-openrouter-key') }),
+      ),
+    )
+
+    expect(result._tag).toBe('Success')
+    expect(authorization).toBe('Bearer caller-openrouter-key')
+  })
 })
