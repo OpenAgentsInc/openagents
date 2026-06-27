@@ -22,6 +22,10 @@ agents. This folder collects the Khala-specific design, brain, and buildout docs
 - [khala.md](khala.md) — the model/gateway overview and verified-work framing.
 - [khala-in-the-world.md](khala-in-the-world.md) — Khala as a product surface.
 - [khala-buildout-roadmap.md](khala-buildout-roadmap.md) — buildout roadmap.
+- [2026-06-27-khala-cli-spawn-subagents-audit.md](2026-06-27-khala-cli-spawn-subagents-audit.md)
+  — audit/spec for making `khala spawn --count N` and `/spawn` start bounded,
+  supervised Khala child workers instead of replying that subprocess delegation
+  is not exposed.
 - [khala-head-to-head-demo.md](khala-head-to-head-demo.md) /
   [2026-06-23-khala-head-to-head-m8-status.md](2026-06-23-khala-head-to-head-m8-status.md)
   — the head-to-head demo runbook + M8 status.
