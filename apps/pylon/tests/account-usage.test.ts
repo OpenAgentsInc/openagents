@@ -275,8 +275,10 @@ describe("pylon account usage", () => {
       await mkdir(join(root, ".codex-pylon-b"), { recursive: true })
       await mkdir(join(root, ".claude"), { recursive: true })
       await mkdir(join(root, ".claude-work"), { recursive: true })
+      await mkdir(join(root, ".claude-supervisor"), { recursive: true })
       await mkdir(join(root, ".unrelated"), { recursive: true })
       await writeFile(join(root, ".codex-not-a-dir"), "x")
+      await writeFile(join(root, ".claude-work", "claude-oauth-token"), "sk-ant-oat-work\n")
 
       const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), { PYLON_HOME: home })
       const projection = await collectPylonAccountsList(summary, {
@@ -296,6 +298,10 @@ describe("pylon account usage", () => {
       expect(claudeHomes).toBeGreaterThanOrEqual(2)
       // The non-account dir and the regular file are ignored.
       expect(projection.accounts.some((a) => String(a.accountRef ?? "").includes("unrelated"))).toBe(false)
+      const claudeWork = projection.accounts.find((a) => a.provider === "claude_agent" && a.accountRef === "claude-work")
+      const claudeSupervisor = projection.accounts.find((a) => a.provider === "claude_agent" && a.accountRef === "claude-supervisor")
+      expect(claudeWork?.readiness.state).toBe("ready")
+      expect(claudeSupervisor?.readiness.state).not.toBe("ready")
       assertPublicProjectionSafe(projection)
     })
   })

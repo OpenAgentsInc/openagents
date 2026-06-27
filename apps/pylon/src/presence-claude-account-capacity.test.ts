@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test"
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 
 import {
   claudeAccountCapacityRefs,
@@ -6,8 +9,11 @@ import {
   claudePerAccountConcurrency,
   codexAccountCapacities,
   codexAccountCapacityKey,
+  localClaudeAccountReadiness,
 } from "./presence.js"
 import { UNKEYED_ACTIVE_RUN_ACCOUNT } from "./active-assignment-runs.js"
+import { createBootstrapSummary, parseBootstrapArgs } from "./bootstrap.js"
+import { hashPylonAccountRef } from "./account-registry.js"
 
 const HASH_A = "account.pylon.claude_agent.aaaaaaaaaaaa"
 const KEY_A = "aaaaaaaaaaaa"
@@ -15,6 +21,34 @@ const HASH_B = "account.pylon.claude_agent.bbbbbbbbbbbb"
 const KEY_B = "bbbbbbbbbbbb"
 
 describe("#6421 per-account Claude capacity (Pylon side)", () => {
+  test("discovers only authenticated Claude sibling homes for per-account readiness", async () => {
+    const home = await mkdtemp(join(tmpdir(), "pylon-claude-capacity-"))
+    try {
+      const root = join(home, "scan-root")
+      const realHome = join(root, ".claude-pylon-2")
+      const supervisorHome = join(root, ".claude-supervisor")
+      await mkdir(realHome, { recursive: true })
+      await mkdir(supervisorHome, { recursive: true })
+      await writeFile(join(realHome, "claude-oauth-token"), "sk-ant-oat-real\n")
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), { PYLON_HOME: home })
+
+      const readiness = await localClaudeAccountReadiness(summary, {
+        PYLON_ACCOUNT_HOME_ROOT: root,
+      } as NodeJS.ProcessEnv)
+
+      expect(readiness).toContainEqual({
+        accountRefHash: hashPylonAccountRef("claude_agent", realHome),
+        ready: true,
+      })
+      expect(readiness).toContainEqual({
+        accountRefHash: hashPylonAccountRef("claude_agent", supervisorHome),
+        ready: false,
+      })
+    } finally {
+      await rm(home, { recursive: true, force: true })
+    }
+  })
+
   test("capacity key is the public-safe trailing hex of the claude account-ref hash", () => {
     expect(codexAccountCapacityKey(HASH_A)).toBe(KEY_A)
   })

@@ -122,6 +122,41 @@ describe("pylon account registry", () => {
     })
   })
 
+  test("resolves discovered Claude account refs against sibling account homes", async () => {
+    await withHome(async (home) => {
+      const root = join(home, "scan-root")
+      const claudeHome = join(root, ".claude-pylon-2")
+      await mkdir(claudeHome, { recursive: true })
+      await writeFile(join(claudeHome, "claude-oauth-token"), "sk-ant-oat-discovered\n")
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), { PYLON_HOME: home })
+      const previousRoot = process.env.PYLON_ACCOUNT_HOME_ROOT
+      process.env.PYLON_ACCOUNT_HOME_ROOT = root
+      try {
+        const resolved = await resolvePylonAccountSelection(summary, {
+          provider: "claude_agent",
+          accountRef: "claude-pylon-2",
+        })
+        expect(resolved).toMatchObject({
+          provider: "claude_agent",
+          selector: "registry_ref",
+          accountRef: "claude-pylon-2",
+          accountRefHash: hashPylonAccountRef("claude_agent", claudeHome),
+          home: claudeHome,
+        })
+
+        const env = pylonAccountEnvironment({ PATH: "/bin" }, resolved)
+        expect(env.CLAUDE_CONFIG_DIR).toBe(claudeHome)
+        expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBe("sk-ant-oat-discovered")
+      } finally {
+        if (previousRoot === undefined) {
+          delete process.env.PYLON_ACCOUNT_HOME_ROOT
+        } else {
+          process.env.PYLON_ACCOUNT_HOME_ROOT = previousRoot
+        }
+      }
+    })
+  })
+
   test("refuses unknown refs, ambiguous selectors, and missing homes", async () => {
     await withHome(async (home) => {
       const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), { PYLON_HOME: home })
