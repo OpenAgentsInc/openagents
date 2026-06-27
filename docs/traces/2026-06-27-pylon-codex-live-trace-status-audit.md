@@ -32,10 +32,11 @@ Short answer:
   owner-only Pylon/Codex trace is now readable through
   `/api/traces/{uuid}?token=...` and listable through
   `/api/traces?demand_kind=own_capacity&token=...`.
-- The same smoke found that `GET /api/pylon/codex/trace-status` still returned
-  production `404` for the sampled assignment, even though the endpoint exists
-  in local code/tests. Treat that as a deploy/route parity gap until a deployed
-  smoke returns the metadata payload.
+- The same smoke originally found that
+  `GET /api/pylon/codex/trace-status` returned production `404` for the sampled
+  assignment, even though the endpoint existed in local code/tests. Current
+  source mounts the route and #6368 tracks the remaining deployed smoke plus
+  owner-facing status UI needed before this becomes green product evidence.
 - A later #6318 attempt proved another important non-trace case: local Pylon
   capacity and heartbeat can be fresh while the production dispatch gate fails
   before assignment creation. In that state there is no trace or token event
@@ -1226,8 +1227,9 @@ What is missing for the desired live page:
 - one stable assignment/session view URL created at assignment creation time;
 - frontend integration that resolves assignment ref or durable request id to the
   assignment trace-status API and renders it in a coherent timeline;
-- deployed-route parity for the assignment trace-status endpoint; the local
-  code/tests exist, but the latest production smoke returned `404`;
+- deployed smoke evidence for the assignment trace-status endpoint (#6368);
+  current source mounts the route and exact-route manifest, but green still
+  needs live metadata payload proof and a coherent owner-facing status surface;
 - front-end polling or streaming for that assignment/session view;
 - proof/status endpoint expansion to include verifier-specific progress and
   bounded recent activity labels, beyond the current event/trace/chunk/token/
@@ -1488,6 +1490,7 @@ The product gap is presentation and owner read scope:
   assignment session monitor;
 - the local owner-token mismatch for Pylon/Codex owner-only traces is fixed and
   live-smoked with the sampled #6323 trace;
-- the assignment-level trace-status endpoint is present locally but still
-  returned production `404` in the latest smoke;
+- the assignment-level trace-status endpoint is mounted in current source, but
+  #6368 still needs a deployed smoke and user/agent-facing timeline/status
+  surface before the promise can go green;
 - there is no single stable trace URL that represents the whole assignment.

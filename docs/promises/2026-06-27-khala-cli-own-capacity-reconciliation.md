@@ -80,9 +80,12 @@ Do not claim:
 - broad automatic coding-prompt routing without the typed/semantic selector and
   caller-owned capacity resolver.
 
-The main blockers are dispatch capacity-read reliability, owner-only Pylon/Codex
-trace read-scope mismatch, assignment-level trace/status presentation, and the
-broad semantic router being verified without ad hoc keyword routing.
+The main blockers are dispatch/auto-execution reliability (#6362),
+master-default workspace materialization (#6361), assignment-level trace/status
+presentation plus deployed smoke (#6368), proof/status closeout ergonomics
+(#6369), and the broad semantic router being verified without ad hoc keyword
+routing. The original owner-only Pylon/Codex trace read-scope mismatch is fixed
+for individual trace reads; a whole-assignment status surface is still needed.
 
 ## CLI Boundary
 

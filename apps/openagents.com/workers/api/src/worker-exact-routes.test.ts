@@ -97,6 +97,7 @@ const approvedExactRoutePaths = [
   '/api/pylon/codex/turns',
   '/api/pylon/codex/event-chunks',
   '/api/pylon/codex/proof',
+  '/api/pylon/codex/trace-status',
   '/api/public/pylon-capacity-funnel',
   '/api/public/pylon-capacity-funnel/history',
   '/api/public/site-referral-payouts',
