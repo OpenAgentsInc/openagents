@@ -36,7 +36,8 @@ This lane already dominates the public mix. A live read of
 `/api/public/khala-tokens-served/model-mix` on 2026-06-27 showed the
 `pylon_codex` family at ~61% of the 30-day token total — far ahead of every
 model-routed family. **No paid API, no spend, own-capacity only.** This runbook
-is how to keep that engine lit and diagnose it when it stalls.
+is how to keep that engine lit, split it across machines, and diagnose it when
+it stalls.
 
 ---
 
@@ -203,6 +204,38 @@ The granular admission blocker refs (`registration_not_active`,
 > 409 `target_pylon_unavailable` text above; the granular typed refs are in the
 > admission module listed above. Use those exact strings when grepping logs.
 
+### 2d. Tailnet host split — desktop + bertha + m2 (#6432)
+
+When one desktop runs all Codex sessions, the limiting factor becomes local CPU
+and process contention before the account fleet is fully useful. Split the
+serialized, already-authenticated Codex account homes across Tailnet Macs and
+run one standing Pylon + Codex supervisor per host:
+
+| Host | Role | Suggested accounts | Suggested slots |
+|---|---|---:|---:|
+| owner desktop | keep interactive headroom + hot accounts | 3 | 4 |
+| `imac-pro-bertha` | offloaded worker | 2 | 4 |
+| `macbook-pro-m2` | offloaded worker | 2 | 4 |
+
+This gives the current seven-account fleet roughly twelve concurrent turns
+spread across three machines, instead of twelve CPU-heavy Codex SDK sessions on
+the owner's desktop. Keep the split conservative: move about four accounts off
+the desktop first, then adjust `SUP_MAX_SLOTS` only after each host proves it can
+heartbeat, dispatch, run, and close out.
+
+The transfer is a profile move, **not** a re-login. Copy only these local Pylon
+account homes and their registry entries:
+
+- source homes: `$PYLON_HOME/accounts/codex/<ref>`
+- target homes: `$PYLON_HOME/accounts/codex/<same-ref>`
+- target config entries: `dev.accounts[]` records with
+  `{ "provider": "codex", "ref": "<ref>", "home": "<target-home>" }`
+
+Do not copy or touch the default `~/.codex` home. Do not run `codex login`,
+`codex login --device-auth`, or `pylon auth codex` on the target hosts during
+offload; those commands are for new account linking, not moving already-linked
+profiles.
+
 ---
 
 ## 3. Identity & tokens (the #1 footgun)
@@ -310,6 +343,148 @@ sub-condition (see §2c table).
 ---
 
 ## 6. Procedures
+
+### Offload Codex accounts to Tailnet hosts (#6432)
+
+Use this when the owner desktop is CPU-oversubscribed and you need to move about
+four of seven already-linked Codex account profiles to `imac-pro-bertha` and
+`macbook-pro-m2`.
+
+**Preflight on the source desktop:**
+
+```sh
+export PYLON_HOME="${PYLON_HOME:-$HOME/.pylon-fable}"
+export PYLON="bun apps/pylon/src/index.ts"
+
+$PYLON codex accounts list --json
+```
+
+Pick explicit refs, for example:
+
+```sh
+BERTHA_REFS="codex-4 codex-5"
+M2_REFS="codex-6 codex-7"
+```
+
+For each selected ref, confirm its source directory exists and is an isolated
+Pylon account home:
+
+```sh
+for ref in $BERTHA_REFS $M2_REFS; do
+  test -d "$PYLON_HOME/accounts/codex/$ref" || { echo "missing $ref"; exit 1; }
+done
+```
+
+**Archive and copy over Tailnet:**
+
+```sh
+mkdir -p "$PYLON_HOME/offload"
+
+tar -C "$PYLON_HOME/accounts/codex" -czf "$PYLON_HOME/offload/codex-bertha.tgz" $BERTHA_REFS
+tar -C "$PYLON_HOME/accounts/codex" -czf "$PYLON_HOME/offload/codex-m2.tgz" $M2_REFS
+
+scp "$PYLON_HOME/offload/codex-bertha.tgz" imac-pro-bertha:~/codex-bertha.tgz
+scp "$PYLON_HOME/offload/codex-m2.tgz"     macbook-pro-m2:~/codex-m2.tgz
+```
+
+Do not include the default `~/.codex` directory in either tarball. If you need an
+extra sanity check before copying, list the archive contents and verify they are
+only relative account refs:
+
+```sh
+tar -tzf "$PYLON_HOME/offload/codex-bertha.tgz"
+tar -tzf "$PYLON_HOME/offload/codex-m2.tgz"
+```
+
+**Install the profiles on each target host:**
+
+```sh
+export PYLON_HOME="${PYLON_HOME:-$HOME/.pylon-fable}"
+mkdir -p "$PYLON_HOME/accounts/codex"
+tar -C "$PYLON_HOME/accounts/codex" -xzf ~/codex-bertha.tgz   # on imac-pro-bertha
+# tar -C "$PYLON_HOME/accounts/codex" -xzf ~/codex-m2.tgz     # on macbook-pro-m2
+chmod -R go-rwx "$PYLON_HOME/accounts/codex"
+```
+
+Then merge matching `dev.accounts` registry entries into the target
+`$PYLON_HOME/config.json`. The shape is:
+
+```json
+{
+  "dev": {
+    "accounts": [
+      {
+        "provider": "codex",
+        "ref": "codex-4",
+        "home": "/Users/<host-user>/.pylon-fable/accounts/codex/codex-4"
+      }
+    ]
+  }
+}
+```
+
+Keep refs stable across the move. Do not rename `codex-4` to a new ref unless
+you also update every supervisor/account selector that targets it.
+
+**Verify readiness on each target host:**
+
+```sh
+PYLON_HOME=$HOME/.pylon-fable bun apps/pylon/src/index.ts codex accounts list --json
+PYLON_HOME=$HOME/.pylon-fable bun apps/pylon/src/index.ts accounts usage --account codex-4 --refresh --json
+```
+
+Expected: every moved account reports `readiness.state: "ready"` and
+`capability.pylon.local_codex`; the usage refresh returns
+`truth.localSession.usage`. If a moved profile fails readiness, do not re-login
+in place. Mark the ref `NEEDS-OWNER`, remove it from the host's supervisor pool,
+and keep other ready accounts burning.
+
+**Launch the target host supervisor:**
+
+```sh
+cd /path/to/clean/openagents
+source ~/work/.secrets/openagents-artanis-agent.env
+
+PYLON_HOME=$HOME/.pylon-fable \
+PYLON_DISABLE_DAEMON_ROUTING=1 \
+bun apps/pylon/src/index.ts provider go-online --json
+
+SUP_MAX_SLOTS=4 \
+SUP_PER_ACCOUNT=2 \
+PYLON_HOME=$HOME/.pylon-fable \
+PYLON_DISABLE_DAEMON_ROUTING=1 \
+bash apps/pylon/scripts/supervisor-launchd/install.sh install codex
+```
+
+The launchd wrapper resolves the live `SUP_PYLON_REF` from that host's Pylon at
+startup. If you launch the foreground supervisor instead of launchd, export the
+live ref explicitly:
+
+```sh
+SUP_PYLON_REF=<live-pylon-ref> SUP_MAX_SLOTS=4 SUP_PER_ACCOUNT=2 \
+PYLON_HOME=$HOME/.pylon-fable \
+OPENAGENTS_AGENT_TOKEN=<owner-linked token> \
+bash apps/pylon/scripts/codex-supervisor/launch.sh start
+```
+
+**Post-offload proof:**
+
+```sh
+bash apps/pylon/scripts/supervisor-launchd/install.sh status
+tail -n 80 ~/.codex-supervisor/supervisor.log
+curl -fsS https://openagents.com/api/public/khala-tokens-served
+```
+
+Look for one heartbeat and at least one `slot=... OK` or typed `NO-DISPATCH`
+line per host. `NO-DISPATCH (rate_limited)` means the account is at provider
+headroom; `NO-DISPATCH (refused)` means inspect the host's live pylon ref,
+fresh heartbeat, and advertised capacity before raising slots.
+
+Leave the source desktop with only the refs it is meant to run. Either remove
+offloaded refs from the desktop `dev.accounts` registry or lower the desktop
+`SUP_MAX_SLOTS` so the same profile is not actively driven from two machines.
+Running one serialized profile concurrently on two hosts is not a supported
+throughput strategy; it adds contention and makes failures hard to attribute.
 
 ### Add a Codex account
 ```sh
