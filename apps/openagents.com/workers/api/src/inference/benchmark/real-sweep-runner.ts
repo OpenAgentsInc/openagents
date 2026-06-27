@@ -156,9 +156,14 @@ const attributionForLane = (
 export const runRealSweep = async (
   options: RunRealSweepOptions,
 ): Promise<BenchmarkRunSet> => {
+  const armedBillableLanes = options.transports
+    .filter(transport => transport.billable)
+    .map(transport => transport.lane)
   const preflight = preflightRealBenchmarkSweep(
     options.config,
-    options.preflight,
+    options.preflight.billableLanes === undefined
+      ? { ...options.preflight, billableLanes: armedBillableLanes }
+      : options.preflight,
   )
   if (!preflight.canArmRealSeam) {
     throw new RealSweepNotArmedError(preflight)

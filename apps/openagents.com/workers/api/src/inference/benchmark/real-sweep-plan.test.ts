@@ -6,6 +6,10 @@ import {
   TINY_TEST_CONFIG,
 } from './fixtures'
 import type { BenchmarkMatrixConfig } from './matrix'
+import {
+  KHALA_ONLY_DECISION_SLICE,
+  KHALA_VS_FIREWORKS_VERTEX_DECISION_SUITE,
+} from './real-sweep-config'
 import { preflightRealBenchmarkSweep } from './real-sweep-plan'
 
 const REALISTIC_AVAILABLE_CONFIG: BenchmarkMatrixConfig = {
@@ -52,7 +56,9 @@ describe('real benchmark sweep preflight', () => {
     expect(preflight.canArmRealSeam).toBe(true)
     expect(preflight.executableCells).toBe(1)
     expect(preflight.skippedFutureCells).toBe(1)
+    expect(preflight.executableSampleUpperBound).toBe(4)
     expect(preflight.billableSampleUpperBound).toBe(4)
+    expect(preflight.billableLanes).toEqual(['fireworks'])
     expect(preflight.warnings.map(warning => warning.code)).toContain(
       'future_lanes_skipped',
     )
@@ -96,6 +102,7 @@ describe('real benchmark sweep preflight', () => {
     expect(preflight.decisionGradeEligible).toBe(true)
     expect(preflight.blockers).toEqual([])
     expect(preflight.warnings).toEqual([])
+    expect(preflight.executableSampleUpperBound).toBe(3)
     expect(preflight.billableSampleUpperBound).toBe(3)
     expect(preflight.realTrafficEvidenceRefs).toEqual([
       'receipt.public.khala_traffic_shape.observed_code_artifact',
@@ -118,10 +125,76 @@ describe('real benchmark sweep preflight', () => {
     expect(preflight.realTrafficEvidenceRefs).toEqual([
       'evidence.openagents.token_usage_events.fireworks_mix.2026_06_25',
     ])
-    expect(preflight.billableSampleUpperBound).toBe(120)
+    expect(preflight.executableSampleUpperBound).toBe(120)
+    expect(preflight.billableSampleUpperBound).toBe(60)
+    expect(preflight.billableLanes).toEqual([
+      'fireworks',
+      'vertex-anthropic',
+      'vertex-gemini',
+    ])
     expect(preflight.warnings.map(warning => warning.code)).toEqual([
       'future_lanes_skipped',
     ])
+  })
+
+  test('separates total executable samples from billable samples for the full OQ5 suite', () => {
+    const preflight = preflightRealBenchmarkSweep(
+      KHALA_VS_FIREWORKS_VERTEX_DECISION_SUITE,
+      {
+        ownerConfirmed: true,
+        ownerApprovalRef: 'owner-approved-real-sweep:oq5',
+        budgetCapMsat: 500_000,
+        maxBillableSamples: 240,
+      },
+    )
+
+    expect(preflight.canArmRealSeam).toBe(true)
+    expect(preflight.decisionGradeEligible).toBe(true)
+    expect(preflight.executableCells).toBe(64)
+    expect(preflight.executableSampleUpperBound).toBe(320)
+    expect(preflight.billableSampleUpperBound).toBe(240)
+    expect(preflight.billableLanes).toEqual([
+      'fireworks',
+      'vertex-anthropic',
+      'vertex-gemini',
+    ])
+  })
+
+  test('does not count Khala-only own-capacity samples as billable or decision-grade eligible', () => {
+    const preflight = preflightRealBenchmarkSweep(
+      KHALA_ONLY_DECISION_SLICE,
+      {
+        ownerConfirmed: true,
+        ownerApprovalRef: 'owner-approved-real-sweep:khala-only',
+        budgetCapMsat: 1,
+        maxBillableSamples: 1,
+      },
+    )
+
+    expect(preflight.canArmRealSeam).toBe(true)
+    expect(preflight.decisionGradeEligible).toBe(false)
+    expect(preflight.executableCells).toBe(16)
+    expect(preflight.executableSampleUpperBound).toBe(80)
+    expect(preflight.billableSampleUpperBound).toBe(0)
+    expect(preflight.billableLanes).toEqual([])
+  })
+
+  test('can cap only the owner-armed billable lanes', () => {
+    const preflight = preflightRealBenchmarkSweep(
+      KHALA_VS_FIREWORKS_VERTEX_DECISION_SUITE,
+      {
+        ownerConfirmed: true,
+        ownerApprovalRef: 'owner-approved-real-sweep:fireworks-only',
+        budgetCapMsat: 500_000,
+        maxBillableSamples: 80,
+        billableLanes: ['fireworks'],
+      },
+    )
+
+    expect(preflight.canArmRealSeam).toBe(true)
+    expect(preflight.executableSampleUpperBound).toBe(320)
+    expect(preflight.billableSampleUpperBound).toBe(80)
+    expect(preflight.billableLanes).toEqual(['fireworks'])
   })
 
   test('realistic traffic still needs observed Khala traffic evidence', () => {
@@ -170,7 +243,7 @@ describe('real benchmark sweep preflight', () => {
         ownerConfirmed: true,
         ownerApprovalRef: 'owner-approved-real-sweep:test',
         budgetCapMsat: 10_000,
-        maxBillableSamples: 10,
+        maxBillableSamples: 119,
       },
     )
 

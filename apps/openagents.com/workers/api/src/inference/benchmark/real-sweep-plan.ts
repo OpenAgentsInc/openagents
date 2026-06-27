@@ -32,6 +32,7 @@ export type RealSweepPreflightOptions = Readonly<{
   maxBillableSamples: number
   trafficEvidence?: ReadonlyArray<RealTrafficShapeEvidence> | undefined
   executableFixtureOnlyLanes?: ReadonlyArray<BenchmarkLane> | undefined
+  billableLanes?: ReadonlyArray<BenchmarkLane> | undefined
 }>
 
 export type RealTrafficShapeEvidence = Readonly<{
@@ -50,8 +51,10 @@ export type RealSweepPreflight = Readonly<{
   budgetCapMsat: number | null
   executableCells: number
   skippedFutureCells: number
+  executableSampleUpperBound: number
   billableSampleUpperBound: number
   maxBillableSamples: number
+  billableLanes: ReadonlyArray<BenchmarkLane>
   realisticShapes: number
   syntheticShapes: number
   realTrafficEvidenceRefs: ReadonlyArray<string>
@@ -73,6 +76,38 @@ const positiveFinite = (value: number | undefined): value is number =>
 
 const samplesForCell = (samplesPerCell: number): number =>
   Math.max(1, Math.floor(samplesPerCell))
+
+export const DEFAULT_BILLABLE_REAL_SWEEP_LANES: ReadonlyArray<BenchmarkLane> = [
+  'claude',
+  'fireworks',
+  'openai-gpt',
+  'partner-passthrough',
+  'vertex-anthropic',
+  'vertex-gemini',
+]
+
+const DEFAULT_BILLABLE_REAL_SWEEP_LANE_SET = new Set(
+  DEFAULT_BILLABLE_REAL_SWEEP_LANES,
+)
+
+const defaultBillableLanesForConfig = (
+  config: BenchmarkMatrixConfig,
+): ReadonlyArray<BenchmarkLane> => {
+  const billable = new Set<BenchmarkLane>()
+  for (const target of config.targets) {
+    if (target.profile?.capacityClass === 'provider_managed') {
+      billable.add(target.lane)
+      continue
+    }
+    if (
+      target.profile === undefined &&
+      DEFAULT_BILLABLE_REAL_SWEEP_LANE_SET.has(target.lane)
+    ) {
+      billable.add(target.lane)
+    }
+  }
+  return [...billable].sort()
+}
 
 const normalizedEvidenceRef = (value: string): string | null => {
   const trimmed = value.trim()
@@ -141,6 +176,9 @@ export const preflightRealBenchmarkSweep = (
   const executableFixtureOnlyLanes = new Set(
     options.executableFixtureOnlyLanes ?? [],
   )
+  const billableLanes = new Set(
+    options.billableLanes ?? defaultBillableLanesForConfig(config),
+  )
   const executableCells = cells.filter(
     cell =>
       cell.laneAvailability === 'available' ||
@@ -148,8 +186,15 @@ export const preflightRealBenchmarkSweep = (
         executableFixtureOnlyLanes.has(cell.lane)),
   )
   const skippedFutureCells = cells.length - executableCells.length
-  const billableSampleUpperBound = executableCells.reduce(
+  const executableSampleUpperBound = executableCells.reduce(
     (total, cell) => total + samplesForCell(cell.samplesPerCell),
+    0,
+  )
+  const billableSampleUpperBound = executableCells.reduce(
+    (total, cell) =>
+      billableLanes.has(cell.lane)
+        ? total + samplesForCell(cell.samplesPerCell)
+        : total,
     0,
   )
   const realisticShapeIds = new Set(
@@ -203,7 +248,7 @@ export const preflightRealBenchmarkSweep = (
     blockers.push({
       code: 'billable_sample_cap_exceeded',
       message:
-        'The expanded matrix exceeds the owner-approved billable sample cap.',
+        'The billable portion of the expanded matrix exceeds the owner-approved billable sample cap.',
     })
   }
 
@@ -262,6 +307,7 @@ export const preflightRealBenchmarkSweep = (
   const canArmRealSeam = blockers.length === 0
   const decisionGradeEligible =
     canArmRealSeam &&
+    billableSampleUpperBound > 0 &&
     syntheticShapeIds.size === 0 &&
     realisticShapeIds.size > 0 &&
     realTrafficEvidenceRefs.length === realisticShapeIds.size
@@ -276,8 +322,10 @@ export const preflightRealBenchmarkSweep = (
       : null,
     executableCells: executableCells.length,
     skippedFutureCells,
+    executableSampleUpperBound,
     billableSampleUpperBound,
     maxBillableSamples: options.maxBillableSamples,
+    billableLanes: [...billableLanes].sort(),
     realisticShapes: realisticShapeIds.size,
     syntheticShapes: syntheticShapeIds.size,
     realTrafficEvidenceRefs,

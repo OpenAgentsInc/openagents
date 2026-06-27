@@ -93,8 +93,9 @@ billable comparators and confirm the spend gate:
      - OA_BENCH_OWNER_APPROVAL_REF="<public-safe owner approval ref>"
      - OA_BENCH_BUDGET_CAP_MSAT=<positive msat cap>
      - OA_BENCH_MAX_BILLABLE_SAMPLES=<>= expanded billable cell-sample count>
-       (the suite expands to 320 billable samples per armed billable lane:
-        4 workloads x 4 shapes x 5 samples x 1 streaming x 1 sampling.)
+       (the full suite expands to 320 executable samples total: 80 Khala
+        own-capacity samples + 240 billable comparator samples across Fireworks
+        and two Vertex lanes, 80 per billable lane.)
 
   3. Refresh the realistic traffic shapes from the live token_usage_events ledger
      so each shape's observed evidence ref + count reflect CURRENT Khala traffic

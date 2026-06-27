@@ -1705,6 +1705,80 @@ global-ledger concurrency between public reads. This confirms the owner's
 observation again: the public token counter moved after closeout/final usage-row
 insertion, not continuously while Codex was streaming.
 
+## #6307 Delegation Attempt And Manual Safe Patch
+
+The #6307 OQ5 sweep continuation reused the same working set, but it exposed a
+real delegation failure mode that future agents should not hand-wave away.
+
+Preflight on 2026-06-27T10:22Z showed:
+
+- local Codex default home ready;
+- Pylon `pylon.33afd48282a649047e3a` online;
+- presence heartbeat linked, registered, non-stale, sequence `650`;
+- public counter baseline `479,141,703`.
+
+The first `khala request --workflow codex_agent_task` attempt failed before an
+assignment existed because the public objective summary exceeded the current
+3-1000 character validation bound:
+
+```json
+{"error":"khala request objective summary must be 3-1000 characters","ok":false}
+```
+
+The second attempt used a shorter public-safe prompt and created an assignment,
+but the local Codex execution returned a typed refusal before producing a patch:
+
+- durable request: `chatcmpl_b63a4ccd1c9f45a3a4948acb82907695`;
+- assignment:
+  `assignment.public.khala_coding.chatcmpl_e7ab0dc5a1234971b9a21dc0694b6e80`;
+- closeout: `assignment.closeout.5a9afbfbf1f26a3089a4c963`;
+- status: `rejected`;
+- blocker: `blocker.assignment.codex_agent_execution_refused`;
+- result ref: `result.public.pylon.codex_agent_task.execution_refused`.
+
+Because that run did not reach a completed Codex SDK turn, it did not provide a
+useful materialized patch or assignment-scoped token proof. The fix was then
+done manually in the supervised clean worktree, and the refusal is retained here
+as an actionable runbook issue: the delegation path can be healthy through
+Pylon/heartbeat/assignment creation while still failing at the local Codex
+execution layer.
+
+The manual safe patch found one real #6307 arming bug: the preflight field named
+`billableSampleUpperBound` was summing **all** executable samples, including the
+Khala own-capacity lane. The OQ5 suite actually expands to `320` executable
+samples total, but only `240` are billable comparator samples by default
+(`80` each for Fireworks, Vertex Anthropic, and Vertex Gemini). The Khala
+`80` samples are own-capacity and should not consume the billable owner cap.
+
+The integrated change:
+
+- adds `executableSampleUpperBound` so operators can still see total planned
+  sample volume;
+- keeps `billableSampleUpperBound` scoped to explicit/default billable provider
+  lanes;
+- lets the runner pass the actually armed billable transports into preflight,
+  so Khala-only no-spend runs remain runnable with zero billable samples while
+  Fireworks/Vertex runs are capped against the lanes that will actually spend;
+- makes Khala-only configs not `decisionGradeEligible` at preflight because
+  report `decisionGrade` still requires a billable comparator;
+- corrects the OQ5 owner runbook text from the wrong "320 per billable lane" to
+  `320` total executable / `240` total billable default semantics.
+
+Verification after integration:
+
+```text
+bun run --cwd apps/openagents.com/workers/api test -- \
+  src/inference/benchmark/real-sweep-plan.test.ts \
+  src/inference/benchmark/real-sweep-runner.test.ts \
+  src/inference/benchmark/report.test.ts
+bun run --cwd apps/openagents.com typecheck:api
+bun run --cwd apps/openagents.com check:deploy
+```
+
+The focused benchmark test run passed `41` tests, and `check:deploy` exited
+green. This does not close #6307: the first live `decisionGrade:true`
+Khala-vs-Fireworks/Vertex report still requires the owner-armed spendful sweep.
+
 ## Bottom Line
 
 This assignment proves the backend evidence path mostly works:

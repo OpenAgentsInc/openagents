@@ -84,9 +84,10 @@ cross-provider report needs the owner to arm the billable comparators:
    - `OA_BENCH_OWNER_CONFIRM=1`
    - `OA_BENCH_OWNER_APPROVAL_REF="<public-safe owner approval ref>"`
    - `OA_BENCH_BUDGET_CAP_MSAT=<positive msat cap>`
-   - `OA_BENCH_MAX_BILLABLE_SAMPLES=<>= 320 per armed billable lane>`
-     (suite expands to 4 workloads × 4 shapes × 5 samples × 1 streaming × 1
-     sampling = **320 billable samples per billable lane**).
+   - `OA_BENCH_MAX_BILLABLE_SAMPLES=<>= total armed billable cell-sample count>`
+     (the full suite expands to **320 executable samples total**: 80 Khala
+     own-capacity samples plus **240 billable comparator samples** across
+     Fireworks + Vertex Anthropic + Vertex Gemini, 80 per billable lane).
 
 3. **Refresh realistic traffic shapes** from the live `token_usage_events` ledger
    so each shape's evidence ref + observed request count reflect **current** Khala
