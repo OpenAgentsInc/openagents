@@ -40,6 +40,7 @@ import {
   ReceivedKhalaTokensServedPatch,
   RequestedPollKhalaTokensServed,
   RequestedPollKhalaTokensServedHistory,
+  RequestedPollKhalaTokensServedModelMix,
   RequestedPollGymRunProgress,
   ClosedGymRunProgressStream,
   FailedGymRunProgressStream,
@@ -524,6 +525,26 @@ export const khalaTokensServedPollDependenciesForModel = (
   model: Model,
 ): KhalaTokensServedPollDependencies =>
   khalaTokensServedRouteIsLive(model)
+    ? { isActive: true }
+    : inactiveKhalaTokensServedPoll
+
+// Model-family mix poll (#6392). The model-mix chart only renders on the /stats
+// surface (`Stats` + `PublicStatsArchive`), so its refresh poll is gated to
+// exactly those routes — narrower than the history poll above, which also runs
+// on /home, /khala, and the landing hero where there is no model-mix panel. The
+// chart is the canonical model-family aggregate, so a timer re-fetch on the same
+// cadence as the history chart is the right "live with the counter" wire (the
+// counter's own per-event push firehose is far too hot to refetch this 30d
+// GROUP BY aggregate against).
+const khalaTokensServedModelMixRouteIsLive = (model: Model): boolean =>
+  model._tag === 'LoggedOut' &&
+  (model.route._tag === 'Stats' ||
+    model.route._tag === 'PublicStatsArchive')
+
+export const khalaTokensServedModelMixPollDependenciesForModel = (
+  model: Model,
+): KhalaTokensServedPollDependencies =>
+  khalaTokensServedModelMixRouteIsLive(model)
     ? { isActive: true }
     : inactiveKhalaTokensServedPoll
 
@@ -1472,6 +1493,32 @@ export const subscriptions = Subscription.make<Model, Message>()(entry => ({
             Stream.map(() =>
               GotLoggedOutMessage({
                 message: RequestedPollKhalaTokensServedHistory(),
+              }),
+            ),
+          ),
+          Effect.sync(() => isActive),
+        ),
+    },
+  ),
+  // The /stats model-family-mix chart (#6392) re-fetches the canonical
+  // model-mix aggregate on the SAME cadence as the history chart, gated to the
+  // /stats surface where the panel renders, so the per-family bars track the
+  // live counter as tokens stream in instead of sitting frozen at the
+  // page-load snapshot.
+  khalaTokensServedModelMixPoll: entry(
+    {
+      isActive: S.Boolean,
+    },
+    {
+      modelToDependencies: khalaTokensServedModelMixPollDependenciesForModel,
+      dependenciesToStream: ({ isActive }: { isActive: boolean }) =>
+        Stream.when(
+          Stream.tick(
+            Duration.seconds(KHALA_TOKENS_SERVED_HISTORY_POLL_INTERVAL_SECONDS),
+          ).pipe(
+            Stream.map(() =>
+              GotLoggedOutMessage({
+                message: RequestedPollKhalaTokensServedModelMix(),
               }),
             ),
           ),

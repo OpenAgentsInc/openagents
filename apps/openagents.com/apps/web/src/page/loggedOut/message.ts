@@ -214,6 +214,13 @@ export const FailedLoadPublicKhalaTokensServedHistory = m(
     error: S.String,
   },
 )
+// Model-family mix (#6392). The /stats model-mix chart re-fetches its canonical
+// aggregate on the same Stats-page refresh tick that drives the live counter /
+// history chart so the per-family bars track the counter as tokens stream in;
+// the command resolves to Succeeded/Failed.
+export const RequestedPollKhalaTokensServedModelMix = m(
+  'RequestedPollKhalaTokensServedModelMix',
+)
 export const SucceededLoadPublicKhalaTokensServedModelMix = m(
   'SucceededLoadPublicKhalaTokensServedModelMix',
   {
@@ -589,6 +596,7 @@ export const Message = S.Union([
   RequestedPollKhalaTokensServedHistory,
   SucceededLoadPublicKhalaTokensServedHistory,
   FailedLoadPublicKhalaTokensServedHistory,
+  RequestedPollKhalaTokensServedModelMix,
   SucceededLoadPublicKhalaTokensServedModelMix,
   FailedLoadPublicKhalaTokensServedModelMix,
   RequestedPollGymRunProgress,

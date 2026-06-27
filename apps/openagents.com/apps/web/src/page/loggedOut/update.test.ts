@@ -9,7 +9,9 @@ import {
   ClickedExitKhala,
   CompletedCopyAgentInstructions,
   FailedLoadKhalaTokensServedSnapshot,
+  FailedLoadPublicKhalaTokensServedModelMix,
   FailedLoadTrace,
+  RequestedPollKhalaTokensServedModelMix,
   SucceededLoadKhalaTokensServedSnapshot,
   SucceededLoadPublicKhalaTokensServedModelMix,
   SucceededLoadTrace,
@@ -264,6 +266,92 @@ describe('logged-out nav + copy update', () => {
         groups: [{ family: 'glm' }],
       },
     })
+  })
+
+  // #6392: the /stats model-mix chart re-fetches on its poll tick so the bars
+  // track the live counter; the tick re-issues the load command and holds the
+  // current model (no flash to Loading) between fetches.
+  test('RequestedPollKhalaTokensServedModelMix re-fetches the aggregate without flashing to Loading', () => {
+    const loaded = update(
+      init(StatsRoute()),
+      SucceededLoadPublicKhalaTokensServedModelMix({
+        mix: {
+          schemaVersion: 'openagents.public_khala_model_mix.v1',
+          window: '30d',
+          totalTokens: 14_680_776,
+          generatedAt: '2026-06-24T12:00:00.000Z',
+          groups: [
+            {
+              family: 'glm',
+              label: 'GLM family',
+              tokens: 14_680_776,
+              reqs: 12,
+              pct: 100,
+            },
+          ],
+        },
+      }),
+    )[0]
+
+    const [next, commands] = update(
+      loaded,
+      RequestedPollKhalaTokensServedModelMix(),
+    )
+
+    expect(commandNames(commands)).toEqual(['LoadPublicKhalaTokensServedModelMix'])
+    // The previously loaded mix is held while the next aggregate is in flight.
+    expect(next.publicKhalaTokensServedModelMix._tag).toBe(
+      'PublicKhalaTokensServedModelMixLoaded',
+    )
+  })
+
+  // #6392: a transient poll failure must never wipe a good loaded mix back to
+  // "unavailable" — mirrors the counter's "a failed reconcile never wipes a good
+  // live total" rule.
+  test('FailedLoadPublicKhalaTokensServedModelMix preserves a previously loaded mix', () => {
+    const loaded = update(
+      init(StatsRoute()),
+      SucceededLoadPublicKhalaTokensServedModelMix({
+        mix: {
+          schemaVersion: 'openagents.public_khala_model_mix.v1',
+          window: '30d',
+          totalTokens: 14_680_776,
+          generatedAt: '2026-06-24T12:00:00.000Z',
+          groups: [
+            {
+              family: 'glm',
+              label: 'GLM family',
+              tokens: 14_680_776,
+              reqs: 12,
+              pct: 100,
+            },
+          ],
+        },
+      }),
+    )[0]
+
+    const [next] = update(
+      loaded,
+      FailedLoadPublicKhalaTokensServedModelMix({ error: 'transient' }),
+    )
+
+    expect(next.publicKhalaTokensServedModelMix).toMatchObject({
+      _tag: 'PublicKhalaTokensServedModelMixLoaded',
+      mix: { totalTokens: 14_680_776 },
+    })
+  })
+
+  // A failure BEFORE any successful load still surfaces the unavailable state so
+  // the panel does not sit on a stale "Loading" placeholder forever.
+  test('FailedLoadPublicKhalaTokensServedModelMix surfaces the error when no mix has loaded yet', () => {
+    const [next] = update(
+      init(StatsRoute()),
+      FailedLoadPublicKhalaTokensServedModelMix({ error: 'cold failure' }),
+    )
+
+    expect(next.publicKhalaTokensServedModelMix._tag).toBe(
+      'PublicKhalaTokensServedModelMixFailed',
+    )
   })
 })
 

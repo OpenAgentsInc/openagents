@@ -31,6 +31,8 @@ import {
   HomeRoute,
   KhalaRoute,
   LandingRoute,
+  PublicStatsArchiveRoute,
+  StatsRoute,
   TassadarRoute,
   TeamChatRoute,
   TeamFileRoute,
@@ -44,6 +46,7 @@ import {
   demoPlaybackDependenciesForModel,
   gymRunProgressPollDependenciesForModel,
   gymRunProgressStreamDependenciesForModel,
+  khalaTokensServedModelMixPollDependenciesForModel,
   khalaTokensServedPollDependenciesForModel,
   khalaTokensServedStreamDependenciesForModel,
   onboardingResumeDependenciesForModel,
@@ -734,6 +737,37 @@ describe('Khala tokens-served live surfaces', () => {
     expect(
       khalaTokensServedPollDependenciesForModel(
         LoggedOut.init(TassadarRoute()),
+      ).isActive,
+    ).toBe(false)
+  })
+
+  test('the model-family-mix poll is gated to the /stats surface only (#6392)', () => {
+    // The model-mix chart only renders on /stats + the public stats archive, so
+    // its refresh poll activates there and nowhere else — it must NOT fire on
+    // /home, /khala, or the landing hero where there is no model-mix panel.
+    expect(
+      khalaTokensServedModelMixPollDependenciesForModel(
+        LoggedOut.init(StatsRoute()),
+      ).isActive,
+    ).toBe(true)
+    expect(
+      khalaTokensServedModelMixPollDependenciesForModel(
+        LoggedOut.init(PublicStatsArchiveRoute()),
+      ).isActive,
+    ).toBe(true)
+    expect(
+      khalaTokensServedModelMixPollDependenciesForModel(
+        LoggedOut.init(HomeRoute()),
+      ).isActive,
+    ).toBe(false)
+    expect(
+      khalaTokensServedModelMixPollDependenciesForModel(
+        LoggedOut.init(KhalaRoute()),
+      ).isActive,
+    ).toBe(false)
+    expect(
+      khalaTokensServedModelMixPollDependenciesForModel(
+        LoggedOut.init(LandingRoute()),
       ).isActive,
     ).toBe(false)
   })

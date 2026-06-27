@@ -1965,6 +1965,15 @@ export const update = (model: Model, message: Message): UpdateReturn =>
         }),
         [],
       ],
+      // Model-mix poll tick (#6392): re-fetch the canonical model-family mix on
+      // the same /stats refresh cadence as the history chart so the per-family
+      // bars track the live counter as tokens stream in. The model holds its
+      // last loaded mix (no flash to Loading) so the bars stay stable between
+      // fetches and just update when the next aggregate arrives.
+      RequestedPollKhalaTokensServedModelMix: () => [
+        model,
+        [LoadPublicKhalaTokensServedModelMix()],
+      ],
       SucceededLoadPublicKhalaTokensServedModelMix: ({ mix }) => [
         evo(model, {
           publicKhalaTokensServedModelMix: () =>
@@ -1972,11 +1981,18 @@ export const update = (model: Model, message: Message): UpdateReturn =>
         }),
         [],
       ],
+      // A failed model-mix fetch only surfaces the error if the chart has NOT
+      // yet loaded; a transient poll failure must never wipe out a good loaded
+      // mix back to "unavailable" (#6392), mirroring the counter's "a failed
+      // reconcile must never wipe a good live total" rule.
       FailedLoadPublicKhalaTokensServedModelMix: ({ error }) => [
-        evo(model, {
-          publicKhalaTokensServedModelMix: () =>
-            FailedPublicKhalaTokensServedModelMix({ error }),
-        }),
+        model.publicKhalaTokensServedModelMix._tag ===
+        'PublicKhalaTokensServedModelMixLoaded'
+          ? model
+          : evo(model, {
+              publicKhalaTokensServedModelMix: () =>
+                FailedPublicKhalaTokensServedModelMix({ error }),
+            }),
         [],
       ],
       // Gym run-progress reconcile tick (#6261): the WebSocket push is the
