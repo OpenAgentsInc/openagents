@@ -105,7 +105,10 @@ import {
   makeArtanisDispatchExecution,
   readEffectiveArtanisPylonDispatchApproval,
 } from './artanis-operator-dispatch-execution'
-import { makeArtanisPylonJobStatusReader } from './artanis-operator-pylon-job-status'
+import {
+  makeArtanisPylonAssignmentsLister,
+  makeArtanisPylonJobStatusReader,
+} from './artanis-operator-pylon-job-status'
 import { makeArtanisOperatorTools } from './artanis-operator-tools'
 import { saveArtanisForumPublicationIntent } from './artanis-persistence'
 import { handlePublicArtanisReportApi } from './artanis-public-report-routes'
@@ -8560,6 +8563,18 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
       // assignments. Read-only, owner-scoped, no spend/authority.
       pylonJobStatus: {
         reader: makeArtanisPylonJobStatusReader({
+          listLinkedAgentUserIds,
+          nowIso: currentIsoTimestamp,
+          ownerOpenAuthUserId: session.user.userId,
+          pylonStore: makeD1PylonApiStore(openAgentsDatabase(env)),
+        }),
+      },
+      // iteration-5: the owner-scoped bulk Pylon assignments LIST tool. Reads the
+      // public-safe summaries of ALL of the owner's own linked-Pylon assignments
+      // in one call so Artanis can scan the burndown, spot failed/stalled runs,
+      // and queue parallel retries. Read-only, owner-scoped, no spend/authority.
+      pylonAssignments: {
+        lister: makeArtanisPylonAssignmentsLister({
           listLinkedAgentUserIds,
           nowIso: currentIsoTimestamp,
           ownerOpenAuthUserId: session.user.userId,

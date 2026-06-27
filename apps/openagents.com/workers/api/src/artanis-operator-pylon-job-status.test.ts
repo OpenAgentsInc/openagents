@@ -1,9 +1,13 @@
 import { describe, expect, test } from 'vitest'
 
-import { makeArtanisPylonJobStatusReader } from './artanis-operator-pylon-job-status'
+import {
+  makeArtanisPylonAssignmentsLister,
+  makeArtanisPylonJobStatusReader,
+} from './artanis-operator-pylon-job-status'
 import type {
   PylonApiAssignmentRecord,
   PylonApiEventRecord,
+  PylonApiRegistrationRecord,
   PylonApiStore,
 } from './pylon-api'
 
@@ -152,5 +156,105 @@ describe('makeArtanisPylonJobStatusReader', () => {
       baseAssignment.assignmentRef,
     )
     expect(status).toBeNull()
+  })
+})
+
+const fakeRegistration = (
+  pylonRef: string,
+): PylonApiRegistrationRecord =>
+  ({
+    ownerAgentUserId: LINKED_AGENT,
+    pylonRef,
+  }) as unknown as PylonApiRegistrationRecord
+
+const listerStore = (
+  assignments: ReadonlyArray<PylonApiAssignmentRecord>,
+  registrations: ReadonlyArray<PylonApiRegistrationRecord> = [
+    fakeRegistration(baseAssignment.pylonRef),
+  ],
+): PylonApiStore =>
+  ({
+    listAssignmentsForPylons: async () => assignments,
+    listRegistrationsForOwnerAgentUserIds: async () => registrations,
+  }) as unknown as PylonApiStore
+
+describe('makeArtanisPylonAssignmentsLister', () => {
+  const lister = (
+    store: PylonApiStore,
+    linked: ReadonlyArray<string> = [LINKED_AGENT],
+  ) =>
+    makeArtanisPylonAssignmentsLister({
+      listLinkedAgentUserIds: async () => linked,
+      nowIso: () => '2026-06-26T00:12:00.000Z',
+      ownerOpenAuthUserId: OWNER,
+      pylonStore: store,
+    })
+
+  test('summarizes the owner own assignments newest-first with derived phase/verdict', async () => {
+    const rows: ReadonlyArray<PylonApiAssignmentRecord> = [
+      {
+        ...baseAssignment,
+        assignmentRef: 'assignment.public.pylon_api.accepted_001',
+        artifactRefs: [],
+        proofRefs: [],
+        state: 'accepted',
+        updatedAt: '2026-06-26T00:01:00.000Z',
+      },
+      {
+        ...baseAssignment,
+        assignmentRef: 'assignment.public.pylon_api.closeout_003',
+        state: 'closeout_submitted',
+        updatedAt: '2026-06-26T00:09:00.000Z',
+      },
+      {
+        ...baseAssignment,
+        assignmentRef: 'assignment.public.pylon_api.rejected_004',
+        rejectionRefs: ['rejection.public.pylon_assignment.verify_failed'],
+        state: 'rejected',
+        updatedAt: '2026-06-26T00:05:00.000Z',
+      },
+    ]
+    const summaries = await lister(listerStore(rows))(25)
+
+    // Newest-first by updatedAt.
+    expect(summaries.map(s => s.assignmentRef)).toEqual([
+      'assignment.public.pylon_api.closeout_003',
+      'assignment.public.pylon_api.rejected_004',
+      'assignment.public.pylon_api.accepted_001',
+    ])
+    const byRef = new Map(summaries.map(s => [s.assignmentRef, s]))
+    expect(byRef.get('assignment.public.pylon_api.closeout_003')?.verifyResult).toBe(
+      'pass',
+    )
+    expect(byRef.get('assignment.public.pylon_api.closeout_003')?.phase).toBe(
+      'proof-ready',
+    )
+    expect(byRef.get('assignment.public.pylon_api.rejected_004')?.verifyResult).toBe(
+      'fail',
+    )
+    expect(byRef.get('assignment.public.pylon_api.accepted_001')?.verifyResult).toBe(
+      'unknown',
+    )
+    expect(byRef.get('assignment.public.pylon_api.accepted_001')?.phase).toBe(
+      'accepted',
+    )
+  })
+
+  test('owner scoping: drops an assignment not owned by a linked credential', async () => {
+    const rows: ReadonlyArray<PylonApiAssignmentRecord> = [
+      { ...baseAssignment, ownerAgentUserId: 'agent:someone-else' },
+    ]
+    const summaries = await lister(listerStore(rows))(25)
+    expect(summaries).toEqual([])
+  })
+
+  test('an owner with no linked agents lists nothing (honest absence)', async () => {
+    const summaries = await lister(listerStore([baseAssignment]), [])(25)
+    expect(summaries).toEqual([])
+  })
+
+  test('no registrations -> no pylons -> empty list', async () => {
+    const summaries = await lister(listerStore([baseAssignment], []))(25)
+    expect(summaries).toEqual([])
   })
 })

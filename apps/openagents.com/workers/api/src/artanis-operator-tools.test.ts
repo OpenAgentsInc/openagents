@@ -7,6 +7,7 @@ import {
   ARTANIS_SYNTHETIC_LOAD_MAX_TARGET_TOKENS,
   ARTANIS_SYNTHETIC_LOAD_RISKY_ACTION_KIND,
   ARTANIS_SYNTHETIC_LOAD_RUN_TYPES,
+  type ArtanisPylonAssignmentSummary,
   type ArtanisPylonJobStatus,
   buildArtanisSyntheticLoadPlan,
   isSafeArtanisAssignmentRef,
@@ -14,6 +15,7 @@ import {
   makeArtanisDispatchCodexTaskTool,
   makeArtanisGetNetworkStatsTool,
   makeArtanisGetPylonJobStatusTool,
+  makeArtanisListPylonAssignmentsTool,
   makeArtanisListRepoDirTool,
   makeArtanisOperatorTools,
   makeArtanisReadGithubIssueTool,
@@ -581,6 +583,154 @@ describe('get_pylon_job_status (owner-scoped Pylon job status read)', () => {
   })
 })
 
+// A bounded set of public-safe assignment summaries in varied states, as the
+// injected lister would return for the owner's recent burndown.
+const assignmentRows: ReadonlyArray<ArtanisPylonAssignmentSummary> = [
+  {
+    assignmentRef: 'assignment.public.pylon_api.accepted_001',
+    jobKind: 'codex_agent_task',
+    leaseState: 'active',
+    phase: 'accepted',
+    state: 'accepted',
+    updatedAt: 'a few minutes ago',
+    verifyResult: 'unknown',
+  },
+  {
+    assignmentRef: 'assignment.public.pylon_api.proofready_002',
+    jobKind: 'codex_agent_task',
+    leaseState: 'active',
+    phase: 'proof-ready',
+    state: 'proof_submitted',
+    updatedAt: 'a few minutes ago',
+    verifyResult: 'unknown',
+  },
+  {
+    assignmentRef: 'assignment.public.pylon_api.closeout_003',
+    jobKind: 'codex_agent_task',
+    leaseState: 'terminal',
+    phase: 'closeout_submitted',
+    state: 'closeout_submitted',
+    updatedAt: 'an hour ago',
+    verifyResult: 'pass',
+  },
+  {
+    assignmentRef: 'assignment.public.pylon_api.rejected_004',
+    jobKind: 'codex_agent_task',
+    leaseState: 'terminal',
+    phase: 'rejected',
+    state: 'rejected',
+    updatedAt: 'an hour ago',
+    verifyResult: 'fail',
+  },
+]
+
+describe('list_pylon_assignments (owner-scoped bulk assignment list) — iteration 5', () => {
+  test('returns a bounded public-safe summary line per assignment (ref + state + phase)', async () => {
+    let askedLimit: number | undefined
+    const tool = makeArtanisListPylonAssignmentsTool({
+      lister: async limit => {
+        askedLimit = limit
+        return assignmentRows
+      },
+    })
+
+    // It is a READ tool (executes freely, never gated/risky).
+    expect(tool.kind).toBe('read')
+    expect(tool.definition.name).toBe('list_pylon_assignments')
+
+    const result = await Effect.runPromise(tool.execute({}))
+
+    // One bounded summary line per assignment, each carrying ref + state + phase.
+    for (const row of assignmentRows) {
+      expect(result).toContain(row.assignmentRef)
+      expect(result).toContain(`state=${row.state}`)
+      expect(result).toContain(`phase=${row.phase}`)
+    }
+    // The varied verify verdicts surface as short labels.
+    expect(result).toContain('verify=PASS')
+    expect(result).toContain('verify=FAIL')
+    expect(result).toContain('verify=in-progress')
+    // Header reports the bounded count.
+    expect(result).toContain(
+      `Recent Pylon/Codex assignments (${assignmentRows.length}):`,
+    )
+    // Default bounded limit was passed to the lister.
+    expect(askedLimit).toBe(25)
+    // No secrets/prompts: nothing private leaked into the bulk summary.
+    expect(result).not.toMatch(/sk-/)
+    expect(result).not.toContain('bearer')
+    expect(result).not.toContain('prompt')
+  })
+
+  test('an optional state filter narrows to one lifecycle state', async () => {
+    const tool = makeArtanisListPylonAssignmentsTool({
+      lister: async () => assignmentRows,
+    })
+    const result = await Effect.runPromise(
+      tool.execute({ state: 'rejected' }),
+    )
+    expect(result).toContain('assignment.public.pylon_api.rejected_004')
+    expect(result).not.toContain('assignment.public.pylon_api.accepted_001')
+    expect(result).toContain('state "rejected"')
+  })
+
+  test('a limit arg is clamped to the bounded max and floored at 1', async () => {
+    const limits: Array<number> = []
+    const tool = makeArtanisListPylonAssignmentsTool({
+      lister: async limit => {
+        limits.push(limit)
+        return assignmentRows.slice(0, limit)
+      },
+    })
+    await Effect.runPromise(tool.execute({ limit: 100000 }))
+    await Effect.runPromise(tool.execute({ limit: 0 }))
+    await Effect.runPromise(tool.execute({ limit: 2 }))
+    // clamped to max (100), floored to default (25) for <1, honored otherwise.
+    expect(limits).toEqual([100, 25, 2])
+  })
+
+  test('defensively drops a row carrying non-public-safe material', async () => {
+    const tool = makeArtanisListPylonAssignmentsTool({
+      lister: async () => [
+        assignmentRows[0]!,
+        {
+          ...assignmentRows[0]!,
+          assignmentRef: 'assignment.public.pylon_api.leak',
+          // A regression upstream tries to leak a secret-bearing state string.
+          state: 'state-with-bearer-token',
+        },
+      ],
+    })
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toContain('assignment.public.pylon_api.accepted_001')
+    expect(result).not.toContain('bearer')
+    expect(result).not.toContain('assignment.public.pylon_api.leak')
+  })
+
+  test('an owner with no assignments reads as honest absence, never invention', async () => {
+    const tool = makeArtanisListPylonAssignmentsTool({ lister: async () => [] })
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toContain('no recent Pylon assignments found')
+  })
+
+  test('a lister rejection reads as a soft "(could not list assignments)", never a throw', async () => {
+    const tool = makeArtanisListPylonAssignmentsTool({
+      lister: async () => {
+        throw new Error('d1 down')
+      },
+    })
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toContain('could not list assignments')
+    expect(result).not.toMatch(/Error:/)
+  })
+
+  test('with no lister wired the tool is honest, not inventive', async () => {
+    const tool = makeArtanisListPylonAssignmentsTool({})
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toContain('could not list assignments')
+  })
+})
+
 describe('parseArtanisAssignmentRef + isSafeArtanisAssignmentRef', () => {
   test('accepts a ref under several key aliases', () => {
     expect(parseArtanisAssignmentRef({ assignmentRef: 'a.b.c' })).toEqual({
@@ -866,11 +1016,21 @@ describe('makeArtanisOperatorTools default table', () => {
       'dispatch_codex_task',
       'get_network_stats',
       'get_pylon_job_status',
+      'list_pylon_assignments',
       'list_repo_dir',
       'read_github_issue',
       'read_repo_file',
       'trigger_synthetic_load',
     ])
+  })
+
+  test('the default table includes a read-kind list_pylon_assignments tool', () => {
+    const tools = makeArtanisOperatorTools()
+    const tool = tools.find(
+      t => t.definition.name === 'list_pylon_assignments',
+    )
+    expect(tool).toBeDefined()
+    expect(tool?.kind).toBe('read')
   })
 
   test('the default table includes a trigger_synthetic_load tool', () => {

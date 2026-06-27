@@ -735,6 +735,206 @@ export const makeArtanisGetPylonJobStatusTool = (
 }
 
 // ---------------------------------------------------------------------------
+// list_pylon_assignments — read a bounded, public-safe LIST of the owner's
+// active/recent Khala -> Pylon -> Codex assignments in ONE call.
+// Side-effect-free, owner-only, public-state-only. This is Artanis's iteration-5
+// self-improvement capability. get_pylon_job_status (iteration-3) inspects ONE
+// assignment by ref; this scans ALL of the owner's recent assignments at once so
+// he can instantly spot failed/stalled runs and queue parallel retries, keeping
+// the Codex burndown loop saturated (more concurrent delegated coding work =
+// more metered openagents/khala tokens, the 10x-usage goal). It grants no new
+// spend/execution authority and fits the existing read-tool authority boundary.
+// ---------------------------------------------------------------------------
+
+// The default and max number of assignment summaries returned for one list read,
+// so a single read stays bounded even when the owner has many assignments.
+export const ARTANIS_ASSIGNMENTS_LIST_DEFAULT_LIMIT = 25
+export const ARTANIS_ASSIGNMENTS_LIST_MAX_LIMIT = 100
+
+// A public-safe one-line summary of ONE owner-scoped assignment. Every field is
+// a public-safe projection of real D1 state (the assignment record); it never
+// carries raw prompts, shell output, credentials, wallet material, or local
+// paths. The production lister builds this from the Pylon API store; tests inject
+// a fake lister.
+export type ArtanisPylonAssignmentSummary = Readonly<{
+  assignmentRef: string
+  // The job kind, e.g. 'codex_agent_task'.
+  jobKind: string
+  // The assignment lifecycle state, e.g. 'accepted' | 'closeout_submitted' |
+  // 'rejected'.
+  state: string
+  // The lease state: 'active' | 'expired' | 'terminal'.
+  leaseState: string
+  // A short public-safe phase label for where the run is, e.g. 'accepted' |
+  // 'proof-ready' | 'closeout_submitted' | 'rejected'.
+  phase: string
+  // The derived coarse verify/proof verdict (bulk-list granularity; for the full
+  // proof/failure detail use get_pylon_job_status on the ref).
+  verifyResult: ArtanisPylonJobVerifyResult
+  // Public-safe "last updated" display string (not a raw timestamp).
+  updatedAt: string
+}>
+
+// The injected, owner-scoped lister seam. Given a max count it resolves the
+// owner's own active/recent assignments as public-safe summaries, newest first.
+// Returns `[]` when the owner has none (honest absence — it must never return
+// another owner's assignments). A thrown rejection is treated by the tool as a
+// soft read failure, never a fabricated list. The production lister
+// (`artanis-operator-pylon-job-status.ts`) reads the owner's own linked-Pylon
+// assignments from the Pylon API store.
+export type ArtanisPylonAssignmentsLister = (
+  limit: number,
+) => Promise<ReadonlyArray<ArtanisPylonAssignmentSummary>>
+
+export type ArtanisPylonAssignmentsConfig = Readonly<{
+  lister?: ArtanisPylonAssignmentsLister | undefined
+  defaultLimit?: number | undefined
+  maxLimit?: number | undefined
+}>
+
+// Coerce a model-produced `limit`/`count`/`max` arg into a bounded positive
+// integer, clamped into [1, maxLimit]; an absent/invalid value falls back to the
+// default. A model typo can never request an unboundedly large list.
+const parseAssignmentsLimit = (
+  args: unknown,
+  defaultLimit: number,
+  maxLimit: number,
+): number => {
+  const record =
+    typeof args === 'object' && args !== null
+      ? (args as Record<string, unknown>)
+      : {}
+  const raw = record.limit ?? record.count ?? record.max
+  let value: number | undefined
+  if (typeof raw === 'number' && Number.isInteger(raw)) {
+    value = raw
+  } else if (typeof raw === 'string' && /^\d+$/.test(raw.trim())) {
+    value = Number.parseInt(raw.trim(), 10)
+  }
+  if (value === undefined || value < 1) {
+    return defaultLimit
+  }
+  return Math.min(value, maxLimit)
+}
+
+// Pull an optional bounded `state`/`phase` filter out of model-produced args. A
+// bounded enum-style equality filter (applied AFTER the model already selected
+// this tool) over lifecycle states; non-string/empty/unsafe values are ignored.
+const parseAssignmentsStateFilter = (args: unknown): string | undefined => {
+  if (typeof args !== 'object' || args === null) return undefined
+  const record = args as Record<string, unknown>
+  const raw = record.state ?? record.phase ?? record.status
+  if (typeof raw !== 'string') return undefined
+  const trimmed = raw.trim().toLowerCase()
+  if (trimmed === '' || !dispatchFieldIsSafe(trimmed)) return undefined
+  return trimmed
+}
+
+const assignmentVerifyShortLabel = (
+  result: ArtanisPylonJobVerifyResult,
+): string =>
+  result === 'pass' ? 'PASS' : result === 'fail' ? 'FAIL' : 'in-progress'
+
+// Format ONE assignment summary as a bounded, public-safe one-line entry
+// carrying the ref, state, and phase (plus job kind, verify verdict, and last
+// update). No secrets, prompts, or private material.
+const formatAssignmentSummaryLine = (
+  summary: ArtanisPylonAssignmentSummary,
+): string =>
+  `- ${summary.assignmentRef} | ${summary.jobKind} | state=${summary.state} | phase=${summary.phase} | verify=${assignmentVerifyShortLabel(
+    summary.verifyResult,
+  )} | updated ${summary.updatedAt}`
+
+// A summary row is renderable only if every public-facing field passes the
+// public-safety gate and the ref is ref-shaped. The store projection should
+// already be public-safe; this is a defensive second pass so an upstream
+// regression can never leak private material into Artanis's context.
+const assignmentSummaryIsSafe = (
+  summary: ArtanisPylonAssignmentSummary,
+): boolean =>
+  isSafeArtanisAssignmentRef(summary.assignmentRef) &&
+  dispatchFieldIsSafe(summary.jobKind) &&
+  dispatchFieldIsSafe(summary.state) &&
+  dispatchFieldIsSafe(summary.phase)
+
+// list_pylon_assignments(limit?, state?) — reads a bounded, public-safe LIST of
+// the owner's active/recent assignments via the injected lister. Returns one
+// public-safe summary line per assignment (ref + state + phase + verdict). Honest
+// absence: an owner with no assignments reads "(no recent Pylon assignments …)";
+// a read failure reads "(could not list assignments)"; with no lister wired it is
+// honest rather than inventive. Side-effect-free, owner-scoped, no spend.
+export const makeArtanisListPylonAssignmentsTool = (
+  config: ArtanisPylonAssignmentsConfig = {},
+): ArtanisOperatorReadTool => {
+  const lister = config.lister
+  const defaultLimit =
+    config.defaultLimit ?? ARTANIS_ASSIGNMENTS_LIST_DEFAULT_LIMIT
+  const maxLimit = config.maxLimit ?? ARTANIS_ASSIGNMENTS_LIST_MAX_LIMIT
+
+  return {
+    definition: {
+      description:
+        'List the public-safe STATUS of ALL your active/recent Pylon/Codex assignments in one call (vs. get_pylon_job_status, which inspects one ref). Returns one bounded line per assignment with its ref, job kind, lifecycle state, phase, and a coarse verify verdict (PASS/FAIL/in-progress). Use this to scan the whole burndown at a glance, instantly spot failed or stalled runs, and decide which to retry or dispatch in parallel; then call get_pylon_job_status on a specific ref for the full proof/failure detail. Owner-scoped (only your own linked-Pylon assignments). Optional "limit" bounds the count; optional "state" filters to one lifecycle state.',
+      name: 'list_pylon_assignments',
+      parameters: {
+        additionalProperties: false,
+        properties: {
+          limit: {
+            description: `Max number of assignments to return, a positive integer up to ${maxLimit} (default ${defaultLimit}).`,
+            type: 'number',
+          },
+          state: {
+            description:
+              'Optional lifecycle-state filter, e.g. "accepted", "closeout_submitted", or "rejected". Omit to list all recent states.',
+            type: 'string',
+          },
+        },
+        required: [],
+        type: 'object',
+      },
+    },
+    execute: (args: unknown) =>
+      Effect.gen(function* () {
+        if (lister === undefined) {
+          return '(could not list assignments: no assignments lister is wired)'
+        }
+        const limit = parseAssignmentsLimit(args, defaultLimit, maxLimit)
+        const stateFilter = parseAssignmentsStateFilter(args)
+
+        const exit = yield* Effect.exit(Effect.tryPromise(() => lister(limit)))
+        if (exit._tag === 'Failure') {
+          return '(could not list assignments)'
+        }
+
+        const filtered =
+          stateFilter === undefined
+            ? exit.value
+            : exit.value.filter(
+                summary =>
+                  summary.state.toLowerCase() === stateFilter ||
+                  summary.phase.toLowerCase() === stateFilter,
+              )
+        const safe = filtered
+          .filter(assignmentSummaryIsSafe)
+          .slice(0, limit)
+
+        if (safe.length === 0) {
+          return stateFilter === undefined
+            ? '(no recent Pylon assignments found for you)'
+            : `(no recent Pylon assignments found with state "${stateFilter}")`
+        }
+
+        const header =
+          stateFilter === undefined
+            ? `Recent Pylon/Codex assignments (${safe.length}):`
+            : `Recent Pylon/Codex assignments with state "${stateFilter}" (${safe.length}):`
+        return [header, ...safe.map(formatAssignmentSummaryLine)].join('\n')
+      }),
+    kind: 'read',
+  }
+}
+
+// ---------------------------------------------------------------------------
 // #6366 — dispatch_codex_task (GATED: pylon_job_dispatch).
 // ---------------------------------------------------------------------------
 //
@@ -1304,11 +1504,15 @@ export const makeArtanisTriggerSyntheticLoadTool = (
 // the raw-content fetch. `pylonJobStatus.reader` is the owner-scoped status
 // reader; with no reader wired the status tool returns an honest
 // "(could not read status …)" rather than inventing a status.
+// `pylonAssignments.lister` is the owner-scoped bulk assignments lister behind
+// the iteration-5 `list_pylon_assignments` read tool; with no lister wired it
+// returns an honest "(could not list assignments …)" rather than inventing one.
 export const makeArtanisOperatorTools = (
   config: Readonly<{
     repoRead?: ArtanisRepoReadConfig | undefined
     issueRead?: ArtanisIssueReadConfig | undefined
     pylonJobStatus?: ArtanisPylonJobStatusConfig | undefined
+    pylonAssignments?: ArtanisPylonAssignmentsConfig | undefined
     defaultBranch?: string | undefined
     networkStats?: ArtanisGetNetworkStatsConfig | undefined
     dispatchExecution?: ArtanisDispatchExecution | undefined
@@ -1331,6 +1535,7 @@ export const makeArtanisOperatorTools = (
     makeArtanisReadGithubIssueTool(issueRead),
     makeArtanisGetNetworkStatsTool(config.networkStats),
     makeArtanisGetPylonJobStatusTool(config.pylonJobStatus),
+    makeArtanisListPylonAssignmentsTool(config.pylonAssignments),
     makeArtanisDispatchCodexTaskTool({
       defaultBranch: config.defaultBranch,
       execution: config.dispatchExecution,
