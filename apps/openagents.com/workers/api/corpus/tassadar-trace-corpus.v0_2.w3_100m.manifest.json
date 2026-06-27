@@ -12,6 +12,60 @@
   "manifestVersion": "corpus_manifest.v0.1",
   "masterSeed": "4749facade202606",
   "profileVersion": "profile.tassadar_alm_numeric.v1",
+  "generalizationGuard": {
+    "allowedConsumers": [
+      "gg_eval",
+      "replay_verification",
+      "public_manifest_audit"
+    ],
+    "checksumAlgorithm": "sha256",
+    "forbiddenConsumers": [
+      "training",
+      "memory_context",
+      "trace_homework",
+      "rag",
+      "optimization",
+      "homework_loop"
+    ],
+    "guardDigest": "9d5c5b833ef6b8cac1c308eec77986824786a3118a72d1c93aa1f293479cfe8b",
+    "integrityMode": "checksum_only_no_payload",
+    "issueRef": "#6419",
+    "metric": "generalization_gain",
+    "partitions": [
+      {
+        "familyIds": [
+          "family.arithmetic_carry.v1",
+          "family.branch_gated_control.v1",
+          "family.memory_load_store.v1"
+        ],
+        "kind": "train_allowed",
+        "recordCount": 11800,
+        "shardRefs": [
+          "shards/family_arithmetic_carry_v1.train.ttrc#4a2768397e4dda896b07ab18850e8c098d3baa7ac697742c6fe5d8a3e69b5e5d",
+          "shards/family_branch_gated_control_v1.train.ttrc#89266594b15d9b63161075eb7fd1d9a60f12565664ce1b9577f7d1abe7bb5306",
+          "shards/family_memory_load_store_v1.train.ttrc#8914fd87e17401ac9814484bcab80306dc093a1316c5faa26ff85d5b307e28bb"
+        ],
+        "split": "train",
+        "tokenCount": 85504000
+      },
+      {
+        "familyIds": [
+          "family.application_state_machine.v1",
+          "family.stack_loop_sum.compiled.v1"
+        ],
+        "kind": "gg_held_out",
+        "recordCount": 328,
+        "shardRefs": [
+          "shards/family_application_state_machine_v1.long.ttrc#cbfd75c2a81c0a4f31021cb83b8b429d88d3c0b73a57e3480a195beda6c20692",
+          "shards/family_application_state_machine_v1.short.ttrc#2a3a24c7cdca6616f6413b931127f2c8cc0fc671500ffefa2b6bf6f21063cf3c",
+          "shards/family_stack_loop_sum_compiled_v1.anchor.ttrc#8b1604ac3aebd72128032cd98d4d259539bc31e253ab9d8e0fa2de1f0e24751a"
+        ],
+        "split": "eval_heldout_family",
+        "tokenCount": 4798560
+      }
+    ],
+    "schemaVersion": "openagents.tassadar.generalization_guard.v0"
+  },
   "records": {
     "jsonl": "records.jsonl",
     "recordCount": 12548,

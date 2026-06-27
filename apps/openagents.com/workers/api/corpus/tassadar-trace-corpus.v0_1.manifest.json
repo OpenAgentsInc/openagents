@@ -67,6 +67,59 @@
   "manifestVersion": "corpus_manifest.v0.1",
   "masterSeed": "4748c0de20260611",
   "profileVersion": "profile.tassadar_alm_numeric.v1",
+  "generalizationGuard": {
+    "allowedConsumers": [
+      "gg_eval",
+      "replay_verification",
+      "public_manifest_audit"
+    ],
+    "checksumAlgorithm": "sha256",
+    "forbiddenConsumers": [
+      "training",
+      "memory_context",
+      "trace_homework",
+      "rag",
+      "optimization",
+      "homework_loop"
+    ],
+    "guardDigest": "0b8d825543cb6ba2edb67b13721b7c5170e35c533a7ca408f272cf9adfee61fb",
+    "integrityMode": "checksum_only_no_payload",
+    "issueRef": "#6419",
+    "metric": "generalization_gain",
+    "partitions": [
+      {
+        "familyIds": [
+          "family.arithmetic_carry.v1",
+          "family.branch_gated_control.v1",
+          "family.memory_load_store.v1"
+        ],
+        "kind": "train_allowed",
+        "recordCount": 208,
+        "shardRefs": [
+          "shards/family_arithmetic_carry_v1.ttrc#9ca294f38cdc3cdd7f014ed99d82025b6f78daef17bec25d5fd0ff4b1355ddf1",
+          "shards/family_branch_gated_control_v1.ttrc#aee3d2bbd0381d268c52f55ae4a47d31eb2d629e693269c58a32e9c0083205b6",
+          "shards/family_memory_load_store_v1.ttrc#bfd80624224341989219c8c6c632f3b3d5de7999264f253da30a0d44e74e0b64"
+        ],
+        "split": "train",
+        "tokenCount": 1515520
+      },
+      {
+        "familyIds": [
+          "family.application_state_machine.v1",
+          "family.stack_loop_sum.compiled.v1"
+        ],
+        "kind": "gg_held_out",
+        "recordCount": 46,
+        "shardRefs": [
+          "shards/family_application_state_machine_v1.ttrc#c4c6eafdb9edf7b0703c1b3b968dc65dad5196aaf19de05a12ce6f59f27dae65",
+          "shards/family_stack_loop_sum_compiled_v1.ttrc#1a6048ed159f7e968a93b732cd3aceeb1edc8c7fdbd8f7ccf3fb02f0438f0a2b"
+        ],
+        "split": "eval_heldout_family",
+        "tokenCount": 456800
+      }
+    ],
+    "schemaVersion": "openagents.tassadar.generalization_guard.v0"
+  },
   "projectionAfterGeneration": {
     "contractVersion": "projection_rebuild.v0.1",
     "familyCoverage": [
