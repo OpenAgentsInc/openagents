@@ -119,6 +119,7 @@ export function decodeOpenAiFrame(frame: SseFrame): DecodedStreamFrame {
     metadata: {
       adapterRouteMetadata: openagents?.routing,
       fallbackReason: openagents?.fallbackReason,
+      finishReason: payload.choices.find((choice) => choice.finish_reason !== undefined)?.finish_reason ?? undefined,
       id: payload.id,
       primaryAdapterId: openagents?.primaryAdapterId,
       requestedModel: payload.model,

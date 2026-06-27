@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 
-import { formatKhalaSpawnCapabilityAnswer, runKhalaCli } from "./cli.js"
+import { formatKhalaSpawnCapabilityAnswer, formatPublicArtanisAnswer, runKhalaCli } from "./cli.js"
 
 describe("Khala CLI spawn capability answer", () => {
   test("answers the original subprocess capability question with the reviewed CLI path", () => {
@@ -18,6 +18,43 @@ describe("Khala CLI spawn capability answer", () => {
     expect(lower).toContain("cannot execute local workers on your machine")
     expect(lower).not.toContain("capability we don't yet expose")
     expect(lower).not.toContain("we do not yet expose")
+  })
+})
+
+describe("Khala CLI public Artanis answer", () => {
+  test("uses the OpenAgents public report instead of lore roleplay", () => {
+    const answer = formatPublicArtanisAnswer("how can I talk to Artanis?", {
+      generatedAt: "2026-06-27T00:00:00.000Z",
+      objective: "Coordinate the OpenAgents fleet.",
+      runtimeState: "active",
+      autonomousLoop: {
+        state: "running",
+        latestTickState: "accepted",
+        recentDecisionRefs: ["decision.public.artanis.tick.1"],
+      },
+      pylonSummary: {
+        summary: "2 Codex-capable Pylons ready.",
+        recentAssignmentRefs: ["assignment.public.artanis.1"],
+      },
+      healthSummary: {
+        readiness: "ready",
+      },
+      forumLinks: [{
+        label: "Artanis Forum",
+        href: "/forum/f/artanis",
+      }],
+    })
+    const lower = answer.toLowerCase()
+
+    expect(answer).toContain("Artanis is the OpenAgents operator agent")
+    expect(answer).toContain("Coordinate the OpenAgents fleet.")
+    expect(answer).toContain("decision.public.artanis.tick.1")
+    expect(answer).toContain("assignment.public.artanis.1")
+    expect(answer).toContain("/api/public/artanis/report")
+    expect(lower).toContain("read-only")
+    expect(lower).toContain("not starcraft lore")
+    expect(lower).toContain("never dispatches work or spends")
+    expect(lower).not.toContain("daelaam")
   })
 })
 

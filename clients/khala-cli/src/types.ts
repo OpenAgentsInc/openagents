@@ -84,6 +84,7 @@ export const OpenAiStreamPayload = S.Struct({
         reasoning: S.optional(S.String),
         reasoning_content: S.optional(S.String),
       }),
+      finish_reason: S.optional(S.NullOr(S.String)),
     }),
   ),
   usage: S.optional(S.Struct({
@@ -117,6 +118,9 @@ export const KhalaTokensResponse = S.Struct({
   staleness: S.Unknown,
 })
 export type KhalaTokensResponse = typeof KhalaTokensResponse.Type
+
+export const PublicArtanisReportResponse = S.Record(S.String, S.Unknown)
+export type PublicArtanisReportResponse = typeof PublicArtanisReportResponse.Type
 
 // Owner-authenticated Artanis operator channel (#6363, epic #6359).
 // Shared contract with the mobile app and the core Worker route:

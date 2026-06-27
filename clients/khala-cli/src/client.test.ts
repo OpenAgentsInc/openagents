@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { Effect } from "effect"
-import { fetchTokensServed, runArtanisTurn, runChatTurn, submitFeedback } from "./client.js"
+import { fetchPublicArtanisReport, fetchTokensServed, runArtanisTurn, runChatTurn, submitFeedback } from "./client.js"
 import { KhalaCliError } from "./types.js"
 
 describe("Khala client", () => {
@@ -95,6 +95,60 @@ describe("Khala client", () => {
     expect(result.metadata.durationMs).toBeGreaterThanOrEqual(result.metadata.timeToFirstTokenMs ?? 0)
   })
 
+  test("collapses excessive streamed blank lines", async () => {
+    const fakeFetch = (async () => sseResponse([
+      'event: delta\ndata: {"text":"First paragraph\\n\\n\\n\\nSecond paragraph"}',
+      'event: done\ndata: {"done":true}',
+      "",
+    ].join("\n\n"))) as unknown as typeof fetch
+
+    const deltas: Array<string> = []
+    const result = await Effect.runPromise(runChatTurn({
+      baseUrl: "https://example.test",
+      fetch: fakeFetch,
+      messages: [{ role: "user", content: "hi" }],
+      mode: "public",
+      onDelta: delta => deltas.push(delta),
+    }))
+
+    expect(result.text).toBe("First paragraph\n\nSecond paragraph")
+    expect(deltas.join("")).toBe("First paragraph\n\nSecond paragraph")
+  })
+
+  test("continues when a stream ends with finish_reason length", async () => {
+    const bodies: Array<unknown> = []
+    const fakeFetch = (async (_url: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      bodies.push(JSON.parse(String(init?.body ?? "{}")))
+      if (bodies.length === 1) {
+        return sseResponse([
+          'data: {"id":"chat_1","model":"openagents/khala","choices":[{"delta":{"content":"Which of these paths were"}}]}',
+          'data: {"id":"chat_1","model":"openagents/khala","choices":[{"delta":{},"finish_reason":"length"}],"usage":{"prompt_tokens":4,"completion_tokens":5,"total_tokens":9}}',
+          "data: [DONE]",
+          "",
+        ].join("\n\n"))
+      }
+      return sseResponse([
+        'data: {"id":"chat_2","model":"openagents/khala","choices":[{"delta":{"content":" available depends on your account."}}]}',
+        'data: {"id":"chat_2","model":"openagents/khala","choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":9,"completion_tokens":6,"total_tokens":15}}',
+        "data: [DONE]",
+        "",
+      ].join("\n\n"))
+    }) as unknown as typeof fetch
+
+    const result = await Effect.runPromise(runChatTurn({
+      baseUrl: "https://example.test",
+      fetch: fakeFetch,
+      messages: [{ role: "user", content: "hi" }],
+      mode: "api",
+      token: "oa_agent_test",
+    }))
+
+    expect(result.text).toBe("Which of these paths were available depends on your account.")
+    expect(bodies).toHaveLength(2)
+    expect((bodies[1] as { messages: Array<{ role: string; content: string }> }).messages.at(-1)?.content).toContain("Continue the previous answer")
+    expect(result.metadata.finishReason).toBe("stop")
+  })
+
   test("fetches the global Khala tokens-served counter", async () => {
     const calls: Array<string> = []
     const fakeFetch = (async (url: Parameters<typeof fetch>[0]) => {
@@ -114,6 +168,25 @@ describe("Khala client", () => {
 
     expect(response.tokensServed).toBe(1_250_000)
     expect(calls).toEqual(["https://example.test/api/khala/tokens"])
+  })
+
+  test("fetches the public Artanis report", async () => {
+    const calls: Array<string> = []
+    const fakeFetch = (async (url: Parameters<typeof fetch>[0]) => {
+      calls.push(String(url))
+      return Response.json({
+        generatedAt: "2026-06-27T00:00:00.000Z",
+        runtimeState: "active",
+      })
+    }) as unknown as typeof fetch
+
+    const response = await Effect.runPromise(fetchPublicArtanisReport({
+      baseUrl: "https://example.test",
+      fetch: fakeFetch,
+    }))
+
+    expect(response.runtimeState).toBe("active")
+    expect(calls).toEqual(["https://example.test/api/public/artanis/report"])
   })
 
   test("posts the Artanis operator channel to the owner-auth endpoint and returns the reply", async () => {

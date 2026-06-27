@@ -16,6 +16,7 @@ import {
   KhalaPublicChatRequest,
   KhalaTokensResponse,
   OpenAiModelsResponse,
+  PublicArtanisReportResponse,
   type ArtanisTurnOptions,
   type ArtanisTurnResult,
   type ChatClientOptions,
@@ -29,41 +30,100 @@ import {
 
 const MAX_REQUEST_RETRIES = 5
 const RETRY_DELAYS_MS = [400, 1_000, 2_000, 4_000, 8_000] as const
+const MAX_LENGTH_CONTINUATIONS = 3
 
 export function runChatTurn(options: ChatTurnOptions): Effect.Effect<ChatTurnResult, KhalaCliError> {
   return Effect.gen(function* () {
     const startedAt = Date.now()
-    const response = yield* postChat(options)
-    const responseAt = Date.now()
-    const traceRef = readTraceRef(response)
-    const byokAck = response.headers.get(BYOK_ACK_HEADER)?.trim() || undefined
-    const stream = yield* consumeStream(
-      response,
-      options.mode,
-      startedAt,
-      responseAt,
-      options.onDelta,
-      options.onReasoning,
-    )
+    let messages = [...options.messages]
+    let text = ""
+    let reasoningText = ""
+    let streamMetadata: StreamFrameMetadata = {}
+    let timings: {
+      firstTokenAt?: number | undefined
+      responseAt: number
+      startedAt: number
+    } = { responseAt: startedAt, startedAt }
+    let byokAck: string | undefined
+    let traceRef: string | undefined
+
+    for (let turn = 0; turn <= MAX_LENGTH_CONTINUATIONS; turn += 1) {
+      const response = yield* postChat({ ...options, messages })
+      const responseAt = Date.now()
+      traceRef = traceRef ?? readTraceRef(response)
+      byokAck = byokAck ?? (response.headers.get(BYOK_ACK_HEADER)?.trim() || undefined)
+      const stream = yield* consumeStream(
+        response,
+        options.mode,
+        startedAt,
+        responseAt,
+        options.onDelta,
+        options.onReasoning,
+      )
+      text += stream.text
+      reasoningText += stream.reasoningText
+      streamMetadata = mergeMetadata(streamMetadata, stream.metadata)
+      timings = {
+        firstTokenAt: timings.firstTokenAt ?? stream.timings.firstTokenAt,
+        responseAt: timings.responseAt === startedAt ? stream.timings.responseAt : timings.responseAt,
+        startedAt,
+      }
+      if (stream.metadata.finishReason !== "length" || turn === MAX_LENGTH_CONTINUATIONS) {
+        break
+      }
+      messages = [
+        ...messages,
+        { role: "assistant" as const, content: text },
+        {
+          role: "user" as const,
+          content: "Continue the previous answer exactly where it stopped. Finish the sentence and complete the answer without restarting or repeating earlier text.",
+        },
+      ]
+    }
+
     const durationMs = Math.max(0, Date.now() - startedAt)
     const metadata = buildTurnMetadata({
       durationMs,
       mode: options.mode,
       streamMetadata: {
-        ...stream.metadata,
-        traceRef: stream.metadata.traceRef ?? traceRef,
+        ...streamMetadata,
+        traceRef: streamMetadata.traceRef ?? traceRef,
       },
-      timings: stream.timings,
-      text: stream.text,
+      timings,
+      text,
     })
     return {
-      text: stream.text,
-      reasoningText: stream.reasoningText,
-      assistantMessage: { role: "assistant" as const, content: stream.text },
+      text,
+      reasoningText,
+      assistantMessage: { role: "assistant" as const, content: text },
       metadata,
       traceRef: metadata.traceRef,
       ...(byokAck === undefined ? {} : { byokAck }),
     }
+  })
+}
+
+export function fetchPublicArtanisReport(
+  options: Pick<ChatClientOptions, "baseUrl" | "fetch">,
+): Effect.Effect<PublicArtanisReportResponse, KhalaCliError> {
+  return Effect.gen(function* () {
+    const response = yield* request({
+      fetch: options.fetch,
+      url: urlFor(options.baseUrl, "/api/public/artanis/report"),
+      init: {
+        method: "GET",
+        headers: { accept: "application/json" },
+      },
+    })
+    const payload = yield* readJsonResponse(response, "public Artanis report")
+    return yield* Effect.try({
+      try: () => S.decodeUnknownSync(PublicArtanisReportResponse)(payload),
+      catch: (error) => new KhalaCliError({
+        reason: `Unexpected public Artanis report: ${String(error)}`,
+        code: "schema_mismatch",
+        traceRef: readTraceRef(response),
+      }),
+    })
   })
 }
 
@@ -294,6 +354,8 @@ function consumeStream(
       let reasoning = ""
       let metadata: StreamFrameMetadata = {}
       let firstTokenAt: number | undefined
+      const answerSpacing = createStreamSpacingNormalizer()
+      const reasoningSpacing = createStreamSpacingNormalizer()
       for await (const frame of readSseFrames(response.body)) {
         const decoded = mode === "public" ? decodePublicFrame(frame) : decodeOpenAiFrame(frame)
         if (decoded.kind === "done") break
@@ -304,13 +366,15 @@ function consumeStream(
         metadata = mergeMetadata(metadata, decoded.metadata)
         if (decoded.reasoningText !== undefined && decoded.reasoningText.length > 0) {
           firstTokenAt ??= Date.now()
-          reasoning += decoded.reasoningText
-          onReasoning?.(decoded.reasoningText)
+          const normalized = reasoningSpacing.push(decoded.reasoningText)
+          reasoning += normalized
+          onReasoning?.(normalized)
         }
         if (decoded.text.length > 0) {
           firstTokenAt ??= Date.now()
-          assembled += decoded.text
-          onDelta?.(decoded.text)
+          const normalized = answerSpacing.push(decoded.text)
+          assembled += normalized
+          onDelta?.(normalized)
         }
       }
       return {
@@ -470,6 +534,25 @@ function withoutUndefined(record: StreamFrameMetadata): Partial<StreamFrameMetad
   return Object.fromEntries(
     Object.entries(record).filter(([, value]) => value !== undefined),
   ) as Partial<StreamFrameMetadata>
+}
+
+function createStreamSpacingNormalizer(): { readonly push: (text: string) => string } {
+  let trailingNewlines = 0
+  return {
+    push: (text: string): string => {
+      let output = ""
+      for (const char of text.replace(/\r\n/g, "\n").replace(/\r/g, "\n")) {
+        if (char === "\n") {
+          trailingNewlines += 1
+          if (trailingNewlines <= 2) output += "\n"
+          continue
+        }
+        trailingNewlines = 0
+        output += char
+      }
+      return output
+    },
+  }
 }
 
 function buildTurnMetadata(input: {

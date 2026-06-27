@@ -1,7 +1,7 @@
 import { Effect } from "effect"
 import { appendAssistantTurn, prepareUserTurn } from "./bounds.js"
 import { KHALA_CLI_VERSION, formatKhalaChangelog } from "./changelog.js"
-import { fetchModels, fetchTokensServed, mintFreeKey, runArtanisTurn, runChatTurn, submitFeedback, toKhalaCliError } from "./client.js"
+import { fetchModels, fetchPublicArtanisReport, fetchTokensServed, mintFreeKey, runArtanisTurn, runChatTurn, submitFeedback, toKhalaCliError } from "./client.js"
 import {
   connectKhalaCodex,
   resolveKhalaCodexStatus,
@@ -1037,6 +1037,15 @@ async function maybeRunLocalCodexTurn(
   if (selection.route === "spawn_khala") {
     return await runSelectedKhalaSpawnTurn(args, env, prompt, selection, options)
   }
+  if (selection.route === "public_artanis") {
+    const report = await Effect.runPromise(fetchPublicArtanisReport({ baseUrl: args.baseUrl }))
+    const text = formatPublicArtanisAnswer(prompt, report)
+    if (options.silent !== true) {
+      process.stdout.write(`${terminalStyle.assistant("Khala:")} ${terminalStyle.meta(`Blueprint selected public Artanis: ${selection.reason}`)}\n`)
+      process.stdout.write(`${terminalStyle.assistant("Khala:")} ${renderMarkdownForTerminal(text)}\n\n`)
+    }
+    return { handled: true, text }
+  }
   if (selection.route !== "local_codex") {
     return { handled: false }
   }
@@ -1133,6 +1142,92 @@ export function formatKhalaSpawnCapabilityAnswer(): string {
     "Runs are bounded, recorded under the local Khala home, inspectable with `/workers` or `khala workers`, and cancellable with `/cancel` or `khala cancel`.",
     "Public/browser chat can explain that path, but it cannot execute local workers on your machine.",
   ].join(" ")
+}
+
+export function formatPublicArtanisAnswer(
+  prompt: string,
+  report: Record<string, unknown>,
+): string {
+  const generatedAt = readString(report, "generatedAt")
+  const runtimeState = readString(report, "runtimeState")
+  const objective = readString(report, "objective")
+  const loop = readRecord(report, "autonomousLoop")
+  const pylon = readRecord(report, "pylonSummary")
+  const health = readRecord(report, "healthSummary")
+  const decisions = [
+    ...readStringArray(loop, "recentDecisionRefs"),
+    ...readStringArray(report, "recentDecisionRefs"),
+  ].slice(0, 4)
+  const work = [
+    ...readStringArray(pylon, "recentAssignmentRefs"),
+    ...readStringArray(pylon, "recentJobRefs"),
+    ...readStringArray(report, "recentWorkRefs"),
+  ].slice(0, 4)
+  const forumLinks = readRecords(report, "forumLinks")
+    .map((link) => {
+      const label = readString(link, "label")
+      const href = readString(link, "href")
+      return label === undefined || href === undefined ? undefined : `${label}: ${href}`
+    })
+    .filter((line): line is string => line !== undefined)
+    .slice(0, 3)
+  const askedHowToTalk = /\btalk\b|\bchat\b|\bcontact\b|\bspeak\b|\bmessage\b/i.test(prompt)
+  const lines = [
+    "Artanis is the OpenAgents operator agent. This CLI answer is read-only public status, not StarCraft lore and not an owner command channel.",
+  ]
+  if (objective !== undefined) lines.push(`Objective: ${objective}.`)
+  if (runtimeState !== undefined) lines.push(`Runtime state: ${runtimeState}.`)
+  const loopState = readString(loop, "state")
+  const latestTickState = readString(loop, "latestTickState")
+  if (loopState !== undefined || latestTickState !== undefined) {
+    lines.push(`Autonomous loop: ${loopState ?? "not reported"}${latestTickState === undefined ? "" : `, latest tick ${latestTickState}`}.`)
+  }
+  const pylonReadiness = readString(pylon, "readiness")
+  const pylonSummary = readString(pylon, "summary")
+  if (pylonReadiness !== undefined || pylonSummary !== undefined) {
+    lines.push(`Fleet/Pylon: ${pylonSummary ?? pylonReadiness}.`)
+  }
+  const healthReadiness = readString(health, "readiness")
+  const healthSummary = readString(health, "summary")
+  if (healthReadiness !== undefined || healthSummary !== undefined) {
+    lines.push(`Health: ${healthSummary ?? healthReadiness}.`)
+  }
+  if (decisions.length > 0) lines.push(`Recent decision refs: ${decisions.join(", ")}.`)
+  if (work.length > 0) lines.push(`Recent work refs: ${work.join(", ")}.`)
+  if (forumLinks.length > 0) lines.push(`Public follow-up: ${forumLinks.join("; ")}.`)
+  lines.push(`Public report: ${DEFAULT_BASE_URL}/api/public/artanis/report${generatedAt === undefined ? "" : ` (generated ${generatedAt})`}.`)
+  if (askedHowToTalk) {
+    lines.push("Signed-in owners can use `/artanis` for the owner-only operator channel. Everyone can ask public Artanis questions here; that path only observes status and never dispatches work or spends.")
+  } else {
+    lines.push("This surface can answer public questions about Artanis status, activity, decisions, and fleet state. Dispatch, spend, and mutations stay owner-gated.")
+  }
+  return lines.join("\n")
+}
+
+function readRecord(record: Record<string, unknown>, key: string): Record<string, unknown> | undefined {
+  const value = record[key]
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined
+}
+
+function readRecords(record: Record<string, unknown>, key: string): ReadonlyArray<Record<string, unknown>> {
+  const value = record[key]
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is Record<string, unknown> =>
+    item !== null && typeof item === "object" && !Array.isArray(item),
+  )
+}
+
+function readString(record: Record<string, unknown> | undefined, key: string): string | undefined {
+  const value = record?.[key]
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined
+}
+
+function readStringArray(record: Record<string, unknown> | undefined, key: string): ReadonlyArray<string> {
+  const value = record?.[key]
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
 }
 
 async function readStdinPrompt(): Promise<string> {

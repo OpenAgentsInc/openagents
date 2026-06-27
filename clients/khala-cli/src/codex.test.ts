@@ -34,6 +34,16 @@ describe("Khala route selector", () => {
     })
   })
 
+  test("parses the public Artanis read-only route", () => {
+    expect(parseRouteSelection(JSON.stringify({
+      route: "public_artanis",
+      reason: "OpenAgents operator entity",
+    }))).toEqual({
+      route: "public_artanis",
+      reason: "OpenAgents operator entity",
+    })
+  })
+
   test("falls back to chat when the selector returns an invalid spawn count", () => {
     expect(parseRouteSelection(JSON.stringify({
       route: "spawn_khala",

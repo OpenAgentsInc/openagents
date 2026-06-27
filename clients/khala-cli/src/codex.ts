@@ -51,6 +51,7 @@ export type KhalaCodexRunResult = {
 export type KhalaRouteSelection =
   | { readonly route: "chat"; readonly reason: string }
   | { readonly route: "local_codex"; readonly reason: string }
+  | { readonly route: "public_artanis"; readonly reason: string }
   | {
       readonly route: "spawn_khala"
       readonly count?: number | undefined
@@ -76,6 +77,10 @@ const KhalaRouteSelectionJson = S.Union([
   }),
   S.Struct({
     route: S.Literal("local_codex"),
+    reason: S.optional(S.String),
+  }),
+  S.Struct({
+    route: S.Literal("public_artanis"),
     reason: S.optional(S.String),
   }),
   S.Struct({
@@ -286,8 +291,10 @@ export async function selectKhalaRoute(input: {
     "Blueprint route selector. Return only minified JSON matching exactly one of these schema shapes:",
     "{\"route\":\"chat\",\"reason\":\"short\"}",
     "{\"route\":\"local_codex\",\"reason\":\"short\"}",
+    "{\"route\":\"public_artanis\",\"reason\":\"short\"}",
     "{\"route\":\"spawn_khala\",\"reason\":\"short\",\"intent\":\"execute\"|\"explain_capability\",\"count\":5,\"objective\":\"task for child workers\",\"requiresWorkspace\":true}",
     "Choose local_codex only when the user's newest request requires local workspace, filesystem, shell, git, code editing, tests, or reading project files.",
+    "Choose public_artanis when the newest request asks about Artanis as an OpenAgents entity, operator agent, fleet coordinator, current status, activity, decisions, work, or how to talk to Artanis. Artanis here is the OpenAgents operator agent, not a fictional character. This route is read-only and must not dispatch work, spend, mutate state, or claim owner-only authority.",
     "Choose spawn_khala when the user is in the Khala CLI and asks to start, spin up, launch, create, or coordinate supervised Khala workers/subagents/instances, or asks whether this CLI can spawn them.",
     "For spawn_khala, set intent=execute only when the user wants workers started now. Set intent=explain_capability for capability questions. Include count only when explicit, objective only when there is a task to give workers, and requiresWorkspace when the task needs repository/filesystem work.",
     "Choose chat for general conversation, explanation, brainstorming, math, writing not requiring local files, or questions about Khala itself that are not about CLI spawning.",
@@ -315,6 +322,9 @@ export function parseRouteSelection(text: string): KhalaRouteSelection {
     const parsed = S.decodeUnknownSync(KhalaRouteSelectionJson)(JSON.parse(match[0]))
     if (parsed.route === "local_codex") {
       return { route: "local_codex", reason: routeReason(parsed.reason, "workspace capability selected") }
+    }
+    if (parsed.route === "public_artanis") {
+      return { route: "public_artanis", reason: routeReason(parsed.reason, "public Artanis interaction selected") }
     }
     if (parsed.route === "spawn_khala") {
       return normalizeSpawnRouteSelection(parsed)
