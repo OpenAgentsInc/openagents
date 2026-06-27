@@ -72,6 +72,87 @@ export type PylonKhalaStatusResult = PylonKhalaStreamProjection & {
   state: "closed" | "streaming" | "up_to_date"
 }
 
+export type PylonKhalaAssignmentTraceStatusResult = {
+  assignmentRef: string
+  events: {
+    count: number
+    latestEventKind: string | null
+    latestObservedAt: string | null
+    latestStatus: string | null
+    progressCount: number
+  }
+  generatedAt: string
+  lifecycle: {
+    acceptedWorkRefs: string[]
+    artifactRefs: string[]
+    closeoutRefs: string[]
+    createdAt: string
+    proofRefs: string[]
+    rejectionRefs: string[]
+    state: string
+    updatedAt: string
+  }
+  ok: true
+  owner: {
+    agentUserRef: string
+    openauthUserRef: string
+  }
+  progress: {
+    closeoutReady: boolean
+    hasFinalTrace: boolean
+    hasLiveChunks: boolean
+    hasTokenUsage: boolean
+    state:
+      | "assignment_created"
+      | "streaming_chunks"
+      | "final_trace_recorded"
+      | "tokens_recorded"
+      | "closed_out"
+      | "rejected"
+  }
+  pylonRef: string
+  rawEventChunks: {
+    byteLength: number
+    count: number
+    eventCount: number
+    latestChunkRef: string | null
+    latestObservedAt: string | null
+    visibility: "owner_only"
+  }
+  rawEvents: {
+    byteLength: number
+    count: number
+    eventCount: number
+    latestObservedAt: string | null
+    latestRawEventRef: string | null
+    refs: string[]
+    visibility: "owner_only"
+  }
+  schemaVersion: "openagents.pylon.codex_assignment_trace_status.v1"
+  tokenUsage: {
+    cacheReadTokens: number
+    demandKind: "own_capacity"
+    demandSource: "khala_coding_delegation"
+    inputTokens: number
+    model: "openagents/pylon-codex"
+    outputTokens: number
+    provider: "pylon-codex-own-capacity"
+    reasoningTokens: number
+    rowCount: number
+    status: "pending" | "recorded"
+    totalTokens: number
+    usageTruth: "exact"
+  }
+  traces: {
+    count: number
+    finalTraceUuid: string | null
+    latestTraceUuid: string | null
+    refs: string[]
+    schemaVersion: string
+    visibility: "owner_only"
+  }
+}
+
 export type PylonKhalaProofResult = {
   assignmentRef: string
   generatedAt: string
@@ -125,6 +206,7 @@ export type PylonKhalaProofChecklist = {
 
 const durablePrefix = "/v1/chat/completions/durable/"
 const codexAssignmentProofPath = "/api/pylon/codex/proof"
+const codexAssignmentTraceStatusPath = "/api/pylon/codex/trace-status"
 
 function requireAgentToken(options: TipsNetworkOptions): string {
   const token = options.agentToken ?? process.env.OPENAGENTS_AGENT_TOKEN
@@ -566,7 +648,24 @@ export async function readPylonKhalaStatus(
       ? "closed"
       : resumed.streamUpToDate
         ? "up_to_date"
-        : "streaming",
+      : "streaming",
+  }
+}
+
+export async function readPylonKhalaAssignmentTraceStatus(
+  options: TipsNetworkOptions,
+  assignmentRefInput: string,
+): Promise<PylonKhalaAssignmentTraceStatusResult> {
+  const assignmentRef = cleanAssignmentRef(assignmentRefInput)
+  const response = await khalaApiRequest(options, {
+    method: "GET",
+    path: `${codexAssignmentTraceStatusPath}?assignmentRef=${encodeURIComponent(assignmentRef)}`,
+  })
+  const payload = (await response.json()) as Omit<PylonKhalaAssignmentTraceStatusResult, "ok">
+  assertPublicSafe(payload, "khala assignment trace status response")
+  return {
+    ...payload,
+    ok: true,
   }
 }
 

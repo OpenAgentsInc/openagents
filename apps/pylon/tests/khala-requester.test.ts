@@ -7,6 +7,7 @@ import {
   durableRequestIdFromUrl,
   evaluatePylonKhalaProofChecklist,
   issuePylonKhalaRequest,
+  readPylonKhalaAssignmentTraceStatus,
   readPylonKhalaProof,
   readPylonKhalaStatus,
   resumePylonKhalaRequest,
@@ -334,6 +335,123 @@ describe("pylon khala requester API", () => {
     })
   })
 
+  test("assignment status reads owner-scoped trace status without raw payloads", async () => {
+    const calls: Array<{ init: RequestInit; url: string }> = []
+    const result = await readPylonKhalaAssignmentTraceStatus(
+      {
+        agentToken: "oa_agent_test",
+        baseUrl: "https://openagents.test",
+        fetch: async (url: URL | RequestInfo, init?: RequestInit) => {
+          calls.push({ init: init ?? {}, url: String(url) })
+          return new Response(
+            JSON.stringify({
+              schemaVersion: "openagents.pylon.codex_assignment_trace_status.v1",
+              assignmentRef: "assignment-pylon-codex-1",
+              pylonRef: "pylon-local-codex-1",
+              owner: {
+                agentUserRef: "agent:agent-user-1",
+                openauthUserRef: "user-openauth-1",
+              },
+              lifecycle: {
+                state: "running",
+                createdAt: "2026-06-26T12:00:00.000Z",
+                updatedAt: "2026-06-26T12:00:05.000Z",
+                acceptedWorkRefs: [],
+                artifactRefs: [],
+                closeoutRefs: [],
+                proofRefs: [],
+                rejectionRefs: [],
+              },
+              events: {
+                count: 2,
+                progressCount: 1,
+                latestEventKind: "assignment_progress",
+                latestStatus: "runtime_active",
+                latestObservedAt: "2026-06-26T12:00:02.000Z",
+              },
+              tokenUsage: {
+                rowCount: 0,
+                provider: "pylon-codex-own-capacity",
+                model: "openagents/pylon-codex",
+                usageTruth: "exact",
+                demandKind: "own_capacity",
+                demandSource: "khala_coding_delegation",
+                inputTokens: 0,
+                outputTokens: 0,
+                reasoningTokens: 0,
+                cacheReadTokens: 0,
+                totalTokens: 0,
+                status: "pending",
+              },
+              traces: {
+                count: 1,
+                visibility: "owner_only",
+                schemaVersion: "ATIF-v1.7",
+                latestTraceUuid: "trace-chunk-1",
+                finalTraceUuid: null,
+                refs: ["trace-chunk-1"],
+              },
+              rawEventChunks: {
+                count: 2,
+                eventCount: 5,
+                byteLength: 120,
+                latestChunkRef: "raw_chunk.pylon_codex.002",
+                latestObservedAt: "2026-06-26T12:00:02.000Z",
+                visibility: "owner_only",
+              },
+              rawEvents: {
+                count: 0,
+                eventCount: 0,
+                byteLength: 0,
+                latestRawEventRef: null,
+                latestObservedAt: null,
+                visibility: "owner_only",
+                refs: [],
+              },
+              progress: {
+                state: "streaming_chunks",
+                closeoutReady: false,
+                hasLiveChunks: true,
+                hasFinalTrace: false,
+                hasTokenUsage: false,
+              },
+              generatedAt: "2026-06-26T12:00:06.000Z",
+            }),
+            { headers: { "content-type": "application/json" } },
+          )
+        },
+      },
+      "assignment-pylon-codex-1",
+    )
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.url).toBe("https://openagents.test/api/pylon/codex/trace-status?assignmentRef=assignment-pylon-codex-1")
+    expect(calls[0]?.init.method).toBe("GET")
+    expect((calls[0]?.init.headers as Record<string, string>).Authorization).toBe("Bearer oa_agent_test")
+    expect(result).toMatchObject({
+      assignmentRef: "assignment-pylon-codex-1",
+      ok: true,
+      progress: {
+        hasLiveChunks: true,
+        state: "streaming_chunks",
+      },
+      rawEventChunks: {
+        eventCount: 5,
+        visibility: "owner_only",
+      },
+      schemaVersion: "openagents.pylon.codex_assignment_trace_status.v1",
+      tokenUsage: {
+        status: "pending",
+      },
+      traces: {
+        visibility: "owner_only",
+      },
+    })
+    expect(JSON.stringify(result)).not.toMatch(
+      /rawEventsJson|trajectory_json|safe_metadata_json|r2_key|prompt|shell|\/Users|secret|access[_-]?token|bearer/i,
+    )
+  })
+
   test("proof reads owner-scoped public-safe assignment totals", async () => {
     const calls: Array<{ init: RequestInit; url: string }> = []
     const result = await readPylonKhalaProof(
@@ -631,6 +749,124 @@ describe("pylon khala requester API", () => {
       },
       traces: { visibility: "owner_only" },
       rawEvents: { eventCount: 3, visibility: "owner_only" },
+    })
+    expect(JSON.stringify(body)).not.toMatch(
+      /rawEventsJson|trajectory_json|safe_metadata_json|r2_key|prompt|shell|\/Users|secret|access[_-]?token|bearer/i,
+    )
+  }, 15_000)
+
+  test("local CLI reads Khala assignment trace status as JSON", async () => {
+    const requests: Array<{ headers: Headers; path: string; search: string }> = []
+    const server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url)
+        requests.push({ headers: request.headers, path: url.pathname, search: url.search })
+        return new Response(
+          JSON.stringify({
+            schemaVersion: "openagents.pylon.codex_assignment_trace_status.v1",
+            assignmentRef: url.searchParams.get("assignmentRef"),
+            pylonRef: "pylon-local-codex-1",
+            owner: {
+              agentUserRef: "agent:agent-user-1",
+              openauthUserRef: "user-openauth-1",
+            },
+            lifecycle: {
+              state: "running",
+              createdAt: "2026-06-26T12:00:00.000Z",
+              updatedAt: "2026-06-26T12:00:05.000Z",
+              acceptedWorkRefs: [],
+              artifactRefs: [],
+              closeoutRefs: [],
+              proofRefs: [],
+              rejectionRefs: [],
+            },
+            events: {
+              count: 2,
+              progressCount: 1,
+              latestEventKind: "assignment_progress",
+              latestStatus: "runtime_active",
+              latestObservedAt: "2026-06-26T12:00:02.000Z",
+            },
+            tokenUsage: {
+              rowCount: 0,
+              provider: "pylon-codex-own-capacity",
+              model: "openagents/pylon-codex",
+              usageTruth: "exact",
+              demandKind: "own_capacity",
+              demandSource: "khala_coding_delegation",
+              inputTokens: 0,
+              outputTokens: 0,
+              reasoningTokens: 0,
+              cacheReadTokens: 0,
+              totalTokens: 0,
+              status: "pending",
+            },
+            traces: {
+              count: 1,
+              visibility: "owner_only",
+              schemaVersion: "ATIF-v1.7",
+              latestTraceUuid: "trace-chunk-1",
+              finalTraceUuid: null,
+              refs: ["trace-chunk-1"],
+            },
+            rawEventChunks: {
+              count: 2,
+              eventCount: 5,
+              byteLength: 120,
+              latestChunkRef: "raw_chunk.pylon_codex.002",
+              latestObservedAt: "2026-06-26T12:00:02.000Z",
+              visibility: "owner_only",
+            },
+            rawEvents: {
+              count: 0,
+              eventCount: 0,
+              byteLength: 0,
+              latestRawEventRef: null,
+              latestObservedAt: null,
+              visibility: "owner_only",
+              refs: [],
+            },
+            progress: {
+              state: "streaming_chunks",
+              closeoutReady: false,
+              hasLiveChunks: true,
+              hasFinalTrace: false,
+              hasTokenUsage: false,
+            },
+            generatedAt: "2026-06-26T12:00:06.000Z",
+          }),
+          { headers: { "content-type": "application/json" } },
+        )
+      },
+    })
+    servers.push(server)
+
+    const result = await runPylonCli(
+      ["khala", "status", "--assignment-ref", "assignment-pylon-codex-1", "--agent-token", "oa_agent_cli_test", "--json"],
+      {
+        OPENAGENTS_AGENT_TOKEN: "oa_agent_cli_test",
+        PYLON_OPENAGENTS_BASE_URL: `http://127.0.0.1:${server.port}`,
+      },
+    )
+
+    expect(result.timedOut).toBe(false)
+    expect(result.exitCode).toBe(0)
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.path).toBe("/api/pylon/codex/trace-status")
+    expect(requests[0]?.search).toBe("?assignmentRef=assignment-pylon-codex-1")
+    expect(requests[0]?.headers.get("authorization")).toBe("Bearer oa_agent_cli_test")
+    const body = JSON.parse(result.stdout) as Record<string, unknown>
+    expect(body).toMatchObject({
+      assignmentRef: "assignment-pylon-codex-1",
+      ok: true,
+      progress: {
+        hasLiveChunks: true,
+        state: "streaming_chunks",
+      },
+      rawEventChunks: {
+        visibility: "owner_only",
+      },
     })
     expect(JSON.stringify(body)).not.toMatch(
       /rawEventsJson|trajectory_json|safe_metadata_json|r2_key|prompt|shell|\/Users|secret|access[_-]?token|bearer/i,

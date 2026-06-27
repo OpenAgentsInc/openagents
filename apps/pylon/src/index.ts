@@ -271,6 +271,7 @@ import {
 import {
   buildPylonKhalaGitCheckoutWorkspace,
   issuePylonKhalaRequest,
+  readPylonKhalaAssignmentTraceStatus,
   readPylonKhalaProof,
   readPylonKhalaStatus,
   resumePylonKhalaRequest,
@@ -3924,12 +3925,18 @@ async function main() {
       }
 
       if (command === "status") {
+        const assignmentRef = optionString(options, "assignment-ref")
+        if (assignmentRef !== undefined) {
+          const result = await readPylonKhalaAssignmentTraceStatus(networkOptions, assignmentRef)
+          emit(result)
+          return
+        }
         const durableRequestId =
           args[2] !== undefined && !args[2].startsWith("--")
             ? args[2]
             : optionString(options, "resume")
         if (!durableRequestId) {
-          throw new Error("usage: pylon khala status <durable-request-id> [--json]")
+          throw new Error("usage: pylon khala status <durable-request-id> [--json] | pylon khala status --assignment-ref <assignmentRef> [--json]")
         }
         const result = await readPylonKhalaStatus(networkOptions, durableRequestId)
         emit(result)

@@ -58,6 +58,16 @@ and a valid generation timestamp. The checklist is still assignment-scoped
 evidence; it does not replace the dispatch runner or deployed assignment-status
 surface.
 
+The Pylon CLI also has an assignment status read path:
+
+```sh
+pylon khala status --assignment-ref <assignment-ref> --json
+```
+
+That command reads the owner-scoped `/api/pylon/codex/trace-status` route and
+returns lifecycle, progress, token, trace, chunk, and raw-event summary fields
+without raw Codex payloads.
+
 Fresh dummy runbook delegation from this reconciliation pass, 2026-06-27:
 
 - Pylon preflight: `pylon.33afd48282a649047e3a`, Codex ready, owner-capacity
@@ -90,11 +100,12 @@ Do not claim:
 
 The main blockers are dispatch/auto-execution reliability (#6362),
 master-default workspace materialization (#6361), assignment-level trace/status
-presentation plus deployed smoke (#6368), proof/status closeout ergonomics
-(#6369, now partially reduced by the proof checklist), and the broad semantic
-router being verified without ad hoc keyword routing. The original owner-only
-Pylon/Codex trace read-scope mismatch is fixed for individual trace reads; a
-whole-assignment status surface is still needed.
+presentation plus deployed smoke (#6368, partially reduced by the CLI status
+reader), proof/status closeout ergonomics (#6369, partially reduced by the proof
+checklist), and the broad semantic router being verified without ad hoc keyword
+routing. The original owner-only Pylon/Codex trace read-scope mismatch is fixed
+for individual trace reads; the remaining status gap is deployed smoke plus a
+coherent owner-facing surface.
 
 ## CLI Boundary
 

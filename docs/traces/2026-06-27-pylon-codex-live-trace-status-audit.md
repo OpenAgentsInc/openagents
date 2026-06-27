@@ -1049,6 +1049,11 @@ trace refs, owner-only raw event refs, positive evidence counts, and a valid
 generation timestamp are all present. Missing rows, empty trace/raw evidence,
 or malformed freshness metadata produce blocker refs instead of a green proof.
 
+The same CLI now has an owner-scoped assignment status reader:
+`pylon khala status --assignment-ref <assignment-ref> --json`. It reads the
+mounted `/api/pylon/codex/trace-status` route and returns lifecycle, progress,
+token, trace, chunk, and raw-event summaries without raw Codex SDK payloads.
+
 Remote D1 read-only verification confirmed:
 
 | Store | Rows | Events | Bytes |
