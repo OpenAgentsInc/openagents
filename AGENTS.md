@@ -90,7 +90,9 @@ local Pylon, with Pylon executing the assignment through the local Codex-capable
 session. The deeper smoke doc is
 `docs/khala/2026-06-25-bare-agent-pylon-mcp-khala-e2e-smoke.md`; the invariant
 ledger is `apps/openagents.com/INVARIANTS.md` under "Khala Coding Delegation
-Through Pylons".
+Through Pylons". For running this engine 24/7 at scale (standing pylon, codex
+supervisor, identity/token footguns, and stall diagnosis), see the operations
+runbook `docs/ops/2026-06-27-khala-codex-own-capacity-burn-runbook.md`.
 
 > **DO NOT clobber the owner's live Codex session.** NEVER run `codex login` /
 > `codex login --device-auth` (or `pylon auth codex`) against the **default
