@@ -1534,6 +1534,84 @@ between public reads. This confirms again that exact attribution comes from the
 assignment proof, while the public counter is an all-demand projection that
 updates after final token-row insertion.
 
+## Fresh #6312 Delegation: Benchmark Report Hardening
+
+The #6312 continuation used the same working delegation set on current `main`.
+Preflight refreshed Pylon presence and recorded public counter baseline
+`452,845,870`; the request was pinned to commit
+`87410e33c96fc9d6180e7b3a1df8965668cb2b17` and targeted
+`pylon.33afd48282a649047e3a` with `--workflow codex_agent_task`.
+
+Assignment:
+
+`assignment.public.khala_coding.chatcmpl_2af17e7f361344779d3929a1ef7d793d`
+
+Durable Khala request:
+
+`chatcmpl_201ff849d73a475ba716ef2eeae4a0f6`
+
+Closeout:
+
+`assignment.closeout.e5df62c547c43cf0875bf16f`
+
+The delegated run completed accepted with a passing verifier:
+
+```text
+bun run --cwd apps/openagents.com/workers/api test -- \
+  src/inference/benchmark/real-sweep-plan.test.ts \
+  src/inference/benchmark/real-sweep-runner.test.ts \
+  src/inference/benchmark/report.test.ts \
+  src/inference/gym/throughput.test.ts
+```
+
+The materialized patch was reviewed before integration. The useful scoped change
+was to prevent the #6312/#6317 stress report from computing aggregate max tok/s
+from summed per-request wall-clock durations. That math can understate parallel
+throughput and can also make a partial/non-windowed report look like a real
+decision-grade benchmark. The integrated report now requires a positive explicit
+stress-tick measurement window; without one, aggregate and per-replica tok/s stay
+`null` while raw output/goodput token counts and latency rollups remain visible.
+This preserves measurement plumbing without inventing a benchmark number before
+the real #6317 continuous-stress run exists.
+
+`khala proof` reported one exact `token_usage_events` row:
+
+```json
+{
+  "tokenUsage": {
+    "provider": "pylon-codex-own-capacity",
+    "model": "openagents/pylon-codex",
+    "usageTruth": "exact",
+    "demandKind": "own_capacity",
+    "demandSource": "khala_coding_delegation",
+    "inputTokens": 8749988,
+    "outputTokens": 37470,
+    "reasoningTokens": 7666,
+    "cacheReadTokens": 8356608,
+    "totalTokens": 8787458
+  },
+  "traces": {
+    "count": 170,
+    "visibility": "owner_only",
+    "schemaVersion": "ATIF-v1.7"
+  },
+  "rawEvents": {
+    "count": 1,
+    "eventCount": 289,
+    "byteLength": 3889129,
+    "visibility": "owner_only"
+  }
+}
+```
+
+The public counter read after proof was `462,740,771`. The global delta from the
+preflight baseline was `9,894,901`, while this assignment's exact proof accounts
+for `8,787,458` tokens. The difference is expected global-ledger concurrency
+from other Khala/Pylon work landing between the two reads. As with the earlier
+runs, assignment-scoped proof is the exact attribution source and the public
+counter is a live aggregate projection that updates after final token-row
+insertion.
+
 ## Bottom Line
 
 This assignment proves the backend evidence path mostly works:

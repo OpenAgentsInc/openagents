@@ -263,7 +263,7 @@ describe('GLM continuous stress saturation plan (#6317 prep slice)', () => {
     )
   })
 
-  test('report separates deferred and preempted stress load from measured goodput', () => {
+  test('report uses the explicit measurement window for aggregate and goodput rates', () => {
     const plan = buildGlmContinuousStressPlan({
       matrixConfig: SAMPLE_DECISION_SUITE_CONFIG,
       target: GLM_52_REAP_POOL_TARGET,
@@ -297,6 +297,7 @@ describe('GLM continuous stress saturation plan (#6317 prep slice)', () => {
     const report = buildGlmContinuousStressReport({
       generatedAt: '2026-06-26T00:00:01.000Z',
       runnerPlan,
+      throughputMeasurementWindowMs: 3000,
       observations: [
         {
           cellId: firstCell.cellId,
@@ -312,7 +313,7 @@ describe('GLM continuous stress saturation plan (#6317 prep slice)', () => {
         },
         {
           cellId: firstCell.cellId,
-          replicaRef: 'replica.glm.us-central1-a.1',
+          replicaRef: 'replica.glm.us-central1-a.2',
           status: 'ok',
           outputTokens: 800,
           goodputTokens: 700,
@@ -324,7 +325,7 @@ describe('GLM continuous stress saturation plan (#6317 prep slice)', () => {
         },
         {
           cellId: firstCell.cellId,
-          replicaRef: 'replica.glm.us-central1-a.2',
+          replicaRef: 'replica.glm.us-central1-a.3',
           status: 'preempted_for_external',
           outputTokens: 0,
           wallClockMs: 250,
@@ -339,8 +340,9 @@ describe('GLM continuous stress saturation plan (#6317 prep slice)', () => {
     })
 
     expect(report.runnerState).toBe('ready')
-    expect(report.aggregateTokPerSecond).toBe(400)
-    expect(report.goodputTokPerSecond).toBe(360)
+    expect(report.throughputMeasurementWindowMs).toBe(3000)
+    expect(report.aggregateTokPerSecond).toBeCloseTo(2000 / 3, 6)
+    expect(report.goodputTokPerSecond).toBe(600)
     expect(report.errorRate).toBe(0)
     expect(report.okCount).toBe(2)
     expect(report.preemptedCount).toBe(1)
@@ -348,6 +350,7 @@ describe('GLM continuous stress saturation plan (#6317 prep slice)', () => {
     expect(report.replicaRefs).toEqual([
       'replica.glm.us-central1-a.1',
       'replica.glm.us-central1-a.2',
+      'replica.glm.us-central1-a.3',
     ])
     expect(report.latencyMs.ttftMs).toEqual({
       p50: 120,
@@ -363,21 +366,33 @@ describe('GLM continuous stress saturation plan (#6317 prep slice)', () => {
       mean: 21,
       sampleCount: 2,
     })
-    expect(report.replicaRollups).toHaveLength(2)
+    expect(report.replicaRollups).toHaveLength(3)
     expect(report.replicaRollups[0]).toMatchObject({
       replicaRef: 'replica.glm.us-central1-a.1',
       aggregateTokPerSecond: 400,
-      goodputTokPerSecond: 360,
-      outputTokens: 2000,
-      goodputTokens: 1800,
-      okCount: 2,
+      goodputTokPerSecond: 1100 / 3,
+      outputTokens: 1200,
+      goodputTokens: 1100,
+      okCount: 1,
       deferredCount: 0,
       preemptedCount: 0,
       failedCount: 0,
     })
-    expect(report.replicaRollups[0]?.latencyMs.ttftMs.sampleCount).toBe(2)
+    expect(report.replicaRollups[0]?.latencyMs.ttftMs.sampleCount).toBe(1)
     expect(report.replicaRollups[1]).toMatchObject({
       replicaRef: 'replica.glm.us-central1-a.2',
+      aggregateTokPerSecond: 800 / 3,
+      goodputTokPerSecond: 700 / 3,
+      outputTokens: 800,
+      goodputTokens: 700,
+      okCount: 1,
+      deferredCount: 0,
+      preemptedCount: 0,
+      failedCount: 0,
+    })
+    expect(report.replicaRollups[1]?.latencyMs.ttftMs.sampleCount).toBe(1)
+    expect(report.replicaRollups[2]).toMatchObject({
+      replicaRef: 'replica.glm.us-central1-a.3',
       aggregateTokPerSecond: null,
       goodputTokPerSecond: null,
       outputTokens: 0,
@@ -387,10 +402,68 @@ describe('GLM continuous stress saturation plan (#6317 prep slice)', () => {
       preemptedCount: 1,
       failedCount: 0,
     })
-    expect(report.replicaRollups[1]?.latencyMs.ttftMs.sampleCount).toBe(0)
+    expect(report.replicaRollups[2]?.latencyMs.ttftMs.sampleCount).toBe(0)
     expect(JSON.stringify(report)).not.toMatch(
       /prompt|completion|bearer|secret|https?:\/\//i,
     )
+  })
+
+  test('report leaves throughput rates unmeasured without a positive measurement window', () => {
+    const plan = buildGlmContinuousStressPlan({
+      matrixConfig: SAMPLE_DECISION_SUITE_CONFIG,
+      target: GLM_52_REAP_POOL_TARGET,
+      shapes: [stressShape('saturation-knee', 16)],
+      workloads: ['chat'],
+      headroom: {
+        healthyReplicaCount: 10,
+        aggregateAvailableSlots: 10,
+        reservedExternalSlots: 3,
+        externalDemandActive: false,
+      },
+      evidence: {
+        liveHeadroomEvidenceRef: 'evidence.glm.live_headroom.oracle.v1',
+        externalWinsPreemptionEvidenceRef:
+          'evidence.glm.external_wins.preemption.v1',
+        externalWinsProofStatus: 'accepted',
+        rolloutGuardEvidenceRef: 'evidence.glm.stress.rollout_guard.v1',
+        throughputRolloutCanStartIssue6317Stress: true,
+      },
+    })
+    const runnerPlan = buildGlmContinuousStressRunnerPlan({
+      generatedAt: '2026-06-26T00:00:00.000Z',
+      tickRef: 'tick.glm.stress.report.unmeasured_window.v1',
+      plan,
+    })
+    const firstCell = runnerPlan.dispatchCells[0]
+    if (firstCell === undefined) {
+      throw new Error('expected a dispatch cell for report test')
+    }
+
+    const report = buildGlmContinuousStressReport({
+      generatedAt: '2026-06-26T00:00:01.000Z',
+      runnerPlan,
+      throughputMeasurementWindowMs: 0,
+      observations: [
+        {
+          cellId: firstCell.cellId,
+          replicaRef: 'replica.glm.us-central1-a.1',
+          status: 'ok',
+          outputTokens: 1200,
+          goodputTokens: 1100,
+          wallClockMs: 3000,
+        },
+      ],
+    })
+
+    expect(report.throughputMeasurementWindowMs).toBeNull()
+    expect(report.aggregateTokPerSecond).toBeNull()
+    expect(report.goodputTokPerSecond).toBeNull()
+    expect(report.replicaRollups[0]).toMatchObject({
+      aggregateTokPerSecond: null,
+      goodputTokPerSecond: null,
+      outputTokens: 1200,
+      goodputTokens: 1100,
+    })
   })
 
   test('accepts external-wins proof only when preempted external demand stays on GLM primary', () => {

@@ -198,6 +198,7 @@ export type GlmStressReplicaRollup = Readonly<{
 export type GlmStressReportInput = Readonly<{
   generatedAt: string
   runnerPlan: GlmStressRunnerPlan
+  throughputMeasurementWindowMs: number
   observations: ReadonlyArray<GlmStressObservation>
 }>
 
@@ -213,6 +214,7 @@ export type GlmStressReport = Readonly<{
   telemetrySchema: typeof GLM_CONTINUOUS_STRESS_TELEMETRY_SCHEMA
   blockerRefs: ReadonlyArray<string>
   evidenceRefs: ReadonlyArray<string>
+  throughputMeasurementWindowMs: number | null
   aggregateTokPerSecond: number | null
   goodputTokPerSecond: number | null
   errorRate: number | null
@@ -515,16 +517,14 @@ const observationsWithStatus = (
 
 const reportThroughput = (
   ok: ReadonlyArray<GlmStressObservation>,
+  throughputMeasurementWindowMs: number,
 ): Readonly<{
   aggregateTokPerSecond: number | null
   goodputTokPerSecond: number | null
   outputTokens: number
   goodputTokens: number
 }> => {
-  const wallClockMs = ok.reduce(
-    (sum, observation) => sum + measuredPositive(observation.wallClockMs),
-    0,
-  )
+  const measurementWindowMs = measuredPositive(throughputMeasurementWindowMs)
   const outputTokens = ok.reduce(
     (sum, observation) => sum + measuredPositive(observation.outputTokens),
     0,
@@ -538,9 +538,13 @@ const reportThroughput = (
 
   return {
     aggregateTokPerSecond:
-      wallClockMs === 0 ? null : outputTokens / (wallClockMs / 1000),
+      measurementWindowMs === 0 || ok.length === 0
+        ? null
+        : outputTokens / (measurementWindowMs / 1000),
     goodputTokPerSecond:
-      wallClockMs === 0 ? null : goodputTokens / (wallClockMs / 1000),
+      measurementWindowMs === 0 || ok.length === 0
+        ? null
+        : goodputTokens / (measurementWindowMs / 1000),
     outputTokens,
     goodputTokens,
   }
@@ -549,12 +553,13 @@ const reportThroughput = (
 const replicaRollup = (
   replicaRef: string,
   observations: ReadonlyArray<GlmStressObservation>,
+  throughputMeasurementWindowMs: number,
 ): GlmStressReplicaRollup => {
   const scoped = observations.filter(
     observation => observation.replicaRef === replicaRef,
   )
   const ok = observationsWithStatus(scoped, 'ok')
-  const throughput = reportThroughput(ok)
+  const throughput = reportThroughput(ok, throughputMeasurementWindowMs)
 
   return {
     replicaRef,
@@ -589,7 +594,10 @@ export const buildGlmContinuousStressReport = (
     input.observations,
     'preempted_for_external',
   )
-  const throughput = reportThroughput(ok)
+  const throughputMeasurementWindowMs = measuredPositive(
+    input.throughputMeasurementWindowMs,
+  )
+  const throughput = reportThroughput(ok, throughputMeasurementWindowMs)
   const replicaRefs = [
     ...new Set(
       input.observations.flatMap(observation =>
@@ -610,6 +618,8 @@ export const buildGlmContinuousStressReport = (
     telemetrySchema: GLM_CONTINUOUS_STRESS_TELEMETRY_SCHEMA,
     blockerRefs: input.runnerPlan.blockerRefs,
     evidenceRefs: input.runnerPlan.evidenceRefs,
+    throughputMeasurementWindowMs:
+      throughputMeasurementWindowMs === 0 ? null : throughputMeasurementWindowMs,
     aggregateTokPerSecond: throughput.aggregateTokPerSecond,
     goodputTokPerSecond: throughput.goodputTokPerSecond,
     errorRate: rateOrNull(failed.length, input.observations.length),
@@ -620,7 +630,7 @@ export const buildGlmContinuousStressReport = (
     replicaRefs,
     latencyMs: latencyRollup(ok),
     replicaRollups: replicaRefs.map(replicaRef =>
-      replicaRollup(replicaRef, input.observations),
+      replicaRollup(replicaRef, input.observations, throughputMeasurementWindowMs),
     ),
   }
 }
