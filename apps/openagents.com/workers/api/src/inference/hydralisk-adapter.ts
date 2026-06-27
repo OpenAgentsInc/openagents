@@ -116,8 +116,19 @@ export type HydraliskPoolAdapterConfig = Readonly<{
   upstreamModel?: string | undefined
 }>
 
+export type HydraliskPoolRouteAdmissionSnapshot = Readonly<{
+  reason: string
+  reservedExternalHeadroomAvailable: boolean
+}>
+
+export type HydraliskVllmPoolRuntime = Readonly<{
+  adapter: InferenceProviderAdapter
+  routeAdmission: () => HydraliskPoolRouteAdmissionSnapshot
+}>
+
 const DEFAULT_GLM_ASYNC_QUEUE_WAIT_MS = 250
 const MAX_GLM_EDGE_QUEUE_WAIT_MS = 1_000
+const DEFAULT_RESERVED_EXTERNAL_HEADROOM_SLOTS = 1
 
 const requestUrl = (config: HydraliskAdapterConfig): string =>
   `${config.baseUrl.replace(/\/+$/u, '')}/v1/chat/completions`
@@ -924,6 +935,62 @@ const aggregateLiveHeadroomFor = (
   }
 }
 
+const replicaCandidatesFor = (
+  config: HydraliskPoolAdapterConfig,
+  inflight: ReadonlyMap<string, number>,
+): ReadonlyArray<ReplicaCandidate> =>
+  config.replicas.map((replica, index) => {
+    const routingStateOverride = config.routingStateOracle?.(replica.replicaId)
+    return {
+      index,
+      replica,
+      routingStateObserved: routingStateOverride !== undefined,
+      state: stateForReplica(
+        replica,
+        inflight.get(replica.replicaId) ?? 0,
+        routingStateOverride,
+      ),
+    }
+  })
+
+const routeAdmissionForHeadroom = (
+  headroom: GlmAggregateLiveHeadroom,
+): HydraliskPoolRouteAdmissionSnapshot => {
+  if (headroom.aggregateMaxInflight <= 0) {
+    return {
+      reason: 'glm_pool_no_external_capacity',
+      reservedExternalHeadroomAvailable: false,
+    }
+  }
+  if (headroom.aggregateExternalHeadroom <= 0) {
+    return {
+      reason: 'glm_aggregate_external_headroom_zero',
+      reservedExternalHeadroomAvailable: false,
+    }
+  }
+  if (
+    headroom.aggregateExternalHeadroom <=
+    DEFAULT_RESERVED_EXTERNAL_HEADROOM_SLOTS
+  ) {
+    return {
+      reason: 'glm_reserved_external_headroom_unavailable',
+      reservedExternalHeadroomAvailable: false,
+    }
+  }
+  return {
+    reason: 'glm_reserved_external_headroom_available',
+    reservedExternalHeadroomAvailable: true,
+  }
+}
+
+export const readHydraliskPoolRouteAdmission = (
+  config: HydraliskPoolAdapterConfig,
+  inflight: ReadonlyMap<string, number> = new Map(),
+): HydraliskPoolRouteAdmissionSnapshot =>
+  routeAdmissionForHeadroom(
+    aggregateLiveHeadroomFor(replicaCandidatesFor(config, inflight)),
+  )
+
 const selectedReplicaConfigOnce = (
   config: HydraliskPoolAdapterConfig,
   request: InferenceRequest,
@@ -940,21 +1007,7 @@ const selectedReplicaConfigOnce = (
             'hydralisk GLM replica pool selection failed unexpectedly',
           ),
     try: () => {
-      const candidates = config.replicas.map((replica, index) => {
-        const routingStateOverride = config.routingStateOracle?.(
-          replica.replicaId,
-        )
-        return {
-          index,
-          replica,
-          routingStateObserved: routingStateOverride !== undefined,
-          state: stateForReplica(
-            replica,
-            inflight.get(replica.replicaId) ?? 0,
-            routingStateOverride,
-          ),
-        }
-      })
+      const candidates = replicaCandidatesFor(config, inflight)
       const eligible = candidates.filter(
         candidate => busyReasonFor(candidate.state) === null,
       )
@@ -1145,11 +1198,11 @@ const attachMetadataToSource = (
   }
 }
 
-export const makeHydraliskVllmPoolAdapter = (
+export const makeHydraliskVllmPoolRuntime = (
   config: HydraliskPoolAdapterConfig,
-): InferenceProviderAdapter => {
+): HydraliskVllmPoolRuntime => {
   const inflight = new Map<string, number>()
-  return {
+  const adapter: InferenceProviderAdapter = {
     complete: request =>
       selectedReplicaConfig(config, request, inflight).pipe(
         Effect.flatMap(selection =>
@@ -1196,4 +1249,12 @@ export const makeHydraliskVllmPoolAdapter = (
         ),
       ),
   }
+  return {
+    adapter,
+    routeAdmission: () => readHydraliskPoolRouteAdmission(config, inflight),
+  }
 }
+
+export const makeHydraliskVllmPoolAdapter = (
+  config: HydraliskPoolAdapterConfig,
+): InferenceProviderAdapter => makeHydraliskVllmPoolRuntime(config).adapter

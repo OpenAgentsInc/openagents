@@ -411,8 +411,9 @@ import {
 } from './inference/benchmark/head-to-head-routes'
 import { makeD1KhalaHeadToHeadStore } from './inference/benchmark/head-to-head-store'
 import {
+  type HydraliskPoolRouteAdmissionSnapshot,
   makeHydraliskVllmAdapter,
-  makeHydraliskVllmPoolAdapter,
+  makeHydraliskVllmPoolRuntime,
 } from './inference/hydralisk-adapter'
 import {
   checkFreeAllowancePreflight,
@@ -9133,6 +9134,10 @@ const registerPassthroughAdapters = (
 // presence-derived serving policy arms the specific model, so catalog/quote/chat
 // all agree: an armed 20B L4 host never accidentally advertises 120B.
 const hydraliskAdaptersRegistered = new WeakSet<object>()
+const hydraliskGlm52PoolRuntimes = new WeakMap<
+  object,
+  ReturnType<typeof makeHydraliskVllmPoolRuntime>
+>()
 
 type HydraliskServeEnv = OpenAgentsWorkerConfigEnv
 
@@ -9176,35 +9181,38 @@ const registerHydraliskAdapter = (
   const arming = resolveSupplyLaneArming(env)
   const glm52 = resolveHydraliskGlm52Reap504bArming(env)
   if (glm52.replicas.length > 0) {
-    registry.register(
-      makeHydraliskVllmPoolAdapter({
+    const runtime = makeHydraliskVllmPoolRuntime({
+      id: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+      replicas: glm52.replicas.map(replica => ({
+        apiKey: Redacted.make(replica.bearerToken),
+        baseUrl: replica.baseUrl,
+        benchmarkReserved: replica.benchmarkReserved,
+        costProfileRef: replica.costProfileRef,
+        draining: replica.draining,
+        evidenceRefs: replica.evidenceRefs,
         id: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
-        replicas: glm52.replicas.map(replica => ({
-          apiKey: Redacted.make(replica.bearerToken),
-          baseUrl: replica.baseUrl,
-          benchmarkReserved: replica.benchmarkReserved,
-          costProfileRef: replica.costProfileRef,
-          draining: replica.draining,
-          evidenceRefs: replica.evidenceRefs,
-          id: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
-          maxInflight: replica.maxInflight,
-          profileRef: replica.profileRef,
-          replicaId: replica.replicaId,
-          upstreamModel: HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
-        })),
-        routingStateOracle: glmPoolHeartbeatRoutingStateOracle,
+        maxInflight: replica.maxInflight,
+        profileRef: replica.profileRef,
+        replicaId: replica.replicaId,
         upstreamModel: HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
-      }),
-    )
+      })),
+      routingStateOracle: glmPoolHeartbeatRoutingStateOracle,
+      upstreamModel: HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
+    })
+    hydraliskGlm52PoolRuntimes.set(env, runtime)
+    registry.register(runtime.adapter)
   } else if (
     arming.hydraliskModels?.[HYDRALISK_GLM_52_REAP_504B_MODEL_ID] === true
   ) {
+    hydraliskGlm52PoolRuntimes.delete(env)
     registerConfiguredHydraliskAdapter(registry, {
       adapterId: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
       baseUrl: env.HYDRALISK_GLM_52_REAP_504B_BASE_URL,
       bearerToken: env.HYDRALISK_GLM_52_REAP_504B_BEARER_TOKEN,
       upstreamModel: HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
     })
+  } else {
+    hydraliskGlm52PoolRuntimes.delete(env)
   }
   if (arming.hydraliskModels?.[HYDRALISK_GPT_OSS_20B_MODEL_ID] === true) {
     registerConfiguredHydraliskAdapter(registry, {
@@ -9223,6 +9231,11 @@ const registerHydraliskAdapter = (
     })
   }
 }
+
+const hydraliskGlm52RouteAdmissionForEnv = (
+  env: HydraliskServeEnv,
+): HydraliskPoolRouteAdmissionSnapshot | undefined =>
+  hydraliskGlm52PoolRuntimes.get(env)?.routeAdmission()
 
 const openRouterAdaptersRegistered = new WeakSet<object>()
 
@@ -11398,6 +11411,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         env.INFERENCE_INTERNAL_ACCOUNT_REFS,
       )
       const laneArming = resolveSupplyLaneArming(env)
+      const routeAdmission = hydraliskGlm52RouteAdmissionForEnv(env)
       return handleChatCompletions(request, {
         authenticate: async authRequest => {
           const token = readBearerToken(authRequest)
@@ -11575,6 +11589,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         dispatch: {
           failureTelemetry: dispatchFailureTelemetry.record,
         },
+        ...(routeAdmission === undefined ? {} : { routeAdmission }),
         internalStressPreemption,
         // Provider serving policy (public_paid_model_gateway_missing on
         // api.hosted_gemini.v1): the SAME presence-derived lane arming the

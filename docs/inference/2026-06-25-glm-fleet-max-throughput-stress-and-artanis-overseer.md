@@ -130,6 +130,14 @@ with the existing fair-share gate, *before* the `dispatchWithOverflow` calls:
 This makes the invariant **structural**: stress traffic can only ever consume
 *slack*, and it yields that slack the instant external demand needs it.
 
+**Implementation note (2026-06-27).** The production route now wires the
+`routeAdmission` snapshot from the same Hydralisk pool runtime that owns the GLM
+adapter's in-memory `inflight` map. Earlier slices had the route tests,
+preemption registry, and abort signal plumbing, but a registry without a live
+admission snapshot cannot trigger the scheduler's external-demand preemption
+branch. This is still not live saturation evidence; it is the wiring prerequisite
+that makes the later #6317 stress proof meaningful.
+
 ---
 
 ## 2. Continuous stress-test system (the saturation harness)

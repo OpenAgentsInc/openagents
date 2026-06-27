@@ -6,6 +6,7 @@ import {
   type HydraliskReplicaAdapterConfig,
   makeHydraliskVllmAdapter,
   makeHydraliskVllmPoolAdapter,
+  makeHydraliskVllmPoolRuntime,
 } from './hydralisk-adapter'
 import { HYDRALISK_ADAPTER_ID } from './model-router'
 import { HYDRALISK_GPT_OSS_20B_MODEL_ID } from './pricing'
@@ -173,6 +174,51 @@ describe('hydralisk vLLM adapter', () => {
     expect(capturedInputs).toEqual([
       'https://second.example.test/v1/chat/completions',
     ])
+  })
+
+  it('shares the GLM pool inflight map with the route-admission snapshot', async () => {
+    let releaseFetch: (() => void) | undefined
+    let startedFetch: (() => void) | undefined
+    const startedFetchPromise = new Promise<void>(resolve => {
+      startedFetch = resolve
+    })
+    const runtime = makeHydraliskVllmPoolRuntime({
+      id: GLM_POOL_ADAPTER_ID,
+      replicas: [
+        replicaFixture('primary', {
+          fetchImpl: async () => {
+            startedFetch?.()
+            await new Promise<void>(resolve => {
+              releaseFetch = resolve
+            })
+            return Response.json(responseBody)
+          },
+          maxInflight: 2,
+        }),
+      ],
+      upstreamModel: 'openagents/glm-5.2-reap-504b',
+    })
+
+    expect(runtime.routeAdmission()).toEqual({
+      reason: 'glm_reserved_external_headroom_available',
+      reservedExternalHeadroomAvailable: true,
+    })
+
+    const pending = Effect.runPromise(runtime.adapter.complete(request()))
+    await startedFetchPromise
+
+    expect(runtime.routeAdmission()).toEqual({
+      reason: 'glm_reserved_external_headroom_unavailable',
+      reservedExternalHeadroomAvailable: false,
+    })
+
+    releaseFetch?.()
+    await pending
+
+    expect(runtime.routeAdmission()).toEqual({
+      reason: 'glm_reserved_external_headroom_available',
+      reservedExternalHeadroomAvailable: true,
+    })
   })
 
   it('prefers the cache-affinity replica when it is healthy and idle', async () => {
