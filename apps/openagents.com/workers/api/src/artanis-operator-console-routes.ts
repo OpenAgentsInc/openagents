@@ -428,6 +428,97 @@ type OperatorApprovalAction = 'approve' | 'reject'
 const routeApprovalActionPattern =
   /^\/api\/operator\/artanis\/approval-gates\/([^/]+)\/(approve|reject)$/
 
+// Exact create route for minting an owner-approved Artanis approval gate. This
+// is the admin-gated arming path for `pylon_job_dispatch` (#6366): it persists an
+// approved, operator-authority `pylon_job_dispatch` gate so the gated
+// `dispatch_codex_task` tool flips from "deferred" to LIVE. It is strictly
+// own-capacity / no-spend (the dispatch execution seam uses `unpaid_smoke`); it
+// never enables paid spend or payout — those stay behind `wallet_spend` gates.
+const ROUTE_APPROVAL_GATE_CREATE = '/api/operator/artanis/approval-gates'
+
+const ARM_PYLON_DISPATCH_DEFAULT_EXPIRY_HOURS = 48
+const ARM_PYLON_DISPATCH_MIN_EXPIRY_HOURS = 1
+const ARM_PYLON_DISPATCH_MAX_EXPIRY_HOURS = 72
+
+const clampExpiryHours = (value: unknown): number => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return ARM_PYLON_DISPATCH_DEFAULT_EXPIRY_HOURS
+  }
+
+  return Math.min(
+    ARM_PYLON_DISPATCH_MAX_EXPIRY_HOURS,
+    Math.max(ARM_PYLON_DISPATCH_MIN_EXPIRY_HOURS, Math.trunc(value)),
+  )
+}
+
+// Build the approved `pylon_job_dispatch` gate that arms Artanis's gated Codex
+// dispatch. All refs are fixed and public-safe by construction: operator-only
+// material (authority/operator receipts, private evidence, rollback refs) is
+// excluded from the public_artanis projection, and the stored record satisfies
+// `assertGate` (operator approval authority + authority receipt + rollback plan
+// for this rollback-required kind + resolved timestamp for a non-pending state).
+const armedPylonDispatchGateRecord = (input: {
+  epochMillis: number
+  expiresInHours: number
+  nowIso: string
+}): ArtanisApprovalGateRecord => {
+  const expiresAtIso = epochMillisToIsoTimestamp(
+    input.epochMillis + input.expiresInHours * 3_600_000,
+  )
+
+  return new ArtanisApprovalGateRecord({
+    actionRef: 'action.public.artanis.arm_pylon_dispatch',
+    // Documents the owner directive ("arm it now", 2026-06-27). Operator-only;
+    // excluded from the public projection.
+    authorityReceiptRefs: [
+      'receipt.operator_approval.arm_pylon_dispatch.20260627',
+    ],
+    authoritySourceKinds: ['operator_approval', 'operator_policy'],
+    caveatRefs: [
+      'caveat.public.dispatch_scope_own_capacity_no_spend',
+      'caveat.public.dispatch_scope_limited',
+    ],
+    createdAtIso: input.nowIso,
+    expiresAtIso,
+    // Unique per arm so re-arming inserts a fresh effective row rather than
+    // colliding on the idempotency key with different (timestamped) content.
+    gateRef: `gate.public.artanis.arm_pylon_dispatch.${input.epochMillis}`,
+    idempotencyKey: `artanis-approval:arm_pylon_dispatch:${input.epochMillis}:v1`,
+    kind: 'pylon_job_dispatch',
+    operatorReceiptRefs: ['receipt.operator.artanis.arm_pylon_dispatch'],
+    policyRefs: [
+      'policy.public.artanis.pylon_dispatch_bounded_own_capacity_no_spend',
+    ],
+    privateEvidenceRefs: ['evidence.private.artanis.operator_pylon_dispatch_arm'],
+    publicStatusRefs: ['approval.public.artanis.pylon_dispatch_armed'],
+    resolvedAtIso: input.nowIso,
+    rollbackPosture: 'rollback_plan_recorded',
+    rollbackRefs: ['rollback.public.artanis.cancel_pylon_dispatch'],
+    sourceRefs: [
+      'policy.public.artanis.owner_directive.arm_pylon_dispatch',
+      'pylon.public.resource_modes',
+    ],
+    state: 'approved',
+    supersededByGateRef: null,
+    updatedAtIso: input.nowIso,
+  })
+}
+
+const readExpiryHours = (request: Request): Effect.Effect<number> =>
+  Effect.tryPromise({
+    catch: () => undefined,
+    try: () => request.json() as Promise<unknown>,
+  }).pipe(
+    Effect.map(body =>
+      clampExpiryHours(
+        body !== null && typeof body === 'object'
+          ? (body as Record<string, unknown>).expiresInHours
+          : undefined,
+      ),
+    ),
+    Effect.orElseSucceed(() => ARM_PYLON_DISPATCH_DEFAULT_EXPIRY_HOURS),
+  )
+
 const refSuffix = (ref: string): string => {
   const suffix = ref
     .replace(/[^A-Za-z0-9]+/g, '_')
@@ -554,6 +645,38 @@ const applyApprovalAction = (
     return yield* loadConsole(db, nowIso)
   })
 
+const armPylonDispatchGate = (
+  db: D1Database,
+  request: Request,
+  epochMillis: number,
+  nowIso: string,
+) =>
+  Effect.gen(function* () {
+    const expiresInHours = yield* readExpiryHours(request)
+    const record = armedPylonDispatchGateRecord({
+      epochMillis,
+      expiresInHours,
+      nowIso,
+    })
+
+    yield* saveArtanisApprovalGate(db, record, nowIso)
+
+    const console = yield* loadConsole(db, nowIso)
+
+    return {
+      ...console,
+      armedGate: {
+        expiresAtDisplay: friendlyBlueprintMissionBriefingTime(
+          record.expiresAtIso,
+          nowIso,
+        ),
+        gateRef: record.gateRef,
+        kind: record.kind,
+        state: record.state,
+      },
+    }
+  })
+
 export const makeOperatorArtanisConsoleRoutes = <
   Session extends OperatorArtanisConsoleSession,
   Bindings extends OperatorArtanisConsoleEnv,
@@ -567,10 +690,12 @@ export const makeOperatorArtanisConsoleRoutes = <
   ): Effect.Effect<globalThis.Response> | undefined => {
     const url = new URL(request.url)
     const approvalActionMatch = routeApprovalActionPattern.exec(url.pathname)
+    const isCreateGateRoute = url.pathname === ROUTE_APPROVAL_GATE_CREATE
 
     if (
       url.pathname !== '/api/operator/artanis/console' &&
-      approvalActionMatch === null
+      approvalActionMatch === null &&
+      !isCreateGateRoute
     ) {
       return undefined
     }
@@ -586,6 +711,10 @@ export const makeOperatorArtanisConsoleRoutes = <
       return Effect.succeed(methodNotAllowed(['POST']))
     }
 
+    if (isCreateGateRoute && request.method !== 'POST') {
+      return Effect.succeed(methodNotAllowed(['POST']))
+    }
+
     return Effect.gen(function* () {
       const session = yield* requireAdminSession(
         dependencies,
@@ -595,10 +724,12 @@ export const makeOperatorArtanisConsoleRoutes = <
       )
       const nowEpochMillis =
         dependencies.currentEpochMillis ?? currentEpochMillis
-      const nowIso = epochMillisToIsoTimestamp(nowEpochMillis())
+      const epochMillis = nowEpochMillis()
+      const nowIso = epochMillisToIsoTimestamp(epochMillis)
       const db = openAgentsDatabase(env)
-      const snapshot =
-        approvalActionMatch === null
+      const snapshot = isCreateGateRoute
+        ? yield* armPylonDispatchGate(db, request, epochMillis, nowIso)
+        : approvalActionMatch === null
           ? yield* loadConsole(db, nowIso)
           : yield* applyApprovalAction(
               db,

@@ -2,6 +2,7 @@ import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import { makeOperatorArtanisConsoleRoutes } from './artanis-operator-console-routes'
+import { readEffectiveArtanisPylonDispatchApproval } from './artanis-operator-dispatch-execution'
 import { runArtanisScheduledTick } from './artanis-scheduled-runner'
 import {
   ArtanisPersistenceTestStore,
@@ -189,5 +190,92 @@ describe('Artanis operator console routes', () => {
       'caveat.public.operator_decision_not_execution_authority',
     )
     expect(serialized).not.toMatch(/\/Users\/|auth\.json|bearer [A-Za-z0-9._-]+|sk-[a-z0-9]/i)
+  })
+
+  test('arming requires admin authority', async () => {
+    const { db } = await seedStore()
+    const create = () =>
+      new Request(
+        'https://openagents.com/api/operator/artanis/approval-gates',
+        { method: 'POST' },
+      )
+
+    const anonymous = await Effect.runPromise(
+      route({})(create(), { OPENAGENTS_DB: db }, executionContext)!,
+    )
+    const nonAdmin = await Effect.runPromise(
+      route({ browserEmail: 'user@example.com' })(
+        create(),
+        { OPENAGENTS_DB: db },
+        executionContext,
+      )!,
+    )
+
+    expect(anonymous.status).toBe(401)
+    expect(nonAdmin.status).toBe(403)
+  })
+
+  test('arms an effective pylon_job_dispatch approval without public leakage', async () => {
+    const { db } = await seedStore()
+    const response = await Effect.runPromise(
+      route({ adminToken: true })(
+        new Request(
+          'https://openagents.com/api/operator/artanis/approval-gates',
+          {
+            headers: { authorization: 'Bearer admin' },
+            method: 'POST',
+          },
+        ),
+        { OPENAGENTS_DB: db },
+        executionContext,
+      )!,
+    )
+    const body = (await response.json()) as Record<string, unknown>
+    const serialized = JSON.stringify(body)
+
+    expect(response.status).toBe(200)
+    expect(body).toMatchObject({
+      armedGate: {
+        kind: 'pylon_job_dispatch',
+        state: 'approved',
+      },
+    })
+
+    // The newly armed gate must flip the dispatch-execution approval read to
+    // true: an approved, non-expired, operator-authority pylon_job_dispatch row.
+    await expect(
+      readEffectiveArtanisPylonDispatchApproval(db, nowIso),
+    ).resolves.toBe(true)
+
+    // This is the operator-audience console, so operator-only authority material
+    // is intentionally visible to the admin (matching the approve route above);
+    // its public-safety is enforced at the store layer (saveArtanisApprovalGate
+    // projects with the public_artanis audience and throws on private leakage),
+    // so a successful arm already proves the public projection is clean. Here we
+    // only guard against raw timestamps and secrets reaching the response.
+    expect(serialized).toContain(
+      'receipt.operator_approval.arm_pylon_dispatch.20260627',
+    )
+    expect(serialized).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)
+    expect(serialized).not.toMatch(/\/Users\/|auth\.json|bearer [A-Za-z0-9._-]+|sk-[a-z0-9]/i)
+  })
+
+  test('rejects a non-POST arm request', async () => {
+    const { db } = await seedStore()
+    const response = await Effect.runPromise(
+      route({ adminToken: true })(
+        new Request(
+          'https://openagents.com/api/operator/artanis/approval-gates',
+          {
+            headers: { authorization: 'Bearer admin' },
+            method: 'GET',
+          },
+        ),
+        { OPENAGENTS_DB: db },
+        executionContext,
+      )!,
+    )
+
+    expect(response.status).toBe(405)
   })
 })
