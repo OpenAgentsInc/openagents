@@ -22,6 +22,9 @@ Options:
   --ssh-key-file <path>          SSH key for gcloud compute ssh/scp. Default: PYLON_GCE_SSH_KEY_FILE
                                   or ~/.ssh/google_compute_engine when present
   --env-file <path>              Local env file copied over IAP and sourced as root on the VM
+  --account-archive <path>       Local .tar.gz of isolated Pylon account dirs copied over IAP
+  --enable-codex-supervisor      Install/start the Codex own-capacity supervisor service
+  --enable-claude-supervisor     Install/start the Claude own-capacity supervisor service
   --with-address                 Give the VM an external IP. Default is no external IP
   --dry-run                      Print actions without creating, copying, SSHing, or installing
   --help                         Show this help
@@ -33,10 +36,12 @@ Environment accepted by the remote installer:
   PYLON_DISPLAY_NAME             default generated from the instance name
   PYLON_OPENAGENTS_BASE_URL      default https://openagents.com
   PYLON_RESOURCE_MODE            default background_20
+  PYLON_ENABLE_CODEX_SUPERVISOR  set by --enable-codex-supervisor
+  PYLON_ENABLE_CLAUDE_SUPERVISOR set by --enable-claude-supervisor
 
 Security:
-  Secrets are copied over IAP/SSH into /root/openagents-pylon.env on the VM and
-  are never placed in instance metadata or startup scripts.
+  Secrets and account archives are copied over IAP/SSH into root-owned files on
+  the VM and are never placed in instance metadata or startup scripts.
 USAGE
 }
 
@@ -52,7 +57,10 @@ accelerator="${PYLON_GCE_ACCELERATOR:-}"
 network_tags="${PYLON_GCE_TAGS:-pylon-hosted,openagents-pylon}"
 clear_startup_script="${PYLON_GCE_CLEAR_STARTUP_SCRIPT:-0}"
 env_file="${PYLON_GCE_ENV_FILE:-}"
+account_archive="${PYLON_GCE_ACCOUNT_ARCHIVE:-}"
 ssh_key_file="${PYLON_GCE_SSH_KEY_FILE:-}"
+enable_codex_supervisor="${PYLON_ENABLE_CODEX_SUPERVISOR:-0}"
+enable_claude_supervisor="${PYLON_ENABLE_CLAUDE_SUPERVISOR:-0}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -100,6 +108,18 @@ while [[ $# -gt 0 ]]; do
       env_file="${2:-}"
       shift 2
       ;;
+    --account-archive)
+      account_archive="${2:-}"
+      shift 2
+      ;;
+    --enable-codex-supervisor)
+      enable_codex_supervisor=1
+      shift
+      ;;
+    --enable-claude-supervisor)
+      enable_claude_supervisor=1
+      shift
+      ;;
     --with-address)
       with_address=1
       shift
@@ -130,6 +150,10 @@ fi
 
 if [[ -n "$env_file" && ! -f "$env_file" ]]; then
   echo "env file not found: $env_file" >&2
+  exit 2
+fi
+if [[ -n "$account_archive" && ! -f "$account_archive" ]]; then
+  echo "account archive not found: $account_archive" >&2
   exit 2
 fi
 
@@ -190,6 +214,7 @@ base_url="${PYLON_OPENAGENTS_BASE_URL:-https://openagents.com}"
 resource_mode="${PYLON_RESOURCE_MODE:-background_20}"
 assignment_worker="${PYLON_ENABLE_ASSIGNMENT_WORKER:-1}"
 remote_env="/root/openagents-pylon.env"
+remote_account_archive="/root/openagents-pylon-accounts.tgz"
 tmp_env="$(mktemp -t openagents-pylon-gcloud-env.XXXXXX)"
 trap 'rm -f "$tmp_env"' EXIT
 chmod 0600 "$tmp_env"
@@ -203,6 +228,11 @@ chmod 0600 "$tmp_env"
   printf 'PYLON_OPENAGENTS_BASE_URL=%q\n' "$base_url"
   printf 'PYLON_RESOURCE_MODE=%q\n' "$resource_mode"
   printf 'PYLON_ENABLE_ASSIGNMENT_WORKER=%q\n' "$assignment_worker"
+  printf 'PYLON_ENABLE_CODEX_SUPERVISOR=%q\n' "$enable_codex_supervisor"
+  printf 'PYLON_ENABLE_CLAUDE_SUPERVISOR=%q\n' "$enable_claude_supervisor"
+  if [[ -n "$account_archive" ]]; then
+    printf 'PYLON_ACCOUNT_ARCHIVE=%q\n' "$remote_account_archive"
+  fi
 } >"$tmp_env"
 
 create_args=(
@@ -261,6 +291,9 @@ if [[ -n "$ssh_key_file" ]]; then
 fi
 
 run_with_retries gcloud compute scp "$tmp_env" "${instance}:/tmp/openagents-pylon.env" "${ssh_common[@]}" --quiet
+if [[ -n "$account_archive" ]]; then
+  run_with_retries gcloud compute scp "$account_archive" "${instance}:/tmp/openagents-pylon-accounts.tgz" "${ssh_common[@]}" --quiet
+fi
 
 remote_install='
 set -euo pipefail
@@ -271,6 +304,10 @@ if [[ -f /tmp/openagents-pylon.env ]]; then
 elif [[ ! -f /root/openagents-pylon.env ]]; then
   echo "missing /tmp/openagents-pylon.env and /root/openagents-pylon.env" >&2
   exit 1
+fi
+if [[ -f /tmp/openagents-pylon-accounts.tgz ]]; then
+  sudo -n install -m 0600 -o root -g root /tmp/openagents-pylon-accounts.tgz /root/openagents-pylon-accounts.tgz
+  sudo -n rm -f /tmp/openagents-pylon-accounts.tgz
 fi
 sudo -n apt-get update
 sudo -n apt-get install -y ca-certificates curl git unzip
@@ -288,6 +325,12 @@ else
 fi
 sudo -n bash -lc "set -a; source /root/openagents-pylon.env; set +a; /opt/openagents-pylon/apps/pylon/scripts/install-cloud-node.sh"
 sudo -n systemctl --no-pager --full status openagents-pylon
+if systemctl list-unit-files openagents-pylon-codex-supervisor.service >/dev/null 2>&1; then
+  sudo -n systemctl --no-pager --full status openagents-pylon-codex-supervisor
+fi
+if systemctl list-unit-files openagents-pylon-claude-supervisor.service >/dev/null 2>&1; then
+  sudo -n systemctl --no-pager --full status openagents-pylon-claude-supervisor
+fi
 '
 
 run_with_retries gcloud compute ssh "$instance" "${ssh_common[@]}" --command "$remote_install" --quiet
@@ -295,6 +338,12 @@ run_with_retries gcloud compute ssh "$instance" "${ssh_common[@]}" --command "$r
 remote_verify='
 set -euo pipefail
 sudo -n systemctl is-active --quiet openagents-pylon
+if systemctl list-unit-files openagents-pylon-codex-supervisor.service >/dev/null 2>&1; then
+  sudo -n systemctl is-active --quiet openagents-pylon-codex-supervisor
+fi
+if systemctl list-unit-files openagents-pylon-claude-supervisor.service >/dev/null 2>&1; then
+  sudo -n systemctl is-active --quiet openagents-pylon-claude-supervisor
+fi
 sudo -n -u pylon env PYLON_HOME=/var/lib/openagents-pylon PYLON_OPENAGENTS_BASE_URL=https://openagents.com bun /opt/openagents-pylon/apps/pylon/src/index.ts status --json
 '
 

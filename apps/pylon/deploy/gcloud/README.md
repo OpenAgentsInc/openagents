@@ -38,6 +38,42 @@ apps/pylon/deploy/gcloud/setup-pylon.sh \
   --env-file ~/work/.secrets/openagents-agent-claim-christopher-codex.env
 ```
 
+## Own-Capacity Codex/Claude Fleet
+
+Issue #6433's durable fleet target is one lightweight GCE VM per isolated
+Codex/Claude account, each running the headless Pylon node plus the matching
+own-capacity supervisor. Build the account archive from an already-isolated
+Pylon home, never from the default `~/.codex` home:
+
+```sh
+tar -czf /tmp/pylon-codex-1-accounts.tgz -C ~/.pylon-fable/accounts/codex/codex .
+```
+
+Then install a VM for that account:
+
+```sh
+apps/pylon/deploy/gcloud/setup-pylon.sh \
+  --instance oa-codex-control-1 \
+  --project openagentsgemini \
+  --zone us-central1-a \
+  --subnet oa-lightning-us-central1 \
+  --machine-type e2-standard-4 \
+  --account-archive /tmp/pylon-codex-1-accounts.tgz \
+  --enable-codex-supervisor \
+  --env-file ~/work/.secrets/openagents-agent-claim-codex-1.env
+```
+
+Repeat with distinct instance names (`oa-codex-control-2`, ...), account
+archives, and env files until the fleet has the desired account count. The
+archive is copied over IAP into `/root/openagents-pylon-accounts.tgz`, validated
+for absolute/parent paths by the installer, restored under
+`/var/lib/openagents-pylon`, and chowned to the service user before bootstrap.
+
+For a Claude account VM, pass `--enable-claude-supervisor` instead. If a VM owns
+both account lanes, both supervisor switches may be passed, but the intended
+post-desktop posture is one account per VM so rate limits, logs, and restarts
+are isolated.
+
 The default network posture is IAP-only: `--no-address` is used unless
 `--with-address` is passed. The OpenAgents project default subnet is
 `oa-lightning-us-central1`; pass `--subnet ""` only if you intentionally want
@@ -109,6 +145,16 @@ gcloud compute ssh pylon-gcloud-1 \
   --zone us-central1-a \
   --tunnel-through-iap \
   --command 'sudo systemctl --no-pager --full status openagents-pylon'
+```
+
+For supervisor VMs, also check the lane service:
+
+```sh
+gcloud compute ssh oa-codex-control-1 \
+  --project openagentsgemini \
+  --zone us-central1-a \
+  --tunnel-through-iap \
+  --command 'sudo systemctl --no-pager --full status openagents-pylon-codex-supervisor'
 ```
 
 Then verify the live Pylon projection through the public OpenAgents API and

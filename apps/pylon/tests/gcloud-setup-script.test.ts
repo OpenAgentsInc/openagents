@@ -80,4 +80,41 @@ describe("GCloud Pylon setup script", () => {
     expect(output).toContain("gcloud compute ssh existing-l4-host")
     expect(output).not.toContain("oa_agent_repurpose_secret")
   })
+
+  test("dry-run copies account archive and enables own-capacity supervisors", () => {
+    const dir = mkdtempSync(join(tmpdir(), "pylon-gcloud-setup-test-"))
+    const envFile = join(dir, "pylon.env")
+    const archive = join(dir, "accounts.tgz")
+    writeFileSync(envFile, "OPENAGENTS_AGENT_TOKEN=oa_agent_fleet_secret\n")
+    writeFileSync(archive, "fixture archive bytes")
+
+    const result = spawnSync(
+      "bash",
+      [
+        script,
+        "--dry-run",
+        "--instance",
+        "oa-codex-control-1",
+        "--project",
+        "openagentsgemini",
+        "--zone",
+        "us-central1-a",
+        "--account-archive",
+        archive,
+        "--enable-codex-supervisor",
+        "--enable-claude-supervisor",
+        "--env-file",
+        envFile,
+      ],
+      { encoding: "utf8" },
+    )
+
+    expect(result.status).toBe(0)
+    const output = `${result.stdout}\n${result.stderr}`
+    expect(output).toContain("gcloud compute scp")
+    expect(output).toContain("openagents-pylon-accounts.tgz")
+    expect(output).toContain("openagents-pylon-codex-supervisor")
+    expect(output).toContain("openagents-pylon-claude-supervisor")
+    expect(output).not.toContain("oa_agent_fleet_secret")
+  })
 })
