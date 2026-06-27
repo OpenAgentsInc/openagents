@@ -480,3 +480,217 @@ describe('POST /api/operator/artanis/chat — #6365 read_repo_file acceptance', 
   })
 })
 
+// ---------------------------------------------------------------------------
+// read_github_issue acceptance — Artanis's iteration-2 self-improvement
+// capability drives the REAL bounded tool-calling loop through the chat
+// endpoint. He can read a public GitHub issue himself (title, state, body,
+// bounded comments) and reason over its real contents, owner-scoped and
+// Khala-powered, BEFORE drafting a dispatch plan.
+// ---------------------------------------------------------------------------
+
+// A scripted Khala client: round 1 asks for read_github_issue(issue_number);
+// round 2 reads the tool result and replies with the title line it received. The
+// reply only carries the real title IF the loop executed the tool and fed the
+// contents back — that is the end-to-end acceptance.
+const makeReadIssueThenSummarizeKhalaClient = (issueNumber: number) => {
+  const requests: Array<InferenceRequest> = []
+  let round = 0
+  const client = (request: InferenceRequest) => {
+    requests.push(request)
+    round += 1
+    if (round === 1) {
+      return Effect.succeed(
+        toolCallResult(
+          'read_github_issue',
+          JSON.stringify({ issue_number: issueNumber }),
+        ),
+      )
+    }
+    const toolResult = lastToolResultContent(request) ?? ''
+    const titleLine =
+      toolResult.split('\n').find(line => line.startsWith('Issue #')) ?? ''
+    return Effect.succeed({
+      content: `Here is what that issue requires. ${titleLine}`,
+      finishReason: 'stop' as const,
+      servedModel:
+        request.model === 'openagents/khala' ? 'gpt-oss-120b' : 'wrong',
+      usage: { completionTokens: 20, promptTokens: 300, totalTokens: 320 },
+    } satisfies InferenceResult)
+  }
+  return { client, requests }
+}
+
+describe('POST /api/operator/artanis/chat — read_github_issue acceptance', () => {
+  test('reads a public issue through the loop and summarizes its real requirements', async () => {
+    const issueJson = JSON.stringify({
+      body: 'Build a read-only read_github_issue(issue_number) operator tool.',
+      comments: 1,
+      state: 'open',
+      title: 'read_github_issue operator tool',
+    })
+    const { fetchImpl, urls } = stubRepoFetch(url =>
+      url.includes('/comments')
+        ? new Response(
+            JSON.stringify([
+              {
+                body: 'Acceptance: fake-fetch unit test + endpoint proof.',
+                created_at: '2026-06-27T00:00:00Z',
+                user: { login: 'chris' },
+              },
+            ]),
+            { status: 200 },
+          )
+        : new Response(issueJson, { status: 200 }),
+    )
+    const { client, requests } = makeReadIssueThenSummarizeKhalaClient(6311)
+    const { deps } = baseDeps({
+      makeKhalaClient: () => client,
+      makeOperatorTools: () =>
+        makeArtanisOperatorTools({ issueRead: { fetchImpl } }),
+    })
+
+    const response = await runRoute(
+      deps,
+      post({
+        messages: [
+          {
+            content: 'Read GitHub issue #6311 and summarize its requirements',
+            role: 'user',
+          },
+        ],
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    const json = (await response.json()) as Record<string, unknown>
+
+    // The loop executed read_github_issue.
+    const invocations = json.toolInvocations as ReadonlyArray<{
+      name: string
+      executed: boolean
+      deferredToApprovalGate: boolean
+    }>
+    const readInvocation = invocations.find(
+      invocation => invocation.name === 'read_github_issue',
+    )
+    expect(readInvocation).toBeDefined()
+    expect(readInvocation?.executed).toBe(true)
+    expect(readInvocation?.deferredToApprovalGate).toBe(false)
+
+    // It was the REAL read tool: it fetched the issue from the public repo API.
+    expect(urls[0]).toBe(
+      'https://api.github.com/repos/OpenAgentsInc/openagents/issues/6311',
+    )
+
+    // At least two Khala calls (request the tool -> feed result -> reply).
+    expect(json.iterations as number).toBeGreaterThanOrEqual(2)
+
+    // The final reply summarizes the REAL issue (its actual title line).
+    expect(json.reply as string).toContain(
+      'Issue #6311: read_github_issue operator tool',
+    )
+
+    // Persona separation holds; dogfood via Khala; not deferred to a gate.
+    expect((json.persona as { satisfied: boolean }).satisfied).toBe(true)
+    expect(json.servedVia).toBe('openagents_khala')
+    expect(json.requestedModel).toBe('openagents/khala')
+    expect(json.deferredToApprovalGate).toBe(false)
+
+    // The second Khala request carried the real issue body + comment back.
+    expect(
+      requests[1]?.messages.some(
+        message =>
+          message.role === 'tool' &&
+          message.content.includes(
+            'Build a read-only read_github_issue(issue_number) operator tool.',
+          ) &&
+          message.content.includes(
+            'Acceptance: fake-fetch unit test + endpoint proof.',
+          ),
+      ),
+    ).toBe(true)
+  })
+
+  test('a non-numeric issue input returns a typed, bounded block (never a raw error)', async () => {
+    const { fetchImpl, urls } = stubRepoFetch(
+      () => new Response('SHOULD NOT BE READ', { status: 200 }),
+    )
+    const { client } = (() => {
+      let round = 0
+      const c = (request: InferenceRequest) => {
+        round += 1
+        if (round === 1) {
+          return Effect.succeed(
+            toolCallResult(
+              'read_github_issue',
+              JSON.stringify({ issue_number: 'the .secrets file' }),
+            ),
+          )
+        }
+        const toolResult = lastToolResultContent(request) ?? ''
+        return Effect.succeed({
+          content: toolResult,
+          finishReason: 'stop' as const,
+          servedModel: 'gpt-oss-120b',
+          usage: { completionTokens: 5, promptTokens: 50, totalTokens: 55 },
+        } satisfies InferenceResult)
+      }
+      return { client: c }
+    })()
+    const { deps } = baseDeps({
+      makeKhalaClient: () => client,
+      makeOperatorTools: () =>
+        makeArtanisOperatorTools({ issueRead: { fetchImpl } }),
+    })
+
+    const response = await runRoute(
+      deps,
+      post({
+        messages: [{ content: 'read the secrets issue', role: 'user' }],
+      }),
+    )
+    expect(response.status).toBe(200)
+    const json = (await response.json()) as Record<string, unknown>
+    expect(urls).toHaveLength(0)
+    const reply = json.reply as string
+    expect(reply).toContain('blocked')
+    expect(reply).not.toMatch(/Error:/)
+  })
+
+  test('a nonexistent issue reads as honest "(issue not found: #N)"', async () => {
+    const { fetchImpl } = stubRepoFetch(
+      () => new Response('Not Found', { status: 404 }),
+    )
+    const { client, requests } =
+      makeReadIssueThenSummarizeKhalaClient(999999)
+    const { deps } = baseDeps({
+      makeKhalaClient: () => client,
+      makeOperatorTools: () =>
+        makeArtanisOperatorTools({ issueRead: { fetchImpl } }),
+    })
+
+    const response = await runRoute(
+      deps,
+      post({ messages: [{ content: 'read issue #999999', role: 'user' }] }),
+    )
+    expect(response.status).toBe(200)
+    const json = (await response.json()) as Record<string, unknown>
+    const invocations = json.toolInvocations as ReadonlyArray<{
+      name: string
+      executed: boolean
+    }>
+    expect(
+      invocations.find(invocation => invocation.name === 'read_github_issue')
+        ?.executed,
+    ).toBe(true)
+    // The honest not-found string flowed back into the loop as the tool result.
+    expect(
+      requests[1]?.messages.some(
+        message =>
+          message.role === 'tool' &&
+          message.content.includes('(issue not found: #999999)'),
+      ),
+    ).toBe(true)
+  })
+})
+

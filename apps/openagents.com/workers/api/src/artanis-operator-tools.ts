@@ -1,5 +1,5 @@
-// Artanis operator TOOLS (#6365 repo-read, #6366 Codex dispatch) for the bounded
-// tool-calling loop in `artanis-operator.ts` (#6364).
+// Artanis operator TOOLS (#6365 repo-read, read_github_issue, #6366 Codex
+// dispatch) for the bounded tool-calling loop in `artanis-operator.ts` (#6364).
 //
 // These are the concrete owner-scoped tools Artanis can invoke during a turn:
 //
@@ -8,6 +8,15 @@
 //     size, public repo only, secret-path denylist. This is what lets Artanis
 //     read e.g. `docs/khala/2026-06-26-khala-open-issues-master-roadmap.md`
 //     himself and reason over its real contents.
+//   - read_github_issue — a READ tool over the PUBLIC `OpenAgentsInc/openagents`
+//     issues via the GitHub issues API. Given a numeric issue number it returns
+//     the title, state, body, and a bounded set of comments so Artanis can pull
+//     the exact requirements, acceptance criteria, API contracts, and fresh
+//     user/dev feedback from public issues (e.g. #6311, #6320, #6359) BEFORE he
+//     drafts a `dispatch_codex_task` plan. The master roadmap only gives him
+//     one-line epic summaries; this lets the burndown dispatch hit the mark on
+//     the first run. Public repo only; bounded; non-numeric/private input is
+//     blocked; a missing issue degrades to "(issue not found: #N)".
 //   - #6366 dispatch_codex_task — a RISKY tool (`pylon_job_dispatch`). It NEVER
 //     executes in the loop; its `plan(args)` returns the EXACT public-safe
 //     Khala -> Pylon -> Codex dispatch it WOULD run (per the AGENTS.md runbook),
@@ -235,6 +244,245 @@ export const makeArtanisListRepoDirTool = (
           `Contents of ${owner}/${repo}/${path === '' ? '.' : path}:`,
           ...entries.map(line => `- ${line}`),
         ].join('\n')
+      }),
+    kind: 'read',
+  }
+}
+
+// ---------------------------------------------------------------------------
+// read_github_issue — read a PUBLIC OpenAgentsInc/openagents issue (title,
+// state, body, bounded comments). Side-effect-free, public-state-only.
+// ---------------------------------------------------------------------------
+
+// Max characters returned from the issue body and from each comment body. Issue
+// threads can be huge; we bound both so a single read stays small and bounded.
+export const ARTANIS_ISSUE_BODY_MAX_CHARS = 16 * 1024
+export const ARTANIS_ISSUE_COMMENT_MAX_CHARS = 4 * 1024
+// Max comments fetched/rendered for a single issue read.
+export const ARTANIS_ISSUE_MAX_COMMENTS = 20
+
+export type ArtanisIssueReadConfig = Readonly<{
+  owner?: string | undefined
+  repo?: string | undefined
+  maxComments?: number | undefined
+  fetchImpl?: typeof fetch | undefined
+}>
+
+// The parse outcome for a model-produced issue argument. We distinguish ABSENT
+// (no issue field at all -> honest "invalid arguments") from INVALID (a present
+// but non-numeric/private value -> honest "(blocked …)"), per the acceptance.
+type ArtanisIssueArg =
+  | Readonly<{ kind: 'number'; value: number }>
+  | Readonly<{ kind: 'absent' }>
+  | Readonly<{ kind: 'invalid'; raw: string }>
+
+// Coerce a model-produced issue argument into a positive integer. Accepts a
+// number, or a bare/`#`-prefixed numeric string. Anything else (a path, a URL,
+// a word, a float, a negative, an object) is INVALID and gets blocked — only a
+// public issue NUMBER is ever turned into a request.
+export const parseArtanisIssueNumber = (args: unknown): ArtanisIssueArg => {
+  if (typeof args !== 'object' || args === null) return { kind: 'absent' }
+  const record = args as Record<string, unknown>
+  const raw =
+    record.issue_number ?? record.issueNumber ?? record.issue ?? record.number
+  if (raw === undefined || raw === null) return { kind: 'absent' }
+  if (typeof raw === 'number') {
+    return Number.isInteger(raw) && raw > 0
+      ? { kind: 'number', value: raw }
+      : { kind: 'invalid', raw: String(raw) }
+  }
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim()
+    if (/^#?\d+$/.test(trimmed)) {
+      const value = Number.parseInt(trimmed.replace(/^#/, ''), 10)
+      return value > 0
+        ? { kind: 'number', value }
+        : { kind: 'invalid', raw: trimmed }
+    }
+    return { kind: 'invalid', raw: trimmed }
+  }
+  return { kind: 'invalid', raw: String(raw) }
+}
+
+const resolveIssueReadConfig = (config: ArtanisIssueReadConfig) => ({
+  fetchImpl: config.fetchImpl ?? globalThis.fetch,
+  maxComments: config.maxComments ?? ARTANIS_ISSUE_MAX_COMMENTS,
+  owner: config.owner ?? ARTANIS_REPO_READ_OWNER,
+  repo: config.repo ?? ARTANIS_REPO_READ_REPO,
+})
+
+const boundText = (value: string, max: number): string =>
+  value.length > max
+    ? `${value.slice(0, max)}\n(…truncated at ${max} chars)`
+    : value
+
+type GitHubIssueBody = Readonly<{
+  title?: unknown
+  state?: unknown
+  body?: unknown
+  comments?: unknown
+  pull_request?: unknown
+}>
+
+type GitHubIssueComment = Readonly<{
+  body?: unknown
+  user?: unknown
+  created_at?: unknown
+}>
+
+const commentAuthor = (comment: GitHubIssueComment): string => {
+  const user = comment.user
+  if (typeof user === 'object' && user !== null) {
+    const login = (user as Record<string, unknown>).login
+    if (typeof login === 'string' && login.trim() !== '') return login
+  }
+  return 'unknown'
+}
+
+// read_github_issue(issue_number) — reads a PUBLIC issue from the fixed repo via
+// the GitHub issues API. Returns the title, state, body, and a bounded set of
+// comments. Public repo only; non-numeric/private input is blocked; a missing
+// issue degrades to "(issue not found: #N)". Side-effect-free.
+export const makeArtanisReadGithubIssueTool = (
+  config: ArtanisIssueReadConfig = {},
+): ArtanisOperatorReadTool => {
+  const { fetchImpl, maxComments, owner, repo } = resolveIssueReadConfig(config)
+
+  return {
+    definition: {
+      description: `Read a PUBLIC GitHub issue from ${owner}/${repo} by its number. Returns the issue title, state, body, and up to ${maxComments} comments so you can pull the exact requirements, acceptance criteria, API contracts, and recent user/dev feedback BEFORE drafting a dispatch_codex_task plan, e.g. issue 6311, 6320, or 6359. Public repo only; a non-numeric/invalid issue is blocked; an unknown issue reads as "(issue not found: #N)".`,
+      name: 'read_github_issue',
+      parameters: {
+        additionalProperties: false,
+        properties: {
+          issue_number: {
+            description:
+              'The PUBLIC GitHub issue number to read, e.g. 6311. A positive integer (a leading "#" is tolerated). Non-numeric values are rejected.',
+            type: 'number',
+          },
+        },
+        required: ['issue_number'],
+        type: 'object',
+      },
+    },
+    execute: (args: unknown) =>
+      Effect.gen(function* () {
+        const parsed = parseArtanisIssueNumber(args)
+        if (parsed.kind === 'absent') {
+          return '(invalid arguments: a numeric "issue_number" is required)'
+        }
+        if (parsed.kind === 'invalid') {
+          return `(blocked: "${parsed.raw}" is not a valid public issue number; pass a positive integer like 6311)`
+        }
+        const number = parsed.value
+
+        const issueUrl = `https://api.github.com/repos/${owner}/${repo}/issues/${number}`
+        const issueResponse = yield* Effect.tryPromise(() =>
+          fetchImpl(issueUrl, {
+            headers: {
+              Accept: 'application/vnd.github+json',
+              'User-Agent': 'artanis-operator',
+            },
+          }),
+        ).pipe(Effect.orElseSucceed(() => undefined))
+
+        if (issueResponse === undefined) {
+          return `(could not fetch issue #${number})`
+        }
+        if (issueResponse.status === 404) {
+          return `(issue not found: #${number})`
+        }
+        if (!issueResponse.ok) {
+          return `(read failed for issue #${number}: status ${issueResponse.status})`
+        }
+
+        const issue = yield* Effect.tryPromise(
+          () => issueResponse.json() as Promise<unknown>,
+        ).pipe(Effect.orElseSucceed(() => undefined))
+
+        if (typeof issue !== 'object' || issue === null) {
+          return `(read failed for issue #${number}: unexpected response shape)`
+        }
+        const issueBody = issue as GitHubIssueBody
+        const title =
+          typeof issueBody.title === 'string' ? issueBody.title : '(no title)'
+        const state =
+          typeof issueBody.state === 'string' ? issueBody.state : 'unknown'
+        const body =
+          typeof issueBody.body === 'string' && issueBody.body.trim() !== ''
+            ? boundText(issueBody.body, ARTANIS_ISSUE_BODY_MAX_CHARS)
+            : '(no description)'
+        const kind =
+          typeof issueBody.pull_request === 'object' &&
+          issueBody.pull_request !== null
+            ? 'Pull request'
+            : 'Issue'
+        const commentCount =
+          typeof issueBody.comments === 'number' ? issueBody.comments : 0
+
+        const lines: Array<string> = [
+          `${kind} #${number}: ${title}`,
+          `State: ${state}`,
+          `URL: https://github.com/${owner}/${repo}/issues/${number}`,
+          '',
+          body,
+        ]
+
+        // Bounded comment fetch. Comments are best-effort: a failure here still
+        // returns the issue itself with an honest note, never a thrown turn.
+        if (commentCount > 0) {
+          const commentsUrl = `${issueUrl}/comments?per_page=${maxComments}`
+          const commentsResponse = yield* Effect.tryPromise(() =>
+            fetchImpl(commentsUrl, {
+              headers: {
+                Accept: 'application/vnd.github+json',
+                'User-Agent': 'artanis-operator',
+              },
+            }),
+          ).pipe(Effect.orElseSucceed(() => undefined))
+
+          const commentsJson =
+            commentsResponse !== undefined && commentsResponse.ok
+              ? yield* Effect.tryPromise(
+                  () => commentsResponse.json() as Promise<unknown>,
+                ).pipe(Effect.orElseSucceed(() => undefined))
+              : undefined
+
+          if (Array.isArray(commentsJson)) {
+            const rendered = (commentsJson as ReadonlyArray<GitHubIssueComment>)
+              .slice(0, maxComments)
+              .map((comment, index) => {
+                const author = commentAuthor(comment)
+                const at =
+                  typeof comment.created_at === 'string'
+                    ? comment.created_at
+                    : ''
+                const text =
+                  typeof comment.body === 'string' && comment.body.trim() !== ''
+                    ? boundText(comment.body, ARTANIS_ISSUE_COMMENT_MAX_CHARS)
+                    : '(empty comment)'
+                return `[comment ${index + 1}] @${author}${at ? ` (${at})` : ''}:\n${text}`
+              })
+            lines.push('')
+            lines.push(
+              `Comments (showing ${rendered.length} of ${commentCount}):`,
+            )
+            for (const block of rendered) {
+              lines.push('')
+              lines.push(block)
+            }
+          } else {
+            lines.push('')
+            lines.push(
+              `(${commentCount} comment(s) exist but could not be fetched)`,
+            )
+          }
+        } else {
+          lines.push('')
+          lines.push('Comments: (none)')
+        }
+
+        return lines.join('\n')
       }),
     kind: 'read',
   }
@@ -535,21 +783,34 @@ export const makeArtanisDispatchCodexTaskTool = (
 // ---------------------------------------------------------------------------
 
 // Build the standard Artanis operator tool set: the two public repo-read tools
-// (#6365) plus the gated Codex dispatch tool (#6366). The route wires this into
-// `artanisOperatorTurn`, optionally passing a `dispatchExecution` seam so the
-// gated dispatch can execute behind an effective owner approval. With no seam,
-// the dispatch tool stays plan-only.
+// (#6365), the public issue-read tool (read_github_issue), plus the gated Codex
+// dispatch tool (#6366). The route wires this into `artanisOperatorTurn`,
+// optionally passing a `dispatchExecution` seam so the gated dispatch can
+// execute behind an effective owner approval; with no seam the dispatch tool
+// stays plan-only. `issueRead` defaults to the same fetch/owner/repo as
+// `repoRead` so a single test/override seam covers all the read tools; pass it
+// explicitly only when the issue API needs a different fetch stub than the
+// raw-content fetch.
 export const makeArtanisOperatorTools = (
   config: Readonly<{
     repoRead?: ArtanisRepoReadConfig | undefined
+    issueRead?: ArtanisIssueReadConfig | undefined
     defaultBranch?: string | undefined
     dispatchExecution?: ArtanisDispatchExecution | undefined
   }> = {},
-): ReadonlyArray<ArtanisOperatorTool> => [
-  makeArtanisReadRepoFileTool(config.repoRead),
-  makeArtanisListRepoDirTool(config.repoRead),
-  makeArtanisDispatchCodexTaskTool({
-    defaultBranch: config.defaultBranch,
-    execution: config.dispatchExecution,
-  }),
-]
+): ReadonlyArray<ArtanisOperatorTool> => {
+  const issueRead: ArtanisIssueReadConfig = config.issueRead ?? {
+    fetchImpl: config.repoRead?.fetchImpl,
+    owner: config.repoRead?.owner,
+    repo: config.repoRead?.repo,
+  }
+  return [
+    makeArtanisReadRepoFileTool(config.repoRead),
+    makeArtanisListRepoDirTool(config.repoRead),
+    makeArtanisReadGithubIssueTool(issueRead),
+    makeArtanisDispatchCodexTaskTool({
+      defaultBranch: config.defaultBranch,
+      execution: config.dispatchExecution,
+    }),
+  ]
+}

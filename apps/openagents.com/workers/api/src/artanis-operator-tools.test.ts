@@ -2,12 +2,15 @@ import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import {
+  ARTANIS_ISSUE_BODY_MAX_CHARS,
   ARTANIS_REPO_READ_MAX_BYTES,
   isSafeArtanisRepoPath,
   makeArtanisDispatchCodexTaskTool,
   makeArtanisListRepoDirTool,
   makeArtanisOperatorTools,
+  makeArtanisReadGithubIssueTool,
   makeArtanisReadRepoFileTool,
+  parseArtanisIssueNumber,
 } from './artanis-operator-tools'
 
 // A fetch stub that records the URL it was asked for and returns a canned
@@ -317,14 +320,196 @@ describe('#6366 dispatch_codex_task (gated; LIVE execution behind the gate)', ()
   })
 })
 
+describe('read_github_issue (public OpenAgentsInc/openagents only)', () => {
+  const issueBody = (over: Record<string, unknown> = {}) =>
+    JSON.stringify({
+      body: 'Build read_github_issue so Artanis can pull exact requirements.',
+      comments: 0,
+      state: 'open',
+      title: 'read_github_issue operator tool',
+      ...over,
+    })
+
+  test('returns title/state/body for a public issue number', async () => {
+    const { fetchImpl, urls } = stubFetch(
+      () => new Response(issueBody(), { status: 200 }),
+    )
+    const tool = makeArtanisReadGithubIssueTool({ fetchImpl })
+    const result = await Effect.runPromise(
+      tool.execute({ issue_number: 6311 }),
+    )
+    expect(result).toContain('Issue #6311: read_github_issue operator tool')
+    expect(result).toContain('State: open')
+    expect(result).toContain(
+      'Build read_github_issue so Artanis can pull exact requirements.',
+    )
+    expect(result).toContain('Comments: (none)')
+    expect(urls[0]).toBe(
+      'https://api.github.com/repos/OpenAgentsInc/openagents/issues/6311',
+    )
+  })
+
+  test('accepts a "#"-prefixed numeric string and renders bounded comments', async () => {
+    const { fetchImpl, urls } = stubFetch(url =>
+      url.endsWith('/comments?per_page=20')
+        ? new Response(
+            JSON.stringify([
+              {
+                body: 'Acceptance: fake-fetch test + endpoint proof.',
+                created_at: '2026-06-27T00:00:00Z',
+                user: { login: 'chris' },
+              },
+            ]),
+            { status: 200 },
+          )
+        : new Response(issueBody({ comments: 1 }), { status: 200 }),
+    )
+    const tool = makeArtanisReadGithubIssueTool({ fetchImpl })
+    const result = await Effect.runPromise(
+      tool.execute({ issue_number: '#6320' }),
+    )
+    expect(urls[0]).toBe(
+      'https://api.github.com/repos/OpenAgentsInc/openagents/issues/6320',
+    )
+    expect(urls[1]).toBe(
+      'https://api.github.com/repos/OpenAgentsInc/openagents/issues/6320/comments?per_page=20',
+    )
+    expect(result).toContain('Comments (showing 1 of 1):')
+    expect(result).toContain('@chris')
+    expect(result).toContain('Acceptance: fake-fetch test + endpoint proof.')
+  })
+
+  test('a 404 reads as honest "(issue not found: #N)", never invention', async () => {
+    const { fetchImpl } = stubFetch(
+      () => new Response('Not Found', { status: 404 }),
+    )
+    const tool = makeArtanisReadGithubIssueTool({ fetchImpl })
+    const result = await Effect.runPromise(
+      tool.execute({ issue_number: 999999 }),
+    )
+    expect(result).toBe('(issue not found: #999999)')
+  })
+
+  test('blocks non-numeric / private input and never fetches it', async () => {
+    const { fetchImpl, urls } = stubFetch(
+      () => new Response('SHOULD NOT BE READ', { status: 200 }),
+    )
+    const tool = makeArtanisReadGithubIssueTool({ fetchImpl })
+    for (const issue_number of [
+      'open the .secrets file',
+      'https://example.com/private',
+      '12.5',
+      '-3',
+      0,
+    ]) {
+      const result = await Effect.runPromise(tool.execute({ issue_number }))
+      expect(result).toContain('blocked')
+    }
+    expect(urls).toHaveLength(0)
+  })
+
+  test('a missing issue argument returns an honest invalid-arguments message', async () => {
+    const { fetchImpl, urls } = stubFetch(
+      () => new Response('SHOULD NOT BE READ', { status: 200 }),
+    )
+    const tool = makeArtanisReadGithubIssueTool({ fetchImpl })
+    const result = await Effect.runPromise(tool.execute({ notIssue: 1 }))
+    expect(result).toContain('invalid arguments')
+    expect(urls).toHaveLength(0)
+  })
+
+  test('truncates an oversized issue body at the char cap', async () => {
+    const big = 'x'.repeat(ARTANIS_ISSUE_BODY_MAX_CHARS + 50)
+    const { fetchImpl } = stubFetch(
+      () =>
+        new Response(issueBody({ body: big, comments: 0 }), { status: 200 }),
+    )
+    const tool = makeArtanisReadGithubIssueTool({ fetchImpl })
+    const result = await Effect.runPromise(
+      tool.execute({ issue_number: 6359 }),
+    )
+    expect(result).toContain('truncated')
+  })
+
+  test('comment-fetch failure still returns the issue, with an honest note', async () => {
+    const { fetchImpl } = stubFetch(url =>
+      url.includes('/comments')
+        ? new Response('boom', { status: 500 })
+        : new Response(issueBody({ comments: 2 }), { status: 200 }),
+    )
+    const tool = makeArtanisReadGithubIssueTool({ fetchImpl })
+    const result = await Effect.runPromise(
+      tool.execute({ issue_number: 6311 }),
+    )
+    expect(result).toContain('Issue #6311')
+    expect(result).toContain('could not be fetched')
+  })
+})
+
+describe('parseArtanisIssueNumber', () => {
+  test('accepts positive integers and numeric strings', () => {
+    expect(parseArtanisIssueNumber({ issue_number: 6311 })).toEqual({
+      kind: 'number',
+      value: 6311,
+    })
+    expect(parseArtanisIssueNumber({ issue: '6320' })).toEqual({
+      kind: 'number',
+      value: 6320,
+    })
+    expect(parseArtanisIssueNumber({ number: '#6359' })).toEqual({
+      kind: 'number',
+      value: 6359,
+    })
+  })
+  test('flags absent vs invalid distinctly', () => {
+    expect(parseArtanisIssueNumber({}).kind).toBe('absent')
+    expect(parseArtanisIssueNumber({ issue_number: 'foo' }).kind).toBe(
+      'invalid',
+    )
+    expect(parseArtanisIssueNumber({ issue_number: -1 }).kind).toBe('invalid')
+    expect(parseArtanisIssueNumber({ issue_number: 1.5 }).kind).toBe('invalid')
+    expect(parseArtanisIssueNumber(null).kind).toBe('absent')
+  })
+})
+
 describe('makeArtanisOperatorTools default table', () => {
-  test('includes the two repo-read tools and the dispatch tool', () => {
+  test('includes the repo-read tools, the issue-read tool, and the dispatch tool', () => {
     const tools = makeArtanisOperatorTools()
     const names = tools.map(tool => tool.definition.name).sort()
     expect(names).toEqual([
       'dispatch_codex_task',
       'list_repo_dir',
+      'read_github_issue',
       'read_repo_file',
     ])
+  })
+
+  test('a shared repoRead fetch stub also drives the issue-read tool', async () => {
+    const { fetchImpl, urls } = stubFetch(
+      () =>
+        new Response(
+          JSON.stringify({
+            body: 'b',
+            comments: 0,
+            state: 'open',
+            title: 't',
+          }),
+          { status: 200 },
+        ),
+    )
+    const tools = makeArtanisOperatorTools({ repoRead: { fetchImpl } })
+    const issueTool = tools.find(
+      tool => tool.definition.name === 'read_github_issue',
+    )
+    expect(issueTool).toBeDefined()
+    if (issueTool && issueTool.kind === 'read') {
+      const result = await Effect.runPromise(
+        issueTool.execute({ issue_number: 6311 }),
+      )
+      expect(result).toContain('Issue #6311: t')
+      expect(urls[0]).toBe(
+        'https://api.github.com/repos/OpenAgentsInc/openagents/issues/6311',
+      )
+    }
   })
 })
