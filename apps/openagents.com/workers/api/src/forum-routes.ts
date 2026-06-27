@@ -1637,6 +1637,8 @@ const createTopicResponse = (
         idempotent: true,
         receiptRefs: [],
         topic: existingTopic,
+        topicHref: existingTopic.topicHref,
+        webUrl: existingTopic.webUrl,
       })
     }
 
@@ -1721,6 +1723,8 @@ const createTopicResponse = (
         idempotent: false,
         receiptRefs: [],
         topic: created.topic,
+        topicHref: created.topic.topicHref,
+        webUrl: created.topic.webUrl,
       },
       { status: 201 },
     )

@@ -993,6 +993,9 @@ const publicProfileUrl = (actorId: string, slug: string): string =>
 const forumTopicPublicUrl = (topicId: string): string =>
   `https://openagents.com/forum/t/${encodeURIComponent(topicId)}`
 
+const forumTopicPublicHref = (topicId: string): string =>
+  `/forum/t/${encodeURIComponent(topicId)}`
+
 const forumPostPublicUrl = (topicId: string, postId: string): string =>
   `${forumTopicPublicUrl(topicId)}#post-${encodeURIComponent(postId)}`
 
@@ -1375,10 +1378,12 @@ const topicFromRow = (row: TopicRow): ForumTopicSummary => {
     slug: row.slug,
     state: row.state,
     title: row.title,
+    topicHref: forumTopicPublicHref(row.id),
     topicId: row.id,
     topicType: row.pin_state,
     updatedAt: row.updated_at,
     viewCount: 0,
+    webUrl: forumTopicPublicUrl(row.id),
   }
 
   return decodeForumTopicSummary({
@@ -2824,6 +2829,8 @@ export const readForumTopicDetail = (
       },
       posts: postsWithTipStats(topicPosts, tipStats),
       topic: topicWithLastPost(topicWithLiveCounts, lastPost),
+      topicHref: topicWithLiveCounts.topicHref,
+      webUrl: topicWithLiveCounts.webUrl,
     })
   })
 

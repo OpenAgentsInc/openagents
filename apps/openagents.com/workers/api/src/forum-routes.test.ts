@@ -6626,7 +6626,11 @@ describe('Forum routes', () => {
         method: 'POST',
       },
     )
-    const body = await response.json()
+    const body = (await response.json()) as {
+      readonly topic: { readonly topicId: string }
+      readonly topicHref: string
+      readonly webUrl: string
+    }
     const postDetailResponse = await route(
       store,
       `/api/forum/posts/${encodeURIComponent(postId)}`,
@@ -7454,7 +7458,11 @@ describe('Forum routes', () => {
         moderator: 'admin',
       },
     )
-    const body = await response.json()
+    const body = (await response.json()) as {
+      readonly topic: { readonly topicId: string }
+      readonly topicHref: string
+      readonly webUrl: string
+    }
 
     expect(unauthorized.status).toBe(401)
     expect(response.status).toBe(200)
@@ -8110,7 +8118,11 @@ describe('Forum routes', () => {
       },
       method: 'POST',
     })
-    const body = await response.json()
+    const body = (await response.json()) as {
+      readonly topic: { readonly topicId: string }
+      readonly topicHref: string
+      readonly webUrl: string
+    }
 
     expect(response.status).toBe(201)
     expect(body).toMatchObject({
@@ -8122,9 +8134,19 @@ describe('Forum routes', () => {
       topic: {
         postCount: 1,
         slug: 'void-test-thread',
+        topicHref: expect.stringMatching(/^\/forum\/t\/.+/),
         title: 'Void test thread',
+        webUrl: expect.stringMatching(
+          /^https:\/\/openagents\.com\/forum\/t\/.+/,
+        ),
       },
+      topicHref: expect.stringMatching(/^\/forum\/t\/.+/),
+      webUrl: expect.stringMatching(/^https:\/\/openagents\.com\/forum\/t\/.+/),
     })
+    expect(body.topicHref).toBe(`/forum/t/${body.topic.topicId}`)
+    expect(body.webUrl).toBe(
+      `https://openagents.com/forum/t/${body.topic.topicId}`,
+    )
     expect(store.forums[1]?.topic_count).toBe(1)
     expect(store.forums[1]?.post_count).toBe(1)
   })
@@ -9910,7 +9932,15 @@ describe('Forum routes', () => {
     await expect(second.json()).resolves.toMatchObject({
       firstPost: { bodyText: 'Retry-safe body.' },
       idempotent: true,
-      topic: { title: 'Retry safe topic' },
+      topic: {
+        title: 'Retry safe topic',
+        topicHref: expect.stringMatching(/^\/forum\/t\/.+/),
+        webUrl: expect.stringMatching(
+          /^https:\/\/openagents\.com\/forum\/t\/.+/,
+        ),
+      },
+      topicHref: expect.stringMatching(/^\/forum\/t\/.+/),
+      webUrl: expect.stringMatching(/^https:\/\/openagents\.com\/forum\/t\/.+/),
     })
     await expect(conflict.json()).resolves.toMatchObject({
       error: 'idempotency_key_conflict',

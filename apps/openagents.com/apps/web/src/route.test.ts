@@ -240,6 +240,14 @@ describe('app route parser', () => {
     expect(urlToAppRoute(appUrl('/forum/receipts/receipt.forum.1'))).toEqual(
       ForumReceiptRoute({ receiptRef: 'receipt.forum.1' }),
     )
+    expect(
+      urlToAppRoute(appUrl('/forum/f/product-promises/not-a-topic-slug')),
+    ).toEqual(
+      NotFoundRoute({ path: '/forum/f/product-promises/not-a-topic-slug' }),
+    )
+    expect(urlToAppRoute(appUrl('/forum/not-a-real-forum-route'))).toEqual(
+      NotFoundRoute({ path: '/forum/not-a-real-forum-route' }),
+    )
   })
 
   test('accepts public Site checkout demo routes', () => {
@@ -358,6 +366,8 @@ const CANONICAL_URL_TO_TAG: ReadonlyArray<readonly [string, string]> = [
   ['/forum/f/void', 'ForumForum'],
   ['/forum/t/topic1', 'ForumTopic'],
   ['/forum/receipts/rcpt1', 'ForumReceipt'],
+  ['/forum/f/void/topic-slug', 'NotFound'],
+  ['/forum/unknown', 'NotFound'],
   ['/sites/demo-checkout', 'SiteCheckoutDemo'],
   ['/sites/demo-checkout/success', 'SiteCheckoutDemoReturn'],
   ['/clients-preview', 'ClientsPreview'],

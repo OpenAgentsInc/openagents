@@ -183,6 +183,10 @@ export const shouldRedirectUnknownDocumentToHome = (
     return false
   }
 
+  if (pathname === '/forum' || pathname.startsWith('/forum/')) {
+    return false
+  }
+
   return !knownDocumentPathPatterns.some(pattern => pattern.test(pathname))
 }
 

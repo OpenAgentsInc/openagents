@@ -551,10 +551,12 @@ export const ForumTopicSummary = S.Struct({
   slug: ForumSlug,
   state: ForumTopicState,
   title: S.String,
+  topicHref: S.String,
   topicId: ForumUuid,
   topicType: S.optionalKey(ForumTopicPinState),
   updatedAt: S.String,
   viewCount: S.optionalKey(S.Number),
+  webUrl: S.String,
 })
 export type ForumTopicSummary = typeof ForumTopicSummary.Type
 
@@ -663,6 +665,8 @@ export const ForumCreateTopicResponse = S.Struct({
   firstPost: ForumPostSummary,
   receiptRefs: S.Array(ForumReceiptRef),
   topic: ForumTopicSummary,
+  topicHref: S.String,
+  webUrl: S.String,
 })
 export type ForumCreateTopicResponse = typeof ForumCreateTopicResponse.Type
 
@@ -670,6 +674,8 @@ export const ForumTopicDetailResponse = S.Struct({
   pagination: ForumPagination,
   posts: S.Array(ForumPostSummary),
   topic: ForumTopicSummary,
+  topicHref: S.String,
+  webUrl: S.String,
 })
 export type ForumTopicDetailResponse = typeof ForumTopicDetailResponse.Type
 

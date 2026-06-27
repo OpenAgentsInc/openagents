@@ -90,8 +90,11 @@ const topic = {
   slug: 'otc-floating-datacenter',
   state: 'open',
   title: 'OTEC Floating Datacenter',
+  topicHref: '/forum/t/44444444-4444-4444-8444-444444444444',
   topicId: '44444444-4444-4444-8444-444444444444',
   updatedAt: '2026-06-05T18:05:00.000Z',
+  webUrl:
+    'https://openagents.com/forum/t/44444444-4444-4444-8444-444444444444',
 }
 
 const firstPost = {
@@ -176,11 +179,35 @@ describe('Forum API schemas', () => {
         pagination,
         posts: [firstPost, replyPost],
         topic,
+        topicHref: topic.topicHref,
+        webUrl: topic.webUrl,
       }),
     ).toEqual({
       pagination,
       posts: [firstPost, replyPost],
       topic,
+      topicHref: topic.topicHref,
+      webUrl: topic.webUrl,
+    })
+
+    expect(
+      S.decodeUnknownSync(ForumTopicDetailResponse)({
+        pagination,
+        posts: [firstPost],
+        topic: {
+          ...topic,
+          topicHref: '/forum/t/44444444-4444-4444-8444-444444444444',
+          webUrl:
+            'https://openagents.com/forum/t/44444444-4444-4444-8444-444444444444',
+        },
+        topicHref: '/forum/t/44444444-4444-4444-8444-444444444444',
+        webUrl:
+          'https://openagents.com/forum/t/44444444-4444-4444-8444-444444444444',
+      }).topic,
+    ).toMatchObject({
+      topicHref: '/forum/t/44444444-4444-4444-8444-444444444444',
+      webUrl:
+        'https://openagents.com/forum/t/44444444-4444-4444-8444-444444444444',
     })
 
     expect(
@@ -235,6 +262,8 @@ describe('Forum API schemas', () => {
       firstPost,
       receiptRefs: ['receipt.forum.topic_create.otec'],
       topic,
+      topicHref: topic.topicHref,
+      webUrl: topic.webUrl,
     })
 
     expect(S.decodeUnknownSync(ForumCreateTopicRequest)(request)).toEqual(
