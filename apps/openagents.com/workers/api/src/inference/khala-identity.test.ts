@@ -1,9 +1,11 @@
 import { describe, expect, test } from 'vitest'
 
 import {
+  KHALA_CAPABILITY_GROUNDING_RULES,
   KHALA_IDENTITY_SIGNATURE,
   KHALA_IDENTITY_STATEMENT,
   KHALA_IDENTITY_SYSTEM_PROMPT,
+  KHALA_REFUSAL_POSTURE_SYSTEM_PROMPT,
   KHALA_RESPONSE_DISCIPLINE_SIGNATURE,
   KHALA_RESPONSE_DISCIPLINE_SYSTEM_PROMPT,
   KHALA_SIGNATURES,
@@ -95,6 +97,21 @@ describe('Khala response discipline signature', () => {
     expect(prompt).toContain('blueprint response contract')
     expect(prompt).toContain('reasoning channel')
     expect(prompt).toContain('one coherent answer')
+  })
+
+  test('grounds Blueprint capability summaries in live surfaces', () => {
+    const grounding = KHALA_CAPABILITY_GROUNDING_RULES.toLowerCase()
+    expect(grounding).toContain('live openagents surfaces')
+    expect(grounding).toContain('typed routing and response-contract layer')
+    expect(grounding).toContain('chat, local codex, or supervised spawn')
+    expect(grounding).toContain('not describe it as an already-live universal autonomous workflow engine')
+    expect(grounding).toContain('public/browser chat')
+    expect(grounding).toContain('cannot execute local workers')
+
+    const responsePrompt = KHALA_RESPONSE_DISCIPLINE_SYSTEM_PROMPT.toLowerCase()
+    const refusalPrompt = KHALA_REFUSAL_POSTURE_SYSTEM_PROMPT.toLowerCase()
+    expect(responsePrompt).toContain(grounding)
+    expect(refusalPrompt).toContain(grounding)
   })
 
   test('flags visible self-correction loops and repeated final-answer rewrites', () => {
