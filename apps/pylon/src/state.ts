@@ -3,7 +3,7 @@ import { existsSync } from "node:fs"
 import { createHash, randomUUID } from "node:crypto"
 import { hostname } from "node:os"
 import { dirname } from "node:path"
-import { PYLON_DEFAULT_CAPABILITY_REFS, type BootstrapSummary } from "./bootstrap.js"
+import { type BootstrapSummary } from "./bootstrap.js"
 import { PYLON_VERSION, type PylonVersion } from "./version.js"
 import type { PylonHostInventoryProjection } from "./inventory.js"
 import type { PsionicConnectorState } from "./psionic-connector.js"
@@ -208,16 +208,23 @@ export async function loadOrCreateRuntimeState(
   await ensureStateDirectories(paths)
   const existing = await readJsonFile<PylonRuntimeState>(paths.runtimeState)
   const requestedCapabilityRefs = input.capabilityRefs ?? []
-  const defaultCapabilityRefSet = new Set<string>(PYLON_DEFAULT_CAPABILITY_REFS)
-  const defaultOnly =
-    requestedCapabilityRefs.length > 0 &&
-    requestedCapabilityRefs.every(ref => defaultCapabilityRefSet.has(ref))
+  // #6354: NEVER drop capabilities the persisted runtime already holds. The
+  // bootstrap/config capability set (e.g. tassadar + nip90 + labor from
+  // config.json) is a non-default base, but DYNAMIC capabilities probed by
+  // `provider go-online` — notably `capability.pylon.local_codex` and
+  // `capability.pylon.local_claude_agent` for accounts linked AFTER the base
+  // config was written — live only in the persisted runtime. The old logic
+  // overwrote the runtime with the requested base whenever it carried any
+  // non-default ref, so every read-ish command (`status`/`heartbeat`/
+  // `assignment`) stripped codex/claude and the standing fleet's heartbeats
+  // advertised `codex available=0`, 409ing genuinely codex-available Pylons.
+  // `loadOrCreate` must preserve, never mutate-away, what the node already
+  // declared; `go-online` remains the authority for a full replace via
+  // `writeRuntimeState` (so unlinking a capability still removes it there).
   const capabilityRefs =
-    requestedCapabilityRefs.length === 0
-      ? existing?.capabilityRefs ?? []
-      : defaultOnly && existing?.capabilityRefs
-        ? [...new Set([...existing.capabilityRefs, ...requestedCapabilityRefs])]
-        : requestedCapabilityRefs
+    existing?.capabilityRefs
+      ? [...new Set([...existing.capabilityRefs, ...requestedCapabilityRefs])]
+      : requestedCapabilityRefs
   const state: PylonRuntimeState = {
     lifecycle: existing?.lifecycle ?? "offline",
     displayName: input.displayName ?? existing?.displayName ?? null,
