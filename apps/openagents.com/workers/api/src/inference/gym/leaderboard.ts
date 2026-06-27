@@ -15,6 +15,7 @@ export const GymLeaderboardProjectionSchemaVersion =
   'openagents.gym.leaderboard_projection.v1'
 export const GymModuleAuthorSplitProjectionSchemaVersion =
   'openagents.gym.module_author_split_projection.v1'
+export const AgentClEvalSchemaVersion = 'agentcl_eval.v0'
 
 export const GymModuleAuthorSplitState = S.Literals(['blocked', 'modeled'])
 export type GymModuleAuthorSplitState =
@@ -26,6 +27,8 @@ export type GymLeaderboardReportInput = Readonly<{
   reportRef: string
   receiptRef: string
   candidateRef: string
+  learningClaim?: GymLearningClaim | undefined
+  agentClEval?: AgentClEval | undefined
 }>
 
 export type GymLeaderboardRow = Readonly<{
@@ -50,6 +53,7 @@ export type GymLeaderboardExcludedReport = Readonly<{
     | 'not_decision_grade'
     | 'no_accepted_outcomes'
     | 'public_safety_violation'
+    | 'agentcl_evidence_missing'
 }>
 
 export type GymLeaderboardProjection = Readonly<{
@@ -99,6 +103,44 @@ export class GymLeaderboardUnsafe extends S.TaggedErrorClass<GymLeaderboardUnsaf
   },
 ) {}
 
+export const GymLearningClaimKind = S.Literals([
+  'continually_learns',
+  'memory_improves',
+])
+export type GymLearningClaimKind = typeof GymLearningClaimKind.Type
+
+export const GymLearningClaim = S.Struct({
+  claimRef: S.String,
+  kind: GymLearningClaimKind,
+})
+export type GymLearningClaim = typeof GymLearningClaim.Type
+
+export const AgentClEvalMetricSet = S.Struct({
+  evalRef: S.String,
+  accuracyBps: S.Number,
+  sampleCount: S.Number,
+})
+export type AgentClEvalMetricSet = typeof AgentClEvalMetricSet.Type
+
+export const AgentClGain = S.Struct({
+  gainBps: S.Number,
+  evidenceRef: S.String,
+})
+export type AgentClGain = typeof AgentClGain.Type
+
+export const AgentClEval = S.Struct({
+  schemaVersion: S.Literal(AgentClEvalSchemaVersion),
+  evalRef: S.String,
+  baseline: AgentClEvalMetricSet,
+  firstPass: AgentClEvalMetricSet,
+  frozenSecondPass: AgentClEvalMetricSet,
+  heldOut: AgentClEvalMetricSet,
+  plasticityGain: AgentClGain,
+  stabilityGain: AgentClGain,
+  generalizationGain: AgentClGain,
+})
+export type AgentClEval = typeof AgentClEval.Type
+
 const LEADERBOARD_CAVEATS = [
   'caveat.public.gym.leaderboard.decision_grade_only',
   'caveat.public.gym.leaderboard.public_safe_fields_only',
@@ -110,6 +152,17 @@ const MODULE_SPLIT_CAVEATS = [
   'caveat.public.gym.author_split.no_public_marketplace_authority',
   'caveat.public.gym.author_split.owner_armed_evidence_required',
 ] as const
+
+const agentClPublicRefs = (agentClEval: AgentClEval): ReadonlyArray<string> => [
+  agentClEval.evalRef,
+  agentClEval.baseline.evalRef,
+  agentClEval.firstPass.evalRef,
+  agentClEval.frozenSecondPass.evalRef,
+  agentClEval.heldOut.evalRef,
+  agentClEval.plasticityGain.evidenceRef,
+  agentClEval.stabilityGain.evidenceRef,
+  agentClEval.generalizationGain.evidenceRef,
+]
 
 const assertPublicRefs = (
   label: string,
@@ -136,6 +189,45 @@ const refFor = (
 ): string =>
   `${prefix}.${publicRefSegment(values.join('.'), fallback)}`
 
+const assertAgentClEvalReady = (
+  input: GymLeaderboardReportInput,
+): boolean => {
+  if (input.learningClaim === undefined) {
+    return true
+  }
+
+  assertPublicRefs('Gym learning claim refs', [input.learningClaim.claimRef])
+  const agentClEval = input.agentClEval
+  if (agentClEval === undefined) {
+    return false
+  }
+
+  assertPublicRefs('Gym AgentCL eval refs', agentClPublicRefs(agentClEval))
+  const metrics = [
+    agentClEval.baseline,
+    agentClEval.firstPass,
+    agentClEval.frozenSecondPass,
+    agentClEval.heldOut,
+  ]
+  const gains = [
+    agentClEval.plasticityGain,
+    agentClEval.stabilityGain,
+    agentClEval.generalizationGain,
+  ]
+
+  return (
+    metrics.every(
+      metric =>
+        Number.isFinite(metric.accuracyBps) &&
+        metric.accuracyBps >= 0 &&
+        metric.accuracyBps <= 10_000 &&
+        Number.isInteger(metric.sampleCount) &&
+        metric.sampleCount > 0,
+    ) &&
+    gains.every(gain => Number.isFinite(gain.gainBps))
+  )
+}
+
 const leaderboardCandidateRow = (
   input: GymLeaderboardReportInput,
 ): GymLeaderboardRow | GymLeaderboardExcludedReport => {
@@ -159,6 +251,13 @@ const leaderboardCandidateRow = (
     return {
       reportRef: input.reportRef,
       reason: 'not_decision_grade',
+    }
+  }
+
+  if (!assertAgentClEvalReady(input)) {
+    return {
+      reportRef: input.reportRef,
+      reason: 'agentcl_evidence_missing',
     }
   }
 

@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest'
+import { Schema as S } from 'effect'
 
 import {
   buildBenchmarkReport,
@@ -15,6 +16,8 @@ import {
   type GymExperiment,
 } from './experiment'
 import {
+  AgentClEval,
+  AgentClEvalSchemaVersion,
   buildGymLeaderboardProjection,
   GymLeaderboardUnsafe,
   modelGymModuleAuthorSplit,
@@ -88,6 +91,43 @@ const decisionGradeReport = (costBasisMsat: number) => {
   return { compiled, report: buildBenchmarkReport(runSet) }
 }
 
+const AGENTCL_EVAL = {
+  schemaVersion: AgentClEvalSchemaVersion,
+  evalRef: 'eval.public.gym.agentcl.router_memory.v0',
+  baseline: {
+    evalRef: 'eval.public.gym.agentcl.router_memory.baseline',
+    accuracyBps: 5_800,
+    sampleCount: 120,
+  },
+  firstPass: {
+    evalRef: 'eval.public.gym.agentcl.router_memory.first_pass',
+    accuracyBps: 6_300,
+    sampleCount: 120,
+  },
+  frozenSecondPass: {
+    evalRef: 'eval.public.gym.agentcl.router_memory.frozen_second_pass',
+    accuracyBps: 6_100,
+    sampleCount: 120,
+  },
+  heldOut: {
+    evalRef: 'eval.public.gym.agentcl.router_memory.held_out',
+    accuracyBps: 5_900,
+    sampleCount: 120,
+  },
+  plasticityGain: {
+    gainBps: 500,
+    evidenceRef: 'evidence.public.gym.agentcl.router_memory.pg',
+  },
+  stabilityGain: {
+    gainBps: 300,
+    evidenceRef: 'evidence.public.gym.agentcl.router_memory.sg',
+  },
+  generalizationGain: {
+    gainBps: 100,
+    evidenceRef: 'evidence.public.gym.agentcl.router_memory.gg',
+  },
+} as const
+
 describe('Gym public leaderboard projection', () => {
   test('ranks only public-safe decision-grade reports by cost per accepted outcome', () => {
     const fast = decisionGradeReport(400)
@@ -151,6 +191,72 @@ describe('Gym public leaderboard projection', () => {
         },
       ]),
     ).toThrow(GymLeaderboardUnsafe)
+  })
+
+  test('requires separate AgentCL PG, SG, and GG evidence for learning claims', () => {
+    const report = decisionGradeReport(400)
+
+    const projection = buildGymLeaderboardProjection([
+      {
+        ...report,
+        reportRef: 'report.gym.leaderboard.memory_claim_missing_agentcl',
+        receiptRef: 'receipt.gym.leaderboard.memory_claim_missing_agentcl',
+        candidateRef: 'candidate.gym.leaderboard.memory_claim_missing_agentcl',
+        learningClaim: {
+          claimRef: 'claim.public.gym.memory_improves.router_memory',
+          kind: 'memory_improves',
+        },
+      },
+      {
+        ...report,
+        reportRef: 'report.gym.leaderboard.memory_claim_agentcl',
+        receiptRef: 'receipt.gym.leaderboard.memory_claim_agentcl',
+        candidateRef: 'candidate.gym.leaderboard.memory_claim_agentcl',
+        learningClaim: {
+          claimRef: 'claim.public.gym.memory_improves.router_memory.agentcl',
+          kind: 'continually_learns',
+        },
+        agentClEval: S.decodeUnknownSync(AgentClEval)(AGENTCL_EVAL),
+      },
+    ])
+
+    expect(projection.rows.map(row => row.reportRef)).toEqual([
+      'report.gym.leaderboard.memory_claim_agentcl',
+    ])
+    expect(projection.excludedReports).toContainEqual({
+      reportRef: 'report.gym.leaderboard.memory_claim_missing_agentcl',
+      reason: 'agentcl_evidence_missing',
+    })
+  })
+
+  test('rejects single-number memory-improvement evidence for AgentCL claims', () => {
+    const report = decisionGradeReport(400)
+    const singleNumberEval = {
+      schemaVersion: AgentClEvalSchemaVersion,
+      evalRef: 'eval.public.gym.agentcl.single_number',
+      baseline: AGENTCL_EVAL.baseline,
+      firstPass: AGENTCL_EVAL.firstPass,
+      frozenSecondPass: AGENTCL_EVAL.frozenSecondPass,
+      heldOut: AGENTCL_EVAL.heldOut,
+      plasticityGain: AGENTCL_EVAL.plasticityGain,
+      stabilityGain: AGENTCL_EVAL.stabilityGain,
+    }
+
+    expect(() =>
+      buildGymLeaderboardProjection([
+        {
+          ...report,
+          reportRef: 'report.gym.leaderboard.single_number_memory_claim',
+          receiptRef: 'receipt.gym.leaderboard.single_number_memory_claim',
+          candidateRef: 'candidate.gym.leaderboard.single_number_memory_claim',
+          learningClaim: {
+            claimRef: 'claim.public.gym.memory_improves.single_number',
+            kind: 'memory_improves',
+          },
+          agentClEval: S.decodeUnknownSync(AgentClEval)(singleNumberEval),
+        },
+      ]),
+    ).toThrow()
   })
 })
 
