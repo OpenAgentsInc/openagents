@@ -309,6 +309,32 @@ const codingDelegationStoreUnavailableRejection = (
   statusCode: 503,
 })
 
+const listRegistrationsForLinkedOwnerAgents = async (
+  pylonStore: PylonApiStore,
+  ownerAgentUserIds: ReadonlyArray<string>,
+): Promise<ReadonlyArray<PylonApiRegistrationRecord>> => {
+  const listAllAndFilter = async () =>
+    (await pylonStore.listRegistrations(200)).filter(registration =>
+      ownerAgentUserIds.includes(registration.ownerAgentUserId),
+    )
+
+  if (pylonStore.listRegistrationsForOwnerAgentUserIds === undefined) {
+    return listAllAndFilter()
+  }
+
+  try {
+    return await pylonStore.listRegistrationsForOwnerAgentUserIds(
+      ownerAgentUserIds,
+      200,
+    )
+  } catch (error) {
+    if (error instanceof PylonApiStoreError) {
+      return listAllAndFilter()
+    }
+    throw error
+  }
+}
+
 /**
  * Public delegation entry point. Any Pylon-store failure inside the gate is
  * caught and surfaced as a clean, diagnosable 503 rejection rather than
@@ -365,15 +391,10 @@ const delegateCodingWorkflowUnsafe = async (
       : null
   }
 
-  const registrations =
-    input.pylonStore.listRegistrationsForOwnerAgentUserIds === undefined
-      ? (await input.pylonStore.listRegistrations(200)).filter(registration =>
-          ownerAgentUserIds.includes(registration.ownerAgentUserId),
-        )
-      : await input.pylonStore.listRegistrationsForOwnerAgentUserIds(
-          ownerAgentUserIds,
-          200,
-        )
+  const registrations = await listRegistrationsForLinkedOwnerAgents(
+    input.pylonStore,
+    ownerAgentUserIds,
+  )
 
   const authorizedRegistrations =
     target.kind === 'target'

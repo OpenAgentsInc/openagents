@@ -167,6 +167,38 @@ describe('coding workflow delegation', () => {
     })
   })
 
+  test('falls back to the broad registration read when the scoped capacity read is transiently unavailable', async () => {
+    const fallbackStore = {
+      ...makeStore({ registrations: [registration()] }),
+      listRegistrationsForOwnerAgentUserIds: async () => {
+        throw new PylonApiStoreError({
+          kind: 'storage_error',
+          reason: 'owner registration index temporarily unavailable',
+        })
+      },
+    } satisfies PylonApiStore
+
+    const result = await delegateCodingWorkflow({
+      classification,
+      linkedAgents: [linkedOwner],
+      makeId: () => 'id1',
+      nowIso,
+      pylonStore: fallbackStore,
+      rawBody: {
+        openagents: {
+          coding: {
+            targetPylonRef: 'pylon.owner.codex',
+          },
+        },
+      },
+      requestId: 'chatcmpl_coding_scoped_read_fallback',
+    })
+    const assigned = expectAssigned(result)
+
+    expect(assigned.pylon.pylonRef).toBe('pylon.owner.codex')
+    expect(assigned.assignment.ownerAgentUserId).toBe('agent_owner')
+  })
+
   test('does not require wallet readiness for unpaid local Codex delegation', async () => {
     const result = await delegateCodingWorkflow({
       classification,
