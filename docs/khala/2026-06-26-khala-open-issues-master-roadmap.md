@@ -229,6 +229,17 @@ operator view of what remains, not a public product claim.
   state rather than only replica-headroom math. This follow-up adds the
   `GLM_STRESS_SCHEDULER` Durable Object so external requests can see and
   preempt active stress leases across Worker isolates.
+- 2026-06-27T04:50Z first live DO deploy proof against Worker
+  `4537f061-8e94-4579-850a-3c61dbf0126b` confirmed the binding was live and
+  the external response could carry scheduler-preemption metadata, with `614`
+  external tokens counted at closeout. It also showed the first coordinator
+  wiring was too eager: a route-admission-rejected `internal_stress` request had
+  still registered a DO lease, so the metadata looked like an in-flight
+  preemption even though stress had already yielded. The follow-up patch blocks
+  global lease registration when route admission will reject stress. With the
+  current degraded fleet, #6318 can prove admission-yield and counter movement,
+  but it still needs a live admitted stress request plus external
+  `scheduler_preemption` and stress yield before closing.
 - 2026-06-27T01:30Z #6317 prep: stress and real-sweep dispatch attribution now
   use the canonical `x-openagents-client` header instead of the stale
   `x-openagents-demand-client` field, matching the chat route's typed demand

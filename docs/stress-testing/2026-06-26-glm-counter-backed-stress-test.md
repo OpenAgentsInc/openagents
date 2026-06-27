@@ -239,6 +239,20 @@ not store prompts, completions, provider payloads, or raw traces. Post-deploy
 proof must rerun the same external-wins probe and require scheduler-preemption
 metadata before #6318 can close.
 
+First live DO deploy proof against Worker version
+`4537f061-8e94-4579-850a-3c61dbf0126b` showed the DO binding was live and
+metadata flowed: the external request returned HTTP `200`, carried
+`scheduler_preemption` metadata, and moved the public token counter by `614`
+tokens. It also exposed a precision bug in the first coordinator wiring: the
+`internal_stress` request had already been rejected by route admission before
+the external request arrived, so it should not have registered a global stress
+lease. The follow-up patch prevents route-admission-rejected stress from
+creating a DO lease. While the live GLM fleet remains degraded enough that
+`internal_stress` is rejected at admission, this proves admission-yield and
+counter accounting but still cannot honestly close the in-flight preemption
+condition; that requires a live admitted stress request plus external
+`scheduler_preemption` and stress yield in the same probe.
+
 ## 2026-06-27 Ramp Continuation
 
 Readiness immediately before the continuation:

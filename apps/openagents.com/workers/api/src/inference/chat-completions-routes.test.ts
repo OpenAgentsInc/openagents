@@ -2683,6 +2683,54 @@ describe('POST /v1/chat/completions', () => {
     })
   })
 
+  test('global coordinator is not registered when route admission rejects internal_stress before dispatch', async () => {
+    let registerCalls = 0
+    const coordinator: InternalStressPreemptionCoordinator = {
+      preempt: async () => undefined,
+      register: async () => {
+        registerCalls += 1
+        return async () => {}
+      },
+      snapshot: async () => ({ activeStressCount: 0 }),
+    }
+    const registry = new InferenceProviderRegistry()
+    registry.register(echoAdapter('primary'))
+
+    const stressResponse = await run(
+      handleChatCompletions(
+        chatRequest(
+          {
+            ...helloBody,
+            stream: true,
+          },
+          {
+            headers: {
+              [INFERENCE_DEMAND_KIND_HEADER]: 'internal_stress',
+              [INFERENCE_DEMAND_SOURCE_HEADER]: 'glm-saturation',
+            },
+          },
+        ),
+        baseDeps({
+          internalStressCoordinator: coordinator,
+          lanePlan: () => ['primary'],
+          registry,
+          routeAdmission: {
+            reason: 'glm_reserved_external_headroom_unavailable',
+            reservedExternalHeadroomAvailable: false,
+          },
+        }),
+      ),
+    )
+
+    expect(stressResponse.status).toBe(429)
+    expect(await stressResponse.json()).toMatchObject({
+      error: {
+        code: 'route_admission_reserved_headroom_unavailable',
+      },
+    })
+    expect(registerCalls).toBe(0)
+  })
+
   test('wired GLM saturation proof: internal_stress yields while external overflows and records exact served tokens', async () => {
     let glmCalls = 0
     let geminiCalls = 0
