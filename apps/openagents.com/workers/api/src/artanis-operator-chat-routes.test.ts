@@ -1,6 +1,10 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
+import { makeArtanisOperatorTools } from './artanis-operator-tools'
 import type {
   ArtanisMemoryAppendInput,
   ArtanisMemoryEntry,
@@ -8,6 +12,10 @@ import type {
   ArtanisOwnerMemoryStore,
 } from './artanis-owner-memory'
 import { makeOperatorArtanisChatRoutes } from './artanis-operator-chat-routes'
+import type {
+  InferenceRequest,
+  InferenceResult,
+} from './inference/provider-adapter'
 import { InferenceAdapterError } from './inference/provider-adapter'
 
 type Session = Readonly<{ user: Readonly<{ email: string; userId: string }> }>
@@ -252,3 +260,223 @@ describe('POST /api/operator/artanis/chat — grounded Khala-powered reply', () 
     expect(response.status).toBe(503)
   })
 })
+
+
+// ---------------------------------------------------------------------------
+// #6365 acceptance — read_repo_file drives the REAL bounded tool-calling loop
+// through the chat endpoint. This is Artanis's iteration-1 self-improvement
+// capability: he can read a public repo file himself and reason over its real
+// contents, owner-scoped and Khala-powered.
+// ---------------------------------------------------------------------------
+
+const ROADMAP_PATH =
+  'docs/khala/2026-06-26-khala-open-issues-master-roadmap.md'
+
+// The REAL roadmap file from the repo, read from disk so the asserted "first
+// line" is the actual one Artanis was asked to read — not a fixture.
+const roadmapContents = readFileSync(
+  join(__dirname, '..', '..', '..', '..', '..', ROADMAP_PATH),
+  'utf8',
+)
+const roadmapFirstLine = roadmapContents.split('\n')[0] ?? ''
+
+// A fetch stub the REAL read_repo_file tool fetches through, so we can feed it
+// the real roadmap bytes (happy path) or a 404 (nonexistent path)
+// deterministically without hitting the network in CI.
+const stubRepoFetch = (
+  handler: (url: string) => Response,
+): { fetchImpl: typeof fetch; urls: Array<string> } => {
+  const urls: Array<string> = []
+  const fetchImpl = (async (input: RequestInfo | URL) => {
+    const url = typeof input === 'string' ? input : input.toString()
+    urls.push(url)
+    return handler(url)
+  }) as typeof fetch
+  return { fetchImpl, urls }
+}
+
+const toolCallResult = (name: string, args: string): InferenceResult => ({
+  content: '',
+  finishReason: 'tool_calls',
+  servedModel: 'gpt-oss-120b',
+  toolCalls: [
+    { function: { arguments: args, name }, id: `call_${name}`, type: 'function' },
+  ],
+  usage: { completionTokens: 4, promptTokens: 100, totalTokens: 104 },
+})
+
+// Most recent tool-result message content in a Khala request. The scripted
+// client echoes its first line to PROVE the tool's bytes actually flowed back
+// through the loop, instead of fabricating a reply.
+const lastToolResultContent = (
+  request: InferenceRequest,
+): string | undefined =>
+  [...request.messages].reverse().find(message => message.role === 'tool')
+    ?.content
+
+// A two-step scripted Khala client: round 1 asks for read_repo_file(path);
+// round 2 reads the tool result it received and replies with that result's first
+// line. The reply only contains the real first line IF the loop executed the
+// tool and fed the contents back — that is the end-to-end acceptance.
+const makeReadThenEchoKhalaClient = (path: string) => {
+  const requests: Array<InferenceRequest> = []
+  let round = 0
+  const client = (request: InferenceRequest) => {
+    requests.push(request)
+    round += 1
+    if (round === 1) {
+      return Effect.succeed(
+        toolCallResult('read_repo_file', JSON.stringify({ path })),
+      )
+    }
+    const firstLine = (lastToolResultContent(request) ?? '').split('\n')[0] ?? ''
+    return Effect.succeed({
+      content: `The first line of that roadmap file is: "${firstLine}".`,
+      finishReason: 'stop' as const,
+      servedModel:
+        request.model === 'openagents/khala' ? 'gpt-oss-120b' : 'wrong',
+      usage: { completionTokens: 20, promptTokens: 300, totalTokens: 320 },
+    } satisfies InferenceResult)
+  }
+  return { client, requests }
+}
+
+describe('POST /api/operator/artanis/chat — #6365 read_repo_file acceptance', () => {
+  test('reads the roadmap through the loop and replies with its real first line', async () => {
+    const { fetchImpl, urls } = stubRepoFetch(
+      () => new Response(roadmapContents, { status: 200 }),
+    )
+    const { client, requests } = makeReadThenEchoKhalaClient(ROADMAP_PATH)
+    const { deps } = baseDeps({
+      makeKhalaClient: () => client,
+      makeOperatorTools: () =>
+        makeArtanisOperatorTools({ repoRead: { fetchImpl } }),
+    })
+
+    const response = await runRoute(
+      deps,
+      post({
+        messages: [
+          {
+            content:
+              'Read docs/khala/2026-06-26-khala-open-issues-master-roadmap.md and tell me its first line.',
+            role: 'user',
+          },
+        ],
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    const json = (await response.json()) as Record<string, unknown>
+
+    // The loop executed read_repo_file against the roadmap path.
+    const invocations = json.toolInvocations as ReadonlyArray<{
+      name: string
+      executed: boolean
+      deferredToApprovalGate: boolean
+    }>
+    const readInvocation = invocations.find(
+      invocation => invocation.name === 'read_repo_file',
+    )
+    expect(readInvocation).toBeDefined()
+    expect(readInvocation?.executed).toBe(true)
+    expect(readInvocation?.deferredToApprovalGate).toBe(false)
+
+    // It was the REAL read tool: it fetched the roadmap from the public repo.
+    expect(urls[0]).toBe(
+      `https://raw.githubusercontent.com/OpenAgentsInc/openagents/main/${ROADMAP_PATH}`,
+    )
+
+    // The loop resolved the tool with the real file contents: at least two Khala
+    // calls (request the tool -> feed result -> final reply).
+    expect(json.iterations as number).toBeGreaterThanOrEqual(2)
+
+    // The final reply contains the EXACT first line of the real roadmap file.
+    expect(roadmapFirstLine.length).toBeGreaterThan(0)
+    expect(json.reply as string).toContain(roadmapFirstLine)
+
+    // Persona separation still holds (no Khala-collective / StarCraft leak).
+    expect((json.persona as { satisfied: boolean }).satisfied).toBe(true)
+
+    // Dogfood: served via Khala, no provider bypass; not deferred to a gate.
+    expect(json.servedVia).toBe('openagents_khala')
+    expect(json.requestedModel).toBe('openagents/khala')
+    expect(json.deferredToApprovalGate).toBe(false)
+
+    // The second Khala request carried the tool result back into context.
+    expect(
+      requests[1]?.messages.some(
+        message =>
+          message.role === 'tool' &&
+          message.content.includes(roadmapFirstLine),
+      ),
+    ).toBe(true)
+  })
+
+  test('a path-traversal read returns a typed, bounded block (never a raw fs error)', async () => {
+    const { fetchImpl, urls } = stubRepoFetch(
+      () => new Response('SHOULD NOT BE READ', { status: 200 }),
+    )
+    const { client } = makeReadThenEchoKhalaClient('../../etc/passwd')
+    const { deps } = baseDeps({
+      makeKhalaClient: () => client,
+      makeOperatorTools: () =>
+        makeArtanisOperatorTools({ repoRead: { fetchImpl } }),
+    })
+
+    const response = await runRoute(
+      deps,
+      post({ messages: [{ content: 'read ../../etc/passwd', role: 'user' }] }),
+    )
+    expect(response.status).toBe(200)
+    const json = (await response.json()) as Record<string, unknown>
+
+    // The traversal path was NEVER fetched, and the reply is a bounded block.
+    expect(urls).toHaveLength(0)
+    const reply = json.reply as string
+    expect(reply).toContain('blocked')
+    expect(reply).not.toContain('ENOENT')
+    expect(reply).not.toMatch(/Error:/)
+    const invocations = json.toolInvocations as ReadonlyArray<{
+      name: string
+      executed: boolean
+    }>
+    expect(
+      invocations.find(invocation => invocation.name === 'read_repo_file')
+        ?.executed,
+    ).toBe(true)
+  })
+
+  test('a nonexistent path reads as an honest "file not found", not a thrown turn', async () => {
+    const { fetchImpl } = stubRepoFetch(
+      () => new Response('Not Found', { status: 404 }),
+    )
+    const { client } = makeReadThenEchoKhalaClient('docs/does-not-exist.md')
+    const { deps } = baseDeps({
+      makeKhalaClient: () => client,
+      makeOperatorTools: () =>
+        makeArtanisOperatorTools({ repoRead: { fetchImpl } }),
+    })
+
+    const response = await runRoute(
+      deps,
+      post({
+        messages: [
+          { content: 'read docs/does-not-exist.md', role: 'user' },
+        ],
+      }),
+    )
+    expect(response.status).toBe(200)
+    const json = (await response.json()) as Record<string, unknown>
+    expect(json.reply as string).toContain('file not found')
+    const invocations = json.toolInvocations as ReadonlyArray<{
+      name: string
+      executed: boolean
+    }>
+    expect(
+      invocations.find(invocation => invocation.name === 'read_repo_file')
+        ?.executed,
+    ).toBe(true)
+  })
+})
+
