@@ -12,6 +12,11 @@ Product Promises registry.
    deterministic executor, verification by exact replay on a *distinct* device,
    content-addressed checkpoints, and a heterogeneity-tolerant merge. *(From an X
    question about the Tassadar run launched in Episode 237.)*
+2. [How does Khala decide which models to use?](./how-khala-decides-which-models-to-use.md)
+   — one `openagents/khala` model with a router underneath that picks per request by
+   work-shape, prefers our own capacity (Pylon-Codex/Claude) over paid lanes, and is
+   heading toward selection by verified value. *(From an X question about Khala's
+   model routing.)*
 
 ## Conventions
 
