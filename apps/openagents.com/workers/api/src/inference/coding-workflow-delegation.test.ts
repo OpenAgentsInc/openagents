@@ -208,6 +208,58 @@ describe('coding workflow delegation', () => {
     expect(assigned.assignment.codingAssignment?.codex).toBeUndefined()
   })
 
+  test('pins Claude delegation to a public-safe Claude account hash (#6391)', async () => {
+    const accountRefHash = 'account.pylon.claude_agent.abc123'
+    const claudeRegistration = registration({
+      capabilityRefs: ['capability.pylon.local_claude_agent'],
+      displayName: 'Linked Claude Pylon',
+      latestCapacityRefs: [
+        'capacity.coding.claude.account.abc123.ready=1',
+        'capacity.coding.claude.account.abc123.available=1',
+        'capacity.coding.claude.account.def456.ready=1',
+        'capacity.coding.claude.account.def456.available=0',
+      ],
+      latestLoadRefs: [
+        'load.coding.claude.account.abc123.busy=0',
+        'load.coding.claude.account.abc123.queued=0',
+        'load.coding.claude.account.def456.busy=1',
+        'load.coding.claude.account.def456.queued=0',
+      ],
+      pylonRef: 'pylon.owner.claude',
+    })
+    const result = await delegateCodingWorkflow({
+      classification: {
+        confidence: 1,
+        evidenceRefs: ['evidence.coding_workflow.structured_body'],
+        workflowClass: 'claude_agent_task',
+      },
+      linkedAgents: [linkedOwner],
+      makeId: () => 'idclaudeaccount',
+      nowIso,
+      pylonStore: makeStore({ registrations: [claudeRegistration] }),
+      rawBody: {
+        openagents: {
+          coding: {
+            targetAccountRefHash: accountRefHash,
+            targetPylonRef: 'pylon.owner.claude',
+          },
+        },
+      },
+      requestId: 'chatcmpl_coding_claude_account_1',
+    })
+    const assigned = expectAssigned(result)
+
+    expect(assigned.assignment.jobKind).toBe('claude_agent_task')
+    expect(assigned.assignment.codingAssignment?.claudeAgent).toMatchObject({
+      accountRefHash,
+      agentKind: 'claude_agent_sdk',
+      schema: 'openagents.pylon.claude_agent_task.v0.3',
+    })
+    expect(
+      assigned.assignment.codingAssignment?.requiredCapabilityRefs,
+    ).toContain('capability.pylon.local_claude_agent')
+  })
+
   test('refuses a Claude request against a Codex-only Pylon with a claude-specific diagnosis (#6388)', async () => {
     const result = await delegateCodingWorkflow({
       classification: {
@@ -695,7 +747,6 @@ describe('coding workflow delegation', () => {
           assignment({
             assignmentRef: 'assignment.public.test.stale_active_slot',
             id: 'pylon_api_assignment_stale_active_slot',
-            updatedAt: '2026-06-25T11:00:00.000Z',
           }),
         ],
         registrations: [registration()],
