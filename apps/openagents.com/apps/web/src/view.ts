@@ -563,6 +563,23 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
     })
   }
 
+  // `/mirrorcode` is the public "MirrorCode, powered by Khala" page (#6378). Its
+  // registry render disposition is `submodel`, so — exactly like `/gym` above —
+  // it must be dispatched here through the loggedOut Submodel (the page reads
+  // `model.mirrorCodeRuns`). Otherwise it falls through `publicRouteBody` to
+  // `maintenanceBody`, which silently shows the homepage-lookalike instead of
+  // the MirrorCode page.
+  if (model._tag === 'LoggedOut' && model.route._tag === 'MirrorCode') {
+    const h = html<Message>()
+
+    return h.submodel({
+      slotId: 'logged-out-mirrorcode',
+      model,
+      view: LoggedOut.view,
+      toParentMessage: message => GotLoggedOutMessage({ message }),
+    })
+  }
+
   if (
     model._tag === 'LoggedOut' &&
     (model.route._tag === 'Home' ||
