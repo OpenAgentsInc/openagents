@@ -44,6 +44,16 @@ POSTs the resulting decision-grade `GymLeaderboardReportInput[]` to
 public-safety-checked rows only) and upserts the public-safe ladder by
 `ladderRef`. The public route serves the latest snapshot.
 
+The public and operator read envelopes deliberately distinguish **read time**
+from **snapshot time**:
+
+- `generatedAt` is when the API response was composed.
+- `publishedAt` is the stored snapshot's publish timestamp (or `null` for the
+  honest empty pre-publish shape).
+- `dataAgeSeconds` and `staleExceeded` are computed from `publishedAt` against
+  the declared stored-snapshot staleness contract, so an old recurring ladder
+  cannot look fresh just because someone read it today.
+
 ## First published result (2026-06-26)
 
 In this environment the owner-armed real seam is **not armed** and the opponent

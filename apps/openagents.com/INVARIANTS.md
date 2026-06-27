@@ -2249,14 +2249,14 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
   - `GET /api/public/gym/leaderboard` — stored-snapshot projection of the
     recurring Gym benchmark ladder (`openagents.gym.ladder_leaderboard.v1`,
     #6309) — compliant (`generatedAt`, stored-snapshot contract, refreshed on
-    the owner-armed/recurring publish transitions). Public-safe only: the three
-    rungs (Big Pickle → free → paid frontier) carry rank, lane, accepted
-    outcomes, verification-rate-bps, and cost-per-accepted-outcome-msat from
-    decision-grade rows only; fixture/synthetic numbers are never published, and
-    a rung with no measured opponent is `awaiting_owner` with its owner-gate
-    refs shown rather than a fabricated number. Serves the honest empty ladder
-    before the first decision-grade publish. No dispatch, spend, settlement, or
-    payout authority.
+    the owner-armed/recurring publish transitions, plus stored `publishedAt`,
+    `dataAgeSeconds`, and `staleExceeded`). Public-safe only: the three rungs
+    (Big Pickle → free → paid frontier) carry rank, lane, accepted outcomes,
+    verification-rate-bps, and cost-per-accepted-outcome-msat from decision-grade
+    rows only; fixture/synthetic numbers are never published, and a rung with no
+    measured opponent is `awaiting_owner` with its owner-gate refs shown rather
+    than a fabricated number. Serves the honest empty ladder before the first
+    decision-grade publish. No dispatch, spend, settlement, or payout authority.
   - `GET /api/public/khala/head-to-head` — stored-snapshot projection of the
     recurring Khala external head-to-head quality bar
     (`openagents.khala.head_to_head.v1`, #6308) — compliant (`generatedAt`,

@@ -21,7 +21,11 @@ import { Effect } from 'effect'
 
 import { methodNotAllowed, noStoreJsonResponse } from '../../http/responses'
 import { currentIsoTimestamp } from '../../runtime-primitives'
-import { storedSnapshotStaleness } from '../../public-projection-staleness'
+import {
+  projectionDataAgeSeconds,
+  projectionStalenessExceeded,
+  storedSnapshotStaleness,
+} from '../../public-projection-staleness'
 import {
   buildGymLadderLeaderboard,
   GYM_LADDER_RECURRING_CONFIG,
@@ -30,7 +34,11 @@ import {
 } from './ladder'
 import type { GymLeaderboardReportInput } from './leaderboard'
 import { GymLeaderboardUnsafe } from './leaderboard'
-import type { GymLadderSourceStore, GymLadderStore } from './ladder-store'
+import type {
+  GymLadderSnapshot,
+  GymLadderSourceStore,
+  GymLadderStore,
+} from './ladder-store'
 
 // The ladder is a stored snapshot upserted by the recurring owner-armed publish
 // (per model release / weekly / on demand). It is not live-at-read, so it
@@ -82,19 +90,21 @@ const publishUnavailable = () =>
 // The empty ladder: the three rungs in their `awaiting_owner` shape with owner
 // gates visible. Returned by the public route when no snapshot has been published
 // yet. It is the honest "machinery shipped, no decision-grade run yet" surface.
-const emptyLadder = (config: GymLadderRecurringConfig): GymLadderLeaderboard =>
-  buildGymLadderLeaderboard([], config)
+const emptyLadder = (config: GymLadderRecurringConfig): GymLadderSnapshot => ({
+  ladder: buildGymLadderLeaderboard([], config),
+  publishedAt: null,
+})
 
 const resolvePublishedLadder = (
   input: GymLadderRouteInput,
   config: GymLadderRecurringConfig,
-): Effect.Effect<GymLadderLeaderboard> => {
+): Effect.Effect<GymLadderSnapshot> => {
   if (input.store === undefined) {
     return Effect.succeed(emptyLadder(config))
   }
   return input.store
     .getLadder(config.ladderRef)
-    .pipe(Effect.map(ladder => ladder ?? emptyLadder(config)))
+    .pipe(Effect.map(snapshot => snapshot ?? emptyLadder(config)))
 }
 
 // Public-safe projection: returns the latest published ladder, or the honest
@@ -107,17 +117,29 @@ export const handlePublicGymLeaderboardApi = (
     return Effect.succeed(methodNotAllowed(['GET']))
   }
   const config = input.config ?? GYM_LADDER_RECURRING_CONFIG
+  const nowIso = (input.nowIso ?? currentIsoTimestamp)()
+  const staleness = gymLadderStaleness()
   return resolvePublishedLadder(input, config).pipe(
-    Effect.map(ladder =>
-      noStoreJsonResponse({
-        schemaVersion: ladder.schemaVersion,
+    Effect.map(snapshot => {
+      const dataAgeSeconds = projectionDataAgeSeconds(
+        snapshot.publishedAt,
+        nowIso,
+      )
+      return noStoreJsonResponse({
+        schemaVersion: snapshot.ladder.schemaVersion,
         scope: 'public',
-        generatedAt: (input.nowIso ?? currentIsoTimestamp)(),
+        generatedAt: nowIso,
         cadence: config.cadence,
-        staleness: gymLadderStaleness(),
-        ladder,
-      }),
-    ),
+        publishedAt: snapshot.publishedAt,
+        dataAgeSeconds,
+        staleExceeded: projectionStalenessExceeded(
+          staleness,
+          dataAgeSeconds,
+        ),
+        staleness,
+        ladder: snapshot.ladder,
+      })
+    }),
   )
 }
 
@@ -176,12 +198,26 @@ export const handleOperatorGymLeaderboardApi = (
       return unauthorized()
     }
     if (request.method === 'GET') {
-      const ladder = yield* resolvePublishedLadder(input, config)
+      const nowIso = (input.nowIso ?? currentIsoTimestamp)()
+      const staleness = gymLadderStaleness()
+      const snapshot = yield* resolvePublishedLadder(input, config)
+      const dataAgeSeconds = projectionDataAgeSeconds(
+        snapshot.publishedAt,
+        nowIso,
+      )
       return noStoreJsonResponse({
-        schemaVersion: ladder.schemaVersion,
+        schemaVersion: snapshot.ladder.schemaVersion,
         scope: 'operator',
         cadence: config.cadence,
-        ladder,
+        generatedAt: nowIso,
+        publishedAt: snapshot.publishedAt,
+        dataAgeSeconds,
+        staleExceeded: projectionStalenessExceeded(
+          staleness,
+          dataAgeSeconds,
+        ),
+        staleness,
+        ladder: snapshot.ladder,
       })
     }
     const store = input.store

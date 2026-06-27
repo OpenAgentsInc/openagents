@@ -26,13 +26,16 @@ import type { GymLadderStore } from './ladder-store'
 const makeMemoryStore = (): GymLadderStore & {
   snapshot: () => GymLadderLeaderboard | undefined
 } => {
-  const byRef = new Map<string, GymLadderLeaderboard>()
+  const byRef = new Map<
+    string,
+    Readonly<{ ladder: GymLadderLeaderboard; publishedAt: string | null }>
+  >()
   return {
     getLadder: ladderRef => Effect.succeed(byRef.get(ladderRef)),
-    snapshot: () => byRef.get(GYM_LADDER_RECURRING_CONFIG.ladderRef),
-    upsertLadder: ladder =>
+    snapshot: () => byRef.get(GYM_LADDER_RECURRING_CONFIG.ladderRef)?.ladder,
+    upsertLadder: (ladder, publishedAt) =>
       Effect.sync(() => {
-        byRef.set(ladder.ladderRef, ladder)
+        byRef.set(ladder.ladderRef, { ladder, publishedAt })
       }),
   }
 }
@@ -118,10 +121,16 @@ describe('GET /api/public/gym/leaderboard', () => {
     expect(response.status).toBe(200)
     const body = (await response.json()) as {
       scope: string
+      publishedAt: string | null
+      dataAgeSeconds: number | null
+      staleExceeded: boolean
       staleness: { composition: string; contractVersion: string }
       ladder: GymLadderLeaderboard
     }
     expect(body.scope).toBe('public')
+    expect(body.publishedAt).toBeNull()
+    expect(body.dataAgeSeconds).toBeNull()
+    expect(body.staleExceeded).toBe(false)
     expect(body.staleness.composition).toBe('stored_snapshot')
     expect(body.staleness.contractVersion).toBe('projection_staleness.v1')
     expect(body.ladder.rungs.map(r => r.state)).toEqual([
@@ -147,6 +156,7 @@ describe('POST /api/operator/gym/leaderboard', () => {
     const store = makeMemoryStore()
     const khala = decisionGradeReport(400)
     const bigPickle = decisionGradeReport(900)
+    const publishedAt = '2026-06-27T12:00:00.000Z'
     const publishResponse = await Effect.runPromise(
       handleOperatorGymLeaderboardApi(
         new Request('https://x/', {
@@ -168,7 +178,11 @@ describe('POST /api/operator/gym/leaderboard', () => {
             ],
           }),
         }),
-        { store, requireAdminApiToken: adminAllowed },
+        {
+          store,
+          requireAdminApiToken: adminAllowed,
+          nowIso: () => publishedAt,
+        },
       ),
     )
     expect(publishResponse.status).toBe(201)
@@ -183,11 +197,20 @@ describe('POST /api/operator/gym/leaderboard', () => {
 
     // Now the public surface serves it.
     const publicResponse = await Effect.runPromise(
-      handlePublicGymLeaderboardApi(new Request('https://x/'), { store }),
+      handlePublicGymLeaderboardApi(new Request('https://x/'), {
+        store,
+        nowIso: () => '2026-06-27T12:10:00.000Z',
+      }),
     )
     const publicBody = (await publicResponse.json()) as {
+      publishedAt: string | null
+      dataAgeSeconds: number | null
+      staleExceeded: boolean
       ladder: GymLadderLeaderboard
     }
+    expect(publicBody.publishedAt).toBe(publishedAt)
+    expect(publicBody.dataAgeSeconds).toBe(600)
+    expect(publicBody.staleExceeded).toBe(false)
     expect(publicBody.ladder.rungs.find(r => r.rung === 'rung1')?.state).toBe(
       'published',
     )
@@ -196,6 +219,59 @@ describe('POST /api/operator/gym/leaderboard', () => {
         .find(r => r.rung === 'rung1')
         ?.entries.map(e => e.lane),
     ).toEqual(['khala', 'bigpickle'])
+  })
+
+  test('flags an old published ladder as stale instead of making read time look fresh', async () => {
+    const store = makeMemoryStore()
+    const khala = decisionGradeReport(400)
+    const bigPickle = decisionGradeReport(900)
+    const publishedAt = '2026-06-01T00:00:00.000Z'
+    const publishResponse = await Effect.runPromise(
+      handleOperatorGymLeaderboardApi(
+        new Request('https://x/', {
+          method: 'POST',
+          body: JSON.stringify({
+            reports: [
+              {
+                ...khala,
+                reportRef: 'report.gym.ladder.stale.khala',
+                receiptRef: 'receipt.gym.ladder.stale.khala',
+                candidateRef: 'khala.ladder.stale',
+              },
+              {
+                ...bigPickle,
+                reportRef: 'report.gym.ladder.stale.bigpickle',
+                receiptRef: 'receipt.gym.ladder.stale.bigpickle',
+                candidateRef: 'bigpickle.ladder.stale',
+              },
+            ],
+          }),
+        }),
+        {
+          store,
+          requireAdminApiToken: adminAllowed,
+          nowIso: () => publishedAt,
+        },
+      ),
+    )
+    expect(publishResponse.status).toBe(201)
+
+    const publicResponse = await Effect.runPromise(
+      handlePublicGymLeaderboardApi(new Request('https://x/'), {
+        store,
+        nowIso: () => '2026-06-16T00:00:01.000Z',
+      }),
+    )
+    const publicBody = (await publicResponse.json()) as {
+      generatedAt: string
+      publishedAt: string | null
+      dataAgeSeconds: number | null
+      staleExceeded: boolean
+    }
+    expect(publicBody.generatedAt).toBe('2026-06-16T00:00:01.000Z')
+    expect(publicBody.publishedAt).toBe(publishedAt)
+    expect(publicBody.dataAgeSeconds).toBe(1_296_001)
+    expect(publicBody.staleExceeded).toBe(true)
   })
 
   test('rejects unauthorized publish', async () => {

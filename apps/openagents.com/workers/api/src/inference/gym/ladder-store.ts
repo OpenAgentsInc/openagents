@@ -65,12 +65,17 @@ export const GymLadderLeaderboardStored = S.Struct({
   caveatRefs: S.Array(S.String),
 })
 
+export type GymLadderSnapshot = Readonly<{
+  ladder: GymLadderLeaderboard
+  publishedAt: string | null
+}>
+
 // Read side: the public projection route only needs to fetch the latest ladder
 // by ref. Kept narrow so the public route takes a read-only source.
 export type GymLadderSourceStore = Readonly<{
   getLadder: (
     ladderRef: string,
-  ) => Effect.Effect<GymLadderLeaderboard | undefined>
+  ) => Effect.Effect<GymLadderSnapshot | undefined>
 }>
 
 // Write side: the operator publish route upserts a built ladder snapshot.
@@ -84,6 +89,7 @@ export type GymLadderStore = GymLadderSourceStore &
 
 type GymLadderD1Row = Readonly<{
   ladder_json: string
+  published_at: string | null
 }>
 
 const parseStoredLadder = (json: string): GymLadderLeaderboard | undefined => {
@@ -102,7 +108,7 @@ export const makeD1GymLadderStore = (db: D1Database): GymLadderStore => ({
     Effect.promise(async () => {
       const row = await db
         .prepare(
-          `SELECT ladder_json
+          `SELECT ladder_json, published_at
             FROM gym_ladder_leaderboard_snapshots
             WHERE ladder_ref = ?`,
         )
@@ -111,7 +117,10 @@ export const makeD1GymLadderStore = (db: D1Database): GymLadderStore => ({
       if (row === null) {
         return undefined
       }
-      return parseStoredLadder(row.ladder_json)
+      const ladder = parseStoredLadder(row.ladder_json)
+      return ladder === undefined
+        ? undefined
+        : { ladder, publishedAt: row.published_at ?? null }
     }),
   upsertLadder: (ladder, publishedAtIso) =>
     Effect.promise(async () => {
