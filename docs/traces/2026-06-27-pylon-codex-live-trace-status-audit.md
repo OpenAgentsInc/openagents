@@ -28,6 +28,18 @@ Short answer:
   smoke accepted, ran local Codex, passed verification, stored owner-only traces,
   and inserted an exact token row. That confirms the same runbook is currently
   working when the linked Pylon has an available Codex slot.
+- A `2026-06-27T07:08Z` continuation smoke confirmed that the sampled
+  owner-only Pylon/Codex trace is now readable through
+  `/api/traces/{uuid}?token=...` and listable through
+  `/api/traces?demand_kind=own_capacity&token=...`.
+- The same smoke found that `GET /api/pylon/codex/trace-status` still returned
+  production `404` for the sampled assignment, even though the endpoint exists
+  in local code/tests. Treat that as a deploy/route parity gap until a deployed
+  smoke returns the metadata payload.
+- The trace read token and proof token are not interchangeable in every case:
+  a Khala/local token linked to the same OpenAuth owner can read owner-only
+  traces, while the Pylon/Codex proof route requires the exact assignment-owning
+  Pylon agent credential.
 
 ## Audited Assignment
 
@@ -642,6 +654,79 @@ So when the token count "finally" updates after a quiet wait, that means the
 final exact usage row landed and the public sync/scalar projection saw it. It
 does not mean the counter was incrementing throughout the in-flight Codex run.
 
+Put differently: the scalar endpoint is "live at read" over the canonical
+ledger, but the ledger only receives a Pylon/Codex row after a Codex turn has
+final SDK usage. In the browser, the live room pushes a delta after that row is
+inserted and then the DOM count-up animates to the new authoritative running
+total. For a one-turn Pylon/Codex assignment that looks like "at the end"; for
+multi-turn or many concurrent completions it moves once per committed usage row,
+not once per second and not once per streamed chunk.
+
+Current live scalar smoke:
+
+```json
+{
+  "tokensServed": 435203075,
+  "generatedAt": "2026-06-27T07:08:52.272Z",
+  "staleness": {
+    "composition": "live_at_read",
+    "maxStalenessSeconds": 0,
+    "rebuildsOn": ["token_usage_events"]
+  }
+}
+```
+
+## 2026-06-27T07:08Z Continuation Smoke
+
+The latest continuation smoke used the #6323 delegated audit assignment:
+
+`assignment.public.khala_coding.chatcmpl_1702ef0731874c72934c1f95068f8c47`
+
+The exact assignment proof returned:
+
+```json
+{
+  "provider": "pylon-codex-own-capacity",
+  "model": "openagents/pylon-codex",
+  "usageTruth": "exact",
+  "demandKind": "own_capacity",
+  "demandSource": "khala_coding_delegation",
+  "inputTokens": 806377,
+  "outputTokens": 4266,
+  "reasoningTokens": 250,
+  "cacheReadTokens": 707328,
+  "totalTokens": 810643
+}
+```
+
+The same proof reported:
+
+- `32` owner-only ATIF-v1.7 trace rows;
+- one owner-only raw Codex archive;
+- `52` raw SDK events;
+- `1,252,108` raw-event bytes.
+
+The concrete credential behavior mattered:
+
+- `bun apps/pylon/src/index.ts khala proof --assignment-ref ...` succeeded
+  because the Pylon CLI used the assignment-owning Pylon agent credential.
+- Direct `GET /api/pylon/codex/proof?...` with the assignment-owning Pylon agent
+  bearer returned `200`.
+- Direct `GET /api/pylon/codex/proof?...` with a different local Khala token
+  linked to the same OpenAuth owner returned `403` with
+  `pylon_codex_forbidden`, because the proof route gates on the exact
+  assignment-owning agent.
+- `GET /api/traces/68144063-d014-4bf6-879b-f582a67cc22a?token=...` returned
+  `200` for the sampled owner-only final trace.
+- `GET /api/traces?demand_kind=own_capacity&token=...` returned `200` and
+  listed the sampled #6323 trace rows.
+- `GET /api/pylon/codex/trace-status?assignmentRef=...` returned production
+  `404` even with the assignment-owning Pylon bearer.
+
+So the evidence path is real and currently queryable through proof plus
+individual/listed trace reads. The assignment-level trace-status route still
+needs a deployed-route smoke before it can be treated as live product surface.
+
 ## Latest Trace-Status Delegation Run
 
 For this trace-status endpoint slice, the runbook worked again from:
@@ -777,6 +862,14 @@ The first backend slice of that manifest gap now exists as:
 
 `GET /api/pylon/codex/trace-status?assignmentRef=<assignmentRef>`
 
+Important production-smoke correction: as of `2026-06-27T07:10Z`, the route
+returned `404 {"error":"not_found"}` on `openagents.com` for the latest sampled
+#6323 assignment, even when called with the assignment-owning Pylon bearer. The
+code and focused tests exist locally, but the deployed route was not reachable
+in that smoke. This should be treated as a route/deploy parity blocker for the
+live assignment-status page until a production call returns the metadata-only
+payload described below.
+
 It is owner-scoped with the same local OpenAgents agent bearer token used by the
 Pylon/Codex ingest and proof routes. It resolves the assignment through the
 caller-owned Pylon assignment store before reading any rows, so another agent's
@@ -815,6 +908,9 @@ Focused coverage in `pylon-codex-turn-ingest-routes.test.ts` proves:
   material.
 
 ## Can We View This Assignment Through `/trace/{uuid}` Right Now?
+
+Yes for individual trace rows, after the owner read-scope fix. No for a whole
+assignment session yet.
 
 The trace rows existed, but the owner-token read path did not expose them during
 the original audit.
@@ -856,6 +952,23 @@ session.credential.openauthUserId ?? session.user.id
 matching Pylon/Codex ingest. This preserves owner-only isolation while letting
 the local Khala/Pylon token open the owner's own Pylon/Codex traces.
 
+The `2026-06-27T07:09Z` production re-smoke confirmed the fix on the latest
+#6323 assignment. A sampled trace UUID:
+
+`68144063-d014-4bf6-879b-f582a67cc22a`
+
+returned:
+
+- `200` from `GET /api/traces/{uuid}?token=...`;
+- `200` from `GET /api/traces?demand_kind=own_capacity&token=...`, with the
+  sampled rows listed;
+- owner-only metadata, `agentRef`, `trajectoryId`, step count, demand kind, and
+  demand source, without raw SDK payload exposure.
+
+That proves individual Pylon/Codex trace rows are viewable by the owner token
+right now. It does not yet provide one stable "full session" URL or live
+assignment timeline.
+
 ## Live Status Gap
 
 The current system records the necessary pieces, but it does not yet present the
@@ -876,7 +989,9 @@ What is missing for the desired live page:
 
 - one stable assignment/session view URL created at assignment creation time;
 - frontend integration that resolves assignment ref or durable request id to the
-  new trace-status API and renders it in a coherent timeline;
+  assignment trace-status API and renders it in a coherent timeline;
+- deployed-route parity for the assignment trace-status endpoint; the local
+  code/tests exist, but the latest production smoke returned `404`;
 - front-end polling or streaming for that assignment/session view;
 - proof/status endpoint expansion to include verifier-specific progress and
   bounded recent activity labels, beyond the current event/trace/chunk/token/
@@ -891,9 +1006,10 @@ What is missing for the desired live page:
    present, falling back to `session.user.id`.
 
 2. Build the assignment trace-status page:
-   the backend status endpoint exists at
-   `GET /api/pylon/codex/trace-status?assignmentRef=...`; the next slice should
-   connect it to an owner-token web view.
+   first get a production `200` smoke from
+   `GET /api/pylon/codex/trace-status?assignmentRef=...`, then connect it to an
+   owner-token web view. The local endpoint code/tests exist, but the latest
+   deployed smoke returned `404`.
 
 3. Add durable request/session lookup:
    the current status endpoint keys by assignment ref. The UI still needs a
@@ -926,7 +1042,8 @@ The product gap is presentation and owner read scope:
 
 - the existing `/trace/{uuid}` page is a single-fetch trace renderer, not a live
   assignment session monitor;
-- the local owner-token mismatch for Pylon/Codex owner-only traces is fixed in
-  this change, but live production should be re-smoked with a fresh linked trace
-  URL after deploy;
+- the local owner-token mismatch for Pylon/Codex owner-only traces is fixed and
+  live-smoked with the sampled #6323 trace;
+- the assignment-level trace-status endpoint is present locally but still
+  returned production `404` in the latest smoke;
 - there is no single stable trace URL that represents the whole assignment.
