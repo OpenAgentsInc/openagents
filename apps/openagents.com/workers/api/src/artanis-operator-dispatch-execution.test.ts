@@ -1,7 +1,11 @@
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
-import { makeArtanisDispatchExecution } from './artanis-operator-dispatch-execution'
+import {
+  makeArtanisDispatchExecution,
+  readEffectiveArtanisPylonDispatchApprovalForOwner,
+} from './artanis-operator-dispatch-execution'
+import { ARTANIS_OWNER_OPENAUTH_USER_ID } from './artanis-owner-authority'
 import type { ArtanisDispatchPlanInput } from './artanis-operator-tools'
 import type {
   PylonApiAssignmentRecord,
@@ -182,5 +186,83 @@ describe('makeArtanisDispatchExecution (#6366 live seam)', () => {
       reason: 'no_eligible_linked_pylon',
     })
     expect(created).toHaveLength(0)
+  })
+})
+
+
+// A D1 stub whose `prepare().all()` returns no rows, so the armed-gate read
+// resolves to "not approved" (false). Used to prove the owner-promotion path
+// short-circuits BEFORE this query (it throws if the query is reached for the
+// promoted owner).
+const emptyGatesDb = (onQuery?: () => void): D1Database =>
+  ({
+    prepare: () => {
+      onQuery?.()
+      return {
+        all: async () => ({ results: [] }),
+        bind() {
+          return this
+        },
+      }
+    },
+  }) as unknown as D1Database
+
+describe('readEffectiveArtanisPylonDispatchApprovalForOwner (owner promotion)', () => {
+  test('owner-promoted Artanis carries a STANDING approval without an armed gate', async () => {
+    let queried = false
+    const approved = await readEffectiveArtanisPylonDispatchApprovalForOwner(
+      emptyGatesDb(() => {
+        queried = true
+      }),
+      nowIso,
+      ARTANIS_OWNER_OPENAUTH_USER_ID,
+    )
+    expect(approved).toBe(true)
+    // The standing promotion short-circuits before the D1 gate query.
+    expect(queried).toBe(false)
+  })
+
+  test('a non-promoted owner falls back to the armed D1 gate (none -> false)', async () => {
+    let queried = false
+    const approved = await readEffectiveArtanisPylonDispatchApprovalForOwner(
+      emptyGatesDb(() => {
+        queried = true
+      }),
+      nowIso,
+      'user_some_other_owner',
+    )
+    expect(approved).toBe(false)
+    // The armed-gate path WAS consulted for a non-promoted owner.
+    expect(queried).toBe(true)
+  })
+})
+
+describe('owner-promoted Artanis dispatch EXECUTES end-to-end (gated tool)', () => {
+  test('isOwnerApproved true (standing) + eligible Pylon -> created assignment', async () => {
+    const { created, store } = makeStore({ registrations: [registration()] })
+    const execution = makeArtanisDispatchExecution({
+      listLinkedAgentUserIds: async () => ['agent_owner'],
+      makeId: () => `idp${(idCounter += 1)}`,
+      nowIso: () => nowIso,
+      ownerOpenAuthUserId: ARTANIS_OWNER_OPENAUTH_USER_ID,
+      pylonStore: store,
+      // Standing owner approval (what the live wiring resolves for owner-Artanis).
+      readEffectivePylonDispatchApproval: () =>
+        readEffectiveArtanisPylonDispatchApprovalForOwner(
+          emptyGatesDb(),
+          nowIso,
+          ARTANIS_OWNER_OPENAUTH_USER_ID,
+        ),
+    })
+
+    expect(await Effect.runPromise(execution.isOwnerApproved())).toBe(true)
+
+    const result = await Effect.runPromise(execution.createCodexAssignment(plan))
+    expect(result.kind).toBe('created')
+    if (result.kind !== 'created') return
+    expect(result.pylonRef).toBe('pylon.owner.codex')
+    expect(result.assignmentRef).toContain('assignment.public.khala_coding.')
+    expect(created).toHaveLength(1)
+    expect(created[0]?.jobKind).toBe('codex_agent_task')
   })
 })

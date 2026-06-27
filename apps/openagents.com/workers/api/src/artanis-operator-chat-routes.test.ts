@@ -11,6 +11,7 @@ import type {
   ArtanisMemoryLoadInput,
   ArtanisOwnerMemoryStore,
 } from './artanis-owner-memory'
+import { ARTANIS_OPERATOR_EMPTY_REPLY_FALLBACK } from './artanis-operator'
 import { makeOperatorArtanisChatRoutes } from './artanis-operator-chat-routes'
 import type {
   InferenceRequest,
@@ -1332,3 +1333,37 @@ describe('POST /api/operator/artanis/chat — get_synthetic_load_status acceptan
   })
 })
 
+
+// Regression: the route must NEVER hand the owner an empty reply, even when the
+// Khala model returns blank content every pass (epic #6359; the live recurrence
+// observed as `reply: "" / tools: []`). The operator core forces a final
+// tools-suppressed Khala call and, on a still-blank result, substitutes the
+// fallback string. This route-level test guards the contract so a future deploy
+// cannot silently drop it.
+describe('POST /api/operator/artanis/chat — never returns an empty reply (#6359)', () => {
+  test('a blank Khala completion yields the non-empty fallback, not ""', async () => {
+    const { deps } = baseDeps({
+      // Khala always returns blank content with no tool calls.
+      makeKhalaClient:
+        () =>
+        (request: InferenceRequest): Effect.Effect<InferenceResult, InferenceAdapterError> =>
+          Effect.succeed({
+            content: '   ',
+            finishReason: 'stop',
+            servedModel:
+              request.model === 'openagents/khala' ? 'gpt-oss-120b' : 'wrong',
+            usage: { completionTokens: 0, promptTokens: 50, totalTokens: 50 },
+          }),
+    })
+    const response = await runRoute(
+      deps,
+      post({ messages: [{ content: 'status?', role: 'user' }] }),
+    )
+    expect(response.status).toBe(200)
+    const json = (await response.json()) as Record<string, unknown>
+    expect(typeof json.reply).toBe('string')
+    expect((json.reply as string).trim()).not.toBe('')
+    expect(json.reply).toBe(ARTANIS_OPERATOR_EMPTY_REPLY_FALLBACK)
+    expect(json.servedVia).toBe('openagents_khala')
+  })
+})

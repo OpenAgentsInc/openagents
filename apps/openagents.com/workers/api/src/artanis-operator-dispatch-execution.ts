@@ -34,6 +34,7 @@ import {
   ArtanisApprovalGateRecord,
   artanisApprovalGateEffective,
 } from './artanis-approval-gates'
+import { isOpenAgentsOwnerAgentOpenAuthUserId } from './artanis-owner-authority'
 import type {
   ArtanisDispatchCreateResult,
   ArtanisDispatchExecution,
@@ -225,4 +226,40 @@ export const readEffectiveArtanisPylonDispatchApproval = async (
     }
   }
   return false
+}
+
+
+// Owner-promotion-aware effective-approval read (owner-directed 2026-06-27,
+// epic #6359). This is the seam the LIVE route now uses. It flips the gated
+// `dispatch_codex_task` tool from "deferred" to "live" when EITHER:
+//
+//   (a) the authenticated owner is an OWNER-PROMOTED operator agent (Artanis)
+//       — he carries a STANDING owner approval for his own `pylon_job_dispatch`
+//       actions, recorded under
+//       `ARTANIS_OWNER_PROMOTION_AUTHORITY_RECEIPT_REF`
+//       ("owner promotion by Chris, 2026-06-27"), so his own-capacity, no-spend
+//       Codex dispatch EXECUTES without a separately-armed `artanis_approval_gates`
+//       row; OR
+//   (b) an effective `pylon_job_dispatch` gate exists in `artanis_approval_gates`
+//       for any other owner (the original armed-gate path, unchanged).
+//
+// NEVER-WAIVABLE BOUNDS: the standing promotion approves `pylon_job_dispatch`
+// ONLY. It does not touch `wallet_spend`, `settlement`, `l402_redemption`, or any
+// money-movement/payout-bearing kind — those stay gated and still require an
+// explicit effective approval. The dispatch path itself remains own-capacity +
+// `unpaid_smoke` no-spend by construction (`createAssignmentPromise` above), so
+// the promotion grants no payout authority and invents no custody path.
+export const readEffectiveArtanisPylonDispatchApprovalForOwner = async (
+  db: D1Database,
+  nowIso: string,
+  ownerOpenAuthUserId: string,
+): Promise<boolean> => {
+  // (a) Standing owner-promotion approval — scoped to pylon_job_dispatch only.
+  // Recorded under ARTANIS_OWNER_PROMOTION_AUTHORITY_RECEIPT_REF (see
+  // artanis-owner-authority.ts).
+  if (isOpenAgentsOwnerAgentOpenAuthUserId(ownerOpenAuthUserId)) {
+    return true
+  }
+  // (b) Otherwise fall back to the armed D1 approval-gate path.
+  return readEffectiveArtanisPylonDispatchApproval(db, nowIso)
 }

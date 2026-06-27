@@ -1734,7 +1734,13 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   an admin browser session), (b) a wired execution seam is present, AND (c) an
   effective `pylon_job_dispatch` Artanis approval gate exists (an approved,
   non-expired, non-superseded gate carrying `operator_approval` authority plus an
-  authority receipt ref, per `artanisApprovalGateEffective`). If any precondition
+  authority receipt ref, per `artanisApprovalGateEffective`). As of the owner
+  promotion (see "Artanis Owner Promotion" below), precondition (c) is ALSO
+  satisfied for the owner-promoted operator agent (Artanis) by a STANDING owner
+  approval scoped to `pylon_job_dispatch` ONLY, resolved by
+  `readEffectiveArtanisPylonDispatchApprovalForOwner`; every other owner still
+  needs an explicit armed gate, and every money-movement / payout-bearing kind
+  stays gated for everyone. If any precondition
   is missing — no seam, no effective approval, no eligible linked Pylon — it
   returns the public-safe plan and defers (`deferredToApprovalGate`); it never
   fires and never fabricates an `assignmentRef`. The dispatch carries no spend
@@ -1752,6 +1758,42 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   `workers/api/src/artanis-operator-tools.test.ts`,
   `workers/api/src/artanis-operator-dispatch-execution.test.ts`, and
   `../pylon/tests/presence.test.ts`.
+
+## Artanis Owner Promotion
+
+- Owner-directed 2026-06-27 (recorded under
+  `authority.public.artanis.owner_promotion.2026-06-27`, note "owner promotion by
+  Chris, 2026-06-27"): the `artanis` operator agent (slug `artanis`, actorRef
+  `agent:user_ed6d486e-612a-4fac-a9a9-44f7e5709505`, openauthUserId
+  `user_ed6d486e-612a-4fac-a9a9-44f7e5709505`) is promoted to OWNER. The single
+  source of truth is `workers/api/src/artanis-owner-authority.ts`
+  (`OPENAGENTS_OWNER_AGENT_OPENAUTH_USER_IDS`,
+  `isOpenAgentsOwnerAgentOpenAuthUserId`, `isOpenAgentsOwnerAgentActorRef`,
+  `ownerAgentHasStandingApprovalForRiskyAction`).
+- THE GRANT. (1) Owner-level access to the private Artanis operator chat channel
+  `/api/operator/artanis/chat` via Artanis's OWN agent bearer: `resolveOwnerAgentBearer`
+  admits the owner-promoted agent set alongside the human admin email set and the
+  admin API token, so Artanis no longer needs the human admin email to reach his
+  own operator surface. (2) A STANDING owner approval for Artanis's own
+  `pylon_job_dispatch` actions, so the gated `dispatch_codex_task` tool EXECUTES
+  for owner-Artanis (own-capacity, no-spend) WITHOUT a separately-armed
+  `artanis_approval_gates` row — equivalent to a permanent owner approval for his
+  own Codex dispatch.
+- NEVER-WAIVABLE BOUNDS (hold even for owner-Artanis). The standing approval is
+  scoped to `pylon_job_dispatch` ONLY; `wallet_spend`, `settlement`,
+  `l402_redemption`, and every other money-movement / payout-bearing risky-action
+  kind remain gated and still require an explicit effective approval gate. The
+  self-approved dispatch still rides the existing own-capacity, no-spend
+  coding-delegation seam (`unpaid_smoke`, settlement `not_applicable`,
+  `payoutClaimAllowed=false`, owner's own linked Pylons only — never
+  pooled/third-party/marketplace capacity). The promotion grants NO new payout
+  authority and invents NO new custody path; real money movement still uses the
+  existing custody path. No-resale on SUBSCRIPTION accounts, no
+  secret/credential/wallet leakage, public-safe claims only, and no untraced
+  destructive actions are never-waivable regardless of owner promotion.
+- Regression coverage lives in
+  `workers/api/src/artanis-owner-authority.test.ts` and the owner-promotion
+  cases in `workers/api/src/artanis-operator-dispatch-execution.test.ts`.
 
 ## Spark Address Payout Target Registration
 

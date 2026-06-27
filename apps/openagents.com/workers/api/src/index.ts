@@ -103,8 +103,9 @@ import { loadArtanisNetworkStatsFromLedger } from './artanis-network-stats-d1'
 import { makeOperatorArtanisConsoleRoutes } from './artanis-operator-console-routes'
 import {
   makeArtanisDispatchExecution,
-  readEffectiveArtanisPylonDispatchApproval,
+  readEffectiveArtanisPylonDispatchApprovalForOwner,
 } from './artanis-operator-dispatch-execution'
+import { isOpenAgentsOwnerAgentOpenAuthUserId } from './artanis-owner-authority'
 import {
   makeArtanisPylonAssignmentsLister,
   makeArtanisPylonJobStatusReader,
@@ -8664,9 +8665,15 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
         ownerOpenAuthUserId: session.user.userId,
         pylonStore: makeD1PylonApiStore(openAgentsDatabase(env)),
         readEffectivePylonDispatchApproval: () =>
-          readEffectiveArtanisPylonDispatchApproval(
+          // Owner-promotion-aware (owner-directed 2026-06-27): owner-Artanis
+          // carries a STANDING owner approval for his own pylon_job_dispatch, so
+          // his own-capacity no-spend Codex dispatch EXECUTES without a
+          // separately-armed gate. Any other owner still needs an effective
+          // armed approval gate. Money-movement kinds stay gated regardless.
+          readEffectiveArtanisPylonDispatchApprovalForOwner(
             openAgentsDatabase(env),
             currentIsoTimestamp(),
+            session.user.userId,
           ),
         // Resolve the current branch tip so a pinned-workspace dispatch uses a
         // real commit; on any failure the dispatch falls back to the bounded
@@ -8717,21 +8724,29 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
       .bind(ownerUserId)
       .first<Readonly<{ primary_email: string | null }>>()
     const email = row?.primary_email?.trim().toLowerCase()
-    if (
-      email === undefined ||
-      email === '' ||
-      !isOpenAgentsAdminEmail(email)
-    ) {
+    // Admit the bearer as OWNER when EITHER (a) the agent is an OWNER-PROMOTED
+    // operator agent (Artanis — owner-directed 2026-06-27), so his OWN token has
+    // owner-level access to his operator channel without needing the human admin
+    // email; OR (b) the linked OpenAuth account email is an OpenAgents admin (the
+    // original Khala-CLI owner path). Otherwise reject.
+    const isOwnerAgent = isOpenAgentsOwnerAgentOpenAuthUserId(ownerUserId)
+    const isAdminEmail =
+      email !== undefined && email !== '' && isOpenAgentsAdminEmail(email)
+    if (!isOwnerAgent && !isAdminEmail) {
       return undefined
     }
     // The Artanis route only reads user.email + user.userId, but the inferred
     // Session is the full human-session shape; fill the unused fields so the
-    // owner-agent-bearer return type matches the browser-session return type.
+    // owner-agent-bearer return type matches the browser-session return type. An
+    // owner-promoted agent without an admin email still carries owner authority;
+    // use its email when present, else a stable owner-agent label.
+    const sessionEmail =
+      email !== undefined && email !== '' ? email : 'artanis@agents.openagents.com'
     return {
       user: {
         avatarUrl: '',
-        email,
-        name: email,
+        email: sessionEmail,
+        name: sessionEmail,
         provider: 'github' as const,
         userId: ownerUserId,
       },
