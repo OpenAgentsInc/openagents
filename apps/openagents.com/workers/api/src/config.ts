@@ -390,6 +390,7 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   OPENAGENTS_NETWORK_SPARK_PAYOUT_TARGET_REF?: string | undefined
   GITHUB_CLIENT_ID?: string | undefined
   GITHUB_CLIENT_SECRET?: string | undefined
+  ARTANIS_GITHUB_ISSUE_TOKEN?: string | undefined
   MDK_ACCESS_TOKEN?: string | undefined
   MDK_CHECKOUT_CONFIG_REF?: string | undefined
   MDK_CHECKOUT_CREDENTIAL_BINDING_REF?: string | undefined

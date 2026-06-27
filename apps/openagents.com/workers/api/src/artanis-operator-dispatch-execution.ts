@@ -32,6 +32,7 @@ import { Effect, Schema as S } from 'effect'
 
 import {
   ArtanisApprovalGateRecord,
+  type ArtanisRiskyActionKind,
   artanisApprovalGateEffective,
 } from './artanis-approval-gates'
 import { isOpenAgentsOwnerAgentOpenAuthUserId } from './artanis-owner-authority'
@@ -219,6 +220,35 @@ export const readEffectiveArtanisPylonDispatchApproval = async (
         record.kind === 'pylon_job_dispatch' &&
         artanisApprovalGateEffective(record, nowIso)
       ) {
+        return true
+      }
+    } catch {
+      // Undecodable/legacy row — skip it; never treat it as an approval.
+    }
+  }
+  return false
+}
+
+export const readEffectiveArtanisApproval = async (
+  db: D1Database,
+  nowIso: string,
+  kind: ArtanisRiskyActionKind,
+): Promise<boolean> => {
+  const result = await db
+    .prepare(
+      `SELECT record_json
+         FROM artanis_approval_gates
+        ORDER BY updated_at DESC
+        LIMIT 50`,
+    )
+    .all<{ record_json: string }>()
+    .catch(() => ({ results: [] as ReadonlyArray<{ record_json: string }> }))
+
+  for (const row of result.results ?? []) {
+    try {
+      const parsed = parseJsonUnknown(row.record_json)
+      const record = S.decodeUnknownSync(ArtanisApprovalGateRecord)(parsed)
+      if (record.kind === kind && artanisApprovalGateEffective(record, nowIso)) {
         return true
       }
     } catch {

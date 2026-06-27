@@ -7,6 +7,7 @@ import {
   ARTANIS_SYNTHETIC_LOAD_MAX_TARGET_TOKENS,
   ARTANIS_SYNTHETIC_LOAD_RISKY_ACTION_KIND,
   ARTANIS_SYNTHETIC_LOAD_RUN_TYPES,
+  ARTANIS_UNSUPPORTED_REQUEST_ISSUE_OPEN_RISKY_ACTION_KIND,
   type ArtanisGlmFleetStatus,
   type ArtanisKhalaFeedbackRecord,
   type ArtanisPylonAssignmentSummary,
@@ -24,6 +25,7 @@ import {
   makeArtanisGetPylonJobStatusTool,
   makeArtanisGetTraceReviewTool,
   makeArtanisGetUnsupportedRequestsTool,
+  makeArtanisOpenUnsupportedRequestIssueTool,
   makeArtanisListGithubIssuesTool,
   makeArtanisListPylonAssignmentsTool,
   makeArtanisListRepoDirTool,
@@ -1469,6 +1471,144 @@ describe('update_unsupported_request (owner-scoped ledger triage WRITE) — iter
   })
 })
 
+describe('open_unsupported_request_issue (owner-gated GitHub issue + ledger link) — issue 6394', () => {
+  const needsIssueRow: ArtanisUnsupportedRequestRecord = {
+    githubIssueRef: null,
+    nextAction: 'open_github_issue',
+    requestRef: 'khala_unsupported:ur_issue6394',
+    sourceKind: 'trace_review',
+    status: 'needs_issue',
+    summary:
+      'Users repeatedly ask Khala to retry failed fleet work from the backlog.',
+    title: 'Khala needs backlog retry routing',
+    triageKind: 'missing_capability',
+    updatedAt: '2026-06-27T12:00:00.000Z',
+  }
+
+  test('is an owner-gated outward GitHub issue tool', () => {
+    const tool = makeArtanisOpenUnsupportedRequestIssueTool()
+    expect(tool.kind).toBe('gated')
+    expect(tool.definition.name).toBe('open_unsupported_request_issue')
+    expect(tool.riskyActionKind).toBe(
+      ARTANIS_UNSUPPORTED_REQUEST_ISSUE_OPEN_RISKY_ACTION_KIND,
+    )
+    expect(tool.riskyActionKind).toBe('github_issue_open')
+    expect(ARTANIS_RISKY_ACTION_KINDS).toContain(tool.riskyActionKind)
+  })
+
+  test('opens the GitHub issue and updates the ledger row to issue_opened', async () => {
+    const openedIssues: Array<unknown> = []
+    const updates: Array<unknown> = []
+    const tool = makeArtanisOpenUnsupportedRequestIssueTool({
+      isOwnerApproved: () => Effect.succeed(true),
+      opener: input => {
+        openedIssues.push(input)
+        return Effect.succeed({
+          issueNumber: 6399,
+          issueRef: 'OpenAgentsInc/openagents#6399',
+          issueUrl: 'https://github.com/OpenAgentsInc/openagents/issues/6399',
+          kind: 'created',
+        } as const)
+      },
+      reader: async input => {
+        expect(input).toEqual({ limit: 100, status: 'needs_issue' })
+        return [needsIssueRow]
+      },
+      writer: async update => {
+        updates.push(update)
+        return {
+          ...needsIssueRow,
+          githubIssueRef: update.githubIssueRef ?? null,
+          nextAction: 'none',
+          status: update.status ?? needsIssueRow.status,
+          updatedAt: '2026-06-27T12:05:00.000Z',
+        }
+      },
+    })
+
+    const result = await Effect.runPromise(
+      tool.run({ ref: 'khala_unsupported:ur_issue6394' }),
+    )
+
+    expect(result.outcome).toBe('executed')
+    if (result.outcome !== 'executed') return
+    expect(result.assignmentRef).toBe('OpenAgentsInc/openagents#6399')
+    expect(result.summary).toContain('issueRef: OpenAgentsInc/openagents#6399')
+    expect(result.summary).toContain('ledgerUpdate: issue_opened')
+    expect(openedIssues).toHaveLength(1)
+    expect(openedIssues[0]).toMatchObject({
+      labels: [
+        'khala',
+        'missing-capability',
+        'from-unsupported-request-ledger',
+      ],
+      ledgerRef: 'khala_unsupported:ur_issue6394',
+      title: 'Khala needs backlog retry routing',
+    })
+    expect(JSON.stringify(openedIssues[0])).toContain(needsIssueRow.summary)
+    expect(updates).toEqual([
+      {
+        githubIssueRef: 'OpenAgentsInc/openagents#6399',
+        ref: 'khala_unsupported:ur_issue6394',
+        status: 'issue_opened',
+      },
+    ])
+  })
+
+  test('without owner approval it defers and never calls the GitHub opener', async () => {
+    const openedIssues: Array<unknown> = []
+    const tool = makeArtanisOpenUnsupportedRequestIssueTool({
+      isOwnerApproved: () => Effect.succeed(false),
+      opener: input => {
+        openedIssues.push(input)
+        return Effect.succeed({
+          issueNumber: 6400,
+          issueRef: 'OpenAgentsInc/openagents#6400',
+          issueUrl: 'https://github.com/OpenAgentsInc/openagents/issues/6400',
+          kind: 'created',
+        } as const)
+      },
+      reader: async () => [needsIssueRow],
+      writer: async () => needsIssueRow,
+    })
+
+    const result = await Effect.runPromise(
+      tool.run({ ref: 'khala_unsupported:ur_issue6394' }),
+    )
+    expect(result.outcome).toBe('deferred')
+    if (result.outcome !== 'deferred') return
+    expect(result.reason).toBe('no_effective_owner_approval')
+    expect(result.plan).toContain('issue_opened')
+    expect(openedIssues).toEqual([])
+  })
+
+  test('a non-needs_issue ref is honest absence and does not open an issue', async () => {
+    const openedIssues: Array<unknown> = []
+    const tool = makeArtanisOpenUnsupportedRequestIssueTool({
+      isOwnerApproved: () => Effect.succeed(true),
+      opener: input => {
+        openedIssues.push(input)
+        return Effect.succeed({
+          issueNumber: 6401,
+          issueRef: 'OpenAgentsInc/openagents#6401',
+          issueUrl: 'https://github.com/OpenAgentsInc/openagents/issues/6401',
+          kind: 'created',
+        } as const)
+      },
+      reader: async () => [],
+      writer: async () => needsIssueRow,
+    })
+
+    const result = await Effect.runPromise(
+      tool.run({ ref: 'khala_unsupported:missing' }),
+    )
+    expect(result.outcome).toBe('deferred')
+    if (result.outcome !== 'deferred') return
+    expect(result.reason).toBe('needs_issue_row_not_found')
+    expect(openedIssues).toEqual([])
+  })
+})
+
 describe('parseArtanisAssignmentRef + isSafeArtanisAssignmentRef', () => {
   test('accepts a ref under several key aliases', () => {
     expect(parseArtanisAssignmentRef({ assignmentRef: 'a.b.c' })).toEqual({
@@ -2232,6 +2372,7 @@ describe('makeArtanisOperatorTools default table', () => {
       'list_github_issues',
       'list_pylon_assignments',
       'list_repo_dir',
+      'open_unsupported_request_issue',
       'read_github_issue',
       'read_repo_file',
       'trigger_synthetic_load',
