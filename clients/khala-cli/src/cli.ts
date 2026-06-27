@@ -1221,8 +1221,10 @@ function parseSpawnStrategy(value: string): KhalaSpawnStrategy {
 }
 
 function parseSpawnWorkflow(value: string): KhalaSpawnWorkflow {
-  if (value === "cloud_coding_session" || value === "codex_agent_task") return value
-  throw new Error("--workflow must be cloud_coding_session or codex_agent_task")
+  if (value === "claude_agent_task" || value === "cloud_coding_session" || value === "codex_agent_task") {
+    return value
+  }
+  throw new Error("--workflow must be claude_agent_task, cloud_coding_session, or codex_agent_task")
 }
 
 function requireValue(argv: ReadonlyArray<string>, index: number, flag: string): string {
@@ -1912,7 +1914,7 @@ Flags:
   --branch <name>      Public repo branch for --strategy pylon (default: main)
   --commit <sha>       Pinned public repo commit for --strategy pylon
   --verify <command>   Bounded verification command for --strategy pylon
-  --workflow <name>    Pylon workflow: codex_agent_task or cloud_coding_session
+  --workflow <name>    Pylon workflow: claude_agent_task, codex_agent_task, or cloud_coding_session
   --timeout <seconds>  Per-worker timeout for khala spawn
   --account <ref>      Codex account ref for khala fleet connect (auto-assigned if omitted)
   --force              Re-run device login for khala fleet connect even if already linked

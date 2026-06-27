@@ -221,6 +221,57 @@ describe("Khala spawn supervisor", () => {
     expect(summarizeSpawnRun(stored)).toContain("strategy: pylon_codex_assignments")
   })
 
+  test("forwards claude_agent_task workflow to pylon spawn MCP", async () => {
+    const home = await mkdtemp(join(tmpdir(), "khala-spawn-pylon-claude-test-"))
+    const env = { KHALA_HOME: home }
+    const calls: Array<{ readonly args: Record<string, unknown>; readonly tool: string }> = []
+    const mcpCaller: KhalaSpawnMcpCaller = async input => {
+      calls.push({ args: input.args, tool: input.tool })
+      return {
+        assignedCount: 1,
+        blockerRefs: [],
+        children: [
+          {
+            assignmentRef: "assignment.public.khala_coding.claude",
+            durableRequestId: "chatcmpl_claude",
+            ok: true,
+            pylonRef: "pylon.owner.claude",
+            slotIndex: 0,
+            state: "running",
+            workerRef: "worker.public.khala_coding.spawn.claude",
+          },
+        ],
+        ok: true,
+        requestedCount: 1,
+        schema: "openagents.khala_mcp.spawn.v1",
+        spawnRef: "spawn.public.khala_coding.claude",
+      }
+    }
+
+    const run = await runKhalaSpawn({
+      baseUrl: "https://example.test",
+      count: 1,
+      cwd: home,
+      env,
+      fixture: true,
+      mcpCaller,
+      objective: "run the public Claude fixture",
+      pylonRef: "pylon.owner.claude",
+      strategy: "pylon",
+      token: "oa_agent_test",
+      workflow: "claude_agent_task",
+    })
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.tool).toBe("khala.spawn")
+    expect(calls[0]?.args).toMatchObject({
+      objective: "run the public Claude fixture",
+      targetPylonRef: "pylon.owner.claude",
+      workflow: "claude_agent_task",
+    })
+    expect(run.workers[0]?.assignmentRef).toBe("assignment.public.khala_coding.claude")
+  })
+
   test("refreshes pylon spawn status through khala.spawnStatus", async () => {
     const home = await mkdtemp(join(tmpdir(), "khala-spawn-pylon-refresh-test-"))
     const env = { KHALA_HOME: home }
