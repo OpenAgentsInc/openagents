@@ -743,6 +743,7 @@ const createAssignment = async (
     assignmentRef?: string
     campaignPaused?: boolean
     campaignPolicyRefs?: ReadonlyArray<string>
+    codingAssignment?: Record<string, unknown>
     forumAutoPublishAllowed?: boolean
     idempotencyKey?: string
     jobKind?: string
@@ -766,6 +767,9 @@ const createAssignment = async (
       ],
       campaignRef: 'campaign.public.probe_gepa.stage0.no_spend',
       closeoutPathRefs: ['closeout.public.operator_review_required'],
+      ...(input.codingAssignment === undefined
+        ? {}
+        : { codingAssignment: input.codingAssignment }),
       forumAutoPublishAllowed: input.forumAutoPublishAllowed ?? false,
       idempotencyRefs: ['idempotency.public.pylon_assignment.request_key'],
       jobKind: input.jobKind ?? 'healthcheck_echo',
@@ -2829,6 +2833,69 @@ describe('Pylon API routes', () => {
     expect(freshGate.blockerRefs).toContain(
       'blocker.public.pylon_dispatch.duplicate_active_assignment',
     )
+  })
+
+  test('#6386: direct assignment route keys Codex dispatch capacity by account ref', async () => {
+    const store = new MemoryPylonApiStore()
+    const accountAKey = 'aaaaaaaaaaaa'
+    const accountBKey = 'bbbbbbbbbbbb'
+    const accountAHash = `account.pylon.codex.${accountAKey}`
+    const accountBHash = `account.pylon.codex.${accountBKey}`
+    await registerPylon(store, {
+      capabilityRefs: ['capability.pylon.local_codex'],
+    })
+    await markOnline(store, {
+      capacityRefs: [
+        `capacity.coding.codex.account.${accountAKey}.ready=2`,
+        `capacity.coding.codex.account.${accountAKey}.available=2`,
+        `capacity.coding.codex.account.${accountBKey}.ready=2`,
+        `capacity.coding.codex.account.${accountBKey}.available=2`,
+      ],
+      loadRefs: [
+        `load.coding.codex.account.${accountAKey}.busy=0`,
+        `load.coding.codex.account.${accountAKey}.queued=0`,
+        `load.coding.codex.account.${accountBKey}.busy=0`,
+        `load.coding.codex.account.${accountBKey}.queued=0`,
+      ],
+    })
+    await markWalletReady(store)
+
+    const codexAssignmentInput = (
+      accountRefHash: string,
+      index: string,
+    ): Parameters<typeof createAssignment>[1] => ({
+      assignmentRef: `assignment.public.codex_account_${index}`,
+      codingAssignment: { codex: { accountRefHash, agentKind: 'codex_sdk' } },
+      idempotencyKey: `assignment-codex-account-${index}`,
+      jobKind: 'codex_agent_task',
+      requiredCapabilityRefs: ['capability.pylon.local_codex'],
+    })
+
+    const accountAOne = await createAssignment(
+      store,
+      codexAssignmentInput(accountAHash, 'a_one'),
+    )
+    const accountATwo = await createAssignment(
+      store,
+      codexAssignmentInput(accountAHash, 'a_two'),
+    )
+    const accountAThree = await createAssignment(
+      store,
+      codexAssignmentInput(accountAHash, 'a_three'),
+    )
+    const accountBOne = await createAssignment(
+      store,
+      codexAssignmentInput(accountBHash, 'b_one'),
+    )
+    const accountAThreeBody = await responseJson<PylonRouteJson>(accountAThree)
+
+    expect(accountAOne.status).toBe(201)
+    expect(accountATwo.status).toBe(201)
+    expect(accountAThree.status).toBe(409)
+    expect(accountAThreeBody.dispatchGate?.blockerRefs).toContain(
+      'blocker.public.pylon_dispatch.duplicate_active_assignment',
+    )
+    expect(accountBOne.status).toBe(201)
   })
 
   test('does not treat remaining available Codex slots as the total parallel ceiling', async () => {
