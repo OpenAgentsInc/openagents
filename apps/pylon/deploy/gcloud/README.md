@@ -3,8 +3,9 @@
 This directory contains the GCE setup path for the always-on Pylon fleet rung
 described in `docs/2026-06-10-always-on-fleet-plan.md`.
 
-The script creates or starts a Google Compute Engine VM, copies a local env file
-over IAP/SSH, and runs the existing Linux installer:
+The script creates or starts a Google Compute Engine VM, optionally copies a
+serialized isolated Pylon home, copies a local env file over IAP/SSH, and runs
+the existing Linux installer:
 
 - `apps/pylon/scripts/install-cloud-node.sh`
 
@@ -25,6 +26,45 @@ ANTHROPIC_API_KEY=...
 
 Keep that file outside Git. Do not paste its contents into issues, docs,
 commit messages, or terminal transcripts.
+
+## Own-Capacity Codex / Claude VM
+
+Use this path for issue #6433-style migration off the owner's desktop: one
+lightweight VM per already-linked account home, with systemd restarting the
+standing Pylon and the no-spend own-capacity supervisor.
+
+First package only the isolated Pylon home that should move to the VM. Keep the
+archive outside Git and transfer it only over the IAP/SSH path:
+
+```sh
+tar -C ~/.pylon-fable -czf ~/work/.secrets/pylon-fleet/codex-1-pylon-home.tar.gz .
+```
+
+Then provision a VM and install the persistent supervisor:
+
+```sh
+apps/pylon/deploy/gcloud/setup-pylon.sh \
+  --instance oa-codex-control-1 \
+  --project openagentsgemini \
+  --zone us-central1-a \
+  --machine-type e2-standard-2 \
+  --env-file ~/work/.secrets/openagents-artanis-agent.env \
+  --pylon-home-archive ~/work/.secrets/pylon-fleet/codex-1-pylon-home.tar.gz \
+  --supervisor codex
+```
+
+For a Claude account, pass `--supervisor claude`. For a VM that intentionally
+hosts both linked account families, pass `--supervisor both`. The remote
+installer writes `openagents-pylon.service` plus the requested
+`openagents-codex-supervisor.service` and/or
+`openagents-claude-supervisor.service`. The supervisor reuses the restored
+`PYLON_HOME`; it never runs `codex login`, `pylon auth codex`, or
+`pylon auth claude`.
+
+Scale this by repeating the command with one archive and one instance per
+account, for example `oa-codex-control-1` through `oa-codex-control-7`. Use
+`SUP_MAX_SLOTS` and `SUP_PER_ACCOUNT` in the env file only when the operator
+intentionally wants to override the supervisor defaults.
 
 ## CPU Pylon
 
@@ -109,6 +149,16 @@ gcloud compute ssh pylon-gcloud-1 \
   --zone us-central1-a \
   --tunnel-through-iap \
   --command 'sudo systemctl --no-pager --full status openagents-pylon'
+```
+
+For supervisor VMs, also verify:
+
+```sh
+gcloud compute ssh oa-codex-control-1 \
+  --project openagentsgemini \
+  --zone us-central1-a \
+  --tunnel-through-iap \
+  --command 'sudo systemctl --no-pager --full status openagents-codex-supervisor'
 ```
 
 Then verify the live Pylon projection through the public OpenAgents API and
