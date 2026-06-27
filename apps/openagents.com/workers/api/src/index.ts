@@ -51,11 +51,14 @@ import { withAgentRateLimitHeaders } from './agent-rate-limit-policy'
 import { makeD1AgentRateLimitRecoveryStore } from './agent-rate-limit-recovery'
 import {
   type AgentRegistrationStore,
+  type AgentReissueStore,
   ProgrammaticAgentRegistrationRequest,
   type ProgrammaticAgentSession,
+  ReissueAgentTokenRequest,
   authenticateProgrammaticAgent,
   createProgrammaticAgentRegistration,
   makeD1AgentRegistrationStore,
+  reissueProgrammaticAgentToken,
   sha256Hex,
   timingSafeEqual,
 } from './agent-registration'
@@ -6663,6 +6666,95 @@ export const handleProgrammaticAgentRegistration = async (
   }
 }
 
+// #6370: admin-only override to re-issue a fresh token for an EXISTING forum
+// agent identity (dead-token recovery). Authorized EXACTLY like other admin
+// routes: a valid admin API token OR an admin browser session
+// (isOpenAgentsAdminEmail). It mints a NEW active credential bound to the SAME
+// agent user/entity (same userId, slug, actorRef) — it never creates a new
+// agent and never changes the slug/displayName. The raw token is returned to
+// the admin caller once and is never logged.
+export const handleAdminReissueAgentToken = async (
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+  options?: Readonly<{
+    agentRegistrationStore?: AgentReissueStore
+    authorize?: (
+      request: Request,
+      env: Env,
+      ctx: ExecutionContext,
+    ) => Promise<boolean>
+  }>,
+): Promise<Response> => {
+  if (request.method !== 'POST') {
+    return methodNotAllowed(['POST'])
+  }
+
+  const authorize =
+    options?.authorize ??
+    (async (authRequest, authEnv, authCtx): Promise<boolean> => {
+      if (await requireAdminApiToken(authRequest, authEnv)) {
+        return true
+      }
+
+      const session = await requireBrowserSession(authRequest, authEnv, authCtx)
+
+      return (
+        session !== undefined && isOpenAgentsAdminEmail(session.user.email)
+      )
+    })
+
+  if (!(await authorize(request, env, ctx))) {
+    return forbidden()
+  }
+
+  const body = await request.json().catch(error => ({
+    parseError: errorMessage(error),
+  }))
+  let parsed: typeof ReissueAgentTokenRequest.Type
+
+  try {
+    parsed = decodeUnknownWithSchema(ReissueAgentTokenRequest, body)
+  } catch (error) {
+    return badRequest(errorMessage(error))
+  }
+
+  const selector =
+    parsed.slug !== undefined
+      ? ({ slug: parsed.slug } as const)
+      : parsed.externalId !== undefined
+      ? ({ externalId: parsed.externalId } as const)
+      : undefined
+
+  if (selector === undefined) {
+    return badRequest('slug or externalId is required')
+  }
+
+  const store =
+    options?.agentRegistrationStore ??
+    makeD1AgentRegistrationStore(openAgentsDatabase(env))
+
+  try {
+    const reissue = await reissueProgrammaticAgentToken(store, selector)
+
+    if (reissue === undefined) {
+      return jsonResponse({ error: 'agent_not_found' }, { status: 404 })
+    }
+
+    return jsonResponse(
+      {
+        token: reissue.token,
+        tokenPrefix: reissue.tokenPrefix,
+        slug: reissue.slug,
+        actorRef: reissue.actorRef,
+      },
+      { status: 201 },
+    )
+  } catch {
+    return serverError()
+  }
+}
+
 // Khala FREE API MODE self-serve mint (issue #6228). Mints a rate-limited FREE
 // `oa_agent_` API key that may call the single public model `openagents/khala`
 // (own-infra GPT-OSS / Gemini Flash) with NO funded balance, within a per-key
@@ -11339,6 +11431,14 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/agents/register',
     handler: (request, env) =>
       Effect.promise(() => handleProgrammaticAgentRegistration(request, env)),
+  },
+  {
+    // #6370: admin-only dead-token recovery — mint a fresh credential for an
+    // EXISTING agent identity (same entity), admin-gated like every /api/admin/*
+    // route.
+    path: '/api/admin/agents/reissue-token',
+    handler: (request, env, ctx) =>
+      Effect.promise(() => handleAdminReissueAgentToken(request, env, ctx)),
   },
   {
     // Khala FREE API MODE self-serve mint (issue #6228). Mints a rate-limited

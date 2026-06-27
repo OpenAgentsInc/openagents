@@ -2,14 +2,23 @@ import { describe, expect, test } from 'vitest'
 
 import {
   type AgentCredentialLookup,
+  type AgentCredentialRecord,
   type AgentRegistrationRecord,
   type AgentRegistrationStore,
+  type AgentReissueSelector,
+  type AgentReissueTarget,
+  createProgrammaticAgentRegistration,
   sha256Hex,
 } from './agent-registration'
-import { type Env, handleProgrammaticAgentRegistration } from './index'
+import {
+  type Env,
+  handleAdminReissueAgentToken,
+  handleProgrammaticAgentRegistration,
+} from './index'
 
 class MemoryAgentRegistrationStore implements AgentRegistrationStore {
   readonly registrations: Array<AgentRegistrationRecord> = []
+  readonly addedCredentials: Array<AgentCredentialRecord> = []
 
   createAgentRegistration(record: AgentRegistrationRecord): Promise<void> {
     this.registrations.push(record)
@@ -33,6 +42,32 @@ class MemoryAgentRegistrationStore implements AgentRegistrationStore {
 
   updateAgentDisplayName(): Promise<number> {
     return Promise.resolve(0)
+  }
+
+  findAgentForReissue(
+    selector: AgentReissueSelector,
+  ): Promise<AgentReissueTarget | undefined> {
+    const registration = this.registrations.find(item =>
+      'slug' in selector
+        ? item.profile.slug === selector.slug
+        : item.identity.providerSubject === selector.externalId,
+    )
+
+    return Promise.resolve(
+      registration === undefined
+        ? undefined
+        : {
+            userId: registration.user.id,
+            slug: registration.profile.slug,
+            displayName: registration.user.displayName,
+          },
+    )
+  }
+
+  addAgentCredential(record: AgentCredentialRecord): Promise<void> {
+    this.addedCredentials.push(record)
+
+    return Promise.resolve()
   }
 }
 
@@ -217,5 +252,102 @@ describe('programmatic agent registration route', () => {
       'readiness.public.spark_address.offline_receive_ready',
       'readiness.public.spark_primary.agent_balance',
     ])
+  })
+})
+
+const reissueRequest = (body: unknown): Request =>
+  new Request('https://openagents.com/api/admin/agents/reissue-token', {
+    body: JSON.stringify(body),
+    headers: { 'content-type': 'application/json' },
+    method: 'POST',
+  })
+
+const seedAgent = async (
+  store: MemoryAgentRegistrationStore,
+  input: Readonly<{ displayName: string; slug?: string; externalId?: string }>,
+) =>
+  createProgrammaticAgentRegistration(store, input, {
+    makeToken: () => `oa_agent_${input.slug ?? input.externalId}_original`,
+  })
+
+describe('admin agent token reissue route (#6370)', () => {
+  test('admin reissue mints a fresh token for an existing slug, same entity', async () => {
+    const store = new MemoryAgentRegistrationStore()
+    const original = await seedAgent(store, {
+      displayName: 'Artanis',
+      externalId: 'artanis-1',
+      slug: 'artanis',
+    })
+
+    const response = await handleAdminReissueAgentToken(
+      reissueRequest({ slug: 'artanis' }),
+      {} as Env,
+      {} as ExecutionContext,
+      { agentRegistrationStore: store, authorize: async () => true },
+    )
+    const body = (await response.json()) as {
+      token: string
+      tokenPrefix: string
+      slug: string | null
+      actorRef: string
+    }
+
+    expect(response.status).toBe(201)
+    expect(body.token).toMatch(/^oa_agent_/)
+    expect(body.token).not.toBe(original.credential.token)
+    expect(body.slug).toBe('artanis')
+    expect(body.actorRef).toBe(`agent:${original.user.id}`)
+
+    // The fresh credential is stored as a hash bound to the same agent user.
+    const added = store.addedCredentials[0]
+    expect(added?.userId).toBe(original.user.id)
+    expect(added?.status).toBe('active')
+    expect(added?.tokenPrefix).toBe(body.tokenPrefix)
+    expect(added?.tokenHash).toBe(await sha256Hex(body.token))
+    expect(added?.tokenHash).not.toContain('oa_agent_')
+  })
+
+  test('non-admin callers are refused', async () => {
+    const store = new MemoryAgentRegistrationStore()
+    await seedAgent(store, { displayName: 'Artanis', slug: 'artanis' })
+
+    const response = await handleAdminReissueAgentToken(
+      reissueRequest({ slug: 'artanis' }),
+      {} as Env,
+      {} as ExecutionContext,
+      { agentRegistrationStore: store, authorize: async () => false },
+    )
+
+    expect(response.status).toBe(403)
+    expect(store.addedCredentials).toHaveLength(0)
+  })
+
+  test('unknown slug returns 404', async () => {
+    const store = new MemoryAgentRegistrationStore()
+
+    const response = await handleAdminReissueAgentToken(
+      reissueRequest({ slug: 'no-such-agent' }),
+      {} as Env,
+      {} as ExecutionContext,
+      { agentRegistrationStore: store, authorize: async () => true },
+    )
+    const body = (await response.json()) as { error?: string }
+
+    expect(response.status).toBe(404)
+    expect(body.error).toBe('agent_not_found')
+    expect(store.addedCredentials).toHaveLength(0)
+  })
+
+  test('missing slug and externalId is a bad request', async () => {
+    const store = new MemoryAgentRegistrationStore()
+
+    const response = await handleAdminReissueAgentToken(
+      reissueRequest({}),
+      {} as Env,
+      {} as ExecutionContext,
+      { agentRegistrationStore: store, authorize: async () => true },
+    )
+
+    expect(response.status).toBe(400)
   })
 })

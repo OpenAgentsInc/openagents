@@ -2,11 +2,16 @@ import { describe, expect, test } from 'vitest'
 
 import {
   type AgentCredentialLookup,
+  type AgentCredentialRecord,
   type AgentRegistrationRecord,
   type AgentRegistrationStore,
+  type AgentReissueSelector,
+  type AgentReissueTarget,
   type OpenAuthAgentLinkRecord,
   authenticateProgrammaticAgent,
   createProgrammaticAgentRegistration,
+  reissueProgrammaticAgentToken,
+  sha256Hex,
 } from './agent-registration'
 
 class MemoryAgentRegistrationStore implements AgentRegistrationStore {
@@ -48,6 +53,51 @@ class MemoryAgentRegistrationStore implements AgentRegistrationStore {
 
   updateAgentDisplayName(): Promise<number> {
     return Promise.resolve(0)
+  }
+
+  findAgentForReissue(
+    selector: AgentReissueSelector,
+  ): Promise<AgentReissueTarget | undefined> {
+    const registration = this.registrations.find(item =>
+      'slug' in selector
+        ? item.profile.slug === selector.slug
+        : item.identity.providerSubject === selector.externalId,
+    )
+
+    return Promise.resolve(
+      registration === undefined
+        ? undefined
+        : {
+            userId: registration.user.id,
+            slug: registration.profile.slug,
+            displayName: registration.user.displayName,
+          },
+    )
+  }
+
+  addAgentCredential(record: AgentCredentialRecord): Promise<void> {
+    const registration = this.registrations.find(
+      item => item.user.id === record.userId,
+    )
+
+    this.lookups.set(record.tokenHash, {
+      user: registration?.user ?? {
+        id: record.userId,
+        kind: 'agent',
+        displayName: record.name,
+        primaryEmail: null,
+        avatarUrl: null,
+        status: 'active',
+        createdAt: record.createdAt,
+        updatedAt: record.createdAt,
+      },
+      credentialId: record.id,
+      openauthUserId: record.openauthUserId,
+      profileMetadataJson: registration?.profile.metadataJson ?? '{}',
+      tokenPrefix: record.tokenPrefix,
+    })
+
+    return Promise.resolve()
   }
 
   async linkOpenAuthAgent(record: OpenAuthAgentLinkRecord): Promise<void> {
@@ -247,6 +297,104 @@ describe('programmatic agent registration', () => {
         openauthUserId: 'user_human_1',
       },
     ])
+  })
+
+  test('reissues a fresh token bound to the same existing agent entity', async () => {
+    const store = new MemoryAgentRegistrationStore()
+    const original = await createProgrammaticAgentRegistration(
+      store,
+      {
+        displayName: 'Artanis',
+        slug: 'artanis',
+        externalId: 'artanis-1',
+        metadata: { role: 'operator' },
+      },
+      {
+        makeToken: () => 'oa_agent_artanis_original',
+        makeUuid: makeUuidFactory(['user-art', 'credential-art', 'identity-art']),
+        now: () => '2026-06-26T17:00:00.000Z',
+      },
+    )
+
+    const reissue = await reissueProgrammaticAgentToken(
+      store,
+      { slug: 'artanis' },
+      {
+        makeToken: () => 'oa_agent_artanis_reissued',
+        makeUuid: makeUuidFactory(['credential-art-2']),
+        now: () => '2026-06-26T18:00:00.000Z',
+      },
+    )
+
+    // A genuinely fresh credential was minted, not the original token.
+    expect(reissue?.token).toBe('oa_agent_artanis_reissued')
+    expect(reissue?.token).not.toBe(original.credential.token)
+    expect(reissue?.slug).toBe('artanis')
+    expect(reissue?.actorRef).toBe(`agent:${original.user.id}`)
+    expect(reissue?.userId).toBe(original.user.id)
+    expect(reissue?.credentialId).toBe('agent_credential_credential-art-2')
+
+    // The reissued token's hash is stored (the raw token is not).
+    const storedLookup = store.lookups.get(
+      await sha256Hex('oa_agent_artanis_reissued'),
+    )
+    expect(storedLookup).toBeDefined()
+
+    // The reissued token authenticates as the SAME agent entity.
+    const session = await authenticateProgrammaticAgent(
+      store,
+      reissue?.token ?? '',
+      () => '2026-06-26T18:01:00.000Z',
+    )
+    expect(session?.user.id).toBe(original.user.id)
+    expect(session?.credential.id).toBe(reissue?.credentialId)
+
+    // The original token still resolves to the same entity (additive, not a swap).
+    const originalSession = await authenticateProgrammaticAgent(
+      store,
+      original.credential.token,
+      () => '2026-06-26T18:02:00.000Z',
+    )
+    expect(originalSession?.user.id).toBe(original.user.id)
+  })
+
+  test('reissue looks up an existing agent by externalId', async () => {
+    const store = new MemoryAgentRegistrationStore()
+    const original = await createProgrammaticAgentRegistration(
+      store,
+      { displayName: 'Slugless', externalId: 'external-only-1' },
+      {
+        makeToken: () => 'oa_agent_slugless_original',
+        makeUuid: makeUuidFactory(['user-sl', 'credential-sl', 'identity-sl']),
+        now: () => '2026-06-26T17:00:00.000Z',
+      },
+    )
+
+    const reissue = await reissueProgrammaticAgentToken(
+      store,
+      { externalId: 'external-only-1' },
+      {
+        makeToken: () => 'oa_agent_slugless_reissued',
+        makeUuid: makeUuidFactory(['credential-sl-2']),
+        now: () => '2026-06-26T18:00:00.000Z',
+      },
+    )
+
+    expect(reissue?.slug).toBeNull()
+    expect(reissue?.actorRef).toBe(`agent:${original.user.id}`)
+    const session = await authenticateProgrammaticAgent(
+      store,
+      reissue?.token ?? '',
+    )
+    expect(session?.user.id).toBe(original.user.id)
+  })
+
+  test('reissue returns undefined for an unknown agent', async () => {
+    const store = new MemoryAgentRegistrationStore()
+
+    await expect(
+      reissueProgrammaticAgentToken(store, { slug: 'does-not-exist' }),
+    ).resolves.toBeUndefined()
   })
 
   test('does not authenticate expired credentials', async () => {

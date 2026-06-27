@@ -188,7 +188,14 @@ const budgetChecks = [
     // sibling `handleProgrammaticAgentRegistration` already counted here. Do not
     // raise further; ratchet back down when index.ts env reads move behind the
     // config/binding boundary.
-    budget: 164,
+    // Raised 164 -> 166 on 2026-06-27 (#6370) for the admin agent-token reissue
+    // handler (`handleAdminReissueAgentToken(request, env: Env, ctx, options)`
+    // in index.ts): the handler `env: Env` parameter plus its injectable
+    // `authorize?: (request, env: Env, ctx) => Promise<boolean>` option type,
+    // both the same env-reading shape as the sibling admin handlers already
+    // counted here. Do not raise further; ratchet back down when index.ts env
+    // reads move behind the config/binding boundary.
+    budget: 166,
     description:
       'Worker modules may not add raw Cloudflare Env parameters outside the future config/binding boundary.',
     details: countByFile(
@@ -440,7 +447,14 @@ const budgetChecks = [
     // solve-rate AND cost-per-accepted-outcome) and mint no spend/settlement/
     // payout/public-claim authority. Ratchet back down when these route handlers
     // move behind a shared route mapper.
-    budget: 119,
+    // +1 (119 -> 120) on 2026-06-27 (#6370) for the admin agent-token reissue
+    // handler `handleAdminReissueAgentToken(): Promise<Response>` in index.ts:
+    // one admin-gated dead-token recovery handler the same `Promise<Response>`
+    // shape as the sibling `handleProgrammaticAgentRegistration` already counted
+    // here. It mints a fresh credential for an EXISTING agent entity only and
+    // grants no new authority. Ratchet back down when these handlers move behind
+    // a shared route mapper.
+    budget: 120,
     description:
       'Worker domain and route modules may not grow Response-returning surfaces while route mappers are extracted.',
     details: countByFile(

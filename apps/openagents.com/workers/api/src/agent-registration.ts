@@ -55,6 +55,61 @@ export const ProgrammaticAgentRegistrationRequest = S.Struct({
 export type ProgrammaticAgentRegistrationRequest =
   typeof ProgrammaticAgentRegistrationRequest.Type
 
+// #6370: admin-only token re-issue for an EXISTING forum agent identity. The
+// caller supplies exactly one selector (slug or externalId); the endpoint mints
+// a fresh credential bound to the SAME agent entity so a dead agent token can be
+// recovered without creating a new agent or changing its slug/displayName. The
+// "exactly one selector" rule is enforced by the route handler so it can return
+// a clear bad-request message.
+export const ReissueAgentTokenRequest = S.Struct({
+  slug: S.optionalKey(
+    TrimmedString.check(
+      S.isMinLength(3),
+      S.isMaxLength(80),
+      S.isPattern(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/),
+    ),
+  ),
+  externalId: S.optionalKey(NonEmptyTrimmedString.check(S.isMaxLength(200))),
+})
+
+export type ReissueAgentTokenRequest = typeof ReissueAgentTokenRequest.Type
+
+// The single existing-agent selector the reissue store lookup accepts. Exactly
+// one of slug/externalId is provided.
+export type AgentReissueSelector =
+  | Readonly<{ slug: string }>
+  | Readonly<{ externalId: string }>
+
+// The existing agent entity a reissue binds the fresh credential to. `slug` is
+// the public Forum/profile slug (may be null for slug-less agents looked up by
+// externalId); `userId` is the stable agent user entity.
+export type AgentReissueTarget = Readonly<{
+  userId: string
+  slug: string | null
+  displayName: string
+}>
+
+export type AgentTokenReissue = Readonly<{
+  token: string
+  tokenPrefix: string
+  slug: string | null
+  actorRef: string
+  userId: string
+  credentialId: string
+}>
+
+// The narrowed store capability `reissueProgrammaticAgentToken` needs: both
+// methods are REQUIRED here so the reissue path is statically guaranteed the
+// lookup + additive-insert capability without runtime guards. The full
+// `AgentRegistrationStore` keeps these optional so the many other store
+// implementers do not have to provide them; the D1 store satisfies both.
+export type AgentReissueStore = Readonly<{
+  findAgentForReissue: (
+    selector: AgentReissueSelector,
+  ) => Promise<AgentReissueTarget | undefined>
+  addAgentCredential: (record: AgentCredentialRecord) => Promise<void>
+}>
+
 export type AgentUserRecord = Readonly<{
   id: string
   kind: 'agent'
@@ -162,6 +217,18 @@ export type AgentRegistrationStore = Readonly<{
     openauthUserId: string,
     limit: number,
   ) => Promise<ReadonlyArray<LinkedAgentOwnerRecord>>
+  // #6370: admin token re-issue. Find an existing active agent entity by its
+  // public slug or its external id (auth_identities.provider_subject) so a
+  // fresh credential can be bound to the SAME user. Returns undefined when no
+  // matching active agent exists.
+  findAgentForReissue?: (
+    selector: AgentReissueSelector,
+  ) => Promise<AgentReissueTarget | undefined>
+  // #6370: additive credential insert for an existing agent user. Prior
+  // credentials are left intact (a dead token simply stops being used); this
+  // adds a new active credential so the recovered token authenticates as the
+  // same entity.
+  addAgentCredential?: (record: AgentCredentialRecord) => Promise<void>
 }>
 
 export type ProgrammaticAgentRegistration = Readonly<{
@@ -203,6 +270,12 @@ type AgentCredentialLookupRow = Readonly<{
   openauth_user_id: string | null
   metadata_json: string | null
   token_prefix: string
+}>
+
+type AgentReissueTargetRow = Readonly<{
+  user_id: string
+  display_name: string
+  slug: string | null
 }>
 
 type LinkedAgentOwnerRow = Readonly<{
@@ -262,7 +335,7 @@ export const timingSafeEqual = async (
 
 export const makeD1AgentRegistrationStore = (
   db: D1Database,
-): AgentRegistrationStore => ({
+): AgentRegistrationStore & AgentReissueStore => ({
   createAgentRegistration: async record => {
     await db.batch([
       db
@@ -523,6 +596,76 @@ export const makeD1AgentRegistrationStore = (
       tokenPrefix: row.token_prefix,
     }))
   },
+
+  findAgentForReissue: async selector => {
+    const row =
+      'slug' in selector
+        ? await db
+            .prepare(
+              `SELECT
+                  users.id AS user_id,
+                  users.display_name,
+                  agent_profiles.slug
+               FROM agent_profiles
+               INNER JOIN users ON users.id = agent_profiles.user_id
+               WHERE agent_profiles.slug = ?
+                 AND users.kind = 'agent'
+                 AND users.status = 'active'
+                 AND users.deleted_at IS NULL
+               LIMIT 1`,
+            )
+            .bind(selector.slug)
+            .first<AgentReissueTargetRow>()
+        : await db
+            .prepare(
+              `SELECT
+                  users.id AS user_id,
+                  users.display_name,
+                  agent_profiles.slug
+               FROM auth_identities
+               INNER JOIN users ON users.id = auth_identities.user_id
+               LEFT JOIN agent_profiles ON agent_profiles.user_id = users.id
+               WHERE auth_identities.provider = 'agent_programmatic'
+                 AND auth_identities.provider_subject = ?
+                 AND users.kind = 'agent'
+                 AND users.status = 'active'
+                 AND users.deleted_at IS NULL
+               LIMIT 1`,
+            )
+            .bind(selector.externalId)
+            .first<AgentReissueTargetRow>()
+
+    if (row === null) {
+      return undefined
+    }
+
+    return {
+      userId: row.user_id,
+      slug: row.slug ?? null,
+      displayName: row.display_name,
+    }
+  },
+
+  addAgentCredential: async record => {
+    await db
+      .prepare(
+        `INSERT INTO agent_credentials
+          (id, user_id, openauth_user_id, token_hash, token_prefix, name, status, created_at, expires_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        record.id,
+        record.userId,
+        record.openauthUserId,
+        record.tokenHash,
+        record.tokenPrefix,
+        record.name,
+        record.status,
+        record.createdAt,
+        record.expiresAt,
+      )
+      .run()
+  },
 })
 
 export const buildProgrammaticAgentRegistrationRecord = (
@@ -626,6 +769,54 @@ export const createProgrammaticAgentRegistration = async (
       createdAt: record.credential.createdAt,
       expiresAt: record.credential.expiresAt,
     },
+  }
+}
+
+// #6370: admin-only recovery. Mint a fresh `oa_agent_` credential for an
+// EXISTING agent entity selected by slug or externalId, without creating a new
+// agent or mutating the slug/displayName. Returns undefined when no matching
+// active agent exists so the route can answer 404. Never logs the raw token.
+export const reissueProgrammaticAgentToken = async (
+  store: AgentReissueStore,
+  selector: AgentReissueSelector,
+  options: Readonly<{
+    now?: () => string
+    makeUuid?: () => string
+    makeToken?: () => string
+  }> = {},
+): Promise<AgentTokenReissue | undefined> => {
+  const target = await store.findAgentForReissue(selector)
+
+  if (target === undefined) {
+    return undefined
+  }
+
+  const now = options.now ?? currentIsoTimestamp
+  const makeUuid = options.makeUuid ?? randomUuid
+  const makeToken = options.makeToken ?? createAgentToken
+  const token = makeToken()
+  const createdAt = now()
+  const credential: AgentCredentialRecord = {
+    id: `agent_credential_${makeUuid()}`,
+    userId: target.userId,
+    openauthUserId: null,
+    tokenHash: await sha256Hex(token),
+    tokenPrefix: token.slice(0, 20),
+    name: `${target.displayName} programmatic token (reissued ${createdAt})`,
+    status: 'active',
+    createdAt,
+    expiresAt: null,
+  }
+
+  await store.addAgentCredential(credential)
+
+  return {
+    token,
+    tokenPrefix: credential.tokenPrefix,
+    slug: target.slug,
+    actorRef: `agent:${target.userId}`,
+    userId: target.userId,
+    credentialId: credential.id,
   }
 }
 
