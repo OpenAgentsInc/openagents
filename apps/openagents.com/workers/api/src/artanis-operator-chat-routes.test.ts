@@ -1094,6 +1094,127 @@ describe('POST /api/operator/artanis/chat — update_unsupported_request accepta
   })
 })
 
+describe('POST /api/operator/artanis/chat — open_issue_for_unsupported_request acceptance', () => {
+  test('opens a GitHub issue for a needs_issue row and links it through the loop', async () => {
+    const KNOWN_REF = 'khala_unsupported:ur_issue_1'
+    const requests: Array<InferenceRequest> = []
+    let round = 0
+    const client = (request: InferenceRequest) => {
+      requests.push(request)
+      round += 1
+      if (round === 1) {
+        return Effect.succeed(
+          toolCallResult(
+            'open_issue_for_unsupported_request',
+            JSON.stringify({ ref: KNOWN_REF }),
+          ),
+        )
+      }
+      const toolResult = lastToolResultContent(request) ?? ''
+      return Effect.succeed({
+        content: `Filed and linked it. ${toolResult}`,
+        finishReason: 'stop' as const,
+        servedModel: 'gpt-oss-120b',
+        usage: { completionTokens: 20, promptTokens: 300, totalTokens: 320 },
+      } satisfies InferenceResult)
+    }
+
+    const sourceRow = {
+      evidenceRefs: ['trace_review.bucket.local_git_diff'],
+      githubIssueRef: null,
+      nextAction: 'open_github_issue',
+      requestRef: KNOWN_REF,
+      sourceKind: 'trace_review',
+      status: 'needs_issue',
+      suggestedIssueTitle:
+        '[Khala unsupported] Khala cannot read the local git diff',
+      summary: 'Users ask Khala to read their local git diff before answering.',
+      title: 'Khala cannot read the local git diff',
+      triageKind: 'missing_capability',
+      updatedAt: '2026-06-27T11:00:00.000Z',
+    } as const
+    let createdIssue: unknown
+    let receivedUpdate: unknown
+    const { deps } = baseDeps({
+      makeKhalaClient: () => client,
+      makeOperatorTools: () =>
+        makeArtanisOperatorTools({
+          unsupportedRequestIssueCreator: async input => {
+            createdIssue = input
+            return {
+              kind: 'created',
+              number: 6401,
+              url: 'https://github.com/OpenAgentsInc/openagents/issues/6401',
+            }
+          },
+          unsupportedRequestWriter: async update => {
+            receivedUpdate = update
+            return {
+              ...sourceRow,
+              githubIssueRef: update.githubIssueRef ?? null,
+              nextAction: 'none',
+              status: update.status ?? sourceRow.status,
+              updatedAt: '2026-06-27T12:00:00.000Z',
+            }
+          },
+          unsupportedRequests: {
+            reader: async input => {
+              expect(input).toEqual({ limit: 100, status: 'needs_issue' })
+              return [sourceRow]
+            },
+          },
+        }),
+    })
+
+    const response = await runRoute(
+      deps,
+      post({
+        messages: [
+          {
+            content:
+              'Open the GitHub issue for unsupported request khala_unsupported:ur_issue_1',
+            role: 'user',
+          },
+        ],
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    const json = (await response.json()) as Record<string, unknown>
+    const invocations = json.toolInvocations as ReadonlyArray<{
+      name: string
+      executed: boolean
+      deferredToApprovalGate: boolean
+      riskyActionKind: string | null
+    }>
+    const invocation = invocations.find(
+      item => item.name === 'open_issue_for_unsupported_request',
+    )
+    expect(invocation).toEqual({
+      deferredToApprovalGate: false,
+      executed: true,
+      executedRef: null,
+      name: 'open_issue_for_unsupported_request',
+      riskyActionKind: null,
+    })
+    expect(createdIssue).toEqual({
+      body: expect.stringContaining('trace_review.bucket.local_git_diff'),
+      labels: ['khala', 'unsupported-request'],
+      title: '[Khala unsupported] Khala cannot read the local git diff',
+    })
+    expect(receivedUpdate).toEqual({
+      githubIssueRef: 'OpenAgentsInc/openagents#6401',
+      ref: KNOWN_REF,
+      status: 'issue_opened',
+      triageKind: undefined,
+    })
+    expect(json.reply as string).toContain('Opened GitHub issue #6401')
+    expect(json.reply as string).toContain('status: issue_opened')
+    expect(json.deferredToApprovalGate).toBe(false)
+    expect(requests.length).toBeGreaterThanOrEqual(2)
+  })
+})
+
 // ---------------------------------------------------------------------------
 // get_trace_review acceptance — Artanis's iteration-11 self-improvement
 // capability drives the REAL bounded tool-calling loop through the chat

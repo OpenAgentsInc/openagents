@@ -113,7 +113,10 @@ import {
 import { makeArtanisGlmFleetStatusLoader } from './artanis-operator-glm-fleet-status'
 import { makeArtanisKhalaFeedbackReader } from './artanis-operator-khala-feedback'
 import { makeArtanisTraceReviewLoader } from './artanis-operator-trace-review'
-import { makeArtanisOperatorTools } from './artanis-operator-tools'
+import {
+  makeArtanisOperatorTools,
+  makeGitHubIssueCreator,
+} from './artanis-operator-tools'
 import {
   makeArtanisUnsupportedRequestsReader,
   makeArtanisUnsupportedRequestWriter,
@@ -8673,6 +8676,9 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
       unsupportedRequestWriter: makeArtanisUnsupportedRequestWriter({
         nowIso: currentIsoTimestamp,
         store: makeD1KhalaUnsupportedRequestStore(openAgentsDatabase(env)),
+      }),
+      unsupportedRequestIssueCreator: makeGitHubIssueCreator({
+        token: env.GITHUB_TOKEN,
       }),
       dispatchExecution: makeArtanisDispatchExecution({
         listLinkedAgentUserIds,

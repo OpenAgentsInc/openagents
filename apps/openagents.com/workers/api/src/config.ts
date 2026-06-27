@@ -2,6 +2,7 @@ import { Effect, Layer, Redacted, Schema as S } from 'effect'
 import * as Context from 'effect/Context'
 
 export type OpenAgentsWorkerConfigEnv = Readonly<{
+  GITHUB_TOKEN?: string | undefined
   ARTANIS_SCHEDULED_RUNNER_ENABLED?: string | undefined
   // Compose-and-list marketplace MVP flag (EPIC #5510, #5515). Default OFF: the
   // `/api/public/marketplace/composed-products` listing surface is INERT (empty

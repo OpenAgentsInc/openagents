@@ -65,12 +65,14 @@ export const makeArtanisUnsupportedRequestsReader = (
 const projectUnsupportedRequestRecord = (
   record: KhalaUnsupportedRequestRecord,
 ): ArtanisUnsupportedRequestRecord => ({
+  evidenceRefs: record.evidenceRefs,
   githubIssueRef: record.githubIssueRef,
   nextAction: record.nextAction,
   requestRef: record.requestRef,
   sourceKind: record.sourceKind,
   status: record.status,
   summary: record.summary,
+  suggestedIssueTitle: record.suggestedIssueTitle,
   title: record.title,
   triageKind: record.triageKind,
   updatedAt: record.updatedAt,

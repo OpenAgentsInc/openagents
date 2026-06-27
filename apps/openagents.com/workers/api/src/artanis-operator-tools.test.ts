@@ -27,6 +27,7 @@ import {
   makeArtanisListGithubIssuesTool,
   makeArtanisListPylonAssignmentsTool,
   makeArtanisListRepoDirTool,
+  makeArtanisOpenUnsupportedRequestIssueTool,
   makeArtanisOperatorTools,
   makeArtanisReadGithubIssueTool,
   makeArtanisReadRepoFileTool,
@@ -2216,6 +2217,125 @@ describe('get_trace_review (live Khala trace-review report) - iteration 11', () 
   })
 })
 
+describe('open_issue_for_unsupported_request (GitHub issue create + ledger link) — #6394', () => {
+  const baseRow: ArtanisUnsupportedRequestRecord = {
+    evidenceRefs: [
+      'trace_review.bucket.local_git_diff',
+      'khala_feedback:fb_public_1',
+    ],
+    githubIssueRef: null,
+    nextAction: 'open_github_issue',
+    requestRef: 'khala_unsupported:ur_issue_1',
+    sourceKind: 'trace_review',
+    status: 'needs_issue',
+    suggestedIssueTitle:
+      '[Khala unsupported] Khala cannot read the local git diff',
+    summary: 'Users ask Khala to read their local git diff before answering.',
+    title: 'Khala cannot read the local git diff',
+    triageKind: 'missing_capability',
+    updatedAt: '2026-06-27T11:00:00.000Z',
+  }
+
+  test('creates a public GitHub issue for a needs_issue row, then links issue_opened', async () => {
+    const createdIssues: Array<unknown> = []
+    const updates: Array<unknown> = []
+    const tool = makeArtanisOpenUnsupportedRequestIssueTool({
+      issueCreator: async input => {
+        createdIssues.push(input)
+        return {
+          kind: 'created',
+          number: 6399,
+          url: 'https://github.com/OpenAgentsInc/openagents/issues/6399',
+        }
+      },
+      reader: async input => {
+        expect(input).toEqual({ limit: 100, status: 'needs_issue' })
+        return [baseRow]
+      },
+      writer: async update => {
+        updates.push(update)
+        return {
+          ...baseRow,
+          githubIssueRef: update.githubIssueRef ?? null,
+          nextAction: 'none',
+          status: update.status ?? baseRow.status,
+          updatedAt: '2026-06-27T12:00:00.000Z',
+        }
+      },
+    })
+
+    expect(tool.kind).toBe('write')
+    expect(tool.definition.name).toBe('open_issue_for_unsupported_request')
+
+    const result = await Effect.runPromise(
+      tool.execute({ ref: 'khala_unsupported:ur_issue_1' }),
+    )
+
+    expect(createdIssues).toEqual([
+      {
+        body: expect.stringContaining('trace_review.bucket.local_git_diff'),
+        labels: ['khala', 'unsupported-request'],
+        title: '[Khala unsupported] Khala cannot read the local git diff',
+      },
+    ])
+    expect(JSON.stringify(createdIssues)).not.toMatch(
+      /bearer|secret|\/Users\/|wallet|raw[_-]?prompt/i,
+    )
+    expect(updates).toEqual([
+      {
+        githubIssueRef: 'OpenAgentsInc/openagents#6399',
+        ref: 'khala_unsupported:ur_issue_1',
+        status: 'issue_opened',
+        triageKind: undefined,
+      },
+    ])
+    expect(result).toContain('Opened GitHub issue #6399')
+    expect(result).toContain('status: issue_opened')
+    expect(result).toContain('linked issue: OpenAgentsInc/openagents#6399')
+  })
+
+  test('does not write the ledger when GitHub issue creation is rejected', async () => {
+    const updates: Array<unknown> = []
+    const tool = makeArtanisOpenUnsupportedRequestIssueTool({
+      issueCreator: async () => ({
+        kind: 'rejected',
+        reason: 'github_issue_token_missing',
+      }),
+      reader: async () => [baseRow],
+      writer: async update => {
+        updates.push(update)
+        return baseRow
+      },
+    })
+
+    const result = await Effect.runPromise(
+      tool.execute({ ref: 'khala_unsupported:ur_issue_1' }),
+    )
+
+    expect(result).toContain('github_issue_token_missing')
+    expect(updates).toEqual([])
+  })
+
+  test('refuses a non-needs_issue row before creating an issue', async () => {
+    const createdIssues: Array<unknown> = []
+    const tool = makeArtanisOpenUnsupportedRequestIssueTool({
+      issueCreator: async input => {
+        createdIssues.push(input)
+        return { kind: 'created', number: 6400, url: 'issue-url' }
+      },
+      reader: async () => [{ ...baseRow, status: 'open' }],
+      writer: async () => baseRow,
+    })
+
+    const result = await Effect.runPromise(
+      tool.execute({ ref: 'khala_unsupported:ur_issue_1' }),
+    )
+
+    expect(result).toContain('not needs_issue')
+    expect(createdIssues).toEqual([])
+  })
+})
+
 describe('makeArtanisOperatorTools default table', () => {
   test('includes the repo-read tools, the issue-read tool, the network-stats tool, the job-status tool, and the dispatch tool', () => {
     const tools = makeArtanisOperatorTools()
@@ -2232,6 +2352,7 @@ describe('makeArtanisOperatorTools default table', () => {
       'list_github_issues',
       'list_pylon_assignments',
       'list_repo_dir',
+      'open_issue_for_unsupported_request',
       'read_github_issue',
       'read_repo_file',
       'trigger_synthetic_load',
