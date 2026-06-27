@@ -7,6 +7,7 @@ import {
   ARTANIS_SYNTHETIC_LOAD_MAX_TARGET_TOKENS,
   ARTANIS_SYNTHETIC_LOAD_RISKY_ACTION_KIND,
   ARTANIS_SYNTHETIC_LOAD_RUN_TYPES,
+  type ArtanisGlmFleetStatus,
   type ArtanisKhalaFeedbackRecord,
   type ArtanisPylonAssignmentSummary,
   type ArtanisPylonJobStatus,
@@ -14,6 +15,7 @@ import {
   isSafeArtanisAssignmentRef,
   isSafeArtanisRepoPath,
   makeArtanisDispatchCodexTaskTool,
+  makeArtanisGetGlmFleetStatusTool,
   makeArtanisGetKhalaFeedbackTool,
   makeArtanisGetNetworkStatsTool,
   makeArtanisGetPylonJobStatusTool,
@@ -23,6 +25,7 @@ import {
   makeArtanisReadGithubIssueTool,
   makeArtanisReadRepoFileTool,
   makeArtanisTriggerSyntheticLoadTool,
+  normalizeArtanisGlmFleetStatus,
   parseArtanisAssignmentRef,
   parseArtanisIssueNumber,
 } from './artanis-operator-tools'
@@ -1135,12 +1138,145 @@ describe('trigger_synthetic_load (RISKY plan-only) — iteration 4', () => {
   })
 })
 
+describe('get_glm_fleet_status (live GLM inference-fleet readiness) - iteration 7', () => {
+  test('returns a concise summary naming status + ready/total replicas from the injected fetch', async () => {
+    const urls: Array<string> = []
+    const fetchImpl = (async (input: RequestInfo | URL) => {
+      urls.push(typeof input === 'string' ? input : input.toString())
+      return new Response(
+        JSON.stringify({
+          readyReplicas: 8,
+          status: 'ready',
+          totalReplicas: 8,
+        }),
+        { status: 200 },
+      )
+    }) as typeof fetch
+
+    const tool = makeArtanisGetGlmFleetStatusTool({ fetchImpl })
+    // It is a READ tool (executes freely, never gated/risky).
+    expect(tool.kind).toBe('read')
+    expect(tool.definition.name).toBe('get_glm_fleet_status')
+
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toContain('status=ready')
+    expect(result).toContain('8/8 replicas ready')
+    // It hit the public-safe readiness route by default.
+    expect(urls[0]).toBe(
+      'https://openagents.com/api/v1/gateway/glm-fleet/readiness',
+    )
+  })
+
+  test('normalizes the live route shape (status + counts.{ready,total,warm}ReplicaCount)', async () => {
+    const fetchImpl = (async () =>
+      new Response(
+        JSON.stringify({
+          counts: {
+            readyReplicaCount: 3,
+            totalReplicaCount: 6,
+            warmReplicaCount: 2,
+          },
+          kind: 'glm_fleet_readiness',
+          status: 'degraded',
+        }),
+        { status: 200 },
+      )) as typeof fetch
+    const tool = makeArtanisGetGlmFleetStatusTool({ fetchImpl })
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toContain('status=degraded')
+    expect(result).toContain('3/6 replicas ready')
+    expect(result).toContain('(2 warm)')
+  })
+
+  test('a failing/unreachable fetch returns an honest "(could not fetch ...)" string, never fabricated numbers', async () => {
+    const failing = (async () => {
+      throw new Error('network down')
+    }) as typeof fetch
+    const tool = makeArtanisGetGlmFleetStatusTool({ fetchImpl: failing })
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toContain('could not fetch GLM fleet status')
+    // No invented replica counts leak into the honest failure string.
+    expect(result).not.toMatch(/replicas ready/)
+    expect(result).not.toMatch(/Error:/)
+  })
+
+  test('a non-OK response reads as an honest soft failure, never invention', async () => {
+    const fetchImpl = (async () =>
+      new Response('inference_gateway_disabled', { status: 404 })) as typeof fetch
+    const tool = makeArtanisGetGlmFleetStatusTool({ fetchImpl })
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toContain('could not fetch GLM fleet status')
+    expect(result).toContain('status 404')
+  })
+
+  test('an unexpected payload shape reads as an honest soft failure', async () => {
+    const fetchImpl = (async () =>
+      new Response(JSON.stringify({ nope: true }), { status: 200 })) as typeof fetch
+    const tool = makeArtanisGetGlmFleetStatusTool({ fetchImpl })
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toContain('unexpected response shape')
+  })
+
+  test('uses the in-worker loadFleetStatus override instead of HTTP when provided', async () => {
+    let httpCalled = false
+    const httpFetch = (async () => {
+      httpCalled = true
+      return new Response('{}', { status: 200 })
+    }) as typeof fetch
+    const tool = makeArtanisGetGlmFleetStatusTool({
+      fetchImpl: httpFetch,
+      loadFleetStatus: async (): Promise<ArtanisGlmFleetStatus> => ({
+        readyReplicas: 5,
+        status: 'ready',
+        totalReplicas: 5,
+        warmReplicas: null,
+      }),
+    })
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(httpCalled).toBe(false)
+    expect(result).toContain('status=ready')
+    expect(result).toContain('5/5 replicas ready')
+    // No warm count reported -> no "(N warm)" suffix.
+    expect(result).not.toContain('warm')
+  })
+
+  test('a loadFleetStatus rejection reads as an honest soft failure, never a throw', async () => {
+    const tool = makeArtanisGetGlmFleetStatusTool({
+      loadFleetStatus: async () => {
+        throw new Error('d1 down')
+      },
+    })
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toContain('could not fetch GLM fleet status')
+    expect(result).not.toMatch(/Error:/)
+  })
+
+  test('normalizeArtanisGlmFleetStatus defensively redacts a non-public-safe status', () => {
+    const normalized = normalizeArtanisGlmFleetStatus({
+      readyReplicas: 1,
+      status: 'ready bearer sk-abc123',
+      totalReplicas: 1,
+    })
+    expect(normalized).not.toBeNull()
+    expect(normalized?.status).toBe('(redacted)')
+  })
+
+  test('normalizeArtanisGlmFleetStatus returns null when required fields are missing', () => {
+    expect(normalizeArtanisGlmFleetStatus(null)).toBeNull()
+    expect(normalizeArtanisGlmFleetStatus({ status: 'ready' })).toBeNull()
+    expect(
+      normalizeArtanisGlmFleetStatus({ readyReplicas: 1, totalReplicas: 1 }),
+    ).toBeNull()
+  })
+})
+
 describe('makeArtanisOperatorTools default table', () => {
   test('includes the repo-read tools, the issue-read tool, the network-stats tool, the job-status tool, and the dispatch tool', () => {
     const tools = makeArtanisOperatorTools()
     const names = tools.map(tool => tool.definition.name).sort()
     expect(names).toEqual([
       'dispatch_codex_task',
+      'get_glm_fleet_status',
       'get_khala_feedback',
       'get_network_stats',
       'get_pylon_job_status',
@@ -1157,6 +1293,13 @@ describe('makeArtanisOperatorTools default table', () => {
     const tool = tools.find(
       t => t.definition.name === 'list_pylon_assignments',
     )
+    expect(tool).toBeDefined()
+    expect(tool?.kind).toBe('read')
+  })
+
+  test('the default table includes a read-kind get_glm_fleet_status tool', () => {
+    const tools = makeArtanisOperatorTools()
+    const tool = tools.find(t => t.definition.name === 'get_glm_fleet_status')
     expect(tool).toBeDefined()
     expect(tool?.kind).toBe('read')
   })

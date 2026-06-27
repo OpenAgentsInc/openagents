@@ -1473,6 +1473,191 @@ export const makeArtanisGetNetworkStatsTool = (
 })
 
 // ---------------------------------------------------------------------------
+// get_glm_fleet_status — LIVE GLM inference-fleet readiness (iteration 7).
+// ---------------------------------------------------------------------------
+//
+// Artanis named this his ONE highest-value next tool in iteration 7 of his
+// self-improvement loop: an on-demand READ of the live GLM serving fleet's
+// readiness, so he can GATE synthetic-load and Codex-dispatch decisions on
+// healthy capacity instead of piling work onto a saturated/cold fleet and
+// degrading real users. This directly speeds the stress/Terminal-Bench and
+// parallel-delegation goals: before he plans a synthetic-load burn or fans out
+// parallel coding work, he can confirm the fleet is actually `ready` with spare
+// ready replicas first.
+//
+// It stays conservative by construction:
+//   - READ-ONLY + SIDE-EFFECT-FREE. It reads the SAME public-safe GLM fleet
+//     readiness projection the `GET /v1/gateway/glm-fleet/readiness` route
+//     exposes — aggregate replica COUNTS + an overall status only. It never
+//     probes hosts, returns raw host origins, changes replica state, or touches
+//     the GLM serving / admission path.
+//   - PUBLIC-SAFE. Only the overall status and bounded ready/total/warm replica
+//     COUNTS are surfaced; no host origins, credentials, prompts, completions,
+//     prices, or balances ever enter the summary.
+//   - FAIL-SOFT + HONEST. An unreachable source (or an unexpected response
+//     shape) degrades to an honest "(could not fetch GLM fleet status ...)"
+//     string and NEVER fabricates replica numbers.
+
+// The default live source for the fleet readiness read (the public-safe route).
+export const ARTANIS_GLM_FLEET_STATUS_URL =
+  'https://openagents.com/api/v1/gateway/glm-fleet/readiness'
+
+// A public-safe normalized projection of the GLM serving fleet's readiness. The
+// production loader builds this from the same in-worker GLM fleet readiness
+// projection the public route uses; tests inject a fake fetch returning the
+// readiness payload. Aggregate counts + status only - never host-level detail.
+export type ArtanisGlmFleetStatus = Readonly<{
+  // The overall fleet status, e.g. 'ready' | 'degraded' | 'unavailable'.
+  status: string
+  // Replicas ready to serve right now.
+  readyReplicas: number
+  // Total configured replicas.
+  totalReplicas: number
+  // Replicas warm (loaded but not yet fully ready), or null when not reported.
+  warmReplicas: number | null
+}>
+
+export type ArtanisGlmFleetStatusConfig = Readonly<{
+  // The readiness URL to fetch (default the public-safe route). Used only on the
+  // HTTP path (no `loadFleetStatus` override).
+  url?: string | undefined
+  // Injected for testability; defaults to the global fetch.
+  fetchImpl?: typeof fetch | undefined
+  // In-worker override (D1 + in-memory heartbeat projection). The Worker cannot
+  // reliably HTTP-fetch its OWN public zone, so production wires this to read the
+  // fleet readiness projection directly (mirroring get_network_stats' loadStats).
+  // When provided it is used instead of an HTTP fetch.
+  loadFleetStatus?: (() => Promise<ArtanisGlmFleetStatus>) | undefined
+}>
+
+// Coerce an unknown value into a non-negative integer count, or null when it is
+// not a usable count. Never invents a number from a missing/garbage field.
+const coerceFleetCount = (value: unknown): number | null =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? Math.trunc(value)
+    : null
+
+// Normalize an unknown readiness payload into the public-safe fleet status, or
+// null when the required status/ready/total fields cannot be resolved. It is
+// tolerant of both the live route shape (`{ status, counts: { readyReplicaCount,
+// totalReplicaCount, warmReplicaCount } }`) and a flatter
+// `{ status, readyReplicas, totalReplicas }` shape, preferring the structured
+// `counts` block when present. Honest absence over invention: a payload missing
+// status or both replica counts returns null (the tool then reads as a soft
+// "(could not fetch ...)").
+export const normalizeArtanisGlmFleetStatus = (
+  body: unknown,
+): ArtanisGlmFleetStatus | null => {
+  if (typeof body !== 'object' || body === null) return null
+  const record = body as Record<string, unknown>
+  const counts =
+    typeof record.counts === 'object' && record.counts !== null
+      ? (record.counts as Record<string, unknown>)
+      : {}
+
+  const status =
+    typeof record.status === 'string' && record.status.trim() !== ''
+      ? record.status.trim()
+      : null
+  const readyReplicas =
+    coerceFleetCount(counts.readyReplicaCount) ??
+    coerceFleetCount(record.readyReplicas) ??
+    coerceFleetCount(record.ready_replicas)
+  const totalReplicas =
+    coerceFleetCount(counts.totalReplicaCount) ??
+    coerceFleetCount(record.totalReplicas) ??
+    coerceFleetCount(record.total_replicas)
+  if (status === null || readyReplicas === null || totalReplicas === null) {
+    return null
+  }
+  const warmReplicas =
+    coerceFleetCount(counts.warmReplicaCount) ??
+    coerceFleetCount(record.warmReplicas) ??
+    coerceFleetCount(record.warm_replicas)
+
+  // Defensive public-safety gate: the status is the only free-text field, and
+  // the route only ever emits a bounded enum, but redact anything unexpected so
+  // an upstream regression cannot leak private material into Artanis's context.
+  return {
+    readyReplicas,
+    status: dispatchFieldIsSafe(status) ? status : '(redacted)',
+    totalReplicas,
+    warmReplicas,
+  }
+}
+
+// Format the public-safe fleet status as one concise line naming the overall
+// status and the ready/total replica counts (plus warm when reported).
+const formatGlmFleetStatusLine = (status: ArtanisGlmFleetStatus): string => {
+  const warm =
+    status.warmReplicas === null ? '' : ` (${status.warmReplicas} warm)`
+  return `GLM inference fleet: status=${status.status}, ${status.readyReplicas}/${status.totalReplicas} replicas ready${warm}.`
+}
+
+// get_glm_fleet_status() - reads the LIVE GLM inference-fleet readiness. Returns
+// a concise public-safe summary naming the overall status and ready/total (and
+// warm) replica counts. Honest absence: an unreachable source, a non-OK
+// response, or an unexpected payload shape reads as "(could not fetch GLM fleet
+// status ...)" and never fabricates replica numbers. Side-effect-free, read-only,
+// no spend; takes no arguments.
+export const makeArtanisGetGlmFleetStatusTool = (
+  config: ArtanisGlmFleetStatusConfig = {},
+): ArtanisOperatorReadTool => {
+  const url = config.url ?? ARTANIS_GLM_FLEET_STATUS_URL
+  const fetchImpl = config.fetchImpl ?? globalThis.fetch
+  const loadFleetStatus = config.loadFleetStatus
+
+  return {
+    definition: {
+      description:
+        'Read the LIVE GLM inference-fleet readiness: the overall fleet status (ready/degraded/unavailable) and how many serving replicas are ready/warm out of the total configured. Use this to GATE your decisions on healthy capacity BEFORE you plan a synthetic-load burn or fan out parallel Codex/coding work - do not pile load onto a saturated or cold fleet and degrade real users. Read-only, side-effect-free, public-safe (aggregate counts + status only; no host origins or credentials). Takes no arguments; an unreachable source reads as "(could not fetch GLM fleet status ...)".',
+      name: 'get_glm_fleet_status',
+      parameters: {
+        additionalProperties: false,
+        properties: {},
+        type: 'object',
+      },
+    },
+    execute: (_args: unknown) =>
+      Effect.gen(function* () {
+        // In-worker override first (the Worker cannot reliably HTTP-fetch its own
+        // public zone). A loader rejection degrades to an honest soft failure.
+        if (loadFleetStatus !== undefined) {
+          const exit = yield* Effect.exit(
+            Effect.tryPromise(() => loadFleetStatus()),
+          )
+          if (exit._tag === 'Failure') {
+            return '(could not fetch GLM fleet status)'
+          }
+          return formatGlmFleetStatusLine(exit.value)
+        }
+
+        const response = yield* Effect.tryPromise(() =>
+          fetchImpl(url, { headers: { 'User-Agent': 'artanis-operator' } }),
+        ).pipe(Effect.orElseSucceed(() => undefined))
+
+        if (response === undefined) {
+          return `(could not fetch GLM fleet status from ${url})`
+        }
+        if (!response.ok) {
+          return `(could not fetch GLM fleet status from ${url}: status ${response.status})`
+        }
+
+        const body = yield* Effect.tryPromise(
+          () => response.json() as Promise<unknown>,
+        ).pipe(Effect.orElseSucceed(() => undefined))
+
+        const normalized = normalizeArtanisGlmFleetStatus(body)
+        if (normalized === null) {
+          return `(could not fetch GLM fleet status from ${url}: unexpected response shape)`
+        }
+        return formatGlmFleetStatusLine(normalized)
+      }),
+    kind: 'read',
+  }
+}
+
+// ---------------------------------------------------------------------------
 // trigger_synthetic_load (RISKY: plan-only) — iteration-4 self-improvement.
 // ---------------------------------------------------------------------------
 //
@@ -1701,6 +1886,12 @@ export const makeArtanisTriggerSyntheticLoadTool = (
 // `khalaFeedback.reader` is the owner-scoped Khala CLI feedback reader behind the
 // iteration-6 `get_khala_feedback` read tool; with no reader wired it returns an
 // honest "(could not read feedback …)" rather than inventing one.
+// `glmFleetStatus.loadFleetStatus` is the in-worker GLM fleet readiness loader
+// behind the iteration-7 `get_glm_fleet_status` read tool (the Worker cannot
+// reliably HTTP-fetch its own public zone); with no override wired it falls back
+// to an HTTP fetch of the public-safe readiness route, and an unreachable source
+// reads as an honest "(could not fetch GLM fleet status …)" rather than
+// inventing replica numbers.
 export const makeArtanisOperatorTools = (
   config: Readonly<{
     repoRead?: ArtanisRepoReadConfig | undefined
@@ -1710,6 +1901,7 @@ export const makeArtanisOperatorTools = (
     khalaFeedback?: ArtanisKhalaFeedbackConfig | undefined
     defaultBranch?: string | undefined
     networkStats?: ArtanisGetNetworkStatsConfig | undefined
+    glmFleetStatus?: ArtanisGlmFleetStatusConfig | undefined
     dispatchExecution?: ArtanisDispatchExecution | undefined
     syntheticLoad?:
       | Readonly<{
@@ -1729,6 +1921,7 @@ export const makeArtanisOperatorTools = (
     makeArtanisListRepoDirTool(config.repoRead),
     makeArtanisReadGithubIssueTool(issueRead),
     makeArtanisGetNetworkStatsTool(config.networkStats),
+    makeArtanisGetGlmFleetStatusTool(config.glmFleetStatus),
     makeArtanisGetPylonJobStatusTool(config.pylonJobStatus),
     makeArtanisListPylonAssignmentsTool(config.pylonAssignments),
     makeArtanisGetKhalaFeedbackTool(config.khalaFeedback),

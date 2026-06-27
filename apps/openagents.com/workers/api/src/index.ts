@@ -109,6 +109,7 @@ import {
   makeArtanisPylonAssignmentsLister,
   makeArtanisPylonJobStatusReader,
 } from './artanis-operator-pylon-job-status'
+import { makeArtanisGlmFleetStatusLoader } from './artanis-operator-glm-fleet-status'
 import { makeArtanisKhalaFeedbackReader } from './artanis-operator-khala-feedback'
 import { makeArtanisOperatorTools } from './artanis-operator-tools'
 import { saveArtanisForumPublicationIntent } from './artanis-persistence'
@@ -8558,6 +8559,18 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
           loadArtanisNetworkStatsFromLedger(
             makeD1TokenUsageLedger(openAgentsDatabase(env)),
           ),
+      },
+      // iteration-7: the live GLM inference-fleet readiness READ tool. Reads the
+      // SAME public-safe fleet readiness projection the
+      // GET /v1/gateway/glm-fleet/readiness route serves, IN-WORKER (the Worker
+      // cannot reliably HTTP-fetch its own public zone), so Artanis can gate
+      // synthetic-load and Codex-dispatch decisions on healthy capacity.
+      // Read-only, side-effect-free, public-safe (aggregate counts + status only).
+      glmFleetStatus: {
+        loadFleetStatus: makeArtanisGlmFleetStatusLoader({
+          db: openAgentsDatabase(env),
+          env,
+        }),
       },
       // iteration-3: the owner-scoped Pylon job-status read tool. Reads the
       // public-safe closeout/proof status of ONE of the owner's own linked-Pylon
