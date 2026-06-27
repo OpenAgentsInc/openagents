@@ -103,6 +103,7 @@ import { loadArtanisNetworkStatsFromLedger } from './artanis-network-stats-d1'
 import { makeOperatorArtanisConsoleRoutes } from './artanis-operator-console-routes'
 import {
   makeArtanisDispatchExecution,
+  readEffectiveArtanisRiskyActionApproval,
   readEffectiveArtanisPylonDispatchApprovalForOwner,
 } from './artanis-operator-dispatch-execution'
 import { isOpenAgentsOwnerAgentOpenAuthUserId } from './artanis-owner-authority'
@@ -113,7 +114,10 @@ import {
 import { makeArtanisGlmFleetStatusLoader } from './artanis-operator-glm-fleet-status'
 import { makeArtanisKhalaFeedbackReader } from './artanis-operator-khala-feedback'
 import { makeArtanisTraceReviewLoader } from './artanis-operator-trace-review'
-import { makeArtanisOperatorTools } from './artanis-operator-tools'
+import {
+  type ArtanisForumUpdatePlanInput,
+  makeArtanisOperatorTools,
+} from './artanis-operator-tools'
 import {
   makeArtanisUnsupportedRequestsReader,
   makeArtanisUnsupportedRequestWriter,
@@ -1599,6 +1603,92 @@ const artanisComposerForumPostForEnv =
         error:
           error instanceof Error ? error.message.slice(0, 120) : 'post_failed',
       }
+    }
+  }
+
+const artanisOperatorForumUpdateForEnv =
+  (environment: Env) =>
+  async (
+    input: ArtanisForumUpdatePlanInput,
+  ): Promise<
+    | {
+        idempotent: boolean
+        kind: 'posted'
+        postId: string
+        publicUrl: string
+        topicId: string
+      }
+    | { kind: 'rejected'; reason: string }
+  > => {
+    const token = (environment as { ARTANIS_AGENT_TOKEN?: string })
+      .ARTANIS_AGENT_TOKEN
+    if (token === undefined || token === '') {
+      return { kind: 'rejected', reason: 'artanis_agent_token_missing' }
+    }
+
+    const path =
+      input.action === 'create_topic'
+        ? `/api/forum/forums/${encodeURIComponent(input.forumRef ?? '')}/topics`
+        : `/api/forum/topics/${encodeURIComponent(input.topicId ?? '')}/posts`
+    const body =
+      input.action === 'create_topic'
+        ? { bodyText: input.bodyText, title: input.title ?? '' }
+        : { bodyText: input.bodyText }
+
+    try {
+      const response = await runArtanisForumRouteEffect(
+        forumRoutes.routeForumRequest(
+          new Request(`https://openagents.com${path}`, {
+            body: JSON.stringify(body),
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+              'Idempotency-Key': input.idempotencyKey,
+            },
+            method: 'POST',
+          }),
+          openAgentsDatabase(environment),
+          {
+            agentStore: makeD1AgentRegistrationStore(
+              openAgentsDatabase(environment),
+            ),
+          },
+        ),
+      )
+      if (response === undefined) {
+        return { kind: 'rejected', reason: 'forum_route_unmatched' }
+      }
+      const payload = (await response.json()) as {
+        error?: string
+        firstPost?: { postId?: string }
+        idempotent?: boolean
+        post?: { postId?: string }
+        topic?: { topicId?: string }
+      }
+      const postId =
+        input.action === 'create_topic'
+          ? payload.firstPost?.postId
+          : payload.post?.postId
+      const topicId = payload.topic?.topicId ?? input.topicId
+      if (
+        response.status >= 400 ||
+        postId === undefined ||
+        topicId === undefined
+      ) {
+        return {
+          kind: 'rejected',
+          reason: String(payload.error ?? response.status),
+        }
+      }
+      return {
+        idempotent: payload.idempotent === true,
+        kind: 'posted',
+        postId,
+        publicUrl: `https://openagents.com/api/forum/posts/${postId}`,
+        topicId,
+      }
+    } catch {
+      return { kind: 'rejected', reason: 'forum_update_failed' }
     }
   }
 
@@ -8674,6 +8764,18 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
         nowIso: currentIsoTimestamp,
         store: makeD1KhalaUnsupportedRequestStore(openAgentsDatabase(env)),
       }),
+      forumUpdateExecution: {
+        isOwnerApproved: () =>
+          Effect.promise(() =>
+            readEffectiveArtanisRiskyActionApproval(
+              openAgentsDatabase(env),
+              currentIsoTimestamp(),
+              'public_forum_post',
+            ),
+          ),
+        postForumUpdate: plan =>
+          Effect.promise(() => artanisOperatorForumUpdateForEnv(env)(plan)),
+      },
       dispatchExecution: makeArtanisDispatchExecution({
         listLinkedAgentUserIds,
         makeId: () => compactRandomId('artanis_dispatch'),

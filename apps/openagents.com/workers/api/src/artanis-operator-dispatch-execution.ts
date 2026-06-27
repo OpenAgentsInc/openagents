@@ -32,6 +32,7 @@ import { Effect, Schema as S } from 'effect'
 
 import {
   ArtanisApprovalGateRecord,
+  type ArtanisRiskyActionKind,
   artanisApprovalGateEffective,
 } from './artanis-approval-gates'
 import { isOpenAgentsOwnerAgentOpenAuthUserId } from './artanis-owner-authority'
@@ -194,9 +195,10 @@ export const makeArtanisDispatchExecution = (
 // SINGLE thing that flips the gated dispatch from "deferred" to "live": once
 // such a row exists in `artanis_approval_gates`, the next owner dispatch fires.
 // Conservative + fail-soft: any read/decode failure reads as "not approved".
-export const readEffectiveArtanisPylonDispatchApproval = async (
+export const readEffectiveArtanisRiskyActionApproval = async (
   db: D1Database,
   nowIso: string,
+  kind: ArtanisRiskyActionKind,
 ): Promise<boolean> => {
   // `artanis_approval_gates` is the persisted Artanis approval-gate table
   // (`tableSpecs.approval_gate` in `artanis-persistence.ts`); `record_json`
@@ -216,7 +218,7 @@ export const readEffectiveArtanisPylonDispatchApproval = async (
       const parsed = parseJsonUnknown(row.record_json)
       const record = S.decodeUnknownSync(ArtanisApprovalGateRecord)(parsed)
       if (
-        record.kind === 'pylon_job_dispatch' &&
+        record.kind === kind &&
         artanisApprovalGateEffective(record, nowIso)
       ) {
         return true
@@ -227,6 +229,12 @@ export const readEffectiveArtanisPylonDispatchApproval = async (
   }
   return false
 }
+
+export const readEffectiveArtanisPylonDispatchApproval = async (
+  db: D1Database,
+  nowIso: string,
+): Promise<boolean> =>
+  readEffectiveArtanisRiskyActionApproval(db, nowIso, 'pylon_job_dispatch')
 
 
 // Owner-promotion-aware effective-approval read (owner-directed 2026-06-27,

@@ -2051,6 +2051,297 @@ const asStringArray = (value: unknown): ReadonlyArray<string> =>
     ? value.filter((item): item is string => typeof item === 'string')
     : []
 
+// ---------------------------------------------------------------------------
+// #6435 — post_forum_update (GATED: public_forum_post).
+// ---------------------------------------------------------------------------
+
+export type ArtanisForumUpdateAction = 'create_topic' | 'reply'
+
+export type ArtanisForumUpdatePlanInput = Readonly<{
+  action: ArtanisForumUpdateAction
+  bodyText: string
+  forumRef: string | undefined
+  idempotencyKey: string
+  title: string | undefined
+  topicId: string | undefined
+}>
+
+export type ArtanisForumUpdateCreateResult =
+  | Readonly<{
+      kind: 'posted'
+      postId: string
+      topicId: string
+      publicUrl: string
+      idempotent: boolean
+    }>
+  | Readonly<{ kind: 'rejected'; reason: string }>
+
+export type ArtanisForumUpdateExecution = Readonly<{
+  isOwnerApproved: () => Effect.Effect<boolean>
+  postForumUpdate: (
+    plan: ArtanisForumUpdatePlanInput,
+  ) => Effect.Effect<ArtanisForumUpdateCreateResult>
+}>
+
+const ARTANIS_FORUM_UPDATE_BODY_MAX_CHARS = 12_000
+const ARTANIS_FORUM_UPDATE_TITLE_MAX_CHARS = 160
+
+const isSafeForumRef = (value: string): boolean =>
+  value.length <= 160 &&
+  /^[A-Za-z0-9][A-Za-z0-9_.:-]*$/.test(value) &&
+  dispatchFieldIsSafe(value)
+
+const isSafeForumIdempotencyKey = (value: string): boolean =>
+  value.length >= 8 &&
+  value.length <= 200 &&
+  /^[A-Za-z0-9][A-Za-z0-9_.:-]*$/.test(value) &&
+  dispatchFieldIsSafe(value)
+
+const parseForumUpdateAction = (
+  value: unknown,
+): ArtanisForumUpdateAction | undefined => {
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim().toLowerCase()
+  if (trimmed === 'create_topic' || trimmed === 'topic') return 'create_topic'
+  if (trimmed === 'reply') return 'reply'
+  return undefined
+}
+
+const forumUpdateTextIsSafe = (value: string): boolean =>
+  dispatchFieldIsSafe(value) &&
+  !/https?:\/\/\S*(token|secret|auth|private)/i.test(value)
+
+const buildArtanisForumUpdatePlan = (
+  args: unknown,
+):
+  | Readonly<{ ok: true; input: ArtanisForumUpdatePlanInput; planText: string }>
+  | Readonly<{ ok: false; message: string }> => {
+  const record =
+    typeof args === 'object' && args !== null
+      ? (args as Record<string, unknown>)
+      : {}
+
+  const action = parseForumUpdateAction(record.action ?? record.mode)
+  if (action === undefined) {
+    return {
+      message:
+        '(invalid arguments: "action" must be "create_topic" or "reply")',
+      ok: false,
+    }
+  }
+
+  const bodyText = asString(record.bodyText ?? record.body ?? record.message)
+  if (bodyText === undefined) {
+    return {
+      message: '(invalid arguments: a public-safe "bodyText" string is required)',
+      ok: false,
+    }
+  }
+  if (
+    bodyText.length > ARTANIS_FORUM_UPDATE_BODY_MAX_CHARS ||
+    !forumUpdateTextIsSafe(bodyText)
+  ) {
+    return {
+      message:
+        '(blocked: forum update body must be bounded public-safe text with no secrets, tokens, private URLs, wallet material, or local paths)',
+      ok: false,
+    }
+  }
+
+  const idempotencyKey = asString(
+    record.idempotencyKey ?? record.idempotency_key,
+  )
+  if (
+    idempotencyKey === undefined ||
+    !isSafeForumIdempotencyKey(idempotencyKey)
+  ) {
+    return {
+      message:
+        '(invalid arguments: a public-safe "idempotencyKey" string of 8-200 characters is required)',
+      ok: false,
+    }
+  }
+
+  const forumRef = asString(record.forumRef ?? record.forum ?? record.forumSlug)
+  const topicId = asString(record.topicId ?? record.topic_id)
+  const title = asString(record.title)
+
+  if (action === 'create_topic') {
+    if (forumRef === undefined || !isSafeForumRef(forumRef)) {
+      return {
+        message:
+          '(invalid arguments: create_topic requires a public-safe "forumRef", e.g. "artanis" or "product-promises")',
+        ok: false,
+      }
+    }
+    if (
+      title === undefined ||
+      title.length > ARTANIS_FORUM_UPDATE_TITLE_MAX_CHARS ||
+      !forumUpdateTextIsSafe(title)
+    ) {
+      return {
+        message:
+          '(invalid arguments: create_topic requires a bounded public-safe "title")',
+        ok: false,
+      }
+    }
+  }
+
+  if (action === 'reply') {
+    if (topicId === undefined || !isSafeForumRef(topicId)) {
+      return {
+        message:
+          '(invalid arguments: reply requires a public-safe "topicId")',
+        ok: false,
+      }
+    }
+  }
+
+  const endpoint =
+    action === 'create_topic'
+      ? `POST /api/forum/forums/${forumRef}/topics`
+      : `POST /api/forum/topics/${topicId}/posts`
+  const target =
+    action === 'create_topic'
+      ? `forum=${forumRef}; title="${title}"`
+      : `topicId=${topicId}`
+  const planText = [
+    'Planned Artanis Forum update (public Forum write; requires owner approval before posting):',
+    `- action=${action}`,
+    `- endpoint=${endpoint}`,
+    `- target=${target}`,
+    `- idempotencyKey=${idempotencyKey}`,
+    `- bodyChars=${bodyText.length}`,
+    '',
+    'Authority: uses Artanis\'s active registered-agent forum identity through the Forum API. It posts only public-safe text, creates no payment, grants no moderation authority, and returns the created public post ref once approved.',
+  ].join('\n')
+
+  return {
+    input: {
+      action,
+      bodyText,
+      forumRef,
+      idempotencyKey,
+      title,
+      topicId,
+    },
+    ok: true,
+    planText,
+  }
+}
+
+export const makeArtanisPostForumUpdateTool = (
+  config: Readonly<{
+    execution?: ArtanisForumUpdateExecution | undefined
+  }> = {},
+): ArtanisOperatorGatedTool => {
+  const execution = config.execution
+  return {
+    definition: {
+      description:
+        'Post a public-safe Artanis operator update to the OpenAgents Forum: either create a topic in an open forum or reply to an open topic. This is a gated public_forum_post action: it executes ONLY behind effective owner approval and Artanis\'s active registered-agent forum identity; otherwise it returns the exact public-safe plan and does not post. Inputs must be public-safe text only.',
+      name: 'post_forum_update',
+      parameters: {
+        additionalProperties: false,
+        properties: {
+          action: {
+            description: '"create_topic" to create a topic, or "reply" to reply to an existing topic.',
+            enum: ['create_topic', 'reply'],
+            type: 'string',
+          },
+          bodyText: {
+            description:
+              'Public-safe plain text body. No secrets, bearer tokens, wallet material, private URLs, local paths, or raw private data.',
+            type: 'string',
+          },
+          forumRef: {
+            description:
+              'Forum id or slug for create_topic, e.g. "artanis" or "product-promises".',
+            type: 'string',
+          },
+          idempotencyKey: {
+            description:
+              'Stable public-safe idempotency key for this Forum write, 8-200 chars.',
+            type: 'string',
+          },
+          title: {
+            description:
+              'Topic title for create_topic. Required only for create_topic.',
+            type: 'string',
+          },
+          topicId: {
+            description: 'Topic id for reply. Required only for reply.',
+            type: 'string',
+          },
+        },
+        required: ['action', 'bodyText', 'idempotencyKey'],
+        type: 'object',
+      },
+    },
+    kind: 'gated',
+    riskyActionKind: 'public_forum_post',
+    run: (args: unknown): Effect.Effect<ArtanisOperatorGatedResult> =>
+      Effect.gen(function* () {
+        const built = buildArtanisForumUpdatePlan(args)
+        if (!built.ok) {
+          return {
+            outcome: 'deferred',
+            plan: built.message,
+            reason: 'invalid_arguments',
+          }
+        }
+        if (execution === undefined) {
+          return {
+            outcome: 'deferred',
+            plan: built.planText,
+            reason: 'execution_not_wired',
+          }
+        }
+        const approved = yield* execution
+          .isOwnerApproved()
+          .pipe(Effect.orElseSucceed(() => false))
+        if (!approved) {
+          return {
+            outcome: 'deferred',
+            plan: built.planText,
+            reason: 'no_effective_owner_approval',
+          }
+        }
+        const posted = yield* execution
+          .postForumUpdate(built.input)
+          .pipe(
+            Effect.orElseSucceed(
+              () =>
+                ({
+                  kind: 'rejected',
+                  reason: 'forum_update_execution_failed',
+                }) as const,
+            ),
+          )
+        if (posted.kind === 'rejected') {
+          return {
+            outcome: 'deferred',
+            plan: built.planText,
+            reason: posted.reason,
+          }
+        }
+        const postRef = `forum.post.${posted.postId}`
+        return {
+          assignmentRef: postRef,
+          durableRequestId: null,
+          outcome: 'executed',
+          summary: [
+            `postRef: ${postRef}`,
+            `topicRef: forum.topic.${posted.topicId}`,
+            `publicUrl: ${posted.publicUrl}`,
+            `idempotent: ${posted.idempotent ? 'true' : 'false'}`,
+            'paymentMode: not_applicable; moderationAuthority: none',
+          ].join('\n'),
+        }
+      }),
+  }
+}
+
 // Reject obviously private/unsafe material in a dispatch field, mirroring the
 // approval-gate redaction discipline. The dispatch tool is public-safe-only.
 const DISPATCH_UNSAFE_PATTERN =
@@ -3343,6 +3634,7 @@ export const makeArtanisOperatorTools = (
     networkStats?: ArtanisGetNetworkStatsConfig | undefined
     glmFleetStatus?: ArtanisGlmFleetStatusConfig | undefined
     syntheticLoadStatus?: ArtanisSyntheticLoadStatusConfig | undefined
+    forumUpdateExecution?: ArtanisForumUpdateExecution | undefined
     dispatchExecution?: ArtanisDispatchExecution | undefined
     syntheticLoad?:
       | Readonly<{
@@ -3376,6 +3668,9 @@ export const makeArtanisOperatorTools = (
     makeArtanisGetUnsupportedRequestsTool(config.unsupportedRequests),
     makeArtanisUpdateUnsupportedRequestTool({
       writer: config.unsupportedRequestWriter,
+    }),
+    makeArtanisPostForumUpdateTool({
+      execution: config.forumUpdateExecution,
     }),
     makeArtanisDispatchCodexTaskTool({
       defaultBranch: config.defaultBranch,

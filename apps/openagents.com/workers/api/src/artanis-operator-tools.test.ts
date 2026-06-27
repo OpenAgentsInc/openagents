@@ -28,6 +28,7 @@ import {
   makeArtanisListPylonAssignmentsTool,
   makeArtanisListRepoDirTool,
   makeArtanisOperatorTools,
+  makeArtanisPostForumUpdateTool,
   makeArtanisReadGithubIssueTool,
   makeArtanisReadRepoFileTool,
   makeArtanisTriggerSyntheticLoadTool,
@@ -353,6 +354,127 @@ describe('#6366 dispatch_codex_task (gated; LIVE execution behind the gate)', ()
     // Neither the approval gate nor the create seam is consulted for bad input.
     expect(approvalCalls).toHaveLength(0)
     expect(createCalls).toHaveLength(0)
+  })
+})
+
+describe('#6435 post_forum_update (gated public Forum write)', () => {
+  test('with no execution seam it defers and returns the Forum write plan', async () => {
+    const tool = makeArtanisPostForumUpdateTool()
+    const result = await Effect.runPromise(
+      tool.run({
+        action: 'create_topic',
+        bodyText: 'Fleet update: public-safe progress report.',
+        forumRef: 'artanis',
+        idempotencyKey: 'artanis-forum-update-6435-topic',
+        title: 'Artanis fleet update',
+      }),
+    )
+
+    expect(tool.kind).toBe('gated')
+    expect(tool.riskyActionKind).toBe('public_forum_post')
+    expect(result.outcome).toBe('deferred')
+    if (result.outcome !== 'deferred') return
+    expect(result.reason).toBe('execution_not_wired')
+    expect(result.plan).toContain('POST /api/forum/forums/artanis/topics')
+    expect(result.plan).toContain('requires owner approval')
+  })
+
+  test('owner-approved reply posts through the execution seam and returns a public post ref', async () => {
+    const postedPlans: Array<unknown> = []
+    const tool = makeArtanisPostForumUpdateTool({
+      execution: {
+        isOwnerApproved: () => Effect.succeed(true),
+        postForumUpdate: plan => {
+          postedPlans.push(plan)
+          return Effect.succeed({
+            idempotent: false,
+            kind: 'posted',
+            postId: 'post_123',
+            publicUrl: 'https://openagents.com/forum/t/topic_456#post_123',
+            topicId: 'topic_456',
+          } as const)
+        },
+      },
+    })
+
+    const result = await Effect.runPromise(
+      tool.run({
+        action: 'reply',
+        bodyText: 'Fleet update: issue #6435 forum-post tool is under test.',
+        idempotencyKey: 'artanis-forum-update-6435-reply',
+        topicId: 'topic_456',
+      }),
+    )
+
+    expect(postedPlans).toHaveLength(1)
+    expect(result.outcome).toBe('executed')
+    if (result.outcome !== 'executed') return
+    expect(result.assignmentRef).toBe('forum.post.post_123')
+    expect(result.summary).toContain('topicRef: forum.topic.topic_456')
+    expect(result.summary).toContain('moderationAuthority: none')
+  })
+
+  test('missing owner approval defers without calling the Forum seam', async () => {
+    const postedPlans: Array<unknown> = []
+    const tool = makeArtanisPostForumUpdateTool({
+      execution: {
+        isOwnerApproved: () => Effect.succeed(false),
+        postForumUpdate: plan => {
+          postedPlans.push(plan)
+          return Effect.succeed({
+            idempotent: false,
+            kind: 'posted',
+            postId: 'should_not_post',
+            publicUrl: 'https://openagents.com/forum/t/topic#should_not_post',
+            topicId: 'topic',
+          } as const)
+        },
+      },
+    })
+
+    const result = await Effect.runPromise(
+      tool.run({
+        action: 'reply',
+        bodyText: 'Fleet update.',
+        idempotencyKey: 'artanis-forum-update-no-approval',
+        topicId: 'topic_456',
+      }),
+    )
+
+    expect(result.outcome).toBe('deferred')
+    if (result.outcome !== 'deferred') return
+    expect(result.reason).toBe('no_effective_owner_approval')
+    expect(postedPlans).toHaveLength(0)
+  })
+
+  test('blocks non-public-safe forum body text before approval or execution', async () => {
+    const tool = makeArtanisPostForumUpdateTool({
+      execution: {
+        isOwnerApproved: () => Effect.succeed(true),
+        postForumUpdate: () =>
+          Effect.succeed({
+            idempotent: false,
+            kind: 'posted',
+            postId: 'should_not_post',
+            publicUrl: 'https://openagents.com/forum/t/topic#should_not_post',
+            topicId: 'topic',
+          } as const),
+      },
+    })
+
+    const result = await Effect.runPromise(
+      tool.run({
+        action: 'reply',
+        bodyText: 'Use bearer token sk-secret here.',
+        idempotencyKey: 'artanis-forum-update-blocked',
+        topicId: 'topic_456',
+      }),
+    )
+
+    expect(result.outcome).toBe('deferred')
+    if (result.outcome !== 'deferred') return
+    expect(result.reason).toBe('invalid_arguments')
+    expect(result.plan).toContain('blocked')
   })
 })
 
@@ -2232,6 +2354,7 @@ describe('makeArtanisOperatorTools default table', () => {
       'list_github_issues',
       'list_pylon_assignments',
       'list_repo_dir',
+      'post_forum_update',
       'read_github_issue',
       'read_repo_file',
       'trigger_synthetic_load',
