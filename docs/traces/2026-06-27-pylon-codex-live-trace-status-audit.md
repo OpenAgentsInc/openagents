@@ -847,8 +847,19 @@ The most recent post-audit #6311 zero-edit delegation used the same flow:
 - trace proof: `38` owner-only ATIF traces
 - raw-event proof: `64` private SDK events / `795,253` bytes
 
-This confirmed the important operational point: a "no code change needed" run
-still creates trace/proof/accounting evidence when it actually goes through
+The next #6320 zero-edit delegation confirmed the same shape:
+
+- assignment:
+  `assignment.public.khala_coding.chatcmpl_7deb9e73b6e9428b9d32dc9e8f3654b8`
+- closeout: `assignment.closeout.721ac9008d899d72f1f8df5f`
+- result: accepted, `0` edits, `24` commands, `1` Codex turn, verifier passed
+- exact usage: `1,644,352` total tokens (`1,638,653` input, `5,699` output,
+  `703` reasoning, `1,493,888` cache read)
+- trace proof: `36` owner-only ATIF traces
+- raw-event proof: `60` private SDK events / `3,501,512` bytes
+
+These runs confirmed the important operational point: a "no code change needed"
+run still creates trace/proof/accounting evidence when it actually goes through
 Pylon/Codex. Conversely, a failed pre-assignment gate, a plain chat response, or
 an unclaimed assignment will not and should not move the assignment-scoped proof
 surface.
