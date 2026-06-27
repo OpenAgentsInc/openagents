@@ -369,6 +369,7 @@ import {
   handleChatCompletions,
   isInferenceDurableStreamEnabled,
   isInferenceGatewayEnabled,
+  khalaRequestForAdapter,
 } from './inference/chat-completions-routes'
 import { handleDispatchFailureTelemetryReadout } from './inference/dispatch-failure-telemetry-routes'
 import {
@@ -9564,6 +9565,12 @@ const makeArtanisResponderKhalaClient = (
         {
           plan: makeKhalaBackedAdapterPlan(laneArming.khalaBacking),
           registry: inferenceProviderRegistry,
+          // Map `openagents/khala` to each lane's BACKING model before dispatch,
+          // exactly like the public completions route (#6363). The conversational
+          // Khala plan fans out across Vertex Gemini / Fireworks / GLM /
+          // OpenRouter, each of which rejects the `openagents/khala` alias; without
+          // this mapping every lane failed and the operator channel 503'd.
+          requestForAdapter: khalaRequestForAdapter,
         },
       )
       const served = result.value

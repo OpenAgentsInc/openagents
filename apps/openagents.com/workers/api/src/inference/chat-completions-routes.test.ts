@@ -25,7 +25,10 @@ import {
   codingDelegationDisabled,
   handleChatCompletions,
   isInferenceGatewayEnabled,
+  khalaRequestForAdapter,
 } from './chat-completions-routes'
+import { KHALA_FIREWORKS_BACKING_MODEL_ID } from './fireworks-adapter'
+import { DEFAULT_GEMINI_MODEL_ID } from './vertex-gemini-adapter'
 import { replayFromOffset } from './durable-inference-proxy'
 import { decideFairShare, decideSpendCap } from './inference-abuse-controls'
 import {
@@ -69,6 +72,7 @@ import {
   InferenceAdapterError,
   type InferenceProviderAdapter,
   InferenceProviderRegistry,
+  type InferenceRequest,
   type InferenceStreamEvent,
   type InferenceStreamSource,
   type InferenceUsage,
@@ -6342,5 +6346,45 @@ describe('POST /v1/chat/completions — typed component channel (#6127)', () => 
     expect(reaskCalls).toBe(1)
     expect(parsed.componentFrames).toHaveLength(1)
     expect(parsed.componentFrames[0]?.props['label']).toBe('Repaired')
+  })
+})
+
+// KHALA MODEL-MAPPING REGRESSION (#6363). `khalaRequestForAdapter` maps the
+// `openagents/khala` alias to each lane's BACKING model id before dispatch. The
+// public completions route passes this as `requestForAdapter`, and the Artanis
+// operator responder client (`makeArtanisResponderKhalaClient`) must pass the
+// SAME mapper — without it, the conversational Khala plan fans out across Vertex
+// Gemini / Fireworks / GLM / OpenRouter, each rejects `openagents/khala`, every
+// lane fails, and the operator channel returns 503
+// `artanis_operator_mind_unavailable`.
+describe('khalaRequestForAdapter (#6363)', () => {
+  const khalaRequest: InferenceRequest = {
+    messages: [{ content: 'hi', role: 'user' }],
+    model: KHALA_MODEL_ID,
+    passthroughParams: {},
+    stream: false,
+  }
+
+  test('maps openagents/khala to the Vertex Gemini backing model', () => {
+    expect(khalaRequestForAdapter(khalaRequest, VERTEX_GEMINI_ADAPTER_ID).model).toBe(
+      DEFAULT_GEMINI_MODEL_ID,
+    )
+  })
+
+  test('maps openagents/khala to the Fireworks backing model', () => {
+    expect(khalaRequestForAdapter(khalaRequest, FIREWORKS_ADAPTER_ID).model).toBe(
+      KHALA_FIREWORKS_BACKING_MODEL_ID,
+    )
+  })
+
+  test('maps openagents/khala to the GLM backing model', () => {
+    expect(
+      khalaRequestForAdapter(khalaRequest, HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID).model,
+    ).toBe(HYDRALISK_GLM_52_REAP_504B_MODEL_ID)
+  })
+
+  test('leaves a non-Khala request untouched', () => {
+    const raw = { ...khalaRequest, model: 'some/other-model' }
+    expect(khalaRequestForAdapter(raw, VERTEX_GEMINI_ADAPTER_ID)).toBe(raw)
   })
 })

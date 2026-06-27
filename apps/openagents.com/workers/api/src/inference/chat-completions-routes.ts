@@ -1385,7 +1385,16 @@ const supplyLaneForAdapterId = (adapterId: string): SupplyLane | undefined => {
   }
 }
 
-const khalaRequestForAdapter = (
+// Map a Khala request's model alias to the per-adapter BACKING model id before
+// dispatch. The conversational Khala plan fans out across Vertex Gemini /
+// Fireworks / GLM / OpenRouter, and each of those adapters rejects the
+// `openagents/khala` alias — they need their own backing model id. The public
+// completions route passes this as `requestForAdapter`; it is exported so the
+// Artanis operator responder client (index.ts `makeArtanisResponderKhalaClient`)
+// applies the SAME mapping. Without it, every Khala-backed lane in the Artanis
+// dispatch rejected `openagents/khala` and the operator channel returned 503
+// `artanis_operator_mind_unavailable` (#6363).
+export const khalaRequestForAdapter = (
   request: InferenceRequest,
   adapterId: string,
 ): InferenceRequest => {
