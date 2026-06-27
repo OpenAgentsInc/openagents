@@ -135,7 +135,7 @@ describe('POST /api/operator/artanis/chat — owner auth', () => {
     expect(response.status).toBe(401)
   })
 
-  test('403 when the session email is not an admin', async () => {
+  test('200 for any authenticated browser session, scoped to that user', async () => {
     const { deps } = baseDeps({
       requireBrowserSession: async () => ({
         user: { email: 'someone@example.com', userId: 'github:9' },
@@ -145,7 +145,23 @@ describe('POST /api/operator/artanis/chat — owner auth', () => {
       deps,
       post({ messages: [{ content: 'hi', role: 'user' }] }),
     )
-    expect(response.status).toBe(403)
+    expect(response.status).toBe(200)
+  })
+
+  test('non-admin browser sessions persist only to their own owner memory', async () => {
+    const { deps, fake } = baseDeps({
+      requireBrowserSession: async () => ({
+        user: { email: 'community@example.com', userId: 'github:community' },
+      }),
+    })
+    const response = await runRoute(
+      deps,
+      post({ messages: [{ content: 'tenant status', role: 'user' }] }),
+    )
+    expect(response.status).toBe(200)
+    const owner = fake.entries.find(entry => entry.role === 'owner')
+    expect(owner?.body).toBe('tenant status')
+    expect(owner?.ownerId).toBe('owner:github:community')
   })
 
   test('200 when an owner-linked agent bearer resolves (no browser session needed)', async () => {

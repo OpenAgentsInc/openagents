@@ -3,9 +3,10 @@
 //   POST /api/operator/artanis/chat   body { messages: [{role,content}] }
 //                                      -> { reply, servedVia, servedModel, ... }
 //
-// This is the OWNER-ONLY, PRIVATE channel to the REAL Artanis operator agent. It
-// is gated exactly like the other `/api/operator/*` routes (admin API token OR a
-// browser session whose email is an OpenAgents admin), and it routes the
+// This is the authenticated, owner-scoped private channel to the REAL Artanis
+// operator agent. It admits a signed-in browser session, an owner-linked agent
+// bearer, or the admin API token, then keys memory and awareness to that
+// authenticated owner user id. It routes the
 // conversation through the Artanis operator CORE (`artanis-operator.ts`), which:
 //   - uses the Artanis OPERATOR persona (NOT the public Khala collective
 //     identity — no roleplay),
@@ -79,11 +80,11 @@ export type OperatorArtanisChatDependencies<
   // route returns a typed unavailability instead of falling back to a provider.
   makeKhalaClient: (env: Bindings) => ArtanisOperatorKhalaClient | undefined
   requireAdminApiToken?: (request: Request, env: Bindings) => Promise<boolean>
-  // Resolves an agent bearer token to an owner session when the token's linked
-  // OpenAuth account email is an OpenAgents admin. Lets the Khala CLI (which
-  // authenticates with an `oa_agent_` bearer linked via `khala login`) reach the
-  // owner-only Artanis channel, alongside the admin API token and an admin
-  // browser session. Returns undefined for non-owner or unlinked tokens.
+  // Resolves an agent bearer token to an owner session when the token is linked
+  // to an authenticated OpenAuth user (or is the owner-promoted Artanis agent).
+  // Lets the Khala CLI (which authenticates with an `oa_agent_` bearer linked
+  // via `khala login`) reach the same per-user Artanis channel as a browser
+  // session. Returns undefined for unlinked/non-owner tokens.
   resolveOwnerAgentBearer?: (
     request: Request,
     env: Bindings,
@@ -114,11 +115,6 @@ class OperatorArtanisChatUnauthorized extends S.TaggedErrorClass<OperatorArtanis
   {},
 ) {}
 
-class OperatorArtanisChatForbidden extends S.TaggedErrorClass<OperatorArtanisChatForbidden>()(
-  'OperatorArtanisChatForbidden',
-  {},
-) {}
-
 class OperatorArtanisChatBadRequest extends S.TaggedErrorClass<OperatorArtanisChatBadRequest>()(
   'OperatorArtanisChatBadRequest',
   { reason: S.String },
@@ -141,7 +137,6 @@ class OperatorArtanisChatStorageError extends S.TaggedErrorClass<OperatorArtanis
 
 type OperatorArtanisChatError =
   | OperatorArtanisChatBadRequest
-  | OperatorArtanisChatForbidden
   | OperatorArtanisChatSessionError
   | OperatorArtanisChatStorageError
   | OperatorArtanisChatUnauthorized
@@ -155,8 +150,6 @@ const routeErrorResponse = (error: OperatorArtanisChatError) =>
           { error: 'bad_request', reason: badRequest.reason },
           { status: 400 },
         ),
-      OperatorArtanisChatForbidden: () =>
-        noStoreJsonResponse({ error: 'forbidden' }, { status: 403 }),
       OperatorArtanisChatSessionError: () =>
         noStoreJsonResponse({ error: 'session_error' }, { status: 500 }),
       OperatorArtanisChatStorageError: () =>
@@ -175,7 +168,7 @@ const routeErrorResponse = (error: OperatorArtanisChatError) =>
     M.exhaustive,
   )
 
-const requireAdminSession = <
+const requireAuthenticatedSession = <
   Session extends OperatorArtanisChatSession,
   Bindings extends OperatorArtanisChatEnv,
 >(
@@ -222,10 +215,6 @@ const requireAdminSession = <
 
     if (session === undefined) {
       return yield* new OperatorArtanisChatUnauthorized({})
-    }
-
-    if (!dependencies.isOpenAgentsAdminEmail(session.user.email)) {
-      return yield* new OperatorArtanisChatForbidden({})
     }
 
     return session
@@ -301,7 +290,7 @@ export const makeOperatorArtanisChatRoutes = <
     const awarenessReaders = dependencies.awarenessReaders?.(env) ?? {}
 
     return Effect.gen(function* () {
-      const session = yield* requireAdminSession(
+      const session = yield* requireAuthenticatedSession(
         dependencies,
         request,
         env,

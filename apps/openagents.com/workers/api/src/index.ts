@@ -8516,11 +8516,12 @@ const operatorArtanisConsoleRoutes = makeOperatorArtanisConsoleRoutes({
   requireBrowserSession,
 })
 
-// Owner-only Artanis operator chat channel (#6363). Artanis's reasoning is
-// powered ONLY by the Khala API — `makeArtanisResponderKhalaClient` dogfoods the
-// `openagents/khala` pool and meters the call as Khala usage, so this channel
-// never calls a provider directly. `makeKhalaClient` is invoked at request time,
-// so referencing the (later-declared) builder here is safe.
+// Authenticated, owner-scoped Artanis operator chat channel (#6363, #6385).
+// Artanis's reasoning is powered ONLY by the Khala API —
+// `makeArtanisResponderKhalaClient` dogfoods the `openagents/khala` pool and
+// meters the call as Khala usage, so this channel never calls a provider
+// directly. `makeKhalaClient` is invoked at request time, so referencing the
+// (later-declared) builder here is safe.
 const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
   appendRefreshedSessionCookies,
   // Inject the LIVE daily token-pace block into EVERY Artanis turn (epic #6359)
@@ -8545,6 +8546,9 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
   // owner approval. With no effective approval (the default today), the tool
   // returns the plan and defers — it never fires.
   makeOperatorTools: (env, session) => {
+    const hasOperatorLedgerAccess =
+      isOpenAgentsAdminEmail(session.user.email) ||
+      isOpenAgentsOwnerAgentOpenAuthUserId(session.user.userId)
     // Owner-scope resolver shared by the gated dispatch seam and the
     // owner-scoped Pylon job-status reader: resolve the owner's linked agent
     // user ids (their Pylon-owning credentials) so both stay strictly
@@ -8574,8 +8578,32 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
       }
       return ids
     }
-    return makeArtanisOperatorTools({
+    const ownerScopedTools = {
       defaultBranch: 'main',
+      pylonAssignments: {
+        lister: makeArtanisPylonAssignmentsLister({
+          listLinkedAgentUserIds,
+          nowIso: currentIsoTimestamp,
+          ownerOpenAuthUserId: session.user.userId,
+          pylonStore: makeD1PylonApiStore(openAgentsDatabase(env)),
+        }),
+      },
+      pylonJobStatus: {
+        reader: makeArtanisPylonJobStatusReader({
+          listLinkedAgentUserIds,
+          nowIso: currentIsoTimestamp,
+          ownerOpenAuthUserId: session.user.userId,
+          pylonStore: makeD1PylonApiStore(openAgentsDatabase(env)),
+        }),
+      },
+    } satisfies Parameters<typeof makeArtanisOperatorTools>[0]
+
+    if (!hasOperatorLedgerAccess) {
+      return makeArtanisOperatorTools(ownerScopedTools)
+    }
+
+    return makeArtanisOperatorTools({
+      ...ownerScopedTools,
       // get_network_stats reads the token-usage ledger directly (the worker
       // cannot reliably HTTP-fetch its own public /stats zone).
       networkStats: {
@@ -8604,29 +8632,6 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
       // reader: the tool reports an honest "(no active synthetic-load runs)"
       // rather than inventing one. When a real own-capacity synthetic-load run
       // registry lands, wire its owner-scoped reader here.
-      // iteration-3: the owner-scoped Pylon job-status read tool. Reads the
-      // public-safe closeout/proof status of ONE of the owner's own linked-Pylon
-      // assignments. Read-only, owner-scoped, no spend/authority.
-      pylonJobStatus: {
-        reader: makeArtanisPylonJobStatusReader({
-          listLinkedAgentUserIds,
-          nowIso: currentIsoTimestamp,
-          ownerOpenAuthUserId: session.user.userId,
-          pylonStore: makeD1PylonApiStore(openAgentsDatabase(env)),
-        }),
-      },
-      // iteration-5: the owner-scoped bulk Pylon assignments LIST tool. Reads the
-      // public-safe summaries of ALL of the owner's own linked-Pylon assignments
-      // in one call so Artanis can scan the burndown, spot failed/stalled runs,
-      // and queue parallel retries. Read-only, owner-scoped, no spend/authority.
-      pylonAssignments: {
-        lister: makeArtanisPylonAssignmentsLister({
-          listLinkedAgentUserIds,
-          nowIso: currentIsoTimestamp,
-          ownerOpenAuthUserId: session.user.userId,
-          pylonStore: makeD1PylonApiStore(openAgentsDatabase(env)),
-        }),
-      },
       // iteration-6: the owner-scoped Khala CLI feedback READ tool. Reads the most
       // recent user feedback submitted through the Khala CLI /feedback command
       // (the same admin-gated `khala_feedback` store the
@@ -8720,8 +8725,8 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
   requireAdminApiToken,
   requireBrowserSession,
   // Accept an `oa_agent_` bearer (the Khala CLI's token from `khala login`) when
-  // its linked OpenAuth account email is an OpenAgents admin. Resolves the agent
-  // credential -> its linked owner user id -> that user's email -> admin check.
+  // it is linked to an OpenAuth account. Resolves the agent credential -> its
+  // linked owner user id -> that user's email and scopes Artanis to that owner.
   resolveOwnerAgentBearer: async (request, env) => {
     const bearer = readBearerToken(request)
     if (bearer === undefined) {
@@ -8734,9 +8739,8 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
     // The owner-promoted operator agent (Artanis, owner-directed 2026-06-27) is
     // admitted by his OWN agent identity (his agent user id forms his actorRef
     // `agent:<userId>`), independent of any linked OpenAuth account — his
-    // credential carries no OpenAuth link. Every other owner uses the original
-    // Khala-CLI owner path: a linked OpenAuth account whose email is an
-    // OpenAgents admin.
+    // credential carries no OpenAuth link. Every other caller uses the Khala-CLI
+    // path: a token linked to an OpenAuth account.
     const agentOwnUserId = agent?.user.id
     if (agentOwnUserId === undefined) {
       return undefined
@@ -8747,28 +8751,26 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
       isOpenAgentsOwnerAgentOpenAuthUserId(agentOwnUserId) ||
       isOpenAgentsOwnerAgentOpenAuthUserId(linkedOpenAuthUserId)
 
-    // Original admin-email path: only consulted when there is a linked OpenAuth
-    // account to resolve an email for.
-    let adminEmail: string | undefined
+    let linkedEmail: string | undefined
     if (linkedOpenAuthUserId !== null) {
       const row = await openAgentsDatabase(env)
         .prepare(`SELECT primary_email FROM users WHERE id = ?`)
         .bind(linkedOpenAuthUserId)
         .first<Readonly<{ primary_email: string | null }>>()
       const email = row?.primary_email?.trim().toLowerCase()
-      if (email !== undefined && email !== '' && isOpenAgentsAdminEmail(email)) {
-        adminEmail = email
+      if (email !== undefined && email !== '') {
+        linkedEmail = email
       }
     }
 
-    if (!isOwnerAgent && adminEmail === undefined) {
+    if (!isOwnerAgent && linkedOpenAuthUserId === null) {
       return undefined
     }
 
     // Owner-scope user id: for the owner-promoted agent key on his OWN
     // owner-promoted user id (so the standing pylon_job_dispatch approval and his
-    // own-capacity resolution key consistently on his agent user id); for the
-    // admin-email path preserve the original linked-OpenAuth owner id.
+    // own-capacity resolution key consistently on his agent user id); for linked
+    // Khala CLI tokens preserve the original linked-OpenAuth owner id.
     const ownerScopeUserId = isOwnerAgent
       ? agentOwnUserId
       : (linkedOpenAuthUserId ?? agentOwnUserId)
@@ -8777,7 +8779,7 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
     // Session is the full human-session shape; fill the unused fields so the
     // owner-agent-bearer return type matches the browser-session return type.
     const sessionEmail =
-      adminEmail ??
+      linkedEmail ??
       agent?.user.primaryEmail?.trim().toLowerCase() ??
       'artanis@agents.openagents.com'
     return {
