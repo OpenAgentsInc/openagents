@@ -9,6 +9,8 @@ import {
   codexConfigWithFileCredentialStore,
   connectFleetAccount,
   decodeCodexIdTokenEmail,
+  fetchOperatorFleetStatus,
+  formatOperatorFleetDashboard,
   linkFleetPylon,
   listFleetAccounts,
   nextCodexAccountRef,
@@ -239,5 +241,47 @@ describe("connect + status (with injected device login)", () => {
       { accountRef: "codex", home, email: null, readiness: "credentials_missing", lastLinkedAt: null },
     ])
     void stat // keep import used across runtimes
+  })
+})
+
+describe("operator fleet live status", () => {
+  test("fetches the owner operator fleet status endpoint with bearer auth", async () => {
+    const seenAuth: Array<string | null> = []
+    const snapshot = await fetchOperatorFleetStatus({
+      baseUrl: "https://example.test/",
+      token: "oa_agent_live_test",
+      fetch: async (input, init) => {
+        seenAuth.push(init?.headers instanceof Headers
+          ? init.headers.get("authorization")
+          : (init?.headers as Record<string, string> | undefined)?.authorization ?? null)
+        expect(String(input)).toBe("https://example.test/api/operator/fleet/status")
+        return Response.json({ pace: { burnRate: 12 }, fleet: { ready: 2 } })
+      },
+    })
+
+    expect(seenAuth).toEqual(["Bearer oa_agent_live_test"])
+    expect(snapshot.payload).toEqual({ pace: { burnRate: 12 }, fleet: { ready: 2 } })
+  })
+
+  test("renders the five operator dashboard blocks", () => {
+    const rendered = formatOperatorFleetDashboard({
+      baseUrl: "https://example.test",
+      fetchedAt: "2026-06-27T00:00:00.000Z",
+      payload: {
+        pace: { burnRate: "1.2k tokens/min", paceToFloor: "above floor" },
+        fleet: { concurrency: 4, inFlightIssues: ["#6429"] },
+        watchdog: { state: "healthy", leases: 1 },
+        glmFleetStatus: { status: "ready", readyReplicas: 8, totalReplicas: 8 },
+        brain: { state: "running", recentDecisions: ["dispatch issue #6429"] },
+      },
+    })
+
+    expect(rendered).toContain("Khala fleet live dashboard")
+    expect(rendered).toContain("[Pace]")
+    expect(rendered).toContain("burnRate: 1.2k tokens/min")
+    expect(rendered).toContain("[Fleet]")
+    expect(rendered).toContain("[Watchdog]")
+    expect(rendered).toContain("[GLM]")
+    expect(rendered).toContain("[Brain]")
   })
 })

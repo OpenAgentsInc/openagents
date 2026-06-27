@@ -32,6 +32,7 @@ export const KHALA_CHANGELOG: ReadonlyArray<KhalaChangelogEntry> = [
     bullets: [
       "Adds `khala fleet connect` — connect your own Codex account to Khala with one short command and a paste-free device login (browser + short code, no long auth strings).",
       "Adds `khala fleet status` — see your connected Codex fleet and readiness; run `khala fleet connect` again to add more accounts (auto-assigned codex, codex-2, …) for more throughput.",
+      "Adds `khala fleet status --live` — poll the owner-only operator fleet status endpoint and render Pace, Fleet, Watchdog, GLM, and Brain/Artanis blocks as a terminal dashboard.",
       "Accounts use isolated per-account homes and are registered into your Pylon config; the flow never touches `~/.codex` and never prints tokens.",
     ],
   },

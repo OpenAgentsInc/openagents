@@ -63,12 +63,19 @@ export type KhalaFleetLinkResult = {
   readonly capabilityRefs: ReadonlyArray<string>
 }
 
+export type KhalaOperatorFleetStatusSnapshot = {
+  readonly fetchedAt: string
+  readonly baseUrl: string
+  readonly payload: unknown
+}
+
 export type KhalaCodexDeviceLoginRunner = (input: {
   readonly env: Record<string, string | undefined>
   readonly home: string
 }) => Promise<{ readonly exitCode: number }>
 
 type ConfigRecord = Record<string, unknown>
+type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<Response>
 
 const KHALA_FLEET_LINK_SCHEMA = "openagents.khala.fleet_link.v1" as const
 const PYLON_CLIENT_VERSION = "openagents.pylon@1.0.5"
@@ -598,4 +605,165 @@ export async function linkFleetPylon(
     linked: true,
     capabilityRefs,
   }
+}
+
+export async function fetchOperatorFleetStatus(options: {
+  readonly baseUrl?: string | undefined
+  readonly token: string
+  readonly fetch?: FetchLike | undefined
+}): Promise<KhalaOperatorFleetStatusSnapshot> {
+  const baseUrl = (options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, "")
+  const token = options.token.trim()
+  if (token.length === 0) {
+    throw new Error("khala fleet status --live requires an owner token. Run `khala login` or pass --token.")
+  }
+  const response = await (options.fetch ?? fetch)(`${baseUrl}/api/operator/fleet/status`, {
+    method: "GET",
+    headers: {
+      accept: "application/json",
+      authorization: `Bearer ${token}`,
+    },
+  })
+  if (!response.ok) {
+    let detail = ""
+    try {
+      const body = await response.json() as Record<string, unknown>
+      const reason = body.reason ?? body.error ?? body.message
+      detail = typeof reason === "string" && reason.trim().length > 0 ? `: ${reason.trim()}` : ""
+    } catch {
+      // Ignore malformed error bodies; the status code is enough to act on.
+    }
+    throw new Error(`operator fleet status request failed (${response.status})${detail}`)
+  }
+  return {
+    fetchedAt: new Date().toISOString(),
+    baseUrl,
+    payload: await response.json(),
+  }
+}
+
+export async function runOperatorFleetStatusLive(options: {
+  readonly baseUrl?: string | undefined
+  readonly token: string
+  readonly env?: Record<string, string | undefined> | undefined
+  readonly fetch?: FetchLike | undefined
+  readonly write?: ((text: string) => void) | undefined
+  readonly pollIntervalMs?: number | undefined
+  readonly maxPolls?: number | undefined
+}): Promise<void> {
+  const env = options.env ?? process.env
+  const write = options.write ?? (text => process.stdout.write(text))
+  const intervalMs = options.pollIntervalMs ?? 5_000
+  const maxPolls = options.maxPolls ?? parseOptionalPositiveInteger(env.KHALA_FLEET_LIVE_MAX_POLLS)
+  let stopped = false
+  const stop = (): void => {
+    stopped = true
+  }
+  process.once("SIGINT", stop)
+  try {
+    for (let poll = 0; !stopped; poll += 1) {
+      try {
+        const snapshot = await fetchOperatorFleetStatus({
+          baseUrl: options.baseUrl,
+          token: options.token,
+          fetch: options.fetch,
+        })
+        write(`${clearScreen()}${formatOperatorFleetDashboard(snapshot)}`)
+      } catch (error) {
+        write(`${clearScreen()}${formatOperatorFleetError(error)}\n`)
+      }
+      if (maxPolls !== undefined && poll + 1 >= maxPolls) return
+      await sleep(intervalMs)
+    }
+  } finally {
+    process.off("SIGINT", stop)
+  }
+}
+
+export function formatOperatorFleetDashboard(snapshot: KhalaOperatorFleetStatusSnapshot): string {
+  const payload = asRecord(snapshot.payload) ?? {}
+  const lines = [
+    `Khala fleet live dashboard`,
+    `updated: ${snapshot.fetchedAt}  source: ${snapshot.baseUrl}/api/operator/fleet/status`,
+    "",
+    formatDashboardBlock("Pace", firstRecord(payload, ["pace", "paceToFloor", "pace_to_floor", "burnPace"])),
+    formatDashboardBlock("Fleet", firstRecord(payload, ["fleet", "codexFleet", "capacity", "pylons"])),
+    formatDashboardBlock("Watchdog", firstRecord(payload, ["watchdog", "stallWatchdog", "fleetWatchdog"])),
+    formatDashboardBlock("GLM", firstRecord(payload, ["glm", "glmFleet", "glmFleetStatus", "inference", "readiness"])),
+    formatDashboardBlock("Brain", firstRecord(payload, ["brain", "artanis", "artanisLoop", "khalaBrain"])),
+  ]
+  return `${lines.join("\n")}\n`
+}
+
+function formatOperatorFleetError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error)
+  return [
+    "Khala fleet live dashboard",
+    `updated: ${new Date().toISOString()}`,
+    "",
+    "[status]",
+    `  ${message}`,
+  ].join("\n")
+}
+
+function formatDashboardBlock(title: string, value: unknown): string {
+  const lines = summarizeDashboardValue(value)
+  return [`[${title}]`, ...(lines.length === 0 ? ["  no data"] : lines.map(line => `  ${line}`))].join("\n")
+}
+
+function summarizeDashboardValue(value: unknown): ReadonlyArray<string> {
+  if (value === undefined || value === null) return []
+  if (typeof value !== "object") return [formatScalar(value)]
+  if (Array.isArray(value)) {
+    if (value.length === 0) return ["0 items"]
+    return [`${value.length} items`, ...value.slice(0, 3).map((entry, index) => `${index + 1}. ${formatCompact(entry)}`)]
+  }
+  const record = value as Record<string, unknown>
+  const entries = Object.entries(record)
+    .filter(([, entry]) => entry !== undefined && typeof entry !== "function")
+    .slice(0, 10)
+  if (entries.length === 0) return []
+  return entries.map(([key, entry]) => `${key}: ${formatCompact(entry)}`)
+}
+
+function firstRecord(record: Record<string, unknown>, keys: ReadonlyArray<string>): unknown {
+  for (const key of keys) {
+    if (record[key] !== undefined) return record[key]
+  }
+  return undefined
+}
+
+function formatCompact(value: unknown): string {
+  if (value === null || value === undefined) return "n/a"
+  if (typeof value !== "object") return formatScalar(value)
+  try {
+    const encoded = JSON.stringify(value)
+    return truncate(encoded ?? String(value), 160)
+  } catch {
+    return truncate(String(value), 160)
+  }
+}
+
+function formatScalar(value: unknown): string {
+  if (typeof value === "number") return Number.isInteger(value) ? String(value) : value.toFixed(2)
+  if (typeof value === "boolean") return value ? "yes" : "no"
+  return truncate(String(value), 160)
+}
+
+function truncate(value: string, max: number): string {
+  return value.length <= max ? value : `${value.slice(0, max - 1)}…`
+}
+
+function clearScreen(): string {
+  return process.stdout.isTTY ? "\x1b[2J\x1b[H" : ""
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function parseOptionalPositiveInteger(value: string | undefined): number | undefined {
+  if (value === undefined || value.trim() === "") return undefined
+  const parsed = Number.parseInt(value, 10)
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined
 }

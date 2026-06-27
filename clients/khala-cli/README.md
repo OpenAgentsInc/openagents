@@ -28,6 +28,7 @@ khala fleet connect --account codex-2   # add another distinct account for more 
 khala fleet link              # link this local Pylon to your signed-in Khala account
 khala fleet status            # list your connected Codex fleet + readiness
 khala fleet run --repo owner/repo --issues 123,124 --verify "bun test" --dry-run
+khala fleet status --live     # poll the operator fleet dashboard
 khala auth codex
 khala codex "read README.md"
 khala spawn --count 5 --objective "audit this workspace" --strategy local
@@ -161,6 +162,10 @@ no long-string pasting:
   `--per-account` capped by `--max-parallel`, advertises that capacity, and
   routes issue work through your local no-spend Pylon. Use `--dry-run` to inspect
   the resolved plan first, or `--once` to run one refill round and exit.
+- `khala fleet status --live` polls the owner-only
+  `/api/operator/fleet/status` endpoint about every five seconds and renders the
+  Pace, Fleet, Watchdog, GLM, and Brain/Artanis blocks as a terminal dashboard.
+  It uses your `khala login` token, `OPENAGENTS_AGENT_TOKEN`, or `--token`.
 
 Each account uses an isolated home under `<pylon home>/accounts/codex/<ref>`; the
 flow never touches the default `~/.codex` home, credentials stay on your machine,
@@ -180,6 +185,7 @@ local Pylon and the dispatch gate can see the fleet.
 - `khala fleet status` lists your connected Codex fleet and readiness.
 - `khala fleet run --repo owner/repo --issues 123,124 --verify "bun test"`
   starts or plans the backlog supervisor for your connected fleet.
+- `khala fleet status --live` opens the live operator fleet dashboard.
 - `khala auth codex` connects a Codex account for local workspace delegation.
 - `khala codex status` shows the active local Codex credential source.
 - `khala codex "task"` delegates directly to local Codex.
