@@ -199,6 +199,7 @@ heartbeater_loop() {
     [ "$desired" -gt "$SUP_MAX_SLOTS" ] && desired="$SUP_MAX_SLOTS"
     echo "$desired" > "$DESIRED_FILE"
     OPENAGENTS_PYLON_CLAUDE_CONCURRENCY="$desired" \
+    OPENAGENTS_PYLON_CLAUDE_ACCOUNT_CONCURRENCY="$SUP_PER_ACCOUNT" \
     OPENAGENTS_PYLON_CLAUDE_BUSY=0 \
     OPENAGENTS_PYLON_CLAUDE_QUEUED=0 \
       "${PYLON[@]}" presence heartbeat --json >> "$SUP_LOG" 2>&1 || true
