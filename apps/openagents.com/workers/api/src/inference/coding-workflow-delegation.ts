@@ -40,6 +40,7 @@ export type CodingDelegationRejection = Readonly<{
   error:
     | 'coding_delegation_store_unavailable'
     | 'invalid_coding_objective_summary'
+    | 'invalid_spawn_ref'
     | 'invalid_target_pylon_ref'
     | 'target_pylon_not_authorized'
     | 'target_pylon_unavailable'
@@ -141,6 +142,8 @@ const objectiveSummaryFromBody = (
 }
 
 const pylonRefPattern = /^[a-z0-9][a-z0-9_.:-]{2,119}$/
+const spawnRunRefPattern = /^spawn\.public\.khala_coding\.[A-Za-z0-9_.:-]{2,160}$/
+const spawnWorkerRefPattern = /^worker\.public\.khala_coding\.[A-Za-z0-9_.:-]{2,160}$/
 
 const targetPylonRefFromBody = (
   body: unknown,
@@ -207,6 +210,85 @@ const targetPylonRefFromBody = (
   return { kind: 'target', pylonRef }
 }
 
+const spawnRefsFromBody = (
+  body: unknown,
+):
+  | Readonly<{ kind: 'refs'; refs: ReadonlyArray<string> }>
+  | Readonly<{ kind: 'rejected'; rejection: CodingDelegationRejection }> => {
+  const coding = rawCodingFromBody(body)
+  const rawRunRef = coding?.spawnRunRef ?? coding?.spawnRef
+  const rawWorkerRef = coding?.spawnWorkerRef ?? coding?.workerRef
+  const refs: string[] = []
+
+  if (rawRunRef !== undefined && rawRunRef !== null && rawRunRef !== '') {
+    if (typeof rawRunRef !== 'string') {
+      return {
+        kind: 'rejected',
+        rejection: {
+          error: 'invalid_spawn_ref',
+          evidenceRefs: ['evidence.khala_coding.spawn_ref.invalid_type'],
+          kind: 'rejected',
+          reason:
+            'openagents.coding.spawnRunRef must be a bounded public-safe spawn ref string.',
+          requestedPylonRef: null,
+          statusCode: 400,
+        },
+      }
+    }
+    const ref = rawRunRef.trim()
+    if (!spawnRunRefPattern.test(ref)) {
+      return {
+        kind: 'rejected',
+        rejection: {
+          error: 'invalid_spawn_ref',
+          evidenceRefs: ['evidence.khala_coding.spawn_ref.invalid_ref'],
+          kind: 'rejected',
+          reason:
+            'openagents.coding.spawnRunRef must match the Khala spawn parent ref contract.',
+          requestedPylonRef: null,
+          statusCode: 400,
+        },
+      }
+    }
+    refs.push(ref)
+  }
+
+  if (rawWorkerRef !== undefined && rawWorkerRef !== null && rawWorkerRef !== '') {
+    if (typeof rawWorkerRef !== 'string') {
+      return {
+        kind: 'rejected',
+        rejection: {
+          error: 'invalid_spawn_ref',
+          evidenceRefs: ['evidence.khala_coding.spawn_worker_ref.invalid_type'],
+          kind: 'rejected',
+          reason:
+            'openagents.coding.spawnWorkerRef must be a bounded public-safe worker ref string.',
+          requestedPylonRef: null,
+          statusCode: 400,
+        },
+      }
+    }
+    const ref = rawWorkerRef.trim()
+    if (!spawnWorkerRefPattern.test(ref)) {
+      return {
+        kind: 'rejected',
+        rejection: {
+          error: 'invalid_spawn_ref',
+          evidenceRefs: ['evidence.khala_coding.spawn_worker_ref.invalid_ref'],
+          kind: 'rejected',
+          reason:
+            'openagents.coding.spawnWorkerRef must match the Khala spawn worker ref contract.',
+          requestedPylonRef: null,
+          statusCode: 400,
+        },
+      }
+    }
+    refs.push(ref)
+  }
+
+  return { kind: 'refs', refs }
+}
+
 const codingAssignmentFromInput = (
   input: CodingDelegationInput,
   objectiveSummary: string | null,
@@ -241,6 +323,7 @@ const assignmentRequestFromInput = (
   input: CodingDelegationInput,
   objectiveSummary: string | null,
   pylonRef: string,
+  spawnRefs: ReadonlyArray<string>,
 ): PylonApiCreateAssignmentRequest => ({
   acceptanceCriteriaRefs: [
     'acceptance.public.khala_coding.owner_requested',
@@ -272,6 +355,7 @@ const assignmentRequestFromInput = (
   taskRefs: [
     workflowRef(input.classification),
     khalaCodingRequestIdRef(input.requestId),
+    ...spawnRefs,
   ],
 })
 
@@ -435,6 +519,10 @@ const delegateCodingWorkflowUnsafe = async (
   if (objectiveSummary.kind === 'rejected') {
     return objectiveSummary.rejection
   }
+  const spawnRefs = spawnRefsFromBody(input.rawBody)
+  if (spawnRefs.kind === 'rejected') {
+    return spawnRefs.rejection
+  }
 
   const ownerAgentUserIds = input.linkedAgents.map(agent => agent.agentUserId)
   if (ownerAgentUserIds.length === 0) {
@@ -518,6 +606,7 @@ const delegateCodingWorkflowUnsafe = async (
       input,
       objectiveSummary.summary,
       registration.pylonRef,
+      spawnRefs.refs,
     )
     const activeAssignments = await (async () => {
       try {

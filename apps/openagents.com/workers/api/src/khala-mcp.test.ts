@@ -209,22 +209,45 @@ const catalogFor = (
 }
 
 describe('Khala MCP catalog', () => {
-  test('tools/list exposes the four Khala tools and grant-filters request authority', async () => {
+  test('tools/list exposes Khala tools and grant-filters request authority', async () => {
     const catalog = catalogFor()
 
-    expect(
-      (await catalog.listTools(env, request, principal)).map(tool => tool.name).sort(),
-    ).toEqual([
+    const tools = await catalog.listTools(env, request, principal)
+    expect(tools.map(tool => tool.name).sort()).toEqual([
       'khala.capacity',
       'khala.request',
       'khala.resume',
+      'khala.spawn',
+      'khala.spawnStatus',
       'khala.status',
     ])
+    expect(tools.find(tool => tool.name === 'khala.spawn')).toMatchObject({
+      inputSchema: {
+        properties: {
+          count: {
+            maximum: 20,
+            minimum: 1,
+            type: 'integer',
+          },
+          maxParallel: {
+            maximum: 20,
+            minimum: 1,
+            type: 'integer',
+          },
+        },
+        required: ['count'],
+      },
+    })
     expect(
       (await catalog.listTools(env, request, privateOnlyPrincipal)).map(
         tool => tool.name,
       ).sort(),
-    ).toEqual(['khala.capacity', 'khala.resume', 'khala.status'])
+    ).toEqual([
+      'khala.capacity',
+      'khala.resume',
+      'khala.spawnStatus',
+      'khala.status',
+    ])
   })
 
   test('khala.capacity projects only linked caller-owned Pylon capacity', async () => {
@@ -342,6 +365,153 @@ describe('Khala MCP catalog', () => {
       ok: false,
       requestedPylonRef: 'pylon.owner.codex',
       statusCode: 409,
+    })
+  })
+
+  test('khala.spawn creates bounded child assignments and khala.spawnStatus aggregates them', async () => {
+    const catalog = catalogFor({
+      ids: [
+        'spawn_mcp',
+        'chatcmpl_spawn_one',
+        'assignment_spawn_one',
+        'record_one',
+        'row_one',
+        'chatcmpl_spawn_two',
+        'assignment_spawn_two',
+        'record_two',
+        'row_two',
+      ],
+      registrations: [
+        registration({
+          latestCapacityRefs: [
+            'capacity.coding.codex.ready=2',
+            'capacity.coding.codex.available=2',
+          ],
+        }),
+      ],
+    })
+    const spawned = await catalog.callTool(
+      env,
+      request,
+      principal,
+      'khala.spawn',
+      {
+        count: 2,
+        fixture: true,
+        objective: 'Audit the public fixture through two child workers',
+        targetPylonRef: 'pylon.owner.codex',
+      },
+    )
+
+    expect(spawned.isError).toBeFalsy()
+    expect(spawned.structuredContent).toMatchObject({
+      assignedCount: 2,
+      ok: true,
+      requestedCount: 2,
+      schema: 'openagents.khala_mcp.spawn.v1',
+      spawnRef: 'spawn.public.khala_coding.spawn_mcp',
+      workflow: 'codex_agent_task',
+    })
+    const spawnBody = spawned.structuredContent as {
+      children: Array<{ assignmentRef: string; durableRequestId: string }>
+      spawnRef: string
+    }
+    expect(spawnBody.children).toMatchObject([
+      {
+        assignmentRef: 'assignment.public.khala_coding.assignment_spawn_one',
+        durableRequestId: 'chatcmpl_spawn_one',
+      },
+      {
+        assignmentRef: 'assignment.public.khala_coding.assignment_spawn_two',
+        durableRequestId: 'chatcmpl_spawn_two',
+      },
+    ])
+
+    const status = await catalog.callTool(
+      env,
+      request,
+      principal,
+      'khala.spawnStatus',
+      { spawnRef: spawnBody.spawnRef },
+    )
+    expect(status.isError).toBeFalsy()
+    expect(status.structuredContent).toMatchObject({
+      childCount: 2,
+      ok: true,
+      schema: 'openagents.khala_mcp.spawn_status.v1',
+      spawnRef: spawnBody.spawnRef,
+      state: 'active',
+    })
+    expect(JSON.stringify(status.structuredContent)).not.toContain('rawEvents')
+  })
+
+  test('khala.spawn reports capacity detail when requested count exceeds availability', async () => {
+    const outcome = await catalogFor({
+      ids: [
+        'spawn_shortfall',
+        'chatcmpl_shortfall_one',
+        'assignment_shortfall_one',
+        'record_one',
+        'row_one',
+        'chatcmpl_shortfall_two',
+        'assignment_shortfall_two',
+        'record_two',
+        'row_two',
+      ],
+      registrations: [
+        registration({
+          latestCapacityRefs: [
+            'capacity.coding.codex.ready=2',
+            'capacity.coding.codex.available=2',
+          ],
+        }),
+      ],
+    }).callTool(env, request, principal, 'khala.spawn', {
+      count: 3,
+      fixture: true,
+      objective: 'Try to launch more public fixture workers than available',
+      targetPylonRef: 'pylon.owner.codex',
+    })
+
+    expect(outcome.isError).toBeFalsy()
+    expect(outcome.structuredContent).toMatchObject({
+      assignedCount: 2,
+      blockerRefs: expect.arrayContaining([
+        'blocker.khala_mcp.spawn.capacity_shortfall',
+      ]),
+      capacity: {
+        advertisedAvailableCount: 2,
+        readyCount: 2,
+      },
+      ok: false,
+      requestedCount: 3,
+      spawnRef: 'spawn.public.khala_coding.spawn_shortfall',
+    })
+  })
+
+  test('khala.spawn returns a typed auth error for a cross-owner target Pylon', async () => {
+    const outcome = await catalogFor({
+      registrations: [
+        registration(),
+        registration({
+          ownerAgentCredentialId: 'agent_credential_other',
+          ownerAgentTokenPrefix: 'oa_agent_other',
+          ownerAgentUserId: 'agent_other',
+          pylonRef: 'pylon.other.codex',
+        }),
+      ],
+    }).callTool(env, request, principal, 'khala.spawn', {
+      count: 2,
+      objective: 'Try to use another account capacity',
+      targetPylonRef: 'pylon.other.codex',
+    })
+
+    expect(outcome.isError).toBe(true)
+    expect(outcome.structuredContent).toMatchObject({
+      error: 'target_pylon_not_authorized',
+      ok: false,
+      requestedPylonRef: 'pylon.other.codex',
+      statusCode: 403,
     })
   })
 

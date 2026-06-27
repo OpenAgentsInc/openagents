@@ -253,11 +253,12 @@ const json = (payload: unknown, init: ResponseInit = {}) =>
 const makeOpenAgentsFixtureServer = (input: {
   agentStore: AgentRegistrationStore
   durableStores: Map<string, MemoryStreamStore>
+  ids?: string[]
   pylonStore: HarnessPylonStore
 }) => {
   const requests: Array<{ body: unknown; path: string }> = []
   let durableReplayCount = 0
-  const idQueue = ["chatcmpl_e2e", "assignment_e2e"]
+  const idQueue = [...(input.ids ?? ["chatcmpl_e2e", "assignment_e2e"])]
   const catalog = makeKhalaMcpCatalog({
     agentStore: () => input.agentStore,
     makeId: () => idQueue.shift() ?? "id_more",
@@ -667,6 +668,106 @@ describe("Khala MCP end-to-end smoke", () => {
       expect(deniedCall.text).toContain("durable_request_not_authorized")
       expect(deniedCall.text).toContain("caller-owned linked Pylon assignment")
       expect(fixture.durableReplayCount()).toBe(1)
+    })
+  })
+
+  test("local MCP khala.spawn creates a two-child fixture run and protects spawn status", async () => {
+    await withTempHome(async home => {
+      const summary = await readySummary(home)
+      const state = await ensurePylonLocalState(summary)
+      const agentStore = makeAgentStore()
+      const pylonStore = makePylonStore([
+        registration(state.identity.pylonRef, {
+          latestCapacityRefs: [
+            "capacity.coding.codex.ready=2",
+            "capacity.coding.codex.available=2",
+          ],
+        }),
+      ])
+      const fixture = makeOpenAgentsFixtureServer({
+        agentStore,
+        durableStores: new Map<string, MemoryStreamStore>(),
+        ids: [
+          "spawn_e2e",
+          "chatcmpl_spawn_one",
+          "assignment_spawn_one",
+          "record_one",
+          "row_one",
+          "chatcmpl_spawn_two",
+          "assignment_spawn_two",
+          "record_two",
+          "row_two",
+        ],
+        pylonStore,
+      })
+
+      const spawnedCall = await callToolText({
+        args: {
+          count: 2,
+          fixture: true,
+          objective: "Run two fixture workers through my linked Pylon.",
+          targetPylonRef: state.identity.pylonRef,
+        },
+        baseUrl: fixture.baseUrl,
+        id: "spawn",
+        name: "khala.spawn",
+        token: OWNER_TOKEN,
+      })
+      expect(spawnedCall.isError).toBe(false)
+      const spawned = JSON.parse(spawnedCall.text) as {
+        assignedCount: number
+        children: Array<{ assignmentRef: string; durableRequestId: string }>
+        ok: true
+        spawnRef: string
+      }
+      expect(spawned).toMatchObject({
+        assignedCount: 2,
+        ok: true,
+        spawnRef: "spawn.public.khala_coding.spawn_e2e",
+      })
+      expect(spawned.children).toMatchObject([
+        {
+          assignmentRef: "assignment.public.khala_coding.assignment_spawn_one",
+          durableRequestId: "chatcmpl_spawn_one",
+        },
+        {
+          assignmentRef: "assignment.public.khala_coding.assignment_spawn_two",
+          durableRequestId: "chatcmpl_spawn_two",
+        },
+      ])
+      expect(pylonStore.assignments()).toHaveLength(2)
+      expect(pylonStore.assignments()[0]?.taskRefs).toContain(
+        "spawn.public.khala_coding.spawn_e2e",
+      )
+
+      const statusCall = await callToolText({
+        args: { spawnRef: spawned.spawnRef },
+        baseUrl: fixture.baseUrl,
+        id: "spawn-status",
+        name: "khala.spawnStatus",
+        token: OWNER_TOKEN,
+      })
+      expect(statusCall.isError).toBe(false)
+      const status = JSON.parse(statusCall.text) as {
+        childCount: number
+        children: Array<{ durableRequestId: string; state: string }>
+        ok: true
+      }
+      expect(status).toMatchObject({
+        childCount: 2,
+        ok: true,
+      })
+      expect(JSON.stringify(status)).not.toContain("rawEvents")
+
+      const deniedStatus = await callToolText({
+        args: { spawnRef: spawned.spawnRef },
+        baseUrl: fixture.baseUrl,
+        id: "spawn-status-other",
+        name: "khala.spawnStatus",
+        token: OTHER_TOKEN,
+      })
+      expect(deniedStatus.isError).toBe(true)
+      expect(deniedStatus.text).toContain("spawn_not_found_or_not_authorized")
     })
   })
 })

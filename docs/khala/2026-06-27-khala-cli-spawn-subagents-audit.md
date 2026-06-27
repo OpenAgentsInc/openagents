@@ -13,8 +13,13 @@ Implementation progress:
   no-spend assignments through the existing active-run heartbeat path, and
   aggregates exact token rows, durable request ids, assignment refs,
   owner-only trace counts, raw event counts, and blockers.
-- Remaining tracked slices are MCP/Worker exposure (#6373) and natural-language
-  spawn routing plus Khala response copy (#6374).
+- #6373 exposed spawn over the Worker and Pylon MCP surfaces. `khala.spawn`
+  returns a parent `spawn.public.khala_coding.*` ref plus child assignment refs
+  and durable request ids, `khala.spawnStatus` aggregates caller-owned child
+  assignment state without private raw events, and child assignments encode the
+  parent/worker relation as public-safe task refs.
+- Remaining tracked slices are natural-language spawn routing plus Khala
+  response copy (#6374).
 
 Owner problem statement:
 
@@ -622,19 +627,19 @@ Files:
 
 Work:
 
-- Add `khala.spawn` tool with `count`, `objective`, optional repo pins, and
+- Added `khala.spawn` tool with `count`, `objective`, optional repo pins, and
   optional target Pylon ref.
-- Add `khala.spawnStatus` or allow `khala.status` to read parent spawn refs.
-- Store parent/child assignment relations, or encode them as task refs until a
+- Added `khala.spawnStatus` to read parent spawn refs.
+- Encoded parent/child assignment relations as task refs until a
   table is warranted.
-- Preserve durable stream resume behavior.
+- Preserved durable stream resume behavior.
 
 Acceptance:
 
 - MCP `khala.spawn` returns parent run ref plus child assignment refs.
 - Cross-owner requests fail with typed authorization errors.
-- `khala.capacity` reports enough service count/load to explain why fewer than
-  requested workers started.
+- `khala.spawn` returns capacity service counts and shortfall blockers when
+  fewer than requested workers start.
 
 ### Slice E: Semantic Route And Prompt Fix
 

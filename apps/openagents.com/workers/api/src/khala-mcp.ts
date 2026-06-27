@@ -121,8 +121,24 @@ const requestTool = (): OpenAgentsMcpToolDescriptor => ({
   title: 'Request Khala coding work',
 })
 
+const spawnTool = (): OpenAgentsMcpToolDescriptor => ({
+  description:
+    'Spawn a bounded parent Khala coding run with child assignments on caller-owned linked Pylon capacity.',
+  inputSchemaRef: 'khala.spawn.input',
+  name: 'khala.spawn',
+  outputSchemaRef: 'khala.spawn.output',
+  progressBehavior: 'streaming',
+  publicSummary: 'Spawn Khala workers',
+  receiptBehavior: 'mutation_receipt',
+  requiredAuthorities: ['coding_session_control'],
+  riskClass: 'low',
+  sourceRefs: [SOURCE],
+  title: 'Spawn Khala workers',
+})
+
 export const KHALA_MCP_TOOLS: ReadonlyArray<OpenAgentsMcpToolDescriptor> = [
   requestTool(),
+  spawnTool(),
   readTool(
     'khala.resume',
     'Resume Khala stream',
@@ -137,6 +153,11 @@ export const KHALA_MCP_TOOLS: ReadonlyArray<OpenAgentsMcpToolDescriptor> = [
     'khala.status',
     'Read Khala stream status',
     'Read durable Khala stream headers/status. This is read-only and never meters.',
+  ),
+  readTool(
+    'khala.spawnStatus',
+    'Read Khala spawn status',
+    'Read child assignment state for a parent Khala spawn ref without exposing private raw events.',
   ),
 ]
 
@@ -172,11 +193,66 @@ const DURABLE_READ_SCHEMA: Record<string, unknown> = {
   type: 'object',
 }
 
+const SPAWN_SCHEMA: Record<string, unknown> = {
+  additionalProperties: false,
+  properties: {
+    branch: { description: 'Public repository branch.', type: 'string' },
+    commit: { description: 'Pinned public repository commit SHA.', type: 'string' },
+    count: {
+      description: 'Requested worker count.',
+      maximum: 20,
+      minimum: 1,
+      type: 'integer',
+    },
+    fixture: {
+      description: 'Use the bounded public fixture assignment.',
+      type: 'boolean',
+    },
+    maxParallel: {
+      description: 'Maximum child assignments to dispatch in this parent run.',
+      maximum: 20,
+      minimum: 1,
+      type: 'integer',
+    },
+    objective: { description: 'Spawn objective text alias for prompt.', type: 'string' },
+    prompt: { description: 'Spawn objective text.', type: 'string' },
+    pylonRef: { description: 'Caller-owned target Pylon ref.', type: 'string' },
+    repo: { description: 'Public GitHub owner/repo.', type: 'string' },
+    repository: { description: 'Public GitHub owner/repo.', type: 'string' },
+    targetPylonRef: {
+      description: 'Caller-owned target Pylon ref.',
+      type: 'string',
+    },
+    verify: {
+      description: 'Bounded public verification command argv.',
+      type: 'string',
+    },
+    workflow: {
+      description: 'Typed coding workflow class.',
+      enum: ['cloud_coding_session', 'codex_agent_task'],
+      type: 'string',
+    },
+  },
+  required: ['count'],
+  type: 'object',
+}
+
+const SPAWN_STATUS_SCHEMA: Record<string, unknown> = {
+  additionalProperties: false,
+  properties: {
+    spawnRef: { description: 'Parent Khala spawn ref.', type: 'string' },
+  },
+  required: ['spawnRef'],
+  type: 'object',
+}
+
 const KHALA_MCP_INPUT_SCHEMAS: Readonly<Record<string, Record<string, unknown>>> =
   {
     'khala.capacity': { additionalProperties: false, properties: {}, type: 'object' },
     'khala.request': REQUEST_SCHEMA,
     'khala.resume': DURABLE_READ_SCHEMA,
+    'khala.spawn': SPAWN_SCHEMA,
+    'khala.spawnStatus': SPAWN_STATUS_SCHEMA,
     'khala.status': DURABLE_READ_SCHEMA,
   }
 
@@ -222,6 +298,166 @@ const workflowFromArgs = (args: Record<string, unknown>): Exclude<CodingWorkflow
   throw new KhalaMcpToolError(
     'workflow must be cloud_coding_session or codex_agent_task',
   )
+}
+
+const MAX_SPAWN_COUNT = 20
+const spawnRefPattern = /^spawn\.public\.khala_coding\.[A-Za-z0-9_.:-]{2,160}$/
+const pylonRefPattern = /^[a-z0-9][a-z0-9_.:-]{2,119}$/
+const githubFullNamePattern = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/
+const gitCommitShaPattern = /^[a-f0-9]{40}$/i
+const placeholderCommitShaPattern = /^(0{40}|1{40})$/i
+const verificationCommandArgPattern = /^[A-Za-z0-9_./:=@+-]{1,120}$/
+const unsafeVerificationCommandArgPattern =
+  /(^|[._/:=@+-])(access[_-]?token|bearer|cookie|gho_[A-Za-z0-9_]+|ghp_[A-Za-z0-9_]+|mdk[_-]?(access[_-]?token|mnemonic|webhook[_-]?secret)|mnemonic|payment[_-]?(hash|preimage)|preimage|private[_-]?(key|repo)|provider[_-]?(credential|grant|payload|secret|token)|raw[_-]?(command|content|invoice|payment|payload|prompt|repo|runner|state)|secret|seed[_-]?phrase|ssh:|wallet[._-]?(key|material|mnemonic|preimage|secret|seed)|xprv)([._/:=@+-]|$)|\bsk-[A-Za-z0-9_-]{16,}\b|\bln(?:bc|tb|bcrt)[A-Za-z0-9]{20,}\b/i
+
+const boundedInteger = (
+  args: Record<string, unknown>,
+  key: string,
+  fallback: number | null,
+): number => {
+  const value = args[key]
+  const parsed =
+    typeof value === 'number' && Number.isFinite(value)
+      ? value
+      : typeof value === 'string' && value.trim() !== ''
+        ? Number.parseInt(value, 10)
+        : fallback
+  if (parsed === null || !Number.isFinite(parsed)) {
+    throw new KhalaMcpToolError(`${key} must be an integer`)
+  }
+  const integer = Math.trunc(parsed)
+  if (integer < 1 || integer > MAX_SPAWN_COUNT) {
+    throw new KhalaMcpToolError(`${key} must be between 1 and ${MAX_SPAWN_COUNT}`)
+  }
+  return integer
+}
+
+const spawnObjectiveFromArgs = (args: Record<string, unknown>): string => {
+  const objective = optionalString(args, 'prompt') ?? optionalString(args, 'objective')
+  if (objective === undefined) {
+    throw new KhalaMcpToolError('khala.spawn requires prompt or objective')
+  }
+  if (objective.length < 3 || objective.length > 8000) {
+    throw new KhalaMcpToolError('khala.spawn objective must be 3-8000 characters')
+  }
+  return objective
+}
+
+const targetPylonRefFromArgs = (
+  args: Record<string, unknown>,
+): string | undefined => {
+  const pylonRef =
+    optionalString(args, 'targetPylonRef') ?? optionalString(args, 'pylonRef')
+  if (pylonRef === undefined) return undefined
+  if (!pylonRefPattern.test(pylonRef)) {
+    throw new KhalaMcpToolError('targetPylonRef must be a bounded public Pylon ref')
+  }
+  return pylonRef
+}
+
+const publicRefSegment = (value: string): string =>
+  value.replaceAll(/[^A-Za-z0-9_.:-]/g, '_').slice(0, 160)
+
+const spawnRefFromId = (id: string): string =>
+  `spawn.public.khala_coding.${publicRefSegment(id)}`
+
+const workerRef = (spawnRef: string, index: number): string => {
+  const suffix = spawnRef.replace(/^spawn\.public\.khala_coding\./, '')
+  return `worker.public.khala_coding.${publicRefSegment(suffix).slice(0, 120)}.${String(index + 1).padStart(2, '0')}`
+}
+
+const workerObjective = (
+  objective: string,
+  index: number,
+  count: number,
+): string =>
+  [
+    `Worker ${index + 1}/${count}.`,
+    objective,
+    'Work independently and return a concise public-safe closeout with evidence refs, blockers, and next step.',
+  ].join(' ')
+
+const cleanGithubFullName = (value: string): string => {
+  const trimmed = value.trim()
+  if (githubFullNamePattern.test(trimmed)) return trimmed
+  const github =
+    /^https:\/\/github\.com\/([^/\s]+)\/([^/\s#?]+)(?:[/?#].*)?$/.exec(trimmed)
+  if (github !== null) return `${github[1]}/${github[2]!.replace(/\.git$/, '')}`
+  throw new KhalaMcpToolError('repo must be owner/repo or a public GitHub URL')
+}
+
+const cleanCommitSha = (value: string): string => {
+  const trimmed = value.trim()
+  if (!gitCommitShaPattern.test(trimmed) || placeholderCommitShaPattern.test(trimmed)) {
+    throw new KhalaMcpToolError(
+      'commit must be a real pinned 40-character commit SHA',
+    )
+  }
+  return trimmed.toLowerCase()
+}
+
+const cleanBranch = (value: string | undefined): string => {
+  const branch = value?.trim() || 'main'
+  if (branch.includes('..') || branch.startsWith('/') || branch.length > 120) {
+    throw new KhalaMcpToolError('branch must be a bounded public branch name')
+  }
+  return branch
+}
+
+const verificationArgs = (value: string): string[] => {
+  const args = value.trim().split(/\s+/).filter(Boolean)
+  if (
+    args.length === 0 ||
+    args.length > 20 ||
+    args.some(arg =>
+      !verificationCommandArgPattern.test(arg) ||
+      arg.includes('..') ||
+      arg.startsWith('/'),
+    )
+  ) {
+    throw new KhalaMcpToolError(
+      'verify must be bounded argv tokens without absolute paths or traversal',
+    )
+  }
+  if (args.some(arg => unsafeVerificationCommandArgPattern.test(arg))) {
+    throw new KhalaMcpToolError(
+      'verify contains private, payment, credential, wallet, or raw material',
+    )
+  }
+  return args
+}
+
+const buildSpawnWorkspace = (
+  args: Record<string, unknown>,
+): Record<string, unknown> | undefined => {
+  if (args.fixture === true) return undefined
+  const repo = optionalString(args, 'repo') ?? optionalString(args, 'repository')
+  const commit = optionalString(args, 'commit')
+  const verify = optionalString(args, 'verify')
+  if (repo === undefined && commit === undefined && verify === undefined) {
+    return undefined
+  }
+  if (repo === undefined || commit === undefined || verify === undefined) {
+    throw new KhalaMcpToolError(
+      'repo, commit, and verify are required together for workspace-backed spawn requests',
+    )
+  }
+  const argsTokens = verificationArgs(verify)
+  const commandRefSegment = publicRefSegment(argsTokens.join('.')).slice(0, 96)
+  return {
+    kind: 'git_checkout',
+    repository: {
+      branch: cleanBranch(optionalString(args, 'branch')),
+      commitSha: cleanCommitSha(commit),
+      fullName: cleanGithubFullName(repo),
+      provider: 'github',
+      visibility: 'public',
+    },
+    verificationCommand: {
+      args: argsTokens,
+      commandRef: `command.public.khala_mcp.verify.${commandRefSegment}`,
+    },
+  }
 }
 
 const grantScopeRefs = (principal: McpPrincipal): ReadonlyArray<string> =>
@@ -366,14 +602,15 @@ const rawBodyForRequest = (
   prompt: string,
   workflowClass: Exclude<CodingWorkflowClass, 'none'>,
   targetPylonRef: string | undefined,
+  codingPatch: Record<string, unknown> = {},
 ): Record<string, unknown> => ({
   messages: [{ content: prompt, role: 'user' }],
   model: 'openagents/khala',
   openagents: {
-    coding:
-      targetPylonRef === undefined
-        ? {}
-        : { targetPylonRef },
+    coding: {
+      ...codingPatch,
+      ...(targetPylonRef === undefined ? {} : { targetPylonRef }),
+    },
     workflowClass,
   },
   stream: true,
@@ -465,6 +702,141 @@ const assignmentsForRegistrations = async (
       ),
     )
   ).flat()
+}
+
+const durableRequestIdFromAssignment = (
+  assignment: PylonApiAssignmentRecord,
+): string | null => {
+  const prefix = 'request.public.khala_coding.'
+  const ref = assignment.taskRefs.find(taskRef => taskRef.startsWith(prefix))
+  return ref === undefined ? null : ref.slice(prefix.length)
+}
+
+const codexCapacityForRegistration = (
+  registration: PylonApiRegistrationRecord,
+): Readonly<{
+  available: number
+  busy: number
+  queued: number
+  ready: number
+}> =>
+  pylonCodingServiceCapacityProjection(registration).find(
+    capacity => capacity.service === 'codex',
+  ) ?? { available: 0, busy: 0, queued: 0, ready: 0 }
+
+const spawnCapacityProjection = (
+  registrations: ReadonlyArray<PylonApiRegistrationRecord>,
+): Readonly<{
+  advertisedAvailableCount: number
+  readyCount: number
+  pylons: ReadonlyArray<Record<string, unknown>>
+}> => {
+  const pylons = registrations.map(registration => {
+    const capacity = codexCapacityForRegistration(registration)
+    return {
+      codingCapacity: {
+        available: capacity.available,
+        busy: capacity.busy,
+        queued: capacity.queued,
+        ready: capacity.ready,
+        service: 'codex',
+      },
+      latestHeartbeatAt: registration.latestHeartbeatAt,
+      latestHeartbeatStatus: registration.latestHeartbeatStatus,
+      pylonRef: registration.pylonRef,
+      status: registration.status,
+    }
+  })
+
+  return {
+    advertisedAvailableCount: pylons.reduce(
+      (sum, pylon) =>
+        sum +
+        ((pylon.codingCapacity as { available: number }).available ?? 0),
+      0,
+    ),
+    pylons,
+    readyCount: pylons.reduce(
+      (sum, pylon) =>
+        sum + ((pylon.codingCapacity as { ready: number }).ready ?? 0),
+      0,
+    ),
+  }
+}
+
+const spawnChildStatusProjection = (
+  assignment: PylonApiAssignmentRecord,
+): Record<string, unknown> => ({
+  acceptedWorkRefCount: assignment.acceptedWorkRefs.length,
+  artifactRefCount: assignment.artifactRefs.length,
+  assignmentRef: assignment.assignmentRef,
+  closeoutRefCount: assignment.closeoutRefs.length,
+  durableRequestId: durableRequestIdFromAssignment(assignment),
+  leaseExpiresAt: assignment.leaseExpiresAt,
+  proofRefCount: assignment.proofRefs.length,
+  pylonRef: assignment.pylonRef,
+  rejectionRefCount: assignment.rejectionRefs.length,
+  state: assignment.state,
+  updatedAt: assignment.updatedAt,
+})
+
+const spawnStateFromChildren = (
+  assignments: ReadonlyArray<PylonApiAssignmentRecord>,
+): 'active' | 'accepted' | 'rejected' => {
+  if (assignments.some(assignment => assignment.state === 'rejected')) {
+    return 'rejected'
+  }
+  if (
+    assignments.length > 0 &&
+    assignments.every(assignment => assignment.state === 'accepted')
+  ) {
+    return 'accepted'
+  }
+  return 'active'
+}
+
+const spawnStatusProjection = async (input: Readonly<{
+  agentStore: AgentRegistrationStore
+  principal: McpPrincipal
+  pylonStore: PylonApiStore
+  spawnRef: string
+}>): Promise<Record<string, unknown>> => {
+  if (!spawnRefPattern.test(input.spawnRef)) {
+    throw new KhalaMcpToolError('spawnRef must be a bounded Khala spawn ref')
+  }
+  const linkedAgents = await linkedAgentsForPrincipal(
+    input.agentStore,
+    input.principal,
+  )
+  const registrations = await linkedRegistrations(input.pylonStore, linkedAgents)
+  const ownerAgentUserIds = new Set(linkedAgents.map(agent => agent.agentUserId))
+  const pylonRefs = new Set(
+    registrations.map(registration => registration.pylonRef),
+  )
+  const children = (await assignmentsForRegistrations(
+    input.pylonStore,
+    registrations,
+  ))
+    .filter(
+      assignment =>
+        ownerAgentUserIds.has(assignment.ownerAgentUserId) &&
+        pylonRefs.has(assignment.pylonRef) &&
+        assignment.taskRefs.includes(input.spawnRef),
+    )
+    .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+
+  if (children.length === 0) {
+    throw new KhalaMcpToolError('spawn_not_found_or_not_authorized')
+  }
+
+  return {
+    childCount: children.length,
+    children: children.map(spawnChildStatusProjection),
+    ok: true,
+    schema: 'openagents.khala_mcp.spawn_status.v1',
+    spawnRef: input.spawnRef,
+    state: spawnStateFromChildren(children),
+  }
 }
 
 export const khalaDurableRequestIsLinkedToPrincipal = async (
@@ -598,6 +970,201 @@ export const makeKhalaMcpCatalog = <Bindings extends KhalaMcpEnv>(
           stream: true,
           workflow: payload.workflowClass,
         })
+      }
+
+      if (name === 'khala.spawn') {
+        const count = boundedInteger(args, 'count', null)
+        const maxParallel =
+          args.maxParallel === undefined || args.maxParallel === null
+            ? count
+            : boundedInteger(args, 'maxParallel', count)
+        const objective = spawnObjectiveFromArgs(args)
+        const workflowClass = workflowFromArgs(args)
+        const targetPylonRef = targetPylonRefFromArgs(args)
+        const workspace = buildSpawnWorkspace(args)
+        const linkedAgents = await linkedAgentsForPrincipal(
+          deps.agentStore(env),
+          principal,
+        )
+        const pylonStore = deps.pylonStore(env)
+        const registrations = await linkedRegistrations(pylonStore, linkedAgents)
+        const targetRegistrations =
+          targetPylonRef === undefined
+            ? registrations
+            : registrations.filter(
+                registration => registration.pylonRef === targetPylonRef,
+              )
+        if (targetPylonRef !== undefined && targetRegistrations.length === 0) {
+          return toolErrorOutcome(name, 'target_pylon_not_authorized', {
+            reason:
+              'The requested Pylon is not linked to this OpenAuth account and cannot be used for caller-owned Khala spawn capacity.',
+            requestedPylonRef: targetPylonRef,
+            statusCode: 403,
+          })
+        }
+
+        const capacity = spawnCapacityProjection(targetRegistrations)
+        const makeId = deps.makeId ?? (() => compactRandomId('chatcmpl'))
+        const spawnRef = spawnRefFromId(makeId())
+        const dispatchCount = Math.min(
+          count,
+          maxParallel,
+          capacity.advertisedAvailableCount,
+        )
+        const earlyBlockerRefs = [
+          ...(linkedAgents.length === 0
+            ? ['blocker.khala_mcp.spawn.no_linked_agents']
+            : []),
+          ...(capacity.advertisedAvailableCount === 0
+            ? ['blocker.khala_mcp.spawn.no_advertised_codex_availability']
+            : []),
+          ...(maxParallel < count
+            ? ['blocker.khala_mcp.spawn.max_parallel_limited']
+            : []),
+          ...(dispatchCount < count
+            ? ['blocker.khala_mcp.spawn.capacity_shortfall']
+            : []),
+        ]
+
+        if (dispatchCount === 0) {
+          return toolErrorOutcome(
+            name,
+            targetPylonRef === undefined
+              ? 'linked_pylon_capacity_unavailable'
+              : 'target_pylon_unavailable',
+            {
+              blockerRefs: earlyBlockerRefs,
+              capacity,
+              requestedCount: count,
+              requestedPylonRef: targetPylonRef,
+              schema: 'openagents.khala_mcp.spawn.v1',
+              spawnRef,
+              statusCode: targetPylonRef === undefined ? 503 : 409,
+            },
+          )
+        }
+
+        const childResults: Array<Record<string, unknown>> = []
+        const blockerRefs = [...earlyBlockerRefs]
+        const nowIso = (deps.nowIso ?? currentIsoTimestamp)()
+        for (let index = 0; index < dispatchCount; index += 1) {
+          const durableRequestId = makeId()
+          const childObjective = workerObjective(objective, index, count)
+          const childWorkerRef = workerRef(spawnRef, index)
+          const rawBody = rawBodyForRequest(
+            childObjective,
+            workflowClass,
+            targetPylonRef,
+            {
+              objectiveSummary: childObjective,
+              spawnRunRef: spawnRef,
+              spawnWorkerRef: childWorkerRef,
+              ...(workspace === undefined ? {} : { workspace }),
+            },
+          )
+          const delegation = await delegateCodingWorkflow({
+            classification: classificationForWorkflow(workflowClass),
+            linkedAgents,
+            makeId,
+            nowIso,
+            pylonStore,
+            rawBody,
+            requestId: durableRequestId,
+          })
+
+          if (delegation?.kind === 'rejected') {
+            blockerRefs.push(
+              `blocker.khala_mcp.spawn.worker_${index + 1}_rejected`,
+              `blocker.khala_mcp.spawn.${delegation.error}`,
+            )
+            childResults.push({
+              durableRequestId,
+              error: delegation.error,
+              evidenceRefs: delegation.evidenceRefs,
+              ok: false,
+              reason: delegation.reason,
+              requestedPylonRef: delegation.requestedPylonRef,
+              slotIndex: index,
+              statusCode: delegation.statusCode,
+              workerRef: childWorkerRef,
+            })
+            continue
+          }
+
+          if (delegation === null) {
+            blockerRefs.push(
+              `blocker.khala_mcp.spawn.worker_${index + 1}_capacity_unavailable`,
+            )
+            childResults.push({
+              durableRequestId,
+              error: 'linked_pylon_capacity_unavailable',
+              ok: false,
+              slotIndex: index,
+              workerRef: childWorkerRef,
+            })
+            continue
+          }
+
+          childResults.push({
+            assignmentRef: delegation.assignment.assignmentRef,
+            durableRequestId,
+            durableStreamUrl: delegation.durableStreamUrl,
+            ok: true,
+            pylonRef: delegation.pylon.pylonRef,
+            slotIndex: index,
+            state: delegation.assignment.state,
+            workerRef: childWorkerRef,
+          })
+        }
+
+        const assignedCount = childResults.filter(
+          child => child.ok === true,
+        ).length
+        return projectToolOutcome(
+          name,
+          {
+            assignedCount,
+            blockerRefs: [...new Set(blockerRefs)].sort(),
+            capacity,
+            children: childResults,
+            maxParallel,
+            ok: blockerRefs.length === 0 && assignedCount === count,
+            requestedCount: count,
+            schema: 'openagents.khala_mcp.spawn.v1',
+            spawnRef,
+            stream: true,
+            workflow: workflowClass,
+          },
+          assignedCount === 0,
+        )
+      }
+
+      if (name === 'khala.spawnStatus') {
+        const spawnRef = requiredString(args, 'spawnRef')
+        try {
+          return projectToolOutcome(
+            name,
+            await spawnStatusProjection({
+              agentStore: deps.agentStore(env),
+              principal,
+              pylonStore: deps.pylonStore(env),
+              spawnRef,
+            }),
+          )
+        } catch (error) {
+          if (
+            error instanceof Error &&
+            error.message === 'spawn_not_found_or_not_authorized'
+          ) {
+            return toolErrorOutcome(name, 'spawn_not_found_or_not_authorized', {
+              reason:
+                'The Khala spawn ref is not attached to caller-owned linked Pylon assignments.',
+              spawnRef,
+              statusCode: 403,
+            })
+          }
+          throw error
+        }
       }
 
       if (name === 'khala.resume' || name === 'khala.status') {

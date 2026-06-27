@@ -42,7 +42,7 @@ const parseJsonContent = (result: McpToolCallResult): Record<string, unknown> =>
 }
 
 describe("pylon khala MCP stdio handler", () => {
-  test("tools/list exposes the four Khala tools with authority annotations", async () => {
+  test("tools/list exposes Khala tools with authority annotations", async () => {
     const response = await callMcp(buildToolsListRequest())
 
     expect(response.error).toBeUndefined()
@@ -54,6 +54,8 @@ describe("pylon khala MCP stdio handler", () => {
       "khala.capacity",
       "khala.request",
       "khala.resume",
+      "khala.spawn",
+      "khala.spawnStatus",
       "khala.status",
     ])
     expect(
@@ -67,6 +69,12 @@ describe("pylon khala MCP stdio handler", () => {
     ).toMatchObject({
       handlerKind: "private_account_read",
       readOnlyHint: true,
+    })
+    expect(
+      tools.find((tool) => tool.name === "khala.spawn")?.annotations,
+    ).toMatchObject({
+      handlerKind: "coding_session_control",
+      readOnlyHint: false,
     })
   })
 
@@ -227,6 +235,143 @@ describe("pylon khala MCP stdio handler", () => {
     expect(parsed).toEqual({
       error: "durable_request_not_authorized",
       ok: false,
+    })
+  })
+
+  test("khala.spawn proxies through the remote MCP surface", async () => {
+    const requests: Array<{ body: Record<string, unknown>; headers: Headers; path: string }> =
+      []
+    const server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url)
+        requests.push({
+          body: JSON.parse(await request.text()) as Record<string, unknown>,
+          headers: request.headers,
+          path: url.pathname,
+        })
+        return Response.json({
+          id: "pylon.local.khala.spawn",
+          jsonrpc: "2.0",
+          result: {
+            content: [
+              {
+                text: JSON.stringify({
+                  assignedCount: 2,
+                  children: [
+                    {
+                      assignmentRef: "assignment.public.khala_coding.one",
+                      durableRequestId: "chatcmpl_one",
+                      ok: true,
+                    },
+                    {
+                      assignmentRef: "assignment.public.khala_coding.two",
+                      durableRequestId: "chatcmpl_two",
+                      ok: true,
+                    },
+                  ],
+                  ok: true,
+                  schema: "openagents.khala_mcp.spawn.v1",
+                  spawnRef: "spawn.public.khala_coding.mcp",
+                }),
+                type: "text",
+              },
+            ],
+          },
+        })
+      },
+    })
+    servers.push(server)
+
+    const response = await callMcp(
+      buildToolCallRequest("khala.spawn", {
+        count: 2,
+        objective: "Run two MCP child workers",
+        targetPylonRef: "pylon.owner.codex",
+      }),
+      `http://127.0.0.1:${server.port}`,
+    )
+
+    const body = parseJsonContent(response.result as McpToolCallResult)
+    expect(body).toMatchObject({
+      assignedCount: 2,
+      ok: true,
+      spawnRef: "spawn.public.khala_coding.mcp",
+    })
+    expect(requests).toHaveLength(1)
+    expect(requests[0]?.path).toBe("/api/mcp")
+    expect(requests[0]?.headers.get("authorization")).toBe(
+      "Bearer oa_agent_mcp_test",
+    )
+    expect(requests[0]?.body).toMatchObject({
+      method: "tools/call",
+      params: {
+        arguments: {
+          count: 2,
+          objective: "Run two MCP child workers",
+          targetPylonRef: "pylon.owner.codex",
+        },
+        name: "khala.spawn",
+      },
+    })
+  })
+
+  test("khala.spawnStatus proxies parent status reads through the remote MCP surface", async () => {
+    const requests: Array<{ body: Record<string, unknown>; path: string }> = []
+    const server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        const url = new URL(request.url)
+        requests.push({
+          body: JSON.parse(await request.text()) as Record<string, unknown>,
+          path: url.pathname,
+        })
+        return Response.json({
+          id: "pylon.local.khala.spawnStatus",
+          jsonrpc: "2.0",
+          result: {
+            content: [
+              {
+                text: JSON.stringify({
+                  childCount: 2,
+                  children: [
+                    { durableRequestId: "chatcmpl_one", state: "offered" },
+                    { durableRequestId: "chatcmpl_two", state: "offered" },
+                  ],
+                  ok: true,
+                  schema: "openagents.khala_mcp.spawn_status.v1",
+                  spawnRef: "spawn.public.khala_coding.mcp",
+                }),
+                type: "text",
+              },
+            ],
+          },
+        })
+      },
+    })
+    servers.push(server)
+
+    const response = await callMcp(
+      buildToolCallRequest("khala.spawnStatus", {
+        spawnRef: "spawn.public.khala_coding.mcp",
+      }),
+      `http://127.0.0.1:${server.port}`,
+    )
+
+    const body = parseJsonContent(response.result as McpToolCallResult)
+    expect(body).toMatchObject({
+      childCount: 2,
+      ok: true,
+      spawnRef: "spawn.public.khala_coding.mcp",
+    })
+    expect(requests[0]?.body).toMatchObject({
+      method: "tools/call",
+      params: {
+        arguments: {
+          spawnRef: "spawn.public.khala_coding.mcp",
+        },
+        name: "khala.spawnStatus",
+      },
     })
   })
 

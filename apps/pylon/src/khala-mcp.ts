@@ -24,6 +24,11 @@ export const PYLON_KHALA_MCP_TOOLS = [
     readOnly: false,
   },
   {
+    handlerKind: "coding_session_control",
+    name: "khala.spawn",
+    readOnly: false,
+  },
+  {
     handlerKind: "private_account_read",
     name: "khala.resume",
     readOnly: true,
@@ -36,6 +41,11 @@ export const PYLON_KHALA_MCP_TOOLS = [
   {
     handlerKind: "private_account_read",
     name: "khala.status",
+    readOnly: true,
+  },
+  {
+    handlerKind: "private_account_read",
+    name: "khala.spawnStatus",
     readOnly: true,
   },
 ] satisfies readonly McpToolContract[]
@@ -96,8 +106,12 @@ const toolDefinitions = () =>
     description:
       tool.name === "khala.request"
         ? "Issue a streamed openagents/khala request through caller-owned Pylon capacity."
+        : tool.name === "khala.spawn"
+          ? "Spawn bounded Khala child assignments through caller-owned Pylon capacity."
         : tool.name === "khala.resume"
           ? "Resume a durable Khala stream from an offset without metering."
+          : tool.name === "khala.spawnStatus"
+            ? "Read a parent Khala spawn run status without exposing private raw events."
           : tool.name === "khala.status"
             ? "Read durable Khala stream status without metering."
             : "Read the configured local Khala MCP capacity/auth projection.",
@@ -117,8 +131,41 @@ const toolDefinitions = () =>
             },
             type: "object",
           }
+        : tool.name === "khala.spawn"
+          ? {
+              additionalProperties: false,
+              properties: {
+                branch: { type: "string" },
+                commit: { type: "string" },
+                count: { maximum: 20, minimum: 1, type: "integer" },
+                fixture: { type: "boolean" },
+                maxParallel: { maximum: 20, minimum: 1, type: "integer" },
+                objective: { type: "string" },
+                prompt: { type: "string" },
+                pylonRef: { type: "string" },
+                repo: { type: "string" },
+                repository: { type: "string" },
+                targetPylonRef: { type: "string" },
+                verify: { type: "string" },
+                workflow: {
+                  enum: ["cloud_coding_session", "codex_agent_task"],
+                  type: "string",
+                },
+              },
+              required: ["count"],
+              type: "object",
+            }
         : tool.name === "khala.capacity"
           ? { additionalProperties: false, properties: {}, type: "object" }
+          : tool.name === "khala.spawnStatus"
+            ? {
+                additionalProperties: false,
+                properties: {
+                  spawnRef: { type: "string" },
+                },
+                required: ["spawnRef"],
+                type: "object",
+              }
           : {
               additionalProperties: false,
               properties: {
@@ -171,7 +218,7 @@ const requireAgentToken = (network: TipsNetworkOptions): string => {
 
 async function callRemoteKhalaMcpTool(
   network: TipsNetworkOptions,
-  name: "khala.resume" | "khala.status",
+  name: "khala.resume" | "khala.spawn" | "khala.spawnStatus" | "khala.status",
   args: Record<string, unknown>,
 ): Promise<McpToolCallResult> {
   const response = await (network.fetch ?? fetch)(new URL("/api/mcp", network.baseUrl), {
@@ -227,6 +274,14 @@ async function callKhalaTool(
       )
     }
 
+    if (name === "khala.spawn") {
+      const prompt = stringArg(args, "prompt") ?? stringArg(args, "objective")
+      if (prompt === undefined) {
+        return toolError("khala.spawn requires prompt or objective")
+      }
+      return callRemoteKhalaMcpTool(deps.network, "khala.spawn", args)
+    }
+
     if (name === "khala.resume") {
       const durableRequestId = stringArg(args, "durableRequestId")
       if (durableRequestId === undefined) {
@@ -246,6 +301,16 @@ async function callKhalaTool(
       }
       return callRemoteKhalaMcpTool(deps.network, "khala.status", {
         durableRequestId,
+      })
+    }
+
+    if (name === "khala.spawnStatus") {
+      const spawnRef = stringArg(args, "spawnRef")
+      if (spawnRef === undefined) {
+        return toolError("khala.spawnStatus requires spawnRef")
+      }
+      return callRemoteKhalaMcpTool(deps.network, "khala.spawnStatus", {
+        spawnRef,
       })
     }
 

@@ -905,6 +905,10 @@ describe('#6273 coding-capacity validation harness', () => {
         requiredAuthorities: ['coding_session_control'],
       },
       {
+        name: 'khala.spawn',
+        requiredAuthorities: ['coding_session_control'],
+      },
+      {
         name: 'khala.resume',
         requiredAuthorities: ['private_account_read'],
       },
@@ -914,6 +918,10 @@ describe('#6273 coding-capacity validation harness', () => {
       },
       {
         name: 'khala.status',
+        requiredAuthorities: ['private_account_read'],
+      },
+      {
+        name: 'khala.spawnStatus',
         requiredAuthorities: ['private_account_read'],
       },
     ])
