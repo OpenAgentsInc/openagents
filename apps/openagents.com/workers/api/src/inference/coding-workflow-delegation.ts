@@ -568,6 +568,30 @@ const hasAvailableAgentCapacity = (
   return hasPooledServiceCapacity(registration, profile)
 }
 
+const availableAgentAccountRefHashes = (
+  registration: PylonApiRegistrationRecord,
+  profile: CodingAgentProfile,
+): ReadonlyArray<string> => {
+  const capacity = pylonCodingServiceCapacityProjection(registration).find(
+    item => item.service === profile.capacityService,
+  )
+  if (capacity === undefined || capacity.accounts.length === 0) {
+    return []
+  }
+  return capacity.accounts
+    .filter(account => account.available > 0)
+    .sort(
+      (left, right) =>
+        right.available - left.available ||
+        right.ready - left.ready ||
+        left.accountKey.localeCompare(right.accountKey),
+    )
+    .map(
+      account =>
+        `account.pylon.${profile.accountProvider}.${account.accountKey}`,
+    )
+}
+
 // #6354/#6388: name exactly which admission sub-condition failed so a refused
 // caller-owned coding delegation is debuggable instead of an opaque 409. The
 // gate admits a Pylon only when it is active AND heartbeat-fresh AND
@@ -907,14 +931,6 @@ const delegateCodingWorkflowUnsafe = async (
 
   const blockedGateRefs: string[] = []
   for (const registration of candidates) {
-    const body = assignmentRequestFromInput(
-      input,
-      objectiveSummary.summary,
-      registration.pylonRef,
-      spawnRefs.refs,
-      profile,
-      targetAccountRefHash,
-    )
     const activeAssignments = await (async () => {
       try {
         return await input.pylonStore.listAssignmentsForPylon(
@@ -931,65 +947,83 @@ const delegateCodingWorkflowUnsafe = async (
         'assignment_list_read',
       )
     }
-    const gate = controlledPylonAssignmentDispatchGate({
-      activeAssignments,
-      assignmentRef: body.assignmentRef ?? null,
-      body,
-      nowIso: input.nowIso,
-      registration,
-    })
 
-    if (!gate.dispatchAllowed) {
-      blockedGateRefs.push(...gate.blockerRefs)
-      continue
-    }
+    const accountRefHashes =
+      targetAccountRefHash === null
+        ? availableAgentAccountRefHashes(registration, profile)
+        : [targetAccountRefHash]
+    const dispatchAccountRefHashes =
+      accountRefHashes.length === 0 ? [null] : accountRefHashes
 
-    const assignmentOrRejection = await (async () => {
-      try {
-        return buildPylonApiAssignmentRecord({
-          idempotencyKeyHash: `khala-coding:${input.requestId}`,
-          makeId: input.makeId,
-          nowIso: input.nowIso,
-          ownerAgentUserId: registration.ownerAgentUserId,
-          request: body,
-        })
-      } catch (error) {
-        if (error instanceof PylonApiStoreError) {
-          return codingDelegationStoreUnavailableRejection(
-            registration.pylonRef,
-            'assignment_request_validation',
-          )
-        }
-        throw error
-      }
-    })()
-    if ('kind' in assignmentOrRejection) {
-      return assignmentOrRejection
-    }
-    const assignment = assignmentOrRejection
-    const result = await (async () => {
-      try {
-        return await input.pylonStore.createAssignment(assignment)
-      } catch {
-        return null
-      }
-    })()
-    if (result === null) {
-      return codingDelegationStoreUnavailableRejection(
+    for (const dispatchAccountRefHash of dispatchAccountRefHashes) {
+      const body = assignmentRequestFromInput(
+        input,
+        objectiveSummary.summary,
         registration.pylonRef,
-        'assignment_create',
+        spawnRefs.refs,
+        profile,
+        dispatchAccountRefHash,
       )
-    }
+      const gate = controlledPylonAssignmentDispatchGate({
+        activeAssignments,
+        assignmentRef: body.assignmentRef ?? null,
+        body,
+        nowIso: input.nowIso,
+        registration,
+      })
 
-    return {
-      assignment: result.record,
-      durableStreamUrl: `/v1/chat/completions/durable/${encodeURIComponent(input.requestId)}`,
-      evidenceRefs: [
-        ...input.classification.evidenceRefs,
-        'evidence.khala_coding.own_capacity_linked_pylon',
-      ],
-      kind: 'assigned',
-      pylon: registration,
+      if (!gate.dispatchAllowed) {
+        blockedGateRefs.push(...gate.blockerRefs)
+        continue
+      }
+
+      const assignmentOrRejection = await (async () => {
+        try {
+          return buildPylonApiAssignmentRecord({
+            idempotencyKeyHash: `khala-coding:${input.requestId}`,
+            makeId: input.makeId,
+            nowIso: input.nowIso,
+            ownerAgentUserId: registration.ownerAgentUserId,
+            request: body,
+          })
+        } catch (error) {
+          if (error instanceof PylonApiStoreError) {
+            return codingDelegationStoreUnavailableRejection(
+              registration.pylonRef,
+              'assignment_request_validation',
+            )
+          }
+          throw error
+        }
+      })()
+      if ('kind' in assignmentOrRejection) {
+        return assignmentOrRejection
+      }
+      const assignment = assignmentOrRejection
+      const result = await (async () => {
+        try {
+          return await input.pylonStore.createAssignment(assignment)
+        } catch {
+          return null
+        }
+      })()
+      if (result === null) {
+        return codingDelegationStoreUnavailableRejection(
+          registration.pylonRef,
+          'assignment_create',
+        )
+      }
+
+      return {
+        assignment: result.record,
+        durableStreamUrl: `/v1/chat/completions/durable/${encodeURIComponent(input.requestId)}`,
+        evidenceRefs: [
+          ...input.classification.evidenceRefs,
+          'evidence.khala_coding.own_capacity_linked_pylon',
+        ],
+        kind: 'assigned',
+        pylon: registration,
+      }
     }
   }
 

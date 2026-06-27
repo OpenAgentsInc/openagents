@@ -610,6 +610,89 @@ describe('coding workflow delegation', () => {
     expect(result?.kind).toBe('assigned')
   })
 
+  test('#6386 pins unscoped Codex delegation to an advertised available account slot', async () => {
+    const accountA = 'aaaaaaaaaaaaaaaaaaaaaaaa'
+    const accountB = 'bbbbbbbbbbbbbbbbbbbbbbbb'
+    const result = await delegateCodingWorkflow({
+      classification,
+      linkedAgents: [linkedOwner],
+      makeId: () => 'id1',
+      nowIso,
+      pylonStore: makeStore({
+        registrations: [
+          registration({
+            latestCapacityRefs: [
+              `capacity.coding.codex.account.${accountA}.ready=8`,
+              `capacity.coding.codex.account.${accountA}.available=0`,
+              `capacity.coding.codex.account.${accountB}.ready=8`,
+              `capacity.coding.codex.account.${accountB}.available=7`,
+            ],
+            latestLoadRefs: [
+              `load.coding.codex.account.${accountA}.busy=8`,
+              `load.coding.codex.account.${accountA}.queued=0`,
+              `load.coding.codex.account.${accountB}.busy=1`,
+              `load.coding.codex.account.${accountB}.queued=0`,
+            ],
+          }),
+        ],
+      }),
+      rawBody: {},
+      requestId: 'chatcmpl_coding_auto_account_slot',
+    })
+    const assigned = expectAssigned(result)
+
+    expect(assigned.assignment.codingAssignment?.codex).toMatchObject({
+      accountRefHash: `account.pylon.codex.${accountB}`,
+    })
+  })
+
+  test('#6386 skips a freshly saturated account and admits another account on the same Pylon', async () => {
+    const accountA = 'aaaaaaaaaaaaaaaaaaaaaaaa'
+    const accountB = 'bbbbbbbbbbbbbbbbbbbbbbbb'
+    const result = await delegateCodingWorkflow({
+      classification,
+      linkedAgents: [linkedOwner],
+      makeId: () => 'id1',
+      nowIso,
+      pylonStore: makeStore({
+        activeAssignments: [
+          assignment({
+            assignmentRef: 'assignment.public.account_a_active',
+            codingAssignment: {
+              codex: {
+                accountRefHash: `account.pylon.codex.${accountA}`,
+                agentKind: 'codex_sdk',
+              },
+            },
+          }),
+        ],
+        registrations: [
+          registration({
+            latestCapacityRefs: [
+              `capacity.coding.codex.account.${accountA}.ready=1`,
+              `capacity.coding.codex.account.${accountA}.available=1`,
+              `capacity.coding.codex.account.${accountB}.ready=1`,
+              `capacity.coding.codex.account.${accountB}.available=1`,
+            ],
+            latestLoadRefs: [
+              `load.coding.codex.account.${accountA}.busy=0`,
+              `load.coding.codex.account.${accountA}.queued=0`,
+              `load.coding.codex.account.${accountB}.busy=0`,
+              `load.coding.codex.account.${accountB}.queued=0`,
+            ],
+          }),
+        ],
+      }),
+      rawBody: {},
+      requestId: 'chatcmpl_coding_skip_saturated_account',
+    })
+    const assigned = expectAssigned(result)
+
+    expect(assigned.assignment.codingAssignment?.codex).toMatchObject({
+      accountRefHash: `account.pylon.codex.${accountB}`,
+    })
+  })
+
   test('allows more coding delegation when ready slots exceed remaining available slots', async () => {
     const result = await delegateCodingWorkflow({
       classification,
@@ -693,9 +776,9 @@ describe('coding workflow delegation', () => {
       pylonStore: makeStore({
         activeAssignments: [
           assignment({
-            assignmentRef: 'assignment.public.test.stale_active_slot',
-            id: 'pylon_api_assignment_stale_active_slot',
-            updatedAt: '2026-06-25T11:00:00.000Z',
+            assignmentRef: 'assignment.public.test.running_active_slot',
+            id: 'pylon_api_assignment_running_active_slot',
+            state: 'running',
           }),
         ],
         registrations: [registration()],
