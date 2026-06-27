@@ -413,3 +413,97 @@ Verification before deploy:
 - `model-router.test.ts`: `45` passed.
 - API `typecheck`: exit `0`; it still prints pre-existing Effect lint messages
   in `src/trace-store-routes.ts`.
+
+The fix was committed and pushed to `main` as
+`6b0412b59a3a2b32ab2ccae886c2c06e2751944dc`, then deployed through
+`bun run --cwd apps/openagents.com/workers/api deploy:safe` as Worker version
+`6b38199d-2517-427c-9085-05802a6ed79a`.
+
+Post-deploy readiness:
+
+- `GET /v1/gateway/readiness`: ready, with one Hydralisk servable model.
+- `GET /v1/gateway/glm-fleet/readiness`: `status=degraded`,
+  `totalReplicaCount=10`, `readyReplicaCount=1`, `readyMaxInflight=2`,
+  `drainingReplicaCount=9`, `disabledReplicaCount=9`.
+- The only serving replica was `g4-8g-b-20260624214500`.
+- The nine non-serving replicas stayed configured for accounting but were
+  drained from route selection.
+
+`gcloud` VM-level repair was still blocked in this shell by expired
+non-interactive Google auth, so this pass made all configured gateway traffic
+safe by draining bad replicas. It did not repair the unreachable/false-ready
+VMs themselves.
+
+## 2026-06-27 Post-Deploy Saturation
+
+Public-gateway stress used `POST /v1/chat/completions`, model
+`openagents/khala`, and the demand labels
+`internal_stress` / `glm-saturation`. Exact usage came from response
+`usage.total_tokens`; public counter deltas sometimes include concurrent live
+traffic, so the hard per-run totals below use response usage.
+
+| Run | Result | GLM tokens | Non-GLM tokens | Finding |
+| --- | --- | ---: | ---: | --- |
+| Smoke | Hydralisk GLM, finish `stop` | `711` | `0` | Counter moved by exact `+711`. |
+| Two concurrent `2048` requests | One GLM, one Fireworks fallback | `2644` | `2648` | Two public requests already exceed the one healthy GLM lane. |
+| Single public `8192` request | Fireworks fallback | `0` | `8803` | Public 8192 is not stable through the current GLM gateway. |
+| Single public `4096` request | Hydralisk GLM, finish `length` | `4688` | `0` | Stable single-flight public GLM at 4096 completion tokens. |
+| Five-request public `4096` loop | Two GLM, two Fireworks, one `429` | `9396` | `9402` | Back-to-back stress needs cooldown with only one live replica. |
+| Tiny auth sweep | Two Hydralisk GLM one-token probes | `1121` | `0` | `codex-loopwright` and `raynor` creds reached inference; others lacked credits or auth. |
+| Single public `4096` after auth sweep | Hydralisk GLM, finish `length` | `4740` | `0` | GLM route remained healthy when not contending with another long decode. |
+| Paired public `4096` while direct load ran | Two Fireworks responses | `0` | `4862` | Under direct origin pressure, public gateway fell through to Fireworks. |
+| Recovery public `4096` after direct load cleared | Hydralisk GLM, finish `length` | `4747` | `0` | Public route recovered back to GLM after pressure cleared. |
+
+Post-deploy public-gateway exact GLM tokens generated: `28047`.
+
+Known post-deploy public-gateway non-GLM fallback tokens generated during these
+stress attempts: `25715`.
+
+Direct Hydralisk stress against the one serving 8-GPU replica:
+
+| Run | Requests | Result | Input | Output | Total |
+| --- | ---: | --- | ---: | ---: | ---: |
+| `direct-glm-8192-loop-20260627T045037Z` | `3` | three HTTP `200`, all full `8192` completion-token `length` stops | `201` | `24576` | `24777` |
+| `direct-glm-paired-8192-20260627T050036Z` | `2` | two HTTP `200`, both early `stop` while public gateway pressure ran | `214` | `10032` | `10246` |
+
+New exact direct GLM tokens generated in this pass: `35023`.
+
+I inserted those two direct runs into production D1 as idempotent exact
+served-token rows:
+
+- `inference:served-tokens:retro.issue-6317.direct-glm.8192-loop-20260627T045037Z`
+  = `24777` tokens.
+- `inference:served-tokens:retro.issue-6317.direct-glm.paired-8192-20260627T050036Z`
+  = `10246` tokens.
+
+Verification:
+
+- D1 returned both rows with `demand_kind=internal_stress`,
+  `demand_source=glm-saturation`, and exact input/output splits.
+- `/api/public/khala-tokens-served` returned `416602183` after those rows were
+  inserted.
+- The all-time model mix returned `GLM family = 75943187` tokens at that read.
+
+Hard post-deploy GLM total from this continuation:
+
+- public-gateway GLM: `28047`
+- direct GLM, retro-recorded: `35023`
+- total exact GLM generated: `63070`
+
+What this taught us:
+
+- The GLM-first route and in-pool failover fix works for single-flight public
+  `openagents/khala` stress, and those requests increment the public counter
+  used by `/stats` and `/khala`.
+- The actual serving fleet is still one healthy 8-GPU replica, not ten working
+  replicas. Route safety is fixed; VM capacity is not.
+- Public `4096` completion-token requests are the useful current stress shape.
+  Public `8192` requests and public concurrency tend to fall through to
+  Fireworks or yield with only one live GLM replica.
+- Direct single-flight 8192-token GLM generation is reliable on the 8-GPU
+  replica, but it is slow and bypasses the gateway recorder unless exact usage
+  is explicitly backfilled.
+- Under concurrent direct-origin pressure, the gateway chose Fireworks for
+  public stress and the direct GLM responses returned early. More repaired GLM
+  replicas, or a stricter GLM-only stress admission mode, are needed before
+  increasing public GLM concurrency without fallback.
