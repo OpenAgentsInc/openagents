@@ -78,6 +78,7 @@ TRACE="${TRACE_DIR}/${SAFE}.${RUN_ID}.trace.jsonl"
 TRACE_INDEX="${CF_TRACE_ROOT}/index.jsonl"
 
 FETCH_AUTH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fetch-codex-auth.mjs"
+RG_GUARD_INSTALLER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/install-rg-guard.mjs"
 LEASE_REF=""
 
 log() { echo "[worker:${PROMISE}] $*" >&2; }
@@ -172,6 +173,23 @@ LEASE_REF="$(printf '%s' "$LEASE_OUT" | node -e 'let s="";process.stdin.on("data
 if [[ ! -s "$CODEX_HOME/auth.json" ]]; then
   log "FATAL: auth.json was not materialized under CODEX_HOME"
   emit "$(result_json auth_failed "" skipped null "auth_json_missing")"; exit 0
+fi
+REAL_RG="$(command -v rg 2>/dev/null || true)"
+if [[ -n "$REAL_RG" && -x "$REAL_RG" ]]; then
+  RG_GUARD_BIN="${CODEX_HOME_DIR}/rg-guard-bin"
+  if node "$RG_GUARD_INSTALLER" --bin-dir "$RG_GUARD_BIN" --real-rg "$REAL_RG" >>"$AGENT_LOG" 2>&1; then
+    export OPENAGENTS_CODEX_REAL_RG="$REAL_RG"
+    export OPENAGENTS_CODEX_RG_GUARD=1
+    case ":${PATH:-}:" in
+      *":${RG_GUARD_BIN}:"*) ;;
+      *) export PATH="${RG_GUARD_BIN}${PATH:+:${PATH}}" ;;
+    esac
+    log "ripgrep guard installed for Codex agent"
+  else
+    log "WARN: ripgrep guard install failed; continuing without rg guard"
+  fi
+else
+  log "ripgrep guard skipped: rg not on PATH"
 fi
 log "Codex auth materialized (lease acquired); running agent..."
 

@@ -29,6 +29,10 @@ just subscription quota.
 - **Per-promise isolation.** Each worker gets its own `CODEX_HOME` and leases one
   subscription account, released after the run, so concurrent workers never
   share or overwrite auth material.
+- **Bounded ripgrep searches.** Workers install an `rg` wrapper on the Codex
+  process `PATH` that strips unrestricted traversal flags (`-u`, `--no-ignore`,
+  `--hidden`, `--follow`) and always excludes `node_modules`, `.git`, `dist`,
+  and `build`.
 
 ## Components
 
@@ -36,6 +40,7 @@ just subscription quota.
 |------|--------------|
 | `assign.mjs` | Fetches the public product-promise registry (`https://openagents.com/api/public/product-promises`, browser UA), selects N non-green promises with **buildable, non-owner-gated** blockers, and emits one task brief each. `--priority business` front-loads business-fulfillment promises. Open-PR dedup matches the `codex-fleet/<promise>` branch prefix. |
 | `fetch-codex-auth.mjs` | **The auth crux.** Pulls a Codex OAuth blob from the central device-flow provider-account store and materializes a codex-native `auth.json` under an isolated `CODEX_HOME`. Subcommands: `lease`, `release`, `sanity-all`. |
+| `install-rg-guard.mjs` | Installs the per-run `rg` wrapper used by `worker.sh` so agent searches respect ignore files and cannot traverse heavy generated directories. |
 | `worker.sh` | Given one assignment: `git worktree add` from `origin/main`, `bun install`, fetch central Codex auth into a per-promise `CODEX_HOME`, run `codex exec "<brief>" -m gpt-5.5 -c model_reasoning_effort=xhigh --dangerously-bypass-approvals-and-sandbox --json`, release the lease, run `check:deploy`, commit to branch `codex-fleet/<promise>`, push, open a PR. Emits a one-line JSON result (incl. token usage). |
 | `run.sh` | Orchestrator. Runs a few workers (sequential by default; `--parallel` opt-in), then prints PR URLs + per-worker `check:deploy` status + total tokens. |
 

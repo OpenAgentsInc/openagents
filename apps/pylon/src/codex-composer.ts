@@ -20,6 +20,7 @@ import {
   providerRateLimitSnapshotsFromEvent,
   recordPylonAccountUsageObservation,
 } from "./account-usage.js"
+import { installCodexRipgrepGuard } from "./codex-rg-guard.js"
 
 export type CodexComposerSandboxMode = CodexAgentSandboxMode | "danger-full-access"
 export type CodexComposerExecutionMode = "local_bounded" | "local_supervised_danger"
@@ -613,10 +614,11 @@ export async function runCodexComposerStream(
           home: options.accountHome,
         }
       : null)
-  const env = pylonAccountEnvironment(
+  const accountEnv = pylonAccountEnvironment(
     options.env ?? (Bun.env as Record<string, string | undefined>),
     account,
   )
+  const env = installCodexRipgrepGuard({ env: accountEnv }).env
   const executionMode = options.executionMode ?? "local_bounded"
   const sandboxMode = options.sandboxMode ?? sandboxModeForCodexComposerExecutionMode(executionMode, config.sandboxMode)
   if (sandboxMode === "danger-full-access" && executionMode !== "local_supervised_danger") {
