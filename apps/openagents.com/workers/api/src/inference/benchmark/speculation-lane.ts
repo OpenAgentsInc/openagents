@@ -38,6 +38,9 @@ const isCodeWorkload = (cell: BenchmarkCell): boolean => {
     case 'khala-code-artifact-gen':
     case 'verifier-run':
     case 'long-context-codebase-question':
+    case 'agentcl-source-task':
+    case 'agentcl-complex-task':
+    case 'agentcl-held-out-task':
       return true
     case 'chat':
       return false
