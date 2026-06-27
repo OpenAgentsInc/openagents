@@ -8,6 +8,7 @@ import {
   ARTANIS_SYNTHETIC_LOAD_RISKY_ACTION_KIND,
   ARTANIS_SYNTHETIC_LOAD_RUN_TYPES,
   type ArtanisGlmFleetStatus,
+  type ArtanisFleetStatusPayload,
   type ArtanisKhalaFeedbackRecord,
   type ArtanisPylonAssignmentSummary,
   type ArtanisPylonJobStatus,
@@ -17,6 +18,7 @@ import {
   isSafeArtanisAssignmentRef,
   isSafeArtanisRepoPath,
   makeArtanisDispatchCodexTaskTool,
+  makeArtanisGetFleetStatusTool,
   makeArtanisGetGlmFleetStatusTool,
   makeArtanisGetSyntheticLoadStatusTool,
   makeArtanisGetKhalaFeedbackTool,
@@ -33,6 +35,7 @@ import {
   makeArtanisTriggerSyntheticLoadTool,
   makeArtanisUpdateUnsupportedRequestTool,
   normalizeArtanisGlmFleetStatus,
+  normalizeArtanisFleetStatus,
   normalizeArtanisTraceReview,
   parseArtanisAssignmentRef,
   parseArtanisIssueNumber,
@@ -1878,6 +1881,117 @@ describe('get_glm_fleet_status (live GLM inference-fleet readiness) - iteration 
   })
 })
 
+const exampleFleetStatusPayload = (): ArtanisFleetStatusPayload => ({
+  brain: {
+    goalCount: 2,
+    loopState: 'running',
+    recentDecisionRefs: ['decision.public.artanis.tick_1'],
+  },
+  caveatRefs: ['caveat.operator.fleet_status.read_only_snapshot'],
+  fleet: {
+    activeAssignments: 3,
+    failCount: 1,
+    inFlightIssues: [6428, 6359],
+    inProgressCount: 2,
+    passCount: 4,
+    recentAssignments: 7,
+  },
+  generatedAt: '2026-06-27T12:00:00.000Z',
+  glm: {
+    readyReplicas: 5,
+    status: 'ready',
+    totalReplicas: 6,
+    warmReplicas: 1,
+  },
+  pace: {
+    behindPace: true,
+    floorTokens: 4000,
+    projectedTokens: 3000,
+    status: 'behind_pace',
+    stretchTokens: 10000,
+    todayTokens: 1200,
+    yesterdayTokens: 1000,
+  },
+  schemaVersion: 'openagents.operator.fleet_status.v1',
+  watchdog: {
+    activeLeaseCount: 3,
+    activeSyntheticRuns: 1,
+    alertRefs: ['alert.operator.fleet_burn.behind_floor'],
+    state: 'active',
+  },
+})
+
+describe('get_fleet_status (unified operator fleet-status) - issue #6428', () => {
+  test('returns one high-context read with Pace, Fleet, Watchdog, GLM, and Brain sections from the in-worker loader', async () => {
+    const tool = makeArtanisGetFleetStatusTool({
+      loadStatus: async () => exampleFleetStatusPayload(),
+    })
+    expect(tool.kind).toBe('read')
+    expect(tool.definition.name).toBe('get_fleet_status')
+
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toContain('Unified fleet status')
+    expect(result).toContain('- Pace: status=behind_pace')
+    expect(result).toContain('floor=4,000')
+    expect(result).toContain('- Fleet: active=3')
+    expect(result).toContain('inFlightIssues=#6428, #6359')
+    expect(result).toContain('- Watchdog: state=active')
+    expect(result).toContain('- GLM: status=ready; ready=5/6; warm=1')
+    expect(result).toContain('- Brain: loopState=running; goals=2')
+  })
+
+  test('normalizes the /api/operator/fleet/status payload shape on the HTTP fallback path', async () => {
+    const urls: Array<string> = []
+    const fetchImpl = (async (input: RequestInfo | URL) => {
+      urls.push(typeof input === 'string' ? input : input.toString())
+      return new Response(JSON.stringify(exampleFleetStatusPayload()), {
+        status: 200,
+      })
+    }) as typeof fetch
+    const tool = makeArtanisGetFleetStatusTool({ fetchImpl })
+
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(urls[0]).toBe('https://openagents.com/api/operator/fleet/status')
+    expect(result).toContain('Unified fleet status')
+    expect(result).toContain('GLM: status=ready')
+  })
+
+  test('a loader failure reads as an honest soft failure, never scattered invented status', async () => {
+    const tool = makeArtanisGetFleetStatusTool({
+      loadStatus: async () => {
+        throw new Error('d1 down')
+      },
+    })
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toContain('could not fetch unified fleet status')
+    expect(result).not.toContain('Pace:')
+    expect(result).not.toContain('Error:')
+  })
+
+  test('normalization rejects missing required sections and redacts unsafe free-text fields', () => {
+    expect(normalizeArtanisFleetStatus(null)).toBeNull()
+    expect(normalizeArtanisFleetStatus({ generatedAt: 'x' })).toBeNull()
+    const normalized = normalizeArtanisFleetStatus({
+      ...exampleFleetStatusPayload(),
+      brain: {
+        goalCount: 1,
+        loopState: 'running bearer sk-abc123',
+        recentDecisionRefs: ['decision.public.ok', 'secret.sk-abc123'],
+      },
+      pace: {
+        ...exampleFleetStatusPayload().pace,
+        status: 'behind bearer sk-abc123',
+      },
+    })
+    expect(normalized).not.toBeNull()
+    expect(normalized?.brain.loopState).toBe('(redacted)')
+    expect(normalized?.pace.status).toBe('(redacted)')
+    expect(normalized?.brain.recentDecisionRefs).toEqual([
+      'decision.public.ok',
+    ])
+  })
+})
+
 describe('get_synthetic_load_status (active synthetic-load runs) - iteration 12', () => {
   test('with a stubbed source returning one active run, returns a public-safe summary with run ref, state, and token-burn progress', async () => {
     const tool = makeArtanisGetSyntheticLoadStatusTool({
@@ -2222,6 +2336,7 @@ describe('makeArtanisOperatorTools default table', () => {
     const names = tools.map(tool => tool.definition.name).sort()
     expect(names).toEqual([
       'dispatch_codex_task',
+      'get_fleet_status',
       'get_glm_fleet_status',
       'get_khala_feedback',
       'get_network_stats',
@@ -2269,6 +2384,13 @@ describe('makeArtanisOperatorTools default table', () => {
   test('the default table includes a read-kind get_glm_fleet_status tool', () => {
     const tools = makeArtanisOperatorTools()
     const tool = tools.find(t => t.definition.name === 'get_glm_fleet_status')
+    expect(tool).toBeDefined()
+    expect(tool?.kind).toBe('read')
+  })
+
+  test('the default table includes a read-kind get_fleet_status tool', () => {
+    const tools = makeArtanisOperatorTools()
+    const tool = tools.find(t => t.definition.name === 'get_fleet_status')
     expect(tool).toBeDefined()
     expect(tool?.kind).toBe('read')
   })

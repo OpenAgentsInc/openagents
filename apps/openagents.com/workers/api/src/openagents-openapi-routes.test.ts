@@ -1164,6 +1164,7 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   // documented `/api/public/...` routes; feedback is app/operator-internal.
   '/api/khala/feedback',
   '/api/khala/tokens',
+  '/api/operator/fleet/status',
   '/api/operator/khala/feedback',
   '/api/operator/khala/trace-review',
   '/api/operator/khala/unsupported-requests',

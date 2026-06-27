@@ -2557,6 +2557,278 @@ export const makeArtanisGetGlmFleetStatusTool = (
 }
 
 // ---------------------------------------------------------------------------
+// get_fleet_status — unified Artanis fleet-status read (#6428).
+// ---------------------------------------------------------------------------
+//
+// This is the single high-context read Artanis should prefer over scattered
+// get_network_stats / get_glm_fleet_status / list_pylon_assignments /
+// get_synthetic_load_status calls when he needs a broad operating picture. It
+// mirrors the intended `/api/operator/fleet/status` payload shape: Pace, Fleet,
+// Watchdog, GLM, and Brain. The production route wires an in-worker loader so
+// the Worker does not need to HTTP-fetch its own operator endpoint.
+
+export const ARTANIS_FLEET_STATUS_URL =
+  'https://openagents.com/api/operator/fleet/status'
+
+export type ArtanisFleetStatusPace = Readonly<{
+  todayTokens: number
+  projectedTokens: number | null
+  yesterdayTokens: number | null
+  floorTokens: number | null
+  stretchTokens: number | null
+  behindPace: boolean | null
+  status: string
+}>
+
+export type ArtanisFleetStatusFleet = Readonly<{
+  activeAssignments: number
+  recentAssignments: number
+  passCount: number
+  failCount: number
+  inProgressCount: number
+  inFlightIssues: ReadonlyArray<number>
+}>
+
+export type ArtanisFleetStatusWatchdog = Readonly<{
+  state: string
+  activeSyntheticRuns: number
+  activeLeaseCount: number
+  alertRefs: ReadonlyArray<string>
+}>
+
+export type ArtanisFleetStatusBrain = Readonly<{
+  loopState: string
+  goalCount: number
+  recentDecisionRefs: ReadonlyArray<string>
+}>
+
+export type ArtanisFleetStatusPayload = Readonly<{
+  schemaVersion: 'openagents.operator.fleet_status.v1'
+  generatedAt: string
+  pace: ArtanisFleetStatusPace
+  fleet: ArtanisFleetStatusFleet
+  watchdog: ArtanisFleetStatusWatchdog
+  glm: ArtanisGlmFleetStatus
+  brain: ArtanisFleetStatusBrain
+  caveatRefs: ReadonlyArray<string>
+}>
+
+export type ArtanisFleetStatusConfig = Readonly<{
+  url?: string | undefined
+  fetchImpl?: typeof fetch | undefined
+  loadStatus?: (() => Promise<ArtanisFleetStatusPayload>) | undefined
+}>
+
+const coerceFiniteInteger = (value: unknown): number | null =>
+  typeof value === 'number' && Number.isFinite(value)
+    ? Math.trunc(value)
+    : null
+
+const coerceNullableInteger = (value: unknown): number | null =>
+  value === null || value === undefined ? null : coerceFiniteInteger(value)
+
+const coerceNullableBoolean = (value: unknown): boolean | null =>
+  typeof value === 'boolean' ? value : null
+
+const safeStatusField = (value: unknown, fallback: string): string => {
+  const text = typeof value === 'string' ? value.trim() : ''
+  if (text === '') return fallback
+  return dispatchFieldIsSafe(text) ? text : '(redacted)'
+}
+
+const safeRefsField = (
+  value: unknown,
+  maxRefs: number = 8,
+): ReadonlyArray<string> =>
+  Array.isArray(value)
+    ? value
+        .filter((item): item is string => typeof item === 'string')
+        .map(item => item.trim())
+        .filter(item => item !== '' && dispatchFieldIsSafe(item))
+        .slice(0, maxRefs)
+    : []
+
+const safeIssueNumbersField = (value: unknown): ReadonlyArray<number> =>
+  Array.isArray(value)
+    ? value
+        .map(item => coerceFiniteInteger(item))
+        .filter((item): item is number => item !== null && item > 0)
+        .slice(0, 20)
+    : []
+
+const statusRecord = (value: unknown): Record<string, unknown> =>
+  typeof value === 'object' && value !== null
+    ? (value as Record<string, unknown>)
+    : {}
+
+export const normalizeArtanisFleetStatus = (
+  body: unknown,
+): ArtanisFleetStatusPayload | null => {
+  if (typeof body !== 'object' || body === null) return null
+  const record = body as Record<string, unknown>
+  const generatedAt =
+    typeof record.generatedAt === 'string' && record.generatedAt.trim() !== ''
+      ? record.generatedAt.trim()
+      : null
+  if (generatedAt === null) return null
+
+  const pace = statusRecord(record.pace)
+  const fleet = statusRecord(record.fleet)
+  const watchdog = statusRecord(record.watchdog)
+  const brain = statusRecord(record.brain)
+  const glm = normalizeArtanisGlmFleetStatus(record.glm)
+  if (glm === null) return null
+
+  const todayTokens = coerceFiniteInteger(pace.todayTokens)
+  if (todayTokens === null || todayTokens < 0) return null
+
+  return {
+    brain: {
+      goalCount: Math.max(coerceFiniteInteger(brain.goalCount) ?? 0, 0),
+      loopState: safeStatusField(brain.loopState, 'unknown'),
+      recentDecisionRefs: safeRefsField(brain.recentDecisionRefs),
+    },
+    caveatRefs: safeRefsField(record.caveatRefs, 12),
+    fleet: {
+      activeAssignments: Math.max(
+        coerceFiniteInteger(fleet.activeAssignments) ?? 0,
+        0,
+      ),
+      failCount: Math.max(coerceFiniteInteger(fleet.failCount) ?? 0, 0),
+      inFlightIssues: safeIssueNumbersField(fleet.inFlightIssues),
+      inProgressCount: Math.max(
+        coerceFiniteInteger(fleet.inProgressCount) ?? 0,
+        0,
+      ),
+      passCount: Math.max(coerceFiniteInteger(fleet.passCount) ?? 0, 0),
+      recentAssignments: Math.max(
+        coerceFiniteInteger(fleet.recentAssignments) ?? 0,
+        0,
+      ),
+    },
+    generatedAt,
+    glm,
+    pace: {
+      behindPace: coerceNullableBoolean(pace.behindPace),
+      floorTokens: coerceNullableInteger(pace.floorTokens),
+      projectedTokens: coerceNullableInteger(pace.projectedTokens),
+      status: safeStatusField(pace.status, 'unknown'),
+      stretchTokens: coerceNullableInteger(pace.stretchTokens),
+      todayTokens,
+      yesterdayTokens: coerceNullableInteger(pace.yesterdayTokens),
+    },
+    schemaVersion: 'openagents.operator.fleet_status.v1',
+    watchdog: {
+      activeLeaseCount: Math.max(
+        coerceFiniteInteger(watchdog.activeLeaseCount) ?? 0,
+        0,
+      ),
+      activeSyntheticRuns: Math.max(
+        coerceFiniteInteger(watchdog.activeSyntheticRuns) ?? 0,
+        0,
+      ),
+      alertRefs: safeRefsField(watchdog.alertRefs),
+      state: safeStatusField(watchdog.state, 'unknown'),
+    },
+  }
+}
+
+const formatNullableCount = (value: number | null): string =>
+  value === null ? 'unknown' : value.toLocaleString('en-US')
+
+const formatFleetStatusPayload = (
+  status: ArtanisFleetStatusPayload,
+): string => {
+  const issueText =
+    status.fleet.inFlightIssues.length === 0
+      ? 'none'
+      : status.fleet.inFlightIssues.map(issue => `#${issue}`).join(', ')
+  const alertText =
+    status.watchdog.alertRefs.length === 0
+      ? 'none'
+      : status.watchdog.alertRefs.join(', ')
+  const decisionText =
+    status.brain.recentDecisionRefs.length === 0
+      ? 'none'
+      : status.brain.recentDecisionRefs.join(', ')
+  const caveatText =
+    status.caveatRefs.length === 0 ? 'none' : status.caveatRefs.join(', ')
+
+  return [
+    `Unified fleet status (${status.generatedAt}):`,
+    `- Pace: status=${status.pace.status}; today=${status.pace.todayTokens.toLocaleString(
+      'en-US',
+    )}; projected=${formatNullableCount(
+      status.pace.projectedTokens,
+    )}; floor=${formatNullableCount(
+      status.pace.floorTokens,
+    )}; stretch=${formatNullableCount(
+      status.pace.stretchTokens,
+    )}; behindPace=${
+      status.pace.behindPace === null ? 'unknown' : String(status.pace.behindPace)
+    }`,
+    `- Fleet: active=${status.fleet.activeAssignments}; recent=${status.fleet.recentAssignments}; pass=${status.fleet.passCount}; fail=${status.fleet.failCount}; inProgress=${status.fleet.inProgressCount}; inFlightIssues=${issueText}`,
+    `- Watchdog: state=${status.watchdog.state}; activeSyntheticRuns=${status.watchdog.activeSyntheticRuns}; activeLeases=${status.watchdog.activeLeaseCount}; alerts=${alertText}`,
+    `- GLM: status=${status.glm.status}; ready=${status.glm.readyReplicas}/${status.glm.totalReplicas}; warm=${
+      status.glm.warmReplicas === null ? 'unknown' : status.glm.warmReplicas
+    }`,
+    `- Brain: loopState=${status.brain.loopState}; goals=${status.brain.goalCount}; recentDecisions=${decisionText}`,
+    `- Caveats: ${caveatText}`,
+  ].join('\n')
+}
+
+export const makeArtanisGetFleetStatusTool = (
+  config: ArtanisFleetStatusConfig = {},
+): ArtanisOperatorReadTool => {
+  const url = config.url ?? ARTANIS_FLEET_STATUS_URL
+  const fetchImpl = config.fetchImpl ?? globalThis.fetch
+  const loadStatus = config.loadStatus
+
+  return {
+    definition: {
+      description:
+        'Read the unified operator fleet-status snapshot in one call: Pace (token burn and pace-to-floor), Fleet (assignment concurrency, pass/fail/in-progress counts, in-flight issues), Watchdog (leases/runs/alerts), GLM readiness, and Brain loop health. Prefer this over scattered get_network_stats/get_glm_fleet_status/list_pylon_assignments/get_synthetic_load_status calls when you need a high-context operating picture. Read-only, side-effect-free, owner-scoped; takes no arguments.',
+      name: 'get_fleet_status',
+      parameters: {
+        additionalProperties: false,
+        properties: {},
+        type: 'object',
+      },
+    },
+    execute: (_args: unknown) =>
+      Effect.gen(function* () {
+        if (loadStatus !== undefined) {
+          const exit = yield* Effect.exit(Effect.tryPromise(() => loadStatus()))
+          if (exit._tag === 'Failure') {
+            return '(could not fetch unified fleet status)'
+          }
+          return formatFleetStatusPayload(exit.value)
+        }
+
+        const response = yield* Effect.tryPromise(() =>
+          fetchImpl(url, { headers: { 'User-Agent': 'artanis-operator' } }),
+        ).pipe(Effect.orElseSucceed(() => undefined))
+        if (response === undefined) {
+          return `(could not fetch unified fleet status from ${url})`
+        }
+        if (!response.ok) {
+          return `(could not fetch unified fleet status from ${url}: status ${response.status})`
+        }
+
+        const body = yield* Effect.tryPromise(
+          () => response.json() as Promise<unknown>,
+        ).pipe(Effect.orElseSucceed(() => undefined))
+        const normalized = normalizeArtanisFleetStatus(body)
+        if (normalized === null) {
+          return `(could not fetch unified fleet status from ${url}: unexpected response shape)`
+        }
+        return formatFleetStatusPayload(normalized)
+      }),
+    kind: 'read',
+  }
+}
+
+// ---------------------------------------------------------------------------
 // get_trace_review — read the LIVE Khala trace-review report (iteration-11).
 // ---------------------------------------------------------------------------
 //
@@ -3307,6 +3579,9 @@ export const makeArtanisGetSyntheticLoadStatusTool = (
 // to an HTTP fetch of the public-safe readiness route, and an unreachable source
 // reads as an honest "(could not fetch GLM fleet status …)" rather than
 // inventing replica numbers.
+// `fleetStatus.loadStatus` is the unified #6428 fleet-status loader behind
+// `get_fleet_status`; production wires it in-worker so Artanis can read Pace,
+// Fleet, Watchdog, GLM, and Brain in one turn without scattering tool calls.
 // `syntheticLoadStatus.reader` is the owner-scoped ACTIVE synthetic-load run
 // reader behind the iteration-12 `get_synthetic_load_status` read tool (the read
 // half of the plan-only `trigger_synthetic_load` pair); with no reader wired it
@@ -3342,6 +3617,7 @@ export const makeArtanisOperatorTools = (
     defaultBranch?: string | undefined
     networkStats?: ArtanisGetNetworkStatsConfig | undefined
     glmFleetStatus?: ArtanisGlmFleetStatusConfig | undefined
+    fleetStatus?: ArtanisFleetStatusConfig | undefined
     syntheticLoadStatus?: ArtanisSyntheticLoadStatusConfig | undefined
     dispatchExecution?: ArtanisDispatchExecution | undefined
     syntheticLoad?:
@@ -3366,6 +3642,7 @@ export const makeArtanisOperatorTools = (
       owner: issueRead.owner,
       repo: issueRead.repo,
     }),
+    makeArtanisGetFleetStatusTool(config.fleetStatus),
     makeArtanisGetNetworkStatsTool(config.networkStats),
     makeArtanisGetGlmFleetStatusTool(config.glmFleetStatus),
     makeArtanisGetSyntheticLoadStatusTool(config.syntheticLoadStatus),

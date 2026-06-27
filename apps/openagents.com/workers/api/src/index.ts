@@ -113,7 +113,10 @@ import {
 import { makeArtanisGlmFleetStatusLoader } from './artanis-operator-glm-fleet-status'
 import { makeArtanisKhalaFeedbackReader } from './artanis-operator-khala-feedback'
 import { makeArtanisTraceReviewLoader } from './artanis-operator-trace-review'
-import { makeArtanisOperatorTools } from './artanis-operator-tools'
+import {
+  type ArtanisFleetStatusPayload,
+  makeArtanisOperatorTools,
+} from './artanis-operator-tools'
 import {
   makeArtanisUnsupportedRequestsReader,
   makeArtanisUnsupportedRequestWriter,
@@ -8576,6 +8579,10 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
     }
     return makeArtanisOperatorTools({
       defaultBranch: 'main',
+      fleetStatus: {
+        loadStatus: () =>
+          loadArtanisOperatorFleetStatusPayload(env, session.user.userId),
+      },
       // get_network_stats reads the token-usage ledger directly (the worker
       // cannot reliably HTTP-fetch its own public /stats zone).
       networkStats: {
@@ -10044,6 +10051,105 @@ const khalaChatRoutes = makeKhalaChatRoutes({
   recordServedTokens: recordPublicKhalaChatServedTokens,
 })
 
+const loadArtanisOperatorFleetStatusPayload = async (
+  env: Env,
+  ownerOpenAuthUserId: string,
+): Promise<ArtanisFleetStatusPayload> => {
+  const db = openAgentsDatabase(env)
+  const nowIso = currentIsoTimestamp()
+  const listLinkedAgentUserIds = async (ownerUserId: string) => {
+    const agentStore = makeD1AgentRegistrationStore(db)
+    if (agentStore.listLinkedAgentsForOpenAuthUser === undefined) {
+      return []
+    }
+    const linked = await agentStore.listLinkedAgentsForOpenAuthUser(
+      ownerUserId,
+      100,
+    )
+    const ids = linked.map(agent => agent.agentUserId)
+    if (
+      isOpenAgentsOwnerAgentOpenAuthUserId(ownerUserId) &&
+      !ids.includes(ownerUserId)
+    ) {
+      ids.push(ownerUserId)
+    }
+    return ids
+  }
+  const [networkStats, glm, assignments] = await Promise.all([
+    loadArtanisNetworkStatsFromLedger(makeD1TokenUsageLedger(db)).catch(
+      () => null,
+    ),
+    makeArtanisGlmFleetStatusLoader({ db, env })().catch(() => ({
+      readyReplicas: 0,
+      status: 'unknown',
+      totalReplicas: 0,
+      warmReplicas: null,
+    })),
+    makeArtanisPylonAssignmentsLister({
+      listLinkedAgentUserIds,
+      nowIso: () => nowIso,
+      ownerOpenAuthUserId,
+      pylonStore: makeD1PylonApiStore(db),
+    })(100).catch(() => []),
+  ])
+  const pace = networkStats?.pace ?? null
+  const activeAssignments = assignments.filter(
+    assignment =>
+      assignment.leaseState === 'active' ||
+      ['offered', 'accepted', 'running', 'proof_submitted'].includes(
+        assignment.state,
+      ),
+  ).length
+
+  return {
+    brain: {
+      goalCount: 0,
+      loopState: 'unknown',
+      recentDecisionRefs: [],
+    },
+    caveatRefs: [
+      'caveat.operator.fleet_status.read_only_snapshot',
+      'caveat.operator.fleet_status.brain_loop_health_not_wired',
+    ],
+    fleet: {
+      activeAssignments,
+      failCount: assignments.filter(
+        assignment => assignment.verifyResult === 'fail',
+      ).length,
+      inFlightIssues: [],
+      inProgressCount: assignments.filter(
+        assignment => assignment.verifyResult === 'unknown',
+      ).length,
+      passCount: assignments.filter(
+        assignment => assignment.verifyResult === 'pass',
+      ).length,
+      recentAssignments: assignments.length,
+    },
+    generatedAt: nowIso,
+    glm,
+    pace: {
+      behindPace: pace?.behindPace ?? null,
+      floorTokens: pace?.target4x ?? null,
+      projectedTokens: pace?.paceProjection ?? null,
+      status:
+        pace === null ? 'unknown' : pace.behindPace ? 'behind_pace' : 'on_pace',
+      stretchTokens: pace?.target10x ?? null,
+      todayTokens: networkStats?.todayTokens ?? pace?.todayTokens ?? 0,
+      yesterdayTokens: pace?.yesterdayTokens ?? null,
+    },
+    schemaVersion: 'openagents.operator.fleet_status.v1',
+    watchdog: {
+      activeLeaseCount: activeAssignments,
+      activeSyntheticRuns: 0,
+      alertRefs:
+        activeAssignments > 0
+          ? []
+          : ['alert.operator.fleet_status.no_active_assignments'],
+      state: activeAssignments > 0 ? 'active' : 'idle',
+    },
+  }
+}
+
 // PRODUCER seam for the async batch-job submit route (Khala, #6028 / EPIC
 // #6017). Returns an `enqueueBatchJob` that sends the executable
 // `BatchJobQueueMessage` onto the batch-job queue so the consumer (the `queue`
@@ -10192,6 +10298,26 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         requireAdminApiToken: adminRequest =>
           requireAdminApiToken(adminRequest, env),
         store: makeD1KhalaUnsupportedRequestStore(openAgentsDatabase(env)),
+      }),
+  },
+  {
+    path: '/api/operator/fleet/status',
+    handler: (request, env) =>
+      Effect.promise(async () => {
+        if (request.method !== 'GET') {
+          return methodNotAllowed(['GET'])
+        }
+        if (!(await requireAdminApiToken(request, env))) {
+          return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+        }
+        const url = new URL(request.url)
+        const ownerUserId =
+          url.searchParams.get('ownerUserId') ?? 'github:14167547'
+        const payload = await loadArtanisOperatorFleetStatusPayload(
+          env,
+          ownerUserId,
+        )
+        return noStoreJsonResponse(payload)
       }),
   },
   {
