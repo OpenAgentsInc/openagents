@@ -935,6 +935,197 @@ export const makeArtanisListPylonAssignmentsTool = (
 }
 
 // ---------------------------------------------------------------------------
+// get_khala_feedback — read a bounded, public-safe LIST of the most recent
+// user feedback submitted through the Khala CLI `/feedback` command.
+//
+// This is Artanis's iteration-6 self-improvement capability. The Khala CLI lets
+// users submit frustration/quality notes through `/feedback`; those land in the
+// already-existing `khala_feedback` store (`khala-feedback-routes.ts`). This tool
+// lets Artanis READ that stream himself so he can spot capability gaps, bugs, and
+// style preferences and immediately triage them (route to unsupported-requests
+// #6357 or plan a Codex fix), closing the user-feedback -> fix loop that drives
+// adoption and 10x daily Khala token usage.
+//
+// It stays conservative by construction:
+//   - READ-ONLY + SIDE-EFFECT-FREE. It never writes, mutates, dispatches, or
+//     spends. It grants no new authority and fits the existing read-tool boundary.
+//   - OWNER-SCOPED. It is only ever wired into the owner-authenticated operator
+//     chat (the same admin-gated path as the other read tools); the production
+//     reader is backed by the same admin-gated `khala_feedback` store the
+//     `GET /api/operator/khala/feedback` route already uses.
+//   - BOUNDED + FAIL-SOFT. A single read returns at most `maxLimit` records, each
+//     feedback body truncated, so a chatty stream stays cheap. A reader rejection
+//     degrades to an honest "(could not read feedback)" string; no reader wired is
+//     honest rather than inventive; an empty store reads "(no recent ... feedback)".
+// ---------------------------------------------------------------------------
+
+// The default and max number of feedback records returned for one read, so a
+// single read stays bounded even when there are many feedback rows.
+export const ARTANIS_KHALA_FEEDBACK_DEFAULT_LIMIT = 10
+export const ARTANIS_KHALA_FEEDBACK_MAX_LIMIT = 50
+
+// Max characters of a single feedback body surfaced into Artanis's context; a
+// longer body is truncated with an explicit marker so one essay cannot blow the
+// context budget. The structured fields (ref/source) stay public-safe-gated.
+export const ARTANIS_KHALA_FEEDBACK_TEXT_MAX_CHARS = 600
+
+// A public-safe one-record projection of ONE Khala CLI feedback submission. The
+// production reader builds this from the `khala_feedback` store; tests inject a
+// fake reader. The free-text `feedback` is the value the owner is entitled to
+// read, so it is kept verbatim (only truncated); the STRUCTURED fields are
+// defensively public-safety-gated.
+export type ArtanisKhalaFeedbackRecord = Readonly<{
+  // The opaque feedback ref, e.g. `khala_feedback:fb_...`.
+  feedbackRef: string
+  // The user-submitted feedback body (kept verbatim; truncated if long).
+  feedback: string
+  // The submission source, e.g. `khala-cli`.
+  source: string
+  // The optional client version string, or null.
+  clientVersion: string | null
+  // Public-safe "submitted at" display string.
+  createdAt: string
+}>
+
+// The injected, owner-scoped reader seam. Given a max count it resolves the most
+// recent feedback records as public-safe projections, newest first. Returns `[]`
+// when there is none (honest absence). A thrown rejection is treated by the tool
+// as a soft read failure, never a fabricated list. The production reader
+// (`artanis-operator-khala-feedback.ts`) reads the admin-gated `khala_feedback`
+// store.
+export type ArtanisKhalaFeedbackReader = (
+  limit: number,
+) => Promise<ReadonlyArray<ArtanisKhalaFeedbackRecord>>
+
+export type ArtanisKhalaFeedbackConfig = Readonly<{
+  reader?: ArtanisKhalaFeedbackReader | undefined
+  defaultLimit?: number | undefined
+  maxLimit?: number | undefined
+  maxTextChars?: number | undefined
+}>
+
+// Coerce a model-produced `limit`/`count`/`max` arg into a bounded positive
+// integer, clamped into [1, maxLimit]; an absent/invalid value falls back to the
+// default. A model typo can never request an unboundedly large read.
+const parseFeedbackLimit = (
+  args: unknown,
+  defaultLimit: number,
+  maxLimit: number,
+): number => {
+  const record =
+    typeof args === 'object' && args !== null
+      ? (args as Record<string, unknown>)
+      : {}
+  const raw = record.limit ?? record.count ?? record.max
+  let value: number | undefined
+  if (typeof raw === 'number' && Number.isInteger(raw)) {
+    value = raw
+  } else if (typeof raw === 'string' && /^\d+$/.test(raw.trim())) {
+    value = Number.parseInt(raw.trim(), 10)
+  }
+  if (value === undefined || value < 1) {
+    return defaultLimit
+  }
+  return Math.min(value, maxLimit)
+}
+
+// Collapse internal whitespace and truncate a feedback body to a bounded length
+// with an explicit marker, so one long submission stays cheap and renders as a
+// single readable line.
+const truncateFeedbackText = (text: string, maxChars: number): string => {
+  const collapsed = text.replace(/\s+/g, ' ').trim()
+  if (collapsed.length <= maxChars) return collapsed
+  return `${collapsed.slice(0, maxChars)}...[truncated]`
+}
+
+// Format ONE feedback record as a bounded, public-safe entry carrying the
+// submitted-at display, source, ref, and the (truncated) feedback body.
+const formatFeedbackRecordLine = (
+  record: ArtanisKhalaFeedbackRecord,
+  maxTextChars: number,
+): string => {
+  const version =
+    record.clientVersion !== null && dispatchFieldIsSafe(record.clientVersion)
+      ? ` v${record.clientVersion}`
+      : ''
+  return `- [${record.createdAt}] (${record.source}${version}) ${record.feedbackRef}: "${truncateFeedbackText(
+    record.feedback,
+    maxTextChars,
+  )}"`
+}
+
+// A feedback record is renderable only if its STRUCTURED fields pass the
+// public-safety gate: the ref is ref-shaped and the source is safe. The free-text
+// `feedback` body is intentionally NOT gated (the owner is entitled to read it);
+// it is only truncated. This is a defensive second pass so an upstream store
+// regression cannot leak private material into a structured ref/source field.
+const feedbackRecordIsSafe = (record: ArtanisKhalaFeedbackRecord): boolean =>
+  isSafeArtanisAssignmentRef(record.feedbackRef) &&
+  dispatchFieldIsSafe(record.source) &&
+  typeof record.feedback === 'string' &&
+  record.feedback.trim() !== ''
+
+// get_khala_feedback(limit?) — reads a bounded, public-safe LIST of the most
+// recent Khala CLI `/feedback` submissions via the injected reader. Returns one
+// entry per record (submitted-at + source + ref + truncated body). Honest
+// absence: an empty store reads "(no recent Khala CLI feedback ...)"; a read
+// failure reads "(could not read feedback)"; with no reader wired it is honest
+// rather than inventive. Side-effect-free, owner-scoped, no spend.
+export const makeArtanisGetKhalaFeedbackTool = (
+  config: ArtanisKhalaFeedbackConfig = {},
+): ArtanisOperatorReadTool => {
+  const reader = config.reader
+  const defaultLimit =
+    config.defaultLimit ?? ARTANIS_KHALA_FEEDBACK_DEFAULT_LIMIT
+  const maxLimit = config.maxLimit ?? ARTANIS_KHALA_FEEDBACK_MAX_LIMIT
+  const maxTextChars =
+    config.maxTextChars ?? ARTANIS_KHALA_FEEDBACK_TEXT_MAX_CHARS
+
+  return {
+    definition: {
+      description:
+        'Read the most recent USER FEEDBACK submitted through the Khala CLI /feedback command. Returns one bounded entry per submission with its submitted-at time, source, ref, and the (truncated) feedback body. Use this to hear directly from users - spot capability gaps, bugs, and style preferences (e.g. "too wordy, prefer more conversational") - then triage each one: route an unsupported request to the unsupported-requests track (#6357) or plan a Codex fix. Read-only, side-effect-free, owner-scoped. Optional "limit" bounds the count.',
+      name: 'get_khala_feedback',
+      parameters: {
+        additionalProperties: false,
+        properties: {
+          limit: {
+            description: `Max number of feedback records to return, a positive integer up to ${maxLimit} (default ${defaultLimit}).`,
+            type: 'number',
+          },
+        },
+        required: [],
+        type: 'object',
+      },
+    },
+    execute: (args: unknown) =>
+      Effect.gen(function* () {
+        if (reader === undefined) {
+          return '(could not read feedback: no feedback reader is wired)'
+        }
+        const limit = parseFeedbackLimit(args, defaultLimit, maxLimit)
+
+        const exit = yield* Effect.exit(Effect.tryPromise(() => reader(limit)))
+        if (exit._tag === 'Failure') {
+          return '(could not read feedback)'
+        }
+
+        const safe = exit.value.filter(feedbackRecordIsSafe).slice(0, limit)
+        if (safe.length === 0) {
+          return '(no recent Khala CLI feedback found)'
+        }
+
+        const header = `Recent Khala CLI feedback (${safe.length}):`
+        return [
+          header,
+          ...safe.map(record => formatFeedbackRecordLine(record, maxTextChars)),
+        ].join('\n')
+      }),
+    kind: 'read',
+  }
+}
+
+// ---------------------------------------------------------------------------
 // #6366 — dispatch_codex_task (GATED: pylon_job_dispatch).
 // ---------------------------------------------------------------------------
 //
@@ -1507,12 +1698,16 @@ export const makeArtanisTriggerSyntheticLoadTool = (
 // `pylonAssignments.lister` is the owner-scoped bulk assignments lister behind
 // the iteration-5 `list_pylon_assignments` read tool; with no lister wired it
 // returns an honest "(could not list assignments …)" rather than inventing one.
+// `khalaFeedback.reader` is the owner-scoped Khala CLI feedback reader behind the
+// iteration-6 `get_khala_feedback` read tool; with no reader wired it returns an
+// honest "(could not read feedback …)" rather than inventing one.
 export const makeArtanisOperatorTools = (
   config: Readonly<{
     repoRead?: ArtanisRepoReadConfig | undefined
     issueRead?: ArtanisIssueReadConfig | undefined
     pylonJobStatus?: ArtanisPylonJobStatusConfig | undefined
     pylonAssignments?: ArtanisPylonAssignmentsConfig | undefined
+    khalaFeedback?: ArtanisKhalaFeedbackConfig | undefined
     defaultBranch?: string | undefined
     networkStats?: ArtanisGetNetworkStatsConfig | undefined
     dispatchExecution?: ArtanisDispatchExecution | undefined
@@ -1536,6 +1731,7 @@ export const makeArtanisOperatorTools = (
     makeArtanisGetNetworkStatsTool(config.networkStats),
     makeArtanisGetPylonJobStatusTool(config.pylonJobStatus),
     makeArtanisListPylonAssignmentsTool(config.pylonAssignments),
+    makeArtanisGetKhalaFeedbackTool(config.khalaFeedback),
     makeArtanisDispatchCodexTaskTool({
       defaultBranch: config.defaultBranch,
       execution: config.dispatchExecution,

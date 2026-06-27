@@ -109,6 +109,7 @@ import {
   makeArtanisPylonAssignmentsLister,
   makeArtanisPylonJobStatusReader,
 } from './artanis-operator-pylon-job-status'
+import { makeArtanisKhalaFeedbackReader } from './artanis-operator-khala-feedback'
 import { makeArtanisOperatorTools } from './artanis-operator-tools'
 import { saveArtanisForumPublicationIntent } from './artanis-persistence'
 import { handlePublicArtanisReportApi } from './artanis-public-report-routes'
@@ -8579,6 +8580,17 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
           nowIso: currentIsoTimestamp,
           ownerOpenAuthUserId: session.user.userId,
           pylonStore: makeD1PylonApiStore(openAgentsDatabase(env)),
+        }),
+      },
+      // iteration-6: the owner-scoped Khala CLI feedback READ tool. Reads the most
+      // recent user feedback submitted through the Khala CLI /feedback command
+      // (the same admin-gated `khala_feedback` store the
+      // GET /api/operator/khala/feedback route uses) so Artanis can hear directly
+      // from users, spot gaps/bugs/style preferences, and triage them.
+      // Read-only, side-effect-free, no spend/authority.
+      khalaFeedback: {
+        reader: makeArtanisKhalaFeedbackReader({
+          store: makeD1KhalaFeedbackStore(openAgentsDatabase(env)),
         }),
       },
       dispatchExecution: makeArtanisDispatchExecution({

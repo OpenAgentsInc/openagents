@@ -7,12 +7,14 @@ import {
   ARTANIS_SYNTHETIC_LOAD_MAX_TARGET_TOKENS,
   ARTANIS_SYNTHETIC_LOAD_RISKY_ACTION_KIND,
   ARTANIS_SYNTHETIC_LOAD_RUN_TYPES,
+  type ArtanisKhalaFeedbackRecord,
   type ArtanisPylonAssignmentSummary,
   type ArtanisPylonJobStatus,
   buildArtanisSyntheticLoadPlan,
   isSafeArtanisAssignmentRef,
   isSafeArtanisRepoPath,
   makeArtanisDispatchCodexTaskTool,
+  makeArtanisGetKhalaFeedbackTool,
   makeArtanisGetNetworkStatsTool,
   makeArtanisGetPylonJobStatusTool,
   makeArtanisListPylonAssignmentsTool,
@@ -731,6 +733,131 @@ describe('list_pylon_assignments (owner-scoped bulk assignment list) — iterati
   })
 })
 
+// Real-shaped Khala CLI feedback rows (newest-first, as the store's listRecent
+// returns them). Varied source + clientVersion; one long body to exercise the
+// truncation path.
+const feedbackRows: ReadonlyArray<ArtanisKhalaFeedbackRecord> = [
+  {
+    clientVersion: '0.4.2',
+    createdAt: '2026-06-27T11:00:00.000Z',
+    feedback: 'too wordy, prefer more conversational',
+    feedbackRef: 'khala_feedback:fb_aaa111',
+    source: 'khala-cli',
+  },
+  {
+    clientVersion: null,
+    createdAt: '2026-06-27T10:30:00.000Z',
+    feedback: 'wish it could read my local git diff before answering',
+    feedbackRef: 'khala_feedback:fb_bbb222',
+    source: 'khala-cli',
+  },
+  {
+    clientVersion: '0.4.1',
+    createdAt: '2026-06-27T09:15:00.000Z',
+    feedback: 'x'.repeat(2_000),
+    feedbackRef: 'khala_feedback:fb_ccc333',
+    source: 'khala-web',
+  },
+]
+
+describe('get_khala_feedback (owner-scoped Khala CLI feedback read) — iteration 6', () => {
+  test('returns a bounded public-safe entry per feedback record (ref + source + body)', async () => {
+    let askedLimit: number | undefined
+    const tool = makeArtanisGetKhalaFeedbackTool({
+      reader: async limit => {
+        askedLimit = limit
+        return feedbackRows
+      },
+    })
+
+    // It is a READ tool (executes freely, never gated/risky).
+    expect(tool.kind).toBe('read')
+    expect(tool.definition.name).toBe('get_khala_feedback')
+
+    const result = await Effect.runPromise(tool.execute({}))
+
+    // The actual feedback body the owner needs to read is surfaced verbatim.
+    expect(result).toContain('too wordy, prefer more conversational')
+    expect(result).toContain('wish it could read my local git diff')
+    // Each record carries its ref + source.
+    for (const row of feedbackRows) {
+      expect(result).toContain(row.feedbackRef)
+    }
+    expect(result).toContain('(khala-cli v0.4.2)')
+    expect(result).toContain('(khala-web v0.4.1)')
+    // Header reports the bounded count.
+    expect(result).toContain(`Recent Khala CLI feedback (${feedbackRows.length}):`)
+    // Default bounded limit (10) was passed to the reader.
+    expect(askedLimit).toBe(10)
+  })
+
+  test('a long feedback body is truncated with an explicit marker', async () => {
+    const tool = makeArtanisGetKhalaFeedbackTool({
+      maxTextChars: 50,
+      reader: async () => feedbackRows,
+    })
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toContain('...[truncated]')
+    // The raw 2,000-char body never lands whole in context.
+    expect(result).not.toContain('x'.repeat(100))
+  })
+
+  test('a limit arg is clamped to the bounded max and floored at the default', async () => {
+    const limits: Array<number> = []
+    const tool = makeArtanisGetKhalaFeedbackTool({
+      reader: async limit => {
+        limits.push(limit)
+        return feedbackRows.slice(0, limit)
+      },
+    })
+    await Effect.runPromise(tool.execute({ limit: 100000 }))
+    await Effect.runPromise(tool.execute({ limit: 0 }))
+    await Effect.runPromise(tool.execute({ limit: 2 }))
+    // clamped to max (50), floored to default (10) for <1, honored otherwise.
+    expect(limits).toEqual([50, 10, 2])
+  })
+
+  test('defensively drops a row whose structured ref/source leaks unsafe material', async () => {
+    const tool = makeArtanisGetKhalaFeedbackTool({
+      reader: async () => [
+        feedbackRows[0]!,
+        {
+          ...feedbackRows[0]!,
+          feedback: 'fine body',
+          // A regression upstream tries to leak a secret into the ref field.
+          feedbackRef: 'khala_feedback:bearer_token_leak',
+        },
+      ],
+    })
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toContain('khala_feedback:fb_aaa111')
+    expect(result).not.toContain('bearer')
+  })
+
+  test('an empty store reads as honest absence, never invention', async () => {
+    const tool = makeArtanisGetKhalaFeedbackTool({ reader: async () => [] })
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toContain('no recent Khala CLI feedback found')
+  })
+
+  test('a reader rejection reads as a soft "(could not read feedback)", never a throw', async () => {
+    const tool = makeArtanisGetKhalaFeedbackTool({
+      reader: async () => {
+        throw new Error('d1 down')
+      },
+    })
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toContain('could not read feedback')
+    expect(result).not.toMatch(/Error:/)
+  })
+
+  test('with no reader wired the tool is honest, not inventive', async () => {
+    const tool = makeArtanisGetKhalaFeedbackTool({})
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toContain('could not read feedback')
+  })
+})
+
 describe('parseArtanisAssignmentRef + isSafeArtanisAssignmentRef', () => {
   test('accepts a ref under several key aliases', () => {
     expect(parseArtanisAssignmentRef({ assignmentRef: 'a.b.c' })).toEqual({
@@ -1014,6 +1141,7 @@ describe('makeArtanisOperatorTools default table', () => {
     const names = tools.map(tool => tool.definition.name).sort()
     expect(names).toEqual([
       'dispatch_codex_task',
+      'get_khala_feedback',
       'get_network_stats',
       'get_pylon_job_status',
       'list_pylon_assignments',
@@ -1029,6 +1157,13 @@ describe('makeArtanisOperatorTools default table', () => {
     const tool = tools.find(
       t => t.definition.name === 'list_pylon_assignments',
     )
+    expect(tool).toBeDefined()
+    expect(tool?.kind).toBe('read')
+  })
+
+  test('the default table includes a read-kind get_khala_feedback tool', () => {
+    const tools = makeArtanisOperatorTools()
+    const tool = tools.find(t => t.definition.name === 'get_khala_feedback')
     expect(tool).toBeDefined()
     expect(tool?.kind).toBe('read')
   })

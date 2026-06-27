@@ -25,7 +25,10 @@ import {
   type InferenceRequest,
   type InferenceResult,
 } from './inference/provider-adapter'
-import { makeArtanisTriggerSyntheticLoadTool } from './artanis-operator-tools'
+import {
+  makeArtanisGetKhalaFeedbackTool,
+  makeArtanisTriggerSyntheticLoadTool,
+} from './artanis-operator-tools'
 
 // Real owner-memory entries (most-recent-first, as the store returns them).
 const exampleMemory: ReadonlyArray<ArtanisMemoryEntry> = [
@@ -588,6 +591,83 @@ describe('#6364 artanis operator bounded tool-calling loop', () => {
     expect(
       secondConversation.some(
         message => message.role === 'assistant' && message.toolCalls !== undefined,
+      ),
+    ).toBe(true)
+  })
+
+  test('the REAL get_khala_feedback tool executes and Artanis summarizes + triages it (iteration 6)', async () => {
+    // The owner says: "Get the recent Khala CLI feedback." The fake Khala client
+    // requests get_khala_feedback(limit:10); the tool resolves to mock feedback
+    // from an injected reader; Artanis's final reply summarizes + proposes triage.
+    let askedLimit: number | undefined
+    const tool = makeArtanisGetKhalaFeedbackTool({
+      reader: async limit => {
+        askedLimit = limit
+        return [
+          {
+            clientVersion: '0.4.2',
+            createdAt: '2026-06-27T11:00:00.000Z',
+            feedback: 'too wordy, prefer more conversational',
+            feedbackRef: 'khala_feedback:fb_aaa111',
+            source: 'khala-cli',
+          },
+          {
+            clientVersion: null,
+            createdAt: '2026-06-27T10:30:00.000Z',
+            feedback: 'wish it could read my local git diff before answering',
+            feedbackRef: 'khala_feedback:fb_bbb222',
+            source: 'khala-cli',
+          },
+        ]
+      },
+    })
+    const { client, requests } = makeScriptedKhalaClient([
+      toolCallResult('get_khala_feedback', '{"limit":10}'),
+      textResult(
+        'Two recent notes: users find replies too wordy (prefer more conversational), and one wants me to read their local git diff first. Triage: tighten the default reply style, and route the git-diff ask to the unsupported-requests track (#6357).',
+      ),
+    ])
+
+    const result = await Effect.runPromise(
+      artanisOperatorTurn({
+        awareness: exampleAwareness,
+        khalaClient: client,
+        memory: exampleMemory,
+        messages: [
+          { content: 'Get the recent Khala CLI feedback.', role: 'user' },
+        ],
+        ownerId: 'owner:github:14167547',
+        tools: [tool],
+      }),
+    )
+
+    expect('error' in result).toBe(false)
+    if ('error' in result) return
+    // The read tool actually executed with the model's bounded limit arg.
+    expect(askedLimit).toBe(10)
+    expect(result.iterations).toBe(2)
+    // It is a plain read: no approval-gate deferral.
+    expect(result.deferredToApprovalGate).toBe(false)
+    expect(result.toolInvocations).toEqual([
+      {
+        deferredToApprovalGate: false,
+        executed: true,
+        executedRef: null,
+        name: 'get_khala_feedback',
+        riskyActionKind: null,
+      },
+    ])
+    // Artanis's final reply summarizes the feedback and proposes triage actions.
+    expect(result.reply).toContain('wordy')
+    expect(result.reply).toContain('#6357')
+    // The real feedback round-tripped back to the model as a tool message.
+    const secondConversation = requests[1]?.messages ?? []
+    expect(
+      secondConversation.some(
+        message =>
+          message.role === 'tool' &&
+          message.content.includes('too wordy, prefer more conversational') &&
+          message.content.includes('Recent Khala CLI feedback'),
       ),
     ).toBe(true)
   })
