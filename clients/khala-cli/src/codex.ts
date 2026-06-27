@@ -28,6 +28,7 @@ export type KhalaCodexRunOptions = {
   readonly env?: Record<string, string | undefined>
   readonly onEvent?: ((event: KhalaCodexDisplayEvent) => void) | undefined
   readonly prompt: string
+  readonly signal?: AbortSignal | undefined
   readonly timeoutMs?: number | undefined
 }
 
@@ -165,6 +166,12 @@ export async function runKhalaCodexTask(options: KhalaCodexRunOptions): Promise<
     }
   }
   const abort = new AbortController()
+  const forwardAbort = () => abort.abort()
+  if (options.signal?.aborted) {
+    abort.abort()
+  } else {
+    options.signal?.addEventListener("abort", forwardAbort, { once: true })
+  }
   const timer = setTimeout(() => abort.abort(), options.timeoutMs ?? DEFAULT_CODEX_TIMEOUT_MS)
   let text = ""
   let threadId: string | null = null
@@ -224,6 +231,7 @@ export async function runKhalaCodexTask(options: KhalaCodexRunOptions): Promise<
     }
   } finally {
     clearTimeout(timer)
+    options.signal?.removeEventListener("abort", forwardAbort)
   }
   return {
     commandCount,

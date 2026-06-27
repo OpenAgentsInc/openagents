@@ -13,6 +13,10 @@ khala login
 khala logout
 khala auth codex
 khala codex "read README.md"
+khala spawn --count 5 --objective "audit this workspace" --strategy local
+khala workers
+khala join <runRef>
+khala cancel <runRef|workerRef>
 khala --artanis --prompt "status"
 bun run khala
 bun run khala -- --prompt "Say hello in one short sentence."
@@ -44,6 +48,14 @@ two modes:
   connects Codex with device auth, and existing Pylon Codex account homes are
   reused automatically when present. Set `KHALA_CODEX_AUTO=off` to disable
   automatic delegation.
+- **Local Khala spawn supervisor:** `khala spawn --count N --objective "..."`
+  starts a bounded parent run with supervised child workers recorded under the
+  local Khala home. The initial strategy is `local`/`auto`, backed by local
+  Codex workers in isolated worktrees when the current directory is a Git
+  checkout. Use `khala workers`, `khala worker <workerRef>`,
+  `khala join <runRef>`, and `khala cancel <runRef|workerRef>` to inspect and
+  control runs. Pylon-backed durable fanout is tracked separately and will use
+  the same command surface once armed.
 - **Utility commands:** `khala feedback "..."` saves feedback to
   `POST /api/khala/feedback`, `khala tokens` reads the public Khala
   tokens-served counter, and `khala changelog` prints the recent package
@@ -76,6 +88,11 @@ that check.
 - `/codex status` shows whether local Codex workspace delegation is connected.
 - `/codex connect` runs Codex device auth into Khala's local Codex home.
 - `/codex <task>` delegates a workspace task directly to Codex.
+- `/spawn <count> <task>` starts supervised Khala child workers.
+- `/workers` lists local Khala spawn runs.
+- `/worker <workerRef>` shows one child worker.
+- `/join <runRef>` shows an aggregate spawn run.
+- `/cancel <runRef|workerRef>` cancels a run or worker.
 - `/tokens` prints the global Khala tokens-served count from the same public
   counter shown on `openagents.com` and `/khala`.
 - `/changelog` prints the five most recent CLI releases in reverse
@@ -100,6 +117,11 @@ that check.
 - `khala auth codex` connects a Codex account for local workspace delegation.
 - `khala codex status` shows the active local Codex credential source.
 - `khala codex "task"` delegates directly to local Codex.
+- `khala spawn --count N --objective "task"` starts supervised child workers.
+- `khala workers` lists local spawn runs.
+- `khala worker <workerRef>` shows one child worker.
+- `khala join <runRef>` shows an aggregate run.
+- `khala cancel <runRef|workerRef>` cancels a run or worker.
 - `khala artanis "message"` sends an owner-authenticated operator message.
 - `khala tokens` prints the current global Khala tokens-served count.
 - `khala changelog` prints recent releases.
@@ -118,6 +140,13 @@ that check.
 - `--models` prints `/api/v1/models`.
 - `--mint-free-key` calls `POST /api/keys/free` and prints the response once.
 - `--artanis` uses the owner-authenticated Artanis operator channel.
+- `--count <n>` sets the worker count for `khala spawn` (default 1, local cap
+  10).
+- `--max-parallel <n>` bounds concurrent local workers for `khala spawn`.
+- `--objective <text>` supplies the `khala spawn` objective.
+- `--strategy auto|local|pylon` selects the spawn strategy. `auto` currently
+  resolves to local Codex workers; Pylon fanout is the next tracked slice.
+- `--timeout <seconds>` sets the per-worker timeout for `khala spawn`.
 
 ## Changelog
 

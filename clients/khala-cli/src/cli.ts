@@ -12,6 +12,18 @@ import {
 } from "./codex.js"
 import { appendPromptHistory, readPromptFromTerminal } from "./input.js"
 import { openVerificationUrl, runKhalaLogin, type KhalaLoginResult } from "./login.js"
+import {
+  cancelKhalaSpawn,
+  listKhalaSpawnRuns,
+  readKhalaSpawnRun,
+  readKhalaSpawnWorker,
+  runKhalaSpawn,
+  summarizeSpawnRun,
+  type KhalaSpawnLifecycleEvent,
+  type KhalaSpawnRun,
+  type KhalaSpawnStrategy,
+  type KhalaSpawnWorker,
+} from "./spawn.js"
 import { renderMarkdownForTerminal, renderReasoningMarkdownDeltaForTerminal, terminalStyle } from "./terminal.js"
 import { clearStoredAgentToken, ensureStoredAgentToken, traceTokenPath } from "./token-store.js"
 import { DEFAULT_BASE_URL, type ChatMode, type ChatTurnMetadata, type KhalaChatMessage, type KhalaCliError, type KhalaTokensResponse } from "./types.js"
@@ -33,6 +45,11 @@ type ParsedCommand =
   | { readonly kind: "info" }
   | { readonly kind: "login" }
   | { readonly kind: "logout" }
+  | { readonly kind: "spawn"; readonly text: string | undefined }
+  | { readonly kind: "spawnCancel"; readonly targetRef: string | undefined }
+  | { readonly kind: "spawnJoin"; readonly runRef: string | undefined }
+  | { readonly kind: "spawnWorker"; readonly workerRef: string | undefined }
+  | { readonly kind: "spawnWorkers" }
   | { readonly kind: "tokens" }
   | { readonly kind: "version" }
 
@@ -49,6 +66,11 @@ interface ParsedArgs {
   readonly json: boolean
   readonly models: boolean
   readonly mintFreeKey: boolean
+  readonly spawnCount: number | undefined
+  readonly spawnMaxParallel: number | undefined
+  readonly spawnObjective: string | undefined
+  readonly spawnStrategy: KhalaSpawnStrategy
+  readonly spawnTimeoutMs: number | undefined
 }
 
 export async function runKhalaCli(argv: ReadonlyArray<string>, env: Record<string, string | undefined> = Bun.env): Promise<number> {
@@ -119,6 +141,37 @@ export async function runKhalaCli(argv: ReadonlyArray<string>, env: Record<strin
       } else {
         process.stdout.write("\n")
       }
+      return 0
+    }
+    if (args.command.kind === "spawn") {
+      const result = await runSpawnCommand(args, env, args.command.text)
+      process.stdout.write(args.json ? `${JSON.stringify(result, null, 2)}\n` : `${summarizeSpawnRun(result)}\n`)
+      return 0
+    }
+    if (args.command.kind === "spawnWorkers") {
+      const result = await listKhalaSpawnRuns(env)
+      process.stdout.write(args.json ? `${JSON.stringify(result, null, 2)}\n` : `${formatSpawnRuns(result.runs)}\n`)
+      return 0
+    }
+    if (args.command.kind === "spawnWorker") {
+      const workerRef = args.command.workerRef?.trim()
+      if (!workerRef) throw new Error("khala worker requires a worker ref")
+      const result = await readKhalaSpawnWorker(env, workerRef)
+      process.stdout.write(args.json ? `${JSON.stringify(result, null, 2)}\n` : `${formatSpawnWorker(result)}\n`)
+      return 0
+    }
+    if (args.command.kind === "spawnJoin") {
+      const runRef = args.command.runRef?.trim()
+      if (!runRef) throw new Error("khala join requires a run ref")
+      const result = await readKhalaSpawnRun(env, runRef)
+      process.stdout.write(args.json ? `${JSON.stringify(result, null, 2)}\n` : `${summarizeSpawnRun(result)}\n`)
+      return 0
+    }
+    if (args.command.kind === "spawnCancel") {
+      const targetRef = args.command.targetRef?.trim()
+      if (!targetRef) throw new Error("khala cancel requires a run or worker ref")
+      const result = await cancelKhalaSpawn(env, targetRef)
+      process.stdout.write(args.json ? `${JSON.stringify(result, null, 2)}\n` : `Cancelled ${result.cancelledWorkers.length} worker(s) for ${targetRef}.\n`)
       return 0
     }
     if (args.command.kind === "info") {
@@ -212,6 +265,11 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
   let json = false
   let models = false
   let mintFreeKey = false
+  let spawnCount: number | undefined
+  let spawnMaxParallel: number | undefined
+  let spawnObjective: string | undefined
+  let spawnStrategy: KhalaSpawnStrategy = "auto"
+  let spawnTimeoutMs: number | undefined
   const positional: Array<string> = []
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -227,7 +285,32 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
     else if (arg === "--json" || arg === "--no-stream") json = true
     else if (arg === "--models") models = true
     else if (arg === "--mint-free-key") mintFreeKey = true
-    else if (arg === "--base-url") {
+    else if (arg === "--count") {
+      spawnCount = parsePositiveInteger(requireValue(argv, index, arg), arg)
+      index += 1
+    } else if (arg.startsWith("--count=")) {
+      spawnCount = parsePositiveInteger(arg.slice("--count=".length), "--count")
+    } else if (arg === "--max-parallel") {
+      spawnMaxParallel = parsePositiveInteger(requireValue(argv, index, arg), arg)
+      index += 1
+    } else if (arg.startsWith("--max-parallel=")) {
+      spawnMaxParallel = parsePositiveInteger(arg.slice("--max-parallel=".length), "--max-parallel")
+    } else if (arg === "--objective") {
+      spawnObjective = requireValue(argv, index, arg)
+      index += 1
+    } else if (arg.startsWith("--objective=")) {
+      spawnObjective = arg.slice("--objective=".length)
+    } else if (arg === "--strategy") {
+      spawnStrategy = parseSpawnStrategy(requireValue(argv, index, arg))
+      index += 1
+    } else if (arg.startsWith("--strategy=")) {
+      spawnStrategy = parseSpawnStrategy(arg.slice("--strategy=".length))
+    } else if (arg === "--timeout") {
+      spawnTimeoutMs = parsePositiveInteger(requireValue(argv, index, arg), arg) * 1000
+      index += 1
+    } else if (arg.startsWith("--timeout=")) {
+      spawnTimeoutMs = parsePositiveInteger(arg.slice("--timeout=".length), "--timeout") * 1000
+    } else if (arg === "--base-url") {
       baseUrl = requireValue(argv, index, arg)
       index += 1
     } else if (arg.startsWith("--base-url=")) {
@@ -272,6 +355,19 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
     command = { kind: "login" }
   } else if (maybeCommand === "logout") {
     command = { kind: "logout" }
+  } else if (maybeCommand === "spawn") {
+    command = {
+      kind: "spawn",
+      text: positional.slice(1).join(" ") || spawnObjective || prompt,
+    }
+  } else if (maybeCommand === "workers") {
+    command = { kind: "spawnWorkers" }
+  } else if (maybeCommand === "worker") {
+    command = { kind: "spawnWorker", workerRef: positional[1] }
+  } else if (maybeCommand === "join") {
+    command = { kind: "spawnJoin", runRef: positional[1] }
+  } else if (maybeCommand === "cancel") {
+    command = { kind: "spawnCancel", targetRef: positional[1] }
   } else if (maybeCommand === "tokens") {
     command = { kind: "tokens" }
   } else if (maybeCommand === "version") {
@@ -293,6 +389,11 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
     json,
     models,
     mintFreeKey,
+    spawnCount,
+    spawnMaxParallel,
+    spawnObjective,
+    spawnStrategy,
+    spawnTimeoutMs,
   }
 }
 
@@ -529,6 +630,66 @@ async function handleSlashCommand(
     }
     return "handled"
   }
+  if (command === "/spawn") {
+    try {
+      const parsed = parseInteractiveSpawn(argument)
+      const result = await runKhalaSpawn({
+        count: parsed.count,
+        cwd: process.cwd(),
+        env,
+        maxParallel: parsed.count,
+        objective: parsed.objective,
+        onEvent: event => writeSpawnEvent(event),
+        strategy: "local",
+      })
+      process.stdout.write(`${terminalStyle.assistant("Khala:")} ${terminalStyle.meta("Spawn complete.")}\n${summarizeSpawnRun(result)}\n\n`)
+    } catch (error) {
+      process.stdout.write(`${terminalStyle.assistant("Khala:")} ${String(error instanceof Error ? error.message : error)}\n\n`)
+    }
+    return "handled"
+  }
+  if (command === "/workers") {
+    const result = await listKhalaSpawnRuns(env)
+    process.stdout.write(`${terminalStyle.assistant("Khala:")} ${formatSpawnRuns(result.runs)}\n\n`)
+    return "handled"
+  }
+  if (command === "/worker") {
+    if (argument.length === 0) {
+      process.stdout.write(`${terminalStyle.assistant("Khala:")} Usage: /worker <workerRef>\n\n`)
+      return "handled"
+    }
+    try {
+      process.stdout.write(`${terminalStyle.assistant("Khala:")} ${formatSpawnWorker(await readKhalaSpawnWorker(env, argument))}\n\n`)
+    } catch (error) {
+      process.stdout.write(`${terminalStyle.assistant("Khala:")} ${String(error instanceof Error ? error.message : error)}\n\n`)
+    }
+    return "handled"
+  }
+  if (command === "/join") {
+    if (argument.length === 0) {
+      process.stdout.write(`${terminalStyle.assistant("Khala:")} Usage: /join <runRef>\n\n`)
+      return "handled"
+    }
+    try {
+      process.stdout.write(`${terminalStyle.assistant("Khala:")} ${summarizeSpawnRun(await readKhalaSpawnRun(env, argument))}\n\n`)
+    } catch (error) {
+      process.stdout.write(`${terminalStyle.assistant("Khala:")} ${String(error instanceof Error ? error.message : error)}\n\n`)
+    }
+    return "handled"
+  }
+  if (command === "/cancel") {
+    if (argument.length === 0) {
+      process.stdout.write(`${terminalStyle.assistant("Khala:")} Usage: /cancel <runRef|workerRef>\n\n`)
+      return "handled"
+    }
+    try {
+      const result = await cancelKhalaSpawn(env, argument)
+      process.stdout.write(`${terminalStyle.assistant("Khala:")} Cancelled ${result.cancelledWorkers.length} worker(s) for ${argument}.\n\n`)
+    } catch (error) {
+      process.stdout.write(`${terminalStyle.assistant("Khala:")} ${String(error instanceof Error ? error.message : error)}\n\n`)
+    }
+    return "handled"
+  }
   if (command === "/msginfo") {
     process.stdout.write(`${terminalStyle.assistant("Khala:")} ${formatMessageInfo(lastMessageInfo)}\n\n`)
     return "handled"
@@ -682,8 +843,56 @@ async function readStdinPrompt(): Promise<string> {
   return await new Response(Bun.stdin.stream()).text()
 }
 
+async function runSpawnCommand(
+  args: ParsedArgs,
+  env: Record<string, string | undefined>,
+  text: string | undefined,
+): Promise<KhalaSpawnRun> {
+  const objective = text?.trim() || args.spawnObjective?.trim()
+  if (objective === undefined || objective.length === 0) {
+    throw new Error("khala spawn requires an objective, for example: khala spawn --count 5 --objective \"audit this workspace\"")
+  }
+  return runKhalaSpawn({
+    count: args.spawnCount ?? 1,
+    cwd: process.cwd(),
+    env,
+    ...(args.spawnMaxParallel === undefined ? {} : { maxParallel: args.spawnMaxParallel }),
+    objective,
+    onEvent: args.json ? undefined : event => writeSpawnEvent(event),
+    strategy: args.spawnStrategy,
+    ...(args.spawnTimeoutMs === undefined ? {} : { timeoutMs: args.spawnTimeoutMs }),
+  })
+}
+
+function parseInteractiveSpawn(argument: string): { readonly count: number; readonly objective: string } {
+  const trimmed = argument.trim()
+  if (trimmed.length === 0) {
+    throw new Error("Usage: /spawn <count> <objective>")
+  }
+  const [first = "", ...rest] = trimmed.split(/\s+/)
+  const count = /^\d+$/.test(first) ? parsePositiveInteger(first, "/spawn count") : 1
+  const objective = /^\d+$/.test(first) ? rest.join(" ").trim() : trimmed
+  if (objective.length === 0) {
+    throw new Error("Usage: /spawn <count> <objective>")
+  }
+  return { count, objective }
+}
+
 function shouldRunHeadless(args: ParsedArgs): boolean {
   return args.headless || args.prompt !== undefined || args.json || !process.stdin.isTTY
+}
+
+function parsePositiveInteger(value: string, flag: string): number {
+  const parsed = Number.parseInt(value, 10)
+  if (!/^\d+$/.test(value) || !Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new Error(`${flag} requires a positive integer`)
+  }
+  return parsed
+}
+
+function parseSpawnStrategy(value: string): KhalaSpawnStrategy {
+  if (value === "auto" || value === "local" || value === "pylon") return value
+  throw new Error("--strategy must be auto, local, or pylon")
 }
 
 function requireValue(argv: ReadonlyArray<string>, index: number, flag: string): string {
@@ -975,6 +1184,43 @@ function writeCodexEvent(event: KhalaCodexDisplayEvent): void {
   process.stdout.write(`${terminalStyle.meta(`Codex: ${event.text}`)}\n`)
 }
 
+function writeSpawnEvent(event: KhalaSpawnLifecycleEvent): void {
+  const subject = event.workerRef === undefined ? event.runRef : event.workerRef
+  process.stdout.write(`${terminalStyle.meta(`Khala spawn: ${subject} ${event.state} - ${event.message}`)}\n`)
+}
+
+function formatSpawnRuns(runs: readonly KhalaSpawnRun[]): string {
+  if (runs.length === 0) return terminalStyle.meta("No Khala spawn runs yet.")
+  return terminalStyle.meta(runs.map(run => {
+    const accepted = run.workers.filter(worker => worker.state === "accepted").length
+    const active = run.workers.filter(worker => worker.state === "queued" || worker.state === "starting" || worker.state === "running").length
+    return `${run.runRef} - ${run.state} - ${accepted}/${run.workers.length} accepted, ${active} active - ${run.objective}`
+  }).join("\n"))
+}
+
+function formatSpawnWorker(worker: KhalaSpawnWorker): string {
+  const lines = [
+    `${worker.workerRef}`,
+    `state: ${worker.state}`,
+    `run: ${worker.runRef}`,
+    `objective: ${worker.objective}`,
+    `worktree: ${worker.localWorktree ?? "not assigned"}`,
+    `session: ${worker.sessionRef ?? "not reported"}`,
+    `commands: ${worker.commandCount ?? 0}`,
+    `edited files: ${worker.editedFileCount ?? 0}`,
+  ]
+  if (worker.blockerRefs.length > 0) {
+    lines.push(`blockers: ${worker.blockerRefs.join(", ")}`)
+  }
+  if (worker.error !== undefined) {
+    lines.push(`error: ${worker.error}`)
+  }
+  if (worker.resultText !== undefined && worker.resultText.trim().length > 0) {
+    lines.push(`result:\n${worker.resultText.trim()}`)
+  }
+  return terminalStyle.meta(lines.join("\n"))
+}
+
 async function formatInfo(input: {
   readonly args: ParsedArgs
   readonly env: Record<string, string | undefined>
@@ -1040,6 +1286,11 @@ function interactiveHelp(): string {
 /codex status      Show local Codex connection status
 /codex connect     Connect Codex to Khala with device auth
 /codex <task>      Delegate a workspace task directly to Codex
+/spawn 5 <task>    Spawn supervised Khala child workers
+/workers           List local Khala spawn runs
+/worker <ref>      Show one Khala worker
+/join <runRef>     Show an aggregate Khala spawn run
+/cancel <ref>      Cancel a Khala spawn run or worker
 /tokens            Show global Khala tokens served
 /changelog         Show recent Khala CLI changes
 /version           Show the installed Khala CLI version
@@ -1062,6 +1313,11 @@ Usage:
   khala auth codex
   khala codex status
   khala codex "read README.md"
+  khala spawn --count 5 --objective "audit this workspace" --strategy local
+  khala workers
+  khala worker <workerRef>
+  khala join <runRef>
+  khala cancel <runRef|workerRef>
   khala feedback "The transcript disappeared"
   khala --prompt "Say hello"
   khala --headless --json < prompt.txt
@@ -1080,6 +1336,11 @@ Interactive commands:
   /codex status      Show local Codex connection status
   /codex connect     Connect Codex to Khala with device auth
   /codex <task>      Delegate a workspace task directly to Codex
+  /spawn 5 <task>    Spawn supervised Khala child workers
+  /workers           List local Khala spawn runs
+  /worker <ref>      Show one Khala worker
+  /join <runRef>     Show an aggregate Khala spawn run
+  /cancel <ref>      Cancel a Khala spawn run or worker
   /tokens            Show global Khala tokens served
   /changelog         Show recent Khala CLI changes
   /version           Show the installed Khala CLI version
@@ -1098,6 +1359,11 @@ Flags:
   --json, --no-stream  Print final JSON instead of streaming deltas
   --models             Print /api/v1/models JSON
   --mint-free-key      Call POST /api/keys/free and print the response once
+  --count <n>          Worker count for khala spawn (default: 1, max: 10)
+  --max-parallel <n>   Max concurrent local workers for khala spawn
+  --objective <text>   Objective text for khala spawn
+  --strategy <mode>    Spawn strategy: auto, local, or pylon
+  --timeout <seconds>  Per-worker timeout for khala spawn
   --help, -h           Show this help
 `
 }
