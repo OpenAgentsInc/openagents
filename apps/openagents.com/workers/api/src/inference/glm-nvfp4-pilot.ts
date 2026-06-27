@@ -326,6 +326,25 @@ const toolCallFunctionName = (value: unknown): string | null => {
   return typeof name === 'string' && name.trim() !== '' ? name : null
 }
 
+const toolCallId = (value: unknown): string | null => {
+  if (typeof value !== 'object' || value === null) return null
+  const id = (value as Record<string, unknown>).id
+  return typeof id === 'string' && id.trim() !== '' ? id : null
+}
+
+const responseHasProviderError = (response: Record<string, unknown>): boolean =>
+  typeof response.error === 'object' && response.error !== null
+
+const responseCompletionTokens = (response: Record<string, unknown>): number => {
+  const usage =
+    typeof response.usage === 'object' && response.usage !== null
+      ? (response.usage as Record<string, unknown>)
+      : {}
+  return typeof usage.completion_tokens === 'number'
+    ? usage.completion_tokens
+    : 0
+}
+
 const defaultToolLoop = (): GlmNvfp4ToolLoopEvidence => ({
   sampleCount: 0,
   providerErrorCount: 0,
@@ -703,7 +722,7 @@ export const makeOpenAiCompatibleGlmNvfp4PilotExecutor =
             sample_index: index,
           },
         })
-        const error = typeof response.error === 'object' && response.error !== null
+        const error = responseHasProviderError(response)
         const choice = Array.isArray(response.choices)
           ? (response.choices[0] as Record<string, unknown> | undefined)
           : undefined
@@ -724,19 +743,59 @@ export const makeOpenAiCompatibleGlmNvfp4PilotExecutor =
         const hallucinatedToolCallCount = toolCallNames.filter(
           name => name !== GLM_NVFP4_PUBLIC_FIXTURE_TOOL_NAME,
         ).length
-        const usage =
-          typeof response.usage === 'object' && response.usage !== null
-            ? (response.usage as Record<string, unknown>)
-            : {}
+        const expectedToolCall = toolCalls.find(
+          toolCall =>
+            toolCallFunctionName(toolCall) === GLM_NVFP4_PUBLIC_FIXTURE_TOOL_NAME,
+        )
+        const expectedToolCallId = toolCallId(expectedToolCall)
+        const shouldRoundTrip =
+          !error &&
+          expectedToolCall !== undefined &&
+          expectedToolCallId !== null &&
+          expectedToolCallCount > 0 &&
+          hallucinatedToolCallCount === 0
+        const roundTripResponse = shouldRoundTrip
+          ? await input.http('/v1/chat/completions', {
+              model: config.model ?? GLM_NVFP4_PILOT_MODEL,
+              messages: [
+                {
+                  role: 'user',
+                  content:
+                    'Use the provided public fixture tool to return the number 7.',
+                },
+                {
+                  role: 'assistant',
+                  tool_calls: [expectedToolCall],
+                },
+                {
+                  role: 'tool',
+                  tool_call_id: expectedToolCallId,
+                  content: '{"value":7}',
+                },
+              ],
+              temperature: 0,
+              max_tokens: 64,
+              metadata: {
+                public_pilot_ref: 'github.issue.OpenAgentsInc.openagents.6323',
+                sample_index: index,
+                tool_round_trip: true,
+              },
+            })
+          : null
+        const roundTripError =
+          roundTripResponse !== null && responseHasProviderError(roundTripResponse)
         const completionTokens =
-          typeof usage.completion_tokens === 'number'
-            ? usage.completion_tokens
-            : 0
+          responseCompletionTokens(response) +
+          (roundTripResponse === null
+            ? 0
+            : responseCompletionTokens(roundTripResponse))
         return {
           error,
+          roundTripError,
           expectedToolCallCount,
           hallucinatedToolCallCount,
           completionTokens,
+          roundTripped: shouldRoundTrip && !roundTripError,
         }
       }),
     )
@@ -749,7 +808,8 @@ export const makeOpenAiCompatibleGlmNvfp4PilotExecutor =
       observation =>
         observation.expectedToolCallCount > 0 &&
         observation.hallucinatedToolCallCount === 0 &&
-        !observation.error,
+        !observation.error &&
+        observation.roundTripped,
     ).length
     const hallucinatedToolCallCount = observations.reduce(
       (sum, observation) => sum + observation.hallucinatedToolCallCount,
@@ -759,8 +819,9 @@ export const makeOpenAiCompatibleGlmNvfp4PilotExecutor =
     return {
       toolLoop: {
         sampleCount: observations.length,
-        providerErrorCount: observations.filter(observation => observation.error)
-          .length,
+        providerErrorCount: observations.filter(
+          observation => observation.error || observation.roundTripError,
+        ).length,
         toolCallsAttempted: observations.length,
         toolCallsSucceeded,
         hallucinatedToolCallCount,

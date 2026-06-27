@@ -355,37 +355,69 @@ describe('GLM NVFP4 pilot preflight (#6323)', () => {
   })
 
   test('live executor captures tool-call and TPS evidence without raw content', async () => {
+    const calls: Array<Record<string, unknown>> = []
     const executor = makeOpenAiCompatibleGlmNvfp4PilotExecutor({
       samples: 2,
       evidenceSeed: 'seed.public.fixture',
-      http: async () => ({
-        choices: [
-          {
-            message: {
-              tool_calls: [
+      http: async (_path, body) => {
+        calls.push(body)
+        const messages = Array.isArray(body.messages) ? body.messages : []
+        const hasToolResult = messages.some(message => {
+          if (typeof message !== 'object' || message === null) return false
+          return (message as Record<string, unknown>).role === 'tool'
+        })
+        return hasToolResult
+          ? {
+              choices: [
                 {
-                  id: 'call_fixture',
-                  type: 'function',
-                  function: {
-                    name: GLM_NVFP4_PUBLIC_FIXTURE_TOOL_NAME,
-                    arguments: '{"value":7}',
+                  message: {
+                    content: 'public fixture complete',
                   },
                 },
               ],
-            },
-          },
-        ],
-        usage: {
-          completion_tokens: 32,
-        },
-      }),
+              usage: {
+                completion_tokens: 11,
+              },
+            }
+          : {
+              choices: [
+                {
+                  message: {
+                    tool_calls: [
+                      {
+                        id: 'call_fixture',
+                        type: 'function',
+                        function: {
+                          name: GLM_NVFP4_PUBLIC_FIXTURE_TOOL_NAME,
+                          arguments: '{"value":7}',
+                        },
+                      },
+                    ],
+                  },
+                },
+              ],
+              usage: {
+                completion_tokens: 32,
+              },
+            }
+      },
     })
 
     const observation = await executor(baseConfig({ requiredToolLoopSamples: 2 }))
+    const roundTripCalls = calls.filter(call => {
+      const messages = Array.isArray(call.messages) ? call.messages : []
+      return messages.some(message => {
+        if (typeof message !== 'object' || message === null) return false
+        return (message as Record<string, unknown>).role === 'tool'
+      })
+    })
 
+    expect(calls).toHaveLength(4)
+    expect(roundTripCalls).toHaveLength(2)
+    expect(JSON.stringify(roundTripCalls)).toContain('"tool_call_id":"call_fixture"')
     expect(observation.toolLoop?.sampleCount).toBe(2)
     expect(observation.toolLoop?.toolCallsSucceeded).toBe(2)
-    expect(observation.throughput?.outputTokens).toBe(64)
+    expect(observation.throughput?.outputTokens).toBe(86)
     expect(observation.throughput?.measuredTps).toBeGreaterThan(0)
     expect(observation.toolLoop?.evidenceRef).toMatch(
       /^evidence\.public\.khala\.glm_nvfp4\.tool_loop\.[a-f0-9]{24}$/,
@@ -434,5 +466,62 @@ describe('GLM NVFP4 pilot preflight (#6323)', () => {
     expect(result.blockerRefs).toContain('tool_loop_missing_tool_calls')
     expect(JSON.stringify(observation)).not.toContain('private host')
     expect(JSON.stringify(observation)).not.toContain('search')
+  })
+
+  test('live executor treats failed tool-result follow-up as an incomplete round trip', async () => {
+    const executor = makeOpenAiCompatibleGlmNvfp4PilotExecutor({
+      samples: 1,
+      evidenceSeed: 'seed.public.fixture',
+      http: async (_path, body) => {
+        const messages = Array.isArray(body.messages) ? body.messages : []
+        const hasToolResult = messages.some(message => {
+          if (typeof message !== 'object' || message === null) return false
+          return (message as Record<string, unknown>).role === 'tool'
+        })
+        return hasToolResult
+          ? {
+              error: {
+                type: 'provider_error',
+              },
+              usage: {
+                completion_tokens: 0,
+              },
+            }
+          : {
+              choices: [
+                {
+                  message: {
+                    tool_calls: [
+                      {
+                        id: 'call_fixture',
+                        type: 'function',
+                        function: {
+                          name: GLM_NVFP4_PUBLIC_FIXTURE_TOOL_NAME,
+                          arguments: '{"value":7}',
+                        },
+                      },
+                    ],
+                  },
+                },
+              ],
+              usage: {
+                completion_tokens: 12,
+              },
+            }
+      },
+    })
+
+    const observation = await executor(baseConfig({ requiredToolLoopSamples: 1 }))
+    const result = buildGlmNvfp4PilotResult({
+      config: baseConfig({ requiredToolLoopSamples: 1 }),
+      observation,
+    })
+
+    expect(observation.toolLoop?.providerErrorCount).toBe(1)
+    expect(observation.toolLoop?.toolCallsSucceeded).toBe(0)
+    expect(result.decision).toBe('no_go')
+    expect(result.blockerRefs).toContain('tool_loop_provider_error')
+    expect(result.blockerRefs).toContain('tool_loop_missing_tool_calls')
+    expect(JSON.stringify(observation)).not.toContain('provider_error')
   })
 })
