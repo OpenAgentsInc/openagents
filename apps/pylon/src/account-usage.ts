@@ -231,10 +231,30 @@ function defaultHome(provider: PylonAccountProvider, env: Record<string, string 
   return configured.length > 0 ? configured : join(homedir(), ".claude")
 }
 
+async function discoveredSiblingHomeLooksAuthenticated(
+  provider: PylonAccountProvider,
+  home: string,
+): Promise<boolean> {
+  const candidates =
+    provider === "codex"
+      ? ["auth.json"]
+      : [".credentials.json", "claude-oauth-token"]
+  for (const candidate of candidates) {
+    try {
+      if ((await stat(join(home, candidate))).isFile()) return true
+    } catch {
+      // Try the next credential marker.
+    }
+  }
+  return false
+}
+
 // #4953: scan the home directory for sibling account homes so a multi-account
 // setup (e.g. ~/.codex, ~/.codex-pylon-b, ~/.claude-work) surfaces every account
 // instead of only the two default homes. Read-only; best-effort (returns [] on
-// any error). The directory name (sans leading dot) is the public account ref.
+// any error). Discovered siblings must contain provider credential markers so
+// state dirs like ~/.claude-supervisor are not advertised as runnable accounts.
+// The directory name (sans leading dot) is the public account ref.
 async function discoverSiblingHomes(
   env: Record<string, string | undefined>,
 ): Promise<{ provider: PylonAccountProvider; home: string; ref: string }[]> {
@@ -258,6 +278,7 @@ async function discoverSiblingHomes(
     const home = join(root, name)
     try {
       if (!(await stat(home)).isDirectory()) continue
+      if (!(await discoveredSiblingHomeLooksAuthenticated(provider, home))) continue
     } catch {
       continue
     }
