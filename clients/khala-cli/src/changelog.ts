@@ -20,6 +20,14 @@ export const KHALA_CLI_VERSION = packageJson.version
 
 export const KHALA_CHANGELOG: ReadonlyArray<KhalaChangelogEntry> = [
   {
+    version: "0.1.16",
+    releasedAt: "2026-06-27T04:43:28.000Z",
+    bullets: [
+      "Login now identifies you by your account email and no longer prints a display name as your identity, so it never conflates you (the signed-in user) with Artanis (the operator agent you talk to).",
+      "Clarifies after sign-in that Artanis is the operator agent you reach with /artanis.",
+    ],
+  },
+  {
     version: "0.1.15",
     releasedAt: "2026-06-27T04:00:14.000Z",
     bullets: [

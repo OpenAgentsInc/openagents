@@ -781,12 +781,20 @@ function formatLoginExpiry(expiresAt: string | undefined): string | undefined {
 }
 
 function formatLoginSuccess(result: KhalaLoginResult): string {
-  const identity = result.email ?? result.displayName
-  const who = identity !== undefined ? `Signed in as ${identity}.` : "Signed in."
+  // Identify by the USER's email only. Never fall back to a display name: a
+  // service/agent token's display name (e.g. "Artanis") is NOT the human user,
+  // and printing "Signed in as Artanis" wrongly conflates the operator agent you
+  // talk to with you, the account owner. No email => name-less account language.
+  const who =
+    result.email !== undefined
+      ? `Signed in as ${result.email}.`
+      : "Signed in to your OpenAgents account."
   const linkNote = result.alreadyLinked
-    ? "Your Khala token was already linked to your OpenAgents account."
+    ? "Your Khala token is linked to your OpenAgents account."
     : "Your Khala token is now linked to your OpenAgents account."
-  return `${who} ${linkNote}`
+  const hint =
+    "Artanis is the operator agent you talk to — run /artanis (owner only)."
+  return `${who} ${linkNote}\n${hint}`
 }
 
 // ARTANIS OPERATOR CHANNEL (#6363, epic #6359)
