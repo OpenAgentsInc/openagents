@@ -354,9 +354,13 @@ describe('public product promises document', () => {
     // the free OpenAI-compatible Khala API, the public tokens-served counter,
     // and the shipped Khala terminal client. The broader own-capacity routing,
     // model-mix, trace-capture, and paid-privacy records stay yellow.
+    // The 2026-06-27.2 closeout-policy pass flips the scoped
+    // khala.own_capacity_codex_delegation.v1 promise green after live dispatch,
+    // materialization, trace-status, proof, and no-spend closeout evidence.
+    // Green is now exactly 31.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
-    ).toBe(30)
+    ).toBe(31)
     expect(decoded.verificationSummary.evidenceRefCount).toBeGreaterThan(0)
     expect(decoded.verificationSummary.uniqueBlockerCount).toBeGreaterThan(0)
     expect(

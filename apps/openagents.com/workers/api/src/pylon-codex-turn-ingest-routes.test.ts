@@ -33,6 +33,7 @@ import {
 import type { TraceVisibility } from './atif-trace-schema'
 import {
   type PylonApiAssignmentRecord,
+  type PylonApiEventRecord,
   type PylonApiStore,
 } from './pylon-api'
 import {
@@ -51,6 +52,12 @@ const nowIso = '2026-06-26T12:00:00.000Z'
 const agentToken = 'oa_agent_pylon_codex_turn_ingest_test_token'
 const agentUserId = 'agent-user-pylon-codex-1'
 const linkedOpenAuthUserId = 'user-openauth-linked-1'
+const noSpendCloseoutPolicy = {
+  paymentMode: 'no-spend' as const,
+  payoutClaimAllowed: false,
+  settlementState: 'not_applicable' as const,
+  source: 'worker_closeout_event' as const,
+}
 
 class MemoryAgentStore implements AgentRegistrationStore {
   private readonly tokenHash: string
@@ -130,6 +137,31 @@ const assignmentRecord = (
 class MemoryPylonStore {
   constructor(private readonly assignment: PylonApiAssignmentRecord) {}
 
+  listEventsForAssignment = async (
+    assignmentRef: string,
+  ): Promise<ReadonlyArray<PylonApiEventRecord>> =>
+    assignmentRef === this.assignment.assignmentRef
+      ? [
+          {
+            assignmentRef,
+            createdAt: nowIso,
+            eventBody: {
+              paymentMode: 'no-spend',
+              payoutClaimAllowed: false,
+              settlementState: 'not_applicable',
+            },
+            eventKind: 'worker_closeout',
+            eventRef: 'event.pylon_codex.worker_closeout',
+            id: 'event-id-pylon-codex-worker-closeout',
+            idempotencyKeyHash: 'event-idempotency-pylon-codex-worker-closeout',
+            ownerAgentUserId: this.assignment.ownerAgentUserId,
+            publicProjectionJson: '{}',
+            pylonRef: this.assignment.pylonRef,
+            status: 'accepted',
+          },
+        ]
+      : []
+
   readAssignment = async (assignmentRef: string) =>
     assignmentRef === this.assignment.assignmentRef ? this.assignment : undefined
 }
@@ -183,6 +215,7 @@ class MemoryProofStore
         visibility: 'owner_only',
         refs: ['raw.pylon_codex.abc123', 'raw.pylon_codex.def456'],
       },
+      closeoutPolicy: input.closeoutPolicy,
       generatedAt: input.nowIso,
     })
   }
@@ -256,6 +289,7 @@ class MemoryProofStore
         visibility: 'owner_only',
         refs: [],
       },
+      closeoutPolicy: input.closeoutPolicy,
       progress: {
         closeoutReady: false,
         hasFinalTrace: false,
@@ -1290,7 +1324,10 @@ const makeHarness = async (
       return Effect.void
     },
     pylonStore: () =>
-      pylonStore as unknown as Pick<PylonApiStore, 'readAssignment'>,
+      pylonStore as unknown as Pick<
+        PylonApiStore,
+        'listEventsForAssignment' | 'readAssignment'
+      >,
     proofStore: () => proofStore,
     traceStatusStore: () => proofStore,
     rawEventChunkStore: () => rawEventChunkStore,
@@ -1349,6 +1386,7 @@ describe('GET /api/pylon/codex/proof', () => {
         byteLength: 2048,
         visibility: 'owner_only',
       },
+      closeoutPolicy: noSpendCloseoutPolicy,
     })
     expect(body.traces.refs).toEqual([
       'trace-pylon-codex-1',
@@ -1368,6 +1406,7 @@ describe('GET /api/pylon/codex/proof', () => {
         ownerAgentUserId: agentUserId,
         ownerUserId: linkedOpenAuthUserId,
         pylonRef: 'pylon-local-codex-1',
+        closeoutPolicy: noSpendCloseoutPolicy,
       },
     ])
   })
@@ -1484,6 +1523,7 @@ describe('GET /api/pylon/codex/proof', () => {
 
     const proof = await store.readAssignmentProof({
       assignmentRef: 'assignment-pylon-codex-1',
+      closeoutPolicy: noSpendCloseoutPolicy,
       nowIso,
       ownerAgentUserId: agentUserId,
       ownerUserId: linkedOpenAuthUserId,
@@ -1655,6 +1695,7 @@ describe('GET /api/pylon/codex/trace-status', () => {
 
     const inProgress = await store.readAssignmentTraceStatus({
       assignment: assignmentRecord(),
+      closeoutPolicy: noSpendCloseoutPolicy,
       nowIso,
       ownerAgentUserId: agentUserId,
       ownerUserId: linkedOpenAuthUserId,
@@ -1728,6 +1769,7 @@ describe('GET /api/pylon/codex/trace-status', () => {
         closeoutRefs: ['assignment.closeout.fixture'],
         state: 'accepted_work',
       }),
+      closeoutPolicy: noSpendCloseoutPolicy,
       nowIso,
       ownerAgentUserId: agentUserId,
       ownerUserId: linkedOpenAuthUserId,

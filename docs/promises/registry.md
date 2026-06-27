@@ -1,6 +1,18 @@
 # Promise Registry
 
-> Registry `2026-06-27.1` reconciles Episodes 242-244, the shipped Khala CLI
+> Registry `2026-06-27.2` flips
+> `khala.own_capacity_codex_delegation.v1` to green for its explicit typed
+> owner-capacity scope only. The scoped proof now covers reliable default
+> `codex_agent_task` dispatch/auto-run, master-default repository materialization,
+> owner-scoped assignment trace-status/proof reads, and a composed
+> `pylon khala closeout <assignmentRef> --json` checklist that requires exact
+> own-capacity token rows plus `paymentMode: "no-spend"`,
+> `settlementState: "not_applicable"`, and `payoutClaimAllowed: false`.
+> Broad semantic routing, third-party capacity pooling, paid work, payout
+> eligibility, public raw traces, and guaranteed availability remain out of
+> scope.
+>
+> Registry `2026-06-27.1` reconciled Episodes 242-244, the shipped Khala CLI
 > v0.1.16, and the Khala -> Pylon -> Codex owner-capacity runbook. New scoped
 > green records: `inference.khala_free_openai_compatible_api.v1`,
 > `metrics.khala_tokens_served_public.v1`, and

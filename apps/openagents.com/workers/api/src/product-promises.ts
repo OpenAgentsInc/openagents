@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-27.1'
+export const PublicProductPromisesVersion = '2026-06-27.2'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -227,6 +227,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-24.1: program-focus note, NO state flips, green count unchanged, NO evidence removed. The "Weekend Promise Assault" push (drive all non-green promises green; parent EPIC #5523, closed) is PAUSED. The active program focus is the Khala launch — Khala on Machine Payments (MPP) + Stripe Directory discovery and the head-to-head inference demo (EPICs #6049, #6017). The ten DE domain epics — #5524 DE-1 revenue loop, #5525 DE-2 inference gateway + cloud primitives, #5526 DE-3 Autopilot coding surface, #5527 DE-4 Pylon network, #5528 DE-5 training/Tassadar, #5529 DE-6 open markets, #5530 DE-7 mobile+voice, #5531 DE-8 identity/proof spine, #5532 DE-9 workrooms/sites, #5533 DE-10 energy/metrics/world-firsts — and the Episode 239 "Let\'s Make Money" revenue-loop tracker (#5510 plus children #5520, #5521, #5511, #5512, #5508) are closed as PARKED / not-planned-for-now — NOT abandoned. This is a tracker/focus decision only: every affected promise KEEPS its honest current state (red/yellow/planned), so parking changes no promise state, flips nothing green, and removes no evidence or blocker. There is deliberately NO new "parked" promise state — parking lives in this program note, not in promise truth. The live paid-inference path (POST /v1/chat/completions, free inference works) plus the Bitcoin contributor-payout rail carry forward in the Khala MPP work (#6049); the broad referral / partner-ledger / paid-credits-collection / fine-tuning / sandbox assault is paused until explicitly resumed. The registry stays the source of truth for promise state; any future green flip remains receipt-first and owner-signed per proof.claim_upgrade_receipts.v1. The parked epics reopen when the broad promise push resumes.',
         'Registry 2026-06-25.1 adds data.free_tier_capture_disclosure.v1 (yellow) as the honest data-sharing disclosure backing default-on free-tier trace capture (#6293/#6294/#6295, EPIC #6206). Default-on capture is going live: free-tier /api/v1/chat/completions traffic is captured by default as REDACTED, PRIVATE (owner_only) ATIF traces that may be used to improve/train OpenAgents models; paying for privacy / confidential compute opts the caller OUT (fail-closed to not-captured, inference-privacy-entitlement.ts); public sharing of a captured trace is owner opt-in only; and capture grants NO payout/settlement (the data-market reward marker stays inert and owner-gated, #6221). The canonical disclosure is a single source of truth (inference/free-tier-data-sharing-disclosure.ts) surfaced at three honest places: the POST /api/keys/free mint response (dataSharing field), the public agent-readable GET /api/public/free-tier-data-sharing endpoint, and the public AGENTS.md inference section. The record is YELLOW (not green): the disclosure text is implemented and discoverable, but the underlying default-on capture flip (KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT) is owner-gated and the public copy is owner-approval-gated per the audit. This is disclosure only — it ships no capture behavior, no authority, and no money. Evidence: docs/promises/2026-06-25-free-tier-data-sharing-disclosure.md, docs/traces/2026-06-25-default-on-trace-capture-audit.md.',
         'Registry 2026-06-27.1 reconciles Episodes 242-244, the shipped Khala CLI v0.1.16, and the Khala -> Pylon -> Codex owner-capacity runbook. It adds green scoped records for the free OpenAI-compatible Khala API, the public Khala tokens-served counter/history, and the shipped terminal CLI; yellow records for public model-family mix stats, explicit owner-capacity Codex delegation, free-tier trace capture, and paid/confidential privacy opt-out; and keeps no-resale/no-payout boundaries explicit. Exact own-capacity Codex token rows count in the headline token counter after closeout, but counter movement alone is not proof: assignment proof requires rows with provider pylon-codex-own-capacity, model openagents/pylon-codex, usage_truth exact, demand_kind own_capacity, and demand_source khala_coding_delegation. Broad automatic semantic routing, pooled third-party capacity, paid resale, public raw Codex traces, live assignment trace UI, and guaranteed dispatch availability remain blocked. The stale Khala CLI OpenTUI/single-line plan is superseded by the v0.1.16 scrollback/raw-mode CLI docs.',
+        'Registry 2026-06-27.2 flips khala.own_capacity_codex_delegation.v1 from yellow to green for its explicit typed owner-capacity scope only. The remaining blockers from 2026-06-27.1 were cleared by source fixes and production smokes: default `pylon khala request --workflow codex_agent_task --fixture` now auto-runs the returned no-spend assignment instead of stranding the maxInflight gate (#6362, closeout assignment.closeout.0351f0a0b4650c2272233fa0); master-default public repo materialization now falls back to the pinned commit and passed the octocat/Hello-World smoke (#6361, closeout assignment.closeout.2ccf7c3d2ac86b12b57ce2e2); the owner-scoped trace-status route is deployed and returns lifecycle/progress/token/trace/raw-event metadata without raw payloads (#6368); and `pylon khala closeout <assignmentRef> --json` now composes trace status + proof into a fail-closed checklist that also requires the worker closeout event to prove `paymentMode: no-spend`, `settlementState: not_applicable`, and `payoutClaimAllowed: false` (#6369). This green flip does NOT authorize broad natural-language routing, third-party capacity pooling, Codex subscription resale, public raw Codex event visibility, paid work, payout eligibility, guaranteed availability, or bypass of the explicit typed workflow / caller-owned Pylon capacity gate.',
       ],
     },
     promises: [
@@ -1398,30 +1399,29 @@ export const publicProductPromisesDocument = () => {
         promiseId: 'khala.own_capacity_codex_delegation.v1',
         productArea: 'Khala',
         audience: ['operator', 'agent', 'developer'],
-        state: 'yellow',
+        state: 'green',
         claim:
           'A typed Khala coding request can delegate to the caller’s own linked Pylon and run local Codex no-spend work.',
         safeCopy:
-          'Owner-capacity Khala -> Pylon -> Codex delegation is live for explicit typed requests: use pylon khala request --workflow codex_agent_task --pylon-ref <caller-owned-pylon> and run the assigned lease with pylon assignment run-no-spend. Accepted closeouts produce exact token_usage_events rows with provider pylon-codex-own-capacity, model openagents/pylon-codex, usage_truth exact, demand_kind own_capacity, and demand_source khala_coding_delegation. This is no-spend, owner-local capacity only; it is not subscription resale, third-party pooling, payout eligibility, or automatic routing of every coding-ish chat prompt.',
+          'Owner-capacity Khala -> Pylon -> Codex delegation is live for explicit typed requests: `pylon khala request --workflow codex_agent_task ... --json` delegates to the caller’s linked Pylon, auto-runs the returned no-spend assignment by default, and `pylon khala closeout <assignmentRef> --json` proves the accepted closeout with owner-only trace/raw-event refs, exact token_usage_events rows (provider pylon-codex-own-capacity, model openagents/pylon-codex, usage_truth exact, demand_kind own_capacity, demand_source khala_coding_delegation), and worker closeout policy `paymentMode: no-spend`, `settlementState: not_applicable`, `payoutClaimAllowed: false`. This is no-spend, owner-local capacity only; it is not subscription resale, third-party pooling, payout eligibility, or automatic routing of every coding-ish chat prompt.',
         unsafeCopy:
           'Do not claim public users can sell Codex subscription capacity, route to other people’s Pylons, receive payouts, see raw Codex events publicly, watch a guaranteed live assignment trace UI, or rely on automatic broad semantic routing without the typed workflow and fresh caller-owned capacity gate.',
         evidenceRefs: [
           'docs/khala/2026-06-25-pylon-linked-coding-capacity-routing-spec.md',
           'docs/afteraction/2026-06-26-khala-pylon-codex-delegation-afteraction.md',
           'docs/traces/2026-06-27-pylon-codex-live-trace-status-audit.md',
+          'docs/promises/2026-06-27-khala-cli-own-capacity-reconciliation.md',
           'apps/pylon/docs/khala-burndown-runbook.md',
           'apps/pylon/docs/codex-bridge.md',
           'docs/transcripts/244.md',
+          'issue:6361',
+          'issue:6362',
+          'issue:6368',
+          'issue:6369',
         ],
-        blockerRefs: [
-          'blocker.product_promises.khala_codex_dispatch_capacity_read_reliability',
-          'blocker.product_promises.assignment_trace_status_ui_missing',
-          'blocker.product_promises.pylon_codex_owner_trace_read_scope_mismatch',
-          'blocker.product_promises.broad_semantic_router_not_green',
-          'blocker.product_promises.third_party_capacity_pooling_not_live',
-        ],
+        blockerRefs: [],
         verification:
-          'Green scope today requires explicit --workflow codex_agent_task, explicit caller-owned --pylon-ref, fresh provider go-online and presence heartbeat, assignment run-no-spend accepted closeout, and exact token rows. The broad product stays yellow until dispatch 503/capacity-read failures are resolved, owner-only trace read scope works for Pylon/Codex traces, an assignment-level status/timeline surface exists, and the central typed/semantic router is verified without ad hoc keyword matching.',
+          'Verified on 2026-06-27 from current main: provider go-online projected caller-owned Codex capacity available; `pylon khala request --workflow codex_agent_task --fixture --base-url https://openagents.com --json` returned assignment.public.khala_coding.chatcmpl_820ffc8bedb941d38991b4cd4c4b976c and auto-ran it to accepted closeout assignment.closeout.0351f0a0b4650c2272233fa0; `pylon khala closeout ... --json` returned closeoutChecklist.ok true with exact owner-capacity token rows and no-spend/payout-false closeout policy. The master-default workspace smoke for octocat/Hello-World commit 7fd1a60b01f91b314f59955a4e4d4e80d8edf11d also accepted and verified (assignment.closeout.2ccf7c3d2ac86b12b57ce2e2), proving pinned-commit materialization across default-branch names.',
         authorityBoundary:
           'The local owner runner may use full local Codex execution authority, but that authority is never public wire authority and never applies to untrusted labor/provider work. This promise grants no payout, resale, third-party capacity, raw-event publication, or guaranteed availability.',
       },

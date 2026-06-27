@@ -69,10 +69,11 @@ fails closed unless the assignment status and proof agree on assignment ref,
 Pylon ref, and owner refs; the lifecycle is closed out with closeout refs and no
 rejection refs; the final owner-only trace and raw events are present; token
 usage is recorded with exact own-capacity fields; and the underlying proof
-checklist is green. The result keeps two caveats explicit: the remote
-status/proof projections do not yet expose the local `paymentMode: "no-spend"`
-/ `payoutClaimAllowed: false` closeout fields, and the public token counter is
-supporting evidence only, not assignment proof.
+checklist is green. The remote status/proof projections also expose the
+public-safe closeout policy from the worker closeout event, so the checklist
+requires `paymentMode: "no-spend"`, `settlementState: "not_applicable"`, and
+`payoutClaimAllowed: false`. The remaining caveat is that the public token
+counter is supporting evidence only, not assignment proof.
 
 The underlying proof command remains available:
 
@@ -124,7 +125,7 @@ Each fixture closeout reported `paymentMode: "no-spend"`,
 `settlementState: "not_applicable"`, `payoutClaimAllowed: false`, and
 `result.public.pylon.codex_agent_task.fixture_repair_passed`.
 
-## Still Blocked
+## Still Out Of Scope
 
 Do not claim:
 
@@ -133,22 +134,21 @@ Do not claim:
 - guaranteed continuous dispatch availability beyond the caller-owned linked
   Pylon's fresh advertised capacity and server lease window;
 - public raw Codex event visibility;
-- a live full-assignment trace/status UI;
+- public unauthenticated full-assignment trace/status visibility;
 - broad automatic coding-prompt routing without the typed/semantic selector and
   caller-owned capacity resolver.
 
-The main blockers are live production smoke for the default CLI auto-run path
-(#6362 partially reduced by source/test coverage), live production smoke for
-master-default workspace materialization (#6361 partially reduced by source/test
-coverage: stale branch fetch now falls back to the pinned commit), assignment-level trace/status
-presentation plus deployed smoke (#6368, partially reduced by the CLI status
-reader and operator route shell), proof/status closeout ergonomics (#6369,
-partially reduced by the proof checklist and the composed `khala closeout`
-command), and the broad semantic router being verified without ad hoc keyword
-routing. The original owner-only Pylon/Codex trace read-scope mismatch is fixed
-for individual trace reads; the remaining status gap is deployed smoke plus a
-browser-session auth bridge if the web page is expected to fetch live
-owner-only status directly.
+The default CLI auto-run path and master-default workspace materialization have
+now passed live production smoke (#6362 and #6361). The deployed trace-status
+route, operator status page shell, CLI status/proof readers, and composed
+closeout checklist are present and live-smoked (#6368 and #6369). The scoped
+promise may be green for explicit typed owner-capacity delegation, but the
+broader semantic router, third-party capacity pooling, paid work, payout
+eligibility, public raw Codex event visibility, and guaranteed availability
+remain out of scope until separate promise records and receipts cover them. A
+browser-session auth bridge that lets the web page fetch owner-only assignment
+status directly would be product polish, not evidence for resale, payout, or
+broad routing.
 
 ## CLI Boundary
 

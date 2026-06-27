@@ -152,6 +152,7 @@ const approvedExactRoutePaths = [
   '/api/github-write/grants/resolve',
   '/api/admin/sync/notify',
   '/api/agents/register',
+  '/api/admin/agents/reissue-token',
   '/api/keys/free',
   '/api/agents/me',
   '/api/agents/me/balance',

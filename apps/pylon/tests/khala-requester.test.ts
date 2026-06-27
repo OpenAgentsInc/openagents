@@ -99,6 +99,12 @@ function completeTraceStatus(overrides: Record<string, unknown> = {}) {
   return {
     schemaVersion: "openagents.pylon.codex_assignment_trace_status.v1",
     assignmentRef: "assignment-pylon-codex-1",
+    closeoutPolicy: {
+      paymentMode: "no-spend",
+      payoutClaimAllowed: false,
+      settlementState: "not_applicable",
+      source: "worker_closeout_event",
+    },
     pylonRef: "pylon-local-codex-1",
     owner: {
       agentUserRef: "agent:agent-user-1",
@@ -176,6 +182,12 @@ function completeProof(overrides: Record<string, unknown> = {}) {
   return {
     schemaVersion: "openagents.pylon.codex_assignment_proof.v1",
     assignmentRef: "assignment-pylon-codex-1",
+    closeoutPolicy: {
+      paymentMode: "no-spend",
+      payoutClaimAllowed: false,
+      settlementState: "not_applicable",
+      source: "worker_closeout_event",
+    },
     pylonRef: "pylon-local-codex-1",
     owner: {
       agentUserRef: "agent:agent-user-1",
@@ -907,7 +919,6 @@ describe("pylon khala requester API", () => {
     expect(checklist).toMatchObject({
       blockerRefs: [],
       caveatRefs: [
-        "caveat.khala_closeout.no_spend_payment_fields_not_in_remote_projection",
         "caveat.khala_closeout.public_token_counter_is_supporting_not_assignment_proof",
       ],
       ok: true,
@@ -917,6 +928,12 @@ describe("pylon khala requester API", () => {
 
   test("closeout checklist fails closed before final trace and recorded token rows", () => {
     const proofPayload = completeProof({
+      closeoutPolicy: {
+        paymentMode: "unknown",
+        payoutClaimAllowed: null,
+        settlementState: "unknown",
+        source: "unavailable",
+      },
       tokenUsage: {
         ...completeProof().tokenUsage,
         rowCount: 0,
@@ -926,6 +943,12 @@ describe("pylon khala requester API", () => {
     const proofChecklist = evaluatePylonKhalaProofChecklist(proofPayload as ProofPayload)
     const checklist = evaluatePylonKhalaCloseoutChecklist(
       completeTraceStatus({
+        closeoutPolicy: {
+          paymentMode: "unknown",
+          payoutClaimAllowed: null,
+          settlementState: "unknown",
+          source: "unavailable",
+        },
         lifecycle: {
           ...completeTraceStatus().lifecycle,
           closeoutRefs: [],
@@ -973,6 +996,9 @@ describe("pylon khala requester API", () => {
     )
     expect(checklist.blockerRefs).toContain(
       "blocker.khala_closeout.proof_checklist.ok",
+    )
+    expect(checklist.blockerRefs).toContain(
+      "blocker.khala_closeout.no_spend_payout_false",
     )
     expect(checklist.blockerRefs).toContain(
       "blocker.khala_proof.token_usage.rows_and_tokens_present",

@@ -74,6 +74,12 @@ export type PylonKhalaStatusResult = PylonKhalaStreamProjection & {
 
 export type PylonKhalaAssignmentTraceStatusResult = {
   assignmentRef: string
+  closeoutPolicy: {
+    paymentMode: "no-spend" | "paid" | "unknown"
+    payoutClaimAllowed: boolean | null
+    settlementState: "not_applicable" | "pending" | "settled" | "unknown"
+    source: "worker_closeout_event" | "unavailable"
+  }
   events: {
     count: number
     latestEventKind: string | null
@@ -155,6 +161,7 @@ export type PylonKhalaAssignmentTraceStatusResult = {
 
 export type PylonKhalaProofResult = {
   assignmentRef: string
+  closeoutPolicy: PylonKhalaAssignmentTraceStatusResult["closeoutPolicy"]
   generatedAt: string
   ok: true
   owner: {
@@ -499,6 +506,17 @@ export function evaluatePylonKhalaCloseoutChecklist(
       proof.proofChecklist.ok,
     ),
     checklistItem(
+      "check.khala_closeout.no_spend_payout_false",
+      status.closeoutPolicy.source === "worker_closeout_event" &&
+        proof.closeoutPolicy.source === "worker_closeout_event" &&
+        status.closeoutPolicy.paymentMode === "no-spend" &&
+        proof.closeoutPolicy.paymentMode === "no-spend" &&
+        status.closeoutPolicy.settlementState === "not_applicable" &&
+        proof.closeoutPolicy.settlementState === "not_applicable" &&
+        status.closeoutPolicy.payoutClaimAllowed === false &&
+        proof.closeoutPolicy.payoutClaimAllowed === false,
+    ),
+    checklistItem(
       "check.khala_closeout.generated_at.iso_timestamps",
       !Number.isNaN(Date.parse(status.generatedAt)) &&
         !Number.isNaN(Date.parse(proof.generatedAt)),
@@ -513,7 +531,6 @@ export function evaluatePylonKhalaCloseoutChecklist(
   return {
     blockerRefs: [...new Set(blockerRefs)].sort(),
     caveatRefs: [
-      "caveat.khala_closeout.no_spend_payment_fields_not_in_remote_projection",
       "caveat.khala_closeout.public_token_counter_is_supporting_not_assignment_proof",
     ],
     items,

@@ -254,7 +254,9 @@ $PYLON khala closeout "<assignmentRef>" --json
 Expected `closeoutChecklist.ok: true` means the assignment trace-status and
 proof projections agree on assignment, Pylon, and owner refs; final owner-only
 trace and raw-event summaries exist; exact own-capacity token rows are
-recorded; and the lifecycle is closed out without rejection refs. Use
+recorded; the worker closeout event proves `paymentMode: "no-spend"`,
+`settlementState: "not_applicable"`, and `payoutClaimAllowed: false`; and the
+lifecycle is closed out without rejection refs. Use
 `$PYLON khala status --assignment-ref "<assignmentRef>" --json` and
 `$PYLON khala proof "<assignmentRef>" --json` only when inspecting the two
 underlying projections separately.

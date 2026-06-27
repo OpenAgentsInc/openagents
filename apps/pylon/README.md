@@ -431,7 +431,8 @@ After an assignment closes, `pylon khala closeout <assignmentRef> --json`
 combines the owner-scoped trace-status and proof reads into one local closeout
 checklist. It fails closed unless the assignment has final owner-only trace
 evidence, owner-only raw-event refs, exact recorded own-capacity token rows, a
-closed-out lifecycle, and a green proof checklist. The narrower
+closed-out lifecycle, no-spend/not-applicable closeout policy with
+`payoutClaimAllowed: false`, and a green proof checklist. The narrower
 `pylon khala status --assignment-ref <assignmentRef> --json` and
 `pylon khala proof <assignmentRef> --json` commands remain available for
 inspecting the underlying projections.

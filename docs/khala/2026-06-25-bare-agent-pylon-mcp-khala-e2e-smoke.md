@@ -139,7 +139,8 @@ pylon khala closeout "<assignmentRef>" --json
 
 The closeout projection composes assignment trace status and assignment proof.
 Its `closeoutChecklist.ok` should be `true` only after the final owner-only
-trace, raw event summary, exact token rows, and closed-out lifecycle all agree.
+trace, raw event summary, exact token rows, no-spend/not-applicable closeout
+policy with `payoutClaimAllowed: false`, and closed-out lifecycle all agree.
 
 The underlying proof projection is still available when a narrower token/trace
 proof is useful:

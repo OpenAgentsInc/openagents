@@ -22,6 +22,7 @@ import {
 import { decodeUnknownWithSchema, parseJsonUnknown } from './json-boundary'
 import {
   type PylonApiAssignmentRecord,
+  type PylonApiEventRecord,
   type PylonApiStore,
   pylonApiStoreErrorFromUnknown,
 } from './pylon-api'
@@ -148,7 +149,9 @@ type PylonCodexTurnIngestDependencies<Bindings> = Readonly<{
   ledger: (env: Bindings) => TokenUsageLedgerShape
   makeId?: () => string
   nowIso?: () => string
-  pylonStore: (env: Bindings) => Pick<PylonApiStore, 'readAssignment'>
+  pylonStore: (
+    env: Bindings,
+  ) => Pick<PylonApiStore, 'listEventsForAssignment' | 'readAssignment'>
   proofStore?: (env: Bindings) => PylonCodexAssignmentProofStore
   traceStatusStore?: (
     env: Bindings,
@@ -202,7 +205,15 @@ export type PylonCodexAssignmentProof = Readonly<{
     visibility: 'owner_only'
     refs: ReadonlyArray<string>
   }>
+  closeoutPolicy: PylonCodexAssignmentCloseoutPolicy
   generatedAt: string
+}>
+
+export type PylonCodexAssignmentCloseoutPolicy = Readonly<{
+  paymentMode: 'no-spend' | 'paid' | 'unknown'
+  payoutClaimAllowed: boolean | null
+  settlementState: 'not_applicable' | 'pending' | 'settled' | 'unknown'
+  source: 'worker_closeout_event' | 'unavailable'
 }>
 
 export type PylonCodexAssignmentTraceStatus = Readonly<{
@@ -257,6 +268,7 @@ export type PylonCodexAssignmentTraceStatus = Readonly<{
     visibility: 'owner_only'
     refs: ReadonlyArray<string>
   }>
+  closeoutPolicy: PylonCodexAssignmentCloseoutPolicy
   progress: Readonly<{
     state:
       | 'assignment_created'
@@ -281,6 +293,7 @@ export type PylonCodexAssignmentProofStore = Readonly<{
       ownerUserId: string
       pylonRef: string
       nowIso: string
+      closeoutPolicy: PylonCodexAssignmentCloseoutPolicy
     }>,
   ) => Promise<PylonCodexAssignmentProof>
 }>
@@ -292,6 +305,7 @@ export type PylonCodexAssignmentTraceStatusStore = Readonly<{
       ownerAgentUserId: string
       ownerUserId: string
       nowIso: string
+      closeoutPolicy: PylonCodexAssignmentCloseoutPolicy
     }>,
   ) => Promise<PylonCodexAssignmentTraceStatus>
 }>
@@ -453,6 +467,41 @@ const boundedProofRefs = (
     .filter(ref => ref !== '')
     .slice(0, 100)
 
+const closeoutPolicyFromEvents = (
+  events: ReadonlyArray<PylonApiEventRecord>,
+): PylonCodexAssignmentCloseoutPolicy => {
+  const event = events.find(row => row.eventKind === 'worker_closeout')
+  if (event === undefined) {
+    return {
+      paymentMode: 'unknown',
+      payoutClaimAllowed: null,
+      settlementState: 'unknown',
+      source: 'unavailable',
+    }
+  }
+  const body = event.eventBody
+  const paymentMode =
+    body.paymentMode === 'no-spend' || body.paymentMode === 'paid'
+      ? body.paymentMode
+      : 'unknown'
+  const settlementState =
+    body.settlementState === 'not_applicable' ||
+    body.settlementState === 'pending' ||
+    body.settlementState === 'settled'
+      ? body.settlementState
+      : 'unknown'
+  const payoutClaimAllowed =
+    typeof body.payoutClaimAllowed === 'boolean'
+      ? body.payoutClaimAllowed
+      : null
+  return {
+    paymentMode,
+    payoutClaimAllowed,
+    settlementState,
+    source: 'worker_closeout_event',
+  }
+}
+
 export const makeD1PylonCodexAssignmentProofStore = (
   db: D1Database,
 ): PylonCodexAssignmentProofStore & PylonCodexAssignmentTraceStatusStore => ({
@@ -606,6 +655,7 @@ export const makeD1PylonCodexAssignmentProofStore = (
         visibility: 'owner_only',
         refs: boundedProofRefs(rawEvents, 'raw_event_ref'),
       },
+      closeoutPolicy: input.closeoutPolicy,
       generatedAt: input.nowIso,
     }
   },
@@ -887,6 +937,7 @@ export const makeD1PylonCodexAssignmentProofStore = (
         refs: boundedProofRefs(rawEvents, 'raw_event_ref'),
         visibility: 'owner_only',
       },
+      closeoutPolicy: input.closeoutPolicy,
       progress: {
         closeoutReady: closedOut,
         hasFinalTrace,
@@ -2068,6 +2119,26 @@ const assignmentRefFromProofRequest = (
   return Effect.succeed(value)
 }
 
+const readCloseoutPolicy = <Bindings>(
+  dependencies: PylonCodexTurnIngestDependencies<Bindings>,
+  env: Bindings,
+  assignmentRef: string,
+  operation: string,
+): Effect.Effect<PylonCodexAssignmentCloseoutPolicy, PylonCodexStorageError> =>
+  Effect.tryPromise({
+    catch: error =>
+      new PylonCodexStorageError({
+        operation,
+        reason: error instanceof Error ? error.message : String(error),
+      }),
+    try: async () => {
+      const events = await dependencies
+        .pylonStore(env)
+        .listEventsForAssignment(assignmentRef, 25)
+      return closeoutPolicyFromEvents(events)
+    },
+  })
+
 const routeProof = <Bindings>(
   dependencies: PylonCodexTurnIngestDependencies<Bindings>,
   request: Request,
@@ -2091,6 +2162,12 @@ const routeProof = <Bindings>(
       assignmentRef,
     })
     const ownerUserId = ownerUserIdForAgent(session)
+    const closeoutPolicy = yield* readCloseoutPolicy(
+      dependencies,
+      env,
+      assignmentRef,
+      'pylon_codex_assignment_proof_read',
+    )
     const proof = yield* Effect.tryPromise({
       catch: error =>
         new PylonCodexStorageError({
@@ -2100,6 +2177,7 @@ const routeProof = <Bindings>(
       try: () =>
         proofStore.readAssignmentProof({
           assignmentRef,
+          closeoutPolicy,
           nowIso: routeNowIso(dependencies),
           ownerAgentUserId: session.user.id,
           ownerUserId,
@@ -2133,6 +2211,12 @@ const routeTraceStatus = <Bindings>(
       assignmentRef,
     })
     const ownerUserId = ownerUserIdForAgent(session)
+    const closeoutPolicy = yield* readCloseoutPolicy(
+      dependencies,
+      env,
+      assignmentRef,
+      'pylon_codex_assignment_trace_status_read',
+    )
     const status = yield* Effect.tryPromise({
       catch: error =>
         new PylonCodexStorageError({
@@ -2142,6 +2226,7 @@ const routeTraceStatus = <Bindings>(
       try: () =>
         statusStore.readAssignmentTraceStatus({
           assignment,
+          closeoutPolicy,
           nowIso: routeNowIso(dependencies),
           ownerAgentUserId: session.user.id,
           ownerUserId,
