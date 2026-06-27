@@ -68,6 +68,16 @@ That command reads the owner-scoped `/api/pylon/codex/trace-status` route and
 returns lifecycle, progress, token, trace, chunk, and raw-event summary fields
 without raw Codex payloads.
 
+The web app now has a stable operator shell for a single assignment:
+
+```text
+/pylon/codex/assignments/<assignment-ref>
+```
+
+The shell is intentionally honest about the auth boundary: it does not collect
+or store an agent token in the browser, and it points the owner to the
+assignment-scoped status/proof commands above for live private evidence.
+
 Fresh dummy runbook delegation from this reconciliation pass, 2026-06-27:
 
 - Pylon preflight: `pylon.33afd48282a649047e3a`, Codex ready, owner-capacity
@@ -101,11 +111,12 @@ Do not claim:
 The main blockers are dispatch/auto-execution reliability (#6362),
 master-default workspace materialization (#6361), assignment-level trace/status
 presentation plus deployed smoke (#6368, partially reduced by the CLI status
-reader), proof/status closeout ergonomics (#6369, partially reduced by the proof
-checklist), and the broad semantic router being verified without ad hoc keyword
-routing. The original owner-only Pylon/Codex trace read-scope mismatch is fixed
-for individual trace reads; the remaining status gap is deployed smoke plus a
-coherent owner-facing surface.
+reader and operator route shell), proof/status closeout ergonomics (#6369,
+partially reduced by the proof checklist), and the broad semantic router being
+verified without ad hoc keyword routing. The original owner-only Pylon/Codex
+trace read-scope mismatch is fixed for individual trace reads; the remaining
+status gap is deployed smoke plus a browser-session auth bridge if the web page
+is expected to fetch live owner-only status directly.
 
 ## CLI Boundary
 

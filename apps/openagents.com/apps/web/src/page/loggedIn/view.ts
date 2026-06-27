@@ -39,6 +39,7 @@ import {
   personalFileRouter,
   proRouter,
   publicAgentRouter,
+  pylonCodexAssignmentStatusRouter,
   traceRouter,
   traceCompareRouter,
   publicTrainingRunRouter,
@@ -140,6 +141,8 @@ const currentHref = (model: Model): string =>
       PublicAgent: ({ agentRef }) => publicAgentRouter({ agentRef }),
       Trace: ({ uuid }) => traceRouter({ uuid }),
       TraceCompare: ({ ids }) => traceCompareRouter({ ids }),
+      PylonCodexAssignmentStatus: ({ assignmentRef }) =>
+        pylonCodexAssignmentStatusRouter({ assignmentRef }),
       PublicTrainingRuns: () => publicTrainingRunsRouter(),
       PublicTrainingRun: ({ runId }) => publicTrainingRunRouter({ runId }),
       Dashboard: () => '',
@@ -206,6 +209,8 @@ const routeKey = (model: Model): string =>
       PublicAgent: ({ agentRef }) => `PublicAgent:${agentRef}`,
       Trace: ({ uuid }) => `Trace:${uuid}`,
       TraceCompare: ({ ids }) => `TraceCompare:${ids}`,
+      PylonCodexAssignmentStatus: ({ assignmentRef }) =>
+        `PylonCodexAssignmentStatus:${assignmentRef}`,
       PublicTrainingRuns: () => 'PublicTrainingRuns',
       PublicTrainingRun: ({ runId }) => `PublicTrainingRun:${runId}`,
       Dashboard: () => 'Dashboard',
@@ -616,6 +621,17 @@ const routeView = (model: Model): Html => {
             Ui.workroomScrollableRoute<Message>([
               notFoundView(
                 traceCompareRouter({ ids }),
+                chatRouter(),
+                'Go to Chat',
+              ),
+            ]),
+          // /pylon/codex/assignments/{assignmentRef} is resolved by the
+          // top-level `publicRouteBody` in view.ts; this branch is unreachable
+          // but kept exhaustive like the public trace routes.
+          PylonCodexAssignmentStatus: ({ assignmentRef }) =>
+            Ui.workroomScrollableRoute<Message>([
+              notFoundView(
+                pylonCodexAssignmentStatusRouter({ assignmentRef }),
                 chatRouter(),
                 'Go to Chat',
               ),

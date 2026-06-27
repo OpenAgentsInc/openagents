@@ -144,6 +144,7 @@ const SETTINGS = /^\/settings(?:\/[^/]+)?$/
 const SITES_DEMO_CHECKOUT = /^\/sites\/demo-checkout(?:\/[^/]+)?$/
 // Public shareable agent traces (#6209/#6211): /trace/{uuid} + /trace/compare/{ids}.
 const TRACE = /^\/trace(?:\/.*)?$/
+const PYLON_CODEX_ASSIGNMENTS = /^\/pylon\/codex\/assignments\/[^/]+$/
 const TEAMS =
   /^\/teams\/[^/]+(?:\/chat|\/files(?:\/[^/]+)?|\/projects\/[^/]+\/chat)$/
 const THREAD = /^\/t\/[^/]+$/
@@ -680,6 +681,18 @@ export const routeTable = {
     surface: 'spaDocument',
     serverDocument: TRACE,
     examplePaths: ['/trace/compare/a,b,c'],
+    requiresAuthBootstrap: false,
+    loggedInGate: 'open',
+    inLoggedOutUnion: true,
+    inLoggedInUnion: true,
+    render: 'statelessShell',
+  },
+  PylonCodexAssignmentStatus: {
+    surface: 'spaDocument',
+    serverDocument: PYLON_CODEX_ASSIGNMENTS,
+    examplePaths: [
+      '/pylon/codex/assignments/assignment.public.khala_coding.chatcmpl_example',
+    ],
     requiresAuthBootstrap: false,
     loggedInGate: 'open',
     inLoggedOutUnion: true,

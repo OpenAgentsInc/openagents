@@ -89,6 +89,10 @@ export const TraceRoute = r('Trace', { uuid: S.String })
 // #6211 — the real "chill-evals"). `ids` is a comma-separated list of trace
 // uuids (the first is the baseline). Same public, no-auth posture as `/trace`.
 export const TraceCompareRoute = r('TraceCompare', { ids: S.String })
+export const PylonCodexAssignmentStatusRoute = r(
+  'PylonCodexAssignmentStatus',
+  { assignmentRef: S.String },
+)
 export const MokshaRoute = r('Moksha')
 export const Moksha2Route = r('Moksha2')
 export const LandingRoute = r('Landing')
@@ -191,6 +195,8 @@ export type PublicAgentRoute = typeof PublicAgentRoute.Type
 export type ShareRoute = typeof ShareRoute.Type
 export type TraceRoute = typeof TraceRoute.Type
 export type TraceCompareRoute = typeof TraceCompareRoute.Type
+export type PylonCodexAssignmentStatusRoute =
+  typeof PylonCodexAssignmentStatusRoute.Type
 export type MokshaRoute = typeof MokshaRoute.Type
 export type Moksha2Route = typeof Moksha2Route.Type
 export type LandingRoute = typeof LandingRoute.Type
@@ -261,6 +267,7 @@ export const LoggedOutRoute = S.Union([
   ShareRoute,
   TraceRoute,
   TraceCompareRoute,
+  PylonCodexAssignmentStatusRoute,
   MokshaRoute,
   Moksha2Route,
   LandingRoute,
@@ -318,6 +325,7 @@ export const LoggedInRoute = S.Union([
   PublicAgentRoute,
   TraceRoute,
   TraceCompareRoute,
+  PylonCodexAssignmentStatusRoute,
   DashboardRoute,
   ProRoute,
   BillingRoute,
@@ -382,6 +390,7 @@ export const AppRoute = S.Union([
   ShareRoute,
   TraceRoute,
   TraceCompareRoute,
+  PylonCodexAssignmentStatusRoute,
   MokshaRoute,
   Moksha2Route,
   LandingRoute,
@@ -653,6 +662,13 @@ export const traceCompareRouter = pipe(
   slash(string('ids')),
   Route.mapTo(TraceCompareRoute),
 )
+export const pylonCodexAssignmentStatusRouter = pipe(
+  literal('pylon'),
+  slash(literal('codex')),
+  slash(literal('assignments')),
+  slash(string('assignmentRef')),
+  Route.mapTo(PylonCodexAssignmentStatusRoute),
+)
 export const mokshaRouter = pipe(literal('moksha'), Route.mapTo(MokshaRoute))
 export const moksha2Router = pipe(literal('moksha2'), Route.mapTo(Moksha2Route))
 // Landing IS the homepage at `/`. `landingRouter()` builds the root path so
@@ -915,6 +931,7 @@ const orderedParserRouters = [
   // first so the literal `compare` segment wins (#6211).
   traceCompareRouter,
   traceRouter,
+  pylonCodexAssignmentStatusRouter,
   moksha2Router,
   mokshaRouter,
   landingAliasRouter,

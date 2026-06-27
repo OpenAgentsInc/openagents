@@ -288,6 +288,12 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
                 Trace.view(route, { _tag: 'LoggedOut' }, model.trace),
               TraceCompare: route =>
                 TraceCompare.view(route, { _tag: 'LoggedOut' }),
+              PylonCodexAssignmentStatus: route =>
+                notFoundView(
+                  `/pylon/codex/assignments/${route.assignmentRef}`,
+                  homeRouter(),
+                  'Go Home',
+                ),
               Download: () => Download.view({ _tag: 'LoggedOut' }),
               Animations: () => Animations.view({ _tag: 'LoggedOut' }),
               Activity: () => Activity.view({ _tag: 'LoggedOut' }),

@@ -48,6 +48,10 @@ const PUBLIC_ROUTE_PARSE_COVERAGE: ReadonlyArray<readonly [string, string]> = [
   // segment must win over `/trace/{uuid}`; the `ids` segment is a
   // comma-separated uuid list (baseline first).
   ['/trace/compare/a,b,c', 'TraceCompare'],
+  [
+    '/pylon/codex/assignments/assignment.public.khala_coding.chatcmpl_example',
+    'PylonCodexAssignmentStatus',
+  ],
   // Authenticated top-level surfaces (parse the same regardless of session;
   // auth gating happens in the startup policy, not the parser).
   ['/order', 'Order'],
@@ -90,8 +94,9 @@ describe('public route parser coverage', () => {
     // the public shareable `/trace/compare/{ids}` comparison (#6211). The four
     // `/pro/runs` + `/pro/evals` fixture subpages were retired in #6215, so the
     // covered count dropped from 40 to 36; the public `/gym` Terminal-Bench
-    // visualizer brings the parser-covered surface to 37.
-    expect(PUBLIC_ROUTE_PARSE_COVERAGE.length).toBe(37)
+    // visualizer brought the parser-covered surface to 37, and the Pylon Codex
+    // assignment-status operator shell brings it to 38.
+    expect(PUBLIC_ROUTE_PARSE_COVERAGE.length).toBe(38)
   })
 
   // The public shareable trace render (#6209) must capture the uuid param so the

@@ -33,6 +33,7 @@ import type {
   PublicPylonStatsModel,
 } from './page/loggedOut/model'
 import * as Privacy from './page/privacy'
+import * as PylonCodexAssignmentStatus from './page/pylonCodexAssignmentStatus'
 import * as Run from './page/run'
 import * as SiteCheckoutDemo from './page/siteCheckoutDemo'
 import * as Terms from './page/terms'
@@ -420,6 +421,8 @@ const title = (model: Model): string => {
       )
     case 'TraceCompare':
       return TraceCompare.title(model.route)
+    case 'PylonCodexAssignmentStatus':
+      return PylonCodexAssignmentStatus.title(model.route)
     default:
       return 'OpenAgents'
   }
@@ -604,7 +607,8 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
       model.route._tag !== 'Tassadar' &&
       model.route._tag !== 'TassadarReplay' &&
       model.route._tag !== 'Trace' &&
-      model.route._tag !== 'TraceCompare'
+      model.route._tag !== 'TraceCompare' &&
+      model.route._tag !== 'PylonCodexAssignmentStatus'
     ) {
       return undefined
     }
@@ -665,6 +669,10 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
 
   if (model.route._tag === 'TraceCompare') {
     return TraceCompare.view<Message>(model.route, authState)
+  }
+
+  if (model.route._tag === 'PylonCodexAssignmentStatus') {
+    return PylonCodexAssignmentStatus.view<Message>(model.route, authState)
   }
 
   if (model.route._tag === 'Animations') {

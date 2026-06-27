@@ -1054,6 +1054,11 @@ The same CLI now has an owner-scoped assignment status reader:
 mounted `/api/pylon/codex/trace-status` route and returns lifecycle, progress,
 token, trace, chunk, and raw-event summaries without raw Codex SDK payloads.
 
+The web app also has a stable operator shell at
+`/pylon/codex/assignments/<assignment-ref>`. It renders the assignment ref,
+closeout stages, and owner-scoped status/proof commands without asking the
+browser to hold an agent token.
+
 Remote D1 read-only verification confirmed:
 
 | Store | Rows | Events | Bytes |
@@ -1241,7 +1246,8 @@ What is missing for the desired live page:
   assignment trace-status API and renders it in a coherent timeline;
 - deployed smoke evidence for the assignment trace-status endpoint (#6368);
   current source mounts the route and exact-route manifest, but green still
-  needs live metadata payload proof and a coherent owner-facing status surface;
+  needs live metadata payload proof and, if direct web fetch is desired, a
+  modeled browser-session-to-owner-status auth bridge;
 - front-end polling or streaming for that assignment/session view;
 - status endpoint expansion to include verifier-specific progress and bounded
   recent activity labels, beyond the current event/trace/chunk/token/archive

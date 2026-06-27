@@ -37,6 +37,7 @@ import {
   OrderRoute,
   PrivacyRoute,
   PublicAgentRoute,
+  PylonCodexAssignmentStatusRoute,
   PublicStatsArchiveRoute,
   PublicTrainingRunRoute,
   PublicTrainingRunsRoute,
@@ -94,6 +95,20 @@ describe('app route parser', () => {
 
   test('accepts the Forge factory dashboard route', () => {
     expect(urlToAppRoute(appUrl('/forge'))).toEqual(ForgeRoute())
+  })
+
+  test('accepts Pylon Codex assignment status routes', () => {
+    expect(
+      urlToAppRoute(
+        appUrl(
+          '/pylon/codex/assignments/assignment.public.khala_coding.chatcmpl_example',
+        ),
+      ),
+    ).toEqual(
+      PylonCodexAssignmentStatusRoute({
+        assignmentRef: 'assignment.public.khala_coding.chatcmpl_example',
+      }),
+    )
   })
 
   test('accepts prefilled workspace invite routes', () => {

@@ -174,6 +174,7 @@ export const browserRouteProductIntents = {
   Privacy: 'public.privacy',
   Khala: 'public.khala',
   Pylon: 'public.pylon',
+  PylonCodexAssignmentStatus: 'pylon.codex.assignment.status',
   Download: 'public.download',
   Docs: 'public.docs.index',
   DocsPage: 'public.docs.page',
