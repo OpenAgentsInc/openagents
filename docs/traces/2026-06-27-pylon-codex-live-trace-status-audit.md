@@ -124,6 +124,71 @@ runner progress still reports `runtime_active` while Codex/verifier subprocesses
 are doing real work, so lack of fine-grained progress text is not automatically
 a stuck run.
 
+## Continued Delegation Notes From The #6311 Follow-Up
+
+A later #6311 durability/readiness slice used the same runbook path from the
+same clean worktree, now at `7712f27ba198dc661e3232c5f562eab7402afb11`, and
+successfully delegated to local Codex again:
+
+`assignment.public.khala_coding.chatcmpl_8c5d5c98f2544913aea50facfb81ee30`
+
+That second successful run clarified the operational requirements that matter
+when other agents have trouble delegating:
+
+- Use the fresh worktree's `apps/pylon/src/index.ts`, not a stale daemon. Keep
+  `PYLON_DISABLE_DAEMON_ROUTING=1` on every command unless intentionally testing
+  the daemon.
+- Keep `PYLON_OPENAGENTS_BASE_URL=https://openagents.com` set so the local Pylon
+  registers against production assignment/control surfaces.
+- Run `codex accounts list --json`, `provider go-online --json`, and
+  `presence heartbeat --json` immediately before dispatch. This proves the local
+  Codex credential is ready, the Pylon ref is online, and the scheduler sees
+  available capacity instead of stale presence.
+- Pin the assignment to the current clean `origin/main` commit with
+  `--commit <sha>`. This prevents a delegated Codex patch from being produced
+  against an ambiguous or dirty local checkout.
+- Use the typed workflow explicitly:
+  `--workflow codex_agent_task --pylon-ref <current-pylon-ref>`. Plain chat does
+  not create a local coding assignment.
+- Keep the `--prompt` under the Khala request bound. One failed attempt used an
+  objective summary longer than the accepted `3-1000` character range; shrinking
+  the prompt to a public-safe, bounded task fixed dispatch.
+- Use `assignment run-no-spend --assignment-ref <ref> --json` after the Khala
+  request returns. The request creates the assignment; the local runner still has
+  to claim and execute it.
+- Do not treat a quiet terminal as failure. While the runner reports
+  `runtime_active`, inspect the local Codex subprocess or wait for closeout; the
+  verifier can run for minutes without emitting useful high-level status.
+- Always run `khala proof --assignment-ref <ref> --json` after accepted
+  closeout. The proof, not the global public counter by itself, is the source of
+  truth for assignment-scoped exact tokens, owner-only trace counts, and raw
+  event archive metadata.
+- Review and integrate the delegated patch manually from the materialized Pylon
+  workspace. The local supervisor still owns final code review, verification,
+  commit, push, and issue comment.
+
+The #6311 follow-up proof reported:
+
+```json
+{
+  "provider": "pylon-codex-own-capacity",
+  "model": "openagents/pylon-codex",
+  "usageTruth": "exact",
+  "demandKind": "own_capacity",
+  "demandSource": "khala_coding_delegation",
+  "inputTokens": 2763599,
+  "outputTokens": 16845,
+  "reasoningTokens": 3354,
+  "cacheReadTokens": 2562304,
+  "totalTokens": 2780444
+}
+```
+
+It also produced `59` owner-only ATIF trace rows and one owner-only raw Codex
+archive containing `99` SDK events / `3,399,098` bytes. The reviewed integration
+landed as commit `7a3c97a737` and was commented back to issue #6311 without
+closing it, because live fleet durability remained degraded.
+
 ## Token Accounting
 
 The assignment has one exact downstream Codex token row:
@@ -183,6 +248,11 @@ completed Codex turn is posted to:
 That route computes exact counts from the Codex SDK `turn.completed` usage and
 inserts one `token_usage_events` row. It then publishes the public counter delta
 only when the token row was inserted.
+
+So the visible counter bump happens at the end of the Codex turn/closeout path,
+when exact SDK usage has been received and accepted. The counter does not
+increment once per streamed event chunk and does not move just because the local
+runner is active.
 
 Streaming raw SDK event chunks are posted during the run to:
 
@@ -390,4 +460,3 @@ The product gap is presentation and owner read scope:
 - the local owner token currently cannot read the Pylon/Codex owner-only traces
   because token read-scope and Pylon/Codex ingest use different owner ids;
 - there is no single stable trace URL that represents the whole assignment.
-
