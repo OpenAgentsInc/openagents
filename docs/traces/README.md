@@ -1,9 +1,11 @@
-# OpenAgents Agent Traces (shareable sessions) — spec
+# OpenAgents Agent Traces (shareable sessions)
 
-> **Status: SPEC / proposal (2026-06-24). Not built.** This describes a primitive
-> we want, grounds it in a standard format (ATIF), and records what exists vs what
-> is needed. The first piece — the QA process emitting one ATIF trace + a beautiful
-> render — is being built now; the shareable `/trace/{uuid}` surface is not.
+> **Status note (2026-06-27):** this file began as the 2026-06-24 trace
+> primitive proposal. The `/trace/{uuid}` route, `POST /api/traces`, and
+> visibility-gated `GET /api/traces/{uuid}` now exist, but the broader live
+> multi-step assignment/session view is still incomplete. Current Pylon/Codex
+> trace status audit:
+> `docs/traces/2026-06-27-pylon-codex-live-trace-status-audit.md`.
 
 ## The idea
 
