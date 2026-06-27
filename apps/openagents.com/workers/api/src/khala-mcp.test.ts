@@ -269,6 +269,7 @@ describe('Khala MCP catalog', () => {
     expect(body.pylons).toHaveLength(1)
     expect(body.pylons[0]?.pylonRef).toBe('pylon.owner.codex')
     expect(body.pylons[0]?.codingCapacity).toContainEqual({
+      accounts: [],
       available: 1,
       busy: 0,
       queued: 0,

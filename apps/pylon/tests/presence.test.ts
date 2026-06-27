@@ -4,6 +4,7 @@ import { tmpdir } from "node:os"
 import { afterEach, describe, expect, test } from "bun:test"
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
 import {
+  codexAccountCapacityKey,
   completePylonLink,
   codingServiceCapacityFromRuntime,
   degradeStalePresence,
@@ -15,6 +16,7 @@ import {
   sha256Base64Url,
   withPresenceRetry,
 } from "../src/presence"
+import { hashPylonAccountRef } from "../src/account-registry"
 import { verifyNip98Authorization } from "../src/nostr-identity"
 import { PYLON_NIP90_PROVIDER_CAPABILITY_REF, providerNip90LaneRefs } from "../src/provider-nip90"
 import { assertPublicProjectionSafe, ensurePylonLocalState, loadOrCreatePresenceState, writePresenceState } from "../src/state"
@@ -755,14 +757,27 @@ describe("Pylon presence registration and heartbeat", () => {
         policyRefs: ["policy.public.khala_coding.own_capacity_only"],
         requiredCapabilityRefs: [CODEX_AGENT_CAPABILITY_REF],
       })
+      // #6354: the default Codex account (no registry entries) advertises its
+      // own per-account slots alongside the pooled refs.
+      const defaultKey = codexAccountCapacityKey(
+        hashPylonAccountRef("codex", "default"),
+      )
       expect(json.ownCapacityDispatch.capacityRefs).toEqual([
         "capacity.coding.codex.ready=5",
         "capacity.coding.codex.available=5",
+        `capacity.coding.codex.account.${defaultKey}.ready=5`,
+        `capacity.coding.codex.account.${defaultKey}.available=5`,
       ])
       expect(json.ownCapacityDispatch.loadRefs).toEqual([
         "load.coding.codex.busy=0",
         "load.coding.codex.queued=0",
+        `load.coding.codex.account.${defaultKey}.busy=0`,
+        `load.coding.codex.account.${defaultKey}.queued=0`,
       ])
+      expect(json.ownCapacityDispatch.codexAccounts).toEqual([
+        { accountKey: defaultKey, available: 5, busy: 0, queued: 0, ready: 5 },
+      ])
+      expect(json.ownCapacityDispatch.totalAvailableCodexAssignments).toBe(5)
       expect(json.codingCapacity).toContainEqual({
         available: 5,
         busy: 0,
@@ -790,12 +805,17 @@ describe("Pylon presence registration and heartbeat", () => {
         "darwin",
       )
       const state = await ensurePylonLocalState(summary)
+      // #6354: tag the active runs with the default Codex account so per-account
+      // busy load reflects the same two in-flight assignments as pooled busy.
+      const defaultAccountHash = hashPylonAccountRef("codex", "default")
       await registerActiveCodingRun(state.paths, {
+        accountRefHash: defaultAccountHash,
         assignmentRef: "assignment.public.no_spend.codex_busy_a",
         leaseRef: "lease.public.no_spend.codex_busy_a",
         service: "codex",
       })
       await registerActiveCodingRun(state.paths, {
+        accountRefHash: defaultAccountHash,
         assignmentRef: "assignment.public.no_spend.codex_busy_b",
         leaseRef: "lease.public.no_spend.codex_busy_b",
         service: "codex",
@@ -820,9 +840,15 @@ describe("Pylon presence registration and heartbeat", () => {
         availableCodexAssignments: 3,
         maxCodexAssignments: 5,
       })
+      const defaultKey = codexAccountCapacityKey(defaultAccountHash)
       expect(json.ownCapacityDispatch.loadRefs).toEqual([
         "load.coding.codex.busy=2",
         "load.coding.codex.queued=0",
+        `load.coding.codex.account.${defaultKey}.busy=2`,
+        `load.coding.codex.account.${defaultKey}.queued=0`,
+      ])
+      expect(json.ownCapacityDispatch.codexAccounts).toEqual([
+        { accountKey: defaultKey, available: 3, busy: 2, queued: 0, ready: 5 },
       ])
       expect(json.codingCapacity).toContainEqual({
         available: 3,

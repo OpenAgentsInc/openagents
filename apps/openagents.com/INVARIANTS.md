@@ -1698,6 +1698,21 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   no-duplicate, no-auto-publish, capability, heartbeat, pause, rollback, and
   closeout requirements. Khala -> Pylon -> Codex uses `unpaid_smoke`, so wallet
   readiness is not a dispatch prerequisite for local no-spend coding work.
+- Codex dispatch capacity is per linked account, not pooled, on a single owner
+  Pylon (#6354). When a heartbeat advertises per-account counted refs
+  (`capacity.coding.codex.account.<key>.{ready,available}=N`,
+  `load.coding.codex.account.<key>.{busy,queued}=N`, where `<key>` is the
+  public-safe trailing hex of the account-ref hash), the dispatch admission gate
+  and `delegateCodingWorkflow` must admit a request that pins a Codex account
+  (`openagents.coding.targetAccountRefHash`,
+  `codingAssignment.codex.accountRefHash`) against THAT account's available
+  slots and count only that account's active leases. One account holding its full
+  slot count must never block another account's request on the same Pylon. The
+  pooled `capacity.coding.codex.*` totals are derived from the per-account sum
+  when per-account refs are present; requests with no pinned account, and
+  heartbeats with no per-account refs, keep the legacy pooled accounting
+  (backward compatible). The account key, hash, and per-account refs are
+  public-safe: never a raw account ref, email, or local home path.
 - Local no-spend Pylon/Codex accepted leases must carry local owner-process and
   heartbeat evidence. A sibling local Pylon runner may submit a public-safe
   stale closeout for a no-spend lease only when the local owner process is dead,

@@ -12,6 +12,11 @@ export type PylonKhalaWorkflow =
 export type PylonKhalaRequestInput = {
   prompt: string
   objectiveSummary?: string
+  // #6354: public-safe Codex account-ref hash (`account.pylon.codex.<hex>`) so
+  // the server gate admits against THAT account's per-account capacity instead
+  // of pooling all accounts on the Pylon. The caller's Pylon computes it from a
+  // local account ref; the raw ref/email/home never goes on the wire.
+  targetAccountRefHash?: string
   targetPylonRef?: string
   workflow?: PylonKhalaWorkflow
   workspace?: PylonKhalaGitCheckoutWorkspace
@@ -619,10 +624,24 @@ export function buildPylonKhalaChatRequestBody(
     assertPublicSafe(targetPylonRef, "khala request target pylon ref")
   }
 
-  const coding =
-    targetPylonRef === undefined || targetPylonRef === ""
-      ? undefined
-      : { targetPylonRef }
+  const targetAccountRefHash = input.targetAccountRefHash?.trim()
+  if (targetAccountRefHash !== undefined && targetAccountRefHash !== "") {
+    if (!/^account\.pylon\.codex\.[a-f0-9]{6,64}$/.test(targetAccountRefHash)) {
+      throw new Error(
+        "khala request --account-ref must resolve to a public-safe account.pylon.codex.<hex> hash",
+      )
+    }
+    assertPublicSafe(targetAccountRefHash, "khala request target account ref hash")
+  }
+  const codingBase = {
+    ...(targetPylonRef === undefined || targetPylonRef === ""
+      ? {}
+      : { targetPylonRef }),
+    ...(targetAccountRefHash === undefined || targetAccountRefHash === ""
+      ? {}
+      : { targetAccountRefHash }),
+  }
+  const coding = Object.keys(codingBase).length === 0 ? undefined : codingBase
   const workspaceCoding =
     input.workspace === undefined
       ? coding

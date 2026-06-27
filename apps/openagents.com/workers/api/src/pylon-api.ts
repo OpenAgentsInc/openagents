@@ -709,7 +709,23 @@ export type PylonApiRegistrationProjection = Readonly<{
   walletRef: string | null
 }>
 
+export type PylonCodingServiceAccountCapacityProjection = Readonly<{
+  // Public-safe per-account key: the trailing hex digest of the Pylon account
+  // ref hash (`account.pylon.codex.<hex>`). Never a raw account ref, email, or
+  // home path.
+  accountKey: string
+  available: number
+  busy: number
+  queued: number
+  ready: number
+}>
+
 export type PylonCodingServiceCapacityProjection = Readonly<{
+  // #6354: per-Codex-account capacity so multiple linked accounts on one owner
+  // Pylon each run their own concurrent assignments. `accounts` is keyed by the
+  // public-safe per-account hex key and is empty for legacy heartbeats that
+  // only carry the pooled total (backward compatible).
+  accounts: ReadonlyArray<PylonCodingServiceAccountCapacityProjection>
   available: number
   busy: number
   queued: number
@@ -1032,6 +1048,29 @@ const codingServiceCapacityRefPattern =
   /^capacity\.coding\.(codex|claude)\.(ready|available)=(\d+)$/
 const codingServiceLoadRefPattern =
   /^load\.coding\.(codex|claude)\.(busy|queued)=(\d+)$/
+// #6354: per-account counted refs so one owner Pylon advertises each linked
+// Codex account's own slots. The `<key>` is the public-safe trailing hex digest
+// of the account ref hash; it never carries a raw account ref or home path.
+const codingServiceAccountCapacityRefPattern =
+  /^capacity\.coding\.(codex|claude)\.account\.([a-z0-9]{6,64})\.(ready|available)=(\d+)$/
+const codingServiceAccountLoadRefPattern =
+  /^load\.coding\.(codex|claude)\.account\.([a-z0-9]{6,64})\.(busy|queued)=(\d+)$/
+
+// Extract the public-safe per-account capacity key from a Pylon account ref
+// hash (`account.pylon.<provider>.<hex>` -> `<hex>`). Returns null for shapes
+// that are not a recognizable account-ref hash so the gate falls back to pooled
+// capacity instead of inventing a key.
+export const codexAccountCapacityKeyFromAccountRefHash = (
+  accountRefHash: string | null | undefined,
+): string | null => {
+  if (typeof accountRefHash !== 'string') {
+    return null
+  }
+  const match = /^account\.pylon\.[a-z0-9_]+\.([a-z0-9]{6,64})$/.exec(
+    accountRefHash.trim(),
+  )
+  return match === null ? null : match[1]!
+}
 
 const boundedRefInteger = (value: string): number => {
   const parsed = Number.parseInt(value, 10)
@@ -1044,55 +1083,130 @@ const boundedRefInteger = (value: string): number => {
 export const pylonCodingServiceCapacityProjection = (
   record: PylonApiRegistrationRecord,
 ): ReadonlyArray<PylonCodingServiceCapacityProjection> => {
+  type Slot = { available: number; busy: number; queued: number; ready: number }
   const byService = new Map<
     PylonCodingServiceCapacityProjection['service'],
-    { available: number; busy: number; queued: number; ready: number }
+    { accounts: Map<string, Slot>; slot: Slot }
   >()
-  const serviceSlot = (
+  const serviceEntry = (
     service: PylonCodingServiceCapacityProjection['service'],
   ) => {
     const existing = byService.get(service)
     if (existing !== undefined) {
       return existing
     }
-    const next = { available: 0, busy: 0, queued: 0, ready: 0 }
+    const next = {
+      accounts: new Map<string, Slot>(),
+      slot: { available: 0, busy: 0, queued: 0, ready: 0 },
+    }
     byService.set(service, next)
+    return next
+  }
+  const accountSlot = (
+    entry: { accounts: Map<string, Slot> },
+    accountKey: string,
+  ) => {
+    const existing = entry.accounts.get(accountKey)
+    if (existing !== undefined) {
+      return existing
+    }
+    const next = { available: 0, busy: 0, queued: 0, ready: 0 }
+    entry.accounts.set(accountKey, next)
     return next
   }
 
   for (const ref of record.latestCapacityRefs) {
+    const accountMatch = codingServiceAccountCapacityRefPattern.exec(ref)
+    if (accountMatch !== null) {
+      const entry = serviceEntry(
+        accountMatch[1] as PylonCodingServiceCapacityProjection['service'],
+      )
+      accountSlot(entry, accountMatch[2]!)[
+        accountMatch[3] as 'available' | 'ready'
+      ] = boundedRefInteger(accountMatch[4]!)
+      continue
+    }
     const match = codingServiceCapacityRefPattern.exec(ref)
     if (match === null) {
       continue
     }
-
-    const slot = serviceSlot(
+    serviceEntry(
       match[1] as PylonCodingServiceCapacityProjection['service'],
-    )
-    slot[match[2] as 'available' | 'ready'] = boundedRefInteger(match[3]!)
+    ).slot[match[2] as 'available' | 'ready'] = boundedRefInteger(match[3]!)
   }
 
   for (const ref of record.latestLoadRefs) {
+    const accountMatch = codingServiceAccountLoadRefPattern.exec(ref)
+    if (accountMatch !== null) {
+      const entry = serviceEntry(
+        accountMatch[1] as PylonCodingServiceCapacityProjection['service'],
+      )
+      accountSlot(entry, accountMatch[2]!)[
+        accountMatch[3] as 'busy' | 'queued'
+      ] = boundedRefInteger(accountMatch[4]!)
+      continue
+    }
     const match = codingServiceLoadRefPattern.exec(ref)
     if (match === null) {
       continue
     }
-
-    const slot = serviceSlot(
+    serviceEntry(
       match[1] as PylonCodingServiceCapacityProjection['service'],
-    )
-    slot[match[2] as 'busy' | 'queued'] = boundedRefInteger(match[3]!)
+    ).slot[match[2] as 'busy' | 'queued'] = boundedRefInteger(match[3]!)
   }
 
   return [...byService.entries()]
-    .map(([service, slot]) => ({
-      available: slot.available,
-      busy: slot.busy,
-      queued: slot.queued,
-      ready: slot.ready,
-      service,
-    }))
+    .map(([service, entry]) => {
+      const accounts = [...entry.accounts.entries()]
+        .map(([accountKey, slot]) => ({
+          accountKey,
+          available: slot.available,
+          busy: slot.busy,
+          queued: slot.queued,
+          ready: slot.ready,
+        }))
+        .sort((left, right) => left.accountKey.localeCompare(right.accountKey))
+      // When per-account refs are advertised, the pooled totals are derived from
+      // the account sum so a legacy pooled ref can never disagree with the
+      // per-account truth. Otherwise keep the pooled ref values verbatim.
+      const pooled =
+        accounts.length === 0
+          ? entry.slot
+          : accounts.reduce(
+              (sum, account) => ({
+                available: sum.available + account.available,
+                busy: sum.busy + account.busy,
+                queued: sum.queued + account.queued,
+                ready: sum.ready + account.ready,
+              }),
+              { available: 0, busy: 0, queued: 0, ready: 0 },
+            )
+      return {
+        accounts,
+        available: pooled.available,
+        busy: pooled.busy,
+        queued: pooled.queued,
+        ready: pooled.ready,
+        service,
+      }
+    })
     .sort((left, right) => left.service.localeCompare(right.service))
+}
+
+// #6354: resolve the per-account Codex capacity slot for a requested account, or
+// null when the heartbeat does not advertise per-account refs for it (the gate
+// then falls back to pooled capacity, preserving legacy behavior).
+export const pylonCodexAccountCapacity = (
+  record: PylonApiRegistrationRecord,
+  accountKey: string | null,
+): PylonCodingServiceAccountCapacityProjection | null => {
+  if (accountKey === null) {
+    return null
+  }
+  const codex = pylonCodingServiceCapacityProjection(record).find(
+    capacity => capacity.service === 'codex',
+  )
+  return codex?.accounts.find(a => a.accountKey === accountKey) ?? null
 }
 
 export const publicPylonApiRegistrationProjection = (

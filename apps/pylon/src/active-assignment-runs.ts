@@ -22,6 +22,15 @@ export type PylonActiveAssignmentRun = {
 
 export type PylonActiveCodingRunCounts = Partial<Record<PylonCodingServiceRef, number>>
 
+// #6354: per-account active-run counts so the heartbeat can project each linked
+// Codex account's own busy load. Keyed by service, then by the public-safe
+// account-ref hash recorded on the active run. Runs without an account hash are
+// folded into the `__unkeyed__` bucket so they still count toward pooled load.
+export const UNKEYED_ACTIVE_RUN_ACCOUNT = "__unkeyed__"
+export type PylonActiveCodingRunAccountCounts = Partial<
+  Record<PylonCodingServiceRef, Record<string, number>>
+>
+
 export type PylonAssignmentLeaseLike = Readonly<{
   capabilityRefs?: ReadonlyArray<string>
   expiresAt?: string
@@ -136,6 +145,42 @@ export async function activeCodingRunCounts(
       continue
     }
     counts[run.service] = (counts[run.service] ?? 0) + 1
+  }
+
+  return counts
+}
+
+// #6354: per-account busy load from fresh local active runs, keyed by the
+// account-ref hash recorded when the run was registered. Stale runs are pruned
+// like `activeCodingRunCounts`.
+export async function activeCodingRunCountsByAccount(
+  paths: PylonPaths,
+  input: { now?: Date; ttlMs?: number } = {},
+): Promise<PylonActiveCodingRunAccountCounts> {
+  await mkdir(paths.activeAssignmentRuns, { recursive: true })
+  const now = input.now ?? new Date()
+  const ttlMs = input.ttlMs ?? DEFAULT_ACTIVE_RUN_TTL_MS
+  const counts: PylonActiveCodingRunAccountCounts = {}
+
+  for (const filename of await readdir(paths.activeAssignmentRuns)) {
+    if (!filename.endsWith(".json")) continue
+    const path = join(paths.activeAssignmentRuns, filename)
+    let run: PylonActiveAssignmentRun | null = null
+    try {
+      run = activeRunFromUnknown(JSON.parse(await readFile(path, "utf8")) as unknown)
+    } catch {
+      run = null
+    }
+    if (run === null || !activeRunIsFresh(run, now, ttlMs)) {
+      await rm(path, { force: true })
+      continue
+    }
+    const accountKey =
+      typeof run.accountRefHash === "string" && run.accountRefHash.trim() !== ""
+        ? run.accountRefHash.trim()
+        : UNKEYED_ACTIVE_RUN_ACCOUNT
+    const byAccount = (counts[run.service] = counts[run.service] ?? {})
+    byAccount[accountKey] = (byAccount[accountKey] ?? 0) + 1
   }
 
   return counts

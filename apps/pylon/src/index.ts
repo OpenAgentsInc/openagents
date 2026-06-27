@@ -26,7 +26,7 @@ import {
   probeCodexAgentReadiness,
   withCodexAgentCapability,
 } from "./codex-agent.js"
-import { loadPylonAccountRegistry } from "./account-registry.js"
+import { loadPylonAccountRegistry, resolvePylonAccountSelection } from "./account-registry.js"
 import { withWorkspaceMaterializerCapability } from "./workspace-materializer.js"
 import { claimTipReadiness, setTipPreferences, sweepStatus, tipPost } from "./tips.js"
 import {
@@ -179,14 +179,18 @@ import {
 import { assertPublicProjectionSafe, ensurePylonLocalState, loadOrCreatePresenceState, projectPublicStatus, writePresenceState, writeRuntimeState, type PylonLocalState, type PylonPaths } from "./state.js"
 import {
   activeCodingRunCounts,
+  activeCodingRunCountsByAccount,
   activeCodingRunCountsFromAssignmentLeases,
   maxActiveCodingRunCounts,
   type PylonActiveCodingRunCounts,
 } from "./active-assignment-runs.js"
 import {
   completePylonLink,
+  codexAccountCapacityRefs,
+  codexBusyByAccount,
   codingServiceCapacityFromRuntime,
   codingServiceCapacityRefs,
+  localCodexAccountCapacities,
   localCodingServiceReadyCounts,
   presenceClientOptionsFromEnv,
   refreshPylonLink,
@@ -4049,11 +4053,31 @@ async function main() {
             )
           }
         }
+        // #6354: resolve the requested Codex account to its public-safe
+        // account-ref hash BEFORE the request so the server gate admits against
+        // that account's per-account capacity. The same selector then runs the
+        // local no-spend assignment on that account's isolated home.
+        const accountRef =
+          optionString(options, "account") ??
+          optionString(options, "account-ref")
+        const accountHome = optionString(options, "account-home")
+        const accountSelection =
+          accountRef === undefined && accountHome === undefined
+            ? null
+            : await resolvePylonAccountSelection(summary, {
+                provider: "codex",
+                ...(accountRef === undefined ? {} : { accountRef }),
+                ...(accountHome === undefined ? {} : { accountHome }),
+              })
+        const targetAccountRefHash = accountSelection?.accountRefHash
         const result = await issuePylonKhalaRequest(networkOptions, {
           prompt,
           ...(targetPylonRef === undefined
             ? {}
             : { targetPylonRef }),
+          ...(targetAccountRefHash === undefined
+            ? {}
+            : { targetAccountRefHash }),
           ...(workflow === undefined ? {} : { workflow: workflow as PylonKhalaWorkflow }),
           ...(hasWorkspacePin
             ? {
@@ -4083,10 +4107,6 @@ async function main() {
           })
           return
         }
-        const accountRef =
-          optionString(options, "account") ??
-          optionString(options, "account-ref")
-        const accountHome = optionString(options, "account-home")
         const assignmentRun = await runNoSpendAssignment(summary, {
           ...networkOptions,
           assignmentRef,
@@ -4910,6 +4930,17 @@ async function main() {
           providerNetworkOptions,
         )
         const codingRefs = codingServiceCapacityRefs(codingCapacity)
+        // #6354: per-Codex-account capacity so `provider go-online --json`
+        // exposes each linked account's own concurrent slots and busy load.
+        const codexAccounts = await localCodexAccountCapacities(
+          { ...state, runtime: nextRuntime },
+          summary,
+          Bun.env,
+          codexBusyByAccount(
+            await activeCodingRunCountsByAccount(state.paths),
+          ),
+        )
+        const codexAccountRefs = codexAccountCapacityRefs(codexAccounts)
         const codexCapacity = codingCapacity.find((item) => item.service === "codex") ?? {
           available: 0,
           busy: 0,
@@ -4935,16 +4966,39 @@ async function main() {
             schema: "openagents.pylon.own_capacity_dispatch.v1",
             codex: codexCapacity,
             assignmentGateRef: "gate.public.pylon.assignment_dispatch.controlled.v1",
-            capacityRefs: codingRefs.capacityRefs.filter((ref) =>
-              ref.startsWith("capacity.coding.codex."),
-            ),
-            loadRefs: codingRefs.loadRefs.filter((ref) =>
-              ref.startsWith("load.coding.codex."),
-            ),
+            capacityRefs: [
+              ...codingRefs.capacityRefs.filter((ref) =>
+                ref.startsWith("capacity.coding.codex."),
+              ),
+              ...codexAccountRefs.capacityRefs,
+            ],
+            loadRefs: [
+              ...codingRefs.loadRefs.filter((ref) =>
+                ref.startsWith("load.coding.codex."),
+              ),
+              ...codexAccountRefs.loadRefs,
+            ],
             policyRefs: ["policy.public.khala_coding.own_capacity_only"],
             requiredCapabilityRefs: [CODEX_AGENT_CAPABILITY_REF],
             maxCodexAssignments: codexCapacity.ready,
             availableCodexAssignments: codexCapacity.available,
+            // #6354: per-account breakdown; pooled `codex` totals above sum
+            // these once the heartbeat advertises per-account refs.
+            codexAccounts: codexAccounts.map((account) => ({
+              accountKey: account.accountKey,
+              available: account.available,
+              busy: account.busy,
+              queued: account.queued,
+              ready: account.ready,
+            })),
+            totalAvailableCodexAssignments: codexAccounts.reduce(
+              (sum, account) => sum + account.available,
+              0,
+            ),
+            totalMaxCodexAssignments: codexAccounts.reduce(
+              (sum, account) => sum + account.ready,
+              0,
+            ),
           },
           tassadar: {
             declared: tassadarDeclaration.declared,

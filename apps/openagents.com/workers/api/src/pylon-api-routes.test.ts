@@ -1339,6 +1339,7 @@ describe('Pylon API routes', () => {
       'load.coding.codex.queued=0',
     ])
     expect(detail.pylon?.codingCapacity).toContainEqual({
+      accounts: [],
       available: 1,
       busy: 1,
       queued: 0,

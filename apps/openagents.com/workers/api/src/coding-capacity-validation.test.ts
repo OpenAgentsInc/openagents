@@ -927,3 +927,218 @@ describe('#6273 coding-capacity validation harness', () => {
     ])
   })
 })
+
+// ----------------------------------------------------------------------------
+// #6354 — per-account Codex capacity: multiple linked accounts on ONE owner
+// Pylon each dispatch their own concurrent assignments. A saturated account
+// must NOT block another account's request on the same Pylon.
+// ----------------------------------------------------------------------------
+
+const ACCOUNT_A_HASH = 'account.pylon.codex.aaaaaaaaaaaa'
+const ACCOUNT_A_KEY = 'aaaaaaaaaaaa'
+const ACCOUNT_B_HASH = 'account.pylon.codex.bbbbbbbbbbbb'
+const ACCOUNT_B_KEY = 'bbbbbbbbbbbb'
+
+const perAccountRegistration = (
+  overrides: Partial<PylonApiRegistrationRecord> = {},
+): PylonApiRegistrationRecord =>
+  registration({
+    ownerAgentUserId: 'agent_a',
+    pylonRef: 'pylon.a.codex',
+    // Heartbeat advertises 8 slots per account (16 pooled), busy reported 0
+    // (heartbeat lags the active leases pre-seeded into the gate below).
+    latestCapacityRefs: [
+      `capacity.coding.codex.account.${ACCOUNT_A_KEY}.ready=8`,
+      `capacity.coding.codex.account.${ACCOUNT_A_KEY}.available=8`,
+      `capacity.coding.codex.account.${ACCOUNT_B_KEY}.ready=8`,
+      `capacity.coding.codex.account.${ACCOUNT_B_KEY}.available=8`,
+    ],
+    latestLoadRefs: [
+      `load.coding.codex.account.${ACCOUNT_A_KEY}.busy=0`,
+      `load.coding.codex.account.${ACCOUNT_A_KEY}.queued=0`,
+      `load.coding.codex.account.${ACCOUNT_B_KEY}.busy=0`,
+      `load.coding.codex.account.${ACCOUNT_B_KEY}.queued=0`,
+    ],
+    ...overrides,
+  })
+
+const activeCodexLease = (
+  pylonRef: string,
+  index: number,
+  accountRefHash: string,
+): PylonApiAssignmentRecord => ({
+  acceptanceCriteriaRefs: [],
+  acceptedWorkRefs: [],
+  artifactRefs: [],
+  assignmentRef: `assignment.public.khala_coding.seed_${accountRefHash}_${index}`,
+  closeoutRefs: [],
+  codingAssignment: {
+    codex: { accountRefHash, agentKind: 'codex_sdk' },
+    requiredCapabilityRefs: ['capability.pylon.local_codex'],
+  },
+  createdAt: NOW_ISO,
+  id: `pylon_api_assignment_seed_${accountRefHash}_${index}`,
+  idempotencyKeyHash: `seed:${accountRefHash}:${index}`,
+  jobKind: 'codex_agent_task',
+  // Far-future lease so the gate counts it as an active duplicate.
+  leaseExpiresAt: '2026-06-25T13:00:00.000Z',
+  ownerAgentUserId: 'agent_a',
+  proofRefs: [],
+  publicProjectionJson: '{}',
+  pylonRef,
+  rejectionRefs: [],
+  resultExpectationRefs: [],
+  state: 'running',
+  taskRefs: [],
+  updatedAt: NOW_ISO,
+})
+
+const linkedAgentA: LinkedAgentOwnerRecord = {
+  agentUserId: 'agent_a',
+  credentialId: 'cred_a',
+  displayName: 'Agent A',
+  linkKind: 'credential_anchor',
+  openauthUserId: 'openauth-user-a',
+  tokenPrefix: tokenFor('agent_a').slice(0, 16),
+}
+
+const delegateToAccount = (
+  pylonStore: PylonApiStore,
+  accountRefHash: string | undefined,
+  requestId: string,
+) =>
+  delegateCodingWorkflow({
+    classification: {
+      confidence: 1,
+      evidenceRefs: ['evidence.coding_workflow.structured_body'],
+      workflowClass: 'codex_agent_task',
+    },
+    linkedAgents: [linkedAgentA],
+    makeId: () => `id_${requestId}`,
+    nowIso: NOW_ISO,
+    pylonStore,
+    rawBody: {
+      openagents: {
+        coding: {
+          targetPylonRef: 'pylon.a.codex',
+          ...(accountRefHash === undefined ? {} : { targetAccountRefHash: accountRefHash }),
+        },
+        workflowClass: 'codex_agent_task',
+      },
+    },
+    requestId,
+  })
+
+describe('#6354 per-account Codex dispatch division-of-labor', () => {
+  test('projection: per-account refs project per account and sum to the pooled total', () => {
+    const projection = pylonCodingServiceCapacityProjection(perAccountRegistration())
+    const codex = projection.find(item => item.service === 'codex')
+    expect(codex).toBeDefined()
+    // Pooled totals are derived from the account sum (8 + 8).
+    expect(codex).toMatchObject({ available: 16, busy: 0, queued: 0, ready: 16 })
+    expect(codex?.accounts).toEqual([
+      { accountKey: ACCOUNT_A_KEY, available: 8, busy: 0, queued: 0, ready: 8 },
+      { accountKey: ACCOUNT_B_KEY, available: 8, busy: 0, queued: 0, ready: 8 },
+    ])
+  })
+
+  test('projection backward compat: pooled-only heartbeats keep pooled totals and empty accounts', () => {
+    const projection = pylonCodingServiceCapacityProjection(
+      registration({ pylonRef: 'pylon.pooled' }),
+    )
+    const codex = projection.find(item => item.service === 'codex')
+    expect(codex).toMatchObject({ ready: 2, available: 1, busy: 1, queued: 0 })
+    expect(codex?.accounts).toEqual([])
+  })
+
+  test('account A saturated by its own active leases does NOT block account B on the same Pylon', async () => {
+    const pylonStore = makePylonStore([perAccountRegistration()])
+    // Pre-seed 8 active leases pinned to account A — A is fully saturated.
+    for (let index = 0; index < 8; index += 1) {
+      await pylonStore.createAssignment(
+        activeCodexLease('pylon.a.codex', index, ACCOUNT_A_HASH),
+      )
+    }
+
+    // Account A is refused: 8 active leases >= 8 advertised slots.
+    const refusedA = await delegateToAccount(pylonStore, ACCOUNT_A_HASH, 'req_a')
+    expect(refusedA?.kind).toBe('rejected')
+    if (refusedA?.kind !== 'rejected') {
+      throw new Error('expected account A to be refused')
+    }
+    expect(refusedA.statusCode).toBe(409)
+    expect(refusedA.error).toBe('target_pylon_unavailable')
+
+    // Account B is admitted concurrently — its slots are independent of A.
+    const admittedB = await delegateToAccount(pylonStore, ACCOUNT_B_HASH, 'req_b')
+    expect(admittedB?.kind).toBe('assigned')
+    if (admittedB?.kind !== 'assigned') {
+      throw new Error('expected account B to be admitted')
+    }
+    expect(
+      (admittedB.assignment.codingAssignment?.codex as { accountRefHash?: string })
+        ?.accountRefHash,
+    ).toBe(ACCOUNT_B_HASH)
+  })
+
+  test('per-account busy accounting: only same-account active leases count toward a request', async () => {
+    const pylonStore = makePylonStore([perAccountRegistration()])
+    // 8 active leases on account A, plus 7 on account B (B has 1 free slot).
+    for (let index = 0; index < 8; index += 1) {
+      await pylonStore.createAssignment(
+        activeCodexLease('pylon.a.codex', index, ACCOUNT_A_HASH),
+      )
+    }
+    for (let index = 0; index < 7; index += 1) {
+      await pylonStore.createAssignment(
+        activeCodexLease('pylon.a.codex', index, ACCOUNT_B_HASH),
+      )
+    }
+    // B still has 1 of 8 slots: A's 8 leases never count against B.
+    const admittedB = await delegateToAccount(pylonStore, ACCOUNT_B_HASH, 'req_b1')
+    expect(admittedB?.kind).toBe('assigned')
+  })
+
+  test('pooled backward compat: untagged requests gate against the pooled total', async () => {
+    const pylonStore = makePylonStore([
+      registration({
+        ownerAgentUserId: 'agent_a',
+        pylonRef: 'pylon.a.codex',
+        latestCapacityRefs: [
+          'capacity.coding.codex.ready=1',
+          'capacity.coding.codex.available=1',
+        ],
+        latestLoadRefs: ['load.coding.codex.busy=0', 'load.coding.codex.queued=0'],
+      }),
+    ])
+    // One untagged active lease saturates the single pooled slot.
+    await pylonStore.createAssignment({
+      ...activeCodexLease('pylon.a.codex', 0, ACCOUNT_A_HASH),
+      codingAssignment: {
+        codex: { agentKind: 'codex_sdk' },
+        requiredCapabilityRefs: ['capability.pylon.local_codex'],
+      },
+    })
+    const refused = await delegateToAccount(pylonStore, undefined, 'req_pooled')
+    expect(refused?.kind).toBe('rejected')
+    if (refused?.kind !== 'rejected') {
+      throw new Error('expected pooled refusal')
+    }
+    expect(refused.statusCode).toBe(409)
+  })
+
+  test('rejects a malformed targetAccountRefHash with a typed 400', async () => {
+    const pylonStore = makePylonStore([perAccountRegistration()])
+    const rejected = await delegateToAccount(
+      pylonStore,
+      'not-an-account-hash',
+      'req_bad',
+    )
+    expect(rejected?.kind).toBe('rejected')
+    if (rejected?.kind !== 'rejected') {
+      throw new Error('expected malformed account ref rejection')
+    }
+    expect(rejected.statusCode).toBe(400)
+    expect(rejected.error).toBe('invalid_target_account_ref')
+  })
+})

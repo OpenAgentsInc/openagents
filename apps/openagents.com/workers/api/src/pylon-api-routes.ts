@@ -49,6 +49,8 @@ import {
   publicPylonApiAssignmentProjection,
   publicPylonApiEventProjection,
   publicPylonApiRegistrationProjection,
+  codexAccountCapacityKeyFromAccountRefHash,
+  pylonCodexAccountCapacity,
   pylonCodingServiceCapacityProjection,
   pylonApiStoreErrorFromUnknown,
   pylonClientVersionMeetsMinimum,
@@ -350,12 +352,46 @@ const pylonAssignmentHasActiveLease = (
   duplicateBlockingAssignmentStates.has(assignment.state) &&
   Date.parse(assignment.leaseExpiresAt) > Date.parse(nowIso)
 
+// #6354: read the public-safe Codex account-ref hash a coding assignment is
+// pinned to, so the dispatch gate can scope active leases and capacity to the
+// requested account instead of pooling them at the Pylon level. Returns null for
+// untagged (legacy) assignments, which keeps the pooled accounting path.
+export const codexAccountRefHashFromCodingAssignment = (
+  codingAssignment: Record<string, unknown> | null | undefined,
+): string | null => {
+  const codex =
+    codingAssignment !== null &&
+    codingAssignment !== undefined &&
+    typeof codingAssignment.codex === 'object' &&
+    codingAssignment.codex !== null
+      ? (codingAssignment.codex as Record<string, unknown>)
+      : null
+  const raw = codex?.accountRefHash
+  return typeof raw === 'string' && raw.trim() !== '' ? raw.trim() : null
+}
+
+const codexAccountKeyFromCodingAssignment = (
+  codingAssignment: Record<string, unknown> | null | undefined,
+): string | null =>
+  codexAccountCapacityKeyFromAccountRefHash(
+    codexAccountRefHashFromCodingAssignment(codingAssignment),
+  )
+
 const activeDuplicateAssignmentRefs = (
   assignments: ReadonlyArray<PylonApiAssignmentRecord>,
   nowIso: string,
+  // When set, only active leases pinned to the SAME Codex account count toward
+  // the requested account's slots; one account's leases never block another's.
+  requestedAccountKey: string | null = null,
 ): ReadonlyArray<string> =>
   assignments
     .filter(assignment => pylonAssignmentHasActiveLease(assignment, nowIso))
+    .filter(assignment =>
+      requestedAccountKey === null
+        ? true
+        : codexAccountKeyFromCodingAssignment(assignment.codingAssignment) ===
+          requestedAccountKey,
+    )
     .map(assignment => assignment.assignmentRef)
 
 const codingServiceByCapabilityRef = new Map<string, 'claude' | 'codex'>([
@@ -367,6 +403,10 @@ const activeDuplicateCapacitySlots = (
   input: Readonly<{
     body: PylonApiCreateAssignmentRequest
     registration: PylonApiRegistrationRecord | undefined
+    // #6354: when the request pins a Codex account that the heartbeat advertises
+    // per-account capacity for, admit against THAT account's slots so a
+    // saturated account A does not consume account B's slots.
+    requestedAccountKey?: string | null
   }>,
 ): number => {
   if (input.registration === undefined) {
@@ -384,6 +424,22 @@ const activeDuplicateCapacitySlots = (
   }
 
   const [requestedService] = requestedServices
+
+  if (requestedService === 'codex') {
+    const accountCapacity = pylonCodexAccountCapacity(
+      input.registration,
+      input.requestedAccountKey ?? null,
+    )
+    if (accountCapacity !== null) {
+      return Math.max(
+        1,
+        accountCapacity.ready > 0
+          ? accountCapacity.ready
+          : accountCapacity.available,
+      )
+    }
+  }
+
   const capacity = pylonCodingServiceCapacityProjection(input.registration).find(
     item => item.service === requestedService,
   )
@@ -477,13 +533,18 @@ export const controlledPylonAssignmentDispatchGate = (
     !hasGateRefs(body.spendCapRefs)
   const paidModeRequiresWallet =
     paymentMode !== null && paidAssignmentPaymentModes.has(paymentMode)
+  const requestedAccountKey = codexAccountKeyFromCodingAssignment(
+    body.codingAssignment ?? null,
+  )
   const duplicateRefs = activeDuplicateAssignmentRefs(
     input.activeAssignments,
     input.nowIso,
+    requestedAccountKey,
   )
   const duplicateCapacitySlots = activeDuplicateCapacitySlots({
     body,
     registration,
+    requestedAccountKey,
   })
   const heartbeatAge =
     registration === undefined

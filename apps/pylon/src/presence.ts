@@ -5,6 +5,7 @@ import { join } from "node:path"
 import { PYLON_CLIENT_VERSION, type PylonClientVersion } from "./version.js"
 import type { BootstrapSummary } from "./bootstrap.js"
 import {
+  hashPylonAccountRef,
   loadPylonAccountRegistry,
   normalizeAccountHome,
 } from "./account-registry.js"
@@ -30,7 +31,10 @@ import type { WalletStatusProjection } from "./wallet.js"
 import { PresenceRequestError } from "./presence-error.js"
 import {
   activeCodingRunCounts,
+  activeCodingRunCountsByAccount,
   maxActiveCodingRunCounts,
+  UNKEYED_ACTIVE_RUN_ACCOUNT,
+  type PylonActiveCodingRunAccountCounts,
   type PylonActiveCodingRunCounts,
 } from "./active-assignment-runs.js"
 
@@ -273,6 +277,158 @@ export async function localCodingServiceReadyCounts(
   return codex > 0 ? { codex } : {}
 }
 
+// #6354: per-Codex-account capacity so multiple linked accounts on one owner
+// Pylon each advertise their own concurrent slots. The capacity-ref account key
+// is the public-safe trailing hex of the account-ref hash; the wire never
+// carries a raw account ref, email, or home path.
+export type PylonCodexAccountReadiness = {
+  accountRefHash: string
+  ready: boolean
+}
+
+export type PylonCodexAccountCapacity = {
+  accountKey: string
+  accountRefHash: string
+  available: number
+  busy: number
+  queued: number
+  ready: number
+}
+
+export const codexAccountCapacityKey = (
+  accountRefHash: string,
+): string | null => {
+  const match = /^account\.pylon\.[a-z0-9_]+\.([a-z0-9]{6,64})$/.exec(
+    accountRefHash.trim(),
+  )
+  return match === null ? null : match[1]!
+}
+
+// Enumerate the linked Codex accounts and whether each one's isolated home holds
+// a usable login. Registry accounts are keyed by their ref (matching
+// `resolvePylonAccountSelection`'s registry_ref hash and the per-assignment
+// account hash). The default `~/.codex` home is only included when no registry
+// Codex account exists, so a normal multi-account Pylon does not advertise a
+// phantom default-account slot the supervisor never targets.
+export async function localCodexAccountReadiness(
+  summary: Pick<BootstrapSummary, "paths">,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<PylonCodexAccountReadiness[]> {
+  const readiness = new Map<string, boolean>()
+  const registry = await loadPylonAccountRegistry(summary)
+  const codexEntries = registry.filter(entry => entry.provider === "codex")
+  for (const entry of codexEntries) {
+    readiness.set(
+      hashPylonAccountRef("codex", entry.ref),
+      await codexHomeHasAuth(entry.home),
+    )
+  }
+  if (codexEntries.length === 0) {
+    const configuredCodexHome = env.CODEX_HOME?.trim()
+    const defaultHome =
+      configuredCodexHome && configuredCodexHome.length > 0
+        ? normalizeAccountHome(configuredCodexHome)
+        : join(homedir(), ".codex")
+    readiness.set(
+      hashPylonAccountRef("codex", "default"),
+      await codexHomeHasAuth(defaultHome),
+    )
+  }
+  return [...readiness.entries()].map(([accountRefHash, ready]) => ({
+    accountRefHash,
+    ready,
+  }))
+}
+
+// Per-account Codex capacity: each ready account advertises `perAccountConcurrency`
+// ready slots, minus its own active local runs (busy). One account's busy load
+// never lowers another account's available slots.
+export function codexAccountCapacities(input: {
+  busyByAccount?: Record<string, number>
+  perAccountConcurrency: number
+  queuedByAccount?: Record<string, number>
+  readiness: ReadonlyArray<PylonCodexAccountReadiness>
+}): PylonCodexAccountCapacity[] {
+  const ready = Math.max(0, Math.min(input.perAccountConcurrency, 10_000))
+  const out: PylonCodexAccountCapacity[] = []
+  for (const account of input.readiness) {
+    if (!account.ready) continue
+    const accountKey = codexAccountCapacityKey(account.accountRefHash)
+    if (accountKey === null) continue
+    const busy = Math.min(input.busyByAccount?.[account.accountRefHash] ?? 0, ready)
+    const queued = Math.max(0, input.queuedByAccount?.[account.accountRefHash] ?? 0)
+    out.push({
+      accountKey,
+      accountRefHash: account.accountRefHash,
+      available: Math.max(0, ready - busy),
+      busy,
+      queued,
+      ready,
+    })
+  }
+  return out.sort((left, right) => left.accountKey.localeCompare(right.accountKey))
+}
+
+export const codexAccountCapacityRefs = (
+  accounts: ReadonlyArray<PylonCodexAccountCapacity>,
+): { capacityRefs: string[]; loadRefs: string[] } => ({
+  capacityRefs: accounts.flatMap(account => [
+    `capacity.coding.codex.account.${account.accountKey}.ready=${account.ready}`,
+    `capacity.coding.codex.account.${account.accountKey}.available=${account.available}`,
+  ]),
+  loadRefs: accounts.flatMap(account => [
+    `load.coding.codex.account.${account.accountKey}.busy=${account.busy}`,
+    `load.coding.codex.account.${account.accountKey}.queued=${account.queued}`,
+  ]),
+})
+
+// Per-account Codex concurrency. Reuses the existing
+// `OPENAGENTS_PYLON_CODEX_CONCURRENCY` (pooled today) as the per-account default
+// so an operator who already runs "N concurrent" gets N per account, while
+// `OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY` can override it explicitly.
+export function codexPerAccountConcurrency(
+  env: NodeJS.ProcessEnv = process.env,
+): number {
+  const explicit = env.OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY?.trim()
+  if (explicit !== undefined && explicit !== "") {
+    return nonNegativeEnvInteger(env, "OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY", 1)
+  }
+  return nonNegativeEnvInteger(env, "OPENAGENTS_PYLON_CODEX_CONCURRENCY", 1)
+}
+
+// Build the per-account Codex capacity for the heartbeat from live readiness and
+// active-run busy load. Returns [] when the node is not Codex-capable.
+export async function localCodexAccountCapacities(
+  state: PylonLocalState,
+  summary: Pick<BootstrapSummary, "paths">,
+  env: NodeJS.ProcessEnv = process.env,
+  accountBusyCounts: Record<string, number> = {},
+): Promise<PylonCodexAccountCapacity[]> {
+  const capabilityRefs = publishableCapabilityRefs(state.runtime.capabilityRefs)
+  if (!capabilityRefs.includes(CODEX_AGENT_CAPABILITY_REF)) {
+    return []
+  }
+  return codexAccountCapacities({
+    busyByAccount: accountBusyCounts,
+    perAccountConcurrency: codexPerAccountConcurrency(env),
+    readiness: await localCodexAccountReadiness(summary, env),
+  })
+}
+
+// Flatten per-service per-account active-run counts into a single
+// accountRefHash->count map for the Codex service (dropping the unkeyed bucket,
+// which cannot be attributed to a specific account).
+export function codexBusyByAccount(
+  counts: PylonActiveCodingRunAccountCounts,
+): Record<string, number> {
+  const out: Record<string, number> = {}
+  for (const [accountRefHash, count] of Object.entries(counts.codex ?? {})) {
+    if (accountRefHash === UNKEYED_ACTIVE_RUN_ACCOUNT) continue
+    out[accountRefHash] = count
+  }
+  return out
+}
+
 export async function createSignedHeaders(input: {
   method: string
   url: string
@@ -426,14 +582,27 @@ export async function sendHeartbeat(summary: BootstrapSummary, options: Presence
       walletReady = undefined
     }
   }
+  const presenceEnv = options.env ?? process.env
   const codingRefs = codingServiceCapacityRefs(
     codingServiceCapacityFromRuntime(
       state,
-      options.env ?? process.env,
-      await localCodingServiceReadyCounts(summary, options.env ?? process.env),
+      presenceEnv,
+      await localCodingServiceReadyCounts(summary, presenceEnv),
       maxActiveCodingRunCounts(
         await activeCodingRunCounts(state.paths, { now: options.now?.() }),
         options.activeRunCounts,
+      ),
+    ),
+  )
+  // #6354: per-Codex-account capacity so each linked account dispatches its own
+  // concurrent assignments. Busy is the account's own fresh active local runs.
+  const codexAccountRefs = codexAccountCapacityRefs(
+    await localCodexAccountCapacities(
+      state,
+      summary,
+      presenceEnv,
+      codexBusyByAccount(
+        await activeCodingRunCountsByAccount(state.paths, { now: options.now?.() }),
       ),
     ),
   )
@@ -446,11 +615,16 @@ export async function sendHeartbeat(summary: BootstrapSummary, options: Presence
     capacityRefs: [
       "capacity.public.pylon_cli.available",
       ...codingRefs.capacityRefs,
+      ...codexAccountRefs.capacityRefs,
     ],
     clientProtocolVersion: "0.3.0",
     clientVersion: PYLON_CLIENT_VERSION,
     healthRefs: ["health.public.pylon_cli.ok"],
-    loadRefs: ["load.public.pylon_cli.low", ...codingRefs.loadRefs],
+    loadRefs: [
+      "load.public.pylon_cli.low",
+      ...codingRefs.loadRefs,
+      ...codexAccountRefs.loadRefs,
+    ],
     resourceMode: state.runtime.resourceMode,
     status: "online",
     walletReadiness,

@@ -6,6 +6,8 @@ import {
   type PylonApiStore,
   PylonApiStoreError,
   buildPylonApiAssignmentRecord,
+  codexAccountCapacityKeyFromAccountRefHash,
+  pylonCodexAccountCapacity,
   pylonCodingServiceCapacityProjection,
 } from '../pylon-api'
 import { controlledPylonAssignmentDispatchGate } from '../pylon-api-routes'
@@ -41,6 +43,7 @@ export type CodingDelegationRejection = Readonly<{
     | 'coding_delegation_store_unavailable'
     | 'invalid_coding_objective_summary'
     | 'invalid_spawn_ref'
+    | 'invalid_target_account_ref'
     | 'invalid_target_pylon_ref'
     | 'target_pylon_not_authorized'
     | 'target_pylon_unavailable'
@@ -144,6 +147,58 @@ const objectiveSummaryFromBody = (
 const pylonRefPattern = /^[a-z0-9][a-z0-9_.:-]{2,119}$/
 const spawnRunRefPattern = /^spawn\.public\.khala_coding\.[A-Za-z0-9_.:-]{2,160}$/
 const spawnWorkerRefPattern = /^worker\.public\.khala_coding\.[A-Za-z0-9_.:-]{2,160}$/
+// #6354: public-safe Codex account-ref hash (`account.pylon.codex.<hex>`). The
+// caller's Pylon computes this from its local account ref; the wire never
+// carries a raw account ref, email, or home path.
+const codexAccountRefHashPattern = /^account\.pylon\.codex\.[a-f0-9]{6,64}$/
+
+const targetAccountRefHashFromBody = (
+  body: unknown,
+):
+  | Readonly<{ kind: 'none' }>
+  | Readonly<{ kind: 'account'; accountRefHash: string }>
+  | Readonly<{ kind: 'rejected'; rejection: CodingDelegationRejection }> => {
+  const coding = rawCodingFromBody(body)
+  const rawValue = coding?.targetAccountRefHash ?? coding?.accountRefHash
+
+  if (rawValue === undefined || rawValue === null || rawValue === '') {
+    return { kind: 'none' }
+  }
+  if (typeof rawValue !== 'string') {
+    return {
+      kind: 'rejected',
+      rejection: {
+        error: 'invalid_target_account_ref',
+        evidenceRefs: [
+          'evidence.khala_coding.target_account_ref.invalid_type',
+        ],
+        kind: 'rejected',
+        reason:
+          'openagents.coding.targetAccountRefHash must be a public-safe Codex account-ref hash string.',
+        requestedPylonRef: null,
+        statusCode: 400,
+      },
+    }
+  }
+  const accountRefHash = rawValue.trim()
+  if (!codexAccountRefHashPattern.test(accountRefHash)) {
+    return {
+      kind: 'rejected',
+      rejection: {
+        error: 'invalid_target_account_ref',
+        evidenceRefs: [
+          'evidence.khala_coding.target_account_ref.invalid_ref',
+        ],
+        kind: 'rejected',
+        reason:
+          'openagents.coding.targetAccountRefHash must match the public-safe account.pylon.codex.<hex> contract.',
+        requestedPylonRef: null,
+        statusCode: 400,
+      },
+    }
+  }
+  return { kind: 'account', accountRefHash }
+}
 
 const targetPylonRefFromBody = (
   body: unknown,
@@ -292,6 +347,7 @@ const spawnRefsFromBody = (
 const codingAssignmentFromInput = (
   input: CodingDelegationInput,
   objectiveSummary: string | null,
+  accountRefHash: string | null,
 ): Record<string, unknown> => {
   const workspace = rawWorkspaceFromBody(input.rawBody)
 
@@ -302,6 +358,9 @@ const codingAssignmentFromInput = (
       ...(workspace === null
         ? { fixtureRef: CODEX_AGENT_SUM_REPAIR_FIXTURE_REF }
         : {}),
+      // #6354: pin the target Codex account so the dispatch gate scopes
+      // capacity/leases to it and the Pylon runs on that account's home.
+      ...(accountRefHash === null ? {} : { accountRefHash }),
       timeoutSeconds: 1200,
     },
     objective: {
@@ -324,6 +383,7 @@ const assignmentRequestFromInput = (
   objectiveSummary: string | null,
   pylonRef: string,
   spawnRefs: ReadonlyArray<string>,
+  accountRefHash: string | null,
 ): PylonApiCreateAssignmentRequest => ({
   acceptanceCriteriaRefs: [
     'acceptance.public.khala_coding.owner_requested',
@@ -337,7 +397,11 @@ const assignmentRequestFromInput = (
     'closeout.public.khala_coding.durable_stream',
     khalaCodingRequestIdRef(input.requestId),
   ],
-  codingAssignment: codingAssignmentFromInput(input, objectiveSummary),
+  codingAssignment: codingAssignmentFromInput(
+    input,
+    objectiveSummary,
+    accountRefHash,
+  ),
   forumAutoPublishAllowed: false,
   idempotencyRefs: ['idempotency.public.khala_coding.request'],
   jobKind: 'codex_agent_task',
@@ -385,13 +449,25 @@ const hasCodexCapability = (
 ): boolean =>
   registration.capabilityRefs.includes(CODEX_AGENT_CAPABILITY_REF)
 
-const hasAvailableCodexCapacity = (
-  registration: PylonApiRegistrationRecord,
-): boolean =>
-  hasCodexCapability(registration) &&
-  pylonCodingServiceCapacityProjection(registration).some(
-    capacity => capacity.service === 'codex' && capacity.available > 0,
-  )
+// #6354: when an account is requested AND the heartbeat advertises per-account
+// capacity for it, availability is checked against THAT account's slots so a
+// saturated account A does not hide account B's free capacity. With no requested
+// account (or no per-account refs advertised), this falls back to the pooled
+// codex availability, preserving legacy behavior.
+const hasAvailableCodexCapacity =
+  (accountKey: string | null) =>
+  (registration: PylonApiRegistrationRecord): boolean => {
+    if (!hasCodexCapability(registration)) {
+      return false
+    }
+    const accountCapacity = pylonCodexAccountCapacity(registration, accountKey)
+    if (accountCapacity !== null) {
+      return accountCapacity.available > 0
+    }
+    return pylonCodingServiceCapacityProjection(registration).some(
+      capacity => capacity.service === 'codex' && capacity.available > 0,
+    )
+  }
 
 // #6354: name exactly which admission sub-condition failed so a refused
 // caller-owned coding delegation is debuggable instead of an opaque 409. The
@@ -408,6 +484,7 @@ type CodexAdmissionSubCondition =
 const codexAdmissionFailures = (
   registration: PylonApiRegistrationRecord,
   nowIso: string,
+  accountKey: string | null,
 ): ReadonlyArray<CodexAdmissionSubCondition> => {
   const failures: CodexAdmissionSubCondition[] = []
   if (registration.status !== 'active') {
@@ -419,11 +496,14 @@ const codexAdmissionFailures = (
   if (!hasCodexCapability(registration)) {
     failures.push('not_codex_capable')
   }
-  if (
-    !pylonCodingServiceCapacityProjection(registration).some(
-      capacity => capacity.service === 'codex' && capacity.available > 0,
-    )
-  ) {
+  const accountCapacity = pylonCodexAccountCapacity(registration, accountKey)
+  const hasCapacity =
+    accountCapacity !== null
+      ? accountCapacity.available > 0
+      : pylonCodingServiceCapacityProjection(registration).some(
+          capacity => capacity.service === 'codex' && capacity.available > 0,
+        )
+  if (!hasCapacity) {
     failures.push('no_available_codex_capacity')
   }
   return failures
@@ -432,6 +512,7 @@ const codexAdmissionFailures = (
 const diagnoseCodexUnavailability = (
   registrations: ReadonlyArray<PylonApiRegistrationRecord>,
   nowIso: string,
+  accountKey: string | null,
 ): Readonly<{
   evidenceRefs: ReadonlyArray<string>
   reason: string
@@ -449,7 +530,7 @@ const diagnoseCodexUnavailability = (
       ? null
       : registrations
           .map(registration => ({
-            failures: codexAdmissionFailures(registration, nowIso),
+            failures: codexAdmissionFailures(registration, nowIso, accountKey),
           }))
           .sort((left, right) => left.failures.length - right.failures.length)[0]
   const failures =
@@ -605,6 +686,15 @@ const delegateCodingWorkflowUnsafe = async (
   if (spawnRefs.kind === 'rejected') {
     return spawnRefs.rejection
   }
+  const targetAccount = targetAccountRefHashFromBody(input.rawBody)
+  if (targetAccount.kind === 'rejected') {
+    return targetAccount.rejection
+  }
+  const targetAccountRefHash =
+    targetAccount.kind === 'account' ? targetAccount.accountRefHash : null
+  const targetAccountKey = codexAccountCapacityKeyFromAccountRefHash(
+    targetAccountRefHash,
+  )
 
   const ownerAgentUserIds = input.linkedAgents.map(agent => agent.agentUserId)
   if (ownerAgentUserIds.length === 0) {
@@ -667,13 +757,14 @@ const delegateCodingWorkflowUnsafe = async (
   const candidates = authorizedRegistrations
     .filter(registration => registration.status === 'active')
     .filter(registration => hasFreshOnlineHeartbeat(registration, input.nowIso))
-    .filter(hasAvailableCodexCapacity)
+    .filter(hasAvailableCodexCapacity(targetAccountKey))
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
 
   if (target.kind === 'target' && candidates.length === 0) {
     const diagnosis = diagnoseCodexUnavailability(
       authorizedRegistrations,
       input.nowIso,
+      targetAccountKey,
     )
     return {
       error: 'target_pylon_unavailable',
@@ -692,6 +783,7 @@ const delegateCodingWorkflowUnsafe = async (
       objectiveSummary.summary,
       registration.pylonRef,
       spawnRefs.refs,
+      targetAccountRefHash,
     )
     const activeAssignments = await (async () => {
       try {
