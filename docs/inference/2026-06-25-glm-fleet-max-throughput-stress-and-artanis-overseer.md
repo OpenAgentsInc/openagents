@@ -200,7 +200,10 @@ canonical `x-openagents-client` attribution for stress/real-sweep dispatches and
 the report schema carries public-safe overall plus per-replica TTFT/ITL
 P50/P90/P99/mean/sample-count rollups, ok/deferred/preempted/failed counts, and
 goodput/TPS. This is measurement plumbing only; the live continuous stress run
-still waits on #6318 external-wins proof and #6320 throughput-rollout proof.
+still waits on #6318 external-wins proof and #6320 throughput-rollout proof. The
+runner plan stays blocked unless the #6318 evaluator reports `accepted` and the
+#6320 operator acceptance exposes `canStartIssue6317Stress:true`; non-empty refs
+alone are not enough to arm stress traffic.
 
 ### Why continuous (not one-off)
 

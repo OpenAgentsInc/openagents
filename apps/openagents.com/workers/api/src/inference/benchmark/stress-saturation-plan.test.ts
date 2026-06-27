@@ -69,7 +69,9 @@ describe('GLM continuous stress saturation plan (#6317 prep slice)', () => {
         liveHeadroomEvidenceRef: 'evidence.glm.live_headroom.oracle.v1',
         externalWinsPreemptionEvidenceRef:
           'evidence.glm.external_wins.preemption.v1',
+        externalWinsProofStatus: 'accepted',
         rolloutGuardEvidenceRef: 'evidence.glm.stress.rollout_guard.v1',
+        throughputRolloutCanStartIssue6317Stress: true,
       },
     })
 
@@ -98,7 +100,9 @@ describe('GLM continuous stress saturation plan (#6317 prep slice)', () => {
         liveHeadroomEvidenceRef: 'evidence.glm.live_headroom.oracle.v1',
         externalWinsPreemptionEvidenceRef:
           'evidence.glm.external_wins.preemption.v1',
+        externalWinsProofStatus: 'accepted',
         rolloutGuardEvidenceRef: 'evidence.glm.stress.rollout_guard.v1',
+        throughputRolloutCanStartIssue6317Stress: true,
       },
     })
 
@@ -113,6 +117,72 @@ describe('GLM continuous stress saturation plan (#6317 prep slice)', () => {
     expect(plan.cells.every(cell => cell.lane === 'glm-52')).toBe(true)
     expect(plan.cells.every(cell => cell.laneAvailability === 'available')).toBe(
       true,
+    )
+  })
+
+  test('stays blocked until #6318 external-wins proof is accepted', () => {
+    const plan = buildGlmContinuousStressPlan({
+      matrixConfig: SAMPLE_DECISION_SUITE_CONFIG,
+      target: GLM_52_REAP_POOL_TARGET,
+      shapes: [stressShape('saturation-knee', 16)],
+      workloads: ['chat', 'opencode-coding-task'],
+      headroom: {
+        healthyReplicaCount: 10,
+        aggregateAvailableSlots: 10,
+        reservedExternalSlots: 3,
+        externalDemandActive: false,
+      },
+      evidence: {
+        liveHeadroomEvidenceRef: 'evidence.glm.live_headroom.oracle.v1',
+        externalWinsPreemptionEvidenceRef:
+          'evidence.glm.external_wins.preemption.v1',
+        externalWinsProofStatus: 'blocked',
+        rolloutGuardEvidenceRef: 'evidence.glm.stress.rollout_guard.v1',
+        throughputRolloutCanStartIssue6317Stress: true,
+      },
+    })
+
+    expect(plan.state).toBe('blocked_missing_live_scheduler_evidence')
+    if (plan.state !== 'blocked_missing_live_scheduler_evidence') {
+      throw new Error('stress plan unexpectedly armed without #6318 acceptance')
+    }
+    expect(plan.reasons).toContain('external_wins_proof_not_accepted')
+    expect(plan.blockerRefs).toContain(
+      'blocker.glm_continuous_stress.external_wins_proof_not_accepted',
+    )
+  })
+
+  test('stays blocked until #6320 rollout acceptance allows #6317 stress', () => {
+    const plan = buildGlmContinuousStressPlan({
+      matrixConfig: SAMPLE_DECISION_SUITE_CONFIG,
+      target: GLM_52_REAP_POOL_TARGET,
+      shapes: [stressShape('saturation-knee', 16)],
+      workloads: ['chat', 'opencode-coding-task'],
+      headroom: {
+        healthyReplicaCount: 10,
+        aggregateAvailableSlots: 10,
+        reservedExternalSlots: 3,
+        externalDemandActive: false,
+      },
+      evidence: {
+        liveHeadroomEvidenceRef: 'evidence.glm.live_headroom.oracle.v1',
+        externalWinsPreemptionEvidenceRef:
+          'evidence.glm.external_wins.preemption.v1',
+        externalWinsProofStatus: 'accepted',
+        rolloutGuardEvidenceRef: 'evidence.glm.stress.rollout_guard.v1',
+        throughputRolloutCanStartIssue6317Stress: false,
+      },
+    })
+
+    expect(plan.state).toBe('blocked_missing_live_scheduler_evidence')
+    if (plan.state !== 'blocked_missing_live_scheduler_evidence') {
+      throw new Error('stress plan unexpectedly armed without #6320 acceptance')
+    }
+    expect(plan.reasons).toContain(
+      'throughput_rollout_not_accepted_for_stress',
+    )
+    expect(plan.blockerRefs).toContain(
+      'blocker.glm_continuous_stress.throughput_rollout_not_accepted_for_stress',
     )
   })
 
@@ -154,7 +224,9 @@ describe('GLM continuous stress saturation plan (#6317 prep slice)', () => {
         liveHeadroomEvidenceRef: 'evidence.glm.live_headroom.oracle.v1',
         externalWinsPreemptionEvidenceRef:
           'evidence.glm.external_wins.preemption.v1',
+        externalWinsProofStatus: 'accepted',
         rolloutGuardEvidenceRef: 'evidence.glm.stress.rollout_guard.v1',
+        throughputRolloutCanStartIssue6317Stress: true,
       },
     })
     const runnerPlan = buildGlmContinuousStressRunnerPlan({
@@ -207,7 +279,9 @@ describe('GLM continuous stress saturation plan (#6317 prep slice)', () => {
         liveHeadroomEvidenceRef: 'evidence.glm.live_headroom.oracle.v1',
         externalWinsPreemptionEvidenceRef:
           'evidence.glm.external_wins.preemption.v1',
+        externalWinsProofStatus: 'accepted',
         rolloutGuardEvidenceRef: 'evidence.glm.stress.rollout_guard.v1',
+        throughputRolloutCanStartIssue6317Stress: true,
       },
     })
     const runnerPlan = buildGlmContinuousStressRunnerPlan({

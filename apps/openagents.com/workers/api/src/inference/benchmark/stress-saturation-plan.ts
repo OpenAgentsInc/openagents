@@ -47,6 +47,8 @@ export const GlmStressBlockerReason = S.Literals([
   'missing_live_headroom_evidence',
   'missing_external_wins_preemption_evidence',
   'missing_rollout_guard_evidence',
+  'external_wins_proof_not_accepted',
+  'throughput_rollout_not_accepted_for_stress',
   'external_headroom_unavailable',
   'no_glm_stress_cells',
 ])
@@ -62,7 +64,9 @@ export type GlmStressExternalHeadroomSnapshot = Readonly<{
 export type GlmStressEvidence = Readonly<{
   liveHeadroomEvidenceRef?: string | undefined
   externalWinsPreemptionEvidenceRef?: string | undefined
+  externalWinsProofStatus?: GlmExternalWinsProofStatus | undefined
   rolloutGuardEvidenceRef?: string | undefined
+  throughputRolloutCanStartIssue6317Stress?: boolean | undefined
 }>
 
 export type GlmStressPlanInput = Readonly<{
@@ -279,6 +283,31 @@ const missingEvidenceReasons = (
     : []),
 ]
 
+const acceptanceGateReasons = (
+  evidence: GlmStressEvidence | undefined,
+): Array<GlmStressBlockerReason> => {
+  const hasExternalWinsEvidence = isNonEmptyRef(
+    evidence?.externalWinsPreemptionEvidenceRef,
+  )
+  const hasRolloutGuardEvidence = isNonEmptyRef(
+    evidence?.rolloutGuardEvidenceRef,
+  )
+  const externalWinsProofNotAccepted =
+    hasExternalWinsEvidence && evidence?.externalWinsProofStatus !== 'accepted'
+  const throughputRolloutNotAccepted =
+    hasRolloutGuardEvidence &&
+    evidence?.throughputRolloutCanStartIssue6317Stress !== true
+
+  return [
+    ...(externalWinsProofNotAccepted
+      ? (['external_wins_proof_not_accepted'] as const)
+      : []),
+    ...(throughputRolloutNotAccepted
+      ? (['throughput_rollout_not_accepted_for_stress'] as const)
+      : []),
+  ]
+}
+
 const blockerRefsFor = (
   reasons: ReadonlyArray<GlmStressBlockerReason>,
 ): ReadonlyArray<string> =>
@@ -326,6 +355,7 @@ export const buildGlmContinuousStressPlan = (
     (maxStressConcurrency === 0 || headroom.externalDemandActive)
   const reasons: Array<GlmStressBlockerReason> = [
     ...evidenceReasons,
+    ...acceptanceGateReasons(input.evidence),
     ...(cells.length === 0 ? (['no_glm_stress_cells'] as const) : []),
     ...(headroom === undefined
       ? (['missing_live_headroom_evidence'] as const)
