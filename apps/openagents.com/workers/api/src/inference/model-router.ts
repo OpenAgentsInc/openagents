@@ -922,6 +922,19 @@ const attemptAdapterWithRetry = <A>(
     }
   })
 
+const shouldRetryPrimaryValidationAfterPreemption = (
+  input: Readonly<{
+    adapterId: string
+    error: InferenceAdapterError
+    primaryAdapterId: string
+    schedulerPreemption: DispatchSchedulerPreemptionEvidence | undefined
+  }>,
+): boolean =>
+  input.schedulerPreemption !== undefined &&
+  input.adapterId === input.primaryAdapterId &&
+  input.error.retryable &&
+  input.error.kind === 'empty_assistant_content'
+
 // Run an adapter operation across the model's lane plan with bounded-backoff
 // overflow. Lanes that are not registered (e.g. an absent partner secret) are
 // skipped. A retryable failure backs off and overflows to the next lane; a
@@ -1035,7 +1048,11 @@ export const dispatchWithOverflowWithMetadata = <A>(
       })
     }
 
-    for (let index = startIndex; index < adapters.length; index += 1) {
+    adapterLoop: for (
+      let index = startIndex;
+      index < adapters.length;
+      index += 1
+    ) {
       const adapter = adapters[index]!
       const adapterRequest =
         deps.requestForAdapter?.(request, adapter.id) ?? request
@@ -1045,90 +1062,112 @@ export const dispatchWithOverflowWithMetadata = <A>(
         overflowCount += 1
       }
 
-      const outcome = yield* attemptAdapterWithRetry({
-        adapter,
-        backoff,
-        failureTelemetry: deps.failureTelemetry,
-        operation,
-        request: adapterRequest,
-        retryCount,
-        sleep,
-      })
+      let validationRetryAttempt = 0
+      // #6318: after external demand preempts internal stress, an empty primary
+      // assistant response gets one same-lane validation retry before overflow.
+      const validationRetryLimit =
+        schedulerPreemption === undefined ? retryCount : Math.max(1, retryCount)
 
-      if (outcome.ok) {
-        const validation =
-          validateSuccess?.({
-            adapter,
-            request: adapterRequest,
-            value: outcome.value,
-          }) ??
-          validateDefaultDispatchSuccess({ adapter, value: outcome.value })
-        if (validation._tag === 'failed') {
-          lastError = validation.error
-          recordFailureTelemetry(
-            deps.failureTelemetry,
-            telemetryForError(validation.error, 'validation_failure'),
-          )
-          if (!validation.error.retryable) {
-            return yield* Effect.fail(validation.error)
+      while (true) {
+        const outcome = yield* attemptAdapterWithRetry({
+          adapter,
+          backoff,
+          failureTelemetry: deps.failureTelemetry,
+          operation,
+          request: adapterRequest,
+          retryCount,
+          sleep,
+        })
+
+        if (outcome.ok) {
+          const validation =
+            validateSuccess?.({
+              adapter,
+              request: adapterRequest,
+              value: outcome.value,
+            }) ??
+            validateDefaultDispatchSuccess({ adapter, value: outcome.value })
+          if (validation._tag === 'failed') {
+            lastError = validation.error
+            recordFailureTelemetry(
+              deps.failureTelemetry,
+              telemetryForError(validation.error, 'validation_failure'),
+            )
+            if (!validation.error.retryable) {
+              return yield* Effect.fail(validation.error)
+            }
+            if (
+              validationRetryAttempt < validationRetryLimit &&
+              shouldRetryPrimaryValidationAfterPreemption({
+                adapterId: adapter.id,
+                error: validation.error,
+                primaryAdapterId,
+                schedulerPreemption,
+              })
+            ) {
+              yield* sleep(backoffDelayMs(backoff, validationRetryAttempt))
+              validationRetryAttempt += 1
+              continue
+            }
+            fallbackReason = fallbackReasonFor(validation.error)
+            fallbackAdapterRouteMetadata = validation.error.adapterRouteMetadata
+            continue adapterLoop
           }
-          fallbackReason = fallbackReasonFor(validation.error)
-          fallbackAdapterRouteMetadata = validation.error.adapterRouteMetadata
-          continue
+          const signals = deps.routingSignals?.(adapter.id)
+          const providerHealthScore = normalizeProviderHealthScore(
+            signals?.providerHealthScore,
+          )
+          const region = normalizeRegion(signals?.region)
+          const ttftP99Ms = normalizeTtftP99Ms(signals?.ttftP99Ms)
+          if (fallbackReason !== null) {
+            recordFailureTelemetry(deps.failureTelemetry, {
+              adapterId: adapter.id,
+              classifier: 'fallback',
+              kind: fallbackReason,
+              retryable: true,
+              stage: 'fallback',
+            })
+          }
+          return {
+            route: {
+              fallbackReason,
+              ...(fallbackAdapterRouteMetadata === undefined
+                ? {}
+                : { fallbackAdapterRouteMetadata }),
+              ...(schedulerPreemption === undefined
+                ? {}
+                : { schedulerPreemption }),
+              ...(signals?.laneHealth === undefined
+                ? {}
+                : { laneHealth: signals.laneHealth }),
+              primaryAdapterId,
+              servedAdapterId: adapter.id,
+              ...(providerHealthScore === undefined
+                ? {}
+                : { providerHealthScore }),
+              ...(region === undefined ? {} : { region }),
+              ...(ttftP99Ms === undefined ? {} : { ttftP99Ms }),
+              ...(signals?.warmState === undefined
+                ? {}
+                : { warmState: signals.warmState }),
+            },
+            value: outcome.value,
+          }
         }
-        const signals = deps.routingSignals?.(adapter.id)
-        const providerHealthScore = normalizeProviderHealthScore(
-          signals?.providerHealthScore,
-        )
-        const region = normalizeRegion(signals?.region)
-        const ttftP99Ms = normalizeTtftP99Ms(signals?.ttftP99Ms)
-        if (fallbackReason !== null) {
-          recordFailureTelemetry(deps.failureTelemetry, {
-            adapterId: adapter.id,
-            classifier: 'fallback',
-            kind: fallbackReason,
-            retryable: true,
-            stage: 'fallback',
-          })
-        }
-        return {
-          route: {
-            fallbackReason,
-            ...(fallbackAdapterRouteMetadata === undefined
-              ? {}
-              : { fallbackAdapterRouteMetadata }),
-            ...(schedulerPreemption === undefined
-              ? {}
-              : { schedulerPreemption }),
-            ...(signals?.laneHealth === undefined
-              ? {}
-              : { laneHealth: signals.laneHealth }),
-            primaryAdapterId,
-            servedAdapterId: adapter.id,
-            ...(providerHealthScore === undefined
-              ? {}
-              : { providerHealthScore }),
-            ...(region === undefined ? {} : { region }),
-            ...(ttftP99Ms === undefined ? {} : { ttftP99Ms }),
-            ...(signals?.warmState === undefined
-              ? {}
-              : { warmState: signals.warmState }),
-          },
-          value: outcome.value,
-        }
-      }
 
-      lastError = outcome.error
-      if (wasInternalStressPreempted(adapterRequest)) {
-        return yield* Effect.fail(internalStressPreemptedError(adapterRequest))
+        lastError = outcome.error
+        if (wasInternalStressPreempted(adapterRequest)) {
+          return yield* Effect.fail(internalStressPreemptedError(adapterRequest))
+        }
+        // Non-retryable: surface immediately, no overflow.
+        if (!outcome.error.retryable) {
+          return yield* Effect.fail(outcome.error)
+        }
+        fallbackReason = fallbackReasonFor(outcome.error)
+        fallbackAdapterRouteMetadata = outcome.error.adapterRouteMetadata
+        // Retryable: continue to the next viable lane (loop), backing off above.
+        continue adapterLoop
       }
-      // Non-retryable: surface immediately, no overflow.
-      if (!outcome.error.retryable) {
-        return yield* Effect.fail(outcome.error)
-      }
-      fallbackReason = fallbackReasonFor(outcome.error)
-      fallbackAdapterRouteMetadata = outcome.error.adapterRouteMetadata
-      // Retryable: continue to the next viable lane (loop), backing off above.
     }
 
     // Every viable lane failed with a retryable error: surface the last one so

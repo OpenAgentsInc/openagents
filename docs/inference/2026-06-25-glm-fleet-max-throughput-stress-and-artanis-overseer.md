@@ -155,6 +155,13 @@ returned empty assistant content and the external response fell through to a
 weaker fallback is blocked as `fallback_after_preemption`,
 `served_lane_not_glm_primary`, and `empty_glm_content_after_preemption`.
 
+**Router hardening note (2026-06-27).** After a scheduler preempts in-flight
+internal stress for an external request, an `empty_assistant_content` validation
+failure on the primary GLM lane now gets one same-lane validation retry before
+overflow. If the retry succeeds, the response remains `servedLane:"glm_primary"`
+with `fallbackReason:null`; if it still overflows, the proof stays blocked and
+the fallback remains explicit.
+
 ---
 
 ## 2. Continuous stress-test system (the saturation harness)

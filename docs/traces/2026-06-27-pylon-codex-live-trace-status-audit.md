@@ -509,6 +509,24 @@ capacity, explicit coding workflow dispatch, local no-spend execution, and proof
 after closeout. The token counter movement appears only after that closeout path
 posts exact usage.
 
+The very next real #6318 hardening dispatch exposed the remaining intermittent
+gate behavior. Preflight again showed Pylon `pylon.33afd48282a649047e3a` with
+Codex `ready=1`, `busy=0`, `available=1`, and fresh heartbeat sequences `455`
+and `456`, but `khala request --workflow codex_agent_task` returned the same
+typed `503` twice:
+
+```text
+The Khala coding dispatch gate could not read linked Pylon capacity right now.
+This is a transient gate failure, not an account problem -- retry shortly.
+```
+
+No assignment ref was created for that real task, so there is no corresponding
+Pylon/Codex closeout, exact token row, or owner-only trace. The operational
+conclusion is precise: the runbook can work end-to-end, but the production
+capacity-read gate still has an intermittent admission race. In an owner-directed
+"do not stall" session, the supervising agent may continue locally after
+recording that the attempted delegation did not create an assignment.
+
 ## Token Accounting
 
 The assignment has one exact downstream Codex token row:
