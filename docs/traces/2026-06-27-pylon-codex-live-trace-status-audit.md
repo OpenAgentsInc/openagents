@@ -12,9 +12,11 @@ Short answer:
 - The audited assignment did produce trace material and exact token accounting.
 - The existing `/trace/{uuid}` page exists, but it is not yet a live assignment
   status view.
-- The current owner-token read path does not expose these Pylon/Codex
-  `owner_only` traces, because trace read-scope resolves the agent user id while
-  Pylon/Codex trace ingest stores the linked OpenAuth owner id.
+- The original audit found that the owner-token read path did not expose these
+  Pylon/Codex `owner_only` traces, because trace read-scope resolved the agent
+  user id while Pylon/Codex trace ingest stored the linked OpenAuth owner id.
+  This change fixes that read-scope mismatch by resolving
+  `session.credential.openauthUserId` first and falling back to `session.user.id`.
 - Public token count updates at final Codex turn closeout, not continuously for
   streamed raw event chunks.
 
@@ -189,7 +191,74 @@ archive containing `99` SDK events / `3,399,098` bytes. The reviewed integration
 landed as commit `7a3c97a737` and was commented back to issue #6311 without
 closing it, because live fleet durability remained degraded.
 
-## Current Follow-Up Delegation Failure Mode
+## Continued Delegation Attempt For This Audit
+
+On the next continuation, delegation setup itself worked, but no extra Codex
+slot was actually available.
+
+The work was started from a fresh clean worktree:
+
+`/Users/christopherdavid/work/openagents-worktrees/khala-roadmap-goal-20260627-050244`
+
+The worktree was pinned to `origin/main` at:
+
+`43a069f4ba95751f63c5cfa5fb01f1b4973e6e9e`
+
+Preflight succeeded:
+
+- dependencies were installed with `bun install --frozen-lockfile`;
+- `OPENAGENTS_AGENT_TOKEN` was read from the local Khala token file without
+  printing it;
+- `PYLON_OPENAGENTS_BASE_URL=https://openagents.com` was used;
+- `PYLON_DISABLE_DAEMON_ROUTING=1` was used so commands ran against the current
+  worktree source instead of a stale local daemon;
+- `pylon codex accounts list --json` showed the default Codex account ready;
+- `pylon provider go-online --json` returned
+  `pylon.33afd48282a649047e3a`;
+- `pylon presence heartbeat --json` succeeded and linked the Pylon.
+
+The blocking condition was local capacity, not credentials. Process inspection
+showed an unrelated local Pylon/Codex run already active:
+
+`assignment.public.khala_coding.chatcmpl_da19d381e1284676a55e2826aa6f4102`
+
+Because that run was not owned by this audit thread, it was left alone. After
+advertising two Codex slots, `provider go-online --json` still reported the
+slots as busy (`ready=2`, `busy=2`, `available=0`). A typed dispatch attempt for
+the next roadmap slice failed with:
+
+```text
+409: The requested linked Pylon is not active, heartbeat-fresh, Codex-capable,
+and available.
+```
+
+This is the key lesson for other agents: the runbook can be correctly set up and
+still produce no assignment if all local Codex slots are busy. In that state
+there is no assignment ref, no `assignment run-no-spend`, no closeout, no exact
+Pylon/Codex token row, and no owner-only trace for that attempted dispatch.
+Agents should not treat that as model inference fallback; it is a capacity
+admission failure before delegation begins.
+
+Later, at `2026-06-27T05:15:42Z`, a capacity recheck showed
+`capacity.coding.codex.available=1`, `busy=0`, and `ready=1`, but simultaneous
+`assignment run-no-spend` processes owned by another parent process appeared at
+the same time. This audit did not claim or interrupt those assignments. The
+operational rule is still to check capacity immediately before dispatch and to
+avoid taking over another agent's active local runs.
+
+The reliable sequence remains:
+
+1. Use a clean worktree from current `origin/main`.
+2. Install dependencies in that worktree.
+3. Run the Pylon CLI from that worktree with daemon routing disabled.
+4. Preflight Codex account readiness, Pylon online state, and fresh heartbeat.
+5. Confirm `capacity.coding.codex.available > 0`.
+6. Create a typed `codex_agent_task` with explicit `--pylon-ref`, repo, branch,
+   commit, prompt, and verifier.
+7. Run the returned assignment ref with `assignment run-no-spend --json`.
+8. Verify the closeout with assignment-scoped proof, not only the global counter.
+
+## Earlier Follow-Up Delegation Failure Mode
 
 The same runbook was attempted again for the #6318 scheduler follow-up after the
 local Pylon was brought online from the clean worktree:
@@ -309,6 +378,20 @@ needs to be a separate labeled estimate based on raw chunks or progress events.
 It must not be mixed into the exact served-token counter until final usage
 arrives.
 
+For the homepage/stats live counter, the publish path is:
+
+1. a served completion or Pylon/Codex turn inserts a canonical
+   `token_usage_events` row;
+2. the recorder publishes a public-safe sync delta only if the insert actually
+   happened;
+3. that delta carries the per-event token increment and the authoritative ledger
+   running total after the insert;
+4. the client advances monotonically from the latest total.
+
+So when the token count "finally" updates after a quiet wait, that means the
+final exact usage row landed and the public sync/scalar projection saw it. It
+does not mean the counter was incrementing throughout the in-flight Codex run.
+
 ## Trace And Raw Event Persistence
 
 The first-class proof command reports:
@@ -382,8 +465,8 @@ into one coherent live assignment view.
 
 ## Can We View This Assignment Through `/trace/{uuid}` Right Now?
 
-The trace rows exist, but the existing owner-token read path did not expose them
-in this audit.
+The trace rows existed, but the owner-token read path did not expose them during
+the original audit.
 
 One trace UUID sampled from proof:
 
@@ -413,14 +496,14 @@ So the owner-only trace rows are stored under the linked OpenAuth owner, while
 the token read/list path can look under the agent user. That produces a privacy-
 preserving 404 even for the local owner token.
 
-The read-scope resolver should likely return:
+The read-scope resolver now returns:
 
 ```ts
 session.credential.openauthUserId ?? session.user.id
 ```
 
-matching Pylon/Codex ingest. That should preserve owner-only isolation while
-letting the local Khala/Pylon token open the owner's own Pylon/Codex traces.
+matching Pylon/Codex ingest. This preserves owner-only isolation while letting
+the local Khala/Pylon token open the owner's own Pylon/Codex traces.
 
 ## Live Status Gap
 
@@ -453,9 +536,9 @@ What is missing for the desired live page:
 
 ## Recommended Next Build
 
-1. Fix trace read-scope ownership:
-   `resolveReadScopeOwner` should prefer `session.credential.openauthUserId`
-   when present, falling back to `session.user.id`.
+1. Keep trace read-scope ownership fixed:
+   `resolveReadScopeOwner` now prefers `session.credential.openauthUserId` when
+   present, falling back to `session.user.id`.
 
 2. Add assignment-level trace proof/read API:
    `GET /api/pylon/codex/proof` should include raw chunk aggregate counts and
@@ -499,6 +582,7 @@ The product gap is presentation and owner read scope:
 
 - the existing `/trace/{uuid}` page is a single-fetch trace renderer, not a live
   assignment session monitor;
-- the local owner token currently cannot read the Pylon/Codex owner-only traces
-  because token read-scope and Pylon/Codex ingest use different owner ids;
+- the local owner-token mismatch for Pylon/Codex owner-only traces is fixed in
+  this change, but live production should be re-smoked with a fresh linked trace
+  URL after deploy;
 - there is no single stable trace URL that represents the whole assignment.

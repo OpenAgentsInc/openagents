@@ -34,7 +34,10 @@ const userFor = (id: string): AgentUserRecord => ({
 })
 
 // Authenticates the bearer as `userId` (or none when undefined).
-const makeAgentStore = (userId: string | undefined): AgentRegistrationStore => ({
+const makeAgentStore = (
+  userId: string | undefined,
+  openauthUserId: string | null = null,
+): AgentRegistrationStore => ({
   createAgentRegistration: () => Promise.resolve(),
   findAgentByTokenHash: () =>
     Promise.resolve(
@@ -42,6 +45,7 @@ const makeAgentStore = (userId: string | undefined): AgentRegistrationStore => (
         ? undefined
         : {
             credentialId: `cred-${userId}`,
+            openauthUserId,
             profileMetadataJson: '{}',
             tokenPrefix: 'oa_agent_',
             user: userFor(userId),
@@ -218,6 +222,7 @@ let idCounter = 0
 const makeDeps = (options: {
   store: TraceStore
   agentUserId?: string | undefined
+  agentOpenAuthUserId?: string | null
   browserSession?: Session | undefined
   adminEmails?: ReadonlyArray<string>
   rewardArmed?: boolean
@@ -226,7 +231,8 @@ const makeDeps = (options: {
   mediaStore?: TraceMediaBlobStore
 }) =>
   makeTraceStoreRoutes<Bindings, Session>({
-    agentStore: () => makeAgentStore(options.agentUserId),
+    agentStore: () =>
+      makeAgentStore(options.agentUserId, options.agentOpenAuthUserId ?? null),
     appendRefreshedSessionCookies: response => response,
     dataMarketRewardArmed: () => options.rewardArmed ?? false,
     isAdminEmail: email => (options.adminEmails ?? []).includes(email),
@@ -1582,6 +1588,65 @@ describe('read-scope token (mobile open-in-web, #6347)', () => {
       routes.routeTraceRequest(tokenReadRequest(uuid, 'oa_agent_other'), ENV, CTX),
     )
     expect(response.status).toBe(404)
+  })
+
+  it('uses the linked OpenAuth owner for owner_only Pylon/Codex traces', async () => {
+    const store = makeMemoryStore()
+    const uuid = await seedTrace(store, 'owner_only', 'github:14167547')
+    const routes = makeDeps({
+      store,
+      agentOpenAuthUserId: 'github:14167547',
+      agentUserId: 'agent-linked-pylon',
+      browserSession: undefined,
+    })
+    const response = await run(
+      routes.routeTraceRequest(tokenReadRequest(uuid, 'oa_agent_owner'), ENV, CTX),
+    )
+    expect(response.status).toBe(200)
+    const json = (await response.json()) as { trace: Record<string, unknown> }
+    expect(json.trace.uuid).toBe(uuid)
+  })
+
+  it('lists linked OpenAuth-owned traces for a linked Pylon/Codex token', async () => {
+    const store = makeMemoryStore()
+    await seedTrace(store, 'owner_only', 'github:14167547')
+    await store.createTrace({
+      traceUuid: 'agent-owned-trace',
+      ownerUserId: 'agent-linked-pylon',
+      agentRef: 'agent:agent-linked-pylon',
+      schemaVersion: ATIF_PINNED_SCHEMA_VERSION,
+      trajectoryId: 'agent-owned',
+      sessionId: null,
+      visibility: 'owner_only',
+      stepCount: 1,
+      trajectory: {},
+      trajectoryR2Key: null,
+      blobRefs: [],
+      idempotencyKey: null,
+      trainingConsent: false,
+      license: null,
+      contentDigest: 'digest-agent-owned-trace',
+      rewardEligible: false,
+      rewardAmountSats: null,
+      uploadSource: 'agent',
+      demandKind: null,
+      demandSource: null,
+      nowIso: NOW,
+    })
+    const routes = makeDeps({
+      store,
+      agentOpenAuthUserId: 'github:14167547',
+      agentUserId: 'agent-linked-pylon',
+      browserSession: undefined,
+    })
+    const response = await run(
+      routes.routeTraceRequest(tokenListRequest('oa_agent_owner'), ENV, CTX),
+    )
+    expect(response.status).toBe(200)
+    const json = (await response.json()) as {
+      traces: ReadonlyArray<{ uuid: string }>
+    }
+    expect(json.traces.map(trace => trace.uuid)).toEqual(['uuid-owner_only'])
   })
 
   it('treats an invalid (non-oa_agent_) ?token= as anonymous (404 on owner_only)', async () => {

@@ -302,16 +302,18 @@ This is the invariant ledger for `openagents`.
   (owner-scoped JSON list), `GET /api/traces/{uuid}`, and the
   `GET /api/traces/{uuid}/blob/{r2Key}` media serve — supplied EITHER as
   `Authorization: Bearer` OR a `?token=` query parameter (the URL form the Khala
-  app opens). The token resolves to a single owner id (`session.user.id`, the
-  SAME `ownerUserId` the chat-trace emitter and ingest path stamp) and grants
-  STRICTLY READ-ONLY, OWNER-SCOPED access: it may read/list ONLY traces owned by
-  that resolved owner, never another owner's. A cross-owner, missing, malformed,
-  or unrecognized token is indistinguishable from anonymous (owner_only stays a
-  404, no existence disclosure). The token NEVER authorizes ingest, visibility
-  writes, blob upload, admin, or any broader account access — only the GET read
-  paths consult it, and only the JSON read still emits the all-false `authority`
-  block. The token value is never logged and never persisted; the browser
-  session always takes precedence over a token when both are present. The list's
+  app opens). The token resolves to a single owner id and grants STRICTLY
+  READ-ONLY, OWNER-SCOPED access: it may read/list ONLY traces owned by that
+  resolved owner, never another owner's. For linked Pylon/Codex credentials, the
+  owner id is `credential.openauthUserId`; otherwise it falls back to
+  `session.user.id`. This matches the owner id used when those traces are
+  stored. A cross-owner, missing, malformed, or unrecognized token is
+  indistinguishable from anonymous (owner_only stays a 404, no existence
+  disclosure). The token NEVER authorizes ingest, visibility writes, blob
+  upload, admin, or any broader account access — only the GET read paths consult
+  it, and only the JSON read still emits the all-false `authority` block. The
+  token value is never logged and never persisted; the browser session always
+  takes precedence over a token when both are present. The list's
   redaction/visibility rules and the value-based tripwire are unchanged.
 - Visibility updates (`PATCH /api/traces/{uuid}`) require the owning browser
   session or an admin session and accept only the same bounded visibility enum.

@@ -370,12 +370,12 @@ const readScopeTokenFromRequest = (
 
 /**
  * Resolve a READ-ONLY owner-scope identity from an `oa_agent_` token (header or
- * `?token=`). Returns the owning user id (`session.user.id`) — the SAME
- * `ownerUserId` the Khala chat trace emitter stamps on a captured trace
- * (`agent:<id>` => `<id>`) and the ingest path stamps on an owned upload. A
- * missing/invalid token resolves to `undefined` (no scope), never an error, so
- * the caller can still fall back to the browser session. Read-only: this grants
- * NO write/admin authority.
+ * `?token=`). Linked Pylon/Codex traces are stored under the linked OpenAuth
+ * owner id, while ordinary agent-owned traces are stored under the agent user
+ * id, so the read scope mirrors that ownership choice. A missing/invalid token
+ * resolves to `undefined` (no scope), never an error, so the caller can still
+ * fall back to the browser session. Read-only: this grants NO write/admin
+ * authority.
  */
 const resolveReadScopeOwner = <Bindings, Session extends TraceBrowserSession>(
   dependencies: TraceStoreRouteDependencies<Bindings, Session>,
@@ -397,7 +397,9 @@ const resolveReadScopeOwner = <Bindings, Session extends TraceBrowserSession>(
           dependencies.nowIso,
         ),
     }).pipe(Effect.catch(() => Effect.sync(() => undefined)))
-    return session === undefined ? undefined : session.user.id
+    return session === undefined
+      ? undefined
+      : (session.credential.openauthUserId?.trim() || session.user.id)
   })
 
 const routeNowIso = <Bindings, Session extends TraceBrowserSession>(
