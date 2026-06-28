@@ -22,7 +22,6 @@ import {
   type GymLadderLeaderboard,
 } from './ladder'
 import type { GymLadderStore } from './ladder-store'
-import { buildMirrorCodeRun } from './mirrorcode-contract'
 
 const makeMemoryStore = (): GymLadderStore & {
   snapshot: () => GymLadderLeaderboard | undefined
@@ -138,7 +137,6 @@ describe('GET /api/public/gym/leaderboard', () => {
       'awaiting_owner',
       'awaiting_owner',
       'awaiting_owner',
-      'awaiting_owner',
     ])
   })
 
@@ -221,54 +219,6 @@ describe('POST /api/operator/gym/leaderboard', () => {
         .find(r => r.rung === 'rung1')
         ?.entries.map(e => e.lane),
     ).toEqual(['khala', 'bigpickle'])
-  })
-
-  test('publishes a decision-grade MirrorCode rung from public-safe run rows', async () => {
-    const store = makeMemoryStore()
-    const mirrorCodeRun = buildMirrorCodeRun({
-      runId: 'mc-public-cal-python-route-0001',
-      model: 'openagents/khala',
-      taskId: 'cal_python',
-      bucket: 'S',
-      language: 'python',
-      status: 'passed',
-      passRate: 0.875,
-      tokens: { total: 1_500_000_000 },
-      startedAt: '2026-06-27T12:00:00.000Z',
-      finishedAt: '2026-06-27T18:00:00.000Z',
-      summary: 'Decision-grade public MirrorCode cal_python route run.',
-      grade: 'decision_grade',
-    })
-    const publishResponse = await Effect.runPromise(
-      handleOperatorGymLeaderboardApi(
-        new Request('https://x/', {
-          method: 'POST',
-          body: JSON.stringify({
-            reports: [],
-            mirrorCodeRuns: [mirrorCodeRun],
-          }),
-        }),
-        {
-          store,
-          requireAdminApiToken: adminAllowed,
-          nowIso: () => '2026-06-27T19:00:00.000Z',
-        },
-      ),
-    )
-    expect(publishResponse.status).toBe(201)
-    const published = (await publishResponse.json()) as {
-      ladder: GymLadderLeaderboard
-    }
-    const rung4 = published.ladder.rungs.find(r => r.rung === 'rung4')!
-    expect(rung4.state).toBe('published')
-    expect(rung4.mirrorCodeEntries[0]).toEqual(
-      expect.objectContaining({
-        runId: 'mc-public-cal-python-route-0001',
-        passRateBps: 8750,
-        tokensTotal: 1_500_000_000,
-        demandSource: 'gym_mirrorcode',
-      }),
-    )
   })
 
   test('flags an old published ladder as stale instead of making read time look fresh', async () => {

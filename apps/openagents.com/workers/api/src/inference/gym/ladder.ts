@@ -9,7 +9,6 @@
 //   Rung 1 — Big Pickle (OpenCode's default free model): the baseline.
 //   Rung 2 — other free/open models: the field users reach for when not paying.
 //   Rung 3 — paid frontier (Claude / GPT / Gemini class): the upper bound.
-//   Rung 4 — MirrorCode frontier coding: sustained real-software reproduction.
 //
 // This module owns ONLY the PUBLISHING layer on top of the already-shipped
 // benchmark harness (matrix, runner, report) and the flat
@@ -38,13 +37,12 @@ import {
   type GymLeaderboardReportInput,
   type GymLeaderboardRow,
 } from './leaderboard'
-import type { MirrorCodeRun } from './mirrorcode-contract'
 
 export const GymLadderLeaderboardSchemaVersion =
   'openagents.gym.ladder_leaderboard.v1'
 
-// The four rungs of the ladder, in deliberate climbing order.
-export const GymLadderRungId = S.Literals(['rung1', 'rung2', 'rung3', 'rung4'])
+// The three rungs of the ladder, in deliberate climbing order.
+export const GymLadderRungId = S.Literals(['rung1', 'rung2', 'rung3'])
 export type GymLadderRungId = typeof GymLadderRungId.Type
 
 // How a rung was produced. Only `published` rungs carry decision-grade numbers.
@@ -79,7 +77,7 @@ export type GymLadderRungDefinition = Readonly<{
   ownerGateRef: string
 }>
 
-// The canonical four-rung ladder definition. Lane membership mirrors the matrix
+// The canonical three-rung ladder definition. Lane membership mirrors the matrix
 // availability table + the planning doc `opencode-gym-benchmark-ladder.md`.
 export const GYM_LADDER_RUNGS: ReadonlyArray<GymLadderRungDefinition> = [
   {
@@ -107,15 +105,6 @@ export const GYM_LADDER_RUNGS: ReadonlyArray<GymLadderRungDefinition> = [
       'Honestly measure the gap to paid frontier models and track it shrinking over successive runs. No requirement to beat today.',
     ownerGateRef: 'gate.owner.gym.ladder.rung3.paid_api_keys_and_spend_approval',
   },
-  {
-    rung: 'rung4',
-    title: 'Rung 4 — Khala on MirrorCode public tasks',
-    opponentLanes: [],
-    barToClear:
-      'Measure sustained real-software reimplementation on MirrorCode public tasks, with private tasks excluded and no task/source/test contents published.',
-    ownerGateRef:
-      'gate.owner.gym.ladder.rung4.mirrorcode_public_bucket_decision_grade',
-  },
 ]
 
 // The recurring config: WHICH ladder, at WHAT cadence, and the canonical
@@ -128,8 +117,7 @@ export type GymLadderRecurringConfig = Readonly<{
   // The well-known public dereference path for the latest published ladder.
   publishPath: string
   // The experiment config id the ladder re-runs each cadence (the OpenCode
-  // head-to-head matrix). The owner-armed real sweep arms this config; the
-  // MirrorCode rung ingests public-safe MirrorCode run rows separately.
+  // head-to-head matrix). The owner-armed real sweep arms this config.
   experimentConfigId: string
   // The demand attribution tags every Khala request the ladder drives MUST carry
   // (#6298) so gym traffic stays segmented from external traffic.
@@ -161,25 +149,6 @@ export type GymLadderOpponentEntry = Readonly<{
   costPerAcceptedOutcomeMsat: number
 }>
 
-export type GymLadderMirrorCodeEntry = Readonly<{
-  rank: number
-  runId: string
-  model: string
-  taskId: string
-  bucket: MirrorCodeRun['bucket']
-  language: string | null
-  status: MirrorCodeRun['status']
-  passRateBps: number
-  tokensTotal: number
-  startedAt: string
-  finishedAt: string | null
-  decisionGrade: true
-  demandKind: 'internal'
-  demandSource: 'gym_mirrorcode'
-  generalizationSet: string
-  memoryPolicy: string
-}>
-
 // One rung of the published ladder.
 export type GymLadderRung = Readonly<{
   rung: GymLadderRungId
@@ -190,9 +159,6 @@ export type GymLadderRung = Readonly<{
   // The decision-grade rows that landed on this rung (Khala + measured
   // opponents). Empty when the rung is `awaiting_owner`.
   entries: ReadonlyArray<GymLadderOpponentEntry>
-  // Decision-grade MirrorCode public-task rows for the frontier-coding rung.
-  // Empty on rungs 1-3 and whenever only smoke/in-progress rows exist.
-  mirrorCodeEntries: ReadonlyArray<GymLadderMirrorCodeEntry>
   // When `awaiting_owner`, the honest reasons the rung cannot publish yet.
   blockerRefs: ReadonlyArray<string>
 }>
@@ -220,8 +186,6 @@ const LADDER_CAVEATS = [
   'caveat.public.gym.ladder.awaiting_owner_rungs_show_gate_not_numbers',
   'caveat.public.gym.ladder.no_beats_frontier_claim_from_single_run',
   'caveat.public.gym.ladder.gym_traffic_tagged_internal_gym_ladder',
-  'caveat.public.gym.ladder.mirrorcode_public_tasks_private_set_excluded',
-  'caveat.public.gym.ladder.mirrorcode_smoke_runs_never_ranked',
 ] as const
 
 // Recover the lane from a candidateRef prefix for opponent classification. The
@@ -255,49 +219,6 @@ const toOpponentEntry = (row: GymLeaderboardRow): GymLadderOpponentEntry => ({
   verificationRateBps: row.verificationRateBps,
   costPerAcceptedOutcomeMsat: row.costPerAcceptedOutcomeMsat,
 })
-
-const isDecisionGradeMirrorCodeRun = (run: MirrorCodeRun): boolean =>
-  run.decisionGrade && (run.status === 'passed' || run.status === 'failed')
-
-const toMirrorCodeEntry = (
-  run: MirrorCodeRun,
-  index: number,
-): GymLadderMirrorCodeEntry => ({
-  rank: index + 1,
-  runId: run.runId,
-  model: run.model,
-  taskId: run.taskId,
-  bucket: run.bucket,
-  language: run.language,
-  status: run.status,
-  passRateBps: Math.round((run.passRate ?? 0) * 10_000),
-  tokensTotal: run.tokensTotal,
-  startedAt: run.startedAt,
-  finishedAt: run.finishedAt,
-  decisionGrade: true,
-  demandKind: run.demandKind,
-  demandSource: run.demandSource,
-  generalizationSet: run.generalizationSet,
-  memoryPolicy: run.memoryPolicy,
-})
-
-const mirrorCodeEntriesForLadder = (
-  runs: ReadonlyArray<MirrorCodeRun>,
-): ReadonlyArray<GymLadderMirrorCodeEntry> =>
-  runs
-    .filter(isDecisionGradeMirrorCodeRun)
-    .sort((left, right) => {
-      const passDelta = (right.passRate ?? 0) - (left.passRate ?? 0)
-      if (passDelta !== 0) {
-        return passDelta
-      }
-      const tokenDelta = left.tokensTotal - right.tokensTotal
-      if (tokenDelta !== 0) {
-        return tokenDelta
-      }
-      return left.runId.localeCompare(right.runId)
-    })
-    .map(toMirrorCodeEntry)
 
 // The honest blockers for a rung that has no published opponent measurement yet.
 // A `fixture_only` opponent lane needs a real executor wired + owner arming; a
@@ -337,36 +258,14 @@ const rungBlockers = (
 export const buildGymLadderLeaderboard = (
   inputs: ReadonlyArray<GymLeaderboardReportInput>,
   config: GymLadderRecurringConfig = GYM_LADDER_RECURRING_CONFIG,
-  mirrorCodeRuns: ReadonlyArray<MirrorCodeRun> = [],
 ): GymLadderLeaderboard => {
   const projection: GymLeaderboardProjection =
     buildGymLeaderboardProjection(inputs)
 
   const khalaRows = projection.rows.filter(isKhalaRow)
   const bestKhalaRow = khalaRows[0]
-  const mirrorCodeEntries = mirrorCodeEntriesForLadder(mirrorCodeRuns)
 
   const rungs: Array<GymLadderRung> = config.rungs.map(definition => {
-    if (definition.rung === 'rung4') {
-      const published = mirrorCodeEntries.length > 0
-      return {
-        rung: definition.rung,
-        title: definition.title,
-        state: published ? 'published' : 'awaiting_owner',
-        barToClear: definition.barToClear,
-        opponentLanes: definition.opponentLanes,
-        entries: [],
-        mirrorCodeEntries: published ? mirrorCodeEntries : [],
-        blockerRefs: published
-          ? []
-          : uniqueRefs([
-              'blocker.gym.ladder.mirrorcode.no_decision_grade_public_task_run',
-              'blocker.gym.ladder.mirrorcode.smoke_or_in_progress_runs_not_ranked',
-              definition.ownerGateRef,
-            ]),
-      }
-    }
-
     const opponentLaneSet = new Set(definition.opponentLanes)
     const measuredOpponentRows = projection.rows.filter(row => {
       const lane = laneFromCandidateRef(row.candidateRef)
@@ -402,7 +301,6 @@ export const buildGymLadderLeaderboard = (
       barToClear: definition.barToClear,
       opponentLanes: definition.opponentLanes,
       entries,
-      mirrorCodeEntries: [],
       blockerRefs: published
         ? []
         : rungBlockers(

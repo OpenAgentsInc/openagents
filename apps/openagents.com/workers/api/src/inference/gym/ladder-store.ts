@@ -32,33 +32,13 @@ const GymLadderOpponentEntrySchema = S.Struct({
   costPerAcceptedOutcomeMsat: S.Number,
 })
 
-const GymLadderMirrorCodeEntrySchema = S.Struct({
-  rank: S.Number,
-  runId: S.String,
-  model: S.String,
-  taskId: S.String,
-  bucket: S.Literals(['S', 'M', 'L']),
-  language: S.NullOr(S.String),
-  status: S.Literals(['queued', 'running', 'passed', 'failed', 'error']),
-  passRateBps: S.Number,
-  tokensTotal: S.Number,
-  startedAt: S.String,
-  finishedAt: S.NullOr(S.String),
-  decisionGrade: S.Literal(true),
-  demandKind: S.Literal('internal'),
-  demandSource: S.Literal('gym_mirrorcode'),
-  generalizationSet: S.String,
-  memoryPolicy: S.String,
-})
-
 const GymLadderRungSchema = S.Struct({
-  rung: S.Literals(['rung1', 'rung2', 'rung3', 'rung4']),
+  rung: S.Literals(['rung1', 'rung2', 'rung3']),
   title: S.String,
   state: S.Literals(['published', 'awaiting_owner']),
   barToClear: S.String,
   opponentLanes: S.Array(S.String),
   entries: S.Array(GymLadderOpponentEntrySchema),
-  mirrorCodeEntries: S.Array(GymLadderMirrorCodeEntrySchema),
   blockerRefs: S.Array(S.String),
 })
 
@@ -114,23 +94,9 @@ type GymLadderD1Row = Readonly<{
 
 const parseStoredLadder = (json: string): GymLadderLeaderboard | undefined => {
   try {
-    const raw = JSON.parse(json) as unknown
-    const normalized =
-      typeof raw === 'object' && raw !== null && Array.isArray((raw as { rungs?: unknown }).rungs)
-        ? {
-            ...raw,
-            rungs: (raw as { rungs: ReadonlyArray<unknown> }).rungs.map(rung =>
-              typeof rung === 'object' &&
-              rung !== null &&
-              !('mirrorCodeEntries' in rung)
-                ? { ...rung, mirrorCodeEntries: [] }
-                : rung,
-            ),
-          }
-        : raw
     return parseJsonWithSchema(
       GymLadderLeaderboardStored,
-      JSON.stringify(normalized),
+      json,
     ) as GymLadderLeaderboard
   } catch {
     return undefined
