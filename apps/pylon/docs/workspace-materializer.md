@@ -32,10 +32,18 @@ argv-only and runs without a shell.
   object is missing, verified with `git cat-file -e <sha>^{commit}` before
   any worktree work, pinned against gc with a cache-local ref, and checked
   out as an isolated detached worktree at the assignment-scoped path.
-  Operations against one bare cache are serialized in process; concurrent
+  Operations against one bare cache are serialized in process and across
+  Pylon processes with a heartbeat lock directory, so concurrent Codex fleet
+  assignments cannot race on Git's shared lockfiles. Git commands retry
+  bounded transient lock failures, and auto-gc/maintenance is disabled on
+  every materialization because background maintenance can otherwise escape
+  the critical section and collide with a sibling checkout (#6434). Concurrent
   assignments for the same repository get separate refs and directories.
   Measured against the live B2 fixture repository: cold materialization
-  ~0.7s, warm cross-adapter materialization ~70ms.
+  ~0.7s, warm cross-adapter materialization ~70ms. The cross-process gate is
+  `bun apps/pylon/scripts/concurrent-checkout-proof.ts --workers 12`, which
+  asserts zero `workspace_checkout_failed` outcomes for many workers sharing
+  one bare cache.
 - **`detached_checkout`.** The original B2-proven full detached checkout
   (`defaultGitCheckoutRunner`), available by explicit injection.
 - **`injected`.** Test seams.
