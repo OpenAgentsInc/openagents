@@ -24,6 +24,7 @@ import { registerSparkPayoutTarget, sparkPayoutTargetRef } from "../src/wallet"
 import { CODEX_AGENT_CAPABILITY_REF } from "../src/codex-agent"
 import { CLAUDE_AGENT_CAPABILITY_REF } from "../src/claude-agent"
 import { registerActiveCodingRun } from "../src/active-assignment-runs"
+import { PYLON_APPLE_FM_STATUS_SCHEMA, type PylonAppleFmStatusProjection } from "../src/node/apple-fm-status"
 
 const INDEX = join(import.meta.dir, "..", "src", "index.ts")
 const CWD = join(import.meta.dir, "..")
@@ -156,6 +157,61 @@ function fakePresenceCliServer() {
 
 const nonAssignmentRequestPaths = (requests: { path: string }[]) =>
   requests.map((request) => request.path).filter((path) => !path.endsWith("/assignments"))
+
+function fakeAppleFmStatus(overrides: Partial<PylonAppleFmStatusProjection> = {}): PylonAppleFmStatusProjection {
+  return {
+    schema: PYLON_APPLE_FM_STATUS_SCHEMA,
+    kind: "pylon_apple_fm_status",
+    runnerId: "pylon.test.apple-fm",
+    runnerKind: "pylon",
+    backendKind: "apple_fm_bridge",
+    profileId: "apple-fm-local",
+    model: "apple-foundation-model",
+    capability: "probe.backend.apple_fm_bridge",
+    advertisedCapabilities: [],
+    available: false,
+    status: "unreachable",
+    baseUrl: "http://127.0.0.1:11435",
+    requirements: {
+      appleSilicon: "required",
+      appleIntelligence: "required",
+      liveHealth: "required",
+    },
+    support: {
+      snapshotStreaming: true,
+      toolCallbacks: true,
+    },
+    blueprintSupport: {
+      appleFmSchemaProjection: {
+        maxProjectedToolCount: 16,
+        supported: true,
+        supportedInputSchemaRefs: [],
+      },
+      backendAvailability: {
+        api: false,
+        local: false,
+        swarm: false,
+      },
+      backendToolProjectionAdapters: [],
+      localProgramRunEvidenceOffline: false,
+      moduleVersionRefs: [],
+      programFamilies: [],
+      programSignatureRefs: [],
+      programTypeRefs: [],
+      registryVersionRefs: [],
+      safeProjection: true,
+      safeProjectionPolicyRefs: [],
+      supportedBlueprintCapabilityRefs: [],
+      toolRefs: [],
+      warnings: [],
+    },
+    receipt: null,
+    blockerRefs: ["blocker.pylon.apple_fm.bridge_unreachable"],
+    observedAt: "2026-06-28T00:00:00.000Z",
+    contentRedacted: true,
+    ...overrides,
+  } as PylonAppleFmStatusProjection
+}
 
 async function runPresenceCli(input: {
   args: string[]
@@ -421,6 +477,69 @@ describe("Pylon presence registration and heartbeat", () => {
           "load.coding.claude.queued=3",
         ]),
       )
+    })
+  })
+
+  test("heartbeat advertises Apple FM inference capacity only after live readiness", async () => {
+    await withTempHome(async (home) => {
+      const fake = fakePresenceServer()
+      const summary = createBootstrapSummary(
+        parseBootstrapArgs([
+          "--display-name",
+          "Apple FM Presence Test",
+          "--capability-ref",
+          "probe.backend.apple_fm_bridge",
+        ]),
+        { PYLON_HOME: home },
+        "darwin",
+      )
+
+      await sendHeartbeat(summary, {
+        baseUrl: fake.baseUrl,
+        walletProbe: offlineWalletProbe,
+        appleFmStatusProbe: async () =>
+          fakeAppleFmStatus({
+            advertisedCapabilities: [
+              "probe.backend.apple_fm_bridge",
+              "adapter.probe.apple_fm.blueprint_tools.v1",
+              "probe.program_run.evidence.local_offline",
+            ],
+            available: true,
+            status: "ready",
+            blockerRefs: [],
+          }),
+      })
+      const readyHeartbeat = fake.requests.filter(r => r.path.includes("/heartbeat")).at(-1)!
+      expect(readyHeartbeat.body.capabilityRefs).toEqual(
+        expect.arrayContaining([
+          "probe.backend.apple_fm_bridge",
+          "adapter.probe.apple_fm.blueprint_tools.v1",
+          "probe.program_run.evidence.local_offline",
+        ]),
+      )
+      expect(readyHeartbeat.body.capacityRefs).toEqual(
+        expect.arrayContaining([
+          "capacity.inference.apple_fm_bridge.ready=1",
+          "capacity.inference.apple_fm_bridge.available=1",
+        ]),
+      )
+
+      await sendHeartbeat(summary, {
+        baseUrl: fake.baseUrl,
+        walletProbe: offlineWalletProbe,
+        appleFmStatusProbe: async () =>
+          fakeAppleFmStatus({
+            blockerRefs: ["blocker.pylon.apple_fm.apple_intelligence_disabled"],
+            status: "unavailable",
+            unavailableReason: "apple_intelligence_disabled",
+          }),
+      })
+      const blockedHeartbeat = fake.requests.filter(r => r.path.includes("/heartbeat")).at(-1)!
+      expect(blockedHeartbeat.body.capabilityRefs).not.toContain("probe.backend.apple_fm_bridge")
+      expect(blockedHeartbeat.body.capabilityRefs).not.toContain("adapter.probe.apple_fm.blueprint_tools.v1")
+      expect(blockedHeartbeat.body.capacityRefs).not.toContain("capacity.inference.apple_fm_bridge.ready=1")
+      expect(blockedHeartbeat.body.capacityRefs).not.toContain("capacity.inference.apple_fm_bridge.available=1")
+      expect(blockedHeartbeat.body.blockerRefs).toContain("blocker.pylon.apple_fm.apple_intelligence_disabled")
     })
   })
 
