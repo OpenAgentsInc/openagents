@@ -22,6 +22,12 @@
 // and accepts the runner's verdict.
 
 import type { AcceptanceVerdict } from './acceptance-runner/verdict'
+import {
+  assessVerificationIntegrity,
+  type VerificationChannelDefenses,
+  type VerificationIntegrityReport,
+  type VerificationPanelMember,
+} from './verification-integrity'
 
 export const KHALA_CODE_CROSSY_ROAD_RUBRIC_REF =
   'rubric.khala_code.crossy_road.single_html.v1'
@@ -94,6 +100,7 @@ export type KhalaCodeVerificationVerdict = Readonly<{
   passedChecks: ReadonlyArray<string>
   // Whether a real headless acceptance run produced this verdict.
   executed: boolean
+  integrity: VerificationIntegrityReport
   receiptRef: string
   reward: Readonly<{
     handoffRef: string
@@ -113,6 +120,9 @@ export type KhalaCodeVerifierInput = Readonly<{
   requestId: string
   servedModel: string
   worker: string
+  verifierPanel?: ReadonlyArray<VerificationPanelMember> | undefined
+  channelDefenses?: VerificationChannelDefenses | undefined
+  minimumEffectiveIndependentVotes?: number | undefined
   // The executed-acceptance verdict from the out-of-Worker headless runner, when
   // available. PRESENT => the verdict is derived from EXECUTION. ABSENT => honest
   // downgrade to `unverified` (we did not run it).
@@ -389,6 +399,12 @@ export const verifyKhalaCodeCompletion = (
   })
 
   const acceptance = input.acceptance
+  const integrity = assessVerificationIntegrity({
+    channelDefenses: input.channelDefenses,
+    minimumEffectiveIndependentVotes: input.minimumEffectiveIndependentVotes,
+    panel: input.verifierPanel,
+    workerModel: input.servedModel,
+  })
 
   // VERDICT DERIVATION.
   //   - Prescreen failed => `failed` (not even worth running). scalarReward 0.
@@ -415,6 +431,15 @@ export const verifyKhalaCodeCompletion = (
     rubricRef = KHALA_CODE_CROSSY_ROAD_RUBRIC_REF
     summary =
       'Artifact failed the cheap pre-screen (not a runnable single-file HTML game); not executed.'
+  } else if (!integrity.passed) {
+    verification = 'failed'
+    verified = false
+    scalarReward = 0
+    executed = acceptance?.executed === true
+    passedChecks = []
+    failedChecks = integrity.blockerRefs
+    rubricRef = KHALA_CODE_CROSSY_ROAD_RUBRIC_REF
+    summary = `Verification integrity failed: ${integrity.blockerRefs.join(', ')}.`
   } else if (acceptance !== undefined && acceptance.executed) {
     verified = acceptance.verified
     scalarReward = acceptance.scalarReward
@@ -448,6 +473,7 @@ export const verifyKhalaCodeCompletion = (
     command: discoverKhalaCodeVerificationCommand(),
     executed,
     failedChecks,
+    integrity,
     passedChecks,
     prescreen,
     receiptRef,
@@ -467,6 +493,8 @@ export const verifyKhalaCodeCompletion = (
         : [input.meteringReceiptRef]),
       `model:${input.servedModel}`,
       `worker:${input.worker}`,
+      `verifier_independence:${integrity.effectiveIndependentVotes}`,
+      ...integrity.blockerRefs,
     ],
     summary,
     verification,

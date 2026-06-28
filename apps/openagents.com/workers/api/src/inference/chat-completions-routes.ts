@@ -1320,6 +1320,9 @@ type OpenAgentsReceipt = Readonly<{
   workers?: ReadonlyArray<string> | undefined
   verification_receipt?: string | undefined
   verification_command?: string | undefined
+  verification_integrity?:
+    | KhalaCodeVerificationVerdict['integrity']
+    | undefined
   scalar_reward?: number | undefined
   reward_handoff?: string | undefined
   rubric?:
@@ -1889,6 +1892,7 @@ const openAgentsReceiptForResult = (
     telemetry,
     verification: verdict.verification,
     verification_command: verdict.command.commandRef,
+    verification_integrity: verdict.integrity,
     verification_receipt: verdict.receiptRef,
     verified: verdict.verified,
     workers: [input.adapterId, KHALA_CODE_VERIFIER_WORKER_ID],
