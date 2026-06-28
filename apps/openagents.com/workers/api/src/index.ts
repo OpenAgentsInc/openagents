@@ -703,6 +703,7 @@ import {
 import { makeOperatorBillingHandlers } from './operator-billing-routes'
 import { makeOperatorBuyModeRoutes } from './operator-buy-mode-routes'
 import { makeOperatorEmailInspectionRoutes } from './operator-email-inspection-routes'
+import { handleOperatorFleetStatusApi } from './operator-fleet-status-routes'
 import { makeOperatorOrderTriageRoutes } from './operator-order-triage-routes'
 import { makeOperatorProviderAccountRoutes } from './operator-provider-account-routes'
 import { makeOperatorPylonMarketplaceRoutes } from './operator-pylon-marketplace-routes'
@@ -10166,6 +10167,11 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {
     path: '/api/khala/tokens',
     handler: (request, env) => handlePublicKhalaTokensServedApi(request, env),
+  },
+  {
+    path: '/api/operator/fleet/status',
+    handler: (request, env) =>
+      Effect.promise(() => handleOperatorFleetStatusApi(request, env)),
   },
   {
     path: '/api/operator/khala/feedback',
