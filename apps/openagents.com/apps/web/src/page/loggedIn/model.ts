@@ -876,6 +876,77 @@ export const ArtanisOperatorConsoleModel = S.Union([
 export type ArtanisOperatorConsoleModel =
   typeof ArtanisOperatorConsoleModel.Type
 
+export const ArtanisOperatorDashboardThread = S.Struct({
+  callerId: S.String,
+  callerKind: S.String,
+  createdAt: S.String,
+  lastMessageAt: S.String,
+  messageCount: S.Number,
+  sourceRef: S.NullOr(S.String),
+  status: S.String,
+  subjectAgentKind: S.String,
+  subjectAgentRef: S.String,
+  threadRef: S.String,
+  title: S.String,
+  updatedAt: S.String,
+})
+export type ArtanisOperatorDashboardThread =
+  typeof ArtanisOperatorDashboardThread.Type
+
+export const ArtanisOperatorDashboardMessage = S.Struct({
+  authorId: S.String,
+  authorKind: S.String,
+  body: S.String,
+  callerId: S.String,
+  createdAt: S.String,
+  messageRef: S.String,
+  threadRef: S.String,
+})
+export type ArtanisOperatorDashboardMessage =
+  typeof ArtanisOperatorDashboardMessage.Type
+
+export const ArtanisOperatorDashboardResponse = S.Struct({
+  callerIdFilter: S.NullOr(S.String),
+  dashboardRef: S.String,
+  messages: S.Array(ArtanisOperatorDashboardMessage),
+  selectedThread: S.NullOr(ArtanisOperatorDashboardThread),
+  threads: S.Array(ArtanisOperatorDashboardThread),
+})
+export type ArtanisOperatorDashboardResponse =
+  typeof ArtanisOperatorDashboardResponse.Type
+
+export const ArtanisOperatorDashboardIdle = ts(
+  'ArtanisOperatorDashboardIdle',
+  {},
+)
+export const ArtanisOperatorDashboardLoading = ts(
+  'ArtanisOperatorDashboardLoading',
+  {
+    callerIdFilter: S.String,
+    threadRef: S.String,
+  },
+)
+export const ArtanisOperatorDashboardLoaded = ts(
+  'ArtanisOperatorDashboardLoaded',
+  {
+    response: ArtanisOperatorDashboardResponse,
+  },
+)
+export const ArtanisOperatorDashboardFailed = ts(
+  'ArtanisOperatorDashboardFailed',
+  {
+    error: S.String,
+  },
+)
+export const ArtanisOperatorDashboardModel = S.Union([
+  ArtanisOperatorDashboardIdle,
+  ArtanisOperatorDashboardLoading,
+  ArtanisOperatorDashboardLoaded,
+  ArtanisOperatorDashboardFailed,
+])
+export type ArtanisOperatorDashboardModel =
+  typeof ArtanisOperatorDashboardModel.Type
+
 export const ArtanisOperatorGoalPanelModel = ts('ArtanisOperatorGoalPanel', {
   error: S.Option(S.String),
   goal: S.Option(AgentGoalApiGoal),
@@ -6949,6 +7020,8 @@ export const Model = ts('LoggedIn', {
   customerSiteBuilderSession: CustomerSiteBuilderSessionState,
   agentGoalPanel: AgentGoalPanelModel,
   artanisOperatorConsole: ArtanisOperatorConsoleModel,
+  artanisOperatorDashboard: ArtanisOperatorDashboardModel,
+  artanisOperatorDashboardCallerIdFilter: S.String,
   artanisOperatorGoalPanel: ArtanisOperatorGoalPanelModel,
   imageGeneration: ImageGenerationState,
   imageGenerationAspectRatio: ImageGenerationAspectRatio,
@@ -7459,6 +7532,8 @@ export const init = (route: LoggedInRoute, auth: AuthBootstrap): Model =>
       scopeKey: '',
     }),
     artanisOperatorConsole: ArtanisOperatorConsoleIdle(),
+    artanisOperatorDashboard: ArtanisOperatorDashboardIdle(),
+    artanisOperatorDashboardCallerIdFilter: '',
     artanisOperatorGoalPanel: ArtanisOperatorGoalPanelModel({
       error: Option.none(),
       goal: Option.none(),

@@ -34,6 +34,7 @@ import {
   AgentRunLaunchResponse,
   ArtanisOperatorApprovalAction,
   ArtanisOperatorConsoleResponse,
+  ArtanisOperatorDashboardResponse,
   AutopilotDecisionActionResponse,
   AutopilotDecisionListResponse,
   AutopilotMorningReportResponse,
@@ -1091,6 +1092,40 @@ export const FailedLoadArtanisOperatorConsole = m(
     error: S.String,
   },
 )
+export const RequestedLoadArtanisOperatorDashboard = m(
+  'RequestedLoadArtanisOperatorDashboard',
+  {
+    callerIdFilter: S.String,
+    threadRef: S.String,
+  },
+)
+export const SucceededLoadArtanisOperatorDashboard = m(
+  'SucceededLoadArtanisOperatorDashboard',
+  {
+    response: ArtanisOperatorDashboardResponse,
+  },
+)
+export const FailedLoadArtanisOperatorDashboard = m(
+  'FailedLoadArtanisOperatorDashboard',
+  {
+    error: S.String,
+  },
+)
+export const UpdatedArtanisOperatorDashboardCallerIdFilter = m(
+  'UpdatedArtanisOperatorDashboardCallerIdFilter',
+  {
+    value: S.String,
+  },
+)
+export const SubmittedArtanisOperatorDashboardFilter = m(
+  'SubmittedArtanisOperatorDashboardFilter',
+)
+export const SelectedArtanisOperatorDashboardThread = m(
+  'SelectedArtanisOperatorDashboardThread',
+  {
+    threadRef: S.String,
+  },
+)
 export const RequestedLoadArtanisOperatorGoal = m(
   'RequestedLoadArtanisOperatorGoal',
   {
@@ -1442,6 +1477,12 @@ export const Message = S.Union([
   RequestedLoadArtanisOperatorConsole,
   SucceededLoadArtanisOperatorConsole,
   FailedLoadArtanisOperatorConsole,
+  RequestedLoadArtanisOperatorDashboard,
+  SucceededLoadArtanisOperatorDashboard,
+  FailedLoadArtanisOperatorDashboard,
+  UpdatedArtanisOperatorDashboardCallerIdFilter,
+  SubmittedArtanisOperatorDashboardFilter,
+  SelectedArtanisOperatorDashboardThread,
   RequestedLoadArtanisOperatorGoal,
   SucceededLoadArtanisOperatorGoal,
   FailedLoadArtanisOperatorGoal,

@@ -36,6 +36,7 @@ import {
   onboardingRouter,
   orderDetailRouter,
   orderRouter,
+  operatorDashboardRouter,
   personalFileRouter,
   proRouter,
   publicAgentRouter,
@@ -72,6 +73,7 @@ import { type Model, type SidebarModel, teamRouteRef } from './model'
 import * as Mullet from './mullet/view'
 import { notificationsPanel } from './notifications/view'
 import * as Admin from './page/admin'
+import * as ArtanisDashboard from './artanis-dashboard/view'
 import * as AutopilotWork from './page/autopilot-work'
 import * as Billing from './page/billing'
 import * as Chat from './page/chat'
@@ -147,6 +149,7 @@ const currentHref = (model: Model): string =>
       PublicTrainingRun: ({ runId }) => publicTrainingRunRouter({ runId }),
       Dashboard: () => '',
       Pro: () => proRouter(),
+      OperatorDashboard: () => operatorDashboardRouter(),
       Billing: () => billingRouter(),
       Usage: () => usageRouter(),
       Stats: () => statsRouter(),
@@ -215,6 +218,7 @@ const routeKey = (model: Model): string =>
       PublicTrainingRun: ({ runId }) => `PublicTrainingRun:${runId}`,
       Dashboard: () => 'Dashboard',
       Pro: () => 'Pro',
+      OperatorDashboard: () => 'OperatorDashboard',
       Billing: () => 'Billing',
       Usage: () => 'Usage',
       Stats: () => 'Stats',
@@ -661,6 +665,10 @@ const routeView = (model: Model): Html => {
           // is a defensive fallback only and never normally reached.
           Pro: () =>
             Ui.workroomScrollableRoute<Message>([Pro.view(model.session)]),
+          OperatorDashboard: () =>
+            Ui.workroomScrollableRoute<Message>([
+              ArtanisDashboard.view(model),
+            ]),
           Billing: () =>
             Ui.workroomScrollableRoute<Message>([Billing.view(model)]),
           Usage: () => Ui.workroomScrollableRoute<Message>([Usage.view(model)]),

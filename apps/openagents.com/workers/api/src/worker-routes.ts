@@ -96,6 +96,7 @@ type WorkerRouteDependencies = Readonly<{
   routeOperatorAdjutantRequest: OptionalEffectRoute
   routeOperatorArtanisChatRequest: OptionalEffectRoute
   routeOperatorArtanisConsoleRequest: OptionalEffectRoute
+  routeOperatorArtanisDashboardRequest: OptionalEffectRoute
   routeOperatorEmailInspectionRequest: OptionalEffectRoute
   routeOperatorOrderTriageRequest: OptionalEffectRoute
   routeOperatorPylonMarketplaceRequest: OptionalEffectRoute
@@ -655,6 +656,13 @@ export const makeWorkerRouteRequest =
 
       if (operatorArtanisConsoleResponse !== undefined) {
         return yield* operatorArtanisConsoleResponse
+      }
+
+      const operatorArtanisDashboardResponse =
+        dependencies.routeOperatorArtanisDashboardRequest(request, env, ctx)
+
+      if (operatorArtanisDashboardResponse !== undefined) {
+        return yield* operatorArtanisDashboardResponse
       }
 
       const operatorOrderTriageResponse =
