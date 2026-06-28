@@ -6,8 +6,11 @@ import {
   compileGymExperiment,
   type CompiledGymExperiment,
   type GymExperiment,
+  type GymFixtureRunResult,
+  runGymFixtureExperiment,
 } from './experiment'
 import { exampleArtanisContinualLearningTemplateLedger } from '../../artanis-continual-learning-templates'
+import type { BenchmarkWorkload } from '../benchmark'
 
 export { AGENTCL_REPO_REUSE_GYM_EXPERIMENT } from './experiment'
 
@@ -16,6 +19,8 @@ export const AGENTCL_REPO_REUSE_PLAN_SCHEMA =
   'openagents.gym.agentcl_repo_reuse_plan.v0' as const
 export const AGENTCL_VERTEX_STRESS_REPORT_SCHEMA =
   'openagents.gym.agentcl_vertex_stress_report.v0' as const
+export const AGENTCL_TASK_RUNNER_RESULT_SCHEMA =
+  'openagents.gym.agentcl_task_runner_result.v0' as const
 export const AGENTCL_VERTEX_RUNNER_PLAN_SCHEMA =
   'openagents.gym.agentcl_vertex_runner_plan.v0' as const
 
@@ -104,6 +109,59 @@ export const AgentClRepoReusePassPlan = S.Struct({
 export type AgentClRepoReusePassPlan =
   typeof AgentClRepoReusePassPlan.Type
 
+export const AgentClTaskSequenceEntry = S.Struct({
+  sequenceIndex: S.Number,
+  taskRef: S.String,
+  taskRole: AgentClTaskRole,
+  workload: S.String,
+  pass: AgentClPassKind,
+  memoryAccess: AgentClMemoryAccess,
+  sourceTaskSetRef: S.String,
+  verifierRef: S.String,
+})
+export type AgentClTaskSequenceEntry =
+  typeof AgentClTaskSequenceEntry.Type
+
+export const AgentClTrajectoryEvaluation = S.Struct({
+  trajectoryRef: S.String,
+  attemptRef: S.String,
+  taskRef: S.String,
+  taskRole: AgentClTaskRole,
+  workload: S.String,
+  pass: AgentClPassKind,
+  acceptedOutcome: S.Boolean,
+  acceptedOutcomeScore: S.Number.check(
+    S.isBetween({ minimum: 0, maximum: 1 }),
+  ),
+  scalarReward: S.Number.check(S.isBetween({ minimum: 0, maximum: 1 })),
+  executedVerdict: S.String,
+  benchmarkCellId: S.String,
+  benchmarkSampleIndex: S.Number,
+  telemetryRequestId: S.String,
+  memoryMutationRefs: S.Array(S.String),
+})
+export type AgentClTrajectoryEvaluation =
+  typeof AgentClTrajectoryEvaluation.Type
+
+export const AgentClTaskRunnerResult = S.Struct({
+  schemaVersion: S.Literal(AGENTCL_TASK_RUNNER_RESULT_SCHEMA),
+  experimentId: S.String,
+  taskSetRef: S.String,
+  verifierRef: S.String,
+  acceptanceContractRef: S.String,
+  runnerConfigId: S.String,
+  seamId: S.String,
+  seamCanSpend: S.Boolean,
+  loadedTaskRefs: S.Array(S.String),
+  taskSequence: S.Array(AgentClTaskSequenceEntry),
+  trajectoryEvaluations: S.Array(AgentClTrajectoryEvaluation),
+  publicSafety: S.Struct({
+    safe: S.Boolean,
+    violations: S.Array(S.String),
+  }),
+})
+export type AgentClTaskRunnerResult = typeof AgentClTaskRunnerResult.Type
+
 export const AgentClRepoReusePlan = S.Struct({
   schemaVersion: S.Literal(AGENTCL_REPO_REUSE_PLAN_SCHEMA),
   environmentRef: S.Literal('agentcl-repo-reuse'),
@@ -154,6 +212,7 @@ export const AgentClEvalV0 = S.Struct({
     notes: S.Array(S.String),
   }),
   proofRefs: S.Array(S.String),
+  taskRunner: AgentClTaskRunnerResult,
 })
 export type AgentClEvalV0 = typeof AgentClEvalV0.Type
 
@@ -308,6 +367,7 @@ const decodeLearningClaimGate = S.decodeUnknownSync(AgentClLearningClaimGate)
 const decodeSequentialRun = S.decodeUnknownSync(AgentClSequentialRun)
 const decodeVertexRunnerPlan = S.decodeUnknownSync(AgentClVertexRunnerPlanV0)
 const decodeVertexStressReport = S.decodeUnknownSync(AgentClVertexStressReportV0)
+const decodeTaskRunnerResult = S.decodeUnknownSync(AgentClTaskRunnerResult)
 
 const roundGain = (value: number): number => Math.round(value * 1000) / 1000
 
@@ -401,6 +461,111 @@ const heldOutBaselineScore = (
     ) / plan.heldOutTasks.length,
   ),
 })
+
+const workloadForAgentClTaskRole = (
+  role: AgentClTaskRole,
+): BenchmarkWorkload => {
+  switch (role) {
+    case 'source':
+      return 'agentcl-source-task'
+    case 'complex':
+      return 'agentcl-complex-task'
+    case 'held_out':
+      return 'agentcl-held-out-task'
+  }
+}
+
+const taskSequenceForPlan = (
+  plan: AgentClRepoReusePlan,
+  compiled: CompiledGymExperiment,
+): ReadonlyArray<AgentClTaskSequenceEntry> => {
+  const tasksByRef = agentClTaskByRef(plan)
+  const publishedTaskRefs = new Set(
+    GYM_ENVIRONMENT_REGISTRY['agentcl-repo-reuse'].taskSet.publicSafeTaskRefs,
+  )
+  const entries: Array<AgentClTaskSequenceEntry> = []
+
+  for (const pass of plan.passes) {
+    for (const taskRef of pass.taskRefs) {
+      const task = tasksByRef[taskRef]
+      if (task === undefined || !publishedTaskRefs.has(taskRef)) {
+        continue
+      }
+      entries.push({
+        sequenceIndex: entries.length + 1,
+        taskRef,
+        taskRole: task.role,
+        workload: workloadForAgentClTaskRole(task.role),
+        pass: pass.pass,
+        memoryAccess: pass.memoryAccess,
+        sourceTaskSetRef: compiled.policySelection.environment.taskSetRef,
+        verifierRef: compiled.policySelection.environment.verifierRef,
+      })
+    }
+  }
+
+  return entries
+}
+
+const evaluateAgentClTrajectories = (
+  input: Readonly<{
+    sequence: ReadonlyArray<AgentClTaskSequenceEntry>
+    sequentialRun: AgentClSequentialRun
+    fixtureRun: GymFixtureRunResult
+  }>,
+): ReadonlyArray<AgentClTrajectoryEvaluation> => {
+  const runPoolsByWorkload = input.fixtureRun.runSet.runs.reduce<
+    Record<string, typeof input.fixtureRun.runSet.runs>
+  >((acc, run) => {
+    if (run.record === null) {
+      return acc
+    }
+    acc[run.cell.workload] = [...(acc[run.cell.workload] ?? []), run]
+    return acc
+  }, {})
+  const usedByWorkload: Record<string, number> = {}
+
+  return input.sequentialRun.taskAttempts.flatMap(attempt => {
+    const sequenceEntry = input.sequence.find(
+      entry =>
+        entry.sequenceIndex === attempt.stepIndex &&
+        entry.taskRef === attempt.taskRef &&
+        entry.pass === attempt.pass,
+    )
+    if (sequenceEntry === undefined) {
+      return []
+    }
+    const pool = runPoolsByWorkload[sequenceEntry.workload] ?? []
+    const nextIndex = usedByWorkload[sequenceEntry.workload] ?? 0
+    const run = pool[nextIndex % Math.max(pool.length, 1)]
+    usedByWorkload[sequenceEntry.workload] = nextIndex + 1
+    if (run === undefined || run.record === null) {
+      return []
+    }
+    const scalarReward =
+      typeof run.record.scalarReward === 'number' ? run.record.scalarReward : 0
+    return [
+      {
+        trajectoryRef:
+          `trajectory.public.agentcl.${attempt.pass}.` +
+          `step_${attempt.stepIndex}.${attempt.taskRef}`,
+        attemptRef: attempt.attemptRef,
+        taskRef: attempt.taskRef,
+        taskRole: attempt.taskRole,
+        workload: sequenceEntry.workload,
+        pass: attempt.pass,
+        acceptedOutcome: attempt.acceptedOutcome,
+        acceptedOutcomeScore: attempt.acceptedOutcomeScore,
+        scalarReward,
+        executedVerdict: run.record.executedVerdict,
+        benchmarkCellId: run.cellId,
+        benchmarkSampleIndex: run.sampleIndex,
+        telemetryRequestId: run.record.requestId,
+        memoryMutationRefs: attempt.mutationRefs,
+      },
+    ]
+  })
+}
 
 export const runAgentClSequentialLoop = (
   plan: AgentClRepoReusePlan,
@@ -624,15 +789,61 @@ export const buildAgentClRepoReusePlan = (
   }
 }
 
+export const runAgentClTaskRunner = (
+  experiment: GymExperiment = AGENTCL_REPO_REUSE_GYM_EXPERIMENT,
+): Readonly<{
+  compiled: CompiledGymExperiment
+  fixtureRun: GymFixtureRunResult
+  plan: AgentClRepoReusePlan
+  sequentialRun: AgentClSequentialRun
+  taskRunner: AgentClTaskRunnerResult
+}> => {
+  const { compiled, plan } = buildAgentClRepoReusePlan(experiment)
+  const fixtureRun = runGymFixtureExperiment(experiment)
+  const sequentialRun = runAgentClSequentialLoop(plan)
+  const taskSequence = taskSequenceForPlan(plan, compiled)
+  const trajectoryEvaluations = evaluateAgentClTrajectories({
+    sequence: taskSequence,
+    sequentialRun,
+    fixtureRun,
+  })
+
+  return {
+    compiled,
+    fixtureRun,
+    plan,
+    sequentialRun,
+    taskRunner: decodeTaskRunnerResult({
+      schemaVersion: AGENTCL_TASK_RUNNER_RESULT_SCHEMA,
+      experimentId: experiment.id,
+      taskSetRef: fixtureRun.compiled.policySelection.environment.taskSetRef,
+      verifierRef: fixtureRun.compiled.policySelection.environment.verifierRef,
+      acceptanceContractRef:
+        fixtureRun.compiled.policySelection.environment.acceptanceContractRef,
+      runnerConfigId: fixtureRun.runSet.configId,
+      seamId: fixtureRun.runSet.seamId,
+      seamCanSpend: fixtureRun.runSet.seamCanSpend,
+      loadedTaskRefs:
+        GYM_ENVIRONMENT_REGISTRY['agentcl-repo-reuse'].taskSet
+          .publicSafeTaskRefs,
+      taskSequence,
+      trajectoryEvaluations,
+      publicSafety: fixtureRun.publicSafety,
+    }),
+  }
+}
+
 export const runAgentClRepoReuseFixtureEval = (
   experiment: GymExperiment = AGENTCL_REPO_REUSE_GYM_EXPERIMENT,
 ): Readonly<{
   compiled: CompiledGymExperiment
+  fixtureRun: GymFixtureRunResult
   plan: AgentClRepoReusePlan
+  taskRunner: AgentClTaskRunnerResult
   eval: AgentClEvalV0
 }> => {
-  const { compiled, plan } = buildAgentClRepoReusePlan(experiment)
-  const sequentialRun = runAgentClSequentialLoop(plan)
+  const { compiled, fixtureRun, plan, sequentialRun, taskRunner } =
+    runAgentClTaskRunner(experiment)
   const baseline = passScore(sequentialRun.taskAttempts, 'baseline', 'complex')
   const firstPass = passScore(
     sequentialRun.taskAttempts,
@@ -663,7 +874,9 @@ export const runAgentClRepoReuseFixtureEval = (
 
   return {
     compiled,
+    fixtureRun,
     plan,
+    taskRunner,
     eval: decodeEval({
       schemaVersion: AGENTCL_EVAL_SCHEMA,
       environmentRef: 'agentcl-repo-reuse',
@@ -698,6 +911,7 @@ export const runAgentClRepoReuseFixtureEval = (
         compiled.policySelection.environment.verifierRef,
         compiled.policySelection.environment.acceptanceContractRef,
       ],
+      taskRunner,
     }),
   }
 }
