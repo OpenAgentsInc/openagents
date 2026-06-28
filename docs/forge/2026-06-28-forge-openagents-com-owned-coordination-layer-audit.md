@@ -601,6 +601,18 @@ then full source-of-truth inversion at `forge.openagents.com`.
 > proof, receipt, result, and source refs. Raw git tokens remain out of the
 > persistent dispatch payload; only token refs/prefixes and scopes are carried.
 
+> FORGE-6 status, 2026-06-28: Pylon now has a Docker-isolated Bun verification
+> runner at `apps/pylon/src/forge-verification-runner.ts`. It consumes the
+> FORGE-5 `ForgeDispatchVerificationCommand`, enforces the
+> `forge.verification.runner.docker_bun.v0.1` runner ref, and builds a shell-free
+> `docker run` argv with `--network none`, `--pull=never`, read-only rootfs,
+> read-only workspace mount, dropped capabilities, `no-new-privileges`, noexec
+> tmpfs mounts, and CPU/memory/PID/timeout limits. The runner returns a
+> public-safe receipt with refs, byte counts, digests, status, exit code, and
+> isolation settings only; raw stdout, stderr, source, provider payloads, git
+> tokens, and wallet material stay out of the persisted result. The companion
+> doc is `apps/pylon/docs/forge-docker-verification-runner.md`.
+
 This is the build plan in fileable form: an ordered list of issues mapped to the
 milestones above, with dependency order and a P0-now set. Each line is
 `**FORGE-n** (milestone) [Pn] — Title — one-line scope`. These are tracking
