@@ -11,6 +11,9 @@
 //     only ever selects among the CALLER's own linked, heartbeat-fresh,
 //     Codex-capable Pylon registrations — never pooled, third-party, or
 //     marketplace capacity.
+//   - VERIFIED REPO WORK ONLY. Artanis dispatch must carry a bounded public
+//     verification command and a resolved commit SHA. If either is absent, this
+//     seam rejects instead of falling back to the fixture path.
 //   - NO SPEND. The coding-delegation path uses `paymentMode: 'unpaid_smoke'`,
 //     so no money moves, no payout is granted, and closeout settlement is
 //     `not_applicable`.
@@ -57,31 +60,29 @@ const ARTANIS_DISPATCH_EVIDENCE_REF =
 // No target Pylon ref is set: the server route auto-selects the owner's most
 // recent eligible linked Pylon (still strictly own-capacity). A workspace
 // (pinned git checkout + verification) is included only when a verify command
-// and a resolved commit SHA are both present; otherwise the route runs the
-// bounded public sum-repair fixture, which is a real own-capacity no-spend
-// `codex_agent_task` assignment.
+// and a resolved commit SHA are both present. The caller must enforce that
+// before invoking this helper; no Artanis live dispatch is allowed to fall back
+// to the fixture path.
 const buildDelegationBody = (
-  plan: ArtanisDispatchPlanInput,
-  commitSha: string | undefined,
+  plan: ArtanisDispatchPlanInput & Readonly<{ verify: string }>,
+  commitSha: string,
 ): Record<string, unknown> => {
   const coding: Record<string, unknown> = {
     objectiveSummary: plan.objective,
   }
-  if (plan.verify !== undefined && commitSha !== undefined) {
-    coding.workspace = {
-      kind: 'git_checkout',
-      repository: {
-        branch: plan.branch,
-        commitSha,
-        fullName: `${ARTANIS_REPO_READ_OWNER}/${ARTANIS_REPO_READ_REPO}`,
-        provider: 'github',
-        visibility: 'public',
-      },
-      verificationCommand: {
-        args: plan.verify.split(/\s+/).filter(arg => arg !== ''),
-        commandRef: 'command.public.artanis_dispatch.verify',
-      },
-    }
+  coding.workspace = {
+    kind: 'git_checkout',
+    repository: {
+      branch: plan.branch,
+      commitSha,
+      fullName: `${ARTANIS_REPO_READ_OWNER}/${ARTANIS_REPO_READ_REPO}`,
+      provider: 'github',
+      visibility: 'public',
+    },
+    verificationCommand: {
+      args: plan.verify.split(/\s+/).filter(arg => arg !== ''),
+      commandRef: 'command.public.artanis_dispatch.verify',
+    },
   }
   return {
     messages: [{ content: plan.prompt, role: 'user' }],
@@ -118,6 +119,10 @@ const createAssignmentPromise = async (
   plan: ArtanisDispatchPlanInput,
 ): Promise<ArtanisDispatchCreateResult> => {
   try {
+    if (plan.verify === undefined) {
+      return { kind: 'rejected', reason: 'verification_required' }
+    }
+    const verifiedPlan = { ...plan, verify: plan.verify }
     const ownerAgentUserIds = await deps.listLinkedAgentUserIds(
       deps.ownerOpenAuthUserId,
     )
@@ -129,9 +134,12 @@ const createAssignmentPromise = async (
     const requestId = deps.makeId()
     const nowIso = deps.nowIso()
     const commitSha =
-      plan.verify !== undefined && deps.resolveCommitSha !== undefined
-        ? await deps.resolveCommitSha(plan.branch).catch(() => undefined)
-        : undefined
+      deps.resolveCommitSha === undefined
+        ? undefined
+        : await deps.resolveCommitSha(verifiedPlan.branch).catch(() => undefined)
+    if (commitSha === undefined) {
+      return { kind: 'rejected', reason: 'verification_workspace_unavailable' }
+    }
 
     const result = await delegateCodingWorkflow({
       classification: {
@@ -143,7 +151,7 @@ const createAssignmentPromise = async (
       makeId: deps.makeId,
       nowIso,
       pylonStore: deps.pylonStore,
-      rawBody: buildDelegationBody(plan, commitSha),
+      rawBody: buildDelegationBody(verifiedPlan, commitSha),
       requestId,
     })
 

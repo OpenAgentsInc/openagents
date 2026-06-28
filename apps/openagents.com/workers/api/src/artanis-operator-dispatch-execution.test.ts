@@ -87,13 +87,28 @@ const makeStore = (input: {
   return { created, store }
 }
 
+const workspaceVerificationCommand = (
+  assignment: PylonApiAssignmentRecord | undefined,
+): unknown => {
+  const codingAssignment = assignment?.codingAssignment
+  if (codingAssignment === null || typeof codingAssignment !== 'object') {
+    return undefined
+  }
+  const workspace = (codingAssignment as Record<string, unknown>).workspace
+  if (workspace === null || typeof workspace !== 'object') {
+    return undefined
+  }
+  return (workspace as Record<string, unknown>).verificationCommand
+}
+
 const plan: ArtanisDispatchPlanInput = {
   branch: 'main',
   filePaths: [],
   issue: 6320,
   objective: 'Burn down public issue work per the roadmap.',
   prompt: 'Implement public issue #6320. Burn down public issue work.',
-  verify: undefined,
+  verify:
+    'bun run --cwd apps/openagents.com/workers/api test -- src/artanis-operator-dispatch-execution.test.ts',
 }
 
 let idCounter = 0
@@ -116,6 +131,8 @@ const makeDeps = (overrides: {
       pylonStore: store,
       readEffectivePylonDispatchApproval: async () =>
         overrides.approved ?? false,
+      resolveCommitSha: async () =>
+        '0123456789abcdef0123456789abcdef01234567',
     },
   }
 }
@@ -151,6 +168,36 @@ describe('makeArtanisDispatchExecution (#6366 live seam)', () => {
     expect(created[0]?.jobKind).toBe('codex_agent_task')
     expect(created[0]?.ownerAgentUserId).toBe('agent_owner')
     expect(created[0]?.pylonRef).toBe('pylon.owner.codex')
+    expect(workspaceVerificationCommand(created[0])).toMatchObject({
+      commandRef: 'command.public.artanis_dispatch.verify',
+    })
+  })
+
+  test('rejects direct execution calls without a verification command', async () => {
+    const { created, deps } = makeDeps({ approved: true })
+    const execution = makeArtanisDispatchExecution(deps)
+    const result = await Effect.runPromise(
+      execution.createCodexAssignment({ ...plan, verify: undefined }),
+    )
+    expect(result).toEqual({
+      kind: 'rejected',
+      reason: 'verification_required',
+    })
+    expect(created).toHaveLength(0)
+  })
+
+  test('rejects when the verified workspace commit cannot be resolved', async () => {
+    const { created, deps } = makeDeps({ approved: true })
+    const execution = makeArtanisDispatchExecution({
+      ...deps,
+      resolveCommitSha: async () => undefined,
+    })
+    const result = await Effect.runPromise(execution.createCodexAssignment(plan))
+    expect(result).toEqual({
+      kind: 'rejected',
+      reason: 'verification_workspace_unavailable',
+    })
+    expect(created).toHaveLength(0)
   })
 
   test('rejects with no_linked_agents when the owner has no linked agents', async () => {
@@ -246,6 +293,8 @@ describe('owner-promoted Artanis dispatch EXECUTES end-to-end (gated tool)', () 
       nowIso: () => nowIso,
       ownerOpenAuthUserId: ARTANIS_OWNER_OPENAUTH_USER_ID,
       pylonStore: store,
+      resolveCommitSha: async () =>
+        '0123456789abcdef0123456789abcdef01234567',
       // Standing owner approval (what the live wiring resolves for owner-Artanis).
       readEffectivePylonDispatchApproval: () =>
         readEffectiveArtanisPylonDispatchApprovalForOwner(
