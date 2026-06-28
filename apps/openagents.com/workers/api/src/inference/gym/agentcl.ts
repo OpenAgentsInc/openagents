@@ -83,7 +83,7 @@ export const AgentClPassScore = S.Struct({
 })
 export type AgentClPassScore = typeof AgentClPassScore.Type
 
-export const AgentClEval = S.Struct({
+export const AgentClEvalV0 = S.Struct({
   schemaVersion: S.Literal(AGENTCL_EVAL_SCHEMA),
   environmentRef: S.Literal('agentcl-repo-reuse'),
   experimentId: S.String,
@@ -105,10 +105,43 @@ export const AgentClEval = S.Struct({
   }),
   proofRefs: S.Array(S.String),
 })
-export type AgentClEval = typeof AgentClEval.Type
+export type AgentClEvalV0 = typeof AgentClEvalV0.Type
+
+export const AgentClLearningClaimKind = S.Literals([
+  'continual_learning',
+  'memory_improvement',
+])
+export type AgentClLearningClaimKind = typeof AgentClLearningClaimKind.Type
+
+export const AgentClLearningClaimGate = S.Struct({
+  schemaVersion: S.Literal('openagents.gym.agentcl_learning_claim_gate.v0'),
+  claimKind: AgentClLearningClaimKind,
+  evidenceSchemaVersion: S.Literal(AGENTCL_EVAL_SCHEMA),
+  requiresSeparatePgSgGg: S.Literal(true),
+  hasSeparatePlasticityGain: S.Boolean,
+  hasSeparateStabilityGain: S.Boolean,
+  hasSeparateGeneralizationGain: S.Boolean,
+  collapsedMemoryImprovementMetricAccepted: S.Literal(false),
+  decisionGradeClaimAllowed: S.Boolean,
+  publicClaimAllowed: S.Boolean,
+  blockerRefs: S.Array(S.String),
+})
+export type AgentClLearningClaimGate =
+  typeof AgentClLearningClaimGate.Type
+
+export type AgentClLearningClaimEvidence = Readonly<{
+  plasticityGain?: number
+  stabilityGain?: number
+  generalizationGain?: number
+  claimDiscipline?: Readonly<{
+    decisionGrade?: boolean
+    publicClaimEligible?: boolean
+  }>
+}>
 
 const decodePlan = S.decodeUnknownSync(AgentClRepoReusePlan)
-const decodeEval = S.decodeUnknownSync(AgentClEval)
+const decodeEval = S.decodeUnknownSync(AgentClEvalV0)
+const decodeLearningClaimGate = S.decodeUnknownSync(AgentClLearningClaimGate)
 
 const roundGain = (value: number): number => Math.round(value * 1000) / 1000
 
@@ -255,7 +288,7 @@ export const runAgentClRepoReuseFixtureEval = (
 ): Readonly<{
   compiled: CompiledGymExperiment
   plan: AgentClRepoReusePlan
-  eval: AgentClEval
+  eval: AgentClEvalV0
 }> => {
   const { compiled, plan } = buildAgentClRepoReusePlan(experiment)
   const baseline: AgentClPassScore = {
@@ -337,4 +370,66 @@ export const runAgentClRepoReuseFixtureEval = (
       ],
     }),
   }
+}
+
+export const assessAgentClLearningClaimGate = (
+  input: Readonly<{
+    claimKind: AgentClLearningClaimKind
+    eval?: AgentClLearningClaimEvidence
+    collapsedMemoryImprovementMetric?: number
+  }>,
+): AgentClLearningClaimGate => {
+  const hasSeparatePlasticityGain = input.eval?.plasticityGain !== undefined
+  const hasSeparateStabilityGain = input.eval?.stabilityGain !== undefined
+  const hasSeparateGeneralizationGain =
+    input.eval?.generalizationGain !== undefined
+  const hasAllSeparateGains =
+    hasSeparatePlasticityGain &&
+    hasSeparateStabilityGain &&
+    hasSeparateGeneralizationGain
+  const decisionGradeEvidence =
+    input.eval?.claimDiscipline?.decisionGrade === true
+  const publicClaimEvidence =
+    input.eval?.claimDiscipline?.publicClaimEligible === true
+  const blockerRefs = [
+    ...(hasSeparatePlasticityGain
+      ? []
+      : ['blocker.gym.agentcl.missing_plasticity_gain']),
+    ...(hasSeparateStabilityGain
+      ? []
+      : ['blocker.gym.agentcl.missing_stability_gain']),
+    ...(hasSeparateGeneralizationGain
+      ? []
+      : ['blocker.gym.agentcl.missing_generalization_gain']),
+    ...(input.collapsedMemoryImprovementMetric === undefined
+      ? []
+      : ['blocker.gym.agentcl.collapsed_memory_improvement_metric']),
+    ...(decisionGradeEvidence
+      ? []
+      : ['blocker.gym.agentcl.not_decision_grade']),
+    ...(publicClaimEvidence
+      ? []
+      : ['blocker.gym.agentcl.public_claim_not_eligible']),
+  ]
+
+  return decodeLearningClaimGate({
+    schemaVersion: 'openagents.gym.agentcl_learning_claim_gate.v0',
+    claimKind: input.claimKind,
+    evidenceSchemaVersion: AGENTCL_EVAL_SCHEMA,
+    requiresSeparatePgSgGg: true,
+    hasSeparatePlasticityGain,
+    hasSeparateStabilityGain,
+    hasSeparateGeneralizationGain,
+    collapsedMemoryImprovementMetricAccepted: false,
+    decisionGradeClaimAllowed:
+      hasAllSeparateGains &&
+      input.collapsedMemoryImprovementMetric === undefined &&
+      decisionGradeEvidence,
+    publicClaimAllowed:
+      hasAllSeparateGains &&
+      input.collapsedMemoryImprovementMetric === undefined &&
+      decisionGradeEvidence &&
+      publicClaimEvidence,
+    blockerRefs,
+  })
 }
