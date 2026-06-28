@@ -69,7 +69,7 @@ import {
   BYOK_PROVIDERS,
 } from "./provider-key.js"
 import { DEFAULT_BASE_URL, type ChatMode, type ChatTurnMetadata, type KhalaChatMessage, type KhalaCliError, type KhalaTokensResponse } from "./types.js"
-import { startKhalaAutoUpdate } from "./updater.js"
+import { awaitSettledKhalaAutoUpdate, startKhalaAutoUpdate } from "./updater.js"
 
 // Conversation channel. "khala" is the public collective-intelligence model;
 // "artanis" is the owner-only operator channel (#6363, epic #6359) that talks
@@ -679,20 +679,28 @@ async function runInteractive(args: ParsedArgs, env: Record<string, string | und
   if (channel === "artanis") {
     process.stdout.write(`${artanisBanner()}\n\n`)
   }
-  startKhalaAutoUpdate({
+  const updateHandle = startKhalaAutoUpdate({
     currentVersion: KHALA_CLI_VERSION,
     env,
+    notifyMode: "defer",
     notify: line => process.stdout.write(`\n${terminalStyle.assistant("Khala:")} ${line}\n\n`),
   })
+  await awaitSettledKhalaAutoUpdate(updateHandle)
+  updateHandle.flushNotifications()
+  const cleanExit = (): void => {
+    updateHandle.flushNotifications()
+  }
   while (true) {
     const prompt = await readPromptFromTerminal(terminalStyle.user("> "), {
       history: promptHistory,
     })
     if (prompt === null) {
       process.stdout.write("\n")
+      cleanExit()
       return
     }
     if (prompt.trim() === "/exit") {
+      cleanExit()
       return
     }
     if (prompt.trim().length === 0) {
@@ -714,7 +722,10 @@ async function runInteractive(args: ParsedArgs, env: Record<string, string | und
         continue
       }
       const outcome = await handleSlashCommand(args, env, prompt.trim(), lastTraceRef, lastMessageInfo, sessionId)
-      if (outcome === "exit") return
+      if (outcome === "exit") {
+        cleanExit()
+        return
+      }
       continue
     }
 

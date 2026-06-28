@@ -11,6 +11,7 @@ export interface KhalaAutoUpdateOptions {
   readonly env?: Record<string, string | undefined> | undefined
   readonly fetch?: typeof fetch | undefined
   readonly notify?: ((line: string) => void) | undefined
+  readonly notifyMode?: "defer" | "immediate" | undefined
   readonly spawnInstall?: SpawnInstall | undefined
 }
 
@@ -25,11 +26,60 @@ export type KhalaAutoUpdateResult =
   | { readonly kind: "installed"; readonly latestVersion: string; readonly summary: string }
   | { readonly kind: "failed" }
 
-export function startKhalaAutoUpdate(options: KhalaAutoUpdateOptions): void {
-  void runKhalaAutoUpdate(options).then(result => {
-    if (result.kind !== "installed") return
-    options.notify?.(`update added - ${firstWords(result.summary)} - restart to apply`)
+export interface KhalaAutoUpdateHandle {
+  readonly done: Promise<KhalaAutoUpdateResult>
+  readonly pendingNotificationCount: number
+  readonly flushNotifications: () => number
+}
+
+export function startKhalaAutoUpdate(options: KhalaAutoUpdateOptions): KhalaAutoUpdateHandle {
+  const pendingNotifications: string[] = []
+  const emit = (line: string): void => {
+    if (options.notifyMode === "defer") {
+      pendingNotifications.push(line)
+      return
+    }
+    options.notify?.(line)
+  }
+  const handle: KhalaAutoUpdateHandle = {
+    done: runKhalaAutoUpdate(options).then(result => {
+      if (result.kind !== "installed") return result
+      emit(`update added - ${firstWords(result.summary)} - restart to apply`)
+      return result
+    }),
+    get pendingNotificationCount() {
+      return pendingNotifications.length
+    },
+    flushNotifications: () => {
+      const count = pendingNotifications.length
+      for (const line of pendingNotifications.splice(0)) {
+        options.notify?.(line)
+      }
+      return count
+    },
+  }
+  void handle.done.catch(() => {
+    // runKhalaAutoUpdate is fail-soft, but keep the background task fire-and-forget
+    // if a future implementation accidentally rejects.
   })
+  return handle
+}
+
+export async function awaitSettledKhalaAutoUpdate(
+  handle: KhalaAutoUpdateHandle,
+  timeoutMs = 0,
+): Promise<boolean> {
+  let timeout: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      handle.done.then(() => true),
+      new Promise<boolean>(resolve => {
+        timeout = setTimeout(() => resolve(false), timeoutMs)
+      }),
+    ])
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout)
+  }
 }
 
 export async function runKhalaAutoUpdate(options: KhalaAutoUpdateOptions): Promise<KhalaAutoUpdateResult> {
@@ -113,4 +163,3 @@ const spawnInstall: SpawnInstall = command =>
     stdout: "ignore",
     stderr: "ignore",
   })
-
