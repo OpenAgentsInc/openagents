@@ -153,6 +153,8 @@ import {
   classifyModel,
   dispatchWithOverflow,
   dispatchWithOverflowWithMetadata,
+  isMultiLaneBurnDemandSource,
+  selectAdapterPlanForKhalaMultiLaneBurnRequest,
   selectAdapterPlanForKhalaStrongCodingRequest,
   selectAdapterPlanForKhalaToolRequest,
 } from './model-router'
@@ -338,6 +340,22 @@ const routeDemandClassFromAttribution = (
         attribution?.demandKind === undefined
       ? 'external'
       : 'batch'
+
+// Private module-level round-robin counter for MULTI-LANE FAN-OUT (throughput
+// unlock). Advances once per burn request so successive concurrent
+// continual-learning / stress requests start on different lanes. Wraps well
+// below MAX_SAFE_INTEGER; only the value mod laneCount matters. This is the
+// DEFAULT source for `deps.multiLaneBurnRotation`, so the fan-out mode needs no
+// Worker wiring change — the request headers alone select it.
+let multiLaneBurnRotationCounter = 0
+const nextMultiLaneBurnRotationIndex = (): number => {
+  const index = multiLaneBurnRotationCounter
+  multiLaneBurnRotationCounter =
+    multiLaneBurnRotationCounter >= Number.MAX_SAFE_INTEGER - 1
+      ? 0
+      : multiLaneBurnRotationCounter + 1
+  return index
+}
 
 const booleanBodyFlag = (body: Record<string, unknown>, key: string): boolean =>
   body[key] === true || body[key] === 'true' || body[key] === 1
@@ -544,6 +562,18 @@ export type ChatCompletionsDeps = Readonly<{
   // When present, the route dispatches across the plan with bounded-backoff
   // overflow on retryable failures. The Worker wires this to `selectAdapterPlan`.
   lanePlan?: ModelLanePlanner
+  // MULTI-LANE FAN-OUT ROTATION (throughput unlock). Returns the per-request
+  // round-robin index used to rotate the Khala lane plan ONLY for the internal
+  // continual-learning / stress "burn" demand-source (demand_kind=internal_stress
+  // + demand_source in MULTILANE_BURN_DEMAND_SOURCES). Each call should return a
+  // monotonically advancing integer so successive concurrent burn requests start
+  // on different lanes and aggregate throughput becomes the SUM of the healthy
+  // paid lanes' capacities instead of one lane's serve rate. Default: a private
+  // module-level monotonic counter, so the mode works in prod with NO Worker
+  // wiring change — only the request headers select it. Tests inject a controlled
+  // sequence to assert deterministic spread. Never consulted for any other
+  // demand class or model, so default user routing is unaffected.
+  multiLaneBurnRotation?: (() => number) | undefined
   // PROVIDER SERVING POLICY (blocker.product_promises.public_paid_model_gateway_missing
   // on api.hosted_gemini.v1). The SAME presence-derived lane arming the public
   // catalog (`/v1/models`) and the pre-purchase quote (`/v1/quote`) are gated on.
@@ -2925,6 +2955,21 @@ export const handleChatCompletions = (
       isKhalaModel(requestedModel) &&
       requestAttribution?.demandKind === 'internal_stress' &&
       requestAttribution.demandSource === 'glm-saturation'
+    // MULTI-LANE FAN-OUT (throughput unlock). Honestly-tagged internal
+    // continual-learning / stress burn traffic (`demand_kind=internal_stress`,
+    // `demand_source` in MULTILANE_BURN_DEMAND_SOURCES) is SPREAD across the
+    // healthy paid lanes instead of pinning the single primary lane. Each request
+    // rotates the registered Khala lane plan by a per-request round-robin index,
+    // so concurrent burn requests start on different lanes (Vertex + Fireworks +
+    // OpenRouter + GLM-when-up) and aggregate throughput becomes the SUM of those
+    // lanes' serve rates rather than one lane's cap. Gated on the internal burn
+    // demand-source only, so normal conversational, tool, mirrorcode, and external
+    // Khala routing is completely unchanged. The chosen primary still keeps the
+    // full remaining plan behind it, preserving overflow + fail-closed posture.
+    const multiLaneBurnKhalaRequest =
+      isKhalaModel(requestedModel) &&
+      requestAttribution?.demandKind === 'internal_stress' &&
+      isMultiLaneBurnDemandSource(requestAttribution.demandSource)
     // INTERNAL FRONTIER-CODING OVERRIDE (MirrorCode gym rung). Honestly-tagged
     // internal frontier-coding eval load (`demand_kind=internal`,
     // `demand_source=gym_mirrorcode`) that is tool-bearing is routed to the
@@ -2939,20 +2984,31 @@ export const handleChatCompletions = (
       requestAttribution.demandSource === 'gym_mirrorcode'
     const basePlannedIds = callerPaidByok
       ? [OPENROUTER_KHALA_FALLBACK_ADAPTER_ID]
-      : mirrorcodeStrongCodingKhalaRequest
-        ? selectAdapterPlanForKhalaStrongCodingRequest(
+      : multiLaneBurnKhalaRequest
+        ? // Rotate only across lanes that are actually registered (so the spread
+          // lands on lanes that can serve), keeping the per-request round-robin
+          // index from the injected counter / module-level default.
+          selectAdapterPlanForKhalaMultiLaneBurnRequest(
             requestedModel,
-            plannedIdsForModel,
+            plannedIdsForModel.filter(
+              id => deps.registry.resolve(id) !== undefined,
+            ),
+            (deps.multiLaneBurnRotation ?? nextMultiLaneBurnRotationIndex)(),
           )
-        : glmSaturationStressKhalaRequest &&
-            plannedIdsForModel.includes(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID)
-          ? [HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID]
-          : toolBearingKhalaRequest || glmSaturationStressKhalaRequest
-            ? selectAdapterPlanForKhalaToolRequest(
-                requestedModel,
-                plannedIdsForModel,
-              )
-            : plannedIdsForModel
+        : mirrorcodeStrongCodingKhalaRequest
+          ? selectAdapterPlanForKhalaStrongCodingRequest(
+              requestedModel,
+              plannedIdsForModel,
+            )
+          : glmSaturationStressKhalaRequest &&
+              plannedIdsForModel.includes(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID)
+            ? [HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID]
+            : toolBearingKhalaRequest || glmSaturationStressKhalaRequest
+              ? selectAdapterPlanForKhalaToolRequest(
+                  requestedModel,
+                  plannedIdsForModel,
+                )
+              : plannedIdsForModel
 
     // CACHE-AFFINITY RESOLUTION (book P0-2 deliverables 3+4). Compose the
     // account/session/codebase key, its public-safe hash (for the receipt), and
@@ -2969,19 +3025,25 @@ export const handleChatCompletions = (
     // passing health + privacy/region gates. Pure reorder: the overflow tail is
     // preserved behind the warm lane. Inert when no oracle is wired (plan
     // unchanged) so existing behavior is unaffected until the Worker wires it.
-    const routingDecision = decideCacheAwareRouting({
-      affinityHash: affinity.hash,
-      plannedLanes: basePlannedIds,
-      ...(deps.cacheWarmthOracle === undefined
-        ? {}
-        : { warmthOracle: deps.cacheWarmthOracle }),
-      ...(deps.laneHealthOracle === undefined
-        ? {}
-        : { healthOracle: deps.laneHealthOracle }),
-      ...(deps.cachePinPolicy === undefined
-        ? {}
-        : { pinPolicy: deps.cachePinPolicy }),
-    })
+    // MULTI-LANE FAN-OUT bypasses cache-warmth reordering: a burn request
+    // deliberately wants to SPREAD across lanes (round-robin primary), not pin to
+    // the cache-warm lane, so the rotation must survive intact. Cache-aware
+    // routing still governs every normal request unchanged.
+    const routingDecision = multiLaneBurnKhalaRequest
+      ? { lanes: basePlannedIds }
+      : decideCacheAwareRouting({
+          affinityHash: affinity.hash,
+          plannedLanes: basePlannedIds,
+          ...(deps.cacheWarmthOracle === undefined
+            ? {}
+            : { warmthOracle: deps.cacheWarmthOracle }),
+          ...(deps.laneHealthOracle === undefined
+            ? {}
+            : { healthOracle: deps.laneHealthOracle }),
+          ...(deps.cachePinPolicy === undefined
+            ? {}
+            : { pinPolicy: deps.cachePinPolicy }),
+        })
     const plannedIds = routingDecision.lanes
 
     // model_unavailable when no lane is configured OR none of the planned lanes

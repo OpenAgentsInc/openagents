@@ -366,6 +366,86 @@ export const makeKhalaBackedAdapterPlan =
       khalaBacking ?? KHALA_BACKING_HYDRALISK_GPT_OSS,
     )
 
+// ----------------------------------------------------------------------------
+// MULTI-LANE FAN-OUT (throughput unlock)
+// ----------------------------------------------------------------------------
+//
+// The normal Khala plan is an ORDERED overflow chain: every request starts on
+// the same primary lane (Vertex Gemini today) and only moves to the next lane
+// when the primary typed-fails retryably (429 / 503 / transport). When the
+// primary lane serves at its own rate WITHOUT 429ing (exactly Vertex's
+// behavior), every request pins to that one lane and aggregate throughput is
+// capped at a single lane's serve rate — overflow never triggers, so the other
+// healthy paid lanes sit idle.
+//
+// For honestly-tagged internal continual-learning / stress burn demand we want
+// the opposite: spread successive concurrent requests ACROSS the healthy paid
+// lanes so aggregate throughput becomes the SUM of the lanes' capacities. This
+// is a pure ROTATION of the lane plan by a per-request round-robin index: request
+// N starts on lane (N mod laneCount), and each request still keeps the full
+// remaining plan behind its chosen primary, so a chosen lane that rate-limits or
+// is quarantined still overflows down the rest of the chain (fail-closed posture
+// and the no-fallback guarantees of other modes are untouched — this only
+// activates for the new burn demand-source on the Khala model).
+//
+// Round-robin (rotate the plan) rather than random so a bounded number of
+// concurrent requests provably touches every lane, and so tests are
+// deterministic given the injected index sequence.
+
+// Demand-source tokens (lowercased `x-openagents-demand-source` values) that
+// opt an `internal_stress` Khala request into multi-lane fan-out. Both spellings
+// are accepted so callers can label the lane by intent (a generic multi-lane
+// burn, or a continual-learning saturation run) without a code change.
+export const MULTILANE_BURN_DEMAND_SOURCES: ReadonlyArray<string> = [
+  'multilane-burn',
+  'cl-saturation',
+]
+
+export const isMultiLaneBurnDemandSource = (
+  demandSource: string | undefined,
+): boolean =>
+  demandSource !== undefined &&
+  MULTILANE_BURN_DEMAND_SOURCES.includes(demandSource.trim().toLowerCase())
+
+// Rotate an ordered adapter plan left by `rotationIndex` positions. Pure +
+// deterministic: a non-finite / fractional / negative index is normalized into
+// `[0, length)`. The rotated list is a permutation of the input — no lane is
+// dropped or added — so the chosen primary still overflows down the full
+// remaining chain. A 0/1-element plan is returned unchanged.
+export const rotateAdapterPlan = (
+  adapterIds: ReadonlyArray<string>,
+  rotationIndex: number,
+): ReadonlyArray<string> => {
+  const length = adapterIds.length
+  if (length <= 1) {
+    return adapterIds
+  }
+  const safeIndex = Number.isFinite(rotationIndex)
+    ? Math.trunc(rotationIndex)
+    : 0
+  const offset = ((safeIndex % length) + length) % length
+  if (offset === 0) {
+    return adapterIds
+  }
+  return [...adapterIds.slice(offset), ...adapterIds.slice(0, offset)]
+}
+
+// Resolve the MULTI-LANE FAN-OUT plan for a Khala burn request. Only the public
+// Khala alias fans out; any other model id keeps its base plan unchanged. The
+// caller passes the already health/registration-eligible base plan (so rotation
+// spreads only across lanes that can actually serve) plus the per-request
+// round-robin index. Deterministic + pure; the caller gates this on the
+// internal burn demand-source so normal conversational, tool, and external Khala
+// routing is never affected.
+export const selectAdapterPlanForKhalaMultiLaneBurnRequest = (
+  model: string,
+  basePlan: ReadonlyArray<string>,
+  rotationIndex: number,
+): ReadonlyArray<string> =>
+  normalizeKhalaModelId(model) === KHALA_MODEL_ID
+    ? rotateAdapterPlan(basePlan, rotationIndex)
+    : basePlan
+
 // Resolve a requested model to its ORDERED list of candidate adapter ids
 // (cheapest viable first, then overflow fallbacks). Deterministic + pure.
 export const selectAdapterPlan = (model: string): ReadonlyArray<string> => {

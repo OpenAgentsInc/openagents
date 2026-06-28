@@ -19,11 +19,14 @@ import {
   classifyModel,
   dispatchWithOverflow,
   dispatchWithOverflowWithMetadata,
+  isMultiLaneBurnDemandSource,
   makeBoundedDispatchFailureTelemetry,
   makeKhalaBackedAdapterPlan,
   openModelsByCost,
+  rotateAdapterPlan,
   selectAdapterPlan,
   selectAdapterPlanForKhalaBacking,
+  selectAdapterPlanForKhalaMultiLaneBurnRequest,
   selectAdapterPlanForKhalaStrongCodingRequest,
   selectAdapterPlanForKhalaToolRequest,
   selectPrimaryAdapterId,
@@ -1564,5 +1567,120 @@ describe('dispatchWithOverflow', () => {
     expect(DEFAULT_OVERFLOW_BACKOFF.maxDelayMs).toBeGreaterThanOrEqual(
       DEFAULT_OVERFLOW_BACKOFF.baseDelayMs,
     )
+  })
+})
+
+describe('multi-lane fan-out (throughput unlock)', () => {
+  test('recognizes the burn demand sources case-insensitively', () => {
+    expect(isMultiLaneBurnDemandSource('multilane-burn')).toBe(true)
+    expect(isMultiLaneBurnDemandSource('cl-saturation')).toBe(true)
+    expect(isMultiLaneBurnDemandSource(' CL-Saturation ')).toBe(true)
+    // The existing GLM-pin source and an unknown source do NOT fan out.
+    expect(isMultiLaneBurnDemandSource('glm-saturation')).toBe(false)
+    expect(isMultiLaneBurnDemandSource('gym_mirrorcode')).toBe(false)
+    expect(isMultiLaneBurnDemandSource(undefined)).toBe(false)
+  })
+
+  test('rotateAdapterPlan is a left rotation and a pure permutation', () => {
+    const plan = ['a', 'b', 'c', 'd']
+    expect(rotateAdapterPlan(plan, 0)).toEqual(['a', 'b', 'c', 'd'])
+    expect(rotateAdapterPlan(plan, 1)).toEqual(['b', 'c', 'd', 'a'])
+    expect(rotateAdapterPlan(plan, 2)).toEqual(['c', 'd', 'a', 'b'])
+    expect(rotateAdapterPlan(plan, 3)).toEqual(['d', 'a', 'b', 'c'])
+    // Wraps modulo length, so request N starts on lane N mod laneCount.
+    expect(rotateAdapterPlan(plan, 4)).toEqual(['a', 'b', 'c', 'd'])
+    expect(rotateAdapterPlan(plan, 5)).toEqual(['b', 'c', 'd', 'a'])
+    // Every rotation is a permutation: same multiset, no lane dropped or added.
+    for (let index = 0; index < 12; index += 1) {
+      expect([...rotateAdapterPlan(plan, index)].sort()).toEqual([
+        'a',
+        'b',
+        'c',
+        'd',
+      ])
+    }
+  })
+
+  test('rotateAdapterPlan normalizes non-finite / negative / fractional indices', () => {
+    const plan = ['a', 'b', 'c']
+    expect(rotateAdapterPlan(plan, -1)).toEqual(['c', 'a', 'b'])
+    expect(rotateAdapterPlan(plan, 1.9)).toEqual(['b', 'c', 'a'])
+    expect(rotateAdapterPlan(plan, Number.NaN)).toEqual(['a', 'b', 'c'])
+    expect(rotateAdapterPlan(plan, Number.POSITIVE_INFINITY)).toEqual([
+      'a',
+      'b',
+      'c',
+    ])
+    // A 0/1-element plan can never fan out and is returned unchanged.
+    expect(rotateAdapterPlan([], 3)).toEqual([])
+    expect(rotateAdapterPlan(['only'], 3)).toEqual(['only'])
+  })
+
+  test('fan-out plan rotates the Khala plan so successive requests start on different lanes', () => {
+    const base = [
+      VERTEX_GEMINI_ADAPTER_ID,
+      FIREWORKS_ADAPTER_ID,
+      HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+      OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+    ]
+    const primaries = [0, 1, 2, 3, 4].map(
+      index =>
+        selectAdapterPlanForKhalaMultiLaneBurnRequest(
+          KHALA_MODEL_ID,
+          base,
+          index,
+        )[0],
+    )
+    // Four concurrent burn requests cover ALL four lanes (sum-of-capacity spread).
+    expect(new Set(primaries.slice(0, 4)).size).toBe(4)
+    expect(primaries).toEqual([
+      VERTEX_GEMINI_ADAPTER_ID,
+      FIREWORKS_ADAPTER_ID,
+      HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+      OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+      VERTEX_GEMINI_ADAPTER_ID,
+    ])
+    // Each rotated plan still carries the full overflow tail (fail-closed).
+    for (let index = 0; index < 4; index += 1) {
+      expect(
+        [
+          ...selectAdapterPlanForKhalaMultiLaneBurnRequest(
+            KHALA_MODEL_ID,
+            base,
+            index,
+          ),
+        ].sort(),
+      ).toEqual([...base].sort())
+    }
+  })
+
+  test('fan-out spreads only across the registered/eligible lanes it is given', () => {
+    // The route passes only the registered lanes; with GLM down, the burn spread
+    // is across Vertex + Fireworks + OpenRouter (the real paid lanes today).
+    const registeredOnly = [
+      VERTEX_GEMINI_ADAPTER_ID,
+      FIREWORKS_ADAPTER_ID,
+      OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+    ]
+    const primaries = [0, 1, 2, 3].map(
+      index =>
+        selectAdapterPlanForKhalaMultiLaneBurnRequest(
+          KHALA_MODEL_ID,
+          registeredOnly,
+          index,
+        )[0],
+    )
+    expect(new Set(primaries.slice(0, 3)).size).toBe(3)
+    expect(primaries[3]).toBe(VERTEX_GEMINI_ADAPTER_ID)
+  })
+
+  test('non-Khala models never fan out (default routing unchanged)', () => {
+    const base = ['lane-a', 'lane-b', 'lane-c']
+    expect(
+      selectAdapterPlanForKhalaMultiLaneBurnRequest('claude-3-5-sonnet', base, 1),
+    ).toEqual(base)
+    expect(
+      selectAdapterPlanForKhalaMultiLaneBurnRequest('gemini-3.5-flash', base, 2),
+    ).toEqual(base)
   })
 })
