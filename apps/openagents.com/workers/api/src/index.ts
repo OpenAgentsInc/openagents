@@ -6213,6 +6213,11 @@ const runArtanisScheduledTickScheduled = (
 ): Effect.Effect<void, never> =>
   runArtanisScheduledTickForWorker({
     db,
+    khalaUnsupportedTriage: {
+      feedbackStore: makeD1KhalaFeedbackStore(db),
+      traceReviewStore: makeD1KhalaTraceReviewStore(db),
+      unsupportedRequestStore: makeD1KhalaUnsupportedRequestStore(db),
+    },
     scheduledRunnerEnabled,
     scheduledTime,
   }).pipe(
