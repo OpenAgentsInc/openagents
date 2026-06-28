@@ -11,6 +11,7 @@ import {
   SubmittedAutopilotDecisionAction,
 } from '../message'
 import type {
+  AutopilotDecisionCloseoutReceipt,
   AutopilotDecisionQueueItem,
   AutopilotWorkReviewAction,
   Model,
@@ -103,6 +104,42 @@ const refChips = (refs: ReadonlyArray<string>): ReadonlyArray<Html> => {
       ],
       [ref],
     ),
+  )
+}
+
+const closeoutReceiptRow = (
+  receipt: AutopilotDecisionCloseoutReceipt,
+): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [
+      Ui.className<Message>(
+        'grid gap-2 border border-[#222] bg-[#080808] px-3 py-2 text-xs text-white/55',
+      ),
+    ],
+    [
+      h.div([Ui.className<Message>('flex flex-wrap items-center gap-2')], [
+        badge(receipt.outcome, 'positive'),
+        h.span([Ui.className<Message>('text-white/65')], [
+          receipt.resolvedState.replaceAll('_', ' '),
+        ]),
+        h.span([Ui.className<Message>('text-white/35')], [
+          formatIsoDateTime(receipt.decidedAt),
+        ]),
+      ]),
+      h.a(
+        [
+          h.Href(
+            `/api/autopilot/decision-closeouts/${encodeURIComponent(receipt.closeoutRef)}`,
+          ),
+          Ui.className<Message>(
+            'min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-white/45 underline underline-offset-[3px] hover:text-[#ffb400]',
+          ),
+        ],
+        [receipt.closeoutRef],
+      ),
+    ],
   )
 }
 
@@ -223,6 +260,12 @@ const decisionCard = (model: Model, item: AutopilotDecisionQueueItem): Html => {
         : h.div(
             [Ui.className<Message>('flex flex-wrap gap-2')],
             refChips(item.decision.receiptRefs),
+          ),
+      item.closeoutReceipts.length === 0
+        ? empty()
+        : h.div(
+            [Ui.className<Message>('grid gap-2')],
+            item.closeoutReceipts.map(closeoutReceiptRow),
           ),
       decisionActions(model, item),
     ],

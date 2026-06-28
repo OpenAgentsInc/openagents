@@ -7,6 +7,9 @@ import {
 import {
   autopilotCodingAssignmentsForWork,
 } from './autopilot-coding-assignment'
+import {
+  validateAutopilotDecisionCloseoutReceipt,
+} from './autopilot-decision-closeout'
 import { missionBriefingForWorkOrder } from './autopilot-mission-briefing'
 import {
   assignmentIntentsForWorkOrder,
@@ -477,6 +480,22 @@ export type AutopilotWorkStore = Readonly<{
     }>,
   ) => Promise<
     | Readonly<{ idempotent: boolean; record: AutopilotWorkOrderRecord }>
+    | undefined
+  >
+  recordDecisionCloseoutReceipt?: (
+    receipt: import('./autopilot-decision-closeout').AutopilotDecisionCloseoutReceipt,
+  ) => Promise<void>
+  listDecisionCloseoutReceiptsForWorkOrder?: (
+    input: Readonly<{ ownerUserId: string; workOrderRef: string }>,
+  ) => Promise<
+    ReadonlyArray<
+      import('./autopilot-decision-closeout').AutopilotDecisionCloseoutReceipt
+    >
+  >
+  readDecisionCloseoutReceipt?: (
+    input: Readonly<{ closeoutRef: string; ownerUserId: string }>,
+  ) => Promise<
+    | import('./autopilot-decision-closeout').AutopilotDecisionCloseoutReceipt
     | undefined
   >
   recordBuyerPaymentProof: (
@@ -4179,6 +4198,104 @@ export const makeD1AutopilotWorkStore = (
     return row === null
       ? undefined
       : { idempotent: false, record: recordFromRow(row) }
+  },
+  recordDecisionCloseoutReceipt: async receipt => {
+    await db
+      .prepare(
+        `INSERT INTO autopilot_decision_closeout_receipts (
+          closeout_ref,
+          decision_ref,
+          work_order_ref,
+          action,
+          resolved_state,
+          outcome,
+          actor_agent_user_id,
+          decided_at,
+          receipt_refs_json,
+          has_answer,
+          line,
+          receipt_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(closeout_ref) DO UPDATE SET
+          outcome = excluded.outcome,
+          receipt_refs_json = excluded.receipt_refs_json,
+          receipt_json = excluded.receipt_json`,
+      )
+      .bind(
+        receipt.closeoutRef,
+        receipt.decisionRef,
+        receipt.workOrderRef,
+        receipt.action,
+        receipt.resolvedState,
+        receipt.outcome,
+        receipt.actorAgentUserId,
+        receipt.decidedAt,
+        JSON.stringify(receipt.receiptRefs),
+        receipt.hasAnswer ? 1 : 0,
+        receipt.line,
+        JSON.stringify(receipt),
+      )
+      .run()
+  },
+  listDecisionCloseoutReceiptsForWorkOrder: async input => {
+    const rows = await db
+      .prepare(
+        `SELECT r.receipt_json
+         FROM autopilot_decision_closeout_receipts r
+         INNER JOIN autopilot_work_orders w
+           ON w.work_order_ref = r.work_order_ref
+         WHERE r.work_order_ref = ?
+           AND w.owner_user_id = ?
+           AND w.archived_at IS NULL
+         ORDER BY r.decided_at DESC`,
+      )
+      .bind(input.workOrderRef, input.ownerUserId)
+      .all<Record<string, unknown>>()
+
+    return (rows.results ?? []).flatMap(row => {
+      if (typeof row.receipt_json !== 'string') {
+        return []
+      }
+
+      try {
+        const parsed = parseJsonUnknown(row.receipt_json)
+
+        return validateAutopilotDecisionCloseoutReceipt(parsed)
+          ? [parsed]
+          : []
+      } catch {
+        return []
+      }
+    })
+  },
+  readDecisionCloseoutReceipt: async input => {
+    const row = await db
+      .prepare(
+        `SELECT r.receipt_json
+         FROM autopilot_decision_closeout_receipts r
+         INNER JOIN autopilot_work_orders w
+           ON w.work_order_ref = r.work_order_ref
+         WHERE r.closeout_ref = ?
+           AND w.owner_user_id = ?
+           AND w.archived_at IS NULL
+         LIMIT 1`,
+      )
+      .bind(input.closeoutRef, input.ownerUserId)
+      .first<Record<string, unknown>>()
+
+    if (typeof row?.receipt_json !== 'string') {
+      return undefined
+    }
+
+    try {
+      const parsed = parseJsonUnknown(row.receipt_json)
+
+      return validateAutopilotDecisionCloseoutReceipt(parsed)
+        ? parsed
+        : undefined
+    } catch {
+      return undefined
+    }
   },
   recordBuyerPaymentProof: async input => {
     await db

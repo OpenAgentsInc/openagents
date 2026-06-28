@@ -4,6 +4,7 @@ import { describe, expect, test } from 'vitest'
 import { AGENT_TOKEN_PREFIX } from './agent-registration'
 import type { AgentRegistrationStore } from './agent-registration'
 import { makeAutopilotDecisionRoutes } from './autopilot-decision-routes'
+import type { AutopilotDecisionCloseoutReceipt } from './autopilot-decision-closeout'
 import {
   OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES,
   decodeOpenAgentsAutopilotWorkRequest,
@@ -21,6 +22,8 @@ const fixtureNowIso = '2026-06-11T17:30:00.000Z'
 const ownerUserId = 'github:autopilot-owner'
 
 class MemoryAutopilotWorkStore implements AutopilotWorkStore {
+  readonly closeoutReceipts =
+    new Map<string, AutopilotDecisionCloseoutReceipt>()
   readonly records = new Map<string, AutopilotWorkOrderRecord>()
 
   createWorkOrder = async (record: AutopilotWorkOrderRecord) => {
@@ -129,6 +132,40 @@ class MemoryAutopilotWorkStore implements AutopilotWorkStore {
     this.records.set(existing.workOrderRef, updated)
 
     return { idempotent: false, record: updated }
+  }
+
+  recordDecisionCloseoutReceipt = async (
+    receipt: AutopilotDecisionCloseoutReceipt,
+  ) => {
+    this.closeoutReceipts.set(receipt.closeoutRef, receipt)
+  }
+
+  listDecisionCloseoutReceiptsForWorkOrder = async (
+    input: Readonly<{ ownerUserId: string; workOrderRef: string }>,
+  ) => {
+    const record = this.records.get(input.workOrderRef)
+
+    if (record?.ownerUserId !== input.ownerUserId) {
+      return []
+    }
+
+    return [...this.closeoutReceipts.values()].filter(
+      receipt => receipt.workOrderRef === input.workOrderRef,
+    )
+  }
+
+  readDecisionCloseoutReceipt = async (
+    input: Readonly<{ closeoutRef: string; ownerUserId: string }>,
+  ) => {
+    const receipt = this.closeoutReceipts.get(input.closeoutRef)
+
+    if (receipt === undefined) {
+      return undefined
+    }
+
+    const record = this.records.get(receipt.workOrderRef)
+
+    return record?.ownerUserId === input.ownerUserId ? receipt : undefined
   }
 }
 
@@ -291,6 +328,14 @@ type DecisionListBody = Readonly<{
         status: string
         statusLabel: string
       }>
+      closeoutReceipts: ReadonlyArray<
+        Readonly<{
+          action: string
+          closeoutRef: string
+          outcome: string
+          resolvedState: string
+        }>
+      >
       work: Readonly<{
         state: string
         taskRefs: ReadonlyArray<string>
@@ -305,6 +350,11 @@ type DecisionListBody = Readonly<{
 }>
 
 type DecisionActBody = Readonly<{
+  closeout: Readonly<{
+    closeoutRef: string
+    outcome: string
+    resolvedState: string
+  }>
   decision: Readonly<{
     actionKind: string
     receiptRefs: ReadonlyArray<string>
@@ -482,6 +532,10 @@ describe('autopilot decision queue routes', () => {
     expect(body.idempotent).toBe(false)
     expect(body.directEffectPermitted).toBe(false)
     expect(body.work.state).toBe('accepted')
+    expect(body.closeout.closeoutRef).toBe(
+      'decision.closeout.accept.autopilot_work_order.decision_test_1',
+    )
+    expect(body.closeout.resolvedState).toBe('accepted')
     expect(body.decision?.status).toBe('completed')
     expect(body.decision?.receiptRefs).toContain(
       'decision.queue.accept.autopilot_work_order.decision_test_1',
@@ -493,6 +547,11 @@ describe('autopilot decision queue routes', () => {
     expect(record?.reviewDecision?.decisionRefs).toContain(
       'decision.queue.accept.autopilot_work_order.decision_test_1',
     )
+    expect(
+      store.closeoutReceipts.get(
+        'decision.closeout.accept.autopilot_work_order.decision_test_1',
+      )?.receiptRefs,
+    ).toContain('receipt.review.accept.autopilot_work_order.decision_test_1')
   })
 
   test('accepts the public accept command name for the review action', async () => {
@@ -720,6 +779,87 @@ describe('autopilot decision queue routes', () => {
     expect(body.decisions[0]?.decision.receiptRefs).toContain(
       'receipt.review.accept.autopilot_work_order.decision_test_1',
     )
+    expect(body.decisions[0]?.closeoutReceipts[0]?.closeoutRef).toBe(
+      'decision.closeout.accept.autopilot_work_order.decision_test_1',
+    )
+  })
+
+  test('returns pending and decided decisions for one work order with closeout receipt rows', async () => {
+    const store = new MemoryAutopilotWorkStore()
+
+    await store.createWorkOrder(deliveredWorkOrderRecord())
+
+    const pending = await route(
+      store,
+      '/api/autopilot/work/autopilot_work_order.decision_test_1/decisions',
+    )
+    const pendingBody = (await pending.json()) as DecisionListBody
+
+    expect(pending.status).toBe(200)
+    expect(pendingBody.pendingCount).toBe(1)
+    expect(pendingBody.decisions[0]?.decision.status).toBe('available')
+    expect(pendingBody.decisions[0]?.closeoutReceipts).toEqual([])
+
+    await route(
+      store,
+      '/api/autopilot/decisions/decision_action.autopilot_work_order.decision_test_1.approve_pr_draft/actions',
+      {
+        body: { action: 'accept' },
+        idempotencyKey: 'decision-accept-scoped-1',
+        method: 'POST',
+      },
+    )
+
+    const decided = await route(
+      store,
+      '/api/autopilot/work/autopilot_work_order.decision_test_1/decisions',
+    )
+    const decidedBody = (await decided.json()) as DecisionListBody
+
+    expect(decided.status).toBe(200)
+    expect(decidedBody.pendingCount).toBe(0)
+    expect(decidedBody.decisions[0]?.decision.status).toBe('completed')
+    expect(decidedBody.decisions[0]?.closeoutReceipts[0]?.outcome).toBe(
+      'applied',
+    )
+  })
+
+  test('dereferences an owner-scoped decision closeout receipt', async () => {
+    const store = new MemoryAutopilotWorkStore()
+
+    await store.createWorkOrder(deliveredWorkOrderRecord())
+    await route(
+      store,
+      '/api/autopilot/decisions/decision_action.autopilot_work_order.decision_test_1.approve_pr_draft/actions',
+      {
+        body: { action: 'accept' },
+        idempotencyKey: 'decision-closeout-read-1',
+        method: 'POST',
+      },
+    )
+
+    const response = await route(
+      store,
+      '/api/autopilot/decision-closeouts/decision.closeout.accept.autopilot_work_order.decision_test_1',
+    )
+    const body = (await response.json()) as Readonly<{
+      directEffectPermitted: false
+      receipt: Readonly<{
+        closeoutRef: string
+        line: string
+        workOrderRef: string
+      }>
+    }>
+
+    expect(response.status).toBe(200)
+    expect(body.directEffectPermitted).toBe(false)
+    expect(body.receipt.closeoutRef).toBe(
+      'decision.closeout.accept.autopilot_work_order.decision_test_1',
+    )
+    expect(body.receipt.workOrderRef).toBe(
+      'autopilot_work_order.decision_test_1',
+    )
+    expect(body.receipt.line).toContain('closed out as applied')
   })
 
   test('rejects mutation methods on the decision list route', async () => {

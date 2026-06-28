@@ -6176,7 +6176,19 @@ export const AutopilotDecisionWorkContext = S.Struct({
 export type AutopilotDecisionWorkContext =
   typeof AutopilotDecisionWorkContext.Type
 
+export const AutopilotDecisionCloseoutReceipt = S.Struct({
+  action: S.String,
+  closeoutRef: S.String,
+  decidedAt: S.String,
+  outcome: S.String,
+  receiptRefs: S.Array(S.String),
+  resolvedState: S.String,
+})
+export type AutopilotDecisionCloseoutReceipt =
+  typeof AutopilotDecisionCloseoutReceipt.Type
+
 export const AutopilotDecisionQueueItem = S.Struct({
+  closeoutReceipts: S.Array(AutopilotDecisionCloseoutReceipt),
   decision: AutopilotDecisionProjection,
   work: AutopilotDecisionWorkContext,
 })
@@ -6192,6 +6204,7 @@ export type AutopilotDecisionListResponse =
   typeof AutopilotDecisionListResponse.Type
 
 export const AutopilotDecisionActionResponse = S.Struct({
+  closeout: S.optionalKey(AutopilotDecisionCloseoutReceipt),
   decision: S.NullOr(AutopilotDecisionProjection),
   directEffectPermitted: S.Boolean,
   generatedAt: S.String,
