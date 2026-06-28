@@ -39,7 +39,7 @@ This applies the existing Blueprint model directly:
 
 ---
 
-## The five signatures
+## The signatures
 
 Each signature below is stated as: typed inputs → required evidence refs
 (the predicate list) → gate/state model → what the terminal state unlocks →
@@ -163,11 +163,69 @@ the gate and blocks subsequent merges. (Note: this gate must verify the *real*
 `check:deploy` exit code, not a wrapper's trailing-echo exit — a subtlety that
 bit the merge lane and was caught by auditing the actual `EXIT=` lines.)
 
+### Signature 6 — `operator-grounded-assertion`
+
+No runnable artifact reaches the owner unless it has been verified to exist.
+
+I am **headless**: I reason from memory with no working tree in front of me, so
+I have repeatedly invented runnable artifacts that do not exist — a
+`scripts/distill_traces.ts` I never read, a fake admin-mint API endpoint I
+extrapolated from the shape of the codebase. Signature 4 governs a command whose
+script I *can* point at; this signature governs the prior, more dangerous step:
+**naming the artifact at all**. Any operator output that references a runnable
+**COMMAND**, **FILE PATH**, **SCRIPT**, or **API ENDPOINT** must carry an
+evidence ref proving it exists, or be explicitly labeled **SPECULATIVE**.
+
+**Typed inputs:** `{ artifactKind, artifactRef, lookupTool, lookupResult }`
+where `artifactKind ∈ { command, file_path, script, api_endpoint }`.
+
+**Required evidence refs (the predicate list):**
+1. `evidence://grounding/path-exists` — for a file/script/command source, a
+   `repo_path_exists(path)` lookup against the real
+   `OpenAgentsInc/openagents` repo (GitHub contents API) returning EXISTS.
+2. `evidence://grounding/content-match` — for a command/flag/symbol, a
+   `repo_grep(pattern, path)` lookup proving the referenced file actually
+   contains the flag/symbol (distinguishes a real script from a stub).
+3. `evidence://grounding/route-registered` — for an API endpoint, a
+   `route_exists(method, path)` lookup against the Worker's real OpenAPI route
+   registry (`openAgentsOpenApiDocument()`, served at `/api/openapi.json`)
+   returning a registered method+path.
+
+**Gate:** `UNGROUNDED → REFERENCED → LOOKED_UP → GROUNDED`.
+- `REFERENCED`: I have an artifact ref in hand but have not looked it up.
+- `LOOKED_UP`: I called the matching grounding tool this turn.
+- `GROUNDED`: the lookup returned a positive existence result (EXISTS / is a
+  registered route, plus a content match where a specific flag/symbol is
+  claimed). **Only `GROUNDED` permits presenting the artifact as runnable/real.**
+- Any non-positive lookup (does-not-exist, not-in-registry, wrong-method, or a
+  read failure I could not confirm) holds the gate below `GROUNDED`; the
+  artifact stays `UNGROUNDED` and **must** be labeled SPECULATIVE or omitted.
+
+**Makes impossible:** the **MirrorCode / `distill_traces` / admin-endpoint
+class** of fabrication. A non-existent script can never reach `GROUNDED`
+(`repo_path_exists` returns does-not-exist); a stub I would mis-recommend fails
+the content-match step; a hallucinated admin-mint endpoint is absent from the
+OpenAPI registry, so `route_exists` reads UNGROUNDED. The artifact cannot be
+asserted as real because the terminal state that unlocks that assertion is
+structurally unreachable without the lookup.
+
+**Honest boundary:** the grounding tools read the *real* repo and the *real*
+published OpenAPI document, but they are bounded by what is reachable from the
+Worker runtime:
+- `repo_grep` greps **one named file** via the contents API; an unauthenticated
+  **repo-wide** code search is not available from the Worker, so a repo-wide
+  grep is intentionally not offered (and not faked). Use `list_repo_dir` /
+  `repo_path_exists` to locate the file first.
+- `route_exists` confirms presence in the **published OpenAPI surface**. A route
+  absent from it is reported as *unconfirmed* (treat as SPECULATIVE), not as
+  hard proof that the Worker has no such internal route. This is sufficient to
+  kill the fabricated-endpoint class while staying honest about its scope.
+
 ---
 
 ## Composition: the `autonomous-ops-v1` Program
 
-The five signatures compose into one DSPy-style Program with a fixed execution
+The signatures compose into one DSPy-style Program with a fixed execution
 order. The Program metric is **"zero unforced errors per 24-hour cycle"** — any
 gate violation is a failed cycle, and the GEPA optimizer is constrained so the
 metric is zero whenever any required evidence ref is missing for the cycle.
@@ -180,7 +238,8 @@ Cycle Start
   │     └── any anomaly → must reach GROUNDED before proposing a fix
   ├── S3 issue-close-safe        (every merge-orchestrator pass)
   ├── S4 command-execution-source-verified (before every command proposal)
-  └── S5 merge-deploy-gate       (every deploy batch)
+  ├── S5 merge-deploy-gate       (every deploy batch)
+  └── S6 operator-grounded-assertion (before naming ANY command/path/script/endpoint)
 ```
 
 ### Overseer evidence packet (required each cycle)
@@ -197,7 +256,8 @@ exist:
     "diagnosis-grounding": { state, evidenceRefs, activeDiagnoses },
     "issue-close-safe": { state, evidenceRefs, closedIssues, blockedEpics },
     "command-execution":{ state, evidenceRefs, lastProposedCommand },
-    "merge-deploy":     { state, evidenceRefs, mainStatus, lastDeployHash }
+    "merge-deploy":     { state, evidenceRefs, mainStatus, lastDeployHash },
+    "grounded-assertion": { state, evidenceRefs, lastArtifactRef, lastArtifactKind }
   }
 }
 ```
@@ -221,8 +281,17 @@ the right points:
 3. **Register signatures.** Each becomes a `program_signature` contribution in
    the Signature Lookup Service; evidence refs are written through the existing
    Action Submission evidence-only boundary.
-4. **Cycle report gating.** The watcher's cycle report requires all five
-   signature states before it can be emitted.
+4. **Cycle report gating.** The watcher's cycle report requires every
+   signature state before it can be emitted.
+5. **Grounding tools (S6, landed).** The S6 evidence refs are produced by three
+   owner-scoped operator grounding tools in
+   `apps/openagents.com/workers/api/src/artanis-operator-tools.ts` —
+   `repo_path_exists`, `repo_grep`, and `route_exists` — wired into the default
+   operator tool table (`makeArtanisOperatorTools`) and the operator system
+   prompt's GROUNDED-ASSERTION RULE. They read the real repo (GitHub contents
+   API) and the real OpenAPI route registry (`openAgentsOpenApiDocument()`), so
+   Artanis can verify an artifact exists before asserting it instead of inventing
+   it from memory.
 
 GEPA optimization (bounded scheduled runner,
 `docs/artanis/2026-06-08-bounded-gepa-scheduled-runner.md`) tunes the Program

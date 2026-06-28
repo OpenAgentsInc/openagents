@@ -35,6 +35,9 @@ import {
   makeArtanisPostForumUpdateTool,
   makeArtanisReadGithubIssueTool,
   makeArtanisReadRepoFileTool,
+  makeArtanisRepoGrepTool,
+  makeArtanisRepoPathExistsTool,
+  makeArtanisRouteExistsTool,
   makeArtanisTriggerSyntheticLoadTool,
   makeArtanisUpdateUnsupportedRequestTool,
   normalizeArtanisGlmFleetStatus,
@@ -205,6 +208,228 @@ describe('#6365 list_repo_dir', () => {
     expect(urls[0]).toBe(
       'https://api.github.com/repos/OpenAgentsInc/openagents/contents/?ref=main',
     )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Signature 6 — operator-grounded-assertion grounding tools.
+// ---------------------------------------------------------------------------
+
+describe('Signature 6 — repo_path_exists', () => {
+  test('a known-existing file reads GROUNDED / EXISTS (file)', async () => {
+    // apps/pylon/scripts/multi-session-campaign.ts is a REAL file in the repo.
+    const { fetchImpl, urls } = stubFetch(
+      () =>
+        new Response(
+          JSON.stringify({ type: 'file', size: 4096, encoding: 'base64' }),
+          { status: 200 },
+        ),
+    )
+    const tool = makeArtanisRepoPathExistsTool({ fetchImpl })
+    const result = await Effect.runPromise(
+      tool.execute({ path: 'apps/pylon/scripts/multi-session-campaign.ts' }),
+    )
+    expect(result).toContain('GROUNDED')
+    expect(result).toContain('EXISTS (file')
+    expect(urls[0]).toBe(
+      'https://api.github.com/repos/OpenAgentsInc/openagents/contents/apps/pylon/scripts/multi-session-campaign.ts?ref=main',
+    )
+  })
+
+  test('a fabricated script reads "does NOT exist" / UNGROUNDED, never invented', async () => {
+    // scripts/distill_traces.ts does NOT exist — the exact fabrication class.
+    const { fetchImpl } = stubFetch(
+      () => new Response('Not Found', { status: 404 }),
+    )
+    const tool = makeArtanisRepoPathExistsTool({ fetchImpl })
+    const result = await Effect.runPromise(
+      tool.execute({ path: 'scripts/distill_traces.ts' }),
+    )
+    expect(result).toContain('does NOT exist')
+    expect(result).toContain('UNGROUNDED')
+    expect(result).toContain('SPECULATIVE')
+  })
+
+  test('a directory reads EXISTS (directory)', async () => {
+    const { fetchImpl } = stubFetch(
+      () =>
+        new Response(JSON.stringify([{ name: 'x.ts', type: 'file' }]), {
+          status: 200,
+        }),
+    )
+    const tool = makeArtanisRepoPathExistsTool({ fetchImpl })
+    const result = await Effect.runPromise(
+      tool.execute({ path: 'apps/pylon/scripts' }),
+    )
+    expect(result).toContain('EXISTS (directory)')
+  })
+
+  test('a secret path is blocked and never fetched', async () => {
+    const { fetchImpl, urls } = stubFetch(
+      () => new Response('SHOULD NOT BE READ', { status: 200 }),
+    )
+    const tool = makeArtanisRepoPathExistsTool({ fetchImpl })
+    const result = await Effect.runPromise(
+      tool.execute({ path: '.secrets/tailnet.env' }),
+    )
+    expect(result).toContain('blocked')
+    expect(urls).toHaveLength(0)
+  })
+
+  test('invalid arguments return an honest message, not a throw', async () => {
+    const { fetchImpl } = stubFetch(() => new Response('', { status: 200 }))
+    const tool = makeArtanisRepoPathExistsTool({ fetchImpl })
+    const result = await Effect.runPromise(tool.execute({ notPath: 1 }))
+    expect(result).toContain('invalid arguments')
+  })
+})
+
+describe('Signature 6 — repo_grep', () => {
+  test('returns GROUNDED matching lines when the pattern is present', async () => {
+    const file =
+      'export const MULTI_SESSION_FLAG = "--sessions"\nfunction run() {}\n'
+    const { fetchImpl } = stubFetch(
+      () => new Response(githubFileJson(file), { status: 200 }),
+    )
+    const tool = makeArtanisRepoGrepTool({ fetchImpl })
+    const result = await Effect.runPromise(
+      tool.execute({
+        path: 'apps/pylon/scripts/multi-session-campaign.ts',
+        pattern: 'MULTI_SESSION_FLAG',
+      }),
+    )
+    expect(result).toContain('GROUNDED')
+    expect(result).toContain('1: export const MULTI_SESSION_FLAG')
+  })
+
+  test('a stub-style file with no match reads UNGROUNDED for that pattern', async () => {
+    // Models a STUB: the file exists but does not carry the recommended flag.
+    const stub = '// TODO: implement multi-session campaign\nexport {}\n'
+    const { fetchImpl } = stubFetch(
+      () => new Response(githubFileJson(stub), { status: 200 }),
+    )
+    const tool = makeArtanisRepoGrepTool({ fetchImpl })
+    const result = await Effect.runPromise(
+      tool.execute({
+        path: 'apps/pylon/scripts/multi-session-campaign.ts',
+        pattern: '--distill-traces',
+      }),
+    )
+    expect(result).toContain('no match')
+    expect(result).toContain('UNGROUNDED')
+  })
+
+  test('a fabricated file path reads "file not found", never an invented match', async () => {
+    const { fetchImpl } = stubFetch(
+      () => new Response('Not Found', { status: 404 }),
+    )
+    const tool = makeArtanisRepoGrepTool({ fetchImpl })
+    const result = await Effect.runPromise(
+      tool.execute({ path: 'scripts/distill_traces.ts', pattern: 'main' }),
+    )
+    expect(result).toContain('file not found')
+  })
+
+  test('an invalid regex falls back to a literal substring match (no throw)', async () => {
+    const file = 'const prices = cost[0]\n'
+    const { fetchImpl } = stubFetch(
+      () => new Response(githubFileJson(file), { status: 200 }),
+    )
+    const tool = makeArtanisRepoGrepTool({ fetchImpl })
+    // "cost[" is an invalid regex (unterminated character class); the tool must
+    // not throw and should match it as a literal substring instead.
+    const result = await Effect.runPromise(
+      tool.execute({ path: 'docs/x.md', pattern: 'cost[' }),
+    )
+    expect(result).toContain('GROUNDED')
+    expect(result).toContain('1: const prices = cost[0]')
+  })
+
+  test('a missing pattern returns an honest message', async () => {
+    const { fetchImpl } = stubFetch(() => new Response('', { status: 200 }))
+    const tool = makeArtanisRepoGrepTool({ fetchImpl })
+    const result = await Effect.runPromise(
+      tool.execute({ path: 'docs/x.md' }),
+    )
+    expect(result).toContain('invalid arguments')
+  })
+})
+
+describe('Signature 6 — route_exists', () => {
+  // A fake OpenAPI route registry: real-shaped paths -> { method: operation }.
+  const fakeRegistry = {
+    '/api/v1/chat/completions': { post: { operationId: 'chat' } },
+    '/api/public/product-promises': { get: { operationId: 'promises' } },
+    '/api/agents/{agentId}': { get: { operationId: 'agent' } },
+  } as const
+  const fakeLoader = () => Effect.succeed(fakeRegistry)
+
+  test('a registered method+path reads GROUNDED', async () => {
+    const tool = makeArtanisRouteExistsTool({ loadRoutePaths: fakeLoader })
+    const result = await Effect.runPromise(
+      tool.execute({ method: 'POST', path: '/api/v1/chat/completions' }),
+    )
+    expect(result).toContain('GROUNDED')
+    expect(result).toContain('registered route')
+  })
+
+  test('a fabricated admin-mint endpoint reads "NOT in the OpenAPI route registry" / UNGROUNDED', async () => {
+    const tool = makeArtanisRouteExistsTool({ loadRoutePaths: fakeLoader })
+    const result = await Effect.runPromise(
+      tool.execute({ method: 'POST', path: '/api/admin/khala/mint' }),
+    )
+    expect(result).toContain('NOT in the OpenAPI route registry')
+    expect(result).toContain('UNGROUNDED')
+    expect(result).toContain('SPECULATIVE')
+  })
+
+  test('a known path with the wrong method reads UNGROUNDED for that method', async () => {
+    const tool = makeArtanisRouteExistsTool({ loadRoutePaths: fakeLoader })
+    const result = await Effect.runPromise(
+      tool.execute({ method: 'DELETE', path: '/api/v1/chat/completions' }),
+    )
+    expect(result).toContain('is NOT registered')
+    expect(result).toContain('UNGROUNDED')
+  })
+
+  test('a concrete path matches a templated registry route', async () => {
+    const tool = makeArtanisRouteExistsTool({ loadRoutePaths: fakeLoader })
+    const result = await Effect.runPromise(
+      tool.execute({ method: 'GET', path: '/api/agents/123' }),
+    )
+    expect(result).toContain('GROUNDED')
+    expect(result).toContain('/api/agents/{agentId}')
+  })
+
+  test('a non-absolute path is blocked', async () => {
+    const tool = makeArtanisRouteExistsTool({ loadRoutePaths: fakeLoader })
+    const result = await Effect.runPromise(
+      tool.execute({ method: 'GET', path: 'api/v1/models' }),
+    )
+    expect(result).toContain('blocked')
+  })
+
+  test('an unknown method is rejected as invalid', async () => {
+    const tool = makeArtanisRouteExistsTool({ loadRoutePaths: fakeLoader })
+    const result = await Effect.runPromise(
+      tool.execute({ method: 'FETCH', path: '/api/v1/models' }),
+    )
+    expect(result).toContain('not a known HTTP method')
+  })
+
+  test('the default loader reads the REAL OpenAPI document (a real route is GROUNDED)', async () => {
+    // No injected loader: this exercises the production path against the real
+    // openAgentsOpenApiDocument(). GET /AGENTS.md is a real registered route.
+    const tool = makeArtanisRouteExistsTool()
+    const real = await Effect.runPromise(
+      tool.execute({ method: 'GET', path: '/AGENTS.md' }),
+    )
+    expect(real).toContain('GROUNDED')
+    // And a fabricated route against the REAL document reads UNGROUNDED.
+    const fake = await Effect.runPromise(
+      tool.execute({ method: 'POST', path: '/api/admin/khala/mint' }),
+    )
+    expect(fake).toContain('UNGROUNDED')
   })
 })
 
@@ -2728,6 +2953,9 @@ describe('makeArtanisOperatorTools default table', () => {
       'post_forum_update',
       'read_github_issue',
       'read_repo_file',
+      'repo_grep',
+      'repo_path_exists',
+      'route_exists',
       'trigger_synthetic_load',
       'update_unsupported_request',
     ])
