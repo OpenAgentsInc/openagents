@@ -1066,6 +1066,25 @@ describe('docs and blog routes', () => {
       ).toExist(),
       Scene.expect(Scene.text('Multi-Pylon proof')).toExist(),
       Scene.expect(Scene.text('1 / 2 distinct Pylons')).toExist(),
+      Scene.expect(Scene.text('Join the fleet')).toExist(),
+      Scene.expect(
+        Scene.text('Have Codex or Claude? Add your local capacity.'),
+      ).toExist(),
+      Scene.expect(Scene.text('npm install -g @openagentsinc/khala')).toExist(),
+      Scene.expect(Scene.text('khala fleet connect')).toExist(),
+      Scene.expect(Scene.text('khala fleet status')).toExist(),
+      Scene.expect(Scene.role('link', { name: 'Install Pylon' })).toHaveAttr(
+        'href',
+        '/download',
+      ),
+      Scene.expect(
+        Scene.role('link', { name: 'Read contributor docs' }),
+      ).toHaveAttr('href', '/docs/get-paid-to-code'),
+      Scene.expect(
+        Scene.text(
+          'Accounts stay in isolated local homes. Public projections use generic refs only; emails, keys, prompts, raw events, and file contents stay off this page.',
+        ),
+      ).toExist(),
       Scene.expect(Scene.text('Forum bitcoin')).toExist(),
       Scene.expect(Scene.text('2 content rewards')).toExist(),
       Scene.expect(
@@ -1088,6 +1107,7 @@ describe('docs and blog routes', () => {
       Scene.expect(Scene.text('authGrantRef')).toBeAbsent(),
       Scene.expect(Scene.text('payloadJson')).toBeAbsent(),
       Scene.expect(Scene.text('hiddenSteering')).toBeAbsent(),
+      Scene.expect(Scene.text('auth.json')).toBeAbsent(),
     )
   })
 

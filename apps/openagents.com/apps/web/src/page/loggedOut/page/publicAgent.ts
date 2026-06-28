@@ -900,6 +900,171 @@ const artanisOmegaReleaseGateView = (
   )
 }
 
+const fleetCommandRow = (command: string, detail: string): Html => {
+  const h = html<Message>()
+
+  return h.li(
+    [
+      Ui.className<Message>(
+        'grid gap-1 border-b border-[#1b1b1b] py-3 last:border-b-0',
+      ),
+    ],
+    [
+      h.code(
+        [
+          Ui.className<Message>(
+            'break-words text-[0.8125rem] font-semibold text-[#f1efe8]',
+          ),
+        ],
+        [command],
+      ),
+      h.div([Ui.className<Message>('text-[0.75rem] text-white/45')], [
+        detail,
+      ]),
+    ],
+  )
+}
+
+const artanisFleetRecruitmentView = (): Html => {
+  const h = html<Message>()
+  const commands = [
+    {
+      command: 'npm install -g @openagentsinc/khala',
+      detail: 'Install the paste-free fleet connector.',
+    },
+    {
+      command: 'khala fleet connect',
+      detail:
+        'Link a Codex account with device login; repeat for more distinct accounts.',
+    },
+    {
+      command: 'khala fleet status',
+      detail: 'Confirm ready accounts and generic fleet refs.',
+    },
+  ]
+
+  return h.section(
+    [Ui.className<Message>('grid gap-4 border-b border-[#222] pb-6')],
+    [
+      h.div(
+        [
+          Ui.className<Message>(
+            'flex flex-wrap items-end justify-between gap-3',
+          ),
+        ],
+        [
+          h.div(
+            [Ui.className<Message>('grid gap-2')],
+            [
+              h.div(
+                [Ui.className<Message>(Ui.eyebrowClass)],
+                ['Join the fleet'],
+              ),
+              h.h2(
+                [
+                  Ui.className<Message>(
+                    'text-xl font-semibold tracking-normal text-[#f1efe8]',
+                  ),
+                ],
+                ['Have Codex or Claude? Add your local capacity.'],
+              ),
+            ],
+          ),
+          h.a(
+            [
+              h.Href('/docs/get-paid-to-code'),
+              Ui.className<Message>(
+                'text-[0.75rem] text-white/55 underline-offset-4 hover:text-[#f1efe8] hover:underline',
+              ),
+            ],
+            ['Fleet contribution docs'],
+          ),
+        ],
+      ),
+      h.div(
+        [
+          Ui.className<Message>(
+            'grid gap-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]',
+          ),
+        ],
+        [
+          h.div(
+            [
+              Ui.className<Message>(
+                'grid gap-3 border border-[#222] bg-[#010102] p-3',
+              ),
+            ],
+            [
+              h.div(
+                [Ui.className<Message>('text-[0.75rem] text-white/45')],
+                ['Fleet linking'],
+              ),
+              h.p(
+                [
+                  Ui.className<Message>(
+                    'max-w-3xl text-[0.875rem] leading-6 text-[#f1efe8]',
+                  ),
+                ],
+                [
+                  'Artanis can burn down public issue backlogs with caller-owned Codex and Claude capacity. Connect a local account, publish readiness, and Khala can route bounded public repository work through your Pylon.',
+                ],
+              ),
+              h.div(
+                [Ui.className<Message>('flex flex-wrap gap-2')],
+                [
+                  h.a(
+                    [
+                      h.Href('/download'),
+                      Ui.className<Message>(
+                        'border border-[#f1efe8] bg-[#f1efe8] px-3 py-2 text-[0.75rem] font-semibold text-black hover:bg-white',
+                      ),
+                    ],
+                    ['Install Pylon'],
+                  ),
+                  h.a(
+                    [
+                      h.Href('/docs/get-paid-to-code'),
+                      Ui.className<Message>(
+                        'border border-[#333] px-3 py-2 text-[0.75rem] text-white/70 underline-offset-4 hover:border-white/35 hover:text-[#f1efe8] hover:underline',
+                      ),
+                    ],
+                    ['Read contributor docs'],
+                  ),
+                ],
+              ),
+            ],
+          ),
+          h.div(
+            [
+              Ui.className<Message>(
+                'grid gap-3 border border-[#222] bg-[#010102] p-3',
+              ),
+            ],
+            [
+              h.div(
+                [Ui.className<Message>('text-[0.75rem] text-white/45')],
+                ['Command path'],
+              ),
+              h.ol(
+                [Ui.className<Message>('grid')],
+                commands.map(({ command, detail }) =>
+                  fleetCommandRow(command, detail),
+                ),
+              ),
+              h.div(
+                [Ui.className<Message>('text-[0.75rem] text-white/35')],
+                [
+                  'Accounts stay in isolated local homes. Public projections use generic refs only; emails, keys, prompts, raw events, and file contents stay off this page.',
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    ],
+  )
+}
+
 const artanisReportLoadedView = (report: PublicArtanisReport): Html => {
   const h = html<Message>()
   const blockers = report.publicBlockerRefs.slice(0, 5)
@@ -1068,6 +1233,7 @@ const artanisReportLoadedView = (report: PublicArtanisReport): Html => {
       artanisPylonLaunchView(report.pylonLaunchCommunication),
       artanisOmegaReleaseGateView(report.pylonOmegaReleaseGate),
       artanisProductionLaunchGateView(report.productionLaunchGate),
+      artanisFleetRecruitmentView(),
       artanisForumRewardView(report.forumRewardVisibility),
       artanisForumRewardSmokeView(report.forumRewardSmoke),
       h.div(
