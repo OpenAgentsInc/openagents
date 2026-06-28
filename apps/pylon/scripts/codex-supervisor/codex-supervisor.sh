@@ -354,10 +354,17 @@ worker_loop() {
     done < <(sup_order_pool_by_priority "$start_idx" "${issues[@]}")
     [ "${#ordered[@]}" -gt 0 ] || ordered=("${issues[@]}")
 
+    # Concurrent-slot distinct-issue selection: ATOMICALLY CLAIM a distinct
+    # unlocked issue so two slots in the same cycle never pick the same one (the
+    # duplicate-dispatch under-fill bug). In addition to the existing lockout
+    # (skip CLOSED + open-PR issues), pick_and_claim_unlocked_issue skips any
+    # issue already claimed by another slot's in-flight assignment and reserves
+    # the chosen issue under SUP_CLAIM_TTL_SECS. N slots -> up to N distinct
+    # issues, restoring same-account parallelism across different issues.
     local issue
-    issue=$(pick_unlocked_issue 0 "${ordered[@]}")
+    issue=$(pick_and_claim_unlocked_issue 0 "${ordered[@]}")
     if [ -z "$issue" ]; then
-      log "slot=$slot LOCKOUT all backlog issues are closed or already have open PRs; backing off ${backoff}s"
+      log "slot=$slot LOCKOUT all backlog issues are closed, already have open PRs, or are claimed by other slots; backing off ${backoff}s"
       sleep "$backoff"
       backoff=$(( backoff * 2 )); [ "$backoff" -gt "$SUP_BACKOFF_MAX" ] && backoff="$SUP_BACKOFF_MAX"
       continue
@@ -374,6 +381,9 @@ worker_loop() {
     local commit fresh_main local_head
     fresh_main=$(supervisor_resolve_fresh_origin_main_sha "$SUP_REPO")
     if [ -z "$fresh_main" ]; then
+      # Pre-dispatch bail: release the claim so this issue is not parked while we
+      # never actually dispatched it.
+      sup_release_claim "$issue"
       log "slot=$slot SKIP could not resolve fresh origin/main sha for $SUP_REPO; not dispatching a stale base (anti-#6719)"
       sleep 15; continue
     fi
@@ -385,7 +395,7 @@ worker_loop() {
     # projected base is fresh main plus in-flight assignment branches.
     commit=$(sup_vmq_project_head "$REPO_ROOT" "$fresh_main" 2>/dev/null)
     [ -z "$commit" ] && commit="$fresh_main"
-    [ -z "$commit" ] && { sleep 15; continue; }
+    [ -z "$commit" ] && { sup_release_claim "$issue"; sleep 15; continue; }
 
     # Record the dispatch ATTEMPT timestamp (#6646) right before firing the
     # request, so last_dispatch_time advances every pick+dispatch cycle and a
@@ -411,6 +421,10 @@ worker_loop() {
 
     if grep -qiE '"ok": ?true|"closeout"|accepted' "$out" 2>/dev/null && [ "$rc" -eq 0 ]; then
       backoff="$SUP_BACKOFF_MIN"
+      # Keep the issue claimed (refresh TTL) so no other slot re-picks it while
+      # its PR/lockout state settles; the open-PR lockout then takes over and the
+      # claim eventually GCs.
+      sup_refresh_claim "$issue"
       log "slot=$slot acc=$acc issue=#$issue OK (rc=$rc)"
       continue
     fi
@@ -418,8 +432,19 @@ worker_loop() {
     # Refused / unavailable / rate-limited / error -> exponential backoff so the
     # pool settles at the login's real headroom.
     local sig="other"
-    grep -qiE '409|dispatch gate refused|target_pylon_unavailable' "$out" 2>/dev/null && sig="refused"
+    grep -qiE '409|dispatch gate refused|target_pylon_unavailable|duplicate_active_assignment' "$out" 2>/dev/null && sig="refused"
     grep -qiE '429|rate.?limit|too many requests|quota' "$out" 2>/dev/null && sig="rate_limited"
+    if [ "$sig" = "refused" ]; then
+      # The gate already has an active assignment for this issue (it is busy
+      # elsewhere). PARK it for the full claim TTL so the fleet stops hammering
+      # the same stuck issue (#6661/#6662) and other slots spread to distinct
+      # work; the claim GCs once the TTL elapses for a later retry.
+      sup_refresh_claim "$issue"
+    else
+      # Transient rate-limit/error on our side, not the issue's fault: release
+      # the claim so another (less throttled) slot/account can retry this issue.
+      sup_release_claim "$issue"
+    fi
     log "slot=$slot acc=$acc issue=#$issue NO-DISPATCH ($sig rc=$rc); backoff ${backoff}s"
     sleep "$backoff"
     backoff=$(( backoff * 2 )); [ "$backoff" -gt "$SUP_BACKOFF_MAX" ] && backoff="$SUP_BACKOFF_MAX"
