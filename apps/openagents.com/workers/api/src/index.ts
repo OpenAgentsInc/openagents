@@ -73,6 +73,7 @@ import {
   handleAgenticLaborProductApi,
   isAgenticLaborProductsEnabled,
 } from './agentic-labor-product-routes'
+import { handlePublicArtanisActivityApi } from './artanis-activity-routes'
 import { makeD1ArtanisAdminCloseoutReceiptStore } from './artanis-admin-closeout-receipts'
 import {
   runArtanisAdminTickScheduled,
@@ -11536,6 +11537,13 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {
     path: '/api/public/artanis/report',
     handler: (request, env) => handlePublicArtanisReportApi(request, env),
+  },
+  {
+    path: '/api/public/artanis/activity',
+    handler: (request, env) =>
+      handlePublicArtanisActivityApi(request, {
+        OPENAGENTS_DB: openAgentsDatabase(env),
+      }),
   },
   {
     path: '/api/public/labor-earnings',
