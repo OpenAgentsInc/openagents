@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest'
 
 import {
   ARTANIS_OPERATOR_EMPTY_REPLY_FALLBACK,
+  ARTANIS_OPERATOR_APPROVAL_GATE_REF,
   ARTANIS_OPERATOR_KHALA_MODEL,
   ARTANIS_OPERATOR_MAX_TOOL_ITERATIONS,
   ARTANIS_OPERATOR_SYSTEM_PROMPT,
@@ -696,6 +697,15 @@ describe('#6364 artanis operator bounded tool-calling loop', () => {
     // plan() ran (the public-safe plan was built) but nothing was executed.
     expect(planned).toEqual([{ objective: 'burn down #6320' }])
     expect(result.deferredToApprovalGate).toBe(true)
+    expect(result.pendingApprovalGates).toEqual([
+      {
+        gateRef: ARTANIS_OPERATOR_APPROVAL_GATE_REF,
+        gateSystem: 'artanis-approval-gates',
+        riskyActionKind: 'pylon_job_dispatch',
+        state: 'pending',
+        toolName: 'dispatch_codex_task',
+      },
+    ])
     expect(result.toolInvocations).toEqual([
       {
         deferredToApprovalGate: true,
@@ -786,6 +796,7 @@ describe('#6364 artanis operator bounded tool-calling loop', () => {
     // The gated tool ran (it really fired), and reports the created ref.
     expect(ran).toEqual([{ objective: 'burn down #6320' }])
     expect(result.deferredToApprovalGate).toBe(false)
+    expect(result.pendingApprovalGates).toEqual([])
     expect(result.toolInvocations).toEqual([
       {
         deferredToApprovalGate: false,
@@ -823,6 +834,15 @@ describe('#6364 artanis operator bounded tool-calling loop', () => {
     if ('error' in result) return
     expect(ran).toEqual([{ objective: 'burn down #6320' }])
     expect(result.deferredToApprovalGate).toBe(true)
+    expect(result.pendingApprovalGates).toEqual([
+      {
+        gateRef: ARTANIS_OPERATOR_APPROVAL_GATE_REF,
+        gateSystem: 'artanis-approval-gates',
+        riskyActionKind: 'pylon_job_dispatch',
+        state: 'pending',
+        toolName: 'dispatch_codex_task',
+      },
+    ])
     expect(result.toolInvocations).toEqual([
       {
         deferredToApprovalGate: true,

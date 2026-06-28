@@ -516,6 +516,7 @@ const artanisSseResponse = (turn: Readonly<{
   callerId: string
   deferredToApprovalGate: boolean
   iterations: number
+  pendingApprovalGates: unknown
   persona: unknown
   reply: string
   requestedModel: string
@@ -552,6 +553,7 @@ const artanisSseResponse = (turn: Readonly<{
         channelRef: ARTANIS_OPERATOR_CHANNEL_REF,
         deferredToApprovalGate: turn.deferredToApprovalGate,
         iterations: turn.iterations,
+        pendingApprovalGates: turn.pendingApprovalGates,
         persona: turn.persona,
         requestedModel: turn.requestedModel,
         servedModel: turn.servedModel,
@@ -757,6 +759,7 @@ export const makeOperatorArtanisChatRoutes = <
           deferredToApprovalGate: turn.deferredToApprovalGate,
           historicalMessageCount: historicalMessages.length,
           iterations: turn.iterations,
+          pendingApprovalGates: turn.pendingApprovalGates,
           persona: turn.persona,
           reply: turn.reply,
           requestedModel: turn.requestedModel,
