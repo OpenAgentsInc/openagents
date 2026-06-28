@@ -7,7 +7,7 @@ import type { Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
 
 import { userFacingCopy } from '../../../display-copy'
-import { friendlyRelativeTime } from '../../../time-format'
+import { currentUnixMs, friendlyRelativeTime } from '../../../time-format'
 import * as Ui from '../../../ui'
 import type { Message } from '../message'
 import type {
@@ -67,6 +67,52 @@ const formatCompactNumber = (value: number): string =>
     maximumFractionDigits: value >= 10_000 ? 1 : 0,
     notation: 'compact',
   }).format(value)
+
+// Freshness windows for the LIVE /artanis recruitment console. This surface
+// must never present old data under a live frame, so a stale goal or a stale
+// per-goal activity row is dropped rather than shown as if current.
+const GOAL_FRESH_WINDOW_MS = 24 * 60 * 60 * 1000
+const ACTIVITY_FRESH_WINDOW_MS = 60 * 60 * 1000
+
+const parseMs = (value: string | null | undefined): number | null => {
+  if (value === null || value === undefined) {
+    return null
+  }
+  const parsed = Date.parse(value)
+  return Number.isNaN(parsed) ? null : parsed
+}
+
+// Treat a public goal as fresh only when it was updated within the window. An
+// unparseable timestamp fails closed (stale) so we never render an
+// unbounded-age "current goal" with a 23-day-old run id.
+const isGoalFresh = (goal: PublicAgentGoal | null): boolean => {
+  if (goal === null) {
+    return false
+  }
+  const updatedMs = parseMs(goal.updatedAt)
+  if (updatedMs === null) {
+    return false
+  }
+  return currentUnixMs() - updatedMs <= GOAL_FRESH_WINDOW_MS
+}
+
+// Strip raw operational jargon (doc paths, "at commit <hash>", bare commit
+// hashes, and run/goal ids) from a public objective so the recruitment console
+// shows a human goal, never internal refs.
+const sanitizeObjective = (value: string): string =>
+  value
+    .replace(
+      /\bfollowing\s+\S+\.md(?:\s+at\s+commit\s+[0-9a-f]{7,40})?/gi,
+      '',
+    )
+    .replace(/\bat\s+commit\s+[0-9a-f]{7,40}/gi, '')
+    .replace(/\b[\w./-]+\.md\b/gi, '')
+    .replace(/\b(?:run|commit|goal)[ _-]?[0-9a-f]{6,}\b/gi, '')
+    .replace(/\b[0-9a-f]{7,40}\b/gi, '')
+    .replace(/\(\s*\)/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s+([.,;:])/g, '$1')
+    .trim()
 
 const tokenPaceDaySeconds = 24 * 60 * 60
 
@@ -845,7 +891,7 @@ const statsMetric = (label: string, value: string, detail: string): Html => {
   return h.div(
     [
       Ui.className<Message>(
-        'grid min-h-28 content-between gap-3 border border-[#222] bg-[#010102] p-3',
+        'grid min-h-28 min-w-0 content-between gap-3 overflow-hidden border border-[#222] bg-[#010102] p-3',
       ),
     ],
     [
@@ -856,12 +902,15 @@ const statsMetric = (label: string, value: string, detail: string): Html => {
       h.div(
         [
           Ui.className<Message>(
-            'tabular-nums text-3xl font-semibold tracking-normal text-[#f1efe8]',
+            'min-w-0 break-words text-2xl font-semibold leading-tight tracking-normal text-[#f1efe8] tabular-nums sm:text-3xl',
           ),
         ],
         [value],
       ),
-      h.div([Ui.className<Message>('text-[0.75rem] text-white/35')], [detail]),
+      h.div(
+        [Ui.className<Message>('break-words text-[0.75rem] text-white/35')],
+        [detail],
+      ),
     ],
   )
 }
@@ -946,8 +995,12 @@ const pylonStatsView = (model: PublicPylonStatsModel): Html => {
           ),
         ],
       ),
+      // This panel lives in the narrow right rail of the /artanis 3-column
+      // layout (≈18rem at xl), so a 5-up metric row would crush values like
+      // "v0.2.5+" and "Ready" into per-character wraps. Cap the grid so each
+      // metric card stays wide enough to render its value on one line.
       h.div(
-        [Ui.className<Message>('grid gap-2 sm:grid-cols-2 lg:grid-cols-5')],
+        [Ui.className<Message>('grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-2')],
         [
           statsMetric(
             'Pylons online',
@@ -1214,11 +1267,6 @@ const fleetExcludedKinds = new Set<PublicActivityTimelineEvent['kind']>([
   'projection_gap',
 ])
 
-const parseTimestampMs = (value: string): number | null => {
-  const parsed = Date.parse(value)
-  return Number.isNaN(parsed) ? null : parsed
-}
-
 const fleetFeedEvents = (
   events: ReadonlyArray<PublicActivityTimelineEvent>,
 ): ReadonlyArray<PublicActivityTimelineEvent> =>
@@ -1236,8 +1284,8 @@ const fleetFeedIsFresh = (
   if (newest === undefined) {
     return false
   }
-  const newestMs = parseTimestampMs(newest.ts)
-  const generatedMs = parseTimestampMs(generatedAt)
+  const newestMs = parseMs(newest.ts)
+  const generatedMs = parseMs(generatedAt)
   if (newestMs === null || generatedMs === null) {
     return true
   }
@@ -1248,12 +1296,12 @@ const fleetFreshCount = (
   events: ReadonlyArray<PublicActivityTimelineEvent>,
   generatedAt: string,
 ): number => {
-  const generatedMs = parseTimestampMs(generatedAt)
+  const generatedMs = parseMs(generatedAt)
   if (generatedMs === null) {
     return events.length
   }
   return events.filter(event => {
-    const ms = parseTimestampMs(event.ts)
+    const ms = parseMs(event.ts)
     return ms !== null && generatedMs - ms <= FLEET_FEED_FRESH_WINDOW_MS
   }).length
 }
@@ -1492,13 +1540,32 @@ const fleetShippingMessageView = (message: string): Html => {
   )
 }
 
-const fleetShippingErrorView = (error: string): Html => {
+// A failed timeline fetch is NOT a dead end on this recruitment surface. Show
+// an honest reconnecting state (never the scary "Unavailable" wall): the feed
+// is transiently unreachable and fresh fleet work returns on the next load.
+const fleetShippingReconnectingView = (): Html => {
   const h = html<Message>()
   return h.section(
     [Ui.className<Message>('grid gap-4 border-b border-[#222] pb-6')],
     [
-      fleetHeader(fleetStatusBadge('Unavailable', 'muted')),
-      h.p([Ui.className<Message>('text-sm text-[#ff6f00]')], [error]),
+      fleetHeader(fleetStatusBadge('Reconnecting', 'muted')),
+      h.div(
+        [
+          h.Role('status'),
+          Ui.className<Message>(
+            'flex items-center gap-3 border border-[#222] bg-[#010102] p-4 text-sm text-white/45',
+          ),
+        ],
+        [
+          h.span([], ['▶']),
+          h.span(
+            [],
+            [
+              'Reconnecting to the live fleet feed. Fresh fleet work will appear here as it ships.',
+            ],
+          ),
+        ],
+      ),
     ],
   )
 }
@@ -1508,7 +1575,7 @@ const fleetShippingView = (model: PublicActivityTimelineModel): Html => {
     return fleetShippingLoadedView(model.envelope)
   }
   if (model._tag === 'PublicActivityTimelineFailed') {
-    return fleetShippingErrorView(model.error)
+    return fleetShippingReconnectingView()
   }
   return fleetShippingMessageView('Loading live fleet activity.')
 }
@@ -1565,19 +1632,33 @@ const publicAgentActivityView = (
   events: ReadonlyArray<PublicAgentGoalEvent>,
 ): Html => {
   const h = html<Message>()
+  const now = currentUnixMs()
+  // Freshness guard: never render an old wall of rows as if it were live. Keep
+  // only rows inside the activity window; rows whose timestamp cannot be parsed
+  // (e.g. the synthetic load-error row) are kept so genuine errors still
+  // surface.
+  const fresh = events.filter(event => {
+    const ms = parseMs(event.createdAt)
+    return ms === null || now - ms <= ACTIVITY_FRESH_WINDOW_MS
+  })
 
   return h.section(
     [Ui.className<Message>('grid gap-3')],
     [
       h.div([Ui.className<Message>(Ui.eyebrowClass)], ['Activity']),
-      Array.match(events, {
+      Array.match(fresh.slice(0, 20), {
         onEmpty: () =>
-          h.p(
-            [Ui.className<Message>('text-sm text-white/45')],
-            ['No public activity has been published yet.'],
+          h.div(
+            [
+              h.Role('status'),
+              Ui.className<Message>(
+                'flex items-center gap-3 border border-[#222] bg-[#010102] p-4 text-sm text-white/45',
+              ),
+            ],
+            [h.span([], ['▶']), h.span([], ['No fresh activity right now.'])],
           ),
-        onNonEmpty: events =>
-          h.ol([Ui.className<Message>('grid')], events.map(eventRow)),
+        onNonEmpty: rows =>
+          h.ol([Ui.className<Message>('grid')], rows.map(eventRow)),
       }),
     ],
   )
@@ -1781,13 +1862,20 @@ const artanisConsoleHeader = (
 
 const artanisLoadedView = (
   goal: PublicAgentGoal | null,
-  events: ReadonlyArray<PublicAgentGoalEvent>,
   pylonStats: PublicPylonStatsModel,
   activityTimeline: PublicActivityTimelineModel,
   khalaTokensServedHistory: PublicKhalaTokensServedHistoryModel,
 ): Html => {
   const h = html<Message>()
-  const displayedObjective = userFacingCopy(goal?.objective ?? campaignObjective)
+  // Freshness-gate the goal: a stale goal (e.g. updated 23 days ago) must not
+  // drive the live console header, the current-goal panel, or the token-pace
+  // meter, so we fall back to the campaign objective with no stale run id.
+  const freshGoal = isGoalFresh(goal) ? goal : null
+  const sanitizedObjective = sanitizeObjective(
+    userFacingCopy(freshGoal?.objective ?? campaignObjective),
+  )
+  const displayedObjective =
+    sanitizedObjective.length > 0 ? sanitizedObjective : campaignObjective
 
   return h.main(
     [
@@ -1798,7 +1886,7 @@ const artanisLoadedView = (
       ),
     ],
     [
-      artanisConsoleHeader(goal, pylonStats),
+      artanisConsoleHeader(freshGoal, pylonStats),
       // HERO: the live token-burn Pulse is the strongest signal that an
       // autonomous fleet is building in real time, so it spans the console.
       artanisPulseView(khalaTokensServedHistory),
@@ -1809,12 +1897,12 @@ const artanisLoadedView = (
           ),
         ],
         [
+          // The stale per-goal "ACTIVITY" wall is gone: the live fleet-shipping
+          // feed is the single source of recent work. The left rail now shows
+          // only the (freshness-gated) current goal.
           h.div(
             [Ui.className<Message>('grid content-start gap-5')],
-            [
-              publicAgentGoalView('Artanis', goal, displayedObjective),
-              publicAgentActivityView(events),
-            ],
+            [publicAgentGoalView('Artanis', freshGoal, displayedObjective)],
           ),
           // Live fleet-shipping feed replaces the stale status report + the
           // 11-day-old admin-tick decision log.
@@ -1851,7 +1939,6 @@ const loadedView = (
   if (agentRef === 'artanis') {
     return artanisLoadedView(
       goal,
-      events,
       pylonStats,
       activityTimeline,
       khalaTokensServedHistory,
@@ -1973,7 +2060,6 @@ export const view = (model: Model, agentRef: string): Html => {
   if (agentRef === 'artanis') {
     return artanisLoadedView(
       null,
-      [],
       model.publicPylonStats,
       model.publicActivityTimeline,
       model.publicKhalaTokensServedHistory,

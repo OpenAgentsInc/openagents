@@ -597,6 +597,44 @@ describe('public activity timeline route', () => {
     )
   })
 
+  test('drops a single unsafe event instead of failing the whole feed', async () => {
+    // Regression: a recent forum event whose actorRef carries an "@" (matched
+    // by the public-safe material guard) must NOT 500 the entire activity feed.
+    // The offending event is dropped; the rest of the timeline still serves a
+    // safe 200 envelope.
+    const response = await route('/api/public/activity-timeline?limit=200', {
+      ...fullInput(),
+      forumStore: {
+        listRecentActivity: async () =>
+          (await forumStore().listRecentActivity(48)).map((record, index) =>
+            index === 0
+              ? { ...record, actorRef: 'ops@example.com' }
+              : record,
+          ),
+      },
+    })
+    const body = await decode(response)
+
+    expect(response.status).toBe(200)
+    expect(publicActivityTimelineHasUnsafeMaterial(body)).toBe(false)
+    // The unsafe forum topic event is excluded.
+    expect(
+      body.events.some(
+        event =>
+          event.eventRef ===
+          'event.public.forum_topic.forum.topic.public.timeline.1',
+      ),
+    ).toBe(false)
+    // The remaining safe forum post event still projects.
+    expect(
+      body.events.some(
+        event =>
+          event.eventRef ===
+          'event.public.forum_post.forum.post.public.timeline.1',
+      ),
+    ).toBe(true)
+  })
+
   test('stream omits private source payload material from public frames', async () => {
     const response = await streamRoute('/api/public/activity-timeline/stream?limit=200', {
       ...fullInput(),

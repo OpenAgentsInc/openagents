@@ -1,6 +1,7 @@
 import {
   PUBLIC_ACTIVITY_TIMELINE_SCHEMA_VERSION,
   assertPublicActivityTimelineEnvelopeSafe,
+  assertPublicActivityTimelineEventSafe,
   orderPublicActivityTimelineEvents,
   publicActivityTimelineCursorForEvent,
   publicActivityTimelineEventKinds,
@@ -1308,7 +1309,22 @@ export const buildPublicActivityTimelineEnvelope = async (
   }
 
   const ordered = orderPublicActivityTimelineEvents(allEvents)
-  const filtered = applyQuery(ordered, query)
+  const queryFiltered = applyQuery(ordered, query)
+  // Final per-event safety net: a single event that slips past the per-source
+  // sanitizers (residual unsafe material, missing source/blocker refs, a
+  // receipt-source requirement, or a cursor mismatch) must NEVER 500 the whole
+  // public feed. Drop the offending event(s) and keep serving the rest of the
+  // timeline. Dropping can only make the projection safer, and it preserves the
+  // "honest, public-safe envelope, never a hard failure" contract for this
+  // surface. The envelope-level assert below remains as a cross-event backstop.
+  const filtered = queryFiltered.filter(event => {
+    try {
+      assertPublicActivityTimelineEventSafe(event)
+      return true
+    } catch {
+      return false
+    }
+  })
   const page = filtered.slice(0, query.limit)
   const envelope: PublicActivityTimelineEnvelope = {
     events: page,
