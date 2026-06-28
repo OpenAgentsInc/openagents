@@ -16,10 +16,17 @@ export type VirtualMergeQueueCandidate = {
   readonly issueNumber: number
   readonly baseCommit: string
   readonly patchCommit: string
+  readonly changedFiles?: ReadonlyArray<VirtualMergeQueueFileChange>
+  readonly signedOperatorOverrideRef?: string | undefined
   readonly verificationPassed: boolean
   readonly issueOpen: boolean
   readonly hasOpenPullRequest: boolean
   readonly queuedAt: string
+}
+
+export type VirtualMergeQueueFileChange = {
+  readonly path: string
+  readonly status: "added" | "modified" | "deleted" | "renamed"
 }
 
 export type VirtualMergeQueueReadyEntry = {
@@ -35,6 +42,7 @@ export type VirtualMergeQueueBlockedEntry = {
   readonly candidateRef: string
   readonly issueNumber: number
   readonly blockedReasonRef: VirtualMergeQueueBlockedReasonRef
+  readonly status: "blocked" | "needs-rebase"
   readonly detail: string
 }
 
@@ -45,6 +53,8 @@ export type VirtualMergeQueueBlockedReasonRef =
   | "virtual_merge_queue.blocked.stale_base"
   | "virtual_merge_queue.blocked.invalid_commit"
   | "virtual_merge_queue.blocked.duplicate_issue"
+  | "virtual_merge_queue.blocked.protected_path_deleted"
+  | "virtual_merge_queue.blocked.mass_deletion_threshold"
 
 export type VirtualMergeQueueProjection = {
   readonly actualHead: string
@@ -56,6 +66,16 @@ export type VirtualMergeQueueProjection = {
 }
 
 const gitCommitShaPattern = /^[a-f0-9]{40}$/i
+const safePathPattern = /^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9._/@+-]+(?:\/[A-Za-z0-9._/@+-]+)*$/
+const signedOperatorOverridePattern = /^override\.signed\.operator\.[A-Za-z0-9._:-]{6,160}$/
+const massDeletionThreshold = 5
+const protectedDeletedRootPaths = new Set([
+  ".githooks",
+  "INVARIANTS.md",
+  "PRODUCT.md",
+  "package.json",
+  "tsconfig.json",
+])
 
 function stableRef(prefix: string, value: string): string {
   return `${prefix}.${createHash("sha256").update(value).digest("hex").slice(0, 24)}`
@@ -63,6 +83,25 @@ function stableRef(prefix: string, value: string): string {
 
 function isCommitSha(value: string): boolean {
   return gitCommitShaPattern.test(value)
+}
+
+function hasSignedOperatorOverride(candidate: VirtualMergeQueueCandidate): boolean {
+  return candidate.signedOperatorOverrideRef !== undefined &&
+    signedOperatorOverridePattern.test(candidate.signedOperatorOverrideRef)
+}
+
+function deletedPaths(candidate: VirtualMergeQueueCandidate): ReadonlyArray<string> {
+  return (candidate.changedFiles ?? [])
+    .filter((change) => change.status === "deleted")
+    .map((change) => change.path.trim())
+    .filter((path) => path.length > 0)
+}
+
+function isProtectedDeletion(path: string): boolean {
+  return path.startsWith("apps/") ||
+    path.startsWith("clients/") ||
+    protectedDeletedRootPaths.has(path) ||
+    path.startsWith(".githooks/")
 }
 
 function candidateSortKey(candidate: VirtualMergeQueueCandidate): string {
@@ -78,6 +117,7 @@ function block(
     candidateRef: candidate.candidateRef,
     issueNumber: candidate.issueNumber,
     blockedReasonRef,
+    status: blockedReasonRef === "virtual_merge_queue.blocked.stale_base" ? "needs-rebase" : "blocked",
     detail,
   }
 }
@@ -159,12 +199,38 @@ export function projectVirtualMergeQueue(input: {
       )
       continue
     }
-    if (candidate.baseCommit.toLowerCase() !== virtualHead.toLowerCase()) {
+    const override = hasSignedOperatorOverride(candidate)
+    const deletions = deletedPaths(candidate)
+    const unsafeDeletionPath = deletions.find((path) => !safePathPattern.test(path))
+    const protectedDeletionPath = deletions.find(isProtectedDeletion)
+    if (!override && candidate.baseCommit.toLowerCase() !== virtualHead.toLowerCase()) {
       blocked.push(
         block(
           candidate,
           "virtual_merge_queue.blocked.stale_base",
           `candidate base ${candidate.baseCommit} does not match virtual head ${virtualHead}`,
+        ),
+      )
+      continue
+    }
+    if (!override && (unsafeDeletionPath !== undefined || protectedDeletionPath !== undefined)) {
+      blocked.push(
+        block(
+          candidate,
+          "virtual_merge_queue.blocked.protected_path_deleted",
+          unsafeDeletionPath !== undefined
+            ? `candidate deletes an unsafe path ${unsafeDeletionPath}`
+            : `candidate deletes protected path ${protectedDeletionPath}`,
+        ),
+      )
+      continue
+    }
+    if (!override && deletions.length > massDeletionThreshold) {
+      blocked.push(
+        block(
+          candidate,
+          "virtual_merge_queue.blocked.mass_deletion_threshold",
+          `candidate deletes ${deletions.length} files; threshold is ${massDeletionThreshold}`,
         ),
       )
       continue

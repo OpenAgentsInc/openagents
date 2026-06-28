@@ -101,7 +101,134 @@ describe("virtual merge queue", () => {
     expect(projection.blocked[0]?.blockedReasonRef).toBe(
       "virtual_merge_queue.blocked.stale_base",
     )
+    expect(projection.blocked[0]?.status).toBe("needs-rebase")
     expect(projection.branchBaseForNextAssignment).toBe(B)
+  })
+
+  test("blocks a stale-based branch before a squash can delete files added since its base", () => {
+    const projection = projectVirtualMergeQueue({
+      actualHead: C,
+      candidates: [
+        candidate({
+          candidateRef: "candidate.public.pylon_vmq.stale_deletion_poison",
+          issueNumber: 6723,
+          baseCommit: A,
+          patchCommit: D,
+          changedFiles: [
+            { path: "clients/mobile/Khala/README.md", status: "deleted" },
+            { path: "INVARIANTS.md", status: "deleted" },
+          ],
+        }),
+      ],
+    })
+
+    expect(projection.ready).toEqual([])
+    expect(projection.nextActualPromotion).toBeNull()
+    expect(projection.blocked[0]?.blockedReasonRef).toBe(
+      "virtual_merge_queue.blocked.stale_base",
+    )
+    expect(projection.blocked[0]?.status).toBe("needs-rebase")
+  })
+
+  test("blocks protected path deletions even when the branch is otherwise fresh", () => {
+    const projection = projectVirtualMergeQueue({
+      actualHead: A,
+      candidates: [
+        candidate({
+          candidateRef: "candidate.public.pylon_vmq.protected_delete",
+          issueNumber: 6724,
+          baseCommit: A,
+          patchCommit: B,
+          changedFiles: [
+            { path: "apps/pylon/src/index.ts", status: "deleted" },
+          ],
+        }),
+      ],
+    })
+
+    expect(projection.ready).toEqual([])
+    expect(projection.blocked[0]?.blockedReasonRef).toBe(
+      "virtual_merge_queue.blocked.protected_path_deleted",
+    )
+  })
+
+  test("blocks candidates over the mass deletion threshold", () => {
+    const projection = projectVirtualMergeQueue({
+      actualHead: A,
+      candidates: [
+        candidate({
+          candidateRef: "candidate.public.pylon_vmq.mass_delete",
+          issueNumber: 6725,
+          baseCommit: A,
+          patchCommit: B,
+          changedFiles: Array.from({ length: 6 }, (_, index) => ({
+            path: `docs/refactor/pruned-${index}.md`,
+            status: "deleted" as const,
+          })),
+        }),
+      ],
+    })
+
+    expect(projection.ready).toEqual([])
+    expect(projection.blocked[0]?.blockedReasonRef).toBe(
+      "virtual_merge_queue.blocked.mass_deletion_threshold",
+    )
+  })
+
+  test("lets a clean in-scope candidate merge normally", () => {
+    const projection = projectVirtualMergeQueue({
+      actualHead: A,
+      candidates: [
+        candidate({
+          candidateRef: "candidate.public.pylon_vmq.clean",
+          issueNumber: 6726,
+          baseCommit: A,
+          patchCommit: B,
+          changedFiles: [
+            { path: "packages/world-contract/src/index.ts", status: "modified" },
+          ],
+        }),
+      ],
+    })
+
+    expect(projection.ready.map((entry) => entry.issueNumber)).toEqual([6726])
+    expect(projection.nextActualPromotion?.issueNumber).toBe(6726)
+    expect(projection.blocked).toEqual([])
+  })
+
+  test("honors only an explicit signed operator override for stale or large deletion guards", () => {
+    const projection = projectVirtualMergeQueue({
+      actualHead: C,
+      candidates: [
+        candidate({
+          candidateRef: "candidate.public.pylon_vmq.unsigned_override",
+          issueNumber: 6727,
+          baseCommit: A,
+          patchCommit: D,
+          signedOperatorOverrideRef: "operator-said-ok",
+          changedFiles: [
+            { path: "INVARIANTS.md", status: "deleted" },
+          ],
+        }),
+        candidate({
+          candidateRef: "candidate.public.pylon_vmq.signed_override",
+          issueNumber: 6728,
+          baseCommit: C,
+          patchCommit: D,
+          queuedAt: "2026-06-28T00:00:01.000Z",
+          signedOperatorOverrideRef: "override.signed.operator.issue_6728.sig_abcdef",
+          changedFiles: [
+            { path: "INVARIANTS.md", status: "deleted" },
+          ],
+        }),
+      ],
+    })
+
+    expect(projection.blocked.map((entry) => entry.issueNumber)).toEqual([6727])
+    expect(projection.blocked[0]?.blockedReasonRef).toBe(
+      "virtual_merge_queue.blocked.stale_base",
+    )
+    expect(projection.ready.map((entry) => entry.issueNumber)).toEqual([6728])
   })
 
   test("keeps issue and PR lockouts load-bearing", () => {
