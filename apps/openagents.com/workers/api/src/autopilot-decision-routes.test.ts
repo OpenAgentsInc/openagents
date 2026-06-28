@@ -495,6 +495,110 @@ describe('autopilot decision queue routes', () => {
     )
   })
 
+  test('accepts the public accept command name for the review action', async () => {
+    const store = new MemoryAutopilotWorkStore()
+
+    await store.createWorkOrder(deliveredWorkOrderRecord())
+
+    const response = await route(
+      store,
+      '/api/autopilot/decisions/decision_action.autopilot_work_order.decision_test_1.approve_pr_draft/actions',
+      {
+        body: { action: 'accept' },
+        idempotencyKey: 'decision-public-accept-1',
+        method: 'POST',
+      },
+    )
+    const body = (await response.json()) as DecisionActBody
+
+    expect(response.status).toBe(201)
+    expect(body.work.state).toBe('accepted')
+    expect(body.decision?.receiptRefs).toContain(
+      'decision.queue.accept.autopilot_work_order.decision_test_1',
+    )
+  })
+
+  test('rejects unknown public decision commands at the schema boundary', async () => {
+    const store = new MemoryAutopilotWorkStore()
+
+    await store.createWorkOrder(deliveredWorkOrderRecord())
+
+    const response = await route(
+      store,
+      '/api/autopilot/decisions/decision_action.autopilot_work_order.decision_test_1.approve_pr_draft/actions',
+      {
+        body: { action: 'delete-repo' },
+        idempotencyKey: 'decision-unknown-command-1',
+        method: 'POST',
+      },
+    )
+
+    expect(response.status).toBe(400)
+  })
+
+  test('requires owner approval before sensitive evidence commands apply', async () => {
+    const store = new MemoryAutopilotWorkStore()
+
+    await store.createWorkOrder(workOrderRecord())
+
+    const response = await route(
+      store,
+      '/api/autopilot/decisions/decision_action.autopilot_work_order.decision_test_1.stop/actions',
+      {
+        body: { action: 'stop' },
+        idempotencyKey: 'decision-stop-1',
+        method: 'POST',
+      },
+    )
+    const body = (await response.json()) as DecisionActBody & Readonly<{
+      authorityBoundary: string
+      reason: string
+    }>
+
+    expect(response.status).toBe(403)
+    expect(body.error).toBe('autopilot_decision_owner_approval_required')
+    expect(body.authorityBoundary).toBe('owner_approval_required')
+    expect(body.reason).toContain('ownerApprovalRef')
+  })
+
+  test('accepts typed evidence commands with owner approval as evidence-only receipts', async () => {
+    const store = new MemoryAutopilotWorkStore()
+
+    await store.createWorkOrder(workOrderRecord())
+
+    const response = await route(
+      store,
+      '/api/autopilot/decisions/decision_action.autopilot_work_order.decision_test_1.stop/actions',
+      {
+        body: {
+          action: 'stop',
+          ownerApprovalRef: 'approval.public.autopilot.stop.test',
+        },
+        idempotencyKey: 'decision-stop-approved-1',
+        method: 'POST',
+      },
+    )
+    const body = (await response.json()) as Readonly<{
+      command: Readonly<{
+        authorityBoundary: string
+        directEffectPermitted: false
+        ownerApprovalRef: string
+        resolution: string
+      }>
+      directEffectPermitted: false
+      receipt: Readonly<{ outcome: string }>
+    }>
+
+    expect(response.status).toBe(202)
+    expect(body.directEffectPermitted).toBe(false)
+    expect(body.command.resolution).toBe('stop')
+    expect(body.command.ownerApprovalRef).toBe(
+      'approval.public.autopilot.stop.test',
+    )
+    expect(body.command.authorityBoundary).toBe('evidence_only')
+    expect(body.receipt.outcome).toBe('accepted_for_evidence')
+  })
+
   test('replays an identical decision action idempotently', async () => {
     const store = new MemoryAutopilotWorkStore()
 

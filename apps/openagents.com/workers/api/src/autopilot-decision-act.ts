@@ -28,6 +28,7 @@ import type {
 export const AUTOPILOT_DECISION_ACTIONABLE_KINDS = [
   'approve_pr_draft',
   'continue',
+  'create_followup_mission',
   'provide_context',
   'rerun_tests',
   'retry_account',

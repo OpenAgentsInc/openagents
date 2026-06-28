@@ -1633,10 +1633,10 @@ const schemaComponents = (): JsonSchema => ({
     'Autopilot decision queue envelope with generatedAt, pendingCount, directEffectPermitted: false, and decision items. Each item pairs a customer-audience decision-action projection (actionKind, actionLabel, status, statusLabel, safeSummaryRef, customerNextActionRef, blockedReasonRefs, evidenceRefs, receiptRefs, actionSubmissionRequired, directEffectPermitted: false) with the public-safe work-order context (workOrderRef, state, taskRefs, updatedAt). Decisions are evidence pointers to gated submissions; the queue grants no deploy, spend, payout, or settlement authority.',
   ),
   AutopilotDecisionActionRequest: objectSummary(
-    'Public-safe Autopilot decision action request. action is accept, reject, or request_changes; optional decisionRefs, rejectionRefs, and revisionRequestRefs arrays must contain public-safe refs only. A default decision.queue.<action>.<workOrderRef> ref is recorded when none is supplied.',
+    'Public-safe Autopilot decision action request. action is one of accept, continue, steer, provide-context, rerun-tests, retry-with-another-account, stop, create-follow-up-mission, plus legacy review actions reject and request_changes. Optional contextRefs, decisionRefs, ownerApprovalRef, rejectionRefs, and revisionRequestRefs must contain public-safe refs only. Sensitive evidence commands require ownerApprovalRef; the delivered-work accept path records a default decision.queue.<action>.<workOrderRef> ref when none is supplied.',
   ),
   AutopilotDecisionActionEnvelope: objectSummary(
-    'Autopilot decision action envelope with generatedAt, idempotent flag, directEffectPermitted: false, the completed decision-action projection, and the public-safe work-order context after the gated review submission was recorded.',
+    'Autopilot decision action envelope with generatedAt, idempotent flag, and directEffectPermitted: false. The delivered-work accept path returns the completed decision-action projection and public-safe work-order context after the gated review submission is recorded; non-review command responses return an evidence-only command receipt and never grant direct effect authority.',
   ),
   XClaimRewardDispatchRequest: objectSummary(
     'Operator dispatch action for a promotional X-claim reward: action (approve_dispatch, mark_dispatched, mark_settled, mark_failed, refuse), optional public-safe evidenceRefs (required for mark_settled), optional stateReasonRef.',
@@ -9453,7 +9453,7 @@ const paths = (): JsonSchema => ({
       operationId: 'actOnAutopilotDecision',
       summary: 'Act on a pending Autopilot decision',
       description:
-        'Records a one-tap decision action (accept, reject, or request_changes) for a pending approve_pr_draft decision as a gated review submission on the underlying delivered work order. Decision actions are evidence pointers only: directEffectPermitted stays false and the action grants no deploy authority, worker payout authority, settlement authority, or Forum publication authority. Requires customer_orders.write and Idempotency-Key; retrying the same idempotency key replays the recorded decision.',
+        'Records a one-tap decision command for the public decision queue. The delivered-work accept command for approve_pr_draft is applied as a gated review submission on the underlying delivered work order; the legacy reject/request_changes review actions remain accepted for compatibility. Continue, steer, provide-context, rerun-tests, retry-with-another-account, stop, and create-follow-up-mission are decoded as explicit typed commands and remain evidence-only; sensitive commands require ownerApprovalRef. Decision actions are evidence pointers only: directEffectPermitted stays false and the action grants no deploy authority, worker payout authority, settlement authority, or Forum publication authority. Requires customer_orders.write and Idempotency-Key; retrying the same idempotency key on the review path replays the recorded decision.',
       tags: ['Autopilot Work'],
       security: browserSessionOrAgentBearer,
       parameters: [

@@ -1691,7 +1691,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Autopilot should expose a decision queue for continue, steer, provide context, rerun tests, retry with another account, stop, accept, or create a follow-up mission.',
         safeCopy:
-          'Decision-queue actions are planned/scoped and must remain route-authorized and receipt-backed. The exactly-once decision queue spanning desktop / web / Expo is tracked as Coder Cloud Phase 3 (#5004), gated behind the Pylon remote bridge transport (#5000); workroom decisions and voice command proposals provide precursor decision/approval state.',
+          'Decision-queue actions are planned/scoped and must remain route-authorized and receipt-backed. A Worker command route now decodes the public action enum, requires Idempotency-Key, applies the delivered-work accept command through the review store, and keeps non-review commands evidence-only with owner-approval gating where required. The exactly-once decision queue spanning desktop / web / Expo is still tracked as Coder Cloud Phase 3 (#5004), gated behind the Pylon remote bridge transport (#5000); workroom decisions and voice command proposals provide precursor decision/approval state.',
         unsafeCopy:
           'Do not claim agents can freely continue, retry, spend, mutate repositories, or switch accounts from public docs, or that the cross-client decision queue is live.',
         evidenceRefs: [
@@ -1702,17 +1702,21 @@ export const publicProductPromisesDocument = () => {
           'packages/autopilot-control-protocol/src/remote-decision-queue.test.ts',
           'packages/autopilot-control-protocol/src/decision-closeout-receipt.ts',
           'packages/autopilot-control-protocol/src/decision-closeout-receipt.test.ts',
+          'apps/openagents.com/workers/api/src/autopilot-decision-routes.ts',
+          'apps/openagents.com/workers/api/src/autopilot-decision-routes.test.ts',
+          'apps/openagents.com/workers/api/src/autopilot-decision-act.ts',
+          'apps/openagents.com/workers/api/src/autopilot-decision-act-routing.ts',
           'docs/launch/vertex-fleet/autopilot.decision_queue.v1.md',
           'https://github.com/OpenAgentsInc/openagents/issues/5000',
           'https://github.com/OpenAgentsInc/openagents/issues/5004',
         ],
         blockerRefs: [
-          'blocker.product_promises.decision_queue_api_missing',
+          'blocker.product_promises.cross_client_command_store_missing',
           'blocker.product_promises.cross_client_exactly_once_decisions_missing',
           'blocker.product_promises.receipt_backed_command_closeout_missing',
         ],
         verification:
-          'Green requires authenticated command APIs with explicit action enums, idempotency, owner approval where needed, receipt closeout, and UI projection.',
+          'Current source verification covers authenticated command decoding, explicit public action enums, Idempotency-Key requirement, owner-approval-required rejection for sensitive actions, evidence-only non-review command acceptance, and idempotent accept review application in autopilot-decision-routes.test.ts. Green still requires persistent cross-client command storage, real desktop/web/mobile exactly-once replay evidence, receipt closeout storage, and UI projection.',
         authorityBoundary:
           'A visible decision does not grant account, repository, spend, deploy, or continuation authority.',
       },

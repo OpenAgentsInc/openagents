@@ -70,6 +70,9 @@ describe('authorizeAutopilotDecisionAct', () => {
       expect(result.ok).toBe(true)
     }
     expect(AUTOPILOT_DECISION_ACTIONABLE_KINDS).toContain('approve_pr_draft')
+    expect(AUTOPILOT_DECISION_ACTIONABLE_KINDS).toContain(
+      'create_followup_mission',
+    )
     expect(AUTOPILOT_DECISION_ACTIONABLE_KINDS.length).toBeGreaterThan(1)
   })
 
