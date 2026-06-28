@@ -18,6 +18,11 @@ import {
   type KhalaFleetConnectResult,
   type KhalaFleetStatus,
 } from "./fleet.js"
+import {
+  parseFleetIssueList,
+  runKhalaFleetSupervisor,
+  type KhalaFleetRunResult,
+} from "./fleet-run.js"
 import { appendPromptHistory, readPromptFromTerminal } from "./input.js"
 import { readStdinText } from "./proc.js"
 import { openVerificationUrl, runKhalaLogin, type KhalaLoginResult } from "./login.js"
@@ -65,6 +70,7 @@ type ParsedCommand =
   | { readonly kind: "changelog" }
   | { readonly kind: "feedback"; readonly text: string | undefined }
   | { readonly kind: "fleetConnect"; readonly accountRef: string | undefined; readonly force: boolean }
+  | { readonly kind: "fleetRun" }
   | { readonly kind: "fleetStatus" }
   | { readonly kind: "help" }
   | { readonly kind: "info" }
@@ -97,6 +103,10 @@ interface ParsedArgs {
   readonly json: boolean
   readonly models: boolean
   readonly mintFreeKey: boolean
+  readonly fleetDryRun: boolean
+  readonly fleetIssues: readonly number[] | undefined
+  readonly fleetOnce: boolean
+  readonly fleetPerAccount: number | undefined
   readonly spawnCount: number | undefined
   readonly spawnBranch: string | undefined
   readonly spawnCommit: string | undefined
@@ -185,6 +195,11 @@ export async function runKhalaCli(argv: ReadonlyArray<string>, env: Record<strin
     if (args.command.kind === "fleetStatus") {
       const status = await listFleetAccounts({ env })
       process.stdout.write(args.json ? `${JSON.stringify(status)}\n` : `${formatFleetStatus(status)}\n`)
+      return 0
+    }
+    if (args.command.kind === "fleetRun") {
+      const result = await runFleetRunCommand(args, env)
+      process.stdout.write(args.json ? `${JSON.stringify(result, null, 2)}\n` : `${formatFleetRunResult(result)}\n`)
       return 0
     }
     if (args.command.kind === "codex") {
@@ -340,6 +355,10 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
   let json = false
   let models = false
   let mintFreeKey = false
+  let fleetDryRun = false
+  let fleetIssues: readonly number[] | undefined
+  let fleetOnce = false
+  let fleetPerAccount: number | undefined
   let spawnBranch: string | undefined
   let spawnCommit: string | undefined
   let spawnCount: number | undefined
@@ -369,6 +388,19 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
     else if (arg === "--json" || arg === "--no-stream") json = true
     else if (arg === "--models") models = true
     else if (arg === "--mint-free-key") mintFreeKey = true
+    else if (arg === "--dry-run") fleetDryRun = true
+    else if (arg === "--once") fleetOnce = true
+    else if (arg === "--issues") {
+      fleetIssues = parseFleetIssueList(requireValue(argv, index, arg))
+      index += 1
+    } else if (arg.startsWith("--issues=")) {
+      fleetIssues = parseFleetIssueList(arg.slice("--issues=".length))
+    } else if (arg === "--per-account") {
+      fleetPerAccount = parsePositiveInteger(requireValue(argv, index, arg), arg)
+      index += 1
+    } else if (arg.startsWith("--per-account=")) {
+      fleetPerAccount = parsePositiveInteger(arg.slice("--per-account=".length), "--per-account")
+    }
     else if (arg === "--fixture") spawnFixture = true
     else if (arg === "--count") {
       spawnCount = parsePositiveInteger(requireValue(argv, index, arg), arg)
@@ -473,6 +505,8 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
     const sub = positional[1]?.trim().toLowerCase()
     if (sub === "status" || sub === "list" || sub === "ls") {
       command = { kind: "fleetStatus" }
+    } else if (sub === "run") {
+      command = { kind: "fleetRun" }
     } else if (sub === undefined || sub === "connect" || sub === "add" || sub === "link") {
       // `khala fleet`, `khala fleet connect`, `khala fleet add` all connect.
       // Optional positional ref: `khala fleet connect codex-2` (or --account).
@@ -482,7 +516,7 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
         force: fleetForce,
       }
     } else {
-      throw new Error(`Unknown fleet command: ${sub}. Use \`khala fleet connect\` or \`khala fleet status\`.`)
+      throw new Error(`Unknown fleet command: ${sub}. Use \`khala fleet connect\`, \`khala fleet status\`, or \`khala fleet run\`.`)
     }
   } else if (maybeCommand === "codex") {
     command = positional[1] === "status"
@@ -540,6 +574,10 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
     json,
     models,
     mintFreeKey,
+    fleetDryRun,
+    fleetIssues,
+    fleetOnce,
+    fleetPerAccount,
     spawnCount,
     spawnBranch,
     spawnCommit,
@@ -1170,6 +1208,37 @@ async function runSpawnCommand(
   })
 }
 
+async function runFleetRunCommand(
+  args: ParsedArgs,
+  env: Record<string, string | undefined>,
+): Promise<KhalaFleetRunResult> {
+  if (args.spawnRepo === undefined || args.spawnRepo.trim().length === 0) {
+    throw new Error("khala fleet run requires --repo <owner/repo>")
+  }
+  if (args.fleetIssues === undefined || args.fleetIssues.length === 0) {
+    throw new Error("khala fleet run requires --issues <numbers>")
+  }
+  if (args.spawnVerify === undefined || args.spawnVerify.trim().length === 0) {
+    throw new Error("khala fleet run requires --verify <command>")
+  }
+  const token = await resolveConfiguredAgentToken(args.token, env)
+  return await runKhalaFleetSupervisor({
+    baseUrl: args.baseUrl,
+    ...(args.spawnBranch === undefined ? {} : { branch: args.spawnBranch }),
+    ...(args.spawnCommit === undefined ? {} : { commit: args.spawnCommit }),
+    dryRun: args.fleetDryRun,
+    env,
+    issues: args.fleetIssues,
+    ...(args.spawnMaxParallel === undefined ? {} : { maxSlots: args.spawnMaxParallel }),
+    once: args.fleetOnce,
+    ...(args.fleetPerAccount === undefined ? {} : { perAccount: args.fleetPerAccount }),
+    ...(args.spawnPylonRef === undefined ? {} : { pylonRef: args.spawnPylonRef }),
+    repo: args.spawnRepo,
+    ...(token === undefined ? {} : { token }),
+    verify: args.spawnVerify,
+  })
+}
+
 async function readSpawnRunCommand(
   args: ParsedArgs,
   env: Record<string, string | undefined>,
@@ -1648,6 +1717,30 @@ function formatFleetStatus(status: KhalaFleetStatus): string {
   ].join("\n"))
 }
 
+function formatFleetRunResult(result: KhalaFleetRunResult): string {
+  const plan = result.plan
+  const pylon = plan.pylonRef ?? "(auto-resolve when run starts)"
+  const lines = [
+    `${terminalStyle.assistant("Khala fleet run:")} ${result.status}`,
+    `  repo: ${plan.repo}`,
+    `  issues: ${plan.issues.map(issue => `#${issue}`).join(", ")}`,
+    `  pylon: ${pylon}`,
+    `  ready accounts: ${plan.readyAccounts.join(", ")}`,
+    `  target slots: ${plan.targetSlots} (min(${plan.maxSlots}, ${plan.readyAccounts.length} accounts * ${plan.perAccount}))`,
+    `  verify: ${plan.verify}`,
+  ]
+  if (result.rounds.length > 0) {
+    lines.push("", "Planned/last round:")
+    for (const round of result.rounds) {
+      lines.push(`  slot ${round.slot}: ${round.accountRef} -> #${round.issue} (${round.status})`)
+    }
+  }
+  if (result.mode === "supervise") {
+    lines.push("", "Supervisor mode keeps refilling slots until stopped.")
+  }
+  return terminalStyle.meta(lines.join("\n"))
+}
+
 function formatCodexCredentialSource(source: Extract<KhalaCodexStatus, { readonly ready: true }>["credentialSource"]): string {
   if (source === "khala_codex_home") return "Khala Codex account"
   if (source === "codex_home_env") return "CODEX_HOME"
@@ -1852,6 +1945,7 @@ Usage:
   khala fleet connect
   khala fleet connect --account codex-2
   khala fleet status
+  khala fleet run --repo owner/repo --issues 123,124 --verify "bun test" --dry-run
   khala auth codex
   khala codex status
   khala codex "read README.md"
@@ -1916,6 +2010,10 @@ Flags:
   --timeout <seconds>  Per-worker timeout for khala spawn
   --account <ref>      Codex account ref for khala fleet connect (auto-assigned if omitted)
   --force              Re-run device login for khala fleet connect even if already linked
+  --issues <list>      Public issue numbers for khala fleet run, comma or space separated
+  --per-account <n>    Fleet run slots per ready Codex account (default: 1)
+  --once               Fleet run one refill round, then exit
+  --dry-run            Fleet run prints the resolved plan without dispatching
   --help, -h           Show this help
 `
 }

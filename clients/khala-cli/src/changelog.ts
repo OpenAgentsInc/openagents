@@ -20,6 +20,13 @@ export const KHALA_CLI_VERSION = packageJson.version
 
 export const KHALA_CHANGELOG: ReadonlyArray<KhalaChangelogEntry> = [
   {
+    version: "0.1.21",
+    releasedAt: "2026-06-27T16:52:00.000Z",
+    bullets: [
+      "Adds `khala fleet run` — a turnkey Pylon/Codex backlog supervisor for your own repo and issues, with auto-resolved Pylon targeting, account-scaled slots, `--dry-run`, and one-round `--once` mode.",
+    ],
+  },
+  {
     version: "0.1.20",
     releasedAt: "2026-06-27T15:43:41.000Z",
     bullets: [
