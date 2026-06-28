@@ -34,6 +34,7 @@ import {
   OnboardingRoute,
   OrderDetailRoute,
   OrderRoute,
+  OperatorDashboardRoute,
   ProRoute,
   SettingsRoute,
   SettingsSectionRoute,
@@ -60,6 +61,7 @@ import {
   SucceededLoadAdminOverview,
   SucceededLoadAgentGoal,
   SucceededLoadArtanisOperatorConsole,
+  SucceededLoadArtanisOperatorDashboard,
   SucceededLoadArtanisOperatorGoal,
   SucceededLoadMulletBootstrap,
   SucceededLoadOnboardingRepositories,
@@ -3448,6 +3450,65 @@ describe('logged-in workroom sidebar', () => {
       Scene.expect(Scene.text('Publication queue')).toExist(),
       Scene.expect(Scene.text('1 ready / 1 total')).toExist(),
       Scene.expect(Scene.text('2026-06-07T05:20:00.000Z')).not.toExist(),
+    )
+  })
+
+  test('renders Artanis operator account usage progress meters', () => {
+    const [model] = LoggedIn.update(
+      LoggedIn.init(OperatorDashboardRoute(), auth),
+      SucceededLoadArtanisOperatorDashboard({
+        response: {
+          accountUsage: {
+            accounts: [
+              {
+                accountRefHash: 'acct_hash_codex_1',
+                cooldownExpiresAt: '2026-06-28T02:00:00.000Z',
+                isRateLimited: true,
+                manualResetsRemaining: 2,
+                provider: 'codex',
+                windows: [
+                  {
+                    cap: 1_000,
+                    label: 'hourly',
+                    percentUsed: 25,
+                    remaining: 750,
+                    used: 250,
+                  },
+                  {
+                    cap: 10_000,
+                    label: 'weekly',
+                    percentUsed: 40,
+                    remaining: 6_000,
+                    used: 4_000,
+                  },
+                ],
+              },
+            ],
+            observedAt: '2026-06-28T01:05:00.000Z',
+          },
+          callerIdFilter: null,
+          dashboardRef: 'operator.artanis.dashboard',
+          messages: [],
+          selectedThread: null,
+          threads: [],
+        },
+      }),
+    )
+
+    Scene.scene(
+      { update, view },
+      Scene.with(model),
+      Scene.expect(Scene.text('Token usage windows')).toExist(),
+      Scene.expect(Scene.text('codex · acct_hash_')).toExist(),
+      Scene.expect(Scene.text('limited')).toExist(),
+      Scene.expect(Scene.text('250 / 1,000 used · 750 remaining')).toExist(),
+      Scene.expect(Scene.text('4,000 / 10,000 used · 6,000 remaining')).toExist(),
+      Scene.expect(
+        Scene.role('meter', { name: 'codex hourly token usage 25%' }),
+      ).toExist(),
+      Scene.expect(
+        Scene.role('meter', { name: 'codex weekly token usage 40%' }),
+      ).toExist(),
     )
   })
 
