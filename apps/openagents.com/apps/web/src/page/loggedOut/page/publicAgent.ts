@@ -60,6 +60,11 @@ const usageText = (goal: PublicAgentGoal): string =>
     ? `${goal.tokensUsed} tokens`
     : `${goal.tokensUsed} / ${goal.tokenBudget ?? 0} tokens`
 
+const tokenProgressPercent = (goal: PublicAgentGoal | null): number =>
+  goal === null || goal.tokenBudget === null || goal.tokenBudget <= 0
+    ? 0
+    : Math.max(0, Math.min(100, (goal.tokensUsed / goal.tokenBudget) * 100))
+
 const formatNumber = (value: number): string => numberFormatter.format(value)
 
 const formatCompactNumber = (value: number): string =>
@@ -592,6 +597,11 @@ const pylonStatsFromModel = (
   model: PublicPylonStatsModel,
 ): PublicPylonStats | null =>
   model._tag === 'PublicPylonStatsLoaded' ? model.stats : null
+
+const artanisFleetHealthText = (stats: PublicPylonStats | null): string =>
+  stats === null
+    ? 'Active slots loading'
+    : `Active ${formatNumber(stats.pylonsAssignmentReadyNow)}/${formatNumber(stats.pylonsOnlineNow)} slots`
 
 const pylonStatsError = (model: PublicPylonStatsModel): string | null =>
   model._tag === 'PublicPylonStatsFailed'
@@ -1997,6 +2007,271 @@ const eventRow = (event: PublicAgentGoalEvent): Html => {
   )
 }
 
+const publicAgentActivityView = (
+  events: ReadonlyArray<PublicAgentGoalEvent>,
+): Html => {
+  const h = html<Message>()
+
+  return h.section(
+    [Ui.className<Message>('grid gap-3')],
+    [
+      h.div([Ui.className<Message>(Ui.eyebrowClass)], ['Activity']),
+      Array.match(events, {
+        onEmpty: () =>
+          h.p(
+            [Ui.className<Message>('text-sm text-white/45')],
+            ['No public activity has been published yet.'],
+          ),
+        onNonEmpty: events =>
+          h.ol([Ui.className<Message>('grid')], events.map(eventRow)),
+      }),
+    ],
+  )
+}
+
+const publicAgentGoalView = (
+  agentName: string,
+  goal: PublicAgentGoal | null,
+  displayedObjective: string,
+): Html => {
+  const h = html<Message>()
+
+  return h.section(
+    [Ui.className<Message>('grid gap-3 border-b border-[#222] pb-6')],
+    [
+      h.div(
+        [Ui.className<Message>(Ui.eyebrowClass)],
+        [goal === null ? 'Campaign objective' : 'Current goal'],
+      ),
+      h.div(
+        [Ui.className<Message>('grid gap-3')],
+        [
+          h.p(
+            [
+              Ui.className<Message>(
+                'max-w-4xl whitespace-pre-wrap text-base leading-7 text-[#f1efe8]',
+              ),
+            ],
+            [displayedObjective],
+          ),
+          h.div(
+            [
+              Ui.className<Message>(
+                'flex flex-wrap gap-x-6 gap-y-2 text-[0.75rem] text-white/45',
+              ),
+            ],
+            goal === null
+              ? [`Awaiting the first public durable ${agentName} goal.`]
+              : [
+                  h.span([], [usageText(goal)]),
+                  h.span(
+                    [],
+                    [
+                      goal.currentRunId === null
+                        ? 'no active run'
+                        : `current run ${goal.currentRunId}`,
+                    ],
+                  ),
+                  h.span([], [`updated ${friendlyRelativeTime(goal.updatedAt)}`]),
+                ],
+          ),
+        ],
+      ),
+    ],
+  )
+}
+
+const artanisConsoleHeader = (
+  goal: PublicAgentGoal | null,
+  pylonStats: PublicPylonStatsModel,
+): Html => {
+  const h = html<Message>()
+  const stats = pylonStatsFromModel(pylonStats)
+  const progress = tokenProgressPercent(goal)
+
+  return h.header(
+    [
+      Ui.className<Message>(
+        'grid gap-4 border-b border-[#222] bg-[#010102] px-4 py-4 sm:px-5',
+      ),
+    ],
+    [
+      h.div(
+        [
+          Ui.className<Message>(
+            'flex flex-wrap items-center justify-between gap-3',
+          ),
+        ],
+        [
+          h.div(
+            [Ui.className<Message>('flex flex-wrap items-center gap-3')],
+            [
+              h.div(
+                [
+                  Ui.className<Message>(
+                    'text-lg font-semibold tracking-normal text-[#f1efe8] sm:text-xl',
+                  ),
+                ],
+                ['ARTANIS console'],
+              ),
+              h.span(
+                [
+                  Ui.className<Message>(
+                    'inline-flex items-center gap-2 border border-[#21462e] bg-[#06140a] px-2.5 py-1 text-[0.6875rem] font-semibold text-[#00c853]',
+                  ),
+                ],
+                [
+                  h.span(
+                    [
+                      Ui.className<Message>(
+                        'h-2 w-2 animate-pulse rounded-full bg-[#00c853]',
+                      ),
+                    ],
+                    [],
+                  ),
+                  'LIVE',
+                ],
+              ),
+            ],
+          ),
+          h.a(
+            [
+              h.Href('/'),
+              Ui.className<Message>(
+                'text-[0.75rem] text-white/45 underline-offset-4 hover:text-[#f1efe8] hover:underline',
+              ),
+            ],
+            ['Start your own agent'],
+          ),
+        ],
+      ),
+      h.div(
+        [
+          Ui.className<Message>(
+            'grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(13rem,0.32fr)]',
+          ),
+        ],
+        [
+          h.div(
+            [Ui.className<Message>('grid gap-2')],
+            [
+              h.h1(
+                [
+                  Ui.className<Message>(
+                    'text-3xl font-semibold leading-none tracking-normal text-[#f1efe8] sm:text-4xl',
+                  ),
+                ],
+                ['Artanis'],
+              ),
+              h.div(
+                [
+                  Ui.className<Message>(
+                    'flex flex-wrap gap-x-5 gap-y-2 text-[0.75rem] text-white/55',
+                  ),
+                ],
+                [
+                  h.span([], [statusText(goal)]),
+                  h.span([], [artanisFleetHealthText(stats)]),
+                  h.span(
+                    [],
+                    [
+                      goal?.currentRunId === null || goal === null
+                        ? 'no active public run'
+                        : `run ${goal.currentRunId}`,
+                    ],
+                  ),
+                ],
+              ),
+            ],
+          ),
+          h.div(
+            [Ui.className<Message>('grid content-end gap-2')],
+            [
+              h.div(
+                [
+                  Ui.className<Message>(
+                    'flex items-center justify-between gap-3 text-[0.6875rem] text-white/45',
+                  ),
+                ],
+                [
+                  h.span([], ['Daily token pace']),
+                  h.span(
+                    [Ui.className<Message>('tabular-nums text-white/55')],
+                    [`${Math.round(progress)}%`],
+                  ),
+                ],
+              ),
+              h.div(
+                [
+                  Ui.className<Message>(
+                    'h-2 overflow-hidden border border-[#222] bg-black',
+                  ),
+                ],
+                [
+                  h.div(
+                    [
+                      Ui.className<Message>('h-full bg-[#ffb400]'),
+                      h.Style({ width: `${progress}%` }),
+                    ],
+                    [],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    ],
+  )
+}
+
+const artanisLoadedView = (
+  goal: PublicAgentGoal | null,
+  events: ReadonlyArray<PublicAgentGoalEvent>,
+  pylonStats: PublicPylonStatsModel,
+  artanisReport: PublicArtanisReportModel,
+): Html => {
+  const h = html<Message>()
+  const displayedObjective = userFacingCopy(goal?.objective ?? campaignObjective)
+
+  return h.main(
+    [
+      h.DataAttribute('component', 'public-agent-page'),
+      h.DataAttribute('agent', 'artanis'),
+      Ui.className<Message>(
+        'mx-auto grid min-h-screen max-w-[96rem] content-start gap-5 px-4 py-5 font-mono text-[#f1efe8] sm:px-6 lg:px-8',
+      ),
+    ],
+    [
+      artanisConsoleHeader(goal, pylonStats),
+      h.div(
+        [
+          Ui.className<Message>(
+            'grid gap-5 xl:grid-cols-[minmax(17rem,0.75fr)_minmax(0,1.45fr)_minmax(18rem,0.8fr)]',
+          ),
+        ],
+        [
+          h.div(
+            [Ui.className<Message>('grid content-start gap-5')],
+            [
+              publicAgentGoalView('Artanis', goal, displayedObjective),
+              publicAgentActivityView(events),
+            ],
+          ),
+          h.div(
+            [Ui.className<Message>('grid content-start gap-5')],
+            [artanisReportView(artanisReport)],
+          ),
+          h.div(
+            [Ui.className<Message>('grid content-start gap-5')],
+            [pylonStatsView(pylonStats)],
+          ),
+        ],
+      ),
+    ],
+  )
+}
+
 const loadedView = (
   agentRef: string,
   goal: PublicAgentGoal | null,
@@ -2013,6 +2288,11 @@ const loadedView = (
   )
   const isArtanis = agentRef === 'artanis'
   const isAdjutant = agentRef === 'adjutant'
+
+  if (isArtanis) {
+    return artanisLoadedView(goal, events, pylonStats, artanisReport)
+  }
+
   return h.main(
     [
       h.DataAttribute('component', 'public-agent-page'),
@@ -2070,72 +2350,13 @@ const loadedView = (
           ),
         ],
       ),
-      h.section(
-        [Ui.className<Message>('grid gap-3 border-b border-[#222] pb-6')],
-        [
-          h.div(
-            [Ui.className<Message>(Ui.eyebrowClass)],
-            [goal === null ? 'Campaign objective' : 'Current goal'],
-          ),
-          h.div(
-            [Ui.className<Message>('grid gap-3')],
-            [
-              h.p(
-                [
-                  Ui.className<Message>(
-                    'max-w-4xl whitespace-pre-wrap text-base leading-7 text-[#f1efe8]',
-                  ),
-                ],
-                [displayedObjective],
-              ),
-              h.div(
-                [
-                  Ui.className<Message>(
-                    'flex flex-wrap gap-x-6 gap-y-2 text-[0.75rem] text-white/45',
-                  ),
-                ],
-                goal === null
-                  ? [`Awaiting the first public durable ${agentName} goal.`]
-                  : [
-                      h.span([], [usageText(goal)]),
-                      h.span(
-                        [],
-                        [
-                          goal.currentRunId === null
-                            ? 'no active run'
-                            : `current run ${goal.currentRunId}`,
-                        ],
-                      ),
-                      h.span(
-                        [],
-                        [`updated ${friendlyRelativeTime(goal.updatedAt)}`],
-                      ),
-                    ],
-              ),
-            ],
-          ),
-        ],
-      ),
+      publicAgentGoalView(agentName, goal, displayedObjective),
       isArtanis ? artanisPulseView(khalaTokensServedHistory) : null,
       isArtanis ? artanisReportView(artanisReport) : null,
       isArtanis ? artanisFleetOnboardingView() : null,
       isArtanis ? pylonStatsView(pylonStats) : null,
       isAdjutant ? adjutantActivityView(adjutantActivity) : null,
-      h.section(
-        [Ui.className<Message>('grid gap-3')],
-        [
-          h.div([Ui.className<Message>(Ui.eyebrowClass)], ['Activity']),
-          Array.match(events, {
-            onEmpty: () =>
-              h.p(
-                [Ui.className<Message>('text-sm text-white/45')],
-                ['No public activity has been published yet.'],
-              ),
-            onNonEmpty: events =>
-              h.ol([Ui.className<Message>('grid')], events.map(eventRow)),
-          }),
-        ],
-      ),
+      publicAgentActivityView(events),
     ],
   )
 }
@@ -2185,6 +2406,15 @@ export const view = (model: Model, agentRef: string): Html => {
       model.publicArtanisReport,
       model.publicKhalaTokensServedHistory,
       model.publicAdjutantActivity,
+    )
+  }
+
+  if (agentRef === 'artanis') {
+    return artanisLoadedView(
+      null,
+      [],
+      model.publicPylonStats,
+      model.publicArtanisReport,
     )
   }
 
