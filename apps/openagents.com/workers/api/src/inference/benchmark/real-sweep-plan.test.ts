@@ -150,9 +150,9 @@ describe('real benchmark sweep preflight', () => {
 
     expect(preflight.canArmRealSeam).toBe(true)
     expect(preflight.decisionGradeEligible).toBe(true)
-    expect(preflight.executableCells).toBe(64)
-    expect(preflight.executableSampleUpperBound).toBe(320)
-    expect(preflight.billableSampleUpperBound).toBe(240)
+    expect(preflight.executableCells).toBe(16)
+    expect(preflight.executableSampleUpperBound).toBe(80)
+    expect(preflight.billableSampleUpperBound).toBe(60)
     expect(preflight.billableLanes).toEqual([
       'fireworks',
       'vertex-anthropic',
@@ -173,8 +173,8 @@ describe('real benchmark sweep preflight', () => {
 
     expect(preflight.canArmRealSeam).toBe(true)
     expect(preflight.decisionGradeEligible).toBe(false)
-    expect(preflight.executableCells).toBe(16)
-    expect(preflight.executableSampleUpperBound).toBe(80)
+    expect(preflight.executableCells).toBe(4)
+    expect(preflight.executableSampleUpperBound).toBe(20)
     expect(preflight.billableSampleUpperBound).toBe(0)
     expect(preflight.billableLanes).toEqual([])
   })
@@ -192,8 +192,8 @@ describe('real benchmark sweep preflight', () => {
     )
 
     expect(preflight.canArmRealSeam).toBe(true)
-    expect(preflight.executableSampleUpperBound).toBe(320)
-    expect(preflight.billableSampleUpperBound).toBe(80)
+    expect(preflight.executableSampleUpperBound).toBe(80)
+    expect(preflight.billableSampleUpperBound).toBe(20)
     expect(preflight.billableLanes).toEqual(['fireworks'])
   })
 

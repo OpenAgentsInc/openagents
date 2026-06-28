@@ -298,9 +298,10 @@ describe('runRealSweep gating + decision-grade rule', () => {
       preflight: armed,
       transports: [makeKhalaPublicTransport({ fetch, now: stepClock(80) })],
     })
-    // 3 un-armed lanes (fireworks + 2 vertex) × 4 workloads × 4 shapes = 48 cells
-    // skipped (no transport). The matrix expands targets × workloads × shapes.
-    expect(runSet.cellsSkipped).toBe(48)
+    // 3 un-armed lanes (fireworks + 2 vertex) × 4 workload/shape pairs = 12
+    // cells skipped (no transport). The OQ5 suite pairs each workload with its
+    // observed traffic shape instead of cross-producting mismatched shapes.
+    expect(runSet.cellsSkipped).toBe(12)
     const skipReasons = new Set(
       runSet.runs
         .filter(r => r.skippedReason !== null)
