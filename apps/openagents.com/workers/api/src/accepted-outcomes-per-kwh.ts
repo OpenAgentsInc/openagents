@@ -54,6 +54,16 @@ export class AcceptedOutcomesPerKwhEnergyModel extends S.Class<AcceptedOutcomesP
   assumptionRefs: S.Array(S.String),
 }) {}
 
+export class AcceptedOutcomesPerKwhMeasuredEnergyTelemetry extends S.Class<AcceptedOutcomesPerKwhMeasuredEnergyTelemetry>(
+  'AcceptedOutcomesPerKwhMeasuredEnergyTelemetry',
+)({
+  measurementMethod: S.String,
+  measuredEnergyWh: S.Number,
+  measuredEnergyKwh: S.Number,
+  meterEvidenceRefs: S.Array(S.String),
+  deviceRef: S.String,
+}) {}
+
 export class AcceptedOutcomesPerKwhDatapoint extends S.Class<AcceptedOutcomesPerKwhDatapoint>(
   'AcceptedOutcomesPerKwhDatapoint',
 )({
@@ -67,11 +77,32 @@ export class AcceptedOutcomesPerKwhDatapoint extends S.Class<AcceptedOutcomesPer
   verificationRefs: S.Array(S.String),
   settlementReceiptRefs: S.Array(S.String),
   demandProvenance: AcceptedOutcomesPerKwhDemandProvenance,
-  energyEvidenceState: S.Literal('modeled'),
-  energyModel: AcceptedOutcomesPerKwhEnergyModel,
+  energyEvidenceState: S.Literals(['modeled', 'measured']),
+  energyModel: S.NullOr(AcceptedOutcomesPerKwhEnergyModel),
+  measuredEnergyTelemetry: S.NullOr(AcceptedOutcomesPerKwhMeasuredEnergyTelemetry),
   acceptedOutcomesPerKwh: S.Number,
   caveatRefs: S.Array(S.String),
   sourceRefs: S.Array(S.String),
+}) {}
+
+export class AcceptedOutcomesPerKwhMeasuredTelemetryInput extends S.Class<AcceptedOutcomesPerKwhMeasuredTelemetryInput>(
+  'AcceptedOutcomesPerKwhMeasuredTelemetryInput',
+)({
+  acceptedOutcomeCount: S.Int,
+  acceptedOutcomeRefs: S.Array(S.String),
+  caveatRefs: S.Array(S.String),
+  datapointId: S.String,
+  demandProvenance: AcceptedOutcomesPerKwhDemandProvenance,
+  deviceRef: S.String,
+  label: S.String,
+  measuredEnergyWh: S.Number,
+  measurementMethod: S.String,
+  meterEvidenceRefs: S.Array(S.String),
+  settlementReceiptRefs: S.Array(S.String),
+  sourceRefs: S.Array(S.String),
+  verificationRefs: S.Array(S.String),
+  windowEnd: S.String,
+  windowStart: S.String,
 }) {}
 
 export class AcceptedOutcomesPerKwhGate extends S.Class<AcceptedOutcomesPerKwhGate>(
@@ -106,7 +137,7 @@ export class AcceptedOutcomesPerKwhProjection extends S.Class<AcceptedOutcomesPe
     sourceRefs: S.Array(S.String),
   }),
   energyAccounting: S.Struct({
-    evidenceState: S.Literal('modeled_seed'),
+    evidenceState: S.Literals(['modeled_seed', 'modeled_and_measured']),
     measuredDatapointCount: S.Int,
     modeledDatapointCount: S.Int,
     sourceRefs: S.Array(S.String),
@@ -201,6 +232,7 @@ export const modeledLabor4777AoKwhDatapoint =
         wallClockHours: round(wallClockHours),
         wallClockSeconds: round(wallClockSeconds, 3),
       }),
+      measuredEnergyTelemetry: null,
       label: 'First settled labor job (#4777), modeled energy seed',
       settlementReceiptRefs: [...ACCEPTED_LABOR_4777.settlementReceiptRefs],
       sourceRefs: [...ACCEPTED_LABOR_4777.sourceRefs],
@@ -210,12 +242,63 @@ export const modeledLabor4777AoKwhDatapoint =
     })
   }
 
+export const measuredTelemetryAoKwhDatapoint = (
+  input: AcceptedOutcomesPerKwhMeasuredTelemetryInput,
+): AcceptedOutcomesPerKwhDatapoint => {
+  if (input.acceptedOutcomeCount <= 0) {
+    throw new RangeError(
+      'AO/kWh measured telemetry requires at least one accepted outcome',
+    )
+  }
+  if (input.measuredEnergyWh <= 0) {
+    throw new RangeError(
+      'AO/kWh measured telemetry requires measuredEnergyWh > 0',
+    )
+  }
+  const measuredEnergyKwh = round(input.measuredEnergyWh / 1000)
+  const acceptedOutcomesPerKwh = round(
+    input.acceptedOutcomeCount / measuredEnergyKwh,
+    3,
+  )
+
+  return new AcceptedOutcomesPerKwhDatapoint({
+    acceptedOutcomeCount: input.acceptedOutcomeCount,
+    acceptedOutcomeEvidenceState: 'receipt_backed',
+    acceptedOutcomeRefs: [...input.acceptedOutcomeRefs],
+    acceptedOutcomesPerKwh,
+    caveatRefs: [...input.caveatRefs],
+    datapointId: input.datapointId,
+    demandProvenance: input.demandProvenance,
+    energyEvidenceState: 'measured',
+    energyModel: null,
+    label: input.label,
+    measuredEnergyTelemetry: new AcceptedOutcomesPerKwhMeasuredEnergyTelemetry({
+      deviceRef: input.deviceRef,
+      measuredEnergyKwh,
+      measuredEnergyWh: input.measuredEnergyWh,
+      measurementMethod: input.measurementMethod,
+      meterEvidenceRefs: [...input.meterEvidenceRefs],
+    }),
+    settlementReceiptRefs: [...input.settlementReceiptRefs],
+    sourceRefs: [...input.sourceRefs],
+    verificationRefs: [...input.verificationRefs],
+    windowEnd: input.windowEnd,
+    windowStart: input.windowStart,
+  })
+}
+
 export const projectAcceptedOutcomesPerKwh = (
-  input: { generatedAt?: string | undefined } = {},
+  input: {
+    generatedAt?: string | undefined
+    measuredTelemetry?: ReadonlyArray<AcceptedOutcomesPerKwhMeasuredTelemetryInput>
+  } = {},
 ): AcceptedOutcomesPerKwhProjection => {
-  const datapoints = [modeledLabor4777AoKwhDatapoint()]
+  const measuredDatapoints = (input.measuredTelemetry ?? []).map(
+    measuredTelemetryAoKwhDatapoint,
+  )
+  const datapoints = [modeledLabor4777AoKwhDatapoint(), ...measuredDatapoints]
   const measuredDatapointCount = datapoints.filter(
-    datapoint => datapoint.energyEvidenceState !== 'modeled',
+    datapoint => datapoint.energyEvidenceState === 'measured',
   ).length
   const measuredDatapointShortfall = Math.max(
     0,
@@ -256,22 +339,25 @@ export const projectAcceptedOutcomesPerKwh = (
       rule: 'no_external_dollar_no_demand_claim',
     },
     energyAccounting: {
-      evidenceState: 'modeled_seed',
+      evidenceState:
+        measuredDatapointCount > 0 ? 'modeled_and_measured' : 'modeled_seed',
       measuredDatapointCount,
       modeledDatapointCount: datapoints.filter(
         datapoint => datapoint.energyEvidenceState === 'modeled',
       ).length,
       sourceRefs: datapoints.flatMap(datapoint => [
-        ...datapoint.energyModel.assumptionRefs,
+        ...(datapoint.energyModel?.assumptionRefs ?? []),
+        ...(datapoint.measuredEnergyTelemetry?.meterEvidenceRefs ?? []),
         ...datapoint.sourceRefs,
       ]),
     },
     gate: new AcceptedOutcomesPerKwhGate({
-      blockerRefs: [
-        'blocker.product_promises.energy_accounting_measured_telemetry_missing',
-        'blocker.product_promises.ao_kwh_only_single_modeled_seed_datapoint',
-        'blocker.product_promises.ao_kwh_requires_two_measured_datapoints',
-      ],
+      blockerRefs: measuredTelemetryGateSatisfied
+        ? ['blocker.product_promises.ao_kwh_green_transition_receipt_missing']
+        : [
+            'blocker.product_promises.ao_kwh_measured_datapoints_missing',
+            'blocker.product_promises.ao_kwh_requires_two_measured_datapoints',
+          ],
       caveatRefs: [
         'caveat.ao_kwh.figures_must_label_modeled_vs_measured',
         'caveat.ao_kwh.seed_not_a_ranking_or_efficiency_claim',
@@ -279,7 +365,7 @@ export const projectAcceptedOutcomesPerKwh = (
       currentMeasuredDatapointCount: measuredDatapointCount,
       greenGateSatisfied: false,
       measuredDatapointShortfall,
-      measuredFigurePublicationAllowed: false,
+      measuredFigurePublicationAllowed: measuredTelemetryGateSatisfied,
       measuredTelemetryGateSatisfied,
       modeledFigurePublicationAllowed: true,
       requiredMeasuredDatapointCount:
@@ -298,7 +384,7 @@ export const projectAcceptedOutcomesPerKwh = (
     staleness: AcceptedOutcomesPerKwhStaleness,
     status: 'instrumented_modeled_seed',
     statusLabel:
-      'AO/kWh has one receipt-backed modeled seed datapoint; measured energy telemetry remains missing (0 of 2 measured datapoints).',
+      `AO/kWh has one receipt-backed modeled seed datapoint and ${measuredDatapointCount} of ${AcceptedOutcomesPerKwhRequiredMeasuredDatapoints} required measured datapoints.`,
     unsafeCopy:
       'Do not describe the seed datapoint as measured, broadly representative, a ranking, a provider efficiency claim, investment advice, grid advice, or proof that production energy routing is live. Do not present AO/kWh as green or measured until at least two real telemetry datapoints are published with evidence-state labels and transition receipts. Do not present the internal, operator-staged accepted outcome as external market demand or revenue: no external dollar, no demand claim.',
   })
