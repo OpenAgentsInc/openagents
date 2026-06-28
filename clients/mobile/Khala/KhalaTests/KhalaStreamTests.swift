@@ -186,6 +186,37 @@ final class KhalaStreamTests: XCTestCase {
         XCTAssertEqual(deltas, ["Working"])
     }
 
+    func testArtanisStreamAcceptsSharedEndpointJSONReply() async throws {
+        let session = makeSession()
+        let apiKey = "oa_agent_owner_key"
+
+        StreamMockURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.url?.absoluteString, "https://openagents.com/api/operator/artanis/chat")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "text/event-stream")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer \(apiKey)")
+
+            return (
+                HTTPURLResponse(
+                    url: try XCTUnwrap(request.url),
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )!,
+                Data(#"{ "reply": "I am tracking current Khala operations." }"#.utf8)
+            )
+        }
+
+        var deltas: [String] = []
+        for try await delta in KhalaClient.streamArtanisCompletion(
+            messages: [.init(role: "user", content: "status")],
+            apiKey: apiKey,
+            session: session
+        ) {
+            deltas.append(delta)
+        }
+        XCTAssertEqual(deltas, ["I am tracking current Khala operations."])
+    }
+
     func testCancellationStopsStreamCleanly() async throws {
         let session = makeSession()
         StreamMockURLProtocol.requestHandler = { request in

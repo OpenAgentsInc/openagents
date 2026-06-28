@@ -44,6 +44,19 @@ extension KhalaClient {
                         throw KhalaError.http(http.statusCode, body)
                     }
 
+                    let contentType = http.value(forHTTPHeaderField: "Content-Type")?.lowercased() ?? ""
+                    if !contentType.contains("text/event-stream") {
+                        let body = await Self.collectArtanisBody(from: bytes)
+                        guard let reply = Self.artanisReply(from: body) else {
+                            throw KhalaError.decoding
+                        }
+                        if !reply.isEmpty {
+                            continuation.yield(reply)
+                        }
+                        continuation.finish()
+                        return
+                    }
+
                     for try await line in bytes.lines {
                         try Task.checkCancellation()
                         guard let delta = Self.delta(fromSSELine: line) else { continue }
@@ -99,5 +112,24 @@ extension KhalaClient {
             // Best-effort; return whatever was read.
         }
         return String(data: collected, encoding: .utf8) ?? ""
+    }
+
+    private static func collectArtanisBody(from bytes: URLSession.AsyncBytes) async -> Data {
+        var collected = Data()
+        do {
+            for try await byte in bytes {
+                collected.append(byte)
+            }
+        } catch {
+            // Best-effort; parser will fail closed if the response is incomplete.
+        }
+        return collected
+    }
+
+    private static func artanisReply(from data: Data) -> String? {
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let reply = obj["reply"] as? String
+        else { return nil }
+        return reply
     }
 }
