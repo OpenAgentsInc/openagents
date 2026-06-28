@@ -1779,17 +1779,13 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   (#6366 follow-up), but only through this same own-capacity coding-delegation
   seam and only behind an effective owner approval. The gated tool executes ONLY
   when (a) the caller is the authenticated owner (the `/api/operator/artanis/chat`
-  route admits only the admin API token, an owner-linked admin agent bearer, or
-  an admin browser session), (b) a wired execution seam is present, AND (c) an
-  effective `pylon_job_dispatch` Artanis approval gate exists (an approved,
-  non-expired, non-superseded gate carrying `operator_approval` authority plus an
-  authority receipt ref, per `artanisApprovalGateEffective`). As of the owner
-  promotion (see "Artanis Owner Promotion" below), precondition (c) is ALSO
-  satisfied for the owner-promoted operator agent (Artanis) by a STANDING owner
-  approval scoped to `pylon_job_dispatch` ONLY, resolved by
-  `readEffectiveArtanisPylonDispatchApprovalForOwner`; every other owner still
-  needs an explicit armed gate, and every money-movement / payout-bearing kind
-  stays gated for everyone. If any precondition
+  route admits authenticated browser sessions, owner-linked agent bearers, or the
+  admin API token, always resolving to one owner scope), (b) a wired execution
+  seam is present, AND (c) a standing tenant approval for `pylon_job_dispatch`
+  exists. That standing approval is scoped to the tenant's own linked Pylons,
+  own-capacity, and no-spend dispatch only, and is resolved by
+  `readEffectiveArtanisPylonDispatchApprovalForOwner`. Every money-movement /
+  payout-bearing kind stays gated for everyone. If any precondition
   is missing — no seam, no effective approval, no eligible linked Pylon — it
   returns the public-safe plan and defers (`deferredToApprovalGate`); it never
   fires and never fabricates an `assignmentRef`. The dispatch carries no spend
