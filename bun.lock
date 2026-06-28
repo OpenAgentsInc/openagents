@@ -361,6 +361,14 @@
         "typescript": "^6.0.3",
       },
     },
+    "clients/khala-macos": {
+      "name": "@openagentsinc/khala-macos",
+      "version": "0.1.0",
+      "devDependencies": {
+        "bun-types": "^1.0.0",
+        "typescript": "catalog:",
+      },
+    },
     "packages/agent-runtime-schema": {
       "name": "@openagentsinc/agent-runtime-schema",
       "version": "0.1.0",
@@ -935,6 +943,8 @@
     "@openagentsinc/input-bindings": ["@openagentsinc/input-bindings@workspace:packages/input-bindings"],
 
     "@openagentsinc/khala": ["@openagentsinc/khala@workspace:clients/khala-cli"],
+
+    "@openagentsinc/khala-macos": ["@openagentsinc/khala-macos@workspace:clients/khala-macos"],
 
     "@openagentsinc/mcp-contract": ["@openagentsinc/mcp-contract@workspace:packages/mcp-contract"],
 
