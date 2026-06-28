@@ -99,6 +99,13 @@ type OperatorAccountUsageRow = Readonly<{
   manualResetsRemaining: number | null
 }>
 
+type OperatorAccountStatusRow = Readonly<{
+  provider_account_ref: string
+  provider: string
+  cooldown_until: string | null
+  recent_failure_class: string | null
+}>
+
 const boundedPercent = (usage: number | null, cap: number | null): number => {
   if (usage === null || cap === null || cap <= 0) {
     return 0
@@ -232,6 +239,32 @@ const messageProjection = (row: ArtanisMessageRow) => ({
   threadRef: row.thread_ref,
 })
 
+const normalizeAccountProvider = (provider: string): string =>
+  provider === 'chatgpt_codex' ? 'codex' : provider
+
+const statusRowToUsageRow = (
+  row: OperatorAccountStatusRow,
+  now: string,
+): OperatorAccountUsageRow => {
+  const cooldownExpiresAt =
+    row.cooldown_until !== null && row.cooldown_until > now
+      ? row.cooldown_until
+      : null
+
+  return {
+    accountRefHash: row.provider_account_ref,
+    cooldownExpiresAt,
+    hourlyCap: null,
+    hourlyUsage: null,
+    isRateLimited:
+      cooldownExpiresAt !== null || row.recent_failure_class === 'rate_limited',
+    manualResetsRemaining: null,
+    provider: normalizeAccountProvider(row.provider),
+    weeklyCap: null,
+    weeklyUsage: null,
+  }
+}
+
 const listThreads = (
   db: D1Database,
   callerId: string | undefined,
@@ -287,6 +320,77 @@ const listMessages = (
     .then(rows => rows.results ?? [])
 }
 
+const listOperatorAccountStatusRows = (
+  db: D1Database,
+  userId: string,
+): Promise<ReadonlyArray<OperatorAccountStatusRow>> =>
+  db
+    .prepare(
+      `SELECT provider_account_ref,
+              provider,
+              cooldown_until,
+              recent_failure_class
+         FROM provider_accounts
+        WHERE user_id = ?
+          AND deleted_at IS NULL
+          AND provider IN ('chatgpt_codex', 'claude')
+        ORDER BY
+          CASE provider WHEN 'chatgpt_codex' THEN 0 ELSE 1 END,
+          provider_account_ref ASC
+        LIMIT 200`,
+    )
+    .bind(userId)
+    .all<OperatorAccountStatusRow>()
+    .then(rows => rows.results ?? [])
+
+const operatorAccountStatusProjection = (
+  rows: ReadonlyArray<OperatorAccountStatusRow>,
+  observedAt: string,
+) =>
+  operatorAccountUsageProjection(
+    rows.map(row => statusRowToUsageRow(row, observedAt)),
+    observedAt,
+  )
+
+const readAccountRefHash = (request: Request): Promise<string | undefined> =>
+  request
+    .json()
+    .then(value => {
+      if (typeof value !== 'object' || value === null) {
+        return undefined
+      }
+
+      const raw = (value as Record<string, unknown>).accountRefHash
+      return typeof raw === 'string' && raw.trim() !== ''
+        ? raw.trim()
+        : undefined
+    })
+    .catch(() => undefined)
+
+const resetOperatorAccountCooldown = async (
+  db: D1Database,
+  input: Readonly<{
+    accountRefHash: string
+    now: string
+    userId: string
+  }>,
+): Promise<boolean> => {
+  const result = await db
+    .prepare(
+      `UPDATE provider_accounts
+          SET cooldown_until = NULL,
+              recent_failure_class = NULL,
+              last_failed_launch_at = ?
+        WHERE user_id = ?
+          AND provider_account_ref = ?
+          AND deleted_at IS NULL`,
+    )
+    .bind(input.now, input.userId, input.accountRefHash)
+    .run()
+
+  return (result.meta?.changes ?? 0) > 0
+}
+
 export const makeOperatorArtanisDashboardRoutes = <
   Session extends OperatorArtanisDashboardSession,
   Bindings extends OperatorArtanisDashboardEnv,
@@ -300,17 +404,81 @@ export const makeOperatorArtanisDashboardRoutes = <
   ): Effect.Effect<globalThis.Response> | undefined => {
     const url = new URL(request.url)
 
-    if (url.pathname !== '/api/operator/artanis/dashboard') {
+    const isDashboard = url.pathname === '/api/operator/artanis/dashboard'
+    const isAccountsStatus = url.pathname === '/api/operator/accounts/status'
+    const isAccountsReset = url.pathname === '/api/operator/accounts/reset'
+
+    if (!isDashboard && !isAccountsStatus && !isAccountsReset) {
       return undefined
     }
 
-    if (request.method !== 'GET') {
+    if ((isDashboard || isAccountsStatus) && request.method !== 'GET') {
       return Effect.succeed(methodNotAllowed(['GET']))
+    }
+
+    if (isAccountsReset && request.method !== 'POST') {
+      return Effect.succeed(methodNotAllowed(['POST']))
     }
 
     return Effect.gen(function* () {
       const session = yield* requireAdminSession(dependencies, request, env, ctx)
       const db = openAgentsDatabase(env)
+      const now = currentIsoTimestamp()
+
+      if (isAccountsStatus) {
+        const rows = yield* Effect.tryPromise({
+          catch: error => new OperatorArtanisDashboardStorageError({ error }),
+          try: () => listOperatorAccountStatusRows(db, session.user.userId),
+        })
+
+        return dependencies.appendRefreshedSessionCookies(
+          noStoreJsonResponse(operatorAccountStatusProjection(rows, now)),
+          session,
+        )
+      }
+
+      if (isAccountsReset) {
+        const accountRefHash = yield* Effect.tryPromise({
+          catch: error => new OperatorArtanisDashboardStorageError({ error }),
+          try: () => readAccountRefHash(request),
+        })
+
+        if (accountRefHash === undefined) {
+          return noStoreJsonResponse(
+            { error: 'bad_request', reason: 'accountRefHash is required' },
+            { status: 400 },
+          )
+        }
+
+        const didReset = yield* Effect.tryPromise({
+          catch: error => new OperatorArtanisDashboardStorageError({ error }),
+          try: () =>
+            resetOperatorAccountCooldown(db, {
+              accountRefHash,
+              now,
+              userId: session.user.userId,
+            }),
+        })
+
+        if (!didReset) {
+          return noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
+        }
+
+        const rows = yield* Effect.tryPromise({
+          catch: error => new OperatorArtanisDashboardStorageError({ error }),
+          try: () => listOperatorAccountStatusRows(db, session.user.userId),
+        })
+
+        return dependencies.appendRefreshedSessionCookies(
+          noStoreJsonResponse({
+            ok: true,
+            resetAt: now,
+            status: operatorAccountStatusProjection(rows, now),
+          }),
+          session,
+        )
+      }
+
       const callerId = cleanQueryValue(url, 'caller_id')
       const requestedThreadRef = cleanQueryValue(url, 'thread_ref')
 
@@ -329,7 +497,7 @@ export const makeOperatorArtanisDashboardRoutes = <
 
       return dependencies.appendRefreshedSessionCookies(
         noStoreJsonResponse({
-          accountUsage: operatorAccountUsageProjection([], currentIsoTimestamp()),
+          accountUsage: operatorAccountUsageProjection([], now),
           callerIdFilter: callerId ?? null,
           dashboardRef: 'operator.artanis.dashboard',
           messages: messages.map(messageProjection),
