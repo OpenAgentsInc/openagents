@@ -152,6 +152,7 @@ const THREAD = /^\/t\/[^/]+$/
 const TRAINING_RUNS = /^\/training\/runs(?:\/[^/]+)?$/
 const AGENTS = /^\/agents\/[^/]+$/
 const ARTANIS_TRACES = /^\/artanis\/traces$/
+const ARTANIS_GYM = /^\/artanis\/gym$/
 
 // The full table, keyed by `AppRoute['_tag']`. `route.ts` enforces, at compile
 // time, that these keys are EXACTLY the `AppRoute` tag union (no missing, no
@@ -567,6 +568,16 @@ export const routeTable = {
     inLoggedOutUnion: true,
     inLoggedInUnion: true,
     render: 'statelessShell',
+  },
+  ArtanisGym: {
+    surface: 'spaDocument',
+    serverDocument: ARTANIS_GYM,
+    examplePaths: ['/artanis/gym'],
+    requiresAuthBootstrap: true,
+    loggedInGate: 'admin',
+    inLoggedOutUnion: false,
+    inLoggedInUnion: true,
+    render: 'loggedInOnly',
   },
   Run: {
     surface: 'spaDocument',

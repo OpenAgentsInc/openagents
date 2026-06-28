@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest'
 
 import {
   AdminRoute,
+  ArtanisGymRoute,
   ArtanisTraceTreeRoute,
   ArtanisAccountsRoute,
   type AppRoute,
@@ -195,6 +196,10 @@ describe('app route parser', () => {
 
   test('accepts the owner-gated GPT-OSS Gym latency playground route', () => {
     expect(urlToAppRoute(appUrl('/gym/oss'))).toEqual(GymOssRoute())
+  })
+
+  test('accepts the owner-gated Artanis Gym route', () => {
+    expect(urlToAppRoute(appUrl('/artanis/gym'))).toEqual(ArtanisGymRoute())
   })
 
   test('accepts the public live Tassadar run route', () => {

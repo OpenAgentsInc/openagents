@@ -11,6 +11,7 @@ import {
   animationsRouter,
   artanisTraceTreeRouter,
   artanisAccountsRouter,
+  artanisGymRouter,
   autopilotWorkDetailRouter,
   autopilotWorkRouter,
   billingRouter,
@@ -76,6 +77,7 @@ import { type Model, type SidebarModel, teamRouteRef } from './model'
 import * as Mullet from './mullet/view'
 import { notificationsPanel } from './notifications/view'
 import * as Admin from './page/admin'
+import * as ArtanisGym from './page/artanisGym'
 import * as ArtanisDashboard from './artanis-dashboard/view'
 import * as AutopilotWork from './page/autopilot-work'
 import * as Billing from './page/billing'
@@ -136,6 +138,7 @@ const currentHref = (model: Model): string =>
       Animations: () => animationsRouter(),
       Activity: () => activityRouter(),
       ArtanisAccounts: () => artanisAccountsRouter(),
+      ArtanisGym: () => artanisGymRouter(),
       DemoLegal: () => demoLegalRouter(),
       Run: () => runRouter(),
       GymOss: () => gymOssRouter(),
@@ -207,6 +210,7 @@ const routeKey = (model: Model): string =>
       Animations: () => 'Animations',
       Activity: () => 'Activity',
       ArtanisAccounts: () => 'ArtanisAccounts',
+      ArtanisGym: () => 'ArtanisGym',
       DemoLegal: () => 'DemoLegal',
       Run: () => 'Run',
       GymOss: () => 'GymOss',
@@ -581,6 +585,8 @@ const routeView = (model: Model): Html => {
             Ui.workroomScrollableRoute<Message>([
               ArtanisAccounts.view(loggedInPublicHeaderAuthState(model)),
             ]),
+          ArtanisGym: () =>
+            Ui.workroomScrollableRoute<Message>([ArtanisGym.view(model)]),
           DemoLegal: () =>
             Ui.workroomScrollableRoute<Message>([
               notFoundView('/demo/legal', chatRouter(), 'Go to Chat'),

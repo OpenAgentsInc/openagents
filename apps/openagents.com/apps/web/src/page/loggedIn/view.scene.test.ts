@@ -25,6 +25,7 @@ import { GotLoggedInMessage } from '../../message'
 import { LoggedIn } from '../../model'
 import {
   AdminRoute,
+  ArtanisGymRoute,
   ChatRoute,
   ForgeRoute,
   GymOssRoute,
@@ -1781,6 +1782,23 @@ describe('logged-in workroom sidebar', () => {
       // (The neutral lane label + honest-number assertions are covered in
       // gymOss.test.ts; here we only assert the page+element render.)
       Scene.expect(Scene.selector('oa-gym-oss-controller')).toExist(),
+    )
+  })
+
+  test('renders the Artanis Gym MirrorCode leaderboard tab', () => {
+    Scene.scene(
+      { update, view },
+      Scene.with(LoggedIn.init(ArtanisGymRoute(), auth)),
+      Scene.expect(Scene.role('heading', { name: 'Artanis Gym' })).toExist(),
+      Scene.expect(Scene.text('MirrorCode')).toExist(),
+      Scene.expect(
+        Scene.selector('[data-artanis-gym-mirrorcode-tab]'),
+      ).toExist(),
+      Scene.expect(
+        Scene.selector('[data-artanis-gym-mirrorcode-leaderboard]'),
+      ).toExist(),
+      Scene.expect(Scene.text('mirrorcode_public_bucket')).toExist(),
+      Scene.expect(Scene.text('exact rows required')).toExist(),
     )
   })
 

@@ -487,6 +487,7 @@ export const startupCompleteDisposition = {
   Gym: 'public',
   MirrorCode: 'public',
   GymOss: 'gated',
+  ArtanisGym: 'gated',
   Tassadar: 'gated',
   TassadarReplay: 'gated',
   Login: 'gated',

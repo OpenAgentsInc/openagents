@@ -71,6 +71,7 @@ export const BusinessRoute = r('Business')
 export const AnimationsRoute = r('Animations')
 export const ActivityRoute = r('Activity')
 export const ArtanisAccountsRoute = r('ArtanisAccounts')
+export const ArtanisGymRoute = r('ArtanisGym')
 export const RunRoute = r('Run')
 export const GymRoute = r('Gym')
 export const GymOssRoute = r('GymOss')
@@ -190,6 +191,7 @@ export type BusinessRoute = typeof BusinessRoute.Type
 export type AnimationsRoute = typeof AnimationsRoute.Type
 export type ActivityRoute = typeof ActivityRoute.Type
 export type ArtanisAccountsRoute = typeof ArtanisAccountsRoute.Type
+export type ArtanisGymRoute = typeof ArtanisGymRoute.Type
 export type RunRoute = typeof RunRoute.Type
 export type GymRoute = typeof GymRoute.Type
 export type GymOssRoute = typeof GymOssRoute.Type
@@ -331,6 +333,7 @@ export const LoggedInRoute = S.Union([
   AnimationsRoute,
   ActivityRoute,
   ArtanisAccountsRoute,
+  ArtanisGymRoute,
   RunRoute,
   GymOssRoute,
   TassadarRoute,
@@ -397,6 +400,7 @@ export const AppRoute = S.Union([
   AnimationsRoute,
   ActivityRoute,
   ArtanisAccountsRoute,
+  ArtanisGymRoute,
   RunRoute,
   GymRoute,
   GymOssRoute,
@@ -641,6 +645,11 @@ export const artanisAccountsRouter = pipe(
   literal('artanis'),
   slash(literal('accounts')),
   Route.mapTo(ArtanisAccountsRoute),
+)
+export const artanisGymRouter = pipe(
+  literal('artanis'),
+  slash(literal('gym')),
+  Route.mapTo(ArtanisGymRoute),
 )
 export const runRouter = pipe(literal('run'), Route.mapTo(RunRoute))
 export const gymRouter = pipe(literal('gym'), Route.mapTo(GymRoute))
@@ -964,6 +973,7 @@ const orderedParserRouters = [
   animationsRouter,
   activityRouter,
   artanisAccountsRouter,
+  artanisGymRouter,
   tassadarReplayRouter,
   tassadarRouter,
   mirrorCodeRouter,

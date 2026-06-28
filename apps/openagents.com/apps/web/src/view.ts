@@ -404,6 +404,8 @@ const title = (model: Model): string => {
       return 'Activity - OpenAgents'
     case 'ArtanisAccounts':
       return 'Artanis accounts - OpenAgents'
+    case 'ArtanisGym':
+      return 'Artanis Gym - OpenAgents'
     case 'DemoLegal':
       return 'Legal demo - OpenAgents'
     case 'Run':
