@@ -302,6 +302,28 @@ describe('OpenAgents OpenAPI route', () => {
     expect(operationAt(body, '/api/agents/register', 'post').operationId).toBe(
       'registerProgrammaticAgent',
     )
+    expect(
+      operationAt(body, '/api/forge/work-records', 'post').operationId,
+    ).toBe('upsertForgeWorkRecord')
+    expect(operationAt(body, '/api/forge/changes', 'post').operationId).toBe(
+      'upsertForgeChange',
+    )
+    expect(
+      operationAt(body, '/api/forge/changes/{changeRef}/status', 'patch')
+        .operationId,
+    ).toBe('appendForgeChangeStatus')
+    expect(operationAt(body, '/api/forge/leases', 'post').operationId).toBe(
+      'acquireForgeDispatchLease',
+    )
+    expect(operationAt(body, '/api/forge/queue', 'get').operationId).toBe(
+      'getForgeQueueState',
+    )
+    expect(
+      operationAt(body, '/api/forge/verification-receipts', 'post').operationId,
+    ).toBe('recordForgeVerificationReceipt')
+    expect(
+      operationAt(body, '/api/forge/promotion-decisions', 'post').operationId,
+    ).toBe('recordForgePromotionDecision')
     expect(operationAt(body, '/api/agents/claims', 'post').operationId).toBe(
       'requestAgentOwnerClaim',
     )
@@ -845,6 +867,22 @@ describe('OpenAgents OpenAPI route', () => {
     expect(operationAt(body, '/api/agents/register', 'post').security).toEqual(
       [],
     )
+    expect(
+      body.components.securitySchemes.forgeControlPlaneBearer,
+    ).toEqual(
+      expect.objectContaining({
+        bearerFormat:
+          'OpenAgents Forge control-plane token plus X-OpenAgents-Forge-Scopes',
+        type: 'http',
+      }),
+    )
+    expect(operationAt(body, '/api/forge/work-records', 'post').security).toEqual(
+      [{ forgeControlPlaneBearer: [] }, { adminBearer: [] }],
+    )
+    expect(
+      operationAt(body, '/api/forge/changes/{changeRef}/status', 'patch')
+        .security,
+    ).toEqual([{ forgeControlPlaneBearer: [] }, { adminBearer: [] }])
     expect(operationAt(body, '/api/agents/claims', 'post').security).toEqual([])
     expect(
       operationAt(body, '/api/agents/claims/{claimId}', 'get').security,
@@ -1025,6 +1063,7 @@ describe('OpenAgents OpenAPI route', () => {
       'adminBearer',
       'agentBearer',
       'agentClaimToken',
+      'forgeControlPlaneBearer',
     ])
     expect(Object.keys(body.components.schemas)).toEqual(
       expect.arrayContaining([

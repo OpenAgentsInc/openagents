@@ -62,15 +62,20 @@ class SqliteD1 {
   }
 }
 
-const migration = readFileSync(
+const coordinationMigration = readFileSync(
   new URL('../migrations/0251_forge_coordination_source_of_truth.sql', import.meta.url),
+  'utf8',
+)
+const controlPlaneReceiptsMigration = readFileSync(
+  new URL('../migrations/0254_forge_control_plane_receipts.sql', import.meta.url),
   'utf8',
 )
 
 const makeStore = (): ForgeCoordinationStore => {
   const db = new DatabaseSync(':memory:')
   db.exec('PRAGMA foreign_keys = ON')
-  db.exec(migration)
+  db.exec(coordinationMigration)
+  db.exec(controlPlaneReceiptsMigration)
   return makeD1ForgeCoordinationStore(new SqliteD1(db) as unknown as D1Database)
 }
 
@@ -117,6 +122,16 @@ describe('forge coordination D1 store', () => {
       createdAt: now,
     })
     expect(status.nip34_kind).toBe(1630)
+
+    await expect(store.listIssues('tenant.openagents', 10)).resolves.toEqual([
+      issue,
+    ])
+    await expect(
+      store.listChanges('tenant.openagents', 10, issue.issue_ref),
+    ).resolves.toEqual([change])
+    await expect(
+      store.listStatuses('tenant.openagents', 10, change.change_ref),
+    ).resolves.toEqual([status])
   })
 
   test('admits only one active dispatch lease per work ref and reopens after expiry', async () => {
@@ -189,8 +204,73 @@ describe('forge coordination D1 store', () => {
     })
     const latest = await store.readLatestMergeQueueLedger('tenant.openagents')
     expect(latest?.queue_ref).toBe('queue.forge.first')
+    await expect(store.listMergeQueueLedgers('tenant.openagents', 10)).resolves.toEqual([
+      latest,
+    ])
     expect(JSON.parse(latest?.ready_json ?? '[]')).toEqual([
       { changeRef: 'change.forge.6746' },
     ])
+  })
+
+  test('records redacted verification and promotion receipts through shared schemas', async () => {
+    const store = makeStore()
+    const verificationReceipt = await store.recordVerificationReceipt(
+      {
+        schema: 'openagents.forge.verification.receipt.v0.1',
+        tenant_ref: 'tenant.openagents',
+        verification_ref: 'verification.forge.6770',
+        change_ref: 'change.forge.6770',
+        repository_ref: 'repo:OpenAgentsInc/openagents',
+        base_ref: 'refs/heads/main',
+        base_head: '8e0c9b2eaf84c821caf555cae233a0d27e94d4ab',
+        head_ref: 'refs/heads/forge-6770',
+        head_head: '9e0c9b2eaf84c821caf555cae233a0d27e94d4ac',
+        packfile_ref: 'packfile.forge.6770',
+        packfile_sha256: 'sha256:verification',
+        executor_identity_ref: 'agent.public.forge',
+        command_ref: 'cmd.test',
+        command_args: ['bun', 'test'],
+        exit_code: 0,
+        verdict: 'passed',
+        started_at: now,
+        completed_at: '2026-06-28T16:02:00.000Z',
+        artifact_refs: ['artifact:test-log'],
+        log_sha256: 'sha256:log',
+        source_refs: ['github:OpenAgentsInc/openagents#6770'],
+        redacted: true,
+      },
+      now,
+    )
+    expect(verificationReceipt.command_args).toEqual(['bun', 'test'])
+    expect(verificationReceipt.redacted).toBe(true)
+    await expect(
+      store.listVerificationReceipts('tenant.openagents', 10, 'change.forge.6770'),
+    ).resolves.toEqual([verificationReceipt])
+
+    const promotionDecision = await store.recordPromotionDecisionReceipt(
+      {
+        schema: 'openagents.forge.promotion.decision.v0.1',
+        tenant_ref: 'tenant.openagents',
+        promotion_ref: 'promotion.forge.6770',
+        queue_ref: 'queue.forge.main',
+        change_ref: 'change.forge.6770',
+        decision: 'approved',
+        base_head: '8e0c9b2eaf84c821caf555cae233a0d27e94d4ab',
+        candidate_head: '9e0c9b2eaf84c821caf555cae233a0d27e94d4ac',
+        promoted_head: '9e0c9b2eaf84c821caf555cae233a0d27e94d4ac',
+        verification_ref: verificationReceipt.verification_ref,
+        gate_refs: ['gate.tests'],
+        blocker_refs: [],
+        decided_by_ref: 'agent.public.forge',
+        decided_at: '2026-06-28T16:03:00.000Z',
+        source_refs: ['github:OpenAgentsInc/openagents#6770'],
+        redacted: true,
+      },
+      now,
+    )
+    expect(promotionDecision.decision).toBe('approved')
+    await expect(
+      store.listPromotionDecisionReceipts('tenant.openagents', 10, 'change.forge.6770'),
+    ).resolves.toEqual([promotionDecision])
   })
 })

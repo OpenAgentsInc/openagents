@@ -201,6 +201,7 @@ const publicRead: ReadonlyArray<
   Readonly<Record<string, ReadonlyArray<string>>>
 > = []
 const adminBearer = [{ adminBearer: [] }]
+const forgeControlPlaneBearer = [{ forgeControlPlaneBearer: [] }, { adminBearer: [] }]
 const adminSession = [{ adminSession: [] }]
 const agentBearer = [{ agentBearer: [] }]
 const agentClaimToken = [{ agentClaimToken: [] }, { agentBearer: [] }]
@@ -1467,6 +1468,54 @@ const schemaComponents = (): JsonSchema => ({
       reason: { type: 'string' },
     },
   },
+  ForgeCoordinationWorkRecordEnvelope: envelope(
+    'workRecord',
+    '#/components/schemas/ForgeCoordinationWorkRecord',
+  ),
+  ForgeCoordinationWorkRecordListEnvelope: objectSummary(
+    'Forge control-plane work-record list. Contains tenantRef, limit, and D1-backed coordination issue rows. Requires forge:work:read or admin authority; Forge smart-Git tokens are explicitly rejected.',
+  ),
+  ForgeCoordinationChangeRecordEnvelope: envelope(
+    'change',
+    '#/components/schemas/ForgeCoordinationChangeRecord',
+  ),
+  ForgeCoordinationChangeRecordListEnvelope: objectSummary(
+    'Forge control-plane change-record list. Contains tenantRef, limit, and D1-backed change rows filtered optionally by issueRef. Requires forge:change:read or admin authority.',
+  ),
+  ForgeCoordinationStatusEnvelope: envelope(
+    'status',
+    '#/components/schemas/ForgeCoordinationStatusRecord',
+  ),
+  ForgeCoordinationStatusListEnvelope: objectSummary(
+    'Forge control-plane status-transition list. Contains tenantRef, limit, and NIP-34-aligned status rows filtered optionally by subjectRef.',
+  ),
+  ForgeCoordinationLeaseEnvelope: objectSummary(
+    'Forge dispatch lease acquisition result. Either { acquired: true, lease } or { acquired: false, activeLease? }. Requires forge:lease:write or admin authority.',
+  ),
+  ForgeCoordinationLeaseListEnvelope: objectSummary(
+    'Forge dispatch lease list. Contains tenantRef, limit, and lease rows filtered optionally by workRef.',
+  ),
+  ForgeCoordinationQueueEnvelope: objectSummary(
+    'Forge virtual merge queue projection. Contains the latest D1 queue snapshot and recent queueSnapshots rows. Requires forge:queue:read or admin authority.',
+  ),
+  ForgeCoordinationQueueSnapshotEnvelope: envelope(
+    'queueSnapshot',
+    '#/components/schemas/ForgeCoordinationQueueSnapshot',
+  ),
+  ForgePromotionDecisionEnvelope: envelope(
+    'promotionDecision',
+    '#/components/schemas/ForgePromotionDecisionReceipt',
+  ),
+  ForgePromotionDecisionListEnvelope: objectSummary(
+    'Forge promotion decision receipt list. Contains tenantRef, limit, and redacted promotion decision receipts filtered optionally by changeRef. Requires forge:queue:read or admin authority.',
+  ),
+  ForgeVerificationReceiptEnvelope: envelope(
+    'verificationReceipt',
+    '#/components/schemas/ForgeVerificationReceipt',
+  ),
+  ForgeVerificationReceiptListEnvelope: objectSummary(
+    'Forge verification receipt list. Contains tenantRef, limit, and redacted verification receipts filtered optionally by changeRef. Requires forge:change:read or admin authority.',
+  ),
   OpenAgentsCapabilityManifest: objectSummary(
     'Public-safe OpenAgents capability discovery document.',
   ),
@@ -1747,6 +1796,9 @@ const schemaComponents = (): JsonSchema => ({
   ),
   PublicArtanisReport: objectSummary(
     'Public-safe Artanis report aggregator with autonomous loop state, OpenAgents-backed public Pylon stats, separate Nexus/Pylon receipt refs, Pylon launch communication, Pylon v0.2 release-gate status, production launch gate, R10 claim states, Model Lab public report summary, Forum refs, artifacts, blockers, and caveats.',
+  ),
+  PublicArtanisActivityResponse: objectSummary(
+    'Public-safe Artanis activity projection with fleet summary, active assignment refs, recent decisions, burn pace, failure-mode summaries, generatedAt, and staleness. It exposes refs and summaries only: no raw traces, private runner logs, provider payloads, wallet material, dispatch authority, spend authority, assignment authority, or settlement authority.',
   ),
   PublicOtecProof: objectSummary(
     'Public-safe OTEC proof closeout projection with claim state and caveats.',
@@ -3674,9 +3726,45 @@ const schemaComponents = (): JsonSchema => ({
   OperatorEmailDeliveries: objectSummary(
     'Operator email delivery inspection projection with bounded provider status and error summaries.',
   ),
+  OperatorRlmTracesProjection: objectSummary(
+    'Operator-only RLM trace projection with redacted/ref-only Recursive Language Model trace metadata, Blueprint signature refs, evidence refs, and authority flags. It never returns raw trajectory JSON or executor payloads.',
+  ),
 })
 
 const requestSchemas = (): JsonSchema => ({
+  ForgeCoordinationWorkRecord: objectSummary(
+    'D1-backed Forge coordination work record row: tenant_ref, issue_ref, GitHub mirror number when present, title, bounded state, priority_ref, source_refs_json, created_at, and updated_at.',
+  ),
+  ForgeCoordinationChangeRecord: objectSummary(
+    'D1-backed Forge change record row: tenant_ref, pr_ref, issue_ref, change_ref, bounded state, base/patch heads, verification_ref, blocker_refs_json, source_refs_json, created_at, and updated_at.',
+  ),
+  ForgeCoordinationStatusRecord: objectSummary(
+    'D1-backed Forge NIP-34-aligned status row with tenant_ref, status_ref, subject_ref, nip34_kind, bounded state, actor_ref, source_refs_json, and created_at.',
+  ),
+  ForgeCoordinationQueueSnapshot: objectSummary(
+    'D1-backed Forge virtual merge queue snapshot row with base/actual/virtual heads, bounded state, ready/blocked JSON, source refs, and timestamps.',
+  ),
+  ForgeWorkRecordRequest: objectSummary(
+    'Forge control-plane work-record upsert request with tenantRef, issueRef, title, bounded issue state, optional GitHub mirror number, priorityRef, and sourceRefs. Requires forge:work:write; never send raw private task material.',
+  ),
+  ForgeChangeRecordRequest: objectSummary(
+    'Forge control-plane change-record upsert request with tenantRef, prRef, issueRef, changeRef, bounded change state, baseHead, patchHead, optional verificationRef, blockerRefs, and sourceRefs.',
+  ),
+  ForgeStatusTransitionRequest: objectSummary(
+    'Forge control-plane status append request with tenantRef, statusRef, bounded status state, actorRef, and sourceRefs. The changeRef comes from the URL path.',
+  ),
+  ForgeDispatchLeaseRequest: objectSummary(
+    'Forge dispatch lease acquisition request with tenantRef, leaseRef, workRef, ownerAgentRef, expiresAt, optional acquiredAt, optional idempotencyKeyHash, and sourceRefs.',
+  ),
+  ForgeMergeQueueSnapshotRequest: objectSummary(
+    'Forge virtual merge queue snapshot request with tenantRef, queueRef, base/actual/virtual heads, bounded queue state, nextPromotionRef, ready/blocked public-safe JSON, and sourceRefs.',
+  ),
+  ForgeVerificationReceipt: objectSummary(
+    'Redacted Forge verification receipt matching openagents.forge.verification.receipt.v0.1. Carries refs, command metadata, verdict, timestamps, artifact refs, and checksums only; no logs, secrets, raw repository contents, invoices, wallet material, or provider payloads.',
+  ),
+  ForgePromotionDecisionReceipt: objectSummary(
+    'Redacted Forge promotion decision receipt matching openagents.forge.promotion.decision.v0.1. Carries queue/change refs, decision state, heads, gate/blocker refs, deciding actor ref, timestamp, and source refs only.',
+  ),
   CreateOperatorSiteRequest: objectSummary(
     'Operator request for creating a Site project from an order or prompt.',
   ),
@@ -4589,6 +4677,14 @@ const components = (): JsonSchema => ({
       name: 'X-OpenAgents-Claim-Token',
       description:
         'One-time pending agent token used only to read self-service owner-claim status before or after owner approval. It becomes a registered agent bearer token only after signed-in owner approval.',
+    },
+    forgeControlPlaneBearer: {
+      type: 'http',
+      scheme: 'bearer',
+      bearerFormat:
+        'OpenAgents Forge control-plane token plus X-OpenAgents-Forge-Scopes',
+      description:
+        'Dedicated Forge control-plane bearer token. Send X-OpenAgents-Forge-Scopes with one or more forge:* scopes such as forge:work:write or forge:admin. Forge smart-Git tokens (oa_forge_git_*) are rejected for /api/forge routes.',
     },
   },
   schemas: {
@@ -5541,6 +5637,26 @@ const paths = (): JsonSchema => ({
       },
     }),
   },
+  '/api/public/artanis/activity': {
+    get: operation({
+      operationId: 'getPublicArtanisActivity',
+      summary: 'Read public Artanis activity',
+      description:
+        'Returns the public-safe Artanis activity projection: fleet summary, active assignment refs, recent decisions, burn pace, failure-mode summaries, generatedAt, and staleness. It grants no dispatch, spend, assignment, settlement, provider, wallet, or public-claim authority.',
+      tags: ['Public Proof'],
+      security: publicRead,
+      parameters: [
+        queryParam('limit', 'Optional result limit, clamped by the route.'),
+      ],
+      responses: {
+        '200': okJson(
+          'Public Artanis activity projection.',
+          '#/components/schemas/PublicArtanisActivityResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
   '/api/public/labor-earnings': {
     get: operation({
       operationId: 'getPublicLaborEarnings',
@@ -6194,6 +6310,285 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Signature package validation result.',
           '#/components/schemas/SignaturePackageValidationResult',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/forge/work-records': {
+    get: operation({
+      operationId: 'listForgeWorkRecords',
+      summary: 'List Forge work records',
+      description:
+        'Lists D1-backed Forge work records for a tenant. Requires forge:work:read or admin authority. This control-plane route explicitly rejects Forge smart-Git tokens; Git intake credentials never grant /api/forge API authority.',
+      tags: ['Forge'],
+      security: forgeControlPlaneBearer,
+      parameters: [
+        queryParam('tenantRef', 'Required Forge tenant ref.'),
+        queryParam('limit', 'Optional result limit, clamped to 1..100.'),
+      ],
+      responses: {
+        '200': okJson(
+          'Forge work records.',
+          '#/components/schemas/ForgeCoordinationWorkRecordListEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+    post: operation({
+      operationId: 'upsertForgeWorkRecord',
+      summary: 'Create or update Forge work record',
+      description:
+        'Creates or updates a D1-backed Forge work record using the shared coordination schema. Requires forge:work:write or admin authority. Do not send raw private task material or repository contents.',
+      tags: ['Forge'],
+      security: forgeControlPlaneBearer,
+      requestBody: jsonContent('#/components/schemas/ForgeWorkRecordRequest'),
+      responses: {
+        '201': okJson(
+          'Stored Forge work record.',
+          '#/components/schemas/ForgeCoordinationWorkRecordEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/forge/changes': {
+    get: operation({
+      operationId: 'listForgeChanges',
+      summary: 'List Forge change records',
+      description:
+        'Lists D1-backed Forge change records for a tenant, optionally filtered by issueRef. Requires forge:change:read or admin authority.',
+      tags: ['Forge'],
+      security: forgeControlPlaneBearer,
+      parameters: [
+        queryParam('tenantRef', 'Required Forge tenant ref.'),
+        queryParam('issueRef', 'Optional work record ref filter.'),
+        queryParam('limit', 'Optional result limit, clamped to 1..100.'),
+      ],
+      responses: {
+        '200': okJson(
+          'Forge change records.',
+          '#/components/schemas/ForgeCoordinationChangeRecordListEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+    post: operation({
+      operationId: 'upsertForgeChange',
+      summary: 'Create or update Forge change record',
+      description:
+        'Creates or updates a D1-backed Forge change record after bounded intake. Requires forge:change:write or admin authority.',
+      tags: ['Forge'],
+      security: forgeControlPlaneBearer,
+      requestBody: jsonContent('#/components/schemas/ForgeChangeRecordRequest'),
+      responses: {
+        '201': okJson(
+          'Stored Forge change record.',
+          '#/components/schemas/ForgeCoordinationChangeRecordEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/forge/changes/{changeRef}/status': {
+    patch: operation({
+      operationId: 'appendForgeChangeStatus',
+      summary: 'Append Forge change status',
+      description:
+        'Appends a NIP-34-aligned status transition for a Forge change. Requires forge:status:write or admin authority. Status rows are append-only coordination facts, not deploy or promotion authority.',
+      tags: ['Forge'],
+      security: forgeControlPlaneBearer,
+      parameters: [pathParam('changeRef', 'Forge change ref.')],
+      requestBody: jsonContent(
+        '#/components/schemas/ForgeStatusTransitionRequest',
+      ),
+      responses: {
+        '201': okJson(
+          'Stored Forge status transition.',
+          '#/components/schemas/ForgeCoordinationStatusEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/forge/statuses': {
+    get: operation({
+      operationId: 'listForgeStatuses',
+      summary: 'List Forge statuses',
+      description:
+        'Lists D1-backed Forge status transitions for a tenant, optionally filtered by subjectRef. Requires forge:change:read or admin authority.',
+      tags: ['Forge'],
+      security: forgeControlPlaneBearer,
+      parameters: [
+        queryParam('tenantRef', 'Required Forge tenant ref.'),
+        queryParam('subjectRef', 'Optional status subject ref filter.'),
+        queryParam('limit', 'Optional result limit, clamped to 1..100.'),
+      ],
+      responses: {
+        '200': okJson(
+          'Forge status transitions.',
+          '#/components/schemas/ForgeCoordinationStatusListEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/forge/leases': {
+    get: operation({
+      operationId: 'listForgeDispatchLeases',
+      summary: 'List Forge dispatch leases',
+      description:
+        'Lists Forge dispatch leases for a tenant, optionally filtered by workRef. Requires forge:lease:write or admin authority because lease state is control-plane operational state.',
+      tags: ['Forge'],
+      security: forgeControlPlaneBearer,
+      parameters: [
+        queryParam('tenantRef', 'Required Forge tenant ref.'),
+        queryParam('workRef', 'Optional work ref filter.'),
+        queryParam('limit', 'Optional result limit, clamped to 1..100.'),
+      ],
+      responses: {
+        '200': okJson(
+          'Forge dispatch leases.',
+          '#/components/schemas/ForgeCoordinationLeaseListEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+    post: operation({
+      operationId: 'acquireForgeDispatchLease',
+      summary: 'Acquire Forge dispatch lease',
+      description:
+        'Attempts to acquire a single active dispatch lease for a Forge work ref. Requires forge:lease:write or admin authority.',
+      tags: ['Forge'],
+      security: forgeControlPlaneBearer,
+      requestBody: jsonContent('#/components/schemas/ForgeDispatchLeaseRequest'),
+      responses: {
+        '201': okJson(
+          'Lease acquired.',
+          '#/components/schemas/ForgeCoordinationLeaseEnvelope',
+        ),
+        '409': okJson(
+          'Another active lease already owns this work ref.',
+          '#/components/schemas/ForgeCoordinationLeaseEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/forge/queue': {
+    get: operation({
+      operationId: 'getForgeQueueState',
+      summary: 'Read Forge queue state',
+      description:
+        'Reads the latest Forge virtual merge queue snapshot and recent queue rows for a tenant. Requires forge:queue:read or admin authority.',
+      tags: ['Forge'],
+      security: forgeControlPlaneBearer,
+      parameters: [
+        queryParam('tenantRef', 'Required Forge tenant ref.'),
+        queryParam('limit', 'Optional result limit, clamped to 1..100.'),
+      ],
+      responses: {
+        '200': okJson(
+          'Forge queue state.',
+          '#/components/schemas/ForgeCoordinationQueueEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/forge/queue/snapshots': {
+    post: operation({
+      operationId: 'recordForgeQueueSnapshot',
+      summary: 'Record Forge queue snapshot',
+      description:
+        'Records a D1-backed virtual merge queue projection. Requires forge:queue:write or admin authority. Queue snapshots are coordination facts, not deployment authority.',
+      tags: ['Forge'],
+      security: forgeControlPlaneBearer,
+      requestBody: jsonContent(
+        '#/components/schemas/ForgeMergeQueueSnapshotRequest',
+      ),
+      responses: {
+        '201': okJson(
+          'Stored Forge queue snapshot.',
+          '#/components/schemas/ForgeCoordinationQueueSnapshotEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/forge/verification-receipts': {
+    get: operation({
+      operationId: 'listForgeVerificationReceipts',
+      summary: 'List Forge verification receipts',
+      description:
+        'Lists redacted Forge verification receipts for a tenant, optionally filtered by changeRef. Requires forge:change:read or admin authority.',
+      tags: ['Forge'],
+      security: forgeControlPlaneBearer,
+      parameters: [
+        queryParam('tenantRef', 'Required Forge tenant ref.'),
+        queryParam('changeRef', 'Optional change ref filter.'),
+        queryParam('limit', 'Optional result limit, clamped to 1..100.'),
+      ],
+      responses: {
+        '200': okJson(
+          'Forge verification receipts.',
+          '#/components/schemas/ForgeVerificationReceiptListEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+    post: operation({
+      operationId: 'recordForgeVerificationReceipt',
+      summary: 'Record Forge verification receipt',
+      description:
+        'Records a redacted Forge verification receipt using the shared openagents.forge.verification.receipt.v0.1 schema. Requires forge:receipt:write or admin authority.',
+      tags: ['Forge'],
+      security: forgeControlPlaneBearer,
+      requestBody: jsonContent('#/components/schemas/ForgeVerificationReceipt'),
+      responses: {
+        '201': okJson(
+          'Stored Forge verification receipt.',
+          '#/components/schemas/ForgeVerificationReceiptEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/forge/promotion-decisions': {
+    get: operation({
+      operationId: 'listForgePromotionDecisions',
+      summary: 'List Forge promotion decisions',
+      description:
+        'Lists redacted Forge promotion decision receipts for a tenant, optionally filtered by changeRef. Requires forge:queue:read or admin authority.',
+      tags: ['Forge'],
+      security: forgeControlPlaneBearer,
+      parameters: [
+        queryParam('tenantRef', 'Required Forge tenant ref.'),
+        queryParam('changeRef', 'Optional change ref filter.'),
+        queryParam('limit', 'Optional result limit, clamped to 1..100.'),
+      ],
+      responses: {
+        '200': okJson(
+          'Forge promotion decisions.',
+          '#/components/schemas/ForgePromotionDecisionListEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+    post: operation({
+      operationId: 'recordForgePromotionDecision',
+      summary: 'Record Forge promotion decision',
+      description:
+        'Records a redacted Forge promotion decision receipt using the shared openagents.forge.promotion.decision.v0.1 schema. Requires forge:promotion:decide or admin authority.',
+      tags: ['Forge'],
+      security: forgeControlPlaneBearer,
+      requestBody: jsonContent(
+        '#/components/schemas/ForgePromotionDecisionReceipt',
+      ),
+      responses: {
+        '201': okJson(
+          'Stored Forge promotion decision.',
+          '#/components/schemas/ForgePromotionDecisionEnvelope',
         ),
         ...errorResponses(),
       },
@@ -12502,6 +12897,28 @@ const paths = (): JsonSchema => ({
       },
     }),
   },
+  '/api/operator/rlm/traces': {
+    get: operation({
+      operationId: 'listOperatorRlmTraces',
+      summary: 'List operator RLM traces',
+      description:
+        'Lists redacted/ref-only Recursive Language Model trace metadata for operator inspection. Admin bearer only; it never returns raw trajectory JSON, private executor payloads, provider payloads, wallet material, or training-promotion authority.',
+      tags: ['Operator'],
+      security: adminBearer,
+      parameters: [
+        queryParam('limit', 'Optional result limit, clamped to 1..100.'),
+        queryParam('owner_user_id', 'Optional trace owner user id filter.'),
+        queryParam('visibility', 'Optional trace visibility filter.'),
+      ],
+      responses: {
+        '200': okJson(
+          'Operator RLM trace projection.',
+          '#/components/schemas/OperatorRlmTracesProjection',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
   '/api/operator/email-deliveries': {
     get: operation({
       operationId: 'listOperatorEmailDeliveries',
@@ -12555,6 +12972,7 @@ export const openAgentsOpenApiDocument = (): Effect.Effect<
       { name: 'Sites' },
       { name: 'Adjutant' },
       { name: 'Email' },
+      { name: 'Forge' },
     ],
     paths: paths(),
     components: components(),

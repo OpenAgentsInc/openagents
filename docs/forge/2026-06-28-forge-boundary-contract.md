@@ -58,10 +58,14 @@ reuse the existing D1/R2/DO bindings. The UI remains owned by `apps/forge/` on
 | `GET /api/forge/changes` | `forge:change:read` | List or inspect change records. |
 | `POST /api/forge/changes` | `forge:change:write` | Create change records after bounded intake. |
 | `PATCH /api/forge/changes/{changeRef}/status` | `forge:status:write` | Append status transitions. |
+| `GET /api/forge/statuses` | `forge:change:read` | List status transitions. |
+| `GET /api/forge/leases` | `forge:lease:write` | Inspect dispatch lease state. |
 | `POST /api/forge/leases` | `forge:lease:write` | Acquire or release dispatch leases. |
 | `GET /api/forge/queue` | `forge:queue:read` | Inspect merge queue state. |
 | `POST /api/forge/queue/snapshots` | `forge:queue:write` | Persist virtual merge queue projections. |
+| `GET /api/forge/verification-receipts` | `forge:change:read` | List redacted verification receipts. |
 | `POST /api/forge/verification-receipts` | `forge:receipt:write` | Record redacted verification receipts. |
+| `GET /api/forge/promotion-decisions` | `forge:queue:read` | List gated promotion decisions. |
 | `POST /api/forge/promotion-decisions` | `forge:promotion:decide` | Record gated promotion decisions. |
 | `/api/forge/admin/*` | `forge:admin` | Operator-only administrative actions. |
 
@@ -128,6 +132,8 @@ only. It is not the expansion target.
 ## Implementation Follow-Through
 
 - #6769 expands the separate Forge UI shell against this contract.
-- #6770 implements `/api/forge/*` routes with `ForgeControlPlaneScope`.
+- #6770 implements `/api/forge/*` routes with `ForgeControlPlaneScope` in the
+  `apps/openagents.com` Worker and persists receipt rows through
+  `0254_forge_control_plane_receipts.sql`.
 - #6771 implements smart-Git intake with `ForgeGitAccessScope`, R2 archive
   evidence, canonical ref locks, and D1 change rows.

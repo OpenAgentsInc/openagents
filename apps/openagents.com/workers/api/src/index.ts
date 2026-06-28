@@ -613,6 +613,11 @@ import {
   safeJsonRecord,
   stringArrayFromUnknown,
 } from './json-boundary'
+import {
+  authorizeForgeControlPlaneBearer,
+  makeForgeControlPlaneRoutes,
+} from './forge-control-plane-routes'
+import { makeD1ForgeCoordinationStore } from './forge-coordination-store'
 import type { KhalaChatStreamClient } from './khala-chat-program'
 import { loadKhalaChatPylonContext } from './khala-chat-pylon-context'
 import { makeKhalaChatRoutes } from './khala-chat-routes'
@@ -2060,6 +2065,20 @@ const readBearerToken = (request: Request): string | undefined => {
 
 const getAdminApiToken = (env: Env): string | undefined => {
   const token = redactedValue(getOpenAgentsWorkerConfig(env).adminApiToken)
+
+  if (token === undefined || token.trim() === '') {
+    return undefined
+  }
+
+  return token
+}
+
+const getForgeControlPlaneToken = (
+  env: OpenAgentsWorkerConfigEnv,
+): string | undefined => {
+  const token = redactedValue(
+    getOpenAgentsWorkerConfig(env).forgeControlPlaneToken,
+  )
 
   if (token === undefined || token.trim() === '') {
     return undefined
@@ -13153,6 +13172,20 @@ const routeRequest = makeWorkerRouteRequest({
   routeMarketingAgencySelfServeRequest:
     marketingAgencySelfServePublicRoutes.routeMarketingAgencySelfServeRequest,
   routePylonApiRequest: pylonApiRoutes.routePylonApiRequest,
+  routeForgeControlPlaneRequest: (request, env) =>
+    makeForgeControlPlaneRoutes<Env>({
+      authorizeControlPlaneBearer: (authRequest, authEnv, requiredScope) =>
+        authorizeForgeControlPlaneBearer(
+          authRequest,
+          getForgeControlPlaneToken(authEnv),
+          requiredScope,
+        ),
+      makeStore: storeEnv =>
+        makeD1ForgeCoordinationStore(openAgentsDatabase(storeEnv)),
+      nowIso: currentIsoTimestamp,
+      requireAdminApiToken: (authRequest, authEnv) =>
+        requireAdminApiToken(authRequest, authEnv),
+    }).routeForgeControlPlaneRequest(request, env),
   routeSiteCommerceRequest: (request, _env, _ctx) =>
     siteCommerceRoutesForEnv(_env).routeSiteCommerceRequest(request),
   routeSiteReferralInspectionRequest:

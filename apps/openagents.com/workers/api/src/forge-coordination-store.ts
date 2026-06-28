@@ -4,6 +4,8 @@ import {
   decodeForgeCoordinationStatusRow,
   decodeForgeDispatchLeaseRow,
   decodeForgeMergeQueueLedgerRow,
+  decodeForgePromotionDecisionReceipt,
+  decodeForgeVerificationReceipt,
   forgeNip34StatusKindForState,
   type ForgeCoordinationChangeState,
   type ForgeCoordinationIssueRow,
@@ -14,7 +16,12 @@ import {
   type ForgeDispatchLeaseRow,
   type ForgeMergeQueueLedgerRow,
   type ForgeMergeQueueLedgerState,
+  type ForgePromotionDecisionReceipt,
+  type ForgeVerificationReceipt,
 } from '@openagentsinc/forge-protocol'
+import { Schema as S } from 'effect'
+
+import { parseJsonWithSchema } from './json-boundary'
 
 export type ForgeCoordinationIssueInput = Readonly<{
   tenantRef: string
@@ -82,21 +89,159 @@ export type ForgeDispatchLeaseAcquireResult =
 
 export type ForgeCoordinationStore = Readonly<{
   upsertIssue: (input: ForgeCoordinationIssueInput) => Promise<ForgeCoordinationIssueRow>
+  listIssues: (tenantRef: string, limit: number) => Promise<ReadonlyArray<ForgeCoordinationIssueRow>>
   upsertChange: (input: ForgeCoordinationChangeInput) => Promise<ForgeCoordinationPrRow>
+  listChanges: (
+    tenantRef: string,
+    limit: number,
+    issueRef?: string,
+  ) => Promise<ReadonlyArray<ForgeCoordinationPrRow>>
   recordStatus: (input: ForgeCoordinationStatusInput) => Promise<ForgeCoordinationStatusRow>
+  listStatuses: (
+    tenantRef: string,
+    limit: number,
+    subjectRef?: string,
+  ) => Promise<ReadonlyArray<ForgeCoordinationStatusRow>>
   acquireDispatchLease: (input: ForgeDispatchLeaseInput) => Promise<ForgeDispatchLeaseAcquireResult>
+  listDispatchLeases: (
+    tenantRef: string,
+    limit: number,
+    workRef?: string,
+  ) => Promise<ReadonlyArray<ForgeDispatchLeaseRow>>
   readActiveDispatchLease: (
     tenantRef: string,
     workRef: string,
   ) => Promise<ForgeDispatchLeaseRow | undefined>
   recordMergeQueueLedger: (input: ForgeMergeQueueLedgerInput) => Promise<ForgeMergeQueueLedgerRow>
+  listMergeQueueLedgers: (
+    tenantRef: string,
+    limit: number,
+  ) => Promise<ReadonlyArray<ForgeMergeQueueLedgerRow>>
   readLatestMergeQueueLedger: (
     tenantRef: string,
   ) => Promise<ForgeMergeQueueLedgerRow | undefined>
+  recordVerificationReceipt: (
+    receipt: ForgeVerificationReceipt,
+    createdAt: string,
+  ) => Promise<ForgeVerificationReceipt>
+  listVerificationReceipts: (
+    tenantRef: string,
+    limit: number,
+    changeRef?: string,
+  ) => Promise<ReadonlyArray<ForgeVerificationReceipt>>
+  recordPromotionDecisionReceipt: (
+    receipt: ForgePromotionDecisionReceipt,
+    createdAt: string,
+  ) => Promise<ForgePromotionDecisionReceipt>
+  listPromotionDecisionReceipts: (
+    tenantRef: string,
+    limit: number,
+    changeRef?: string,
+  ) => Promise<ReadonlyArray<ForgePromotionDecisionReceipt>>
 }>
+
+const StringArray = S.Array(S.String)
 
 const jsonArray = (values: ReadonlyArray<string>): string =>
   JSON.stringify([...values])
+
+const limitRows = (limit: number): number =>
+  Math.min(Math.max(Math.trunc(limit), 1), 100)
+
+type ForgeVerificationReceiptRow = Readonly<{
+  tenant_ref: string
+  verification_ref: string
+  change_ref: string
+  repository_ref: string
+  base_ref: string
+  base_head: string
+  head_ref: string
+  head_head: string
+  packfile_ref: string
+  packfile_sha256: string
+  executor_identity_ref: string
+  command_ref: string
+  command_args_json: string
+  exit_code: number | null
+  verdict: string
+  started_at: string
+  completed_at: string
+  artifact_refs_json: string
+  log_sha256: string
+  source_refs_json: string
+  redacted: number | boolean
+}>
+
+type ForgePromotionDecisionReceiptRow = Readonly<{
+  tenant_ref: string
+  promotion_ref: string
+  queue_ref: string
+  change_ref: string
+  decision: string
+  base_head: string
+  candidate_head: string
+  promoted_head: string | null
+  verification_ref: string | null
+  gate_refs_json: string
+  blocker_refs_json: string
+  decided_by_ref: string
+  decided_at: string
+  source_refs_json: string
+  redacted: number | boolean
+}>
+
+const stringArrayFromJson = (value: string): ReadonlyArray<string> =>
+  parseJsonWithSchema(StringArray, value)
+
+const verificationReceiptFromRow = (
+  row: ForgeVerificationReceiptRow,
+): ForgeVerificationReceipt =>
+  decodeForgeVerificationReceipt({
+    schema: 'openagents.forge.verification.receipt.v0.1',
+    tenant_ref: row.tenant_ref,
+    verification_ref: row.verification_ref,
+    change_ref: row.change_ref,
+    repository_ref: row.repository_ref,
+    base_ref: row.base_ref,
+    base_head: row.base_head,
+    head_ref: row.head_ref,
+    head_head: row.head_head,
+    packfile_ref: row.packfile_ref,
+    packfile_sha256: row.packfile_sha256,
+    executor_identity_ref: row.executor_identity_ref,
+    command_ref: row.command_ref,
+    command_args: stringArrayFromJson(row.command_args_json),
+    exit_code: row.exit_code,
+    verdict: row.verdict,
+    started_at: row.started_at,
+    completed_at: row.completed_at,
+    artifact_refs: stringArrayFromJson(row.artifact_refs_json),
+    log_sha256: row.log_sha256,
+    source_refs: stringArrayFromJson(row.source_refs_json),
+    redacted: row.redacted === true || row.redacted === 1,
+  })
+
+const promotionDecisionReceiptFromRow = (
+  row: ForgePromotionDecisionReceiptRow,
+): ForgePromotionDecisionReceipt =>
+  decodeForgePromotionDecisionReceipt({
+    schema: 'openagents.forge.promotion.decision.v0.1',
+    tenant_ref: row.tenant_ref,
+    promotion_ref: row.promotion_ref,
+    queue_ref: row.queue_ref,
+    change_ref: row.change_ref,
+    decision: row.decision,
+    base_head: row.base_head,
+    candidate_head: row.candidate_head,
+    promoted_head: row.promoted_head,
+    verification_ref: row.verification_ref,
+    gate_refs: stringArrayFromJson(row.gate_refs_json),
+    blocker_refs: stringArrayFromJson(row.blocker_refs_json),
+    decided_by_ref: row.decided_by_ref,
+    decided_at: row.decided_at,
+    source_refs: stringArrayFromJson(row.source_refs_json),
+    redacted: row.redacted === true || row.redacted === 1,
+  })
 
 class ForgeCoordinationStoreInvariantError extends Error {
   constructor(message: string) {
@@ -239,6 +384,23 @@ export const makeD1ForgeCoordinationStore = (
     return firstIssue(db, input.tenantRef, input.issueRef)
   },
 
+  async listIssues(tenantRef, limit) {
+    const rows = await db
+      .prepare(
+        `
+          SELECT *
+          FROM forge_coordination_issues
+          WHERE tenant_ref = ?
+          ORDER BY updated_at DESC, issue_ref DESC
+          LIMIT ?
+        `,
+      )
+      .bind(tenantRef, limitRows(limit))
+      .all<ForgeCoordinationIssueRow>()
+
+    return rows.results.map(row => decodeForgeCoordinationIssueRow(row))
+  },
+
   async upsertChange(input) {
     await db
       .prepare(
@@ -288,6 +450,37 @@ export const makeD1ForgeCoordinationStore = (
     return firstChange(db, input.tenantRef, input.prRef)
   },
 
+  async listChanges(tenantRef, limit, issueRef) {
+    const rows =
+      issueRef === undefined
+        ? await db
+            .prepare(
+              `
+                SELECT *
+                FROM forge_coordination_prs
+                WHERE tenant_ref = ?
+                ORDER BY updated_at DESC, pr_ref DESC
+                LIMIT ?
+              `,
+            )
+            .bind(tenantRef, limitRows(limit))
+            .all<ForgeCoordinationPrRow>()
+        : await db
+            .prepare(
+              `
+                SELECT *
+                FROM forge_coordination_prs
+                WHERE tenant_ref = ? AND issue_ref = ?
+                ORDER BY updated_at DESC, pr_ref DESC
+                LIMIT ?
+              `,
+            )
+            .bind(tenantRef, issueRef, limitRows(limit))
+            .all<ForgeCoordinationPrRow>()
+
+    return rows.results.map(row => decodeForgeCoordinationPrRow(row))
+  },
+
   async recordStatus(input) {
     await db
       .prepare(
@@ -317,6 +510,37 @@ export const makeD1ForgeCoordinationStore = (
       .run()
 
     return firstStatus(db, input.tenantRef, input.statusRef)
+  },
+
+  async listStatuses(tenantRef, limit, subjectRef) {
+    const rows =
+      subjectRef === undefined
+        ? await db
+            .prepare(
+              `
+                SELECT *
+                FROM forge_coordination_status
+                WHERE tenant_ref = ?
+                ORDER BY created_at DESC, status_ref DESC
+                LIMIT ?
+              `,
+            )
+            .bind(tenantRef, limitRows(limit))
+            .all<ForgeCoordinationStatusRow>()
+        : await db
+            .prepare(
+              `
+                SELECT *
+                FROM forge_coordination_status
+                WHERE tenant_ref = ? AND subject_ref = ?
+                ORDER BY created_at DESC, status_ref DESC
+                LIMIT ?
+              `,
+            )
+            .bind(tenantRef, subjectRef, limitRows(limit))
+            .all<ForgeCoordinationStatusRow>()
+
+    return rows.results.map(row => decodeForgeCoordinationStatusRow(row))
   },
 
   async acquireDispatchLease(input) {
@@ -379,6 +603,37 @@ export const makeD1ForgeCoordinationStore = (
       )
     }
     return { acquired: true, lease: activeLease }
+  },
+
+  async listDispatchLeases(tenantRef, limit, workRef) {
+    const rows =
+      workRef === undefined
+        ? await db
+            .prepare(
+              `
+                SELECT *
+                FROM forge_dispatch_leases
+                WHERE tenant_ref = ?
+                ORDER BY acquired_at DESC, lease_ref DESC
+                LIMIT ?
+              `,
+            )
+            .bind(tenantRef, limitRows(limit))
+            .all<ForgeDispatchLeaseRow>()
+        : await db
+            .prepare(
+              `
+                SELECT *
+                FROM forge_dispatch_leases
+                WHERE tenant_ref = ? AND work_ref = ?
+                ORDER BY acquired_at DESC, lease_ref DESC
+                LIMIT ?
+              `,
+            )
+            .bind(tenantRef, workRef, limitRows(limit))
+            .all<ForgeDispatchLeaseRow>()
+
+    return rows.results.map(row => decodeForgeDispatchLeaseRow(row))
   },
 
   readActiveDispatchLease: (tenantRef, workRef) =>
@@ -445,6 +700,23 @@ export const makeD1ForgeCoordinationStore = (
     )
   },
 
+  async listMergeQueueLedgers(tenantRef, limit) {
+    const rows = await db
+      .prepare(
+        `
+          SELECT *
+          FROM forge_merge_queue_ledger
+          WHERE tenant_ref = ?
+          ORDER BY updated_at DESC, queue_ref DESC
+          LIMIT ?
+        `,
+      )
+      .bind(tenantRef, limitRows(limit))
+      .all<ForgeMergeQueueLedgerRow>()
+
+    return rows.results.map(row => decodeForgeMergeQueueLedgerRow(row))
+  },
+
   async readLatestMergeQueueLedger(tenantRef) {
     const row = await db
       .prepare(
@@ -460,5 +732,231 @@ export const makeD1ForgeCoordinationStore = (
       .first()
 
     return row === null ? undefined : decodeForgeMergeQueueLedgerRow(row)
+  },
+
+  async recordVerificationReceipt(receipt, createdAt) {
+    const decoded = decodeForgeVerificationReceipt(receipt)
+    await db
+      .prepare(
+        `
+          INSERT INTO forge_verification_receipts (
+            tenant_ref,
+            verification_ref,
+            change_ref,
+            repository_ref,
+            base_ref,
+            base_head,
+            head_ref,
+            head_head,
+            packfile_ref,
+            packfile_sha256,
+            executor_identity_ref,
+            command_ref,
+            command_args_json,
+            exit_code,
+            verdict,
+            started_at,
+            completed_at,
+            artifact_refs_json,
+            log_sha256,
+            source_refs_json,
+            redacted,
+            created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+          ON CONFLICT (tenant_ref, verification_ref) DO UPDATE SET
+            change_ref = excluded.change_ref,
+            repository_ref = excluded.repository_ref,
+            base_ref = excluded.base_ref,
+            base_head = excluded.base_head,
+            head_ref = excluded.head_ref,
+            head_head = excluded.head_head,
+            packfile_ref = excluded.packfile_ref,
+            packfile_sha256 = excluded.packfile_sha256,
+            executor_identity_ref = excluded.executor_identity_ref,
+            command_ref = excluded.command_ref,
+            command_args_json = excluded.command_args_json,
+            exit_code = excluded.exit_code,
+            verdict = excluded.verdict,
+            started_at = excluded.started_at,
+            completed_at = excluded.completed_at,
+            artifact_refs_json = excluded.artifact_refs_json,
+            log_sha256 = excluded.log_sha256,
+            source_refs_json = excluded.source_refs_json
+        `,
+      )
+      .bind(
+        decoded.tenant_ref,
+        decoded.verification_ref,
+        decoded.change_ref,
+        decoded.repository_ref,
+        decoded.base_ref,
+        decoded.base_head,
+        decoded.head_ref,
+        decoded.head_head,
+        decoded.packfile_ref,
+        decoded.packfile_sha256,
+        decoded.executor_identity_ref,
+        decoded.command_ref,
+        jsonArray(decoded.command_args),
+        decoded.exit_code,
+        decoded.verdict,
+        decoded.started_at,
+        decoded.completed_at,
+        jsonArray(decoded.artifact_refs),
+        decoded.log_sha256,
+        jsonArray(decoded.source_refs),
+        createdAt,
+      )
+      .run()
+
+    const row = await db
+      .prepare(
+        `
+          SELECT *
+          FROM forge_verification_receipts
+          WHERE tenant_ref = ? AND verification_ref = ?
+        `,
+      )
+      .bind(decoded.tenant_ref, decoded.verification_ref)
+      .first<ForgeVerificationReceiptRow>()
+
+    return verificationReceiptFromRow(
+      rowOrFail(row, 'forge verification receipt'),
+    )
+  },
+
+  async listVerificationReceipts(tenantRef, limit, changeRef) {
+    const rows =
+      changeRef === undefined
+        ? await db
+            .prepare(
+              `
+                SELECT *
+                FROM forge_verification_receipts
+                WHERE tenant_ref = ?
+                ORDER BY completed_at DESC, verification_ref DESC
+                LIMIT ?
+              `,
+            )
+            .bind(tenantRef, limitRows(limit))
+            .all<ForgeVerificationReceiptRow>()
+        : await db
+            .prepare(
+              `
+                SELECT *
+                FROM forge_verification_receipts
+                WHERE tenant_ref = ? AND change_ref = ?
+                ORDER BY completed_at DESC, verification_ref DESC
+                LIMIT ?
+              `,
+            )
+            .bind(tenantRef, changeRef, limitRows(limit))
+            .all<ForgeVerificationReceiptRow>()
+
+    return rows.results.map(verificationReceiptFromRow)
+  },
+
+  async recordPromotionDecisionReceipt(receipt, createdAt) {
+    const decoded = decodeForgePromotionDecisionReceipt(receipt)
+    await db
+      .prepare(
+        `
+          INSERT INTO forge_promotion_decisions (
+            tenant_ref,
+            promotion_ref,
+            queue_ref,
+            change_ref,
+            decision,
+            base_head,
+            candidate_head,
+            promoted_head,
+            verification_ref,
+            gate_refs_json,
+            blocker_refs_json,
+            decided_by_ref,
+            decided_at,
+            source_refs_json,
+            redacted,
+            created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+          ON CONFLICT (tenant_ref, promotion_ref) DO UPDATE SET
+            queue_ref = excluded.queue_ref,
+            change_ref = excluded.change_ref,
+            decision = excluded.decision,
+            base_head = excluded.base_head,
+            candidate_head = excluded.candidate_head,
+            promoted_head = excluded.promoted_head,
+            verification_ref = excluded.verification_ref,
+            gate_refs_json = excluded.gate_refs_json,
+            blocker_refs_json = excluded.blocker_refs_json,
+            decided_by_ref = excluded.decided_by_ref,
+            decided_at = excluded.decided_at,
+            source_refs_json = excluded.source_refs_json
+        `,
+      )
+      .bind(
+        decoded.tenant_ref,
+        decoded.promotion_ref,
+        decoded.queue_ref,
+        decoded.change_ref,
+        decoded.decision,
+        decoded.base_head,
+        decoded.candidate_head,
+        decoded.promoted_head,
+        decoded.verification_ref,
+        jsonArray(decoded.gate_refs),
+        jsonArray(decoded.blocker_refs),
+        decoded.decided_by_ref,
+        decoded.decided_at,
+        jsonArray(decoded.source_refs),
+        createdAt,
+      )
+      .run()
+
+    const row = await db
+      .prepare(
+        `
+          SELECT *
+          FROM forge_promotion_decisions
+          WHERE tenant_ref = ? AND promotion_ref = ?
+        `,
+      )
+      .bind(decoded.tenant_ref, decoded.promotion_ref)
+      .first<ForgePromotionDecisionReceiptRow>()
+
+    return promotionDecisionReceiptFromRow(
+      rowOrFail(row, 'forge promotion decision receipt'),
+    )
+  },
+
+  async listPromotionDecisionReceipts(tenantRef, limit, changeRef) {
+    const rows =
+      changeRef === undefined
+        ? await db
+            .prepare(
+              `
+                SELECT *
+                FROM forge_promotion_decisions
+                WHERE tenant_ref = ?
+                ORDER BY decided_at DESC, promotion_ref DESC
+                LIMIT ?
+              `,
+            )
+            .bind(tenantRef, limitRows(limit))
+            .all<ForgePromotionDecisionReceiptRow>()
+        : await db
+            .prepare(
+              `
+                SELECT *
+                FROM forge_promotion_decisions
+                WHERE tenant_ref = ? AND change_ref = ?
+                ORDER BY decided_at DESC, promotion_ref DESC
+                LIMIT ?
+              `,
+            )
+            .bind(tenantRef, changeRef, limitRows(limit))
+            .all<ForgePromotionDecisionReceiptRow>()
+
+    return rows.results.map(promotionDecisionReceiptFromRow)
   },
 })

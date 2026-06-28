@@ -415,6 +415,7 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   MDK_WALLET_MNEMONIC?: string | undefined
   OPENAGENTS_SPARK_API_KEY?: string | undefined
   OPENAGENTS_ADMIN_API_TOKEN?: string | undefined
+  OPENAGENTS_FORGE_CONTROL_PLANE_TOKEN?: string | undefined
   OPENAGENTS_APP_URL?: string | undefined
   OPENAUTH_CLIENT_ID?: string | undefined
   OPENAUTH_ISSUER_URL?: string | undefined
@@ -602,6 +603,7 @@ export type OpenAgentsWorkerConfigShape = Readonly<{
     resendWebhookSecret?: Redacted.Redacted<WorkerSecret> | undefined
   }>
   exa: ExaConfig
+  forgeControlPlaneToken?: Redacted.Redacted<WorkerSecret> | undefined
   github: Readonly<{
     clientId: GitHubClientId
     clientSecret: Redacted.Redacted<WorkerSecret>
@@ -1323,6 +1325,10 @@ export const decodeOpenAgentsWorkerConfig = (
         resendWebhookSecret: optionalRedacted(env, 'RESEND_WEBHOOK_SECRET'),
       },
       exa: yield* exaConfig(env),
+      forgeControlPlaneToken: optionalRedacted(
+        env,
+        'OPENAGENTS_FORGE_CONTROL_PLANE_TOKEN',
+      ),
       github: {
         clientId: GitHubClientId.make(
           yield* requiredString(env, 'GITHUB_CLIENT_ID'),

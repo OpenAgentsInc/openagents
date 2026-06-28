@@ -60,6 +60,7 @@ type WorkerRouteDependencies = Readonly<{
   routeAgentSearchRequest: OptionalEffectRoute
   routeAgentScopedGrantRequest: OptionalEffectRoute
   routeAgentSiteRequest: OptionalEffectRoute
+  routeForgeControlPlaneRequest: OptionalEffectRoute
   routeForumRequest: OptionalEffectRoute
   routeImageGenerationRequest: OptionalEffectRoute
   routeModelRetrieveRequest: OptionalEffectRoute
@@ -444,6 +445,13 @@ export const makeWorkerRouteRequest =
 
       if (agentSiteResponse !== undefined) {
         return yield* agentSiteResponse
+      }
+
+      const forgeControlPlaneResponse =
+        dependencies.routeForgeControlPlaneRequest(request, env, ctx)
+
+      if (forgeControlPlaneResponse !== undefined) {
+        return yield* forgeControlPlaneResponse
       }
 
       const siteCommerceResponse = dependencies.routeSiteCommerceRequest(

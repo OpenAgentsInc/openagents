@@ -372,6 +372,7 @@ describe('Worker route dual-serve resolution (#6148)', () => {
       routeAgentSearchRequest: noRoute,
       routeAgentScopedGrantRequest: noRoute,
       routeAgentSiteRequest: noRoute,
+      routeForgeControlPlaneRequest: noRoute,
       routeForumRequest: noRoute,
       routeImageGenerationRequest: noRoute,
       routeModelRetrieveRequest,

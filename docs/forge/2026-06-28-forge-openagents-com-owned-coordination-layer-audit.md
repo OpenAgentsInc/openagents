@@ -574,8 +574,10 @@ then full source-of-truth inversion at `forge.openagents.com`.
 > deploy bootstrap and production `forge.openagents.com` landing page. #6769
 > now expands that app into the SU-1B shell with work, change, verification,
 > queue, and ref routes plus `/shell.json` public-safe contract metadata. The
-> next filed implementation slices are #6770 / SU-2 `/api/forge/*`
-> control-plane routes and #6771 / SU-3 smart-Git intake to archive/canonical
+> #6770 has now implemented the SU-2 `/api/forge/*` control-plane routes in the
+> `apps/openagents.com` Worker, backed by the coordination store plus receipt
+> migration `0254_forge_control_plane_receipts.sql`. The next filed
+> implementation slice is #6771 / SU-3 smart-Git intake to archive/canonical
 > refs/coordination rows.
 > #6768 is anchored by `docs/forge/2026-06-28-forge-boundary-contract.md` and
 > the `ForgeControlPlaneScope`, `ForgeVerificationReceipt`, and
@@ -591,6 +593,15 @@ then full source-of-truth inversion at `forge.openagents.com`.
 > dispatch leases, and merge-queue ledger snapshots. Stores decode every row
 > through the shared protocol package so Workers and Pylon do not fork local
 > coordination contracts.
+
+> FORGE SU-2 status, 2026-06-28: `/api/forge/work-records`,
+> `/api/forge/changes`, `/api/forge/changes/{changeRef}/status`,
+> `/api/forge/statuses`, `/api/forge/leases`, `/api/forge/queue`,
+> `/api/forge/queue/snapshots`, `/api/forge/verification-receipts`, and
+> `/api/forge/promotion-decisions` are registered in OpenAPI and route through
+> `forge-control-plane-routes.ts`. Auth accepts admin bearer or a dedicated
+> Forge control-plane bearer with `X-OpenAgents-Forge-Scopes`; tenant smart-Git
+> tokens are rejected for control-plane calls.
 
 > FORGE-2 status, 2026-06-28: Pylon now has a local pure
 > `git-receive-pack` parser at `apps/pylon/src/git-receive-pack.ts`. The parser
