@@ -1,5 +1,6 @@
 import type {
   GlmFleetAcceptanceDimensionStatus,
+  GlmFleetReadinessOperatorDimension,
   GlmFleetReadinessOperatorReadout,
   GlmFleetReadinessProjection,
 } from './glm-fleet-readiness'
@@ -25,6 +26,16 @@ export type GlmFleetDurabilityOwnerArmedCommandInput = Readonly<{
   readinessUrl?: string | undefined
 }>
 
+export type GlmFleetDurabilityAcceptanceChecklistItem = Readonly<{
+  blockerRefs: ReadonlyArray<string>
+  complete: boolean
+  dimension: GlmFleetReadinessOperatorDimension
+  evidenceRefs: ReadonlyArray<string>
+  missingOperatorInputs: ReadonlyArray<GlmFleetDurabilityOperatorInput>
+  missingReplicaRefs: ReadonlyArray<string>
+  status: GlmFleetAcceptanceDimensionStatus
+}>
+
 export type GlmFleetDurabilityOperatorBundle = Readonly<{
   schemaVersion: typeof GLM_FLEET_DURABILITY_OPERATOR_BUNDLE_SCHEMA
   generatedAt: string
@@ -32,6 +43,7 @@ export type GlmFleetDurabilityOperatorBundle = Readonly<{
   publicSafe: true
   readiness: GlmFleetReadinessOperatorReadout
   acceptance: GlmFleetReadinessProjection['acceptance']
+  acceptanceChecklist: ReadonlyArray<GlmFleetDurabilityAcceptanceChecklistItem>
   counts: GlmFleetReadinessProjection['counts']
   missingOperatorInputs: ReadonlyArray<GlmFleetDurabilityOperatorInput>
   ownerArmedCommand: string
@@ -207,6 +219,21 @@ export const collectGlmFleetDurabilityMissingOperatorInputs = (
 ): ReadonlyArray<GlmFleetDurabilityOperatorInput> =>
   uniqueInputs(readout.blockerRefs.flatMap(ref => input(ref) ?? []))
 
+export const buildGlmFleetDurabilityAcceptanceChecklist = (
+  readout: GlmFleetReadinessOperatorReadout,
+): ReadonlyArray<GlmFleetDurabilityAcceptanceChecklistItem> =>
+  readout.dimensions.map(dimension => ({
+    blockerRefs: dimension.blockerRefs,
+    complete: dimension.status === 'complete',
+    dimension: dimension.dimension,
+    evidenceRefs: dimension.evidenceRefs,
+    missingOperatorInputs: uniqueInputs(
+      dimension.blockerRefs.flatMap(ref => input(ref) ?? []),
+    ),
+    missingReplicaRefs: dimension.missingReplicaRefs,
+    status: dimension.status,
+  }))
+
 const ownerArmedCommandLines = (
   input: Required<GlmFleetDurabilityOwnerArmedCommandInput>,
 ): ReadonlyArray<string> => [
@@ -246,6 +273,7 @@ export const buildGlmFleetDurabilityOperatorBundle = (input: {
     publicSafe: true,
     readiness,
     acceptance: input.projection.acceptance,
+    acceptanceChecklist: buildGlmFleetDurabilityAcceptanceChecklist(readiness),
     counts: input.projection.counts,
     missingOperatorInputs:
       collectGlmFleetDurabilityMissingOperatorInputs(readiness),
@@ -269,6 +297,18 @@ const statusLine = (
 
 const listOrNone = (values: ReadonlyArray<string>): string =>
   values.length === 0 ? 'none' : values.join(', ')
+
+const checklistLine = (
+  item: GlmFleetDurabilityAcceptanceChecklistItem,
+): string => {
+  const missingInputs =
+    item.missingOperatorInputs.length === 0
+      ? 'none'
+      : item.missingOperatorInputs
+          .map(input => `${input.env} [${input.flag}]`)
+          .join(', ')
+  return `- ${item.dimension}: ${item.status}; complete: ${item.complete}; blockers: ${listOrNone(item.blockerRefs)}; evidence: ${listOrNone(item.evidenceRefs)}; missing replicas: ${listOrNone(item.missingReplicaRefs)}; missing inputs: ${missingInputs}`
+}
 
 export const formatGlmFleetDurabilityOperatorReadme = (
   bundle: GlmFleetDurabilityOperatorBundle,
@@ -325,6 +365,10 @@ export const formatGlmFleetDurabilityOperatorReadme = (
       'quota request tracking',
       bundle.acceptance.quotaRequestTracking.status,
     ),
+    '',
+    '## Acceptance checklist',
+    '',
+    ...bundle.acceptanceChecklist.map(checklistLine),
     '',
     '## Operator action items',
     '',

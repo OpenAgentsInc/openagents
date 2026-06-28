@@ -70,6 +70,22 @@ describe('GLM fleet durability operator bundle', () => {
       totalReplicaCount: 1,
       warmReplicaCount: 1,
     })
+    expect(bundle.acceptanceChecklist.map(item => item.dimension)).toEqual([
+      'all_replica_keep_warm_watchdog',
+      'capacity_floor_owner_decision',
+      'multi_region_auto_replace',
+      'quota_request_tracking',
+    ])
+    expect(bundle.acceptanceChecklist[0]).toMatchObject({
+      complete: false,
+      dimension: 'all_replica_keep_warm_watchdog',
+      status: 'blocked',
+    })
+    expect(
+      bundle.acceptanceChecklist[0]?.missingOperatorInputs.map(
+        input => input.env,
+      ),
+    ).toEqual(['HYDRALISK_GLM_52_REAP_504B_FORCED_STOP_RECOVERY_REFS'])
     expect(bundle.missingOperatorInputs.map(input => input.env)).toEqual([
       'HYDRALISK_GLM_52_REAP_504B_CAPACITY_FLOOR_DECISION',
       'HYDRALISK_GLM_52_REAP_504B_FORCED_STOP_RECOVERY_REFS',
@@ -138,8 +154,15 @@ describe('GLM fleet durability operator bundle', () => {
     expect(bundle.readiness.acceptanceStatus).toBe('complete')
     expect(bundle.missingOperatorInputs).toEqual([])
     expect(bundle.readiness.operatorActionItems).toEqual([])
+    expect(bundle.acceptanceChecklist.every(item => item.complete)).toBe(true)
+    expect(
+      bundle.acceptanceChecklist.flatMap(item => item.missingOperatorInputs),
+    ).toEqual([])
     expect(readme).toContain('- total replicas: 2')
     expect(readme).toContain('- warm replicas: 1')
+    expect(readme).toContain(
+      '- all_replica_keep_warm_watchdog: complete; complete: true',
+    )
     expect(readme).toContain('- none')
     expect(JSON.stringify(bundle)).not.toContain('private.example.test')
     expect(JSON.stringify(bundle)).not.toContain('secret-')
@@ -222,6 +245,13 @@ describe('GLM fleet durability operator bundle', () => {
     expect(readme).toContain('Acceptance: blocked')
     expect(readme).toContain(
       'Serving ready but durability acceptance incomplete: true',
+    )
+    expect(readme).toContain('## Acceptance checklist')
+    expect(readme).toContain(
+      '- capacity_floor_owner_decision: blocked; complete: false',
+    )
+    expect(readme).toContain(
+      'HYDRALISK_GLM_52_REAP_504B_CAPACITY_FLOOR_DECISION [--capacity-floor-decision]',
     )
     expect(readme).toContain('- reclaimed replicas: 0')
     expect(readme).not.toContain('recover_reclaimed_replicas')
