@@ -215,6 +215,15 @@ const measuredRolloutEvidence = (
       chunkedPrefillMatches: true,
       speculativeDecodingMatches: true,
     },
+    prefixCache: {
+      coldRepeatedPrefixTtftP90Ms: 930,
+      warmRepeatedPrefixTtftP90Ms: 440,
+      cacheHitRate: 0.82,
+    },
+    chunkedPrefill: {
+      unchunkedLongPrefillDecodeStallP90Ms: 310,
+      chunkedLongPrefillDecodeStallP90Ms: 95,
+    },
     publicEvidenceRefs: [
       'report.gym.throughput.glm_52.vllm.issue_6320.measurement.001',
       'receipt.gym.throughput.glm_52.vllm.issue_6320.before_after.001',
@@ -577,7 +586,10 @@ describe('Gym throughput/concurrency report (#6244)', () => {
       'live_max_num_seqs',
       'live_vllm_flags',
       'prefix_cache',
+      'prefix_cache_repeated_ttft_p90',
+      'prefix_cache_hit_rate',
       'chunked_prefill',
+      'chunked_prefill_decode_stall_p90',
       'speculative_decode',
       'before_tokens_per_second',
       'after_tokens_per_second',
@@ -593,7 +605,7 @@ describe('Gym throughput/concurrency report (#6244)', () => {
       'public_evidence_refs',
     ])
     expect(readout.evidenceChecklist.map(item => item.status)).toEqual(
-      Array.from({ length: 18 }, () => 'satisfied'),
+      Array.from({ length: 21 }, () => 'satisfied'),
     )
     expect(
       readout.evidenceChecklist.find(item => item.check === 'live_max_num_seqs'),
@@ -612,9 +624,27 @@ describe('Gym throughput/concurrency report (#6244)', () => {
     ).toMatchObject({ expected: true, actual: true })
     expect(
       readout.evidenceChecklist.find(
+        item => item.check === 'prefix_cache_repeated_ttft_p90',
+      ),
+    ).toMatchObject({ expected: 930, actual: 440 })
+    expect(
+      readout.evidenceChecklist.find(
+        item => item.check === 'prefix_cache_hit_rate',
+      ),
+    ).toMatchObject({
+      expected: 'measured_positive_cache_hit_rate',
+      actual: 0.82,
+    })
+    expect(
+      readout.evidenceChecklist.find(
         item => item.check === 'chunked_prefill',
       ),
     ).toMatchObject({ expected: true, actual: true })
+    expect(
+      readout.evidenceChecklist.find(
+        item => item.check === 'chunked_prefill_decode_stall_p90',
+      ),
+    ).toMatchObject({ expected: 310, actual: 95 })
     expect(
       readout.evidenceChecklist.find(
         item => item.check === 'speculative_decode',
@@ -693,6 +723,72 @@ describe('Gym throughput/concurrency report (#6244)', () => {
       canStartIssue6317Stress: true,
       canStartIssue6312Benchmark: true,
       remainingChecks: [],
+    })
+  })
+
+  test('blocks #6320 acceptance when prefix-cache or chunked-prefill measurement proof is missing', () => {
+    const recommendation = measuredGlmRolloutRecommendation()
+    const rolloutRun = buildGymThroughputOwnerArmedRolloutRunArtifact({
+      generatedAt: '2026-06-26T13:00:00.000Z',
+      recommendation,
+      ownerArmRef: 'owner_arm.gym.glm_52.vllm_rollout.issue_6320.v1',
+    })
+    const {
+      prefixCache: _prefixCache,
+      chunkedPrefill: _chunkedPrefill,
+      ...measurementEvidence
+    } = measuredRolloutEvidence(recommendation)
+
+    const readout = buildGymThroughputRolloutReadout({
+      generatedAt: '2026-06-26T13:05:00.000Z',
+      rolloutRun,
+      progressEvidence: {
+        schemaVersion: 'openagents.gym.throughput_rollout_progress_evidence.v1',
+        rolloutRef: 'rollout.gym.glm_52.vllm.issue_6320.measurement.006',
+        observedAt: '2026-06-26T13:04:00.000Z',
+        status: 'measured_lift',
+        ownerArmRef: 'owner_arm.gym.glm_52.vllm_rollout.issue_6320.v1',
+        progressPercent: 100,
+        publicEvidenceRefs: [
+          'report.gym.throughput.glm_52.vllm.issue_6320.measurement.006',
+        ],
+        baselineAggregateTps: recommendation.selection!.baselineAggregateTps,
+        measuredAggregateTps: recommendation.selection!.aggregateTps,
+        measuredThroughputLiftPercent:
+          recommendation.selection!.aggregateTpsLiftPercent,
+        rolloutMeasurementEvidence: measurementEvidence,
+      },
+    })
+
+    expect(readout.status).toBe('blocked')
+    expect(readout.blockers).toEqual([
+      'prefix_cache_measurement_missing',
+      'chunked_prefill_measurement_missing',
+    ])
+    expect(
+      readout.evidenceChecklist.find(
+        item => item.check === 'prefix_cache_repeated_ttft_p90',
+      ),
+    ).toMatchObject({ status: 'mismatch', expected: null, actual: null })
+    expect(
+      readout.evidenceChecklist.find(
+        item => item.check === 'prefix_cache_hit_rate',
+      ),
+    ).toMatchObject({ status: 'mismatch', actual: null })
+    expect(
+      readout.evidenceChecklist.find(
+        item => item.check === 'chunked_prefill_decode_stall_p90',
+      ),
+    ).toMatchObject({ status: 'mismatch', expected: null, actual: null })
+    expect(readout.operatorAcceptance).toMatchObject({
+      status: 'blocked_before_stress_and_benchmark',
+      canStartIssue6317Stress: false,
+      canStartIssue6312Benchmark: false,
+      remainingChecks: [
+        'prefix_cache_repeated_ttft_p90',
+        'prefix_cache_hit_rate',
+        'chunked_prefill_decode_stall_p90',
+      ],
     })
   })
 

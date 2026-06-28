@@ -375,6 +375,19 @@ export const GymThroughputRolloutMeasurementEvidence = S.Struct({
   before: GymThroughputRolloutMeasuredPoint,
   after: GymThroughputRolloutMeasuredPoint,
   expectedVsActual: GymThroughputRolloutExpectedVsActualEvidence,
+  prefixCache: S.optional(
+    S.Struct({
+      coldRepeatedPrefixTtftP90Ms: ThroughputMeasuredNumber,
+      warmRepeatedPrefixTtftP90Ms: ThroughputMeasuredNumber,
+      cacheHitRate: ThroughputMeasuredNumber,
+    }),
+  ),
+  chunkedPrefill: S.optional(
+    S.Struct({
+      unchunkedLongPrefillDecodeStallP90Ms: ThroughputMeasuredNumber,
+      chunkedLongPrefillDecodeStallP90Ms: ThroughputMeasuredNumber,
+    }),
+  ),
   publicEvidenceRefs: S.Array(S.String),
 })
 export type GymThroughputRolloutMeasurementEvidence =
@@ -413,6 +426,12 @@ export const GymThroughputRolloutReadoutBlocker = S.Literals([
   'progress_measurement_mismatch',
   'measured_lift_missing',
   'measured_lift_not_positive',
+  'prefix_cache_measurement_missing',
+  'prefix_cache_ttft_not_improved',
+  'prefix_cache_hit_rate_missing',
+  'prefix_cache_hit_rate_zero',
+  'chunked_prefill_measurement_missing',
+  'chunked_prefill_decode_stall_not_improved',
   'glm_fleet_serving_not_ready',
   'glm_fleet_durability_acceptance_not_complete',
 ])
@@ -464,7 +483,10 @@ export const GymThroughputRolloutEvidenceChecklistCheck = S.Literals([
   'live_max_num_seqs',
   'live_vllm_flags',
   'prefix_cache',
+  'prefix_cache_repeated_ttft_p90',
+  'prefix_cache_hit_rate',
   'chunked_prefill',
+  'chunked_prefill_decode_stall_p90',
   'speculative_decode',
   'before_tokens_per_second',
   'after_tokens_per_second',
@@ -1064,6 +1086,31 @@ const rolloutExpectedActualMatches = (
     evidence.after.configuration,
   )
 
+const prefixCacheTtftImproved = (
+  evidence: GymThroughputRolloutMeasurementEvidence,
+): boolean =>
+  evidence.prefixCache !== undefined &&
+  isMeasured(evidence.prefixCache.coldRepeatedPrefixTtftP90Ms) &&
+  isMeasured(evidence.prefixCache.warmRepeatedPrefixTtftP90Ms) &&
+  evidence.prefixCache.warmRepeatedPrefixTtftP90Ms <
+    evidence.prefixCache.coldRepeatedPrefixTtftP90Ms
+
+const prefixCacheHitRateMeasuredPositive = (
+  evidence: GymThroughputRolloutMeasurementEvidence,
+): boolean =>
+  evidence.prefixCache !== undefined &&
+  isMeasured(evidence.prefixCache.cacheHitRate) &&
+  evidence.prefixCache.cacheHitRate > 0
+
+const chunkedPrefillDecodeStallImproved = (
+  evidence: GymThroughputRolloutMeasurementEvidence,
+): boolean =>
+  evidence.chunkedPrefill !== undefined &&
+  isMeasured(evidence.chunkedPrefill.unchunkedLongPrefillDecodeStallP90Ms) &&
+  isMeasured(evidence.chunkedPrefill.chunkedLongPrefillDecodeStallP90Ms) &&
+  evidence.chunkedPrefill.chunkedLongPrefillDecodeStallP90Ms <
+    evidence.chunkedPrefill.unchunkedLongPrefillDecodeStallP90Ms
+
 const sameVllmFlags = (
   left: ReadonlyArray<GymThroughputRolloutVllmFlag>,
   right: ReadonlyArray<GymThroughputRolloutVllmFlag>,
@@ -1235,6 +1282,26 @@ const rolloutEvidenceChecklist = (input: {
       publicEvidenceRefs,
     }),
     checklistItem({
+      check: 'prefix_cache_repeated_ttft_p90',
+      status: matchedChecklistStatus(
+        evidence !== null && expectedConfiguration?.prefixCachingEnabled === true,
+        evidence === null ? false : prefixCacheTtftImproved(evidence),
+      ),
+      expected: evidence?.prefixCache?.coldRepeatedPrefixTtftP90Ms ?? null,
+      actual: evidence?.prefixCache?.warmRepeatedPrefixTtftP90Ms ?? null,
+      publicEvidenceRefs,
+    }),
+    checklistItem({
+      check: 'prefix_cache_hit_rate',
+      status: matchedChecklistStatus(
+        evidence !== null && expectedConfiguration?.prefixCachingEnabled === true,
+        evidence === null ? false : prefixCacheHitRateMeasuredPositive(evidence),
+      ),
+      expected: 'measured_positive_cache_hit_rate',
+      actual: evidence?.prefixCache?.cacheHitRate ?? null,
+      publicEvidenceRefs,
+    }),
+    checklistItem({
       check: 'chunked_prefill',
       status: matchedChecklistStatus(
         evidence !== null,
@@ -1242,6 +1309,18 @@ const rolloutEvidenceChecklist = (input: {
       ),
       expected: expectedConfiguration?.chunkedPrefillEnabled ?? null,
       actual: actualConfiguration?.chunkedPrefillEnabled ?? null,
+      publicEvidenceRefs,
+    }),
+    checklistItem({
+      check: 'chunked_prefill_decode_stall_p90',
+      status: matchedChecklistStatus(
+        evidence !== null && expectedConfiguration?.chunkedPrefillEnabled === true,
+        evidence === null ? false : chunkedPrefillDecodeStallImproved(evidence),
+      ),
+      expected:
+        evidence?.chunkedPrefill?.unchunkedLongPrefillDecodeStallP90Ms ?? null,
+      actual:
+        evidence?.chunkedPrefill?.chunkedLongPrefillDecodeStallP90Ms ?? null,
       publicEvidenceRefs,
     }),
     checklistItem({
@@ -1475,6 +1554,53 @@ export const buildGymThroughputRolloutReadout = (input: {
       }
       if (!rolloutExpectedActualMatches(rolloutMeasurementEvidence)) {
         blockers.push('expected_actual_evidence_mismatch')
+      }
+      if (
+        input.rolloutRun.recommendation.selection?.prefixCachingEnabled ===
+          true &&
+        rolloutMeasurementEvidence.prefixCache === undefined
+      ) {
+        blockers.push('prefix_cache_measurement_missing')
+      }
+      if (
+        input.rolloutRun.recommendation.selection?.prefixCachingEnabled ===
+          true &&
+        rolloutMeasurementEvidence.prefixCache !== undefined &&
+        !prefixCacheTtftImproved(rolloutMeasurementEvidence)
+      ) {
+        blockers.push('prefix_cache_ttft_not_improved')
+      }
+      if (
+        input.rolloutRun.recommendation.selection?.prefixCachingEnabled ===
+          true &&
+        rolloutMeasurementEvidence.prefixCache !== undefined &&
+        !isMeasured(rolloutMeasurementEvidence.prefixCache.cacheHitRate)
+      ) {
+        blockers.push('prefix_cache_hit_rate_missing')
+      }
+      if (
+        input.rolloutRun.recommendation.selection?.prefixCachingEnabled ===
+          true &&
+        rolloutMeasurementEvidence.prefixCache !== undefined &&
+        isMeasured(rolloutMeasurementEvidence.prefixCache.cacheHitRate) &&
+        rolloutMeasurementEvidence.prefixCache.cacheHitRate <= 0
+      ) {
+        blockers.push('prefix_cache_hit_rate_zero')
+      }
+      if (
+        input.rolloutRun.recommendation.selection?.chunkedPrefillEnabled ===
+          true &&
+        rolloutMeasurementEvidence.chunkedPrefill === undefined
+      ) {
+        blockers.push('chunked_prefill_measurement_missing')
+      }
+      if (
+        input.rolloutRun.recommendation.selection?.chunkedPrefillEnabled ===
+          true &&
+        rolloutMeasurementEvidence.chunkedPrefill !== undefined &&
+        !chunkedPrefillDecodeStallImproved(rolloutMeasurementEvidence)
+      ) {
+        blockers.push('chunked_prefill_decode_stall_not_improved')
       }
       if (
         progressEvidence !== null &&
