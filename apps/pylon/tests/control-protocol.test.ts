@@ -250,6 +250,62 @@ describe("control protocol", () => {
     )
   })
 
+  test("operator account status endpoint is bearer gated and no-store", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const runtime = yield* makePylonNodeRuntime
+          const server = yield* startControlServer(runtime, {
+            token: "test-token-0123456789abcdef",
+            actions: {
+              ...stubActions([]),
+              accountsStatus: async () => ({
+                schema: "openagents.pylon.operator_account_status.v0.1",
+                observedAt: "2026-06-28T00:00:00.000Z",
+                accounts: [
+                  {
+                    accountRefHash: "account.pylon.codex.abc",
+                    provider: "codex",
+                    isRateLimited: false,
+                    cooldownExpiresAt: null,
+                    hourlyCap: null,
+                    hourlyUsage: null,
+                    weeklyCap: null,
+                    weeklyUsage: null,
+                    manualResetsRemaining: null,
+                  },
+                ],
+              }),
+            },
+            port: 0,
+          })
+
+          const denied = yield* Effect.promise(() =>
+            fetch(`${server.url}/api/operator/accounts/status`, {
+              headers: { authorization: "Bearer wrong" },
+            }),
+          )
+          expect(denied.status).toBe(403)
+          expect(denied.headers.get("cache-control")).toBe("no-store")
+          const deniedBody = yield* Effect.promise(() => denied.text())
+          expect(deniedBody).not.toContain("account.pylon.codex.abc")
+
+          const allowed = yield* Effect.promise(() =>
+            fetch(`${server.url}/api/operator/accounts/status`, {
+              headers: { authorization: "Bearer test-token-0123456789abcdef" },
+            }),
+          )
+          expect(allowed.status).toBe(200)
+          expect(allowed.headers.get("cache-control")).toBe("no-store")
+          const body = yield* Effect.promise(() =>
+            allowed.json() as Promise<{ accounts: Array<{ accountRefHash: string }> }>,
+          )
+          expect(body.accounts[0]?.accountRefHash).toBe("account.pylon.codex.abc")
+        }),
+      ),
+    )
+  })
+
   test("assignments commands round-trip and report unavailability", async () => {
     const calls: Array<Record<string, unknown>> = []
     await Effect.runPromise(

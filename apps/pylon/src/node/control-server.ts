@@ -86,6 +86,7 @@ export type ControlCommand =
   | { type: "intent.submit"; title: string; body: string; scopeHint?: string; submittedByClientRef?: string }
   | { type: "intent.list"; sinceCursor?: string }
   | { type: "accounts.list" }
+  | { type: "accounts.status" }
   // CL-16 approvals: read-only pending list + exactly-once resolve.
   | { type: "approvals.list" }
   | { type: "approvals.resolve"; approvalRef: string; decision: "approve" | "deny" | "answer"; answer?: string }
@@ -132,6 +133,7 @@ export interface ControlCommandActions {
   }
   // CL-18: read-only accounts + readiness panel (public-projection-safe).
   accountsList?: () => Promise<unknown>
+  accountsStatus?: () => Promise<unknown>
   // CL-16: read-only pending approvals + exactly-once resolve (approve/deny/answer).
   approvals?: {
     list: () => Promise<unknown>
@@ -344,6 +346,9 @@ export const startControlServer = (
         case "accounts.list":
           if (!options.actions.accountsList) throw new Error("accounts unavailable on this node")
           return options.actions.accountsList()
+        case "accounts.status":
+          if (!options.actions.accountsStatus) throw new Error("account status unavailable on this node")
+          return options.actions.accountsStatus()
         case "bridge.issueBootstrap":
           // Returns { bootstrapId, secret } for the operator to hand to a client
           // (QR/connect payload). Single-use; the secret is exchanged at
@@ -687,6 +692,21 @@ export const startControlServer = (
                   { status: 404 },
                 )
               }
+            }
+
+            if (url.pathname === "/api/operator/accounts/status" && request.method === "GET") {
+              if (!authorized(request)) {
+                return Response.json(
+                  { error: "operator ledger access required" },
+                  { status: 403, headers: { "cache-control": "no-store" } },
+                )
+              }
+              if (!options.actions.accountsStatus) {
+                return Response.json({ error: "account status unavailable" }, { status: 404 })
+              }
+              return Response.json(await options.actions.accountsStatus(), {
+                headers: { "cache-control": "no-store" },
+              })
             }
 
             if (!authorized(request)) return unauthorized()

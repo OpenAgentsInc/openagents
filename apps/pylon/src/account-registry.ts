@@ -11,6 +11,9 @@ export type PylonAccountRegistryEntry = {
   ref: string
   provider: PylonAccountProvider
   home: string
+  hourlyCap: number | null
+  weeklyCap: number | null
+  manualResetsRemaining: number | null
 }
 
 export type PylonAccountSelectionInput = {
@@ -53,6 +56,15 @@ function providerFrom(value: unknown): PylonAccountProvider | null {
   return value === "codex" || value === "claude_agent" ? value : null
 }
 
+function nonNegativeNumberOrNull(value: unknown): number | null {
+  const parsed = typeof value === "number"
+    ? value
+    : typeof value === "string" && value.trim().length > 0
+      ? Number(value)
+      : Number.NaN
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null
+}
+
 export function normalizeAccountHome(value: string): string {
   const trimmed = value.trim()
   if (trimmed === "~") return homedir()
@@ -85,6 +97,11 @@ export async function loadPylonAccountRegistry(
         provider,
         ref: record.ref,
         home: normalizeAccountHome(home),
+        hourlyCap: nonNegativeNumberOrNull(record.hourlyCap ?? record.hourly_cap),
+        weeklyCap: nonNegativeNumberOrNull(record.weeklyCap ?? record.weekly_cap),
+        manualResetsRemaining: nonNegativeNumberOrNull(
+          record.manualResetsRemaining ?? record.manual_resets_remaining,
+        ),
       })
     }
     return entries
