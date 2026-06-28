@@ -11,6 +11,7 @@ import Foundation
 enum KhalaClient {
     static let baseURL = URL(string: "https://openagents.com/api/v1")!
     static let freeKeyURL = URL(string: "https://openagents.com/api/keys/free")!
+    static let operatorFleetStatusURL = URL(string: "https://openagents.com/api/operator/fleet/status")!
     static let model = "openagents/khala"
 
     enum KhalaError: Error, LocalizedError {
@@ -166,6 +167,33 @@ enum KhalaClient {
                 throw KhalaError.decoding
             }
             return token
+        } catch let err as KhalaError {
+            throw err
+        } catch {
+            throw KhalaError.transport(error)
+        }
+    }
+
+    // MARK: - Fleet inspector
+
+    static func fetchFleetInspectorStatus(
+        apiKey: String,
+        session: URLSession = .shared
+    ) async throws -> FleetInspectorStatus {
+        var request = URLRequest(url: operatorFleetStatusURL)
+        request.httpMethod = "GET"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse else { throw KhalaError.decoding }
+            if http.statusCode == 401 || http.statusCode == 403 { throw KhalaError.unauthorized }
+            if http.statusCode == 402 { throw KhalaError.quotaExceeded }
+            guard (200..<300).contains(http.statusCode) else {
+                throw KhalaError.http(http.statusCode, String(data: data, encoding: .utf8) ?? "")
+            }
+            return try FleetInspectorStatus.decode(from: data)
         } catch let err as KhalaError {
             throw err
         } catch {

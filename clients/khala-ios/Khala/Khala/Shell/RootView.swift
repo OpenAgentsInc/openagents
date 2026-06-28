@@ -9,11 +9,15 @@ struct RootView: View {
     @Environment(\.openURL) private var openURL
 
     @State private var drawerOpen = false
+    @State private var inspectorOpen = false
     @State private var showSettings = false
     @State private var showDiagnostics = false
     @State private var hasKey = Self.hasUsableAPIKey()
     @State private var didLaunch = false
     @State private var selection: Conversation?
+    @State private var fleetStatus: FleetInspectorStatus?
+    @State private var fleetStatusLoading = false
+    @State private var fleetStatusError: String?
     /// Active conversation channel. `.khala` is the public collective model;
     /// `.artanis` is the owner-only operator channel (#6363). Toggled from the
     /// title menu; switching starts a fresh conversation so the two personas
@@ -23,16 +27,34 @@ struct RootView: View {
     @State private var model: ChatViewModel?
 
     var body: some View {
-        DrawerContainer(isOpen: $drawerOpen) {
-            chatStack
-        } drawer: {
-            DrawerContentView(
-                store: store,
-                selection: $selection,
-                onNewChat: newChat,
-                onOpenSettings: { drawerOpen = false; showSettings = true },
-                onSelect: open(_:)
-            )
+        ZStack(alignment: .trailing) {
+            DrawerContainer(isOpen: $drawerOpen) {
+                chatStack
+            } drawer: {
+                DrawerContentView(
+                    store: store,
+                    selection: $selection,
+                    onNewChat: newChat,
+                    onOpenSettings: { drawerOpen = false; showSettings = true },
+                    onSelect: open(_:)
+                )
+            }
+            if inspectorOpen {
+                Color.black.opacity(0.32)
+                    .ignoresSafeArea()
+                    .onTapGesture { withAnimation { inspectorOpen = false } }
+                    .transition(.opacity)
+                FleetInspectorView(
+                    status: fleetStatus,
+                    isLoading: fleetStatusLoading,
+                    errorText: fleetStatusError,
+                    onRefresh: { Task { await refreshFleetStatus() } }
+                )
+                .frame(width: 340)
+                .ignoresSafeArea(edges: .vertical)
+                .transition(.move(edge: .trailing))
+                .shadow(radius: 18)
+            }
         }
         .sheet(isPresented: $showSettings) {
             SettingsView(hasKey: $hasKey)
@@ -42,6 +64,11 @@ struct RootView: View {
         }
         .task { await onAppear() }
         .onChange(of: selection?.id) { _, _ in syncModel() }
+        .onChange(of: inspectorOpen) { _, isOpen in
+            guard isOpen else { return }
+            drawerOpen = false
+            Task { await refreshFleetStatus() }
+        }
     }
 
     private var chatStack: some View {
@@ -122,10 +149,18 @@ struct RootView: View {
                     .accessibilityLabel("\(channel.speaker) menu")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(action: newChat) {
-                        Image(systemName: "square.and.pencil")
+                    HStack(spacing: 10) {
+                        Button {
+                            withAnimation { inspectorOpen.toggle() }
+                        } label: {
+                            Image(systemName: "rectangle.righthalf.inset.filled")
+                        }
+                        .accessibilityLabel("Fleet inspector")
+                        Button(action: newChat) {
+                            Image(systemName: "square.and.pencil")
+                        }
+                        .accessibilityLabel("New chat")
                     }
-                    .accessibilityLabel("New chat")
                 }
             }
         }
@@ -227,5 +262,25 @@ struct RootView: View {
     private static func hasUsableAPIKey() -> Bool {
         guard let key = KeychainStore.loadAPIKey() else { return false }
         return FreeTierDisclosureStore.canUse(apiKey: key)
+    }
+
+    @MainActor
+    private func refreshFleetStatus() async {
+        guard inspectorOpen else { return }
+        guard let key = KeychainStore.loadAPIKey() else {
+            fleetStatusError = "Mint or paste a Khala key in Settings to read owner-scoped fleet status."
+            fleetStatus = nil
+            return
+        }
+        fleetStatusLoading = true
+        fleetStatusError = nil
+        defer { fleetStatusLoading = false }
+        do {
+            fleetStatus = try await KhalaClient.fetchFleetInspectorStatus(apiKey: key)
+        } catch let khala as KhalaClient.KhalaError {
+            fleetStatusError = khala.recoveryMessage
+        } catch {
+            fleetStatusError = error.localizedDescription
+        }
     }
 }
