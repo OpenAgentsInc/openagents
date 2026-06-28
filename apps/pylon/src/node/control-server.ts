@@ -133,7 +133,7 @@ export interface ControlCommandActions {
   }
   // CL-18: read-only accounts + readiness panel (public-projection-safe).
   accountsList?: () => Promise<unknown>
-  accountsStatus?: () => Promise<unknown>
+  accountsStatus?: (input?: { accountRef?: string; reset?: boolean }) => Promise<unknown>
   // CL-16: read-only pending approvals + exactly-once resolve (approve/deny/answer).
   approvals?: {
     list: () => Promise<unknown>
@@ -707,6 +707,39 @@ export const startControlServer = (
               return Response.json(await options.actions.accountsStatus(), {
                 headers: { "cache-control": "no-store" },
               })
+            }
+
+            const accountManualResetMatch =
+              request.method === "POST"
+                ? (
+                    /^\/api\/operator\/accounts\/([^/]+)\/manual-reset$/.exec(url.pathname) ??
+                    /^\/api\/operator\/accounts\/status\/([^/]+)\/manual-reset$/.exec(url.pathname)
+                  )
+                : null
+            if (accountManualResetMatch) {
+              if (!authorized(request)) {
+                return Response.json(
+                  { error: "operator ledger access required" },
+                  { status: 403, headers: { "cache-control": "no-store" } },
+                )
+              }
+              if (!options.actions.accountsStatus) {
+                return Response.json(
+                  { error: "account status unavailable" },
+                  { status: 404, headers: { "cache-control": "no-store" } },
+                )
+              }
+              const accountRef = decodeURIComponent(accountManualResetMatch[1] ?? "")
+              if (accountRef.length === 0) {
+                return Response.json(
+                  { error: "account ref required" },
+                  { status: 400, headers: { "cache-control": "no-store" } },
+                )
+              }
+              return Response.json(
+                await options.actions.accountsStatus({ accountRef, reset: true }),
+                { headers: { "cache-control": "no-store" } },
+              )
             }
 
             if (!authorized(request)) return unauthorized()
