@@ -26,6 +26,7 @@ import {
   buildMirrorCodeRun,
   KHALA_MODEL_ID,
   MIRRORCODE_BENCHMARK_LABEL,
+  MIRRORCODE_GENERALIZATION_SET,
   MIRRORCODE_PAPER_REFERENCE_COMPARATORS,
   MirrorCodeRunError,
   MirrorCodeRunsSchemaVersion,
@@ -125,6 +126,7 @@ const publicEnvelope = (
   staleness: mirrorCodeStaleness(),
   model: KHALA_MODEL_ID,
   benchmark: MIRRORCODE_BENCHMARK_LABEL,
+  generalizationSet: MIRRORCODE_GENERALIZATION_SET,
   runs,
   comparators: MIRRORCODE_PAPER_REFERENCE_COMPARATORS,
 })
