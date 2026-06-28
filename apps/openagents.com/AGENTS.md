@@ -67,9 +67,11 @@ If `foldkit-skills` is installed as a Claude Code plugin, the `generate-program`
   `bun run --cwd workers/api deploy:safe` (see the Worker deploy safety gate in
   `docs/DEPLOYMENT.md`). It always, in order: checks local==origin/main, runs
   `check:deploy` (typecheck:web/api + the real web/worker test suites + guards,
-  with NO dependency on the flaky `verse-launch-smoke`), applies remote D1
-  migrations, runs `check:pending-migrations` (fails if ANY migration is still
-  pending), builds web assets, then uploads the worker LAST with
+  with NO dependency on the flaky `verse-launch-smoke`), applies staging D1
+  migrations, builds web assets, deploys the staging Worker, runs the staging
+  five-way `predeploy:parallel-dispatch-smoke` gate for #6409, applies remote
+  production D1 migrations, runs `check:pending-migrations` (fails if ANY
+  migration is still pending), then uploads the production worker LAST with
   `--containers-rollout=none` so Wrangler does not probe local Docker/container
   rollout state. **Raw
   `bunx wrangler deploy` / `npx wrangler deploy` is FORBIDDEN as a deploy path:**

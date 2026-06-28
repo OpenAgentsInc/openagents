@@ -50,13 +50,28 @@ change, update its linked runbook **and** fix the pointer here.
    (`test:pending-migrations-guard`). It does **NOT** depend on the flaky
    `verse-launch-smoke` (that desktop smoke was removed from `check:deploy`,
    #6234), so there is **no reason to ever bypass it** with a raw deploy.
-3. **`wrangler d1 migrations apply openagents-autopilot --remote`** — migrations
+3. **Staging first (#6409)** — applies
+   `openagents-autopilot-staging` migrations, builds the web assets, deploys the
+   staging Worker, then runs `predeploy:parallel-dispatch-smoke`. That smoke
+   registers a staging-only dummy Codex Pylon, advertises five distinct dummy
+   account slots, and dispatches five no-spend coding assignments concurrently.
+   If any request is rejected with `duplicate_active_assignment` (or any other
+   non-2xx dispatch failure), prod promotion stops.
+4. **`wrangler d1 migrations apply openagents-autopilot --remote`** — migrations
    are applied to remote D1 **before** the worker is uploaded, always.
-4. **`check:pending-migrations`** — runs `wrangler d1 migrations list … --remote`
+5. **`check:pending-migrations`** — runs `wrangler d1 migrations list … --remote`
    and **fails the deploy if ANY migration is still pending**, naming the files.
    This is the guard that makes "code shipped ahead of its schema" impossible.
-5. `build:web` → `wrangler deploy --containers-rollout=none --assets …` — the
+6. `wrangler deploy --containers-rollout=none --assets …` — the production
    worker is uploaded last, without Wrangler container rollout probing.
+
+#6409 canary/rollback posture: production promotion should use Cloudflare
+Worker versions / Gradual Deployments for a 10% canary when the operator is
+rolling a risky dispatch-gate change. Keep a Tail Worker attached to the
+production Worker that watches for `duplicate_active_assignment` 409s during the
+canary and triggers the operator rollback path immediately. Cloudflare documents
+Worker gradual deployments as traffic splitting across versions, and Tail
+Workers attach through `tail_consumers` to a Worker with a `tail()` handler.
 
 **Raw `bunx wrangler deploy` / `npx wrangler deploy` is FORBIDDEN as a deploy
 path** because it skips both `migrations apply` and `check:pending-migrations`.

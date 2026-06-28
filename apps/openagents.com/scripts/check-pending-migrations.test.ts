@@ -77,9 +77,12 @@ describe('deploy:safe package command', () => {
     const expectedOrder = [
       'cd ../.. && bun run check:deploy-from-main',
       '&& bun run check:deploy &&',
+      '&& cd workers/api && wrangler d1 migrations apply openagents-autopilot-staging --env staging --remote',
+      '&& cd ../.. && bun run build:web',
+      '&& cd workers/api && wrangler deploy --env staging --containers-rollout=none --assets ../../apps/web/dist',
+      '&& cd ../.. && bun run predeploy:parallel-dispatch-smoke',
       '&& cd workers/api && wrangler d1 migrations apply openagents-autopilot --remote',
       '&& cd ../.. && bun run check:pending-migrations',
-      '&& bun run build:web',
       '&& cd workers/api && wrangler deploy --containers-rollout=none --assets ../../apps/web/dist',
     ]
 
@@ -94,5 +97,23 @@ describe('deploy:safe package command', () => {
     expect(deploySafe).toContain(
       'wrangler deploy --containers-rollout=none --assets ../../apps/web/dist',
     )
+  })
+
+  test('runs the staging parallel-dispatch smoke before any production upload', () => {
+    const stagingUpload = deploySafe.indexOf(
+      'wrangler deploy --env staging --containers-rollout=none --assets ../../apps/web/dist',
+    )
+    const smoke = deploySafe.indexOf('bun run predeploy:parallel-dispatch-smoke')
+    const productionMigration = deploySafe.indexOf(
+      'wrangler d1 migrations apply openagents-autopilot --remote',
+    )
+    const productionUpload = deploySafe.indexOf(
+      'wrangler deploy --containers-rollout=none --assets ../../apps/web/dist',
+    )
+
+    expect(stagingUpload).toBeGreaterThan(-1)
+    expect(smoke).toBeGreaterThan(stagingUpload)
+    expect(productionMigration).toBeGreaterThan(smoke)
+    expect(productionUpload).toBeGreaterThan(productionMigration)
   })
 })
