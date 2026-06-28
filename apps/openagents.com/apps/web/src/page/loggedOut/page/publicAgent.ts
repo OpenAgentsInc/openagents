@@ -20,6 +20,9 @@ import type {
   PublicArtanisReport,
   PublicArtanisReportClaimSummary,
   PublicArtanisReportModel,
+  PublicKhalaTokensServedHistoryModel,
+  PublicKhalaTokensServedHistoryPoint,
+  PublicKhalaTokensServedModel,
   PublicPylonStats,
   PublicPylonStatsModel,
   PublicPylonV02OmegaReleaseGate,
@@ -57,6 +60,21 @@ const usageText = (goal: PublicAgentGoal): string =>
     : `${goal.tokensUsed} / ${goal.tokenBudget ?? 0} tokens`
 
 const formatNumber = (value: number): string => numberFormatter.format(value)
+
+const compactNumberFormatter = new Intl.NumberFormat('en-US', {
+  maximumFractionDigits: 1,
+  notation: 'compact',
+})
+
+const formatCompactNumber = (value: number): string =>
+  compactNumberFormatter.format(value)
+
+const percentFormatter = new Intl.NumberFormat('en-US', {
+  maximumFractionDigits: 0,
+})
+
+const formatPercent = (value: number): string =>
+  `${percentFormatter.format(Math.max(0, value))}%`
 
 const publicRefsLabel = (
   label: string,
@@ -900,7 +918,303 @@ const artanisOmegaReleaseGateView = (
   )
 }
 
-const artanisReportLoadedView = (report: PublicArtanisReport): Html => {
+const pulseSeries = (
+  history: PublicKhalaTokensServedHistoryModel,
+): ReadonlyArray<PublicKhalaTokensServedHistoryPoint> =>
+  history._tag === 'PublicKhalaTokensServedHistoryLoaded'
+    ? history.history.series.slice(-14)
+    : []
+
+const pulseCurrentTotal = (
+  counter: PublicKhalaTokensServedModel,
+): number | null =>
+  counter._tag === 'PublicKhalaTokensServedLoaded'
+    ? counter.served.tokensServed
+    : null
+
+const pulseAveragePriorActiveDay = (
+  series: ReadonlyArray<PublicKhalaTokensServedHistoryPoint>,
+): number => {
+  const priorActiveDays = series
+    .slice(0, -1)
+    .map(point => Math.max(0, point.tokensServed))
+    .filter(value => value > 0)
+
+  return priorActiveDays.length === 0
+    ? 0
+    : Math.round(
+        priorActiveDays.reduce((total, value) => total + value, 0) /
+          priorActiveDays.length,
+      )
+}
+
+const pulseSparklinePoints = (
+  series: ReadonlyArray<PublicKhalaTokensServedHistoryPoint>,
+): string => {
+  const width = 192
+  const height = 56
+  const values =
+    series.length < 2
+      ? [0, ...(series[0] === undefined ? [] : [series[0].tokensServed]), 0]
+      : series.map(point => point.tokensServed)
+  const max = values.reduce((largest, value) => Math.max(largest, value), 0)
+  const span = max || 1
+  const step = values.length <= 1 ? width : width / (values.length - 1)
+
+  return values
+    .map((value, index) => {
+      const x = (index * step).toFixed(1)
+      const y = (height - (value / span) * height).toFixed(1)
+
+      return `${x},${y}`
+    })
+    .join(' ')
+}
+
+const pulseSparkline = (
+  series: ReadonlyArray<PublicKhalaTokensServedHistoryPoint>,
+): Html => {
+  const h = html<Message>()
+  const points = pulseSparklinePoints(series)
+  const latest = series[series.length - 1]
+  const maxTokens = series.reduce(
+    (largest, point) => Math.max(largest, point.tokensServed),
+    0,
+  )
+
+  return h.div(
+    [
+      h.Role('img'),
+      h.AriaLabel(
+        latest === undefined
+          ? 'No token burn history is available yet.'
+          : `Token burn sparkline across ${formatNumber(
+              series.length,
+            )} days. Latest ${formatNumber(
+              latest.tokensServed,
+            )} tokens. Peak ${formatNumber(maxTokens)} tokens.`,
+      ),
+      Ui.className<Message>('grid gap-2'),
+    ],
+    [
+      h.svg(
+        [
+          h.ViewBox('0 0 192 56'),
+          h.Attribute('preserveAspectRatio', 'none'),
+          Ui.className<Message>('h-14 w-full overflow-visible'),
+        ],
+        [
+          h.polyline(
+            [
+              h.Attribute('points', '0,56 192,56'),
+              h.Attribute('fill', 'none'),
+              h.Attribute('stroke', '#222222'),
+              h.Attribute('stroke-width', '1'),
+            ],
+            [],
+          ),
+          h.polyline(
+            [
+              h.Attribute('points', points),
+              h.Attribute('fill', 'none'),
+              h.Attribute('stroke', '#00c853'),
+              h.Attribute('stroke-linecap', 'round'),
+              h.Attribute('stroke-linejoin', 'round'),
+              h.Attribute('stroke-width', '2'),
+            ],
+            [],
+          ),
+        ],
+      ),
+      h.ul(
+        [Ui.className<Message>('sr-only')],
+        series.map(point =>
+          h.li(
+            [],
+            [`${point.day}: ${formatNumber(point.tokensServed)} tokens`],
+          ),
+        ),
+      ),
+    ],
+  )
+}
+
+const pulseProgressStyle = (progress: number): string =>
+  `width: ${Math.min(100, Math.max(0, progress)).toFixed(2)}%;`
+
+const artanisPulseView = (
+  counter: PublicKhalaTokensServedModel,
+  history: PublicKhalaTokensServedHistoryModel,
+): Html => {
+  const h = html<Message>()
+
+  if (
+    counter._tag === 'PublicKhalaTokensServedFailed' ||
+    history._tag === 'PublicKhalaTokensServedHistoryFailed'
+  ) {
+    return h.div(
+      [
+        Ui.className<Message>(
+          'grid gap-3 border border-[#222] bg-[#010102] p-3',
+        ),
+      ],
+      [
+        h.div(
+          [Ui.className<Message>('text-[0.75rem] text-white/45')],
+          ['The Pulse'],
+        ),
+        h.p(
+          [Ui.className<Message>('text-[0.75rem] text-[#ff6f00]')],
+          ['Live token-burn analytics are temporarily unavailable.'],
+        ),
+      ],
+    )
+  }
+
+  const series = pulseSeries(history)
+  const latest = series[series.length - 1]
+  const target = pulseAveragePriorActiveDay(series)
+  const progress =
+    latest === undefined || target <= 0
+      ? 0
+      : (latest.tokensServed / target) * 100
+  const currentTotal = pulseCurrentTotal(counter)
+
+  return h.div(
+    [
+      h.DataAttribute('component', 'artanis-pulse'),
+      Ui.className<Message>('grid gap-4 border border-[#222] bg-[#010102] p-3'),
+    ],
+    [
+      h.div(
+        [
+          Ui.className<Message>(
+            'flex flex-wrap items-end justify-between gap-3',
+          ),
+        ],
+        [
+          h.div(
+            [Ui.className<Message>('grid gap-1')],
+            [
+              h.div(
+                [Ui.className<Message>('text-[0.75rem] text-white/45')],
+                ['The Pulse'],
+              ),
+              h.h3(
+                [
+                  Ui.className<Message>(
+                    'text-base font-semibold tracking-normal text-[#f1efe8]',
+                  ),
+                ],
+                ['Live token burn'],
+              ),
+            ],
+          ),
+          h.div(
+            [Ui.className<Message>('text-right text-[0.75rem]')],
+            [
+              h.div(
+                [Ui.className<Message>('tabular-nums text-[#f1efe8]')],
+                [
+                  currentTotal === null
+                    ? 'syncing'
+                    : `${formatCompactNumber(currentTotal)} total`,
+                ],
+              ),
+              h.div(
+                [Ui.className<Message>('text-white/35')],
+                [
+                  history._tag === 'PublicKhalaTokensServedHistoryLoaded'
+                    ? history.history.generatedAt === undefined
+                      ? 'live public ledger'
+                      : `updated ${history.history.generatedAt}`
+                    : 'loading public ledger',
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+      series.length === 0
+        ? h.div(
+            [
+              h.Role('status'),
+              Ui.className<Message>(
+                'flex h-24 items-center justify-center border border-[#1b1b1b] text-[0.75rem] text-white/35',
+              ),
+            ],
+            ['Loading burn history.'],
+          )
+        : pulseSparkline(series),
+      h.div(
+        [Ui.className<Message>('grid gap-2')],
+        [
+          h.div(
+            [
+              Ui.className<Message>(
+                'flex flex-wrap justify-between gap-3 text-[0.75rem]',
+              ),
+            ],
+            [
+              h.span(
+                [Ui.className<Message>('text-white/55')],
+                [
+                  latest === undefined
+                    ? 'Latest day syncing'
+                    : `${latest.day} burn ${formatCompactNumber(latest.tokensServed)}`,
+                ],
+              ),
+              h.span(
+                [Ui.className<Message>('tabular-nums text-white/45')],
+                [
+                  target <= 0
+                    ? 'target pending'
+                    : `${formatPercent(progress)} of ${formatCompactNumber(
+                        target,
+                      )} daily target`,
+                ],
+              ),
+            ],
+          ),
+          h.div(
+            [
+              h.AriaLabel(
+                target <= 0
+                  ? 'Daily target progress is pending.'
+                  : `Daily target progress is ${formatPercent(progress)}.`,
+              ),
+              h.Role('meter'),
+              h.Attribute('aria-valuemin', '0'),
+              h.Attribute('aria-valuemax', '100'),
+              h.Attribute(
+                'aria-valuenow',
+                String(Math.round(Math.min(100, progress))),
+              ),
+              Ui.className<Message>(
+                'h-2 overflow-hidden border border-[#242424] bg-[#050505]',
+              ),
+            ],
+            [
+              h.div(
+                [
+                  h.Attribute('style', pulseProgressStyle(progress)),
+                  Ui.className<Message>('h-full bg-[#00c853]'),
+                ],
+                [],
+              ),
+            ],
+          ),
+        ],
+      ),
+    ],
+  )
+}
+
+const artanisReportLoadedView = (
+  report: PublicArtanisReport,
+  counter: PublicKhalaTokensServedModel,
+  history: PublicKhalaTokensServedHistoryModel,
+): Html => {
   const h = html<Message>()
   const blockers = report.publicBlockerRefs.slice(0, 5)
   const claims = [...report.standaloneClaims, ...report.r10Claims].slice(0, 7)
@@ -1065,6 +1379,7 @@ const artanisReportLoadedView = (report: PublicArtanisReport): Html => {
           ),
         ],
       ),
+      artanisPulseView(counter, history),
       artanisPylonLaunchView(report.pylonLaunchCommunication),
       artanisOmegaReleaseGateView(report.pylonOmegaReleaseGate),
       artanisProductionLaunchGateView(report.productionLaunchGate),
@@ -1088,11 +1403,15 @@ const artanisReportLoadedView = (report: PublicArtanisReport): Html => {
   )
 }
 
-const artanisReportView = (model: PublicArtanisReportModel): Html => {
+const artanisReportView = (
+  model: PublicArtanisReportModel,
+  counter: PublicKhalaTokensServedModel,
+  history: PublicKhalaTokensServedHistoryModel,
+): Html => {
   const h = html<Message>()
 
   if (model._tag === 'PublicArtanisReportLoaded') {
-    return artanisReportLoadedView(model.report)
+    return artanisReportLoadedView(model.report, counter, history)
   }
 
   if (model._tag === 'PublicArtanisReportFailed') {
@@ -1171,6 +1490,8 @@ const loadedView = (
   events: ReadonlyArray<PublicAgentGoalEvent>,
   pylonStats: PublicPylonStatsModel,
   artanisReport: PublicArtanisReportModel,
+  khalaTokensServed: PublicKhalaTokensServedModel,
+  khalaTokensServedHistory: PublicKhalaTokensServedHistoryModel,
   adjutantActivity: PublicAdjutantActivityModel,
 ): Html => {
   const h = html<Message>()
@@ -1283,7 +1604,13 @@ const loadedView = (
           ),
         ],
       ),
-      isArtanis ? artanisReportView(artanisReport) : null,
+      isArtanis
+        ? artanisReportView(
+            artanisReport,
+            khalaTokensServed,
+            khalaTokensServedHistory,
+          )
+        : null,
       isArtanis ? pylonStatsView(pylonStats) : null,
       isAdjutant ? adjutantActivityView(adjutantActivity) : null,
       h.section(
@@ -1318,6 +1645,8 @@ export const view = (model: Model, agentRef: string): Html => {
       model.publicAgent.response.events,
       model.publicPylonStats,
       model.publicArtanisReport,
+      model.publicKhalaTokensServed,
+      model.publicKhalaTokensServedHistory,
       model.publicAdjutantActivity,
     )
   }
@@ -1347,6 +1676,8 @@ export const view = (model: Model, agentRef: string): Html => {
       ],
       model.publicPylonStats,
       model.publicArtanisReport,
+      model.publicKhalaTokensServed,
+      model.publicKhalaTokensServedHistory,
       model.publicAdjutantActivity,
     )
   }

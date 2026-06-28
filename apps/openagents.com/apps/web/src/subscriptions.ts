@@ -3,7 +3,6 @@ import { Duration, Effect, Exit, Queue, Schema as S, Stream } from 'effect'
 import { Subscription } from 'foldkit'
 
 import { parseJsonRecord } from './json-boundary'
-
 import {
   GotDemoMessage,
   GotLoggedInMessage,
@@ -13,49 +12,6 @@ import {
 import type { Model } from './model'
 import { Demo } from './model'
 import {
-  ClosedSyncStream,
-  FailedSyncStream,
-  OpenedSyncStream,
-  ReceivedSyncCursorGap,
-  ReceivedSyncPatch,
-  RequestedPollAutopilotRun,
-} from './page/loggedIn/message'
-import {
-  ClosedAutopilotOnboardingResumeStream,
-  ClosedSettledFeedStream,
-  FailedAutopilotOnboardingResume,
-  FailedAutopilotOnboardingTurn,
-  FailedSettledFeedStream,
-  OpenedAutopilotOnboardingStream,
-  OpenedSettledFeedStream,
-  ReceivedAutopilotOnboardingDelta,
-  ReceivedAutopilotOnboardingResumeReply,
-  ReceivedAutopilotOnboardingStreamHandshake,
-  ReceivedSettledFeedCursorGap,
-  ReceivedSettledFeedPatch,
-  ClosedKhalaTokensServedStream,
-  FailedKhalaTokensServedStream,
-  OpenedKhalaTokensServedStream,
-  ReceivedKhalaTokensServedCursorGap,
-  ReceivedKhalaTokensServedPatch,
-  RequestedPollKhalaTokensServed,
-  RequestedPollKhalaTokensServedHistory,
-  RequestedPollKhalaTokensServedModelMix,
-  RequestedPollGymRunProgress,
-  ClosedGymRunProgressStream,
-  FailedGymRunProgressStream,
-  OpenedGymRunProgressStream,
-  ReceivedGymRunProgressCursorGap,
-  ReceivedGymRunProgressPatch,
-  SucceededAutopilotOnboardingTurn,
-  SucceededResumeAutopilotOnboardingTurn,
-  FailedKhalaChatTurn,
-  OpenedKhalaChatStream,
-  ReceivedKhalaChatDelta,
-  SucceededKhalaChatTurn,
-} from './page/loggedOut/message'
-import type { Message as LoggedOutMessage } from './page/loggedOut/message'
-import {
   type OnboardingStreamEvent,
   parseOnboardingStreamEvent,
 } from './page/autopilot-onboarding/flow'
@@ -64,10 +20,14 @@ import {
   KhalaChatTurn,
   parseKhalaChatStreamEvent,
 } from './page/khala-chat/flow'
-import { newOnboardingSessionId } from './page/loggedOut/update'
-import { SETTLED_FEED_SCOPE } from './page/loggedOut/settled-feed'
-import { KHALA_TOKENS_SERVED_SCOPE } from './page/loggedOut/khala-tokens-served-feed'
-import { GYM_RUN_PROGRESS_SCOPE } from './page/loggedOut/gym/runProgressFeed'
+import {
+  ClosedSyncStream,
+  FailedSyncStream,
+  OpenedSyncStream,
+  ReceivedSyncCursorGap,
+  ReceivedSyncPatch,
+  RequestedPollAutopilotRun,
+} from './page/loggedIn/message'
 import {
   syncAgentRunScope,
   syncTeamScope,
@@ -75,6 +35,45 @@ import {
 } from './page/loggedIn/model'
 import { authorizedThreadRouteScope } from './page/loggedIn/thread-route'
 import { chatRunIsBusy } from './page/loggedIn/update'
+import { GYM_RUN_PROGRESS_SCOPE } from './page/loggedOut/gym/runProgressFeed'
+import { KHALA_TOKENS_SERVED_SCOPE } from './page/loggedOut/khala-tokens-served-feed'
+import {
+  ClosedAutopilotOnboardingResumeStream,
+  ClosedGymRunProgressStream,
+  ClosedKhalaTokensServedStream,
+  ClosedSettledFeedStream,
+  FailedAutopilotOnboardingResume,
+  FailedAutopilotOnboardingTurn,
+  FailedGymRunProgressStream,
+  FailedKhalaChatTurn,
+  FailedKhalaTokensServedStream,
+  FailedSettledFeedStream,
+  OpenedAutopilotOnboardingStream,
+  OpenedGymRunProgressStream,
+  OpenedKhalaChatStream,
+  OpenedKhalaTokensServedStream,
+  OpenedSettledFeedStream,
+  ReceivedAutopilotOnboardingDelta,
+  ReceivedAutopilotOnboardingResumeReply,
+  ReceivedAutopilotOnboardingStreamHandshake,
+  ReceivedGymRunProgressCursorGap,
+  ReceivedGymRunProgressPatch,
+  ReceivedKhalaChatDelta,
+  ReceivedKhalaTokensServedCursorGap,
+  ReceivedKhalaTokensServedPatch,
+  ReceivedSettledFeedCursorGap,
+  ReceivedSettledFeedPatch,
+  RequestedPollGymRunProgress,
+  RequestedPollKhalaTokensServed,
+  RequestedPollKhalaTokensServedHistory,
+  RequestedPollKhalaTokensServedModelMix,
+  SucceededAutopilotOnboardingTurn,
+  SucceededKhalaChatTurn,
+  SucceededResumeAutopilotOnboardingTurn,
+} from './page/loggedOut/message'
+import type { Message as LoggedOutMessage } from './page/loggedOut/message'
+import { SETTLED_FEED_SCOPE } from './page/loggedOut/settled-feed'
+import { newOnboardingSessionId } from './page/loggedOut/update'
 import { loggedInWorkroomAllowed } from './product-policy'
 import type { LoggedInRoute } from './route'
 
@@ -276,7 +275,8 @@ const khalaTokensServedSurfaceIsLive = (
 ): boolean =>
   settledFeedRouteIsLive(model) ||
   model.route._tag === 'Khala' ||
-  model.route._tag === 'Landing'
+  model.route._tag === 'Landing' ||
+  (model.route._tag === 'PublicAgent' && model.route.agentRef === 'artanis')
 
 export const settledFeedDependenciesForModel = (
   model: Model,
@@ -323,7 +323,8 @@ const inactiveKhalaTokensServedStream: {
   streamHref: '',
 }
 
-type KhalaTokensServedStreamDependencies = typeof inactiveKhalaTokensServedStream
+type KhalaTokensServedStreamDependencies =
+  typeof inactiveKhalaTokensServedStream
 
 export const khalaTokensServedStreamDependenciesForModel = (
   model: Model,
@@ -538,8 +539,7 @@ export const khalaTokensServedPollDependenciesForModel = (
 // GROUP BY aggregate against).
 const khalaTokensServedModelMixRouteIsLive = (model: Model): boolean =>
   model._tag === 'LoggedOut' &&
-  (model.route._tag === 'Stats' ||
-    model.route._tag === 'PublicStatsArchive')
+  (model.route._tag === 'Stats' || model.route._tag === 'PublicStatsArchive')
 
 export const khalaTokensServedModelMixPollDependenciesForModel = (
   model: Model,
@@ -988,9 +988,13 @@ const onboardingStream = (
                 }),
               )
             } else if (event.kind === 'delta') {
-              offer(ReceivedAutopilotOnboardingDelta({ turnId, text: event.text }))
+              offer(
+                ReceivedAutopilotOnboardingDelta({ turnId, text: event.text }),
+              )
             } else if (event.kind === 'done') {
-              offer(SucceededAutopilotOnboardingTurn({ response: event.response }))
+              offer(
+                SucceededAutopilotOnboardingTurn({ response: event.response }),
+              )
             } else {
               fail()
             }
@@ -1130,7 +1134,8 @@ const khalaChatStream = (
         const fail = (): void =>
           offer(
             FailedKhalaChatTurn({
-              reason: 'Khala could not respond just now. Try sending that again.',
+              reason:
+                'Khala could not respond just now. Try sending that again.',
             }),
           )
 

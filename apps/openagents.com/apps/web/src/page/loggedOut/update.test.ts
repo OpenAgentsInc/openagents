@@ -1,7 +1,13 @@
 import { Effect } from 'effect'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
-import { LandingRoute, StatsRoute, TraceRoute } from '../../route'
+import {
+  LandingRoute,
+  PublicAgentRoute,
+  StatsRoute,
+  TraceRoute,
+} from '../../route'
+import { SAMPLE_TRACE_UUID, sampleTrajectory } from '../trace/sample'
 import {
   ClickedCopyAgentInstructions,
   ClickedEnterKhala,
@@ -27,7 +33,6 @@ import {
   initialCommands,
   update,
 } from './update'
-import { sampleTrajectory, SAMPLE_TRACE_UUID } from '../trace/sample'
 
 const model = init(LandingRoute())
 
@@ -187,6 +192,25 @@ describe('logged-out nav + copy update', () => {
     ])
   })
 
+  test('Artanis public route loads the pulse counter and history', () => {
+    const artanisModel = init(PublicAgentRoute({ agentRef: 'artanis' }))
+
+    expect(artanisModel.publicKhalaTokensServed._tag).toBe(
+      'PublicKhalaTokensServedLoading',
+    )
+    expect(artanisModel.publicKhalaTokensServedHistory._tag).toBe(
+      'PublicKhalaTokensServedHistoryLoading',
+    )
+    expect(commandNames(initialCommands(artanisModel))).toEqual([
+      'LoadPublicAgentGoal',
+      'LoadPublicArtanisReport',
+      'LoadPublicPylonStats',
+      'LoadKhalaTokensServedSnapshot',
+      'LoadPublicKhalaTokensServed',
+      'LoadPublicKhalaTokensServedHistory',
+    ])
+  })
+
   test('LoadPublicKhalaTokensServedModelMix reads canonical aggregate family mix', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       new Response(
@@ -298,7 +322,9 @@ describe('logged-out nav + copy update', () => {
       RequestedPollKhalaTokensServedModelMix(),
     )
 
-    expect(commandNames(commands)).toEqual(['LoadPublicKhalaTokensServedModelMix'])
+    expect(commandNames(commands)).toEqual([
+      'LoadPublicKhalaTokensServedModelMix',
+    ])
     // The previously loaded mix is held while the next aggregate is in flight.
     expect(next.publicKhalaTokensServedModelMix._tag).toBe(
       'PublicKhalaTokensServedModelMixLoaded',
@@ -410,7 +436,9 @@ describe('trace route load wiring', () => {
     )
     if (message._tag === 'SucceededLoadTrace') {
       expect(message.uuid).toBe(REAL_TRACE_UUID)
-      expect(message.trajectory.steps.length).toBe(sampleTrajectory.steps.length)
+      expect(message.trajectory.steps.length).toBe(
+        sampleTrajectory.steps.length,
+      )
     }
   })
 
