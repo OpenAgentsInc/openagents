@@ -22,6 +22,10 @@ import { Schema as S } from 'effect'
 
 export const MirrorCodeRunsSchemaVersion = 'openagents.gym.mirrorcode_runs.v1'
 export type MirrorCodeRunsSchemaVersion = typeof MirrorCodeRunsSchemaVersion
+export const MirrorCodeTokenBurnReportSchemaVersion =
+  'openagents.gym.mirrorcode_token_burn_report.v1'
+export type MirrorCodeTokenBurnReportSchemaVersion =
+  typeof MirrorCodeTokenBurnReportSchemaVersion
 
 // The Khala model id is fixed: there is one Khala model, `openagents/khala`.
 export const KHALA_MODEL_ID = 'openagents/khala'
@@ -155,6 +159,75 @@ export const MirrorCodeRun = S.Struct({
   memoryPolicy: S.Literal(MIRRORCODE_MEMORY_POLICY),
 })
 export type MirrorCodeRun = typeof MirrorCodeRun.Type
+
+export const MirrorCodeTokenBurnBucketSummary = S.Struct({
+  bucket: MirrorCodeBucket,
+  runCount: S.Number,
+  totalTokensBurned: S.Number,
+  exactTokenBackedTokens: S.Number,
+  exactTokenUsageEventRefs: S.Array(S.String),
+})
+export type MirrorCodeTokenBurnBucketSummary =
+  typeof MirrorCodeTokenBurnBucketSummary.Type
+
+export const MirrorCodeTokenBurnStatusSummary = S.Struct({
+  status: MirrorCodeRunStatus,
+  runCount: S.Number,
+  totalTokensBurned: S.Number,
+})
+export type MirrorCodeTokenBurnStatusSummary =
+  typeof MirrorCodeTokenBurnStatusSummary.Type
+
+export const MirrorCodeTokenBurnGradeSummary = S.Struct({
+  grade: MirrorCodeRunGrade,
+  runCount: S.Number,
+  totalTokensBurned: S.Number,
+  exactTokenBackedTokens: S.Number,
+})
+export type MirrorCodeTokenBurnGradeSummary =
+  typeof MirrorCodeTokenBurnGradeSummary.Type
+
+export const MirrorCodeTokenBurnTopRun = S.Struct({
+  runId: S.String,
+  taskId: S.String,
+  bucket: MirrorCodeBucket,
+  grade: MirrorCodeRunGrade,
+  status: MirrorCodeRunStatus,
+  tokensTotal: S.Number,
+  exactTokenUsageEventRefs: S.Array(S.String),
+  tokenAttributionProofRef: S.String,
+})
+export type MirrorCodeTokenBurnTopRun = typeof MirrorCodeTokenBurnTopRun.Type
+
+export const MirrorCodeTokenBurnReport = S.Struct({
+  schemaVersion: S.Literal(MirrorCodeTokenBurnReportSchemaVersion),
+  reportRef: S.String,
+  model: S.Literal(KHALA_MODEL_ID),
+  benchmark: S.Struct({
+    name: S.String,
+    scope: S.String,
+  }),
+  runCount: S.Number,
+  terminalRunCount: S.Number,
+  decisionGradeRunCount: S.Number,
+  totalTokensBurned: S.Number,
+  exactTokenBackedTokens: S.Number,
+  unprovenTokenTotal: S.Number,
+  exactTokenUsageEventRefs: S.Array(S.String),
+  tokenAttributionTruth: S.Literal(MIRRORCODE_TOKEN_ATTRIBUTION_TRUTH),
+  tokenAttributionProofRefs: S.Array(S.String),
+  demandKind: S.Literal(MIRRORCODE_DEMAND_KIND),
+  demandSource: S.Literal(MIRRORCODE_DEMAND_SOURCE),
+  generalizationSet: S.Literal(MIRRORCODE_GENERALIZATION_SET_ID),
+  memoryPolicy: S.Literal(MIRRORCODE_MEMORY_POLICY),
+  byBucket: S.Array(MirrorCodeTokenBurnBucketSummary),
+  byStatus: S.Array(MirrorCodeTokenBurnStatusSummary),
+  byGrade: S.Array(MirrorCodeTokenBurnGradeSummary),
+  topRuns: S.Array(MirrorCodeTokenBurnTopRun),
+  caveatRefs: S.Array(S.String),
+})
+export type MirrorCodeTokenBurnReport =
+  typeof MirrorCodeTokenBurnReport.Type
 
 // Paper-reference comparator (ILLUSTRATIVE — not a head-to-head).
 export const MirrorCodeComparator = S.Struct({
@@ -402,3 +475,129 @@ export const MIRRORCODE_BENCHMARK_LABEL = {
   name: 'Epoch Research MirrorCode',
   scope: 'public tasks only (private set excluded)',
 } as const
+
+const MIRRORCODE_BUCKET_ORDER: ReadonlyArray<MirrorCodeBucket> = ['S', 'M', 'L']
+const MIRRORCODE_STATUS_ORDER: ReadonlyArray<MirrorCodeRunStatus> = [
+  'queued',
+  'running',
+  'passed',
+  'failed',
+  'error',
+]
+const MIRRORCODE_GRADE_ORDER: ReadonlyArray<MirrorCodeRunGrade> = [
+  'smoke',
+  'decision_grade',
+]
+const MIRRORCODE_TOKEN_BURN_TOP_RUN_LIMIT = 5
+
+const uniquePublicRefs = (
+  refs: ReadonlyArray<string>,
+): ReadonlyArray<string> => [...new Set(refs)].sort()
+
+const exactBackedTokensFor = (run: MirrorCodeRun): number =>
+  run.exactTokenUsageEventRefs.length > 0 ? run.tokensTotal : 0
+
+export const buildMirrorCodeTokenBurnReport = (
+  runs: ReadonlyArray<MirrorCodeRun>,
+): MirrorCodeTokenBurnReport => {
+  const totalTokensBurned = runs.reduce(
+    (sum, run) => sum + run.tokensTotal,
+    0,
+  )
+  const exactTokenBackedTokens = runs.reduce(
+    (sum, run) => sum + exactBackedTokensFor(run),
+    0,
+  )
+  const exactTokenUsageEventRefs = uniquePublicRefs(
+    runs.flatMap(run => run.exactTokenUsageEventRefs),
+  )
+  const tokenAttributionProofRefs = uniquePublicRefs(
+    runs
+      .filter(run => run.exactTokenUsageEventRefs.length > 0)
+      .map(run => run.tokenAttributionProofRef),
+  )
+
+  return {
+    schemaVersion: MirrorCodeTokenBurnReportSchemaVersion,
+    reportRef: 'report.gym.mirrorcode.token_burn.live',
+    model: KHALA_MODEL_ID,
+    benchmark: MIRRORCODE_BENCHMARK_LABEL,
+    runCount: runs.length,
+    terminalRunCount: runs.filter(run =>
+      ['passed', 'failed', 'error'].includes(run.status),
+    ).length,
+    decisionGradeRunCount: runs.filter(run => run.decisionGrade).length,
+    totalTokensBurned,
+    exactTokenBackedTokens,
+    unprovenTokenTotal: totalTokensBurned - exactTokenBackedTokens,
+    exactTokenUsageEventRefs,
+    tokenAttributionTruth: MIRRORCODE_TOKEN_ATTRIBUTION_TRUTH,
+    tokenAttributionProofRefs,
+    demandKind: MIRRORCODE_DEMAND_KIND,
+    demandSource: MIRRORCODE_DEMAND_SOURCE,
+    generalizationSet: MIRRORCODE_GENERALIZATION_SET_ID,
+    memoryPolicy: MIRRORCODE_MEMORY_POLICY,
+    byBucket: MIRRORCODE_BUCKET_ORDER.map(bucket => {
+      const bucketRuns = runs.filter(run => run.bucket === bucket)
+      return {
+        bucket,
+        runCount: bucketRuns.length,
+        totalTokensBurned: bucketRuns.reduce(
+          (sum, run) => sum + run.tokensTotal,
+          0,
+        ),
+        exactTokenBackedTokens: bucketRuns.reduce(
+          (sum, run) => sum + exactBackedTokensFor(run),
+          0,
+        ),
+        exactTokenUsageEventRefs: uniquePublicRefs(
+          bucketRuns.flatMap(run => run.exactTokenUsageEventRefs),
+        ),
+      }
+    }),
+    byStatus: MIRRORCODE_STATUS_ORDER.map(status => {
+      const statusRuns = runs.filter(run => run.status === status)
+      return {
+        status,
+        runCount: statusRuns.length,
+        totalTokensBurned: statusRuns.reduce(
+          (sum, run) => sum + run.tokensTotal,
+          0,
+        ),
+      }
+    }),
+    byGrade: MIRRORCODE_GRADE_ORDER.map(grade => {
+      const gradeRuns = runs.filter(run => run.grade === grade)
+      return {
+        grade,
+        runCount: gradeRuns.length,
+        totalTokensBurned: gradeRuns.reduce(
+          (sum, run) => sum + run.tokensTotal,
+          0,
+        ),
+        exactTokenBackedTokens: gradeRuns.reduce(
+          (sum, run) => sum + exactBackedTokensFor(run),
+          0,
+        ),
+      }
+    }),
+    topRuns: [...runs]
+      .sort((left, right) => right.tokensTotal - left.tokensTotal)
+      .slice(0, MIRRORCODE_TOKEN_BURN_TOP_RUN_LIMIT)
+      .map(run => ({
+        runId: run.runId,
+        taskId: run.taskId,
+        bucket: run.bucket,
+        grade: run.grade,
+        status: run.status,
+        tokensTotal: run.tokensTotal,
+        exactTokenUsageEventRefs: run.exactTokenUsageEventRefs,
+        tokenAttributionProofRef: run.tokenAttributionProofRef,
+      })),
+    caveatRefs: [
+      'caveat.public.gym.mirrorcode.public_tasks_only_private_set_excluded',
+      'caveat.public.gym.mirrorcode.token_burn_internal_demand',
+      'caveat.public.gym.mirrorcode.exact_token_rows_required_for_proof',
+    ],
+  }
+}
