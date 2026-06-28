@@ -24,6 +24,9 @@ targets:
     deploymentTarget: "17.0"
     sources:
       - path: Khala
+    postBuildScripts:
+      - name: Bundle Apple FM bridge helper
+        script: bash "$SRCROOT/scripts/copy-packaged-apple-fm-bridge.sh"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.openagents.khala

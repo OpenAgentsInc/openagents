@@ -41,6 +41,23 @@ cd /tmp/oa-ship/clients/khala-ios/Khala
 set -a; . ~/work/.secrets/appstoreconnect.env; set +a
 ```
 
+### macOS Apple FM packaging guard
+
+If this lane is producing a signed/notarized Khala macOS `.app` with Apple FM
+support, build the helper and verify the app bundle before codesign/notary:
+
+```sh
+bash ../../../apps/pylon/swift/foundation-bridge/build.sh
+xcodebuild -project Khala.xcodeproj -scheme Khala -configuration Release build
+bun scripts/verify-packaged-apple-fm-bridge.ts /path/to/Khala.app
+```
+
+The helper must be present, non-empty, and executable at
+`Contents/Resources/app/apple-fm-bridge/foundation-bridge`. An intentionally
+Apple-FM-less build must set `KHALA_SKIP_APPLE_FM_BRIDGE_CHECK=1` at build and
+verify time so the bundle carries the explicit `APPLE_FM_UNAVAILABLE.txt`
+marker instead of a false-green Apple FM claim.
+
 ### 1. Bump the build number (REQUIRED — each upload needs a unique, higher build)
 Version keys are **hardcoded in `Khala/Resources/Info.plist`** (the project sets
 `GENERATE_INFOPLIST_FILE=NO`), so bump there AND in the pbxproj:
