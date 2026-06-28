@@ -479,7 +479,7 @@ export const TassadarPerceptaCpuTransformTrainingReceiptsEnvelope: JsonSchema =
     type: 'object',
     additionalProperties: true,
     description:
-      'Public-safe CPU-transform training receipt status projection for models.tassadar_percepta_executor.v1. Carries generatedAt, registryVersion, a live_at_read staleness contract, input refs for the architecture receipt and Artanis distillation dataset receipt, expected receipt shape, and explicit gate fields showing cpuTransformTrainingReceiptAvailable=false, pylonAssignmentReceiptAvailable=false, acceptedWorkReceiptAvailable=false, verifierVerdictReceiptAvailable=false, realSettlementReceiptAvailable=false, trainedModelArtifactAvailable=false, and greenGateSatisfied=false. It exposes refs and status only: no raw traces, private runner logs, provider payloads, wallet material, trained-model claim, inference endpoint, model promotion, dispatch, spend, settlement, or CPU-transform training claim.',
+      'Public-safe CPU-transform training receipt projection for models.tassadar_percepta_executor.v1. Carries generatedAt, registryVersion, a live_at_read staleness contract, input refs for the architecture receipt and Artanis distillation dataset receipt, one bounded Pylon CPU-transform fixture receipt, expected receipt shape, and explicit gate fields showing cpuTransformTrainingReceiptAvailable=true, pylonAssignmentReceiptAvailable=true, acceptedWorkReceiptAvailable=true, verifierVerdictReceiptAvailable=true, trainedModelArtifactAvailable=true for the fixture, while realSettlementReceiptAvailable=false and greenGateSatisfied=false. It exposes refs, digests, and bounded metrics only: no raw traces, private runner logs, provider payloads, wallet material, trained-model claim, inference endpoint, model promotion, dispatch, spend, settlement, or broad CPU-transform training claim.',
     required: [
       'authorityBoundary',
       'endpoint',
@@ -490,6 +490,7 @@ export const TassadarPerceptaCpuTransformTrainingReceiptsEnvelope: JsonSchema =
       'promiseRef',
       'promiseState',
       'receiptSummary',
+      'receipts',
       'registryVersion',
       'schemaVersion',
       'sourceRefs',
@@ -519,8 +520,8 @@ export const TassadarPerceptaCpuTransformTrainingReceiptsEnvelope: JsonSchema =
           expectedReceiptRefPattern: { type: 'string' },
           expectedReceiptSchemaVersion: { type: 'string' },
           requirements: { type: 'array', items: { type: 'object' } },
-          routePublishesReceipts: { type: 'boolean', enum: [false] },
-          routePublishesStatusOnly: { type: 'boolean', enum: [true] },
+          routePublishesReceipts: { type: 'boolean', enum: [true] },
+          routePublishesStatusOnly: { type: 'boolean', enum: [false] },
         },
       },
       gate: {
@@ -586,12 +587,13 @@ export const TassadarPerceptaCpuTransformTrainingReceiptsEnvelope: JsonSchema =
         },
       },
       registryVersion: { type: 'string' },
+      receipts: { type: 'array', items: { type: 'object' } },
       schemaVersion: { type: 'string' },
       sourceRefs: { type: 'array', items: { type: 'string' } },
       staleness: { type: 'object' },
       status: {
         type: 'string',
-        enum: ['cpu_transform_training_receipts_missing'],
+        enum: ['cpu_transform_training_receipt_available'],
       },
       unsafeCopy: { type: 'string' },
     },
@@ -7798,14 +7800,14 @@ const paths = (): JsonSchema => ({
   [TassadarPerceptaCpuTransformTrainingReceiptsEndpoint]: {
     get: operation({
       operationId: 'getTassadarPerceptaCpuTransformTrainingReceipts',
-      summary: 'Read Tassadar Percepta CPU-transform training receipt status',
+      summary: 'Read Tassadar Percepta CPU-transform training receipts',
       description:
-        'Returns the public-safe CPU-transform training receipt status projection for models.tassadar_percepta_executor.v1. The projection cites the architecture receipt and Artanis distillation dataset receipt as available inputs, then keeps the real CPU-transform gates false: no Pylon assignment receipt, accepted-work receipt, verifier verdict receipt, real settlement receipt, trained artifact digest, or greenGateSatisfied state exists. Read-only; grants no training dispatch, spend, settlement, model promotion, inference endpoint, CPU-transform training claim, or green product-promise authority.',
+        'Returns the public-safe CPU-transform training receipt projection for models.tassadar_percepta_executor.v1. The projection cites the architecture receipt and Artanis distillation dataset receipt as available inputs, then publishes one bounded Pylon CPU-transform fixture receipt with assignment, accepted-work, verifier verdict, and fixture checkpoint digest refs. Real settlement and greenGateSatisfied remain false. Read-only; grants no training dispatch, spend, settlement, model promotion, inference endpoint, broad CPU-transform training claim, or green product-promise authority.',
       tags: ['Training', 'Public Proof'],
       security: publicRead,
       responses: {
         '200': okJson(
-          'Tassadar Percepta CPU-transform training receipt status.',
+          'Tassadar Percepta CPU-transform training receipts.',
           '#/components/schemas/TassadarPerceptaCpuTransformTrainingReceiptsEnvelope',
         ),
         ...errorResponses(),

@@ -547,6 +547,16 @@ export const PYLON_COMMAND_CATALOG: readonly PylonCommandEntry[] = [
     args: [pos("install|doctor|smoke|models", "Subcommand.")],
   },
   {
+    command: "tassadar cpu-transform-training",
+    summary:
+      "Run the bounded Tassadar CPU-transform training fixture and print its public-safe receipt.",
+    mutates: false,
+    spends: false,
+    needsNetwork: false,
+    json: true,
+    args: [pos("cpu-transform-training", "Bounded fixture command.")],
+  },
+  {
     command: "forum",
     summary: "Read/post/reply on the OpenAgents Forum.",
     mutates: true,
