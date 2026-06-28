@@ -61,12 +61,21 @@ describe('artanis owner promotion identity', () => {
   })
 })
 
-describe('owner promotion is bounded to pylon_job_dispatch only', () => {
+describe('owner promotion is bounded to pylon_job_dispatch and forum_post only', () => {
   test('standing approval covers pylon_job_dispatch for owner-Artanis', () => {
     expect(
       ownerAgentHasStandingApprovalForRiskyAction(
         ARTANIS_OWNER_OPENAUTH_USER_ID,
         'pylon_job_dispatch',
+      ),
+    ).toBe(true)
+  })
+
+  test('standing approval covers forum_post for owner-Artanis', () => {
+    expect(
+      ownerAgentHasStandingApprovalForRiskyAction(
+        ARTANIS_OWNER_OPENAUTH_USER_ID,
+        'forum_post',
       ),
     ).toBe(true)
   })

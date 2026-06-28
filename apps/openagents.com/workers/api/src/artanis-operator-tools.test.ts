@@ -14,6 +14,7 @@ import {
   type ArtanisPylonJobStatus,
   type ArtanisSyntheticLoadRun,
   type ArtanisUnsupportedRequestRecord,
+  ArtanisForumUpdateWriterError,
   buildArtanisSyntheticLoadPlan,
   isSafeArtanisAssignmentRef,
   isSafeArtanisRepoPath,
@@ -31,6 +32,7 @@ import {
   makeArtanisListPylonAssignmentsTool,
   makeArtanisListRepoDirTool,
   makeArtanisOperatorTools,
+  makeArtanisPostForumUpdateTool,
   makeArtanisReadGithubIssueTool,
   makeArtanisReadRepoFileTool,
   makeArtanisTriggerSyntheticLoadTool,
@@ -655,6 +657,156 @@ describe('list_github_issues (public OpenAgentsInc/openagents only)', () => {
     )
     expect(listIssues).toBeDefined()
     expect(listIssues?.kind).toBe('read')
+  })
+})
+
+describe('#6435 post_forum_update (gated Artanis Forum writer)', () => {
+  test('is a gated forum_post tool and defers without owner approval', async () => {
+    const tool = makeArtanisPostForumUpdateTool({
+      isOwnerApproved: () => Effect.succeed(false),
+    })
+
+    expect(tool.kind).toBe('gated')
+    expect(tool.riskyActionKind).toBe('forum_post')
+
+    const result = await Effect.runPromise(
+      tool.run({
+        action: 'create_topic',
+        bodyText: 'Fleet update: two Codex assignments closed and one retry is queued.',
+        title: 'Artanis fleet update',
+      }),
+    )
+    expect(result.outcome).toBe('deferred')
+    if (result.outcome !== 'deferred') return
+    expect(result.reason).toBe('no_effective_owner_approval')
+    expect(result.plan).toContain('action: create_topic')
+    expect(result.plan).toContain('forumRef: artanis')
+  })
+
+  test('approved create_topic calls the writer and returns the real forum refs', async () => {
+    const calls: Array<unknown> = []
+    const tool = makeArtanisPostForumUpdateTool({
+      isOwnerApproved: () => Effect.succeed(true),
+      writer: input => {
+        calls.push(input)
+        return Effect.succeed({
+          action: input.action,
+          forumRef: input.forumRef,
+          idempotent: false,
+          postId: 'post_6435_topic',
+          postRef: 'forum.post.post_6435_topic',
+          publicUrl:
+            'https://openagents.com/forum/t/topic_6435#post-post_6435_topic',
+          topicId: 'topic_6435',
+          topicRef: 'forum.topic.topic_6435',
+        })
+      },
+    })
+
+    const result = await Effect.runPromise(
+      tool.run({
+        action: 'create_topic',
+        bodyText: 'Fleet update: public comms are now posted by Artanis.',
+        idempotencyKey: 'artanis-forum-update:issue-6435:v1',
+        title: 'Artanis fleet update',
+      }),
+    )
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toMatchObject({
+      action: 'create_topic',
+      forumRef: 'artanis',
+      idempotencyKey: 'artanis-forum-update:issue-6435:v1',
+      title: 'Artanis fleet update',
+    })
+    expect(result.outcome).toBe('executed')
+    if (result.outcome !== 'executed') return
+    expect(result.assignmentRef).toBe('forum.post.post_6435_topic')
+    expect(result.summary).toContain('Forum update posted as Artanis')
+    expect(result.summary).toContain('payoutClaimAllowed: false')
+  })
+
+  test('approved reply requires topicRef and posts through the writer', async () => {
+    const calls: Array<unknown> = []
+    const tool = makeArtanisPostForumUpdateTool({
+      isOwnerApproved: () => Effect.succeed(true),
+      writer: input => {
+        calls.push(input)
+        return Effect.succeed({
+          action: input.action,
+          forumRef: input.forumRef,
+          idempotent: true,
+          postId: 'post_6435_reply',
+          postRef: 'forum.post.post_6435_reply',
+          publicUrl:
+            'https://openagents.com/forum/t/topic_6435#post-post_6435_reply',
+          topicId: input.topicRef ?? 'topic_6435',
+          topicRef: `forum.topic.${input.topicRef ?? 'topic_6435'}`,
+        })
+      },
+    })
+
+    const result = await Effect.runPromise(
+      tool.run({
+        action: 'reply',
+        bodyText: 'Follow-up: the bounded verifier is running.',
+        topicRef: 'topic_6435',
+      }),
+    )
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toMatchObject({
+      action: 'reply',
+      topicRef: 'topic_6435',
+    })
+    expect(result.outcome).toBe('executed')
+  })
+
+  test('invalid or unsafe forum args never reach approval or writer', async () => {
+    const approvals: Array<boolean> = []
+    const writes: Array<unknown> = []
+    const tool = makeArtanisPostForumUpdateTool({
+      isOwnerApproved: () => {
+        approvals.push(true)
+        return Effect.succeed(true)
+      },
+      writer: input => {
+        writes.push(input)
+        return Effect.fail(
+          new ArtanisForumUpdateWriterError({ reason: 'should not write' }),
+        )
+      },
+    })
+
+    const result = await Effect.runPromise(
+      tool.run({
+        action: 'reply',
+        bodyText: 'use bearer sk-abc123 and wallet payout details',
+        topicRef: 'topic_6435',
+      }),
+    )
+
+    expect(result.outcome).toBe('deferred')
+    if (result.outcome !== 'deferred') return
+    expect(result.reason).toBe('invalid_arguments')
+    expect(approvals).toHaveLength(0)
+    expect(writes).toHaveLength(0)
+  })
+
+  test('approval without a writer defers honestly', async () => {
+    const tool = makeArtanisPostForumUpdateTool({
+      isOwnerApproved: () => Effect.succeed(true),
+    })
+    const result = await Effect.runPromise(
+      tool.run({
+        action: 'reply',
+        bodyText: 'Follow-up: waiting on the next closeout.',
+        topicRef: 'topic_6435',
+      }),
+    )
+    expect(result.outcome).toBe('deferred')
+    if (result.outcome !== 'deferred') return
+    expect(result.reason).toBe('writer_not_wired')
   })
 })
 
@@ -2573,6 +2725,7 @@ describe('makeArtanisOperatorTools default table', () => {
       'list_pylon_assignments',
       'list_repo_dir',
       'open_unsupported_request_issue',
+      'post_forum_update',
       'read_github_issue',
       'read_repo_file',
       'trigger_synthetic_load',
@@ -2651,6 +2804,15 @@ describe('makeArtanisOperatorTools default table', () => {
     )
     expect(tool).toBeDefined()
     expect(tool?.kind).toBe('risky')
+  })
+
+  test('the default table includes a gated post_forum_update tool', () => {
+    const tools = makeArtanisOperatorTools()
+    const tool = tools.find(t => t.definition.name === 'post_forum_update')
+    expect(tool).toBeDefined()
+    expect(tool?.kind).toBe('gated')
+    if (tool?.kind !== 'gated') return
+    expect(tool.riskyActionKind).toBe('forum_post')
   })
 
   test('a shared repoRead fetch stub also drives the issue-read tool', async () => {
