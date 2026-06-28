@@ -92,6 +92,9 @@ export type ArtanisGoalEpic = Readonly<{
   title: string
   // Short public-safe statement of what the epic is driving.
   mandate: string
+  // Public child issues that currently block closing the epic. This is static
+  // fallback context only; live issue readers can replace it when wired.
+  remainingIssueRefs?: ReadonlyArray<string> | undefined
 }>
 
 export type ArtanisGoals = Readonly<{
@@ -242,8 +245,18 @@ export const ARTANIS_DEFAULT_GOALS: ArtanisGoals = {
     },
     {
       mandate:
-        'The GLM serving track: throughput, readiness, durability, and capacity for Khala inference.',
+        'The GLM serving track: full-model pilot, durable fleet, throughput rollout, external-wins scheduling, stress harness, aggregate benchmark, and Artanis overseer ownership for Khala inference.',
       number: 6316,
+      remainingIssueRefs: [
+        '#6323',
+        '#6311',
+        '#6320',
+        '#6318',
+        '#6317',
+        '#6312',
+        '#6321',
+        '#6359',
+      ],
       title: 'Khala serving track',
     },
     {
