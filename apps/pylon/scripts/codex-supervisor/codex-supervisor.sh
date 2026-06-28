@@ -54,8 +54,9 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 
-# Dispatch-lockout helpers (issue #6439 reopen): skip issues that already have an
-# open PR so the fleet never re-solves an already-PR'd issue and spawns dupes.
+# Dispatch-lockout helpers (issue #6439 reopen): skip issues that are CLOSED or
+# already have an open PR so the fleet never re-solves resolved/already-PR'd work
+# (e.g. a PR against an already-closed issue) and never spawns dupes.
 # shellcheck source=lockout.sh
 source "$SCRIPT_DIR/lockout.sh"
 # shellcheck source=../supervisor-task-pool.sh
@@ -235,15 +236,40 @@ worker_loop() {
       continue
     fi
 
-    # Dispatch lockout: skip any issue that already has an open PR; only pick an
-    # untouched one. If every backlog issue already has a PR, back off instead of
-    # re-solving solved work (the duplicate-PR root cause).
+    # DYNAMIC open-set refetch (#6602-class fix): the task pool can carry a stale
+    # snapshot (SUP_ISSUES fallback / the 120s task-pool cache), so an issue that
+    # was CLOSED mid-run would otherwise be re-dispatched. Refetch the live OPEN
+    # issue set (short TTL cache inside sup_open_issue_numbers) and intersect it
+    # with the pool. If gh can't produce the open set, leave the pool as-is;
+    # pick_unlocked_issue's per-issue issue_is_open backstop still skips any
+    # issue that is no longer open.
+    local open_nums=(); while IFS= read -r onum; do open_nums+=("$onum"); done < <(sup_open_issue_numbers)
+    if [ "${#open_nums[@]}" -gt 0 ]; then
+      local filtered=() cand onum2
+      for cand in "${issues[@]}"; do
+        for onum2 in "${open_nums[@]}"; do
+          if [ "$cand" = "$onum2" ]; then filtered+=("$cand"); break; fi
+        done
+      done
+      issues=("${filtered[@]}")
+    fi
+    if [ "${#issues[@]}" -eq 0 ]; then
+      log "slot=$slot OPEN-SET no task-pool issues are still open; backing off ${backoff}s"
+      sleep "$backoff"
+      backoff=$(( backoff * 2 )); [ "$backoff" -gt "$SUP_BACKOFF_MAX" ] && backoff="$SUP_BACKOFF_MAX"
+      continue
+    fi
+
+    # Dispatch lockout: skip any issue that is CLOSED or already has an open PR;
+    # only pick a still-open, untouched one. If every backlog issue is locked,
+    # back off instead of re-solving solved work (the redo / duplicate-PR root
+    # cause).
     local start_idx=$(( (slot + iter) % ${#issues[@]} ))
     iter=$(( iter + 1 ))
     local issue
     issue=$(pick_unlocked_issue "$start_idx" "${issues[@]}")
     if [ -z "$issue" ]; then
-      log "slot=$slot LOCKOUT all backlog issues already have open PRs; backing off ${backoff}s"
+      log "slot=$slot LOCKOUT all backlog issues are closed or already have open PRs; backing off ${backoff}s"
       sleep "$backoff"
       backoff=$(( backoff * 2 )); [ "$backoff" -gt "$SUP_BACKOFF_MAX" ] && backoff="$SUP_BACKOFF_MAX"
       continue
