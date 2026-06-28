@@ -561,6 +561,16 @@ then full source-of-truth inversion at `forge.openagents.com`.
 > dependency logic below remain the longer-term map; the live issue set is the
 > committed first implementation slice.
 
+> FORGE-2 status, 2026-06-28: Pylon now has a local pure
+> `git-receive-pack` parser at `apps/pylon/src/git-receive-pack.ts`. The parser
+> validates pkt-line framing, ref update commands, SHA-1/SHA-256 object IDs,
+> first-line capabilities, safe `refs/*` names, delete-only pushes, and the
+> trailing `PACK` payload before any future storage or GitHub projection layer
+> can accept the bytes. Its output is the first supervisor-owned commit-intake
+> record: command list + capabilities + packfile byte count + packfile SHA-256
+> digest + source refs. R2 archiving and token-scoped access build on that
+> record in the following live Forge issues.
+
 This is the build plan in fileable form: an ordered list of issues mapped to the
 milestones above, with dependency order and a P0-now set. Each line is
 `**FORGE-n** (milestone) [Pn] — Title — one-line scope`. These are tracking
