@@ -1,11 +1,23 @@
 # forge.openagents.com — Owned Coordination Layer + GitHub as Mirror (committed build plan)
 
-Date: 2026-06-28 (rev 2 — decision committed)
+Date: 2026-06-28 (rev 3 — origin.md architecture incorporated + build-roadmap)
 Scope: How an arbitrarily large fleet of parallel coding agents coordinates
 code collaboration. This revision supersedes the prior "stay on GitHub, maybe
 later" audit: the owner has **decided**.
 Audience: Artanis (operator) + the overseer loop + owner.
 Status: Public-safe build plan. No secrets, no tokens, no deploy.
+
+> Rev 3 note: the owner's architecture origin/vision doc
+> (`docs/forge/origin.md` — a sourced competitive analysis of Cursor's "Origin,"
+> the announced "git forge for the agentic era") is now **incorporated** into
+> this audit. Its design patterns are merged into the architecture (§1.3, §2.2),
+> its hardest open questions sharpen the risks (§7), and a concrete, fileable
+> **Roadmap of issues** is added (§6, after M5). origin.md is the architecture
+> reference; this audit remains the committed OpenAgents build plan. Where the
+> two use different names for the same idea, the reconciliation is called out
+> inline (e.g. Origin's "NVMe-front / S3-backing" storage ≙ our Cloudflare
+> Artifacts-front / R2-backing store; Origin's "merge queue" ≙ our virtual merge
+> queue; Origin's "change/stack" review unit ≙ our work-record + NIP-34 patch).
 
 > Revision + move note: rev 1 of this audit lived at
 > `docs/artanis/2026-06-28-gitafter-cloudflare-artifacts-coordination-audit.md`
@@ -158,6 +170,56 @@ We are not starting a protocol from scratch. We are wiring owned primitives into
 a coordination control plane at `forge.openagents.com` and demoting GitHub to a
 mirror.
 
+### 1.3 Industry validation — the best-funded competitor reached the same conclusion
+
+The architecture origin/vision doc (`docs/forge/origin.md`) is a sourced
+analysis of **Cursor's "Origin,"** announced June 2026 as a "git forge for the
+agentic era." We do not adopt Cursor's product; we read it as **independent
+convergent evidence that the thesis in §0 is correct, not premature**, and we
+mine it for concrete architecture patterns (folded into §2.2) and the hardest
+open questions (folded into §7).
+
+What origin.md confirms about the bet we are making:
+
+- **Generation got cheap; coordination got expensive.** Cursor's own framing
+  (via the Graphite acquisition) is that "writing code became faster while
+  reviewing changes, merging them safely, and collaborating effectively" became
+  the bottleneck. That is *exactly* §0: GitHub's coordination layer — not coding
+  capacity — is the wall. A company with Cursor's resources choosing to build a
+  forge rather than rent one is the strongest available signal that the
+  coordination layer is worth owning.
+- **Humans and agents as co-equal first-class authors.** Origin's stated primary
+  user model is "you and your agents create repos, share code, and manage
+  changes." This is our agent-keyed NIP-34 identity model (§3.2): agents are
+  first-class keyed authors, not bot accounts borrowed on someone else's
+  platform.
+- **The incumbent forge is not built for agent concurrency.** Cursor reportedly
+  simulated *thousands* of agents reading/writing one repo and "went back to
+  basics" on Git architecture for it. That is the §0 structural-ceiling argument,
+  stress-tested by someone else.
+
+Where we **differ from Origin** — and why our plan is not a clone:
+
+- **We keep GitHub as a downstream mirror, not a migration.** Origin asks teams
+  to move their code onto a new forge (with all the unpublished migration,
+  governance, and trust questions in origin.md §8). Our cut (§4) keeps GitHub as
+  a read-only projection, so external developers and customer-repo work
+  (irreducibly GitHub — see risk #6) keep working. No migration ask.
+- **We have a native economic loop.** Origin is hosting + review + agent
+  automation. Our relay layer (§3) carries the bounty→claim→merge→settlement
+  economic kinds and trajectory-proof tags — coordination *and* the labor-market
+  rails in one substrate. Origin has no equivalent.
+- **We are Cloudflare-native and ~80% assembled today** (§1.2), not building
+  bespoke NVMe Git fileservers. origin.md's reported "NVMe-front / S3-backing"
+  storage maps directly onto Cloudflare Artifacts (DO-backed) + R2 (§2.2), which
+  we already operate.
+
+origin.md's reported Origin throughput figures (≈22.6 commits/s into one repo,
+≈296k clones/hr, ≈81k pushes/hr, <400 ms global sync, <10 ms failover) are
+**staged-demo benchmark claims, not verified SLAs** — but they give us concrete
+**load-test targets** for the convergence/verification risks in §7 (#1, #2),
+which is how we use them in the roadmap (§6).
+
 ---
 
 ## 2. Target architecture
@@ -225,6 +287,57 @@ mirror.
   rebase storm on GitHub's API.
 - **GitHub = downstream mirror.** A projection for humans and external
   developers; see §4.
+
+### 2.2 Patterns reconciled from origin.md (Cursor Origin)
+
+origin.md describes Origin's architecture in five layers (IDE/agents → agent
+orchestration → forge API/MCP/app-platform → forge services → Git storage
+plane). Mapped onto our owned stack, each layer is something we already have a
+home for; the value of the mapping is that it surfaces three patterns we should
+make explicit and one we should add.
+
+| origin.md (Cursor Origin) pattern | OpenAgents `forge.openagents.com` equivalent | Status |
+|---|---|---|
+| NVMe-front Git fileservers / S3 source-of-truth / global replicas | **Cloudflare Artifacts (DO-backed, hot git store) front + R2 (durable blobs) back** (§2.1) | We operate this substrate; Artifacts is beta (risk #3) |
+| Merge queue / stacked changes | **Virtual merge queue** (`apps/pylon/src/virtual-merge-queue.ts`) (§5.2) | Landed |
+| Review unit = "change"/"stack", not raw commit | **Work record (D1 `coordination_prs`) + NIP-34 patch (1617) / PR (1618)** | M1/M3 |
+| Agent change-management loop (observe→classify→plan→patch→push) | **Fan-out coordinator + Blueprint Signatures** (§5.1) | Coordinator landed; loop to formalize |
+| Automated merge-conflict resolution | **Virtual-queue path-conflict detection → agent rebase from projected HEAD** | Detection landed; auto-resolve is M3+ |
+| CI-failure repair / comment-as-task | **`merge-deploy-gate` signature + NIP-22 (1622) replies as dispatch inputs** | Gate specced; comment-dispatch is M4 |
+| API / MCP / third-party app platform | **Relay (NIP-34) + REST over the Worker + MCP surface** | **Add explicitly (M5 multi-tenant)** |
+| Git compatibility (existing `git` tooling works) | **git-over-HTTPS on Artifacts; agents use the `git` they know** | M2 |
+
+The three patterns origin.md makes us state explicitly:
+
+1. **The "change," not the commit, is the unit of work.** Origin (via Graphite)
+   treats the reviewable *change/stack* as primary. Our D1 `coordination_prs`
+   rows are exactly that work record — keyed on the unit of *work*, not the unit
+   of *execution* (the same identity discipline that fixed the 119-PR storm,
+   §1.1). M1/M3 should treat the work record, not a git branch, as the canonical
+   coordination object, with NIP-34 patches/PRs as its transport form.
+2. **The change-agent loop is a first-class state machine.** Origin's internal
+   loop — *observe PR state → classify blocker (conflict / CI-fail / comment /
+   missing-approval / stale-branch) → gather context → plan → apply patch → push
+   → wait for checks-or-human* — is precisely what our coordinator
+   (`coordinator-runtime.ts`) + Blueprint Signatures already encode, but it is
+   currently spread across scripts and a doc. The roadmap (§6) files an issue to
+   make this the named, typed forge change-loop with the blocker taxonomy above
+   as its classification enum, so "what is blocking this PR and what happens
+   next" is one queryable state, not tribal knowledge.
+3. **CI/comment events are actionable tasks, not just messages.** In an
+   agent-native forge a failed check or a review comment *is* a dispatch input.
+   Our NIP-22 (1622) replies and `merge-deploy-gate` results should feed the
+   priority dispatcher (a comment "add tests" or a red `check:deploy` becomes a
+   `prio:*`-labeled work record), closing the loop origin.md §3.6/§3.5 describe.
+
+The one pattern origin.md tells us to **add now rather than defer**: a
+**first-class extensibility surface (API + MCP + app platform)**. Origin treats
+this as a top-two design point because agents must read/act on forge state
+*structurally* (ask "what's blocking this PR?", fetch comments, inspect CI,
+create branches, take follow-ups) instead of scraping a UI. We already have the
+transport (relay + Worker REST); the roadmap files the MCP-surface issue in M4
+so "Artanis-as-a-Service" multi-tenant (M5) has a structured agent API from day
+one, not bolted on later.
 
 ---
 
@@ -436,6 +549,125 @@ then full source-of-truth inversion at `forge.openagents.com`.
   per-tenant GitHub org needed), enabling "Artanis-as-a-Service" on
   `forge.openagents.com` without GitHub as the multi-tenant blocker.
 
+### Roadmap of issues — what to build first (fileable)
+
+This is the build plan in fileable form: an ordered list of issues mapped to the
+milestones above, with dependency order and a P0-now set. Each line is
+`**FORGE-n** (milestone) [Pn] — Title — one-line scope`. These are tracking
+items for the forge epic; per repo policy GitHub *issues* are reserved for
+strict-bug reports (blank issues disabled, features go to the Forum), so this
+roadmap is the canonical fileable spec — file these as epic sub-tasks /
+checklist items under **FORGE-0**, labeling build-now items `prio:0-pr-burndown`
+and referencing the forge epic, rather than as loose blank issues.
+
+**Epic**
+
+- **FORGE-0** (epic) [P0] — *forge.openagents.com owned coordination layer
+  (epic)* — umbrella tracking item linking this audit and every sub-task below;
+  the parent all forge work references. Label `prio:0-pr-burndown`.
+
+**M1 — D1 becomes the coordination source of truth** (cuts stale-snapshot
+dispatch; the failure class behind the 119-PR night). *Do first.*
+
+- **FORGE-1** (M1) [P0] — *D1 coordination schema migration* — add
+  `coordination_issues`, `coordination_prs` (work records), `coordination_status`
+  (NIP-34 open/applied/closed/draft), `dispatch_lease`, `merge_queue_ledger`
+  tables + Effect Schema row types. Blocks everything else in M1+. Depends:
+  FORGE-0.
+- **FORGE-2** (M1) [P0] — *Supervisor dispatch lockout/lease from D1* — replace
+  `gh`-fetched snapshot reads with D1 `dispatch_lease` rows; fail closed. Depends:
+  FORGE-1.
+- **FORGE-3** (M1) [P0] — *Persist virtual-merge-queue projection to D1* — write
+  the projected virtual HEAD + blocked-reason refs to `merge_queue_ledger`.
+  Depends: FORGE-1.
+- **FORGE-4** (M1) [P1] — *Typed forge change-loop state machine* — formalize the
+  observe→classify→plan→patch→push loop (origin.md §2.2) over
+  `coordinator-runtime.ts` + Blueprint Signatures, with a blocker-taxonomy enum
+  (`conflict` / `ci_fail` / `comment` / `missing_approval` / `stale_branch`) as
+  one queryable state. Depends: FORGE-1.
+
+**M2 — Cloudflare Artifacts as the agent worktree store** (cuts shared-repo PR
+contention). Depends: M1.
+
+- **FORGE-5** (M2) [P0] — *Artifacts namespace + per-task fork + scoped tokens* —
+  stand up the Artifacts store behind `forge.openagents.com`; on dispatch
+  fork/import the canonical tree and mint a short-lived scoped write token
+  (`createToken(scope, ttl)`). Depends: FORGE-1.
+- **FORGE-6** (M2) [P1] — *Supervisor reads candidates from Artifacts* — pull
+  agent patches via `readTree`/`log`/`readCommit` and feed the virtual merge
+  queue. Depends: FORGE-5.
+- **FORGE-7** (M2) [P1] — *R2-backed bare-repo fallback* — owned per-task git /
+  R2 bare repos so M2 ships even if Artifacts beta access stalls (risk #3).
+  Depends: FORGE-1; sibling of FORGE-5.
+
+**M3 — Owned merge authority + GitHub mirror worker** (cuts merge serialization
++ GitHub-merge dependency). Depends: M1, M2.
+
+- **FORGE-8** (M3) [P0] — *Owned promotion via signatures* — `nextActualPromotion`
+  gated by `merge-deploy-gate` + `issue-close-safe` writes the promotion row to
+  D1 as the canonical merge authority. Depends: FORGE-3.
+- **FORGE-9** (M3) [P0] — *GitHub mirror worker* — fast-forward the promoted
+  commit to GitHub as a trailing, read-only projection (§4). Depends: FORGE-8.
+- **FORGE-10** (M3) [P2] — *Human-readable GitHub projection* — optionally mirror
+  issue/PR/status rows to GitHub for external reviewers. Depends: FORGE-9.
+- **FORGE-11** (M3) [P1] — *Signature evidence as D1 write preconditions* —
+  enforce Blueprint-signature evidence refs structurally on promotion/close/merge
+  D1 writes (§5.1). Depends: FORGE-1, FORGE-8.
+
+**M4 — Relay event layer** (cuts 10–30s sync latency + bot-identity). Depends:
+M1.
+
+- **FORGE-12** (M4) [P1] — *Publish NIP-34 events to the owned relay* —
+  repo/patch/issue/status events (kinds §3) via `nostr-effect` to
+  `apps/nostr-relay/`. Depends: FORGE-1.
+- **FORGE-13** (M4) [P1] — *Agent-keyed identity + sub-second fan-out* — relay as
+  event bus, D1 stays authority. Depends: FORGE-12.
+- **FORGE-14** (M4) [P2] — *Comment/CI events as dispatch inputs* — NIP-22 (1622)
+  replies + `merge-deploy-gate` results feed the priority dispatcher (origin.md
+  §2.2 pattern 3). Depends: FORGE-12, FORGE-4.
+- **FORGE-15** (M4) [P1] — *Forge MCP surface* — structured agent API (what's
+  blocking this PR / fetch comments / inspect CI / create branch / take
+  follow-up) so multi-tenant has a real API day one (origin.md §3.7). Depends:
+  FORGE-12.
+- **FORGE-16** (M4) [P1] — *Relay abuse/replay defense* — extend the `#6643`
+  threat model to relay events (risk #4). Depends: FORGE-12.
+
+**M5 — Economic loop + multi-tenant** (the agent-native thesis realized).
+Depends: M3, M4.
+
+- **FORGE-17** (M5) [P2] — *Bounty→settlement economic loop* — relay economic
+  kinds + trajectory-proof tags wiring bounty→claim→patch→merge→settlement
+  (NIP-57) into payout rails. Depends: FORGE-12, FORGE-8.
+- **FORGE-18** (M5) [P2] — *Per-tenant Artifacts + relay keys* —
+  Artanis-as-a-Service with no per-tenant GitHub org. Depends: FORGE-5, FORGE-13.
+
+**Cross-cutting / risk-driven** (start in parallel as their deps land).
+
+- **FORGE-19** (risk #1) [P0] — *Virtual-merge-queue convergence load test* —
+  harness exercising realistic path-overlap/conflict rates; target origin.md's
+  staged ≈22.6 commits/s into one repo before trusting the queue as sole merge
+  authority. Depends: FORGE-3.
+- **FORGE-20** (risk #2) [P1] — *Verification-at-N capacity plan* — run
+  `merge-deploy-gate` per-candidate in parallel so verification never becomes the
+  new serialization point. Depends: FORGE-8.
+- **FORGE-21** (risk #7) [P1] — *Forge backup/restore + DR runbook* — owned
+  backup/audit story with the GitHub mirror as cold-storage copy. Depends:
+  FORGE-9.
+- **FORGE-22** (risk #6) [P2] — *Governance-parity checklist* — track owned-layer
+  equivalents of CODEOWNERS, branch protection, audit log, signed commits,
+  fine-grained tokens (origin.md §6/§8). Depends: FORGE-0.
+
+**P0-now set (file + start immediately):** FORGE-0 (epic), then FORGE-1 →
+FORGE-2/FORGE-3 in parallel (M1 kills the dispatch/queue failure class that
+caused the 119-PR night), then FORGE-19 once FORGE-3 lands. The next P0 wave is
+M3's FORGE-8 → FORGE-9 (owned merge authority + mirror), which is what actually
+removes GitHub from the critical path. FORGE-5 (M2 Artifacts) starts in parallel
+with M1 since it only depends on FORGE-1, with FORGE-7 as its de-risking sibling.
+
+**Critical path:** FORGE-0 → FORGE-1 → FORGE-5 → FORGE-8 → FORGE-9 (everything
+else hangs off these five). Everything in M4/M5 and the risk-driven lane can
+proceed concurrently once its listed dependency lands.
+
 ---
 
 ## 7. Honest risks & unknowns (the hard parts we are owning)
@@ -448,13 +680,26 @@ We are choosing to own these. They are real.
    tested planner (path-conflict detection, projected HEAD) and D1 is the single
    writer — convergence is resolved by the authority, not by hoping relay events
    agree. **Unknown:** behavior under high path-overlap churn at large N; needs
-   load testing against realistic conflict rates.
+   load testing against realistic conflict rates (FORGE-19, targeting origin.md's
+   staged throughput figures). origin.md sharpens this: its single biggest
+   unresolved question for any agent-native forge is **"a clean merge is not
+   necessarily a correct merge"** — an AI-resolved conflict that applies cleanly
+   can still be semantically wrong. Our answer is that auto-resolution must be
+   *audited and explainable*, not just clean: the trajectory-proof tags (§3.1)
+   and D1 promotion evidence make every auto-resolved merge replayable and
+   attributable, and the `merge-deploy-gate` (verify after resolve) is what
+   distinguishes "applies" from "is correct."
 2. **We now own CI/verification authority.** GitHub Actions / required checks no
    longer gate merges. The `merge-deploy-gate` signature (`check:deploy` + smoke)
    must be as trustworthy as GitHub's required-checks. **Unknown:** how we run
    verification at arbitrary N without it becoming the new serialization point
    (the queue serializes promotion, but verification can parallelize per
-   candidate — needs capacity planning).
+   candidate — needs capacity planning; FORGE-20). origin.md flags the dual
+   hazard explicitly: an agent-native forge must **avoid infinite agent retry
+   loops on flaky tests** — an auto-fix-then-rerun loop on a non-deterministic
+   check burns capacity and can land noise. The `merge-deploy-gate` must treat
+   flaky/non-deterministic checks as a distinct, bounded-retry, human-tagged
+   class, not as an endlessly re-dispatchable `ci_fail` blocker.
 3. **Cloudflare Artifacts is in beta.** Access, limits, and API stability are
    not guaranteed. Mitigation: M2 ships behind a fallback (owned per-task git /
    R2-backed bare repos) so the architecture is not hostage to beta access. We
@@ -480,6 +725,18 @@ We are choosing to own these. They are real.
    free. `forge.openagents.com` needs its own backup/restore, audit, and
    disaster-recovery story — the GitHub mirror is part of that (cold-storage
    copy), but it is not a substitute for owning the operational discipline.
+8. **Governance & portability parity (origin.md §8).** A self-owned forge inherits
+   GitHub's *governance* expectations: CODEOWNERS, branch/tag protections, audit
+   logs, signed commits, fine-grained tokens, SSO/RBAC for any human or tenant
+   surface. origin.md lists these as Origin's own biggest open questions; they are
+   ours too. Mitigation: the Blueprint Signatures cover the *agent* governance
+   path, and FORGE-22 tracks the human/tenant-facing parity checklist — but until
+   that list is green, the owned layer is not a governance-complete GitHub
+   replacement, only an agent-coordination authority with GitHub as the mirror.
+   **Portability** is the inverse promise: because GitHub stays a full downstream
+   mirror (§4), teams are never locked in — complete repo history is always
+   exportable, which is precisely the migration/portability guarantee origin.md
+   notes Origin has not yet published.
 
 None of these is a reason to delay. They are the scope. The decision in §0 is
 that owning them at a latency we control is strictly better than renting a forge
@@ -520,6 +777,11 @@ Requests for your review:
 4. **Fallback adequacy (risk #3).** Is an R2-backed bare-repo fallback
    sufficient to ship M2 if Artifacts beta access stalls, or do we hold M2 for
    Artifacts?
+5. **Competitive-frame & differentiation (origin.md).** origin.md shows Cursor's
+   Origin converging on the same owned-forge thesis. Do you agree our two
+   differentiators — GitHub-as-mirror (no migration ask) and the native relay
+   economic loop — are the right wedges, and is the §6 roadmap's P0 set
+   (FORGE-1/2/3 then FORGE-8/9) the fastest path to a defensible version of them?
 
 The owner will present this to you directly. No `artanis.sh` invocation is
 needed from the build side.
@@ -528,6 +790,9 @@ needed from the build side.
 
 ## Related issues & docs
 
+- `docs/forge/origin.md` — the owner's architecture origin/vision doc: a sourced
+  competitive analysis of Cursor's "Origin" forge, incorporated here (§1.3, §2.2,
+  §7, §6 roadmap) as the architecture reference for this build plan.
 - `workspace:docs/afteraction/2026-06-28-overnight-fleet-after-action.md` — the incident.
 - `workspace:ARTANIS_PR_REPORT.md` — Artanis's accountability report.
 - Commits `a542e056` (per-issue PR dedup) and `e66876276f` (issue-close-safe
