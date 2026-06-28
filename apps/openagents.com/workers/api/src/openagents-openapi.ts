@@ -1659,6 +1659,12 @@ const schemaComponents = (): JsonSchema => ({
   ProviderAccountPoolManualResetResponse: objectSummary(
     'Manual reset receipt with ok, providerAccountRef, and resetAt. It confirms only that the signed-in owners local cooldown/rate-limit marker was cleared; callers should re-read the pool projection for current eligibility.',
   ),
+  OperatorProviderAccountResetRequest: objectSummary(
+    'Admin-token-gated operator request to clear operational provider-account failure markers for one selected target user account by providerAccountRef. The target user selector is resolved server-side; the reset does not touch provider credentials, grants, leases, spend, or accounts outside the selected owner scope.',
+  ),
+  OperatorProviderAccountResetResponse: objectSummary(
+    'Operator reset receipt with ok, providerAccountRef, and resetAt. It confirms only that cooldown, recent failure, low-credit, and eligible connected-account health markers were cleared; callers should re-read the operator fleet dashboard for current eligibility.',
+  ),
   BuiltinComputeAgentGrantEnvelope: objectSummary(
     'Built-in hosted-Gemini grant result for the no-key built-in agent path. A granted response returns a short-lived redacted grant with provider secret refs, free-tier budget refs, expiry, and materialization instructions only; it never returns the hosted key, provider payloads, prompts, completions, or broad provider-account mutation authority. Not-configured and quota-exhausted states are explicit.',
   ),
@@ -11478,6 +11484,26 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Provider account manual reset receipt.',
           '#/components/schemas/ProviderAccountPoolManualResetResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/operator/accounts/reset': {
+    post: operation({
+      operationId: 'resetOperatorProviderAccount',
+      summary: 'Operator reset provider account failure markers',
+      description:
+        'Admin-bearer operator action that selects a target user with the standard operator target selector, clears the selected provider accounts cooldown, recent failure, low-credit, and eligible connected-account health markers by providerAccountRef, and returns a reset receipt. It does not expose or mutate provider credentials, active leases, spend, or accounts outside the selected target user scope.',
+      tags: ['Provider Accounts'],
+      security: adminBearer,
+      requestBody: jsonContent(
+        '#/components/schemas/OperatorProviderAccountResetRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Operator provider account reset receipt.',
+          '#/components/schemas/OperatorProviderAccountResetResponse',
         ),
         ...errorResponses(),
       },

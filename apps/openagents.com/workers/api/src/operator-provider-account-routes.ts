@@ -314,6 +314,12 @@ type ProviderAccountFleetDashboardResponse = Readonly<{
   }>
 }>
 
+type OperatorProviderAccountResetResponse = Readonly<{
+  ok: true
+  providerAccountRef: string
+  resetAt: string
+}>
+
 type OperatorDeviceLoginStartResponse = Readonly<{
   status: 'pending'
   targetUser: OperatorDeviceLoginTargetUser
@@ -1439,6 +1445,39 @@ const providerAccountFleetDashboard = async (
         .length,
     },
   }
+}
+
+const resetOperatorProviderAccount = async (
+  db: D1Database,
+  input: Readonly<{
+    providerAccountRef: string
+    resetAt: string
+    userId: string
+  }>,
+): Promise<boolean> => {
+  const result = await db
+    .prepare(
+      `UPDATE provider_accounts
+          SET health = CASE
+                WHEN status = 'connected'
+                 AND reauth_required_reason IS NULL
+                THEN 'healthy'
+                ELSE health
+              END,
+              low_credit_flag = 0,
+              cooldown_until = NULL,
+              recent_failure_class = NULL,
+              refill_note = NULL,
+              last_status_at = ?,
+              updated_at = ?
+        WHERE user_id = ?
+          AND provider_account_ref = ?
+          AND deleted_at IS NULL`,
+    )
+    .bind(input.resetAt, input.resetAt, input.userId, input.providerAccountRef)
+    .run()
+
+  return (result.meta?.changes ?? 0) > 0
 }
 
 const touchProviderAccountLease = async (
@@ -2765,12 +2804,68 @@ export const makeOperatorProviderAccountRoutes = <
       : noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
   }
 
+  const resetAccount = async (
+    request: Request,
+    env: Bindings,
+  ): Promise<HttpResponse> => {
+    const rejected = await rejectUnlessOperatorAdminRoute(request, env, 'POST')
+
+    if (rejected !== undefined) {
+      return rejected
+    }
+
+    const body = await readJsonObject(request).catch(
+      (): Record<string, unknown> => ({}),
+    )
+    const targetUser = await dependencies.readSelectedOperatorTargetUser(
+      openAgentsDatabase(env),
+      body,
+    )
+
+    if (targetUser === undefined) {
+      return noStoreJsonResponse(
+        { error: 'target_user_not_found' },
+        { status: 404 },
+      )
+    }
+
+    const providerAccountRef = optionalString(body.providerAccountRef)
+
+    if (providerAccountRef === undefined) {
+      return noStoreJsonResponse(
+        { error: 'bad_request', reason: 'providerAccountRef is required' },
+        { status: 400 },
+      )
+    }
+
+    const resetAt = currentIsoTimestamp()
+    const reset = await resetOperatorProviderAccount(openAgentsDatabase(env), {
+      providerAccountRef,
+      resetAt,
+      userId: targetUser.userId,
+    })
+
+    if (!reset) {
+      return noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
+    }
+
+    return noStoreJsonResponse({
+      ok: true,
+      providerAccountRef,
+      resetAt,
+    } satisfies OperatorProviderAccountResetResponse)
+  }
+
   return {
     routeOperatorProviderAccountRequest: (
       request: Request,
       env: Bindings,
     ): Promise<HttpResponse> | undefined => {
       const url = new URL(request.url)
+
+      if (url.pathname === '/api/operator/accounts/reset') {
+        return resetAccount(request, env)
+      }
 
       if (
         url.pathname ===
