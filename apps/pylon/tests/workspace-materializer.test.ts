@@ -4,11 +4,14 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import {
+  cleanupOldestMaterializedWorkspaces,
   gitCheckoutWorkspaceFrom,
   materializeGitCheckoutWorkspace,
+  materializeGitCheckoutWorkspaceWithLease,
   removeMaterializedWorkspace,
   type GitCheckoutWorkspace,
   type WorkspaceCheckoutRunner,
+  workspaceLeaseRecordFor,
 } from "../src/workspace-materializer"
 
 const validCheckout: GitCheckoutWorkspace = {
@@ -262,6 +265,128 @@ describe("removeMaterializedWorkspace", () => {
     } finally {
       await rm(cacheRoot, { recursive: true, force: true })
       await rm(outside, { recursive: true, force: true })
+    }
+  })
+})
+
+describe("cleanupOldestMaterializedWorkspaces", () => {
+  test("removes oldest clean lease records until the cache is under the cap", async () => {
+    const cacheRoot = await mkdtemp(join(tmpdir(), "pylon-workspace-cache-"))
+    const repositoryCacheRoot = await mkdtemp(join(tmpdir(), "pylon-repository-cache-"))
+    const workspaceStateRoot = await mkdtemp(join(tmpdir(), "pylon-workspace-state-"))
+    const checkoutRunner: WorkspaceCheckoutRunner = async (workingDirectory) => {
+      await mkdir(workingDirectory, { recursive: true })
+      await writeFile(join(workingDirectory, "checked-out"), "ok\n")
+    }
+
+    try {
+      const first = await materializeGitCheckoutWorkspaceWithLease({
+        cacheRoot,
+        checkout: validCheckout,
+        checkoutRunner,
+        leaseRef: "lease.public.workspace.cap.first",
+        refPrefix: "workspace.pylon.codex_agent_task",
+        repositoryCacheRoot,
+        workspaceStateRoot,
+        now: new Date("2026-06-11T00:00:00.000Z"),
+      })
+      const second = await materializeGitCheckoutWorkspaceWithLease({
+        cacheRoot,
+        checkout: validCheckout,
+        checkoutRunner,
+        leaseRef: "lease.public.workspace.cap.second",
+        refPrefix: "workspace.pylon.codex_agent_task",
+        repositoryCacheRoot,
+        workspaceStateRoot,
+        now: new Date("2026-06-11T00:01:00.000Z"),
+      })
+      const third = await materializeGitCheckoutWorkspaceWithLease({
+        cacheRoot,
+        checkout: validCheckout,
+        checkoutRunner,
+        leaseRef: "lease.public.workspace.cap.third",
+        refPrefix: "workspace.pylon.codex_agent_task",
+        repositoryCacheRoot,
+        workspaceStateRoot,
+        now: new Date("2026-06-11T00:02:00.000Z"),
+      })
+
+      const result = await cleanupOldestMaterializedWorkspaces({
+        maxMaterializedWorkspaces: 1,
+        now: new Date("2026-06-11T00:03:00.000Z"),
+        workspaceStateRoot,
+      })
+
+      expect(result.cleanupReceiptRefs).toHaveLength(2)
+      expect(result.retainedWorkspaceRefs).toEqual([])
+      expect(existsSync(first.workingDirectory)).toBe(false)
+      expect(existsSync(second.workingDirectory)).toBe(false)
+      expect(existsSync(third.workingDirectory)).toBe(true)
+      expect(
+        (await workspaceLeaseRecordFor({ workspaceStateRoot, workspaceRef: first.workspaceRef }))
+          ?.state,
+      ).toBe("cleaned")
+      expect(
+        (await workspaceLeaseRecordFor({ workspaceStateRoot, workspaceRef: second.workspaceRef }))
+          ?.state,
+      ).toBe("cleaned")
+      expect(
+        (await workspaceLeaseRecordFor({ workspaceStateRoot, workspaceRef: third.workspaceRef }))
+          ?.state,
+      ).toBe("materialized")
+    } finally {
+      await rm(cacheRoot, { recursive: true, force: true })
+      await rm(repositoryCacheRoot, { recursive: true, force: true })
+      await rm(workspaceStateRoot, { recursive: true, force: true })
+    }
+  })
+
+  test("does not remove fresh materialized workspaces under the age guard", async () => {
+    const cacheRoot = await mkdtemp(join(tmpdir(), "pylon-workspace-cache-"))
+    const repositoryCacheRoot = await mkdtemp(join(tmpdir(), "pylon-repository-cache-"))
+    const workspaceStateRoot = await mkdtemp(join(tmpdir(), "pylon-workspace-state-"))
+    const checkoutRunner: WorkspaceCheckoutRunner = async (workingDirectory) => {
+      await mkdir(workingDirectory, { recursive: true })
+      await writeFile(join(workingDirectory, "checked-out"), "ok\n")
+    }
+
+    try {
+      const first = await materializeGitCheckoutWorkspaceWithLease({
+        cacheRoot,
+        checkout: validCheckout,
+        checkoutRunner,
+        leaseRef: "lease.public.workspace.age.first",
+        refPrefix: "workspace.pylon.codex_agent_task",
+        repositoryCacheRoot,
+        workspaceStateRoot,
+        now: new Date("2026-06-11T00:00:00.000Z"),
+      })
+      const second = await materializeGitCheckoutWorkspaceWithLease({
+        cacheRoot,
+        checkout: validCheckout,
+        checkoutRunner,
+        leaseRef: "lease.public.workspace.age.second",
+        refPrefix: "workspace.pylon.codex_agent_task",
+        repositoryCacheRoot,
+        workspaceStateRoot,
+        now: new Date("2026-06-11T00:01:00.000Z"),
+      })
+
+      const result = await cleanupOldestMaterializedWorkspaces({
+        maxMaterializedWorkspaces: 1,
+        minimumAgeSeconds: 10 * 60,
+        now: new Date("2026-06-11T00:02:00.000Z"),
+        workspaceStateRoot,
+      })
+
+      expect(result.cleanupReceiptRefs).toEqual([])
+      expect(result.retainedWorkspaceRefs).toEqual([])
+      expect(existsSync(first.workingDirectory)).toBe(true)
+      expect(existsSync(second.workingDirectory)).toBe(true)
+    } finally {
+      await rm(cacheRoot, { recursive: true, force: true })
+      await rm(repositoryCacheRoot, { recursive: true, force: true })
+      await rm(workspaceStateRoot, { recursive: true, force: true })
     }
   })
 })

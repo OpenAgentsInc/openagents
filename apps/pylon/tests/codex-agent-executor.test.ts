@@ -1,4 +1,5 @@
 import { describe, expect, mock, test } from "bun:test"
+import { existsSync } from "node:fs"
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { join, relative } from "node:path"
 import { tmpdir } from "node:os"
@@ -19,7 +20,10 @@ import type {
 } from "../src/codex-turn-reporter"
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
 import { ensurePylonLocalState, assertPublicProjectionSafe } from "../src/state"
-import { WorkspaceCheckoutError } from "../src/workspace-materializer"
+import {
+  WorkspaceCheckoutError,
+  workspaceLeaseRecordFor,
+} from "../src/workspace-materializer"
 
 const now = new Date("2026-06-11T22:00:00.000Z")
 
@@ -734,6 +738,60 @@ describe("codex git_checkout workspace (shared B2 contract)", () => {
       expect(record?.previewRefs).toContain(
         "https://github.com/OpenAgentsInc/openagents/pull/99001",
       )
+      assertPublicProjectionSafe(record)
+    })
+  })
+
+  test("releases a clean git checkout workspace after closeout (#6524)", async () => {
+    await withState(async (state) => {
+      const checkoutRunner = async (workspace: string) => {
+        await mkdir(workspace, { recursive: true })
+        await writeFile(
+          join(workspace, "package.json"),
+          `${JSON.stringify({ private: true, type: "module" })}\n`,
+        )
+        await writeFile(
+          join(workspace, "sum.ts"),
+          "export const sum = (left: number, right: number) => left + right\n",
+        )
+        await writeFile(
+          join(workspace, "sum.test.ts"),
+          [
+            'import { describe, expect, test } from "bun:test"',
+            'import { sum } from "./sum"',
+            'describe("sum", () => { test("adds", () => { expect(sum(2, 3)).toBe(5) }) })',
+            "",
+          ].join("\n"),
+        )
+      }
+      let workspaceRef: string | null = null
+      const record = await executeCodexAgentAssignment(
+        state,
+        { ...lease, codingAssignment: checkoutAssignment },
+        now,
+        {
+          checkoutRunner,
+          codexAgentProbe: readyProbe,
+          codexAgentRunner: async (input) => {
+            workspaceRef = input.workspaceRef ?? null
+            return idleRunner(input)
+          },
+          pullRequestPublisher: async () => ({ state: "no_change" }),
+        },
+      )
+
+      expect(record?.status).toBe("accepted")
+      expect(record?.resultRefs).toContain(
+        "result.public.pylon.codex_agent_task.workspace_cleaned_on_closeout",
+      )
+      expect(workspaceRef).not.toBeNull()
+      const leaseRecord = await workspaceLeaseRecordFor({
+        workspaceRef: workspaceRef as string,
+        workspaceStateRoot: join(state.paths.cache, "workspace-leases"),
+      })
+      expect(leaseRecord?.state).toBe("cleaned")
+      expect(leaseRecord?.cleanupReceiptRef).toStartWith("receipt.pylon.workspace_cleanup.")
+      expect(existsSync(leaseRecord?.local.workingDirectory ?? "")).toBe(false)
       assertPublicProjectionSafe(record)
     })
   })

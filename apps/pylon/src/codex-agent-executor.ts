@@ -9,9 +9,11 @@ import {
   type CodexAgentSandboxMode,
 } from "./codex-agent.js"
 import {
+  cleanupOldestMaterializedWorkspaces,
   gitCheckoutWorkspaceFrom,
   materializeGitCheckoutWorkspaceWithLease,
   pruneWorkspaceCacheDirectories,
+  releaseWorkspace,
   workspaceCheckoutFailureReasonRef,
   type GitCheckoutWorkspace,
   type WorkspaceCheckoutRunner,
@@ -154,6 +156,8 @@ type CodexAgentFixture = {
 const DEFAULT_TIMEOUT_SECONDS = 300
 const MAX_TIMEOUT_SECONDS = 1200
 const CODEX_AGENT_WORKSPACE_CACHE_MAX_ENTRIES = 200
+const CODEX_AGENT_TASK_MAX_MATERIALIZED_WORKSPACES = 64
+const CODEX_AGENT_TASK_CACHE_PRUNE_MIN_AGE_SECONDS = MAX_TIMEOUT_SECONDS + 300
 
 const CODEX_AGENT_FIXTURES: Record<string, CodexAgentFixture> = {
   [CODEX_AGENT_SUM_REPAIR_FIXTURE_REF]: {
@@ -815,6 +819,7 @@ async function materializeCodexAgentWorkspace(input: {
     cacheRoot,
     maxEntries: CODEX_AGENT_WORKSPACE_CACHE_MAX_ENTRIES,
   })
+  const workspaceStateRoot = join(input.state.paths.cache, "workspace-leases")
   if (input.task.workspace !== undefined) {
     const materialized = await materializeGitCheckoutWorkspaceWithLease({
       cacheRoot,
@@ -823,7 +828,13 @@ async function materializeCodexAgentWorkspace(input: {
       leaseRef: input.leaseRef,
       refPrefix: "workspace.pylon.codex_agent_task",
       repositoryCacheRoot: join(input.state.paths.cache, "workspace-git-cache"),
-      workspaceStateRoot: join(input.state.paths.cache, "workspace-leases"),
+      retentionPolicy: "remove_on_closeout",
+      workspaceStateRoot,
+    })
+    await cleanupOldestMaterializedWorkspaces({
+      maxMaterializedWorkspaces: CODEX_AGENT_TASK_MAX_MATERIALIZED_WORKSPACES,
+      minimumAgeSeconds: CODEX_AGENT_TASK_CACHE_PRUNE_MIN_AGE_SECONDS,
+      workspaceStateRoot,
     })
     return {
       acceptanceResultRef: "git_checkout_verified",
@@ -837,6 +848,7 @@ async function materializeCodexAgentWorkspace(input: {
       verificationArgs: input.task.workspace.verificationCommand.args,
       workspace: materialized.workingDirectory,
       workspaceRef: materialized.workspaceRef,
+      workspaceStateRoot,
     }
   }
 
@@ -855,7 +867,37 @@ async function materializeCodexAgentWorkspace(input: {
     verificationArgs: fixture.verificationArgs,
     workspace,
     workspaceRef,
+    workspaceStateRoot: undefined,
   }
+}
+
+async function releaseCodexAgentWorkspace(input: {
+  materialized: Awaited<ReturnType<typeof materializeCodexAgentWorkspace>>
+  now: Date
+}): Promise<{ resultRefs: string[] }> {
+  if (input.materialized.workspaceStateRoot === undefined) return { resultRefs: [] }
+  const result = await releaseWorkspace({
+    now: input.now,
+    workspaceRef: input.materialized.workspaceRef,
+    workspaceStateRoot: input.materialized.workspaceStateRoot,
+  }).catch(() => null)
+  if (result?.cleanupReceiptRef !== undefined) {
+    return {
+      resultRefs: [
+        "result.public.pylon.codex_agent_task.workspace_cleaned_on_closeout",
+        result.cleanupReceiptRef,
+      ],
+    }
+  }
+  if (result?.retentionReasonRef !== undefined) {
+    return {
+      resultRefs: [
+        "result.public.pylon.codex_agent_task.workspace_retained_on_closeout",
+        result.retentionReasonRef,
+      ],
+    }
+  }
+  return { resultRefs: [] }
 }
 
 type CodexAgentLease = {
@@ -986,6 +1028,7 @@ export async function executeCodexAgentAssignment(
     workspace: materialized.workspace,
   })
   if (!dependencies.ok) {
+    await releaseCodexAgentWorkspace({ materialized, now })
     return refusalRecord({
       lease,
       runRef,
@@ -1041,6 +1084,7 @@ export async function executeCodexAgentAssignment(
       workspaceRef: materialized.workspaceRef,
     })
   } catch {
+    await releaseCodexAgentWorkspace({ materialized, now })
     return refusalRecord({
       lease,
       runRef,
@@ -1052,6 +1096,7 @@ export async function executeCodexAgentAssignment(
   }
 
   if (run.outcome === "workspace_escape_blocked") {
+    await releaseCodexAgentWorkspace({ materialized, now })
     return refusalRecord({
       lease,
       runRef,
@@ -1072,6 +1117,7 @@ export async function executeCodexAgentAssignment(
     })
   }
   if (run.outcome === "refused") {
+    await releaseCodexAgentWorkspace({ materialized, now })
     return refusalRecord({
       lease,
       runRef,
@@ -1116,6 +1162,7 @@ export async function executeCodexAgentAssignment(
     env,
     account: options.account,
   })
+  const workspaceCleanup = await releaseCodexAgentWorkspace({ materialized, now })
 
   return {
     artifactRefs: [artifactRef],
@@ -1132,6 +1179,7 @@ export async function executeCodexAgentAssignment(
         : `result.public.pylon.codex_agent_task.${materialized.acceptanceResultRef}_failed`,
       `result.public.pylon.codex_agent_task.edited_files.${run.editedFileCount}`,
       ...pullRequest.resultRefs,
+      ...workspaceCleanup.resultRefs,
     ],
     runRefs: [runRef, ...sessionRefs],
     status: passed ? ("accepted" as const) : ("rejected" as const),
