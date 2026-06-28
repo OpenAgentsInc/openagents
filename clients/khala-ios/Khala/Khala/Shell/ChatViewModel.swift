@@ -31,12 +31,21 @@ final class ChatViewModel: ObservableObject {
     enum Channel: Equatable {
         case khala
         case artanis
+        case appleFM
 
         /// The name shown on the assistant's bubbles for this channel.
         var speaker: String {
             switch self {
             case .khala: return "Khala"
             case .artanis: return "Artanis"
+            case .appleFM: return "Apple FM"
+            }
+        }
+
+        var requiresAPIKey: Bool {
+            switch self {
+            case .khala, .artanis: return true
+            case .appleFM: return false
             }
         }
     }
@@ -56,6 +65,7 @@ final class ChatViewModel: ObservableObject {
     /// Inline error for the active turn (402 / network / HTTP). Cleared on the
     /// next send or retry.
     @Published private(set) var error: ChatError?
+    @Published private(set) var appleFMStatus: AppleFMClient.Status?
     /// Monotonic counter bumped on every streamed delta so the chat view can
     /// auto-scroll as the assistant turn grows (SwiftData content mutations do
     /// not always re-fire `onChange` on a stable identity).
@@ -98,7 +108,8 @@ final class ChatViewModel: ObservableObject {
         guard !trimmed.isEmpty else { return }
         guard !isStreaming else { return }
 
-        guard let key = KeychainStore.loadAPIKey() else {
+        let apiKey = KeychainStore.loadAPIKey()
+        guard !channel.requiresAPIKey || apiKey != nil else {
             error = ChatError(
                 title: KhalaClient.KhalaError.missingKey.recoveryTitle,
                 message: KhalaClient.KhalaError.missingKey.recoveryMessage,
@@ -113,7 +124,7 @@ final class ChatViewModel: ObservableObject {
             store.appendMessage(.user, content: trimmed, to: conversation)
         }
 
-        startStream(apiKey: key)
+        startStream(apiKey: apiKey)
     }
 
     /// Re-stream the last user turn: drop the most recent assistant turn (if any)
@@ -121,7 +132,8 @@ final class ChatViewModel: ObservableObject {
     /// `MessageBubble` regenerate hook.
     func regenerate() {
         guard !isStreaming else { return }
-        guard let key = KeychainStore.loadAPIKey() else {
+        let apiKey = KeychainStore.loadAPIKey()
+        guard !channel.requiresAPIKey || apiKey != nil else {
             error = ChatError(
                 title: KhalaClient.KhalaError.missingKey.recoveryTitle,
                 message: KhalaClient.KhalaError.missingKey.recoveryMessage,
@@ -138,7 +150,7 @@ final class ChatViewModel: ObservableObject {
         if let lastAssistant = conversation.sortedMessages.last(where: { $0.role == .assistant }) {
             store.deleteMessage(lastAssistant, from: conversation)
         }
-        startStream(apiKey: key)
+        startStream(apiKey: apiKey)
     }
 
     /// Retry after a retryable error (network / 5xx). The user turn is already
@@ -147,13 +159,12 @@ final class ChatViewModel: ObservableObject {
     /// retry produces a single clean reply.
     func retry() {
         guard !isStreaming, error?.isRetryable == true else { return }
-        guard let key = KeychainStore.loadAPIKey() else { return }
         error = nil
         if let trailingAssistant = conversation.sortedMessages.last,
            trailingAssistant.role == .assistant {
             store.deleteMessage(trailingAssistant, from: conversation)
         }
-        startStream(apiKey: key)
+        startStream(apiKey: KeychainStore.loadAPIKey())
     }
 
     /// Cancel the in-flight stream. Whatever streamed so far is kept and the
@@ -165,7 +176,15 @@ final class ChatViewModel: ObservableObject {
 
     // MARK: - Streaming core
 
-    private func startStream(apiKey: String) {
+    func refreshAppleFMStatus() {
+        guard channel == .appleFM else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            self.appleFMStatus = await AppleFMClient.health()
+        }
+    }
+
+    private func startStream(apiKey: String?) {
         // Build the outgoing history from the persisted transcript (multi-turn).
         let history = conversation.sortedMessages
             .filter { $0.role != .system && !$0.content.isEmpty }
@@ -182,20 +201,34 @@ final class ChatViewModel: ObservableObject {
         task = Task { [weak self] in
             guard let self else { return }
             do {
-                let stream = activeChannel == .artanis
-                    ? KhalaClient.streamArtanisCompletion(messages: history, apiKey: apiKey)
-                    : KhalaClient.streamCompletion(messages: history, apiKey: apiKey)
-                for try await delta in stream {
-                    // Append live; the SwiftData model is observable so the
-                    // bubble grows token-by-token.
-                    assistant.content += delta
-                    self.streamTick &+= 1
+                switch activeChannel {
+                case .khala:
+                    guard let apiKey else { throw KhalaClient.KhalaError.missingKey }
+                    for try await delta in KhalaClient.streamCompletion(messages: history, apiKey: apiKey) {
+                        assistant.content += delta
+                        self.streamTick &+= 1
+                    }
+                case .artanis:
+                    guard let apiKey else { throw KhalaClient.KhalaError.missingKey }
+                    for try await delta in KhalaClient.streamArtanisCompletion(messages: history, apiKey: apiKey) {
+                        assistant.content += delta
+                        self.streamTick &+= 1
+                    }
+                case .appleFM:
+                    for try await snapshot in AppleFMClient.streamSnapshotCompletion(messages: history) {
+                        // Apple FM bridge streams full snapshots, not token
+                        // deltas. Replace the active assistant text in place.
+                        assistant.content = snapshot.content
+                        self.streamTick &+= 1
+                    }
                 }
                 self.settle(assistant)
             } catch is CancellationError {
                 self.settle(assistant)
             } catch let khala as KhalaClient.KhalaError {
                 self.fail(khala, assistant: assistant)
+            } catch let appleFM as AppleFMClient.AppleFMError {
+                self.fail(appleFM, assistant: assistant)
             } catch {
                 self.fail(.transport(error), assistant: assistant)
             }
@@ -230,6 +263,25 @@ final class ChatViewModel: ObservableObject {
             title: khala.recoveryTitle,
             message: khala.recoveryMessage,
             isRetryable: khala.isRetryable
+        )
+        streamingMessageID = nil
+        isStreaming = false
+        task = nil
+    }
+
+    private func fail(_ appleFM: AppleFMClient.AppleFMError, assistant: Message) {
+        if case .notReady(let status) = appleFM {
+            appleFMStatus = status
+        }
+        if assistant.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            store.deleteMessage(assistant, from: conversation)
+        } else {
+            store.persist()
+        }
+        error = ChatError(
+            title: "Apple FM not ready",
+            message: appleFM.errorDescription ?? "Apple FM cannot run this turn yet.",
+            isRetryable: false
         )
         streamingMessageID = nil
         isStreaming = false
