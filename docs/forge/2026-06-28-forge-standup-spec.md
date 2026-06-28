@@ -19,7 +19,7 @@ Real, tested components — grounded:
 - **Dispatch protocol.** `apps/pylon/src/forge-dispatch-protocol.ts` + shared `packages/forge-protocol/` — typed Pylon→Forge task dispatch.
 - **Verification runner.** `apps/pylon/src/forge-verification-runner.ts` — Docker-isolated `bun test` executor for untrusted/external code.
 - **Gates already shared.** `apps/pylon/src/blueprint-gates/` (virtual-merge-queue, merge-deploy-gate, issue-close-safe, command-execution-source-verified) + `@openagentsinc/blueprint-contracts`.
-- **Web surface.** `apps/openagents.com/apps/web/src/page/loggedIn/page/forge.ts`.
+- **Legacy/source-material web surface.** `apps/openagents.com/apps/web/src/page/loggedIn/page/forge.ts` is older Forge dashboard material inside the main product app. It can be mined for copy/layout ideas, but it is not the target `forge.openagents.com` UI.
 - Bindings already present in `apps/openagents.com/workers/api/wrangler.jsonc`: R2 (`ARTIFACTS`), D1 (`openagents-autopilot`), Durable Objects.
 
 ## The gap (why it isn't "stood up" yet)
@@ -27,25 +27,56 @@ Real, tested components — grounded:
 The pieces are stores + parsers + protocols with no **control plane** binding them into a running service:
 
 1. No HTTP **forge control-plane routes** exposing the coordination store / git intake / dispatch / verification.
-2. No `forge.openagents.com` route/host wiring (or `/api/forge/*` surface) to the Worker.
+2. No separate `apps/forge/` app/deploy for `forge.openagents.com`, and no `/api/forge/*` API surface wiring.
 3. The virtual merge queue + Blueprint gates are not wired to the coordination store to drive **`nextActualPromotion`** (owned merge authority).
 4. No **GitHub mirror worker** (push promoted commits downstream so GitHub stays a read-only mirror).
 5. The fleet/supervisor still coordinates through GitHub, not Forge.
 
+## Product/UI boundary
+
+Forge UI is a separate product surface, not another logged-in
+`openagents.com` page.
+
+- **Target app:** create `apps/forge/` for `forge.openagents.com`, following the
+  same extraction pattern as `apps/forum`: separate app shell, routes, app model,
+  release cadence, and deployment wiring.
+- **Shared components:** reuse `@openagentsinc/ui`, shared tokens, and Foldkit
+  primitives for the base visual language. Forge-specific work queues, change
+  inspectors, merge/verification views, git-ref explorers, and operator controls
+  may evolve in `apps/forge/` or a later `@openagentsinc/forge-ui` package once
+  they stop being generic.
+- **Main app relationship:** `openagents.com` may link to Forge and may keep
+  shared auth/API infrastructure at first, but it must not own Forge page routing,
+  navigation state, or the canonical coordination UX.
+- **Old Forge page:** treat
+  `apps/openagents.com/apps/web/src/page/loggedIn/page/forge.ts` as historical
+  source material. Do not expand it as the new Forge UI.
+
 ## Stand-up architecture (assembly)
 
 ```
- agent/pylon ──git push──► [Forge git intake]  (git-receive-pack.ts)
-                                │  tenant-auth (forge-tenant-git-auth-store)
+ operator/agent browser ──► [Forge UI app: apps/forge on forge.openagents.com]
+                                │  shared @openagentsinc/ui components
                                 ▼
-                     [Packfile archive: R2]  (forge-git-packfile-archive-store)
+                     [Forge API/control plane: /api/forge/*]
+                                │
+ agent/pylon ──git push──► [Forge git intake]  (git-receive-pack.ts)
+                                │  tenant git auth (git protocol only)
+                                ▼
+                     [Packfile archive: R2]  (audit/evidence artifact)
+                                │
+                                ▼
+                 [Canonical git object/ref store]  (source refs, ref locks)
                                 │  refs+metadata
                                 ▼
                  [Coordination store: D1]  (forge-coordination-store)
                   work/change/status/lease/merge-queue rows
                                 │
-                 [Verification runner]  (forge-verification-runner, Docker-isolated bun test)
-                                │  verdict → status
+                 [Verification dispatch]  (Worker enqueue)
+                                │
+                                ▼
+                 [Pylon/runner execution]  (Docker-isolated bun test)
+                                │  signed receipt + verdict → status
                                 ▼
             [Virtual merge queue + Blueprint gates]  (blueprint-gates/*)
               merge-deploy-gate · issue-close-safe · command-verified
@@ -54,32 +85,48 @@ The pieces are stores + parsers + protocols with no **control plane** binding th
                     [GitHub mirror worker]  ──push──► GitHub (read-only mirror)
 ```
 
-All of it served from the `apps/openagents.com` Worker (existing R2/D1/DO bindings) under `forge.openagents.com` (host route) and/or `/api/forge/*`.
+The API/control plane can initially live in the `apps/openagents.com` Worker to
+reuse existing R2/D1/DO bindings. The Forge UI itself lives in `apps/forge/` and
+is served on `forge.openagents.com`. It calls `/api/forge/*`; the API may later
+move behind the same host or into its own Worker once the boundary is proven.
 
 ## Stand-up sequence (smallest-first, each shippable + green)
 
-- **SU-1 — Control-plane routes (P0, do first).** Expose the coordination store + tenant-auth as `/api/forge/*` Worker routes: create/read work records, change records, status transitions, leases; auth via tenant git tokens. Register in the route registry/OpenAPI (so `route_exists` grounding sees them). Acceptance: an authed caller can create a work record + a change record + transition status through the live API; rows land in D1.
-- **SU-2 — Git intake → archive → coordination.** Wire a receive-pack intake endpoint that parses the push (`git-receive-pack.ts`), archives the packfile to R2 (`forge-git-packfile-archive-store`), and writes change/ref rows to the coordination store. Acceptance: a real `git push` to the forge endpoint lands a packfile in R2 + a change record in D1.
-- **SU-3 — Owned merge authority.** Wire the virtual merge queue + the Blueprint gates (merge-deploy-gate, issue-close-safe, command-verified, the anti-#6719 deletion guard) over the coordination store to compute **`nextActualPromotion`** — promotion is a gated fast-forward, never an O(N) PR merge. Acceptance: two concurrent change records serialize through the queue with the gates enforced; a deletion-poisoned change is blocked structurally (the #6719 class becomes impossible).
-- **SU-4 — Verification on intake.** Run `forge-verification-runner` (Docker-isolated `bun test`) on each change before it's promotable; verdict → status. Acceptance: a failing change cannot reach `nextActualPromotion`.
-- **SU-5 — GitHub mirror worker.** A one-way worker that pushes promoted commits to GitHub as a read-only mirror (keeps external visibility; removes GitHub from the critical path). Acceptance: a Forge-promoted commit appears on GitHub `main` via the mirror, not via a PR.
-- **SU-6 — Dogfood one fleet lane.** Point ONE codex/Pylon lane at Forge (intake→verify→queue→promote→mirror) end-to-end; prove zero GitHub PR contention. Then widen the cutover lane-by-lane. Acceptance: a real fleet change is coordinated entirely through Forge, GitHub only mirrored.
-- **SU-7 — Multi-tenant / AaaS.** Per-tenant token namespaces + Artifacts/relay isolation so external fleets connect (the real zero-spend throughput multiplier). Gated on the software-solid bar (48h zero-wedge, #6486/#6643 isolation prod-proven, #6640 dashboard live).
+- **SU-0 — Boundary/spec lock (P0, do first).** Freeze the execution boundary, auth model, canonical git object/ref store, receipt format, and UI app boundary before adding routes. Tenant git tokens are for smart Git HTTP only; control-plane calls use dedicated `forge:*` service/session/admin scopes. The R2 packfile archive is evidence, not the canonical ref store. Verification receipts include the change id, base/head refs, packfile digest, executor identity, command, exit code, timestamps, artifact refs, and log digest. Acceptance: docs/OpenAPI route notes name these boundaries and no route uses git tokens as control-plane auth.
+- **SU-1 — Separate Forge UI shell.** Stand up `apps/forge/` for `forge.openagents.com`, reusing `@openagentsinc/ui` and shared tokens while owning its own app shell, navigation, queue/change/work inspectors, and route model. Acceptance: `forge.openagents.com` renders the Forge shell from the Forge API contract, and the old `openagents.com` logged-in Forge page is not the expansion target.
+- **SU-2 — Control-plane routes.** Expose the coordination store as `/api/forge/*` Worker routes: create/read work records, change records, status transitions, leases, queue state, verification receipts, and promotion decisions. Register in the route registry/OpenAPI so `route_exists` grounding sees them. Acceptance: an authed control-plane caller can create a work record + a change record + transition status through the live API; rows land in D1.
+- **SU-3 — Git intake → archive → canonical refs → coordination.** Wire a smart-Git receive-pack intake endpoint that parses the push (`git-receive-pack.ts`), archives the packfile to R2 (`forge-git-packfile-archive-store`), verifies/applies it to the canonical git object/ref store under a ref lock, and writes change/ref rows to the coordination store. Acceptance: a real `git push` to the forge endpoint lands a packfile in R2, updates the canonical git object/ref store, and creates a change record in D1.
+- **SU-4 — Owned merge authority.** Wire the virtual merge queue + the Blueprint gates (merge-deploy-gate, issue-close-safe, command-verified, the anti-#6719 deletion guard) over the coordination store and canonical refs to compute **`nextActualPromotion`** — promotion is a gated ref fast-forward, never an O(N) PR merge or metadata-only D1 flip. Acceptance: two concurrent change records serialize through the queue with the gates enforced; a deletion-poisoned change is blocked structurally (the #6719 class becomes impossible).
+- **SU-5 — Verification on intake.** The Worker enqueues verification for each change; Pylon/owned runner executes `forge-verification-runner` (Docker-isolated `bun test`) and posts a receipt + verdict back to Forge before the change is promotable. Acceptance: a failing change cannot reach `nextActualPromotion`, and the D1 status is backed by a receipt artifact.
+- **SU-6 — GitHub mirror worker.** A one-way worker that pushes promoted commits to GitHub as a read-only mirror (keeps external visibility; removes GitHub from the critical path). Acceptance: a Forge-promoted commit appears on GitHub `main` via the mirror, not via a PR.
+- **SU-7 — Dogfood one fleet lane.** Point ONE codex/Pylon lane at Forge (intake→verify→queue→promote→mirror) end-to-end; prove zero GitHub PR contention. Then widen the cutover lane-by-lane. Acceptance: a real fleet change is coordinated entirely through Forge, the separate Forge UI shows the live queue/change state, and GitHub is only mirrored.
+- **SU-8 — Multi-tenant / AaaS.** Per-tenant token namespaces + Artifacts/relay isolation so external fleets connect (the real zero-spend throughput multiplier). Gated on the software-solid bar (48h zero-wedge, #6486/#6643 isolation prod-proven, #6640 dashboard live).
 
 ## Routing / deploy
 
-- Add the `forge.openagents.com` custom-domain route to the `apps/openagents.com` Worker (or serve `/api/forge/*` first, add the host later). Bindings already exist (R2 `ARTIFACTS`, D1 `openagents-autopilot`, DOs) in `wrangler.jsonc`.
-- Deploy via the standard `deploy:safe` gate; SU-1..SU-5 ship incrementally behind the route, dogfooded (SU-6) before any external exposure.
+- Add the `forge.openagents.com` custom-domain route/deploy for `apps/forge/`.
+  The Forge app consumes the shared `@openagentsinc/ui` package, not the
+  `apps/openagents.com` logged-in route tree.
+- Serve `/api/forge/*` from the `apps/openagents.com` Worker first if that is
+  the fastest route to reuse existing bindings (R2 `ARTIFACTS`, D1
+  `openagents-autopilot`, DOs) in `wrangler.jsonc`; keep the UI deploy separate.
+- Deploy via the standard `deploy:safe` gate; SU-1..SU-6 ship incrementally
+  behind the route, dogfooded (SU-7) before any external exposure.
 
 ## Governance / safety (non-negotiable)
 
 - Every promotion runs the **Blueprint gates** (merge-deploy-gate, issue-close-safe, command-execution-source-verified, operator-grounded-assertion) + the **anti-#6719 deletion guard** — the 119-duplicate-PR night and the stale-base mass-deletion are made *structurally* impossible, not policy-discouraged.
-- Tenant isolation (SU-7) must pass the adversarial security harness (#6643) in prod before any external fleet is admitted.
+- Tenant isolation (SU-8) must pass the adversarial security harness (#6643) in prod before any external fleet is admitted.
 - Own-capacity / $0; no external paid spend.
 
 ## Acceptance for "stood up"
 
-A real change flows **agent → forge git intake → R2 archive → D1 coordination → Docker verification → gated virtual-merge-queue promotion → GitHub mirror**, with the fleet dogfooding at least one lane and GitHub demoted to a mirror. SU-1..SU-6 green + deployed = the owned coordination layer is live.
+A real change flows **agent → forge git intake → R2 archive → canonical git
+object/ref store → D1 coordination → Pylon/runner Docker verification → gated
+virtual-merge-queue promotion → GitHub mirror**, with the separate Forge UI
+showing live work/change/queue state, the fleet dogfooding at least one lane,
+and GitHub demoted to a mirror. SU-0..SU-7 green + deployed = the owned
+coordination layer is live. SU-8 is the external multi-tenant expansion gate.
 
 ---
 
