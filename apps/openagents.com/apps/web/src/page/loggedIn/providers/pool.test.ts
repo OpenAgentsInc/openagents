@@ -4,6 +4,7 @@ import {
   ProviderConnectionAttemptId,
   IsoTimestamp as ProviderIsoTimestamp,
 } from '@openagentsinc/provider-account-schema'
+import type { Html } from 'foldkit/html'
 import { describe, expect, test } from 'vitest'
 
 import {
@@ -18,7 +19,69 @@ import {
   SucceededPollProviderDeviceLogin,
 } from '../message'
 import { type ProviderAccountPoolResponse, init } from '../model'
+import {
+  formatRateLimitCountdown,
+  rateLimitCountdownTitle,
+  rateLimitCountdownView,
+} from '../page/settings'
 import { initialCommands, update } from '../update'
+
+type VNodeLike = Readonly<{
+  children?: ReadonlyArray<VNodeLike | string | null>
+  data?: {
+    attrs?: Record<string, unknown>
+    class?: Record<string, boolean>
+    props?: Record<string, unknown>
+  }
+  sel?: string
+  text?: string
+}>
+
+const isVNodeLike = (value: unknown): value is VNodeLike =>
+  typeof value === 'object' && value !== null
+
+const attrsToString = (node: VNodeLike): string => {
+  const attrs = node.data?.attrs ?? {}
+  const props = node.data?.props ?? {}
+  const classes = Object.entries(node.data?.class ?? {})
+    .filter(([, enabled]) => enabled)
+    .map(([className]) => className)
+    .join(' ')
+  const pairs = [
+    ...Object.entries(attrs),
+    ...Object.entries(props),
+    ...(classes.length === 0 ? [] : [['class', classes] as const]),
+  ]
+
+  return pairs
+    .filter(
+      ([, value]) => value !== false && value !== undefined && value !== null,
+    )
+    .map(([name, value]) =>
+      value === true ? ` ${name}` : ` ${name}="${String(value)}"`,
+    )
+    .join('')
+}
+
+const renderHtml = (html: Html): string => {
+  if (html === null || !isVNodeLike(html)) {
+    return ''
+  }
+
+  const tag = html.sel ?? 'node'
+  const children = (html.children ?? [])
+    .map(child =>
+      typeof child === 'string'
+        ? child
+        : child === null
+          ? ''
+          : renderHtml(child),
+    )
+    .join('')
+  const text = html.text ?? ''
+
+  return `<${tag}${attrsToString(html)}>${text}${children}</${tag}>`
+}
 
 const auth = authBootstrapFromSession({
   email: 'chris@openagents.com',
@@ -150,6 +213,30 @@ const connectedDeviceLoginStatus = {
 } satisfies ProviderDeviceLoginStatusResponse
 
 describe('provider account pool', () => {
+  test('formats rate-limit countdowns as stable timer text', () => {
+    expect(formatRateLimitCountdown(300)).toBe('05:00')
+    expect(formatRateLimitCountdown(65)).toBe('01:05')
+    expect(formatRateLimitCountdown(3661)).toBe('01:01:01')
+    expect(formatRateLimitCountdown(-4)).toBe('00:00')
+    expect(formatRateLimitCountdown(null)).toBe('reset pending')
+  })
+
+  test('renders rate-limited accounts with a semantic countdown timer', () => {
+    const rendered = renderHtml(
+      rateLimitCountdownView({
+        cooldownRemainingSeconds: 300,
+        cooldownUntil: '2026-06-11T12:05:00.000Z',
+      }),
+    )
+
+    expect(rendered).toContain('data-rate-limit-countdown="true"')
+    expect(rendered).toContain('datetime="2026-06-11T12:05:00.000Z"')
+    expect(rendered).toContain('05:00')
+    expect(rateLimitCountdownTitle('2026-06-11T12:05:00.000Z')).toContain(
+      'Rate limit resets at ',
+    )
+  })
+
   test('settings connections route loads the account pool', () => {
     const model = init(SettingsSectionRoute({ section: 'connections' }), auth)
 
