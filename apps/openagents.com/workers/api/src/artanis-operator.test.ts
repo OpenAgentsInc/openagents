@@ -29,8 +29,10 @@ import {
 } from './inference/provider-adapter'
 import {
   makeArtanisGetKhalaFeedbackTool,
+  makeArtanisRepoPathExistsTool,
   makeArtanisTriggerSyntheticLoadTool,
 } from './artanis-operator-tools'
+import { ARTANIS_GROUNDING_ADDENDUM_HEADER } from './artanis-operator-grounding-gate'
 
 // Real owner-memory entries (most-recent-first, as the store returns them).
 const exampleMemory: ReadonlyArray<ArtanisMemoryEntry> = [
@@ -1155,5 +1157,128 @@ describe('#6359 the turn never returns an empty reply (cap / blank-completion gu
       ARTANIS_OPERATOR_TOOL_RESULT_CONTEXT_MAX_CHARS + 200,
     )
     expect(toolMessage?.content).toContain('truncated at')
+  })
+})
+
+
+// ---------------------------------------------------------------------------
+// Full-Blueprint-set wiring, slice 1: the operator loop ENFORCES the Blueprint
+// Signature-6 grounding gate over the final reply. A fabricated path/endpoint is
+// structurally tagged SPECULATIVE; a verified one passes GROUNDED. This is the
+// "headless but full Blueprint set" guarantee — grounding is no longer merely a
+// prompt instruction the model can ignore.
+// ---------------------------------------------------------------------------
+
+describe('artanis operator grounding gate enforcement (Blueprint Signature 6)', () => {
+  test('a turn that fabricates a script path AND an API endpoint is gated SPECULATIVE', async () => {
+    // The model ignores the GROUNDED-ASSERTION RULE and names two artifacts it
+    // never looked up. With no grounding lookups performed, the loop must gate
+    // them — the prompt-level rule is now a structural gate.
+    const { client } = makeScriptedKhalaClient([
+      textResult(
+        'Regenerate the traces with `bun scripts/distill_traces.ts --since 24h`, then mint via POST /api/admin/khala/mint.',
+      ),
+    ])
+
+    const result = await Effect.runPromise(
+      artanisOperatorTurn({
+        awareness: exampleAwareness,
+        khalaClient: client,
+        memory: exampleMemory,
+        messages: [{ content: 'how do I regenerate the traces?', role: 'user' }],
+        ownerId: 'owner:github:14167547',
+      }),
+    )
+
+    expect('error' in result).toBe(false)
+    if ('error' in result) return
+    expect(result.groundingGate.allGrounded).toBe(false)
+    expect(result.groundingGate.enforced).toBe(true)
+    // Both fabricated artifacts are recorded as SPECULATIVE on the turn.
+    const refs = result.groundingGate.speculativeArtifacts.map(a => a.artifactRef)
+    expect(refs).toContain('scripts/distill_traces.ts')
+    expect(refs).toContain('/api/admin/khala/mint')
+    // The reply itself now carries the structural SPECULATIVE addendum, so the
+    // owner can never read a fabricated path as runnable.
+    expect(result.reply).toContain(ARTANIS_GROUNDING_ADDENDUM_HEADER)
+    expect(result.reply).toContain('SPECULATIVE')
+    // None of the artifacts reached GROUNDED.
+    expect(result.groundingGate.evaluated.every(v => !v.grounded)).toBe(true)
+  })
+
+  test('a turn that VERIFIES a path via repo_path_exists passes GROUNDED with no addendum', async () => {
+    const realPath = 'apps/pylon/scripts/multi-session-campaign.ts'
+    // repo_path_exists fetch returns a 200 file object => GROUNDED existence.
+    const fetchImpl = (async () =>
+      new Response(JSON.stringify({ size: 900, type: 'file' }), {
+        status: 200,
+      })) as unknown as typeof fetch
+    const tool = makeArtanisRepoPathExistsTool({ fetchImpl })
+
+    const { client } = makeScriptedKhalaClient([
+      toolCallResult('repo_path_exists', JSON.stringify({ path: realPath })),
+      textResult(`Use ${realPath} for the campaign run.`),
+    ])
+
+    const result = await Effect.runPromise(
+      artanisOperatorTurn({
+        awareness: exampleAwareness,
+        khalaClient: client,
+        memory: exampleMemory,
+        messages: [{ content: 'which script runs the campaign?', role: 'user' }],
+        ownerId: 'owner:github:14167547',
+        tools: [tool],
+      }),
+    )
+
+    expect('error' in result).toBe(false)
+    if ('error' in result) return
+    expect(result.groundingGate.allGrounded).toBe(true)
+    expect(result.groundingGate.enforced).toBe(false)
+    expect(result.groundingGate.speculativeArtifacts).toEqual([])
+    // The reply is delivered untouched: no SPECULATIVE addendum.
+    expect(result.reply).not.toContain(ARTANIS_GROUNDING_ADDENDUM_HEADER)
+    expect(result.reply).toContain(realPath)
+    const verdict = result.groundingGate.evaluated.find(
+      v => v.artifactRef === realPath,
+    )
+    expect(verdict?.state).toBe('GROUNDED')
+    expect(verdict?.grounded).toBe(true)
+    expect(verdict?.lookupTool).toBe('repo_path_exists')
+  })
+
+  test('a fabricated path looked up with a NEGATIVE result is still gated', async () => {
+    const fakePath = 'scripts/distill_traces.ts'
+    // repo_path_exists fetch returns 404 => existence UNGROUNDED.
+    const fetchImpl = (async () =>
+      new Response('Not Found', { status: 404 })) as unknown as typeof fetch
+    const tool = makeArtanisRepoPathExistsTool({ fetchImpl })
+
+    const { client } = makeScriptedKhalaClient([
+      toolCallResult('repo_path_exists', JSON.stringify({ path: fakePath })),
+      textResult(`I would run ${fakePath} to rebuild the traces.`),
+    ])
+
+    const result = await Effect.runPromise(
+      artanisOperatorTurn({
+        awareness: exampleAwareness,
+        khalaClient: client,
+        memory: exampleMemory,
+        messages: [{ content: 'rebuild the traces', role: 'user' }],
+        ownerId: 'owner:github:14167547',
+        tools: [tool],
+      }),
+    )
+
+    expect('error' in result).toBe(false)
+    if ('error' in result) return
+    expect(result.groundingGate.allGrounded).toBe(false)
+    expect(result.groundingGate.enforced).toBe(true)
+    const verdict = result.groundingGate.evaluated.find(
+      v => v.artifactRef === fakePath,
+    )
+    expect(verdict?.state).toBe('LOOKED_UP')
+    expect(verdict?.lookupResult).toBe('negative')
+    expect(result.reply).toContain('SPECULATIVE')
   })
 })

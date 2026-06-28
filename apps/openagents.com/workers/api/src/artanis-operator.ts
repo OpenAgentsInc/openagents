@@ -62,12 +62,20 @@ import { formatArtanisTokenPaceLine } from './artanis-token-pace'
 
 import { parseJsonUnknown } from './json-boundary'
 
+import {
+  enforceArtanisGroundingGate,
+  extractArtanisGroundingLookup,
+  type ArtanisGroundingLookup,
+  type ArtanisOperatorGroundingGateResult,
+} from './artanis-operator-grounding-gate'
+
 export type { ArtanisRiskyActionKind } from './artanis-approval-gates'
 
 // Re-export the real grounding types so the surface + memory lanes have a single
 // import site for the operator-core contract.
 export type { ArtanisMemoryEntry } from './artanis-owner-memory'
 export type { ArtanisSituationalAwareness } from './artanis-situational-awareness'
+export type { ArtanisOperatorGroundingGateResult } from './artanis-operator-grounding-gate'
 
 // ---------------------------------------------------------------------------
 // Model + identity constants.
@@ -709,6 +717,12 @@ export type ArtanisOperatorTurnResult = Readonly<{
   // Typed pending approval gates produced by risky/gated tool deferrals. This
   // supersedes treating `deferredToApprovalGate` as the only machine signal.
   pendingApprovalGates: ReadonlyArray<ArtanisOperatorPendingApprovalGate>
+  // The Blueprint Signature-6 grounding-gate verdict over the FINAL reply: the
+  // structured per-artifact grounded/SPECULATIVE results, whether every named
+  // runnable artifact was GROUNDED, and whether the reply was augmented with the
+  // SPECULATIVE addendum. This is the machine-readable proof that ungrounded
+  // references were structurally gated, not just discouraged by the prompt.
+  groundingGate: ArtanisOperatorGroundingGateResult
   // How many Khala completions the turn made (1 for a no-tool turn, more when
   // the loop executed tools and re-called Khala).
   iterations: number
@@ -992,6 +1006,10 @@ export const artanisOperatorTurn = (input: {
     // composition retry and the grounded synthesis fallback so a blown-up
     // conversation (or a failed late Khala call) never costs the owner a reply.
     const gathered: Array<ArtanisGatheredToolResult> = []
+    // The grounding lookups Artanis actually performed this turn (distilled from
+    // his repo_path_exists / repo_grep / route_exists / repo-read tool calls).
+    // The Signature-6 gate correlates the final reply's artifacts against these.
+    const groundingLookups: Array<ArtanisGroundingLookup> = []
     let toolsDeferred = false
     let served: InferenceResult | undefined
 
@@ -1095,6 +1113,12 @@ export const artanisOperatorTurn = (input: {
           ARTANIS_OPERATOR_TOOL_RESULT_CONTEXT_MAX_CHARS,
         )
         gathered.push({ content: boundedContent, name: toolCall.function.name })
+        const groundingLookup = extractArtanisGroundingLookup({
+          content: boundedContent,
+          rawArguments: toolCall.function.arguments,
+          toolName: toolCall.function.name,
+        })
+        if (groundingLookup !== null) groundingLookups.push(groundingLookup)
         nextMessages.push({
           content: boundedContent,
           name: toolCall.function.name,
@@ -1175,6 +1199,17 @@ export const artanisOperatorTurn = (input: {
         ? finalServed.content
         : synthesizeArtanisGroundedReply(gathered)
 
+    // Enforce the Blueprint Signature-6 grounding gate over the FINAL reply.
+    // Any runnable artifact (file path, script, command, or API endpoint)
+    // Artanis named that he did NOT verify exists this turn is structurally
+    // tagged SPECULATIVE here — he can no longer present a fabricated path or
+    // endpoint as runnable. (full-Blueprint-set wiring, slice 1.)
+    const grounding = enforceArtanisGroundingGate({
+      lookups: groundingLookups,
+      reply: replyText,
+    })
+    const groundedReplyText = grounding.reply
+
     // The provider-native model id to report. Prefer the model that produced the
     // final reply; fall back to the last successful completion, then the alias.
     const servedModel =
@@ -1185,10 +1220,11 @@ export const artanisOperatorTurn = (input: {
     return {
       deferredToApprovalGate:
         mentionsSpendOrDestructive(input.messages) || toolsDeferred,
+      groundingGate: grounding.gate,
       iterations,
       pendingApprovalGates,
-      persona: verifyArtanisOperatorPersona(replyText),
-      reply: replyText,
+      persona: verifyArtanisOperatorPersona(groundedReplyText),
+      reply: groundedReplyText,
       requestedModel: ARTANIS_OPERATOR_KHALA_MODEL,
       servedModel,
       servedVia: 'openagents_khala' as const,

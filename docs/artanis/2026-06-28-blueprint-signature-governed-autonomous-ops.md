@@ -293,6 +293,67 @@ the right points:
    Artanis can verify an artifact exists before asserting it instead of inventing
    it from memory.
 
+### Operator-loop enforcement (full-Blueprint-set wiring, slice 1)
+
+The grounding tools above were necessary but not sufficient: a system-prompt
+rule is advisory, and a headless model can still present a fabricated artifact as
+runnable without ever calling them. Slice 1 of the full-Blueprint-set wiring
+makes Signature 6 a **structural gate inside the operator turn loop** rather than
+a prompt instruction:
+
+- **Gate state machine, single authority.** `operator-grounded-assertion`
+  (`UNGROUNDED → REFERENCED → LOOKED_UP → GROUNDED`) and the Signature-4
+  `command-execution-source-verified` evaluator now live in the cross-consumer
+  package `@openagentsinc/blueprint-contracts`
+  (`packages/blueprint-contracts/src/operator-grounded-assertion.ts`,
+  `.../command-execution-source-verified.ts`). The Pylon `blueprint-gates` module
+  re-exports the S4 evaluator from there, and the openagents.com Worker imports +
+  applies the SAME functions — neither re-describes the gate, so the two
+  consumers cannot drift. (The Worker cannot depend on the Pylon CLI app, so the
+  shared contracts package — which both already depend on — is the correct home.)
+- **Enforcement in the loop.** After the operator composes its final reply, the
+  turn loop (`apps/openagents.com/workers/api/src/artanis-operator.ts`) runs
+  `enforceArtanisGroundingGate`
+  (`apps/openagents.com/workers/api/src/artanis-operator-grounding-gate.ts`). It
+  extracts every runnable artifact the reply names (file path, script, command,
+  API endpoint — a bounded audit predicate over Artanis's own output, NOT intent
+  routing), correlates each against the grounding lookups actually performed that
+  turn (distilled from the `repo_path_exists` / `repo_grep` / `route_exists`
+  tool calls, plus a successful `read_repo_file` / `list_repo_dir` as stronger
+  path-existence evidence), and runs the S6 gate per artifact. Any artifact that
+  does not reach `GROUNDED` is appended to a structural **SPECULATIVE addendum**
+  in the returned reply and recorded in a new typed `groundingGate` field on the
+  turn result (per-artifact state, satisfied/missing evidence refs, the S4
+  sub-verdict for commands). A fabricated `scripts/distill_traces.ts` or
+  `POST /api/admin/khala/mint` can no longer be delivered to the owner as
+  runnable; it is labeled unverified or it does not pass.
+- **Evidence-aligned.** The structured `groundingGate` verdicts carry the same
+  `evidence://grounding/*` refs the design specifies, so they line up with the
+  evidence-only Action Submission model.
+
+What is **ENFORCED now** (vs. prompt-level before): S6 grounded-assertion over
+the operator's final reply, for file paths, scripts, commands, and API
+endpoints.
+
+What is **honestly still follow-up** (not faked here):
+
+- **S4 runtime predicate.** `command-execution-source-verified` is applied and
+  attached for command artifacts using the evidence reachable headless
+  (source-read + flag content-match via `repo_grep`), but the terminal
+  `RUNTIME_CONFIRMED`/`SAFE_TO_PROPOSE` step needs a real dry-run/`--help`
+  probe, which only a runtime with a working tree has. Wiring that probe
+  server-/Pylon-side is the next slice; today S6 is the blocker and S4 is the
+  attached report.
+- **Signature Lookup Service registration.** The gates are not yet registered as
+  `program_signature` contributions, and the evidence refs are not yet written
+  through the Action Submission evidence-only boundary as durable receipts.
+- **RLM / Program substrate + cycle-report gating.** S1–S5 server-side wiring,
+  the overseer evidence packet, and GEPA optimization against the "zero unforced
+  errors" metric remain as designed above and are not yet implemented.
+- **Read-tool grounding scope.** Grounding correlation uses the three canonical
+  S6 tools plus successful repo reads; a repo-wide grep remains unavailable from
+  the Worker (documented honest boundary of `repo_grep`).
+
 GEPA optimization (bounded scheduled runner,
 `docs/artanis/2026-06-08-bounded-gepa-scheduled-runner.md`) tunes the Program
 against the "zero unforced errors" metric over time.

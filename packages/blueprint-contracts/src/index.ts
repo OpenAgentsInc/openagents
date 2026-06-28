@@ -1,5 +1,12 @@
 import { Schema as S } from "effect";
 
+// Blueprint Signature-governed autonomous-ops gate state machines. These pure,
+// ordered-predicate evaluators live here (the cross-consumer Blueprint contract
+// home) so the openagents.com Worker operator loop and the Pylon blueprint-gates
+// both import + apply the SAME function instead of re-describing it.
+export * from "./command-execution-source-verified.js";
+export * from "./operator-grounded-assertion.js";
+
 // ---------------------------------------------------------------------------
 // Canonical Blueprint contract-export security contract.
 //
