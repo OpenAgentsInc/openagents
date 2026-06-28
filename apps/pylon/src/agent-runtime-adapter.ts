@@ -10,15 +10,9 @@ import {
 import { Effect, Stream } from "effect"
 
 import {
-  claudeAgentTaskFrom,
-  executeClaudeAgentAssignment,
-  type ClaudeAgentExecutionOptions,
-} from "./claude-agent-executor.js"
-import {
-  codexAgentTaskFrom,
-  executeCodexAgentAssignment,
-  type CodexAgentExecutionOptions,
-} from "./codex-agent-executor.js"
+  agentRunnerForAdapterKind,
+  type AgentRunnerExecutionOptions,
+} from "./agent-runner-registry.js"
 import { runOpencodeStream, type OpencodeStreamCallbacks } from "./opencode-run.js"
 import type { PylonAssignmentLease } from "./assignment.js"
 import type { PylonLocalState } from "./state.js"
@@ -221,31 +215,37 @@ function makeAdapter(input: {
 }
 
 export function createClaudeCodeAgentRuntimeAdapter(
-  options: ClaudeAgentExecutionOptions = {},
+  options: AgentRunnerExecutionOptions = {},
 ): AgentRuntimeAdapter {
-  return makeAdapter({
-    kind: "claude_code",
-    canRun: (request) => claudeAgentTaskFrom(request.lease.codingAssignment) !== null,
-    start: async (request) =>
-      closeoutToEvents(
-        "claude_code",
-        request,
-        await executeClaudeAgentAssignment(request.state, request.lease, request.now, options),
-      ),
-  })
+  return createRegisteredAgentRuntimeAdapter("claude_code", options)
 }
 
 export function createCodexAgentRuntimeAdapter(
-  options: CodexAgentExecutionOptions = {},
+  options: AgentRunnerExecutionOptions = {},
 ): AgentRuntimeAdapter {
+  return createRegisteredAgentRuntimeAdapter("codex", options)
+}
+
+function createRegisteredAgentRuntimeAdapter(
+  adapterKind: AgentRuntimeAdapterKind,
+  options: AgentRunnerExecutionOptions,
+): AgentRuntimeAdapter {
+  const runner = agentRunnerForAdapterKind(adapterKind)
+  if (runner === null) {
+    throw new AgentRuntimeAdapterError(
+      `No registered agent runner for ${adapterKind}.`,
+      adapterKind,
+      [`blocker.agent_runtime.${adapterKind}.runner_unregistered`],
+    )
+  }
   return makeAdapter({
-    kind: "codex",
-    canRun: (request) => codexAgentTaskFrom(request.lease.codingAssignment) !== null,
+    kind: runner.adapterKind,
+    canRun: (request) => runner.canRunAssignment(request.lease.codingAssignment),
     start: async (request) =>
       closeoutToEvents(
-        "codex",
+        runner.adapterKind,
         request,
-        await executeCodexAgentAssignment(request.state, request.lease, request.now, options),
+        await runner.execute(request.state, request.lease, request.now, options),
       ),
   })
 }

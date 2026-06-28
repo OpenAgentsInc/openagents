@@ -19,6 +19,11 @@ import {
   replayAgentRuntimeEventLog,
   type AgentRuntimeRunRequest,
 } from "../src/agent-runtime-adapter"
+import {
+  AGENT_RUNNER_REGISTRY,
+  agentRunnerForLease,
+  agentRunnerServiceForLease,
+} from "../src/agent-runner-registry"
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
 import { CLAUDE_AGENT_SDK_PACKAGE } from "../src/claude-agent"
 import {
@@ -105,6 +110,64 @@ async function withRequest<T>(
 }
 
 describe("AgentRuntimeAdapter", () => {
+  test("Claude and Codex runners are selected from the declarative registry", () => {
+    expect(
+      AGENT_RUNNER_REGISTRY.map((runner) => ({
+        adapterKind: runner.adapterKind,
+        accountProvider: runner.accountProvider,
+        kind: runner.kind,
+        serviceRef: runner.serviceRef,
+      })),
+    ).toEqual([
+      {
+        accountProvider: "claude_agent",
+        adapterKind: "claude_code",
+        kind: "claude_agent",
+        serviceRef: "claude",
+      },
+      {
+        accountProvider: "codex",
+        adapterKind: "codex",
+        kind: "codex",
+        serviceRef: "codex",
+      },
+    ])
+
+    const claudeLease = {
+      schema: "openagents.pylon.assignment_lease.v0.3",
+      assignmentRef: "assignment.public.registry.claude",
+      leaseRef: "lease.public.registry.claude",
+      goal: "goal.public.registry.claude",
+      paymentMode: "no-spend",
+      capabilityRefs: [],
+      codingAssignment: {
+        claudeAgent: {
+          schema: CLAUDE_AGENT_TASK_SCHEMA,
+          agentKind: "claude_agent_sdk",
+          fixtureRef: CLAUDE_AGENT_SUM_REPAIR_FIXTURE_REF,
+        },
+      },
+      expiresAt: now.toISOString(),
+    } as const
+    const codexLease = {
+      ...claudeLease,
+      assignmentRef: "assignment.public.registry.codex",
+      leaseRef: "lease.public.registry.codex",
+      codingAssignment: {
+        codex: {
+          schema: CODEX_AGENT_TASK_SCHEMA,
+          agentKind: "codex_sdk",
+          fixtureRef: CODEX_AGENT_SUM_REPAIR_FIXTURE_REF,
+        },
+      },
+    }
+
+    expect(agentRunnerForLease(claudeLease)?.adapterKind).toBe("claude_code")
+    expect(agentRunnerServiceForLease(claudeLease)).toBe("claude")
+    expect(agentRunnerForLease(codexLease)?.adapterKind).toBe("codex")
+    expect(agentRunnerServiceForLease(codexLease)).toBe("codex")
+  })
+
   test("fixture, Codex, and Claude wrappers emit the same kernel event contract", async () => {
     const fixtureAdapter = createTestFixtureAgentRuntimeAdapter()
     await withRequest({}, async (request) => {

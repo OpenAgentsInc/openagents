@@ -11,23 +11,26 @@ import {
 } from "@openagentsinc/tassadar-executor"
 import type { BootstrapSummary } from "./bootstrap.js"
 import {
-  CLAUDE_AGENT_CAPABILITY_REF,
   loadClaudeAgentConfig,
   probeClaudeAgentReadiness,
   type ClaudeAgentProbeOptions,
 } from "./claude-agent.js"
 import {
-  executeClaudeAgentAssignment,
   type ClaudeAgentCheckoutRunner,
   type ClaudeAgentRunner,
 } from "./claude-agent-executor.js"
 import {
-  CODEX_AGENT_CAPABILITY_REF,
   loadCodexAgentConfig,
   probeCodexAgentReadiness,
   type CodexAgentProbeOptions,
 } from "./codex-agent.js"
-import { executeCodexAgentAssignment, type CodexAgentRunner } from "./codex-agent-executor.js"
+import type { CodexAgentRunner } from "./codex-agent-executor.js"
+import {
+  agentRunnerForLease,
+  agentRunnerServiceForLease,
+  executeRegisteredAgentRunner,
+  type AgentRunnerCloseoutRecord,
+} from "./agent-runner-registry.js"
 import { createSignedHeaders, sendHeartbeat } from "./presence.js"
 import { PresenceRequestError } from "./presence-error.js"
 import {
@@ -939,20 +942,7 @@ function localLeaseIsTerminal(store: AssignmentStore, leaseRef: string): boolean
 }
 
 function codingRunServiceForLease(lease: PylonAssignmentLease): PylonCodingServiceRef | null {
-  const codingAssignment = lease.codingAssignment as { claudeAgent?: unknown; codex?: unknown } | undefined
-  if (
-    lease.capabilityRefs.includes(CODEX_AGENT_CAPABILITY_REF) ||
-    (codingAssignment?.codex !== null && typeof codingAssignment?.codex === "object")
-  ) {
-    return "codex"
-  }
-  if (
-    lease.capabilityRefs.includes(CLAUDE_AGENT_CAPABILITY_REF) ||
-    (codingAssignment?.claudeAgent !== null && typeof codingAssignment?.claudeAgent === "object")
-  ) {
-    return "claude"
-  }
-  return null
+  return agentRunnerServiceForLease(lease)
 }
 
 function isLegacyLease(value: unknown): value is PylonAssignmentLease {
@@ -1479,7 +1469,8 @@ async function resolveAgentAccountForAssignment(
   now: Date,
 ): Promise<AssignmentCodexAccountSelection> {
   const provider: PylonAccountProvider =
-    codingRunServiceForLease(lease) === "claude" ? "claude_agent" : "codex"
+    agentRunnerForLease(lease)?.accountProvider ??
+    (codingRunServiceForLease(lease) === "claude" ? "claude_agent" : "codex")
 
   if (options.accountRef !== undefined || options.accountHome !== undefined) {
     const account = await resolvePylonAccountSelection(summary, {
@@ -1741,8 +1732,7 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
       }, runtimeHeartbeatIntervalMs)
   let runtimeGate:
     | Awaited<ReturnType<typeof executeTassadarAssignment>>
-    | Awaited<ReturnType<typeof executeClaudeAgentAssignment>>
-    | Awaited<ReturnType<typeof executeCodexAgentAssignment>>
+    | AgentRunnerCloseoutRecord
     | Awaited<ReturnType<typeof executeRuntimeGate>>
   try {
     runtimeGate = await withRuntimeProgress({
@@ -1752,26 +1742,17 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
       startedAtMs: runtimeStartedAtMs,
       run: async () =>
         (await executeTassadarAssignment(lease, observedAtDate)) ??
-        (await executeClaudeAgentAssignment(state, lease, observedAtDate, {
-          // agentToken + baseUrl + fetch let the executor post the exact
-          // own-capacity Claude turn token usage (#6391). #6421: pass the
-          // provider-resolved account so a claude_agent_task lease runs against
-          // the selected Claude account's isolated home + OAuth token. The
-          // account is null for codex leases or when none resolves, leaving the
-          // executor's default-resolution path; it is only ever a `claude_agent`
-          // account here, so Claude credentials are never crossed with Codex.
-          ...(agentAccount.account === null ? {} : { account: agentAccount.account }),
+        (await executeRegisteredAgentRunner(state, lease, observedAtDate, {
+          // agentToken + baseUrl + fetch let agent executors post exact
+          // own-capacity turn token usage. The provider-aware account is
+          // resolved from the selected registry entry so Claude credentials are
+          // never crossed with Codex credentials.
           ...(options.agentToken === undefined ? {} : { agentToken: options.agentToken }),
+          ...(agentAccount.account === null ? {} : { account: agentAccount.account }),
           baseUrl: options.baseUrl,
-          ...(options.claudeAgentCheckoutRunner === undefined ? {} : { checkoutRunner: options.claudeAgentCheckoutRunner }),
-          ...(options.claudeAgentRunner === undefined ? {} : { claudeAgentRunner: options.claudeAgentRunner }),
+          ...(options.claudeAgentCheckoutRunner === undefined ? {} : { claudeAgentCheckoutRunner: options.claudeAgentCheckoutRunner }),
           ...(options.claudeAgentProbe === undefined ? {} : { claudeAgentProbe: options.claudeAgentProbe }),
-          ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
-        })) ??
-        (await executeCodexAgentAssignment(state, lease, observedAtDate, {
-          ...(options.agentToken === undefined ? {} : { agentToken: options.agentToken }),
-          ...(agentAccount.account === null ? {} : { account: agentAccount.account }),
-          baseUrl: options.baseUrl,
+          ...(options.claudeAgentRunner === undefined ? {} : { claudeAgentRunner: options.claudeAgentRunner }),
           ...(options.codexAgentRunner === undefined ? {} : { codexAgentRunner: options.codexAgentRunner }),
           ...(options.codexAgentProbe === undefined ? {} : { codexAgentProbe: options.codexAgentProbe }),
           ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
