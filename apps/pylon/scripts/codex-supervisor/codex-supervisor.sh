@@ -59,6 +59,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 # (e.g. a PR against an already-closed issue) and never spawns dupes.
 # shellcheck source=lockout.sh
 source "$SCRIPT_DIR/lockout.sh"
+# shellcheck source=virtual-merge-queue.sh
+source "$SCRIPT_DIR/virtual-merge-queue.sh"
 # shellcheck source=../supervisor-task-pool.sh
 source "$SCRIPT_DIR/../supervisor-task-pool.sh"
 
@@ -312,7 +314,10 @@ worker_loop() {
       backoff=$(( backoff * 2 )); [ "$backoff" -gt "$SUP_BACKOFF_MAX" ] && backoff="$SUP_BACKOFF_MAX"
       continue
     fi
-    local commit; commit=$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null)
+    local commit real_commit
+    real_commit=$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null)
+    commit=$(sup_vmq_project_head "$REPO_ROOT" "${real_commit:-HEAD}" 2>/dev/null)
+    [ -z "$commit" ] && commit="$real_commit"
     [ -z "$commit" ] && { sleep 15; continue; }
 
     # Record the dispatch ATTEMPT timestamp (#6646) right before firing the
