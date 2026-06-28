@@ -112,4 +112,85 @@ describe("pylon operator account status", () => {
       assertPublicProjectionSafe(projection)
     })
   })
+
+  test("uses rolling local-session token deltas when provider windows are missing", async () => {
+    await withHome(async (home) => {
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), { PYLON_HOME: home })
+      const codexHome = join(home, "codex-a")
+      await mkdir(codexHome, { recursive: true })
+      await writeFile(
+        summary.paths.config,
+        `${JSON.stringify(
+          {
+            dev: {
+              accounts: [
+                {
+                  ref: "codex-a",
+                  provider: "codex",
+                  home: codexHome,
+                  hourlyCap: 1_000,
+                  weeklyCap: 10_000,
+                },
+              ],
+            },
+          },
+          null,
+          2,
+        )}\n`,
+      )
+
+      const accountRefHash = hashPylonAccountRef("codex", "codex-a")
+      const account = {
+        provider: "codex" as const,
+        selector: "registry_ref" as const,
+        accountRef: "codex-a",
+        accountRefHash,
+        home: codexHome,
+      }
+      await recordPylonAccountUsageObservation(summary, {
+        provider: "codex",
+        account,
+        localSessionUsage: {
+          provider: "codex",
+          sessionRef: "session.pylon.codex.status",
+          inputTokens: 0,
+          outputTokens: 100,
+          totalTokens: 100,
+        },
+        observedAt: new Date("2026-06-28T10:30:00.000Z"),
+      })
+      await recordPylonAccountUsageObservation(summary, {
+        provider: "codex",
+        account,
+        localSessionUsage: {
+          provider: "codex",
+          sessionRef: "session.pylon.codex.status",
+          inputTokens: 0,
+          outputTokens: 160,
+          totalTokens: 160,
+        },
+        observedAt: new Date("2026-06-28T11:05:00.000Z"),
+      })
+      await recordPylonAccountUsageObservation(summary, {
+        provider: "codex",
+        account,
+        localSessionUsage: {
+          provider: "codex",
+          sessionRef: "session.pylon.codex.status",
+          inputTokens: 0,
+          outputTokens: 210,
+          totalTokens: 210,
+        },
+        observedAt: new Date("2026-06-28T11:45:00.000Z"),
+      })
+
+      const projection = await collectPylonOperatorAccountStatus(summary, {
+        now: new Date("2026-06-28T12:00:00.000Z"),
+      })
+
+      expect(projection.accounts[0]?.hourlyUsage).toBe(110)
+      expect(projection.accounts[0]?.weeklyUsage).toBe(null)
+      assertPublicProjectionSafe(projection)
+    })
+  })
 })

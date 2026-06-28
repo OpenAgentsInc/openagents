@@ -9,6 +9,7 @@ import {
   type QuotaRecord,
 } from "./account-quota-ledger.js"
 import {
+  countAccountRollingWindowLocalSessionTokens,
   loadAccountUsageStore,
   type PylonAccountUsageStoreEntry,
   type PylonProviderRateLimitSnapshot,
@@ -79,11 +80,12 @@ function usageFor(
   entry: PylonAccountUsageStoreEntry | undefined,
   kind: "hourly" | "weekly",
   cap: number | null,
+  now: Date,
 ): number | null {
   const snapshots = entry?.providerTruth?.snapshots ?? []
   const fromProvider = snapshotWindowUsage(snapshots, kind, cap)
   if (fromProvider !== null) return fromProvider
-  if (kind === "hourly") return entry?.localSessionTruth?.usage.totalTokens ?? null
+  if (kind === "hourly") return countAccountRollingWindowLocalSessionTokens(entry, { now, windowMinutes: 60 })
   return null
 }
 
@@ -106,9 +108,9 @@ export async function collectPylonOperatorAccountStatus(
       isRateLimited: !isAccountAvailable(quotaRecord, now),
       cooldownExpiresAt: cooldownExpiresAt(quotaRecord, now),
       hourlyCap: account.hourlyCap,
-      hourlyUsage: usageFor(usageEntry, "hourly", account.hourlyCap),
+      hourlyUsage: usageFor(usageEntry, "hourly", account.hourlyCap, now),
       weeklyCap: account.weeklyCap,
-      weeklyUsage: usageFor(usageEntry, "weekly", account.weeklyCap),
+      weeklyUsage: usageFor(usageEntry, "weekly", account.weeklyCap, now),
       manualResetsRemaining: account.manualResetsRemaining,
     })
   }
