@@ -44,6 +44,7 @@ import {
   OA_COMPONENT_SSE_EVENT,
 } from './khala-component-channel'
 import {
+  KHALA_CAPABILITY_TRUTH_SYSTEM_PROMPT,
   KHALA_IDENTITY_STATEMENT,
   KHALA_IDENTITY_SYSTEM_PROMPT,
   KHALA_STANDARD_GREETING,
@@ -5348,6 +5349,9 @@ describe('Khala identity guard', () => {
     // The gateway identity prompt is the FIRST message the adapter sees.
     expect(messages[0]?.role).toBe('system')
     expect(messages[0]?.content).toBe(KHALA_IDENTITY_SYSTEM_PROMPT)
+    expect(messages.map(m => m.content)).toContain(
+      KHALA_CAPABILITY_TRUTH_SYSTEM_PROMPT,
+    )
     // The original user message is preserved after it.
     expect(messages.some(m => m.role === 'user' && m.content === 'hi')).toBe(
       true,
@@ -6076,6 +6080,7 @@ describe('Khala-code acceptance-contract injection', () => {
     // The public Khala model still gets identity, but NOT the code acceptance
     // contract (that block is scoped to the khala-code coding lane).
     expect(systemContents).toContain(KHALA_IDENTITY_SYSTEM_PROMPT)
+    expect(systemContents).toContain(KHALA_CAPABILITY_TRUTH_SYSTEM_PROMPT)
     expect(
       systemContents.some(c => c.includes('__openagentsCrossyRoadState')),
     ).toBe(false)
@@ -6201,6 +6206,7 @@ describe('Khala prefix caching (book P0-2 / #6084)', () => {
       .map(m => m.content)
     const identityIndex = systemContents.indexOf(KHALA_IDENTITY_SYSTEM_PROMPT)
     expect(identityIndex).toBeGreaterThanOrEqual(0)
+    expect(systemContents).toContain(KHALA_CAPABILITY_TRUTH_SYSTEM_PROMPT)
   })
 
   test('1. the stable prefix is identical across two turns of one session; only the user turn varies', async () => {

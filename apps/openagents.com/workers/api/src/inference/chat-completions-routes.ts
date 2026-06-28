@@ -110,6 +110,7 @@ import {
   serializeComponentFrame,
 } from './khala-component-channel'
 import {
+  KHALA_CAPABILITY_TRUTH_SYSTEM_PROMPT,
   KHALA_IDENTITY_REINFORCEMENT_PROMPT,
   KHALA_IDENTITY_SYSTEM_PROMPT,
   KHALA_RESPONSE_DISCIPLINE_SYSTEM_PROMPT,
@@ -972,6 +973,13 @@ const buildTaggedKhalaMessages = (
     tagged.push({
       message: {
         content: KHALA_RESPONSE_DISCIPLINE_SYSTEM_PROMPT,
+        role: 'system',
+      },
+      stableKind: 'stablePolicy' satisfies StableBlockKind,
+    })
+    tagged.push({
+      message: {
+        content: KHALA_CAPABILITY_TRUTH_SYSTEM_PROMPT,
         role: 'system',
       },
       stableKind: 'stablePolicy' satisfies StableBlockKind,
