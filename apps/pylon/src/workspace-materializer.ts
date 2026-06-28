@@ -609,6 +609,38 @@ async function sleep(ms: number): Promise<void> {
 
 type RepositoryCacheProcessLock = { lockDirectory: string; heartbeat: ReturnType<typeof setInterval> }
 
+type RepositoryCacheProcessLockOwner = {
+  pid: number
+  acquiredAt?: string
+}
+
+function repositoryCacheLockOwnerFrom(value: unknown): RepositoryCacheProcessLockOwner | null {
+  if (value === null || typeof value !== "object") return null
+  const record = value as { pid?: unknown; acquiredAt?: unknown }
+  if (typeof record.pid !== "number" || !Number.isInteger(record.pid) || record.pid <= 0) return null
+  return {
+    pid: record.pid,
+    ...(typeof record.acquiredAt === "string" ? { acquiredAt: record.acquiredAt } : {}),
+  }
+}
+
+export async function repositoryCacheProcessLockOwnerIsLive(lockDirectory: string): Promise<boolean> {
+  let owner: RepositoryCacheProcessLockOwner | null = null
+  try {
+    owner = repositoryCacheLockOwnerFrom(JSON.parse(await readFile(join(lockDirectory, "owner.json"), "utf8")))
+  } catch {
+    return false
+  }
+  if (owner === null) return false
+  try {
+    process.kill(owner.pid, 0)
+    return true
+  } catch (error) {
+    const code = error instanceof Error && "code" in error ? (error as { code?: unknown }).code : undefined
+    return code === "EPERM"
+  }
+}
+
 async function acquireRepositoryCacheProcessLock(bareDirectory: string): Promise<RepositoryCacheProcessLock> {
   const lockDirectory = `${bareDirectory}.pylon-lock`
   const startedAt = Date.now()
@@ -641,6 +673,10 @@ async function acquireRepositoryCacheProcessLock(bareDirectory: string): Promise
 
     const now = Date.now()
     if (now - lockStat.mtimeMs > repositoryCacheProcessLockStaleMs) {
+      if (await repositoryCacheProcessLockOwnerIsLive(lockDirectory)) {
+        await sleep(repositoryCacheProcessLockPollMs)
+        continue
+      }
       await rm(lockDirectory, { recursive: true, force: true })
       continue
     }

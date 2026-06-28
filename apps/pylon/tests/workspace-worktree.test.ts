@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { existsSync } from "node:fs"
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import {
@@ -13,6 +13,7 @@ import {
   publicWorkspaceChangeCaptureProjection,
   publicWorkspaceLeaseProjection,
   releaseWorkspace,
+  repositoryCacheProcessLockOwnerIsLive,
   repositoryCacheKeyFor,
   stageWorkspacePaths,
   withWorkspaceMaterializerCapability,
@@ -549,6 +550,24 @@ describe("materializeGitCheckoutWorkspaceWithLease", () => {
       }
       // every assignment got its own isolated working tree
       expect(dirs.size).toBe(concurrency)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  test("does not treat a stale lock mtime as abandoned while the owner process is live", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-worktree-live-lock-"))
+    try {
+      const lockDirectory = join(root, "repo.git.pylon-lock")
+      await mkdir(lockDirectory, { recursive: true })
+      await writeFile(
+        join(lockDirectory, "owner.json"),
+        `${JSON.stringify({ pid: process.pid, acquiredAt: new Date(0).toISOString() }, null, 2)}\n`,
+      )
+      const old = new Date(Date.now() - 5 * 60 * 1000)
+      await utimes(lockDirectory, old, old)
+
+      await expect(repositoryCacheProcessLockOwnerIsLive(lockDirectory)).resolves.toBe(true)
     } finally {
       await rm(root, { recursive: true, force: true })
     }
