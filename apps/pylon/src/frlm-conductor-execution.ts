@@ -4,6 +4,9 @@ import { assertPublicProjectionSafe } from "./state.js"
 export const FRLM_CONDUCTOR_EXECUTION_SCHEMA =
   "openagents.artanis.frlm_conductor_execution.v0.1"
 
+export const FRLM_RESPONSE_COMPOSITION_SCHEMA =
+  "openagents.artanis.frlm_response_composition.v0.1"
+
 export type FrlmConductorSubQueryState =
   | "planned"
   | "running"
@@ -35,6 +38,20 @@ export type FrlmConductorBudgetPolicy = {
   maxTokens: number
   maxDepth: number
 }
+
+export type FrlmResponseCompositionBlockerRef =
+  | "blocker.artanis.frlm_response_composition.composition_ref_missing"
+  | "blocker.artanis.frlm_response_composition.root_task_ref_missing"
+  | "blocker.artanis.frlm_response_composition.execution_plan_ref_missing"
+  | "blocker.artanis.frlm_response_composition.blueprint_signature_ref_missing"
+  | "blocker.artanis.frlm_response_composition.response_blueprint_signature_ref_missing"
+  | "blocker.artanis.frlm_response_composition.execution_plan_blocked"
+  | "blocker.artanis.frlm_response_composition.response_segment_missing"
+  | "blocker.artanis.frlm_response_composition.sub_query_incomplete"
+  | "blocker.artanis.frlm_response_composition.sub_query_result_missing"
+  | "blocker.artanis.frlm_response_composition.sub_query_response_text_missing"
+  | "blocker.artanis.frlm_response_composition.unsafe_content"
+  | "blocker.artanis.frlm_response_composition.unsafe_ref"
 
 export type FrlmConductorSubQuery = {
   subQueryRef: string
@@ -72,9 +89,45 @@ export type FrlmConductorExecutionProjection = {
   contentRedacted: true
 }
 
+export type FrlmResponseCompositionSegment = {
+  subQueryRef: string
+  state: FrlmConductorSubQueryState
+  responseText?: string | null
+  resultRef?: string | null
+  responseRef?: string | null
+  parentRef?: string | null
+  blueprintSignatureRef?: string | null
+  order?: number | null
+}
+
+export type FrlmResponseCompositionProjection = {
+  schema: typeof FRLM_RESPONSE_COMPOSITION_SCHEMA
+  observedAt: string
+  compositionRef: string | null
+  rootTaskRef: string | null
+  executionPlanRef: string | null
+  blueprintSignatureRef: string | null
+  responseBlueprintSignatureRef: string | null
+  canComposeResponse: boolean
+  composedResponseText: string | null
+  composedResponseDigest: string | null
+  composedResponseRef: string | null
+  responseSegmentRefs: string[]
+  incompleteSubQueryRefs: string[]
+  missingResultSubQueryRefs: string[]
+  missingResponseTextSubQueryRefs: string[]
+  orderedSubQueryRefs: string[]
+  evidenceRefs: string[]
+  blockerRefs: FrlmResponseCompositionBlockerRef[]
+  authorityBoundary: string
+  contentRedacted: true
+}
+
 const publicRefPattern = /^[a-z][a-z0-9._:/-]{1,220}$/i
 const unsafeRefPattern =
   /(\/Users\/|\/home\/|api[_-]?key|bearer|checkpoint[-_]?path|invoice|lnbc|lno1|mnemonic|payment[_-]?(hash|preimage)|preimage|private|prompt|secret|token|wallet|weights\.(bin|gguf|safetensors|pt|pth))/i
+const unsafeResponseTextPattern =
+  /(\/Users\/|\/home\/|api[_-]?key|bearer\s+[a-z0-9._-]{6,}|checkpoint[-_]?path|invoice|lnbc|lno1|mnemonic|payment[_ -]?(hash|preimage)|preimage|private key|raw prompt|secret|token|wallet|weights\.(bin|gguf|safetensors|pt|pth))/i
 
 const failedStates = new Set<FrlmConductorSubQueryState>([
   "failed",
@@ -238,6 +291,171 @@ export function planFrlmConductorExecution(input: {
   return projection
 }
 
+export function composeFrlmRecursiveResponse(input: {
+  observedAt: string
+  compositionRef?: string | null
+  rootTaskRef?: string | null
+  executionPlan?: FrlmConductorExecutionProjection | null
+  executionPlanRef?: string | null
+  blueprintSignatureRef?: string | null
+  responseBlueprintSignatureRef?: string | null
+  segments?: FrlmResponseCompositionSegment[]
+}): FrlmResponseCompositionProjection {
+  const blockerRefs = new Set<FrlmResponseCompositionBlockerRef>()
+  const segments = input.segments ?? []
+  const rawRefs = [
+    normalizedRef(input.compositionRef),
+    normalizedRef(input.rootTaskRef),
+    normalizedRef(input.executionPlanRef),
+    normalizedRef(input.executionPlan?.executionPlanRef),
+    normalizedRef(input.blueprintSignatureRef),
+    normalizedRef(input.executionPlan?.blueprintSignatureRef),
+    normalizedRef(input.responseBlueprintSignatureRef),
+    ...segments.flatMap((segment) => [
+      normalizedRef(segment.subQueryRef),
+      normalizedRef(segment.parentRef),
+      normalizedRef(segment.resultRef),
+      normalizedRef(segment.responseRef),
+      normalizedRef(segment.blueprintSignatureRef),
+    ]),
+  ]
+  const safeRefs = new Map<string, string | null>()
+  for (const ref of rawRefs) {
+    if (ref !== null && !safeRefs.has(ref)) {
+      safeRefs.set(ref, isSafeRef(ref) ? ref : null)
+    }
+  }
+  const safeRef = (value: string | null | undefined) => {
+    const ref = normalizedRef(value)
+    return ref === null ? null : safeRefs.get(ref) ?? null
+  }
+
+  const compositionRef = safeRef(input.compositionRef)
+  const rootTaskRef = safeRef(input.rootTaskRef) ?? input.executionPlan?.rootTaskRef ?? null
+  const executionPlanRef = safeRef(input.executionPlanRef) ?? input.executionPlan?.executionPlanRef ?? null
+  const blueprintSignatureRef = safeRef(input.blueprintSignatureRef) ?? input.executionPlan?.blueprintSignatureRef ?? null
+  const responseBlueprintSignatureRef = safeRef(input.responseBlueprintSignatureRef)
+  const orderedSegments = [...segments].sort(compareResponseSegments)
+  const orderedSubQueryRefs = uniqueRefsPreservingOrder(orderedSegments.map((segment) => safeRef(segment.subQueryRef)))
+  const incompleteSubQueryRefs = uniqueRefsPreservingOrder(
+    orderedSegments
+      .filter((segment) => segment.state !== "completed")
+      .map((segment) => safeRef(segment.subQueryRef)),
+  )
+  const missingResultSubQueryRefs = uniqueRefsPreservingOrder(
+    orderedSegments
+      .filter((segment) => safeRef(segment.resultRef) === null)
+      .map((segment) => safeRef(segment.subQueryRef)),
+  )
+  const missingResponseTextSubQueryRefs = uniqueRefsPreservingOrder(
+    orderedSegments
+      .filter((segment) => normalizedResponseText(segment.responseText) === null)
+      .map((segment) => safeRef(segment.subQueryRef)),
+  )
+  const responseTextUnsafe = orderedSegments.some((segment) => {
+    const text = normalizedResponseText(segment.responseText)
+    return text !== null && unsafeResponseTextPattern.test(text)
+  })
+  const responseSegmentRefs = uniqueRefsPreservingOrder(
+    orderedSegments.map((segment) => safeRef(segment.responseRef) ?? safeRef(segment.resultRef)),
+  )
+
+  if (compositionRef === null) {
+    blockerRefs.add("blocker.artanis.frlm_response_composition.composition_ref_missing")
+  }
+  if (rootTaskRef === null) {
+    blockerRefs.add("blocker.artanis.frlm_response_composition.root_task_ref_missing")
+  }
+  if (executionPlanRef === null) {
+    blockerRefs.add("blocker.artanis.frlm_response_composition.execution_plan_ref_missing")
+  }
+  if (blueprintSignatureRef === null) {
+    blockerRefs.add("blocker.artanis.frlm_response_composition.blueprint_signature_ref_missing")
+  }
+  if (responseBlueprintSignatureRef === null) {
+    blockerRefs.add("blocker.artanis.frlm_response_composition.response_blueprint_signature_ref_missing")
+  }
+  if (input.executionPlan !== null && input.executionPlan !== undefined && input.executionPlan.canExecute !== true) {
+    blockerRefs.add("blocker.artanis.frlm_response_composition.execution_plan_blocked")
+  }
+  if (orderedSegments.length === 0 || responseSegmentRefs.length === 0) {
+    blockerRefs.add("blocker.artanis.frlm_response_composition.response_segment_missing")
+  }
+  if (incompleteSubQueryRefs.length > 0) {
+    blockerRefs.add("blocker.artanis.frlm_response_composition.sub_query_incomplete")
+  }
+  if (missingResultSubQueryRefs.length > 0) {
+    blockerRefs.add("blocker.artanis.frlm_response_composition.sub_query_result_missing")
+  }
+  if (missingResponseTextSubQueryRefs.length > 0) {
+    blockerRefs.add("blocker.artanis.frlm_response_composition.sub_query_response_text_missing")
+  }
+  if (responseTextUnsafe) {
+    blockerRefs.add("blocker.artanis.frlm_response_composition.unsafe_content")
+  }
+  if (rawRefs.some((ref) => ref !== null && !isSafeRef(ref))) {
+    blockerRefs.add("blocker.artanis.frlm_response_composition.unsafe_ref")
+  }
+
+  const canComposeResponse = blockerRefs.size === 0
+  const composedResponseText = canComposeResponse
+    ? orderedSegments
+      .map((segment, index) => `[${index + 1}] ${normalizedResponseText(segment.responseText)}`)
+      .join("\n\n")
+    : null
+  const composedResponseDigest = composedResponseText === null ? null : stableHash(composedResponseText, 32)
+  const composedResponseRef =
+    composedResponseDigest === null
+      ? null
+      : `response.artanis.frlm.composed.${composedResponseDigest.slice(0, 20)}`
+  const evidenceRefs = uniqueRefs([
+    compositionRef,
+    rootTaskRef,
+    executionPlanRef,
+    blueprintSignatureRef,
+    responseBlueprintSignatureRef,
+    composedResponseRef,
+    ...responseSegmentRefs,
+    ...orderedSubQueryRefs,
+    ...incompleteSubQueryRefs,
+    ...missingResultSubQueryRefs,
+    ...missingResponseTextSubQueryRefs,
+    ...orderedSegments.flatMap((segment) => [
+      safeRef(segment.parentRef),
+      safeRef(segment.resultRef),
+      safeRef(segment.responseRef),
+      safeRef(segment.blueprintSignatureRef),
+    ]),
+    ...(input.executionPlan?.evidenceRefs ?? []),
+  ])
+
+  const projection: FrlmResponseCompositionProjection = {
+    schema: FRLM_RESPONSE_COMPOSITION_SCHEMA,
+    observedAt: input.observedAt,
+    compositionRef,
+    rootTaskRef,
+    executionPlanRef,
+    blueprintSignatureRef,
+    responseBlueprintSignatureRef,
+    canComposeResponse,
+    composedResponseText,
+    composedResponseDigest,
+    composedResponseRef,
+    responseSegmentRefs,
+    incompleteSubQueryRefs,
+    missingResultSubQueryRefs,
+    missingResponseTextSubQueryRefs,
+    orderedSubQueryRefs,
+    evidenceRefs,
+    blockerRefs: [...blockerRefs].sort(),
+    authorityBoundary:
+      "Read-only FRLM recursive response composition projection. It orders completed RLM sub-query outputs under Blueprint signatures and emits deterministic response evidence; it does not run Python, issue model calls, dispatch workers, spend sats, publish public claims, or move settlement authority.",
+    contentRedacted: true,
+  }
+  assertPublicProjectionSafe(projection)
+  return projection
+}
+
 function normalizedRef(value: string | null | undefined): string | null {
   if (value === null || value === undefined) return null
   const trimmed = value.trim()
@@ -248,8 +466,21 @@ function isSafeRef(value: string) {
   return publicRefPattern.test(value) && !unsafeRefPattern.test(value)
 }
 
-function stableHash(input: string) {
-  return createHash("sha256").update(input).digest("hex").slice(0, 20)
+function normalizedResponseText(value: string | null | undefined): string | null {
+  if (value === null || value === undefined) return null
+  const trimmed = value.trim().replace(/\s+/g, " ")
+  return trimmed.length === 0 ? null : trimmed
+}
+
+function compareResponseSegments(a: FrlmResponseCompositionSegment, b: FrlmResponseCompositionSegment) {
+  const orderA = typeof a.order === "number" && Number.isFinite(a.order) ? a.order : Number.POSITIVE_INFINITY
+  const orderB = typeof b.order === "number" && Number.isFinite(b.order) ? b.order : Number.POSITIVE_INFINITY
+  if (orderA !== orderB) return orderA - orderB
+  return a.subQueryRef.localeCompare(b.subQueryRef)
+}
+
+function stableHash(input: string, length = 20) {
+  return createHash("sha256").update(input).digest("hex").slice(0, length)
 }
 
 function uniqueRefs(refs: (string | null)[]) {
@@ -307,4 +538,15 @@ function inferredDepth(rootTaskRef: string | null, subQueryRef: string, parentBy
   }
 
   return depth
+}
+
+function uniqueRefsPreservingOrder(refs: (string | null)[]) {
+  const out: string[] = []
+  for (const ref of refs) {
+    const normalized = normalizedRef(ref)
+    if (normalized !== null && !out.includes(normalized)) {
+      out.push(normalized)
+    }
+  }
+  return out
 }
