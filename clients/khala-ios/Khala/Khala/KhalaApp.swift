@@ -9,12 +9,22 @@ import SwiftUI
 /// `docs/mobile/2026-06-26-khala-chatgpt-style-app-spec.md`.
 @main
 struct KhalaApp: App {
-    @StateObject private var store = ConversationStore()
-
     var body: some Scene {
         WindowGroup {
-            RootView(store: store)
-                .preferredColorScheme(.dark)
+            if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+                Text("Khala Tests")
+            } else {
+                KhalaRootScene()
+            }
         }
+    }
+}
+
+private struct KhalaRootScene: View {
+    @StateObject private var store = ConversationStore()
+
+    var body: some View {
+        RootView(store: store)
+            .preferredColorScheme(.dark)
     }
 }

@@ -115,6 +115,22 @@ final class KhalaClientTests: XCTestCase {
         }
     }
 
+    func testCompleteRejectsMissingKeyBeforeNetwork() async throws {
+        MockURLProtocol.requestHandler = { _ in
+            XCTFail("Missing keys should fail before creating a request")
+            throw URLError(.badURL)
+        }
+
+        do {
+            _ = try await KhalaClient.complete(prompt: "hello", apiKey: "   ", session: makeSession())
+            XCTFail("Expected missingKey")
+        } catch let error as KhalaClient.KhalaError {
+            guard case .missingKey = error else { return XCTFail("Got \(error)") }
+            XCTAssertEqual(error.recoveryTitle, "Missing API key")
+            XCTAssertTrue(error.requiresKeyAttention)
+        }
+    }
+
     func testCompleteMapsHTTP403ToUnauthorized() async throws {
         let session = makeSession()
         MockURLProtocol.requestHandler = { request in
@@ -224,6 +240,147 @@ final class KhalaClientTests: XCTestCase {
         let token = try await KhalaClient.mintFreeKey(session: session)
 
         XCTAssertEqual(token, "oa_agent_free_contract_token")
+    }
+
+    func testRequestCodexTaskPostsTypedDelegationAndParsesDurableHeaders() async throws {
+        let session = makeSession()
+        let prompt = "Implement public issue #6849 and run xcodebuild test."
+        let pylonRef = "pylon.a1469b9cdf6965a57530"
+        let apiKey = "oa_agent_codex_delegate"
+
+        MockURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.url?.absoluteString, "https://openagents.com/api/v1/chat/completions")
+            XCTAssertEqual(request.httpMethod, "POST")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer \(apiKey)")
+
+            let body = try XCTUnwrap(request.httpBodyStream.flatMap(Self.data(from:)))
+            let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            XCTAssertEqual(json["model"] as? String, "openagents/khala")
+            XCTAssertEqual(json["workflowClass"] as? String, "codex_agent_task")
+            XCTAssertEqual(json["targetPylonRef"] as? String, pylonRef)
+            XCTAssertEqual(json["stream"] as? Bool, true)
+
+            let messages = try XCTUnwrap(json["messages"] as? [[String: Any]])
+            XCTAssertEqual(messages.first?["role"] as? String, "user")
+            XCTAssertEqual(messages.first?["content"] as? String, prompt)
+
+            let openagents = try XCTUnwrap(json["openagents"] as? [String: Any])
+            XCTAssertEqual(openagents["workflowClass"] as? String, "codex_agent_task")
+            let coding = try XCTUnwrap(openagents["coding"] as? [String: Any])
+            XCTAssertEqual(coding["targetPylonRef"] as? String, pylonRef)
+
+            return (
+                HTTPURLResponse(
+                    url: try XCTUnwrap(request.url),
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: [
+                        "openagents-coding-assignment-ref": "assign_6849",
+                        "openagents-durable-stream-url": "/v1/chat/completions/durable/request_6849",
+                        "stream-next-offset": "7",
+                        "stream-closed": "true",
+                        "stream-up-to-date": "true",
+                    ]
+                )!,
+                Data("""
+                data: {"choices":[{"delta":{"content":"delegated "}}]}
+
+                data: {"choices":[{"message":{"content":"accepted"}}]}
+
+                data: [DONE]
+
+                """.utf8)
+            )
+        }
+
+        let result = try await KhalaClient.requestCodexTask(
+            prompt: "  \(prompt)  ",
+            pylonRef: "  \(pylonRef)  ",
+            apiKey: apiKey,
+            session: session
+        )
+
+        XCTAssertEqual(result.assignmentRef, "assign_6849")
+        XCTAssertEqual(result.durableRequestId, "request_6849")
+        XCTAssertEqual(result.durableStreamURL, "/v1/chat/completions/durable/request_6849")
+        XCTAssertEqual(result.nextOffset, "7")
+        XCTAssertTrue(result.streamClosed)
+        XCTAssertTrue(result.streamUpToDate)
+        XCTAssertEqual(result.text, "delegated accepted")
+        XCTAssertTrue(result.displayText.contains("Assignment: assign_6849"))
+    }
+
+    func testRequestCodexTaskRejectsUnsafePromptBeforeNetwork() async throws {
+        MockURLProtocol.requestHandler = { _ in
+            XCTFail("Unsafe prompts should fail before creating a request")
+            throw URLError(.badURL)
+        }
+
+        do {
+            _ = try await KhalaClient.requestCodexTask(
+                prompt: "Use this bearer token in the prompt.",
+                pylonRef: "pylon.good-ref",
+                apiKey: "oa_agent_codex_delegate",
+                session: makeSession()
+            )
+            XCTFail("Expected invalidCodingRequest")
+        } catch let error as KhalaClient.KhalaError {
+            guard case .invalidCodingRequest(let reason) = error else {
+                return XCTFail("Got \(error)")
+            }
+            XCTAssertTrue(reason.contains("public-safe"))
+            XCTAssertFalse(error.isRetryable)
+        }
+    }
+
+    func testRequestCodexTaskRejectsInvalidPylonRefBeforeNetwork() async throws {
+        MockURLProtocol.requestHandler = { _ in
+            XCTFail("Invalid refs should fail before creating a request")
+            throw URLError(.badURL)
+        }
+
+        do {
+            _ = try await KhalaClient.requestCodexTask(
+                prompt: "Implement public issue #6849.",
+                pylonRef: "../private",
+                apiKey: "oa_agent_codex_delegate",
+                session: makeSession()
+            )
+            XCTFail("Expected invalidCodingRequest")
+        } catch let error as KhalaClient.KhalaError {
+            guard case .invalidCodingRequest(let reason) = error else {
+                return XCTFail("Got \(error)")
+            }
+            XCTAssertTrue(reason.contains("Pylon ref"))
+        }
+    }
+
+    func testRequestCodexTaskMapsHTTP402ToQuotaExceeded() async throws {
+        let session = makeSession()
+        MockURLProtocol.requestHandler = { request in
+            (
+                HTTPURLResponse(
+                    url: try XCTUnwrap(request.url),
+                    statusCode: 402,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )!,
+                Data(#"{ "error": "quota exceeded" }"#.utf8)
+            )
+        }
+
+        do {
+            _ = try await KhalaClient.requestCodexTask(
+                prompt: "Implement public issue #6849.",
+                pylonRef: "pylon.good-ref",
+                apiKey: "oa_agent_codex_delegate",
+                session: session
+            )
+            XCTFail("Expected quotaExceeded")
+        } catch let error as KhalaClient.KhalaError {
+            guard case .quotaExceeded = error else { return XCTFail("Got \(error)") }
+        }
     }
 
     private func makeSession() -> URLSession {
