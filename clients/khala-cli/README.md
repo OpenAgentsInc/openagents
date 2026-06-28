@@ -85,6 +85,10 @@ two modes:
   routed through the same typed selector and start the supervisor when selected.
   Capability questions answer with the `/spawn` and `khala spawn --count`
   command paths instead of falling through to a generic chat refusal.
+- **Fleet live dashboard:** `khala fleet status --live` polls the owner-only
+  `/api/operator/fleet/status` endpoint about every five seconds and renders
+  Pace, Fleet, Watchdog, GLM, and Brain/Artanis blocks as a terminal dashboard.
+  It uses your `khala login` token, `OPENAGENTS_AGENT_TOKEN`, or `--token`.
 - **Utility commands:** `khala feedback "..."` saves feedback to
   `POST /api/khala/feedback`, `khala tokens` reads the public Khala
   tokens-served counter, and `khala changelog` prints the recent package
