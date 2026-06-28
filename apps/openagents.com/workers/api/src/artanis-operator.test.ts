@@ -245,7 +245,7 @@ describe('artanis operator persona (NOT the public Khala identity)', () => {
 
   test('persona guard flags the Khala collective "we are Khala" voice', () => {
     const verdict = verifyArtanisOperatorPersona(
-      'We are Khala, a collective intelligence. How can we help you?',
+      'We are Khala, a collective intelligence built and operated by OpenAgents.',
     )
     expect(verdict.satisfied).toBe(false)
     expect(verdict.leaks).toContain('we are khala')

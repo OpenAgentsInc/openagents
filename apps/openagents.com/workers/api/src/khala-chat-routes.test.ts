@@ -183,7 +183,7 @@ describe('khala chat route', () => {
     expect(openedProvider).toBe(false)
     const text = await response.text()
     expect(text).toContain('event: delta')
-    expect(text).toContain('We are Khala, a collective intelligence. How can we help you?')
+    expect(text).toContain('We are Khala. How can we help?')
     expect(text).toContain('"servedAdapterId":"khala-fast-path"')
     expect(text).toContain('"servedModel":"khala-fast-greeting"')
     expect(text.indexOf('event: meta')).toBeLessThan(text.indexOf('event: done'))
@@ -242,6 +242,8 @@ describe('khala chat route', () => {
     )
     // It is the GENERIC chat instruction, not the concierge intake interview.
     expect(messages[0]?.content).toContain('Do not run an intake interview')
+    expect(messages[0]?.content).toContain('not a technical preface')
+    expect(messages[0]?.content).toContain('one or two short sentences')
     // The running conversation follows the system prompt, in order.
     expect(messages.slice(1)).toEqual([
       { role: 'user', content: 'hi' },
