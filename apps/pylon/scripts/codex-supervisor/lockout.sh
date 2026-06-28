@@ -31,10 +31,46 @@
 : "${SUP_REPO:=OpenAgentsInc/openagents}"
 : "${SUP_LOCKOUT_TTL_SECS:=90}"
 : "${SUP_STATE_DIR:=$HOME/.codex-supervisor}"
+# Strict timeout (s) for every external `gh` CLI call (issue #6646 wedge fix).
+: "${SUP_GH_TIMEOUT_SECS:=15}"
 
 # Portable file mtime (BSD/macOS `stat -f`, GNU/Linux `stat -c`).
 sup_file_mtime() {
   stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || echo 0
+}
+
+# sup_run_timeout <secs> <cmd...>
+#   #6646 wedge guard. The supervisor's #1 token-burn failure mode is a single
+#   external `gh`/network call in the dispatch loop hanging with NO timeout: the
+#   async dispatch loop silently stalls (alive + heartbeating, but never
+#   dispatching) while the independent heartbeat keeps firing. This wraps any
+#   external call with a hard wall-clock bound so it can NEVER hang unbounded.
+#   On timeout it returns 124 (mirroring coreutils `timeout`), emits a TIMEOUT
+#   line on stderr, and the caller treats it as a failed/empty result and
+#   CONTINUES the loop. Portable: prefers `timeout`/`gtimeout`, else a pure-bash
+#   background-watchdog fallback (stock macOS ships neither binary).
+sup_run_timeout() {
+  local secs="$1"; shift
+  [ "$#" -gt 0 ] || return 0
+  local rc
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$secs" "$@"; rc=$?
+  elif command -v gtimeout >/dev/null 2>&1; then
+    gtimeout "$secs" "$@"; rc=$?
+  else
+    "$@" &
+    local cmd_pid=$!
+    ( sleep "$secs"; kill -TERM "$cmd_pid" 2>/dev/null; sleep 2; kill -KILL "$cmd_pid" 2>/dev/null ) >/dev/null 2>&1 &
+    local watch_pid=$!
+    wait "$cmd_pid" 2>/dev/null; rc=$?
+    kill -TERM "$watch_pid" 2>/dev/null; wait "$watch_pid" 2>/dev/null
+    # Normalize a watchdog-killed command to coreutils' 124 timeout code.
+    [ "$rc" -ge 128 ] && rc=124
+  fi
+  if [ "$rc" -eq 124 ]; then
+    printf 'sup_run_timeout: TIMEOUT after %ss: %s\n' "$secs" "$*" >&2
+  fi
+  return "$rc"
 }
 
 # issue_has_open_pr <issue>
@@ -58,7 +94,7 @@ issue_has_open_pr() {
   fi
 
   local json
-  json=$("$SUP_GH_BIN" pr list --repo "$SUP_REPO" --state open \
+  json=$(sup_run_timeout "$SUP_GH_TIMEOUT_SECS" "$SUP_GH_BIN" pr list --repo "$SUP_REPO" --state open \
     --search "#$issue in:title in:body" \
     --json number,title,body --limit 50 2>/dev/null)
 
@@ -106,7 +142,7 @@ issue_is_open() {
   fi
 
   local state
-  state=$("$SUP_GH_BIN" issue view "$issue" --repo "$SUP_REPO" \
+  state=$(sup_run_timeout "$SUP_GH_TIMEOUT_SECS" "$SUP_GH_BIN" issue view "$issue" --repo "$SUP_REPO" \
     --json state -q .state 2>/dev/null | tr '[:lower:]' '[:upper:]' | tr -d '[:space:]')
 
   case "$state" in
@@ -153,7 +189,7 @@ sup_open_issue_numbers() {
   fi
 
   local json
-  json=$("$SUP_GH_BIN" issue list --repo "$SUP_REPO" --state open \
+  json=$(sup_run_timeout "$SUP_GH_TIMEOUT_SECS" "$SUP_GH_BIN" issue list --repo "$SUP_REPO" --state open \
     --limit "${SUP_OPEN_SET_LIMIT:-300}" --json number 2>/dev/null) || return 1
   [ -n "$json" ] || return 1
 

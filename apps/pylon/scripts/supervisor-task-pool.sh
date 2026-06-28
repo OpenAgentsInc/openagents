@@ -14,10 +14,42 @@
 : "${SUP_GH_BIN:=gh}"
 : "${SUP_TASK_POOL_LIMIT:=100}"
 : "${SUP_TASK_POOL_CACHE_TTL_SECS:=120}"
+# Strict timeouts for external calls (#6646 wedge guard).
+: "${SUP_GH_TIMEOUT_SECS:=15}"
+: "${SUP_CURL_TIMEOUT_SECS:=15}"
 
 if ! command -v sup_file_mtime >/dev/null 2>&1; then
   sup_file_mtime() {
     stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || echo 0
+  }
+fi
+
+# Defensive fallback: codex-supervisor.sh sources lockout.sh (which defines
+# sup_run_timeout) BEFORE this file, so the canonical wrapper is normally
+# present. Define an equivalent here for any standalone use so an external call
+# can still never hang unbounded (#6646).
+if ! command -v sup_run_timeout >/dev/null 2>&1; then
+  sup_run_timeout() {
+    local secs="$1"; shift
+    [ "$#" -gt 0 ] || return 0
+    local rc
+    if command -v timeout >/dev/null 2>&1; then
+      timeout "$secs" "$@"; rc=$?
+    elif command -v gtimeout >/dev/null 2>&1; then
+      gtimeout "$secs" "$@"; rc=$?
+    else
+      "$@" &
+      local cmd_pid=$!
+      ( sleep "$secs"; kill -TERM "$cmd_pid" 2>/dev/null; sleep 2; kill -KILL "$cmd_pid" 2>/dev/null ) >/dev/null 2>&1 &
+      local watch_pid=$!
+      wait "$cmd_pid" 2>/dev/null; rc=$?
+      kill -TERM "$watch_pid" 2>/dev/null; wait "$watch_pid" 2>/dev/null
+      [ "$rc" -ge 128 ] && rc=124
+    fi
+    if [ "$rc" -eq 124 ]; then
+      printf 'sup_run_timeout: TIMEOUT after %ss: %s\n' "$secs" "$*" >&2
+    fi
+    return "$rc"
   }
 fi
 
@@ -63,7 +95,7 @@ supervisor_issue_is_open() {
   command -v "$SUP_GH_BIN" >/dev/null 2>&1 || return 0
 
   local state
-  state=$("$SUP_GH_BIN" issue view "$issue" --repo "$SUP_REPO" --json state \
+  state=$(sup_run_timeout "$SUP_GH_TIMEOUT_SECS" "$SUP_GH_BIN" issue view "$issue" --repo "$SUP_REPO" --json state \
     --jq .state 2>/dev/null | tr '[:upper:]' '[:lower:]')
   [ -z "$state" ] && return 0
   [ "$state" = "open" ]
@@ -90,7 +122,8 @@ supervisor_fetch_unsupported_request_issues() {
   local url base="${PYLON_OPENAGENTS_BASE_URL%/}"
   for status in issue_opened open; do
     url="$base/api/operator/khala/unsupported-requests?status=$status&limit=$SUP_TASK_POOL_LIMIT"
-    curl -fsS "$url" -H "$auth_header" 2>/dev/null | supervisor_issue_numbers_from_json
+    curl -fsS --max-time "$SUP_CURL_TIMEOUT_SECS" --connect-timeout 10 \
+      "$url" -H "$auth_header" 2>/dev/null | supervisor_issue_numbers_from_json
   done | supervisor_dedupe_issues | supervisor_filter_open_issues | supervisor_dedupe_issues
 }
 
