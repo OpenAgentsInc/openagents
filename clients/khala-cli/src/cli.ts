@@ -1,7 +1,18 @@
 import { Effect } from "effect"
 import { appendAssistantTurn, prepareUserTurn } from "./bounds.js"
 import { KHALA_CLI_VERSION, formatKhalaChangelog } from "./changelog.js"
-import { fetchModels, fetchTokensServed, mintFreeKey, runArtanisTurn, runChatTurn, submitFeedback, toKhalaCliError } from "./client.js"
+import {
+  armArtanisPylonDispatch,
+  decideArtanisApprovalGate,
+  fetchArtanisConsole,
+  fetchModels,
+  fetchTokensServed,
+  mintFreeKey,
+  runArtanisTurn,
+  runChatTurn,
+  submitFeedback,
+  toKhalaCliError,
+} from "./client.js"
 import {
   connectKhalaCodex,
   resolveKhalaCodexStatus,
@@ -67,6 +78,11 @@ type Channel = "khala" | "artanis"
 
 type ParsedCommand =
   | { readonly kind: "chat" }
+  | {
+      readonly kind: "artanisApprovalGate"
+      readonly action: "approve" | "reject" | "arm-pylon-dispatch" | "status"
+      readonly gateRef?: string | undefined
+    }
   | { readonly kind: "codex"; readonly text: string | undefined }
   | { readonly kind: "codexAuth" }
   | { readonly kind: "codexStatus" }
@@ -107,6 +123,7 @@ interface ParsedArgs {
   readonly json: boolean
   readonly models: boolean
   readonly mintFreeKey: boolean
+  readonly artanisExpiresInHours: number | undefined
   readonly fleetDryRun: boolean
   readonly fleetIssues: readonly number[] | undefined
   readonly fleetOnce: boolean
@@ -160,6 +177,11 @@ export async function runKhalaCli(argv: ReadonlyArray<string>, env: Record<strin
     }
     if (args.command.kind === "help") {
       process.stdout.write(usage())
+      return 0
+    }
+    if (args.command.kind === "artanisApprovalGate") {
+      const result = await runArtanisApprovalGateCommand(args, env, args.command)
+      process.stdout.write(args.json ? `${JSON.stringify(result, null, 2)}\n` : `${formatArtanisApprovalGateResult(result)}\n`)
       return 0
     }
     if (args.command.kind === "codexAuth") {
@@ -377,6 +399,7 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
   let json = false
   let models = false
   let mintFreeKey = false
+  let artanisExpiresInHours: number | undefined
   let fleetDryRun = false
   let fleetIssues: readonly number[] | undefined
   let fleetOnce = false
@@ -411,6 +434,12 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
     else if (arg === "--json" || arg === "--no-stream") json = true
     else if (arg === "--models") models = true
     else if (arg === "--mint-free-key") mintFreeKey = true
+    else if (arg === "--expires-hours") {
+      artanisExpiresInHours = parsePositiveInteger(requireValue(argv, index, arg), arg)
+      index += 1
+    } else if (arg.startsWith("--expires-hours=")) {
+      artanisExpiresInHours = parsePositiveInteger(arg.slice("--expires-hours=".length), "--expires-hours")
+    }
     else if (arg === "--dry-run") fleetDryRun = true
     else if (arg === "--once") fleetOnce = true
     else if (arg === "--issues") {
@@ -524,6 +553,21 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
     }
   } else if (maybeCommand === "changelog") {
     command = { kind: "changelog" }
+  } else if (maybeCommand === "artanis") {
+    const sub = positional[1]?.trim().toLowerCase()
+    if (sub === "status" || sub === "approval-gates" || sub === "gates") {
+      command = { kind: "artanisApprovalGate", action: "status" }
+    } else if (sub === "arm-pylon-dispatch") {
+      command = { kind: "artanisApprovalGate", action: "arm-pylon-dispatch" }
+    } else if (sub === "approve" || sub === "reject") {
+      command = {
+        kind: "artanisApprovalGate",
+        action: sub,
+        gateRef: positional[2],
+      }
+    } else {
+      throw new Error("Unknown Artanis command. Use `khala artanis status`, `khala artanis arm-pylon-dispatch`, `khala artanis approve <gateRef>`, or `khala artanis reject <gateRef>`.")
+    }
   } else if (maybeCommand === "auth" && positional[1] === "codex") {
     command = { kind: "codexAuth" }
   } else if (maybeCommand === "fleet") {
@@ -601,6 +645,7 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
     json,
     models,
     mintFreeKey,
+    artanisExpiresInHours,
     fleetDryRun,
     fleetIssues,
     fleetOnce,
@@ -1780,6 +1825,74 @@ function formatFleetRunResult(result: KhalaFleetRunResult): string {
     lines.push("", "Supervisor mode keeps refilling slots until stopped.")
   }
   return terminalStyle.meta(lines.join("\n"))
+}
+
+async function runArtanisApprovalGateCommand(
+  args: ParsedArgs,
+  env: Record<string, string | undefined>,
+  command: Extract<ParsedCommand, { readonly kind: "artanisApprovalGate" }>,
+): Promise<unknown> {
+  const token = await ensureStoredAgentToken({
+    baseUrl: args.baseUrl,
+    env,
+    explicitToken: args.token,
+  })
+  if (command.action === "status") {
+    return await Effect.runPromise(fetchArtanisConsole({
+      baseUrl: args.baseUrl,
+      token,
+    }))
+  }
+  if (command.action === "arm-pylon-dispatch") {
+    return await Effect.runPromise(armArtanisPylonDispatch({
+      baseUrl: args.baseUrl,
+      token,
+      expiresInHours: args.artanisExpiresInHours,
+    }))
+  }
+  const gateRef = command.gateRef?.trim()
+  if (gateRef === undefined || gateRef.length === 0) {
+    throw new Error(`khala artanis ${command.action} requires a gate ref`)
+  }
+  return await Effect.runPromise(decideArtanisApprovalGate({
+    action: command.action,
+    baseUrl: args.baseUrl,
+    gateRef,
+    token,
+  }))
+}
+
+function formatArtanisApprovalGateResult(result: unknown): string {
+  if (result !== null && typeof result === "object") {
+    const record = result as {
+      readonly armedGate?: {
+        readonly expiresAtDisplay?: unknown
+        readonly gateRef?: unknown
+        readonly kind?: unknown
+        readonly state?: unknown
+      }
+      readonly gateCount?: unknown
+      readonly ledgerRef?: unknown
+    }
+    if (record.armedGate !== undefined) {
+      const gate = record.armedGate
+      return terminalStyle.meta([
+        `${terminalStyle.assistant("Artanis:")} pylon dispatch gate armed`,
+        `  gate: ${String(gate.gateRef ?? "(unknown)")}`,
+        `  kind: ${String(gate.kind ?? "pylon_job_dispatch")}`,
+        `  state: ${String(gate.state ?? "approved")}`,
+        `  expires: ${String(gate.expiresAtDisplay ?? "(unknown)")}`,
+      ].join("\n"))
+    }
+    if (typeof record.ledgerRef === "string" || typeof record.gateCount === "number") {
+      return terminalStyle.meta([
+        `${terminalStyle.assistant("Artanis:")} approval gates`,
+        `  ledger: ${String(record.ledgerRef ?? "(unknown)")}`,
+        `  gates: ${String(record.gateCount ?? "(unknown)")}`,
+      ].join("\n"))
+    }
+  }
+  return terminalStyle.meta(JSON.stringify(result, null, 2))
 }
 
 function formatCodexCredentialSource(source: Extract<KhalaCodexStatus, { readonly ready: true }>["credentialSource"]): string {
