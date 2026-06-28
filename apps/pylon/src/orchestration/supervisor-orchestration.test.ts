@@ -95,6 +95,43 @@ describe("Pylon supervisor orchestration store", () => {
     expect(store.getDispatchContext("ctx.fresh")?.currentTaskId).toBe("task.a")
   })
 
+  test("tracks a virtual HEAD chain for concurrently dispatched git tasks", () => {
+    const now = new Date("2026-06-27T12:00:00.000Z")
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    store.createTask({ id: "task.a", spec: baseTaskSpec, now })
+    store.createTask({ id: "task.b", spec: { ...baseTaskSpec, title: "Issue #6406" }, now })
+    store.createDispatchContext({
+      id: "ctx.a",
+      assigneeHandle: "codex-1",
+      runnerKind: "codex",
+      lastHeartbeatAt: now,
+      now,
+    })
+    store.createDispatchContext({
+      id: "ctx.b",
+      assigneeHandle: "codex-2",
+      runnerKind: "codex",
+      lastHeartbeatAt: now,
+      now,
+    })
+
+    const result = dispatchReadySupervisorTasks(store, { now, maxConcurrentSlots: 2 })
+    const taskA = store.getTask("task.a")
+    const taskB = store.getTask("task.b")
+    const virtualHead = store.getVirtualHead("OpenAgentsInc/openagents", "main")
+
+    expect(result.planned.map((entry) => entry.task.id)).toEqual(["task.a", "task.b"])
+    expect(taskA?.spec.baseCommit).toBe("abc123")
+    expect(taskB?.spec.baseCommit).toStartWith("virtual-head.")
+    expect(taskB?.spec.baseCommit).not.toBe("abc123")
+    expect(virtualHead?.projectedHead).toStartWith("virtual-head.")
+    expect(virtualHead?.pendingTaskIds).toEqual(["task.a", "task.b"])
+
+    store.completeTask("task.a", JSON.stringify({ ok: true }), now)
+
+    expect(store.getVirtualHead("OpenAgentsInc/openagents", "main")?.pendingTaskIds).toEqual(["task.b"])
+  })
+
   test("classifies heartbeat liveness with fresh, stale, hung, and missing states", () => {
     const now = new Date("2026-06-27T12:00:00.000Z")
     const store = createPylonOrchestrationStore(new Database(":memory:"))

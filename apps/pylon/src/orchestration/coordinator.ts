@@ -92,6 +92,7 @@ export function dispatchReadySupervisorTasks(
   store.promoteReadyTasks(options.now)
   const result = planSupervisorDispatch(store.listTasks(), store.listDispatchContexts(), options)
   for (const dispatch of result.planned) {
+    const virtualHead = store.reserveVirtualHeadForTask(dispatch.task.id, options.now)
     store.markDispatched(dispatch.task.id, dispatch.context.id, options.now)
     store.appendMessage({
       id: `message.${dispatch.task.id}.${dispatch.context.id}.dispatch`,
@@ -99,7 +100,10 @@ export function dispatchReadySupervisorTasks(
       taskId: dispatch.task.id,
       dispatchContextId: dispatch.context.id,
       kind: "dispatch",
-      body: `dispatch ${dispatch.task.id} -> ${dispatch.context.assigneeHandle}`,
+      body:
+        virtualHead === null
+          ? `dispatch ${dispatch.task.id} -> ${dispatch.context.assigneeHandle}`
+          : `dispatch ${dispatch.task.id} -> ${dispatch.context.assigneeHandle} from ${virtualHead.branchFrom} projecting ${virtualHead.projectedHead}`,
       now: options.now,
     })
   }
