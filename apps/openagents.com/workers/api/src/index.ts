@@ -1000,6 +1000,7 @@ import {
   TrainingPublicGradientWindowsEndpoint,
   handleTrainingPublicGradientWindowsApi,
 } from './training-public-gradient-windows-routes'
+import { handleVerifiedOutcomeReputationApi } from './verified-outcome-reputation-routes'
 import {
   buildTrainingWindowRecord,
   makeD1TrainingAuthorityStore,
@@ -10292,6 +10293,15 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {
     path: '/api/public/metrics/accepted-outcomes-per-kwh',
     handler: request => handleAcceptedOutcomesPerKwhApi(request),
+  },
+  {
+    // Public seed TraceRank/EigenTrust projection over replay-verified,
+    // Bitcoin-settled accepted outcomes (#6425). Read-only evidence surface:
+    // ignored self-reported/unsettled edges are explicit and the projection
+    // grants no dispatch, payout, settlement, marketplace ranking, moderation,
+    // identity, or spend authority.
+    path: '/api/public/reputation/verified-outcomes',
+    handler: request => handleVerifiedOutcomeReputationApi(request),
   },
   {
     // Public-safe live Gym / Harbor run progress (#6261). web_authorized runs

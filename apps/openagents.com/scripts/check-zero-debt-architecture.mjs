@@ -864,6 +864,11 @@ const publicProjectionSurfaces = [
     status: 'staleness_declared',
   },
   {
+    module: 'workers/api/src/verified-outcome-reputation.ts',
+    route: '/api/public/reputation/verified-outcomes',
+    status: 'staleness_declared',
+  },
+  {
     module: 'workers/api/src/inference/gym/run-progress-routes.ts',
     route: '/api/public/gym/run-progress',
     status: 'staleness_declared',
