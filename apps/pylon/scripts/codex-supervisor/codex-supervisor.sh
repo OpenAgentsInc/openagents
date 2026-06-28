@@ -93,6 +93,19 @@ SUP_HEARTBEAT_SECS="${SUP_HEARTBEAT_SECS:-45}"
 SUP_BACKOFF_MIN="${SUP_BACKOFF_MIN:-15}"
 SUP_BACKOFF_MAX="${SUP_BACKOFF_MAX:-300}"
 
+# --- Timeout guards (#6646 wedge fix). ---
+# The #1 token-burn failure mode: an external `gh`/network call in the dispatch
+# loop hangs with NO timeout and silently stalls async dispatch (alive +
+# heartbeating, but never dispatching) while the independent heartbeat keeps
+# firing. EVERY external call is now bounded. `gh`/`curl` timeouts live in
+# lockout.sh + supervisor-task-pool.sh (SUP_GH_TIMEOUT_SECS / SUP_CURL_TIMEOUT_SECS,
+# via sup_run_timeout). Quick local Pylon control calls (heartbeat, go-online,
+# accounts list) get a short bound; the actual labor dispatch (`khala request` /
+# stale-closeout sweep) gets a generous-but-finite bound so it can never hang
+# forever yet normal multi-minute Codex work is not interrupted.
+SUP_PYLON_TIMEOUT_SECS="${SUP_PYLON_TIMEOUT_SECS:-60}"
+SUP_DISPATCH_TIMEOUT_SECS="${SUP_DISPATCH_TIMEOUT_SECS:-1800}"
+
 # --- Self-heal watchdog (#6408): "fleet never silently stalls". ---
 # If the pool sees this many consecutive NO-DISPATCH lines with ZERO OK in
 # between, the loop has stalled (e.g. the dispatch gate is poisoned into
@@ -113,10 +126,31 @@ PYLON=(bun "$REPO_ROOT/apps/pylon/src/index.ts")
 mkdir -p "$SUP_STATE_DIR"
 DESIRED_FILE="$SUP_STATE_DIR/desired-slots"
 PAUSE_FILE="$SUP_STATE_DIR/paused"
+# Wedge telemetry (#6646): epoch-ms timestamp of the most recent dispatch
+# ATTEMPT (pick+dispatch cycle). The liveness check + watcher read this to tell
+# "alive but stalled" (wedged) from "alive and dispatching" (healthy).
+LAST_DISPATCH_FILE="$SUP_STATE_DIR/last_dispatch_time"
 echo 0 > "$DESIRED_FILE"
 rm -f "$PAUSE_FILE"
 
 log() { printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >> "$SUP_LOG"; }
+
+# Epoch milliseconds (portable: python3 is already a dependency here; `date`
+# fallback for environments without it). BSD `date` has no %N, so do not use it.
+now_epoch_ms() {
+  python3 -c 'import time;print(int(time.time()*1000))' 2>/dev/null \
+    || echo $(( $(date +%s) * 1000 ))
+}
+
+# Record one dispatch ATTEMPT (called each pick+dispatch cycle, before spawning
+# the slot's khala request). Powers last_dispatch_time telemetry + wedge detect.
+record_dispatch_attempt() {
+  now_epoch_ms > "$LAST_DISPATCH_FILE" 2>/dev/null || true
+}
+
+read_last_dispatch_time() {
+  cat "$LAST_DISPATCH_FILE" 2>/dev/null || echo ""
+}
 
 bound_log() {
   if [ -f "$SUP_LOG" ] && [ "$(wc -c < "$SUP_LOG" 2>/dev/null || echo 0)" -gt 4194304 ]; then
@@ -125,14 +159,15 @@ bound_log() {
 }
 
 counter_now() {
-  curl -fsS "$PYLON_OPENAGENTS_BASE_URL/api/public/khala-tokens-served" 2>/dev/null \
+  curl -fsS --max-time "${SUP_CURL_TIMEOUT_SECS:-15}" --connect-timeout 10 \
+    "$PYLON_OPENAGENTS_BASE_URL/api/public/khala-tokens-served" 2>/dev/null \
     | sed -n 's/.*"tokensServed":\([0-9]*\).*/\1/p' | head -1
 }
 
 # Print ready Codex account refs, one per line. Default-home account (accountRef
 # null) is printed as the literal token "default".
 ready_codex_account_refs() {
-  "${PYLON[@]}" codex accounts list --json 2>/dev/null | python3 -c "import os,sys,json
+  sup_run_timeout "$SUP_PYLON_TIMEOUT_SECS" "${PYLON[@]}" codex accounts list --json 2>/dev/null | python3 -c "import os,sys,json
 allow_raw=os.environ.get('SUP_ACCOUNT_REFS','').replace(',', ' ').split()
 allow=set(allow_raw)
 try: d=json.load(sys.stdin)
@@ -179,11 +214,11 @@ selfheal_watchdog_loop() {
     if [ "${n:-0}" -ge "$SUP_STALL_REFUSALS" ]; then
       log "!!!!!! FLEET-STALL: $n consecutive NO-DISPATCH with 0 OK -> self-healing (re-advertise + stale-closeout sweep)"
       # (a) re-assert advertisement so a dropped/ignored heartbeat is refreshed.
-      "${PYLON[@]}" provider go-online >> "$SUP_LOG" 2>&1 || true
+      sup_run_timeout "$SUP_PYLON_TIMEOUT_SECS" "${PYLON[@]}" provider go-online >> "$SUP_LOG" 2>&1 || true
       # (b) clear our OWN abandoned/interrupted local leases so they stop
       #     poisoning the dispatch gate into duplicate_active_assignment. The
       #     no-spend runner submits public-safe stale closeouts at load.
-      "${PYLON[@]}" assignment run-no-spend --json >> "$SUP_LOG" 2>&1 || true
+      sup_run_timeout "$SUP_DISPATCH_TIMEOUT_SECS" "${PYLON[@]}" assignment run-no-spend --json >> "$SUP_LOG" 2>&1 || true
       log "FLEET-STALL: self-heal complete (re-advertised + swept stale closeouts); cooldown ${SUP_SELFHEAL_COOLDOWN_SECS}s"
       sleep "$SUP_SELFHEAL_COOLDOWN_SECS"
     fi
@@ -202,8 +237,11 @@ heartbeater_loop() {
     OPENAGENTS_PYLON_CODEX_CONCURRENCY="$desired" \
     OPENAGENTS_PYLON_CODEX_BUSY=0 \
     OPENAGENTS_PYLON_CODEX_QUEUED=0 \
-      "${PYLON[@]}" presence heartbeat --json >> "$SUP_LOG" 2>&1 || true
-    log "heartbeat ready_codex=$ready desired_slots=$desired"
+      sup_run_timeout "$SUP_PYLON_TIMEOUT_SECS" "${PYLON[@]}" presence heartbeat --json >> "$SUP_LOG" 2>&1 || true
+    # last_dispatch_time telemetry (#6646): emitted on the heartbeat line so a
+    # wedged loop (heartbeat firing, dispatch stalled) is visible in the log and
+    # the watcher's liveness check has a fresh value to read.
+    log "heartbeat ready_codex=$ready desired_slots=$desired last_dispatch_time=$(read_last_dispatch_time)"
     bound_log
     sleep "$SUP_HEARTBEAT_SECS"
   done
@@ -277,8 +315,17 @@ worker_loop() {
     local commit; commit=$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null)
     [ -z "$commit" ] && { sleep 15; continue; }
 
+    # Record the dispatch ATTEMPT timestamp (#6646) right before firing the
+    # request, so last_dispatch_time advances every pick+dispatch cycle and a
+    # wedged loop is detectable as "alive but last_dispatch_time stale".
+    record_dispatch_attempt
+
     local out="$SUP_STATE_DIR/slot.$slot.json"
-    "${PYLON[@]}" khala request \
+    # Bound the labor dispatch so a hung request can never stall this slot
+    # forever (#6646). The bound is generous (SUP_DISPATCH_TIMEOUT_SECS) so
+    # normal multi-minute Codex work completes; on timeout (rc 124) the slot
+    # treats it as a failed dispatch and continues with backoff below.
+    sup_run_timeout "$SUP_DISPATCH_TIMEOUT_SECS" "${PYLON[@]}" khala request \
       --prompt "Implement public issue #$issue and run the named verification." \
       --workflow codex_agent_task \
       --pylon-ref "$SUP_PYLON_REF" \
@@ -322,9 +369,12 @@ if [ -z "${OPENAGENTS_AGENT_TOKEN:-}" ]; then
 fi
 
 echo $$ > "$SUP_STATE_DIR/supervisor.pid"
+# Seed last_dispatch_time at startup so the liveness check has a baseline and the
+# fresh process is not flagged wedged before its first dispatch (#6646).
+record_dispatch_attempt
 log "=== codex-supervisor START pid=$$ repo=$REPO_ROOT pylon=$SUP_PYLON_REF per_account=$SUP_PER_ACCOUNT max_slots=$SUP_MAX_SLOTS account_refs=${SUP_ACCOUNT_REFS:-all} ==="
 
-"${PYLON[@]}" provider go-online >> "$SUP_LOG" 2>&1 || log "provider go-online nonzero (continuing)"
+sup_run_timeout "$SUP_PYLON_TIMEOUT_SECS" "${PYLON[@]}" provider go-online >> "$SUP_LOG" 2>&1 || log "provider go-online nonzero (continuing)"
 
 heartbeater_loop &
 log "heartbeater pid=$! cadence=${SUP_HEARTBEAT_SECS}s"
@@ -343,6 +393,6 @@ done
 # Periodic public-counter progress line for observability.
 while true; do
   bound_log
-  log "counter tokensServed=$(counter_now) desired_slots=$(cat "$DESIRED_FILE" 2>/dev/null)"
+  log "counter tokensServed=$(counter_now) desired_slots=$(cat "$DESIRED_FILE" 2>/dev/null) last_dispatch_time=$(read_last_dispatch_time)"
   sleep 120
 done
