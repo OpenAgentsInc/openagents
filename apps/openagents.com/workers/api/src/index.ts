@@ -8584,6 +8584,46 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
             makeD1TokenUsageLedger(openAgentsDatabase(env)),
           ),
       },
+      fleetStatus: {
+        loadFleetStatus: async () => {
+          const pylonStore = makeD1PylonApiStore(openAgentsDatabase(env))
+          const [pace, glm, assignments] = await Promise.all([
+            loadArtanisNetworkStatsFromLedger(
+              makeD1TokenUsageLedger(openAgentsDatabase(env)),
+            ),
+            makeArtanisGlmFleetStatusLoader({
+              db: openAgentsDatabase(env),
+              env,
+            })(),
+            makeArtanisPylonAssignmentsLister({
+              listLinkedAgentUserIds,
+              nowIso: currentIsoTimestamp,
+              ownerOpenAuthUserId: session.user.userId,
+              pylonStore,
+            })(20),
+          ])
+          return {
+            brain: {
+              actor: 'agent_artanis',
+              loopHealth: 'operator_tool_ready',
+              source: 'artanis_operator_tools',
+            },
+            fleet: {
+              recentAssignments: assignments,
+            },
+            generatedAt: currentIsoTimestamp(),
+            glm,
+            pace,
+            schemaVersion: 'openagents.operator.fleet_status.v1',
+            watchdog: {
+              syntheticLoad: {
+                activeRuns: [],
+                state: 'no_live_run_registry_wired',
+              },
+            },
+          }
+        },
+      },
       // iteration-7: the live GLM inference-fleet readiness READ tool. Reads the
       // SAME public-safe fleet readiness projection the
       // GET /v1/gateway/glm-fleet/readiness route serves, IN-WORKER (the Worker

@@ -2429,6 +2429,117 @@ export type ArtanisGlmFleetStatusConfig = Readonly<{
   loadFleetStatus?: (() => Promise<ArtanisGlmFleetStatus>) | undefined
 }>
 
+// ---------------------------------------------------------------------------
+// get_fleet_status — unified Artanis fleet-status snapshot (#6428).
+// ---------------------------------------------------------------------------
+
+export const ARTANIS_FLEET_STATUS_URL =
+  'https://openagents.com/api/operator/fleet/status'
+
+export const ARTANIS_FLEET_STATUS_MAX_CHARS = 24 * 1024
+
+export type ArtanisFleetStatusConfig = Readonly<{
+  url?: string | undefined
+  fetchImpl?: typeof fetch | undefined
+  loadFleetStatus?: (() => Promise<unknown>) | undefined
+  maxChars?: number | undefined
+}>
+
+const sanitizeFleetStatusValue = (value: unknown): unknown => {
+  if (value === null) return null
+  if (
+    typeof value === 'number' ||
+    typeof value === 'boolean' ||
+    typeof value === 'undefined'
+  ) {
+    return value
+  }
+  if (typeof value === 'string') {
+    return dispatchFieldIsSafe(value) ? value : '(redacted)'
+  }
+  if (Array.isArray(value)) {
+    return value.map(sanitizeFleetStatusValue)
+  }
+  if (typeof value === 'object') {
+    const output: Record<string, unknown> = {}
+    for (const [key, nested] of Object.entries(value)) {
+      if (dispatchFieldIsSafe(key)) {
+        output[key] = sanitizeFleetStatusValue(nested)
+      }
+    }
+    return output
+  }
+  return '(redacted)'
+}
+
+const formatFleetStatusSnapshot = (
+  body: unknown,
+  maxChars: number,
+): string => {
+  const json = JSON.stringify(sanitizeFleetStatusValue(body), null, 2) ?? 'null'
+  const bounded =
+    json.length > maxChars
+      ? `${json.slice(0, maxChars)}\n...(truncated at ${maxChars} chars)`
+      : json
+  return [
+    'Unified fleet status snapshot (public-safe, read-only):',
+    bounded,
+  ].join('\n')
+}
+
+export const makeArtanisGetFleetStatusTool = (
+  config: ArtanisFleetStatusConfig = {},
+): ArtanisOperatorReadTool => {
+  const url = config.url ?? ARTANIS_FLEET_STATUS_URL
+  const fetchImpl = config.fetchImpl ?? globalThis.fetch
+  const loadFleetStatus = config.loadFleetStatus
+  const maxChars = config.maxChars ?? ARTANIS_FLEET_STATUS_MAX_CHARS
+
+  return {
+    definition: {
+      description:
+        'Read the unified Artanis fleet-status snapshot in one call: pace, fleet/account spread, in-flight work, watchdog alerts, GLM readiness, and loop/brain health when the source provides them. Replaces scattered status reads for first-pass operator decisions. Read-only, side-effect-free, public-safe; takes no arguments. An unreachable source reads as "(could not fetch fleet status ...)".',
+      name: 'get_fleet_status',
+      parameters: {
+        additionalProperties: false,
+        properties: {},
+        type: 'object',
+      },
+    },
+    execute: (_args: unknown) =>
+      Effect.gen(function* () {
+        if (loadFleetStatus !== undefined) {
+          const exit = yield* Effect.exit(
+            Effect.tryPromise(() => loadFleetStatus()),
+          )
+          if (exit._tag === 'Failure') {
+            return '(could not fetch fleet status)'
+          }
+          return formatFleetStatusSnapshot(exit.value, maxChars)
+        }
+
+        const response = yield* Effect.tryPromise(() =>
+          fetchImpl(url, { headers: { 'User-Agent': 'artanis-operator' } }),
+        ).pipe(Effect.orElseSucceed(() => undefined))
+
+        if (response === undefined) {
+          return `(could not fetch fleet status from ${url})`
+        }
+        if (!response.ok) {
+          return `(could not fetch fleet status from ${url}: status ${response.status})`
+        }
+        const body = yield* Effect.tryPromise(
+          () => response.json() as Promise<unknown>,
+        ).pipe(Effect.orElseSucceed(() => undefined))
+        if (body === undefined) {
+          return `(could not fetch fleet status from ${url}: unexpected response shape)`
+        }
+        return formatFleetStatusSnapshot(body, maxChars)
+      }),
+    kind: 'read',
+  }
+}
+
 // Coerce an unknown value into a non-negative integer count, or null when it is
 // not a usable count. Never invents a number from a missing/garbage field.
 const coerceFleetCount = (value: unknown): number | null =>
@@ -3307,6 +3418,11 @@ export const makeArtanisGetSyntheticLoadStatusTool = (
 // to an HTTP fetch of the public-safe readiness route, and an unreachable source
 // reads as an honest "(could not fetch GLM fleet status …)" rather than
 // inventing replica numbers.
+// `fleetStatus.loadFleetStatus` is the unified operator fleet snapshot behind
+// `get_fleet_status` (#6428). It is a read-only, bounded, public-safe one-call
+// replacement for scattered first-pass pace/fleet/watchdog/GLM/brain status
+// reads. With no override wired it falls back to the documented public-safe
+// operator fleet status URL and fails soft rather than inventing a snapshot.
 // `syntheticLoadStatus.reader` is the owner-scoped ACTIVE synthetic-load run
 // reader behind the iteration-12 `get_synthetic_load_status` read tool (the read
 // half of the plan-only `trigger_synthetic_load` pair); with no reader wired it
@@ -3342,6 +3458,7 @@ export const makeArtanisOperatorTools = (
     defaultBranch?: string | undefined
     networkStats?: ArtanisGetNetworkStatsConfig | undefined
     glmFleetStatus?: ArtanisGlmFleetStatusConfig | undefined
+    fleetStatus?: ArtanisFleetStatusConfig | undefined
     syntheticLoadStatus?: ArtanisSyntheticLoadStatusConfig | undefined
     dispatchExecution?: ArtanisDispatchExecution | undefined
     syntheticLoad?:
@@ -3367,6 +3484,7 @@ export const makeArtanisOperatorTools = (
       repo: issueRead.repo,
     }),
     makeArtanisGetNetworkStatsTool(config.networkStats),
+    makeArtanisGetFleetStatusTool(config.fleetStatus),
     makeArtanisGetGlmFleetStatusTool(config.glmFleetStatus),
     makeArtanisGetSyntheticLoadStatusTool(config.syntheticLoadStatus),
     makeArtanisGetPylonJobStatusTool(config.pylonJobStatus),

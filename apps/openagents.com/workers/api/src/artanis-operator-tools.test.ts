@@ -17,6 +17,7 @@ import {
   isSafeArtanisAssignmentRef,
   isSafeArtanisRepoPath,
   makeArtanisDispatchCodexTaskTool,
+  makeArtanisGetFleetStatusTool,
   makeArtanisGetGlmFleetStatusTool,
   makeArtanisGetSyntheticLoadStatusTool,
   makeArtanisGetKhalaFeedbackTool,
@@ -1878,6 +1879,92 @@ describe('get_glm_fleet_status (live GLM inference-fleet readiness) - iteration 
   })
 })
 
+describe('get_fleet_status (unified Artanis fleet snapshot) - #6428', () => {
+  test('returns a bounded public-safe JSON snapshot from the injected loader', async () => {
+    const tool = makeArtanisGetFleetStatusTool({
+      loadFleetStatus: async () => ({
+        brain: { loopHealth: 'constant_motion' },
+        fleet: {
+          activeIssues: ['#6428'],
+          accounts: [{ accountRef: 'codex', inFlight: 1 }],
+        },
+        generatedAt: '2026-06-27T00:00:00.000Z',
+        glm: { readyReplicas: 2, status: 'ready', totalReplicas: 2 },
+        pace: { tokensServed: 1234 },
+        watchdog: { alerts: [] },
+      }),
+    })
+
+    expect(tool.kind).toBe('read')
+    expect(tool.definition.name).toBe('get_fleet_status')
+
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toContain('Unified fleet status snapshot')
+    expect(result).toContain('"pace"')
+    expect(result).toContain('"fleet"')
+    expect(result).toContain('"watchdog"')
+    expect(result).toContain('"glm"')
+    expect(result).toContain('"brain"')
+    expect(result).toContain('"status": "ready"')
+  })
+
+  test('redacts unsafe strings recursively before rendering the snapshot', async () => {
+    const tool = makeArtanisGetFleetStatusTool({
+      loadFleetStatus: async () => ({
+        fleet: {
+          accounts: [
+            {
+              accountRef: 'codex',
+              note: 'bearer sk-abcdef0123456789',
+            },
+          ],
+        },
+      }),
+    })
+
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toContain('(redacted)')
+    expect(result).not.toContain('sk-abcdef0123456789')
+    expect(result).not.toContain('bearer')
+  })
+
+  test('falls back to the documented fleet-status URL when no loader is wired', async () => {
+    const urls: Array<string> = []
+    const fetchImpl = (async (input: RequestInfo | URL) => {
+      urls.push(typeof input === 'string' ? input : input.toString())
+      return new Response(
+        JSON.stringify({
+          brain: { loopHealth: 'ready' },
+          fleet: { activeSessions: 2 },
+          glm: { status: 'degraded' },
+          pace: { tokensServed: 99 },
+          watchdog: { alerts: ['fleet_alert.test'] },
+        }),
+        { status: 200 },
+      )
+    }) as typeof fetch
+
+    const tool = makeArtanisGetFleetStatusTool({ fetchImpl })
+    const result = await Effect.runPromise(tool.execute({}))
+
+    expect(urls[0]).toBe('https://openagents.com/api/operator/fleet/status')
+    expect(result).toContain('"activeSessions": 2')
+    expect(result).toContain('"status": "degraded"')
+  })
+
+  test('a loader rejection reads as an honest soft failure', async () => {
+    const tool = makeArtanisGetFleetStatusTool({
+      loadFleetStatus: async () => {
+        throw new Error('d1 down')
+      },
+    })
+
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toContain('could not fetch fleet status')
+    expect(result).not.toContain('Error:')
+  })
+})
+
 describe('get_synthetic_load_status (active synthetic-load runs) - iteration 12', () => {
   test('with a stubbed source returning one active run, returns a public-safe summary with run ref, state, and token-burn progress', async () => {
     const tool = makeArtanisGetSyntheticLoadStatusTool({
@@ -2222,6 +2309,7 @@ describe('makeArtanisOperatorTools default table', () => {
     const names = tools.map(tool => tool.definition.name).sort()
     expect(names).toEqual([
       'dispatch_codex_task',
+      'get_fleet_status',
       'get_glm_fleet_status',
       'get_khala_feedback',
       'get_network_stats',
@@ -2237,6 +2325,13 @@ describe('makeArtanisOperatorTools default table', () => {
       'trigger_synthetic_load',
       'update_unsupported_request',
     ])
+  })
+
+  test('the default table includes a read-kind get_fleet_status tool', () => {
+    const tools = makeArtanisOperatorTools()
+    const tool = tools.find(t => t.definition.name === 'get_fleet_status')
+    expect(tool).toBeDefined()
+    expect(tool?.kind).toBe('read')
   })
 
   test('the default table includes a write-kind update_unsupported_request tool', () => {
