@@ -7,6 +7,7 @@ import {
   assessAgentClLearningClaimGate,
   buildAgentClRepoReusePlan,
   runAgentClRepoReuseFixtureEval,
+  runAgentClSequentialLoop,
 } from './agentcl'
 
 describe('AgentCL repo-reuse gym environment', () => {
@@ -59,6 +60,11 @@ describe('AgentCL repo-reuse gym environment', () => {
     expect(result.eval.plasticityGain).toBe(0.17)
     expect(result.eval.stabilityGain).toBe(-0.04)
     expect(result.eval.generalizationGain).toBe(-0.04)
+    expect(result.eval.sequentialRun.taskAttemptCount).toBe(15)
+    expect(result.eval.sequentialRun.memoryMutationCount).toBe(6)
+    expect(result.eval.sequentialRun.templateLedgerRef).toBe(
+      'ledger.public.artanis.continual_learning_templates',
+    )
     expect(result.eval.claimDiscipline).toMatchObject({
       decisionGrade: false,
       publicClaimEligible: false,
@@ -83,6 +89,64 @@ describe('AgentCL repo-reuse gym environment', () => {
     for (const pass of memoryWritePasses) {
       expect(pass.taskRefs.some(ref => heldOutRefs.has(ref))).toBe(false)
     }
+  })
+
+  test('runs tasks sequentially and mutates memory between write-enabled tasks', () => {
+    const { plan } = buildAgentClRepoReusePlan()
+    const run = runAgentClSequentialLoop(plan)
+    const firstPassAttempts = run.taskAttempts.filter(
+      attempt => attempt.pass === 'first_pass',
+    )
+    const firstPassMutations = run.memoryMutations.filter(
+      mutation => mutation.pass === 'first_pass',
+    )
+
+    expect(firstPassAttempts).toHaveLength(6)
+    expect(firstPassMutations).toHaveLength(6)
+    expect(firstPassAttempts.map(attempt => attempt.stepIndex)).toEqual([
+      7, 8, 9, 10, 11, 12,
+    ])
+    expect(firstPassAttempts.every(attempt => attempt.mutationRefs.length === 1))
+      .toBe(true)
+    expect(
+      firstPassAttempts.every(
+        attempt =>
+          attempt.appliedTemplateRefs.length === 1 &&
+          attempt.appliedTemplateRefs[0]?.startsWith(
+            'template.public.artanis.continual_learning.',
+          ) === true,
+      ),
+    ).toBe(true)
+    expect(firstPassAttempts[1]?.memoryBeforeRefs).toContain(
+      firstPassAttempts[0]?.mutationRefs[0],
+    )
+    expect(run.finalMemoryRefs).toContain(
+      'mutation.public.agentcl.first_pass.step_12.agentcl.repo_reuse.complex.pg_sg_gg_report.v0',
+    )
+  })
+
+  test('freezes memory for second-pass and held-out evaluation', () => {
+    const { plan } = buildAgentClRepoReusePlan()
+    const run = runAgentClSequentialLoop(plan)
+    const readOnlyAttempts = run.taskAttempts.filter(
+      attempt => attempt.memoryAccess === 'read_only_frozen',
+    )
+
+    expect(readOnlyAttempts).toHaveLength(3)
+    expect(readOnlyAttempts.every(attempt => attempt.mutationRefs.length === 0))
+      .toBe(true)
+    expect(
+      readOnlyAttempts.every(
+        attempt =>
+          JSON.stringify(attempt.memoryAfterRefs) ===
+          JSON.stringify(attempt.memoryBeforeRefs),
+      ),
+    ).toBe(true)
+    expect(
+      run.memoryMutations.some(mutation =>
+        mutation.taskRef.includes('held_out'),
+      ),
+    ).toBe(false)
   })
 
   test('requires separate PG, SG, and GG before memory-learning claims', () => {
