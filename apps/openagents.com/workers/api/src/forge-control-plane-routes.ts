@@ -14,11 +14,19 @@ import { timingSafeEqual } from './agent-registration'
 import {
   type ForgeCoordinationStore,
 } from './forge-coordination-store'
+import type {
+  ForgeGitCanonicalStore,
+} from './forge-git-canonical-store'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { decodeUnknownWithSchema, readJsonObject } from './json-boundary'
 import { currentIsoTimestamp } from './runtime-primitives'
 
 const FORGE_GIT_TOKEN_PREFIX = 'oa_forge_git_'
+const OPENAGENTS_FORGE_TENANT_REF = 'tenant.openagents'
+const OPENAGENTS_FORGE_REPOSITORY_REF = 'repo.openagents.openagents'
+const OPENAGENTS_GITHUB_OWNER = 'OpenAgentsInc'
+const OPENAGENTS_GITHUB_REPO = 'openagents'
+const OPENAGENTS_DEFAULT_BRANCH_REF = 'refs/heads/main'
 
 export type ForgeControlPlaneAuth = Readonly<{
   mode: 'admin' | 'control_plane'
@@ -35,6 +43,8 @@ export type ForgeControlPlaneAuthorize<Bindings> = (
 
 type ForgeControlPlaneRouteDependencies<Bindings> = Readonly<{
   authorizeControlPlaneBearer?: ForgeControlPlaneAuthorize<Bindings> | undefined
+  fetch?: typeof fetch
+  makeCanonicalStore: (env: Bindings) => ForgeGitCanonicalStore
   makeStore: (env: Bindings) => ForgeCoordinationStore
   nowIso?: () => string
   requireAdminApiToken?: (request: Request, env: Bindings) => Promise<boolean>
@@ -105,6 +115,11 @@ const ForgeMergeQueueSnapshotRequest = S.Struct({
   ready: S.Unknown,
   blocked: S.Unknown,
   sourceRefs: S.optionalKey(S.Array(S.String)),
+})
+
+const ForgeOpenAgentsImportRequest = S.Struct({
+  tenantRef: S.String,
+  repositoryRef: S.String,
 })
 
 const readBearerToken = (request: Request): string | undefined => {
@@ -640,6 +655,158 @@ const routePromotionDecisions = async <Bindings>(
   return noStoreJsonResponse({ promotionDecision }, { status: 201 })
 }
 
+const sha256Hex = async (value: string): Promise<string> => {
+  const bytes = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(value),
+  )
+  return [...new Uint8Array(bytes)]
+    .map(byte => byte.toString(16).padStart(2, '0'))
+    .join('')
+}
+
+const readGitHubMainTip = async <Bindings>(
+  dependencies: ForgeControlPlaneRouteDependencies<Bindings>,
+): Promise<Readonly<{ objectId: string; sourceUrl: string }>> => {
+  const url = `https://api.github.com/repos/${OPENAGENTS_GITHUB_OWNER}/${OPENAGENTS_GITHUB_REPO}/git/ref/heads/main`
+  const response = await (dependencies.fetch ?? fetch)(url, {
+    headers: {
+      accept: 'application/vnd.github+json',
+      'user-agent': 'openagents-forge-import',
+    },
+  })
+  if (!response.ok) {
+    throw new ForgeControlPlaneHttpError(
+      502,
+      'forge_openagents_import_upstream_failed',
+      `GitHub ref lookup failed with HTTP ${response.status}.`,
+    )
+  }
+  const body = (await response.json()) as {
+    object?: { sha?: unknown; url?: unknown }
+  }
+  const objectId =
+    typeof body.object?.sha === 'string' ? body.object.sha.toLowerCase() : ''
+  if (!/^[0-9a-f]{40}$/u.test(objectId)) {
+    throw new ForgeControlPlaneHttpError(
+      502,
+      'forge_openagents_import_bad_upstream_ref',
+      'GitHub main ref did not include a SHA-1 object id.',
+    )
+  }
+  return {
+    objectId,
+    sourceUrl: typeof body.object?.url === 'string' ? body.object.url : url,
+  }
+}
+
+const routeRefs = async <Bindings>(
+  dependencies: ForgeControlPlaneRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  url: URL,
+) => {
+  if (request.method !== 'GET') {
+    return methodNotAllowed(['GET'])
+  }
+  const tenantRef = tenantRefFromQuery(url)
+  await requireScope(dependencies, request, env, 'forge:change:read', tenantRef)
+  const repositoryRef = optionalQuery(url, 'repositoryRef')
+  if (repositoryRef === undefined) {
+    throw new ForgeControlPlaneHttpError(
+      400,
+      'forge_control_plane_repository_ref_required',
+    )
+  }
+  const refs = await dependencies
+    .makeCanonicalStore(env)
+    .listRefs(tenantRef, repositoryRef, {
+      limit: limitFromQuery(url),
+      state: optionalQuery(url, 'state') === 'deleted' ? 'deleted' : 'active',
+    })
+  return noStoreJsonResponse({
+    defaultBranch: refs.find(ref => ref.ref_name === OPENAGENTS_DEFAULT_BRANCH_REF),
+    defaultBranchRef: OPENAGENTS_DEFAULT_BRANCH_REF,
+    limit: limitFromQuery(url),
+    refs,
+    repository: {
+      defaultBranchRef: OPENAGENTS_DEFAULT_BRANCH_REF,
+      github: `${OPENAGENTS_GITHUB_OWNER}/${OPENAGENTS_GITHUB_REPO}`,
+      repositoryRef,
+      tenantRef,
+    },
+    repositoryRef,
+    tenantRef,
+  })
+}
+
+const routeOpenAgentsImport = async <Bindings>(
+  dependencies: ForgeControlPlaneRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+) => {
+  if (request.method !== 'POST') {
+    return methodNotAllowed(['POST'])
+  }
+  await requireScope(dependencies, request, env, 'forge:admin', OPENAGENTS_FORGE_TENANT_REF)
+  const body = await decodeBody(request, ForgeOpenAgentsImportRequest)
+  if (
+    body.tenantRef !== OPENAGENTS_FORGE_TENANT_REF ||
+    body.repositoryRef !== OPENAGENTS_FORGE_REPOSITORY_REF
+  ) {
+    throw new ForgeControlPlaneHttpError(
+      403,
+      'forge_openagents_import_target_forbidden',
+      `OpenAgents dogfood import is pinned to ${OPENAGENTS_FORGE_TENANT_REF}/${OPENAGENTS_FORGE_REPOSITORY_REF}.`,
+    )
+  }
+  const tip = await readGitHubMainTip(dependencies)
+  const sourceRefs = [
+    'github:OpenAgentsInc/openagents',
+    'github:OpenAgentsInc/openagents#6793',
+    `github:OpenAgentsInc/openagents@${tip.objectId}`,
+    'docs/forge/2026-06-28-forge-openagents-import-runbook.md',
+  ]
+  const digest = await sha256Hex(
+    JSON.stringify({
+      github: `${OPENAGENTS_GITHUB_OWNER}/${OPENAGENTS_GITHUB_REPO}`,
+      objectId: tip.objectId,
+      ref: OPENAGENTS_DEFAULT_BRANCH_REF,
+      sourceUrl: tip.sourceUrl,
+    }),
+  )
+  const shortTip = tip.objectId.slice(0, 16)
+  const result = await dependencies.makeCanonicalStore(env).importExternalRef({
+    changeRef: `change.forge.import.openagents.${shortTip}`,
+    objectFormat: 'sha1',
+    objectId: tip.objectId,
+    packfileRef: `packfile.forge.github.openagents.main.${shortTip}`,
+    receivePackRef: `receive-pack.forge.import.openagents.main.${shortTip}`,
+    refName: OPENAGENTS_DEFAULT_BRANCH_REF,
+    repositoryRef: body.repositoryRef,
+    sourceDigestSha256: digest,
+    sourceRefs,
+    tenantRef: body.tenantRef,
+    nowIso: routeNowIso(dependencies),
+  })
+  return noStoreJsonResponse(
+    {
+      changed: result.changed,
+      defaultBranch: result.ref,
+      import: {
+        defaultBranchRef: OPENAGENTS_DEFAULT_BRANCH_REF,
+        github: `${OPENAGENTS_GITHUB_OWNER}/${OPENAGENTS_GITHUB_REPO}`,
+        objectId: tip.objectId,
+        repositoryRef: body.repositoryRef,
+        sourceRefs,
+        tenantRef: body.tenantRef,
+      },
+      object: result.object,
+    },
+    { status: result.changed ? 201 : 200 },
+  )
+}
+
 export const makeForgeControlPlaneRoutes = <Bindings>(
   dependencies: ForgeControlPlaneRouteDependencies<Bindings>,
 ) => ({
@@ -689,6 +856,10 @@ export const makeForgeControlPlaneRoutes = <Bindings>(
       return routeEffect(() => routeQueue(dependencies, request, env, url))
     }
 
+    if (route.length === 1 && route[0] === 'refs') {
+      return routeEffect(() => routeRefs(dependencies, request, env, url))
+    }
+
     if (route.length === 2 && route[0] === 'queue' && route[1] === 'snapshots') {
       return routeEffect(() => routeQueueSnapshots(dependencies, request, env))
     }
@@ -702,6 +873,16 @@ export const makeForgeControlPlaneRoutes = <Bindings>(
     if (route.length === 1 && route[0] === 'promotion-decisions') {
       return routeEffect(() =>
         routePromotionDecisions(dependencies, request, env, url),
+      )
+    }
+
+    if (
+      route.length === 2 &&
+      route[0] === 'admin' &&
+      route[1] === 'import-openagents'
+    ) {
+      return routeEffect(() =>
+        routeOpenAgentsImport(dependencies, request, env),
       )
     }
 

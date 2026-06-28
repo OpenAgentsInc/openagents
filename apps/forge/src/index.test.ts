@@ -3,6 +3,9 @@ import { Effect } from "effect"
 
 import {
   FORGE_UI_WORKER_VERSION,
+  OPENAGENTS_FORGE_DEFAULT_BRANCH_REF,
+  OPENAGENTS_FORGE_REPOSITORY_REF,
+  OPENAGENTS_FORGE_TENANT_REF,
   defaultForgeMount,
   forgeLandingCopy,
   forgeShellContract,
@@ -77,7 +80,7 @@ describe("Forge UI Worker", () => {
     expect(body.mount).toEqual(defaultForgeMount)
     expect(body.routes).toEqual(forgeShellRoutes)
     expect(body.preview).toEqual(forgeShellPreviewState)
-    expect(body.preview.dataMode).toBe("stubbed-public-contract")
+    expect(body.preview.dataMode).toBe("live-api-contract")
     expect(body.preview.apiBasePath).toBe("/api/forge")
     expect(body.preview.dogfoodLanes).toHaveLength(1)
     expect(body.preview.dogfoodLanes[0]?.issueRef).toBe("#6797")
@@ -104,6 +107,16 @@ describe("Forge UI Worker", () => {
     expect(html).toContain("mirror.github.openagents.main.su7")
     expect(html).toContain("bun run --cwd apps/openagents.com check:deploy")
     expect(html).toContain("GitHub stays downstream visibility only")
+  })
+
+  it("renders the OpenAgents canonical repo in the refs view", () => {
+    const html = renderForgeShellHtml("refs")
+
+    expect(html).toContain(OPENAGENTS_FORGE_TENANT_REF)
+    expect(html).toContain(OPENAGENTS_FORGE_REPOSITORY_REF)
+    expect(html).toContain(OPENAGENTS_FORGE_DEFAULT_BRANCH_REF)
+    expect(html).toContain("OpenAgentsInc/openagents default branch")
+    expect(html).toContain("/api/forge/refs live canonical store")
   })
 
   it("reports health without claiming any coordination authority", async () => {
