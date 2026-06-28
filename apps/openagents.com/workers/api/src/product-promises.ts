@@ -240,6 +240,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-28.1: training.device_capability_dataset.v1 gains continuous thermal-throttle receipt machinery for CS336 A2 benchmark assignments and flips NO promise state (stays planned after the 2026-06-20 revenue-loop tightening). The bounded A2 workload now has a sustained-vs-burst thermal evidence builder that derives ratio rows from burst and sustained throughput samples. Verified sustained_vs_burst_throughput_ratio rows now project receiptRefs, thermalThrottleReceiptRefs, and thermalThrottleFunnelReasonCodes, and the public A2 dashboard carries the same refs so the capacity funnel can consume closed device_capability.public.* reason codes without exposing hardware identifiers. The product blocker blocker.product_promises.thermal_throttle_detection_missing STAYS until a real production contributor run records an owner-accepted verified thermal-row receipt and the operator records any required claim transition per proof.claim_upgrade_receipts.v1. No green flip, paid assignment, settlement, or capability guarantee is created by this source machinery alone. Evidence: docs/training/2026-06-28-cs336-a2-continuous-thermal-throttle-receipts.md.',
         'Registry 2026-06-28.2 corrects referral.refer_once_earn_forever.v1 evidence/copy for #6838 and flips NO promise state. The permanent referrer<->referee spine is now represented by the consume-once user/agent referral attribution tables joined to site_referral_sources, and the category-agnostic accrueCrossCategoryReferral primitive feeds receipt-first paid events from non-Sites categories such as marketplace/fine_tuning into the ONE RL-1 referral payout ledger. The promise STAYS red because no real ecosystem purchase has produced a settled Bitcoin referral payout and no purchase-to-payout dereferenceable receipt exists yet; the owner-armed payout and RL-1/RL-3 asset-boundary/no-resale gates remain required.',
         'Registry 2026-06-28.2: inference.decentralized_serving_fabric.v1 gains stricter whole-small-model Pylon proxy evidence and flips NO promise state. apps/pylon/src/psionic-vllm-proxy.ts now treats exact-greedy parity as a separate same-engine reference check: the proxy forwards a greedy serve request to the configured local engine, performs a second same-engine greedy reference call, compares output digests, refuses non-greedy requests, and keeps paid routing ineligible on reference mismatch or known-answer canary failure. This is source-level receipt plumbing only. The promise STAYS red: green still requires an owner-armed live gateway request, dereferenceable exact-greedy-parity receipt, canary/replay/payout-eligibility admission, and settled serving-node payout evidence.',
+        'Registry 2026-06-28.2: marketplace.wasm_plugins.v1 gains source-level WASM-plugin package policy and install-state registry machinery plus an inert installed-plugin discovery route at GET /api/public/marketplace/wasm-plugins; NO promise state flips. The manifest schema requires version, WASM digest ref, interface declarations, bounded permissions, source refs, and policy refs; admission fails closed on malformed or over-privileged manifests; install/uninstall persists state in the injected registry store; and the public route lists only installed plugins from the injected store while reporting inert/planned. The broad package-policy/install-registry gap is narrowed, but the promise STAYS planned because there is still no public self-serve install marketplace, sandboxed execution receipt, billing, or settlement. No third-party WASM execution, code loading, marketplace mutation, billing, payout, or green claim is created.',
       ],
     },
     promises: [
@@ -1603,20 +1604,24 @@ export const publicProductPromisesDocument = () => {
         claim:
           'The marketplace can support WASM-plugin packages for agent and contributor workflows.',
         safeCopy:
-          'WASM-plugin marketplace support is experimental roadmap work. Treat it as design and early implementation direction only; no public self-serve WASM-plugin marketplace, installation flow, billing, settlement, or broad execution authority is live.',
+          'WASM-plugin package policy, fail-closed manifest admission, install/uninstall registry machinery, and an inert installed-plugin discovery route exist. Treat this as planned infrastructure only: no public self-serve WASM-plugin marketplace, execution sandbox, billing, settlement, or broad execution authority is live.',
         unsafeCopy:
           'Do not claim a live WASM-plugin marketplace, paid WASM-plugin installs, settled WASM-plugin revenue, or public-safe third-party WASM execution.',
         evidenceRefs: [
           'apps/openagents.com/docs/2026-06-08-signature-marketplace-revenue-gate.md',
           'apps/pylon/packages/runtime/src/blueprint',
+          'apps/openagents.com/workers/api/src/wasm-plugin-marketplace.ts',
+          'apps/openagents.com/workers/api/src/wasm-plugin-marketplace-routes.ts',
+          'apps/openagents.com/workers/api/src/wasm-plugin-marketplace.test.ts',
+          'route:/api/public/marketplace/wasm-plugins',
         ],
         blockerRefs: [
-          'blocker.product_promises.wasm_plugin_marketplace_not_live',
+          'blocker.product_promises.wasm_plugin_self_serve_marketplace_not_live',
           'blocker.product_promises.wasm_plugin_execution_sandbox_missing',
           'blocker.product_promises.wasm_plugin_billing_settlement_missing',
         ],
         verification:
-          'Keep this planned until there is public evidence for package policy, sandboxed WASM execution, install/uninstall lifecycle, metering, billing, attribution, rev-share, abuse handling, and settlement receipts.',
+          'Source evidence now covers the package manifest schema, admission policy, install/uninstall state registry, malformed/over-privileged rejection tests, and inert installed-plugin discovery route. Keep this planned until there is public evidence for a self-serve install marketplace, sandboxed WASM execution receipts, metering, billing, attribution, rev-share, abuse handling, and settlement receipts.',
         authorityBoundary:
           'Experimental marketplace planning does not grant public plugin installation, execution, billing, settlement, code-loading, or contributor earning authority.',
       },

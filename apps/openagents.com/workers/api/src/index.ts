@@ -682,6 +682,10 @@ import {
   handleMarketplaceWorkClassCatalogApi,
 } from './marketplace-work-class-catalog-routes'
 import {
+  WasmPluginMarketplaceEndpoint,
+  handleWasmPluginMarketplaceApi,
+} from './wasm-plugin-marketplace-routes'
+import {
   mdkContainerEnvVars,
   optionalMdkContainerSecret,
 } from './mdk-container-env'
@@ -10656,6 +10660,15 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           env.MARKETPLACE_COMPOSE_AND_LIST_ENABLED,
         ),
       }),
+  },
+  {
+    // WASM-plugin marketplace package-policy + install-state discovery (#6833).
+    // INERT: the live Worker passes an empty registry, so the route lists no
+    // executable third-party plugins. It exposes only the installed-plugin
+    // discovery projection shape; package install/uninstall remains source-level
+    // registry machinery until separately owner-armed.
+    path: WasmPluginMarketplaceEndpoint,
+    handler: request => handleWasmPluginMarketplaceApi(request),
   },
   {
     // Signature usage-metering surface (#5523 / DE-6 #5529; promise

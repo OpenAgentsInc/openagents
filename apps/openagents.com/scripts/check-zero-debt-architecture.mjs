@@ -924,6 +924,11 @@ const publicProjectionSurfaces = [
     status: 'staleness_declared',
   },
   {
+    module: 'workers/api/src/wasm-plugin-marketplace.ts',
+    route: '/api/public/marketplace/wasm-plugins',
+    status: 'staleness_declared',
+  },
+  {
     module: 'workers/api/src/autopilot-composed-run.ts',
     route: '/api/public/autopilot/composed-runs',
     status: 'staleness_declared',

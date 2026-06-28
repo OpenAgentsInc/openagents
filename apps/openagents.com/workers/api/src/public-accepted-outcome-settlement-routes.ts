@@ -30,8 +30,18 @@ import {
   serverError,
 } from './http/responses'
 import { liveAtReadStaleness } from './public-projection-staleness'
+import type { PublicProjectionStalenessContract } from './public-projection-staleness'
 
 type HttpResponse = globalThis.Response
+
+export type OmniAcceptedOutcomeSettlementBundleEnvelope = Readonly<{
+  generatedAt: string
+  maxStalenessSeconds: number
+  settlement: ReturnType<
+    typeof publicOmniAcceptedOutcomeSettlementBundleProjection
+  >
+  staleness: PublicProjectionStalenessContract
+}>
 
 export type PublicAcceptedOutcomeSettlementRouteDependencies<Bindings> =
   Readonly<{
