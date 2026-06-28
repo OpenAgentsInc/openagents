@@ -105,6 +105,27 @@ export const ARTANIS_OPERATOR_MEMORY_TURN_LIMIT = 20
 // tool results in context.
 export const ARTANIS_OPERATOR_MAX_TOOL_ITERATIONS = 6
 
+// Generous per-completion output ceiling (#6651). The operator composes long
+// grounded plans, status sweeps, and multi-step decisions; the previous 4096
+// cap truncated those mid-sentence. We raise the ceiling and ALSO continue on a
+// `length` finish (below) so a long reply is never returned truncated regardless
+// of this cap.
+export const ARTANIS_OPERATOR_MAX_OUTPUT_TOKENS = 16_384
+
+// Continue-on-length cap (#6651). When a completion stops because it hit the
+// output ceiling (`finishReason === 'length'`), we append the partial assistant
+// turn plus a short "continue" user turn and re-call Khala, concatenating the
+// segments, until the model finishes naturally (`finishReason === 'stop'`) or we
+// reach this bound. This guarantees a long plan is delivered whole even if it
+// exceeds a single completion's cap.
+export const ARTANIS_OPERATOR_MAX_CONTINUE_ITERATIONS = 6
+
+// The bounded "continue" user turn appended when a completion stops on `length`.
+// It asks the model to resume exactly where it left off without repeating, so
+// the concatenated segments read as one continuous reply.
+export const ARTANIS_OPERATOR_CONTINUE_INSTRUCTION =
+  'Your previous message was cut off because it hit the output limit. Continue exactly where you left off, in plain text. Do not repeat anything you already wrote, and do not call any tools.'
+
 // The reply returned ONLY as the absolute last resort: when the Khala loop
 // produced no text at all AND no tool work was gathered to ground a reply on
 // (e.g. a no-tool turn whose every completion came back empty). The turn must
@@ -640,7 +661,7 @@ export const buildArtanisOperatorKhalaRequest = (input: {
     passthroughParams:
       tools.length > 0
         ? {
-            max_tokens: 4096,
+            max_tokens: ARTANIS_OPERATOR_MAX_OUTPUT_TOKENS,
             temperature: 0.3,
             tool_choice: 'auto',
             tools: tools.map(tool => ({
@@ -653,7 +674,7 @@ export const buildArtanisOperatorKhalaRequest = (input: {
             })),
           }
         : {
-            max_tokens: 4096,
+            max_tokens: ARTANIS_OPERATOR_MAX_OUTPUT_TOKENS,
             temperature: 0.3,
           },
     stream: false,
@@ -878,6 +899,55 @@ const runToolCall = (
     }
   })
 
+// Run one Khala completion and, if it stops on `length`, transparently continue
+// it (#6651): re-request with the partial assistant turn + a bounded "continue"
+// user turn appended, concatenating the text across segments, until the model
+// finishes naturally (`finishReason === 'stop'`) or we reach
+// `ARTANIS_OPERATOR_MAX_CONTINUE_ITERATIONS`. Returns the (possibly concatenated)
+// completion — carrying the FINAL segment's finishReason/servedModel and the
+// combined content — plus the number of Khala calls it consumed so the turn's
+// `iterations` counter stays accurate. A `tool_calls` finish is returned
+// untouched so the caller's tool loop runs as before. The first completion's
+// failure propagates (so the caller's mind-unavailable / recovery handling runs
+// unchanged); a LATER continuation failure stops the loop and returns the good
+// text already gathered rather than discarding it.
+const runKhalaCompletionContinuingOnLength = (input: {
+  khalaClient: ArtanisOperatorKhalaClient
+  request: InferenceRequest
+}): Effect.Effect<
+  Readonly<{ result: InferenceResult; calls: number }>,
+  InferenceAdapterError
+> =>
+  Effect.gen(function* () {
+    let result = yield* input.khalaClient(input.request)
+    let calls = 1
+    let conversation = input.request.messages
+    let combinedContent = result.content
+
+    for (
+      let round = 0;
+      result.finishReason === 'length' &&
+      (result.toolCalls ?? []).length === 0 &&
+      round < ARTANIS_OPERATOR_MAX_CONTINUE_ITERATIONS;
+      round += 1
+    ) {
+      conversation = [
+        ...conversation,
+        { content: result.content, role: 'assistant' as const },
+        { content: ARTANIS_OPERATOR_CONTINUE_INSTRUCTION, role: 'user' as const },
+      ]
+      const continued = yield* Effect.exit(
+        input.khalaClient({ ...input.request, messages: conversation }),
+      )
+      if (continued._tag === 'Failure') break
+      calls += 1
+      combinedContent = `${combinedContent}${continued.value.content}`
+      result = continued.value
+    }
+
+    return { calls, result: { ...result, content: combinedContent } }
+  })
+
 // Pure-ish core: given the owner id, the conversation, the loaded memory, the
 // built awareness, the Khala client, and (optionally) an owner-scoped tool
 // table, it assembles the Blueprint-style grounded program and runs a BOUNDED
@@ -944,10 +1014,15 @@ export const artanisOperatorTurn = (input: {
         tools: advertiseTools ? toolDefinitions : undefined,
       })
 
-      const outcome = yield* Effect.exit(input.khalaClient(request))
-      iterations += 1
+      const outcome = yield* Effect.exit(
+        runKhalaCompletionContinuingOnLength({
+          khalaClient: input.khalaClient,
+          request,
+        }),
+      )
 
       if (outcome._tag === 'Failure') {
+        iterations += 1
         // A Khala call failed. If this is the very first call and we have no
         // prior completion AND no gathered tool work, the mind is genuinely
         // unavailable \u2014 return the typed failure (never a provider fallback).
@@ -963,7 +1038,8 @@ export const artanisOperatorTurn = (input: {
         break
       }
 
-      served = outcome.value
+      iterations += outcome.value.calls
+      served = outcome.value.result
 
       const requestedToolCalls = served.toolCalls ?? []
       // No tool calls (or we already stopped advertising tools): this is the
@@ -1041,8 +1117,9 @@ export const artanisOperatorTurn = (input: {
     // even when the full agentic conversation grew too large to re-send.
     if (finalServed === undefined || isBlankReply(finalServed.content)) {
       const firstComposition = yield* Effect.exit(
-        input.khalaClient(
-          buildArtanisOperatorKhalaRequest({
+        runKhalaCompletionContinuingOnLength({
+          khalaClient: input.khalaClient,
+          request: buildArtanisOperatorKhalaRequest({
             conversation: buildArtanisCompositionConversation({
               baseMessages,
               explicit: false,
@@ -1051,20 +1128,22 @@ export const artanisOperatorTurn = (input: {
             messages: input.messages,
             tools: undefined,
           }),
-        ),
+        }),
       )
-      iterations += 1
+      iterations +=
+        firstComposition._tag === 'Success' ? firstComposition.value.calls : 1
       if (
         firstComposition._tag === 'Success' &&
-        !isBlankReply(firstComposition.value.content)
+        !isBlankReply(firstComposition.value.result.content)
       ) {
-        finalServed = firstComposition.value
+        finalServed = firstComposition.value.result
       } else {
         // Still nothing \u2014 retry ONCE with an explicit "compose your final answer
         // now in plain text, no tools" instruction before giving up on the model.
         const retryComposition = yield* Effect.exit(
-          input.khalaClient(
-            buildArtanisOperatorKhalaRequest({
+          runKhalaCompletionContinuingOnLength({
+            khalaClient: input.khalaClient,
+            request: buildArtanisOperatorKhalaRequest({
               conversation: buildArtanisCompositionConversation({
                 baseMessages,
                 explicit: true,
@@ -1073,14 +1152,15 @@ export const artanisOperatorTurn = (input: {
               messages: input.messages,
               tools: undefined,
             }),
-          ),
+          }),
         )
-        iterations += 1
+        iterations +=
+          retryComposition._tag === 'Success' ? retryComposition.value.calls : 1
         if (
           retryComposition._tag === 'Success' &&
-          !isBlankReply(retryComposition.value.content)
+          !isBlankReply(retryComposition.value.result.content)
         ) {
-          finalServed = retryComposition.value
+          finalServed = retryComposition.value.result
         }
       }
     }

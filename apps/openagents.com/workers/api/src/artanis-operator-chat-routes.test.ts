@@ -11,7 +11,10 @@ import type {
   ArtanisMemoryLoadInput,
   ArtanisOwnerMemoryStore,
 } from './artanis-owner-memory'
-import { ARTANIS_OPERATOR_EMPTY_REPLY_FALLBACK } from './artanis-operator'
+import {
+  ARTANIS_OPERATOR_CONTINUE_INSTRUCTION,
+  ARTANIS_OPERATOR_EMPTY_REPLY_FALLBACK,
+} from './artanis-operator'
 import { makeOperatorArtanisChatRoutes } from './artanis-operator-chat-routes'
 import type {
   InferenceRequest,
@@ -303,6 +306,64 @@ describe('POST /api/operator/artanis/chat — grounded Khala-powered reply', () 
     // The persona verdict is present and clean.
     expect((json.persona as { satisfied: boolean }).satisfied).toBe(true)
     expect(json.deferredToApprovalGate).toBe(false)
+  })
+
+  test('continues on a `length` finish and returns the concatenated, untruncated reply (#6651)', async () => {
+    const requests: Array<InferenceRequest> = []
+    const { deps, fake } = baseDeps({
+      makeKhalaClient: () => request => {
+        requests.push(request)
+        // First completion hits the output cap mid-plan; the second finishes
+        // it. The owner must receive the WHOLE plan, not the truncated first
+        // segment.
+        return Effect.succeed(
+          requests.length === 1
+            ? {
+                content: 'Here is the long plan, part one of two. ',
+                finishReason: 'length',
+                servedModel: 'gpt-oss-120b',
+                usage: { completionTokens: 9, promptTokens: 100, totalTokens: 109 },
+              }
+            : {
+                content: 'And here is part two, which completes the plan.',
+                finishReason: 'stop',
+                servedModel: 'gpt-oss-120b',
+                usage: { completionTokens: 9, promptTokens: 100, totalTokens: 109 },
+              },
+        )
+      },
+    })
+
+    const response = await runRoute(
+      deps,
+      post({ messages: [{ content: 'give me the full plan', role: 'user' }] }),
+    )
+    expect(response.status).toBe(200)
+    const json = (await response.json()) as Record<string, unknown>
+
+    // Two Khala calls: the initial completion plus one continuation.
+    expect(requests).toHaveLength(2)
+    // The continuation request appended the partial assistant turn + the bounded
+    // "continue" user turn so the model resumes where it left off.
+    const continuationMessages = requests[1]?.messages ?? []
+    expect(
+      continuationMessages.some(
+        message =>
+          message.role === 'assistant' &&
+          message.content === 'Here is the long plan, part one of two. ',
+      ),
+    ).toBe(true)
+    expect(continuationMessages.at(-1)).toMatchObject({
+      content: ARTANIS_OPERATOR_CONTINUE_INSTRUCTION,
+      role: 'user',
+    })
+
+    // The reply is the concatenation of both segments — nothing truncated.
+    const expectedReply =
+      'Here is the long plan, part one of two. And here is part two, which completes the plan.'
+    expect(json.reply).toBe(expectedReply)
+    const artanis = fake.entries.find(entry => entry.role === 'artanis')
+    expect(artanis?.body).toBe(expectedReply)
   })
 
   test('persists the owner turn AND the Artanis reply to owner memory', async () => {
