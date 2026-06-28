@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import {
+  composeFrlmRecursiveResponse,
   planFrlmConductorExecution,
+  type FrlmResponseCompositionSegment,
   type FrlmConductorSubQuery,
 } from "../src/frlm-conductor-execution"
 import { assertPublicProjectionSafe } from "../src/state"
@@ -355,6 +357,109 @@ describe("FRLM Conductor execution planning", () => {
   })
 })
 
+describe("FRLM recursive response composition", () => {
+  test("composes completed recursive sub-query responses in deterministic order", () => {
+    const executionPlan = planFrlmConductorExecution({
+      ...validInput(),
+      subQueries: completedSubQueries(),
+    })
+    const projection = composeFrlmRecursiveResponse({
+      observedAt,
+      compositionRef: "composition.artanis.frlm.issue_6682.response.v1",
+      executionPlan,
+      responseBlueprintSignatureRef: "signature.blueprint.frlm_response_composer.v1",
+      segments: completedResponseSegments(),
+    })
+
+    expect(projection.canComposeResponse).toBe(true)
+    expect(projection.blockerRefs).toEqual([])
+    expect(projection.orderedSubQueryRefs).toEqual([
+      "subquery.artanis.frlm.collect_context.v1",
+      "subquery.artanis.frlm.optimize_route.v1",
+      "subquery.artanis.frlm.verify_blueprint_boundary.v1",
+    ])
+    expect(projection.composedResponseText).toBe([
+      "[1] Collect public FRLM, RLM, and Blueprint signature context before planning.",
+      "[2] Prefer recursive fanout while every sub-query has completed evidence.",
+      "[3] Keep the response under the Blueprint evidence-only authority boundary.",
+    ].join("\n\n"))
+    expect(projection.composedResponseDigest).toMatch(/^[a-f0-9]{32}$/)
+    expect(projection.composedResponseRef).toMatch(/^response\.artanis\.frlm\.composed\.[a-f0-9]{20}$/)
+    expect(projection.evidenceRefs).toContain("signature.blueprint.frlm_response_composer.v1")
+    expect(projection.evidenceRefs).toContain("response.artanis.frlm.collect_context.v1")
+    assertPublicProjectionSafe(projection)
+  })
+
+  test("blocks response composition until every sub-query has result and response text", () => {
+    const executionPlan = planFrlmConductorExecution({
+      ...validInput(),
+      subQueries: completedSubQueries(),
+    })
+    const projection = composeFrlmRecursiveResponse({
+      observedAt,
+      compositionRef: "composition.artanis.frlm.issue_6682.response.v1",
+      executionPlan,
+      responseBlueprintSignatureRef: "signature.blueprint.frlm_response_composer.v1",
+      segments: [
+        completedResponseSegments()[0],
+        {
+          subQueryRef: "subquery.artanis.frlm.optimize_route.v1",
+          state: "running",
+          responseRef: "response.artanis.frlm.optimize_route.v1",
+          blueprintSignatureRef: "signature.blueprint.rlm_subquery.v1",
+        },
+        {
+          subQueryRef: "subquery.artanis.frlm.verify_blueprint_boundary.v1",
+          state: "completed",
+          resultRef: "result.artanis.frlm.verify_blueprint_boundary.v1",
+          responseText: " ",
+          responseRef: "response.artanis.frlm.verify_blueprint_boundary.v1",
+          blueprintSignatureRef: "signature.blueprint.rlm_subquery.v1",
+        },
+      ],
+    })
+
+    expect(projection.canComposeResponse).toBe(false)
+    expect(projection.composedResponseText).toBeNull()
+    expect(projection.blockerRefs).toContain("blocker.artanis.frlm_response_composition.sub_query_incomplete")
+    expect(projection.blockerRefs).toContain("blocker.artanis.frlm_response_composition.sub_query_result_missing")
+    expect(projection.blockerRefs).toContain(
+      "blocker.artanis.frlm_response_composition.sub_query_response_text_missing",
+    )
+    expect(projection.incompleteSubQueryRefs).toEqual(["subquery.artanis.frlm.optimize_route.v1"])
+    expect(projection.missingResultSubQueryRefs).toEqual(["subquery.artanis.frlm.optimize_route.v1"])
+    expect(projection.missingResponseTextSubQueryRefs).toEqual([
+      "subquery.artanis.frlm.optimize_route.v1",
+      "subquery.artanis.frlm.verify_blueprint_boundary.v1",
+    ])
+    assertPublicProjectionSafe(projection)
+  })
+
+  test("blocks unsafe response content before it reaches public projection fields", () => {
+    const executionPlan = planFrlmConductorExecution({
+      ...validInput(),
+      subQueries: completedSubQueries(),
+    })
+    const projection = composeFrlmRecursiveResponse({
+      observedAt,
+      compositionRef: "composition.artanis.frlm.issue_6682.response.v1",
+      executionPlan,
+      responseBlueprintSignatureRef: "signature.blueprint.frlm_response_composer.v1",
+      segments: [
+        {
+          ...completedResponseSegments()[0],
+          responseText: "The sandbox printed bearer abcdef123456 and must be redacted.",
+        },
+      ],
+    })
+
+    expect(projection.canComposeResponse).toBe(false)
+    expect(projection.composedResponseText).toBeNull()
+    expect(projection.blockerRefs).toContain("blocker.artanis.frlm_response_composition.unsafe_content")
+    assertPublicProjectionSafe(projection)
+  })
+})
+
 function validInput() {
   return {
     observedAt,
@@ -396,6 +501,38 @@ function completedSubQueries(): FrlmConductorSubQuery[] {
       resultRef: "result.artanis.frlm.verify_blueprint_boundary.v1",
       blueprintSignatureRef: "signature.blueprint.rlm_subquery.v1",
       tokenCount: 1_500,
+    },
+  ]
+}
+
+function completedResponseSegments(): FrlmResponseCompositionSegment[] {
+  return [
+    {
+      subQueryRef: "subquery.artanis.frlm.optimize_route.v1",
+      state: "completed",
+      resultRef: "result.artanis.frlm.optimize_route.v1",
+      responseRef: "response.artanis.frlm.optimize_route.v1",
+      responseText: "Prefer recursive fanout while every sub-query has completed evidence.",
+      blueprintSignatureRef: "signature.blueprint.rlm_subquery.v1",
+      order: 2,
+    },
+    {
+      subQueryRef: "subquery.artanis.frlm.collect_context.v1",
+      state: "completed",
+      resultRef: "result.artanis.frlm.collect_context.v1",
+      responseRef: "response.artanis.frlm.collect_context.v1",
+      responseText: "Collect public FRLM, RLM, and Blueprint signature context before planning.",
+      blueprintSignatureRef: "signature.blueprint.rlm_subquery.v1",
+      order: 1,
+    },
+    {
+      subQueryRef: "subquery.artanis.frlm.verify_blueprint_boundary.v1",
+      state: "completed",
+      resultRef: "result.artanis.frlm.verify_blueprint_boundary.v1",
+      responseRef: "response.artanis.frlm.verify_blueprint_boundary.v1",
+      responseText: "Keep the response under the Blueprint evidence-only authority boundary.",
+      blueprintSignatureRef: "signature.blueprint.rlm_subquery.v1",
+      order: 3,
     },
   ]
 }
