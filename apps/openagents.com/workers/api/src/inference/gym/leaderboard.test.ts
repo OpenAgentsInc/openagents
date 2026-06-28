@@ -123,6 +123,10 @@ describe('Gym public leaderboard projection', () => {
     expect(projection.rows.map(row => row.rank)).toEqual([1, 2])
     expect(projection.rows[0]).toMatchObject({
       acceptedOutcomes: 5,
+      inputTokens: 7_500,
+      outputTokens: 2_500,
+      totalTokens: 10_000,
+      meanWallClockMs: 3_302,
       costPerAcceptedOutcomeMsat: 400,
       verificationRateBps: 10_000,
     })

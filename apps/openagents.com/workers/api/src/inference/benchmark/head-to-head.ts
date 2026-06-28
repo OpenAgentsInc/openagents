@@ -170,13 +170,18 @@ export const KHALA_HEAD_TO_HEAD_RECURRING_CONFIG: KhalaHeadToHeadRecurringConfig
   }
 
 // The measured axes for one side (Khala protagonist OR a comparator), carried
-// straight from the public-safe gym leaderboard row. Only counts/rates/cost.
+// straight from the public-safe gym leaderboard row. Only aggregate counts,
+// durations, rates, and cost.
 export type KhalaHeadToHeadSide = Readonly<{
   lane: BenchmarkLane | null
   reportRef: string
   candidateRef: string
   acceptedOutcomes: number
   attemptedVerifications: number
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+  meanWallClockMs: number | null
   // Solve rate in basis points (verified-rate * 10000). Null when the side ran no
   // verified workload (honest absence, never a fabricated 0).
   solveRateBps: number | null
@@ -280,6 +285,10 @@ const toSide = (row: GymLeaderboardRow): KhalaHeadToHeadSide => ({
   candidateRef: row.candidateRef,
   acceptedOutcomes: row.acceptedOutcomes,
   attemptedVerifications: row.attemptedVerifications,
+  inputTokens: row.inputTokens,
+  outputTokens: row.outputTokens,
+  totalTokens: row.totalTokens,
+  meanWallClockMs: row.meanWallClockMs,
   solveRateBps: row.verificationRateBps,
   costPerAcceptedOutcomeMsat: row.costPerAcceptedOutcomeMsat,
 })

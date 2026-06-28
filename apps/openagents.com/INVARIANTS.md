@@ -2341,12 +2341,13 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     Public-safe only: Khala vs the tools/models a developer would otherwise reach
     for (default coding model → free/open → paid frontier), each matchup scored on
     BOTH solve-rate (verified-rate-bps) AND
-    cost-per-accepted-outcome-msat with an honest two-axis verdict, from
-    decision-grade rows only; fixture/synthetic numbers are never published, and
-    a matchup with no measured comparator is `awaiting_owner` with its owner-gate
-    refs shown rather than a fabricated number. Serves the honest empty shape
-    before the first decision-grade publish. No dispatch, spend, settlement, or
-    payout authority.
+    cost-per-accepted-outcome-msat with an honest two-axis verdict, while
+    carrying aggregate input/output/total token counts and mean wall-clock
+    context from decision-grade rows only; fixture/synthetic numbers are never
+    published, and a matchup with no measured comparator is `awaiting_owner` with
+    its owner-gate refs shown rather than a fabricated number. Serves the honest
+    empty shape before the first decision-grade publish. No dispatch, spend,
+    settlement, or payout authority.
   - `GET /api/public/payments/contributor-accrual-bundle?economicsId=<id>` —
     live at read over one persisted accepted-outcome economics record (promise
     `payments.accepted_outcome_economics.v1`, red;

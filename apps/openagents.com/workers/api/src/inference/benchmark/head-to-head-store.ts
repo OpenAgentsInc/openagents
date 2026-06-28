@@ -28,6 +28,10 @@ const KhalaHeadToHeadSideSchema = S.Struct({
   candidateRef: S.String,
   acceptedOutcomes: S.Number,
   attemptedVerifications: S.Number,
+  inputTokens: S.Number,
+  outputTokens: S.Number,
+  totalTokens: S.Number,
+  meanWallClockMs: S.NullOr(S.Number),
   solveRateBps: S.NullOr(S.Number),
   costPerAcceptedOutcomeMsat: S.Number,
 })
