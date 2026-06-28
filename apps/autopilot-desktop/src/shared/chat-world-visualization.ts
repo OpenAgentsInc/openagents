@@ -68,7 +68,13 @@ export const liveChatWorldNetworkScene = (
 
   const nodes: PylonNetworkNode[] = live.nodes.map((node) => {
     const tone = liveNodeTone(node)
-    return { id: node.id, label: node.label, tone, flowing: tone === "working" }
+    return {
+      id: node.id,
+      label: node.label,
+      tone,
+      flowing: tone === "working",
+      growth: node.growth,
+    }
   })
 
   const sessionsOnline = nodes.filter((n) => n.tone === "working").length

@@ -26,6 +26,32 @@ const toneToStatus = (
 ): TrainingRunNodeDefinition["status"] =>
   tone === "working" ? "active" : tone === "online" ? "queued" : "planned"
 
+const growthToneToStatus = (
+  node: PylonNetworkNode,
+): TrainingRunNodeDefinition["status"] => {
+  const tier = node.growth?.tier ?? 0
+  if (node.tone === "working") return "active"
+  if (tier >= 4) return "verified"
+  if (tier >= 2) return "sealed"
+  return toneToStatus(node.tone)
+}
+
+const growthToneToRole = (
+  node: PylonNetworkNode,
+): TrainingRunNodeDefinition["role"] => {
+  const scale = node.growth?.scale ?? 1
+  if (scale >= 1.72) return "run"
+  if (scale >= 1.36) return "rung"
+  return node.tone === "working" ? "proof" : "lifecycle"
+}
+
+const pylonNodeDetail = (node: PylonNetworkNode): string => {
+  const state = node.tone === "working" ? "working" : node.tone === "online" ? "online" : "seen"
+  const growth = node.growth
+  if (growth === undefined || growth.settledSats <= 0) return `${state} - tier 0 - 0 sats`
+  return `${state} - tier ${growth.tier} - ${growth.settledSats} sats - ${growth.facets} facets`
+}
+
 // Deterministic ring layout so the graph is stable between polls (no jitter).
 // Radius grows gently with node count so a busy network stays legible.
 const ringPosition = (
@@ -67,9 +93,9 @@ export function pylonNetworkVisualizationOptions(
   const pylonNodes: TrainingRunNodeDefinition[] = scene.nodes.map((node, index) => ({
     id: node.id,
     label: node.label,
-    detail: node.tone === "working" ? "working" : node.tone === "online" ? "online" : "seen",
-    role: node.tone === "working" ? "proof" : "lifecycle",
-    status: toneToStatus(node.tone),
+    detail: pylonNodeDetail(node),
+    role: growthToneToRole(node),
+    status: growthToneToStatus(node),
     position: ringPosition(index, count),
     connectedTo: [CENTER_ID],
   }))

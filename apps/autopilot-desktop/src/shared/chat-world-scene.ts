@@ -66,6 +66,7 @@ export type LiveRecentPylon = {
   readonly onlineNow?: boolean | null
   readonly walletReadyNow?: boolean | null
   readonly assignmentReadyNow?: boolean | null
+  readonly cumulativeSettledSats?: number | null
   readonly lastHeartbeatAgeSeconds?: number | null
   readonly products?: ReadonlyArray<string> | null
 }
@@ -172,6 +173,8 @@ export type LivePylonNode = {
   readonly online: boolean
   /** pulses/sec from heartbeat age (0 = still). */
   readonly pulseSpeed: number
+  /** per-Pylon crystal growth from public cumulative settled sats. */
+  readonly growth: PylonGrowthTier
   /** public capability tags (products) for the inspector. */
   readonly products: ReadonlyArray<string>
 }
@@ -220,6 +223,10 @@ export const projectChatWorldPylonScene = (
   const recent = (snapshot.recentPylons ?? []) as ReadonlyArray<LiveRecentPylon>
   const nodes: LivePylonNode[] = recent.map((pylon, index) => {
     const state = livePylonState(pylon)
+    const settledSats =
+      typeof pylon.cumulativeSettledSats === "number"
+        ? pylon.cumulativeSettledSats
+        : 0
     return {
       id: recentPylonNetworkId(pylon, index),
       label: recentPylonNetworkLabel(pylon, index),
@@ -230,6 +237,7 @@ export const projectChatWorldPylonScene = (
         pylon.onlineNow === true
           ? heartbeatPulseSpeed(pylon.lastHeartbeatAgeSeconds)
           : 0,
+      growth: pylonGrowthTier(settledSats),
       products: (pylon.products ?? []).filter((p): p is string => typeof p === "string"),
     }
   })

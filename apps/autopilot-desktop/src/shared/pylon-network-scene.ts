@@ -79,6 +79,15 @@ export type PylonNetworkNode = {
   readonly tone: PylonNodeTone
   // edge animates toward the center when the node is doing work
   readonly flowing: boolean
+  readonly growth?: PylonNetworkNodeGrowth
+}
+
+export type PylonNetworkNodeGrowth = {
+  readonly tier: number
+  readonly scale: number
+  readonly facets: number
+  readonly brightness: number
+  readonly settledSats: number
 }
 
 export type PylonNetworkScene = {
