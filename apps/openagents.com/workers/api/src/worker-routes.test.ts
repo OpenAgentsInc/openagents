@@ -133,6 +133,12 @@ describe('Worker document route fallback', () => {
     ).toBe(false)
   })
 
+  test('keeps the public Khala chat document route in the app shell when unauthed', () => {
+    expect(
+      shouldRedirectUnknownDocumentToHome(requestFor('/chat'), '/chat'),
+    ).toBe(false)
+  })
+
   test('keeps the GPT-OSS Gym document route in the app shell', () => {
     expect(
       shouldRedirectUnknownDocumentToHome(requestFor('/gym/oss'), '/gym/oss'),
@@ -482,6 +488,14 @@ describe('Worker route dual-serve resolution (#6148)', () => {
     expect(result.observed.forumTopicId).toBe(
       '55555555-5555-4555-8555-555555555555',
     )
+  })
+
+  test('direct anonymous /chat document load reaches the app shell with 200', async () => {
+    const result = await runRoute(requestFor('/chat'))
+
+    expect(result.response.status).toBe(200)
+    await expect(result.response.text()).resolves.toBe('ok')
+    expect(result.observed.exactPath).toBeUndefined()
   })
 
   test('canonical /api/mpp/v1/chat/completions reaches the MPP handler', async () => {

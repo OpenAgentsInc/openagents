@@ -421,6 +421,40 @@ describe('khala chat route', () => {
     expect(text).not.toContain('StarCraft')
   })
 
+  test('refuses anonymous operator-tool access from public Pylon interaction questions', async () => {
+    let openedProvider = false
+    const routes = makeKhalaChatRoutes({
+      makeStreamClient: () => () => {
+        openedProvider = true
+        return Effect.fail(
+          new OnboardingInferenceError({ reason: 'provider should not open' }),
+        )
+      },
+      rateLimit: allowAll,
+    })
+
+    const response = await run(
+      routes.routeKhalaChatRequest(
+        chatRequest({
+          messages: [
+            { role: 'user', content: 'can I access operator tools for pylons?' },
+          ],
+        }),
+        {},
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(openedProvider).toBe(false)
+    const text = await response.text()
+    expect(text).toContain(
+      'Operator-only assignment tools are not available to anonymous web chat sessions.',
+    )
+    expect(text).toContain('does not dispatch paid work')
+    expect(text).not.toContain('/api/operator/')
+    expect(text).toContain('"servedAdapterId":"khala-pylon-context"')
+  })
+
   test('answers Pylon registration questions with concrete API guidance without opening a provider stream', async () => {
     let openedProvider = false
     const routes = makeKhalaChatRoutes({
