@@ -4,6 +4,7 @@ import {
   ArtanisMindEscalatedMaxOutputTokens,
   artanisMindComplete,
 } from './artanis-mind'
+import { artanisDiagnosisGroundingPolicy } from './artanis-diagnosis-grounding-gate'
 import { artanisOperationalGrounding } from './artanis-operational-grounding'
 import { publicProductPromisesDocument } from './product-promises'
 import {
@@ -192,6 +193,7 @@ export const runArtanisComposerTick = async (
       // concrete how-to question (e.g. making payout-target ready, keeping
       // executor-trace capability refs live through heartbeat) instead of
       // restating promise-registry copy (#5540 defect 2).
+      diagnosisGrounding: artanisDiagnosisGroundingPolicy(),
       operationalDocs: artanisOperationalGrounding(),
       promiseRegistry: groundingPromises(),
       question: {
@@ -212,7 +214,7 @@ export const runArtanisComposerTick = async (
       // defect 3).
       maxOutputTokens: ArtanisMindEscalatedMaxOutputTokens,
       prompt: [
-        'Compose a reply to this Pylon contributor question. GROUNDING RULES (absolute): every claim about the platform, promises, capabilities, dispatch, or payments must come from the grounding JSON below - if the grounding does not answer part of the question, say so plainly rather than inventing. When the question is a concrete operational how-to (e.g. making payout-target/send readiness true, keeping capability refs live through heartbeat, running a no-spend lane), answer it directly from operationalDocs with the specific commands, blocker names, and readiness states - do NOT just restate promiseRegistry status copy. Device facts come only from the question body (the Pylon embedded its own inventory there). Be specific, useful, and honest about what is yellow vs green. 150-350 words, plain text. End with: - Artanis (automated responder; the mind proposes, schemas validate, gates hold)',
+        'Compose a reply to this Pylon contributor question. GROUNDING RULES (absolute): every claim about the platform, promises, capabilities, dispatch, or payments must come from the grounding JSON below - if the grounding does not answer part of the question, say so plainly rather than inventing. When the question is a concrete operational how-to (e.g. making payout-target/send readiness true, keeping capability refs live through heartbeat, running a no-spend lane), answer it directly from operationalDocs with the specific commands, blocker names, and readiness states - do NOT just restate promiseRegistry status copy. Device facts come only from the question body (the Pylon embedded its own inventory there). Do not assert a root cause or propose a remediation for autonomous ops failures unless diagnosisGrounding is satisfied at GROUNDED with all required refs present and matching the claim. Be specific, useful, and honest about what is yellow vs green. 150-350 words, plain text. End with: - Artanis (automated responder; the mind proposes, schemas validate, gates hold)',
         `GROUNDING: ${JSON.stringify(grounding)}`,
       ].join('\n\n'),
       system:
