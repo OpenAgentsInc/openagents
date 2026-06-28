@@ -834,6 +834,10 @@ This is the invariant ledger for `openagents`.
   API keys, bearer/callback/OAuth material, tool args, raw source, private repo
   paths, local filesystem paths, or customer/private material. Unsafe fields
   must be rejected before persistence, not hidden after schema decode.
+- Caller-paid Khala BYOK completions still record exact served tokens in
+  `token_usage_events` as Khala-served usage, but the caller-supplied provider
+  API key is request-local secret material only. It must never be stored in token
+  rows, traces, public receipts, counters, logs, or replay artifacts.
 - Leaderboard privacy flags are accounting policy. Opted-out events remain in
   global aggregate totals but must be excluded or anonymized by leaderboard
   projections.
@@ -1233,6 +1237,11 @@ This is the invariant ledger for `openagents`.
   gateway resale. Converting a consumer subscription login into resale remains
   blocked; API-inference gateway resale is allowed only through an explicit
   policy path such as this gate, with tests.
+- Caller-paid Khala BYOK is not OpenAgents resale and not subscription-capacity
+  resale: the caller supplies their own upstream API key for that request,
+  OpenAgents must not debit credits or bill upstream cost for it, and the request
+  must not authorize use of any consumer subscription account or pooled provider
+  quota.
 - The authorizing policy required by the previous clause is
   `workers/api/src/inference-resale-authorization.ts`
   (`authorizeInferenceMonetization`, tests in

@@ -18,6 +18,9 @@ import {
 import {
   type ChatCompletionsDeps,
   INFERENCE_CLIENT_HEADER,
+  INFERENCE_BYOK_ACK_HEADER,
+  INFERENCE_BYOK_PROVIDER_HEADER,
+  INFERENCE_BYOK_PROVIDER_KEY_HEADER,
   INFERENCE_DEMAND_KIND_HEADER,
   INFERENCE_DEMAND_SOURCE_HEADER,
   type InferenceAuth,
@@ -62,6 +65,7 @@ import {
   HYDRALISK_ADAPTER_ID,
   HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
   HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
+  OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
   VERTEX_GEMINI_ADAPTER_ID,
   selectAdapterPlan,
 } from './model-router'
@@ -879,6 +883,95 @@ describe('POST /v1/chat/completions', () => {
     expect(response.status).toBe(402)
     const body = (await response.json()) as { error: string }
     expect(body.error).toBe('insufficient_credits')
+  })
+
+  test('rejects malformed BYOK provider keys with a typed 400 and invalid ack', async () => {
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(helloBody, {
+          headers: {
+            [INFERENCE_BYOK_PROVIDER_HEADER]: 'openrouter',
+            [INFERENCE_BYOK_PROVIDER_KEY_HEADER]: 'bad key with spaces',
+          },
+        }),
+        baseDeps(),
+      ),
+    )
+
+    expect(response.status).toBe(400)
+    expect(response.headers.get(INFERENCE_BYOK_ACK_HEADER)).toBe('invalid')
+    const body = (await response.json()) as { code: string; error: string }
+    expect(body.error).toBe('invalid_byok_provider_key')
+    expect(body.code).toBe('invalid_provider_key')
+  })
+
+  test('valid OpenRouter BYOK bypasses OpenAgents billing and still records served tokens', async () => {
+    const metered: Array<MeteringContext> = []
+    const recorded: Array<{ adapterId: string; usage: InferenceUsage }> = []
+    const seenRequests: Array<InferenceRequest> = []
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      complete: request =>
+        Effect.sync(() => {
+          seenRequests.push(request)
+          return {
+            content: 'BYOK answer',
+            finishReason: 'stop',
+            servedModel: 'openrouter/free',
+            usage: {
+              completionTokens: 3,
+              promptTokens: 2,
+              totalTokens: 5,
+            },
+          }
+        }),
+      id: OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+      stream: () => Effect.sync(() => []),
+    })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(helloBody, {
+          headers: {
+            [INFERENCE_BYOK_PROVIDER_HEADER]: 'openrouter',
+            [INFERENCE_BYOK_PROVIDER_KEY_HEADER]: 'sk-or-test-caller-key',
+          },
+        }),
+        baseDeps({
+          laneArming: ALL_LANES_UNARMED,
+          meteringHook: context =>
+            Effect.sync(() => {
+              metered.push(context)
+              return { metered: true, receiptRef: 'receipt.should_not_write' }
+            }),
+          readAvailableMsat: emptyBalance,
+          recordTokensServed: input =>
+            Effect.sync(() => {
+              recorded.push({
+                adapterId: input.adapterId,
+                usage: input.usage,
+              })
+            }),
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get(INFERENCE_BYOK_ACK_HEADER)).toBe('routed')
+    expect(metered).toHaveLength(0)
+    expect(recorded).toEqual([
+      {
+        adapterId: OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+        usage: {
+          completionTokens: 3,
+          promptTokens: 2,
+          totalTokens: 5,
+        },
+      },
+    ])
+    expect(seenRequests[0]?.callerProvider).toBe('openrouter')
+    expect(seenRequests[0]?.callerProviderKey).toBeDefined()
   })
 
   test('funded balance never calls the free-allowance pre-flight', async () => {
