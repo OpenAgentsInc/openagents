@@ -26,9 +26,10 @@ describe("Forge UI Worker", () => {
     expect(html).toContain("--forge-energy")
   })
 
-  it("defines shell routes for work, changes, verification, queue, and refs", () => {
+  it("defines shell routes for dogfood, work, changes, verification, queue, and refs", () => {
     expect(forgeShellRoutes.map(route => route.path)).toEqual([
       "/",
+      "/dogfood",
       "/work",
       "/changes",
       "/verification",
@@ -37,6 +38,7 @@ describe("Forge UI Worker", () => {
     ])
     expect(forgeShellRoutes.map(route => route.apiPath)).toEqual([
       "/api/forge/overview",
+      "/api/forge/dogfood-lanes",
       "/api/forge/work-records",
       "/api/forge/changes",
       "/api/forge/verification-receipts",
@@ -77,6 +79,8 @@ describe("Forge UI Worker", () => {
     expect(body.preview).toEqual(forgeShellPreviewState)
     expect(body.preview.dataMode).toBe("stubbed-public-contract")
     expect(body.preview.apiBasePath).toBe("/api/forge")
+    expect(body.preview.dogfoodLanes).toHaveLength(1)
+    expect(body.preview.dogfoodLanes[0]?.issueRef).toBe("#6797")
   })
 
   it("renders a direct route shell without the old logged-in Forge page", () => {
@@ -85,6 +89,21 @@ describe("Forge UI Worker", () => {
     expect(html).toContain('data-forge-route="changes"')
     expect(html).toContain("Change Inspector")
     expect(html).not.toContain("loggedIn/page/forge")
+  })
+
+  it("renders the SU-7 dogfood lane with intake through mirror refs", () => {
+    const html = renderForgeShellHtml("dogfood")
+
+    expect(html).toContain('data-forge-route="dogfood"')
+    expect(html).toContain('data-forge-dogfood-lane="lane.forge.su7.openagents-codex-low-risk"')
+    expect(html).toContain("OpenAgentsInc/openagents")
+    expect(html).toContain("refs/forge/intake/openagents/codex-low-risk")
+    expect(html).toContain("receipt.forge.su7.su5-check-deploy")
+    expect(html).toContain("queue.forge.su7.nextActualPromotion")
+    expect(html).toContain("promotion.forge.su7.su4-blueprint-gated")
+    expect(html).toContain("mirror.github.openagents.main.su7")
+    expect(html).toContain("bun run --cwd apps/openagents.com check:deploy")
+    expect(html).toContain("GitHub stays downstream visibility only")
   })
 
   it("reports health without claiming any coordination authority", async () => {
