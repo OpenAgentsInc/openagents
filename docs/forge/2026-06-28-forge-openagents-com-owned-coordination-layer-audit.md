@@ -571,10 +571,12 @@ then full source-of-truth inversion at `forge.openagents.com`.
 > because its concrete sub-issues are done.
 
 > Stand-up issue map, 2026-06-28: #6759 closed the separate `apps/forge/`
-> deploy bootstrap and production `forge.openagents.com` landing page. The next
-> filed implementation slices are #6768 / SU-0 boundary lock, #6769 / SU-1B UI
-> shell beyond landing, #6770 / SU-2 `/api/forge/*` control-plane routes, and
-> #6771 / SU-3 smart-Git intake to archive/canonical refs/coordination rows.
+> deploy bootstrap and production `forge.openagents.com` landing page. #6769
+> now expands that app into the SU-1B shell with work, change, verification,
+> queue, and ref routes plus `/shell.json` public-safe contract metadata. The
+> next filed implementation slices are #6770 / SU-2 `/api/forge/*`
+> control-plane routes and #6771 / SU-3 smart-Git intake to archive/canonical
+> refs/coordination rows.
 > #6768 is anchored by `docs/forge/2026-06-28-forge-boundary-contract.md` and
 > the `ForgeControlPlaneScope`, `ForgeVerificationReceipt`, and
 > `ForgePromotionDecisionReceipt` schemas in `@openagentsinc/forge-protocol`.

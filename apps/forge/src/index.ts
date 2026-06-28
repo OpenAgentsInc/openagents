@@ -6,7 +6,7 @@ import {
   oaTokens,
 } from "@openagentsinc/ui/tokens"
 
-export const FORGE_UI_WORKER_VERSION = "forge-ui.2026-06-28.6759"
+export const FORGE_UI_WORKER_VERSION = "forge-ui.2026-06-28.6769"
 
 export const ForgeMount = Schema.Struct({
   product: Schema.Literal("forge"),
@@ -30,6 +30,240 @@ export const forgeLandingCopy = {
   title: "THE FORGE",
   tagline: "where agents git it on",
 } as const
+
+export const ForgeShellRouteId = Schema.Literals([
+  "overview",
+  "work",
+  "changes",
+  "verification",
+  "queue",
+  "refs",
+])
+export type ForgeShellRouteId = typeof ForgeShellRouteId.Type
+
+export const ForgeShellRoute = Schema.Struct({
+  id: ForgeShellRouteId,
+  path: Schema.String,
+  label: Schema.String,
+  summary: Schema.String,
+  apiPath: Schema.String,
+})
+export type ForgeShellRoute = typeof ForgeShellRoute.Type
+
+export const forgeShellRoutes: ReadonlyArray<ForgeShellRoute> = [
+  {
+    id: "overview",
+    path: "/",
+    label: "Overview",
+    summary: "system state, boundaries, and active slices",
+    apiPath: "/api/forge/overview",
+  },
+  {
+    id: "work",
+    path: "/work",
+    label: "Work Queue",
+    summary: "issue-backed work records and leases",
+    apiPath: "/api/forge/work-records",
+  },
+  {
+    id: "changes",
+    path: "/changes",
+    label: "Changes",
+    summary: "change records, patch heads, and blockers",
+    apiPath: "/api/forge/changes",
+  },
+  {
+    id: "verification",
+    path: "/verification",
+    label: "Verification",
+    summary: "runner receipts and promotion evidence",
+    apiPath: "/api/forge/verification-receipts",
+  },
+  {
+    id: "queue",
+    path: "/queue",
+    label: "Merge Queue",
+    summary: "virtual heads, gate state, and next promotion",
+    apiPath: "/api/forge/queue",
+  },
+  {
+    id: "refs",
+    path: "/refs",
+    label: "Git Refs",
+    summary: "canonical ref namespaces and mirror state",
+    apiPath: "/api/forge/refs",
+  },
+]
+
+export const ForgeShellWorkItem = Schema.Struct({
+  workRef: Schema.String,
+  issueRef: Schema.String,
+  title: Schema.String,
+  priority: Schema.String,
+  owner: Schema.String,
+  state: Schema.String,
+  lease: Schema.String,
+})
+export type ForgeShellWorkItem = typeof ForgeShellWorkItem.Type
+
+export const ForgeShellChangeItem = Schema.Struct({
+  changeRef: Schema.String,
+  workRef: Schema.String,
+  baseHead: Schema.String,
+  patchHead: Schema.String,
+  state: Schema.String,
+  blockers: Schema.Array(Schema.String),
+})
+export type ForgeShellChangeItem = typeof ForgeShellChangeItem.Type
+
+export const ForgeShellVerificationItem = Schema.Struct({
+  receiptRef: Schema.String,
+  changeRef: Schema.String,
+  verdict: Schema.String,
+  command: Schema.String,
+  executor: Schema.String,
+  logDigest: Schema.String,
+})
+export type ForgeShellVerificationItem = typeof ForgeShellVerificationItem.Type
+
+export const ForgeShellQueueItem = Schema.Struct({
+  position: Schema.String,
+  changeRef: Schema.String,
+  virtualHead: Schema.String,
+  actualHead: Schema.String,
+  gate: Schema.String,
+  state: Schema.String,
+})
+export type ForgeShellQueueItem = typeof ForgeShellQueueItem.Type
+
+export const ForgeShellRefItem = Schema.Struct({
+  ref: Schema.String,
+  target: Schema.String,
+  authority: Schema.String,
+  state: Schema.String,
+})
+export type ForgeShellRefItem = typeof ForgeShellRefItem.Type
+
+export const ForgeShellSnapshot = Schema.Struct({
+  dataMode: Schema.Literal("stubbed-public-contract"),
+  apiBasePath: Schema.Literal("/api/forge"),
+  generatedAt: Schema.String,
+  workQueue: Schema.Array(ForgeShellWorkItem),
+  changes: Schema.Array(ForgeShellChangeItem),
+  verification: Schema.Array(ForgeShellVerificationItem),
+  mergeQueue: Schema.Array(ForgeShellQueueItem),
+  refs: Schema.Array(ForgeShellRefItem),
+})
+export type ForgeShellSnapshot = typeof ForgeShellSnapshot.Type
+
+export const forgeShellPreviewState: ForgeShellSnapshot = {
+  dataMode: "stubbed-public-contract",
+  apiBasePath: "/api/forge",
+  generatedAt: "2026-06-28T00:00:00.000Z",
+  workQueue: [
+    {
+      workRef: "work.forge.6769",
+      issueRef: "#6769",
+      title: "Separate Forge UI shell",
+      priority: "P0",
+      owner: "forge-ui",
+      state: "shell-ready",
+      lease: "held by apps/forge",
+    },
+    {
+      workRef: "work.forge.6770",
+      issueRef: "#6770",
+      title: "Control-plane routes",
+      priority: "P0",
+      owner: "forge-api",
+      state: "next",
+      lease: "open",
+    },
+    {
+      workRef: "work.forge.6771",
+      issueRef: "#6771",
+      title: "Smart Git intake",
+      priority: "P0",
+      owner: "forge-intake",
+      state: "queued",
+      lease: "open",
+    },
+  ],
+  changes: [
+    {
+      changeRef: "change.forge.shell",
+      workRef: "work.forge.6769",
+      baseHead: "refs/heads/main@81182403c3",
+      patchHead: "refs/forge/changes/shell-preview",
+      state: "public-safe-preview",
+      blockers: [],
+    },
+    {
+      changeRef: "change.forge.control-plane",
+      workRef: "work.forge.6770",
+      baseHead: "refs/heads/main",
+      patchHead: "pending-/api/forge",
+      state: "waiting-for-route-registry",
+      blockers: ["control-plane-auth", "d1-writes"],
+    },
+  ],
+  verification: [
+    {
+      receiptRef: "receipt.forge.shell.local",
+      changeRef: "change.forge.shell",
+      verdict: "pending-live-run",
+      command: "bun run --cwd apps/forge test",
+      executor: "apps/forge Worker test harness",
+      logDigest: "local-after-implementation",
+    },
+    {
+      receiptRef: "receipt.contract.su0",
+      changeRef: "change.forge.boundary",
+      verdict: "passed",
+      command: "bun run --cwd packages/forge-protocol test",
+      executor: "forge-protocol schema tests",
+      logDigest: "sha256-public-summary",
+    },
+  ],
+  mergeQueue: [
+    {
+      position: "nextActualPromotion",
+      changeRef: "change.forge.shell",
+      virtualHead: "refs/forge/virtual/main+shell",
+      actualHead: "refs/heads/main",
+      gate: "ui-contract-ready",
+      state: "projected",
+    },
+    {
+      position: "blocked",
+      changeRef: "change.forge.control-plane",
+      virtualHead: "refs/forge/virtual/main+api",
+      actualHead: "refs/heads/main",
+      gate: "awaiting SU-2 implementation",
+      state: "not-promotable",
+    },
+  ],
+  refs: [
+    {
+      ref: "refs/heads/main",
+      target: "GitHub mirror until SU-3",
+      authority: "mirror projection",
+      state: "readable",
+    },
+    {
+      ref: "refs/forge/changes/*",
+      target: "canonical change heads",
+      authority: "Forge control plane",
+      state: "contracted",
+    },
+    {
+      ref: "refs/forge/virtual/*",
+      target: "virtual merge queue heads",
+      authority: "Blueprint gates",
+      state: "contracted",
+    },
+  ],
+}
 
 const escapeHtml = (value: string): string =>
   value.replace(/[&<>"']/g, character => {
@@ -62,11 +296,21 @@ const sharedTokenCss = cssDeclarations({
   "--forge-border": oaTokens.color.componentBorderStrong,
   "--forge-text-bright": oaTokens.color.textBright,
   "--forge-text-muted": oaTokens.color.textMuted,
-  "--forge-radius": oaTokens.radius.xl,
+  "--forge-radius": "8px",
   "--forge-font-mono": oaTokens.font.mono,
+  "--forge-energy": "#5ea1ff",
+  "--forge-cyan": "#63e6ff",
+  "--forge-green": "#49f28d",
+  "--forge-warn": "#f5b73a",
+  "--forge-danger": "#ff6b6b",
+  "--forge-black": "#040507",
+  "--forge-panel": "#080d13",
+  "--forge-panel-strong": "#0d141d",
+  "--forge-line": "rgba(142, 171, 230, 0.22)",
+  "--forge-line-strong": "rgba(142, 171, 230, 0.38)",
 })
 
-export const forgeLandingStyles = `:root {
+export const forgeShellStyles = `:root {
 ${sharedTokenCss}
   color-scheme: dark;
 }
@@ -83,126 +327,692 @@ body {
 
 body {
   min-height: 100dvh;
-  background: var(--bg);
+  background: var(--forge-black);
   color: var(--text);
-  font-family: InterVariable, Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--forge-font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   -webkit-font-smoothing: antialiased;
   text-rendering: geometricPrecision;
 }
 
-.forge-page {
-  position: relative;
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.forge-shell {
   display: grid;
+  grid-template-columns: minmax(13rem, 16rem) minmax(0, 1fr);
   min-height: 100dvh;
-  place-items: center;
-  isolation: isolate;
-  overflow: hidden;
-  padding: 2rem;
-  background: #000;
+  background: var(--forge-black);
 }
 
-.forge-page::before,
-.forge-page::after {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  content: "";
-  pointer-events: none;
-}
-
-.forge-page::before {
-  background-image:
-    repeating-linear-gradient(90deg, rgba(245, 183, 58, 0.12) 0 1px, transparent 1px 48px),
-    repeating-linear-gradient(0deg, rgba(245, 183, 58, 0.08) 0 1px, transparent 1px 48px);
-  opacity: 0.86;
-}
-
-.forge-page::after {
-  border: 1px solid rgba(245, 183, 58, 0.24);
-  margin: 1rem;
-}
-
-.forge-hero {
+.forge-rail {
   display: grid;
-  width: min(100%, 56rem);
-  gap: 1rem;
+  align-content: start;
+  gap: 1.25rem;
+  min-height: 100dvh;
+  padding: 1rem;
+  border-right: 1px solid var(--forge-line);
+  background: #05080c;
 }
 
-.forge-kicker {
-  margin: 0;
-  color: var(--forge-accent-soft);
-  font-family: var(--forge-font-mono);
-  font-size: 1rem;
+.forge-brand {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.75rem 0.25rem 1rem;
+  border-bottom: 1px solid var(--forge-line);
 }
 
-.forge-title {
-  max-width: 10ch;
+.forge-host,
+.forge-mode,
+.forge-route-api,
+.forge-table-caption {
+  color: var(--forge-text-muted);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.forge-brand-title {
   margin: 0;
   color: var(--forge-text-bright);
-  font-size: 4rem;
-  font-weight: 600;
-  line-height: 1;
+  font-size: clamp(2rem, 6vw, 3.8rem);
+  font-weight: 650;
   letter-spacing: 0;
-  text-wrap: balance;
+  line-height: 0.96;
+  text-transform: uppercase;
 }
 
 .forge-tagline {
-  max-width: 28ch;
   margin: 0;
-  color: var(--text);
-  font-family: var(--forge-font-mono);
-  font-size: 1.5rem;
+  color: var(--forge-cyan);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.forge-nav {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.forge-nav-link {
+  display: grid;
+  gap: 0.24rem;
+  min-height: 3.4rem;
+  padding: 0.7rem 0.75rem;
+  border: 1px solid transparent;
+  border-radius: var(--forge-radius);
+  color: var(--forge-text-muted);
+}
+
+.forge-nav-link:hover,
+.forge-nav-link:focus-visible {
+  border-color: var(--forge-line-strong);
+  color: var(--forge-text-bright);
+  outline: 0;
+}
+
+.forge-nav-link[aria-current="page"] {
+  border-color: rgba(99, 230, 255, 0.56);
+  background: var(--forge-panel-strong);
+  color: var(--forge-text-bright);
+}
+
+.forge-nav-label {
+  font-size: 0.86rem;
+}
+
+.forge-nav-summary {
+  color: var(--forge-text-muted);
+  font-size: 0.68rem;
   line-height: 1.35;
-  text-wrap: pretty;
 }
 
-@media (min-width: 48rem) {
-  .forge-page {
-    padding: 4rem;
-  }
-
-  .forge-page::after {
-    margin: 1.5rem;
-  }
-
-  .forge-title {
-    font-size: 7rem;
-  }
-
-  .forge-tagline {
-    font-size: 1.75rem;
-  }
+.forge-main {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-width: 0;
 }
 
-@media (min-width: 80rem) {
-  .forge-title {
-    font-size: 9rem;
+.forge-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 3.75rem;
+  padding: 0.8rem 1.25rem;
+  border-bottom: 1px solid var(--forge-line);
+  background: #05080c;
+}
+
+.forge-topbar-left,
+.forge-topbar-right {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.forge-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.65rem;
+  max-width: 100%;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--forge-line);
+  border-radius: var(--forge-radius);
+  color: var(--forge-text-muted);
+  font-size: 0.72rem;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.forge-pill[data-tone="cyan"] {
+  border-color: rgba(99, 230, 255, 0.42);
+  color: var(--forge-cyan);
+}
+
+.forge-pill[data-tone="gold"] {
+  border-color: rgba(245, 183, 58, 0.42);
+  color: var(--forge-warn);
+}
+
+.forge-pill[data-tone="green"] {
+  border-color: rgba(73, 242, 141, 0.42);
+  color: var(--forge-green);
+}
+
+.forge-stage {
+  display: grid;
+  align-content: start;
+  gap: 1.25rem;
+  padding: 1.25rem;
+}
+
+.forge-route-head {
+  display: grid;
+  gap: 0.55rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--forge-line);
+}
+
+.forge-route-title {
+  margin: 0;
+  color: var(--forge-text-bright);
+  font-size: clamp(1.5rem, 4vw, 2.65rem);
+  font-weight: 620;
+  letter-spacing: 0;
+  line-height: 1.05;
+}
+
+.forge-route-copy {
+  max-width: 68rem;
+  margin: 0;
+  color: var(--forge-text-muted);
+  font-size: 0.88rem;
+  line-height: 1.6;
+}
+
+.forge-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+}
+
+.forge-panel {
+  display: grid;
+  gap: 0.85rem;
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--forge-line);
+  border-radius: var(--forge-radius);
+  background: var(--forge-panel);
+}
+
+.forge-panel[data-span="wide"] {
+  grid-column: 1 / -1;
+}
+
+.forge-panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.forge-panel-title {
+  margin: 0;
+  color: var(--forge-text-bright);
+  font-size: 0.98rem;
+  font-weight: 640;
+  letter-spacing: 0;
+}
+
+.forge-metric {
+  display: grid;
+  gap: 0.4rem;
+  min-height: 7.25rem;
+  padding: 1rem;
+  border: 1px solid var(--forge-line);
+  border-radius: var(--forge-radius);
+  background: var(--forge-panel-strong);
+}
+
+.forge-metric-value {
+  color: var(--forge-text-bright);
+  font-size: 1.9rem;
+  font-weight: 650;
+  line-height: 1;
+}
+
+.forge-metric-label {
+  color: var(--forge-text-muted);
+  font-size: 0.76rem;
+  line-height: 1.4;
+}
+
+.forge-table-wrap {
+  overflow-x: auto;
+}
+
+.forge-table {
+  width: 100%;
+  min-width: 48rem;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.forge-table th,
+.forge-table td {
+  padding: 0.7rem 0.65rem;
+  border-bottom: 1px solid var(--forge-line);
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.forge-table th {
+  color: var(--forge-text-muted);
+  font-size: 0.7rem;
+  font-weight: 620;
+  text-transform: uppercase;
+}
+
+.forge-table td {
+  color: var(--forge-text-bright);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.forge-muted {
+  color: var(--forge-text-muted);
+}
+
+.forge-code {
+  color: var(--forge-cyan);
+}
+
+.forge-state {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.5rem;
+  padding: 0.22rem 0.42rem;
+  border: 1px solid var(--forge-line);
+  border-radius: var(--forge-radius);
+  color: var(--forge-warn);
+  font-size: 0.7rem;
+  line-height: 1.15;
+}
+
+.forge-list {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.forge-list-item {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.75rem;
+  border: 1px solid var(--forge-line);
+  border-radius: var(--forge-radius);
+  background: #060a0f;
+}
+
+.forge-list-kicker {
+  color: var(--forge-cyan);
+  font-size: 0.72rem;
+}
+
+.forge-list-title {
+  color: var(--forge-text-bright);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 52rem) {
+  .forge-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .forge-rail {
+    min-height: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--forge-line);
+  }
+
+  .forge-nav {
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(9.75rem, 1fr);
+    overflow-x: auto;
+    padding-bottom: 0.2rem;
+  }
+
+  .forge-topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .forge-stage {
+    padding: 1rem;
   }
 }`
 
-export const forgeLandingBody = (): string => `<main data-ui-family="forge/landing" data-forge-app="landing" data-shared-ui-package="${escapeHtml(defaultForgeMount.uiPackage)}" class="forge-page">
-  <section class="forge-hero">
-    <p class="forge-kicker">${escapeHtml(defaultForgeMount.host)}</p>
-    <h1 class="forge-title">${escapeHtml(forgeLandingCopy.title)}</h1>
-    <p class="forge-tagline">${escapeHtml(forgeLandingCopy.tagline)}</p>
+export const forgeLandingStyles = forgeShellStyles
+
+const routeById = (routeId: ForgeShellRouteId): ForgeShellRoute =>
+  forgeShellRoutes.find(route => route.id === routeId) ?? forgeShellRoutes[0]!
+
+export const resolveForgeShellRoute = (pathname: string): ForgeShellRoute | null => {
+  const normalized =
+    pathname.length > 1 && pathname.endsWith("/")
+      ? pathname.slice(0, -1)
+      : pathname
+
+  return forgeShellRoutes.find(route => route.path === normalized) ?? null
+}
+
+const renderStatus = (value: string): string =>
+  `<span class="forge-state">${escapeHtml(value)}</span>`
+
+const renderNav = (activeRoute: ForgeShellRoute): string =>
+  forgeShellRoutes
+    .map(route => {
+      const current = route.id === activeRoute.id ? ' aria-current="page"' : ""
+
+      return `<a class="forge-nav-link" href="${escapeHtml(route.path)}"${current}>
+        <span class="forge-nav-label">${escapeHtml(route.label)}</span>
+        <span class="forge-nav-summary">${escapeHtml(route.summary)}</span>
+      </a>`
+    })
+    .join("\n")
+
+const renderRouteHeader = (route: ForgeShellRoute): string => `<header class="forge-route-head">
+  <p class="forge-route-api">${escapeHtml(route.apiPath)}</p>
+  <h2 class="forge-route-title">${escapeHtml(route.label)}</h2>
+  <p class="forge-route-copy">${escapeHtml(route.summary)}</p>
+</header>`
+
+const renderOverview = (): string => `<section class="forge-grid">
+  <article class="forge-metric">
+    <span class="forge-metric-value">${forgeShellPreviewState.workQueue.length}</span>
+    <span class="forge-metric-label">issue-backed work records in the public-safe shell contract</span>
+  </article>
+  <article class="forge-metric">
+    <span class="forge-metric-value">${forgeShellPreviewState.changes.length}</span>
+    <span class="forge-metric-label">change records shaped for base/head and blocker inspection</span>
+  </article>
+  <article class="forge-metric">
+    <span class="forge-metric-value">${forgeShellPreviewState.mergeQueue.length}</span>
+    <span class="forge-metric-label">virtual merge queue lanes mapped to promotion gates</span>
+  </article>
+  <article class="forge-metric">
+    <span class="forge-metric-value">${forgeShellPreviewState.refs.length}</span>
+    <span class="forge-metric-label">ref namespaces split between Forge authority and GitHub mirror projection</span>
+  </article>
+  <section class="forge-panel" data-span="wide">
+    <div class="forge-panel-head">
+      <h3 class="forge-panel-title">Contract Routes</h3>
+      <span class="forge-table-caption">${escapeHtml(forgeShellPreviewState.apiBasePath)}</span>
+    </div>
+    <div class="forge-table-wrap">
+      <table class="forge-table">
+        <thead>
+          <tr>
+            <th>Surface</th>
+            <th>UI Route</th>
+            <th>API Route</th>
+            <th>Shape</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${forgeShellRoutes
+            .map(
+              route => `<tr>
+                <td>${escapeHtml(route.label)}</td>
+                <td class="forge-code">${escapeHtml(route.path)}</td>
+                <td class="forge-code">${escapeHtml(route.apiPath)}</td>
+                <td class="forge-muted">${escapeHtml(route.summary)}</td>
+              </tr>`,
+            )
+            .join("\n")}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</section>`
+
+const renderWorkQueue = (): string => `<section class="forge-panel" data-span="wide">
+  <div class="forge-panel-head">
+    <h3 class="forge-panel-title">Work Queue</h3>
+    <span class="forge-table-caption">${forgeShellPreviewState.workQueue.length} records</span>
+  </div>
+  <div class="forge-table-wrap">
+    <table class="forge-table">
+      <thead>
+        <tr>
+          <th>Work</th>
+          <th>Issue</th>
+          <th>Title</th>
+          <th>Priority</th>
+          <th>Owner</th>
+          <th>State</th>
+          <th>Lease</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${forgeShellPreviewState.workQueue
+          .map(
+            item => `<tr>
+              <td class="forge-code">${escapeHtml(item.workRef)}</td>
+              <td>${escapeHtml(item.issueRef)}</td>
+              <td>${escapeHtml(item.title)}</td>
+              <td>${escapeHtml(item.priority)}</td>
+              <td>${escapeHtml(item.owner)}</td>
+              <td>${renderStatus(item.state)}</td>
+              <td class="forge-muted">${escapeHtml(item.lease)}</td>
+            </tr>`,
+          )
+          .join("\n")}
+      </tbody>
+    </table>
+  </div>
+</section>`
+
+const renderChanges = (): string => `<section class="forge-panel" data-span="wide">
+  <div class="forge-panel-head">
+    <h3 class="forge-panel-title">Change Inspector</h3>
+    <span class="forge-table-caption">${forgeShellPreviewState.changes.length} changes</span>
+  </div>
+  <div class="forge-table-wrap">
+    <table class="forge-table">
+      <thead>
+        <tr>
+          <th>Change</th>
+          <th>Work</th>
+          <th>Base Head</th>
+          <th>Patch Head</th>
+          <th>State</th>
+          <th>Blockers</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${forgeShellPreviewState.changes
+          .map(
+            item => `<tr>
+              <td class="forge-code">${escapeHtml(item.changeRef)}</td>
+              <td>${escapeHtml(item.workRef)}</td>
+              <td class="forge-muted">${escapeHtml(item.baseHead)}</td>
+              <td class="forge-code">${escapeHtml(item.patchHead)}</td>
+              <td>${renderStatus(item.state)}</td>
+              <td class="forge-muted">${escapeHtml(item.blockers.length === 0 ? "none" : item.blockers.join(", "))}</td>
+            </tr>`,
+          )
+          .join("\n")}
+      </tbody>
+    </table>
+  </div>
+</section>`
+
+const renderVerification = (): string => `<section class="forge-panel" data-span="wide">
+  <div class="forge-panel-head">
+    <h3 class="forge-panel-title">Verification Receipts</h3>
+    <span class="forge-table-caption">${forgeShellPreviewState.verification.length} receipts</span>
+  </div>
+  <div class="forge-table-wrap">
+    <table class="forge-table">
+      <thead>
+        <tr>
+          <th>Receipt</th>
+          <th>Change</th>
+          <th>Verdict</th>
+          <th>Command</th>
+          <th>Executor</th>
+          <th>Log Digest</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${forgeShellPreviewState.verification
+          .map(
+            item => `<tr>
+              <td class="forge-code">${escapeHtml(item.receiptRef)}</td>
+              <td>${escapeHtml(item.changeRef)}</td>
+              <td>${renderStatus(item.verdict)}</td>
+              <td class="forge-code">${escapeHtml(item.command)}</td>
+              <td>${escapeHtml(item.executor)}</td>
+              <td class="forge-muted">${escapeHtml(item.logDigest)}</td>
+            </tr>`,
+          )
+          .join("\n")}
+      </tbody>
+    </table>
+  </div>
+</section>`
+
+const renderQueue = (): string => `<section class="forge-panel" data-span="wide">
+  <div class="forge-panel-head">
+    <h3 class="forge-panel-title">Virtual Merge Queue</h3>
+    <span class="forge-table-caption">${forgeShellPreviewState.mergeQueue.length} lanes</span>
+  </div>
+  <div class="forge-table-wrap">
+    <table class="forge-table">
+      <thead>
+        <tr>
+          <th>Position</th>
+          <th>Change</th>
+          <th>Virtual Head</th>
+          <th>Actual Head</th>
+          <th>Gate</th>
+          <th>State</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${forgeShellPreviewState.mergeQueue
+          .map(
+            item => `<tr>
+              <td>${escapeHtml(item.position)}</td>
+              <td class="forge-code">${escapeHtml(item.changeRef)}</td>
+              <td class="forge-code">${escapeHtml(item.virtualHead)}</td>
+              <td>${escapeHtml(item.actualHead)}</td>
+              <td class="forge-muted">${escapeHtml(item.gate)}</td>
+              <td>${renderStatus(item.state)}</td>
+            </tr>`,
+          )
+          .join("\n")}
+      </tbody>
+    </table>
+  </div>
+</section>`
+
+const renderRefs = (): string => `<section class="forge-panel" data-span="wide">
+  <div class="forge-panel-head">
+    <h3 class="forge-panel-title">Canonical Refs</h3>
+    <span class="forge-table-caption">${forgeShellPreviewState.refs.length} namespaces</span>
+  </div>
+  <div class="forge-table-wrap">
+    <table class="forge-table">
+      <thead>
+        <tr>
+          <th>Ref</th>
+          <th>Target</th>
+          <th>Authority</th>
+          <th>State</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${forgeShellPreviewState.refs
+          .map(
+            item => `<tr>
+              <td class="forge-code">${escapeHtml(item.ref)}</td>
+              <td>${escapeHtml(item.target)}</td>
+              <td class="forge-muted">${escapeHtml(item.authority)}</td>
+              <td>${renderStatus(item.state)}</td>
+            </tr>`,
+          )
+          .join("\n")}
+      </tbody>
+    </table>
+  </div>
+</section>`
+
+const renderRouteContent = (routeId: ForgeShellRouteId): string => {
+  switch (routeId) {
+    case "work":
+      return renderWorkQueue()
+    case "changes":
+      return renderChanges()
+    case "verification":
+      return renderVerification()
+    case "queue":
+      return renderQueue()
+    case "refs":
+      return renderRefs()
+    case "overview":
+      return renderOverview()
+  }
+}
+
+export const forgeShellBody = (routeId: ForgeShellRouteId = "overview"): string => {
+  const activeRoute = routeById(routeId)
+
+  return `<main data-ui-family="forge/shell" data-forge-app="shell" data-forge-route="${escapeHtml(activeRoute.id)}" data-forge-data-mode="${escapeHtml(forgeShellPreviewState.dataMode)}" data-shared-ui-package="${escapeHtml(defaultForgeMount.uiPackage)}" class="forge-shell">
+  <aside class="forge-rail" aria-label="Forge navigation">
+    <section class="forge-brand">
+      <p class="forge-host">${escapeHtml(defaultForgeMount.host)}</p>
+      <h1 class="forge-brand-title">${escapeHtml(forgeLandingCopy.title)}</h1>
+      <p class="forge-tagline">${escapeHtml(forgeLandingCopy.tagline)}</p>
+    </section>
+    <nav class="forge-nav">
+${renderNav(activeRoute)}
+    </nav>
+  </aside>
+  <section class="forge-main">
+    <div class="forge-topbar">
+      <div class="forge-topbar-left">
+        <span class="forge-pill" data-tone="cyan">${escapeHtml(activeRoute.label)}</span>
+        <span class="forge-pill">${escapeHtml(defaultForgeMount.runtime)}</span>
+      </div>
+      <div class="forge-topbar-right">
+        <span class="forge-pill" data-tone="gold">${escapeHtml(FORGE_UI_WORKER_VERSION)}</span>
+        <span class="forge-pill" data-tone="green">${escapeHtml(forgeShellPreviewState.dataMode)}</span>
+      </div>
+    </div>
+    <section class="forge-stage">
+      ${renderRouteHeader(activeRoute)}
+      ${renderRouteContent(activeRoute.id)}
+    </section>
   </section>
 </main>`
+}
 
-export const renderForgeLandingHtml = (): string => `<!doctype html>
+export const forgeLandingBody = forgeShellBody
+
+export const renderForgeShellHtml = (
+  routeId: ForgeShellRouteId = "overview",
+): string => {
+  const route = routeById(routeId)
+
+  return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${forgeLandingCopy.title}</title>
-  <meta name="description" content="${forgeLandingCopy.tagline}">
+  <title>${escapeHtml(route.label)} / ${escapeHtml(forgeLandingCopy.title)}</title>
+  <meta name="description" content="${escapeHtml(forgeLandingCopy.tagline)}">
   <style>
-${forgeLandingStyles}
+${forgeShellStyles}
   </style>
 </head>
 <body>
-${forgeLandingBody()}
+${forgeShellBody(route.id)}
 </body>
 </html>`
+}
+
+export const renderForgeLandingHtml = (): string => renderForgeShellHtml("overview")
 
 const htmlResponse = (body: string): Response =>
   new Response(body, {
@@ -219,6 +1029,14 @@ const jsonResponse = (body: unknown): Response =>
     },
   })
 
+export const forgeShellContract = () => ({
+  service: "openagents-forge",
+  version: FORGE_UI_WORKER_VERSION,
+  mount: defaultForgeMount,
+  routes: forgeShellRoutes,
+  preview: forgeShellPreviewState,
+})
+
 export const handleForgeRequest = (
   request: Request,
 ): Effect.Effect<Response> =>
@@ -226,9 +1044,14 @@ export const handleForgeRequest = (
     const url = new URL(request.url)
     const isHead = request.method === "HEAD"
     const isGet = request.method === "GET" || isHead
+    const route = resolveForgeShellRoute(url.pathname)
 
-    if (isGet && url.pathname === "/") {
-      return htmlResponse(isHead ? "" : renderForgeLandingHtml())
+    if (isGet && route !== null) {
+      return htmlResponse(isHead ? "" : renderForgeShellHtml(route.id))
+    }
+
+    if (isGet && url.pathname === "/shell.json") {
+      return jsonResponse(forgeShellContract())
     }
 
     if (isGet && url.pathname === "/health") {
@@ -237,6 +1060,11 @@ export const handleForgeRequest = (
         service: "openagents-forge",
         version: FORGE_UI_WORKER_VERSION,
         mount: defaultForgeMount,
+        shellRoutes: forgeShellRoutes.map(({ id, path, apiPath }) => ({
+          id,
+          path,
+          apiPath,
+        })),
       })
     }
 
