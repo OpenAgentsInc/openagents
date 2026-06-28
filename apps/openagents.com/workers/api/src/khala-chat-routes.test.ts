@@ -9,7 +9,11 @@ import {
   type KhalaChatStreamClient,
   type KhalaChatStreamSource,
 } from './khala-chat-program'
-import type { KhalaChatPylonContext } from './khala-chat-pylon-context'
+import type {
+  KhalaChatAccountPylonContext,
+  KhalaChatPylonContext,
+  KhalaChatPylonContextEnvelope,
+} from './khala-chat-pylon-context'
 import { makeKhalaChatRoutes } from './khala-chat-routes'
 
 const run = (
@@ -139,6 +143,76 @@ const stubPylonContext = (): KhalaChatPylonContext => ({
     seen24h: 1,
     statsRegisteredTotal: 1,
     walletReadyNow: 1,
+  },
+})
+
+const stubPylonEnvelope = (): KhalaChatPylonContextEnvelope => ({
+  mode: 'anonymous_public',
+  publicContext: stubPylonContext(),
+})
+
+const firstStubPylon = () => {
+  const first = stubPylonContext().pylons[0]
+  if (first === undefined) {
+    throw new Error('missing stub Pylon')
+  }
+  return first
+}
+
+const stubAccountPylonContext = (): KhalaChatAccountPylonContext => ({
+  asOfIso: '2026-06-28T00:00:00.000Z',
+  caveatRefs: [
+    'caveat.account.pylon_chat_reads_authenticated_owner_links_only',
+  ],
+  linkedAgents: [
+    {
+      agentUserId: 'agent-owner-one',
+      displayName: 'Owner Codex Agent',
+      linkKind: 'credential_anchor',
+    },
+  ],
+  pylons: [
+    {
+      ...firstStubPylon(),
+      displayName: 'Owner Codex Pylon',
+      pylonRef: 'pylon.owner.codex',
+    },
+  ],
+  sourceRefs: [
+    'route:/api/khala/chat',
+    'route:/api/account/pylons',
+    'openagents.account.pylon_openauth_links',
+  ],
+  totals: {
+    assignmentReadyNow: 1,
+    linkedAgents: 1,
+    linkedPylons: 1,
+    onlineNow: 1,
+    walletReadyNow: 1,
+  },
+})
+
+const stubAuthenticatedPylonEnvelope = (): KhalaChatPylonContextEnvelope => ({
+  accountContext: stubAccountPylonContext(),
+  mode: 'authenticated_account',
+  publicContext: {
+    ...stubPylonContext(),
+    pylons: [
+      ...stubPylonContext().pylons,
+      {
+        ...firstStubPylon(),
+        displayName: 'Foreign Public Pylon',
+        pylonRef: 'pylon.foreign.public',
+      },
+    ],
+    totals: {
+      ...stubPylonContext().totals,
+      activeRegistrations: 2,
+      onlineNow: 2,
+      registryRowsRead: 2,
+      seen24h: 2,
+      statsRegisteredTotal: 2,
+    },
   },
 })
 
@@ -392,7 +466,7 @@ describe('khala chat route', () => {
   test('answers connected Pylon questions from public registry context without opening a provider stream', async () => {
     let openedProvider = false
     const routes = makeKhalaChatRoutes({
-      loadPylonContext: () => Effect.succeed(stubPylonContext()),
+      loadPylonContext: () => Effect.succeed(stubPylonEnvelope()),
       makeStreamClient: () => () => {
         openedProvider = true
         return Effect.fail(
@@ -489,7 +563,7 @@ describe('khala chat route', () => {
       | { messages: ReadonlyArray<{ role: string; content: string }> }
       | undefined
     const routes = makeKhalaChatRoutes({
-      loadPylonContext: () => Effect.succeed(stubPylonContext()),
+      loadPylonContext: () => Effect.succeed(stubPylonEnvelope()),
       makeStreamClient: () =>
         capturingStream(['ok'], request => {
           captured = request
@@ -516,6 +590,102 @@ describe('khala chat route', () => {
       'OpenAgents Pylon registry as of 2026-06-28T00:00:00.000Z',
     )
     expect(system).toContain('pylon.studio.codex')
+  })
+
+  test('does not infer ownership for anonymous Pylon ownership questions', async () => {
+    let openedProvider = false
+    const routes = makeKhalaChatRoutes({
+      loadPylonContext: () => Effect.succeed(stubPylonEnvelope()),
+      makeStreamClient: () => () => {
+        openedProvider = true
+        return Effect.fail(
+          new OnboardingInferenceError({ reason: 'provider should not open' }),
+        )
+      },
+      rateLimit: allowAll,
+    })
+
+    const response = await run(
+      routes.routeKhalaChatRequest(
+        chatRequest({
+          messages: [{ role: 'user', content: 'are those pylons mine?' }],
+        }),
+        {},
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(openedProvider).toBe(false)
+    const text = await response.text()
+    expect(text).toContain('cannot verify Pylon ownership')
+    expect(text).toContain('/login?returnTo=/chat')
+    expect(text).not.toContain('Your linked Pylons')
+  })
+
+  test('answers authenticated ownership questions from account-owned Pylon context', async () => {
+    let openedProvider = false
+    const routes = makeKhalaChatRoutes({
+      loadPylonContext: () =>
+        Effect.succeed(stubAuthenticatedPylonEnvelope()),
+      makeStreamClient: () => () => {
+        openedProvider = true
+        return Effect.fail(
+          new OnboardingInferenceError({ reason: 'provider should not open' }),
+        )
+      },
+      rateLimit: allowAll,
+    })
+
+    const response = await run(
+      routes.routeKhalaChatRequest(
+        chatRequest({
+          messages: [{ role: 'user', content: 'which pylons are mine?' }],
+        }),
+        {},
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(openedProvider).toBe(false)
+    const text = await response.text()
+    expect(text).toContain('Authenticated OpenAgents account Pylon context')
+    expect(text).toContain('Your linked Pylons')
+    expect(text).toContain('pylon.owner.codex')
+    expect(text).not.toContain('pylon.foreign.public')
+    expect(text).not.toContain('oa_agent_')
+    expect(text).not.toContain('tokenPrefix')
+  })
+
+  test('passes authenticated Pylon context to generic inference without private credential leakage', async () => {
+    let captured:
+      | { messages: ReadonlyArray<{ role: string; content: string }> }
+      | undefined
+    const routes = makeKhalaChatRoutes({
+      loadPylonContext: () =>
+        Effect.succeed(stubAuthenticatedPylonEnvelope()),
+      makeStreamClient: () =>
+        capturingStream(['ok'], request => {
+          captured = request
+        }),
+      rateLimit: allowAll,
+    })
+
+    await run(
+      routes.routeKhalaChatRequest(
+        chatRequest({
+          messages: [{ role: 'user', content: 'summarize platform status' }],
+        }),
+        {},
+      ),
+    )
+
+    const system = captured?.messages[0]?.content ?? ''
+    expect(system).toContain('verified OpenAuth browser session')
+    expect(system).toContain('pylon.owner.codex')
+    expect(system).toContain('pylon.foreign.public')
+    expect(system).toContain('public registry projection')
+    expect(system).not.toContain('tokenPrefix')
+    expect(system).not.toContain('oa_agent_')
   })
 
   test('rejects a non-POST method', async () => {
