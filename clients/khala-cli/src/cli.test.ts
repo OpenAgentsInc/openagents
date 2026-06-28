@@ -50,6 +50,58 @@ describe("Khala CLI info diagnostics", () => {
     expect(stdout).not.toContain("token=")
   })
 
+  test("khala fleet status --live renders the operator dashboard with bearer auth", async () => {
+    const authHeaders: Array<string | null> = []
+    const paths: Array<string> = []
+    const server = Bun.serve({
+      port: 0,
+      fetch: async request => {
+        const url = new URL(request.url)
+        paths.push(url.pathname)
+        authHeaders.push(request.headers.get("authorization"))
+        return Response.json({
+          observedAt: "2026-06-27T12:00:00.000Z",
+          pace: { status: "behind", tokensToday: 9876 },
+          fleet: { status: "active", concurrency: 5 },
+          watchdog: { state: "healthy", activeLeases: 2 },
+          glm: { readiness: "ready", replicas: 3 },
+          brain: { health: "running", recentDecisions: ["delegated #6429"] },
+        })
+      },
+    })
+
+    const originalWrite = process.stdout.write
+    let stdout = ""
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      stdout += String(chunk)
+      return true
+    }) as typeof process.stdout.write
+    try {
+      const exitCode = await runKhalaCli([
+        "--base-url",
+        `http://127.0.0.1:${server.port}`,
+        "--token",
+        "oa_agent_owner_live_test",
+        "fleet",
+        "status",
+        "--live",
+      ], {})
+      expect(exitCode).toBe(0)
+    } finally {
+      process.stdout.write = originalWrite
+      server.stop(true)
+    }
+
+    expect(paths).toEqual(["/api/operator/fleet/status"])
+    expect(authHeaders).toEqual(["Bearer oa_agent_owner_live_test"])
+    expect(stdout).toContain("Khala fleet live")
+    expect(stdout).toContain("Pace behind")
+    expect(stdout).toContain("Fleet active")
+    expect(stdout).toContain("Watchdog healthy")
+    expect(stdout).toContain("GLM ready")
+    expect(stdout).toContain("Brain running")
+  })
+
   test("uses the stored login token for --api when no env or flag token is present", async () => {
     const dir = mkdtempSync(join(tmpdir(), "khala-api-token-test-"))
     const tokenPath = join(dir, "agent-token")

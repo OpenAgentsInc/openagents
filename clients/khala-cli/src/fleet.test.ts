@@ -9,10 +9,12 @@ import {
   codexConfigWithFileCredentialStore,
   connectFleetAccount,
   decodeCodexIdTokenEmail,
+  fetchFleetLiveStatus,
   listFleetAccounts,
   nextCodexAccountRef,
   parseCodexAccounts,
   pylonConfigPath,
+  renderFleetLiveDashboard,
   resolvePylonHome,
   upsertCodexAccount,
 } from "./fleet.js"
@@ -177,5 +179,46 @@ describe("connect + status (with injected device login)", () => {
       { accountRef: "codex", home, email: null, readiness: "credentials_missing", lastLinkedAt: null },
     ])
     void stat // keep import used across runtimes
+  })
+})
+
+describe("live operator dashboard", () => {
+  test("fetches the owner fleet snapshot and renders the five dashboard blocks", async () => {
+    const requests: Array<{ path: string; authorization: string | null }> = []
+    const status = await fetchFleetLiveStatus({
+      baseUrl: "https://openagents.test",
+      token: "oa_agent_owner_test",
+      fetch: async (request, init) => {
+        const url = new URL(request)
+        requests.push({
+          path: url.pathname,
+          authorization: new Headers(init.headers).get("authorization"),
+        })
+        return Response.json({
+          observedAt: "2026-06-27T12:00:00.000Z",
+          pace: { status: "behind", tokensToday: 1234, paceToFloor: "42%" },
+          fleet: { status: "busy", concurrency: 5, inFlightIssues: ["#6429"] },
+          watchdog: { state: "healthy", activeLeases: 2, alerts: [] },
+          glm: { readiness: "ready", replicas: 3 },
+          brain: { health: "running", goal: "burn down backlog", recentDecisions: ["ship CLI"] },
+        })
+      },
+    })
+
+    expect(requests).toEqual([{
+      path: "/api/operator/fleet/status",
+      authorization: "Bearer oa_agent_owner_test",
+    }])
+
+    const dashboard = renderFleetLiveDashboard(status, {
+      now: new Date("2026-06-27T12:00:05.000Z"),
+    })
+    expect(dashboard).toContain("Khala fleet live")
+    expect(dashboard).toContain("Pace behind")
+    expect(dashboard).toContain("Fleet busy")
+    expect(dashboard).toContain("Watchdog healthy")
+    expect(dashboard).toContain("GLM ready")
+    expect(dashboard).toContain("Brain running")
+    expect(dashboard).toContain("tokens today: 1234")
   })
 })

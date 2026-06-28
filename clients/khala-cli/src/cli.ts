@@ -14,7 +14,9 @@ import {
 import {
   CodexCliMissingError,
   connectFleetAccount,
+  fetchFleetLiveStatus,
   listFleetAccounts,
+  renderFleetLiveDashboard,
   type KhalaFleetConnectResult,
   type KhalaFleetStatus,
 } from "./fleet.js"
@@ -65,7 +67,7 @@ type ParsedCommand =
   | { readonly kind: "changelog" }
   | { readonly kind: "feedback"; readonly text: string | undefined }
   | { readonly kind: "fleetConnect"; readonly accountRef: string | undefined; readonly force: boolean }
-  | { readonly kind: "fleetStatus" }
+  | { readonly kind: "fleetStatus"; readonly live: boolean }
   | { readonly kind: "help" }
   | { readonly kind: "info" }
   | {
@@ -183,6 +185,10 @@ export async function runKhalaCli(argv: ReadonlyArray<string>, env: Record<strin
       }
     }
     if (args.command.kind === "fleetStatus") {
+      if (args.command.live) {
+        await runFleetLiveStatusCommand(args, env)
+        return 0
+      }
       const status = await listFleetAccounts({ env })
       process.stdout.write(args.json ? `${JSON.stringify(status)}\n` : `${formatFleetStatus(status)}\n`)
       return 0
@@ -354,6 +360,7 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
   let spawnWorkflow: KhalaSpawnWorkflow = "codex_agent_task"
   let fleetAccount: string | undefined
   let fleetForce = false
+  let fleetLive = false
   const positional: Array<string> = []
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -451,6 +458,8 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
       fleetAccount = arg.slice("--account=".length)
     } else if (arg === "--force") {
       fleetForce = true
+    } else if (arg === "--live") {
+      fleetLive = true
     } else if (arg.startsWith("-")) {
       throw new Error(`Unknown flag: ${arg}`)
     } else {
@@ -472,7 +481,7 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
   } else if (maybeCommand === "fleet") {
     const sub = positional[1]?.trim().toLowerCase()
     if (sub === "status" || sub === "list" || sub === "ls") {
-      command = { kind: "fleetStatus" }
+      command = { kind: "fleetStatus", live: fleetLive }
     } else if (sub === undefined || sub === "connect" || sub === "add" || sub === "link") {
       // `khala fleet`, `khala fleet connect`, `khala fleet add` all connect.
       // Optional positional ref: `khala fleet connect codex-2` (or --account).
@@ -1648,6 +1657,47 @@ function formatFleetStatus(status: KhalaFleetStatus): string {
   ].join("\n"))
 }
 
+async function runFleetLiveStatusCommand(args: ParsedArgs, env: Record<string, string | undefined>): Promise<void> {
+  const token = args.token?.trim() || await readStoredAgentToken(env)
+  if (!token) {
+    throw new Error("khala fleet status --live requires owner sign-in. Run `khala login` or pass --token.")
+  }
+  const pollMs = 5_000
+  const maxPolls = fleetLivePollLimit(env)
+  let poll = 0
+  while (poll < maxPolls) {
+    const status = await fetchFleetLiveStatus({
+      baseUrl: args.baseUrl,
+      token,
+    })
+    if (args.json) {
+      process.stdout.write(`${JSON.stringify(status.raw)}\n`)
+    } else {
+      if (poll > 0 && process.stdout.isTTY) process.stdout.write("\x1b[2J\x1b[H")
+      process.stdout.write(`${renderFleetLiveDashboard(status)}\n`)
+      if (process.stdout.isTTY && poll + 1 < maxPolls) {
+        process.stdout.write(`\n${terminalStyle.meta(`refreshing every ${pollMs / 1000}s; press Ctrl-C to stop`)}\n`)
+      }
+    }
+    poll += 1
+    if (poll >= maxPolls) break
+    await sleep(pollMs)
+  }
+}
+
+function fleetLivePollLimit(env: Record<string, string | undefined>): number {
+  const configured = env.KHALA_FLEET_LIVE_POLLS?.trim()
+  if (configured !== undefined && configured !== "") {
+    const parsed = Number.parseInt(configured, 10)
+    if (Number.isFinite(parsed) && parsed > 0) return parsed
+  }
+  return process.stdout.isTTY ? Number.POSITIVE_INFINITY : 1
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
 function formatCodexCredentialSource(source: Extract<KhalaCodexStatus, { readonly ready: true }>["credentialSource"]): string {
   if (source === "khala_codex_home") return "Khala Codex account"
   if (source === "codex_home_env") return "CODEX_HOME"
@@ -1852,6 +1902,7 @@ Usage:
   khala fleet connect
   khala fleet connect --account codex-2
   khala fleet status
+  khala fleet status --live
   khala auth codex
   khala codex status
   khala codex "read README.md"

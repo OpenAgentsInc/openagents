@@ -4,6 +4,7 @@ import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 
 import { spawnProcess } from "./proc.js"
+import { terminalStyle } from "./terminal.js"
 
 // `khala fleet` is the dead-simple onboarding surface for connecting your own
 // Codex accounts to Khala so a per-user Artanis can burn down a backlog across
@@ -47,6 +48,20 @@ export type KhalaFleetConnectResult = {
   readonly configPath: string
   readonly status: "connected" | "already_connected"
 }
+
+export type KhalaFleetLiveSection = {
+  readonly title: string
+  readonly status: string
+  readonly lines: ReadonlyArray<string>
+}
+
+export type KhalaFleetLiveStatus = {
+  readonly observedAt: string
+  readonly sections: ReadonlyArray<KhalaFleetLiveSection>
+  readonly raw: unknown
+}
+
+export type KhalaFleetLiveFetch = (input: URL, init: RequestInit) => Promise<Response>
 
 export type KhalaCodexDeviceLoginRunner = (input: {
   readonly env: Record<string, string | undefined>
@@ -359,4 +374,144 @@ export async function connectFleetAccount(
     configPath,
     status,
   }
+}
+
+export async function fetchFleetLiveStatus(options: {
+  readonly baseUrl: string
+  readonly token: string
+  readonly fetch?: KhalaFleetLiveFetch | undefined
+}): Promise<KhalaFleetLiveStatus> {
+  const token = options.token.trim()
+  if (token.length === 0) {
+    throw new Error("khala fleet status --live requires an owner token. Run `khala login` or pass --token.")
+  }
+  const response = await (options.fetch ?? fetch)(new URL("/api/operator/fleet/status", options.baseUrl), {
+    method: "GET",
+    headers: {
+      accept: "application/json",
+      authorization: `Bearer ${token}`,
+    },
+  })
+  if (!response.ok) {
+    const text = await response.text().catch(() => "")
+    const suffix = text.trim().length === 0 ? "" : `: ${text.trim().slice(0, 300)}`
+    throw new Error(`operator fleet status returned HTTP ${response.status}${suffix}`)
+  }
+  const payload = await response.json()
+  return normalizeFleetLiveStatus(payload)
+}
+
+export function normalizeFleetLiveStatus(payload: unknown): KhalaFleetLiveStatus {
+  const root = asRecord(payload) ?? {}
+  const observedAt = stringValue(root.observedAt) ??
+    stringValue(root.updatedAt) ??
+    stringValue(root.generatedAt) ??
+    new Date().toISOString()
+  return {
+    observedAt,
+    raw: payload,
+    sections: [
+      normalizeFleetLiveSection("Pace", root.pace ?? root.tokenPace ?? root.burnRate),
+      normalizeFleetLiveSection("Fleet", root.fleet ?? root.codexFleet ?? root.pylons),
+      normalizeFleetLiveSection("Watchdog", root.watchdog ?? root.stallWatchdog),
+      normalizeFleetLiveSection("GLM", root.glm ?? root.glmFleet ?? root.glmReadiness),
+      normalizeFleetLiveSection("Brain", root.brain ?? root.artanis ?? root.loop),
+    ],
+  }
+}
+
+export function renderFleetLiveDashboard(status: KhalaFleetLiveStatus, options: {
+  readonly now?: Date | undefined
+} = {}): string {
+  const now = options.now ?? new Date()
+  const header = [
+    terminalStyle.assistant("Khala fleet live"),
+    terminalStyle.meta(`observed ${formatObservedAt(status.observedAt, now)} | polling /api/operator/fleet/status`),
+  ].join(" ")
+  const blocks = status.sections.map(renderFleetLiveSection)
+  return [header, "", ...blocks].join("\n")
+}
+
+function normalizeFleetLiveSection(title: string, value: unknown): KhalaFleetLiveSection {
+  const record = asRecord(value)
+  if (value === undefined || value === null) {
+    return { title, status: "not reported", lines: ["No data in latest operator snapshot."] }
+  }
+  if (record === null) {
+    return { title, status: shortScalar(value), lines: [] }
+  }
+  const status = stringValue(record.status) ??
+    stringValue(record.state) ??
+    stringValue(record.health) ??
+    stringValue(record.readiness) ??
+    summarizeObject(record)
+  const detailKeys = Object.keys(record)
+    .filter(key => !["status", "state", "health", "readiness"].includes(key))
+    .slice(0, 8)
+  const lines = detailKeys.map(key => `${humanizeKey(key)}: ${shortValue(record[key])}`)
+  return { title, status, lines: lines.length === 0 ? ["No detail fields reported."] : lines }
+}
+
+function renderFleetLiveSection(section: KhalaFleetLiveSection): string {
+  const title = terminalStyle.heading(`${section.title}`)
+  const status = terminalStyle.strong(section.status)
+  const lines = section.lines.length === 0
+    ? []
+    : section.lines.map(line => `  ${terminalStyle.meta(line)}`)
+  return [`${title} ${status}`, ...lines].join("\n")
+}
+
+function formatObservedAt(value: string, now: Date): string {
+  const parsed = Date.parse(value)
+  if (!Number.isFinite(parsed)) return value
+  const ageSeconds = Math.max(0, Math.round((now.getTime() - parsed) / 1000))
+  if (ageSeconds < 60) return `${ageSeconds}s ago`
+  if (ageSeconds < 3600) return `${Math.round(ageSeconds / 60)}m ago`
+  return new Date(parsed).toISOString()
+}
+
+function humanizeKey(key: string): string {
+  return key
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .toLowerCase()
+}
+
+function summarizeObject(record: ConfigRecord): string {
+  const ok = record.ok
+  if (typeof ok === "boolean") return ok ? "ok" : "attention"
+  return "reported"
+}
+
+function shortValue(value: unknown): string {
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "none"
+    const preview = value.slice(0, 3).map(shortValue).join(", ")
+    return value.length > 3 ? `${preview}, +${value.length - 3} more` : preview
+  }
+  const record = asRecord(value)
+  if (record !== null) return summarizeRecordFields(record)
+  return shortScalar(value)
+}
+
+function summarizeRecordFields(record: ConfigRecord): string {
+  const preferred = ["summary", "label", "ref", "state", "status", "health", "ready", "busy", "queued", "available"]
+  const parts: Array<string> = []
+  for (const key of preferred) {
+    if (record[key] !== undefined) parts.push(`${humanizeKey(key)}=${shortScalar(record[key])}`)
+  }
+  if (parts.length > 0) return parts.slice(0, 4).join(" ")
+  const entries = Object.entries(record).slice(0, 3)
+  return entries.map(([key, value]) => `${humanizeKey(key)}=${shortScalar(value)}`).join(" ")
+}
+
+function shortScalar(value: unknown): string {
+  if (value === null || value === undefined) return "not reported"
+  if (typeof value === "string") return value.length > 80 ? `${value.slice(0, 77)}...` : value
+  if (typeof value === "number" || typeof value === "boolean") return String(value)
+  return JSON.stringify(value).slice(0, 120)
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined
 }

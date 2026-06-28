@@ -26,6 +26,7 @@ khala logout
 khala fleet connect           # connect your own Codex account (paste-free device login)
 khala fleet connect --account codex-2   # add another distinct account for more throughput
 khala fleet status            # list your connected Codex fleet + readiness
+khala fleet status --live     # operator dashboard: pace, fleet, watchdog, GLM, brain
 khala auth codex
 khala codex "read README.md"
 khala spawn --count 5 --objective "audit this workspace" --strategy local
@@ -150,6 +151,9 @@ no long-string pasting:
   added throughput.
 - `khala fleet status` (alias `khala fleet list`) prints a table of connected
   accounts with readiness and email.
+- `khala fleet status --live` polls the owner operator status endpoint and
+  renders the five-block terminal dashboard for pace, fleet, watchdog, GLM, and
+  Artanis brain health.
 
 Each account uses an isolated home under `<pylon home>/accounts/codex/<ref>`; the
 flow never touches the default `~/.codex` home, credentials stay on your machine,
