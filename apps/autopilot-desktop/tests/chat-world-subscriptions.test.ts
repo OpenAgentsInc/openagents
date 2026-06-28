@@ -273,22 +273,44 @@ describe("subscribePaymentParticles (flag-gated, evidence-bound)", () => {
               realBitcoinMoved: true,
               sourceRefs: ["receipt.ok"],
             },
+            {
+              eventRef: "settlement-ok",
+              kind: "settlement_recorded",
+              actorRef: "a",
+              targetRef: "b",
+              amountSats: 8,
+              realBitcoinMoved: true,
+              sourceRefs: ["receipt.settlement.ok"],
+            },
             // dropped: no sourceRef
             {
               eventRef: "bad",
               kind: "real_bitcoin_moved",
               actorRef: "a",
               targetRef: "b",
+              realBitcoinMoved: true,
               sourceRefs: [],
+            },
+            // dropped: settlement record without real bitcoin movement
+            {
+              eventRef: "simulated-settlement",
+              kind: "settlement_recorded",
+              actorRef: "a",
+              targetRef: "b",
+              realBitcoinMoved: false,
+              sourceRefs: ["receipt.simulated"],
             },
           ],
         })) as unknown as typeof fetch,
     })
     await new Promise((r) => setTimeout(r, 5))
     stop()
-    expect(particles).toHaveLength(1)
+    expect(particles).toHaveLength(2)
     expect(particles[0]!.id).toBe("ok")
     expect(particles[0]!.sourceRefs).toContain("receipt.ok")
+    expect(particles[1]!.id).toBe("settlement-ok")
+    expect(particles[1]!.kind).toBe("settlement_recorded")
+    expect(particles[1]!.sourceRefs).toContain("receipt.settlement.ok")
   })
 })
 

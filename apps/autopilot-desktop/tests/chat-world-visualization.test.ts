@@ -21,7 +21,6 @@ import type {
 } from "../src/shared/chat-world-scene"
 import type { ChatWorldMultiplayerProjection } from "../src/shared/chat-world-multiplayer"
 import {
-  PAYMENT_PARTICLE_DIM,
   PAYMENT_PARTICLE_GOLD,
   pylonGrowthTier,
 } from "../src/shared/chat-world-scene"
@@ -115,6 +114,7 @@ describe("liveChatWorldNetworkScene", () => {
 
 const particle = (overrides: Partial<PaymentParticle> = {}): PaymentParticle => ({
   id: "evt-1",
+  kind: "real_bitcoin_moved",
   fromRef: "pylon:alpha",
   toRef: "pylon:bravo",
   amountSats: 21_000,
@@ -380,11 +380,14 @@ describe("chatWorldPaymentLayer (evidence-bound motion)", () => {
     expect(toEntity.position?.[2]).not.toBe(0)
   })
 
-  test("credited (non-bitcoin) particles tag settlement_recorded", () => {
+  test("settlement-record particles keep their evidence motion kind", () => {
     const layer = chatWorldPaymentLayer([
-      particle({ realBitcoinMoved: false, color: PAYMENT_PARTICLE_DIM }),
+      particle({ kind: "settlement_recorded" }),
     ])
     expect(layer.beams[0]!.motionKind).toBe("settlement_recorded")
+    expect(
+      layer.entities.find(entity => entity.id === "pay:evt-1:to")?.iconRecipe?.kind,
+    ).toBe("zap")
   })
 
   test("refuses particles with no sourceRef (never fakes a receipt)", () => {
@@ -539,12 +542,12 @@ describe("shared Verse procedural icons", () => {
     expect(station.iconRecipe?.fallback).toBe(false)
   })
 
-  test("credited payment endpoints use settlement taxonomy", () => {
+  test("settlement-record payment endpoints use gold zap taxonomy", () => {
     const layer = chatWorldPaymentLayer([
-      particle({ realBitcoinMoved: false, color: PAYMENT_PARTICLE_DIM }),
+      particle({ kind: "settlement_recorded" }),
     ])
     const target = layer.entities.find(entity => entity.id === "pay:evt-1:to")!
-    expect(target.iconRecipe?.kind).toBe("settlement")
+    expect(target.iconRecipe?.kind).toBe("zap")
   })
 })
 

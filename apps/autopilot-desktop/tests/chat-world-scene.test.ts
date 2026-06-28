@@ -8,7 +8,6 @@ import {
   LIVE_PYLON_STATE_COLOR,
   livePylonState,
   particleSize,
-  PAYMENT_PARTICLE_DIM,
   PAYMENT_PARTICLE_GOLD,
   PAYMENT_PARTICLE_WINDOW_MS,
   paymentParticleTsMs,
@@ -233,6 +232,7 @@ describe("activityEventToParticle (evidence-bound §5)", () => {
     const p = activityEventToParticle(paymentEvent())!
     expect(p).not.toBeNull()
     expect(p.id).toBe("evt-1")
+    expect(p.kind).toBe("real_bitcoin_moved")
     expect(p.fromRef).toBe("pylon:payer")
     expect(p.toRef).toBe("pylon:payee")
     expect(p.realBitcoinMoved).toBe(true)
@@ -241,12 +241,26 @@ describe("activityEventToParticle (evidence-bound §5)", () => {
     expect(p.sourceRefs).toContain(receiptRef)
   })
 
-  test("credited / non-bitcoin flow renders dim", () => {
-    const p = activityEventToParticle(
-      paymentEvent({ kind: "settlement_recorded", realBitcoinMoved: false }),
-    )!
-    expect(p.realBitcoinMoved).toBe(false)
-    expect(p.color).toBe(PAYMENT_PARTICLE_DIM)
+  test("settlement records with real bitcoin → gold particle carrying sourceRefs", () => {
+    const p = activityEventToParticle(paymentEvent({ kind: "settlement_recorded" }))!
+    expect(p).not.toBeNull()
+    expect(p.kind).toBe("settlement_recorded")
+    expect(p.realBitcoinMoved).toBe(true)
+    expect(p.color).toBe(PAYMENT_PARTICLE_GOLD)
+    expect(p.sourceRefs).toContain(receiptRef)
+  })
+
+  test("refuses non-real settlement records", () => {
+    expect(
+      activityEventToParticle(
+        paymentEvent({ kind: "settlement_recorded", realBitcoinMoved: false }),
+      ),
+    ).toBeNull()
+    expect(
+      activityEventToParticle(
+        paymentEvent({ kind: "settlement_recorded", realBitcoinMoved: undefined }),
+      ),
+    ).toBeNull()
   })
 
   test("refuses non-payment kinds", () => {
@@ -278,6 +292,7 @@ describe("activityEventToParticle (evidence-bound §5)", () => {
 
 const particleAt = (id: string, ts: string | null): PaymentParticle => ({
   id,
+  kind: "real_bitcoin_moved",
   fromRef: "pylon:payer",
   toRef: "pylon:payee",
   amountSats: 1_000,
