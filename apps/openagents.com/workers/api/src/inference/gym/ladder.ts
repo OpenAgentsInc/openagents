@@ -9,6 +9,7 @@
 //   Rung 1 — Big Pickle (OpenCode's default free model): the baseline.
 //   Rung 2 — other free/open models: the field users reach for when not paying.
 //   Rung 3 — paid frontier (Claude / GPT / Gemini class): the upper bound.
+//   Rung 4 — MirrorCode frontier-coding: sustained software reimplementation.
 //
 // This module owns ONLY the PUBLISHING layer on top of the already-shipped
 // benchmark harness (matrix, runner, report) and the flat
@@ -41,8 +42,13 @@ import {
 export const GymLadderLeaderboardSchemaVersion =
   'openagents.gym.ladder_leaderboard.v1'
 
-// The three rungs of the ladder, in deliberate climbing order.
-export const GymLadderRungId = S.Literals(['rung1', 'rung2', 'rung3'])
+// The rungs of the ladder, in deliberate climbing order.
+export const GymLadderRungId = S.Literals([
+  'rung1',
+  'rung2',
+  'rung3',
+  'rung4',
+])
 export type GymLadderRungId = typeof GymLadderRungId.Type
 
 // How a rung was produced. Only `published` rungs carry decision-grade numbers.
@@ -77,8 +83,10 @@ export type GymLadderRungDefinition = Readonly<{
   ownerGateRef: string
 }>
 
-// The canonical three-rung ladder definition. Lane membership mirrors the matrix
-// availability table + the planning doc `opencode-gym-benchmark-ladder.md`.
+// The canonical ladder definition. Lane membership for rungs 1-3 mirrors the
+// matrix availability table + `opencode-gym-benchmark-ladder.md`; rung 4 is the
+// MirrorCode frontier-coding shape from #6376 and stays owner-gated until the
+// heavy public-bucket run is explicitly armed.
 export const GYM_LADDER_RUNGS: ReadonlyArray<GymLadderRungDefinition> = [
   {
     rung: 'rung1',
@@ -109,6 +117,15 @@ export const GYM_LADDER_RUNGS: ReadonlyArray<GymLadderRungDefinition> = [
     barToClear:
       'Honestly measure the gap to paid frontier models and track it shrinking over successive runs. No requirement to beat today.',
     ownerGateRef: 'gate.owner.gym.ladder.rung3.paid_api_keys_and_spend_approval',
+  },
+  {
+    rung: 'rung4',
+    title: 'Rung 4 — MirrorCode frontier-coding',
+    opponentLanes: [],
+    barToClear:
+      'Run openagents/khala through public MirrorCode buckets and publish only owner-armed decision-grade pass-rate evidence; private tasks remain excluded.',
+    ownerGateRef:
+      'gate.owner.gym.ladder.rung4.mirrorcode_public_bucket_spend_and_wall_clock_approval',
   },
 ]
 
@@ -237,6 +254,12 @@ const rungBlockers = (
   if (!hasKhalaRow) {
     blockers.push('blocker.gym.ladder.no_decision_grade_khala_row')
   }
+  if (
+    definition.rung === 'rung4' &&
+    measuredOpponentLanes.size === 0
+  ) {
+    blockers.push('blocker.gym.ladder.mirrorcode_public_bucket_not_measured')
+  }
   for (const lane of definition.opponentLanes) {
     if (measuredOpponentLanes.has(lane)) {
       continue
@@ -256,7 +279,7 @@ const rungBlockers = (
 
 // Build the published ladder leaderboard. It runs the shipped flat projection
 // (which filters out everything that is not a public-safe decision-grade report),
-// then re-groups the surviving rows into the three rungs. The best Khala
+// then re-groups the surviving rows into the rungs. The best Khala
 // protagonist row (lowest cost-per-accepted-outcome decision-grade Khala report)
 // is shown on every rung that has at least one measured opponent; a rung with no
 // measured opponent is `awaiting_owner` and shows the gate, never a number.

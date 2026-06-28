@@ -103,11 +103,12 @@ const khalaInput = (costBasisMsat: number): GymLeaderboardReportInput => {
 }
 
 describe('Gym ladder recurring config', () => {
-  test('defines the three deliberate rungs with owner gates + internal demand tagging', () => {
+  test('defines the deliberate rungs with owner gates + internal demand tagging', () => {
     expect(GYM_LADDER_RUNGS.map(r => r.rung)).toEqual([
       'rung1',
       'rung2',
       'rung3',
+      'rung4',
     ])
     expect(GYM_LADDER_RUNGS[0]?.opponentLanes).toContain('bigpickle')
     expect(GYM_LADDER_RUNGS[1]?.opponentLanes).toEqual([
@@ -121,6 +122,13 @@ describe('Gym ladder recurring config', () => {
       'claude',
       'vertex-gemini',
     ])
+    expect(GYM_LADDER_RUNGS[3]).toMatchObject({
+      rung: 'rung4',
+      title: 'Rung 4 — MirrorCode frontier-coding',
+      opponentLanes: [],
+      ownerGateRef:
+        'gate.owner.gym.ladder.rung4.mirrorcode_public_bucket_spend_and_wall_clock_approval',
+    })
     for (const rung of GYM_LADDER_RUNGS) {
       expect(rung.ownerGateRef).toMatch(/^gate\.owner\.gym\.ladder\./)
     }
@@ -151,6 +159,7 @@ describe('Gym ladder leaderboard projection', () => {
       'awaiting_owner',
       'awaiting_owner',
       'awaiting_owner',
+      'awaiting_owner',
     ])
     const rung1 = ladder.rungs[0]!
     expect(rung1.entries).toEqual([])
@@ -163,6 +172,13 @@ describe('Gym ladder leaderboard projection', () => {
     // bigpickle is a fixture_only lane today -> honest fixture-only blocker.
     expect(rung1.blockerRefs).toContain(
       'blocker.gym.ladder.opponent_lane_fixture_only.bigpickle',
+    )
+    const rung4 = ladder.rungs.find(r => r.rung === 'rung4')!
+    expect(rung4.blockerRefs).toContain(
+      'blocker.gym.ladder.mirrorcode_public_bucket_not_measured',
+    )
+    expect(rung4.blockerRefs).toContain(
+      'gate.owner.gym.ladder.rung4.mirrorcode_public_bucket_spend_and_wall_clock_approval',
     )
   })
 
