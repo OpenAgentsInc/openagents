@@ -13,6 +13,7 @@ import type { Model } from './model'
 import { Demo, LoggedIn, LoggedOut } from './model'
 import * as Activity from './page/activity'
 import * as Animations from './page/animations'
+import * as ArtanisTraceTree from './page/artanisTraceTree'
 import * as Blog from './page/blog'
 import * as Business from './page/business'
 import * as Components from './page/components'
@@ -414,6 +415,8 @@ const title = (model: Model): string => {
       return 'Log in - OpenAgents'
     case 'PublicAgent':
       return `${model.route.agentRef} - OpenAgents`
+    case 'ArtanisTraceTree':
+      return ArtanisTraceTree.title()
     case 'Share':
       return 'Shared Workroom - OpenAgents'
     case 'Trace':
@@ -628,6 +631,7 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
       model.route._tag !== 'TassadarReplay' &&
       model.route._tag !== 'Trace' &&
       model.route._tag !== 'TraceCompare' &&
+      model.route._tag !== 'ArtanisTraceTree' &&
       model.route._tag !== 'PylonCodexAssignmentStatus'
     ) {
       return undefined
@@ -691,6 +695,10 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
 
   if (model.route._tag === 'PylonCodexAssignmentStatus') {
     return PylonCodexAssignmentStatus.view<Message>(model.route, authState)
+  }
+
+  if (model.route._tag === 'ArtanisTraceTree') {
+    return ArtanisTraceTree.view<Message>(authState)
   }
 
   if (model.route._tag === 'Animations') {

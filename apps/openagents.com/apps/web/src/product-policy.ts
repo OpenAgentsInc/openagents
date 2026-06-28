@@ -194,6 +194,7 @@ export const browserRouteProductIntents = {
   OperatorDashboard: 'operator.artanis.dashboard',
   ProductPromises: 'public.product-promises',
   PublicAgent: 'public.agent.profile',
+  ArtanisTraceTree: 'public.artanis.rlm-traces',
   PublicStatsArchive: 'public.stats.archive',
   PublicTrainingRun: 'public.training.run',
   PublicTrainingRuns: 'public.training.runs',
