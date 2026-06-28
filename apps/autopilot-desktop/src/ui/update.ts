@@ -332,6 +332,15 @@ const appendChatWorldParticle = (
     : pruned
 }
 
+const pruneChatWorldParticles = (
+  current: ReadonlyArray<unknown>,
+  referenceTsMs: number,
+): ReadonlyArray<unknown> =>
+  prunePaymentParticlesByRecency(
+    current as ReadonlyArray<PaymentParticle>,
+    referenceTsMs,
+  )
+
 // #5730: recover the receipt sourceRef from a payment-endpoint detail string.
 // Details are `<ref> · <sats> sats` (target) or `<ref> · from` (from), so the
 // ref is everything before the first " · " separator, trimmed. The visible scene
@@ -1123,6 +1132,17 @@ export const update = (model: Model, message: Message): Result => {
         }),
         noCommands,
       ]
+    case "TickedChatWorldPaymentParticles": {
+      // P2.5: idle networks need the same recency pruning as busy ones. This
+      // tick only removes stale evidence-bound beams; it never creates motion.
+      const chatWorldParticles = pruneChatWorldParticles(
+        model.chatWorldParticles,
+        message.referenceTsMs,
+      )
+      return chatWorldParticles === model.chatWorldParticles
+        ? [model, noCommands]
+        : [Model.make({ ...model, chatWorldParticles }), noCommands]
+    }
     case "GotChatWorldMultiplayer":
       // #5825: public Cloudflare world world projection for the Verse. The webview
       // stores it opaque and the view composes it read-only with training,

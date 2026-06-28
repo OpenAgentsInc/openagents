@@ -44,6 +44,10 @@ export const GotChatWorldScene = m("GotChatWorldScene", { scene: S.Unknown })
 export const GotChatWorldPaymentParticle = m("GotChatWorldPaymentParticle", {
   particle: S.Unknown,
 })
+export const TickedChatWorldPaymentParticles = m(
+  "TickedChatWorldPaymentParticles",
+  { referenceTsMs: S.Number },
+)
 export const GotChatWorldMultiplayer = m("GotChatWorldMultiplayer", {
   world: S.Unknown,
 })
@@ -764,6 +768,7 @@ export const Message = S.Union([
   GotChatWorldScene,
   GotChatWorldMultiplayer,
   GotChatWorldPaymentParticle,
+  TickedChatWorldPaymentParticles,
   SelectedChatWorldNode,
   ChangedVersePresenceZone,
   ChangedVerseWorldItemProximity,

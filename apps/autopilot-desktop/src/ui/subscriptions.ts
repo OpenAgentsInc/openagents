@@ -31,6 +31,7 @@ import {
   GotChatWorldScene,
   MovedPaneDragPointer,
   PressedKey,
+  TickedChatWorldPaymentParticles,
   TickedOnboardingStatusRefresh,
   TickedVerseTrainingProjectionRefresh,
   type Message,
@@ -474,6 +475,30 @@ export const verseTrainingProjectionRefreshMs = 10_000
 
 export const onboardingStatusRefreshMs = 5_000
 
+export const chatWorldPaymentParticlePruneMs = 10_000
+
+const chatWorldPaymentParticlePruneStream: Stream.Stream<Message> =
+  Stream.callback<Message>((queue) =>
+    Effect.acquireRelease(
+      Effect.sync(() => {
+        const flags = chatWorldBuildFlags()
+        if (flags.CHAT_WORLD_PAYMENTS !== true) return null
+        const handle = globalThis.setInterval(
+          () =>
+            Queue.offerUnsafe(queue, TickedChatWorldPaymentParticles({
+              referenceTsMs: Date.now(),
+            })),
+          chatWorldPaymentParticlePruneMs,
+        )
+        return handle
+      }),
+      (handle) =>
+        Effect.sync(() => {
+          if (handle !== null) globalThis.clearInterval(handle)
+        }),
+    ).pipe(Effect.flatMap(() => Effect.never)),
+  )
+
 const onboardingStatusRefreshStream: Stream.Stream<Message> = Stream.callback<Message>((queue) =>
   Effect.acquireRelease(
     Effect.sync(() => {
@@ -526,6 +551,7 @@ export const subscriptions = Subscription.make<Model, Message>()((entry) => ({
   // (no I/O) unless their build flag is on, so flag-OFF behavior is unchanged.
   chatWorldScene: Subscription.persistent(pylonSceneStream),
   chatWorldPayments: Subscription.persistent(paymentParticleStream),
+  chatWorldPaymentPrune: Subscription.persistent(chatWorldPaymentParticlePruneStream),
   chatWorldCloudflare: Subscription.persistent(cloudflareWorldStream),
   onboardingStatusRefresh: Subscription.persistent(onboardingStatusRefreshStream),
   verseTrainingProjection: Subscription.persistent(verseTrainingProjectionStream),
