@@ -40,6 +40,16 @@ import {
   ArtanisWorkRoutingProposalRecord,
 } from './artanis-work-routing'
 import {
+  type KhalaFeedbackRecord,
+  type KhalaFeedbackStore,
+  makeD1KhalaFeedbackStore,
+} from './khala-feedback-routes'
+import {
+  type KhalaUnsupportedRequestRecord,
+  type KhalaUnsupportedRequestStore,
+  makeD1KhalaUnsupportedRequestStore,
+} from './khala-unsupported-request-routes'
+import {
   epochMillisToIsoTimestamp,
   isoTimestampAfterIso,
 } from './runtime-primitives'
@@ -70,10 +80,35 @@ export type ArtanisScheduledRunnerInput = Readonly<{
   context?: Partial<ArtanisScheduledRunnerContext> | undefined
   db: D1Database
   enabled: boolean
+  khalaFeedback?: ReadonlyArray<KhalaFeedbackRecord> | undefined
+  khalaFeedbackStore?: KhalaFeedbackStore | undefined
   khalaReadinessObservation?: ArtanisKhalaReadinessObservation | undefined
   nowIso: string
   scheduleRef: string
   scopeRef?: string | undefined
+  unsupportedRequestStore?: KhalaUnsupportedRequestStore | undefined
+}>
+
+export type ArtanisKhalaFeedbackTriageKind =
+  | 'style'
+  | 'bug'
+  | 'missing_capability'
+  | 'needs_triage'
+
+export type ArtanisKhalaFeedbackTriageItem = Readonly<{
+  feedbackRef: string
+  kind: ArtanisKhalaFeedbackTriageKind
+  proposalRef: string
+  styleProposal: string | null
+  unsupportedRequestRef: string | null
+}>
+
+export type ArtanisKhalaFeedbackTriageResult = Readonly<{
+  actionRefs: ReadonlyArray<string>
+  feedbackRefs: ReadonlyArray<string>
+  styleProposalRefs: ReadonlyArray<string>
+  items: ReadonlyArray<ArtanisKhalaFeedbackTriageItem>
+  unsupportedRequests: ReadonlyArray<KhalaUnsupportedRequestRecord>
 }>
 
 export type ArtanisScheduledRunnerForbiddenAuthority = Readonly<{
@@ -98,6 +133,7 @@ export type ArtanisScheduledRunnerResult = Readonly<{
   forbiddenAuthority: ArtanisScheduledRunnerForbiddenAuthority
   forumIntentRefs: ReadonlyArray<string>
   healthSnapshotRef: string | null
+  khalaFeedbackTriage: ArtanisKhalaFeedbackTriageResult
   loadedContextRefs: ReadonlyArray<string>
   loopRef: string | null
   persistedRefs: ReadonlyArray<string>
@@ -172,6 +208,14 @@ const autonomousKhalaLoopPlan = (
   recurringSourceRefs: AUTONOMOUS_KHALA_LOOP_SOURCE_REFS,
 })
 
+const emptyKhalaFeedbackTriage: ArtanisKhalaFeedbackTriageResult = {
+  actionRefs: [],
+  feedbackRefs: [],
+  items: [],
+  styleProposalRefs: [],
+  unsupportedRequests: [],
+}
+
 export const ARTANIS_TASSADAR_EXECUTOR_SAFE_COPY =
   'The proof of concept ran on 2026-06-10: a real registered Pylon executed a digest-pinned exact-program workload dispatched through the operator assignment route, the closeout carried the trace digest byte-identical to the psionic Rust executor fixture, the production worker re-executed the workload as a separate validator device with a Verified exact_trace_replay challenge receipt (and a Rejected receipt on a tampered digest), and one operator-funded paid closeout settled over real Lightning to the Pylon payout target with balance receipts on both sides. Bounded to one workload family and one Pylon; broad executor earning remains gated separately.'
 
@@ -194,6 +238,117 @@ const uniqueRefs = (
   refs: ReadonlyArray<string>,
 ): ReadonlyArray<string> =>
   [...new Set(refs.map(ref => ref.trim()).filter(ref => ref !== ''))].sort()
+
+const lowerText = (value: string): string => value.trim().toLowerCase()
+
+const feedbackTriageKind = (
+  feedback: KhalaFeedbackRecord,
+): ArtanisKhalaFeedbackTriageKind => {
+  const text = lowerText(feedback.feedback)
+  const bugSignals = [
+    'bug',
+    'broken',
+    'crash',
+    'error',
+    'fails',
+    'failure',
+    'regression',
+    'stuck',
+    'does not work',
+    "doesn't work",
+  ]
+  const capabilitySignals = [
+    'can you',
+    'cannot',
+    "can't",
+    'could you',
+    'does not support',
+    'missing',
+    'need it to',
+    'please add',
+    'support',
+    'wish',
+  ]
+  const styleSignals = [
+    'conversational',
+    'concise',
+    'shorter',
+    'style',
+    'tone',
+    'too long',
+    'too verbose',
+    'too wordy',
+    'wordy',
+  ]
+
+  if (bugSignals.some(signal => text.includes(signal))) {
+    return 'bug'
+  }
+
+  if (capabilitySignals.some(signal => text.includes(signal))) {
+    return 'missing_capability'
+  }
+
+  if (styleSignals.some(signal => text.includes(signal))) {
+    return 'style'
+  }
+
+  return 'needs_triage'
+}
+
+const khalaFeedbackStyleProposal = (
+  feedback: KhalaFeedbackRecord,
+): string =>
+  lowerText(feedback.feedback).includes('conversational') ||
+    lowerText(feedback.feedback).includes('wordy')
+    ? 'Prefer concise, conversational Khala replies: answer directly first, keep default responses short, and expand only when the user asks for detail.'
+    : 'Review Khala response style for this feedback and propose an owner-applied prompt or response-discipline adjustment before changing live behavior.'
+
+const khalaFeedbackIssueTitle = (
+  kind: ArtanisKhalaFeedbackTriageKind,
+): string =>
+  kind === 'bug'
+    ? '[Khala feedback] Investigate reported bug'
+    : kind === 'missing_capability'
+    ? '[Khala feedback] Add missing requested capability'
+    : '[Khala feedback] Triage user feedback'
+
+const khalaFeedbackRequestRef = (feedbackRef: string): string =>
+  `khala_unsupported:${refSuffix(feedbackRef)}`
+
+const khalaFeedbackProposalRef = (
+  feedbackRef: string,
+  kind: ArtanisKhalaFeedbackTriageKind,
+): string => `work.public.artanis.khala_feedback.${kind}.${refSuffix(feedbackRef)}`
+
+const khalaFeedbackActionRef = (
+  feedbackRef: string,
+  kind: ArtanisKhalaFeedbackTriageKind,
+): string =>
+  `action.public.artanis.khala_feedback_${kind}.${refSuffix(feedbackRef)}`
+
+const khalaFeedbackStyleApprovalRef = (feedbackRef: string): string =>
+  `approval.public.artanis.khala_response_style.${refSuffix(feedbackRef)}`
+
+const khalaFeedbackStyleArtifactRef = (feedbackRef: string): string =>
+  `artifact.public.artanis.khala_response_style_proposal.${refSuffix(feedbackRef)}`
+
+const loadKhalaFeedback = (
+  input: ArtanisScheduledRunnerInput,
+): Effect.Effect<ReadonlyArray<KhalaFeedbackRecord>, never> => {
+  if (input.khalaFeedback !== undefined) {
+    return Effect.succeed(input.khalaFeedback.slice(0, 25))
+  }
+
+  if (input.khalaFeedbackStore === undefined) {
+    return Effect.succeed([])
+  }
+
+  return Effect.tryPromise({
+    try: () => input.khalaFeedbackStore!.listRecent({ limit: 25 }),
+    catch: () => undefined,
+  }).pipe(Effect.catch(() => Effect.succeed([])))
+}
 
 const contextForInput = (
   input: ArtanisScheduledRunnerInput,
@@ -409,6 +564,7 @@ const disabledResult = (
   forbiddenAuthority: noRiskyExecutionAuthority,
   forumIntentRefs: [],
   healthSnapshotRef: null,
+  khalaFeedbackTriage: emptyKhalaFeedbackTriage,
   loadedContextRefs: [],
   loopRef: null,
   persistedRefs: [],
@@ -422,6 +578,7 @@ const disabledResult = (
 const scheduledLoop = (
   input: ArtanisScheduledRunnerInput,
   selectedContextRefs: ReadonlyArray<string>,
+  khalaFeedbackTriage: ArtanisKhalaFeedbackTriageResult,
 ): Readonly<{
   assignmentRef: string
   loop: ArtanisLoopRecord
@@ -469,12 +626,61 @@ const scheduledLoop = (
     ...selectedContextRefs,
     ...khalaLoopPlan.recurringSourceRefs,
     assignmentRef,
+    ...khalaFeedbackTriage.feedbackRefs,
     TASSADAR_EXECUTOR_CAPABILITY_REF,
     `job.public.${TassadarExecutorTraceJobKind}`,
     `verification.public.${TassadarExactTraceReplayVerificationClass}`,
   ])
+  const feedbackActionProposals = khalaFeedbackTriage.items.map(item =>
+    new ArtanisActionProposalRecord({
+      actionRef: khalaFeedbackActionRef(item.feedbackRef, item.kind),
+      approvalRequirementRefs: item.kind === 'style'
+        ? [khalaFeedbackStyleApprovalRef(item.feedbackRef)]
+        : [],
+      artifactRefs: item.kind === 'style'
+        ? [khalaFeedbackStyleArtifactRef(item.feedbackRef)]
+        : [],
+      authorityReceiptRefs: item.kind === 'style'
+        ? ['authority.public.artanis.owner_applied_response_style_change']
+        : [],
+      caveatRefs: item.kind === 'style'
+        ? [
+            'caveat.public.artanis.khala_style_change_owner_applied',
+            'caveat.public.artanis.khala_feedback_body_owner_only',
+          ]
+        : [
+            'caveat.public.artanis.khala_feedback_triage_only',
+            'caveat.public.artanis.khala_feedback_body_owner_only',
+          ],
+      evidenceRefs: uniqueRefs([
+        item.feedbackRef,
+        item.proposalRef,
+        ...(item.unsupportedRequestRef === null
+          ? []
+          : [item.unsupportedRequestRef]),
+      ]),
+      kind: item.kind === 'style' ? 'runtime_promotion' : 'pylon_triage',
+      risk: item.kind === 'style' ? 'approval_required' : 'safe',
+    })
+  )
+  const feedbackApprovalRequirements = khalaFeedbackTriage.items
+    .filter(item => item.kind === 'style')
+    .map(item =>
+      new ArtanisApprovalRequirementRecord({
+        actionRef: khalaFeedbackActionRef(item.feedbackRef, item.kind),
+        approvalRef: khalaFeedbackStyleApprovalRef(item.feedbackRef),
+        authorityRef: 'authority.public.artanis.owner_applied_response_style_change',
+        caveatRefs: [
+          'caveat.public.artanis.khala_style_change_owner_applied',
+          'caveat.public.artanis.khala_feedback_body_owner_only',
+        ],
+        expiresAtIso: spendApprovalExpiryIso(input.nowIso),
+        state: 'pending',
+      })
+    )
   const tick = new ArtanisLoopTickRecord({
     actionProposals: [
+      ...feedbackActionProposals,
       new ArtanisActionProposalRecord({
         actionRef: dispatchActionRef,
         approvalRequirementRefs: [],
@@ -584,6 +790,7 @@ const scheduledLoop = (
       }),
     ],
     approvalRequirements: [
+      ...feedbackApprovalRequirements,
       new ArtanisApprovalRequirementRecord({
         actionRef: paidSampleActionRef,
         approvalRef,
@@ -612,6 +819,9 @@ const scheduledLoop = (
     loopRef,
     nextTickAtIso: nextTickIso(input.nowIso),
     receiptRefs: [
+      ...khalaFeedbackTriage.feedbackRefs.map(
+        ref => `receipt.public.artanis.khala_feedback_triaged.${refSuffix(ref)}`,
+      ),
       `receipt.public.artanis.context_loaded.${scheduleSuffix}`,
       dispatchReceiptRef,
       khalaBurndownReceiptRef,
@@ -749,6 +959,153 @@ const scheduledExecutorTraceWorkProposal = (
     workClass: 'executor_trace_validation',
   })
 }
+
+const scheduledKhalaFeedbackWorkProposal = (
+  input: ArtanisScheduledRunnerInput,
+  item: ArtanisKhalaFeedbackTriageItem,
+): ArtanisWorkRoutingProposalRecord => {
+  const issueRequired =
+    item.kind === 'bug' || item.kind === 'missing_capability'
+
+  return new ArtanisWorkRoutingProposalRecord({
+    acceptanceCriteriaRefs: item.kind === 'style'
+      ? [
+          'criteria.public.khala_feedback.owner_reviews_style_change',
+          'criteria.public.khala_feedback.response_style_rationale_recorded',
+        ]
+      : issueRequired
+      ? [
+          'criteria.public.khala_feedback.unsupported_request_row_recorded',
+          'criteria.public.khala_feedback.strict_issue_opened_when_reproducible',
+        ]
+      : ['criteria.public.khala_feedback.operator_triage_recorded'],
+    approvalRequirementRefs: item.kind === 'style'
+      ? [khalaFeedbackStyleApprovalRef(item.feedbackRef)]
+      : [],
+    blockerRefs: [],
+    capability: item.kind === 'style' ? 'inference' : 'coding_runtime_probe',
+    costCaveatRefs: ['cost.public.khala_feedback.no_spend_triage'],
+    createdAtIso: input.nowIso,
+    decidedAtIso: input.nowIso,
+    operatorDetailRefs: item.kind === 'style'
+      ? ['operator.artanis.khala_feedback.response_style_proposal']
+      : ['operator.artanis.khala_feedback.unsupported_request_triage'],
+    proposalRef: item.proposalRef,
+    publicCaveatRefs: [
+      'caveat.public.artanis.khala_feedback_body_owner_only',
+      ...(item.kind === 'style'
+        ? ['caveat.public.artanis.khala_style_change_owner_applied']
+        : []),
+    ],
+    receiptRefs: [
+      `receipt.public.artanis.khala_feedback_triaged.${refSuffix(item.feedbackRef)}`,
+    ],
+    resourceMode: 'not_applicable',
+    risk: item.kind === 'style' ? 'approval_required' : 'safe_read_only',
+    sourceEvidenceRefs: uniqueRefs([
+      item.feedbackRef,
+      ...(item.unsupportedRequestRef === null
+        ? []
+        : [item.unsupportedRequestRef]),
+      'route:/api/operator/khala/feedback',
+      'route:/api/operator/khala/unsupported-requests',
+    ]),
+    spendLimitRefs: ['spend_limit.public.khala_feedback.zero_sats'],
+    state: item.kind === 'needs_triage' ? 'proposed' : 'completed',
+    target: 'pylon',
+    targetCapabilityRefs: item.kind === 'style'
+      ? ['capability.public.khala.response_style_review']
+      : ['capability.public.khala.feedback_issue_triage'],
+    traceableWorkRefs: item.unsupportedRequestRef === null
+      ? [item.feedbackRef]
+      : [item.feedbackRef, item.unsupportedRequestRef],
+    updatedAtIso: input.nowIso,
+    workClass: item.kind === 'style' ? 'inference' : 'validation',
+  })
+}
+
+const upsertKhalaFeedbackUnsupportedRequest = (
+  input: ArtanisScheduledRunnerInput,
+  feedback: KhalaFeedbackRecord,
+  kind: ArtanisKhalaFeedbackTriageKind,
+): Effect.Effect<KhalaUnsupportedRequestRecord | null, never> => {
+  if (
+    input.unsupportedRequestStore === undefined ||
+    (kind !== 'bug' && kind !== 'missing_capability')
+  ) {
+    return Effect.succeed(null)
+  }
+
+  return Effect.tryPromise({
+    try: () =>
+      input.unsupportedRequestStore!.upsert({
+        createdAt: input.nowIso,
+        evidenceRefs: [feedback.feedbackRef],
+        forumTopicRef: null,
+        githubIssueRef: null,
+        requestRef: khalaFeedbackRequestRef(feedback.feedbackRef),
+        sourceKind: 'khala_feedback',
+        sourceRef: feedback.feedbackRef,
+        status: 'needs_issue',
+        suggestedIssueTitle: khalaFeedbackIssueTitle(kind),
+        summary:
+          kind === 'bug'
+            ? 'Khala CLI feedback reports a bug; operator must open a strict bug issue only with a reproducible public-safe repro.'
+            : 'Khala CLI feedback requests an unsupported capability; route through the unsupported-request ledger and open a public issue when bounded.',
+        title: kind === 'bug'
+          ? 'Khala feedback reports a bug'
+          : 'Khala feedback requests a missing capability',
+        triageKind: kind === 'bug' ? 'bug' : 'missing_capability',
+        updatedAt: input.nowIso,
+    }),
+    catch: () => undefined,
+  }).pipe(Effect.catch(() => Effect.succeed(null)))
+}
+
+const triageKhalaFeedback = (
+  input: ArtanisScheduledRunnerInput,
+): Effect.Effect<ArtanisKhalaFeedbackTriageResult, never> =>
+  Effect.gen(function* () {
+    const feedback = yield* loadKhalaFeedback(input)
+    const itemsWithRequests = yield* Effect.forEach(feedback, item =>
+      Effect.gen(function* () {
+        const kind = feedbackTriageKind(item)
+        const unsupportedRequest =
+          yield* upsertKhalaFeedbackUnsupportedRequest(input, item, kind)
+        return {
+          feedback: item,
+          item: {
+            feedbackRef: item.feedbackRef,
+            kind,
+            proposalRef: khalaFeedbackProposalRef(item.feedbackRef, kind),
+            styleProposal: kind === 'style'
+              ? khalaFeedbackStyleProposal(item)
+              : null,
+            unsupportedRequestRef: unsupportedRequest?.requestRef ?? null,
+          } satisfies ArtanisKhalaFeedbackTriageItem,
+          unsupportedRequest,
+        }
+      }),
+    )
+    const items = itemsWithRequests.map(item => item.item)
+    const unsupportedRequests = itemsWithRequests.flatMap(item =>
+      item.unsupportedRequest === null ? [] : [item.unsupportedRequest]
+    )
+
+    return {
+      actionRefs: uniqueRefs(
+        items.map(item => khalaFeedbackActionRef(item.feedbackRef, item.kind)),
+      ),
+      feedbackRefs: uniqueRefs(items.map(item => item.feedbackRef)),
+      items,
+      styleProposalRefs: uniqueRefs(
+        items
+          .filter(item => item.kind === 'style')
+          .map(item => khalaFeedbackStyleArtifactRef(item.feedbackRef)),
+      ),
+      unsupportedRequests,
+    }
+  })
 
 const scheduledSpendApprovalGate = (
   input: ArtanisScheduledRunnerInput,
@@ -929,9 +1286,11 @@ export const runArtanisScheduledTick = Effect.fn('runArtanisScheduledTick')(
       ...context.runnerBackendRefs,
       ...AUTONOMOUS_KHALA_LOOP_SOURCE_REFS,
     ])
+    const khalaFeedbackTriage = yield* triageKhalaFeedback(input)
     const { assignmentRef, loop, tick } = scheduledLoop(
       input,
       publicLoadedContextRefs,
+      khalaFeedbackTriage,
     )
     const priorLoop = yield* readArtanisPersistedRecord(
       input.db,
@@ -952,6 +1311,9 @@ export const runArtanisScheduledTick = Effect.fn('runArtanisScheduledTick')(
     const khalaBurndownWorkProposal = scheduledKhalaBurndownWorkProposal(
       input,
       tick,
+    )
+    const khalaFeedbackWorkProposals = khalaFeedbackTriage.items.map(item =>
+      scheduledKhalaFeedbackWorkProposal(input, item)
     )
     const approvalGate = scheduledSpendApprovalGate(input, tick)
     const forumIntent = scheduledForumIntent(input, tick, publicLoadedContextRefs)
@@ -996,6 +1358,11 @@ export const runArtanisScheduledTick = Effect.fn('runArtanisScheduledTick')(
         khalaBurndownWorkProposal,
         input.nowIso,
       )
+    const khalaFeedbackWorkProposalReceipts = yield* Effect.forEach(
+      khalaFeedbackWorkProposals,
+      proposal =>
+        saveArtanisWorkRoutingProposal(input.db, proposal, input.nowIso),
+    )
     const approvalGateReceipt = yield* saveArtanisApprovalGate(
       input.db,
       approvalGate,
@@ -1023,6 +1390,7 @@ export const runArtanisScheduledTick = Effect.fn('runArtanisScheduledTick')(
       healthReceipt,
       workProposalReceipt,
       khalaBurndownWorkProposalReceipt,
+      ...khalaFeedbackWorkProposalReceipts,
       approvalGateReceipt,
       forumIntentReceipt,
       closeoutReceipt,
@@ -1039,6 +1407,7 @@ export const runArtanisScheduledTick = Effect.fn('runArtanisScheduledTick')(
       forbiddenAuthority: noRiskyExecutionAuthority,
       forumIntentRefs: tick.forumPublicationIntentRefs,
       healthSnapshotRef: healthSnapshot.snapshotRef,
+      khalaFeedbackTriage,
       loadedContextRefs: uniqueRefs([
         ...loadedContextRefs,
         ...(priorLoop === null ? [] : [priorLoop.recordRef]),
@@ -1052,6 +1421,7 @@ export const runArtanisScheduledTick = Effect.fn('runArtanisScheduledTick')(
       workProposalRefs: [
         workProposal.proposalRef,
         khalaBurndownWorkProposal.proposalRef,
+        ...khalaFeedbackWorkProposals.map(proposal => proposal.proposalRef),
       ],
     }
 
@@ -1072,8 +1442,10 @@ export const runArtanisScheduledTickForWorker = (
   return runArtanisScheduledTick({
     db: input.db,
     enabled: input.scheduledRunnerEnabled,
+    khalaFeedbackStore: makeD1KhalaFeedbackStore(input.db),
     khalaReadinessObservation: input.khalaReadinessObservation,
     nowIso,
     scheduleRef: `cron.public.artanis.${refSuffix(nowIso)}`,
+    unsupportedRequestStore: makeD1KhalaUnsupportedRequestStore(input.db),
   })
 }
