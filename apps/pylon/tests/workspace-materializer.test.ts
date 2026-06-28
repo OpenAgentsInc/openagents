@@ -4,6 +4,8 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import {
+  checkoutBaseCommitSha,
+  checkoutSourceRef,
   cleanupOldestMaterializedWorkspaces,
   gitCheckoutWorkspaceFrom,
   materializeGitCheckoutWorkspace,
@@ -52,6 +54,26 @@ describe("gitCheckoutWorkspaceFrom", () => {
     expect(decoded).not.toBeNull()
     expect(decoded?.repository.commitSha).toBe(validCheckout.repository.commitSha)
     expect(decoded?.verificationCommand.args).toEqual(["bun", "test", "sum.test.ts"])
+  })
+
+  test("accepts virtual merge queue metadata and uses it as the effective base", () => {
+    const checkout = checkoutWith({
+      repository: { commitSha: "1".repeat(40) },
+    }) as GitCheckoutWorkspace
+    checkout.virtualBranch = {
+      kind: "pylon_virtual_merge_queue",
+      baseCommitSha: "2".repeat(40),
+      branchName: "pylon/virtual-issue-6690",
+      queueRef: "virtual_merge_queue.openagents.main",
+    }
+
+    const decoded = gitCheckoutWorkspaceFrom(assignmentWith(checkout))
+    expect(decoded).not.toBeNull()
+    expect(decoded?.repository.commitSha).toBe("1".repeat(40))
+    expect(decoded === null ? null : checkoutBaseCommitSha(decoded)).toBe("2".repeat(40))
+    expect(decoded === null ? null : checkoutSourceRef(decoded)).toBe(
+      `OpenAgentsInc/public-sum-fixture:${"2".repeat(40)}`,
+    )
   })
 
   test("rejects assignments without a workspace payload", () => {
@@ -107,6 +129,21 @@ describe("gitCheckoutWorkspaceFrom", () => {
       expect(
         gitCheckoutWorkspaceFrom(assignmentWith(checkoutWith({ repository: { branch } }))),
         branch,
+      ).toBeNull()
+    }
+  })
+
+  test("rejects unsafe virtual merge queue metadata", () => {
+    const base = checkoutWith({}) as GitCheckoutWorkspace
+    for (const virtualBranch of [
+      { kind: "pylon_virtual_merge_queue", baseCommitSha: "2".repeat(40), branchName: "feature/nope", queueRef: "queue.ok" },
+      { kind: "pylon_virtual_merge_queue", baseCommitSha: "main", branchName: "pylon/virtual-ok", queueRef: "queue.ok" },
+      { kind: "pylon_virtual_merge_queue", baseCommitSha: "2".repeat(40), branchName: "pylon/virtual-../bad", queueRef: "queue.ok" },
+      { kind: "pylon_virtual_merge_queue", baseCommitSha: "2".repeat(40), branchName: "pylon/virtual-ok", queueRef: "queue bad" },
+    ]) {
+      expect(
+        gitCheckoutWorkspaceFrom(assignmentWith({ ...base, virtualBranch })),
+        JSON.stringify(virtualBranch),
       ).toBeNull()
     }
   })
