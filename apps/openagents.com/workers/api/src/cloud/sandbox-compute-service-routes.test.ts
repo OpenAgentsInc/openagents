@@ -1,3 +1,5 @@
+import { DatabaseSync } from 'node:sqlite'
+
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
@@ -12,6 +14,7 @@ import {
   handleSandboxGet,
   handleSandboxRequest,
   isSandboxComputeServiceEnabled,
+  makeD1SandboxRuntimeAdapter,
   makeLedgerSandboxMeteringHook,
   sandboxRentalReceiptRef,
   stubSandboxAdapter,
@@ -37,6 +40,87 @@ const sandboxRequest = (body: unknown, init: RequestInit = {}): Request =>
     method: 'POST',
     ...init,
   })
+
+type Row = Record<string, unknown>
+
+class SqliteD1Statement {
+  private bound: ReadonlyArray<unknown> = []
+
+  constructor(
+    private readonly db: DatabaseSync,
+    private readonly sql: string,
+  ) {}
+
+  bind(...values: ReadonlyArray<unknown>): SqliteD1Statement {
+    this.bound = values.map(value => (value === undefined ? null : value))
+    return this
+  }
+
+  async first<T = Row>(): Promise<T | null> {
+    const row = this.db.prepare(this.sql).get(...(this.bound as never[]))
+    return (row ?? null) as T | null
+  }
+
+  async all<T = Row>(): Promise<{ results: Array<T> }> {
+    const results = this.db
+      .prepare(this.sql)
+      .all(...(this.bound as never[])) as Array<T>
+    return { results }
+  }
+
+  async run<T = Row>(): Promise<{ success: true; results: Array<T> }> {
+    this.db.prepare(this.sql).run(...(this.bound as never[]))
+    return { results: [], success: true }
+  }
+}
+
+class SqliteD1 {
+  constructor(private readonly db: DatabaseSync) {}
+
+  prepare(sql: string): SqliteD1Statement {
+    return new SqliteD1Statement(this.db, sql)
+  }
+
+  async batch(
+    statements: ReadonlyArray<SqliteD1Statement>,
+  ): Promise<Array<{ success: true }>> {
+    this.db.exec('BEGIN')
+    try {
+      for (const statement of statements) {
+        await statement.run()
+      }
+      this.db.exec('COMMIT')
+    } catch (error) {
+      this.db.exec('ROLLBACK')
+      throw error
+    }
+    return statements.map(() => ({ success: true as const }))
+  }
+}
+
+const SANDBOX_SCHEMA = `
+CREATE TABLE cloud_sandbox_sessions (
+  sandbox_id TEXT PRIMARY KEY,
+  account_ref TEXT NOT NULL,
+  image TEXT NOT NULL,
+  ttl_seconds INTEGER NOT NULL CHECK (ttl_seconds > 0),
+  status TEXT NOT NULL CHECK (status IN ('provisioning', 'ready', 'stopped', 'expired', 'failed')),
+  connection_ref TEXT,
+  usage_json TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  expires_at_hint TEXT,
+  completed_at TEXT
+);
+CREATE INDEX idx_cloud_sandbox_sessions_account
+  ON cloud_sandbox_sessions (account_ref, created_at DESC);
+`
+
+const makeSandboxDb = (): D1Database => {
+  const raw = new DatabaseSync(':memory:')
+  raw.exec(SANDBOX_SCHEMA)
+  return new SqliteD1(raw) as unknown as D1Database
+}
 
 describe('sandbox compute service feature flag', () => {
   test('defaults off and only enables on explicit truthy tokens', () => {
@@ -259,6 +343,71 @@ describe('GET /v1/sandboxes/:sandboxId', () => {
       handleSandboxGet(sandboxGetRequest(), 'sbx_fixed', baseDeps({ adapter })),
     )
     expect(response.status).toBe(404)
+  })
+})
+
+describe('D1 sandbox runtime adapter', () => {
+  test('runs fixture work in isolation, persists lifecycle, and reports usage', async () => {
+    const db = makeSandboxDb()
+    const adapter = makeD1SandboxRuntimeAdapter(db)
+    const meteringCalls: Array<Record<string, unknown>> = []
+    const meteringHook: SandboxMeteringHook = context => {
+      meteringCalls.push(context)
+      return Effect.succeed({
+        metered: true,
+        receiptRef: sandboxRentalReceiptRef(context.sandboxId),
+      })
+    }
+
+    const submit = await run(
+      handleSandboxRequest(
+        sandboxRequest({ image: 'oa-sandbox-base', ttlSeconds: 60 }),
+        baseDeps({ adapter, meteringHook }),
+      ),
+    )
+    expect(submit.status).toBe(200)
+    const submitted = (await submit.json()) as Record<string, unknown>
+    expect(submitted.status).toBe('ready')
+    expect(submitted.connection_ref).toBe('sandbox.session.sbx_fixed')
+    expect(submitted.expires_at_hint).toEqual(expect.any(String))
+    expect(submitted.usage).toMatchObject({ wallSeconds: 60 })
+    expect(submitted.metered).toBe(true)
+    expect(meteringCalls[0]).toMatchObject({
+      sandboxId: 'sbx_fixed',
+      usage: { wallSeconds: 60 },
+    })
+
+    const read = await run(
+      handleSandboxGet(sandboxGetRequest(), 'sbx_fixed', baseDeps({ adapter })),
+    )
+    expect(read.status).toBe(200)
+    const lifecycle = (await read.json()) as Record<string, unknown>
+    expect(lifecycle.status).toBe('ready')
+    expect(lifecycle.connection_ref).toBe('sandbox.session.sbx_fixed')
+    expect(lifecycle.usage).toMatchObject({ wallSeconds: 60 })
+  })
+
+  test('persisted sandbox sessions remain account-isolated', async () => {
+    const db = makeSandboxDb()
+    const adapter = makeD1SandboxRuntimeAdapter(db)
+    await run(
+      handleSandboxRequest(
+        sandboxRequest({ image: 'oa-sandbox-base', ttlSeconds: 60 }),
+        baseDeps({ adapter }),
+      ),
+    )
+
+    const readAsOtherAccount = await run(
+      handleSandboxGet(
+        sandboxGetRequest(),
+        'sbx_fixed',
+        baseDeps({
+          adapter,
+          authenticate: async () => ({ accountRef: 'agent:other-user' }),
+        }),
+      ),
+    )
+    expect(readAsOtherAccount.status).toBe(404)
   })
 })
 
