@@ -17,6 +17,7 @@ import {
   isSafeArtanisAssignmentRef,
   isSafeArtanisRepoPath,
   makeArtanisDispatchCodexTaskTool,
+  makeArtanisGetFleetStatusTool,
   makeArtanisGetGlmFleetStatusTool,
   makeArtanisGetSyntheticLoadStatusTool,
   makeArtanisGetKhalaFeedbackTool,
@@ -1633,6 +1634,120 @@ describe('#6359 get_network_stats (live public stats + token pace)', () => {
   })
 })
 
+describe('#6428 get_fleet_status (unified operator status)', () => {
+  test('returns pace, GLM readiness, Pylon assignment spread, watchdog, and brain context in one call', async () => {
+    const tool = makeArtanisGetFleetStatusTool({
+      glmFleetStatus: {
+        loadFleetStatus: async (): Promise<ArtanisGlmFleetStatus> => ({
+          readyReplicas: 3,
+          status: 'ready',
+          totalReplicas: 4,
+          warmReplicas: 1,
+        }),
+      },
+      networkStats: {
+        loadStats: async () => ({
+          allTimeTokensServed: 5_000_000_000,
+          generatedAt: '2026-06-27T17:00:00.000Z',
+          history: [
+            { day: '2026-06-26', tokensServed: 328_100_000 },
+            { day: '2026-06-27', tokensServed: 100_000_000 },
+          ],
+          modelMix: [],
+          pace: {
+            behindPace: true,
+            day: '2026-06-27',
+            fractionOfCentralDayElapsed: 0.5,
+            gapToTarget4x: 1_112_400_000,
+            paceProjection: 200_000_000,
+            target10x: 3_281_000_000,
+            target4x: 1_312_400_000,
+            todayTokens: 100_000_000,
+            yesterdayTokens: 328_100_000,
+          },
+          timezone: 'America/Chicago',
+          todayTokens: 100_000_000,
+        }),
+      },
+      pylonAssignments: {
+        lister: async (): Promise<ReadonlyArray<ArtanisPylonAssignmentSummary>> => [
+          {
+            assignmentRef: 'assignment.public.pylon_api.a',
+            jobKind: 'codex_agent_task',
+            leaseState: 'active',
+            phase: 'accepted',
+            state: 'accepted',
+            updatedAt: 'just now',
+            verifyResult: 'unknown',
+          },
+          {
+            assignmentRef: 'assignment.public.pylon_api.b',
+            jobKind: 'codex_agent_task',
+            leaseState: 'terminal',
+            phase: 'proof-ready',
+            state: 'closeout_submitted',
+            updatedAt: '1m ago',
+            verifyResult: 'pass',
+          },
+        ],
+      },
+      syntheticLoadStatus: {
+        reader: async (): Promise<ReadonlyArray<ArtanisSyntheticLoadRun>> => [
+          {
+            runRef: 'synthetic_load.glm_stress.001',
+            runType: 'glm-stress',
+            state: 'running',
+            targetTokens: 1_000,
+            tokensBurned: 250,
+          },
+        ],
+      },
+    })
+
+    expect(tool.definition.name).toBe('get_fleet_status')
+    const result = await Effect.runPromise(tool.execute({}))
+
+    expect(result).toContain('Operator fleet status:')
+    expect(result).toContain('Pace:')
+    expect(result).toContain('BEHIND PACE')
+    expect(result).toContain('GLM inference fleet: status=ready')
+    expect(result).toContain('Fleet: 2 recent Pylon/Codex assignments')
+    expect(result).toContain('active=1, pass=1, fail=0')
+    expect(result).toContain('Watchdog: 1 active synthetic-load runs')
+    expect(result).toContain('Brain: single-turn status context assembled')
+  })
+
+  test('degrades individual subsections without failing the whole tool call', async () => {
+    const tool = makeArtanisGetFleetStatusTool({
+      glmFleetStatus: {
+        loadFleetStatus: async () => {
+          throw new Error('glm down')
+        },
+      },
+      networkStats: {
+        loadStats: async () => {
+          throw new Error('stats down')
+        },
+      },
+      pylonAssignments: {
+        lister: async () => {
+          throw new Error('store down')
+        },
+      },
+      syntheticLoadStatus: {
+        reader: async () => [],
+      },
+    })
+
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toContain('Pace: unavailable')
+    expect(result).toContain('GLM: unavailable')
+    expect(result).toContain('Fleet: unavailable')
+    expect(result).toContain('Watchdog: no active synthetic-load runs')
+    expect(result).toContain('no fleet mutation authority granted')
+  })
+})
+
 describe('trigger_synthetic_load (RISKY plan-only) — iteration 4', () => {
   const tool = makeArtanisTriggerSyntheticLoadTool()
 
@@ -2222,6 +2337,7 @@ describe('makeArtanisOperatorTools default table', () => {
     const names = tools.map(tool => tool.definition.name).sort()
     expect(names).toEqual([
       'dispatch_codex_task',
+      'get_fleet_status',
       'get_glm_fleet_status',
       'get_khala_feedback',
       'get_network_stats',

@@ -2557,6 +2557,197 @@ export const makeArtanisGetGlmFleetStatusTool = (
 }
 
 // ---------------------------------------------------------------------------
+// get_fleet_status — unified operator fleet-status read (#6428).
+// ---------------------------------------------------------------------------
+//
+// This is the single high-context Artanis read that replaces the common
+// scattered status sequence (`get_network_stats`, `get_glm_fleet_status`,
+// `list_pylon_assignments`, `get_synthetic_load_status`). It is intentionally a
+// composition of the same read-only seams those tools already use: no new
+// authority, no mutation, no dispatch, no spend, and no raw host/prompt/private
+// material. Each subsection is fail-soft so one stale source does not drop the
+// whole operator turn.
+
+export type ArtanisFleetStatusConfig = Readonly<{
+  networkStats?: ArtanisGetNetworkStatsConfig | undefined
+  glmFleetStatus?: ArtanisGlmFleetStatusConfig | undefined
+  pylonAssignments?: ArtanisPylonAssignmentsConfig | undefined
+  syntheticLoadStatus?: ArtanisSyntheticLoadStatusConfig | undefined
+  assignmentLimit?: number | undefined
+}>
+
+const ARTANIS_FLEET_STATUS_ASSIGNMENT_LIMIT = 25
+
+const loadFleetNetworkStats = (
+  config: ArtanisGetNetworkStatsConfig | undefined,
+) => {
+  const resolved = config ?? {}
+  return resolved.loadStats !== undefined
+    ? resolved.loadStats()
+    : fetchArtanisNetworkStats(resolved)
+}
+
+const loadFleetGlmStatus = (
+  config: ArtanisGlmFleetStatusConfig | undefined,
+) => {
+  const resolved = config ?? {}
+  if (resolved.loadFleetStatus !== undefined) {
+    return resolved.loadFleetStatus()
+  }
+  const url = resolved.url ?? ARTANIS_GLM_FLEET_STATUS_URL
+  const fetchImpl = resolved.fetchImpl ?? globalThis.fetch
+  return fetchImpl(url, {
+    headers: { 'User-Agent': 'artanis-operator' },
+  })
+    .then(response => (response.ok ? response.json() : undefined))
+    .then(body => {
+      const normalized = normalizeArtanisGlmFleetStatus(body)
+      if (normalized === null) {
+        throw new Error('unexpected GLM fleet status shape')
+      }
+      return normalized
+    })
+}
+
+const loadFleetAssignments = (
+  config: ArtanisPylonAssignmentsConfig | undefined,
+  limit: number,
+) =>
+  config?.lister === undefined
+    ? Promise.resolve([] as ReadonlyArray<ArtanisPylonAssignmentSummary>)
+    : config.lister(limit)
+
+const loadFleetSyntheticRuns = (
+  config: ArtanisSyntheticLoadStatusConfig | undefined,
+) =>
+  config?.reader === undefined
+    ? Promise.resolve([] as ReadonlyArray<ArtanisSyntheticLoadRun>)
+    : config.reader()
+
+const summarizeAssignments = (
+  assignments: ReadonlyArray<ArtanisPylonAssignmentSummary>,
+): ReadonlyArray<string> => {
+  if (assignments.length === 0) {
+    return ['Fleet: no recent Pylon/Codex assignments found.']
+  }
+  const active = assignments.filter(
+    assignment =>
+      assignment.leaseState === 'active' &&
+      assignment.verifyResult === 'unknown',
+  ).length
+  const failed = assignments.filter(
+    assignment => assignment.verifyResult === 'fail',
+  ).length
+  const passed = assignments.filter(
+    assignment => assignment.verifyResult === 'pass',
+  ).length
+  const spread = assignments.reduce(
+    (counts, assignment) =>
+      counts.set(assignment.state, (counts.get(assignment.state) ?? 0) + 1),
+    new Map<string, number>(),
+  )
+  const spreadLine = [...spread.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([state, count]) => `${state}=${count}`)
+    .join(', ')
+  return [
+    `Fleet: ${assignments.length} recent Pylon/Codex assignments; active=${active}, pass=${passed}, fail=${failed}.`,
+    `Fleet spread: ${spreadLine === '' ? '(none)' : spreadLine}.`,
+    ...assignments.slice(0, 8).map(formatAssignmentSummaryLine),
+  ]
+}
+
+const summarizeSyntheticRuns = (
+  runs: ReadonlyArray<ArtanisSyntheticLoadRun>,
+): ReadonlyArray<string> =>
+  runs.length === 0
+    ? ['Watchdog: no active synthetic-load runs.']
+    : [
+        `Watchdog: ${runs.length} active synthetic-load runs.`,
+        ...runs.slice(0, 5).map(run => `- ${formatSyntheticLoadRunLine(run)}`),
+      ]
+
+export const makeArtanisGetFleetStatusTool = (
+  config: ArtanisFleetStatusConfig = {},
+): ArtanisOperatorReadTool => {
+  const assignmentLimit =
+    config.assignmentLimit ?? ARTANIS_FLEET_STATUS_ASSIGNMENT_LIMIT
+
+  return {
+    definition: {
+      description:
+        'Read the unified operator fleet status in one call: token pace, Pylon/Codex assignment spread, watchdog/synthetic-load state, and GLM readiness. Use this instead of scattered get_network_stats, get_glm_fleet_status, list_pylon_assignments, and get_synthetic_load_status calls when deciding what Artanis should do next. Read-only, side-effect-free, public/operator-safe aggregates only.',
+      name: 'get_fleet_status',
+      parameters: {
+        additionalProperties: false,
+        properties: {},
+        type: 'object',
+      },
+    },
+    execute: (_args: unknown) =>
+      Effect.gen(function* () {
+        const [network, glm, assignments, syntheticRuns] = yield* Effect.all(
+          [
+            Effect.exit(
+              Effect.tryPromise(() => loadFleetNetworkStats(config.networkStats)),
+            ),
+            Effect.exit(
+              Effect.tryPromise(() => loadFleetGlmStatus(config.glmFleetStatus)),
+            ),
+            Effect.exit(
+              Effect.tryPromise(() =>
+                loadFleetAssignments(config.pylonAssignments, assignmentLimit),
+              ),
+            ),
+            Effect.exit(
+              Effect.tryPromise(() =>
+                loadFleetSyntheticRuns(config.syntheticLoadStatus),
+              ),
+            ),
+          ],
+          { concurrency: 'unbounded' },
+        )
+
+        const lines: Array<string> = ['Operator fleet status:']
+        if (network._tag === 'Success') {
+          const paceLine =
+            network.value.pace === null
+              ? 'Token pace: (not enough Central-day history to project a target yet).'
+              : formatArtanisTokenPaceLine(network.value.pace)
+          lines.push(
+            `Pace: ${paceLine}`,
+            `Pace totals: today=${network.value.todayTokens.toLocaleString(
+              'en-US',
+            )}, all_time=${network.value.allTimeTokensServed.toLocaleString(
+              'en-US',
+            )}.`,
+          )
+        } else {
+          lines.push('Pace: unavailable (could not read network stats).')
+        }
+
+        if (glm._tag === 'Success') {
+          lines.push(`GLM: ${formatGlmFleetStatusLine(glm.value)}`)
+        } else {
+          lines.push('GLM: unavailable (could not read GLM fleet readiness).')
+        }
+
+        lines.push(
+          ...(assignments._tag === 'Success'
+            ? summarizeAssignments(assignments.value)
+            : ['Fleet: unavailable (could not list Pylon/Codex assignments).']),
+          ...(syntheticRuns._tag === 'Success'
+            ? summarizeSyntheticRuns(syntheticRuns.value)
+            : ['Watchdog: unavailable (could not read synthetic-load status).']),
+          'Brain: single-turn status context assembled; no fleet mutation authority granted.',
+        )
+        return lines.join('\n')
+      }),
+    kind: 'read',
+  }
+}
+
+// ---------------------------------------------------------------------------
 // get_trace_review — read the LIVE Khala trace-review report (iteration-11).
 // ---------------------------------------------------------------------------
 //
@@ -3333,6 +3524,7 @@ export const makeArtanisOperatorTools = (
   config: Readonly<{
     repoRead?: ArtanisRepoReadConfig | undefined
     issueRead?: ArtanisIssueReadConfig | undefined
+    fleetStatus?: ArtanisFleetStatusConfig | undefined
     pylonJobStatus?: ArtanisPylonJobStatusConfig | undefined
     pylonAssignments?: ArtanisPylonAssignmentsConfig | undefined
     khalaFeedback?: ArtanisKhalaFeedbackConfig | undefined
@@ -3368,6 +3560,13 @@ export const makeArtanisOperatorTools = (
     }),
     makeArtanisGetNetworkStatsTool(config.networkStats),
     makeArtanisGetGlmFleetStatusTool(config.glmFleetStatus),
+    makeArtanisGetFleetStatusTool({
+      glmFleetStatus: config.glmFleetStatus,
+      networkStats: config.networkStats,
+      pylonAssignments: config.pylonAssignments,
+      syntheticLoadStatus: config.syntheticLoadStatus,
+      ...config.fleetStatus,
+    }),
     makeArtanisGetSyntheticLoadStatusTool(config.syntheticLoadStatus),
     makeArtanisGetPylonJobStatusTool(config.pylonJobStatus),
     makeArtanisListPylonAssignmentsTool(config.pylonAssignments),
