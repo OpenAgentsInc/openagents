@@ -46,6 +46,7 @@ import {
   fetchArtanisNetworkStats,
   formatArtanisTokenPaceLine,
 } from './artanis-token-pace'
+import { openAgentsOpenApiDocument } from './openagents-openapi'
 
 // ---------------------------------------------------------------------------
 // #6365 — repo-read tools (public OpenAgentsInc/openagents only).
@@ -306,6 +307,490 @@ export const makeArtanisListRepoDirTool = (
           `Contents of ${owner}/${repo}/${path === '' ? '.' : path}:`,
           ...entries.map(line => `- ${line}`),
         ].join('\n')
+      }),
+    kind: 'read',
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Signature 6 — operator-grounded-assertion (anti-hallucination grounding
+// tools). See
+// `docs/artanis/2026-06-28-blueprint-signature-governed-autonomous-ops.md`.
+//
+// Artanis is headless: he reasons from memory, so he has historically invented
+// runnable artifacts that do not exist (a `scripts/distill_traces.ts` he never
+// read, a fake admin-mint API endpoint). The other repo-read tools above let
+// him READ truth he already knows the location of; these three tools let him
+// CHEAPLY VERIFY THE EXISTENCE of a COMMAND/FILE PATH/SCRIPT/API ENDPOINT
+// before he asserts it is real:
+//
+//   - repo_path_exists(path) — does a repo path exist at all, and is it a file
+//     or a directory? The decisive, single-call grounding primitive for the
+//     FILE PATH / SCRIPT / COMMAND-source class. A fabricated path
+//     (`scripts/distill_traces.ts`) reads "does NOT exist" — UNGROUNDED.
+//   - repo_grep(pattern, path) — grep a single repo file for a literal/regex
+//     pattern, returning matching lines. Lets him confirm a script is real AND
+//     non-trivial (e.g. that `apps/pylon/scripts/multi-session-campaign.ts`
+//     actually contains the flag/symbol he is about to recommend) versus a
+//     stub. Boundary: it greps ONE named file via the GitHub contents API, not
+//     the whole repo — unauthenticated GitHub code-search is unavailable from
+//     the Worker, so a repo-wide grep cannot be done honestly here.
+//   - route_exists(method, path) — checks the Worker's REAL OpenAPI route
+//     registry (`openAgentsOpenApiDocument()`), the same document served at
+//     `/api/openapi.json`. A fabricated endpoint (a non-existent admin-mint
+//     route) is not in the registry and reads UNGROUNDED. Boundary: it confirms
+//     presence in the PUBLISHED OpenAPI surface; a route absent from it is
+//     "not in the OpenAPI registry" (treat as SPECULATIVE), not a hard proof of
+//     worker-wide nonexistence.
+//
+// Gate (Signature 6): UNGROUNDED -> REFERENCED -> LOOKED_UP -> GROUNDED. Only a
+// positive lookup ("exists"/"is a registered route") reaches GROUNDED, which is
+// the only state in which Artanis may present the artifact as runnable/real.
+// Everything else stays UNGROUNDED and must be labeled SPECULATIVE. All three
+// tools are READ-only, public-state-only, side-effect-free, and bounded; honest
+// absence ("does not exist" / "not in the OpenAPI registry") is always returned
+// over invention.
+// ---------------------------------------------------------------------------
+
+// The Signature-6 grounding gate states, terminal-last. Exported so the system
+// prompt, tests, and any future gate wiring share one vocabulary instead of
+// re-deriving the states. Only GROUNDED unlocks presenting an artifact as real.
+export const ARTANIS_GROUNDING_GATE_STATES = [
+  'UNGROUNDED',
+  'REFERENCED',
+  'LOOKED_UP',
+  'GROUNDED',
+] as const
+export type ArtanisGroundingGateState =
+  (typeof ARTANIS_GROUNDING_GATE_STATES)[number]
+
+// Max characters of a single matched grep line surfaced into context, so one
+// minified/essay-length line cannot blow the context budget.
+export const ARTANIS_REPO_GREP_LINE_MAX_CHARS = 300
+// Max matching lines returned for one grep, so a hot pattern stays bounded.
+export const ARTANIS_REPO_GREP_MAX_MATCHES = 50
+// Max length of a model-produced grep pattern, bounding regex-compile cost.
+export const ARTANIS_REPO_GREP_PATTERN_MAX_CHARS = 200
+
+// Fetch + decode ONE public repo file as UTF-8 text, or a typed soft-failure
+// reason. Shared by repo_grep; mirrors read_repo_file's bounded, public-only,
+// secret-denied discipline so a grep can never read a path read_repo_file would
+// refuse.
+const fetchArtanisRepoFileText = (
+  config: ReturnType<typeof resolveRepoReadConfig>,
+  path: string,
+): Effect.Effect<
+  | Readonly<{ ok: true; text: string }>
+  | Readonly<{ ok: false; reason: string }>
+> =>
+  Effect.gen(function* () {
+    const { fetchImpl, maxBytes, owner, ref, repo } = config
+    const url = repoContentsUrl(owner, repo, path, ref)
+    const response = yield* Effect.tryPromise(() =>
+      fetchImpl(url, {
+        headers: {
+          Accept: 'application/vnd.github+json',
+          'User-Agent': 'artanis-operator',
+        },
+      }),
+    ).pipe(Effect.orElseSucceed(() => undefined))
+
+    if (response === undefined) return { ok: false, reason: `(could not fetch "${path}")` }
+    if (response.status === 404) return { ok: false, reason: `(file not found: "${path}")` }
+    if (!response.ok) {
+      return { ok: false, reason: `(read failed for "${path}": status ${response.status})` }
+    }
+
+    const body = yield* Effect.tryPromise(
+      () => response.json() as Promise<unknown>,
+    ).pipe(Effect.orElseSucceed(() => undefined))
+    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+      return { ok: false, reason: `("${path}" is not a file)` }
+    }
+    const file = body as GitHubContentsFile
+    if (file.type !== 'file') return { ok: false, reason: `("${path}" is not a file)` }
+    if (typeof file.size === 'number' && file.size > maxBytes) {
+      return {
+        ok: false,
+        reason: `(file too large: "${path}" is ${file.size} bytes; max is ${maxBytes})`,
+      }
+    }
+    if (file.encoding !== 'base64' || typeof file.content !== 'string') {
+      return {
+        ok: false,
+        reason: `(read failed for "${path}": expected base64 file content from GitHub contents API)`,
+      }
+    }
+    const text = decodeGitHubBase64Utf8(file.content)
+    if (text === undefined) {
+      return { ok: false, reason: `(read failed for "${path}": invalid base64 file content)` }
+    }
+    return { ok: true, text }
+  })
+
+// repo_path_exists(path) — the decisive single-call existence check for a
+// FILE PATH / SCRIPT / COMMAND source. Uses the GitHub contents API: a file
+// reads "EXISTS (file)", a directory reads "EXISTS (directory)", and a missing
+// path reads "does NOT exist" (UNGROUNDED). Public repo only; secret paths are
+// blocked; a fetch failure is honest, never invented as existence.
+export const makeArtanisRepoPathExistsTool = (
+  config: ArtanisRepoReadConfig = {},
+): ArtanisOperatorReadTool => {
+  const resolved = resolveRepoReadConfig(config)
+  const { fetchImpl, owner, ref, repo } = resolved
+
+  return {
+    definition: {
+      description: `Check whether a path EXISTS in the PUBLIC ${owner}/${repo} repo (branch ${ref}) and whether it is a file or a directory. Call this to GROUND any runnable command, file path, or script BEFORE you assert it is real: if it reads "does NOT exist", treat the artifact as UNGROUNDED and label it SPECULATIVE — never present a path you have not confirmed (this is what stops inventing scripts like a non-existent "scripts/distill_traces.ts"). Public repo only; secret paths are blocked; a missing path reads "does NOT exist", never invented as existing.`,
+      name: 'repo_path_exists',
+      parameters: {
+        additionalProperties: false,
+        properties: {
+          path: {
+            description:
+              'Repo-relative path to check, e.g. "apps/pylon/scripts/multi-session-campaign.ts". No leading slash, no "..".',
+            type: 'string',
+          },
+        },
+        required: ['path'],
+        type: 'object',
+      },
+    },
+    execute: (args: unknown) =>
+      Effect.gen(function* () {
+        const path = readPathArg(args)
+        if (path === undefined) {
+          return '(invalid arguments: a string "path" is required)'
+        }
+        if (!isSafeArtanisRepoPath(path)) {
+          return `(blocked: "${path}" is not an allowed public-repo path)`
+        }
+
+        const url = repoContentsUrl(owner, repo, path, ref)
+        const response = yield* Effect.tryPromise(() =>
+          fetchImpl(url, {
+            headers: {
+              Accept: 'application/vnd.github+json',
+              'User-Agent': 'artanis-operator',
+            },
+          }),
+        ).pipe(Effect.orElseSucceed(() => undefined))
+
+        if (response === undefined) {
+          return `(could not check "${path}"; existence UNGROUNDED — do not assert it is real)`
+        }
+        if (response.status === 404) {
+          return `GROUNDING: "${path}" does NOT exist in ${owner}/${repo}@${ref}. UNGROUNDED — do not present it as a real file/script/command; label it SPECULATIVE.`
+        }
+        if (!response.ok) {
+          return `(could not check "${path}": status ${response.status}; existence UNGROUNDED)`
+        }
+
+        const body = yield* Effect.tryPromise(
+          () => response.json() as Promise<unknown>,
+        ).pipe(Effect.orElseSucceed(() => undefined))
+
+        if (Array.isArray(body)) {
+          return `GROUNDED: "${path}" EXISTS (directory) in ${owner}/${repo}@${ref}.`
+        }
+        if (typeof body === 'object' && body !== null) {
+          const file = body as GitHubContentsFile
+          const size =
+            typeof file.size === 'number' ? `, ${file.size} bytes` : ''
+          return `GROUNDED: "${path}" EXISTS (file${size}) in ${owner}/${repo}@${ref}.`
+        }
+        return `(could not parse the existence check for "${path}"; existence UNGROUNDED)`
+      }),
+    kind: 'read',
+  }
+}
+
+// Pull a model-produced grep `pattern` argument out of tool args.
+const readGrepPatternArg = (args: unknown): string | undefined => {
+  if (typeof args !== 'object' || args === null) return undefined
+  const record = args as Record<string, unknown>
+  const value = record.pattern ?? record.query ?? record.regex
+  return typeof value === 'string' && value !== '' ? value : undefined
+}
+
+// repo_grep(pattern, path) — grep a single repo file for a pattern and return
+// the matching lines. Lets Artanis confirm a script/command is real AND carries
+// the symbol/flag he is about to recommend (vs. a stub). Boundary: ONE named
+// file, not a repo-wide search (unauthenticated GitHub code-search is
+// unavailable from the Worker). Public repo only; bounded matches; honest "no
+// match"/"file not found", never an invented match.
+export const makeArtanisRepoGrepTool = (
+  config: ArtanisRepoReadConfig = {},
+): ArtanisOperatorReadTool => {
+  const resolved = resolveRepoReadConfig(config)
+  const { owner, repo, ref } = resolved
+
+  return {
+    definition: {
+      description: `Grep a SINGLE file in the PUBLIC ${owner}/${repo} repo (branch ${ref}) for a pattern and return the matching lines. Use it to GROUND a command/flag/symbol you are about to recommend: confirm the file is real AND actually contains it (this distinguishes a real script from a stub). You must pass the exact file "path" — this greps ONE file, not the whole repo (unauthenticated repo-wide code search is not available here; use list_repo_dir / repo_path_exists to find the file first). Public repo only; secret paths blocked; up to ${ARTANIS_REPO_GREP_MAX_MATCHES} matching lines; "(no match …)" when the pattern is absent, never an invented match.`,
+      name: 'repo_grep',
+      parameters: {
+        additionalProperties: false,
+        properties: {
+          path: {
+            description:
+              'Repo-relative path of the single file to grep, e.g. "apps/pylon/scripts/multi-session-campaign.ts". No leading slash, no "..".',
+            type: 'string',
+          },
+          pattern: {
+            description: `The pattern to search for. Treated as a JavaScript regular expression (case-sensitive); a plain string works as a literal substring. Max ${ARTANIS_REPO_GREP_PATTERN_MAX_CHARS} chars.`,
+            type: 'string',
+          },
+        },
+        required: ['path', 'pattern'],
+        type: 'object',
+      },
+    },
+    execute: (args: unknown) =>
+      Effect.gen(function* () {
+        const path = readPathArg(args)
+        if (path === undefined) {
+          return '(invalid arguments: a string "path" is required)'
+        }
+        const pattern = readGrepPatternArg(args)
+        if (pattern === undefined) {
+          return '(invalid arguments: a non-empty string "pattern" is required)'
+        }
+        if (pattern.length > ARTANIS_REPO_GREP_PATTERN_MAX_CHARS) {
+          return `(blocked: pattern is too long; max ${ARTANIS_REPO_GREP_PATTERN_MAX_CHARS} chars)`
+        }
+        if (!isSafeArtanisRepoPath(path)) {
+          return `(blocked: "${path}" is not an allowed public-repo path)`
+        }
+
+        // Compile the pattern as a regex; fall back to a literal-substring
+        // matcher if it is not a valid regex, so a model typo never throws.
+        let matcher: (line: string) => boolean
+        try {
+          const regex = new RegExp(pattern)
+          matcher = line => regex.test(line)
+        } catch {
+          matcher = line => line.includes(pattern)
+        }
+
+        const fetched = yield* fetchArtanisRepoFileText(resolved, path)
+        if (!fetched.ok) {
+          return fetched.reason
+        }
+
+        const lines = fetched.text.split('\n')
+        const matches: Array<string> = []
+        for (let index = 0; index < lines.length; index += 1) {
+          const line = lines[index] ?? ''
+          if (!matcher(line)) continue
+          const shown =
+            line.length > ARTANIS_REPO_GREP_LINE_MAX_CHARS
+              ? `${line.slice(0, ARTANIS_REPO_GREP_LINE_MAX_CHARS)}…`
+              : line
+          matches.push(`${index + 1}: ${shown}`)
+          if (matches.length >= ARTANIS_REPO_GREP_MAX_MATCHES) break
+        }
+
+        if (matches.length === 0) {
+          return `(no match for /${pattern}/ in "${path}"; that pattern is UNGROUNDED for this file — do not assert it is present)`
+        }
+        const truncated =
+          matches.length >= ARTANIS_REPO_GREP_MAX_MATCHES
+            ? ` (showing first ${ARTANIS_REPO_GREP_MAX_MATCHES})`
+            : ''
+        return [
+          `GROUNDED: /${pattern}/ matched ${matches.length} line(s) in "${path}"${truncated}:`,
+          ...matches,
+        ].join('\n')
+      }),
+    kind: 'read',
+  }
+}
+
+// The HTTP methods route_exists will check, lowercased to match OpenAPI path
+// operation keys. Anything else is rejected as an invalid argument.
+const ARTANIS_ROUTE_METHODS = [
+  'get',
+  'post',
+  'put',
+  'patch',
+  'delete',
+  'head',
+  'options',
+] as const
+
+// The injectable route-registry loader seam. Returns the OpenAPI `paths` object
+// (path -> { method -> operation }). Defaults to the Worker's REAL OpenAPI
+// document; tests inject a fake registry. A load failure resolves to `{}` so the
+// tool reports "could not load the route registry" rather than throwing.
+export type ArtanisRouteRegistryLoader = () => Effect.Effect<
+  Readonly<Record<string, unknown>>
+>
+
+export type ArtanisRouteExistsConfig = Readonly<{
+  loadRoutePaths?: ArtanisRouteRegistryLoader | undefined
+}>
+
+const defaultArtanisRouteRegistryLoader: ArtanisRouteRegistryLoader = () =>
+  openAgentsOpenApiDocument().pipe(
+    Effect.map(document => document.paths as Readonly<Record<string, unknown>>),
+    Effect.orElseSucceed(() => ({}) as Readonly<Record<string, unknown>>),
+  )
+
+// Parse a model-produced { method, path } pair into a normalized request, or a
+// typed reason. Method must be a known HTTP verb; path must be an absolute
+// public-safe API path.
+const parseArtanisRouteArgs = (
+  args: unknown,
+):
+  | Readonly<{ ok: true; method: string; path: string }>
+  | Readonly<{ ok: false; reason: string }> => {
+  const record =
+    typeof args === 'object' && args !== null
+      ? (args as Record<string, unknown>)
+      : {}
+  const rawMethod = record.method
+  if (typeof rawMethod !== 'string' || rawMethod.trim() === '') {
+    return { ok: false, reason: '(invalid arguments: a string "method" is required, e.g. "POST")' }
+  }
+  const method = rawMethod.trim().toLowerCase()
+  if (!(ARTANIS_ROUTE_METHODS as ReadonlyArray<string>).includes(method)) {
+    return {
+      ok: false,
+      reason: `(blocked: "${rawMethod}" is not a known HTTP method; use one of ${ARTANIS_ROUTE_METHODS.map(value => value.toUpperCase()).join(', ')})`,
+    }
+  }
+  const rawPath = record.path
+  if (typeof rawPath !== 'string' || rawPath.trim() === '') {
+    return { ok: false, reason: '(invalid arguments: a string "path" is required, e.g. "/api/v1/chat/completions")' }
+  }
+  // Normalize: keep only the path (drop any host/query/fragment), require a
+  // leading slash, and forbid traversal/secret-shaped material.
+  let path = rawPath.trim()
+  const queryIndex = path.search(/[?#]/)
+  if (queryIndex >= 0) path = path.slice(0, queryIndex)
+  if (!path.startsWith('/')) {
+    return { ok: false, reason: `(blocked: "${rawPath}" must be an absolute API path beginning with "/")` }
+  }
+  if (path.includes('..') || path.includes('\0') || !dispatchFieldIsSafe(path)) {
+    return { ok: false, reason: `(blocked: "${rawPath}" is not an allowed public API path)` }
+  }
+  return { method, ok: true, path }
+}
+
+// True when a concrete request path matches an OpenAPI route template. Exact
+// match, or segment-wise match where a `{param}` template segment matches any
+// single non-empty concrete segment. Lets route_exists ground a concrete path
+// (e.g. "/api/agents/123") against a templated registry key
+// ("/api/agents/{id}").
+export const artanisRoutePathMatchesTemplate = (
+  requestPath: string,
+  template: string,
+): boolean => {
+  if (requestPath === template) return true
+  const requestSegments = requestPath.split('/')
+  const templateSegments = template.split('/')
+  if (requestSegments.length !== templateSegments.length) return false
+  for (let index = 0; index < templateSegments.length; index += 1) {
+    const templateSegment = templateSegments[index] ?? ''
+    const requestSegment = requestSegments[index] ?? ''
+    const isParam =
+      templateSegment.startsWith('{') && templateSegment.endsWith('}')
+    if (isParam) {
+      if (requestSegment === '') return false
+      continue
+    }
+    if (templateSegment !== requestSegment) return false
+  }
+  return true
+}
+
+// route_exists(method, path) — check whether an API route is registered in the
+// Worker's REAL OpenAPI document (the same surface served at
+// `/api/openapi.json`). A registered method+path reads GROUNDED; a path that
+// exists with different methods reads "path exists but METHOD is not
+// registered"; an unknown path reads "not in the OpenAPI registry" (UNGROUNDED,
+// label SPECULATIVE). This is what stops asserting a fabricated endpoint such as
+// a non-existent admin-mint route.
+export const makeArtanisRouteExistsTool = (
+  config: ArtanisRouteExistsConfig = {},
+): ArtanisOperatorReadTool => {
+  const loadRoutePaths =
+    config.loadRoutePaths ?? defaultArtanisRouteRegistryLoader
+
+  return {
+    definition: {
+      description:
+        'Check whether an API route is REGISTERED in the OpenAgents OpenAPI document (the real route registry served at /api/openapi.json). Call this to GROUND any API endpoint BEFORE you tell the owner it exists: pass the HTTP "method" (e.g. "POST") and absolute "path" (e.g. "/api/v1/chat/completions"). A registered method+path reads GROUNDED; an unknown path reads "not in the OpenAPI registry" — treat it as UNGROUNDED and label it SPECULATIVE rather than inventing an endpoint (this is what stops asserting a fabricated admin-mint endpoint). Boundary: it confirms presence in the PUBLISHED OpenAPI surface; absence is "unconfirmed", not proof the worker has no such internal route.',
+      name: 'route_exists',
+      parameters: {
+        additionalProperties: false,
+        properties: {
+          method: {
+            description:
+              'HTTP method, e.g. "GET" or "POST". Case-insensitive.',
+            type: 'string',
+          },
+          path: {
+            description:
+              'Absolute API path beginning with "/", e.g. "/api/v1/chat/completions". A concrete path is matched against templated routes like "/api/agents/{id}".',
+            type: 'string',
+          },
+        },
+        required: ['method', 'path'],
+        type: 'object',
+      },
+    },
+    execute: (args: unknown) =>
+      Effect.gen(function* () {
+        const parsed = parseArtanisRouteArgs(args)
+        if (!parsed.ok) {
+          return parsed.reason
+        }
+        const { method, path } = parsed
+
+        const paths = yield* loadRoutePaths()
+        const keys = Object.keys(paths)
+        if (keys.length === 0) {
+          return `(could not load the OpenAPI route registry; "${method.toUpperCase()} ${path}" is UNGROUNDED — do not assert it exists)`
+        }
+
+        const matchingKeys = keys.filter(key =>
+          artanisRoutePathMatchesTemplate(path, key),
+        )
+        if (matchingKeys.length === 0) {
+          return `GROUNDING: "${path}" is NOT in the OpenAPI route registry. UNGROUNDED — do not present "${method.toUpperCase()} ${path}" as a real endpoint; label it SPECULATIVE.`
+        }
+
+        const methodsForPath = new Set<string>()
+        let methodRegistered = false
+        for (const key of matchingKeys) {
+          const operations = paths[key]
+          if (typeof operations !== 'object' || operations === null) continue
+          for (const operationKey of Object.keys(operations)) {
+            const lowered = operationKey.toLowerCase()
+            if ((ARTANIS_ROUTE_METHODS as ReadonlyArray<string>).includes(lowered)) {
+              methodsForPath.add(lowered.toUpperCase())
+              if (lowered === method) methodRegistered = true
+            }
+          }
+        }
+
+        const matchedLabel =
+          matchingKeys.length === 1 && matchingKeys[0] === path
+            ? `"${path}"`
+            : `"${path}" (matches registry route ${matchingKeys
+                .map(key => `"${key}"`)
+                .join(', ')})`
+
+        if (methodRegistered) {
+          return `GROUNDED: ${method.toUpperCase()} ${matchedLabel} is a registered route in the OpenAPI registry. Registered methods: ${[...methodsForPath].sort().join(', ')}.`
+        }
+        const methodList =
+          methodsForPath.size === 0
+            ? '(none)'
+            : [...methodsForPath].sort().join(', ')
+        return `GROUNDING: the path ${matchedLabel} exists in the OpenAPI registry, but ${method.toUpperCase()} is NOT registered on it (registered: ${methodList}). Treat ${method.toUpperCase()} ${path} as UNGROUNDED.`
       }),
     kind: 'read',
   }
@@ -4210,6 +4695,7 @@ export const makeArtanisGetSyntheticLoadStatusTool = (
 export const makeArtanisOperatorTools = (
   config: Readonly<{
     repoRead?: ArtanisRepoReadConfig | undefined
+    routeExists?: ArtanisRouteExistsConfig | undefined
     issueRead?: ArtanisIssueReadConfig | undefined
     pylonJobStatus?: ArtanisPylonJobStatusConfig | undefined
     pylonAssignments?: ArtanisPylonAssignmentsConfig | undefined
@@ -4246,6 +4732,13 @@ export const makeArtanisOperatorTools = (
   return [
     makeArtanisReadRepoFileTool(config.repoRead),
     makeArtanisListRepoDirTool(config.repoRead),
+    // Signature 6 — operator-grounded-assertion grounding tools. They read the
+    // REAL repo (GitHub contents API) and the REAL OpenAPI route registry, so
+    // Artanis can verify a command/path/script/endpoint EXISTS before asserting
+    // it. They default to live truth and need no injected seam in production.
+    makeArtanisRepoPathExistsTool(config.repoRead),
+    makeArtanisRepoGrepTool(config.repoRead),
+    makeArtanisRouteExistsTool(config.routeExists),
     makeArtanisReadGithubIssueTool(issueRead),
     makeArtanisListGithubIssuesTool({
       fetchImpl: issueRead.fetchImpl,
