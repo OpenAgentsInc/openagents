@@ -611,6 +611,24 @@ export const PylonApiAssignmentCloseoutRequest = S.Struct({
 export type PylonApiAssignmentCloseoutRequest =
   typeof PylonApiAssignmentCloseoutRequest.Type
 
+const PylonQuarantineState = S.Literals(['active', 'released'])
+export type PylonQuarantineState = typeof PylonQuarantineState.Type
+
+const IsoTimestampString = NonEmptyTrimmedString.check(
+  S.isMaxLength(40),
+  S.isPattern(/^\d{4}-\d{2}-\d{2}T/),
+)
+
+export const PylonApiQuarantineRequest = S.Struct({
+  actionRefs: PublicSafeRefs,
+  expiresAt: S.optionalKey(IsoTimestampString),
+  reasonRefs: PublicSafeRefs,
+  sourceRefs: PublicSafeRefs,
+  state: PylonQuarantineState,
+})
+export type PylonApiQuarantineRequest =
+  typeof PylonApiQuarantineRequest.Type
+
 export type PylonApiRegistrationRecord = Readonly<{
   capabilityRefs: ReadonlyArray<string>
   clientProtocolVersion: string | null
@@ -677,6 +695,36 @@ export type PylonApiAssignmentRecord = Readonly<{
   updatedAt: string
 }>
 
+export type PylonApiQuarantineRecord = Readonly<{
+  actionRefs: ReadonlyArray<string>
+  createdAt: string
+  expiresAt: string | null
+  id: string
+  ownerAgentUserId: string | null
+  publicProjectionJson: string
+  pylonRef: string
+  quarantineRef: string
+  reasonRefs: ReadonlyArray<string>
+  releasedAt: string | null
+  sourceRefs: ReadonlyArray<string>
+  state: PylonQuarantineState
+  updatedAt: string
+}>
+
+export type PylonApiQuarantineProjection = Readonly<{
+  actionRefs: ReadonlyArray<string>
+  active: boolean
+  caveatRefs: ReadonlyArray<string>
+  expiresAt: string | null
+  pylonRef: string
+  quarantineRef: string
+  reasonRefs: ReadonlyArray<string>
+  releasedAt: string | null
+  sourceRefs: ReadonlyArray<string>
+  state: PylonQuarantineState
+  updatedAtDisplay: string
+}>
+
 export type PylonApiRegistrationProjection = Readonly<{
   capabilityRefs: ReadonlyArray<string>
   codingCapacity: ReadonlyArray<PylonCodingServiceCapacityProjection>
@@ -696,6 +744,7 @@ export type PylonApiRegistrationProjection = Readonly<{
   providerNostrNpub: string | null
   providerNostrPubkey: string | null
   pylonRef: string
+  quarantine: PylonApiQuarantineProjection | null
   resourceMode: typeof PylonResourceMode.Type
   // #5306: public-safe onboarding readiness for the node's native Spark payout
   // target. `true` once a node auto-registers (#5305); `false` is a visible,
@@ -828,6 +877,10 @@ export type PylonApiStore = Readonly<{
     pylonRefs: ReadonlyArray<string>,
     limit: number,
   ) => Promise<ReadonlyArray<PylonApiProviderJobLifecycleRecord>>
+  readActiveQuarantineForPylon?: (
+    pylonRef: string,
+    nowIso: string,
+  ) => Promise<PylonApiQuarantineRecord | undefined>
   readEventByIdempotencyKeyHash: (
     idempotencyKeyHash: string,
   ) => Promise<PylonApiEventRecord | undefined>
@@ -850,6 +903,9 @@ export type PylonApiStore = Readonly<{
   upsertProviderJobLifecycle: (
     record: PylonApiProviderJobLifecycleRecord,
   ) => Promise<PylonApiProviderJobLifecycleRecord>
+  upsertQuarantine?: (
+    record: PylonApiQuarantineRecord,
+  ) => Promise<PylonApiQuarantineRecord>
   upsertRegistration: (
     record: PylonApiRegistrationRecord,
     options?: Readonly<{ allowOwnerTransferFrom?: string | undefined }>,
@@ -933,6 +989,22 @@ type PylonApiAssignmentRow = Readonly<{
   result_expectation_refs_json: string
   state: PylonApiAssignmentState
   task_refs_json: string
+  updated_at: string
+}>
+
+type PylonApiQuarantineRow = Readonly<{
+  action_refs_json: string
+  created_at: string
+  expires_at: string | null
+  id: string
+  owner_agent_user_id: string | null
+  public_projection_json: string
+  pylon_ref: string
+  quarantine_ref: string
+  reason_refs_json: string
+  released_at: string | null
+  source_refs_json: string
+  state: PylonQuarantineState
   updated_at: string
 }>
 
@@ -1216,6 +1288,42 @@ export const pylonCodingServiceAccountCapacity = (
   return capacity?.accounts.find(a => a.accountKey === accountKey) ?? null
 }
 
+export const publicPylonApiQuarantineProjection = (
+  record: PylonApiQuarantineRecord,
+  nowIso: string,
+): PylonApiQuarantineProjection => ({
+  actionRefs: publicScannerSafeRefs(
+    'action.public.pylon_quarantine',
+    record.actionRefs,
+  ),
+  active:
+    record.state === 'active' &&
+    record.releasedAt === null &&
+    (record.expiresAt === null || Date.parse(record.expiresAt) > Date.parse(nowIso)),
+  caveatRefs: [
+    'caveat.public.pylon_quarantine.no_wallet_spend',
+    'caveat.public.pylon_quarantine.no_new_assignment_dispatch',
+    'caveat.public.pylon_quarantine.operator_release_required',
+  ],
+  expiresAt: record.expiresAt,
+  pylonRef: record.pylonRef,
+  quarantineRef: record.quarantineRef,
+  reasonRefs: publicScannerSafeRefs(
+    'reason.public.pylon_quarantine',
+    record.reasonRefs,
+  ),
+  releasedAt: record.releasedAt,
+  sourceRefs: publicScannerSafeRefs(
+    'source.public.pylon_quarantine',
+    record.sourceRefs,
+  ),
+  state: record.state,
+  updatedAtDisplay: friendlyBlueprintMissionBriefingTime(
+    record.updatedAt,
+    nowIso,
+  ),
+})
+
 export const publicPylonApiRegistrationProjection = (
   record: PylonApiRegistrationRecord,
   nowIso: string,
@@ -1224,6 +1332,7 @@ export const publicPylonApiRegistrationProjection = (
   // that has not (or could not) read the store projects a visible gap rather
   // than a fabricated target. The raw `spark1…` never reaches this function.
   sparkPayoutTargetReadiness: PylonSparkPayoutTargetReadiness = SPARK_PAYOUT_TARGET_NOT_READY,
+  quarantine: PylonApiQuarantineRecord | null = null,
 ): PylonApiRegistrationProjection => ({
   capabilityRefs: publicScannerSafeRefs(
     'capability.public.pylon',
@@ -1272,6 +1381,10 @@ export const publicPylonApiRegistrationProjection = (
   providerNostrNpub: record.providerNostrNpub,
   providerNostrPubkey: record.providerNostrPubkey,
   pylonRef: record.pylonRef,
+  quarantine:
+    quarantine === null
+      ? null
+      : publicPylonApiQuarantineProjection(quarantine, nowIso),
   resourceMode: record.resourceMode,
   sparkPayoutTargetReady: sparkPayoutTargetReadiness.ready,
   sparkPayoutTargetRef: sparkPayoutTargetReadiness.ref,
@@ -1472,6 +1585,59 @@ export const buildPylonApiEventRecord = (
   return {
     ...record,
     publicProjectionJson: JSON.stringify(projection),
+  }
+}
+
+export const buildPylonApiQuarantineRecord = (
+  input: Readonly<{
+    makeId: () => string
+    nowIso: string
+    ownerAgentUserId: string | null
+    pylonRef: string
+    request: PylonApiQuarantineRequest
+  }>,
+): PylonApiQuarantineRecord => {
+  assertPylonApiPayloadSafe('pylon quarantine request', input.request)
+
+  if (input.request.state === 'active' && uniqueRefs(input.request.reasonRefs).length === 0) {
+    throw new PylonApiStoreError({
+      kind: 'validation_error',
+      reason: 'Active Pylon quarantine requires at least one public reason ref.',
+    })
+  }
+
+  const expiresAt = input.request.expiresAt ?? null
+  if (expiresAt !== null && !Number.isFinite(Date.parse(expiresAt))) {
+    throw new PylonApiStoreError({
+      kind: 'validation_error',
+      reason: 'Pylon quarantine expiresAt must be a valid ISO timestamp.',
+    })
+  }
+
+  const record: PylonApiQuarantineRecord = {
+    actionRefs: uniqueRefs(input.request.actionRefs),
+    createdAt: input.nowIso,
+    expiresAt,
+    id: `pylon_api_quarantine_${input.makeId()}`,
+    ownerAgentUserId: input.ownerAgentUserId,
+    publicProjectionJson: '{}',
+    pylonRef: input.pylonRef,
+    quarantineRef: `quarantine.public.pylon.${input.pylonRef.replaceAll(/[^a-z0-9_.:-]+/gi, '_')}`,
+    reasonRefs: uniqueRefs(input.request.reasonRefs),
+    releasedAt: input.request.state === 'released' ? input.nowIso : null,
+    sourceRefs: uniqueRefs([
+      'route:/api/operator/pylons/{pylonRef}/quarantine',
+      ...uniqueRefs(input.request.sourceRefs),
+    ]),
+    state: input.request.state,
+    updatedAt: input.nowIso,
+  }
+
+  return {
+    ...record,
+    publicProjectionJson: JSON.stringify(
+      publicPylonApiQuarantineProjection(record, input.nowIso),
+    ),
   }
 }
 
@@ -1891,6 +2057,24 @@ const rowToAssignment = (
   resultExpectationRefs: parseJsonStringArray(row.result_expectation_refs_json),
   state: row.state,
   taskRefs: parseJsonStringArray(row.task_refs_json),
+  updatedAt: row.updated_at,
+})
+
+const rowToQuarantine = (
+  row: PylonApiQuarantineRow,
+): PylonApiQuarantineRecord => ({
+  actionRefs: parseJsonStringArray(row.action_refs_json),
+  createdAt: row.created_at,
+  expiresAt: row.expires_at,
+  id: row.id,
+  ownerAgentUserId: row.owner_agent_user_id,
+  publicProjectionJson: row.public_projection_json,
+  pylonRef: row.pylon_ref,
+  quarantineRef: row.quarantine_ref,
+  reasonRefs: parseJsonStringArray(row.reason_refs_json),
+  releasedAt: row.released_at,
+  sourceRefs: parseJsonStringArray(row.source_refs_json),
+  state: row.state,
   updatedAt: row.updated_at,
 })
 
@@ -2346,6 +2530,24 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
     return row === null ? undefined : rowToRegistration(row)
   },
 
+  readActiveQuarantineForPylon: async (pylonRef, nowIso) => {
+    const row = await db
+      .prepare(
+        `SELECT *
+           FROM pylon_api_quarantines
+          WHERE pylon_ref = ?
+            AND state = 'active'
+            AND released_at IS NULL
+            AND (expires_at IS NULL OR expires_at > ?)
+          ORDER BY updated_at DESC
+          LIMIT 1`,
+      )
+      .bind(pylonRef, nowIso)
+      .first<PylonApiQuarantineRow>()
+
+    return row === null ? undefined : rowToQuarantine(row)
+  },
+
   updateAssignment: async record => {
     const publicProjectionJson = JSON.stringify(
       publicPylonApiAssignmentProjection(record, record.updatedAt),
@@ -2457,6 +2659,47 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
 
   upsertProviderJobLifecycle: async record => {
     await upsertProviderJobLifecycleStatement(db, record).run()
+
+    return record
+  },
+
+  upsertQuarantine: async record => {
+    await db
+      .prepare(
+        `INSERT INTO pylon_api_quarantines
+          (id, quarantine_ref, pylon_ref, owner_agent_user_id, state,
+           reason_refs_json, action_refs_json, source_refs_json, expires_at,
+           released_at, public_projection_json, created_at, updated_at,
+           archived_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+         ON CONFLICT(quarantine_ref) DO UPDATE SET
+           owner_agent_user_id = excluded.owner_agent_user_id,
+           state = excluded.state,
+           reason_refs_json = excluded.reason_refs_json,
+           action_refs_json = excluded.action_refs_json,
+           source_refs_json = excluded.source_refs_json,
+           expires_at = excluded.expires_at,
+           released_at = excluded.released_at,
+           public_projection_json = excluded.public_projection_json,
+           updated_at = excluded.updated_at,
+           archived_at = NULL`,
+      )
+      .bind(
+        record.id,
+        record.quarantineRef,
+        record.pylonRef,
+        record.ownerAgentUserId,
+        record.state,
+        JSON.stringify(record.reasonRefs),
+        JSON.stringify(record.actionRefs),
+        JSON.stringify(record.sourceRefs),
+        record.expiresAt,
+        record.releasedAt,
+        record.publicProjectionJson,
+        record.createdAt,
+        record.updatedAt,
+      )
+      .run()
 
     return record
   },

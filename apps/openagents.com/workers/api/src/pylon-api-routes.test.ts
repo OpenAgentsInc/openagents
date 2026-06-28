@@ -13,6 +13,7 @@ import {
   type PylonApiAssignmentRecord,
   type PylonApiEventRecord,
   type PylonApiProviderJobLifecycleRecord,
+  type PylonApiQuarantineRecord,
   type PylonApiRegistrationRecord,
   type PylonApiStore,
   PylonApiStoreError,
@@ -81,6 +82,12 @@ type PylonRouteJson = Readonly<{
     providerNostrNpub?: string | null
     providerNostrPubkey?: string | null
     pylonRef?: string
+    quarantine?: Readonly<{
+      active?: boolean
+      quarantineRef?: string
+      reasonRefs?: ReadonlyArray<string>
+      state?: string
+    }> | null
     sparkPayoutTargetReady?: boolean
     sparkPayoutTargetRef?: string | null
     walletReady?: boolean
@@ -111,6 +118,7 @@ class MemoryPylonApiStore implements PylonApiStore {
   events = new Map<string, PylonApiEventRecord>()
   eventsByIdempotency = new Map<string, PylonApiEventRecord>()
   providerJobLifecycle = new Map<string, PylonApiProviderJobLifecycleRecord>()
+  quarantines = new Map<string, PylonApiQuarantineRecord>()
   registrations = new Map<string, PylonApiRegistrationRecord>()
 
   createAssignment = async (record: PylonApiAssignmentRecord) => {
@@ -226,6 +234,17 @@ class MemoryPylonApiStore implements PylonApiStore {
   readRegistration = async (pylonRef: string) =>
     this.registrations.get(pylonRef)
 
+  readActiveQuarantineForPylon = async (pylonRef: string, nowIso: string) =>
+    Array.from(this.quarantines.values())
+      .filter(record => record.pylonRef === pylonRef)
+      .filter(record => record.state === 'active')
+      .filter(record => record.releasedAt === null)
+      .filter(
+        record =>
+          record.expiresAt === null || Date.parse(record.expiresAt) > Date.parse(nowIso),
+      )
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0]
+
   updateAssignment = async (record: PylonApiAssignmentRecord) => {
     this.assignments.set(record.assignmentRef, record)
     this.assignmentsByIdempotency.set(record.idempotencyKeyHash, record)
@@ -256,6 +275,15 @@ class MemoryPylonApiStore implements PylonApiStore {
     this.providerJobLifecycle.set(record.assignmentRef, record)
 
     return record
+  }
+
+  upsertQuarantine = async (record: PylonApiQuarantineRecord) => {
+    const existing = this.quarantines.get(record.quarantineRef)
+    const next =
+      existing === undefined ? record : { ...record, createdAt: existing.createdAt, id: existing.id }
+    this.quarantines.set(record.quarantineRef, next)
+
+    return next
   }
 
   upsertRegistration = async (
@@ -827,6 +855,26 @@ const createAssignment = async (
       : { tokenUserId: input.tokenUserId }),
   })
 
+const quarantinePylon = async (
+  store: MemoryPylonApiStore,
+  input: Readonly<{
+    expiresAt?: string
+    pylonRef?: string
+    state?: 'active' | 'released'
+  }> = {},
+) =>
+  route(store, `/api/operator/pylons/${input.pylonRef ?? 'pylon.test.one'}/quarantine`, {
+    adminToken: true,
+    body: {
+      actionRefs: ['action.public.pylon_quarantine.disconnect_executor'],
+      ...(input.expiresAt === undefined ? {} : { expiresAt: input.expiresAt }),
+      reasonRefs: ['reason.public.pylon_quarantine.anomaly_detected'],
+      sourceRefs: ['source.public.issue.6424'],
+      state: input.state ?? 'active',
+    },
+    method: 'POST',
+  })
+
 describe('Pylon API routes', () => {
   test('D1 store inserts new Pylon registrations with every migrated column represented', async () => {
     const db = new RegistrationInsertD1()
@@ -954,6 +1002,44 @@ describe('Pylon API routes', () => {
     expect(JSON.stringify(createdJson)).not.toMatch(/2026-06-07T00:10/)
     expect((await responseJson<PylonRouteJson>(list)).pylons).toHaveLength(1)
     expect((await responseJson<PylonRouteJson>(detail)).events).toHaveLength(1)
+  })
+
+  test('projects operator quarantine on heartbeat and blocks new dispatch (#6424)', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store, {
+      capabilityRefs: ['capability.public.inference'],
+    })
+    await markOnline(store)
+
+    const quarantine = await quarantinePylon(store)
+    const quarantineJson = await responseJson<{
+      quarantine: { active: boolean; quarantineRef: string }
+    }>(quarantine)
+    expect(quarantine.status).toBe(201)
+    expect(quarantineJson.quarantine).toMatchObject({
+      active: true,
+      quarantineRef: 'quarantine.public.pylon.pylon.test.one',
+    })
+
+    const heartbeat = await markOnline(store, {
+      nowIso: '2026-06-07T00:11:00.000Z',
+    })
+    const heartbeatJson = await responseJson<PylonRouteJson>(heartbeat)
+    expect(heartbeatJson.pylon?.quarantine).toMatchObject({
+      active: true,
+      state: 'active',
+    })
+
+    const assignment = await createAssignment(store, {
+      idempotencyKey: 'assignment-blocked-by-quarantine',
+      nowIso: '2026-06-07T00:11:30.000Z',
+    })
+    const assignmentJson = await responseJson<PylonRouteJson>(assignment)
+    expect(assignment.status).toBe(409)
+    expect(assignmentJson.error).toBe('controlled_dispatch_gate_blocked')
+    expect(assignmentJson.dispatchGate?.blockerRefs).toContain(
+      'blocker.public.pylon_dispatch.executor_quarantined',
+    )
   })
 
   test('refuses an unreceipted Tassadar executor capability claim at registration (W4.1)', async () => {

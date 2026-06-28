@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 
 import {
   type PylonApiAssignmentRecord,
+  type PylonApiQuarantineRecord,
   type PylonApiRegistrationRecord,
   type PylonApiStore,
   PylonApiStoreError,
@@ -74,8 +75,28 @@ const assignment = (
   ...overrides,
 })
 
+const quarantine = (
+  overrides: Partial<PylonApiQuarantineRecord> = {},
+): PylonApiQuarantineRecord => ({
+  actionRefs: ['action.public.pylon_quarantine.disconnect_executor'],
+  createdAt: nowIso,
+  expiresAt: null,
+  id: 'pylon_api_quarantine_1',
+  ownerAgentUserId: 'agent_owner',
+  publicProjectionJson: '{}',
+  pylonRef: 'pylon.owner.codex',
+  quarantineRef: 'quarantine.public.pylon.pylon.owner.codex',
+  reasonRefs: ['reason.public.pylon_quarantine.anomaly_detected'],
+  releasedAt: null,
+  sourceRefs: ['source.public.issue.6424'],
+  state: 'active',
+  updatedAt: nowIso,
+  ...overrides,
+})
+
 const makeStore = (input: {
   activeAssignments?: ReadonlyArray<PylonApiAssignmentRecord>
+  activeQuarantines?: ReadonlyArray<PylonApiQuarantineRecord>
   registrations: ReadonlyArray<PylonApiRegistrationRecord>
 }): PylonApiStore => {
   const assignments: Array<PylonApiAssignmentRecord> = [
@@ -127,6 +148,15 @@ const makeStore = (input: {
     readEventByIdempotencyKeyHash: async () => undefined,
     readRegistration: async pylonRef =>
       input.registrations.find(item => item.pylonRef === pylonRef),
+    readActiveQuarantineForPylon: async (pylonRef, atIso) =>
+      (input.activeQuarantines ?? [])
+        .filter(item => item.pylonRef === pylonRef)
+        .filter(item => item.state === 'active')
+        .filter(item => item.releasedAt === null)
+        .filter(
+          item =>
+            item.expiresAt === null || Date.parse(item.expiresAt) > Date.parse(atIso),
+        )[0],
     updateAssignment: async record => record,
     updateAssignmentIfState: async (record, expectedState) => {
       const index = assignments.findIndex(
@@ -141,6 +171,7 @@ const makeStore = (input: {
       return record
     },
     upsertProviderJobLifecycle: async record => record,
+    upsertQuarantine: async record => record,
     upsertRegistration: async record => record,
   }
 }
@@ -861,6 +892,33 @@ describe('coding workflow delegation', () => {
     })
     const assigned = expectAssigned(result)
     expect(assigned.pylon.pylonRef).toBe('pylon.owner.codex')
+  })
+
+  test('refuses a quarantined target Pylon through the controlled dispatch gate (#6424)', async () => {
+    const result = await delegateCodingWorkflow({
+      classification,
+      linkedAgents: [linkedOwner],
+      makeId: () => 'id1',
+      nowIso,
+      pylonStore: makeStore({
+        activeQuarantines: [quarantine()],
+        registrations: [registration()],
+      }),
+      rawBody: {
+        openagents: { coding: { targetPylonRef: 'pylon.owner.codex' } },
+      },
+      requestId: 'chatcmpl_coding_quarantined_target',
+    })
+
+    expect(result).toMatchObject({
+      error: 'target_pylon_unavailable',
+      evidenceRefs: expect.arrayContaining([
+        'evidence.khala_coding.target_pylon_ref.dispatch_gate_blocked',
+        'blocker.public.pylon_dispatch.executor_quarantined',
+      ]),
+      kind: 'rejected',
+      statusCode: 409,
+    })
   })
 
   test('does not treat submitted closeout evidence as active Codex capacity', async () => {
