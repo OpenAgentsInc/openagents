@@ -5,6 +5,7 @@ import { html } from 'foldkit/html'
 import * as Ui from '../ui'
 import type { PublicHeaderAuthState } from './publicHeader'
 import * as PublicHeader from './publicHeader'
+import { currentUnixMs } from '../time-format'
 
 type AccountUsageWindow = Readonly<{
   cap: number | null
@@ -69,12 +70,12 @@ const labelForProvider = (provider: string): string =>
 const shortAccountRef = (ref: string): string =>
   ref.length <= 18 ? ref : `${ref.slice(0, 14)}...${ref.slice(-4)}`
 
-const countdownLabel = (expiresAt: string | null, now = Date.now()): string => {
+const countdownLabel = (expiresAt: string | null, now = currentUnixMs()): string => {
   if (expiresAt === null) {
     return 'available'
   }
 
-  const remainingMs = new Date(expiresAt).getTime() - now
+  const remainingMs = Date.parse(expiresAt) - now
 
   if (!Number.isFinite(remainingMs) || remainingMs <= 0) {
     return 'ready now'
