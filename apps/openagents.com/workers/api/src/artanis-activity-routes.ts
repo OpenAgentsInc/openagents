@@ -11,7 +11,10 @@ import {
   PublicProjectionStalenessContract,
   liveAtReadStaleness,
 } from './public-projection-staleness'
-import { currentIsoTimestamp } from './runtime-primitives'
+import {
+  currentIsoTimestamp,
+  epochMillisToIsoTimestamp,
+} from './runtime-primitives'
 
 const DEFAULT_LIMIT = 12
 const MAX_LIMIT = 50
@@ -303,7 +306,7 @@ const isoHoursBefore = (nowIso: string, hours: number): string => {
     return nowIso
   }
 
-  return new Date(nowMs - hours * 60 * 60 * 1000).toISOString()
+  return epochMillisToIsoTimestamp(nowMs - hours * 60 * 60 * 1000)
 }
 
 const buildFailureModes = (

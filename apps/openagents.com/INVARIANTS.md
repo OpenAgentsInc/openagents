@@ -2305,6 +2305,10 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
   - `GET /api/public/artanis/report` — live at read over tick rows rebuilt on
     closeout — compliant (`generatedAtUnixMs`, report + loop contracts, stale
     and example-fallback flags with caveat refs).
+  - `GET /api/public/artanis/activity` — live at read over the public Artanis
+    activity ledgers — compliant (`generatedAt`, `staleness` contract
+    `projection_staleness.v1` live_at_read,
+    `openagents.public_artanis_activity.v1`). `staleness_declared`.
   - `GET /api/public/artanis/tick-streak` — live at read over the
     tick-decision and exact-replay closeout-verdict ledgers — compliant
     (`generatedAt`, `staleness` contract `projection_staleness.v1`
