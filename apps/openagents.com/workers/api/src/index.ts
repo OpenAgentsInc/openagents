@@ -10860,6 +10860,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         requireAdminApiToken: adminRequest =>
           requireAdminApiToken(adminRequest, env),
         store: makeD1GymLadderStore(openAgentsDatabase(env)),
+        mirrorCodeRunStore: makeD1MirrorCodeRunStore(openAgentsDatabase(env)),
       }),
   },
   {

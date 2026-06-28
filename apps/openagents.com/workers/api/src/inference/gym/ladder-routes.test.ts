@@ -22,6 +22,11 @@ import {
   type GymLadderLeaderboard,
 } from './ladder'
 import type { GymLadderStore } from './ladder-store'
+import {
+  buildMirrorCodeRun,
+  type MirrorCodeRun,
+} from './mirrorcode-contract'
+import type { MirrorCodeRunSourceStore } from './mirrorcode-store'
 
 const makeMemoryStore = (): GymLadderStore & {
   snapshot: () => GymLadderLeaderboard | undefined
@@ -39,6 +44,13 @@ const makeMemoryStore = (): GymLadderStore & {
       }),
   }
 }
+
+const makeMirrorCodeSourceStore = (
+  runs: ReadonlyArray<MirrorCodeRun>,
+): MirrorCodeRunSourceStore => ({
+  getRun: runId => Effect.succeed(runs.find(run => run.runId === runId)),
+  listRuns: () => Effect.succeed(runs),
+})
 
 const REALISTIC_SHAPE = {
   id: 'observed-opencode-ladder-route-run',
@@ -377,6 +389,95 @@ describe('POST /api/operator/gym/leaderboard', () => {
     expect(rung4.exactTokenUsageEventRefs).toEqual([
       'token_usage_event.gym_mirrorcode.route.cal.0001',
     ])
+  })
+
+  test('promotes stored decision-grade MirrorCode runs into rung4 without reposting them', async () => {
+    const store = makeMemoryStore()
+    const mirrorCodeRun = buildMirrorCodeRun({
+      runId: 'mc-s-cal-python-stored-0001',
+      model: 'openagents/khala',
+      taskId: 'cal',
+      bucket: 'S',
+      language: 'python',
+      status: 'passed',
+      passRate: 0.68,
+      tokens: { total: 1_000_000_456 },
+      exactTokenUsageEventRefs: [
+        'token_usage_event.gym_mirrorcode.route.stored.cal.0001',
+      ],
+      startedAt: '2026-06-27T00:00:00.000Z',
+      finishedAt: '2026-06-27T02:00:00.000Z',
+      summary: 'Decision-grade public S-bucket MirrorCode cal run.',
+      grade: 'decision_grade',
+    })
+    const response = await Effect.runPromise(
+      handleOperatorGymLeaderboardApi(
+        new Request('https://x/', {
+          method: 'POST',
+          body: JSON.stringify({ reports: [] }),
+        }),
+        {
+          store,
+          mirrorCodeRunStore: makeMirrorCodeSourceStore([mirrorCodeRun]),
+          requireAdminApiToken: adminAllowed,
+          nowIso: () => '2026-06-27T12:00:00.000Z',
+        },
+      ),
+    )
+    expect(response.status).toBe(201)
+    const body = (await response.json()) as { ladder: GymLadderLeaderboard }
+    const rung4 = body.ladder.rungs.find(r => r.rung === 'rung4')!
+    expect(rung4.state).toBe('published')
+    expect(rung4.passRateBps).toBe(6800)
+    expect(rung4.entries).toHaveLength(1)
+    expect(rung4.entries[0]?.candidateRef).toBe('khala.mirrorcode.S.cal')
+    expect(rung4.exactTokenUsageEventRefs).toEqual([
+      'token_usage_event.gym_mirrorcode.route.stored.cal.0001',
+    ])
+  })
+
+  test('deduplicates a stored MirrorCode run when it is also included in the publish body', async () => {
+    const store = makeMemoryStore()
+    const postedRun = {
+      runId: 'mc-s-cal-python-duplicate-0001',
+      model: 'openagents/khala',
+      taskId: 'cal',
+      bucket: 'S',
+      language: 'python',
+      status: 'passed',
+      passRate: 0.7,
+      tokens: { total: 1_000_000_789 },
+      exactTokenUsageEventRefs: [
+        'token_usage_event.gym_mirrorcode.route.duplicate.cal.0001',
+      ],
+      startedAt: '2026-06-27T00:00:00.000Z',
+      finishedAt: '2026-06-27T02:00:00.000Z',
+      summary: 'Decision-grade public S-bucket MirrorCode cal run.',
+      grade: 'decision_grade',
+    } as const
+    const response = await Effect.runPromise(
+      handleOperatorGymLeaderboardApi(
+        new Request('https://x/', {
+          method: 'POST',
+          body: JSON.stringify({
+            reports: [],
+            mirrorCodeRuns: [postedRun],
+          }),
+        }),
+        {
+          store,
+          mirrorCodeRunStore: makeMirrorCodeSourceStore([
+            buildMirrorCodeRun(postedRun),
+          ]),
+          requireAdminApiToken: adminAllowed,
+        },
+      ),
+    )
+    expect(response.status).toBe(201)
+    const body = (await response.json()) as { ladder: GymLadderLeaderboard }
+    const rung4 = body.ladder.rungs.find(r => r.rung === 'rung4')!
+    expect(rung4.entries).toHaveLength(1)
+    expect(rung4.tokensTotal).toBe(1_000_000_789)
   })
 
   test('rejects decision-grade MirrorCode ladder publish without exact token rows', async () => {
