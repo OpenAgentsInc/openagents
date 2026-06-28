@@ -103,6 +103,7 @@ import { loadArtanisNetworkStatsFromLedger } from './artanis-network-stats-d1'
 import { makeOperatorArtanisConsoleRoutes } from './artanis-operator-console-routes'
 import {
   makeArtanisDispatchExecution,
+  readEffectiveArtanisForumPostApprovalForOwner,
   readEffectiveArtanisPylonDispatchApprovalForOwner,
 } from './artanis-operator-dispatch-execution'
 import { isOpenAgentsOwnerAgentOpenAuthUserId } from './artanis-owner-authority'
@@ -1598,6 +1599,109 @@ const artanisComposerForumPostForEnv =
       return {
         error:
           error instanceof Error ? error.message.slice(0, 120) : 'post_failed',
+      }
+    }
+  }
+
+const artanisOperatorForumUpdateForEnv =
+  (environment: Env) =>
+  async (input: {
+    action: 'create_topic' | 'reply'
+    bodyText: string
+    forumSlug: string | undefined
+    idempotencyKey: string
+    title: string | undefined
+    topicId: string | undefined
+  }): Promise<
+    | {
+        idempotent: boolean
+        postId: string
+        publicUrl: string
+        topicId: string
+      }
+    | { error: string }
+  > => {
+    const token = (environment as { ARTANIS_AGENT_TOKEN?: string })
+      .ARTANIS_AGENT_TOKEN
+    if (token === undefined || token === '') {
+      return { error: 'artanis_agent_token_missing' }
+    }
+    const db = openAgentsDatabase(environment)
+    const agentStore = makeD1AgentRegistrationStore(db)
+    const request =
+      input.action === 'create_topic'
+        ? input.forumSlug === undefined || input.title === undefined
+          ? undefined
+          : new Request(
+              `https://openagents.com/api/forum/forums/${encodeURIComponent(
+                input.forumSlug,
+              )}/topics`,
+              {
+                body: JSON.stringify({
+                  bodyText: input.bodyText,
+                  title: input.title,
+                }),
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  'Content-Type': 'application/json',
+                  'Idempotency-Key': input.idempotencyKey,
+                },
+                method: 'POST',
+              },
+            )
+        : input.topicId === undefined
+          ? undefined
+          : new Request(
+              `https://openagents.com/api/forum/topics/${encodeURIComponent(
+                input.topicId,
+              )}/posts`,
+              {
+                body: JSON.stringify({ bodyText: input.bodyText }),
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  'Content-Type': 'application/json',
+                  'Idempotency-Key': input.idempotencyKey,
+                },
+                method: 'POST',
+              },
+            )
+    if (request === undefined) {
+      return { error: 'invalid_forum_post_plan' }
+    }
+    try {
+      const response = await runArtanisForumRouteEffect(
+        forumRoutes.routeForumRequest(request, db, { agentStore }),
+      )
+      if (response === undefined) {
+        return { error: 'forum_route_unmatched' }
+      }
+      const payload = (await response.json()) as {
+        error?: string
+        firstPost?: { postId?: string }
+        idempotent?: boolean
+        post?: { postId?: string }
+        topic?: { topicId?: string }
+      }
+      const topicId = payload.topic?.topicId
+      const postId =
+        input.action === 'create_topic'
+          ? payload.firstPost?.postId
+          : payload.post?.postId
+      if (topicId === undefined || postId === undefined) {
+        return { error: String(payload.error ?? response.status) }
+      }
+      return {
+        idempotent: payload.idempotent === true,
+        postId,
+        publicUrl: `/forum/t/${topicId}#post-${postId}`,
+        topicId,
+      }
+    } catch (error) {
+      return {
+        error:
+          error instanceof Error
+            ? error.message.slice(0, 120)
+            : 'forum_post_failed',
       }
     }
   }
@@ -8674,6 +8778,44 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
         nowIso: currentIsoTimestamp,
         store: makeD1KhalaUnsupportedRequestStore(openAgentsDatabase(env)),
       }),
+      forumPostExecution: {
+        isOwnerApproved: () =>
+          Effect.tryPromise({
+            catch: () => false,
+            try: () =>
+              readEffectiveArtanisForumPostApprovalForOwner(
+                openAgentsDatabase(env),
+                currentIsoTimestamp(),
+                session.user.userId,
+              ),
+          }).pipe(Effect.orElseSucceed(() => false)),
+        postForumUpdate: plan =>
+          Effect.tryPromise({
+            catch: () =>
+              ({ kind: 'rejected', reason: 'forum_post_execution_error' }) as const,
+            try: async () => {
+              const posted = await artanisOperatorForumUpdateForEnv(env)(plan)
+              if ('error' in posted) {
+                return { kind: 'rejected', reason: posted.error } as const
+              }
+              return {
+                idempotent: posted.idempotent,
+                kind: 'created',
+                postId: posted.postId,
+                publicUrl: posted.publicUrl,
+                topicId: posted.topicId,
+              } as const
+            },
+          }).pipe(
+            Effect.orElseSucceed(
+              () =>
+                ({
+                  kind: 'rejected',
+                  reason: 'forum_post_execution_error',
+                }) as const,
+            ),
+          ),
+      },
       dispatchExecution: makeArtanisDispatchExecution({
         listLinkedAgentUserIds,
         makeId: () => compactRandomId('artanis_dispatch'),

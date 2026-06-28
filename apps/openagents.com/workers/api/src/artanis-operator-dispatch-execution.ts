@@ -263,3 +263,38 @@ export const readEffectiveArtanisPylonDispatchApprovalForOwner = async (
   // (b) Otherwise fall back to the armed D1 approval-gate path.
   return readEffectiveArtanisPylonDispatchApproval(db, nowIso)
 }
+
+export const readEffectiveArtanisForumPostApprovalForOwner = async (
+  db: D1Database,
+  nowIso: string,
+  ownerOpenAuthUserId: string,
+): Promise<boolean> => {
+  if (isOpenAgentsOwnerAgentOpenAuthUserId(ownerOpenAuthUserId)) {
+    return true
+  }
+  const result = await db
+    .prepare(
+      `SELECT record_json
+         FROM artanis_approval_gates
+        ORDER BY updated_at DESC
+        LIMIT 50`,
+    )
+    .all<{ record_json: string }>()
+    .catch(() => ({ results: [] as ReadonlyArray<{ record_json: string }> }))
+
+  for (const row of result.results ?? []) {
+    try {
+      const parsed = parseJsonUnknown(row.record_json)
+      const record = S.decodeUnknownSync(ArtanisApprovalGateRecord)(parsed)
+      if (
+        record.kind === 'forum_post' &&
+        artanisApprovalGateEffective(record, nowIso)
+      ) {
+        return true
+      }
+    } catch {
+      // Undecodable/legacy row — skip it; never treat it as an approval.
+    }
+  }
+  return false
+}

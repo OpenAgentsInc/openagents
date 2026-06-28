@@ -802,8 +802,8 @@ const runToolCall = (
       const outcome = ran.value
       if (outcome.outcome === 'executed') {
         const content = [
-          `EXECUTED — own-capacity, no spend.`,
-          `I created the Khala -> Pylon -> Codex assignment (${tool.definition.name}) on your linked Pylon. It runs at no spend and grants no payout.`,
+          `EXECUTED.`,
+          `I executed ${tool.definition.name} behind the active owner approval gate.`,
           '',
           outcome.summary,
         ].join('\n')
