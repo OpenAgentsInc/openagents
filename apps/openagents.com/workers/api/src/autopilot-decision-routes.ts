@@ -2,6 +2,14 @@ import { Effect, Match as M, Schema as S } from 'effect'
 
 import type { AgentRegistrationStore } from './agent-registration'
 import { sha256Hex } from './agent-registration'
+import {
+  type AutopilotDecisionActionableKind,
+  type AutopilotDecisionActRequest as EvidenceAutopilotDecisionActRequest,
+  authorizeAutopilotDecisionAct,
+} from './autopilot-decision-act'
+import {
+  classifyAutopilotDecisionActRoute,
+} from './autopilot-decision-act-routing'
 import { buildAutopilotDecisionCloseoutReceipt } from './autopilot-decision-closeout'
 import {
   type AutopilotWorkOrderRecord,
@@ -52,13 +60,79 @@ const safeDecisionRefs = (
     decisionRefPattern.test(ref)
   ))].sort()
 
+export const AutopilotDecisionCommandAction = S.Literals([
+  'accept',
+  'continue',
+  'create-follow-up-mission',
+  'provide-context',
+  'rerun-tests',
+  'retry-with-another-account',
+  'steer',
+  'stop',
+])
+export type AutopilotDecisionCommandAction =
+  typeof AutopilotDecisionCommandAction.Type
+
+const LegacyAutopilotDecisionReviewAction = S.Literals([
+  'reject',
+  'request_changes',
+])
+
 const AutopilotDecisionActRequest = S.Struct({
-  action: S.Literals(['accept', 'reject', 'request_changes']),
+  action: S.Union([
+    AutopilotDecisionCommandAction,
+    LegacyAutopilotDecisionReviewAction,
+  ]),
+  contextRefs: S.optionalKey(S.Array(S.String)),
   decisionRefs: S.optionalKey(S.Array(S.String)),
+  ownerApprovalRef: S.optionalKey(S.String),
   rejectionRefs: S.optionalKey(S.Array(S.String)),
   revisionRequestRefs: S.optionalKey(S.Array(S.String)),
 })
 type AutopilotDecisionActRequest = typeof AutopilotDecisionActRequest.Type
+
+const commandActionToDecisionKind: Record<
+  AutopilotDecisionCommandAction,
+  AutopilotDecisionActionableKind
+> = {
+  accept: 'approve_pr_draft',
+  continue: 'continue',
+  'create-follow-up-mission': 'create_followup_mission',
+  'provide-context': 'provide_context',
+  'rerun-tests': 'rerun_tests',
+  'retry-with-another-account': 'retry_account',
+  steer: 'steer',
+  stop: 'stop',
+}
+
+const ownerApprovalRequiredActions: ReadonlySet<AutopilotDecisionCommandAction> =
+  new Set([
+    'create-follow-up-mission',
+    'retry-with-another-account',
+    'stop',
+  ])
+
+const evidenceRequestForCommand = (
+  body: AutopilotDecisionActRequest,
+): EvidenceAutopilotDecisionActRequest | undefined => {
+  if (body.action === 'reject' || body.action === 'request_changes') {
+    return undefined
+  }
+
+  const resolution = commandActionToDecisionKind[body.action]
+
+  if (resolution === 'approve_pr_draft') {
+    return undefined
+  }
+
+  return {
+    resolution,
+    verb: 'submit',
+    ...(body.contextRefs === undefined
+      ? {}
+      : { contextRefs: body.contextRefs }),
+  }
+}
 
 export type AutopilotWorkDecisionContext = Readonly<{
   createdAt: string
@@ -317,7 +391,9 @@ const validateDecisionActRefs = (
   body: AutopilotDecisionActRequest,
 ): Effect.Effect<AutopilotDecisionActRequest, AutopilotWorkStoreError> => {
   const provided = [
+    ...(body.contextRefs ?? []),
     ...(body.decisionRefs ?? []),
+    ...(body.ownerApprovalRef === undefined ? [] : [body.ownerApprovalRef]),
     ...(body.rejectionRefs ?? []),
     ...(body.revisionRequestRefs ?? []),
   ]
@@ -352,28 +428,38 @@ const reviewDecisionForDecisionAct = (
     workOrderRef: string
   }>,
 ): AutopilotWorkReviewDecisionRecord => {
-  const defaultRef =
-    `decision.queue.${input.body.action}.${input.workOrderRef}`
+  const action = reviewActionForCommand(input.body)
+  const defaultRef = `decision.queue.${action}.${input.workOrderRef}`
 
   return {
-    action: input.body.action,
+    action,
     actorAgentCredentialId: input.actorAgentCredentialId,
     actorAgentUserId: input.actorAgentUserId,
-    decisionRefs: input.body.action === 'accept'
+    decisionRefs: action === 'accept'
       ? safeDecisionRefs([...(input.body.decisionRefs ?? []), defaultRef])
       : safeDecisionRefs(input.body.decisionRefs ?? []),
     idempotencyKeyHash: input.idempotencyKeyHash,
     recordedAt: input.nowIso,
-    rejectionRefs: input.body.action === 'reject'
+    rejectionRefs: action === 'reject'
       ? safeDecisionRefs([...(input.body.rejectionRefs ?? []), defaultRef])
       : safeDecisionRefs(input.body.rejectionRefs ?? []),
-    revisionRequestRefs: input.body.action === 'request_changes'
+    revisionRequestRefs: action === 'request_changes'
       ? safeDecisionRefs([
           ...(input.body.revisionRequestRefs ?? []),
           defaultRef,
         ])
       : safeDecisionRefs(input.body.revisionRequestRefs ?? []),
   }
+}
+
+const reviewActionForCommand = (
+  body: AutopilotDecisionActRequest,
+): AutopilotWorkReviewAction => {
+  if (body.action === 'reject' || body.action === 'request_changes') {
+    return body.action
+  }
+
+  return 'accept'
 }
 
 const decisionActionsRefFromPath = (pathname: string): string | undefined => {
@@ -385,9 +471,33 @@ const decisionActionsRefFromPath = (pathname: string): string | undefined => {
 const workOrderRefFromDecisionRef = (
   decisionRef: string,
 ): string | undefined => {
-  const match = /^decision_action\.(.+)\.approve_pr_draft$/.exec(decisionRef)
+  const match = /^decision_action\.(.+)\.[A-Za-z0-9_]+$/.exec(decisionRef)
 
   return match?.[1]
+}
+
+const decisionKindFromDecisionRef = (
+  decisionRef: string,
+): CodingAutopilotDecisionActionKind | undefined => {
+  const match = /^decision_action\..+\.([A-Za-z0-9_]+)$/.exec(decisionRef)
+  const kind = match?.[1]
+
+  if (
+    kind === 'approve_pr_draft' ||
+    kind === 'continue' ||
+    kind === 'create_followup_mission' ||
+    kind === 'mark_unavailable' ||
+    kind === 'provide_context' ||
+    kind === 'request_customer_input' ||
+    kind === 'rerun_tests' ||
+    kind === 'retry_account' ||
+    kind === 'steer' ||
+    kind === 'stop'
+  ) {
+    return kind
+  }
+
+  return undefined
 }
 
 const listDecisions = <Bindings extends AutopilotDecisionRouteEnv>(
@@ -458,12 +568,13 @@ const actOnDecision = <Bindings extends AutopilotDecisionRouteEnv>(
       },
     )
     const workOrderRef = workOrderRefFromDecisionRef(decisionRef)
+    const decisionKind = decisionKindFromDecisionRef(decisionRef)
 
-    if (workOrderRef === undefined) {
+    if (workOrderRef === undefined || decisionKind === undefined) {
       return yield* new AutopilotWorkStoreError({
         kind: 'validation_error',
         reason:
-          'Only approve_pr_draft decision actions are actionable through the decision queue.',
+          'Autopilot decision action refs must name a known decision kind.',
       })
     }
 
@@ -472,6 +583,90 @@ const actOnDecision = <Bindings extends AutopilotDecisionRouteEnv>(
       decodeDecisionActRequest(request),
       validateDecisionActRefs,
     )
+    const expectedKind = body.action === 'reject' || body.action === 'request_changes'
+      ? 'approve_pr_draft'
+      : commandActionToDecisionKind[body.action]
+
+    if (expectedKind !== decisionKind) {
+      return yield* new AutopilotWorkStoreError({
+        kind: 'validation_error',
+        reason:
+          `Decision command ${body.action} cannot resolve ${decisionKind}.`,
+      })
+    }
+
+    if (
+      body.action !== 'reject' &&
+      body.action !== 'request_changes' &&
+      ownerApprovalRequiredActions.has(body.action) &&
+      (body.ownerApprovalRef ?? '').trim() === ''
+    ) {
+      return noStoreJsonResponse(
+        {
+          authorityBoundary: 'owner_approval_required',
+          directEffectPermitted: false,
+          error: 'autopilot_decision_owner_approval_required',
+          generatedAt: nowIso,
+          idempotent: false,
+          reason:
+            `Decision command ${body.action} requires ownerApprovalRef before it can be applied.`,
+        },
+        { status: 403 },
+      )
+    }
+
+    if (decisionKind !== 'approve_pr_draft') {
+      const evidenceRequest = evidenceRequestForCommand(body)
+      const routing = classifyAutopilotDecisionActRoute({
+        actionKind: decisionKind,
+        actionRef: decisionRef,
+        status: 'available',
+      })
+
+      if (routing.route !== 'evidence_command' || evidenceRequest === undefined) {
+        return yield* new AutopilotWorkStoreError({
+          kind: 'validation_error',
+          reason:
+            `Decision kind ${decisionKind} is not actionable through this command API.`,
+        })
+      }
+
+      const authorized = authorizeAutopilotDecisionAct({
+        request: evidenceRequest,
+        target: routing.target,
+      })
+
+      if (!authorized.ok) {
+        return noStoreJsonResponse(
+          {
+            directEffectPermitted: false,
+            error: 'autopilot_decision_command_rejected',
+            errors: authorized.errors,
+            generatedAt: nowIso,
+            idempotent: false,
+          },
+          { status: 400 },
+        )
+      }
+
+      return noStoreJsonResponse(
+        {
+          command: {
+            ...authorized.command,
+            ownerApprovalRef: body.ownerApprovalRef ?? null,
+          },
+          directEffectPermitted: false,
+          generatedAt: nowIso,
+          idempotent: false,
+          receipt: {
+            closeoutRef: authorized.command.closeoutRef,
+            outcome: 'accepted_for_evidence',
+          },
+        },
+        { status: 202 },
+      )
+    }
+
     const reviewDecision = reviewDecisionForDecisionAct({
       actorAgentCredentialId: auth.actorAgentCredentialId,
       actorAgentUserId: auth.actorAgentUserId,
@@ -492,7 +687,7 @@ const actOnDecision = <Bindings extends AutopilotDecisionRouteEnv>(
         dependencies.makeStore(env).recordReviewDecision({
           ownerUserId: auth.ownerUserId,
           reviewDecision,
-          state: reviewStateForAction(body.action),
+          state: reviewStateForAction(reviewDecision.action),
           updatedAt: nowIso,
           workOrderRef,
         }),

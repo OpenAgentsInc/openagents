@@ -76,6 +76,7 @@ describe('classifyAutopilotDecisionActRoute', () => {
   it('routes every other actionable kind to the evidence-command path', () => {
     for (const kind of [
       'continue',
+      'create_followup_mission',
       'provide_context',
       'rerun_tests',
       'retry_account',
@@ -96,7 +97,6 @@ describe('classifyAutopilotDecisionActRoute', () => {
 
   it('marks informational/blocked kinds as not actionable', () => {
     for (const kind of [
-      'create_followup_mission',
       'mark_unavailable',
       'request_customer_input',
     ] as const) {
