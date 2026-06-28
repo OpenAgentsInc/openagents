@@ -70,6 +70,7 @@ export const ComponentsFamilyRoute = r('ComponentsFamily', {
 export const BusinessRoute = r('Business')
 export const AnimationsRoute = r('Animations')
 export const ActivityRoute = r('Activity')
+export const ArtanisAccountsRoute = r('ArtanisAccounts')
 export const RunRoute = r('Run')
 export const GymRoute = r('Gym')
 export const GymOssRoute = r('GymOss')
@@ -188,6 +189,7 @@ export type ComponentsFamilyRoute = typeof ComponentsFamilyRoute.Type
 export type BusinessRoute = typeof BusinessRoute.Type
 export type AnimationsRoute = typeof AnimationsRoute.Type
 export type ActivityRoute = typeof ActivityRoute.Type
+export type ArtanisAccountsRoute = typeof ArtanisAccountsRoute.Type
 export type RunRoute = typeof RunRoute.Type
 export type GymRoute = typeof GymRoute.Type
 export type GymOssRoute = typeof GymOssRoute.Type
@@ -265,6 +267,7 @@ export const LoggedOutRoute = S.Union([
   AutopilotVerticalRoute,
   AnimationsRoute,
   ActivityRoute,
+  ArtanisAccountsRoute,
   RunRoute,
   GymRoute,
   MirrorCodeRoute,
@@ -327,6 +330,7 @@ export const LoggedInRoute = S.Union([
   BusinessRoute,
   AnimationsRoute,
   ActivityRoute,
+  ArtanisAccountsRoute,
   RunRoute,
   GymOssRoute,
   TassadarRoute,
@@ -392,6 +396,7 @@ export const AppRoute = S.Union([
   BusinessRoute,
   AnimationsRoute,
   ActivityRoute,
+  ArtanisAccountsRoute,
   RunRoute,
   GymRoute,
   GymOssRoute,
@@ -631,6 +636,11 @@ export const animationsRouter = pipe(
 export const activityRouter = pipe(
   literal('activity'),
   Route.mapTo(ActivityRoute),
+)
+export const artanisAccountsRouter = pipe(
+  literal('artanis'),
+  slash(literal('accounts')),
+  Route.mapTo(ArtanisAccountsRoute),
 )
 export const runRouter = pipe(literal('run'), Route.mapTo(RunRoute))
 export const gymRouter = pipe(literal('gym'), Route.mapTo(GymRoute))
@@ -953,6 +963,7 @@ const orderedParserRouters = [
   businessRouter,
   animationsRouter,
   activityRouter,
+  artanisAccountsRouter,
   tassadarReplayRouter,
   tassadarRouter,
   mirrorCodeRouter,

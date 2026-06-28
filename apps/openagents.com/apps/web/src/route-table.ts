@@ -140,6 +140,7 @@ const DEMO = /^\/demo(?:\/.*)?$/
 const DOCS = /^\/docs(?:\/[^/]+)?$/
 const FILES = /^\/files(?:\/[^/]+)?$/
 const FORUM = /^\/forum(?:\/.*)?$/
+const ARTANIS_ACCOUNTS = /^\/artanis\/accounts$/
 const SETTINGS = /^\/settings(?:\/[^/]+)?$/
 const SITES_DEMO_CHECKOUT = /^\/sites\/demo-checkout(?:\/[^/]+)?$/
 // Public shareable agent traces (#6209/#6211): /trace/{uuid} + /trace/compare/{ids}.
@@ -551,6 +552,16 @@ export const routeTable = {
     surface: 'clientOnly',
     serverDocument: null,
     examplePaths: ['/activity'],
+    requiresAuthBootstrap: false,
+    loggedInGate: 'open',
+    inLoggedOutUnion: true,
+    inLoggedInUnion: true,
+    render: 'statelessShell',
+  },
+  ArtanisAccounts: {
+    surface: 'spaDocument',
+    serverDocument: ARTANIS_ACCOUNTS,
+    examplePaths: ['/artanis/accounts'],
     requiresAuthBootstrap: false,
     loggedInGate: 'open',
     inLoggedOutUnion: true,

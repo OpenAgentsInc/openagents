@@ -142,6 +142,7 @@ export const browserRouteProductIntents = {
   AutopilotVertical: 'public.autopilot.onboarding.vertical',
   Animations: 'internal.animations.playground',
   Activity: 'public.activity.timeline',
+  ArtanisAccounts: 'operator.artanis.accounts',
   Login: 'public.login',
   Blog: 'public.blog.index',
   BlogPost: 'public.blog.post',

@@ -498,6 +498,7 @@ export const startupCompleteDisposition = {
   Trace: 'public',
   TraceCompare: 'public',
   PylonCodexAssignmentStatus: 'public',
+  ArtanisAccounts: 'public',
   Moksha: 'public',
   Moksha2: 'public',
   Landing: 'public',
