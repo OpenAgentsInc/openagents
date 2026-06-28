@@ -777,6 +777,15 @@ export const bottomOverlayView = <Message>(
     [composerView<Message>(model, actions)],
   )
 
+  const composerDock = h.div(
+    [
+      Ui.className<Message>(
+        'relative z-10 px-3 pb-3 sm:px-4 sm:pb-4',
+      ),
+    ],
+    [composerShell],
+  )
+
   return h.div(
     [
       h.DataAttribute(KHALA_CHAT_ROOT_ATTR, ''),
@@ -792,7 +801,7 @@ export const bottomOverlayView = <Message>(
         [Ui.className<Message>('relative z-10 grid min-h-0')],
         [scrollRegion, latestButton],
       ),
-      composerShell,
+      composerDock,
     ],
   )
 }
