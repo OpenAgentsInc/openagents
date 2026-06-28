@@ -151,7 +151,6 @@ const postChatCompletions = (
       }),
     try: () => {
       const fetcher = config.fetchImpl ?? (globalThis.fetch as OpenRouterFetch)
-      const apiKey = request.callerProviderKey ?? config.apiKey
       const signal = safeSignal(
         config.timeoutMs ?? OPENROUTER_DEFAULT_TIMEOUT_MS,
       )
@@ -159,7 +158,7 @@ const postChatCompletions = (
         body: JSON.stringify(requestBody(config, request)),
         headers: {
           accept: 'application/json',
-          authorization: `Bearer ${Redacted.value(apiKey)}`,
+          authorization: `Bearer ${Redacted.value(config.apiKey)}`,
           'content-type': 'application/json',
         },
         method: 'POST',

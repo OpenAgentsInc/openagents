@@ -16,12 +16,11 @@
 // only base URL + key. Anthropic Messages compatibility is a parallel surface;
 // a clean spot is left for it (see ANTHROPIC SEAM below) but is out of scope for
 // #5476.
-import { Effect, Redacted } from 'effect'
+import { Effect } from 'effect'
 
 import type { AgentRegistrationStore } from '../agent-registration'
 import { noStoreJsonResponse } from '../http/responses'
 import { recordFromUnknown } from '../json-boundary'
-import { requireProviderApiKeyShape } from '../provider-account-api-key'
 import type { PylonApiStore } from '../pylon-api'
 import {
   compactRandomId,
@@ -208,100 +207,6 @@ export const DEFAULT_CHAT_MODEL = KHALA_MODEL_ID
 export const INFERENCE_DEMAND_KIND_HEADER = 'x-openagents-demand-kind'
 export const INFERENCE_DEMAND_SOURCE_HEADER = 'x-openagents-demand-source'
 export const INFERENCE_CLIENT_HEADER = 'x-openagents-client'
-export const INFERENCE_BYOK_PROVIDER_HEADER = 'x-openagents-provider'
-export const INFERENCE_BYOK_PROVIDER_KEY_HEADER = 'x-openagents-provider-key'
-export const INFERENCE_BYOK_ACK_HEADER = 'x-openagents-byok'
-
-type CallerByok =
-  | Readonly<{ _tag: 'absent' }>
-  | Readonly<{
-      _tag: 'invalid'
-      code:
-        | 'missing_provider'
-        | 'missing_provider_key'
-        | 'unsupported_provider'
-        | 'invalid_provider_key'
-      reason: string
-    }>
-  | Readonly<{
-      _tag: 'valid'
-      provider: 'openrouter'
-      providerKey: Redacted.Redacted<string>
-    }>
-
-const callerByokFromHeaders = (headers: Headers): CallerByok => {
-  const rawProvider = headers.get(INFERENCE_BYOK_PROVIDER_HEADER)
-  const rawKey = headers.get(INFERENCE_BYOK_PROVIDER_KEY_HEADER)
-  const hasProvider = rawProvider !== null && rawProvider.trim() !== ''
-  const hasKey = rawKey !== null && rawKey.trim() !== ''
-
-  if (!hasProvider && !hasKey) {
-    return { _tag: 'absent' }
-  }
-  if (!hasProvider) {
-    return {
-      _tag: 'invalid',
-      code: 'missing_provider',
-      reason:
-        'x-openagents-provider is required when sending a caller provider key.',
-    }
-  }
-  if (!hasKey) {
-    return {
-      _tag: 'invalid',
-      code: 'missing_provider_key',
-      reason:
-        'x-openagents-provider-key is required when sending a caller provider.',
-    }
-  }
-
-  const provider = rawProvider.trim().toLowerCase()
-  if (provider !== 'openrouter') {
-    return {
-      _tag: 'invalid',
-      code: 'unsupported_provider',
-      reason:
-        'Only x-openagents-provider: openrouter is supported for Khala BYOK routing.',
-    }
-  }
-
-  try {
-    return {
-      _tag: 'valid',
-      provider: 'openrouter',
-      providerKey: Redacted.make(requireProviderApiKeyShape(rawKey)),
-    }
-  } catch {
-    return {
-      _tag: 'invalid',
-      code: 'invalid_provider_key',
-      reason: 'x-openagents-provider-key must be a single bounded API key value.',
-    }
-  }
-}
-
-const withByokAck = (
-  response: Response,
-  status: 'accepted' | 'invalid' | 'routed',
-): Response => {
-  response.headers.set(INFERENCE_BYOK_ACK_HEADER, status)
-  return response
-}
-
-const byokInvalidResponse = (
-  byok: Extract<CallerByok, { _tag: 'invalid' }>,
-): Response =>
-  withByokAck(
-    noStoreJsonResponse(
-      {
-        error: 'invalid_byok_provider_key',
-        code: byok.code,
-        reason: byok.reason,
-      },
-      { status: 400 },
-    ),
-    'invalid',
-  )
 
 const safeAttributionToken = (value: string | null): string | undefined => {
   const trimmed = value?.trim()
@@ -1128,7 +1033,6 @@ const toInferenceRequest = (
   // is injected as a stable prefix block. Default false => no injection.
   componentChannelActive?: boolean,
   autopilotConcierge?: AutopilotConciergeRequestConfig | undefined,
-  callerByok?: Extract<CallerByok, { _tag: 'valid' }> | undefined,
   scheduler?: Readonly<{
     abortSignal?: AbortSignal | undefined
     priority: InferenceRequest['priority']
@@ -1169,12 +1073,6 @@ const toInferenceRequest = (
       : { abortSignal: scheduler.abortSignal }),
     messages,
     model: requestedModel,
-    ...(callerByok === undefined
-      ? {}
-      : {
-          callerProvider: callerByok.provider,
-          callerProviderKey: callerByok.providerKey,
-        }),
     // Gateway-derived session affinity wins over any stray client copy.
     passthroughParams: { ...rest, ...affinityParams },
     ...(scheduler?.priority === undefined
@@ -2502,12 +2400,6 @@ export const handleChatCompletions = (
         { headers, status: 401 },
       )
     }
-    const callerByok = callerByokFromHeaders(request.headers)
-    if (callerByok._tag === 'invalid') {
-      return byokInvalidResponse(callerByok)
-    }
-    const validCallerByok =
-      callerByok._tag === 'valid' ? callerByok : undefined
 
     // INTERNAL/OPS ACCOUNT DEMAND RULE (#6298 follow-up). Refine the single
     // header-derived attribution with the env-configured internal-account
@@ -2802,7 +2694,6 @@ export const handleChatCompletions = (
     // `laneArming` is omitted, after the public-model gate above has already
     // rejected raw GPT-OSS and old split ids.
     if (
-      validCallerByok === undefined &&
       deps.laneArming !== undefined &&
       resolveNamedModelServability(requestedModel, deps.laneArming) === false
     ) {
@@ -2836,11 +2727,10 @@ export const handleChatCompletions = (
 
     // BALANCE GATE (read-only). #5477 owns the real per-model decrement.
     const minimum = deps.minimumAvailableMsat ?? 1
-    const availableMsat =
-      validCallerByok === undefined
-        ? yield* Effect.promise(() => deps.readAvailableMsat(session.accountRef))
-        : minimum
-    if (validCallerByok === undefined && availableMsat < minimum) {
+    const availableMsat = yield* Effect.promise(() =>
+      deps.readAvailableMsat(session.accountRef),
+    )
+    if (availableMsat < minimum) {
       // FREE-ALLOWANCE BYPASS (EPIC #5474 §1). A zero/insufficient-balance
       // account is NOT rejected when the request is free-eligible AND the
       // resolving owner still has remaining free allowance — that request would
@@ -2897,7 +2787,7 @@ export const handleChatCompletions = (
     // can be flush with credits yet still be capped at a configurable per-window
     // spend ceiling so a compromised key cannot drain the whole balance. Open
     // (no-op) when unwired or when no cap is configured for the account.
-    if (validCallerByok === undefined && deps.checkSpendCap !== undefined) {
+    if (deps.checkSpendCap !== undefined) {
       const spendCap = yield* Effect.promise(() =>
         deps.checkSpendCap!(session.accountRef),
       )
@@ -2915,10 +2805,7 @@ export const handleChatCompletions = (
       }
     }
 
-    const meteringHook =
-      validCallerByok === undefined
-        ? (deps.meteringHook ?? stubMeteringHook)
-        : stubMeteringHook
+    const meteringHook = deps.meteringHook ?? stubMeteringHook
     const resolveFundingKind =
       deps.resolveFundingKind ?? defaultCardFundingResolver
     const fundingKind = yield* Effect.promise(() =>
@@ -3002,25 +2889,18 @@ export const handleChatCompletions = (
         : { pinPolicy: deps.cachePinPolicy }),
     })
     const plannedIds = routingDecision.lanes
-    const routedPlannedIds =
-      validCallerByok === undefined
-        ? plannedIds
-        : [OPENROUTER_KHALA_FALLBACK_ADAPTER_ID]
 
     // model_unavailable when no lane is configured OR none of the planned lanes
     // is actually registered (e.g. an absent partner secret leaves the plan but
     // no resolvable adapter).
-    const hasViableLane = routedPlannedIds.some(
+    const hasViableLane = plannedIds.some(
       id => deps.registry.resolve(id) !== undefined,
     )
     if (!hasViableLane) {
-      const response = noStoreJsonResponse(
+      return noStoreJsonResponse(
         { error: 'model_unavailable', model: requestedModel },
         { status: 400 },
       )
-      return validCallerByok === undefined
-        ? response
-        : withByokAck(response, 'accepted')
     }
 
     // COMPONENT-CHANNEL ACTIVATION (issue #6127). AND-gated: gateway flag on +
@@ -3087,7 +2967,6 @@ export const handleChatCompletions = (
       affinity.params,
       componentChannelActive,
       autopilotConcierge?.ok === true ? autopilotConcierge.config : undefined,
-      validCallerByok,
       {
         ...(preemptionAbortController === undefined
           ? {}
@@ -3150,7 +3029,7 @@ export const handleChatCompletions = (
           })
     const dispatchDeps: DispatchDeps = {
       registry: deps.registry,
-      plan: () => routedPlannedIds,
+      plan: () => plannedIds,
       requestForAdapter: mirrorcodeStrongCodingKhalaRequest
         ? khalaStrongCodingRequestForAdapter
         : khalaRequestForAdapter,
@@ -3324,7 +3203,7 @@ export const handleChatCompletions = (
           source: sourceWithPreemptionRelease,
           routeMetadata: sseDispatch.served.route,
         })
-        const response = new Response(responseStream, {
+        return new Response(responseStream, {
           headers: {
             'cache-control': 'no-store',
             'content-type': 'text/event-stream; charset=utf-8',
@@ -3340,9 +3219,6 @@ export const handleChatCompletions = (
           },
           status: 200,
         })
-        return validCallerByok === undefined
-          ? response
-          : withByokAck(response, 'routed')
       }
 
       // Only fall back to the buffered path when the served lane genuinely could
@@ -3351,10 +3227,7 @@ export const handleChatCompletions = (
       // path (which would double-dispatch and could 524 again).
       if (sseDispatch.error.kind !== 'stream_not_supported') {
         yield* Effect.promise(() => releasePreemptionSlot())
-        const response = providerErrorResponse(sseDispatch.error)
-        return validCallerByok === undefined
-          ? response
-          : withByokAck(response, 'accepted')
+        return providerErrorResponse(sseDispatch.error)
       }
 
       // Run the stream op across the lane plan; the served adapter id rides
@@ -3372,10 +3245,7 @@ export const handleChatCompletions = (
         Effect.ensuring(Effect.promise(() => releasePreemptionSlot())),
       )
       if (!chunks.ok) {
-        const response = providerErrorResponse(chunks.error)
-        return validCallerByok === undefined
-          ? response
-          : withByokAck(response, 'accepted')
+        return providerErrorResponse(chunks.error)
       }
       const servedChunks = chunks.served.value.value
       // Settle metering from the terminal usage frame (receipt-first).
@@ -3589,16 +3459,13 @@ export const handleChatCompletions = (
       const body_sse = frameStrings.join('')
       const stream = `${body_sse}data: [DONE]\n\n`
 
-      const response = new Response(stream, {
+      return new Response(stream, {
         headers: {
           'cache-control': 'no-store',
           'content-type': 'text/event-stream; charset=utf-8',
         },
         status: 200,
       })
-      return validCallerByok === undefined
-        ? response
-        : withByokAck(response, 'routed')
     }
 
     const result = yield* dispatchWithOverflowWithMetadata(
@@ -3615,10 +3482,7 @@ export const handleChatCompletions = (
       Effect.ensuring(Effect.promise(() => releasePreemptionSlot())),
     )
     if (!result.ok) {
-      const response = providerErrorResponse(result.error)
-      return validCallerByok === undefined
-        ? response
-        : withByokAck(response, 'accepted')
+      return providerErrorResponse(result.error)
     }
 
     // KHALA IDENTITY GUARD (STEP 2). Run the typed identity signature over the
@@ -3813,7 +3677,7 @@ export const handleChatCompletions = (
       }
     }
 
-    const response = noStoreJsonResponse(
+    return noStoreJsonResponse(
       openAiResponse({
         created,
         id: responseId,
@@ -3838,7 +3702,4 @@ export const handleChatCompletions = (
         result: guardedResult,
       }),
     )
-    return validCallerByok === undefined
-      ? response
-      : withByokAck(response, 'routed')
   })
