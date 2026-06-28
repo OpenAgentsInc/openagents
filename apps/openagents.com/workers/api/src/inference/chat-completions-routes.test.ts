@@ -2446,6 +2446,156 @@ describe('POST /v1/chat/completions', () => {
     expect(body.openagents?.worker).toBe(FIREWORKS_STRONG_CODING_ADAPTER_ID)
   })
 
+  test('fans out internal_stress cl-saturation Khala traffic across every registered lane, counting each serve + trace', async () => {
+    // The throughput unlock: with GLM own-capacity down, three paid lanes are
+    // registered (Vertex + Fireworks + OpenRouter). Burn traffic must SPREAD
+    // round-robin across all three so aggregate throughput is the SUM of their
+    // serve rates, instead of pinning the single primary lane (Vertex).
+    const registry = new InferenceProviderRegistry()
+    registry.register(echoAdapter(VERTEX_GEMINI_ADAPTER_ID))
+    registry.register(echoAdapter(FIREWORKS_ADAPTER_ID))
+    registry.register(echoAdapter(OPENROUTER_KHALA_FALLBACK_ADAPTER_ID))
+
+    const recorded: Array<
+      Readonly<{
+        adapterId: string
+        demandKind: string
+        demandSource: string | undefined
+        requestedModel: string
+      }>
+    > = []
+    const traced: Array<string | undefined> = []
+    let rotation = 0
+
+    const servedWorkers: Array<string> = []
+    for (let index = 0; index < 4; index += 1) {
+      const response = await run(
+        handleChatCompletions(
+          chatRequest(
+            { ...helloBody, oa_emit_trace: true },
+            {
+              headers: {
+                [INFERENCE_CLIENT_HEADER]: 'cl-burn-harness',
+                [INFERENCE_DEMAND_KIND_HEADER]: 'internal_stress',
+                [INFERENCE_DEMAND_SOURCE_HEADER]: 'cl-saturation',
+              },
+            },
+          ),
+          baseDeps({
+            dispatch: { sleep: () => Effect.void },
+            // The full conversational Khala plan (four lanes); GLM is NOT
+            // registered, so the fan-out spreads over the three real lanes only.
+            lanePlan: () => [
+              VERTEX_GEMINI_ADAPTER_ID,
+              FIREWORKS_ADAPTER_ID,
+              HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+              OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+            ],
+            // Deterministic round-robin sequence 0,1,2,3 for this test.
+            multiLaneBurnRotation: () => rotation++,
+            recordTokensServed: input =>
+              Effect.sync(() => {
+                recorded.push({
+                  adapterId: input.adapterId,
+                  demandKind: input.requestAttribution?.demandKind ?? 'none',
+                  demandSource: input.requestAttribution?.demandSource,
+                  requestedModel: input.requestedModel,
+                })
+              }),
+            registry,
+            traceEmit: {
+              emit: async emitInput => {
+                traced.push(emitInput.requestAttribution?.demandSource)
+                return { emitted: true }
+              },
+              enabled: true,
+            },
+          }),
+        ),
+      )
+      expect(response.status).toBe(200)
+      const body = (await response.json()) as {
+        openagents?: { worker?: string }
+      }
+      servedWorkers.push(body.openagents!.worker!)
+    }
+
+    // Four concurrent burn requests cover ALL THREE registered lanes round-robin
+    // (the unregistered GLM rotation slot is skipped, the 4th wraps to Vertex).
+    expect(new Set(servedWorkers.slice(0, 3)).size).toBe(3)
+    expect(servedWorkers).toEqual([
+      VERTEX_GEMINI_ADAPTER_ID,
+      FIREWORKS_ADAPTER_ID,
+      OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+      VERTEX_GEMINI_ADAPTER_ID,
+    ])
+    // Each served request recorded exactly one token_usage row on the lane that
+    // actually served — the khala counter keeps counting on every lane.
+    expect(recorded.map(entry => entry.adapterId)).toEqual(servedWorkers)
+    // ...and every row keeps the Khala model + internal_stress/cl-saturation
+    // attribution intact (so the public counter projects them on `openagents/khala`).
+    expect(
+      recorded.every(
+        entry =>
+          entry.requestedModel === KHALA_MODEL_ID &&
+          entry.demandKind === 'internal_stress' &&
+          entry.demandSource === 'cl-saturation',
+      ),
+    ).toBe(true)
+    // ...and emitted exactly one trace per served request.
+    expect(traced).toEqual([
+      'cl-saturation',
+      'cl-saturation',
+      'cl-saturation',
+      'cl-saturation',
+    ])
+  })
+
+  test('does NOT fan out normal (non-burn) Khala traffic; default routing unchanged', async () => {
+    // A plain Khala request must keep today's behavior: pin the primary lane and
+    // never consult the fan-out rotation. (Overflow still applies on failure.)
+    const registry = new InferenceProviderRegistry()
+    registry.register(echoAdapter(VERTEX_GEMINI_ADAPTER_ID))
+    registry.register(echoAdapter(FIREWORKS_ADAPTER_ID))
+    registry.register(echoAdapter(OPENROUTER_KHALA_FALLBACK_ADAPTER_ID))
+
+    let rotationCalls = 0
+    const servedWorkers: Array<string> = []
+    for (let index = 0; index < 3; index += 1) {
+      const response = await run(
+        handleChatCompletions(
+          chatRequest(helloBody),
+          baseDeps({
+            dispatch: { sleep: () => Effect.void },
+            lanePlan: () => [
+              VERTEX_GEMINI_ADAPTER_ID,
+              FIREWORKS_ADAPTER_ID,
+              OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+            ],
+            multiLaneBurnRotation: () => {
+              rotationCalls += 1
+              return rotationCalls
+            },
+            registry,
+          }),
+        ),
+      )
+      expect(response.status).toBe(200)
+      const body = (await response.json()) as {
+        openagents?: { worker?: string }
+      }
+      servedWorkers.push(body.openagents!.worker!)
+    }
+
+    expect(servedWorkers).toEqual([
+      VERTEX_GEMINI_ADAPTER_ID,
+      VERTEX_GEMINI_ADAPTER_ID,
+      VERTEX_GEMINI_ADAPTER_ID,
+    ])
+    // The rotation counter is never consulted for non-burn traffic.
+    expect(rotationCalls).toBe(0)
+  })
+
   test('keeps GLM saturation internal_stress on GLM instead of overflowing to Fireworks', async () => {
     let fireworksCalls = 0
     let glmCalls = 0
