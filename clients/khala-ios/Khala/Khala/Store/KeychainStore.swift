@@ -10,18 +10,21 @@ enum KeychainStore {
     private static let service = "com.openagents.khala"
     private static let account = "khala_api_key"
 
-    static func saveAPIKey(_ key: String) {
+    @discardableResult
+    static func saveAPIKey(_ key: String) -> Bool {
         let data = Data(key.utf8)
         // Delete any existing item first so save is idempotent.
         deleteAPIKey()
-        let query: [String: Any] = [
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
             kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
         ]
-        SecItemAdd(query as CFDictionary, nil)
+#if !os(macOS)
+        query[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+#endif
+        return SecItemAdd(query as CFDictionary, nil) == errSecSuccess
     }
 
     static func loadAPIKey() -> String? {
