@@ -289,31 +289,11 @@ enum KhalaClient {
         guard let raw = String(data: data, encoding: .utf8) else { return "" }
         return raw
             .components(separatedBy: "\n\n")
-            .compactMap { chunk -> String? in
-                let payload = chunk
-                    .components(separatedBy: .newlines)
-                    .filter { $0.hasPrefix("data:") }
-                    .map { String($0.dropFirst("data:".count)).trimmingCharacters(in: .whitespaces) }
-                    .joined(separator: "\n")
-                guard !payload.isEmpty, payload != "[DONE]" else { return nil }
-                guard let jsonData = payload.data(using: .utf8),
-                      let obj = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
-                      let choices = obj["choices"] as? [[String: Any]]
-                else {
-                    return nil
-                }
-                return choices.compactMap { choice in
-                    if let delta = choice["delta"] as? [String: Any],
-                       let content = delta["content"] as? String {
-                        return content
-                    }
-                    if let message = choice["message"] as? [String: Any],
-                       let content = message["content"] as? String {
-                        return content
-                    }
-                    return nil
-                }
-                .joined()
+            .compactMap { frame -> String? in
+                guard let delta = delta(fromSSEFrameLines: frame.components(separatedBy: .newlines)),
+                      !delta.isDone
+                else { return nil }
+                return delta.content
             }
             .joined()
     }

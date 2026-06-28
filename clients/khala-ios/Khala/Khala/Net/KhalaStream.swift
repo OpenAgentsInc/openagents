@@ -77,13 +77,29 @@ extension KhalaClient {
                         throw KhalaError.http(http.statusCode, body)
                     }
 
+                    var frameLines: [String] = []
+                    var streamIsDone = false
                     for try await line in bytes.lines {
                         try Task.checkCancellation()
-                        guard let delta = Self.delta(fromSSELine: line) else { continue }
-                        if delta.isDone { break }
-                        if let content = delta.content, !content.isEmpty {
-                            continuation.yield(content)
+                        if line.trimmingCharacters(in: .newlines).isEmpty {
+                            streamIsDone = Self.flushSSEFrameLines(&frameLines, to: continuation)
+                            if streamIsDone { break }
+                        } else {
+                            frameLines.append(line)
+                            if let delta = Self.delta(fromSSEFrameLines: frameLines) {
+                                frameLines.removeAll(keepingCapacity: true)
+                                if delta.isDone {
+                                    streamIsDone = true
+                                    break
+                                }
+                                if let content = delta.content, !content.isEmpty {
+                                    continuation.yield(content)
+                                }
+                            }
                         }
+                    }
+                    if !streamIsDone {
+                        _ = Self.flushSSEFrameLines(&frameLines, to: continuation)
                     }
                     continuation.finish()
                 } catch is CancellationError {
@@ -159,15 +175,18 @@ extension KhalaClient {
         let isDone: Bool
     }
 
-    /// Parse a single SSE line into a delta. Returns `nil` for blank lines,
-    /// comments (`:`), and non-`data:` event fields. `[DONE]` maps to
+    /// Parse a single-line SSE event into a delta. Returns `nil` for blank
+    /// lines, comments (`:`), and non-`data:` event fields. `[DONE]` maps to
     /// `isDone == true`.
     static func delta(fromSSELine line: String) -> SSEDelta? {
-        let trimmed = line.trimmingCharacters(in: .whitespaces)
-        guard trimmed.hasPrefix("data:") else { return nil }
+        delta(fromSSEFrameLines: [line])
+    }
 
-        var payload = String(trimmed.dropFirst("data:".count))
-        payload = payload.trimmingCharacters(in: .whitespaces)
+    /// Parse a complete SSE event frame. Multiple `data:` fields are joined
+    /// with newlines per the SSE contract, which lets OpenAI-compatible JSON
+    /// payloads arrive split across several data lines.
+    static func delta(fromSSEFrameLines lines: [String]) -> SSEDelta? {
+        let payload = sseDataPayload(fromFrameLines: lines)
         guard !payload.isEmpty else { return nil }
         if payload == "[DONE]" { return SSEDelta(content: nil, isDone: true) }
 
@@ -193,6 +212,33 @@ extension KhalaClient {
         .joined()
 
         return SSEDelta(content: content.isEmpty ? nil : content, isDone: false)
+    }
+
+    static func sseDataPayload(fromFrameLines lines: [String]) -> String {
+        lines.compactMap { line -> String? in
+            let trimmed = line.trimmingCharacters(in: CharacterSet(charactersIn: "\r"))
+            guard trimmed.hasPrefix("data:") else { return nil }
+            var payload = String(trimmed.dropFirst("data:".count))
+            if payload.hasPrefix(" ") {
+                payload.removeFirst()
+            }
+            return payload
+        }
+        .joined(separator: "\n")
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    static func flushSSEFrameLines(
+        _ frameLines: inout [String],
+        to continuation: AsyncThrowingStream<String, Error>.Continuation
+    ) -> Bool {
+        defer { frameLines.removeAll(keepingCapacity: true) }
+        guard let delta = delta(fromSSEFrameLines: frameLines) else { return false }
+        if delta.isDone { return true }
+        if let content = delta.content, !content.isEmpty {
+            continuation.yield(content)
+        }
+        return false
     }
 
     /// Read a bounded prefix of an error response body for diagnostic context.

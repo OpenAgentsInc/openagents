@@ -57,13 +57,29 @@ extension KhalaClient {
                         return
                     }
 
+                    var frameLines: [String] = []
+                    var streamIsDone = false
                     for try await line in bytes.lines {
                         try Task.checkCancellation()
-                        guard let delta = Self.delta(fromSSELine: line) else { continue }
-                        if delta.isDone { break }
-                        if let content = delta.content, !content.isEmpty {
-                            continuation.yield(content)
+                        if line.trimmingCharacters(in: .newlines).isEmpty {
+                            streamIsDone = Self.flushSSEFrameLines(&frameLines, to: continuation)
+                            if streamIsDone { break }
+                        } else {
+                            frameLines.append(line)
+                            if let delta = Self.delta(fromSSEFrameLines: frameLines) {
+                                frameLines.removeAll(keepingCapacity: true)
+                                if delta.isDone {
+                                    streamIsDone = true
+                                    break
+                                }
+                                if let content = delta.content, !content.isEmpty {
+                                    continuation.yield(content)
+                                }
+                            }
                         }
+                    }
+                    if !streamIsDone {
+                        _ = Self.flushSSEFrameLines(&frameLines, to: continuation)
                     }
                     continuation.finish()
                 } catch is CancellationError {
