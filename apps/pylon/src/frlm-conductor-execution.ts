@@ -21,10 +21,20 @@ export type FrlmConductorExecutionBlockerRef =
   | "blocker.artanis.frlm_conductor.execution_ref_missing"
   | "blocker.artanis.frlm_conductor.root_task_ref_missing"
   | "blocker.artanis.frlm_conductor.blueprint_signature_ref_missing"
+  | "blocker.artanis.frlm_conductor.budget_policy_ref_missing"
+  | "blocker.artanis.frlm_conductor.budget_policy_invalid"
+  | "blocker.artanis.frlm_conductor.token_budget_exceeded"
+  | "blocker.artanis.frlm_conductor.depth_limit_exceeded"
   | "blocker.artanis.frlm_conductor.sub_query_plan_missing"
   | "blocker.artanis.frlm_conductor.sub_query_failure_without_linear_fallback"
   | "blocker.artanis.frlm_conductor.linear_executor_ref_missing"
   | "blocker.artanis.frlm_conductor.unsafe_ref"
+
+export type FrlmConductorBudgetPolicy = {
+  budgetPolicyRef: string
+  maxTokens: number
+  maxDepth: number
+}
 
 export type FrlmConductorSubQuery = {
   subQueryRef: string
@@ -33,6 +43,8 @@ export type FrlmConductorSubQuery = {
   resultRef?: string | null
   failureRef?: string | null
   blueprintSignatureRef?: string | null
+  depth?: number | null
+  tokenCount?: number | null
 }
 
 export type FrlmConductorExecutionProjection = {
@@ -41,6 +53,11 @@ export type FrlmConductorExecutionProjection = {
   executionRef: string | null
   rootTaskRef: string | null
   blueprintSignatureRef: string | null
+  budgetPolicyRef: string | null
+  tokenBudget: number | null
+  projectedTokenCount: number
+  depthLimit: number | null
+  projectedMaxDepth: number
   executionMode: FrlmConductorExecutionMode
   canExecute: boolean
   recursiveSubQueryRefs: string[]
@@ -70,6 +87,7 @@ export function planFrlmConductorExecution(input: {
   executionRef?: string | null
   rootTaskRef?: string | null
   blueprintSignatureRef?: string | null
+  budgetPolicy?: FrlmConductorBudgetPolicy | null
   subQueries?: FrlmConductorSubQuery[]
   linearFallbackEnabled?: boolean
   linearExecutorRef?: string | null
@@ -80,6 +98,7 @@ export function planFrlmConductorExecution(input: {
     normalizedRef(input.executionRef),
     normalizedRef(input.rootTaskRef),
     normalizedRef(input.blueprintSignatureRef),
+    normalizedRef(input.budgetPolicy?.budgetPolicyRef),
     normalizedRef(input.linearExecutorRef),
     ...subQueries.flatMap((subQuery) => [
       normalizedRef(subQuery.subQueryRef),
@@ -103,8 +122,16 @@ export function planFrlmConductorExecution(input: {
   const executionRef = safeRef(input.executionRef)
   const rootTaskRef = safeRef(input.rootTaskRef)
   const blueprintSignatureRef = safeRef(input.blueprintSignatureRef)
+  const budgetPolicyRef = safeRef(input.budgetPolicy?.budgetPolicyRef)
+  const tokenBudget = positiveInteger(input.budgetPolicy?.maxTokens)
+  const depthLimit = positiveInteger(input.budgetPolicy?.maxDepth)
   const linearExecutorRef = safeRef(input.linearExecutorRef)
   const recursiveSubQueryRefs = uniqueRefs(subQueries.map((subQuery) => safeRef(subQuery.subQueryRef)))
+  const projectedTokenCount = subQueries.reduce(
+    (total, subQuery) => total + nonNegativeInteger(subQuery.tokenCount),
+    0,
+  )
+  const projectedMaxDepth = maxProjectedDepth(rootTaskRef, subQueries)
   const failedSubQueryRefs = uniqueRefs(
     subQueries
       .filter((subQuery) => failedStates.has(subQuery.state))
@@ -123,6 +150,18 @@ export function planFrlmConductorExecution(input: {
   }
   if (blueprintSignatureRef === null) {
     blockerRefs.add("blocker.artanis.frlm_conductor.blueprint_signature_ref_missing")
+  }
+  if (budgetPolicyRef === null) {
+    blockerRefs.add("blocker.artanis.frlm_conductor.budget_policy_ref_missing")
+  }
+  if (input.budgetPolicy === null || input.budgetPolicy === undefined || tokenBudget === null || depthLimit === null) {
+    blockerRefs.add("blocker.artanis.frlm_conductor.budget_policy_invalid")
+  }
+  if (tokenBudget !== null && projectedTokenCount > tokenBudget) {
+    blockerRefs.add("blocker.artanis.frlm_conductor.token_budget_exceeded")
+  }
+  if (depthLimit !== null && projectedMaxDepth > depthLimit) {
+    blockerRefs.add("blocker.artanis.frlm_conductor.depth_limit_exceeded")
   }
   if (recursiveSubQueryRefs.length === 0) {
     blockerRefs.add("blocker.artanis.frlm_conductor.sub_query_plan_missing")
@@ -156,6 +195,7 @@ export function planFrlmConductorExecution(input: {
     executionRef,
     rootTaskRef,
     blueprintSignatureRef,
+    budgetPolicyRef,
     linearExecutorRef,
     fallbackReasonRef,
     ...recursiveSubQueryRefs,
@@ -175,6 +215,11 @@ export function planFrlmConductorExecution(input: {
     executionRef,
     rootTaskRef,
     blueprintSignatureRef,
+    budgetPolicyRef,
+    tokenBudget,
+    projectedTokenCount,
+    depthLimit,
+    projectedMaxDepth,
     executionMode,
     canExecute,
     recursiveSubQueryRefs,
@@ -211,4 +256,55 @@ function uniqueRefs(refs: (string | null)[]) {
   return [...new Set(refs.filter((ref): ref is string => ref !== null && ref.trim().length > 0))]
     .map((ref) => ref.trim())
     .sort()
+}
+
+function positiveInteger(value: number | null | undefined): number | null {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null
+}
+
+function nonNegativeInteger(value: number | null | undefined): number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : 0
+}
+
+function maxProjectedDepth(rootTaskRef: string | null, subQueries: FrlmConductorSubQuery[]) {
+  const parentByRef = new Map<string, string | null>()
+  for (const subQuery of subQueries) {
+    const subQueryRef = normalizedRef(subQuery.subQueryRef)
+    if (subQueryRef !== null) {
+      parentByRef.set(subQueryRef, normalizedRef(subQuery.parentRef))
+    }
+  }
+
+  let maxDepth = 0
+  for (const subQuery of subQueries) {
+    const explicitDepth = positiveInteger(subQuery.depth)
+    if (explicitDepth !== null) {
+      maxDepth = Math.max(maxDepth, explicitDepth)
+      continue
+    }
+
+    const subQueryRef = normalizedRef(subQuery.subQueryRef)
+    if (subQueryRef !== null) {
+      maxDepth = Math.max(maxDepth, inferredDepth(rootTaskRef, subQueryRef, parentByRef))
+    }
+  }
+  return maxDepth
+}
+
+function inferredDepth(rootTaskRef: string | null, subQueryRef: string, parentByRef: Map<string, string | null>) {
+  let depth = 1
+  let currentRef: string | null = subQueryRef
+  const seen = new Set<string>()
+
+  while (currentRef !== null && !seen.has(currentRef)) {
+    seen.add(currentRef)
+    const parentRef: string | null = parentByRef.get(currentRef) ?? null
+    if (parentRef === null || parentRef === rootTaskRef) {
+      return depth
+    }
+    depth += 1
+    currentRef = parentByRef.has(parentRef) ? parentRef : null
+  }
+
+  return depth
 }

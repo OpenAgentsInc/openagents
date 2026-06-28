@@ -16,6 +16,11 @@ describe("FRLM Conductor execution planning", () => {
 
     expect(projection.canExecute).toBe(true)
     expect(projection.executionMode).toBe("recursive_parallel")
+    expect(projection.budgetPolicyRef).toBe("budget_policy.artanis.frlm_conductor.issue_6683.v1")
+    expect(projection.tokenBudget).toBe(12_000)
+    expect(projection.projectedTokenCount).toBe(4_800)
+    expect(projection.depthLimit).toBe(2)
+    expect(projection.projectedMaxDepth).toBe(1)
     expect(projection.blockerRefs).toEqual([])
     expect(projection.failedSubQueryRefs).toEqual([])
     expect(projection.linearFallbackStepRefs).toEqual([])
@@ -73,6 +78,76 @@ describe("FRLM Conductor execution planning", () => {
     )
   })
 
+  test("blocks execution when recursive sub-query tokens exceed the BudgetPolicy", () => {
+    const projection = planFrlmConductorExecution({
+      ...validInput(),
+      budgetPolicy: {
+        budgetPolicyRef: "budget_policy.artanis.frlm_conductor.tight_tokens.v1",
+        maxTokens: 4_000,
+        maxDepth: 3,
+      },
+      subQueries: completedSubQueries(),
+    })
+
+    expect(projection.canExecute).toBe(false)
+    expect(projection.executionMode).toBe("blocked")
+    expect(projection.tokenBudget).toBe(4_000)
+    expect(projection.projectedTokenCount).toBe(4_800)
+    expect(projection.blockerRefs).toContain("blocker.artanis.frlm_conductor.token_budget_exceeded")
+    expect(projection.executionPlanRef).toBeNull()
+    assertPublicProjectionSafe(projection)
+  })
+
+  test("blocks execution when recursive sub-query depth exceeds the BudgetPolicy", () => {
+    const projection = planFrlmConductorExecution({
+      ...validInput(),
+      subQueries: [
+        completedSubQueries()[0],
+        {
+          subQueryRef: "subquery.artanis.frlm.inspect_nested_context.v1",
+          parentRef: "subquery.artanis.frlm.collect_context.v1",
+          state: "completed",
+          resultRef: "result.artanis.frlm.inspect_nested_context.v1",
+          blueprintSignatureRef: "signature.blueprint.rlm_subquery.v1",
+          tokenCount: 1_200,
+        },
+        {
+          subQueryRef: "subquery.artanis.frlm.inspect_leaf_context.v1",
+          parentRef: "subquery.artanis.frlm.inspect_nested_context.v1",
+          state: "completed",
+          resultRef: "result.artanis.frlm.inspect_leaf_context.v1",
+          blueprintSignatureRef: "signature.blueprint.rlm_subquery.v1",
+          tokenCount: 900,
+        },
+      ],
+    })
+
+    expect(projection.canExecute).toBe(false)
+    expect(projection.executionMode).toBe("blocked")
+    expect(projection.depthLimit).toBe(2)
+    expect(projection.projectedMaxDepth).toBe(3)
+    expect(projection.blockerRefs).toContain("blocker.artanis.frlm_conductor.depth_limit_exceeded")
+    expect(projection.executionPlanRef).toBeNull()
+    assertPublicProjectionSafe(projection)
+  })
+
+  test("blocks execution when the BudgetPolicy is missing or invalid", () => {
+    const projection = planFrlmConductorExecution({
+      ...validInput(),
+      budgetPolicy: null,
+      subQueries: completedSubQueries(),
+    })
+
+    expect(projection.canExecute).toBe(false)
+    expect(projection.executionMode).toBe("blocked")
+    expect(projection.budgetPolicyRef).toBeNull()
+    expect(projection.tokenBudget).toBeNull()
+    expect(projection.depthLimit).toBeNull()
+    expect(projection.blockerRefs).toContain("blocker.artanis.frlm_conductor.budget_policy_ref_missing")
+    expect(projection.blockerRefs).toContain("blocker.artanis.frlm_conductor.budget_policy_invalid")
+    assertPublicProjectionSafe(projection)
+  })
+
   test("blocks unsafe refs before they reach public projection fields", () => {
     const projection = planFrlmConductorExecution({
       ...validInput(),
@@ -99,6 +174,11 @@ function validInput() {
     executionRef: "execution.artanis.frlm.issue_6684.v1",
     rootTaskRef: "task.artanis.frlm.root.v1",
     blueprintSignatureRef: "signature.blueprint.frlm_conductor.v1",
+    budgetPolicy: {
+      budgetPolicyRef: "budget_policy.artanis.frlm_conductor.issue_6683.v1",
+      maxTokens: 12_000,
+      maxDepth: 2,
+    },
     linearFallbackEnabled: true,
     linearExecutorRef: "executor.artanis.frlm.linear_local.v1",
   }
@@ -112,6 +192,7 @@ function completedSubQueries(): FrlmConductorSubQuery[] {
       state: "completed",
       resultRef: "result.artanis.frlm.collect_context.v1",
       blueprintSignatureRef: "signature.blueprint.rlm_subquery.v1",
+      tokenCount: 1_500,
     },
     {
       subQueryRef: "subquery.artanis.frlm.optimize_route.v1",
@@ -119,6 +200,7 @@ function completedSubQueries(): FrlmConductorSubQuery[] {
       state: "completed",
       resultRef: "result.artanis.frlm.optimize_route.v1",
       blueprintSignatureRef: "signature.blueprint.rlm_subquery.v1",
+      tokenCount: 1_800,
     },
     {
       subQueryRef: "subquery.artanis.frlm.verify_blueprint_boundary.v1",
@@ -126,6 +208,7 @@ function completedSubQueries(): FrlmConductorSubQuery[] {
       state: "completed",
       resultRef: "result.artanis.frlm.verify_blueprint_boundary.v1",
       blueprintSignatureRef: "signature.blueprint.rlm_subquery.v1",
+      tokenCount: 1_500,
     },
   ]
 }
