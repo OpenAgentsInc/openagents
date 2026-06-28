@@ -108,6 +108,13 @@ export type ArtanisScheduledRunnerResult = Readonly<{
   workProposalRefs: ReadonlyArray<string>
 }>
 
+export type ArtanisAutonomousKhalaLoopPlan = Readonly<{
+  allowedAutonomousActionRefs: ReadonlyArray<string>
+  blockedAutonomousActionRefs: ReadonlyArray<string>
+  escalationRefs: ReadonlyArray<string>
+  recurringSourceRefs: ReadonlyArray<string>
+}>
+
 const noRiskyExecutionAuthority: ArtanisScheduledRunnerForbiddenAuthority = {
   adapterInstallAllowed: false,
   deploymentAllowed: false,
@@ -122,6 +129,48 @@ const noRiskyExecutionAuthority: ArtanisScheduledRunnerForbiddenAuthority = {
   trainingLaunchAllowed: false,
   walletSpendAllowed: false,
 }
+
+const AUTONOMOUS_KHALA_LOOP_SOURCE_REFS = [
+  'github.public.issue.6355',
+  'github.public.issue.6356',
+  'github.public.issue.6357',
+  'github.public.issue.6358',
+  'github.public.issue.6359',
+  'github.public.issue.6360',
+  'github.public.issue.6316',
+  'docs/khala/2026-06-26-khala-open-issues-master-roadmap.md',
+  'docs/inference/inference-engineering-book/',
+  'api.operator.khala.trace_review',
+  'api.operator.khala.unsupported_requests',
+  'api.operator.khala.feedback',
+  'api.public.khala_served_count',
+]
+
+const autonomousKhalaLoopPlan = (
+  scheduleSuffix: string,
+): ArtanisAutonomousKhalaLoopPlan => ({
+  allowedAutonomousActionRefs: [
+    `action.public.artanis.khala_burndown_select.${scheduleSuffix}`,
+    `action.public.artanis.khala_burndown_dispatch_own_capacity.${scheduleSuffix}`,
+    `action.public.artanis.khala_burndown_verify_closeout.${scheduleSuffix}`,
+    `action.public.artanis.khala_stale_no_spend_recovery.${scheduleSuffix}`,
+    `action.public.artanis.khala_feedback_triage.${scheduleSuffix}`,
+    `action.public.artanis.khala_counter_health_read.${scheduleSuffix}`,
+  ],
+  blockedAutonomousActionRefs: [
+    `action.public.artanis.wallet_spend.${scheduleSuffix}`,
+    `action.public.artanis.settlement_mutation.${scheduleSuffix}`,
+    `action.public.artanis.provider_mutation.${scheduleSuffix}`,
+    `action.public.artanis.deployment.${scheduleSuffix}`,
+  ],
+  escalationRefs: [
+    'gate.public.artanis.wallet_spend.required',
+    'gate.public.artanis.settlement.required',
+    'gate.public.artanis.provider_mutation.required',
+    'gate.public.artanis.deployment.required',
+  ],
+  recurringSourceRefs: AUTONOMOUS_KHALA_LOOP_SOURCE_REFS,
+})
 
 export const ARTANIS_TASSADAR_EXECUTOR_SAFE_COPY =
   'The proof of concept ran on 2026-06-10: a real registered Pylon executed a digest-pinned exact-program workload dispatched through the operator assignment route, the closeout carried the trace digest byte-identical to the psionic Rust executor fixture, the production worker re-executed the workload as a separate validator device with a Verified exact_trace_replay challenge receipt (and a Rejected receipt on a tampered digest), and one operator-funded paid closeout settled over real Lightning to the Pylon payout target with balance receipts on both sides. Bounded to one workload family and one Pylon; broad executor earning remains gated separately.'
@@ -398,6 +447,10 @@ const scheduledLoop = (
     `receipt.public.artanis.tassadar_executor_replay_verified.${scheduleSuffix}`
   const acceptanceReceiptRef =
     `receipt.public.artanis.tassadar_executor_acceptance.${scheduleSuffix}`
+  const khalaBurndownReceiptRef =
+    `receipt.public.artanis.khala_burndown_tick_plan.${scheduleSuffix}`
+  const staleLeaseRecoveryReceiptRef =
+    `receipt.public.artanis.khala_stale_lease_recovery_plan.${scheduleSuffix}`
   const forumIntentQueuedReceiptRef =
     `receipt.public.artanis.tassadar_executor_forum_intent.${scheduleSuffix}`
   const tickCloseoutReceiptRef =
@@ -411,8 +464,10 @@ const scheduledLoop = (
   const approvalRef =
     `approval.public.artanis.tassadar_executor_paid_sample.${scheduleSuffix}`
   const authorityRef = 'authority.public.artanis.operator_spend_enable'
+  const khalaLoopPlan = autonomousKhalaLoopPlan(scheduleSuffix)
   const publicEvidenceRefs = uniqueRefs([
     ...selectedContextRefs,
+    ...khalaLoopPlan.recurringSourceRefs,
     assignmentRef,
     TASSADAR_EXECUTOR_CAPABILITY_REF,
     `job.public.${TassadarExecutorTraceJobKind}`,
@@ -431,6 +486,67 @@ const scheduledLoop = (
         ],
         evidenceRefs: publicEvidenceRefs,
         kind: 'pylon_triage',
+        risk: 'safe',
+      }),
+      new ArtanisActionProposalRecord({
+        actionRef:
+          `action.public.artanis.khala_burndown_tick.${scheduleSuffix}`,
+        approvalRequirementRefs: [],
+        artifactRefs: [],
+        authorityReceiptRefs: [
+          'authority.public.artanis.owner_promotion.2026-06-27',
+          'authority.public.artanis.standing_pylon_job_dispatch',
+        ],
+        caveatRefs: [
+          'caveat.public.khala_burndown.own_capacity_only',
+          'caveat.public.khala_burndown.no_spend_no_payout',
+          'caveat.public.khala_burndown.counter_movement_not_proof',
+        ],
+        evidenceRefs: [
+          'github.public.issue.6355',
+          'github.public.issue.6359',
+          'apps/pylon/docs/khala-burndown-runbook.md',
+          'api.public.khala_served_count',
+        ],
+        kind: 'pylon_triage',
+        risk: 'safe',
+      }),
+      new ArtanisActionProposalRecord({
+        actionRef:
+          `action.public.artanis.khala_feedback_and_issue_triage.${scheduleSuffix}`,
+        approvalRequirementRefs: [],
+        artifactRefs: [],
+        authorityReceiptRefs: [],
+        caveatRefs: [
+          'caveat.public.artanis.triage_reads_only_until_issue_or_code_patch',
+          'caveat.public.artanis.forum_first_product_promise_reports',
+        ],
+        evidenceRefs: [
+          'github.public.issue.6356',
+          'github.public.issue.6357',
+          'github.public.issue.6360',
+          'api.operator.khala.trace_review',
+          'api.operator.khala.unsupported_requests',
+          'api.operator.khala.feedback',
+        ],
+        kind: 'status_projection',
+        risk: 'safe',
+      }),
+      new ArtanisActionProposalRecord({
+        actionRef:
+          `action.public.artanis.inference_book_next_source.${scheduleSuffix}`,
+        approvalRequirementRefs: [],
+        artifactRefs: [],
+        authorityReceiptRefs: [],
+        caveatRefs: [
+          'caveat.public.artanis.consult_after_current_issue_set_drains',
+          'caveat.public.artanis.open_new_issues_before_broadening_claims',
+        ],
+        evidenceRefs: [
+          'github.public.issue.6316',
+          'docs/inference/inference-engineering-book/',
+        ],
+        kind: 'status_projection',
         risk: 'safe',
       }),
       new ArtanisActionProposalRecord({
@@ -484,7 +600,8 @@ const scheduledLoop = (
     blockerRefs: [],
     caveatRefs: [
       'caveat.public.tick_evidence_only',
-      'caveat.public.runner_no_direct_dispatch_or_spend_authority',
+      'caveat.public.runner_no_spend_or_destructive_authority',
+      'caveat.public.artanis_owner_dispatch_is_own_capacity_only',
       'caveat.public.tassadar_executor_trace.copy_limited_to_safeCopy',
     ],
     closeoutReceiptRefs: [tickCloseoutReceiptRef, closeoutReceiptRef],
@@ -497,6 +614,8 @@ const scheduledLoop = (
     receiptRefs: [
       `receipt.public.artanis.context_loaded.${scheduleSuffix}`,
       dispatchReceiptRef,
+      khalaBurndownReceiptRef,
+      staleLeaseRecoveryReceiptRef,
       closeoutReceiptRef,
       replayReceiptRef,
       acceptanceReceiptRef,
@@ -528,6 +647,61 @@ const scheduledLoop = (
     }),
     tick,
   }
+}
+
+const scheduledKhalaBurndownWorkProposal = (
+  input: ArtanisScheduledRunnerInput,
+  tick: ArtanisLoopTickRecord,
+): ArtanisWorkRoutingProposalRecord => {
+  const scheduleSuffix = refSuffix(input.scheduleRef)
+
+  return new ArtanisWorkRoutingProposalRecord({
+    acceptanceCriteriaRefs: [
+      'criteria.public.khala_burndown.exact_usage_rows',
+      'criteria.public.khala_burndown.owner_only_traces',
+      'criteria.public.khala_burndown.closeout_verified',
+      'criteria.public.khala_burndown.counter_reconciled',
+    ],
+    approvalRequirementRefs: [],
+    blockerRefs: [],
+    capability: 'coding_runtime_probe',
+    costCaveatRefs: ['cost.public.khala_burndown.no_spend_own_capacity'],
+    createdAtIso: input.nowIso,
+    decidedAtIso: input.nowIso,
+    operatorDetailRefs: [
+      'operator.artanis.route.khala_burndown',
+      'operator.artanis.route.khala_feedback_triage',
+      'operator.artanis.route.khala_unsupported_requests',
+    ],
+    proposalRef: `work.public.artanis.khala_burndown.${scheduleSuffix}`,
+    publicCaveatRefs: [
+      'caveat.public.khala_burndown.own_capacity_only',
+      'caveat.public.khala_burndown.no_spend_no_payout',
+      'caveat.public.khala_burndown.no_pooled_capacity',
+      'caveat.public.khala_burndown.safe_stale_lease_recovery_only',
+    ],
+    receiptRefs: tick.receiptRefs,
+    resourceMode: 'background',
+    risk: 'safe_read_only',
+    sourceEvidenceRefs: [
+      ...AUTONOMOUS_KHALA_LOOP_SOURCE_REFS,
+      'apps/pylon/docs/khala-burndown-runbook.md',
+      'apps/openagents.com/INVARIANTS.md',
+    ],
+    spendLimitRefs: ['spend_limit.public.khala_burndown.zero_sats'],
+    state: 'dispatched',
+    target: 'pylon',
+    targetCapabilityRefs: [
+      'capability.public.pylon.codex_agent_task',
+      'capability.public.artanis.dispatch_codex_task',
+    ],
+    traceableWorkRefs: [
+      `assignment.public.artanis.khala_burndown.${scheduleSuffix}`,
+      'assignment.public.khala_coding.own_capacity',
+    ],
+    updatedAtIso: input.nowIso,
+    workClass: 'validation',
+  })
 }
 
 const scheduledExecutorTraceWorkProposal = (
@@ -753,6 +927,7 @@ export const runArtanisScheduledTick = Effect.fn('runArtanisScheduledTick')(
       ...context.persistedStateRefs,
       ...context.operatorSteeringRefs,
       ...context.runnerBackendRefs,
+      ...AUTONOMOUS_KHALA_LOOP_SOURCE_REFS,
     ])
     const { assignmentRef, loop, tick } = scheduledLoop(
       input,
@@ -773,6 +948,10 @@ export const runArtanisScheduledTick = Effect.fn('runArtanisScheduledTick')(
       input,
       tick,
       assignmentRef,
+    )
+    const khalaBurndownWorkProposal = scheduledKhalaBurndownWorkProposal(
+      input,
+      tick,
     )
     const approvalGate = scheduledSpendApprovalGate(input, tick)
     const forumIntent = scheduledForumIntent(input, tick, publicLoadedContextRefs)
@@ -811,6 +990,12 @@ export const runArtanisScheduledTick = Effect.fn('runArtanisScheduledTick')(
       workProposal,
       input.nowIso,
     )
+    const khalaBurndownWorkProposalReceipt =
+      yield* saveArtanisWorkRoutingProposal(
+        input.db,
+        khalaBurndownWorkProposal,
+        input.nowIso,
+      )
     const approvalGateReceipt = yield* saveArtanisApprovalGate(
       input.db,
       approvalGate,
@@ -837,6 +1022,7 @@ export const runArtanisScheduledTick = Effect.fn('runArtanisScheduledTick')(
       tickReceipt,
       healthReceipt,
       workProposalReceipt,
+      khalaBurndownWorkProposalReceipt,
       approvalGateReceipt,
       forumIntentReceipt,
       closeoutReceipt,
@@ -863,7 +1049,10 @@ export const runArtanisScheduledTick = Effect.fn('runArtanisScheduledTick')(
       state: 'completed',
       storageReceipts,
       tickRef: tick.tickRef,
-      workProposalRefs: [workProposal.proposalRef],
+      workProposalRefs: [
+        workProposal.proposalRef,
+        khalaBurndownWorkProposal.proposalRef,
+      ],
     }
 
     return result
