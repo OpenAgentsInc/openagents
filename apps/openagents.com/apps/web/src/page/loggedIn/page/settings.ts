@@ -496,7 +496,7 @@ const settingsGitHubRepositoryPanel = (model: Model): Html => {
   )
 }
 
-const poolValueRow = (label: string, value: string): Html => {
+const poolNodeRow = (label: string, value: Html): Html => {
   const h = html<Message>()
 
   return h.div(
@@ -519,12 +519,56 @@ const poolValueRow = (label: string, value: string): Html => {
   )
 }
 
-const poolCooldownLabel = (account: ProviderAccountPoolAccount): string =>
-  account.cooldownUntil === null
-    ? 'none'
-    : account.cooldownRemainingSeconds === null
-      ? `ended ${formatIsoDateTime(account.cooldownUntil)}`
-      : `until ${formatIsoDateTime(account.cooldownUntil)} (~${Math.max(1, Math.ceil(account.cooldownRemainingSeconds / 60))}m)`
+const poolValueRow = (label: string, value: string): Html => {
+  const h = html<Message>()
+
+  return poolNodeRow(label, h.span([], [value]))
+}
+
+const formatCountdownSeconds = (seconds: number): string => {
+  if (seconds <= 0) return 'now'
+
+  const totalMinutes = Math.max(1, Math.ceil(seconds / 60))
+  const days = Math.floor(totalMinutes / 1_440)
+  const hours = Math.floor((totalMinutes % 1_440) / 60)
+  const minutes = totalMinutes % 60
+
+  if (days > 0) return hours > 0 ? `${days}d ${hours}h` : `${days}d`
+  if (hours > 0) return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`
+  return `${minutes}m`
+}
+
+const poolCooldownLabel = (account: ProviderAccountPoolAccount): string => {
+  if (account.cooldownUntil === null) return 'none'
+  if (account.cooldownRemainingSeconds === null) {
+    return `ended ${formatIsoDateTime(account.cooldownUntil)}`
+  }
+
+  const prefix =
+    account.recentFailureClass === 'rate_limited'
+      ? 'rate limit resets'
+      : 'cooldown clears'
+  return `${prefix} in ${formatCountdownSeconds(account.cooldownRemainingSeconds)} (${formatIsoDateTime(account.cooldownUntil)})`
+}
+
+const poolCooldownRow = (account: ProviderAccountPoolAccount): Html => {
+  const h = html<Message>()
+  const label = poolCooldownLabel(account)
+
+  return poolNodeRow(
+    'Cooldown',
+    account.cooldownUntil === null
+      ? h.span([], [label])
+      : h.time(
+          [
+            h.Attribute('datetime', account.cooldownUntil),
+            h.DataAttribute('provider-account-cooldown-countdown', label),
+            h.DataAttribute('provider-account-cooldown-until', account.cooldownUntil),
+          ],
+          [label],
+        ),
+  )
+}
 
 const poolAccountTone = (account: ProviderAccountPoolAccount): string =>
   account.reconnect.needed
@@ -610,7 +654,7 @@ const poolAccountView = (account: ProviderAccountPoolAccount): Html => {
             `${account.activeLeaseCount}/${account.leaseLimit} active`,
           ),
           poolValueRow('Status', `${account.status} / ${account.health}`),
-          poolValueRow('Cooldown', poolCooldownLabel(account)),
+          poolCooldownRow(account),
           ...(account.lowCredit ? [poolValueRow('Credits', 'low')] : []),
           ...(account.recentFailureClass === null
             ? []

@@ -3825,4 +3825,82 @@ describe('logged-in workroom sidebar', () => {
       ).toExist(),
     )
   })
+
+  test('renders provider account cooldown countdown in settings connections', () => {
+    Scene.scene(
+      { update, view },
+      Scene.with({
+        ...LoggedIn.init(
+          SettingsSectionRoute({ section: 'connections' }),
+          authWithHealthyProviderAccount,
+        ),
+        providerAccountPool: ProviderAccountPoolLoaded({
+          response: {
+            accounts: [
+              {
+                accountLabel: 'limited@openagents.com',
+                activeLeaseCount: 0,
+                connectedAt: '2026-06-10T00:00:00.000Z',
+                cooldownRemainingSeconds: 300,
+                cooldownUntil: '2026-06-11T12:05:00.000Z',
+                eligibility: 'ineligible',
+                eligibilityReasons: ['cooldown'],
+                health: 'healthy',
+                lastFailedLaunchAt: '2026-06-11T11:50:00.000Z',
+                lastParallelProbeAt: null,
+                lastParallelProbeResult: null,
+                lastSanityCheckAt: null,
+                lastSanityCheckResult: null,
+                lastSelectedAt: null,
+                lastSuccessfulLaunchAt: null,
+                leaseLimit: 2,
+                lowCredit: false,
+                operatorPriority: 100,
+                provider: 'chatgpt_codex',
+                providerAccountRef: 'provider-account_limited',
+                recentFailureClass: 'rate_limited',
+                reconnect: { needed: false, reason: null },
+                status: 'connected',
+              },
+            ],
+            activeLeases: [],
+            generatedAt: '2026-06-11T12:00:00.000Z',
+            nextSelection: {
+              accountLabel: null,
+              activeLeaseCount: null,
+              leaseLimit: null,
+              provider: null,
+              providerAccountRef: null,
+              selectionReason: 'No account selected while all accounts cool down.',
+              status: 'none',
+            },
+            policyVersion: 'provider-account-lease-policy:v2',
+            provider: 'all_connected_provider_accounts',
+            summary: {
+              activeLeaseCount: 0,
+              cooldown: 1,
+              eligible: 0,
+              lowCredit: 0,
+              requiresReauth: 0,
+              total: 1,
+              unhealthy: 0,
+            },
+          },
+        }),
+      }),
+      Scene.expect(Scene.text('limited@openagents.com')).toExist(),
+      Scene.expect(
+        Scene.selector('[data-provider-account-cooldown-countdown]'),
+      ).toHaveAttr(
+        'data-provider-account-cooldown-countdown',
+        'rate limit resets in 5m (6/11/2026, 7:05:00 AM)',
+      ),
+      Scene.expect(
+        Scene.selector('[data-provider-account-cooldown-countdown]'),
+      ).toHaveAttr(
+        'data-provider-account-cooldown-until',
+        '2026-06-11T12:05:00.000Z',
+      ),
+    )
+  })
 })
