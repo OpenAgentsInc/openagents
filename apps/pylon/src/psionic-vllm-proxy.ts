@@ -20,6 +20,7 @@ type CompletionResponse = {
 export type PsionicVllmProxyConfig = {
   bearerToken: string
   upstreamUrl: string
+  referenceUrl?: string
   upstreamModel: string
   nodeRef: string
   servedModel: string
@@ -83,6 +84,23 @@ const passthroughNumber = (
   return typeof value === "number" && Number.isFinite(value) ? value : undefined
 }
 
+const completionDigest = (text: string): string =>
+  createHash("sha256").update(text).digest("base64url")
+
+const blockerRefsFor = (input: {
+  canaryPassed: boolean
+  parityPassed: boolean
+}): string[] => {
+  const blockerRefs: string[] = []
+  if (!input.parityPassed) {
+    blockerRefs.push("blocker.pylon_gateway_proxy.exact_greedy_parity_failed")
+  }
+  if (!input.canaryPassed) {
+    blockerRefs.push("blocker.pylon_gateway_proxy.known_answer_canary_failed")
+  }
+  return blockerRefs
+}
+
 export async function handlePsionicVllmProxyRequest(
   request: Request,
   config: PsionicVllmProxyConfig,
@@ -108,14 +126,18 @@ export async function handlePsionicVllmProxyRequest(
 
   const maxTokens = passthroughNumber(serveRequest, "max_tokens") ?? 1
   const temperature = passthroughNumber(serveRequest, "temperature") ?? 0
+  if (temperature !== 0) {
+    return json(400, { error: "exact_greedy_parity_requires_temperature_zero" })
+  }
+  const payload = {
+    max_tokens: maxTokens,
+    messages,
+    model: config.upstreamModel,
+    stream: false,
+    temperature: 0,
+  }
   const upstream = await (config.fetchImpl ?? fetch)(config.upstreamUrl, {
-    body: JSON.stringify({
-      max_tokens: maxTokens,
-      messages,
-      model: config.upstreamModel,
-      stream: false,
-      temperature,
-    }),
+    body: JSON.stringify(payload),
     headers: { "content-type": "application/json" },
     method: "POST",
   })
@@ -125,12 +147,33 @@ export async function handlePsionicVllmProxyRequest(
   }
 
   const upstreamBody = (await upstream.json()) as CompletionResponse
+  const reference = await (config.fetchImpl ?? fetch)(
+    config.referenceUrl ?? config.upstreamUrl,
+    {
+      body: JSON.stringify({
+        ...payload,
+        reference: {
+          mode: "same_engine_exact_greedy_parity",
+          servedModel: config.servedModel,
+        },
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    },
+  )
+  if (!reference.ok) {
+    return json(reference.status, { error: "reference_rejected" })
+  }
+
+  const referenceBody = (await reference.json()) as CompletionResponse
   const content = completionText(upstreamBody)
+  const referenceContent = completionText(referenceBody)
   const trimmedContent = content.trim()
   const canaryPassed = trimmedContent === "OK"
-  const blockerRefs = canaryPassed
-    ? []
-    : ["blocker.pylon_gateway_proxy.known_answer_canary_failed"]
+  const parityPassed =
+    content.length > 0 &&
+    completionDigest(content) === completionDigest(referenceContent)
+  const blockerRefs = blockerRefsFor({ canaryPassed, parityPassed })
   const promptTokens = tokenCount(upstreamBody.usage?.prompt_tokens, messages.map(m => m.content).join(" "))
   const completionTokens = tokenCount(
     upstreamBody.usage?.completion_tokens,
@@ -147,12 +190,13 @@ export async function handlePsionicVllmProxyRequest(
     paidTrafficVerification: {
       blockerRefs,
       canaryPassed,
-      parityPassed: canaryPassed,
-      payoutEligible: canaryPassed,
-      replayPassed: canaryPassed,
+      parityPassed,
+      payoutEligible: parityPassed && canaryPassed,
+      replayPassed: parityPassed,
     },
     parityMode: "exact_greedy_parity",
-    parityVerified: canaryPassed,
+    parityVerified: parityPassed,
+    referenceDigest: completionDigest(referenceContent),
     servedModel: config.servedModel,
     servingRunRef: shaRef(
       "serve.pylon.gateway_proxy",
@@ -171,6 +215,7 @@ export async function handlePsionicVllmProxyRequest(
       promptTokens,
       totalTokens,
     },
+    outputDigest: completionDigest(content),
     verificationRefs: [config.canaryRef, config.replayChallengeRef],
   })
 }
