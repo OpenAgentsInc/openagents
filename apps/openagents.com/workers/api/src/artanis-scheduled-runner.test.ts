@@ -93,6 +93,7 @@ describe('Artanis scheduled runner', () => {
     )
     expect(result.workProposalRefs).toEqual([
       'work.public.artanis.tassadar_executor_trace.cron_public_artanis_20260607T0520',
+      'work.public.artanis.khala_burndown.cron_public_artanis_20260607T0520',
     ])
     expect(result.forumIntentRefs).toEqual([
       'forum.public.artanis.tassadar_executor_trace_intent.cron_public_artanis_20260607T0520',
@@ -129,6 +130,38 @@ describe('Artanis scheduled runner', () => {
           risk: 'safe',
         }),
         expect.objectContaining({
+          actionRef:
+            'action.public.artanis.khala_burndown_tick.cron_public_artanis_20260607T0520',
+          authorityReceiptRefs: expect.arrayContaining([
+            'authority.public.artanis.owner_promotion.2026-06-27',
+            'authority.public.artanis.standing_pylon_job_dispatch',
+          ]),
+          kind: 'pylon_triage',
+          risk: 'safe',
+        }),
+        expect.objectContaining({
+          actionRef:
+            'action.public.artanis.khala_feedback_and_issue_triage.cron_public_artanis_20260607T0520',
+          evidenceRefs: expect.arrayContaining([
+            'api.operator.khala.feedback',
+            'api.operator.khala.trace_review',
+            'api.operator.khala.unsupported_requests',
+            'github.public.issue.6360',
+          ]),
+          kind: 'status_projection',
+          risk: 'safe',
+        }),
+        expect.objectContaining({
+          actionRef:
+            'action.public.artanis.inference_book_next_source.cron_public_artanis_20260607T0520',
+          evidenceRefs: expect.arrayContaining([
+            'docs/inference/inference-engineering-book/',
+            'github.public.issue.6316',
+          ]),
+          kind: 'status_projection',
+          risk: 'safe',
+        }),
+        expect.objectContaining({
           kind: 'executor_trace_replay',
           risk: 'safe',
         }),
@@ -144,8 +177,17 @@ describe('Artanis scheduled runner', () => {
         }),
       ],
       receiptRefs: expect.arrayContaining([
+        'receipt.public.artanis.khala_burndown_tick_plan.cron_public_artanis_20260607T0520',
+        'receipt.public.artanis.khala_stale_lease_recovery_plan.cron_public_artanis_20260607T0520',
         'receipt.public.artanis.tassadar_executor_dispatch.cron_public_artanis_20260607T0520',
         'receipt.public.artanis.tassadar_executor_replay_verified.cron_public_artanis_20260607T0520',
+      ]),
+      selectedContextRefs: expect.arrayContaining([
+        'api.operator.khala.feedback',
+        'api.operator.khala.trace_review',
+        'api.operator.khala.unsupported_requests',
+        'docs/inference/inference-engineering-book/',
+        'github.public.issue.6359',
       ]),
     })
     expect(store.rows('artanis_forum_publication_intents')).toHaveLength(1)
@@ -175,7 +217,30 @@ describe('Artanis scheduled runner', () => {
       ],
       deliveryState: 'ready',
     })
-    expect(store.rows('artanis_work_routing_proposals')).toHaveLength(1)
+    expect(store.rows('artanis_work_routing_proposals')).toHaveLength(2)
+    const workProposalProjections = store
+      .rows('artanis_work_routing_proposals')
+      .map(row => JSON.parse(row.public_projection_json))
+    const khalaBurndownProposal = workProposalProjections
+      .flatMap(projection => projection.proposals)
+      .find(proposal =>
+        proposal.proposalRef ===
+          'work.public.artanis.khala_burndown.cron_public_artanis_20260607T0520'
+      )
+    expect(khalaBurndownProposal).toMatchObject({
+      capability: 'coding_runtime_probe',
+      sourceEvidenceRefs: expect.arrayContaining([
+        'api.public.khala_served_count',
+        'docs/inference/inference-engineering-book/',
+        'github.public.issue.6355',
+        'github.public.issue.6359',
+      ]),
+      targetCapabilityRefs: expect.arrayContaining([
+        'capability.public.artanis.dispatch_codex_task',
+        'capability.public.pylon.codex_agent_task',
+      ]),
+      workClass: 'validation',
+    })
     expect(store.rows('artanis_approval_gates')).toHaveLength(1)
     expect(
       store.rows('artanis_forum_publication_intents')[0]!.public_projection_json,
@@ -291,7 +356,7 @@ describe('Artanis scheduled runner', () => {
     expect(store.rows('artanis_loop_ticks')).toHaveLength(1)
     expect(store.rows('artanis_approval_gates')).toHaveLength(1)
     expect(store.rows('artanis_health_snapshots')).toHaveLength(1)
-    expect(store.rows('artanis_work_routing_proposals')).toHaveLength(1)
+    expect(store.rows('artanis_work_routing_proposals')).toHaveLength(2)
     expect(store.rows('artanis_forum_publication_intents')).toHaveLength(1)
   })
 

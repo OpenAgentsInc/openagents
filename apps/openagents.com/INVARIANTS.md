@@ -1829,6 +1829,38 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   `workers/api/src/artanis-owner-authority.test.ts` and the owner-promotion
   cases in `workers/api/src/artanis-operator-dispatch-execution.test.ts`.
 
+## Artanis Autonomous Khala Improvement Tick
+
+- The scheduled Artanis tick is the bounded owner loop for #6359. On every
+  enabled tick it must persist a public-safe plan covering the Khala burndown
+  loop (#6355), trace review (#6356), unsupported requests (#6357), counter
+  health (#6358), Khala CLI feedback (#6360), and the serving umbrella (#6316).
+  Its recurring source refs include the master roadmap
+  `docs/khala/2026-06-26-khala-open-issues-master-roadmap.md`,
+  `api.operator.khala.trace_review`,
+  `api.operator.khala.unsupported_requests`, `api.operator.khala.feedback`,
+  `api.public.khala_tokens_served`, and
+  `docs/inference/inference-engineering-book/` as the "what next" source after
+  the current issue set drains.
+- Autonomous actions are limited to read/triage, own-capacity no-spend
+  Khala -> Pylon -> Codex dispatch planning/execution through the existing
+  `dispatch_codex_task`/`pylon khala burndown` seam, safe stale no-spend lease
+  recovery, closeout verification, exact-token/trace reconciliation, and opening
+  or updating public-safe issue/ledger refs. Counter movement alone is never
+  completion proof; exact `token_usage_events` and owner-only trace rows remain
+  the proof source.
+- The tick does not gain deployment, provider mutation, wallet spend,
+  settlement, payout, L402 redemption, runtime promotion, or third-party/pooled
+  capacity authority. Those actions must stay represented as blocked or
+  approval-required refs and must pass the explicit `artanis-approval-gates`
+  path before any executor treats them as authorized. Owner-Artanis's standing
+  approval remains scoped only to `pylon_job_dispatch` over the owner's own
+  linked capacity and no-spend coding delegation.
+- Regression coverage lives in
+  `workers/api/src/artanis-scheduled-runner.test.ts` for persisted tick source
+  refs, Khala burndown work-routing proposal refs, and owner-promotion dispatch
+  caveats, plus the dispatch execution tests named above.
+
 ## Spark Address Payout Target Registration
 
 - A Pylon may register its OWN Spark address as a payout target so the platform
