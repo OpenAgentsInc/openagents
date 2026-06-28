@@ -82,6 +82,8 @@ function fakeAssignmentServer(input: {
           expect(request.headers.get("Idempotency-Key")).toContain(
             url.pathname.includes("/heartbeat")
               ? "pylon-presence:"
+              : url.pathname === "/api/pylon/claude/turns"
+                ? "pylon.claude.turn"
               : "pylon.assignment.",
           )
         }
@@ -113,6 +115,15 @@ function fakeAssignmentServer(input: {
           return Response.json({ errorRef: "error.presence.temporarily_unavailable" }, { status: 503 })
         }
         return Response.json({ heartbeatRef: `heartbeat.${body.pylonRef}.${body.sequence}` })
+      }
+      if (url.pathname === "/api/pylon/claude/turns") {
+        expect(body.schemaVersion).toBe("openagents.pylon.claude_turn.v1")
+        expect(body.usage).toEqual({
+          inputTokens: 100,
+          cachedInputTokens: 25,
+          outputTokens: 40,
+        })
+        return Response.json({ ok: true, turnRef: `turn.claude.${body.assignmentRef}.${body.turnIndex}` })
       }
       if (url.pathname.endsWith("/assignments")) {
         return Response.json({
@@ -881,7 +892,18 @@ describe("Pylon assignment lease flow", () => {
           join(input.cwd, "sum.ts"),
           "export const sum = (left: number, right: number) => left + right\n",
         )
-        return { commandCount: 1, editedFileCount: 1, outcome: "completed", sessionRef: null, turnCount: 3 }
+        return {
+          commandCount: 1,
+          editedFileCount: 1,
+          outcome: "completed",
+          sessionRef: "session.pylon.claude_agent.test",
+          turnCount: 3,
+          usage: {
+            inputTokens: 100,
+            cachedInputTokens: 25,
+            outputTokens: 40,
+          },
+        }
       }
       const fake = fakeAssignmentServer({
         leases: [
@@ -899,6 +921,7 @@ describe("Pylon assignment lease flow", () => {
       await sendHeartbeat(summary, { baseUrl: fake.baseUrl, now: () => new Date("2026-06-09T00:00:00.000Z") })
 
       const result = await runNoSpendAssignment(summary, {
+        agentToken: "oa_agent_test",
         baseUrl: fake.baseUrl,
         claudeAgentCheckoutRunner: checkoutRunner,
         claudeAgentProbe: {
@@ -920,6 +943,15 @@ describe("Pylon assignment lease flow", () => {
       expect(result.closeout.artifactRefs[0]).toStartWith("artifact.pylon.claude_agent_task.patch.")
       expect(result.closeout.testRefs[0]).toStartWith("command.pylon.claude_agent_task.verification.")
       expect(result.closeout.previewRefs[0]).toStartWith("workspace.pylon.claude_agent_task.")
+      const claudeTurnRequest = fake.requests.find(request => request.path === "/api/pylon/claude/turns")
+      expect(claudeTurnRequest?.headers.get("Idempotency-Key")).toContain("pylon.claude.turn")
+      expect(claudeTurnRequest?.body).toMatchObject({
+        assignmentRef: "pylon_assignment.autopilot_work_order.test_1.task.public_sum_repair",
+        leaseRef: "pylon_assignment.autopilot_work_order.test_1.task.public_sum_repair",
+        pylonRef: expect.stringContaining("pylon."),
+        sessionRef: "session.pylon.claude_agent.test",
+        turnIndex: 1,
+      })
       const serverBodies = JSON.stringify(fake.requests.map((request) => request.body))
       expect(serverBodies).not.toContain(home)
       expect(serverBodies).not.toContain("/Users/")
