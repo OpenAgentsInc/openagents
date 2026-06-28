@@ -12,6 +12,7 @@ import {
   ClickedNextOnboardingRepositoryPage,
   ClickedPollProviderDeviceLogin,
   ClickedPreviousOnboardingRepositoryPage,
+  ClickedResetProviderAccountPoolAccount,
   ClickedStartProviderDeviceLogin,
   type Message,
   RequestedLoadOnboardingRepositories,
@@ -601,6 +602,9 @@ const poolAccountHeadline = (account: ProviderAccountPoolAccount): string =>
       ? 'ready'
       : (account.eligibilityReasons[0] ?? 'unavailable')
 
+const poolAccountCanReset = (account: ProviderAccountPoolAccount): boolean =>
+  account.cooldownUntil !== null || account.recentFailureClass === 'rate_limited'
+
 const poolAccountView = (account: ProviderAccountPoolAccount): Html => {
   const h = html<Message>()
 
@@ -657,6 +661,19 @@ const poolAccountView = (account: ProviderAccountPoolAccount): Html => {
                   [Ui.className<Message>('text-xs text-[#d32f2f]')],
                   ['Reconnect required'],
                 )
+              : poolAccountCanReset(account)
+                ? Ui.button<Message>({
+                    label: 'Reset',
+                    size: 'sm',
+                    variant: 'secondary',
+                    attrs: [
+                      h.OnClick(
+                        ClickedResetProviderAccountPoolAccount({
+                          providerAccountRef: account.providerAccountRef,
+                        }),
+                      ),
+                    ],
+                  })
               : h.span(
                   [Ui.className<Message>('text-xs text-white/35')],
                   [`priority ${account.operatorPriority}`],
