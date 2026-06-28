@@ -11,6 +11,19 @@ import {
   ArtanisPersistenceTestStore,
   artanisPersistenceTestDb,
 } from './test/artanis-persistence-fixture'
+import type {
+  KhalaFeedbackRecord,
+  KhalaFeedbackStore,
+} from './khala-feedback-routes'
+import type {
+  KhalaTraceReviewFacts,
+  KhalaTraceReviewStore,
+} from './khala-trace-review-routes'
+import type {
+  KhalaUnsupportedRequestCreateInput,
+  KhalaUnsupportedRequestRecord,
+  KhalaUnsupportedRequestStore,
+} from './khala-unsupported-request-routes'
 
 const nowIso = '2026-06-07T05:20:00.000Z'
 const scheduledTime = Date.parse(nowIso)
@@ -31,6 +44,69 @@ const persistedKhalaReadinessSignal = (
 
   return signal
 }
+
+const emptyTraceReviewFacts = (): KhalaTraceReviewFacts => ({
+  modelMix: [],
+  notableTraces: [],
+  outcomes: [],
+  rawEventHighlights: [],
+  rawEventSummary: {
+    assignmentCount: 0,
+    byteLength: 0,
+    eventCount: 0,
+    rowCount: 0,
+  },
+  tokenByDemandSource: [],
+  tokenSummary: {
+    estimatedUsageCount: 0,
+    eventCount: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    reasoningTokens: 0,
+    totalTokens: 0,
+    zeroOutputCount: 0,
+  },
+  traceByDemandSource: [],
+  traceSummary: {
+    ownerOnlyCount: 0,
+    publicCount: 0,
+    traceCount: 0,
+    trainingConsentCount: 0,
+    unlistedCount: 0,
+    zeroStepCount: 0,
+  },
+})
+
+const captureUnsupportedRequestStore = (
+  writes: Array<KhalaUnsupportedRequestCreateInput>,
+): KhalaUnsupportedRequestStore => ({
+  listRecent: async () => [],
+  upsert: async input => {
+    writes.push(input)
+    const record: KhalaUnsupportedRequestRecord = {
+      createdAt: input.createdAt,
+      evidenceRefs: input.evidenceRefs,
+      forumTopicRef: input.forumTopicRef,
+      githubIssueRef: input.githubIssueRef,
+      issueRequired:
+        (input.triageKind === 'bug' ||
+          input.triageKind === 'missing_capability') &&
+        input.githubIssueRef === null,
+      nextAction: 'open_github_issue',
+      requestRef: input.requestRef,
+      sourceKind: input.sourceKind,
+      sourceRef: input.sourceRef,
+      status: input.status,
+      suggestedIssueTitle: input.suggestedIssueTitle,
+      summary: input.summary,
+      title: input.title,
+      triageKind: input.triageKind,
+      updatedAt: input.updatedAt,
+    }
+
+    return record
+  },
+})
 
 describe('Artanis scheduled runner', () => {
   test('stays disabled by default and records no rows', async () => {
@@ -280,6 +356,115 @@ describe('Artanis scheduled runner', () => {
       ]),
       state: 'available',
     })
+  })
+
+  test('upserts trace-review triage items into the unsupported-request ledger', async () => {
+    const store = new ArtanisPersistenceTestStore()
+    const db = artanisPersistenceTestDb(store)
+    const writes: Array<KhalaUnsupportedRequestCreateInput> = []
+    const traceReviewStore: KhalaTraceReviewStore = {
+      readFacts: async () => ({
+        ...emptyTraceReviewFacts(),
+        tokenSummary: {
+          ...emptyTraceReviewFacts().tokenSummary,
+          eventCount: 3,
+          totalTokens: 120,
+          zeroOutputCount: 2,
+        },
+      }),
+    }
+
+    const result = await Effect.runPromise(
+      runArtanisScheduledTick({
+        db,
+        enabled: true,
+        khalaTraceReviewStore: traceReviewStore,
+        khalaUnsupportedRequestStore: captureUnsupportedRequestStore(writes),
+        nowIso,
+        scheduleRef: 'cron.public.artanis.trace-review-ledger',
+      }),
+    )
+
+    expect(result.state).toBe('completed')
+    expect(result.unsupportedRequestRefs).toEqual([
+      'khala_unsupported:triage.khala_trace_review.empty_response',
+    ])
+    expect(writes).toEqual([
+      expect.objectContaining({
+        evidenceRefs: [
+          'table.token_usage_events.output_tokens_zero',
+          'triage.khala_trace_review.empty_response',
+        ],
+        sourceKind: 'trace_review',
+        sourceRef: 'triage.khala_trace_review.empty_response',
+        status: 'needs_issue',
+        title: 'Token rows with zero completion/output tokens',
+        triageKind: 'bug',
+      }),
+    ])
+  })
+
+  test('groups recent Khala feedback into a public-safe unsupported-request row', async () => {
+    const store = new ArtanisPersistenceTestStore()
+    const db = artanisPersistenceTestDb(store)
+    const writes: Array<KhalaUnsupportedRequestCreateInput> = []
+    const feedbackRecords: ReadonlyArray<KhalaFeedbackRecord> = [
+      {
+        clientVersion: '0.1.0',
+        createdAt: '2026-06-07T04:20:00.000Z',
+        feedback:
+          'Please read my local /Users/example/private repo diff before answering.',
+        feedbackRef: 'khala_feedback:fb_public_1',
+        source: 'khala-cli',
+        traceRef: null,
+        userAgent: 'khala-cli',
+      },
+      {
+        clientVersion: '0.1.0',
+        createdAt: '2026-06-07T05:00:00.000Z',
+        feedback: 'The answer was too wordy.',
+        feedbackRef: 'khala_feedback:fb_public_2',
+        source: 'khala-cli',
+        traceRef: 'trace.public.feedback_2',
+        userAgent: 'khala-cli',
+      },
+    ]
+    const feedbackStore: KhalaFeedbackStore = {
+      create: async () => feedbackRecords[0]!,
+      listRecent: async () => feedbackRecords,
+    }
+
+    const result = await Effect.runPromise(
+      runArtanisScheduledTick({
+        db,
+        enabled: true,
+        khalaFeedbackStore: feedbackStore,
+        khalaUnsupportedRequestStore: captureUnsupportedRequestStore(writes),
+        nowIso,
+        scheduleRef: 'cron.public.artanis.feedback-ledger',
+      }),
+    )
+
+    expect(result.state).toBe('completed')
+    expect(result.unsupportedRequestRefs).toEqual([
+      'khala_unsupported:khala_feedback_recent_triage',
+    ])
+    expect(writes).toEqual([
+      expect.objectContaining({
+        evidenceRefs: [
+          'khala_feedback:fb_public_1',
+          'khala_feedback:fb_public_2',
+        ],
+        sourceKind: 'khala_feedback',
+        sourceRef: 'khala_feedback.recent_triage',
+        status: 'needs_issue',
+        title: 'Recent Khala feedback needs backlog triage',
+        triageKind: 'missing_capability',
+      }),
+    ])
+    expect(writes[0]!.summary).toContain('2 recent notes')
+    expect(writes[0]!.summary).not.toContain('/Users/example')
+    expect(writes[0]!.summary).not.toContain('too wordy')
   })
 
   test('blocks Khala readiness on leaked public model ids without projecting them', async () => {
