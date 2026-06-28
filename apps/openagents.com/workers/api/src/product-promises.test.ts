@@ -1050,9 +1050,16 @@ describe('public product promises document', () => {
         expect.objectContaining({
           audience: expect.arrayContaining(['agent', 'contributor', 'public']),
           blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.wasm_plugin_marketplace_not_live',
+            'blocker.product_promises.wasm_plugin_self_serve_marketplace_not_live',
+          ]),
+          evidenceRefs: expect.arrayContaining([
+            'apps/openagents.com/workers/api/src/wasm-plugin-marketplace.ts',
+            'apps/openagents.com/workers/api/src/wasm-plugin-marketplace-routes.ts',
+            'apps/openagents.com/workers/api/src/wasm-plugin-marketplace.test.ts',
+            'route:/api/public/marketplace/wasm-plugins',
           ]),
           promiseId: 'marketplace.wasm_plugins.v1',
+          safeCopy: expect.stringContaining('install/uninstall registry'),
           state: 'planned',
         }),
         expect.objectContaining({
