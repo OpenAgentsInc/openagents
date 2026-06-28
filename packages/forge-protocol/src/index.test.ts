@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 
 import {
   FORGE_PROTOCOL_SCHEMA_VERSION,
+  decodeForgeControlPlaneScope,
   decodeForgeCoordinationIssueRow,
   decodeForgeCoordinationPrRow,
   decodeForgeCoordinationStatusRow,
@@ -13,8 +14,11 @@ import {
   decodeForgeDispatchDecision,
   decodeForgeDispatchMessage,
   decodeForgeDispatchWorkItem,
+  decodeForgePromotionDecisionReceipt,
   decodeForgeTenantRow,
+  decodeForgeVerificationReceipt,
   decodeForgeMergeQueueLedgerRow,
+  forgeControlPlaneScopes,
   forgeCoordinationStatusStateForNip34Kind,
   forgeCoordinationStatusStates,
   forgeNip34StatusKindForState,
@@ -32,6 +36,13 @@ describe("@openagentsinc/forge-protocol", () => {
       const kind = forgeNip34StatusKindForState(state)
       expect(forgeCoordinationStatusStateForNip34Kind(kind)).toBe(state)
     }
+  })
+
+  test("keeps control-plane scopes separate from smart Git token scopes", () => {
+    expect(forgeControlPlaneScopes).toContain("forge:promotion:decide")
+    expect(decodeForgeControlPlaneScope("forge:work:write")).toBe("forge:work:write")
+    expect(() => decodeForgeControlPlaneScope("git:receive-pack")).toThrow()
+    expect(() => decodeForgeControlPlaneScope("git:admin")).toThrow()
   })
 
   test("decodes the D1 coordination source-of-truth row shapes", () => {
@@ -259,5 +270,55 @@ describe("@openagentsinc/forge-protocol", () => {
     })
     expect(closeout.packfile_ref).toBe("packfile.forge.6751")
     expect(decodeForgeDispatchMessage(closeout).schema).toBe(closeout.schema)
+  })
+
+  test("decodes redacted verification and promotion decision receipts", () => {
+    const verification = decodeForgeVerificationReceipt({
+      schema: "openagents.forge.verification.receipt.v0.1",
+      tenant_ref: "tenant.openagents",
+      verification_ref: "verification.forge.6768",
+      change_ref: "change.forge.6768",
+      repository_ref: "repo.openagents.openagents",
+      base_ref: "refs/heads/main",
+      base_head: "8e0c9b2eaf84c821caf555cae233a0d27e94d4ab",
+      head_ref: "refs/heads/forge/work/6768",
+      head_head: "9e0c9b2eaf84c821caf555cae233a0d27e94d4ac",
+      packfile_ref: "packfile.forge.6768",
+      packfile_sha256: "c".repeat(64),
+      executor_identity_ref: "pylon.local.codex.1",
+      command_ref: "verification-command.forge.6768",
+      command_args: ["bun", "run", "check:deploy"],
+      exit_code: 0,
+      verdict: "passed",
+      started_at: at,
+      completed_at: "2026-06-28T16:01:00.000Z",
+      artifact_refs: ["artifact.forge.6768.logs"],
+      log_sha256: "d".repeat(64),
+      source_refs: ["github:OpenAgentsInc/openagents#6768"],
+      redacted: true,
+    })
+    expect(verification.change_ref).toBe("change.forge.6768")
+    expect(verification.packfile_sha256).toHaveLength(64)
+
+    const promotion = decodeForgePromotionDecisionReceipt({
+      schema: "openagents.forge.promotion.decision.v0.1",
+      tenant_ref: "tenant.openagents",
+      promotion_ref: "promotion.forge.6768",
+      queue_ref: "queue.forge.main",
+      change_ref: verification.change_ref,
+      decision: "approved",
+      base_head: verification.base_head,
+      candidate_head: verification.head_head,
+      promoted_head: verification.head_head,
+      verification_ref: verification.verification_ref,
+      gate_refs: ["gate.merge-deploy", "gate.issue-close-safe"],
+      blocker_refs: [],
+      decided_by_ref: "forge.service.promotion",
+      decided_at: "2026-06-28T16:02:00.000Z",
+      source_refs: verification.source_refs,
+      redacted: true,
+    })
+    expect(promotion.decision).toBe("approved")
+    expect(promotion.promoted_head).toBe(verification.head_head)
   })
 })

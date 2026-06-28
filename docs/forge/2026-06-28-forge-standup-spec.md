@@ -11,7 +11,9 @@
 > shell beyond landing), #6770 (SU-2 control-plane routes), and #6771 (SU-3 git
 > intake wiring).
 > Companion: `docs/forge/2026-06-28-forge-openagents-com-owned-coordination-layer-audit.md`
-> (the why + architecture) and `docs/forge/origin.md`.
+> (the why + architecture), `docs/forge/origin.md`, and
+> `docs/forge/2026-06-28-forge-boundary-contract.md` (the SU-0 execution and
+> auth boundary).
 
 ## What already exists (FORGE-1..6, merged on main)
 
@@ -104,7 +106,7 @@ move behind the same host or into its own Worker once the boundary is proven.
 
 ## Stand-up sequence (smallest-first, each shippable + green)
 
-- **SU-0 — Boundary/spec lock (P0, do first).** Freeze the execution boundary, auth model, canonical git object/ref store, receipt format, and UI app boundary before adding routes. Tenant git tokens are for smart Git HTTP only; control-plane calls use dedicated `forge:*` service/session/admin scopes. The R2 packfile archive is evidence, not the canonical ref store. Verification receipts include the change id, base/head refs, packfile digest, executor identity, command, exit code, timestamps, artifact refs, and log digest. Acceptance: docs/OpenAPI route notes name these boundaries and no route uses git tokens as control-plane auth.
+- **SU-0 — Boundary/spec lock (P0, do first).** Freeze the execution boundary, auth model, canonical git object/ref store, receipt format, and UI app boundary before adding routes. Tenant git tokens are for smart Git HTTP only; control-plane calls use dedicated `forge:*` service/session/admin scopes. The R2 packfile archive is evidence, not the canonical ref store. Verification receipts include the change id, base/head refs, packfile digest, executor identity, command, exit code, timestamps, artifact refs, and log digest. The locked contract is `docs/forge/2026-06-28-forge-boundary-contract.md`; shared schemas live in `@openagentsinc/forge-protocol` as `ForgeControlPlaneScope`, `ForgeVerificationReceipt`, and `ForgePromotionDecisionReceipt`. Acceptance: docs/OpenAPI route notes name these boundaries and no route uses git tokens as control-plane auth.
 - **SU-1 — Separate Forge UI shell.** Stand up `apps/forge/` for `forge.openagents.com`, reusing `@openagentsinc/ui` and shared tokens while owning its own app shell, navigation, queue/change/work inspectors, and route model. #6759 shipped the deploy bootstrap and landing page; #6769 tracks the next shell slice beyond the landing page. Acceptance: `forge.openagents.com` renders the Forge shell from the Forge API contract, and the old `openagents.com` logged-in Forge page is not the expansion target.
 - **SU-2 — Control-plane routes.** Expose the coordination store as `/api/forge/*` Worker routes: create/read work records, change records, status transitions, leases, queue state, verification receipts, and promotion decisions. Register in the route registry/OpenAPI so `route_exists` grounding sees them. Acceptance: an authed control-plane caller can create a work record + a change record + transition status through the live API; rows land in D1.
 - **SU-3 — Git intake → archive → canonical refs → coordination.** Wire a smart-Git receive-pack intake endpoint that parses the push (`git-receive-pack.ts`), archives the packfile to R2 (`forge-git-packfile-archive-store`), verifies/applies it to the canonical git object/ref store under a ref lock, and writes change/ref rows to the coordination store. Acceptance: a real `git push` to the forge endpoint lands a packfile in R2, updates the canonical git object/ref store, and creates a change record in D1.
@@ -144,7 +146,9 @@ coordination layer is live. SU-8 is the external multi-tenant expansion gate.
 
 - #6759 — SU-1 bootstrap: separate `apps/forge/` Worker, custom-domain deploy,
   and basic `THE FORGE` landing page. Closed after production verification.
-- #6768 — SU-0 boundary/spec lock.
+- #6768 — SU-0 boundary/spec lock; implemented by
+  `docs/forge/2026-06-28-forge-boundary-contract.md` and shared
+  `@openagentsinc/forge-protocol` auth/receipt schemas.
 - #6769 — SU-1B Forge UI shell beyond the landing page.
 - #6770 — SU-2 `/api/forge/*` control-plane routes.
 - #6771 — SU-3 smart-Git intake to archive/canonical refs/coordination records.

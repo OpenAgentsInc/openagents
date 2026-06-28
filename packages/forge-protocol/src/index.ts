@@ -79,6 +79,35 @@ export const ForgeGitAccessScope = S.Literals([
 ])
 export type ForgeGitAccessScope = typeof ForgeGitAccessScope.Type
 
+export const ForgeControlPlaneScope = S.Literals([
+  "forge:work:read",
+  "forge:work:write",
+  "forge:change:read",
+  "forge:change:write",
+  "forge:status:write",
+  "forge:lease:write",
+  "forge:queue:read",
+  "forge:queue:write",
+  "forge:receipt:write",
+  "forge:promotion:decide",
+  "forge:admin",
+])
+export type ForgeControlPlaneScope = typeof ForgeControlPlaneScope.Type
+
+export const forgeControlPlaneScopes: ReadonlyArray<ForgeControlPlaneScope> = [
+  "forge:work:read",
+  "forge:work:write",
+  "forge:change:read",
+  "forge:change:write",
+  "forge:status:write",
+  "forge:lease:write",
+  "forge:queue:read",
+  "forge:queue:write",
+  "forge:receipt:write",
+  "forge:promotion:decide",
+  "forge:admin",
+]
+
 export const ForgeDispatchWorkClass = S.Literals([
   "codex_agent_task",
   "claude_agent_task",
@@ -108,6 +137,22 @@ export const ForgeDispatchSettlementState = S.Literals([
   "blocked",
 ])
 export type ForgeDispatchSettlementState = typeof ForgeDispatchSettlementState.Type
+
+export const ForgeVerificationVerdict = S.Literals([
+  "passed",
+  "failed",
+  "timed_out",
+  "cancelled",
+  "errored",
+])
+export type ForgeVerificationVerdict = typeof ForgeVerificationVerdict.Type
+
+export const ForgePromotionDecisionState = S.Literals([
+  "approved",
+  "blocked",
+  "superseded",
+])
+export type ForgePromotionDecisionState = typeof ForgePromotionDecisionState.Type
 
 export const ForgeDispatchGitAccessDelivery = S.Literals([
   "out_of_band",
@@ -352,6 +397,53 @@ export const ForgeDispatchCloseout = S.Struct({
 })
 export type ForgeDispatchCloseout = typeof ForgeDispatchCloseout.Type
 
+export const ForgeVerificationReceipt = S.Struct({
+  schema: S.Literal("openagents.forge.verification.receipt.v0.1"),
+  tenant_ref: S.String,
+  verification_ref: S.String,
+  change_ref: S.String,
+  repository_ref: S.String,
+  base_ref: S.String,
+  base_head: S.String,
+  head_ref: S.String,
+  head_head: S.String,
+  packfile_ref: S.String,
+  packfile_sha256: S.String,
+  executor_identity_ref: S.String,
+  command_ref: S.String,
+  command_args: S.Array(S.String),
+  exit_code: S.NullOr(S.Number),
+  verdict: ForgeVerificationVerdict,
+  started_at: S.String,
+  completed_at: S.String,
+  artifact_refs: S.Array(S.String),
+  log_sha256: S.String,
+  source_refs: S.Array(S.String),
+  redacted: S.Literal(true),
+})
+export type ForgeVerificationReceipt = typeof ForgeVerificationReceipt.Type
+
+export const ForgePromotionDecisionReceipt = S.Struct({
+  schema: S.Literal("openagents.forge.promotion.decision.v0.1"),
+  tenant_ref: S.String,
+  promotion_ref: S.String,
+  queue_ref: S.String,
+  change_ref: S.String,
+  decision: ForgePromotionDecisionState,
+  base_head: S.String,
+  candidate_head: S.String,
+  promoted_head: S.NullOr(S.String),
+  verification_ref: S.NullOr(S.String),
+  gate_refs: S.Array(S.String),
+  blocker_refs: S.Array(S.String),
+  decided_by_ref: S.String,
+  decided_at: S.String,
+  source_refs: S.Array(S.String),
+  redacted: S.Literal(true),
+})
+export type ForgePromotionDecisionReceipt =
+  typeof ForgePromotionDecisionReceipt.Type
+
 export const ForgeDispatchMessage = S.Union([
   ForgeDispatchWorkItem,
   ForgeDispatchDecision,
@@ -393,10 +485,19 @@ export const decodeForgeGitAccessTokenRow = S.decodeUnknownSync(
 export const decodeForgeGitAccessTokenScopeRow = S.decodeUnknownSync(
   ForgeGitAccessTokenScopeRow,
 )
+export const decodeForgeControlPlaneScope = S.decodeUnknownSync(
+  ForgeControlPlaneScope,
+)
 export const decodeForgeDispatchWorkItem = S.decodeUnknownSync(ForgeDispatchWorkItem)
 export const decodeForgeDispatchDecision = S.decodeUnknownSync(ForgeDispatchDecision)
 export const decodeForgeDispatchCloseout = S.decodeUnknownSync(ForgeDispatchCloseout)
 export const decodeForgeDispatchMessage = S.decodeUnknownSync(ForgeDispatchMessage)
+export const decodeForgeVerificationReceipt = S.decodeUnknownSync(
+  ForgeVerificationReceipt,
+)
+export const decodeForgePromotionDecisionReceipt = S.decodeUnknownSync(
+  ForgePromotionDecisionReceipt,
+)
 
 export const forgeCoordinationStatusStateForNip34Kind = (
   kind: ForgeNip34StatusKind,

@@ -575,6 +575,9 @@ then full source-of-truth inversion at `forge.openagents.com`.
 > filed implementation slices are #6768 / SU-0 boundary lock, #6769 / SU-1B UI
 > shell beyond landing, #6770 / SU-2 `/api/forge/*` control-plane routes, and
 > #6771 / SU-3 smart-Git intake to archive/canonical refs/coordination rows.
+> #6768 is anchored by `docs/forge/2026-06-28-forge-boundary-contract.md` and
+> the `ForgeControlPlaneScope`, `ForgeVerificationReceipt`, and
+> `ForgePromotionDecisionReceipt` schemas in `@openagentsinc/forge-protocol`.
 > These live issue numbers are the operative queue for the stand-up sequence in
 > `docs/forge/2026-06-28-forge-standup-spec.md`.
 
