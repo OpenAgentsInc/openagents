@@ -119,6 +119,12 @@ describe('public product promises document', () => {
       'blocker.product_promises.cloud_sandbox_metering_billing_unbuilt',
     )
     expect(blockerRefs).not.toContain(
+      'blocker.product_promises.referral_ecosystem_wide_attribution_binding_unbuilt',
+    )
+    expect(blockerRefs).not.toContain(
+      'blocker.product_promises.referral_cross_category_accrual_unbuilt',
+    )
+    expect(blockerRefs).not.toContain(
       'blocker.product_promises.cloud_primitives_unified_balance_unbuilt',
     )
     expect(decoded.sourceRefs).toContain(
@@ -783,9 +789,13 @@ describe('public product promises document', () => {
           state: 'red',
           blockerRefs: expect.arrayContaining([
             'blocker.product_promises.referral_first_real_payout_pending',
-            'blocker.product_promises.referral_cross_category_accrual_unbuilt',
+            'blocker.product_promises.referral_purchase_to_payout_receipt_missing',
           ]),
-          evidenceRefs: expect.arrayContaining(['docs/transcripts/239.md']),
+          evidenceRefs: expect.arrayContaining([
+            'docs/transcripts/239.md',
+            'apps/openagents.com/workers/api/src/referral-cross-category-accrual.ts',
+            'apps/openagents.com/workers/api/src/marketplace-monetize-any-layer-accrual.ts',
+          ]),
         }),
         expect.objectContaining({
           promiseId: 'autopilot.all_in_one_business_system.v1',
