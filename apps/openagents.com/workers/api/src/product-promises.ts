@@ -1825,23 +1825,27 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Every accepted outcome should distinguish buyer payment, accepted value, pending balance adjustment, payout intent, settlement attempt, reconciliation, and gross margin.',
         safeCopy:
-          'Accepted-outcome economics are a required roadmap gate before broad payout or marketplace-margin claims go green.',
+          'Accepted-outcome economics now expose a receipt-first settlement state history for one accepted outcome at GET /api/public/accepted-outcome/settlement/{economicsId}: authorized, paid, accepted, pending payout, dispatched, confirmed, reconciled, and margin each carry their own public-safe evidence ref. The projection is inert by default and does not by itself prove real payout settlement or make broad marketplace-margin claims green.',
         unsafeCopy:
           'Do not collapse paid, accepted, payable, dispatched, confirmed, reconciled, settled, and gross-margin states into one claim.',
         evidenceRefs: [
           'docs/promises/2026-06-09-product-promises-gap-audit.md',
           'apps/openagents.com/workers/api/src/pylon-accepted-work-payout-slo.ts',
           'apps/openagents.com/workers/api/src/pylon-accepted-work-proof-links.ts',
+          'route:/api/public/accepted-outcome/settlement/{economicsId}',
+          'apps/openagents.com/workers/api/src/omni-accepted-outcome-settlement-state-machine.ts',
+          'apps/openagents.com/workers/api/src/omni-accepted-outcome-settlement-state-machine.test.ts',
+          'apps/openagents.com/workers/api/src/omni-accepted-outcome-settlement-bundle.ts',
+          'apps/openagents.com/workers/api/src/public-accepted-outcome-settlement-routes.test.ts',
         ],
         blockerRefs: [
-          'blocker.product_promises.settlement_state_machine_incomplete',
           'blocker.product_promises.contributor_ledger_missing',
           'blocker.product_promises.gross_margin_receipts_missing',
         ],
         verification:
-          'Green requires one accepted outcome with separate authorized, paid, accepted, pending payout, dispatched, confirmed, reconciled, and margin evidence.',
+          'State-machine verification: dereference GET /api/public/accepted-outcome/settlement/{economicsId} and confirm the ordered settlementMachine transitions are authorized, paid, accepted, pending_payout, dispatched, confirmed, reconciled, and margin, with eight distinct public-safe evidenceRef values; illegal transitions are rejected and re-recording the current state is idempotent in omni-accepted-outcome-settlement-state-machine.test.ts. Green still requires a real accepted outcome with contributor ledger and gross-margin receipts reconciled to actual settlement evidence.',
         authorityBoundary:
-          'Payment evidence alone is not accepted-work payout or final settlement evidence.',
+          'The settlement state projection is read-only and inert by default. It grants no dispatch, spend, payout, settlement, withdrawal, or public-claim authority; payment/state-history evidence alone is not final payout settlement evidence.',
       },
       {
         ...basePromiseFields,

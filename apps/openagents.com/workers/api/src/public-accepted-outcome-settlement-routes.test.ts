@@ -99,6 +99,13 @@ describe('public accepted-outcome settlement routes', () => {
       'reconciled',
       'margin',
     ])
+    expect(
+      new Set(
+        body.settlement.settlementMachine.transitions.map(
+          (t: any) => t.evidenceRef,
+        ),
+      ).size,
+    ).toBe(8)
     // No internal monetary figures leak.
     expect(JSON.stringify(body)).not.toMatch(
       /amountCents|accruedMarginCents|grossMarginCents|4400|5000/,

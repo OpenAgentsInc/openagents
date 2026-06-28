@@ -90,6 +90,7 @@ describe('advanceOmniAcceptedOutcomeSettlementMachine', () => {
     expect(machine.state).toBe('margin')
     // Eight DISTINCT states; none collapsed.
     expect(new Set(machine.transitions.map(t => t.stateId)).size).toBe(8)
+    expect(new Set(machine.transitions.map(t => t.evidenceRef)).size).toBe(8)
   })
 
   test('is idempotent: re-recording the current state is a no-op', () => {
@@ -219,17 +220,20 @@ describe('advanceOmniAcceptedOutcomeSettlementMachine', () => {
 })
 
 describe('publicOmniAcceptedOutcomeSettlementMachineProjection', () => {
-  test('drops monetary figures and refs but keeps honest evidence labels', () => {
+  test('drops monetary figures but keeps public-safe evidence refs and labels', () => {
     const machine = advanceThrough(baseRecord, OMNI_SETTLEMENT_STATE_ORDER)
     const projection =
       publicOmniAcceptedOutcomeSettlementMachineProjection(machine)
     expect(projection.complete).toBe(true)
     expect(projection.state).toBe('margin')
     expect(projection.transitions).toHaveLength(8)
+    expect(new Set(projection.transitions.map(t => t.evidenceRef)).size).toBe(
+      8,
+    )
     for (const transition of projection.transitions) {
       expect(transition).not.toHaveProperty('amountCents')
-      expect(transition).not.toHaveProperty('evidenceRef')
       expect(transition).toHaveProperty('evidenceKind')
+      expect(transition).toHaveProperty('evidenceRef')
       expect(transition).toHaveProperty('movedMoney')
     }
   })
