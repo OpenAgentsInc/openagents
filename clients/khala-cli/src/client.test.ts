@@ -66,6 +66,42 @@ describe("Khala client", () => {
     expect(retryEvents).toEqual([{ maxRetries: 5, retry: 1 }])
   })
 
+  test("continues generation when the stream finishes because of length", async () => {
+    const bodies: Array<unknown> = []
+    let calls = 0
+    const fakeFetch = (async (_url: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      bodies.push(JSON.parse(typeof init?.body === "string" ? init.body : "{}"))
+      calls += 1
+      if (calls === 1) {
+        return sseResponse([
+          'event: delta\ndata: {"text":"Which of these paths were"}',
+          'event: meta\ndata: {"finishReason":"length","usage":{"promptTokens":3,"completionTokens":5,"totalTokens":8}}',
+          'event: done\ndata: {"done":true}',
+          "",
+        ].join("\n\n"))
+      }
+      return sseResponse([
+        'event: delta\ndata: {"text":" blocked by owner approval."}',
+        'event: meta\ndata: {"finishReason":"stop","usage":{"promptTokens":7,"completionTokens":4,"totalTokens":11}}',
+        'event: done\ndata: {"done":true}',
+        "",
+      ].join("\n\n"))
+    }) as unknown as typeof fetch
+
+    const result = await Effect.runPromise(runChatTurn({
+      baseUrl: "https://example.test",
+      fetch: fakeFetch,
+      messages: [{ role: "user", content: "audit" }],
+      mode: "public",
+    }))
+
+    expect(result.text).toBe("Which of these paths were blocked by owner approval.")
+    expect(result.metadata.finishReason).toBe("stop")
+    expect(result.metadata.usage.totalTokens).toBe(19)
+    expect(calls).toBe(2)
+    expect(JSON.stringify(bodies[1])).toContain("Continue the previous answer")
+  })
+
   test("reports first-byte, first-token, stream, and total timing metadata", async () => {
     const fakeFetch = (async () =>
       new Response(new ReadableStream<Uint8Array>({

@@ -35,37 +35,70 @@ import { artanisApprovalGateDecisionPath } from "./types.js"
 
 const MAX_REQUEST_RETRIES = 5
 const RETRY_DELAYS_MS = [400, 1_000, 2_000, 4_000, 8_000] as const
+const MAX_LENGTH_CONTINUATIONS = 2
+const KHALA_CLI_COMPLETION_MAX_TOKENS = 8_192
 
 export function runChatTurn(options: ChatTurnOptions): Effect.Effect<ChatTurnResult, KhalaCliError> {
   return Effect.gen(function* () {
     const startedAt = Date.now()
-    const response = yield* postChat(options)
-    const responseAt = Date.now()
-    const traceRef = readTraceRef(response)
-    const byokAck = response.headers.get(BYOK_ACK_HEADER)?.trim() || undefined
-    const stream = yield* consumeStream(
-      response,
-      options.mode,
-      startedAt,
-      responseAt,
-      options.onDelta,
-      options.onReasoning,
-    )
+    let messages = [...options.messages]
+    let text = ""
+    let reasoningText = ""
+    let streamMetadata: StreamFrameMetadata = {}
+    let firstTokenAt: number | undefined
+    let responseAt = startedAt
+    let traceRef: string | undefined
+    let byokAck: string | undefined
+
+    for (let turn = 0; turn <= MAX_LENGTH_CONTINUATIONS; turn += 1) {
+      const response = yield* postChat({ ...options, messages })
+      if (turn === 0) responseAt = Date.now()
+      traceRef = traceRef ?? readTraceRef(response)
+      byokAck = byokAck ?? (response.headers.get(BYOK_ACK_HEADER)?.trim() || undefined)
+      const stream = yield* consumeStream(
+        response,
+        options.mode,
+        startedAt,
+        responseAt,
+        options.onDelta,
+        options.onReasoning,
+      )
+      text += stream.text
+      reasoningText += stream.reasoningText
+      firstTokenAt = firstTokenAt ?? stream.timings.firstTokenAt
+      streamMetadata = mergeMetadata(streamMetadata, stream.metadata)
+
+      if (!isLengthFinish(stream.metadata.finishReason) || stream.text.trim() === "") {
+        break
+      }
+      messages = [
+        ...messages,
+        { role: "assistant" as const, content: text },
+        {
+          role: "user" as const,
+          content: "Continue the previous answer from exactly where it stopped. Finish the sentence and complete the answer without restarting.",
+        },
+      ]
+    }
     const durationMs = Math.max(0, Date.now() - startedAt)
     const metadata = buildTurnMetadata({
       durationMs,
       mode: options.mode,
       streamMetadata: {
-        ...stream.metadata,
-        traceRef: stream.metadata.traceRef ?? traceRef,
+        ...streamMetadata,
+        traceRef: streamMetadata.traceRef ?? traceRef,
       },
-      timings: stream.timings,
-      text: stream.text,
+      timings: {
+        firstTokenAt,
+        responseAt,
+        startedAt,
+      },
+      text,
     })
     return {
-      text: stream.text,
-      reasoningText: stream.reasoningText,
-      assistantMessage: { role: "assistant" as const, content: stream.text },
+      text,
+      reasoningText,
+      assistantMessage: { role: "assistant" as const, content: text },
       metadata,
       traceRef: metadata.traceRef,
       ...(byokAck === undefined ? {} : { byokAck }),
@@ -350,6 +383,7 @@ function postChat(options: ChatTurnOptions): Effect.Effect<Response, KhalaCliErr
         body: JSON.stringify({
           model: KHALA_MODEL_ID,
           messages: options.messages,
+          max_tokens: KHALA_CLI_COMPLETION_MAX_TOKENS,
           stream: true,
           stream_options: { include_usage: true },
         }),
@@ -552,8 +586,28 @@ function mergeMetadata(
   return {
     ...previous,
     ...withoutUndefined(next),
-    usage: next.usage ?? previous.usage,
+    usage: mergeUsage(previous.usage, next.usage),
   }
+}
+
+function mergeUsage(
+  previous: KhalaStreamUsage | undefined,
+  next: KhalaStreamUsage | undefined,
+): KhalaStreamUsage | undefined {
+  if (previous === undefined) return next
+  if (next === undefined) return previous
+  return {
+    cachedPromptTokens: (previous.cachedPromptTokens ?? 0) + (next.cachedPromptTokens ?? 0),
+    completionTokens: previous.completionTokens + next.completionTokens,
+    promptTokens: previous.promptTokens + next.promptTokens,
+    totalTokens: previous.totalTokens + next.totalTokens,
+  }
+}
+
+function isLengthFinish(reason: string | undefined): boolean {
+  if (reason === undefined) return false
+  const normalized = reason.trim().toLowerCase()
+  return normalized === "length" || normalized === "max_tokens" || normalized === "max_output_tokens"
 }
 
 function withoutUndefined(record: StreamFrameMetadata): Partial<StreamFrameMetadata> {

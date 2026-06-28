@@ -30,7 +30,9 @@ import {
   KHALA_CHAT_MODEL,
   KhalaChatRequest,
   KhalaChatValidationError,
+  KHALA_ARTANIS_PUBLIC_READ_ONLY_ANSWER,
   buildKhalaChatRequest,
+  isKhalaArtanisPublicReadOnlyTurn,
   isKhalaFastGreetingTurn,
   validateKhalaChatRequest,
 } from './khala-chat-program'
@@ -231,6 +233,24 @@ const staticTextSource = (
   }),
 })
 
+const artanisPublicReadOnlySource = (): KhalaChatStreamSource => ({
+  deltas: (async function* () {
+    yield KHALA_ARTANIS_PUBLIC_READ_ONLY_ANSWER
+  })(),
+  final: () => KHALA_ARTANIS_PUBLIC_READ_ONLY_ANSWER,
+  metadata: () => ({
+    finishReason: 'artanis_public_read_only',
+    requestedModel: KHALA_CHAT_MODEL,
+    servedAdapterId: 'khala-artanis-read-only-signature',
+    servedModel: 'khala-artanis-public-signature',
+    usage: {
+      completionTokens: Math.ceil(KHALA_ARTANIS_PUBLIC_READ_ONLY_ANSWER.length / 4),
+      promptTokens: 0,
+      totalTokens: Math.ceil(KHALA_ARTANIS_PUBLIC_READ_ONLY_ANSWER.length / 4),
+    },
+  }),
+})
+
 const latestUserContent = (messages: ReadonlyArray<KhalaChatMessage>): string =>
   messages[messages.length - 1]?.content ?? ''
 
@@ -397,6 +417,8 @@ export const makeKhalaChatRoutes = (
       Effect.flatMap(messages =>
         isKhalaFastGreetingTurn(messages)
           ? Effect.succeed(fastGreetingSource())
+          : isKhalaArtanisPublicReadOnlyTurn(messages)
+            ? Effect.succeed(artanisPublicReadOnlySource())
           : loadPylonContext(dependencies, env, requestTraceRef).pipe(
               Effect.flatMap(pylonContext => {
                 const pylonAnswer = answerKhalaChatPylonQuestion(

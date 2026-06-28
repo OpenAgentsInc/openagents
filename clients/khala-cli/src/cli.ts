@@ -1684,7 +1684,10 @@ function renderStreamingMarkdownDelta(
   previousBuffer: string,
   delta: string,
 ): { readonly buffer: string; readonly text: string } {
-  const combined = `${previousBuffer}${delta}`.replace(/\r\n/g, "\n").replace(/\r/g, "\n")
+  const combined = `${previousBuffer}${delta}`
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
   const lastNewline = combined.lastIndexOf("\n")
   if (lastNewline < 0) {
     return { buffer: combined, text: "" }

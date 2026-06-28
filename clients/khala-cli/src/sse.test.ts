@@ -105,6 +105,37 @@ describe("SSE parsing", () => {
     expect(result.metadata.servedModel).toBe("openagents/khala")
   })
 
+  test("extracts OpenAI-compatible finish_reason from terminal chunks", async () => {
+    let calls = 0
+    const fakeFetch = (async () => {
+      calls += 1
+      return sseResponse(calls === 1
+        ? [
+            'data: {"id":"chat_1","model":"openagents/khala","choices":[{"delta":{"content":"Half"}}]}',
+            'data: {"id":"chat_1","model":"openagents/khala","choices":[{"delta":{},"finish_reason":"length"}],"usage":{"prompt_tokens":4,"completion_tokens":1,"total_tokens":5}}',
+            "data: [DONE]",
+            "",
+          ].join("\n\n")
+        : [
+            'data: {"id":"chat_1","model":"openagents/khala","choices":[{"delta":{"content":" done"}}]}',
+            'data: {"id":"chat_1","model":"openagents/khala","choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":4,"completion_tokens":1,"total_tokens":5}}',
+            "data: [DONE]",
+            "",
+          ].join("\n\n"))
+    }) as unknown as typeof fetch
+
+    const result = await Effect.runPromise(runChatTurn({
+      mode: "api",
+      baseUrl: "https://example.test",
+      token: "oa_agent_test",
+      fetch: fakeFetch,
+      messages: [{ role: "user", content: "Hello" }],
+    }))
+
+    expect(result.text).toBe("Half done")
+    expect(result.metadata.finishReason).toBe("stop")
+  })
+
   test("extracts Khala orchestration metadata from OpenAI-compatible openagents receipt", async () => {
     const fakeFetch = (async () => sseResponse([
       'data: {"id":"chat_1","model":"openagents/khala","choices":[{"delta":{"content":"Hi"}}]}',

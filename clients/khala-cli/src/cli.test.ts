@@ -4,6 +4,7 @@ import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 
 import { formatKhalaSpawnCapabilityAnswer, runKhalaCli } from "./cli.js"
+import { normalizeTerminalMarkdownSpacing } from "./terminal.js"
 
 describe("Khala CLI spawn capability answer", () => {
   test("answers the original subprocess capability question with the reviewed CLI path", () => {
@@ -18,6 +19,12 @@ describe("Khala CLI spawn capability answer", () => {
     expect(lower).toContain("cannot execute local workers on your machine")
     expect(lower).not.toContain("capability we don't yet expose")
     expect(lower).not.toContain("we do not yet expose")
+  })
+})
+
+describe("Khala CLI terminal rendering", () => {
+  test("collapses excessive blank lines in streamed answers", () => {
+    expect(normalizeTerminalMarkdownSpacing("A\n\n\n\nB\r\n\r\n\r\nC")).toBe("A\n\nB\n\nC")
   })
 })
 
