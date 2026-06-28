@@ -23,6 +23,16 @@ type Session = Readonly<{ user: Readonly<{ email: string; userId: string }> }>
 
 const ctx = {} as ExecutionContext
 
+type ThreadEntry = Readonly<{
+  authorId: string
+  authorKind: 'owner' | 'agent' | 'operator' | 'system' | 'tool'
+  body: string
+  callerId: string
+  createdAt: string
+  messageRef: string
+  threadRef: string
+}>
+
 // An in-memory owner-memory store so the route test exercises persistence
 // without the D1/sqlite harness. Owner-scoped: load only returns the owner's
 // own entries.
@@ -55,12 +65,77 @@ const makeFakeStore = (): {
   return { entries, store }
 }
 
+const makeFakeThreadStore = (): {
+  appendInputs: Array<{
+    callerId: string
+    threadRef: string
+    messages: ReadonlyArray<{ authorKind: string; body: string }>
+  }>
+  entries: Array<ThreadEntry>
+  store: {
+    appendTurn: (input: {
+      callerId: string
+      messages: ReadonlyArray<{
+        authorId: string
+        authorKind: ThreadEntry['authorKind']
+        body: string
+      }>
+      nowIso: string
+      threadRef: string
+    }) => Promise<ReadonlyArray<ThreadEntry>>
+    loadThreadMessages: (threadRef: string) => Promise<ReadonlyArray<ThreadEntry>>
+  }
+} => {
+  const entries: Array<ThreadEntry> = []
+  const appendInputs: Array<{
+    callerId: string
+    threadRef: string
+    messages: ReadonlyArray<{ authorKind: string; body: string }>
+  }> = []
+  const store = {
+    appendTurn: async (input: {
+      callerId: string
+      messages: ReadonlyArray<{
+        authorId: string
+        authorKind: ThreadEntry['authorKind']
+        body: string
+      }>
+      nowIso: string
+      threadRef: string
+    }) => {
+      appendInputs.push({
+        callerId: input.callerId,
+        messages: input.messages.map(message => ({
+          authorKind: message.authorKind,
+          body: message.body,
+        })),
+        threadRef: input.threadRef,
+      })
+      const inserted = input.messages.map((message, index) => ({
+        authorId: message.authorId,
+        authorKind: message.authorKind,
+        body: message.body,
+        callerId: input.callerId,
+        createdAt: input.nowIso,
+        messageRef: `msg_${entries.length + index + 1}`,
+        threadRef: input.threadRef,
+      }))
+      entries.push(...inserted)
+      return inserted
+    },
+    loadThreadMessages: async (threadRef: string) =>
+      entries.filter(entry => entry.threadRef === threadRef),
+  }
+  return { appendInputs, entries, store }
+}
+
 const baseDeps = (
   overrides: Partial<
     Parameters<typeof makeOperatorArtanisChatRoutes<Session, { OPENAGENTS_DB: D1Database }>>[0]
   > = {},
 ) => {
   const fake = makeFakeStore()
+  const thread = makeFakeThreadStore()
   const deps = {
     appendRefreshedSessionCookies: (response: Response) => response,
     isOpenAgentsAdminEmail: (email: string) => email.endsWith('@openagents.com'),
@@ -73,12 +148,13 @@ const baseDeps = (
         usage: { completionTokens: 9, promptTokens: 100, totalTokens: 109 },
       }),
     makeMemoryStore: () => fake.store,
+    makeThreadStore: () => thread.store,
     requireBrowserSession: async (): Promise<Session | undefined> => ({
       user: { email: 'chris@openagents.com', userId: 'github:14167547' },
     }),
     ...overrides,
   }
-  return { deps, fake }
+  return { deps, fake, thread }
 }
 
 const post = (body: unknown): Request =>
@@ -246,6 +322,90 @@ describe('POST /api/operator/artanis/chat — grounded Khala-powered reply', () 
     expect(owner?.ownerId).toBe('owner:github:14167547')
   })
 
+  test('generates a thread_id when omitted and stores caller-tagged turn rows', async () => {
+    const { deps, thread } = baseDeps()
+    const response = await runRoute(
+      deps,
+      post({
+        caller_id: 'codex_supervisor',
+        messages: [{ content: 'agent-side status please', role: 'user' }],
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    const json = (await response.json()) as Record<string, unknown>
+    expect(typeof json.thread_id).toBe('string')
+    expect(json.caller_id).toBe('codex_supervisor')
+    expect(json.historicalMessageCount).toBe(0)
+    expect(thread.appendInputs).toHaveLength(1)
+    expect(thread.appendInputs[0]?.callerId).toBe('codex_supervisor')
+    expect(thread.appendInputs[0]?.threadRef).toBe(json.thread_id)
+    expect(thread.appendInputs[0]?.messages).toEqual([
+      { authorKind: 'owner', body: 'agent-side status please' },
+      { authorKind: 'agent', body: 'I dispatched two Codex assignments this morning.' },
+    ])
+  })
+
+  test('reuses thread_id and sends stored thread history before the new turn', async () => {
+    const requests: Array<InferenceRequest> = []
+    const { deps } = baseDeps({
+      makeKhalaClient: () => request => {
+        requests.push(request)
+        return Effect.succeed({
+          content:
+            requests.length === 1
+              ? 'First answer stored in the thread.'
+              : 'Second answer saw the thread.',
+          finishReason: 'stop',
+          servedModel:
+            request.model === 'openagents/khala' ? 'gpt-oss-120b' : 'wrong',
+          usage: { completionTokens: 9, promptTokens: 100, totalTokens: 109 },
+        })
+      },
+    })
+
+    const first = await runRoute(
+      deps,
+      post({
+        caller_id: 'owner',
+        messages: [{ content: 'first question', role: 'user' }],
+        thread_id: 'artanis_thread_test_1',
+      }),
+    )
+    expect(first.status).toBe(200)
+    const firstJson = (await first.json()) as Record<string, unknown>
+    expect(firstJson.thread_id).toBe('artanis_thread_test_1')
+
+    const second = await runRoute(
+      deps,
+      post({
+        caller_id: 'owner',
+        messages: [{ content: 'second question', role: 'user' }],
+        thread_id: 'artanis_thread_test_1',
+      }),
+    )
+    expect(second.status).toBe(200)
+    const secondJson = (await second.json()) as Record<string, unknown>
+    expect(secondJson.historicalMessageCount).toBe(2)
+
+    const secondKhalaMessages = requests[1]?.messages ?? []
+    expect(
+      secondKhalaMessages.some(
+        message => message.role === 'user' && message.content === 'first question',
+      ),
+    ).toBe(true)
+    expect(
+      secondKhalaMessages.some(
+        message =>
+          message.role === 'assistant' &&
+          message.content === 'First answer stored in the thread.',
+      ),
+    ).toBe(true)
+    expect(
+      secondKhalaMessages.at(-1),
+    ).toMatchObject({ content: 'second question', role: 'user' })
+  })
+
   test('streams an owner-authenticated Artanis reply as OpenAI-style SSE', async () => {
     const { deps } = baseDeps()
     const response = await runRoute(
@@ -260,6 +420,7 @@ describe('POST /api/operator/artanis/chat — grounded Khala-powered reply', () 
       'data: {"choices":[{"delta":{"content":"I dispatched two Codex assignments this morning."}',
     )
     expect(text).toContain('"channelRef":"operator.artanis.chat"')
+    expect(text).toContain('"thread_id":"artanis_thread:')
     expect(text.trim().endsWith('data: [DONE]')).toBe(true)
   })
 

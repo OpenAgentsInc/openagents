@@ -53,7 +53,11 @@ import {
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import type { InferenceMessage, InferenceResult } from './inference/provider-adapter'
 import { openAgentsDatabase } from './runtime'
-import { randomUuid } from './runtime-primitives'
+import {
+  compactRandomId,
+  currentIsoTimestamp,
+  randomUuid,
+} from './runtime-primitives'
 
 type OperatorArtanisChatEnv = Readonly<{
   OPENAGENTS_DB: D1Database
@@ -72,6 +76,40 @@ type OperatorArtanisTraceInput = Readonly<{
   requestMessages: ReadonlyArray<InferenceMessage>
   responseId: string
   result: InferenceResult
+}>
+
+type ArtanisOperatorThreadMessage = Readonly<{
+  authorId: string
+  authorKind: 'owner' | 'agent' | 'operator' | 'system' | 'tool'
+  body: string
+  callerId: string
+  createdAt: string
+  messageRef: string
+  threadRef: string
+}>
+
+type ArtanisOperatorThreadInput = Readonly<{
+  callerId: string
+  messages: ReadonlyArray<
+    Readonly<{
+      authorId: string
+      authorKind: ArtanisOperatorThreadMessage['authorKind']
+      body: string
+      metadata?: Readonly<Record<string, unknown>>
+    }>
+  >
+  nowIso: string
+  threadRef: string
+  title: string
+}>
+
+type ArtanisOperatorThreadStore = Readonly<{
+  appendTurn: (
+    input: ArtanisOperatorThreadInput,
+  ) => Promise<ReadonlyArray<ArtanisOperatorThreadMessage>>
+  loadThreadMessages: (
+    threadRef: string,
+  ) => Promise<ReadonlyArray<ArtanisOperatorThreadMessage>>
 }>
 
 export type OperatorArtanisChatDependencies<
@@ -117,6 +155,7 @@ export type OperatorArtanisChatDependencies<
     env: Bindings,
     session: Session,
   ) => ReadonlyArray<ArtanisOperatorTool>
+  makeThreadStore?: (env: Bindings) => ArtanisOperatorThreadStore
   emitOwnerTrace?: (
     input: OperatorArtanisTraceInput,
     env: Bindings,
@@ -240,7 +279,191 @@ const ownerIdForSession = (session: OperatorArtanisChatSession): string =>
   `owner:${session.user.userId}`
 
 const ChatRequestBody = S.Struct({
+  caller_id: S.optionalKey(S.String),
   messages: S.Array(ArtanisOperatorMessage),
+  thread_id: S.optionalKey(S.String),
+})
+
+const normalizeOptionalText = (value: string | undefined): string | undefined => {
+  const trimmed = value?.trim()
+  return trimmed === undefined || trimmed.length === 0 ? undefined : trimmed
+}
+
+const requestedThreadRef = (value: string | undefined): string | undefined =>
+  normalizeOptionalText(value)
+
+const requestedCallerId = (
+  value: string | undefined,
+  session: OperatorArtanisChatSession,
+): string => normalizeOptionalText(value) ?? session.user.userId
+
+const callerKindForCallerId = (
+  callerId: string,
+): 'owner' | 'agent' | 'operator' | 'system' => {
+  const normalized = callerId.toLowerCase()
+  if (normalized === 'owner' || normalized.startsWith('github:')) return 'owner'
+  if (normalized.includes('codex') || normalized.includes('claude')) return 'agent'
+  if (normalized === 'system') return 'system'
+  return 'operator'
+}
+
+const authorKindForMessage = (
+  message: ArtanisOperatorMessage,
+): ArtanisOperatorThreadMessage['authorKind'] =>
+  message.role === 'assistant'
+    ? 'agent'
+    : message.role === 'system'
+      ? 'system'
+      : 'owner'
+
+const messageRoleForThreadMessage = (
+  message: ArtanisOperatorThreadMessage,
+): ArtanisOperatorMessage['role'] =>
+  message.authorKind === 'owner'
+    ? 'user'
+    : message.authorKind === 'system'
+      ? 'system'
+      : 'assistant'
+
+const threadMessageToOperatorMessage = (
+  message: ArtanisOperatorThreadMessage,
+): ArtanisOperatorMessage => ({
+  content: message.body,
+  role: messageRoleForThreadMessage(message),
+})
+
+const makeThreadRef = (): string =>
+  `artanis_thread:${compactRandomId('thread')}`
+
+const makeMessageRef = (): string =>
+  `artanis_message:${compactRandomId('msg')}`
+
+const threadTitleFromMessages = (
+  messages: ReadonlyArray<ArtanisOperatorMessage>,
+): string => {
+  const title = messages.find(message => message.role === 'user')?.content ?? ''
+  return title.trim().slice(0, 120)
+}
+
+const makeD1ArtanisOperatorThreadStore = (
+  db: D1Database,
+): ArtanisOperatorThreadStore => ({
+  appendTurn: async input => {
+    const callerKind = callerKindForCallerId(input.callerId)
+    await db
+      .prepare(
+        `INSERT INTO artanis_threads (
+            thread_ref,
+            caller_id,
+            caller_kind,
+            subject_agent_ref,
+            subject_agent_kind,
+            title,
+            last_message_at,
+            created_at,
+            updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(thread_ref) DO UPDATE SET
+            caller_id = excluded.caller_id,
+            caller_kind = excluded.caller_kind,
+            title = CASE
+              WHEN artanis_threads.title = '' THEN excluded.title
+              ELSE artanis_threads.title
+            END,
+            last_message_at = excluded.last_message_at,
+            updated_at = excluded.updated_at`,
+      )
+      .bind(
+        input.threadRef,
+        input.callerId,
+        callerKind,
+        'artanis',
+        'artanis',
+        input.title,
+        input.nowIso,
+        input.nowIso,
+        input.nowIso,
+      )
+      .run()
+
+    const inserted: Array<ArtanisOperatorThreadMessage> = []
+    for (const message of input.messages) {
+      const messageRef = makeMessageRef()
+      await db
+        .prepare(
+          `INSERT INTO artanis_messages (
+              message_ref,
+              thread_ref,
+              caller_id,
+              author_id,
+              author_kind,
+              body,
+              metadata_json,
+              created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .bind(
+          messageRef,
+          input.threadRef,
+          input.callerId,
+          message.authorId,
+          message.authorKind,
+          message.body,
+          JSON.stringify(message.metadata ?? {}),
+          input.nowIso,
+        )
+        .run()
+      inserted.push({
+        authorId: message.authorId,
+        authorKind: message.authorKind,
+        body: message.body,
+        callerId: input.callerId,
+        createdAt: input.nowIso,
+        messageRef,
+        threadRef: input.threadRef,
+      })
+    }
+    return inserted
+  },
+
+  loadThreadMessages: async threadRef => {
+    const rows = await db
+      .prepare(
+        `SELECT message_ref, thread_ref, caller_id, author_id, author_kind, body, created_at
+           FROM artanis_messages
+          WHERE thread_ref = ?
+          ORDER BY created_at ASC`,
+      )
+      .bind(threadRef)
+      .all<{
+        author_id: string
+        author_kind: string
+        body: string
+        caller_id: string
+        created_at: string
+        message_ref: string
+        thread_ref: string
+      }>()
+
+    return rows.results
+      .filter(
+        row =>
+          row.author_kind === 'owner' ||
+          row.author_kind === 'agent' ||
+          row.author_kind === 'operator' ||
+          row.author_kind === 'system' ||
+          row.author_kind === 'tool',
+      )
+      .map(row => ({
+        authorId: row.author_id,
+        authorKind: row.author_kind as ArtanisOperatorThreadMessage['authorKind'],
+        body: row.body,
+        callerId: row.caller_id,
+        createdAt: row.created_at,
+        messageRef: row.message_ref,
+        threadRef: row.thread_ref,
+      }))
+  },
 })
 
 const parseBody = (request: Request) =>
@@ -290,6 +513,7 @@ const sseData = (value: unknown): string =>
   `data: ${JSON.stringify(value)}\n\n`
 
 const artanisSseResponse = (turn: Readonly<{
+  callerId: string
   deferredToApprovalGate: boolean
   iterations: number
   persona: unknown
@@ -297,6 +521,7 @@ const artanisSseResponse = (turn: Readonly<{
   requestedModel: string
   servedModel: string
   servedVia: string
+  threadRef: string
   toolInvocations: unknown
 }>) =>
   new Response(
@@ -323,6 +548,7 @@ const artanisSseResponse = (turn: Readonly<{
           ]),
       sseData({
         approvalGateRef: ARTANIS_OPERATOR_APPROVAL_GATE_REF,
+        caller_id: turn.callerId,
         channelRef: ARTANIS_OPERATOR_CHANNEL_REF,
         deferredToApprovalGate: turn.deferredToApprovalGate,
         iterations: turn.iterations,
@@ -330,6 +556,7 @@ const artanisSseResponse = (turn: Readonly<{
         requestedModel: turn.requestedModel,
         servedModel: turn.servedModel,
         servedVia: turn.servedVia,
+        thread_id: turn.threadRef,
         toolInvocations: turn.toolInvocations,
       }),
       'data: [DONE]\n\n',
@@ -367,6 +594,10 @@ export const makeOperatorArtanisChatRoutes = <
       dependencies.makeMemoryStore ??
       ((bindings: Bindings) =>
         makeD1ArtanisOwnerMemoryStore(openAgentsDatabase(bindings)))
+    const makeThreadStore =
+      dependencies.makeThreadStore ??
+      ((bindings: Bindings) =>
+        makeD1ArtanisOperatorThreadStore(openAgentsDatabase(bindings)))
     const awarenessReaders = dependencies.awarenessReaders?.(env) ?? {}
 
     return Effect.gen(function* () {
@@ -384,7 +615,19 @@ export const makeOperatorArtanisChatRoutes = <
 
       const body = yield* parseBody(request)
       const ownerId = ownerIdForSession(session)
+      const threadRef = requestedThreadRef(body.thread_id) ?? makeThreadRef()
+      const callerId = requestedCallerId(body.caller_id, session)
       const store = makeMemoryStore(env)
+      const threadStore = makeThreadStore(env)
+
+      const historicalMessages = yield* Effect.tryPromise({
+        catch: error => new OperatorArtanisChatStorageError({ error }),
+        try: () => threadStore.loadThreadMessages(threadRef),
+      })
+      const turnMessages = [
+        ...historicalMessages.map(threadMessageToOperatorMessage),
+        ...body.messages,
+      ]
 
       // Load grounded state: owner memory (owner-scoped) + live situational
       // awareness (bounded, owner-scoped). Both are best-effort: a storage
@@ -409,7 +652,7 @@ export const makeOperatorArtanisChatRoutes = <
         awareness,
         khalaClient,
         memory,
-        messages: body.messages,
+        messages: turnMessages,
         ownerId,
         tools,
       })
@@ -441,6 +684,38 @@ export const makeOperatorArtanisChatRoutes = <
         }),
       ).pipe(Effect.catch(() => Effect.void))
 
+      const nowIso = currentIsoTimestamp()
+      const inboundMessages = body.messages.map(message => ({
+        authorId:
+          message.role === 'user'
+            ? callerId
+            : message.role === 'assistant'
+              ? 'artanis'
+              : 'system',
+        authorKind: authorKindForMessage(message),
+        body: message.content,
+        metadata: { source: 'operator_artanis_chat_request' },
+      }))
+      yield* Effect.tryPromise({
+        catch: error => new OperatorArtanisChatStorageError({ error }),
+        try: () =>
+          threadStore.appendTurn({
+            callerId,
+            messages: [
+              ...inboundMessages,
+              {
+                authorId: 'artanis',
+                authorKind: 'agent',
+                body: turn.reply,
+                metadata: { source: 'operator_artanis_chat_reply' },
+              },
+            ],
+            nowIso,
+            threadRef,
+            title: threadTitleFromMessages(turnMessages),
+          }),
+      })
+
       if (dependencies.emitOwnerTrace !== undefined) {
         yield* Effect.tryPromise(() =>
           dependencies.emitOwnerTrace!(
@@ -469,7 +744,7 @@ export const makeOperatorArtanisChatRoutes = <
 
       if (wantsEventStream(request)) {
         return dependencies.appendRefreshedSessionCookies(
-          artanisSseResponse(turn),
+          artanisSseResponse({ ...turn, callerId, threadRef }),
           session,
         )
       }
@@ -478,13 +753,16 @@ export const makeOperatorArtanisChatRoutes = <
         noStoreJsonResponse({
           approvalGateRef: ARTANIS_OPERATOR_APPROVAL_GATE_REF,
           channelRef: ARTANIS_OPERATOR_CHANNEL_REF,
+          caller_id: callerId,
           deferredToApprovalGate: turn.deferredToApprovalGate,
+          historicalMessageCount: historicalMessages.length,
           iterations: turn.iterations,
           persona: turn.persona,
           reply: turn.reply,
           requestedModel: turn.requestedModel,
           servedModel: turn.servedModel,
           servedVia: turn.servedVia,
+          thread_id: threadRef,
           toolInvocations: turn.toolInvocations,
         }),
         session,
