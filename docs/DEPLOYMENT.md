@@ -47,16 +47,27 @@ change, update its linked runbook **and** fix the pointer here.
 2. `check:deploy` — typecheck:web + typecheck:api + the real web/worker test
    suites + the contract-drift / architecture / effect-topology /
    public-projection guards + the deploy-guard self-tests
-   (`test:pending-migrations-guard`). It does **NOT** depend on the flaky
+   (`test:pending-migrations-guard` and the staging parallel-dispatch guard
+   tests). It does **NOT** depend on the flaky
    `verse-launch-smoke` (that desktop smoke was removed from `check:deploy`,
    #6234), so there is **no reason to ever bypass it** with a raw deploy.
-3. **`wrangler d1 migrations apply openagents-autopilot --remote`** — migrations
-   are applied to remote D1 **before** the worker is uploaded, always.
-4. **`check:pending-migrations`** — runs `wrangler d1 migrations list … --remote`
+3. **`wrangler d1 migrations apply openagents-autopilot-staging --env staging --remote`**
+   — staging schema is applied before staging upload.
+4. `build:web` → **`wrangler deploy --env staging --containers-rollout=none --assets …`**
+   — the candidate Worker is uploaded to the isolated Cloudflare staging env.
+5. **`smoke:khala:staging-parallel-dispatch`** — dispatches five concurrent
+   fixture-backed `codex_agent_task` requests through caller-owned Pylon/Codex
+   capacity against staging and fails the deploy on any
+   `duplicate_active_assignment` evidence, incomplete closeout, or less than five
+   ready/advertised Codex slots (#6409).
+6. **`wrangler d1 migrations apply openagents-autopilot --remote`** — production
+   migrations are applied to remote D1 **before** the production worker is
+   uploaded, always.
+7. **`check:pending-migrations`** — runs `wrangler d1 migrations list … --remote`
    and **fails the deploy if ANY migration is still pending**, naming the files.
    This is the guard that makes "code shipped ahead of its schema" impossible.
-5. `build:web` → `wrangler deploy --containers-rollout=none --assets …` — the
-   worker is uploaded last, without Wrangler container rollout probing.
+8. `wrangler deploy --containers-rollout=none --assets …` — the production worker
+   is uploaded last, without Wrangler container rollout probing.
 
 **Raw `bunx wrangler deploy` / `npx wrangler deploy` is FORBIDDEN as a deploy
 path** because it skips both `migrations apply` and `check:pending-migrations`.

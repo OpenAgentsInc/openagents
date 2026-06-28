@@ -77,9 +77,12 @@ describe('deploy:safe package command', () => {
     const expectedOrder = [
       'cd ../.. && bun run check:deploy-from-main',
       '&& bun run check:deploy &&',
+      '&& cd workers/api && wrangler d1 migrations apply openagents-autopilot-staging --env staging --remote',
+      '&& cd ../.. && bun run build:web',
+      '&& cd workers/api && wrangler deploy --env staging --containers-rollout=none --assets ../../apps/web/dist',
+      '&& cd ../.. && bun run smoke:khala:staging-parallel-dispatch',
       '&& cd workers/api && wrangler d1 migrations apply openagents-autopilot --remote',
       '&& cd ../.. && bun run check:pending-migrations',
-      '&& bun run build:web',
       '&& cd workers/api && wrangler deploy --containers-rollout=none --assets ../../apps/web/dist',
     ]
 
@@ -93,6 +96,12 @@ describe('deploy:safe package command', () => {
   test('disables Wrangler container rollout probing on the final upload', () => {
     expect(deploySafe).toContain(
       'wrangler deploy --containers-rollout=none --assets ../../apps/web/dist',
+    )
+  })
+
+  test('disables Wrangler container rollout probing on the staging upload', () => {
+    expect(deploySafe).toContain(
+      'wrangler deploy --env staging --containers-rollout=none --assets ../../apps/web/dist',
     )
   })
 })

@@ -7,7 +7,7 @@
     "dev": "wrangler dev",
     "build": "wrangler deploy --dry-run --containers-rollout=none --assets ../../apps/web/dist",
     "deploy": "bun run deploy:safe",
-    "deploy:safe": "cd ../.. && bun run check:deploy-from-main && bun run check:deploy && cd workers/api && wrangler d1 migrations apply openagents-autopilot --remote && cd ../.. && bun run check:pending-migrations && bun run build:web && cd workers/api && wrangler deploy --containers-rollout=none --assets ../../apps/web/dist",
+    "deploy:safe": "cd ../.. && bun run check:deploy-from-main && bun run check:deploy && cd workers/api && wrangler d1 migrations apply openagents-autopilot-staging --env staging --remote && cd ../.. && bun run build:web && cd workers/api && wrangler deploy --env staging --containers-rollout=none --assets ../../apps/web/dist && cd ../.. && bun run smoke:khala:staging-parallel-dispatch && cd workers/api && wrangler d1 migrations apply openagents-autopilot --remote && cd ../.. && bun run check:pending-migrations && cd workers/api && wrangler deploy --containers-rollout=none --assets ../../apps/web/dist",
     "migrate:staging": "wrangler d1 migrations apply openagents-autopilot-staging --env staging --remote",
     "deploy:staging": "cd ../.. && bun run check:deploy && cd workers/api && wrangler d1 migrations apply openagents-autopilot-staging --env staging --remote && cd ../.. && bun run build:web && cd workers/api && wrangler deploy --env staging --assets ../../apps/web/dist",
     "smoke:cs336-a2:device-capability": "vitest run src/training-device-capability.test.ts src/training-device-admission-gates.test.ts src/training-run-window-routes.test.ts",
