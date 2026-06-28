@@ -383,6 +383,99 @@ final class KhalaClientTests: XCTestCase {
         }
     }
 
+    func testFetchFleetInspectorStatusUsesBearerAuthAndDecodesPublicRefs() async throws {
+        let session = makeSession()
+        let apiKey = "oa_agent_fleet_status_test"
+
+        MockURLProtocol.requestHandler = { request in
+            XCTAssertEqual(request.url?.absoluteString, "https://openagents.com/api/operator/fleet/status")
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Accept"), "application/json")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer \(apiKey)")
+
+            return (
+                HTTPURLResponse(
+                    url: try XCTUnwrap(request.url),
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )!,
+                Data("""
+                {
+                  "identity": {
+                    "userRef": "user.public.owner",
+                    "email": "owner@example.com"
+                  },
+                  "pylon": {
+                    "pylonRef": "pylon.owner.codex",
+                    "status": "ready",
+                    "lastHeartbeatAt": "2026-06-28T12:00:00Z",
+                    "heartbeatFresh": true,
+                    "capacityRefs": [
+                      "capacity.coding.codex.ready=2",
+                      "capacity.coding.codex.available=1"
+                    ],
+                    "loadRefs": [
+                      "load.coding.codex.busy=1",
+                      "load.coding.codex.queued=0"
+                    ]
+                  },
+                  "providerAccounts": [
+                    { "provider": "codex", "accountRef": "codex", "readiness": "ready" }
+                  ],
+                  "appleFM": {
+                    "status": "blocked",
+                    "blockerRefs": ["blocker.apple_fm.backend_missing"]
+                  },
+                  "recentCloseoutRefs": [
+                    "assignment.public.khala_coding.fixture",
+                    "closeout.public.khala_coding.fixture"
+                  ],
+                  "proofRefs": ["proof.public.khala_coding.fixture"],
+                  "rawPrompt": "do not display me",
+                  "localPath": "/Users/example/.codex/auth.json",
+                  "token": "oa_agent_should_not_render"
+                }
+                """.utf8)
+            )
+        }
+
+        let status = try await KhalaClient.fetchFleetInspectorStatus(apiKey: apiKey, session: session)
+
+        XCTAssertEqual(status.connectedIdentity, "user.public.owner")
+        XCTAssertEqual(status.localAgentIdentity, "pylon.owner.codex")
+        XCTAssertEqual(status.pylonRef, "pylon.owner.codex")
+        XCTAssertEqual(status.pylonReadiness, .available)
+        XCTAssertEqual(status.heartbeatObservedAt, "2026-06-28T12:00:00Z")
+        XCTAssertEqual(status.heartbeatFresh, true)
+        XCTAssertEqual(status.providerAccounts, [
+            FleetInspectorStatus.ProviderAccount(provider: "codex", ref: "codex", readiness: .available, detail: "ready"),
+        ])
+        XCTAssertEqual(status.appleFM.readiness, .blocked)
+        XCTAssertEqual(status.capacityRefs, [
+            "capacity.coding.codex.ready=2",
+            "capacity.coding.codex.available=1",
+        ])
+        XCTAssertEqual(status.loadRefs, [
+            "load.coding.codex.busy=1",
+            "load.coding.codex.queued=0",
+        ])
+        XCTAssertEqual(status.recentRefs.map(\.value), [
+            "assignment.public.khala_coding.fixture",
+            "closeout.public.khala_coding.fixture",
+        ])
+        XCTAssertEqual(status.proofRefs, ["proof.public.khala_coding.fixture"])
+        XCTAssertFalse(status.capacityRefs.contains { $0.contains("oa_agent_should_not_render") })
+        XCTAssertFalse(status.proofRefs.contains { $0.contains("/Users/") })
+    }
+
+    func testFleetInspectorRedactsSensitiveDisplayStrings() {
+        XCTAssertEqual(FleetInspectorStatus.redactedForDisplay("oa_agent_secret"), "[redacted]")
+        XCTAssertEqual(FleetInspectorStatus.redactedForDisplay("/Users/me/.codex/auth.json"), "[redacted]")
+        XCTAssertEqual(FleetInspectorStatus.redactedForDisplay("person@example.com", key: "email"), "[redacted-email]")
+        XCTAssertEqual(FleetInspectorStatus.redactedForDisplay("capacity.coding.codex.available=2"), "capacity.coding.codex.available=2")
+    }
+
     private func makeSession() -> URLSession {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [MockURLProtocol.self]
