@@ -14,3 +14,4 @@
 
 export * from "./issue-close-safe.js"
 export * from "./command-execution-source-verified.js"
+export * from "./merge-deploy-gate.js"
