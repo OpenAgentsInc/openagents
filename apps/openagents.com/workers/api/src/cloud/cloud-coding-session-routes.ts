@@ -14,8 +14,8 @@
 //   - typed launch request (lane + repo trust tier + objective -> typed session)
 //   - a MANAGED-RUNTIME ADAPTER seam (`CloudCodingRuntimeAdapter`) where the real
 //     OpenAgents Cloud control plane plugs in (the cloud repo's POST /v1/placement
-//     + per-session GCE VM lease, cloud #86/#87/#88/#90); ships wired to a
-//     stub/accepting adapter so the surface is exercisable end-to-end in tests
+//     + per-session GCE VM lease, cloud #86/#87/#88/#90); the production default
+//     fails closed until that real provisioner is explicitly armed
 //   - a placement policy that honors repo trust tiers BEFORE any dispatch
 //     (regulated -> SHC-only, private -> own/verified, public -> any), an
 //     authority boundary the promise already commits to
@@ -26,22 +26,22 @@
 //   - a lifecycle read (GET by id) that resolves a session for the AUTHENTICATED
 //     account only (cross-account isolation), like the fine-tuning job read
 //
-// HONEST SCOPE: `autopilot.cloud_coding_sessions.v1` STAYS red. This is the typed
-// lane + lifecycle + receipt SEAM toward a demonstrable desktop->GCE loop; it is
-// NOT a claim that cloud coding sessions are live. The stub adapter provisions no
-// real VM, runs no real repo-edit, and `connectionRef`/`artifactRef` stay null;
-// the metering stub bills nothing. A green flip requires a desktop-originated
-// session running a real repo-edit on Google GCE, streaming to the timeline, and
-// producing a content-addressed artifact PLUS a dereferenceable
+// HONEST SCOPE: `autopilot.cloud_coding_sessions.v1` STAYS red until a
+// desktop-originated session running a real repo-edit on Google GCE streams to
+// the timeline and produces a content-addressed artifact PLUS a dereferenceable
 // `openagents.resource_usage_receipt.v1` with owner sign-off per
-// `proof.claim_upgrade_receipts.v1`. This scaffold does not (and must not)
-// produce that receipt.
+// `proof.claim_upgrade_receipts.v1`. This route now fails closed when live GCE
+// provisioning is unarmed instead of faking a cloud session.
 
 import { Effect, Schema as S } from 'effect'
 
 import { noStoreJsonResponse } from '../http/responses'
 import { workerLogEntry } from '../observability'
-import { compactRandomId, currentIsoTimestamp } from '../runtime-primitives'
+import {
+  compactRandomId,
+  currentEpochMillis,
+  currentIsoTimestamp,
+} from '../runtime-primitives'
 import {
   type CloudMeteringDeps,
   type CloudMeteringOutcome,
@@ -148,6 +148,8 @@ export type CloudCodingSession = Readonly<{
   // Public-safe placement ref for the bound cloud VM/lease (e.g. the cloud
   // repo's placement id). Null until a real VM is leased. NEVER raw creds.
   placementRef: string | null
+  // Refs returned by the cloud placement/lease path. Public-safe only.
+  leaseRefs: ReadonlyArray<string>
   // Content-addressed artifact ref produced by a completed session. Null until a
   // real repo-edit produces one. NEVER raw diff/secret material.
   artifactRef: string | null
@@ -196,7 +198,7 @@ export const decidePlacement = (
 // A live adapter wires `launch` to the cloud repo's POST /v1/placement + GCE VM
 // lease (cloud #86/#87/#88/#90) and `get` to the cloud session store. Adapters
 // NEVER touch credits, payment, or public projection — that is the metering
-// hook's job. The stub is accepting-but-inert: it leases no VM and runs no edit.
+// hook's job. Production must fail closed when this real adapter is not armed.
 export type CloudCodingRuntimeAdapter = Readonly<{
   id: string
   launch: (
@@ -235,6 +237,8 @@ export class CloudCodingAdapterError extends Error {
 }
 
 export const STUB_CLOUD_CODING_ADAPTER_ID = 'stub-cloud-coding'
+export const NOT_ARMED_CLOUD_CODING_ADAPTER_ID = 'not-armed-cloud-gce'
+export const LIVE_CLOUD_CODING_ADAPTER_ID = 'openagents-cloud-control'
 
 // Stub/accepting runtime adapter. Accepts a launch and returns a `queued`
 // session with no real placement, so the route + metering seams are exercisable
@@ -252,6 +256,7 @@ export const stubCloudCodingAdapter: CloudCodingRuntimeAdapter = {
         artifactRef: null,
         createdAt: currentIsoTimestamp(),
         lane,
+        leaseRefs: [],
         placementRef: null,
         repoRef: request.repoRef,
         repoTrustTier: request.repoTrustTier,
@@ -260,6 +265,251 @@ export const stubCloudCodingAdapter: CloudCodingRuntimeAdapter = {
         timeoutSeconds: request.timeoutSeconds,
       }),
     ),
+}
+
+export type CloudCodingControlPlaneConfig = Readonly<{
+  baseUrl: string
+  bearerToken: string
+  gceProvisioningArmed: boolean
+  fetch?: typeof fetch
+}>
+
+const isNonEmptyString = (value: string | undefined): value is string =>
+  value !== undefined && value.trim().length > 0
+
+export const isCloudGceProvisioningArmed = (
+  value: string | undefined,
+): boolean => value?.trim().toLowerCase() === 'live'
+
+const publicRefFromUnknown = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.trim().length > 0 ? value : undefined
+
+const publicRefsFromCaps = (
+  caps: Record<string, unknown> | undefined,
+): ReadonlyArray<string> => {
+  if (caps === undefined) {
+    return []
+  }
+  return [caps.leaseRef, caps.gceLeaseRef, caps.vmLeaseRef, caps.resourceUsageReceiptRef].flatMap(
+    value => {
+      const ref = publicRefFromUnknown(value)
+      return ref === undefined ? [] : [ref]
+    },
+  )
+}
+
+const uniqueRefs = (refs: ReadonlyArray<string>): ReadonlyArray<string> => [
+  ...new Set(refs.filter(ref => ref.trim().length > 0)),
+]
+
+const sessionStateFromCloudStatus = (status: string): CloudCodingSessionState => {
+  if (status === 'completed') {
+    return 'completed'
+  }
+  if (status === 'failed' || status === 'timeout') {
+    return 'failed'
+  }
+  if (status === 'cancelled') {
+    return 'cancelled'
+  }
+  if (status === 'running' || status === 'started') {
+    return 'running'
+  }
+  return 'queued'
+}
+
+const stringOption = (
+  options: Readonly<Record<string, unknown>>,
+  key: string,
+): string | undefined => publicRefFromUnknown(options[key])
+
+const defaultProviderAccountRef = (accountRef: string): string =>
+  `provider-account.cloud-coding.${accountRef.replace(/[^a-zA-Z0-9_.:-]/g, '_')}`
+
+const defaultAuthGrantRef = (sessionId: string): string =>
+  `grant.cloud-coding-session.${sessionId}`
+
+type CloudPlacementResponse = Readonly<{
+  externalRunId: string
+  status: string
+  binding: Readonly<{
+    contractVersion: string
+    runId: string
+    externalRunId: string
+    lane: CloudCodingLane
+    providerLane: string
+    runnerId: string
+    capacityClassId: string | null
+    sandboxMode: string
+    reason: string
+    costDriven: boolean
+    caps?: Record<string, unknown>
+  }>
+}>
+
+const normalizeCloudPlacementResponse = (
+  payload: unknown,
+  fallbackRunId: string,
+  fallbackLane: CloudCodingLane,
+): CloudPlacementResponse => {
+  const record = (payload ?? {}) as Record<string, unknown>
+  const rawBinding =
+    record.binding !== null && typeof record.binding === 'object'
+      ? (record.binding as Record<string, unknown>)
+      : {}
+  const lane = rawBinding.lane === 'cloud-shc' ? 'cloud-shc' : fallbackLane
+  const externalRunId =
+    publicRefFromUnknown(record.externalRunId) ??
+    publicRefFromUnknown(rawBinding.externalRunId) ??
+    ''
+  const caps =
+    rawBinding.caps !== null && typeof rawBinding.caps === 'object'
+      ? (rawBinding.caps as Record<string, unknown>)
+      : undefined
+  return {
+    binding: {
+      capacityClassId: publicRefFromUnknown(rawBinding.capacityClassId) ?? null,
+      contractVersion:
+        publicRefFromUnknown(rawBinding.contractVersion) ??
+        'openagents.codex_placement_assignment.v1',
+      costDriven: rawBinding.costDriven === true,
+      externalRunId,
+      lane,
+      providerLane:
+        publicRefFromUnknown(rawBinding.providerLane) ??
+        (lane === 'cloud-shc' ? 'shc' : 'gcp'),
+      reason: publicRefFromUnknown(rawBinding.reason) ?? '',
+      runId: publicRefFromUnknown(rawBinding.runId) ?? fallbackRunId,
+      runnerId: publicRefFromUnknown(rawBinding.runnerId) ?? '',
+      sandboxMode:
+        publicRefFromUnknown(rawBinding.sandboxMode) ?? 'danger_full_access',
+      ...(caps === undefined ? {} : { caps }),
+    },
+    externalRunId,
+    status: publicRefFromUnknown(record.status) ?? 'queued',
+  }
+}
+
+export const makeCloudControlCloudCodingAdapter = (
+  config: CloudCodingControlPlaneConfig,
+): CloudCodingRuntimeAdapter => {
+  const fetchImpl = config.fetch ?? fetch
+  const baseUrl = config.baseUrl.replace(/\/+$/, '')
+  const notArmed = (reason: string) =>
+    new CloudCodingAdapterError({
+      adapterId: NOT_ARMED_CLOUD_CODING_ADAPTER_ID,
+      reason,
+    })
+  return {
+    id: LIVE_CLOUD_CODING_ADAPTER_ID,
+    get: () =>
+      Effect.fail(
+        notArmed('cloud_coding_lifecycle_read_requires_cloud_session_store'),
+      ),
+    launch: ({ sessionId, accountRef, request, lane }) =>
+      Effect.gen(function* () {
+        if (!config.gceProvisioningArmed) {
+          return yield* Effect.fail(notArmed('cloud_gce_provisioning_not_armed'))
+        }
+        if (!isNonEmptyString(config.baseUrl)) {
+          return yield* Effect.fail(notArmed('cloud_control_url_not_configured'))
+        }
+        if (!isNonEmptyString(config.bearerToken)) {
+          return yield* Effect.fail(
+            notArmed('cloud_control_token_not_configured'),
+          )
+        }
+        const placementResult = yield* Effect.tryPromise({
+          catch: error =>
+            new CloudCodingAdapterError({
+              adapterId: LIVE_CLOUD_CODING_ADAPTER_ID,
+              reason:
+                error instanceof Error
+                  ? error.message
+                  : 'cloud_placement_request_failed',
+            }),
+          try: async () => {
+            const response = await fetchImpl(`${baseUrl}/v1/placement`, {
+              body: JSON.stringify({
+                auth_grant_ref:
+                  stringOption(request.options, 'authGrantRef') ??
+                  defaultAuthGrantRef(sessionId),
+                contract_version: 'openagents.codex_placement_assignment.v1',
+                created_at_ms: currentEpochMillis(),
+                goal: request.objective,
+                lane,
+                owner_ref: accountRef,
+                provider_account_ref:
+                  stringOption(request.options, 'providerAccountRef') ??
+                  defaultProviderAccountRef(accountRef),
+                repository: request.repoRef,
+                run_id: sessionId,
+                sandbox_mode: 'danger_full_access',
+                wallet_authority: false,
+              }),
+              headers: {
+                Authorization: `Bearer ${config.bearerToken}`,
+                'Content-Type': 'application/json',
+              },
+              method: 'POST',
+            })
+            if (!response.ok) {
+              return {
+                ok: false as const,
+                reason: `cloud_placement_http_${response.status}`,
+              }
+            }
+            return {
+              ok: true as const,
+              placement: normalizeCloudPlacementResponse(
+                await response.json(),
+                sessionId,
+                lane,
+              ),
+            }
+          },
+        })
+        if (!placementResult.ok) {
+          return yield* Effect.fail(
+            new CloudCodingAdapterError({
+              adapterId: LIVE_CLOUD_CODING_ADAPTER_ID,
+              reason: placementResult.reason,
+            }),
+          )
+        }
+        const placement = placementResult.placement
+        const placementRef =
+          placement.externalRunId !== ''
+            ? `placement.cloud-coding.${placement.externalRunId}`
+            : `placement.cloud-coding.${sessionId}`
+        return {
+          accountRef,
+          adapter: request.adapter,
+          artifactRef: null,
+          createdAt: currentIsoTimestamp(),
+          lane: placement.binding.lane,
+          leaseRefs: uniqueRefs([
+            placementRef,
+            ...(placement.externalRunId === ''
+              ? []
+              : [`cloud-run.${placement.externalRunId}`]),
+            ...(placement.binding.runnerId === ''
+              ? []
+              : [`cloud-runner.${placement.binding.runnerId}`]),
+            ...(placement.binding.capacityClassId === null
+              ? []
+              : [`cloud-capacity-class.${placement.binding.capacityClassId}`]),
+            ...publicRefsFromCaps(placement.binding.caps),
+          ]),
+          placementRef,
+          repoRef: request.repoRef,
+          repoTrustTier: request.repoTrustTier,
+          sessionId,
+          state: sessionStateFromCloudStatus(placement.status),
+          timeoutSeconds: request.timeoutSeconds,
+        } satisfies CloudCodingSession
+      }),
+  }
 }
 
 // METERING / RECEIPT HOOK SEAM ---------------------------------------------
@@ -385,7 +635,8 @@ export type CloudCodingSessionServiceDeps = Readonly<{
   // OFF).
   enabled: boolean
   authenticate: CloudCodingAuth
-  // Runtime adapter. Defaults to the stub/accepting adapter.
+  // Runtime adapter. Defaults to a fail-closed adapter; tests may inject the
+  // stub explicitly, but production must never silently fake success.
   adapter?: CloudCodingRuntimeAdapter
   // Metering/receipt hook. Defaults to the no-op/log stub.
   meteringHook?: CloudCodingMeteringHook
@@ -438,6 +689,7 @@ const projectSession = (session: CloudCodingSession) => ({
   timeout_seconds: session.timeoutSeconds,
   state: session.state,
   placement_ref: session.placementRef,
+  lease_refs: session.leaseRefs,
   artifact_ref: session.artifactRef,
   created_at: session.createdAt,
 })
@@ -526,7 +778,13 @@ export const handleCloudCodingSessionLaunch = (
       )
     }
 
-    const adapter = deps.adapter ?? stubCloudCodingAdapter
+    const adapter =
+      deps.adapter ??
+      makeCloudControlCloudCodingAdapter({
+        baseUrl: '',
+        bearerToken: '',
+        gceProvisioningArmed: false,
+      })
     const meteringHook = deps.meteringHook ?? stubCloudCodingMeteringHook
     const newId = deps.newId ?? (() => compactRandomId('ccs'))
     const sessionId = newId()
