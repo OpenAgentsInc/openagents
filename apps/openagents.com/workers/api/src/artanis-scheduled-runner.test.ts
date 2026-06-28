@@ -282,6 +282,144 @@ describe('Artanis scheduled runner', () => {
     })
   })
 
+  test('triages Khala CLI feedback on the scheduled tick', async () => {
+    const store = new ArtanisPersistenceTestStore()
+    const db = artanisPersistenceTestDb(store)
+    const unsupportedRequests: Array<{
+      requestRef: string
+      sourceRef: string
+      status: string
+      triageKind: string
+    }> = []
+
+    const result = await Effect.runPromise(
+      runArtanisScheduledTick({
+        db,
+        enabled: true,
+        khalaFeedback: [
+          {
+            clientVersion: '0.1.0',
+            createdAt: nowIso,
+            feedback:
+              'that was a little too wordy, i prefer this more conversational',
+            feedbackRef: 'khala_feedback:fb_wordy',
+            source: 'khala-cli',
+            traceRef: 'trace_public_wordy',
+            userAgent: null,
+          },
+          {
+            clientVersion: '0.1.0',
+            createdAt: nowIso,
+            feedback: 'please add support for reading my linked backlog',
+            feedbackRef: 'khala_feedback:fb_capability',
+            source: 'khala-cli',
+            traceRef: null,
+            userAgent: null,
+          },
+          {
+            clientVersion: '0.1.0',
+            createdAt: nowIso,
+            feedback: 'the command fails with an error after submit',
+            feedbackRef: 'khala_feedback:fb_bug',
+            source: 'khala-cli',
+            traceRef: null,
+            userAgent: null,
+          },
+        ],
+        nowIso,
+        scheduleRef: 'cron.public.artanis.khala-feedback',
+        unsupportedRequestStore: {
+          listRecent: async () => [],
+          upsert: async input => {
+            unsupportedRequests.push({
+              requestRef: input.requestRef,
+              sourceRef: input.sourceRef,
+              status: input.status,
+              triageKind: input.triageKind,
+            })
+            return {
+              createdAt: input.createdAt,
+              evidenceRefs: input.evidenceRefs,
+              forumTopicRef: input.forumTopicRef,
+              githubIssueRef: input.githubIssueRef,
+              issueRequired: true,
+              nextAction: 'open_github_issue',
+              requestRef: input.requestRef,
+              sourceKind: input.sourceKind,
+              sourceRef: input.sourceRef,
+              status: input.status,
+              suggestedIssueTitle: input.suggestedIssueTitle,
+              summary: input.summary,
+              title: input.title,
+              triageKind: input.triageKind,
+              updatedAt: input.updatedAt,
+            }
+          },
+        },
+      }),
+    )
+
+    expect(result.khalaFeedbackTriage.feedbackRefs).toEqual([
+      'khala_feedback:fb_bug',
+      'khala_feedback:fb_capability',
+      'khala_feedback:fb_wordy',
+    ])
+    expect(result.khalaFeedbackTriage.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          feedbackRef: 'khala_feedback:fb_wordy',
+          kind: 'style',
+          styleProposal:
+            'Prefer concise, conversational Khala replies: answer directly first, keep default responses short, and expand only when the user asks for detail.',
+        }),
+        expect.objectContaining({
+          feedbackRef: 'khala_feedback:fb_capability',
+          kind: 'missing_capability',
+          unsupportedRequestRef: 'khala_unsupported:khala_feedback_fb_capability',
+        }),
+        expect.objectContaining({
+          feedbackRef: 'khala_feedback:fb_bug',
+          kind: 'bug',
+          unsupportedRequestRef: 'khala_unsupported:khala_feedback_fb_bug',
+        }),
+      ]),
+    )
+    expect(unsupportedRequests).toEqual([
+      {
+        requestRef: 'khala_unsupported:khala_feedback_fb_capability',
+        sourceRef: 'khala_feedback:fb_capability',
+        status: 'needs_issue',
+        triageKind: 'missing_capability',
+      },
+      {
+        requestRef: 'khala_unsupported:khala_feedback_fb_bug',
+        sourceRef: 'khala_feedback:fb_bug',
+        status: 'needs_issue',
+        triageKind: 'bug',
+      },
+    ])
+    expect(result.approvalRequirementRefs).toContain(
+      'approval.public.artanis.khala_response_style.khala_feedback_fb_wordy',
+    )
+    expect(result.workProposalRefs).toEqual(
+      expect.arrayContaining([
+        'work.public.artanis.khala_feedback.style.khala_feedback_fb_wordy',
+        'work.public.artanis.khala_feedback.missing_capability.khala_feedback_fb_capability',
+        'work.public.artanis.khala_feedback.bug.khala_feedback_fb_bug',
+      ]),
+    )
+
+    const tickProjection = JSON.parse(
+      store.rows('artanis_loop_ticks')[0]!.public_projection_json,
+    )
+    expect(JSON.stringify(tickProjection)).toContain(
+      'artifact.public.artanis.khala_response_style_proposal.khala_feedback_fb_wordy',
+    )
+    expect(JSON.stringify(tickProjection)).not.toContain('too wordy')
+    expect(JSON.stringify(tickProjection)).not.toContain('linked backlog')
+    expect(store.rows('artanis_work_routing_proposals')).toHaveLength(5)
+  })
+
   test('blocks Khala readiness on leaked public model ids without projecting them', async () => {
     const store = new ArtanisPersistenceTestStore()
     const db = artanisPersistenceTestDb(store)
