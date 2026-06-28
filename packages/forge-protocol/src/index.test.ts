@@ -6,7 +6,10 @@ import {
   decodeForgeCoordinationPrRow,
   decodeForgeCoordinationStatusRow,
   decodeForgeDispatchLeaseRow,
+  decodeForgeGitAccessTokenRow,
+  decodeForgeGitAccessTokenScopeRow,
   decodeForgeGitPackfileArchiveRow,
+  decodeForgeTenantRow,
   decodeForgeMergeQueueLedgerRow,
   forgeCoordinationStatusStateForNip34Kind,
   forgeCoordinationStatusStates,
@@ -127,5 +130,41 @@ describe("@openagentsinc/forge-protocol", () => {
         updated_at: at,
       }).object_format,
     ).toBe("sha1")
+
+    expect(
+      decodeForgeTenantRow({
+        tenant_ref: "tenant.openagents",
+        display_name: "OpenAgents",
+        state: "active",
+        created_at: at,
+        updated_at: at,
+      }).state,
+    ).toBe("active")
+
+    expect(
+      decodeForgeGitAccessTokenRow({
+        tenant_ref: "tenant.openagents",
+        token_ref: "forge_git_token.test",
+        subject_ref: "agent.public.test",
+        repository_ref: "repo.openagents.openagents",
+        token_hash: "b".repeat(64),
+        token_prefix: "oa_forge_git_prefix",
+        state: "active",
+        created_at: at,
+        expires_at: "2026-06-28T17:00:00.000Z",
+        last_used_at: null,
+        revoked_at: null,
+        source_refs_json: "[]",
+      }).repository_ref,
+    ).toBe("repo.openagents.openagents")
+
+    expect(
+      decodeForgeGitAccessTokenScopeRow({
+        tenant_ref: "tenant.openagents",
+        token_ref: "forge_git_token.test",
+        scope: "git:receive-pack",
+        created_at: at,
+      }).scope,
+    ).toBe("git:receive-pack")
   })
 })

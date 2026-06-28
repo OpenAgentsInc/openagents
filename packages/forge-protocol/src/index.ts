@@ -62,6 +62,23 @@ export const ForgeGitPackfileObjectFormat = S.Literals([
 ])
 export type ForgeGitPackfileObjectFormat = typeof ForgeGitPackfileObjectFormat.Type
 
+export const ForgeTenantState = S.Literals(["active", "suspended"])
+export type ForgeTenantState = typeof ForgeTenantState.Type
+
+export const ForgeGitAccessTokenState = S.Literals([
+  "active",
+  "revoked",
+  "expired",
+])
+export type ForgeGitAccessTokenState = typeof ForgeGitAccessTokenState.Type
+
+export const ForgeGitAccessScope = S.Literals([
+  "git:upload-pack",
+  "git:receive-pack",
+  "git:admin",
+])
+export type ForgeGitAccessScope = typeof ForgeGitAccessScope.Type
+
 export const ForgeNip34StatusKind = S.Literals([1630, 1631, 1632, 1633])
 export type ForgeNip34StatusKind = typeof ForgeNip34StatusKind.Type
 
@@ -169,6 +186,40 @@ export const ForgeGitPackfileArchiveRow = S.Struct({
 })
 export type ForgeGitPackfileArchiveRow = typeof ForgeGitPackfileArchiveRow.Type
 
+export const ForgeTenantRow = S.Struct({
+  tenant_ref: S.String,
+  display_name: S.String,
+  state: ForgeTenantState,
+  created_at: S.String,
+  updated_at: S.String,
+})
+export type ForgeTenantRow = typeof ForgeTenantRow.Type
+
+export const ForgeGitAccessTokenRow = S.Struct({
+  tenant_ref: S.String,
+  token_ref: S.String,
+  subject_ref: S.String,
+  repository_ref: S.String,
+  token_hash: S.String,
+  token_prefix: S.String,
+  state: ForgeGitAccessTokenState,
+  created_at: S.String,
+  expires_at: S.String,
+  last_used_at: S.NullOr(S.String),
+  revoked_at: S.NullOr(S.String),
+  source_refs_json: S.String,
+})
+export type ForgeGitAccessTokenRow = typeof ForgeGitAccessTokenRow.Type
+
+export const ForgeGitAccessTokenScopeRow = S.Struct({
+  tenant_ref: S.String,
+  token_ref: S.String,
+  scope: ForgeGitAccessScope,
+  created_at: S.String,
+})
+export type ForgeGitAccessTokenScopeRow =
+  typeof ForgeGitAccessTokenScopeRow.Type
+
 export const ForgeCoordinationRow = S.Union([
   ForgeCoordinationIssueRow,
   ForgeCoordinationPrRow,
@@ -176,6 +227,9 @@ export const ForgeCoordinationRow = S.Union([
   ForgeDispatchLeaseRow,
   ForgeMergeQueueLedgerRow,
   ForgeGitPackfileArchiveRow,
+  ForgeTenantRow,
+  ForgeGitAccessTokenRow,
+  ForgeGitAccessTokenScopeRow,
 ])
 export type ForgeCoordinationRow = typeof ForgeCoordinationRow.Type
 
@@ -192,6 +246,13 @@ export const decodeForgeMergeQueueLedgerRow = S.decodeUnknownSync(
 )
 export const decodeForgeGitPackfileArchiveRow = S.decodeUnknownSync(
   ForgeGitPackfileArchiveRow,
+)
+export const decodeForgeTenantRow = S.decodeUnknownSync(ForgeTenantRow)
+export const decodeForgeGitAccessTokenRow = S.decodeUnknownSync(
+  ForgeGitAccessTokenRow,
+)
+export const decodeForgeGitAccessTokenScopeRow = S.decodeUnknownSync(
+  ForgeGitAccessTokenScopeRow,
 )
 
 export const forgeCoordinationStatusStateForNip34Kind = (

@@ -581,6 +581,15 @@ then full source-of-truth inversion at `forge.openagents.com`.
 > The store is idempotent by `(tenant_ref, packfile_ref)` and by tenant-scoped
 > digest so repeated receive-pack submissions do not duplicate blob storage.
 
+> FORGE-4 status, 2026-06-28: tenant-scoped git auth now has D1 tables in
+> `0253_forge_tenant_git_access_tokens.sql` and a Worker store at
+> `apps/openagents.com/workers/api/src/forge-tenant-git-auth-store.ts`. Raw
+> `oa_forge_git_` tokens are returned only at mint time; D1 stores token hashes,
+> prefixes, tenant/repository/subject refs, lifecycle timestamps, and one bounded
+> scope row per grant (`git:upload-pack`, `git:receive-pack`, `git:admin`). Auth
+> fails closed unless the tenant is active, the token is active and unexpired,
+> the repository matches exactly, and the requested git operation is granted.
+
 This is the build plan in fileable form: an ordered list of issues mapped to the
 milestones above, with dependency order and a P0-now set. Each line is
 `**FORGE-n** (milestone) [Pn] — Title — one-line scope`. These are tracking
