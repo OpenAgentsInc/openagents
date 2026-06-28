@@ -329,6 +329,62 @@ bash apps/pylon/scripts/codex-supervisor/launch.sh status
 bash apps/pylon/scripts/codex-supervisor/launch.sh stop
 ```
 
+### Offload Codex profiles to Tailnet machines (#6432)
+
+Use this when the owner's desktop is CPU-oversubscribed but the Codex profiles
+are already authenticated under `~/.pylon-fable/accounts/codex/<ref>`. The
+offload path **copies serialized isolated Pylon account homes only**; it never
+runs `codex login`, never runs `pylon auth codex`, and never touches the default
+`~/.codex`.
+
+Dry-run first from a clean checkout:
+
+```sh
+PYLON_HOME=$HOME/.pylon-fable \
+SUP_PYLON_REF=<live-ref> \
+  bash apps/pylon/scripts/codex-supervisor/fleet-offload.sh \
+    --hosts imac-pro-bertha,macbook-pro-m2 \
+    --accounts codex-4,codex-5,codex-6,codex-7
+```
+
+Expected dry-run shape:
+
+- `imac-pro-bertha` receives `codex-4,codex-6`.
+- `macbook-pro-m2` receives `codex-5,codex-7`.
+- Each profile is archived from
+  `$PYLON_HOME/accounts/codex/<ref>`, copied with `scp`, expanded under the
+  remote `~/.pylon-fable/accounts/codex/<ref>`, and the remote supervisor launch
+  includes `SUP_ACCOUNT_REFS=<only-that-hosts-refs>`.
+
+Execute only after the dry-run command is sane and both Tailnet hosts have a
+clean current checkout, Bun dependencies, and a remote env file exporting
+`OPENAGENTS_AGENT_TOKEN` at `~/.pylon-fable/openagents-agent.env` (override with
+`REMOTE_AGENT_ENV`). Do not put the token into the dry-run output, issue
+comments, or shell history.
+
+```sh
+PYLON_HOME=$HOME/.pylon-fable \
+SUP_PYLON_REF=<live-ref> \
+  bash apps/pylon/scripts/codex-supervisor/fleet-offload.sh \
+    --hosts imac-pro-bertha,macbook-pro-m2 \
+    --accounts codex-4,codex-5,codex-6,codex-7 \
+    --execute
+```
+
+The launched remote supervisors use:
+
+- `REMOTE_PYLON_HOME=~/.pylon-fable` by default.
+- `REMOTE_REPO=~/work/openagents` by default.
+- `REMOTE_AGENT_ENV=~/.pylon-fable/openagents-agent.env` by default.
+- `SUP_MAX_SLOTS_PER_HOST=4` and `SUP_PER_ACCOUNT=2` by default.
+- `SUP_ACCOUNT_REFS` so bertha and m2 do not both schedule the same copied
+  profiles.
+
+After offload, reduce the desktop supervisor/standing-pylon advertised slots by
+the moved accounts before declaring a 12-turn split across three machines. The
+gate admits by pylon-advertised capacity, so the sum of desktop + bertha + m2
+advertisements must match real CPU/account headroom.
+
 ### Restart the standing pylon
 ```sh
 launchctl kickstart -k gui/$(id -u)/com.openagents.pylon.fable   # graceful kick

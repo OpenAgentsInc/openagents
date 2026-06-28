@@ -83,6 +83,9 @@ SUP_MAX_SLOTS="${SUP_MAX_SLOTS:-8}"
 SUP_REPO="${SUP_REPO:-OpenAgentsInc/openagents}"
 # Lightweight, sanctioned-shape verification run inside each throwaway workspace.
 SUP_VERIFY="${SUP_VERIFY:-bun run --cwd apps/openagents.com/workers/api test -- src/labor-earnings-routes.test.ts}"
+# Optional comma/space separated allowlist for multi-host fleet offload. When
+# set, a host only schedules the copied Codex profile refs assigned to it.
+SUP_ACCOUNT_REFS="${SUP_ACCOUNT_REFS:-}"
 # Presence heartbeat cadence (s) — keeps presence fresh + capacity advertised.
 SUP_HEARTBEAT_SECS="${SUP_HEARTBEAT_SECS:-45}"
 # Backoff bounds for refused/rate-limited dispatch.
@@ -128,12 +131,16 @@ counter_now() {
 # Print ready Codex account refs, one per line. Default-home account (accountRef
 # null) is printed as the literal token "default".
 ready_codex_account_refs() {
-  "${PYLON[@]}" codex accounts list --json 2>/dev/null | python3 -c "import sys,json
+  "${PYLON[@]}" codex accounts list --json 2>/dev/null | python3 -c "import os,sys,json
+allow_raw=os.environ.get('SUP_ACCOUNT_REFS','').replace(',', ' ').split()
+allow=set(allow_raw)
 try: d=json.load(sys.stdin)
 except Exception: sys.exit(0)
 for a in d.get('accounts',[]):
     if a.get('provider')=='codex' and a.get('readiness',{}).get('state')=='ready':
-        print(a.get('accountRef') or 'default')" 2>/dev/null
+        ref=a.get('accountRef') or 'default'
+        if not allow or ref in allow:
+            print(ref)" 2>/dev/null
 }
 
 owner_session_broken() {
@@ -289,7 +296,7 @@ if [ -z "${OPENAGENTS_AGENT_TOKEN:-}" ]; then
 fi
 
 echo $$ > "$SUP_STATE_DIR/supervisor.pid"
-log "=== codex-supervisor START pid=$$ repo=$REPO_ROOT pylon=$SUP_PYLON_REF per_account=$SUP_PER_ACCOUNT max_slots=$SUP_MAX_SLOTS ==="
+log "=== codex-supervisor START pid=$$ repo=$REPO_ROOT pylon=$SUP_PYLON_REF per_account=$SUP_PER_ACCOUNT max_slots=$SUP_MAX_SLOTS account_refs=${SUP_ACCOUNT_REFS:-all} ==="
 
 "${PYLON[@]}" provider go-online >> "$SUP_LOG" 2>&1 || log "provider go-online nonzero (continuing)"
 
