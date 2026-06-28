@@ -13316,7 +13316,8 @@ const workerFetchProgram = Effect.gen(function* () {
       Effect.sync(() => {
         const prettyCause = Cause.pretty(cause)
         logWorkerRouteError('worker_unhandled_exception', prettyCause)
-        ctx.waitUntil(
+        scheduleBackgroundWork(
+          ctx,
           recordBackendIncidentEvent(openAgentsDatabase(env), {
             errorName: 'EffectCause',
             kind: 'unhandled_exception',
