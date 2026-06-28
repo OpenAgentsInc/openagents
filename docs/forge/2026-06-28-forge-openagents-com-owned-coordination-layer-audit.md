@@ -570,6 +570,14 @@ then full source-of-truth inversion at `forge.openagents.com`.
 > remains the next implementation map; the first-wave GitHub epic can close
 > because its concrete sub-issues are done.
 
+> Stand-up issue map, 2026-06-28: #6759 closed the separate `apps/forge/`
+> deploy bootstrap and production `forge.openagents.com` landing page. The next
+> filed implementation slices are #6768 / SU-0 boundary lock, #6769 / SU-1B UI
+> shell beyond landing, #6770 / SU-2 `/api/forge/*` control-plane routes, and
+> #6771 / SU-3 smart-Git intake to archive/canonical refs/coordination rows.
+> These live issue numbers are the operative queue for the stand-up sequence in
+> `docs/forge/2026-06-28-forge-standup-spec.md`.
+
 > FORGE-1 status, 2026-06-28: Worker-side D1 coordination source-of-truth rows
 > landed in migration `0251_forge_coordination_source_of_truth.sql`, with typed
 > Effect schemas in `@openagentsinc/forge-protocol` and the store/tests at
@@ -743,6 +751,9 @@ caused the 119-PR night), then FORGE-19 once FORGE-3 lands. The next P0 wave is
 M3's FORGE-8 → FORGE-9 (owned merge authority + mirror), which is what actually
 removes GitHub from the critical path. FORGE-5 (M2 Artifacts) starts in parallel
 with M1 since it only depends on FORGE-1, with FORGE-7 as its de-risking sibling.
+For the live stand-up queue after the completed first wave, execute #6768,
+#6769, #6770, and #6771 in that order unless a blocker forces the documented
+parallelism.
 
 **Critical path:** FORGE-0 → FORGE-1 → FORGE-5 → FORGE-8 → FORGE-9 (everything
 else hangs off these five). Everything in M4/M5 and the risk-driven lane can
