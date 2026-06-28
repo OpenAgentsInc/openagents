@@ -32,6 +32,15 @@ type MessageRow = Readonly<{
   created_at: string
 }>
 
+type AccountRow = {
+  provider_account_ref: string
+  provider: string
+  cooldown_until: string | null
+  recent_failure_class: string | null
+  user_id: string
+  deleted_at: string | null
+}
+
 const threads: ReadonlyArray<ThreadRow> = [
   {
     caller_id: 'github:14167547',
@@ -91,17 +100,70 @@ const messages: ReadonlyArray<MessageRow> = [
   },
 ]
 
-const makeFakeD1 = (): D1Database =>
+const accountRows = (): Array<AccountRow> => [
+  {
+    cooldown_until: '2099-01-01T00:00:00.000Z',
+    deleted_at: null,
+    provider: 'chatgpt_codex',
+    provider_account_ref: 'acct_hash_codex_1',
+    recent_failure_class: 'rate_limited',
+    user_id: 'github:operator',
+  },
+  {
+    cooldown_until: null,
+    deleted_at: null,
+    provider: 'claude',
+    provider_account_ref: 'acct_hash_claude_1',
+    recent_failure_class: null,
+    user_id: 'github:operator',
+  },
+  {
+    cooldown_until: '2099-01-01T00:00:00.000Z',
+    deleted_at: null,
+    provider: 'chatgpt_codex',
+    provider_account_ref: 'acct_hash_other',
+    recent_failure_class: 'rate_limited',
+    user_id: 'github:other',
+  },
+]
+
+const makeFakeD1 = (accounts: Array<AccountRow> = accountRows()): D1Database =>
   ({
     prepare: (sql: string) => ({
       bind: (...values: ReadonlyArray<unknown>) => ({
-        all: async () => query(sql, values),
+        all: async () => query(sql, values, accounts),
+        run: async () => run(sql, values, accounts),
       }),
-      all: async () => query(sql, []),
+      all: async () => query(sql, [], accounts),
     }),
   }) as unknown as D1Database
 
-const query = (sql: string, values: ReadonlyArray<unknown>) => {
+const query = (
+  sql: string,
+  values: ReadonlyArray<unknown>,
+  accounts: Array<AccountRow>,
+) => {
+  if (sql.includes('FROM provider_accounts')) {
+    const userId = typeof values[0] === 'string' ? values[0] : ''
+
+    return {
+      results: accounts
+        .filter(
+          account =>
+            account.user_id === userId &&
+            account.deleted_at === null &&
+            (account.provider === 'chatgpt_codex' ||
+              account.provider === 'claude'),
+        )
+        .map(account => ({
+          cooldown_until: account.cooldown_until,
+          provider: account.provider,
+          provider_account_ref: account.provider_account_ref,
+          recent_failure_class: account.recent_failure_class,
+        })),
+    }
+  }
+
   if (sql.includes('FROM artanis_threads')) {
     const callerId = typeof values[0] === 'string' ? values[0] : undefined
     const rows = threads
@@ -123,6 +185,33 @@ const query = (sql: string, values: ReadonlyArray<unknown>) => {
   return {
     results: messages.filter(message => message.thread_ref === threadRef),
   }
+}
+
+const run = (
+  sql: string,
+  values: ReadonlyArray<unknown>,
+  accounts: Array<AccountRow>,
+) => {
+  if (sql.includes('UPDATE provider_accounts')) {
+    const [, userId, accountRefHash] = values as [string, string, string]
+    const account = accounts.find(
+      candidate =>
+        candidate.user_id === userId &&
+        candidate.provider_account_ref === accountRefHash &&
+        candidate.deleted_at === null,
+    )
+
+    if (account === undefined) {
+      return { meta: { changes: 0 }, success: true }
+    }
+
+    account.cooldown_until = null
+    account.recent_failure_class = null
+
+    return { meta: { changes: 1 }, success: true }
+  }
+
+  return { meta: { changes: 0 }, success: true }
 }
 
 const route = (options: {
@@ -232,6 +321,73 @@ describe('Artanis operator dashboard routes', () => {
           title: 'Claude needs steering',
         },
       ],
+    })
+  })
+
+  test('serves owner-only account status rows for the Artanis accounts page', async () => {
+    const response = await Effect.runPromise(
+      route({ browserEmail: 'chris@openagents.com' })(
+        request('/api/operator/accounts/status'),
+        { OPENAGENTS_DB: makeFakeD1() },
+        executionContext,
+      )!,
+    )
+    const body = await response.json() as Record<string, unknown>
+
+    expect(response.status).toBe(200)
+    expect(body).toMatchObject({
+      accounts: [
+        {
+          accountRefHash: 'acct_hash_codex_1',
+          cooldownExpiresAt: '2099-01-01T00:00:00.000Z',
+          isRateLimited: true,
+          provider: 'codex',
+        },
+        {
+          accountRefHash: 'acct_hash_claude_1',
+          cooldownExpiresAt: null,
+          isRateLimited: false,
+          provider: 'claude',
+        },
+      ],
+    })
+  })
+
+  test('manual reset clears the selected owner account cooldown', async () => {
+    const accounts = accountRows()
+    const response = await Effect.runPromise(
+      route({ browserEmail: 'chris@openagents.com' })(
+        new Request('https://openagents.com/api/operator/accounts/reset', {
+          body: JSON.stringify({ accountRefHash: 'acct_hash_codex_1' }),
+          headers: { authorization: 'Bearer admin' },
+          method: 'POST',
+        }),
+        { OPENAGENTS_DB: makeFakeD1(accounts) },
+        executionContext,
+      )!,
+    )
+    const body = await response.json() as Record<string, unknown>
+
+    expect(response.status).toBe(200)
+    expect(body).toMatchObject({
+      ok: true,
+      status: {
+        accounts: expect.arrayContaining([
+          expect.objectContaining({
+            accountRefHash: 'acct_hash_codex_1',
+            cooldownExpiresAt: null,
+            isRateLimited: false,
+          }),
+        ]),
+      },
+    })
+    expect(accounts[0]).toMatchObject({
+      cooldown_until: null,
+      recent_failure_class: null,
+    })
+    expect(accounts[2]).toMatchObject({
+      cooldown_until: '2099-01-01T00:00:00.000Z',
+      recent_failure_class: 'rate_limited',
     })
   })
 
