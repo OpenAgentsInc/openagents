@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 import { Effect } from 'effect'
 
 import {
+  buildMirrorCodeLaunchRun,
   buildMirrorCodeRun,
   MirrorCodeRunError,
 } from './mirrorcode-contract'
@@ -70,6 +71,24 @@ describe('buildMirrorCodeRun', () => {
 
   test('rejects a malformed body', () => {
     expect(() => buildMirrorCodeRun({ runId: 'x' })).toThrow(MirrorCodeRunError)
+  })
+
+  test('builds an owner-gated queued launch row', () => {
+    const built = buildMirrorCodeLaunchRun(
+      {
+        kind: 'launch',
+        taskId: 'qsv_select',
+        bucket: 'S',
+        language: 'python',
+      },
+      '2026-06-27T02:03:04.000Z',
+    )
+    expect(built.runId).toBe('mc-s-qsv-select-python-20260627020304')
+    expect(built.status).toBe('queued')
+    expect(built.tokensTotal).toBe(0)
+    expect(built.passRate).toBeNull()
+    expect(built.decisionGrade).toBe(false)
+    expect(built.summary).toContain('Owner-gated MirrorCode launch queued')
   })
 })
 
@@ -149,6 +168,42 @@ describe('handleMirrorCodeRunsApi POST', () => {
     const body = (await response.json()) as { kind: string; run: { runId: string } }
     expect(body.kind).toBe('mirrorcode_run_recorded')
     expect(body.run.runId).toBe('mc-phase0-cal-py-0001')
+  })
+
+  test('authorized POST can launch a queued owner-gated run', async () => {
+    let storedRunId = ''
+    const response = await run(
+      handleMirrorCodeRunsApi(
+        postRequest({
+          kind: 'launch',
+          taskId: 'qsv_select',
+          bucket: 'S',
+          language: 'python',
+        }),
+        {
+          requireAdminApiToken: async () => true,
+          nowIso: () => '2026-06-27T02:03:04.000Z',
+          store: {
+            listRuns: () => Effect.succeed([]),
+            getRun: () => Effect.succeed(undefined),
+            upsertRun: run => {
+              storedRunId = run.runId
+              return Effect.void
+            },
+          },
+        },
+      ),
+    )
+    expect(response.status).toBe(202)
+    const body = (await response.json()) as {
+      kind: string
+      run: { runId: string; status: string; tokensTotal: number }
+    }
+    expect(body.kind).toBe('mirrorcode_run_launched')
+    expect(body.run.runId).toBe('mc-s-qsv-select-python-20260627020304')
+    expect(body.run.status).toBe('queued')
+    expect(body.run.tokensTotal).toBe(0)
+    expect(storedRunId).toBe('mc-s-qsv-select-python-20260627020304')
   })
 
   test('authorized POST with task contents is rejected 400', async () => {

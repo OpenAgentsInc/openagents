@@ -23,6 +23,7 @@ import { methodNotAllowed, noStoreJsonResponse } from '../../http/responses'
 import { currentIsoTimestamp } from '../../runtime-primitives'
 import { liveAtReadStaleness } from '../../public-projection-staleness'
 import {
+  buildMirrorCodeLaunchRun,
   buildMirrorCodeRun,
   KHALA_MODEL_ID,
   MIRRORCODE_BENCHMARK_LABEL,
@@ -93,13 +94,24 @@ const getRun = (
   return Effect.succeed((input.getRun ?? (() => undefined))(runId))
 }
 
-// Build a public-safe run from a posted body. The build re-validates the shape
-// and RE-ASSERTS the public-safety boundary, so any payload carrying task
-// contents or canary strings is rejected here and never reaches D1.
-const buildIngestedRun = (
+const isLaunchRequest = (raw: unknown): boolean =>
+  typeof raw === 'object' &&
+  raw !== null &&
+  'kind' in raw &&
+  raw.kind === 'launch'
+
+// Build a public-safe run from a posted body. Launch intents create an honest
+// queued row; result records update that row later. Both paths re-assert the
+// no-task-contents / no-canary public-safety boundary before storage.
+const buildPostedRun = (
   raw: unknown,
+  nowIso: string,
 ): Effect.Effect<
-  | Readonly<{ run: MirrorCodeRun; tag: 'ok' }>
+  | Readonly<{
+      kind: 'mirrorcode_run_launched' | 'mirrorcode_run_recorded'
+      run: MirrorCodeRun
+      tag: 'ok'
+    }>
   | Readonly<{ reason: string; tag: 'reject' }>
 > =>
   Effect.try({
@@ -109,9 +121,18 @@ const buildIngestedRun = (
         : error instanceof Error
           ? error.message
           : String(error),
-    try: () => buildMirrorCodeRun(raw),
+    try: () =>
+      isLaunchRequest(raw)
+        ? {
+            kind: 'mirrorcode_run_launched' as const,
+            run: buildMirrorCodeLaunchRun(raw, nowIso),
+          }
+        : {
+            kind: 'mirrorcode_run_recorded' as const,
+            run: buildMirrorCodeRun(raw),
+          },
   }).pipe(
-    Effect.map(run => ({ run, tag: 'ok' as const })),
+    Effect.map(result => ({ ...result, tag: 'ok' as const })),
     Effect.catch(reason => Effect.succeed({ reason, tag: 'reject' as const })),
   )
 
@@ -142,24 +163,25 @@ const handleOperatorIngestRun = (
     catch: error => (error instanceof Error ? error.message : String(error)),
     try: () => request.json(),
   }).pipe(
-    Effect.flatMap(raw => buildIngestedRun(raw)),
-    Effect.flatMap(result =>
-      result.tag === 'reject'
-        ? Effect.succeed(ingestBadRequest(result.reason))
-        : store
-            .upsertRun(result.run, (input.nowIso ?? currentIsoTimestamp)())
-            .pipe(
-              Effect.map(() =>
-                noStoreJsonResponse(
-                  {
-                    schemaVersion: MirrorCodeRunsSchemaVersion,
-                    kind: 'mirrorcode_run_recorded',
-                    run: result.run,
-                  },
-                  { status: 201 },
-                ),
-              ),
-            ),
+    Effect.flatMap(raw =>
+      Effect.gen(function* () {
+        const postedAt = (input.nowIso ?? currentIsoTimestamp)()
+        const result = yield* buildPostedRun(raw, postedAt)
+        if (result.tag === 'reject') {
+          return ingestBadRequest(result.reason)
+        }
+        yield* store.upsertRun(result.run, postedAt)
+        return noStoreJsonResponse(
+          {
+            schemaVersion: MirrorCodeRunsSchemaVersion,
+            kind: result.kind,
+            run: result.run,
+          },
+          {
+            status: result.kind === 'mirrorcode_run_launched' ? 202 : 201,
+          },
+        )
+      }),
     ),
     Effect.catch(reason => Effect.succeed(ingestBadRequest(reason))),
   )
