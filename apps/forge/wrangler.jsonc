@@ -1,0 +1,32 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "openagents-forge",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-28",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": true,
+  "routes": [
+    { "pattern": "forge.openagents.com", "custom_domain": true },
+  ],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "persist": true,
+      "invocation_logs": true,
+    },
+    "traces": {
+      "enabled": true,
+      "persist": true,
+      "head_sampling_rate": 1,
+    },
+  },
+  "vars": {
+    "OPENAGENTS_FORGE_ENV": "production",
+    "OPENAGENTS_FORGE_ISSUE": "https://github.com/OpenAgentsInc/openagents/issues/6759",
+    "OPENAGENTS_FORGE_UI_PACKAGE": "@openagentsinc/ui",
+  },
+}

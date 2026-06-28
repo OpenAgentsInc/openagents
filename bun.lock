@@ -53,6 +53,20 @@
         "unplugin": "^2.3.11",
       },
     },
+    "apps/forge": {
+      "name": "@openagentsinc/forge",
+      "version": "0.1.0",
+      "dependencies": {
+        "@openagentsinc/ui": "workspace:*",
+        "effect": "catalog:",
+      },
+      "devDependencies": {
+        "@cloudflare/workers-types": "^4.20260609.0",
+        "bun-types": "^1.0.0",
+        "typescript": "catalog:",
+        "wrangler": "^4.51.0",
+      },
+    },
     "apps/forum": {
       "name": "@openagentsinc/forum",
       "version": "0.0.0",
@@ -911,6 +925,8 @@
     "@openagentsinc/durable-stream": ["@openagentsinc/durable-stream@workspace:packages/durable-stream"],
 
     "@openagentsinc/email-templates": ["@openagentsinc/email-templates@workspace:apps/openagents.com/packages/email-templates"],
+
+    "@openagentsinc/forge": ["@openagentsinc/forge@workspace:apps/forge"],
 
     "@openagentsinc/forge-protocol": ["@openagentsinc/forge-protocol@workspace:packages/forge-protocol"],
 

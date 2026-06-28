@@ -50,6 +50,10 @@ More specific invariant ledgers apply inside imported apps and packages.
   its local invariant ledger.
 - `apps/forum/` owns forum-specific code and must mount under `/forum` when it
   is served by `openagents.com`.
+- `apps/forge/` owns the separate `forge.openagents.com` UI surface. It may
+  consume shared `@openagentsinc/ui` primitives/tokens and Forge API contracts,
+  but it does not own runtime promotion, settlement, payout, accepted-work
+  authority, or the main `openagents.com` logged-in route tree.
 - `apps/pylon/` owns contributor-node UX, CLI, local runtime orchestration, and
   contributor-facing payment evidence.
 - `packages/probe/` owns Probe runtime code and evidence submission helpers.

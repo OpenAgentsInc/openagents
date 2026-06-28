@@ -50,6 +50,9 @@ iteration), the **top operating rule is CONSTANT MOTION**:
   `openagents.com/forum`. The live Forum routes stay inside the
   `openagents.com` Worker for now because they share auth, D1, payment
   receipt, and public projection boundaries.
+- `apps/forge/` owns the separate `forge.openagents.com` UI app. It reuses
+  shared `@openagentsinc/ui` primitives/tokens but does not route through the
+  main `openagents.com` logged-in page tree.
 - `apps/pylon/` owns the Pylon contributor app imported from the standalone
   Pylon repository. It bundles the former Probe runtime as
   `@openagentsinc/pylon-runtime`.
