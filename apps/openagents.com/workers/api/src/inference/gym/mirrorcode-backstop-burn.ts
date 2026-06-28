@@ -12,13 +12,13 @@ import {
 export const MirrorCodeBackstopBurnSchemaVersion =
   'openagents.gym.mirrorcode_backstop_burn.v1'
 
-export const MIRRORCODE_BACKSTOP_ISSUE_NUMBER = 6710
+export const MIRRORCODE_BACKSTOP_ISSUE_NUMBER = 6923
 export const MIRRORCODE_BACKSTOP_TASK_REF =
-  'issue.public.openagents.6710.mirrorcode_backstop_burn'
+  'issue.public.openagents.6923.mirrorcode_backstop_burn'
 export const MIRRORCODE_BACKSTOP_WORKFLOW_REF =
-  'workflow.public.gym.mirrorcode.backstop_burn.6710'
+  'workflow.public.gym.mirrorcode.backstop_burn.6923'
 export const MIRRORCODE_BACKSTOP_LEDGER_REF =
-  'ledger.public.gym.mirrorcode.backstop_burn.6710'
+  'ledger.public.gym.mirrorcode.backstop_burn.6923'
 
 const DEFAULT_BATCH_REF = 'batch.public.gym.mirrorcode.backstop_burn.next'
 const DEFAULT_LANGUAGE = 'python'

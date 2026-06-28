@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""MirrorCode gym backstop runner (issue #6710) — the prio:4 density burner.
+"""MirrorCode gym backstop runner (issue #6923) — the prio:4 density burner.
 
 The fleet-saturation backstop task (`prio:4-backstop-burn`) needs a REAL runner
 that does genuine own-capacity ($0) high-density work whenever the higher tiers
@@ -501,7 +501,7 @@ def live_preflight(
     }
 
 def main(argv: Optional[List[str]] = None) -> int:
-    parser = argparse.ArgumentParser(description="MirrorCode gym backstop runner (#6710)")
+    parser = argparse.ArgumentParser(description="MirrorCode gym backstop runner (#6923)")
     parser.add_argument("--limit", type=int, default=int(os.environ.get("MC_BACKSTOP_LIMIT", "8")), help="Max problems in the bounded batch (0 = all).")
     parser.add_argument("--out", default=os.environ.get("MC_BACKSTOP_OUT", os.path.join(os.path.dirname(os.path.abspath(__file__)), "results", "backstop")), help="Results output dir.")
     parser.add_argument("--live", action="store_true", help="Use the live Khala model (needs OPENAI_API_KEY / OPENAI_BASE_URL).")

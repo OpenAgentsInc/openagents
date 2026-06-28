@@ -8,7 +8,7 @@ result JSON in the shared gym contract.
 - Phase 0 issue: **#6377**
 - Design: [`docs/benchmarks/2026-06-27-mirrorcode-khala-gym-integration-analysis.md`](../../../../docs/benchmarks/2026-06-27-mirrorcode-khala-gym-integration-analysis.md)
 
-## Gym backstop runner (`backstop-run.sh` / `backstop_eval.py`, issue #6710)
+## Gym backstop runner (`backstop-run.sh` / `backstop_eval.py`, issue #6923)
 
 The fleet-saturation **prio:4 backstop** (`prio:4-backstop-burn`) standing task
 needs a runner that does **genuine own-capacity ($0) high-density work** whenever
@@ -57,7 +57,7 @@ problems; it is the smallest **real slice** that does genuine model work + recor
 traces. It is **not** the MirrorCode paper benchmark and must never be published
 as a MirrorCode score (`grade: "backstop"`, `decisionGrade: false`).
 
-**Follow-up (#6710):** wire the full Docker MirrorCode harness (`run.sh`) into the
+**Follow-up (#6923):** wire the full Docker MirrorCode harness (`run.sh`) into the
 backstop as an opt-in escalation path that pulls a bounded batch of real S-bucket
 tasks when Docker + the clone are present and token/wall-clock budget allows. The
 full harness burns ≥1B tokens per sample, so it is intentionally out of the
