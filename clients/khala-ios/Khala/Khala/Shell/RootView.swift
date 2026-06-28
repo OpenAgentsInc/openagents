@@ -10,6 +10,7 @@ struct RootView: View {
 
     @State private var drawerOpen = false
     @State private var showSettings = false
+    @State private var showDiagnostics = false
     @State private var hasKey = Self.hasUsableAPIKey()
     @State private var didLaunch = false
     @State private var selection: Conversation?
@@ -35,6 +36,9 @@ struct RootView: View {
         }
         .sheet(isPresented: $showSettings) {
             SettingsView(hasKey: $hasKey)
+        }
+        .sheet(isPresented: $showDiagnostics) {
+            DiagnosticsView(snapshot: diagnosticsSnapshot)
         }
         .task { await onAppear() }
         .onChange(of: selection?.id) { _, _ in syncModel() }
@@ -96,6 +100,11 @@ struct RootView: View {
                             Label("Open traces in web", systemImage: "safari")
                         }
                         Button {
+                            showDiagnostics = true
+                        } label: {
+                            Label("Diagnostics", systemImage: "lock.shield")
+                        }
+                        Button {
                             showSettings = true
                         } label: {
                             Label("Settings", systemImage: "gearshape")
@@ -137,6 +146,17 @@ struct RootView: View {
 
     private var activeConversation: Conversation? {
         selection ?? store.mostRecent
+    }
+
+    private var diagnosticsSnapshot: LocalDiagnosticsSnapshot {
+        LocalDiagnosticsSnapshot.make(
+            hasAPIKey: hasKey,
+            channelName: channel.speaker,
+            isStreaming: model?.isStreaming ?? false,
+            activeConversation: activeConversation,
+            conversationCount: store.conversations.count,
+            isUsingEphemeralFallback: store.isUsingEphemeralFallback
+        )
     }
 
     private func modelFor(_ conversation: Conversation) -> ChatViewModel? {
