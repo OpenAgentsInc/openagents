@@ -13364,6 +13364,8 @@ const routeRequest = makeWorkerRouteRequest({
           getForgeControlPlaneToken(authEnv),
           requiredScope,
         ),
+      makeCanonicalStore: storeEnv =>
+        makeD1ForgeGitCanonicalStore(openAgentsDatabase(storeEnv)),
       makeStore: storeEnv =>
         makeD1ForgeCoordinationStore(openAgentsDatabase(storeEnv)),
       nowIso: currentIsoTimestamp,

@@ -22,20 +22,24 @@ keeps the landing copy as the app brand header and owns static routes for:
 - `/changes` — change inspector shape for base/head refs and blockers.
 - `/verification` — verification receipt shape.
 - `/queue` — virtual merge queue and promotion gate shape.
-- `/refs` — canonical Forge ref namespaces and GitHub mirror state.
+- `/refs` — canonical Forge refs for `tenant.openagents` /
+  `repo.openagents.openagents`, starting with `refs/heads/main`.
 
 The shell imports shared `@openagentsinc/ui` tokens so the Forge surface starts
 from the OpenAgents visual system while keeping its navigation, route model, and
 deploy path separate. It deliberately does not expand the old
 `openagents.com` logged-in Forge page.
 
-`/shell.json` exposes public-safe route metadata and stub preview state shaped
-for the future `/api/forge/*` control-plane. The SU-7 dogfood lane is rendered
-from the same public-safe contract so the operator workbench can show the
-selected OpenAgents lane across work, change, verification, queue, promotion,
-and mirror state without claiming authority owned by the API Worker. The UI app
-keeps `/api/forge/*` closed; those routes belong to the control-plane Worker
-contract, not this static shell slice.
+`/shell.json` exposes public-safe route metadata and live API contract shape for
+the `/api/forge/*` control-plane. The SU-7 dogfood lane is rendered from the same
+public-safe contract so the operator workbench can show the selected OpenAgents
+lane across work, change, verification, queue, promotion, and mirror state
+without claiming authority owned by the API Worker. The UI app keeps
+`/api/forge/*` closed; those routes belong to the control-plane Worker contract,
+not this static shell slice.
+
+The OpenAgents dogfood import is refreshed through
+`docs/forge/2026-06-28-forge-openagents-import-runbook.md`.
 
 ## SU-7 Dogfood Lane
 

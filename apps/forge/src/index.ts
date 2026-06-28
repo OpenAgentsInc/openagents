@@ -7,6 +7,9 @@ import {
 } from "@openagentsinc/ui/tokens"
 
 export const FORGE_UI_WORKER_VERSION = "forge-ui.2026-06-28.6769"
+export const OPENAGENTS_FORGE_TENANT_REF = "tenant.openagents"
+export const OPENAGENTS_FORGE_REPOSITORY_REF = "repo.openagents.openagents"
+export const OPENAGENTS_FORGE_DEFAULT_BRANCH_REF = "refs/heads/main"
 
 export const ForgeMount = Schema.Struct({
   product: Schema.Literal("forge"),
@@ -145,6 +148,8 @@ export const ForgeShellQueueItem = Schema.Struct({
 export type ForgeShellQueueItem = typeof ForgeShellQueueItem.Type
 
 export const ForgeShellRefItem = Schema.Struct({
+  tenantRef: Schema.String,
+  repositoryRef: Schema.String,
   ref: Schema.String,
   target: Schema.String,
   authority: Schema.String,
@@ -175,7 +180,7 @@ export const ForgeShellDogfoodLane = Schema.Struct({
 export type ForgeShellDogfoodLane = typeof ForgeShellDogfoodLane.Type
 
 export const ForgeShellSnapshot = Schema.Struct({
-  dataMode: Schema.Literal("stubbed-public-contract"),
+  dataMode: Schema.Literal("live-api-contract"),
   apiBasePath: Schema.Literal("/api/forge"),
   generatedAt: Schema.String,
   dogfoodLanes: Schema.Array(ForgeShellDogfoodLane),
@@ -188,7 +193,7 @@ export const ForgeShellSnapshot = Schema.Struct({
 export type ForgeShellSnapshot = typeof ForgeShellSnapshot.Type
 
 export const forgeShellPreviewState: ForgeShellSnapshot = {
-  dataMode: "stubbed-public-contract",
+  dataMode: "live-api-contract",
   apiBasePath: "/api/forge",
   generatedAt: "2026-06-28T00:00:00.000Z",
   dogfoodLanes: [
@@ -336,30 +341,48 @@ export const forgeShellPreviewState: ForgeShellSnapshot = {
   ],
   refs: [
     {
+      tenantRef: OPENAGENTS_FORGE_TENANT_REF,
+      repositoryRef: OPENAGENTS_FORGE_REPOSITORY_REF,
       ref: "refs/forge/intake/openagents/codex-low-risk",
       target: "selected low-risk OpenAgents Codex/Pylon lane",
       authority: "Forge smart-Git intake",
       state: "dogfood-lane",
     },
     {
+      tenantRef: OPENAGENTS_FORGE_TENANT_REF,
+      repositoryRef: OPENAGENTS_FORGE_REPOSITORY_REF,
       ref: "refs/forge/mirror/github/openagents/main",
       target: "GitHub downstream visibility after SU-6",
       authority: "Forge mirror worker",
       state: "mirror-only",
     },
     {
+      tenantRef: OPENAGENTS_FORGE_TENANT_REF,
+      repositoryRef: OPENAGENTS_FORGE_REPOSITORY_REF,
       ref: "refs/heads/main",
       target: "GitHub mirror until SU-3",
       authority: "mirror projection",
       state: "readable",
     },
     {
+      tenantRef: OPENAGENTS_FORGE_TENANT_REF,
+      repositoryRef: OPENAGENTS_FORGE_REPOSITORY_REF,
+      ref: OPENAGENTS_FORGE_DEFAULT_BRANCH_REF,
+      target: "OpenAgentsInc/openagents default branch",
+      authority: "/api/forge/refs live canonical store",
+      state: "import-ready",
+    },
+    {
+      tenantRef: OPENAGENTS_FORGE_TENANT_REF,
+      repositoryRef: OPENAGENTS_FORGE_REPOSITORY_REF,
       ref: "refs/forge/changes/*",
       target: "canonical change heads",
       authority: "Forge control plane",
       state: "contracted",
     },
     {
+      tenantRef: OPENAGENTS_FORGE_TENANT_REF,
+      repositoryRef: OPENAGENTS_FORGE_REPOSITORY_REF,
       ref: "refs/forge/virtual/*",
       target: "virtual merge queue heads",
       authority: "Blueprint gates",
@@ -1180,12 +1203,13 @@ const renderQueue = (): string => `<section class="forge-panel" data-span="wide"
 const renderRefs = (): string => `<section class="forge-panel" data-span="wide">
   <div class="forge-panel-head">
     <h3 class="forge-panel-title">Canonical Refs</h3>
-    <span class="forge-table-caption">${forgeShellPreviewState.refs.length} namespaces</span>
+    <span class="forge-table-caption">${escapeHtml(OPENAGENTS_FORGE_TENANT_REF)} / ${escapeHtml(OPENAGENTS_FORGE_REPOSITORY_REF)}</span>
   </div>
   <div class="forge-table-wrap">
     <table class="forge-table">
       <thead>
         <tr>
+          <th>Repository</th>
           <th>Ref</th>
           <th>Target</th>
           <th>Authority</th>
@@ -1196,6 +1220,7 @@ const renderRefs = (): string => `<section class="forge-panel" data-span="wide">
         ${forgeShellPreviewState.refs
           .map(
             item => `<tr>
+              <td><span class="forge-code">${escapeHtml(item.tenantRef)}</span><br><span class="forge-muted">${escapeHtml(item.repositoryRef)}</span></td>
               <td class="forge-code">${escapeHtml(item.ref)}</td>
               <td>${escapeHtml(item.target)}</td>
               <td class="forge-muted">${escapeHtml(item.authority)}</td>

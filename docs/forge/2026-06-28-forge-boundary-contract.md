@@ -67,10 +67,12 @@ reuse the existing D1/R2/DO bindings. The UI remains owned by `apps/forge/` on
 | `POST /api/forge/leases` | `forge:lease:write` | Acquire or release dispatch leases. |
 | `GET /api/forge/queue` | `forge:queue:read` | Inspect merge queue state. |
 | `POST /api/forge/queue/snapshots` | `forge:queue:write` | Persist virtual merge queue projections. |
+| `GET /api/forge/refs` | `forge:change:read` | Inspect canonical git refs for a tenant/repository. |
 | `GET /api/forge/verification-receipts` | `forge:change:read` | List redacted verification receipts. |
 | `POST /api/forge/verification-receipts` | `forge:receipt:write` | Record redacted verification receipts. |
 | `GET /api/forge/promotion-decisions` | `forge:queue:read` | List gated promotion decisions. |
 | `POST /api/forge/promotion-decisions` | `forge:promotion:decide` | Record gated promotion decisions. |
+| `POST /api/forge/admin/import-openagents` | `forge:admin` | Refresh the dogfood `OpenAgentsInc/openagents` import for `tenant.openagents` / `repo.openagents.openagents`. |
 | `/api/forge/admin/*` | `forge:admin` | Operator-only administrative actions. |
 
 Every route decodes through typed data structures from

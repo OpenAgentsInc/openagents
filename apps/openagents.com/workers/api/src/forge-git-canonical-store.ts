@@ -71,6 +71,26 @@ export type ForgeGitCanonicalReceivePackInput = Readonly<{
   nowIso: string
 }>
 
+export type ForgeGitCanonicalExternalRefImportInput = Readonly<{
+  tenantRef: string
+  repositoryRef: string
+  refName: string
+  objectId: string
+  objectFormat: Exclude<ForgeGitPackfileObjectFormat, 'unknown'>
+  changeRef: string
+  packfileRef: string
+  receivePackRef: string
+  sourceDigestSha256: string
+  sourceRefs: ReadonlyArray<string>
+  nowIso: string
+}>
+
+export type ForgeGitCanonicalExternalRefImportResult = Readonly<{
+  changed: boolean
+  ref: ForgeGitCanonicalRefRow
+  object: ForgeGitCanonicalObjectRow
+}>
+
 export type ForgeGitCanonicalPreflightInput = Pick<
   ForgeGitCanonicalReceivePackInput,
   | 'tenantRef'
@@ -95,6 +115,9 @@ export type ForgeGitCanonicalStore = Readonly<{
   applyReceivePack: (
     input: ForgeGitCanonicalReceivePackInput,
   ) => Promise<ForgeGitCanonicalApplyResult>
+  importExternalRef: (
+    input: ForgeGitCanonicalExternalRefImportInput,
+  ) => Promise<ForgeGitCanonicalExternalRefImportResult>
   readRef: (
     tenantRef: string,
     repositoryRef: string,
@@ -386,8 +409,8 @@ const runChanges = (result: unknown): number | undefined => {
   return typeof changes === 'number' ? changes : undefined
 }
 
-const rowOrFail = <T>(row: T | null, label: string): T => {
-  if (row === null) {
+const rowOrFail = <T>(row: T | null | undefined, label: string): T => {
+  if (row === null || row === undefined) {
     throw new ForgeGitCanonicalStoreError(
       'forge_git_invalid_object_id',
       `${label} was not persisted`,
@@ -879,6 +902,137 @@ const recordAcceptedIntake = async (
     .run()
 }
 
+const insertExternalObjectTip = async (
+  db: D1Database,
+  input: ForgeGitCanonicalExternalRefImportInput,
+) => {
+  await db
+    .prepare(
+      `
+        INSERT INTO forge_git_objects (
+          tenant_ref,
+          repository_ref,
+          object_id,
+          object_format,
+          packfile_ref,
+          packfile_sha256,
+          first_seen_at,
+          latest_seen_at,
+          source_refs_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (tenant_ref, repository_ref, object_id) DO UPDATE SET
+          packfile_ref = excluded.packfile_ref,
+          packfile_sha256 = excluded.packfile_sha256,
+          latest_seen_at = excluded.latest_seen_at,
+          source_refs_json = excluded.source_refs_json
+      `,
+    )
+    .bind(
+      input.tenantRef,
+      input.repositoryRef,
+      input.objectId,
+      input.objectFormat,
+      input.packfileRef,
+      validateSha256(input.sourceDigestSha256),
+      input.nowIso,
+      input.nowIso,
+      jsonArray(input.sourceRefs),
+    )
+    .run()
+}
+
+const importExternalRef = async (
+  db: D1Database,
+  input: ForgeGitCanonicalExternalRefImportInput,
+): Promise<ForgeGitCanonicalExternalRefImportResult> => {
+  if (!safeRefUpdateTarget(input.refName)) {
+    throw new ForgeGitCanonicalStoreError(
+      'forge_git_unsafe_ref_update',
+      'Forge external imports only accept refs/heads/* and refs/tags/* targets',
+      409,
+    )
+  }
+  if (objectFormatForObjectId(input.objectId) !== input.objectFormat) {
+    throw new ForgeGitCanonicalStoreError(
+      'forge_git_invalid_object_id',
+      'external import object id does not match its declared format',
+      400,
+    )
+  }
+  if (normalizeObjectId(input.objectId) !== input.objectId) {
+    throw new ForgeGitCanonicalStoreError(
+      'forge_git_invalid_object_id',
+      'external import object id must be normalized lowercase hex',
+      400,
+    )
+  }
+
+  await insertExternalObjectTip(db, input)
+
+  const result = await db
+    .prepare(
+      `
+        INSERT INTO forge_git_refs (
+          tenant_ref,
+          repository_ref,
+          ref_name,
+          object_id,
+          previous_object_id,
+          object_format,
+          state,
+          updated_by_change_ref,
+          updated_by_packfile_ref,
+          updated_by_receive_pack_ref,
+          source_refs_json,
+          created_at,
+          updated_at
+        ) VALUES (?, ?, ?, ?, NULL, ?, 'active', ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (tenant_ref, repository_ref, ref_name) DO UPDATE SET
+          previous_object_id = CASE
+            WHEN forge_git_refs.object_id = excluded.object_id THEN forge_git_refs.previous_object_id
+            ELSE forge_git_refs.object_id
+          END,
+          object_id = excluded.object_id,
+          object_format = excluded.object_format,
+          state = 'active',
+          updated_by_change_ref = excluded.updated_by_change_ref,
+          updated_by_packfile_ref = excluded.updated_by_packfile_ref,
+          updated_by_receive_pack_ref = excluded.updated_by_receive_pack_ref,
+          source_refs_json = excluded.source_refs_json,
+          updated_at = excluded.updated_at
+        WHERE forge_git_refs.state = 'deleted'
+          OR forge_git_refs.object_id IS NOT excluded.object_id
+          OR forge_git_refs.object_format IS NOT excluded.object_format
+      `,
+    )
+    .bind(
+      input.tenantRef,
+      input.repositoryRef,
+      input.refName,
+      input.objectId,
+      input.objectFormat,
+      input.changeRef,
+      input.packfileRef,
+      input.receivePackRef,
+      jsonArray(input.sourceRefs),
+      input.nowIso,
+      input.nowIso,
+    )
+    .run()
+
+  return {
+    changed: (runChanges(result) ?? 1) > 0,
+    ref: rowOrFail(
+      await readRefRow(db, input.tenantRef, input.repositoryRef, input.refName),
+      'forge git external import ref',
+    ),
+    object: rowOrFail(
+      await readObjectRow(db, input.tenantRef, input.repositoryRef, input.objectId),
+      'forge git external import object',
+    ),
+  }
+}
+
 const readIntake = async (
   db: D1Database,
   tenantRef: string,
@@ -925,6 +1079,8 @@ export const makeD1ForgeGitCanonicalStore = (
   db: D1Database,
 ): ForgeGitCanonicalStore => ({
   preflightReceivePack: input => validateRefPreconditions(db, input),
+
+  importExternalRef: input => importExternalRef(db, input),
 
   async applyReceivePack(input) {
     const objectFormat = await validateRefPreconditions(db, input)

@@ -12,6 +12,10 @@ import {
   makeD1ForgeCoordinationStore,
   type ForgeCoordinationStore,
 } from './forge-coordination-store'
+import {
+  makeD1ForgeGitCanonicalStore,
+  type ForgeGitCanonicalStore,
+} from './forge-git-canonical-store'
 
 class SqliteD1Statement {
   private bound: ReadonlyArray<unknown> = []
@@ -37,9 +41,9 @@ class SqliteD1Statement {
     }
   }
 
-  async run(): Promise<{ success: true; results: [] }> {
-    this.db.prepare(this.sql).run(...(this.bound as never[]))
-    return { results: [], success: true }
+  async run(): Promise<{ success: true; results: []; meta: { changes: number } }> {
+    const result = this.db.prepare(this.sql).run(...(this.bound as never[]))
+    return { meta: { changes: Number(result.changes) }, results: [], success: true }
   }
 }
 
@@ -59,13 +63,25 @@ const controlPlaneReceiptsMigration = readFileSync(
   new URL('../migrations/0254_forge_control_plane_receipts.sql', import.meta.url),
   'utf8',
 )
+const canonicalGitMigration = readFileSync(
+  new URL('../migrations/0255_forge_git_canonical_store.sql', import.meta.url),
+  'utf8',
+)
 
-const makeStore = (): ForgeCoordinationStore => {
+const makeStores = (): Readonly<{
+  canonicalStore: ForgeGitCanonicalStore
+  coordinationStore: ForgeCoordinationStore
+}> => {
   const db = new DatabaseSync(':memory:')
   db.exec('PRAGMA foreign_keys = ON')
   db.exec(coordinationMigration)
   db.exec(controlPlaneReceiptsMigration)
-  return makeD1ForgeCoordinationStore(new SqliteD1(db) as unknown as D1Database)
+  db.exec(canonicalGitMigration)
+  const d1 = new SqliteD1(db) as unknown as D1Database
+  return {
+    canonicalStore: makeD1ForgeGitCanonicalStore(d1),
+    coordinationStore: makeD1ForgeCoordinationStore(d1),
+  }
 }
 
 const now = '2026-06-28T17:00:00.000Z'
@@ -77,6 +93,18 @@ const authHeaders = (scopes: string): HeadersInit => ({
   'x-openagents-forge-tenant-ref': 'tenant.openagents',
   'x-openagents-forge-scopes': scopes,
 })
+
+const githubMainSha = '1234567890abcdef1234567890abcdef12345678'
+const makeGitHubFetch = (sha: string = githubMainSha): typeof fetch =>
+  (async () =>
+    Response.json({
+      ref: 'refs/heads/main',
+      object: {
+        sha,
+        type: 'commit',
+        url: `https://api.github.com/repos/OpenAgentsInc/openagents/git/commits/${sha}`,
+      },
+    })) as typeof fetch
 
 type JsonRequestInit = Omit<RequestInit, 'body'> & Readonly<{ json?: unknown }>
 
@@ -94,11 +122,13 @@ const requestJson = (
   })
 
 const makeHarness = () => {
-  const store = makeStore()
+  const { canonicalStore, coordinationStore } = makeStores()
   const routes = makeForgeControlPlaneRoutes({
     authorizeControlPlaneBearer: (request, _env, scope) =>
       authorizeForgeControlPlaneBearer(request, controlPlaneToken, scope),
-    makeStore: () => store,
+    fetch: makeGitHubFetch(),
+    makeCanonicalStore: () => canonicalStore,
+    makeStore: () => coordinationStore,
     nowIso: () => now,
     requireAdminApiToken: () => Promise.resolve(false),
   })
@@ -112,7 +142,7 @@ const makeHarness = () => {
     return Effect.runPromise(effect)
   }
 
-  return { run, store }
+  return { canonicalStore, run, store: coordinationStore }
 }
 
 describe('Forge control-plane routes', () => {
@@ -359,5 +389,95 @@ describe('Forge control-plane routes', () => {
       promotionDecisions: ReadonlyArray<unknown>
     }
     expect(decisionsBody.promotionDecisions).toHaveLength(1)
+  })
+
+  test('imports the public OpenAgents main ref into canonical refs idempotently', async () => {
+    const { canonicalStore, run } = makeHarness()
+    const headers = authHeaders('forge:admin forge:change:read')
+    const json = {
+      tenantRef: 'tenant.openagents',
+      repositoryRef: 'repo.openagents.openagents',
+    }
+
+    const firstResponse = await run(
+      requestJson('/api/forge/admin/import-openagents', {
+        json,
+        headers,
+        method: 'POST',
+      }),
+    )
+    const firstBody = (await firstResponse.json()) as {
+      changed: boolean
+      defaultBranch: { ref_name: string; object_id: string }
+      import: { tenantRef: string; repositoryRef: string; defaultBranchRef: string }
+    }
+
+    expect(firstResponse.status).toBe(201)
+    expect(firstBody.changed).toBe(true)
+    expect(firstBody.import).toMatchObject({
+      defaultBranchRef: 'refs/heads/main',
+      repositoryRef: 'repo.openagents.openagents',
+      tenantRef: 'tenant.openagents',
+    })
+    expect(firstBody.defaultBranch).toMatchObject({
+      object_id: githubMainSha,
+      ref_name: 'refs/heads/main',
+    })
+
+    const secondResponse = await run(
+      requestJson('/api/forge/admin/import-openagents', {
+        json,
+        headers,
+        method: 'POST',
+      }),
+    )
+    const secondBody = (await secondResponse.json()) as { changed: boolean }
+    expect(secondResponse.status).toBe(200)
+    expect(secondBody.changed).toBe(false)
+
+    await expect(
+      canonicalStore.listRefs('tenant.openagents', 'repo.openagents.openagents'),
+    ).resolves.toHaveLength(1)
+
+    const refsResponse = await run(
+      new Request(
+        'https://openagents.com/api/forge/refs?tenantRef=tenant.openagents&repositoryRef=repo.openagents.openagents',
+        { headers },
+      ),
+    )
+    const refsBody = (await refsResponse.json()) as {
+      defaultBranch: { object_id: string; ref_name: string }
+      refs: ReadonlyArray<unknown>
+      repository: { github: string; defaultBranchRef: string }
+    }
+
+    expect(refsResponse.status).toBe(200)
+    expect(refsBody.refs).toHaveLength(1)
+    expect(refsBody.defaultBranch).toMatchObject({
+      object_id: githubMainSha,
+      ref_name: 'refs/heads/main',
+    })
+    expect(refsBody.repository).toMatchObject({
+      defaultBranchRef: 'refs/heads/main',
+      github: 'OpenAgentsInc/openagents',
+    })
+  })
+
+  test('fails closed for wrong OpenAgents import targets', async () => {
+    const { run } = makeHarness()
+    const response = await run(
+      requestJson('/api/forge/admin/import-openagents', {
+        json: {
+          tenantRef: 'tenant.other',
+          repositoryRef: 'repo.openagents.openagents',
+        },
+        headers: authHeaders('forge:admin'),
+        method: 'POST',
+      }),
+    )
+    const body = (await response.json()) as { error: string }
+
+    expect(response.status).toBe(403)
+    expect(body.error).toBe('forge_openagents_import_target_forbidden')
   })
 })
