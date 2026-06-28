@@ -56,7 +56,11 @@ import {
   pylonClientVersionMeetsMinimum,
   resolveSparkPayoutTargetReadiness,
 } from './pylon-api'
-import { currentIsoTimestamp, randomUuid } from './runtime-primitives'
+import {
+  currentIsoTimestamp,
+  isoTimestampAfterIso,
+  randomUuid,
+} from './runtime-primitives'
 import {
   TASSADAR_DISPATCH_CAPABILITY_UNRECEIPTED_BLOCKER_REF,
   admitTassadarExecutorCapabilityClaim,
@@ -345,23 +349,32 @@ const paidAssignmentPaymentModes = new Set([
   'settled_bitcoin',
 ])
 
-// #6386: an `offered` assignment is a dispatched-but-unclaimed lease. A live
-// Pylon claims it within seconds (offered -> running via the first reported
-// event), so a FRESH `offered` rightly holds a dispatch slot and throttles
-// within-heartbeat over-admission. But an `offered` lease that has not progressed
-// for well beyond that claim window is an over-admitted / abandoned dispatch:
-// e.g. a concurrent burst (~40 parallel khala requests across one Pylon) that
-// all raced past the per-account ceiling before any of their leases committed,
-// then was never executed. Those rows then hold their full (1-hour) lease while
-// the heartbeat still advertises free `available` slots (heartbeat `busy` counts
-// only RUNNING work, not the orphaned `offered` backlog). Counting them for the
-// whole lease deadlocks every account at its ceiling for an hour even though
-// real capacity is free. After the claim window a stale `offered` stops counting,
-// mirroring the closeout slot-release fix (299bc363ec) that dropped
-// `closeout_submitted` from the blocking set. Real held work
-// (running/accepted/proof_submitted/blocked) and the live heartbeat `available`
-// remain the capacity authority, so admission still tops out at advertised slots.
-const OFFERED_DISPATCH_SLOT_CLAIM_WINDOW_MS = 2 * 60 * 1000
+// #6410: dispatch slots use a short sliding lease TTL. Any slot-holding
+// assignment must keep touching updatedAt via acceptance/progress/proof/closeout
+// events; if it goes silent for more than this window it no longer consumes
+// future capacity. The store path proactively marks these rows stale before gate
+// accounting, while this pure gate check keeps tests/fallback stores correct.
+export const PYLON_ASSIGNMENT_ACTIVE_LEASE_TTL_MS = 5 * 60 * 1000
+
+export const staleAssignmentLeaseCutoffIso = (nowIso: string): string =>
+  isoTimestampAfterIso(nowIso, -PYLON_ASSIGNMENT_ACTIVE_LEASE_TTL_MS)
+
+export const sweepStalePylonAssignmentLeases = async (
+  input: Readonly<{
+    nowIso: string
+    pylonRef: string
+    store: PylonApiStore
+  }>,
+): Promise<ReadonlyArray<string>> => {
+  if (input.store.sweepStaleAssignmentLeases === undefined) {
+    return []
+  }
+  return input.store.sweepStaleAssignmentLeases(
+    input.pylonRef,
+    input.nowIso,
+    staleAssignmentLeaseCutoffIso(input.nowIso),
+  )
+}
 
 const pylonAssignmentHasActiveLease = (
   assignment: PylonApiAssignmentRecord,
@@ -374,14 +387,12 @@ const pylonAssignmentHasActiveLease = (
   if (!(Date.parse(assignment.leaseExpiresAt) > now)) {
     return false
   }
-  if (assignment.state === 'offered') {
-    const lastTouch = Date.parse(assignment.updatedAt ?? assignment.createdAt)
-    if (
-      Number.isFinite(lastTouch) &&
-      now - lastTouch > OFFERED_DISPATCH_SLOT_CLAIM_WINDOW_MS
-    ) {
-      return false
-    }
+  const lastTouch = Date.parse(assignment.updatedAt ?? assignment.createdAt)
+  if (
+    Number.isFinite(lastTouch) &&
+    now - lastTouch > PYLON_ASSIGNMENT_ACTIVE_LEASE_TTL_MS
+  ) {
+    return false
   }
   return true
 }
@@ -1300,8 +1311,20 @@ const routeCreateAssignment = <Bindings extends PylonApiRouteEnv>(
         ? []
         : yield* Effect.tryPromise({
             catch: pylonApiStoreErrorFromUnknown,
-            try: () => store.listAssignmentsForPylon(body.pylonRef, 100),
-          })
+            try: () =>
+              sweepStalePylonAssignmentLeases({
+                nowIso,
+                pylonRef: body.pylonRef,
+                store,
+              }),
+          }).pipe(
+            Effect.flatMap(() =>
+              Effect.tryPromise({
+                catch: pylonApiStoreErrorFromUnknown,
+                try: () => store.listAssignmentsForPylon(body.pylonRef, 100),
+              }),
+            ),
+          )
     const dispatchGate = controlledPylonAssignmentDispatchGate({
       activeAssignments,
       assignmentRef: requestedAssignmentRef ?? null,

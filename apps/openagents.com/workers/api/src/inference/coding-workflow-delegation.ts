@@ -11,7 +11,10 @@ import {
   pylonCodingServiceAccountCapacity,
   pylonCodingServiceCapacityProjection,
 } from '../pylon-api'
-import { controlledPylonAssignmentDispatchGate } from '../pylon-api-routes'
+import {
+  controlledPylonAssignmentDispatchGate,
+  sweepStalePylonAssignmentLeases,
+} from '../pylon-api-routes'
 import type { CodingWorkflowClassification } from './coding-workflow-classifier'
 
 const CODEX_AGENT_CAPABILITY_REF = 'capability.pylon.local_codex'
@@ -917,6 +920,11 @@ const delegateCodingWorkflowUnsafe = async (
     )
     const activeAssignments = await (async () => {
       try {
+        await sweepStalePylonAssignmentLeases({
+          nowIso: input.nowIso,
+          pylonRef: registration.pylonRef,
+          store: input.pylonStore,
+        })
         return await input.pylonStore.listAssignmentsForPylon(
           registration.pylonRef,
           100,

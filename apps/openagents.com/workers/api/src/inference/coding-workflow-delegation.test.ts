@@ -92,6 +92,28 @@ const makeStore = (input: {
     },
     listAssignmentsForPylon: async pylonRef =>
       assignments.filter(item => item.pylonRef === pylonRef),
+    sweepStaleAssignmentLeases: async (pylonRef, nowIso, staleBeforeIso) => {
+      const refs: string[] = []
+      for (const [index, item] of assignments.entries()) {
+        if (
+          item.pylonRef === pylonRef &&
+          ['accepted', 'blocked', 'offered', 'proof_submitted', 'running'].includes(
+            item.state,
+          ) &&
+          item.leaseExpiresAt > nowIso &&
+          item.updatedAt < staleBeforeIso
+        ) {
+          refs.push(item.assignmentRef)
+          assignments[index] = {
+            ...item,
+            leaseExpiresAt: nowIso,
+            state: 'stale',
+            updatedAt: nowIso,
+          }
+        }
+      }
+      return refs
+    },
     listEventsForAssignment: async () => [],
     listEventsForPylon: async () => [],
     listProviderJobLifecycleForPylons: async () => [],
@@ -696,7 +718,7 @@ describe('coding workflow delegation', () => {
             assignmentRef: 'assignment.public.test.running_active_slot',
             id: 'pylon_api_assignment_running_active_slot',
             state: 'accepted',
-            updatedAt: '2026-06-25T11:00:00.000Z',
+            updatedAt: '2026-06-25T11:58:00.000Z',
           }),
         ],
         registrations: [registration()],
@@ -721,6 +743,40 @@ describe('coding workflow delegation', () => {
       requestedPylonRef: 'pylon.owner.codex',
       statusCode: 409,
     })
+  })
+
+  test('sweeps stale active coding leases before targeted dispatch (#6410)', async () => {
+    const result = await delegateCodingWorkflow({
+      classification,
+      linkedAgents: [linkedOwner],
+      makeId: () => 'id1',
+      nowIso,
+      pylonStore: makeStore({
+        activeAssignments: [
+          assignment({
+            assignmentRef: 'assignment.public.test.silent_running_slot',
+            id: 'pylon_api_assignment_silent_running_slot',
+            state: 'running',
+            updatedAt: '2026-06-25T11:54:59.000Z',
+          }),
+        ],
+        registrations: [registration()],
+      }),
+      rawBody: {
+        openagents: {
+          coding: {
+            targetPylonRef: 'pylon.owner.codex',
+          },
+        },
+      },
+      requestId: 'chatcmpl_coding_target_sweeps_stale_slot',
+    })
+
+    expect(result?.kind).toBe('assigned')
+    if (result?.kind !== 'assigned') throw new Error('expected assignment')
+    expect(result.assignment.assignmentRef).toBe(
+      'assignment.public.khala_coding.id1',
+    )
   })
 
   test('diagnoses a stale-capability target as not Codex-capable (#6354)', async () => {

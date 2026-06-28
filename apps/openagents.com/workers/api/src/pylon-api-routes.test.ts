@@ -160,6 +160,39 @@ class MemoryPylonApiStore implements PylonApiStore {
       .filter(assignment => assignment.pylonRef === pylonRef)
       .slice(0, limit)
 
+  sweepStaleAssignmentLeases = async (
+    pylonRef: string,
+    nowIso: string,
+    staleBeforeIso: string,
+  ) => {
+    const refs: string[] = []
+    for (const assignment of this.assignments.values()) {
+      if (
+        assignment.pylonRef === pylonRef &&
+        ['accepted', 'blocked', 'offered', 'proof_submitted', 'running'].includes(
+          assignment.state,
+        ) &&
+        assignment.leaseExpiresAt > nowIso &&
+        assignment.updatedAt < staleBeforeIso
+      ) {
+        const next = {
+          ...assignment,
+          leaseExpiresAt: nowIso,
+          state: 'stale' as const,
+          updatedAt: nowIso,
+        }
+        refs.push(assignment.assignmentRef)
+        this.assignments.set(assignment.assignmentRef, next)
+        this.assignmentsByIdempotency.set(next.idempotencyKeyHash, next)
+        this.providerJobLifecycle.set(
+          next.assignmentRef,
+          providerJobLifecycleRecordFromAssignment(next),
+        )
+      }
+    }
+    return refs
+  }
+
   listRegistrations = async (limit: number) =>
     Array.from(this.registrations.values()).slice(0, limit)
 
@@ -2581,6 +2614,53 @@ describe('Pylon API routes', () => {
     expect(freshBody.dispatchGate?.blockerRefs).not.toContain(
       'blocker.public.pylon_dispatch.duplicate_active_assignment',
     )
+  })
+
+  test('sweeps silent active leases before dispatch capacity accounting (#6410)', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store)
+    await markOnline(store)
+    await markWalletReady(store)
+    const staleRunning = await createAssignment(store, {
+      assignmentRef: 'assignment.public.silent_running_one',
+      idempotencyKey: 'assignment-silent-running-one',
+      nowIso: '2026-06-07T00:10:00.000Z',
+    })
+    expect(staleRunning.status).toBe(201)
+    const staleRecord = store.assignments.get(
+      'assignment.public.silent_running_one',
+    )
+    expect(staleRecord).toBeDefined()
+    if (staleRecord === undefined) {
+      throw new Error('expected seeded assignment')
+    }
+    const runningRecord = {
+      ...staleRecord,
+      leaseExpiresAt: '2026-06-07T01:10:00.000Z',
+      state: 'running' as const,
+      updatedAt: '2026-06-07T00:09:59.000Z',
+    }
+    store.assignments.set(runningRecord.assignmentRef, runningRecord)
+    store.assignmentsByIdempotency.set(
+      runningRecord.idempotencyKeyHash,
+      runningRecord,
+    )
+
+    const next = await createAssignment(store, {
+      assignmentRef: 'assignment.public.after_silent_running_two',
+      idempotencyKey: 'assignment-after-silent-running-two',
+      nowIso: '2026-06-07T00:15:00.000Z',
+    })
+    const nextBody = await responseJson<PylonRouteJson>(next)
+
+    expect(next.status).toBe(201)
+    expect(nextBody.dispatchGate?.dispatchAllowed).toBe(true)
+    expect(nextBody.dispatchGate?.blockerRefs).not.toContain(
+      'blocker.public.pylon_dispatch.duplicate_active_assignment',
+    )
+    expect(
+      store.assignments.get('assignment.public.silent_running_one')?.state,
+    ).toBe('stale')
   })
 
   test('allows unpaid smoke dispatch without wallet readiness', async () => {
