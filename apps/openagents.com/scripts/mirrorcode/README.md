@@ -36,6 +36,12 @@ preemptible behind real external demand (#6318).
   both canary strings (MirrorCode + BIG-Bench).
 - We run **PUBLIC tasks only** (the paper's private set is not shipped). Always
   label results "public tasks only; private set excluded."
+- Treat the public-task lane as Khala's AgentCL Generalization Gain (GG) set:
+  `generalizationSet=mirrorcode_public_tasks_no_rag` and
+  `memoryPolicy=no_rag_public_tasks_only`. Khala memory, training, homework,
+  retrieval, prompt-optimization, and RAG loops must not ingest MirrorCode task
+  text, docs, tests, logs, or traces. The runner and ingest route may store only
+  the public-safe score envelope.
 - **Cost/wall-clock is the dominant risk.** A real sample burns ≥1B tokens
   (S/M) or 10B (L); the longest paper sample ran **19 days**. This runner sets
   hard token + wall-clock caps FAR below those limits — it is a **smoke**, not a
@@ -115,7 +121,9 @@ The venv is **throwaway** (a `mktemp` dir, auto-removed) and is never committed.
 ```
 
 Plus public-safe extras: `benchmark`, `scoreGroups` (MirrorCode per-group pass
-rates: `all/visible/ablated/hidden/withheld`), `caps`, `demand`.
+rates: `all/visible/ablated/hidden/withheld`), `caps`, `demand`, and the derived
+GG fields `generalizationSet=mirrorcode_public_tasks_no_rag` and
+`memoryPolicy=no_rag_public_tasks_only`.
 
 `passRate` is the **held-out** (`withheld` = hidden + ablated) reproduction rate
 when present (the anti-contamination number), else `all`, else `visible`.

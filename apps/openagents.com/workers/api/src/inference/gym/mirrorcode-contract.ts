@@ -50,6 +50,8 @@ export type MirrorCodeRunGrade = typeof MirrorCodeRunGrade.Type
 // must yield to real external demand (#6318).
 export const MIRRORCODE_DEMAND_KIND = 'internal'
 export const MIRRORCODE_DEMAND_SOURCE = 'gym_mirrorcode'
+export const MIRRORCODE_GENERALIZATION_SET = 'mirrorcode_public_tasks_no_rag'
+export const MIRRORCODE_MEMORY_POLICY = 'no_rag_public_tasks_only'
 
 // Field bounds enforced in `buildMirrorCodeRun` (the codebase avoids inline
 // Schema length/number refinements; the build boundary is the single place that
@@ -101,6 +103,8 @@ export const MirrorCodeRun = S.Struct({
   decisionGrade: S.Boolean,
   demandKind: S.Literal(MIRRORCODE_DEMAND_KIND),
   demandSource: S.Literal(MIRRORCODE_DEMAND_SOURCE),
+  generalizationSet: S.Literal(MIRRORCODE_GENERALIZATION_SET),
+  memoryPolicy: S.Literal(MIRRORCODE_MEMORY_POLICY),
 })
 export type MirrorCodeRun = typeof MirrorCodeRun.Type
 
@@ -228,6 +232,8 @@ export const buildMirrorCodeRun = (raw: unknown): MirrorCodeRun => {
     decisionGrade: decisionGradeFor(grade, status),
     demandKind: MIRRORCODE_DEMAND_KIND,
     demandSource: MIRRORCODE_DEMAND_SOURCE,
+    generalizationSet: MIRRORCODE_GENERALIZATION_SET,
+    memoryPolicy: MIRRORCODE_MEMORY_POLICY,
   }
 }
 
