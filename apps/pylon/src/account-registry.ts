@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto"
 import { readFileSync } from "node:fs"
-import { readFile, stat } from "node:fs/promises"
+import { readdir, readFile, stat } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join, resolve } from "node:path"
 
@@ -130,10 +130,23 @@ export async function resolvePylonAccountSelection(
       candidate => candidate.provider === input.provider && candidate.ref === accountRef,
     )
     if (!entry) {
-      throw new PylonAccountSelectionError(
-        "Pylon account ref is not registered for this provider",
-        "blocker.pylon.account_ref_unknown",
+      const sibling = (await discoverPylonSiblingAccountHomes()).find(
+        candidate => candidate.provider === input.provider && candidate.ref === accountRef,
       )
+      if (!sibling) {
+        throw new PylonAccountSelectionError(
+          "Pylon account ref is not registered for this provider",
+          "blocker.pylon.account_ref_unknown",
+        )
+      }
+      await assertAccountHomePresent(sibling.home)
+      return {
+        provider: input.provider,
+        selector: "registry_ref",
+        accountRef,
+        accountRefHash: hashPylonAccountRef(input.provider, sibling.home),
+        home: sibling.home,
+      }
     }
     await assertAccountHomePresent(entry.home)
     return {
@@ -174,6 +187,44 @@ function readClaudeOauthToken(home: string): string | null {
   } catch {
     return null
   }
+}
+
+export async function pylonClaudeAccountHomeHasAuth(home: string): Promise<boolean> {
+  try {
+    const info = await stat(join(home, PYLON_CLAUDE_OAUTH_TOKEN_FILE))
+    return info.isFile() && info.size > 0
+  } catch {
+    return false
+  }
+}
+
+export async function discoverPylonSiblingAccountHomes(
+  env: Record<string, string | undefined> = process.env,
+): Promise<{ provider: PylonAccountProvider; home: string; ref: string }[]> {
+  const root = (env.PYLON_ACCOUNT_HOME_ROOT ?? "").trim() || homedir()
+  let entries: string[]
+  try {
+    entries = await readdir(root)
+  } catch {
+    return []
+  }
+  const out: { provider: PylonAccountProvider; home: string; ref: string }[] = []
+  for (const name of entries) {
+    const provider: PylonAccountProvider | null = name.startsWith(".codex")
+      ? "codex"
+      : name.startsWith(".claude")
+        ? "claude_agent"
+        : null
+    if (provider === null) continue
+    const home = join(root, name)
+    try {
+      if (!(await stat(home)).isDirectory()) continue
+    } catch {
+      continue
+    }
+    out.push({ provider, home, ref: name.replace(/^\./, "") })
+  }
+  return out
 }
 
 export function pylonAccountEnvironment(

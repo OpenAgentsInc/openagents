@@ -6,9 +6,10 @@ import { PYLON_CLIENT_VERSION, type PylonClientVersion } from "./version.js"
 import type { BootstrapSummary } from "./bootstrap.js"
 import {
   hashPylonAccountRef,
+  discoverPylonSiblingAccountHomes,
   loadPylonAccountRegistry,
   normalizeAccountHome,
-  PYLON_CLAUDE_OAUTH_TOKEN_FILE,
+  pylonClaudeAccountHomeHasAuth,
 } from "./account-registry.js"
 import {
   PYLON_NIP90_PROVIDER_CAPABILITY_REF,
@@ -437,15 +438,6 @@ export function codexBusyByAccount(
 // analogue of a Codex home's `auth.json`); a non-empty token file is the
 // public-safe readiness signal. The wire only carries the trailing hex of the
 // account-ref hash, never a raw ref, email, home path, or token.
-async function claudeHomeHasAuth(home: string): Promise<boolean> {
-  try {
-    const info = await stat(join(home, PYLON_CLAUDE_OAUTH_TOKEN_FILE))
-    return info.isFile() && info.size > 0
-  } catch {
-    return false
-  }
-}
-
 // Enumerate the linked Claude accounts and whether each one's isolated home
 // holds a usable per-account login. Registry accounts are keyed by their ref
 // (matching `resolvePylonAccountSelection`'s registry_ref hash and the
@@ -456,14 +448,31 @@ async function claudeHomeHasAuth(home: string): Promise<boolean> {
 // a token file advertise a per-account slot, so the gate never sees a phantom.
 export async function localClaudeAccountReadiness(
   summary: Pick<BootstrapSummary, "paths">,
+  env: NodeJS.ProcessEnv = process.env,
 ): Promise<PylonCodexAccountReadiness[]> {
   const registry = await loadPylonAccountRegistry(summary)
   const readiness: PylonCodexAccountReadiness[] = []
+  const seen = new Set<string>()
+  const seenHomes = new Set<string>()
   for (const entry of registry) {
     if (entry.provider !== "claude_agent") continue
+    const accountRefHash = hashPylonAccountRef("claude_agent", entry.ref)
+    seen.add(accountRefHash)
+    seenHomes.add(entry.home)
     readiness.push({
-      accountRefHash: hashPylonAccountRef("claude_agent", entry.ref),
-      ready: await claudeHomeHasAuth(entry.home),
+      accountRefHash,
+      ready: await pylonClaudeAccountHomeHasAuth(entry.home),
+    })
+  }
+  for (const sibling of await discoverPylonSiblingAccountHomes(env)) {
+    if (sibling.provider !== "claude_agent") continue
+    if (seenHomes.has(sibling.home)) continue
+    const accountRefHash = hashPylonAccountRef("claude_agent", sibling.home)
+    if (seen.has(accountRefHash)) continue
+    seen.add(accountRefHash)
+    readiness.push({
+      accountRefHash,
+      ready: await pylonClaudeAccountHomeHasAuth(sibling.home),
     })
   }
   return readiness
@@ -511,7 +520,7 @@ export async function localClaudeAccountCapacities(
   return codexAccountCapacities({
     busyByAccount: accountBusyCounts,
     perAccountConcurrency: claudePerAccountConcurrency(env),
-    readiness: await localClaudeAccountReadiness(summary),
+    readiness: await localClaudeAccountReadiness(summary, env),
   })
 }
 
