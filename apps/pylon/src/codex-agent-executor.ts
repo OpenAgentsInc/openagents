@@ -21,8 +21,12 @@ import {
 } from "./account-registry.js"
 import {
   publishAssignmentPullRequest,
+  type AssignmentPrTitleBody,
+  type AssignmentPrTitleBodyGenerator,
   type AssignmentPullRequestPublisher,
 } from "./codex-pr-publisher.js"
+import { runCodexComposerStream } from "./codex-composer.js"
+import type { CodexAgentConfig } from "./codex-agent.js"
 import {
   createPylonCodexEventChunkReporter,
   createPylonCodexTurnReporter,
@@ -1096,6 +1100,9 @@ export async function executeCodexAgentAssignment(
     passed,
     now,
     publisher: options.pullRequestPublisher,
+    config,
+    env,
+    account: options.account,
   })
 
   return {
@@ -1137,6 +1144,92 @@ const EMPTY_PULL_REQUEST_CONTRIBUTION: PullRequestCloseoutContribution = {
   messageSuffix: "",
 }
 
+const PR_TITLE_MODEL_TIMEOUT_MS = 90 * 1000
+const PR_TITLE_MODEL_MAX_DIFF_CHARS = 8000
+
+/** Public-safe prompt for one-shot PR title/body generation. */
+function buildPrTitleBodyPrompt(input: Parameters<AssignmentPrTitleBodyGenerator>[0]): string {
+  const issueLine =
+    input.issueNumber === null ? "(no linked issue)" : `#${input.issueNumber}`
+  const titleLine = input.issueTitle === null ? "(unknown)" : input.issueTitle
+  const diff =
+    input.diffText.length > PR_TITLE_MODEL_MAX_DIFF_CHARS
+      ? `${input.diffText.slice(0, PR_TITLE_MODEL_MAX_DIFF_CHARS)}\n…(diff truncated)`
+      : input.diffText
+  return [
+    "You are writing the title and body for a GitHub pull request that resolves a public issue.",
+    "Reply with a SINGLE JSON object and nothing else, shaped exactly as:",
+    '{"title": "<conventional commit title>", "body": "<markdown body>"}',
+    "",
+    "Rules:",
+    "- title: a concise Conventional Commits subject (feat/fix/docs/test/refactor/chore(scope): ...), <= 70 chars, no trailing period.",
+    `- body: start with "Addresses ${issueLine}.", then a "### Changes" section summarizing the diff, then a "### Verification" section with the command and result.`,
+    "- Do not invent changes that are not in the diff. Do not include secrets, file paths outside the repo, or prompt text.",
+    "",
+    `Issue: ${issueLine}`,
+    `Issue title: ${titleLine}`,
+    `Verification command: ${input.verifyCommand}`,
+    `Verification result: ${input.verifyPassed ? `passed (exit ${input.verifyExitCode})` : `exit ${input.verifyExitCode}`}`,
+    `Changed files (${input.changedPaths.length}): ${input.changedPaths.slice(0, 50).join(", ")}`,
+    "",
+    "Diff stat:",
+    input.diffStat.length === 0 ? "(unavailable)" : input.diffStat,
+    "",
+    "Unified diff:",
+    diff.length === 0 ? "(unavailable)" : diff,
+  ].join("\n")
+}
+
+function parsePrTitleBodyJson(text: string): AssignmentPrTitleBody | null {
+  const start = text.indexOf("{")
+  const end = text.lastIndexOf("}")
+  if (start === -1 || end === -1 || end <= start) return null
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text.slice(start, end + 1))
+  } catch {
+    return null
+  }
+  if (parsed === null || typeof parsed !== "object") return null
+  const record = parsed as { title?: unknown; body?: unknown }
+  if (typeof record.title !== "string" || typeof record.body !== "string") return null
+  const title = record.title.trim()
+  const body = record.body.trim()
+  if (title.length === 0 || body.length === 0) return null
+  return { title, body }
+}
+
+/**
+ * Builds the own-capacity (no-spend, read-only, network-off) Codex title/body
+ * generator. Fully fail-soft: any readiness, timeout, parse, or model failure
+ * returns null so the publisher's deterministic fallback takes over.
+ */
+function createOwnCapacityTitleBodyGenerator(options: {
+  cwd: string
+  config?: CodexAgentConfig
+  env?: Record<string, string | undefined>
+  account?: ResolvedPylonAccountSelection | null
+}): AssignmentPrTitleBodyGenerator {
+  return async (input) => {
+    try {
+      const result = await runCodexComposerStream(buildPrTitleBodyPrompt(input), {
+        cwd: options.cwd,
+        account: options.account ?? null,
+        ...(options.config === undefined ? {} : { config: options.config }),
+        ...(options.env === undefined ? {} : { env: options.env }),
+        sandboxMode: "read-only",
+        executionMode: "local_bounded",
+        approvalPolicy: "never",
+        networkAccessEnabled: false,
+        timeoutMs: PR_TITLE_MODEL_TIMEOUT_MS,
+      })
+      return parsePrTitleBodyJson(result.text)
+    } catch {
+      return null
+    }
+  }
+}
+
 /**
  * Opens one scoped pull request for a verified, non-empty git_checkout diff and
  * maps the typed outcome to public-safe closeout refs. Only git_checkout tasks
@@ -1152,6 +1245,9 @@ async function maybePublishAssignmentPullRequest(input: {
   passed: boolean
   now: Date
   publisher?: AssignmentPullRequestPublisher
+  config?: CodexAgentConfig
+  env?: Record<string, string | undefined>
+  account?: ResolvedPylonAccountSelection | null
 }): Promise<PullRequestCloseoutContribution> {
   if (!input.passed) return EMPTY_PULL_REQUEST_CONTRIBUTION
   const workspace = input.task.workspace
@@ -1165,6 +1261,18 @@ async function maybePublishAssignmentPullRequest(input: {
   }
 
   const publisher = input.publisher ?? publishAssignmentPullRequest
+  // Own-capacity title/body generation is on by default; the deterministic
+  // fallback inside the publisher covers any failure. The kill switch disables
+  // the extra model turn entirely.
+  const generateTitleBody =
+    Bun.env.OPENAGENTS_PYLON_DISABLE_PR_TITLE_MODEL === "1"
+      ? undefined
+      : createOwnCapacityTitleBodyGenerator({
+          cwd: input.materialized.workspace,
+          ...(input.config === undefined ? {} : { config: input.config }),
+          ...(input.env === undefined ? {} : { env: input.env }),
+          account: input.account ?? null,
+        })
   let result: Awaited<ReturnType<AssignmentPullRequestPublisher>>
   try {
     result = await publisher({
@@ -1185,6 +1293,7 @@ async function maybePublishAssignmentPullRequest(input: {
         passed: input.passed,
       },
       now: input.now,
+      ...(generateTitleBody === undefined ? {} : { generateTitleBody }),
     })
   } catch {
     return {

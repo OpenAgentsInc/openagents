@@ -54,6 +54,11 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 
+# Dispatch-lockout helpers (issue #6439 reopen): skip issues that already have an
+# open PR so the fleet never re-solves an already-PR'd issue and spawns dupes.
+# shellcheck source=lockout.sh
+source "$SCRIPT_DIR/lockout.sh"
+
 # --- Config (all overridable via env) ---
 export PYLON_OPENAGENTS_BASE_URL="${PYLON_OPENAGENTS_BASE_URL:-https://openagents.com}"
 # Default pylon home is the registered owner home (~/.pylon). A fresh/unknown
@@ -214,8 +219,19 @@ worker_loop() {
     local acc="${refs[$(( slot % ${#refs[@]} ))]}"
     local acc_args=(); [ "$acc" != "default" ] && acc_args=(--account-ref "$acc")
 
-    local issue="${issues[$(( (slot + iter) % ${#issues[@]} ))]}"
+    # Dispatch lockout: skip any issue that already has an open PR; only pick an
+    # untouched one. If every backlog issue already has a PR, back off instead of
+    # re-solving solved work (the duplicate-PR root cause).
+    local start_idx=$(( (slot + iter) % ${#issues[@]} ))
     iter=$(( iter + 1 ))
+    local issue
+    issue=$(pick_unlocked_issue "$start_idx" "${issues[@]}")
+    if [ -z "$issue" ]; then
+      log "slot=$slot LOCKOUT all backlog issues already have open PRs; backing off ${backoff}s"
+      sleep "$backoff"
+      backoff=$(( backoff * 2 )); [ "$backoff" -gt "$SUP_BACKOFF_MAX" ] && backoff="$SUP_BACKOFF_MAX"
+      continue
+    fi
     local commit; commit=$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null)
     [ -z "$commit" ] && { sleep 15; continue; }
 
