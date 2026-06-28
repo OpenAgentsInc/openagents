@@ -10,7 +10,7 @@ struct RootView: View {
 
     @State private var drawerOpen = false
     @State private var showSettings = false
-    @State private var hasKey = KeychainStore.hasAPIKey
+    @State private var hasKey = Self.hasUsableAPIKey()
     @State private var didLaunch = false
     @State private var selection: Conversation?
     /// Active conversation channel. `.khala` is the public collective model;
@@ -119,17 +119,11 @@ struct RootView: View {
 
     // MARK: - Traces
 
-    /// Open the owner's traces on the web, passing the API key as a token so the
-    /// owner can view their own (unshared, owner-only) traces even when not
-    /// logged into the web. The backend authorizes the token for owner-scoped
-    /// trace viewing; if a per-conversation trace ref becomes available it can be
-    /// appended here to deep-link the specific trace.
-    private func openTracesInWeb(conversation: Conversation?) {
-        var components = URLComponents(string: "https://openagents.com/traces")
-        if let key = KeychainStore.loadAPIKey() {
-            components?.queryItems = [URLQueryItem(name: "token", value: key)]
-        }
-        if let url = components?.url {
+    /// Open the owner's traces on the web without putting the stored key into a
+    /// URL. Captured API keys must never be re-displayed in plaintext after
+    /// Settings stores them.
+    private func openTracesInWeb(conversation _: Conversation?) {
+        if let url = URL(string: "https://openagents.com/traces") {
             openURL(url)
         }
     }
@@ -192,14 +186,7 @@ struct RootView: View {
         }
         syncModel()
 
-        // Free dogfood app: guarantee an API key so the composer works out of the
-        // box. Auto-mint a free key on first launch when none is stored.
-        if KeychainStore.hasAPIKey {
-            hasKey = true
-        } else if let token = try? await KhalaClient.mintFreeKey() {
-            KeychainStore.saveAPIKey(token)
-            hasKey = true
-        }
+        hasKey = Self.hasUsableAPIKey()
 
         guard !didLaunch else { return }
         didLaunch = true
@@ -210,5 +197,10 @@ struct RootView: View {
            let model = modelFor(conversation) {
             model.send(demo)
         }
+    }
+
+    private static func hasUsableAPIKey() -> Bool {
+        guard let key = KeychainStore.loadAPIKey() else { return false }
+        return FreeTierDisclosureStore.canUse(apiKey: key)
     }
 }

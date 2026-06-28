@@ -86,6 +86,15 @@ struct ChatView: View {
                     .foregroundStyle(.secondary)
                     .padding(.top, 4)
             }
+            if !hasKey {
+                Button {
+                    onOpenSettings()
+                } label: {
+                    Label("Add API key", systemImage: "key")
+                }
+                .buttonStyle(.borderedProminent)
+                .padding(.top, 8)
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 140)

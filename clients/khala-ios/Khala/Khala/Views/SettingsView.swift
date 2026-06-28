@@ -10,6 +10,7 @@ struct SettingsView: View {
     @State private var minting = false
     @State private var errorText: String?
     @State private var mintedConfirmation = false
+    @State private var acceptedFreeTierDisclosure = FreeTierDisclosureStore.hasAccepted
 
     var body: some View {
         NavigationStack {
@@ -31,24 +32,38 @@ struct SettingsView: View {
                                 if minting { ProgressView().padding(.leading, 6) }
                             }
                         }
-                        .disabled(minting)
+                        .disabled(minting || !acceptedFreeTierDisclosure)
 
                         VStack(alignment: .leading, spacing: 6) {
                             Text("…or paste a key")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
-                            TextField("oa_agent_…", text: $pastedKey)
+                            SecureField("oa_agent_…", text: $pastedKey)
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
                                 .font(.system(.body, design: .monospaced))
                             Button("Save pasted key") {
                                 let trimmed = pastedKey.trimmingCharacters(in: .whitespacesAndNewlines)
                                 guard !trimmed.isEmpty else { return }
-                                KeychainStore.saveAPIKey(trimmed)
+                                guard acceptedFreeTierDisclosure || !FreeTierDisclosureStore.requiresDisclosure(for: trimmed) else {
+                                    errorText = "Acknowledge the free-tier disclosure before saving this key."
+                                    return
+                                }
+                                if acceptedFreeTierDisclosure {
+                                    FreeTierDisclosureStore.accept()
+                                }
+                                guard KeychainStore.saveAPIKey(trimmed) else {
+                                    errorText = "Couldn't save the key in Keychain."
+                                    return
+                                }
                                 hasKey = true
                                 pastedKey = ""
+                                errorText = nil
                             }
-                            .disabled(pastedKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            .disabled(
+                                pastedKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                    || (FreeTierDisclosureStore.requiresDisclosure(for: pastedKey) && !acceptedFreeTierDisclosure)
+                            )
                         }
                     }
 
@@ -72,6 +87,15 @@ struct SettingsView: View {
                     )
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+                    Toggle(isOn: $acceptedFreeTierDisclosure) {
+                        Text("I understand this disclosure before minting or using a free key.")
+                    }
+                    .font(.footnote)
+                    .onChange(of: acceptedFreeTierDisclosure) { _, accepted in
+                        if accepted {
+                            FreeTierDisclosureStore.accept()
+                        }
+                    }
                     Link(
                         "Read the full terms",
                         destination: URL(string: "https://openagents.com/api/public/free-tier-data-sharing")!
@@ -91,15 +115,24 @@ struct SettingsView: View {
     private func mint() async {
         errorText = nil
         mintedConfirmation = false
+        guard acceptedFreeTierDisclosure else {
+            errorText = "Acknowledge the free-tier disclosure before minting a key."
+            return
+        }
+        FreeTierDisclosureStore.accept()
         minting = true
         defer { minting = false }
         do {
             let token = try await KhalaClient.mintFreeKey()
-            KeychainStore.saveAPIKey(token)
+            guard KeychainStore.saveAPIKey(token) else {
+                errorText = "Key minted, but couldn't be saved in Keychain."
+                return
+            }
             hasKey = true
             mintedConfirmation = true
         } catch {
             errorText = (error as? LocalizedError)?.errorDescription ?? "Couldn't mint a key."
         }
     }
+
 }
