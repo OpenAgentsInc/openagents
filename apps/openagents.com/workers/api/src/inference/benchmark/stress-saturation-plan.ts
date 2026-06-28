@@ -25,6 +25,9 @@ export const GLM_CONTINUOUS_STRESS_REPORT_SCHEMA =
 export const GLM_EXTERNAL_WINS_PROOF_SCHEMA =
   'openagents.khala.glm_external_wins_proof.v0_1' as const
 
+export const GLM_MAX_TOKS_BENCHMARK_READOUT_SCHEMA =
+  'openagents.khala.glm_max_toks_benchmark_readout.v0_1' as const
+
 export const GLM_CONTINUOUS_STRESS_TELEMETRY_SCHEMA =
   'openagents.khala.telemetry.v1' as const
 
@@ -263,6 +266,71 @@ export type GlmStressReport = Readonly<{
   replicaRefs: ReadonlyArray<string>
   latencyMs: GlmStressLatencyRollup
   replicaRollups: ReadonlyArray<GlmStressReplicaRollup>
+}>
+
+export type GlmMaxToksBenchmarkSurface = 'in_cloud' | 'wan'
+
+export type GlmMaxToksBenchmarkBlockerReason =
+  | 'missing_in_cloud_report'
+  | 'missing_wan_report'
+  | 'report_not_ready'
+  | 'throughput_not_measured'
+  | 'latency_distribution_not_measured'
+  | 'saturation_point_not_observed'
+  | 'opencode_session_estimate_missing'
+
+export type GlmMaxToksBenchmarkReportInput = Readonly<{
+  surface: GlmMaxToksBenchmarkSurface
+  report: GlmStressReport
+}>
+
+export type GlmMaxToksBenchmarkReadoutInput = Readonly<{
+  generatedAt: string
+  benchmarkRef: string
+  recordedAt: string
+  fleetSize: number
+  servingProfileRef: string
+  sustainedOpenCodeSessionEstimate?: number | undefined
+  reports: ReadonlyArray<GlmMaxToksBenchmarkReportInput>
+}>
+
+export type GlmMaxToksBenchmarkSurfaceReadout = Readonly<{
+  surface: GlmMaxToksBenchmarkSurface
+  tickRef: string
+  aggregateTokPerSecond: number | null
+  goodputTokPerSecond: number | null
+  saturationConcurrency: number | null
+  singleflightOverflowRateAtSaturation: number | null
+  ttftMs: GlmStressLatencySummary
+  interTokenLatencyP50Ms: GlmStressLatencySummary
+  interTokenLatencyP90Ms: GlmStressLatencySummary
+  interTokenLatencyP99Ms: GlmStressLatencySummary
+  replicaCount: number
+  outputTokens: number
+  goodputTokens: number
+  blockerRefs: ReadonlyArray<string>
+}>
+
+export type GlmMaxToksBenchmarkReadout = Readonly<{
+  schema: typeof GLM_MAX_TOKS_BENCHMARK_READOUT_SCHEMA
+  generatedAt: string
+  benchmarkRef: string
+  recordedAt: string
+  publicSafe: true
+  decisionGrade: boolean
+  blockerRefs: ReadonlyArray<string>
+  reasons: ReadonlyArray<GlmMaxToksBenchmarkBlockerReason>
+  fleetSize: number
+  servingProfileRef: string
+  headlineMaxTokPerSecond: number | null
+  saturationConcurrency: number | null
+  sustainedOpenCodeSessionEstimate: number | null
+  inCloud: GlmMaxToksBenchmarkSurfaceReadout | null
+  wan: GlmMaxToksBenchmarkSurfaceReadout | null
+  wanDelta: Readonly<{
+    aggregateTokPerSecond: number | null
+    ttftP90Ms: number | null
+  }>
 }>
 
 export type GlmExternalWinsServedLane =
@@ -779,6 +847,150 @@ export const buildGlmContinuousStressReport = (
     replicaRollups: replicaRefs.map(replicaRef =>
       replicaRollup(replicaRef, input.observations, throughputMeasurementWindowMs),
     ),
+  }
+}
+
+const maxToksBlockerRefs = (
+  reasons: ReadonlyArray<GlmMaxToksBenchmarkBlockerReason>,
+): ReadonlyArray<string> =>
+  reasons.map(reason => `blocker.glm_max_toks_benchmark.${reason}`)
+
+const hasMeasuredLatencyDistribution = (report: GlmStressReport): boolean =>
+  report.latencyMs.ttftMs.sampleCount > 0 &&
+  report.latencyMs.interTokenLatencyP50Ms.sampleCount > 0 &&
+  report.latencyMs.interTokenLatencyP90Ms.sampleCount > 0 &&
+  report.latencyMs.interTokenLatencyP99Ms.sampleCount > 0
+
+const saturationObserved = (report: GlmStressReport): boolean =>
+  report.backoff.action === 'decrease' ||
+  report.backoff.action === 'pause' ||
+  report.overloadFailureCount > 0 ||
+  (report.errorRate !== null &&
+    report.errorRate > GLM_STRESS_ERROR_RATE_BACKOFF_THRESHOLD)
+
+const surfaceReadoutFor = (
+  surface: GlmMaxToksBenchmarkSurface,
+  report: GlmStressReport | undefined,
+): GlmMaxToksBenchmarkSurfaceReadout | null => {
+  if (report === undefined) {
+    return null
+  }
+  const outputTokens = report.replicaRollups.reduce(
+    (sum, replica) => sum + replica.outputTokens,
+    0,
+  )
+  const goodputTokens = report.replicaRollups.reduce(
+    (sum, replica) => sum + replica.goodputTokens,
+    0,
+  )
+  return {
+    surface,
+    tickRef: report.tickRef,
+    aggregateTokPerSecond: report.aggregateTokPerSecond,
+    goodputTokPerSecond: report.goodputTokPerSecond,
+    saturationConcurrency: saturationObserved(report)
+      ? report.backoff.currentConcurrency
+      : null,
+    singleflightOverflowRateAtSaturation: saturationObserved(report)
+      ? report.errorRate
+      : null,
+    ttftMs: report.latencyMs.ttftMs,
+    interTokenLatencyP50Ms: report.latencyMs.interTokenLatencyP50Ms,
+    interTokenLatencyP90Ms: report.latencyMs.interTokenLatencyP90Ms,
+    interTokenLatencyP99Ms: report.latencyMs.interTokenLatencyP99Ms,
+    replicaCount: report.replicaRefs.length,
+    outputTokens,
+    goodputTokens,
+    blockerRefs: report.blockerRefs,
+  }
+}
+
+const reportReasons = (
+  report: GlmStressReport | undefined,
+): ReadonlyArray<GlmMaxToksBenchmarkBlockerReason> => {
+  if (report === undefined) {
+    return []
+  }
+  return [
+    ...(report.runnerState !== 'ready' || report.blockerRefs.length > 0
+      ? (['report_not_ready'] as const)
+      : []),
+    ...(report.aggregateTokPerSecond === null ||
+    report.aggregateTokPerSecond <= 0
+      ? (['throughput_not_measured'] as const)
+      : []),
+    ...(!hasMeasuredLatencyDistribution(report)
+      ? (['latency_distribution_not_measured'] as const)
+      : []),
+    ...(!saturationObserved(report)
+      ? (['saturation_point_not_observed'] as const)
+      : []),
+  ]
+}
+
+const firstReportForSurface = (
+  reports: ReadonlyArray<GlmMaxToksBenchmarkReportInput>,
+  surface: GlmMaxToksBenchmarkSurface,
+): GlmStressReport | undefined =>
+  reports.find(candidate => candidate.surface === surface)?.report
+
+export const buildGlmMaxToksBenchmarkReadout = (
+  input: GlmMaxToksBenchmarkReadoutInput,
+): GlmMaxToksBenchmarkReadout => {
+  const inCloudReport = firstReportForSurface(input.reports, 'in_cloud')
+  const wanReport = firstReportForSurface(input.reports, 'wan')
+  const inCloud = surfaceReadoutFor('in_cloud', inCloudReport)
+  const wan = surfaceReadoutFor('wan', wanReport)
+  const opencodeEstimate =
+    input.sustainedOpenCodeSessionEstimate === undefined ||
+    !Number.isFinite(input.sustainedOpenCodeSessionEstimate) ||
+    input.sustainedOpenCodeSessionEstimate <= 0
+      ? null
+      : Math.floor(input.sustainedOpenCodeSessionEstimate)
+  const reasons = [
+    ...(inCloudReport === undefined
+      ? (['missing_in_cloud_report'] as const)
+      : []),
+    ...(wanReport === undefined ? (['missing_wan_report'] as const) : []),
+    ...reportReasons(inCloudReport),
+    ...reportReasons(wanReport),
+    ...(opencodeEstimate === null
+      ? (['opencode_session_estimate_missing'] as const)
+      : []),
+  ]
+  const uniqueReasons = [...new Set(reasons)]
+  const decisionGrade = uniqueReasons.length === 0
+  const inCloudTps = inCloud?.aggregateTokPerSecond ?? null
+  const wanTps = wan?.aggregateTokPerSecond ?? null
+  const inCloudTtftP90 = inCloud?.ttftMs.p90 ?? null
+  const wanTtftP90 = wan?.ttftMs.p90 ?? null
+
+  return {
+    schema: GLM_MAX_TOKS_BENCHMARK_READOUT_SCHEMA,
+    generatedAt: input.generatedAt,
+    benchmarkRef: input.benchmarkRef,
+    recordedAt: input.recordedAt,
+    publicSafe: true,
+    decisionGrade,
+    blockerRefs: maxToksBlockerRefs(uniqueReasons),
+    reasons: uniqueReasons,
+    fleetSize: safePositiveInteger(input.fleetSize),
+    servingProfileRef: input.servingProfileRef,
+    headlineMaxTokPerSecond: decisionGrade ? inCloudTps : null,
+    saturationConcurrency: decisionGrade
+      ? (inCloud?.saturationConcurrency ?? null)
+      : null,
+    sustainedOpenCodeSessionEstimate: decisionGrade ? opencodeEstimate : null,
+    inCloud,
+    wan,
+    wanDelta: {
+      aggregateTokPerSecond:
+        inCloudTps === null || wanTps === null ? null : wanTps - inCloudTps,
+      ttftP90Ms:
+        inCloudTtftP90 === null || wanTtftP90 === null
+          ? null
+          : wanTtftP90 - inCloudTtftP90,
+    },
   }
 }
 
