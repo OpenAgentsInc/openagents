@@ -3113,6 +3113,8 @@ export type ArtanisTraceReviewSummary = Readonly<{
   tokenEventCount: number
   totalTokens: number
   traceCount: number
+  backendIncidentCount: number
+  backendIncidentCriticalCount: number
   rawEventRowCount: number
   modelMix: ReadonlyArray<ArtanisTraceReviewModelBucket>
   outcomes: ReadonlyArray<ArtanisTraceReviewOutcomeBucket>
@@ -3170,9 +3172,9 @@ const traceReviewRecord = (value: unknown): Record<string, unknown> =>
 
 // Normalize an unknown trace-review payload into the bounded, public-safe
 // summary, or null when the body is not an object at all. It is tolerant of the
-// live route shape (`{ window, aggregates: { tokens, traces, rawCodexEvents },
-// modelMix, outcomes, failureModes }`): a missing section degrades to empty / 0
-// (honest absence over invention), never a throw.
+// live route shape (`{ window, aggregates: { tokens, traces, rawCodexEvents,
+// backendIncidents }, modelMix, outcomes, failureModes }`): a missing section
+// degrades to empty / 0 (honest absence over invention), never a throw.
 export const normalizeArtanisTraceReview = (
   body: unknown,
   maxBuckets: number = ARTANIS_TRACE_REVIEW_MAX_BUCKETS,
@@ -3185,6 +3187,7 @@ export const normalizeArtanisTraceReview = (
   const tokens = traceReviewRecord(aggregates.tokens)
   const traces = traceReviewRecord(aggregates.traces)
   const rawEvents = traceReviewRecord(aggregates.rawCodexEvents)
+  const backendIncidents = traceReviewRecord(aggregates.backendIncidents)
 
   const windowHours =
     typeof window.hours === 'number' && Number.isFinite(window.hours)
@@ -3231,6 +3234,10 @@ export const normalizeArtanisTraceReview = (
     })
 
   return {
+    backendIncidentCount: traceReviewCount(backendIncidents.rowCount),
+    backendIncidentCriticalCount: traceReviewCount(
+      backendIncidents.criticalCount,
+    ),
     failureModes,
     modelMix,
     outcomes,
@@ -3267,7 +3274,11 @@ const formatTraceReviewSummary = (
     'en-US',
   )} traces; ${summary.rawEventRowCount.toLocaleString(
     'en-US',
-  )} raw Codex event rows.`
+  )} raw Codex event rows; ${summary.backendIncidentCount.toLocaleString(
+    'en-US',
+  )} backend incident rows (${summary.backendIncidentCriticalCount.toLocaleString(
+    'en-US',
+  )} critical).`
 
   const modelMixBlock =
     summary.modelMix.length === 0

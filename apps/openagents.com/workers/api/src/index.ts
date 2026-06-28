@@ -207,6 +207,10 @@ import {
   withBillingCreditPackages,
 } from './billing'
 import { makeBillingApiHandlers } from './billing-routes'
+import {
+  recordBackendIncidentEvent,
+  routePatternFromRequest,
+} from './backend-incident-events'
 import { OpenAgentsDatabase, ThreadFileArtifacts } from './bindings'
 import { makeBlueprintProbeContributionRoutes } from './blueprint-probe-contribution-routes'
 import { makeBlueprintRoutes } from './blueprint-routes'
@@ -13403,7 +13407,25 @@ const workerFetchProgram = Effect.gen(function* () {
   }).pipe(
     Effect.catchCause(cause =>
       Effect.sync(() => {
-        logWorkerRouteError('worker_unhandled_exception', Cause.pretty(cause))
+        const prettyCause = Cause.pretty(cause)
+        logWorkerRouteError('worker_unhandled_exception', prettyCause)
+        scheduleBackgroundWork(
+          ctx,
+          recordBackendIncidentEvent(openAgentsDatabase(env), {
+            errorName: 'EffectCause',
+            kind: 'unhandled_exception',
+            method: request.method,
+            routePattern: routePatternFromRequest(request),
+            safeMetadata: {
+              host: url.hostname,
+            },
+            severity: 'critical',
+            source: 'worker_fetch',
+            statusCode: 500,
+          }).catch(error =>
+            logWorkerRouteError('backend_incident_record_failed', error),
+          ),
+        )
 
         if (url.hostname === 'auth.openagents.com') {
           return redirectResponse(getAppOrigin(env))

@@ -11,6 +11,15 @@ const run = (effect: Effect.Effect<Response>): Promise<Response> =>
   Effect.runPromise(effect)
 
 const facts: KhalaTraceReviewFacts = {
+  backendIncidentBuckets: [],
+  backendIncidentHighlights: [],
+  backendIncidentSummary: {
+    criticalCount: 0,
+    gatewayTimeoutCount: 0,
+    rowCount: 0,
+    silentAgentCrashCount: 0,
+    unhandledExceptionCount: 0,
+  },
   modelMix: [
     {
       count: 3,
@@ -113,6 +122,68 @@ describe('Khala trace review report', () => {
     expect(report.triageItems.length).toBeGreaterThan(0)
     expect(JSON.stringify(report)).not.toContain('trajectory_json')
     expect(JSON.stringify(report)).not.toContain('raw_payload')
+  })
+
+  test('promotes backend incident rows into failure modes and triage without raw errors', () => {
+    const incidentFacts: KhalaTraceReviewFacts = {
+      ...facts,
+      backendIncidentBuckets: [
+        {
+          count: 2,
+          criticalCount: 2,
+          kind: 'unhandled_exception',
+          source: 'worker_fetch',
+        },
+      ],
+      backendIncidentHighlights: [
+        {
+          errorName: 'RuntimeError',
+          incidentRef: 'backend_incident.unhandled_exception.abc123',
+          kind: 'unhandled_exception',
+          method: 'POST',
+          observedAt: '2026-06-26T20:10:00.000Z',
+          routePattern: '/api/v1/chat/completions',
+          source: 'worker_fetch',
+          statusCode: 500,
+        },
+      ],
+      backendIncidentSummary: {
+        criticalCount: 2,
+        gatewayTimeoutCount: 0,
+        rowCount: 2,
+        silentAgentCrashCount: 0,
+        unhandledExceptionCount: 2,
+      },
+    }
+
+    const report = buildKhalaTraceReviewReport({
+      facts: incidentFacts,
+      generatedAt: '2026-06-26T21:00:00.000Z',
+      window: {
+        hours: 24,
+        since: '2026-06-25T21:00:00.000Z',
+        until: '2026-06-26T21:00:00.000Z',
+      },
+    })
+
+    expect(report.aggregates.backendIncidents).toMatchObject({
+      rowCount: 2,
+      unhandledExceptionCount: 2,
+    })
+    expect(report.sourceTables).toContain('backend_incident_events')
+    expect(report.failureModes.map(mode => mode.failureRef)).toContain(
+      'failure.khala_trace_review.backend_unhandled_exception',
+    )
+    expect(report.triageItems.map(item => item.triageRef)).toContain(
+      'triage.khala_trace_review.backend_unhandled_exception',
+    )
+    expect(report.backendIncidentHighlights[0]).toMatchObject({
+      incidentRef: 'backend_incident.unhandled_exception.abc123',
+      routePattern: '/api/v1/chat/completions',
+    })
+    expect(JSON.stringify(report)).not.toContain('stack')
+    expect(JSON.stringify(report)).not.toContain('raw_error')
+    expect(JSON.stringify(report)).not.toContain('raw_stack')
   })
 
   test('a legitimate serving provider id with an sk-shaped substring does not trip the secret-material backstop', async () => {
