@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 
 import {
   BUNDLED_GYM_EXPERIMENT,
+  AGENTCL_REPO_REUSE_GYM_EXPERIMENT,
   GYM_ENVIRONMENT_REGISTRY,
   KHALA_CODE_GYM_EXPERIMENT,
   LONG_CONTEXT_CODEBASE_QA_GYM_EXPERIMENT,
@@ -73,6 +74,7 @@ describe('Gym environment registry', () => {
       'long-context-codebase-qa',
       'm8-head-to-head',
       'throughput-concurrency',
+      'agentcl-repo-reuse',
     ])
 
     const terminalBench = getGymEnvironmentDefinition('terminal-bench')
@@ -207,6 +209,27 @@ describe('compileGymExperiment', () => {
       'vllm.max_num_seqs.8.prefix_cache.chunked_prefill.nvfp4',
       'vllm.max_num_seqs.16.prefix_cache.chunked_prefill.nvfp4',
     ])
+  })
+
+  test('expands the AgentCL repo-reuse environment as a compositional stream', () => {
+    const compiled = compileGymExperiment(AGENTCL_REPO_REUSE_GYM_EXPERIMENT)
+
+    expect(compiled.matrixConfig.workloads).toEqual([
+      'agentcl-source-task',
+      'agentcl-complex-task',
+      'agentcl-held-out-task',
+    ])
+    expect(compiled.policySelection.environment.surface).toBe(
+      'continual-learning',
+    )
+    expect(compiled.policySelection.environment.verifierRef).toBe(
+      'verifier.gym.agentcl.two_pass_pg_sg_gg.v0',
+    )
+    expect(compiled.policySelection.modules.moduleRefs).toEqual([
+      'memory.pylon.tas.repo.v0',
+      'retrieval.openagents.omni_trace_context.v0',
+    ])
+    expect(compiled.expectedCellCount).toBe(3)
   })
 
   test('compiles a real-seam experiment without spending', () => {

@@ -35,6 +35,7 @@ export const GymEnvironmentRef = S.Literals([
   'long-context-codebase-qa',
   'm8-head-to-head',
   'throughput-concurrency',
+  'agentcl-repo-reuse',
 ])
 export type GymEnvironmentRef = typeof GymEnvironmentRef.Type
 
@@ -68,6 +69,7 @@ export const GymEnvironmentSurface = S.Literals([
   'retrieval-qa',
   'recorded-head-to-head',
   'throughput-concurrency',
+  'continual-learning',
 ])
 export type GymEnvironmentSurface = typeof GymEnvironmentSurface.Type
 
@@ -80,6 +82,7 @@ export const GymEnvironmentTaskSet = S.Struct({
     'retained-public-fixture',
     'recorded-manifest',
     'throughput-ramp',
+    'agentcl-public-repo-stream',
   ]),
   publicSafeTaskRefs: S.Array(S.String),
   harborDataset: S.optional(S.String),
@@ -93,6 +96,7 @@ export const GymVerifierMode = S.Literals([
   'executed-acceptance',
   'seeded-reference',
   'telemetry-reconciliation',
+  'agentcl-two-pass',
 ])
 export type GymVerifierMode = typeof GymVerifierMode.Type
 
@@ -308,6 +312,20 @@ const THROUGHPUT_CONCURRENCY_RAMP_SHAPES: ReadonlyArray<
   provenance: 'realistic',
 }))
 
+const AGENTCL_REPO_REUSE_SHAPE: typeof SequenceShape.Type = {
+  id: 'agentcl-repo-reuse-two-pass-public-fixture',
+  inputTokens: 7600,
+  outputTokens: 1800,
+  cacheablePrefixTokens: 4200,
+  concurrency: 2,
+  provenance: 'realistic',
+  requestClass: 'async_job',
+  source: 'operator_export',
+  observedTrafficEvidenceRef:
+    'docs/research/agentcl/incorporation-synthesis.md#roadmap-5-6',
+  observedRequestCount: 16,
+}
+
 export const GYM_ENVIRONMENT_REGISTRY: Readonly<
   Record<GymEnvironmentRef, GymEnvironmentDefinition>
 > = {
@@ -489,6 +507,42 @@ export const GYM_ENVIRONMENT_REGISTRY: Readonly<
     },
     defaultShapes: THROUGHPUT_CONCURRENCY_RAMP_SHAPES,
     defaultTools: 'no-tools',
+  },
+  'agentcl-repo-reuse': {
+    ref: 'agentcl-repo-reuse',
+    surface: 'continual-learning',
+    taskSet: {
+      ref: 'taskset.gym.agentcl.repo_reuse.public_stream.v0',
+      source: 'agentcl-public-repo-stream',
+      publicSafeTaskRefs: [
+        'agentcl.repo_reuse.source.effect_schema_contract.v0',
+        'agentcl.repo_reuse.source.harbor_public_receipt.v0',
+        'agentcl.repo_reuse.source.tas_memory_ref.v0',
+        'agentcl.repo_reuse.source.omni_retrieval_ref.v0',
+        'agentcl.repo_reuse.complex.two_pass_runner.v0',
+        'agentcl.repo_reuse.complex.pg_sg_gg_report.v0',
+        'agentcl.repo_reuse.held_out.mirrorcode_no_rag.v0',
+      ],
+    },
+    workloads: [
+      'agentcl-source-task',
+      'agentcl-complex-task',
+      'agentcl-held-out-task',
+    ],
+    verifier: {
+      ref: 'verifier.gym.agentcl.two_pass_pg_sg_gg.v0',
+      mode: 'agentcl-two-pass',
+      expectedOutcome: 'none',
+    },
+    acceptance: {
+      ref: 'acceptance.gym.agentcl.report_only_no_claim.v0',
+      verifierRef: 'verifier.gym.agentcl.two_pass_pg_sg_gg.v0',
+      scalarRewardPassThreshold: 0,
+      requiresExecutedVerifier: false,
+      publicClaimEligible: false,
+    },
+    defaultShapes: [AGENTCL_REPO_REUSE_SHAPE],
+    defaultTools: 'khala-code-tools',
   },
 }
 
@@ -751,12 +805,44 @@ export const THROUGHPUT_CONCURRENCY_GYM_EXPERIMENT: GymExperiment = {
   shapes: GYM_ENVIRONMENT_REGISTRY['throughput-concurrency'].defaultShapes,
 }
 
+export const AGENTCL_REPO_REUSE_GYM_EXPERIMENT: GymExperiment = {
+  ...TERMINAL_BENCH_GYM_EXPERIMENT,
+  id: 'gym-agentcl-repo-reuse-two-pass-fixture-v0',
+  environment: 'agentcl-repo-reuse',
+  policy: {
+    ...TERMINAL_BENCH_GYM_EXPERIMENT.policy,
+    coordinator: 'conductor-v2',
+    fanout: {
+      lanes: ['khala'],
+      mode: 'single',
+      concurrency: 2,
+    },
+    tools: GYM_ENVIRONMENT_REGISTRY['agentcl-repo-reuse'].defaultTools,
+    modules: {
+      mode: 'starter-catalog',
+      signatureRefs: ['program-signature:agentcl-two-pass-runner.v0'],
+      moduleRefs: [
+        'memory.pylon.tas.repo.v0',
+        'retrieval.openagents.omni_trace_context.v0',
+      ],
+    },
+    sampling: {
+      temperature: 0.2,
+      reasoningEffort: 'low',
+      maxTokens: 8192,
+      transport: 'streaming',
+    },
+  },
+  shapes: GYM_ENVIRONMENT_REGISTRY['agentcl-repo-reuse'].defaultShapes,
+}
+
 export const PHASE_1_GYM_ENVIRONMENT_FIXTURE_EXPERIMENTS: ReadonlyArray<GymExperiment> =
   [
     TERMINAL_BENCH_GYM_EXPERIMENT,
     KHALA_CODE_GYM_EXPERIMENT,
     LONG_CONTEXT_CODEBASE_QA_GYM_EXPERIMENT,
     M8_HEAD_TO_HEAD_GYM_EXPERIMENT,
+    AGENTCL_REPO_REUSE_GYM_EXPERIMENT,
   ]
 
 const validateGymExperiment = (

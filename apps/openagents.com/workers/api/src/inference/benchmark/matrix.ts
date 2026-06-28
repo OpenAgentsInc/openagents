@@ -75,6 +75,9 @@ export const BenchmarkWorkload = S.Literals([
   'khala-code-artifact-gen',
   'verifier-run',
   'long-context-codebase-question',
+  'agentcl-source-task',
+  'agentcl-complex-task',
+  'agentcl-held-out-task',
 ])
 export type BenchmarkWorkload = typeof BenchmarkWorkload.Type
 
@@ -302,6 +305,10 @@ export const verificationExpectationForWorkload = (
 ): BenchmarkVerificationExpectation => {
   switch (workload) {
     case 'chat':
+      return 'none'
+    case 'agentcl-source-task':
+    case 'agentcl-complex-task':
+    case 'agentcl-held-out-task':
       return 'none'
     case 'long-context-codebase-question':
       return 'seeded'
