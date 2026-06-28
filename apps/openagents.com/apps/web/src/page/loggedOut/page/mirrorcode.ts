@@ -222,6 +222,10 @@ const livePanelError = (error: string): Html =>
 
 const latestRunCard = (run: MirrorCodeRun): Html => {
   const h = html<Message>()
+  const exactTokenRefs =
+    run.exactTokenUsageEventRefs.length === 0
+      ? 'none yet'
+      : run.exactTokenUsageEventRefs.join(', ')
 
   return h.article(
     [
@@ -263,6 +267,29 @@ const latestRunCard = (run: MirrorCodeRun): Html => {
         [
           stat('Started', run.startedAt),
           stat('Finished', run.finishedAt ?? 'in progress'),
+        ],
+      ),
+      h.div(
+        [
+          h.DataAttribute('mirrorcode-token-proof', run.tokenAttributionProofRef),
+          Ui.className<Message>(
+            'grid gap-2 border border-white/10 bg-white/[0.03] p-3 text-[0.78rem] text-white/60',
+          ),
+        ],
+        [
+          h.p(
+            [Ui.className<Message>('m-0 font-semibold uppercase tracking-wide text-white/70')],
+            ['Token proof'],
+          ),
+          h.p([Ui.className<Message>('m-0 break-words')], [
+            `${run.tokenAttributionTruth}: ${run.tokenAttributionProofRef}`,
+          ]),
+          h.p([Ui.className<Message>('m-0 break-words')], [
+            `exact rows: ${exactTokenRefs}`,
+          ]),
+          h.p([Ui.className<Message>('m-0 break-words')], [
+            `demand: ${run.demandKind}/${run.demandSource} · ${run.generalizationSet} · ${run.memoryPolicy}`,
+          ]),
         ],
       ),
       h.p(

@@ -86,11 +86,19 @@ const response: MirrorCodeRunsResponse = {
       status: 'passed',
       passRate: 1,
       tokensTotal: 12_345_678,
+      exactTokenUsageEventRefs: ['token_usage_event.gym_mirrorcode.leftpad.0001'],
+      tokenAttributionTruth: 'exact_rows_as_proof',
+      tokenAttributionProofRef:
+        'proof.gym.mirrorcode.exact_token_rows.run.mirrorcode.khala.smoke-001',
       startedAt: '2026-06-27T04:00:00.000Z',
       finishedAt: '2026-06-27T04:05:00.000Z',
       summary: 'Reimplemented left-pad from scratch; held-out suite passed.',
       grade: 'smoke',
       decisionGrade: false,
+      demandKind: 'internal',
+      demandSource: 'gym_mirrorcode',
+      generalizationSet: 'mirrorcode_public_tasks_no_rag',
+      memoryPolicy: 'no_rag_public_tasks_only',
     },
     {
       runId: 'run.mirrorcode.khala.smoke-002',
@@ -101,11 +109,19 @@ const response: MirrorCodeRunsResponse = {
       status: 'running',
       passRate: null,
       tokensTotal: 4_200,
+      exactTokenUsageEventRefs: [],
+      tokenAttributionTruth: 'exact_rows_as_proof',
+      tokenAttributionProofRef:
+        'proof.gym.mirrorcode.exact_token_rows.run.mirrorcode.khala.smoke-002',
       startedAt: '2026-06-27T04:30:00.000Z',
       finishedAt: null,
       summary: 'In flight against the JSON parser task.',
       grade: 'smoke',
       decisionGrade: false,
+      demandKind: 'internal',
+      demandSource: 'gym_mirrorcode',
+      generalizationSet: 'mirrorcode_public_tasks_no_rag',
+      memoryPolicy: 'no_rag_public_tasks_only',
     },
   ],
   comparators: [
@@ -170,6 +186,16 @@ describe('public MirrorCode page', () => {
 
     // Smoke runs are labeled Phase-0 smoke, never a frontier number.
     expect(rendered).toContain('Phase-0 smoke')
+
+    // Public proof and attribution fields from the Worker projection are
+    // preserved by the browser schema and rendered on the latest run.
+    expect(rendered).toContain('data-mirrorcode-token-proof')
+    expect(rendered).toContain(
+      'proof.gym.mirrorcode.exact_token_rows.run.mirrorcode.khala.smoke-002',
+    )
+    expect(rendered).toContain('exact rows: none yet')
+    expect(rendered).toContain('internal/gym_mirrorcode')
+    expect(rendered).toContain('mirrorcode_public_tasks_no_rag')
 
     // Leaderboard + comparators tables present.
     expect(rendered).toContain('data-mirrorcode-leaderboard')
