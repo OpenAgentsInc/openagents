@@ -1,5 +1,6 @@
-// Agentic-npm composition runtime — deterministic, PURE dependency resolver +
-// verification-on-compose gate for the module-registry vision.
+// Agentic-npm composition runtime — deterministic dependency resolver,
+// verification-on-compose gate, and bounded install/use runtime core for the
+// module-registry vision.
 //
 // Promise: marketplace.agentic_npm_module_registry.v1 (state: planned).
 // Blocker advanced: blocker.product_promises.agentic_npm_module_composition_runtime_missing.
@@ -7,29 +8,30 @@
 // Episode 238 ("learning by construction", docs/transcripts/238.md): verified
 // programs become composable modules in an "agentic npm" registry — a library of
 // verified, composable computation modules. The MISSING piece this file builds is
-// the composition-runtime CORE: given a set of registry module specs and a
-// requested root set, resolve the transitive dependency closure, GATE every
-// resolved module on its exact-trace verification state (the verification reused
-// from compute.tassadar_executor_poc.v1), check that every required interface is
-// provided within the resolved set, detect missing modules and dependency cycles,
-// and emit a deterministic, content-addressed composition plan.
+// the composition-runtime CORE: given a registry module surface and a requested
+// root set, resolve the transitive dependency closure, GATE every resolved
+// module on its exact-trace verification state (the verification reused from
+// compute.tassadar_executor_poc.v1), check that every required interface is
+// provided within the resolved set, detect missing modules and dependency
+// cycles, emit a deterministic, content-addressed composition plan, materialize
+// a verified install record, and invoke a registered module adapter with
+// install/use evidence rows.
 //
-// SCOPE / HONESTY: this is the resolver + verification gate ONLY. It is PURE and
-// INERT:
-//   - it installs nothing, executes nothing, provisions no primitive;
-//   - it moves no money, reads no wallet, writes no receipt, meters nothing,
-//     and settles nothing.
-// The promise STAYS `planned`. This file does NOT flip it. It does NOT fully
-// clear the composition-runtime blocker either: it builds the resolve+verify
-// core; the live install/use lifecycle, metering, and execution remain. Billing
-// and settlement are separate blockers
-// (agentic_npm_billing_settlement_missing) and registry liveness is a separate
-// blocker (agentic_npm_registry_not_live).
+// SCOPE / HONESTY: this file is still a bounded runtime core, not a broad paid
+// marketplace:
+//   - invocation dispatches only to explicitly registered in-process adapters;
+//   - it moves no money, reads no wallet, bills nothing, and settles nothing.
+// The promise STAYS `planned`. This file clears the source-level registry +
+// install/use runtime gap with receipt-backed tests; billing, attribution,
+// rev-share, abuse handling, and settlement remain separate blockers.
 
 import { sha256Hex } from './buy-mode-dispatcher'
 
 export const AGENTIC_NPM_COMPOSITION_RUNTIME_SCHEMA =
   'openagents.agentic_npm_composition_runtime.v1' as const
+
+export const AGENTIC_NPM_REGISTRY_RUNTIME_SCHEMA =
+  'openagents.agentic_npm_registry_runtime.v1' as const
 
 export const AGENTIC_NPM_MODULE_REGISTRY_PROMISE =
   'marketplace.agentic_npm_module_registry.v1' as const
@@ -64,6 +66,89 @@ export type AgenticNpmModuleSpec = Readonly<{
   dependsOn: ReadonlyArray<string>
   requiresInterfaces: ReadonlyArray<string>
 }>
+
+export type AgenticNpmPublishedModule = AgenticNpmModuleSpec &
+  Readonly<{
+    publisherRef: string
+    publishedAt: string
+  }>
+
+export type AgenticNpmInstallEvidenceRow = Readonly<{
+  schema: typeof AGENTIC_NPM_REGISTRY_RUNTIME_SCHEMA
+  evidenceKind: 'agentic_npm_install'
+  installRef: string
+  installerRef: string
+  requestedRootRefs: ReadonlyArray<string>
+  planDigest: string
+  status: 'installed' | 'blocked'
+  blockerRefs: ReadonlyArray<string>
+  installedModuleRefs: ReadonlyArray<string>
+  observedAt: string
+}>
+
+export type AgenticNpmUsageEvidenceRow = Readonly<{
+  schema: typeof AGENTIC_NPM_REGISTRY_RUNTIME_SCHEMA
+  evidenceKind: 'agentic_npm_usage'
+  usageRef: string
+  installRef: string
+  moduleRef: string
+  callerRef: string
+  status: 'invoked' | 'blocked'
+  blockerRefs: ReadonlyArray<string>
+  inputDigest: string
+  outputDigest: string | null
+  observedAt: string
+}>
+
+export type AgenticNpmRegistryRuntimeStore = Readonly<{
+  publishModule: (module: AgenticNpmPublishedModule) => Promise<void>
+  listModules: () => Promise<ReadonlyArray<AgenticNpmPublishedModule>>
+  readModule: (
+    moduleRef: string,
+  ) => Promise<AgenticNpmPublishedModule | undefined>
+  writeInstallEvidence: (row: AgenticNpmInstallEvidenceRow) => Promise<void>
+  readInstallEvidence: (
+    installRef: string,
+  ) => Promise<AgenticNpmInstallEvidenceRow | undefined>
+  listInstallEvidence: () => Promise<ReadonlyArray<AgenticNpmInstallEvidenceRow>>
+  writeUsageEvidence: (row: AgenticNpmUsageEvidenceRow) => Promise<void>
+  listUsageEvidence: () => Promise<ReadonlyArray<AgenticNpmUsageEvidenceRow>>
+}>
+
+export type AgenticNpmModuleAdapter = (
+  input: Readonly<Record<string, unknown>>,
+) => Promise<Readonly<Record<string, unknown>>>
+
+export type AgenticNpmInstallResult =
+  | Readonly<{
+      ok: true
+      installRef: string
+      plan: AgenticNpmCompositionPlan
+      evidence: AgenticNpmInstallEvidenceRow
+    }>
+  | Readonly<{
+      ok: false
+      installRef: string
+      plan: AgenticNpmCompositionPlan
+      evidence: AgenticNpmInstallEvidenceRow
+    }>
+
+export type AgenticNpmInvokeResult =
+  | Readonly<{
+      ok: true
+      output: Readonly<Record<string, unknown>>
+      evidence: AgenticNpmUsageEvidenceRow
+    }>
+  | Readonly<{
+      ok: false
+      error: AgenticNpmInvokeError
+      evidence: AgenticNpmUsageEvidenceRow
+    }>
+
+type AgenticNpmInvokeError =
+  | 'install_not_found'
+  | 'install_not_usable'
+  | 'adapter_not_registered'
 
 /**
  * One node in a resolved composition plan: a module pinned at a digest with the
@@ -115,6 +200,19 @@ export class AgenticNpmCompositionUnsafe extends Error {
 const uniqueSorted = (refs: ReadonlyArray<string>): ReadonlyArray<string> =>
   [...new Set(refs)].sort()
 
+const canonicalJson = (value: unknown): string => {
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalJson).join(',')}]`
+  }
+  if (value !== null && typeof value === 'object') {
+    return `{${Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`)
+      .join(',')}}`
+  }
+  return JSON.stringify(value)
+}
+
 const moduleComposeEligible = (spec: AgenticNpmModuleSpec): boolean =>
   spec.replayVerified &&
   spec.compositionVerified &&
@@ -127,6 +225,42 @@ const assertSafe = (label: string, refs: ReadonlyArray<string>): void => {
         `${label} must be a public-safe ref without raw/private, provider, customer, wallet, payment, or credential material.`,
       )
     }
+  }
+}
+
+export const makeInMemoryAgenticNpmRegistryRuntimeStore = (
+  initialModules: ReadonlyArray<AgenticNpmPublishedModule> = [],
+): AgenticNpmRegistryRuntimeStore => {
+  const modules = new Map<string, AgenticNpmPublishedModule>()
+  const installs = new Map<string, AgenticNpmInstallEvidenceRow>()
+  const usageRows: Array<AgenticNpmUsageEvidenceRow> = []
+  for (const module of initialModules) {
+    modules.set(module.moduleRef, module)
+  }
+  return {
+    listInstallEvidence: async () =>
+      [...installs.values()].sort((left, right) =>
+        left.installRef.localeCompare(right.installRef),
+      ),
+    listModules: async () =>
+      [...modules.values()].sort((left, right) =>
+        left.moduleRef.localeCompare(right.moduleRef),
+      ),
+    listUsageEvidence: async () =>
+      [...usageRows].sort((left, right) =>
+        left.usageRef.localeCompare(right.usageRef),
+      ),
+    publishModule: async module => {
+      modules.set(module.moduleRef, module)
+    },
+    readInstallEvidence: async installRef => installs.get(installRef),
+    readModule: async moduleRef => modules.get(moduleRef),
+    writeInstallEvidence: async row => {
+      installs.set(row.installRef, row)
+    },
+    writeUsageEvidence: async row => {
+      usageRows.push(row)
+    },
   }
 }
 
@@ -323,4 +457,174 @@ export const resolveAgenticNpmComposition = async (input: {
     unsatisfiedInterfaceRefs,
     unverifiedModuleRefs,
   }
+}
+
+export const publishAgenticNpmModule = async (input: {
+  store: AgenticNpmRegistryRuntimeStore
+  module: AgenticNpmModuleSpec
+  publisherRef: string
+  publishedAt: string
+}): Promise<AgenticNpmPublishedModule> => {
+  assertSafe('publisher ref', [input.publisherRef])
+  assertSafe('published module ref', [input.module.moduleRef])
+  assertSafe('published module digest', [input.module.moduleDigest])
+  assertSafe('published module provides', input.module.provides)
+  assertSafe('published module dependsOn', input.module.dependsOn)
+  assertSafe(
+    'published module requiresInterfaces',
+    input.module.requiresInterfaces,
+  )
+  const published: AgenticNpmPublishedModule = {
+    ...input.module,
+    publishedAt: input.publishedAt,
+    publisherRef: input.publisherRef,
+  }
+  await input.store.publishModule(published)
+  return published
+}
+
+export const discoverAgenticNpmModules = async (input: {
+  store: AgenticNpmRegistryRuntimeStore
+  providesInterfaceRef?: string
+}): Promise<ReadonlyArray<AgenticNpmPublishedModule>> => {
+  if (input.providesInterfaceRef !== undefined) {
+    assertSafe('provided interface ref', [input.providesInterfaceRef])
+  }
+  const modules = await input.store.listModules()
+  if (input.providesInterfaceRef === undefined) {
+    return modules
+  }
+  return modules.filter(module =>
+    module.provides.includes(input.providesInterfaceRef!),
+  )
+}
+
+export const installAgenticNpmModules = async (input: {
+  store: AgenticNpmRegistryRuntimeStore
+  installerRef: string
+  requestedRootRefs: ReadonlyArray<string>
+  observedAt: string
+}): Promise<AgenticNpmInstallResult> => {
+  assertSafe('installer ref', [input.installerRef])
+  const registry = await input.store.listModules()
+  const plan = await resolveAgenticNpmComposition({
+    registry,
+    requestedRootRefs: input.requestedRootRefs,
+  })
+  const installRef = `install.agentic_npm.${(
+    await sha256Hex(
+      canonicalJson({
+        installerRef: input.installerRef,
+        planDigest: plan.planDigest,
+        requestedRootRefs: plan.requestedRootRefs,
+      }),
+    )
+  ).slice(0, 32)}`
+  const evidence: AgenticNpmInstallEvidenceRow = {
+    blockerRefs: plan.blockerRefs,
+    evidenceKind: 'agentic_npm_install',
+    installRef,
+    installedModuleRefs: plan.resolved.map(module => module.moduleRef),
+    installerRef: input.installerRef,
+    observedAt: input.observedAt,
+    planDigest: plan.planDigest,
+    requestedRootRefs: plan.requestedRootRefs,
+    schema: AGENTIC_NPM_REGISTRY_RUNTIME_SCHEMA,
+    status: plan.composable ? 'installed' : 'blocked',
+  }
+  await input.store.writeInstallEvidence(evidence)
+  if (!plan.composable) {
+    return { evidence, installRef, ok: false, plan }
+  }
+  return { evidence, installRef, ok: true, plan }
+}
+
+export const invokeAgenticNpmModule = async (input: {
+  store: AgenticNpmRegistryRuntimeStore
+  adapters: Readonly<Record<string, AgenticNpmModuleAdapter>>
+  installRef: string
+  moduleRef: string
+  callerRef: string
+  payload: Readonly<Record<string, unknown>>
+  observedAt: string
+}): Promise<AgenticNpmInvokeResult> => {
+  assertSafe('install ref', [input.installRef])
+  assertSafe('module ref', [input.moduleRef])
+  assertSafe('caller ref', [input.callerRef])
+  const install = await input.store.readInstallEvidence(input.installRef)
+  const inputDigest = `input.agentic_npm.${(
+    await sha256Hex(canonicalJson(input.payload))
+  ).slice(0, 32)}`
+  const usageRef = `usage.agentic_npm.${(
+    await sha256Hex(
+      canonicalJson({
+        callerRef: input.callerRef,
+        inputDigest,
+        installRef: input.installRef,
+        moduleRef: input.moduleRef,
+        observedAt: input.observedAt,
+      }),
+    )
+  ).slice(0, 32)}`
+  const blocked = async (
+    error: AgenticNpmInvokeError,
+    blockerRef: string,
+  ): Promise<AgenticNpmInvokeResult> => {
+    const evidence: AgenticNpmUsageEvidenceRow = {
+      blockerRefs: [blockerRef],
+      callerRef: input.callerRef,
+      evidenceKind: 'agentic_npm_usage',
+      inputDigest,
+      installRef: input.installRef,
+      moduleRef: input.moduleRef,
+      observedAt: input.observedAt,
+      outputDigest: null,
+      schema: AGENTIC_NPM_REGISTRY_RUNTIME_SCHEMA,
+      status: 'blocked',
+      usageRef,
+    }
+    await input.store.writeUsageEvidence(evidence)
+    return { error, evidence, ok: false }
+  }
+  if (install === undefined) {
+    return blocked(
+      'install_not_found',
+      'blocker.agentic_npm_runtime.install_not_found',
+    )
+  }
+  if (
+    install.status !== 'installed' ||
+    !install.installedModuleRefs.includes(input.moduleRef)
+  ) {
+    return blocked(
+      'install_not_usable',
+      'blocker.agentic_npm_runtime.install_not_usable',
+    )
+  }
+  const adapter = input.adapters[input.moduleRef]
+  if (adapter === undefined) {
+    return blocked(
+      'adapter_not_registered',
+      'blocker.agentic_npm_runtime.adapter_not_registered',
+    )
+  }
+  const output = await adapter(input.payload)
+  const outputDigest = `output.agentic_npm.${(
+    await sha256Hex(canonicalJson(output))
+  ).slice(0, 32)}`
+  const evidence: AgenticNpmUsageEvidenceRow = {
+    blockerRefs: [],
+    callerRef: input.callerRef,
+    evidenceKind: 'agentic_npm_usage',
+    inputDigest,
+    installRef: input.installRef,
+    moduleRef: input.moduleRef,
+    observedAt: input.observedAt,
+    outputDigest,
+    schema: AGENTIC_NPM_REGISTRY_RUNTIME_SCHEMA,
+    status: 'invoked',
+    usageRef,
+  }
+  await input.store.writeUsageEvidence(evidence)
+  return { evidence, ok: true, output }
 }

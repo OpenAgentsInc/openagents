@@ -340,11 +340,10 @@ describe('public product promises document', () => {
     // /api/public/marketplace/composed-products read surface. Runtime,
     // self-serve write/install lifecycle, and billing blockers remain, so
     // green remains exactly 26.
-    // The 2026-06-20.56 agentic-npm de-stale pass clears only the stale broad
-    // module-composition-runtime blocker by acknowledging the inert
-    // resolver/verification-on-compose core. Registry liveness,
-    // live install/use runtime, and billing/settlement blockers remain, so
-    // green remains exactly 26.
+    // The agentic-npm runtime pass clears the stale source-level registry and
+    // install/use blocker by acknowledging the bounded runtime core plus
+    // install/use evidence rows. Paid public marketplace and billing/settlement
+    // blockers remain, so green remains exactly 31.
     // The 2026-06-21.3 demand-provenance broad-coverage pass flips
     // proof.demand_provenance.v1 yellow -> green: GET /api/public/demand-provenance
     // now carries the typed internal/external/unlabeled split + reconciliation
@@ -416,9 +415,8 @@ describe('public product promises document', () => {
     )
     expect(agenticNpmPromise?.blockerRefs).toEqual(
       expect.arrayContaining([
-        'blocker.product_promises.agentic_npm_registry_not_live',
-        'blocker.product_promises.agentic_npm_live_registry_install_use_runtime_missing',
         'blocker.product_promises.agentic_npm_billing_settlement_missing',
+        'blocker.product_promises.agentic_npm_paid_public_marketplace_missing',
       ]),
     )
     expect(agenticNpmPromise?.evidenceRefs).toEqual(
@@ -428,7 +426,7 @@ describe('public product promises document', () => {
       ]),
     )
     expect(agenticNpmPromise?.safeCopy).toContain(
-      'inert source-level resolver + verification-on-compose core exists',
+      'bounded source-level registry + install/use runtime core exists',
     )
     const currentCopy = [
       decoded.currentMonorepoStatus.summary,
@@ -775,9 +773,8 @@ describe('public product promises document', () => {
           promiseId: 'marketplace.agentic_npm_module_registry.v1',
           state: 'planned',
           blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.agentic_npm_registry_not_live',
-            'blocker.product_promises.agentic_npm_live_registry_install_use_runtime_missing',
             'blocker.product_promises.agentic_npm_billing_settlement_missing',
+            'blocker.product_promises.agentic_npm_paid_public_marketplace_missing',
           ]),
           evidenceRefs: expect.arrayContaining([
             'apps/openagents.com/workers/api/src/agentic-npm-composition-runtime.ts',
