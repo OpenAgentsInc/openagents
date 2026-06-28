@@ -14,9 +14,6 @@ export const GLM_LIVE_ADAPTIVE_STRESS_RUNNER_SCHEMA =
 export const GLM_LIVE_ADAPTIVE_STRESS_ARTIFACT_SCHEMA =
   'openagents.khala.glm_live_adaptive_stress_artifact.v0_1' as const
 
-export const GLM_LIVE_ADAPTIVE_STRESS_SUPERVISOR_SCHEMA =
-  'openagents.khala.glm_live_adaptive_stress_supervisor_tick.v0_1' as const
-
 export const GLM_REAP_SERVED_MODEL = 'openagents/glm-5.2-reap-504b' as const
 
 export const GLM_LIVE_ADAPTIVE_STRESS_WINDOW_BREAKER_MAX_OBSERVATIONS = 3
@@ -39,18 +36,6 @@ export type GlmLiveAdaptiveStressDecisionReason =
   | 'error_rate_over_budget'
   | 'external_preemption_observed'
   | 'overload_failures_observed'
-
-export type GlmLiveAdaptiveStressSupervisorAction =
-  | 'dispatch_next_window'
-  | 'yield_to_external'
-  | 'complete'
-
-export type GlmLiveAdaptiveStressSupervisorReason =
-  | 'continuous_window_ready'
-  | 'external_demand_active'
-  | 'max_ticks_completed'
-  | 'previous_backoff_carried_forward'
-  | 'previous_window_clean'
 
 export type GlmLiveAdaptiveStressObservation = Readonly<{
   requestRef: string
@@ -147,31 +132,6 @@ export type GlmLiveAdaptiveStressArtifact = Readonly<{
   observations: ReadonlyArray<GlmLiveAdaptiveStressObservation>
 }>
 
-export type GlmLiveAdaptiveStressSupervisorTick = Readonly<{
-  schema: typeof GLM_LIVE_ADAPTIVE_STRESS_SUPERVISOR_SCHEMA
-  telemetrySchema: typeof GLM_CONTINUOUS_STRESS_TELEMETRY_SCHEMA
-  publicSafe: true
-  generatedAt: string
-  runIdPrefix: string
-  tickIndex: number
-  maxTicks: number
-  cadenceMs: number
-  action: GlmLiveAdaptiveStressSupervisorAction
-  nextRunId: string | null
-  nextEarliestStartAt: string | null
-  demandKind: typeof GLM_STRESS_DEMAND_KIND
-  demandSource: typeof GLM_STRESS_DEMAND_SOURCE
-  demandClient: string
-  model: string
-  minConcurrency: number
-  maxConcurrency: number
-  recommendedInitialConcurrency: number
-  previousRunId: string | null
-  previousFinalConcurrency: number | null
-  previousSummary: GlmLiveAdaptiveStressSummary | null
-  reasonRefs: ReadonlyArray<string>
-}>
-
 const positiveIntegerOr = (value: number, fallback: number): number =>
   Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback
 
@@ -189,11 +149,6 @@ const reasonRefs = (
   reasons: ReadonlyArray<GlmLiveAdaptiveStressDecisionReason>,
 ): ReadonlyArray<string> =>
   reasons.map(reason => `runner.glm_live_adaptive_stress.${reason}`)
-
-const supervisorReasonRefs = (
-  reasons: ReadonlyArray<GlmLiveAdaptiveStressSupervisorReason>,
-): ReadonlyArray<string> =>
-  reasons.map(reason => `supervisor.glm_live_adaptive_stress.${reason}`)
 
 const nextLowerConcurrency = (
   currentConcurrency: number,
@@ -541,102 +496,3 @@ export const buildGlmLiveAdaptiveStressArtifact = (input: {
   windows: input.windows,
   observations: input.observations,
 })
-
-export const buildGlmLiveAdaptiveStressSupervisorTick = (input: {
-  readonly generatedAt: string
-  readonly runIdPrefix: string
-  readonly tickIndex: number
-  readonly maxTicks: number
-  readonly cadenceMs: number
-  readonly model: string
-  readonly initialConcurrency: number
-  readonly minConcurrency: number
-  readonly maxConcurrency: number
-  readonly externalDemandActive: boolean
-  readonly previousArtifact?: GlmLiveAdaptiveStressArtifact | undefined
-}): GlmLiveAdaptiveStressSupervisorTick => {
-  const tickIndex = Math.max(0, Math.floor(input.tickIndex))
-  const maxTicks = Math.max(0, Math.floor(input.maxTicks))
-  const cadenceMs = positiveIntegerOr(input.cadenceMs, 60_000)
-  const minConcurrency = positiveIntegerOr(input.minConcurrency, 1)
-  const maxConcurrency = Math.max(
-    minConcurrency,
-    positiveIntegerOr(input.maxConcurrency, minConcurrency),
-  )
-  const previousFinalConcurrency =
-    input.previousArtifact === undefined
-      ? null
-      : boundedConcurrency(
-          input.previousArtifact.finalConcurrency,
-          minConcurrency,
-          maxConcurrency,
-        )
-  const carriedConcurrency =
-    previousFinalConcurrency ??
-    boundedConcurrency(input.initialConcurrency, minConcurrency, maxConcurrency)
-  const previousSummary =
-    input.previousArtifact === undefined ? null : input.previousArtifact.summary
-  const previousHadBackoff =
-    previousSummary !== null &&
-    (previousSummary.failedCount > 0 || previousSummary.preemptedCount > 0)
-  const previousWasClean =
-    previousSummary !== null &&
-    previousSummary.failedCount === 0 &&
-    previousSummary.preemptedCount === 0 &&
-    previousSummary.okCount > 0
-  const action: GlmLiveAdaptiveStressSupervisorAction =
-    tickIndex >= maxTicks
-      ? 'complete'
-      : input.externalDemandActive
-        ? 'yield_to_external'
-        : 'dispatch_next_window'
-  const recommendedInitialConcurrency =
-    action === 'yield_to_external' || action === 'complete'
-      ? minConcurrency
-      : carriedConcurrency
-  const nextEarliestStartAt =
-    action === 'complete'
-      ? null
-      : new Date(Date.parse(input.generatedAt) + cadenceMs).toISOString()
-  const reasons: Array<GlmLiveAdaptiveStressSupervisorReason> = [
-    ...(action === 'complete' ? (['max_ticks_completed'] as const) : []),
-    ...(action === 'yield_to_external'
-      ? (['external_demand_active'] as const)
-      : []),
-    ...(action === 'dispatch_next_window'
-      ? (['continuous_window_ready'] as const)
-      : []),
-    ...(previousHadBackoff
-      ? (['previous_backoff_carried_forward'] as const)
-      : []),
-    ...(previousWasClean ? (['previous_window_clean'] as const) : []),
-  ]
-
-  return {
-    schema: GLM_LIVE_ADAPTIVE_STRESS_SUPERVISOR_SCHEMA,
-    telemetrySchema: GLM_CONTINUOUS_STRESS_TELEMETRY_SCHEMA,
-    publicSafe: true,
-    generatedAt: input.generatedAt,
-    runIdPrefix: input.runIdPrefix,
-    tickIndex,
-    maxTicks,
-    cadenceMs,
-    action,
-    nextRunId:
-      action === 'dispatch_next_window'
-        ? `${input.runIdPrefix}-${String(tickIndex + 1).padStart(4, '0')}`
-        : null,
-    nextEarliestStartAt,
-    demandKind: GLM_STRESS_DEMAND_KIND,
-    demandSource: GLM_STRESS_DEMAND_SOURCE,
-    demandClient: input.runIdPrefix,
-    model: input.model,
-    minConcurrency,
-    maxConcurrency,
-    recommendedInitialConcurrency,
-    previousRunId: input.previousArtifact?.runId ?? null,
-    previousFinalConcurrency,
-    previousSummary,
-    reasonRefs: supervisorReasonRefs([...new Set(reasons)]),
-  }
-}

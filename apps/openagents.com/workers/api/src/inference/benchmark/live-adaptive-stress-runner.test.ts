@@ -2,10 +2,8 @@ import { describe, expect, test } from 'vitest'
 
 import {
   GLM_LIVE_ADAPTIVE_STRESS_ARTIFACT_SCHEMA,
-  GLM_LIVE_ADAPTIVE_STRESS_SUPERVISOR_SCHEMA,
   GLM_REAP_SERVED_MODEL,
   buildGlmLiveAdaptiveStressArtifact,
-  buildGlmLiveAdaptiveStressSupervisorTick,
   classifyGlmLiveAdaptiveStressFailure,
   decideGlmLiveAdaptiveStressConcurrency,
   decideGlmLiveAdaptiveStressWindowBreaker,
@@ -320,131 +318,5 @@ describe('GLM live adaptive stress runner utilities (#6317)', () => {
     )
     expect(classifyGlmLiveAdaptiveStressFailure(429, 0)).toBe('rate_limited')
     expect(classifyGlmLiveAdaptiveStressFailure(null, 28)).toBe('timeout')
-  })
-
-  test('supervisor dispatches the next continuous window with public telemetry only', () => {
-    const previousArtifact = buildGlmLiveAdaptiveStressArtifact({
-      demandClient: 'issue6317-continuous',
-      durationMs: 60_000,
-      finalConcurrency: 3,
-      generatedAt: '2026-06-27T15:00:00.000Z',
-      initialConcurrency: 2,
-      maxConcurrency: 6,
-      maxTokens: 512,
-      minConcurrency: 2,
-      model: 'openagents/khala',
-      observations: [okObservation('glm-clean-1', 1200)],
-      runId: 'issue6317-continuous-0001',
-      windowMs: 60_000,
-      windows: [],
-    })
-
-    const tick = buildGlmLiveAdaptiveStressSupervisorTick({
-      cadenceMs: 60_000,
-      externalDemandActive: false,
-      generatedAt: '2026-06-27T15:01:00.000Z',
-      initialConcurrency: 2,
-      maxConcurrency: 6,
-      maxTicks: 10,
-      minConcurrency: 2,
-      model: 'openagents/khala',
-      previousArtifact,
-      runIdPrefix: 'issue6317-continuous',
-      tickIndex: 1,
-    })
-
-    expect(tick).toMatchObject({
-      action: 'dispatch_next_window',
-      demandKind: GLM_STRESS_DEMAND_KIND,
-      demandSource: GLM_STRESS_DEMAND_SOURCE,
-      nextEarliestStartAt: '2026-06-27T15:02:00.000Z',
-      nextRunId: 'issue6317-continuous-0002',
-      previousFinalConcurrency: 3,
-      previousRunId: 'issue6317-continuous-0001',
-      publicSafe: true,
-      recommendedInitialConcurrency: 3,
-      schema: GLM_LIVE_ADAPTIVE_STRESS_SUPERVISOR_SCHEMA,
-      telemetrySchema: GLM_CONTINUOUS_STRESS_TELEMETRY_SCHEMA,
-    })
-    expect(tick.previousSummary).toMatchObject({
-      failedCount: 0,
-      okCount: 1,
-      totalTokens: 1200,
-    })
-    expect(tick.reasonRefs).toEqual([
-      'supervisor.glm_live_adaptive_stress.continuous_window_ready',
-      'supervisor.glm_live_adaptive_stress.previous_window_clean',
-    ])
-    expect(JSON.stringify(tick)).not.toMatch(
-      /prompt|completion|bearer|secret|https?:\/\//i,
-    )
-  })
-
-  test('supervisor yields instantly to external demand and keeps stress at the floor', () => {
-    const previousArtifact = buildGlmLiveAdaptiveStressArtifact({
-      demandClient: 'issue6317-continuous',
-      durationMs: 60_000,
-      finalConcurrency: 5,
-      generatedAt: '2026-06-27T15:00:00.000Z',
-      initialConcurrency: 5,
-      maxConcurrency: 6,
-      maxTokens: 512,
-      minConcurrency: 2,
-      model: 'openagents/khala',
-      observations: [overloadObservation('failed-before-yield')],
-      runId: 'issue6317-continuous-0003',
-      windowMs: 60_000,
-      windows: [],
-    })
-
-    const tick = buildGlmLiveAdaptiveStressSupervisorTick({
-      cadenceMs: 60_000,
-      externalDemandActive: true,
-      generatedAt: '2026-06-27T15:04:00.000Z',
-      initialConcurrency: 5,
-      maxConcurrency: 6,
-      maxTicks: 10,
-      minConcurrency: 2,
-      model: 'openagents/khala',
-      previousArtifact,
-      runIdPrefix: 'issue6317-continuous',
-      tickIndex: 4,
-    })
-
-    expect(tick).toMatchObject({
-      action: 'yield_to_external',
-      nextRunId: null,
-      recommendedInitialConcurrency: 2,
-    })
-    expect(tick.reasonRefs).toEqual([
-      'supervisor.glm_live_adaptive_stress.external_demand_active',
-      'supervisor.glm_live_adaptive_stress.previous_backoff_carried_forward',
-    ])
-  })
-
-  test('supervisor completes after the configured bounded tick budget', () => {
-    const tick = buildGlmLiveAdaptiveStressSupervisorTick({
-      cadenceMs: 60_000,
-      externalDemandActive: false,
-      generatedAt: '2026-06-27T15:10:00.000Z',
-      initialConcurrency: 2,
-      maxConcurrency: 6,
-      maxTicks: 10,
-      minConcurrency: 2,
-      model: 'openagents/khala',
-      runIdPrefix: 'issue6317-continuous',
-      tickIndex: 10,
-    })
-
-    expect(tick).toMatchObject({
-      action: 'complete',
-      nextEarliestStartAt: null,
-      nextRunId: null,
-      previousRunId: null,
-      recommendedInitialConcurrency: 2,
-    })
-    expect(tick.reasonRefs).toEqual([
-      'supervisor.glm_live_adaptive_stress.max_ticks_completed',
-    ])
   })
 })
