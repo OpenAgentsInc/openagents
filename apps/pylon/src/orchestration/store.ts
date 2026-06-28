@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite"
+import { createHash } from "node:crypto"
 
 export const ORCHESTRATION_SCHEMA_VERSION = 1
 
@@ -30,6 +31,25 @@ export type OrchestrationTask = {
   result: string | null
   createdAt: string
   updatedAt: string
+}
+
+export type VirtualHead = {
+  repo: string
+  branch: string
+  baseCommit: string
+  projectedHead: string
+  pendingTaskIds: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+export type VirtualHeadReservation = {
+  repo: string
+  branch: string
+  taskId: string
+  branchFrom: string
+  projectedHead: string
+  pendingTaskIds: string[]
 }
 
 export type DispatchContextStatus =
@@ -94,6 +114,8 @@ const parseJsonArray = (value: string): string[] => {
   return Array.isArray(parsed) ? parsed.filter((entry): entry is string => typeof entry === "string") : []
 }
 
+const parsePendingTaskIds = (value: string): string[] => [...new Set(parseJsonArray(value))]
+
 const parseSpec = (value: string): OrchestrationTaskSpec => {
   const parsed: unknown = JSON.parse(value)
   if (typeof parsed !== "object" || parsed === null) throw new Error("invalid orchestration task spec")
@@ -128,6 +150,16 @@ type DispatchContextRow = {
   updated_at: string
 }
 
+type VirtualHeadRow = {
+  repo: string
+  branch: string
+  base_commit: string
+  projected_head: string
+  pending_task_ids_json: string
+  created_at: string
+  updated_at: string
+}
+
 const taskFromRow = (row: TaskRow): OrchestrationTask => ({
   id: row.id,
   parentId: row.parent_id,
@@ -155,6 +187,24 @@ const contextFromRow = (row: DispatchContextRow): DispatchContext => ({
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 })
+
+const virtualHeadFromRow = (row: VirtualHeadRow): VirtualHead => ({
+  repo: row.repo,
+  branch: row.branch,
+  baseCommit: row.base_commit,
+  projectedHead: row.projected_head,
+  pendingTaskIds: parsePendingTaskIds(row.pending_task_ids_json),
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+})
+
+const virtualHeadProjectionRef = (input: { repo: string; branch: string; taskId: string; branchFrom: string }): string => {
+  const digest = createHash("sha256")
+    .update(`${input.repo}\0${input.branch}\0${input.taskId}\0${input.branchFrom}`)
+    .digest("hex")
+    .slice(0, 20)
+  return `virtual-head.${digest}`
+}
 
 export class PylonOrchestrationStore {
   constructor(private readonly db: SqliteDatabase) {}
@@ -210,6 +260,16 @@ export class PylonOrchestrationStore {
       );
       CREATE INDEX IF NOT EXISTS idx_pylon_orchestration_messages_thread
         ON pylon_orchestration_messages(thread_id, created_at);
+      CREATE TABLE IF NOT EXISTS pylon_orchestration_virtual_heads (
+        repo TEXT NOT NULL,
+        branch TEXT NOT NULL,
+        base_commit TEXT NOT NULL,
+        projected_head TEXT NOT NULL,
+        pending_task_ids_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (repo, branch)
+      );
     `)
     this.db
       .query("INSERT OR REPLACE INTO pylon_orchestration_meta (key, value) VALUES ('schema_version', $version)")
@@ -257,10 +317,20 @@ export class PylonOrchestrationStore {
     return (rows as TaskRow[]).map(taskFromRow)
   }
 
+  updateTaskSpec(id: string, spec: OrchestrationTaskSpec, now: Date = new Date()): OrchestrationTask {
+    this.db
+      .query("UPDATE pylon_orchestration_tasks SET spec_json = $spec, updated_at = $now WHERE id = $id")
+      .run({ $id: id, $spec: JSON.stringify(spec), $now: iso(now) })
+    const task = this.getTask(id)
+    if (task === null) throw new Error(`unknown orchestration task: ${id}`)
+    return task
+  }
+
   completeTask(id: string, result: string | null = null, now: Date = new Date()): void {
     this.db
       .query("UPDATE pylon_orchestration_tasks SET status = 'completed', result_json = $result, updated_at = $now WHERE id = $id")
       .run({ $id: id, $result: result, $now: iso(now) })
+    this.releaseVirtualHeadTask(id, now)
     this.promoteReadyTasks(now)
   }
 
@@ -352,6 +422,106 @@ export class PylonOrchestrationStore {
     } catch (error) {
       this.db.run("ROLLBACK")
       throw error
+    }
+  }
+
+  getVirtualHead(repo: string, branch: string): VirtualHead | null {
+    const row = this.db
+      .query("SELECT * FROM pylon_orchestration_virtual_heads WHERE repo = $repo AND branch = $branch")
+      .get({ $repo: repo, $branch: branch }) as VirtualHeadRow | null
+    return row === null ? null : virtualHeadFromRow(row)
+  }
+
+  listVirtualHeads(): VirtualHead[] {
+    const rows = this.db
+      .query("SELECT * FROM pylon_orchestration_virtual_heads ORDER BY repo ASC, branch ASC")
+      .all() as VirtualHeadRow[]
+    return rows.map(virtualHeadFromRow)
+  }
+
+  seedVirtualHead(input: { repo: string; branch: string; baseCommit: string; projectedHead?: string; now?: Date }): VirtualHead {
+    const now = iso(input.now)
+    const projectedHead = input.projectedHead ?? input.baseCommit
+    this.db
+      .query(`
+        INSERT INTO pylon_orchestration_virtual_heads
+          (repo, branch, base_commit, projected_head, pending_task_ids_json, created_at, updated_at)
+        VALUES
+          ($repo, $branch, $baseCommit, $projectedHead, '[]', $createdAt, $updatedAt)
+        ON CONFLICT(repo, branch) DO UPDATE SET
+          projected_head = excluded.projected_head,
+          updated_at = excluded.updated_at
+      `)
+      .run({
+        $repo: input.repo,
+        $branch: input.branch,
+        $baseCommit: input.baseCommit,
+        $projectedHead: projectedHead,
+        $createdAt: now,
+        $updatedAt: now,
+      })
+    const virtualHead = this.getVirtualHead(input.repo, input.branch)
+    if (virtualHead === null) throw new Error(`failed to seed virtual head for ${input.repo}#${input.branch}`)
+    return virtualHead
+  }
+
+  reserveVirtualHeadForTask(taskId: string, now: Date = new Date()): VirtualHeadReservation | null {
+    const task = this.getTask(taskId)
+    if (task === null) throw new Error(`unknown orchestration task: ${taskId}`)
+    const { repo, branch, baseCommit } = task.spec
+    if (repo === undefined || branch === undefined || baseCommit === undefined) return null
+
+    const at = iso(now)
+    this.db.run("BEGIN IMMEDIATE")
+    try {
+      const current =
+        this.getVirtualHead(repo, branch) ??
+        this.seedVirtualHead({ repo, branch, baseCommit, now })
+      const branchFrom = current.projectedHead
+      const projectedHead = virtualHeadProjectionRef({ repo, branch, taskId, branchFrom })
+      const pendingTaskIds = [...new Set([...current.pendingTaskIds, taskId])]
+      this.db
+        .query(`
+          UPDATE pylon_orchestration_virtual_heads
+             SET projected_head = $projectedHead,
+                 pending_task_ids_json = $pendingTaskIds,
+                 updated_at = $updatedAt
+           WHERE repo = $repo AND branch = $branch
+        `)
+        .run({
+          $repo: repo,
+          $branch: branch,
+          $projectedHead: projectedHead,
+          $pendingTaskIds: JSON.stringify(pendingTaskIds),
+          $updatedAt: at,
+        })
+      this.updateTaskSpec(taskId, { ...task.spec, baseCommit: branchFrom }, now)
+      this.db.run("COMMIT")
+      return { repo, branch, taskId, branchFrom, projectedHead, pendingTaskIds }
+    } catch (error) {
+      this.db.run("ROLLBACK")
+      throw error
+    }
+  }
+
+  releaseVirtualHeadTask(taskId: string, now: Date = new Date()): void {
+    const at = iso(now)
+    for (const virtualHead of this.listVirtualHeads()) {
+      if (!virtualHead.pendingTaskIds.includes(taskId)) continue
+      const pendingTaskIds = virtualHead.pendingTaskIds.filter((id) => id !== taskId)
+      this.db
+        .query(`
+          UPDATE pylon_orchestration_virtual_heads
+             SET pending_task_ids_json = $pendingTaskIds,
+                 updated_at = $updatedAt
+           WHERE repo = $repo AND branch = $branch
+        `)
+        .run({
+          $repo: virtualHead.repo,
+          $branch: virtualHead.branch,
+          $pendingTaskIds: JSON.stringify(pendingTaskIds),
+          $updatedAt: at,
+        })
     }
   }
 
