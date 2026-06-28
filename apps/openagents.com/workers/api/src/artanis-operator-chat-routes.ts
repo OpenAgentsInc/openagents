@@ -53,6 +53,7 @@ import {
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import type { InferenceMessage, InferenceResult } from './inference/provider-adapter'
 import { openAgentsDatabase } from './runtime'
+import { randomUuid } from './runtime-primitives'
 
 type OperatorArtanisChatEnv = Readonly<{
   OPENAGENTS_DB: D1Database
@@ -449,7 +450,7 @@ export const makeOperatorArtanisChatRoutes = <
                 content: message.content,
                 role: message.role,
               })),
-              responseId: `operator-artanis:${crypto.randomUUID()}`,
+              responseId: `operator-artanis:${randomUuid()}`,
               result: {
                 content: turn.reply,
                 finishReason: 'stop',
