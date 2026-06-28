@@ -10,6 +10,11 @@ import {
   systemEmailRuntime,
 } from './email'
 import { isEmailSuppressed, readEmailPreferenceAllows } from './email-campaigns'
+import {
+  type EmailSequenceSendRow,
+  type EmailSequenceSendServiceDependencies,
+  makeEmailSequenceSendService,
+} from './email-sequence-send-service'
 import { parseJsonRecord } from './json-boundary'
 import { isoTimestampAfterIso } from './runtime-primitives'
 
@@ -29,6 +34,7 @@ export type EmailCampaignDispatcherOptions = Readonly<{
   maxAttempts?: number | undefined
   resend?: ResendEmailConfig | undefined
   runtime?: EmailRuntime | undefined
+  sequenceSend?: EmailSequenceSendServiceDependencies | undefined
 }>
 
 type DueCampaignSendRow = Readonly<{
@@ -336,7 +342,25 @@ type ClaimedDispatchOptions = Readonly<{
   maxAttempts: number
   resend?: ResendEmailConfig | undefined
   runtime: EmailRuntime
+  sequenceSend?: EmailSequenceSendServiceDependencies | undefined
 }>
+
+const dueCampaignSendRowToSequenceRow = (
+  row: DueCampaignSendRow,
+  metadata: Record<string, unknown> | null | undefined,
+): EmailSequenceSendRow => ({
+  campaignId: row.campaign_id,
+  displayName: metadataString(metadata, 'displayName'),
+  email: row.email,
+  enrollmentId: row.enrollment_id,
+  idempotencyKey: row.idempotency_key,
+  sendId: row.id,
+  sourceAuthorityRef: row.source_authority_ref,
+  stepId: row.step_id,
+  stepKey: row.step_key,
+  templateSlug: row.template_slug,
+  userId: row.user_id,
+})
 
 const dispatchClaimedCampaignSend = (
   db: D1Database,
@@ -409,6 +433,48 @@ const dispatchClaimedCampaignSend = (
 
     const kind = dripKindFromRow(row)
 
+    const metadata = parseJsonRecord(row.metadata_json)
+
+    if (kind === null && input.sequenceSend !== undefined) {
+      const sequenceSend = input.sequenceSend
+      const outcome = yield*
+        makeEmailSequenceSendService(
+          sequenceSend,
+        ).dispatchSequenceSend(dueCampaignSendRowToSequenceRow(row, metadata))
+
+      if (outcome.kind === 'dry_run') {
+        yield* markCampaignSendSkipped(
+          db,
+          row,
+          now,
+          'email_sequence_send_disabled',
+          'Email sequence send service is disabled.',
+          'skipped',
+        )
+
+        return { ...emptyResult(), claimed: 1, skipped: 1 }
+      }
+
+      if (outcome.kind === 'sent') {
+        yield* markCampaignSendSent(db, row, now, outcome.result)
+
+        return { ...emptyResult(), claimed: 1, sent: 1 }
+      }
+
+      const failedState = yield* markCampaignSendFailedOrRetry(
+        db,
+        row,
+        now,
+        attemptCount,
+        input.maxAttempts,
+        outcome.result,
+      )
+
+      return failedState === 'retried'
+        ? { ...emptyResult(), claimed: 1, retried: 1 }
+        : { ...emptyResult(), claimed: 1, failed: 1 }
+    }
+
     if (kind === null) {
       yield* markCampaignSendSkipped(
         db,
@@ -422,7 +488,6 @@ const dispatchClaimedCampaignSend = (
       return { ...emptyResult(), claimed: 1, skipped: 1 }
     }
 
-    const metadata = parseJsonRecord(row.metadata_json)
     const result = yield* sendDripCampaignEmailWithLedger(
       db,
       input.resend,
@@ -491,6 +556,7 @@ export const dispatchDueEmailCampaignSends = (
       maxAttempts: options.maxAttempts ?? 3,
       resend: options.resend,
       runtime,
+      sequenceSend: options.sequenceSend,
     }
 
     const results = yield* Effect.forEach(
