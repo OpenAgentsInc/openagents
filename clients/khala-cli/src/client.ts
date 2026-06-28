@@ -3,6 +3,8 @@ import { validatePublicConversation } from "./bounds.js"
 import { decodeOpenAiFrame, decodePublicFrame, readSseFrames, type StreamFrameMetadata } from "./sse.js"
 import {
   ARTANIS_CHAT_PATH,
+  ARTANIS_APPROVAL_GATES_PATH,
+  ARTANIS_CONSOLE_PATH,
   ArtanisChatRequest,
   ArtanisChatResponse,
   BYOK_ACK_HEADER,
@@ -18,6 +20,9 @@ import {
   OpenAiModelsResponse,
   type ArtanisTurnOptions,
   type ArtanisTurnResult,
+  type ArtanisApprovalGateArmOptions,
+  type ArtanisApprovalGateCommandOptions,
+  type ArtanisApprovalGateDecisionOptions,
   type ChatClientOptions,
   type ChatTurnOptions,
   type ChatTurnResult,
@@ -26,6 +31,7 @@ import {
   type KhalaFeedbackSubmitOptions,
   type KhalaStreamUsage,
 } from "./types.js"
+import { artanisApprovalGateDecisionPath } from "./types.js"
 
 const MAX_REQUEST_RETRIES = 5
 const RETRY_DELAYS_MS = [400, 1_000, 2_000, 4_000, 8_000] as const
@@ -116,6 +122,90 @@ export function runArtanisTurn(options: ArtanisTurnOptions): Effect.Effect<Artan
       traceRef: decoded.traceRef ?? readTraceRef(response),
     }
   })
+}
+
+export function fetchArtanisConsole(
+  options: ArtanisApprovalGateCommandOptions,
+): Effect.Effect<unknown, KhalaCliError> {
+  return Effect.gen(function* () {
+    const token = yield* requireOwnerToken(options.token)
+    const response = yield* request({
+      fetch: options.fetch,
+      url: urlFor(options.baseUrl, ARTANIS_CONSOLE_PATH),
+      init: {
+        method: "GET",
+        headers: {
+          accept: "application/json",
+          authorization: `Bearer ${token}`,
+        },
+      },
+    })
+    return yield* readJsonResponse(response, "Artanis console response")
+  })
+}
+
+export function armArtanisPylonDispatch(
+  options: ArtanisApprovalGateArmOptions,
+): Effect.Effect<unknown, KhalaCliError> {
+  return Effect.gen(function* () {
+    const token = yield* requireOwnerToken(options.token)
+    const response = yield* request({
+      fetch: options.fetch,
+      url: urlFor(options.baseUrl, ARTANIS_APPROVAL_GATES_PATH),
+      init: {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          ...(options.expiresInHours === undefined
+            ? {}
+            : { expiresInHours: options.expiresInHours }),
+        }),
+      },
+    })
+    return yield* readJsonResponse(response, "Artanis approval-gate arm response")
+  })
+}
+
+export function decideArtanisApprovalGate(
+  options: ArtanisApprovalGateDecisionOptions,
+): Effect.Effect<unknown, KhalaCliError> {
+  return Effect.gen(function* () {
+    const token = yield* requireOwnerToken(options.token)
+    const gateRef = options.gateRef.trim()
+    if (gateRef.length === 0) {
+      return yield* new KhalaCliError({
+        reason: "Artanis approval-gate decision requires a gate ref.",
+        code: "missing_gate_ref",
+      })
+    }
+    const response = yield* request({
+      fetch: options.fetch,
+      url: urlFor(options.baseUrl, artanisApprovalGateDecisionPath(gateRef, options.action)),
+      init: {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          authorization: `Bearer ${token}`,
+        },
+      },
+    })
+    return yield* readJsonResponse(response, "Artanis approval-gate decision response")
+  })
+}
+
+function requireOwnerToken(token: string | undefined): Effect.Effect<string, KhalaCliError> {
+  const trimmed = token?.trim()
+  if (trimmed === undefined || trimmed.length === 0) {
+    return new KhalaCliError({
+      reason: "Artanis orchestration commands require the owner agent token. Run `khala login` to sign in (or pass --token / set OPENAGENTS_AGENT_TOKEN).",
+      code: "missing_token",
+    })
+  }
+  return Effect.succeed(trimmed)
 }
 
 export function fetchModels(options: Pick<ChatClientOptions, "baseUrl" | "fetch">): Effect.Effect<unknown, KhalaCliError> {

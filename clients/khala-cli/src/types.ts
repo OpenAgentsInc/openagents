@@ -124,6 +124,14 @@ export type KhalaTokensResponse = typeof KhalaTokensResponse.Type
 //   body  { messages: [{ role, content }] }
 //   ->    { reply }   (owner-only operator persona, NOT public Khala roleplay)
 export const ARTANIS_CHAT_PATH = "/api/operator/artanis/chat"
+export const ARTANIS_CONSOLE_PATH = "/api/operator/artanis/console"
+export const ARTANIS_APPROVAL_GATES_PATH =
+  "/api/operator/artanis/approval-gates"
+export const artanisApprovalGateDecisionPath = (
+  gateRef: string,
+  action: "approve" | "reject",
+): string =>
+  `${ARTANIS_APPROVAL_GATES_PATH}/${encodeURIComponent(gateRef)}/${action}`
 
 export const ArtanisChatRequest = S.Struct({
   messages: S.Array(KhalaChatMessage),
@@ -135,6 +143,25 @@ export const ArtanisChatResponse = S.Struct({
   traceRef: S.optional(S.String),
 })
 export type ArtanisChatResponse = typeof ArtanisChatResponse.Type
+
+export type ArtanisApprovalGateAction = "approve" | "reject"
+
+export interface ArtanisApprovalGateCommandOptions {
+  readonly baseUrl: string
+  readonly token: string
+  readonly fetch?: typeof fetch | undefined
+}
+
+export interface ArtanisApprovalGateDecisionOptions
+  extends ArtanisApprovalGateCommandOptions {
+  readonly action: ArtanisApprovalGateAction
+  readonly gateRef: string
+}
+
+export interface ArtanisApprovalGateArmOptions
+  extends ArtanisApprovalGateCommandOptions {
+  readonly expiresInHours?: number | undefined
+}
 
 // OpenAgents device-auth (`khala login`, #6363, epic #6359).
 //

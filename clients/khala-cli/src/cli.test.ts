@@ -22,6 +22,143 @@ describe("Khala CLI spawn capability answer", () => {
 })
 
 describe("Khala CLI info diagnostics", () => {
+  test("routes Artanis approval-gate status through the owner console endpoint", async () => {
+    const authHeaders: Array<string | null> = []
+    const server = Bun.serve({
+      port: 0,
+      fetch: request => {
+        authHeaders.push(request.headers.get("authorization"))
+        expect(new URL(request.url).pathname).toBe("/api/operator/artanis/console")
+        return Response.json({
+          ledgerRef: "ledger.public.artanis.approval_gates",
+          gateCount: 1,
+        })
+      },
+    })
+
+    const originalWrite = process.stdout.write
+    let stdout = ""
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      stdout += String(chunk)
+      return true
+    }) as typeof process.stdout.write
+    try {
+      const exitCode = await runKhalaCli([
+        "--json",
+        "--base-url",
+        `http://127.0.0.1:${server.port}`,
+        "artanis",
+        "status",
+      ], {
+        OPENAGENTS_AGENT_TOKEN: "oa_agent_artanis_status_test",
+      })
+      expect(exitCode).toBe(0)
+    } finally {
+      process.stdout.write = originalWrite
+      server.stop(true)
+    }
+
+    expect(authHeaders).toEqual(["Bearer oa_agent_artanis_status_test"])
+    expect(JSON.parse(stdout).gateCount).toBe(1)
+  })
+
+  test("arms Artanis pylon dispatch through the approval-gate create endpoint", async () => {
+    const requests: Array<{ body: unknown; path: string }> = []
+    const server = Bun.serve({
+      port: 0,
+      fetch: async request => {
+        requests.push({
+          body: await request.json(),
+          path: new URL(request.url).pathname,
+        })
+        expect(request.headers.get("authorization")).toBe("Bearer oa_agent_artanis_arm_test")
+        return Response.json({
+          ok: true,
+          armedGate: {
+            expiresAtDisplay: "soon",
+            gateRef: "gate.public.artanis.arm_pylon_dispatch.test",
+            kind: "pylon_job_dispatch",
+            state: "approved",
+          },
+        })
+      },
+    })
+
+    const originalWrite = process.stdout.write
+    let stdout = ""
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      stdout += String(chunk)
+      return true
+    }) as typeof process.stdout.write
+    try {
+      const exitCode = await runKhalaCli([
+        "--json",
+        "--expires-hours",
+        "12",
+        "--base-url",
+        `http://127.0.0.1:${server.port}`,
+        "artanis",
+        "arm-pylon-dispatch",
+      ], {
+        OPENAGENTS_AGENT_TOKEN: "oa_agent_artanis_arm_test",
+      })
+      expect(exitCode).toBe(0)
+    } finally {
+      process.stdout.write = originalWrite
+      server.stop(true)
+    }
+
+    expect(requests).toEqual([{
+      body: { expiresInHours: 12 },
+      path: "/api/operator/artanis/approval-gates",
+    }])
+    expect(JSON.parse(stdout).armedGate.gateRef).toBe("gate.public.artanis.arm_pylon_dispatch.test")
+  })
+
+  test("approves a pending Artanis gate through the gated decision endpoint", async () => {
+    const paths: Array<string> = []
+    const server = Bun.serve({
+      port: 0,
+      fetch: request => {
+        paths.push(new URL(request.url).pathname)
+        expect(request.method).toBe("POST")
+        expect(request.headers.get("authorization")).toBe("Bearer oa_agent_artanis_approve_test")
+        return Response.json({
+          ledgerRef: "ledger.public.artanis.approval_gates",
+          gateCount: 2,
+        })
+      },
+    })
+
+    const originalWrite = process.stdout.write
+    let stdout = ""
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      stdout += String(chunk)
+      return true
+    }) as typeof process.stdout.write
+    try {
+      const exitCode = await runKhalaCli([
+        "--json",
+        "--base-url",
+        `http://127.0.0.1:${server.port}`,
+        "artanis",
+        "approve",
+        "gate.public.artanis.pending_test",
+      ], {
+        OPENAGENTS_AGENT_TOKEN: "oa_agent_artanis_approve_test",
+      })
+      expect(exitCode).toBe(0)
+    } finally {
+      process.stdout.write = originalWrite
+      server.stop(true)
+    }
+
+    expect(paths).toEqual([
+      "/api/operator/artanis/approval-gates/gate.public.artanis.pending_test/approve",
+    ])
+    expect(JSON.parse(stdout).gateCount).toBe(2)
+  })
+
   test("does not print raw agent tokens or token-bearing trace URLs", async () => {
     const dir = mkdtempSync(join(tmpdir(), "khala-info-test-"))
     const tokenPath = join(dir, "agent-token")
