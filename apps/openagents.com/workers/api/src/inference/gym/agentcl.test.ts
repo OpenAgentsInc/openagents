@@ -4,6 +4,7 @@ import {
   AGENTCL_EVAL_SCHEMA,
   AGENTCL_REPO_REUSE_GYM_EXPERIMENT,
   AGENTCL_REPO_REUSE_PLAN_SCHEMA,
+  AGENTCL_TASK_RUNNER_RESULT_SCHEMA,
   AGENTCL_VERTEX_RUNNER_PLAN_SCHEMA,
   AGENTCL_VERTEX_STRESS_REPORT_SCHEMA,
   assessAgentClLearningClaimGate,
@@ -14,6 +15,7 @@ import {
   buildAgentClVertexStressExperiment,
   runAgentClRepoReuseFixtureEval,
   runAgentClSequentialLoop,
+  runAgentClTaskRunner,
 } from './agentcl'
 
 describe('AgentCL repo-reuse gym environment', () => {
@@ -68,6 +70,13 @@ describe('AgentCL repo-reuse gym environment', () => {
     expect(result.eval.generalizationGain).toBe(-0.04)
     expect(result.eval.sequentialRun.taskAttemptCount).toBe(15)
     expect(result.eval.sequentialRun.memoryMutationCount).toBe(6)
+    expect(result.eval.taskRunner.schemaVersion).toBe(
+      AGENTCL_TASK_RUNNER_RESULT_SCHEMA,
+    )
+    expect(result.eval.taskRunner.runnerConfigId).toBe(
+      'gym:gym-agentcl-repo-reuse-two-pass-fixture-v0',
+    )
+    expect(result.eval.taskRunner.trajectoryEvaluations).toHaveLength(15)
     expect(result.eval.sequentialRun.templateLedgerRef).toBe(
       'ledger.public.artanis.continual_learning_templates',
     )
@@ -82,6 +91,48 @@ describe('AgentCL repo-reuse gym environment', () => {
     expect(result.eval.claimDiscipline.notes).toContain(
       'negative_generalization_gain_blocks_generalizes_claim',
     )
+  })
+
+  test('loads the AgentCL task sequence and evaluates trajectories through the active gym runner', () => {
+    const result = runAgentClTaskRunner(AGENTCL_REPO_REUSE_GYM_EXPERIMENT)
+
+    expect(result.fixtureRun.runSet.seamId).toBe('fixture')
+    expect(result.fixtureRun.publicSafety).toEqual({
+      safe: true,
+      violations: [],
+    })
+    expect(result.taskRunner.loadedTaskRefs).toEqual(
+      result.compiled.matrixConfig.workloads.flatMap(workload =>
+        workload === 'agentcl-source-task'
+          ? result.plan.sourceTasks.map(task => task.taskRef)
+          : workload === 'agentcl-complex-task'
+            ? result.plan.complexTasks.map(task => task.taskRef)
+            : result.plan.heldOutTasks.map(task => task.taskRef),
+      ),
+    )
+    expect(result.taskRunner.taskSequence).toHaveLength(
+      result.sequentialRun.taskAttemptCount,
+    )
+    expect(
+      result.taskRunner.taskSequence.map(entry => entry.sequenceIndex),
+    ).toEqual(Array.from({ length: 15 }, (_, index) => index + 1))
+    expect(
+      result.taskRunner.taskSequence
+        .filter(entry => entry.memoryAccess === 'read_write')
+        .map(entry => entry.taskRef),
+    ).not.toContain('agentcl.repo_reuse.held_out.mirrorcode_no_rag.v0')
+    expect(
+      result.taskRunner.trajectoryEvaluations.map(item => item.attemptRef),
+    ).toEqual(
+      result.sequentialRun.taskAttempts.map(attempt => attempt.attemptRef),
+    )
+    expect(
+      result.taskRunner.trajectoryEvaluations.every(item =>
+        item.telemetryRequestId.startsWith(
+          `bench:${result.fixtureRun.runSet.configId}:`,
+        ),
+      ),
+    ).toBe(true)
   })
 
   test('keeps held-out tasks out of read-write memory construction passes', () => {
