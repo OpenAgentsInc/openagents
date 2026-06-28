@@ -35,6 +35,11 @@
       "custom_domain": true,
     },
   ],
+  "send_email": [
+    {
+      "name": "EMAIL",
+    },
+  ],
   "vars": {
     "GITHUB_CLIENT_ID": "Ov23lirHI1DWTzZ1zT1u",
     "INFERENCE_GATEWAY_ENABLED": "true",

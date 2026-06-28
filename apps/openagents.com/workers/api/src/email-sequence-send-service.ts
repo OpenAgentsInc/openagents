@@ -30,7 +30,16 @@
 // No new migration: reuses the migration-0063 campaign send tables and the
 // existing email send ledger via the injected sender.
 
-import type { EmailLedgerSendResult } from './email'
+import { Effect } from 'effect'
+
+import {
+  type CloudflareEmailBinding,
+  type EmailLedgerSendResult,
+  type EmailRuntime,
+  RenderedEmail,
+  sendRenderedEmailViaCloudflareBindingWithLedger,
+  systemEmailRuntime,
+} from './email'
 
 export const EMAIL_SEQUENCE_SEND_PROMISE_ID =
   'autopilot_sites.native_email_sequences.v1'
@@ -87,12 +96,18 @@ export type EmailSequenceSendPlan = Readonly<{
   userId: string | null
 }>
 
+export type EmailSequenceCloudflareSenderConfig = Readonly<{
+  appOrigin: string
+  fromEmail: string
+  replyToEmail?: string | undefined
+}>
+
 // An injected sender. The real implementation wires the email ledger
 // (sendRenderedEmailViaCloudflareBindingWithLedger / a per-template sender). In
 // the default INERT state this is never called.
 export type EmailSequenceSender = (
   plan: EmailSequenceSendPlan,
-) => Promise<EmailLedgerSendResult>
+) => Effect.Effect<EmailLedgerSendResult, never>
 
 export type EmailSequenceSendOutcome =
   | Readonly<{
@@ -140,6 +155,117 @@ export type EmailSequenceSendServiceDependencies = Readonly<{
   send: EmailSequenceSender
 }>
 
+const escapeHtml = (value: string): string =>
+  value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
+
+const compactLabel = (value: string): string =>
+  value
+    .trim()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .slice(0, 120)
+
+const managePreferencesUrl = (appOrigin: string): string =>
+  `${appOrigin.replace(/\/+$/, '')}/email/preferences`
+
+export const renderEmailSequenceSend = (
+  config: EmailSequenceCloudflareSenderConfig,
+  plan: EmailSequenceSendPlan,
+): RenderedEmail => {
+  const sequenceLabel = compactLabel(plan.stepKey) || 'update'
+  const preferencesUrl = managePreferencesUrl(config.appOrigin)
+  const subject = `OpenAgents Sites: ${sequenceLabel}`
+  const text = [
+    `Hi ${plan.displayName},`,
+    '',
+    `This is the ${sequenceLabel} message from your OpenAgents Sites sequence.`,
+    '',
+    `Manage email preferences: ${preferencesUrl}`,
+    '',
+    'OpenAgents',
+  ].join('\n')
+  const html = `<!doctype html>
+<html>
+  <body style="margin:0;background:#050607;color:#f7f8f8;font-family:Inter,Arial,sans-serif;">
+    <div style="max-width:560px;margin:0 auto;padding:40px 24px;">
+      <p style="margin:0 0 28px;color:#8a8f98;font-size:14px;">OpenAgents Sites</p>
+      <h1 style="margin:0;color:#f7f8f8;font-size:26px;font-weight:600;line-height:1.25;">${escapeHtml(sequenceLabel)}</h1>
+      <p style="margin:18px 0 0;color:#d0d6e0;font-size:15px;line-height:1.6;">Hi ${escapeHtml(plan.displayName)}, this is the ${escapeHtml(sequenceLabel)} message from your OpenAgents Sites sequence.</p>
+      <p style="margin:28px 0 0;color:#8a8f98;font-size:13px;line-height:1.5;"><a href="${escapeHtml(preferencesUrl)}" style="color:#f7f8f8;">Manage email preferences</a></p>
+    </div>
+  </body>
+</html>`
+
+  return new RenderedEmail({
+    from: config.fromEmail,
+    html,
+    idempotencyKey: plan.idempotencyKey,
+    kind: 'crm_transactional',
+    metadataJson: JSON.stringify({
+      campaignId: plan.campaignId,
+      enrollmentId: plan.enrollmentId,
+      promiseId: EMAIL_SEQUENCE_SEND_PROMISE_ID,
+      sendId: plan.sendId,
+      stepId: plan.stepId,
+      stepKey: plan.stepKey,
+    }),
+    ...(config.replyToEmail === undefined
+      ? {}
+      : { replyTo: config.replyToEmail }),
+    subject,
+    tags: [
+      { name: 'promise', value: EMAIL_SEQUENCE_SEND_PROMISE_ID },
+      { name: 'campaign_id', value: plan.campaignId },
+      { name: 'step_key', value: plan.stepKey },
+    ],
+    templateContextJson: JSON.stringify({
+      displayName: plan.displayName,
+      managePreferencesUrl: preferencesUrl,
+      stepKey: plan.stepKey,
+    }),
+    templateSlug: plan.templateSlug,
+    text,
+    to: plan.to,
+  })
+}
+
+export const makeCloudflareEmailSequenceSender = (
+  db: D1Database,
+  binding: CloudflareEmailBinding,
+  config: EmailSequenceCloudflareSenderConfig,
+  runtime: EmailRuntime = systemEmailRuntime,
+): EmailSequenceSender => plan =>
+  sendRenderedEmailViaCloudflareBindingWithLedger(
+    db,
+    binding,
+    renderEmailSequenceSend(config, plan),
+    {
+      metadata: {
+        campaignId: plan.campaignId,
+        enrollmentId: plan.enrollmentId,
+        stepId: plan.stepId,
+        stepKey: plan.stepKey,
+      },
+      sourceAuthorityRef: plan.sourceAuthorityRef,
+      targetUserId: plan.userId ?? undefined,
+    },
+    runtime,
+  ).pipe(
+    Effect.catch(error =>
+      Effect.succeed({
+        emailMessageId: plan.sendId,
+        errorMessage: error.message,
+        errorName: error.operation,
+        ok: false as const,
+      }),
+    ),
+  )
+
 // The send-service integration. dispatchSequenceSend turns a due
 // authored-sequence send into either a dry-run (INERT default; the sender is
 // never called) or — only when armed — a real send through the injected sender.
@@ -150,19 +276,21 @@ export type EmailSequenceSendServiceDependencies = Readonly<{
 export const makeEmailSequenceSendService = (
   dependencies: EmailSequenceSendServiceDependencies,
 ) => ({
-  dispatchSequenceSend: async (
+  dispatchSequenceSend: (
     row: EmailSequenceSendRow,
-  ): Promise<EmailSequenceSendOutcome> => {
+  ): Effect.Effect<EmailSequenceSendOutcome, never> => {
     const plan = planEmailSequenceSend(row)
 
     if (!dependencies.isEnabled()) {
-      return { kind: 'dry_run', plan, reason: 'send_disabled' }
+      return Effect.succeed({ kind: 'dry_run', plan, reason: 'send_disabled' })
     }
 
-    const result = await dependencies.send(plan)
-
-    return result.ok
-      ? { kind: 'sent', plan, result }
-      : { kind: 'failed', plan, result }
+    return dependencies.send(plan).pipe(
+      Effect.map(result =>
+        result.ok
+          ? { kind: 'sent', plan, result }
+          : { kind: 'failed', plan, result },
+      ),
+    )
   },
 })

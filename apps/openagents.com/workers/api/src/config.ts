@@ -67,6 +67,15 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // route-unmounted blocker; the customer UI, send service, and deliverability
   // stay owner/product-gated and the promise stays yellow.
   SITE_FORM_CAPTURE_ENABLED?: string | undefined
+  // Native email-sequence send-service flag (promise
+  // autopilot_sites.native_email_sequences.v1, yellow). Default OFF: authored
+  // sequence sends still take the dry-run/skipped path and do not call a sender.
+  // Set "true"/"1"/"on" only after the Cloudflare Email binding and authenticated
+  // sender domain are configured. The promise remains yellow until live
+  // deliverability receipts and owner sign-off exist.
+  EMAIL_SEQUENCE_SEND_ENABLED?: string | undefined
+  EMAIL_SEQUENCE_FROM_EMAIL?: string | undefined
+  EMAIL_SEQUENCE_REPLY_TO_EMAIL?: string | undefined
   // Mobile workroom approval projection flag (promise
   // mobile.voice_approval_companion.v1, yellow). Default OFF: the
   // `/api/mobile/workroom-approval-projection` route is INERT (empty store) on

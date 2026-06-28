@@ -10,6 +10,7 @@ import {
   type EmailCampaignDispatcherResult,
   dispatchDueEmailCampaignSends,
 } from './email-campaign-dispatcher'
+import type { EmailSequenceSendPlan } from './email-sequence-send-service'
 
 class RecordingD1Statement {
   readonly bound: Array<unknown> = []
@@ -106,7 +107,8 @@ const dueRow = (
   enrollment_id: 'email_campaign_enrollment_1',
   id: 'email_campaign_send_1',
   idempotency_key: 'email_campaign_send:email_campaign_enrollment_1:day_0',
-  lifecycle_kind: overrides.lifecycle_kind ?? 'signup_day_0',
+  lifecycle_kind:
+    'lifecycle_kind' in overrides ? overrides.lifecycle_kind : 'signup_day_0',
   metadata_json:
     overrides.metadata_json ?? JSON.stringify({ displayName: 'Ben' }),
   source_authority_ref: 'system.email_onboarding_drip.v1:send:day_0',
@@ -134,6 +136,7 @@ const rejectedFetch: typeof fetch = (() =>
 const dispatch = async (
   db: RecordingD1Database,
   fetcher: typeof fetch = acceptedFetch,
+  sequenceSend?: Parameters<typeof dispatchDueEmailCampaignSends>[1]['sequenceSend'],
 ): Promise<EmailCampaignDispatcherResult> =>
   Effect.runPromise(
     dispatchDueEmailCampaignSends(db as unknown as D1Database, {
@@ -141,6 +144,7 @@ const dispatch = async (
       fetcher,
       resend: resendConfig(),
       runtime,
+      sequenceSend,
     }),
   )
 
@@ -272,5 +276,73 @@ describe('email campaign dispatcher', () => {
     expect(
       finalDb.runs.some(run => run.query.includes("SET status = 'failed'")),
     ).toBe(true)
+  })
+
+  test('keeps authored sequence sends dry-run/skipped when the sequence service is disabled', async () => {
+    const db = new RecordingD1Database()
+    db.nextAll.push([
+      dueRow({
+        lifecycle_kind: null,
+        template_slug: 'sequence.welcome.day_0.v1',
+      }),
+    ])
+    db.nextFirst.push(null, null, null)
+    let calls = 0
+
+    const result = await dispatch(db, acceptedFetch, {
+      isEnabled: () => false,
+      send: () => {
+        calls += 1
+
+        return Effect.succeed({
+          emailMessageId: 'email_msg_1',
+          ok: true,
+          providerMessageId: 'cf_1',
+        })
+      },
+    })
+
+    expect(calls).toBe(0)
+    expect(result).toMatchObject({ claimed: 1, skipped: 1 })
+    expect(
+      db.runs.some(run => run.values.includes('email_sequence_send_disabled')),
+    ).toBe(true)
+  })
+
+  test('dispatches authored sequence sends through the armed sequence sender', async () => {
+    const db = new RecordingD1Database()
+    db.nextAll.push([
+      dueRow({
+        lifecycle_kind: null,
+        template_slug: 'sequence.welcome.day_0.v1',
+      }),
+    ])
+    db.nextFirst.push(null, null, null)
+    const seen: Array<EmailSequenceSendPlan> = []
+
+    const result = await dispatch(db, acceptedFetch, {
+      isEnabled: () => true,
+      send: plan => {
+        seen.push(plan)
+
+        return Effect.succeed({
+          emailMessageId: 'email_msg_sequence_1',
+          ok: true,
+          providerMessageId: 'cf_sequence_1',
+        })
+      },
+    })
+
+    expect(result).toMatchObject({ claimed: 1, sent: 1 })
+    expect(seen).toHaveLength(1)
+    expect(seen[0]).toMatchObject({
+      displayName: 'Ben',
+      sourceAuthorityRef: 'system.email_onboarding_drip.v1:send:day_0',
+      templateSlug: 'sequence.welcome.day_0.v1',
+      to: 'ben@silones.com',
+    })
+    expect(db.runs.some(run => run.query.includes("SET status = 'sent'"))).toBe(
+      true,
+    )
   })
 })

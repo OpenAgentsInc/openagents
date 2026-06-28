@@ -315,6 +315,7 @@ import { makeD1EcommerceCampaignReceiptStore } from './ecommerce-campaign-receip
 import { makeEcommerceCampaignSelfServeRoutes } from './ecommerce-campaign-self-serve-routes'
 import {
   AutopilotDecisionEmailInput,
+  type CloudflareEmailBinding,
   OrderSitesTransactionalEmailInput,
   buildOrderSitesTransactionalEmailIdempotencyKey,
   sendAutopilotDecisionEmailWithLedger,
@@ -328,6 +329,10 @@ import {
 } from './email-campaign-dispatcher'
 import type { OnboardingDripOrderState } from './email-onboarding-drip'
 import { makeEmailSequenceAuthoringRoutes } from './email-sequence-authoring-routes'
+import {
+  isEmailSequenceSendEnabled,
+  makeCloudflareEmailSequenceSender,
+} from './email-sequence-send-service'
 import { makeFirmupBitcoinSettlementRoutes } from './firmup-bitcoin-settlement-routes'
 import { readFirmupSettleableEscrow } from './firmup-settleable-escrow'
 import { makeForumRoutes } from './forum-routes'
@@ -1110,7 +1115,8 @@ import {
 export type Env = WorkerBindings & OpenAgentsWorkerConfigEnv
 
 type EmailCampaignDispatcherBindings = WorkerBindings &
-  OpenAgentsWorkerConfigEnv
+  OpenAgentsWorkerConfigEnv &
+  Readonly<{ EMAIL?: CloudflareEmailBinding | undefined }>
 export {
   SESSION_MAX_AGE_SECONDS,
   appendClearSessionCookies,
@@ -6271,10 +6277,27 @@ const dispatchDueEmailCampaignSendsScheduled = (
   Effect.gen(function* () {
     const config = getOpenAgentsWorkerConfig(env)
     const db = yield* OpenAgentsDatabase
+    const emailSequenceFromEmail =
+      env.EMAIL_SEQUENCE_FROM_EMAIL ?? config.email.resend?.fromEmail
+    const sequenceSend =
+      env.EMAIL === undefined || emailSequenceFromEmail === undefined
+        ? undefined
+        : {
+            isEnabled: () =>
+              isEmailSequenceSendEnabled(env.EMAIL_SEQUENCE_SEND_ENABLED),
+            send: makeCloudflareEmailSequenceSender(db, env.EMAIL, {
+              appOrigin: config.app.origin,
+              fromEmail: emailSequenceFromEmail,
+              replyToEmail:
+                env.EMAIL_SEQUENCE_REPLY_TO_EMAIL ??
+                config.email.resend?.replyToEmail,
+            }),
+          }
 
     return yield* dispatchDueEmailCampaignSends(db, {
       appOrigin: config.app.origin,
       resend: config.email.resend,
+      sequenceSend,
     })
   }).pipe(
     Effect.provide(emailCampaignDispatcherLayer(env)),
