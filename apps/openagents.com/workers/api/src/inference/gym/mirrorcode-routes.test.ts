@@ -129,6 +129,21 @@ describe('buildMirrorCodeRun', () => {
       ),
     ).toThrow(MirrorCodeRunError)
   })
+
+  test('rejects decision-grade launch intents until scored exact-token results are posted', () => {
+    expect(() =>
+      buildMirrorCodeLaunchRun(
+        {
+          kind: 'launch',
+          taskId: 'qsv_select',
+          bucket: 'S',
+          language: 'python',
+          grade: 'decision_grade',
+        },
+        '2026-06-27T02:03:04.000Z',
+      ),
+    ).toThrow(MirrorCodeRunError)
+  })
 })
 
 describe('buildMirrorCodeTokenBurnReport', () => {
@@ -359,6 +374,36 @@ describe('handleMirrorCodeRunsApi POST', () => {
     expect(body.run.status).toBe('queued')
     expect(body.run.tokensTotal).toBe(0)
     expect(storedRunId).toBe('mc-s-qsv-select-python-20260627020304')
+  })
+
+  test('authorized POST rejects decision-grade launch intents without storing', async () => {
+    let stored = 0
+    const response = await run(
+      handleMirrorCodeRunsApi(
+        postRequest({
+          kind: 'launch',
+          taskId: 'qsv_select',
+          bucket: 'S',
+          language: 'python',
+          grade: 'decision_grade',
+        }),
+        {
+          requireAdminApiToken: async () => true,
+          nowIso: () => '2026-06-27T02:03:04.000Z',
+          store: {
+            listRuns: () => Effect.succeed([]),
+            getRun: () => Effect.sync(() => undefined),
+            upsertRun: () => Effect.sync(() => {
+              stored += 1
+            }),
+          },
+        },
+      ),
+    )
+    expect(response.status).toBe(400)
+    expect(stored).toBe(0)
+    const body = (await response.json()) as { reason: string }
+    expect(body.reason).toContain('launch intents are smoke-only')
   })
 
   test('authorized POST with task contents is rejected 400', async () => {

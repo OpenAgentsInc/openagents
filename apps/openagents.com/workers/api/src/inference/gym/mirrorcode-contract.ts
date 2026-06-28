@@ -427,6 +427,11 @@ export const buildMirrorCodeLaunchRun = (
     throw new MirrorCodeRunError('taskId must contain a public-safe id.')
   }
   assertPublicTarget(launch)
+  if (launch.grade === 'decision_grade') {
+    throw new MirrorCodeRunError(
+      'MirrorCode launch intents are smoke-only; post the scored decision_grade result with exactTokenUsageEventRefs after execution.',
+    )
+  }
 
   return buildMirrorCodeRun({
     runId: `mc-${launch.bucket.toLowerCase()}-${taskPart}-${languagePart}-${timestampPart}`,
@@ -440,7 +445,7 @@ export const buildMirrorCodeLaunchRun = (
     startedAt: nowIso,
     finishedAt: null,
     summary: `Owner-gated MirrorCode launch queued for ${launch.taskId} (${launch.bucket} bucket) through openagents/khala.`,
-    grade: launch.grade ?? 'smoke',
+    grade: 'smoke',
   })
 }
 
