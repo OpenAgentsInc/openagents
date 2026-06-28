@@ -1,12 +1,12 @@
 import type { Html } from 'foldkit/html'
 import { describe, expect, test } from 'vitest'
 
+import type { MirrorCodeRunsResponse } from '../mirrorcode/runs'
 import {
   IdleMirrorCodeRuns,
   LoadedMirrorCodeRuns,
   LoadingMirrorCodeRuns,
 } from '../model'
-import type { MirrorCodeRunsResponse } from '../mirrorcode/runs'
 import * as MirrorCode from './mirrorcode'
 
 type VNodeLike = Readonly<{
@@ -135,6 +135,9 @@ describe('public MirrorCode page', () => {
     expect(rendered).toContain('GET /api/gym/mirrorcode/runs/{runId}')
     expect(rendered).toContain('data-mirrorcode-owner-gated-launch')
     expect(rendered).toContain('public visitors can inspect the contract')
+    expect(rendered).toContain('data-mirrorcode-execution-visualizer')
+    expect(rendered).toContain('data-mirrorcode-execution-empty')
+    expect(rendered).toContain('No execution rows to visualize yet')
     // Comparators section is always labeled as illustrative, never head-to-head.
     expect(rendered).toContain(
       'Paper-reference comparators (illustrative — not a head-to-head)',
@@ -145,10 +148,13 @@ describe('public MirrorCode page', () => {
     const rendered = renderHtml(MirrorCode.view(LoadingMirrorCodeRuns()))
 
     expect(rendered).toContain('data-mirrorcode-live-loading')
+    expect(rendered).toContain('data-mirrorcode-execution-loading')
   })
 
   test('renders the latest run, leaderboard, and comparators when loaded', () => {
-    const rendered = renderHtml(MirrorCode.view(LoadedMirrorCodeRuns({ response })))
+    const rendered = renderHtml(
+      MirrorCode.view(LoadedMirrorCodeRuns({ response })),
+    )
 
     // Empty state is gone.
     expect(rendered).not.toContain('data-mirrorcode-live-empty')
@@ -156,6 +162,20 @@ describe('public MirrorCode page', () => {
     // Latest run is the newest by startedAt (the running JSON parse run).
     expect(rendered).toContain('data-mirrorcode-latest-run')
     expect(rendered).toContain('mirrorcode/jsonparse')
+
+    // Execution visualizer derives public-safe lifecycle phases from run rows.
+    expect(rendered).toContain('data-mirrorcode-execution-visualizer')
+    expect(rendered).toContain('data-mirrorcode-execution-run')
+    expect(rendered).toContain('data-mirrorcode-execution-phase="queued"')
+    expect(rendered).toContain(
+      'data-mirrorcode-execution-phase="implementation"',
+    )
+    expect(rendered).toContain('data-mirrorcode-execution-phase="scoring"')
+    expect(rendered).toContain('data-mirrorcode-execution-phase="closeout"')
+    expect(rendered).toContain('data-mirrorcode-execution-phase-state="active"')
+    expect(rendered).toContain('Held-out public suite is in flight')
+    expect(rendered).toContain('data-mirrorcode-execution-token-band')
+    expect(rendered).toContain('raw events and task contents stay private')
 
     // Compact token formatting (12_345_678 -> 12.3M).
     expect(rendered).toContain('12.3M')
