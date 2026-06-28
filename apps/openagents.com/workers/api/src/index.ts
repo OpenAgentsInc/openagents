@@ -8674,6 +8674,84 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
         nowIso: currentIsoTimestamp,
         store: makeD1KhalaUnsupportedRequestStore(openAgentsDatabase(env)),
       }),
+      forumPostExecution: {
+        isOwnerApproved: () =>
+          Effect.succeed(
+            isOpenAgentsOwnerAgentOpenAuthUserId(session.user.userId),
+          ),
+        postForumUpdate: input =>
+          Effect.tryPromise(async () => {
+            const token = env.ARTANIS_FORUM_AGENT_TOKEN?.trim()
+            if (token === undefined || token === '') {
+              return {
+                kind: 'rejected',
+                reason: 'forum_agent_token_missing',
+              } as const
+            }
+
+            const configuredBaseUrl = env.OPENAGENTS_APP_URL?.trim()
+            const baseUrl =
+              configuredBaseUrl === undefined || configuredBaseUrl === ''
+                ? 'https://openagents.com'
+                : configuredBaseUrl
+            const path =
+              input.action === 'create_topic'
+                ? `/api/forum/forums/${encodeURIComponent(input.forumId ?? '')}/topics`
+                : `/api/forum/topics/${encodeURIComponent(input.topicId ?? '')}/posts`
+            const body =
+              input.action === 'create_topic'
+                ? {
+                    bodyText: input.bodyText,
+                    title: input.title,
+                  }
+                : { bodyText: input.bodyText }
+            const response = await fetch(`${baseUrl}${path}`, {
+              body: JSON.stringify(body),
+              headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+                'Idempotency-Key': input.idempotencyKey,
+                'User-Agent': 'artanis-operator',
+              },
+              method: 'POST',
+            })
+            if (!response.ok) {
+              return {
+                kind: 'rejected',
+                reason: `forum_api_status_${response.status}`,
+              } as const
+            }
+            const payload = (await response.json()) as {
+              firstPost?: { postId?: unknown }
+              post?: { postId?: unknown }
+              topic?: { topicId?: unknown }
+            }
+            const postId =
+              typeof payload.post?.postId === 'string'
+                ? payload.post.postId
+                : typeof payload.firstPost?.postId === 'string'
+                  ? payload.firstPost.postId
+                  : null
+            const topicId =
+              typeof payload.topic?.topicId === 'string'
+                ? payload.topic.topicId
+                : input.topicId ?? null
+            if (postId === null || topicId === null) {
+              return {
+                kind: 'rejected',
+                reason: 'forum_api_missing_public_refs',
+              } as const
+            }
+            return {
+              kind: 'posted',
+              postRef: `forum.post.${postId}`,
+              topicRef: `forum.topic.${topicId}`,
+              url: `${baseUrl}/forum/t/${encodeURIComponent(
+                topicId,
+              )}#post-${encodeURIComponent(postId)}`,
+            } as const
+          }),
+      },
       dispatchExecution: makeArtanisDispatchExecution({
         listLinkedAgentUserIds,
         makeId: () => compactRandomId('artanis_dispatch'),

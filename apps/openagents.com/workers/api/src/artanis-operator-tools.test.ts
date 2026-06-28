@@ -28,6 +28,7 @@ import {
   makeArtanisListPylonAssignmentsTool,
   makeArtanisListRepoDirTool,
   makeArtanisOperatorTools,
+  makeArtanisPostForumUpdateTool,
   makeArtanisReadGithubIssueTool,
   makeArtanisReadRepoFileTool,
   makeArtanisTriggerSyntheticLoadTool,
@@ -353,6 +354,115 @@ describe('#6366 dispatch_codex_task (gated; LIVE execution behind the gate)', ()
     // Neither the approval gate nor the create seam is consulted for bad input.
     expect(approvalCalls).toHaveLength(0)
     expect(createCalls).toHaveLength(0)
+  })
+})
+
+describe('#6435 post_forum_update (gated public Forum posting)', () => {
+  const safeReplyArgs = {
+    action: 'reply',
+    bodyText:
+      'Artanis fleet update: public issue triage is active, Codex burndown is running, and accepted proofs will be linked here as they land.',
+    idempotencyKey: 'artanis-forum-update:issue-6435:v1',
+    topicId: '88888888-7001-4001-8001-888888888888',
+  }
+
+  test('is a gated public_forum_post tool and defaults to plan-only without a poster seam', async () => {
+    const tool = makeArtanisPostForumUpdateTool()
+
+    expect(tool.kind).toBe('gated')
+    expect(tool.riskyActionKind).toBe('public_forum_post')
+    expect(ARTANIS_RISKY_ACTION_KINDS).toContain('public_forum_post')
+
+    const result = await Effect.runPromise(tool.run(safeReplyArgs))
+    expect(result.outcome).toBe('deferred')
+    if (result.outcome !== 'deferred') return
+    expect(result.reason).toBe('execution_not_wired')
+    expect(result.plan).toContain('POST /api/forum/topics/')
+    expect(result.plan).toContain('Idempotency-Key:')
+    expect(result.plan).toContain('Artanis fleet update')
+  })
+
+  test('blocks non-public-safe body text before consulting approval or posting', async () => {
+    const approvals: Array<boolean> = []
+    const posts: Array<unknown> = []
+    const tool = makeArtanisPostForumUpdateTool({
+      execution: {
+        isOwnerApproved: () => {
+          approvals.push(true)
+          return Effect.succeed(true)
+        },
+        postForumUpdate: input => {
+          posts.push(input)
+          return Effect.succeed({
+            kind: 'posted',
+            postRef: 'forum.post.should_not_happen',
+            topicRef: 'forum.topic.should_not_happen',
+            url: null,
+          } as const)
+        },
+      },
+    })
+
+    const result = await Effect.runPromise(
+      tool.run({
+        ...safeReplyArgs,
+        bodyText: 'raw secret sk-1234567890abcdef from /Users/local/auth.json',
+      }),
+    )
+
+    expect(result.outcome).toBe('deferred')
+    if (result.outcome !== 'deferred') return
+    expect(result.reason).toBe('invalid_arguments')
+    expect(result.plan).toContain('blocked')
+    expect(approvals).toHaveLength(0)
+    expect(posts).toHaveLength(0)
+  })
+
+  test('approved execution posts once through the injected Artanis forum identity seam', async () => {
+    const posts: Array<unknown> = []
+    const tool = makeArtanisPostForumUpdateTool({
+      execution: {
+        isOwnerApproved: () => Effect.succeed(true),
+        postForumUpdate: input => {
+          posts.push(input)
+          return Effect.succeed({
+            kind: 'posted',
+            postRef: 'forum.post.artanis_update_001',
+            topicRef: 'forum.topic.public_updates',
+            url: 'https://openagents.com/forum/t/public_updates#post-artanis_update_001',
+          } as const)
+        },
+      },
+    })
+
+    const result = await Effect.runPromise(tool.run(safeReplyArgs))
+
+    expect(posts).toEqual([
+      {
+        action: 'reply',
+        bodyText: safeReplyArgs.bodyText,
+        forumId: undefined,
+        idempotencyKey: safeReplyArgs.idempotencyKey,
+        title: undefined,
+        topicId: safeReplyArgs.topicId,
+      },
+    ])
+    expect(result.outcome).toBe('executed')
+    if (result.outcome !== 'executed') return
+    expect(result.assignmentRef).toBe('forum.post.artanis_update_001')
+    expect(result.summary).toContain('author: agent_artanis')
+    expect(result.summary).toContain('forum.topic.public_updates')
+  })
+
+  test('the default operator tool table exposes post_forum_update as gated', () => {
+    const tools = makeArtanisOperatorTools()
+    const forumTool = tools.find(
+      tool => tool.definition.name === 'post_forum_update',
+    )
+    expect(forumTool).toBeDefined()
+    expect(forumTool?.kind).toBe('gated')
+    if (forumTool?.kind !== 'gated') return
+    expect(forumTool.riskyActionKind).toBe('public_forum_post')
   })
 })
 
@@ -2232,6 +2342,7 @@ describe('makeArtanisOperatorTools default table', () => {
       'list_github_issues',
       'list_pylon_assignments',
       'list_repo_dir',
+      'post_forum_update',
       'read_github_issue',
       'read_repo_file',
       'trigger_synthetic_load',

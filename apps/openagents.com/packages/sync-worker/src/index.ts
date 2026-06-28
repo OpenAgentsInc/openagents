@@ -47,6 +47,7 @@ export type WorkerBindings = Readonly<{
   OPENAUTH_ISSUER_URL: string
   OPENAGENTS_APP_URL: string
   OPENAGENTS_ADMIN_API_TOKEN?: string
+  ARTANIS_FORUM_AGENT_TOKEN?: string
   SHC_CONTROL_API_URL?: string
   SHC_CONTROL_API_BEARER_TOKEN?: string
   SHC_DISPATCH_MODE?: string
