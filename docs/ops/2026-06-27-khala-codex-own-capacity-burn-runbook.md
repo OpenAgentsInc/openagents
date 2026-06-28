@@ -88,13 +88,9 @@ Log: `~/.pylon-fable/standing.log`. Pylon home: `~/.pylon-fable`.
 
 The thing that actually **fires** requests and auto-scales a fire-and-run pool.
 
-> **Tracking note (verify before relying on it):** these two scripts are present
-> in active agent worktrees but were **not committed to `origin/main`** at the
-> time of writing (`git ls-files apps/pylon/scripts/codex-supervisor/` returns
-> empty on `origin/main`). Treat the launch command below as accurate to the
-> working scripts, but confirm the files exist in your checkout
-> (`ls apps/pylon/scripts/codex-supervisor/`) before launching, and land them on
-> `main` if you want them durable.
+The supervisor scripts are tracked in this checkout. Confirm with
+`git ls-files apps/pylon/scripts/codex-supervisor/` before launching from a new
+checkout, then run from clean current `origin/main`.
 
 Behavior (verified from the scripts):
 
@@ -534,6 +530,75 @@ public-safe stale closeouts) — then cools down `SUP_SELFHEAL_COOLDOWN_SECS`
 (default 300s) before re-checking. So the local loop tries to self-recover
 instead of backing off into silence.
 
+## 11. GCE VM migration for own-capacity accounts (#6433)
+
+Issue #6433's durable target is: one lightweight GCE VM per distinct Codex
+account, each running a headless Pylon and one Codex supervisor slot under
+systemd. The desktop stops being the durable executor; it is only the place where
+the isolated account homes are prepared and copied from.
+
+The repo pieces are:
+
+- `apps/pylon/deploy/gcloud/setup-pylon.sh` — creates/starts an IAP-only Ubuntu
+  VM, copies a local env file over SSH, and installs `openagents-pylon.service`.
+- `apps/pylon/scripts/install-cloud-node.sh` — the Linux Pylon node installer.
+- `apps/pylon/scripts/install-codex-supervisor-systemd.sh` — installs
+  `openagents-codex-supervisor.service`, sourcing `/etc/openagents-pylon.env`
+  plus `/etc/openagents-codex-supervisor.env`, and running the existing
+  supervisor in the foreground so systemd restarts it.
+
+Minimal per-account migration:
+
+```sh
+# 1. Base VM + Pylon node. The env file stays off Git and is copied over IAP/SSH,
+# never instance metadata or startup scripts.
+apps/pylon/deploy/gcloud/setup-pylon.sh \
+  --instance oa-codex-codex-1 \
+  --project openagentsgemini \
+  --zone us-central1-a \
+  --subnet oa-lightning-us-central1 \
+  --machine-type e2-standard-4 \
+  --env-file ~/work/.secrets/openagents-artanis-agent.env
+
+# 2. Copy one isolated authenticated account home. Do NOT copy ~/.codex.
+tar -C "$HOME/.pylon-fable/accounts/codex" -czf /tmp/codex-1.tgz codex-1
+gcloud compute scp /tmp/codex-1.tgz oa-codex-codex-1:/tmp/codex-1.tgz \
+  --project openagentsgemini --zone us-central1-a --tunnel-through-iap
+gcloud compute ssh oa-codex-codex-1 \
+  --project openagentsgemini --zone us-central1-a --tunnel-through-iap \
+  --command 'sudo mkdir -p /var/lib/openagents-pylon/accounts/codex && sudo tar -C /var/lib/openagents-pylon/accounts/codex -xzf /tmp/codex-1.tgz && sudo chown -R pylon:pylon /var/lib/openagents-pylon/accounts'
+rm -f /tmp/codex-1.tgz
+
+# 3. Install durable Linux supervisor. One VM/account starts with one slot; raise
+# only after proving that account's real headroom.
+gcloud compute ssh oa-codex-codex-1 \
+  --project openagentsgemini --zone us-central1-a --tunnel-through-iap \
+  --command 'sudo SUP_MAX_SLOTS=1 SUP_PER_ACCOUNT=1 PYLON_HOME=/var/lib/openagents-pylon /opt/openagents-pylon/apps/pylon/scripts/install-codex-supervisor-systemd.sh'
+```
+
+Verification:
+
+```sh
+gcloud compute ssh oa-codex-codex-1 \
+  --project openagentsgemini --zone us-central1-a --tunnel-through-iap \
+  --command 'sudo systemctl --no-pager --full status openagents-pylon openagents-codex-supervisor && sudo -u pylon env PYLON_HOME=/var/lib/openagents-pylon bun /opt/openagents-pylon/apps/pylon/src/index.ts codex accounts list --json && sudo journalctl -u openagents-codex-supervisor -n 80 --no-pager'
+```
+
+Expected:
+
+- `openagents-pylon.service` and `openagents-codex-supervisor.service` are
+  active and enabled.
+- The copied account reports `readiness.state: "ready"` and
+  `capability.pylon.local_codex`.
+- `/var/lib/openagents-pylon/.codex-supervisor/supervisor.log` shows
+  `heartbeat ready_codex=1 desired_slots=1` and either `OK` closeouts or typed
+  `NO-DISPATCH` backoff lines.
+
+Scale the fleet by repeating the VM shape for roughly seven distinct Codex
+accounts (`oa-codex-codex-1` ... `oa-codex-codex-7`). Distinct underlying
+accounts are the throughput multiplier; aliases or copied sessions for the same
+account may share one rate budget.
+
 ---
 
 ## Appendix — verification status of this runbook
@@ -546,6 +611,9 @@ Verified against the repo / live system on 2026-06-27:
   is a **separate** discovery-node job (`run-discovery-node.sh`).
 - Supervisor scripts + all §2b defaults (read from
   `apps/pylon/scripts/codex-supervisor/{launch.sh,codex-supervisor.sh}`).
+- Linux/GCE supervisor persistence path:
+  `apps/pylon/scripts/install-codex-supervisor-systemd.sh` installs
+  `openagents-codex-supervisor.service`.
 - Gate-fix commits `982c33f521` + `1cc0e9ba03` (both #6354); worker
   `hasAvailableCodexCapacity` (line ~299) + typed refusals; `state.ts`
   `loadOrCreateRuntimeState` (line ~204).
@@ -555,8 +623,6 @@ Verified against the repo / live system on 2026-06-27:
 
 Could **not** verify (flagged inline):
 
-- The supervisor scripts are **not on `origin/main`** (present only in agent
-  worktrees) — confirm in your checkout / land them if you want them durable.
 - The exact deploy Worker version `68da222b` for the gate fix (the recorded
   #6358 deploy used `95d3fcee-…`).
 - The **live** `SUP_PYLON_REF` (refs drift; fetch via `provider go-online
