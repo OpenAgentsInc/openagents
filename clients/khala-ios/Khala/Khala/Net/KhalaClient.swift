@@ -182,11 +182,14 @@ enum KhalaClient {
         apiKey: String,
         session: URLSession = .shared
     ) async throws -> String {
+        let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedKey.isEmpty else { throw KhalaError.missingKey }
+
         let url = baseURL.appendingPathComponent("chat/completions")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("Bearer \(trimmedKey)", forHTTPHeaderField: "Authorization")
 
         let body: [String: Any] = [
             "model": model,
@@ -218,10 +221,13 @@ enum KhalaClient {
     static func requestCodexTask(
         prompt: String,
         pylonRef: String,
-        apiKey: String
+        apiKey: String,
+        session: URLSession = .shared
     ) async throws -> CodingDelegationResult {
         let trimmedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedPylonRef = pylonRef.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedKey.isEmpty else { throw KhalaError.missingKey }
         try validateCodingPrompt(trimmedPrompt)
         try validatePylonRef(trimmedPylonRef)
 
@@ -229,7 +235,7 @@ enum KhalaClient {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("Bearer \(trimmedKey)", forHTTPHeaderField: "Authorization")
 
         let body: [String: Any] = [
             "model": model,
@@ -247,7 +253,7 @@ enum KhalaClient {
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse else { throw KhalaError.decoding }
             if http.statusCode == 401 || http.statusCode == 403 { throw KhalaError.unauthorized }
             if http.statusCode == 402 { throw KhalaError.quotaExceeded }
