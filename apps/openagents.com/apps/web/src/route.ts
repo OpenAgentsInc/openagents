@@ -4,12 +4,12 @@ import { ParseError, literal, param, r, slash, string } from 'foldkit/route'
 import type { Url } from 'foldkit/url'
 
 import {
-  knownDocumentPathPatterns,
-  publicAgentAliasDocumentPatterns,
   type RouteLoggedInGate,
   type RouteRenderDisposition,
   type RouteSurface,
   type RouteTableTag,
+  knownDocumentPathPatterns,
+  publicAgentAliasDocumentPatterns,
   routeTable,
 } from './route-table'
 
@@ -92,16 +92,16 @@ export const TraceRoute = r('Trace', { uuid: S.String })
 // #6211 — the real "chill-evals"). `ids` is a comma-separated list of trace
 // uuids (the first is the baseline). Same public, no-auth posture as `/trace`.
 export const TraceCompareRoute = r('TraceCompare', { ids: S.String })
-export const PylonCodexAssignmentStatusRoute = r(
-  'PylonCodexAssignmentStatus',
-  { assignmentRef: S.String },
-)
+export const PylonCodexAssignmentStatusRoute = r('PylonCodexAssignmentStatus', {
+  assignmentRef: S.String,
+})
 export const MokshaRoute = r('Moksha')
 export const Moksha2Route = r('Moksha2')
 export const LandingRoute = r('Landing')
 export const TermsRoute = r('Terms')
 export const PrivacyRoute = r('Privacy')
 export const KhalaRoute = r('Khala')
+export const KhalaChatRoute = r('KhalaChat')
 export const PylonRoute = r('Pylon')
 export const DownloadRoute = r('Download')
 export const DashboardRoute = r('Dashboard')
@@ -207,6 +207,7 @@ export type LandingRoute = typeof LandingRoute.Type
 export type TermsRoute = typeof TermsRoute.Type
 export type PrivacyRoute = typeof PrivacyRoute.Type
 export type KhalaRoute = typeof KhalaRoute.Type
+export type KhalaChatRoute = typeof KhalaChatRoute.Type
 export type PylonRoute = typeof PylonRoute.Type
 export type DownloadRoute = typeof DownloadRoute.Type
 export type DashboardRoute = typeof DashboardRoute.Type
@@ -279,6 +280,7 @@ export const LoggedOutRoute = S.Union([
   TermsRoute,
   PrivacyRoute,
   KhalaRoute,
+  KhalaChatRoute,
   PylonRoute,
   DownloadRoute,
   WorkspaceRoute,
@@ -403,6 +405,7 @@ export const AppRoute = S.Union([
   TermsRoute,
   PrivacyRoute,
   KhalaRoute,
+  KhalaChatRoute,
   PylonRoute,
   DownloadRoute,
   DashboardRoute,
@@ -693,6 +696,10 @@ export const landingAliasRouter = pipe(
 export const termsRouter = pipe(literal('terms'), Route.mapTo(TermsRoute))
 export const privacyRouter = pipe(literal('privacy'), Route.mapTo(PrivacyRoute))
 export const khalaRouter = pipe(literal('khala'), Route.mapTo(KhalaRoute))
+export const khalaChatRouter = pipe(
+  literal('chat'),
+  Route.mapTo(KhalaChatRoute),
+)
 // The Pylon scene moved off the root to `/pylons`.
 export const pylonsRouter = pipe(literal('pylons'), Route.mapTo(PylonRoute))
 export const downloadRouter = pipe(
@@ -856,7 +863,9 @@ export type RouteSpec = Readonly<{
 // EXACTLY the `AppRoute` tag union (no missing, no extra). A route added to
 // `AppRoute` without a table entry — or a table entry whose tag is not in
 // `AppRoute` — fails the build here.
-type _TableCoversEveryTag = AppRoute['_tag'] extends RouteTableTag ? true : never
+type _TableCoversEveryTag = AppRoute['_tag'] extends RouteTableTag
+  ? true
+  : never
 type _TableHasNoExtraTag = RouteTableTag extends AppRoute['_tag'] ? true : never
 const _tableCoversEveryTag: _TableCoversEveryTag = true
 const _tableHasNoExtraTag: _TableHasNoExtraTag = true
@@ -948,6 +957,7 @@ const orderedParserRouters = [
   landingAliasRouter,
   termsRouter,
   privacyRouter,
+  khalaChatRouter,
   khalaRouter,
   pylonsRouter,
   downloadRouter,
@@ -989,10 +999,7 @@ const orderedParserRouters = [
 // Routers that are intentionally NOT registered in the parser. Kept here as an
 // explicit, documented list so the parser-coverage test can assert nothing
 // slips in or out by accident.
-export const unregisteredParserRouters = [
-  chatRouter,
-  landingRouter,
-] as const
+export const unregisteredParserRouters = [chatRouter, landingRouter] as const
 
 const routeParser = Route.oneOf(...orderedParserRouters)
 

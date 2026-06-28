@@ -3,16 +3,13 @@ import { Submodel } from 'foldkit'
 import type { Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
 
+import type { Session } from '../../domain/session'
 import { notFoundView } from '../../notFoundView'
 import { homeRouter } from '../../route'
-import type { Session } from '../../domain/session'
 import * as Ui from '../../ui'
-import type { PublicHeaderViewer } from '../publicHeader'
-import { viewerAvatarMenu } from '../publicHeader'
-import * as AutopilotOnboardingPage from '../autopilot-onboarding/page'
-import * as KhalaChatPage from '../khala-chat/page'
 import * as Activity from '../activity'
 import * as Animations from '../animations'
+import * as AutopilotOnboardingPage from '../autopilot-onboarding/page'
 import * as Blog from '../blog'
 import * as Business from '../business'
 import * as ClientsPreview from '../clientsPreview'
@@ -21,8 +18,11 @@ import * as DemoLegal from '../demoLegal'
 import * as Docs from '../docs'
 import * as Download from '../download'
 import * as Forum from '../forum'
+import * as KhalaChatPage from '../khala-chat/page'
 import * as Login from '../login'
 import * as Privacy from '../privacy'
+import type { PublicHeaderViewer } from '../publicHeader'
+import { viewerAvatarMenu } from '../publicHeader'
 import * as Run from '../run'
 import * as SiteCheckoutDemo from '../siteCheckoutDemo'
 import * as Terms from '../terms'
@@ -31,19 +31,24 @@ import * as TraceCompare from '../trace-compare'
 import {
   ClickedAutopilotOnboardingCreditKickoff,
   ClickedAutopilotOnboardingStartOver,
+  ClickedKhalaChatJumpToLatest,
+  ClosedKhalaChatInfo,
   Message,
+  OpenedKhalaChatInfo,
   RequestedLandingLogout,
   SubmittedAutopilotOnboardingTurn,
+  SubmittedKhalaChatTurn,
   UpdatedAutopilotOnboardingComposer,
+  UpdatedKhalaChatComposer,
 } from './message'
 import { Model } from './model'
-import * as Home from './page/home'
+import { backButton, khalaTokensServedPill } from './page/backButton'
 import * as Gym from './page/gym'
+import * as Home from './page/home'
 import * as MirrorCode from './page/mirrorcode'
 import * as Moksha from './page/moksha'
 import * as Moksha2 from './page/moksha2'
 import * as Onboarding from './page/onboarding'
-import { backButton, khalaTokensServedPill } from './page/backButton'
 import * as PersistentScene from './page/persistentScene'
 import * as Promises from './page/promises'
 import * as PublicAgent from './page/publicAgent'
@@ -170,6 +175,23 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
     ])
   }
 
+  if (model.route._tag === 'KhalaChat') {
+    return Ui.pageShell<Message>([
+      PersistentScene.view(
+        'KhalaChat',
+        model.copiedAgentInstructions,
+        undefined,
+        KhalaChatPage.bottomOverlayView<Message>(model.khalaChat, {
+          updatedComposer: value => UpdatedKhalaChatComposer({ value }),
+          submittedTurn: () => SubmittedKhalaChatTurn(),
+          jumpedToLatest: () => ClickedKhalaChatJumpToLatest(),
+          openedInfo: () => OpenedKhalaChatInfo(),
+          closedInfo: () => ClosedKhalaChatInfo(),
+        }),
+      ),
+    ])
+  }
+
   // /autopilot and /autopilot/{vertical}: the onboarding HUD mounts as the
   // overlay of the SAME persistent scene at the `autopilot` pose (no second
   // scene). The HUD (conversation + surfaced typed components + composer) is
@@ -182,14 +204,17 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
       PersistentScene.view(
         'Autopilot',
         model.copiedAgentInstructions,
-        AutopilotOnboardingPage.overlayView<Message>(model.autopilotOnboarding, {
-          updatedComposer: value =>
-            UpdatedAutopilotOnboardingComposer({ value }),
-          submittedTurn: () => SubmittedAutopilotOnboardingTurn(),
-          clickedCreditKickoff: () =>
-            ClickedAutopilotOnboardingCreditKickoff(),
-          clickedStartOver: () => ClickedAutopilotOnboardingStartOver(),
-        }),
+        AutopilotOnboardingPage.overlayView<Message>(
+          model.autopilotOnboarding,
+          {
+            updatedComposer: value =>
+              UpdatedAutopilotOnboardingComposer({ value }),
+            submittedTurn: () => SubmittedAutopilotOnboardingTurn(),
+            clickedCreditKickoff: () =>
+              ClickedAutopilotOnboardingCreditKickoff(),
+            clickedStartOver: () => ClickedAutopilotOnboardingStartOver(),
+          },
+        ),
       ),
     ])
   }

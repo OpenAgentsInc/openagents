@@ -173,6 +173,7 @@ export const browserRouteProductIntents = {
   Terms: 'public.terms',
   Privacy: 'public.privacy',
   Khala: 'public.khala',
+  KhalaChat: 'public.khala.chat',
   Pylon: 'public.pylon',
   PylonCodexAssignmentStatus: 'pylon.codex.assignment.status',
   Download: 'public.download',
@@ -241,6 +242,8 @@ export const browserCommandProductIntents = {
   ReconcileAutopilotOnboardingSession:
     'public.autopilot.onboarding.session.reconcile',
   ScrollKhalaChatThreadToEnd: 'public.khala.chat.thread.scroll-end',
+  ScrollKhalaChatLatestTurnIntoView: 'public.khala.chat.thread.scroll-turn',
+  FocusKhalaChatComposer: 'public.khala.chat.composer.focus',
   CreateBillingCheckout: 'billing.checkout.create',
   PrepareBillingCardSetup: 'billing.card.setup.prepare',
   RunBillingAutoTopUp: 'billing.auto_top_up.run',
@@ -288,8 +291,7 @@ export const browserCommandProductIntents = {
   LoadPublicForumTipLeaderboards: 'public.forum.tip-leaderboards.load',
   LoadPublicKhalaTokensServed: 'public.khala.tokens-served.load',
   LoadKhalaTokensServedSnapshot: 'public.khala.tokens-served.snapshot.load',
-  LoadPublicKhalaTokensServedHistory:
-    'public.khala.tokens-served.history.load',
+  LoadPublicKhalaTokensServedHistory: 'public.khala.tokens-served.history.load',
   LoadPublicKhalaTokensServedModelMix:
     'public.khala.tokens-served.model-mix.load',
   LoadPublicGymRunProgress: 'public.gym.run-progress.load',

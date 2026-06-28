@@ -5,8 +5,8 @@
 // module renders ONLY:
 //   - the chat box overlay: a scrollable message thread + a pinned composer,
 //     reusing the SAME `@openagentsinc/ui` AI Elements the `/autopilot` chat uses
-//     (the `message`/`response` markdown renderer + the `prompt-input` composer),
-//     wired to the generic streaming chat (`POST /api/khala/chat`);
+//     for `message`/`response` markdown rendering, wired to the generic
+//     streaming chat (`POST /api/khala/chat`);
 //   - a small, unobtrusive "What is Khala?" trigger in the corner that opens an
 //     info popup overlay (modal) with the condensed Khala basics.
 //
@@ -14,12 +14,10 @@
 // content is condensed into the info popup. This is GENERIC Khala — not the
 // Autopilot Concierge / onboarding intake agent. Dark / mono / Khala-blue over
 // the dimmed 3D scene, reduced-motion safe.
-
-import { Option } from 'effect'
-import type { Attribute, Html } from 'foldkit/html'
-import { html } from 'foldkit/html'
-
 import { AiElements, eyebrowClass } from '@openagentsinc/ui'
+import { Option } from 'effect'
+import type { Html } from 'foldkit/html'
+import { html } from 'foldkit/html'
 
 import { iconView } from '../../icon'
 import * as Ui from '../../ui'
@@ -30,9 +28,15 @@ import type { KhalaChatModel } from './flow'
 export const KHALA_CHAT_ROOT_ATTR = 'khala-chat'
 export const KHALA_CHAT_TRANSCRIPT_ATTR = 'khala-chat-transcript'
 export const KHALA_CHAT_COMPOSER_ATTR = 'khala-chat-composer'
+export const KHALA_CHAT_COMPOSER_TEXTAREA_ID = 'khala-chat-message'
+export const KHALA_CHAT_COMPOSER_TEXTAREA_SELECTOR = `#${KHALA_CHAT_COMPOSER_TEXTAREA_ID}`
+export const KHALA_CHAT_LATEST_TURN_ATTR = 'khala-chat-latest-turn'
 export const KHALA_CHAT_THREAD_END_ATTR = 'khala-chat-thread-end'
 export const KHALA_CHAT_INFO_TRIGGER_ATTR = 'khala-chat-info-trigger'
 export const KHALA_CHAT_INFO_DIALOG_ATTR = 'khala-chat-info-dialog'
+// The selector used to place a newly-submitted turn near the top of the reading
+// viewport. This is an explicit user-intent move, unlike streaming deltas.
+export const KHALA_CHAT_LATEST_TURN_SELECTOR = `[data-${KHALA_CHAT_LATEST_TURN_ATTR}="true"]`
 // The selector the scroll-to-end command targets.
 export const KHALA_CHAT_THREAD_END_SELECTOR = `[data-${KHALA_CHAT_THREAD_END_ATTR}="true"]`
 
@@ -43,6 +47,7 @@ const KHALA_HEADING = 'Khala'
 export type KhalaChatViewActions<Message> = Readonly<{
   updatedComposer: (value: string) => Message
   submittedTurn: () => Message
+  jumpedToLatest: () => Message
   openedInfo: () => Message
   closedInfo: () => Message
 }>
@@ -75,12 +80,9 @@ const streamingTurnView = <Message>(partial: string): Html =>
 
 // The conversation thread: the running transcript plus the in-flight streaming
 // bubble, and a bottom sentinel the scroll-to-end command and native scroll
-// anchoring both target. An empty thread shows a calm starter hint.
+// anchoring both target.
 const transcriptView = <Message>(model: KhalaChatModel): Html => {
   const h = html<Message>()
-
-  const isEmpty =
-    model.transcript.length === 0 && model.streamingReply === null
 
   return h.div(
     [
@@ -88,20 +90,124 @@ const transcriptView = <Message>(model: KhalaChatModel): Html => {
       Ui.className<Message>('grid gap-3'),
     ],
     [
-      isEmpty
-        ? h.p(
-            [
-              Ui.className<Message>(
-                'm-0 text-[0.8125rem] leading-[1.5] text-white/45',
-              ),
-            ],
-            ['Ask Khala what it can do.'],
-          )
-        : h.empty,
       ...model.transcript.map(turn => transcriptTurnView<Message>(turn)),
       model.streamingReply === null
         ? h.empty
         : streamingTurnView<Message>(model.streamingReply),
+      h.div(
+        [
+          h.DataAttribute(KHALA_CHAT_THREAD_END_ATTR, 'true'),
+          Ui.className<Message>('h-px w-full [overflow-anchor:auto]'),
+        ],
+        [],
+      ),
+    ],
+  )
+}
+
+const floatingUserTurnView = <Message>(
+  content: string,
+  latest: boolean,
+): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [
+      h.DataAttribute('khala-chat-turn', 'user'),
+      ...(latest ? [h.DataAttribute(KHALA_CHAT_LATEST_TURN_ATTR, 'true')] : []),
+      Ui.className<Message>(
+        'ml-auto grid max-w-[min(82%,34rem)] justify-items-end gap-1.5',
+      ),
+    ],
+    [
+      h.div(
+        [
+          Ui.className<Message>(
+            'font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-white/40',
+          ),
+        ],
+        ['You'],
+      ),
+      h.p(
+        [
+          Ui.className<Message>(
+            'm-0 border border-[#3a7bff]/30 bg-black/45 px-3 py-2 font-mono text-[0.8125rem] leading-[1.45] text-[#f1efe8] backdrop-blur-sm [overflow-wrap:anywhere]',
+          ),
+        ],
+        [content],
+      ),
+    ],
+  )
+}
+
+const floatingAssistantTurnView = <Message>(
+  content: string,
+  streaming: boolean,
+): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [
+      h.DataAttribute(
+        'khala-chat-turn',
+        streaming ? 'assistant-streaming' : 'assistant',
+      ),
+      h.AriaLive(streaming ? 'polite' : 'off'),
+      Ui.className<Message>(
+        'grid max-w-[min(100%,46rem)] gap-2 [text-shadow:0_0_18px_rgba(58,123,255,0.22)]',
+      ),
+    ],
+    [
+      h.div(
+        [
+          Ui.className<Message>(
+            'font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-[#8fb6ff]',
+          ),
+        ],
+        ['Khala'],
+      ),
+      h.div(
+        [
+          Ui.className<Message>(
+            'max-w-[min(100%,44rem)] font-mono text-[#f1efe8]',
+          ),
+        ],
+        [
+          AiElements.response<Message>({
+            markdown: content,
+            streaming,
+          }),
+        ],
+      ),
+    ],
+  )
+}
+
+const floatingTranscriptView = <Message>(model: KhalaChatModel): Html => {
+  const h = html<Message>()
+  const latestUserIndex = model.transcript.reduce(
+    (latest, turn, index) => (turn.role === 'user' ? index : latest),
+    -1,
+  )
+
+  return h.div(
+    [
+      h.DataAttribute(KHALA_CHAT_TRANSCRIPT_ATTR, ''),
+      h.AriaLabel('Khala chat transcript'),
+      Ui.className<Message>('grid content-start gap-8 pb-8'),
+    ],
+    [
+      ...model.transcript.map((turn, index) =>
+        turn.role === 'user'
+          ? floatingUserTurnView<Message>(
+              turn.content,
+              index === latestUserIndex,
+            )
+          : floatingAssistantTurnView<Message>(turn.content, false),
+      ),
+      model.streamingReply === null
+        ? h.empty
+        : floatingAssistantTurnView<Message>(model.streamingReply, true),
       h.div(
         [
           h.DataAttribute(KHALA_CHAT_THREAD_END_ATTR, 'true'),
@@ -121,25 +227,14 @@ const composerView = <Message>(
 ): Html => {
   const h = html<Message>()
 
-  const inFlight =
-    model.status === 'submitting' || model.status === 'streaming'
+  const inFlight = model.status === 'submitting' || model.status === 'streaming'
 
-  const status =
-    model.status === 'streaming'
-      ? ('streaming' as const)
-      : model.status === 'submitting'
-        ? ('submitted' as const)
-        : model.status === 'error'
-          ? ('error' as const)
-          : ('ready' as const)
-
-  const submitAttrs: ReadonlyArray<Attribute<Message>> =
-    inFlight || model.composerDraft.trim() === '' ? [h.Disabled(true)] : []
+  const submitDisabled = inFlight || model.composerDraft.trim() === ''
 
   return h.div(
     [
       h.DataAttribute(KHALA_CHAT_COMPOSER_ATTR, ''),
-      Ui.className<Message>('grid gap-2'),
+      Ui.className<Message>('grid min-h-0 gap-2'),
     ],
     [
       model.status === 'error' && model.errorReason !== null
@@ -151,31 +246,61 @@ const composerView = <Message>(
             [model.errorReason],
           )
         : h.empty,
-      AiElements.promptInput<Message>({
-        props: {
-          name: 'khala-chat-message',
-          placeholder: 'Message Khala…',
-          value: model.composerDraft,
-          status,
-          submitLabel: 'Send',
-        },
-        formAttrs: [h.OnSubmit(actions.submittedTurn())],
-        textareaAttrs: [
-          h.Value(model.composerDraft),
-          h.OnInput(value => actions.updatedComposer(value)),
-          h.AriaLabel('Message Khala'),
-          // Enter submits the turn; Shift+Enter inserts a newline.
-          h.OnKeyDownPreventDefault((key, modifiers) =>
-            key === 'Enter' &&
-            !modifiers.shiftKey &&
-            !inFlight &&
-            model.composerDraft.trim() !== ''
-              ? Option.some(actions.submittedTurn())
-              : Option.none(),
+      h.form(
+        [
+          h.OnSubmit(actions.submittedTurn()),
+          Ui.className<Message>('relative grid min-h-36 w-full'),
+        ],
+        [
+          h.textarea(
+            [
+              h.Id(KHALA_CHAT_COMPOSER_TEXTAREA_ID),
+              h.Name('khala-chat-message'),
+              h.Placeholder('Send a message'),
+              h.Autofocus(true),
+              h.Value(model.composerDraft),
+              h.OnInput(value => actions.updatedComposer(value)),
+              h.AriaLabel('Message Khala'),
+              h.Rows(4),
+              Ui.className<Message>(
+                'field-sizing-content min-h-36 w-full resize-none bg-transparent px-4 pb-16 pt-4 font-mono text-[0.8125rem] leading-[1.55] text-[#f1efe8] outline-none placeholder:text-[#a9c3ff]/70 max-sm:text-base/6',
+              ),
+              // Enter submits the turn; Shift+Enter inserts a newline.
+              h.OnKeyDownPreventDefault((key, modifiers) =>
+                key === 'Enter' &&
+                !modifiers.shiftKey &&
+                !inFlight &&
+                model.composerDraft.trim() !== ''
+                  ? Option.some(actions.submittedTurn())
+                  : Option.none(),
+              ),
+            ],
+            [model.composerDraft],
+          ),
+          h.button(
+            [
+              h.Type('submit'),
+              h.AriaLabel(inFlight ? 'Sending message' : 'Send message'),
+              ...(submitDisabled ? [h.Disabled(true)] : []),
+              Ui.className<Message>(
+                'khala-focus absolute bottom-3 right-3 inline-flex size-9 items-center justify-center rounded-[2px] border border-[#4fd0ff] bg-[#4fd0ff] text-black transition-colors duration-200 ease-out hover:border-white hover:bg-white disabled:cursor-not-allowed disabled:border-[#3a7bff]/25 disabled:bg-[#07111f] disabled:text-[#6f8fc8] disabled:hover:border-[#3a7bff]/25 disabled:hover:bg-[#07111f] motion-reduce:transition-none',
+              ),
+            ],
+            [
+              h.span(
+                [
+                  h.AriaHidden(true),
+                  Ui.className<Message>(
+                    'pointer-events-none absolute left-1/2 top-1/2 size-[max(100%,3rem)] -translate-x-1/2 -translate-y-1/2 pointer-fine:hidden',
+                  ),
+                ],
+                [],
+              ),
+              iconView<Message>('ArrowUpSm', 'size-4'),
+            ],
           ),
         ],
-        submitAttrs,
-      }),
+      ),
     ],
   )
 }
@@ -195,7 +320,10 @@ const infoInlineCodeClass =
 
 // One condensed info row: a label + a body. Bodies are truthful per
 // docs/khala/khala.md (first-person "We are Khala", never a provider).
-const infoRow = <Message>(label: string, body: ReadonlyArray<Html | string>): Html => {
+const infoRow = <Message>(
+  label: string,
+  body: ReadonlyArray<Html | string>,
+): Html => {
   const h = html<Message>()
   return h.div(
     [Ui.className<Message>('grid gap-1.5')],
@@ -227,9 +355,7 @@ const infoRow = <Message>(label: string, body: ReadonlyArray<Html | string>): Ht
 // backdrop sits behind the panel and owns the close-on-click), so a click on the
 // panel never reaches the backdrop — no stop-propagation needed. Reduced-motion
 // safe (no entrance animation needed).
-const infoPopup = <Message>(
-  actions: KhalaChatViewActions<Message>,
-): Html => {
+const infoPopup = <Message>(actions: KhalaChatViewActions<Message>): Html => {
   const h = html<Message>()
 
   return h.div(
@@ -317,23 +443,41 @@ const infoPopup = <Message>(
           ]),
           infoRow<Message>('Model', [
             'One public model id: ',
-            h.code([Ui.className<Message>(infoInlineCodeClass)], ['openagents/khala']),
+            h.code(
+              [Ui.className<Message>(infoInlineCodeClass)],
+              ['openagents/khala'],
+            ),
             '. The orchestrator picks the backing lane; you buy the outcome.',
           ]),
           infoRow<Message>('API', [
             'OpenAI-compatible. Point any OpenAI client at the base URL ',
-            h.code([Ui.className<Message>(infoInlineCodeClass)], ['https://openagents.com/api/v1']),
+            h.code(
+              [Ui.className<Message>(infoInlineCodeClass)],
+              ['https://openagents.com/api/v1'],
+            ),
             ' and call ',
-            h.code([Ui.className<Message>(infoInlineCodeClass)], ['/chat/completions']),
+            h.code(
+              [Ui.className<Message>(infoInlineCodeClass)],
+              ['/chat/completions'],
+            ),
             '. Streaming works over standard Server-Sent Events (set ',
-            h.code([Ui.className<Message>(infoInlineCodeClass)], ['"stream": true']),
+            h.code(
+              [Ui.className<Message>(infoInlineCodeClass)],
+              ['"stream": true'],
+            ),
             ').',
           ]),
           infoRow<Message>('Free', [
             'Free to use, no signup. Mint a key with ',
-            h.code([Ui.className<Message>(infoInlineCodeClass)], ['POST /api/keys/free']),
+            h.code(
+              [Ui.className<Message>(infoInlineCodeClass)],
+              ['POST /api/keys/free'],
+            ),
             ', then send it as ',
-            h.code([Ui.className<Message>(infoInlineCodeClass)], ['Authorization: Bearer <token>']),
+            h.code(
+              [Ui.className<Message>(infoInlineCodeClass)],
+              ['Authorization: Bearer <token>'],
+            ),
             '. Free quota: 2,000 requests/day, 2.5M tokens/day.',
           ]),
           h.p(
@@ -417,25 +561,46 @@ export const instructionsView = <Message>(counter?: Html): Html => {
           ]),
           infoRow<Message>('Model', [
             'One public model id: ',
-            h.code([Ui.className<Message>(infoInlineCodeClass)], ['openagents/khala']),
+            h.code(
+              [Ui.className<Message>(infoInlineCodeClass)],
+              ['openagents/khala'],
+            ),
             '. The orchestrator picks the backing lane; you buy the outcome.',
           ]),
           infoRow<Message>('API', [
             'OpenAI-compatible. Point any OpenAI client at the base URL ',
-            h.code([Ui.className<Message>(infoInlineCodeClass)], ['https://openagents.com/api/v1']),
+            h.code(
+              [Ui.className<Message>(infoInlineCodeClass)],
+              ['https://openagents.com/api/v1'],
+            ),
             ' and call ',
-            h.code([Ui.className<Message>(infoInlineCodeClass)], ['/chat/completions']),
+            h.code(
+              [Ui.className<Message>(infoInlineCodeClass)],
+              ['/chat/completions'],
+            ),
             '. Streaming works over standard Server-Sent Events (set ',
-            h.code([Ui.className<Message>(infoInlineCodeClass)], ['"stream": true']),
+            h.code(
+              [Ui.className<Message>(infoInlineCodeClass)],
+              ['"stream": true'],
+            ),
             ').',
           ]),
           infoRow<Message>('Free token', [
             'Free to use, no signup. Mint a key with ',
-            h.code([Ui.className<Message>(infoInlineCodeClass)], ['POST /api/keys/free']),
+            h.code(
+              [Ui.className<Message>(infoInlineCodeClass)],
+              ['POST /api/keys/free'],
+            ),
             ' (use the returned ',
-            h.code([Ui.className<Message>(infoInlineCodeClass)], ['credential.token']),
+            h.code(
+              [Ui.className<Message>(infoInlineCodeClass)],
+              ['credential.token'],
+            ),
             '), then send it as ',
-            h.code([Ui.className<Message>(infoInlineCodeClass)], ['Authorization: Bearer <token>']),
+            h.code(
+              [Ui.className<Message>(infoInlineCodeClass)],
+              ['Authorization: Bearer <token>'],
+            ),
             '. Free quota: 2,000 requests/day, 2,500,000 tokens/day.',
           ]),
           h.div(
@@ -510,7 +675,11 @@ export const overlayView = <Message>(
   )
 
   const infoTrigger = h.div(
-    [Ui.className<Message>('pointer-events-none absolute right-4 top-4 z-20 sm:right-6 sm:top-6')],
+    [
+      Ui.className<Message>(
+        'pointer-events-none absolute right-4 top-4 z-20 sm:right-6 sm:top-6',
+      ),
+    ],
     [
       h.button(
         [
@@ -548,6 +717,77 @@ export const overlayView = <Message>(
         [scrollRegion, composerView<Message>(model, actions)],
       ),
       model.infoOpen ? infoPopup<Message>(actions) : h.empty,
+    ],
+  )
+}
+
+export const bottomOverlayView = <Message>(
+  model: KhalaChatModel,
+  actions: KhalaChatViewActions<Message>,
+): Html => {
+  const h = html<Message>()
+  const hasTranscript =
+    model.transcript.length > 0 || model.streamingReply !== null
+
+  const scrollRegion = hasTranscript
+    ? h.div(
+        [
+          Ui.className<Message>(
+            'oa-thread-scroll pointer-events-auto mx-auto grid min-h-0 w-[min(100%,52rem)] content-start overflow-y-auto px-1 pb-5 pt-4 sm:px-2',
+          ),
+        ],
+        [floatingTranscriptView<Message>(model)],
+      )
+    : h.empty
+
+  const latestButton = hasTranscript
+    ? h.button(
+        [
+          h.Type('button'),
+          h.OnClick(actions.jumpedToLatest()),
+          h.AriaLabel('Jump to latest Khala reply'),
+          Ui.className<Message>(
+            'khala-focus pointer-events-auto absolute bottom-[8.75rem] right-3 inline-flex items-center gap-2 border border-[#3a7bff]/35 bg-black/70 px-2.5 py-1.5 font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.14em] text-[#bcd4ff] backdrop-blur-md transition-colors duration-200 ease-out hover:border-[#4fd0ff] hover:text-white motion-reduce:transition-none sm:right-6',
+          ),
+        ],
+        [
+          h.span(
+            [],
+            [
+              model.status === 'streaming' || model.status === 'submitting'
+                ? 'Live'
+                : 'Latest',
+            ],
+          ),
+          iconView<Message>('ArrowDownSm', 'size-3.5'),
+        ],
+      )
+    : h.empty
+
+  const composerShell = h.div(
+    [
+      Ui.className<Message>(
+        'pointer-events-auto mx-auto w-[min(100%,44rem)] border border-[#3a7bff]/45 bg-black/62 backdrop-blur-md khala-glow',
+      ),
+    ],
+    [composerView<Message>(model, actions)],
+  )
+
+  return h.div(
+    [
+      h.DataAttribute(KHALA_CHAT_ROOT_ATTR, ''),
+      h.DataAttribute('persistent-scene-overlay', 'chat'),
+      h.AriaLabel('Khala chat'),
+      Ui.className<Message>(
+        'pointer-events-none absolute inset-0 z-10 grid min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-3 px-3 pb-4 pt-16 sm:px-6 sm:pb-8',
+      ),
+    ],
+    [
+      h.div(
+        [Ui.className<Message>('relative grid min-h-0')],
+        [scrollRegion, latestButton],
+      ),
+      composerShell,
     ],
   )
 }

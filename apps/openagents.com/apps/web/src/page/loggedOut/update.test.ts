@@ -2,26 +2,33 @@ import { Effect } from 'effect'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import {
+  KhalaChatRoute,
   LandingRoute,
   PublicAgentRoute,
   StatsRoute,
   TraceRoute,
 } from '../../route'
+import { SAMPLE_TRACE_UUID, sampleTrajectory } from '../trace/sample'
 import {
   ClickedCopyAgentInstructions,
   ClickedEnterKhala,
   ClickedEnterTassadar,
   ClickedExitKhala,
+  ClickedKhalaChatJumpToLatest,
   CompletedCopyAgentInstructions,
   FailedLoadKhalaTokensServedSnapshot,
   FailedLoadPublicKhalaTokensServedModelMix,
   FailedLoadTrace,
+  OpenedKhalaChatStream,
+  ReceivedKhalaChatDelta,
   RequestedPollKhalaTokensServedModelMix,
+  SubmittedKhalaChatTurn,
   SucceededLoadKhalaTokensServedSnapshot,
   SucceededLoadPublicKhalaTokensServedModelMix,
   SucceededLoadTrace,
   ToggledGymLane,
   UpdatedGymSamplesPerCell,
+  UpdatedKhalaChatComposer,
 } from './message'
 import { init } from './model'
 import {
@@ -32,7 +39,6 @@ import {
   initialCommands,
   update,
 } from './update'
-import { sampleTrajectory, SAMPLE_TRACE_UUID } from '../trace/sample'
 
 const model = init(LandingRoute())
 
@@ -93,6 +99,39 @@ describe('logged-out nav + copy update', () => {
   test('ClickedExitKhala returns home to / (shared by both info pages)', () => {
     const [, commands] = update(model, ClickedExitKhala())
     expect(commandNames(commands)).toEqual(['NavigateToLanding'])
+  })
+
+  test('Khala chat scrolls only on explicit reader intent and refocuses composer after submit', () => {
+    const chatModel = init(KhalaChatRoute())
+    const [withDraft] = update(
+      chatModel,
+      UpdatedKhalaChatComposer({ value: 'hello' }),
+    )
+
+    const [submitted, submitCommands] = update(
+      withDraft,
+      SubmittedKhalaChatTurn(),
+    )
+    expect(commandNames(submitCommands)).toEqual([
+      'ScrollKhalaChatLatestTurnIntoView',
+      'FocusKhalaChatComposer',
+    ])
+    expect(submitted.khalaChat.transcript).toEqual([
+      { role: 'user', content: 'hello' },
+    ])
+
+    const [streaming] = update(
+      submitted,
+      OpenedKhalaChatStream({ turnId: '1' }),
+    )
+    const [, deltaCommands] = update(
+      streaming,
+      ReceivedKhalaChatDelta({ turnId: '1', text: 'hi' }),
+    )
+    expect(deltaCommands).toEqual([])
+
+    const [, latestCommands] = update(streaming, ClickedKhalaChatJumpToLatest())
+    expect(commandNames(latestCommands)).toEqual(['ScrollKhalaChatThreadToEnd'])
   })
 
   test('ClickedCopyAgentInstructions issues a clipboard copy command', () => {
@@ -317,7 +356,9 @@ describe('logged-out nav + copy update', () => {
       RequestedPollKhalaTokensServedModelMix(),
     )
 
-    expect(commandNames(commands)).toEqual(['LoadPublicKhalaTokensServedModelMix'])
+    expect(commandNames(commands)).toEqual([
+      'LoadPublicKhalaTokensServedModelMix',
+    ])
     // The previously loaded mix is held while the next aggregate is in flight.
     expect(next.publicKhalaTokensServedModelMix._tag).toBe(
       'PublicKhalaTokensServedModelMixLoaded',
@@ -429,7 +470,9 @@ describe('trace route load wiring', () => {
     )
     if (message._tag === 'SucceededLoadTrace') {
       expect(message.uuid).toBe(REAL_TRACE_UUID)
-      expect(message.trajectory.steps.length).toBe(sampleTrajectory.steps.length)
+      expect(message.trajectory.steps.length).toBe(
+        sampleTrajectory.steps.length,
+      )
     }
   })
 

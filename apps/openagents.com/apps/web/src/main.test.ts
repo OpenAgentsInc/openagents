@@ -459,6 +459,25 @@ describe('authenticated startup routing', () => {
     )
   })
 
+  test('renders the public Khala chat page over the persistent scene', () => {
+    const [model] = init(
+      Flags.make({ maybeAuth: Option.none() }),
+      appUrl('/chat'),
+    )
+
+    Scene.scene(
+      { update, view },
+      Scene.with(model),
+      Scene.expect(Scene.selector('oa-landing-squares')).toExist(),
+      Scene.expect(Scene.selector('[data-pose="khala"]')).toExist(),
+      Scene.expect(Scene.selector('[data-khala-chat]')).toExist(),
+      Scene.expect(Scene.selector('[data-khala-chat-composer]')).toExist(),
+      Scene.expect(Scene.selector('[data-khala-instructions]')).not.toExist(),
+      Scene.expect(Scene.role('link', { name: 'Docs' })).not.toExist(),
+      Scene.expect(Scene.role('link', { name: 'Log in' })).not.toExist(),
+    )
+  })
+
   test('renders the Tassadar replay route through the top-level view', () => {
     const [model] = init(
       Flags.make({ maybeAuth: Option.none() }),

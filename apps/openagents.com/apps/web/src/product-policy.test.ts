@@ -26,6 +26,7 @@ import {
   ChatRoute,
   GymOssRoute,
   GymRoute,
+  KhalaChatRoute,
   KhalaRoute,
   MulletRoute,
   OrderRoute,
@@ -198,10 +199,14 @@ describe('browser product policy', () => {
     expect(browserRouteProductIntent(MulletRoute())).toBe('mullet.runner')
     expect(browserRouteProductIntent(StatsRoute())).toBe('public.stats')
     expect(browserRouteProductIntent(KhalaRoute())).toBe('public.khala')
+    expect(browserRouteProductIntent(KhalaChatRoute())).toBe(
+      'public.khala.chat',
+    )
   })
 
   test('keeps the public Khala route bootstrap-free', () => {
     expect(routeRequiresAuthBootstrap(KhalaRoute())).toBe(false)
+    expect(routeRequiresAuthBootstrap(KhalaChatRoute())).toBe(false)
   })
 
   test('keeps the public stats route bootstrap-free', () => {

@@ -8,6 +8,22 @@ import {
   StoredOnboardingSession,
 } from '../autopilot-onboarding/persistence'
 import {
+  BlobRef as AtifBlobRef,
+  Trajectory as AtifTrajectory,
+} from '../trace/atif'
+import {
+  GymCoordinatorCandidateRef,
+  GymFanoutMode,
+  GymLaneRef,
+  GymModuleCompositionMode,
+  GymReasoningEffort,
+  GymSequenceShapeRef,
+  GymToolSetRef,
+  GymTransport,
+} from './gym/flow'
+import { GymRunProgressPublicProjection } from './gym/runProgress'
+import { MirrorCodeRunsResponse } from './mirrorcode/runs'
+import {
   OnboardingStep,
   PublicAdjutantActivity,
   PublicAgentGoalResponse,
@@ -23,19 +39,6 @@ import {
   PublicTrainingRunsResponse,
   ShareProjectionResponse,
 } from './model'
-import { BlobRef as AtifBlobRef, Trajectory as AtifTrajectory } from '../trace/atif'
-import {
-  GymCoordinatorCandidateRef,
-  GymFanoutMode,
-  GymLaneRef,
-  GymModuleCompositionMode,
-  GymReasoningEffort,
-  GymSequenceShapeRef,
-  GymToolSetRef,
-  GymTransport,
-} from './gym/flow'
-import { GymRunProgressPublicProjection } from './gym/runProgress'
-import { MirrorCodeRunsResponse } from './mirrorcode/runs'
 
 // MESSAGE
 
@@ -87,12 +90,9 @@ export const UpdatedGymConcurrency = m('UpdatedGymConcurrency', {
 export const UpdatedGymToolSet = m('UpdatedGymToolSet', {
   tools: GymToolSetRef,
 })
-export const UpdatedGymModuleComposition = m(
-  'UpdatedGymModuleComposition',
-  {
-    mode: GymModuleCompositionMode,
-  },
-)
+export const UpdatedGymModuleComposition = m('UpdatedGymModuleComposition', {
+  mode: GymModuleCompositionMode,
+})
 export const ToggledGymCoordinator = m('ToggledGymCoordinator', {
   candidate: GymCoordinatorCandidateRef,
 })
@@ -546,7 +546,13 @@ export const SucceededKhalaChatTurn = m('SucceededKhalaChatTurn', {
 export const FailedKhalaChatTurn = m('FailedKhalaChatTurn', {
   reason: S.String,
 })
-export const CompletedScrollKhalaChatThread = m('CompletedScrollKhalaChatThread')
+export const ClickedKhalaChatJumpToLatest = m('ClickedKhalaChatJumpToLatest')
+export const CompletedScrollKhalaChatThread = m(
+  'CompletedScrollKhalaChatThread',
+)
+export const CompletedFocusKhalaChatComposer = m(
+  'CompletedFocusKhalaChatComposer',
+)
 export const OpenedKhalaChatInfo = m('OpenedKhalaChatInfo')
 export const ClosedKhalaChatInfo = m('ClosedKhalaChatInfo')
 
@@ -663,7 +669,9 @@ export const Message = S.Union([
   ReceivedKhalaChatDelta,
   SucceededKhalaChatTurn,
   FailedKhalaChatTurn,
+  ClickedKhalaChatJumpToLatest,
   CompletedScrollKhalaChatThread,
+  CompletedFocusKhalaChatComposer,
   OpenedKhalaChatInfo,
   ClosedKhalaChatInfo,
 ])

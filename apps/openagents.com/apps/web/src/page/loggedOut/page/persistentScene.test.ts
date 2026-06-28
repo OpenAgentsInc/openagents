@@ -5,17 +5,27 @@ import { describe, expect, test } from 'vitest'
 
 import { LoggedOut } from '../../../model'
 import {
+  KhalaChatRoute,
   KhalaRoute,
   LandingRoute,
   LoginRoute,
   TassadarRoute,
 } from '../../../route'
+import { update } from '../../../update'
+import { view } from '../../../view'
 import { ClickedEnterKhala } from '../message'
 import {
   LoadedPublicKhalaTokensServed,
   PublicKhalaTokensServed,
 } from '../model'
 import { update as loggedOutUpdate } from '../update'
+import {
+  PERSISTENT_SCENE_KEY,
+  PERSISTENT_SCENE_OVERLAY_PREFIX,
+  PERSISTENT_SCENE_SHELL_KEY,
+  view as persistentSceneView,
+  poseForRoute,
+} from './persistentScene'
 
 const githubViewerSession = Option.some({
   userId: 'github:1',
@@ -29,15 +39,6 @@ const monogramViewerSession = Option.some({
   email: 'mono@example.com',
   name: 'Mono Gram',
 })
-import { update } from '../../../update'
-import { view } from '../../../view'
-import {
-  PERSISTENT_SCENE_KEY,
-  PERSISTENT_SCENE_OVERLAY_PREFIX,
-  PERSISTENT_SCENE_SHELL_KEY,
-  poseForRoute,
-  view as persistentSceneView,
-} from './persistentScene'
 
 type SnabbVNode = {
   readonly sel?: string
@@ -85,7 +86,6 @@ const allKeys = (root: SnabbVNode): ReadonlyArray<string> => {
   return keys
 }
 
-
 describe('persistent landing and Khala scene', () => {
   test('keeps the canvas wrapper key stable across landing and Khala', () => {
     const landing = persistentSceneView('Landing') as SnabbVNode
@@ -107,6 +107,20 @@ describe('persistent landing and Khala scene', () => {
     expect(hasSelector(khalaCanvas as SnabbVNode, 'oa-landing-squares')).toBe(
       true,
     )
+  })
+
+  test('keeps the Chat route on the same canvas at the Khala pose', () => {
+    const khala = persistentSceneView('Khala') as SnabbVNode
+    const chat = persistentSceneView('KhalaChat') as SnabbVNode
+
+    const khalaCanvas = findByKey(khala, PERSISTENT_SCENE_KEY)
+    const chatCanvas = findByKey(chat, PERSISTENT_SCENE_KEY)
+
+    expect(khalaCanvas).toBeDefined()
+    expect(chatCanvas).toBeDefined()
+    expect(khalaCanvas?.sel).toBe(chatCanvas?.sel)
+    expect(khalaCanvas?.key).toBe(chatCanvas?.key)
+    expect(poseForRoute('KhalaChat')).toBe('khala')
   })
 
   test('changes only the overlay key between landing and Khala', () => {
@@ -143,6 +157,7 @@ describe('persistent landing and Khala scene', () => {
   test('maps each route to its distinct, non-blank camera pose', () => {
     expect(poseForRoute('Landing')).toBe('landing')
     expect(poseForRoute('Khala')).toBe('khala')
+    expect(poseForRoute('KhalaChat')).toBe('khala')
     expect(poseForRoute('Tassadar')).toBe('tassadar')
     // The /autopilot onboarding route reuses the SAME persistent scene with
     // its own camera pose (#6125).
@@ -209,7 +224,11 @@ describe('persistent landing and Khala scene', () => {
     // persistentScene mapping SUPPORTS the Autopilot pose directly off the view.
     const autopilot = persistentSceneView('Autopilot') as SnabbVNode
 
-    const hasAttr = (root: SnabbVNode, attr: string, value: string): boolean => {
+    const hasAttr = (
+      root: SnabbVNode,
+      attr: string,
+      value: string,
+    ): boolean => {
       let present = false
       walk(root, n => {
         const data = (n as { data?: { attrs?: Record<string, unknown> } }).data
@@ -283,6 +302,26 @@ describe('persistent landing and Khala scene', () => {
     )
   })
 
+  test('renders /chat as only the bottom Khala chat box over the persistent scene', () => {
+    Scene.scene(
+      { update, view },
+      Scene.with(LoggedOut.init(KhalaChatRoute())),
+      Scene.expect(Scene.selector('oa-landing-squares')).toExist(),
+      Scene.expect(Scene.selector('[data-pose="khala"]')).toExist(),
+      Scene.expect(
+        Scene.selector('[data-persistent-scene-overlay="chat"]'),
+      ).toExist(),
+      Scene.expect(Scene.selector('[data-khala-chat]')).toExist(),
+      Scene.expect(Scene.selector('[data-khala-chat-composer]')).toExist(),
+      Scene.expect(
+        Scene.selector('[data-khala-chat-info-trigger]'),
+      ).not.toExist(),
+      Scene.expect(Scene.selector('[data-khala-instructions]')).not.toExist(),
+      Scene.expect(Scene.selector('[data-khala-back="home"]')).not.toExist(),
+      Scene.expect(Scene.text('Ask Khala what it can do.')).not.toExist(),
+    )
+  })
+
   test('renders /login as the sign-in card over the same persistent scene', () => {
     Scene.scene(
       { update, view },
@@ -349,9 +388,7 @@ describe('persistent landing and Khala scene', () => {
       Scene.expect(
         Scene.selector('[data-landing-floating-avatar="viewer"]'),
       ).not.toExist(),
-      Scene.expect(
-        Scene.selector('[data-account-menu-trigger]'),
-      ).not.toExist(),
+      Scene.expect(Scene.selector('[data-account-menu-trigger]')).not.toExist(),
     )
   })
 
@@ -373,9 +410,7 @@ describe('persistent landing and Khala scene', () => {
       Scene.expect(Scene.text('viewer@example.com')).toExist(),
       Scene.expect(Scene.role('menuitem', { name: 'Workroom' })).toExist(),
       Scene.expect(Scene.role('menuitem', { name: 'Settings' })).toExist(),
-      Scene.expect(
-        Scene.selector('[data-account-menu-logout]'),
-      ).toExist(),
+      Scene.expect(Scene.selector('[data-account-menu-logout]')).toExist(),
       Scene.expect(Scene.role('menuitem', { name: 'Log out' })).toExist(),
     )
   })
@@ -385,9 +420,7 @@ describe('persistent landing and Khala scene', () => {
       { update, view },
       Scene.with(LoggedOut.init(LandingRoute(), githubViewerSession)),
       Scene.expect(
-        Scene.selector(
-          '[src="https://avatars.githubusercontent.com/u/1?v=4"]',
-        ),
+        Scene.selector('[src="https://avatars.githubusercontent.com/u/1?v=4"]'),
       ).toExist(),
     )
   })
@@ -486,5 +519,4 @@ describe('persistent landing and Khala scene', () => {
     )
     expect(commands.map(command => command.name)).toEqual(['NavigateToKhala'])
   })
-
 })

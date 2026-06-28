@@ -12,13 +12,14 @@ import { unregisteredParserRouters, urlToAppRoute } from './route'
 // without registering it), the path falls through to NotFound and the matching
 // case here fails loudly instead of silently redirecting users to the homepage.
 //
-// Param-heavy, overlapping, and intentionally-unrouted paths (`/`, `/chat`,
+// Param-heavy, overlapping, and intentionally-unrouted paths (`/`,
 // `/dashboard`, the demo/team/workroom families) are covered by the assertions
 // in route.test.ts; this file locks the flat public surface that is easiest to
 // half-wire.
 const PUBLIC_ROUTE_PARSE_COVERAGE: ReadonlyArray<readonly [string, string]> = [
   ['/login', 'Login'],
   ['/khala', 'Khala'],
+  ['/chat', 'KhalaChat'],
   ['/stats', 'Stats'],
   ['/stats-old', 'PublicStatsArchive'],
   ['/terms', 'Terms'],
@@ -96,9 +97,10 @@ describe('public route parser coverage', () => {
     // `/pro/runs` + `/pro/evals` fixture subpages were retired in #6215, so the
     // covered count dropped from 40 to 36; the public `/gym` Terminal-Bench
     // visualizer brought the parser-covered surface to 37, the Pylon Codex
-    // assignment-status operator shell brought it to 38, and the public
-    // `/mirrorcode` (MirrorCode, powered by Khala) page brings it to 39.
-    expect(PUBLIC_ROUTE_PARSE_COVERAGE.length).toBe(39)
+    // assignment-status operator shell brought it to 38, the public
+    // `/mirrorcode` (MirrorCode, powered by Khala) page brings it to 39, and
+    // the public `/chat` Khala chat page brings it to 40.
+    expect(PUBLIC_ROUTE_PARSE_COVERAGE.length).toBe(40)
   })
 
   // The public shareable trace render (#6209) must capture the uuid param so the
@@ -143,7 +145,7 @@ describe('public route parser coverage', () => {
   // source; the deprecated/duplicate routers stay explicitly excluded.
   test('keeps deprecated/duplicate routers out of the parser', () => {
     expect(unregisteredParserRouters.length).toBe(2)
-    expect(urlToAppRoute(appUrl('/chat'))._tag).toBe('NotFound')
+    expect(urlToAppRoute(appUrl('/chat'))._tag).toBe('KhalaChat')
     expect(urlToAppRoute(appUrl('/gym'))._tag).toBe('Gym')
   })
 })

@@ -14,6 +14,7 @@ export const PERSISTENT_SCENE_OVERLAY_PREFIX = 'persistent-scene-overlay:'
 export type PersistentSceneRoute =
   | 'Landing'
   | 'Khala'
+  | 'KhalaChat'
   | 'Tassadar'
   | 'Autopilot'
   | 'Login'
@@ -24,7 +25,7 @@ export type PersistentSceneRoute =
 // camera to the new pose (continuous flight). /autopilot and /login reuse the
 // same keyed canvas with their own vantage — no second scene is created.
 export const poseForRoute = (route: PersistentSceneRoute): string =>
-  route === 'Khala'
+  route === 'Khala' || route === 'KhalaChat'
     ? 'khala'
     : route === 'Tassadar'
       ? 'tassadar'
@@ -156,10 +157,13 @@ const landingOverlay = (
 // overlay of the SAME keyed canvas (no second scene). When none is supplied
 // (e.g. a unit test of the scene shell in isolation), a minimal energy label
 // stands in, proving the canvas hosts the `Khala` pose.
-const khalaPlaceholderOverlay = (h: ReturnType<typeof html<Message>>): Html =>
+const khalaPlaceholderOverlay = (
+  h: ReturnType<typeof html<Message>>,
+  overlay: 'khala' | 'chat' = 'khala',
+): Html =>
   h.div(
     [
-      h.DataAttribute('persistent-scene-overlay', 'khala'),
+      h.DataAttribute('persistent-scene-overlay', overlay),
       Ui.className<Message>(
         'pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-6 px-6',
       ),
@@ -172,7 +176,7 @@ const khalaPlaceholderOverlay = (h: ReturnType<typeof html<Message>>): Html =>
             'khala-glow select-none text-center font-semibold text-white text-4xl sm:text-6xl',
           ),
         ],
-        ['Khala'],
+        [overlay === 'chat' ? 'Khala chat' : 'Khala'],
       ),
     ],
   )
@@ -264,7 +268,9 @@ const overlayForRoute = (
         ? (autopilotOverlay ?? autopilotPlaceholderOverlay(h))
         : route === 'Login'
           ? (loginOverlay ?? loginPlaceholderOverlay(h))
-          : (khalaOverlay ?? khalaPlaceholderOverlay(h))
+          : route === 'KhalaChat'
+            ? (khalaOverlay ?? khalaPlaceholderOverlay(h, 'chat'))
+            : (khalaOverlay ?? khalaPlaceholderOverlay(h))
 
 // `autopilotOverlay` is the real /autopilot onboarding HUD (#6129),
 // `khalaOverlay` is the real /khala chat HUD, and `loginOverlay` is the real

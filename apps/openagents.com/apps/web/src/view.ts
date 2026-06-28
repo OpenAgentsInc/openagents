@@ -1,6 +1,7 @@
 import { Option } from 'effect'
 import { type Document, type Html, html } from 'foldkit/html'
 
+import { Session } from './domain/session'
 import {
   GotDemoMessage,
   GotLoggedInMessage,
@@ -10,11 +11,6 @@ import {
 } from './message'
 import type { Model } from './model'
 import { Demo, LoggedIn, LoggedOut } from './model'
-import {
-  type AppRoute,
-  type RouteRenderDisposition,
-  routeRegistry,
-} from './route'
 import * as Activity from './page/activity'
 import * as Animations from './page/animations'
 import * as Blog from './page/blog'
@@ -24,21 +20,25 @@ import * as DemoLegal from './page/demoLegal'
 import * as Docs from './page/docs'
 import * as Forum from './page/forum'
 import type {
-  PublicHeaderAuthState,
-  PublicHeaderViewer,
-} from './page/publicHeader'
-import { Session } from './domain/session'
-import type {
   PublicPylonStats,
   PublicPylonStatsModel,
 } from './page/loggedOut/model'
 import * as Privacy from './page/privacy'
+import type {
+  PublicHeaderAuthState,
+  PublicHeaderViewer,
+} from './page/publicHeader'
 import * as PylonCodexAssignmentStatus from './page/pylonCodexAssignmentStatus'
 import * as Run from './page/run'
 import * as SiteCheckoutDemo from './page/siteCheckoutDemo'
 import * as Terms from './page/terms'
 import * as Trace from './page/trace'
 import * as TraceCompare from './page/trace-compare'
+import {
+  type AppRoute,
+  type RouteRenderDisposition,
+  routeRegistry,
+} from './route'
 import * as Ui from './ui'
 
 const githubLoginHref = '/login/github'
@@ -406,6 +406,8 @@ const title = (model: Model): string => {
       return 'Live Tassadar run - OpenAgents'
     case 'Tassadar':
       return 'Tassadar run - OpenAgents'
+    case 'KhalaChat':
+      return 'Khala chat - OpenAgents'
     case 'TassadarReplay':
       return 'Tassadar proof replay - OpenAgents'
     case 'Login':
@@ -481,6 +483,7 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
     model._tag === 'LoggedOut' &&
     (model.route._tag === 'Landing' ||
       model.route._tag === 'Khala' ||
+      model.route._tag === 'KhalaChat' ||
       model.route._tag === 'Tassadar')
   ) {
     const h = html<Message>()
@@ -631,9 +634,7 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
     }
   }
 
-  const viewerFromSession = (
-    session: Session,
-  ): PublicHeaderViewer => ({
+  const viewerFromSession = (session: Session): PublicHeaderViewer => ({
     displayName: session.name,
     email: session.email,
     ...(session.avatarUrl !== undefined && session.avatarUrl !== ''

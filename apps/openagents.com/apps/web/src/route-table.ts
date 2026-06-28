@@ -777,6 +777,16 @@ export const routeTable = {
     inLoggedInUnion: false,
     render: 'submodel',
   },
+  KhalaChat: {
+    surface: 'spaDocument',
+    serverDocument: /^\/chat$/,
+    examplePaths: ['/chat'],
+    requiresAuthBootstrap: false,
+    loggedInGate: 'open',
+    inLoggedOutUnion: true,
+    inLoggedInUnion: false,
+    render: 'submodel',
+  },
   // The Pylon scene lives at `/pylons` (not the root).
   Pylon: {
     surface: 'spaDocument',

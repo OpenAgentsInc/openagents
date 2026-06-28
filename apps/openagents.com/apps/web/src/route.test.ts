@@ -24,9 +24,10 @@ import {
   ForumReceiptRoute,
   ForumRoute,
   ForumTopicRoute,
-  GymRoute,
   GymOssRoute,
+  GymRoute,
   ImagesRoute,
+  KhalaChatRoute,
   KhalaRoute,
   LandingRoute,
   LoginRoute,
@@ -37,13 +38,13 @@ import {
   OrderRoute,
   PrivacyRoute,
   PublicAgentRoute,
-  PylonCodexAssignmentStatusRoute,
   PublicStatsArchiveRoute,
   PublicTrainingRunRoute,
   PublicTrainingRunsRoute,
+  PylonCodexAssignmentStatusRoute,
   PylonRoute,
-  RunRoute,
   type RouteSpec,
+  RunRoute,
   ShareRoute,
   SiteCheckoutDemoReturnRoute,
   SiteCheckoutDemoRoute,
@@ -67,12 +68,6 @@ const appUrl = (pathname: string) => ({
 })
 
 describe('app route parser', () => {
-  test('does not accept the legacy personal chat alias', () => {
-    expect(urlToAppRoute(appUrl('/chat'))).toEqual(
-      NotFoundRoute({ path: '/chat' }),
-    )
-  })
-
   test('accepts the public Autopilot onboarding route', () => {
     // `/autopilot` is the public onboarding entry (#6124/#6129); the operator
     // cockpit lives under `/autopilot/work`. The logged-in-with-workspace
@@ -174,6 +169,10 @@ describe('app route parser', () => {
 
   test('accepts the public Khala inference route', () => {
     expect(urlToAppRoute(appUrl('/khala'))).toEqual(KhalaRoute())
+  })
+
+  test('accepts the public Khala chat page route', () => {
+    expect(urlToAppRoute(appUrl('/chat'))).toEqual(KhalaChatRoute())
   })
 
   test('accepts the public Gym Terminal-Bench route', () => {
@@ -342,7 +341,7 @@ const CANONICAL_URL_TO_TAG: ReadonlyArray<readonly [string, string]> = [
   ['/workspaces/ws_1', 'Workspace'],
   ['/workrooms/wr_1', 'Workroom'],
   ['/workrooms/wr_1/files', 'WorkroomTab'],
-  ['/chat', 'NotFound'],
+  ['/chat', 'KhalaChat'],
   ['/teams/t1/chat', 'TeamChat'],
   ['/teams/t1/projects/p1/chat', 'TeamProjectChat'],
   ['/teams/t1/files', 'TeamFiles'],
@@ -442,7 +441,9 @@ describe('registry-driven route parser (behavior preservation)', () => {
       'special',
       'maintenance',
     ])
-    for (const spec of Object.values(routeRegistry) as ReadonlyArray<RouteSpec>) {
+    for (const spec of Object.values(
+      routeRegistry,
+    ) as ReadonlyArray<RouteSpec>) {
       expect(typeof spec.requiresAuthBootstrap).toBe('boolean')
       expect(gates.has(spec.loggedInGate)).toBe(true)
       expect(typeof spec.inLoggedOutUnion).toBe('boolean')
@@ -452,12 +453,12 @@ describe('registry-driven route parser (behavior preservation)', () => {
   })
 
   test('keeps deprecated/duplicate routers OUT of the parser', () => {
-    // chatRouter and landingRouter stay unregistered: /chat is NotFound, while
-    // / is covered by the Landing alias. /gym is now a served public document.
+    // chatRouter and landingRouter stay unregistered: /autopilot is owned by
+    // AutopilotRoute, while / is covered by the Landing alias. /chat is now
+    // the public KhalaChat route.
     expect(unregisteredParserRouters.length).toBe(2)
-    expect(urlToAppRoute(appUrl('/chat'))).toEqual(
-      NotFoundRoute({ path: '/chat' }),
-    )
+    expect(urlToAppRoute(appUrl('/chat'))).toEqual(KhalaChatRoute())
+    expect(urlToAppRoute(appUrl('/autopilot'))).toEqual(AutopilotRoute())
     expect(urlToAppRoute(appUrl('/gym'))).toEqual(GymRoute())
   })
 

@@ -11,111 +11,13 @@ import { load, pushUrl } from 'foldkit/navigation'
 import { evo } from 'foldkit/struct'
 
 import {
-  CompletedCopyAgentInstructions,
-  CompletedCopyShareLink,
-  CompletedLandingLogout,
-  CompletedNavigateToKhala,
-  CompletedNavigateToLanding,
-  CompletedNavigateToTassadar,
-  CompletedAutopilotOnboardingCreditKickoff,
-  CompletedPersistAutopilotOnboarding,
-  CompletedScrollAutopilotOnboardingThread,
-  CompletedScrollKhalaChatThread,
-  FailedReconcileAutopilotOnboardingSession,
-  LoadedStoredAutopilotOnboarding,
-  SucceededReconcileAutopilotOnboardingSession,
-  FailedLoadPublicAdjutantActivity,
-  FailedLoadPublicAgentGoal,
-  FailedLoadPublicArtanisReport,
-  FailedLoadPublicForumLaunchStatus,
-  FailedLoadPublicForumTipLeaderboards,
-  FailedLoadKhalaTokensServedSnapshot,
-  FailedLoadPublicKhalaTokensServed,
-  FailedLoadPublicKhalaTokensServedHistory,
-  FailedLoadPublicKhalaTokensServedModelMix,
-  FailedLoadPublicGymRunProgress,
-  FailedLoadGymRunProgressSnapshot,
-  FailedLoadMirrorCodeRuns,
-  FailedLoadPublicProductPromises,
-  FailedLoadPublicPromiseTransitions,
-  FailedLoadPublicPylonStats,
-  FailedLoadPublicTrainingRuns,
-  FailedLoadSettledFeedSnapshot,
-  FailedLoadShareProjection,
-  FailedLoadTrace,
-  Message,
-  SucceededLoadPublicAdjutantActivity,
-  SucceededLoadPublicAgentGoal,
-  SucceededLoadPublicArtanisReport,
-  SucceededLoadPublicForumLaunchStatus,
-  SucceededLoadPublicForumTipLeaderboards,
-  SucceededLoadKhalaTokensServedSnapshot,
-  SucceededLoadPublicKhalaTokensServed,
-  SucceededLoadPublicKhalaTokensServedHistory,
-  SucceededLoadPublicKhalaTokensServedModelMix,
-  SucceededLoadPublicGymRunProgress,
-  SucceededLoadGymRunProgressSnapshot,
-  SucceededLoadMirrorCodeRuns,
-  SucceededLoadPublicProductPromises,
-  SucceededLoadPublicPromiseTransitions,
-  SucceededLoadPublicPylonStats,
-  SucceededLoadPublicTrainingRuns,
-  SucceededLoadSettledFeedSnapshot,
-  SucceededLoadShareProjection,
-  SucceededLoadTrace,
-} from './message'
-import {
-  FailedPublicAdjutantActivity,
-  FailedPublicAgent,
-  FailedPublicArtanisReport,
-  FailedPublicForumLaunchStatus,
-  FailedPublicForumTipLeaderboards,
-  FailedPublicKhalaTokensServed,
-  FailedPublicKhalaTokensServedHistory,
-  FailedPublicKhalaTokensServedModelMix,
-  FailedPublicGymRunProgress,
-  FailedMirrorCodeRuns,
-  FailedPublicProductPromises,
-  FailedPublicPromiseTransitions,
-  FailedPublicPylonStats,
-  FailedPublicTrainingRuns,
-  FailedShareProjection,
-  LoadedPublicAdjutantActivity,
-  LoadedPublicAgent,
-  LoadedPublicArtanisReport,
-  LoadedPublicForumLaunchStatus,
-  LoadedPublicForumTipLeaderboards,
-  LoadedPublicKhalaTokensServedHistory,
-  LoadedPublicKhalaTokensServedModelMix,
-  LoadedPublicGymRunProgress,
-  LoadedMirrorCodeRuns,
-  LoadedPublicProductPromises,
-  LoadedPublicPromiseTransitions,
-  LoadedPublicPylonStats,
-  LoadedPublicTrainingRuns,
-  LoadedShareProjection,
-  LoadedTrace,
-  Model,
-  NotFoundTrace,
-  FailedTrace,
-  PublicAdjutantActivity,
-  PublicAgentGoalResponse,
-  PublicArtanisReport,
-  PublicForumLaunchStatus,
-  PublicForumTipLeaderboards,
-  PublicKhalaTokensServed,
-  PublicKhalaTokensServedHistory,
-  PublicKhalaTokensServedModelMix,
-  PublicProductPromises,
-  PublicPromiseTransitions,
-  PublicPylonStats,
-  PublicTrainingRunResponse,
-  PublicTrainingRunsResponse,
-  ShareProjectionResponse,
-} from './model'
+  clearSessionFromStore,
+  sessionStoreLayer,
+} from '../../commands/session-store'
+import { recordFromUnknown } from '../../json-boundary'
+import { homeRouter, khalaRouter, tassadarRouter } from '../../route'
+import { FlowModel } from '../autopilot-onboarding/flow'
 import { HUD_THREAD_END_SELECTOR } from '../autopilot-onboarding/page'
-import { KHALA_CHAT_THREAD_END_SELECTOR } from '../khala-chat/page'
-import { onboardingVerticalForSegment } from '../autopilot-onboarding/vertical-overlay'
 import {
   OnboardingSessionResponse,
   type StoredInFlight,
@@ -125,7 +27,17 @@ import {
   storedSessionFromParts,
   writeStoredSession,
 } from '../autopilot-onboarding/persistence'
-import { FlowModel } from '../autopilot-onboarding/flow'
+import { onboardingVerticalForSegment } from '../autopilot-onboarding/vertical-overlay'
+import {
+  KHALA_CHAT_COMPOSER_TEXTAREA_SELECTOR,
+  KHALA_CHAT_LATEST_TURN_SELECTOR,
+  KHALA_CHAT_THREAD_END_SELECTOR,
+} from '../khala-chat/page'
+import {
+  BlobRef as AtifBlobRef,
+  Trajectory as AtifTrajectory,
+} from '../trace/atif'
+import { SAMPLE_TRACE_UUID } from '../trace/sample'
 import {
   setGymConcurrency,
   setGymFanoutMode,
@@ -144,24 +56,15 @@ import {
   GymRunProgressPublicProjection,
   GymRunProgressResponse,
 } from './gym/runProgress'
-import { MirrorCodeRunsResponse } from './mirrorcode/runs'
-import { BlobRef as AtifBlobRef, Trajectory as AtifTrajectory } from '../trace/atif'
-import { SAMPLE_TRACE_UUID } from '../trace/sample'
-import { recordFromUnknown } from '../../json-boundary'
 import {
-  clearSessionFromStore,
-  sessionStoreLayer,
-} from '../../commands/session-store'
-import { homeRouter, khalaRouter, tassadarRouter } from '../../route'
-import {
-  SETTLED_FEED_SCOPE,
-  applySettledFeedPatch,
-  settledFeedAfterCursorGap,
-  settledFeedAfterSnapshot,
-  settledFeedClosed,
-  settledFeedFailed,
-  settledFeedOpen,
-} from './settled-feed'
+  GYM_RUN_PROGRESS_SCOPE,
+  applyGymRunProgressPatch,
+  gymRunProgressAfterSnapshot,
+  gymRunProgressStreamAfterCursorGap,
+  gymRunProgressStreamClosed,
+  gymRunProgressStreamFailed,
+  gymRunProgressStreamOpen,
+} from './gym/runProgressFeed'
 import {
   KHALA_TOKENS_SERVED_SCOPE,
   applyKhalaTokensServedPatch,
@@ -174,14 +77,119 @@ import {
   khalaTokensServedStreamSnapshotSettled,
 } from './khala-tokens-served-feed'
 import {
-  GYM_RUN_PROGRESS_SCOPE,
-  applyGymRunProgressPatch,
-  gymRunProgressAfterSnapshot,
-  gymRunProgressStreamAfterCursorGap,
-  gymRunProgressStreamClosed,
-  gymRunProgressStreamFailed,
-  gymRunProgressStreamOpen,
-} from './gym/runProgressFeed'
+  CompletedAutopilotOnboardingCreditKickoff,
+  CompletedCopyAgentInstructions,
+  CompletedCopyShareLink,
+  CompletedFocusKhalaChatComposer,
+  CompletedLandingLogout,
+  CompletedNavigateToKhala,
+  CompletedNavigateToLanding,
+  CompletedNavigateToTassadar,
+  CompletedPersistAutopilotOnboarding,
+  CompletedScrollAutopilotOnboardingThread,
+  CompletedScrollKhalaChatThread,
+  FailedLoadGymRunProgressSnapshot,
+  FailedLoadKhalaTokensServedSnapshot,
+  FailedLoadMirrorCodeRuns,
+  FailedLoadPublicAdjutantActivity,
+  FailedLoadPublicAgentGoal,
+  FailedLoadPublicArtanisReport,
+  FailedLoadPublicForumLaunchStatus,
+  FailedLoadPublicForumTipLeaderboards,
+  FailedLoadPublicGymRunProgress,
+  FailedLoadPublicKhalaTokensServed,
+  FailedLoadPublicKhalaTokensServedHistory,
+  FailedLoadPublicKhalaTokensServedModelMix,
+  FailedLoadPublicProductPromises,
+  FailedLoadPublicPromiseTransitions,
+  FailedLoadPublicPylonStats,
+  FailedLoadPublicTrainingRuns,
+  FailedLoadSettledFeedSnapshot,
+  FailedLoadShareProjection,
+  FailedLoadTrace,
+  FailedReconcileAutopilotOnboardingSession,
+  LoadedStoredAutopilotOnboarding,
+  Message,
+  SucceededLoadGymRunProgressSnapshot,
+  SucceededLoadKhalaTokensServedSnapshot,
+  SucceededLoadMirrorCodeRuns,
+  SucceededLoadPublicAdjutantActivity,
+  SucceededLoadPublicAgentGoal,
+  SucceededLoadPublicArtanisReport,
+  SucceededLoadPublicForumLaunchStatus,
+  SucceededLoadPublicForumTipLeaderboards,
+  SucceededLoadPublicGymRunProgress,
+  SucceededLoadPublicKhalaTokensServed,
+  SucceededLoadPublicKhalaTokensServedHistory,
+  SucceededLoadPublicKhalaTokensServedModelMix,
+  SucceededLoadPublicProductPromises,
+  SucceededLoadPublicPromiseTransitions,
+  SucceededLoadPublicPylonStats,
+  SucceededLoadPublicTrainingRuns,
+  SucceededLoadSettledFeedSnapshot,
+  SucceededLoadShareProjection,
+  SucceededLoadTrace,
+  SucceededReconcileAutopilotOnboardingSession,
+} from './message'
+import { MirrorCodeRunsResponse } from './mirrorcode/runs'
+import {
+  FailedMirrorCodeRuns,
+  FailedPublicAdjutantActivity,
+  FailedPublicAgent,
+  FailedPublicArtanisReport,
+  FailedPublicForumLaunchStatus,
+  FailedPublicForumTipLeaderboards,
+  FailedPublicGymRunProgress,
+  FailedPublicKhalaTokensServed,
+  FailedPublicKhalaTokensServedHistory,
+  FailedPublicKhalaTokensServedModelMix,
+  FailedPublicProductPromises,
+  FailedPublicPromiseTransitions,
+  FailedPublicPylonStats,
+  FailedPublicTrainingRuns,
+  FailedShareProjection,
+  FailedTrace,
+  LoadedMirrorCodeRuns,
+  LoadedPublicAdjutantActivity,
+  LoadedPublicAgent,
+  LoadedPublicArtanisReport,
+  LoadedPublicForumLaunchStatus,
+  LoadedPublicForumTipLeaderboards,
+  LoadedPublicGymRunProgress,
+  LoadedPublicKhalaTokensServedHistory,
+  LoadedPublicKhalaTokensServedModelMix,
+  LoadedPublicProductPromises,
+  LoadedPublicPromiseTransitions,
+  LoadedPublicPylonStats,
+  LoadedPublicTrainingRuns,
+  LoadedShareProjection,
+  LoadedTrace,
+  Model,
+  NotFoundTrace,
+  PublicAdjutantActivity,
+  PublicAgentGoalResponse,
+  PublicArtanisReport,
+  PublicForumLaunchStatus,
+  PublicForumTipLeaderboards,
+  PublicKhalaTokensServed,
+  PublicKhalaTokensServedHistory,
+  PublicKhalaTokensServedModelMix,
+  PublicProductPromises,
+  PublicPromiseTransitions,
+  PublicPylonStats,
+  PublicTrainingRunResponse,
+  PublicTrainingRunsResponse,
+  ShareProjectionResponse,
+} from './model'
+import {
+  SETTLED_FEED_SCOPE,
+  applySettledFeedPatch,
+  settledFeedAfterCursorGap,
+  settledFeedAfterSnapshot,
+  settledFeedClosed,
+  settledFeedFailed,
+  settledFeedOpen,
+} from './settled-feed'
 
 type UpdateReturn = readonly [Model, ReadonlyArray<Command.Command<Message>>]
 const withUpdateReturn = M.withReturnType<UpdateReturn>()
@@ -468,8 +476,9 @@ export const LoadPublicKhalaTokensServed = Command.define(
       try: () => response.json(),
       catch: error => new PublicKhalaTokensServedLoadError({ error }),
     })
-    const decoded =
-      yield* S.decodeUnknownEffect(PublicKhalaTokensServed)(payload)
+    const decoded = yield* S.decodeUnknownEffect(PublicKhalaTokensServed)(
+      payload,
+    )
 
     return SucceededLoadPublicKhalaTokensServed({ served: decoded })
   }).pipe(
@@ -535,15 +544,16 @@ export const LoadKhalaTokensServedSnapshot = Command.define(
       try: () => response.json(),
       catch: error => new KhalaTokensServedSnapshotLoadError({ error }),
     })
-    const decoded =
-      yield* S.decodeUnknownEffect(KhalaTokensServedSnapshotPayload)(payload)
-    const rawSummary =
-      decoded.collections['tokens_served_summary']?.['summary']
-    const summary = rawSummary === undefined
-      ? null
-      : yield* S.decodeUnknownEffect(KhalaTokensServedSnapshotSummary)(
-          rawSummary,
-        ).pipe(Effect.orElseSucceed(() => null))
+    const decoded = yield* S.decodeUnknownEffect(
+      KhalaTokensServedSnapshotPayload,
+    )(payload)
+    const rawSummary = decoded.collections['tokens_served_summary']?.['summary']
+    const summary =
+      rawSummary === undefined
+        ? null
+        : yield* S.decodeUnknownEffect(KhalaTokensServedSnapshotSummary)(
+            rawSummary,
+          ).pipe(Effect.orElseSucceed(() => null))
 
     return SucceededLoadKhalaTokensServedSnapshot({
       cursor: decoded.cursor,
@@ -594,8 +604,9 @@ export const LoadPublicKhalaTokensServedHistory = Command.define(
       try: () => response.json(),
       catch: error => new PublicKhalaTokensServedHistoryLoadError({ error }),
     })
-    const decoded =
-      yield* S.decodeUnknownEffect(PublicKhalaTokensServedHistory)(payload)
+    const decoded = yield* S.decodeUnknownEffect(
+      PublicKhalaTokensServedHistory,
+    )(payload)
 
     return SucceededLoadPublicKhalaTokensServedHistory({ history: decoded })
   }).pipe(
@@ -638,8 +649,9 @@ export const LoadPublicKhalaTokensServedModelMix = Command.define(
       try: () => response.json(),
       catch: error => new PublicKhalaTokensServedModelMixLoadError({ error }),
     })
-    const decoded =
-      yield* S.decodeUnknownEffect(PublicKhalaTokensServedModelMix)(payload)
+    const decoded = yield* S.decodeUnknownEffect(
+      PublicKhalaTokensServedModelMix,
+    )(payload)
 
     return SucceededLoadPublicKhalaTokensServedModelMix({ mix: decoded })
   }).pipe(
@@ -684,7 +696,9 @@ export const LoadPublicGymRunProgress = Command.define(
       try: () => response.json(),
       catch: error => new PublicGymRunProgressLoadError({ error }),
     })
-    const decoded = yield* S.decodeUnknownEffect(GymRunProgressResponse)(payload)
+    const decoded = yield* S.decodeUnknownEffect(GymRunProgressResponse)(
+      payload,
+    )
 
     return SucceededLoadPublicGymRunProgress({ runs: decoded.runs })
   }).pipe(
@@ -734,7 +748,9 @@ export const LoadMirrorCodeRuns = Command.define(
       try: () => response.json(),
       catch: error => new MirrorCodeRunsLoadError({ error }),
     })
-    const decoded = yield* S.decodeUnknownEffect(MirrorCodeRunsResponse)(payload)
+    const decoded = yield* S.decodeUnknownEffect(MirrorCodeRunsResponse)(
+      payload,
+    )
 
     return SucceededLoadMirrorCodeRuns({ response: decoded })
   }).pipe(
@@ -774,10 +790,13 @@ export const LoadGymRunProgressSnapshot = Command.define(
   Effect.gen(function* () {
     const response = yield* Effect.tryPromise({
       try: () =>
-        fetch(`/api/sync/${GYM_RUN_PROGRESS_SCOPE.replace(':', '/')}/snapshot`, {
-          cache: 'no-store',
-          headers: { accept: 'application/json' },
-        }),
+        fetch(
+          `/api/sync/${GYM_RUN_PROGRESS_SCOPE.replace(':', '/')}/snapshot`,
+          {
+            cache: 'no-store',
+            headers: { accept: 'application/json' },
+          },
+        ),
       catch: error => new GymRunProgressSnapshotLoadError({ error }),
     })
 
@@ -791,20 +810,17 @@ export const LoadGymRunProgressSnapshot = Command.define(
       try: () => response.json(),
       catch: error => new GymRunProgressSnapshotLoadError({ error }),
     })
-    const decoded =
-      yield* S.decodeUnknownEffect(GymRunProgressSnapshotPayload)(payload)
+    const decoded = yield* S.decodeUnknownEffect(GymRunProgressSnapshotPayload)(
+      payload,
+    )
     const collection = decoded.collections['gym_run_progress'] ?? {}
-    const maybeRuns = yield* Effect.forEach(
-      Object.values(collection),
-      value =>
-        S.decodeUnknownEffect(GymRunProgressPublicProjection)(value).pipe(
-          Effect.map(run =>
-            Option.some<GymRunProgressPublicProjection>(run),
-          ),
-          Effect.orElseSucceed(() =>
-            Option.none<GymRunProgressPublicProjection>(),
-          ),
+    const maybeRuns = yield* Effect.forEach(Object.values(collection), value =>
+      S.decodeUnknownEffect(GymRunProgressPublicProjection)(value).pipe(
+        Effect.map(run => Option.some<GymRunProgressPublicProjection>(run)),
+        Effect.orElseSucceed(() =>
+          Option.none<GymRunProgressPublicProjection>(),
         ),
+      ),
     )
     const runs = Arr.getSomes(maybeRuns)
 
@@ -868,14 +884,16 @@ export const LoadSettledFeedSnapshot = Command.define(
       try: () => response.json(),
       catch: error => new SettledFeedSnapshotLoadError({ error }),
     })
-    const decoded =
-      yield* S.decodeUnknownEffect(SettledFeedSnapshotPayload)(payload)
+    const decoded = yield* S.decodeUnknownEffect(SettledFeedSnapshotPayload)(
+      payload,
+    )
     const rawSummary = decoded.collections['settled_summary']?.['summary']
-    const summary = rawSummary === undefined
-      ? null
-      : yield* S.decodeUnknownEffect(SettledFeedSnapshotSummary)(
-          rawSummary,
-        ).pipe(Effect.orElseSucceed(() => null))
+    const summary =
+      rawSummary === undefined
+        ? null
+        : yield* S.decodeUnknownEffect(SettledFeedSnapshotSummary)(
+            rawSummary,
+          ).pipe(Effect.orElseSucceed(() => null))
 
     return SucceededLoadSettledFeedSnapshot({
       cursor: decoded.cursor,
@@ -1040,8 +1058,9 @@ export const LoadPublicPromiseTransitions = Command.define(
       try: () => response.json(),
       catch: error => new PublicPromiseTransitionsLoadError({ error }),
     })
-    const decoded =
-      yield* S.decodeUnknownEffect(PublicPromiseTransitions)(payload)
+    const decoded = yield* S.decodeUnknownEffect(PublicPromiseTransitions)(
+      payload,
+    )
 
     return SucceededLoadPublicPromiseTransitions({ transitions: decoded })
   }).pipe(
@@ -1291,7 +1310,7 @@ export const TASSADAR_AGENT_INSTRUCTIONS = [
   '',
   'curl -X POST https://openagents.com/api/agents/register \\',
   '  -H "Content-Type: application/json" \\',
-  "  -d '{\"displayName\": \"YOUR_AGENT_NAME\", \"slug\": \"your-agent-name\"}'",
+  '  -d \'{"displayName": "YOUR_AGENT_NAME", "slug": "your-agent-name"}\'',
   '',
   'Then install Pylon and join the run:',
   '  npx @openagentsinc/pylon',
@@ -1401,8 +1420,9 @@ export const ScrollAutopilotOnboardingThreadToEnd = Command.define(
   ),
 )
 
-// Scroll the generic /khala chat thread's bottom sentinel into view after a turn
-// is sent or a delta lands. Same fire-and-forget shape as the onboarding scroll.
+// Scroll the generic /khala chat thread's bottom sentinel into view after an
+// explicit "latest" request. Streaming deltas never call this: the reader keeps
+// their place unless they asked to move.
 export const ScrollKhalaChatThreadToEnd = Command.define(
   'ScrollKhalaChatThreadToEnd',
   CompletedScrollKhalaChatThread,
@@ -1413,6 +1433,29 @@ export const ScrollKhalaChatThreadToEnd = Command.define(
     Effect.as(CompletedScrollKhalaChatThread()),
     Effect.catch(() => Effect.succeed(CompletedScrollKhalaChatThread())),
   ),
+)
+
+// A submitted turn is explicit reader intent. Put that turn near the top of the
+// transcript viewport so the answer can stream into the space below it.
+export const ScrollKhalaChatLatestTurnIntoView = Command.define(
+  'ScrollKhalaChatLatestTurnIntoView',
+  CompletedScrollKhalaChatThread,
+)(
+  Dom.scrollIntoViewAfterPaint(KHALA_CHAT_LATEST_TURN_SELECTOR, {
+    block: 'start',
+  }).pipe(
+    Effect.as(CompletedScrollKhalaChatThread()),
+    Effect.catch(() => Effect.succeed(CompletedScrollKhalaChatThread())),
+  ),
+)
+
+export const FocusKhalaChatComposer = Command.define(
+  'FocusKhalaChatComposer',
+  CompletedFocusKhalaChatComposer,
+)(
+  Dom.focus(KHALA_CHAT_COMPOSER_TEXTAREA_SELECTOR, {
+    preventScroll: true,
+  }).pipe(Effect.ignore, Effect.as(CompletedFocusKhalaChatComposer())),
 )
 
 // The credit_kickoff stub. A logged-out visitor cannot top up directly (the
@@ -1476,10 +1519,7 @@ const storedSessionFromFlow = (
 // (no stuck half-bubble), persisting the cleared cursor. Shared by the resume
 // stream's terminal-without-done (closed) and 404 (failed) outcomes — both end
 // the resume the same way. Ignores a turn that is no longer the resuming one.
-const endResume = (
-  model: Model,
-  turnIndex: number,
-): UpdateReturn => {
+const endResume = (model: Model, turnIndex: number): UpdateReturn => {
   const flow = model.autopilotOnboarding
   if (
     flow.inFlight === null ||
@@ -1590,8 +1630,9 @@ export const ReconcileAutopilotOnboardingSession = Command.define(
       try: () => response.json(),
       catch: error => new OnboardingSessionReconcileError({ error, status: 0 }),
     })
-    const decoded =
-      yield* S.decodeUnknownEffect(OnboardingSessionResponse)(payload)
+    const decoded = yield* S.decodeUnknownEffect(OnboardingSessionResponse)(
+      payload,
+    )
 
     return SucceededReconcileAutopilotOnboardingSession({ response: decoded })
   }).pipe(
@@ -1599,9 +1640,7 @@ export const ReconcileAutopilotOnboardingSession = Command.define(
       Effect.succeed(
         FailedReconcileAutopilotOnboardingSession({
           status:
-            error instanceof OnboardingSessionReconcileError
-              ? error.status
-              : 0,
+            error instanceof OnboardingSessionReconcileError ? error.status : 0,
         }),
       ),
     ),
@@ -1623,74 +1662,82 @@ export const initialCommands = (
   model.route._tag === 'Autopilot' || model.route._tag === 'AutopilotVertical'
     ? [RehydrateAutopilotOnboarding()]
     : model.route._tag === 'Share'
-    ? [LoadShareProjection({ shareId: model.route.shareId })]
-    : model.route._tag === 'Trace' &&
-        model.route.uuid !== SAMPLE_TRACE_UUID
-      ? [LoadTrace({ uuid: model.route.uuid })]
-    : model.route._tag === 'Home'
-      ? [
-          LoadPublicPylonStats(),
-          LoadKhalaTokensServedSnapshot(),
-          LoadPublicKhalaTokensServed(),
-          LoadPublicKhalaTokensServedHistory(),
-          LoadPublicForumLaunchStatus(),
-          LoadPublicForumTipLeaderboards(),
-          LoadSettledFeedSnapshot(),
-        ]
-      : model.route._tag === 'Stats' ||
-        model.route._tag === 'PublicStatsArchive'
-      ? [
-          LoadPublicPylonStats(),
-          LoadKhalaTokensServedSnapshot(),
-          LoadPublicKhalaTokensServed(),
-          LoadPublicKhalaTokensServedHistory(),
-          LoadPublicKhalaTokensServedModelMix(),
-          LoadPublicForumLaunchStatus(),
-          LoadPublicForumTipLeaderboards(),
-          LoadSettledFeedSnapshot(),
-        ]
-      : model.route._tag === 'Khala' || model.route._tag === 'Landing'
-        ? // /khala AND the / landing hero both show the live "Khala Tokens
-          // Served" total (the landing top-left pill mirrors the /khala
-          // counter), so both seed from the SAME snapshot + scalar endpoints and
-          // subscribe to the SAME live stream below — no parallel data source.
-          [LoadKhalaTokensServedSnapshot(), LoadPublicKhalaTokensServed()]
-      : model.route._tag === 'Gym'
-        ? [LoadGymRunProgressSnapshot(), LoadPublicGymRunProgress()]
-      : model.route._tag === 'MirrorCode'
-        ? [LoadMirrorCodeRuns()]
-      : model.route._tag === 'ProductPromises'
-        ? [LoadPublicProductPromises(), LoadPublicPromiseTransitions()]
-        : model.route._tag === 'PublicTrainingRuns'
-          ? [LoadPublicTrainingRuns({ runId: null })]
-          : model.route._tag === 'PublicTrainingRun'
-            ? [LoadPublicTrainingRuns({ runId: model.route.runId })]
-            : model.route._tag === 'PublicAgent'
-              ? model.route.agentRef === 'artanis'
-                ? [
-                    LoadPublicAgentGoal({
-                      agentId: publicAgentIdForRef(model.route.agentRef),
-                      agentRef: model.route.agentRef,
-                    }),
-                    LoadPublicArtanisReport(),
-                    LoadPublicPylonStats(),
-                    LoadPublicKhalaTokensServedHistory(),
-                  ]
-                : model.route.agentRef === 'adjutant'
-                  ? [
-                      LoadPublicAgentGoal({
-                        agentId: publicAgentIdForRef(model.route.agentRef),
-                        agentRef: model.route.agentRef,
-                      }),
-                      LoadPublicAdjutantActivity(),
-                    ]
-                  : [
-                      LoadPublicAgentGoal({
-                        agentId: publicAgentIdForRef(model.route.agentRef),
-                        agentRef: model.route.agentRef,
-                      }),
-                    ]
-              : []
+      ? [LoadShareProjection({ shareId: model.route.shareId })]
+      : model.route._tag === 'Trace' && model.route.uuid !== SAMPLE_TRACE_UUID
+        ? [LoadTrace({ uuid: model.route.uuid })]
+        : model.route._tag === 'Home'
+          ? [
+              LoadPublicPylonStats(),
+              LoadKhalaTokensServedSnapshot(),
+              LoadPublicKhalaTokensServed(),
+              LoadPublicKhalaTokensServedHistory(),
+              LoadPublicForumLaunchStatus(),
+              LoadPublicForumTipLeaderboards(),
+              LoadSettledFeedSnapshot(),
+            ]
+          : model.route._tag === 'Stats' ||
+              model.route._tag === 'PublicStatsArchive'
+            ? [
+                LoadPublicPylonStats(),
+                LoadKhalaTokensServedSnapshot(),
+                LoadPublicKhalaTokensServed(),
+                LoadPublicKhalaTokensServedHistory(),
+                LoadPublicKhalaTokensServedModelMix(),
+                LoadPublicForumLaunchStatus(),
+                LoadPublicForumTipLeaderboards(),
+                LoadSettledFeedSnapshot(),
+              ]
+            : model.route._tag === 'Khala' || model.route._tag === 'Landing'
+              ? // /khala AND the / landing hero both show the live "Khala Tokens
+                // Served" total (the landing top-left pill mirrors the /khala
+                // counter), so both seed from the SAME snapshot + scalar endpoints and
+                // subscribe to the SAME live stream below — no parallel data source.
+                [LoadKhalaTokensServedSnapshot(), LoadPublicKhalaTokensServed()]
+              : model.route._tag === 'Gym'
+                ? [LoadGymRunProgressSnapshot(), LoadPublicGymRunProgress()]
+                : model.route._tag === 'MirrorCode'
+                  ? [LoadMirrorCodeRuns()]
+                  : model.route._tag === 'ProductPromises'
+                    ? [
+                        LoadPublicProductPromises(),
+                        LoadPublicPromiseTransitions(),
+                      ]
+                    : model.route._tag === 'PublicTrainingRuns'
+                      ? [LoadPublicTrainingRuns({ runId: null })]
+                      : model.route._tag === 'PublicTrainingRun'
+                        ? [LoadPublicTrainingRuns({ runId: model.route.runId })]
+                        : model.route._tag === 'PublicAgent'
+                          ? model.route.agentRef === 'artanis'
+                            ? [
+                                LoadPublicAgentGoal({
+                                  agentId: publicAgentIdForRef(
+                                    model.route.agentRef,
+                                  ),
+                                  agentRef: model.route.agentRef,
+                                }),
+                                LoadPublicArtanisReport(),
+                                LoadPublicPylonStats(),
+                                LoadPublicKhalaTokensServedHistory(),
+                              ]
+                            : model.route.agentRef === 'adjutant'
+                              ? [
+                                  LoadPublicAgentGoal({
+                                    agentId: publicAgentIdForRef(
+                                      model.route.agentRef,
+                                    ),
+                                    agentRef: model.route.agentRef,
+                                  }),
+                                  LoadPublicAdjutantActivity(),
+                                ]
+                              : [
+                                  LoadPublicAgentGoal({
+                                    agentId: publicAgentIdForRef(
+                                      model.route.agentRef,
+                                    ),
+                                    agentRef: model.route.agentRef,
+                                  }),
+                                ]
+                          : []
 
 const fundingAmountFromInput = (value: string): number => {
   const parsed = Number.parseInt(value, 10)
@@ -2209,7 +2256,8 @@ export const update = (model: Model, message: Message): UpdateReturn =>
       CompletedCopyShareLink: () => [model, []],
       SucceededLoadSettledFeedSnapshot: ({ cursor, summary }) => [
         evo(model, {
-          settledFeed: feed => settledFeedAfterSnapshot(feed, { cursor, summary }),
+          settledFeed: feed =>
+            settledFeedAfterSnapshot(feed, { cursor, summary }),
         }),
         [],
       ],
@@ -2731,7 +2779,10 @@ export const update = (model: Model, message: Message): UpdateReturn =>
             }),
         })
 
-        return [nextModel, [ScrollKhalaChatThreadToEnd()]]
+        return [
+          nextModel,
+          [ScrollKhalaChatLatestTurnIntoView(), FocusKhalaChatComposer()],
+        ]
       },
       OpenedKhalaChatStream: ({ turnId }) => {
         const chat = model.khalaChat
@@ -2762,7 +2813,7 @@ export const update = (model: Model, message: Message): UpdateReturn =>
                 streamingReply: reply => (reply ?? '') + text,
               }),
           }),
-          [ScrollKhalaChatThreadToEnd()],
+          [],
         ]
       },
       SucceededKhalaChatTurn: ({ turnId }) => {
@@ -2785,9 +2836,13 @@ export const update = (model: Model, message: Message): UpdateReturn =>
                 ],
               }),
           }),
-          [ScrollKhalaChatThreadToEnd()],
+          [],
         ]
       },
+      ClickedKhalaChatJumpToLatest: () => [
+        model,
+        [ScrollKhalaChatThreadToEnd()],
+      ],
       FailedKhalaChatTurn: ({ reason }) => [
         evo(model, {
           khalaChat: chat =>
@@ -2801,6 +2856,7 @@ export const update = (model: Model, message: Message): UpdateReturn =>
         [],
       ],
       CompletedScrollKhalaChatThread: () => [model, []],
+      CompletedFocusKhalaChatComposer: () => [model, []],
       OpenedKhalaChatInfo: () => [
         evo(model, {
           khalaChat: chat => evo(chat, { infoOpen: () => true }),

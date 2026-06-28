@@ -24,13 +24,14 @@ import {
   DemoThreadRoute,
   ForumForumRoute,
   ForumReceiptRoute,
-  GymRoute,
-  MirrorCodeRoute,
   GymOssRoute,
+  GymRoute,
   HomeRoute,
   InviteRoute,
+  KhalaChatRoute,
   KhalaRoute,
   LandingRoute,
+  MirrorCodeRoute,
   Moksha2Route,
   MokshaRoute,
   MulletRoute,
@@ -46,13 +47,13 @@ import {
   SiteCheckoutDemoReturnRoute,
   SiteCheckoutDemoRoute,
   StatsRoute,
-  TassadarRoute,
   TassadarReplayRoute,
+  TassadarRoute,
   TeamChatRoute,
   TeamProjectChatRoute,
   TermsRoute,
-  TraceRoute,
   TraceCompareRoute,
+  TraceRoute,
 } from '../route'
 import { routeRegistry } from '../route'
 import {
@@ -308,9 +309,10 @@ describe('startup route policy', () => {
     })
   })
 
-  test('keeps Khala, Gym, MirrorCode, and legal pages public for every auth state', () => {
+  test('keeps Khala, chat, Gym, MirrorCode, and legal pages public for every auth state', () => {
     for (const publicRoute of [
       KhalaRoute(),
+      KhalaChatRoute(),
       GymRoute(),
       MirrorCodeRoute(),
       TermsRoute(),
@@ -731,6 +733,7 @@ describe('startup route policy', () => {
     expect(routeRequiresAuthBootstrap(MokshaRoute())).toBe(false)
     expect(routeRequiresAuthBootstrap(Moksha2Route())).toBe(false)
     expect(routeRequiresAuthBootstrap(PylonRoute())).toBe(false)
+    expect(routeRequiresAuthBootstrap(KhalaChatRoute())).toBe(false)
     expect(routeRequiresAuthBootstrap(TassadarRoute())).toBe(false)
     expect(
       routeRequiresAuthBootstrap(

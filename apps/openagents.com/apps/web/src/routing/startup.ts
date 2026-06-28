@@ -123,6 +123,7 @@ export const startupRouteForLoggedOut = (
       'Moksha2',
       'Landing',
       'Khala',
+      'KhalaChat',
       'Terms',
       'Privacy',
       'Pylon',
@@ -142,7 +143,9 @@ export const startupRouteForLoggedOut = (
           })
         : LoggedOutStartupRoute({
             route: LandingRoute(),
-            redirect: Option.some(StartupRedirectToHome({ href: homeRouter() })),
+            redirect: Option.some(
+              StartupRedirectToHome({ href: homeRouter() }),
+            ),
           }),
     ),
     M.orElse(() =>
@@ -182,6 +185,7 @@ const startupRouteForIncompleteOnboarding = (route: AppRoute): StartupRoute =>
       'Moksha2',
       'Landing',
       'Khala',
+      'KhalaChat',
       'Terms',
       'Privacy',
       'Pylon',
@@ -308,6 +312,7 @@ const startupRouteForCompleteOnboarding = (
       'Moksha2',
       'Landing',
       'Khala',
+      'KhalaChat',
       'Terms',
       'Privacy',
       'Pylon',
@@ -494,6 +499,7 @@ export const startupCompleteDisposition = {
   Terms: 'public',
   Privacy: 'public',
   Khala: 'public',
+  KhalaChat: 'public',
   Pylon: 'public',
   Download: 'public',
   Dashboard: 'redirectDefault',

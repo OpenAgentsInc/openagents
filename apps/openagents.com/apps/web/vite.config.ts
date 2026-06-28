@@ -9,6 +9,9 @@ import { defineConfig } from 'vite'
 // from src/styles.css as plain CSS, so Tailwind/Vite bundle them normally — no
 // style compiler plugin is needed here.
 
+const devApiOrigin =
+  process.env.OPENAGENTS_WEB_DEV_API_ORIGIN ?? 'https://openagents.com'
+
 export default defineConfig({
   build: {
     chunkSizeWarningLimit: 600,
@@ -24,5 +27,14 @@ export default defineConfig({
   plugins: [tailwindcss(), foldkit({ devToolsMcpPort: 9988 })],
   optimizeDeps: {
     entries: ['src/entry.ts'],
+  },
+  server: {
+    proxy: {
+      '/api': {
+        changeOrigin: true,
+        secure: true,
+        target: devApiOrigin,
+      },
+    },
   },
 })
