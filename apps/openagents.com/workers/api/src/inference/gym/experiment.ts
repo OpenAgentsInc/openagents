@@ -33,6 +33,7 @@ export const GymEnvironmentRef = S.Literals([
   'terminal-bench',
   'khala-code',
   'long-context-codebase-qa',
+  'agentcl-repo-reuse',
   'm8-head-to-head',
   'throughput-concurrency',
 ])
@@ -66,6 +67,7 @@ export const GymEnvironmentSurface = S.Literals([
   'client-surface',
   'artifact-acceptance',
   'retrieval-qa',
+  'continual-learning',
   'recorded-head-to-head',
   'throughput-concurrency',
 ])
@@ -288,6 +290,15 @@ const LONG_CONTEXT_CODEBASE_QA_SHAPE: typeof SequenceShape.Type = {
   provenance: 'realistic',
 }
 
+const AGENTCL_REPO_REUSE_SHAPE: typeof SequenceShape.Type = {
+  id: 'agentcl-repo-reuse-two-pass-32k',
+  inputTokens: 30000,
+  outputTokens: 1800,
+  cacheablePrefixTokens: 22000,
+  concurrency: 2,
+  provenance: 'realistic',
+}
+
 const M8_HEAD_TO_HEAD_SHAPE: typeof SequenceShape.Type = {
   id: 'm8-crossy-road-head-to-head-recorded',
   inputTokens: 2400,
@@ -438,6 +449,37 @@ export const GYM_ENVIRONMENT_REGISTRY: Readonly<
       publicClaimEligible: false,
     },
     defaultShapes: [LONG_CONTEXT_CODEBASE_QA_SHAPE],
+    defaultTools: 'khala-fixture-tools',
+  },
+  'agentcl-repo-reuse': {
+    ref: 'agentcl-repo-reuse',
+    surface: 'continual-learning',
+    taskSet: {
+      ref: 'taskset.gym.agentcl_repo_reuse.public_docs.v1',
+      source: 'retained-public-fixture',
+      publicSafeTaskRefs: [
+        'agentcl.repo_reuse.source.effect_schema_gym_contract.v1',
+        'agentcl.repo_reuse.source.harbor_dispatch_receipt.v1',
+        'agentcl.repo_reuse.source.tas_memory_fixture.v1',
+        'agentcl.repo_reuse.target.two_pass_runner.v1',
+        'agentcl.repo_reuse.target.pylon_tas_memory_measurement.v1',
+        'agentcl.repo_reuse.held_out.mirrorcode_no_rag_rule.v1',
+      ],
+    },
+    workloads: ['long-context-codebase-question'],
+    verifier: {
+      ref: 'verifier.gym.agentcl_repo_reuse.pg_sg_gg.v1',
+      mode: 'seeded-reference',
+      expectedOutcome: 'seeded',
+    },
+    acceptance: {
+      ref: 'acceptance.gym.agentcl_repo_reuse.measurement_only.v1',
+      verifierRef: 'verifier.gym.agentcl_repo_reuse.pg_sg_gg.v1',
+      scalarRewardPassThreshold: 0,
+      requiresExecutedVerifier: false,
+      publicClaimEligible: false,
+    },
+    defaultShapes: [AGENTCL_REPO_REUSE_SHAPE],
     defaultTools: 'khala-fixture-tools',
   },
   'm8-head-to-head': {
@@ -715,6 +757,26 @@ export const LONG_CONTEXT_CODEBASE_QA_GYM_EXPERIMENT: GymExperiment = {
     },
   },
   shapes: GYM_ENVIRONMENT_REGISTRY['long-context-codebase-qa'].defaultShapes,
+}
+
+export const AGENTCL_REPO_REUSE_GYM_EXPERIMENT: GymExperiment = {
+  ...LONG_CONTEXT_CODEBASE_QA_GYM_EXPERIMENT,
+  id: 'gym-agentcl-repo-reuse-fixture-v1',
+  environment: 'agentcl-repo-reuse',
+  policy: {
+    ...LONG_CONTEXT_CODEBASE_QA_GYM_EXPERIMENT.policy,
+    fanout: {
+      lanes: ['khala'],
+      mode: 'single',
+      concurrency: 2,
+    },
+    tools: GYM_ENVIRONMENT_REGISTRY['agentcl-repo-reuse'].defaultTools,
+    sampling: {
+      ...LONG_CONTEXT_CODEBASE_QA_GYM_EXPERIMENT.policy.sampling,
+      maxTokens: 4096,
+    },
+  },
+  shapes: GYM_ENVIRONMENT_REGISTRY['agentcl-repo-reuse'].defaultShapes,
 }
 
 export const M8_HEAD_TO_HEAD_GYM_EXPERIMENT: GymExperiment = {

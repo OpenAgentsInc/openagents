@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 
 import {
   BUNDLED_GYM_EXPERIMENT,
+  AGENTCL_REPO_REUSE_GYM_EXPERIMENT,
   GYM_ENVIRONMENT_REGISTRY,
   KHALA_CODE_GYM_EXPERIMENT,
   LONG_CONTEXT_CODEBASE_QA_GYM_EXPERIMENT,
@@ -71,6 +72,7 @@ describe('Gym environment registry', () => {
       'terminal-bench',
       'khala-code',
       'long-context-codebase-qa',
+      'agentcl-repo-reuse',
       'm8-head-to-head',
       'throughput-concurrency',
     ])
@@ -92,6 +94,19 @@ describe('Gym environment registry', () => {
     expect(throughput.defaultShapes.map(shape => shape.concurrency)).toEqual([
       1, 2, 4, 8,
     ])
+
+    const agentCl = getGymEnvironmentDefinition('agentcl-repo-reuse')
+    expect(agentCl.surface).toBe('continual-learning')
+    expect(agentCl.taskSet.ref).toBe(
+      'taskset.gym.agentcl_repo_reuse.public_docs.v1',
+    )
+    expect(agentCl.taskSet.publicSafeTaskRefs).toContain(
+      'agentcl.repo_reuse.target.two_pass_runner.v1',
+    )
+    expect(agentCl.verifier.ref).toBe(
+      'verifier.gym.agentcl_repo_reuse.pg_sg_gg.v1',
+    )
+    expect(agentCl.acceptance.publicClaimEligible).toBe(false)
 
     for (const definition of listGymEnvironmentDefinitions()) {
       expect(definition.verifier.ref).not.toBe('')
@@ -157,6 +172,11 @@ describe('compileGymExperiment', () => {
         verifier: 'verifier.seeded.long_context_answer.v1',
       },
       {
+        experiment: AGENTCL_REPO_REUSE_GYM_EXPERIMENT,
+        workload: 'long-context-codebase-question',
+        verifier: 'verifier.gym.agentcl_repo_reuse.pg_sg_gg.v1',
+      },
+      {
         experiment: M8_HEAD_TO_HEAD_GYM_EXPERIMENT,
         workload: 'khala-code-artifact-gen',
         verifier: 'verifier.khala_code.executed_acceptance_suite.v1',
@@ -207,6 +227,26 @@ describe('compileGymExperiment', () => {
       'vllm.max_num_seqs.8.prefix_cache.chunked_prefill.nvfp4',
       'vllm.max_num_seqs.16.prefix_cache.chunked_prefill.nvfp4',
     ])
+  })
+
+  test('compiles the AgentCL repo-reuse environment as a measurement-only fixture', () => {
+    const compiled = compileGymExperiment(AGENTCL_REPO_REUSE_GYM_EXPERIMENT)
+
+    expect(compiled.matrixConfig.workloads).toEqual([
+      'long-context-codebase-question',
+    ])
+    expect(compiled.policySelection.environment.surface).toBe(
+      'continual-learning',
+    )
+    expect(compiled.policySelection.environment.verifierRef).toBe(
+      'verifier.gym.agentcl_repo_reuse.pg_sg_gg.v1',
+    )
+    expect(compiled.policySelection.fanout).toEqual({
+      lanes: ['khala'],
+      mode: 'single',
+      concurrency: 2,
+    })
+    expect(compiled.expectedCellCount).toBe(1)
   })
 
   test('compiles a real-seam experiment without spending', () => {
