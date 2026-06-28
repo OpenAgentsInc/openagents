@@ -108,6 +108,7 @@ import {
   resolvePylonAccountUsageRefreshTargets,
   type PylonAccountsUsageArgs,
 } from "./account-usage.js"
+import { collectPylonOperatorAccountStatus } from "./account-status.js"
 import {
   createCodexFleetOffloadPlan,
   parseCodexFleetOffloadArgs,
@@ -1155,6 +1156,7 @@ const runHeadlessNode = Effect.gen(function* () {
       sessions: headlessSessionsWithExternal,
       intents: makeIntentActions(headlessIntentQueue),
       accountsList: () => collectPylonAccountsList(bootstrapSummary),
+      accountsStatus: () => collectPylonOperatorAccountStatus(bootstrapSummary),
       // The supervisor-status provider comes from the launch lifecycle owner
       // above (undefined unless PYLON_APPLE_FM_SUPERVISE=1 and a helper exists),
       // so by default this is the unsupervised projection unchanged.

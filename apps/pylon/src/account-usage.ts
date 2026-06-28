@@ -257,7 +257,7 @@ async function pathIsDirectory(path: string): Promise<boolean> {
   }
 }
 
-async function loadAccountUsageStore(summary: Pick<BootstrapSummary, "paths">): Promise<PylonAccountUsageStore> {
+export async function loadAccountUsageStore(summary: Pick<BootstrapSummary, "paths">): Promise<PylonAccountUsageStore> {
   try {
     const parsed = JSON.parse(await readFile(accountUsagePath(summary), "utf8")) as PylonAccountUsageStore
     if (parsed.schema === PYLON_ACCOUNT_USAGE_STORE_SCHEMA && parsed.accounts && typeof parsed.accounts === "object") {

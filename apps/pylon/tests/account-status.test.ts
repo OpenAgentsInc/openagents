@@ -1,0 +1,115 @@
+import { describe, expect, test } from "bun:test"
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+
+import { hashPylonAccountRef } from "../src/account-registry"
+import { recordQuotaBlock } from "../src/account-quota-ledger"
+import { collectPylonOperatorAccountStatus } from "../src/account-status"
+import { recordPylonAccountUsageObservation } from "../src/account-usage"
+import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
+import { assertPublicProjectionSafe } from "../src/state"
+
+async function withHome<T>(fn: (home: string) => Promise<T>) {
+  const home = await mkdtemp(join(tmpdir(), "pylon-account-status-"))
+  try {
+    return await fn(home)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+}
+
+describe("pylon operator account status", () => {
+  test("aggregates registered account quota, capacity, manual resets, and usage", async () => {
+    await withHome(async (home) => {
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), { PYLON_HOME: home })
+      const codexHome = join(home, "codex-a")
+      await mkdir(codexHome, { recursive: true })
+      await writeFile(
+        summary.paths.config,
+        `${JSON.stringify(
+          {
+            dev: {
+              accounts: [
+                {
+                  ref: "codex-a",
+                  provider: "codex",
+                  home: codexHome,
+                  hourlyCap: 1_000,
+                  weeklyCap: 10_000,
+                  manualResetsRemaining: 2,
+                },
+              ],
+            },
+          },
+          null,
+          2,
+        )}\n`,
+      )
+
+      const accountRefHash = hashPylonAccountRef("codex", "codex-a")
+      await recordQuotaBlock(summary, {
+        accountRefHash,
+        provider: "codex",
+        retryAtIso: "2026-06-28T02:00:00.000Z",
+        sourceDigestRef: "digest.pylon.account_quota.test",
+        now: new Date("2026-06-28T01:00:00.000Z"),
+      })
+      await recordPylonAccountUsageObservation(summary, {
+        provider: "codex",
+        account: {
+          provider: "codex",
+          selector: "registry_ref",
+          accountRef: "codex-a",
+          accountRefHash,
+          home: codexHome,
+        },
+        providerSnapshots: [
+          {
+            provider: "codex",
+            limitId: "codex",
+            limitName: null,
+            primary: {
+              usedPercent: 25,
+              remainingPercent: 75,
+              windowMinutes: 60,
+              resetsAt: null,
+              label: "usage",
+            },
+            secondary: {
+              usedPercent: 40,
+              remainingPercent: 60,
+              windowMinutes: 10_080,
+              resetsAt: null,
+              label: "weekly",
+            },
+            credits: null,
+            planType: null,
+            rateLimitReachedType: null,
+          },
+        ],
+        observedAt: new Date("2026-06-28T01:05:00.000Z"),
+      })
+
+      const projection = await collectPylonOperatorAccountStatus(summary, {
+        now: new Date("2026-06-28T01:10:00.000Z"),
+      })
+
+      expect(projection.accounts).toEqual([
+        {
+          accountRefHash,
+          provider: "codex",
+          isRateLimited: true,
+          cooldownExpiresAt: "2026-06-28T02:00:00.000Z",
+          hourlyCap: 1_000,
+          hourlyUsage: 250,
+          weeklyCap: 10_000,
+          weeklyUsage: 4_000,
+          manualResetsRemaining: 2,
+        },
+      ])
+      expect(JSON.stringify(projection)).not.toContain(codexHome)
+      assertPublicProjectionSafe(projection)
+    })
+  })
+})
