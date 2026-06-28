@@ -528,6 +528,19 @@ export const khalaTokensServedPollDependenciesForModel = (
     ? { isActive: true }
     : inactiveKhalaTokensServedPoll
 
+const khalaTokensServedHistoryRouteIsLive = (model: Model): boolean =>
+  khalaTokensServedRouteIsLive(model) ||
+  (model._tag === 'LoggedOut' &&
+    model.route._tag === 'PublicAgent' &&
+    model.route.agentRef === 'artanis')
+
+export const khalaTokensServedHistoryPollDependenciesForModel = (
+  model: Model,
+): KhalaTokensServedPollDependencies =>
+  khalaTokensServedHistoryRouteIsLive(model)
+    ? { isActive: true }
+    : inactiveKhalaTokensServedPoll
+
 // Model-family mix poll (#6392). The model-mix chart only renders on the /stats
 // surface (`Stats` + `PublicStatsArchive`), so its refresh poll is gated to
 // exactly those routes — narrower than the history poll above, which also runs
@@ -1484,7 +1497,7 @@ export const subscriptions = Subscription.make<Model, Message>()(entry => ({
       isActive: S.Boolean,
     },
     {
-      modelToDependencies: khalaTokensServedPollDependenciesForModel,
+      modelToDependencies: khalaTokensServedHistoryPollDependenciesForModel,
       dependenciesToStream: ({ isActive }: { isActive: boolean }) =>
         Stream.when(
           Stream.tick(

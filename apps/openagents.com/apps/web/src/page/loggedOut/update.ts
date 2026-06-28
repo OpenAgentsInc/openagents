@@ -1674,6 +1674,7 @@ export const initialCommands = (
                     }),
                     LoadPublicArtanisReport(),
                     LoadPublicPylonStats(),
+                    LoadPublicKhalaTokensServedHistory(),
                   ]
                 : model.route.agentRef === 'adjutant'
                   ? [

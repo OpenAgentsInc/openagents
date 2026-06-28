@@ -1,7 +1,12 @@
 import { Effect } from 'effect'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
-import { LandingRoute, StatsRoute, TraceRoute } from '../../route'
+import {
+  LandingRoute,
+  PublicAgentRoute,
+  StatsRoute,
+  TraceRoute,
+} from '../../route'
 import {
   ClickedCopyAgentInstructions,
   ClickedEnterKhala,
@@ -185,6 +190,20 @@ describe('logged-out nav + copy update', () => {
       'LoadPublicForumTipLeaderboards',
       'LoadSettledFeedSnapshot',
     ])
+  })
+
+  test('Artanis route loads public token history for the Pulse panel', () => {
+    const artanisModel = init(PublicAgentRoute({ agentRef: 'artanis' }))
+
+    expect(commandNames(initialCommands(artanisModel))).toEqual([
+      'LoadPublicAgentGoal',
+      'LoadPublicArtanisReport',
+      'LoadPublicPylonStats',
+      'LoadPublicKhalaTokensServedHistory',
+    ])
+    expect(artanisModel.publicKhalaTokensServedHistory._tag).toBe(
+      'PublicKhalaTokensServedHistoryLoading',
+    )
   })
 
   test('LoadPublicKhalaTokensServedModelMix reads canonical aggregate family mix', async () => {
