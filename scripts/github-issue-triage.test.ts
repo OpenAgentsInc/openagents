@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test"
 import {
   buildTechnicalPlan,
+  buildCandidateIssueSearch,
   classifyIssuePriority,
   findDuplicateCandidates,
   inferRelevantFiles,
+  issueHasAnyLabel,
   issueHasPriorityLabel,
   renderTriageComment,
   tokenizeIssueText,
@@ -112,6 +114,16 @@ describe("github issue triage output", () => {
   test("detects existing prio labels", () => {
     expect(issueHasPriorityLabel(issue({ labels: [{ name: "prio:2-issue-triage" }] }))).toBe(true)
     expect(issueHasPriorityLabel(issue({ labels: [{ name: "bug" }] }))).toBe(false)
+  })
+
+  test("detects any existing labels for the default unlabeled queue", () => {
+    expect(issueHasAnyLabel(issue({ labels: [] }))).toBe(false)
+    expect(issueHasAnyLabel(issue({ labels: [{ name: "standing-task" }] }))).toBe(true)
+  })
+
+  test("builds the default candidate query from newly opened unlabeled issues", () => {
+    expect(buildCandidateIssueSearch(false)).toBe("is:issue is:open no:label sort:created-desc")
+    expect(buildCandidateIssueSearch(true)).toBe("is:issue is:open sort:created-desc")
   })
 
   test("builds a scoped execution plan and rendered comment", () => {
