@@ -53,6 +53,7 @@ export const KHALA_CHAT_MODEL = 'khala'
 export const KHALA_CHAT_MAX_MESSAGE_CHARS = 8_000
 export const KHALA_CHAT_MAX_MESSAGES = 40
 export const KHALA_CHAT_MAX_TOTAL_CHARS = 24_000
+export const KHALA_CHAT_MAX_COMPLETION_TOKENS = 4_096
 
 // A single chat turn from the client. Only user/assistant roles cross the
 // boundary; the system prompt is rebuilt server-side every turn and never
@@ -211,8 +212,9 @@ export const buildKhalaChatMessages = (
 ]
 
 // Build the streaming inference request for a turn. `stream: true` so the
-// provider-adapter opens an incremental stream; `passthroughParams` is empty
-// (the demo does not forward arbitrary OpenAI params).
+// provider-adapter opens an incremental stream. The public chat route sets an
+// explicit output budget because provider defaults can be too small once the
+// Khala identity/capability/Pylon context prompt is present.
 export const buildKhalaChatRequest = (
   messages: ReadonlyArray<KhalaChatMessage>,
   context?: KhalaChatRequestContext | undefined,
@@ -220,7 +222,9 @@ export const buildKhalaChatRequest = (
   model: KHALA_CHAT_MODEL,
   messages: buildKhalaChatMessages(messages, context),
   stream: true,
-  passthroughParams: {},
+  passthroughParams: {
+    max_tokens: KHALA_CHAT_MAX_COMPLETION_TOKENS,
+  },
 })
 
 export const KHALA_FAST_GREETING_PROMPTS: ReadonlySet<string> = new Set([

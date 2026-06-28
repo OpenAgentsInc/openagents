@@ -4,6 +4,7 @@ import { describe, expect, test } from 'vitest'
 import { OnboardingInferenceError } from './autopilot-onboarding-program'
 import type { OnboardingStreamDelta } from './autopilot-onboarding-program'
 import {
+  KHALA_CHAT_MAX_COMPLETION_TOKENS,
   KHALA_CHAT_MAX_MESSAGE_CHARS,
   type KhalaChatStreamClient,
   type KhalaChatStreamSource,
@@ -64,6 +65,7 @@ const capturingStream =
     chunks: ReadonlyArray<string>,
     capture: (request: {
       messages: ReadonlyArray<{ role: string; content: string }>
+      passthroughParams: Readonly<Record<string, unknown>>
     }) => void,
   ): KhalaChatStreamClient =>
   request => {
@@ -309,7 +311,10 @@ describe('khala chat route', () => {
 
   test('injects the Khala identity system prompt and keeps the running conversation', async () => {
     let captured:
-      | { messages: ReadonlyArray<{ role: string; content: string }> }
+      | {
+          messages: ReadonlyArray<{ role: string; content: string }>
+          passthroughParams: Readonly<Record<string, unknown>>
+        }
       | undefined
     const routes = makeKhalaChatRoutes({
       makeStreamClient: () =>
@@ -350,6 +355,9 @@ describe('khala chat route', () => {
       { role: 'assistant', content: 'We are Khala.' },
       { role: 'user', content: 'what can you do?' },
     ])
+    expect(captured?.passthroughParams.max_tokens).toBe(
+      KHALA_CHAT_MAX_COMPLETION_TOKENS,
+    )
   })
 
   test('answers connected Pylon questions from public registry context without opening a provider stream', async () => {
