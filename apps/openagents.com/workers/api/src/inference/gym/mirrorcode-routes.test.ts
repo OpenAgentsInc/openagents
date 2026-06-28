@@ -3,6 +3,7 @@ import { Effect } from 'effect'
 
 import {
   buildMirrorCodeRun,
+  MIRRORCODE_GENERALIZATION_SET,
   MirrorCodeRunError,
 } from './mirrorcode-contract'
 import {
@@ -91,10 +92,16 @@ describe('handleMirrorCodeRunsApi GET', () => {
       model: string
       runs: ReadonlyArray<{ runId: string }>
       comparators: ReadonlyArray<{ source: string }>
+      generalizationSet: typeof MIRRORCODE_GENERALIZATION_SET
       staleness: { composition: string }
     }
     expect(body.schemaVersion).toBe('openagents.gym.mirrorcode_runs.v1')
     expect(body.model).toBe('openagents/khala')
+    expect(body.generalizationSet).toEqual(MIRRORCODE_GENERALIZATION_SET)
+    expect(body.generalizationSet.retrievalPolicy).toBe('no_rag_on_tasks')
+    expect(body.generalizationSet.trainingPolicy).toBe(
+      'no_training_or_optimization_on_tasks',
+    )
     expect(body.runs[0]?.runId).toBe('mc-phase0-cal-py-0001')
     expect(body.comparators.length).toBeGreaterThan(0)
     expect(body.comparators.every(c => c.source === 'paper_reference_illustrative')).toBe(true)
