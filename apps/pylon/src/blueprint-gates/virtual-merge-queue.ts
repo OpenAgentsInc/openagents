@@ -65,8 +65,87 @@ export type VirtualMergeQueueProjection = {
   readonly nextActualPromotion: VirtualMergeQueueReadyEntry | null
 }
 
+export type VirtualMergeQueuePrFastForwardRequest = {
+  readonly supervisorRef: string
+  readonly repository: string
+  readonly branch: string
+  readonly actualHead: string
+  readonly prNumber: number
+  readonly prBaseCommit: string
+  readonly prHeadCommit: string
+  readonly promotionRef: string
+}
+
+export type VirtualMergeQueuePrFastForwardCommand =
+  | {
+      readonly kind: "git_fetch_pr_head"
+      readonly args: readonly ["git", "fetch", "origin", string]
+    }
+  | {
+      readonly kind: "git_checkout_branch"
+      readonly args: readonly ["git", "checkout", string]
+    }
+  | {
+      readonly kind: "git_reset_actual_head"
+      readonly args: readonly ["git", "reset", "--hard", string]
+    }
+  | {
+      readonly kind: "git_merge_ff_only"
+      readonly args: readonly ["git", "merge", "--ff-only", string]
+    }
+  | {
+      readonly kind: "git_push_branch"
+      readonly args: readonly ["git", "push", "origin", string]
+    }
+
+export type VirtualMergeQueuePrFastForwardPlan = {
+  readonly schema: "openagents.pylon.virtual_merge_queue.pr_fast_forward.v1"
+  readonly state: "ready"
+  readonly repository: string
+  readonly branch: string
+  readonly supervisorRef: string
+  readonly prNumber: number
+  readonly issueNumber: number
+  readonly promotionRef: string
+  readonly expectedActualHeadBefore: string
+  readonly fastForwardHead: string
+  readonly nextVirtualHeadAfter: string
+  readonly commands: ReadonlyArray<VirtualMergeQueuePrFastForwardCommand>
+  readonly sourceRefs: readonly [
+    "issue.public.github.OpenAgentsInc.openagents.6695",
+    "audit.public.docs.artanis.gitafter_cloudflare_artifacts_coordination.2026-06-28",
+  ]
+}
+
+export type VirtualMergeQueuePrFastForwardBlockedReasonRef =
+  | "virtual_merge_queue.pr_fast_forward.blocked.invalid_supervisor"
+  | "virtual_merge_queue.pr_fast_forward.blocked.invalid_repository"
+  | "virtual_merge_queue.pr_fast_forward.blocked.invalid_branch"
+  | "virtual_merge_queue.pr_fast_forward.blocked.invalid_pr"
+  | "virtual_merge_queue.pr_fast_forward.blocked.invalid_commit"
+  | "virtual_merge_queue.pr_fast_forward.blocked.no_ready_promotion"
+  | "virtual_merge_queue.pr_fast_forward.blocked.actual_head_mismatch"
+  | "virtual_merge_queue.pr_fast_forward.blocked.promotion_ref_mismatch"
+  | "virtual_merge_queue.pr_fast_forward.blocked.pr_base_mismatch"
+  | "virtual_merge_queue.pr_fast_forward.blocked.pr_head_mismatch"
+
+export type VirtualMergeQueuePrFastForwardBlocked = {
+  readonly schema: "openagents.pylon.virtual_merge_queue.pr_fast_forward.v1"
+  readonly state: "blocked"
+  readonly blockedReasonRef: VirtualMergeQueuePrFastForwardBlockedReasonRef
+  readonly detail: string
+}
+
+export type VirtualMergeQueuePrFastForwardResult =
+  | VirtualMergeQueuePrFastForwardPlan
+  | VirtualMergeQueuePrFastForwardBlocked
+
 const gitCommitShaPattern = /^[a-f0-9]{40}$/i
 const safePathPattern = /^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$))[A-Za-z0-9._/@+-]+(?:\/[A-Za-z0-9._/@+-]+)*$/
+const repositoryPattern = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/
+const gitBranchPattern =
+  /^(?!-)(?!.*(?:^|\/)\.\.(?:\/|$))(?!.*\/\/)(?!.*@\{)(?!.*[~^:?*\[\]\\\s])(?!.*(?:^|\/)refs\/)(?!.*\.lock(?:\/|$))(?!.*\.$)[A-Za-z0-9._/@+-]+$/
+const supervisorRefPattern = /^supervisor\.public\.pylon[_a-z0-9.-]*\.[A-Za-z0-9._:-]{6,160}$/
 const signedOperatorOverridePattern = /^override\.signed\.operator\.[A-Za-z0-9._:-]{6,160}$/
 const massDeletionThreshold = 5
 const protectedDeletedRootPaths = new Set([
@@ -83,6 +162,18 @@ function stableRef(prefix: string, value: string): string {
 
 function isCommitSha(value: string): boolean {
   return gitCommitShaPattern.test(value)
+}
+
+function fastForwardBlocked(
+  blockedReasonRef: VirtualMergeQueuePrFastForwardBlockedReasonRef,
+  detail: string,
+): VirtualMergeQueuePrFastForwardBlocked {
+  return {
+    schema: "openagents.pylon.virtual_merge_queue.pr_fast_forward.v1",
+    state: "blocked",
+    blockedReasonRef,
+    detail,
+  }
 }
 
 function hasSignedOperatorOverride(candidate: VirtualMergeQueueCandidate): boolean {
@@ -260,5 +351,118 @@ export function projectVirtualMergeQueue(input: {
     ready,
     blocked,
     nextActualPromotion: ready.find((entry) => entry.waitsForActualHead === null) ?? null,
+  }
+}
+
+export function planVirtualMergeQueuePrFastForward(input: {
+  readonly projection: VirtualMergeQueueProjection
+  readonly request: VirtualMergeQueuePrFastForwardRequest
+}): VirtualMergeQueuePrFastForwardResult {
+  const { projection, request } = input
+  if (!supervisorRefPattern.test(request.supervisorRef)) {
+    return fastForwardBlocked(
+      "virtual_merge_queue.pr_fast_forward.blocked.invalid_supervisor",
+      "supervisor ref must be a public Pylon supervisor ref",
+    )
+  }
+  if (!repositoryPattern.test(request.repository)) {
+    return fastForwardBlocked(
+      "virtual_merge_queue.pr_fast_forward.blocked.invalid_repository",
+      "repository must be an owner/name ref",
+    )
+  }
+  if (!gitBranchPattern.test(request.branch)) {
+    return fastForwardBlocked(
+      "virtual_merge_queue.pr_fast_forward.blocked.invalid_branch",
+      "branch must be a safe git branch name",
+    )
+  }
+  if (!Number.isInteger(request.prNumber) || request.prNumber <= 0) {
+    return fastForwardBlocked(
+      "virtual_merge_queue.pr_fast_forward.blocked.invalid_pr",
+      "pull request number must be a positive integer",
+    )
+  }
+  if (
+    !isCommitSha(request.actualHead) ||
+    !isCommitSha(request.prBaseCommit) ||
+    !isCommitSha(request.prHeadCommit)
+  ) {
+    return fastForwardBlocked(
+      "virtual_merge_queue.pr_fast_forward.blocked.invalid_commit",
+      "actual head, PR base, and PR head must be pinned 40-character commits",
+    )
+  }
+
+  const next = projection.nextActualPromotion
+  if (next === null) {
+    return fastForwardBlocked(
+      "virtual_merge_queue.pr_fast_forward.blocked.no_ready_promotion",
+      "virtual merge queue has no PR eligible for actual promotion",
+    )
+  }
+  if (request.actualHead.toLowerCase() !== projection.actualHead.toLowerCase()) {
+    return fastForwardBlocked(
+      "virtual_merge_queue.pr_fast_forward.blocked.actual_head_mismatch",
+      `request actual head ${request.actualHead} does not match queue actual head ${projection.actualHead}`,
+    )
+  }
+  if (request.promotionRef !== next.promotionRef) {
+    return fastForwardBlocked(
+      "virtual_merge_queue.pr_fast_forward.blocked.promotion_ref_mismatch",
+      "request promotion ref is not the next queue promotion",
+    )
+  }
+  if (request.prBaseCommit.toLowerCase() !== projection.actualHead.toLowerCase()) {
+    return fastForwardBlocked(
+      "virtual_merge_queue.pr_fast_forward.blocked.pr_base_mismatch",
+      "PR base must equal the current actual head for a fast-forward merge",
+    )
+  }
+  if (request.prHeadCommit.toLowerCase() !== next.virtualHeadCommit.toLowerCase()) {
+    return fastForwardBlocked(
+      "virtual_merge_queue.pr_fast_forward.blocked.pr_head_mismatch",
+      "PR head must equal the next virtual queue head",
+    )
+  }
+
+  return {
+    schema: "openagents.pylon.virtual_merge_queue.pr_fast_forward.v1",
+    state: "ready",
+    repository: request.repository,
+    branch: request.branch,
+    supervisorRef: request.supervisorRef,
+    prNumber: request.prNumber,
+    issueNumber: next.issueNumber,
+    promotionRef: next.promotionRef,
+    expectedActualHeadBefore: projection.actualHead,
+    fastForwardHead: request.prHeadCommit,
+    nextVirtualHeadAfter: projection.virtualHead,
+    commands: [
+      {
+        kind: "git_fetch_pr_head",
+        args: ["git", "fetch", "origin", `pull/${request.prNumber}/head`] as const,
+      },
+      {
+        kind: "git_checkout_branch",
+        args: ["git", "checkout", request.branch] as const,
+      },
+      {
+        kind: "git_reset_actual_head",
+        args: ["git", "reset", "--hard", projection.actualHead] as const,
+      },
+      {
+        kind: "git_merge_ff_only",
+        args: ["git", "merge", "--ff-only", request.prHeadCommit] as const,
+      },
+      {
+        kind: "git_push_branch",
+        args: ["git", "push", "origin", `HEAD:${request.branch}`] as const,
+      },
+    ],
+    sourceRefs: [
+      "issue.public.github.OpenAgentsInc.openagents.6695",
+      "audit.public.docs.artanis.gitafter_cloudflare_artifacts_coordination.2026-06-28",
+    ],
   }
 }

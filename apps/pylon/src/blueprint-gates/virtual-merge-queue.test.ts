@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test"
 
 import {
+  planVirtualMergeQueuePrFastForward,
   projectVirtualMergeQueue,
   type VirtualMergeQueueCandidate,
+  type VirtualMergeQueuePrFastForwardRequest,
 } from "./virtual-merge-queue.js"
 
 const A = "a".repeat(40)
@@ -289,5 +291,188 @@ describe("virtual merge queue", () => {
     expect(projection.blocked[0]?.blockedReasonRef).toBe(
       "virtual_merge_queue.blocked.duplicate_issue",
     )
+  })
+
+  test("plans a supervisor PR fast-forward only for the next actual queue promotion", () => {
+    const projection = projectVirtualMergeQueue({
+      actualHead: A,
+      candidates: [
+        candidate({
+          candidateRef: "candidate.public.pylon_vmq.issue_6695",
+          issueNumber: 6695,
+          baseCommit: A,
+          patchCommit: B,
+          queuedAt: "2026-06-28T00:00:01.000Z",
+        }),
+        candidate({
+          candidateRef: "candidate.public.pylon_vmq.issue_6696",
+          issueNumber: 6696,
+          baseCommit: B,
+          patchCommit: C,
+          queuedAt: "2026-06-28T00:00:02.000Z",
+        }),
+      ],
+    })
+
+    const result = planVirtualMergeQueuePrFastForward({
+      projection,
+      request: {
+        supervisorRef: "supervisor.public.pylon_vmq.sig_abcdef",
+        repository: "OpenAgentsInc/openagents",
+        branch: "main",
+        actualHead: A,
+        prNumber: 123,
+        prBaseCommit: A,
+        prHeadCommit: B,
+        promotionRef: projection.nextActualPromotion?.promotionRef ?? "",
+      },
+    })
+
+    expect(result.state).toBe("ready")
+    if (result.state !== "ready") throw new Error(result.detail)
+    expect(result.issueNumber).toBe(6695)
+    expect(result.fastForwardHead).toBe(B)
+    expect(result.nextVirtualHeadAfter).toBe(C)
+    expect(result.commands).toEqual([
+      { kind: "git_fetch_pr_head", args: ["git", "fetch", "origin", "pull/123/head"] },
+      { kind: "git_checkout_branch", args: ["git", "checkout", "main"] },
+      { kind: "git_reset_actual_head", args: ["git", "reset", "--hard", A] },
+      { kind: "git_merge_ff_only", args: ["git", "merge", "--ff-only", B] },
+      { kind: "git_push_branch", args: ["git", "push", "origin", "HEAD:main"] },
+    ])
+    expect(result.sourceRefs).toContain("issue.public.github.OpenAgentsInc.openagents.6695")
+  })
+
+  test("blocks PR fast-forward when actual head or promotion ref is stale", () => {
+    const projection = projectVirtualMergeQueue({
+      actualHead: A,
+      candidates: [
+        candidate({
+          candidateRef: "candidate.public.pylon_vmq.issue_6695",
+          issueNumber: 6695,
+          baseCommit: A,
+          patchCommit: B,
+        }),
+      ],
+    })
+    const request: VirtualMergeQueuePrFastForwardRequest = {
+      supervisorRef: "supervisor.public.pylon_vmq.sig_abcdef",
+      repository: "OpenAgentsInc/openagents",
+      branch: "main",
+      actualHead: A,
+      prNumber: 124,
+      prBaseCommit: A,
+      prHeadCommit: B,
+      promotionRef: projection.nextActualPromotion?.promotionRef ?? "",
+    }
+
+    expect(
+      planVirtualMergeQueuePrFastForward({
+        projection,
+        request: { ...request, actualHead: C },
+      }),
+    ).toMatchObject({
+      state: "blocked",
+      blockedReasonRef: "virtual_merge_queue.pr_fast_forward.blocked.actual_head_mismatch",
+    })
+    expect(
+      planVirtualMergeQueuePrFastForward({
+        projection,
+        request: { ...request, promotionRef: "promotion.public.pylon_virtual_merge_queue.wrong" },
+      }),
+    ).toMatchObject({
+      state: "blocked",
+      blockedReasonRef: "virtual_merge_queue.pr_fast_forward.blocked.promotion_ref_mismatch",
+    })
+  })
+
+  test("blocks non-fast-forward PR merge requests before any push command exists", () => {
+    const projection = projectVirtualMergeQueue({
+      actualHead: A,
+      candidates: [
+        candidate({
+          candidateRef: "candidate.public.pylon_vmq.issue_6695",
+          issueNumber: 6695,
+          baseCommit: A,
+          patchCommit: B,
+        }),
+      ],
+    })
+    const request: VirtualMergeQueuePrFastForwardRequest = {
+      supervisorRef: "supervisor.public.pylon_vmq.sig_abcdef",
+      repository: "OpenAgentsInc/openagents",
+      branch: "main",
+      actualHead: A,
+      prNumber: 125,
+      prBaseCommit: C,
+      prHeadCommit: B,
+      promotionRef: projection.nextActualPromotion?.promotionRef ?? "",
+    }
+
+    expect(planVirtualMergeQueuePrFastForward({ projection, request })).toMatchObject({
+      state: "blocked",
+      blockedReasonRef: "virtual_merge_queue.pr_fast_forward.blocked.pr_base_mismatch",
+    })
+    expect(
+      planVirtualMergeQueuePrFastForward({
+        projection,
+        request: { ...request, prBaseCommit: A, prHeadCommit: C },
+      }),
+    ).toMatchObject({
+      state: "blocked",
+      blockedReasonRef: "virtual_merge_queue.pr_fast_forward.blocked.pr_head_mismatch",
+    })
+  })
+
+  test("blocks unsafe supervisor PR fast-forward request fields", () => {
+    const projection = projectVirtualMergeQueue({
+      actualHead: A,
+      candidates: [
+        candidate({
+          candidateRef: "candidate.public.pylon_vmq.issue_6695",
+          issueNumber: 6695,
+          baseCommit: A,
+          patchCommit: B,
+        }),
+      ],
+    })
+    const request: VirtualMergeQueuePrFastForwardRequest = {
+      supervisorRef: "supervisor.public.pylon_vmq.sig_abcdef",
+      repository: "OpenAgentsInc/openagents",
+      branch: "main",
+      actualHead: A,
+      prNumber: 126,
+      prBaseCommit: A,
+      prHeadCommit: B,
+      promotionRef: projection.nextActualPromotion?.promotionRef ?? "",
+    }
+
+    expect(
+      planVirtualMergeQueuePrFastForward({
+        projection,
+        request: { ...request, supervisorRef: "operator.local" },
+      }),
+    ).toMatchObject({
+      state: "blocked",
+      blockedReasonRef: "virtual_merge_queue.pr_fast_forward.blocked.invalid_supervisor",
+    })
+    expect(
+      planVirtualMergeQueuePrFastForward({
+        projection,
+        request: { ...request, repository: "OpenAgentsInc/openagents/extra" },
+      }),
+    ).toMatchObject({
+      state: "blocked",
+      blockedReasonRef: "virtual_merge_queue.pr_fast_forward.blocked.invalid_repository",
+    })
+    expect(
+      planVirtualMergeQueuePrFastForward({
+        projection,
+        request: { ...request, branch: "main && git push" },
+      }),
+    ).toMatchObject({
+      state: "blocked",
+      blockedReasonRef: "virtual_merge_queue.pr_fast_forward.blocked.invalid_branch",
+    })
   })
 })
