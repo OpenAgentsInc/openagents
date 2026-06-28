@@ -28,6 +28,7 @@ import {
   CODEX_AGENT_TASK_SCHEMA,
   type CodexAgentRunner,
 } from "../src/codex-agent-executor"
+import { hashPylonAccountRef } from "../src/account-registry"
 
 const INDEX = join(import.meta.dir, "..", "src", "index.ts")
 const CWD = join(import.meta.dir, "..")
@@ -1392,6 +1393,89 @@ describe("Pylon assignment lease flow", () => {
       expect(result.closeout.payoutClaimAllowed).toBe(false)
       expect(result.closeout.proofRefs[0].startsWith("assignment.proof.failure.")).toBe(true)
       assertPublicProjectionSafe(result.closeout)
+    })
+  })
+
+  test("auto-selects the Claude account pinned by the assignment hash", async () => {
+    await withTempHome(async (home) => {
+      const claudeHomeA = join(home, "accounts/claude/claude-a")
+      const claudeHomeB = join(home, "accounts/claude/claude-b")
+      await mkdir(claudeHomeA, { recursive: true })
+      await mkdir(claudeHomeB, { recursive: true })
+      const claudeBHash = hashPylonAccountRef("claude_agent", "claude-b")
+      const codingAssignment = {
+        claudeAgent: {
+          accountRefHash: claudeBHash,
+          agentKind: "claude_agent_sdk",
+          fixtureRef: "fixture.public.pylon.claude_agent.sum_repair.v1",
+          schema: CLAUDE_AGENT_TASK_SCHEMA,
+        },
+        requiredCapabilityRefs: ["capability.pylon.local_claude_agent"],
+        schema: "openagents.autopilot_coding_assignment.v1",
+      }
+      const fake = fakeAssignmentServer({
+        leases: [
+          lease({
+            assignmentRef: "assignment.public.no_spend.claude_pinned_account",
+            capabilityRefs: ["capability.pylon.local_claude_agent"],
+            codingAssignment,
+            jobKind: "claude_agent_task",
+            leaseRef: "lease.public.no_spend.claude_pinned_account",
+          } as Partial<PylonAssignmentLease>),
+        ],
+      })
+      const summary = await readySummary(home, ["capability.pylon.local_claude_agent"])
+      const state = await ensurePylonLocalState(summary)
+      await writeFile(
+        state.paths.config,
+        `${JSON.stringify(
+          {
+            dev: {
+              accounts: [
+                { provider: "claude_agent", ref: "claude-a", home: claudeHomeA },
+                { provider: "claude_agent", ref: "claude-b", home: claudeHomeB },
+              ],
+            },
+          },
+          null,
+          2,
+        )}\n`,
+      )
+      await sendHeartbeat(summary, { baseUrl: fake.baseUrl, now: () => new Date("2026-06-09T00:00:00.000Z") })
+
+      let seenAccountRef: string | null = null
+      let seenClaudeConfigDir: string | undefined
+      const claudeAgentRunner: ClaudeAgentRunner = async (input) => {
+        seenAccountRef = input.account?.accountRef ?? null
+        seenClaudeConfigDir = input.env?.CLAUDE_CONFIG_DIR
+        await writeFile(
+          join(input.cwd, "sum.ts"),
+          "export const sum = (left: number, right: number) => left + right\n",
+        )
+        return { commandCount: 1, editedFileCount: 1, outcome: "completed", sessionRef: null, turnCount: 2 }
+      }
+
+      const result = await runNoSpendAssignment(summary, {
+        baseUrl: fake.baseUrl,
+        claudeAgentProbe: {
+          env: { ANTHROPIC_API_KEY: "test-key-shape" },
+          importer: async (specifier: string) => {
+            if (specifier !== CLAUDE_AGENT_SDK_PACKAGE) throw new Error("unexpected import")
+            return {}
+          },
+          platform: "darwin",
+        },
+        claudeAgentRunner,
+        now: () => new Date("2026-06-09T00:00:30.000Z"),
+      })
+
+      expect(result.ok).toBe(true)
+      if (!result.ok) throw new Error("expected pinned Claude assignment to run")
+      expect(seenAccountRef).toBe("claude-b")
+      expect(seenClaudeConfigDir).toBe(claudeHomeB)
+      expect(result.closeout.resultRefs).toContain(
+        "result.public.pylon.claude_agent_task.fixture_repair_passed",
+      )
     })
   })
 })

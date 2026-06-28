@@ -955,6 +955,24 @@ function codingRunServiceForLease(lease: PylonAssignmentLease): PylonCodingServi
   return null
 }
 
+function codingRunAccountRefHashForLease(lease: PylonAssignmentLease): string | null {
+  const codingAssignment = lease.codingAssignment as { claudeAgent?: unknown; codex?: unknown } | undefined
+  const service = codingRunServiceForLease(lease)
+  const payload =
+    service === "claude"
+      ? codingAssignment?.claudeAgent
+      : service === "codex"
+        ? codingAssignment?.codex
+        : null
+  if (payload === null || typeof payload !== "object") {
+    return null
+  }
+  const accountRefHash = (payload as { accountRefHash?: unknown }).accountRefHash
+  return typeof accountRefHash === "string" && accountRefHash.trim() !== ""
+    ? accountRefHash.trim()
+    : null
+}
+
 function isLegacyLease(value: unknown): value is PylonAssignmentLease {
   const lease = value as PylonAssignmentLease
   return (
@@ -1506,9 +1524,11 @@ async function resolveAgentAccountForAssignment(
     { accountRef: null, all: true, provider: null },
     { env },
   )
+  const pinnedAccountRefHash = codingRunAccountRefHashForLease(lease)
   const readyTargets: PylonAccountUsageRefreshTarget[] = []
   for (const target of targets) {
     if (target.provider !== provider) continue
+    if (pinnedAccountRefHash !== null && target.accountRefHash !== pinnedAccountRefHash) continue
     const quotaRecord = await loadQuotaRecord(summary, target.accountRefHash)
     if (!isAccountAvailable(quotaRecord, now)) continue
     const targetEnv = pylonAccountEnvironment(env, target.account)
