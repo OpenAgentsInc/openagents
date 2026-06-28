@@ -12,10 +12,12 @@ import { type InferenceUsage } from './provider-adapter'
 import {
   accrueInferenceReferral,
   inferenceReferralIdempotencyKey,
+  inferenceReferralMarginSplitRef,
   inferenceReferralPeriodKey,
   parseReferredParty,
   withReferralAccrual,
 } from './inference-referral-accrual'
+import type { ServingReceipt } from './openagents-network-adapter'
 import { readInferenceReferralDashboard } from './inference-referral-dashboard'
 import { dispatchInferenceReferralPayout } from './inference-referral-dispatch'
 import {
@@ -139,6 +141,37 @@ CREATE TABLE site_referral_payout_ledger_entries (
   created_at TEXT NOT NULL,
   archived_at TEXT
 );
+CREATE TABLE inference_referral_margin_splits (
+  id TEXT PRIMARY KEY NOT NULL,
+  request_id TEXT NOT NULL UNIQUE,
+  account_ref TEXT NOT NULL,
+  referred_user_id TEXT NOT NULL,
+  referrer_user_id TEXT NOT NULL,
+  referral_attribution_id TEXT NOT NULL,
+  referral_source_id TEXT NOT NULL,
+  referral_invite_id TEXT,
+  payout_ref TEXT NOT NULL,
+  qualifying_event_ref TEXT NOT NULL,
+  charge_receipt_ref TEXT NOT NULL,
+  funding_kind TEXT NOT NULL,
+  adapter_id TEXT NOT NULL,
+  requested_model TEXT NOT NULL,
+  served_model TEXT NOT NULL,
+  served_by_contributor INTEGER NOT NULL DEFAULT 0,
+  serving_node_count INTEGER NOT NULL DEFAULT 0,
+  charge_usd REAL NOT NULL,
+  cost_usd REAL NOT NULL,
+  margin_usd REAL NOT NULL,
+  margin_sats INTEGER NOT NULL,
+  openagents_usd REAL NOT NULL,
+  openagents_sats INTEGER NOT NULL,
+  serving_node_usd REAL NOT NULL,
+  serving_node_sats INTEGER NOT NULL,
+  referrer_usd REAL NOT NULL,
+  referrer_sats INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  archived_at TEXT
+);
 `
 
 const NOW = '2026-06-19T12:00:00.000Z'
@@ -198,6 +231,22 @@ const context = (
   ...overrides,
 })
 
+const servingReceipt: ServingReceipt = {
+  paidTrafficVerification: {
+    blockerRefs: [],
+    canaryPassed: true,
+    parityPassed: true,
+    payoutEligible: true,
+    replayPassed: true,
+  },
+  parityMode: 'exact_greedy_parity',
+  parityVerified: true,
+  servedModel: 'sonnet',
+  servingRunRef: 'serving.run.req-1',
+  sharded: false,
+  stages: [{ layerEnd: 32, layerStart: 0, nodeRef: 'pylon:one', role: 'stage' }],
+}
+
 const run = <A>(effect: Effect.Effect<A>): Promise<A> =>
   Effect.runPromise(effect)
 
@@ -240,6 +289,53 @@ describe('accrueInferenceReferral (#5487 attribution + #5488 ongoing accrual)', 
     expect(result.entry.referredUserId).toBe(AGENT)
     expect(result.entry.qualifyingEventKind).toBe('inference_paid_request')
     expect(result.entry.amountSats).toBeGreaterThan(0)
+    expect(result.marginSplitRef).toBe(inferenceReferralMarginSplitRef('req-1'))
+  })
+
+  test('records the per-request OpenAgents / serving-node / referrer margin split', async () => {
+    const db = makeDb()
+    await seedReferredAgent(db)
+
+    const result = await accrueInferenceReferral(db, {
+      context: context({ servingReceipt }),
+      nowIso: () => NOW,
+    })
+
+    expect(result._tag).toBe('recorded')
+    const row = await db
+      .prepare(
+        `SELECT request_id, account_ref, referred_user_id, referrer_user_id,
+                served_by_contributor, serving_node_count, margin_sats,
+                openagents_sats, serving_node_sats, referrer_sats
+           FROM inference_referral_margin_splits
+          WHERE request_id = ?`,
+      )
+      .bind('req-1')
+      .first<{
+        account_ref: string
+        margin_sats: number
+        openagents_sats: number
+        referred_user_id: string
+        referrer_sats: number
+        referrer_user_id: string
+        request_id: string
+        served_by_contributor: number
+        serving_node_count: number
+        serving_node_sats: number
+      }>()
+
+    expect(row).toMatchObject({
+      account_ref: `agent:${AGENT}`,
+      referred_user_id: AGENT,
+      referrer_user_id: REFERRER,
+      request_id: 'req-1',
+      served_by_contributor: 1,
+      serving_node_count: 1,
+    })
+    expect(Number(row?.margin_sats)).toBeGreaterThan(0)
+    expect(Number(row?.openagents_sats)).toBeGreaterThan(0)
+    expect(Number(row?.serving_node_sats)).toBeGreaterThan(0)
+    expect(Number(row?.referrer_sats)).toBeGreaterThan(0)
   })
 
   test('ACCRUES ON EVERY PAID REQUEST (ongoing, not one-time)', async () => {
@@ -291,6 +387,15 @@ describe('accrueInferenceReferral (#5487 attribution + #5488 ongoing accrual)', 
       .bind(inferenceReferralIdempotencyKey('dup'))
       .first<{ n: number }>()
     expect(Number(countRow?.n)).toBe(1)
+
+    const splitCountRow = await db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM inference_referral_margin_splits
+          WHERE id = ?`,
+      )
+      .bind(inferenceReferralMarginSplitRef('dup'))
+      .first<{ n: number }>()
+    expect(Number(splitCountRow?.n)).toBe(1)
   })
 
   test('no_attribution when the account was not referred', async () => {
