@@ -266,6 +266,17 @@ export const BenchmarkMatrixConfig = S.Struct({
   targets: S.Array(BenchmarkTarget),
   workloads: S.Array(BenchmarkWorkload),
   shapes: S.Array(SequenceShape),
+  // Optional workload -> shape filter for real traffic suites where each
+  // workload must run only against the observed traffic shape sourced for that
+  // workload. Omitted configs keep the historical full cross-product behavior.
+  workloadShapePairs: S.optional(
+    S.Array(
+      S.Struct({
+        workload: BenchmarkWorkload,
+        shapeId: S.String,
+      }),
+    ),
+  ),
   transports: S.Array(BenchmarkTransport),
   sampling: S.Array(SamplingSettings),
   // How many repeated samples per cell (book §4.5.2: "send enough traffic ...
@@ -352,9 +363,23 @@ export const expandMatrix = (
   config: BenchmarkMatrixConfig,
 ): ReadonlyArray<BenchmarkCell> => {
   const cells: Array<BenchmarkCell> = []
+  const allowedWorkloadShapePairs =
+    config.workloadShapePairs === undefined
+      ? null
+      : new Set(
+          config.workloadShapePairs.map(
+            pair => `${pair.workload}::${pair.shapeId}`,
+          ),
+        )
   for (const target of config.targets) {
     for (const workload of config.workloads) {
       for (const shape of config.shapes) {
+        if (
+          allowedWorkloadShapePairs !== null &&
+          !allowedWorkloadShapePairs.has(`${workload}::${shape.id}`)
+        ) {
+          continue
+        }
         for (const transport of config.transports) {
           for (const sampling of config.sampling) {
             cells.push({
@@ -391,15 +416,11 @@ export const expandMatrix = (
   return cells
 }
 
-// The expected cell count for a config (the cross-product cardinality). Used by
-// tests to assert the matrix expanded to exactly the right number of cells, and
-// by the report header to disclose coverage.
+// The expected cell count for a config. For the default matrix this is the raw
+// cross-product cardinality; configs with `workloadShapePairs` count only the
+// workload/shape pairs they explicitly allow.
 export const expectedCellCount = (config: BenchmarkMatrixConfig): number =>
-  config.targets.length *
-  config.workloads.length *
-  config.shapes.length *
-  config.transports.length *
-  config.sampling.length
+  expandMatrix(config).length
 
 // ---------------------------------------------------------------------------
 // Decoders + a documented minimum decision suite (notes Q5).

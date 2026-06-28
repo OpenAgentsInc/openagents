@@ -14,6 +14,7 @@ import {
   laneAvailability,
   verificationExpectationForWorkload,
 } from './matrix'
+import type { BenchmarkMatrixConfig } from './matrix'
 
 describe('benchmark matrix — expansion', () => {
   test('expands to exactly the cross-product cardinality', () => {
@@ -27,6 +28,48 @@ describe('benchmark matrix — expansion', () => {
     // 2 targets × 1 workload × 1 shape × 1 transport × 1 sampling = 2.
     expect(expectedCellCount(TINY_TEST_CONFIG)).toBe(2)
     expect(expandMatrix(TINY_TEST_CONFIG).length).toBe(2)
+  })
+
+  test('workload-shape pairs restrict real suites without changing default cross-products', () => {
+    const config = {
+      ...TINY_TEST_CONFIG,
+      id: 'paired-workload-shape-test-v1',
+      workloads: ['chat', 'verifier-run'],
+      shapes: [
+        {
+          id: 'observed-chat',
+          inputTokens: 500,
+          outputTokens: 200,
+          cacheablePrefixTokens: 0,
+          concurrency: 1,
+          provenance: 'realistic',
+        },
+        {
+          id: 'observed-verifier',
+          inputTokens: 1800,
+          outputTokens: 700,
+          cacheablePrefixTokens: 900,
+          concurrency: 1,
+          provenance: 'realistic',
+        },
+      ],
+      workloadShapePairs: [
+        { workload: 'chat', shapeId: 'observed-chat' },
+        { workload: 'verifier-run', shapeId: 'observed-verifier' },
+      ],
+    } satisfies BenchmarkMatrixConfig
+
+    const cells = expandMatrix(config)
+    expect(expectedCellCount(config)).toBe(4)
+    expect(cells).toHaveLength(4)
+    expect(
+      cells.every(
+        cell =>
+          (cell.workload === 'chat' && cell.shape.id === 'observed-chat') ||
+          (cell.workload === 'verifier-run' &&
+            cell.shape.id === 'observed-verifier'),
+      ),
+    ).toBe(true)
   })
 
   test('expansion is deterministic — identical config yields identical ordered cell ids', () => {

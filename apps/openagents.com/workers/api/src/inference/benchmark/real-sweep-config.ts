@@ -121,16 +121,15 @@ const DEFAULT_SAMPLING: SamplingSettings = {
 }
 
 // The full decision-grade-eligible suite: Khala vs Fireworks vs Vertex
-// (Anthropic + Gemini) on all four decision workloads, over realistic shapes,
-// streaming transport (the path with measurable TTFT/ITL), one production sampling
-// setting, 5 samples per cell (book §4.5.2: enough traffic to read percentiles).
+// (Anthropic + Gemini) on all four decision workloads, over the realistic shape
+// observed for that workload, streaming transport (the path with measurable
+// TTFT/ITL), one production sampling setting, 5 samples per cell (book §4.5.2:
+// enough traffic to read percentiles).
 //
-// 4 targets × 4 workloads × 1 shape-per-workload-mapped-via-shapes-array... NOTE:
-// the matrix expands targets × workloads × shapes × transports × sampling, so to
-// keep each workload paired with ITS realistic shape we list all four shapes; the
-// report buckets by (lane × workload) and every group's shapes are realistic, so
-// no group is `syntheticOnly`. Total cells: 4 × 4 × 4 × 1 × 1 = 64 cells (with the
-// future-lane skip handled by the runner).
+// `workloadShapePairs` is intentionally set: the issue asks for realistic
+// traffic shapes, not a blind cross-product that runs a verifier over chat token
+// lengths or a chat turn over verifier token lengths. Total cells:
+// 4 targets × 4 workload/shape pairs × 1 transport × 1 sampling = 16.
 export const KHALA_VS_FIREWORKS_VERTEX_DECISION_SUITE: BenchmarkMatrixConfig = {
   id: 'khala-vs-fireworks-vertex-decision-suite-oq5-v1',
   description:
@@ -156,6 +155,18 @@ export const KHALA_VS_FIREWORKS_VERTEX_DECISION_SUITE: BenchmarkMatrixConfig = {
     OBSERVED_CODE_ARTIFACT_SHAPE,
     OBSERVED_VERIFIER_SHAPE,
     OBSERVED_LONG_CONTEXT_SHAPE,
+  ],
+  workloadShapePairs: [
+    { workload: 'chat', shapeId: OBSERVED_CHAT_SHAPE.id },
+    {
+      workload: 'khala-code-artifact-gen',
+      shapeId: OBSERVED_CODE_ARTIFACT_SHAPE.id,
+    },
+    { workload: 'verifier-run', shapeId: OBSERVED_VERIFIER_SHAPE.id },
+    {
+      workload: 'long-context-codebase-question',
+      shapeId: OBSERVED_LONG_CONTEXT_SHAPE.id,
+    },
   ],
   transports: ['streaming'],
   sampling: [DEFAULT_SAMPLING],
