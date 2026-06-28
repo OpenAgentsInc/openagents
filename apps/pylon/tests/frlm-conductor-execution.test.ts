@@ -28,6 +28,45 @@ describe("FRLM Conductor execution planning", () => {
     assertPublicProjectionSafe(projection)
   })
 
+  test("keeps planned and running sub-queries in the recursive fanout schedule", () => {
+    const projection = planFrlmConductorExecution({
+      ...validInput(),
+      subQueries: [
+        {
+          subQueryRef: "subquery.artanis.frlm.collect_context.v1",
+          parentRef: "task.artanis.frlm.root.v1",
+          state: "completed",
+          resultRef: "result.artanis.frlm.collect_context.v1",
+          blueprintSignatureRef: "signature.blueprint.rlm_subquery.v1",
+        },
+        {
+          subQueryRef: "subquery.artanis.frlm.optimize_route.v1",
+          parentRef: "task.artanis.frlm.root.v1",
+          state: "running",
+          blueprintSignatureRef: "signature.blueprint.rlm_subquery.v1",
+        },
+        {
+          subQueryRef: "subquery.artanis.frlm.verify_blueprint_boundary.v1",
+          parentRef: "task.artanis.frlm.root.v1",
+          state: "planned",
+          blueprintSignatureRef: "signature.blueprint.rlm_subquery.v1",
+        },
+      ],
+    })
+
+    expect(projection.canExecute).toBe(true)
+    expect(projection.executionMode).toBe("recursive_parallel")
+    expect(projection.recursiveSubQueryRefs).toEqual([
+      "subquery.artanis.frlm.collect_context.v1",
+      "subquery.artanis.frlm.optimize_route.v1",
+      "subquery.artanis.frlm.verify_blueprint_boundary.v1",
+    ])
+    expect(projection.failedSubQueryRefs).toEqual([])
+    expect(projection.linearFallbackStepRefs).toEqual([])
+    expect(projection.evidenceRefs).toContain("result.artanis.frlm.collect_context.v1")
+    assertPublicProjectionSafe(projection)
+  })
+
   test("falls back to linear execution when any recursive sub-query fails", () => {
     const projection = planFrlmConductorExecution({
       ...validInput(),
@@ -53,6 +92,67 @@ describe("FRLM Conductor execution planning", () => {
     expect(projection.fallbackReasonRef).toMatch(/^reason\.artanis\.frlm\.sub_query_failure\.[a-f0-9]{20}$/)
     expect(projection.evidenceRefs).toContain("failure.artanis.frlm.optimize_route.timeout.v1")
     expect(projection.evidenceRefs).toContain("executor.artanis.frlm.linear_local.v1")
+    assertPublicProjectionSafe(projection)
+  })
+
+  test("deduplicates recursive fanout refs and emits deterministic fallback steps", () => {
+    const projection = planFrlmConductorExecution({
+      ...validInput(),
+      subQueries: [
+        {
+          subQueryRef: "subquery.artanis.frlm.optimize_route.v1",
+          parentRef: "task.artanis.frlm.root.v1",
+          state: "timed_out",
+          failureRef: "failure.artanis.frlm.optimize_route.timeout.v1",
+          blueprintSignatureRef: "signature.blueprint.rlm_subquery.v1",
+        },
+        {
+          subQueryRef: "subquery.artanis.frlm.collect_context.v1",
+          parentRef: "task.artanis.frlm.root.v1",
+          state: "completed",
+          resultRef: "result.artanis.frlm.collect_context.v1",
+          blueprintSignatureRef: "signature.blueprint.rlm_subquery.v1",
+        },
+        {
+          subQueryRef: "subquery.artanis.frlm.optimize_route.v1",
+          parentRef: "task.artanis.frlm.root.v1",
+          state: "failed",
+          failureRef: "failure.artanis.frlm.optimize_route.retry_exhausted.v1",
+          blueprintSignatureRef: "signature.blueprint.rlm_subquery.v1",
+        },
+      ],
+    })
+    const replayed = planFrlmConductorExecution({
+      ...validInput(),
+      subQueries: [
+        {
+          subQueryRef: "subquery.artanis.frlm.collect_context.v1",
+          parentRef: "task.artanis.frlm.root.v1",
+          state: "completed",
+          resultRef: "result.artanis.frlm.collect_context.v1",
+          blueprintSignatureRef: "signature.blueprint.rlm_subquery.v1",
+        },
+        {
+          subQueryRef: "subquery.artanis.frlm.optimize_route.v1",
+          parentRef: "task.artanis.frlm.root.v1",
+          state: "timed_out",
+          failureRef: "failure.artanis.frlm.optimize_route.timeout.v1",
+          blueprintSignatureRef: "signature.blueprint.rlm_subquery.v1",
+        },
+      ],
+    })
+
+    expect(projection.canExecute).toBe(true)
+    expect(projection.executionMode).toBe("fallback_linear")
+    expect(projection.recursiveSubQueryRefs).toEqual([
+      "subquery.artanis.frlm.collect_context.v1",
+      "subquery.artanis.frlm.optimize_route.v1",
+    ])
+    expect(projection.failedSubQueryRefs).toEqual(["subquery.artanis.frlm.optimize_route.v1"])
+    expect(projection.linearFallbackStepRefs).toHaveLength(2)
+    expect(projection.linearFallbackStepRefs).toEqual(replayed.linearFallbackStepRefs)
+    expect(projection.evidenceRefs).toContain("failure.artanis.frlm.optimize_route.retry_exhausted.v1")
+    expect(projection.evidenceRefs).toContain("failure.artanis.frlm.optimize_route.timeout.v1")
     assertPublicProjectionSafe(projection)
   })
 
@@ -131,6 +231,32 @@ describe("FRLM Conductor execution planning", () => {
     assertPublicProjectionSafe(projection)
   })
 
+  test("blocks linear fallback when no local executor ref is present", () => {
+    const projection = planFrlmConductorExecution({
+      ...validInput(),
+      linearExecutorRef: null,
+      subQueries: [
+        {
+          subQueryRef: "subquery.artanis.frlm.collect_blueprint_signatures.v1",
+          parentRef: "task.artanis.frlm.root.v1",
+          state: "failed",
+          failureRef: "failure.artanis.frlm.collect_blueprint_signatures.policy.v1",
+          blueprintSignatureRef: "signature.blueprint.rlm_subquery.v1",
+        },
+      ],
+    })
+
+    expect(projection.canExecute).toBe(false)
+    expect(projection.executionMode).toBe("blocked")
+    expect(projection.executionPlanRef).toBeNull()
+    expect(projection.linearExecutorRef).toBeNull()
+    expect(projection.blockerRefs).toEqual([
+      "blocker.artanis.frlm_conductor.linear_executor_ref_missing",
+    ])
+    expect(projection.fallbackReasonRef).toMatch(/^reason\.artanis\.frlm\.sub_query_failure\.[a-f0-9]{20}$/)
+    assertPublicProjectionSafe(projection)
+  })
+
   test("blocks execution when the BudgetPolicy is missing or invalid", () => {
     const projection = planFrlmConductorExecution({
       ...validInput(),
@@ -164,6 +290,67 @@ describe("FRLM Conductor execution planning", () => {
     expect(projection.recursiveSubQueryRefs).toEqual([])
     expect(projection.blockerRefs).toContain("blocker.artanis.frlm_conductor.sub_query_plan_missing")
     expect(projection.blockerRefs).toContain("blocker.artanis.frlm_conductor.unsafe_ref")
+    assertPublicProjectionSafe(projection)
+  })
+
+  test("integrates FRLM conductor evidence into a public-safe scheduler projection", () => {
+    const projection = planFrlmConductorExecution({
+      observedAt,
+      executionRef: "execution.artanis.frlm.issue_6688.scheduler.v1",
+      rootTaskRef: "task.artanis.frlm.root.issue_6654.v1",
+      blueprintSignatureRef: "signature.blueprint.frlm_conductor.v1",
+      budgetPolicy: {
+        budgetPolicyRef: "budget_policy.artanis.frlm_conductor.issue_6688.v1",
+        maxTokens: 12_000,
+        maxDepth: 2,
+      },
+      linearFallbackEnabled: true,
+      linearExecutorRef: "executor.artanis.frlm.local_executor.v1",
+      subQueries: [
+        {
+          subQueryRef: "subquery.artanis.frlm.nip90.collect_context.v1",
+          parentRef: "task.artanis.frlm.root.issue_6654.v1",
+          state: "completed",
+          resultRef: "result.artanis.frlm.nip90.collect_context.v1",
+          blueprintSignatureRef: "signature.blueprint.rlm_subquery.v1",
+        },
+        {
+          subQueryRef: "subquery.artanis.frlm.nip90.optimize_route.v1",
+          parentRef: "task.artanis.frlm.root.issue_6654.v1",
+          state: "rejected",
+          failureRef: "failure.artanis.frlm.nip90.policy_budget.v1",
+          blueprintSignatureRef: "signature.blueprint.rlm_subquery.v1",
+        },
+        {
+          subQueryRef: "subquery.artanis.frlm.nip90.verify_blueprint_boundary.v1",
+          parentRef: "task.artanis.frlm.root.issue_6654.v1",
+          state: "running",
+          blueprintSignatureRef: "signature.blueprint.rlm_subquery.v1",
+        },
+      ],
+    })
+
+    expect(projection).toMatchObject({
+      contentRedacted: true,
+      canExecute: true,
+      executionMode: "fallback_linear",
+      linearExecutorRef: "executor.artanis.frlm.local_executor.v1",
+      blockerRefs: [],
+    })
+    expect(projection.executionPlanRef).toMatch(/^plan\.artanis\.frlm\.fallback_linear\.[a-f0-9]{20}$/)
+    expect(projection.recursiveSubQueryRefs).toEqual([
+      "subquery.artanis.frlm.nip90.collect_context.v1",
+      "subquery.artanis.frlm.nip90.optimize_route.v1",
+      "subquery.artanis.frlm.nip90.verify_blueprint_boundary.v1",
+    ])
+    expect(projection.failedSubQueryRefs).toEqual([
+      "subquery.artanis.frlm.nip90.optimize_route.v1",
+    ])
+    expect(projection.linearFallbackStepRefs).toHaveLength(3)
+    expect(projection.evidenceRefs).toContain("signature.blueprint.frlm_conductor.v1")
+    expect(projection.evidenceRefs).toContain("signature.blueprint.rlm_subquery.v1")
+    expect(projection.evidenceRefs).toContain("failure.artanis.frlm.nip90.policy_budget.v1")
+    expect(projection.authorityBoundary).toContain("does not dispatch workers")
     assertPublicProjectionSafe(projection)
   })
 })
