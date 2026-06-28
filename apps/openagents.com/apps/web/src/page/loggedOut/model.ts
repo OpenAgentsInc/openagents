@@ -1,3 +1,4 @@
+import { PublicActivityTimelineEnvelope } from '@openagentsinc/public-activity-timeline'
 import { ShareProjectionV1 } from '@openagentsinc/sync-schema'
 import { Option, Schema as S } from 'effect'
 import { ts } from 'foldkit/schema'
@@ -1061,6 +1062,40 @@ export const PublicKhalaTokensServedHistoryModel = S.Union([
 export type PublicKhalaTokensServedHistoryModel =
   typeof PublicKhalaTokensServedHistoryModel.Type
 
+// Live fleet-shipping feed (#6534). The /artanis console renders the read-only
+// public activity timeline as TODAY's live fleet activity (forum, inference,
+// settlement, verification, presence) instead of a stale status report or
+// 11-day-old admin ticks. Reuses the shared `PublicActivityTimelineEnvelope`
+// contract so the page reads exactly what /activity reads.
+export const IdlePublicActivityTimeline = ts(
+  'PublicActivityTimelineIdle',
+  {},
+)
+export const LoadingPublicActivityTimeline = ts(
+  'PublicActivityTimelineLoading',
+  {},
+)
+export const LoadedPublicActivityTimeline = ts(
+  'PublicActivityTimelineLoaded',
+  {
+    envelope: PublicActivityTimelineEnvelope,
+  },
+)
+export const FailedPublicActivityTimeline = ts(
+  'PublicActivityTimelineFailed',
+  {
+    error: S.String,
+  },
+)
+export const PublicActivityTimelineModel = S.Union([
+  IdlePublicActivityTimeline,
+  LoadingPublicActivityTimeline,
+  LoadedPublicActivityTimeline,
+  FailedPublicActivityTimeline,
+])
+export type PublicActivityTimelineModel =
+  typeof PublicActivityTimelineModel.Type
+
 export const PublicKhalaTokensServedModelFamily = S.Literals([
   'glm',
   'fireworks_deepseek',
@@ -1561,6 +1596,7 @@ export const Model = ts('LoggedOut', {
   publicPylonStats: PublicPylonStatsModel,
   publicKhalaTokensServed: PublicKhalaTokensServedModel,
   publicKhalaTokensServedHistory: PublicKhalaTokensServedHistoryModel,
+  publicActivityTimeline: PublicActivityTimelineModel,
   publicKhalaTokensServedModelMix: PublicKhalaTokensServedModelMixModel,
   khalaTokensServedStream: KhalaTokensServedStreamModel,
   publicForumLaunchStatus: PublicForumLaunchStatusModel,
@@ -1611,10 +1647,11 @@ export const init = (
       route._tag === 'PublicAgent'
         ? LoadingPublicAgent({ agentRef: route.agentRef })
         : IdlePublicAgent(),
-    publicArtanisReport:
-      route._tag === 'PublicAgent' && route.agentRef === 'artanis'
-        ? LoadingPublicArtanisReport()
-        : IdlePublicArtanisReport(),
+    // The legacy Artanis status report is no longer rendered on /artanis (it
+    // surfaced a stale "updated N days ago" report and internal ledger jargon).
+    // The live fleet console reads `publicActivityTimeline` + the Pulse token
+    // burn instead, so the report model stays idle. (#6534)
+    publicArtanisReport: IdlePublicArtanisReport(),
     publicAdjutantActivity:
       route._tag === 'PublicAgent' && route.agentRef === 'adjutant'
         ? LoadingPublicAdjutantActivity()
@@ -1639,6 +1676,10 @@ export const init = (
       (route._tag === 'PublicAgent' && route.agentRef === 'artanis')
         ? LoadingPublicKhalaTokensServedHistory()
         : IdlePublicKhalaTokensServedHistory(),
+    publicActivityTimeline:
+      route._tag === 'PublicAgent' && route.agentRef === 'artanis'
+        ? LoadingPublicActivityTimeline()
+        : IdlePublicActivityTimeline(),
     publicKhalaTokensServedModelMix:
       route._tag === 'Stats' || route._tag === 'PublicStatsArchive'
         ? LoadingPublicKhalaTokensServedModelMix()

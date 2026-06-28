@@ -1,3 +1,4 @@
+import { PublicActivityTimelineEnvelope } from '@openagentsinc/public-activity-timeline'
 import {
   Array as Arr,
   Clock,
@@ -91,6 +92,7 @@ import {
   FailedLoadGymRunProgressSnapshot,
   FailedLoadKhalaTokensServedSnapshot,
   FailedLoadMirrorCodeRuns,
+  FailedLoadPublicActivityTimeline,
   FailedLoadPublicAdjutantActivity,
   FailedLoadPublicAgentGoal,
   FailedLoadPublicArtanisReport,
@@ -113,6 +115,7 @@ import {
   SucceededLoadGymRunProgressSnapshot,
   SucceededLoadKhalaTokensServedSnapshot,
   SucceededLoadMirrorCodeRuns,
+  SucceededLoadPublicActivityTimeline,
   SucceededLoadPublicAdjutantActivity,
   SucceededLoadPublicAgentGoal,
   SucceededLoadPublicArtanisReport,
@@ -134,6 +137,7 @@ import {
 import { MirrorCodeRunsResponse } from './mirrorcode/runs'
 import {
   FailedMirrorCodeRuns,
+  FailedPublicActivityTimeline,
   FailedPublicAdjutantActivity,
   FailedPublicAgent,
   FailedPublicArtanisReport,
@@ -150,6 +154,7 @@ import {
   FailedShareProjection,
   FailedTrace,
   LoadedMirrorCodeRuns,
+  LoadedPublicActivityTimeline,
   LoadedPublicAdjutantActivity,
   LoadedPublicAgent,
   LoadedPublicArtanisReport,
@@ -256,6 +261,11 @@ class PublicArtanisReportLoadError extends S.TaggedErrorClass<PublicArtanisRepor
 
 class PublicAdjutantActivityLoadError extends S.TaggedErrorClass<PublicAdjutantActivityLoadError>()(
   'PublicAdjutantActivityLoadError',
+  { error: S.Defect },
+) {}
+
+class PublicActivityTimelineLoadError extends S.TaggedErrorClass<PublicActivityTimelineLoadError>()(
+  'PublicActivityTimelineLoadError',
   { error: S.Defect },
 ) {}
 
@@ -401,6 +411,50 @@ export const LoadPublicArtanisReport = Command.define(
     Effect.catch(error =>
       Effect.succeed(
         FailedLoadPublicArtanisReport({
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      ),
+    ),
+  ),
+)
+
+// Live fleet-shipping feed (#6534). Reads the same read-only public activity
+// timeline the /activity surface reads and renders TODAY's live fleet work on
+// /artanis. Bounded to a small recent window so the page stays fast.
+export const LoadPublicActivityTimeline = Command.define(
+  'LoadPublicActivityTimeline',
+  SucceededLoadPublicActivityTimeline,
+  FailedLoadPublicActivityTimeline,
+)(
+  Effect.gen(function* () {
+    const response = yield* Effect.tryPromise({
+      try: () =>
+        fetch('/api/public/activity-timeline?limit=60', {
+          cache: 'no-store',
+          headers: { accept: 'application/json' },
+        }),
+      catch: error => new PublicActivityTimelineLoadError({ error }),
+    })
+
+    if (!response.ok) {
+      return yield* new PublicActivityTimelineLoadError({
+        error: `Public activity timeline returned HTTP ${response.status}.`,
+      })
+    }
+
+    const payload = yield* Effect.tryPromise({
+      try: () => response.json(),
+      catch: error => new PublicActivityTimelineLoadError({ error }),
+    })
+    const envelope = yield* S.decodeUnknownEffect(
+      PublicActivityTimelineEnvelope,
+    )(payload)
+
+    return SucceededLoadPublicActivityTimeline({ envelope })
+  }).pipe(
+    Effect.catch(error =>
+      Effect.succeed(
+        FailedLoadPublicActivityTimeline({
           error: error instanceof Error ? error.message : String(error),
         }),
       ),
@@ -1715,7 +1769,7 @@ export const initialCommands = (
                                   ),
                                   agentRef: model.route.agentRef,
                                 }),
-                                LoadPublicArtanisReport(),
+                                LoadPublicActivityTimeline(),
                                 LoadPublicPylonStats(),
                                 LoadPublicKhalaTokensServedHistory(),
                               ]
@@ -2010,6 +2064,26 @@ export const update = (model: Model, message: Message): UpdateReturn =>
         evo(model, {
           publicKhalaTokensServedHistory: () =>
             FailedPublicKhalaTokensServedHistory({ error }),
+        }),
+        [],
+      ],
+      // Live fleet-shipping feed (#6534). The poll holds the last loaded
+      // envelope (no flash to Loading) so the feed stays stable between fetches
+      // and just updates when the next live window arrives.
+      RequestedPollPublicActivityTimeline: () => [
+        model,
+        [LoadPublicActivityTimeline()],
+      ],
+      SucceededLoadPublicActivityTimeline: ({ envelope }) => [
+        evo(model, {
+          publicActivityTimeline: () =>
+            LoadedPublicActivityTimeline({ envelope }),
+        }),
+        [],
+      ],
+      FailedLoadPublicActivityTimeline: ({ error }) => [
+        evo(model, {
+          publicActivityTimeline: () => FailedPublicActivityTimeline({ error }),
         }),
         [],
       ],

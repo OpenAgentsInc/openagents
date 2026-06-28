@@ -40,6 +40,7 @@ import {
   ReceivedKhalaTokensServedPatch,
   RequestedPollKhalaTokensServed,
   RequestedPollKhalaTokensServedHistory,
+  RequestedPollPublicActivityTimeline,
   RequestedPollKhalaTokensServedModelMix,
   RequestedPollGymRunProgress,
   ClosedGymRunProgressStream,
@@ -538,6 +539,22 @@ export const khalaTokensServedHistoryPollDependenciesForModel = (
   model: Model,
 ): KhalaTokensServedPollDependencies =>
   khalaTokensServedHistoryRouteIsLive(model)
+    ? { isActive: true }
+    : inactiveKhalaTokensServedPoll
+
+// Live fleet-shipping feed poll (#6534). Gated to exactly the /artanis console
+// where the feed renders, so the read-only public activity timeline refreshes
+// on the same cadence as the Pulse and the page feels alive instead of frozen
+// at the page-load snapshot.
+const publicActivityTimelineRouteIsLive = (model: Model): boolean =>
+  model._tag === 'LoggedOut' &&
+  model.route._tag === 'PublicAgent' &&
+  model.route.agentRef === 'artanis'
+
+export const publicActivityTimelinePollDependenciesForModel = (
+  model: Model,
+): KhalaTokensServedPollDependencies =>
+  publicActivityTimelineRouteIsLive(model)
     ? { isActive: true }
     : inactiveKhalaTokensServedPoll
 
@@ -1506,6 +1523,31 @@ export const subscriptions = Subscription.make<Model, Message>()(entry => ({
             Stream.map(() =>
               GotLoggedOutMessage({
                 message: RequestedPollKhalaTokensServedHistory(),
+              }),
+            ),
+          ),
+          Effect.sync(() => isActive),
+        ),
+    },
+  ),
+  // Live fleet-shipping feed (#6534). The /artanis console re-fetches the
+  // read-only public activity timeline on the same cadence as the Pulse so the
+  // feed of recent fleet work stays live instead of frozen at the page-load
+  // snapshot. Gated to the artanis route where the feed renders.
+  publicActivityTimelinePoll: entry(
+    {
+      isActive: S.Boolean,
+    },
+    {
+      modelToDependencies: publicActivityTimelinePollDependenciesForModel,
+      dependenciesToStream: ({ isActive }: { isActive: boolean }) =>
+        Stream.when(
+          Stream.tick(
+            Duration.seconds(KHALA_TOKENS_SERVED_HISTORY_POLL_INTERVAL_SECONDS),
+          ).pipe(
+            Stream.map(() =>
+              GotLoggedOutMessage({
+                message: RequestedPollPublicActivityTimeline(),
               }),
             ),
           ),

@@ -284,6 +284,7 @@ export const browserCommandProductIntents = {
   LoadOnboardingRepositories: 'onboarding.repositories.load',
   LoadProviderAccountPool: 'providers.account-pool.load',
   LoadPrefilledWorkspace: 'workspace.prefilled.load',
+  LoadPublicActivityTimeline: 'public.activity-timeline.load',
   LoadPublicAdjutantActivity: 'public.adjutant.activity.load',
   LoadPublicAgentGoal: 'public.agent.goal.load',
   LoadPublicArtanisReport: 'public.artanis.report.load',

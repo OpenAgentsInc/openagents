@@ -1,3 +1,4 @@
+import { PublicActivityTimelineEnvelope } from '@openagentsinc/public-activity-timeline'
 import { CursorGap, SyncPatch } from '@openagentsinc/sync-schema'
 import { Schema as S } from 'effect'
 import { m } from 'foldkit/message'
@@ -210,6 +211,25 @@ export const SucceededLoadPublicKhalaTokensServedHistory = m(
 )
 export const FailedLoadPublicKhalaTokensServedHistory = m(
   'FailedLoadPublicKhalaTokensServedHistory',
+  {
+    error: S.String,
+  },
+)
+// Live fleet-shipping feed (#6534). The /artanis console polls the read-only
+// public activity timeline on the same artanis-route cadence as the Pulse, so
+// the fleet-shipping feed updates as new work lands instead of showing a stale
+// status report.
+export const RequestedPollPublicActivityTimeline = m(
+  'RequestedPollPublicActivityTimeline',
+)
+export const SucceededLoadPublicActivityTimeline = m(
+  'SucceededLoadPublicActivityTimeline',
+  {
+    envelope: PublicActivityTimelineEnvelope,
+  },
+)
+export const FailedLoadPublicActivityTimeline = m(
+  'FailedLoadPublicActivityTimeline',
   {
     error: S.String,
   },
@@ -602,6 +622,9 @@ export const Message = S.Union([
   RequestedPollKhalaTokensServedHistory,
   SucceededLoadPublicKhalaTokensServedHistory,
   FailedLoadPublicKhalaTokensServedHistory,
+  RequestedPollPublicActivityTimeline,
+  SucceededLoadPublicActivityTimeline,
+  FailedLoadPublicActivityTimeline,
   RequestedPollKhalaTokensServedModelMix,
   SucceededLoadPublicKhalaTokensServedModelMix,
   FailedLoadPublicKhalaTokensServedModelMix,

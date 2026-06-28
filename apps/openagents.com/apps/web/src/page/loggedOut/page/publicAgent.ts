@@ -1,3 +1,7 @@
+import type {
+  PublicActivityTimelineEnvelope,
+  PublicActivityTimelineEvent,
+} from '@openagentsinc/public-activity-timeline'
 import { Array } from 'effect'
 import type { Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
@@ -8,25 +12,16 @@ import * as Ui from '../../../ui'
 import type { Message } from '../message'
 import type {
   Model,
+  PublicActivityTimelineModel,
   PublicAdjutantActivityMilestone,
   PublicAdjutantActivityModel,
   PublicAdjutantDeployedSite,
   PublicAgentGoal,
   PublicAgentGoalEvent,
-  PublicArtanisForumRewardSmoke,
-  PublicArtanisForumRewardVisibility,
-  PublicArtanisReportActivityTickerEntry,
-  PublicArtanisProductionLaunchGate,
-  PublicArtanisReportDecisionFailureMode,
-  PublicArtanisPylonLaunchCommunication,
-  PublicArtanisReport,
-  PublicArtanisReportClaimSummary,
-  PublicArtanisReportModel,
   PublicKhalaTokensServedHistoryModel,
   PublicKhalaTokensServedHistoryPoint,
   PublicPylonStats,
   PublicPylonStatsModel,
-  PublicPylonV02OmegaReleaseGate,
   PublicRecentPylon,
 } from '../model'
 
@@ -1045,197 +1040,6 @@ const pylonStatsView = (model: PublicPylonStatsModel): Html => {
   )
 }
 
-const compactRefs = (
-  refs: ReadonlyArray<string>,
-  fallback = 'No public refs',
-): string => (refs.length === 0 ? fallback : refs.slice(0, 3).join(', '))
-
-const tickerIssueLabel = (issueNumber: number | null): string =>
-  issueNumber === null ? 'No linked issue' : `Issue #${issueNumber}`
-
-const artanisTickerRow = (
-  entry: PublicArtanisReportActivityTickerEntry,
-): Html => {
-  const h = html<Message>()
-
-  return h.li(
-    [
-      Ui.className<Message>(
-        'grid min-w-[16rem] gap-2 border border-[#222] bg-[#010102] p-3 sm:min-w-[20rem]',
-      ),
-    ],
-    [
-      h.div(
-        [
-          Ui.className<Message>(
-            'flex items-center justify-between gap-3 text-[0.6875rem] text-white/35',
-          ),
-        ],
-        [
-          h.span([Ui.className<Message>('uppercase')], [entry.state]),
-          h.span([Ui.className<Message>('tabular-nums')], [
-            entry.createdAtDisplay,
-          ]),
-        ],
-      ),
-      h.div(
-        [Ui.className<Message>('text-[0.8125rem] text-[#f1efe8]')],
-        [entry.label],
-      ),
-      h.div([Ui.className<Message>('text-[0.75rem] text-white/45')], [
-        entry.assignmentRef ?? entry.activityRef,
-      ]),
-      h.div([Ui.className<Message>('text-[0.75rem] text-white/35')], [
-        tickerIssueLabel(entry.issueNumber),
-      ]),
-    ],
-  )
-}
-
-const artanisFailureModeRow = (
-  mode: PublicArtanisReportDecisionFailureMode,
-): Html => {
-  const h = html<Message>()
-
-  return h.li(
-    [
-      Ui.className<Message>(
-        'grid gap-2 border-b border-[#1b1b1b] py-3 last:border-b-0',
-      ),
-    ],
-    [
-      h.div(
-        [
-          Ui.className<Message>(
-            'flex flex-wrap items-center justify-between gap-3',
-          ),
-        ],
-        [
-          h.span(
-            [Ui.className<Message>('text-[0.8125rem] text-[#f1efe8]')],
-            [mode.label],
-          ),
-          h.span(
-            [Ui.className<Message>('tabular-nums text-[0.75rem] text-white/45')],
-            [formatNumber(mode.count)],
-          ),
-        ],
-      ),
-      h.div([Ui.className<Message>('text-[0.75rem] text-white/35')], [
-        `${tickerIssueLabel(mode.resultingPublicIssueNumber)} / ${
-          mode.latestDecisionRef ?? mode.failureModeRef
-        }`,
-      ]),
-    ],
-  )
-}
-
-const artanisDecisionLogView = (
-  report: PublicArtanisReport,
-): Html | null => {
-  const h = html<Message>()
-  const decisionLog = report.decisionLog
-
-  if (decisionLog === undefined) {
-    return null
-  }
-
-  return h.div(
-    [
-      Ui.className<Message>(
-        'grid gap-3 border border-[#222] bg-[#010102] p-3',
-      ),
-    ],
-    [
-      h.div(
-        [
-          Ui.className<Message>(
-            'flex flex-wrap items-end justify-between gap-3',
-          ),
-        ],
-        [
-          h.div(
-            [Ui.className<Message>('grid gap-1')],
-            [
-              h.div([Ui.className<Message>(Ui.eyebrowClass)], ['The Log']),
-              h.h3(
-                [
-                  Ui.className<Message>(
-                    'text-lg font-semibold tracking-normal text-[#f1efe8]',
-                  ),
-                ],
-                ['Live Artanis decisions'],
-              ),
-            ],
-          ),
-          h.div(
-            [Ui.className<Message>('text-[0.75rem] text-white/45')],
-            [`Generated ${decisionLog.generatedAtDisplay}`],
-          ),
-        ],
-      ),
-      Array.match(decisionLog.ticker, {
-        onEmpty: () =>
-          h.p(
-            [Ui.className<Message>('text-[0.75rem] text-white/35')],
-            ['No public Artanis decisions are published yet.'],
-          ),
-        onNonEmpty: entries =>
-          h.ol(
-            [
-              Ui.className<Message>(
-                'flex gap-2 overflow-x-auto pb-1 [scrollbar-width:thin]',
-              ),
-            ],
-            entries.map(artanisTickerRow),
-          ),
-      }),
-      h.div(
-        [
-          Ui.className<Message>(
-            'grid gap-3 border-t border-[#222] pt-3 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]',
-          ),
-        ],
-        [
-          h.div(
-            [Ui.className<Message>('grid gap-2')],
-            [
-              h.div([Ui.className<Message>(Ui.eyebrowClass)], ['The Brain']),
-              h.div(
-                [Ui.className<Message>('text-[0.8125rem] text-[#f1efe8]')],
-                ['Autonomous triage summary'],
-              ),
-              h.div(
-                [Ui.className<Message>('text-[0.75rem] text-white/35')],
-                [
-                  `Dispatches ${formatNumber(decisionLog.countsByState.dispatched ?? 0)} / blocked ${formatNumber(decisionLog.countsByState.blocked ?? 0)} / failed ${formatNumber(decisionLog.countsByState.dispatch_failed ?? 0)}`,
-                ],
-              ),
-            ],
-          ),
-          Array.match(decisionLog.failureModes, {
-            onEmpty: () =>
-              h.p(
-                [Ui.className<Message>('text-[0.75rem] text-white/35')],
-                ['No triaged failure modes in the public decision window.'],
-              ),
-            onNonEmpty: modes =>
-              h.ol([Ui.className<Message>('grid')], modes.map(artanisFailureModeRow)),
-          }),
-        ],
-      ),
-      h.div([Ui.className<Message>('text-[0.75rem] text-white/35')], [
-        decisionLog.authorityBoundary,
-      ]),
-    ],
-  )
-}
-
-const bitcoinPrimary = (value: string): string => value.replace(/ \(.+\)$/, '')
-
-const bitcoinDenomination = (value: string): string | null =>
-  value.match(/\((.+)\)$/)?.[1] ?? null
-
 const fleetOnboardingCommands = [
   'npm install -g @openagentsinc/khala',
   'khala fleet connect',
@@ -1373,8 +1177,148 @@ const artanisFleetOnboardingView = (): Html => {
   )
 }
 
-const artanisClaimRow = (claim: PublicArtanisReportClaimSummary): Html => {
+// Live fleet-shipping feed (#6534). Reads the read-only public activity
+// timeline and renders TODAY's real fleet work in human language (no ref-IDs,
+// no ledger jargon, no stale "updated N days ago" report). The stale demo
+// `artanis_tick` rows and `projection_gap` markers are intentionally excluded;
+// what remains is genuine live work: forum, inference, settlement,
+// verification, training windows, and Pylon presence.
+const FLEET_FEED_FRESH_WINDOW_MS = 24 * 60 * 60 * 1000
+
+const fleetEventKindLabel: Readonly<
+  Record<PublicActivityTimelineEvent['kind'], string>
+> = {
+  artanis_tick: 'Decision',
+  assignment_ready: 'Assignment ready',
+  capacity_snapshot: 'Capacity',
+  forum_posted: 'Forum reply',
+  forum_topic_created: 'Forum topic',
+  khala_inference_served: 'Inference served',
+  projection_gap: 'Projection gap',
+  pylon_heartbeat: 'Pylon heartbeat',
+  pylon_registered: 'Pylon joined',
+  real_bitcoin_moved: 'Bitcoin moved',
+  settlement_recorded: 'Settlement',
+  trace_submitted: 'Trace submitted',
+  verification_queued: 'Verification queued',
+  verification_rejected: 'Verification rejected',
+  verification_verified: 'Verified',
+  wallet_ready: 'Wallet ready',
+  window_closed: 'Window closed',
+  window_opened: 'Window opened',
+  work_claimed: 'Work claimed',
+}
+
+const fleetExcludedKinds = new Set<PublicActivityTimelineEvent['kind']>([
+  'artanis_tick',
+  'projection_gap',
+])
+
+const parseTimestampMs = (value: string): number | null => {
+  const parsed = Date.parse(value)
+  return Number.isNaN(parsed) ? null : parsed
+}
+
+const fleetFeedEvents = (
+  events: ReadonlyArray<PublicActivityTimelineEvent>,
+): ReadonlyArray<PublicActivityTimelineEvent> =>
+  [...events]
+    .filter(
+      event => !fleetExcludedKinds.has(event.kind) && event.text.trim() !== '',
+    )
+    .sort((left, right) => right.ts.localeCompare(left.ts))
+
+const fleetFeedIsFresh = (
+  events: ReadonlyArray<PublicActivityTimelineEvent>,
+  generatedAt: string,
+): boolean => {
+  const newest = events[0]
+  if (newest === undefined) {
+    return false
+  }
+  const newestMs = parseTimestampMs(newest.ts)
+  const generatedMs = parseTimestampMs(generatedAt)
+  if (newestMs === null || generatedMs === null) {
+    return true
+  }
+  return generatedMs - newestMs <= FLEET_FEED_FRESH_WINDOW_MS
+}
+
+const fleetFreshCount = (
+  events: ReadonlyArray<PublicActivityTimelineEvent>,
+  generatedAt: string,
+): number => {
+  const generatedMs = parseTimestampMs(generatedAt)
+  if (generatedMs === null) {
+    return events.length
+  }
+  return events.filter(event => {
+    const ms = parseTimestampMs(event.ts)
+    return ms !== null && generatedMs - ms <= FLEET_FEED_FRESH_WINDOW_MS
+  }).length
+}
+
+const fleetStatusBadge = (
+  label: string,
+  tone: 'live' | 'idle' | 'muted',
+): Html => {
   const h = html<Message>()
+  const cls =
+    tone === 'live'
+      ? 'inline-flex items-center gap-2 border border-[#00c853]/60 px-2.5 py-1 text-[0.75rem] text-[#9ad6b7]'
+      : tone === 'idle'
+        ? 'inline-flex items-center gap-2 border border-[#ff6f00]/60 px-2.5 py-1 text-[0.75rem] text-[#ffb26b]'
+        : 'inline-flex items-center gap-2 border border-[#333] px-2.5 py-1 text-[0.75rem] text-white/55'
+
+  return h.span(
+    [Ui.className<Message>(cls)],
+    [
+      tone === 'live'
+        ? h.span(
+            [
+              Ui.className<Message>(
+                'h-2 w-2 rounded-full bg-[#00c853] motion-safe:animate-pulse',
+              ),
+            ],
+            [],
+          )
+        : h.span([], ['▶']),
+      h.span([], [label]),
+    ],
+  )
+}
+
+const fleetHeader = (right: Html): Html => {
+  const h = html<Message>()
+  return h.div(
+    [Ui.className<Message>('flex flex-wrap items-end justify-between gap-3')],
+    [
+      h.div(
+        [Ui.className<Message>('grid gap-2')],
+        [
+          h.div([Ui.className<Message>(Ui.eyebrowClass)], ['Fleet shipping']),
+          h.h2(
+            [
+              Ui.className<Message>(
+                'text-lg font-semibold tracking-normal text-[#f1efe8]',
+              ),
+            ],
+            ['What the fleet is doing now'],
+          ),
+        ],
+      ),
+      right,
+    ],
+  )
+}
+
+const fleetEventRow = (event: PublicActivityTimelineEvent): Html => {
+  const h = html<Message>()
+  const kindLabel = fleetEventKindLabel[event.kind] ?? event.kind
+  const amount =
+    typeof event.amountSats === 'number' && Number.isFinite(event.amountSats)
+      ? `${formatNumber(event.amountSats)} sats`
+      : null
 
   return h.li(
     [
@@ -1384,579 +1328,189 @@ const artanisClaimRow = (claim: PublicArtanisReportClaimSummary): Html => {
     ],
     [
       h.div(
-        [
-          Ui.className<Message>(
-            'flex flex-wrap items-center justify-between gap-3',
-          ),
-        ],
+        [Ui.className<Message>('flex flex-wrap items-baseline gap-x-3 gap-y-1')],
         [
           h.span(
-            [Ui.className<Message>('text-[0.8125rem] text-[#f1efe8]')],
-            [claim.label],
-          ),
-          h.span(
-            [Ui.className<Message>('text-[0.6875rem] text-white/45')],
-            [claim.stateLabel],
-          ),
-        ],
-      ),
-      h.p(
-        [Ui.className<Message>('text-[0.75rem] text-white/45')],
-        [claim.description],
-      ),
-      h.div(
-        [Ui.className<Message>('text-[0.75rem] text-white/35')],
-        [compactRefs(claim.blockedByRefs, compactRefs(claim.evidenceRefs))],
-      ),
-    ],
-  )
-}
-
-const artanisForumRewardView = (
-  visibility: PublicArtanisForumRewardVisibility,
-): Html => {
-  const h = html<Message>()
-  const receiptLabel = `${formatNumber(visibility.contentRewardCount)} content ${
-    visibility.contentRewardCount === 1 ? 'reward' : 'rewards'
-  }`
-  const bridgeLabel = `${formatNumber(visibility.acceptedContributionCount)} accepted ${
-    visibility.acceptedContributionCount === 1 ? 'bridge' : 'bridges'
-  }`
-
-  return h.div(
-    [Ui.className<Message>('grid gap-3 border border-[#222] bg-[#010102] p-3')],
-    [
-      h.div(
-        [
-          Ui.className<Message>(
-            'flex flex-wrap items-center justify-between gap-3',
-          ),
-        ],
-        [
-          h.div(
-            [Ui.className<Message>('text-[0.75rem] text-white/45')],
-            ['Forum bitcoin'],
-          ),
-          h.span(
-            [Ui.className<Message>('text-[0.75rem] text-white/55')],
-            [visibility.stateLabel],
-          ),
-        ],
-      ),
-      h.div(
-        [
-          Ui.className<Message>(
-            'grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]',
-          ),
-        ],
-        [
-          statsMetric('Content rewards', receiptLabel, bridgeLabel),
-          statsMetric(
-            'Live spend',
-            visibility.liveWalletSpendAllowed ? 'available' : 'blocked',
-            visibility.liveWalletSpendAllowed
-              ? 'Wallet authority present'
-              : 'Needs wallet authority and spend cap',
-          ),
-        ],
-      ),
-      h.div(
-        [Ui.className<Message>('text-[0.75rem] text-white/35')],
-        [
-          compactRefs(
-            visibility.caveatRefs,
-            compactRefs(visibility.blockerRefs),
-          ),
-        ],
-      ),
-      h.div(
-        [Ui.className<Message>('text-[0.75rem] text-white/35')],
-        [
-          `Receipts ${compactRefs(visibility.forumReceiptRefs)} / actions ${compactRefs(visibility.paidActionRefs)}`,
-        ],
-      ),
-    ],
-  )
-}
-
-const artanisForumRewardSmokeView = (
-  smoke: PublicArtanisForumRewardSmoke,
-): Html => {
-  const h = html<Message>()
-  const exchangeLabel = `${formatNumber(smoke.exchangeCount)} ${
-    smoke.exchangeCount === 1 ? 'exchange' : 'exchanges'
-  }`
-
-  return h.div(
-    [Ui.className<Message>('grid gap-3 border border-[#222] bg-[#010102] p-3')],
-    [
-      h.div(
-        [
-          Ui.className<Message>(
-            'flex flex-wrap items-center justify-between gap-3',
-          ),
-        ],
-        [
-          h.div(
-            [Ui.className<Message>('text-[0.75rem] text-white/45')],
-            ['Reward check'],
-          ),
-          h.span(
-            [Ui.className<Message>('text-[0.75rem] text-white/55')],
-            [smoke.modeLabel],
-          ),
-        ],
-      ),
-      h.div(
-        [
-          Ui.className<Message>(
-            'grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]',
-          ),
-        ],
-        [
-          statsMetric(
-            'Registered agents',
-            formatNumber(smoke.registeredAgentRefs.length),
-            exchangeLabel,
-          ),
-          statsMetric(
-            'Live bitcoin',
-            smoke.usedLiveBitcoin ? 'recorded' : 'not used',
-            smoke.usedLiveBitcoin
-              ? compactRefs(smoke.walletAuthorityRefs)
-              : 'Simulation only',
-          ),
-        ],
-      ),
-      h.div(
-        [Ui.className<Message>('text-[0.75rem] text-white/35')],
-        [compactRefs(smoke.runReasonRefs, compactRefs(smoke.caveatRefs))],
-      ),
-      h.div(
-        [Ui.className<Message>('text-[0.75rem] text-white/35')],
-        [
-          `Receipts ${compactRefs(smoke.receiptProjectionRefs)} / boundary ${compactRefs(smoke.acceptedContributionBoundaryRefs)}`,
-        ],
-      ),
-    ],
-  )
-}
-
-const artanisPylonLaunchView = (
-  launch: PublicArtanisPylonLaunchCommunication,
-): Html => {
-  const h = html<Message>()
-  const stageCount = launch.stageSummaryRefs.length
-  const forumTopicPath = launch.primaryForumTopicUrl.replace(
-    'https://openagents.com',
-    '',
-  )
-
-  return h.div(
-    [Ui.className<Message>('grid gap-3 border border-[#222] bg-[#010102] p-3')],
-    [
-      h.div(
-        [
-          Ui.className<Message>(
-            'flex flex-wrap items-center justify-between gap-3',
-          ),
-        ],
-        [
-          h.div(
-            [Ui.className<Message>('text-[0.75rem] text-white/45')],
-            ['Pylon launch'],
-          ),
-          h.a(
             [
-              h.Href(forumTopicPath),
               Ui.className<Message>(
-                'text-[0.75rem] text-white/55 underline-offset-4 hover:text-[#f1efe8] hover:underline',
+                'inline-flex shrink-0 border border-[#2a2a2a] bg-[#0a0a0a] px-1.5 py-0.5 text-[0.625rem] uppercase tracking-wide text-white/55',
               ),
             ],
-            ['Forum update'],
-          ),
-        ],
-      ),
-      h.div(
-        [
-          Ui.className<Message>(
-            'grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]',
-          ),
-        ],
-        [
-          statsMetric(
-            'Launch brief',
-            launch.forumIntentReady ? 'prepared' : 'blocked',
-            launch.forumPostTitle,
-          ),
-          statsMetric(
-            'Readiness',
-            `${formatNumber(stageCount)} states`,
-            compactRefs(launch.stageSummaryRefs),
-          ),
-        ],
-      ),
-      h.div(
-        [Ui.className<Message>('text-[0.75rem] text-white/35')],
-        [
-          compactRefs(
-            launch.resourceModeCaveatRefs,
-            compactRefs(launch.authorityBoundaryRefs),
-          ),
-        ],
-      ),
-    ],
-  )
-}
-
-const artanisProductionLaunchGateView = (
-  gate: PublicArtanisProductionLaunchGate,
-): Html => {
-  const h = html<Message>()
-  const blockerCount = gate.failedOrPendingRequiredCount
-  const firstBlockers = gate.blockerRefs.slice(0, 3)
-
-  return h.div(
-    [Ui.className<Message>('grid gap-3 border border-[#222] bg-[#010102] p-3')],
-    [
-      h.div(
-        [
-          Ui.className<Message>(
-            'flex flex-wrap items-center justify-between gap-3',
-          ),
-        ],
-        [
-          h.div(
-            [Ui.className<Message>('text-[0.75rem] text-white/45')],
-            ['Production gate'],
+            [kindLabel],
           ),
           h.span(
-            [Ui.className<Message>('text-[0.75rem] text-white/55')],
-            [gate.stateLabel],
-          ),
-        ],
-      ),
-      h.div(
-        [
-          Ui.className<Message>(
-            'grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]',
-          ),
-        ],
-        [
-          statsMetric(
-            'Autonomy claim',
-            gate.canClaimContinuouslyRunning ? 'allowed' : 'blocked',
-            gate.canClaimContinuouslyRunning
-              ? 'All required gates passed'
-              : `${formatNumber(blockerCount)} required ${
-                  blockerCount === 1 ? 'gate' : 'gates'
-                } not passed`,
-          ),
-          statsMetric(
-            'Verification',
-            `${formatNumber(gate.verificationTargetRefs.length)} targets`,
-            compactRefs(gate.verificationTargetRefs),
-          ),
-        ],
-      ),
-      h.div(
-        [Ui.className<Message>('text-[0.75rem] text-white/35')],
-        [
-          firstBlockers.length === 0
-            ? compactRefs(gate.docsRefs)
-            : compactRefs(firstBlockers, compactRefs(gate.docsRefs)),
-        ],
-      ),
-    ],
-  )
-}
-
-const artanisOmegaReleaseGateView = (
-  gate: PublicPylonV02OmegaReleaseGate,
-): Html => {
-  const h = html<Message>()
-  const blockerCount = gate.failedOrPendingRequiredCount
-  const pylonProofLabel = `${formatNumber(gate.multiPylonObservedDistinctPylonCount)} / ${formatNumber(gate.multiPylonRequiredDistinctPylonCount)} distinct Pylons`
-  const firstBlockers = gate.blockerRefs.slice(0, 3)
-
-  return h.div(
-    [Ui.className<Message>('grid gap-3 border border-[#222] bg-[#010102] p-3')],
-    [
-      h.div(
-        [
-          Ui.className<Message>(
-            'flex flex-wrap items-center justify-between gap-3',
-          ),
-        ],
-        [
-          h.div(
-            [Ui.className<Message>('text-[0.75rem] text-white/45')],
-            ['Omega release gate'],
+            [
+              Ui.className<Message>(
+                'min-w-0 flex-1 text-[0.8125rem] leading-5 text-[#f1efe8]',
+              ),
+            ],
+            [event.text],
           ),
           h.span(
-            [Ui.className<Message>('text-[0.75rem] text-white/55')],
-            [gate.stateLabel],
+            [
+              Ui.className<Message>(
+                'shrink-0 tabular-nums text-[0.6875rem] text-white/35',
+              ),
+            ],
+            [friendlyRelativeTime(event.ts)],
           ),
         ],
       ),
-      h.div(
-        [
-          Ui.className<Message>(
-            'grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]',
+      amount === null
+        ? null
+        : h.div(
+            [Ui.className<Message>('text-[0.6875rem] text-white/45')],
+            [
+              event.realBitcoinMoved === true
+                ? `${amount} / real Bitcoin`
+                : `${amount} / simulated`,
+            ],
           ),
-        ],
-        [
-          statsMetric(
-            'Multi-Pylon proof',
-            gate.multiPylonPaidWorkProofComplete ? 'complete' : 'blocked',
-            pylonProofLabel,
-          ),
-          statsMetric(
-            'Release claim',
-            gate.canAnnouncePylonV02Release ? 'allowed' : 'blocked',
-            gate.canAnnouncePylonV02Release
-              ? 'All required public proof is complete'
-              : `${formatNumber(blockerCount)} required ${
-                  blockerCount === 1 ? 'item' : 'items'
-                } not passed`,
-          ),
-          statsMetric(
-            'Payment mode',
-            gate.payoutModeGate.livePayoutClaimAllowed ? 'declared' : 'blocked',
-            gate.hostedMdkDirectPayoutClaimAllowed
-              ? 'Hosted MDK direct payout'
-              : gate.payoutModeGate.modeLabel,
-          ),
-        ],
+    ],
+  )
+}
+
+const fleetIdleState = (
+  newest: PublicActivityTimelineEvent | undefined,
+): Html => {
+  const h = html<Message>()
+  return h.div(
+    [
+      h.Role('status'),
+      Ui.className<Message>(
+        'flex items-center gap-3 border border-[#222] bg-[#010102] p-4 text-sm text-white/45',
       ),
-      h.div(
-        [Ui.className<Message>('text-[0.75rem] text-white/35')],
+    ],
+    [
+      h.span([], ['▶']),
+      h.span(
+        [],
         [
-          firstBlockers.length === 0
-            ? compactRefs(gate.runbookRefs)
-            : compactRefs(firstBlockers, compactRefs(gate.runbookRefs)),
+          newest === undefined
+            ? 'The fleet is idle right now. New work will appear here live.'
+            : `Quiet right now — last fleet activity ${friendlyRelativeTime(newest.ts)}. New work will appear here live.`,
         ],
       ),
     ],
   )
 }
 
-const artanisReportLoadedView = (report: PublicArtanisReport): Html => {
+const fleetShippingLoadedView = (
+  envelope: PublicActivityTimelineEnvelope,
+): Html => {
   const h = html<Message>()
-  const blockers = report.publicBlockerRefs.slice(0, 5)
-  const claims = [...report.standaloneClaims, ...report.r10Claims].slice(0, 7)
-  const healthAttentionCount = report.healthSummary.staleOrBlockedSignalCount
-  const acceptedWorkDenomination = bitcoinDenomination(
-    report.pylonSummary.acceptedWorkBitcoinTotal,
-  )
-  const acceptedWorkSettlementDetail = report.pylonSummary
-    .acceptedWorkSettlementGate.publicPaidWorkTotalsAllowed
-    ? `Receipts ${compactRefs(report.pylonSummary.acceptedWorkSettlementReceiptRefs)}`
-    : report.pylonSummary.acceptedWorkSettlementGate.stateLabel
+  const events = fleetFeedEvents(envelope.events)
+  const fresh = fleetFeedIsFresh(events, envelope.generatedAt)
+  const fresh24h = fleetFreshCount(events, envelope.generatedAt)
+  const liveSources = envelope.sourceLag.filter(
+    lag => lag.status === 'current',
+  ).length
+  const newest = events[0]
 
   return h.section(
     [Ui.className<Message>('grid gap-4 border-b border-[#222] pb-6')],
     [
+      fleetHeader(
+        h.div(
+          [Ui.className<Message>('flex items-center gap-3')],
+          [
+            fresh
+              ? fleetStatusBadge('Live', 'live')
+              : fleetStatusBadge('Idle', 'idle'),
+            h.a(
+              [
+                h.Href('/activity'),
+                Ui.className<Message>(
+                  'border border-[#333] px-3 py-2 text-[0.75rem] text-white/70 underline-offset-4 hover:border-white/35 hover:text-[#f1efe8] hover:underline',
+                ),
+              ],
+              ['Full activity'],
+            ),
+          ],
+        ),
+      ),
       h.div(
+        [Ui.className<Message>('grid gap-2 sm:grid-cols-3')],
         [
-          Ui.className<Message>(
-            'flex flex-wrap items-end justify-between gap-3',
+          statsMetric(
+            'Shipped (24h)',
+            formatNumber(fresh24h),
+            'Live fleet events in the last day',
+          ),
+          statsMetric(
+            'Latest',
+            newest === undefined ? '-' : friendlyRelativeTime(newest.ts),
+            newest === undefined
+              ? 'No recent events'
+              : (fleetEventKindLabel[newest.kind] ?? newest.kind),
+          ),
+          statsMetric(
+            'Live feeds',
+            `${formatNumber(liveSources)} / ${formatNumber(envelope.sourceLag.length)}`,
+            'Source streams reporting current',
           ),
         ],
-        [
-          h.div(
-            [Ui.className<Message>('grid gap-2')],
-            [
-              h.div(
-                [Ui.className<Message>(Ui.eyebrowClass)],
-                ['Public report'],
-              ),
-              h.h2(
+      ),
+      // Honesty rule (#6534): never present old rows under a live frame. If the
+      // freshest event is older than the live window, show an honest idle state
+      // (with the real last-activity time in the metric above) instead of
+      // listing stale rows.
+      fresh
+        ? Array.match(events.slice(0, 8), {
+            onEmpty: () => fleetIdleState(newest),
+            onNonEmpty: rows =>
+              h.ol(
                 [
                   Ui.className<Message>(
-                    'text-xl font-semibold tracking-normal text-[#f1efe8]',
+                    'grid border border-[#222] bg-[#010102] px-3',
                   ),
                 ],
-                ['Artanis status report'],
+                rows.map(fleetEventRow),
               ),
-            ],
-          ),
-          h.div(
-            [Ui.className<Message>('text-[0.75rem] text-white/45')],
-            [`Updated ${report.updatedAtDisplay}`],
-          ),
-        ],
-      ),
-      h.div(
-        [Ui.className<Message>('grid gap-2 sm:grid-cols-2 lg:grid-cols-5')],
-        [
-          statsMetric(
-            'Autonomous loop',
-            report.autonomousLoop.state.replace(/_/g, ' '),
-            report.autonomousLoop.latestTickState === null
-              ? `${formatNumber(report.autonomousLoop.tickCount)} ticks`
-              : `${report.autonomousLoop.latestTickState.replace(/_/g, ' ')} tick`,
-          ),
-          statsMetric(
-            'Health',
-            report.healthSummary.overallState.replace(/_/g, ' '),
-            report.healthSummary.overclaimBlocked
-              ? `${formatNumber(healthAttentionCount)} ${
-                  healthAttentionCount === 1 ? 'signal' : 'signals'
-                } ${healthAttentionCount === 1 ? 'needs' : 'need'} attention`
-              : 'No stale signals',
-          ),
-          statsMetric(
-            'Model Lab',
-            report.modelLabSummary.readiness.replace(/_/g, ' '),
-            `${formatNumber(report.modelLabSummary.completeSectionCount)} / ${formatNumber(report.modelLabSummary.sectionCount)} sections complete`,
-          ),
-          statsMetric(
-            'Pylon feed',
-            report.pylonSummary.feedStatus,
-            `${formatNumber(report.pylonSummary.pylonsOnlineNow)} online / ${formatNumber(report.pylonSummary.assignmentReadyPylonsOnlineNow)} assignment-ready / ${
-              report.pylonSummary.earningLaunchGate.publicEarningCopyAllowed
-                ? 'earning ready'
-                : 'earning blocked'
-            }`,
-          ),
-          statsMetric(
-            'Accepted-work bitcoin',
-            bitcoinPrimary(report.pylonSummary.acceptedWorkBitcoinTotal),
-            acceptedWorkDenomination === null
-              ? acceptedWorkSettlementDetail
-              : `${acceptedWorkDenomination} total / ${acceptedWorkSettlementDetail}`,
-          ),
-        ],
-      ),
+          })
+        : fleetIdleState(newest),
+    ],
+  )
+}
+
+const fleetShippingMessageView = (message: string): Html => {
+  const h = html<Message>()
+  return h.section(
+    [Ui.className<Message>('grid gap-4 border-b border-[#222] pb-6')],
+    [
+      fleetHeader(fleetStatusBadge('Loading', 'muted')),
       h.div(
         [
+          h.Role('status'),
           Ui.className<Message>(
-            'grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]',
+            'border border-[#222] bg-[#010102] p-4 text-sm text-white/45',
           ),
         ],
-        [
-          h.div(
-            [
-              Ui.className<Message>(
-                'grid gap-3 border border-[#222] bg-[#010102] p-3',
-              ),
-            ],
-            [
-              h.div(
-                [Ui.className<Message>('text-[0.75rem] text-white/45')],
-                ['Public blockers'],
-              ),
-              blockers.length === 0
-                ? h.p(
-                    [Ui.className<Message>('text-[0.75rem] text-white/35')],
-                    ['No public blockers are listed.'],
-                  )
-                : h.ul(
-                    [Ui.className<Message>('grid gap-1')],
-                    blockers.map(blocker =>
-                      h.li(
-                        [
-                          Ui.className<Message>(
-                            'break-words text-[0.75rem] text-white/55',
-                          ),
-                        ],
-                        [blocker],
-                      ),
-                    ),
-                  ),
-              h.div(
-                [Ui.className<Message>('text-[0.75rem] text-white/35')],
-                [
-                  `Receipts ${compactRefs(report.receiptRefs)} / artifacts ${compactRefs(report.artifactRefs)}`,
-                ],
-              ),
-            ],
-          ),
-          h.div(
-            [
-              Ui.className<Message>(
-                'grid gap-3 border border-[#222] bg-[#010102] p-3',
-              ),
-            ],
-            [
-              h.div(
-                [Ui.className<Message>('text-[0.75rem] text-white/45')],
-                ['Forum refs'],
-              ),
-              h.div(
-                [Ui.className<Message>('flex flex-wrap gap-2')],
-                report.forumLinks.map(link =>
-                  h.a(
-                    [
-                      h.Href(link.href),
-                      Ui.className<Message>(
-                        'border border-[#333] px-3 py-2 text-[0.75rem] text-white/70 underline-offset-4 hover:border-white/35 hover:text-[#f1efe8] hover:underline',
-                      ),
-                    ],
-                    [link.label],
-                  ),
-                ),
-              ),
-              h.div(
-                [Ui.className<Message>('text-[0.75rem] text-white/35')],
-                [compactRefs(report.publicGoalRefs)],
-              ),
-            ],
-          ),
-        ],
-      ),
-      artanisDecisionLogView(report),
-      artanisPylonLaunchView(report.pylonLaunchCommunication),
-      artanisOmegaReleaseGateView(report.pylonOmegaReleaseGate),
-      artanisProductionLaunchGateView(report.productionLaunchGate),
-      artanisForumRewardView(report.forumRewardVisibility),
-      artanisForumRewardSmokeView(report.forumRewardSmoke),
-      h.div(
-        [
-          Ui.className<Message>(
-            'grid gap-2 border border-[#222] bg-[#010102] p-3',
-          ),
-        ],
-        [
-          h.div(
-            [Ui.className<Message>('text-[0.75rem] text-white/45')],
-            ['Claim states'],
-          ),
-          h.ol([Ui.className<Message>('grid')], claims.map(artanisClaimRow)),
-        ],
+        [message],
       ),
     ],
   )
 }
 
-const artanisReportView = (model: PublicArtanisReportModel): Html => {
+const fleetShippingErrorView = (error: string): Html => {
   const h = html<Message>()
-
-  if (model._tag === 'PublicArtanisReportLoaded') {
-    return artanisReportLoadedView(model.report)
-  }
-
-  if (model._tag === 'PublicArtanisReportFailed') {
-    return h.section(
-      [Ui.className<Message>('grid gap-3 border-b border-[#222] pb-6')],
-      [
-        h.div([Ui.className<Message>(Ui.eyebrowClass)], ['Public report']),
-        h.p([Ui.className<Message>('text-sm text-[#ff6f00]')], [model.error]),
-      ],
-    )
-  }
-
   return h.section(
-    [Ui.className<Message>('grid gap-3 border-b border-[#222] pb-6')],
+    [Ui.className<Message>('grid gap-4 border-b border-[#222] pb-6')],
     [
-      h.div([Ui.className<Message>(Ui.eyebrowClass)], ['Public report']),
-      h.p(
-        [Ui.className<Message>('text-sm text-white/45')],
-        ['Loading Artanis public report.'],
-      ),
+      fleetHeader(fleetStatusBadge('Unavailable', 'muted')),
+      h.p([Ui.className<Message>('text-sm text-[#ff6f00]')], [error]),
     ],
   )
+}
+
+const fleetShippingView = (model: PublicActivityTimelineModel): Html => {
+  if (model._tag === 'PublicActivityTimelineLoaded') {
+    return fleetShippingLoadedView(model.envelope)
+  }
+  if (model._tag === 'PublicActivityTimelineFailed') {
+    return fleetShippingErrorView(model.error)
+  }
+  return fleetShippingMessageView('Loading live fleet activity.')
 }
 
 const eventRow = (event: PublicAgentGoalEvent): Html => {
@@ -2229,7 +1783,8 @@ const artanisLoadedView = (
   goal: PublicAgentGoal | null,
   events: ReadonlyArray<PublicAgentGoalEvent>,
   pylonStats: PublicPylonStatsModel,
-  artanisReport: PublicArtanisReportModel,
+  activityTimeline: PublicActivityTimelineModel,
+  khalaTokensServedHistory: PublicKhalaTokensServedHistoryModel,
 ): Html => {
   const h = html<Message>()
   const displayedObjective = userFacingCopy(goal?.objective ?? campaignObjective)
@@ -2244,6 +1799,9 @@ const artanisLoadedView = (
     ],
     [
       artanisConsoleHeader(goal, pylonStats),
+      // HERO: the live token-burn Pulse is the strongest signal that an
+      // autonomous fleet is building in real time, so it spans the console.
+      artanisPulseView(khalaTokensServedHistory),
       h.div(
         [
           Ui.className<Message>(
@@ -2258,9 +1816,11 @@ const artanisLoadedView = (
               publicAgentActivityView(events),
             ],
           ),
+          // Live fleet-shipping feed replaces the stale status report + the
+          // 11-day-old admin-tick decision log.
           h.div(
             [Ui.className<Message>('grid content-start gap-5')],
-            [artanisReportView(artanisReport)],
+            [fleetShippingView(activityTimeline)],
           ),
           h.div(
             [Ui.className<Message>('grid content-start gap-5')],
@@ -2277,7 +1837,7 @@ const loadedView = (
   goal: PublicAgentGoal | null,
   events: ReadonlyArray<PublicAgentGoalEvent>,
   pylonStats: PublicPylonStatsModel,
-  artanisReport: PublicArtanisReportModel,
+  activityTimeline: PublicActivityTimelineModel,
   khalaTokensServedHistory: PublicKhalaTokensServedHistoryModel,
   adjutantActivity: PublicAdjutantActivityModel,
 ): Html => {
@@ -2286,11 +1846,16 @@ const loadedView = (
   const displayedObjective = userFacingCopy(
     goal?.objective ?? fallbackObjective(agentRef),
   )
-  const isArtanis = agentRef === 'artanis'
   const isAdjutant = agentRef === 'adjutant'
 
-  if (isArtanis) {
-    return artanisLoadedView(goal, events, pylonStats, artanisReport)
+  if (agentRef === 'artanis') {
+    return artanisLoadedView(
+      goal,
+      events,
+      pylonStats,
+      activityTimeline,
+      khalaTokensServedHistory,
+    )
   }
 
   return h.main(
@@ -2351,10 +1916,6 @@ const loadedView = (
         ],
       ),
       publicAgentGoalView(agentName, goal, displayedObjective),
-      isArtanis ? artanisPulseView(khalaTokensServedHistory) : null,
-      isArtanis ? artanisReportView(artanisReport) : null,
-      isArtanis ? artanisFleetOnboardingView() : null,
-      isArtanis ? pylonStatsView(pylonStats) : null,
       isAdjutant ? adjutantActivityView(adjutantActivity) : null,
       publicAgentActivityView(events),
     ],
@@ -2373,7 +1934,7 @@ export const view = (model: Model, agentRef: string): Html => {
       model.publicAgent.response.goal,
       model.publicAgent.response.events,
       model.publicPylonStats,
-      model.publicArtanisReport,
+      model.publicActivityTimeline,
       model.publicKhalaTokensServedHistory,
       model.publicAdjutantActivity,
     )
@@ -2403,7 +1964,7 @@ export const view = (model: Model, agentRef: string): Html => {
         },
       ],
       model.publicPylonStats,
-      model.publicArtanisReport,
+      model.publicActivityTimeline,
       model.publicKhalaTokensServedHistory,
       model.publicAdjutantActivity,
     )
@@ -2414,7 +1975,8 @@ export const view = (model: Model, agentRef: string): Html => {
       null,
       [],
       model.publicPylonStats,
-      model.publicArtanisReport,
+      model.publicActivityTimeline,
+      model.publicKhalaTokensServedHistory,
     )
   }
 
