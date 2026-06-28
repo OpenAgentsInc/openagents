@@ -285,6 +285,7 @@ def evaluate_batch(
     finished = _now_iso()
     agg_pass_rate = (total_passed / total_cases) if total_cases else 0.0
     fully_solved = sum(1 for p in per_problem if p["status"] == "passed")
+    model_error_count = sum(1 for p in per_problem if p.get("modelError"))
     summary = {
         "runId": run_id,
         "model": model_name,
@@ -302,6 +303,7 @@ def evaluate_batch(
         "demand": DEMAND,
         "grade": "backstop",
         "decisionGrade": False,
+        "modelErrorCount": model_error_count,
         "perProblem": [
             {"problemId": p["problemId"], "passed": p["passed"], "total": p["total"], "passRate": p["passRate"], "status": p["status"]}
             for p in per_problem
@@ -313,6 +315,110 @@ def evaluate_batch(
 
 
 # --- Live Khala model function -------------------------------------------------
+# IMPORTANT (issue #6735): the Khala endpoint sits behind Cloudflare, which
+# blocks the default stdlib `Python-urllib/<ver>` User-Agent with HTTP 403
+# (`error code: 1010`) BEFORE the request ever reaches the Worker. That 403 was
+# being swallowed per-problem as a fail-soft `model_call_failed`, so the whole
+# backstop produced all-failed / 0-burn runs while exiting 0 -- looking like an
+# auth failure ("unauthorized") when it was really a WAF block. We MUST send an
+# explicit, non-default User-Agent on every request (mint + chat + counter).
+USER_AGENT = "openagents-mirrorcode-backstop/1.0 (+https://openagents.com; issue-6735)"
+
+
+class KhalaCallError(RuntimeError):
+    """A loud, attributable failure of a live Khala call (auth/HTTP/transport).
+
+    Carries the HTTP status (when known) and a short public-safe body snippet so
+    the runner can FAIL LOUD with the exact reason instead of silently producing
+    a 0-burn run.
+    """
+
+    def __init__(self, message: str, status: Optional[int] = None, body: str = "") -> None:
+        super().__init__(message)
+        self.status = status
+        self.body = body
+
+
+def _public_base(base_url: str) -> str:
+    """Strip the `/api/v1` OpenAI-compat suffix to get the site origin."""
+    b = base_url.rstrip("/")
+    for suffix in ("/api/v1", "/v1"):
+        if b.endswith(suffix):
+            return b[: -len(suffix)]
+    return b
+
+
+def _khala_chat_raw(
+    url: str,
+    api_key: str,
+    model: str,
+    prompt: str,
+    timeout: float,
+) -> Dict[str, Any]:
+    """POST one chat completion and return the parsed body.
+
+    Raises KhalaCallError (loud) on any HTTP / transport failure, reading the
+    error body so the caller can report the exact status (401 unauthorized, 403
+    WAF block, 402 payment required, etc.).
+    """
+    import urllib.error
+    import urllib.request
+
+    payload = json.dumps(
+        {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": "You are a precise Python coding assistant. Respond with only the requested function in a single python code block."},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0,
+        }
+    ).encode("utf-8")
+    req = urllib.request.Request(url, data=payload, method="POST")
+    req.add_header("Content-Type", "application/json")
+    # Non-default UA is REQUIRED: see the Cloudflare note above.
+    req.add_header("User-Agent", USER_AGENT)
+    if api_key:
+        req.add_header("Authorization", "Bearer " + api_key)
+    req.add_header("x-openagents-demand-kind", DEMAND["kind"])
+    req.add_header("x-openagents-demand-source", DEMAND["source"])
+    req.add_header("x-openagents-client", DEMAND["client"])
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        try:
+            body = exc.read().decode("utf-8", "replace")[:500]
+        except Exception:
+            body = ""
+        raise KhalaCallError(
+            "khala_http_error status=%s" % exc.code, status=exc.code, body=body
+        ) from exc
+    except urllib.error.URLError as exc:
+        raise KhalaCallError("khala_transport_error: %r" % exc.reason) from exc
+
+
+def fetch_tokens_served(base_url: str, timeout: float = 30.0) -> Optional[int]:
+    """Read the public `khala-tokens-served` counter; None if unavailable.
+
+    Best-effort supporting evidence for the burn smoke. Never raises (the strong
+    burn signal is our own call's reported usage, not this shared counter).
+    """
+    import urllib.error
+    import urllib.request
+
+    url = _public_base(base_url) + "/api/public/khala-tokens-served"
+    req = urllib.request.Request(url, method="GET")
+    req.add_header("User-Agent", USER_AGENT)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+        val = body.get("tokensServed")
+        return int(val) if val is not None else None
+    except (urllib.error.HTTPError, urllib.error.URLError, ValueError, TypeError, KeyError):
+        return None
+
+
 def khala_model_fn(
     base_url: Optional[str] = None,
     api_key: Optional[str] = None,
@@ -323,38 +429,76 @@ def khala_model_fn(
 
     Own-capacity ($0) path. Uses only stdlib urllib so the backstop has no
     third-party dependency. Tags the request with the gym-backstop demand
-    attribution headers so the load is auditably an internal eval.
+    attribution headers so the load is auditably an internal eval, and sends a
+    non-default User-Agent so Cloudflare does not 403 the call (issue #6735).
     """
-    import urllib.request
-
     base_url = (base_url or os.environ.get("OPENAI_BASE_URL") or "https://openagents.com/api/v1").rstrip("/")
     api_key = api_key or os.environ.get("OPENAI_API_KEY") or ""
     url = base_url + "/chat/completions"
 
     def _call(prompt: str) -> str:
-        payload = json.dumps(
-            {
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": "You are a precise Python coding assistant. Respond with only the requested function in a single python code block."},
-                    {"role": "user", "content": prompt},
-                ],
-                "temperature": 0,
-            }
-        ).encode("utf-8")
-        req = urllib.request.Request(url, data=payload, method="POST")
-        req.add_header("Content-Type", "application/json")
-        if api_key:
-            req.add_header("Authorization", "Bearer " + api_key)
-        req.add_header("x-openagents-demand-kind", DEMAND["kind"])
-        req.add_header("x-openagents-demand-source", DEMAND["source"])
-        req.add_header("x-openagents-client", DEMAND["client"])
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
+        body = _khala_chat_raw(url, api_key, model, prompt, timeout)
         return body["choices"][0]["message"]["content"] or ""
 
     return _call
 
+
+def live_preflight(
+    base_url: Optional[str] = None,
+    api_key: Optional[str] = None,
+    model: str = "openagents/khala",
+    timeout: float = 120.0,
+) -> Dict[str, Any]:
+    """Do ONE real own-capacity call and PROVE it burned tokens.
+
+    Returns a dict with the served-token usage of our own call plus the public
+    counter before/after (supporting evidence). Raises KhalaCallError (loud) if
+    the call is unauthorized / WAF-blocked / empty, or if it reports ZERO usage
+    tokens -- so the runner can fail loud BEFORE wasting a batch on a dead auth
+    path. The strong burn signal is our own response usage; the shared counter
+    delta is informational (other agents burn concurrently).
+    """
+    base_url = (base_url or os.environ.get("OPENAI_BASE_URL") or "https://openagents.com/api/v1").rstrip("/")
+    api_key = api_key or os.environ.get("OPENAI_API_KEY") or ""
+    url = base_url + "/chat/completions"
+
+    counter_before = fetch_tokens_served(base_url, timeout=30.0)
+    body = _khala_chat_raw(
+        url,
+        api_key,
+        model,
+        "Write a Python function `ping()` that returns the string 'pong'. Return only the function in a single ```python code block.",
+        timeout,
+    )
+    usage = body.get("usage") or {}
+    total_tokens = int(usage.get("total_tokens") or 0)
+    content = ""
+    try:
+        content = body["choices"][0]["message"]["content"] or ""
+    except (KeyError, IndexError, TypeError):
+        content = ""
+    counter_after = fetch_tokens_served(base_url, timeout=30.0)
+    counter_delta = (
+        counter_after - counter_before
+        if (counter_before is not None and counter_after is not None)
+        else None
+    )
+    if total_tokens <= 0:
+        raise KhalaCallError(
+            "khala_preflight_zero_usage: model returned no usage tokens "
+            "(content_chars=%d); refusing to run a 0-burn batch" % len(content)
+        )
+    return {
+        "ok": True,
+        "model": model,
+        "usageTotalTokens": total_tokens,
+        "promptTokens": int(usage.get("prompt_tokens") or 0),
+        "completionTokens": int(usage.get("completion_tokens") or 0),
+        "contentChars": len(content),
+        "counterBefore": counter_before,
+        "counterAfter": counter_after,
+        "counterDelta": counter_delta,
+    }
 
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="MirrorCode gym backstop runner (#6710)")
@@ -363,7 +507,54 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--live", action="store_true", help="Use the live Khala model (needs OPENAI_API_KEY / OPENAI_BASE_URL).")
     parser.add_argument("--case-timeout", type=float, default=float(os.environ.get("MC_BACKSTOP_CASE_TIMEOUT", "8")), help="Per-problem execution timeout (s).")
     parser.add_argument("--model", default=os.environ.get("MC_BACKSTOP_MODEL", "openagents/khala"))
+    parser.add_argument(
+        "--smoke",
+        action="store_true",
+        help="Burn smoke only: do ONE live own-capacity call and assert it burned tokens (no batch). Exits nonzero if the call is unauthorized / WAF-blocked / 0-burn. Implies --live.",
+    )
     args = parser.parse_args(argv)
+
+    # BURN PREFLIGHT / SMOKE (issue #6735). For any live run, prove the
+    # own-capacity auth path actually burns BEFORE spending a batch on a dead
+    # endpoint, and FAIL LOUD (nonzero exit + exact reason on stderr) if it does
+    # not -- instead of the old silent all-failed / 0-burn run that exited 0.
+    if args.live or args.smoke:
+        try:
+            pf = live_preflight(model=args.model)
+        except KhalaCallError as exc:
+            print(
+                "FATAL backstop burn preflight failed: %s" % exc,
+                file=sys.stderr,
+            )
+            if getattr(exc, "status", None) is not None:
+                print("  http_status: %s" % exc.status, file=sys.stderr)
+            if getattr(exc, "body", ""):
+                print("  body: %s" % exc.body, file=sys.stderr)
+            print(
+                "  hint: own-capacity inference needs a valid oa_agent_ Bearer key "
+                "(OPENAI_API_KEY) OR a mint at POST <base>/api/keys/free, AND a "
+                "non-default User-Agent (Cloudflare 403s Python-urllib). "
+                "401=bad/missing token; 403=WAF/UA block; 402=needs credits or "
+                "free-tier not enabled.",
+                file=sys.stderr,
+            )
+            return 1
+        print(
+            "Burn preflight OK: own call burned %d tokens (prompt=%d, completion=%d); "
+            "public counter %s -> %s (delta %s)."
+            % (
+                pf["usageTotalTokens"],
+                pf["promptTokens"],
+                pf["completionTokens"],
+                pf["counterBefore"],
+                pf["counterAfter"],
+                pf["counterDelta"],
+            ),
+            file=sys.stderr,
+        )
+        if args.smoke:
+            print(json.dumps({"smoke": pf}, indent=2))
+            return 0
 
     problems = select_problems(args.limit)
     if args.live:
@@ -377,6 +568,18 @@ def main(argv: Optional[List[str]] = None) -> int:
     os.makedirs(args.out, exist_ok=True)
     summary = evaluate_batch(problems, model_fn, args.out, case_timeout=args.case_timeout, model_name=args.model)
     print(json.dumps(summary, indent=2))
+
+    # FAIL LOUD (issue #6735): a live batch where EVERY model call failed is a
+    # broken auth/transport path, not a legitimate 0% pass rate. Never let it
+    # masquerade as a successful 0-burn run.
+    if args.live and problems and summary.get("modelErrorCount", 0) == len(problems):
+        print(
+            "FATAL backstop: all %d live model calls failed (modelErrorCount=%d); "
+            "0 tokens burned. Treating as a broken own-capacity path."
+            % (len(problems), summary.get("modelErrorCount", 0)),
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 
