@@ -27,8 +27,22 @@ What it does, per problem:
 ```sh
 ./backstop-run.sh                 # mint a free Khala key, run the bounded batch
 OPENAI_API_KEY=oa_agent_xxx ./backstop-run.sh --limit 8
+MC_BACKSTOP_SMOKE=1 ./backstop-run.sh     # burn smoke: one live call, nonzero on 0-burn
 MC_BACKSTOP_DRY_RUN=1 ./backstop-run.sh   # diagnostic: no model call, no spend
 ```
+
+**Auth & burn correctness (issue #6735).** Own-capacity inference authenticates
+to the Khala OpenAI-compatible endpoint (`POST /api/v1/chat/completions`) with a
+Bearer `oa_agent_` token -- either one you pass in `OPENAI_API_KEY` or a free key
+the runner mints at `POST /api/keys/free`. The Khala endpoint is behind
+Cloudflare, which **403s the default `Python-urllib` User-Agent** (`error code:
+1010`) before the request reaches the Worker; the runner now always sends an
+explicit `User-Agent`, so the call returns 200 and burns real tokens. The runner
+**fails loud** (nonzero exit + the exact status on stderr) when the model call is
+unauthorized (401), WAF-blocked (403), payment-gated (402), or returns zero usage
+-- it never silently produces an all-failed / 0-burn run. Every live run first
+does a one-call **burn preflight** that asserts real usage tokens before spending
+the batch; `MC_BACKSTOP_SMOKE=1` runs that preflight standalone.
 
 Problem source: the built-in **public-domain fixture set** (classic toy
 functions — sum, reverse, palindrome, factorial, gcd, FizzBuzz, …). These are

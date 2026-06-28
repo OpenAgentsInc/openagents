@@ -143,6 +143,89 @@ class EvaluateBatchTests(unittest.TestCase):
             self.assertTrue(str(tr["modelError"]).startswith("model_call_failed"))
 
 
+class Issue6735BurnGuardTests(unittest.TestCase):
+    """Issue #6735: own-capacity auth + fail-loud + burn smoke."""
+
+    def test_public_base_strips_v1_suffix(self):
+        self.assertEqual(be._public_base("https://openagents.com/api/v1"), "https://openagents.com")
+        self.assertEqual(be._public_base("https://openagents.com/api/v1/"), "https://openagents.com")
+        self.assertEqual(be._public_base("https://x.test/v1"), "https://x.test")
+        self.assertEqual(be._public_base("https://x.test"), "https://x.test")
+
+    def test_summary_reports_model_error_count(self):
+        problems = [{"id": "a", "entrypoint": "a", "prompt": "a", "tests": [[[1], 1]]}]
+
+        def model_fn(_prompt):
+            raise RuntimeError("network down")
+
+        with tempfile.TemporaryDirectory() as d:
+            summary = be.evaluate_batch(problems, model_fn, d, run_id="t-errcount")
+            self.assertEqual(summary["modelErrorCount"], 1)
+
+    def test_preflight_raises_loud_on_http_error(self):
+        def fake_chat(url, api_key, model, prompt, timeout):
+            raise be.KhalaCallError("khala_http_error status=403", status=403, body="error code: 1010")
+
+        orig = be._khala_chat_raw
+        be._khala_chat_raw = fake_chat
+        try:
+            with self.assertRaises(be.KhalaCallError) as ctx:
+                be.live_preflight(base_url="https://x.test/api/v1", api_key="oa_agent_x", model="openagents/khala")
+            self.assertEqual(ctx.exception.status, 403)
+        finally:
+            be._khala_chat_raw = orig
+
+    def test_preflight_raises_loud_on_zero_usage(self):
+        def fake_chat(url, api_key, model, prompt, timeout):
+            return {"choices": [{"message": {"content": "ok"}}], "usage": {"total_tokens": 0}}
+
+        orig_chat, orig_counter = be._khala_chat_raw, be.fetch_tokens_served
+        be._khala_chat_raw = fake_chat
+        be.fetch_tokens_served = lambda *a, **k: 100
+        try:
+            with self.assertRaises(be.KhalaCallError):
+                be.live_preflight(base_url="https://x.test/api/v1", api_key="oa_agent_x")
+        finally:
+            be._khala_chat_raw, be.fetch_tokens_served = orig_chat, orig_counter
+
+    def test_preflight_ok_reports_usage_and_counter_delta(self):
+        def fake_chat(url, api_key, model, prompt, timeout):
+            return {"choices": [{"message": {"content": "```python\ndef ping():\n    return 'pong'\n```"}}], "usage": {"total_tokens": 42, "prompt_tokens": 30, "completion_tokens": 12}}
+
+        counters = iter([1000, 1042])
+        orig_chat, orig_counter = be._khala_chat_raw, be.fetch_tokens_served
+        be._khala_chat_raw = fake_chat
+        be.fetch_tokens_served = lambda *a, **k: next(counters)
+        try:
+            pf = be.live_preflight(base_url="https://x.test/api/v1", api_key="oa_agent_x")
+            self.assertTrue(pf["ok"])
+            self.assertEqual(pf["usageTotalTokens"], 42)
+            self.assertEqual(pf["counterDelta"], 42)
+        finally:
+            be._khala_chat_raw, be.fetch_tokens_served = orig_chat, orig_counter
+
+    def test_main_live_fails_loud_when_preflight_unauthorized(self):
+        def boom(*a, **k):
+            raise be.KhalaCallError("khala_http_error status=401", status=401, body='{"error":"unauthorized"}')
+
+        orig = be.live_preflight
+        be.live_preflight = boom
+        try:
+            rc = be.main(["--live", "--limit", "1"])
+            self.assertEqual(rc, 1)
+        finally:
+            be.live_preflight = orig
+
+    def test_main_smoke_returns_zero_on_real_burn(self):
+        orig = be.live_preflight
+        be.live_preflight = lambda **k: {"ok": True, "usageTotalTokens": 7, "promptTokens": 4, "completionTokens": 3, "contentChars": 5, "counterBefore": 1, "counterAfter": 8, "counterDelta": 7}
+        try:
+            rc = be.main(["--smoke"])
+            self.assertEqual(rc, 0)
+        finally:
+            be.live_preflight = orig
+
+
 class SelectionTests(unittest.TestCase):
     def test_limit_bounds_batch(self):
         self.assertEqual(len(be.select_problems(3)), 3)
