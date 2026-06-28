@@ -3,6 +3,8 @@ import { assertPublicProjectionSafe } from "./state.js"
 
 export const FRLM_CONDUCTOR_EXECUTION_SCHEMA =
   "openagents.artanis.frlm_conductor_execution.v0.1"
+export const FRLM_CONDUCTOR_DISPATCH_SCHEMA =
+  "openagents.artanis.frlm_conductor_dispatch.v0.1"
 
 export type FrlmConductorSubQueryState =
   | "planned"
@@ -26,6 +28,12 @@ export type FrlmConductorExecutionBlockerRef =
   | "blocker.artanis.frlm_conductor.linear_executor_ref_missing"
   | "blocker.artanis.frlm_conductor.unsafe_ref"
 
+export type FrlmConductorDispatchBlockerRef =
+  | "blocker.artanis.frlm_conductor.dispatch.execution_not_recursive_parallel"
+  | "blocker.artanis.frlm_conductor.dispatch.no_available_pylon_slots"
+  | "blocker.artanis.frlm_conductor.dispatch.sub_query_dispatch_plan_missing"
+  | "blocker.artanis.frlm_conductor.dispatch.unsafe_ref"
+
 export type FrlmConductorSubQuery = {
   subQueryRef: string
   parentRef?: string | null
@@ -33,6 +41,26 @@ export type FrlmConductorSubQuery = {
   resultRef?: string | null
   failureRef?: string | null
   blueprintSignatureRef?: string | null
+}
+
+export type FrlmConductorPylonSlot = {
+  slotRef: string
+  pylonRef: string
+  accountRef?: string | null
+  ready?: boolean
+  capacity?: number
+  busy?: number
+  capabilityRefs?: string[]
+}
+
+export type FrlmConductorDispatchAssignment = {
+  dispatchRef: string
+  subQueryRef: string
+  blueprintSignatureRef: string | null
+  pylonRef: string
+  slotRef: string
+  accountRef: string | null
+  laneIndex: number
 }
 
 export type FrlmConductorExecutionProjection = {
@@ -51,6 +79,23 @@ export type FrlmConductorExecutionProjection = {
   executionPlanRef: string | null
   evidenceRefs: string[]
   blockerRefs: FrlmConductorExecutionBlockerRef[]
+  authorityBoundary: string
+  contentRedacted: true
+}
+
+export type FrlmConductorDispatchProjection = {
+  schema: typeof FRLM_CONDUCTOR_DISPATCH_SCHEMA
+  observedAt: string
+  executionRef: string | null
+  executionPlanRef: string | null
+  executionMode: FrlmConductorExecutionMode
+  canDispatch: boolean
+  dispatchWidth: number
+  dispatchAssignments: FrlmConductorDispatchAssignment[]
+  queuedSubQueryRefs: string[]
+  availableSlotRefs: string[]
+  evidenceRefs: string[]
+  blockerRefs: FrlmConductorDispatchBlockerRef[]
   authorityBoundary: string
   contentRedacted: true
 }
@@ -187,6 +232,133 @@ export function planFrlmConductorExecution(input: {
     blockerRefs: [...blockerRefs].sort(),
     authorityBoundary:
       "Read-only FRLM Conductor execution projection. It selects recursive or linear fallback planning from public evidence refs only; it does not dispatch workers, run Python, spend sats, publish claims, or move settlement authority.",
+    contentRedacted: true,
+  }
+  assertPublicProjectionSafe(projection)
+  return projection
+}
+
+export function planFrlmConductorPylonDispatch(input: {
+  observedAt: string
+  executionRef?: string | null
+  rootTaskRef?: string | null
+  blueprintSignatureRef?: string | null
+  subQueries?: FrlmConductorSubQuery[]
+  linearFallbackEnabled?: boolean
+  linearExecutorRef?: string | null
+  pylonSlots?: FrlmConductorPylonSlot[]
+}): FrlmConductorDispatchProjection {
+  const execution = planFrlmConductorExecution(input)
+  const blockerRefs = new Set<FrlmConductorDispatchBlockerRef>()
+  const subQueries = input.subQueries ?? []
+  const pylonSlots = input.pylonSlots ?? []
+  const rawRefs = pylonSlots.flatMap((slot) => [
+    normalizedRef(slot.slotRef),
+    normalizedRef(slot.pylonRef),
+    normalizedRef(slot.accountRef),
+    ...(slot.capabilityRefs ?? []).map(normalizedRef),
+  ])
+  const safeRefs = new Map<string, string | null>()
+  for (const ref of rawRefs) {
+    if (ref !== null && !safeRefs.has(ref)) {
+      safeRefs.set(ref, isSafeRef(ref) ? ref : null)
+    }
+  }
+  const safeRef = (value: string | null | undefined) => {
+    const ref = normalizedRef(value)
+    return ref === null ? null : safeRefs.get(ref) ?? null
+  }
+  const runnableSubQueries = subQueries
+    .filter((subQuery) => subQuery.state === "planned")
+    .map((subQuery) => ({
+      subQueryRef: execution.recursiveSubQueryRefs.find((ref) => ref === normalizedRef(subQuery.subQueryRef)) ?? null,
+      blueprintSignatureRef: normalizedRef(subQuery.blueprintSignatureRef) === null
+        ? execution.blueprintSignatureRef
+        : execution.evidenceRefs.find((ref) => ref === normalizedRef(subQuery.blueprintSignatureRef)) ?? null,
+    }))
+    .filter((subQuery): subQuery is { subQueryRef: string; blueprintSignatureRef: string | null } =>
+      subQuery.subQueryRef !== null)
+    .sort((left, right) => left.subQueryRef.localeCompare(right.subQueryRef))
+  const lanes = pylonSlots.flatMap((slot) => {
+    const slotRef = safeRef(slot.slotRef)
+    const pylonRef = safeRef(slot.pylonRef)
+    const accountRef = safeRef(slot.accountRef)
+    if (slot.ready === false || slotRef === null || pylonRef === null) return []
+    const capacity = Math.max(0, Math.floor(slot.capacity ?? 1))
+    const busy = Math.max(0, Math.floor(slot.busy ?? 0))
+    const free = Math.max(0, capacity - busy)
+    return Array.from({ length: free }, (_, laneIndex) => ({
+      accountRef,
+      laneIndex,
+      pylonRef,
+      slotRef,
+    }))
+  }).sort((left, right) =>
+    `${left.pylonRef}:${left.slotRef}:${left.laneIndex}`.localeCompare(
+      `${right.pylonRef}:${right.slotRef}:${right.laneIndex}`,
+    ))
+
+  if (execution.executionMode !== "recursive_parallel" || !execution.canExecute) {
+    blockerRefs.add("blocker.artanis.frlm_conductor.dispatch.execution_not_recursive_parallel")
+  }
+  if (runnableSubQueries.length === 0) {
+    blockerRefs.add("blocker.artanis.frlm_conductor.dispatch.sub_query_dispatch_plan_missing")
+  }
+  if (lanes.length === 0) {
+    blockerRefs.add("blocker.artanis.frlm_conductor.dispatch.no_available_pylon_slots")
+  }
+  if (rawRefs.some((ref) => ref !== null && !isSafeRef(ref))) {
+    blockerRefs.add("blocker.artanis.frlm_conductor.dispatch.unsafe_ref")
+  }
+
+  const dispatchWidth = blockerRefs.size === 0 ? Math.min(runnableSubQueries.length, lanes.length) : 0
+  const dispatchAssignments = Array.from({ length: dispatchWidth }, (_, index) => {
+    const subQuery = runnableSubQueries[index]!
+    const lane = lanes[index]!
+    return {
+      dispatchRef: `dispatch.artanis.frlm.pylon.${stableHash(`${execution.executionRef}:${subQuery.subQueryRef}:${lane.slotRef}:${lane.laneIndex}`)}`,
+      subQueryRef: subQuery.subQueryRef,
+      blueprintSignatureRef: subQuery.blueprintSignatureRef,
+      pylonRef: lane.pylonRef,
+      slotRef: lane.slotRef,
+      accountRef: lane.accountRef,
+      laneIndex: lane.laneIndex,
+    }
+  })
+  const queuedSubQueryRefs = runnableSubQueries
+    .slice(dispatchWidth)
+    .map((subQuery) => subQuery.subQueryRef)
+  const availableSlotRefs = uniqueRefs(lanes.map((lane) => lane.slotRef))
+  const evidenceRefs = uniqueRefs([
+    execution.executionRef,
+    execution.executionPlanRef,
+    ...execution.evidenceRefs,
+    ...dispatchAssignments.flatMap((assignment) => [
+      assignment.dispatchRef,
+      assignment.subQueryRef,
+      assignment.blueprintSignatureRef,
+      assignment.pylonRef,
+      assignment.slotRef,
+      assignment.accountRef,
+    ]),
+    ...queuedSubQueryRefs,
+    ...availableSlotRefs,
+  ])
+  const projection: FrlmConductorDispatchProjection = {
+    schema: FRLM_CONDUCTOR_DISPATCH_SCHEMA,
+    observedAt: input.observedAt,
+    executionRef: execution.executionRef,
+    executionPlanRef: execution.executionPlanRef,
+    executionMode: execution.executionMode,
+    canDispatch: blockerRefs.size === 0,
+    dispatchWidth,
+    dispatchAssignments,
+    queuedSubQueryRefs,
+    availableSlotRefs,
+    evidenceRefs,
+    blockerRefs: [...blockerRefs].sort(),
+    authorityBoundary:
+      "Read-only FRLM Conductor Pylon-slot dispatch projection. It maps planned recursive sub-queries to public Pylon capacity refs only; it does not run workers, execute Python, spend sats, publish claims, or move settlement authority.",
     contentRedacted: true,
   }
   assertPublicProjectionSafe(projection)

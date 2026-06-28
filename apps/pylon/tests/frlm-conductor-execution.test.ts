@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import {
   planFrlmConductorExecution,
+  planFrlmConductorPylonDispatch,
+  type FrlmConductorPylonSlot,
   type FrlmConductorSubQuery,
 } from "../src/frlm-conductor-execution"
 import { assertPublicProjectionSafe } from "../src/state"
@@ -91,6 +93,107 @@ describe("FRLM Conductor execution planning", () => {
     expect(projection.blockerRefs).toContain("blocker.artanis.frlm_conductor.unsafe_ref")
     assertPublicProjectionSafe(projection)
   })
+
+  test("dispatches planned recursive sub-queries across available Pylon slots", () => {
+    const projection = planFrlmConductorPylonDispatch({
+      ...validInput(),
+      subQueries: plannedSubQueries(),
+      pylonSlots: pylonSlots(),
+    })
+
+    expect(projection.canDispatch).toBe(true)
+    expect(projection.blockerRefs).toEqual([])
+    expect(projection.dispatchWidth).toBe(3)
+    expect(projection.dispatchAssignments.map((assignment) => assignment.subQueryRef)).toEqual([
+      "subquery.artanis.frlm.collect_context.v1",
+      "subquery.artanis.frlm.optimize_route.v1",
+      "subquery.artanis.frlm.verify_blueprint_boundary.v1",
+    ])
+    expect(projection.dispatchAssignments.map((assignment) => assignment.slotRef)).toEqual([
+      "slot.pylon.codex.primary.0",
+      "slot.pylon.codex.primary.0",
+      "slot.pylon.codex.secondary.0",
+    ])
+    expect(projection.dispatchAssignments.map((assignment) => assignment.laneIndex)).toEqual([0, 1, 0])
+    expect(projection.dispatchAssignments.every((assignment) =>
+      assignment.dispatchRef.startsWith("dispatch.artanis.frlm.pylon."))).toBe(true)
+    expect(projection.queuedSubQueryRefs).toEqual([])
+    assertPublicProjectionSafe(projection)
+  })
+
+  test("queues planned sub-queries beyond advertised Pylon capacity", () => {
+    const projection = planFrlmConductorPylonDispatch({
+      ...validInput(),
+      subQueries: plannedSubQueries(),
+      pylonSlots: [
+        {
+          slotRef: "slot.pylon.codex.primary.0",
+          pylonRef: "pylon.operator.primary",
+          accountRef: "codex.primary",
+          capacity: 1,
+          busy: 0,
+          ready: true,
+        },
+      ],
+    })
+
+    expect(projection.canDispatch).toBe(true)
+    expect(projection.dispatchWidth).toBe(1)
+    expect(projection.dispatchAssignments).toHaveLength(1)
+    expect(projection.queuedSubQueryRefs).toEqual([
+      "subquery.artanis.frlm.optimize_route.v1",
+      "subquery.artanis.frlm.verify_blueprint_boundary.v1",
+    ])
+    assertPublicProjectionSafe(projection)
+  })
+
+  test("blocks dispatch when the execution plan fell back to linear mode", () => {
+    const projection = planFrlmConductorPylonDispatch({
+      ...validInput(),
+      subQueries: [
+        plannedSubQueries()[0],
+        {
+          subQueryRef: "subquery.artanis.frlm.optimize_route.v1",
+          parentRef: "task.artanis.frlm.root.v1",
+          state: "failed",
+          failureRef: "failure.artanis.frlm.optimize_route.timeout.v1",
+          blueprintSignatureRef: "signature.blueprint.rlm_subquery.v1",
+        },
+      ],
+      pylonSlots: pylonSlots(),
+    })
+
+    expect(projection.canDispatch).toBe(false)
+    expect(projection.dispatchAssignments).toEqual([])
+    expect(projection.blockerRefs).toContain(
+      "blocker.artanis.frlm_conductor.dispatch.execution_not_recursive_parallel",
+    )
+    assertPublicProjectionSafe(projection)
+  })
+
+  test("blocks unsafe Pylon slot refs before dispatch projection", () => {
+    const projection = planFrlmConductorPylonDispatch({
+      ...validInput(),
+      subQueries: plannedSubQueries(),
+      pylonSlots: [
+        {
+          slotRef: "/Users/operator/private/slot.json",
+          pylonRef: "pylon.operator.primary",
+          capacity: 1,
+          ready: true,
+        },
+      ],
+    })
+
+    expect(projection.canDispatch).toBe(false)
+    expect(projection.dispatchAssignments).toEqual([])
+    expect(projection.availableSlotRefs).toEqual([])
+    expect(projection.blockerRefs).toContain(
+      "blocker.artanis.frlm_conductor.dispatch.no_available_pylon_slots",
+    )
+    expect(projection.blockerRefs).toContain("blocker.artanis.frlm_conductor.dispatch.unsafe_ref")
+    assertPublicProjectionSafe(projection)
+  })
 })
 
 function validInput() {
@@ -126,6 +229,37 @@ function completedSubQueries(): FrlmConductorSubQuery[] {
       state: "completed",
       resultRef: "result.artanis.frlm.verify_blueprint_boundary.v1",
       blueprintSignatureRef: "signature.blueprint.rlm_subquery.v1",
+    },
+  ]
+}
+
+function plannedSubQueries(): FrlmConductorSubQuery[] {
+  return completedSubQueries().map((subQuery) => ({
+    ...subQuery,
+    resultRef: null,
+    state: "planned",
+  }))
+}
+
+function pylonSlots(): FrlmConductorPylonSlot[] {
+  return [
+    {
+      slotRef: "slot.pylon.codex.primary.0",
+      pylonRef: "pylon.operator.primary",
+      accountRef: "codex.primary",
+      capacity: 2,
+      busy: 0,
+      ready: true,
+      capabilityRefs: ["capability.pylon.local_codex"],
+    },
+    {
+      slotRef: "slot.pylon.codex.secondary.0",
+      pylonRef: "pylon.operator.secondary",
+      accountRef: "codex.secondary",
+      capacity: 1,
+      busy: 0,
+      ready: true,
+      capabilityRefs: ["capability.pylon.local_codex"],
     },
   ]
 }
