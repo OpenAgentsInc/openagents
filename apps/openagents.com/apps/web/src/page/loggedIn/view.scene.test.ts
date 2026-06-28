@@ -1782,9 +1782,9 @@ describe('logged-in workroom sidebar', () => {
     )
   })
 
-  test('renders the /pro operator console shell + teaching Overview for any signed-in user', () => {
+  test('renders the /pro operator dashboard for any signed-in user', () => {
     // Explicitly a NON-admin, NON-Core-Team user: /pro is open to any signed-in
-    // user, so the console shell + teaching empty state must render for them.
+    // user, so the console shell + operator dashboard must render for them.
     const plainUser: AuthBootstrap = { ...auth, isAdmin: false, teams: [] }
 
     Scene.scene(
@@ -1802,25 +1802,48 @@ describe('logged-in workroom sidebar', () => {
         Scene.selector('[data-component="pro-top-strip"]'),
       ).toExist(),
       Scene.expect(Scene.selector('[data-component="pro-register"]')).toExist(),
-      // The teaching Overview empty state with its honest forward affordances.
       Scene.expect(
-        Scene.selector('[data-component="pro-overview-empty"]'),
+        Scene.selector('[data-component="pro-agent-dashboard-summary"]'),
       ).toExist(),
       Scene.expect(
         Scene.role('heading', {
-          name: 'Pro is a power-user operator console',
+          name: 'Agent operations',
         }),
       ).toExist(),
-      // #6215: sharing lives at /trace, so the console links out to the public
-      // shareable trace surfaces as LIVE affordances.
+      Scene.expect(Scene.text('Live agents')).toExist(),
+      Scene.expect(Scene.text('Retained agents')).toExist(),
+      Scene.expect(Scene.text('Codex lane 1')).toExist(),
+      Scene.expect(Scene.text('Claude lane 1')).toExist(),
+      Scene.expect(Scene.text('OpenCode lane')).toExist(),
+      Scene.expect(Scene.text('Codex lane 0')).toExist(),
+      Scene.expect(Scene.text('working')).toExist(),
+      Scene.expect(Scene.text('blocked')).toExist(),
+      Scene.expect(Scene.text('waiting')).toExist(),
+      Scene.expect(Scene.text('done')).toExist(),
+      Scene.expect(Scene.text('unread')).toExist(),
+      Scene.expect(Scene.text('stateStartedAt')).toExist(),
+      Scene.expect(Scene.text('stateHistory')).toExist(),
       Scene.expect(
-        Scene.role('link', { name: 'View a shared trace' }),
+        Scene.text(
+          'Keep stateStartedAt distinct from updatedAt so tool pings do not clear unread state.',
+        ),
       ).toExist(),
-      Scene.expect(Scene.role('link', { name: 'Compare traces' })).toExist(),
-      // The remaining forward affordance stays an honest disabled placeholder.
+      Scene.expect(Scene.text('Annotate diff -> ship back')).toExist(),
       Scene.expect(
-        Scene.role('button', { name: 'Connect a coding agent' }),
+        Scene.selector('[data-component="pro-diff-comment-queue"]'),
+      ).toExist(),
+      Scene.expect(
+        Scene.role('button', { name: 'Send comments' }),
       ).toBeDisabled(),
+      // #6215: sharing lives at /trace, so the console links out to the public
+      // shareable trace surfaces from the section register.
+      Scene.expect(
+        Scene.role('link', { name: 'Traces' }),
+      ).toHaveAttr('href', '/trace/0e08d2db-2026-4624-9a39-f1efe8000001'),
+      Scene.expect(Scene.role('link', { name: 'Compare' })).toHaveAttr(
+        'href',
+        '/trace/compare/0e08d2db-2026-4624-9a39-f1efe8000001,0e08d2db-2026-4624-9a39-f1efe8000002,0e08d2db-2026-4624-9a39-f1efe8000003',
+      ),
     )
   })
 
