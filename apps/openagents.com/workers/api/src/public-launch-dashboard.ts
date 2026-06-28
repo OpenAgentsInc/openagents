@@ -236,24 +236,25 @@ const publicLaunchDashboardRows: ReadonlyArray<PromiseRowDefinition> = [
       'Do not treat the sheet as broad write, spend, deploy, provider, moderation, payout, or settlement authority.',
   },
   {
-    baseStatus: 'red',
+    baseStatus: 'yellow',
     blockerRefs: [
-      'blocker.launch_dashboard.model_gateway.no_public_paid_gateway',
-      'blocker.launch_dashboard.hosted_gemini.production_binding_missing',
+      'blocker.launch_dashboard.hosted_gemini.production_receipt_pending',
+      'blocker.launch_dashboard.hosted_gemini.owner_upgrade_signoff_pending',
     ],
     evidenceRefs: [
       'route:/api/openapi.json',
       'docs/2026-06-08-google-adc-gemini-agent-platform-auth-audit.md',
       'test:workers/api/src/autopilot-work-routes.test.ts',
+      'test:workers/api/src/inference/chat-completions-routes.test.ts',
     ],
     promiseId: 'api_hosted_gemini',
     promiseText:
       'OpenAgents is API-driven and may offer hosted Gemini through an OpenAgents API surface.',
     safeCopy:
-      'Autopilot has a tested paid hosted Gemini closeout bridge, but no public paid hosted Gemini inference product is live.',
+      'Hosted Gemini has route-covered execution through the env-gated Vertex binding and the Khala gateway meters served requests; it remains yellow pending a real production receipt and owner-approved upgrade evidence.',
     staleSensitive: false,
     unsafeCopy:
-      'Do not claim a paid hosted Gemini inference API is live.',
+      'Do not claim hosted Gemini is green, settled, or broadly resale-ready without owner-approved production receipt evidence.',
   },
   {
     baseStatus: 'yellow',

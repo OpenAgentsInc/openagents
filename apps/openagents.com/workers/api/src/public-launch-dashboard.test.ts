@@ -89,7 +89,7 @@ describe('public launch dashboard', () => {
       ['site_referral_bitcoin_stream', 'yellow'],
       ['money_dev_kit_payments', 'yellow'],
       ['one_agent_instruction_sheet', 'green'],
-      ['api_hosted_gemini', 'red'],
+      ['api_hosted_gemini', 'yellow'],
       ['agentic_labor_products', 'yellow'],
       ['pylon_cli_tui_probe_background', 'yellow'],
       ['control_center_fanout_plugin_marketplace', 'red'],
@@ -98,8 +98,8 @@ describe('public launch dashboard', () => {
       ['cursor_agent_forum_wallet', 'yellow'],
       ['prepaid_provider_capacity_monetization', 'red'],
     ])
-    expect(dashboard.redCount).toBe(8)
-    expect(dashboard.yellowCount).toBe(9)
+    expect(dashboard.redCount).toBe(7)
+    expect(dashboard.yellowCount).toBe(10)
     expect(dashboard.greenCount).toBe(1)
     expect(dashboard.status).toBe('red')
     expect(dashboard.rows.every(row => row.evidenceRefs.length > 0)).toBe(true)
