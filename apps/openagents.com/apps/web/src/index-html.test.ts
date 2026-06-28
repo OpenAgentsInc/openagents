@@ -16,7 +16,7 @@ const publicAssets = import.meta.glob<string>('../public/*.svg', {
 })
 
 const html = indexHtml['../index.html'] ?? ''
-const title = 'OpenAgents'
+const title = 'OpenAgents - AI Agents That Do Real Work'
 const description =
   'OpenAgents builds public, verifiable AI agents for coding, research, payments, and operational work.'
 const canonicalUrl = 'https://openagents.com/'
