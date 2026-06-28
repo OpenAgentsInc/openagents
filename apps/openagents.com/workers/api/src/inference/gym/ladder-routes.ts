@@ -17,7 +17,7 @@
 // No dispatch, spend, settlement, payout, or public-claim authority beyond the
 // honest decision-grade ranking the shipped harness already produces. The ladder
 // is a recurring projection of owner-armed real benchmark reports.
-import { Effect } from 'effect'
+import { Effect, Schema as S } from 'effect'
 
 import { methodNotAllowed, noStoreJsonResponse } from '../../http/responses'
 import { currentIsoTimestamp } from '../../runtime-primitives'
@@ -34,6 +34,10 @@ import {
 } from './ladder'
 import type { GymLeaderboardReportInput } from './leaderboard'
 import { GymLeaderboardUnsafe } from './leaderboard'
+import {
+  MirrorCodeRun,
+  type MirrorCodeRun as MirrorCodeRunType,
+} from './mirrorcode-contract'
 import type {
   GymLadderSnapshot,
   GymLadderSourceStore,
@@ -157,13 +161,24 @@ const buildPublishedLadder = (
   | Readonly<{ reason: string; tag: 'reject' }>
 > => {
   const body = raw as
-    | { reports?: ReadonlyArray<GymLeaderboardReportInput> }
+    | {
+        reports?: ReadonlyArray<GymLeaderboardReportInput>
+        mirrorCodeRuns?: ReadonlyArray<unknown>
+      }
     | undefined
   const reports = body?.reports
   if (!Array.isArray(reports)) {
     return Effect.succeed({
       reason:
         'A ladder publish needs a `reports` array of decision-grade report inputs.',
+      tag: 'reject' as const,
+    })
+  }
+  const mirrorCodeRunsRaw = body?.mirrorCodeRuns ?? []
+  if (!Array.isArray(mirrorCodeRunsRaw)) {
+    return Effect.succeed({
+      reason:
+        'A ladder publish `mirrorCodeRuns`, when present, must be an array of public-safe MirrorCode run rows.',
       tag: 'reject' as const,
     })
   }
@@ -174,7 +189,12 @@ const buildPublishedLadder = (
         : error instanceof Error
           ? error.message
           : String(error),
-    try: () => buildGymLadderLeaderboard(reports, config),
+    try: () => {
+      const mirrorCodeRuns = mirrorCodeRunsRaw.map(run =>
+        S.decodeUnknownSync(MirrorCodeRun)(run),
+      ) as ReadonlyArray<MirrorCodeRunType>
+      return buildGymLadderLeaderboard(reports, config, mirrorCodeRuns)
+    },
   }).pipe(
     Effect.map(ladder => ({ ladder, tag: 'ok' as const })),
     Effect.catch(reason => Effect.succeed({ reason, tag: 'reject' as const })),
