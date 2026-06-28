@@ -8,6 +8,7 @@ import {
   cleanupExpiredWorkspaces,
   commitWorkspaceChanges,
   createGitWorktreeCheckoutRunner,
+  detectInFlightVirtualBranchConflicts,
   detectWorkspaceChangeConflicts,
   materializeGitCheckoutWorkspaceWithLease,
   pruneWorkspaceCacheDirectories,
@@ -18,6 +19,7 @@ import {
   repositoryCacheKeyFor,
   stageWorkspacePaths,
   withWorkspaceMaterializerCapability,
+  virtualBranchChangeFileRef,
   workspaceChangeFileRef,
   workspaceLeaseRecordFor,
   WORKSPACE_CLEANUP_RECEIPTS_CAPABILITY_REF,
@@ -374,6 +376,62 @@ describe("createGitWorktreeCheckoutRunner", () => {
           workspaceRefs: [first.workspaceRef, second.workspaceRef].sort(),
         },
       ])
+
+      const virtualBranchConflicts = detectInFlightVirtualBranchConflicts([
+        {
+          virtualBranchRef: "virtual_branch.pylon.issue_1",
+          target: { repositoryFullName: "OpenAgentsInc/worktree-fixture", branch: "main" },
+          capture: firstCapture,
+        },
+        {
+          virtualBranchRef: "virtual_branch.pylon.issue_2",
+          target: { repositoryFullName: "OpenAgentsInc/worktree-fixture", branch: "main" },
+          capture: {
+            ...secondCapture,
+            sourceRef: `${checkout.repository.fullName}:4444444444444444444444444444444444444444`,
+            fileRefs: secondCapture.local.changedPaths.map((path) =>
+              workspaceChangeFileRef(
+                `${checkout.repository.fullName}:4444444444444444444444444444444444444444`,
+                path,
+              ),
+            ),
+          },
+        },
+      ])
+      expect(virtualBranchConflicts.state).toBe("conflicted")
+      expect(virtualBranchConflicts.conflicts).toEqual([
+        {
+          conflictRef: virtualBranchConflicts.conflictRefs[0],
+          fileRef: virtualBranchChangeFileRef({
+            repositoryFullName: "OpenAgentsInc/worktree-fixture",
+            targetBranch: "main",
+            relativePath: "sum.ts",
+          }),
+          repositoryFullName: "OpenAgentsInc/worktree-fixture",
+          targetBranch: "main",
+          sourceRefs: [
+            `${checkout.repository.fullName}:4444444444444444444444444444444444444444`,
+            first.sourceRef,
+          ].sort(),
+          virtualBranchRefs: ["virtual_branch.pylon.issue_1", "virtual_branch.pylon.issue_2"],
+          workspaceRefs: [first.workspaceRef, second.workspaceRef].sort(),
+        },
+      ])
+      assertPublicProjectionSafe(virtualBranchConflicts)
+
+      const independentVirtualBranches = detectInFlightVirtualBranchConflicts([
+        {
+          virtualBranchRef: "virtual_branch.pylon.issue_1",
+          target: { repositoryFullName: "OpenAgentsInc/worktree-fixture", branch: "main" },
+          capture: firstCapture,
+        },
+        {
+          virtualBranchRef: "virtual_branch.pylon.issue_3",
+          target: { repositoryFullName: "OpenAgentsInc/worktree-fixture", branch: "release" },
+          capture: secondCapture,
+        },
+      ])
+      expect(independentVirtualBranches).toEqual({ state: "clear", conflictRefs: [], conflicts: [] })
 
       const firstCommit = await commitWorkspaceChanges({
         cacheRoot,

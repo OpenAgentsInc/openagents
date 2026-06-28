@@ -84,6 +84,31 @@ export type WorkspaceChangeConflictScan = {
   conflicts: WorkspaceChangeConflict[]
 }
 
+export type InFlightVirtualBranchChange = {
+  virtualBranchRef: string
+  target: {
+    repositoryFullName: string
+    branch: string
+  }
+  capture: WorkspaceChangeCapture
+}
+
+export type VirtualBranchChangeConflict = {
+  conflictRef: string
+  fileRef: string
+  repositoryFullName: string
+  targetBranch: string
+  sourceRefs: string[]
+  virtualBranchRefs: string[]
+  workspaceRefs: string[]
+}
+
+export type VirtualBranchChangeConflictScan = {
+  state: "clear" | "conflicted"
+  conflictRefs: string[]
+  conflicts: VirtualBranchChangeConflict[]
+}
+
 export type WorkspaceCommitResult =
   | {
       state: "clean"
@@ -293,6 +318,24 @@ export function workspaceChangeFileRef(sourceRef: string, relativePath: string):
   return stableRef("file.pylon.workspace", `${sourceRef}:${relativePath}`)
 }
 
+export function virtualBranchChangeFileRef(input: {
+  repositoryFullName: string
+  targetBranch: string
+  relativePath: string
+}): string {
+  if (!githubFullNamePattern.test(input.repositoryFullName)) {
+    throw new Error("virtual branch conflict scan refused: invalid repository name")
+  }
+  if (!gitBranchNamePattern.test(input.targetBranch)) {
+    throw new Error("virtual branch conflict scan refused: invalid target branch")
+  }
+  assertSafeWorkspaceRelativePath(input.relativePath)
+  return stableRef(
+    "file.pylon.virtual_branch",
+    `${input.repositoryFullName}:${input.targetBranch}:${input.relativePath}`,
+  )
+}
+
 export async function captureWorkspaceChanges(input: {
   cacheRoot: string
   workingDirectory: string
@@ -428,6 +471,68 @@ export function detectWorkspaceChangeConflicts(
       workspaceRefs: [...value.workspaceRefs].sort(),
     }))
     .filter((conflict) => conflict.workspaceRefs.length > 1)
+  return {
+    state: conflicts.length === 0 ? "clear" : "conflicted",
+    conflictRefs: conflicts.map((conflict) => conflict.conflictRef),
+    conflicts,
+  }
+}
+
+export function detectInFlightVirtualBranchConflicts(
+  changes: ReadonlyArray<InFlightVirtualBranchChange>,
+): VirtualBranchChangeConflictScan {
+  type ConflictBucket = {
+    repositoryFullName: string
+    targetBranch: string
+    sourceRefs: Set<string>
+    virtualBranchRefs: Set<string>
+    workspaceRefs: Set<string>
+  }
+  const byFileRef = new Map<string, ConflictBucket>()
+
+  for (const change of changes) {
+    if (change.capture.state === "clean") continue
+    if (!githubFullNamePattern.test(change.target.repositoryFullName)) {
+      throw new Error("virtual branch conflict scan refused: invalid repository name")
+    }
+    if (!gitBranchNamePattern.test(change.target.branch)) {
+      throw new Error("virtual branch conflict scan refused: invalid target branch")
+    }
+    for (const path of change.capture.local.changedPaths) {
+      const fileRef = virtualBranchChangeFileRef({
+        repositoryFullName: change.target.repositoryFullName,
+        targetBranch: change.target.branch,
+        relativePath: path,
+      })
+      const existing = byFileRef.get(fileRef) ?? {
+        repositoryFullName: change.target.repositoryFullName,
+        targetBranch: change.target.branch,
+        sourceRefs: new Set<string>(),
+        virtualBranchRefs: new Set<string>(),
+        workspaceRefs: new Set<string>(),
+      }
+      existing.sourceRefs.add(change.capture.sourceRef)
+      existing.virtualBranchRefs.add(change.virtualBranchRef)
+      existing.workspaceRefs.add(change.capture.workspaceRef)
+      byFileRef.set(fileRef, existing)
+    }
+  }
+
+  const conflicts = [...byFileRef.entries()]
+    .map(([fileRef, value]) => ({
+      conflictRef: stableRef(
+        "conflict.pylon.virtual_branch",
+        `${fileRef}:${[...value.virtualBranchRefs].sort().join(":")}`,
+      ),
+      fileRef,
+      repositoryFullName: value.repositoryFullName,
+      targetBranch: value.targetBranch,
+      sourceRefs: [...value.sourceRefs].sort(),
+      virtualBranchRefs: [...value.virtualBranchRefs].sort(),
+      workspaceRefs: [...value.workspaceRefs].sort(),
+    }))
+    .filter((conflict) => conflict.virtualBranchRefs.length > 1)
+
   return {
     state: conflicts.length === 0 ? "clear" : "conflicted",
     conflictRefs: conflicts.map((conflict) => conflict.conflictRef),
