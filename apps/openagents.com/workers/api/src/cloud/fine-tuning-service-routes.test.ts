@@ -1,3 +1,5 @@
+import { DatabaseSync } from 'node:sqlite'
+
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
@@ -11,6 +13,8 @@ import {
   handleFineTuningJobGet,
   handleFineTuningJobSubmit,
   isFineTuningServiceEnabled,
+  makeD1FineTunedModelResolver,
+  makeD1FineTuningRuntimeAdapter,
   makeLedgerFineTuningMeteringHook,
   stubFineTuningAdapter,
 } from './fine-tuning-service-routes'
@@ -40,6 +44,99 @@ const validBody = {
   baseModel: 'gemini-3.5-flash',
   datasetRef: 'dataset:abc123',
   suffix: 'my-tune',
+}
+
+type Row = Record<string, unknown>
+
+class SqliteD1Statement {
+  private bound: ReadonlyArray<unknown> = []
+
+  constructor(
+    private readonly db: DatabaseSync,
+    private readonly sql: string,
+  ) {}
+
+  bind(...values: ReadonlyArray<unknown>): SqliteD1Statement {
+    this.bound = values.map(value => (value === undefined ? null : value))
+    return this
+  }
+
+  async first<T = Row>(): Promise<T | null> {
+    const row = this.db.prepare(this.sql).get(...(this.bound as never[]))
+    return (row ?? null) as T | null
+  }
+
+  async all<T = Row>(): Promise<{ results: Array<T> }> {
+    const results = this.db
+      .prepare(this.sql)
+      .all(...(this.bound as never[])) as Array<T>
+    return { results }
+  }
+
+  async run<T = Row>(): Promise<{ success: true; results: Array<T> }> {
+    this.db.prepare(this.sql).run(...(this.bound as never[]))
+    return { results: [], success: true }
+  }
+}
+
+class SqliteD1 {
+  constructor(private readonly db: DatabaseSync) {}
+
+  prepare(sql: string): SqliteD1Statement {
+    return new SqliteD1Statement(this.db, sql)
+  }
+
+  async batch(
+    statements: ReadonlyArray<SqliteD1Statement>,
+  ): Promise<Array<{ success: true }>> {
+    this.db.exec('BEGIN')
+    try {
+      for (const statement of statements) {
+        await statement.run()
+      }
+      this.db.exec('COMMIT')
+    } catch (error) {
+      this.db.exec('ROLLBACK')
+      throw error
+    }
+    return statements.map(() => ({ success: true as const }))
+  }
+}
+
+const FINE_TUNING_SCHEMA = `
+CREATE TABLE cloud_fine_tuning_jobs (
+  job_id TEXT PRIMARY KEY,
+  account_ref TEXT NOT NULL,
+  base_model TEXT NOT NULL,
+  dataset_ref TEXT NOT NULL,
+  suffix TEXT,
+  status TEXT NOT NULL CHECK (status IN ('queued', 'running', 'succeeded', 'failed', 'cancelled')),
+  fine_tuned_model TEXT,
+  usage_json TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  completed_at TEXT
+);
+CREATE INDEX idx_cloud_fine_tuning_jobs_account
+  ON cloud_fine_tuning_jobs (account_ref, created_at DESC);
+CREATE TABLE cloud_fine_tuned_models (
+  model_id TEXT PRIMARY KEY,
+  account_ref TEXT NOT NULL,
+  job_id TEXT NOT NULL REFERENCES cloud_fine_tuning_jobs(job_id) ON DELETE CASCADE,
+  base_model TEXT NOT NULL,
+  dataset_ref TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('pending', 'servable', 'retired')),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX idx_cloud_fine_tuned_models_account
+  ON cloud_fine_tuned_models (account_ref, status, created_at DESC);
+`
+
+const makeFineTuningDb = (): D1Database => {
+  const raw = new DatabaseSync(':memory:')
+  raw.exec(FINE_TUNING_SCHEMA)
+  return new SqliteD1(raw) as unknown as D1Database
 }
 
 describe('fine-tuning service feature flag', () => {
@@ -257,6 +354,83 @@ describe('GET /v1/fine_tuning/jobs/:jobId', () => {
       handleFineTuningJobGet(jobGetRequest(), 'ftjob_fixed', baseDeps({ adapter })),
     )
     expect(response.status).toBe(404)
+  })
+})
+
+describe('D1 fine-tuning runtime adapter', () => {
+  test('runs the fixture job to completion, persists lifecycle, and registers the model', async () => {
+    const db = makeFineTuningDb()
+    const adapter = makeD1FineTuningRuntimeAdapter(db)
+    const meteringCalls: Array<Record<string, unknown>> = []
+    const meteringHook: FineTuningMeteringHook = context => {
+      meteringCalls.push(context)
+      return Effect.succeed({
+        metered: true,
+        receiptRef: fineTuningJobReceiptRef(context.jobId),
+      })
+    }
+
+    const submit = await run(
+      handleFineTuningJobSubmit(
+        jobRequest(validBody),
+        baseDeps({ adapter, meteringHook }),
+      ),
+    )
+    expect(submit.status).toBe(200)
+    const submitted = (await submit.json()) as Record<string, unknown>
+    expect(submitted.status).toBe('succeeded')
+    expect(submitted.fine_tuned_model).toBe('ft:ftjob_fixed')
+    expect(submitted.metered).toBe(true)
+    expect(submitted.usage).toMatchObject({ trainedTokens: 224 })
+    expect(meteringCalls[0]).toMatchObject({
+      jobId: 'ftjob_fixed',
+      usage: { trainedTokens: 224 },
+    })
+
+    const read = await run(
+      handleFineTuningJobGet(jobGetRequest(), 'ftjob_fixed', baseDeps({ adapter })),
+    )
+    expect(read.status).toBe(200)
+    const lifecycle = (await read.json()) as Record<string, unknown>
+    expect(lifecycle.status).toBe('succeeded')
+    expect(lifecycle.fine_tuned_model).toBe('ft:ftjob_fixed')
+
+    const resolved = await makeD1FineTunedModelResolver(db)({
+      accountRef: 'agent:test-user',
+      modelId: 'ft:ftjob_fixed',
+    })
+    expect(resolved).toEqual({
+      accountRef: 'agent:test-user',
+      baseModel: 'gemini-3.5-flash',
+      jobId: 'ftjob_fixed',
+      modelId: 'ft:ftjob_fixed',
+    })
+  })
+
+  test('registered fine-tuned models remain account-isolated', async () => {
+    const db = makeFineTuningDb()
+    const adapter = makeD1FineTuningRuntimeAdapter(db)
+    await run(
+      handleFineTuningJobSubmit(jobRequest(validBody), baseDeps({ adapter })),
+    )
+
+    const readAsOtherAccount = await run(
+      handleFineTuningJobGet(
+        jobGetRequest(),
+        'ftjob_fixed',
+        baseDeps({
+          adapter,
+          authenticate: async () => ({ accountRef: 'agent:other-user' }),
+        }),
+      ),
+    )
+    expect(readAsOtherAccount.status).toBe(404)
+    await expect(
+      makeD1FineTunedModelResolver(db)({
+        accountRef: 'agent:other-user',
+        modelId: 'ft:ftjob_fixed',
+      }),
+    ).resolves.toBeUndefined()
   })
 })
 

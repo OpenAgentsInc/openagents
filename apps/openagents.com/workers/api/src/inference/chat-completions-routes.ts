@@ -23,6 +23,7 @@ import { noStoreJsonResponse } from '../http/responses'
 import { recordFromUnknown } from '../json-boundary'
 import type { PylonApiStore } from '../pylon-api'
 import { requireProviderApiKeyShape } from '../provider-account-api-key'
+import type { FineTunedModelResolver } from '../cloud/fine-tuning-service-routes'
 import {
   compactRandomId,
   currentEpochMillis,
@@ -586,6 +587,7 @@ export type ChatCompletionsDeps = Readonly<{
   // `/v1/quote`). Omitting it preserves the prior serve-everything behaviour.
   // Presence-only; no secret value is read here.
   laneArming?: SupplyLaneArming
+  resolveFineTunedModel?: FineTunedModelResolver | undefined
   // Routing overflow knobs (backoff + injected sleep) forwarded to
   // `dispatchWithOverflow`. Tests inject `sleep: () => Effect.void` so overflow
   // never waits. Ignored unless `lanePlan` is supplied.
@@ -2568,7 +2570,20 @@ export const handleChatCompletions = (
     // Resolve the effective model once: an unspecified/blank model defaults to
     // the single public Khala model. Used for premium gating, routing, response
     // echo, and metering.
-    const requestedModel = resolveRequestedModel(body.model)
+    const rawRequestedModel = resolveRequestedModel(body.model)
+    const fineTunedModelResolution =
+      deps.resolveFineTunedModel === undefined || isKhalaModel(rawRequestedModel)
+        ? undefined
+        : yield* Effect.promise(() =>
+            deps.resolveFineTunedModel!({
+              accountRef: session.accountRef,
+              modelId: rawRequestedModel,
+            }),
+          )
+    const requestedModel =
+      fineTunedModelResolution === undefined
+        ? rawRequestedModel
+        : fineTunedModelResolution.baseModel
     const autopilotConcierge = isAutopilotConciergeModel(requestedModel)
       ? resolveAutopilotConciergeConfig(rawBody)
       : undefined
@@ -2581,9 +2596,12 @@ export const handleChatCompletions = (
         { status: 400 },
       )
     }
-    if (!isKhalaModel(requestedModel)) {
+    if (
+      !isKhalaModel(requestedModel) &&
+      fineTunedModelResolution === undefined
+    ) {
       return noStoreJsonResponse(
-        { error: 'model_unavailable', model: requestedModel },
+        { error: 'model_unavailable', model: rawRequestedModel },
         { status: 400 },
       )
     }
@@ -2808,6 +2826,7 @@ export const handleChatCompletions = (
     // rejected raw GPT-OSS and old split ids.
     if (
       deps.laneArming !== undefined &&
+      fineTunedModelResolution === undefined &&
       resolveNamedModelServability(requestedModel, deps.laneArming) === false
     ) {
       return noStoreJsonResponse(

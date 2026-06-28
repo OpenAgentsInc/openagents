@@ -258,6 +258,10 @@ import { makeD1CloudPrimitiveReceiptStore } from './cloud/cloud-primitive-receip
 import {
   handleFineTuningJobSubmit,
   isFineTuningServiceEnabled,
+  makeD1FineTunedModelResolver,
+  makeD1FineTuningRuntimeAdapter,
+  makeLedgerFineTuningMeteringHook,
+  routeFineTuningJobRequest,
 } from './cloud/fine-tuning-service-routes'
 import { makePublicCloudPrimitiveReceiptRoutes } from './cloud/public-cloud-primitive-receipt-routes'
 import {
@@ -12317,6 +12321,9 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         // retryable provider failure (429 / 503 / 5xx / transport). INERT
         // regardless — the gateway is gated by INFERENCE_GATEWAY_ENABLED above.
         lanePlan: makeKhalaBackedAdapterPlan(laneArming.khalaBacking),
+        resolveFineTunedModel: makeD1FineTunedModelResolver(
+          openAgentsDatabase(env),
+        ),
         dispatch: {
           failureTelemetry: dispatchFailureTelemetry.record,
         },
@@ -12835,7 +12842,13 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
             ? undefined
             : { accountRef: `agent:${session.user.id}` }
         },
+        adapter: makeD1FineTuningRuntimeAdapter(openAgentsDatabase(env)),
         enabled: isFineTuningServiceEnabled(env.CLOUD_FINE_TUNING_ENABLED),
+        meteringHook: makeLedgerFineTuningMeteringHook({
+          db: openAgentsDatabase(env),
+          priceUsd: () => 0,
+          usdToMsat: usd => Math.ceil(usd * 1000),
+        }),
       }),
   },
   {
@@ -13015,6 +13028,24 @@ const routeRequest = makeWorkerRouteRequest({
     }),
   routeImageGenerationRequest:
     imageGenerationRoutes.routeImageGenerationRequest,
+  routeFineTuningJobRequest: (request, env) =>
+    routeFineTuningJobRequest(request, {
+      authenticate: async authRequest => {
+        const token = readBearerToken(authRequest)
+        if (token === undefined) {
+          return undefined
+        }
+        const session = await authenticateProgrammaticAgent(
+          makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+          token,
+        )
+        return session === undefined
+          ? undefined
+          : { accountRef: `agent:${session.user.id}` }
+      },
+      adapter: makeD1FineTuningRuntimeAdapter(openAgentsDatabase(env)),
+      enabled: isFineTuningServiceEnabled(env.CLOUD_FINE_TUNING_ENABLED),
+    }),
   // OpenAI-compatible GET /v1/models/{model} retrieve. Gated by the SAME
   // INFERENCE_GATEWAY_ENABLED flag as the list and chat-completions routes, so
   // it 404s when the gateway is off. Public + unauthenticated (published price
