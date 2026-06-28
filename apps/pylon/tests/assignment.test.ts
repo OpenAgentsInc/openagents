@@ -1286,6 +1286,92 @@ describe("Pylon assignment lease flow", () => {
     })
   })
 
+  test("blocks assignments with revoked delegated capabilities before acceptance", async () => {
+    await withTempHome(async (home) => {
+      const summary = await readySummary(home)
+      const state = await ensurePylonLocalState(summary)
+      await writePresenceState(state.paths, {
+        registered: true,
+        linked: false,
+        stale: false,
+        pylonRef: state.identity.pylonRef,
+        registrationRef: "registration.test",
+        linkRef: null,
+        lastHeartbeatAt: "2026-06-09T00:00:00.000Z",
+        heartbeatSequence: 1,
+        blockerRefs: [],
+        updatedAt: "2026-06-09T00:00:00.000Z",
+      })
+
+      const admission = await computeAssignmentAdmission(
+        state,
+        lease({
+          capabilityRefs: ["cap.gepa.retained.v1"],
+          delegation: {
+            schema: "openagents.pylon.capability_delegation_chain.v0.1",
+            rootIssuerRef: "agent.owner.primary",
+            subjectRef: "agent.community.worker",
+            audienceRef: state.identity.pylonRef,
+            issuedAt: "2026-06-09T00:00:00.000Z",
+            expiresAt: "2026-06-09T00:10:00.000Z",
+            invocationRef: "invocation.assignment.revoked",
+            capabilities: [
+              {
+                capabilityRef: "cap.gepa.retained.v1",
+                action: "assignment.runtime_gate",
+                resourceRef: "assignment.public.no_spend.test",
+              },
+            ],
+            revocation: {
+              revokedRefs: ["invocation.assignment.revoked"],
+              revokedAt: "2026-06-09T00:00:10.000Z",
+              reasonRef: "revocation.owner.stop",
+            },
+          },
+        }),
+        {
+          now: () => new Date("2026-06-09T00:00:30.000Z"),
+        },
+      )
+
+      expect(admission.admissible).toBe(false)
+      expect(admission.blockerRefs).toContain("blocker.delegation.revoked")
+    })
+  })
+
+  test("blocks assignments with malformed delegated capability chains", async () => {
+    await withTempHome(async (home) => {
+      const summary = await readySummary(home)
+      const state = await ensurePylonLocalState(summary)
+      await writePresenceState(state.paths, {
+        registered: true,
+        linked: false,
+        stale: false,
+        pylonRef: state.identity.pylonRef,
+        registrationRef: "registration.test",
+        linkRef: null,
+        lastHeartbeatAt: "2026-06-09T00:00:00.000Z",
+        heartbeatSequence: 1,
+        blockerRefs: [],
+        updatedAt: "2026-06-09T00:00:00.000Z",
+      })
+
+      const admission = await computeAssignmentAdmission(
+        state,
+        lease({
+          capabilityRefs: ["cap.gepa.retained.v1"],
+          delegationInvalid: true,
+        }),
+        {
+          now: () => new Date("2026-06-09T00:00:30.000Z"),
+        },
+      )
+
+      expect(admission.admissible).toBe(false)
+      expect(admission.blockerRefs).toContain("blocker.delegation.invalid_chain")
+    })
+  })
+
   test("closeout receipts include Psionic backend and model refs without raw artifacts", async () => {
     await withTempHome(async (home) => {
       const fake = fakeAssignmentServer({
