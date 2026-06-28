@@ -42,6 +42,7 @@ import {
   exampleArtanisLoopLedger,
   projectArtanisLoopLedger,
 } from './artanis-loop'
+import type { ArtanisTickMonitor } from './artanis-tick-monitor'
 import {
   exampleArtanisModelLabContext,
   projectArtanisModelLabContext,
@@ -273,6 +274,42 @@ export class ArtanisPublicReportClaimSummary extends S.Class<ArtanisPublicReport
   stateLabel: S.String,
 }) {}
 
+export class ArtanisPublicReportActivityTickerEntry extends S.Class<ArtanisPublicReportActivityTickerEntry>(
+  'ArtanisPublicReportActivityTickerEntry',
+)({
+  activityRef: S.String,
+  assignmentRef: S.NullOr(S.String),
+  createdAtDisplay: S.String,
+  detail: S.String,
+  issueNumber: S.NullOr(S.Number),
+  label: S.String,
+  sourceRefs: S.Array(S.String),
+  state: S.String,
+}) {}
+
+export class ArtanisPublicReportDecisionFailureMode extends S.Class<ArtanisPublicReportDecisionFailureMode>(
+  'ArtanisPublicReportDecisionFailureMode',
+)({
+  count: S.Number,
+  failureModeRef: S.String,
+  label: S.String,
+  latestDecisionRef: S.NullOr(S.String),
+  resultingPublicIssueNumber: S.NullOr(S.Number),
+  sourceRefs: S.Array(S.String),
+  state: S.String,
+}) {}
+
+export class ArtanisPublicReportDecisionLog extends S.Class<ArtanisPublicReportDecisionLog>(
+  'ArtanisPublicReportDecisionLog',
+)({
+  authorityBoundary: S.String,
+  countsByState: S.Record(S.String, S.Number),
+  failureModes: S.Array(ArtanisPublicReportDecisionFailureMode),
+  generatedAtDisplay: S.String,
+  sourceRefs: S.Array(S.String),
+  ticker: S.Array(ArtanisPublicReportActivityTickerEntry),
+}) {}
+
 export class ArtanisPublicReportStateCaveat extends S.Class<ArtanisPublicReportStateCaveat>(
   'ArtanisPublicReportStateCaveat',
 )({
@@ -292,6 +329,7 @@ export class ArtanisPublicReport extends S.Class<ArtanisPublicReport>(
   autonomousLoop: ArtanisPublicReportLoopSummary,
   campaignRef: S.String,
   claimStateCaveats: S.Array(ArtanisPublicReportStateCaveat),
+  decisionLog: ArtanisPublicReportDecisionLog,
   displayName: S.String,
   forumLinks: S.Array(ArtanisPublicReportForumLink),
   forumRewardSmoke: ArtanisForumRewardSmokeProjection,
@@ -914,6 +952,127 @@ const artanisLoopLedgerForReport = (
   })
 }
 
+const publicIssueNumberPattern =
+  /(?:#|issue[:._ -]?|openagentsinc\/openagents#)(\d{2,7})/i
+
+const publicIssueNumberFromText = (value: string): number | null => {
+  const match = publicIssueNumberPattern.exec(value)
+  if (match === null) {
+    return null
+  }
+
+  const parsed = Number(match[1])
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null
+}
+
+const decisionStateLabel = (state: string): string =>
+  state === 'dispatched'
+    ? 'Executor dispatched'
+    : state === 'no_action'
+      ? 'No action'
+      : state === 'blocked'
+        ? 'Blocked'
+        : state === 'dispatch_failed'
+          ? 'Dispatch failed'
+          : 'Decision recorded'
+
+const decisionFailureModeLabel = (state: string): string =>
+  state === 'no_action'
+    ? 'No-action decisions'
+    : state === 'blocked'
+      ? 'Blocked decisions'
+      : state === 'dispatch_failed'
+        ? 'Dispatch failures'
+        : 'Other non-dispatch decisions'
+
+const decisionLogFromTickMonitor = (
+  monitor: ArtanisTickMonitor | undefined,
+  nowIso: string,
+): ArtanisPublicReportDecisionLog => {
+  if (monitor === undefined) {
+    return new ArtanisPublicReportDecisionLog({
+      authorityBoundary:
+        'Read-only public-safe decision summary. Grants no dispatch, spend, assignment, settlement, or issue-write authority.',
+      countsByState: {},
+      failureModes: [],
+      generatedAtDisplay: friendlyBlueprintMissionBriefingTime(nowIso, nowIso),
+      sourceRefs: ['route:/api/public/artanis/admin-ticks'],
+      ticker: [],
+    })
+  }
+
+  const ticker = monitor.decisions.slice(0, 12).map(decision => {
+    const issueNumber = publicIssueNumberFromText(decision.reason)
+    return new ArtanisPublicReportActivityTickerEntry({
+      activityRef: decision.decisionRef,
+      assignmentRef: decision.assignmentRef,
+      createdAtDisplay: friendlyBlueprintMissionBriefingTime(
+        decision.createdAt,
+        nowIso,
+      ),
+      detail:
+        decision.assignmentRef === null
+          ? 'Public-safe decision recorded'
+          : 'Public-safe assignment decision recorded',
+      issueNumber,
+      label: decisionStateLabel(decision.state),
+      sourceRefs: uniqueRefs([
+        'route:/api/public/artanis/admin-ticks',
+        decision.decisionRef,
+        ...(decision.assignmentRef === null ? [] : [decision.assignmentRef]),
+        ...(issueNumber === null ? [] : [`issue.github.${issueNumber}`]),
+      ]),
+      state: decision.state,
+    })
+  })
+  const nonDispatchDecisions = monitor.decisions.filter(
+    decision => decision.state !== 'dispatched',
+  )
+  const grouped = nonDispatchDecisions.reduce((groups, decision) => {
+    const current = groups.get(decision.state) ?? []
+    groups.set(decision.state, [...current, decision])
+
+    return groups
+  }, new Map<string, typeof nonDispatchDecisions>())
+  const failureModes = [...grouped.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([state, decisions]) => {
+      const issueNumber =
+        decisions
+          .map(decision => publicIssueNumberFromText(decision.reason))
+          .find((issue): issue is number => issue !== null) ?? null
+      const latestDecision = decisions[0] ?? null
+
+      return new ArtanisPublicReportDecisionFailureMode({
+        count: decisions.length,
+        failureModeRef: `failure.public.artanis.decision.${safeRefSuffix(
+          state,
+        )}`,
+        label: decisionFailureModeLabel(state),
+        latestDecisionRef: latestDecision?.decisionRef ?? null,
+        resultingPublicIssueNumber: issueNumber,
+        sourceRefs: uniqueRefs([
+          'route:/api/public/artanis/admin-ticks',
+          ...(latestDecision === null ? [] : [latestDecision.decisionRef]),
+          ...(issueNumber === null ? [] : [`issue.github.${issueNumber}`]),
+        ]),
+        state,
+      })
+    })
+
+  return new ArtanisPublicReportDecisionLog({
+    authorityBoundary: monitor.authorityBoundary,
+    countsByState: monitor.countsByState,
+    failureModes,
+    generatedAtDisplay: friendlyBlueprintMissionBriefingTime(
+      monitor.generatedAt,
+      nowIso,
+    ),
+    sourceRefs: ['route:/api/public/artanis/admin-ticks'],
+    ticker,
+  })
+}
+
 const probeGepaOutcomeSnapshot = (
   overrides: Partial<ProbeGepaCodingOutcomeMetricSnapshot> = {},
 ): ProbeGepaCodingOutcomeMetricSnapshot =>
@@ -985,6 +1144,7 @@ const exampleProbeGepaOutcomeMetricsProjection =
 
 export const artanisPublicReportSnapshot = (input: {
   forumPublicationQueue?: ArtanisForumPublicationQueueRecord | undefined
+  tickMonitor?: ArtanisTickMonitor | undefined
   loopTicks?: ReadonlyArray<ArtanisLoopTickRecord> | undefined
   nowIso?: string | undefined
   pylonStats: PublicPylonStats
@@ -1051,6 +1211,7 @@ export const artanisPublicReportSnapshot = (input: {
     'public',
     nowIso,
   )
+  const decisionLog = decisionLogFromTickMonitor(input.tickMonitor, nowIso)
   const productionLaunchGate =
     exampleArtanisProductionLaunchGateProjection(nowIso)
   const health = projectArtanisHealthSnapshot(
@@ -1352,6 +1513,7 @@ export const artanisPublicReportSnapshot = (input: {
     },
     campaignRef: campaign.campaignRef,
     claimStateCaveats,
+    decisionLog,
     displayName: runtime.displayName,
     forumLinks,
     forumRewardSmoke,

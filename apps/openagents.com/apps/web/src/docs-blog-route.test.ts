@@ -529,6 +529,77 @@ describe('docs and blog routes', () => {
               state: 'planned',
             },
           ],
+          decisionLog: {
+            authorityBoundary:
+              'Read-only public-safe decision summary. Grants no dispatch, spend, assignment, settlement, or issue-write authority.',
+            countsByState: {
+              blocked: 1,
+              dispatch_failed: 1,
+              dispatched: 1,
+              no_action: 0,
+            },
+            failureModes: [
+              {
+                count: 1,
+                failureModeRef: 'failure.public.artanis.decision.blocked',
+                label: 'Blocked decisions',
+                latestDecisionRef: 'tick_decision.public_blocked',
+                resultingPublicIssueNumber: null,
+                sourceRefs: [
+                  'route:/api/public/artanis/admin-ticks',
+                  'tick_decision.public_blocked',
+                ],
+                state: 'blocked',
+              },
+              {
+                count: 1,
+                failureModeRef:
+                  'failure.public.artanis.decision.dispatch_failed',
+                label: 'Dispatch failures',
+                latestDecisionRef: 'tick_decision.public_failed',
+                resultingPublicIssueNumber: 6415,
+                sourceRefs: [
+                  'route:/api/public/artanis/admin-ticks',
+                  'tick_decision.public_failed',
+                  'issue.github.6415',
+                ],
+                state: 'dispatch_failed',
+              },
+            ],
+            generatedAtDisplay: 'Just now',
+            sourceRefs: ['route:/api/public/artanis/admin-ticks'],
+            ticker: [
+              {
+                activityRef: 'tick_decision.public_dispatched',
+                assignmentRef: 'assignment.artanis_admin.20260611011429',
+                createdAtDisplay: 'Just now',
+                detail: 'Public-safe assignment decision recorded',
+                issueNumber: 6358,
+                label: 'Executor dispatched',
+                sourceRefs: [
+                  'route:/api/public/artanis/admin-ticks',
+                  'tick_decision.public_dispatched',
+                  'assignment.artanis_admin.20260611011429',
+                  'issue.github.6358',
+                ],
+                state: 'dispatched',
+              },
+              {
+                activityRef: 'tick_decision.public_failed',
+                assignmentRef: null,
+                createdAtDisplay: '2 minutes ago',
+                detail: 'Public-safe decision recorded',
+                issueNumber: 6415,
+                label: 'Dispatch failed',
+                sourceRefs: [
+                  'route:/api/public/artanis/admin-ticks',
+                  'tick_decision.public_failed',
+                  'issue.github.6415',
+                ],
+                state: 'dispatch_failed',
+              },
+            ],
+          },
           displayName: 'Artanis',
           forumLinks: [
             {
@@ -1060,6 +1131,13 @@ describe('docs and blog routes', () => {
       Scene.expect(Scene.text('1 signal needs attention')).toExist(),
       Scene.expect(Scene.text('Accepted-work bitcoin')).toExist(),
       Scene.expect(Scene.text('0.00001000 bitcoin')).toExist(),
+      Scene.expect(Scene.text('The Log')).toExist(),
+      Scene.expect(Scene.text('Live Artanis decisions')).toExist(),
+      Scene.expect(Scene.text('Executor dispatched')).toExist(),
+      Scene.expect(Scene.text('Issue #6358')).toExist(),
+      Scene.expect(Scene.text('The Brain')).toExist(),
+      Scene.expect(Scene.text('Dispatch failures')).toExist(),
+      Scene.expect(Scene.text('Issue #6415')).toExist(),
       Scene.expect(Scene.text('Omega release gate')).toExist(),
       Scene.expect(
         Scene.text('Pylon v0.2 Omega/Nexus release gate is blocked'),

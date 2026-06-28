@@ -17,6 +17,10 @@ import {
   readLatestArtanisPersistedRows,
 } from './artanis-persistence'
 import {
+  type ArtanisTickMonitor,
+  readArtanisTickMonitor,
+} from './artanis-tick-monitor'
+import {
   type PublicPylonStatsStore,
   publicPylonStatsSnapshot,
 } from './public-pylon-stats'
@@ -34,6 +38,7 @@ const routeErrorResponse = (error: ArtanisPublicReportUnsafe) =>
 type PublicArtanisReportRouteInput = Readonly<{
   OPENAGENTS_DB?: D1Database
   loopTicks?: ReadonlyArray<ArtanisLoopTickRecord>
+  tickMonitor?: ArtanisTickMonitor
   store?: PublicPylonStatsStore
 }>
 
@@ -124,6 +129,20 @@ const loopTicksForRoute = (
           ),
         )
 
+const tickMonitorForRoute = (
+  input: PublicArtanisReportRouteInput,
+): Effect.Effect<ArtanisTickMonitor | undefined> =>
+  input.tickMonitor !== undefined
+    ? Effect.succeed(input.tickMonitor)
+    : input.OPENAGENTS_DB === undefined
+      ? Effect.succeed(undefined)
+      : Effect.promise(() =>
+          readArtanisTickMonitor(input.OPENAGENTS_DB as D1Database, {
+            limit: 20,
+            nowIso: new Date().toISOString(),
+          }).catch(() => undefined),
+        )
+
 export const handlePublicArtanisReportApi = (
   request: Request,
   input: PublicArtanisReportRouteInput,
@@ -136,14 +155,16 @@ export const handlePublicArtanisReportApi = (
           store:
             input.store ?? makeD1PylonApiStore(input.OPENAGENTS_DB as D1Database),
         }),
+        tickMonitor: tickMonitorForRoute(input),
       }).pipe(
-        Effect.flatMap(({ loopTicks, pylonStats }) =>
+        Effect.flatMap(({ loopTicks, pylonStats, tickMonitor }) =>
           Effect.try({
             try: () =>
               noStoreJsonResponse(
                 artanisPublicReportSnapshot({
                   loopTicks,
                   pylonStats,
+                  tickMonitor,
                 }),
               ),
             catch: error =>
