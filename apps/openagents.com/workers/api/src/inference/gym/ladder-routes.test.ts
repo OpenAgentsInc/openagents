@@ -122,7 +122,6 @@ describe('GET /api/public/gym/leaderboard', () => {
     const body = (await response.json()) as {
       scope: string
       publishedAt: string | null
-      freshnessDueAt: string | null
       dataAgeSeconds: number | null
       staleExceeded: boolean
       staleness: { composition: string; contractVersion: string }
@@ -130,7 +129,6 @@ describe('GET /api/public/gym/leaderboard', () => {
     }
     expect(body.scope).toBe('public')
     expect(body.publishedAt).toBeNull()
-    expect(body.freshnessDueAt).toBeNull()
     expect(body.dataAgeSeconds).toBeNull()
     expect(body.staleExceeded).toBe(false)
     expect(body.staleness.composition).toBe('stored_snapshot')
@@ -206,13 +204,11 @@ describe('POST /api/operator/gym/leaderboard', () => {
     )
     const publicBody = (await publicResponse.json()) as {
       publishedAt: string | null
-      freshnessDueAt: string | null
       dataAgeSeconds: number | null
       staleExceeded: boolean
       ladder: GymLadderLeaderboard
     }
     expect(publicBody.publishedAt).toBe(publishedAt)
-    expect(publicBody.freshnessDueAt).toBe('2026-07-11T12:00:00.000Z')
     expect(publicBody.dataAgeSeconds).toBe(600)
     expect(publicBody.staleExceeded).toBe(false)
     expect(publicBody.ladder.rungs.find(r => r.rung === 'rung1')?.state).toBe(
@@ -269,13 +265,11 @@ describe('POST /api/operator/gym/leaderboard', () => {
     const publicBody = (await publicResponse.json()) as {
       generatedAt: string
       publishedAt: string | null
-      freshnessDueAt: string | null
       dataAgeSeconds: number | null
       staleExceeded: boolean
     }
     expect(publicBody.generatedAt).toBe('2026-06-16T00:00:01.000Z')
     expect(publicBody.publishedAt).toBe(publishedAt)
-    expect(publicBody.freshnessDueAt).toBe('2026-06-15T00:00:00.000Z')
     expect(publicBody.dataAgeSeconds).toBe(1_296_001)
     expect(publicBody.staleExceeded).toBe(true)
   })

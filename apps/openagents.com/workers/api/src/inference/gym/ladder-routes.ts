@@ -55,19 +55,6 @@ const gymLadderStaleness = () =>
     'gym.ladder.recurring_cadence_published',
   ])
 
-const gymLadderFreshnessDueAt = (publishedAt: string | null): string | null => {
-  if (publishedAt === null) {
-    return null
-  }
-  const publishedAtMs = Date.parse(publishedAt)
-  if (Number.isNaN(publishedAtMs)) {
-    return null
-  }
-  return new Date(
-    publishedAtMs + GYM_LADDER_MAX_STALENESS_SECONDS * 1_000,
-  ).toISOString()
-}
-
 export type GymLadderRouteInput = Readonly<{
   // The production D1 source; absent in tests that pass an inline ladder.
   store?: GymLadderSourceStore
@@ -144,7 +131,6 @@ export const handlePublicGymLeaderboardApi = (
         generatedAt: nowIso,
         cadence: config.cadence,
         publishedAt: snapshot.publishedAt,
-        freshnessDueAt: gymLadderFreshnessDueAt(snapshot.publishedAt),
         dataAgeSeconds,
         staleExceeded: projectionStalenessExceeded(
           staleness,
@@ -225,7 +211,6 @@ export const handleOperatorGymLeaderboardApi = (
         cadence: config.cadence,
         generatedAt: nowIso,
         publishedAt: snapshot.publishedAt,
-        freshnessDueAt: gymLadderFreshnessDueAt(snapshot.publishedAt),
         dataAgeSeconds,
         staleExceeded: projectionStalenessExceeded(
           staleness,

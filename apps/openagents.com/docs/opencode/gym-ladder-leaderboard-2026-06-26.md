@@ -50,8 +50,6 @@ from **snapshot time**:
 - `generatedAt` is when the API response was composed.
 - `publishedAt` is the stored snapshot's publish timestamp (or `null` for the
   honest empty pre-publish shape).
-- `freshnessDueAt` is the timestamp when that stored snapshot exceeds the
-  declared freshness window (or `null` before the first publish).
 - `dataAgeSeconds` and `staleExceeded` are computed from `publishedAt` against
   the declared stored-snapshot staleness contract, so an old recurring ladder
   cannot look fresh just because someone read it today.
