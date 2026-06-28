@@ -1,7 +1,7 @@
 # Khala iOS — TestFlight release runbook (working, 2026-06-26)
 
 How to archive + sign + upload the native SwiftUI **Khala** app
-(`clients/mobile/Khala`, bundle `com.openagents.khala`, Apple Team `HQWSG26L43`)
+(`clients/khala-ios/Khala`, bundle `com.openagents.khala`, Apple Team `HQWSG26L43`)
 to App Store Connect / TestFlight from the CLI. This is the **proven** path —
 build 2 (v1.0.0) was uploaded this way (Delivery UUID
 `95107d96-…`). Local Xcode only; no Expo/EAS (see repo `CLAUDE.md`).
@@ -37,7 +37,7 @@ upload with `altool`.** Do not waste time retrying `-allowProvisioningUpdates`.
 ### 0. Work from clean `origin/main` in a worktree
 ```sh
 git fetch origin main && git worktree add /tmp/oa-ship origin/main
-cd /tmp/oa-ship/clients/mobile/Khala
+cd /tmp/oa-ship/clients/khala-ios/Khala
 set -a; . ~/work/.secrets/appstoreconnect.env; set +a
 ```
 
@@ -151,6 +151,6 @@ open -a Simulator   # then reinstall + launch
 After mobile changes land on `main`, resync the owner's working copy + clear the
 Xcode build cache so their Xcode/Simulator stops showing stale (or black) builds:
 ```sh
-rm -rf clients/mobile/Khala && git checkout origin/main -- clients/mobile/Khala
+rm -rf clients/khala-ios/Khala && git checkout origin/main -- clients/khala-ios/Khala
 rm -rf ~/Library/Developer/Xcode/DerivedData/Khala-*
 ```

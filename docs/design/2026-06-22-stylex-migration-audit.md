@@ -281,7 +281,7 @@ that the generated StyleX rules are present in the packaged desktop asset while
 
 ### Mobile app
 
-`clients/mobile/AutopilotRemoteControl` is Expo SDK 55, React Native 0.83.6,
+`clients/khala-ios/AutopilotRemoteControl` is Expo SDK 55, React Native 0.83.6,
 React 19, and `react-native-web` 0.21.0. The mobile repo guidance forbids EAS
 cloud builds; native builds are local, and OTA goes through OpenAgents-owned
 infrastructure.

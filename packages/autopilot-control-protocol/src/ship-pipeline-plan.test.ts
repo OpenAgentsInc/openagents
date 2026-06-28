@@ -43,7 +43,7 @@ describe("ship pipeline plan", () => {
       autoSubmit: false,
     })).toEqual({
       action: "rebuild",
-      steps: ["clients/mobile/AutopilotRemoteControl/scripts/build-and-submit.sh --build-only"],
+      steps: ["clients/khala-ios/AutopilotRemoteControl/scripts/build-and-submit.sh --build-only"],
       reason: "native changes require a rebuild",
     })
   })
@@ -75,7 +75,7 @@ describe("ship pipeline plan", () => {
       autoSubmit: true,
     })).toEqual({
       action: "rebuild",
-      steps: ["clients/mobile/AutopilotRemoteControl/scripts/build-and-submit.sh"],
+      steps: ["clients/khala-ios/AutopilotRemoteControl/scripts/build-and-submit.sh"],
       reason: "current native fingerprint has not been published",
     })
   })
@@ -105,7 +105,7 @@ describe("ship pipeline plan", () => {
       autoSubmit: true,
     })).toEqual({
       action: "rebuild",
-      steps: ["clients/mobile/AutopilotRemoteControl/scripts/build-and-submit.sh"],
+      steps: ["clients/khala-ios/AutopilotRemoteControl/scripts/build-and-submit.sh"],
       reason: "native changes require a rebuild",
     })
   })

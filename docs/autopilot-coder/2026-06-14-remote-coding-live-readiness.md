@@ -111,7 +111,7 @@ VM was created or left running by me this session.
 
 ### 4. Expo app on the phone — RED (never shipped)
 
-- `clients/mobile/AutopilotRemoteControl`: bundle id `com.openagents.autopilot-mobile`,
+- `clients/khala-ios/AutopilotRemoteControl`: bundle id `com.openagents.autopilot-mobile`,
   version `0.1.0` (from `app.config.ts`).
 - **No native project** (`ios/` absent → `expo prebuild` has not been run here)
   and **no `.ipa`** (`/tmp/oa-autopilot-local.ipa` absent). Build/ship scripts
@@ -149,7 +149,7 @@ Ordered. Items needing the owner are flagged.
    Mac. (Config only; no code change.)
 3. **Ship the Expo app to the phone (local build, one command):**
    ```
-   cd /Users/christopherdavid/work/openagents/clients/mobile/AutopilotRemoteControl
+   cd /Users/christopherdavid/work/openagents/clients/khala-ios/AutopilotRemoteControl
    bun run ship:testflight
    ```
    (= `expo prebuild` → `pod install` → `fastlane gym` → `xcrun altool`.)

@@ -241,7 +241,7 @@ OpenAgents'):
   chat once §5 lands.
 - **Website/app**: NEEDED — a fleet dashboard (connected accounts, live
   concurrency, token burn, task pool, Artanis chat). Mobile already has
-  `clients/mobile/Khala/Khala/Net/KhalaArtanis.swift` as an Artanis client seam.
+  `clients/khala-ios/Khala/Khala/Net/KhalaArtanis.swift` as an Artanis client seam.
 - **REST/OpenAI-compatible API**: EXISTS — `POST /api/v1/chat/completions`
   (OpenAI-compatible, model `openagents/khala`, Bearer key auth, daily-quota /
   balance gate; see `index.ts:6876`, `config.ts`). NEEDED — a per-user
@@ -376,7 +376,7 @@ Verified against `origin/main` on 2026-06-27:
   `accounts list|usage`, and `khala request --workflow claude_agent_task`.
 - OpenAI-compatible API: `/api/v1/chat/completions` (`index.ts:6876`,
   `config.ts`).
-- Mobile Artanis seam: `clients/mobile/Khala/Khala/Net/KhalaArtanis.swift`.
+- Mobile Artanis seam: `clients/khala-ios/Khala/Khala/Net/KhalaArtanis.swift`.
 - Gate-fix commits `982c33f521` + `1cc0e9ba03` (#6354).
 
 Could **not** verify (flagged inline):

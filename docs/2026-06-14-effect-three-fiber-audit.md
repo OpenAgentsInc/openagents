@@ -95,7 +95,7 @@ I inspected these local references:
     components; Bun main-process authority remains outside Foldkit.
   - `packages/autopilot-ui` is a shared Foldkit HTML component package used by
     web and desktop.
-  - `clients/mobile/AutopilotRemoteControl` is the Expo / React Native mobile
+  - `clients/khala-ios/AutopilotRemoteControl` is the Expo / React Native mobile
     client. It shares the Autopilot control protocol but, in the local source
     inspected here, does not directly depend on Foldkit.
 

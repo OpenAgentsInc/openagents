@@ -2,7 +2,7 @@
 
 Date: 2026-06-19
 Scope: `apps/autopilot-desktop/` (Electrobun desktop) vs
-`clients/mobile/AutopilotRemoteControl/` (Expo mobile), against the shared
+`clients/khala-ios/AutopilotRemoteControl/` (Expo mobile), against the shared
 `@openagentsinc/autopilot-control-protocol`.
 Goal: enumerate every node-steering capability the desktop has, map what the
 mobile app can do today, and sequence the work to let mobile steer all the

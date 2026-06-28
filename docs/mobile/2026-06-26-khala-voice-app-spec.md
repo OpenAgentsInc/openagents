@@ -9,8 +9,8 @@
 
 - **Date:** 2026-06-26
 - **Status:** spec-first scaffold (v1 in progress)
-- **Owning surface:** `clients/mobile/Khala/` (native SwiftUI iOS app)
-- **Replaces:** `clients/mobile/AutopilotRemoteControl` (Expo React-Native app,
+- **Owning surface:** `clients/khala-ios/Khala/` (native SwiftUI iOS app)
+- **Replaces:** `clients/khala-ios/AutopilotRemoteControl` (Expo React-Native app,
   retired — see `docs/mobile/2026-06-26-autopilot-remote-control-retirement.md`)
 
 ## 1. Product
@@ -175,7 +175,7 @@ short, honest note of this before/at first use of a free key.
 - Native **SwiftUI** app, no third-party dependencies required.
 - Frameworks: `Speech` (STT), `AVFoundation` (mic capture + optional TTS),
   `Foundation`/`URLSession` (HTTP), `Security` (Keychain), `SwiftUI` (UI).
-- Source layout under `clients/mobile/Khala/Khala/`:
+- Source layout under `clients/khala-ios/Khala/Khala/`:
   - `KhalaApp.swift` — `@main` app entry.
   - `ContentView.swift` — the single screen (button + response + background).
   - `Views/PushToTalkButton.swift` — press-and-hold control + state color.
@@ -202,10 +202,10 @@ Per the repo **mobile build/ship policy (owner mandate): NO Expo/EAS cloud**
 Khala is native Swift, so there is **no Expo prebuild / OTA path at all** — it
 is pure local Xcode:
 
-- **Build/run locally:** open `clients/mobile/Khala/Khala.xcodeproj` in Xcode
+- **Build/run locally:** open `clients/khala-ios/Khala/Khala.xcodeproj` in Xcode
   and run on a simulator or device. (The project is generated via `xcodegen`
-  from `clients/mobile/Khala/project.yml`; run `xcodegen generate` in
-  `clients/mobile/Khala/` first if the `.xcodeproj` is absent — see the app
+  from `clients/khala-ios/Khala/project.yml`; run `xcodegen generate` in
+  `clients/khala-ios/Khala/` first if the `.xcodeproj` is absent — see the app
   README.)
 - **Archive → TestFlight:** local `xcodebuild archive` + `-exportArchive`, then
   Apple-native TestFlight upload via `xcrun altool` (or Transporter), using the

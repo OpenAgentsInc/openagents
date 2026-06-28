@@ -14,6 +14,7 @@ describe("qa pre-push smoke scoping", () => {
     expect(isUserFacingSurfaceChange("apps/openagents.com/workers/api/src/index.ts")).toBe(true)
     expect(isUserFacingSurfaceChange("apps/qa-runner/src/byo.ts")).toBe(true)
     expect(isUserFacingSurfaceChange("packages/ui/src/button.ts")).toBe(true)
+    expect(isUserFacingSurfaceChange("clients/khala-ios/Khala/Khala/KhalaApp.swift")).toBe(true)
   })
 
   test("skips unrelated docs and reference-only changes", () => {

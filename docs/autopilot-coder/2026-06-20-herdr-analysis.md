@@ -98,7 +98,7 @@ The relevant OpenAgents surfaces today (verified against `probe`, `openagents`,
   (`session.list/spawn/cancel/subscribe`, `decision.resolve`, `turn.steer`,
   `coordinator.pause/resume`, projection levels `public_safe`/`public`/`private`)
   is what the mobile operator app
-  (`clients/mobile/AutopilotRemoteControl/src/control/control-client.ts`) speaks.
+  (`clients/khala-ios/AutopilotRemoteControl/src/control/control-client.ts`) speaks.
   This is a capability- and identity-scoped, network-friendly, cursor-resumable
   control plane — strictly more than herdr's local-only Unix socket.
 - **Probe is the runtime; Omega is the product surface.** `probe` owns durable
@@ -208,7 +208,7 @@ looks like on screen — knowledge we would otherwise have to rediscover.
 2. Add a `{idle, working, blocked, done(seen?)}` attention projection over Pylon's
    existing lifecycle states (`apps/pylon/src/node/control-sessions.ts`), surfaced
    in the mobile control client
-   (`clients/mobile/AutopilotRemoteControl/src/control/session-view-model.ts`).
+   (`clients/khala-ios/AutopilotRemoteControl/src/control/session-view-model.ts`).
 3. Extend the coding-agent skill / `autopilot-control-protocol` recipes with a
    documented "delegate to sub-agent and await `done`/`blocked`" pattern built on
    the existing `session.subscribe` cursor stream — our analog of
@@ -232,5 +232,5 @@ OpenAgents surfaces compared (read-only):
 `probe/`, `openagents/apps/pylon/src/coordinator/coordinator-runtime.ts`,
 `openagents/apps/pylon/src/node/{control-server,control-sessions,approval-queue}.ts`,
 `openagents/packages/autopilot-control-protocol/src/bridge.ts`,
-`openagents/clients/mobile/AutopilotRemoteControl/src/control/control-client.ts`,
+`openagents/clients/khala-ios/AutopilotRemoteControl/src/control/control-client.ts`,
 `autopilot-omega/`.

@@ -1,9 +1,9 @@
 # Retirement — Autopilot Remote Control (Expo mobile app)
 
 - **Date:** 2026-06-26
-- **Retired path:** `clients/mobile/AutopilotRemoteControl` (deleted from the
+- **Retired path:** `clients/khala-ios/AutopilotRemoteControl` (deleted from the
   repo in this change)
-- **Replaced by:** `clients/mobile/Khala` (new native SwiftUI voice app)
+- **Replaced by:** `clients/khala-ios/Khala` (new native SwiftUI voice app)
 - **Spec for the replacement:** `docs/mobile/2026-06-26-khala-voice-app-spec.md`
 
 ## What it was
@@ -30,7 +30,7 @@ The new app is pure local Xcode (see the spec, Section 8).
 
 | Retired concern | Replacement |
 | --- | --- |
-| Expo RN app shell | Native SwiftUI app (`clients/mobile/Khala`) |
+| Expo RN app shell | Native SwiftUI app (`clients/khala-ios/Khala`) |
 | Pylon pairing / node steering / projections | **Dropped** (out of scope for Khala v1) |
 | `expo-secure-store` for credentials | iOS Keychain (`Security`) |
 | MMKV non-secret state | none in v1 |
@@ -52,7 +52,7 @@ mobile policy, the new app's own docs) reference Khala.
   under Apple Team `HQWSG26L43` is owner-gated. The retired app's ASC record
   (`com.openagents.autopilot-mobile`, ascAppId `6779949704`) is not reused.
 - **Root workspace `~/work/CLAUDE.md`** still references
-  `clients/mobile/AutopilotRemoteControl` as "the current mobile operator path."
+  `clients/khala-ios/AutopilotRemoteControl` as "the current mobile operator path."
   That file lives in a **different repo** (the root workspace), so it was not
-  edited here; it should be updated separately to point at `clients/mobile/Khala`
+  edited here; it should be updated separately to point at `clients/khala-ios/Khala`
   (or to note that the mobile operator surface was retired).

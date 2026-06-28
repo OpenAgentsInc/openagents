@@ -888,7 +888,7 @@ function startCoordinator(
           return
         }
         logToUi(`[ship] ${intentId} auto local rebuild -> build-and-submit.sh`, "info")
-        Bun.spawn(["bash", "clients/mobile/AutopilotRemoteControl/scripts/build-and-submit.sh"], { cwd: repoRoot, stdout: "ignore", stderr: "ignore" })
+        Bun.spawn(["bash", "clients/khala-ios/AutopilotRemoteControl/scripts/build-and-submit.sh"], { cwd: repoRoot, stdout: "ignore", stderr: "ignore" })
       }
     },
     log: (message) => logToUi(message, "info"),

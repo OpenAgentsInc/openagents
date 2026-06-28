@@ -123,7 +123,7 @@ meanings:
 - `autopilot-omega/` — the active `openagents.com` product surface.
 
 Plus, inside `openagents`: `apps/autopilot-desktop/` (the world app) **and**
-`clients/mobile/AutopilotRemoteControl` **and** the `apps/openagents.com`
+`clients/khala-ios/AutopilotRemoteControl` **and** the `apps/openagents.com`
 "Autopilot, Forum, Sites" product surface. One word is doing the work of: a
 deprecated web app (×2), a Convex foundation, a Cloudflare foundation, the live
 `.com` product, a desktop world, a mobile remote, and the abstract worker
@@ -232,7 +232,7 @@ app: {
 release: { baseUrl: "https://updates.openagents.com/desktop" }
 ```
 
-Mobile sibling `clients/mobile/AutopilotRemoteControl/app.config.ts`:
+Mobile sibling `clients/khala-ios/AutopilotRemoteControl/app.config.ts`:
 `name: "Autopilot"`, `bundleIdentifier: "com.openagents.autopilot-mobile"`.
 
 So the *content* is a Verse; the *label and distribution identity* are
@@ -368,7 +368,7 @@ work an owner-approved rename would entail.
   Developer ID `HQWSG26L43`) keep working untouched. If the identifier changes,
   you need a parallel feed and a cutover. **Strong argument for "rename the
   display name, keep the identifier."**
-- **Mobile `clients/mobile/AutopilotRemoteControl`:** it remote-controls the
+- **Mobile `clients/khala-ios/AutopilotRemoteControl`:** it remote-controls the
   *node/worker*, not the world — so it arguably *should stay "Autopilot"*
   (it's a worker-control surface, which is precisely the term we're reserving).
   This is a feature of the split, not a cost: the mobile remote keeps the
@@ -498,7 +498,7 @@ Concretely:
   Khala crackling arcs, settlement beams, multiplayer world state.
 - `apps/autopilot-desktop/package.json` — `verse-*` test scripts; three-effect /
   world-client / world-contract deps.
-- `clients/mobile/AutopilotRemoteControl/app.config.ts` — `name: "Autopilot"`,
+- `clients/khala-ios/AutopilotRemoteControl/app.config.ts` — `name: "Autopilot"`,
   `bundleIdentifier: "com.openagents.autopilot-mobile"`.
 - `openagents/CLAUDE.md` — repo layout (`apps/openagents-world`,
   `packages/world-client`/`world-contract`, "live Verse world projection");

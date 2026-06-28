@@ -110,7 +110,7 @@ Three layers, all TypeScript:
 ## Repo Placement And Structure
 
 Electrobun apps are Bun packages, so this fits the Bun workspace (unlike the
-React Native/Expo mobile app, which lives in `clients/mobile/`). Place it as a workspace
+React Native/Expo mobile app, which lives in `clients/khala-ios/`). Place it as a workspace
 app that reuses shared packages and the same Effect v4 / Foldkit line — so the
 deploy-topology guard needs no exception (it stays on the tracked line):
 
