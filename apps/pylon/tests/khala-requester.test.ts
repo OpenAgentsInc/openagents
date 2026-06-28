@@ -306,6 +306,29 @@ describe("pylon khala requester body", () => {
     })
   })
 
+  test("builds a Claude Agent Khala request with a provider-specific account target", () => {
+    const body = buildPylonKhalaChatRequestBody({
+      prompt: "Run the Claude fixture through my linked local Pylon.",
+      targetAccountRefHash: "account.pylon.claude_agent.1234abcdef",
+      targetPylonRef: "pylon.owner.claude",
+      workflow: "claude_agent_task",
+    })
+
+    expect(body).toMatchObject({
+      model: "openagents/khala",
+      openagents: {
+        coding: {
+          targetAccountRefHash: "account.pylon.claude_agent.1234abcdef",
+          targetPylonRef: "pylon.owner.claude",
+        },
+        workflowClass: "claude_agent_task",
+      },
+      stream: true,
+      targetPylonRef: "pylon.owner.claude",
+      workflowClass: "claude_agent_task",
+    })
+  })
+
   test("builds a workspace-backed Khala coding request", () => {
     const workspace = buildPylonKhalaGitCheckoutWorkspace({
       commit: "7ab7cb401803f6e04a6c93b7aa9102405de66419",
