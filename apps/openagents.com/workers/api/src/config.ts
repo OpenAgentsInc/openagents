@@ -2,6 +2,7 @@ import { Effect, Layer, Redacted, Schema as S } from 'effect'
 import * as Context from 'effect/Context'
 
 export type OpenAgentsWorkerConfigEnv = Readonly<{
+  ARTANIS_FLEET_OVERSEER_ENABLED?: string | undefined
   ARTANIS_SCHEDULED_RUNNER_ENABLED?: string | undefined
   // Compose-and-list marketplace MVP flag (EPIC #5510, #5515). Default OFF: the
   // `/api/public/marketplace/composed-products` listing surface is INERT (empty
@@ -592,6 +593,7 @@ export type OpenAgentsWorkerConfigShape = Readonly<{
     url: OpenAgentsAppUrl
   }>
   artanis: Readonly<{
+    fleetOverseerEnabled: boolean
     scheduledRunnerEnabled: boolean
   }>
   email: Readonly<{
@@ -1306,6 +1308,10 @@ export const decodeOpenAgentsWorkerConfig = (
         url: OpenAgentsAppUrl.make(app.url),
       },
       artanis: {
+        fleetOverseerEnabled: yield* optionalBooleanFlag(
+          env,
+          'ARTANIS_FLEET_OVERSEER_ENABLED',
+        ),
         scheduledRunnerEnabled: yield* optionalBooleanFlag(
           env,
           'ARTANIS_SCHEDULED_RUNNER_ENABLED',

@@ -78,6 +78,7 @@ import {
   runArtanisAdminTickScheduled,
   runArtanisCloseoutVerifierScheduled,
 } from './artanis-administrator-tick'
+import { runArtanisFleetOverseerTickScheduled } from './artanis-fleet-overseer-tick'
 import {
   boundedDistillationDatasetLimit,
   readArtanisDistillationDatasetReceipt,
@@ -13673,6 +13674,16 @@ export default {
           enabled:
             (env as { ARTANIS_ADMIN_TICK_ENABLED?: string })
               .ARTANIS_ADMIN_TICK_ENABLED === 'true',
+          gatewayToken: (env as { CF_AIG_TOKEN?: string }).CF_AIG_TOKEN,
+          geminiApiKey:
+            (env as { GEMINI_API_KEY?: string }).GEMINI_API_KEY ?? null,
+          nowIso: epochMillisToIsoTimestamp(event.scheduledTime),
+        }),
+      ),
+      observedEffect(
+        'ArtanisFleet.tick',
+        runArtanisFleetOverseerTickScheduled(openAgentsDatabase(env), {
+          enabled: config.artanis.fleetOverseerEnabled,
           gatewayToken: (env as { CF_AIG_TOKEN?: string }).CF_AIG_TOKEN,
           geminiApiKey:
             (env as { GEMINI_API_KEY?: string }).GEMINI_API_KEY ?? null,
