@@ -8,6 +8,7 @@ import {
   completePylonLink,
   codingServiceCapacityFromRuntime,
   degradeStalePresence,
+  localClaudeAccountReadiness,
   presenceClientOptionsFromEnv,
   recordAccountLinkInPresence,
   refreshPylonLink,
@@ -16,7 +17,7 @@ import {
   sha256Base64Url,
   withPresenceRetry,
 } from "../src/presence"
-import { hashPylonAccountRef } from "../src/account-registry"
+import { hashPylonAccountRef, PYLON_CLAUDE_OAUTH_TOKEN_FILE } from "../src/account-registry"
 import { verifyNip98Authorization } from "../src/nostr-identity"
 import { PYLON_NIP90_PROVIDER_CAPABILITY_REF, providerNip90LaneRefs } from "../src/provider-nip90"
 import { assertPublicProjectionSafe, ensurePylonLocalState, loadOrCreatePresenceState, writePresenceState } from "../src/state"
@@ -477,6 +478,30 @@ describe("Pylon presence registration and heartbeat", () => {
           "load.coding.codex.queued=0",
         ]),
       )
+    })
+  })
+
+  test("Claude account readiness includes sibling homes but not supervisor state", async () => {
+    await withTempHome(async (home) => {
+      const root = join(home, "scan-root")
+      const claudeHome = join(root, ".claude-pylon-2")
+      await mkdir(claudeHome, { recursive: true })
+      await mkdir(join(root, ".claude-supervisor"), { recursive: true })
+      await writeFile(join(claudeHome, PYLON_CLAUDE_OAUTH_TOKEN_FILE), "sk-ant-oat-test-token-value\n")
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), { PYLON_HOME: home }, "darwin")
+
+      const readiness = await localClaudeAccountReadiness(summary, {
+        PYLON_ACCOUNT_HOME_ROOT: root,
+      } as NodeJS.ProcessEnv)
+
+      expect(readiness).toEqual([
+        {
+          accountRefHash: hashPylonAccountRef("claude_agent", claudeHome),
+          ready: true,
+        },
+      ])
+      expect(JSON.stringify(readiness)).not.toContain("claude-supervisor")
+      expect(JSON.stringify(readiness)).not.toContain("sk-ant-oat")
     })
   })
 

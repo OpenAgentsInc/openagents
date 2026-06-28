@@ -6,6 +6,7 @@ import { PYLON_CLIENT_VERSION, type PylonClientVersion } from "./version.js"
 import type { BootstrapSummary } from "./bootstrap.js"
 import {
   hashPylonAccountRef,
+  discoverPylonAccountSiblingHomes,
   loadPylonAccountRegistry,
   normalizeAccountHome,
   PYLON_CLAUDE_OAUTH_TOKEN_FILE,
@@ -456,13 +457,23 @@ async function claudeHomeHasAuth(home: string): Promise<boolean> {
 // a token file advertise a per-account slot, so the gate never sees a phantom.
 export async function localClaudeAccountReadiness(
   summary: Pick<BootstrapSummary, "paths">,
+  env: NodeJS.ProcessEnv = process.env,
 ): Promise<PylonCodexAccountReadiness[]> {
   const registry = await loadPylonAccountRegistry(summary)
+  const seenHomes = new Set<string>()
   const readiness: PylonCodexAccountReadiness[] = []
   for (const entry of registry) {
     if (entry.provider !== "claude_agent") continue
+    seenHomes.add(entry.home)
     readiness.push({
       accountRefHash: hashPylonAccountRef("claude_agent", entry.ref),
+      ready: await claudeHomeHasAuth(entry.home),
+    })
+  }
+  for (const entry of await discoverPylonAccountSiblingHomes(env)) {
+    if (entry.provider !== "claude_agent" || seenHomes.has(entry.home)) continue
+    readiness.push({
+      accountRefHash: hashPylonAccountRef("claude_agent", entry.home),
       ready: await claudeHomeHasAuth(entry.home),
     })
   }
@@ -511,7 +522,7 @@ export async function localClaudeAccountCapacities(
   return codexAccountCapacities({
     busyByAccount: accountBusyCounts,
     perAccountConcurrency: claudePerAccountConcurrency(env),
-    readiness: await localClaudeAccountReadiness(summary),
+    readiness: await localClaudeAccountReadiness(summary, env),
   })
 }
 

@@ -275,6 +275,7 @@ describe("pylon account usage", () => {
       await mkdir(join(root, ".codex-pylon-b"), { recursive: true })
       await mkdir(join(root, ".claude"), { recursive: true })
       await mkdir(join(root, ".claude-work"), { recursive: true })
+      await mkdir(join(root, ".claude-supervisor"), { recursive: true })
       await mkdir(join(root, ".unrelated"), { recursive: true })
       await writeFile(join(root, ".codex-not-a-dir"), "x")
 
@@ -296,6 +297,7 @@ describe("pylon account usage", () => {
       expect(claudeHomes).toBeGreaterThanOrEqual(2)
       // The non-account dir and the regular file are ignored.
       expect(projection.accounts.some((a) => String(a.accountRef ?? "").includes("unrelated"))).toBe(false)
+      expect(projection.accounts.some((a) => a.accountRef === "claude-supervisor")).toBe(false)
       assertPublicProjectionSafe(projection)
     })
   })

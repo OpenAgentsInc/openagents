@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto"
-import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises"
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import {
   hashPylonAccountRef,
+  discoverPylonAccountSiblingHomes,
   loadPylonAccountRegistry,
   pylonAccountEnvironment,
   type PylonAccountProvider,
@@ -229,41 +230,6 @@ function defaultHome(provider: PylonAccountProvider, env: Record<string, string 
   }
   const configured = (env.CLAUDE_CONFIG_DIR ?? "").trim()
   return configured.length > 0 ? configured : join(homedir(), ".claude")
-}
-
-// #4953: scan the home directory for sibling account homes so a multi-account
-// setup (e.g. ~/.codex, ~/.codex-pylon-b, ~/.claude-work) surfaces every account
-// instead of only the two default homes. Read-only; best-effort (returns [] on
-// any error). The directory name (sans leading dot) is the public account ref.
-async function discoverSiblingHomes(
-  env: Record<string, string | undefined>,
-): Promise<{ provider: PylonAccountProvider; home: string; ref: string }[]> {
-  // Scan root is overridable (PYLON_ACCOUNT_HOME_ROOT) so tests stay isolated
-  // from the real home directory; production defaults to homedir().
-  const root = (env.PYLON_ACCOUNT_HOME_ROOT ?? "").trim() || homedir()
-  let entries: string[]
-  try {
-    entries = await readdir(root)
-  } catch {
-    return []
-  }
-  const out: { provider: PylonAccountProvider; home: string; ref: string }[] = []
-  for (const name of entries) {
-    const provider: PylonAccountProvider | null = name.startsWith(".codex")
-      ? "codex"
-      : name.startsWith(".claude")
-        ? "claude_agent"
-        : null
-    if (provider === null) continue
-    const home = join(root, name)
-    try {
-      if (!(await stat(home)).isDirectory()) continue
-    } catch {
-      continue
-    }
-    out.push({ provider, home, ref: name.replace(/^\./, "") })
-  }
-  return out
 }
 
 function accountIdentity(
@@ -640,7 +606,7 @@ async function discoverAccountTargets(
   // default homes. Scan the home dir for sibling account homes (e.g.
   // ~/.codex-pylon-b, ~/.claude-work) so multi-account setups show every
   // account without manual registry entries. Read-only; deduped by provider:home.
-  for (const sibling of await discoverSiblingHomes(env)) {
+  for (const sibling of await discoverPylonAccountSiblingHomes(env)) {
     addTarget({
       provider: sibling.provider,
       selector: "registry_ref",

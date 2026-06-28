@@ -4,6 +4,7 @@ import { join } from "node:path"
 import { tmpdir } from "node:os"
 
 import {
+  discoverPylonAccountSiblingHomes,
   hashPylonAccountRef,
   loadPylonAccountRegistry,
   publicPylonAccountSelection,
@@ -119,6 +120,41 @@ describe("pylon account registry", () => {
       const publicSelection = publicPylonAccountSelection(resolved)
       expect(JSON.stringify(publicSelection)).not.toContain("sk-ant-oat-test-token-value")
       assertPublicProjectionSafe(publicSelection)
+    })
+  })
+
+  test("discovers real Claude sibling homes without treating supervisor state as an account", async () => {
+    await withHome(async (home) => {
+      const root = join(home, "scan-root")
+      const claudeHome = join(root, ".claude-pylon-2")
+      await mkdir(claudeHome, { recursive: true })
+      await mkdir(join(root, ".claude-supervisor"), { recursive: true })
+      await writeFile(join(claudeHome, "claude-oauth-token"), "sk-ant-oat-test-token-value\n")
+
+      const siblings = await discoverPylonAccountSiblingHomes({
+        PYLON_ACCOUNT_HOME_ROOT: root,
+      })
+      expect(siblings.map((entry) => `${entry.provider}:${entry.ref}`)).toEqual([
+        "claude_agent:claude-pylon-2",
+      ])
+
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), { PYLON_HOME: home })
+      const resolved = await resolvePylonAccountSelection(summary, {
+        provider: "claude_agent",
+        accountRef: "claude-pylon-2",
+        env: { PYLON_ACCOUNT_HOME_ROOT: root },
+      })
+      if (resolved === null) throw new Error("expected Claude sibling account to resolve")
+      expect(resolved).toMatchObject({
+        provider: "claude_agent",
+        selector: "registry_ref",
+        accountRef: "claude-pylon-2",
+        accountRefHash: hashPylonAccountRef("claude_agent", claudeHome),
+        home: claudeHome,
+      })
+      expect(pylonAccountEnvironment({ PATH: "/bin" }, resolved).CLAUDE_CODE_OAUTH_TOKEN).toBe(
+        "sk-ant-oat-test-token-value",
+      )
     })
   })
 

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto"
 import { readFileSync } from "node:fs"
-import { readFile, stat } from "node:fs/promises"
+import { readdir, readFile, stat } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join, resolve } from "node:path"
 
@@ -17,6 +17,7 @@ export type PylonAccountSelectionInput = {
   provider: PylonAccountProvider
   accountRef?: string
   accountHome?: string
+  env?: Record<string, string | undefined>
 }
 
 export type ResolvedPylonAccountSelection = {
@@ -62,6 +63,49 @@ export function normalizeAccountHome(value: string): string {
 
 export function hashPylonAccountRef(provider: PylonAccountProvider, value: string): string {
   return `account.pylon.${provider}.${createHash("sha256").update(`${provider}:${value}`).digest("hex").slice(0, 24)}`
+}
+
+function accountHomeRoot(env: Record<string, string | undefined>): string {
+  const configured = (env.PYLON_ACCOUNT_HOME_ROOT ?? "").trim()
+  return configured.length > 0 ? normalizeAccountHome(configured) : homedir()
+}
+
+function siblingHomeProvider(name: string): PylonAccountProvider | null {
+  if (name === ".codex" || name.startsWith(".codex-")) return "codex"
+  if (name === ".claude" || name.startsWith(".claude-")) {
+    // The durable supervisor keeps logs/state under ~/.claude-supervisor; that
+    // is not a credential home and must never become an account ref.
+    if (name === ".claude-supervisor" || name.startsWith(".claude-supervisor-")) return null
+    return "claude_agent"
+  }
+  return null
+}
+
+export async function discoverPylonAccountSiblingHomes(
+  env: Record<string, string | undefined>,
+): Promise<PylonAccountRegistryEntry[]> {
+  const root = accountHomeRoot(env)
+  let entries: string[]
+  try {
+    entries = await readdir(root)
+  } catch {
+    return []
+  }
+  const out: PylonAccountRegistryEntry[] = []
+  for (const name of entries) {
+    const provider = siblingHomeProvider(name)
+    if (provider === null) continue
+    const home = join(root, name)
+    try {
+      if (!(await stat(home)).isDirectory()) continue
+    } catch {
+      continue
+    }
+    const ref = name.replace(/^\./, "")
+    if (!accountRefIsValid(ref)) continue
+    out.push({ provider, ref, home })
+  }
+  return out
 }
 
 export async function loadPylonAccountRegistry(
@@ -126,9 +170,15 @@ export async function resolvePylonAccountSelection(
       )
     }
     const registry = await loadPylonAccountRegistry(summary)
-    const entry = registry.find(
+    const registryEntry = registry.find(
       candidate => candidate.provider === input.provider && candidate.ref === accountRef,
     )
+    const siblingEntry = registryEntry === undefined
+      ? (await discoverPylonAccountSiblingHomes(input.env ?? process.env)).find(
+          candidate => candidate.provider === input.provider && candidate.ref === accountRef,
+        )
+      : undefined
+    const entry = registryEntry ?? siblingEntry
     if (!entry) {
       throw new PylonAccountSelectionError(
         "Pylon account ref is not registered for this provider",
@@ -140,7 +190,10 @@ export async function resolvePylonAccountSelection(
       provider: input.provider,
       selector: "registry_ref",
       accountRef,
-      accountRefHash: hashPylonAccountRef(input.provider, accountRef),
+      accountRefHash: hashPylonAccountRef(
+        input.provider,
+        registryEntry === undefined ? entry.home : accountRef,
+      ),
       home: entry.home,
     }
   }
