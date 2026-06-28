@@ -92,6 +92,7 @@ import { collectPylonContextProjection } from "./context-projection.js"
 import { collectPylonDevDoctor } from "./dev-doctor.js"
 import {
   parsePylonAccountsConnectArgs,
+  pylonCodexAuthCliOutcome,
   runPylonAccountsConnect,
 } from "./account-connect.js"
 import {
@@ -3158,11 +3159,30 @@ async function main() {
       if (options.json) {
         process.stdout.write(`${JSON.stringify(projection, null, 2)}\n`)
       } else {
+        const outcome = pylonCodexAuthCliOutcome(
+          projection.localCodex.deviceLoginStatus,
+          projection.localCodex.reason,
+        )
+        if (!outcome.ok) {
+          // A present but revoked/expired credential that could not be recovered
+          // must NEVER be reported as a bare success.
+          process.stderr.write(
+            `⚠ Codex account ${projection.accountRef} has invalid credentials${
+              outcome.reason ? ` (${outcome.reason})` : ""
+            }; automatic re-login did not complete.\n` +
+              `Run: pylon auth codex --account ${projection.accountRef} --force-device-login\n`,
+          )
+          process.exitCode = 1
+          return
+        }
         const codexAccounts = await collectPylonCodexAccountsLocal(summary, { env: Bun.env })
         const linked = codexAccounts.find((account) => account.accountRef === projection.accountRef)
         const email = linked?.email ?? null
+        const verb = outcome.kind === "reauthed" ? "Re-authenticated" : "Linked"
+        const usageNote =
+          outcome.reason === "usage_limited" ? " (note: account is usage-limited right now)" : ""
         process.stdout.write(
-          `✓ Linked Codex account${email ? `: ${email}` : ""} (${projection.accountRef})\n`,
+          `✓ ${verb} Codex account${email ? `: ${email}` : ""} (${projection.accountRef})${usageNote}\n`,
         )
       }
       return

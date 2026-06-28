@@ -191,7 +191,7 @@ function targetTripleFor(platform: string, arch: string): string | null {
   return null
 }
 
-function resolveCodexCliPath(): CodexCliPath {
+export function resolveCodexCliPath(): CodexCliPath {
   const targetTriple = targetTripleFor(process.platform, process.arch)
   if (targetTriple === null) throw new Error(`Unsupported Codex CLI platform: ${process.platform} (${process.arch})`)
   const platformPackage = CODEX_PLATFORM_PACKAGE_BY_TARGET[targetTriple]

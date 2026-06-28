@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs"
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises"
-import { dirname, join } from "node:path"
+import { delimiter as pathDelimiter, dirname, join } from "node:path"
 
 import {
   hashPylonAccountRef,
@@ -32,6 +32,34 @@ export type PylonCodexDeviceLoginRunner = (input: {
   home: string
 }) => Promise<{ exitCode: number }>
 
+/**
+ * Reasons a stored Codex `auth.json` can be present-but-unusable. These are
+ * public-safe enum refs only; they never carry token material.
+ */
+export type PylonCodexAuthInvalidReason = "credentials_revoked" | "usage_limited" | "auth_error"
+
+/**
+ * Result of probing whether a stored Codex credential is actually usable, not
+ * merely present on disk. A present `auth.json` whose refresh token has been
+ * revoked is INVALID even though the file exists (openagents Codex reconnect
+ * bug): `existsSync` is not a validity check.
+ */
+export type PylonCodexAuthValidity =
+  | { valid: true; reason?: string }
+  | { valid: false; reason: PylonCodexAuthInvalidReason }
+
+/**
+ * Injectable probe that classifies a stored Codex credential as valid or
+ * invalid (with a reason). Production injects {@link defaultCodexAuthValidityProbe};
+ * tests inject deterministic stubs. The probe MUST be bounded and fail-safe:
+ * if it cannot reach a confident verdict it returns `valid: true` so a working
+ * reconnect is never blocked by probe infrastructure failure.
+ */
+export type PylonCodexAuthValidityProbe = (input: {
+  env: Record<string, string | undefined>
+  home: string
+}) => Promise<PylonCodexAuthValidity>
+
 export type PylonAccountsConnectFetcher = typeof fetch
 
 export type PylonAccountConnectProjection = {
@@ -46,7 +74,13 @@ export type PylonAccountConnectProjection = {
     status: "created" | "updated" | "unchanged"
   }
   deviceLogin: {
-    status: "completed" | "skipped_existing_auth" | "skipped_by_flag"
+    status:
+      | "completed"
+      | "skipped_existing_auth"
+      | "skipped_by_flag"
+      | "completed_recovered_invalid_auth"
+      | "blocked_invalid_auth"
+    reason?: string
   }
   openAgentsDeviceLogin:
     | { status: "not_requested" }
@@ -262,6 +296,122 @@ const defaultCodexDeviceLoginRunner: PylonCodexDeviceLoginRunner = async input =
   return { exitCode: await child.exited }
 }
 
+const CODEX_AUTH_PROBE_DEFAULT_TIMEOUT_MS = 45_000
+
+function codexAuthProbeTimeoutMs(env: Record<string, string | undefined>): number {
+  const raw = (env.PYLON_CODEX_AUTH_PROBE_TIMEOUT_MS ?? "").trim()
+  const parsed = Number.parseInt(raw, 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : CODEX_AUTH_PROBE_DEFAULT_TIMEOUT_MS
+}
+
+/**
+ * Classifies the output of a bounded Codex credential probe. Recognized
+ * failure signatures map to a concrete invalid reason; an unrecognized failure
+ * is treated as fail-safe `valid` (with an inconclusive reason) so an ambiguous
+ * probe never forces a disruptive re-login or falsely claims a credential is
+ * dead. A revoked refresh token always classifies as `credentials_revoked`.
+ */
+export function classifyCodexAuthProbeOutput(input: {
+  exitCode: number
+  stdout: string
+  stderr: string
+}): PylonCodexAuthValidity {
+  const text = `${input.stdout}\n${input.stderr}`.toLowerCase()
+  if (/revok/.test(text)) {
+    return { valid: false, reason: "credentials_revoked" }
+  }
+  if (/usage limit|rate limit|too many requests|quota|\b429\b/.test(text)) {
+    return { valid: false, reason: "usage_limited" }
+  }
+  if (
+    /could not be refreshed|refresh token|token (?:has )?expired|expired token|unauthorized|\b401\b|not logged in|please (?:sign in|log ?in)|sign in again|authentication (?:failed|error)|invalid (?:token|credential)/.test(
+      text,
+    )
+  ) {
+    return { valid: false, reason: "auth_error" }
+  }
+  if (input.exitCode === 0) {
+    return { valid: true }
+  }
+  return { valid: true, reason: "probe_inconclusive" }
+}
+
+/**
+ * Default Codex credential validity probe. Runs the SAME vendored Codex binary
+ * the executor uses, against the isolated account `CODEX_HOME`, with any BYOK
+ * key (`OPENAI_API_KEY`/`CODEX_API_KEY`) unset so it tests the account's own
+ * login. It uses a minimal read-only `codex exec` which forces a token refresh
+ * and therefore surfaces a revoked refresh token, then classifies the result.
+ * It is bounded by a short timeout and fail-safe: any spawn failure, missing
+ * binary, or timeout returns `valid: true` so reconnect is never blocked by the
+ * probe itself. It never touches `~/.codex`.
+ */
+export const defaultCodexAuthValidityProbe: PylonCodexAuthValidityProbe = async input => {
+  try {
+    const { resolveCodexCliPath } = await import("./codex-composer.js")
+    const { executablePath, pathDirs } = resolveCodexCliPath()
+    const env: Record<string, string> = {}
+    for (const [key, value] of Object.entries({ ...process.env, ...input.env })) {
+      if (value !== undefined) env[key] = value
+    }
+    // Probe the account's own ChatGPT login, never a BYOK API key.
+    delete env.OPENAI_API_KEY
+    delete env.CODEX_API_KEY
+    env.CODEX_HOME = input.home
+    if (pathDirs.length > 0) {
+      env.PATH = `${pathDirs.join(pathDelimiter)}${env.PATH ? `${pathDelimiter}${env.PATH}` : ""}`
+    }
+    const child = Bun.spawn(
+      [executablePath, "exec", "--skip-git-repo-check", "--sandbox", "read-only", "--color", "never", "ping"],
+      { cwd: input.home, env, stdin: "ignore", stdout: "pipe", stderr: "pipe" },
+    )
+    let timedOut = false
+    const timer = setTimeout(() => {
+      timedOut = true
+      try {
+        child.kill()
+      } catch {
+        // best-effort kill
+      }
+    }, codexAuthProbeTimeoutMs(input.env))
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(child.stdout).text().catch(() => ""),
+      new Response(child.stderr).text().catch(() => ""),
+      child.exited,
+    ])
+    clearTimeout(timer)
+    if (timedOut) {
+      return { valid: true, reason: "probe_timeout" }
+    }
+    return classifyCodexAuthProbeOutput({ exitCode, stdout, stderr })
+  } catch {
+    // Fail-safe: never block a reconnect because the probe could not run.
+    return { valid: true, reason: "probe_unavailable" }
+  }
+}
+
+/**
+ * Public-safe outcome a CLI should report for a Codex auth/connect result.
+ * Drives honest messaging: a present-but-revoked credential that could not be
+ * recovered MUST NOT be reported as a bare success.
+ */
+export type PylonCodexAuthCliOutcome =
+  | { ok: true; kind: "linked" | "reauthed"; reason?: string }
+  | { ok: false; kind: "blocked"; reason?: string }
+
+export function pylonCodexAuthCliOutcome(
+  deviceLoginStatus: PylonAccountConnectProjection["deviceLogin"]["status"],
+  reason?: string,
+): PylonCodexAuthCliOutcome {
+  if (deviceLoginStatus === "completed_recovered_invalid_auth") {
+    return { ok: true, kind: "reauthed", ...(reason ? { reason } : {}) }
+  }
+  if (deviceLoginStatus === "blocked_invalid_auth") {
+    return { ok: false, kind: "blocked", ...(reason ? { reason } : {}) }
+  }
+  return { ok: true, kind: "linked", ...(reason ? { reason } : {}) }
+}
+
 const withoutTrailingSlash = (value: string): string => value.replace(/\/+$/, "")
 
 function requireOpenAgentsLinkOptions(
@@ -410,6 +560,7 @@ export async function runPylonAccountsConnect(
     env?: Record<string, string | undefined>
     fetcher?: PylonAccountsConnectFetcher
     runCodexDeviceLogin?: PylonCodexDeviceLoginRunner
+    codexAuthValidityProbe?: PylonCodexAuthValidityProbe
   } = {},
 ): Promise<PylonAccountConnectProjection> {
   const env = options.env ?? (Bun.env as Record<string, string | undefined>)
@@ -417,6 +568,8 @@ export async function runPylonAccountsConnect(
   await mkdir(home, { recursive: true })
 
   let deviceLoginStatus: PylonAccountConnectProjection["deviceLogin"]["status"] = "skipped_by_flag"
+  let deviceLoginReason: string | undefined
+  const blockerRefs: string[] = []
   if (args.provider === "codex") {
     await forceCodexFileCredentialStore(home)
     const authPath = join(home, "auth.json")
@@ -424,7 +577,36 @@ export async function runPylonAccountsConnect(
     if (args.skipDeviceLogin) {
       deviceLoginStatus = "skipped_by_flag"
     } else if (authAlreadyPresent && !args.forceDeviceLogin) {
-      deviceLoginStatus = "skipped_existing_auth"
+      // A present `auth.json` is NOT proof the credential still works: a revoked
+      // refresh token leaves a file that silently fails on first real use. When
+      // a validity probe is supplied, verify the stored credential before
+      // reusing it; recover automatically if it is dead. With no probe injected
+      // we preserve the legacy reuse behavior for backward compatibility.
+      const validity = await options.codexAuthValidityProbe?.({ env, home })
+      if (validity === undefined || validity.valid || validity.reason === "usage_limited") {
+        // Valid, or a usage cap (not an auth failure): reuse the existing auth
+        // and surface the probe reason instead of forcing a disruptive re-login.
+        deviceLoginStatus = "skipped_existing_auth"
+        if (validity !== undefined && validity.reason !== undefined) {
+          deviceLoginReason = validity.reason
+        }
+      } else {
+        // credentials_revoked | auth_error: auto-run device-login to recover
+        // into the SAME isolated account home (never `~/.codex`).
+        deviceLoginReason = validity.reason
+        const result = await (options.runCodexDeviceLogin ?? defaultCodexDeviceLoginRunner)({
+          env,
+          home,
+        })
+        if (result.exitCode === 0 && existsSync(authPath)) {
+          deviceLoginStatus = "completed_recovered_invalid_auth"
+        } else {
+          // Could not recover (e.g. non-interactive / device-login unavailable).
+          // Report the blocker honestly; never claim success for dead creds.
+          deviceLoginStatus = "blocked_invalid_auth"
+          blockerRefs.push("blocker.pylon.accounts_connect.codex_credentials_invalid_unrecovered")
+        }
+      }
     } else {
       const result = await (options.runCodexDeviceLogin ?? defaultCodexDeviceLoginRunner)({
         env,
@@ -464,9 +646,12 @@ export async function runPylonAccountsConnect(
     homeState: "present",
     codexCredentialStore: args.provider === "codex" ? "file" : "not_applicable",
     registry: { status: registryStatus },
-    deviceLogin: { status: deviceLoginStatus },
+    deviceLogin: {
+      status: deviceLoginStatus,
+      ...(deviceLoginReason !== undefined ? { reason: deviceLoginReason } : {}),
+    },
     openAgentsDeviceLogin,
-    blockerRefs: [],
+    blockerRefs,
   } satisfies PylonAccountConnectProjection
   assertPublicProjectionSafe(projection)
   const linkedProviderAccountRef = linkedOpenAgentsProviderAccountRef(openAgentsDeviceLogin)

@@ -5,7 +5,9 @@ import { dirname, join } from "node:path"
 import {
   type PylonAccountsConnectArgs,
   type PylonAccountsConnectFetcher,
+  type PylonCodexAuthValidityProbe,
   type PylonCodexDeviceLoginRunner,
+  defaultCodexAuthValidityProbe,
   runPylonAccountsConnect,
 } from "./account-connect.js"
 import { type BootstrapSummary } from "./bootstrap.js"
@@ -48,11 +50,17 @@ export type PylonAuthOpenAgentsProjection = {
 
 export type PylonAuthCodexProjection = {
   schema: "pylon.auth.codex.v1"
-  status: "connected"
+  status: "connected" | "credentials_invalid"
   accountRef: string
   openAgents: PylonAuthOpenAgentsProjection
   localCodex: {
-    deviceLoginStatus: "completed" | "skipped_existing_auth" | "skipped_by_flag"
+    deviceLoginStatus:
+      | "completed"
+      | "skipped_existing_auth"
+      | "skipped_by_flag"
+      | "completed_recovered_invalid_auth"
+      | "blocked_invalid_auth"
+    reason?: string
   }
   openAgentsProviderAccount: {
     accountStatus: string
@@ -75,6 +83,7 @@ type PylonAuthOptions = {
     verificationUrl: string
   }) => void
   runCodexDeviceLogin?: PylonCodexDeviceLoginRunner
+  codexAuthValidityProbe?: PylonCodexAuthValidityProbe
   sleep?: (ms: number) => Promise<void>
 }
 
@@ -954,9 +963,37 @@ export async function runPylonAuthCodex(
       fetcher,
       runCodexDeviceLogin:
         options.runCodexDeviceLogin ?? quietCodexDeviceLoginRunner(options.onDevicePrompt),
+      codexAuthValidityProbe: options.codexAuthValidityProbe ?? defaultCodexAuthValidityProbe,
     },
   )
   void sleep
+
+  // The stored Codex credential was present but invalid and could not be
+  // recovered (e.g. non-interactive). Do NOT import a dead credential or report
+  // a connected account; return an honest credentials-invalid projection so the
+  // CLI can tell the user to re-run with --force-device-login.
+  if (started.deviceLogin.status === "blocked_invalid_auth") {
+    const projection = {
+      schema: "pylon.auth.codex.v1",
+      status: "credentials_invalid",
+      accountRef,
+      openAgents: openAgents.projection,
+      localCodex: {
+        deviceLoginStatus: started.deviceLogin.status,
+        ...(started.deviceLogin.reason !== undefined ? { reason: started.deviceLogin.reason } : {}),
+      },
+      openAgentsProviderAccount: {
+        accountStatus: "credentials_invalid",
+        attemptId: "not_attempted",
+        attemptStatus: "not_attempted",
+        providerAccountRef: previousProviderAccountRef ?? accountRef,
+        source: "pylon_local_codex_auth",
+      },
+      blockerRefs: started.blockerRefs,
+    } satisfies PylonAuthCodexProjection
+    assertPublicProjectionSafe(projection)
+    return projection
+  }
 
   const imported = await importLocalCodexAuth({
     accountRef,
@@ -979,6 +1016,7 @@ export async function runPylonAuthCodex(
     openAgents: openAgents.projection,
     localCodex: {
       deviceLoginStatus: started.deviceLogin.status,
+      ...(started.deviceLogin.reason !== undefined ? { reason: started.deviceLogin.reason } : {}),
     },
     openAgentsProviderAccount: {
       accountStatus: imported.account.status,
