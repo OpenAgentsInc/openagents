@@ -37,6 +37,16 @@ export type CardCreditSpendReceiptStore = Readonly<{
   ) => Promise<PublicCardCreditSpendReceiptProjection | null>
 }>
 
+export const publicCardCreditSpendReceiptSourceRefs: ReadonlyArray<string> = [
+  'route:/api/public/inference/card-credit-spend-receipts/{receiptRef}',
+  'ledger.billing_ledger_entries.stripe_checkout',
+  'ledger.pay_ins.usd_credit_grant.context_ref',
+  'ledger.pay_ins.inference_charge.context_ref',
+  'apps/openagents.com/workers/api/src/billing-routes.ts#handleBillingInferenceCreditApi',
+  'apps/openagents.com/workers/api/src/inference/usd-credit-bridge.ts',
+  'apps/openagents.com/workers/api/src/inference/metering-hook.ts',
+]
+
 const prefix = 'receipt.inference.card_credit_spend.'
 
 const sessionIdFromReceiptRef = (receiptRef: string): string | null =>
@@ -73,12 +83,12 @@ const publicProjectionFromResolution = (
             status: 'invalid',
           },
     schemaVersion: 'openagents.inference.card_credit_spend_receipt.v1',
-    sourceRefs: [
-      `route:/api/public/inference/card-credit-spend-receipts/${receiptRef}`,
-      'ledger.billing_ledger_entries.stripe_checkout',
-      'ledger.pay_ins.usd_credit_grant.context_ref',
-      'ledger.pay_ins.inference_charge.context_ref',
-    ],
+    sourceRefs: publicCardCreditSpendReceiptSourceRefs.map(ref =>
+      ref ===
+      'route:/api/public/inference/card-credit-spend-receipts/{receiptRef}'
+        ? `route:/api/public/inference/card-credit-spend-receipts/${receiptRef}`
+        : ref,
+    ),
     staleness: liveAtReadStaleness([
       'billing_ledger_entries',
       'pay_ins.public_receipt_ref',
