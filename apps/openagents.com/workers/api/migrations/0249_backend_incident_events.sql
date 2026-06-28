@@ -1,4 +1,4 @@
--- 0248_backend_incident_events.sql (#6396)
+-- 0249_backend_incident_events.sql (#6396)
 --
 -- Cloudflare-native backend incident sink for the trace-review triage loop.
 -- Rows are public-safe summaries of failures observed by Worker catch paths,
