@@ -13,8 +13,10 @@ import {
   buildGlmContinuousStressReport,
   buildGlmContinuousStressPlan,
   buildGlmContinuousStressRunnerPlan,
+  buildGlmMaxToksBenchmarkReadout,
   evaluateGlmExternalWinsProbe,
   evaluateGlmExternalWinsOpenAgentsResponse,
+  type GlmStressReport,
 } from './stress-saturation-plan'
 
 const stressShape = (id: string, concurrency: number): SequenceShape => ({
@@ -27,6 +29,73 @@ const stressShape = (id: string, concurrency: number): SequenceShape => ({
   requestClass: 'interactive_stream',
   source: 'synthetic_fixture',
 })
+
+const readyRunnerPlan = () => {
+  const plan = buildGlmContinuousStressPlan({
+    matrixConfig: SAMPLE_DECISION_SUITE_CONFIG,
+    target: GLM_52_REAP_POOL_TARGET,
+    shapes: [stressShape('saturation-knee', 16)],
+    workloads: ['chat'],
+    headroom: {
+      healthyReplicaCount: 10,
+      aggregateAvailableSlots: 10,
+      reservedExternalSlots: 3,
+      externalDemandActive: false,
+    },
+    evidence: {
+      liveHeadroomEvidenceRef: 'evidence.glm.live_headroom.oracle.v1',
+      externalWinsPreemptionEvidenceRef:
+        'evidence.glm.external_wins.preemption.v1',
+      externalWinsProofStatus: 'accepted',
+      rolloutGuardEvidenceRef: 'evidence.glm.stress.rollout_guard.v1',
+      throughputRolloutCanStartIssue6317Stress: true,
+    },
+  })
+  return buildGlmContinuousStressRunnerPlan({
+    generatedAt: '2026-06-26T00:00:00.000Z',
+    tickRef: 'tick.glm.stress.report.max_toks.v1',
+    plan,
+  })
+}
+
+const measuredSaturationReport = (
+  outputTokens: number,
+  ttftMs: number,
+): GlmStressReport => {
+  const runnerPlan = readyRunnerPlan()
+  const firstCell = runnerPlan.dispatchCells[0]
+  if (firstCell === undefined) {
+    throw new Error('expected a dispatch cell for max-tok/s report test')
+  }
+  return buildGlmContinuousStressReport({
+    generatedAt: '2026-06-26T00:00:02.000Z',
+    runnerPlan,
+    throughputMeasurementWindowMs: 2000,
+    observations: [
+      {
+        cellId: firstCell.cellId,
+        replicaRef: 'replica.glm.us-central1-a.1',
+        status: 'ok',
+        outputTokens,
+        goodputTokens: outputTokens - 100,
+        wallClockMs: 2000,
+        ttftMs,
+        interTokenLatencyP50Ms: 6,
+        interTokenLatencyP90Ms: 18,
+        interTokenLatencyP99Ms: 32,
+      },
+      {
+        cellId: firstCell.cellId,
+        replicaRef: 'replica.glm.us-central1-a.2',
+        status: 'failed',
+        httpStatus: 429,
+        failureKind: 'rate_limited',
+        outputTokens: 0,
+        wallClockMs: 100,
+      },
+    ],
+  })
+}
 
 describe('GLM continuous stress saturation plan (#6317 prep slice)', () => {
   test('returns a typed blocker artifact until live scheduler evidence exists', () => {
@@ -572,6 +641,108 @@ describe('GLM continuous stress saturation plan (#6317 prep slice)', () => {
     expect(JSON.stringify(report)).not.toMatch(
       /prompt|completion|bearer|secret|https?:\/\//i,
     )
+  })
+
+  test('builds a decision-grade #6312 max-tok/s readout from in-cloud and WAN saturation reports', () => {
+    const inCloudReport = measuredSaturationReport(1400, 120)
+    const wanReport = measuredSaturationReport(1100, 180)
+
+    const readout = buildGlmMaxToksBenchmarkReadout({
+      generatedAt: '2026-06-26T00:00:03.000Z',
+      benchmarkRef: 'benchmark.glm.max_toks.2026_06_26',
+      recordedAt: '2026-06-26T00:00:02.000Z',
+      fleetSize: 10,
+      servingProfileRef:
+        'serving.glm_52_reap_504b.tp4.mtp2.no_min_p.context_250k',
+      sustainedOpenCodeSessionEstimate: 42,
+      reports: [
+        { surface: 'in_cloud', report: inCloudReport },
+        { surface: 'wan', report: wanReport },
+      ],
+    })
+
+    expect(readout.decisionGrade).toBe(true)
+    expect(readout.blockerRefs).toEqual([])
+    expect(readout.headlineMaxTokPerSecond).toBe(700)
+    expect(readout.saturationConcurrency).toBe(7)
+    expect(readout.sustainedOpenCodeSessionEstimate).toBe(42)
+    expect(readout.inCloud).toMatchObject({
+      surface: 'in_cloud',
+      aggregateTokPerSecond: 700,
+      goodputTokPerSecond: 650,
+      saturationConcurrency: 7,
+      singleflightOverflowRateAtSaturation: 0.5,
+      replicaCount: 2,
+      outputTokens: 1400,
+      goodputTokens: 1300,
+    })
+    expect(readout.wan).toMatchObject({
+      surface: 'wan',
+      aggregateTokPerSecond: 550,
+      goodputTokPerSecond: 500,
+      saturationConcurrency: 7,
+      singleflightOverflowRateAtSaturation: 0.5,
+      replicaCount: 2,
+      outputTokens: 1100,
+      goodputTokens: 1000,
+    })
+    expect(readout.wanDelta).toEqual({
+      aggregateTokPerSecond: -150,
+      ttftP90Ms: 60,
+    })
+    expect(JSON.stringify(readout)).not.toMatch(
+      /prompt|completion|bearer|secret|https?:\/\//i,
+    )
+  })
+
+  test('keeps #6312 max-tok/s readout blocked until WAN and saturation evidence exist', () => {
+    const runnerPlan = readyRunnerPlan()
+    const firstCell = runnerPlan.dispatchCells[0]
+    if (firstCell === undefined) {
+      throw new Error('expected a dispatch cell for blocked max-tok/s test')
+    }
+    const cleanUnsaturatedReport = buildGlmContinuousStressReport({
+      generatedAt: '2026-06-26T00:00:02.000Z',
+      runnerPlan,
+      throughputMeasurementWindowMs: 2000,
+      observations: [
+        {
+          cellId: firstCell.cellId,
+          replicaRef: 'replica.glm.us-central1-a.1',
+          status: 'ok',
+          outputTokens: 1200,
+          goodputTokens: 1100,
+          wallClockMs: 2000,
+          ttftMs: 120,
+          interTokenLatencyP50Ms: 6,
+          interTokenLatencyP90Ms: 18,
+          interTokenLatencyP99Ms: 32,
+        },
+      ],
+    })
+
+    const readout = buildGlmMaxToksBenchmarkReadout({
+      generatedAt: '2026-06-26T00:00:03.000Z',
+      benchmarkRef: 'benchmark.glm.max_toks.blocked',
+      recordedAt: '2026-06-26T00:00:02.000Z',
+      fleetSize: 10,
+      servingProfileRef:
+        'serving.glm_52_reap_504b.tp4.mtp2.no_min_p.context_250k',
+      reports: [{ surface: 'in_cloud', report: cleanUnsaturatedReport }],
+    })
+
+    expect(readout.decisionGrade).toBe(false)
+    expect(readout.headlineMaxTokPerSecond).toBeNull()
+    expect(readout.reasons).toEqual([
+      'missing_wan_report',
+      'saturation_point_not_observed',
+      'opencode_session_estimate_missing',
+    ])
+    expect(readout.blockerRefs).toEqual([
+      'blocker.glm_max_toks_benchmark.missing_wan_report',
+      'blocker.glm_max_toks_benchmark.saturation_point_not_observed',
+      'blocker.glm_max_toks_benchmark.opencode_session_estimate_missing',
+    ])
   })
 
   test('accepts external-wins proof only when preempted external demand stays on GLM primary', () => {
