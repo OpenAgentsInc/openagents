@@ -60,6 +60,7 @@ type WorkerRouteDependencies = Readonly<{
   routeAgentSearchRequest: OptionalEffectRoute
   routeAgentScopedGrantRequest: OptionalEffectRoute
   routeAgentSiteRequest: OptionalEffectRoute
+  routeForgeGitIntakeRequest: OptionalEffectRoute
   routeForgeControlPlaneRequest: OptionalEffectRoute
   routeForumRequest: OptionalEffectRoute
   routeImageGenerationRequest: OptionalEffectRoute
@@ -445,6 +446,13 @@ export const makeWorkerRouteRequest =
 
       if (agentSiteResponse !== undefined) {
         return yield* agentSiteResponse
+      }
+
+      const forgeGitIntakeResponse =
+        dependencies.routeForgeGitIntakeRequest(request, env, ctx)
+
+      if (forgeGitIntakeResponse !== undefined) {
+        return yield* forgeGitIntakeResponse
       }
 
       const forgeControlPlaneResponse =

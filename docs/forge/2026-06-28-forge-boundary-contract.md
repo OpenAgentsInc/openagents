@@ -3,8 +3,9 @@
 Status: SU-0 boundary lock for #6768, 2026-06-28. Public-safe; no secrets,
 tokens, private source, or raw logs.
 
-This document freezes the first Forge execution boundary before #6770 adds
-`/api/forge/*` control-plane routes and #6771 wires smart-Git intake.
+This document freezes the first Forge execution boundary. #6770 added
+`/api/forge/*` control-plane routes and #6771 wired smart-Git receive-pack
+intake.
 
 ## Authority Split
 
@@ -33,10 +34,10 @@ The R2 packfile archive is evidence, not ref authority.
 
 - **R2 packfile archive:** private raw pack bytes plus D1 metadata such as
   digest, byte count, content type, ref-update summary, and source refs.
-- **Canonical git object/ref store:** the future source of truth for objects,
-  refs, ref locks, and fast-forward promotion. A packfile is applied here only
-  after smart-Git auth, pkt-line parsing, object validation, and ref-lock
-  success.
+- **Canonical git object/ref store:** D1 tables for receive-pack intakes, active
+  refs, tip object metadata, and ref-lock receipts. A packfile is applied here
+  only after smart-Git auth, pkt-line parsing, object-id validation, and
+  ref-lock success.
 - **D1 coordination store:** work records, change records, NIP-34-aligned
   status rows, dispatch leases, verification refs, and merge queue snapshots.
 - **Blueprint gates:** promotion decisions depend on verification, issue-close
@@ -72,6 +73,20 @@ reuse the existing D1/R2/DO bindings. The UI remains owned by `apps/forge/` on
 Every route decodes through typed data structures from
 `@openagentsinc/forge-protocol`. Routes must fail closed when a caller presents
 only tenant smart-Git credentials.
+
+## Smart-Git Route Notes
+
+Smart-Git HTTP stays outside `/api/forge/*` and accepts only tenant git tokens.
+The first receive-pack surface lives in the `apps/openagents.com` Worker:
+
+| Route | Required git scope | Notes |
+| --- | --- | --- |
+| `GET /git/{tenantRef}/{repositoryRef}.git/info/refs?service=git-receive-pack` | `git:receive-pack` or `git:admin` | Advertises current canonical refs and receive-pack capabilities. |
+| `POST /git/{tenantRef}/{repositoryRef}.git/git-receive-pack` | `git:receive-pack` or `git:admin` | Parses the receive-pack body, archives PACK bytes to private R2, applies canonical ref/object metadata under D1 ref locks, then writes Forge coordination rows. |
+
+This route fails closed before coordination mutation for malformed pkt-lines,
+invalid object IDs, unsafe stale ref updates, wrong repository/scope tokens, and
+delete-only pushes.
 
 ## Verification Receipt Format
 
@@ -136,4 +151,4 @@ only. It is not the expansion target.
   `apps/openagents.com` Worker and persists receipt rows through
   `0254_forge_control_plane_receipts.sql`.
 - #6771 implements smart-Git intake with `ForgeGitAccessScope`, R2 archive
-  evidence, canonical ref locks, and D1 change rows.
+  evidence, canonical ref locks, tip object metadata, and D1 change rows.

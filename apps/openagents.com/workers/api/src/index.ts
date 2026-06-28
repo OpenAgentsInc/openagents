@@ -618,6 +618,10 @@ import {
   makeForgeControlPlaneRoutes,
 } from './forge-control-plane-routes'
 import { makeD1ForgeCoordinationStore } from './forge-coordination-store'
+import { makeD1ForgeGitCanonicalStore } from './forge-git-canonical-store'
+import { makeForgeGitIntakeRoutes } from './forge-git-intake-routes'
+import { makeD1R2ForgeGitPackfileArchiveStore } from './forge-git-packfile-archive-store'
+import { makeD1ForgeTenantGitAuthStore } from './forge-tenant-git-auth-store'
 import type { KhalaChatStreamClient } from './khala-chat-program'
 import { loadKhalaChatPylonContext } from './khala-chat-pylon-context'
 import { makeKhalaChatRoutes } from './khala-chat-routes'
@@ -13172,6 +13176,21 @@ const routeRequest = makeWorkerRouteRequest({
   routeMarketingAgencySelfServeRequest:
     marketingAgencySelfServePublicRoutes.routeMarketingAgencySelfServeRequest,
   routePylonApiRequest: pylonApiRoutes.routePylonApiRequest,
+  routeForgeGitIntakeRequest: (request, env) =>
+    makeForgeGitIntakeRoutes<Env>({
+      makeArchiveStore: storeEnv =>
+        makeD1R2ForgeGitPackfileArchiveStore(
+          openAgentsDatabase(storeEnv),
+          storeEnv.ARTIFACTS,
+        ),
+      makeCanonicalStore: storeEnv =>
+        makeD1ForgeGitCanonicalStore(openAgentsDatabase(storeEnv)),
+      makeCoordinationStore: storeEnv =>
+        makeD1ForgeCoordinationStore(openAgentsDatabase(storeEnv)),
+      makeTenantGitAuthStore: storeEnv =>
+        makeD1ForgeTenantGitAuthStore(openAgentsDatabase(storeEnv)),
+      nowIso: currentIsoTimestamp,
+    }).routeForgeGitIntakeRequest(request, env),
   routeForgeControlPlaneRequest: (request, env) =>
     makeForgeControlPlaneRoutes<Env>({
       authorizeControlPlaneBearer: (authRequest, authEnv, requiredScope) =>

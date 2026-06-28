@@ -576,9 +576,12 @@ then full source-of-truth inversion at `forge.openagents.com`.
 > queue, and ref routes plus `/shell.json` public-safe contract metadata. The
 > #6770 has now implemented the SU-2 `/api/forge/*` control-plane routes in the
 > `apps/openagents.com` Worker, backed by the coordination store plus receipt
-> migration `0254_forge_control_plane_receipts.sql`. The next filed
-> implementation slice is #6771 / SU-3 smart-Git intake to archive/canonical
-> refs/coordination rows.
+> migration `0254_forge_control_plane_receipts.sql`. #6771 has now implemented
+> SU-3 smart-Git intake in that Worker: receive-pack advertisement and POST
+> routes authenticate tenant git tokens, parse Pylon receive-pack bodies,
+> archive PACK bytes to R2, apply D1 canonical ref/object metadata under ref
+> locks, and create Forge coordination rows. SU-4 owned merge authority is the
+> next implementation slice.
 > #6768 is anchored by `docs/forge/2026-06-28-forge-boundary-contract.md` and
 > the `ForgeControlPlaneScope`, `ForgeVerificationReceipt`, and
 > `ForgePromotionDecisionReceipt` schemas in `@openagentsinc/forge-protocol`.
@@ -631,6 +634,19 @@ then full source-of-truth inversion at `forge.openagents.com`.
 > scope row per grant (`git:upload-pack`, `git:receive-pack`, `git:admin`). Auth
 > fails closed unless the tenant is active, the token is active and unexpired,
 > the repository matches exactly, and the requested git operation is granted.
+
+> FORGE SU-3 status, 2026-06-28: smart-Git intake now has route wiring at
+> `apps/openagents.com/workers/api/src/forge-git-intake-routes.ts`, canonical
+> metadata storage at `forge-git-canonical-store.ts`, and D1 migration
+> `0255_forge_git_canonical_store.sql`. `GET
+> /git/{tenantRef}/{repositoryRef}.git/info/refs?service=git-receive-pack`
+> advertises canonical refs; `POST
+> /git/{tenantRef}/{repositoryRef}.git/git-receive-pack` authenticates
+> `git:receive-pack`, parses through `apps/pylon/src/git-receive-pack.ts`,
+> archives PACK bytes to private R2, applies ref updates under D1 ref locks,
+> records tip object metadata, and writes Forge work/change/status rows. Wrong
+> scope tokens, malformed pkt-lines, stale ref updates, invalid object IDs, and
+> delete-only pushes fail closed.
 
 > FORGE-5 status, 2026-06-28: the Pylon-to-Forge dispatch contract now lives in
 > `@openagentsinc/forge-protocol` as typed `work_item`, `decision`, and
