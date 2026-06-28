@@ -11,6 +11,7 @@ export type QuotaRecord = {
   observedAt: string
   retryAtIso: string | null
   sourceDigestRef: string
+  manualResetsRemaining: number | null
 }
 
 export type ManualQuotaResetRecord = {
@@ -61,12 +62,19 @@ function quotaRecordFrom(value: unknown): QuotaRecord | null {
   if (typeof record.observedAt !== "string") return null
   if (record.retryAtIso !== null && typeof record.retryAtIso !== "string") return null
   if (typeof record.sourceDigestRef !== "string") return null
+  const manualResetsRemaining = record.manualResetsRemaining === undefined || record.manualResetsRemaining === null
+    ? null
+    : nonNegativeInteger(record.manualResetsRemaining)
+  if (record.manualResetsRemaining !== undefined && record.manualResetsRemaining !== null && manualResetsRemaining === null) {
+    return null
+  }
   return {
     accountRefHash: record.accountRefHash,
     provider: record.provider,
     observedAt: record.observedAt,
     retryAtIso: record.retryAtIso,
     sourceDigestRef: record.sourceDigestRef,
+    manualResetsRemaining,
   }
 }
 
@@ -107,15 +115,26 @@ export async function recordQuotaBlock(
     provider: string
     retryAtIso: string | null
     sourceDigestRef: string
+    manualResetsRemaining?: number | null
     now?: Date
   },
 ): Promise<void> {
+  const resetRecord = input.manualResetsRemaining === undefined
+    ? await loadManualQuotaResetRecord(summary, {
+        accountRefHash: input.accountRefHash,
+        provider: input.provider,
+      })
+    : null
+  const explicitManualResetsRemaining = input.manualResetsRemaining === undefined || input.manualResetsRemaining === null
+    ? null
+    : nonNegativeInteger(input.manualResetsRemaining)
   const record: QuotaRecord = {
     accountRefHash: input.accountRefHash,
     provider: publicProviderRef(input.provider),
     observedAt: (input.now ?? new Date()).toISOString(),
     retryAtIso: input.retryAtIso,
     sourceDigestRef: input.sourceDigestRef,
+    manualResetsRemaining: explicitManualResetsRemaining ?? resetRecord?.manualResetsRemaining ?? null,
   }
   await mkdir(quotaDirectory(summary), { recursive: true })
   await writeFile(
