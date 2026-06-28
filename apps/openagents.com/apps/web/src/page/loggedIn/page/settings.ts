@@ -496,7 +496,33 @@ const settingsGitHubRepositoryPanel = (model: Model): Html => {
   )
 }
 
-const poolValueRow = (label: string, value: string): Html => {
+export const formatRateLimitCountdown = (
+  remainingSeconds: number | null,
+): string => {
+  if (remainingSeconds === null) {
+    return 'reset pending'
+  }
+
+  const bounded = Math.max(0, Math.floor(remainingSeconds))
+  const hours = Math.floor(bounded / 3600)
+  const minutes = Math.floor((bounded % 3600) / 60)
+  const seconds = bounded % 60
+  const parts =
+    hours > 0
+      ? [hours, minutes, seconds]
+      : [minutes, seconds]
+
+  return parts.map(part => String(part).padStart(2, '0')).join(':')
+}
+
+export const rateLimitCountdownTitle = (
+  cooldownUntil: string | null,
+): string =>
+  cooldownUntil === null
+    ? 'Rate limit reset time unavailable'
+    : `Rate limit resets at ${formatIsoDateTime(cooldownUntil)}`
+
+const poolValueContentRow = (label: string, content: Html): Html => {
   const h = html<Message>()
 
   return h.div(
@@ -507,15 +533,24 @@ const poolValueRow = (label: string, value: string): Html => {
     ],
     [
       h.span([Ui.className<Message>('min-w-0 text-white/35')], [label]),
-      h.span(
-        [
-          Ui.className<Message>(
-            'min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-white/80',
-          ),
-        ],
-        [value],
-      ),
+      content,
     ],
+  )
+}
+
+const poolValueRow = (label: string, value: string): Html => {
+  const h = html<Message>()
+
+  return poolValueContentRow(
+    label,
+    h.span(
+      [
+        Ui.className<Message>(
+          'min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-white/80',
+        ),
+      ],
+      [value],
+    ),
   )
 }
 
@@ -525,6 +560,32 @@ const poolCooldownLabel = (account: ProviderAccountPoolAccount): string =>
     : account.cooldownRemainingSeconds === null
       ? `ended ${formatIsoDateTime(account.cooldownUntil)}`
       : `until ${formatIsoDateTime(account.cooldownUntil)} (~${Math.max(1, Math.ceil(account.cooldownRemainingSeconds / 60))}m)`
+
+export const rateLimitCountdownView = (
+  account: Pick<
+    ProviderAccountPoolAccount,
+    'cooldownRemainingSeconds' | 'cooldownUntil'
+  >,
+): Html => {
+  const h = html<Message>()
+  const elapsed =
+    account.cooldownRemainingSeconds !== null &&
+    account.cooldownRemainingSeconds <= 0
+
+  return h.time(
+    [
+      h.Attribute('data-rate-limit-countdown', 'true'),
+      ...(account.cooldownUntil === null
+        ? []
+        : [h.Attribute('datetime', account.cooldownUntil)]),
+      h.Attribute('aria-label', rateLimitCountdownTitle(account.cooldownUntil)),
+      Ui.className<Message>(
+        `inline-flex h-6 min-w-[4.75rem] items-center justify-center border px-2 font-mono text-xs tabular-nums ${elapsed ? 'border-[#333] text-white/45' : 'border-[#ff6f00]/60 text-[#ffb400]'}`,
+      ),
+    ],
+    [formatRateLimitCountdown(account.cooldownRemainingSeconds)],
+  )
+}
 
 const poolAccountTone = (account: ProviderAccountPoolAccount): string =>
   account.reconnect.needed
@@ -611,6 +672,31 @@ const poolAccountView = (account: ProviderAccountPoolAccount): Html => {
           ),
           poolValueRow('Status', `${account.status} / ${account.health}`),
           poolValueRow('Cooldown', poolCooldownLabel(account)),
+          ...(account.cooldownUntil === null
+            ? []
+            : [
+                poolValueContentRow(
+                  'Rate limit',
+                  h.span(
+                    [
+                      Ui.className<Message>(
+                        'flex min-w-0 flex-wrap items-center gap-2 text-white/80',
+                      ),
+                    ],
+                    [
+                      rateLimitCountdownView(account),
+                      h.span(
+                        [
+                          Ui.className<Message>(
+                            'min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-xs text-white/35',
+                          ),
+                        ],
+                        ['until reset'],
+                      ),
+                    ],
+                  ),
+                ),
+              ]),
           ...(account.lowCredit ? [poolValueRow('Credits', 'low')] : []),
           ...(account.recentFailureClass === null
             ? []
