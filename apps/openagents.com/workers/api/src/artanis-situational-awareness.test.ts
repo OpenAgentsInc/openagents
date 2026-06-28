@@ -102,6 +102,18 @@ describe('buildArtanisSituationalAwareness', () => {
     expect(awareness.goals.epics.map(e => e.number)).toContain(6359)
     expect(awareness.goals.epics.map(e => e.number)).toContain(6316)
     expect(awareness.goals.epics.map(e => e.number)).toContain(6303)
+    expect(
+      awareness.goals.epics.find(e => e.number === 6316)?.remainingIssueRefs,
+    ).toEqual([
+      '#6323',
+      '#6311',
+      '#6320',
+      '#6318',
+      '#6317',
+      '#6312',
+      '#6321',
+      '#6359',
+    ])
 
     // ongoingOps bucket
     expect(awareness.ongoingOps.activeAssignments[0]!.phase).toBe('proof-ready')
@@ -128,6 +140,9 @@ describe('buildArtanisSituationalAwareness', () => {
     expect(awareness.ongoingOps.tokenPace).toBeNull()
     // Goals fall back to the code-anchored defaults rather than going empty.
     expect(awareness.goals).toEqual(ARTANIS_DEFAULT_GOALS)
+    expect(
+      awareness.goals.epics.find(e => e.number === 6316)?.mandate,
+    ).toContain('external-wins scheduling')
   })
 
   test('a failing reader degrades only its own bucket, not the whole build', async () => {
