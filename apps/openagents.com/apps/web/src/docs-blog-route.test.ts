@@ -1050,10 +1050,19 @@ describe('docs and blog routes', () => {
     Scene.scene(
       { update, view },
       Scene.with(reportLoadedModel),
-      Scene.expect(Scene.role('heading', { name: 'Artanis' })).toExist(),
+      Scene.expect(
+        Scene.role('heading', { name: 'ARTANIS console' }),
+      ).toExist(),
+      Scene.expect(Scene.text('Public recruitment console')).toExist(),
+      Scene.expect(Scene.text('LIVE')).toExist(),
       Scene.expect(
         Scene.text('Make Artanis progress visible safely.'),
       ).toExist(),
+      Scene.expect(Scene.text('Fleet health')).toExist(),
+      Scene.expect(Scene.text('Fleet slots')).toExist(),
+      Scene.expect(Scene.text('Active 5/7 slots')).toExist(),
+      Scene.expect(Scene.text('Daily token pace')).toExist(),
+      Scene.expect(Scene.text('13%')).toExist(),
       Scene.expect(Scene.text('Run accepted.')).toExist(),
       Scene.expect(Scene.text('Artanis status report')).toExist(),
       Scene.expect(Scene.text('Health')).toExist(),

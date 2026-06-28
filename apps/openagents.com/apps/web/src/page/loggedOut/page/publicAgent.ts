@@ -58,6 +58,9 @@ const usageText = (goal: PublicAgentGoal): string =>
 
 const formatNumber = (value: number): string => numberFormatter.format(value)
 
+const clampPercent = (value: number): number =>
+  Math.max(0, Math.min(100, Math.round(value)))
+
 const publicRefsLabel = (
   label: string,
   refs: ReadonlyArray<string>,
@@ -344,6 +347,263 @@ const statsMetric = (label: string, value: string, detail: string): Html => {
         [value],
       ),
       h.div([Ui.className<Message>('text-[0.75rem] text-white/35')], [detail]),
+    ],
+  )
+}
+
+const consoleStat = (
+  label: string,
+  value: string,
+  detail: string,
+  tone: 'live' | 'warn' | 'muted' = 'muted',
+): Html => {
+  const h = html<Message>()
+  const toneClass =
+    tone === 'live'
+      ? 'text-[#00c853]'
+      : tone === 'warn'
+        ? 'text-[#ffb400]'
+        : 'text-white/65'
+
+  return h.div(
+    [
+      Ui.className<Message>(
+        'grid min-h-32 content-between gap-4 border border-[#222] bg-[#010102] p-4',
+      ),
+    ],
+    [
+      h.div(
+        [
+          Ui.className<Message>(
+            'flex items-center justify-between gap-3 text-[0.6875rem] uppercase text-white/45',
+          ),
+        ],
+        [
+          h.span([], [label]),
+          h.span([Ui.className<Message>(toneClass)], [
+            tone === 'live' ? 'LIVE' : tone === 'warn' ? 'WATCH' : 'PUBLIC',
+          ]),
+        ],
+      ),
+      h.div(
+        [
+          Ui.className<Message>(
+            'break-words text-2xl font-semibold leading-tight tracking-normal text-[#f1efe8]',
+          ),
+        ],
+        [value],
+      ),
+      h.div(
+        [Ui.className<Message>('break-words text-[0.75rem] text-white/45')],
+        [detail],
+      ),
+    ],
+  )
+}
+
+const tokenPacePercent = (goal: PublicAgentGoal | null): number => {
+  if (goal === null || goal.tokenBudget === null || goal.tokenBudget <= 0) {
+    return 0
+  }
+
+  return clampPercent((goal.tokensUsed / goal.tokenBudget) * 100)
+}
+
+const tokenPaceDetail = (goal: PublicAgentGoal | null): string =>
+  goal === null
+    ? 'Awaiting public goal token budget'
+    : goal.tokenBudget === null || goal.tokenBudget <= 0
+      ? `${formatNumber(goal.tokensUsed)} tokens observed`
+      : `${formatNumber(goal.tokensUsed)} / ${formatNumber(goal.tokenBudget)} tokens`
+
+const artanisConsoleShell = (
+  goal: PublicAgentGoal | null,
+  reportModel: PublicArtanisReportModel,
+  displayedObjective: string,
+): Html => {
+  const h = html<Message>()
+  const report =
+    reportModel._tag === 'PublicArtanisReportLoaded' ? reportModel.report : null
+  const pylonSummary = report?.pylonSummary ?? null
+  const health = report?.healthSummary ?? null
+  const loop = report?.autonomousLoop ?? null
+  const readySlots = pylonSummary?.assignmentReadyPylonsOnlineNow ?? 0
+  const activeSlots = pylonSummary?.pylonsOnlineNow ?? 0
+  const tokenPercent = tokenPacePercent(goal)
+  const live = loop?.active === true || activeSlots > 0
+  const healthAttentionCount = health?.staleOrBlockedSignalCount ?? 0
+
+  return h.section(
+    [
+      h.DataAttribute('component', 'artanis-console-shell'),
+      Ui.className<Message>(
+        'grid gap-5 border-b border-[#222] pb-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(18rem,0.8fr)]',
+      ),
+    ],
+    [
+      h.div(
+        [Ui.className<Message>('grid content-between gap-5 bg-[#010102] p-5')],
+        [
+          h.div(
+            [
+              Ui.className<Message>(
+                'flex flex-wrap items-center justify-between gap-3 border-b border-[#1b1b1b] pb-4',
+              ),
+            ],
+            [
+              h.div(
+                [Ui.className<Message>('grid gap-2')],
+                [
+                  h.div(
+                    [
+                      Ui.className<Message>(
+                        'text-[0.6875rem] uppercase text-white/45',
+                      ),
+                    ],
+                    ['Public recruitment console'],
+                  ),
+                  h.h1(
+                    [
+                      Ui.className<Message>(
+                        'text-3xl font-semibold leading-none tracking-normal text-[#f1efe8] sm:text-4xl',
+                      ),
+                    ],
+                    ['ARTANIS console'],
+                  ),
+                ],
+              ),
+              h.div(
+                [Ui.className<Message>('flex flex-wrap items-center gap-2')],
+                [
+                  h.div(
+                    [
+                      Ui.className<Message>(
+                        'flex items-center gap-2 border border-[#263326] px-3 py-2 text-[0.75rem] text-[#00c853]',
+                      ),
+                    ],
+                    [
+                      h.span(
+                        [
+                          h.AriaHidden(true),
+                          Ui.className<Message>(
+                            'h-2 w-2 rounded-full bg-[#00c853] shadow-[0_0_0_3px_rgba(0,200,83,0.14)]',
+                          ),
+                        ],
+                        [],
+                      ),
+                      live ? 'LIVE' : 'PUBLIC',
+                    ],
+                  ),
+                  h.a(
+                    [
+                      h.Href('/'),
+                      Ui.className<Message>(
+                        'border border-[#333] px-3 py-2 text-[0.75rem] text-white/55 underline-offset-4 hover:border-white/35 hover:text-[#f1efe8] hover:underline',
+                      ),
+                    ],
+                    ['Start your own agent'],
+                  ),
+                ],
+              ),
+            ],
+          ),
+          h.p(
+            [
+              Ui.className<Message>(
+                'max-w-3xl whitespace-pre-wrap text-sm leading-7 text-[#f1efe8] sm:text-base',
+              ),
+            ],
+            [displayedObjective],
+          ),
+          h.div(
+            [
+              Ui.className<Message>(
+                'grid gap-3 text-[0.75rem] text-white/45 sm:grid-cols-3',
+              ),
+            ],
+            [
+              h.div([], [`Loop ${loop?.state.replace(/_/g, ' ') ?? 'loading'}`]),
+              h.div([], [`Updated ${report?.updatedAtDisplay ?? 'loading'}`]),
+              h.div([], [`Status ${statusText(goal)}`]),
+            ],
+          ),
+        ],
+      ),
+      h.div(
+        [Ui.className<Message>('grid gap-3')],
+        [
+          consoleStat(
+            'Fleet health',
+            health?.overallState.replace(/_/g, ' ') ?? 'loading',
+            health === null
+              ? 'Public report is loading'
+              : health.overclaimBlocked
+                ? `${formatNumber(healthAttentionCount)} ${
+                    healthAttentionCount === 1 ? 'signal' : 'signals'
+                  } ${healthAttentionCount === 1 ? 'needs' : 'need'} attention`
+                : 'No stale public signals',
+            health?.overclaimBlocked === true ? 'warn' : live ? 'live' : 'muted',
+          ),
+          consoleStat(
+            'Fleet slots',
+            pylonSummary === null
+              ? 'loading'
+              : `Active ${formatNumber(readySlots)}/${formatNumber(activeSlots)} slots`,
+            pylonSummary === null
+              ? 'Public Pylon feed is loading'
+              : `${formatNumber(pylonSummary.sessionsOnlineNow)} sessions / ${formatNumber(
+                  pylonSummary.walletReadyPylonsOnlineNow,
+                )} wallet-ready`,
+            activeSlots > 0 ? 'live' : 'muted',
+          ),
+          h.div(
+            [
+              Ui.className<Message>(
+                'grid min-h-32 content-between gap-4 border border-[#222] bg-[#010102] p-4',
+              ),
+            ],
+            [
+              h.div(
+                [
+                  Ui.className<Message>(
+                    'flex items-center justify-between gap-3 text-[0.6875rem] uppercase text-white/45',
+                  ),
+                ],
+                [
+                  h.span([], ['Daily token pace']),
+                  h.span(
+                    [Ui.className<Message>('tabular-nums text-white/65')],
+                    [`${formatNumber(tokenPercent)}%`],
+                  ),
+                ],
+              ),
+              h.div(
+                [
+                  h.Role('progressbar'),
+                  h.AriaLabel('Daily token pace'),
+                  h.DataAttribute('value-min', '0'),
+                  h.DataAttribute('value-max', '100'),
+                  h.DataAttribute('value-now', String(tokenPercent)),
+                  Ui.className<Message>('h-2 bg-[#141414]'),
+                ],
+                [
+                  h.div(
+                    [
+                      h.Style({ width: `${tokenPercent}%` }),
+                      Ui.className<Message>('h-full bg-[#ffb400]'),
+                    ],
+                    [],
+                  ),
+                ],
+              ),
+              h.div(
+                [Ui.className<Message>('text-[0.75rem] text-white/45')],
+                [tokenPaceDetail(goal)],
+              ),
+            ],
+          ),
+        ],
+      ),
     ],
   )
 }
@@ -1180,109 +1440,120 @@ const loadedView = (
   )
   const isArtanis = agentRef === 'artanis'
   const isAdjutant = agentRef === 'adjutant'
+  const header =
+    isArtanis
+      ? artanisConsoleShell(goal, artanisReport, displayedObjective)
+      : h.header(
+          [Ui.className<Message>('grid gap-3 border-b border-[#222] pb-6')],
+          [
+            h.div(
+              [
+                Ui.className<Message>(
+                  'flex flex-wrap items-center justify-between gap-3',
+                ),
+              ],
+              [
+                h.div([Ui.className<Message>(Ui.eyebrowClass)], [
+                  'Public agent',
+                ]),
+                h.a(
+                  [
+                    h.Href('/'),
+                    Ui.className<Message>(
+                      'text-[0.75rem] text-white/45 underline-offset-4 hover:text-[#f1efe8] hover:underline',
+                    ),
+                  ],
+                  ['Start your own agent'],
+                ),
+              ],
+            ),
+            h.div(
+              [
+                Ui.className<Message>(
+                  'flex flex-wrap items-end justify-between gap-4',
+                ),
+              ],
+              [
+                h.h1(
+                  [
+                    Ui.className<Message>(
+                      'text-3xl font-semibold leading-none tracking-normal sm:text-4xl',
+                    ),
+                  ],
+                  [agentName],
+                ),
+                h.span(
+                  [
+                    Ui.className<Message>(
+                      'border border-[#333] px-2.5 py-1 text-[0.75rem] text-white/55',
+                    ),
+                  ],
+                  [statusText(goal)],
+                ),
+              ],
+            ),
+          ],
+        )
+
   return h.main(
     [
       h.DataAttribute('component', 'public-agent-page'),
       Ui.className<Message>(
-        'mx-auto grid min-h-screen max-w-5xl content-start gap-8 px-6 py-10 font-mono text-[#f1efe8] sm:px-8',
+        'mx-auto grid min-h-screen max-w-6xl content-start gap-8 px-6 py-10 font-mono text-[#f1efe8] sm:px-8',
       ),
     ],
     [
-      h.header(
-        [Ui.className<Message>('grid gap-3 border-b border-[#222] pb-6')],
-        [
-          h.div(
+      header,
+      isArtanis
+        ? null
+        : h.section(
+            [Ui.className<Message>('grid gap-3 border-b border-[#222] pb-6')],
             [
-              Ui.className<Message>(
-                'flex flex-wrap items-center justify-between gap-3',
-              ),
-            ],
-            [
-              h.div([Ui.className<Message>(Ui.eyebrowClass)], ['Public agent']),
-              h.a(
-                [
-                  h.Href('/'),
-                  Ui.className<Message>(
-                    'text-[0.75rem] text-white/45 underline-offset-4 hover:text-[#f1efe8] hover:underline',
-                  ),
-                ],
-                ['Start your own agent'],
-              ),
-            ],
-          ),
-          h.div(
-            [
-              Ui.className<Message>(
-                'flex flex-wrap items-end justify-between gap-4',
-              ),
-            ],
-            [
-              h.h1(
-                [
-                  Ui.className<Message>(
-                    'text-3xl font-semibold leading-none tracking-normal sm:text-4xl',
-                  ),
-                ],
-                [agentName],
-              ),
-              h.span(
-                [
-                  Ui.className<Message>(
-                    'border border-[#333] px-2.5 py-1 text-[0.75rem] text-white/55',
-                  ),
-                ],
-                [statusText(goal)],
-              ),
-            ],
-          ),
-        ],
-      ),
-      h.section(
-        [Ui.className<Message>('grid gap-3 border-b border-[#222] pb-6')],
-        [
-          h.div(
-            [Ui.className<Message>(Ui.eyebrowClass)],
-            [goal === null ? 'Campaign objective' : 'Current goal'],
-          ),
-          h.div(
-            [Ui.className<Message>('grid gap-3')],
-            [
-              h.p(
-                [
-                  Ui.className<Message>(
-                    'max-w-4xl whitespace-pre-wrap text-base leading-7 text-[#f1efe8]',
-                  ),
-                ],
-                [displayedObjective],
+              h.div(
+                [Ui.className<Message>(Ui.eyebrowClass)],
+                [goal === null ? 'Campaign objective' : 'Current goal'],
               ),
               h.div(
+                [Ui.className<Message>('grid gap-3')],
                 [
-                  Ui.className<Message>(
-                    'flex flex-wrap gap-x-6 gap-y-2 text-[0.75rem] text-white/45',
-                  ),
-                ],
-                goal === null
-                  ? [`Awaiting the first public durable ${agentName} goal.`]
-                  : [
-                      h.span([], [usageText(goal)]),
-                      h.span(
-                        [],
-                        [
-                          goal.currentRunId === null
-                            ? 'no active run'
-                            : `current run ${goal.currentRunId}`,
-                        ],
-                      ),
-                      h.span(
-                        [],
-                        [`updated ${friendlyRelativeTime(goal.updatedAt)}`],
+                  h.p(
+                    [
+                      Ui.className<Message>(
+                        'max-w-4xl whitespace-pre-wrap text-base leading-7 text-[#f1efe8]',
                       ),
                     ],
+                    [displayedObjective],
+                  ),
+                  h.div(
+                    [
+                      Ui.className<Message>(
+                        'flex flex-wrap gap-x-6 gap-y-2 text-[0.75rem] text-white/45',
+                      ),
+                    ],
+                    goal === null
+                      ? [`Awaiting the first public durable ${agentName} goal.`]
+                      : [
+                          h.span([], [usageText(goal)]),
+                          h.span(
+                            [],
+                            [
+                              goal.currentRunId === null
+                                ? 'no active run'
+                                : `current run ${goal.currentRunId}`,
+                            ],
+                          ),
+                          h.span(
+                            [],
+                            [
+                              `updated ${friendlyRelativeTime(goal.updatedAt)}`,
+                            ],
+                          ),
+                        ],
+                  ),
+                ],
               ),
             ],
           ),
-        ],
-      ),
       isArtanis ? artanisReportView(artanisReport) : null,
       isArtanis ? pylonStatsView(pylonStats) : null,
       isAdjutant ? adjutantActivityView(adjutantActivity) : null,
