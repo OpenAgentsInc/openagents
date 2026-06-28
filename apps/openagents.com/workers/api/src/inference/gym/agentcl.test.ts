@@ -4,6 +4,7 @@ import {
   AGENTCL_EVAL_SCHEMA,
   AGENTCL_REPO_REUSE_GYM_EXPERIMENT,
   AGENTCL_REPO_REUSE_PLAN_SCHEMA,
+  assessAgentClLearningClaimGate,
   buildAgentClRepoReusePlan,
   runAgentClRepoReuseFixtureEval,
 } from './agentcl'
@@ -82,5 +83,40 @@ describe('AgentCL repo-reuse gym environment', () => {
     for (const pass of memoryWritePasses) {
       expect(pass.taskRefs.some(ref => heldOutRefs.has(ref))).toBe(false)
     }
+  })
+
+  test('requires separate PG, SG, and GG before memory-learning claims', () => {
+    const result = runAgentClRepoReuseFixtureEval()
+    const gate = assessAgentClLearningClaimGate({
+      claimKind: 'continual_learning',
+      eval: result.eval,
+    })
+
+    expect(gate.requiresSeparatePgSgGg).toBe(true)
+    expect(gate.hasSeparatePlasticityGain).toBe(true)
+    expect(gate.hasSeparateStabilityGain).toBe(true)
+    expect(gate.hasSeparateGeneralizationGain).toBe(true)
+    expect(gate.decisionGradeClaimAllowed).toBe(false)
+    expect(gate.publicClaimAllowed).toBe(false)
+    expect(gate.blockerRefs).toContain('blocker.gym.agentcl.not_decision_grade')
+    expect(gate.blockerRefs).toContain(
+      'blocker.gym.agentcl.public_claim_not_eligible',
+    )
+  })
+
+  test('rejects a collapsed memory-improved metric as AgentCL evidence', () => {
+    const result = runAgentClRepoReuseFixtureEval()
+    const gate = assessAgentClLearningClaimGate({
+      claimKind: 'memory_improvement',
+      eval: result.eval,
+      collapsedMemoryImprovementMetric: 0.12,
+    })
+
+    expect(gate.collapsedMemoryImprovementMetricAccepted).toBe(false)
+    expect(gate.decisionGradeClaimAllowed).toBe(false)
+    expect(gate.publicClaimAllowed).toBe(false)
+    expect(gate.blockerRefs).toContain(
+      'blocker.gym.agentcl.collapsed_memory_improvement_metric',
+    )
   })
 })
