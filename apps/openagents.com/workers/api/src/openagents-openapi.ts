@@ -1721,6 +1721,9 @@ const schemaComponents = (): JsonSchema => ({
   PublicKhalaTokensServedModelMix: objectSummary(
     'Public-safe "Khala Tokens Served" model/provider mix for /stats: schemaVersion openagents.public_khala_model_mix.v1, window, totalTokens, and canonical aggregate groups { family, label, tokens, reqs, pct }, plus generatedAt and the declared live_at_read staleness contract. Raw provider ids and model ids are collapsed into glm, fireworks_deepseek, pylon_codex, pylon_claude, gpt_oss, gemini, or other before serving; all real served-token rows count so the mix reconciles with the headline counter. No per-user, per-team, per-account, demand label, raw provider/model, prompt, completion, or secret material. Read-only stats projection; grants no payout, settlement, routing, provider, or public-claim authority.',
   ),
+  PublicKhalaTokensServedDemandMix: objectSummary(
+    'Public-safe "Khala Tokens Served" demand/adoption mix for /stats and Khala GTM checks: schemaVersion openagents.public_khala_demand_mix.v1, window, totalTokens, and aggregate groups { kind, source, client, tokens, reqs, pct }, plus generatedAt and the declared live_at_read staleness contract. Demand kind is bounded to external, internal, internal_stress, own_capacity, or unlabeled; source/client labels are sanitized aggregate labels with empty values bucketed as unknown. All real served-token rows count so the mix reconciles with the headline counter. No per-user, per-team, per-account, raw provider/model, prompt, completion, trace, API key, wallet, payment, or secret material. Read-only stats projection; grants no payout, settlement, routing, provider, or public-claim authority.',
+  ),
   PublicRelayHealth: objectSummary(
     'Public-safe canonical market relay health projection: current status (healthy/degraded/unhealthy, or unknown before the first probe), per-leg NIP-11 (HTTP status, latency, relay name) and websocket REQ/EOSE round-trip (outcome, latency) results, bounded retained probe history (7 days), typed status-transition events (30 days), generatedAt, probe cadence, and the declared stored_snapshot staleness contract with a staleExceeded flag. Read-only monitoring evidence; grants no relay-mutation, payout, settlement, or public-claim authority.',
   ),
@@ -2017,6 +2020,9 @@ const schemaComponents = (): JsonSchema => ({
   ),
   PylonApiAssignmentWriteResponse: objectSummary(
     'Pylon assignment create or closeout response with a public-safe assignment projection, controlled dispatch gate metadata on create, and idempotency flag when applicable.',
+  ),
+  PylonOperatorQuarantineResponse: objectSummary(
+    'Operator Pylon quarantine response with the public-safe quarantine projection: active/released state, quarantine ref, public reason/source/action refs, and optional expiry. No wallet material, private telemetry, raw runner data, payout, or settlement state.',
   ),
   AccountPylonsResponse: objectSummary(
     'Signed-in account view of the Pylons owned by the OpenAuth user, resolved through that user’s linked OpenAgents agents. Returns public-safe Pylon registration projections, recent public-safe assignment and event activity, the linked-agent list (agentRef, displayName, linkKind, tokenPrefix only), and summary counts. Raw agent tokens, wallet material, private telemetry, payment material, and raw timestamps are excluded. Read-only projection; grants no assignment, payment, or settlement authority.',
@@ -3960,6 +3966,9 @@ const requestSchemas = (): JsonSchema => ({
   ),
   PylonAssignmentCloseoutRequest: objectSummary(
     'Admin-only request to close a Pylon assignment as accepted work or rejected work from retained public-safe evidence refs. Accepted closeout requires acceptedWorkRefs and prior artifact/proof refs.',
+  ),
+  PylonOperatorQuarantineRequest: objectSummary(
+    'Admin-only request to record or release a Pylon executor quarantine with state active/released, public reason refs, public source refs, public action refs, and optional expiresAt. Public-safe refs only; no raw telemetry, private logs, wallet material, credentials, or prompt content.',
   ),
   PylonAssignmentAcceptanceRequest: objectSummary(
     'Registered Pylon assignment acceptance report with accepted state, resourceMode, and acceptance refs.',
@@ -6594,6 +6603,27 @@ const paths = (): JsonSchema => ({
       },
     }),
   },
+  '/api/operator/pylons/{pylonRef}/quarantine': {
+    post: operation({
+      operationId: 'quarantinePylonExecutor',
+      summary: 'Record or release a Pylon executor quarantine',
+      description:
+        'Admin-only route to record an active or released executor quarantine for a Pylon. Active quarantines project on heartbeat and block new assignment dispatch until released or expired. The request carries public reason/source/action refs and optional expiry only; it stores no wallet material, raw runner data, private telemetry, prompts, credentials, payout state, or settlement state. This route grants no payout, settlement, wallet spend, provider routing, public earning claim, or cross-owner assignment authority.',
+      tags: ['Pylon', 'Operator'],
+      security: adminBearer,
+      parameters: [pathParam('pylonRef', 'Pylon ref.')],
+      requestBody: jsonContent(
+        '#/components/schemas/PylonOperatorQuarantineRequest',
+      ),
+      responses: {
+        '201': okJson(
+          'Pylon quarantine response.',
+          '#/components/schemas/PylonOperatorQuarantineResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
   '/api/pylons/{pylonRef}/assignments': {
     get: operation({
       operationId: 'listOwnedPylonAssignments',
@@ -9216,6 +9246,29 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Public Khala model/provider family mix.',
           '#/components/schemas/PublicKhalaTokensServedModelMix',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/khala-tokens-served/demand-mix': {
+    get: operation({
+      operationId: 'getPublicKhalaTokensServedDemandMix',
+      summary: 'Read public Khala demand/adoption mix',
+      description:
+        'Returns the public-safe Khala tokens-served demand/adoption mix for /stats and Khala GTM checks: schemaVersion openagents.public_khala_demand_mix.v1, window (today, 7d, 30d, or all; default 30d), totalTokens, and aggregate rows { kind, source, client, tokens, reqs, pct }, plus generatedAt and the declared live_at_read staleness contract. Demand kind is bounded to external, internal, internal_stress, own_capacity, or unlabeled; source/client labels are sanitized aggregate labels with empty values bucketed as unknown. All real served-token rows count so the mix reconciles with the headline counter while keeping internal dogfood, own-capacity, and external demand distinguishable. Aggregate only; no per-user, per-team, per-account, raw provider/model, prompt, completion, trace, API key, wallet, payment, or secret material. Read-only stats projection; grants no payout, settlement, routing, provider, or public-claim authority.',
+      tags: ['Public Proof', 'Inference'],
+      security: [],
+      parameters: [
+        queryParam(
+          'window',
+          'Time window for the mix: today, 7d, 30d, or all. Default 30d.',
+        ),
+      ],
+      responses: {
+        '200': okJson(
+          'Public Khala demand/adoption mix.',
+          '#/components/schemas/PublicKhalaTokensServedDemandMix',
         ),
         ...errorResponses(),
       },

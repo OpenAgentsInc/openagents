@@ -1,6 +1,7 @@
 import {
   InferenceAnalyticsResponse,
   PublicKhalaTokensServedAggregate,
+  PublicKhalaTokensServedDemandMix,
   PublicKhalaTokensServedHistory,
   PublicKhalaTokensServedModelMix,
   type PublicKhalaTokensServedModelFamily,
@@ -144,6 +145,12 @@ export type TokenUsageLedgerShape = Readonly<{
     filters?: TokenUsageLeaderboardFilters,
   ) => Effect.Effect<
     typeof PublicKhalaTokensServedModelMix.Type,
+    TokenUsageLedgerStorageError | TokenUsageLedgerValidationError
+  >
+  readPublicTokensServedDemandMix: (
+    filters?: TokenUsageLeaderboardFilters,
+  ) => Effect.Effect<
+    typeof PublicKhalaTokensServedDemandMix.Type,
     TokenUsageLedgerStorageError | TokenUsageLedgerValidationError
   >
   readLeaderboardPreference: (
@@ -782,6 +789,21 @@ const decodePublicTokensServedModelMix = (
       }),
   })
 
+const decodePublicTokensServedDemandMix = (
+  value: unknown,
+): Effect.Effect<
+  typeof PublicKhalaTokensServedDemandMix.Type,
+  TokenUsageLedgerValidationError
+> =>
+  Effect.try({
+    try: () => S.decodeUnknownSync(PublicKhalaTokensServedDemandMix)(value),
+    catch: error =>
+      new TokenUsageLedgerValidationError({
+        field: 'public_tokens_served_demand_mix',
+        message: error instanceof Error ? error.message : String(error),
+      }),
+  })
+
 const decodeLeaderboardsResponse = (
   value: unknown,
 ): Effect.Effect<
@@ -1396,6 +1418,19 @@ const roundedPercent = (tokens: number, totalTokens: number): number =>
   totalTokens <= 0
     ? 0
     : Math.round((tokens / totalTokens) * 100_000_000) / 1_000_000
+
+const publicDemandLabel = (value: string | null | undefined): string => {
+  const normalized = optionalText(value ?? undefined)
+    ?.toLowerCase()
+    .replace(/[^a-z0-9_.:-]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+
+  if (normalized === undefined || normalized === '') {
+    return 'unknown'
+  }
+
+  return normalized.length > 80 ? normalized.slice(0, 80) : normalized
+}
 
 const localDayFormatter = (timezone: string): Intl.DateTimeFormat =>
   new Intl.DateTimeFormat('en-US', {
@@ -2380,6 +2415,87 @@ export const makeD1TokenUsageLedger = (
         )
 
       return yield* decodePublicTokensServedModelMix({
+        groups,
+        totalTokens,
+        window,
+      })
+    }),
+
+  // Public-safe demand/adoption mix for /stats and the Khala GTM scoreboard:
+  // aggregate by bounded demand kind plus sanitized source/client labels. This
+  // projection reconciles with the headline counter while preserving the
+  // internal-vs-external distinction required for honest demand claims.
+  readPublicTokensServedDemandMix: (filters = {}) =>
+    Effect.gen(function* () {
+      const window = yield* normalizeLeaderboardWindow(filters.window ?? '30d')
+      const nowIso = yield* requireTimestamp(
+        'now',
+        filters.now ?? runtime.nowIso(),
+      )
+      const since = leaderboardWindowSince(window, nowIso, runtime)
+
+      const rows = yield* d1Effect(
+        'tokenUsageEvents.publicTokensServedDemandMix',
+        () =>
+          db
+            .prepare(
+              since === undefined
+                ? `SELECT
+                      COALESCE(demand_kind, 'unlabeled') AS demand_kind,
+                      COALESCE(NULLIF(demand_source, ''), 'unknown') AS demand_source,
+                      COALESCE(NULLIF(demand_client, ''), 'unknown') AS demand_client,
+                      COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)
+                        AS tokens,
+                      COUNT(*) AS usage_events
+                     FROM token_usage_events
+                    WHERE ${publicTokensServedDemandWhere}
+                    GROUP BY demand_kind, demand_source, demand_client`
+                : `SELECT
+                      COALESCE(demand_kind, 'unlabeled') AS demand_kind,
+                      COALESCE(NULLIF(demand_source, ''), 'unknown') AS demand_source,
+                      COALESCE(NULLIF(demand_client, ''), 'unknown') AS demand_client,
+                      COALESCE(SUM(input_tokens), 0) + COALESCE(SUM(output_tokens), 0)
+                        AS tokens,
+                      COUNT(*) AS usage_events
+                     FROM token_usage_events
+                    WHERE observed_at >= ? AND ${publicTokensServedDemandWhere}
+                    GROUP BY demand_kind, demand_source, demand_client`,
+            )
+            .bind(...(since === undefined ? [] : [since]))
+            .all<{
+              demand_client: string | null
+              demand_kind: string | null
+              demand_source: string | null
+              tokens: number | null
+              usage_events: number | null
+            }>(),
+      )
+
+      const groupsWithoutPct = rows.results.map(row => ({
+        client: publicDemandLabel(row.demand_client),
+        kind: demandKindFromText(row.demand_kind),
+        reqs: Math.max(0, Math.trunc(row.usage_events ?? 0)),
+        source: publicDemandLabel(row.demand_source),
+        tokens: Math.max(0, Math.trunc(row.tokens ?? 0)),
+      }))
+      const totalTokens = groupsWithoutPct.reduce(
+        (sum, row) => sum + row.tokens,
+        0,
+      )
+      const groups = groupsWithoutPct
+        .map(row => ({
+          ...row,
+          pct: roundedPercent(row.tokens, totalTokens),
+        }))
+        .sort(
+          (left, right) =>
+            right.tokens - left.tokens ||
+            left.kind.localeCompare(right.kind) ||
+            left.source.localeCompare(right.source) ||
+            left.client.localeCompare(right.client),
+        )
+
+      return yield* decodePublicTokensServedDemandMix({
         groups,
         totalTokens,
         window,
