@@ -14,8 +14,10 @@ import {
 import {
   CodexCliMissingError,
   connectFleetAccount,
+  linkFleetPylon,
   listFleetAccounts,
   type KhalaFleetConnectResult,
+  type KhalaFleetLinkResult,
   type KhalaFleetStatus,
 } from "./fleet.js"
 import {
@@ -71,6 +73,7 @@ type ParsedCommand =
   | { readonly kind: "feedback"; readonly text: string | undefined }
   | { readonly kind: "fleetConnect"; readonly accountRef: string | undefined; readonly force: boolean }
   | { readonly kind: "fleetRun" }
+  | { readonly kind: "fleetLink" }
   | { readonly kind: "fleetStatus" }
   | { readonly kind: "help" }
   | { readonly kind: "info" }
@@ -191,6 +194,15 @@ export async function runKhalaCli(argv: ReadonlyArray<string>, env: Record<strin
         }
         throw error
       }
+    }
+    if (args.command.kind === "fleetLink") {
+      const result = await linkFleetPylon({
+        env,
+        baseUrl: args.baseUrl,
+        token: args.token,
+      })
+      process.stdout.write(args.json ? `${JSON.stringify(result)}\n` : `${formatFleetLink(result)}\n`)
+      return 0
     }
     if (args.command.kind === "fleetStatus") {
       const status = await listFleetAccounts({ env })
@@ -507,7 +519,9 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
       command = { kind: "fleetStatus" }
     } else if (sub === "run") {
       command = { kind: "fleetRun" }
-    } else if (sub === undefined || sub === "connect" || sub === "add" || sub === "link") {
+    } else if (sub === "link") {
+      command = { kind: "fleetLink" }
+    } else if (sub === undefined || sub === "connect" || sub === "add") {
       // `khala fleet`, `khala fleet connect`, `khala fleet add` all connect.
       // Optional positional ref: `khala fleet connect codex-2` (or --account).
       command = {
@@ -516,7 +530,7 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
         force: fleetForce,
       }
     } else {
-      throw new Error(`Unknown fleet command: ${sub}. Use \`khala fleet connect\`, \`khala fleet status\`, or \`khala fleet run\`.`)
+      throw new Error(`Unknown fleet command: ${sub}. Use \`khala fleet connect\`, \`khala fleet link\`, \`khala fleet status\`, or \`khala fleet run\`.`)
     }
   } else if (maybeCommand === "codex") {
     command = positional[1] === "status"
@@ -1689,8 +1703,22 @@ function formatFleetConnect(result: KhalaFleetConnectResult): string {
     "Your Codex credentials stay on this machine; OpenAgents orchestrates, your local Pylon executes.",
     "",
     "Next:",
+    "  khala login               Sign in to Khala/OpenAgents",
+    "  khala fleet link          Link this Pylon to that Khala account",
     "  khala fleet status        See your fleet",
     "  khala fleet connect       Add another account for more throughput",
+  ].join("\n"))
+}
+
+function formatFleetLink(result: KhalaFleetLinkResult): string {
+  return terminalStyle.meta([
+    `${terminalStyle.assistant("Khala fleet:")} Linked local Pylon ${result.pylonRef}`,
+    `registration: ${result.registrationRef}`,
+    `public key: ${result.publicKey.slice(0, 12)}…${result.publicKey.slice(-8)}`,
+    "",
+    "Next:",
+    "  khala fleet status        See connected Codex accounts",
+    "  khala spawn --strategy pylon --pylon-ref " + result.pylonRef + " --objective \"implement public issue #123\"",
   ].join("\n"))
 }
 
@@ -1944,6 +1972,7 @@ Usage:
   khala tokens
   khala fleet connect
   khala fleet connect --account codex-2
+  khala fleet link
   khala fleet status
   khala fleet run --repo owner/repo --issues 123,124 --verify "bun test" --dry-run
   khala auth codex

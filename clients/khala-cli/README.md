@@ -25,6 +25,7 @@ khala login
 khala logout
 khala fleet connect           # connect your own Codex account (paste-free device login)
 khala fleet connect --account codex-2   # add another distinct account for more throughput
+khala fleet link              # link this local Pylon to your signed-in Khala account
 khala fleet status            # list your connected Codex fleet + readiness
 khala fleet run --repo owner/repo --issues 123,124 --verify "bun test" --dry-run
 khala auth codex
@@ -145,6 +146,9 @@ no long-string pasting:
   shows a SHORT code to enter, then confirms with the linked account email.
   Requires the `codex` CLI (`npm install -g @openai/codex`); a friendly hint is
   printed if it is missing.
+- `khala fleet link` registers this local Pylon's public identity with your
+  signed-in Khala/OpenAgents owner token from `khala login`, so caller-owned
+  Pylon dispatch can target it without token copying.
 - Run it again to add more accounts (auto-assigned `codex`, `codex-2`,
   `codex-3`, …), or pass `--account <ref>` to name one. Distinct ChatGPT
   accounts have distinct rate budgets, so each new distinct account is real
@@ -171,6 +175,8 @@ local Pylon and the dispatch gate can see the fleet.
 - `khala login` starts OpenAgents device auth.
 - `khala logout` clears the local OpenAgents token.
 - `khala fleet connect` connects a Codex account to your fleet (paste-free).
+- `khala fleet link` associates this local Pylon with your signed-in Khala owner
+  account.
 - `khala fleet status` lists your connected Codex fleet and readiness.
 - `khala fleet run --repo owner/repo --issues 123,124 --verify "bun test"`
   starts or plans the backlog supervisor for your connected fleet.

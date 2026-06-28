@@ -1,9 +1,12 @@
+import { createHash, randomBytes } from "node:crypto"
 import { existsSync } from "node:fs"
 import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises"
-import { homedir } from "node:os"
+import { homedir, hostname } from "node:os"
 import { dirname, join, resolve } from "node:path"
 
 import { spawnProcess } from "./proc.js"
+import { readStoredAgentToken } from "./token-store.js"
+import { DEFAULT_BASE_URL } from "./types.js"
 
 // `khala fleet` is the dead-simple onboarding surface for connecting your own
 // Codex accounts to Khala so a per-user Artanis can burn down a backlog across
@@ -48,12 +51,28 @@ export type KhalaFleetConnectResult = {
   readonly status: "connected" | "already_connected"
 }
 
+export type KhalaFleetLinkResult = {
+  readonly schema: "openagents.khala.fleet_link.v1"
+  readonly pylonHome: string
+  readonly configPath: string
+  readonly pylonRef: string
+  readonly publicKey: string
+  readonly npub: string
+  readonly registrationRef: string
+  readonly linked: true
+  readonly capabilityRefs: ReadonlyArray<string>
+}
+
 export type KhalaCodexDeviceLoginRunner = (input: {
   readonly env: Record<string, string | undefined>
   readonly home: string
 }) => Promise<{ readonly exitCode: number }>
 
 type ConfigRecord = Record<string, unknown>
+
+const KHALA_FLEET_LINK_SCHEMA = "openagents.khala.fleet_link.v1" as const
+const PYLON_CLIENT_VERSION = "openagents.pylon@1.0.5"
+const CODEX_AGENT_CAPABILITY_REF = "capability.pylon.local_codex"
 
 // Raised when the `codex` CLI is not installed. The CLI catches this and prints
 // a friendly install hint instead of a raw spawn error.
@@ -230,6 +249,192 @@ async function writePylonConfig(configPath: string, config: ConfigRecord): Promi
   await rename(tempPath, configPath)
 }
 
+function stableHash(input: string, length = 24): string {
+  return createHash("sha256").update(input).digest("hex").slice(0, length)
+}
+
+function sanitizeLabel(value: string): string {
+  const sanitized = value.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "")
+  return sanitized || "pylon-node"
+}
+
+const BECH32_CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
+
+function bech32Polymod(values: ReadonlyArray<number>): number {
+  const generator = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3]
+  let chk = 1
+  for (const value of values) {
+    const top = chk >> 25
+    chk = (chk & 0x1ffffff) << 5 ^ value
+    for (let index = 0; index < 5; index += 1) {
+      if (((top >> index) & 1) === 1) chk ^= generator[index] ?? 0
+    }
+  }
+  return chk
+}
+
+function bech32HrpExpand(hrp: string): number[] {
+  const out: number[] = []
+  for (const char of hrp) out.push(char.charCodeAt(0) >> 5)
+  out.push(0)
+  for (const char of hrp) out.push(char.charCodeAt(0) & 31)
+  return out
+}
+
+function bytesToBech32Words(bytes: Buffer): number[] {
+  const words: number[] = []
+  let value = 0
+  let bits = 0
+  for (const byte of bytes) {
+    value = (value << 8) | byte
+    bits += 8
+    while (bits >= 5) {
+      words.push((value >> (bits - 5)) & 31)
+      bits -= 5
+    }
+  }
+  if (bits > 0) words.push((value << (5 - bits)) & 31)
+  return words
+}
+
+function encodeNpub(publicKey: string): string {
+  const hrp = "npub"
+  const words = bytesToBech32Words(Buffer.from(publicKey, "hex"))
+  const values = [...bech32HrpExpand(hrp), ...words]
+  const polymod = bech32Polymod([...values, 0, 0, 0, 0, 0, 0]) ^ 1
+  const checksum = Array.from({ length: 6 }, (_, index) => (polymod >> (5 * (5 - index))) & 31)
+  return `${hrp}1${[...words, ...checksum].map(word => BECH32_CHARSET[word] ?? "").join("")}`
+}
+
+function generatePublicKey(): string {
+  return randomBytes(32).toString("hex")
+}
+
+type PylonIdentityRecord = {
+  readonly nodeId: string
+  readonly pylonRef: string
+  readonly nodeLabel: string
+  readonly publicKey: string
+  readonly npub: string
+  readonly createdAt: string
+}
+
+function parseIdentity(value: unknown): PylonIdentityRecord | null {
+  const record = asRecord(value)
+  if (record === null) return null
+  if (
+    typeof record.nodeId === "string" &&
+    typeof record.pylonRef === "string" &&
+    typeof record.nodeLabel === "string" &&
+    typeof record.publicKey === "string" &&
+    /^[0-9a-f]{64}$/i.test(record.publicKey) &&
+    typeof record.npub === "string" &&
+    typeof record.createdAt === "string"
+  ) {
+    return record as PylonIdentityRecord
+  }
+  return null
+}
+
+async function loadOrCreatePylonIdentity(pylonHome: string): Promise<PylonIdentityRecord> {
+  const identityPath = join(pylonHome, "identity.json")
+  try {
+    const existing = parseIdentity(JSON.parse(await readFile(identityPath, "utf8")))
+    if (existing !== null) return existing
+  } catch {
+    // Fall through and create a public identity record.
+  }
+
+  const publicKey = generatePublicKey()
+  const nodeLabel = sanitizeLabel(hostname())
+  const identity: PylonIdentityRecord = {
+    nodeId: `pylon_${stableHash(publicKey)}`,
+    pylonRef: `pylon.${stableHash(`${nodeLabel}:${publicKey}`, 20)}`,
+    nodeLabel,
+    publicKey,
+    npub: encodeNpub(publicKey),
+    createdAt: new Date().toISOString(),
+  }
+  await mkdir(dirname(identityPath), { recursive: true })
+  await writeFile(identityPath, `${JSON.stringify(identity, null, 2)}\n`, { mode: 0o600 })
+  return identity
+}
+
+async function readRuntimeCapabilityRefs(pylonHome: string): Promise<string[]> {
+  try {
+    const parsed = JSON.parse(await readFile(join(pylonHome, "runtime-state.json"), "utf8"))
+    const refs = asRecord(parsed)?.capabilityRefs
+    return Array.isArray(refs) ? refs.filter((ref): ref is string => typeof ref === "string") : []
+  } catch {
+    return []
+  }
+}
+
+async function capabilityRefsForFleetLink(pylonHome: string): Promise<string[]> {
+  const refs = await readRuntimeCapabilityRefs(pylonHome)
+  const config = await readPylonConfig(pylonConfigPath(pylonHome))
+  const accounts = parseCodexAccounts(config)
+  const readyAccounts = await Promise.all(
+    accounts.map(async account => codexHomeHasLogin(account.home ?? codexAccountHome(pylonHome, account.ref))),
+  )
+  if (readyAccounts.some(Boolean)) refs.push(CODEX_AGENT_CAPABILITY_REF)
+  return [...new Set(refs)]
+}
+
+async function tokenForFleetLink(input: {
+  readonly env: Record<string, string | undefined>
+  readonly explicitToken?: string | undefined
+}): Promise<string> {
+  const explicit = input.explicitToken?.trim()
+  if (explicit?.startsWith("oa_agent_")) return explicit
+  const envToken = input.env.OPENAGENTS_AGENT_TOKEN?.trim()
+  if (envToken?.startsWith("oa_agent_")) return envToken
+  const stored = await readStoredAgentToken(input.env)
+  if (stored !== undefined) return stored
+  throw new Error("khala fleet link requires a signed-in Khala account. Run `khala login` first.")
+}
+
+async function postPylonFleetLink(input: {
+  readonly baseUrl: string
+  readonly token: string
+  readonly identity: PylonIdentityRecord
+  readonly capabilityRefs: ReadonlyArray<string>
+  readonly fetch: typeof fetch
+}): Promise<{ readonly registrationRef: string }> {
+  const body = {
+    schema: "openagents.pylon.register.v0.3",
+    pylonRef: input.identity.pylonRef,
+    lifecycle: "online",
+    clientProtocolVersion: "0.3.0",
+    clientVersion: PYLON_CLIENT_VERSION,
+    resourceMode: "background_20",
+    displayName: input.identity.nodeLabel,
+    capabilityRefs: input.capabilityRefs,
+    statusRefs: ["status.public.khala_fleet_linked"],
+    providerNostrPubkey: input.identity.publicKey,
+    providerNostrNpub: input.identity.npub,
+  }
+  const response = await input.fetch(new URL("/api/pylons/register", input.baseUrl).toString(), {
+    body: JSON.stringify(body),
+    headers: {
+      authorization: `Bearer ${input.token}`,
+      "content-type": "application/json",
+      "Idempotency-Key": `khala-fleet-link:${input.identity.pylonRef}`,
+      "x-pylon-ref": input.identity.pylonRef,
+    },
+    method: "POST",
+  })
+  const text = await response.text()
+  if (!response.ok) {
+    throw new Error(`OpenAgents rejected the Pylon link (${response.status}): ${text || response.statusText}`)
+  }
+  const parsed = text.trim() ? JSON.parse(text) : {}
+  const registrationRef = typeof parsed.registrationRef === "string"
+    ? parsed.registrationRef
+    : `registration.${input.identity.pylonRef}`
+  return { registrationRef }
+}
+
 async function codexHomeHasLogin(home: string): Promise<boolean> {
   try {
     const info = await stat(join(home, "auth.json"))
@@ -358,5 +563,39 @@ export async function connectFleetAccount(
     pylonHome,
     configPath,
     status,
+  }
+}
+
+export async function linkFleetPylon(
+  options: {
+    readonly env?: Record<string, string | undefined>
+    readonly baseUrl?: string | undefined
+    readonly token?: string | undefined
+    readonly fetch?: typeof fetch | undefined
+  } = {},
+): Promise<KhalaFleetLinkResult> {
+  const env = options.env ?? process.env
+  const pylonHome = resolvePylonHome(env)
+  const configPath = pylonConfigPath(pylonHome)
+  const token = await tokenForFleetLink({ env, explicitToken: options.token })
+  const identity = await loadOrCreatePylonIdentity(pylonHome)
+  const capabilityRefs = await capabilityRefsForFleetLink(pylonHome)
+  const linked = await postPylonFleetLink({
+    baseUrl: options.baseUrl || env.KHALA_BASE_URL || DEFAULT_BASE_URL,
+    token,
+    identity,
+    capabilityRefs,
+    fetch: options.fetch ?? fetch,
+  })
+  return {
+    schema: KHALA_FLEET_LINK_SCHEMA,
+    pylonHome,
+    configPath,
+    pylonRef: identity.pylonRef,
+    publicKey: identity.publicKey,
+    npub: identity.npub,
+    registrationRef: linked.registrationRef,
+    linked: true,
+    capabilityRefs,
   }
 }
