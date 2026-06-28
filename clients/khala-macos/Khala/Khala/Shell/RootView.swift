@@ -2,20 +2,39 @@ import SwiftUI
 
 struct RootView: View {
     @ObservedObject var store: ConversationStore
+    @Binding var isShowingSettings: Bool
     @State private var draft = ""
     @State private var apiKeyDraft = ""
-    @State private var isShowingSettings = false
     @State private var isSending = false
+    @State private var isNodeOnlineRequested = false
     @State private var banner: String?
 
     var body: some View {
-        NavigationSplitView { sidebar } content: { chatPane } detail: { inspector }
+        KhalaDesktopShell {
+            sidebar
+        } main: {
+            chatPane
+        } inspector: {
+            inspector
+        }
             .navigationTitle("Khala")
             .toolbar {
                 ToolbarItemGroup {
-                    Text("Khala").font(.caption.weight(.semibold)).padding(.horizontal, 10).padding(.vertical, 5).background(.quaternary, in: Capsule())
+                    ModelPill()
                     Button { store.createConversation() } label: { Label("New Chat", systemImage: "square.and.pencil") }
-                    Button { isShowingSettings.toggle() } label: { Label("Settings", systemImage: "gearshape") }
+                        .help("New Chat")
+                    Button { showVoicePlaceholder() } label: { Label("Voice Input", systemImage: "waveform") }
+                        .help("Voice Input")
+                    Toggle(isOn: $isNodeOnlineRequested) {
+                        Label("Node Online", systemImage: "antenna.radiowaves.left.and.right")
+                    }
+                    .toggleStyle(.button)
+                    .help("Node Online")
+                    .onChange(of: isNodeOnlineRequested) { _, requested in
+                        banner = requested ? "Node online was requested. The Pylon supervisor is not wired in this shell yet." : "Node provider mode is offline."
+                    }
+                    Button { isShowingSettings = true } label: { Label("Settings", systemImage: "gearshape") }
+                        .help("Settings")
                 }
             }
             .sheet(isPresented: $isShowingSettings) { settings }
@@ -44,7 +63,7 @@ struct RootView: View {
             Divider()
             StatusLine(title: "Local Pylon", value: "Unavailable", systemImage: "bolt.horizontal")
             StatusLine(title: "Apple FM", value: "Not attached", systemImage: "cpu")
-            StatusLine(title: "Provider Mode", value: "Offline", systemImage: "antenna.radiowaves.left.and.right")
+            StatusLine(title: "Provider Mode", value: isNodeOnlineRequested ? "Requested" : "Offline", systemImage: "antenna.radiowaves.left.and.right")
         }
         .padding()
         .frame(minWidth: 250)
@@ -92,7 +111,7 @@ struct RootView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 Text("Node").font(.title2.bold())
-                InspectorCard(title: "Pylon Supervisor", status: "Unavailable") { Text("This scaffold does not launch or attach to Pylon yet. Provider capacity stays offline until a verified local supervisor is implemented.") }
+                InspectorCard(title: "Pylon Supervisor", status: isNodeOnlineRequested ? "Requested" : "Unavailable") { Text("This shell does not launch or attach to Pylon yet. Provider capacity stays offline until a verified local supervisor is implemented.") }
                 InspectorCard(title: "Apple FM Bridge", status: "Not attached") { Text("No Apple FM helper is bundled by this target. The app will not advertise Apple FM capacity.") }
                 InspectorCard(title: "Fleet", status: "Local only") { Text("Connected accounts, assignments, closeouts, and receipts are reserved for the Pylon integration pass.") }
                 Text("Privacy").font(.headline)
@@ -119,6 +138,10 @@ struct RootView: View {
         }.padding(24).frame(width: 460)
     }
 
+    private func showVoicePlaceholder() {
+        banner = "Voice input is reserved for the macOS audio integration pass."
+    }
+
     private func send() {
         let prompt = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !prompt.isEmpty, !isSending else { return }
@@ -136,6 +159,43 @@ struct RootView: View {
                 await MainActor.run { store.updateMessage(assistant.id, in: conversationID, content: (error as? LocalizedError)?.errorDescription ?? error.localizedDescription); isSending = false }
             }
         }
+    }
+}
+
+struct KhalaDesktopShell<Sidebar: View, Main: View, Inspector: View>: View {
+    private let sidebar: Sidebar
+    private let main: Main
+    private let inspector: Inspector
+
+    init(
+        @ViewBuilder sidebar: () -> Sidebar,
+        @ViewBuilder main: () -> Main,
+        @ViewBuilder inspector: () -> Inspector
+    ) {
+        self.sidebar = sidebar()
+        self.main = main()
+        self.inspector = inspector()
+    }
+
+    var body: some View {
+        NavigationSplitView {
+            sidebar
+        } content: {
+            main
+        } detail: {
+            inspector
+        }
+    }
+}
+
+private struct ModelPill: View {
+    var body: some View {
+        Text("Khala")
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(.quaternary, in: Capsule())
+            .accessibilityLabel("Model Khala")
     }
 }
 
