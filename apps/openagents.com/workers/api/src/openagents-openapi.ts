@@ -33,6 +33,7 @@ import { TrainingPostTrainingInstructSftEndpoint } from './training-post-trainin
 import { TrainingPostTrainingVibeTestRubricEndpoint } from './training-post-training-vibe-test-rubric'
 import { TrainingPublicDistributedRunScaleEndpoint } from './training-public-distributed-run-scale'
 import { TrainingPublicGradientWindowsEndpoint } from './training-public-gradient-windows'
+import { VerifiedOutcomeReputationEndpoint } from './verified-outcome-reputation'
 
 export const OpenAgentsOpenApiEndpoint = '/api/openapi.json'
 
@@ -1614,6 +1615,9 @@ const schemaComponents = (): JsonSchema => ({
   ),
   AcceptedOutcomesPerKwhProjection: objectSummary(
     'Public-safe Accepted Outcomes per Kilowatt-Hour projection. Includes generatedAt, the declared staleness contract, the frozen metric definition ref, receipt-backed accepted-outcome counter, modeled/measured energy evidence labels, a typed internal/external demand-provenance split (proof.demand_provenance.v1, rule no_external_dollar_no_demand_claim, with externalDemandClaimAllowed gating market-demand claims), gate state, blocker refs, caveats, and published datapoints. Modeled seed datapoints are clearly labeled and do not grant payout, settlement, dispatch, energy-market, investment, or grid-operation authority, and internal demand is never presented as external market demand.',
+  ),
+  VerifiedOutcomeReputationProjection: objectSummary(
+    'Public-safe verified-outcome reputation projection. Includes generatedAt, the declared live_at_read staleness contract, TraceRank/EigenTrust algorithm metadata, graph counts, ignored edge refs, score rows, and copy gates. Only replay-verified outcomes with public-safe Bitcoin settlement receipts affect scores; self-reported feedback, unpaid no-spend work, unverified reviews, and missing-receipt edges are ignored. The seed projection is read-only and grants no dispatch, marketplace ranking, assignment, payout, settlement, moderation, identity, ERC-8004 publication, or spend authority.',
   ),
   DemandProvenanceProjection: objectSummary(
     'Public-safe demand-provenance projection. Includes generatedAt and the projection_staleness.v1 live_at_read staleness contract with maxStalenessSeconds 0. Summarizes all revenue-bearing public surfaces that carry typed internal/external demand splits — AO/kWh, pylon-stats, training leaderboards, training run pages, and the model-ladder rung economics gates — each reporting internal/external/unlabeled accepted-outcome counts. Coverage is complete (coveredRevenueBearingSurfaceCount, no remaining surface gaps). It enforces the no_external_dollar_no_demand_claim copy gate and keeps externalDemandClaimAllowed false: every current surface is backed by internal first-party demand only. It grants no revenue, demand, payout, settlement, reporting, or public-claim upgrade authority.',
@@ -4835,6 +4839,23 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Accepted Outcomes per kWh metric.',
           '#/components/schemas/AcceptedOutcomesPerKwhProjection',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  [VerifiedOutcomeReputationEndpoint]: {
+    get: operation({
+      operationId: 'getVerifiedOutcomeReputation',
+      summary: 'Read verified-outcome reputation seed projection',
+      description:
+        'Returns the public verified-outcome reputation seed projection. The projection computes a TraceRank/EigenTrust-style score only from replay-verified accepted outcomes with public-safe Bitcoin settlement receipts. Self-reported feedback, unpaid no-spend work, unverified reviews, and missing-receipt edges are ignored. The current seed is yellow until enough verified-settled edges exist, and it grants no dispatch, marketplace ranking, assignment, payout, settlement, moderation, identity, ERC-8004 publication, or spend authority.',
+      tags: ['Public Proof'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Verified-outcome reputation seed projection.',
+          '#/components/schemas/VerifiedOutcomeReputationProjection',
         ),
         ...errorResponses(),
       },
