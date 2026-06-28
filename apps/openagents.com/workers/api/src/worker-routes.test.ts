@@ -292,8 +292,10 @@ describe('Worker route dual-serve resolution (#6148)', () => {
   // legacy paths reach the SAME handler with the SAME normalized request.
   const makeProbe = () => {
     const observed = {
+      appShellPathname: undefined as string | undefined,
       exactPath: undefined as string | undefined,
       dispatcherPathname: undefined as string | undefined,
+      forumThreadTopicId: undefined as string | undefined,
     }
 
     const okResponse = new Response('ok', { status: 200 })
@@ -334,9 +336,22 @@ describe('Worker route dual-serve resolution (#6148)', () => {
       cleanProductRouteRedirectLocation: () => undefined,
       exactRoutes,
       handleAssetRequest: () => Effect.succeed(okResponse),
-      handleAppShellPage: () => Effect.succeed(okResponse),
+      handleAppShellPage: (request: Request) =>
+        Effect.sync(() => {
+          observed.appShellPathname = new URL(request.url).pathname
+          return okResponse
+        }),
       handleThreadPage: () => Effect.succeed(okResponse),
-      handleForumThreadPage: () => Effect.succeed(okResponse),
+      handleForumThreadPage: (
+        _request: Request,
+        _env: Env,
+        _ctx: ExecutionContext,
+        topicId: string,
+      ) =>
+        Effect.sync(() => {
+          observed.forumThreadTopicId = topicId
+          return okResponse
+        }),
       optionalUuid: (value: string | undefined) => value,
       routeAutopilotWorkRequest: noRoute,
       routeCloudCodingSessionRequest: noRoute,
@@ -477,5 +492,18 @@ describe('Worker route dual-serve resolution (#6148)', () => {
     // object itself to be rewritten to the legacy path — not just the pathname
     // passed to the exact-route matcher.
     expect(canonical.observed.dispatcherPathname).toBe('/v1/models/gpt-x')
+  })
+
+  test('forum topic document reaches the social-preview handler before the generic app shell', async () => {
+    const topicId = '55555555-5555-4555-8555-555555555555'
+    const routed = await runRoute(
+      new Request(`https://openagents.com/forum/t/${topicId}`, {
+        headers: { accept: 'text/html' },
+      }),
+    )
+
+    expect(routed.response.status).toBe(200)
+    expect(routed.observed.forumThreadTopicId).toBe(topicId)
+    expect(routed.observed.appShellPathname).toBeUndefined()
   })
 })
