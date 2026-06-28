@@ -369,6 +369,21 @@ const roadmapContents = readFileSync(
   'utf8',
 )
 const roadmapFirstLine = roadmapContents.split('\n')[0] ?? ''
+const base64Utf8 = (content: string): string => {
+  const bytes = new TextEncoder().encode(content)
+  let binary = ''
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte)
+  }
+  return btoa(binary)
+}
+const githubFileJson = (content: string): string =>
+  JSON.stringify({
+    content: base64Utf8(content),
+    encoding: 'base64',
+    size: new TextEncoder().encode(content).byteLength,
+    type: 'file',
+  })
 
 // A fetch stub the REAL read_repo_file tool fetches through, so we can feed it
 // the real roadmap bytes (happy path) or a 404 (nonexistent path)
@@ -434,7 +449,7 @@ const makeReadThenEchoKhalaClient = (path: string) => {
 describe('POST /api/operator/artanis/chat — #6365 read_repo_file acceptance', () => {
   test('reads the roadmap through the loop and replies with its real first line', async () => {
     const { fetchImpl, urls } = stubRepoFetch(
-      () => new Response(roadmapContents, { status: 200 }),
+      () => new Response(githubFileJson(roadmapContents), { status: 200 }),
     )
     const { client, requests } = makeReadThenEchoKhalaClient(ROADMAP_PATH)
     const { deps } = baseDeps({
@@ -472,9 +487,10 @@ describe('POST /api/operator/artanis/chat — #6365 read_repo_file acceptance', 
     expect(readInvocation?.executed).toBe(true)
     expect(readInvocation?.deferredToApprovalGate).toBe(false)
 
-    // It was the REAL read tool: it fetched the roadmap from the public repo.
+    // It was the REAL read tool: it fetched the roadmap from the public repo
+    // through the GitHub contents API.
     expect(urls[0]).toBe(
-      `https://raw.githubusercontent.com/OpenAgentsInc/openagents/main/${ROADMAP_PATH}`,
+      `https://api.github.com/repos/OpenAgentsInc/openagents/contents/${ROADMAP_PATH}?ref=main`,
     )
 
     // The loop resolved the tool with the real file contents: at least two Khala

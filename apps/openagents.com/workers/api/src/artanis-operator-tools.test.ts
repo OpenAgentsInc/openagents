@@ -66,12 +66,29 @@ const stubFetch = (
   return { fetchImpl, urls }
 }
 
+const base64Utf8 = (content: string): string => {
+  const bytes = new TextEncoder().encode(content)
+  let binary = ''
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte)
+  }
+  return btoa(binary)
+}
+
+const githubFileJson = (content: string): string =>
+  JSON.stringify({
+    content: base64Utf8(content),
+    encoding: 'base64',
+    size: new TextEncoder().encode(content).byteLength,
+    type: 'file',
+  })
+
 describe('#6365 read_repo_file (public OpenAgentsInc/openagents only)', () => {
-  test('returns the real file contents from raw.githubusercontent', async () => {
+  test('returns decoded file contents from the GitHub contents API', async () => {
     const fileBody =
       '# Khala open issues master roadmap\nFirst priority: the #6316 serving track.'
     const { fetchImpl, urls } = stubFetch(
-      () => new Response(fileBody, { status: 200 }),
+      () => new Response(githubFileJson(fileBody), { status: 200 }),
     )
     const tool = makeArtanisReadRepoFileTool({ fetchImpl })
 
@@ -83,7 +100,7 @@ describe('#6365 read_repo_file (public OpenAgentsInc/openagents only)', () => {
 
     expect(result).toBe(fileBody)
     expect(urls[0]).toBe(
-      'https://raw.githubusercontent.com/OpenAgentsInc/openagents/main/docs/khala/2026-06-26-khala-open-issues-master-roadmap.md',
+      'https://api.github.com/repos/OpenAgentsInc/openagents/contents/docs/khala/2026-06-26-khala-open-issues-master-roadmap.md?ref=main',
     )
   })
 
@@ -115,15 +132,35 @@ describe('#6365 read_repo_file (public OpenAgentsInc/openagents only)', () => {
     expect(urls).toHaveLength(0)
   })
 
-  test('truncates an oversized file at the byte cap', async () => {
+  test('blocks an oversized file at the byte cap before decoding content', async () => {
     const big = 'a'.repeat(ARTANIS_REPO_READ_MAX_BYTES + 10)
-    const { fetchImpl } = stubFetch(() => new Response(big, { status: 200 }))
+    const { fetchImpl } = stubFetch(
+      () =>
+        new Response(
+          JSON.stringify({
+            content: base64Utf8('not fetched'),
+            encoding: 'base64',
+            size: new TextEncoder().encode(big).byteLength,
+            type: 'file',
+          }),
+          { status: 200 },
+        ),
+    )
     const tool = makeArtanisReadRepoFileTool({ fetchImpl })
     const result = await Effect.runPromise(
       tool.execute({ path: 'docs/big.md' }),
     )
-    expect(result).toContain('truncated')
-    expect(result.length).toBeLessThan(big.length + 200)
+    expect(result).toContain('file too large')
+    expect(result).toContain(String(ARTANIS_REPO_READ_MAX_BYTES))
+  })
+
+  test('reports a directory response as not a file', async () => {
+    const { fetchImpl } = stubFetch(
+      () => new Response(JSON.stringify([{ name: 'README.md', type: 'file' }])),
+    )
+    const tool = makeArtanisReadRepoFileTool({ fetchImpl })
+    const result = await Effect.runPromise(tool.execute({ path: 'docs' }))
+    expect(result).toContain('not a file')
   })
 
   test('invalid arguments return an honest message, not a throw', async () => {

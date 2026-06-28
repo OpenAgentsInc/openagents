@@ -105,8 +105,38 @@ const resolveRepoReadConfig = (config: ArtanisRepoReadConfig) => ({
   repo: config.repo ?? ARTANIS_REPO_READ_REPO,
 })
 
-// read_repo_file(path) — reads a file from the public repo via
-// raw.githubusercontent.com. Bounded, public-only, secret-path-denied.
+type GitHubContentsFile = Readonly<{
+  content?: unknown
+  encoding?: unknown
+  size?: unknown
+  type?: unknown
+}>
+
+const repoContentsUrl = (
+  owner: string,
+  repo: string,
+  path: string,
+  ref: string,
+): string => {
+  const encodedPath = path
+    .split('/')
+    .map(part => encodeURIComponent(part))
+    .join('/')
+  return `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}?ref=${encodeURIComponent(ref)}`
+}
+
+const decodeGitHubBase64Utf8 = (content: string): string | undefined => {
+  try {
+    const binary = atob(content.replace(/\s+/g, ''))
+    const bytes = Uint8Array.from(binary, character => character.charCodeAt(0))
+    return new TextDecoder().decode(bytes)
+  } catch {
+    return undefined
+  }
+}
+
+// read_repo_file(path) — reads a file from the public repo via the GitHub
+// contents API. Bounded, public-only, secret-path-denied.
 export const makeArtanisReadRepoFileTool = (
   config: ArtanisRepoReadConfig = {},
 ): ArtanisOperatorReadTool => {
@@ -115,7 +145,7 @@ export const makeArtanisReadRepoFileTool = (
 
   return {
     definition: {
-      description: `Read a UTF-8 text file from the PUBLIC ${owner}/${repo} repo (branch ${ref}). Use for docs and source, e.g. "docs/khala/2026-06-26-khala-open-issues-master-roadmap.md". Public repo only; bounded size; secret paths are blocked.`,
+      description: `Read a UTF-8 text file from the PUBLIC ${owner}/${repo} repo (branch ${ref}) via the GitHub contents API. Use for docs and source, e.g. "docs/khala/2026-06-26-khala-open-issues-master-roadmap.md". Public repo only; bounded size; secret paths are blocked.`,
       name: 'read_repo_file',
       parameters: {
         additionalProperties: false,
@@ -140,10 +170,13 @@ export const makeArtanisReadRepoFileTool = (
           return `(blocked: "${path}" is not an allowed public-repo path)`
         }
 
-        const url = `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${path}`
+        const url = repoContentsUrl(owner, repo, path, ref)
         const response = yield* Effect.tryPromise(() =>
           fetchImpl(url, {
-            headers: { 'User-Agent': 'artanis-operator' },
+            headers: {
+              Accept: 'application/vnd.github+json',
+              'User-Agent': 'artanis-operator',
+            },
           }),
         ).pipe(Effect.orElseSucceed(() => undefined))
 
@@ -157,10 +190,29 @@ export const makeArtanisReadRepoFileTool = (
           return `(read failed for "${path}": status ${response.status})`
         }
 
-        const text = yield* Effect.tryPromise(() => response.text()).pipe(
-          Effect.orElseSucceed(() => ''),
-        )
-        if (text.length > maxBytes) {
+        const body = yield* Effect.tryPromise(
+          () => response.json() as Promise<unknown>,
+        ).pipe(Effect.orElseSucceed(() => undefined))
+        if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+          return `("${path}" is not a file)`
+        }
+
+        const file = body as GitHubContentsFile
+        if (file.type !== 'file') {
+          return `("${path}" is not a file)`
+        }
+        if (typeof file.size === 'number' && file.size > maxBytes) {
+          return `(file too large: "${path}" is ${file.size} bytes; max is ${maxBytes})`
+        }
+        if (file.encoding !== 'base64' || typeof file.content !== 'string') {
+          return `(read failed for "${path}": expected base64 file content from GitHub contents API)`
+        }
+
+        const text = decodeGitHubBase64Utf8(file.content)
+        if (text === undefined) {
+          return `(read failed for "${path}": invalid base64 file content)`
+        }
+        if (new TextEncoder().encode(text).byteLength > maxBytes) {
           return `${text.slice(0, maxBytes)}\n\n(…truncated at ${maxBytes} bytes; the file is longer)`
         }
         if (text === '') {
@@ -209,7 +261,7 @@ export const makeArtanisListRepoDirTool = (
           return `(blocked: "${path}" is not an allowed public-repo path)`
         }
 
-        const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${ref}`
+        const url = repoContentsUrl(owner, repo, path, ref)
         const response = yield* Effect.tryPromise(() =>
           fetchImpl(url, {
             headers: {
@@ -217,7 +269,8 @@ export const makeArtanisListRepoDirTool = (
               'User-Agent': 'artanis-operator',
             },
           }),
-        ).pipe(Effect.orElseSucceed(() => undefined))
+        )
+          .pipe(Effect.orElseSucceed(() => undefined))
 
         if (response === undefined) {
           return `(could not list "${path}")`
