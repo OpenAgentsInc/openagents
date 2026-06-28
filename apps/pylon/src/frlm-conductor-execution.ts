@@ -64,6 +64,10 @@ export type FrlmConductorSchedulerBlockerRef =
   | FrlmConductorExecutionBlockerRef
   | "blocker.artanis.frlm_conductor.recursive_submitter_ref_missing"
   | "blocker.artanis.frlm_conductor.max_parallelism_invalid"
+  | "blocker.artanis.frlm_conductor.pylon_slot_ref_missing"
+  | "blocker.artanis.frlm_conductor.pylon_ref_missing"
+  | "blocker.artanis.frlm_conductor.pylon_slot_capacity_invalid"
+  | "blocker.artanis.frlm_conductor.no_pylon_slots_available"
   | "blocker.artanis.frlm_conductor.sub_query_budget_exceeded"
   | "blocker.artanis.frlm_conductor.linear_fallback_budget_exceeded"
 
@@ -175,7 +179,25 @@ export type FrlmConductorScheduleState =
 
 export type FrlmConductorRecursiveBatch = {
   batchRef: string
+  pylonRef: string | null
+  pylonSlotRef: string | null
   submitterRef: string
+  subQueryRefs: string[]
+}
+
+export type FrlmConductorPylonSlot = {
+  slotRef: string
+  pylonRef: string
+  availableSubQuerySlots?: number | null
+  ready?: boolean | null
+  capabilityRefs?: string[]
+}
+
+export type FrlmConductorPylonSlotAssignment = {
+  assignmentRef: string
+  batchRef: string
+  pylonRef: string
+  pylonSlotRef: string
   subQueryRefs: string[]
 }
 
@@ -196,6 +218,7 @@ export type FrlmConductorScheduleInput = {
   rootTaskRef?: string | null
   blueprintSignatureRef?: string | null
   subQueries?: FrlmConductorSubQuery[]
+  pylonSlots?: FrlmConductorPylonSlot[]
   linearFallbackEnabled?: boolean
   linearExecutorRef?: string | null
   recursiveSubmitterRef?: string | null
@@ -211,6 +234,7 @@ export type FrlmConductorSchedule = {
   canSchedule: boolean
   projection: FrlmConductorExecutionProjection
   recursiveBatches: FrlmConductorRecursiveBatch[]
+  pylonSlotAssignments: FrlmConductorPylonSlotAssignment[]
   linearFallbackSteps: FrlmConductorLinearFallbackStep[]
   nextActionRef: string | null
   traceRefs: string[]
@@ -272,6 +296,7 @@ export function scheduleFrlmConductor(
   )
   const maxParallelSubQueries = input.maxParallelSubQueries ?? 1
   const recursiveSubmitterRef = safeScheduleRef(input.recursiveSubmitterRef)
+  const pylonSlotPlan = planPylonSlotFanout(input.pylonSlots ?? [], maxParallelSubQueries, recursiveSubmitterRef)
   const plannedSubQueryRefs = uniqueRefs(
     (input.subQueries ?? [])
       .filter((subQuery) => subQuery.state === "planned")
@@ -286,8 +311,16 @@ export function scheduleFrlmConductor(
   if (!Number.isInteger(maxParallelSubQueries) || maxParallelSubQueries <= 0) {
     blockerRefs.add("blocker.artanis.frlm_conductor.max_parallelism_invalid")
   }
+  pylonSlotPlan.blockerRefs.forEach((blockerRef) => blockerRefs.add(blockerRef))
   if (plannedSubQueryRefs.length > 0 && recursiveSubmitterRef === null) {
     blockerRefs.add("blocker.artanis.frlm_conductor.recursive_submitter_ref_missing")
+  }
+  if (
+    plannedSubQueryRefs.length > 0 &&
+    (input.pylonSlots ?? []).length > 0 &&
+    pylonSlotPlan.availableSlots.length === 0
+  ) {
+    blockerRefs.add("blocker.artanis.frlm_conductor.no_pylon_slots_available")
   }
 
   const maxSubQueries = input.budget?.maxSubQueries
@@ -311,12 +344,24 @@ export function scheduleFrlmConductor(
   const canSchedule = blockerRefs.size === 0
   const recursiveBatches =
     canSchedule && plannedSubQueryRefs.length > 0 && recursiveSubmitterRef !== null
-      ? chunkRefs(plannedSubQueryRefs, maxParallelSubQueries).map((subQueryRefs, index) => ({
-        batchRef: `batch.artanis.frlm.recursive.${stableHash(`${projection.executionRef ?? "unknown"}:${index}:${subQueryRefs.join(":")}`)}`,
-        submitterRef: recursiveSubmitterRef,
-        subQueryRefs,
-      }))
+      ? buildRecursiveBatches({
+        executionRef: projection.executionRef,
+        maxParallelSubQueries,
+        plannedSubQueryRefs,
+        recursiveSubmitterRef,
+        slots: pylonSlotPlan.availableSlots,
+      })
       : []
+  const pylonSlotAssignments = recursiveBatches.flatMap((batch) =>
+    batch.pylonRef === null || batch.pylonSlotRef === null
+      ? []
+      : [{
+        assignmentRef: `assignment.artanis.frlm.pylon_slot.${stableHash(`${batch.batchRef}:${batch.pylonSlotRef}`)}`,
+        batchRef: batch.batchRef,
+        pylonRef: batch.pylonRef,
+        pylonSlotRef: batch.pylonSlotRef,
+        subQueryRefs: batch.subQueryRefs,
+      }])
   const linearFallbackSteps =
     canSchedule && projection.executionMode === "fallback_linear" && projection.linearExecutorRef !== null
       ? projection.recursiveSubQueryRefs.map((subQueryRef, index) => ({
@@ -353,8 +398,17 @@ export function scheduleFrlmConductor(
     nextActionRef,
     ...recursiveBatches.flatMap((batch) => [
       batch.batchRef,
+      batch.pylonRef,
+      batch.pylonSlotRef,
       batch.submitterRef,
       ...batch.subQueryRefs,
+    ]),
+    ...pylonSlotAssignments.flatMap((assignment) => [
+      assignment.assignmentRef,
+      assignment.batchRef,
+      assignment.pylonRef,
+      assignment.pylonSlotRef,
+      ...assignment.subQueryRefs,
     ]),
     ...linearFallbackSteps.flatMap((step) => [
       step.stepRef,
@@ -372,12 +426,13 @@ export function scheduleFrlmConductor(
     canSchedule,
     projection,
     recursiveBatches,
+    pylonSlotAssignments,
     linearFallbackSteps,
     nextActionRef,
     traceRefs,
     blockerRefs: [...blockerRefs].sort(),
     authorityBoundary:
-      "Read-only FRLM Conductor scheduler. It computes recursive fanout batches and local linear fallback steps from public evidence refs only; it does not dispatch workers, run Python, spend sats, publish claims, or move settlement authority.",
+      "Read-only FRLM Conductor scheduler. It computes recursive fanout batches, Pylon-slot assignments, and local linear fallback steps from public evidence refs only; it does not dispatch workers, run Python, spend sats, publish claims, or move settlement authority.",
     contentRedacted: true,
   }
   assertPublicProjectionSafe(schedule)
@@ -938,10 +993,109 @@ function uniqueRefsPreservingOrder(refs: (string | null)[]) {
   return out
 }
 
-function chunkRefs(refs: string[], size: number): string[][] {
-  const chunks: string[][] = []
-  for (let index = 0; index < refs.length; index += size) {
-    chunks.push(refs.slice(index, index + size))
+type PlannedPylonSlot = {
+  availableSubQuerySlots: number
+  pylonRef: string
+  slotRef: string
+}
+
+function planPylonSlotFanout(
+  pylonSlots: FrlmConductorPylonSlot[],
+  maxParallelSubQueries: number,
+  recursiveSubmitterRef: string | null,
+): {
+  availableSlots: PlannedPylonSlot[]
+  blockerRefs: FrlmConductorSchedulerBlockerRef[]
+} {
+  if (pylonSlots.length === 0) {
+    return recursiveSubmitterRef === null
+      ? { availableSlots: [], blockerRefs: [] }
+      : {
+        availableSlots: [{
+          availableSubQuerySlots: Math.max(1, maxParallelSubQueries),
+          pylonRef: recursiveSubmitterRef,
+          slotRef: `slot.artanis.frlm.recursive.${stableHash(recursiveSubmitterRef)}`,
+        }],
+        blockerRefs: [],
+      }
   }
-  return chunks
+
+  const blockerRefs = new Set<FrlmConductorSchedulerBlockerRef>()
+  const availableSlots: PlannedPylonSlot[] = []
+
+  for (const slot of pylonSlots) {
+    const slotRef = safeScheduleRef(slot.slotRef)
+    const pylonRef = safeScheduleRef(slot.pylonRef)
+    const rawCapacity = slot.availableSubQuerySlots ?? maxParallelSubQueries
+    const capacity =
+      typeof rawCapacity === "number" && Number.isInteger(rawCapacity)
+        ? rawCapacity
+        : null
+
+    if (slotRef === null) {
+      blockerRefs.add("blocker.artanis.frlm_conductor.pylon_slot_ref_missing")
+    }
+    if (pylonRef === null) {
+      blockerRefs.add("blocker.artanis.frlm_conductor.pylon_ref_missing")
+    }
+    if (capacity === null || capacity < 0) {
+      blockerRefs.add("blocker.artanis.frlm_conductor.pylon_slot_capacity_invalid")
+    }
+    if (slotRef === null || pylonRef === null || capacity === null || capacity <= 0 || slot.ready === false) {
+      continue
+    }
+
+    availableSlots.push({
+      availableSubQuerySlots: Math.min(capacity, Math.max(1, maxParallelSubQueries)),
+      pylonRef,
+      slotRef,
+    })
+  }
+
+  return {
+    availableSlots,
+    blockerRefs: [...blockerRefs].sort(),
+  }
+}
+
+function buildRecursiveBatches(input: {
+  executionRef: string | null
+  maxParallelSubQueries: number
+  plannedSubQueryRefs: string[]
+  recursiveSubmitterRef: string
+  slots: PlannedPylonSlot[]
+}): FrlmConductorRecursiveBatch[] {
+  const slots = input.slots.length === 0
+    ? [{
+      availableSubQuerySlots: Math.max(1, input.maxParallelSubQueries),
+      pylonRef: input.recursiveSubmitterRef,
+      slotRef: `slot.artanis.frlm.recursive.${stableHash(input.recursiveSubmitterRef)}`,
+    }]
+    : input.slots
+  const batches: FrlmConductorRecursiveBatch[] = []
+  let subQueryIndex = 0
+  let batchIndex = 0
+
+  while (subQueryIndex < input.plannedSubQueryRefs.length) {
+    for (const slot of slots) {
+      if (subQueryIndex >= input.plannedSubQueryRefs.length) {
+        break
+      }
+      const subQueryRefs = input.plannedSubQueryRefs.slice(
+        subQueryIndex,
+        subQueryIndex + slot.availableSubQuerySlots,
+      )
+      subQueryIndex += subQueryRefs.length
+      batches.push({
+        batchRef: `batch.artanis.frlm.recursive.${stableHash(`${input.executionRef ?? "unknown"}:${batchIndex}:${slot.slotRef}:${subQueryRefs.join(":")}`)}`,
+        pylonRef: slot.pylonRef,
+        pylonSlotRef: slot.slotRef,
+        submitterRef: input.recursiveSubmitterRef,
+        subQueryRefs,
+      })
+      batchIndex += 1
+    }
+  }
+
+  return batches
 }
