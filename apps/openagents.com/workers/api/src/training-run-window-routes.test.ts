@@ -168,6 +168,8 @@ type TrainingDeviceCapabilityJson = Readonly<{
   sameClassReplicationStatus: string
   thermalThrottleBlockerRefs: ReadonlyArray<string>
   thermalThrottleDetectionStatus: string
+  thermalThrottleFunnelReasonCodes: ReadonlyArray<string>
+  thermalThrottleReceiptRefs: ReadonlyArray<string>
   thermalThrottleSignals: ReadonlyArray<Readonly<{ state: string }>>
 }>
 
@@ -2216,6 +2218,90 @@ describe('training run window routes', () => {
       thermalThrottleDetectionStatus: 'missing',
       thermalThrottleSignals: [],
     })
+  })
+
+  it('surfaces verified thermal-row receipts and reason codes through the A2 dashboard', async () => {
+    const store = makeMemoryStore()
+    const routes = makeTrainingRunWindowRoutes({
+      makeId: () => 'a2-thermal-route',
+      makeStore: () => store,
+      nowIso: () => '2026-06-28T00:00:00.000Z',
+      requireAdminApiToken: async request =>
+        request.headers.get('authorization') === 'Bearer admin-token-test',
+    })
+    const evidencePath =
+      '/api/training/runs/run.cs336.a2.device_capability.thermal/device-benchmark-evidence'
+    const measurement = {
+      deviceClassRef: 'device_class.example.gpu_24gb',
+      digestCommitmentRefs: ['commitment.cs336_a2.thermal.sha256_demo'],
+      max: 0.78,
+      measurementRef: 'measurement.cs336_a2.thermal.example_gpu_24gb',
+      metric: 'sustained_vs_burst_throughput_ratio',
+      min: 0.7,
+      p50: 0.74,
+      p90: 0.78,
+      receiptRefs: ['receipt.cs336_a2.thermal.verified_row.1'],
+      sameClassReplicationScope: 'cross_machine_same_class',
+      sampleCount: 3,
+      sourceRefs: ['artifact.cs336_a2.thermal_probe.window_samples.1'],
+      unit: 'ratio',
+      verificationRefs: ['verdict.training.statistical_cross_check.thermal.1'],
+      workClass: 'cs336_a2_device_benchmark',
+    }
+
+    store._testSeedRun(
+      buildTrainingRunRecord({
+        makeId: () => 'a2-thermal',
+        nowIso: '2026-06-28T00:00:00.000Z',
+        request: {
+          promiseRef: 'training.device_capability_dataset.v1',
+          trainingRunRef: 'run.cs336.a2.device_capability.thermal',
+        },
+      }),
+    )
+
+    const admitted = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        jsonRequest(
+          evidencePath,
+          { measurements: [measurement] },
+          { headers: { authorization: 'Bearer admin-token-test' } },
+        ),
+        {},
+      ),
+    )
+    const admittedBody = (await admitted.json()) as Readonly<{
+      dataset: TrainingDeviceCapabilityJson
+    }>
+
+    expect(admitted.status).toBe(200)
+    expect(admittedBody.dataset.thermalThrottleDetectionStatus).toBe(
+      'thermal_throttle_observed',
+    )
+    expect(admittedBody.dataset.thermalThrottleFunnelReasonCodes).toEqual([
+      'device_capability.public.thermal_throttle_observed_sustained_ratio_below_floor',
+    ])
+    expect(admittedBody.dataset.thermalThrottleReceiptRefs).toEqual([
+      'receipt.cs336_a2.thermal.verified_row.1',
+    ])
+
+    const dashboard = await runRoute(
+      routes.routeTrainingRunWindowRequest(
+        new Request(
+          'https://openagents.test/api/training/device-capabilities/a2',
+        ),
+        {},
+      ),
+    )
+    const dashboardBody =
+      (await dashboard.json()) as TrainingDeviceCapabilityJson
+
+    expect(dashboardBody.thermalThrottleFunnelReasonCodes).toEqual([
+      'device_capability.public.thermal_throttle_observed_sustained_ratio_below_floor',
+    ])
+    expect(dashboardBody.thermalThrottleReceiptRefs).toEqual([
+      'receipt.cs336_a2.thermal.verified_row.1',
+    ])
   })
 
   it('plans, activates, seals, reconciles, reads, and claims training windows', async () => {

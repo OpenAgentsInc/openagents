@@ -243,8 +243,11 @@ const stageAtLeast = (
 // Pylon came online). device_admission.public.* reason codes are the
 // reasoned hardware admission gates of issue #4852 (Pluralis roadmap
 // P1.4) surfacing through the same funnel reason-ref channel.
+// device_capability.public.* reason codes are receipt-backed capability dataset
+// signals such as thermal-throttle status; they are taxonomy refs, not device
+// identifiers or raw hardware payloads.
 const platformIssuedDarkReasonPattern =
-  /^(dark_capacity|device_admission)\.public\.[a-z0-9_]+$/
+  /^(dark_capacity|device_admission|device_capability)\.public\.[a-z0-9_]+$/
 
 const assertSafeRefs = (
   label: string,
@@ -425,6 +428,10 @@ export const pylonCapacityProjectionHasPrivateMaterial = (
     .replaceAll(
       /device_admission\.public\.[a-z0-9_]+/g,
       'device_admission.public.reason',
+    )
+    .replaceAll(
+      /device_capability\.public\.[a-z0-9_]+/g,
+      'device_capability.public.reason',
     )
   const pattern = audienceUnsafePattern(projection.audience)
 

@@ -218,6 +218,26 @@ describe('Pylon capacity funnel', () => {
     expect(JSON.stringify(publicAccounting)).not.toContain('2026-06-')
   })
 
+  test('allows device capability thermal reason codes through the public funnel taxonomy', () => {
+    const [dark] = examplePylonCapacityFunnelRecords().slice(1)
+    const projection = projectPylonCapacityFunnelRecord(
+      {
+        ...dark!,
+        darkCapacityReasonRefs: [
+          'device_capability.public.thermal_throttle_observed_sustained_ratio_below_floor',
+        ],
+        evidenceRefs: ['receipt.cs336_a2.thermal.verified_row.1'],
+      },
+      'public',
+      nowIso,
+    )
+
+    expect(projection.darkCapacityReasonRefs).toEqual([
+      'device_capability.public.thermal_throttle_observed_sustained_ratio_below_floor',
+    ])
+    expect(pylonCapacityProjectionHasPrivateMaterial(projection)).toBe(false)
+  })
+
   test('requires evidence as capacity moves down the funnel', () => {
     const [settled] = examplePylonCapacityFunnelRecords()
 

@@ -28,6 +28,8 @@ import {
   Cs336A2BenchmarkMeasurements,
   type Cs336A2BenchmarkMeasurement,
   Cs336A2DeviceBenchmarkSuiteRef,
+  type Cs336A2MeasurementEvidence,
+  Cs336A2ThermalThrottleMetric,
 } from './training-device-capability'
 
 const AttentionSequenceLength = 64
@@ -65,6 +67,25 @@ export type Cs336A2MeasurementAggregate = Readonly<{
   sampleCount: number
   unit: string
 }>
+
+export type Cs336A2ThermalThrottleWindowSample = Readonly<{
+  phase: 'burst' | 'sustained'
+  throughput: number
+}>
+
+export type Cs336A2ThermalThrottleEvidenceInput = Readonly<{
+  deviceClassRef: string
+  digestCommitmentRefs: ReadonlyArray<string>
+  receiptRefs: ReadonlyArray<string>
+  samples: ReadonlyArray<Cs336A2ThermalThrottleWindowSample>
+  sourceRefs?: ReadonlyArray<string>
+  verificationRefs: ReadonlyArray<string>
+  workClass: string
+}>
+
+export class Cs336A2ThermalThrottleEvidenceError extends TypeError {
+  readonly _tag = 'Cs336A2ThermalThrottleEvidenceError'
+}
 
 const sha256Hex = async (value: string): Promise<string> => {
   const digest = await crypto.subtle.digest(
@@ -359,6 +380,32 @@ const nearestRankPercentile = (
     )
   ]!
 
+const aggregateValues = (
+  values: ReadonlyArray<number>,
+): Readonly<{
+  max: number
+  min: number
+  p50: number
+  p90: number
+  sampleCount: number
+}> | null => {
+  const sorted = values
+    .filter(value => Number.isFinite(value) && value > 0)
+    .sort((left, right) => left - right)
+
+  if (sorted.length === 0) {
+    return null
+  }
+
+  return {
+    max: sorted[sorted.length - 1]!,
+    min: sorted[0]!,
+    p50: nearestRankPercentile(sorted, 0.5),
+    p90: nearestRankPercentile(sorted, 0.9),
+    sampleCount: sorted.length,
+  }
+}
+
 /**
  * Aggregates raw samples into the class-level distribution shape the
  * public dataset admits: nearest-rank percentiles plus min/max and the
@@ -368,28 +415,77 @@ export const aggregateCs336A2Samples = (
   samples: ReadonlyArray<Cs336A2BenchmarkSample>,
 ): ReadonlyArray<Cs336A2MeasurementAggregate> =>
   Cs336A2BenchmarkMeasurements.flatMap(metric => {
-    const values = samples
-      .filter(sample => sample.metric === metric)
-      .map(sample => sample.value)
-      .filter(value => Number.isFinite(value))
-      .sort((left, right) => left - right)
+    const values = aggregateValues(
+      samples
+        .filter(sample => sample.metric === metric)
+        .map(sample => sample.value),
+    )
 
-    if (values.length === 0) {
+    if (values === null) {
       return []
     }
 
     const aggregate: Cs336A2MeasurementAggregate = {
-      max: values[values.length - 1]!,
+      max: values.max,
       metric,
-      min: values[0]!,
-      p50: nearestRankPercentile(values, 0.5),
-      p90: nearestRankPercentile(values, 0.9),
-      sampleCount: values.length,
+      min: values.min,
+      p50: values.p50,
+      p90: values.p90,
+      sampleCount: values.sampleCount,
       unit: samples.find(sample => sample.metric === metric)!.unit,
     }
 
     return [aggregate]
   })
+
+export const buildCs336A2ThermalThrottleMeasurementEvidence = (
+  input: Cs336A2ThermalThrottleEvidenceInput,
+): Cs336A2MeasurementEvidence => {
+  const burst = aggregateValues(
+    input.samples
+      .filter(sample => sample.phase === 'burst')
+      .map(sample => sample.throughput),
+  )
+  const sustained = aggregateValues(
+    input.samples
+      .filter(sample => sample.phase === 'sustained')
+      .map(sample => sample.throughput),
+  )
+
+  if (burst === null || sustained === null) {
+    throw new Cs336A2ThermalThrottleEvidenceError(
+      'CS336 A2 thermal-throttle evidence requires positive burst and sustained samples.',
+    )
+  }
+
+  const ratios = input.samples
+    .filter(sample => sample.phase === 'sustained')
+    .map(sample => sample.throughput / burst.p50)
+  const ratio = aggregateValues(ratios)
+
+  if (ratio === null) {
+    throw new Cs336A2ThermalThrottleEvidenceError(
+      'CS336 A2 thermal-throttle evidence requires finite sustained-vs-burst ratios.',
+    )
+  }
+
+  return {
+    deviceClassRef: input.deviceClassRef,
+    digestCommitmentRefs: input.digestCommitmentRefs,
+    max: ratio.max,
+    measurementRef: `measurement.cs336_a2.thermal.${input.deviceClassRef}`,
+    metric: Cs336A2ThermalThrottleMetric,
+    min: ratio.min,
+    p50: ratio.p50,
+    p90: ratio.p90,
+    receiptRefs: input.receiptRefs,
+    sampleCount: Math.min(burst.sampleCount, sustained.sampleCount),
+    ...(input.sourceRefs === undefined ? {} : { sourceRefs: input.sourceRefs }),
+    unit: 'ratio',
+    verificationRefs: input.verificationRefs,
+    workClass: input.workClass,
+  }
+}
 
 /**
  * Cross-device agreement score for `statistical_cross_check`: the ratio
