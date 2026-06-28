@@ -109,6 +109,10 @@ import {
   type PylonAccountsUsageArgs,
 } from "./account-usage.js"
 import {
+  createCodexFleetOffloadPlan,
+  parseCodexFleetOffloadArgs,
+} from "./codex-fleet-offload.js"
+import {
   recordPylonDevCodexRun,
   runPylonDevApply,
   runPylonDevCheck,
@@ -3171,6 +3175,27 @@ async function main() {
       : args[0] === "codex" && args[1] === "accounts"
         ? args.slice(2)
         : null
+
+  if (args[0] === "codex" && args[1] === "fleet") {
+    try {
+      const command = args[2]
+      if (command !== "offload-plan") {
+        throw new Error("usage: pylon codex fleet offload-plan --accounts <refs> --target <host:capacity> [--target <host:capacity> ...] --json")
+      }
+      const options = parseCodexFleetOffloadArgs(args.slice(3))
+      if (!options.json) {
+        throw new Error("usage: pylon codex fleet offload-plan --accounts <refs> --target <host:capacity> [--target <host:capacity> ...] --json")
+      }
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
+      const plan = await createCodexFleetOffloadPlan(summary, options)
+      process.stdout.write(`${JSON.stringify(plan, null, 2)}\n`)
+      return
+    } catch (error) {
+      process.stderr.write(`Pylon Codex fleet failed: ${error instanceof Error ? error.message : String(error)}\n`)
+      process.exitCode = 1
+      return
+    }
+  }
 
   if (accountCommandArgs !== null) {
     try {
