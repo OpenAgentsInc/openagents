@@ -1988,9 +1988,9 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Pylon v1.0 can run GEPA-first assignment work through the in-repo runtime.',
         safeCopy:
-          'Pylon v1.0 has assignment, GEPA capability, and runtime contracts with fake-server/no-spend coverage. A 2026-06-11 live no-spend OpenAgents endpoint smoke created, accepted, progressed, artifact-submitted, and operator-closed an unpaid assignment in production. Paid GEPA settlement remains gated.',
+          'Pylon v1.0 has assignment, GEPA capability, runtime contracts, fake-server/no-spend coverage, and an in-repo paid GEPA-style closeout path: a settled_bitcoin assignment can be accepted, closed out, followed by payment-receipt and Spark treasury settlement-status events, and projected with realBitcoinMoved:true plus a paid-settlement transition receipt ref. The public promise stays planned until an owner-armed live paid GEPA settlement receipt is recorded and reviewed.',
         unsafeCopy:
-          'Do not claim Pylon v1.0 runs the full live GEPA network or settles paid GEPA work.',
+          'Do not claim Pylon v1.0 runs the full live GEPA network, has broadly launched paid GEPA work, or has a live owner-reviewed paid GEPA settlement receipt.',
         evidenceRefs: [
           'transition:promise_transition_5decf651-f137-4bd2-b3c6-df26144ac79e',
           'directive.owner.20260611.focus_tassadar_psion_cs336',
@@ -2000,14 +2000,18 @@ export const publicProductPromisesDocument = () => {
           'apps/pylon/docs/2026-06-10-v03-live-worker-loop-smoke.md#recheck-2026-06-11-0110-utc',
           'promise_transition_d0f7edc5-1688-4039-bcdf-8971b79512ef',
           'docs/promises/2026-06-19-pylon-non-green-promise-assault-assessment.md',
+          'apps/openagents.com/workers/api/src/pylon-api.ts',
+          'apps/openagents.com/workers/api/src/pylon-api-routes.ts',
+          'apps/openagents.com/workers/api/src/pylon-api-routes.test.ts',
+          'apps/openagents.com/workers/api/migrations/0256_pylon_api_assignment_payment_mode.sql',
         ],
         blockerRefs: [
-          'blocker.product_promises.paid_gepa_settlement_v03_missing',
+          'blocker.product_promises.live_paid_gepa_settlement_receipt_missing',
         ],
         verification:
-          'Run v1.0 assignment fake-server/no-spend tests locally and the production no-spend assignment smoke. Green network copy still requires one settled paid GEPA assignment receipt, a paid-settlement transition receipt before registry edit, and a deployed registry bump.',
+          'Run v1.0 assignment fake-server/no-spend tests locally, the production no-spend assignment smoke, and bun run --cwd apps/openagents.com/workers/api test -- src/pylon-api-routes.test.ts. The paid GEPA-style route test must show a settled_bitcoin assignment with paymentReceiptRefs, settlementRefs, treasuryReceiptRefs, payoutClaimAllowed:true, realBitcoinMoved:true, and a paid-settlement transitionReceiptRef. Green network copy still requires one live owner-armed settled paid GEPA assignment receipt and owner review per proof.claim_upgrade_receipts.v1.',
         authorityBoundary:
-          'No-spend closeout and retained fixtures do not prove paid settlement or live campaign authority.',
+          'In-repo paid-settlement machinery and route tests do not prove live network scale, owner-armed treasury spend, or broad paid campaign authority. Only dereferenceable live settlement receipts may support those claims.',
       },
       {
         ...basePromiseFields,

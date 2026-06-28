@@ -23,6 +23,7 @@ import {
   PylonApiAssignmentCloseoutRequest,
   PylonApiAssignmentProgressRequest,
   type PylonApiAssignmentRecord,
+  type PylonApiEventRecord,
   type PylonApiAssignmentState,
   PylonApiAssignmentWorkerCloseoutRequest,
   PylonApiCreateAssignmentRequest,
@@ -49,6 +50,7 @@ import {
   closeoutPylonApiAssignmentRecord,
   nextAssignmentForEvent,
   nextRegistrationForEvent,
+  pylonApiAssignmentSettlementProjection,
   publicPylonApiAssignmentProjection,
   publicPylonApiEventProjection,
   publicPylonApiQuarantineProjection,
@@ -1613,6 +1615,15 @@ const maybeRecordAutopilotWorkerCloseout = <Bindings extends PylonApiRouteEnv>(
       }).pipe(Effect.asVoid)
 }
 
+const publicAssignmentWithSettlementProjection = (
+  assignment: PylonApiAssignmentRecord,
+  nowIso: string,
+  events: ReadonlyArray<PylonApiEventRecord>,
+) => ({
+  ...publicPylonApiAssignmentProjection(assignment, nowIso),
+  settlement: pylonApiAssignmentSettlementProjection(assignment, events),
+})
+
 const routeEvent = <Bindings extends PylonApiRouteEnv>(
   dependencies: PylonApiRouteDependencies<Bindings>,
   request: Request,
@@ -1847,6 +1858,14 @@ const routeEvent = <Bindings extends PylonApiRouteEnv>(
         nowIso,
       })
     }
+    const assignmentEvents =
+      storedAssignment === undefined
+        ? []
+        : yield* Effect.tryPromise({
+            catch: pylonApiStoreErrorFromUnknown,
+            try: () =>
+              store.listEventsForAssignment(storedAssignment.assignmentRef, 100),
+          })
     const nextRegistrationBase = nextRegistrationForEvent(
       registration,
       eventResult.record,
@@ -1888,9 +1907,10 @@ const routeEvent = <Bindings extends PylonApiRouteEnv>(
         ...(storedAssignment === undefined
           ? {}
           : {
-              assignment: publicPylonApiAssignmentProjection(
+              assignment: publicAssignmentWithSettlementProjection(
                 storedAssignment,
                 nowIso,
+                assignmentEvents,
               ),
             }),
         event: publicPylonApiEventProjection(eventResult.record, nowIso),

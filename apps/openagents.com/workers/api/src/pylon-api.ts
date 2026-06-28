@@ -685,6 +685,7 @@ export type PylonApiAssignmentRecord = Readonly<{
   jobKind: PylonApiAssignmentJobKind
   leaseExpiresAt: string
   ownerAgentUserId: string
+  paymentMode?: PylonApiAssignmentPaymentMode | undefined
   proofRefs: ReadonlyArray<string>
   publicProjectionJson: string
   pylonRef: string
@@ -802,6 +803,7 @@ export type PylonApiAssignmentProjection = Readonly<{
   jobKind: PylonApiAssignmentJobKind
   leaseExpiresInSeconds: number
   leaseState: 'active' | 'expired' | 'terminal'
+  paymentMode: PylonApiAssignmentPaymentMode
   proofRefs: ReadonlyArray<string>
   pylonRef: string
   rejectionRefs: ReadonlyArray<string>
@@ -809,6 +811,18 @@ export type PylonApiAssignmentProjection = Readonly<{
   state: PylonApiAssignmentState
   taskRefs: ReadonlyArray<string>
   updatedAtDisplay: string
+}>
+
+export type PylonApiAssignmentSettlementProjection = Readonly<{
+  caveatRefs: ReadonlyArray<string>
+  paymentProofRefs: ReadonlyArray<string>
+  paymentReceiptRefs: ReadonlyArray<string>
+  payoutClaimAllowed: boolean
+  realBitcoinMoved: boolean
+  settlementRefs: ReadonlyArray<string>
+  settlementState: 'not_applicable' | 'paid_receipt_recorded' | 'settled'
+  transitionReceiptRefs: ReadonlyArray<string>
+  treasuryReceiptRefs: ReadonlyArray<string>
 }>
 
 export type PylonProviderJobLifecycleStage =
@@ -982,6 +996,7 @@ type PylonApiAssignmentRow = Readonly<{
   job_kind: PylonApiAssignmentJobKind
   lease_expires_at: string
   owner_agent_user_id: string
+  payment_mode?: PylonApiAssignmentPaymentMode | null
   proof_refs_json: string
   public_projection_json: string
   pylon_ref: string
@@ -1443,6 +1458,111 @@ const assignmentLeaseExpiresInSeconds = (
     Math.floor((Date.parse(record.leaseExpiresAt) - Date.parse(nowIso)) / 1000),
   )
 
+const refsFromAssignmentEvents = (
+  events: ReadonlyArray<PylonApiEventRecord>,
+  eventKind: PylonApiEventKind,
+  key: string,
+): ReadonlyArray<string> =>
+  uniqueRefs(
+    events
+      .filter(event => event.eventKind === eventKind)
+      .flatMap(event => stringRefsFromEventBody(event.eventBody, key, [])),
+  )
+
+const paidSettlementTransitionReceiptRef = (assignmentRef: string): string =>
+  `receipt.public.pylon_assignment.paid_settlement_transition.${assignmentRef.replaceAll(
+    /[^A-Za-z0-9_.:-]+/g,
+    '_',
+  )}`
+
+const pylonApiAssignmentPaymentMode = (
+  assignment: PylonApiAssignmentRecord,
+): PylonApiAssignmentPaymentMode => assignment.paymentMode ?? 'unpaid_smoke'
+
+export const pylonApiAssignmentSettlementProjection = (
+  assignment: PylonApiAssignmentRecord,
+  events: ReadonlyArray<PylonApiEventRecord>,
+): PylonApiAssignmentSettlementProjection => {
+  const assignmentEvents = events.filter(
+    event => event.assignmentRef === assignment.assignmentRef,
+  )
+  const paymentProofRefs = publicScannerSafeRefs(
+    'payment_proof.public.pylon_assignment',
+    refsFromAssignmentEvents(
+      assignmentEvents,
+      'payment_receipt',
+      'paymentProofRefs',
+    ),
+  )
+  const paymentReceiptRefs = publicScannerSafeRefs(
+    'receipt.public.pylon_assignment.payment',
+    refsFromAssignmentEvents(assignmentEvents, 'payment_receipt', 'receiptRefs'),
+  )
+  const paymentSettlementRefs = refsFromAssignmentEvents(
+    assignmentEvents,
+    'payment_receipt',
+    'settlementRefs',
+  )
+  const statusSettlementRefs = refsFromAssignmentEvents(
+    assignmentEvents,
+    'settlement_status',
+    'settlementRefs',
+  )
+  const settlementRefs = publicScannerSafeRefs(
+    'settlement.public.pylon_assignment',
+    [...paymentSettlementRefs, ...statusSettlementRefs],
+  )
+  const treasuryReceiptRefs = publicScannerSafeRefs(
+    'treasury_receipt.public.pylon_assignment',
+    refsFromAssignmentEvents(
+      assignmentEvents,
+      'settlement_status',
+      'treasuryReceiptRefs',
+    ),
+  )
+  const settledStatusRecorded = assignmentEvents.some(
+    event =>
+      event.eventKind === 'settlement_status' && event.status === 'settled',
+  )
+  const realBitcoinMoved =
+    assignment.state === 'accepted_work' &&
+    pylonApiAssignmentPaymentMode(assignment) === 'settled_bitcoin' &&
+    paymentReceiptRefs.length > 0 &&
+    settlementRefs.length > 0 &&
+    treasuryReceiptRefs.length > 0 &&
+    settledStatusRecorded
+  const paidReceiptRecorded =
+    assignment.state === 'accepted_work' &&
+    pylonApiAssignmentPaymentMode(assignment) !== 'unpaid_smoke' &&
+    paymentReceiptRefs.length > 0
+  const settlementState = realBitcoinMoved
+    ? 'settled'
+    : paidReceiptRecorded
+      ? 'paid_receipt_recorded'
+      : 'not_applicable'
+
+  return {
+    caveatRefs: [
+      ...(realBitcoinMoved
+        ? []
+        : [
+            'caveat.public.pylon_assignment.no_real_bitcoin_moved_without_settlement_receipt',
+          ]),
+      'caveat.public.pylon_assignment.raw_payment_material_not_projected',
+    ],
+    paymentProofRefs,
+    paymentReceiptRefs,
+    payoutClaimAllowed: realBitcoinMoved,
+    realBitcoinMoved,
+    settlementRefs,
+    settlementState,
+    transitionReceiptRefs: realBitcoinMoved
+      ? [paidSettlementTransitionReceiptRef(assignment.assignmentRef)]
+      : [],
+    treasuryReceiptRefs,
+  }
+}
+
 export const publicPylonApiAssignmentProjection = (
   record: PylonApiAssignmentRecord,
   nowIso: string,
@@ -1476,6 +1596,7 @@ export const publicPylonApiAssignmentProjection = (
     'proof.public.pylon_assignment',
     record.proofRefs,
   ),
+  paymentMode: pylonApiAssignmentPaymentMode(record),
   pylonRef: record.pylonRef,
   rejectionRefs: publicScannerSafeRefs(
     'rejection.public.pylon_assignment',
@@ -1689,6 +1810,7 @@ export const buildPylonApiAssignmentRecord = (
       leaseSecondsForRequest(input.request) * 1000,
     ),
     ownerAgentUserId: input.ownerAgentUserId,
+    paymentMode: input.request.paymentMode ?? 'unpaid_smoke',
     proofRefs: [],
     publicProjectionJson: '{}',
     pylonRef: input.request.pylonRef,
@@ -2050,6 +2172,7 @@ const rowToAssignment = (
   jobKind: row.job_kind,
   leaseExpiresAt: row.lease_expires_at,
   ownerAgentUserId: row.owner_agent_user_id,
+  paymentMode: row.payment_mode ?? 'unpaid_smoke',
   proofRefs: parseJsonStringArray(row.proof_refs_json),
   publicProjectionJson: row.public_projection_json,
   pylonRef: row.pylon_ref,
@@ -2155,13 +2278,13 @@ const insertAssignmentStatement = (
     .prepare(
       `INSERT INTO pylon_api_assignments
         (id, assignment_ref, pylon_ref, owner_agent_user_id,
-         idempotency_key_hash, job_kind, state, lease_expires_at,
+         idempotency_key_hash, job_kind, state, payment_mode, lease_expires_at,
          task_refs_json, acceptance_criteria_refs_json,
          result_expectation_refs_json, artifact_refs_json, proof_refs_json,
          accepted_work_refs_json, rejection_refs_json, closeout_refs_json,
          coding_assignment_json, public_projection_json, created_at,
          updated_at, archived_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
     )
     .bind(
       record.id,
@@ -2171,6 +2294,7 @@ const insertAssignmentStatement = (
       record.idempotencyKeyHash,
       record.jobKind,
       record.state,
+      pylonApiAssignmentPaymentMode(record),
       record.leaseExpiresAt,
       JSON.stringify(record.taskRefs),
       JSON.stringify(record.acceptanceCriteriaRefs),
@@ -2570,6 +2694,7 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
       .prepare(
         `UPDATE pylon_api_assignments
             SET state = ?,
+                payment_mode = ?,
                 artifact_refs_json = ?,
                 proof_refs_json = ?,
                 accepted_work_refs_json = ?,
@@ -2584,6 +2709,7 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
       )
       .bind(
         record.state,
+        pylonApiAssignmentPaymentMode(record),
         JSON.stringify(record.artifactRefs),
         JSON.stringify(record.proofRefs),
         JSON.stringify(record.acceptedWorkRefs),
@@ -2622,6 +2748,7 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
       .prepare(
         `UPDATE pylon_api_assignments
             SET state = ?,
+                payment_mode = ?,
                 artifact_refs_json = ?,
                 proof_refs_json = ?,
                 accepted_work_refs_json = ?,
@@ -2637,6 +2764,7 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
       )
       .bind(
         record.state,
+        pylonApiAssignmentPaymentMode(record),
         JSON.stringify(record.artifactRefs),
         JSON.stringify(record.proofRefs),
         JSON.stringify(record.acceptedWorkRefs),
