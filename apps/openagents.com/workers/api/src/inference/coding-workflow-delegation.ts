@@ -571,6 +571,43 @@ const hasAvailableAgentCapacity = (
   return hasPooledServiceCapacity(registration, profile)
 }
 
+const accountRefHashForCapacityKey = (
+  profile: CodingAgentProfile,
+  accountKey: string,
+): string => `account.pylon.${profile.accountProvider}.${accountKey}`
+
+const accountRefHashesAdvertisedByRegistration = (
+  registration: PylonApiRegistrationRecord,
+  profile: CodingAgentProfile,
+): ReadonlyArray<string> => {
+  const capacity = pylonCodingServiceCapacityProjection(registration).find(
+    item => item.service === profile.capacityService,
+  )
+  if (capacity === undefined || capacity.accounts.length === 0) {
+    return []
+  }
+  return capacity.accounts
+    .filter(account => account.available > 0 || account.ready > 0)
+    .sort((left, right) => {
+      const leftPressure = left.busy + left.queued
+      const rightPressure = right.busy + right.queued
+      return (
+        leftPressure - rightPressure ||
+        left.accountKey.localeCompare(right.accountKey)
+      )
+    })
+    .map(account => accountRefHashForCapacityKey(profile, account.accountKey))
+}
+
+const accountRefHashSelectionCandidates = (
+  registration: PylonApiRegistrationRecord,
+  profile: CodingAgentProfile,
+  requestedAccountRefHash: string | null,
+): ReadonlyArray<string | null> =>
+  requestedAccountRefHash === null
+    ? accountRefHashesAdvertisedByRegistration(registration, profile)
+    : [requestedAccountRefHash]
+
 // #6354/#6388: name exactly which admission sub-condition failed so a refused
 // caller-owned coding delegation is debuggable instead of an opaque 409. The
 // gate admits a Pylon only when it is active AND heartbeat-fresh AND
@@ -910,14 +947,6 @@ const delegateCodingWorkflowUnsafe = async (
 
   const blockedGateRefs: string[] = []
   for (const registration of candidates) {
-    const body = assignmentRequestFromInput(
-      input,
-      objectiveSummary.summary,
-      registration.pylonRef,
-      spawnRefs.refs,
-      profile,
-      targetAccountRefHash,
-    )
     const activeAssignments = await (async () => {
       try {
         await sweepStalePylonAssignmentLeases({
@@ -939,16 +968,42 @@ const delegateCodingWorkflowUnsafe = async (
         'assignment_list_read',
       )
     }
-    const gate = controlledPylonAssignmentDispatchGate({
-      activeAssignments,
-      assignmentRef: body.assignmentRef ?? null,
-      body,
-      nowIso: input.nowIso,
+    const accountCandidates = accountRefHashSelectionCandidates(
       registration,
-    })
+      profile,
+      targetAccountRefHash,
+    )
+    const effectiveAccountCandidates =
+      accountCandidates.length === 0 ? [targetAccountRefHash] : accountCandidates
 
-    if (!gate.dispatchAllowed) {
-      blockedGateRefs.push(...gate.blockerRefs)
+    let admittedBody: PylonApiCreateAssignmentRequest | null = null
+    for (const accountRefHash of effectiveAccountCandidates) {
+      const body = assignmentRequestFromInput(
+        input,
+        objectiveSummary.summary,
+        registration.pylonRef,
+        spawnRefs.refs,
+        profile,
+        accountRefHash,
+      )
+      const gate = controlledPylonAssignmentDispatchGate({
+        activeAssignments,
+        assignmentRef: body.assignmentRef ?? null,
+        body,
+        nowIso: input.nowIso,
+        registration,
+      })
+
+      if (!gate.dispatchAllowed) {
+        blockedGateRefs.push(...gate.blockerRefs)
+        continue
+      }
+
+      admittedBody = body
+      break
+    }
+
+    if (admittedBody === null) {
       continue
     }
 
@@ -959,7 +1014,7 @@ const delegateCodingWorkflowUnsafe = async (
           makeId: input.makeId,
           nowIso: input.nowIso,
           ownerAgentUserId: registration.ownerAgentUserId,
-          request: body,
+          request: admittedBody,
         })
       } catch (error) {
         if (error instanceof PylonApiStoreError) {

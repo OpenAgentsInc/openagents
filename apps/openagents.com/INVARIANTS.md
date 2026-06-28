@@ -1721,12 +1721,16 @@ normalizedPatchDigest | behaviorReceiptDigest)`. Exactly one accepted
   and `delegateCodingWorkflow` must admit a request that pins a Codex account
   (`openagents.coding.targetAccountRefHash`,
   `codingAssignment.codex.accountRefHash`) against THAT account's available
-  slots and count only that account's active leases. One account holding its full
-  slot count must never block another account's request on the same Pylon. The
-  pooled `capacity.coding.codex.*` totals are derived from the per-account sum
-  when per-account refs are present; requests with no pinned account, and
-  heartbeats with no per-account refs, keep the legacy pooled accounting
-  (backward compatible). The account key, hash, and per-account refs are
+  slots and count only that account's active leases. When a caller does not pin
+  an account but the heartbeat advertises per-account refs, delegation must pick
+  an advertised account slot and persist the selected
+  `codingAssignment.codex.accountRefHash` so active leases are keyed per account
+  from the start. One account holding its full slot count must never block
+  another account's request on the same Pylon. The pooled
+  `capacity.coding.codex.*` totals are derived from the per-account sum when
+  per-account refs are present; heartbeats with no per-account refs keep the
+  legacy pooled accounting (backward compatible). The account key, hash, and
+  per-account refs are
   public-safe: never a raw account ref, email, or local home path.
 - Local no-spend Pylon/Codex accepted leases must carry local owner-process and
   heartbeat evidence. A sibling local Pylon runner may submit a public-safe

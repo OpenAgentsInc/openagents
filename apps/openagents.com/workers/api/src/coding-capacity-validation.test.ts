@@ -1099,6 +1099,32 @@ describe('#6354 per-account Codex dispatch division-of-labor', () => {
     expect(admittedB?.kind).toBe('assigned')
   })
 
+  test('#6386: unpinned requests are admitted onto another advertised account when the first is full', async () => {
+    const pylonStore = makePylonStore([perAccountRegistration()])
+    // Account A is full. The caller did not pin an account, so the Worker must
+    // try advertised account slots instead of creating an unkeyed Pylon-level
+    // lease that would be blocked by A's active work.
+    for (let index = 0; index < 8; index += 1) {
+      await pylonStore.createAssignment(
+        activeCodexLease('pylon.a.codex', index, ACCOUNT_A_HASH),
+      )
+    }
+
+    const admitted = await delegateToAccount(
+      pylonStore,
+      undefined,
+      'req_unpinned_b',
+    )
+    expect(admitted?.kind).toBe('assigned')
+    if (admitted?.kind !== 'assigned') {
+      throw new Error('expected unpinned request to be admitted')
+    }
+    expect(
+      (admitted.assignment.codingAssignment?.codex as { accountRefHash?: string })
+        ?.accountRefHash,
+    ).toBe(ACCOUNT_B_HASH)
+  })
+
   test('pooled backward compat: untagged requests gate against the pooled total', async () => {
     const pylonStore = makePylonStore([
       registration({
