@@ -8,6 +8,54 @@ result JSON in the shared gym contract.
 - Phase 0 issue: **#6377**
 - Design: [`docs/benchmarks/2026-06-27-mirrorcode-khala-gym-integration-analysis.md`](../../../../docs/benchmarks/2026-06-27-mirrorcode-khala-gym-integration-analysis.md)
 
+## Gym backstop runner (`backstop-run.sh` / `backstop_eval.py`, issue #6710)
+
+The fleet-saturation **prio:4 backstop** (`prio:4-backstop-burn`) standing task
+needs a runner that does **genuine own-capacity ($0) high-density work** whenever
+the higher priority tiers are clear, so no fleet slot ever idles. That runner is
+`backstop-run.sh` (live) / `backstop_eval.py` (core).
+
+What it does, per problem:
+
+1. Asks a model (live: **Khala**, OpenAI-compatible, own capacity, $0) for a
+   solution to a small coding problem.
+2. **Executes** the generated code against hidden test cases in a bounded
+   isolated subprocess (`python -I`, wall-clock timeout) — real pass/fail.
+3. Records per-problem and aggregate **pass rates** and writes **execution
+   traces** (`results/backstop/traces/<id>.json` + a run summary).
+
+```sh
+./backstop-run.sh                 # mint a free Khala key, run the bounded batch
+OPENAI_API_KEY=oa_agent_xxx ./backstop-run.sh --limit 8
+MC_BACKSTOP_DRY_RUN=1 ./backstop-run.sh   # diagnostic: no model call, no spend
+```
+
+Problem source: the built-in **public-domain fixture set** (classic toy
+functions — sum, reverse, palindrome, factorial, gcd, FizzBuzz, …). These are
+**NOT MirrorCode tasks**, so there is no benchmark contamination, and the load is
+tagged `demand_kind=internal` / `demand_source=gym_backstop`. The read-only
+MirrorCode clone is detected and surfaced (`mirrorcodeClonePresent`,
+`mirrorcodeSTargets`) in the result when present, but its tasks are **not** run
+here.
+
+Honesty: this is a real measurement of our own model against public-domain toy
+problems; it is the smallest **real slice** that does genuine model work + records
+traces. It is **not** the MirrorCode paper benchmark and must never be published
+as a MirrorCode score (`grade: "backstop"`, `decisionGrade: false`).
+
+**Follow-up (#6710):** wire the full Docker MirrorCode harness (`run.sh`) into the
+backstop as an opt-in escalation path that pulls a bounded batch of real S-bucket
+tasks when Docker + the clone are present and token/wall-clock budget allows. The
+full harness burns ≥1B tokens per sample, so it is intentionally out of the
+default backstop loop; the fixture slice is the always-available density burner.
+Solution execution is currently subprocess-isolated with a timeout but not
+container-sandboxed — harden to Docker/firecracker before running untrusted
+(non-fixture, non-own-model) candidates.
+
+Tests: `python3 backstop_eval_test.py` (extraction, real execution of correct /
+wrong / empty / missing-entrypoint / exception candidates, aggregate pass-rate
+math, trace writing, fail-soft model errors).
+
 ## Approach (Option A — zero provider code)
 
 MirrorCode is built on [Inspect](https://inspect.aisi.org.uk/) and Khala is
