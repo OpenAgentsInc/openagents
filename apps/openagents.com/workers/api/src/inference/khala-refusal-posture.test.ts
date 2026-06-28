@@ -19,11 +19,15 @@ import { describe, expect, test } from 'vitest'
 
 import { buildAutopilotConciergeSystemPrompt } from './autopilot-concierge-model'
 import {
+  KHALA_ARTANIS_INTERACTION_REINFORCEMENT_PROMPT,
+  KHALA_ARTANIS_INTERACTION_SIGNATURE,
+  KHALA_ARTANIS_INTERACTION_SYSTEM_PROMPT,
   KHALA_REFUSAL_NON_PROMISE_RULE,
   KHALA_REFUSAL_POSTURE_REINFORCEMENT_PROMPT,
   KHALA_REFUSAL_POSTURE_SIGNATURE,
   KHALA_REFUSAL_POSTURE_SYSTEM_PROMPT,
   KHALA_SIGNATURES,
+  detectKhalaArtanisInteractionViolations,
   detectKhalaBareRefusal,
   getKhalaSignature,
   khalaReplyHasOfferGuidePath,
@@ -88,6 +92,35 @@ describe('Khala refusal-posture signature is registered (#6178)', () => {
     // No destructive backstop: correctText is a no-op (never fabricates an offer).
     const refusal = "I'm sorry, but I can't help with that."
     expect(KHALA_REFUSAL_POSTURE_SIGNATURE.correctText(refusal)).toBe(refusal)
+  })
+})
+
+describe('Khala Artanis-interaction signature is registered (#6437)', () => {
+  test('artanis_interaction grounds Artanis as the OpenAgents operator agent', () => {
+    expect(KHALA_SIGNATURES.map(sig => sig.id)).toContain('artanis_interaction')
+    expect(getKhalaSignature('artanis_interaction')).toBe(
+      KHALA_ARTANIS_INTERACTION_SIGNATURE,
+    )
+    expect(KHALA_ARTANIS_INTERACTION_SIGNATURE.reinforcementPrompt).toBe(
+      KHALA_ARTANIS_INTERACTION_REINFORCEMENT_PROMPT,
+    )
+    expect(KHALA_ARTANIS_INTERACTION_SYSTEM_PROMPT).toContain(
+      'OpenAgents operator agent',
+    )
+    expect(KHALA_ARTANIS_INTERACTION_SYSTEM_PROMPT).toContain('read-only')
+  })
+
+  test('it catches generic lore answers and accepts public-safe operator answers', () => {
+    expect(
+      detectKhalaArtanisInteractionViolations(
+        'Artanis is a StarCraft Protoss Hierarch of the Daelaam.',
+      ).map(v => v.text),
+    ).toContain('starcraft')
+
+    const verdict = KHALA_ARTANIS_INTERACTION_SIGNATURE.verify(
+      'Artanis is the OpenAgents operator agent. Public chat can observe public-safe status, activity, and decisions, but it cannot dispatch work or spend.',
+    )
+    expect(verdict.satisfied).toBe(true)
   })
 })
 
@@ -164,6 +197,8 @@ describe('buildKhalaChatMessages injects the refusal-posture clause (#6178)', ()
     expect(content.toLowerCase()).toContain('we are khala')
     // Refusal posture present.
     expect(content).toContain(KHALA_REFUSAL_POSTURE_SYSTEM_PROMPT)
+    // Public read-only Artanis grounding present.
+    expect(content).toContain(KHALA_ARTANIS_INTERACTION_SYSTEM_PROMPT)
     // Concierge non-promise rule present.
     expect(content).toContain(KHALA_REFUSAL_NON_PROMISE_RULE)
   })

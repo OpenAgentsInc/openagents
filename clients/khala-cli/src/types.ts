@@ -79,6 +79,7 @@ export const OpenAiStreamPayload = S.Struct({
   openagents: S.optional(S.Unknown),
   choices: S.Array(
     S.Struct({
+      finish_reason: S.optional(S.NullOr(S.String)),
       delta: S.Struct({
         content: S.optional(S.String),
         reasoning: S.optional(S.String),

@@ -31,6 +31,7 @@ import {
   type InferenceRequest,
 } from './inference/provider-adapter'
 import {
+  KHALA_ARTANIS_INTERACTION_SYSTEM_PROMPT,
   KHALA_IDENTITY_SYSTEM_PROMPT,
   KHALA_REFUSAL_POSTURE_SYSTEM_PROMPT,
   KHALA_RESPONSE_DISCIPLINE_SYSTEM_PROMPT,
@@ -48,6 +49,7 @@ export const KHALA_CHAT_MODEL = 'khala'
 export const KHALA_CHAT_MAX_MESSAGE_CHARS = 8_000
 export const KHALA_CHAT_MAX_MESSAGES = 40
 export const KHALA_CHAT_MAX_TOTAL_CHARS = 24_000
+export const KHALA_CHAT_MAX_TOKENS = 8_192
 
 // A single chat turn from the client. Only user/assistant roles cross the
 // boundary; the system prompt is rebuilt server-side every turn and never
@@ -183,7 +185,7 @@ export const buildKhalaChatMessages = (
 ): ReadonlyArray<InferenceMessage> => [
   {
     role: 'system',
-    content: `${KHALA_IDENTITY_SYSTEM_PROMPT} ${KHALA_REFUSAL_POSTURE_SYSTEM_PROMPT} ${KHALA_RESPONSE_DISCIPLINE_SYSTEM_PROMPT} ${KHALA_CHAT_INSTRUCTION}`,
+    content: `${KHALA_IDENTITY_SYSTEM_PROMPT} ${KHALA_REFUSAL_POSTURE_SYSTEM_PROMPT} ${KHALA_RESPONSE_DISCIPLINE_SYSTEM_PROMPT} ${KHALA_ARTANIS_INTERACTION_SYSTEM_PROMPT} ${KHALA_CHAT_INSTRUCTION}`,
   },
   ...messages.map(message => ({ role: message.role, content: message.content })),
 ]
@@ -197,7 +199,7 @@ export const buildKhalaChatRequest = (
   model: KHALA_CHAT_MODEL,
   messages: buildKhalaChatMessages(messages),
   stream: true,
-  passthroughParams: {},
+  passthroughParams: { max_tokens: KHALA_CHAT_MAX_TOKENS },
 })
 
 export const KHALA_FAST_GREETING_PROMPTS: ReadonlySet<string> = new Set([

@@ -40,12 +40,14 @@ export function renderMarkdownForTerminal(markdown: string): string {
   const lines = markdown.replace(/\r\n?/g, "\n").split("\n")
   const rendered: Array<string> = []
   let inFence = false
+  let previousBlankOutsideFence = false
 
   for (const line of lines) {
     const fence = line.match(/^\s*```/)
     if (fence !== null) {
       inFence = !inFence
       rendered.push(terminalStyle.meta(line))
+      previousBlankOutsideFence = false
       continue
     }
 
@@ -53,6 +55,15 @@ export function renderMarkdownForTerminal(markdown: string): string {
       rendered.push(terminalStyle.code(line))
       continue
     }
+
+    if (line.trim() === "") {
+      if (!previousBlankOutsideFence) {
+        rendered.push("")
+      }
+      previousBlankOutsideFence = true
+      continue
+    }
+    previousBlankOutsideFence = false
 
     const heading = line.match(/^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$/)
     if (heading !== null) {

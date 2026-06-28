@@ -29,10 +29,81 @@ import {
 
 const MAX_REQUEST_RETRIES = 5
 const RETRY_DELAYS_MS = [400, 1_000, 2_000, 4_000, 8_000] as const
+const KHALA_CHAT_MAX_TOKENS = 8_192
+const MAX_LENGTH_CONTINUATIONS = 2
+const CONTINUE_AFTER_LENGTH_PROMPT =
+  "Continue the previous answer from exactly where it stopped. Do not restart, summarize, or mention the continuation."
 
 export function runChatTurn(options: ChatTurnOptions): Effect.Effect<ChatTurnResult, KhalaCliError> {
   return Effect.gen(function* () {
     const startedAt = Date.now()
+    let turnOptions = options
+    let stream = yield* consumeOneStream(turnOptions, startedAt)
+    let text = stream.text
+    let reasoningText = stream.reasoningText
+    let byokAck = stream.byokAck
+    let traceRef = stream.traceRef
+
+    for (let continuation = 0; shouldContinueAfterLength(stream.metadata) && continuation < MAX_LENGTH_CONTINUATIONS; continuation += 1) {
+      turnOptions = {
+        ...options,
+        messages: [
+          ...options.messages,
+          { role: "assistant" as const, content: text },
+          { role: "user" as const, content: CONTINUE_AFTER_LENGTH_PROMPT },
+        ],
+      }
+      const next = yield* consumeOneStream(turnOptions, startedAt)
+      text += next.text
+      reasoningText += next.reasoningText
+      byokAck = next.byokAck ?? byokAck
+      traceRef = next.traceRef ?? traceRef
+      stream = {
+        ...next,
+        metadata: mergeUsageMetadata(next.metadata, stream.metadata),
+        reasoningText,
+        text,
+      }
+    }
+
+    const durationMs = Math.max(0, Date.now() - startedAt)
+    const metadata = buildTurnMetadata({
+      durationMs,
+      mode: options.mode,
+      streamMetadata: {
+        ...stream.metadata,
+        traceRef: stream.metadata.traceRef ?? traceRef,
+      },
+      timings: stream.timings,
+      text,
+    })
+    return {
+      text,
+      reasoningText,
+      assistantMessage: { role: "assistant" as const, content: text },
+      metadata,
+      traceRef: metadata.traceRef,
+      ...(byokAck === undefined ? {} : { byokAck }),
+    }
+  })
+}
+
+function consumeOneStream(
+  options: ChatTurnOptions,
+  startedAt: number,
+): Effect.Effect<{
+  readonly byokAck?: string | undefined
+  readonly metadata: StreamFrameMetadata
+  readonly reasoningText: string
+  readonly text: string
+  readonly timings: {
+    readonly firstTokenAt?: number | undefined
+    readonly responseAt: number
+    readonly startedAt: number
+  }
+  readonly traceRef?: string | undefined
+}, KhalaCliError> {
+  return Effect.gen(function* () {
     const response = yield* postChat(options)
     const responseAt = Date.now()
     const traceRef = readTraceRef(response)
@@ -45,24 +116,10 @@ export function runChatTurn(options: ChatTurnOptions): Effect.Effect<ChatTurnRes
       options.onDelta,
       options.onReasoning,
     )
-    const durationMs = Math.max(0, Date.now() - startedAt)
-    const metadata = buildTurnMetadata({
-      durationMs,
-      mode: options.mode,
-      streamMetadata: {
-        ...stream.metadata,
-        traceRef: stream.metadata.traceRef ?? traceRef,
-      },
-      timings: stream.timings,
-      text: stream.text,
-    })
     return {
-      text: stream.text,
-      reasoningText: stream.reasoningText,
-      assistantMessage: { role: "assistant" as const, content: stream.text },
-      metadata,
-      traceRef: metadata.traceRef,
+      ...stream,
       ...(byokAck === undefined ? {} : { byokAck }),
+      traceRef,
     }
   })
 }
@@ -260,6 +317,7 @@ function postChat(options: ChatTurnOptions): Effect.Effect<Response, KhalaCliErr
         body: JSON.stringify({
           model: KHALA_MODEL_ID,
           messages: options.messages,
+          max_tokens: KHALA_CHAT_MAX_TOKENS,
           stream: true,
           stream_options: { include_usage: true },
         }),
@@ -463,6 +521,32 @@ function mergeMetadata(
     ...previous,
     ...withoutUndefined(next),
     usage: next.usage ?? previous.usage,
+  }
+}
+
+function shouldContinueAfterLength(metadata: StreamFrameMetadata): boolean {
+  const finishReason = metadata.finishReason?.trim().toLowerCase()
+  return finishReason === "length" || finishReason === "max_tokens" || finishReason === "max_tokens_reached"
+}
+
+function mergeUsageMetadata(
+  latest: StreamFrameMetadata,
+  previous: StreamFrameMetadata,
+): StreamFrameMetadata {
+  if (latest.usage === undefined || previous.usage === undefined) {
+    return latest
+  }
+  return {
+    ...latest,
+    usage: {
+      cachedPromptTokens:
+        latest.usage.cachedPromptTokens === undefined && previous.usage.cachedPromptTokens === undefined
+          ? undefined
+          : (latest.usage.cachedPromptTokens ?? 0) + (previous.usage.cachedPromptTokens ?? 0),
+      completionTokens: latest.usage.completionTokens + previous.usage.completionTokens,
+      promptTokens: latest.usage.promptTokens + previous.usage.promptTokens,
+      totalTokens: latest.usage.totalTokens + previous.usage.totalTokens,
+    },
   }
 }
 

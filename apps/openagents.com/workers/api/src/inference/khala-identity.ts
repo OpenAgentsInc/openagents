@@ -79,6 +79,7 @@ export const KhalaSignatureId = S.Literals([
   'identity',
   'refusal_posture',
   'response_discipline',
+  'artanis_interaction',
 ])
 export type KhalaSignatureId = typeof KhalaSignatureId.Type
 
@@ -619,6 +620,72 @@ export const KHALA_RESPONSE_DISCIPLINE_SIGNATURE: KhalaSignature = {
 }
 
 // ---------------------------------------------------------------------------
+// Artanis-interaction signature (#4): read-only OpenAgents operator grounding.
+// ---------------------------------------------------------------------------
+//
+// This contract prevents Khala from treating "Artanis" as generic game lore in
+// OpenAgents product chat. It is a grounding/output contract, not an authority
+// grant: public users may ask about Artanis and receive public-safe status,
+// activity, and decision context, but commands, dispatch, spend, payout,
+// settlement, and owner-operator actions remain owner-gated elsewhere.
+export const KHALA_ARTANIS_INTERACTION_SYSTEM_PROMPT = [
+  'Artanis interaction contract: when a user asks about Artanis, treat Artanis as the OpenAgents operator agent, not a fictional character or game-lore persona.',
+  'Answer Artanis questions from the public OpenAgents context: Artanis supervises and reports on the OpenAgents agent fleet, Khala/Pylon/Codex burndown work, public decisions, and public-safe activity.',
+  'This surface is read-only and multi-person. Any signed-in or public user may ask what Artanis is, how to observe him, what public status/activity/decisions are visible, and how to use public pages such as /artanis, public activity, product promises, fleet status, and Forum reports.',
+  'Do not issue commands, dispatch work, spend funds, mutate state, approve payouts, claim owner authority, or imply that the public chat can control Artanis. Owner operator actions stay behind owner-gated consoles and approval gates.',
+  'If live Artanis state is not present in the prompt, say what the public read-only path is and avoid inventing current private state.',
+].join(' ')
+
+export const KHALA_ARTANIS_INTERACTION_REINFORCEMENT_PROMPT = [
+  'Your previous answer treated Artanis as generic lore or implied public command authority. That violates the Artanis interaction contract.',
+  'Answer again with Artanis grounded as the OpenAgents operator agent. Keep it public-safe and read-only: status, public activity, decisions, and observation paths only; no commands, dispatch, spend, payout, or owner-only actions.',
+].join(' ')
+
+const ARTANIS_LORE_CUES: ReadonlyArray<string> = [
+  'starcraft',
+  'protoss',
+  'daelaam',
+  'hierarch',
+  'aiur',
+  'nerve cord',
+  'character.ai',
+]
+
+export const detectKhalaArtanisInteractionViolations = (
+  completion: string,
+): ReadonlyArray<KhalaSignatureViolationSpan> => {
+  if (!/\bartanis\b/iu.test(completion)) return []
+  const lower = completion.toLowerCase()
+  const violations: Array<KhalaSignatureViolationSpan> = []
+  if (!lower.includes('openagents')) {
+    violations.push({ text: 'artanis_not_grounded_in_openagents' })
+  }
+  for (const cue of ARTANIS_LORE_CUES) {
+    if (lower.includes(cue)) {
+      violations.push({ text: cue })
+    }
+  }
+  return violations
+}
+
+export const KHALA_ARTANIS_INTERACTION_SIGNATURE: KhalaSignature = {
+  correctText: (completion: string): string => completion,
+  description:
+    'Khala grounds Artanis as the OpenAgents operator agent and keeps public Artanis interaction read-only: status, activity, decisions, and observation paths only; no commands, dispatch, spend, payout, or owner-gated action.',
+  id: 'artanis_interaction',
+  reinforcementPrompt: KHALA_ARTANIS_INTERACTION_REINFORCEMENT_PROMPT,
+  verify: (completion: string): KhalaSignatureVerdict => {
+    const violations = detectKhalaArtanisInteractionViolations(completion)
+    return {
+      reason: violations.length === 0 ? '' : 'artanis_not_openagents_operator',
+      satisfied: violations.length === 0,
+      signature: 'artanis_interaction',
+      violations,
+    }
+  },
+}
+
+// ---------------------------------------------------------------------------
 // The signature registry (extensible set; identity is #1).
 // ---------------------------------------------------------------------------
 
@@ -630,6 +697,7 @@ export const KHALA_SIGNATURES: ReadonlyArray<KhalaSignature> = [
   KHALA_IDENTITY_SIGNATURE,
   KHALA_REFUSAL_POSTURE_SIGNATURE,
   KHALA_RESPONSE_DISCIPLINE_SIGNATURE,
+  KHALA_ARTANIS_INTERACTION_SIGNATURE,
 ]
 
 export const getKhalaSignature = (

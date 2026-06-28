@@ -5,6 +5,7 @@ import { OnboardingInferenceError } from './autopilot-onboarding-program'
 import type { OnboardingStreamDelta } from './autopilot-onboarding-program'
 import {
   KHALA_CHAT_MAX_MESSAGE_CHARS,
+  KHALA_CHAT_MAX_TOKENS,
   type KhalaChatStreamClient,
   type KhalaChatStreamSource,
 } from './khala-chat-program'
@@ -48,7 +49,10 @@ const failingStream: KhalaChatStreamClient = () =>
 // identity system prompt is injected and the client never supplies it.
 const capturingStream = (
   chunks: ReadonlyArray<string>,
-  capture: (request: { messages: ReadonlyArray<{ role: string; content: string }> }) => void,
+  capture: (request: {
+    messages: ReadonlyArray<{ role: string; content: string }>
+    passthroughParams: Readonly<Record<string, unknown>>
+  }) => void,
 ): KhalaChatStreamClient => request => {
   capture(request)
   return Effect.succeed<KhalaChatStreamSource>({
@@ -209,7 +213,10 @@ describe('khala chat route', () => {
 
   test('injects the Khala identity system prompt and keeps the running conversation', async () => {
     let captured:
-      | { messages: ReadonlyArray<{ role: string; content: string }> }
+      | {
+          messages: ReadonlyArray<{ role: string; content: string }>
+          passthroughParams: Readonly<Record<string, unknown>>
+        }
       | undefined
     const routes = makeKhalaChatRoutes({
       makeStreamClient: () =>
@@ -242,12 +249,15 @@ describe('khala chat route', () => {
     )
     // It is the GENERIC chat instruction, not the concierge intake interview.
     expect(messages[0]?.content).toContain('Do not run an intake interview')
+    expect(messages[0]?.content).toContain('Artanis interaction contract')
+    expect(messages[0]?.content).toContain('OpenAgents operator agent')
     // The running conversation follows the system prompt, in order.
     expect(messages.slice(1)).toEqual([
       { role: 'user', content: 'hi' },
       { role: 'assistant', content: 'We are Khala.' },
       { role: 'user', content: 'what can you do?' },
     ])
+    expect(captured?.passthroughParams.max_tokens).toBe(KHALA_CHAT_MAX_TOKENS)
   })
 
   test('rejects a non-POST method', async () => {

@@ -95,6 +95,74 @@ describe("Khala client", () => {
     expect(result.metadata.durationMs).toBeGreaterThanOrEqual(result.metadata.timeToFirstTokenMs ?? 0)
   })
 
+  test("sets a high max_tokens budget on authenticated chat completions", async () => {
+    const bodies: Array<Record<string, unknown>> = []
+    const fakeFetch = (async (_url: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      bodies.push(JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>)
+      return sseResponse([
+        'data: {"id":"chat_test","model":"openagents/khala","choices":[{"delta":{"content":"complete"},"finish_reason":"stop"}]}',
+        'data: {"id":"chat_test","model":"openagents/khala","choices":[],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}',
+        "data: [DONE]",
+        "",
+      ].join("\n\n"))
+    }) as unknown as typeof fetch
+
+    const result = await Effect.runPromise(runChatTurn({
+      baseUrl: "https://example.test",
+      fetch: fakeFetch,
+      messages: [{ role: "user", content: "hi" }],
+      mode: "api",
+      token: "oa_agent_test",
+    }))
+
+    expect(result.text).toBe("complete")
+    expect(bodies[0]?.max_tokens).toBe(8192)
+  })
+
+  test("continues a streamed answer when finish_reason reports length", async () => {
+    const bodies: Array<{ readonly messages?: ReadonlyArray<{ readonly role: string; readonly content: string }> }> = []
+    let calls = 0
+    const fakeFetch = (async (_url: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      calls += 1
+      bodies.push(JSON.parse(String(init?.body ?? "{}")) as { readonly messages?: ReadonlyArray<{ readonly role: string; readonly content: string }> })
+      if (calls === 1) {
+        return sseResponse([
+          'data: {"id":"chat_test","model":"openagents/khala","choices":[{"delta":{"content":"Which of these paths were"},"finish_reason":"length"}]}',
+          'data: {"id":"chat_test","model":"openagents/khala","choices":[],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}',
+          "data: [DONE]",
+          "",
+        ].join("\n\n"))
+      }
+      return sseResponse([
+        'data: {"id":"chat_test","model":"openagents/khala","choices":[{"delta":{"content":" most relevant to your goal?"},"finish_reason":"stop"}]}',
+        'data: {"id":"chat_test","model":"openagents/khala","choices":[],"usage":{"prompt_tokens":12,"completion_tokens":6,"total_tokens":18}}',
+        "data: [DONE]",
+        "",
+      ].join("\n\n"))
+    }) as unknown as typeof fetch
+
+    const deltas: string[] = []
+    const result = await Effect.runPromise(runChatTurn({
+      baseUrl: "https://example.test",
+      fetch: fakeFetch,
+      messages: [{ role: "user", content: "how should I proceed?" }],
+      mode: "api",
+      onDelta: delta => deltas.push(delta),
+      token: "oa_agent_test",
+    }))
+
+    expect(calls).toBe(2)
+    expect(result.text).toBe("Which of these paths were most relevant to your goal?")
+    expect(deltas.join("")).toBe(result.text)
+    expect(result.metadata.finishReason).toBe("stop")
+    expect(result.metadata.usage.totalTokens).toBe(33)
+    expect(bodies[1]?.messages?.at(-2)).toEqual({
+      role: "assistant",
+      content: "Which of these paths were",
+    })
+    expect(bodies[1]?.messages?.at(-1)?.content).toContain("Continue the previous answer")
+  })
+
   test("fetches the global Khala tokens-served counter", async () => {
     const calls: Array<string> = []
     const fakeFetch = (async (url: Parameters<typeof fetch>[0]) => {
