@@ -14,8 +14,8 @@
 //      bezier graph. A null/empty live scene falls back to the caller's static
 //      seed so zero-state / pre-load is calm, never blank.
 //   2. PAYMENTS — each PaymentParticle becomes an EVIDENCE-BOUND beam from the
-//      actor pylon → target pylon (gold motionKind for real bitcoin, dim for
-//      credited), with a settlement burst on the target, plus clickable endpoint
+//      actor pylon → target pylon (gold real-bitcoin motion), with a settlement
+//      burst on the target, plus clickable endpoint
 //      entities that carry the receipt sourceRef. motionPolicy.evidence is
 //      "required", so the renderer refuses to animate any motion without refs —
 //      and activityEventToParticle already drops particles with no sourceRef, so
@@ -117,11 +117,9 @@ const endpointRingPosition = (index: number, count: number): TrainingRunVector =
   ])
 }
 
-// An entity status the renderer's status→color map reads. real_bitcoin earns the
-// "verified" (gold-family) tone; credited settlement reads as "active". These are
-// the public statuses the shared training-run entity color map honors.
-const endpointStatus = (particle: PaymentParticle): string =>
-  particle.realBitcoinMoved ? "verified" : "active"
+// An entity status the renderer's status→color map reads. Real bitcoin earns the
+// "verified" (gold-family) tone.
+const endpointStatus = (_particle: PaymentParticle): string => "verified"
 
 export type ChatWorldPaymentEndpointSource =
   | "avatar"
@@ -589,15 +587,13 @@ export const chatWorldPaymentLayer = (
         label: endpointLabel(toEndpoint, "to"),
         detail: endpointDetail(primaryRef, toEndpoint, particle, "to"),
         position: toEndpoint.position,
-        iconRecipe: verseIconRecipeForId(
-          particle.realBitcoinMoved ? "zap" : "settlement",
-        ),
+        iconRecipe: verseIconRecipeForId("zap"),
       })
     }
 
     const evidence = {
       motionId: particle.id,
-      motionKind: particle.realBitcoinMoved ? "real_bitcoin_moved" : "settlement_recorded",
+      motionKind: particle.kind,
       sourceRefs: particle.sourceRefs,
       ...(typeof particle.ts === "string" ? { generatedAt: particle.ts } : {}),
       simulated: false,

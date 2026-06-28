@@ -110,6 +110,7 @@ const scene = (
 
 const particle = (overrides: Partial<PaymentParticle> = {}): PaymentParticle => ({
   id: "evt-1",
+  kind: "real_bitcoin_moved",
   fromRef: "pylon:local",
   toRef: "pylon:buyer",
   amountSats: 1_000,

@@ -3909,7 +3909,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Real Bitcoin settlements are visualized in the agent world as gold particles flying agent-to-agent, each particle bound to a real settlement receipt and clickable to its evidence.',
         safeCopy:
-          'The Bitcoin payment visualization is merged to main behind the default-off CHAT_WORLD_PAYMENTS flag (PR #5743). It is evidence-bound by construction: a payment particle is only emitted for a real_bitcoin_moved or settlement_recorded event that carries at least one sourceRef, and the mappers refuse to emit a particle with no sourceRef. It is not yet wired into the live running scene and the flag is off by default.',
+          'The Bitcoin payment visualization is wired into the live running agent-world scene behind the default-off CHAT_WORLD_PAYMENTS flag. It is evidence-bound by construction: a gold payment particle is only emitted for a real_bitcoin_moved or settlement_recorded event that proves realBitcoinMoved:true and carries at least one sourceRef, and the mappers refuse to emit a particle with no sourceRef or simulated settlement evidence.',
         unsafeCopy:
           'Do not say payment particles are live for all users, that the visualization is on by default, that it shows simulated or unbacked payments, or that visualizing a settlement implies any new earning, payout, or settlement authority.',
         evidenceRefs: [
@@ -3918,16 +3918,20 @@ export const publicProductPromisesDocument = () => {
           'https://github.com/OpenAgentsInc/openagents/issues/5730',
           'https://github.com/OpenAgentsInc/openagents/issues/5736',
           'apps/autopilot-desktop/src/shared/chat-world-scene.ts',
+          'apps/autopilot-desktop/src/shared/chat-world-visualization.ts',
           'apps/autopilot-desktop/src/ui/chat-world-subscriptions.ts',
+          'apps/autopilot-desktop/src/ui/view.ts',
+          'apps/autopilot-desktop/tests/chat-world-scene.test.ts',
+          'apps/autopilot-desktop/tests/chat-world-subscriptions.test.ts',
+          'apps/autopilot-desktop/tests/chat-world-visualization.test.ts',
           'promise:autopilot.agent_world_scene.v1',
           'promise:training.decentralized_training_launch.v1',
         ],
         blockerRefs: [
-          'blocker.product_promises.payment_visualization_not_wired_into_live_scene',
           'blocker.product_promises.payment_visualization_flag_default_off',
         ],
         verification:
-          'Yellow is limited to the merged, tested mappers in chat-world-scene.ts (PR #5743): PAYMENT_EVENT_KINDS is exactly {real_bitcoin_moved, settlement_recorded}, sourceRefs is required and non-empty so every particle is clickable to a real receipt, and an event with no sourceRef returns null (never a faked clickable receipt). True today: the descriptor builder is evidence-bound and flag-gated. Green requires the visualization wired into the live running scene end to end, an owner decision on default-on, and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+          'Yellow covers the live wiring behind CHAT_WORLD_PAYMENTS: chat-world-subscriptions.ts backfills and streams public activity-timeline events into GotChatWorldPaymentParticle, update.ts stores the bounded active set, view.ts composes modelChatWorldParticles through withChatWorldPaymentLayer, and chat-world-visualization.ts turns each accepted particle into clickable beam/burst endpoint evidence. PAYMENT_EVENT_KINDS remains exactly {real_bitcoin_moved, settlement_recorded}; realBitcoinMoved:true and sourceRefs are required, so an event with no sourceRef or simulated settlement evidence returns null. Green requires an owner decision on default-on and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
         authorityBoundary:
           'Visualizing a Bitcoin settlement grants no payment authority, no spend, no payout, and no settlement authority. The particle is a clickable projection of an already-public receipt or event; it never moves money and never asserts a settlement that the underlying receipt does not.',
       },

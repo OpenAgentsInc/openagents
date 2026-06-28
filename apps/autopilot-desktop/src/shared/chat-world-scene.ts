@@ -268,6 +268,8 @@ export type ActivityEvent = {
   readonly text?: string
 }
 
+export type PaymentParticleKind = "real_bitcoin_moved" | "settlement_recorded"
+
 // A renderer-agnostic descriptor for one payment particle. The P0 scene maps
 // fromRef/toRef → node positions and feeds size/color/evidence into
 // three-effect createFlowBeam + createEvidenceBackedEventBurst. EVIDENCE-BOUND:
@@ -275,14 +277,16 @@ export type ActivityEvent = {
 // real receipt/event.
 export type PaymentParticle = {
   readonly id: string
+  /** originating public activity event kind. */
+  readonly kind: PaymentParticleKind
   /** sender node ref (actorRef). */
   readonly fromRef: string
   /** recipient node ref (targetRef). */
   readonly toRef: string
   readonly amountSats: number
-  /** real bitcoin (gold) vs credited/non-bitcoin (dim). */
+  /** accepted payment particles are real-bitcoin settlement evidence. */
   readonly realBitcoinMoved: boolean
-  /** gold for real bitcoin, dim blue for credited flows. */
+  /** gold for real bitcoin movement. */
   readonly color: number
   /** [0.2,1] visual size ∝ amountSats (log-scaled, clamped). */
   readonly size: number
@@ -293,13 +297,15 @@ export type PaymentParticle = {
 }
 
 export const PAYMENT_PARTICLE_GOLD = 0xf5b73a // real bitcoin moved
-export const PAYMENT_PARTICLE_DIM = 0x4a5570 // credited / non-bitcoin
 
 // Kinds that produce a sender→recipient money particle.
 const PAYMENT_EVENT_KINDS = new Set(["real_bitcoin_moved", "settlement_recorded"])
 
 export const isPaymentEvent = (event: ActivityEvent): boolean =>
   PAYMENT_EVENT_KINDS.has(event.kind)
+
+const paymentParticleKind = (kind: string): PaymentParticleKind | null =>
+  kind === "real_bitcoin_moved" || kind === "settlement_recorded" ? kind : null
 
 // Log-scale size in [0.2, 1] so a 10-sat tip and a 10M-sat settlement both read,
 // with bigger amounts visibly larger. 0 sats → smallest visible particle.
@@ -324,7 +330,9 @@ export const particleSize = (amountSats: number): number => {
 export const activityEventToParticle = (
   event: ActivityEvent,
 ): PaymentParticle | null => {
-  if (!isPaymentEvent(event)) return null
+  const kind = paymentParticleKind(event.kind)
+  if (kind === null) return null
+  if (event.realBitcoinMoved !== true) return null
 
   const fromRef = event.actorRef
   const toRef = event.targetRef
@@ -335,7 +343,6 @@ export const activityEventToParticle = (
   )
   if (sourceRefs.length === 0) return null // never fake a clickable receipt
 
-  const real = event.realBitcoinMoved === true
   const amountSats =
     typeof event.amountSats === "number" && event.amountSats > 0
       ? event.amountSats
@@ -343,11 +350,12 @@ export const activityEventToParticle = (
 
   return {
     id: event.eventRef,
+    kind,
     fromRef,
     toRef,
     amountSats,
-    realBitcoinMoved: real,
-    color: real ? PAYMENT_PARTICLE_GOLD : PAYMENT_PARTICLE_DIM,
+    realBitcoinMoved: true,
+    color: PAYMENT_PARTICLE_GOLD,
     size: particleSize(amountSats),
     sourceRefs,
     ts: event.ts ?? null,
