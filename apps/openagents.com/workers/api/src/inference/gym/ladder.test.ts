@@ -110,7 +110,17 @@ describe('Gym ladder recurring config', () => {
       'rung3',
     ])
     expect(GYM_LADDER_RUNGS[0]?.opponentLanes).toContain('bigpickle')
-    expect(GYM_LADDER_RUNGS[2]?.opponentLanes).toEqual(['openai-gpt', 'claude'])
+    expect(GYM_LADDER_RUNGS[1]?.opponentLanes).toEqual([
+      'gemini-free',
+      'gpt-oss-20b',
+      'gpt-oss-120b',
+      'glm-52',
+    ])
+    expect(GYM_LADDER_RUNGS[2]?.opponentLanes).toEqual([
+      'openai-gpt',
+      'claude',
+      'vertex-gemini',
+    ])
     for (const rung of GYM_LADDER_RUNGS) {
       expect(rung.ownerGateRef).toMatch(/^gate\.owner\.gym\.ladder\./)
     }
