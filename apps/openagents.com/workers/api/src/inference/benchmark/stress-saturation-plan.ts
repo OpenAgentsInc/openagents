@@ -37,6 +37,9 @@ export const GLM_STRESS_DEMAND_CLIENT = 'stress-harness' as const
 export const GLM_STRESS_EXTERNAL_WINS_POLICY =
   'external_wins_reserved_headroom_and_preemption_required' as const
 
+export const GLM_EXTERNAL_WINS_PRIMARY_SERVED_MODEL =
+  'openagents/glm-5.2-reap-504b' as const
+
 export const GLM_STRESS_ERROR_RATE_BACKOFF_THRESHOLD = 0.02
 
 export const GLM_STRESS_BACKOFF_STEP_FRACTION = 0.25
@@ -298,6 +301,11 @@ export type GlmExternalWinsProofReadout = Readonly<{
   fallbackReason: string | null
   schedulerPreemptionTargetOutcome: 'preempted_yielded' | 'missing'
   usageTotalTokens: number | null
+}>
+
+export type GlmExternalWinsOpenAgentsResponseInput = Readonly<{
+  body: unknown
+  externalHttpStatus: number
 }>
 
 const safePositiveInteger = (value: number): number =>
@@ -825,4 +833,76 @@ export const evaluateGlmExternalWinsProbe = (
         ? null
         : input.usageTotalTokens,
   }
+}
+
+const recordFromUnknown = (value: unknown): Record<string, unknown> =>
+  value !== null && typeof value === 'object'
+    ? (value as Record<string, unknown>)
+    : {}
+
+const nonEmptyStringFromUnknown = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
+
+const nullableStringFromUnknown = (value: unknown): string | null =>
+  value === null ? null : nonEmptyStringFromUnknown(value) ?? null
+
+const finiteNumberFromUnknown = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isFinite(value) ? value : undefined
+
+const schedulerPreemptionOutcomeFromUnknown = (
+  value: unknown,
+): 'preempted_yielded' | undefined =>
+  value === 'preempted_yielded' ? 'preempted_yielded' : undefined
+
+const servedLaneFromOpenAgentsResponse = (
+  openagents: Record<string, unknown>,
+): GlmExternalWinsServedLane => {
+  const servedModel = nonEmptyStringFromUnknown(openagents.served_model)
+  const supplyLane = nonEmptyStringFromUnknown(openagents.supply_lane)
+  const worker = nonEmptyStringFromUnknown(openagents.worker)
+
+  if (
+    supplyLane === 'hydralisk' &&
+    servedModel === GLM_EXTERNAL_WINS_PRIMARY_SERVED_MODEL
+  ) {
+    return 'glm_primary'
+  }
+  if (
+    supplyLane === 'fireworks' ||
+    supplyLane === 'openrouter' ||
+    supplyLane === 'vertex-anthropic' ||
+    supplyLane === 'vertex-gemini'
+  ) {
+    return 'weaker_fallback'
+  }
+  if (
+    worker === 'hydralisk-vllm-glm-5p2-reap-504b' &&
+    servedModel === GLM_EXTERNAL_WINS_PRIMARY_SERVED_MODEL
+  ) {
+    return 'glm_primary'
+  }
+  return 'unknown'
+}
+
+export const evaluateGlmExternalWinsOpenAgentsResponse = (
+  input: GlmExternalWinsOpenAgentsResponseInput,
+): GlmExternalWinsProofReadout => {
+  const body = recordFromUnknown(input.body)
+  const openagents = recordFromUnknown(body.openagents)
+  const routing = recordFromUnknown(openagents.routing)
+  const schedulerPreemption = recordFromUnknown(routing.scheduler_preemption)
+  const usage = recordFromUnknown(body.usage)
+
+  return evaluateGlmExternalWinsProbe({
+    externalHttpStatus: input.externalHttpStatus,
+    fallbackReason: nullableStringFromUnknown(routing.fallback_reason),
+    schedulerPreemptionEvidenceRef: nonEmptyStringFromUnknown(
+      schedulerPreemption.evidence_ref,
+    ),
+    schedulerPreemptionTargetOutcome: schedulerPreemptionOutcomeFromUnknown(
+      schedulerPreemption.target_outcome,
+    ),
+    servedLane: servedLaneFromOpenAgentsResponse(openagents),
+    usageTotalTokens: finiteNumberFromUnknown(usage.total_tokens),
+  })
 }

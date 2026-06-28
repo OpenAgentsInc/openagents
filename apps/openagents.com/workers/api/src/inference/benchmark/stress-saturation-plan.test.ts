@@ -14,6 +14,7 @@ import {
   buildGlmContinuousStressPlan,
   buildGlmContinuousStressRunnerPlan,
   evaluateGlmExternalWinsProbe,
+  evaluateGlmExternalWinsOpenAgentsResponse,
 } from './stress-saturation-plan'
 
 const stressShape = (id: string, concurrency: number): SequenceShape => ({
@@ -629,5 +630,71 @@ describe('GLM continuous stress saturation plan (#6317 prep slice)', () => {
     expect(proof.status).toBe('blocked')
     expect(proof.reasons).toEqual(['missing_scheduler_preemption'])
     expect(proof.schedulerPreemptionTargetOutcome).toBe('missing')
+  })
+
+  test('derives accepted #6318 proof from the public OpenAgents response block', () => {
+    const proof = evaluateGlmExternalWinsOpenAgentsResponse({
+      externalHttpStatus: 200,
+      body: {
+        openagents: {
+          served_model: 'openagents/glm-5.2-reap-504b',
+          supply_lane: 'hydralisk',
+          worker: 'hydralisk-vllm-glm-5p2-reap-504b',
+          routing: {
+            fallback_reason: null,
+            scheduler_preemption: {
+              evidence_ref:
+                'scheduler.preemption.internal_stress.request_live',
+              reason: 'external_preemption',
+              target_demand_class: 'internal_stress',
+              target_outcome: 'preempted_yielded',
+            },
+          },
+        },
+        usage: {
+          total_tokens: 614,
+        },
+      },
+    })
+
+    expect(proof.status).toBe('accepted')
+    expect(proof.servedLane).toBe('glm_primary')
+    expect(proof.fallbackReason).toBeNull()
+    expect(proof.schedulerPreemptionTargetOutcome).toBe('preempted_yielded')
+    expect(proof.usageTotalTokens).toBe(614)
+  })
+
+  test('derives blocked #6318 proof when public response overflowed to a weaker lane', () => {
+    const proof = evaluateGlmExternalWinsOpenAgentsResponse({
+      externalHttpStatus: 200,
+      body: {
+        openagents: {
+          served_model: 'accounts/fireworks/models/glm-4.5',
+          supply_lane: 'fireworks',
+          worker: 'fireworks',
+          routing: {
+            fallback_reason: 'empty_assistant_content',
+            scheduler_preemption: {
+              evidence_ref:
+                'scheduler.preemption.internal_stress.request_fallback',
+              reason: 'external_preemption',
+              target_demand_class: 'internal_stress',
+              target_outcome: 'preempted_yielded',
+            },
+          },
+        },
+        usage: {
+          total_tokens: 614,
+        },
+      },
+    })
+
+    expect(proof.status).toBe('blocked')
+    expect(proof.servedLane).toBe('weaker_fallback')
+    expect(proof.reasons).toEqual([
+      'fallback_after_preemption',
+      'served_lane_not_glm_primary',
+      'empty_glm_content_after_preemption',
+    ])
   })
 })
