@@ -77,6 +77,7 @@ export const GymOssRoute = r('GymOss')
 // public, logged-out posture as `/gym`.
 export const MirrorCodeRoute = r('MirrorCode')
 export const TassadarRoute = r('Tassadar')
+export const ArtanisTracesRoute = r('ArtanisTraces')
 export const TassadarReplayRoute = r('TassadarReplay', {
   replaySlug: S.String,
 })
@@ -192,6 +193,7 @@ export type GymRoute = typeof GymRoute.Type
 export type GymOssRoute = typeof GymOssRoute.Type
 export type MirrorCodeRoute = typeof MirrorCodeRoute.Type
 export type TassadarRoute = typeof TassadarRoute.Type
+export type ArtanisTracesRoute = typeof ArtanisTracesRoute.Type
 export type TassadarReplayRoute = typeof TassadarReplayRoute.Type
 export type LoginRoute = typeof LoginRoute.Type
 export type BlogRoute = typeof BlogRoute.Type

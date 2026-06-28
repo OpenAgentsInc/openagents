@@ -2999,6 +2999,294 @@ export const makeArtanisDispatchCodexTaskTool = (
 }
 
 // ---------------------------------------------------------------------------
+// #6681 — dispatch_codex_subqueries (GATED: pylon_job_dispatch).
+// ---------------------------------------------------------------------------
+//
+// Parallel Artanis dispatcher across Pylon slots. This is deliberately a thin
+// fanout over the existing dispatch plan/execution seam above: each sub-query is
+// validated with the same public-safety gate, every created assignment is still
+// own-capacity + no-spend, and the same pylon_job_dispatch approval controls the
+// whole batch. The slot count is a concurrency bound only; it never grants extra
+// capacity beyond what the server-side Pylon dispatch gate admits.
+
+export const ARTANIS_PARALLEL_SUBQUERY_MAX_COUNT = 16
+export const ARTANIS_PARALLEL_SUBQUERY_MAX_SLOTS = 8
+
+const positiveIntegerArg = (
+  value: unknown,
+  fallback: number,
+  max: number,
+): number =>
+  typeof value === 'number' && Number.isInteger(value) && value > 0
+    ? Math.min(value, max)
+    : typeof value === 'string' && /^\d+$/.test(value.trim())
+      ? Math.min(Number.parseInt(value.trim(), 10), max)
+      : fallback
+
+const parallelSubqueryRecords = (
+  args: unknown,
+): ReadonlyArray<Record<string, unknown>> | undefined => {
+  if (typeof args !== 'object' || args === null) return undefined
+  const raw = (args as Record<string, unknown>).subqueries
+  if (!Array.isArray(raw)) return undefined
+  return raw
+    .filter((item): item is Record<string, unknown> =>
+      typeof item === 'object' && item !== null && !Array.isArray(item),
+    )
+    .slice(0, ARTANIS_PARALLEL_SUBQUERY_MAX_COUNT)
+}
+
+const buildArtanisParallelSubqueryPlans = (
+  args: unknown,
+  defaultBranch: string,
+):
+  | Readonly<{
+      ok: true
+      inputs: ReadonlyArray<ArtanisDispatchPlanInput>
+      planText: string
+      slotCount: number
+    }>
+  | Readonly<{ ok: false; message: string }> => {
+  const record =
+    typeof args === 'object' && args !== null
+      ? (args as Record<string, unknown>)
+      : {}
+  const subqueries = parallelSubqueryRecords(args)
+  if (subqueries === undefined || subqueries.length === 0) {
+    return {
+      message:
+        '(invalid arguments: a non-empty "subqueries" array is required)',
+      ok: false,
+    }
+  }
+
+  const slotCount = positiveIntegerArg(
+    record.slotCount ?? record.slots ?? record.concurrency,
+    Math.min(subqueries.length, 2),
+    ARTANIS_PARALLEL_SUBQUERY_MAX_SLOTS,
+  )
+  const inheritedBranch = asString(record.branch) ?? defaultBranch
+  const inheritedVerify = asString(record.verify)
+  const parentObjective = asString(record.objective)
+
+  const builtPlans: Array<Readonly<{
+    input: ArtanisDispatchPlanInput
+    planText: string
+  }>> = []
+  for (const [index, subquery] of subqueries.entries()) {
+    const subObjective = asString(subquery.objective)
+    const objective =
+      parentObjective !== undefined && subObjective !== undefined
+        ? `${parentObjective} Sub-query ${index + 1}: ${subObjective}`
+        : subObjective
+    const built = buildArtanisDispatchPlan(
+      {
+        branch: asString(subquery.branch) ?? inheritedBranch,
+        filePaths: asStringArray(subquery.filePaths),
+        issue: subquery.issue,
+        objective,
+        verify: asString(subquery.verify) ?? inheritedVerify,
+      },
+      defaultBranch,
+    )
+    if (!built.ok) {
+      return {
+        message: `(sub-query ${index + 1} invalid) ${built.message}`,
+        ok: false,
+      }
+    }
+    builtPlans.push({ input: built.input, planText: built.planText })
+  }
+
+  const lines: Array<string> = [
+    'Planned parallel Khala -> Pylon -> Codex sub-query dispatch (own-capacity only, no spend):',
+    `Sub-queries: ${builtPlans.length}`,
+    `Pylon slot concurrency: ${slotCount}`,
+    '',
+    'Before execution, publish matching owner capacity:',
+    '',
+    `  OPENAGENTS_PYLON_CODEX_CONCURRENCY=${slotCount} pylon presence heartbeat --json`,
+    '',
+  ]
+  builtPlans.forEach((built, index) => {
+    lines.push(`Sub-query ${index + 1}:`)
+    lines.push(built.planText)
+    lines.push('')
+  })
+  lines.push(
+    'The dispatcher creates every sub-query through the existing pylon_job_dispatch gate and lets the server-side linked-Pylon capacity gate admit only currently available owner slots.',
+  )
+
+  return {
+    inputs: builtPlans.map(plan => plan.input),
+    ok: true,
+    planText: lines.join('\n'),
+    slotCount,
+  }
+}
+
+export const makeArtanisDispatchCodexSubqueriesTool = (
+  config: Readonly<{
+    defaultBranch?: string | undefined
+    execution?: ArtanisDispatchExecution | undefined
+  }> = {},
+): ArtanisOperatorGatedTool => {
+  const defaultBranch = config.defaultBranch ?? 'main'
+  const execution = config.execution
+
+  return {
+    definition: {
+      description:
+        'Dispatch several independent Codex coding sub-queries in parallel through the Khala -> Pylon -> Codex burndown loop, bounded by an explicit owner Pylon slot concurrency. Gated by pylon_job_dispatch; own-capacity and no-spend only. Each sub-query requires a public-safe objective and verification command, inherited from the batch when provided.',
+      name: 'dispatch_codex_subqueries',
+      parameters: {
+        additionalProperties: false,
+        properties: {
+          branch: {
+            description: `Batch default git branch (default "${defaultBranch}").`,
+            type: 'string',
+          },
+          objective: {
+            description:
+              'Optional public-safe parent objective prepended to each sub-query.',
+            type: 'string',
+          },
+          slotCount: {
+            description:
+              `Maximum number of Pylon/Codex slots to use concurrently (1-${ARTANIS_PARALLEL_SUBQUERY_MAX_SLOTS}).`,
+            type: 'number',
+          },
+          subqueries: {
+            description:
+              'Independent public-safe coding sub-queries to dispatch.',
+            items: {
+              additionalProperties: false,
+              properties: {
+                branch: { type: 'string' },
+                filePaths: {
+                  items: { type: 'string' },
+                  type: 'array',
+                },
+                issue: { type: 'number' },
+                objective: { type: 'string' },
+                verify: { type: 'string' },
+              },
+              required: ['objective'],
+              type: 'object',
+            },
+            type: 'array',
+          },
+          verify: {
+            description:
+              'Batch default public verification command inherited by sub-queries that omit verify.',
+            type: 'string',
+          },
+        },
+        required: ['subqueries'],
+        type: 'object',
+      },
+    },
+    kind: 'gated',
+    riskyActionKind: 'pylon_job_dispatch',
+    run: (args: unknown): Effect.Effect<ArtanisOperatorGatedResult> =>
+      Effect.gen(function* () {
+        const built = buildArtanisParallelSubqueryPlans(args, defaultBranch)
+        if (!built.ok) {
+          return {
+            outcome: 'deferred',
+            plan: built.message,
+            reason: 'invalid_arguments',
+          }
+        }
+
+        if (execution === undefined) {
+          return {
+            outcome: 'deferred',
+            plan: built.planText,
+            reason: 'execution_not_wired',
+          }
+        }
+
+        const approved = yield* execution
+          .isOwnerApproved()
+          .pipe(Effect.orElseSucceed(() => false))
+        if (!approved) {
+          return {
+            outcome: 'deferred',
+            plan: built.planText,
+            reason: 'no_effective_owner_approval',
+          }
+        }
+
+        const results = yield* Effect.forEach(
+          built.inputs,
+          (input, index) =>
+            execution.createCodexAssignment(input).pipe(
+              Effect.map(result => ({ index, input, result })),
+              Effect.orElseSucceed(() => ({
+                index,
+                input,
+                result: {
+                  kind: 'rejected',
+                  reason: 'dispatch_execution_failed',
+                } as const,
+              })),
+            ),
+          { concurrency: built.slotCount },
+        )
+
+        const created = results.filter(
+          (
+            item,
+          ): item is Readonly<{
+            index: number
+            input: ArtanisDispatchPlanInput
+            result: Extract<ArtanisDispatchCreateResult, { kind: 'created' }>
+          }> => item.result.kind === 'created',
+        )
+        if (created.length === 0) {
+          const firstRejected = results.find(
+            (
+              item,
+            ): item is Readonly<{
+              index: number
+              input: ArtanisDispatchPlanInput
+              result: Extract<ArtanisDispatchCreateResult, { kind: 'rejected' }>
+            }> => item.result.kind === 'rejected',
+          )
+          const firstReason =
+            firstRejected?.result.reason ?? 'no_subqueries_created'
+          return {
+            outcome: 'deferred',
+            plan: built.planText,
+            reason: firstReason,
+          }
+        }
+
+        const summary = [
+          `parallelSubqueries: ${built.inputs.length}`,
+          `slotConcurrency: ${built.slotCount}`,
+          `createdAssignments: ${created.length}`,
+          ...results.map(item =>
+            item.result.kind === 'created'
+              ? `subquery ${item.index + 1}: assignmentRef=${item.result.assignmentRef}; pylonRef=${item.result.pylonRef}; durableRequestId=${item.result.durableRequestId ?? '(none)'}`
+              : `subquery ${item.index + 1}: deferred=${item.result.reason}`,
+          ),
+          'paymentMode: unpaid_smoke (no spend, own_capacity)',
+          'settlement: not_applicable; payoutClaimAllowed: false',
+        ].join('\n')
+
+        return {
+          assignmentRef: created[0]!.result.assignmentRef,
+          durableRequestId: created[0]!.result.durableRequestId,
+          outcome: 'executed',
+          summary,
+        }
+      }),
+  }
+}
+
+// ---------------------------------------------------------------------------
 // get_network_stats — LIVE public stats + token pace (epic #6359).
 // ---------------------------------------------------------------------------
 //
@@ -4280,6 +4568,10 @@ export const makeArtanisOperatorTools = (
     }),
     makeArtanisPostForumUpdateTool(config.forumUpdate),
     makeArtanisDispatchCodexTaskTool({
+      defaultBranch: config.defaultBranch,
+      execution: config.dispatchExecution,
+    }),
+    makeArtanisDispatchCodexSubqueriesTool({
       defaultBranch: config.defaultBranch,
       execution: config.dispatchExecution,
     }),

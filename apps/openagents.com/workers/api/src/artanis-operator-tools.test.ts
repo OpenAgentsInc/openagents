@@ -19,6 +19,7 @@ import {
   isSafeArtanisAssignmentRef,
   isSafeArtanisRepoPath,
   makeArtanisDispatchCodexTaskTool,
+  makeArtanisDispatchCodexSubqueriesTool,
   makeArtanisGetFleetStatusTool,
   makeArtanisGetGlmFleetStatusTool,
   makeArtanisGetSyntheticLoadStatusTool,
@@ -418,6 +419,152 @@ describe('#6366 dispatch_codex_task (gated; LIVE execution behind the gate)', ()
     if (result.outcome !== 'deferred') return
     expect(result.reason).toBe('invalid_arguments')
     // Neither the approval gate nor the create seam is consulted for bad input.
+    expect(approvalCalls).toHaveLength(0)
+    expect(createCalls).toHaveLength(0)
+  })
+})
+
+describe('#6681 dispatch_codex_subqueries (parallel gated fanout)', () => {
+  const batch = {
+    objective: 'Implement public Artanis dispatcher issue #6681.',
+    slotCount: 2,
+    verify:
+      'bun run --cwd apps/openagents.com/workers/api test -- src/artanis-operator-tools.test.ts',
+    subqueries: [
+      {
+        filePaths: ['apps/openagents.com/workers/api/src/artanis-operator-tools.ts'],
+        issue: 6681,
+        objective: 'Add the bounded parallel sub-query dispatcher.',
+      },
+      {
+        filePaths: ['apps/openagents.com/workers/api/src/artanis-operator-tools.test.ts'],
+        issue: 6681,
+        objective: 'Add regression coverage for parallel fanout.',
+      },
+      {
+        filePaths: ['apps/openagents.com/workers/api/src/artanis-operator-dispatch-execution.ts'],
+        issue: 6681,
+        objective: 'Confirm the existing own-capacity execution seam is reused.',
+      },
+    ],
+  }
+
+  test('with NO execution seam it DEFERS with a parallel Pylon slot plan', async () => {
+    const tool = makeArtanisDispatchCodexSubqueriesTool()
+
+    const result = await Effect.runPromise(tool.run(batch))
+
+    expect(result.outcome).toBe('deferred')
+    if (result.outcome !== 'deferred') return
+    expect(result.reason).toBe('execution_not_wired')
+    expect(result.plan).toContain('Planned parallel Khala -> Pylon -> Codex')
+    expect(result.plan).toContain('Sub-queries: 3')
+    expect(result.plan).toContain('Pylon slot concurrency: 2')
+    expect(result.plan).toContain('OPENAGENTS_PYLON_CODEX_CONCURRENCY=2')
+    expect(result.plan).toContain('#6681')
+  })
+
+  test('NO owner approval defers without creating any sub-query assignments', async () => {
+    const createCalls: Array<unknown> = []
+    const tool = makeArtanisDispatchCodexSubqueriesTool({
+      execution: {
+        createCodexAssignment: plan => {
+          createCalls.push(plan)
+          return Effect.succeed({
+            assignmentRef: 'assignment.public.khala_coding.should_not_happen',
+            durableRequestId: null,
+            kind: 'created',
+            pylonRef: 'pylon.owner.alpha',
+          } as const)
+        },
+        isOwnerApproved: () => Effect.succeed(false),
+      },
+    })
+
+    const result = await Effect.runPromise(tool.run(batch))
+
+    expect(result.outcome).toBe('deferred')
+    if (result.outcome !== 'deferred') return
+    expect(result.reason).toBe('no_effective_owner_approval')
+    expect(createCalls).toHaveLength(0)
+  })
+
+  test('approved fanout creates sub-query assignments with bounded slot concurrency', async () => {
+    const createCalls: Array<{ objective: string; verify: string | undefined }> = []
+    let inFlight = 0
+    let maxInFlight = 0
+    const tool = makeArtanisDispatchCodexSubqueriesTool({
+      execution: {
+        createCodexAssignment: plan =>
+          Effect.promise(
+            () =>
+              new Promise(resolve => {
+                createCalls.push({
+                  objective: plan.objective,
+                  verify: plan.verify,
+                })
+                inFlight += 1
+                maxInFlight = Math.max(maxInFlight, inFlight)
+                setTimeout(() => {
+                  inFlight -= 1
+                  resolve({
+                    assignmentRef: `assignment.public.khala_coding.subquery_${createCalls.length}`,
+                    durableRequestId: `req-subquery-${createCalls.length}`,
+                    kind: 'created',
+                    pylonRef: `pylon.owner.slot_${createCalls.length}`,
+                  } as const)
+                }, 10)
+              }),
+          ),
+        isOwnerApproved: () => Effect.succeed(true),
+      },
+    })
+
+    const result = await Effect.runPromise(tool.run(batch))
+
+    expect(result.outcome).toBe('executed')
+    if (result.outcome !== 'executed') return
+    expect(createCalls).toHaveLength(3)
+    expect(maxInFlight).toBe(2)
+    expect(createCalls.every(call => call.verify === batch.verify)).toBe(true)
+    expect(result.summary).toContain('parallelSubqueries: 3')
+    expect(result.summary).toContain('slotConcurrency: 2')
+    expect(result.summary).toContain('createdAssignments: 3')
+    expect(result.summary).toContain('unpaid_smoke')
+    expect(result.summary).toContain('payoutClaimAllowed: false')
+  })
+
+  test('invalid sub-query verification never reaches approval or creation', async () => {
+    const approvalCalls: Array<unknown> = []
+    const createCalls: Array<unknown> = []
+    const tool = makeArtanisDispatchCodexSubqueriesTool({
+      execution: {
+        createCodexAssignment: plan => {
+          createCalls.push(plan)
+          return Effect.succeed({
+            assignmentRef: 'assignment.public.khala_coding.should_not_happen',
+            durableRequestId: null,
+            kind: 'created',
+            pylonRef: 'pylon.owner.alpha',
+          } as const)
+        },
+        isOwnerApproved: () => {
+          approvalCalls.push(true)
+          return Effect.succeed(true)
+        },
+      },
+    })
+
+    const result = await Effect.runPromise(
+      tool.run({
+        subqueries: [{ objective: 'Missing verification command.' }],
+      }),
+    )
+
+    expect(result.outcome).toBe('deferred')
+    if (result.outcome !== 'deferred') return
+    expect(result.reason).toBe('invalid_arguments')
+    expect(result.plan).toContain('sub-query 1 invalid')
     expect(approvalCalls).toHaveLength(0)
     expect(createCalls).toHaveLength(0)
   })
@@ -2712,6 +2859,7 @@ describe('makeArtanisOperatorTools default table', () => {
     const tools = makeArtanisOperatorTools()
     const names = tools.map(tool => tool.definition.name).sort()
     expect(names).toEqual([
+      'dispatch_codex_subqueries',
       'dispatch_codex_task',
       'get_fleet_status',
       'get_glm_fleet_status',
