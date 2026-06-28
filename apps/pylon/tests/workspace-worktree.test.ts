@@ -191,6 +191,40 @@ describe("createGitWorktreeCheckoutRunner", () => {
     }
   })
 
+  test("materializes from the virtual merge queue base when one is supplied", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-worktree-"))
+    try {
+      const originRoot = join(root, "origin")
+      const origin = await createOriginRepo(originRoot)
+      const virtualBase = await commitOriginChange(
+        originRoot,
+        "virtual-head.ts",
+        "export const projectedHead = true\n",
+      )
+      const runner = createGitWorktreeCheckoutRunner({
+        repositoryCacheRoot: join(root, "git-cache"),
+        remoteUrlFor: () => origin.url,
+      })
+      const checkout = {
+        ...checkoutFor(origin.commitSha),
+        virtualBranch: {
+          kind: "pylon_virtual_merge_queue" as const,
+          baseCommitSha: virtualBase,
+          branchName: "pylon/virtual-issue-6690",
+          queueRef: "virtual_merge_queue.openagents.main",
+        },
+      }
+      const workingDirectory = join(root, "worktrees", "virtual-base")
+
+      await runner(workingDirectory, checkout)
+
+      expect(existsSync(join(workingDirectory, "virtual-head.ts"))).toBe(true)
+      expect((await run(["git", "rev-parse", "HEAD"], workingDirectory)).trim()).toBe(virtualBase)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   test("materializes a pinned commit when the requested branch is absent", async () => {
     const root = await mkdtemp(join(tmpdir(), "pylon-worktree-"))
     try {

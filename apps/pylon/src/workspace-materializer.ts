@@ -29,6 +29,12 @@ export type GitCheckoutWorkspace = {
     provider: "github"
     visibility: "public"
   }
+  virtualBranch?: {
+    kind: "pylon_virtual_merge_queue"
+    branchName: string
+    baseCommitSha: string
+    queueRef: string
+  }
   verificationCommand: {
     args: string[]
     commandRef: string
@@ -137,6 +143,7 @@ const githubFullNamePattern = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/
 const gitBranchNamePattern =
   /^(?!-)(?!refs\/)(?!.*(?:^|\/)\.)(?!.*(?:^|\/)$)(?!.*\.\.)(?!.*@{)(?!.*\/\/)(?!.*\.lock(?:\/|$))(?!.*\.$)[A-Za-z0-9][A-Za-z0-9._/-]{0,119}$/i
 const gitCommitShaPattern = /^[a-f0-9]{40}$/i
+const publicRefPattern = /^[A-Za-z0-9_.:/=@+-]{1,160}$/
 const verificationCommandArgPattern = /^[A-Za-z0-9_./:=@+-]{1,120}$/
 
 /**
@@ -155,6 +162,7 @@ export function gitCheckoutWorkspaceFrom(codingAssignment: unknown): GitCheckout
   if (!githubFullNamePattern.test(payload.repository.fullName)) return null
   if (!gitCommitShaPattern.test(payload.repository.commitSha)) return null
   if (typeof payload.repository.branch !== "string" || !gitBranchNamePattern.test(payload.repository.branch)) return null
+  if (!virtualBranchIsValid(payload.virtualBranch)) return null
   if (!Array.isArray(payload.verificationCommand?.args) || payload.verificationCommand.args.length === 0) return null
   if (typeof payload.verificationCommand.commandRef !== "string") return null
   const safeArgs = payload.verificationCommand.args.every((arg) =>
@@ -164,6 +172,29 @@ export function gitCheckoutWorkspaceFrom(codingAssignment: unknown): GitCheckout
     !arg.startsWith("/")
   )
   return safeArgs ? payload : null
+}
+
+function virtualBranchIsValid(virtualBranch: GitCheckoutWorkspace["virtualBranch"] | undefined): boolean {
+  if (virtualBranch === undefined) return true
+  if (virtualBranch === null || typeof virtualBranch !== "object") return false
+  return (
+    virtualBranch.kind === "pylon_virtual_merge_queue" &&
+    typeof virtualBranch.branchName === "string" &&
+    gitBranchNamePattern.test(virtualBranch.branchName) &&
+    virtualBranch.branchName.startsWith("pylon/virtual-") &&
+    typeof virtualBranch.baseCommitSha === "string" &&
+    gitCommitShaPattern.test(virtualBranch.baseCommitSha) &&
+    typeof virtualBranch.queueRef === "string" &&
+    publicRefPattern.test(virtualBranch.queueRef)
+  )
+}
+
+export function checkoutBaseCommitSha(checkout: GitCheckoutWorkspace): string {
+  return checkout.virtualBranch?.baseCommitSha ?? checkout.repository.commitSha
+}
+
+export function checkoutSourceRef(checkout: GitCheckoutWorkspace): string {
+  return `${checkout.repository.fullName}:${checkoutBaseCommitSha(checkout)}`
 }
 
 // Concurrent assignments materialize against a shared bare object store, so
@@ -549,6 +580,7 @@ export const defaultGitCheckoutRunner: WorkspaceCheckoutRunner = async (
   workingDirectory,
   checkout,
 ) => {
+  const baseCommitSha = checkoutBaseCommitSha(checkout)
   await rm(workingDirectory, { recursive: true, force: true })
   await mkdir(workingDirectory, { recursive: true })
   await runCheckedCommand(["git", "init"], workingDirectory, "reason.workspace_checkout.init_failed")
@@ -567,12 +599,12 @@ export const defaultGitCheckoutRunner: WorkspaceCheckoutRunner = async (
     "reason.workspace_checkout.remote_add_failed",
   )
   await runCheckedCommand(
-    ["git", "fetch", "--depth", "1", "origin", checkout.repository.commitSha],
+    ["git", "fetch", "--depth", "1", "origin", baseCommitSha],
     workingDirectory,
     "reason.workspace_checkout.fetch_failed",
   )
   await runCheckedCommand(
-    ["git", "checkout", "--detach", checkout.repository.commitSha],
+    ["git", "checkout", "--detach", baseCommitSha],
     workingDirectory,
     "reason.workspace_checkout.checkout_failed",
   )
@@ -609,7 +641,7 @@ export async function materializeGitCheckoutWorkspace(input: {
   await (input.checkoutRunner ?? defaultGitCheckoutRunner)(workingDirectory, input.checkout)
   return {
     cleanupRef: stableRef("cleanup.pylon.workspace", workspaceRef),
-    sourceRef: `${input.checkout.repository.fullName}:${input.checkout.repository.commitSha}`,
+    sourceRef: checkoutSourceRef(input.checkout),
     workingDirectory,
     workspaceRef,
   }
@@ -872,6 +904,7 @@ export function createGitWorktreeCheckoutRunner(
 ): WorkspaceCheckoutRunner {
   return async (workingDirectory, checkout) => {
     const repository = checkout.repository
+    const baseCommitSha = checkoutBaseCommitSha(checkout)
     const bareDirectory = join(
       options.repositoryCacheRoot,
       `${repositoryCacheKeyFor(repository.fullName)}.git`,
@@ -891,7 +924,7 @@ export function createGitWorktreeCheckoutRunner(
       // runs. Disable it on every materialization so pre-existing caches that
       // were created before this fix are also covered.
       await disableGitAutoMaintenance(bareDirectory)
-      const commitArg = `${repository.commitSha}^{commit}`
+      const commitArg = `${baseCommitSha}^{commit}`
       const cached = (await runQuietCommand(["git", "cat-file", "-e", commitArg], bareDirectory)) === 0
       if (!cached) {
         const remoteUrl =
@@ -913,7 +946,7 @@ export function createGitWorktreeCheckoutRunner(
           (await runQuietCommand(["git", "cat-file", "-e", commitArg], bareDirectory)) === 0
         if (!deepenedCached) {
           await runQuietCommand(
-            ["git", "fetch", "--depth", "1", remoteUrl, repository.commitSha],
+            ["git", "fetch", "--depth", "1", remoteUrl, baseCommitSha],
             bareDirectory,
           )
         }
@@ -925,15 +958,21 @@ export function createGitWorktreeCheckoutRunner(
       }
       // best-effort gc pin; materialization correctness never depends on it
       await runQuietCommand(
-        ["git", "update-ref", `refs/pinned/${repository.commitSha}`, repository.commitSha],
+        ["git", "update-ref", `refs/pinned/${baseCommitSha}`, baseCommitSha],
         bareDirectory,
       )
+      if (checkout.virtualBranch !== undefined) {
+        await runQuietCommand(
+          ["git", "update-ref", `refs/virtual/${checkout.virtualBranch.branchName}`, baseCommitSha],
+          bareDirectory,
+        )
+      }
       await rm(workingDirectory, { recursive: true, force: true })
       // a previously removed worktree leaves admin metadata that would block
       // re-adding the same path
       await runQuietCommand(["git", "worktree", "prune"], bareDirectory)
       await runCheckedCommand(
-        ["git", "worktree", "add", "--detach", workingDirectory, repository.commitSha],
+        ["git", "worktree", "add", "--detach", workingDirectory, baseCommitSha],
         bareDirectory,
         "reason.workspace_checkout.worktree_add_failed",
       )
