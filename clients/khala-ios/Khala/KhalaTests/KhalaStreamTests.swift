@@ -21,6 +21,29 @@ final class KhalaStreamTests: XCTestCase {
         XCTAssertEqual(KhalaClient.delta(fromSSELine: "data: [DONE]")?.isDone, true)
     }
 
+    func testDeltaParsesMultilineDataFrame() {
+        let delta = KhalaClient.delta(fromSSEFrameLines: [
+            #"event: completion.chunk"#,
+            #"data: {"choices":["#,
+            #"data: {"delta":{"content":"Hel"}}"#,
+            #"data: ]}"#,
+        ])
+
+        XCTAssertEqual(delta?.content, "Hel")
+        XCTAssertEqual(delta?.isDone, false)
+    }
+
+    func testDeltaParsesMessageContentFromMultilineDataFrame() {
+        let delta = KhalaClient.delta(fromSSEFrameLines: [
+            #"data: {"choices":["#,
+            #"data: {"message":{"content":"Snapshot reply"}}"#,
+            #"data: ]}"#,
+        ])
+
+        XCTAssertEqual(delta?.content, "Snapshot reply")
+        XCTAssertEqual(delta?.isDone, false)
+    }
+
     func testDeltaIgnoresBlankAndCommentLines() {
         XCTAssertNil(KhalaClient.delta(fromSSELine: ""))
         XCTAssertNil(KhalaClient.delta(fromSSELine: ": keep-alive"))
@@ -99,6 +122,38 @@ final class KhalaStreamTests: XCTestCase {
         XCTAssertEqual(deltas, ["Hello", ", ", "world"])
         XCTAssertEqual(result.content, "Hello, world")
         XCTAssertEqual(result.role, "assistant")
+    }
+
+    func testStreamYieldsMultilineSSEFrameDeltas() async throws {
+        let session = makeSession()
+
+        StreamMockURLProtocol.requestHandler = { request in
+            (
+                Self.ok(request),
+                Self.sseFrames([
+                    [
+                        #"event: completion.chunk"#,
+                        #"data: {"choices":["#,
+                        #"data: {"delta":{"content":"Hel"}}"#,
+                        #"data: ]}"#,
+                    ],
+                    [
+                        #"data: {"choices":[{"message":{"content":"lo"}}]}"#,
+                    ],
+                    ["data: [DONE]"],
+                ])
+            )
+        }
+
+        var deltas: [String] = []
+        for try await delta in KhalaClient.streamCompletion(
+            messages: [.init(role: "user", content: "hi")],
+            apiKey: "oa_agent_test_key",
+            session: session
+        ) {
+            deltas.append(delta)
+        }
+        XCTAssertEqual(deltas, ["Hel", "lo"])
     }
 
     func testStreamMapsHTTP401ToUnauthorized() async throws {
@@ -265,7 +320,11 @@ final class KhalaStreamTests: XCTestCase {
     }
 
     private static func sse(_ lines: [String]) -> Data {
-        Data((lines.joined(separator: "\n") + "\n").utf8)
+        sseFrames(lines.map { [$0] })
+    }
+
+    private static func sseFrames(_ frames: [[String]]) -> Data {
+        Data((frames.map { $0.joined(separator: "\n") }.joined(separator: "\n\n") + "\n\n").utf8)
     }
 
     private static func data(from stream: InputStream) -> Data {
