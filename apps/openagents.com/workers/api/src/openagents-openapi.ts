@@ -1742,6 +1742,12 @@ const schemaComponents = (): JsonSchema => ({
   PublicArtanisReport: objectSummary(
     'Public-safe Artanis report aggregator with autonomous loop state, OpenAgents-backed public Pylon stats, separate Nexus/Pylon receipt refs, Pylon launch communication, Pylon v0.2 release-gate status, production launch gate, R10 claim states, Model Lab public report summary, Forum refs, artifacts, blockers, and caveats.',
   ),
+  PublicArtanisActivity: objectSummary(
+    'Public-safe Artanis activity projection (openagents.public_artanis_activity.v1). Includes generatedAt, sourceUrl, the live_at_read staleness contract, aggregate fleet readiness, redacted active assignments, recent public-safe decisions, burn-pace counters, failure modes, and a safety block naming excluded private fields. It never exposes pylon refs, assignment row ids, owner identities, raw prompts, diffs, local paths, credentials, or wallet material. Read-only; grants no dispatch, spend, settlement, payout, or fleet-mutation authority.',
+  ),
+  OperatorRlmTraces: objectSummary(
+    'Operator-only RLM trace projection (openagents.operator.rlm_traces.v1). Lists redacted trace summaries for RLM/FRLM conductor work with bounded limit/filter inputs, conductor and leaf-executor refs, trace refs, trajectory refs, demand attribution, step counts, timestamps, and public-safe evidence refs. It never returns raw trajectory JSON, prompts, tool output, local paths, credentials, wallet material, or private repo data. Read-only projection; grants no dispatch, spend, settlement, payout, or model-promotion authority.',
+  ),
   PublicOtecProof: objectSummary(
     'Public-safe OTEC proof closeout projection with claim state and caveats.',
   ),
@@ -5007,7 +5013,7 @@ const paths = (): JsonSchema => ({
       },
     }),
   },
-  '/api/gym/mirrorcode/runs': {
+  '/api/public/gym/mirrorcode/runs': {
     get: operation({
       operationId: 'getPublicMirrorCodeRuns',
       summary: 'Read the public MirrorCode-as-a-service leaderboard',
@@ -5040,12 +5046,63 @@ const paths = (): JsonSchema => ({
       },
     }),
   },
-  '/api/gym/mirrorcode/runs/{id}': {
+  '/api/public/gym/mirrorcode/runs/{id}': {
     get: operation({
       operationId: 'getPublicMirrorCodeRun',
       summary: "Read one MirrorCode run's public-safe status/result",
       description:
         'Returns the public-safe single MirrorCode run by runId (#6378), or a typed 404 when unknown. Same public-safe fields as the leaderboard rows; never carries task contents or canary strings. Read-only projection.',
+      tags: ['Public Proof'],
+      security: publicRead,
+      parameters: [pathParam('id', 'The public-safe MirrorCode runId.')],
+      responses: {
+        '200': okJson(
+          'Public-safe single MirrorCode run.',
+          '#/components/schemas/MirrorCodeRunPublicEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/gym/mirrorcode/runs': {
+    get: operation({
+      operationId: 'getLegacyMirrorCodeRuns',
+      summary: 'Read the public MirrorCode-as-a-service leaderboard (legacy path)',
+      description:
+        'Deprecated compatibility alias for GET /api/public/gym/mirrorcode/runs. Returns the same public-safe MirrorCode demo leaderboard and grants no dispatch, spend, settlement, payout, or public-claim authority.',
+      tags: ['Public Proof'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Public-safe MirrorCode demo leaderboard.',
+          '#/components/schemas/MirrorCodeRunsPublicEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+    post: operation({
+      operationId: 'recordMirrorCodeRunLegacyPath',
+      summary: 'Launch / record a Khala MirrorCode run (legacy path)',
+      description:
+        'Deprecated compatibility alias for POST /api/public/gym/mirrorcode/runs. Admin-bearer-gated launch/record boundary with the same no-task-contents / no-canary public-safety checks.',
+      tags: ['Admin'],
+      security: adminBearer,
+      requestBody: jsonContent('#/components/schemas/MirrorCodeRunRecordRequest'),
+      responses: {
+        '201': okJson(
+          'Recorded public-safe MirrorCode run.',
+          '#/components/schemas/MirrorCodeRunRecordEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/gym/mirrorcode/runs/{id}': {
+    get: operation({
+      operationId: 'getLegacyMirrorCodeRun',
+      summary: "Read one MirrorCode run's public-safe status/result (legacy path)",
+      description:
+        'Deprecated compatibility alias for GET /api/public/gym/mirrorcode/runs/{id}. Returns the same public-safe single-run status/result, or a typed 404 when unknown.',
       tags: ['Public Proof'],
       security: publicRead,
       parameters: [pathParam('id', 'The public-safe MirrorCode runId.')],
@@ -5247,6 +5304,23 @@ const paths = (): JsonSchema => ({
         '201': okJson(
           'Stored Customer #1 cohort private row.',
           '#/components/schemas/CustomerOneCohortPrivateRowEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/operator/rlm/traces': {
+    get: operation({
+      operationId: 'getOperatorRlmTraces',
+      summary: 'Read operator RLM trace summaries',
+      description:
+        'Admin-token-gated operator projection for RLM/FRLM trace summaries. Supports bounded query filters and returns redacted trace metadata only: schema version, route, generatedAt, release-gate refs, trace summaries, demand attribution, and public-safe evidence refs. It never returns raw trajectory JSON, prompts, tool output, local paths, credentials, wallet material, or private repo data. Read-only; grants no dispatch, spend, settlement, payout, or model-promotion authority.',
+      tags: ['Admin'],
+      security: adminSession,
+      responses: {
+        '200': okJson(
+          'Operator RLM trace summaries.',
+          '#/components/schemas/OperatorRlmTraces',
         ),
         ...errorResponses(),
       },
@@ -5530,6 +5604,23 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Artanis report.',
           '#/components/schemas/PublicArtanisReport',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/artanis/activity': {
+    get: operation({
+      operationId: 'getPublicArtanisActivity',
+      summary: 'Read public Artanis activity',
+      description:
+        'Returns a public-safe Artanis activity projection with aggregate fleet readiness, redacted active assignments, recent public-safe decisions, burn-pace counters, failure modes, and explicit excluded-private-field safety metadata. Read-only; grants no dispatch, spend, settlement, payout, or fleet-mutation authority.',
+      tags: ['Public Proof'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Public Artanis activity.',
+          '#/components/schemas/PublicArtanisActivity',
         ),
         ...errorResponses(),
       },

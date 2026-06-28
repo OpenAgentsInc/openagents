@@ -84,6 +84,7 @@ export const LoginRoute = r('Login')
 export const BlogRoute = r('Blog')
 export const BlogPostRoute = r('BlogPost', { slug: S.String })
 export const PublicAgentRoute = r('PublicAgent', { agentRef: S.String })
+export const ArtanisTracesRoute = r('ArtanisTraces')
 export const ShareRoute = r('Share', { shareId: S.String })
 // Public, shareable ATIF trace render at `/trace/{uuid}` (issue #6209). No auth
 // to view a shared trace; the uuid is the stable shareable id.
@@ -197,6 +198,7 @@ export type LoginRoute = typeof LoginRoute.Type
 export type BlogRoute = typeof BlogRoute.Type
 export type BlogPostRoute = typeof BlogPostRoute.Type
 export type PublicAgentRoute = typeof PublicAgentRoute.Type
+export type ArtanisTracesRoute = typeof ArtanisTracesRoute.Type
 export type ShareRoute = typeof ShareRoute.Type
 export type TraceRoute = typeof TraceRoute.Type
 export type TraceCompareRoute = typeof TraceCompareRoute.Type
@@ -272,6 +274,7 @@ export const LoggedOutRoute = S.Union([
   BlogRoute,
   BlogPostRoute,
   PublicAgentRoute,
+  ArtanisTracesRoute,
   ShareRoute,
   TraceRoute,
   TraceCompareRoute,
@@ -332,6 +335,7 @@ export const LoggedInRoute = S.Union([
   BlogRoute,
   BlogPostRoute,
   PublicAgentRoute,
+  ArtanisTracesRoute,
   TraceRoute,
   TraceCompareRoute,
   PylonCodexAssignmentStatusRoute,
@@ -398,6 +402,7 @@ export const AppRoute = S.Union([
   BlogRoute,
   BlogPostRoute,
   PublicAgentRoute,
+  ArtanisTracesRoute,
   ShareRoute,
   TraceRoute,
   TraceCompareRoute,
@@ -659,6 +664,11 @@ export const publicAgentRouter = pipe(
   literal('agents'),
   slash(string('agentRef')),
   Route.mapTo(PublicAgentRoute),
+)
+export const artanisTracesRouter = pipe(
+  literal('artanis'),
+  slash(literal('traces')),
+  Route.mapTo(ArtanisTracesRoute),
 )
 export const shareRouter = pipe(
   literal('share'),
@@ -954,6 +964,7 @@ const orderedParserRouters = [
   forumTopicRouter,
   forumForumRouter,
   blogPostRouter,
+  artanisTracesRouter,
   publicAgentRouter,
   shareRouter,
   // `/trace/compare/{ids}` is more specific than `/trace/{uuid}`; it must come

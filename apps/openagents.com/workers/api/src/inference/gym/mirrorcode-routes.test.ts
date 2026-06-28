@@ -135,7 +135,7 @@ describe('handleMirrorCodeRunsApi GET', () => {
     const built = buildMirrorCodeRun(validInput)
     const response = await run(
       handleMirrorCodeRunsApi(
-        new Request('https://openagents.com/api/gym/mirrorcode/runs'),
+        new Request('https://openagents.com/api/public/gym/mirrorcode/runs'),
         {
           requireAdminApiToken: async () => false,
           listRuns: () => [built],
@@ -165,7 +165,7 @@ describe('handleMirrorCodeRunsApi GET', () => {
 
 describe('handleMirrorCodeRunsApi POST', () => {
   const postRequest = (body: unknown) =>
-    new Request('https://openagents.com/api/gym/mirrorcode/runs', {
+    new Request('https://openagents.com/api/public/gym/mirrorcode/runs', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
@@ -276,7 +276,7 @@ describe('handleMirrorCodeRunByIdApi', () => {
     const built = buildMirrorCodeRun(validInput)
     const response = await run(
       handleMirrorCodeRunByIdApi(
-        new Request('https://openagents.com/api/gym/mirrorcode/runs/x'),
+        new Request('https://openagents.com/api/public/gym/mirrorcode/runs/x'),
         'mc-phase0-cal-py-0001',
         { getRun: id => (id === 'mc-phase0-cal-py-0001' ? built : undefined) },
       ),
@@ -287,7 +287,7 @@ describe('handleMirrorCodeRunByIdApi', () => {
   test('404 when unknown', async () => {
     const response = await run(
       handleMirrorCodeRunByIdApi(
-        new Request('https://openagents.com/api/gym/mirrorcode/runs/x'),
+        new Request('https://openagents.com/api/public/gym/mirrorcode/runs/x'),
         'nope',
         { getRun: () => undefined },
       ),
@@ -300,6 +300,16 @@ describe('matchMirrorCodeRunByIdRequest', () => {
   test('matches the by-id path and decodes', () => {
     expect(
       matchMirrorCodeRunByIdRequest(
+        new Request(
+          'https://openagents.com/api/public/gym/mirrorcode/runs/abc-123',
+        ),
+      ),
+    ).toBe('abc-123')
+  })
+
+  test('matches the old compatibility by-id path', () => {
+    expect(
+      matchMirrorCodeRunByIdRequest(
         new Request('https://openagents.com/api/gym/mirrorcode/runs/abc-123'),
       ),
     ).toBe('abc-123')
@@ -308,7 +318,7 @@ describe('matchMirrorCodeRunByIdRequest', () => {
   test('does not match the base path', () => {
     expect(
       matchMirrorCodeRunByIdRequest(
-        new Request('https://openagents.com/api/gym/mirrorcode/runs'),
+        new Request('https://openagents.com/api/public/gym/mirrorcode/runs'),
       ),
     ).toBeUndefined()
   })
@@ -316,13 +326,15 @@ describe('matchMirrorCodeRunByIdRequest', () => {
   test('rejects unsafe or oversized run id path segments', () => {
     expect(
       matchMirrorCodeRunByIdRequest(
-        new Request('https://openagents.com/api/gym/mirrorcode/runs/abc%2F123'),
+        new Request(
+          'https://openagents.com/api/public/gym/mirrorcode/runs/abc%2F123',
+        ),
       ),
     ).toBeUndefined()
     expect(
       matchMirrorCodeRunByIdRequest(
         new Request(
-          `https://openagents.com/api/gym/mirrorcode/runs/${'x'.repeat(129)}`,
+          `https://openagents.com/api/public/gym/mirrorcode/runs/${'x'.repeat(129)}`,
         ),
       ),
     ).toBeUndefined()

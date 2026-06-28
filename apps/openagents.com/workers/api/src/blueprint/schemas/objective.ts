@@ -42,6 +42,7 @@ export type BlueprintPolicySeverity = typeof BlueprintPolicySeverity.Type
 export const BlueprintBudgetKind = S.Literals([
   'credits',
   'provider_tokens',
+  'recursion_depth',
   'sats',
   'time_minutes',
   'usd',

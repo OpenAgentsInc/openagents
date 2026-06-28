@@ -10806,12 +10806,26 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       }),
   },
   {
-    // MirrorCode-as-a-service demo runs (#6378, epic #6376). GET is the
+    // MirrorCode-as-a-service public API demo runs (#6677 / #6378, epic #6376).
+    // GET is the
     // public-safe leaderboard/list (stored Khala runs + LABELED illustrative
     // paper-reference comparators); POST is the owner-gated (admin bearer)
     // launch/record path that rebuilds each run through the no-task-contents /
     // no-canary public-safety boundary before upserting by runId. The
-    // path-param `/api/gym/mirrorcode/runs/{id}` read is wired in the worker
+    // path-param `/api/public/gym/mirrorcode/runs/{id}` read is wired in the
+    // worker route cascade (the exact-route registry cannot match a path param).
+    path: '/api/public/gym/mirrorcode/runs',
+    handler: (request, env) =>
+      handleMirrorCodeRunsApi(request, {
+        requireAdminApiToken: adminRequest =>
+          requireAdminApiToken(adminRequest, env),
+        store: makeD1MirrorCodeRunStore(openAgentsDatabase(env)),
+      }),
+  },
+  {
+    // Compatibility alias for the pre-public-namespace MirrorCode route. Keep
+    // behavior identical while public clients move to `/api/public/...`.
+    // The path-param `/api/gym/mirrorcode/runs/{id}` read is wired in the worker
     // route cascade (the exact-route registry cannot match a path param).
     path: '/api/gym/mirrorcode/runs',
     handler: (request, env) =>
@@ -12943,10 +12957,12 @@ const routeRequest = makeWorkerRouteRequest({
       freeTierQuota: resolveFreeTierQuota(env),
       laneArming: resolveSupplyLaneArming(env),
     }),
-  // MirrorCode demo: GET /api/gym/mirrorcode/runs/{id} (#6378). The public-safe
-  // single-run read — the path-param surface the exact-route registry cannot
-  // match. Returns undefined for any non-matching path so the cascade falls
-  // through; the base /api/gym/mirrorcode/runs list+launch is an exact route.
+  // MirrorCode public API: GET /api/public/gym/mirrorcode/runs/{id} (#6677 /
+  // #6378). The public-safe single-run read — the path-param surface the
+  // exact-route registry cannot match. Returns undefined for any non-matching
+  // path so the cascade falls through; the base
+  // /api/public/gym/mirrorcode/runs list+launch is an exact route. The matcher
+  // also accepts the old /api/gym/... alias.
   routeMirrorCodeRunByIdRequest: (request, env) => {
     const runId = matchMirrorCodeRunByIdRequest(request)
     if (runId === undefined) {
