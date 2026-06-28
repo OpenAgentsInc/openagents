@@ -2264,7 +2264,7 @@ const artanisLoadedView = (
           ),
           h.div(
             [Ui.className<Message>('grid content-start gap-5')],
-            [pylonStatsView(pylonStats)],
+            [pylonStatsView(pylonStats), artanisFleetOnboardingView()],
           ),
         ],
       ),
