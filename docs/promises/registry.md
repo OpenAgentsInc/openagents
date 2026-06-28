@@ -40,14 +40,14 @@
 > Current machine-readable source of truth: `/api/public/product-promises` is
 > generated from
 > [`product-promises.ts`](../../apps/openagents.com/workers/api/src/product-promises.ts),
-> which currently advertises registry `2026-06-27.2` with
-> `lastUpdated: "2026-06-27"`. This narrative document records the same
+> which currently advertises registry `2026-06-28.1` with
+> `lastUpdated: "2026-06-28"`. This narrative document records the same
 > top-line 2026-06-27 promise decisions above, plus historical reconciliation
 > context below; when in doubt, agents and reviewers should defer to the
 > machine-readable registry and include its version in mismatch reports.
 >
 > `2026-06-28` standing sweep: recent mainline Khala, Artanis, Pylon, Gym, and
-> operator-safety merges were checked against the current `2026-06-27.2`
+> operator-safety merges were checked against the current `2026-06-28.1`
 > registry header. This pass records no promise state flips, no new green
 > claims, and no machine-registry changes; follow-on public claims from those
 > surfaces remain bound to their existing scoped/yellow/red records until their

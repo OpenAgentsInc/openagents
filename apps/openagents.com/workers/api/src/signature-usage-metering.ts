@@ -234,7 +234,11 @@ export const projectSignatureMeteringGate = (
   store: SignatureUsageMeteringStore,
   validationInput: Pick<
     SignatureMarketplaceRevenueGateInput,
-    'packageValidationRefs' | 'packageRefs' | 'programSignatureRefs'
+    | 'activationRefs'
+    | 'packagePublicationRefs'
+    | 'packageValidationRefs'
+    | 'packageRefs'
+    | 'programSignatureRefs'
   >,
 ): SignatureMarketplaceRevenueGate =>
   projectSignatureMarketplaceRevenueGate({

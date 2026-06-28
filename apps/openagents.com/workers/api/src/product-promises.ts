@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-27.2'
+export const PublicProductPromisesVersion = '2026-06-28.1'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -142,7 +142,7 @@ export const publicProductPromisesDocument = () => {
     generatedAt: currentIsoTimestamp(),
     maxStalenessSeconds: staleness.maxStalenessSeconds,
     staleness,
-    lastUpdated: '2026-06-27',
+    lastUpdated: '2026-06-28',
     canonicalDocsUrl:
       'https://github.com/OpenAgentsInc/openagents/tree/main/docs/promises',
     sourceRefs,
@@ -228,6 +228,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-25.1 adds data.free_tier_capture_disclosure.v1 (yellow) as the honest data-sharing disclosure backing default-on free-tier trace capture (#6293/#6294/#6295, EPIC #6206). Default-on capture is going live: free-tier /api/v1/chat/completions traffic is captured by default as REDACTED, PRIVATE (owner_only) ATIF traces that may be used to improve/train OpenAgents models; paying for privacy / confidential compute opts the caller OUT (fail-closed to not-captured, inference-privacy-entitlement.ts); public sharing of a captured trace is owner opt-in only; and capture grants NO payout/settlement (the data-market reward marker stays inert and owner-gated, #6221). The canonical disclosure is a single source of truth (inference/free-tier-data-sharing-disclosure.ts) surfaced at three honest places: the POST /api/keys/free mint response (dataSharing field), the public agent-readable GET /api/public/free-tier-data-sharing endpoint, and the public AGENTS.md inference section. The record is YELLOW (not green): the disclosure text is implemented and discoverable, but the underlying default-on capture flip (KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT) is owner-gated and the public copy is owner-approval-gated per the audit. This is disclosure only — it ships no capture behavior, no authority, and no money. Evidence: docs/promises/2026-06-25-free-tier-data-sharing-disclosure.md, docs/traces/2026-06-25-default-on-trace-capture-audit.md.',
         'Registry 2026-06-27.1 reconciles Episodes 242-244, the shipped Khala CLI v0.1.16, and the Khala -> Pylon -> Codex owner-capacity runbook. It adds green scoped records for the free OpenAI-compatible Khala API, the public Khala tokens-served counter/history, and the shipped terminal CLI; yellow records for public model-family mix stats, explicit owner-capacity Codex delegation, free-tier trace capture, and paid/confidential privacy opt-out; and keeps no-resale/no-payout boundaries explicit. Exact own-capacity Codex token rows count in the headline token counter after closeout, but counter movement alone is not proof: assignment proof requires rows with provider pylon-codex-own-capacity, model openagents/pylon-codex, usage_truth exact, demand_kind own_capacity, and demand_source khala_coding_delegation. Broad automatic semantic routing, pooled third-party capacity, paid resale, public raw Codex traces, live assignment trace UI, and guaranteed dispatch availability remain blocked. The stale Khala CLI OpenTUI/single-line plan is superseded by the v0.1.16 scrollback/raw-mode CLI docs.',
         'Registry 2026-06-27.2 flips khala.own_capacity_codex_delegation.v1 from yellow to green for its explicit typed owner-capacity scope only. The remaining blockers from 2026-06-27.1 were cleared by source fixes and production smokes: default `pylon khala request --workflow codex_agent_task --fixture` now auto-runs the returned no-spend assignment instead of stranding the maxInflight gate (#6362, closeout assignment.closeout.0351f0a0b4650c2272233fa0); master-default public repo materialization now falls back to the pinned commit and passed the octocat/Hello-World smoke (#6361, closeout assignment.closeout.2ccf7c3d2ac86b12b57ce2e2); the owner-scoped trace-status route is deployed and returns lifecycle/progress/token/trace/raw-event metadata without raw payloads (#6368); and `pylon khala closeout <assignmentRef> --json` now composes trace status + proof into a fail-closed checklist that also requires the worker closeout event to prove `paymentMode: no-spend`, `settlementState: not_applicable`, and `payoutClaimAllowed: false` (#6369). This green flip does NOT authorize broad natural-language routing, third-party capacity pooling, Codex subscription resale, public raw Codex event visibility, paid work, payout eligibility, guaranteed availability, or bypass of the explicit typed workflow / caller-owned Pylon capacity gate.',
+        'Registry 2026-06-28.1 is a marketplace.signature_monetization.v1 gate-hardening pass and flips NO promise state. The signature revenue gate now models publish -> activate -> usable refs before metered usage can drive pricing, keeps validation-only packages non-installable, requires attribution/pricing/rev-share/dispute/refund evidence before payable state, and allows settlement claims only when a public-safe usage-charge settlement receipt settles the full contributor payable amount. The promise stays planned on blocker.product_promises.signature_settlement_missing because live billing and real settlement remain owner-armed and receipt-first.',
       ],
     },
     promises: [
@@ -1555,12 +1556,14 @@ export const publicProductPromisesDocument = () => {
         claim:
           'DSPy/GEPA signatures and agent workflow components can be discoverable and monetizable.',
         safeCopy:
-          'Signature validation, Blueprint tooling, marketplace gates, and an inert public usage-metering projection exist. Billing, pricing, revenue split, and settlement are not live.',
+          'Signature validation, Blueprint tooling, marketplace gates, an inert public usage-metering projection, and tested package activation/pricing/rev-share/settlement-receipt gate logic exist. Live billing and real settlement are not armed.',
         unsafeCopy:
           'Do not claim signatures or workflow components are generating settled revenue.',
         evidenceRefs: [
           'apps/openagents.com/docs/2026-06-08-signature-marketplace-revenue-gate.md',
           'apps/pylon/packages/runtime/src/blueprint',
+          'apps/openagents.com/workers/api/src/signature-marketplace-revenue-gate.ts',
+          'apps/openagents.com/workers/api/src/signature-marketplace-revenue-gate.test.ts',
           'apps/openagents.com/workers/api/src/signature-usage-metering.ts',
           'apps/openagents.com/workers/api/src/signature-usage-metering.test.ts',
           'apps/openagents.com/workers/api/src/signature-usage-metering-routes.ts',
@@ -1569,9 +1572,9 @@ export const publicProductPromisesDocument = () => {
         ],
         blockerRefs: ['blocker.product_promises.signature_settlement_missing'],
         verification:
-          'Usage metering reaches the metered rung via the inert public projection and tests, clearing the usage-metering blocker only. Green still requires package activation, attribution, pricing, rev-share, dispute/refund policy, and settlement receipts.',
+          'Usage metering reaches the metered rung via the inert public projection and tests, clearing the usage-metering blocker. The revenue gate now requires publish -> activate -> usable refs before metered usage can price revenue, requires attribution/pricing/rev-share/dispute/refund refs before payable state, and allows settlement claims only when the usage charge has public-safe settlement receipt refs with settled contributor cents matching payable cents. Green still requires an owner-armed real settlement receipt and matching transition receipt.',
         authorityBoundary:
-          'Discovery, contribution validation, and inert usage metering do not install, promote, bill, debit, credit, or settle package usage.',
+          'Discovery, contribution validation, inert usage metering, and pure gate projections do not by themselves mutate package listings, bill, debit, credit, or settle package usage. Activation and settlement claims require explicit public-safe refs and owner-armed receipt evidence.',
       },
       {
         ...basePromiseFields,

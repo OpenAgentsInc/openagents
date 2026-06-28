@@ -7,6 +7,7 @@ import {
 } from './signature-marketplace-revenue-gate'
 
 const payableUsageInput = {
+  activationRefs: ['activation.public.signature_market.site_builder_v1'],
   attributionRefs: ['attribution.public.signature_market.site_builder_001'],
   contributorPayableCents: 700,
   disputePolicyRefs: ['policy.public.signature_market.dispute_window_v1'],
@@ -16,6 +17,9 @@ const payableUsageInput = {
   forkPolicyRefs: ['policy.public.signature_market.fork_handling_v1'],
   grossRevenueCents: 1000,
   licensePolicyRefs: ['policy.public.signature_market.license_review_v1'],
+  packagePublicationRefs: [
+    'publication.public.signature_market.site_builder_v1',
+  ],
   packageRefs: ['package.public.signature_market.site_builder'],
   packageValidationRefs: ['validation.public.signature_market.site_builder_v1'],
   payoutEligibilityRefs: [
@@ -58,10 +62,18 @@ describe('Signature marketplace revenue gate', () => {
     expect(gate.caveatRefs).toContain(
       'caveat.public.signature_market.validation_does_not_install',
     )
+    expect(gate.blockerRefs).toContain(
+      'blocker.public.signature_market.package_publication_missing',
+    )
+    expect(gate.blockerRefs).toContain(
+      'blocker.public.signature_market.package_activation_missing',
+    )
   })
 
-  test('requires exact usage refs and idempotency before usage can drive revenue', () => {
+  test('requires activation, exact usage refs, and idempotency before usage can drive revenue', () => {
     const gate = projectSignatureMarketplaceRevenueGate({
+      activationRefs: payableUsageInput.activationRefs,
+      packagePublicationRefs: payableUsageInput.packagePublicationRefs,
       packageRefs: ['package.public.signature_market.site_builder'],
       packageValidationRefs: [
         'validation.public.signature_market.site_builder_v1',
@@ -74,6 +86,9 @@ describe('Signature marketplace revenue gate', () => {
     })
 
     expect(gate).toMatchObject({
+      candidateRuntimeActivationAllowed: true,
+      installAllowed: true,
+      marketplaceListingMutationAllowed: true,
       meteredUsageEventCount: 1,
       revenueProjectionAllowed: false,
       state: 'validated',
@@ -133,8 +148,10 @@ describe('Signature marketplace revenue gate', () => {
   test('requires fork, license, dispute, refund, and rev-share policy states', () => {
     const gate = projectSignatureMarketplaceRevenueGate({
       attributionRefs: payableUsageInput.attributionRefs,
+      activationRefs: payableUsageInput.activationRefs,
       exactUsageSubjectRefs: payableUsageInput.exactUsageSubjectRefs,
       grossRevenueCents: 1000,
+      packagePublicationRefs: payableUsageInput.packagePublicationRefs,
       packageRefs: payableUsageInput.packageRefs,
       packageValidationRefs: payableUsageInput.packageValidationRefs,
       pricingPolicyRefs: payableUsageInput.pricingPolicyRefs,
@@ -169,6 +186,8 @@ describe('Signature marketplace revenue gate', () => {
   test('rejects unsafe package, usage, provider, payment, wallet, private repo, and timestamp material', () => {
     const unsafeInputs = [
       { packageValidationRefs: ['raw_package.private_payload'] },
+      { packagePublicationRefs: ['raw_package.private_payload'] },
+      { activationRefs: ['raw_package.private_payload'] },
       { usageEventRefs: ['usage_event_raw.provider_payload'] },
       { attributionRefs: ['github.com/acme/private-signatures'] },
       { pricingPolicyRefs: ['provider_payload.openai.raw'] },

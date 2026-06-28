@@ -20,6 +20,10 @@ import {
 } from './signature-marketplace-revenue-gate'
 
 const validationInput = {
+  activationRefs: ['activation.public.signature_market.site_builder_v1'],
+  packagePublicationRefs: [
+    'publication.public.signature_market.site_builder_v1',
+  ],
   packageValidationRefs: ['validation.public.signature_market.site_builder_v1'],
   packageRefs: ['package.public.signature_market.site_builder'],
   programSignatureRefs: ['program_signature.public.site_builder_v1'],
@@ -129,7 +133,7 @@ describe('signature usage metering — idempotent store (#5529)', () => {
 })
 
 describe('signature usage metering — clears the revenue-gate metering rung (#5529)', () => {
-  test('with validation + metering and nothing past it, the gate reaches state "metered"', () => {
+  test('with publication + activation + metering and nothing past it, the gate reaches state "metered"', () => {
     const store = makeInMemorySignatureUsageMeteringStore([
       recordOk({
         signatureSubjectRef: 'package_site_builder.version_v1',
@@ -140,8 +144,9 @@ describe('signature usage metering — clears the revenue-gate metering rung (#5
 
     const gate = projectSignatureMeteringGate(store, validationInput)
 
-    // THE RECEIPT: metering output drives the gate from `validated` to `metered`.
+    // THE RECEIPT: metering output drives the gate from activated package usage to `metered`.
     expect(gate.state).toBe('metered')
+    expect(gate.installAllowed).toBe(true)
     expect(gate.meteredUsageEventCount).toBe(1)
     // The metering-stage blockers are now cleared on the gate...
     for (const cleared of [
@@ -160,9 +165,10 @@ describe('signature usage metering — clears the revenue-gate metering rung (#5
     expect(gate.signatureRevenueCopyAllowed).toBe(false)
   })
 
-  test('without metering the gate stays "validated" (metering is the gating rung)', () => {
+  test('without metering the activated gate stays "validated" (metering is the gating rung)', () => {
     const gate = projectSignatureMarketplaceRevenueGate(validationInput)
     expect(gate.state).toBe('validated')
+    expect(gate.installAllowed).toBe(true)
   })
 })
 

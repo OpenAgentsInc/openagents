@@ -15,6 +15,7 @@ export type SignatureMarketplaceRevenueState =
   typeof SignatureMarketplaceRevenueState.Type
 
 export const SignatureMarketplaceRevenueGate = S.Struct({
+  activationRefs: S.Array(S.String),
   attributionRefs: S.Array(S.String),
   blockerRefs: S.Array(S.String),
   candidateRuntimeActivationAllowed: S.Boolean,
@@ -28,6 +29,7 @@ export const SignatureMarketplaceRevenueGate = S.Struct({
   licensePolicyRefs: S.Array(S.String),
   marketplaceListingMutationAllowed: S.Boolean,
   meteredUsageEventCount: S.Number,
+  packagePublicationRefs: S.Array(S.String),
   packageRefs: S.Array(S.String),
   packageValidationRefs: S.Array(S.String),
   payoutClaimAllowed: S.Boolean,
@@ -52,6 +54,7 @@ export type SignatureMarketplaceRevenueGate =
   typeof SignatureMarketplaceRevenueGate.Type
 
 export type SignatureMarketplaceRevenueGateInput = Readonly<{
+  activationRefs?: ReadonlyArray<string> | undefined
   attributionRefs?: ReadonlyArray<string> | undefined
   contributorPayableCents?: number | undefined
   disputePolicyRefs?: ReadonlyArray<string> | undefined
@@ -59,6 +62,7 @@ export type SignatureMarketplaceRevenueGateInput = Readonly<{
   forkPolicyRefs?: ReadonlyArray<string> | undefined
   grossRevenueCents?: number | undefined
   licensePolicyRefs?: ReadonlyArray<string> | undefined
+  packagePublicationRefs?: ReadonlyArray<string> | undefined
   packageRefs?: ReadonlyArray<string> | undefined
   packageValidationRefs?: ReadonlyArray<string> | undefined
   payoutEligibilityRefs?: ReadonlyArray<string> | undefined
@@ -137,12 +141,14 @@ const safeNonNegativeInteger = (
 const missingEvidenceBlockers = (
   input: Readonly<{
     attributionRefs: ReadonlyArray<string>
+    activationRefs: ReadonlyArray<string>
     contributorPayableCents: number
     disputePolicyRefs: ReadonlyArray<string>
     exactUsageSubjectRefs: ReadonlyArray<string>
     forkPolicyRefs: ReadonlyArray<string>
     grossRevenueCents: number
     licensePolicyRefs: ReadonlyArray<string>
+    packagePublicationRefs: ReadonlyArray<string>
     packageRefs: ReadonlyArray<string>
     packageValidationRefs: ReadonlyArray<string>
     payoutEligibilityRefs: ReadonlyArray<string>
@@ -158,6 +164,12 @@ const missingEvidenceBlockers = (
 ): ReadonlyArray<string> => [
   ...(!hasRefs(input.packageValidationRefs)
     ? ['blocker.public.signature_market.package_validation_missing']
+    : []),
+  ...(!hasRefs(input.packagePublicationRefs)
+    ? ['blocker.public.signature_market.package_publication_missing']
+    : []),
+  ...(!hasRefs(input.activationRefs)
+    ? ['blocker.public.signature_market.package_activation_missing']
     : []),
   ...(!hasRefs(input.packageRefs)
     ? ['blocker.public.signature_market.package_ref_missing']
@@ -223,6 +235,10 @@ const baseCaveatRefs = [
 export const projectSignatureMarketplaceRevenueGate = (
   input: SignatureMarketplaceRevenueGateInput,
 ): SignatureMarketplaceRevenueGate => {
+  const activationRefs = safeRefs(
+    'Signature marketplace activation refs',
+    input.activationRefs,
+  )
   const attributionRefs = safeRefs(
     'Signature marketplace attribution refs',
     input.attributionRefs,
@@ -246,6 +262,10 @@ export const projectSignatureMarketplaceRevenueGate = (
   const packageRefs = safeRefs(
     'Signature marketplace package refs',
     input.packageRefs,
+  )
+  const packagePublicationRefs = safeRefs(
+    'Signature marketplace package publication refs',
+    input.packagePublicationRefs,
   )
   const packageValidationRefs = safeRefs(
     'Signature marketplace package validation refs',
@@ -317,8 +337,12 @@ export const projectSignatureMarketplaceRevenueGate = (
     hasRefs(packageValidationRefs) &&
     hasRefs(packageRefs) &&
     hasRefs(programSignatureRefs)
-  const metered =
+  const activated =
     validated &&
+    hasRefs(packagePublicationRefs) &&
+    hasRefs(activationRefs)
+  const metered =
+    activated &&
     hasRefs(usageEventRefs) &&
     hasRefs(usageIdempotencyRefs) &&
     hasRefs(exactUsageSubjectRefs)
@@ -362,12 +386,14 @@ export const projectSignatureMarketplaceRevenueGate = (
     blockerRefs: [
       ...missingEvidenceBlockers({
         attributionRefs,
+        activationRefs,
         contributorPayableCents,
         disputePolicyRefs,
         exactUsageSubjectRefs,
         forkPolicyRefs,
         grossRevenueCents,
         licensePolicyRefs,
+        packagePublicationRefs,
         packageRefs,
         packageValidationRefs,
         payoutEligibilityRefs,
@@ -381,17 +407,19 @@ export const projectSignatureMarketplaceRevenueGate = (
         usageIdempotencyRefs,
       }),
     ].sort(),
-    candidateRuntimeActivationAllowed: false,
+    activationRefs,
+    candidateRuntimeActivationAllowed: activated,
     caveatRefs: baseCaveatRefs,
     contributorPayableCents,
     disputePolicyRefs,
     exactUsageSubjectRefs,
     forkPolicyRefs,
     grossRevenueCents,
-    installAllowed: false,
+    installAllowed: activated,
     licensePolicyRefs,
-    marketplaceListingMutationAllowed: false,
+    marketplaceListingMutationAllowed: activated,
     meteredUsageEventCount: usageEventRefs.length,
+    packagePublicationRefs,
     packageRefs,
     packageValidationRefs,
     payoutClaimAllowed: settled,
@@ -423,6 +451,7 @@ export const signatureMarketplaceRevenueGateHasPrivateMaterial = (
 ): boolean => {
   const publicValues = [
     gate.state,
+    ...gate.activationRefs,
     ...gate.attributionRefs,
     ...gate.blockerRefs,
     ...gate.caveatRefs,
@@ -430,6 +459,7 @@ export const signatureMarketplaceRevenueGateHasPrivateMaterial = (
     ...gate.exactUsageSubjectRefs,
     ...gate.forkPolicyRefs,
     ...gate.licensePolicyRefs,
+    ...gate.packagePublicationRefs,
     ...gate.packageRefs,
     ...gate.packageValidationRefs,
     ...gate.payoutEligibilityRefs,
