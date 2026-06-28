@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-28.1'
+export const PublicProductPromisesVersion = '2026-06-28.2'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -2087,7 +2087,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Pretraining corpora are produced by an owned data refinery over public crawl-class sources, processed as paid CPU work with provenance and transform digests, mixture ablations, a multi-stage curriculum, decontamination receipts, and eval-delta payment for data quality.',
         safeCopy:
-          'The A4 deterministic refinery core landed in psionic (PII masking, Gopher quality rules, exact and MinHash dedup) and the live a4_eval_delta leaderboard serves an honest empty state. The live A4 evidence admission path now requires each newly admitted shard to carry a corpusProvenanceReceipt whose source provenance and linked transform digests validate against the shard output digest, and the A4 public projection reports corpusProvenanceReceiptStatus/Refs/BlockerRefs plus evalDeltaPaymentGate. The eval-delta payment computation is code-backed and visible, but fixed-trainer measurements, operator funding parameters, settlement receipts, and greenGateSatisfied remain false. Psion’s current corpus is a frozen bounded mixture; crawl-scale acquisition, paid shard assignments with live provenance receipts, decontamination receipts, and eval-delta payment remain planned.',
+          'The A4 deterministic refinery core landed in psionic (PII masking, Gopher quality rules, exact and MinHash dedup) and the live a4_eval_delta leaderboard serves an honest empty state. The live A4 evidence admission path now requires each newly admitted shard to carry a corpusProvenanceReceipt whose source provenance and linked transform digests validate against the shard output digest, and the A4 public projection reports corpusProvenanceReceiptStatus/Refs/BlockerRefs plus evalDeltaPaymentGate. The paid refinery dispatch receipt path is now code-backed: it composes an authentic crawl-shard dispatch manifest, full provenance closeout, deterministic-recompute verification refs, base paid-shard pricing, and at least one payable fixed-reference eval-delta settlement receipt. It is not yet a live crawl-scale corpus claim; real live receipts, operator funding/owner sign-off, decontamination evidence, settlement receipts, and greenGateSatisfied remain false.',
         unsafeCopy:
           'Do not claim a crawl-scale receipted corpus exists, that contributors are currently paid for data-refinery work, or that data quality is paid on measured eval delta.',
         evidenceRefs: [
@@ -2098,6 +2098,8 @@ export const publicProductPromisesDocument = () => {
           'docs/launch/vertex-fleet/training.data_refinery_corpus.v1.md',
           'apps/openagents.com/workers/api/src/cs336-a4-eval-delta-payment.ts',
           'apps/openagents.com/workers/api/src/cs336-a4-eval-delta-payment.test.ts',
+          'apps/openagents.com/workers/api/src/cs336-a4-paid-refinery-shard-dispatch.ts',
+          'apps/openagents.com/workers/api/src/cs336-a4-paid-refinery-shard-dispatch.test.ts',
           'apps/openagents.com/workers/api/src/cs336-a4-provenance.ts',
           'apps/openagents.com/workers/api/src/cs336-a4-provenance.test.ts',
           'apps/openagents.com/workers/api/src/training-data-refinery.ts',
@@ -2111,7 +2113,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.eval_delta_payment_missing',
         ],
         verification:
-          'Green requires refinery shards dispatched as paid assignments with deterministic-recompute verification, every shard carrying source-provenance and transform digests, mixture/annealing ablation receipts, decontamination receipts against the eval suite, and at least one eval-delta payment computed from a fixed reference model. The A4 route now rejects newly admitted shards without a linked, recompute-verified corpusProvenanceReceipt and projects corpusProvenanceReceiptStatus/Refs/BlockerRefs, but blocker.product_promises.corpus_provenance_receipts_missing remains because no live paid refinery shard closeout has produced one of those receipts. The a4_eval_delta leaderboard lane is live-but-empty in training-leaderboards.ts and GET /api/training/refinery/a4 now exposes evalDeltaPaymentGate: paymentComputationAvailable=true, fixedTrainerEvalMeasurementAvailable=false, operatorFundingParametersAvailable=false, settlementReceiptAvailable=false, and greenGateSatisfied=false. The single concrete missing receipt is one Verified deterministic_recompute refinery-shard challenge whose closeout records an eval-delta payment, which would populate the first a4_eval_delta leaderboard row.',
+          'Green requires real refinery shards dispatched as paid assignments with deterministic-recompute verification, every shard carrying source-provenance and transform digests, mixture/annealing ablation receipts, decontamination receipts against the eval suite, and at least one eval-delta payment computed from a fixed reference model. The A4 route now rejects newly admitted shards without a linked, recompute-verified corpusProvenanceReceipt and projects corpusProvenanceReceiptStatus/Refs/BlockerRefs. The code-backed paid-dispatch receipt builder now fails closed unless a dispatch manifest, full provenance batch closeout, deterministic-recompute verification refs, positive base paid-shard rate, and a payable eval-delta settlement receipt all bind to the same dispatched assignment set. The a4_eval_delta leaderboard lane remains live-but-empty in training-leaderboards.ts and GET /api/training/refinery/a4 still exposes evalDeltaPaymentGate with greenGateSatisfied=false until live owner-reviewed receipts populate the projection.',
         authorityBoundary:
           'Refinery output is corpus material, not a dataset sale; the data-market promises govern selling, and privacy rules forbid publishing raw crawl or contributor content.',
       },
