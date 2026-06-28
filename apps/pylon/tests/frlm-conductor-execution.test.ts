@@ -565,6 +565,91 @@ describe("FRLM Conductor core scheduler", () => {
     assertPublicProjectionSafe(schedule)
   })
 
+  test("dispatches planned recursive sub-queries across available Pylon slots", () => {
+    const schedule = scheduleFrlmConductor({
+      ...validInput(),
+      recursiveSubmitterRef: "submitter.artanis.frlm.pylon_fleet.v1",
+      maxParallelSubQueries: 2,
+      pylonSlots: [
+        {
+          slotRef: "slot.artanis.frlm.pylon_alpha.codex_1",
+          pylonRef: "pylon.public.artanis.alpha",
+          availableSubQuerySlots: 1,
+          ready: true,
+          capabilityRefs: ["capacity.coding.codex.available=1"],
+        },
+        {
+          slotRef: "slot.artanis.frlm.pylon_beta.codex_1",
+          pylonRef: "pylon.public.artanis.beta",
+          availableSubQuerySlots: 1,
+          ready: true,
+          capabilityRefs: ["capacity.coding.codex.available=1"],
+        },
+        {
+          slotRef: "slot.artanis.frlm.pylon_gamma.codex_1",
+          pylonRef: "pylon.public.artanis.gamma",
+          availableSubQuerySlots: 1,
+          ready: true,
+          capabilityRefs: ["capacity.coding.codex.available=1"],
+        },
+      ],
+      subQueries: plannedSubQueries(),
+    })
+
+    expect(schedule.canSchedule).toBe(true)
+    expect(schedule.state).toBe("recursive_fanout_ready")
+    expect(schedule.recursiveBatches).toHaveLength(3)
+    expect(schedule.recursiveBatches.map((batch) => batch.pylonRef)).toEqual([
+      "pylon.public.artanis.alpha",
+      "pylon.public.artanis.beta",
+      "pylon.public.artanis.gamma",
+    ])
+    expect(schedule.pylonSlotAssignments.map((assignment) => assignment.subQueryRefs)).toEqual([
+      ["subquery.artanis.frlm.collect_context.v1"],
+      ["subquery.artanis.frlm.optimize_route.v1"],
+      ["subquery.artanis.frlm.verify_blueprint_boundary.v1"],
+    ])
+    expect(schedule.nextActionRef).toBe(schedule.pylonSlotAssignments[0]?.batchRef)
+    expect(schedule.traceRefs).toContain("pylon.public.artanis.alpha")
+    expect(schedule.blockerRefs).toEqual([])
+    assertPublicProjectionSafe(schedule)
+  })
+
+  test("blocks recursive dispatch when configured Pylon slots have no usable capacity", () => {
+    const schedule = scheduleFrlmConductor({
+      ...validInput(),
+      recursiveSubmitterRef: "submitter.artanis.frlm.pylon_fleet.v1",
+      maxParallelSubQueries: 2,
+      pylonSlots: [
+        {
+          slotRef: "slot.artanis.frlm.pylon_alpha.codex_1",
+          pylonRef: "pylon.public.artanis.alpha",
+          availableSubQuerySlots: 0,
+          ready: true,
+        },
+        {
+          slotRef: "/Users/operator/private/pylon-slot.json",
+          pylonRef: "pylon.public.artanis.beta",
+          availableSubQuerySlots: 1,
+          ready: true,
+        },
+      ],
+      subQueries: plannedSubQueries(),
+    })
+
+    expect(schedule.canSchedule).toBe(false)
+    expect(schedule.state).toBe("blocked")
+    expect(schedule.recursiveBatches).toEqual([])
+    expect(schedule.pylonSlotAssignments).toEqual([])
+    expect(schedule.blockerRefs).toContain(
+      "blocker.artanis.frlm_conductor.no_pylon_slots_available",
+    )
+    expect(schedule.blockerRefs).toContain(
+      "blocker.artanis.frlm_conductor.pylon_slot_ref_missing",
+    )
+    assertPublicProjectionSafe(schedule)
+  })
+
   test("turns recursive failures into ordered local linear fallback steps", () => {
     const schedule = scheduleFrlmConductor({
       ...validInput(),
