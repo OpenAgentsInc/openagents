@@ -156,6 +156,7 @@ export type PylonAccountsStatusProjection = {
       cooldownExpiresAt: string | null
       cooldownSecondsRemaining: number | null
       sourceDigestRef: string | null
+      manualResetsRemaining: number
     }
     capacity: {
       hourly: PylonAccountWindowStatus | null
@@ -1182,6 +1183,7 @@ export async function collectPylonAccountsStatus(
       cooldownExpiresAt: quotaCooldownExpiresAt(quotaRecord),
       cooldownSecondsRemaining: quotaCooldownSecondsRemaining(quotaRecord, now),
       sourceDigestRef: quotaRecord?.sourceDigestRef ?? null,
+      manualResetsRemaining: resetRecord.manualResetsRemaining,
     }
     const manualReset = {
       performed: resetPerformed,

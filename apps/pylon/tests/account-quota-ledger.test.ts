@@ -53,6 +53,7 @@ describe("account quota ledger", () => {
         observedAt: now.toISOString(),
         retryAtIso: retryAt.toISOString(),
         sourceDigestRef: "digest.pylon.quota.source.test",
+        manualResetsRemaining: 3,
       })
     })
   })
