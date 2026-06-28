@@ -26,7 +26,6 @@ describe('OpenAgentsWorkerConfig', () => {
     expect(config.github.clientId).toBe('github-client')
     expect(Redacted.isRedacted(config.github.clientSecret)).toBe(true)
     expect(config.email.resend).toBeUndefined()
-    expect(config.artanis.fleetOverseerEnabled).toBe(false)
     expect(config.artanis.scheduledRunnerEnabled).toBe(false)
     expect(config.exa.enabled).toBe(false)
     expect(config.exa.apiKey).toBeUndefined()
@@ -72,7 +71,6 @@ describe('OpenAgentsWorkerConfig', () => {
     const config = await Effect.runPromise(
       decodeOpenAgentsWorkerConfig({
         ...minimalEnv(),
-        ARTANIS_FLEET_OVERSEER_ENABLED: 'true',
         ARTANIS_SCHEDULED_RUNNER_ENABLED: 'true',
         EXA_API_KEY: 'exa-secret',
         EXA_ASSIGNMENT_REQUEST_BUDGET: '9',
@@ -132,7 +130,6 @@ describe('OpenAgentsWorkerConfig', () => {
     )
 
     expect(redactedValue(config.adminApiToken)).toBe('admin-token')
-    expect(config.artanis.fleetOverseerEnabled).toBe(true)
     expect(config.artanis.scheduledRunnerEnabled).toBe(true)
     expect(config.exa.enabled).toBe(true)
     expect(redactedValue(config.exa.apiKey)).toBe('exa-secret')

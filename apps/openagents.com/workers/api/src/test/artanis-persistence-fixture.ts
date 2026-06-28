@@ -1,14 +1,10 @@
 type PersistenceRow = Readonly<{
   active: number
-  action_json?: string | undefined
   agent_id: string
-  approval_gate_ref?: string | null | undefined
   closed_at: string | null
   closeout_json: string | null
-  context_json?: string | undefined
   content_hash: string
   created_at: string
-  health_snapshot_ref?: string | null | undefined
   id: string
   idempotency_key: string
   parent_ref: string | null
@@ -93,35 +89,6 @@ class ArtanisPersistenceTestStatement implements D1PreparedStatement {
     const rows = this.store.rows(table)
 
     if (this.query.includes('INSERT INTO')) {
-      if (table === 'artanis_fleet_overseer_decisions') {
-        rows.push({
-          action_json: String(this.values[2]),
-          active: 0,
-          agent_id: 'agent_artanis',
-          approval_gate_ref:
-            this.values[4] === null ? null : String(this.values[4]),
-          closed_at: null,
-          closeout_json: null,
-          context_json: String(this.values[3]),
-          content_hash: '',
-          created_at: String(this.values[6]),
-          health_snapshot_ref:
-            this.values[5] === null ? null : String(this.values[5]),
-          id: String(this.values[0]),
-          idempotency_key: String(this.values[0]),
-          parent_ref: null,
-          public_projection_json: '{}',
-          record_json: String(this.values[2]),
-          record_ref: String(this.values[0]),
-          scope_ref: null,
-          source_kind: 'artanis_fleet_overseer',
-          state: String(this.values[1]),
-          updated_at: String(this.values[6]),
-        })
-
-        return Promise.resolve({ success: true } as D1Result<T>)
-      }
-
       if (
         rows.every(
           row =>

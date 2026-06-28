@@ -42,7 +42,7 @@ describe('Artanis health and staleness monitor', () => {
       [...ARTANIS_HEALTH_SIGNAL_KINDS].sort(),
     )
     expect(operator.overclaimBlocked).toBe(true)
-    expect(operator.staleOrBlockedSignalCount).toBe(5)
+    expect(operator.staleOrBlockedSignalCount).toBe(4)
     expect(operator.pendingApprovalRefs).toEqual([
       'approval.public.artanis.pylon_dispatch_pending',
     ])

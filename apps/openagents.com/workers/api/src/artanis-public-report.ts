@@ -667,34 +667,6 @@ const currentArtanisHealthSnapshot = (input: {
       state: 'available' as const,
       subjectUpdatedAtIso: nowIso,
     }),
-    healthSignal({
-      blockerRefs: productionReady
-        ? []
-        : ['blocker.public.artanis.fleet_overseer_live_proof_missing'],
-      caveatRefs: [
-        'authority.public.artanis.fleet_overseer.read_only_signal',
-        'caveat.public.artanis.fleet_overseer_default_off',
-      ],
-      count: productionReady ? 1 : 0,
-      kind: 'fleet_overseer',
-      label: productionReady
-        ? 'Fleet overseer launch gate is ready'
-        : 'Fleet overseer awaits live proof',
-      observedAtIso: nowIso,
-      operatorDetailRefs: ['health.operator.artanis.fleet_overseer'],
-      publicRecoveryActionRefs: productionReady
-        ? []
-        : ['recovery.public.artanis.complete_fleet_overseer_live_proof'],
-      publicStatusRefs: [
-        productionReady
-          ? 'health.public.artanis.fleet_overseer_ready'
-          : 'health.public.artanis.fleet_overseer_blocked',
-      ],
-      signalRefSuffix: 'fleet_overseer',
-      sourceRefs: ['tick.public.artanis.fleet_overseer'],
-      state: productionReady ? ('available' as const) : ('blocked' as const),
-      subjectUpdatedAtIso: nowIso,
-    }),
   ]
   const attentionSignals = signals.filter(signal =>
     [
