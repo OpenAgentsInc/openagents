@@ -18,7 +18,7 @@
 // No dispatch, spend, settlement, payout, or public-claim authority beyond the
 // honest decision-grade ranking the shipped harness already produces. The ladder
 // is a recurring projection of owner-armed real benchmark reports.
-import { Effect } from 'effect'
+import { Effect, Schema as S } from 'effect'
 
 import { methodNotAllowed, noStoreJsonResponse } from '../../http/responses'
 import { currentIsoTimestamp } from '../../runtime-primitives'
@@ -37,6 +37,7 @@ import type { GymLeaderboardReportInput } from './leaderboard'
 import { GymLeaderboardUnsafe } from './leaderboard'
 import {
   buildMirrorCodeRun,
+  MirrorCodeRun as MirrorCodeRunSchema,
   MirrorCodeRunError,
   type MirrorCodeRun,
 } from './mirrorcode-contract'
@@ -176,6 +177,32 @@ const buildPublishedLadder = (
       tag: 'reject' as const,
     })
   }
+  const rebuildMirrorCodeRun = (rawRun: unknown): MirrorCodeRun => {
+    try {
+      return buildMirrorCodeRun(rawRun)
+    } catch (rawInputError) {
+      try {
+        const storedRun = S.decodeUnknownSync(MirrorCodeRunSchema)(rawRun)
+        return buildMirrorCodeRun({
+          runId: storedRun.runId,
+          model: storedRun.model,
+          taskId: storedRun.taskId,
+          bucket: storedRun.bucket,
+          language: storedRun.language,
+          status: storedRun.status,
+          passRate: storedRun.passRate,
+          tokens: { total: storedRun.tokensTotal },
+          exactTokenUsageEventRefs: storedRun.exactTokenUsageEventRefs,
+          startedAt: storedRun.startedAt,
+          finishedAt: storedRun.finishedAt,
+          summary: storedRun.summary,
+          grade: storedRun.grade,
+        })
+      } catch {
+        throw rawInputError
+      }
+    }
+  }
   const mirrorCodeRunsResult = (body?.mirrorCodeRuns ?? []).reduce<
     | Readonly<{ runs: ReadonlyArray<MirrorCodeRun>; tag: 'ok' }>
     | Readonly<{ reason: string; tag: 'reject' }>
@@ -186,7 +213,7 @@ const buildPublishedLadder = (
       }
       try {
         return {
-          runs: [...result.runs, buildMirrorCodeRun(rawRun)],
+          runs: [...result.runs, rebuildMirrorCodeRun(rawRun)],
           tag: 'ok',
         }
       } catch (error) {
