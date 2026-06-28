@@ -125,7 +125,9 @@ function fakePresenceCliServer() {
       requests.push({ path: url.pathname, body, headers: request.headers })
 
       expect(request.headers.get("authorization")).toBe("Bearer oa_agent_test_agent_token")
-      expect(request.headers.get("x-pylon-ref")).toBe(body.pylonRef)
+      if (typeof body.pylonRef === "string") {
+        expect(request.headers.get("x-pylon-ref")).toBe(body.pylonRef)
+      }
 
       if (url.pathname === "/api/pylons/register") {
         return Response.json({ registrationRef: `registration.${body.pylonRef}` })
@@ -139,6 +141,9 @@ function fakePresenceCliServer() {
       if (url.pathname === "/api/pylon-links/refresh") {
         return Response.json({ linkRef: `link.${body.pylonRef}.refresh` })
       }
+      if (url.pathname.endsWith("/assignments")) {
+        return Response.json({ assignments: [] })
+      }
       return Response.json({ errorRef: "error.not_found" }, { status: 404 })
     },
   })
@@ -148,6 +153,9 @@ function fakePresenceCliServer() {
     requests,
   }
 }
+
+const nonAssignmentRequestPaths = (requests: { path: string }[]) =>
+  requests.map((request) => request.path).filter((path) => !path.endsWith("/assignments"))
 
 async function runPresenceCli(input: {
   args: string[]
@@ -571,7 +579,7 @@ describe("Pylon presence registration and heartbeat", () => {
         pylonRef = body.pylonRef
       }
 
-      expect(fake.requests.map((request) => request.path)).toEqual([
+      expect(nonAssignmentRequestPaths(fake.requests)).toEqual([
         "/api/pylons/register",
         `/api/pylons/${encodeURIComponent(pylonRef)}/heartbeat`,
         "/api/pylon-links/complete",
@@ -598,7 +606,7 @@ describe("Pylon presence registration and heartbeat", () => {
       expect(result.stderr).toBe("")
       const body = JSON.parse(result.stdout)
       expect(body.heartbeatSequence).toBe(1)
-      expect(fake.requests.map((request) => request.path)).toEqual([
+      expect(nonAssignmentRequestPaths(fake.requests)).toEqual([
         `/api/pylons/${encodeURIComponent(body.pylonRef)}/heartbeat`,
       ])
     })

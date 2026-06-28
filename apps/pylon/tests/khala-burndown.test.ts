@@ -149,7 +149,8 @@ describe("pylon khala burndown planner", () => {
     expect(plan.schema).toBe("openagents.pylon.khala_burndown_plan.v0.1")
     expect(plan.mergePolicy).toBe("operator_review_required")
     expect(plan.readyCodexAccountCount).toBe(2)
-    expect(plan.issueCount).toBe(2)
+    expect(plan.issueCount).toBe(3)
+    expect(plan.slots).toHaveLength(2)
     expect(plan.slots.map((slot) => slot.issue.issueRef)).toEqual(["#6355", "#6356"])
     expect(plan.slots.map((slot) => slot.account.accountRefHash)).toEqual([
       "accthash_one",
