@@ -421,6 +421,9 @@ describe('artanis reply composer - operational grounding (#5540 defect 2)', () =
     expect(capturedBody).toContain('request-payout-target-admission')
     expect(capturedBody).toContain('presence heartbeat')
     expect(capturedBody).toContain('send_readiness_unproven')
+    expect(capturedBody).toContain('diagnosisGrounding')
+    expect(capturedBody).toContain('autonomous-ops-v1.signature-2.diagnosis-grounding')
+    expect(capturedBody).toContain('quota-ledger-read')
     // And the registry grounding is still present.
     expect(capturedBody).toContain('promiseRegistry')
   })
