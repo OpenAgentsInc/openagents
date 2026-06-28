@@ -118,7 +118,7 @@ export type ForumThreadSocialPreview = Readonly<{
 // The full ForumTopicDetailResponse satisfies this, so callers pass it
 // directly; tests build a minimal object without type assertions.
 export type ForumThreadPreviewSource = Readonly<{
-  topic: Readonly<{ title: string }>
+  topic: Readonly<{ title: string; topicId?: string }>
   posts: ReadonlyArray<Readonly<{ bodyText?: string | null }>>
 }>
 
@@ -143,7 +143,7 @@ export const forumThreadSocialPreviewFromDetail = (
     description: excerpt.length > 0 ? excerpt : DEFAULT_DESCRIPTION,
     imageUrl: forumThreadOgImageUrl(topicId),
     title: title.length > 0 ? title : DEFAULT_TITLE,
-    url: forumThreadPublicUrl(topicId),
+    url: forumThreadPublicUrl(detail.topic.topicId ?? topicId),
   }
 }
 

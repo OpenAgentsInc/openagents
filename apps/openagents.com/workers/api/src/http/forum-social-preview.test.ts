@@ -11,7 +11,11 @@ import {
 } from './forum-social-preview'
 
 const detailWith = (
-  overrides: Partial<{ title: string; bodyText: string | null }> = {},
+  overrides: Partial<{
+    bodyText: string | null
+    title: string
+    topicId: string
+  }> = {},
 ): ForumThreadPreviewSource => ({
   posts: [
     {
@@ -21,7 +25,10 @@ const detailWith = (
           : overrides.bodyText,
     },
   ],
-  topic: { title: overrides.title ?? 'Hello Thread' },
+  topic: {
+    title: overrides.title ?? 'Hello Thread',
+    ...(overrides.topicId === undefined ? {} : { topicId: overrides.topicId }),
+  },
 })
 
 describe('buildSocialPreviewExcerpt', () => {
@@ -105,6 +112,20 @@ describe('forumThreadSocialPreviewFromDetail', () => {
     expect(preview.url).toBe('https://openagents.com/forum/t/a%20b%2Fc')
     expect(preview.imageUrl).toBe(
       'https://openagents.com/og/forum/a%20b%2Fc.svg',
+    )
+  })
+
+  test('uses the resolved topic id for the canonical thread URL', () => {
+    const preview = forumThreadSocialPreviewFromDetail(
+      'hello-thread',
+      detailWith({ topicId: '55555555-5555-4555-8555-555555555555' }),
+    )
+
+    expect(preview.url).toBe(
+      'https://openagents.com/forum/t/55555555-5555-4555-8555-555555555555',
+    )
+    expect(preview.imageUrl).toBe(
+      'https://openagents.com/og/forum/hello-thread.svg',
     )
   })
 })
