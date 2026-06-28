@@ -33,6 +33,7 @@ export const forgeLandingCopy = {
 
 export const ForgeShellRouteId = Schema.Literals([
   "overview",
+  "dogfood",
   "work",
   "changes",
   "verification",
@@ -57,6 +58,13 @@ export const forgeShellRoutes: ReadonlyArray<ForgeShellRoute> = [
     label: "Overview",
     summary: "system state, boundaries, and active slices",
     apiPath: "/api/forge/overview",
+  },
+  {
+    id: "dogfood",
+    path: "/dogfood",
+    label: "Dogfood Lane",
+    summary: "SU-7 fleet lane, fallback path, and first live lessons",
+    apiPath: "/api/forge/dogfood-lanes",
   },
   {
     id: "work",
@@ -144,10 +152,33 @@ export const ForgeShellRefItem = Schema.Struct({
 })
 export type ForgeShellRefItem = typeof ForgeShellRefItem.Type
 
+export const ForgeShellDogfoodLane = Schema.Struct({
+  laneRef: Schema.String,
+  issueRef: Schema.String,
+  repository: Schema.String,
+  status: Schema.String,
+  intakeRef: Schema.String,
+  verificationRef: Schema.String,
+  queueRef: Schema.String,
+  promotionRef: Schema.String,
+  mirrorRef: Schema.String,
+  verificationCommand: Schema.String,
+  fallbackPath: Schema.String,
+  lessons: Schema.Array(Schema.String),
+  metrics: Schema.Struct({
+    triage: Schema.String,
+    changeInspector: Schema.String,
+    attentionQueue: Schema.String,
+    cycleVelocity: Schema.String,
+  }),
+})
+export type ForgeShellDogfoodLane = typeof ForgeShellDogfoodLane.Type
+
 export const ForgeShellSnapshot = Schema.Struct({
   dataMode: Schema.Literal("stubbed-public-contract"),
   apiBasePath: Schema.Literal("/api/forge"),
   generatedAt: Schema.String,
+  dogfoodLanes: Schema.Array(ForgeShellDogfoodLane),
   workQueue: Schema.Array(ForgeShellWorkItem),
   changes: Schema.Array(ForgeShellChangeItem),
   verification: Schema.Array(ForgeShellVerificationItem),
@@ -160,7 +191,43 @@ export const forgeShellPreviewState: ForgeShellSnapshot = {
   dataMode: "stubbed-public-contract",
   apiBasePath: "/api/forge",
   generatedAt: "2026-06-28T00:00:00.000Z",
+  dogfoodLanes: [
+    {
+      laneRef: "lane.forge.su7.openagents-codex-low-risk",
+      issueRef: "#6797",
+      repository: "OpenAgentsInc/openagents",
+      status: "operator-ready",
+      intakeRef: "refs/forge/intake/openagents/codex-low-risk",
+      verificationRef: "receipt.forge.su7.su5-check-deploy",
+      queueRef: "queue.forge.su7.nextActualPromotion",
+      promotionRef: "promotion.forge.su7.su4-blueprint-gated",
+      mirrorRef: "mirror.github.openagents.main.su7",
+      verificationCommand: "bun run --cwd apps/openagents.com check:deploy",
+      fallbackPath: "pause Forge lane, reopen GitHub PR path, keep Forge rows as audit evidence",
+      lessons: [
+        "Triage needs one lane owner, one issue ref, and one visible blocked reason.",
+        "Change inspection must keep base head, patch head, verification receipt, and promotion receipt in the same row.",
+        "Attention queue should sort by operator action: needs verification, needs gate, needs mirror, or escaped.",
+        "Cycle metrics must count Forge intake-to-mirror time, not GitHub PR time.",
+      ],
+      metrics: {
+        triage: "one low-risk Codex/Pylon lane selected for OpenAgents repo dogfood",
+        changeInspector: "base, patch, verification, promotion, and mirror refs rendered together",
+        attentionQueue: "queue state names the next operator action and rollback path",
+        cycleVelocity: "first measurement starts at Forge intake and ends at SU-6 mirror",
+      },
+    },
+  ],
   workQueue: [
+    {
+      workRef: "work.forge.6797",
+      issueRef: "#6797",
+      title: "Dogfood one OpenAgents fleet lane through Forge",
+      priority: "P0",
+      owner: "codex-pylon-lane",
+      state: "operator-ready",
+      lease: "Forge lane only; GitHub is mirror after promotion",
+    },
     {
       workRef: "work.forge.6769",
       issueRef: "#6769",
@@ -191,6 +258,14 @@ export const forgeShellPreviewState: ForgeShellSnapshot = {
   ],
   changes: [
     {
+      changeRef: "change.forge.su7.openagents-codex-low-risk",
+      workRef: "work.forge.6797",
+      baseHead: "refs/heads/main",
+      patchHead: "refs/forge/changes/openagents/codex-low-risk",
+      state: "awaiting-smart-git-intake",
+      blockers: [],
+    },
+    {
       changeRef: "change.forge.shell",
       workRef: "work.forge.6769",
       baseHead: "refs/heads/main@81182403c3",
@@ -208,6 +283,14 @@ export const forgeShellPreviewState: ForgeShellSnapshot = {
     },
   ],
   verification: [
+    {
+      receiptRef: "receipt.forge.su7.su5-check-deploy",
+      changeRef: "change.forge.su7.openagents-codex-low-risk",
+      verdict: "required-before-promotion",
+      command: "bun run --cwd apps/openagents.com check:deploy",
+      executor: "owned Pylon forge-verification-runner",
+      logDigest: "pending-first-live-receipt",
+    },
     {
       receiptRef: "receipt.forge.shell.local",
       changeRef: "change.forge.shell",
@@ -227,6 +310,14 @@ export const forgeShellPreviewState: ForgeShellSnapshot = {
   ],
   mergeQueue: [
     {
+      position: "dogfood-lane",
+      changeRef: "change.forge.su7.openagents-codex-low-risk",
+      virtualHead: "refs/forge/virtual/openagents/main+codex-low-risk",
+      actualHead: "refs/heads/main",
+      gate: "SU-4 promotion waits for SU-5 verification receipt",
+      state: "queued-after-intake",
+    },
+    {
       position: "nextActualPromotion",
       changeRef: "change.forge.shell",
       virtualHead: "refs/forge/virtual/main+shell",
@@ -244,6 +335,18 @@ export const forgeShellPreviewState: ForgeShellSnapshot = {
     },
   ],
   refs: [
+    {
+      ref: "refs/forge/intake/openagents/codex-low-risk",
+      target: "selected low-risk OpenAgents Codex/Pylon lane",
+      authority: "Forge smart-Git intake",
+      state: "dogfood-lane",
+    },
+    {
+      ref: "refs/forge/mirror/github/openagents/main",
+      target: "GitHub downstream visibility after SU-6",
+      authority: "Forge mirror worker",
+      state: "mirror-only",
+    },
     {
       ref: "refs/heads/main",
       target: "GitHub mirror until SU-3",
@@ -653,6 +756,66 @@ a {
   line-height: 1.45;
 }
 
+.forge-lane {
+  display: grid;
+  gap: 1rem;
+}
+
+.forge-lane-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+}
+
+.forge-lane-section {
+  display: grid;
+  gap: 0.7rem;
+  min-width: 0;
+  padding-top: 1rem;
+  border-top: 1px solid var(--forge-line);
+}
+
+.forge-ref-card {
+  display: grid;
+  gap: 0.32rem;
+  min-height: 6.25rem;
+  padding: 0.78rem;
+  border: 1px solid var(--forge-line);
+  border-radius: var(--forge-radius);
+  background: #060a0f;
+}
+
+.forge-ref-label {
+  color: var(--forge-text-muted);
+  font-size: 0.68rem;
+  line-height: 1.3;
+  text-transform: uppercase;
+}
+
+.forge-ref-value {
+  color: var(--forge-cyan);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.forge-runbook {
+  display: grid;
+  gap: 0.7rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.forge-runbook li {
+  display: grid;
+  gap: 0.28rem;
+  padding: 0.72rem;
+  border: 1px solid var(--forge-line);
+  border-radius: var(--forge-radius);
+  background: var(--forge-panel-strong);
+}
+
 @media (max-width: 52rem) {
   .forge-shell {
     grid-template-columns: 1fr;
@@ -733,6 +896,10 @@ const renderOverview = (): string => `<section class="forge-grid">
     <span class="forge-metric-value">${forgeShellPreviewState.refs.length}</span>
     <span class="forge-metric-label">ref namespaces split between Forge authority and GitHub mirror projection</span>
   </article>
+  <article class="forge-metric">
+    <span class="forge-metric-value">${forgeShellPreviewState.dogfoodLanes.length}</span>
+    <span class="forge-metric-label">SU-7 Codex/Pylon dogfood lane prepared for Forge-only coordination</span>
+  </article>
   <section class="forge-panel" data-span="wide">
     <div class="forge-panel-head">
       <h3 class="forge-panel-title">Contract Routes</h3>
@@ -763,6 +930,109 @@ const renderOverview = (): string => `<section class="forge-grid">
       </table>
     </div>
   </section>
+</section>`
+
+const dogfoodRefCards = (
+  lane: ForgeShellDogfoodLane,
+): ReadonlyArray<readonly [string, string]> => [
+  ["Intake", lane.intakeRef],
+  ["Verification", lane.verificationRef],
+  ["Queue", lane.queueRef],
+  ["Promotion", lane.promotionRef],
+  ["Mirror", lane.mirrorRef],
+]
+
+const renderDogfood = (): string => `<section class="forge-grid">
+  ${forgeShellPreviewState.dogfoodLanes
+    .map(
+      lane => `<article class="forge-panel forge-lane" data-span="wide" data-forge-dogfood-lane="${escapeHtml(lane.laneRef)}">
+        <div class="forge-panel-head">
+          <h3 class="forge-panel-title">${escapeHtml(lane.laneRef)}</h3>
+          ${renderStatus(lane.status)}
+        </div>
+        <p class="forge-route-copy">${escapeHtml(lane.repository)} ${escapeHtml(lane.issueRef)} is the first bounded OpenAgents Codex/Pylon lane for Forge dogfood. The UI keeps intake, verification, queue, promotion, and GitHub mirror refs visible together so GitHub stays downstream visibility only.</p>
+        <div class="forge-lane-grid">
+          ${dogfoodRefCards(lane)
+            .map(
+              ([label, value]) => `<div class="forge-ref-card">
+                <span class="forge-ref-label">${escapeHtml(label)}</span>
+                <span class="forge-ref-value">${escapeHtml(value)}</span>
+              </div>`,
+            )
+            .join("\n")}
+        </div>
+        <section class="forge-lane-section">
+          <div class="forge-panel-head">
+            <h4 class="forge-panel-title">Operator Runbook</h4>
+            <span class="forge-table-caption">public-safe command sequence</span>
+          </div>
+          <ol class="forge-runbook">
+            <li>
+              <span class="forge-list-kicker">1. Intake</span>
+              <span class="forge-list-title">Push the selected low-risk lane through Forge smart-Git into ${escapeHtml(lane.intakeRef)}.</span>
+            </li>
+            <li>
+              <span class="forge-list-kicker">2. Verify</span>
+              <span class="forge-list-title">Require SU-5 receipt ${escapeHtml(lane.verificationRef)} from <span class="forge-code">${escapeHtml(lane.verificationCommand)}</span>.</span>
+            </li>
+            <li>
+              <span class="forge-list-kicker">3. Queue and promote</span>
+              <span class="forge-list-title">Promote only after SU-4 Blueprint gates write ${escapeHtml(lane.promotionRef)} for ${escapeHtml(lane.queueRef)}.</span>
+            </li>
+            <li>
+              <span class="forge-list-kicker">4. Mirror</span>
+              <span class="forge-list-title">Let SU-6 mirror ${escapeHtml(lane.mirrorRef)} to GitHub after Forge promotion; do not open a competing PR.</span>
+            </li>
+            <li>
+              <span class="forge-list-kicker">Fallback</span>
+              <span class="forge-list-title">${escapeHtml(lane.fallbackPath)}.</span>
+            </li>
+          </ol>
+        </section>
+        <section class="forge-lane-section">
+          <div class="forge-panel-head">
+            <h4 class="forge-panel-title">Workbench Lessons</h4>
+            <span class="forge-table-caption">Linear-inspired operator cues</span>
+          </div>
+          <ul class="forge-list">
+            ${lane.lessons
+              .map(
+                lesson => `<li class="forge-list-item">
+                  <span class="forge-list-title">${escapeHtml(lesson)}</span>
+                </li>`,
+              )
+              .join("\n")}
+          </ul>
+        </section>
+        <section class="forge-lane-section">
+          <div class="forge-panel-head">
+            <h4 class="forge-panel-title">Cycle Metrics</h4>
+            <span class="forge-table-caption">first lane measurement points</span>
+          </div>
+          <div class="forge-table-wrap">
+            <table class="forge-table">
+              <thead>
+                <tr>
+                  <th>Area</th>
+                  <th>Signal</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${Object.entries(lane.metrics)
+                  .map(
+                    ([area, signal]) => `<tr>
+                      <td>${escapeHtml(area)}</td>
+                      <td class="forge-muted">${escapeHtml(signal)}</td>
+                    </tr>`,
+                  )
+                  .join("\n")}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </article>`,
+    )
+    .join("\n")}
 </section>`
 
 const renderWorkQueue = (): string => `<section class="forge-panel" data-span="wide">
@@ -940,6 +1210,8 @@ const renderRefs = (): string => `<section class="forge-panel" data-span="wide">
 
 const renderRouteContent = (routeId: ForgeShellRouteId): string => {
   switch (routeId) {
+    case "dogfood":
+      return renderDogfood()
     case "work":
       return renderWorkQueue()
     case "changes":
