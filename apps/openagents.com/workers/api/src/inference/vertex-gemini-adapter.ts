@@ -166,6 +166,16 @@ const buildGenerationConfig = (
       ? rawMax
       : DEFAULT_MAX_TOKENS
 
+  const rawThinkingBudget =
+    passthrough['thinking_budget'] ?? passthrough['thinkingBudget']
+  if (
+    typeof rawThinkingBudget === 'number' &&
+    Number.isInteger(rawThinkingBudget) &&
+    rawThinkingBudget >= 0
+  ) {
+    config['thinkingConfig'] = { thinkingBudget: rawThinkingBudget }
+  }
+
   const temperature = passthrough['temperature']
   if (typeof temperature === 'number') {
     config['temperature'] = temperature

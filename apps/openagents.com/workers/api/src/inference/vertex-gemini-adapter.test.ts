@@ -106,6 +106,32 @@ describe('vertex gemini adapter request mapping', () => {
         `/locations/global/publishers/google/models/${DEFAULT_GEMINI_MODEL_ID}:generateContent`,
     )
   })
+
+  test('maps thinking budget passthrough into Gemini generation config', async () => {
+    const { calls, fetchImpl } = recordingFetch(okJson(geminiResponse))
+    const adapter = makeVertexGeminiAdapter({
+      fetchImpl,
+      project: 'openagentsgemini',
+      tokenProvider: fixedToken,
+    })
+
+    await run(
+      adapter.complete(
+        baseRequest({
+          passthroughParams: { max_tokens: 4096, thinking_budget: 0 },
+        }),
+      ),
+    )
+
+    const body = JSON.parse(calls[0]!.init.body as string) as Record<
+      string,
+      unknown
+    >
+    expect(body['generationConfig']).toMatchObject({
+      maxOutputTokens: 4096,
+      thinkingConfig: { thinkingBudget: 0 },
+    })
+  })
 })
 
 // Build a Vertex Gemini streamGenerateContent(?alt=sse)-shaped ReadableStream

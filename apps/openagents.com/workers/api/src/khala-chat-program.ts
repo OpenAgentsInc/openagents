@@ -224,6 +224,7 @@ export const buildKhalaChatRequest = (
   stream: true,
   passthroughParams: {
     max_tokens: KHALA_CHAT_MAX_COMPLETION_TOKENS,
+    thinking_budget: 0,
   },
 })
 

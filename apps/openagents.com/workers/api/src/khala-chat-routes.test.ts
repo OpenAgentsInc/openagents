@@ -358,6 +358,7 @@ describe('khala chat route', () => {
     expect(captured?.passthroughParams.max_tokens).toBe(
       KHALA_CHAT_MAX_COMPLETION_TOKENS,
     )
+    expect(captured?.passthroughParams.thinking_budget).toBe(0)
   })
 
   test('answers connected Pylon questions from public registry context without opening a provider stream', async () => {
