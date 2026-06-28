@@ -1741,7 +1741,7 @@ const schemaComponents = (): JsonSchema => ({
     'Public-safe single MirrorCode run (#6378): schemaVersion, scope="public", generatedAt, the live_at_read staleness contract, and the one run object, or a typed 404 when the runId is unknown. Same public-safe fields as the leaderboard run rows; never carries task contents or canary strings.',
   ),
   MirrorCodeRunRecordRequest: objectSummary(
-    'Owner-gated (admin bearer) launch/record body for a Khala MirrorCode run (#6378): either a launch intent { kind:"launch", taskId, bucket, language?, grade? }, which creates a queued zero-token run row, or the public-safe result contract { runId, model:"openagents/khala", taskId, bucket, language?, status, passRate?, tokens:{total}, exactTokenUsageEventRefs?, startedAt, finishedAt?, summary, grade? }. The Worker rebuilds both shapes through the no-task-contents / no-canary public-safety boundary and upserts by runId; anything carrying task source, test data, prompts, or canary strings is rejected with a typed 400 and never stored. A smoke (Phase-0) run is always decisionGrade:false. A scored decision_grade run requires exactTokenUsageEventRefs before it can be stored or published into the ladder.',
+    'Owner-gated (admin bearer) launch/record body for a Khala MirrorCode run (#6378): either a smoke-only launch intent { kind:"launch", taskId, bucket, language? }, which creates a queued zero-token run row, or the public-safe result contract { runId, model:"openagents/khala", taskId, bucket, language?, status, passRate?, tokens:{total}, exactTokenUsageEventRefs?, startedAt, finishedAt?, summary, grade? }. The Worker rebuilds both shapes through the no-task-contents / no-canary public-safety boundary and upserts by runId; anything carrying task source, test data, prompts, canary strings, or a premature decision_grade launch is rejected with a typed 400 and never stored. A smoke (Phase-0) run is always decisionGrade:false. A scored decision_grade run requires exactTokenUsageEventRefs before it can be stored or published into the ladder.',
   ),
   MirrorCodeRunRecordEnvelope: objectSummary(
     'Admin-bearer-gated launch/record receipt for a MirrorCode run (#6378): schemaVersion, kind="mirrorcode_run_launched" or "mirrorcode_run_recorded", and the stored public-safe run object. Storage/projection evidence only; grants no spend, settlement, payout, or public-claim authority.',
@@ -5143,6 +5143,10 @@ const paths = (): JsonSchema => ({
       security: adminBearer,
       requestBody: jsonContent('#/components/schemas/MirrorCodeRunRecordRequest'),
       responses: {
+        '202': okJson(
+          'Queued smoke-only MirrorCode launch intent.',
+          '#/components/schemas/MirrorCodeRunRecordEnvelope',
+        ),
         '201': okJson(
           'Recorded public-safe MirrorCode run.',
           '#/components/schemas/MirrorCodeRunRecordEnvelope',
