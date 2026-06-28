@@ -551,6 +551,16 @@ then full source-of-truth inversion at `forge.openagents.com`.
 
 ### Roadmap of issues — what to build first (fileable)
 
+> Implementation note, 2026-06-28: the live GitHub sub-issues under #6745 now
+> use a shorter first-wave numbering than the original fileable list below.
+> Treat GitHub as the operative execution queue for this pass:
+> #6746 / FORGE-1 = D1 schema, #6747 / FORGE-2 = local receive-pack parser,
+> #6748 / FORGE-3 = R2 packfile archiving, #6750 / FORGE-4 = tenant scoped git
+> tokens, #6751 / FORGE-5 = Pylon-to-Forge dispatch protocol, and #6752 /
+> FORGE-6 = Docker-isolated verification runner. The milestone architecture and
+> dependency logic below remain the longer-term map; the live issue set is the
+> committed first implementation slice.
+
 This is the build plan in fileable form: an ordered list of issues mapped to the
 milestones above, with dependency order and a P0-now set. Each line is
 `**FORGE-n** (milestone) [Pn] — Title — one-line scope`. These are tracking

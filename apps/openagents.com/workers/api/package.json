@@ -48,6 +48,7 @@
     "@openagentsinc/public-activity-timeline": "workspace:*",
     "@openagentsinc/replay-clips": "workspace:*",
     "@openagentsinc/email-templates": "workspace:*",
+    "@openagentsinc/forge-protocol": "workspace:*",
     "@openagentsinc/mullet-schema": "workspace:*",
     "@openagentsinc/mullet-sim": "workspace:*",
     "@openagentsinc/provider-account-schema": "workspace:*",

@@ -239,6 +239,7 @@
         "@openagentsinc/blueprint-contracts": "workspace:*",
         "@openagentsinc/durable-stream": "workspace:*",
         "@openagentsinc/email-templates": "workspace:*",
+        "@openagentsinc/forge-protocol": "workspace:*",
         "@openagentsinc/mcp-contract": "workspace:*",
         "@openagentsinc/mullet-schema": "workspace:*",
         "@openagentsinc/mullet-sim": "workspace:*",
@@ -415,6 +416,17 @@
     },
     "packages/durable-stream": {
       "name": "@openagentsinc/durable-stream",
+      "version": "0.1.0",
+      "dependencies": {
+        "effect": "catalog:",
+      },
+      "devDependencies": {
+        "bun-types": "^1.0.0",
+        "typescript": "catalog:",
+      },
+    },
+    "packages/forge-protocol": {
+      "name": "@openagentsinc/forge-protocol",
       "version": "0.1.0",
       "dependencies": {
         "effect": "catalog:",
@@ -898,6 +910,8 @@
     "@openagentsinc/durable-stream": ["@openagentsinc/durable-stream@workspace:packages/durable-stream"],
 
     "@openagentsinc/email-templates": ["@openagentsinc/email-templates@workspace:apps/openagents.com/packages/email-templates"],
+
+    "@openagentsinc/forge-protocol": ["@openagentsinc/forge-protocol@workspace:packages/forge-protocol"],
 
     "@openagentsinc/forum": ["@openagentsinc/forum@workspace:apps/forum"],
 
