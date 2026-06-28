@@ -14,17 +14,17 @@
 # Requirements: Docker (running), uv, python3.13, jq, curl.
 #
 # Usage:
-#   ./run.sh                         # smoke false_c (cheapest), mints a free Khala key
+#   ./run.sh                         # smoke cal_python (S target), mints a free Khala key
 #   MC_TASK_ID=uuidparse_python ./run.sh
 #   OPENAI_API_KEY=oa_agent_xxx ./run.sh --task numfmt_python
 #
 # Env knobs (all optional):
 #   MC_CLONE        path to the MirrorCode clone (default: projects/repos/MirrorCode)
 #   OPENAI_API_KEY  a Khala key; if unset a free one is minted
-#   MC_TASK_ID      sample id '<target>_<language>' (default: false_c)
-#   MC_TOKEN_LIMIT  hard token cap (default 250000)
-#   MC_TIME_LIMIT   hard wall-clock cap seconds (default 1800)
-#   MC_MESSAGE_LIMIT hard message cap (default 120)
+#   MC_TASK_ID      sample id '<target>_<language>' (default: cal_python)
+#   MC_TOKEN_LIMIT  hard token cap (default 20000000)
+#   MC_TIME_LIMIT   hard wall-clock cap seconds (default 7200)
+#   MC_MESSAGE_LIMIT hard message cap (default 250)
 #   MC_OUT          result JSON path (default: ./mirrorcode-phase0-result.json)
 #   MC_VENV         venv dir (default: a fresh mktemp dir; auto-removed)
 #   MC_KEEP_VENV    set to 1 to keep the venv after the run
@@ -88,10 +88,10 @@ if [[ ! -x "${VENV_DIR}/bin/python" ]]; then
 fi
 
 # --- run -----------------------------------------------------------------------
-export MC_TASK_ID="${MC_TASK_ID:-false_c}"
-export MC_TOKEN_LIMIT="${MC_TOKEN_LIMIT:-250000}"
-export MC_TIME_LIMIT="${MC_TIME_LIMIT:-1800}"
-export MC_MESSAGE_LIMIT="${MC_MESSAGE_LIMIT:-120}"
+export MC_TASK_ID="${MC_TASK_ID:-cal_python}"
+export MC_TOKEN_LIMIT="${MC_TOKEN_LIMIT:-20000000}"
+export MC_TIME_LIMIT="${MC_TIME_LIMIT:-7200}"
+export MC_MESSAGE_LIMIT="${MC_MESSAGE_LIMIT:-250}"
 export MC_OUT="${MC_OUT:-${PWD}/mirrorcode-phase0-result.json}"
 
 echo "Launching MirrorCode x Khala smoke (task ${MC_TASK_ID})..."
