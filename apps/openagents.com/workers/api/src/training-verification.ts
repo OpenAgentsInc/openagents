@@ -8,6 +8,10 @@ import {
   stringArrayFromUnknown,
 } from './json-boundary'
 import { isoTimestampAfterIso } from './runtime-primitives'
+import {
+  assessVerificationIntegrity,
+  verificationIntegrityInputFromPayload,
+} from './training-verification-integrity'
 
 const TrimmedString = S.Trim
 const NonEmptyTrimmedString = TrimmedString.check(S.isNonEmpty())
@@ -59,6 +63,7 @@ export const TrainingVerificationFailureCode = S.Literals([
   'RowOpeningMissing',
   'SamplePolicyRejected',
   'StatisticalThresholdFailed',
+  'VerifierIndependenceFailed',
   'VerificationClassUnknown',
 ])
 export type TrainingVerificationFailureCode =
@@ -554,6 +559,11 @@ export const verifyExactTraceReplay = (
   input: TrainingVerificationVerifierInput,
 ): TrainingVerificationVerdict => {
   const payload = input.payload
+  const integrityInput = verificationIntegrityInputFromPayload(payload)
+  const integrityAssessment =
+    integrityInput === undefined
+      ? undefined
+      : assessVerificationIntegrity(integrityInput)
   const expected = typeof payload.traceCommitmentDigestRef === 'string'
     ? payload.traceCommitmentDigestRef
     : undefined
@@ -576,6 +586,10 @@ export const verifyExactTraceReplay = (
     failureCodes.push('ExecutorTraceMismatch')
   }
 
+  if (integrityAssessment !== undefined && !integrityAssessment.ok) {
+    failureCodes.push('VerifierIndependenceFailed')
+  }
+
   const sampledCodes = withSamplingPolicy(
     input.challenge,
     payload,
@@ -588,6 +602,15 @@ export const verifyExactTraceReplay = (
     sampledCodes,
     input.challenge.challengeRef,
     {
+      ...(integrityAssessment === undefined
+        ? {}
+        : {
+            effectiveIndependenceVotes:
+              integrityAssessment.effectiveIndependenceVotes,
+            integrityBlockers: integrityAssessment.blockers,
+            verifierFamilies: integrityAssessment.verifierFamilies,
+            workerFamily: integrityAssessment.workerFamily,
+          }),
       sampledWindowRef:
         typeof payload.sampledWindowRef === 'string'
           ? payload.sampledWindowRef
@@ -666,7 +689,11 @@ export const defaultTrainingVerificationRegistry = new Map<
     {
       className: 'exact_trace_replay',
       defaultSamplingPolicy: 'per_contribution',
-      failureCodes: ['ExecutorTraceMismatch', 'OutputDigestMissing'],
+      failureCodes: [
+        'ExecutorTraceMismatch',
+        'OutputDigestMissing',
+        'VerifierIndependenceFailed',
+      ],
       stalenessPolicy: { kind: 'inherit_run_default' },
       verify: verifyExactTraceReplay,
     },
