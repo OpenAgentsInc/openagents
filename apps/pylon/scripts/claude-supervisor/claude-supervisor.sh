@@ -66,6 +66,10 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 
 # shellcheck source=../supervisor-task-pool.sh
 source "$SCRIPT_DIR/../supervisor-task-pool.sh"
+# Fresh-base resolver (#6719 deletion-poison fix): every dispatch must base on
+# CURRENT origin/main, never the supervisor's stale local HEAD.
+# shellcheck source=../supervisor-fresh-base.sh
+source "$SCRIPT_DIR/../supervisor-fresh-base.sh"
 
 # --- Config (all overridable via env) ---
 export PYLON_OPENAGENTS_BASE_URL="${PYLON_OPENAGENTS_BASE_URL:-https://openagents.com}"
@@ -255,8 +259,24 @@ worker_loop() {
       backoff=$(( backoff * 2 )); [ "$backoff" -gt "$SUP_BACKOFF_MAX" ] && backoff="$SUP_BACKOFF_MAX"
       continue
     fi
-    local commit; commit=$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null)
-    [ -z "$commit" ] && { sleep 15; continue; }
+    # Base every assignment on FRESH origin/main, never the supervisor's stale
+    # local HEAD. $REPO_ROOT can lag origin/main badly (idle clone, or another
+    # agent's dirty worktree). main moves fast, so a stale base makes the worker
+    # branch from an old commit and the PR diff vs current main looks like a mass
+    # deletion of everything added since (the #6719 deletion-poison pattern).
+    # Resolve the live remote main SHA with a pure `git ls-remote` (no
+    # working-tree / local-ref mutation; safe in a dirty or shared checkout). If
+    # it can't be resolved, SKIP this dispatch rather than poison it.
+    local commit local_head
+    commit=$(supervisor_resolve_fresh_origin_main_sha "$SUP_REPO")
+    if [ -z "$commit" ]; then
+      log "slot=$slot SKIP could not resolve fresh origin/main sha for $SUP_REPO; not dispatching a stale base (anti-#6719)"
+      sleep 15; continue
+    fi
+    local_head=$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo "")
+    if [ -n "$local_head" ] && [ "$local_head" != "$commit" ]; then
+      log "slot=$slot BASE-DRIFT local HEAD ${local_head:0:12} != origin/main ${commit:0:12}; dispatching FRESH origin/main (anti-#6719 deletion-poison)"
+    fi
 
     local out="$SUP_STATE_DIR/slot.$slot.json"
     "${PYLON[@]}" khala request \

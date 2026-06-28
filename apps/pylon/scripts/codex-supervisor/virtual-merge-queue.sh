@@ -96,14 +96,20 @@ sup_vmq_project_head() {
   local source_base="${2:-HEAD}"
   [ "${SUP_VMQ_ENABLED:-1}" = "1" ] || return 1
 
-  local real_base
-  real_base="$(sup_vmq_sha "$source_repo" "$source_base")" || return 1
-  [ -n "$real_base" ] || return 1
-
   if ! sup_vmq_sync_repo "$source_repo"; then
-    sup_vmq_log "VMQ unavailable: sync failed; using real base $real_base"
+    sup_vmq_log "VMQ unavailable: sync failed"
     return 1
   fi
+
+  # Resolve the base INSIDE the freshly-fetched clone so the projection is always
+  # anchored to a CURRENT object (the caller passes the fresh origin/main SHA),
+  # never the supervisor's stale local HEAD which would deletion-poison the PR
+  # diff (#6719). If the requested base object is somehow absent, fall back to the
+  # freshly fetched base-branch tip in the clone — still fresh, never stale-local.
+  local real_base
+  real_base="$(sup_vmq_sha "$SUP_VMQ_DIR" "$source_base")"
+  [ -n "$real_base" ] || real_base="$(sup_vmq_sha "$SUP_VMQ_DIR" "$SUP_VMQ_REMOTE/$SUP_VMQ_BASE_BRANCH")"
+  [ -n "$real_base" ] || return 1
 
   local work_branch="pylon/virtual-merge-queue"
   sup_vmq_git checkout --quiet -B "$work_branch" "$real_base" >/dev/null 2>&1 || return 1
