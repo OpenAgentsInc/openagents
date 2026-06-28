@@ -42,7 +42,7 @@ import type {
   KhalaChatStreamSource,
 } from './khala-chat-program'
 import {
-  type KhalaChatPylonContext,
+  type KhalaChatPylonContextEnvelope,
   answerKhalaChatPylonQuestion,
 } from './khala-chat-pylon-context'
 import { logWorkerRouteError } from './observability'
@@ -76,7 +76,11 @@ export type KhalaChatRouteDependencies = Readonly<{
   // a deterministic stub.
   makeStreamClient: (env: unknown) => KhalaChatStreamClient
   loadPylonContext?:
-    | ((env: unknown) => Effect.Effect<KhalaChatPylonContext, unknown>)
+    | ((input: {
+        ctx: ExecutionContext | undefined
+        env: unknown
+        request: Request
+      }) => Effect.Effect<KhalaChatPylonContextEnvelope, unknown>)
     | undefined
   // Overridable for tests; defaults to a per-IP token bucket. Returns false when
   // the caller is over budget.
@@ -257,14 +261,16 @@ const latestUserContent = (messages: ReadonlyArray<KhalaChatMessage>): string =>
 const loadPylonContext = (
   dependencies: KhalaChatRouteDependencies,
   env: unknown,
+  request: Request,
+  ctx: ExecutionContext | undefined,
   trace: string,
-): Effect.Effect<KhalaChatPylonContext | undefined> => {
+): Effect.Effect<KhalaChatPylonContextEnvelope | undefined> => {
   if (dependencies.loadPylonContext === undefined) {
-    return Effect.sync((): KhalaChatPylonContext | undefined => undefined)
+    return Effect.sync((): KhalaChatPylonContextEnvelope | undefined => undefined)
   }
 
   return dependencies
-    .loadPylonContext(env)
+    .loadPylonContext({ ctx, env, request })
     .pipe(
       Effect.catch(error =>
         Effect.sync(() =>
@@ -399,6 +405,7 @@ export const makeKhalaChatRoutes = (
   const streamResponse = (
     request: Request,
     env: unknown,
+    ctx: ExecutionContext | undefined,
   ): KhalaChatRouteEffect => {
     const requestTraceRef = traceRef()
     if (!rateLimit(request)) {
@@ -419,7 +426,13 @@ export const makeKhalaChatRoutes = (
           ? Effect.succeed(fastGreetingSource())
           : isKhalaArtanisPublicReadOnlyTurn(messages)
             ? Effect.succeed(artanisPublicReadOnlySource())
-          : loadPylonContext(dependencies, env, requestTraceRef).pipe(
+          : loadPylonContext(
+              dependencies,
+              env,
+              request,
+              ctx,
+              requestTraceRef,
+            ).pipe(
               Effect.flatMap(pylonContext => {
                 const pylonAnswer = answerKhalaChatPylonQuestion(
                   latestUserContent(messages),
@@ -477,6 +490,7 @@ export const makeKhalaChatRoutes = (
     routeKhalaChatRequest: (
       request: Request,
       env: unknown,
+      ctx?: ExecutionContext,
     ): KhalaChatRouteEffect | undefined => {
       const url = new URL(request.url)
       if (url.pathname !== '/api/khala/chat') {
@@ -485,7 +499,7 @@ export const makeKhalaChatRoutes = (
       if (request.method !== 'POST') {
         return Effect.succeed(methodNotAllowed(['POST']))
       }
-      return streamResponse(request, env)
+      return streamResponse(request, env, ctx)
     },
   }
 }

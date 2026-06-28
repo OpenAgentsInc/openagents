@@ -623,7 +623,10 @@ import { makeForgeGitIntakeRoutes } from './forge-git-intake-routes'
 import { makeD1R2ForgeGitPackfileArchiveStore } from './forge-git-packfile-archive-store'
 import { makeD1ForgeTenantGitAuthStore } from './forge-tenant-git-auth-store'
 import type { KhalaChatStreamClient } from './khala-chat-program'
-import { loadKhalaChatPylonContext } from './khala-chat-pylon-context'
+import {
+  loadKhalaChatAccountPylonContext,
+  loadKhalaChatPylonContext,
+} from './khala-chat-pylon-context'
 import { makeKhalaChatRoutes } from './khala-chat-routes'
 import {
   handleKhalaFeedbackSubmit,
@@ -10160,11 +10163,57 @@ const makeArtanisResponderKhalaClient = (
     })
 }
 
+class KhalaChatSessionLookupError extends S.TaggedErrorClass<KhalaChatSessionLookupError>()(
+  'KhalaChatSessionLookupError',
+  {
+    reason: S.String,
+  },
+) {}
+
 const khalaChatRoutes = makeKhalaChatRoutes({
-  loadPylonContext: env =>
-    loadKhalaChatPylonContext(
-      makeD1PylonApiStore(openAgentsDatabase(env as WorkerBindings)),
-    ),
+  loadPylonContext: ({ ctx, env, request }) =>
+    Effect.gen(function* () {
+      const workerEnv = env as Env & WorkerBindings
+      const db = openAgentsDatabase(workerEnv)
+      const pylonStore = makeD1PylonApiStore(db)
+      const publicContext = yield* loadKhalaChatPylonContext(pylonStore)
+
+      if (ctx === undefined) {
+        return {
+          mode: 'anonymous_public' as const,
+          publicContext,
+        }
+      }
+
+      const session = yield* Effect.tryPromise({
+        catch: error =>
+          new KhalaChatSessionLookupError({
+            reason: error instanceof Error ? error.message : String(error),
+          }),
+        try: () => verifySession(request, workerEnv, ctx),
+      }).pipe(Effect.catch(() => Effect.void))
+
+      if (session === undefined) {
+        return {
+          mode: 'anonymous_public' as const,
+          publicContext,
+        }
+      }
+
+      const accountContext = yield* loadKhalaChatAccountPylonContext(
+        {
+          agentStore: makeD1AgentRegistrationStore(db),
+          pylonStore,
+        },
+        session.user.userId,
+      ).pipe(Effect.catch(() => Effect.void))
+
+      return {
+        ...(accountContext === undefined ? {} : { accountContext }),
+        mode: 'authenticated_account' as const,
+        publicContext,
+      }
+    }),
   makeStreamClient: env =>
     makeKhalaChatStreamClient(env as OnboardingInferenceEnv),
   recordServedTokens: recordPublicKhalaChatServedTokens,

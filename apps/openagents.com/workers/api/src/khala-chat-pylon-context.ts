@@ -5,6 +5,10 @@ import {
   publicPylonStatsFromRegistrations,
 } from './public-pylon-stats'
 import type {
+  AgentRegistrationStore,
+  LinkedAgentOwnerRecord,
+} from './agent-registration'
+import type {
   PylonApiRegistrationRecord,
   PylonApiStore,
   PylonCodingServiceCapacityProjection,
@@ -54,15 +58,51 @@ export type KhalaChatPylonContext = Readonly<{
   }>
 }>
 
+export type KhalaChatLinkedAgentSummary = Readonly<{
+  agentUserId: string
+  displayName: string
+  linkKind: LinkedAgentOwnerRecord['linkKind']
+}>
+
+export type KhalaChatAccountPylonContext = Readonly<{
+  asOfIso: string
+  caveatRefs: ReadonlyArray<string>
+  linkedAgents: ReadonlyArray<KhalaChatLinkedAgentSummary>
+  pylons: ReadonlyArray<KhalaChatPylonSummary>
+  sourceRefs: ReadonlyArray<string>
+  totals: Readonly<{
+    assignmentReadyNow: number
+    linkedAgents: number
+    linkedPylons: number
+    onlineNow: number
+    walletReadyNow: number
+  }>
+}>
+
+export type KhalaChatPylonContextEnvelope = Readonly<{
+  accountContext?: KhalaChatAccountPylonContext | undefined
+  mode: 'anonymous_public' | 'authenticated_account'
+  publicContext?: KhalaChatPylonContext | undefined
+}>
+
 export type KhalaChatPylonContextStore = Pick<
   PylonApiStore,
   'listRegistrations'
 >
 
+export type KhalaChatAccountPylonContextStores = Readonly<{
+  agentStore: Pick<AgentRegistrationStore, 'listLinkedAgentsForOpenAuthUser'>
+  pylonStore: Pick<
+    PylonApiStore,
+    'listRegistrations' | 'listRegistrationsForOwnerAgentUserIds'
+  >
+}>
+
 export type KhalaChatPylonQuestionKind =
   | 'capabilities'
   | 'interaction'
   | 'list_connected'
+  | 'ownership'
   | 'register'
 
 export class KhalaChatPylonContextError extends S.TaggedErrorClass<KhalaChatPylonContextError>()(
@@ -196,6 +236,104 @@ export const loadKhalaChatPylonContext = (
     }),
   )
 
+export const loadKhalaChatAccountPylonContext = (
+  stores: KhalaChatAccountPylonContextStores,
+  openauthUserId: string,
+  nowUnixMs: number = currentEpochMillis(),
+): Effect.Effect<KhalaChatAccountPylonContext, KhalaChatPylonContextError> =>
+  Effect.gen(function* () {
+    const linkedAgents = yield* Effect.tryPromise({
+      catch: error =>
+        new KhalaChatPylonContextError({
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+      try: () =>
+        stores.agentStore.listLinkedAgentsForOpenAuthUser === undefined
+          ? Promise.resolve([])
+          : stores.agentStore.listLinkedAgentsForOpenAuthUser(
+              openauthUserId,
+              100,
+            ),
+    })
+
+    const ownerIds = [...new Set(linkedAgents.map(agent => agent.agentUserId))]
+    const registrations = yield* Effect.tryPromise({
+      catch: error =>
+        new KhalaChatPylonContextError({
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+      try: () =>
+        stores.pylonStore.listRegistrationsForOwnerAgentUserIds === undefined
+          ? stores.pylonStore
+              .listRegistrations(200)
+              .then(rows =>
+                rows.filter(registration =>
+                  ownerIds.includes(registration.ownerAgentUserId),
+                ),
+              )
+          : stores.pylonStore.listRegistrationsForOwnerAgentUserIds(
+              ownerIds,
+              200,
+            ),
+    })
+
+    const stats = publicPylonStatsFromRegistrations(registrations, nowUnixMs)
+    const recentByPylonRef = new Map(
+      stats.recentPylons
+        .filter(pylon => pylon.pylonRef !== null)
+        .map(pylon => [
+          pylon.pylonRef!,
+          {
+            assignmentReadyNow: pylon.assignmentReadyNow,
+            onlineNow: pylon.onlineNow,
+            walletReadyNow: pylon.walletReadyNow,
+          },
+        ]),
+    )
+    const pylons = registrations
+      .map(registration =>
+        summarizeRegistration(registration, nowUnixMs, recentByPylonRef),
+      )
+      .sort((left, right) => {
+        if (left.onlineNow !== right.onlineNow) {
+          return left.onlineNow ? -1 : 1
+        }
+        return (
+          (left.latestHeartbeatAgeSeconds ?? Number.MAX_SAFE_INTEGER) -
+          (right.latestHeartbeatAgeSeconds ?? Number.MAX_SAFE_INTEGER)
+        )
+      })
+      .slice(0, MAX_CONTEXT_PYLONS)
+
+    return {
+      asOfIso: epochMillisToIsoTimestamp(nowUnixMs),
+      caveatRefs: [
+        'caveat.account.pylon_chat_reads_authenticated_owner_links_only',
+        'caveat.account.pylon_context_excludes_tokens_wallets_raw_traces',
+        'caveat.public.assignment_ready_is_not_payout_evidence',
+      ],
+      linkedAgents: linkedAgents.slice(0, 20).map(agent => ({
+        agentUserId: agent.agentUserId,
+        displayName: agent.displayName,
+        linkKind: agent.linkKind,
+      })),
+      pylons,
+      sourceRefs: [
+        'route:/api/khala/chat',
+        'route:/api/account/pylons',
+        'openagents.account.pylon_openauth_links',
+      ],
+      totals: {
+        assignmentReadyNow: pylons.filter(pylon => pylon.assignmentReadyNow)
+          .length,
+        linkedAgents: linkedAgents.length,
+        linkedPylons: registrations.length,
+        onlineNow: pylons.filter(pylon => pylon.onlineNow).length,
+        walletReadyNow: pylons.filter(pylon => pylon.walletReadyNow).length,
+      },
+    }
+  })
+
 const ageLabel = (seconds: number | null): string =>
   seconds === null
     ? 'no heartbeat'
@@ -251,6 +389,16 @@ const contextHeader = (context: KhalaChatPylonContext): string =>
     `- ${context.totals.assignmentReadyNow} assignment-ready now`,
   ].join('\n')
 
+const accountContextHeader = (context: KhalaChatAccountPylonContext): string =>
+  [
+    `Authenticated OpenAgents account Pylon context as of ${context.asOfIso}:`,
+    `- ${context.totals.linkedAgents} linked agent${context.totals.linkedAgents === 1 ? '' : 's'}`,
+    `- ${context.totals.linkedPylons} linked Pylon${context.totals.linkedPylons === 1 ? '' : 's'}`,
+    `- ${context.totals.onlineNow} of your linked Pylons online now`,
+    `- ${context.totals.walletReadyNow} wallet-ready now`,
+    `- ${context.totals.assignmentReadyNow} assignment-ready now`,
+  ].join('\n')
+
 export const renderKhalaChatPylonContextForPrompt = (
   context: KhalaChatPylonContext,
 ): string =>
@@ -265,6 +413,39 @@ export const renderKhalaChatPylonContextForPrompt = (
     `Source refs: ${context.sourceRefs.join(', ')}`,
     `Caveat refs: ${context.caveatRefs.join(', ')}`,
   ].join('\n')
+
+export const renderKhalaChatPylonContextEnvelopeForPrompt = (
+  envelope: KhalaChatPylonContextEnvelope,
+): string =>
+  [
+    ...(envelope.publicContext === undefined
+      ? []
+      : [renderKhalaChatPylonContextForPrompt(envelope.publicContext)]),
+    ...(envelope.accountContext === undefined
+      ? []
+      : [
+          [
+            'The request has a verified OpenAuth browser session. Use the following account-owned Pylon context only for this authenticated request.',
+            'Do not expose bearer tokens, token prefixes, wallet material, raw prompts, private traces, local paths, or another account owner link.',
+            accountContextHeader(envelope.accountContext),
+            'Linked agents:',
+            ...(envelope.accountContext.linkedAgents.length === 0
+              ? ['- none linked to this OpenAuth account']
+              : envelope.accountContext.linkedAgents.map(
+                  agent =>
+                    `- ${agent.agentUserId} (${agent.displayName}); link ${agent.linkKind}`,
+                )),
+            'Your linked Pylon rows:',
+            ...(envelope.accountContext.pylons.length === 0
+              ? ['- none linked to this OpenAuth account']
+              : envelope.accountContext.pylons
+                  .slice(0, MAX_CONTEXT_PYLONS)
+                  .map(pylonStatusLine)),
+            `Source refs: ${envelope.accountContext.sourceRefs.join(', ')}`,
+            `Caveat refs: ${envelope.accountContext.caveatRefs.join(', ')}`,
+          ].join('\n'),
+        ]),
+  ].join('\n\n')
 
 const normalizeQuestion = (input: string): string =>
   input
@@ -281,6 +462,15 @@ export const classifyKhalaChatPylonQuestion = (
   const question = normalizeQuestion(content)
   if (!/\bpylons?\b/.test(question)) {
     return null
+  }
+
+  if (
+    /\b(my|mine|owned|owner|account|linked)\b/.test(question) ||
+    /\b(use my|show my|which pylons are mine|are those mine|are these mine)\b/.test(
+      question,
+    )
+  ) {
+    return 'ownership'
   }
 
   if (
@@ -315,20 +505,21 @@ export const classifyKhalaChatPylonQuestion = (
 }
 
 const connectedPylonAnswer = (
-  context: KhalaChatPylonContext | undefined,
+  context: KhalaChatPylonContextEnvelope | undefined,
 ): string => {
-  if (context === undefined) {
+  if (context?.publicContext === undefined) {
     return [
       'I cannot read the live Pylon registry from this chat turn right now.',
       'The public read surfaces are GET /api/pylons and GET /api/public/pylon-stats.',
     ].join('\n\n')
   }
 
-  const connected = context.pylons.filter(pylon => pylon.onlineNow)
-  const rows = connected.length === 0 ? context.pylons : connected
+  const publicContext = context.publicContext
+  const connected = publicContext.pylons.filter(pylon => pylon.onlineNow)
+  const rows = connected.length === 0 ? publicContext.pylons : connected
 
   return [
-    contextHeader(context),
+    contextHeader(publicContext),
     '',
     connected.length === 0
       ? 'No Pylons are online in the public stats window right now. The most recent registry rows I can see are:'
@@ -342,22 +533,24 @@ const connectedPylonAnswer = (
 }
 
 const capabilityAnswer = (
-  context: KhalaChatPylonContext | undefined,
+  context: KhalaChatPylonContextEnvelope | undefined,
 ): string => {
-  if (context === undefined) {
+  if (context?.publicContext === undefined) {
     return [
       'I cannot read live Pylon capabilities from this chat turn right now.',
       'Use GET /api/pylons to inspect public capabilityRefs, codingCapacity, NIP-90 lane refs, and heartbeat fields.',
     ].join('\n\n')
   }
 
+  const publicContext = context.publicContext
+
   return [
-    contextHeader(context),
+    contextHeader(publicContext),
     '',
     'Advertised Pylon capabilities:',
-    ...(context.pylons.length === 0
+    ...(publicContext.pylons.length === 0
       ? ['- none returned by the registry projection']
-      : context.pylons
+      : publicContext.pylons
           .slice(0, MAX_ANSWER_PYLONS)
           .map(pylon =>
             [
@@ -406,9 +599,51 @@ const interactionAnswer = (): string =>
     'This public chat route does not dispatch paid work, approve payout targets, spend bitcoin, settle providers, or mutate Pylon state by itself.',
   ].join('\n')
 
+const ownershipAnswer = (
+  context: KhalaChatPylonContextEnvelope | undefined,
+): string => {
+  if (context?.accountContext === undefined) {
+    if (context?.mode === 'authenticated_account') {
+      return [
+        'Your browser session is signed in, but I cannot read your account Pylon links for this chat turn right now.',
+        'I will not infer ownership from the public registry. Try again, or use the account Pylon page/API for the owner-scoped view.',
+      ].join('\n\n')
+    }
+
+    return [
+      'I cannot verify Pylon ownership from the public registry alone.',
+      'Sign in at /login?returnTo=/chat, then link an OpenAgents agent token through the account Pylon flow so I can answer from your OpenAuth-owned Pylons.',
+    ].join('\n\n')
+  }
+
+  const accountContext = context.accountContext
+  if (accountContext.totals.linkedPylons === 0) {
+    return [
+      accountContextHeader(accountContext),
+      '',
+      'No Pylons are linked to your OpenAuth account yet.',
+      'Link an OpenAgents agent token in the account Pylon flow, then heartbeat/register the Pylon from that linked agent.',
+    ].join('\n')
+  }
+
+  const onlineRows = accountContext.pylons.filter(pylon => pylon.onlineNow)
+  const rows = onlineRows.length === 0 ? accountContext.pylons : onlineRows
+
+  return [
+    accountContextHeader(accountContext),
+    '',
+    'Your linked Pylons:',
+    ...(rows.length === 0
+      ? ['- none']
+      : rows.slice(0, MAX_ANSWER_PYLONS).map(pylonStatusLine)),
+    '',
+    'This is owner-scoped to your verified OpenAuth session. Public registry rows may include other Pylons, but I am not treating those as yours.',
+  ].join('\n')
+}
+
 export const answerKhalaChatPylonQuestion = (
   latestUserContent: string,
-  context: KhalaChatPylonContext | undefined,
+  context: KhalaChatPylonContextEnvelope | undefined,
 ): string | null => {
   const kind = classifyKhalaChatPylonQuestion(latestUserContent)
   switch (kind) {
@@ -418,6 +653,8 @@ export const answerKhalaChatPylonQuestion = (
       return interactionAnswer()
     case 'list_connected':
       return connectedPylonAnswer(context)
+    case 'ownership':
+      return ownershipAnswer(context)
     case 'register':
       return registerAnswer()
     case null:

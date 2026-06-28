@@ -41,8 +41,8 @@ import {
   type InferenceRequest,
 } from './inference/provider-adapter'
 import {
-  type KhalaChatPylonContext,
-  renderKhalaChatPylonContextForPrompt,
+  type KhalaChatPylonContextEnvelope,
+  renderKhalaChatPylonContextEnvelopeForPrompt,
 } from './khala-chat-pylon-context'
 
 // The live public Khala model for the generic chat demo (same model id the
@@ -92,7 +92,7 @@ export const KHALA_CHAT_INSTRUCTION = [
 ].join(' ')
 
 export type KhalaChatRequestContext = Readonly<{
-  pylonContext?: KhalaChatPylonContext | undefined
+  pylonContext?: KhalaChatPylonContextEnvelope | undefined
 }>
 
 const khalaChatContextInstruction = (
@@ -100,7 +100,7 @@ const khalaChatContextInstruction = (
 ): string =>
   context?.pylonContext === undefined
     ? ''
-    : `\n\n${renderKhalaChatPylonContextForPrompt(context.pylonContext)}`
+    : `\n\n${renderKhalaChatPylonContextEnvelopeForPrompt(context.pylonContext)}`
 
 // STREAMING INFERENCE SEAM ------------------------------------------------
 
