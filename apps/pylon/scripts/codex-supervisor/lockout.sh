@@ -238,3 +238,156 @@ pick_unlocked_issue() {
   done
   return 1
 }
+
+# --- In-flight claim registry (concurrent-slot distinct-issue dispatch) ------
+#
+# ROOT CAUSE this fixes: the supervisor runs N worker slots as independent
+# background loops. Per cycle each slot independently ordered the SAME pool by
+# priority and called `pick_unlocked_issue 0 ...`, which returns the FIRST
+# dispatchable issue. The only cross-slot spread was a start-index rotation that
+# the priority bucket-sort then collapsed: whenever the highest non-empty tier
+# held only a few issues, EVERY concurrent slot picked the SAME top issue. The
+# dispatch gate admits ONE assignment per issue and refused the duplicates
+# (409 / duplicate_active_assignment / target_pylon_unavailable), so N-1 slots
+# backed off and the fleet under-filled (e.g. ~10 turns instead of 12+, with the
+# same 1-2 issues hammered dozens of times).
+#
+# FIX: a shared on-disk claim registry under the state dir. Before a slot
+# dispatches an issue it must ATOMICALLY acquire that issue's claim; another slot
+# that already holds a fresh claim is skipped. So N concurrent slots resolve to
+# up to N DISTINCT unlocked issues, restoring same-account parallelism across
+# different issues. A claim is held for SUP_CLAIM_TTL_SECS (defaults to the
+# dispatch timeout) so it covers the whole in-flight assignment; a refused/busy
+# issue stays parked for the TTL (the fleet moves on to other work instead of
+# re-hammering the stuck #6661/#6662-style issue), while a transiently
+# rate-limited/errored issue is released immediately so other accounts can retry
+# it. Stale claims (TTL elapsed) are garbage-collected so finished/abandoned work
+# frees the issue for a later retry.
+#
+# Atomicity: `mkdir` is the POSIX atomic create primitive — exactly one slot wins
+# the create. Staleness is handled by a separate GC sweep (sup_gc_stale_claims)
+# rather than an in-acquire delete+create, so there is never a window where two
+# slots both believe they own the same issue.
+
+# Claim TTL: cover the full in-flight assignment so concurrent slots never grab
+# an issue another slot is actively working. Defaults to the dispatch timeout
+# when set, else 30m.
+: "${SUP_CLAIM_TTL_SECS:=${SUP_DISPATCH_TIMEOUT_SECS:-1800}}"
+
+sup_claims_dir() {
+  local d="${SUP_LOCKOUT_CACHE_DIR:-$SUP_STATE_DIR}/claims"
+  mkdir -p "$d" 2>/dev/null || true
+  printf '%s' "$d"
+}
+
+# sup_gc_stale_claims
+#   Remove claim entries whose age has reached SUP_CLAIM_TTL_SECS. A claim that
+#   old means its dispatch (bounded by SUP_DISPATCH_TIMEOUT_SECS <= TTL) has
+#   ended, so freeing it cannot race a live dispatch. Idempotent; safe to run
+#   concurrently from every slot (rm is a no-op on an already-removed entry).
+sup_gc_stale_claims() {
+  local dir; dir="$(sup_claims_dir)"
+  local now claim age
+  now=$(date +%s)
+  for claim in "$dir"/claim.*; do
+    [ -e "$claim" ] || continue
+    age=$(( now - $(sup_file_mtime "$claim") ))
+    if [ "$age" -lt 0 ] || [ "$age" -ge "$SUP_CLAIM_TTL_SECS" ]; then
+      rm -rf "$claim" 2>/dev/null || true
+    fi
+  done
+}
+
+# sup_claim_is_active <issue>
+#   rc 0 if a FRESH claim is held for the issue (reserved by some slot), rc 1
+#   otherwise. Does not mutate; GC of stale entries is sup_gc_stale_claims's job.
+sup_claim_is_active() {
+  local issue="$1"; [ -n "$issue" ] || return 1
+  local f; f="$(sup_claims_dir)/claim.$issue"
+  [ -e "$f" ] || return 1
+  local now age
+  now=$(date +%s)
+  age=$(( now - $(sup_file_mtime "$f") ))
+  [ "$age" -ge 0 ] && [ "$age" -lt "$SUP_CLAIM_TTL_SECS" ]
+}
+
+# sup_try_claim_issue <issue> [owner]
+#   ATOMICALLY acquire the in-flight claim for <issue>. rc 0 (and the claim is
+#   now held by this caller) only for the single slot that wins the create;
+#   rc 1 if another slot already holds a fresh claim. Relies on the caller (or a
+#   preceding sup_gc_stale_claims) to have cleared expired claims first.
+sup_try_claim_issue() {
+  local issue="$1"; local owner="${2:-$$}"
+  [ -n "$issue" ] || return 1
+  local dir; dir="$(sup_claims_dir)"
+  local claim="$dir/claim.$issue"
+  if mkdir "$claim" 2>/dev/null; then
+    printf '%s %s\n' "$owner" "$(date +%s)" > "$claim/meta" 2>/dev/null || true
+    return 0
+  fi
+  return 1
+}
+
+# sup_refresh_claim <issue> [owner]
+#   Bump a held claim's mtime so its TTL window restarts (e.g. on a successful
+#   dispatch, keep the issue parked while its PR/lockout state settles). No-op if
+#   the claim does not exist.
+sup_refresh_claim() {
+  local issue="$1"; [ -n "$issue" ] || return 0
+  local claim; claim="$(sup_claims_dir)/claim.$issue"
+  [ -e "$claim" ] || return 0
+  # Bump the claim DIRECTORY's mtime (the value sup_claim_is_active /
+  # sup_gc_stale_claims read); overwriting an existing inner file does not
+  # reliably update the directory mtime on all filesystems.
+  touch "$claim" 2>/dev/null || true
+  printf '%s %s\n' "${2:-$$}" "$(date +%s)" > "$claim/meta" 2>/dev/null || true
+}
+
+# sup_release_claim <issue>
+#   Free an issue's claim immediately (e.g. a transient rate-limit/error, or a
+#   pre-dispatch bail) so another slot/account can retry it without waiting for
+#   the TTL to elapse.
+sup_release_claim() {
+  local issue="$1"; [ -n "$issue" ] || return 0
+  rm -rf "$(sup_claims_dir)/claim.$issue" 2>/dev/null || true
+}
+
+# pick_and_claim_unlocked_issue <start_index> <issue...>
+#   Like pick_unlocked_issue, but additionally enforces cross-slot distinctness:
+#   it GCs stale claims, then scans the rotation skipping issues that are CLOSED,
+#   already have an open PR, OR already have a fresh in-flight claim, and
+#   ATOMICALLY claims the first remaining issue before returning it. Two slots
+#   racing the same ordered pool therefore resolve to DISTINCT issues. rc 0 with
+#   the claimed issue on stdout; rc 1 when no distinct unlocked+unclaimed issue
+#   is available.
+pick_and_claim_unlocked_issue() {
+  local start="$1"; shift
+  local arr=("$@")
+  local n="${#arr[@]}"
+  [ "$n" -gt 0 ] || return 1
+  sup_gc_stale_claims
+  local k i issue
+  for (( k=0; k<n; k++ )); do
+    i=$(( (start + k) % n ))
+    issue="${arr[$i]}"
+    # Already reserved by another slot this window -> spread to a distinct issue.
+    if sup_claim_is_active "$issue"; then
+      continue
+    fi
+    # Closed/merged during the run (stale-snapshot redo guard).
+    if ! issue_is_open "$issue"; then
+      continue
+    fi
+    # Already has an open PR (duplicate-PR guard).
+    if issue_has_open_pr "$issue"; then
+      continue
+    fi
+    # Atomic acquire: only the winning slot proceeds; a loser falls through to
+    # the next candidate so concurrent slots never collide on one issue.
+    if sup_try_claim_issue "$issue"; then
+      printf '%s' "$issue"
+      return 0
+    fi
+  done
+  return 1
+}
