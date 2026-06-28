@@ -323,9 +323,9 @@ class FakeD1Statement {
     })
 
   run = () => {
-    this.database.run(this.query, this.values)
+    const changes = this.database.run(this.query, this.values)
 
-    return Promise.resolve({ success: true })
+    return Promise.resolve({ meta: { changes }, success: true })
   }
 }
 
@@ -611,7 +611,45 @@ class FakeProviderAccountD1 {
     return []
   }
 
-  run = (query: string, values: Array<unknown>) => {
+  run = (query: string, values: Array<unknown>): number => {
+    let changes = 0
+
+    if (
+      query.includes('UPDATE provider_accounts') &&
+      query.includes('cooldown_until = NULL') &&
+      query.includes('recent_failure_class = NULL')
+    ) {
+      const userId = values[2]
+      const providerAccountRef = values[3]
+      this.accounts = this.accounts.map(account => {
+        if (
+          account.user_id !== userId ||
+          account.provider_account_ref !== providerAccountRef ||
+          account.deleted_at !== null
+        ) {
+          return account
+        }
+
+        changes += 1
+
+        return {
+          ...account,
+          cooldown_until: null,
+          health:
+            account.status === 'connected' &&
+            (account.reauth_required_reason === undefined ||
+              account.reauth_required_reason === null)
+              ? 'healthy'
+              : account.health,
+          low_credit_flag: 0,
+          recent_failure_class: null,
+          refill_note: null,
+        }
+      })
+
+      return changes
+    }
+
     if (
       query.includes('UPDATE provider_account_leases') &&
       query.includes("SET status = 'failed'")
@@ -709,7 +747,10 @@ class FakeProviderAccountD1 {
         run_id: runId as string | null,
         attempt_number: attemptNumber as number,
       })
+      changes += 1
     }
+
+    return changes
   }
 
   private activeLeaseCount = (accountId: string, now: string): number =>
@@ -1874,6 +1915,140 @@ describe('operator provider account routes', () => {
     expect(text).not.toContain('access-token')
     expect(text).not.toContain('auth.json')
     expect(text).not.toContain('grant')
+  })
+
+  test('operator reset clears account cooldown and rate-limit markers without secrets', async () => {
+    const repository = new FakeProviderAccountRepository()
+    const database = new FakeProviderAccountD1()
+    database.accounts.push(
+      fakeAccountRow(
+        'provider_account_rate_limited',
+        'provider-account_ref_rate_limited',
+        {
+          account_label: 'rate limited',
+          cooldown_until: '2099-01-01T00:00:00.000Z',
+          health: 'unhealthy',
+          low_credit_flag: 1,
+          recent_failure_class: 'rate_limited',
+          refill_note: 'Refill before reuse.',
+        },
+      ),
+    )
+
+    const response = await run(
+      repository,
+      '/api/operator/accounts/reset',
+      {
+        body: JSON.stringify({
+          email: 'chris@openagents.com',
+          providerAccountRef: 'provider-account_ref_rate_limited',
+        }),
+        method: 'POST',
+      },
+      undefined,
+      database.asD1(),
+    )
+    const text = await response.text()
+    const body = JSON.parse(text)
+
+    expect(response.status).toBe(200)
+    expect(body).toMatchObject({
+      ok: true,
+      providerAccountRef: 'provider-account_ref_rate_limited',
+      resetAt: expect.any(String),
+    })
+    expect(database.accounts[0]).toMatchObject({
+      cooldown_until: null,
+      health: 'healthy',
+      low_credit_flag: 0,
+      recent_failure_class: null,
+      refill_note: null,
+    })
+    expect(text).not.toContain('codex-auth://')
+    expect(text).not.toContain('access-token')
+    expect(text).not.toContain('grant')
+  })
+
+  test('operator reset is admin-gated and scoped to the selected target user', async () => {
+    const repository = new FakeProviderAccountRepository()
+    const database = new FakeProviderAccountD1()
+    database.accounts.push(
+      fakeAccountRow('provider_account_other', 'provider-account_ref_other', {
+        user_id: 'user_other',
+        cooldown_until: '2099-01-01T00:00:00.000Z',
+        health: 'unhealthy',
+        recent_failure_class: 'rate_limited',
+      }),
+    )
+
+    const unauthorized = await run(
+      repository,
+      '/api/operator/accounts/reset',
+      {
+        body: JSON.stringify({
+          email: 'chris@openagents.com',
+          providerAccountRef: 'provider-account_ref_other',
+        }),
+        method: 'POST',
+      },
+      { authorized: false },
+      database.asD1(),
+    )
+
+    expect(unauthorized.status).toBe(401)
+
+    const crossOwner = await run(
+      repository,
+      '/api/operator/accounts/reset',
+      {
+        body: JSON.stringify({
+          email: 'chris@openagents.com',
+          providerAccountRef: 'provider-account_ref_other',
+        }),
+        method: 'POST',
+      },
+      undefined,
+      database.asD1(),
+    )
+
+    expect(crossOwner.status).toBe(404)
+    expect(database.accounts[0]).toMatchObject({
+      cooldown_until: '2099-01-01T00:00:00.000Z',
+      health: 'unhealthy',
+      recent_failure_class: 'rate_limited',
+    })
+  })
+
+  test('operator reset rejects non-POST methods and missing providerAccountRef', async () => {
+    const repository = new FakeProviderAccountRepository()
+    const database = new FakeProviderAccountD1()
+
+    const wrongMethod = await run(
+      repository,
+      '/api/operator/accounts/reset',
+      { method: 'GET' },
+      undefined,
+      database.asD1(),
+    )
+
+    expect(wrongMethod.status).toBe(405)
+
+    const missingRef = await run(
+      repository,
+      '/api/operator/accounts/reset',
+      {
+        body: JSON.stringify({ email: 'chris@openagents.com' }),
+        method: 'POST',
+      },
+      undefined,
+      database.asD1(),
+    )
+
+    expect(missingRef.status).toBe(400)
+    await expect(missingRef.json()).resolves.toEqual({
+      error: 'bad_request',
+      reason: 'providerAccountRef is required',
+    })
   })
 
   test('lease acquisition skips accounts with stale reconnect markers', async () => {
