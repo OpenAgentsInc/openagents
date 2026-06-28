@@ -736,7 +736,7 @@ export const bottomOverlayView = <Message>(
         [
           h.DataAttribute(KHALA_CHAT_SCROLL_REGION_ATTR, ''),
           Ui.className<Message>(
-            'oa-thread-scroll pointer-events-auto mx-auto grid min-h-0 w-[min(100%,48rem)] content-start overflow-y-auto',
+            'oa-thread-scroll pointer-events-auto mx-auto grid min-h-0 w-[min(100%,48rem)] content-start overflow-y-auto pt-4',
           ),
         ],
         [floatingTranscriptView<Message>(model)],
