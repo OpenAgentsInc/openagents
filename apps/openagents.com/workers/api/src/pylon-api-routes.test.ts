@@ -40,6 +40,16 @@ type PylonRouteJson = Readonly<{
     closeoutRefs?: ReadonlyArray<string>
     codingAssignment?: Record<string, unknown> | null
     leaseState?: string
+    paymentMode?: string
+    settlement?: Readonly<{
+      paymentReceiptRefs?: ReadonlyArray<string>
+      payoutClaimAllowed?: boolean
+      realBitcoinMoved?: boolean
+      settlementRefs?: ReadonlyArray<string>
+      settlementState?: string
+      transitionReceiptRefs?: ReadonlyArray<string>
+      treasuryReceiptRefs?: ReadonlyArray<string>
+    }>
     state?: string
   }>
   assignments?: ReadonlyArray<
@@ -49,6 +59,7 @@ type PylonRouteJson = Readonly<{
       closeoutRefs?: ReadonlyArray<string>
       codingAssignment?: Record<string, unknown> | null
       leaseState?: string
+      paymentMode?: string
       state?: string
     }>
   >
@@ -3260,6 +3271,149 @@ describe('Pylon API routes', () => {
     expect(paymentReceiptBody.assignment?.state).toBe('accepted_work')
     expect(progressAfterCloseout.status).toBe(409)
     expect(progressAfterCloseoutBody.error).toBe('pylon_api_conflict')
+  })
+
+  test('records a settled paid GEPA-style assignment receipt after accepted closeout', async () => {
+    const store = new MemoryPylonApiStore()
+    await registerPylon(store, {
+      capabilityRefs: ['capability.public.probe_gepa_metric_call'],
+    })
+    await markOnline(store, {
+      capacityRefs: ['capacity.public.probe_gepa_metric_call.available=1'],
+    })
+    await markWalletReady(store)
+
+    const assignmentRef =
+      'assignment.public.pylon_gepa_metric_call.stage0.paid_settlement'
+    const create = await createAssignment(store, {
+      assignmentRef,
+      campaignPolicyRefs: ['policy.public.probe_gepa.paid_settlement'],
+      idempotencyKey: 'assignment-gepa-paid-settlement',
+      paymentMode: 'settled_bitcoin',
+      requiredCapabilityRefs: ['capability.public.probe_gepa_metric_call'],
+      spendCapRefs: ['spend_cap.public.probe_gepa.one_sat'],
+    })
+    const createBody = await responseJson<PylonRouteJson>(create)
+
+    expect(create.status).toBe(201)
+    expect(createBody.assignment?.paymentMode).toBe('settled_bitcoin')
+    expect(createBody.dispatchGate?.paymentMode).toBe('settled_bitcoin')
+
+    await route(
+      store,
+      `/api/pylons/pylon.test.one/assignments/${assignmentRef}/accept`,
+      {
+        body: {
+          acceptanceRefs: ['acceptance.public.probe_gepa.worker_claimed'],
+          accepted: true,
+        },
+        idempotencyKey: 'accept-gepa-paid-settlement',
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
+    await route(
+      store,
+      `/api/pylons/pylon.test.one/assignments/${assignmentRef}/artifacts`,
+      {
+        body: {
+          artifactRefs: ['artifact.public.probe_gepa.metric_call.bundle'],
+          proofRefs: ['proof.public.probe_gepa.metric_call.verifier_passed'],
+        },
+        idempotencyKey: 'artifacts-gepa-paid-settlement',
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
+    await route(
+      store,
+      `/api/pylons/pylon.test.one/assignments/${assignmentRef}/closeout`,
+      {
+        body: {
+          artifactRefs: ['artifact.public.probe_gepa.metric_call.bundle'],
+          closeoutRefs: ['closeout.public.probe_gepa.metric_call.accepted'],
+          proofRefs: ['proof.public.probe_gepa.metric_call.verifier_passed'],
+          resultRefs: ['result.public.probe_gepa.metric_call.completed'],
+          status: 'closeout_submitted',
+          testRefs: ['test.public.probe_gepa.metric_call.passed'],
+        },
+        idempotencyKey: 'worker-closeout-gepa-paid-settlement',
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
+    await route(
+      store,
+      `/api/operator/pylons/assignments/${assignmentRef}/closeout`,
+      {
+        adminToken: true,
+        body: {
+          accepted: true,
+          acceptedWorkRefs: ['accepted_work.public.probe_gepa.metric_call'],
+          closeoutRefs: ['closeout.public.operator.probe_gepa.accepted'],
+        },
+        method: 'POST',
+      },
+    )
+    const payment = await route(
+      store,
+      `/api/pylons/pylon.test.one/assignments/${assignmentRef}/payment-receipts`,
+      {
+        body: {
+          paymentProofRefs: ['payment_proof.public.probe_gepa.redacted'],
+          receiptRefs: ['receipt.public.probe_gepa.paid_assignment'],
+          settlementRefs: ['settlement.public.probe_gepa.spark.pending'],
+        },
+        idempotencyKey: 'payment-gepa-paid-settlement',
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
+    const settlement = await route(
+      store,
+      `/api/pylons/pylon.test.one/assignments/${assignmentRef}/settlement-status`,
+      {
+        body: {
+          settlementRefs: ['settlement.public.probe_gepa.spark.settled'],
+          status: 'settled',
+          treasuryReceiptRefs: [
+            'treasury_receipt.public.spark.probe_gepa.paid_assignment',
+          ],
+        },
+        idempotencyKey: 'settlement-gepa-paid-settlement',
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
+    const paymentBody = await responseJson<PylonRouteJson>(payment)
+    const settlementBody = await responseJson<PylonRouteJson>(settlement)
+
+    expect(payment.status).toBe(201)
+    expect(paymentBody.assignment?.settlement).toMatchObject({
+      paymentReceiptRefs: ['receipt.public.probe_gepa.paid_assignment'],
+      payoutClaimAllowed: false,
+      realBitcoinMoved: false,
+      settlementState: 'paid_receipt_recorded',
+    })
+    expect(settlement.status).toBe(201)
+    expect(settlementBody.assignment?.settlement).toMatchObject({
+      paymentReceiptRefs: ['receipt.public.probe_gepa.paid_assignment'],
+      payoutClaimAllowed: true,
+      realBitcoinMoved: true,
+      settlementRefs: [
+        'settlement.public.probe_gepa.spark.pending',
+        'settlement.public.probe_gepa.spark.settled',
+      ],
+      settlementState: 'settled',
+      treasuryReceiptRefs: [
+        'treasury_receipt.public.spark.probe_gepa.paid_assignment',
+      ],
+    })
+    expect(
+      settlementBody.assignment?.settlement?.transitionReceiptRefs?.[0],
+    ).toContain(
+      'receipt.public.pylon_assignment.paid_settlement_transition.assignment.public.pylon_gepa_metric_call.stage0.paid_settlement',
+    )
   })
 
   test('does not record acceptance events after a lost assignment-claim race', async () => {
