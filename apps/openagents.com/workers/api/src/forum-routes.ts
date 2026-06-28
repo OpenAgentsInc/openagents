@@ -203,6 +203,10 @@ import type {
 } from './pylon-api'
 import { resolveSparkPayoutDestination } from './pylon-api'
 
+const ProductPromisesForumSlug = 'product-promises'
+const productPromisesUnsupportedRequestSourceRef = (topicId: string): string =>
+  `forum.topic:${topicId}`
+
 type ForumWorkRequestEscrowReserveResult =
   | Readonly<{ ok: true; escrow: LaborEscrowRecord; reserveReceiptRef: string }>
   | Readonly<{ ok: false; availableMsat?: number; reason: string }>
@@ -211,6 +215,9 @@ type ForumRouteDependencies = Readonly<{
   tipsBufferPay?: import('./tips-sweep').BufferPayFn | null
   agentStore?: AgentRegistrationStore
   hostedMdkClient?: OpenAgentsHostedMdkClient
+  productPromisesUnsupportedRequestIngest?: (
+    input: ForumProductPromisesUnsupportedRequestIngestInput,
+  ) => Promise<void>
   forumWorkRequestEscrowReserver?: (
     input: ReserveLaborEscrowInput,
     db: D1Database,
@@ -239,6 +246,15 @@ type ForumRouteDependencies = Readonly<{
   resolveHumanActor?: (
     request: Request,
   ) => Promise<ForumHumanSessionActor | undefined>
+}>
+
+export type ForumProductPromisesUnsupportedRequestIngestInput = Readonly<{
+  bodyText: string
+  firstPostId: string
+  forumId: string
+  sourceRef: string
+  title: string
+  topicId: string
 }>
 
 type ForumAgentWriterActor = Extract<
@@ -1593,6 +1609,38 @@ const paidActionFailureResponse = (error: unknown) => {
   return serverError()
 }
 
+const ingestProductPromisesUnsupportedRequest = (
+  dependencies: ForumRouteDependencies,
+  input: Readonly<{
+    bodyText: string
+    firstPostId: string
+    forumId: string
+    forumSlug: string
+    title: string
+    topicId: string
+  }>,
+) => {
+  if (
+    input.forumSlug !== ProductPromisesForumSlug ||
+    dependencies.productPromisesUnsupportedRequestIngest === undefined
+  ) {
+    return Effect.void
+  }
+
+  return Effect.tryPromise({
+    try: () =>
+      dependencies.productPromisesUnsupportedRequestIngest?.({
+        bodyText: input.bodyText,
+        firstPostId: input.firstPostId,
+        forumId: input.forumId,
+        sourceRef: productPromisesUnsupportedRequestSourceRef(input.topicId),
+        title: input.title,
+        topicId: input.topicId,
+      }) ?? Promise.resolve(),
+    catch: () => undefined,
+  }).pipe(Effect.catch(() => Effect.void), Effect.asVoid)
+}
+
 const createTopicResponse = (
   request: Request,
   db: D1Database,
@@ -1630,6 +1678,21 @@ const createTopicResponse = (
         (existingPost.bodyText ?? '') !== body.bodyText
       ) {
         return idempotencyConflictResponse()
+      }
+
+      const forum = yield* readForumSummaryByRef(db, forumRef, {
+        allowUnlisted: true,
+      })
+
+      if (forum !== null) {
+        yield* ingestProductPromisesUnsupportedRequest(dependencies, {
+          bodyText: existingPost.bodyText ?? '',
+          firstPostId: existingPost.postId,
+          forumId: forum.forumId,
+          forumSlug: forum.slug,
+          title: existingTopic.title,
+          topicId: existingTopic.topicId,
+        })
       }
 
       return noStoreJsonResponse({
@@ -1713,6 +1776,15 @@ const createTopicResponse = (
       slug,
       title: body.title,
       topicId,
+    })
+
+    yield* ingestProductPromisesUnsupportedRequest(dependencies, {
+      bodyText: created.firstPost.bodyText ?? '',
+      firstPostId: created.firstPost.postId,
+      forumId: forum.forumId,
+      forumSlug: forum.slug,
+      title: created.topic.title,
+      topicId: created.topic.topicId,
     })
 
     return noStoreJsonResponse(

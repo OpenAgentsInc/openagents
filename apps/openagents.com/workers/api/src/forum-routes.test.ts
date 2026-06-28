@@ -4051,6 +4051,9 @@ const route = async (
     headers?: HeadersInit
     moderator?: 'admin' | 'non_admin'
     method?: string
+    productPromisesUnsupportedRequestIngest?: NonNullable<
+      Parameters<typeof makeForumRoutes>[0]
+    >['productPromisesUnsupportedRequestIngest']
     workRequestEscrowReserver?: NonNullable<
       Parameters<typeof makeForumRoutes>[0]
     >['forumWorkRequestEscrowReserver']
@@ -4094,6 +4097,12 @@ const route = async (
     },
     nowEpochMillis: () => 1_780_000_000_000,
     nowIso: () => '2026-06-05T20:00:00.000Z',
+    ...(options.productPromisesUnsupportedRequestIngest === undefined
+      ? {}
+      : {
+          productPromisesUnsupportedRequestIngest:
+            options.productPromisesUnsupportedRequestIngest,
+        }),
     publicIdentityClaimStore: {
       readVerifiedPublicIdentityForAgentUserId: () =>
         Promise.resolve(
@@ -4168,6 +4177,14 @@ describe('Forum routes', () => {
 
   test('discovers Product Promises as the public product report forum', async () => {
     const store = new ForumRouteStore()
+    const ingested: Array<{
+      bodyText: string
+      firstPostId: string
+      forumId: string
+      sourceRef: string
+      title: string
+      topicId: string
+    }> = []
     const forum = await route(store, '/api/forum/forums/product-promises')
     const topic = await route(
       store,
@@ -4183,6 +4200,10 @@ describe('Forum routes', () => {
           'idempotency-key': 'product-promises-agent-topic-create-1',
         },
         method: 'POST',
+        productPromisesUnsupportedRequestIngest: input => {
+          ingested.push(input)
+          return Promise.resolve()
+        },
       },
     )
 
@@ -4196,6 +4217,95 @@ describe('Forum routes', () => {
       topic: {
         slug: 'promise-report-example-mismatch',
         title: 'Promise report: example mismatch',
+      },
+    })
+    expect(ingested).toStrictEqual([
+      {
+        bodyText:
+          'This product promise report is public-safe and cites a visible claim mismatch.',
+        firstPostId: 'aaaaaaaa-1111-4111-8111-000000000002',
+        forumId: '99999999-3333-4333-8333-999999999999',
+        sourceRef: 'forum.topic:aaaaaaaa-1111-4111-8111-000000000001',
+        title: 'Promise report: example mismatch',
+        topicId: 'aaaaaaaa-1111-4111-8111-000000000001',
+      },
+    ])
+
+    const retry = await route(
+      store,
+      '/api/forum/forums/product-promises/topics',
+      {
+        body: {
+          bodyText:
+            'This product promise report is public-safe and cites a visible claim mismatch.',
+          title: 'Promise report: example mismatch',
+        },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'product-promises-agent-topic-create-1',
+        },
+        method: 'POST',
+        productPromisesUnsupportedRequestIngest: input => {
+          ingested.push(input)
+          return Promise.resolve()
+        },
+      },
+    )
+
+    expect(retry.status).toBe(200)
+    await expect(retry.json()).resolves.toMatchObject({ idempotent: true })
+    expect(ingested).toHaveLength(2)
+
+    const otherForumTopic = await route(
+      store,
+      '/api/forum/forums/site-builder-help/topics',
+      {
+        body: {
+          bodyText: 'Question for the site builder forum.',
+          title: 'Site builder question',
+        },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'site-builder-topic-create-1',
+        },
+        method: 'POST',
+        productPromisesUnsupportedRequestIngest: input => {
+          ingested.push(input)
+          return Promise.resolve()
+        },
+      },
+    )
+
+    expect(otherForumTopic.status).toBe(201)
+    expect(ingested).toHaveLength(2)
+  })
+
+  test('keeps Product Promises posting available if unsupported-request ingestion fails', async () => {
+    const store = new ForumRouteStore()
+    const topic = await route(
+      store,
+      '/api/forum/forums/product-promises/topics',
+      {
+        body: {
+          bodyText:
+            'This Product Promises post should still publish if the ledger is temporarily unavailable.',
+          title: 'Promise report: ledger outage',
+        },
+        headers: {
+          authorization: 'Bearer oa_agent_route_test',
+          'idempotency-key': 'product-promises-agent-topic-create-fail-soft',
+        },
+        method: 'POST',
+        productPromisesUnsupportedRequestIngest: () =>
+          Promise.reject(new Error('ledger unavailable')),
+      },
+    )
+
+    expect(topic.status).toBe(201)
+    await expect(topic.json()).resolves.toMatchObject({
+      topic: {
+        slug: 'promise-report-ledger-outage',
+        title: 'Promise report: ledger outage',
       },
     })
   })

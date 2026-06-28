@@ -1894,6 +1894,14 @@ const compactTeamContextText = (value: string, maxLength: number): string => {
     : `${compact.slice(0, Math.max(0, maxLength - 3))}...`
 }
 
+const compactForumLedgerText = (value: string, maxLength: number): string => {
+  const compact = value.replace(/\s+/g, ' ').trim()
+
+  return compact.length <= maxLength
+    ? compact
+    : `${compact.slice(0, Math.max(0, maxLength - 3))}...`
+}
+
 export const selectedTeamFileIdsForAutopilotPrompt = (
   input: Readonly<{
     files: ReadonlyArray<TeamAutopilotContextFile>
@@ -12731,6 +12739,32 @@ const routeRequest = makeWorkerRouteRequest({
       hostedMdkClient: hostedMdkClientForEnv(env),
       l402SigningBoundary: () => forumL402SigningBoundaryForEnv(env),
       mdkWebhookConfig: hostedMdkWebhookConfigForEnv(env),
+      productPromisesUnsupportedRequestIngest: async input => {
+        const db = openAgentsDatabase(env)
+        const now = currentIsoTimestamp()
+        await makeD1KhalaUnsupportedRequestStore(db).upsert({
+          createdAt: now,
+          evidenceRefs: [
+            input.sourceRef,
+            `forum.post:${input.firstPostId}`,
+            'https://openagents.com/forum/f/product-promises',
+          ],
+          forumTopicRef: input.sourceRef,
+          githubIssueRef: null,
+          requestRef: `khala_unsupported:forum_${input.topicId}`,
+          sourceKind: 'forum',
+          sourceRef: input.sourceRef,
+          status: 'open',
+          suggestedIssueTitle: compactForumLedgerText(
+            `[Product Promises] ${input.title}`,
+            180,
+          ),
+          summary: compactForumLedgerText(input.bodyText, 1_000),
+          title: compactForumLedgerText(input.title, 180),
+          triageKind: 'needs_triage',
+          updatedAt: now,
+        })
+      },
       publicIdentityClaimStore: makeD1AgentOwnerClaimStore(
         openAgentsDatabase(env),
       ),
