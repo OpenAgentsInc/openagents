@@ -8122,7 +8122,11 @@ describe('Forum routes', () => {
       },
       method: 'POST',
     })
-    const body = await response.json()
+    const body = (await response.json()) as {
+      topicHref: string
+      webUrl: string
+      topic: { topicId: string }
+    }
 
     expect(response.status).toBe(201)
     expect(body).toMatchObject({
