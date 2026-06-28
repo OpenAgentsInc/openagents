@@ -28,6 +28,10 @@ import {
   type PublicProjectionStalenessContract,
   liveAtReadStaleness,
 } from './public-projection-staleness'
+import {
+  readArtanisResponderTickReadiness,
+  type ArtanisResponderTickReadinessProjection,
+} from './artanis-responder-ticks'
 
 // Staleness contract (epic #4751): composed live from the responder-action
 // ledger at read time, so it can never be older than the request.
@@ -133,6 +137,7 @@ export type ArtanisResponderSupportProjection = Readonly<{
   // The external-contributor interactions, newest first, each with the
   // dereferenceable reply-post ref.
   externalInteractions: ReadonlyArray<ArtanisExternalSupportInteraction>
+  tickReadiness?: ArtanisResponderTickReadinessProjection
   generatedAt: string
   notes: ReadonlyArray<string>
 }>
@@ -155,6 +160,7 @@ const safeRef = (value: unknown): string | null => {
 export const projectArtanisResponderSupport = (
   rows: ReadonlyArray<ArtanisResponderActionRow>,
   nowIso: string,
+  tickReadiness?: ArtanisResponderTickReadinessProjection,
 ): ArtanisResponderSupportProjection => {
   let externalContributorAnsweredCount = 0
   let externalContributorTippedCount = 0
@@ -236,6 +242,7 @@ export const projectArtanisResponderSupport = (
     ownerOperatorAnsweredCount,
     publicSafe: true,
     staleness: ARTANIS_RESPONDER_SUPPORT_STALENESS,
+    ...(tickReadiness === undefined ? {} : { tickReadiness }),
   }
 }
 
@@ -275,8 +282,11 @@ export const readArtanisResponderSupport = async (
     .bind(limit)
     .all()
 
-  return projectArtanisResponderSupport(
-    (result.results ?? []) as unknown as ReadonlyArray<ArtanisResponderActionRow>,
-    input.nowIso,
-  )
+  const rows = (result.results ??
+    []) as unknown as ReadonlyArray<ArtanisResponderActionRow>
+  const tickReadiness = await readArtanisResponderTickReadiness(db, {
+    limit: input.limit,
+  })
+
+  return projectArtanisResponderSupport(rows, input.nowIso, tickReadiness)
 }

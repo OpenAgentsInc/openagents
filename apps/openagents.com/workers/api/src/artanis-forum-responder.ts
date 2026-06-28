@@ -10,6 +10,7 @@ import {
   type ArtanisAskerProvenance,
   classifyAskerProvenance,
 } from './artanis-responder-provenance'
+import { recordArtanisResponderScanTick } from './artanis-responder-ticks'
 import { parseJsonWithSchema } from './json-boundary'
 import { randomUuid } from './runtime-primitives'
 
@@ -427,6 +428,14 @@ export const runArtanisResponderScanScheduled = (
             skipped: 0,
             skippedReason: reason,
           } satisfies ResponderScanOutcome),
+        ),
+        Effect.flatMap(outcome =>
+          Effect.promise(() =>
+            recordArtanisResponderScanTick(db, {
+              nowIso: deps.nowIso,
+              outcome,
+            }),
+          ).pipe(Effect.as(outcome)),
         ),
       )
     : Effect.succeed({

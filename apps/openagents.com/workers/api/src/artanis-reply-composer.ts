@@ -6,6 +6,7 @@ import {
 } from './artanis-mind'
 import { artanisDiagnosisGroundingPolicy } from './artanis-diagnosis-grounding-gate'
 import { artanisOperationalGrounding } from './artanis-operational-grounding'
+import { recordArtanisResponderComposeTick } from './artanis-responder-ticks'
 import { publicProductPromisesDocument } from './product-promises'
 import {
   TIP_LADDER_RECEIPT_REF_PREFIX,
@@ -386,6 +387,14 @@ export const runArtanisComposerScheduled = (
             skippedReason: reason,
             tipped: 0,
           } satisfies ComposerTickOutcome),
+        ),
+        Effect.flatMap(outcome =>
+          Effect.promise(() =>
+            recordArtanisResponderComposeTick(db, {
+              nowIso: deps.nowIso,
+              outcome,
+            }),
+          ).pipe(Effect.as(outcome)),
         ),
       )
     : Effect.succeed({
