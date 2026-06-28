@@ -103,6 +103,7 @@ import { loadArtanisNetworkStatsFromLedger } from './artanis-network-stats-d1'
 import { makeOperatorArtanisConsoleRoutes } from './artanis-operator-console-routes'
 import {
   makeArtanisDispatchExecution,
+  readEffectiveArtanisApproval,
   readEffectiveArtanisPylonDispatchApprovalForOwner,
 } from './artanis-operator-dispatch-execution'
 import { isOpenAgentsOwnerAgentOpenAuthUserId } from './artanis-owner-authority'
@@ -113,7 +114,10 @@ import {
 import { makeArtanisGlmFleetStatusLoader } from './artanis-operator-glm-fleet-status'
 import { makeArtanisKhalaFeedbackReader } from './artanis-operator-khala-feedback'
 import { makeArtanisTraceReviewLoader } from './artanis-operator-trace-review'
-import { makeArtanisOperatorTools } from './artanis-operator-tools'
+import {
+  makeArtanisGithubIssueOpener,
+  makeArtanisOperatorTools,
+} from './artanis-operator-tools'
 import {
   makeArtanisUnsupportedRequestsReader,
   makeArtanisUnsupportedRequestWriter,
@@ -8688,6 +8692,19 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
         nowIso: currentIsoTimestamp,
         store: makeD1KhalaUnsupportedRequestStore(openAgentsDatabase(env)),
       }),
+      unsupportedRequestIssueOpen: {
+        isOwnerApproved: () =>
+          Effect.promise(() =>
+            readEffectiveArtanisApproval(
+              openAgentsDatabase(env),
+              currentIsoTimestamp(),
+              'github_issue_open',
+            ),
+          ),
+        opener: makeArtanisGithubIssueOpener({
+          token: env.ARTANIS_GITHUB_ISSUE_TOKEN,
+        }),
+      },
       dispatchExecution: makeArtanisDispatchExecution({
         listLinkedAgentUserIds,
         makeId: () => compactRandomId('artanis_dispatch'),

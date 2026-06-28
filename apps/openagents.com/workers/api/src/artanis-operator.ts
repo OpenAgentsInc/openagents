@@ -802,8 +802,8 @@ const runToolCall = (
       const outcome = ran.value
       if (outcome.outcome === 'executed') {
         const content = [
-          `EXECUTED — own-capacity, no spend.`,
-          `I created the Khala -> Pylon -> Codex assignment (${tool.definition.name}) on your linked Pylon. It runs at no spend and grants no payout.`,
+          `EXECUTED.`,
+          `This owner-approved action (${tool.definition.name}) completed behind ${ARTANIS_OPERATOR_APPROVAL_GATE_REF}.`,
           '',
           outcome.summary,
         ].join('\n')
