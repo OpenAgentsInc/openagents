@@ -1475,6 +1475,45 @@ describe('public product promises document', () => {
     )
   })
 
+  test('keeps kernel optimization planned while exposing code-backed dispatch and parity receipt machinery', () => {
+    const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
+      publicProductPromisesDocument(),
+    )
+    const kernelPromise = decoded.promises.find(
+      promise =>
+        promise.promiseId ===
+        'compute.agentic_kernel_optimization_at_scale.v1',
+    )
+
+    expect(kernelPromise).toMatchObject({
+      state: 'planned',
+      blockerRefs: [
+        'blocker.product_promises.agentic_kernel_optimization_at_scale_run_missing',
+        'blocker.product_promises.agentic_kernel_optimization_settlement_receipts_missing',
+      ],
+    })
+    expect(kernelPromise?.blockerRefs).not.toContain(
+      'blocker.product_promises.agentic_kernel_optimization_throughput_parity_verification_missing',
+    )
+    expect(kernelPromise?.blockerRefs).not.toContain(
+      'blocker.product_promises.agentic_kernel_optimization_market_dispatch_missing',
+    )
+    expect(kernelPromise?.evidenceRefs).toEqual(
+      expect.arrayContaining([
+        'packages/tassadar-executor/src/kernel-optimization-dispatch.ts',
+        'packages/tassadar-executor/src/kernel-optimization-dispatch.test.ts',
+        'packages/tassadar-executor/src/kernel-optimization-parity.ts',
+        'packages/tassadar-executor/src/kernel-optimization-parity.test.ts',
+      ]),
+    )
+    expect(kernelPromise?.safeCopy).toContain(
+      'buildKernelOptimizationAcceptedWorkReceipt',
+    )
+    expect(kernelPromise?.verification).toContain(
+      'Green still requires a real live market-dispatched optimized kernel',
+    )
+  })
+
   test('blocks announcement copy until the live endpoint serves the announced version', () => {
     const document = publicProductPromisesDocument()
 
