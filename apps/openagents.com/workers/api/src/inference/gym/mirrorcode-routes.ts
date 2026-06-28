@@ -43,6 +43,9 @@ const mirrorCodeStaleness = () =>
     'gym.mirrorcode.run_updated',
   ])
 
+const MAX_ROUTE_RUN_ID_LENGTH = 128
+const routeRunIdPattern = /^[a-zA-Z0-9._:-]+$/
+
 export type MirrorCodeRunsRouteInput = Readonly<{
   // Production D1 source. Tests may pass `listRuns`/`getRun` overrides instead.
   store?: MirrorCodeRunSourceStore
@@ -251,7 +254,11 @@ export const matchMirrorCodeRunByIdRequest = (
   }
   try {
     const decoded = decodeURIComponent(match[1]!)
-    return decoded.length > 0 ? decoded : undefined
+    return decoded.length > 0 &&
+      decoded.length <= MAX_ROUTE_RUN_ID_LENGTH &&
+      routeRunIdPattern.test(decoded)
+      ? decoded
+      : undefined
   } catch {
     return undefined
   }

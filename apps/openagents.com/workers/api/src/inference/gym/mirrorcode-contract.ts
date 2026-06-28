@@ -30,6 +30,33 @@ export const KHALA_MODEL_ID = 'openagents/khala'
 export const MirrorCodeBucket = S.Literals(['S', 'M', 'L'])
 export type MirrorCodeBucket = typeof MirrorCodeBucket.Type
 
+export const MIRRORCODE_PUBLIC_TARGETS_BY_BUCKET = {
+  S: [
+    'qsv_select',
+    'jq_simple',
+    'gron',
+    'bitwise',
+    'hexyl',
+    'uuidparse',
+    'numfmt',
+    'cal',
+    'choose',
+  ],
+  M: [
+    'giac',
+    'tex',
+    'gotree',
+    'mailauth',
+    'brotli',
+    'wren_cli',
+    'nonogrid',
+    'sed',
+    'tssql',
+    'bib2json',
+  ],
+  L: ['ruff', 'pkl', 'cprepro'],
+} as const
+
 // Run lifecycle status. `queued`/`running` are in-progress; `passed`/`failed`
 // are scored terminal states; `error` is an execution/harness failure.
 export const MirrorCodeRunStatus = S.Literals([
@@ -182,6 +209,25 @@ const assertBounds = (input: MirrorCodeRunInput): void => {
   }
 }
 
+export const isMirrorCodePublicTargetForBucket = (
+  bucket: MirrorCodeBucket,
+  taskId: string,
+): boolean =>
+  (MIRRORCODE_PUBLIC_TARGETS_BY_BUCKET[bucket] as ReadonlyArray<string>).includes(
+    taskId,
+  )
+
+const assertPublicTarget = (input: {
+  readonly bucket: MirrorCodeBucket
+  readonly taskId: string
+}): void => {
+  if (!isMirrorCodePublicTargetForBucket(input.bucket, input.taskId)) {
+    throw new MirrorCodeRunError(
+      'taskId must be a public MirrorCode target for the selected bucket.',
+    )
+  }
+}
+
 const assertPublicSafe = (input: MirrorCodeRunInput): void => {
   // No code fences anywhere — task source/tests would arrive that way.
   const serialized = JSON.stringify(input)
@@ -218,6 +264,7 @@ export const buildMirrorCodeRun = (raw: unknown): MirrorCodeRun => {
     )
   }
   assertBounds(input)
+  assertPublicTarget(input)
   assertPublicSafe(input)
 
   const grade = input.grade ?? 'smoke'
@@ -275,6 +322,7 @@ export const buildMirrorCodeLaunchRun = (
   if (taskPart.length < 1) {
     throw new MirrorCodeRunError('taskId must contain a public-safe id.')
   }
+  assertPublicTarget(launch)
 
   return buildMirrorCodeRun({
     runId: `mc-${launch.bucket.toLowerCase()}-${taskPart}-${languagePart}-${timestampPart}`,
