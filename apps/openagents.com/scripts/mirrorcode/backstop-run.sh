@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# backstop-run.sh — MirrorCode gym backstop runner (issue #6710).
+# backstop-run.sh — MirrorCode gym backstop runner (issue #6923).
 #
 # The fleet-saturation prio:4 (`prio:4-backstop-burn`) standing task invokes this
 # to do GENUINE own-capacity ($0) high-density work whenever the higher tiers are

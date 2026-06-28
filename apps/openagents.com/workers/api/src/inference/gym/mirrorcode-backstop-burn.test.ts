@@ -10,7 +10,7 @@ import {
 import { buildMirrorCodeRun } from './mirrorcode-contract'
 
 describe('MirrorCode standing backstop burn', () => {
-  test('plans a bounded public-target batch for issue #6710 with gym demand tags', () => {
+  test('plans a bounded public-target batch for issue #6923 with gym demand tags', () => {
     const plan = buildMirrorCodeBackstopBatchPlan({
       batchRef: 'batch.public.gym.mirrorcode.backstop_burn.2026-06-28',
       maxTasks: 4,
@@ -93,7 +93,7 @@ describe('MirrorCode standing backstop burn', () => {
     expect(report.schemaVersion).toBe(
       'openagents.gym.mirrorcode_backstop_burn.v1',
     )
-    expect(report.issueNumber).toBe(6710)
+    expect(report.issueNumber).toBe(6923)
     expect(report.runCount).toBe(2)
     expect(report.terminalRunCount).toBe(2)
     expect(report.passedRunCount).toBe(1)

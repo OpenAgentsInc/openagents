@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for the MirrorCode gym backstop runner core (#6710).
+"""Tests for the MirrorCode gym backstop runner core (#6923).
 
 Verifies the genuine-work pieces with NO network and NO Khala spend:
   * extract_code pulls a fenced python block and falls back to raw text;
