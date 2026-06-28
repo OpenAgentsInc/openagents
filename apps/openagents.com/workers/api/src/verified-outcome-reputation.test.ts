@@ -197,3 +197,174 @@ describe('Verified-outcome reputation projection', () => {
     expect(edges.filter(edge => edge.bitcoinSettled)).toHaveLength(1)
   })
 })
+
+import {
+  type VerifiedOutcomeReputationEvidence,
+  VerifiedOutcomeReputationError,
+  computeVerifiedOutcomeReputation,
+} from './verified-outcome-reputation'
+
+const settledOutcome = (
+  overrides: Partial<VerifiedOutcomeReputationEvidence>,
+): VerifiedOutcomeReputationEvidence => ({
+  accepted: true,
+  evidenceRef: 'outcome.public.default',
+  observedAt: '2026-06-27T00:00:00.000Z',
+  replayVerified: true,
+  requesterRef: 'requester.public.alpha',
+  settledMsats: 100_000,
+  settlementState: 'settled',
+  subjectKind: 'pylon',
+  subjectRef: 'pylon.public.alpha',
+  ...overrides,
+})
+
+describe('verified-outcome reputation', () => {
+  test('scores only replay-verified accepted settled outcomes', () => {
+    const scores = computeVerifiedOutcomeReputation({
+      evidence: [
+        settledOutcome({
+          evidenceRef: 'outcome.public.accepted_settled',
+          subjectRef: 'pylon.public.good',
+        }),
+        settledOutcome({
+          accepted: true,
+          evidenceRef: 'outcome.public.unverified',
+          replayVerified: false,
+          subjectRef: 'pylon.public.unverified',
+        }),
+        settledOutcome({
+          accepted: true,
+          evidenceRef: 'outcome.public.unsettled',
+          settlementState: 'unsettled',
+          subjectRef: 'pylon.public.unsettled',
+        }),
+        settledOutcome({
+          accepted: false,
+          evidenceRef: 'outcome.public.rejected',
+          subjectRef: 'pylon.public.rejected',
+        }),
+      ],
+      iterations: 12,
+    })
+
+    expect(scores.map(score => score.subjectRef)).toEqual([
+      'pylon.public.good',
+      'pylon.public.rejected',
+      'pylon.public.unsettled',
+      'pylon.public.unverified',
+    ])
+    expect(scores[0]).toMatchObject({
+      acceptedCount: 1,
+      scoreKind: 'graph',
+      subjectRef: 'pylon.public.good',
+      verifiedSettledMsats: 100_000,
+    })
+    expect(
+      scores
+        .filter(score => score.subjectRef !== 'pylon.public.good')
+        .every(score => score.graphScore === 0 && score.acceptedCount === 0),
+    ).toBe(true)
+  })
+
+  test('source-normalized graph trust prevents Sybil split inflation', () => {
+    const oneIdentity = computeVerifiedOutcomeReputation({
+      evidence: [
+        settledOutcome({
+          evidenceRef: 'outcome.public.single',
+          requesterRef: 'requester.public.alpha',
+          settledMsats: 400_000,
+          subjectRef: 'pylon.public.single',
+        }),
+      ],
+      iterations: 12,
+    })
+
+    const splitIdentities = computeVerifiedOutcomeReputation({
+      evidence: [
+        settledOutcome({
+          evidenceRef: 'outcome.public.split_1',
+          requesterRef: 'requester.public.alpha',
+          settledMsats: 100_000,
+          subjectRef: 'pylon.public.split_1',
+        }),
+        settledOutcome({
+          evidenceRef: 'outcome.public.split_2',
+          requesterRef: 'requester.public.alpha',
+          settledMsats: 100_000,
+          subjectRef: 'pylon.public.split_2',
+        }),
+        settledOutcome({
+          evidenceRef: 'outcome.public.split_3',
+          requesterRef: 'requester.public.alpha',
+          settledMsats: 100_000,
+          subjectRef: 'pylon.public.split_3',
+        }),
+        settledOutcome({
+          evidenceRef: 'outcome.public.split_4',
+          requesterRef: 'requester.public.alpha',
+          settledMsats: 100_000,
+          subjectRef: 'pylon.public.split_4',
+        }),
+      ],
+      iterations: 12,
+    })
+
+    const singleTotal = oneIdentity.reduce((sum, score) => sum + score.score, 0)
+    const splitTotal = splitIdentities.reduce(
+      (sum, score) => sum + score.score,
+      0,
+    )
+
+    expect(splitTotal).toBeCloseTo(singleTotal, 12)
+    const topSplitScore = splitIdentities[0]?.score
+    const topSingleScore = oneIdentity[0]?.score
+
+    if (topSplitScore === undefined || topSingleScore === undefined) {
+      throw new Error('expected reputation scores for single and split subjects')
+    }
+
+    expect(topSplitScore).toBeLessThan(topSingleScore)
+  })
+
+  test('manual overrides are explicit and bounded for closed beta operation', () => {
+    const scores = computeVerifiedOutcomeReputation({
+      evidence: [],
+      manualOverrides: [
+        {
+          overrideRef: 'override.public.closed_beta_seed',
+          reasonRef: 'reason.public.owner_reviewed_fixture',
+          score: 1.4,
+          subjectKind: 'coordinator',
+          subjectRef: 'coordinator.public.seeded',
+        },
+      ],
+    })
+
+    expect(scores).toEqual([
+      {
+        acceptedCount: 0,
+        graphScore: 0,
+        manualOverrideRef: 'override.public.closed_beta_seed',
+        rejectedCount: 0,
+        score: 1,
+        scoreKind: 'manual_override',
+        subjectKind: 'coordinator',
+        subjectRef: 'coordinator.public.seeded',
+        verifiedSettledMsats: 0,
+      },
+    ])
+  })
+
+  test('rejects private material in public evidence refs', () => {
+    expect(() =>
+      computeVerifiedOutcomeReputation({
+        evidence: [
+          settledOutcome({
+            evidenceRef: 'outcome.public.access_token',
+          }),
+        ],
+      }),
+    ).toThrow(VerifiedOutcomeReputationError)
+  })
+})

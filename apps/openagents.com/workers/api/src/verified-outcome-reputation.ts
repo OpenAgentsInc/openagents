@@ -412,3 +412,249 @@ export const projectVerifiedOutcomeReputation = (
       'Do not describe this seed projection as a broad marketplace ranking, identity proof, moderation score, payout entitlement, ERC-8004 publication, or live dispatch signal. Only replay-verified outcomes with public-safe Bitcoin settlement receipts affect TraceRank; self-reported feedback, unverified reviews, unpaid no-spend work, and missing-receipt edges are ignored.',
   })
 }
+
+export const ReputationSubjectKind = S.Literals([
+  'pylon',
+  'coordinator',
+  'plugin',
+  'agent',
+])
+export type ReputationSubjectKind = typeof ReputationSubjectKind.Type
+
+export const VerifiedOutcomeReputationEvidence = S.Struct({
+  accepted: S.Boolean,
+  evidenceRef: S.String,
+  observedAt: S.String,
+  replayVerified: S.Boolean,
+  requesterRef: S.String,
+  settledMsats: S.Number,
+  settlementState: S.Literals(['settled', 'unsettled', 'not_applicable']),
+  subjectKind: ReputationSubjectKind,
+  subjectRef: S.String,
+})
+export type VerifiedOutcomeReputationEvidence =
+  typeof VerifiedOutcomeReputationEvidence.Type
+
+export const ManualReputationOverride = S.Struct({
+  overrideRef: S.String,
+  reasonRef: S.String,
+  score: S.Number,
+  subjectKind: ReputationSubjectKind,
+  subjectRef: S.String,
+})
+export type ManualReputationOverride = typeof ManualReputationOverride.Type
+
+export const VerifiedOutcomeReputationScore = S.Struct({
+  acceptedCount: S.Number,
+  graphScore: S.Number,
+  manualOverrideRef: S.NullOr(S.String),
+  rejectedCount: S.Number,
+  score: S.Number,
+  scoreKind: S.Literals(['graph', 'manual_override']),
+  subjectKind: ReputationSubjectKind,
+  subjectRef: S.String,
+  verifiedSettledMsats: S.Number,
+})
+export type VerifiedOutcomeReputationScore =
+  typeof VerifiedOutcomeReputationScore.Type
+
+export class VerifiedOutcomeReputationError extends S.TaggedErrorClass<VerifiedOutcomeReputationError>()(
+  'VerifiedOutcomeReputationError',
+  { reason: S.String },
+) {}
+
+export type ComputeVerifiedOutcomeReputationInput = Readonly<{
+  damping?: number | undefined
+  evidence: ReadonlyArray<VerifiedOutcomeReputationEvidence>
+  iterations?: number | undefined
+  manualOverrides?: ReadonlyArray<ManualReputationOverride> | undefined
+  seedRequesterRefs?: ReadonlyArray<string> | undefined
+}>
+
+const SAFE_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,260}$/
+const UNSAFE_REF_PATTERN =
+  /\b(access_token|auth|bearer|cookie|customer[_-]?email|device_auth|gho_[A-Za-z0-9_]+|ghp_[A-Za-z0-9_]+|lnbc[0-9a-z]*|lntb[0-9a-z]*|lnbcrt[0-9a-z]*|mnemonic|payment[_-]?(hash|preimage|secret)|private[_-]?key|provider[_-]?(credential|grant|payload|secret|token)|raw[_-]?(command|content|invoice|payment|payload|prompt|repo|runner|state)|refresh_token|secret|wallet[_-]?(key|material|mnemonic|preimage|secret|seed)|xprv)\b|@/i
+
+const assertSafeRef = (field: string, value: string): void => {
+  if (!SAFE_REF_PATTERN.test(value) || UNSAFE_REF_PATTERN.test(value)) {
+    throw new VerifiedOutcomeReputationError({
+      reason: `${field} must be a public-safe stable ref.`,
+    })
+  }
+}
+
+const assertFiniteNonNegative = (field: string, value: number): void => {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new VerifiedOutcomeReputationError({
+      reason: `${field} must be a finite non-negative number.`,
+    })
+  }
+}
+
+const weightForSettledWork = (settledMsats: number): number =>
+  Math.log1p(settledMsats / 1000)
+
+const clampScore = (value: number): number => Math.max(0, Math.min(1, value))
+
+const uniqueSorted = (values: Iterable<string>): ReadonlyArray<string> =>
+  [...new Set(values)].sort((left, right) => left.localeCompare(right))
+
+const normalize = (
+  entries: ReadonlyMap<string, number>,
+): ReadonlyMap<string, number> => {
+  const total = [...entries.values()].reduce((sum, value) => sum + value, 0)
+  if (total <= 0) {
+    return new Map()
+  }
+
+  return new Map(
+    [...entries.entries()].map(([key, value]) => [key, value / total]),
+  )
+}
+
+export function computeVerifiedOutcomeReputation(
+  input: ComputeVerifiedOutcomeReputationInput,
+): ReadonlyArray<VerifiedOutcomeReputationScore> {
+  const damping = input.damping ?? 0.85
+  const iterations = input.iterations ?? 24
+
+  if (damping <= 0 || damping >= 1 || !Number.isFinite(damping)) {
+    throw new VerifiedOutcomeReputationError({
+      reason: 'damping must be a finite number between 0 and 1.',
+    })
+  }
+  if (!Number.isInteger(iterations) || iterations < 1 || iterations > 100) {
+    throw new VerifiedOutcomeReputationError({
+      reason: 'iterations must be an integer from 1 through 100.',
+    })
+  }
+
+  const localTrust = new Map<string, Map<string, number>>()
+  const acceptedCounts = new Map<string, number>()
+  const rejectedCounts = new Map<string, number>()
+  const verifiedSettledMsats = new Map<string, number>()
+  const subjectKinds = new Map<string, ReputationSubjectKind>()
+
+  for (const event of input.evidence) {
+    assertSafeRef('evidenceRef', event.evidenceRef)
+    assertSafeRef('requesterRef', event.requesterRef)
+    assertSafeRef('subjectRef', event.subjectRef)
+    assertFiniteNonNegative('settledMsats', event.settledMsats)
+
+    subjectKinds.set(event.subjectRef, event.subjectKind)
+
+    if (
+      event.accepted &&
+      event.replayVerified &&
+      event.settlementState === 'settled' &&
+      event.settledMsats > 0
+    ) {
+      const requesterTrust = localTrust.get(event.requesterRef) ?? new Map()
+      requesterTrust.set(
+        event.subjectRef,
+        (requesterTrust.get(event.subjectRef) ?? 0) +
+          weightForSettledWork(event.settledMsats),
+      )
+      localTrust.set(event.requesterRef, requesterTrust)
+      acceptedCounts.set(
+        event.subjectRef,
+        (acceptedCounts.get(event.subjectRef) ?? 0) + 1,
+      )
+      verifiedSettledMsats.set(
+        event.subjectRef,
+        (verifiedSettledMsats.get(event.subjectRef) ?? 0) + event.settledMsats,
+      )
+      continue
+    }
+
+    if (!event.accepted || event.settlementState === 'unsettled') {
+      rejectedCounts.set(
+        event.subjectRef,
+        (rejectedCounts.get(event.subjectRef) ?? 0) + 1,
+      )
+    }
+  }
+
+  const normalizedTrust = new Map<string, ReadonlyMap<string, number>>()
+  for (const [requesterRef, outgoing] of localTrust.entries()) {
+    normalizedTrust.set(requesterRef, normalize(outgoing))
+  }
+
+  const subjectRefs = uniqueSorted(subjectKinds.keys())
+  const requesterRefs = uniqueSorted([
+    ...normalizedTrust.keys(),
+    ...(input.seedRequesterRefs ?? []),
+  ])
+  const nodeRefs = uniqueSorted([...requesterRefs, ...subjectRefs])
+
+  const seedRefs =
+    input.seedRequesterRefs && input.seedRequesterRefs.length > 0
+      ? uniqueSorted(input.seedRequesterRefs)
+      : requesterRefs
+  const seed = normalize(new Map(seedRefs.map(ref => [ref, 1])))
+  let rank = new Map(nodeRefs.map(ref => [ref, seed.get(ref) ?? 0]))
+
+  for (let index = 0; index < iterations; index += 1) {
+    const next = new Map(nodeRefs.map(ref => [ref, (1 - damping) * (seed.get(ref) ?? 0)]))
+    let danglingMass = 0
+
+    for (const nodeRef of nodeRefs) {
+      const nodeRank = rank.get(nodeRef) ?? 0
+      const outgoing = normalizedTrust.get(nodeRef)
+      if (outgoing === undefined || outgoing.size === 0) {
+        danglingMass += nodeRank
+        continue
+      }
+
+      for (const [targetRef, trust] of outgoing.entries()) {
+        next.set(targetRef, (next.get(targetRef) ?? 0) + damping * nodeRank * trust)
+      }
+    }
+
+    for (const [seedRef, seedWeight] of seed.entries()) {
+      next.set(seedRef, (next.get(seedRef) ?? 0) + damping * danglingMass * seedWeight)
+    }
+
+    rank = next
+  }
+
+  const manualOverrides = new Map<string, ManualReputationOverride>()
+  for (const override of input.manualOverrides ?? []) {
+    assertSafeRef('overrideRef', override.overrideRef)
+    assertSafeRef('reasonRef', override.reasonRef)
+    assertSafeRef('subjectRef', override.subjectRef)
+    if (!Number.isFinite(override.score)) {
+      throw new VerifiedOutcomeReputationError({
+        reason: 'manual override score must be finite.',
+      })
+    }
+    manualOverrides.set(override.subjectRef, override)
+    subjectKinds.set(override.subjectRef, override.subjectKind)
+  }
+
+  return uniqueSorted(subjectKinds.keys())
+    .map(subjectRef => {
+      const override = manualOverrides.get(subjectRef)
+      const graphScore = rank.get(subjectRef) ?? 0
+      const score = override === undefined ? graphScore : clampScore(override.score)
+
+      return {
+        acceptedCount: acceptedCounts.get(subjectRef) ?? 0,
+        graphScore,
+        manualOverrideRef: override?.overrideRef ?? null,
+        rejectedCount: rejectedCounts.get(subjectRef) ?? 0,
+        score,
+        scoreKind: override === undefined ? 'graph' : 'manual_override',
+        subjectKind: subjectKinds.get(subjectRef) ?? 'agent',
+        subjectRef,
+        verifiedSettledMsats: verifiedSettledMsats.get(subjectRef) ?? 0,
+      } satisfies VerifiedOutcomeReputationScore
+    })
+    .sort((left, right) => {
+      if (right.score !== left.score) {
+        return right.score - left.score
+      }
+
+      return left.subjectRef.localeCompare(right.subjectRef)
+    })
+}
