@@ -64,6 +64,9 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 
+# shellcheck source=../supervisor-task-pool.sh
+source "$SCRIPT_DIR/../supervisor-task-pool.sh"
+
 # --- Config (all overridable via env) ---
 export PYLON_OPENAGENTS_BASE_URL="${PYLON_OPENAGENTS_BASE_URL:-https://openagents.com}"
 # Default pylon home is the registered owner home (~/.pylon). A fresh/unknown
@@ -106,11 +109,9 @@ SUP_STALL_REFUSALS="${SUP_STALL_REFUSALS:-20}"
 SUP_SELFHEAL_COOLDOWN_SECS="${SUP_SELFHEAL_COOLDOWN_SECS:-300}"
 SUP_SELFHEAL_CHECK_SECS="${SUP_SELFHEAL_CHECK_SECS:-30}"
 
-# Rotated real backlog (public-safe issue numbers). Claude does real work against
-# the pinned origin/main commit in a bounded throwaway workspace.
-#   #6310 GLM tool-calling (also wins MirrorCode + GLM) | #6311 / #6320 follow-ups
-#   #6354 presence_stale | #6355 burndown | #6358 counter-health
-SUP_ISSUES="${SUP_ISSUES:-6310 6311 6320 6354 6355 6358}"
+# Fallback only. The active task pool is resolved dynamically from the
+# unsupported-request ledger and linked open GitHub issues.
+SUP_TASK_POOL_FALLBACK_ISSUES="${SUP_TASK_POOL_FALLBACK_ISSUES:-${SUP_ISSUES:-6310 6311 6320 6354 6355 6358}}"
 
 PYLON=(bun "$REPO_ROOT/apps/pylon/src/index.ts")
 mkdir -p "$SUP_STATE_DIR"
@@ -213,8 +214,6 @@ worker_loop() {
   local slot="$1"
   local backoff="$SUP_BACKOFF_MIN"
   local iter=0
-  # spread issue rotation per slot
-  local issues=($SUP_ISSUES)
   while true; do
     if [ -f "$PAUSE_FILE" ]; then sleep 30; continue; fi
     local desired; desired=$(cat "$DESIRED_FILE" 2>/dev/null || echo 0)
@@ -225,6 +224,17 @@ worker_loop() {
     [ "${#refs[@]}" -eq 0 ] && { sleep 20; continue; }
     local acc="${refs[$(( slot % ${#refs[@]} ))]}"
     local acc_args=(); [ "$acc" != "default" ] && acc_args=(--account-ref "$acc")
+
+    # Refresh the active pool from the unsupported-request ledger, with a short
+    # cache and a bounded fallback so transient route/GitHub failures do not idle
+    # the fleet.
+    local issues=(); while IFS= read -r i; do issues+=("$i"); done < <(supervisor_task_pool_issues)
+    if [ "${#issues[@]}" -eq 0 ]; then
+      log "slot=$slot TASK-POOL empty; backing off ${backoff}s"
+      sleep "$backoff"
+      backoff=$(( backoff * 2 )); [ "$backoff" -gt "$SUP_BACKOFF_MAX" ] && backoff="$SUP_BACKOFF_MAX"
+      continue
+    fi
 
     local issue="${issues[$(( (slot + iter) % ${#issues[@]} ))]}"
     iter=$(( iter + 1 ))
