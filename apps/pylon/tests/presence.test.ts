@@ -743,6 +743,7 @@ describe("Pylon presence registration and heartbeat", () => {
         env: {
           CODEX_HOME: codexHome,
           OPENAGENTS_PYLON_CODEX_BUSY: "0",
+          OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY: "5",
           OPENAGENTS_PYLON_CODEX_CONCURRENCY: "5",
           OPENAGENTS_PYLON_CODEX_QUEUED: "0",
           PYLON_HOME: home,
@@ -834,6 +835,7 @@ describe("Pylon presence registration and heartbeat", () => {
         env: {
           CODEX_HOME: codexHome,
           OPENAGENTS_PYLON_CODEX_BUSY: "0",
+          OPENAGENTS_PYLON_CODEX_ACCOUNT_CONCURRENCY: "5",
           OPENAGENTS_PYLON_CODEX_CONCURRENCY: "5",
           OPENAGENTS_PYLON_CODEX_QUEUED: "0",
           PYLON_HOME: home,
