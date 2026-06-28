@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test"
 import {
   buildFleetRunPlan,
   parseFleetIssueList,
+  plannedReplenishmentRounds,
   runKhalaFleetSupervisor,
   validateFleetRunVerify,
 } from "./fleet-run.js"
@@ -50,6 +51,32 @@ describe("fleet run planning", () => {
     expect(() => validateFleetRunVerify("OPENAGENTS_AGENT_TOKEN=x bun test")).toThrow(/public-safe/)
     expect(() => validateFleetRunVerify("bun test /Users/example/private.test.ts")).toThrow(/public-safe/)
   })
+
+  test("plans bounded deduped replenishment work for lockout recovery", () => {
+    const plan = buildFleetRunPlan({
+      commit,
+      issues: [6384, 6408, 6410],
+      maxSlots: 2,
+      mode: "supervise",
+      perAccount: 1,
+      pylonRef: "pylon.local",
+      readyAccounts: ["codex", "codex-2", "codex-3"],
+      repo: "Example/repo",
+      verify: "bun test",
+    })
+
+    const first = plannedReplenishmentRounds(plan)
+    expect(first).toHaveLength(2)
+    expect(first.map(round => round.workKind)).toEqual(["replenishment", "replenishment"])
+    expect(first.map(round => round.dedupeKey)).toEqual(["gepa-dspy-6707", "bounded-codebase-audit"])
+    expect(first[0]?.issue).toBe(6707)
+    expect(first[1]?.issue).toBeNull()
+    expect(first[1]?.objective).toContain("apps/pylon")
+
+    const second = plannedReplenishmentRounds(plan, new Set(first.map(round => round.dedupeKey ?? "")))
+    expect(second).toHaveLength(1)
+    expect(second[0]?.dedupeKey).toBe("test-lint-typecheck-sweep")
+  })
 })
 
 describe("fleet run dry-run", () => {
@@ -73,5 +100,6 @@ describe("fleet run dry-run", () => {
       "codex:#6410",
       "codex-2:#6384",
     ])
+    expect(result.rounds.every(round => round.workKind === "issue")).toBe(true)
   })
 })

@@ -1832,7 +1832,8 @@ function formatFleetRunResult(result: KhalaFleetRunResult): string {
   if (result.rounds.length > 0) {
     lines.push("", "Planned/last round:")
     for (const round of result.rounds) {
-      lines.push(`  slot ${round.slot}: ${round.accountRef} -> #${round.issue} (${round.status})`)
+      const target = round.issue === null ? round.workKind : `#${round.issue}`
+      lines.push(`  slot ${round.slot}: ${round.accountRef} -> ${target} (${round.status})`)
     }
   }
   if (result.mode === "supervise") {

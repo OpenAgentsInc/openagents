@@ -33,10 +33,13 @@ export type KhalaFleetRunResult = {
 export type KhalaFleetRunRound = {
   readonly accountRef: string
   readonly assignmentRef?: string | undefined
-  readonly issue: number
+  readonly dedupeKey?: string | undefined
+  readonly issue: number | null
   readonly ok: boolean
+  readonly objective: string
   readonly slot: number
   readonly status: "dry_run" | "accepted" | "refused" | "failed"
+  readonly workKind: "issue" | "replenishment"
 }
 
 export type KhalaFleetRunOptions = {
@@ -61,7 +64,31 @@ const DEFAULT_PER_ACCOUNT = 1
 const DEFAULT_MAX_SLOTS = 8
 const SUPERVISOR_IDLE_MS = 2_000
 const REFUSED_BACKOFF_MS = 15_000
-const MAX_REFUSED_BACKOFF_MS = 300_000
+const MAX_REFUSED_BACKOFF_MS = 120_000
+const LOCKOUT_REPLENISH_AFTER_ROUNDS = 2
+
+type FleetRunSlot = Omit<KhalaFleetRunRound, "ok" | "status" | "assignmentRef">
+
+const REPLENISHMENT_OBJECTIVES = [
+  {
+    dedupeKey: "gepa-dspy-6707",
+    issue: 6707,
+    objective:
+      "Advance the standing GEPA/DSPy continual-learning loop from public issue #6707 over recent public-safe traces. Keep the work bounded, avoid duplicate open PRs, and run the named verification.",
+  },
+  {
+    dedupeKey: "bounded-codebase-audit",
+    issue: null,
+    objective:
+      "Run a bounded codebase audit/review over apps/pylon, clients, and apps/openagents.com/workers/api using real source files. Fix one concrete issue if found, avoid duplicate open PRs, and run the named verification.",
+  },
+  {
+    dedupeKey: "test-lint-typecheck-sweep",
+    issue: null,
+    objective:
+      "Run a bounded test, lint, and typecheck sweep for the public checkout. Fix one concrete failure if found, avoid duplicate open PRs, and run the named verification.",
+  },
+] as const
 
 export function parseFleetIssueList(raw: string): readonly number[] {
   const issues = raw
@@ -191,11 +218,28 @@ export async function runKhalaFleetSupervisor(options: KhalaFleetRunOptions): Pr
   return { schema: KHALA_FLEET_RUN_SCHEMA, mode, plan, rounds, status: "completed" }
 }
 
-function plannedRounds(plan: KhalaFleetRunPlan): ReadonlyArray<Omit<KhalaFleetRunRound, "ok" | "status">> {
+function plannedRounds(plan: KhalaFleetRunPlan): ReadonlyArray<FleetRunSlot> {
   return Array.from({ length: plan.targetSlots }, (_, slot) => ({
     accountRef: plan.readyAccounts[slot % plan.readyAccounts.length] ?? "codex",
     issue: plan.issues[slot % plan.issues.length] ?? plan.issues[0]!,
+    objective: `Implement public issue #${plan.issues[slot % plan.issues.length] ?? plan.issues[0]!} and run the named verification.`,
     slot,
+    workKind: "issue",
+  }))
+}
+
+export function plannedReplenishmentRounds(
+  plan: KhalaFleetRunPlan,
+  alreadyDispatchedKeys: ReadonlySet<string> = new Set(),
+): ReadonlyArray<FleetRunSlot> {
+  const available = REPLENISHMENT_OBJECTIVES.filter(task => !alreadyDispatchedKeys.has(task.dedupeKey))
+  return available.slice(0, plan.targetSlots).map((task, slot) => ({
+    accountRef: plan.readyAccounts[slot % plan.readyAccounts.length] ?? "codex",
+    dedupeKey: task.dedupeKey,
+    issue: task.issue,
+    objective: task.objective,
+    slot,
+    workKind: "replenishment",
   }))
 }
 
@@ -208,6 +252,8 @@ async function runSupervisorLoop(input: {
   const rounds: KhalaFleetRunRound[] = []
   let issueOffset = 0
   let refusedBackoffMs = REFUSED_BACKOFF_MS
+  let consecutiveLockoutRounds = 0
+  const dispatchedReplenishmentKeys = new Set<string>()
   for (;;) {
     await publishHeartbeat(input)
     const roundPlan = plannedRounds({
@@ -217,6 +263,22 @@ async function runSupervisorLoop(input: {
     const round = await Promise.all(roundPlan.map(slot => dispatchFleetSlot({ ...input, slot })))
     rounds.push(...round)
     issueOffset = (issueOffset + round.length) % input.plan.issues.length
+    const lockout = round.length > 0 && round.every(item => item.status === "refused")
+    consecutiveLockoutRounds = lockout ? consecutiveLockoutRounds + 1 : 0
+    if (consecutiveLockoutRounds >= LOCKOUT_REPLENISH_AFTER_ROUNDS) {
+      const replenishmentPlan = plannedReplenishmentRounds(input.plan, dispatchedReplenishmentKeys)
+      for (const slot of replenishmentPlan) {
+        if (slot.dedupeKey !== undefined) dispatchedReplenishmentKeys.add(slot.dedupeKey)
+      }
+      if (replenishmentPlan.length > 0) {
+        const replenishmentRound = await Promise.all(replenishmentPlan.map(slot => dispatchFleetSlot({ ...input, slot })))
+        rounds.push(...replenishmentRound)
+        refusedBackoffMs = REFUSED_BACKOFF_MS
+        consecutiveLockoutRounds = 0
+        await delay(SUPERVISOR_IDLE_MS)
+        continue
+      }
+    }
     if (round.some(item => item.status === "refused")) {
       await delay(refusedBackoffMs)
       refusedBackoffMs = Math.min(refusedBackoffMs * 2, MAX_REFUSED_BACKOFF_MS)
@@ -240,14 +302,14 @@ async function dispatchFleetSlot(input: {
   readonly env: Record<string, string | undefined>
   readonly plan: KhalaFleetRunPlan
   readonly pylonCommand: readonly string[]
-  readonly slot: Omit<KhalaFleetRunRound, "ok" | "status">
+  readonly slot: FleetRunSlot
   readonly token?: string | undefined
 }): Promise<KhalaFleetRunRound> {
   const args = [
     "khala",
     "request",
     "--prompt",
-    `Implement public issue #${input.slot.issue} and run the named verification.`,
+    input.slot.objective,
     "--workflow",
     "codex_agent_task",
     "--pylon-ref",
