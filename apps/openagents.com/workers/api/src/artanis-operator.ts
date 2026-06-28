@@ -134,6 +134,19 @@ export const ARTANIS_OPERATOR_MAX_CONTINUE_ITERATIONS = 6
 export const ARTANIS_OPERATOR_CONTINUE_INSTRUCTION =
   'Your previous message was cut off because it hit the output limit. Continue exactly where you left off, in plain text. Do not repeat anything you already wrote, and do not call any tools.'
 
+// RLM conductor refs (#6654). Long-form Artanis answers are not treated as one
+// large model completion: the operator first decomposes the owner ask into
+// typed Blueprint-signature subqueries, answers each subquery through Khala, and
+// then composes the final owner reply from those evidence packets. The #6651
+// continue-on-length path remains the safety net for any individual completion.
+export const ARTANIS_OPERATOR_RLM_PROGRAM_REF =
+  'program.artanis.operator.rlm.compose.v1'
+export const ARTANIS_OPERATOR_RLM_SIGNATURE_REF =
+  'program_signature.artanis.operator.rlm.compose.v1'
+export const ARTANIS_OPERATOR_RLM_EVIDENCE_REF =
+  'evidence.artanis.operator.rlm.subquery'
+export const ARTANIS_OPERATOR_RLM_MAX_SUBQUERIES = 4
+
 // The reply returned ONLY as the absolute last resort: when the Khala loop
 // produced no text at all AND no tool work was gathered to ground a reply on
 // (e.g. a no-tool turn whose every completion came back empty). The turn must
@@ -612,6 +625,218 @@ const buildArtanisOperatorBaseMessages = (input: {
   })),
 ]
 
+const ArtanisOperatorRlmPlannedSubquery = S.Struct({
+  evidenceRefs: S.Array(S.String),
+  id: S.String,
+  question: S.String,
+  signatureRef: S.String,
+})
+
+const ArtanisOperatorRlmPlan = S.Struct({
+  compositionInstruction: S.String,
+  subqueries: S.Array(ArtanisOperatorRlmPlannedSubquery),
+})
+
+export type ArtanisOperatorRlmSubquery =
+  typeof ArtanisOperatorRlmPlannedSubquery.Type
+export type ArtanisOperatorRlmPlan = typeof ArtanisOperatorRlmPlan.Type
+
+export type ArtanisOperatorRlmSubqueryResult = Readonly<{
+  id: string
+  signatureRef: string
+  evidenceRefs: ReadonlyArray<string>
+  question: string
+  answer: string
+  servedModel: string
+}>
+
+export type ArtanisOperatorRlmTrace = Readonly<{
+  programRef: typeof ARTANIS_OPERATOR_RLM_PROGRAM_REF
+  signatureRef: typeof ARTANIS_OPERATOR_RLM_SIGNATURE_REF
+  decomposition: ReadonlyArray<ArtanisOperatorRlmSubquery>
+  evidence: ReadonlyArray<ArtanisOperatorRlmSubqueryResult>
+  compositionInstruction: string
+  used: boolean
+}>
+
+const LONG_FORM_OWNER_CUES: ReadonlyArray<string> = [
+  'architecture',
+  'comprehensive',
+  'design',
+  'detailed',
+  'long',
+  'plan',
+  'report',
+  'roadmap',
+  'strategy',
+  'write-up',
+]
+
+const latestOwnerMessageContent = (
+  messages: ReadonlyArray<ArtanisOperatorMessage>,
+): string =>
+  [...messages].reverse().find(message => message.role === 'user')?.content ?? ''
+
+export const shouldUseArtanisRlmComposition = (
+  messages: ReadonlyArray<ArtanisOperatorMessage>,
+): boolean => {
+  const lower = latestOwnerMessageContent(messages).toLowerCase()
+  return LONG_FORM_OWNER_CUES.some(cue => lower.includes(cue))
+}
+
+const normalizeArtanisRlmSubqueries = (
+  plan: ArtanisOperatorRlmPlan,
+  fallbackQuestion: string,
+): ReadonlyArray<ArtanisOperatorRlmSubquery> => {
+  const valid = plan.subqueries
+    .filter(subquery => subquery.question.trim() !== '')
+    .slice(0, ARTANIS_OPERATOR_RLM_MAX_SUBQUERIES)
+    .map((subquery, index) => ({
+      evidenceRefs:
+        subquery.evidenceRefs.length > 0
+          ? subquery.evidenceRefs
+          : [`${ARTANIS_OPERATOR_RLM_EVIDENCE_REF}.${index + 1}`],
+      id: subquery.id.trim() === '' ? `rlm-subquery-${index + 1}` : subquery.id,
+      question: subquery.question,
+      signatureRef:
+        subquery.signatureRef.trim() === ''
+          ? ARTANIS_OPERATOR_RLM_SIGNATURE_REF
+          : subquery.signatureRef,
+    }))
+  return valid.length > 0
+    ? valid
+    : [
+        {
+          evidenceRefs: [`${ARTANIS_OPERATOR_RLM_EVIDENCE_REF}.1`],
+          id: 'rlm-subquery-1',
+          question: fallbackQuestion,
+          signatureRef: ARTANIS_OPERATOR_RLM_SIGNATURE_REF,
+        },
+      ]
+}
+
+const fallbackArtanisRlmPlan = (
+  ownerQuestion: string,
+): ArtanisOperatorRlmPlan => ({
+  compositionInstruction:
+    'Compose a complete owner answer from every subquery answer. Preserve direct first-person Artanis voice, cite uncertainty plainly, and do not rely on one completion as the whole answer.',
+  subqueries: [
+    {
+      evidenceRefs: [`${ARTANIS_OPERATOR_RLM_EVIDENCE_REF}.state`],
+      id: 'rlm-state',
+      question: `Identify the grounded state and constraints relevant to this owner request: ${ownerQuestion}`,
+      signatureRef: ARTANIS_OPERATOR_RLM_SIGNATURE_REF,
+    },
+    {
+      evidenceRefs: [`${ARTANIS_OPERATOR_RLM_EVIDENCE_REF}.options`],
+      id: 'rlm-options',
+      question: `Break the owner request into actionable options, risks, and next decisions: ${ownerQuestion}`,
+      signatureRef: ARTANIS_OPERATOR_RLM_SIGNATURE_REF,
+    },
+    {
+      evidenceRefs: [`${ARTANIS_OPERATOR_RLM_EVIDENCE_REF}.answer`],
+      id: 'rlm-answer',
+      question: `Draft the most useful answer slice for the owner, bounded to this subproblem only: ${ownerQuestion}`,
+      signatureRef: ARTANIS_OPERATOR_RLM_SIGNATURE_REF,
+    },
+  ],
+})
+
+const parseArtanisRlmPlan = (
+  content: string,
+  fallbackQuestion: string,
+): ArtanisOperatorRlmPlan => {
+  try {
+    const parsed = parseJsonUnknown(content)
+    const decoded = S.decodeUnknownSync(ArtanisOperatorRlmPlan)(parsed)
+    return {
+      compositionInstruction:
+        decoded.compositionInstruction.trim() === ''
+          ? fallbackArtanisRlmPlan(fallbackQuestion).compositionInstruction
+          : decoded.compositionInstruction,
+      subqueries: normalizeArtanisRlmSubqueries(decoded, fallbackQuestion),
+    }
+  } catch {
+    return fallbackArtanisRlmPlan(fallbackQuestion)
+  }
+}
+
+const buildArtanisRlmPlannerConversation = (input: {
+  baseMessages: ReadonlyArray<InferenceMessage>
+  ownerQuestion: string
+}): ReadonlyArray<InferenceMessage> => [
+  ...input.baseMessages,
+  {
+    content: [
+      `Run ${ARTANIS_OPERATOR_RLM_PROGRAM_REF}.`,
+      `Return ONLY compact JSON matching this schema: {"subqueries":[{"id":"string","signatureRef":"string","question":"string","evidenceRefs":["string"]}],"compositionInstruction":"string"}.`,
+      `Use ${ARTANIS_OPERATOR_RLM_SIGNATURE_REF} unless a more specific Artanis Blueprint signature is required.`,
+      `Create 2-${ARTANIS_OPERATOR_RLM_MAX_SUBQUERIES} subqueries that can be answered independently and composed into a complete response. Do not answer the owner yet.`,
+      '',
+      `Owner request: ${input.ownerQuestion}`,
+    ].join('\n'),
+    role: 'user' as const,
+  },
+]
+
+const buildArtanisRlmSubqueryConversation = (input: {
+  baseMessages: ReadonlyArray<InferenceMessage>
+  subquery: ArtanisOperatorRlmSubquery
+}): ReadonlyArray<InferenceMessage> => [
+  ...input.baseMessages,
+  {
+    content: [
+      `Answer one RLM subquery for ${ARTANIS_OPERATOR_RLM_PROGRAM_REF}.`,
+      `Blueprint signature: ${input.subquery.signatureRef}`,
+      `Evidence refs to satisfy: ${input.subquery.evidenceRefs.join(', ')}`,
+      `Subquery id: ${input.subquery.id}`,
+      '',
+      input.subquery.question,
+      '',
+      'Return a bounded evidence packet in plain text. Do not compose the final owner answer.',
+    ].join('\n'),
+    role: 'user' as const,
+  },
+]
+
+const buildArtanisRlmCompositionConversation = (input: {
+  baseMessages: ReadonlyArray<InferenceMessage>
+  plan: ArtanisOperatorRlmPlan
+  evidence: ReadonlyArray<ArtanisOperatorRlmSubqueryResult>
+}): ReadonlyArray<InferenceMessage> => [
+  ...input.baseMessages,
+  {
+    content: [
+      `Compose the final owner answer for ${ARTANIS_OPERATOR_RLM_PROGRAM_REF}.`,
+      `Blueprint signature: ${ARTANIS_OPERATOR_RLM_SIGNATURE_REF}`,
+      `Composition instruction: ${input.plan.compositionInstruction}`,
+      '',
+      'Subquery evidence packets:',
+      ...input.evidence.map(result =>
+        [
+          '',
+          `[${result.id}] ${result.signatureRef}`,
+          `Evidence refs: ${result.evidenceRefs.join(', ')}`,
+          `Question: ${result.question}`,
+          `Answer: ${boundArtanisText(result.answer, ARTANIS_OPERATOR_TOOL_RESULT_SUMMARY_MAX_CHARS)}`,
+        ].join('\n'),
+      ),
+      '',
+      'Now answer the owner directly in first person as Artanis. Produce one coherent reply from the evidence packets; do not mention JSON, internal planner mechanics, or token limits unless the owner asked about the architecture.',
+    ].join('\n'),
+    role: 'user' as const,
+  },
+]
+
+const emptyArtanisRlmTrace = (): ArtanisOperatorRlmTrace => ({
+  compositionInstruction: '',
+  decomposition: [],
+  evidence: [],
+  programRef: ARTANIS_OPERATOR_RLM_PROGRAM_REF,
+  signatureRef: ARTANIS_OPERATOR_RLM_SIGNATURE_REF,
+  used: false,
+})
+
 // Build a COMPACT, tools-suppressed final-composition conversation. Instead of
 // re-sending the entire (possibly huge) agentic tool-message history — which is
 // exactly what makes a late Khala call fail from context bloat — we re-send only
@@ -723,6 +948,10 @@ export type ArtanisOperatorTurnResult = Readonly<{
   // SPECULATIVE addendum. This is the machine-readable proof that ungrounded
   // references were structurally gated, not just discouraged by the prompt.
   groundingGate: ArtanisOperatorGroundingGateResult
+  // RLM composition trace (#6654). When `used` is true, the owner reply came
+  // from a typed decomposition + subquery evidence packets + composition pass,
+  // not from treating one bounded completion as the whole answer.
+  rlmTrace: ArtanisOperatorRlmTrace
   // How many Khala completions the turn made (1 for a no-tool turn, more when
   // the loop executed tools and re-called Khala).
   iterations: number
@@ -963,6 +1192,116 @@ const runKhalaCompletionContinuingOnLength = (input: {
     return { calls, result: { ...result, content: combinedContent } }
   })
 
+const runArtanisRlmComposition = (input: {
+  baseMessages: ReadonlyArray<InferenceMessage>
+  khalaClient: ArtanisOperatorKhalaClient
+  messages: ReadonlyArray<ArtanisOperatorMessage>
+}): Effect.Effect<
+  | Readonly<{
+      calls: number
+      result: InferenceResult
+      trace: ArtanisOperatorRlmTrace
+    }>
+  | null
+> =>
+  Effect.gen(function* () {
+    const ownerQuestion = latestOwnerMessageContent(input.messages)
+    const planner = yield* Effect.exit(
+      runKhalaCompletionContinuingOnLength({
+        khalaClient: input.khalaClient,
+        request: buildArtanisOperatorKhalaRequest({
+          conversation: buildArtanisRlmPlannerConversation({
+            baseMessages: input.baseMessages,
+            ownerQuestion,
+          }),
+          messages: input.messages,
+          tools: undefined,
+        }),
+      }),
+    )
+    if (planner._tag === 'Failure') return null
+
+    let calls = planner.value.calls
+    const plan = parseArtanisRlmPlan(
+      planner.value.result.content,
+      ownerQuestion,
+    )
+    const evidence: Array<ArtanisOperatorRlmSubqueryResult> = []
+
+    for (const subquery of plan.subqueries) {
+      const answered = yield* Effect.exit(
+        runKhalaCompletionContinuingOnLength({
+          khalaClient: input.khalaClient,
+          request: buildArtanisOperatorKhalaRequest({
+            conversation: buildArtanisRlmSubqueryConversation({
+              baseMessages: input.baseMessages,
+              subquery,
+            }),
+            messages: input.messages,
+            tools: undefined,
+          }),
+        }),
+      )
+      if (answered._tag === 'Success') {
+        calls += answered.value.calls
+        evidence.push({
+          answer: answered.value.result.content,
+          evidenceRefs: subquery.evidenceRefs,
+          id: subquery.id,
+          question: subquery.question,
+          servedModel: answered.value.result.servedModel,
+          signatureRef: subquery.signatureRef,
+        })
+      } else {
+        calls += 1
+        evidence.push({
+          answer:
+            'This subquery could not be answered by Khala in this RLM pass; compose around the missing evidence honestly.',
+          evidenceRefs: [
+            ...subquery.evidenceRefs,
+            'blocker.artanis.operator.rlm.subquery_unavailable',
+          ],
+          id: subquery.id,
+          question: subquery.question,
+          servedModel: ARTANIS_OPERATOR_KHALA_MODEL,
+          signatureRef: subquery.signatureRef,
+        })
+      }
+    }
+
+    const composed = yield* Effect.exit(
+      runKhalaCompletionContinuingOnLength({
+        khalaClient: input.khalaClient,
+        request: buildArtanisOperatorKhalaRequest({
+          conversation: buildArtanisRlmCompositionConversation({
+            baseMessages: input.baseMessages,
+            evidence,
+            plan,
+          }),
+          messages: input.messages,
+          tools: undefined,
+        }),
+      }),
+    )
+    calls += composed._tag === 'Success' ? composed.value.calls : 1
+    if (composed._tag === 'Failure' || isBlankReply(composed.value.result.content)) {
+      return null
+    }
+
+    return {
+      calls,
+      result: composed.value.result,
+      trace: {
+        compositionInstruction: plan.compositionInstruction,
+        decomposition: plan.subqueries,
+        evidence,
+        programRef: ARTANIS_OPERATOR_RLM_PROGRAM_REF,
+        signatureRef: ARTANIS_OPERATOR_RLM_SIGNATURE_REF,
+        used: true,
+      },
+    }
+  })
+
 // Pure-ish core: given the owner id, the conversation, the loaded memory, the
 // built awareness, the Khala client, and (optionally) an owner-scoped tool
 // table, it assembles the Blueprint-style grounded program and runs a BOUNDED
@@ -995,6 +1334,34 @@ export const artanisOperatorTurn = (input: {
       contextBlock,
       messages: input.messages,
     })
+
+    if (tools.length === 0 && shouldUseArtanisRlmComposition(input.messages)) {
+      const composed = yield* runArtanisRlmComposition({
+        baseMessages,
+        khalaClient: input.khalaClient,
+        messages: input.messages,
+      })
+      if (composed !== null) {
+        const grounding = enforceArtanisGroundingGate({
+          lookups: [],
+          reply: composed.result.content,
+        })
+        const groundedReplyText = grounding.reply
+        return {
+          deferredToApprovalGate: mentionsSpendOrDestructive(input.messages),
+          groundingGate: grounding.gate,
+          iterations: composed.calls,
+          pendingApprovalGates: [],
+          persona: verifyArtanisOperatorPersona(groundedReplyText),
+          reply: groundedReplyText,
+          requestedModel: ARTANIS_OPERATOR_KHALA_MODEL,
+          rlmTrace: composed.trace,
+          servedModel: composed.result.servedModel,
+          servedVia: 'openagents_khala' as const,
+          toolInvocations: [],
+        } satisfies ArtanisOperatorTurnResult
+      }
+    }
 
     // Mutable working conversation: starts as the grounded base, grows with
     // assistant-tool-call + tool-result messages as the loop runs.
@@ -1226,6 +1593,7 @@ export const artanisOperatorTurn = (input: {
       persona: verifyArtanisOperatorPersona(groundedReplyText),
       reply: groundedReplyText,
       requestedModel: ARTANIS_OPERATOR_KHALA_MODEL,
+      rlmTrace: emptyArtanisRlmTrace(),
       servedModel,
       servedVia: 'openagents_khala' as const,
       toolInvocations,

@@ -6,6 +6,8 @@ import {
   ARTANIS_OPERATOR_APPROVAL_GATE_REF,
   ARTANIS_OPERATOR_KHALA_MODEL,
   ARTANIS_OPERATOR_MAX_TOOL_ITERATIONS,
+  ARTANIS_OPERATOR_RLM_PROGRAM_REF,
+  ARTANIS_OPERATOR_RLM_SIGNATURE_REF,
   ARTANIS_OPERATOR_SYSTEM_PROMPT,
   ARTANIS_OPERATOR_TOOL_RESULT_CONTEXT_MAX_CHARS,
   type ArtanisMemoryEntry,
@@ -19,6 +21,7 @@ import {
   buildArtanisOperatorContextBlock,
   buildArtanisOperatorKhalaRequest,
   isArtanisOperatorPersonaClean,
+  shouldUseArtanisRlmComposition,
   verifyArtanisOperatorPersona,
 } from './artanis-operator'
 import { KHALA_IDENTITY_SYSTEM_PROMPT } from './inference/khala-identity'
@@ -545,6 +548,94 @@ const textResult = (content: string): InferenceResult => ({
   finishReason: 'stop',
   servedModel: 'gpt-oss-120b',
   usage: { completionTokens: 20, promptTokens: 300, totalTokens: 320 },
+})
+
+describe('#6654 Artanis RLM composition', () => {
+  test('detects long-form owner asks that should use RLM composition', () => {
+    expect(
+      shouldUseArtanisRlmComposition([
+        { content: 'write a detailed architecture plan', role: 'user' },
+      ]),
+    ).toBe(true)
+    expect(
+      shouldUseArtanisRlmComposition([
+        { content: 'quick status?', role: 'user' },
+      ]),
+    ).toBe(false)
+  })
+
+  test('composes a long answer from typed subqueries and a final compose pass', async () => {
+    const plan = JSON.stringify({
+      compositionInstruction:
+        'Compose the final owner response from every evidence packet.',
+      subqueries: [
+        {
+          evidenceRefs: ['evidence.artanis.operator.rlm.state'],
+          id: 'state',
+          question: 'What grounded state matters?',
+          signatureRef: ARTANIS_OPERATOR_RLM_SIGNATURE_REF,
+        },
+        {
+          evidenceRefs: ['evidence.artanis.operator.rlm.actions'],
+          id: 'actions',
+          question: 'Which actions should the operator propose?',
+          signatureRef: ARTANIS_OPERATOR_RLM_SIGNATURE_REF,
+        },
+      ],
+    })
+    const { client, requests } = makeScriptedKhalaClient([
+      textResult(plan),
+      textResult('State packet: behind pace and active Codex assignments.'),
+      textResult('Action packet: split work into dispatch, verify, and report.'),
+      textResult('I will split this into dispatch, verification, and reporting.'),
+    ])
+
+    const result = await Effect.runPromise(
+      artanisOperatorTurn({
+        awareness: exampleAwareness,
+        khalaClient: client,
+        memory: exampleMemory,
+        messages: [
+          {
+            content: 'write a detailed architecture plan for the next push',
+            role: 'user',
+          },
+        ],
+        ownerId: 'owner:github:14167547',
+      }),
+    )
+
+    expect('error' in result).toBe(false)
+    if ('error' in result) return
+    expect(result.reply).toBe(
+      'I will split this into dispatch, verification, and reporting.',
+    )
+    expect(result.iterations).toBe(4)
+    expect(result.rlmTrace.used).toBe(true)
+    expect(result.rlmTrace.programRef).toBe(ARTANIS_OPERATOR_RLM_PROGRAM_REF)
+    expect(result.rlmTrace.signatureRef).toBe(ARTANIS_OPERATOR_RLM_SIGNATURE_REF)
+    expect(result.rlmTrace.decomposition.map(subquery => subquery.id)).toEqual([
+      'state',
+      'actions',
+    ])
+    expect(result.rlmTrace.evidence.map(packet => packet.answer)).toEqual([
+      'State packet: behind pace and active Codex assignments.',
+      'Action packet: split work into dispatch, verify, and report.',
+    ])
+    expect(requests).toHaveLength(4)
+    expect(requests[0]?.messages.at(-1)?.content).toContain(
+      ARTANIS_OPERATOR_RLM_PROGRAM_REF,
+    )
+    expect(requests[1]?.messages.at(-1)?.content).toContain(
+      'What grounded state matters?',
+    )
+    expect(requests[3]?.messages.at(-1)?.content).toContain(
+      'Subquery evidence packets',
+    )
+    expect(
+      requests.every(request => request.model === ARTANIS_OPERATOR_KHALA_MODEL),
+    ).toBe(true)
+  })
 })
 
 describe('#6364 artanis operator bounded tool-calling loop', () => {
