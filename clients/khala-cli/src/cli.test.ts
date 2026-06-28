@@ -29,6 +29,84 @@ describe("Khala CLI terminal rendering", () => {
 })
 
 describe("Khala CLI info diagnostics", () => {
+  test("renders the friendly fleet status onboarding text when no accounts are connected", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "khala-fleet-status-empty-test-"))
+
+    const originalWrite = process.stdout.write
+    let stdout = ""
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      stdout += String(chunk)
+      return true
+    }) as typeof process.stdout.write
+    try {
+      const exitCode = await runKhalaCli(["fleet", "status"], {
+        PYLON_HOME: join(dir, ".openagents", "pylon"),
+      })
+      expect(exitCode).toBe(0)
+    } finally {
+      process.stdout.write = originalWrite
+    }
+
+    expect(stdout).toContain("Khala fleet:")
+    expect(stdout).toContain("No Codex accounts connected yet.")
+    expect(stdout).toContain("khala fleet connect")
+  })
+
+  test("lists connected Codex fleet accounts and readiness through the CLI alias", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "khala-fleet-status-test-"))
+    const pylonHome = join(dir, ".openagents", "pylon")
+    const codexHome = join(pylonHome, "accounts", "codex", "codex")
+    mkdirSync(codexHome, { recursive: true })
+    writeFileSync(
+      join(codexHome, "auth.json"),
+      JSON.stringify({
+        tokens: {
+          id_token: [
+            Buffer.from(JSON.stringify({ alg: "none" })).toString("base64url"),
+            Buffer.from(JSON.stringify({ email: "fleet@example.com" })).toString("base64url"),
+            "",
+          ].join("."),
+        },
+      }),
+    )
+    writeFileSync(
+      join(pylonHome, "config.json"),
+      JSON.stringify({
+        dev: {
+          accounts: [
+            { ref: "codex", provider: "codex", home: codexHome },
+            { ref: "codex-2", provider: "codex", home: join(pylonHome, "accounts", "codex", "codex-2") },
+          ],
+        },
+      }),
+    )
+
+    const originalWrite = process.stdout.write
+    let stdout = ""
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      stdout += String(chunk)
+      return true
+    }) as typeof process.stdout.write
+    try {
+      const exitCode = await runKhalaCli(["fleet", "list"], {
+        PYLON_HOME: pylonHome,
+      })
+      expect(exitCode).toBe(0)
+    } finally {
+      process.stdout.write = originalWrite
+    }
+
+    expect(stdout).toContain("2 Codex account(s), 1 ready")
+    expect(stdout).toContain("ACCOUNT")
+    expect(stdout).toContain("READINESS")
+    expect(stdout).toContain("EMAIL")
+    expect(stdout).toContain("codex")
+    expect(stdout).toContain("ready")
+    expect(stdout).toContain("fleet@example.com")
+    expect(stdout).toContain("codex-2")
+    expect(stdout).toContain("credentials-missing")
+  })
+
   test("routes Artanis approval-gate status through the owner console endpoint", async () => {
     const authHeaders: Array<string | null> = []
     const server = Bun.serve({
