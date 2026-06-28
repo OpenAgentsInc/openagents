@@ -82,6 +82,12 @@ SUP_PYLON_REF="${SUP_PYLON_REF:-pylon.33afd48282a649047e3a}"
 SUP_STATE_DIR="${SUP_STATE_DIR:-$HOME/.claude-supervisor}"
 SUP_LOG="${SUP_LOG:-$SUP_STATE_DIR/supervisor.log}"
 
+# Dispatch-lockout helpers (shared with codex-supervisor): skip issues that
+# already have an open PR so the Claude lane does not duplicate work that the
+# high-throughput Codex lane already solved.
+# shellcheck source=../codex-supervisor/lockout.sh
+source "$SCRIPT_DIR/../codex-supervisor/lockout.sh"
+
 # Same-account parallel sessions per READY Claude login (owner intent: >=2/acct).
 SUP_PER_ACCOUNT="${SUP_PER_ACCOUNT:-2}"
 # Hard ceiling on total concurrent sessions across all accounts. Conservative
@@ -236,8 +242,19 @@ worker_loop() {
       continue
     fi
 
-    local issue="${issues[$(( (slot + iter) % ${#issues[@]} ))]}"
+    # Dispatch lockout: skip any issue that already has an open PR; only pick an
+    # untouched one. If every backlog issue already has a PR, back off instead of
+    # re-solving solved work.
+    local start_idx=$(( (slot + iter) % ${#issues[@]} ))
     iter=$(( iter + 1 ))
+    local issue
+    issue=$(pick_unlocked_issue "$start_idx" "${issues[@]}")
+    if [ -z "$issue" ]; then
+      log "slot=$slot LOCKOUT all backlog issues already have open PRs; backing off ${backoff}s"
+      sleep "$backoff"
+      backoff=$(( backoff * 2 )); [ "$backoff" -gt "$SUP_BACKOFF_MAX" ] && backoff="$SUP_BACKOFF_MAX"
+      continue
+    fi
     local commit; commit=$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null)
     [ -z "$commit" ] && { sleep 15; continue; }
 
