@@ -1580,6 +1580,247 @@ const fleetShippingView = (model: PublicActivityTimelineModel): Html => {
   return fleetShippingMessageView('Loading live fleet activity.')
 }
 
+type VirtualMergeQueueLane = Readonly<{
+  label: string
+  value: string
+  detail: string
+  tone: 'ready' | 'active' | 'blocked' | 'muted'
+}>
+
+type VirtualMergeQueueStep = Readonly<{
+  label: string
+  detail: string
+}>
+
+const virtualMergeQueueLanes: ReadonlyArray<VirtualMergeQueueLane> = [
+  {
+    label: 'Actual head',
+    value: 'origin/main',
+    detail: 'Pinned commit from GitHub branch protection',
+    tone: 'muted',
+  },
+  {
+    label: 'Virtual head',
+    value: 'projection',
+    detail: 'Advances after each verified non-conflicting candidate',
+    tone: 'active',
+  },
+  {
+    label: 'Next branch base',
+    value: 'virtual head',
+    detail: 'New fleet work starts from the projected post-merge tree',
+    tone: 'ready',
+  },
+  {
+    label: 'Conflict lane',
+    value: 'blocked',
+    detail: 'Duplicate issue, stale base, closed issue, or path conflict',
+    tone: 'blocked',
+  },
+] as const
+
+const virtualMergeQueueSteps: ReadonlyArray<VirtualMergeQueueStep> = [
+  {
+    label: '1. Admit',
+    detail: 'Issue is open, one PR per issue is preserved, and verification passed.',
+  },
+  {
+    label: '2. Project',
+    detail: 'Candidate patch becomes the next virtual head before another agent branches.',
+  },
+  {
+    label: '3. Promote',
+    detail: 'Only the front ready entry moves to the real protected branch.',
+  },
+]
+
+const vmqToneClass: Record<VirtualMergeQueueLane['tone'], string> = {
+  active: 'border-[#3a7bff]/45 bg-[#07101f] text-[#8fb6ff]',
+  blocked: 'border-[#ff6f00]/45 bg-[#160b03] text-[#ffb26b]',
+  muted: 'border-[#333] bg-[#0a0a0a] text-white/55',
+  ready: 'border-[#00c853]/45 bg-[#06140a] text-[#9ad6b7]',
+}
+
+const virtualMergeQueueLaneView = (lane: VirtualMergeQueueLane): Html => {
+  const h = html<Message>()
+
+  return h.li(
+    [
+      Ui.className<Message>(
+        `grid min-h-28 content-between gap-3 border p-3 ${vmqToneClass[lane.tone]}`,
+      ),
+    ],
+    [
+      h.div([Ui.className<Message>('grid gap-1')], [
+        h.span(
+          [Ui.className<Message>('text-[0.6875rem] uppercase tracking-wide text-white/40')],
+          [lane.label],
+        ),
+        h.span(
+          [Ui.className<Message>('text-lg font-semibold leading-6 text-[#f1efe8]')],
+          [lane.value],
+        ),
+      ]),
+      h.p([Ui.className<Message>('m-0 text-[0.75rem] leading-5')], [
+        lane.detail,
+      ]),
+    ],
+  )
+}
+
+const virtualMergeQueueStepView = (step: VirtualMergeQueueStep): Html => {
+  const h = html<Message>()
+
+  return h.li(
+    [Ui.className<Message>('grid gap-1 border border-[#1b1b1b] bg-black p-3')],
+    [
+      h.div(
+        [Ui.className<Message>('text-[0.75rem] font-semibold leading-5 text-[#f1efe8]')],
+        [step.label],
+      ),
+      h.p([Ui.className<Message>('m-0 text-[0.75rem] leading-5 text-white/45')], [
+        step.detail,
+      ]),
+    ],
+  )
+}
+
+const artanisVirtualMergeQueueView = (): Html => {
+  const h = html<Message>()
+
+  return h.section(
+    [
+      h.DataAttribute('component', 'artanis-virtual-merge-queue'),
+      Ui.className<Message>('grid gap-4 border-b border-[#222] pb-6'),
+    ],
+    [
+      h.div(
+        [Ui.className<Message>('flex flex-wrap items-end justify-between gap-3')],
+        [
+          h.div([Ui.className<Message>('grid gap-2')], [
+            h.div([Ui.className<Message>(Ui.eyebrowClass)], [
+              'Virtual merge queue',
+            ]),
+            h.h2(
+              [
+                Ui.className<Message>(
+                  'm-0 text-lg font-semibold tracking-normal text-[#f1efe8]',
+                ),
+              ],
+              ['Projected branch base for parallel agents'],
+            ),
+          ]),
+          h.a(
+            [
+              h.Href(
+                '/docs/artanis/2026-06-28-gitafter-cloudflare-artifacts-coordination-audit',
+              ),
+              Ui.className<Message>(
+                'border border-[#333] px-3 py-2 text-[0.75rem] text-white/70 underline-offset-4 hover:border-white/35 hover:text-[#f1efe8] hover:underline',
+              ),
+            ],
+            ['Coordination audit'],
+          ),
+        ],
+      ),
+      h.div(
+        [
+          Ui.className<Message>(
+            'grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(18rem,0.8fr)]',
+          ),
+        ],
+        [
+          h.div([Ui.className<Message>('grid gap-3')], [
+            h.ol(
+              [
+                h.AriaLabel('Virtual merge queue projection lanes'),
+                Ui.className<Message>('grid gap-2 sm:grid-cols-2 xl:grid-cols-4'),
+              ],
+              virtualMergeQueueLanes.map(virtualMergeQueueLaneView),
+            ),
+            h.div(
+              [
+                Ui.className<Message>(
+                  'grid gap-2 border border-[#222] bg-[#010102] p-3',
+                ),
+              ],
+              [
+                h.div(
+                  [
+                    Ui.className<Message>(
+                      'flex flex-wrap items-center justify-between gap-3',
+                    ),
+                  ],
+                  [
+                    h.span(
+                      [
+                        Ui.className<Message>(
+                          'text-[0.75rem] font-semibold text-[#f1efe8]',
+                        ),
+                      ],
+                      ['Public proof fixture'],
+                    ),
+                    h.span(
+                      [
+                        Ui.className<Message>(
+                          'tabular-nums text-[0.6875rem] text-[#8fb6ff]',
+                        ),
+                      ],
+                      ['24 accepted / 0 conflicts'],
+                    ),
+                  ],
+                ),
+                h.div(
+                  [
+                    Ui.className<Message>(
+                      'h-2 overflow-hidden border border-[#222] bg-black',
+                    ),
+                  ],
+                  [
+                    h.div(
+                      [
+                        Ui.className<Message>('h-full bg-[#3a7bff]'),
+                        h.Style({ width: '100%' }),
+                      ],
+                      [],
+                    ),
+                  ],
+                ),
+                h.p(
+                  [
+                    Ui.className<Message>(
+                      'm-0 text-[0.75rem] leading-5 text-white/45',
+                    ),
+                  ],
+                  [
+                    'The shipped simulator proves a 20+ item queue can advance one virtual head without opening duplicate work for the same issue.',
+                  ],
+                ),
+              ],
+            ),
+          ]),
+          h.div([Ui.className<Message>('grid content-start gap-3')], [
+            h.ol(
+              [Ui.className<Message>('grid gap-2')],
+              virtualMergeQueueSteps.map(virtualMergeQueueStepView),
+            ),
+            h.div(
+              [
+                Ui.className<Message>(
+                  'border border-[#222] bg-[#010102] p-3 text-[0.75rem] leading-5 text-white/45',
+                ),
+              ],
+              [
+                'Public-safe only: no raw patches, local workspace paths, provider payloads, or private prompts are exposed on this page.',
+              ],
+            ),
+          ]),
+        ],
+      ),
+    ],
+  )
+}
+
 const eventRow = (event: PublicAgentGoalEvent): Html => {
   const h = html<Message>()
   const publicRefs = [
@@ -1890,6 +2131,7 @@ const artanisLoadedView = (
       // HERO: the live token-burn Pulse is the strongest signal that an
       // autonomous fleet is building in real time, so it spans the console.
       artanisPulseView(khalaTokensServedHistory),
+      artanisVirtualMergeQueueView(),
       h.div(
         [
           Ui.className<Message>(
