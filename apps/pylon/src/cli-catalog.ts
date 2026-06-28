@@ -119,9 +119,9 @@ export const PYLON_COMMAND_CATALOG: readonly PylonCommandEntry[] = [
     spends: false,
     json: true,
     args: [
-      pos("connect|list|usage", "Subcommand."),
+      pos("connect|list|usage|status", "Subcommand."),
       pos("codex", "connect: provider to connect.", false),
-      opt("--account", "connect/usage: stable local account ref."),
+      opt("--account", "connect/usage/status: stable local account ref."),
       opt("--account-label", "connect --openagents-link: provider-account label."),
       opt("--agent-token", "connect --openagents-link: OpenAgents agent token (or OPENAGENTS_AGENT_TOKEN)."),
       opt("--base-url", "connect --openagents-link: OpenAgents base URL."),
@@ -133,6 +133,7 @@ export const PYLON_COMMAND_CATALOG: readonly PylonCommandEntry[] = [
       flag("--skip-device-login", "connect: only register the home; do not run Codex device auth."),
       flag("--json", "Emit JSON (required)."),
       flag("--refresh", "usage: refresh provider snapshots."),
+      flag("--reset", "status: consume one manual quota reset for the selected account."),
     ],
   },
   {
@@ -143,8 +144,8 @@ export const PYLON_COMMAND_CATALOG: readonly PylonCommandEntry[] = [
     json: true,
     args: [
       pos("accounts", "Codex account sub-namespace; `fleet offload-plan` is also supported."),
-      pos("list|usage|connect|offload-plan", "Account command or fleet offload planner."),
-      opt("--account", "connect/usage: stable local Codex account ref."),
+      pos("list|usage|status|connect|offload-plan", "Account command or fleet offload planner."),
+      opt("--account", "connect/usage/status: stable local Codex account ref."),
       opt("--accounts", "fleet offload-plan: comma-separated Codex account refs to move."),
       opt("--base-url", "connect --openagents-link: OpenAgents base URL."),
       opt("--bundle-dir", "fleet offload-plan: local directory for tar bundles."),
@@ -154,6 +155,7 @@ export const PYLON_COMMAND_CATALOG: readonly PylonCommandEntry[] = [
       opt("--target", "fleet offload-plan: Tailnet host capacity, e.g. imac-pro-bertha:2."),
       flag("--json", "Emit JSON."),
       flag("--refresh", "usage: refresh provider snapshots."),
+      flag("--reset", "status: consume one manual quota reset for the selected account."),
       flag("--include-private-paths", "fleet offload-plan: include local tar/scp/launch commands with private paths."),
     ],
   },

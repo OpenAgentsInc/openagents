@@ -1,7 +1,9 @@
-import { readFile, mkdir, writeFile } from "node:fs/promises"
+import { readFile, mkdir, unlink, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 
 import type { BootstrapSummary } from "./bootstrap.js"
+
+type QuotaSummary = Pick<BootstrapSummary, "paths">
 
 export type QuotaRecord = {
   accountRefHash: string
@@ -11,18 +13,37 @@ export type QuotaRecord = {
   sourceDigestRef: string
 }
 
+export type ManualQuotaResetRecord = {
+  accountRefHash: string
+  provider: string
+  manualResetsRemaining: number
+  updatedAt: string
+  resetEvents: Array<{
+    observedAt: string
+    quotaDeleted: boolean
+  }>
+}
+
+export const DEFAULT_MANUAL_QUOTA_RESETS = 3
 const defaultQuotaCooldownMs = 3600_000
 const safePathSegmentPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
 
-function quotaDirectory(summary: BootstrapSummary) {
+function quotaDirectory(summary: QuotaSummary) {
   return join(summary.paths.home, "account-quota")
 }
 
-function quotaRecordPath(summary: BootstrapSummary, accountRefHash: string) {
+function quotaRecordPath(summary: QuotaSummary, accountRefHash: string) {
   const safeRef = safePathSegmentPattern.test(accountRefHash)
     ? accountRefHash
     : encodeURIComponent(accountRefHash)
   return join(quotaDirectory(summary), `${safeRef}.json`)
+}
+
+function manualResetRecordPath(summary: QuotaSummary, accountRefHash: string) {
+  const safeRef = safePathSegmentPattern.test(accountRefHash)
+    ? accountRefHash
+    : encodeURIComponent(accountRefHash)
+  return join(quotaDirectory(summary), `${safeRef}.manual-reset.json`)
 }
 
 function publicProviderRef(provider: string) {
@@ -49,8 +70,38 @@ function quotaRecordFrom(value: unknown): QuotaRecord | null {
   }
 }
 
+function nonNegativeInteger(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null
+  return Math.max(0, Math.floor(value))
+}
+
+function manualResetRecordFrom(value: unknown): ManualQuotaResetRecord | null {
+  if (value === null || typeof value !== "object") return null
+  const record = value as Record<string, unknown>
+  if (typeof record.accountRefHash !== "string") return null
+  if (typeof record.provider !== "string") return null
+  if (typeof record.updatedAt !== "string") return null
+  const manualResetsRemaining = nonNegativeInteger(record.manualResetsRemaining)
+  if (manualResetsRemaining === null) return null
+  const resetEvents = Array.isArray(record.resetEvents)
+    ? record.resetEvents.flatMap((event): ManualQuotaResetRecord["resetEvents"] => {
+        if (event === null || typeof event !== "object") return []
+        const source = event as Record<string, unknown>
+        if (typeof source.observedAt !== "string" || typeof source.quotaDeleted !== "boolean") return []
+        return [{ observedAt: source.observedAt, quotaDeleted: source.quotaDeleted }]
+      })
+    : []
+  return {
+    accountRefHash: record.accountRefHash,
+    provider: publicProviderRef(record.provider),
+    manualResetsRemaining,
+    updatedAt: record.updatedAt,
+    resetEvents,
+  }
+}
+
 export async function recordQuotaBlock(
-  summary: BootstrapSummary,
+  summary: QuotaSummary,
   input: {
     accountRefHash: string
     provider: string
@@ -74,7 +125,7 @@ export async function recordQuotaBlock(
 }
 
 export async function loadQuotaRecord(
-  summary: BootstrapSummary,
+  summary: QuotaSummary,
   accountRefHash: string,
 ): Promise<QuotaRecord | null> {
   try {
@@ -83,6 +134,64 @@ export async function loadQuotaRecord(
   } catch {
     return null
   }
+}
+
+export async function loadManualQuotaResetRecord(
+  summary: QuotaSummary,
+  input: { accountRefHash: string; provider: string },
+): Promise<ManualQuotaResetRecord> {
+  try {
+    const raw = await readFile(manualResetRecordPath(summary, input.accountRefHash), "utf8")
+    const parsed = manualResetRecordFrom(JSON.parse(raw))
+    if (parsed) return parsed
+  } catch {
+    // Missing or malformed local manual-reset state starts from the default allowance.
+  }
+  const now = new Date(0).toISOString()
+  return {
+    accountRefHash: input.accountRefHash,
+    provider: publicProviderRef(input.provider),
+    manualResetsRemaining: DEFAULT_MANUAL_QUOTA_RESETS,
+    updatedAt: now,
+    resetEvents: [],
+  }
+}
+
+export async function consumeManualQuotaReset(
+  summary: QuotaSummary,
+  input: { accountRefHash: string; provider: string; now?: Date },
+): Promise<ManualQuotaResetRecord> {
+  const existing = await loadManualQuotaResetRecord(summary, input)
+  if (existing.manualResetsRemaining <= 0) {
+    throw new Error("no manual quota resets remaining for this account")
+  }
+  let quotaDeleted = false
+  try {
+    await unlink(quotaRecordPath(summary, input.accountRefHash))
+    quotaDeleted = true
+  } catch {
+    quotaDeleted = false
+  }
+  const observedAt = (input.now ?? new Date()).toISOString()
+  const updated: ManualQuotaResetRecord = {
+    accountRefHash: input.accountRefHash,
+    provider: publicProviderRef(input.provider),
+    manualResetsRemaining: existing.manualResetsRemaining - 1,
+    updatedAt: observedAt,
+    resetEvents: [
+      ...existing.resetEvents,
+      {
+        observedAt,
+        quotaDeleted,
+      },
+    ].slice(-20),
+  }
+  await mkdir(quotaDirectory(summary), { recursive: true })
+  await writeFile(
+    manualResetRecordPath(summary, input.accountRefHash),
+    `${JSON.stringify(updated, null, 2)}\n`,
+  )
+  return updated
 }
 
 export function isAccountAvailable(record: QuotaRecord | null, now: Date): boolean {

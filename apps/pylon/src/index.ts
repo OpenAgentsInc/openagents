@@ -103,7 +103,9 @@ import {
 import {
   collectPylonAccountsList,
   collectPylonCodexAccountsLocal,
+  collectPylonAccountsStatus,
   collectPylonAccountsUsage,
+  parsePylonAccountsStatusArgs,
   parsePylonAccountsUsageArgs,
   resolvePylonAccountUsageRefreshTargets,
   type PylonAccountsUsageArgs,
@@ -3248,6 +3250,16 @@ async function main() {
         }, null, 2)}\n`)
         return
       }
+      if (command === "status") {
+        const options = parsePylonAccountsStatusArgs(accountCommandArgs.slice(1))
+        if (!options.json) {
+          throw new Error("usage: pylon accounts status [--account <ref-or-provider>|--provider <codex|claude_agent>|--all] [--reset] --json")
+        }
+        const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), Bun.env)
+        const projection = await collectPylonAccountsStatus(summary, options, { env: Bun.env })
+        process.stdout.write(`${JSON.stringify(projection, null, 2)}\n`)
+        return
+      }
       if (command === "connect") {
         const options = parsePylonAccountsConnectArgs(accountCommandArgs.slice(1))
         if (!options.json) {
@@ -3258,7 +3270,7 @@ async function main() {
         process.stdout.write(`${JSON.stringify(projection, null, 2)}\n`)
         return
       }
-      throw new Error("usage: pylon accounts list|usage|connect ...")
+      throw new Error("usage: pylon accounts list|usage|status|connect ...")
     } catch (error) {
       process.stderr.write(`Pylon accounts failed: ${error instanceof Error ? error.message : String(error)}\n`)
       process.exitCode = 1
