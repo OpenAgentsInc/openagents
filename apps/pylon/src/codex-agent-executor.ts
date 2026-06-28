@@ -11,6 +11,7 @@ import {
 import {
   gitCheckoutWorkspaceFrom,
   materializeGitCheckoutWorkspaceWithLease,
+  pruneWorkspaceCacheDirectories,
   workspaceCheckoutFailureReasonRef,
   type GitCheckoutWorkspace,
   type WorkspaceCheckoutRunner,
@@ -36,6 +37,7 @@ import {
   type CodexTurnUsage,
 } from "./codex-turn-reporter.js"
 import type { PylonLocalState } from "./state.js"
+import { installCodexRipgrepGuard } from "./codex-rg-guard.js"
 
 /**
  * The local Codex executor gate (issue #4789, epic #4793, promise
@@ -151,6 +153,7 @@ type CodexAgentFixture = {
 
 const DEFAULT_TIMEOUT_SECONDS = 300
 const MAX_TIMEOUT_SECONDS = 1200
+const CODEX_AGENT_WORKSPACE_CACHE_MAX_ENTRIES = 200
 
 const CODEX_AGENT_FIXTURES: Record<string, CodexAgentFixture> = {
   [CODEX_AGENT_SUM_REPAIR_FIXTURE_REF]: {
@@ -807,9 +810,14 @@ async function materializeCodexAgentWorkspace(input: {
   state: PylonLocalState
   task: CodexAgentTaskPayload
 }) {
+  const cacheRoot = join(input.state.paths.cache, "codex-agent-tasks")
+  await pruneWorkspaceCacheDirectories({
+    cacheRoot,
+    maxEntries: CODEX_AGENT_WORKSPACE_CACHE_MAX_ENTRIES,
+  })
   if (input.task.workspace !== undefined) {
     const materialized = await materializeGitCheckoutWorkspaceWithLease({
-      cacheRoot: join(input.state.paths.cache, "codex-agent-tasks"),
+      cacheRoot,
       checkout: input.task.workspace,
       ...(input.checkoutRunner === undefined ? {} : { checkoutRunner: input.checkoutRunner }),
       leaseRef: input.leaseRef,
@@ -833,7 +841,7 @@ async function materializeCodexAgentWorkspace(input: {
   }
 
   const workspaceRef = stableRef("workspace.pylon.codex_agent_task", input.leaseRef)
-  const workspace = join(input.state.paths.cache, "codex-agent-tasks", workspaceRef)
+  const workspace = join(cacheRoot, workspaceRef)
   const fixtureRef = input.task.fixtureRef ?? CODEX_AGENT_SUM_REPAIR_FIXTURE_REF
   const fixture = CODEX_AGENT_FIXTURES[fixtureRef] ?? CODEX_AGENT_FIXTURES[CODEX_AGENT_SUM_REPAIR_FIXTURE_REF]
   await mkdir(workspace, { recursive: true })
@@ -1011,11 +1019,15 @@ export async function executeCodexAgentAssignment(
         DEFAULT_TIMEOUT_SECONDS,
         MAX_TIMEOUT_SECONDS,
       ) * 1000
+    const guardedEnv = installCodexRipgrepGuard({
+      env,
+      workspaceRoot: materialized.workspace,
+    }).env
     run = await runCodexAgentWithOuterDeadline(runner, {
       assignmentRef: lease.assignmentRef,
       cwd: materialized.workspace,
       account: options.account,
-      env,
+      env: guardedEnv,
       ...(eventChunkReporter === undefined ? {} : { eventChunkReporter }),
       ...(eventReporter === undefined ? {} : { eventReporter }),
       instructions: materialized.instructions,

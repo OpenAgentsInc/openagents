@@ -10,6 +10,7 @@ import {
   createGitWorktreeCheckoutRunner,
   detectWorkspaceChangeConflicts,
   materializeGitCheckoutWorkspaceWithLease,
+  pruneWorkspaceCacheDirectories,
   publicWorkspaceChangeCaptureProjection,
   publicWorkspaceLeaseProjection,
   releaseWorkspace,
@@ -408,6 +409,35 @@ describe("createGitWorktreeCheckoutRunner", () => {
 })
 
 describe("materializeGitCheckoutWorkspaceWithLease", () => {
+  test("prunes oldest workspace cache directories while preserving protected refs", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-workspace-cache-prune-"))
+    try {
+      const cacheRoot = join(root, "adapter-tasks")
+      const oldRef = "workspace.pylon.codex_agent_task.old"
+      const protectedRef = "workspace.pylon.codex_agent_task.protected"
+      const freshRef = "workspace.pylon.codex_agent_task.fresh"
+      await mkdir(join(cacheRoot, oldRef), { recursive: true })
+      await mkdir(join(cacheRoot, protectedRef), { recursive: true })
+      await mkdir(join(cacheRoot, freshRef), { recursive: true })
+      await utimes(join(cacheRoot, oldRef), new Date("2026-06-11T00:00:00.000Z"), new Date("2026-06-11T00:00:00.000Z"))
+      await utimes(join(cacheRoot, protectedRef), new Date("2026-06-11T01:00:00.000Z"), new Date("2026-06-11T01:00:00.000Z"))
+      await utimes(join(cacheRoot, freshRef), new Date("2026-06-11T02:00:00.000Z"), new Date("2026-06-11T02:00:00.000Z"))
+
+      const pruned = await pruneWorkspaceCacheDirectories({
+        cacheRoot,
+        maxEntries: 1,
+        protectedWorkspaceRefs: [protectedRef],
+      })
+
+      expect(pruned.removedWorkspaceRefs).toEqual([oldRef])
+      expect(existsSync(join(cacheRoot, oldRef))).toBe(false)
+      expect(existsSync(join(cacheRoot, protectedRef))).toBe(true)
+      expect(existsSync(join(cacheRoot, freshRef))).toBe(true)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   test("records a workspace lease with state, TTL, retention, and refs", async () => {
     const root = await mkdtemp(join(tmpdir(), "pylon-worktree-lease-"))
     try {

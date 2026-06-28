@@ -523,6 +523,53 @@ export async function removeMaterializedWorkspace(input: {
   await rm(target, { recursive: true, force: true })
 }
 
+export async function pruneWorkspaceCacheDirectories(input: {
+  cacheRoot: string
+  maxEntries: number
+  protectedWorkspaceRefs?: ReadonlyArray<string>
+}): Promise<{ removedWorkspaceRefs: string[] }> {
+  if (!Number.isFinite(input.maxEntries) || input.maxEntries < 1) {
+    return { removedWorkspaceRefs: [] }
+  }
+  let entries: string[]
+  try {
+    entries = await readdir(input.cacheRoot)
+  } catch {
+    return { removedWorkspaceRefs: [] }
+  }
+  const protectedRefs = new Set(input.protectedWorkspaceRefs ?? [])
+  const candidates: Array<{ workspaceRef: string; mtimeMs: number }> = []
+  for (const entry of entries) {
+    if (!entry.startsWith("workspace.pylon.") || protectedRefs.has(entry)) continue
+    const workingDirectory = join(input.cacheRoot, entry)
+    try {
+      assertPylonOwnedWorkspaceTarget({ cacheRoot: input.cacheRoot, workingDirectory })
+      const info = await stat(workingDirectory)
+      if (!info.isDirectory()) continue
+      candidates.push({ workspaceRef: entry, mtimeMs: info.mtimeMs })
+    } catch {
+      // Ignore malformed or concurrently removed entries.
+    }
+  }
+  if (candidates.length <= input.maxEntries) return { removedWorkspaceRefs: [] }
+  const stale = candidates
+    .sort((left, right) => left.mtimeMs - right.mtimeMs)
+    .slice(0, candidates.length - input.maxEntries)
+  const removedWorkspaceRefs: string[] = []
+  for (const candidate of stale) {
+    try {
+      await removeMaterializedWorkspace({
+        cacheRoot: input.cacheRoot,
+        workingDirectory: join(input.cacheRoot, candidate.workspaceRef),
+      })
+      removedWorkspaceRefs.push(candidate.workspaceRef)
+    } catch {
+      // Best-effort cache pressure relief; materialization correctness does not depend on it.
+    }
+  }
+  return { removedWorkspaceRefs }
+}
+
 /**
  * Native git worktree support behind the materializer (issue #4799).
  *
