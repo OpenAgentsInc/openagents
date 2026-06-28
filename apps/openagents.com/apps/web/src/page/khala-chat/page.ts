@@ -64,18 +64,18 @@ const transcriptTurnView = <Message>(turn: {
 }): Html =>
   turn.role === 'assistant'
     ? AiElements.message<Message>({
-        props: { role: 'assistant', author: KHALA_HEADING },
+        props: { role: 'assistant' },
         markdown: turn.content,
       })
     : AiElements.message<Message>({
-        props: { role: 'user', body: turn.content, author: 'You' },
+        props: { role: 'user', body: turn.content },
       })
 
 // The in-flight streaming assistant bubble: the partial reply rendered as
 // progressive Markdown with a live typing cursor. Only present while streaming.
 const streamingTurnView = <Message>(partial: string): Html =>
   AiElements.message<Message>({
-    props: { role: 'assistant', author: KHALA_HEADING },
+    props: { role: 'assistant' },
     markdown: partial,
     streaming: true,
   })
@@ -118,18 +118,10 @@ const floatingUserTurnView = <Message>(
       h.DataAttribute('khala-chat-turn', 'user'),
       ...(latest ? [h.DataAttribute(KHALA_CHAT_LATEST_TURN_ATTR, 'true')] : []),
       Ui.className<Message>(
-        'ml-auto grid max-w-[min(82%,34rem)] justify-items-end gap-1.5',
+        'ml-auto grid max-w-[min(82%,34rem)] justify-items-end',
       ),
     ],
     [
-      h.div(
-        [
-          Ui.className<Message>(
-            'font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-white/40',
-          ),
-        ],
-        ['You'],
-      ),
       h.p(
         [
           Ui.className<Message>(
@@ -156,18 +148,10 @@ const floatingAssistantTurnView = <Message>(
       ),
       h.AriaLive(streaming ? 'polite' : 'off'),
       Ui.className<Message>(
-        'grid max-w-[min(100%,46rem)] gap-2 [text-shadow:0_0_18px_rgba(58,123,255,0.22)]',
+        'grid max-w-[min(100%,46rem)] [text-shadow:0_0_18px_rgba(58,123,255,0.22)]',
       ),
     ],
     [
-      h.div(
-        [
-          Ui.className<Message>(
-            'font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-[#8fb6ff]',
-          ),
-        ],
-        ['Khala'],
-      ),
       h.div(
         [
           Ui.className<Message>(
