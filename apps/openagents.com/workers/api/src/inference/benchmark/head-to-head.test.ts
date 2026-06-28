@@ -176,6 +176,10 @@ describe('Khala head-to-head projection', () => {
     ])
     expect(h2h.decisionGradeRowCount).toBe(1)
     expect(h2h.khala?.costPerAcceptedOutcomeMsat).toBe(400)
+    expect(h2h.khala?.inputTokens).toBe(7_500)
+    expect(h2h.khala?.outputTokens).toBe(2_500)
+    expect(h2h.khala?.totalTokens).toBe(10_000)
+    expect(h2h.khala?.meanWallClockMs).toBe(3_302)
     for (const matchup of h2h.matchups) {
       expect(matchup.state).toBe('awaiting_owner')
       expect(matchup.blockerRefs).not.toContain(
@@ -209,6 +213,10 @@ describe('Khala head-to-head projection', () => {
     expect(bigPickle.costPerAcceptedOutcomeDeltaMsat!).toBeGreaterThan(0)
     expect(bigPickle.khala!.costPerAcceptedOutcomeMsat).toBe(400)
     expect(bigPickle.comparator!.costPerAcceptedOutcomeMsat).toBeGreaterThan(400)
+    expect(bigPickle.khala!.totalTokens).toBe(10_000)
+    expect(bigPickle.comparator!.totalTokens).toBe(10_000)
+    expect(bigPickle.khala!.meanWallClockMs).toBe(3_302)
+    expect(bigPickle.comparator!.meanWallClockMs).toBe(3_302)
     // Khala solved more -> positive solve-rate delta.
     expect(bigPickle.solveRateDeltaBps).not.toBeNull()
     expect(bigPickle.solveRateDeltaBps!).toBeGreaterThan(0)

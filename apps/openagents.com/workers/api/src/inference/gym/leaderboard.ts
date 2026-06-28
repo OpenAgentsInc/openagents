@@ -39,6 +39,10 @@ export type GymLeaderboardRow = Readonly<{
   acceptedOutcomes: number
   attemptedVerifications: number
   verificationRateBps: number | null
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+  meanWallClockMs: number | null
   costPerAcceptedOutcomeMsat: number
   totalCostBasisMsat: number
   cellsExecuted: number
@@ -183,6 +187,22 @@ const leaderboardCandidateRow = (
       : Math.round(
           (costSummary.acceptedOutcomes / attemptedVerifications) * 10_000,
         )
+  const executedSamples = input.report.groups.reduce(
+    (sum, group) => sum + group.executedSamples,
+    0,
+  )
+  const wallClockWeightedTotal = input.report.groups.reduce(
+    (sum, group) =>
+      sum +
+      (group.totalWallClockMs.mean === null
+        ? 0
+        : group.totalWallClockMs.mean * group.totalWallClockMs.sampleCount),
+    0,
+  )
+  const wallClockSampleCount = input.report.groups.reduce(
+    (sum, group) => sum + group.totalWallClockMs.sampleCount,
+    0,
+  )
 
   return {
     rank: 0,
@@ -195,6 +215,22 @@ const leaderboardCandidateRow = (
     acceptedOutcomes: costSummary.acceptedOutcomes,
     attemptedVerifications,
     verificationRateBps,
+    inputTokens: input.report.groups.reduce(
+      (sum, group) => sum + group.inputTokens,
+      0,
+    ),
+    outputTokens: input.report.groups.reduce(
+      (sum, group) => sum + group.outputTokens,
+      0,
+    ),
+    totalTokens: input.report.groups.reduce(
+      (sum, group) => sum + group.totalTokens,
+      0,
+    ),
+    meanWallClockMs:
+      executedSamples === 0 || wallClockSampleCount === 0
+        ? null
+        : wallClockWeightedTotal / wallClockSampleCount,
     costPerAcceptedOutcomeMsat: costSummary.costPerAcceptedOutcomeMsat,
     totalCostBasisMsat: costSummary.totalCostBasisMsat,
     cellsExecuted: input.report.cellsExecuted,

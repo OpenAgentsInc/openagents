@@ -4,10 +4,11 @@
 //     dereferenceable quality bar. Returns the latest published snapshot — Khala
 //     vs the tools/models a developer would otherwise reach for (default coding
 //     model -> free/open -> paid frontier), each matchup scored on solve-rate AND
-//     cost-per-accepted-outcome. If no snapshot has been published yet, it returns
-//     the EMPTY shape (all matchups `awaiting_owner` with their owner-gate refs)
-//     so the surface is honestly "machinery shipped, no decision-grade run yet"
-//     rather than 404 or fabricated.
+//     cost-per-accepted-outcome, with tokens + mean wall-clock carried as measured
+//     context. If no snapshot has been published yet, it returns the EMPTY shape
+//     (all matchups `awaiting_owner` with their owner-gate refs) so the surface is
+//     honestly "machinery shipped, no decision-grade run yet" rather than 404 or
+//     fabricated.
 //   - `POST /api/operator/khala/head-to-head` (admin bearer): the publish
 //     boundary. An operator (or the recurring scheduler) POSTs the decision-grade
 //     `GymLeaderboardReportInput[]` from an owner-armed real sweep. The Worker

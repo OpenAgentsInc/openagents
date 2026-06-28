@@ -134,6 +134,9 @@ export type BenchmarkGroupMetrics = Readonly<{
   // not-yet-available lane). Skipped samples carry no metrics.
   executedSamples: number
   skippedSamples: number
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
   // Latency distributions (book Ch.1 percentiles).
   ttftMs: LatencySummary
   totalWallClockMs: LatencySummary
@@ -179,6 +182,9 @@ const aggregateGroup = (
   let acceptedOutcomes = 0
   let toolCallsAttempted = 0
   let toolCallsSucceeded = 0
+  let inputTokens = 0
+  let outputTokens = 0
+  let totalTokens = 0
   let totalCostBasisMsat = 0
   const cacheRates: Array<number> = []
   const requestClasses = new Set<KhalaRequestClass>()
@@ -197,6 +203,15 @@ const aggregateGroup = (
       if (record.executedVerdict === 'passed') {
         acceptedOutcomes += 1
       }
+    }
+    if (isMeasured(record.promptTokens)) {
+      inputTokens += record.promptTokens
+    }
+    if (isMeasured(record.completionTokens)) {
+      outputTokens += record.completionTokens
+    }
+    if (isMeasured(record.totalTokens)) {
+      totalTokens += record.totalTokens
     }
     if (isMeasured(record.costBasisMsat)) {
       totalCostBasisMsat += record.costBasisMsat
@@ -225,6 +240,9 @@ const aggregateGroup = (
     syntheticOnly,
     executedSamples: executed.length,
     skippedSamples: skipped.length,
+    inputTokens,
+    outputTokens,
+    totalTokens,
     ttftMs: summarize(measuredValues(executed, r => r.ttftMs)),
     totalWallClockMs: summarize(
       measuredValues(executed, r => r.totalWallClockMs),
