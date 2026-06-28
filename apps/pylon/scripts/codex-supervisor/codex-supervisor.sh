@@ -63,6 +63,13 @@ source "$SCRIPT_DIR/lockout.sh"
 source "$SCRIPT_DIR/virtual-merge-queue.sh"
 # shellcheck source=../supervisor-task-pool.sh
 source "$SCRIPT_DIR/../supervisor-task-pool.sh"
+# Fleet-saturation engine (#6711): label-priority dispatch ordering so slots
+# always burn the highest tier first and FALL THROUGH locked/empty tiers, plus
+# standing-task auto-recreate so the priority queue is self-sustaining.
+# shellcheck source=priority-dispatch.sh
+source "$SCRIPT_DIR/priority-dispatch.sh"
+# shellcheck source=standing-tasks.sh
+source "$SCRIPT_DIR/standing-tasks.sh"
 
 # --- Config (all overridable via env) ---
 export PYLON_OPENAGENTS_BASE_URL="${PYLON_OPENAGENTS_BASE_URL:-https://openagents.com}"
@@ -119,6 +126,13 @@ SUP_DISPATCH_TIMEOUT_SECS="${SUP_DISPATCH_TIMEOUT_SECS:-1800}"
 SUP_STALL_REFUSALS="${SUP_STALL_REFUSALS:-20}"
 SUP_SELFHEAL_COOLDOWN_SECS="${SUP_SELFHEAL_COOLDOWN_SECS:-300}"
 SUP_SELFHEAL_CHECK_SECS="${SUP_SELFHEAL_CHECK_SECS:-30}"
+
+# --- Standing-task keeper (#6711): self-sustaining priority queue. ---
+# Cadence (s) at which the supervisor re-grows any CLOSED `standing-task` issue
+# (the four prio task(ops) issues) so the queue never runs dry. Recreation is
+# idempotent by title, so a title that already has an open standing issue is
+# never duplicated.
+SUP_STANDING_TASK_CHECK_SECS="${SUP_STANDING_TASK_CHECK_SECS:-300}"
 
 # Fallback only. The active task pool is resolved dynamically from the
 # unsupported-request ledger and linked open GitHub issues.
@@ -227,6 +241,23 @@ selfheal_watchdog_loop() {
   done
 }
 
+# --- Standing-task keeper (#6711): keep the priority queue self-sustaining. ---
+# On a timer, re-grow any CLOSED `standing-task` issue (the four prio task(ops)
+# issues) that has no open sibling, so a finished standing cycle immediately
+# reopens fresh work and no slot ever idles for lack of a queue. Idempotent by
+# title: a title that already has an open standing issue is never duplicated.
+standing_task_keeper_loop() {
+  while true; do
+    if [ -f "$PAUSE_FILE" ]; then sleep "$SUP_STANDING_TASK_CHECK_SECS"; continue; fi
+    local made
+    made=$(sup_recreate_closed_standing_tasks 2>>"$SUP_LOG")
+    if [ -n "$made" ] && [ "$made" -gt 0 ] 2>/dev/null; then
+      log "standing-task keeper recreated $made closed standing task(s)"
+    fi
+    sleep "$SUP_STANDING_TASK_CHECK_SECS"
+  done
+}
+
 # --- Heartbeater: recompute desired slots + advertise capacity on a timer. ---
 heartbeater_loop() {
   while true; do
@@ -306,8 +337,21 @@ worker_loop() {
     # cause).
     local start_idx=$(( (slot + iter) % ${#issues[@]} ))
     iter=$(( iter + 1 ))
+
+    # Label-priority dispatch (#6711): refresh the open-issue label map (cached,
+    # TTL) and reorder the pool by priority tier (prio:0-pr-burndown first ...
+    # prio:4-backstop-burn last, then unlabelled), keeping intra-tier round-robin
+    # spread via start_idx. pick_unlocked_issue then scans from the TOP so slots
+    # prefer the highest tier and FALL THROUGH locked/lower tiers — never idling.
+    sup_fetch_issue_label_map >/dev/null 2>&1 || true
+    local ordered=()
+    while IFS= read -r oissue; do
+      [ -n "$oissue" ] && ordered+=("$oissue")
+    done < <(sup_order_pool_by_priority "$start_idx" "${issues[@]}")
+    [ "${#ordered[@]}" -gt 0 ] || ordered=("${issues[@]}")
+
     local issue
-    issue=$(pick_unlocked_issue "$start_idx" "${issues[@]}")
+    issue=$(pick_unlocked_issue 0 "${ordered[@]}")
     if [ -z "$issue" ]; then
       log "slot=$slot LOCKOUT all backlog issues are closed or already have open PRs; backing off ${backoff}s"
       sleep "$backoff"
@@ -386,6 +430,9 @@ log "heartbeater pid=$! cadence=${SUP_HEARTBEAT_SECS}s"
 
 selfheal_watchdog_loop &
 log "selfheal-watchdog pid=$! stall_refusals=$SUP_STALL_REFUSALS cooldown=${SUP_SELFHEAL_COOLDOWN_SECS}s"
+
+standing_task_keeper_loop &
+log "standing-task-keeper pid=$! cadence=${SUP_STANDING_TASK_CHECK_SECS}s label=${SUP_STANDING_TASK_LABEL:-standing-task}"
 
 # Give the first heartbeat a moment to publish desired slots.
 sleep 5
