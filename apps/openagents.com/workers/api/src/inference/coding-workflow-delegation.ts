@@ -976,6 +976,13 @@ const delegateCodingWorkflowUnsafe = async (
     const effectiveAccountCandidates =
       accountCandidates.length === 0 ? [targetAccountRefHash] : accountCandidates
 
+    const activeQuarantine =
+      input.pylonStore.readActiveQuarantineForPylon === undefined
+        ? undefined
+        : await input.pylonStore.readActiveQuarantineForPylon(
+            registration.pylonRef,
+            input.nowIso,
+          )
     let admittedBody: PylonApiCreateAssignmentRequest | null = null
     for (const accountRefHash of effectiveAccountCandidates) {
       const body = assignmentRequestFromInput(
@@ -991,6 +998,7 @@ const delegateCodingWorkflowUnsafe = async (
         assignmentRef: body.assignmentRef ?? null,
         body,
         nowIso: input.nowIso,
+        quarantine: activeQuarantine,
         registration,
       })
 

@@ -30,6 +30,8 @@ import {
   PylonApiHeartbeatRequest,
   PylonApiPaymentReceiptRequest,
   PylonApiPayoutTargetAdmissionRequest,
+  PylonApiQuarantineRequest,
+  type PylonApiQuarantineRecord,
   type PylonApiRegistrationRecord,
   PylonApiRegistrationRequest,
   PylonApiSettlementStatusRequest,
@@ -42,12 +44,14 @@ import {
   SPARK_PAYOUT_TARGET_NOT_READY,
   buildPylonApiAssignmentRecord,
   buildPylonApiEventRecord,
+  buildPylonApiQuarantineRecord,
   buildPylonApiRegistrationRecord,
   closeoutPylonApiAssignmentRecord,
   nextAssignmentForEvent,
   nextRegistrationForEvent,
   publicPylonApiAssignmentProjection,
   publicPylonApiEventProjection,
+  publicPylonApiQuarantineProjection,
   publicPylonApiRegistrationProjection,
   codexAccountCapacityKeyFromAccountRefHash,
   pylonCodingServiceAccountCapacity,
@@ -296,6 +300,25 @@ const routeNowIso = <Bindings>(
 const routeMakeId = <Bindings>(
   dependencies: PylonApiRouteDependencies<Bindings>,
 ): string => (dependencies.makeId ?? randomUuid)()
+
+const readActiveRouteQuarantine = <Bindings extends PylonApiRouteEnv>(
+  dependencies: PylonApiRouteDependencies<Bindings>,
+  env: Bindings,
+  pylonRef: string,
+  nowIso: string,
+): Effect.Effect<PylonApiQuarantineRecord | undefined, PylonApiStoreError> => {
+  const readActiveQuarantineForPylon =
+    routeStore(dependencies, env).readActiveQuarantineForPylon
+
+  if (readActiveQuarantineForPylon === undefined) {
+    return Effect.succeed(undefined)
+  }
+
+  return Effect.tryPromise({
+    catch: pylonApiStoreErrorFromUnknown,
+    try: () => readActiveQuarantineForPylon(pylonRef, nowIso),
+  })
+}
 
 const CONTROLLED_PYLON_ASSIGNMENT_DISPATCH_GATE_REF =
   'gate.public.pylon.assignment_dispatch.controlled.v1'
@@ -576,6 +599,7 @@ export const controlledPylonAssignmentDispatchGate = (
     assignmentRef: string | null
     body: PylonApiCreateAssignmentRequest
     nowIso: string
+    quarantine?: PylonApiQuarantineRecord | undefined
     registration: PylonApiRegistrationRecord | undefined
   }>,
 ): ControlledPylonAssignmentDispatchGate => {
@@ -683,6 +707,9 @@ export const controlledPylonAssignmentDispatchGate = (
     ...(registration === undefined
       ? ['blocker.public.pylon_dispatch.pylon_missing']
       : []),
+    ...(input.quarantine !== undefined
+      ? ['blocker.public.pylon_dispatch.executor_quarantined']
+      : []),
     ...(registration !== undefined && registration.status !== 'active'
       ? ['blocker.public.pylon_dispatch.pylon_not_active']
       : []),
@@ -743,6 +770,13 @@ export const controlledPylonAssignmentDispatchGate = (
     sourceRefs: uniqueRouteRefs([
       CONTROLLED_PYLON_ASSIGNMENT_DISPATCH_GATE_REF,
       'route:/api/operator/pylons/assignments',
+      ...(input.quarantine === undefined
+        ? []
+        : [
+            input.quarantine.quarantineRef,
+            ...input.quarantine.reasonRefs,
+            ...input.quarantine.actionRefs,
+          ]),
       ...(body.campaignRef === undefined ? [] : [body.campaignRef]),
       ...gateRefs(body.campaignPolicyRefs),
       ...gateRefs(body.selectionPolicyRefs),
@@ -1075,6 +1109,12 @@ const routeRegister = <Bindings extends PylonApiRouteEnv>(
           env,
           existingRegistration.pylonRef,
         )
+      const existingQuarantine = yield* readActiveRouteQuarantine(
+        dependencies,
+        env,
+        existingRegistration.pylonRef,
+        nowIso,
+      )
 
       return noStoreJsonResponse(
         {
@@ -1084,6 +1124,7 @@ const routeRegister = <Bindings extends PylonApiRouteEnv>(
             existingRegistration,
             nowIso,
             existingSparkReadiness,
+            existingQuarantine ?? null,
           ),
         },
         { status: 200 },
@@ -1184,6 +1225,12 @@ const routeRegister = <Bindings extends PylonApiRouteEnv>(
       env,
       storedRegistration.pylonRef,
     )
+    const quarantine = yield* readActiveRouteQuarantine(
+      dependencies,
+      env,
+      storedRegistration.pylonRef,
+      nowIso,
+    )
 
     return noStoreJsonResponse(
       {
@@ -1193,6 +1240,7 @@ const routeRegister = <Bindings extends PylonApiRouteEnv>(
           storedRegistration,
           nowIso,
           sparkReadiness,
+          quarantine ?? null,
         ),
         tassadarCapabilityAdmission: {
           refusalRefs: tassadarAdmission.refusalRefs,
@@ -1330,6 +1378,15 @@ const routeCreateAssignment = <Bindings extends PylonApiRouteEnv>(
       assignmentRef: requestedAssignmentRef ?? null,
       body,
       nowIso,
+      quarantine:
+        registration === undefined
+          ? undefined
+          : yield* readActiveRouteQuarantine(
+              dependencies,
+              env,
+              registration.pylonRef,
+              nowIso,
+            ),
       registration,
     })
 
@@ -1369,6 +1426,58 @@ const routeCreateAssignment = <Bindings extends PylonApiRouteEnv>(
         idempotent: result.idempotent,
       },
       { status: result.idempotent ? 200 : 201 },
+    )
+  })
+
+const routeQuarantinePylon = <Bindings extends PylonApiRouteEnv>(
+  dependencies: PylonApiRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  pylonRef: string,
+) =>
+  Effect.gen(function* () {
+    yield* requireAdmin(dependencies, request, env)
+    const store = routeStore(dependencies, env)
+    if (store.upsertQuarantine === undefined) {
+      return routeErrorResponse(
+        new PylonApiStoreError({
+          kind: 'storage_error',
+          reason: 'Pylon quarantine store is not wired.',
+        }),
+      )
+    }
+
+    const registration = yield* Effect.tryPromise({
+      catch: pylonApiStoreErrorFromUnknown,
+      try: () => store.readRegistration(pylonRef),
+    })
+    if (registration === undefined) {
+      return notFound()
+    }
+
+    const body = yield* decodeBody(request, PylonApiQuarantineRequest)
+    const nowIso = routeNowIso(dependencies)
+    const record = yield* Effect.try({
+      catch: pylonApiStoreErrorFromUnknown,
+      try: () =>
+        buildPylonApiQuarantineRecord({
+          makeId: () => routeMakeId(dependencies),
+          nowIso,
+          ownerAgentUserId: registration.ownerAgentUserId,
+          pylonRef: registration.pylonRef,
+          request: body,
+        }),
+    })
+    const stored = yield* Effect.tryPromise({
+      catch: pylonApiStoreErrorFromUnknown,
+      try: () => store.upsertQuarantine!(record),
+    })
+
+    return noStoreJsonResponse(
+      {
+        quarantine: publicPylonApiQuarantineProjection(stored, nowIso),
+      },
+      { status: body.state === 'active' ? 201 : 200 },
     )
   })
 
@@ -1547,6 +1656,12 @@ const routeEvent = <Bindings extends PylonApiRouteEnv>(
           env,
           existingRegistration.pylonRef,
         )
+      const replayQuarantine = yield* readActiveRouteQuarantine(
+        dependencies,
+        env,
+        existingRegistration.pylonRef,
+        replayNowIso,
+      )
 
       return noStoreJsonResponse(
         {
@@ -1556,6 +1671,7 @@ const routeEvent = <Bindings extends PylonApiRouteEnv>(
             existingRegistration,
             replayNowIso,
             replaySparkReadiness,
+            replayQuarantine ?? null,
           ),
         },
         { status: 200 },
@@ -1579,6 +1695,27 @@ const routeEvent = <Bindings extends PylonApiRouteEnv>(
             input.assignmentRef,
             session,
           )
+    const activeQuarantine = yield* readActiveRouteQuarantine(
+      dependencies,
+      env,
+      pylonRef,
+      nowIso,
+    )
+
+    if (assignment !== undefined && activeQuarantine !== undefined) {
+      return noStoreJsonResponse(
+        {
+          error: 'pylon_executor_quarantined',
+          quarantine: publicPylonApiQuarantineProjection(
+            activeQuarantine,
+            nowIso,
+          ),
+          reason:
+            'This Pylon is quarantined by the executor control plane; assignment lifecycle writes are blocked until release.',
+        },
+        { status: 423 },
+      )
+    }
 
     if (assignment !== undefined) {
       const leaseState = publicPylonApiAssignmentProjection(
@@ -1714,6 +1851,12 @@ const routeEvent = <Bindings extends PylonApiRouteEnv>(
       env,
       storedRegistration.pylonRef,
     )
+    const quarantine = yield* readActiveRouteQuarantine(
+      dependencies,
+      env,
+      storedRegistration.pylonRef,
+      nowIso,
+    )
 
     return noStoreJsonResponse(
       {
@@ -1731,6 +1874,7 @@ const routeEvent = <Bindings extends PylonApiRouteEnv>(
           storedRegistration,
           nowIso,
           sparkReadiness,
+          quarantine ?? null,
         ),
       },
       { status: eventResult.idempotent ? 200 : 201 },
@@ -1824,6 +1968,12 @@ const routeRegisterSparkPayoutTarget = <Bindings extends PylonApiRouteEnv>(
           existingRegistration.pylonRef,
         ),
       )
+      const replayQuarantine = yield* readActiveRouteQuarantine(
+        dependencies,
+        env,
+        existingRegistration.pylonRef,
+        replayNowIso,
+      )
 
       return noStoreJsonResponse(
         {
@@ -1833,6 +1983,7 @@ const routeRegisterSparkPayoutTarget = <Bindings extends PylonApiRouteEnv>(
             existingRegistration,
             replayNowIso,
             replaySparkReadiness,
+            replayQuarantine ?? null,
           ),
         },
         { status: 200 },
@@ -1942,6 +2093,12 @@ const routeRegisterSparkPayoutTarget = <Bindings extends PylonApiRouteEnv>(
         storedRegistration.pylonRef,
       ),
     )
+    const quarantine = yield* readActiveRouteQuarantine(
+      dependencies,
+      env,
+      storedRegistration.pylonRef,
+      nowIso,
+    )
 
     return noStoreJsonResponse(
       {
@@ -1951,6 +2108,7 @@ const routeRegisterSparkPayoutTarget = <Bindings extends PylonApiRouteEnv>(
           storedRegistration,
           nowIso,
           sparkReadiness,
+          quarantine ?? null,
         ),
       },
       { status: eventResult.idempotent ? 200 : 201 },
@@ -1971,19 +2129,25 @@ const routeList = <Bindings extends PylonApiRouteEnv>(
     const pylons = yield* Effect.forEach(
       registrations,
       registration =>
-        resolveRouteSparkPayoutTargetReadiness(
-          dependencies,
-          env,
-          registration.pylonRef,
-        ).pipe(
-          Effect.map(readiness =>
-            publicPylonApiRegistrationProjection(
-              registration,
-              nowIso,
-              readiness,
-            ),
-          ),
-        ),
+        Effect.gen(function* () {
+          const readiness = yield* resolveRouteSparkPayoutTargetReadiness(
+            dependencies,
+            env,
+            registration.pylonRef,
+          )
+          const quarantine = yield* readActiveRouteQuarantine(
+            dependencies,
+            env,
+            registration.pylonRef,
+            nowIso,
+          )
+          return publicPylonApiRegistrationProjection(
+            registration,
+            nowIso,
+            readiness,
+            quarantine ?? null,
+          )
+        }),
       { concurrency: 8 },
     )
 
@@ -2057,19 +2221,25 @@ const routeListAccountPylons = <Bindings extends PylonApiRouteEnv>(
     const pylons = yield* Effect.forEach(
       registrations,
       registration =>
-        resolveRouteSparkPayoutTargetReadiness(
-          dependencies,
-          env,
-          registration.pylonRef,
-        ).pipe(
-          Effect.map(readiness =>
-            publicPylonApiRegistrationProjection(
-              registration,
-              nowIso,
-              readiness,
-            ),
-          ),
-        ),
+        Effect.gen(function* () {
+          const readiness = yield* resolveRouteSparkPayoutTargetReadiness(
+            dependencies,
+            env,
+            registration.pylonRef,
+          )
+          const quarantine = yield* readActiveRouteQuarantine(
+            dependencies,
+            env,
+            registration.pylonRef,
+            nowIso,
+          )
+          return publicPylonApiRegistrationProjection(
+            registration,
+            nowIso,
+            readiness,
+            quarantine ?? null,
+          )
+        }),
       { concurrency: 8 },
     )
 
@@ -2199,6 +2369,12 @@ const routeRead = <Bindings extends PylonApiRouteEnv>(
       env,
       registration.pylonRef,
     )
+    const quarantine = yield* readActiveRouteQuarantine(
+      dependencies,
+      env,
+      registration.pylonRef,
+      nowIso,
+    )
 
     return noStoreJsonResponse({
       events: events.map(event => publicPylonApiEventProjection(event, nowIso)),
@@ -2206,6 +2382,7 @@ const routeRead = <Bindings extends PylonApiRouteEnv>(
         registration,
         nowIso,
         sparkReadiness,
+        quarantine ?? null,
       ),
     })
   })
@@ -2285,6 +2462,22 @@ export const makePylonApiRoutes = <Bindings extends PylonApiRouteEnv>(
         request,
         env,
         decodeURIComponent(operatorCloseoutMatch[1]!),
+      ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
+    }
+
+    const operatorQuarantineMatch =
+      /^\/api\/operator\/pylons\/([^/]+)\/quarantine$/.exec(url.pathname)
+
+    if (operatorQuarantineMatch !== null) {
+      if (request.method !== 'POST') {
+        return Effect.succeed(methodNotAllowed(['POST']))
+      }
+
+      return routeQuarantinePylon(
+        dependencies,
+        request,
+        env,
+        decodeURIComponent(operatorQuarantineMatch[1]!),
       ).pipe(Effect.catch(error => Effect.succeed(routeErrorResponse(error))))
     }
 
