@@ -106,6 +106,7 @@ export const PylonRoute = r('Pylon')
 export const DownloadRoute = r('Download')
 export const DashboardRoute = r('Dashboard')
 export const ProRoute = r('Pro')
+export const OperatorDashboardRoute = r('OperatorDashboard')
 // NOTE: the former `/pro/runs`, `/pro/runs/<id>`, `/pro/evals`, and
 // `/pro/evals/<id>` fixture subpages (issue 6184) were retired in #6215. They
 // rendered committed fixtures and are superseded by the public, shareable
@@ -212,6 +213,7 @@ export type PylonRoute = typeof PylonRoute.Type
 export type DownloadRoute = typeof DownloadRoute.Type
 export type DashboardRoute = typeof DashboardRoute.Type
 export type ProRoute = typeof ProRoute.Type
+export type OperatorDashboardRoute = typeof OperatorDashboardRoute.Type
 export type BillingRoute = typeof BillingRoute.Type
 export type UsageRoute = typeof UsageRoute.Type
 export type StatsRoute = typeof StatsRoute.Type
@@ -335,6 +337,7 @@ export const LoggedInRoute = S.Union([
   PylonCodexAssignmentStatusRoute,
   DashboardRoute,
   ProRoute,
+  OperatorDashboardRoute,
   BillingRoute,
   UsageRoute,
   StatsRoute,
@@ -410,6 +413,7 @@ export const AppRoute = S.Union([
   DownloadRoute,
   DashboardRoute,
   ProRoute,
+  OperatorDashboardRoute,
   BillingRoute,
   UsageRoute,
   StatsRoute,
@@ -707,6 +711,11 @@ export const downloadRouter = pipe(
   Route.mapTo(DownloadRoute),
 )
 export const proRouter = pipe(literal('pro'), Route.mapTo(ProRoute))
+export const operatorDashboardRouter = pipe(
+  literal('operator'),
+  slash(literal('dashboard')),
+  Route.mapTo(OperatorDashboardRoute),
+)
 export const billingRouter = pipe(literal('billing'), Route.mapTo(BillingRoute))
 export const usageRouter = pipe(literal('usage'), Route.mapTo(UsageRoute))
 export const statsRouter = pipe(literal('stats'), Route.mapTo(StatsRoute))
@@ -984,6 +993,7 @@ const orderedParserRouters = [
   forumRouter,
   blogRouter,
   proRouter,
+  operatorDashboardRouter,
   billingRouter,
   usageRouter,
   publicStatsArchiveRouter,

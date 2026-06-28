@@ -102,6 +102,7 @@ import { ArtanisMindSmokeSystem, artanisMindComplete } from './artanis-mind'
 import { makeOperatorArtanisChatRoutes } from './artanis-operator-chat-routes'
 import { loadArtanisNetworkStatsFromLedger } from './artanis-network-stats-d1'
 import { makeOperatorArtanisConsoleRoutes } from './artanis-operator-console-routes'
+import { makeOperatorArtanisDashboardRoutes } from './artanis-operator-dashboard-routes'
 import {
   makeArtanisDispatchExecution,
   readEffectiveArtanisApproval,
@@ -8535,6 +8536,13 @@ const operatorArtanisConsoleRoutes = makeOperatorArtanisConsoleRoutes({
   requireBrowserSession,
 })
 
+const operatorArtanisDashboardRoutes = makeOperatorArtanisDashboardRoutes({
+  appendRefreshedSessionCookies,
+  isOpenAgentsAdminEmail,
+  requireAdminApiToken,
+  requireBrowserSession,
+})
+
 // Authenticated, owner-scoped Artanis operator chat channel (#6363, #6385).
 // Artanis's reasoning is powered ONLY by the Khala API —
 // `makeArtanisResponderKhalaClient` dogfoods the `openagents/khala` pool and
@@ -13100,6 +13108,8 @@ const routeRequest = makeWorkerRouteRequest({
     operatorArtanisChatRoutes.routeOperatorArtanisChatRequest,
   routeOperatorArtanisConsoleRequest:
     operatorArtanisConsoleRoutes.routeOperatorArtanisConsoleRequest,
+  routeOperatorArtanisDashboardRequest:
+    operatorArtanisDashboardRoutes.routeOperatorArtanisDashboardRequest,
   routeOperatorEmailInspectionRequest:
     operatorEmailInspectionRoutes.routeOperatorEmailInspectionRequest,
   routeOperatorOrderTriageRequest:

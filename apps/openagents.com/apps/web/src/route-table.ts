@@ -837,6 +837,16 @@ export const routeTable = {
     inLoggedInUnion: true,
     render: 'loggedInOnly',
   },
+  OperatorDashboard: {
+    surface: 'spaDocument',
+    serverDocument: /^\/operator\/dashboard$/,
+    examplePaths: ['/operator/dashboard'],
+    requiresAuthBootstrap: true,
+    loggedInGate: 'admin',
+    inLoggedOutUnion: false,
+    inLoggedInUnion: true,
+    render: 'loggedInOnly',
+  },
   Billing: {
     surface: 'spaDocument',
     serverDocument: /^\/billing$/,

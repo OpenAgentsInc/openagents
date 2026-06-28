@@ -8,11 +8,13 @@ import {
 } from '../commands/api'
 import {
   FailedArtanisOperatorApprovalAction,
+  FailedLoadArtanisOperatorDashboard,
   FailedArtanisOperatorGoalAction,
   FailedLoadArtanisOperatorConsole,
   FailedLoadArtanisOperatorGoal,
   FailedSaveArtanisOperatorGoal,
   SucceededArtanisOperatorApprovalAction,
+  SucceededLoadArtanisOperatorDashboard,
   SucceededArtanisOperatorGoalAction,
   SucceededLoadArtanisOperatorConsole,
   SucceededLoadArtanisOperatorGoal,
@@ -27,6 +29,10 @@ import {
   ArtanisOperatorConsoleLoaded,
   ArtanisOperatorConsoleLoading,
   ArtanisOperatorConsoleResponse,
+  ArtanisOperatorDashboardFailed,
+  ArtanisOperatorDashboardLoaded,
+  ArtanisOperatorDashboardLoading,
+  ArtanisOperatorDashboardResponse,
   ArtanisOperatorGoalPanelModel,
   type Model,
 } from '../model'
@@ -115,6 +121,48 @@ export const LoadArtanisOperatorConsole = Command.define(
     Effect.catch(error =>
       Effect.succeed(
         FailedLoadArtanisOperatorConsole({
+          error: errorMessageFromUnknown(error),
+        }),
+      ),
+    ),
+  ),
+)
+
+export const LoadArtanisOperatorDashboard = Command.define(
+  'LoadArtanisOperatorDashboard',
+  { callerIdFilter: S.String, threadRef: S.String },
+  SucceededLoadArtanisOperatorDashboard,
+  FailedLoadArtanisOperatorDashboard,
+)(({ callerIdFilter, threadRef }) =>
+  Effect.gen(function* () {
+    const params = new URLSearchParams()
+    const callerId = callerIdFilter.trim()
+
+    if (callerId !== '') {
+      params.set('caller_id', callerId)
+    }
+
+    if (threadRef.trim() !== '') {
+      params.set('thread_ref', threadRef.trim())
+    }
+
+    const query = params.toString()
+    const response = yield* requestJson({
+      init: {
+        cache: 'no-store',
+        credentials: 'include',
+        headers: { accept: 'application/json' },
+      },
+      name: 'loggedIn.artanisOperatorDashboard.load',
+      request: `/api/operator/artanis/dashboard${query === '' ? '' : `?${query}`}`,
+      schema: ArtanisOperatorDashboardResponse,
+    })
+
+    return SucceededLoadArtanisOperatorDashboard({ response })
+  }).pipe(
+    Effect.catch(error =>
+      Effect.succeed(
+        FailedLoadArtanisOperatorDashboard({
           error: errorMessageFromUnknown(error),
         }),
       ),
@@ -325,6 +373,62 @@ export const updateArtanisConsole = (
         [],
         Option.none(),
       ],
+      RequestedLoadArtanisOperatorDashboard: ({
+        callerIdFilter,
+        threadRef,
+      }) => [
+        evo(model, {
+          artanisOperatorDashboard: () =>
+            ArtanisOperatorDashboardLoading({ callerIdFilter, threadRef }),
+        }),
+        [LoadArtanisOperatorDashboard({ callerIdFilter, threadRef })],
+        Option.none(),
+      ],
+      SucceededLoadArtanisOperatorDashboard: ({ response }) => [
+        evo(model, {
+          artanisOperatorDashboard: () =>
+            ArtanisOperatorDashboardLoaded({ response }),
+          artanisOperatorDashboardCallerIdFilter: () =>
+            response.callerIdFilter ?? model.artanisOperatorDashboardCallerIdFilter,
+        }),
+        [],
+        Option.none(),
+      ],
+      FailedLoadArtanisOperatorDashboard: ({ error }) => [
+        evo(model, {
+          artanisOperatorDashboard: () =>
+            ArtanisOperatorDashboardFailed({ error }),
+        }),
+        [],
+        Option.none(),
+      ],
+      UpdatedArtanisOperatorDashboardCallerIdFilter: ({ value }) => [
+        evo(model, {
+          artanisOperatorDashboardCallerIdFilter: () => value,
+        }),
+        [],
+        Option.none(),
+      ],
+      SubmittedArtanisOperatorDashboardFilter: () => [
+        model,
+        [
+          LoadArtanisOperatorDashboard({
+            callerIdFilter: model.artanisOperatorDashboardCallerIdFilter,
+            threadRef: '',
+          }),
+        ],
+        Option.none(),
+      ],
+      SelectedArtanisOperatorDashboardThread: ({ threadRef }) => [
+        model,
+        [
+          LoadArtanisOperatorDashboard({
+            callerIdFilter: model.artanisOperatorDashboardCallerIdFilter,
+            threadRef,
+          }),
+        ],
+        Option.none(),
+      ],
       RequestedLoadArtanisOperatorGoal: ({ scopeKey }) => [
         evo(model, {
           artanisOperatorGoalPanel: panel =>
@@ -523,7 +627,14 @@ export const artanisOperatorInitialCommands = (
   const scope = artanisScopeForModel(model)
 
   return scope === undefined
-    ? []
+    ? model.auth.isAdmin && model.route._tag === 'OperatorDashboard'
+      ? [
+          LoadArtanisOperatorDashboard({
+            callerIdFilter: model.artanisOperatorDashboardCallerIdFilter,
+            threadRef: '',
+          }),
+        ]
+      : []
     : [
         LoadArtanisOperatorConsole({}),
         LoadArtanisOperatorGoal({
