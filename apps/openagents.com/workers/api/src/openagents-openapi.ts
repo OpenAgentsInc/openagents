@@ -1734,6 +1734,9 @@ const schemaComponents = (): JsonSchema => ({
   MirrorCodeRunsPublicEnvelope: objectSummary(
     'Public-safe MirrorCode-as-a-service leaderboard (openagents.gym.mirrorcode_runs.v1, #6378): schemaVersion, scope="public", generatedAt, the live_at_read staleness contract, model="openagents/khala", the benchmark label ("Epoch Research MirrorCode", public tasks only — private set excluded), the recorded Khala runs (runId, taskId, bucket, language, status, passRate, tokensTotal, exactTokenUsageEventRefs, tokenAttributionTruth="exact_rows_as_proof", tokenAttributionProofRef, started/finished, a bounded public-safe summary, grade smoke|decision_grade, decisionGrade, demand attribution), and the LABELED illustrative paper-reference comparators (forward-dated placeholder model ids, not a head-to-head). Never carries task source, test data, prompts, responses, logs, trajectories, keys, or canary strings. Read-only projection; grants no dispatch, spend, settlement, payout, or public-claim authority.',
   ),
+  MirrorCodeTokenBurnReportPublicEnvelope: objectSummary(
+    'Public-safe automated MirrorCode token-burn reporter (openagents.gym.mirrorcode_token_burn_report.v1, #6676): schemaVersion, scope="public", generatedAt, the live_at_read staleness contract, and a report over stored public-safe MirrorCode runs. The report carries run counts, terminal/decision-grade counts, total tokens burned, exact-token-backed tokens, unproven token totals, exact token_usage_event refs, proof refs, bucket/status/grade breakdowns, top token-consuming runs, demand attribution, generalization/memory policy, and caveats. Never carries task source, test data, prompts, responses, logs, trajectories, keys, or canary strings. Read-only projection; grants no dispatch, spend, settlement, payout, or public-claim authority.',
+  ),
   MirrorCodeRunPublicEnvelope: objectSummary(
     'Public-safe single MirrorCode run (#6378): schemaVersion, scope="public", generatedAt, the live_at_read staleness contract, and the one run object, or a typed 404 when the runId is unknown. Same public-safe fields as the leaderboard run rows; never carries task contents or canary strings.',
   ),
@@ -5161,6 +5164,23 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Public-safe single MirrorCode run.',
           '#/components/schemas/MirrorCodeRunPublicEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/gym/mirrorcode/token-burn': {
+    get: operation({
+      operationId: 'getPublicMirrorCodeTokenBurnReport',
+      summary: 'Read the public MirrorCode token-burn reporter',
+      description:
+        'Returns the automated public-safe token-burn reporter for MirrorCode runs (#6676, epic #6376). It aggregates the stored Khala (openagents/khala) MirrorCode run rows into total tokens burned, exact-token-backed totals, unproven token totals, exact token_usage_event refs, bucket/status/grade breakdowns, and top token-consuming runs. Reports PUBLIC tasks only (private set excluded), carries demand attribution as internal gym_mirrorcode, and never includes task source, test data, prompts, responses, logs, trajectories, keys, or canary strings. Read-only projection; grants no dispatch, spend, settlement, payout, or public-claim authority.',
+      tags: ['Public Proof'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Public-safe MirrorCode token-burn report.',
+          '#/components/schemas/MirrorCodeTokenBurnReportPublicEnvelope',
         ),
         ...errorResponses(),
       },

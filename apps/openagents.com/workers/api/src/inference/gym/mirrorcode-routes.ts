@@ -13,6 +13,9 @@
 //     paper-reference comparators. Honestly `[]` runs until one is recorded.
 //   - `GET /api/gym/mirrorcode/runs/{id}` (no auth): one run's status/result, or
 //     a typed 404.
+//   - `GET /api/gym/mirrorcode/token-burn` (no auth): automated public-safe
+//     token-burn reporter over the stored run rows. It aggregates exact
+//     token-row refs where present and keeps unproven totals separate.
 //
 // The public GET is composed live from D1 at read, so it declares a
 // `live_at_read` staleness contract (epic #4751). No dispatch, spend,
@@ -25,9 +28,11 @@ import { liveAtReadStaleness } from '../../public-projection-staleness'
 import {
   buildMirrorCodeLaunchRun,
   buildMirrorCodeRun,
+  buildMirrorCodeTokenBurnReport,
   KHALA_MODEL_ID,
   MIRRORCODE_BENCHMARK_LABEL,
   MIRRORCODE_PAPER_REFERENCE_COMPARATORS,
+  MirrorCodeTokenBurnReportSchemaVersion,
   MirrorCodeRunError,
   MirrorCodeRunsSchemaVersion,
   type MirrorCodeRun,
@@ -153,6 +158,17 @@ const publicEnvelope = (
   comparators: MIRRORCODE_PAPER_REFERENCE_COMPARATORS,
 })
 
+const tokenBurnEnvelope = (
+  input: MirrorCodeRunsRouteInput,
+  runs: ReadonlyArray<MirrorCodeRun>,
+) => ({
+  schemaVersion: MirrorCodeTokenBurnReportSchemaVersion,
+  scope: 'public' as const,
+  generatedAt: (input.nowIso ?? currentIsoTimestamp)(),
+  staleness: mirrorCodeStaleness(),
+  report: buildMirrorCodeTokenBurnReport(runs),
+})
+
 // Owner-gated launch / ingest: rebuilds + upserts a run. Admin-bearer gated.
 const handleOperatorIngestRun = (
   request: Request,
@@ -195,6 +211,14 @@ export const handleMirrorCodeRunsApi = (
   request: Request,
   input: MirrorCodeRunsOperatorRouteInput,
 ): Effect.Effect<Response> => {
+  if (new URL(request.url).pathname === '/api/gym/mirrorcode/token-burn') {
+    if (request.method !== 'GET') {
+      return Effect.succeed(methodNotAllowed(['GET']))
+    }
+    return listRuns(input).pipe(
+      Effect.map(runs => noStoreJsonResponse(tokenBurnEnvelope(input, runs))),
+    )
+  }
   if (request.method === 'POST') {
     return Effect.gen(function* () {
       const authorized = yield* Effect.promise(() =>

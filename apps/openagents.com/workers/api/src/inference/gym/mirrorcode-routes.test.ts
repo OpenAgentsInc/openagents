@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 import { Effect } from 'effect'
 
 import {
+  buildMirrorCodeTokenBurnReport,
   buildMirrorCodeLaunchRun,
   buildMirrorCodeRun,
   MirrorCodeRunError,
@@ -130,6 +131,66 @@ describe('buildMirrorCodeRun', () => {
   })
 })
 
+describe('buildMirrorCodeTokenBurnReport', () => {
+  test('aggregates total burn while separating exact-backed tokens', () => {
+    const smokeRun = buildMirrorCodeRun({
+      ...validInput,
+      runId: 'mc-s-cal-python-smoke',
+      exactTokenUsageEventRefs: [],
+      tokens: { total: 100 },
+      grade: 'smoke',
+    })
+    const decisionRun = buildMirrorCodeRun({
+      ...validInput,
+      runId: 'mc-l-ruff-python-decision',
+      taskId: 'ruff',
+      bucket: 'L',
+      exactTokenUsageEventRefs: [
+        'token_usage_event.gym_mirrorcode.ruff.0002',
+        'token_usage_event.gym_mirrorcode.ruff.0001',
+      ],
+      tokens: { total: 300 },
+      grade: 'decision_grade',
+    })
+
+    const report = buildMirrorCodeTokenBurnReport([smokeRun, decisionRun])
+
+    expect(report.schemaVersion).toBe(
+      'openagents.gym.mirrorcode_token_burn_report.v1',
+    )
+    expect(report.runCount).toBe(2)
+    expect(report.terminalRunCount).toBe(2)
+    expect(report.decisionGradeRunCount).toBe(1)
+    expect(report.totalTokensBurned).toBe(400)
+    expect(report.exactTokenBackedTokens).toBe(300)
+    expect(report.unprovenTokenTotal).toBe(100)
+    expect(report.exactTokenUsageEventRefs).toEqual([
+      'token_usage_event.gym_mirrorcode.ruff.0001',
+      'token_usage_event.gym_mirrorcode.ruff.0002',
+    ])
+    expect(report.byBucket.find(bucket => bucket.bucket === 'S')).toMatchObject({
+      runCount: 1,
+      totalTokensBurned: 100,
+      exactTokenBackedTokens: 0,
+    })
+    expect(report.byBucket.find(bucket => bucket.bucket === 'L')).toMatchObject({
+      runCount: 1,
+      totalTokensBurned: 300,
+      exactTokenBackedTokens: 300,
+    })
+    expect(report.byGrade.find(grade => grade.grade === 'smoke')).toMatchObject({
+      runCount: 1,
+      totalTokensBurned: 100,
+      exactTokenBackedTokens: 0,
+    })
+    expect(report.topRuns[0]?.runId).toBe('mc-l-ruff-python-decision')
+    expect(report.demandSource).toBe('gym_mirrorcode')
+    expect(report.caveatRefs).toContain(
+      'caveat.public.gym.mirrorcode.exact_token_rows_required_for_proof',
+    )
+  })
+})
+
 describe('handleMirrorCodeRunsApi GET', () => {
   test('public list returns runs + labeled illustrative comparators', async () => {
     const built = buildMirrorCodeRun(validInput)
@@ -163,6 +224,61 @@ describe('handleMirrorCodeRunsApi GET', () => {
   })
 })
 
+describe('handleMirrorCodeTokenBurnReportApi', () => {
+  test('public GET returns an automated live token-burn report', async () => {
+    const built = buildMirrorCodeRun(validInput)
+    const response = await run(
+      handleMirrorCodeRunsApi(
+        new Request('https://openagents.com/api/gym/mirrorcode/token-burn'),
+        {
+          requireAdminApiToken: async () => false,
+          listRuns: () => [built],
+          nowIso: () => '2026-06-28T00:00:00.000Z',
+        },
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      schemaVersion: string
+      scope: string
+      generatedAt: string
+      staleness: { composition: string }
+      report: {
+        runCount: number
+        totalTokensBurned: number
+        exactTokenBackedTokens: number
+        exactTokenUsageEventRefs: ReadonlyArray<string>
+      }
+    }
+    expect(body.schemaVersion).toBe(
+      'openagents.gym.mirrorcode_token_burn_report.v1',
+    )
+    expect(body.scope).toBe('public')
+    expect(body.generatedAt).toBe('2026-06-28T00:00:00.000Z')
+    expect(body.staleness.composition).toBe('live_at_read')
+    expect(body.report.runCount).toBe(1)
+    expect(body.report.totalTokensBurned).toBe(12_345_678)
+    expect(body.report.exactTokenBackedTokens).toBe(12_345_678)
+    expect(body.report.exactTokenUsageEventRefs).toEqual([
+      'token_usage_event.gym_mirrorcode.cal.0001',
+    ])
+  })
+
+  test('non-GET is rejected', async () => {
+    const response = await run(
+      handleMirrorCodeRunsApi(
+        new Request('https://openagents.com/api/gym/mirrorcode/token-burn', {
+          method: 'POST',
+        }),
+        { requireAdminApiToken: async () => false, listRuns: () => [] },
+      ),
+    )
+
+    expect(response.status).toBe(405)
+  })
+})
+
 describe('handleMirrorCodeRunsApi POST', () => {
   const postRequest = (body: unknown) =>
     new Request('https://openagents.com/api/gym/mirrorcode/runs', {
@@ -178,11 +294,10 @@ describe('handleMirrorCodeRunsApi POST', () => {
         requireAdminApiToken: async () => false,
         store: {
           listRuns: () => Effect.succeed([]),
-          getRun: () => Effect.succeed(undefined),
-          upsertRun: () => {
+          getRun: () => Effect.sync(() => undefined),
+          upsertRun: () => Effect.sync(() => {
             stored += 1
-            return Effect.void
-          },
+          }),
         },
       }),
     )
@@ -197,11 +312,10 @@ describe('handleMirrorCodeRunsApi POST', () => {
         requireAdminApiToken: async () => true,
         store: {
           listRuns: () => Effect.succeed([]),
-          getRun: () => Effect.succeed(undefined),
-          upsertRun: () => {
+          getRun: () => Effect.sync(() => undefined),
+          upsertRun: () => Effect.sync(() => {
             stored += 1
-            return Effect.void
-          },
+          }),
         },
       }),
     )
@@ -227,11 +341,10 @@ describe('handleMirrorCodeRunsApi POST', () => {
           nowIso: () => '2026-06-27T02:03:04.000Z',
           store: {
             listRuns: () => Effect.succeed([]),
-            getRun: () => Effect.succeed(undefined),
-            upsertRun: run => {
+            getRun: () => Effect.sync(() => undefined),
+            upsertRun: run => Effect.sync(() => {
               storedRunId = run.runId
-              return Effect.void
-            },
+            }),
           },
         },
       ),
@@ -257,11 +370,10 @@ describe('handleMirrorCodeRunsApi POST', () => {
           requireAdminApiToken: async () => true,
           store: {
             listRuns: () => Effect.succeed([]),
-            getRun: () => Effect.succeed(undefined),
-            upsertRun: () => {
+            getRun: () => Effect.sync(() => undefined),
+            upsertRun: () => Effect.sync(() => {
               stored += 1
-              return Effect.void
-            },
+            }),
           },
         },
       ),

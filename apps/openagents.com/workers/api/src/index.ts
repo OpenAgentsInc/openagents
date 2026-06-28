@@ -10894,6 +10894,18 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       }),
   },
   {
+    // MirrorCode automated token-burn reporter (#6676). Public read-only live
+    // aggregate over stored public-safe run rows; exact token refs are surfaced
+    // where present and unproven token totals stay separated.
+    path: '/api/gym/mirrorcode/token-burn',
+    handler: (request, env) =>
+      handleMirrorCodeRunsApi(request, {
+        requireAdminApiToken: adminRequest =>
+          requireAdminApiToken(adminRequest, env),
+        store: makeD1MirrorCodeRunStore(openAgentsDatabase(env)),
+      }),
+  },
+  {
     // Operator-only Harbor full trace archive (#6253). Stores raw Harbor job
     // tarballs in private R2 with D1 metadata. Unlike `/api/traces`, this is
     // NOT a public-safe ATIF projection and never appears on public `/gym`.
