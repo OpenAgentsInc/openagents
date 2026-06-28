@@ -1,4 +1,5 @@
 export * from './agentcl'
+export * from './agentcl-eval'
 export * from './experiment'
 export * from './flywheel'
 export * from './harbor-dispatch'

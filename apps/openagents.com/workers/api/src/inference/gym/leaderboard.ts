@@ -9,6 +9,10 @@ import {
 } from '../../pylon-gepa-metric-call-assignments'
 import { publicRefSegment, uniqueRefs } from '../../public-ref-format'
 import type { CompiledGymExperiment } from './experiment'
+import {
+  evaluateContinualLearningClaim,
+  type ContinualLearningClaim,
+} from './agentcl-eval'
 import { summarizeGymCostPerAcceptedOutcome } from './flywheel'
 
 export const GymLeaderboardProjectionSchemaVersion =
@@ -26,6 +30,7 @@ export type GymLeaderboardReportInput = Readonly<{
   reportRef: string
   receiptRef: string
   candidateRef: string
+  continualLearningClaim?: ContinualLearningClaim
 }>
 
 export type GymLeaderboardRow = Readonly<{
@@ -50,6 +55,7 @@ export type GymLeaderboardExcludedReport = Readonly<{
     | 'not_decision_grade'
     | 'no_accepted_outcomes'
     | 'public_safety_violation'
+    | 'continual_learning_claim_evidence_missing'
 }>
 
 export type GymLeaderboardProjection = Readonly<{
@@ -103,6 +109,7 @@ const LEADERBOARD_CAVEATS = [
   'caveat.public.gym.leaderboard.decision_grade_only',
   'caveat.public.gym.leaderboard.public_safe_fields_only',
   'caveat.public.gym.leaderboard.no_fixture_or_synthetic_ranking',
+  'caveat.public.gym.leaderboard.continual_learning_claims_require_pg_sg_gg',
 ] as const
 
 const MODULE_SPLIT_CAVEATS = [
@@ -159,6 +166,18 @@ const leaderboardCandidateRow = (
     return {
       reportRef: input.reportRef,
       reason: 'not_decision_grade',
+    }
+  }
+
+  if (input.continualLearningClaim !== undefined) {
+    const claimDiscipline = evaluateContinualLearningClaim(
+      input.continualLearningClaim,
+    )
+    if (!claimDiscipline.ok) {
+      return {
+        reportRef: input.reportRef,
+        reason: 'continual_learning_claim_evidence_missing',
+      }
     }
   }
 

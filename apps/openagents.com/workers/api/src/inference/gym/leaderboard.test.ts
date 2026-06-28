@@ -15,6 +15,9 @@ import {
   type GymExperiment,
 } from './experiment'
 import {
+  AgentClEvalSchemaVersion,
+} from './agentcl-eval'
+import {
   buildGymLeaderboardProjection,
   GymLeaderboardUnsafe,
   modelGymModuleAuthorSplit,
@@ -151,6 +154,110 @@ describe('Gym public leaderboard projection', () => {
         },
       ]),
     ).toThrow(GymLeaderboardUnsafe)
+  })
+
+  test('excludes decision-grade reports that make continual-learning claims without separate PG SG GG evidence', () => {
+    const report = decisionGradeReport(400)
+
+    const projection = buildGymLeaderboardProjection([
+      {
+        ...report,
+        reportRef: 'report.gym.leaderboard.memory_claim',
+        receiptRef: 'receipt.gym.leaderboard.memory_claim',
+        candidateRef: 'candidate.gym.leaderboard.memory_claim',
+        continualLearningClaim: {
+          claimRef: 'claim.gym.khala.continually_learns',
+          copy: 'Khala memory improved accuracy by 12%.',
+          legacySingleMetricBps: 1_200,
+          evidenceRefs: ['evidence.gym.memory_improved_accuracy'],
+        },
+      },
+    ])
+
+    expect(projection.rowCount).toBe(0)
+    expect(projection.excludedReports).toEqual([
+      {
+        reportRef: 'report.gym.leaderboard.memory_claim',
+        reason: 'continual_learning_claim_evidence_missing',
+      },
+    ])
+  })
+
+  test('allows decision-grade continual-learning claims backed by AgentCL eval evidence', () => {
+    const report = decisionGradeReport(400)
+
+    const projection = buildGymLeaderboardProjection([
+      {
+        ...report,
+        reportRef: 'report.gym.leaderboard.agentcl_claim',
+        receiptRef: 'receipt.gym.leaderboard.agentcl_claim',
+        candidateRef: 'candidate.gym.leaderboard.agentcl_claim',
+        continualLearningClaim: {
+          claimRef: 'claim.gym.khala.continually_learns',
+          copy: 'Khala memory reports Plasticity, Stability, and Generalization separately.',
+          evidenceRefs: ['evidence.gym.agentcl.claim'],
+          agentClEval: {
+            schemaVersion: AgentClEvalSchemaVersion,
+            evalRef: 'eval.gym.agentcl.leaderboard',
+            streamRef: 'stream.gym.agentcl.leaderboard',
+            candidateRef: 'candidate.gym.agentcl.leaderboard',
+            memorySystemRef: 'memory_system.gym.agentcl.repo_memory',
+            baseline: {
+              phase: 'baseline',
+              scoreBps: 4_000,
+              taskCount: 20,
+              reportRef: 'report.gym.agentcl.baseline',
+              receiptRef: 'receipt.gym.agentcl.baseline',
+            },
+            firstPass: {
+              phase: 'first_pass',
+              scoreBps: 5_000,
+              taskCount: 20,
+              reportRef: 'report.gym.agentcl.first_pass',
+              receiptRef: 'receipt.gym.agentcl.first_pass',
+            },
+            frozenSecondPass: {
+              phase: 'frozen_second_pass',
+              scoreBps: 4_900,
+              taskCount: 20,
+              reportRef: 'report.gym.agentcl.frozen_second_pass',
+              receiptRef: 'receipt.gym.agentcl.frozen_second_pass',
+            },
+            heldOut: {
+              phase: 'held_out',
+              scoreBps: 4_100,
+              taskCount: 20,
+              reportRef: 'report.gym.agentcl.held_out',
+              receiptRef: 'receipt.gym.agentcl.held_out',
+            },
+            gains: {
+              plasticity: {
+                kind: 'plasticity',
+                gainBps: 1_000,
+                evidenceRefs: ['evidence.gym.agentcl.pg'],
+              },
+              stability: {
+                kind: 'stability',
+                gainBps: -100,
+                evidenceRefs: ['evidence.gym.agentcl.sg'],
+              },
+              generalization: {
+                kind: 'generalization',
+                gainBps: 100,
+                evidenceRefs: ['evidence.gym.agentcl.gg'],
+              },
+            },
+            caveatRefs: [],
+          },
+        },
+      },
+    ])
+
+    expect(projection.rowCount).toBe(1)
+    expect(projection.excludedReports).toEqual([])
+    expect(projection.caveatRefs).toContain(
+      'caveat.public.gym.leaderboard.continual_learning_claims_require_pg_sg_gg',
+    )
   })
 })
 
