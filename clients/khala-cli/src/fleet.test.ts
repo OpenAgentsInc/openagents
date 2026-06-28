@@ -9,8 +9,10 @@ import {
   codexConfigWithFileCredentialStore,
   connectFleetAccount,
   decodeCodexIdTokenEmail,
+  fetchOperatorFleetStatus,
   listFleetAccounts,
   nextCodexAccountRef,
+  normalizeOperatorFleetStatus,
   parseCodexAccounts,
   pylonConfigPath,
   resolvePylonHome,
@@ -29,6 +31,46 @@ describe("fleet ref assignment", () => {
     expect(nextCodexAccountRef(["codex"])).toBe("codex-2")
     expect(nextCodexAccountRef(["codex", "codex-2"])).toBe("codex-3")
     expect(nextCodexAccountRef(["codex", "codex-3"])).toBe("codex-2")
+  })
+})
+
+describe("operator fleet live status", () => {
+  test("normalizes the five operator dashboard blocks", () => {
+    const status = normalizeOperatorFleetStatus({
+      generatedAt: "2026-06-27T12:00:00.000Z",
+      blocks: {
+        pace: { status: "burning", burnRate: "42/day", paceToFloor: "on-track" },
+        fleet: { summary: "2 ready / 1 busy", concurrency: 3, inFlightIssues: ["#6429"] },
+        watchdog: { state: "clear", leases: 0 },
+        glm: { readiness: "ready", readyReplicas: 4, totalReplicas: 4 },
+        brain: { status: "active", recentDecisions: [{ ref: "decision.public.ok" }] },
+      },
+    })
+
+    expect(status.generatedAt).toBe("2026-06-27T12:00:00.000Z")
+    expect(status.blocks.map(block => block.title)).toEqual(["Pace", "Fleet", "Watchdog", "GLM", "Artanis"])
+    expect(status.blocks[0]?.metrics).toContainEqual({ label: "Burn Rate", value: "42/day" })
+    expect(status.blocks[1]?.items).toEqual(["#6429"])
+    expect(status.blocks[4]?.items).toEqual(["decision.public.ok"])
+  })
+
+  test("fetches the owner operator fleet endpoint with a bearer token", async () => {
+    const requests: Array<{ authorization: string | null; url: string }> = []
+    const status = await fetchOperatorFleetStatus({
+      baseUrl: "https://openagents.example/",
+      token: "oa_agent_owner_test",
+      fetch: async (url, init) => {
+        const request = new Request(url, init)
+        requests.push({ authorization: request.headers.get("authorization"), url: request.url })
+        return Response.json({ blocks: { glm: { status: "ready" } } })
+      },
+    })
+
+    expect(requests).toEqual([{
+      authorization: "Bearer oa_agent_owner_test",
+      url: "https://openagents.example/api/operator/fleet/status",
+    }])
+    expect(status.blocks.find(block => block.title === "GLM")?.status).toBe("ready")
   })
 })
 

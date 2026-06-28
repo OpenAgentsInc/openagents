@@ -3,7 +3,8 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 
-import { formatKhalaSpawnCapabilityAnswer, runKhalaCli } from "./cli.js"
+import { formatKhalaSpawnCapabilityAnswer, formatLiveFleetDashboard, runKhalaCli } from "./cli.js"
+import { normalizeOperatorFleetStatus } from "./fleet.js"
 
 describe("Khala CLI spawn capability answer", () => {
   test("answers the original subprocess capability question with the reviewed CLI path", () => {
@@ -184,5 +185,31 @@ describe("Khala CLI info diagnostics", () => {
     const parsed = JSON.parse(stdout)
     expect(parsed.runRef).toBe("spawn.public.khala_coding.stored_pylon_token_test")
     expect(parsed.state).toBe("completed")
+  })
+})
+
+describe("Khala fleet live dashboard", () => {
+  test("renders the operator five-block dashboard without raw JSON noise", () => {
+    const rendered = formatLiveFleetDashboard(normalizeOperatorFleetStatus({
+      generatedAt: "2026-06-27T12:00:00.000Z",
+      blocks: {
+        pace: { status: "on-track", burnRate: "42/day", paceToFloor: "green" },
+        fleet: { summary: "codex: 2 ready, 1 busy", concurrency: 3, inFlightIssues: ["#6429"] },
+        watchdog: { status: "clear", leases: 1, alerts: ["no stale leases"] },
+        glm: { readiness: "ready", readyReplicas: 4, totalReplicas: 4 },
+        artanis: { status: "active", goals: ["burn down public issue backlog"] },
+      },
+    }), new Date("2026-06-27T12:00:01.000Z"))
+
+    expect(rendered).toContain("Khala fleet live")
+    expect(rendered).toContain("Pace")
+    expect(rendered).toContain("Fleet")
+    expect(rendered).toContain("Watchdog")
+    expect(rendered).toContain("GLM")
+    expect(rendered).toContain("Artanis")
+    expect(rendered).toContain("Burn Rate")
+    expect(rendered).toContain("#6429")
+    expect(rendered).not.toContain("oa_agent")
+    expect(rendered).not.toContain("{\"")
   })
 })

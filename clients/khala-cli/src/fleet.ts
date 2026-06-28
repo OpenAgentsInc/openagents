@@ -39,6 +39,25 @@ export type KhalaFleetStatus = {
   readonly readyCount: number
 }
 
+export type KhalaOperatorFleetMetric = {
+  readonly label: string
+  readonly value: string
+}
+
+export type KhalaOperatorFleetBlock = {
+  readonly title: string
+  readonly status: string | null
+  readonly summary: string | null
+  readonly metrics: ReadonlyArray<KhalaOperatorFleetMetric>
+  readonly items: ReadonlyArray<string>
+}
+
+export type KhalaOperatorFleetStatus = {
+  readonly generatedAt: string | null
+  readonly blocks: ReadonlyArray<KhalaOperatorFleetBlock>
+  readonly raw: unknown
+}
+
 export type KhalaFleetConnectResult = {
   readonly accountRef: string
   readonly home: string
@@ -54,6 +73,15 @@ export type KhalaCodexDeviceLoginRunner = (input: {
 }) => Promise<{ readonly exitCode: number }>
 
 type ConfigRecord = Record<string, unknown>
+
+const OPERATOR_FLEET_STATUS_PATH = "/api/operator/fleet/status"
+const OPERATOR_FLEET_BLOCKS = [
+  { key: "pace", title: "Pace" },
+  { key: "fleet", title: "Fleet" },
+  { key: "watchdog", title: "Watchdog" },
+  { key: "glm", title: "GLM" },
+  { key: "artanis", title: "Artanis" },
+] as const
 
 // Raised when the `codex` CLI is not installed. The CLI catches this and prints
 // a friendly install hint instead of a raw spawn error.
@@ -113,6 +141,115 @@ function asRecord(value: unknown): ConfigRecord | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as ConfigRecord)
     : null
+}
+
+function stringValue(value: unknown): string | null {
+  if (typeof value === "string" && value.trim().length > 0) return value.trim()
+  if (typeof value === "number" || typeof value === "boolean") return String(value)
+  return null
+}
+
+function humanizeKey(value: string): string {
+  return value
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^./, char => char.toUpperCase())
+}
+
+function metricValues(record: ConfigRecord, skip: ReadonlySet<string>): ReadonlyArray<KhalaOperatorFleetMetric> {
+  const metrics: KhalaOperatorFleetMetric[] = []
+  for (const [key, value] of Object.entries(record)) {
+    if (skip.has(key)) continue
+    const rendered = stringValue(value)
+    if (rendered === null) continue
+    metrics.push({ label: humanizeKey(key), value: rendered })
+    if (metrics.length >= 8) break
+  }
+  return metrics
+}
+
+function stringList(value: unknown): ReadonlyArray<string> {
+  if (!Array.isArray(value)) return []
+  const items: string[] = []
+  for (const item of value) {
+    if (typeof item === "string") {
+      if (item.trim().length > 0) items.push(item.trim())
+    } else {
+      const record = asRecord(item)
+      const text = record === null
+        ? null
+        : stringValue(record.title) ?? stringValue(record.summary) ?? stringValue(record.ref) ?? stringValue(record.issue)
+      if (text !== null) items.push(text)
+    }
+    if (items.length >= 5) break
+  }
+  return items
+}
+
+function blockFromUnknown(title: string, value: unknown): KhalaOperatorFleetBlock {
+  const record = asRecord(value)
+  if (record === null) {
+    return {
+      title,
+      status: stringValue(value),
+      summary: null,
+      metrics: [],
+      items: [],
+    }
+  }
+  const status = stringValue(record.status) ?? stringValue(record.state) ?? stringValue(record.readiness)
+  const summary = stringValue(record.summary) ?? stringValue(record.message) ?? stringValue(record.description)
+  const itemSource = record.items ?? record.alerts ?? record.issues ?? record.inFlightIssues ?? record.recentDecisions ?? record.goals
+  return {
+    title: stringValue(record.title) ?? title,
+    status,
+    summary,
+    metrics: metricValues(record, new Set(["title", "status", "state", "readiness", "summary", "message", "description", "items", "alerts", "issues", "inFlightIssues", "recentDecisions", "goals"])),
+    items: stringList(itemSource),
+  }
+}
+
+export function normalizeOperatorFleetStatus(payload: unknown): KhalaOperatorFleetStatus {
+  const root = asRecord(payload)
+  const source = asRecord(root?.blocks) ?? root ?? {}
+  const generatedAt = stringValue(root?.generatedAt) ?? stringValue(root?.updatedAt) ?? stringValue(root?.observedAt)
+  const blocks = OPERATOR_FLEET_BLOCKS.map(({ key, title }) => {
+    const value = source[key] ?? (key === "artanis" ? source.brain : undefined)
+    return blockFromUnknown(title, value)
+  })
+  return { generatedAt, blocks, raw: payload }
+}
+
+export async function fetchOperatorFleetStatus(options: {
+  readonly baseUrl: string
+  readonly token: string
+  readonly fetch?: typeof fetch | undefined
+}): Promise<KhalaOperatorFleetStatus> {
+  const token = options.token.trim()
+  if (token.length === 0) {
+    throw new Error("khala fleet status --live requires an owner token. Run `khala login` or pass --token.")
+  }
+  const base = options.baseUrl.replace(/\/+$/, "")
+  const response = await (options.fetch ?? fetch)(`${base}${OPERATOR_FLEET_STATUS_PATH}`, {
+    headers: {
+      accept: "application/json",
+      authorization: `Bearer ${token}`,
+    },
+    method: "GET",
+  })
+  if (!response.ok) {
+    let reason = `HTTP ${response.status}`
+    try {
+      const body = await response.json() as Record<string, unknown>
+      reason = stringValue(body.reason) ?? stringValue(body.error) ?? stringValue(body.message) ?? reason
+    } catch {
+      // Keep the error public-safe and bounded.
+    }
+    throw new Error(`Could not fetch operator fleet status: ${reason}`)
+  }
+  return normalizeOperatorFleetStatus(await response.json())
 }
 
 // Read the codex accounts already registered in a Pylon config object.

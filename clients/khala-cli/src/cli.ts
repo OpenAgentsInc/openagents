@@ -14,8 +14,10 @@ import {
 import {
   CodexCliMissingError,
   connectFleetAccount,
+  fetchOperatorFleetStatus,
   listFleetAccounts,
   type KhalaFleetConnectResult,
+  type KhalaOperatorFleetStatus,
   type KhalaFleetStatus,
 } from "./fleet.js"
 import { appendPromptHistory, readPromptFromTerminal } from "./input.js"
@@ -65,7 +67,7 @@ type ParsedCommand =
   | { readonly kind: "changelog" }
   | { readonly kind: "feedback"; readonly text: string | undefined }
   | { readonly kind: "fleetConnect"; readonly accountRef: string | undefined; readonly force: boolean }
-  | { readonly kind: "fleetStatus" }
+  | { readonly kind: "fleetStatus"; readonly live: boolean }
   | { readonly kind: "help" }
   | { readonly kind: "info" }
   | {
@@ -183,6 +185,20 @@ export async function runKhalaCli(argv: ReadonlyArray<string>, env: Record<strin
       }
     }
     if (args.command.kind === "fleetStatus") {
+      if (args.command.live) {
+        const token = await ensureStoredAgentToken({
+          baseUrl: args.baseUrl,
+          env,
+          explicitToken: args.token,
+        })
+        if (args.json) {
+          const status = await fetchOperatorFleetStatus({ baseUrl: args.baseUrl, token })
+          process.stdout.write(`${JSON.stringify(status)}\n`)
+          return 0
+        }
+        await runLiveFleetDashboard({ baseUrl: args.baseUrl, env, token })
+        return 0
+      }
       const status = await listFleetAccounts({ env })
       process.stdout.write(args.json ? `${JSON.stringify(status)}\n` : `${formatFleetStatus(status)}\n`)
       return 0
@@ -354,6 +370,7 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
   let spawnWorkflow: KhalaSpawnWorkflow = "codex_agent_task"
   let fleetAccount: string | undefined
   let fleetForce = false
+  let fleetLive = false
   const positional: Array<string> = []
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -369,6 +386,7 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
     else if (arg === "--json" || arg === "--no-stream") json = true
     else if (arg === "--models") models = true
     else if (arg === "--mint-free-key") mintFreeKey = true
+    else if (arg === "--live") fleetLive = true
     else if (arg === "--fixture") spawnFixture = true
     else if (arg === "--count") {
       spawnCount = parsePositiveInteger(requireValue(argv, index, arg), arg)
@@ -472,7 +490,7 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
   } else if (maybeCommand === "fleet") {
     const sub = positional[1]?.trim().toLowerCase()
     if (sub === "status" || sub === "list" || sub === "ls") {
-      command = { kind: "fleetStatus" }
+      command = { kind: "fleetStatus", live: fleetLive }
     } else if (sub === undefined || sub === "connect" || sub === "add" || sub === "link") {
       // `khala fleet`, `khala fleet connect`, `khala fleet add` all connect.
       // Optional positional ref: `khala fleet connect codex-2` (or --account).
@@ -1648,6 +1666,62 @@ function formatFleetStatus(status: KhalaFleetStatus): string {
   ].join("\n"))
 }
 
+const liveDashboardIntervalMs = 5_000
+
+async function runLiveFleetDashboard(input: {
+  readonly baseUrl: string
+  readonly env: Record<string, string | undefined>
+  readonly token: string
+}): Promise<void> {
+  let stopped = false
+  const stop = (): void => {
+    stopped = true
+  }
+  process.once("SIGINT", stop)
+  try {
+    do {
+      const fetchedAt = new Date()
+      try {
+        const status = await fetchOperatorFleetStatus({ baseUrl: input.baseUrl, token: input.token })
+        process.stdout.write(`\x1b[2J\x1b[H${formatLiveFleetDashboard(status, fetchedAt)}\n`)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        process.stdout.write(`\x1b[2J\x1b[H${terminalStyle.assistant("Khala fleet live")}\n${terminalStyle.meta(message)}\n`)
+      }
+      if (input.env.KHALA_FLEET_LIVE_ONCE === "1" || stopped) break
+      await new Promise(resolve => setTimeout(resolve, liveDashboardIntervalMs))
+    } while (!stopped)
+  } finally {
+    process.off("SIGINT", stop)
+  }
+}
+
+export function formatLiveFleetDashboard(status: KhalaOperatorFleetStatus, fetchedAt: Date = new Date()): string {
+  const generated = status.generatedAt ?? "not reported"
+  const lines = [
+    terminalStyle.assistant("Khala fleet live"),
+    terminalStyle.meta(`generated: ${generated}  fetched: ${fetchedAt.toISOString()}  refresh: 5s`),
+    "",
+  ]
+  for (const block of status.blocks) {
+    const statusText = block.status === null ? "" : ` ${block.status}`
+    lines.push(`${terminalStyle.heading(block.title)}${terminalStyle.meta(statusText)}`)
+    if (block.summary !== null) lines.push(`  ${block.summary}`)
+    for (const metric of block.metrics) {
+      lines.push(`  ${metric.label.padEnd(20)} ${metric.value}`)
+    }
+    for (const item of block.items) {
+      lines.push(`  - ${item}`)
+    }
+    if (block.summary === null && block.metrics.length === 0 && block.items.length === 0) {
+      lines.push("  awaiting live status")
+    }
+    lines.push("")
+  }
+  lines.push(terminalStyle.meta("Ctrl-C to stop."))
+  return lines.join("\n")
+}
+
 function formatCodexCredentialSource(source: Extract<KhalaCodexStatus, { readonly ready: true }>["credentialSource"]): string {
   if (source === "khala_codex_home") return "Khala Codex account"
   if (source === "codex_home_env") return "CODEX_HOME"
@@ -1852,6 +1926,7 @@ Usage:
   khala fleet connect
   khala fleet connect --account codex-2
   khala fleet status
+  khala fleet status --live
   khala auth codex
   khala codex status
   khala codex "read README.md"
@@ -1916,6 +1991,7 @@ Flags:
   --timeout <seconds>  Per-worker timeout for khala spawn
   --account <ref>      Codex account ref for khala fleet connect (auto-assigned if omitted)
   --force              Re-run device login for khala fleet connect even if already linked
+  --live               Poll the owner operator fleet dashboard for fleet status
   --help, -h           Show this help
 `
 }
