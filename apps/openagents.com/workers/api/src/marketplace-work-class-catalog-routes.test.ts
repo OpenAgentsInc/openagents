@@ -2,8 +2,8 @@ import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import {
+  MARKETPLACE_DATA_LABELING_WORK_CLASS,
   MARKETPLACE_LIVE_WORK_CLASS,
-  MARKETPLACE_PLUGIN_BEYOND_CODE_TASK_BLOCKER_REF,
   MARKETPLACE_WORK_CLASS_CATALOG_PROMISE,
   MARKETPLACE_WORK_CLASS_CATALOG_SCHEMA,
 } from './marketplace-work-class-catalog'
@@ -26,7 +26,7 @@ describe('marketplace work-class catalog route', () => {
     expect(response.status).toBe(405)
   })
 
-  test('lists the catalog honestly: yellow, inert, plugin blocker uncleared', async () => {
+  test('lists the catalog honestly: yellow with a live non-code work class', async () => {
     const response = await Effect.runPromise(
       handleMarketplaceWorkClassCatalogApi(request()),
     )
@@ -36,6 +36,7 @@ describe('marketplace work-class catalog route', () => {
       promiseState: string
       inert: boolean
       liveWorkClass: string
+      liveWorkClasses: ReadonlyArray<string>
       pluginMarketplaceBeyondCodeTaskLive: boolean
       unclearedBlockerRefs: ReadonlyArray<string>
       workClasses: ReadonlyArray<{ workClass: string; status: string }>
@@ -43,16 +44,16 @@ describe('marketplace work-class catalog route', () => {
     expect(body.schema).toBe(MARKETPLACE_WORK_CLASS_CATALOG_SCHEMA)
     expect(body.promiseIds).toEqual([MARKETPLACE_WORK_CLASS_CATALOG_PROMISE])
     expect(body.promiseState).toBe('yellow')
-    expect(body.inert).toBe(true)
+    expect(body.inert).toBe(false)
     expect(body.liveWorkClass).toBe(MARKETPLACE_LIVE_WORK_CLASS)
-    expect(body.pluginMarketplaceBeyondCodeTaskLive).toBe(false)
-    expect(body.unclearedBlockerRefs).toContain(
-      MARKETPLACE_PLUGIN_BEYOND_CODE_TASK_BLOCKER_REF,
-    )
+    expect(body.liveWorkClasses).toContain(MARKETPLACE_DATA_LABELING_WORK_CLASS)
+    expect(body.pluginMarketplaceBeyondCodeTaskLive).toBe(true)
+    expect(body.unclearedBlockerRefs).toEqual([])
 
     const live = body.workClasses.filter(entry => entry.status === 'live')
     expect(live.map(entry => entry.workClass)).toEqual([
       MARKETPLACE_LIVE_WORK_CLASS,
+      MARKETPLACE_DATA_LABELING_WORK_CLASS,
     ])
   })
 
@@ -65,8 +66,8 @@ describe('marketplace work-class catalog route', () => {
       pluginMarketplaceBeyondCodeTaskLive: boolean
     }
     expect(body.workClass?.workClass).toBe('data_labeling')
-    expect(body.workClass?.status).toBe('inert_scaffold')
-    expect(body.pluginMarketplaceBeyondCodeTaskLive).toBe(false)
+    expect(body.workClass?.status).toBe('live')
+    expect(body.pluginMarketplaceBeyondCodeTaskLive).toBe(true)
   })
 
   test('?workClass= returns null workClass for an unknown id', async () => {

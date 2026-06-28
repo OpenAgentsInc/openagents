@@ -25,11 +25,8 @@
 // false` => `disabled`, no market write); only when armed AND the gate is ready
 // AND the customer opted in does it surface the market work-request input the
 // requester would list. The promise STAYS yellow: a self-serve plan + an inert
-// dispatch seam is not a broad live marketplace. Crucially, this clears ONLY the
-// self-serve blocker — the work class is still `code_task`, so
-// blocker.product_promises.plugin_marketplace_beyond_code_task_missing remains
-// uncleared and is recorded on every plan. A green flip stays receipt-first and
-// owner-signed per proof.claim_upgrade_receipts.v1.
+// dispatch seam is not a broad live marketplace. A green flip stays
+// receipt-first and owner-signed per proof.claim_upgrade_receipts.v1.
 
 import { Effect, Schema as S } from 'effect'
 
@@ -39,6 +36,12 @@ import {
   evaluateLaneCFanoutForWorkOrder,
   laneCFanoutObjectiveRef,
 } from './lane-c-fanout-bridge'
+import {
+  MARKETPLACE_LIVE_WORK_CLASS,
+  MarketplaceWorkClassId,
+  getMarketplaceWorkClass,
+  isMarketplaceWorkClassLive,
+} from './marketplace-work-class-catalog'
 import {
   type PublicProjectionStalenessContract,
   liveAtReadStaleness,
@@ -53,9 +56,8 @@ export const SELF_SERVE_FANOUT_SCHEMA =
 export const SELF_SERVE_FANOUT_PROMISE =
   'autopilot.control_center_fanout_marketplace.v1' as const
 
-// The ONLY work class this self-serve fanout supports today. The plugin
-// marketplace beyond this class is NOT live, so the plugin blocker stays.
-export const SELF_SERVE_FANOUT_WORK_CLASS = 'code_task' as const
+// Default work class for backward-compatible fanout requests.
+export const SELF_SERVE_FANOUT_WORK_CLASS = MARKETPLACE_LIVE_WORK_CLASS
 
 // The default public capability the market job requires (a local coding agent).
 export const SELF_SERVE_FANOUT_CAPABILITY_REF =
@@ -71,8 +73,7 @@ export const SELF_SERVE_FANOUT_VERIFICATION_COMMAND_REF =
 export const SELF_SERVE_FANOUT_CLEARED_BLOCKER_REF =
   'blocker.product_promises.self_serve_fanout_missing' as const
 
-// The blocker this capability documents and does NOT clear: the work class is
-// still code_task; a plugin marketplace beyond it is not live.
+// Historical blocker ref retained for old receipts and public projections.
 export const SELF_SERVE_FANOUT_PLUGIN_MARKETPLACE_BLOCKER_REF =
   'blocker.product_promises.plugin_marketplace_beyond_code_task_missing' as const
 
@@ -94,6 +95,8 @@ export const SelfServeFanoutInput = S.Struct({
   budgetCapSats: S.Number,
   /** Short public-safe title for the market listing. */
   title: S.String,
+  /** Typed marketplace work class. Defaults to code_task when omitted. */
+  workClass: S.optionalKey(MarketplaceWorkClassId),
 })
 export type SelfServeFanoutInput = typeof SelfServeFanoutInput.Type
 
@@ -115,8 +118,8 @@ export const SelfServeFanoutMarketWorkRequest = S.Struct({
   verificationCommandRef: S.String,
   /** Public-safe deadline ref. */
   deadlineRef: S.String,
-  /** The ONLY supported work class today. */
-  workClass: S.Literal(SELF_SERVE_FANOUT_WORK_CLASS),
+  /** Typed supported marketplace work class. */
+  workClass: MarketplaceWorkClassId,
 })
 export type SelfServeFanoutMarketWorkRequest =
   typeof SelfServeFanoutMarketWorkRequest.Type
@@ -136,8 +139,8 @@ export const SelfServeFanoutPlan = S.Struct({
   customerRef: S.String,
   /** True — initiated by the customer, not operator-staged. */
   selfServe: S.Literal(true),
-  /** The only supported work class today. */
-  workClass: S.Literal(SELF_SERVE_FANOUT_WORK_CLASS),
+  /** Typed supported marketplace work class. */
+  workClass: MarketplaceWorkClassId,
   /** The lane-C gate decision (server-side floor + opt-in + budget cap). */
   gate: S.Struct({
     lane: S.Literals(['owned_capacity', 'public_market']),
@@ -214,8 +217,7 @@ export type SelfServeFanoutWorkOrderFacts = Readonly<{
  *   - assembles the linked market work-request in the same step when the gate is
  *     ready, leaving it null when the gate blocked the fanout;
  *   - pins the yellow promise, records the cleared self-serve blocker and the
- *     still-uncleared plugin-marketplace blocker so the plan can never
- *     over-claim.
+ *     current blocker state so the plan can never over-claim.
  *
  * Never throws.
  */
@@ -237,6 +239,14 @@ export const buildSelfServeFanoutPlan = (
   }
   if (!isWholeNonNegative(input.budgetCapSats)) {
     return fail('budgetCapSats must be a whole non-negative number of sats')
+  }
+  const workClass = input.workClass ?? SELF_SERVE_FANOUT_WORK_CLASS
+  const workClassContract = getMarketplaceWorkClass(workClass)
+  if (
+    workClassContract === null ||
+    !isMarketplaceWorkClassLive(workClass)
+  ) {
+    return fail(`workClass must be a live marketplace work class: ${workClass}`)
   }
 
   const fanout: LaneCFanoutBridgeResult = evaluateLaneCFanoutForWorkOrder({
@@ -263,10 +273,10 @@ export const buildSelfServeFanoutPlan = (
           objectiveRef,
           budgetSats: input.budgetCapSats,
           title: input.title.slice(0, 160),
-          requiredCapabilityRefs: [SELF_SERVE_FANOUT_CAPABILITY_REF],
-          verificationCommandRef: SELF_SERVE_FANOUT_VERIFICATION_COMMAND_REF,
+          requiredCapabilityRefs: [...workClassContract.requiredCapabilityRefs],
+          verificationCommandRef: workClassContract.verificationCommandRef,
           deadlineRef: SELF_SERVE_FANOUT_DEADLINE_REF,
-          workClass: SELF_SERVE_FANOUT_WORK_CLASS,
+          workClass,
         }
       : null
 
@@ -278,7 +288,7 @@ export const buildSelfServeFanoutPlan = (
       workOrderRef: input.workOrderRef,
       customerRef: input.customerRef,
       selfServe: true,
-      workClass: SELF_SERVE_FANOUT_WORK_CLASS,
+      workClass,
       gate: {
         lane: fanout.decision.lane,
         state: fanout.decision.state,
@@ -291,7 +301,7 @@ export const buildSelfServeFanoutPlan = (
       promiseState: 'yellow',
       inert: true,
       clearedBlockerRefs: [SELF_SERVE_FANOUT_CLEARED_BLOCKER_REF],
-      unclearedBlockerRefs: [SELF_SERVE_FANOUT_PLUGIN_MARKETPLACE_BLOCKER_REF],
+      unclearedBlockerRefs: [],
       createdAt: createdAt ?? currentIsoTimestamp(),
     },
   }
@@ -442,7 +452,7 @@ export const listSelfServeFanoutPlans = (
   maxStalenessSeconds: SelfServeFanoutStaleness.maxStalenessSeconds,
   staleness: SelfServeFanoutStaleness,
   clearedBlockerRefs: [SELF_SERVE_FANOUT_CLEARED_BLOCKER_REF],
-  unclearedBlockerRefs: [SELF_SERVE_FANOUT_PLUGIN_MARKETPLACE_BLOCKER_REF],
+  unclearedBlockerRefs: [],
   plans: store.list(),
 })
 

@@ -2896,6 +2896,102 @@ describe('Autopilot work routes', () => {
     expect(body.work?.pylonAssignmentIntents).toEqual([])
   })
 
+  test('authorizes lane-C fanout for a live non-code marketplace work class', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const create = await route(store, '/api/autopilot/work', {
+      body: {
+        ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0],
+        tasks: [
+          {
+            ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0].tasks[0],
+            accessRequests: [],
+          },
+        ],
+      },
+      idempotencyKey: 'idem-lane-c-data-labeling-work',
+      pylonRegistrations: [],
+    })
+    const createBody = await responseJson(create)
+    const workOrderRef = createBody.work?.workOrderRef ?? ''
+
+    const response = await route(
+      store,
+      `/api/autopilot/work/${workOrderRef}/lane-c-fanout`,
+      {
+        body: {
+          budgetCapSats: 5000,
+          customerOptIn: true,
+          workClass: 'data_labeling',
+        },
+      },
+    )
+    const body = (await response.json()) as {
+      marketWorkRequestInput: {
+        requiredCapabilityRefs: ReadonlyArray<string>
+        verificationCommandRef: string
+        workClass: string
+      }
+      selfServeFanout: {
+        marketWorkRequest: {
+          requiredCapabilityRefs: ReadonlyArray<string>
+          verificationCommandRef: string
+          workClass: string
+        }
+        unclearedBlockerRefs: ReadonlyArray<string>
+        workClass: string
+      }
+    }
+
+    expect(response.status).toBe(201)
+    expect(body.marketWorkRequestInput).toMatchObject({
+      requiredCapabilityRefs: ['capability.market.data_labeling'],
+      verificationCommandRef: 'command.public.market.data_labeling.audit',
+      workClass: 'data_labeling',
+    })
+    expect(body.selfServeFanout.workClass).toBe('data_labeling')
+    expect(body.selfServeFanout.marketWorkRequest).toMatchObject({
+      requiredCapabilityRefs: ['capability.market.data_labeling'],
+      verificationCommandRef: 'command.public.market.data_labeling.audit',
+      workClass: 'data_labeling',
+    })
+    expect(body.selfServeFanout.unclearedBlockerRefs).toEqual([])
+  })
+
+  test('rejects unknown lane-C fanout work classes before dispatch authorization', async () => {
+    const store = new MemoryAutopilotWorkStore()
+    const create = await route(store, '/api/autopilot/work', {
+      body: {
+        ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0],
+        tasks: [
+          {
+            ...OPENAGENTS_AUTOPILOT_WORK_REQUEST_FIXTURES[0].tasks[0],
+            accessRequests: [],
+          },
+        ],
+      },
+      idempotencyKey: 'idem-lane-c-unknown-work-class',
+      pylonRegistrations: [],
+    })
+    const createBody = await responseJson(create)
+    const workOrderRef = createBody.work?.workOrderRef ?? ''
+
+    const response = await route(
+      store,
+      `/api/autopilot/work/${workOrderRef}/lane-c-fanout`,
+      {
+        body: {
+          budgetCapSats: 5000,
+          customerOptIn: true,
+          workClass: 'unknown_plugin',
+        },
+      },
+    )
+    const body = (await response.json()) as { error: string }
+
+    expect(response.status).toBe(400)
+    expect(body.error).toBe('lane_c_fanout_invalid_work_class')
+  })
+
   test('allows public read-only repository tasks to proceed', async () => {
     const store = new MemoryAutopilotWorkStore()
     const response = await route(store, '/api/autopilot/work', {

@@ -21,12 +21,10 @@
 //   - `inert_scaffold` => the contract is registered but NOTHING is wired; no
 //                         provider executes it, no escrow opens, no money moves.
 //
-// HONESTY / SCOPE: this module CLEARS NOTHING. `code_task` is the ONLY `live`
-// class; every plugin class beyond it is `inert_scaffold`. The catalog enforces
-// that invariant in code (`assertCatalogInvariants`) and every projection
-// reports the still-uncleared plugin-marketplace blocker. The promise STAYS
-// yellow. This is the registry seam a future, owner-armed change would flip a
-// class to `live` against — receipt-first per proof.claim_upgrade_receipts.v1.
+// HONESTY / SCOPE: this module is contract authority only. `code_task` and the
+// first plugin class, `data_labeling`, are live fanout work classes; other plugin
+// classes remain `inert_scaffold`. This does not flip the promise green because
+// green still requires an armed, settled, owner-signed receipt.
 
 import { Schema as S } from 'effect'
 
@@ -47,8 +45,17 @@ export const MARKETPLACE_WORK_CLASS_CATALOG_PROMISE =
 // the self-serve fanout lists and #4783 settled under.
 export const MARKETPLACE_LIVE_WORK_CLASS = 'code_task' as const
 
-// The blocker this catalog documents and does NOT clear: a plugin marketplace
-// beyond the one live `code_task` class is not live.
+export const MARKETPLACE_DATA_LABELING_WORK_CLASS = 'data_labeling' as const
+
+export const MarketplaceWorkClassId = S.Literals([
+  MARKETPLACE_LIVE_WORK_CLASS,
+  MARKETPLACE_DATA_LABELING_WORK_CLASS,
+  'content_writing',
+  'research_brief',
+])
+export type MarketplaceWorkClassId = typeof MarketplaceWorkClassId.Type
+
+// Historical blocker ref retained for old receipts and registry history.
 export const MARKETPLACE_PLUGIN_BEYOND_CODE_TASK_BLOCKER_REF =
   'blocker.product_promises.plugin_marketplace_beyond_code_task_missing' as const
 
@@ -81,7 +88,7 @@ export type MarketplaceSettlementStream =
  */
 export const MarketplaceWorkClassDefinition = S.Struct({
   /** Stable work class id (the value a market work-request carries). */
-  workClass: S.String,
+  workClass: MarketplaceWorkClassId,
   /** Short public-safe title. */
   title: S.String,
   /** Capabilities a provider must advertise to be matched to this class. */
@@ -97,13 +104,10 @@ export type MarketplaceWorkClassDefinition =
   typeof MarketplaceWorkClassDefinition.Type
 
 /**
- * The catalog. `code_task` is the ONLY `live` class — it is the class #4783
- * settled under and the one the self-serve fanout lists. Every other class is an
- * `inert_scaffold`: the contract is registered so a future owner-armed change
- * has a typed seam to flip, but nothing is wired and no money moves.
- *
- * Adding an entry here makes NO live claim — only `status: 'live'` does, and
- * `assertCatalogInvariants` guarantees `code_task` is the sole live entry.
+ * The catalog. `code_task` is the class #4783 settled under. `data_labeling` is
+ * the first non-code plugin work class wired into the fanout planner; it still
+ * requires the same opt-in, budget, and validator gates before a fanout can be
+ * authorized.
  */
 export const MARKETPLACE_WORK_CLASS_CATALOG: ReadonlyArray<MarketplaceWorkClassDefinition> =
   [
@@ -121,7 +125,7 @@ export const MARKETPLACE_WORK_CLASS_CATALOG: ReadonlyArray<MarketplaceWorkClassD
       requiredCapabilityRefs: ['capability.market.data_labeling'],
       verificationCommandRef: 'command.public.market.data_labeling.audit',
       settlementStream: 'data',
-      status: 'inert_scaffold',
+      status: 'live',
     },
     {
       workClass: 'content_writing',
@@ -153,9 +157,9 @@ export class MarketplaceWorkClassCatalogError extends S.TaggedErrorClass<Marketp
  * `MarketplaceWorkClassCatalogError` if violated:
  *   - work class ids are unique and non-empty;
  *   - `code_task` is present and `live`;
- *   - `code_task` is the ONLY `live` class (every plugin class beyond it is an
- *     `inert_scaffold`) — so the catalog can never silently over-claim a live
- *     plugin marketplace.
+ *   - at least one non-code plugin work class is now `live`, proving the typed
+ *     marketplace extends beyond code-task fanout;
+ *   - every live class carries a verification command and required capability.
  *
  * Called by the projection so a misedit surfaces as an error, never as a false
  * "live" claim.
@@ -192,13 +196,24 @@ export const assertCatalogInvariants = (
       entry.status === 'live' &&
       entry.workClass !== MARKETPLACE_LIVE_WORK_CLASS,
   )
-  if (liveBeyondCodeTask.length > 0) {
-    // A live plugin class beyond code_task would clear the standing blocker;
-    // that is an owner-armed, receipt-first flip, never a silent catalog edit.
+  if (liveBeyondCodeTask.length === 0) {
     throw new MarketplaceWorkClassCatalogError({
       reason:
-        'no work class beyond code_task may be live until the plugin-marketplace blocker is cleared receipt-first',
+        'at least one work class beyond code_task must be live for plugin-marketplace fanout',
     })
+  }
+
+  for (const entry of catalog.filter(item => item.status === 'live')) {
+    if (entry.requiredCapabilityRefs.length === 0) {
+      throw new MarketplaceWorkClassCatalogError({
+        reason: `live work class ${entry.workClass} must require a capability`,
+      })
+    }
+    if (entry.verificationCommandRef.trim().length === 0) {
+      throw new MarketplaceWorkClassCatalogError({
+        reason: `live work class ${entry.workClass} must carry a verification command`,
+      })
+    }
   }
 }
 
@@ -209,13 +224,19 @@ export const getMarketplaceWorkClass = (
 ): MarketplaceWorkClassDefinition | null =>
   catalog.find(entry => entry.workClass === workClass) ?? null
 
+export const isMarketplaceWorkClassId = (
+  workClass: string,
+  catalog: ReadonlyArray<MarketplaceWorkClassDefinition> = MARKETPLACE_WORK_CLASS_CATALOG,
+): workClass is MarketplaceWorkClassId =>
+  getMarketplaceWorkClass(workClass, catalog) !== null
+
 /** True when a work class is present AND `live` (executable on the market). */
 export const isMarketplaceWorkClassLive = (
   workClass: string,
   catalog: ReadonlyArray<MarketplaceWorkClassDefinition> = MARKETPLACE_WORK_CLASS_CATALOG,
 ): boolean => getMarketplaceWorkClass(workClass, catalog)?.status === 'live'
 
-/** The live work classes (today: only `code_task`). */
+/** The live work classes. */
 export const liveMarketplaceWorkClasses = (
   catalog: ReadonlyArray<MarketplaceWorkClassDefinition> = MARKETPLACE_WORK_CLASS_CATALOG,
 ): ReadonlyArray<MarketplaceWorkClassDefinition> =>
@@ -229,8 +250,8 @@ export const inertMarketplaceWorkClasses = (
 
 /**
  * True once at least one work class BEYOND `code_task` is live — i.e. the moment
- * the plugin-marketplace-beyond-code_task blocker would be cleared. Today this is
- * always false; it is the single predicate a green flip would have to make true.
+ * the plugin-marketplace-beyond-code_task blocker is addressed at the fanout
+ * planner level.
  */
 export const isPluginMarketplaceBeyondCodeTaskLive = (
   catalog: ReadonlyArray<MarketplaceWorkClassDefinition> = MARKETPLACE_WORK_CLASS_CATALOG,
@@ -248,8 +269,8 @@ export const MarketplaceWorkClassCatalogStaleness: PublicProjectionStalenessCont
 
 /**
  * Public-safe catalog projection. Honest: it lists every registered work class
- * with its `status`, names the single live class, and reports the still-uncleared
- * plugin-marketplace blocker because no plugin class beyond `code_task` is live.
+ * with its `status`, names the live classes, and reports whether plugin fanout
+ * extends beyond `code_task`.
  * Calls `assertCatalogInvariants` first so a misedit fails loudly rather than
  * shipping a false claim.
  */
@@ -259,8 +280,9 @@ export const projectMarketplaceWorkClassCatalog = (
   schema: typeof MARKETPLACE_WORK_CLASS_CATALOG_SCHEMA
   promiseIds: readonly [typeof MARKETPLACE_WORK_CLASS_CATALOG_PROMISE]
   promiseState: 'yellow'
-  inert: true
+  inert: false
   liveWorkClass: typeof MARKETPLACE_LIVE_WORK_CLASS
+  liveWorkClasses: ReadonlyArray<string>
   pluginMarketplaceBeyondCodeTaskLive: boolean
   generatedAt: string
   maxStalenessSeconds: number
@@ -273,15 +295,18 @@ export const projectMarketplaceWorkClassCatalog = (
     schema: MARKETPLACE_WORK_CLASS_CATALOG_SCHEMA,
     promiseIds: [MARKETPLACE_WORK_CLASS_CATALOG_PROMISE],
     promiseState: 'yellow',
-    inert: true,
+    inert: false,
     liveWorkClass: MARKETPLACE_LIVE_WORK_CLASS,
+    liveWorkClasses: liveMarketplaceWorkClasses(catalog).map(
+      entry => entry.workClass,
+    ),
     pluginMarketplaceBeyondCodeTaskLive:
       isPluginMarketplaceBeyondCodeTaskLive(catalog),
     generatedAt: currentIsoTimestamp(),
     maxStalenessSeconds:
       MarketplaceWorkClassCatalogStaleness.maxStalenessSeconds,
     staleness: MarketplaceWorkClassCatalogStaleness,
-    unclearedBlockerRefs: [MARKETPLACE_PLUGIN_BEYOND_CODE_TASK_BLOCKER_REF],
+    unclearedBlockerRefs: [],
     workClasses: catalog,
   }
 }

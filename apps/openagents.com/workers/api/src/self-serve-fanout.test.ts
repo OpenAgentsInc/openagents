@@ -5,7 +5,6 @@ import {
   type SelfServeFanoutInput,
   type SelfServeFanoutWorkOrderFacts,
   SELF_SERVE_FANOUT_CLEARED_BLOCKER_REF,
-  SELF_SERVE_FANOUT_PLUGIN_MARKETPLACE_BLOCKER_REF,
   SELF_SERVE_FANOUT_PROMISE,
   SELF_SERVE_FANOUT_SCHEMA,
   SELF_SERVE_FANOUT_WORK_CLASS,
@@ -72,13 +71,46 @@ describe('buildSelfServeFanoutPlan', () => {
     expect(plan.marketWorkRequest).not.toBeNull()
     expect(plan.marketWorkRequest?.workClass).toBe('code_task')
     expect(plan.marketWorkRequest?.budgetSats).toBe(5000)
+    expect(plan.marketWorkRequest?.requiredCapabilityRefs).toEqual([
+      'capability.pylon.local_claude_agent',
+    ])
+    expect(plan.marketWorkRequest?.verificationCommandRef).toBe(
+      'command.public.pylon.labor.bun_test',
+    )
     expect(plan.clearedBlockerRefs).toEqual([
       SELF_SERVE_FANOUT_CLEARED_BLOCKER_REF,
     ])
-    // The plugin-marketplace-beyond-code_task blocker is NEVER cleared here.
-    expect(plan.unclearedBlockerRefs).toEqual([
-      SELF_SERVE_FANOUT_PLUGIN_MARKETPLACE_BLOCKER_REF,
-    ])
+    expect(plan.unclearedBlockerRefs).toEqual([])
+  })
+
+  test('builds a ready non-code plugin work-class plan with per-class verification', () => {
+    const result = buildSelfServeFanoutPlan(
+      { ...optedInInput, workClass: 'data_labeling' },
+      readyFacts,
+      'now',
+    )
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const plan = result.plan
+    expect(plan.workClass).toBe('data_labeling')
+    expect(plan.readyForMarket).toBe(true)
+    expect(plan.marketWorkRequest).toMatchObject({
+      requiredCapabilityRefs: ['capability.market.data_labeling'],
+      verificationCommandRef: 'command.public.market.data_labeling.audit',
+      workClass: 'data_labeling',
+    })
+    expect(plan.unclearedBlockerRefs).toEqual([])
+  })
+
+  test('rejects an inert plugin work class before market authorization', () => {
+    const result = buildSelfServeFanoutPlan(
+      { ...optedInInput, workClass: 'research_brief' },
+      readyFacts,
+      'now',
+    )
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error.reason).toContain('live marketplace work class')
   })
 
   test('opt-out yields a blocked gate and no market work-request', () => {
@@ -168,6 +200,24 @@ describe('dispatchSelfServeFanout (FLAG-GATED INERT)', () => {
     expect(out.marketWorkRequest.workClass).toBe('code_task')
   })
 
+  test('armed + gate-ready returns the authorized non-code market work-request', async () => {
+    const r = buildSelfServeFanoutPlan(
+      { ...optedInInput, workClass: 'data_labeling' },
+      readyFacts,
+      'now',
+    )
+    if (!r.ok) throw new Error(r.error.reason)
+    const out = await Effect.runPromise(
+      dispatchSelfServeFanout({ enabled: true }, { plan: r.plan }),
+    )
+    expect(out._tag).toBe('authorized')
+    if (out._tag !== 'authorized') return
+    expect(out.marketWorkRequest.workClass).toBe('data_labeling')
+    expect(out.marketWorkRequest.verificationCommandRef).toBe(
+      'command.public.market.data_labeling.audit',
+    )
+  })
+
   test('armed but gate-blocked returns blocked with reason refs', async () => {
     const out = await Effect.runPromise(
       dispatchSelfServeFanout({ enabled: true }, { plan: blockedPlan() }),
@@ -205,9 +255,7 @@ describe('handleSelfServeFanoutApi (read-only)', () => {
     expect(body.selfServe).toBe(true)
     expect(body.workClass).toBe('code_task')
     expect(body.plans).toEqual([])
-    expect(body.unclearedBlockerRefs).toContain(
-      SELF_SERVE_FANOUT_PLUGIN_MARKETPLACE_BLOCKER_REF,
-    )
+    expect(body.unclearedBlockerRefs).toEqual([])
   })
 
   test('armed surface lists injected plans', async () => {
