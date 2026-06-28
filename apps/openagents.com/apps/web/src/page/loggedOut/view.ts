@@ -10,6 +10,7 @@ import * as Ui from '../../ui'
 import * as Activity from '../activity'
 import * as Animations from '../animations'
 import * as ArtanisTraceTree from '../artanisTraceTree'
+import * as ArtanisAccounts from '../artanisAccounts'
 import * as AutopilotOnboardingPage from '../autopilot-onboarding/page'
 import * as Blog from '../blog'
 import * as Business from '../business'
@@ -324,6 +325,8 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
               Download: () => Download.view({ _tag: 'LoggedOut' }),
               Animations: () => Animations.view({ _tag: 'LoggedOut' }),
               Activity: () => Activity.view({ _tag: 'LoggedOut' }),
+              ArtanisAccounts: () =>
+                ArtanisAccounts.view({ _tag: 'LoggedOut' }),
               DemoLegal: () => DemoLegal.view({ _tag: 'LoggedOut' }),
               Gym: () => Gym.view(model.gym, model.gymRunProgress),
               MirrorCode: () => MirrorCode.view(model.mirrorCodeRuns),

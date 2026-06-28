@@ -4,6 +4,7 @@ import { describe, expect, test } from 'vitest'
 import {
   AdminRoute,
   ArtanisTraceTreeRoute,
+  ArtanisAccountsRoute,
   type AppRoute,
   AutopilotRoute,
   AutopilotWorkDetailRoute,
@@ -126,6 +127,12 @@ describe('app route parser', () => {
   test('accepts the Artanis RLM trace tree visualizer route', () => {
     expect(urlToAppRoute(appUrl('/artanis/traces'))).toEqual(
       ArtanisTraceTreeRoute(),
+    )
+  })
+
+  test('accepts the Artanis account observability route', () => {
+    expect(urlToAppRoute(appUrl('/artanis/accounts'))).toEqual(
+      ArtanisAccountsRoute(),
     )
   })
 

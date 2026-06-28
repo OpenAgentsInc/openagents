@@ -14,6 +14,7 @@ import { Demo, LoggedIn, LoggedOut } from './model'
 import * as Activity from './page/activity'
 import * as Animations from './page/animations'
 import * as ArtanisTraceTree from './page/artanisTraceTree'
+import * as ArtanisAccounts from './page/artanisAccounts'
 import * as Blog from './page/blog'
 import * as Business from './page/business'
 import * as Components from './page/components'
@@ -401,6 +402,8 @@ const title = (model: Model): string => {
       return 'Animations - OpenAgents'
     case 'Activity':
       return 'Activity - OpenAgents'
+    case 'ArtanisAccounts':
+      return 'Artanis accounts - OpenAgents'
     case 'DemoLegal':
       return 'Legal demo - OpenAgents'
     case 'Run':
@@ -625,6 +628,7 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
       model.route._tag !== 'Privacy' &&
       model.route._tag !== 'Animations' &&
       model.route._tag !== 'Activity' &&
+      model.route._tag !== 'ArtanisAccounts' &&
       model.route._tag !== 'DemoLegal' &&
       model.route._tag !== 'Run' &&
       model.route._tag !== 'Tassadar' &&
@@ -707,6 +711,10 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
 
   if (model.route._tag === 'Activity') {
     return Activity.view<Message>(authState)
+  }
+
+  if (model.route._tag === 'ArtanisAccounts') {
+    return ArtanisAccounts.view<Message>(authState)
   }
 
   if (model.route._tag === 'DemoLegal') {

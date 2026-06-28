@@ -10,6 +10,7 @@ import {
   activityRouter,
   animationsRouter,
   artanisTraceTreeRouter,
+  artanisAccountsRouter,
   autopilotWorkDetailRouter,
   autopilotWorkRouter,
   billingRouter,
@@ -65,6 +66,7 @@ import {
 } from '../../route'
 import * as Ui from '../../ui'
 import * as Activity from '../activity'
+import * as ArtanisAccounts from '../artanisAccounts'
 import * as ClientsPreview from '../clientsPreview'
 import * as Forum from '../forum'
 import * as SiteCheckoutDemo from '../siteCheckoutDemo'
@@ -133,6 +135,7 @@ const currentHref = (model: Model): string =>
       Business: () => businessRouter(),
       Animations: () => animationsRouter(),
       Activity: () => activityRouter(),
+      ArtanisAccounts: () => artanisAccountsRouter(),
       DemoLegal: () => demoLegalRouter(),
       Run: () => runRouter(),
       GymOss: () => gymOssRouter(),
@@ -203,6 +206,7 @@ const routeKey = (model: Model): string =>
       Business: () => 'Business',
       Animations: () => 'Animations',
       Activity: () => 'Activity',
+      ArtanisAccounts: () => 'ArtanisAccounts',
       DemoLegal: () => 'DemoLegal',
       Run: () => 'Run',
       GymOss: () => 'GymOss',
@@ -572,6 +576,10 @@ const routeView = (model: Model): Html => {
           Activity: () =>
             Ui.workroomScrollableRoute<Message>([
               Activity.view(loggedInPublicHeaderAuthState(model)),
+            ]),
+          ArtanisAccounts: () =>
+            Ui.workroomScrollableRoute<Message>([
+              ArtanisAccounts.view(loggedInPublicHeaderAuthState(model)),
             ]),
           DemoLegal: () =>
             Ui.workroomScrollableRoute<Message>([
