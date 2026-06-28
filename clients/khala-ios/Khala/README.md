@@ -100,6 +100,35 @@ xcodebuild -exportArchive -archivePath build/Khala.xcarchive \
   -exportPath build -exportOptionsPlist ExportOptions.plist
 ```
 
+## macOS Apple FM packaging gate
+
+Khala macOS builds that advertise Apple FM support must bundle the Pylon
+Foundation Models helper at:
+
+```text
+Khala.app/Contents/Resources/app/apple-fm-bridge/foundation-bridge
+```
+
+The Xcode target runs `scripts/copy-packaged-apple-fm-bridge.sh` as a macOS-only
+post-build phase. It copies `apps/pylon/bin/foundation-bridge` by default; build
+it first with:
+
+```sh
+bash ../../../apps/pylon/swift/foundation-bridge/build.sh
+```
+
+Before signing/notarization, run:
+
+```sh
+bun scripts/verify-packaged-apple-fm-bridge.ts /path/to/Khala.app
+```
+
+The verifier fails if the helper is missing, empty, or not executable. To ship an
+intentional Apple-FM-less build, set `KHALA_SKIP_APPLE_FM_BRIDGE_CHECK=1` during
+the Xcode build and during verification; the copy phase writes an explicit
+`APPLE_FM_UNAVAILABLE.txt` marker into the bundle instead of silently omitting
+the helper.
+
 TestFlight upload is **Apple-native** (`xcrun altool` / Transporter), using the
 App Store Connect API key in workspace `.secrets/appstoreconnect.env`. Per the
 repo mobile policy (root `AGENTS.md`), **never** use `eas build`/`submit`/

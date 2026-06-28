@@ -93,6 +93,7 @@
 				A1000000000000000000SRC /* Sources */,
 				A1000000000000000000FRMW /* Frameworks */,
 				A1000000000000000000RES /* Resources */,
+				A1000000000000000000AFMP /* Bundle Apple FM bridge helper */,
 			);
 			buildRules = (
 			);
@@ -181,6 +182,28 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		A1000000000000000000AFMP /* Bundle Apple FM bridge helper */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Bundle Apple FM bridge helper";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "bash \"$SRCROOT/scripts/copy-packaged-apple-fm-bridge.sh\"";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		A1000000000000000000SRC /* Sources */ = {
