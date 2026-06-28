@@ -27,10 +27,12 @@ import type { KhalaChatModel } from './flow'
 // chat surfaces.
 export const KHALA_CHAT_ROOT_ATTR = 'khala-chat'
 export const KHALA_CHAT_TRANSCRIPT_ATTR = 'khala-chat-transcript'
+export const KHALA_CHAT_SCROLL_REGION_ATTR = 'khala-chat-scroll-region'
 export const KHALA_CHAT_COMPOSER_ATTR = 'khala-chat-composer'
 export const KHALA_CHAT_COMPOSER_TEXTAREA_ID = 'khala-chat-message'
 export const KHALA_CHAT_COMPOSER_TEXTAREA_SELECTOR = `#${KHALA_CHAT_COMPOSER_TEXTAREA_ID}`
 export const KHALA_CHAT_LATEST_TURN_ATTR = 'khala-chat-latest-turn'
+export const KHALA_CHAT_LATEST_BUTTON_ATTR = 'khala-chat-latest-button'
 export const KHALA_CHAT_THREAD_END_ATTR = 'khala-chat-thread-end'
 export const KHALA_CHAT_INFO_TRIGGER_ATTR = 'khala-chat-info-trigger'
 export const KHALA_CHAT_INFO_DIALOG_ATTR = 'khala-chat-info-dialog'
@@ -283,7 +285,7 @@ const composerView = <Message>(
               h.AriaLabel(inFlight ? 'Sending message' : 'Send message'),
               ...(submitDisabled ? [h.Disabled(true)] : []),
               Ui.className<Message>(
-                'khala-focus absolute bottom-3 right-3 inline-flex size-9 items-center justify-center rounded-[2px] border border-[#4fd0ff] bg-[#4fd0ff] text-black transition-colors duration-200 ease-out hover:border-white hover:bg-white disabled:cursor-not-allowed disabled:border-[#3a7bff]/25 disabled:bg-[#07111f] disabled:text-[#6f8fc8] disabled:hover:border-[#3a7bff]/25 disabled:hover:bg-[#07111f] motion-reduce:transition-none',
+                'khala-focus absolute bottom-3 right-3 inline-flex size-9 items-center justify-center rounded-[2px] border border-[#4fd0ff]/65 bg-[#06101d]/95 text-[#cfe8ff] transition-colors duration-200 ease-out hover:border-[#8fb6ff] hover:bg-[#0a1b31] hover:text-white active:border-[#4fd0ff] active:bg-[#0e213e] disabled:cursor-not-allowed disabled:border-[#3a7bff]/20 disabled:bg-black/40 disabled:text-[#4e668f] disabled:hover:border-[#3a7bff]/20 disabled:hover:bg-black/40 disabled:hover:text-[#4e668f] motion-reduce:transition-none',
               ),
             ],
             [
@@ -732,6 +734,7 @@ export const bottomOverlayView = <Message>(
   const scrollRegion = hasTranscript
     ? h.div(
         [
+          h.DataAttribute(KHALA_CHAT_SCROLL_REGION_ATTR, ''),
           Ui.className<Message>(
             'oa-thread-scroll pointer-events-auto mx-auto grid min-h-0 w-[min(100%,52rem)] content-start overflow-y-auto px-1 pb-5 pt-4 sm:px-2',
           ),
@@ -744,10 +747,11 @@ export const bottomOverlayView = <Message>(
     ? h.button(
         [
           h.Type('button'),
+          h.DataAttribute(KHALA_CHAT_LATEST_BUTTON_ATTR, ''),
           h.OnClick(actions.jumpedToLatest()),
           h.AriaLabel('Jump to latest Khala reply'),
           Ui.className<Message>(
-            'khala-focus pointer-events-auto absolute bottom-[8.75rem] right-3 inline-flex items-center gap-2 border border-[#3a7bff]/35 bg-black/70 px-2.5 py-1.5 font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.14em] text-[#bcd4ff] backdrop-blur-md transition-colors duration-200 ease-out hover:border-[#4fd0ff] hover:text-white motion-reduce:transition-none sm:right-6',
+            'khala-focus pointer-events-auto absolute bottom-[8.75rem] right-3 inline-flex items-center gap-2 border border-[#3a7bff]/45 bg-[#03070d]/85 px-2.5 py-1.5 font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.14em] text-[#b7caff] backdrop-blur-md transition-colors duration-200 ease-out hover:border-[#8fb6ff] hover:bg-[#081427] hover:text-white motion-reduce:transition-none sm:right-6',
           ),
         ],
         [

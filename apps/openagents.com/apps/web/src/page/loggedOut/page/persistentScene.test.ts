@@ -3,6 +3,7 @@ import { Scene } from 'foldkit'
 import { evo } from 'foldkit/struct'
 import { describe, expect, test } from 'vitest'
 
+import { GotLoggedOutMessage } from '../../../message'
 import { LoggedOut } from '../../../model'
 import {
   KhalaChatRoute,
@@ -13,12 +14,20 @@ import {
 } from '../../../route'
 import { update } from '../../../update'
 import { view } from '../../../view'
-import { ClickedEnterKhala } from '../message'
+import {
+  ClickedEnterKhala,
+  CompletedFocusKhalaChatComposer,
+  CompletedScrollKhalaChatThread,
+} from '../message'
 import {
   LoadedPublicKhalaTokensServed,
   PublicKhalaTokensServed,
 } from '../model'
-import { update as loggedOutUpdate } from '../update'
+import {
+  FocusKhalaChatComposer,
+  ScrollKhalaChatLatestTurnIntoView,
+  update as loggedOutUpdate,
+} from '../update'
 import {
   PERSISTENT_SCENE_KEY,
   PERSISTENT_SCENE_OVERLAY_PREFIX,
@@ -319,6 +328,42 @@ describe('persistent landing and Khala scene', () => {
       Scene.expect(Scene.selector('[data-khala-instructions]')).not.toExist(),
       Scene.expect(Scene.selector('[data-khala-back="home"]')).not.toExist(),
       Scene.expect(Scene.text('Ask Khala what it can do.')).not.toExist(),
+    )
+  })
+
+  test('submits the /chat composer on Enter while leaving Shift+Enter to the textarea', () => {
+    Scene.scene(
+      { update, view },
+      Scene.with(LoggedOut.init(KhalaChatRoute())),
+      Scene.type(Scene.label('Message Khala'), 'hello'),
+      Scene.keydown(Scene.label('Message Khala'), 'Enter'),
+      Scene.expect(Scene.text('hello')).toExist(),
+      Scene.expect(Scene.label('Message Khala')).toHaveValue(''),
+      Scene.Command.resolveAll(
+        [
+          ScrollKhalaChatLatestTurnIntoView,
+          CompletedScrollKhalaChatThread(),
+          message => GotLoggedOutMessage({ message }),
+        ],
+        [
+          FocusKhalaChatComposer,
+          CompletedFocusKhalaChatComposer(),
+          message => GotLoggedOutMessage({ message }),
+        ],
+      ),
+    )
+
+    Scene.scene(
+      { update, view },
+      Scene.with(LoggedOut.init(KhalaChatRoute())),
+      Scene.type(Scene.label('Message Khala'), 'Line one'),
+      Scene.keydown(Scene.label('Message Khala'), 'Enter', {
+        shiftKey: true,
+      }),
+      Scene.expect(
+        Scene.selector('[data-khala-chat-transcript]'),
+      ).not.toExist(),
+      Scene.expect(Scene.label('Message Khala')).toHaveValue('Line one'),
     )
   })
 
