@@ -51,7 +51,9 @@ import {
   buildArtanisSituationalAwareness,
 } from './artanis-situational-awareness'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import type { InferenceMessage, InferenceResult } from './inference/provider-adapter'
 import { openAgentsDatabase } from './runtime'
+import { randomUuid } from './runtime-primitives'
 
 type OperatorArtanisChatEnv = Readonly<{
   OPENAGENTS_DB: D1Database
@@ -63,6 +65,13 @@ type OperatorArtanisChatSession = Readonly<{
     email: string
     userId: string
   }>
+}>
+
+type OperatorArtanisTraceInput = Readonly<{
+  ownerUserId: string
+  requestMessages: ReadonlyArray<InferenceMessage>
+  responseId: string
+  result: InferenceResult
 }>
 
 export type OperatorArtanisChatDependencies<
@@ -108,6 +117,10 @@ export type OperatorArtanisChatDependencies<
     env: Bindings,
     session: Session,
   ) => ReadonlyArray<ArtanisOperatorTool>
+  emitOwnerTrace?: (
+    input: OperatorArtanisTraceInput,
+    env: Bindings,
+  ) => Promise<unknown>
 }>
 
 class OperatorArtanisChatUnauthorized extends S.TaggedErrorClass<OperatorArtanisChatUnauthorized>()(
@@ -262,6 +275,73 @@ const parseBody = (request: Request) =>
     return decoded
   })
 
+const wantsEventStream = (request: Request): boolean =>
+  request.headers
+    .get('accept')
+    ?.split(',')
+    .map(part => part.trim().toLowerCase())
+    .some(
+      part =>
+        part === 'text/event-stream' ||
+        part.startsWith('text/event-stream;'),
+    ) === true
+
+const sseData = (value: unknown): string =>
+  `data: ${JSON.stringify(value)}\n\n`
+
+const artanisSseResponse = (turn: Readonly<{
+  deferredToApprovalGate: boolean
+  iterations: number
+  persona: unknown
+  reply: string
+  requestedModel: string
+  servedModel: string
+  servedVia: string
+  toolInvocations: unknown
+}>) =>
+  new Response(
+    [
+      sseData({
+        choices: [
+          {
+            delta: { role: 'assistant' },
+            index: 0,
+          },
+        ],
+      }),
+      ...(turn.reply.length === 0
+        ? []
+        : [
+            sseData({
+              choices: [
+                {
+                  delta: { content: turn.reply },
+                  index: 0,
+                },
+              ],
+            }),
+          ]),
+      sseData({
+        approvalGateRef: ARTANIS_OPERATOR_APPROVAL_GATE_REF,
+        channelRef: ARTANIS_OPERATOR_CHANNEL_REF,
+        deferredToApprovalGate: turn.deferredToApprovalGate,
+        iterations: turn.iterations,
+        persona: turn.persona,
+        requestedModel: turn.requestedModel,
+        servedModel: turn.servedModel,
+        servedVia: turn.servedVia,
+        toolInvocations: turn.toolInvocations,
+      }),
+      'data: [DONE]\n\n',
+    ].join(''),
+    {
+      headers: {
+        'Cache-Control': 'no-store',
+        'Content-Type': 'text/event-stream; charset=utf-8',
+      },
+    },
+  )
+
 export const makeOperatorArtanisChatRoutes = <
   Session extends OperatorArtanisChatSession,
   Bindings extends OperatorArtanisChatEnv,
@@ -360,6 +440,39 @@ export const makeOperatorArtanisChatRoutes = <
           role: 'artanis',
         }),
       ).pipe(Effect.catch(() => Effect.void))
+
+      if (dependencies.emitOwnerTrace !== undefined) {
+        yield* Effect.tryPromise(() =>
+          dependencies.emitOwnerTrace!(
+            {
+              ownerUserId: session.user.userId,
+              requestMessages: body.messages.map(message => ({
+                content: message.content,
+                role: message.role,
+              })),
+              responseId: `operator-artanis:${randomUuid()}`,
+              result: {
+                content: turn.reply,
+                finishReason: 'stop',
+                servedModel: turn.servedModel,
+                usage: {
+                  completionTokens: 0,
+                  promptTokens: 0,
+                  totalTokens: 0,
+                },
+              },
+            },
+            env,
+          ),
+        ).pipe(Effect.catch(() => Effect.void))
+      }
+
+      if (wantsEventStream(request)) {
+        return dependencies.appendRefreshedSessionCookies(
+          artanisSseResponse(turn),
+          session,
+        )
+      }
 
       return dependencies.appendRefreshedSessionCookies(
         noStoreJsonResponse({

@@ -88,6 +88,16 @@ const post = (body: unknown): Request =>
     method: 'POST',
   })
 
+const postSse = (body: unknown): Request =>
+  new Request('https://openagents.com/api/operator/artanis/chat', {
+    body: JSON.stringify(body),
+    headers: {
+      accept: 'text/event-stream',
+      'content-type': 'application/json',
+    },
+    method: 'POST',
+  })
+
 const runRoute = async (
   deps: ReturnType<typeof baseDeps>['deps'],
   request: Request,
@@ -234,6 +244,69 @@ describe('POST /api/operator/artanis/chat — grounded Khala-powered reply', () 
     )
     // Owner-scoped.
     expect(owner?.ownerId).toBe('owner:github:14167547')
+  })
+
+  test('streams an owner-authenticated Artanis reply as OpenAI-style SSE', async () => {
+    const { deps } = baseDeps()
+    const response = await runRoute(
+      deps,
+      postSse({ messages: [{ content: 'status please', role: 'user' }] }),
+    )
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toContain('text/event-stream')
+    const text = await response.text()
+    expect(text).toContain('data: {"choices":[{"delta":{"role":"assistant"}')
+    expect(text).toContain(
+      'data: {"choices":[{"delta":{"content":"I dispatched two Codex assignments this morning."}',
+    )
+    expect(text).toContain('"channelRef":"operator.artanis.chat"')
+    expect(text.trim().endsWith('data: [DONE]')).toBe(true)
+  })
+
+  test('records the owner operator turn as a private trace hook without blocking the reply', async () => {
+    const traceInputs: Array<{
+      ownerUserId: string
+      requestMessages: ReadonlyArray<{ role: string; content: string }>
+      result: { content: string; servedModel: string }
+    }> = []
+    const { deps } = baseDeps({
+      emitOwnerTrace: async input => {
+        traceInputs.push({
+          ownerUserId: input.ownerUserId,
+          requestMessages: input.requestMessages,
+          result: {
+            content: input.result.content,
+            servedModel: input.result.servedModel,
+          },
+        })
+      },
+    })
+    const response = await runRoute(
+      deps,
+      post({ messages: [{ content: 'status please', role: 'user' }] }),
+    )
+    expect(response.status).toBe(200)
+    expect(traceInputs).toEqual([
+      {
+        ownerUserId: 'github:14167547',
+        requestMessages: [{ content: 'status please', role: 'user' }],
+        result: {
+          content: 'I dispatched two Codex assignments this morning.',
+          servedModel: 'gpt-oss-120b',
+        },
+      },
+    ])
+
+    const failingTrace = baseDeps({
+      emitOwnerTrace: async () => {
+        throw new Error('trace store unavailable')
+      },
+    })
+    const stillOk = await runRoute(
+      failingTrace.deps,
+      post({ messages: [{ content: 'status please', role: 'user' }] }),
+    )
+    expect(stillOk.status).toBe(200)
   })
 
   test('a spend ask surfaces the approval-gate hint', async () => {
