@@ -290,7 +290,7 @@ export const classifyKhalaChatPylonQuestion = (
   }
 
   if (
-    /\b(interact|assign|dispatch|send work|job|task|control|command|mutate)\b/.test(
+    /\b(operator|interact|assign|dispatch|send work|job|task|control|command|mutate)\b/.test(
       question,
     )
   ) {
@@ -400,7 +400,7 @@ const interactionAnswer = (): string =>
     '',
     '- Public chat can read and explain public Pylon registry/status projections.',
     '- A Pylon owner agent can register, heartbeat, report wallet readiness, and report assignment progress with its bearer token.',
-    '- Operators can create bounded assignment leases with `POST /api/operator/pylons/assignments`.',
+    '- Operator-only assignment tools are not available to anonymous web chat sessions.',
     '- Authenticated Khala coding delegation can route caller-owned coding workflows to linked local Codex/Claude-capable Pylons through the OpenAI-compatible API path.',
     '',
     'This public chat route does not dispatch paid work, approve payout targets, spend bitcoin, settle providers, or mutate Pylon state by itself.',
