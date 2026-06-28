@@ -15,41 +15,9 @@ import { TASSADAR_TRACE_FAMILY_IDS, type TassadarTraceFamilyId } from './workloa
 
 export const TASSADAR_TRAINING_SPLIT_POLICY_VERSION = 'training_split.v0.1'
 
-export const TASSADAR_HELD_OUT_PARTITION_REF =
-  'partition.tassadar_trace.generalization_gg.v1'
-
-export const TASSADAR_HELD_OUT_PARTITION_MANIFEST_SHA256 =
-  '7f7f37c1d3a7de89c4a2517cf4b2f21df7a2dbb68b746d353aa247348c8f9e9a'
-
-export type TassadarTraceCorpusUse =
-  | 'generalization_eval'
-  | 'training'
-  | 'optimization'
-  | 'homework'
-  | 'retrieval_context'
-
-export type TassadarGeneralizationPartitionLock = Readonly<{
-  partitionRef: typeof TASSADAR_HELD_OUT_PARTITION_REF
-  purpose: 'generalization_gg_eval'
-  manifestDigest: Readonly<{
-    algorithm: 'sha256'
-    hex: string
-  }>
-  blockedUses: ReadonlyArray<
-    Extract<
-      TassadarTraceCorpusUse,
-      'homework' | 'optimization' | 'retrieval_context' | 'training'
-    >
-  >
-  allowedUses: ReadonlyArray<Extract<TassadarTraceCorpusUse, 'generalization_eval'>>
-  exposure: 'checksum_only'
-  rotation: 'append_new_partition_ref_never_rewrite'
-}>
-
 export type TassadarTrainingSplitPolicy = Readonly<{
   policyVersion: typeof TASSADAR_TRAINING_SPLIT_POLICY_VERSION
   splitUnit: 'program_family'
-  generalizationPartition: TassadarGeneralizationPartitionLock
   trainFamilies: ReadonlyArray<TassadarTraceFamilyId>
   heldOutFamilies: ReadonlyArray<TassadarTraceFamilyId>
   adversarialFamilies: ReadonlyArray<TassadarTraceFamilyId>
@@ -67,23 +35,6 @@ export const TASSADAR_TRAINING_SPLIT_POLICY_V0_1: TassadarTrainingSplitPolicy =
     adversarialFamilies: ['family.near_miss_lookup.v1'],
     economicFamily: 'family.application_state_machine.v1',
     evalLengthFactors: [2, 4, 8],
-    generalizationPartition: {
-      allowedUses: ['generalization_eval'],
-      blockedUses: [
-        'homework',
-        'optimization',
-        'retrieval_context',
-        'training',
-      ],
-      exposure: 'checksum_only',
-      manifestDigest: {
-        algorithm: 'sha256',
-        hex: TASSADAR_HELD_OUT_PARTITION_MANIFEST_SHA256,
-      },
-      partitionRef: TASSADAR_HELD_OUT_PARTITION_REF,
-      purpose: 'generalization_gg_eval',
-      rotation: 'append_new_partition_ref_never_rewrite',
-    },
     heldOutFamilies: [
       'family.application_state_machine.v1',
       'family.stack_loop_sum.compiled.v1',
@@ -113,8 +64,6 @@ export type TassadarSplitPolicyViolation = Readonly<
   | { kind: 'family_unassigned'; familyId: string }
   | { kind: 'economic_family_not_held_out'; familyId: string }
   | { kind: 'eval_factors_not_ascending'; detail: string }
-  | { kind: 'held_out_partition_not_checksum_locked'; detail: string }
-  | { kind: 'held_out_partition_training_use_allowed'; detail: string }
 >
 
 /**
@@ -158,34 +107,6 @@ export const splitPolicyViolations = (
       kind: 'eval_factors_not_ascending',
     })
   }
-  if (
-    policy.generalizationPartition.exposure !== 'checksum_only' ||
-    policy.generalizationPartition.manifestDigest.algorithm !== 'sha256' ||
-    !/^[a-f0-9]{64}$/.test(policy.generalizationPartition.manifestDigest.hex)
-  ) {
-    violations.push({
-      detail:
-        'Generalization partition must expose only a checksum-locked sha256 manifest digest.',
-      kind: 'held_out_partition_not_checksum_locked',
-    })
-  }
-  const forbiddenUses: ReadonlyArray<
-    Extract<
-      TassadarTraceCorpusUse,
-      'homework' | 'optimization' | 'retrieval_context' | 'training'
-    >
-  > = ['homework', 'optimization', 'retrieval_context', 'training']
-  if (
-    forbiddenUses.some(
-      use => !policy.generalizationPartition.blockedUses.includes(use),
-    )
-  ) {
-    violations.push({
-      detail:
-        'Generalization partition must block training, optimization, homework, and retrieval-context use.',
-      kind: 'held_out_partition_training_use_allowed',
-    })
-  }
 
   return violations
 }
@@ -216,33 +137,4 @@ export const splitAssignmentForRecord = (
   }
 
   return 'train'
-}
-
-export type TassadarTraceCorpusUseDecision = Readonly<
-  | { allowed: true; partitionRef: string; use: TassadarTraceCorpusUse }
-  | {
-      allowed: false
-      blockerRef: 'blocker.tassadar_trace.gg_partition_isolated'
-      partitionRef: string
-      reason: string
-      use: TassadarTraceCorpusUse
-    }
->
-
-export const tassadarTraceCorpusUseDecision = (
-  use: TassadarTraceCorpusUse,
-  partition: TassadarGeneralizationPartitionLock = TASSADAR_TRAINING_SPLIT_POLICY_V0_1.generalizationPartition,
-): TassadarTraceCorpusUseDecision => {
-  if (use === 'generalization_eval' && partition.allowedUses.includes(use)) {
-    return { allowed: true, partitionRef: partition.partitionRef, use }
-  }
-
-  return {
-    allowed: false,
-    blockerRef: 'blocker.tassadar_trace.gg_partition_isolated',
-    partitionRef: partition.partitionRef,
-    reason:
-      'The Tassadar GG held-out partition is checksum-only and may be used only for Generalization Gain evaluation.',
-    use,
-  }
 }

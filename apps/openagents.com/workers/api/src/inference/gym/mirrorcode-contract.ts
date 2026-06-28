@@ -117,19 +117,6 @@ export const MirrorCodeComparator = S.Struct({
 })
 export type MirrorCodeComparator = typeof MirrorCodeComparator.Type
 
-export const MirrorCodeGeneralizationSet = S.Struct({
-  setRef: S.Literal('gg.mirrorcode.public_tasks.no_rag.v1'),
-  metric: S.Literal('generalization_gain'),
-  scope: S.Literal('public_tasks_only'),
-  privateSet: S.Literal('excluded'),
-  taskContentExposure: S.Literal('never_store_or_echo'),
-  retrievalPolicy: S.Literal('no_rag_on_tasks'),
-  trainingPolicy: S.Literal('no_training_or_optimization_on_tasks'),
-  decisionGradeRule: S.Literal('owner_armed_scored_terminal_runs_only'),
-})
-export type MirrorCodeGeneralizationSet =
-  typeof MirrorCodeGeneralizationSet.Type
-
 // Typed ingest error so the route can map it to a 400 without leaking internals.
 export class MirrorCodeRunError extends Error {
   readonly _tag = 'MirrorCodeRunError'
@@ -281,14 +268,3 @@ export const MIRRORCODE_BENCHMARK_LABEL = {
   name: 'Epoch Research MirrorCode',
   scope: 'public tasks only (private set excluded)',
 } as const
-
-export const MIRRORCODE_GENERALIZATION_SET: MirrorCodeGeneralizationSet = {
-  decisionGradeRule: 'owner_armed_scored_terminal_runs_only',
-  metric: 'generalization_gain',
-  privateSet: 'excluded',
-  retrievalPolicy: 'no_rag_on_tasks',
-  scope: 'public_tasks_only',
-  setRef: 'gg.mirrorcode.public_tasks.no_rag.v1',
-  taskContentExposure: 'never_store_or_echo',
-  trainingPolicy: 'no_training_or_optimization_on_tasks',
-}
