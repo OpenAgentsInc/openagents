@@ -609,6 +609,25 @@ async function sleep(ms: number): Promise<void> {
 
 type RepositoryCacheProcessLock = { lockDirectory: string; heartbeat: ReturnType<typeof setInterval> }
 
+function processAppearsAlive(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) return false
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    return !isNodeErrorWithCode(error, "ESRCH")
+  }
+}
+
+async function repositoryCacheLockOwnerPid(lockDirectory: string): Promise<number | null> {
+  try {
+    const owner = JSON.parse(await readFile(join(lockDirectory, "owner.json"), "utf8")) as { pid?: unknown }
+    return typeof owner.pid === "number" && Number.isInteger(owner.pid) ? owner.pid : null
+  } catch {
+    return null
+  }
+}
+
 async function acquireRepositoryCacheProcessLock(bareDirectory: string): Promise<RepositoryCacheProcessLock> {
   const lockDirectory = `${bareDirectory}.pylon-lock`
   const startedAt = Date.now()
@@ -641,6 +660,11 @@ async function acquireRepositoryCacheProcessLock(bareDirectory: string): Promise
 
     const now = Date.now()
     if (now - lockStat.mtimeMs > repositoryCacheProcessLockStaleMs) {
+      const ownerPid = await repositoryCacheLockOwnerPid(lockDirectory)
+      if (ownerPid !== null && processAppearsAlive(ownerPid)) {
+        await sleep(repositoryCacheProcessLockPollMs)
+        continue
+      }
       await rm(lockDirectory, { recursive: true, force: true })
       continue
     }
