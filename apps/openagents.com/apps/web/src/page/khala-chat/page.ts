@@ -140,7 +140,7 @@ const floatingUserTurnView = <Message>(
       h.p(
         [
           Ui.className<Message>(
-            'm-0 border border-[#3a7bff]/30 font-mono text-[0.8125rem] leading-[1.45] text-[#f1efe8] [overflow-wrap:anywhere]',
+            'm-0 font-mono text-[0.8125rem] leading-[1.45] text-[#f1efe8] [overflow-wrap:anywhere]',
           ),
         ],
         [content],
