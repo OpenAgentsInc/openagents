@@ -26,3 +26,6 @@ var/
 # Local agent working files / tooling (never tracked)
 .codex/
 NEEDS_OWNER.md
+
+# GLM own-capacity continual-learning burn output (owner-private derived data)
+.khala-continual-learning/
