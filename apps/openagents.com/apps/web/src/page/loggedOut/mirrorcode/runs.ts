@@ -51,11 +51,18 @@ export const MirrorCodeRun = S.Struct({
   status: MirrorCodeRunStatus,
   passRate: MaybeNumber,
   tokensTotal: S.Number,
+  exactTokenUsageEventRefs: S.Array(S.String),
+  tokenAttributionTruth: S.String,
+  tokenAttributionProofRef: S.String,
   startedAt: S.String,
   finishedAt: MaybeString,
   summary: S.String,
   grade: MirrorCodeGrade,
   decisionGrade: S.Boolean,
+  demandKind: S.String,
+  demandSource: S.String,
+  generalizationSet: S.String,
+  memoryPolicy: S.String,
 })
 export type MirrorCodeRun = typeof MirrorCodeRun.Type
 
