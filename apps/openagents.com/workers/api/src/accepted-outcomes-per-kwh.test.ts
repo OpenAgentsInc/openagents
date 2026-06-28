@@ -3,8 +3,10 @@ import { describe, expect, test } from 'vitest'
 
 import {
   AcceptedOutcomesPerKwhEndpoint,
+  AcceptedOutcomesPerKwhMeasuredTelemetryInput,
   AcceptedOutcomesPerKwhProjection,
   AcceptedOutcomesPerKwhRequiredMeasuredDatapoints,
+  measuredTelemetryAoKwhDatapoint,
   modeledLabor4777AoKwhDatapoint,
   projectAcceptedOutcomesPerKwh,
 } from './accepted-outcomes-per-kwh'
@@ -15,6 +17,36 @@ type AcceptedOutcomesPerKwhBody = Readonly<{
   datapoints: ReadonlyArray<unknown>
   metricId: string
 }>
+
+const measuredTelemetry = (
+  datapointId: string,
+  measuredEnergyWh: number,
+) =>
+  new AcceptedOutcomesPerKwhMeasuredTelemetryInput({
+    acceptedOutcomeCount: 2,
+    acceptedOutcomeRefs: [
+      `accepted_outcome.public.${datapointId}.one`,
+      `accepted_outcome.public.${datapointId}.two`,
+    ],
+    caveatRefs: ['caveat.ao_kwh.measured_single_device_window'],
+    datapointId,
+    demandProvenance: {
+      evidenceRefs: [`receipt.public.${datapointId}.customer_payment`],
+      kind: 'external',
+      rationale:
+        'This fixture datapoint represents a third-party paid accepted-outcome window.',
+    },
+    deviceRef: `device.public.${datapointId}`,
+    label: `Measured fixture ${datapointId}`,
+    measuredEnergyWh,
+    measurementMethod: 'wall_meter_wh_for_bounded_accepted_outcome_window',
+    meterEvidenceRefs: [`meter.public.${datapointId}.wh`],
+    settlementReceiptRefs: [`settlement.public.${datapointId}`],
+    sourceRefs: [`source.public.${datapointId}`],
+    verificationRefs: [`verdict.public.${datapointId}`],
+    windowEnd: '2026-06-28T01:30:00.000Z',
+    windowStart: '2026-06-28T01:00:00.000Z',
+  })
 
 describe('Accepted Outcomes per kWh metric', () => {
   test('publishes a receipt-backed modeled seed datapoint with caveats', () => {
@@ -75,7 +107,63 @@ describe('Accepted Outcomes per kWh metric', () => {
     expect(projection.gate.blockerRefs).toContain(
       'blocker.product_promises.ao_kwh_requires_two_measured_datapoints',
     )
-    expect(projection.statusLabel).toContain('0 of 2 measured datapoints')
+    expect(projection.statusLabel).toContain('0 of 2 required measured datapoints')
+  })
+
+  test('ingests measured per-device telemetry into a measured AO/kWh datapoint', () => {
+    const input = measuredTelemetry('ao_kwh.measured.fixture_one', 250)
+    const datapoint = measuredTelemetryAoKwhDatapoint(input)
+
+    expect(datapoint.energyEvidenceState).toBe('measured')
+    expect(datapoint.energyModel).toBeNull()
+    expect(datapoint.measuredEnergyTelemetry).toMatchObject({
+      deviceRef: 'device.public.ao_kwh.measured.fixture_one',
+      measuredEnergyKwh: 0.25,
+      measuredEnergyWh: 250,
+      measurementMethod: 'wall_meter_wh_for_bounded_accepted_outcome_window',
+    })
+    expect(datapoint.measuredEnergyTelemetry?.meterEvidenceRefs).toContain(
+      'meter.public.ao_kwh.measured.fixture_one.wh',
+    )
+    expect(datapoint.acceptedOutcomesPerKwh).toBe(8)
+  })
+
+  test('projects measured datapoints and satisfies the measured telemetry gate only at two measured datapoints', () => {
+    const oneMeasured = projectAcceptedOutcomesPerKwh({
+      generatedAt: '2026-06-28T01:45:00.000Z',
+      measuredTelemetry: [measuredTelemetry('ao_kwh.measured.fixture_one', 250)],
+    })
+    const twoMeasured = projectAcceptedOutcomesPerKwh({
+      generatedAt: '2026-06-28T01:45:00.000Z',
+      measuredTelemetry: [
+        measuredTelemetry('ao_kwh.measured.fixture_one', 250),
+        measuredTelemetry('ao_kwh.measured.fixture_two', 500),
+      ],
+    })
+
+    expect(oneMeasured.datapoints).toHaveLength(2)
+    expect(oneMeasured.energyAccounting.evidenceState).toBe(
+      'modeled_and_measured',
+    )
+    expect(oneMeasured.energyAccounting.measuredDatapointCount).toBe(1)
+    expect(oneMeasured.gate.measuredTelemetryGateSatisfied).toBe(false)
+    expect(oneMeasured.gate.measuredFigurePublicationAllowed).toBe(false)
+    expect(oneMeasured.gate.measuredDatapointShortfall).toBe(1)
+
+    expect(twoMeasured.datapoints).toHaveLength(3)
+    expect(twoMeasured.energyAccounting.measuredDatapointCount).toBe(2)
+    expect(twoMeasured.energyAccounting.modeledDatapointCount).toBe(1)
+    expect(twoMeasured.gate.measuredTelemetryGateSatisfied).toBe(true)
+    expect(twoMeasured.gate.measuredFigurePublicationAllowed).toBe(true)
+    expect(twoMeasured.gate.measuredDatapointShortfall).toBe(0)
+    expect(twoMeasured.gate.blockerRefs).not.toContain(
+      'blocker.product_promises.ao_kwh_requires_two_measured_datapoints',
+    )
+    expect(twoMeasured.gate.blockerRefs).toContain(
+      'blocker.product_promises.ao_kwh_green_transition_receipt_missing',
+    )
+    expect(twoMeasured.gate.greenGateSatisfied).toBe(false)
+    expect(twoMeasured.gate.state).toBe('yellow')
   })
 
   test('labels demand provenance internal/external and forbids unlabeled market-demand claims', () => {
@@ -122,12 +210,13 @@ describe('Accepted Outcomes per kWh metric', () => {
 
     expect(datapoint.windowStart).toBe('2026-06-14T02:36:58.442Z')
     expect(datapoint.windowEnd).toBe('2026-06-14T03:06:15.399Z')
-    expect(datapoint.energyModel.method).toBe(
+    expect(datapoint.energyModel).not.toBeNull()
+    expect(datapoint.energyModel?.method).toBe(
       'modeled_power_kw_times_acceptance_to_result_wall_clock',
     )
-    expect(datapoint.energyModel.modeledPowerKw).toBe(0.1)
-    expect(datapoint.energyModel.wallClockSeconds).toBe(1756.957)
-    expect(datapoint.energyModel.energyKwh).toBe(0.048804)
+    expect(datapoint.energyModel?.modeledPowerKw).toBe(0.1)
+    expect(datapoint.energyModel?.wallClockSeconds).toBe(1756.957)
+    expect(datapoint.energyModel?.energyKwh).toBe(0.048804)
     expect(datapoint.acceptedOutcomesPerKwh).toBe(20.49)
   })
 

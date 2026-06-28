@@ -3114,7 +3114,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'OpenAgents defines and will measure Accepted Outcomes Per Kilowatt-Hour (AO/kWh) — verified, accepted outcomes produced per kilowatt-hour of energy — as the primary efficiency metric for converting electricity into accepted agent work.',
         safeCopy:
-          'AO/kWh is now instrumented as a yellow, caveated metric: /api/public/metrics/accepted-outcomes-per-kwh publishes the frozen definition plus one receipt-backed modeled seed datapoint from the first settled labor job (#4777). The seed is explicitly modeled, not measured: it uses acceptance-to-result wall-clock timing and a documented 100 W provider-power assumption. The projection also carries a typed demand-provenance split (proof.demand_provenance.v1): the seed outcome is labeled internal (operator-staged, credit-ledger), externalDemandClaimAllowed stays false, and the copy gate forbids presenting it as external market demand. The green gate now exposes the exact measured-telemetry threshold: 0 of 2 required measured AO/kWh datapoints are present. Describe it only as a modeled, internal-demand seed datapoint while measured energy telemetry is still missing.',
+          'AO/kWh is now instrumented as a yellow, caveated metric: /api/public/metrics/accepted-outcomes-per-kwh publishes the frozen definition plus one receipt-backed modeled seed datapoint from the first settled labor job (#4777). The seed is explicitly modeled, not measured: it uses acceptance-to-result wall-clock timing and a documented 100 W provider-power assumption. The source now includes a typed measured per-device telemetry ingestion contract that turns real Wh measurements for accepted-outcome windows into measured AO/kWh datapoints, but the live projection still has 0 of 2 required measured datapoints. The projection also carries a typed demand-provenance split (proof.demand_provenance.v1): the seed outcome is labeled internal (operator-staged, credit-ledger), externalDemandClaimAllowed stays false, and the copy gate forbids presenting it as external market demand. Describe the live endpoint only as a modeled, internal-demand seed datapoint until measured telemetry datapoints are published.',
         unsafeCopy:
           'Do not describe the AO/kWh seed as measured, broadly representative, a provider ranking, a production routing policy, investment advice, grid advice, or proof that live energy dispatch is running. Do not cite any figure without the modeled/measurement evidence label and caveats. Do not present AO/kWh as green or measured until at least two real telemetry datapoints are published with evidence-state labels and transition receipts.',
         evidenceRefs: [
@@ -3129,12 +3129,11 @@ export const publicProductPromisesDocument = () => {
           'promise:proof.demand_provenance.v1',
         ],
         blockerRefs: [
-          'blocker.product_promises.energy_accounting_measured_telemetry_missing',
-          'blocker.product_promises.ao_kwh_only_single_modeled_seed_datapoint',
+          'blocker.product_promises.ao_kwh_measured_datapoints_missing',
           'blocker.product_promises.ao_kwh_requires_two_measured_datapoints',
         ],
         verification:
-          'GET /api/public/metrics/accepted-outcomes-per-kwh. Yellow is satisfied when the response decodes, carries schemaVersion openagents.metrics.accepted_outcomes_per_kwh.v1, includes one receipt-backed accepted outcome, labels energyEvidenceState as modeled, and keeps measuredFigurePublicationAllowed false. Green requires at least two measured AO/kWh datapoints from real per-device telemetry, measuredTelemetryGateSatisfied true, and transition receipts.',
+          'GET /api/public/metrics/accepted-outcomes-per-kwh plus accepted-outcomes-per-kwh.test.ts. Yellow is satisfied when the response decodes, carries schemaVersion openagents.metrics.accepted_outcomes_per_kwh.v1, includes one receipt-backed accepted outcome, labels the seed energyEvidenceState as modeled, exposes the measured telemetry gate, and keeps measuredFigurePublicationAllowed false while fewer than two measured datapoints are present. The source ingestion contract accepts real per-device Wh telemetry and computes measured AO/kWh datapoints with energyEvidenceState measured. Green requires at least two measured AO/kWh datapoints from real per-device telemetry, measuredTelemetryGateSatisfied true, and owner-signed transition receipts.',
         authorityBoundary:
           'A defined metric is not a measured result. AO/kWh figures are operational estimates, not investment, grid, utility, or financial advice.',
       },
