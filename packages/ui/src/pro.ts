@@ -378,6 +378,413 @@ export const proMainPane = <Message>(children: ReadonlyArray<Html>): Html => {
   )
 }
 
+export type ProAgentState = 'working' | 'blocked' | 'waiting' | 'done'
+
+export type ProAgentStateHistoryEntry = Readonly<{
+  state: ProAgentState
+  label: string
+  at: string
+}>
+
+export type ProAgentStatusEntry = Readonly<{
+  id: string
+  agentLabel: string
+  worktreeLabel: string
+  state: ProAgentState
+  prompt: string
+  updatedAt: string
+  stateStartedAt: string
+  acknowledgedAt: string
+  unread: boolean
+  toolName: string
+  lastAssistantMessage: string
+  stateHistory: ReadonlyArray<ProAgentStateHistoryEntry>
+}>
+
+export type ProDiffComment = Readonly<{
+  id: string
+  filePath: string
+  lineLabel: string
+  body: string
+  selectedText: string
+  targetAgentLabel: string
+  sentAt: string
+}>
+
+export type ProAgentDashboardSnapshot = Readonly<{
+  generatedAt: string
+  liveEntries: ReadonlyArray<ProAgentStatusEntry>
+  retainedEntries: ReadonlyArray<ProAgentStatusEntry>
+  diffComments: ReadonlyArray<ProDiffComment>
+}>
+
+const proAgentStateLabel = (state: ProAgentState): string =>
+  state === 'working'
+    ? 'working'
+    : state === 'blocked'
+      ? 'blocked'
+      : state === 'waiting'
+        ? 'waiting'
+        : 'done'
+
+const proAgentStateClass = (state: ProAgentState): string =>
+  state === 'working'
+    ? 'border-[#2979ff]/45 text-[#8fb6ff]'
+    : state === 'blocked'
+      ? 'border-[#ff6f00]/55 text-[#ffb400]'
+      : state === 'waiting'
+        ? 'border-white/20 text-white/45'
+        : 'border-[#00c853]/45 text-[#00c853]'
+
+const proAgentStatePill = <Message>(state: ProAgentState): Html => {
+  const h = html<Message>()
+
+  return h.span(
+    [
+      h.DataAttribute('component', 'pro-agent-state-pill'),
+      h.DataAttribute('state', state),
+      h.Class(
+        clsx(
+          'inline-flex items-center border px-1.5 py-0.5 text-[0.625rem] font-semibold uppercase tracking-[0.1em]',
+          proAgentStateClass(state),
+        ),
+      ),
+    ],
+    [proAgentStateLabel(state)],
+  )
+}
+
+const proAgentStatusRow = <Message>(
+  entry: ProAgentStatusEntry,
+  retention: 'live' | 'retained',
+): Html => {
+  const h = html<Message>()
+
+  return h.li(
+    [
+      h.DataAttribute('component', 'pro-agent-status-row'),
+      h.DataAttribute('agent-status-retention', retention),
+      h.DataAttribute('agent-state-started-at', entry.stateStartedAt),
+      h.DataAttribute('agent-updated-at', entry.updatedAt),
+      h.Class(
+        clsx(
+          'grid gap-3 border bg-[#010102] px-3 py-2.5',
+          entry.unread === true ? 'border-[#ffb400]/60' : 'border-[#222]',
+        ),
+      ),
+    ],
+    [
+      h.div(
+        [
+          h.Class(
+            'grid gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-start',
+          ),
+        ],
+        [
+          h.div(
+            [h.Class('grid min-w-0 gap-1')],
+            [
+              h.div(
+                [h.Class('flex min-w-0 flex-wrap items-center gap-2')],
+                [
+                  h.h3(
+                    [h.Class('m-0 truncate text-sm font-semibold text-[#f1efe8]')],
+                    [entry.agentLabel],
+                  ),
+                  proAgentStatePill<Message>(entry.state),
+                  ...(entry.unread === true
+                    ? [
+                        h.span(
+                          [
+                            h.DataAttribute('component', 'pro-agent-unread'),
+                            h.Class(
+                              'border border-[#ffb400]/45 px-1.5 py-0.5 text-[0.625rem] uppercase tracking-[0.1em] text-[#ffb400]',
+                            ),
+                          ],
+                          ['unread'],
+                        ),
+                      ]
+                    : []),
+                ],
+              ),
+              h.p([h.Class('m-0 text-xs leading-[1.5] text-white/55')], [
+                entry.prompt,
+              ]),
+            ],
+          ),
+          h.dl(
+            [
+              h.Class(
+                'm-0 grid gap-1 text-[0.6875rem] text-white/45 sm:grid-cols-2 md:min-w-72',
+              ),
+            ],
+            [
+              h.div([h.Class('grid gap-0.5')], [
+                h.dt([h.Class('uppercase tracking-[0.08em] text-white/25')], [
+                  'worktree',
+                ]),
+                h.dd([h.Class('m-0 truncate text-white/60')], [
+                  entry.worktreeLabel,
+                ]),
+              ]),
+              h.div([h.Class('grid gap-0.5')], [
+                h.dt([h.Class('uppercase tracking-[0.08em] text-white/25')], [
+                  'stateStartedAt',
+                ]),
+                h.dd([h.Class('m-0 text-white/60')], [entry.stateStartedAt]),
+              ]),
+              h.div([h.Class('grid gap-0.5')], [
+                h.dt([h.Class('uppercase tracking-[0.08em] text-white/25')], [
+                  'updatedAt',
+                ]),
+                h.dd([h.Class('m-0 text-white/60')], [entry.updatedAt]),
+              ]),
+              h.div([h.Class('grid gap-0.5')], [
+                h.dt([h.Class('uppercase tracking-[0.08em] text-white/25')], [
+                  'ack',
+                ]),
+                h.dd([h.Class('m-0 text-white/60')], [entry.acknowledgedAt]),
+              ]),
+            ],
+          ),
+        ],
+      ),
+      h.div(
+        [
+          h.Class(
+            'grid gap-2 border-t border-[#222] pt-2 md:grid-cols-[minmax(0,1fr)_minmax(18rem,0.85fr)]',
+          ),
+        ],
+        [
+          h.div([h.Class('grid gap-1')], [
+            h.span(
+              [
+                h.Class(
+                  'text-[0.625rem] font-semibold uppercase tracking-[0.1em] text-white/25',
+                ),
+              ],
+              ['last assistant'],
+            ),
+            h.p([h.Class('m-0 text-xs leading-[1.5] text-white/55')], [
+              entry.lastAssistantMessage,
+            ]),
+          ]),
+          h.div([h.Class('grid gap-1')], [
+            h.span(
+              [
+                h.Class(
+                  'text-[0.625rem] font-semibold uppercase tracking-[0.1em] text-white/25',
+                ),
+              ],
+              ['stateHistory'],
+            ),
+            h.ol(
+              [h.Class('m-0 grid list-none gap-1 p-0')],
+              entry.stateHistory.map(history =>
+                h.li(
+                  [
+                    h.DataAttribute('component', 'pro-agent-history-entry'),
+                    h.Class(
+                      'grid grid-cols-[4.5rem_minmax(0,1fr)_5.5rem] gap-2 text-[0.6875rem]',
+                    ),
+                  ],
+                  [
+                    h.span([h.Class('text-white/35')], [history.at]),
+                    h.span([h.Class('truncate text-white/60')], [history.label]),
+                    h.span([h.Class('text-right text-white/35')], [
+                      proAgentStateLabel(history.state),
+                    ]),
+                  ],
+                ),
+              ),
+            ),
+          ]),
+        ],
+      ),
+    ],
+  )
+}
+
+const proAgentStatusList = <Message>(input: {
+  label: string
+  retention: 'live' | 'retained'
+  entries: ReadonlyArray<ProAgentStatusEntry>
+}): Html => {
+  const h = html<Message>()
+
+  return proConsoleSection2<Message>(input.label, [
+    h.ul(
+      [
+        h.DataAttribute('component', `pro-agent-status-${input.retention}`),
+        h.Class('m-0 grid list-none gap-2 p-0'),
+      ],
+      input.entries.map(entry =>
+        proAgentStatusRow<Message>(entry, input.retention),
+      ),
+    ),
+  ])
+}
+
+const proDiffCommentRow = <Message>(comment: ProDiffComment): Html => {
+  const h = html<Message>()
+
+  return h.li(
+    [
+      h.DataAttribute('component', 'pro-diff-comment-row'),
+      h.Class(
+        'grid gap-2 border border-[#222] bg-[#010102] px-3 py-2.5 md:grid-cols-[minmax(0,1fr)_minmax(14rem,0.55fr)]',
+      ),
+    ],
+    [
+      h.div([h.Class('grid min-w-0 gap-1.5')], [
+        h.div([h.Class('flex min-w-0 flex-wrap items-center gap-2')], [
+          proCodeRef<Message>(`${comment.filePath}:${comment.lineLabel}`),
+          h.span([h.Class('text-xs text-white/35')], [
+            `target ${comment.targetAgentLabel}`,
+          ]),
+        ]),
+        h.p([h.Class('m-0 text-sm leading-[1.5] text-[#f1efe8]')], [
+          comment.body,
+        ]),
+        h.blockquote(
+          [
+            h.Class(
+              'm-0 border border-[#222] bg-[#080808] px-2 py-1.5 text-xs leading-[1.45] text-white/45',
+            ),
+          ],
+          [comment.selectedText],
+        ),
+      ]),
+      h.div([h.Class('grid content-between gap-3')], [
+        h.div([h.Class('grid gap-1 text-xs text-white/45')], [
+          h.span(
+            [
+              h.Class(
+                'text-[0.625rem] font-semibold uppercase tracking-[0.1em] text-white/25',
+              ),
+            ],
+            ['ship-back queue'],
+          ),
+          h.span([], [`sentAt ${comment.sentAt}`]),
+        ]),
+        button<Message>({
+          label: 'Send comments',
+          variant: 'secondary',
+          size: 'sm',
+          attrs: [
+            h.Disabled(true),
+            h.AriaDisabled(true),
+            h.Title('Staged until the live agent-send endpoint is connected.'),
+            h.DataAttribute('component', 'pro-diff-send-action'),
+            h.Class('justify-self-start cursor-not-allowed opacity-50'),
+          ],
+        }),
+      ]),
+    ],
+  )
+}
+
+const proDiffCommentQueue = <Message>(
+  comments: ReadonlyArray<ProDiffComment>,
+): Html => {
+  const h = html<Message>()
+
+  return proConsoleSection2<Message>('Annotate diff -> ship back', [
+    h.div(
+      [
+        h.DataAttribute('component', 'pro-diff-comment-queue'),
+        h.Class('grid gap-2'),
+      ],
+      [
+        h.p([h.Class('m-0 max-w-[72ch] text-xs leading-[1.55] text-white/45')], [
+          'Line comments are retained as review intent and grouped by target agent. Live sending stays disabled until the owner-scoped agent-send endpoint is wired.',
+        ]),
+        h.ul(
+          [h.Class('m-0 grid list-none gap-2 p-0')],
+          comments.map(proDiffCommentRow<Message>),
+        ),
+      ],
+    ),
+  ])
+}
+
+const proDashboardSummary = <Message>(
+  snapshot: ProAgentDashboardSnapshot,
+): Html => {
+  const h = html<Message>()
+  const activeCount = snapshot.liveEntries.length.toString()
+  const retainedCount = snapshot.retainedEntries.length.toString()
+  const commentCount = snapshot.diffComments.length.toString()
+
+  return h.div(
+    [
+      h.DataAttribute('component', 'pro-agent-dashboard-summary'),
+      h.Class(
+        'grid gap-2 border-b border-[#222] pb-4 md:grid-cols-[minmax(0,1fr)_auto]',
+      ),
+    ],
+    [
+      h.div([h.Class('grid gap-1')], [
+        h.h1(
+          [h.Class('m-0 text-base font-semibold tracking-[0.01em] text-[#f1efe8]')],
+          ['Agent operations'],
+        ),
+        h.p([h.Class('m-0 max-w-[72ch] text-sm leading-[1.55] text-white/55')], [
+          'Live and retained agent status entries use stateStartedAt for unread tracking, keep a bounded stateHistory, and stage diff annotations for operator review.',
+        ]),
+      ]),
+      h.dl(
+        [
+          h.Class(
+            'm-0 grid grid-cols-3 gap-2 text-center text-xs sm:min-w-[24rem]',
+          ),
+        ],
+        [
+          h.div([h.Class('border border-[#222] bg-[#010102] px-2 py-2')], [
+            h.dt([h.Class('text-white/30')], ['live']),
+            h.dd([h.Class('m-0 text-sm font-semibold text-[#f1efe8]')], [
+              activeCount,
+            ]),
+          ]),
+          h.div([h.Class('border border-[#222] bg-[#010102] px-2 py-2')], [
+            h.dt([h.Class('text-white/30')], ['retained']),
+            h.dd([h.Class('m-0 text-sm font-semibold text-[#f1efe8]')], [
+              retainedCount,
+            ]),
+          ]),
+          h.div([h.Class('border border-[#222] bg-[#010102] px-2 py-2')], [
+            h.dt([h.Class('text-white/30')], ['comments']),
+            h.dd([h.Class('m-0 text-sm font-semibold text-[#f1efe8]')], [
+              commentCount,
+            ]),
+          ]),
+        ],
+      ),
+      h.p([h.Class('m-0 text-xs text-white/35 md:col-span-2')], [
+        `Generated ${snapshot.generatedAt}. Public-safe sample data only; no private prompts, raw logs, wallet material, or provider payloads are rendered.`,
+      ]),
+    ],
+  )
+}
+
+export const proAgentDashboard = <Message>(
+  snapshot: ProAgentDashboardSnapshot,
+): Html =>
+  proConsoleStack<Message>([
+    proDashboardSummary<Message>(snapshot),
+    proAgentStatusList<Message>({
+      label: 'Live agents',
+      retention: 'live',
+      entries: snapshot.liveEntries,
+    }),
+    proAgentStatusList<Message>({
+      label: 'Retained agents',
+      retention: 'retained',
+      entries: snapshot.retainedEntries,
+    }),
+    proDiffCommentQueue<Message>(snapshot.diffComments),
+  ])
+
 // ---------------------------------------------------------------------------
 // Runs + evals surfaces (issue 6184)
 // ---------------------------------------------------------------------------
