@@ -1,8 +1,9 @@
 // Routes for the recurring, published Gym benchmark LADDER (#6309).
 //
 //   - `GET /api/public/gym/leaderboard` (no auth): the public-safe dereferenceable
-//     leaderboard. Returns the latest published ladder snapshot (the three rungs:
-//     Big Pickle → free → paid frontier) by `ladderRef`. If no snapshot has been
+//     leaderboard. Returns the latest published ladder snapshot (Big Pickle →
+//     free → paid frontier → MirrorCode public bucket) by `ladderRef`. If no
+//     snapshot has been
 //     published yet, it returns the EMPTY ladder shape (all rungs `awaiting_owner`
 //     with their owner-gate refs) so the surface is honestly "machinery shipped,
 //     no decision-grade run yet" rather than 404 or fabricated.
@@ -34,6 +35,11 @@ import {
 } from './ladder'
 import type { GymLeaderboardReportInput } from './leaderboard'
 import { GymLeaderboardUnsafe } from './leaderboard'
+import {
+  buildMirrorCodeRun,
+  MirrorCodeRunError,
+  type MirrorCodeRun,
+} from './mirrorcode-contract'
 import type {
   GymLadderSnapshot,
   GymLadderSourceStore,
@@ -87,7 +93,7 @@ const publishUnavailable = () =>
     { status: 503 },
   )
 
-// The empty ladder: the three rungs in their `awaiting_owner` shape with owner
+// The empty ladder: all rungs in their `awaiting_owner` shape with owner
 // gates visible. Returned by the public route when no snapshot has been published
 // yet. It is the honest "machinery shipped, no decision-grade run yet" surface.
 const emptyLadder = (config: GymLadderRecurringConfig): GymLadderSnapshot => ({
@@ -157,13 +163,49 @@ const buildPublishedLadder = (
   | Readonly<{ reason: string; tag: 'reject' }>
 > => {
   const body = raw as
-    | { reports?: ReadonlyArray<GymLeaderboardReportInput> }
+    | {
+        mirrorCodeRuns?: ReadonlyArray<unknown>
+        reports?: ReadonlyArray<GymLeaderboardReportInput>
+      }
     | undefined
   const reports = body?.reports
   if (!Array.isArray(reports)) {
     return Effect.succeed({
       reason:
         'A ladder publish needs a `reports` array of decision-grade report inputs.',
+      tag: 'reject' as const,
+    })
+  }
+  const mirrorCodeRunsResult = (body?.mirrorCodeRuns ?? []).reduce<
+    | Readonly<{ runs: ReadonlyArray<MirrorCodeRun>; tag: 'ok' }>
+    | Readonly<{ reason: string; tag: 'reject' }>
+  >(
+    (result, rawRun) => {
+      if (result.tag === 'reject') {
+        return result
+      }
+      try {
+        return {
+          runs: [...result.runs, buildMirrorCodeRun(rawRun)],
+          tag: 'ok',
+        }
+      } catch (error) {
+        return {
+          reason:
+            error instanceof MirrorCodeRunError
+              ? error.message
+              : error instanceof Error
+                ? error.message
+                : String(error),
+          tag: 'reject',
+        }
+      }
+    },
+    { runs: [], tag: 'ok' },
+  )
+  if (mirrorCodeRunsResult.tag === 'reject') {
+    return Effect.succeed({
+      reason: mirrorCodeRunsResult.reason,
       tag: 'reject' as const,
     })
   }
@@ -174,7 +216,8 @@ const buildPublishedLadder = (
         : error instanceof Error
           ? error.message
           : String(error),
-    try: () => buildGymLadderLeaderboard(reports, config),
+    try: () =>
+      buildGymLadderLeaderboard(reports, config, mirrorCodeRunsResult.runs),
   }).pipe(
     Effect.map(ladder => ({ ladder, tag: 'ok' as const })),
     Effect.catch(reason => Effect.succeed({ reason, tag: 'reject' as const })),

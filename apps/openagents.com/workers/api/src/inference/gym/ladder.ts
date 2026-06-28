@@ -9,7 +9,7 @@
 //   Rung 1 — Big Pickle (OpenCode's default free model): the baseline.
 //   Rung 2 — other free/open models: the field users reach for when not paying.
 //   Rung 3 — paid frontier (Claude / GPT / Gemini class): the upper bound.
-//   Rung 4 — MirrorCode frontier-coding: sustained software reimplementation.
+//   Rung 4 — MirrorCode public bucket: sustained real-software reproduction.
 //
 // This module owns ONLY the PUBLISHING layer on top of the already-shipped
 // benchmark harness (matrix, runner, report) and the flat
@@ -38,11 +38,15 @@ import {
   type GymLeaderboardReportInput,
   type GymLeaderboardRow,
 } from './leaderboard'
+import {
+  MIRRORCODE_DEMAND_SOURCE,
+  type MirrorCodeRun,
+} from './mirrorcode-contract'
 
 export const GymLadderLeaderboardSchemaVersion =
   'openagents.gym.ladder_leaderboard.v1'
 
-// The rungs of the ladder, in deliberate climbing order.
+// The four rungs of the ladder, in deliberate climbing order.
 export const GymLadderRungId = S.Literals([
   'rung1',
   'rung2',
@@ -72,8 +76,9 @@ export type GymLadderCadence = typeof GymLadderCadence.Type
 export type GymLadderRungDefinition = Readonly<{
   rung: GymLadderRungId
   title: string
+  benchmarkFamily: 'opencode_head_to_head' | 'mirrorcode_public_bucket'
   // The opponent lanes for this rung. `khala` is the protagonist and is never an
-  // opponent.
+  // opponent. Empty for benchmark-family rungs that are not lane comparisons.
   opponentLanes: ReadonlyArray<BenchmarkLane>
   // The honest bar Khala must clear on this rung (public-safe English).
   barToClear: string
@@ -85,12 +90,13 @@ export type GymLadderRungDefinition = Readonly<{
 
 // The canonical ladder definition. Lane membership for rungs 1-3 mirrors the
 // matrix availability table + `opencode-gym-benchmark-ladder.md`; rung 4 is the
-// MirrorCode frontier-coding shape from #6376 and stays owner-gated until the
-// heavy public-bucket run is explicitly armed.
+// MirrorCode public-bucket reproduction shape (#6376/#6379) and follows the
+// integration analysis public-bucket decision-grade gate.
 export const GYM_LADDER_RUNGS: ReadonlyArray<GymLadderRungDefinition> = [
   {
     rung: 'rung1',
     title: 'Rung 1 — Khala vs Big Pickle',
+    benchmarkFamily: 'opencode_head_to_head',
     opponentLanes: ['bigpickle'],
     barToClear:
       'Beat Big Pickle (OpenCode default free model) on cost-per-accepted-outcome AND verified-rate on the same coding task.',
@@ -100,6 +106,7 @@ export const GYM_LADDER_RUNGS: ReadonlyArray<GymLadderRungDefinition> = [
   {
     rung: 'rung2',
     title: 'Rung 2 — Khala vs free / open models',
+    benchmarkFamily: 'opencode_head_to_head',
     opponentLanes: [
       'gemini-free',
       'gpt-oss-20b',
@@ -113,6 +120,7 @@ export const GYM_LADDER_RUNGS: ReadonlyArray<GymLadderRungDefinition> = [
   {
     rung: 'rung3',
     title: 'Rung 3 — Khala vs paid frontier',
+    benchmarkFamily: 'opencode_head_to_head',
     opponentLanes: ['openai-gpt', 'claude', 'vertex-gemini'],
     barToClear:
       'Honestly measure the gap to paid frontier models and track it shrinking over successive runs. No requirement to beat today.',
@@ -120,12 +128,13 @@ export const GYM_LADDER_RUNGS: ReadonlyArray<GymLadderRungDefinition> = [
   },
   {
     rung: 'rung4',
-    title: 'Rung 4 — MirrorCode frontier-coding',
+    title: 'Rung 4 — MirrorCode public-bucket reproduction',
+    benchmarkFamily: 'mirrorcode_public_bucket',
     opponentLanes: [],
     barToClear:
-      'Run openagents/khala through public MirrorCode buckets and publish only owner-armed decision-grade pass-rate evidence; private tasks remain excluded.',
+      'Publish Epoch Research MirrorCode public-task pass-rate for openagents/khala with exact token-usage rows as proof.',
     ownerGateRef:
-      'gate.owner.gym.ladder.rung4.mirrorcode_public_bucket_spend_and_wall_clock_approval',
+      'gate.owner.gym.ladder.rung4.mirrorcode_public_bucket_decision_grade',
   },
 ]
 
@@ -164,17 +173,23 @@ export const GYM_LADDER_RECURRING_CONFIG: GymLadderRecurringConfig = {
 export type GymLadderOpponentEntry = Readonly<{
   rank: number
   lane: BenchmarkLane | null
+  benchmarkFamily: 'opencode_head_to_head' | 'mirrorcode_public_bucket'
   reportRef: string
   candidateRef: string
   acceptedOutcomes: number
   verificationRateBps: number | null
   costPerAcceptedOutcomeMsat: number
+  passRateBps: number | null
+  tokensTotal: number
+  exactTokenUsageEventRefs: ReadonlyArray<string>
+  tokenAttributionProofRef: string | null
 }>
 
 // One rung of the published ladder.
 export type GymLadderRung = Readonly<{
   rung: GymLadderRungId
   title: string
+  benchmarkFamily: 'opencode_head_to_head' | 'mirrorcode_public_bucket'
   state: GymLadderRungState
   barToClear: string
   opponentLanes: ReadonlyArray<BenchmarkLane>
@@ -183,6 +198,10 @@ export type GymLadderRung = Readonly<{
   entries: ReadonlyArray<GymLadderOpponentEntry>
   // When `awaiting_owner`, the honest reasons the rung cannot publish yet.
   blockerRefs: ReadonlyArray<string>
+  passRateBps: number | null
+  tokensTotal: number
+  exactTokenUsageEventRefs: ReadonlyArray<string>
+  tokenAttributionProofRefs: ReadonlyArray<string>
 }>
 
 export type GymLadderLeaderboard = Readonly<{
@@ -208,6 +227,8 @@ const LADDER_CAVEATS = [
   'caveat.public.gym.ladder.awaiting_owner_rungs_show_gate_not_numbers',
   'caveat.public.gym.ladder.no_beats_frontier_claim_from_single_run',
   'caveat.public.gym.ladder.gym_traffic_tagged_internal_gym_ladder',
+  'caveat.public.gym.ladder.mirrorcode_public_tasks_only_private_set_excluded',
+  'caveat.public.gym.ladder.mirrorcode_exact_token_rows_required',
 ] as const
 
 // Recover the lane from a candidateRef prefix for opponent classification. The
@@ -235,12 +256,106 @@ const isKhalaRow = (row: GymLeaderboardRow): boolean =>
 const toOpponentEntry = (row: GymLeaderboardRow): GymLadderOpponentEntry => ({
   rank: row.rank,
   lane: laneFromCandidateRef(row.candidateRef),
+  benchmarkFamily: 'opencode_head_to_head',
   reportRef: row.reportRef,
   candidateRef: row.candidateRef,
   acceptedOutcomes: row.acceptedOutcomes,
   verificationRateBps: row.verificationRateBps,
   costPerAcceptedOutcomeMsat: row.costPerAcceptedOutcomeMsat,
+  passRateBps: null,
+  tokensTotal: 0,
+  exactTokenUsageEventRefs: [],
+  tokenAttributionProofRef: null,
 })
+
+const decisionGradeMirrorCodeRuns = (
+  runs: ReadonlyArray<MirrorCodeRun>,
+): ReadonlyArray<MirrorCodeRun> =>
+  runs.filter(
+    run =>
+      run.decisionGrade &&
+      run.passRate !== null &&
+      run.exactTokenUsageEventRefs.length > 0,
+  )
+
+const toMirrorCodeEntry = (
+  run: MirrorCodeRun,
+  index: number,
+): GymLadderOpponentEntry => ({
+  rank: index + 1,
+  lane: 'khala',
+  benchmarkFamily: 'mirrorcode_public_bucket',
+  reportRef: `report.gym.mirrorcode.${run.runId}`,
+  candidateRef: `khala.mirrorcode.${run.bucket}.${run.taskId}`,
+  acceptedOutcomes: run.status === 'passed' ? 1 : 0,
+  verificationRateBps:
+    run.passRate === null ? null : Math.round(run.passRate * 10_000),
+  costPerAcceptedOutcomeMsat: 0,
+  passRateBps: run.passRate === null ? null : Math.round(run.passRate * 10_000),
+  tokensTotal: run.tokensTotal,
+  exactTokenUsageEventRefs: run.exactTokenUsageEventRefs,
+  tokenAttributionProofRef: run.tokenAttributionProofRef,
+})
+
+const buildMirrorCodeRung = (
+  definition: GymLadderRungDefinition,
+  mirrorCodeRuns: ReadonlyArray<MirrorCodeRun>,
+): GymLadderRung => {
+  const entries = [...decisionGradeMirrorCodeRuns(mirrorCodeRuns)]
+    .sort((left, right) => {
+      const passDelta = (right.passRate ?? -1) - (left.passRate ?? -1)
+      if (passDelta !== 0) {
+        return passDelta
+      }
+      const tokenDelta = left.tokensTotal - right.tokensTotal
+      if (tokenDelta !== 0) {
+        return tokenDelta
+      }
+      return left.runId.localeCompare(right.runId)
+    })
+    .map(toMirrorCodeEntry)
+
+  const tokensTotal = entries.reduce((sum, entry) => sum + entry.tokensTotal, 0)
+  const exactTokenUsageEventRefs = uniqueRefs(
+    entries.flatMap(entry => entry.exactTokenUsageEventRefs),
+  )
+  const tokenAttributionProofRefs = uniqueRefs(
+    entries.flatMap(entry =>
+      entry.tokenAttributionProofRef === null
+        ? []
+        : [entry.tokenAttributionProofRef],
+    ),
+  )
+  const passRateBps =
+    entries.length === 0
+      ? null
+      : Math.round(
+          entries.reduce((sum, entry) => sum + (entry.passRateBps ?? 0), 0) /
+            entries.length,
+        )
+
+  return {
+    rung: definition.rung,
+    title: definition.title,
+    benchmarkFamily: definition.benchmarkFamily,
+    state: entries.length > 0 ? 'published' : 'awaiting_owner',
+    barToClear: definition.barToClear,
+    opponentLanes: definition.opponentLanes,
+    entries,
+    blockerRefs:
+      entries.length > 0
+        ? []
+        : uniqueRefs([
+            'blocker.gym.ladder.mirrorcode_no_decision_grade_public_bucket_run',
+            'blocker.gym.ladder.mirrorcode_exact_token_rows_missing',
+            definition.ownerGateRef,
+          ]),
+    passRateBps,
+    tokensTotal,
+    exactTokenUsageEventRefs,
+    tokenAttributionProofRefs,
+  }
+}
 
 // The honest blockers for a rung that has no published opponent measurement yet.
 // A `fixture_only` opponent lane needs a real executor wired + owner arming; a
@@ -279,13 +394,14 @@ const rungBlockers = (
 
 // Build the published ladder leaderboard. It runs the shipped flat projection
 // (which filters out everything that is not a public-safe decision-grade report),
-// then re-groups the surviving rows into the rungs. The best Khala
+// then re-groups the surviving rows into the comparison rungs. The best Khala
 // protagonist row (lowest cost-per-accepted-outcome decision-grade Khala report)
 // is shown on every rung that has at least one measured opponent; a rung with no
 // measured opponent is `awaiting_owner` and shows the gate, never a number.
 export const buildGymLadderLeaderboard = (
   inputs: ReadonlyArray<GymLeaderboardReportInput>,
   config: GymLadderRecurringConfig = GYM_LADDER_RECURRING_CONFIG,
+  mirrorCodeRuns: ReadonlyArray<MirrorCodeRun> = [],
 ): GymLadderLeaderboard => {
   const projection: GymLeaderboardProjection =
     buildGymLeaderboardProjection(inputs)
@@ -294,6 +410,9 @@ export const buildGymLadderLeaderboard = (
   const bestKhalaRow = khalaRows[0]
 
   const rungs: Array<GymLadderRung> = config.rungs.map(definition => {
+    if (definition.benchmarkFamily === 'mirrorcode_public_bucket') {
+      return buildMirrorCodeRung(definition, mirrorCodeRuns)
+    }
     const opponentLaneSet = new Set(definition.opponentLanes)
     const measuredOpponentRows = projection.rows.filter(row => {
       const lane = laneFromCandidateRef(row.candidateRef)
@@ -325,6 +444,7 @@ export const buildGymLadderLeaderboard = (
     return {
       rung: definition.rung,
       title: definition.title,
+      benchmarkFamily: definition.benchmarkFamily,
       state: published ? 'published' : 'awaiting_owner',
       barToClear: definition.barToClear,
       opponentLanes: definition.opponentLanes,
@@ -336,6 +456,10 @@ export const buildGymLadderLeaderboard = (
             bestKhalaRow !== undefined,
             measuredOpponentLanes,
           ),
+      passRateBps: null,
+      tokensTotal: 0,
+      exactTokenUsageEventRefs: [],
+      tokenAttributionProofRefs: [],
     }
   })
 
@@ -350,7 +474,11 @@ export const buildGymLadderLeaderboard = (
     decisionGradeRowCount: projection.rowCount,
     rungs,
     excludedReports: projection.excludedReports,
-    caveatRefs: uniqueRefs([...projection.caveatRefs, ...LADDER_CAVEATS]),
+    caveatRefs: uniqueRefs([
+      ...projection.caveatRefs,
+      ...LADDER_CAVEATS,
+      `caveat.public.gym.ladder.mirrorcode_traffic_tagged_internal_${MIRRORCODE_DEMAND_SOURCE}`,
+    ]),
   }
 }
 

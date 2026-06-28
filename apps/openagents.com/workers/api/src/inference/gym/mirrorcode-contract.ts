@@ -79,6 +79,7 @@ export const MIRRORCODE_DEMAND_KIND = 'internal'
 export const MIRRORCODE_DEMAND_SOURCE = 'gym_mirrorcode'
 export const MIRRORCODE_GENERALIZATION_SET_ID = 'mirrorcode_public_tasks_no_rag'
 export const MIRRORCODE_MEMORY_POLICY = 'no_rag_public_tasks_only'
+export const MIRRORCODE_TOKEN_ATTRIBUTION_TRUTH = 'exact_rows_as_proof'
 
 // Field bounds enforced in `buildMirrorCodeRun` (the codebase avoids inline
 // Schema length/number refinements; the build boundary is the single place that
@@ -87,6 +88,8 @@ const MAX_RUN_ID_LENGTH = 128
 const MAX_TASK_ID_LENGTH = 64
 const MAX_LANGUAGE_LENGTH = 32
 const MAX_SUMMARY_LENGTH = 400
+
+const PUBLIC_REF_PATTERN = /^[A-Za-z0-9_.:-]+$/
 
 // The result contract the runner lane writes (and the POST ingest accepts). It
 // is intentionally the small, public-safe shape from the design doc plus the
@@ -104,6 +107,9 @@ export const MirrorCodeRunInput = S.Struct({
   passRate: S.optional(S.NullOr(S.Number)),
   // Total tokens spent by this sample (the honest token-sink contribution).
   tokens: S.Struct({ total: S.Number }),
+  // Exact downstream token rows backing `tokens.total`. Required before a
+  // decision-grade run can publish into the gym ladder.
+  exactTokenUsageEventRefs: S.optional(S.Array(S.String)),
   startedAt: S.String,
   finishedAt: S.optional(S.NullOr(S.String)),
   // A short, public-safe human summary. Bounded; no task contents.
@@ -134,6 +140,9 @@ export const MirrorCodeRun = S.Struct({
   status: MirrorCodeRunStatus,
   passRate: S.NullOr(S.Number),
   tokensTotal: S.Number,
+  exactTokenUsageEventRefs: S.Array(S.String),
+  tokenAttributionTruth: S.Literal(MIRRORCODE_TOKEN_ATTRIBUTION_TRUTH),
+  tokenAttributionProofRef: S.String,
   startedAt: S.String,
   finishedAt: S.NullOr(S.String),
   summary: S.String,
@@ -207,6 +216,13 @@ const assertBounds = (input: MirrorCodeRunInput): void => {
   ) {
     throw new MirrorCodeRunError('passRate must be a fraction in [0, 1].')
   }
+  for (const ref of input.exactTokenUsageEventRefs ?? []) {
+    if (ref.length < 1 || ref.length > 160 || !PUBLIC_REF_PATTERN.test(ref)) {
+      throw new MirrorCodeRunError(
+        'exactTokenUsageEventRefs must be public-safe refs.',
+      )
+    }
+  }
 }
 
 export const isMirrorCodePublicTargetForBucket = (
@@ -251,6 +267,9 @@ const decisionGradeFor = (
 ): boolean =>
   grade === 'decision_grade' && (status === 'passed' || status === 'failed')
 
+const tokenAttributionProofRefFor = (runId: string): string =>
+  `proof.gym.mirrorcode.exact_token_rows.${runId.replace(/[^A-Za-z0-9_.:-]/g, '_')}`
+
 // Build the public-safe stored run from a raw ingest body. Validates the shape,
 // re-asserts the public-safety boundary, and derives the honesty fields. Throws
 // MirrorCodeRunError on any rejection so nothing unsafe is ever stored.
@@ -269,6 +288,15 @@ export const buildMirrorCodeRun = (raw: unknown): MirrorCodeRun => {
 
   const grade = input.grade ?? 'smoke'
   const status = input.status
+  const exactTokenUsageEventRefs = [...new Set(input.exactTokenUsageEventRefs ?? [])]
+  if (
+    decisionGradeFor(grade, status) &&
+    exactTokenUsageEventRefs.length === 0
+  ) {
+    throw new MirrorCodeRunError(
+      'decision_grade MirrorCode runs require exactTokenUsageEventRefs.',
+    )
+  }
   // A scored pass-rate is only meaningful for a scored terminal state.
   const passRate =
     status === 'passed' || status === 'failed'
@@ -284,6 +312,9 @@ export const buildMirrorCodeRun = (raw: unknown): MirrorCodeRun => {
     status,
     passRate,
     tokensTotal: input.tokens.total,
+    exactTokenUsageEventRefs,
+    tokenAttributionTruth: MIRRORCODE_TOKEN_ATTRIBUTION_TRUTH,
+    tokenAttributionProofRef: tokenAttributionProofRefFor(input.runId),
     startedAt: input.startedAt,
     finishedAt: input.finishedAt ?? null,
     summary: input.summary,

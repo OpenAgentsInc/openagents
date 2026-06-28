@@ -23,6 +23,7 @@ const validInput = {
   status: 'passed' as const,
   passRate: 0.42,
   tokens: { total: 12_345_678 },
+  exactTokenUsageEventRefs: ['token_usage_event.gym_mirrorcode.cal.0001'],
   startedAt: '2026-06-27T00:00:00.000Z',
   finishedAt: '2026-06-27T01:00:00.000Z',
   summary: 'Phase-0 smoke of cal (S bucket) through openagents/khala.',
@@ -35,6 +36,13 @@ describe('buildMirrorCodeRun', () => {
     expect(built.runId).toBe('mc-phase0-cal-py-0001')
     expect(built.model).toBe('openagents/khala')
     expect(built.tokensTotal).toBe(12_345_678)
+    expect(built.exactTokenUsageEventRefs).toEqual([
+      'token_usage_event.gym_mirrorcode.cal.0001',
+    ])
+    expect(built.tokenAttributionTruth).toBe('exact_rows_as_proof')
+    expect(built.tokenAttributionProofRef).toBe(
+      'proof.gym.mirrorcode.exact_token_rows.mc-phase0-cal-py-0001',
+    )
     expect(built.passRate).toBe(0.42)
     expect(built.grade).toBe('smoke')
     expect(built.decisionGrade).toBe(false)
@@ -45,6 +53,16 @@ describe('buildMirrorCodeRun', () => {
   test('decision_grade scored run is decisionGrade:true', () => {
     const built = buildMirrorCodeRun({ ...validInput, grade: 'decision_grade' })
     expect(built.decisionGrade).toBe(true)
+  })
+
+  test('decision_grade scored run requires exact token row refs', () => {
+    expect(() =>
+      buildMirrorCodeRun({
+        ...validInput,
+        exactTokenUsageEventRefs: [],
+        grade: 'decision_grade',
+      }),
+    ).toThrow(MirrorCodeRunError)
   })
 
   test('non-terminal status drops passRate', () => {

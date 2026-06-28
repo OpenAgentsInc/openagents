@@ -22,6 +22,7 @@ import {
   gymLadderSnapshotRef,
 } from './ladder'
 import type { GymLeaderboardReportInput } from './leaderboard'
+import { buildMirrorCodeRun } from './mirrorcode-contract'
 
 const REALISTIC_SHAPE = {
   id: 'observed-opencode-ladder-run',
@@ -122,13 +123,9 @@ describe('Gym ladder recurring config', () => {
       'claude',
       'vertex-gemini',
     ])
-    expect(GYM_LADDER_RUNGS[3]).toMatchObject({
-      rung: 'rung4',
-      title: 'Rung 4 — MirrorCode frontier-coding',
-      opponentLanes: [],
-      ownerGateRef:
-        'gate.owner.gym.ladder.rung4.mirrorcode_public_bucket_spend_and_wall_clock_approval',
-    })
+    expect(GYM_LADDER_RUNGS[3]?.benchmarkFamily).toBe(
+      'mirrorcode_public_bucket',
+    )
     for (const rung of GYM_LADDER_RUNGS) {
       expect(rung.ownerGateRef).toMatch(/^gate\.owner\.gym\.ladder\./)
     }
@@ -175,10 +172,10 @@ describe('Gym ladder leaderboard projection', () => {
     )
     const rung4 = ladder.rungs.find(r => r.rung === 'rung4')!
     expect(rung4.blockerRefs).toContain(
-      'blocker.gym.ladder.mirrorcode_public_bucket_not_measured',
+      'blocker.gym.ladder.mirrorcode_no_decision_grade_public_bucket_run',
     )
     expect(rung4.blockerRefs).toContain(
-      'gate.owner.gym.ladder.rung4.mirrorcode_public_bucket_spend_and_wall_clock_approval',
+      'gate.owner.gym.ladder.rung4.mirrorcode_public_bucket_decision_grade',
     )
   })
 
@@ -225,6 +222,50 @@ describe('Gym ladder leaderboard projection', () => {
     )
     expect(ladder.rungs.find(r => r.rung === 'rung3')?.state).toBe(
       'awaiting_owner',
+    )
+  })
+
+  test('publishes rung4 from decision-grade MirrorCode public-bucket runs with exact token rows', () => {
+    const mirrorCodeRun = buildMirrorCodeRun({
+      runId: 'mc-s-cal-python-0001',
+      model: 'openagents/khala',
+      taskId: 'cal',
+      bucket: 'S',
+      language: 'python',
+      status: 'passed',
+      passRate: 0.73,
+      tokens: { total: 1_000_000_001 },
+      exactTokenUsageEventRefs: [
+        'token_usage_event.gym_mirrorcode.cal.0001',
+        'token_usage_event.gym_mirrorcode.cal.0002',
+      ],
+      startedAt: '2026-06-27T00:00:00.000Z',
+      finishedAt: '2026-06-27T02:00:00.000Z',
+      summary: 'Decision-grade public S-bucket MirrorCode cal run.',
+      grade: 'decision_grade',
+    })
+    const ladder = buildGymLadderLeaderboard([], undefined, [mirrorCodeRun])
+    const rung4 = ladder.rungs.find(r => r.rung === 'rung4')!
+    expect(rung4.state).toBe('published')
+    expect(rung4.benchmarkFamily).toBe('mirrorcode_public_bucket')
+    expect(rung4.passRateBps).toBe(7300)
+    expect(rung4.tokensTotal).toBe(1_000_000_001)
+    expect(rung4.exactTokenUsageEventRefs).toEqual([
+      'token_usage_event.gym_mirrorcode.cal.0001',
+      'token_usage_event.gym_mirrorcode.cal.0002',
+    ])
+    expect(rung4.tokenAttributionProofRefs).toEqual([
+      'proof.gym.mirrorcode.exact_token_rows.mc-s-cal-python-0001',
+    ])
+    expect(rung4.entries[0]?.passRateBps).toBe(7300)
+    expect(rung4.entries[0]?.benchmarkFamily).toBe(
+      'mirrorcode_public_bucket',
+    )
+    expect(ladder.caveatRefs).toContain(
+      'caveat.public.gym.ladder.mirrorcode_exact_token_rows_required',
+    )
+    expect(ladder.caveatRefs).toContain(
+      'caveat.public.gym.ladder.mirrorcode_traffic_tagged_internal_gym_mirrorcode',
     )
   })
 

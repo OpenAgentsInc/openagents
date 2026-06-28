@@ -25,21 +25,35 @@ import {
 const GymLadderOpponentEntrySchema = S.Struct({
   rank: S.Number,
   lane: S.NullOr(S.String),
+  benchmarkFamily: S.Literals(
+    ['opencode_head_to_head', 'mirrorcode_public_bucket'],
+  ),
   reportRef: S.String,
   candidateRef: S.String,
   acceptedOutcomes: S.Number,
   verificationRateBps: S.NullOr(S.Number),
   costPerAcceptedOutcomeMsat: S.Number,
+  passRateBps: S.NullOr(S.Number),
+  tokensTotal: S.Number,
+  exactTokenUsageEventRefs: S.Array(S.String),
+  tokenAttributionProofRef: S.NullOr(S.String),
 })
 
 const GymLadderRungSchema = S.Struct({
-  rung: S.Literals(['rung1', 'rung2', 'rung3']),
+  rung: S.Literals(['rung1', 'rung2', 'rung3', 'rung4']),
   title: S.String,
+  benchmarkFamily: S.Literals(
+    ['opencode_head_to_head', 'mirrorcode_public_bucket'],
+  ),
   state: S.Literals(['published', 'awaiting_owner']),
   barToClear: S.String,
   opponentLanes: S.Array(S.String),
   entries: S.Array(GymLadderOpponentEntrySchema),
   blockerRefs: S.Array(S.String),
+  passRateBps: S.NullOr(S.Number),
+  tokensTotal: S.Number,
+  exactTokenUsageEventRefs: S.Array(S.String),
+  tokenAttributionProofRefs: S.Array(S.String),
 })
 
 export const GymLadderLeaderboardStored = S.Struct({
