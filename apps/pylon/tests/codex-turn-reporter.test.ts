@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test"
 
 import {
+  PYLON_AGENT_STATUS_SCHEMA_VERSION,
+  encodeAgentStatusReport,
+} from "../src/agent-status-reporter"
+import {
   PYLON_CODEX_EVENT_CHUNK_INGEST_PATH,
   PYLON_CODEX_EVENT_CHUNK_SCHEMA_VERSION,
   PYLON_CODEX_TURN_INGEST_PATH,
@@ -10,6 +14,43 @@ import {
 } from "../src/codex-turn-reporter"
 
 describe("Pylon Codex turn reporter", () => {
+  test("encodes a runner-neutral agent status envelope for non-Codex reporters", () => {
+    const body = encodeAgentStatusReport({
+      assignmentRef: "assignment.public.agent-status",
+      leaseRef: "lease.public.agent-status",
+      pylonRef: "pylon.public.agent-status",
+      runnerKind: "claude_agent",
+      turnIndex: 0,
+      usage: {
+        inputTokens: 2.9,
+        outputTokens: -1,
+      },
+      items: [
+        {
+          commandLabel: "very-long-label".repeat(20),
+          itemType: "command_execution",
+          ordinal: 0,
+          outputBytes: 12.8,
+          status: "completed",
+        },
+      ],
+    })
+
+    expect(body).toMatchObject({
+      assignmentRef: "assignment.public.agent-status",
+      leaseRef: "lease.public.agent-status",
+      pylonRef: "pylon.public.agent-status",
+      runnerKind: "claude_agent",
+      schemaVersion: PYLON_AGENT_STATUS_SCHEMA_VERSION,
+      turnIndex: 1,
+    })
+    expect(body.usage).toEqual({ inputTokens: 2, outputTokens: 0 })
+    expect(body.items).toMatchObject([
+      { itemType: "command_execution", ordinal: 1, outputBytes: 12 },
+    ])
+    expect(JSON.stringify(body)).not.toContain("/Users/")
+  })
+
   test("posts the exact turn envelope with bearer auth and stable idempotency", async () => {
     const calls: Array<{ init?: RequestInit; url: string }> = []
     const fetchImpl = async (
