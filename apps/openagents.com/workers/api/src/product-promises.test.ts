@@ -1286,6 +1286,8 @@ describe('public product promises document', () => {
       state: 'planned',
       blockerRefs: ['blocker.product_promises.signature_settlement_missing'],
       evidenceRefs: expect.arrayContaining([
+        'apps/openagents.com/workers/api/src/signature-marketplace-revenue-gate.ts',
+        'apps/openagents.com/workers/api/src/signature-marketplace-revenue-gate.test.ts',
         'apps/openagents.com/workers/api/src/signature-usage-metering.ts',
         'apps/openagents.com/workers/api/src/signature-usage-metering-routes.ts',
         'route:/api/public/markets/signature-monetization/metering',
@@ -1295,13 +1297,13 @@ describe('public product promises document', () => {
       'blocker.product_promises.signature_usage_metering_missing',
     )
     expect(signaturePromise?.safeCopy).toContain(
-      'inert public usage-metering projection',
+      'tested package activation/pricing/rev-share/settlement-receipt gate logic',
     )
     expect(signaturePromise?.verification).toContain(
-      'clearing the usage-metering blocker only',
+      'publish -> activate -> usable refs',
     )
     expect(signaturePromise?.authorityBoundary).toContain(
-      'do not install, promote, bill, debit, credit, or settle',
+      'pure gate projections do not by themselves mutate package listings',
     )
   })
 
