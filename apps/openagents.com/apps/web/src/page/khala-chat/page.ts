@@ -140,7 +140,7 @@ const floatingUserTurnView = <Message>(
       h.p(
         [
           Ui.className<Message>(
-            'm-0 border border-[#3a7bff]/30 bg-black/45 px-3 py-2 font-mono text-[0.8125rem] leading-[1.45] text-[#f1efe8] backdrop-blur-sm [overflow-wrap:anywhere]',
+            'm-0 border border-[#3a7bff]/30 font-mono text-[0.8125rem] leading-[1.45] text-[#f1efe8] [overflow-wrap:anywhere]',
           ),
         ],
         [content],
@@ -736,7 +736,7 @@ export const bottomOverlayView = <Message>(
         [
           h.DataAttribute(KHALA_CHAT_SCROLL_REGION_ATTR, ''),
           Ui.className<Message>(
-            'oa-thread-scroll pointer-events-auto mx-auto grid min-h-0 w-[min(100%,52rem)] content-start overflow-y-auto px-1 pb-5 pt-4 sm:px-2',
+            'oa-thread-scroll pointer-events-auto mx-auto grid min-h-0 w-[min(100%,48rem)] content-start overflow-y-auto',
           ),
         ],
         [floatingTranscriptView<Message>(model)],
@@ -771,7 +771,7 @@ export const bottomOverlayView = <Message>(
   const composerShell = h.div(
     [
       Ui.className<Message>(
-        'pointer-events-auto relative z-10 mx-auto w-[min(100%,44rem)] border border-[#3a7bff]/45 bg-black/62 backdrop-blur-md khala-glow',
+        'pointer-events-auto relative z-10 mx-auto w-[min(100%,48rem)] border border-[#3a7bff]/45 bg-black/62 px-3 pb-3 backdrop-blur-md khala-glow sm:px-4 sm:pb-4',
       ),
     ],
     [composerView<Message>(model, actions)],
@@ -783,7 +783,7 @@ export const bottomOverlayView = <Message>(
       h.DataAttribute('persistent-scene-overlay', 'chat'),
       h.AriaLabel('Khala chat'),
       Ui.className<Message>(
-        'pointer-events-none absolute inset-0 z-10 grid min-h-0 grid-rows-[minmax(0,1fr)_auto] gap-3 px-3 pb-4 pt-16 sm:px-6 sm:pb-8',
+        'pointer-events-none absolute inset-0 z-10 grid min-h-0 grid-rows-[minmax(0,1fr)_auto]',
       ),
     ],
     [
