@@ -554,6 +554,19 @@ export type ArtanisOperatorToolInvocation = Readonly<{
   executedRef: string | null
 }>
 
+// Public-safe, typed pending approval gate emitted when a risky/gated tool does
+// not execute. This is the operator-turn's machine-readable handoff to the
+// `artanis-approval-gates` boundary: it records the exact risky action class and
+// tool that need owner review, without minting authority or pretending the
+// action already ran.
+export type ArtanisOperatorPendingApprovalGate = Readonly<{
+  gateRef: typeof ARTANIS_OPERATOR_APPROVAL_GATE_REF
+  gateSystem: 'artanis-approval-gates'
+  state: 'pending'
+  toolName: string
+  riskyActionKind: ArtanisRiskyActionKind
+}>
+
 // The base operator conversation as normalized inference messages: persona
 // system + grounded context system + the owner conversation. The tool-calling
 // loop appends assistant-tool-call and tool-result messages onto this base.
@@ -671,6 +684,9 @@ export type ArtanisOperatorTurnResult = Readonly<{
   // Public-safe summaries of the tools Artanis invoked during the loop (empty
   // when no tools were used or no tools were configured).
   toolInvocations: ReadonlyArray<ArtanisOperatorToolInvocation>
+  // Typed pending approval gates produced by risky/gated tool deferrals. This
+  // supersedes treating `deferredToApprovalGate` as the only machine signal.
+  pendingApprovalGates: ReadonlyArray<ArtanisOperatorPendingApprovalGate>
   // How many Khala completions the turn made (1 for a no-tool turn, more when
   // the loop executed tools and re-called Khala).
   iterations: number
@@ -900,6 +916,7 @@ export const artanisOperatorTurn = (input: {
     let conversation: ReadonlyArray<InferenceMessage> = baseMessages
 
     const toolInvocations: Array<ArtanisOperatorToolInvocation> = []
+    const pendingApprovalGates: Array<ArtanisOperatorPendingApprovalGate> = []
     // Bounded record of the tool results gathered this turn. Drives the compact
     // composition retry and the grounded synthesis fallback so a blown-up
     // conversation (or a failed late Khala call) never costs the owner a reply.
@@ -981,6 +998,15 @@ export const artanisOperatorTurn = (input: {
         toolInvocations.push(invocation)
         if (invocation.deferredToApprovalGate) {
           toolsDeferred = true
+          if (invocation.riskyActionKind !== null) {
+            pendingApprovalGates.push({
+              gateRef: ARTANIS_OPERATOR_APPROVAL_GATE_REF,
+              gateSystem: 'artanis-approval-gates',
+              riskyActionKind: invocation.riskyActionKind,
+              state: 'pending',
+              toolName: invocation.name,
+            })
+          }
         }
         // Bound the tool result fed back into the conversation. Large bodies
         // (e.g. a 256KB repo file) accumulated verbatim are what push a later
@@ -1079,6 +1105,7 @@ export const artanisOperatorTurn = (input: {
       deferredToApprovalGate:
         mentionsSpendOrDestructive(input.messages) || toolsDeferred,
       iterations,
+      pendingApprovalGates,
       persona: verifyArtanisOperatorPersona(replyText),
       reply: replyText,
       requestedModel: ARTANIS_OPERATOR_KHALA_MODEL,
