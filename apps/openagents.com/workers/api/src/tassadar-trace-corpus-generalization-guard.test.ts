@@ -165,6 +165,7 @@ describe('Tassadar trace corpus generalization guard', () => {
       status: 'failed',
       passRate: 0.5,
       tokens: { total: 1 },
+      exactTokenUsageEventRefs: ['token_usage_event.gym_mirrorcode.gg.0001'],
       startedAt: '2026-06-27T00:00:00.000Z',
       finishedAt: '2026-06-27T00:01:00.000Z',
       summary: 'Public MirrorCode GG set run for cal.',
