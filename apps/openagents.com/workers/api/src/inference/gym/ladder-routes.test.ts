@@ -137,6 +137,7 @@ describe('GET /api/public/gym/leaderboard', () => {
       'awaiting_owner',
       'awaiting_owner',
       'awaiting_owner',
+      'awaiting_owner',
     ])
   })
 
@@ -320,6 +321,87 @@ describe('POST /api/operator/gym/leaderboard', () => {
                 reportRef: 'raw_prompt.private',
                 receiptRef: 'receipt.gym.ladder.route.safe',
                 candidateRef: 'khala.ladder.route',
+              },
+            ],
+          }),
+        }),
+        { store, requireAdminApiToken: adminAllowed },
+      ),
+    )
+    expect(response.status).toBe(400)
+    expect(store.snapshot()).toBeUndefined()
+  })
+
+  test('publishes MirrorCode public-bucket pass-rate with exact token row proof into rung4', async () => {
+    const store = makeMemoryStore()
+    const response = await Effect.runPromise(
+      handleOperatorGymLeaderboardApi(
+        new Request('https://x/', {
+          method: 'POST',
+          body: JSON.stringify({
+            reports: [],
+            mirrorCodeRuns: [
+              {
+                runId: 'mc-s-cal-python-route-0001',
+                model: 'openagents/khala',
+                taskId: 'cal',
+                bucket: 'S',
+                language: 'python',
+                status: 'passed',
+                passRate: 0.64,
+                tokens: { total: 1_000_000_123 },
+                exactTokenUsageEventRefs: [
+                  'token_usage_event.gym_mirrorcode.route.cal.0001',
+                ],
+                startedAt: '2026-06-27T00:00:00.000Z',
+                finishedAt: '2026-06-27T02:00:00.000Z',
+                summary: 'Decision-grade public S-bucket MirrorCode cal run.',
+                grade: 'decision_grade',
+              },
+            ],
+          }),
+        }),
+        {
+          store,
+          requireAdminApiToken: adminAllowed,
+          nowIso: () => '2026-06-27T12:00:00.000Z',
+        },
+      ),
+    )
+    expect(response.status).toBe(201)
+    const body = (await response.json()) as { ladder: GymLadderLeaderboard }
+    const rung4 = body.ladder.rungs.find(r => r.rung === 'rung4')!
+    expect(rung4.state).toBe('published')
+    expect(rung4.passRateBps).toBe(6400)
+    expect(rung4.tokensTotal).toBe(1_000_000_123)
+    expect(rung4.exactTokenUsageEventRefs).toEqual([
+      'token_usage_event.gym_mirrorcode.route.cal.0001',
+    ])
+  })
+
+  test('rejects decision-grade MirrorCode ladder publish without exact token rows', async () => {
+    const store = makeMemoryStore()
+    const response = await Effect.runPromise(
+      handleOperatorGymLeaderboardApi(
+        new Request('https://x/', {
+          method: 'POST',
+          body: JSON.stringify({
+            reports: [],
+            mirrorCodeRuns: [
+              {
+                runId: 'mc-s-cal-python-route-0002',
+                model: 'openagents/khala',
+                taskId: 'cal',
+                bucket: 'S',
+                language: 'python',
+                status: 'passed',
+                passRate: 0.64,
+                tokens: { total: 1_000_000_123 },
+                exactTokenUsageEventRefs: [],
+                startedAt: '2026-06-27T00:00:00.000Z',
+                finishedAt: '2026-06-27T02:00:00.000Z',
+                summary: 'Decision-grade public S-bucket MirrorCode cal run.',
+                grade: 'decision_grade',
               },
             ],
           }),

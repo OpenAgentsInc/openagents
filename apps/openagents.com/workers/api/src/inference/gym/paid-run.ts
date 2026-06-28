@@ -291,6 +291,7 @@ export const prepareGymPaidRun = (
     maxBillableSamples: input.experiment.budget.maxBillableSamples,
     trafficEvidence: input.trafficEvidence,
     executableFixtureOnlyLanes,
+    billableLanes: quote.lines.map(line => line.lane),
   })
   const balanceGate = balanceGateForQuote(quote, input.availableBalanceMsat)
   const blockers: Array<GymPaidRunBlocker> = [
