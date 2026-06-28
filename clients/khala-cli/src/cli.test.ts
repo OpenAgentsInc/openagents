@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { dirname, join } from "node:path"
 
-import { formatKhalaSpawnCapabilityAnswer, runKhalaCli } from "./cli.js"
+import { formatFleetOperatorDashboard, formatKhalaSpawnCapabilityAnswer, runKhalaCli } from "./cli.js"
 
 describe("Khala CLI spawn capability answer", () => {
   test("answers the original subprocess capability question with the reviewed CLI path", () => {
@@ -184,5 +184,82 @@ describe("Khala CLI info diagnostics", () => {
     const parsed = JSON.parse(stdout)
     expect(parsed.runRef).toBe("spawn.public.khala_coding.stored_pylon_token_test")
     expect(parsed.state).toBe("completed")
+  })
+})
+
+describe("Khala CLI fleet live status", () => {
+  test("polls the operator fleet endpoint once under test and renders the five dashboard blocks", async () => {
+    const authHeaders: Array<string | null> = []
+    const server = Bun.serve({
+      port: 0,
+      fetch: request => {
+        authHeaders.push(request.headers.get("authorization"))
+        expect(new URL(request.url).pathname).toBe("/api/operator/fleet/status")
+        return Response.json({
+          generatedAt: "2026-06-27T12:00:00.000Z",
+          blocks: {
+            pace: { burnRateTokensPerMinute: 1200, paceToFloor: "ahead" },
+            fleet: { concurrency: 5, inFlightIssues: 3 },
+            watchdog: { state: "healthy", leases: 2, alerts: 0 },
+            glm: { readiness: "ready", replicas: 10 },
+            artanis: { loopHealth: "moving", goals: 4, recentDecisions: 7 },
+          },
+        })
+      },
+    })
+
+    const originalWrite = process.stdout.write
+    let stdout = ""
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      stdout += String(chunk)
+      return true
+    }) as typeof process.stdout.write
+    try {
+      const exitCode = await runKhalaCli([
+        "fleet",
+        "status",
+        "--live",
+        "--base-url",
+        `http://127.0.0.1:${server.port}`,
+      ], {
+        OPENAGENTS_AGENT_TOKEN: "oa_agent_live_status_test",
+        KHALA_FLEET_STATUS_LIVE_ONCE: "1",
+      })
+      expect(exitCode).toBe(0)
+    } finally {
+      process.stdout.write = originalWrite
+      server.stop(true)
+    }
+
+    expect(authHeaders).toEqual(["Bearer oa_agent_live_status_test"])
+    expect(stdout).toContain("Khala fleet live")
+    expect(stdout).toContain("Pace")
+    expect(stdout).toContain("Fleet")
+    expect(stdout).toContain("Watchdog")
+    expect(stdout).toContain("GLM")
+    expect(stdout).toContain("Artanis")
+    expect(stdout).toContain("burn rate tokens per minute")
+    expect(stdout).toContain("in flight issues")
+  })
+
+  test("formats a representative operator payload as stable terminal blocks", () => {
+    const rendered = formatFleetOperatorDashboard({
+      generatedAt: "2026-06-27T12:00:00.000Z",
+      raw: {
+        pace: { burnRate: 42, paceToFloor: "on-track" },
+        fleet: { concurrency: 6, spread: "codex:4 codex-2:2" },
+        watchdog: { state: "watching", alerts: 0 },
+        glm: { readiness: "ready" },
+        brain: { loopHealth: "active" },
+      },
+    })
+
+    expect(rendered).toContain("source: /api/operator/fleet/status")
+    expect(rendered).toContain("Pace")
+    expect(rendered).toContain("Fleet")
+    expect(rendered).toContain("Watchdog")
+    expect(rendered).toContain("GLM")
+    expect(rendered).toContain("Artanis")
+    expect(rendered).toContain("polling every ~5s")
   })
 })

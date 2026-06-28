@@ -48,6 +48,11 @@ export type KhalaFleetConnectResult = {
   readonly status: "connected" | "already_connected"
 }
 
+export type KhalaFleetOperatorStatus = {
+  readonly generatedAt: string | null
+  readonly raw: Record<string, unknown>
+}
+
 export type KhalaCodexDeviceLoginRunner = (input: {
   readonly env: Record<string, string | undefined>
   readonly home: string
@@ -359,4 +364,43 @@ export async function connectFleetAccount(
     configPath,
     status,
   }
+}
+
+export async function fetchFleetOperatorStatus(
+  options: {
+    readonly baseUrl: string
+    readonly token: string
+    readonly fetch?: typeof fetch | undefined
+  },
+): Promise<KhalaFleetOperatorStatus> {
+  const base = options.baseUrl.replace(/\/+$/, "")
+  const fetcher = options.fetch ?? fetch
+  const response = await fetcher(`${base}/api/operator/fleet/status`, {
+    method: "GET",
+    headers: {
+      accept: "application/json",
+      authorization: `Bearer ${options.token}`,
+    },
+  })
+  if (!response.ok) {
+    let reason = `operator fleet status returned HTTP ${response.status}`
+    try {
+      const body = await response.json() as Record<string, unknown>
+      const message = body.reason ?? body.message ?? body.error
+      if (typeof message === "string" && message.trim().length > 0) reason = message
+    } catch {
+      // Keep the HTTP status fallback.
+    }
+    throw new Error(reason)
+  }
+  const payload = await response.json()
+  const raw: Record<string, unknown> = payload !== null && typeof payload === "object" && !Array.isArray(payload)
+    ? payload as Record<string, unknown>
+    : { value: payload }
+  const generatedAt = typeof raw.generatedAt === "string"
+    ? raw.generatedAt
+    : typeof raw.asOf === "string"
+      ? raw.asOf
+      : null
+  return { generatedAt, raw }
 }
