@@ -470,6 +470,18 @@ describe('public product promises document', () => {
         expect.objectContaining({
           promiseId: 'payments.accepted_outcome_economics.v1',
           state: 'red',
+          evidenceRefs: expect.arrayContaining([
+            'route:/api/public/accepted-outcome/settlement/{economicsId}',
+            'apps/openagents.com/workers/api/src/omni-accepted-outcome-settlement-state-machine.ts',
+            'apps/openagents.com/workers/api/src/public-accepted-outcome-settlement-routes.test.ts',
+          ]),
+          blockerRefs: expect.not.arrayContaining([
+            'blocker.product_promises.settlement_state_machine_incomplete',
+          ]),
+          safeCopy: expect.stringContaining('public-safe evidence ref'),
+          verification: expect.stringContaining(
+            'eight distinct public-safe evidenceRef values',
+          ),
         }),
         expect.objectContaining({
           promiseId: 'energy.flexible_load_proof.v1',

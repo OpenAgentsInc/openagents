@@ -134,15 +134,21 @@ describe('OmniAcceptedOutcomeSettlementBundleInvariantError', () => {
 })
 
 describe('publicOmniAcceptedOutcomeSettlementBundleProjection', () => {
-  test('drops internal figures but keeps lifecycle + evidence labels', () => {
+  test('drops internal figures but keeps lifecycle + public-safe evidence refs', () => {
     const bundle = buildOmniAcceptedOutcomeSettlementBundle(baseRecord)
     const projection =
       publicOmniAcceptedOutcomeSettlementBundleProjection(bundle)
     expect(projection.settlementComplete).toBe(true)
     expect(projection.settlementMachine.transitions).toHaveLength(8)
+    expect(
+      new Set(
+        projection.settlementMachine.transitions.map(t => t.evidenceRef),
+      ).size,
+    ).toBe(8)
     for (const transition of projection.settlementMachine.transitions) {
       expect(transition).not.toHaveProperty('amountCents')
       expect(transition).toHaveProperty('evidenceKind')
+      expect(transition).toHaveProperty('evidenceRef')
     }
     // accrual view keeps evidence labels, drops figures
     for (const entry of projection.contributorAccrualBundle

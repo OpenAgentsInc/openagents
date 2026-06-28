@@ -386,7 +386,9 @@ export const isOmniSettlementMachineComplete = (
 /**
  * Public projection: keeps the full ordered lifecycle and honest evidence labels
  * visible (so a reader can see exactly which states were money-moving vs
- * intent-only) while dropping internal monetary figures and refs.
+ * intent-only) while dropping internal monetary figures. Evidence refs are
+ * retained because `assertSafeEvidenceRef` admits only public-safe refs and the
+ * promise verification requires one distinct receipt/evidence anchor per state.
  */
 export const publicOmniAcceptedOutcomeSettlementMachineProjection = (
   machine: OmniAcceptedOutcomeSettlementMachine,
@@ -400,6 +402,7 @@ export const publicOmniAcceptedOutcomeSettlementMachineProjection = (
   state: machine.state,
   transitions: machine.transitions.map(transition => ({
     evidenceKind: transition.evidenceKind,
+    evidenceRef: transition.evidenceRef,
     movedMoney: transition.movedMoney,
     stateId: transition.stateId,
   })),
