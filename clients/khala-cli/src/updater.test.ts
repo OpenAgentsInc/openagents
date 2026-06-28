@@ -79,6 +79,39 @@ describe("Khala auto-update", () => {
     ])
   })
 
+  test("defers update notices until the interactive CLI flushes them", async () => {
+    const notices: Array<string> = []
+    const fakeFetch = (async () => Response.json({
+      version: "0.1.4",
+      readme: [
+        "## Changelog",
+        "",
+        "### v0.1.4 - Jun 26, 2026, 12:00:00 PM CDT",
+        "",
+        "- Added quiet background update downloads for terminal sessions.",
+      ].join("\n"),
+    })) as unknown as typeof fetch
+
+    const handle = startKhalaAutoUpdate({
+      currentVersion: "0.1.3",
+      fetch: fakeFetch,
+      notify: line => notices.push(line),
+      notifyMode: "defer",
+      spawnInstall: () => ({ exited: Promise.resolve(0) }),
+    })
+
+    await handle.done
+
+    expect(notices).toEqual([])
+    expect(handle.pendingNotificationCount).toBe(1)
+    expect(handle.flushNotifications()).toBe(1)
+    expect(notices).toEqual([
+      "update added - Added quiet background update downloads for terminal sessions. - restart to apply",
+    ])
+    expect(handle.pendingNotificationCount).toBe(0)
+    expect(handle.flushNotifications()).toBe(0)
+  })
+
   test("does nothing when auto-update is disabled", async () => {
     const result = await runKhalaAutoUpdate({
       currentVersion: "0.1.3",
@@ -91,4 +124,3 @@ describe("Khala auto-update", () => {
     expect(result).toEqual({ kind: "disabled" })
   })
 })
-
