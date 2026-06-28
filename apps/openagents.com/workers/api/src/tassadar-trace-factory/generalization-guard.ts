@@ -39,9 +39,31 @@ export type TassadarGeneralizationGuard = Readonly<{
 
 export type TassadarGeneralizationGuardManifest = Readonly<{
   corpusId: string
+  families?: ReadonlyArray<{
+    familyId: string
+    recordCount: number
+    shard: string
+    shardSha256: string
+    tokenCount: number
+  }>
   generalizationGuard?: TassadarGeneralizationGuard
   manifestVersion: string
-  records?: Readonly<{ sha256?: string }>
+  records?:
+    | Readonly<{ sha256?: string }>
+    | ReadonlyArray<{
+        familyId: string
+        shard: string
+        split: string
+        tokenCount: number
+      }>
+  shards?: ReadonlyArray<{
+    familyId: string
+    recordCount: number
+    shard: string
+    shardSha256: string
+    tag?: string
+    tokenCount: number
+  }>
   snapshotDigest?: string
   splitPolicyVersion: string
 }>
@@ -58,7 +80,153 @@ export type TassadarGeneralizationGuardViolation = Readonly<{
     | 'partition_overlap'
     | 'partition_missing'
     | 'guard_digest_mismatch'
+    | 'held_out_shard_ref_malformed'
+    | 'held_out_shard_ref_unknown'
+    | 'held_out_shard_ref_checksum_mismatch'
+    | 'held_out_partition_family_mismatch'
+    | 'held_out_partition_count_mismatch'
+    | 'held_out_partition_token_mismatch'
 }>
+
+type ManifestShard = Readonly<{
+  familyId: string
+  recordCount: number
+  shard: string
+  shardSha256: string
+  tokenCount: number
+}>
+
+const manifestShards = (
+  manifest: TassadarGeneralizationGuardManifest,
+): ReadonlyArray<ManifestShard> => [
+  ...(manifest.shards ?? []),
+  ...(manifest.families ?? []),
+]
+
+const manifestRecordsDigest = (
+  records: TassadarGeneralizationGuardManifest['records'],
+): string | null =>
+  records !== undefined && !Array.isArray(records) && 'sha256' in records
+    ? (records.sha256 ?? null)
+    : null
+
+const recordsForSplit = (
+  manifest: TassadarGeneralizationGuardManifest,
+  split: string,
+): ReadonlyArray<{
+  familyId: string
+  shard: string
+  split: string
+  tokenCount: number
+}> => (Array.isArray(manifest.records)
+  ? manifest.records.filter(record => record.split === split)
+  : [])
+
+const partitionRowsForHeldOut = (
+  manifest: TassadarGeneralizationGuardManifest,
+  partition: TassadarGeneralizationGuardPartition,
+): ReadonlyArray<Pick<ManifestShard, 'familyId' | 'recordCount' | 'tokenCount'>> => {
+  const records = recordsForSplit(manifest, partition.split)
+  if (records.length > 0) {
+    const byFamily = new Map<string, { recordCount: number; tokenCount: number }>()
+    for (const record of records) {
+      const current = byFamily.get(record.familyId) ?? {
+        recordCount: 0,
+        tokenCount: 0,
+      }
+      current.recordCount += 1
+      current.tokenCount += record.tokenCount
+      byFamily.set(record.familyId, current)
+    }
+
+    return [...byFamily].map(([familyId, totals]) => ({
+      familyId,
+      recordCount: totals.recordCount,
+      tokenCount: totals.tokenCount,
+    }))
+  }
+
+  const shardsByRef = new Map(
+    manifestShards(manifest).map(shard => [
+      `${shard.shard}#${shard.shardSha256}`,
+      shard,
+    ]),
+  )
+
+  return partition.shardRefs
+    .map(ref => shardsByRef.get(ref))
+    .filter((shard): shard is ManifestShard => shard !== undefined)
+}
+
+const validateHeldOutPartitionReferences = (
+  manifest: TassadarGeneralizationGuardManifest,
+  partition: TassadarGeneralizationGuardPartition,
+): ReadonlyArray<TassadarGeneralizationGuardViolation> => {
+  const violations: Array<TassadarGeneralizationGuardViolation> = []
+  const shardsByPath = new Map(
+    manifestShards(manifest).map(shard => [shard.shard, shard]),
+  )
+
+  for (const ref of partition.shardRefs) {
+    const separatorIndex = ref.indexOf('#')
+    if (
+      separatorIndex <= 0 ||
+      separatorIndex !== ref.lastIndexOf('#') ||
+      separatorIndex === ref.length - 1
+    ) {
+      violations.push({
+        detail: `Held-out shard ref ${ref} must be path#sha256.`,
+        kind: 'held_out_shard_ref_malformed',
+      })
+      continue
+    }
+
+    const path = ref.slice(0, separatorIndex)
+    const checksum = ref.slice(separatorIndex + 1)
+    const shard = shardsByPath.get(path)
+    if (shard === undefined) {
+      violations.push({
+        detail: `Held-out shard ref ${ref} does not match a manifest shard.`,
+        kind: 'held_out_shard_ref_unknown',
+      })
+      continue
+    }
+    if (shard.shardSha256 !== checksum) {
+      violations.push({
+        detail: `Held-out shard ref ${ref} checksum does not match ${shard.shardSha256}.`,
+        kind: 'held_out_shard_ref_checksum_mismatch',
+      })
+    }
+  }
+
+  const rows = partitionRowsForHeldOut(manifest, partition)
+  const rowFamilies = [...new Set(rows.map(row => row.familyId))].sort()
+  const partitionFamilies = [...partition.familyIds].sort()
+  if (JSON.stringify(rowFamilies) !== JSON.stringify(partitionFamilies)) {
+    violations.push({
+      detail: `Held-out partition families ${partitionFamilies.join(',')} do not match manifest rows ${rowFamilies.join(',')}.`,
+      kind: 'held_out_partition_family_mismatch',
+    })
+  }
+
+  const recordCount = rows.reduce((sum, row) => sum + row.recordCount, 0)
+  if (recordCount !== partition.recordCount) {
+    violations.push({
+      detail: `Held-out partition declares ${partition.recordCount} records but manifest rows sum to ${recordCount}.`,
+      kind: 'held_out_partition_count_mismatch',
+    })
+  }
+
+  const tokenCount = rows.reduce((sum, row) => sum + row.tokenCount, 0)
+  if (tokenCount !== partition.tokenCount) {
+    violations.push({
+      detail: `Held-out partition declares ${partition.tokenCount} tokens but manifest rows sum to ${tokenCount}.`,
+      kind: 'held_out_partition_token_mismatch',
+    })
+  }
+
+  return violations
+}
 
 const digestInputForGuard = (
   manifest: TassadarGeneralizationGuardManifest,
@@ -77,7 +245,7 @@ const digestInputForGuard = (
         tokenCount: partition.tokenCount,
       }))
       .sort((a, b) => `${a.kind}:${a.split}`.localeCompare(`${b.kind}:${b.split}`)),
-    recordsSha256: manifest.records?.sha256 ?? null,
+    recordsSha256: manifestRecordsDigest(manifest.records),
     schemaVersion: guard.schemaVersion,
     snapshotDigest: manifest.snapshotDigest ?? null,
     splitPolicyVersion: manifest.splitPolicyVersion,
@@ -168,6 +336,9 @@ export const validateTassadarGeneralizationGuard = async (
         kind: 'partition_overlap',
       })
     }
+  }
+  for (const partition of heldOut) {
+    violations.push(...validateHeldOutPartitionReferences(manifest, partition))
   }
 
   const expectedDigest = await tassadarGeneralizationGuardDigest(manifest, guard)
