@@ -489,6 +489,11 @@ import {
   isConfidentialComputeEnabled,
   makePaidPrivacyResolver,
 } from './inference/inference-privacy-entitlement'
+import {
+  handleConfidentialComputeExecutionReceipt,
+  handlePaidPrivacyPurchase,
+  handlePublicPrivacyReceiptRead,
+} from './inference/inference-privacy-receipt-routes'
 import { withReferralAccrual } from './inference/inference-referral-accrual'
 import { makeInferenceReferralRoutes } from './inference/inference-referral-routes'
 import {
@@ -12023,6 +12028,66 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         authenticate: async () => undefined,
         db: openAgentsDatabase(env),
         enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
+        nowIso: currentIsoTimestamp,
+      }),
+  },
+  {
+    path: '/api/public/inference/privacy-receipts/:receiptRef',
+    handler: (request, env) =>
+      handlePublicPrivacyReceiptRead(request, {
+        authenticate: async () => undefined,
+        confidentialComputeEnabled: isConfidentialComputeEnabled(
+          env.INFERENCE_CONFIDENTIAL_COMPUTE_ENABLED,
+        ),
+        db: openAgentsDatabase(env),
+        nowIso: currentIsoTimestamp,
+      }),
+  },
+  {
+    path: '/v1/inference/privacy/paid-privacy/purchases',
+    handler: (request, env) =>
+      handlePaidPrivacyPurchase(request, {
+        authenticate: async authRequest => {
+          const token = readBearerToken(authRequest)
+          if (token === undefined) {
+            return undefined
+          }
+          const session = await authenticateProgrammaticAgent(
+            makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+            token,
+          )
+          return session === undefined
+            ? undefined
+            : { accountRef: `agent:${session.user.id}` }
+        },
+        confidentialComputeEnabled: isConfidentialComputeEnabled(
+          env.INFERENCE_CONFIDENTIAL_COMPUTE_ENABLED,
+        ),
+        db: openAgentsDatabase(env),
+        nowIso: currentIsoTimestamp,
+      }),
+  },
+  {
+    path: '/v1/inference/privacy/confidential-compute/executions',
+    handler: (request, env) =>
+      handleConfidentialComputeExecutionReceipt(request, {
+        authenticate: async authRequest => {
+          const token = readBearerToken(authRequest)
+          if (token === undefined) {
+            return undefined
+          }
+          const session = await authenticateProgrammaticAgent(
+            makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+            token,
+          )
+          return session === undefined
+            ? undefined
+            : { accountRef: `agent:${session.user.id}` }
+        },
+        confidentialComputeEnabled: isConfidentialComputeEnabled(
+          env.INFERENCE_CONFIDENTIAL_COMPUTE_ENABLED,
+        ),
+        db: openAgentsDatabase(env),
         nowIso: currentIsoTimestamp,
       }),
   },
