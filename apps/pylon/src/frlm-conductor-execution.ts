@@ -3,6 +3,8 @@ import { assertPublicProjectionSafe } from "./state.js"
 
 export const FRLM_CONDUCTOR_EXECUTION_SCHEMA =
   "openagents.artanis.frlm_conductor_execution.v0.1"
+export const FRLM_RLM_STEP_TRACE_SCHEMA =
+  "openagents.artanis.frlm_rlm_step_trace.v0.1"
 
 export const FRLM_RESPONSE_COMPOSITION_SCHEMA =
   "openagents.artanis.frlm_response_composition.v0.1"
@@ -52,6 +54,12 @@ export type FrlmResponseCompositionBlockerRef =
   | "blocker.artanis.frlm_response_composition.sub_query_response_text_missing"
   | "blocker.artanis.frlm_response_composition.unsafe_content"
   | "blocker.artanis.frlm_response_composition.unsafe_ref"
+
+export type FrlmRlmTraceStepKind =
+  | "blueprint_gate"
+  | "recursive_sub_query"
+  | "linear_fallback"
+  | "result_synthesis"
 
 export type FrlmConductorSubQuery = {
   subQueryRef: string
@@ -119,6 +127,35 @@ export type FrlmResponseCompositionProjection = {
   orderedSubQueryRefs: string[]
   evidenceRefs: string[]
   blockerRefs: FrlmResponseCompositionBlockerRef[]
+  authorityBoundary: string
+  contentRedacted: true
+}
+
+export type FrlmRlmTraceStep = {
+  stepRef: string
+  stepIndex: number
+  kind: FrlmRlmTraceStepKind
+  state: FrlmConductorSubQueryState | FrlmConductorExecutionMode | "emitted"
+  parentRef: string | null
+  subQueryRef: string | null
+  blueprintSignatureRef: string | null
+  evidenceRefs: string[]
+}
+
+export type FrlmRlmStepTraceProjection = {
+  schema: typeof FRLM_RLM_STEP_TRACE_SCHEMA
+  observedAt: string
+  traceRef: string | null
+  traceDigestRef: string | null
+  executionRef: string | null
+  rootTaskRef: string | null
+  blueprintSignatureRef: string | null
+  executionMode: FrlmConductorExecutionMode
+  stepCount: number
+  steps: FrlmRlmTraceStep[]
+  evidenceRefs: string[]
+  blockerRefs: FrlmConductorExecutionBlockerRef[]
+  externalDependencyRefs: string[]
   authorityBoundary: string
   contentRedacted: true
 }
@@ -450,6 +487,139 @@ export function composeFrlmRecursiveResponse(input: {
     blockerRefs: [...blockerRefs].sort(),
     authorityBoundary:
       "Read-only FRLM recursive response composition projection. It orders completed RLM sub-query outputs under Blueprint signatures and emits deterministic response evidence; it does not run Python, issue model calls, dispatch workers, spend sats, publish public claims, or move settlement authority.",
+    contentRedacted: true,
+  }
+  assertPublicProjectionSafe(projection)
+  return projection
+}
+
+export function emitFrlmRlmStepTrace(input: {
+  observedAt: string
+  executionRef?: string | null
+  rootTaskRef?: string | null
+  blueprintSignatureRef?: string | null
+  subQueries?: FrlmConductorSubQuery[]
+  linearFallbackEnabled?: boolean
+  linearExecutorRef?: string | null
+}): FrlmRlmStepTraceProjection {
+  const execution = planFrlmConductorExecution(input)
+  const subQueriesByRef = new Map(
+    (input.subQueries ?? [])
+      .map((subQuery) => [normalizedRef(subQuery.subQueryRef), subQuery] as const)
+      .filter((entry): entry is readonly [string, FrlmConductorSubQuery] => entry[0] !== null),
+  )
+  const safeRef = (value: string | null | undefined) => {
+    const ref = normalizedRef(value)
+    return ref !== null && isSafeRef(ref) ? ref : null
+  }
+  const steps: FrlmRlmTraceStep[] = []
+  const pushStep = (step: Omit<FrlmRlmTraceStep, "stepIndex">) => {
+    steps.push({ ...step, stepIndex: steps.length })
+  }
+
+  if (execution.executionRef !== null && execution.rootTaskRef !== null) {
+    pushStep({
+      stepRef: `step.artanis.frlm.rlm.blueprint_gate.${stableHash(`${execution.executionRef}:blueprint_gate`)}`,
+      kind: "blueprint_gate",
+      state: execution.executionMode,
+      parentRef: execution.rootTaskRef,
+      subQueryRef: null,
+      blueprintSignatureRef: execution.blueprintSignatureRef,
+      evidenceRefs: uniqueRefs([
+        execution.executionRef,
+        execution.rootTaskRef,
+        execution.blueprintSignatureRef,
+        execution.executionPlanRef,
+      ]),
+    })
+  }
+
+  for (const subQueryRef of execution.recursiveSubQueryRefs) {
+    const subQuery = subQueriesByRef.get(subQueryRef)
+    pushStep({
+      stepRef: `step.artanis.frlm.rlm.sub_query.${stableHash(`${execution.executionRef ?? "unknown"}:${subQueryRef}`)}`,
+      kind: "recursive_sub_query",
+      state: subQuery?.state ?? "planned",
+      parentRef: safeRef(subQuery?.parentRef) ?? execution.rootTaskRef,
+      subQueryRef,
+      blueprintSignatureRef: safeRef(subQuery?.blueprintSignatureRef) ?? execution.blueprintSignatureRef,
+      evidenceRefs: uniqueRefs([
+        subQueryRef,
+        safeRef(subQuery?.parentRef),
+        safeRef(subQuery?.resultRef),
+        safeRef(subQuery?.failureRef),
+        safeRef(subQuery?.blueprintSignatureRef),
+      ]),
+    })
+  }
+
+  if (execution.executionMode === "fallback_linear") {
+    execution.linearFallbackStepRefs.forEach((stepRef, index) => {
+      const subQueryRef = execution.recursiveSubQueryRefs[index] ?? null
+      pushStep({
+        stepRef,
+        kind: "linear_fallback",
+        state: "planned",
+        parentRef: subQueryRef ?? execution.rootTaskRef,
+        subQueryRef,
+        blueprintSignatureRef: execution.blueprintSignatureRef,
+        evidenceRefs: uniqueRefs([
+          stepRef,
+          execution.linearExecutorRef,
+          execution.fallbackReasonRef,
+          subQueryRef,
+        ]),
+      })
+    })
+  }
+
+  if (execution.canExecute && execution.executionPlanRef !== null) {
+    pushStep({
+      stepRef: `step.artanis.frlm.rlm.result_synthesis.${stableHash(execution.executionPlanRef)}`,
+      kind: "result_synthesis",
+      state: "emitted",
+      parentRef: execution.executionPlanRef,
+      subQueryRef: null,
+      blueprintSignatureRef: execution.blueprintSignatureRef,
+      evidenceRefs: uniqueRefs([
+        execution.executionPlanRef,
+        execution.fallbackReasonRef,
+        ...execution.recursiveSubQueryRefs,
+        ...execution.failedSubQueryRefs,
+      ]),
+    })
+  }
+
+  const evidenceRefs = uniqueRefs([
+    ...execution.evidenceRefs,
+    ...steps.flatMap((step) => [step.stepRef, ...step.evidenceRefs]),
+  ])
+  const traceDigestRef = steps.length === 0
+    ? null
+    : `trace.artanis.frlm.rlm.digest.${stableHash(JSON.stringify(steps))}`
+  const traceRef = traceDigestRef === null
+    ? null
+    : `trace.artanis.frlm.rlm.${stableHash(`${execution.executionRef ?? "unknown"}:${traceDigestRef}`)}`
+  const projection: FrlmRlmStepTraceProjection = {
+    schema: FRLM_RLM_STEP_TRACE_SCHEMA,
+    observedAt: input.observedAt,
+    traceRef,
+    traceDigestRef,
+    executionRef: execution.executionRef,
+    rootTaskRef: execution.rootTaskRef,
+    blueprintSignatureRef: execution.blueprintSignatureRef,
+    executionMode: execution.executionMode,
+    stepCount: steps.length,
+    steps,
+    evidenceRefs: uniqueRefs([traceRef, traceDigestRef, ...evidenceRefs]),
+    blockerRefs: execution.blockerRefs,
+    externalDependencyRefs: [
+      "external.rlm.repl_leaf_executor",
+      "external.blueprint.signature_lookup",
+      "external.nip90.sub_query_fanout",
+    ],
+    authorityBoundary:
+      "Read-only structured RLM step trace for FRLM Conductor planning. It emits public-safe step refs, states, Blueprint signature refs, and evidence digests only; it does not include prompts, REPL code, model outputs, local paths, credentials, dispatch authority, spend authority, or settlement authority.",
     contentRedacted: true,
   }
   assertPublicProjectionSafe(projection)

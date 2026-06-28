@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import {
   composeFrlmRecursiveResponse,
+  emitFrlmRlmStepTrace,
   planFrlmConductorExecution,
   type FrlmResponseCompositionSegment,
   type FrlmConductorSubQuery,
@@ -457,6 +458,77 @@ describe("FRLM recursive response composition", () => {
     expect(projection.composedResponseText).toBeNull()
     expect(projection.blockerRefs).toContain("blocker.artanis.frlm_response_composition.unsafe_content")
     assertPublicProjectionSafe(projection)
+  })
+})
+
+describe("FRLM RLM structured step trace emission", () => {
+  test("emits public-safe structured RLM steps for recursive execution", () => {
+    const trace = emitFrlmRlmStepTrace({
+      ...validInput(),
+      subQueries: completedSubQueries(),
+    })
+
+    expect(trace.executionMode).toBe("recursive_parallel")
+    expect(trace.blockerRefs).toEqual([])
+    expect(trace.traceRef).toMatch(/^trace\.artanis\.frlm\.rlm\.[a-f0-9]{20}$/)
+    expect(trace.traceDigestRef).toMatch(/^trace\.artanis\.frlm\.rlm\.digest\.[a-f0-9]{20}$/)
+    expect(trace.steps.map((step) => step.kind)).toEqual([
+      "blueprint_gate",
+      "recursive_sub_query",
+      "recursive_sub_query",
+      "recursive_sub_query",
+      "result_synthesis",
+    ])
+    expect(trace.steps.map((step) => step.stepIndex)).toEqual([0, 1, 2, 3, 4])
+    expect(trace.steps[0]?.blueprintSignatureRef).toBe("signature.blueprint.frlm_conductor.v1")
+    expect(trace.steps[1]?.blueprintSignatureRef).toBe("signature.blueprint.rlm_subquery.v1")
+    expect(trace.steps[1]?.evidenceRefs).toContain("result.artanis.frlm.collect_context.v1")
+    expect(trace.evidenceRefs).toContain(trace.steps[4]!.stepRef)
+    assertPublicProjectionSafe(trace)
+  })
+
+  test("emits linear fallback steps for failed recursive sub-queries", () => {
+    const trace = emitFrlmRlmStepTrace({
+      ...validInput(),
+      subQueries: [
+        completedSubQueries()[0]!,
+        {
+          subQueryRef: "subquery.artanis.frlm.optimize_route.v1",
+          parentRef: "task.artanis.frlm.root.v1",
+          state: "failed",
+          failureRef: "failure.artanis.frlm.optimize_route.timeout.v1",
+          blueprintSignatureRef: "signature.blueprint.rlm_subquery.v1",
+        },
+      ],
+    })
+
+    expect(trace.executionMode).toBe("fallback_linear")
+    expect(trace.blockerRefs).toEqual([])
+    expect(trace.steps.filter((step) => step.kind === "linear_fallback")).toHaveLength(2)
+    expect(trace.steps.some((step) => step.evidenceRefs.includes("executor.artanis.frlm.linear_local.v1"))).toBe(true)
+    expect(trace.steps.some((step) => step.evidenceRefs.includes("failure.artanis.frlm.optimize_route.timeout.v1"))).toBe(true)
+    assertPublicProjectionSafe(trace)
+  })
+
+  test("redacts unsafe RLM refs from trace steps and blocks the projection", () => {
+    const trace = emitFrlmRlmStepTrace({
+      ...validInput(),
+      subQueries: [
+        {
+          subQueryRef: "/Users/operator/private/rlm-step.json",
+          parentRef: "task.artanis.frlm.root.v1",
+          state: "completed",
+          resultRef: "result.artanis.frlm.safe.v1",
+          blueprintSignatureRef: "signature.blueprint.rlm_subquery.v1",
+        },
+      ],
+    })
+
+    expect(trace.executionMode).toBe("blocked")
+    expect(trace.blockerRefs).toContain("blocker.artanis.frlm_conductor.unsafe_ref")
+    expect(trace.steps).toHaveLength(1)
+    expect(JSON.stringify(trace)).not.toContain("/Users/operator")
+    assertPublicProjectionSafe(trace)
   })
 })
 
