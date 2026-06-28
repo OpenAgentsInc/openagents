@@ -626,6 +626,10 @@ import {
   makeD1KhalaTraceReviewStore,
 } from './khala-trace-review-routes'
 import {
+  handleOperatorRlmTraces,
+  makeD1OperatorRlmTraceStore,
+} from './rlm-operator-traces-routes'
+import {
   handleOperatorKhalaUnsupportedRequests,
   makeD1KhalaUnsupportedRequestStore,
 } from './khala-unsupported-request-routes'
@@ -10282,6 +10286,15 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         requireAdminApiToken: adminRequest =>
           requireAdminApiToken(adminRequest, env),
         store: makeD1KhalaTraceReviewStore(openAgentsDatabase(env)),
+      }),
+  },
+  {
+    path: '/api/operator/rlm/traces',
+    handler: (request, env) =>
+      handleOperatorRlmTraces(request, {
+        requireAdminApiToken: adminRequest =>
+          requireAdminApiToken(adminRequest, env),
+        store: makeD1OperatorRlmTraceStore(openAgentsDatabase(env)),
       }),
   },
   {
