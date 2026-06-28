@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RootView: View {
     @ObservedObject var store: ConversationStore
+    @ObservedObject var pylonSupervisor: PylonSupervisor
     @State private var draft = ""
     @State private var apiKeyDraft = ""
     @State private var isShowingSettings = false
@@ -42,9 +43,9 @@ struct RootView: View {
                 }
             }
             Divider()
-            StatusLine(title: "Local Pylon", value: "Unavailable", systemImage: "bolt.horizontal")
-            StatusLine(title: "Apple FM", value: "Not attached", systemImage: "cpu")
-            StatusLine(title: "Provider Mode", value: "Offline", systemImage: "antenna.radiowaves.left.and.right")
+            StatusLine(title: "Local Pylon", value: pylonSupervisor.snapshot.pylonStatusText, systemImage: "bolt.horizontal")
+            StatusLine(title: "Apple FM", value: pylonSupervisor.snapshot.capacitySummary.contains("ready=1") ? "Ready" : "Not attached", systemImage: "cpu")
+            StatusLine(title: "Provider Mode", value: pylonSupervisor.snapshot.providerStatusText, systemImage: "antenna.radiowaves.left.and.right")
         }
         .padding()
         .frame(minWidth: 250)
@@ -92,11 +93,24 @@ struct RootView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 Text("Node").font(.title2.bold())
-                InspectorCard(title: "Pylon Supervisor", status: "Unavailable") { Text("This scaffold does not launch or attach to Pylon yet. Provider capacity stays offline until a verified local supervisor is implemented.") }
-                InspectorCard(title: "Apple FM Bridge", status: "Not attached") { Text("No Apple FM helper is bundled by this target. The app will not advertise Apple FM capacity.") }
-                InspectorCard(title: "Fleet", status: "Local only") { Text("Connected accounts, assignments, closeouts, and receipts are reserved for the Pylon integration pass.") }
+                InspectorCard(title: "Pylon Supervisor", status: pylonSupervisor.snapshot.pylonStatusText) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(pylonSupervisor.snapshot.controlURL.absoluteString).font(.caption.monospaced())
+                        Text(pylonSupervisor.snapshot.pylonHome.path).font(.caption.monospaced())
+                        if let error = pylonSupervisor.snapshot.lastError { Text(error) }
+                    }
+                }
+                InspectorCard(title: "Apple FM Bridge", status: pylonSupervisor.snapshot.capacitySummary.contains("ready=1") ? "Ready" : "Unavailable") { Text(pylonSupervisor.snapshot.capacitySummary).lineLimit(6) }
+                InspectorCard(title: "Fleet", status: pylonSupervisor.snapshot.accountsSummary == "Not loaded" ? "Loading" : "Visible") {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(pylonSupervisor.snapshot.identitySummary).lineLimit(3)
+                        Text(pylonSupervisor.snapshot.accountsSummary).lineLimit(6)
+                        Text(pylonSupervisor.snapshot.assignmentsSummary).lineLimit(6)
+                    }
+                }
+                Button { Task { await pylonSupervisor.refreshReadiness() } } label: { Label("Refresh Node", systemImage: "arrow.clockwise") }
                 Text("Privacy").font(.headline)
-                Text("The API key is stored in Keychain. Local chat history stays in Application Support on this Mac.").foregroundStyle(.secondary)
+                Text("The API key is stored in Keychain. Local chat history and the bundled Pylon home stay in Application Support on this Mac. The supervisor never writes to the default Codex home.").foregroundStyle(.secondary)
             }.padding(24)
         }.frame(minWidth: 300)
     }

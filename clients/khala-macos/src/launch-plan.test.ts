@@ -3,6 +3,7 @@ import {
   APPLE_FM_BRIDGE_DEFAULT_BASE_URL,
   APPLE_FM_DEFAULT_MODEL_ID,
   APPLE_FM_PACKAGED_HELPER_SUBPATH,
+  KHALA_MACOS_APP_SUPPORT_PYLON_SUBPATH,
   KHALA_APPLE_FM_DEMAND_SOURCE,
   KHALA_APPLE_FM_TOKEN_PROVIDER,
   PYLON_PACKAGED_NODE_SUBPATH,
@@ -46,7 +47,9 @@ describe("Khala macOS Apple FM launch plan", () => {
       `/Applications/Khala.app/Contents/Resources/${PYLON_PACKAGED_NODE_SUBPATH}`,
       "node",
     ])
-    expect(plan.pylonHome).toBe("/Users/alice/.openagents/khala-macos/pylon")
+    expect(plan.pylonHome).toBe(
+      `/Users/alice/${KHALA_MACOS_APP_SUPPORT_PYLON_SUBPATH}`,
+    )
     expect(plan.appleFmBridgePath).toBe(
       `/Applications/Khala.app/Contents/Resources/${APPLE_FM_PACKAGED_HELPER_SUBPATH}`,
     )

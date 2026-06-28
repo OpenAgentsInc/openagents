@@ -13,7 +13,8 @@ Khala Desktop is the native macOS sibling of the iOS Khala app at `clients/khala
 - Chat with the public Khala API after storing an `oa_agent_...` key in Keychain.
 - Local conversation history persisted as JSON in Application Support.
 - Desktop shell with conversation sidebar, main chat pane, and right inspector.
-- Truthful node readiness placeholders for Pylon and Apple FM: unavailable until the supervisor and packaged bridge lifecycle are implemented.
+- Pylon supervisor: attaches to a running local Pylon control endpoint when one is available, otherwise boots the bundled Pylon runtime with an app-managed `PYLON_HOME`.
+- Node inspector: shows Pylon mode, control URL, isolated Pylon home, account/capacity summaries, and assignment summaries.
 - XcodeGen `project.yml` plus a committed `.xcodeproj` using synchronized source folders so the app opens without XcodeGen installed.
 
 ## Build locally
@@ -36,4 +37,4 @@ xcodebuild -project Khala.xcodeproj -scheme Khala -destination 'platform=macOS' 
 
 ## Not in this scaffold
 
-The app does not yet launch a bundled Pylon, publish provider capacity, or ship the Apple FM helper. The UI marks those surfaces unavailable rather than advertising capability that has not been verified.
+The app does not print control tokens or API keys. Bundled Pylon runs with its own Application Support home and does not set or write the default Codex home.

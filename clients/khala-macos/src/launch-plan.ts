@@ -6,6 +6,8 @@ export const APPLE_FM_BRIDGE_HELPER_BASENAME = "foundation-bridge" as const
 export const APPLE_FM_PACKAGED_HELPER_SUBPATH =
   "app/apple-fm-bridge/foundation-bridge" as const
 export const PYLON_PACKAGED_NODE_SUBPATH = "app/pylon-node/index.js" as const
+export const KHALA_MACOS_APP_SUPPORT_PYLON_SUBPATH =
+  "Library/Application Support/OpenAgents/KhalaDesktop/Pylon" as const
 
 export const KHALA_APPLE_FM_TOKEN_PROVIDER =
   "pylon-apple-fm-own-capacity" as const
@@ -107,7 +109,9 @@ export function buildKhalaMacosLaunchPlan(
     input.resourcesDir,
     APPLE_FM_PACKAGED_HELPER_SUBPATH,
   )
-  const pylonHome = trimValue(env.PYLON_HOME) ?? joinPath(input.homeDir, ".openagents", "khala-macos", "pylon")
+  const pylonHome =
+    trimValue(env.PYLON_HOME) ??
+    joinPath(input.homeDir, KHALA_MACOS_APP_SUPPORT_PYLON_SUBPATH)
   const pylonEntry = joinPath(input.resourcesDir, PYLON_PACKAGED_NODE_SUBPATH)
   const bunPath = trimValue(input.bunPath) ?? "bun"
 
