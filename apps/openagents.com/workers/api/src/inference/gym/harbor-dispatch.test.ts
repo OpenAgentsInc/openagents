@@ -119,6 +119,21 @@ const distinctVerifierPlacement: GymHarborVerifierPlacementEvidence = {
   verifierHostRef: 'psionic.host.verifier.cpu.001',
   agentDeviceRef: 'gce.vm.hydralisk-agent-l4-001',
   verifierDeviceRef: 'gce.vm.psionic-verifier-cpu-001',
+  workerModelFamily: 'openagents-khala',
+  verifierModelFamily: 'psionic-verifier',
+  verifierPanelIndependence: {
+    judgeCount: 9,
+    effectiveVoteCount: 3,
+    modelFamilyCount: 3,
+    independenceMetricRef:
+      'metric.gym.harbor.terminal_bench.panel_effective_independence.001',
+  },
+  agentChannelDefenses: {
+    paraphraseBeforeVerification: true,
+    crossModelVerifier: true,
+    steganographyScreenRef:
+      'screen.gym.harbor.terminal_bench.agent_channel_steganalysis.001',
+  },
   verifierNetworkMode: 'no-network',
   artifactHandoffRefs: ['artifact.hydralisk.terminal_bench.answer_json.001'],
   rewardArtifactRef: 'artifact.hydralisk.terminal_bench.reward_txt.001',
@@ -158,6 +173,10 @@ describe('Gym Harbor Terminal-Bench dispatch seam', () => {
       requestedEnvironmentMode: 'separate',
       requestedVerifierNetworkMode: 'no-network',
       requireDistinctDevice: true,
+      requireDistinctModelFamily: true,
+      requireEffectivePanelIndependence: true,
+      requireParaphraseDefense: true,
+      requireCrossModelVerifier: true,
       requireArtifactHandoff: true,
       requireRewardArtifact: true,
     })
@@ -266,9 +285,23 @@ describe('Gym Harbor Terminal-Bench dispatch seam', () => {
     expect(result.ingest.verifierPlacementVerified).toBe(true)
     expect(result.ingest.environmentMode).toBe('separate')
     expect(result.ingest.agentHostRef).not.toBe(result.ingest.verifierHostRef)
+    expect(result.ingest.workerModelFamily).toBe('openagents-khala')
+    expect(result.ingest.verifierModelFamily).toBe('psionic-verifier')
+    expect(result.ingest.verifierPanelJudgeCount).toBe(9)
+    expect(result.ingest.verifierPanelEffectiveVoteCount).toBe(3)
+    expect(result.ingest.verifierPanelModelFamilyCount).toBe(3)
+    expect(result.ingest.verifierIndependenceMetricRef).toBe(
+      'metric.gym.harbor.terminal_bench.panel_effective_independence.001',
+    )
+    expect(result.ingest.steganographyScreenRef).toBe(
+      'screen.gym.harbor.terminal_bench.agent_channel_steganalysis.001',
+    )
     expect(result.ingest.verifierNetworkMode).toBe('no-network')
     expect(result.ingest.rewardArtifactRef).toBe(
       'artifact.hydralisk.terminal_bench.reward_txt.001',
+    )
+    expect(result.ingest.caveats).toContain(
+      'verifier_model_family_independence_required',
     )
     expect(result.ingest.caveats).toContain(
       'cost_per_accepted_outcome_mapping_deferred_to_6242',
@@ -320,6 +353,37 @@ describe('Gym Harbor Terminal-Bench dispatch seam', () => {
         harness,
       }),
     ).rejects.toThrow(/distinct-device verifier placement/)
+  })
+
+  test('rejects same-family verifier panels and missing channel defenses', () => {
+    const invalidPlacement = {
+      ...distinctVerifierPlacement,
+      verifierModelFamily: ' openagents-khala ',
+      verifierPanelIndependence: {
+        judgeCount: 9,
+        effectiveVoteCount: 1,
+        modelFamilyCount: 1,
+        independenceMetricRef: '',
+      },
+      agentChannelDefenses: {
+        paraphraseBeforeVerification: false,
+        crossModelVerifier: false,
+        steganographyScreenRef: '',
+      },
+    } as unknown as GymHarborVerifierPlacementEvidence
+
+    expect(checkGymHarborVerifierPlacement(invalidPlacement)).toEqual({
+      valid: false,
+      violations: [
+        'worker_and_verifier_same_model_family',
+        'verifier_panel_effective_vote_count_too_low',
+        'verifier_panel_model_family_count_too_low',
+        'verifier_independence_metric_ref_empty',
+        'paraphrase_defense_missing',
+        'cross_model_verifier_missing',
+        'steganography_screen_ref_empty',
+      ],
+    })
   })
 
   test('rejects summaries that fail the Hydralisk public-safety boundary', () => {

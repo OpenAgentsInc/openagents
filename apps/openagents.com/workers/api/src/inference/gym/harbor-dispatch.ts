@@ -293,11 +293,32 @@ export const GymHarborVerifierPlacementRequirement = S.Struct({
   requestedEnvironmentMode: S.Literal('separate'),
   requestedVerifierNetworkMode: S.Literal('no-network'),
   requireDistinctDevice: S.Literal(true),
+  requireDistinctModelFamily: S.Literal(true),
+  requireEffectivePanelIndependence: S.Literal(true),
+  requireParaphraseDefense: S.Literal(true),
+  requireCrossModelVerifier: S.Literal(true),
   requireArtifactHandoff: S.Literal(true),
   requireRewardArtifact: S.Literal(true),
 })
 export type GymHarborVerifierPlacementRequirement =
   typeof GymHarborVerifierPlacementRequirement.Type
+
+export const GymHarborVerifierPanelIndependence = S.Struct({
+  judgeCount: S.Number,
+  effectiveVoteCount: S.Number,
+  modelFamilyCount: S.Number,
+  independenceMetricRef: S.String,
+})
+export type GymHarborVerifierPanelIndependence =
+  typeof GymHarborVerifierPanelIndependence.Type
+
+export const GymHarborAgentChannelDefenses = S.Struct({
+  paraphraseBeforeVerification: S.Literal(true),
+  crossModelVerifier: S.Literal(true),
+  steganographyScreenRef: S.String,
+})
+export type GymHarborAgentChannelDefenses =
+  typeof GymHarborAgentChannelDefenses.Type
 
 export const GymHarborVerifierPlacementEvidence = S.Struct({
   schemaVersion: S.Literal(GYM_HARBOR_VERIFIER_PLACEMENT_SCHEMA),
@@ -306,6 +327,10 @@ export const GymHarborVerifierPlacementEvidence = S.Struct({
   verifierHostRef: S.String,
   agentDeviceRef: S.String,
   verifierDeviceRef: S.String,
+  workerModelFamily: S.String,
+  verifierModelFamily: S.String,
+  verifierPanelIndependence: GymHarborVerifierPanelIndependence,
+  agentChannelDefenses: GymHarborAgentChannelDefenses,
   verifierNetworkMode: S.Literal('no-network'),
   artifactHandoffRefs: S.Array(S.String),
   rewardArtifactRef: S.String,
@@ -473,6 +498,13 @@ export const GymHarborTerminalBenchIngest = S.Struct({
   environmentMode: S.Literal('separate'),
   agentHostRef: S.String,
   verifierHostRef: S.String,
+  workerModelFamily: S.String,
+  verifierModelFamily: S.String,
+  verifierPanelEffectiveVoteCount: S.Number,
+  verifierPanelJudgeCount: S.Number,
+  verifierPanelModelFamilyCount: S.Number,
+  verifierIndependenceMetricRef: S.String,
+  steganographyScreenRef: S.String,
   verifierNetworkMode: S.Literal('no-network'),
   artifactHandoffRefs: S.Array(S.String),
   rewardArtifactRef: S.String,
@@ -565,6 +597,9 @@ const stableJson = (value: unknown): string => {
     .map(([key, entry]) => `${JSON.stringify(key)}:${stableJson(entry)}`)
     .join(',')}}`
 }
+
+const normalizedFamily = (family: string): string =>
+  family.trim().toLowerCase()
 
 const makeJobRef = (
   experiment: GymExperiment,
@@ -728,6 +763,10 @@ export const buildGymHarborTerminalBenchJobSpec = (
       requestedEnvironmentMode: 'separate',
       requestedVerifierNetworkMode: 'no-network',
       requireDistinctDevice: true,
+      requireDistinctModelFamily: true,
+      requireEffectivePanelIndependence: true,
+      requireParaphraseDefense: true,
+      requireCrossModelVerifier: true,
       requireArtifactHandoff: true,
       requireRewardArtifact: true,
     },
@@ -775,6 +814,53 @@ export const checkGymHarborVerifierPlacement = (
     placement.agentDeviceRef === placement.verifierDeviceRef
   ) {
     violations.push('agent_and_verifier_same_device')
+  }
+  const workerModelFamily = normalizedFamily(placement.workerModelFamily)
+  const verifierModelFamily = normalizedFamily(placement.verifierModelFamily)
+  if (workerModelFamily === '') {
+    violations.push('worker_model_family_empty')
+  }
+  if (verifierModelFamily === '') {
+    violations.push('verifier_model_family_empty')
+  }
+  if (workerModelFamily !== '' && workerModelFamily === verifierModelFamily) {
+    violations.push('worker_and_verifier_same_model_family')
+  }
+  if (!Number.isInteger(placement.verifierPanelIndependence.judgeCount)) {
+    violations.push('verifier_panel_judge_count_not_integer')
+  }
+  if (placement.verifierPanelIndependence.judgeCount < 1) {
+    violations.push('verifier_panel_judge_count_too_low')
+  }
+  if (!Number.isInteger(placement.verifierPanelIndependence.effectiveVoteCount)) {
+    violations.push('verifier_panel_effective_vote_count_not_integer')
+  }
+  if (placement.verifierPanelIndependence.effectiveVoteCount < 2) {
+    violations.push('verifier_panel_effective_vote_count_too_low')
+  }
+  if (
+    placement.verifierPanelIndependence.effectiveVoteCount >
+    placement.verifierPanelIndependence.judgeCount
+  ) {
+    violations.push('verifier_panel_effective_votes_exceed_judges')
+  }
+  if (!Number.isInteger(placement.verifierPanelIndependence.modelFamilyCount)) {
+    violations.push('verifier_panel_model_family_count_not_integer')
+  }
+  if (placement.verifierPanelIndependence.modelFamilyCount < 2) {
+    violations.push('verifier_panel_model_family_count_too_low')
+  }
+  if (placement.verifierPanelIndependence.independenceMetricRef.trim() === '') {
+    violations.push('verifier_independence_metric_ref_empty')
+  }
+  if (!placement.agentChannelDefenses.paraphraseBeforeVerification) {
+    violations.push('paraphrase_defense_missing')
+  }
+  if (!placement.agentChannelDefenses.crossModelVerifier) {
+    violations.push('cross_model_verifier_missing')
+  }
+  if (placement.agentChannelDefenses.steganographyScreenRef.trim() === '') {
+    violations.push('steganography_screen_ref_empty')
   }
   if (placement.artifactHandoffRefs.length === 0) {
     violations.push('artifact_handoff_missing')
@@ -872,6 +958,22 @@ export const buildGymHarborTerminalBenchIngest = (input: {
     environmentMode: input.dispatch.verifierPlacement.environmentMode,
     agentHostRef: input.dispatch.verifierPlacement.agentHostRef,
     verifierHostRef: input.dispatch.verifierPlacement.verifierHostRef,
+    workerModelFamily: input.dispatch.verifierPlacement.workerModelFamily,
+    verifierModelFamily: input.dispatch.verifierPlacement.verifierModelFamily,
+    verifierPanelEffectiveVoteCount:
+      input.dispatch.verifierPlacement.verifierPanelIndependence
+        .effectiveVoteCount,
+    verifierPanelJudgeCount:
+      input.dispatch.verifierPlacement.verifierPanelIndependence.judgeCount,
+    verifierPanelModelFamilyCount:
+      input.dispatch.verifierPlacement.verifierPanelIndependence
+        .modelFamilyCount,
+    verifierIndependenceMetricRef:
+      input.dispatch.verifierPlacement.verifierPanelIndependence
+        .independenceMetricRef,
+    steganographyScreenRef:
+      input.dispatch.verifierPlacement.agentChannelDefenses
+        .steganographyScreenRef,
     verifierNetworkMode: input.dispatch.verifierPlacement.verifierNetworkMode,
     artifactHandoffRefs: input.dispatch.verifierPlacement.artifactHandoffRefs,
     rewardArtifactRef: input.dispatch.verifierPlacement.rewardArtifactRef,
@@ -884,6 +986,8 @@ export const buildGymHarborTerminalBenchIngest = (input: {
       ...input.job.servingProfile.caveatRefs,
       'summary_ingest_only',
       'raw_harbor_artifacts_excluded',
+      'verifier_model_family_independence_required',
+      'paraphrase_cross_model_defense_required',
       'cost_per_accepted_outcome_mapping_deferred_to_6242',
       'public_claim_projection_deferred_to_owner_armed_report',
     ],

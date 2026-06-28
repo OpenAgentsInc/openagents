@@ -44,6 +44,21 @@ const verifierPlacement: GymHarborVerifierPlacementEvidence = {
   verifierHostRef: 'psionic.host.verifier.cpu.002',
   agentDeviceRef: 'gce.vm.hydralisk-agent-g4-001',
   verifierDeviceRef: 'gce.vm.psionic-verifier-cpu-002',
+  workerModelFamily: 'zai-glm-5',
+  verifierModelFamily: 'psionic-verifier',
+  verifierPanelIndependence: {
+    judgeCount: 9,
+    effectiveVoteCount: 3,
+    modelFamilyCount: 3,
+    independenceMetricRef:
+      'metric.gym.harbor.terminal_bench.panel_effective_independence.comparison.002',
+  },
+  agentChannelDefenses: {
+    paraphraseBeforeVerification: true,
+    crossModelVerifier: true,
+    steganographyScreenRef:
+      'screen.gym.harbor.terminal_bench.agent_channel_steganalysis.comparison.002',
+  },
   verifierNetworkMode: 'no-network',
   artifactHandoffRefs: ['artifact.hydralisk.terminal_bench.answer_json.002'],
   rewardArtifactRef: 'artifact.hydralisk.terminal_bench.reward_txt.002',
