@@ -394,7 +394,7 @@ export const PYLON_COMMAND_CATALOG: readonly PylonCommandEntry[] = [
       pos("request|resume|status|proof|burndown", "Subcommand."),
       opt("--prompt", "request: prompt text for openagents/khala."),
       opt("--objective", "request: objective text alias for --prompt."),
-      opt("--workflow", "request: typed workflow class cloud_coding_session|codex_agent_task."),
+      opt("--workflow", "request: typed workflow class claude_agent_task|cloud_coding_session|codex_agent_task."),
       opt("--pylon-ref", "request: target a specific caller-owned Pylon ref."),
       opt("--target-pylon-ref", "request: alias for --pylon-ref."),
       flag("--fixture", "request: explicit codex_agent_task fixture smoke intent."),

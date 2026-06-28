@@ -221,6 +221,58 @@ describe("Khala spawn supervisor", () => {
     expect(summarizeSpawnRun(stored)).toContain("strategy: pylon_codex_assignments")
   })
 
+  test("passes claude_agent_task workflow through pylon spawn MCP", async () => {
+    const home = await mkdtemp(join(tmpdir(), "khala-spawn-pylon-claude-test-"))
+    const env = { KHALA_HOME: home }
+    const calls: Array<{ readonly args: Record<string, unknown>; readonly tool: string }> = []
+    const mcpCaller: KhalaSpawnMcpCaller = async input => {
+      calls.push({ args: input.args, tool: input.tool })
+      return {
+        assignedCount: 1,
+        blockerRefs: [],
+        children: [
+          {
+            assignmentRef: "assignment.public.khala_coding.claude_one",
+            durableRequestId: "chatcmpl_claude_one",
+            ok: true,
+            pylonRef: "pylon.owner.claude",
+            slotIndex: 0,
+            state: "offered",
+            workerRef: "worker.public.khala_coding.spawn.01",
+          },
+        ],
+        ok: true,
+        requestedCount: 1,
+        schema: "openagents.khala_mcp.spawn.v1",
+        spawnRef: "spawn.public.khala_coding.claude_test_spawn",
+      }
+    }
+
+    const run = await runKhalaSpawn({
+      baseUrl: "https://example.test",
+      count: 1,
+      cwd: home,
+      env,
+      fixture: true,
+      mcpCaller,
+      objective: "audit the Claude public fixture",
+      pylonRef: "pylon.owner.claude",
+      strategy: "pylon",
+      token: "oa_agent_test",
+      workflow: "claude_agent_task",
+    })
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.args).toMatchObject({
+      fixture: true,
+      objective: "audit the Claude public fixture",
+      targetPylonRef: "pylon.owner.claude",
+      workflow: "claude_agent_task",
+    })
+    expect(run.runRef).toBe("spawn.public.khala_coding.claude_test_spawn")
+    expect(run.workers[0]?.assignmentRef).toBe("assignment.public.khala_coding.claude_one")
+  })
+
   test("refreshes pylon spawn status through khala.spawnStatus", async () => {
     const home = await mkdtemp(join(tmpdir(), "khala-spawn-pylon-refresh-test-"))
     const env = { KHALA_HOME: home }

@@ -30,7 +30,7 @@ khala fleet run --repo owner/repo --issues 123,124 --verify "bun test" --dry-run
 khala auth codex
 khala codex "read README.md"
 khala spawn --count 5 --objective "audit this workspace" --strategy local
-khala spawn --strategy pylon --count 5 --objective "implement public issue #123" --repo OpenAgentsInc/openagents --commit <sha> --verify "bun test"
+khala spawn --strategy pylon --workflow codex_agent_task --count 5 --objective "implement public issue #123" --repo OpenAgentsInc/openagents --commit <sha> --verify "bun test"
 khala workers
 khala join <runRef>
 khala cancel <runRef|workerRef>
@@ -213,7 +213,7 @@ local Pylon and the dispatch gate can see the fleet.
 - `--repo <owner/repo>`, `--branch <name>`, `--commit <sha>`, and
   `--verify <command>` describe public repository work for `--strategy pylon`.
   `--repo`, `--commit`, and `--verify` must be supplied together.
-- `--workflow codex_agent_task|cloud_coding_session` selects the Pylon coding
+- `--workflow claude_agent_task|codex_agent_task|cloud_coding_session` selects the Pylon coding
   workflow for `--strategy pylon`.
 - `--timeout <seconds>` sets the per-worker timeout for `khala spawn`.
 
