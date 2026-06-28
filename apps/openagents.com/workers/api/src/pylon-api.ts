@@ -2267,7 +2267,9 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
           (id, event_ref, pylon_ref, owner_agent_user_id, idempotency_key_hash,
            event_kind, assignment_ref, status, event_body_json,
            public_projection_json, created_at, archived_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+         ON CONFLICT(idempotency_key_hash) DO UPDATE SET
+           idempotency_key_hash = excluded.idempotency_key_hash`,
       )
       .bind(
         record.id,
@@ -2284,7 +2286,18 @@ export const makeD1PylonApiStore = (db: D1Database): PylonApiStore => ({
       )
       .run()
 
-    return { idempotent: false, record }
+    const stored = await makeD1PylonApiStore(
+      db,
+    ).readEventByIdempotencyKeyHash(record.idempotencyKeyHash)
+
+    if (stored === undefined) {
+      throw new PylonApiStoreError({
+        kind: 'storage_error',
+        reason: 'Pylon event write did not return a stored event.',
+      })
+    }
+
+    return { idempotent: stored.id !== record.id, record: stored }
   },
 
   listAssignmentsForPylon: async (pylonRef, limit) => {

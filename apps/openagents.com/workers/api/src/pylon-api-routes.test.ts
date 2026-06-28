@@ -20,6 +20,7 @@ import {
   type PylonSparkPayoutTargetRecord,
   type PylonSparkPayoutTargetStore,
   buildPylonApiAssignmentRecord,
+  buildPylonApiEventRecord,
   buildPylonApiRegistrationRecord,
   makeD1PylonApiStore,
   providerJobLifecycleRecordFromAssignment,
@@ -516,6 +517,123 @@ class AssignmentBatchD1 implements D1Database {
   }
 }
 
+type EventRow = Readonly<{
+  assignment_ref: string | null
+  created_at: string
+  event_body_json: string
+  event_kind: string
+  event_ref: string
+  id: string
+  idempotency_key_hash: string
+  owner_agent_user_id: string
+  public_projection_json: string
+  pylon_ref: string
+  status: string
+}>
+
+class EventIdempotentStatement implements D1PreparedStatement {
+  constructor(
+    private readonly db: EventIdempotentD1,
+    private readonly query: string,
+    private readonly bindings: ReadonlyArray<unknown> = [],
+  ) {}
+
+  bind(...values: ReadonlyArray<unknown>): D1PreparedStatement {
+    return new EventIdempotentStatement(this.db, this.query, values)
+  }
+
+  first<T = unknown>(): Promise<T | null> {
+    if (!this.query.includes('FROM pylon_api_events')) {
+      return Promise.reject(new Error(`Unexpected D1 first: ${this.query}`))
+    }
+
+    this.db.readCount += 1
+    if (this.db.readCount === 1) {
+      return Promise.resolve(null)
+    }
+
+    const idempotencyKeyHash = String(this.bindings[0] ?? '')
+    return Promise.resolve(
+      (this.db.events.get(idempotencyKeyHash) ?? null) as T | null,
+    )
+  }
+
+  run<T = Record<string, unknown>>(): Promise<D1Result<T>> {
+    if (!this.query.includes('INSERT INTO pylon_api_events')) {
+      return Promise.reject(new Error(`Unexpected D1 run: ${this.query}`))
+    }
+
+    this.db.insertQueries.push(this.query)
+    if (!this.query.includes('ON CONFLICT(idempotency_key_hash) DO UPDATE')) {
+      return Promise.reject(new Error('event insert is not idempotent'))
+    }
+
+    const idempotencyKeyHash = String(this.bindings[4] ?? '')
+    if (!this.db.events.has(idempotencyKeyHash)) {
+      this.db.events.set(idempotencyKeyHash, {
+        assignment_ref:
+          typeof this.bindings[6] === 'string' ? this.bindings[6] : null,
+        created_at: String(this.bindings[10] ?? ''),
+        event_body_json: String(this.bindings[8] ?? '{}'),
+        event_kind: String(this.bindings[5] ?? ''),
+        event_ref: String(this.bindings[1] ?? ''),
+        id: String(this.bindings[0] ?? ''),
+        idempotency_key_hash: idempotencyKeyHash,
+        owner_agent_user_id: String(this.bindings[3] ?? ''),
+        public_projection_json: String(this.bindings[9] ?? '{}'),
+        pylon_ref: String(this.bindings[2] ?? ''),
+        status: String(this.bindings[7] ?? ''),
+      })
+    }
+
+    return Promise.resolve(d1Result<T>())
+  }
+
+  all<T = unknown>(): Promise<D1Result<T>> {
+    return Promise.reject(new Error(`Unexpected D1 all: ${this.query}`))
+  }
+
+  raw<T = unknown[]>(options: {
+    columnNames: true
+  }): Promise<[string[], ...T[]]>
+  raw<T = unknown[]>(options?: { columnNames?: false }): Promise<T[]>
+  raw<T = unknown[]>(options?: {
+    columnNames?: boolean
+  }): Promise<T[] | [string[], ...T[]]> {
+    return Promise.reject(new Error(`Unexpected D1 raw: ${this.query}`))
+  }
+}
+
+class EventIdempotentD1 implements D1Database {
+  readonly events = new Map<string, EventRow>()
+  readonly insertQueries: string[] = []
+  readCount = 0
+
+  constructor(existing: EventRow) {
+    this.events.set(existing.idempotency_key_hash, existing)
+  }
+
+  batch<T = unknown>(): Promise<Array<D1Result<T>>> {
+    return Promise.reject(new Error('D1 batch should not be used'))
+  }
+
+  dump(): Promise<ArrayBuffer> {
+    return Promise.reject(new Error('D1 dump should not be used'))
+  }
+
+  exec(): Promise<D1ExecResult> {
+    return Promise.reject(new Error('D1 exec should not be used'))
+  }
+
+  prepare(query: string): D1PreparedStatement {
+    return new EventIdempotentStatement(this, query)
+  }
+
+  withSession(): D1DatabaseSession {
+    throw new Error('D1 session should not be used')
+  }
+}
+
 class ChunkedSelectStatement implements D1PreparedStatement {
   constructor(
     private readonly db: ChunkedSelectD1,
@@ -953,6 +1071,62 @@ describe('Pylon API routes', () => {
       makeD1PylonApiStore(failingDb).createAssignment(record),
     ).rejects.toThrow('simulated mid-batch failure')
     expect(failingDb.batchQueries).toHaveLength(2)
+  })
+
+  test('D1 event creation is idempotent when the idempotency pre-read races a duplicate write (#6821)', async () => {
+    const idempotencyKeyHash = 'hash.presence.duplicate'
+    const existing = buildPylonApiEventRecord({
+      body: {
+        capacityRefs: ['capacity.public.gpu_available'],
+        healthRefs: ['health.public.ok'],
+        loadRefs: ['load.public.low'],
+        status: 'online',
+      },
+      eventKind: 'heartbeat',
+      idempotencyKeyHash,
+      makeId: () => 'existing',
+      nowIso: '2026-06-28T10:00:00.000Z',
+      ownerAgentUserId: 'agent-one',
+      pylonRef: 'pylon.test.one',
+      status: 'online',
+    })
+    const db = new EventIdempotentD1({
+      assignment_ref: existing.assignmentRef,
+      created_at: existing.createdAt,
+      event_body_json: JSON.stringify(existing.eventBody),
+      event_kind: existing.eventKind,
+      event_ref: existing.eventRef,
+      id: existing.id,
+      idempotency_key_hash: existing.idempotencyKeyHash,
+      owner_agent_user_id: existing.ownerAgentUserId,
+      public_projection_json: existing.publicProjectionJson,
+      pylon_ref: existing.pylonRef,
+      status: existing.status,
+    })
+    const duplicate = buildPylonApiEventRecord({
+      body: {
+        capacityRefs: ['capacity.public.gpu_available'],
+        healthRefs: ['health.public.ok'],
+        loadRefs: ['load.public.low'],
+        status: 'online',
+      },
+      eventKind: 'heartbeat',
+      idempotencyKeyHash,
+      makeId: () => 'duplicate',
+      nowIso: '2026-06-28T10:00:01.000Z',
+      ownerAgentUserId: 'agent-one',
+      pylonRef: 'pylon.test.one',
+      status: 'online',
+    })
+
+    const result = await makeD1PylonApiStore(db).createEvent(duplicate)
+
+    expect(result.idempotent).toBe(true)
+    expect(result.record.eventRef).toBe(existing.eventRef)
+    expect(db.insertQueries).toHaveLength(1)
+    expect(db.insertQueries[0]).toContain(
+      'ON CONFLICT(idempotency_key_hash) DO UPDATE',
+    )
   })
 
   test('D1 store chunks multi-value Pylon reads under the D1 bind ceiling', async () => {
