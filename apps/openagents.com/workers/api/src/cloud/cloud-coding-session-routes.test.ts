@@ -14,7 +14,9 @@ import {
   decidePlacement,
   handleCloudCodingSessionGet,
   handleCloudCodingSessionLaunch,
+  isCloudGceProvisioningArmed,
   isCloudCodingSessionsEnabled,
+  makeCloudControlCloudCodingAdapter,
   makeLedgerCloudCodingMeteringHook,
   routeCloudCodingSessionRequest,
   stubCloudCodingAdapter,
@@ -30,6 +32,7 @@ const baseDeps = (
   overrides: Partial<CloudCodingSessionServiceDeps> = {},
 ): CloudCodingSessionServiceDeps => ({
   authenticate: authOk,
+  adapter: stubCloudCodingAdapter,
   enabled: true,
   newId: () => 'ccs_fixed',
   ...overrides,
@@ -63,6 +66,13 @@ describe('cloud coding sessions feature flag', () => {
     expect(isCloudCodingSessionsEnabled('1')).toBe(true)
     expect(isCloudCodingSessionsEnabled('on')).toBe(true)
     expect(isCloudCodingSessionsEnabled('YES')).toBe(true)
+  })
+
+  test('arms live GCE provisioning only on the explicit live token', () => {
+    expect(isCloudGceProvisioningArmed(undefined)).toBe(false)
+    expect(isCloudGceProvisioningArmed('fake')).toBe(false)
+    expect(isCloudGceProvisioningArmed('true')).toBe(false)
+    expect(isCloudGceProvisioningArmed(' live ')).toBe(true)
   })
 })
 
@@ -111,6 +121,20 @@ describe('POST /v1/cloud-coding-sessions', () => {
     expect(response.status).toBe(404)
     const body = (await response.json()) as { error: string }
     expect(body.error).toBe('cloud_coding_sessions_disabled')
+  })
+
+  test('fails closed with a typed not-armed error when no live GCE adapter is armed', async () => {
+    const response = await run(
+      handleCloudCodingSessionLaunch(launchRequest(validBody), {
+        authenticate: authOk,
+        enabled: true,
+        newId: () => 'ccs_fixed',
+      }),
+    )
+    expect(response.status).toBe(502)
+    const body = (await response.json()) as { error: string; reason: string }
+    expect(body.error).toBe('runtime_error')
+    expect(body.reason).toBe('cloud_gce_provisioning_not_armed')
   })
 
   test('rejects a non-POST method with 405', async () => {
@@ -229,6 +253,7 @@ describe('POST /v1/cloud-coding-sessions', () => {
     expect(body.state).toBe('queued')
     // Honest: the stub provisions no VM and runs no edit.
     expect(body.placement_ref).toBeNull()
+    expect(body.lease_refs).toEqual([])
     expect(body.artifact_ref).toBeNull()
     // Honest: the stub meters nothing.
     expect(body.metered).toBe(false)
@@ -275,6 +300,66 @@ describe('POST /v1/cloud-coding-sessions', () => {
     expect(body.reason).toBe('lease_unavailable')
   })
 
+  test('with live provisioning armed, posts to cloud placement and returns lease refs', async () => {
+    let placementBody: Record<string, unknown> | undefined
+    const adapter = makeCloudControlCloudCodingAdapter({
+      baseUrl: 'https://cloud.openagents.test',
+      bearerToken: 'secret-test-token',
+      fetch: async (url, init) => {
+        expect(url).toBe('https://cloud.openagents.test/v1/placement')
+        expect(init?.method).toBe('POST')
+        expect((init?.headers as Record<string, string>).Authorization).toBe(
+          'Bearer secret-test-token',
+        )
+        placementBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+        return Response.json({
+          binding: {
+            capacityClassId: 'gce-standard',
+            caps: { gceLeaseRef: 'lease.gce.vm.ccs_fixed' },
+            externalRunId: 'run_gce_1',
+            lane: 'cloud-gcp',
+            providerLane: 'gcp',
+            runnerId: 'runner_gce_1',
+          },
+          externalRunId: 'run_gce_1',
+          status: 'running',
+        })
+      },
+      gceProvisioningArmed: true,
+    })
+    const response = await run(
+      handleCloudCodingSessionLaunch(
+        launchRequest({
+          ...validBody,
+          authGrantRef: 'grant.public.test',
+          providerAccountRef: 'provider-account.public.test',
+        }),
+        baseDeps({ adapter }),
+      ),
+    )
+    expect(response.status).toBe(200)
+    expect(placementBody).toMatchObject({
+      auth_grant_ref: 'grant.public.test',
+      contract_version: 'openagents.codex_placement_assignment.v1',
+      lane: 'cloud-gcp',
+      owner_ref: 'agent:test-user',
+      provider_account_ref: 'provider-account.public.test',
+      repository: validBody.repoRef,
+      run_id: 'ccs_fixed',
+      wallet_authority: false,
+    })
+    const body = (await response.json()) as Record<string, unknown>
+    expect(body.state).toBe('running')
+    expect(body.placement_ref).toBe('placement.cloud-coding.run_gce_1')
+    expect(body.lease_refs).toEqual([
+      'placement.cloud-coding.run_gce_1',
+      'cloud-run.run_gce_1',
+      'cloud-runner.runner_gce_1',
+      'cloud-capacity-class.gce-standard',
+      'lease.gce.vm.ccs_fixed',
+    ])
+  })
+
   test('surfaces a live metering receipt ref when the hook reports metered', async () => {
     const meteringHook: CloudCodingMeteringHook = () =>
       Effect.succeed({
@@ -314,6 +399,7 @@ describe('GET /v1/cloud-coding-sessions/:id', () => {
     artifactRef: null,
     createdAt: '2026-06-19T00:00:00.000Z',
     lane: 'cloud-gcp',
+    leaseRefs: ['placement:abc'],
     placementRef: 'placement:abc',
     repoRef: 'repo:openagents/openagents',
     repoTrustTier: 'private',

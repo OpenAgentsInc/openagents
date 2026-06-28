@@ -243,12 +243,14 @@ import { makeCfBrowserSmokeHandler } from './cf-browser-smoke-routes'
 import { makeCheckoutPageRoutes } from './checkout-page-routes'
 // Cloud coding-session surface (autopilot.cloud_coding_sessions.v1, red) — the
 // "our cloud" autonomous-execution lane. INERT behind CLOUD_CODING_SESSIONS_ENABLED
-// (default off). Ships wired to the stub/accepting runtime adapter + no-op
-// metering stub; the managed GCE control-plane adapter + live receipt-first
-// metering plug into its seams. The promise STAYS red — no real VM, no real
-// repo-edit, no paid receipt; no green flip lands here.
+// (default off). When enabled, launch defaults to the real cloud control-plane
+// adapter and fails closed unless OA_CODEX_GCE_PROVISIONER=live plus
+// OA_CLOUD_CONTROL_URL/TOKEN are configured. The promise STAYS red until a real
+// desktop-originated GCE run produces artifact + receipt evidence.
 import {
+  isCloudGceProvisioningArmed,
   isCloudCodingSessionsEnabled,
+  makeCloudControlCloudCodingAdapter,
   routeCloudCodingSessionRequest as routeCloudCodingSessionRequestImpl,
 } from './cloud/cloud-coding-session-routes'
 import { makeD1CloudPrimitiveReceiptStore } from './cloud/cloud-primitive-receipts'
@@ -12962,12 +12964,10 @@ const routeRequest = makeWorkerRouteRequest({
     autopilotDecisionRoutes.routeAutopilotDecisionRequest(request, env, ctx) ??
     autopilotWorkRoutes.routeAutopilotWorkRequest(request, env, ctx),
   // Cloud coding-session surface (autopilot.cloud_coding_sessions.v1, red).
-  // INERT behind CLOUD_CODING_SESSIONS_ENABLED (default off). Wired to the same
-  // programmatic-agent auth the inference gateway / sandbox / fine-tuning
-  // surfaces use; ships defaulted to the stub runtime adapter + no-op metering
-  // stub, so on prod every route returns 404 and nothing is provisioned or
-  // billed. The managed GCE control-plane adapter + live receipt-first metering
-  // hook plug into the module's seams when the EPIC lands.
+  // INERT behind CLOUD_CODING_SESSIONS_ENABLED (default off). When enabled, it
+  // tries the real cloud placement/GCE lease path and fails closed with typed
+  // not-armed errors until OA_CODEX_GCE_PROVISIONER=live plus cloud control
+  // endpoint/token are configured.
   routeCloudCodingSessionRequest: (request, env) =>
     routeCloudCodingSessionRequestImpl(request, {
       authenticate: async authRequest => {
@@ -12983,6 +12983,13 @@ const routeRequest = makeWorkerRouteRequest({
           ? undefined
           : { accountRef: `agent:${session.user.id}` }
       },
+      adapter: makeCloudControlCloudCodingAdapter({
+        baseUrl: env.OA_CLOUD_CONTROL_URL ?? '',
+        bearerToken: env.OA_CLOUD_CONTROL_TOKEN ?? '',
+        gceProvisioningArmed: isCloudGceProvisioningArmed(
+          env.OA_CODEX_GCE_PROVISIONER,
+        ),
+      }),
       enabled: isCloudCodingSessionsEnabled(env.CLOUD_CODING_SESSIONS_ENABLED),
     }),
   routeAgentGoalRequest: agentGoalRoutes.routeAgentGoalRequest,

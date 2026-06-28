@@ -264,10 +264,15 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // Cloud coding-session surface flag (autopilot.cloud_coding_sessions.v1, red).
   // Default OFF: the `/v1/cloud-coding-sessions` launch + lifecycle routes are
   // inert on the live Worker until the managed GCE runtime is wired. Set
-  // "true"/"1"/"on" to enable. The promise stays red until a desktop-originated
-  // cloud session runs a real repo-edit on GCE and produces a content-addressed
-  // artifact plus a dereferenceable resource_usage_receipt with owner sign-off.
+  // "true"/"1"/"on" to enable. Launch still fails closed unless
+  // OA_CODEX_GCE_PROVISIONER=live and OA_CLOUD_CONTROL_URL/TOKEN are configured.
+  // The promise stays red until a desktop-originated cloud session runs a real
+  // repo-edit on GCE and produces a content-addressed artifact plus a
+  // dereferenceable resource_usage_receipt with owner sign-off.
   CLOUD_CODING_SESSIONS_ENABLED?: string | undefined
+  OA_CODEX_GCE_PROVISIONER?: string | undefined
+  OA_CLOUD_CONTROL_URL?: string | undefined
+  OA_CLOUD_CONTROL_TOKEN?: string | undefined
   // Partner passthrough adapter secrets (EPIC #5474, #5481). Worker secrets,
   // never committed/logged. Each enables the corresponding passthrough adapter
   // when the gateway flag is on; absent => that partner adapter stays inert.
