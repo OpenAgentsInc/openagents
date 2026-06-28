@@ -69,6 +69,12 @@ describe('buildMirrorCodeRun', () => {
     ).toThrow(MirrorCodeRunError)
   })
 
+  test('rejects task ids outside the selected public bucket', () => {
+    expect(() =>
+      buildMirrorCodeRun({ ...validInput, taskId: 'ruff', bucket: 'S' }),
+    ).toThrow(MirrorCodeRunError)
+  })
+
   test('rejects a malformed body', () => {
     expect(() => buildMirrorCodeRun({ runId: 'x' })).toThrow(MirrorCodeRunError)
   })
@@ -89,6 +95,20 @@ describe('buildMirrorCodeRun', () => {
     expect(built.passRate).toBeNull()
     expect(built.decisionGrade).toBe(false)
     expect(built.summary).toContain('Owner-gated MirrorCode launch queued')
+  })
+
+  test('rejects an owner-gated launch for an unknown public target', () => {
+    expect(() =>
+      buildMirrorCodeLaunchRun(
+        {
+          kind: 'launch',
+          taskId: 'private_eval_target',
+          bucket: 'S',
+          language: 'python',
+        },
+        '2026-06-27T02:03:04.000Z',
+      ),
+    ).toThrow(MirrorCodeRunError)
   })
 })
 
@@ -116,7 +136,11 @@ describe('handleMirrorCodeRunsApi GET', () => {
     expect(body.model).toBe('openagents/khala')
     expect(body.runs[0]?.runId).toBe('mc-phase0-cal-py-0001')
     expect(body.comparators.length).toBeGreaterThan(0)
-    expect(body.comparators.every(c => c.source === 'paper_reference_illustrative')).toBe(true)
+    expect(
+      body.comparators.every(
+        c => c.source === 'paper_reference_illustrative',
+      ),
+    ).toBe(true)
     expect(body.staleness.composition).toBe('live_at_read')
   })
 })
@@ -217,9 +241,9 @@ describe('handleMirrorCodeRunsApi POST', () => {
             listRuns: () => Effect.succeed([]),
             getRun: () => Effect.succeed(undefined),
             upsertRun: () => {
-            stored += 1
-            return Effect.void
-          },
+              stored += 1
+              return Effect.void
+            },
           },
         },
       ),
@@ -267,6 +291,21 @@ describe('matchMirrorCodeRunByIdRequest', () => {
     expect(
       matchMirrorCodeRunByIdRequest(
         new Request('https://openagents.com/api/gym/mirrorcode/runs'),
+      ),
+    ).toBeUndefined()
+  })
+
+  test('rejects unsafe or oversized run id path segments', () => {
+    expect(
+      matchMirrorCodeRunByIdRequest(
+        new Request('https://openagents.com/api/gym/mirrorcode/runs/abc%2F123'),
+      ),
+    ).toBeUndefined()
+    expect(
+      matchMirrorCodeRunByIdRequest(
+        new Request(
+          `https://openagents.com/api/gym/mirrorcode/runs/${'x'.repeat(129)}`,
+        ),
       ),
     ).toBeUndefined()
   })
