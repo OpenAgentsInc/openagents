@@ -85,6 +85,18 @@ export const MirrorCodeRunInput = S.Struct({
 })
 export type MirrorCodeRunInput = typeof MirrorCodeRunInput.Type
 
+// Owner-gated launch intent. This creates an honest queued run row only; the
+// external MirrorCode/Inspect executor remains owner-operated and posts later
+// status/result updates through `MirrorCodeRunInput`.
+export const MirrorCodeLaunchRequest = S.Struct({
+  kind: S.Literal('launch'),
+  taskId: S.String,
+  bucket: MirrorCodeBucket,
+  language: S.optional(S.NullOr(S.String)),
+  grade: S.optional(MirrorCodeRunGrade),
+})
+export type MirrorCodeLaunchRequest = typeof MirrorCodeLaunchRequest.Type
+
 // The stored / served public-safe run object.
 export const MirrorCodeRun = S.Struct({
   runId: S.String,
@@ -235,6 +247,49 @@ export const buildMirrorCodeRun = (raw: unknown): MirrorCodeRun => {
     generalizationSet: MIRRORCODE_GENERALIZATION_SET,
     memoryPolicy: MIRRORCODE_MEMORY_POLICY,
   }
+}
+
+const runIdPart = (value: string): string =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 36)
+
+export const buildMirrorCodeLaunchRun = (
+  raw: unknown,
+  nowIso: string,
+): MirrorCodeRun => {
+  let launch: MirrorCodeLaunchRequest
+  try {
+    launch = S.decodeUnknownSync(MirrorCodeLaunchRequest)(raw)
+  } catch (error) {
+    throw new MirrorCodeRunError(
+      error instanceof Error ? error.message : String(error),
+    )
+  }
+
+  const taskPart = runIdPart(launch.taskId)
+  const languagePart = runIdPart(launch.language ?? 'default')
+  const timestampPart = nowIso.replace(/\D/g, '').slice(0, 14)
+  if (taskPart.length < 1) {
+    throw new MirrorCodeRunError('taskId must contain a public-safe id.')
+  }
+
+  return buildMirrorCodeRun({
+    runId: `mc-${launch.bucket.toLowerCase()}-${taskPart}-${languagePart}-${timestampPart}`,
+    model: KHALA_MODEL_ID,
+    taskId: launch.taskId,
+    bucket: launch.bucket,
+    language: launch.language ?? null,
+    status: 'queued',
+    passRate: null,
+    tokens: { total: 0 },
+    startedAt: nowIso,
+    finishedAt: null,
+    summary: `Owner-gated MirrorCode launch queued for ${launch.taskId} (${launch.bucket} bucket) through openagents/khala.`,
+    grade: launch.grade ?? 'smoke',
+  })
 }
 
 // The paper-reference comparators surfaced on the leaderboard scaffold. These
