@@ -2987,22 +2987,29 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Autopilot users can see their cloud credit balance and a cost preview before and during a session.',
         safeCopy:
-          'A Foldkit credits panel renders credit balance, status, rate labels, a minimum-run threshold, and a cost preview (blocked / under-cap / over-cap / exact-cap), embedded in the workroom page (#4985). It is presentational and caller-data-driven: credit purchase, spend tracking, and settlement are not wired into this UI.',
+          'A Foldkit credits panel renders credit balance, status, rate labels, a minimum-run threshold, and a cost preview (blocked / under-cap / over-cap / exact-cap), embedded in the workroom page (#4985). The spend backend is now wired at the ledger layer: a fulfilled Stripe checkout credit can be explicitly bridged into USD-origin inference-spendable msat, metered inference debits that balance from real provider usage, and the public card-credit-spend receipt resolver proves card -> credit -> bridge -> metered inference from stored rows. The UI remains yellow because production purchase evidence and owner-signed paid-loop proof are still required before broad customer copy.',
         unsafeCopy:
-          'Do not claim customers can purchase or spend cloud credits from this UI, or treat the cost preview as final spend authority or a price guarantee.',
+          'Do not claim customers can broadly purchase cloud credits in production, that the UI itself grants spend authority, or that the cost preview is a final price guarantee. Do not flip this promise green without a dereferenceable real or owner-approved staging-to-prod paid receipt and owner-signed claim upgrade.',
         evidenceRefs: [
           'apps/openagents.com/apps/web/src/ui/credits-panel.ts',
+          'apps/openagents.com/workers/api/src/billing-routes.ts#handleBillingInferenceCreditApi',
+          'apps/openagents.com/workers/api/src/inference/usd-credit-bridge.ts',
+          'apps/openagents.com/workers/api/src/inference/metering-hook.ts',
+          'apps/openagents.com/workers/api/src/inference/card-credit-spend-receipt-store.ts',
+          'route:/api/public/inference/card-credit-spend-receipts/{receiptRef}',
           'docs/autopilot-coder/2026-06-13-cloud-remote-execution-commercial-plan.md',
           'https://github.com/OpenAgentsInc/openagents/issues/4985',
+          'https://github.com/OpenAgentsInc/openagents/issues/6842',
         ],
         blockerRefs: [
           'blocker.product_promises.cloud_credits_purchase_not_wired',
-          'blocker.product_promises.cloud_credits_spend_backend_not_wired',
+          'blocker.product_promises.cloud_credits_real_paid_receipt_missing',
+          'blocker.product_promises.cloud_credits_cost_preview_live_ui_binding_missing',
         ],
         verification:
-          'The component renders correctly from supplied inputs and passes its tests. Green requires a purchase flow, spend tracking, cost-accurate preview, and settlement receipts behind the billing backend.',
+          'The component renders correctly from supplied inputs, and the backend spend path is covered by D1-backed tests: Stripe checkout credit row -> explicit inference-credit bridge -> real metering debit -> public card-credit-spend receipt resolver. Green still requires a production or owner-approved staging-to-prod purchase receipt, the live UI bound to the metered-spend preview, and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
         authorityBoundary:
-          'The credits UI is view-only; spend authority and credit-ledger mutation live in the billing backend, not the component.',
+          'The credits UI is view-only; spend authority and credit-ledger mutation live in the billing backend and inference metering hook, while public receipt reads grant no checkout, spend, refund, payout, settlement, provider, or registry authority.',
       },
       {
         ...basePromiseFields,
