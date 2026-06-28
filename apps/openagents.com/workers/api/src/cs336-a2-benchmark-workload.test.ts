@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   aggregateCs336A2Samples,
+  buildCs336A2ThermalThrottleMeasurementEvidence,
   cs336A2CrossDeviceAgreementScore,
   cs336A2ModeledSatsPerHour,
   runCs336A2BenchmarkSuite,
@@ -75,6 +76,36 @@ describe('CS336 A2 benchmark workload', () => {
         unit: 'tokens_per_second',
       },
     ])
+  })
+
+  it('builds sustained-vs-burst thermal evidence from continuous benchmark samples', () => {
+    const evidence = buildCs336A2ThermalThrottleMeasurementEvidence({
+      deviceClassRef: 'device_class.example.gpu_24gb',
+      digestCommitmentRefs: ['commitment.cs336_a2.thermal.sha256_demo'],
+      receiptRefs: ['receipt.cs336_a2.thermal.verified_row.1'],
+      samples: [
+        { phase: 'burst', throughput: 100 },
+        { phase: 'burst', throughput: 100 },
+        { phase: 'burst', throughput: 120 },
+        { phase: 'sustained', throughput: 70 },
+        { phase: 'sustained', throughput: 78 },
+        { phase: 'sustained', throughput: 74 },
+      ],
+      sourceRefs: ['artifact.cs336_a2.thermal_probe.window_samples.1'],
+      verificationRefs: ['verdict.training.statistical_cross_check.thermal.1'],
+      workClass: 'cs336_a2_device_benchmark',
+    })
+
+    expect(evidence).toMatchObject({
+      max: 0.78,
+      metric: 'sustained_vs_burst_throughput_ratio',
+      min: 0.7,
+      p50: 0.74,
+      p90: 0.78,
+      receiptRefs: ['receipt.cs336_a2.thermal.verified_row.1'],
+      sampleCount: 3,
+      unit: 'ratio',
+    })
   })
 
   it('scores cross-device agreement as min over max median and refuses degenerate inputs', () => {

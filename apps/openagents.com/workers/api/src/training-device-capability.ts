@@ -186,6 +186,7 @@ export type DeviceCapabilityThermalThrottleSignal = Readonly<{
     | 'device_capability.public.thermal_probe_needs_statistical_cross_check'
     | 'device_capability.public.thermal_throttle_not_observed_sustained_ratio_at_or_above_floor'
     | 'device_capability.public.thermal_throttle_observed_sustained_ratio_below_floor'
+  receiptRefs: ReadonlyArray<string>
   sampleCount: number
   sourceRefs: ReadonlyArray<string>
   state: DeviceCapabilityThermalThrottleState
@@ -232,6 +233,8 @@ export type DeviceCapabilityDatasetProjection = Readonly<{
   sourceRefs: ReadonlyArray<string>
   thermalThrottleBlockerRefs: ReadonlyArray<string>
   thermalThrottleDetectionStatus: DeviceCapabilityThermalThrottleDetectionStatus
+  thermalThrottleFunnelReasonCodes: ReadonlyArray<string>
+  thermalThrottleReceiptRefs: ReadonlyArray<string>
   thermalThrottleSignals: ReadonlyArray<DeviceCapabilityThermalThrottleSignal>
 }>
 
@@ -693,6 +696,7 @@ export const buildDeviceCapabilityThermalThrottleSignals = (
         p90Ratio: distribution.p90,
         ratioFloor: Cs336A2ThermalThrottleRatioFloor,
         reasonCode,
+        receiptRefs: distribution.receiptRefs,
         sampleCount: distribution.sampleCount,
         sourceRefs: distribution.sourceRefs,
         state,
@@ -736,6 +740,20 @@ export const thermalThrottleBlockerRefs = (
 
   return uniqueRefs(signals.flatMap(signal => signal.blockerRefs))
 }
+
+export const thermalThrottleFunnelReasonCodes = (
+  signals: ReadonlyArray<DeviceCapabilityThermalThrottleSignal>,
+): ReadonlyArray<string> =>
+  uniqueRefs(signals.map(signal => signal.reasonCode))
+
+export const thermalThrottleReceiptRefs = (
+  signals: ReadonlyArray<DeviceCapabilityThermalThrottleSignal>,
+): ReadonlyArray<string> =>
+  uniqueRefs(
+    signals
+      .filter(signal => signal.verified)
+      .flatMap(signal => signal.receiptRefs),
+  )
 
 export const buildCs336A2DeviceBenchmarkPayload = (
   input: Readonly<{ assignmentRef: string }>,
@@ -965,6 +983,10 @@ export const publicDeviceCapabilityProjection = (
       thermalThrottleBlockerRefs(thermalThrottleSignals),
     thermalThrottleDetectionStatus:
       thermalThrottleDetectionStatus(thermalThrottleSignals),
+    thermalThrottleFunnelReasonCodes:
+      thermalThrottleFunnelReasonCodes(thermalThrottleSignals),
+    thermalThrottleReceiptRefs:
+      thermalThrottleReceiptRefs(thermalThrottleSignals),
     thermalThrottleSignals,
   }
 }

@@ -55,6 +55,8 @@ import {
   sameClassReplicationStatus,
   thermalThrottleBlockerRefs,
   thermalThrottleDetectionStatus,
+  thermalThrottleFunnelReasonCodes,
+  thermalThrottleReceiptRefs,
 } from './training-device-capability'
 import {
   TrainingLeaderboardLanes,
@@ -1838,6 +1840,12 @@ const routeA2DeviceCapabilities = <Bindings extends TrainingRunWindowRouteEnv>(
         dashboardThermalThrottleSignals,
       ),
       thermalThrottleDetectionStatus: thermalThrottleDetectionStatus(
+        dashboardThermalThrottleSignals,
+      ),
+      thermalThrottleFunnelReasonCodes: thermalThrottleFunnelReasonCodes(
+        dashboardThermalThrottleSignals,
+      ),
+      thermalThrottleReceiptRefs: thermalThrottleReceiptRefs(
         dashboardThermalThrottleSignals,
       ),
       thermalThrottleSignals: dashboardThermalThrottleSignals,
