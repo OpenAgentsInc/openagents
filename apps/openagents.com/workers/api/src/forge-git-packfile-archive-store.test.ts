@@ -256,4 +256,33 @@ describe('forge git packfile archive D1/R2 store', () => {
       'packfile.forge.readback',
     ])
   })
+
+  test('fails closed for wrong-tenant artifact refs without leaking R2 bytes', async () => {
+    const { store } = makeStore()
+    const stored = await store.putPackfile({
+      body: packBytes.buffer,
+      capabilities: ['object-format=sha1'],
+      objectFormat: 'sha1',
+      packfileBytes: packBytes.byteLength,
+      packfileRef: 'packfile.forge.tenant-boundary',
+      packfileSha256: packSha256,
+      refUpdates: [],
+      repositoryRef: 'repo.openagents.openagents',
+      sourceRefs: [],
+      tenantRef: 'tenant.openagents',
+      nowIso,
+    })
+
+    await expect(
+      store.readPackfileObject('tenant.external-fleet', stored.record.packfile_ref),
+    ).resolves.toBeUndefined()
+    await expect(
+      store.readPackfile('tenant.external-fleet', stored.record.packfile_ref),
+    ).resolves.toBeUndefined()
+    await expect(
+      store.listPackfiles('tenant.external-fleet', {
+        repositoryRef: 'repo.openagents.openagents',
+      }),
+    ).resolves.toEqual([])
+  })
 })

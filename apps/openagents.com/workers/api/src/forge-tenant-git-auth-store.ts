@@ -5,6 +5,7 @@ import {
   type ForgeGitAccessScope,
   type ForgeGitAccessTokenRow,
   type ForgeGitAccessTokenScopeRow,
+  type ForgeTenantConfidentialWorkspaceMode,
   type ForgeTenantRow,
   type ForgeTenantState,
 } from '@openagentsinc/forge-protocol'
@@ -17,6 +18,11 @@ export type ForgeTenantInput = Readonly<{
   tenantRef: string
   displayName: string
   state?: ForgeTenantState
+  confidentialWorkspaceMode?: ForgeTenantConfidentialWorkspaceMode | null
+  attestationRef?: string | null
+  encryptedKnowledgePackRef?: string | null
+  refusalReason?: string | null
+  retentionPolicyRef?: string | null
   nowIso: string
 }>
 
@@ -226,12 +232,22 @@ export const makeD1ForgeTenantGitAuthStore = (
             tenant_ref,
             display_name,
             state,
+            confidential_workspace_mode,
+            attestation_ref,
+            encrypted_knowledge_pack_ref,
+            refusal_reason,
+            retention_policy_ref,
             created_at,
             updated_at
-          ) VALUES (?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT (tenant_ref) DO UPDATE SET
             display_name = excluded.display_name,
             state = excluded.state,
+            confidential_workspace_mode = excluded.confidential_workspace_mode,
+            attestation_ref = excluded.attestation_ref,
+            encrypted_knowledge_pack_ref = excluded.encrypted_knowledge_pack_ref,
+            refusal_reason = excluded.refusal_reason,
+            retention_policy_ref = excluded.retention_policy_ref,
             updated_at = excluded.updated_at
         `,
       )
@@ -239,6 +255,11 @@ export const makeD1ForgeTenantGitAuthStore = (
         input.tenantRef,
         input.displayName,
         input.state ?? 'active',
+        input.confidentialWorkspaceMode ?? null,
+        input.attestationRef ?? null,
+        input.encryptedKnowledgePackRef ?? null,
+        input.refusalReason ?? null,
+        input.retentionPolicyRef ?? null,
         input.nowIso,
         input.nowIso,
       )

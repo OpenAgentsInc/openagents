@@ -74,6 +74,7 @@ const controlPlaneToken = 'forge-control-token'
 const authHeaders = (scopes: string): HeadersInit => ({
   authorization: `Bearer ${controlPlaneToken}`,
   'content-type': 'application/json',
+  'x-openagents-forge-tenant-ref': 'tenant.openagents',
   'x-openagents-forge-scopes': scopes,
 })
 
@@ -156,6 +157,41 @@ describe('Forge control-plane routes', () => {
 
     expect(response.status).toBe(403)
     expect(body.error).toBe('forge_control_plane_forbidden')
+  })
+
+  test('rejects control-plane reads for the wrong tenant scope', async () => {
+    const { run } = makeHarness()
+    const response = await run(
+      new Request(
+        'https://openagents.com/api/forge/work-records?tenantRef=tenant.external',
+        { headers: authHeaders('forge:work:read') },
+      ),
+    )
+    const body = (await response.json()) as { error: string; reason: string }
+
+    expect(response.status).toBe(403)
+    expect(body.error).toBe('forge_control_plane_wrong_tenant')
+    expect(body.reason).toContain('scoped to one tenant')
+  })
+
+  test('rejects control-plane mutations for the wrong tenant scope', async () => {
+    const { run } = makeHarness()
+    const response = await run(
+      requestJson('/api/forge/work-records', {
+        json: {
+          tenantRef: 'tenant.external',
+          issueRef: 'issue.forge.external',
+          title: 'External tenant work',
+          state: 'open',
+        },
+        headers: authHeaders('forge:work:write'),
+        method: 'POST',
+      }),
+    )
+    const body = (await response.json()) as { error: string }
+
+    expect(response.status).toBe(403)
+    expect(body.error).toBe('forge_control_plane_wrong_tenant')
   })
 
   test('creates work, change, and status rows through scoped live routes', async () => {

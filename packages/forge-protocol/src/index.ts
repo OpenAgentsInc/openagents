@@ -1,32 +1,32 @@
-import { Schema as S } from "effect"
+import { Schema as S } from "effect";
 
-export const ForgeProtocolSchemaVersion = S.Literal("openagents.forge.protocol.v0.1")
-export type ForgeProtocolSchemaVersion = typeof ForgeProtocolSchemaVersion.Type
+export const ForgeProtocolSchemaVersion = S.Literal(
+  "openagents.forge.protocol.v0.1",
+);
+export type ForgeProtocolSchemaVersion = typeof ForgeProtocolSchemaVersion.Type;
 
 export const FORGE_PROTOCOL_SCHEMA_VERSION: ForgeProtocolSchemaVersion =
-  "openagents.forge.protocol.v0.1"
+  "openagents.forge.protocol.v0.1";
 
 export const ForgeCoordinationStatusState = S.Literals([
   "open",
   "applied",
   "closed",
   "draft",
-])
-export type ForgeCoordinationStatusState = typeof ForgeCoordinationStatusState.Type
+]);
+export type ForgeCoordinationStatusState =
+  typeof ForgeCoordinationStatusState.Type;
 
-export const forgeCoordinationStatusStates: ReadonlyArray<ForgeCoordinationStatusState> = [
-  "open",
-  "applied",
-  "closed",
-  "draft",
-]
+export const forgeCoordinationStatusStates: ReadonlyArray<ForgeCoordinationStatusState> =
+  ["open", "applied", "closed", "draft"];
 
 export const ForgeCoordinationIssueState = S.Literals([
   "open",
   "closed",
   "draft",
-])
-export type ForgeCoordinationIssueState = typeof ForgeCoordinationIssueState.Type
+]);
+export type ForgeCoordinationIssueState =
+  typeof ForgeCoordinationIssueState.Type;
 
 export const ForgeCoordinationChangeState = S.Literals([
   "draft",
@@ -35,16 +35,17 @@ export const ForgeCoordinationChangeState = S.Literals([
   "blocked",
   "applied",
   "closed",
-])
-export type ForgeCoordinationChangeState = typeof ForgeCoordinationChangeState.Type
+]);
+export type ForgeCoordinationChangeState =
+  typeof ForgeCoordinationChangeState.Type;
 
 export const ForgeDispatchLeaseState = S.Literals([
   "active",
   "released",
   "expired",
   "cancelled",
-])
-export type ForgeDispatchLeaseState = typeof ForgeDispatchLeaseState.Type
+]);
+export type ForgeDispatchLeaseState = typeof ForgeDispatchLeaseState.Type;
 
 export const ForgeMergeQueueLedgerState = S.Literals([
   "projected",
@@ -52,32 +53,41 @@ export const ForgeMergeQueueLedgerState = S.Literals([
   "promoting",
   "promoted",
   "superseded",
-])
-export type ForgeMergeQueueLedgerState = typeof ForgeMergeQueueLedgerState.Type
+]);
+export type ForgeMergeQueueLedgerState = typeof ForgeMergeQueueLedgerState.Type;
 
 export const ForgeGitPackfileObjectFormat = S.Literals([
   "sha1",
   "sha256",
   "unknown",
-])
-export type ForgeGitPackfileObjectFormat = typeof ForgeGitPackfileObjectFormat.Type
+]);
+export type ForgeGitPackfileObjectFormat =
+  typeof ForgeGitPackfileObjectFormat.Type;
 
-export const ForgeTenantState = S.Literals(["active", "suspended"])
-export type ForgeTenantState = typeof ForgeTenantState.Type
+export const ForgeTenantState = S.Literals(["active", "suspended"]);
+export type ForgeTenantState = typeof ForgeTenantState.Type;
+
+export const ForgeTenantConfidentialWorkspaceMode = S.Literals([
+  "disabled",
+  "enabled",
+  "attested",
+]);
+export type ForgeTenantConfidentialWorkspaceMode =
+  typeof ForgeTenantConfidentialWorkspaceMode.Type;
 
 export const ForgeGitAccessTokenState = S.Literals([
   "active",
   "revoked",
   "expired",
-])
-export type ForgeGitAccessTokenState = typeof ForgeGitAccessTokenState.Type
+]);
+export type ForgeGitAccessTokenState = typeof ForgeGitAccessTokenState.Type;
 
 export const ForgeGitAccessScope = S.Literals([
   "git:upload-pack",
   "git:receive-pack",
   "git:admin",
-])
-export type ForgeGitAccessScope = typeof ForgeGitAccessScope.Type
+]);
+export type ForgeGitAccessScope = typeof ForgeGitAccessScope.Type;
 
 export const ForgeControlPlaneScope = S.Literals([
   "forge:work:read",
@@ -91,8 +101,8 @@ export const ForgeControlPlaneScope = S.Literals([
   "forge:receipt:write",
   "forge:promotion:decide",
   "forge:admin",
-])
-export type ForgeControlPlaneScope = typeof ForgeControlPlaneScope.Type
+]);
+export type ForgeControlPlaneScope = typeof ForgeControlPlaneScope.Type;
 
 export const forgeControlPlaneScopes: ReadonlyArray<ForgeControlPlaneScope> = [
   "forge:work:read",
@@ -106,20 +116,20 @@ export const forgeControlPlaneScopes: ReadonlyArray<ForgeControlPlaneScope> = [
   "forge:receipt:write",
   "forge:promotion:decide",
   "forge:admin",
-]
+];
 
 export const ForgeDispatchWorkClass = S.Literals([
   "codex_agent_task",
   "claude_agent_task",
   "cloud_coding_session",
-])
-export type ForgeDispatchWorkClass = typeof ForgeDispatchWorkClass.Type
+]);
+export type ForgeDispatchWorkClass = typeof ForgeDispatchWorkClass.Type;
 
-export const ForgeDispatchPaymentMode = S.Literals(["no-spend", "paid"])
-export type ForgeDispatchPaymentMode = typeof ForgeDispatchPaymentMode.Type
+export const ForgeDispatchPaymentMode = S.Literals(["no-spend", "paid"]);
+export type ForgeDispatchPaymentMode = typeof ForgeDispatchPaymentMode.Type;
 
-export const ForgeDispatchDecisionState = S.Literals(["accepted", "rejected"])
-export type ForgeDispatchDecisionState = typeof ForgeDispatchDecisionState.Type
+export const ForgeDispatchDecisionState = S.Literals(["accepted", "rejected"]);
+export type ForgeDispatchDecisionState = typeof ForgeDispatchDecisionState.Type;
 
 export const ForgeDispatchCloseoutStatus = S.Literals([
   "accepted",
@@ -127,16 +137,18 @@ export const ForgeDispatchCloseoutStatus = S.Literals([
   "cancelled",
   "timed-out",
   "stale",
-])
-export type ForgeDispatchCloseoutStatus = typeof ForgeDispatchCloseoutStatus.Type
+]);
+export type ForgeDispatchCloseoutStatus =
+  typeof ForgeDispatchCloseoutStatus.Type;
 
 export const ForgeDispatchSettlementState = S.Literals([
   "not_applicable",
   "pending",
   "recorded",
   "blocked",
-])
-export type ForgeDispatchSettlementState = typeof ForgeDispatchSettlementState.Type
+]);
+export type ForgeDispatchSettlementState =
+  typeof ForgeDispatchSettlementState.Type;
 
 export const ForgeVerificationVerdict = S.Literals([
   "passed",
@@ -144,25 +156,26 @@ export const ForgeVerificationVerdict = S.Literals([
   "timed_out",
   "cancelled",
   "errored",
-])
-export type ForgeVerificationVerdict = typeof ForgeVerificationVerdict.Type
+]);
+export type ForgeVerificationVerdict = typeof ForgeVerificationVerdict.Type;
 
 export const ForgePromotionDecisionState = S.Literals([
   "approved",
   "blocked",
   "superseded",
-])
-export type ForgePromotionDecisionState = typeof ForgePromotionDecisionState.Type
+]);
+export type ForgePromotionDecisionState =
+  typeof ForgePromotionDecisionState.Type;
 
 export const ForgeDispatchGitAccessDelivery = S.Literals([
   "out_of_band",
   "same_response_ephemeral",
-])
+]);
 export type ForgeDispatchGitAccessDelivery =
-  typeof ForgeDispatchGitAccessDelivery.Type
+  typeof ForgeDispatchGitAccessDelivery.Type;
 
-export const ForgeNip34StatusKind = S.Literals([1630, 1631, 1632, 1633])
-export type ForgeNip34StatusKind = typeof ForgeNip34StatusKind.Type
+export const ForgeNip34StatusKind = S.Literals([1630, 1631, 1632, 1633]);
+export type ForgeNip34StatusKind = typeof ForgeNip34StatusKind.Type;
 
 export const forgeNip34StatusKindForState = (
   state: ForgeCoordinationStatusState,
@@ -173,7 +186,7 @@ export const forgeNip34StatusKindForState = (
       ? 1631
       : state === "closed"
         ? 1632
-        : 1633
+        : 1633;
 
 export const ForgeCoordinationIssueRow = S.Struct({
   tenant_ref: S.String,
@@ -185,8 +198,8 @@ export const ForgeCoordinationIssueRow = S.Struct({
   source_refs_json: S.String,
   created_at: S.String,
   updated_at: S.String,
-})
-export type ForgeCoordinationIssueRow = typeof ForgeCoordinationIssueRow.Type
+});
+export type ForgeCoordinationIssueRow = typeof ForgeCoordinationIssueRow.Type;
 
 export const ForgeCoordinationPrRow = S.Struct({
   tenant_ref: S.String,
@@ -201,8 +214,8 @@ export const ForgeCoordinationPrRow = S.Struct({
   source_refs_json: S.String,
   created_at: S.String,
   updated_at: S.String,
-})
-export type ForgeCoordinationPrRow = typeof ForgeCoordinationPrRow.Type
+});
+export type ForgeCoordinationPrRow = typeof ForgeCoordinationPrRow.Type;
 
 export const ForgeCoordinationStatusRow = S.Struct({
   tenant_ref: S.String,
@@ -213,8 +226,8 @@ export const ForgeCoordinationStatusRow = S.Struct({
   actor_ref: S.String,
   source_refs_json: S.String,
   created_at: S.String,
-})
-export type ForgeCoordinationStatusRow = typeof ForgeCoordinationStatusRow.Type
+});
+export type ForgeCoordinationStatusRow = typeof ForgeCoordinationStatusRow.Type;
 
 export const ForgeDispatchLeaseRow = S.Struct({
   tenant_ref: S.String,
@@ -228,8 +241,8 @@ export const ForgeDispatchLeaseRow = S.Struct({
   expires_at: S.String,
   released_at: S.NullOr(S.String),
   source_refs_json: S.String,
-})
-export type ForgeDispatchLeaseRow = typeof ForgeDispatchLeaseRow.Type
+});
+export type ForgeDispatchLeaseRow = typeof ForgeDispatchLeaseRow.Type;
 
 export const ForgeMergeQueueLedgerRow = S.Struct({
   tenant_ref: S.String,
@@ -244,8 +257,8 @@ export const ForgeMergeQueueLedgerRow = S.Struct({
   source_refs_json: S.String,
   created_at: S.String,
   updated_at: S.String,
-})
-export type ForgeMergeQueueLedgerRow = typeof ForgeMergeQueueLedgerRow.Type
+});
+export type ForgeMergeQueueLedgerRow = typeof ForgeMergeQueueLedgerRow.Type;
 
 export const ForgeGitPackfileArchiveRow = S.Struct({
   tenant_ref: S.String,
@@ -265,17 +278,24 @@ export const ForgeGitPackfileArchiveRow = S.Struct({
   visibility: S.Literal("operator_only"),
   created_at: S.String,
   updated_at: S.String,
-})
-export type ForgeGitPackfileArchiveRow = typeof ForgeGitPackfileArchiveRow.Type
+});
+export type ForgeGitPackfileArchiveRow = typeof ForgeGitPackfileArchiveRow.Type;
 
 export const ForgeTenantRow = S.Struct({
   tenant_ref: S.String,
   display_name: S.String,
   state: ForgeTenantState,
+  confidential_workspace_mode: S.optionalKey(
+    S.NullOr(ForgeTenantConfidentialWorkspaceMode),
+  ),
+  attestation_ref: S.optionalKey(S.NullOr(S.String)),
+  encrypted_knowledge_pack_ref: S.optionalKey(S.NullOr(S.String)),
+  refusal_reason: S.optionalKey(S.NullOr(S.String)),
+  retention_policy_ref: S.optionalKey(S.NullOr(S.String)),
   created_at: S.String,
   updated_at: S.String,
-})
-export type ForgeTenantRow = typeof ForgeTenantRow.Type
+});
+export type ForgeTenantRow = typeof ForgeTenantRow.Type;
 
 export const ForgeGitAccessTokenRow = S.Struct({
   tenant_ref: S.String,
@@ -290,17 +310,17 @@ export const ForgeGitAccessTokenRow = S.Struct({
   last_used_at: S.NullOr(S.String),
   revoked_at: S.NullOr(S.String),
   source_refs_json: S.String,
-})
-export type ForgeGitAccessTokenRow = typeof ForgeGitAccessTokenRow.Type
+});
+export type ForgeGitAccessTokenRow = typeof ForgeGitAccessTokenRow.Type;
 
 export const ForgeGitAccessTokenScopeRow = S.Struct({
   tenant_ref: S.String,
   token_ref: S.String,
   scope: ForgeGitAccessScope,
   created_at: S.String,
-})
+});
 export type ForgeGitAccessTokenScopeRow =
-  typeof ForgeGitAccessTokenScopeRow.Type
+  typeof ForgeGitAccessTokenScopeRow.Type;
 
 export const ForgeDispatchGitAccess = S.Struct({
   token_ref: S.String,
@@ -308,8 +328,8 @@ export const ForgeDispatchGitAccess = S.Struct({
   scopes: S.Array(ForgeGitAccessScope),
   expires_at: S.String,
   delivery: ForgeDispatchGitAccessDelivery,
-})
-export type ForgeDispatchGitAccess = typeof ForgeDispatchGitAccess.Type
+});
+export type ForgeDispatchGitAccess = typeof ForgeDispatchGitAccess.Type;
 
 export const ForgeDispatchVerificationCommand = S.Struct({
   command_ref: S.String,
@@ -317,9 +337,9 @@ export const ForgeDispatchVerificationCommand = S.Struct({
   working_directory: S.String,
   args: S.Array(S.String),
   timeout_seconds: S.Number,
-})
+});
 export type ForgeDispatchVerificationCommand =
-  typeof ForgeDispatchVerificationCommand.Type
+  typeof ForgeDispatchVerificationCommand.Type;
 
 export const ForgeDispatchGitTarget = S.Struct({
   repository_ref: S.String,
@@ -329,8 +349,8 @@ export const ForgeDispatchGitTarget = S.Struct({
   branch_ref: S.String,
   receive_pack_ref: S.String,
   git_access: ForgeDispatchGitAccess,
-})
-export type ForgeDispatchGitTarget = typeof ForgeDispatchGitTarget.Type
+});
+export type ForgeDispatchGitTarget = typeof ForgeDispatchGitTarget.Type;
 
 export const ForgeDispatchWorkItem = S.Struct({
   schema: S.Literal("openagents.forge.dispatch.work_item.v0.1"),
@@ -349,8 +369,8 @@ export const ForgeDispatchWorkItem = S.Struct({
   expires_at: S.String,
   created_at: S.String,
   source_refs: S.Array(S.String),
-})
-export type ForgeDispatchWorkItem = typeof ForgeDispatchWorkItem.Type
+});
+export type ForgeDispatchWorkItem = typeof ForgeDispatchWorkItem.Type;
 
 export const ForgeDispatchDecision = S.Struct({
   schema: S.Literal("openagents.forge.dispatch.decision.v0.1"),
@@ -364,8 +384,8 @@ export const ForgeDispatchDecision = S.Struct({
   rejected_at: S.NullOr(S.String),
   blocker_refs: S.Array(S.String),
   source_refs: S.Array(S.String),
-})
-export type ForgeDispatchDecision = typeof ForgeDispatchDecision.Type
+});
+export type ForgeDispatchDecision = typeof ForgeDispatchDecision.Type;
 
 export const ForgeDispatchCloseout = S.Struct({
   schema: S.Literal("openagents.forge.dispatch.closeout.v0.1"),
@@ -394,8 +414,8 @@ export const ForgeDispatchCloseout = S.Struct({
   source_refs: S.Array(S.String),
   redacted: S.Literal(true),
   completed_at: S.String,
-})
-export type ForgeDispatchCloseout = typeof ForgeDispatchCloseout.Type
+});
+export type ForgeDispatchCloseout = typeof ForgeDispatchCloseout.Type;
 
 export const ForgeVerificationReceipt = S.Struct({
   schema: S.Literal("openagents.forge.verification.receipt.v0.1"),
@@ -420,8 +440,8 @@ export const ForgeVerificationReceipt = S.Struct({
   log_sha256: S.String,
   source_refs: S.Array(S.String),
   redacted: S.Literal(true),
-})
-export type ForgeVerificationReceipt = typeof ForgeVerificationReceipt.Type
+});
+export type ForgeVerificationReceipt = typeof ForgeVerificationReceipt.Type;
 
 export const ForgePromotionDecisionReceipt = S.Struct({
   schema: S.Literal("openagents.forge.promotion.decision.v0.1"),
@@ -440,16 +460,16 @@ export const ForgePromotionDecisionReceipt = S.Struct({
   decided_at: S.String,
   source_refs: S.Array(S.String),
   redacted: S.Literal(true),
-})
+});
 export type ForgePromotionDecisionReceipt =
-  typeof ForgePromotionDecisionReceipt.Type
+  typeof ForgePromotionDecisionReceipt.Type;
 
 export const ForgeDispatchMessage = S.Union([
   ForgeDispatchWorkItem,
   ForgeDispatchDecision,
   ForgeDispatchCloseout,
-])
-export type ForgeDispatchMessage = typeof ForgeDispatchMessage.Type
+]);
+export type ForgeDispatchMessage = typeof ForgeDispatchMessage.Type;
 
 export const ForgeCoordinationRow = S.Union([
   ForgeCoordinationIssueRow,
@@ -461,45 +481,62 @@ export const ForgeCoordinationRow = S.Union([
   ForgeTenantRow,
   ForgeGitAccessTokenRow,
   ForgeGitAccessTokenScopeRow,
-])
-export type ForgeCoordinationRow = typeof ForgeCoordinationRow.Type
+]);
+export type ForgeCoordinationRow = typeof ForgeCoordinationRow.Type;
 
 export const decodeForgeCoordinationIssueRow = S.decodeUnknownSync(
   ForgeCoordinationIssueRow,
-)
-export const decodeForgeCoordinationPrRow = S.decodeUnknownSync(ForgeCoordinationPrRow)
+);
+export const decodeForgeCoordinationPrRow = S.decodeUnknownSync(
+  ForgeCoordinationPrRow,
+);
 export const decodeForgeCoordinationStatusRow = S.decodeUnknownSync(
   ForgeCoordinationStatusRow,
-)
-export const decodeForgeDispatchLeaseRow = S.decodeUnknownSync(ForgeDispatchLeaseRow)
+);
+export const decodeForgeDispatchLeaseRow = S.decodeUnknownSync(
+  ForgeDispatchLeaseRow,
+);
 export const decodeForgeMergeQueueLedgerRow = S.decodeUnknownSync(
   ForgeMergeQueueLedgerRow,
-)
+);
 export const decodeForgeGitPackfileArchiveRow = S.decodeUnknownSync(
   ForgeGitPackfileArchiveRow,
-)
-export const decodeForgeTenantRow = S.decodeUnknownSync(ForgeTenantRow)
+);
+export const decodeForgeTenantRow = S.decodeUnknownSync(ForgeTenantRow);
 export const decodeForgeGitAccessTokenRow = S.decodeUnknownSync(
   ForgeGitAccessTokenRow,
-)
+);
 export const decodeForgeGitAccessTokenScopeRow = S.decodeUnknownSync(
   ForgeGitAccessTokenScopeRow,
-)
+);
 export const decodeForgeControlPlaneScope = S.decodeUnknownSync(
   ForgeControlPlaneScope,
-)
-export const decodeForgeDispatchWorkItem = S.decodeUnknownSync(ForgeDispatchWorkItem)
-export const decodeForgeDispatchDecision = S.decodeUnknownSync(ForgeDispatchDecision)
-export const decodeForgeDispatchCloseout = S.decodeUnknownSync(ForgeDispatchCloseout)
-export const decodeForgeDispatchMessage = S.decodeUnknownSync(ForgeDispatchMessage)
+);
+export const decodeForgeDispatchWorkItem = S.decodeUnknownSync(
+  ForgeDispatchWorkItem,
+);
+export const decodeForgeDispatchDecision = S.decodeUnknownSync(
+  ForgeDispatchDecision,
+);
+export const decodeForgeDispatchCloseout = S.decodeUnknownSync(
+  ForgeDispatchCloseout,
+);
+export const decodeForgeDispatchMessage =
+  S.decodeUnknownSync(ForgeDispatchMessage);
 export const decodeForgeVerificationReceipt = S.decodeUnknownSync(
   ForgeVerificationReceipt,
-)
+);
 export const decodeForgePromotionDecisionReceipt = S.decodeUnknownSync(
   ForgePromotionDecisionReceipt,
-)
+);
 
 export const forgeCoordinationStatusStateForNip34Kind = (
   kind: ForgeNip34StatusKind,
 ): ForgeCoordinationStatusState =>
-  kind === 1630 ? "open" : kind === 1631 ? "applied" : kind === 1632 ? "closed" : "draft"
+  kind === 1630
+    ? "open"
+    : kind === 1631
+      ? "applied"
+      : kind === 1632
+        ? "closed"
+        : "draft";

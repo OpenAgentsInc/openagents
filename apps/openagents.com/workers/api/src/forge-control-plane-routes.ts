@@ -24,6 +24,7 @@ export type ForgeControlPlaneAuth = Readonly<{
   mode: 'admin' | 'control_plane'
   subjectRef: string
   scopes: ReadonlyArray<ForgeControlPlaneScope>
+  tenantRef: string | null
 }>
 
 export type ForgeControlPlaneAuthorize<Bindings> = (
@@ -144,6 +145,14 @@ const readForgeScopeHeader = (
   }
 }
 
+const readForgeTenantHeader = (request: Request): string | undefined => {
+  const raw =
+    request.headers.get('x-openagents-forge-tenant-ref') ??
+    request.headers.get('x-openagents-forge-tenant')
+
+  return raw === null || raw.trim() === '' ? undefined : raw.trim()
+}
+
 export const authorizeForgeControlPlaneBearer = async (
   request: Request,
   expectedToken: string | undefined,
@@ -161,9 +170,11 @@ export const authorizeForgeControlPlaneBearer = async (
   }
 
   const scopes = readForgeScopeHeader(request)
+  const tenantRef = readForgeTenantHeader(request)
 
   if (
     scopes === undefined ||
+    tenantRef === undefined ||
     (!scopes.includes(requiredScope) && !scopes.includes('forge:admin'))
   ) {
     return undefined
@@ -173,6 +184,7 @@ export const authorizeForgeControlPlaneBearer = async (
     mode: 'control_plane',
     scopes,
     subjectRef: 'forge.control-plane.service',
+    tenantRef,
   }
 }
 
@@ -256,6 +268,7 @@ const requireScope = async <Bindings>(
   request: Request,
   env: Bindings,
   requiredScope: ForgeControlPlaneScope,
+  tenantRef: string,
 ): Promise<ForgeControlPlaneAuth> => {
   const token = readBearerToken(request)
 
@@ -268,7 +281,7 @@ const requireScope = async <Bindings>(
   }
 
   if ((await dependencies.requireAdminApiToken?.(request, env)) === true) {
-    return { mode: 'admin', scopes: ['forge:admin'], subjectRef: 'admin' }
+    return { mode: 'admin', scopes: ['forge:admin'], subjectRef: 'admin', tenantRef: null }
   }
 
   const controlPlaneAuth =
@@ -279,6 +292,17 @@ const requireScope = async <Bindings>(
     )
 
   if (controlPlaneAuth !== undefined) {
+    if (
+      controlPlaneAuth.tenantRef !== null &&
+      controlPlaneAuth.tenantRef !== tenantRef
+    ) {
+      throw new ForgeControlPlaneHttpError(
+        403,
+        'forge_control_plane_wrong_tenant',
+        'Forge control-plane tokens are scoped to one tenant and cannot read or mutate another tenant.',
+      )
+    }
+
     return controlPlaneAuth
   }
 
@@ -311,8 +335,8 @@ const routeWorkRecords = async <Bindings>(
   const store = dependencies.makeStore(env)
 
   if (request.method === 'GET') {
-    await requireScope(dependencies, request, env, 'forge:work:read')
     const tenantRef = tenantRefFromQuery(url)
+    await requireScope(dependencies, request, env, 'forge:work:read', tenantRef)
     return noStoreJsonResponse({
       limit: limitFromQuery(url),
       tenantRef,
@@ -324,8 +348,8 @@ const routeWorkRecords = async <Bindings>(
     return methodNotAllowed(['GET', 'POST'])
   }
 
-  await requireScope(dependencies, request, env, 'forge:work:write')
   const body = await decodeBody(request, ForgeWorkRecordRequest)
+  await requireScope(dependencies, request, env, 'forge:work:write', body.tenantRef)
   const workRecord = await store.upsertIssue({
     tenantRef: body.tenantRef,
     issueRef: body.issueRef,
@@ -351,8 +375,8 @@ const routeChanges = async <Bindings>(
   const store = dependencies.makeStore(env)
 
   if (request.method === 'GET') {
-    await requireScope(dependencies, request, env, 'forge:change:read')
     const tenantRef = tenantRefFromQuery(url)
+    await requireScope(dependencies, request, env, 'forge:change:read', tenantRef)
     const limit = limitFromQuery(url)
     return noStoreJsonResponse({
       changes: await store.listChanges(
@@ -369,8 +393,8 @@ const routeChanges = async <Bindings>(
     return methodNotAllowed(['GET', 'POST'])
   }
 
-  await requireScope(dependencies, request, env, 'forge:change:write')
   const body = await decodeBody(request, ForgeChangeRecordRequest)
+  await requireScope(dependencies, request, env, 'forge:change:write', body.tenantRef)
   const change = await store.upsertChange({
     tenantRef: body.tenantRef,
     prRef: body.prRef,
@@ -400,8 +424,8 @@ const routeChangeStatus = async <Bindings>(
     return methodNotAllowed(['PATCH'])
   }
 
-  await requireScope(dependencies, request, env, 'forge:status:write')
   const body = await decodeBody(request, ForgeStatusTransitionRequest)
+  await requireScope(dependencies, request, env, 'forge:status:write', body.tenantRef)
   const status = await dependencies.makeStore(env).recordStatus({
     tenantRef: body.tenantRef,
     statusRef: body.statusRef,
@@ -425,8 +449,8 @@ const routeStatuses = async <Bindings>(
     return methodNotAllowed(['GET'])
   }
 
-  await requireScope(dependencies, request, env, 'forge:change:read')
   const tenantRef = tenantRefFromQuery(url)
+  await requireScope(dependencies, request, env, 'forge:change:read', tenantRef)
   const limit = limitFromQuery(url)
 
   return noStoreJsonResponse({
@@ -447,8 +471,8 @@ const routeLeases = async <Bindings>(
   const store = dependencies.makeStore(env)
 
   if (request.method === 'GET') {
-    await requireScope(dependencies, request, env, 'forge:lease:write')
     const tenantRef = tenantRefFromQuery(url)
+    await requireScope(dependencies, request, env, 'forge:lease:write', tenantRef)
     const limit = limitFromQuery(url)
     return noStoreJsonResponse({
       leases: await store.listDispatchLeases(
@@ -465,8 +489,8 @@ const routeLeases = async <Bindings>(
     return methodNotAllowed(['GET', 'POST'])
   }
 
-  await requireScope(dependencies, request, env, 'forge:lease:write')
   const body = await decodeBody(request, ForgeDispatchLeaseRequest)
+  await requireScope(dependencies, request, env, 'forge:lease:write', body.tenantRef)
   const result = await store.acquireDispatchLease({
     tenantRef: body.tenantRef,
     leaseRef: body.leaseRef,
@@ -493,8 +517,8 @@ const routeQueue = async <Bindings>(
     return methodNotAllowed(['GET'])
   }
 
-  await requireScope(dependencies, request, env, 'forge:queue:read')
   const tenantRef = tenantRefFromQuery(url)
+  await requireScope(dependencies, request, env, 'forge:queue:read', tenantRef)
   const limit = limitFromQuery(url)
   const store = dependencies.makeStore(env)
 
@@ -515,8 +539,8 @@ const routeQueueSnapshots = async <Bindings>(
     return methodNotAllowed(['POST'])
   }
 
-  await requireScope(dependencies, request, env, 'forge:queue:write')
   const body = await decodeBody(request, ForgeMergeQueueSnapshotRequest)
+  await requireScope(dependencies, request, env, 'forge:queue:write', body.tenantRef)
   const queueSnapshot = await dependencies.makeStore(env).recordMergeQueueLedger({
     tenantRef: body.tenantRef,
     queueRef: body.queueRef,
@@ -545,8 +569,8 @@ const routeVerificationReceipts = async <Bindings>(
   const store = dependencies.makeStore(env)
 
   if (request.method === 'GET') {
-    await requireScope(dependencies, request, env, 'forge:change:read')
     const tenantRef = tenantRefFromQuery(url)
+    await requireScope(dependencies, request, env, 'forge:change:read', tenantRef)
     const limit = limitFromQuery(url)
     return noStoreJsonResponse({
       limit,
@@ -563,8 +587,8 @@ const routeVerificationReceipts = async <Bindings>(
     return methodNotAllowed(['GET', 'POST'])
   }
 
-  await requireScope(dependencies, request, env, 'forge:receipt:write')
   const receipt = await decodeBody(request, ForgeVerificationReceipt)
+  await requireScope(dependencies, request, env, 'forge:receipt:write', receipt.tenant_ref)
   const verificationReceipt = await store.recordVerificationReceipt(
     receipt,
     routeNowIso(dependencies),
@@ -582,8 +606,8 @@ const routePromotionDecisions = async <Bindings>(
   const store = dependencies.makeStore(env)
 
   if (request.method === 'GET') {
-    await requireScope(dependencies, request, env, 'forge:queue:read')
     const tenantRef = tenantRefFromQuery(url)
+    await requireScope(dependencies, request, env, 'forge:queue:read', tenantRef)
     const limit = limitFromQuery(url)
     return noStoreJsonResponse({
       limit,
@@ -600,8 +624,14 @@ const routePromotionDecisions = async <Bindings>(
     return methodNotAllowed(['GET', 'POST'])
   }
 
-  await requireScope(dependencies, request, env, 'forge:promotion:decide')
   const receipt = await decodeBody(request, ForgePromotionDecisionReceipt)
+  await requireScope(
+    dependencies,
+    request,
+    env,
+    'forge:promotion:decide',
+    receipt.tenant_ref,
+  )
   const promotionDecision = await store.recordPromotionDecisionReceipt(
     receipt,
     routeNowIso(dependencies),

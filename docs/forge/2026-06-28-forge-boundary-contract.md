@@ -16,7 +16,10 @@ Forge has two separate auth planes:
   `git:upload-pack`, `git:receive-pack`, and `git:admin`.
 - **Control plane:** service, session, or admin credentials with
   `ForgeControlPlaneScope` values. These scopes are all prefixed with
-  `forge:*` and are the only scopes accepted by `/api/forge/*`.
+  `forge:*` and are the only scopes accepted by `/api/forge/*`. Non-admin
+  control-plane bearer tokens are also bound to one tenant ref; callers send
+  that scope as `X-OpenAgents-Forge-Tenant-Ref`, and the Worker rejects any
+  request body or query `tenantRef` that does not match it.
 
 Tenant git tokens must not authorize control-plane calls. A route that accepts
 `git:receive-pack` or `git:admin` for `/api/forge/*` is out of contract.
@@ -72,7 +75,16 @@ reuse the existing D1/R2/DO bindings. The UI remains owned by `apps/forge/` on
 
 Every route decodes through typed data structures from
 `@openagentsinc/forge-protocol`. Routes must fail closed when a caller presents
-only tenant smart-Git credentials.
+only tenant smart-Git credentials or when a tenant-scoped control-plane token
+attempts to read or mutate another tenant's rows, receipts, leases, refs, or
+artifact metadata.
+
+Forge tenant records may carry optional confidential-workspace posture fields:
+`confidential_workspace_mode`, `attestation_ref`,
+`encrypted_knowledge_pack_ref`, `refusal_reason`, and `retention_policy_ref`.
+These fields are refs and bounded state only. They do not carry raw
+attestations, raw knowledge packs, private repo contents, prompts, tokens, or
+secrets.
 
 ## Smart-Git Route Notes
 
