@@ -87,6 +87,7 @@ const approvedExactRoutePaths = [
   '/api/stats/token-usage/events',
   '/api/stats/token-usage/aggregate',
   '/api/admin/inference-analytics',
+  '/api/operator/fleet/status',
   '/api/stats/token-usage/leaderboards',
   '/api/stats/token-usage/leaderboard-preference',
   '/api/auth/teams',
