@@ -92,7 +92,12 @@ export const GYM_LADDER_RUNGS: ReadonlyArray<GymLadderRungDefinition> = [
   {
     rung: 'rung2',
     title: 'Rung 2 — Khala vs free / open models',
-    opponentLanes: ['gemini-free'],
+    opponentLanes: [
+      'gemini-free',
+      'gpt-oss-20b',
+      'gpt-oss-120b',
+      'glm-52',
+    ],
     barToClear:
       'Match or beat the free field on verified-rate at equal-or-lower cost; win on tool-call completion.',
     ownerGateRef: 'gate.owner.gym.ladder.rung2.free_tier_real_seam',
@@ -100,7 +105,7 @@ export const GYM_LADDER_RUNGS: ReadonlyArray<GymLadderRungDefinition> = [
   {
     rung: 'rung3',
     title: 'Rung 3 — Khala vs paid frontier',
-    opponentLanes: ['openai-gpt', 'claude'],
+    opponentLanes: ['openai-gpt', 'claude', 'vertex-gemini'],
     barToClear:
       'Honestly measure the gap to paid frontier models and track it shrinking over successive runs. No requirement to beat today.',
     ownerGateRef: 'gate.owner.gym.ladder.rung3.paid_api_keys_and_spend_approval',
