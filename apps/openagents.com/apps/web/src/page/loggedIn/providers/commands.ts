@@ -9,17 +9,12 @@ import { errorMessageFromUnknown, requestJson } from '../commands/api'
 import {
   FailedLoadProviderAccountPool,
   FailedPollProviderDeviceLogin,
-  FailedResetProviderAccountPoolAccount,
   FailedStartProviderDeviceLogin,
   SucceededLoadProviderAccountPool,
   SucceededPollProviderDeviceLogin,
-  SucceededResetProviderAccountPoolAccount,
   SucceededStartProviderDeviceLogin,
 } from '../message'
-import {
-  ProviderAccountPoolManualResetResponse,
-  ProviderAccountPoolResponse,
-} from '../model'
+import { ProviderAccountPoolResponse } from '../model'
 
 export const StartProviderDeviceLogin = Command.define(
   'StartProviderDeviceLogin',
@@ -86,42 +81,6 @@ export const LoadProviderAccountPool = Command.define(
       Effect.succeed(
         FailedLoadProviderAccountPool({
           error: errorMessageFromUnknown(error),
-        }),
-      ),
-    ),
-  ),
-)
-
-export const ResetProviderAccountPoolAccount = Command.define(
-  'ResetProviderAccountPoolAccount',
-  { providerAccountRef: S.String },
-  SucceededResetProviderAccountPoolAccount,
-  FailedResetProviderAccountPoolAccount,
-)(({ providerAccountRef }) =>
-  Effect.gen(function* () {
-    const response = yield* requestJson({
-      init: {
-        body: JSON.stringify({ providerAccountRef }),
-        cache: 'no-store',
-        credentials: 'include',
-        headers: {
-          accept: 'application/json',
-          'content-type': 'application/json',
-        },
-        method: 'POST',
-      },
-      name: 'loggedIn.providerAccountPool.resetAccount',
-      request: '/api/provider-accounts/pool/reset',
-      schema: ProviderAccountPoolManualResetResponse,
-    })
-
-    return SucceededResetProviderAccountPoolAccount({ response })
-  }).pipe(
-    Effect.catch(error =>
-      Effect.succeed(
-        FailedResetProviderAccountPoolAccount({
-          error: errorMessageFromUnknown(error),
-          providerAccountRef,
         }),
       ),
     ),

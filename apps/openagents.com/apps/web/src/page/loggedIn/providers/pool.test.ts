@@ -13,9 +13,7 @@ import {
 import { SettingsRoute, SettingsSectionRoute } from '../../../route'
 import {
   FailedLoadProviderAccountPool,
-  ClickedResetProviderAccountPoolAccount,
   RequestedLoadProviderAccountPool,
-  SucceededResetProviderAccountPoolAccount,
   SucceededLoadProviderAccountPool,
   SucceededPollProviderDeviceLogin,
 } from '../message'
@@ -231,58 +229,6 @@ describe('provider account pool', () => {
     )
 
     expect(commands.map(command => command.name)).toEqual([
-      'LoadProviderAccountPool',
-    ])
-  })
-
-  test('manual reset optimistically clears cooldown and refreshes after POST', () => {
-    const model = init(SettingsSectionRoute({ section: 'connections' }), auth)
-    const [loadedModel] = update(
-      model,
-      SucceededLoadProviderAccountPool({ response: poolResponse }),
-    )
-    const [optimisticModel, resetCommands] = update(
-      loadedModel,
-      ClickedResetProviderAccountPoolAccount({
-        providerAccountRef: 'provider-account_2',
-      }),
-    )
-
-    expect(resetCommands.map(command => command.name)).toEqual([
-      'ResetProviderAccountPoolAccount',
-    ])
-
-    if (
-      optimisticModel.providerAccountPool._tag !== 'ProviderAccountPoolLoaded'
-    ) {
-      throw new Error('expected loaded account pool')
-    }
-
-    expect(optimisticModel.providerAccountPool.response.summary.cooldown).toBe(
-      0,
-    )
-    expect(
-      optimisticModel.providerAccountPool.response.accounts[1],
-    ).toMatchObject({
-      cooldownRemainingSeconds: null,
-      cooldownUntil: null,
-      eligibility: 'eligible',
-      eligibilityReasons: [],
-      recentFailureClass: null,
-    })
-
-    const [, refreshCommands] = update(
-      optimisticModel,
-      SucceededResetProviderAccountPoolAccount({
-        response: {
-          ok: true,
-          providerAccountRef: 'provider-account_2',
-          resetAt: '2026-06-11T12:01:00.000Z',
-        },
-      }),
-    )
-
-    expect(refreshCommands.map(command => command.name)).toEqual([
       'LoadProviderAccountPool',
     ])
   })

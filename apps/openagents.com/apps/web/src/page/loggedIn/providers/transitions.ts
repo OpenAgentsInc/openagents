@@ -22,7 +22,6 @@ import { type UpdateReturn, noUpdate } from '../transition'
 import {
   LoadProviderAccountPool,
   PollProviderDeviceLogin,
-  ResetProviderAccountPoolAccount,
   StartProviderDeviceLogin,
 } from './commands'
 
@@ -49,58 +48,6 @@ const applyProviderConnection = (
       authWithProviderAccounts(model.auth, {
         accounts,
         attempts,
-      }),
-  })
-}
-
-const optimisticResetPoolAccount = (
-  model: Model,
-  providerAccountRef: string,
-): Model => {
-  if (model.providerAccountPool._tag !== 'ProviderAccountPoolLoaded') {
-    return model
-  }
-
-  const response = model.providerAccountPool.response
-  const accounts = response.accounts.map(account => {
-    if (account.providerAccountRef !== providerAccountRef) {
-      return account
-    }
-
-    const eligibilityReasons = account.eligibilityReasons.filter(
-      reason => reason !== 'cooldown',
-    )
-
-    return {
-      ...account,
-      cooldownRemainingSeconds: null,
-      cooldownUntil: null,
-      eligibility:
-        eligibilityReasons.length === 0 ? 'eligible' : account.eligibility,
-      eligibilityReasons,
-      recentFailureClass:
-        account.recentFailureClass === 'rate_limited'
-          ? null
-          : account.recentFailureClass,
-    }
-  })
-
-  return evo(model, {
-    providerAccountPool: () =>
-      ProviderAccountPoolLoaded({
-        response: {
-          ...response,
-          accounts,
-          summary: {
-            ...response.summary,
-            cooldown: accounts.filter(account =>
-              account.eligibilityReasons.includes('cooldown'),
-            ).length,
-            eligible: accounts.filter(
-              account => account.eligibility === 'eligible',
-            ).length,
-          },
-        },
       }),
   })
 }
@@ -148,21 +95,6 @@ export const updateProviders = (model: Model, message: Message): UpdateReturn =>
           providerAccountPool: () => ProviderAccountPoolFailed({ error }),
         }),
         [],
-        Option.none(),
-      ],
-      ClickedResetProviderAccountPoolAccount: ({ providerAccountRef }) => [
-        optimisticResetPoolAccount(model, providerAccountRef),
-        [ResetProviderAccountPoolAccount({ providerAccountRef })],
-        Option.none(),
-      ],
-      SucceededResetProviderAccountPoolAccount: () => [
-        model,
-        [LoadProviderAccountPool({})],
-        Option.none(),
-      ],
-      FailedResetProviderAccountPoolAccount: () => [
-        model,
-        [LoadProviderAccountPool({})],
         Option.none(),
       ],
       SucceededStartProviderDeviceLogin: ({ response }) => {

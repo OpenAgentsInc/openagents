@@ -61,7 +61,6 @@ import {
   ImageGenerationModelId,
   ImageGenerationProvider,
   PrefilledWorkspaceResponse,
-  ProviderAccountPoolManualResetResponse,
   ProviderAccountPoolResponse,
   SubmitCustomerSiteFeedbackResponse,
   TeamChatMessagesResponse,
@@ -155,25 +154,6 @@ export const FailedLoadProviderAccountPool = m(
   'FailedLoadProviderAccountPool',
   {
     error: S.String,
-  },
-)
-export const ClickedResetProviderAccountPoolAccount = m(
-  'ClickedResetProviderAccountPoolAccount',
-  {
-    providerAccountRef: S.String,
-  },
-)
-export const SucceededResetProviderAccountPoolAccount = m(
-  'SucceededResetProviderAccountPoolAccount',
-  {
-    response: ProviderAccountPoolManualResetResponse,
-  },
-)
-export const FailedResetProviderAccountPoolAccount = m(
-  'FailedResetProviderAccountPoolAccount',
-  {
-    error: S.String,
-    providerAccountRef: S.String,
   },
 )
 export const ClickedBillingPackage = m('ClickedBillingPackage', {
@@ -1283,9 +1263,6 @@ export const Message = S.Union([
   RequestedLoadProviderAccountPool,
   SucceededLoadProviderAccountPool,
   FailedLoadProviderAccountPool,
-  ClickedResetProviderAccountPoolAccount,
-  SucceededResetProviderAccountPoolAccount,
-  FailedResetProviderAccountPoolAccount,
   ClickedBillingPackage,
   UpdatedBillingCouponCode,
   SubmittedBillingCoupon,

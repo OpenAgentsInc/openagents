@@ -134,10 +134,7 @@ export const makeProviderAccountRoutes = <Bindings = OpenAgentsEnv>(
       )
     }
 
-    if (
-      url.pathname === '/api/provider-accounts/pool' ||
-      url.pathname === '/api/provider-accounts/pool/reset'
-    ) {
+    if (url.pathname === '/api/provider-accounts/pool') {
       return routeEffectOrResponse(
         dependencies.handleProviderAccountPoolApi(request, env, ctx),
       )
