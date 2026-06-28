@@ -4,6 +4,8 @@ import {
   emitFrlmRlmStepTrace,
   planFrlmConductorExecution,
   type FrlmResponseCompositionSegment,
+  FrlmConductor,
+  scheduleFrlmConductor,
   type FrlmConductorSubQuery,
 } from "../src/frlm-conductor-execution"
 import { assertPublicProjectionSafe } from "../src/state"
@@ -532,6 +534,101 @@ describe("FRLM RLM structured step trace emission", () => {
   })
 })
 
+describe("FRLM Conductor core scheduler", () => {
+  test("batches planned recursive sub-queries through the configured submitter", () => {
+    const conductor = new FrlmConductor({
+      recursiveSubmitterRef: "submitter.artanis.frlm.nip90.v1",
+      maxParallelSubQueries: 2,
+      linearFallbackEnabled: true,
+      linearExecutorRef: "executor.artanis.frlm.linear_local.v1",
+    })
+    const schedule = conductor.schedule({
+      ...validInput(),
+      subQueries: plannedSubQueries(),
+    })
+
+    expect(schedule.canSchedule).toBe(true)
+    expect(schedule.state).toBe("recursive_fanout_ready")
+    expect(schedule.recursiveBatches).toHaveLength(2)
+    expect(schedule.recursiveBatches.map((batch) => batch.subQueryRefs)).toEqual([
+      [
+        "subquery.artanis.frlm.collect_context.v1",
+        "subquery.artanis.frlm.optimize_route.v1",
+      ],
+      ["subquery.artanis.frlm.verify_blueprint_boundary.v1"],
+    ])
+    expect(schedule.recursiveBatches.every((batch) =>
+      batch.submitterRef === "submitter.artanis.frlm.nip90.v1"
+    )).toBe(true)
+    expect(schedule.nextActionRef).toBe(schedule.recursiveBatches[0]?.batchRef)
+    expect(schedule.blockerRefs).toEqual([])
+    assertPublicProjectionSafe(schedule)
+  })
+
+  test("turns recursive failures into ordered local linear fallback steps", () => {
+    const schedule = scheduleFrlmConductor({
+      ...validInput(),
+      recursiveSubmitterRef: "submitter.artanis.frlm.nip90.v1",
+      subQueries: [
+        completedSubQueries()[0],
+        {
+          subQueryRef: "subquery.artanis.frlm.optimize_route.v1",
+          parentRef: "task.artanis.frlm.root.v1",
+          state: "timed_out",
+          failureRef: "failure.artanis.frlm.optimize_route.timeout.v1",
+          blueprintSignatureRef: "signature.blueprint.rlm_subquery.v1",
+        },
+        completedSubQueries()[2],
+      ],
+    })
+
+    expect(schedule.canSchedule).toBe(true)
+    expect(schedule.state).toBe("linear_fallback_ready")
+    expect(schedule.recursiveBatches).toEqual([])
+    expect(schedule.linearFallbackSteps.map((step) => step.subQueryRef)).toEqual([
+      "subquery.artanis.frlm.collect_context.v1",
+      "subquery.artanis.frlm.optimize_route.v1",
+      "subquery.artanis.frlm.verify_blueprint_boundary.v1",
+    ])
+    expect(schedule.linearFallbackSteps.every((step) =>
+      step.executorRef === "executor.artanis.frlm.linear_local.v1"
+    )).toBe(true)
+    expect(schedule.nextActionRef).toBe(schedule.linearFallbackSteps[0]?.stepRef)
+    assertPublicProjectionSafe(schedule)
+  })
+
+  test("blocks planned fanout without a recursive submitter ref", () => {
+    const schedule = scheduleFrlmConductor({
+      ...validInput(),
+      recursiveSubmitterRef: null,
+      subQueries: plannedSubQueries(),
+    })
+
+    expect(schedule.canSchedule).toBe(false)
+    expect(schedule.state).toBe("blocked")
+    expect(schedule.blockerRefs).toContain(
+      "blocker.artanis.frlm_conductor.recursive_submitter_ref_missing",
+    )
+    expect(schedule.recursiveBatches).toEqual([])
+  })
+
+  test("blocks plans that exceed the scheduler's public budget", () => {
+    const schedule = scheduleFrlmConductor({
+      ...validInput(),
+      recursiveSubmitterRef: "submitter.artanis.frlm.nip90.v1",
+      subQueries: plannedSubQueries(),
+      budget: { maxSubQueries: 2 },
+    })
+
+    expect(schedule.canSchedule).toBe(false)
+    expect(schedule.state).toBe("blocked")
+    expect(schedule.blockerRefs).toContain(
+      "blocker.artanis.frlm_conductor.sub_query_budget_exceeded",
+    )
+    assertPublicProjectionSafe(schedule)
+  })
+})
+
 function validInput() {
   return {
     observedAt,
@@ -607,4 +704,13 @@ function completedResponseSegments(): FrlmResponseCompositionSegment[] {
       order: 3,
     },
   ]
+}
+
+function plannedSubQueries(): FrlmConductorSubQuery[] {
+  return completedSubQueries().map((subQuery) => ({
+    subQueryRef: subQuery.subQueryRef,
+    parentRef: subQuery.parentRef,
+    state: "planned",
+    blueprintSignatureRef: subQuery.blueprintSignatureRef,
+  }))
 }

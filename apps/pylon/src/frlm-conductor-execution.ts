@@ -60,6 +60,12 @@ export type FrlmRlmTraceStepKind =
   | "recursive_sub_query"
   | "linear_fallback"
   | "result_synthesis"
+export type FrlmConductorSchedulerBlockerRef =
+  | FrlmConductorExecutionBlockerRef
+  | "blocker.artanis.frlm_conductor.recursive_submitter_ref_missing"
+  | "blocker.artanis.frlm_conductor.max_parallelism_invalid"
+  | "blocker.artanis.frlm_conductor.sub_query_budget_exceeded"
+  | "blocker.artanis.frlm_conductor.linear_fallback_budget_exceeded"
 
 export type FrlmConductorSubQuery = {
   subQueryRef: string
@@ -160,6 +166,67 @@ export type FrlmRlmStepTraceProjection = {
   contentRedacted: true
 }
 
+export type FrlmConductorScheduleState =
+  | "recursive_fanout_ready"
+  | "linear_fallback_ready"
+  | "waiting_for_recursive_results"
+  | "completed"
+  | "blocked"
+
+export type FrlmConductorRecursiveBatch = {
+  batchRef: string
+  submitterRef: string
+  subQueryRefs: string[]
+}
+
+export type FrlmConductorLinearFallbackStep = {
+  stepRef: string
+  executorRef: string
+  subQueryRef: string
+}
+
+export type FrlmConductorScheduleBudget = {
+  maxSubQueries?: number
+  maxLinearFallbackSteps?: number
+}
+
+export type FrlmConductorScheduleInput = {
+  observedAt: string
+  executionRef?: string | null
+  rootTaskRef?: string | null
+  blueprintSignatureRef?: string | null
+  subQueries?: FrlmConductorSubQuery[]
+  linearFallbackEnabled?: boolean
+  linearExecutorRef?: string | null
+  recursiveSubmitterRef?: string | null
+  maxParallelSubQueries?: number
+  budget?: FrlmConductorScheduleBudget
+}
+
+export type FrlmConductorSchedule = {
+  schema: "openagents.artanis.frlm_conductor_schedule.v0.1"
+  observedAt: string
+  scheduleRef: string | null
+  state: FrlmConductorScheduleState
+  canSchedule: boolean
+  projection: FrlmConductorExecutionProjection
+  recursiveBatches: FrlmConductorRecursiveBatch[]
+  linearFallbackSteps: FrlmConductorLinearFallbackStep[]
+  nextActionRef: string | null
+  traceRefs: string[]
+  blockerRefs: FrlmConductorSchedulerBlockerRef[]
+  authorityBoundary: string
+  contentRedacted: true
+}
+
+export type FrlmConductorOptions = {
+  recursiveSubmitterRef?: string | null
+  linearFallbackEnabled?: boolean
+  linearExecutorRef?: string | null
+  maxParallelSubQueries?: number
+  budget?: FrlmConductorScheduleBudget
+}
+
 const publicRefPattern = /^[a-z][a-z0-9._:/-]{1,220}$/i
 const unsafeRefPattern =
   /(\/Users\/|\/home\/|api[_-]?key|bearer|checkpoint[-_]?path|invoice|lnbc|lno1|mnemonic|payment[_-]?(hash|preimage)|preimage|private|prompt|secret|token|wallet|weights\.(bin|gguf|safetensors|pt|pth))/i
@@ -171,6 +238,151 @@ const failedStates = new Set<FrlmConductorSubQueryState>([
   "timed_out",
   "rejected",
 ])
+
+const incompleteStates = new Set<FrlmConductorSubQueryState>([
+  "planned",
+  "running",
+])
+
+export class FrlmConductor {
+  readonly #options: FrlmConductorOptions
+
+  constructor(options: FrlmConductorOptions = {}) {
+    this.#options = { ...options }
+  }
+
+  schedule(input: FrlmConductorScheduleInput): FrlmConductorSchedule {
+    return scheduleFrlmConductor({
+      ...this.#options,
+      ...input,
+      budget: {
+        ...this.#options.budget,
+        ...input.budget,
+      },
+    })
+  }
+}
+
+export function scheduleFrlmConductor(
+  input: FrlmConductorScheduleInput,
+): FrlmConductorSchedule {
+  const projection = planFrlmConductorExecution(input)
+  const blockerRefs = new Set<FrlmConductorSchedulerBlockerRef>(
+    projection.blockerRefs,
+  )
+  const maxParallelSubQueries = input.maxParallelSubQueries ?? 1
+  const recursiveSubmitterRef = safeScheduleRef(input.recursiveSubmitterRef)
+  const plannedSubQueryRefs = uniqueRefs(
+    (input.subQueries ?? [])
+      .filter((subQuery) => subQuery.state === "planned")
+      .map((subQuery) => safeScheduleRef(subQuery.subQueryRef)),
+  )
+  const incompleteSubQueryRefs = uniqueRefs(
+    (input.subQueries ?? [])
+      .filter((subQuery) => incompleteStates.has(subQuery.state))
+      .map((subQuery) => safeScheduleRef(subQuery.subQueryRef)),
+  )
+
+  if (!Number.isInteger(maxParallelSubQueries) || maxParallelSubQueries <= 0) {
+    blockerRefs.add("blocker.artanis.frlm_conductor.max_parallelism_invalid")
+  }
+  if (plannedSubQueryRefs.length > 0 && recursiveSubmitterRef === null) {
+    blockerRefs.add("blocker.artanis.frlm_conductor.recursive_submitter_ref_missing")
+  }
+
+  const maxSubQueries = input.budget?.maxSubQueries
+  if (
+    typeof maxSubQueries === "number" &&
+    maxSubQueries >= 0 &&
+    projection.recursiveSubQueryRefs.length > maxSubQueries
+  ) {
+    blockerRefs.add("blocker.artanis.frlm_conductor.sub_query_budget_exceeded")
+  }
+
+  const maxLinearFallbackSteps = input.budget?.maxLinearFallbackSteps
+  if (
+    typeof maxLinearFallbackSteps === "number" &&
+    maxLinearFallbackSteps >= 0 &&
+    projection.linearFallbackStepRefs.length > maxLinearFallbackSteps
+  ) {
+    blockerRefs.add("blocker.artanis.frlm_conductor.linear_fallback_budget_exceeded")
+  }
+
+  const canSchedule = blockerRefs.size === 0
+  const recursiveBatches =
+    canSchedule && plannedSubQueryRefs.length > 0 && recursiveSubmitterRef !== null
+      ? chunkRefs(plannedSubQueryRefs, maxParallelSubQueries).map((subQueryRefs, index) => ({
+        batchRef: `batch.artanis.frlm.recursive.${stableHash(`${projection.executionRef ?? "unknown"}:${index}:${subQueryRefs.join(":")}`)}`,
+        submitterRef: recursiveSubmitterRef,
+        subQueryRefs,
+      }))
+      : []
+  const linearFallbackSteps =
+    canSchedule && projection.executionMode === "fallback_linear" && projection.linearExecutorRef !== null
+      ? projection.recursiveSubQueryRefs.map((subQueryRef, index) => ({
+        stepRef: projection.linearFallbackStepRefs[index] ??
+          `step.artanis.frlm.linear.${stableHash(`${projection.rootTaskRef ?? "unknown"}:${index}:${subQueryRef}`)}`,
+        executorRef: projection.linearExecutorRef as string,
+        subQueryRef,
+      }))
+      : []
+  const state: FrlmConductorScheduleState =
+    !canSchedule
+      ? "blocked"
+      : projection.executionMode === "fallback_linear"
+        ? "linear_fallback_ready"
+        : recursiveBatches.length > 0
+          ? "recursive_fanout_ready"
+          : incompleteSubQueryRefs.length > 0
+            ? "waiting_for_recursive_results"
+            : "completed"
+  const scheduleRef =
+    canSchedule && projection.executionRef !== null
+      ? `schedule.artanis.frlm.${stableHash(`${projection.executionRef}:${state}:${projection.evidenceRefs.join(":")}`)}`
+      : null
+  const nextActionRef =
+    state === "recursive_fanout_ready"
+      ? recursiveBatches[0]?.batchRef ?? null
+      : state === "linear_fallback_ready"
+        ? linearFallbackSteps[0]?.stepRef ?? null
+        : state === "completed"
+          ? projection.executionPlanRef
+          : null
+  const traceRefs = uniqueRefs([
+    scheduleRef,
+    nextActionRef,
+    ...recursiveBatches.flatMap((batch) => [
+      batch.batchRef,
+      batch.submitterRef,
+      ...batch.subQueryRefs,
+    ]),
+    ...linearFallbackSteps.flatMap((step) => [
+      step.stepRef,
+      step.executorRef,
+      step.subQueryRef,
+    ]),
+    ...projection.evidenceRefs,
+  ])
+
+  const schedule: FrlmConductorSchedule = {
+    schema: "openagents.artanis.frlm_conductor_schedule.v0.1",
+    observedAt: input.observedAt,
+    scheduleRef,
+    state,
+    canSchedule,
+    projection,
+    recursiveBatches,
+    linearFallbackSteps,
+    nextActionRef,
+    traceRefs,
+    blockerRefs: [...blockerRefs].sort(),
+    authorityBoundary:
+      "Read-only FRLM Conductor scheduler. It computes recursive fanout batches and local linear fallback steps from public evidence refs only; it does not dispatch workers, run Python, spend sats, publish claims, or move settlement authority.",
+    contentRedacted: true,
+  }
+  assertPublicProjectionSafe(schedule)
+  return schedule
+}
 
 export function planFrlmConductorExecution(input: {
   observedAt: string
@@ -649,6 +861,11 @@ function compareResponseSegments(a: FrlmResponseCompositionSegment, b: FrlmRespo
   return a.subQueryRef.localeCompare(b.subQueryRef)
 }
 
+function safeScheduleRef(value: string | null | undefined): string | null {
+  const ref = normalizedRef(value)
+  return ref === null || !isSafeRef(ref) ? null : ref
+}
+
 function stableHash(input: string, length = 20) {
   return createHash("sha256").update(input).digest("hex").slice(0, length)
 }
@@ -719,4 +936,12 @@ function uniqueRefsPreservingOrder(refs: (string | null)[]) {
     }
   }
   return out
+}
+
+function chunkRefs(refs: string[], size: number): string[][] {
+  const chunks: string[][] = []
+  for (let index = 0; index < refs.length; index += size) {
+    chunks.push(refs.slice(index, index + size))
+  }
+  return chunks
 }
