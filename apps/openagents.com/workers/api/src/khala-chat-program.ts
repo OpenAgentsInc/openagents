@@ -22,15 +22,10 @@
 // shape (deltas async-iterable + final()) and the shared
 // `dispatchOnboardingStreamSource` provider-adapter bridge, so the streaming +
 // metering seam is not reinvented here.
-
 import { Effect, Schema as S } from 'effect'
 
 import type { OnboardingStreamSource } from './autopilot-onboarding-program'
 import { OnboardingInferenceError } from './autopilot-onboarding-program'
-import {
-  type InferenceMessage,
-  type InferenceRequest,
-} from './inference/provider-adapter'
 import {
   KHALA_CAPABILITY_TRUTH_SYSTEM_PROMPT,
   KHALA_IDENTITY_SYSTEM_PROMPT,
@@ -38,6 +33,14 @@ import {
   KHALA_RESPONSE_DISCIPLINE_SYSTEM_PROMPT,
   KHALA_STANDARD_GREETING,
 } from './inference/khala-identity'
+import {
+  type InferenceMessage,
+  type InferenceRequest,
+} from './inference/provider-adapter'
+import {
+  type KhalaChatPylonContext,
+  renderKhalaChatPylonContextForPrompt,
+} from './khala-chat-pylon-context'
 
 // The live public Khala model for the generic chat demo (same model id the
 // onboarding program uses; the cheapest-viable router lane).
@@ -76,11 +79,24 @@ export type KhalaChatRequest = typeof KhalaChatRequest.Type
 export const KHALA_CHAT_INSTRUCTION = [
   'You are answering in a public chat demo on the OpenAgents website.',
   `For a simple greeting or intro, answer exactly: "${KHALA_STANDARD_GREETING}"`,
-  'You are a general-purpose assistant. Answer the user directly and helpfully.',
+  'You are a general-purpose assistant. Answer the user directly, plainly, and helpfully.',
+  'Do not roleplay OpenAgents platform concepts. In particular, OpenAgents Pylons are registered OpenAgents compute/agent nodes, not StarCraft pylons and not electrical-grid infrastructure.',
+  'When route-provided Pylon context is present, use it for Pylon answers and do not invent private registry, assignment, payment, or settlement state. When Pylon context is absent, say that live Pylon registry state is not available from the current turn.',
   'Do not volunteer base URLs, model ids, endpoint details, or Server-Sent Events mechanics in normal conversation. Explain API usage only when the user explicitly asks how to call the API or integrate Khala programmatically.',
   'When API details are explicitly requested, you may say that Khala is available as an OpenAI-compatible Chat Completions API at https://openagents.com/api/v1 with model id openagents/khala.',
   'Do not run an intake interview, do not ask a fixed script of onboarding questions, and do not collect a business profile. Just have a normal, helpful conversation.',
 ].join(' ')
+
+export type KhalaChatRequestContext = Readonly<{
+  pylonContext?: KhalaChatPylonContext | undefined
+}>
+
+const khalaChatContextInstruction = (
+  context: KhalaChatRequestContext | undefined,
+): string =>
+  context?.pylonContext === undefined
+    ? ''
+    : `\n\n${renderKhalaChatPylonContextForPrompt(context.pylonContext)}`
 
 // STREAMING INFERENCE SEAM ------------------------------------------------
 
@@ -182,12 +198,16 @@ export const validateKhalaChatRequest = (
 // be overridden by a crafted conversation.
 export const buildKhalaChatMessages = (
   messages: ReadonlyArray<KhalaChatMessage>,
+  context?: KhalaChatRequestContext | undefined,
 ): ReadonlyArray<InferenceMessage> => [
   {
     role: 'system',
-    content: `${KHALA_IDENTITY_SYSTEM_PROMPT} ${KHALA_REFUSAL_POSTURE_SYSTEM_PROMPT} ${KHALA_RESPONSE_DISCIPLINE_SYSTEM_PROMPT} ${KHALA_CAPABILITY_TRUTH_SYSTEM_PROMPT} ${KHALA_CHAT_INSTRUCTION}`,
+    content: `${KHALA_IDENTITY_SYSTEM_PROMPT} ${KHALA_REFUSAL_POSTURE_SYSTEM_PROMPT} ${KHALA_RESPONSE_DISCIPLINE_SYSTEM_PROMPT} ${KHALA_CAPABILITY_TRUTH_SYSTEM_PROMPT} ${KHALA_CHAT_INSTRUCTION}${khalaChatContextInstruction(context)}`,
   },
-  ...messages.map(message => ({ role: message.role, content: message.content })),
+  ...messages.map(message => ({
+    role: message.role,
+    content: message.content,
+  })),
 ]
 
 // Build the streaming inference request for a turn. `stream: true` so the
@@ -195,9 +215,10 @@ export const buildKhalaChatMessages = (
 // (the demo does not forward arbitrary OpenAI params).
 export const buildKhalaChatRequest = (
   messages: ReadonlyArray<KhalaChatMessage>,
+  context?: KhalaChatRequestContext | undefined,
 ): InferenceRequest => ({
   model: KHALA_CHAT_MODEL,
-  messages: buildKhalaChatMessages(messages),
+  messages: buildKhalaChatMessages(messages, context),
   stream: true,
   passthroughParams: {},
 })
@@ -225,5 +246,7 @@ export const isKhalaFastGreetingTurn = (
   if (messages.length !== 1) return false
   const [message] = messages
   if (message === undefined || message.role !== 'user') return false
-  return KHALA_FAST_GREETING_PROMPTS.has(normalizeKhalaFastPrompt(message.content))
+  return KHALA_FAST_GREETING_PROMPTS.has(
+    normalizeKhalaFastPrompt(message.content),
+  )
 }

@@ -603,6 +603,7 @@ import {
   stringArrayFromUnknown,
 } from './json-boundary'
 import type { KhalaChatStreamClient } from './khala-chat-program'
+import { loadKhalaChatPylonContext } from './khala-chat-pylon-context'
 import { makeKhalaChatRoutes } from './khala-chat-routes'
 import {
   handleKhalaFeedbackSubmit,
@@ -10092,6 +10093,10 @@ const makeArtanisResponderKhalaClient = (
 }
 
 const khalaChatRoutes = makeKhalaChatRoutes({
+  loadPylonContext: env =>
+    loadKhalaChatPylonContext(
+      makeD1PylonApiStore(openAgentsDatabase(env as WorkerBindings)),
+    ),
   makeStreamClient: env =>
     makeKhalaChatStreamClient(env as OnboardingInferenceEnv),
   recordServedTokens: recordPublicKhalaChatServedTokens,

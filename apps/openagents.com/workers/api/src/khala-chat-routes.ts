@@ -17,28 +17,32 @@
 // plus the program's message-count / per-message / total-character bounds. This
 // is intentionally lightweight for a public demo; a durable cross-isolate limit
 // would need a Durable Object and is out of scope here.
-
 import { Cause, Effect, Match as M, Schema as S } from 'effect'
 
 import {
+  OnboardingInferenceError,
+  type OnboardingStreamDelta,
+  type OnboardingStreamMetadata,
+} from './autopilot-onboarding-program'
+import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import { KHALA_STANDARD_GREETING } from './inference/khala-identity'
+import {
+  KHALA_CHAT_MODEL,
   KhalaChatRequest,
   KhalaChatValidationError,
-  KHALA_CHAT_MODEL,
   buildKhalaChatRequest,
   isKhalaFastGreetingTurn,
   validateKhalaChatRequest,
 } from './khala-chat-program'
-import { KHALA_STANDARD_GREETING } from './inference/khala-identity'
 import type {
+  KhalaChatMessage,
   KhalaChatStreamClient,
   KhalaChatStreamSource,
 } from './khala-chat-program'
 import {
-  type OnboardingStreamDelta,
-  OnboardingInferenceError,
-  type OnboardingStreamMetadata,
-} from './autopilot-onboarding-program'
-import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+  type KhalaChatPylonContext,
+  answerKhalaChatPylonQuestion,
+} from './khala-chat-pylon-context'
 import { logWorkerRouteError } from './observability'
 import { compactRandomId, currentEpochMillis } from './runtime-primitives'
 
@@ -69,14 +73,19 @@ export type KhalaChatRouteDependencies = Readonly<{
   // and the onboarding route use (the internal Khala program path); tests inject
   // a deterministic stub.
   makeStreamClient: (env: unknown) => KhalaChatStreamClient
+  loadPylonContext?:
+    | ((env: unknown) => Effect.Effect<KhalaChatPylonContext, unknown>)
+    | undefined
   // Overridable for tests; defaults to a per-IP token bucket. Returns false when
   // the caller is over budget.
   rateLimit?: ((request: Request) => boolean) | undefined
-  recordServedTokens?: ((input: {
-    env: unknown
-    metadata: OnboardingStreamMetadata
-    traceRef: string
-  }) => Effect.Effect<void, unknown>) | undefined
+  recordServedTokens?:
+    | ((input: {
+        env: unknown
+        metadata: OnboardingStreamMetadata
+        traceRef: string
+      }) => Effect.Effect<void, unknown>)
+    | undefined
 }>
 
 // A narrow, self-describing SSE wire (same shape as the onboarding stream):
@@ -105,7 +114,9 @@ const decodeJsonBody = (request: Request) =>
     })
 
     return yield* S.decodeUnknownEffect(KhalaChatRequest)(payload).pipe(
-      Effect.mapError(error => new KhalaChatBadRequest({ reason: String(error) })),
+      Effect.mapError(
+        error => new KhalaChatBadRequest({ reason: String(error) }),
+      ),
     )
   })
 
@@ -123,14 +134,21 @@ const routeErrorResponse = (error: KhalaChatRouteError): HttpResponse =>
         noStoreJsonResponse({ error: 'rate_limited' }, { status: 429 }),
       OnboardingInferenceError: ({ reason }) =>
         noStoreJsonResponse(
-          { code: 'inference_unavailable', error: 'inference_unavailable', reason },
+          {
+            code: 'inference_unavailable',
+            error: 'inference_unavailable',
+            reason,
+          },
           { status: 502 },
         ),
     }),
     M.exhaustive,
   )
 
-const withTraceHeader = (response: HttpResponse, traceRef: string): HttpResponse => {
+const withTraceHeader = (
+  response: HttpResponse,
+  traceRef: string,
+): HttpResponse => {
   const headers = new Headers(response.headers)
   headers.set('x-openagents-trace-ref', traceRef)
   return new Response(response.body, {
@@ -189,6 +207,52 @@ const fastGreetingSource = (): KhalaChatStreamSource => ({
     },
   }),
 })
+
+const staticTextSource = (
+  text: string,
+  finishReason: string,
+  servedAdapterId: string,
+  servedModel: string,
+): KhalaChatStreamSource => ({
+  deltas: (async function* () {
+    yield text
+  })(),
+  final: () => text,
+  metadata: () => ({
+    finishReason,
+    requestedModel: KHALA_CHAT_MODEL,
+    servedAdapterId,
+    servedModel,
+    usage: {
+      completionTokens: Math.ceil(text.length / 4),
+      promptTokens: 0,
+      totalTokens: Math.ceil(text.length / 4),
+    },
+  }),
+})
+
+const latestUserContent = (messages: ReadonlyArray<KhalaChatMessage>): string =>
+  messages[messages.length - 1]?.content ?? ''
+
+const loadPylonContext = (
+  dependencies: KhalaChatRouteDependencies,
+  env: unknown,
+  trace: string,
+): Effect.Effect<KhalaChatPylonContext | undefined> => {
+  if (dependencies.loadPylonContext === undefined) {
+    return Effect.sync((): KhalaChatPylonContext | undefined => undefined)
+  }
+
+  return dependencies
+    .loadPylonContext(env)
+    .pipe(
+      Effect.catch(error =>
+        Effect.sync(() =>
+          logKhalaChatFailure(trace, 'pylon_context', error),
+        ).pipe(Effect.as(undefined)),
+      ),
+    )
+}
 
 // Build the SSE response body for a prepared streaming turn. Pumps prose deltas,
 // then emits the terminal `done` frame. A failure mid-stream emits a terminal
@@ -249,12 +313,14 @@ const makeKhalaChatStreamBody = (
         emit(sseFrame('done', { done: true }))
       } catch (error) {
         logKhalaChatFailure(trace, 'stream', error)
-        emit(sseFrame('error', {
-          code: 'stream_failed',
-          error: 'stream_failed',
-          reason: error instanceof Error ? error.message : String(error),
-          traceRef: trace,
-        }))
+        emit(
+          sseFrame('error', {
+            code: 'stream_failed',
+            error: 'stream_failed',
+            reason: error instanceof Error ? error.message : String(error),
+            traceRef: trace,
+          }),
+        )
       } finally {
         controller.close()
       }
@@ -331,8 +397,30 @@ export const makeKhalaChatRoutes = (
       Effect.flatMap(messages =>
         isKhalaFastGreetingTurn(messages)
           ? Effect.succeed(fastGreetingSource())
-          : Effect.succeed(buildKhalaChatRequest(messages)).pipe(
-              Effect.flatMap(inferenceRequest => streamClient(inferenceRequest)),
+          : loadPylonContext(dependencies, env, requestTraceRef).pipe(
+              Effect.flatMap(pylonContext => {
+                const pylonAnswer = answerKhalaChatPylonQuestion(
+                  latestUserContent(messages),
+                  pylonContext,
+                )
+
+                return pylonAnswer !== null
+                  ? Effect.succeed(
+                      staticTextSource(
+                        pylonAnswer,
+                        'pylon_context',
+                        'khala-pylon-context',
+                        'openagents-pylon-registry',
+                      ),
+                    )
+                  : Effect.succeed(
+                      buildKhalaChatRequest(messages, { pylonContext }),
+                    ).pipe(
+                      Effect.flatMap(inferenceRequest =>
+                        streamClient(inferenceRequest),
+                      ),
+                    )
+              }),
             ),
       ),
       Effect.map(
@@ -345,10 +433,10 @@ export const makeKhalaChatRoutes = (
               env,
             ),
             {
-            headers: {
-              ...STREAM_HEADERS,
-              'x-openagents-trace-ref': requestTraceRef,
-            },
+              headers: {
+                ...STREAM_HEADERS,
+                'x-openagents-trace-ref': requestTraceRef,
+              },
             },
           ),
       ),
