@@ -1000,6 +1000,10 @@ import {
   TrainingPublicGradientWindowsEndpoint,
   handleTrainingPublicGradientWindowsApi,
 } from './training-public-gradient-windows-routes'
+import {
+  TraceEconomicUnderwritingEndpoint,
+  handleTraceEconomicUnderwritingApi,
+} from './trace-economic-underwriting-routes'
 import { handleVerifiedOutcomeReputationApi } from './verified-outcome-reputation-routes'
 import {
   buildTrainingWindowRecord,
@@ -10327,6 +10331,15 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     // identity, or spend authority.
     path: '/api/public/reputation/verified-outcomes',
     handler: request => handleVerifiedOutcomeReputationApi(request),
+  },
+  {
+    // Public trace-economic underwriting readiness projection (#6426). Read-only
+    // evidence surface over trace/verdict/settlement/metering receipts; models
+    // refund-on-rejection and verified-outcome-SLA shapes without binding
+    // policies, quoting premiums, adjudicating claims, moving money, or granting
+    // public risk-market authority.
+    path: TraceEconomicUnderwritingEndpoint,
+    handler: request => handleTraceEconomicUnderwritingApi(request),
   },
   {
     // Public-safe live Gym / Harbor run progress (#6261). web_authorized runs

@@ -33,6 +33,7 @@ import { TrainingPostTrainingInstructSftEndpoint } from './training-post-trainin
 import { TrainingPostTrainingVibeTestRubricEndpoint } from './training-post-training-vibe-test-rubric'
 import { TrainingPublicDistributedRunScaleEndpoint } from './training-public-distributed-run-scale'
 import { TrainingPublicGradientWindowsEndpoint } from './training-public-gradient-windows'
+import { TraceEconomicUnderwritingEndpoint } from './trace-economic-underwriting'
 import { VerifiedOutcomeReputationEndpoint } from './verified-outcome-reputation'
 
 export const OpenAgentsOpenApiEndpoint = '/api/openapi.json'
@@ -1618,6 +1619,9 @@ const schemaComponents = (): JsonSchema => ({
   ),
   VerifiedOutcomeReputationProjection: objectSummary(
     'Public-safe verified-outcome reputation projection. Includes generatedAt, the declared live_at_read staleness contract, TraceRank/EigenTrust algorithm metadata, graph counts, ignored edge refs, score rows, and copy gates. Only replay-verified outcomes with public-safe Bitcoin settlement receipts affect scores; self-reported feedback, unpaid no-spend work, unverified reviews, and missing-receipt edges are ignored. The seed projection is read-only and grants no dispatch, marketplace ranking, assignment, payout, settlement, moderation, identity, ERC-8004 publication, or spend authority.',
+  ),
+  TraceEconomicUnderwritingProjection: objectSummary(
+    'Public-safe trace-economic underwriting readiness projection for #6426. Includes generatedAt, the declared live_at_read staleness contract, the trace/verdict/settlement/metering substrate, qualifying and incomplete outcome counts, modeled refund-on-rejection and verified-outcome-SLA warranty shapes, copy gates, and blocker refs. It is a seed readiness surface only and grants no policy binding, premium quote, underwriting, claims adjudication, refund, payout, settlement, custody, dispatch, public risk-market claim, or spend authority.',
   ),
   DemandProvenanceProjection: objectSummary(
     'Public-safe demand-provenance projection. Includes generatedAt and the projection_staleness.v1 live_at_read staleness contract with maxStalenessSeconds 0. Summarizes all revenue-bearing public surfaces that carry typed internal/external demand splits — AO/kWh, pylon-stats, training leaderboards, training run pages, and the model-ladder rung economics gates — each reporting internal/external/unlabeled accepted-outcome counts. Coverage is complete (coveredRevenueBearingSurfaceCount, no remaining surface gaps). It enforces the no_external_dollar_no_demand_claim copy gate and keeps externalDemandClaimAllowed false: every current surface is backed by internal first-party demand only. It grants no revenue, demand, payout, settlement, reporting, or public-claim upgrade authority.',
@@ -4856,6 +4860,23 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Verified-outcome reputation seed projection.',
           '#/components/schemas/VerifiedOutcomeReputationProjection',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  [TraceEconomicUnderwritingEndpoint]: {
+    get: operation({
+      operationId: 'getTraceEconomicUnderwriting',
+      summary: 'Read trace-economic underwriting readiness projection',
+      description:
+        'Returns the public trace-economic underwriting readiness projection for issue #6426. The projection prices work-risk only as a modeled seed over public-safe trace, replay-verdict, settlement, and metering evidence, and exposes inert refund-on-rejection / verified-outcome-SLA warranty shapes. It grants no policy binding, premium quote, underwriting, claims adjudication, refund, payout, settlement, custody, dispatch, public risk-market claim, or spend authority.',
+      tags: ['Public Proof'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Trace-economic underwriting readiness projection.',
+          '#/components/schemas/TraceEconomicUnderwritingProjection',
         ),
         ...errorResponses(),
       },
