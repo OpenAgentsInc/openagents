@@ -16,13 +16,12 @@
 // only base URL + key. Anthropic Messages compatibility is a parallel surface;
 // a clean spot is left for it (see ANTHROPIC SEAM below) but is out of scope for
 // #5476.
-import { Effect, Redacted } from 'effect'
+import { Effect } from 'effect'
 
 import type { AgentRegistrationStore } from '../agent-registration'
 import { noStoreJsonResponse } from '../http/responses'
 import { recordFromUnknown } from '../json-boundary'
 import type { PylonApiStore } from '../pylon-api'
-import { requireProviderApiKeyShape } from '../provider-account-api-key'
 import {
   compactRandomId,
   currentEpochMillis,
@@ -208,67 +207,6 @@ export const DEFAULT_CHAT_MODEL = KHALA_MODEL_ID
 export const INFERENCE_DEMAND_KIND_HEADER = 'x-openagents-demand-kind'
 export const INFERENCE_DEMAND_SOURCE_HEADER = 'x-openagents-demand-source'
 export const INFERENCE_CLIENT_HEADER = 'x-openagents-client'
-export const KHALA_BYOK_PROVIDER_HEADER = 'x-openagents-provider'
-export const KHALA_BYOK_PROVIDER_KEY_HEADER = 'x-openagents-provider-key'
-export const KHALA_BYOK_ACK_HEADER = 'x-openagents-byok'
-
-type KhalaByokState =
-  | Readonly<{ _tag: 'absent' }>
-  | Readonly<{
-      _tag: 'accepted'
-      apiKey: Redacted.Redacted<string>
-      provider: 'openrouter'
-    }>
-  | Readonly<{ _tag: 'invalid'; reason: string }>
-
-const resolveKhalaByokState = (headers: Headers): KhalaByokState => {
-  const provider = headers.get(KHALA_BYOK_PROVIDER_HEADER)?.trim().toLowerCase()
-  const rawKey = headers.get(KHALA_BYOK_PROVIDER_KEY_HEADER)
-
-  if ((provider === undefined || provider === '') && rawKey === null) {
-    return { _tag: 'absent' }
-  }
-  if (provider !== 'openrouter') {
-    return {
-      _tag: 'invalid',
-      reason: 'Only x-openagents-provider: openrouter is supported for BYOK.',
-    }
-  }
-  try {
-    return {
-      _tag: 'accepted',
-      apiKey: Redacted.make(requireProviderApiKeyShape(rawKey)),
-      provider: 'openrouter',
-    }
-  } catch {
-    return {
-      _tag: 'invalid',
-      reason: 'x-openagents-provider-key must be a single valid API key value.',
-    }
-  }
-}
-
-const byokResponseHeaders = (
-  byok: KhalaByokState,
-  routed: boolean,
-): Record<string, string> =>
-  byok._tag === 'absent'
-    ? {}
-    : {
-        [KHALA_BYOK_ACK_HEADER]:
-          byok._tag === 'invalid' ? 'invalid' : routed ? 'routed' : 'accepted',
-      }
-
-const withByokResponseHeader = (
-  response: Response,
-  byok: KhalaByokState,
-  routed: boolean,
-): Response => {
-  for (const [key, value] of Object.entries(byokResponseHeaders(byok, routed))) {
-    response.headers.set(key, value)
-  }
-  return response
-}
 
 const safeAttributionToken = (value: string | null): string | undefined => {
   const trimmed = value?.trim()
@@ -1099,7 +1037,6 @@ const toInferenceRequest = (
     abortSignal?: AbortSignal | undefined
     priority: InferenceRequest['priority']
   }>,
-  callerProviderKey?: InferenceRequest['callerProviderKey'],
 ): InferenceRequest => {
   const clientMessages: ReadonlyArray<InferenceMessage> = body.messages
   // For a non-Khala model, leave the messages exactly as the client sent them
@@ -1134,7 +1071,6 @@ const toInferenceRequest = (
     ...(scheduler?.abortSignal === undefined
       ? {}
       : { abortSignal: scheduler.abortSignal }),
-    ...(callerProviderKey === undefined ? {} : { callerProviderKey }),
     messages,
     model: requestedModel,
     // Gateway-derived session affinity wins over any stray client copy.
@@ -1376,10 +1312,7 @@ type OpenAgentsReceipt = Readonly<{
   billing?:
     | Readonly<{
         mode: 'receipt_backed' | 'no_debit' | 'zero_charge'
-        reason?:
-          | 'caller_provider_key'
-          | 'operator_exempt_or_unmetered'
-          | undefined
+        reason?: 'operator_exempt_or_unmetered' | undefined
         receipt_required: boolean
       }>
     | undefined
@@ -1440,13 +1373,6 @@ const billingDisclosureFor = (
   }
   if (metering.receiptRef !== null) {
     return { mode: 'receipt_backed', receipt_required: true }
-  }
-  if (metering.byok === true) {
-    return {
-      mode: 'no_debit',
-      reason: 'caller_provider_key',
-      receipt_required: false,
-    }
   }
   return {
     mode: 'no_debit',
@@ -2558,16 +2484,6 @@ export const handleChatCompletions = (
         { status: 400 },
       )
     }
-    const byok = resolveKhalaByokState(request.headers)
-    if (byok._tag === 'invalid') {
-      return noStoreJsonResponse(
-        {
-          error: 'invalid_byok_provider_key',
-          reason: byok.reason,
-        },
-        { headers: byokResponseHeaders(byok, false), status: 400 },
-      )
-    }
 
     const nowEpochSeconds = deps.nowEpochSeconds ?? currentEpochSeconds
     const newId = deps.newId ?? defaultId
@@ -2810,12 +2726,11 @@ export const handleChatCompletions = (
     }
 
     // BALANCE GATE (read-only). #5477 owns the real per-model decrement.
-    const callerPaidByok = byok._tag === 'accepted'
     const minimum = deps.minimumAvailableMsat ?? 1
-    const availableMsat = callerPaidByok
-      ? minimum
-      : yield* Effect.promise(() => deps.readAvailableMsat(session.accountRef))
-    if (!callerPaidByok && availableMsat < minimum) {
+    const availableMsat = yield* Effect.promise(() =>
+      deps.readAvailableMsat(session.accountRef),
+    )
+    if (availableMsat < minimum) {
       // FREE-ALLOWANCE BYPASS (EPIC #5474 §1). A zero/insufficient-balance
       // account is NOT rejected when the request is free-eligible AND the
       // resolving owner still has remaining free allowance — that request would
@@ -2872,7 +2787,7 @@ export const handleChatCompletions = (
     // can be flush with credits yet still be capped at a configurable per-window
     // spend ceiling so a compromised key cannot drain the whole balance. Open
     // (no-op) when unwired or when no cap is configured for the account.
-    if (!callerPaidByok && deps.checkSpendCap !== undefined) {
+    if (deps.checkSpendCap !== undefined) {
       const spendCap = yield* Effect.promise(() =>
         deps.checkSpendCap!(session.accountRef),
       )
@@ -2890,15 +2805,7 @@ export const handleChatCompletions = (
       }
     }
 
-    const baseMeteringHook = deps.meteringHook ?? stubMeteringHook
-    const meteringHook: MeteringHook = callerPaidByok
-      ? () =>
-          Effect.succeed({
-            byok: true,
-            metered: false,
-            receiptRef: null,
-          } satisfies MeteringOutcome)
-      : baseMeteringHook
+    const meteringHook = deps.meteringHook ?? stubMeteringHook
     const resolveFundingKind =
       deps.resolveFundingKind ?? defaultCardFundingResolver
     const fundingKind = yield* Effect.promise(() =>
@@ -2938,22 +2845,20 @@ export const handleChatCompletions = (
       toolBearingKhalaRequest &&
       requestAttribution?.demandKind === 'internal' &&
       requestAttribution.demandSource === 'gym_mirrorcode'
-    const basePlannedIds = callerPaidByok
-      ? [OPENROUTER_KHALA_FALLBACK_ADAPTER_ID]
-      : mirrorcodeStrongCodingKhalaRequest
-        ? selectAdapterPlanForKhalaStrongCodingRequest(
-            requestedModel,
-            plannedIdsForModel,
-          )
-        : glmSaturationStressKhalaRequest &&
-            plannedIdsForModel.includes(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID)
-          ? [HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID]
-          : toolBearingKhalaRequest || glmSaturationStressKhalaRequest
-            ? selectAdapterPlanForKhalaToolRequest(
-                requestedModel,
-                plannedIdsForModel,
-              )
-            : plannedIdsForModel
+    const basePlannedIds = mirrorcodeStrongCodingKhalaRequest
+      ? selectAdapterPlanForKhalaStrongCodingRequest(
+          requestedModel,
+          plannedIdsForModel,
+        )
+      : glmSaturationStressKhalaRequest &&
+          plannedIdsForModel.includes(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID)
+        ? [HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID]
+        : toolBearingKhalaRequest || glmSaturationStressKhalaRequest
+          ? selectAdapterPlanForKhalaToolRequest(
+              requestedModel,
+              plannedIdsForModel,
+            )
+          : plannedIdsForModel
 
     // CACHE-AFFINITY RESOLUTION (book P0-2 deliverables 3+4). Compose the
     // account/session/codebase key, its public-safe hash (for the receipt), and
@@ -2992,13 +2897,9 @@ export const handleChatCompletions = (
       id => deps.registry.resolve(id) !== undefined,
     )
     if (!hasViableLane) {
-      return withByokResponseHeader(
-        noStoreJsonResponse(
-          { error: 'model_unavailable', model: requestedModel },
-          { status: 400 },
-        ),
-        byok,
-        false,
+      return noStoreJsonResponse(
+        { error: 'model_unavailable', model: requestedModel },
+        { status: 400 },
       )
     }
 
@@ -3072,9 +2973,6 @@ export const handleChatCompletions = (
           : { abortSignal: preemptionAbortController.signal }),
         priority: routeDemandClass,
       },
-      byok._tag === 'accepted'
-        ? { apiKey: byok.apiKey, provider: byok.provider }
-        : undefined,
     )
     // The raw cache-affinity key threaded into every telemetry build site so the
     // receipt records its public-safe HASH (never the raw key). Undefined for
@@ -3309,7 +3207,6 @@ export const handleChatCompletions = (
           headers: {
             'cache-control': 'no-store',
             'content-type': 'text/event-stream; charset=utf-8',
-            ...byokResponseHeaders(byok, true),
             // Advertise the resumable read URL only when the completion is being
             // persisted. The opaque request id carries no prompt/credential
             // material, so this header is safe (INVARIANTS: no leakage).
@@ -3330,11 +3227,7 @@ export const handleChatCompletions = (
       // path (which would double-dispatch and could 524 again).
       if (sseDispatch.error.kind !== 'stream_not_supported') {
         yield* Effect.promise(() => releasePreemptionSlot())
-        return withByokResponseHeader(
-          providerErrorResponse(sseDispatch.error),
-          byok,
-          false,
-        )
+        return providerErrorResponse(sseDispatch.error)
       }
 
       // Run the stream op across the lane plan; the served adapter id rides
@@ -3352,11 +3245,7 @@ export const handleChatCompletions = (
         Effect.ensuring(Effect.promise(() => releasePreemptionSlot())),
       )
       if (!chunks.ok) {
-        return withByokResponseHeader(
-          providerErrorResponse(chunks.error),
-          byok,
-          false,
-        )
+        return providerErrorResponse(chunks.error)
       }
       const servedChunks = chunks.served.value.value
       // Settle metering from the terminal usage frame (receipt-first).
@@ -3574,7 +3463,6 @@ export const handleChatCompletions = (
         headers: {
           'cache-control': 'no-store',
           'content-type': 'text/event-stream; charset=utf-8',
-          ...byokResponseHeaders(byok, true),
         },
         status: 200,
       })
@@ -3594,11 +3482,7 @@ export const handleChatCompletions = (
       Effect.ensuring(Effect.promise(() => releasePreemptionSlot())),
     )
     if (!result.ok) {
-      return withByokResponseHeader(
-        providerErrorResponse(result.error),
-        byok,
-        false,
-      )
+      return providerErrorResponse(result.error)
     }
 
     // KHALA IDENTITY GUARD (STEP 2). Run the typed identity signature over the
@@ -3817,6 +3701,5 @@ export const handleChatCompletions = (
         }),
         result: guardedResult,
       }),
-      { headers: byokResponseHeaders(byok, true) },
     )
   })

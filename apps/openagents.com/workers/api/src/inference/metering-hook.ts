@@ -101,10 +101,6 @@ export type MeteringContext = Readonly<{
 // credits are decremented (or `metered: true` + `zeroCharge` when usage rounded
 // to a zero charge, e.g. an empty/no-token completion).
 export type MeteringOutcome = Readonly<{
-  // True when the caller supplied their own upstream provider API key. The
-  // gateway still records served tokens, but it must not debit OpenAgents
-  // credits for upstream cost.
-  byok?: boolean | undefined
   metered: boolean
   // Public-safe ledger/usage receipt ref when metering is live; null for the
   // stub. Never a raw amount, destination, or payment material here.

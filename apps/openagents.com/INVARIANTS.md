@@ -35,21 +35,6 @@ This is the invariant ledger for `openagents`.
   `docs/mpp/`.
 - Owner directive, 2026-06-23.
 
-## Khala BYOK Caller-Paid Inference
-
-- Khala gateway BYOK (`x-openagents-provider: openrouter` plus
-  `x-openagents-provider-key`) is caller-paid upstream capacity. The gateway may
-  route the request with the caller's redacted provider key and count exact
-  served tokens in `token_usage_events`, but it must not debit OpenAgents
-  credits or treat the request as OpenAgents-funded resale capacity.
-- BYOK keys are per-request secret material: validate only shape bounds, carry
-  as redacted values, never log or persist the raw key, and never expose it in
-  receipts, traces, token rows, public counters, or error bodies.
-- BYOK does not widen subscription-account resale or provider-peer authority.
-  It is distinct from stored Autopilot provider-peer keys and from MPP or
-  settlement-bearing capacity. Unsupported providers and malformed key shapes
-  fail before provider dispatch.
-
 ## Login Surface
 
 - The `/login` SPA page (`LoginRoute` / `loginRouter`, `apps/web/src/page/login.ts`)

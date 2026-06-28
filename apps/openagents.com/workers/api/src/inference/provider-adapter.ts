@@ -14,7 +14,7 @@
 // so a real client works by changing only base URL + key. Anthropic Messages is
 // a parallel surface (#5476 leaves a clean spot); both normalize into the same
 // adapter request/result here.
-import { Effect, Redacted } from 'effect'
+import { Effect } from 'effect'
 
 // A single chat message in the normalized request. `role`/`content` mirror the
 // OpenAI Chat Completions shape so adapters can pass through with minimal
@@ -38,12 +38,6 @@ export type InferenceMessage = Readonly<{
 // forwards verbatim; adapters apply only the ones their provider supports.
 export type InferenceRequest = Readonly<{
   abortSignal?: AbortSignal | undefined
-  callerProviderKey?:
-    | Readonly<{
-        apiKey: Redacted.Redacted<string>
-        provider: 'openrouter'
-      }>
-    | undefined
   model: string
   messages: ReadonlyArray<InferenceMessage>
   priority?: InferenceRequestPriority | undefined
