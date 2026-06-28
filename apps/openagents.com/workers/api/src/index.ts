@@ -739,6 +739,7 @@ import { makeProviderAccountPylonHandlers } from './provider-account-pylon-route
 import { makeProviderAccountRoutes } from './provider-account-routes'
 import { makeProviderAccountServiceHandlers } from './provider-account-service-routes'
 import { makeProviderAccountUsageRoutes } from './provider-account-usage-routes'
+import { handleOperatorFleetStatusApi } from './operator-fleet-status-routes'
 import {
   type CodexOAuthAuth,
   type ProviderAccountBundle,
@@ -10847,6 +10848,18 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
           servedVia: result.servedVia,
           text: result.text.slice(0, 600),
         })
+      }),
+  },
+  {
+    path: '/api/operator/fleet/status',
+    handler: (request, env) =>
+      handleOperatorFleetStatusApi(request, {
+        OPENAGENTS_DB: openAgentsDatabase(env),
+        glmStatusLoader: makeArtanisGlmFleetStatusLoader({
+          db: openAgentsDatabase(env),
+          env,
+        }),
+        requireAdminApiToken: request => requireAdminApiToken(request, env),
       }),
   },
   {
