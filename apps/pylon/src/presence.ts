@@ -18,6 +18,12 @@ import {
 } from "./provider-nip90.js"
 import { CODEX_AGENT_CAPABILITY_REF } from "./codex-agent.js"
 import { CLAUDE_AGENT_CAPABILITY_REF } from "./claude-agent.js"
+import {
+  appleFmBackendCapacityRefs,
+  collectPylonAppleFmStatus,
+  withAppleFmBackendCapabilities,
+  type PylonAppleFmStatusProjection,
+} from "./node/apple-fm-status.js"
 import { publishableCapabilityRefs } from "./tassadar-capability.js"
 import { createNip98Event, encodeNip98Authorization, loadOrCreateNostrIdentity } from "./nostr-identity.js"
 import {
@@ -64,6 +70,10 @@ export type PresenceClientOptions = {
   // orchestration from the assignment poll route. This keeps heartbeat capacity
   // honest when a prior no-spend lease exists but no fresh local marker remains.
   activeRunCounts?: PylonActiveCodingRunCounts
+  // Test and node-internal seam for the live Apple FM bridge readiness report.
+  // When omitted, heartbeat probes the local /health endpoint through the shared
+  // Probe runtime capability reporter.
+  appleFmStatusProbe?: () => Promise<PylonAppleFmStatusProjection>
 }
 
 // Map the local wallet probe to the heartbeat's public readiness fields. The
@@ -729,6 +739,17 @@ export async function sendHeartbeat(summary: BootstrapSummary, options: Presence
       claudeBusyByAccount(activeRunCountsByAccount),
     ),
   )
+  const appleFmStatus = options.appleFmStatusProbe === undefined
+    ? await collectPylonAppleFmStatus({
+        env: presenceEnv,
+        now: options.now?.(),
+        summary,
+      })
+    : await options.appleFmStatusProbe()
+  const appleFmRefs = appleFmBackendCapacityRefs(appleFmStatus)
+  const capabilityRefs = publishableCapabilityRefs(
+    withAppleFmBackendCapabilities(state.runtime.capabilityRefs, appleFmStatus),
+  )
   const body: PylonHeartbeatRequest = {
     schema: "openagents.pylon.heartbeat.v0.3",
     pylonRef: state.identity.pylonRef,
@@ -740,23 +761,25 @@ export async function sendHeartbeat(summary: BootstrapSummary, options: Presence
       ...codingRefs.capacityRefs,
       ...codexAccountRefs.capacityRefs,
       ...claudeAccountRefs.capacityRefs,
+      ...appleFmRefs.capacityRefs,
     ],
     clientProtocolVersion: "0.3.0",
     clientVersion: PYLON_CLIENT_VERSION,
-    healthRefs: ["health.public.pylon_cli.ok"],
+    healthRefs: ["health.public.pylon_cli.ok", ...appleFmRefs.healthRefs],
     loadRefs: [
       "load.public.pylon_cli.low",
       ...codingRefs.loadRefs,
       ...codexAccountRefs.loadRefs,
       ...claudeAccountRefs.loadRefs,
+      ...appleFmRefs.loadRefs,
     ],
     resourceMode: state.runtime.resourceMode,
     status: "online",
     walletReadiness,
     ...(walletReady === undefined ? {} : { walletReady }),
     assignmentReadiness: state.runtime.lifecycle === "assignment-ready" ? "ready" : "not-ready",
-    capabilityRefs: publishableCapabilityRefs(state.runtime.capabilityRefs),
-    blockerRefs: [...state.runtime.blockerRefs, ...presence.blockerRefs],
+    capabilityRefs,
+    blockerRefs: [...new Set([...state.runtime.blockerRefs, ...presence.blockerRefs, ...appleFmStatus.blockerRefs])],
     ...providerDiscoveryFields(state, options.env ?? process.env),
   }
   await postJson(options, {

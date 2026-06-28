@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test"
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
 import {
+  appleFmBackendCapacityRefs,
   collectPylonAppleFmStatus,
+  withAppleFmBackendCapabilities,
   withAppleFmSupervisorStatus,
   type PylonAppleFmStatusProjection,
 } from "../src/node/apple-fm-status"
@@ -54,6 +56,62 @@ function drive(
 }
 
 describe("withAppleFmSupervisorStatus", () => {
+  test("live ready status adds Apple FM capability and inference capacity refs", async () => {
+    const projection = await readyProjection()
+
+    expect(withAppleFmBackendCapabilities([], projection)).toEqual(
+      expect.arrayContaining([
+        "probe.backend.apple_fm_bridge",
+        "adapter.probe.apple_fm.blueprint_tools.v1",
+        "probe.program_run.evidence.local_offline",
+      ]),
+    )
+    expect(appleFmBackendCapacityRefs(projection)).toEqual({
+      capacityRefs: [
+        "capacity.inference.apple_fm_bridge.ready=1",
+        "capacity.inference.apple_fm_bridge.available=1",
+      ],
+      healthRefs: [
+        "health.inference.apple_fm_bridge.ready",
+        "model.inference.apple_fm_bridge.apple_foundation_model",
+        "profile.inference.apple_fm_bridge.apple_fm_local",
+      ],
+      loadRefs: [
+        "load.inference.apple_fm_bridge.busy=0",
+        "load.inference.apple_fm_bridge.queued=0",
+      ],
+    })
+  })
+
+  test("blocked status strips stale Apple FM capability and publishes no capacity", async () => {
+    const summary = createBootstrapSummary(
+      parseBootstrapArgs(["--json", "--pylon-ref", "pylon.test.apple-fm-blocked"]),
+      env,
+    )
+    const blocked = await collectPylonAppleFmStatus({
+      summary,
+      env,
+      fetch: (async () =>
+        Response.json({
+          ready: false,
+          unavailableReason: "apple_intelligence_disabled",
+        })) as typeof fetch,
+      now: new Date("2026-06-15T00:00:00.000Z"),
+    })
+
+    expect(
+      withAppleFmBackendCapabilities(
+        ["probe.backend.apple_fm_bridge", "probe.blueprint.tool_menu", "capability.pylon.local_codex"],
+        blocked,
+      ),
+    ).toEqual(["capability.pylon.local_codex"])
+    expect(appleFmBackendCapacityRefs(blocked)).toEqual({
+      capacityRefs: [],
+      healthRefs: [],
+      loadRefs: [],
+    })
+  })
+
   test("base projection has no supervisor until one is attached", async () => {
     const base = await readyProjection()
     expect(base.available).toBe(true)

@@ -78,6 +78,11 @@ import {
 } from "./node/control-server.js"
 import { createSupervisedAppleFmStatusAction } from "./node/apple-fm-supervised-status.js"
 import {
+  appleFmBackendCapacityRefs,
+  collectPylonAppleFmStatus,
+  withAppleFmBackendCapabilities,
+} from "./node/apple-fm-status.js"
+import {
   createAppleFmSupervisedLaunch,
   type AppleFmSupervisedLaunch,
 } from "./node/apple-fm-supervised-launch.js"
@@ -4971,6 +4976,10 @@ async function main() {
           config: await loadCodexAgentConfig(summary),
           codexAccountHomes: connectedCodexHomes,
         })
+        const appleFmStatus = await collectPylonAppleFmStatus({
+          env: Bun.env,
+          summary,
+        })
         // W4.1 (#4750): the Tassadar executor capability is declared
         // only behind a passing self-test receipt — a real digest-pinned
         // execution on this device — never by configuration assertion.
@@ -4985,11 +4994,14 @@ async function main() {
           capabilityRefs: withWorkspaceMaterializerCapability(
             withCodexAgentCapability(
               withClaudeAgentCapability(
-                [...new Set([
-                  ...mergeTassadarCapabilityRefs(state.runtime.capabilityRefs, tassadarDeclaration),
-                  PYLON_NIP90_PROVIDER_CAPABILITY_REF,
-                  PYLON_LABOR_CAPABILITY_REF,
-                ])],
+                withAppleFmBackendCapabilities(
+                  [...new Set([
+                    ...mergeTassadarCapabilityRefs(state.runtime.capabilityRefs, tassadarDeclaration),
+                    PYLON_NIP90_PROVIDER_CAPABILITY_REF,
+                    PYLON_LABOR_CAPABILITY_REF,
+                  ])],
+                  appleFmStatus,
+                ),
                 claudeAgentReadiness,
               ),
               codexAgentReadiness,
@@ -5001,6 +5013,7 @@ async function main() {
               ref !== PYLON_TASSADAR_SELF_TEST_FAILED_BLOCKER_REF,
             ),
             ...tassadarDeclaration.blockerRefs,
+            ...appleFmStatus.blockerRefs,
           ])],
         }
         await writeRuntimeState(state.paths, nextRuntime)
@@ -5021,6 +5034,7 @@ async function main() {
           ),
         )
         const codexAccountRefs = codexAccountCapacityRefs(codexAccounts)
+        const appleFmRefs = appleFmBackendCapacityRefs(appleFmStatus)
         const codexCapacity = codingCapacity.find((item) => item.service === "codex") ?? {
           available: 0,
           busy: 0,
@@ -5041,6 +5055,17 @@ async function main() {
           codexAgent: {
             state: codexAgentReadiness.state,
             credentialSourceRef: codexAgentReadiness.credentialSourceRef,
+          },
+          appleFmBackend: {
+            backendKind: appleFmStatus.backendKind,
+            profileId: appleFmStatus.profileId,
+            model: appleFmStatus.model,
+            status: appleFmStatus.status,
+            available: appleFmStatus.available,
+            capabilityRef: appleFmStatus.capability,
+            advertisedCapabilities: appleFmStatus.advertisedCapabilities,
+            capacityRefs: appleFmRefs.capacityRefs,
+            blockerRefs: appleFmStatus.blockerRefs,
           },
           ownCapacityDispatch: {
             schema: "openagents.pylon.own_capacity_dispatch.v1",

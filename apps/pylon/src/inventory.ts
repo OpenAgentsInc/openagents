@@ -281,7 +281,7 @@ export async function discoverHostInventory(input: { now?: Date; env?: Record<st
     externalNetworkInterfaceCount: net.externalInterfaceCount,
     opencodeInstalled: Boolean(Bun.which("opencode")),
     geminiConfigured: Boolean((input.env ?? Bun.env).GEMINI_API_KEY || (input.env ?? Bun.env).GOOGLE_GENERATIVE_AI_API_KEY),
-    appleFmReady: platform() === "darwin" && arch() === "arm64",
+    appleFmReady: false,
     psionicConfigured: Boolean((input.env ?? Bun.env).PYLON_PSIONIC_BASE_URL || (input.env ?? Bun.env).PROBE_PSIONIC_BASE_URL),
     psionicReady: false,
     psionicModelRefs: [],
