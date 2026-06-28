@@ -13,6 +13,11 @@ import {
   type GlmLiveAdaptiveStressObservation,
   type GlmLiveAdaptiveStressWindow,
 } from '../src/inference/benchmark/live-adaptive-stress-runner'
+import {
+  currentEpochMillis,
+  currentIsoTimestamp,
+  epochMillisToIsoTimestamp,
+} from '../src/runtime-primitives'
 
 const args = process.argv.slice(2)
 
@@ -32,7 +37,7 @@ const numberOption = (name: string, fallback: number): number => {
 }
 
 const timestampForRunId = (): string =>
-  new Date().toISOString().replace(/[:-]/gu, '').replace(/\.\d{3}Z$/u, 'Z')
+  currentIsoTimestamp().replace(/[:-]/gu, '').replace(/\.\d{3}Z$/u, 'Z')
 
 const help = (): string => [
   'Usage: bun run scripts/khala-glm-adaptive-stress.ts [options]',
@@ -197,7 +202,7 @@ const runCurlRequest = async (
     '--write-out',
     '{"httpCode":%{http_code},"timeStartTransfer":%{time_starttransfer},"timeTotal":%{time_total}}',
   ]
-  const startedAt = Date.now()
+  const startedAt = currentEpochMillis()
   const proc = Bun.spawn(['curl', ...curlArgs], {
     stderr: 'pipe',
     stdin: 'pipe',
@@ -250,7 +255,7 @@ const runCurlRequest = async (
     wallClockMs:
       metrics.timeTotal > 0
         ? Math.round(metrics.timeTotal * 1000)
-        : Date.now() - startedAt,
+        : currentEpochMillis() - startedAt,
     worker,
   }
 }
@@ -265,7 +270,7 @@ if (!flag('--dry-run') && (token === undefined || token.trim() === '')) {
   process.exit(2)
 }
 
-const startedAt = Date.now()
+const startedAt = currentEpochMillis()
 const deadline = startedAt + durationMs
 let requestIndex = 0
 let currentConcurrency = initialConcurrency
@@ -332,9 +337,9 @@ const closeWindow = (completedAtMs: number): void => {
     observations: windowObservations,
   })
   windows.push({
-    completedAt: new Date(completedAtMs).toISOString(),
+    completedAt: epochMillisToIsoTimestamp(completedAtMs),
     decision,
-    startedAt: new Date(nextWindowAt - windowMs).toISOString(),
+    startedAt: epochMillisToIsoTimestamp(nextWindowAt - windowMs),
   })
   currentConcurrency = decision.nextConcurrency
   consecutiveCleanWindows = decision.nextConsecutiveCleanWindows
@@ -359,7 +364,7 @@ if (flag('--dry-run')) {
     demandClient: runId,
     durationMs: 0,
     finalConcurrency: initialConcurrency,
-    generatedAt: new Date().toISOString(),
+    generatedAt: currentIsoTimestamp(),
     initialConcurrency,
     maxConcurrency,
     maxTokens,
@@ -381,15 +386,15 @@ if (flag('--dry-run')) {
   process.exit(0)
 }
 
-while (Date.now() < deadline || inFlight.size > 0) {
+while (currentEpochMillis() < deadline || inFlight.size > 0) {
   while (
-    Date.now() < deadline &&
+    currentEpochMillis() < deadline &&
     !windowBreakerTripped &&
     inFlight.size < currentConcurrency
   ) {
     launch()
   }
-  const now = Date.now()
+  const now = currentEpochMillis()
   if (
     now >= nextWindowAt ||
     (windowBreakerTripped && inFlight.size === 0 && windowObservations.length > 0)
@@ -404,14 +409,14 @@ while (Date.now() < deadline || inFlight.size > 0) {
 }
 
 if (windowObservations.length > 0) {
-  closeWindow(Date.now())
+  closeWindow(currentEpochMillis())
 }
 
 const artifact = buildGlmLiveAdaptiveStressArtifact({
   demandClient: runId,
-  durationMs: Date.now() - startedAt,
+  durationMs: currentEpochMillis() - startedAt,
   finalConcurrency: currentConcurrency,
-  generatedAt: new Date().toISOString(),
+  generatedAt: currentIsoTimestamp(),
   initialConcurrency,
   maxConcurrency,
   maxTokens,
