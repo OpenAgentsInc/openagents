@@ -1267,24 +1267,28 @@ export const publicProductPromisesDocument = () => {
         claim:
           'OpenAgents is API-driven and may offer hosted Gemini through an OpenAgents API surface.',
         safeCopy:
-          'OpenAgents can verify paid Autopilot delegation through a hosted Gemini closeout bridge in the route harness, but no public paid hosted Gemini inference product is live.',
-        unsafeCopy: 'Do not claim a paid hosted Gemini inference API is live.',
+          'OpenAgents has route-covered hosted Gemini execution through the env-gated Vertex binding and the OpenAI-compatible Khala gateway enforces account credits, entitlement/free-quota gates, metering, and served-token rows. The promise stays yellow until a real production receipt and owner-approved upgrade evidence are attached.',
+        unsafeCopy:
+          'Do not claim hosted Gemini is green, settled, broadly resale-ready, or owner-approved without a real production receipt.',
         evidenceRefs: [
           'apps/openagents.com/workers/api/src/artanis-mind.ts',
           'post.public.forum.artanis.status.5',
           'https://openagents.com/api/openapi.json',
           'apps/openagents.com/docs/2026-06-08-google-adc-gemini-agent-platform-auth-audit.md',
           'apps/openagents.com/workers/api/src/autopilot-work-routes.test.ts',
+          'apps/openagents.com/workers/api/src/inference/chat-completions-routes.test.ts',
+          'apps/openagents.com/workers/api/src/autopilot-hosted-gemini-executor-env.ts',
+          'apps/openagents.com/workers/api/src/inference/served-tokens-recorder.ts',
           'docs/autopilot-coder/2026-06-09-probe-autopilot-sites-agent-api-audit.md',
         ],
         blockerRefs: [
-          'blocker.product_promises.public_paid_model_gateway_missing',
-          'blocker.product_promises.production_hosted_gemini_executor_binding_missing',
+          'blocker.product_promises.hosted_gemini_production_receipt_pending',
+          'blocker.product_promises.hosted_gemini_owner_upgrade_signoff_pending',
         ],
         verification:
-          'A local Autopilot route smoke can price a hosted_gemini request, return L402, accept a paid retry, run an injected hosted executor, persist a public-safe delivered closeout, and expose delivered events. A live hosted Gemini claim still needs a registered-agent production smoke, executor binding, billing, entitlement, provider policy, quota, metering, and settlement refs.',
+          'Route tests cover the env-gated hosted Gemini executor delivering a public-safe Autopilot closeout when armed, and a registered-agent Khala gateway request reaching the armed Vertex Gemini lane with entitlement/balance admission, metered usage, and served-token recording. Green still requires a real production receipt and owner-approved claim upgrade evidence.',
         authorityBoundary:
-          'API-driven product surfaces are not generic provider-capacity resale authority.',
+          'API-driven product surfaces are not generic provider-capacity resale, settlement, or green-promise authority without receipt-backed owner sign-off.',
       },
       {
         ...basePromiseFields,

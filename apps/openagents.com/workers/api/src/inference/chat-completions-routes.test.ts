@@ -256,6 +256,18 @@ const hydraliskGlm52ReapReadyArming = resolveSupplyLaneArming({
     'receipt.hydralisk.glm_52_reap_504b.g4.mtp2_smoke.v1',
 })
 
+const vertexGeminiReadyArming = resolveSupplyLaneArming({
+  HYDRALISK_GLM_52_REAP_504B_BASE_URL:
+    'https://hydralisk-glm-52-reap-504b.example.test',
+  HYDRALISK_GLM_52_REAP_504B_BEARER_TOKEN: 'secret-route-token',
+  HYDRALISK_GLM_52_REAP_504B_ENABLED: 'ready',
+  HYDRALISK_GLM_52_REAP_504B_PREFLIGHT_REF:
+    'preflight.hydralisk.glm_52_reap_504b.g4.mtp2.v1',
+  HYDRALISK_GLM_52_REAP_504B_RECEIPT_REF:
+    'receipt.hydralisk.glm_52_reap_504b.g4.mtp2_smoke.v1',
+  VERTEX_SA_KEY: '{"client_email":"vertex-gemini@example.test"}',
+})
+
 const HYDRALISK_RETRYABLE_STATUS_CASES = [
   [429, 'rate_limited'],
   [503, 'service_overloaded'],
@@ -4771,6 +4783,102 @@ describe('POST /v1/chat/completions serving-policy gate', () => {
       ),
     )
     expect(response.status).toBe(200)
+  })
+
+  test('registered-agent hosted Gemini request runs the armed Vertex lane, meters usage, and records served tokens', async () => {
+    const registry = new InferenceProviderRegistry()
+    const metered: Array<MeteringContext> = []
+    const servedRows: Array<{
+      accountRef: string
+      adapterId: string
+      requestId: string
+      usage: InferenceUsage
+    }> = []
+    let dispatchCount = 0
+
+    registry.register({
+      complete: request =>
+        Effect.sync(() => {
+          dispatchCount += 1
+          expect(request.model).toBe('gemini-3.5-flash')
+          return {
+            content: 'READY-GEMINI',
+            finishReason: 'stop',
+            servedModel: 'gemini-3.5-flash',
+            usage: { completionTokens: 13, promptTokens: 21, totalTokens: 34 },
+          }
+        }),
+      id: VERTEX_GEMINI_ADAPTER_ID,
+      stream: () => Effect.sync(() => []),
+    })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          messages: [{ content: 'Run the hosted Gemini smoke.', role: 'user' }],
+          model: KHALA_MODEL_ID,
+        }),
+        baseDeps({
+          authenticate: async () => ({ accountRef: 'agent:registered-gemini' }),
+          laneArming: vertexGeminiReadyArming,
+          lanePlan: selectAdapterPlan,
+          meteringHook: context =>
+            Effect.sync(() => {
+              metered.push(context)
+              return {
+                metered: true,
+                receiptRef: 'receipt.inference.charge.chatcmpl-hosted-gemini',
+              }
+            }),
+          newId: () => 'chatcmpl-hosted-gemini',
+          recordTokensServed: input =>
+            Effect.sync(() => {
+              servedRows.push({
+                accountRef: input.accountRef,
+                adapterId: input.adapterId,
+                requestId: input.requestId,
+                usage: input.usage,
+              })
+            }),
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      choices: ReadonlyArray<{ message: { content: string } }>
+      openagents?: {
+        billing?: { mode: string; receipt_required: boolean }
+        worker?: string
+      }
+    }
+    expect(body.choices[0]?.message.content).toBe('READY-GEMINI')
+    expect(body.openagents?.worker).toBe(VERTEX_GEMINI_ADAPTER_ID)
+    expect(body.openagents?.billing).toMatchObject({
+      mode: 'receipt_backed',
+      receipt_required: true,
+    })
+    expect(dispatchCount).toBe(1)
+    expect(metered).toEqual([
+      expect.objectContaining({
+        accountRef: 'agent:registered-gemini',
+        adapterId: VERTEX_GEMINI_ADAPTER_ID,
+        requestId: 'chatcmpl-hosted-gemini',
+        requestedModel: KHALA_MODEL_ID,
+        servedModel: 'gemini-3.5-flash',
+        streamed: false,
+        usage: { completionTokens: 13, promptTokens: 21, totalTokens: 34 },
+      }),
+    ])
+    expect(servedRows).toEqual([
+      {
+        accountRef: 'agent:registered-gemini',
+        adapterId: VERTEX_GEMINI_ADAPTER_ID,
+        requestId: 'chatcmpl-hosted-gemini',
+        usage: { completionTokens: 13, promptTokens: 21, totalTokens: 34 },
+      },
+    ])
   })
 
   test('rejects an UNKNOWN (non-Khala) model id with model_unavailable', async () => {
