@@ -1216,6 +1216,10 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   // Owner-gated inference cost / provider-lane analytics (#6232): internal cost
   // + provider data, owner session only, not part of the public OpenAPI surface.
   '/api/admin/inference-analytics',
+  // Operator fleet status aggregator (#6427): admin/operator snapshot for
+  // internal Artanis and fleet surfaces; public pages consume a later
+  // public-safe projection, not this operator route directly.
+  '/api/operator/fleet/status',
   '/api/admin/provider-accounts/usage',
   '/api/admin/sync/notify',
   // Self-hosted trace media blob serving (#6223): serves the public-safe R2 blob

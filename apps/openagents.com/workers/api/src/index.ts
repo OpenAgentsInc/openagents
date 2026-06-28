@@ -717,6 +717,7 @@ import {
 import { makeOperatorBillingHandlers } from './operator-billing-routes'
 import { makeOperatorBuyModeRoutes } from './operator-buy-mode-routes'
 import { makeOperatorEmailInspectionRoutes } from './operator-email-inspection-routes'
+import { makeOperatorFleetStatusRoutes } from './operator-fleet-status-routes'
 import { makeOperatorOrderTriageRoutes } from './operator-order-triage-routes'
 import { makeOperatorProviderAccountRoutes } from './operator-provider-account-routes'
 import { makeOperatorPylonMarketplaceRoutes } from './operator-pylon-marketplace-routes'
@@ -8888,6 +8889,10 @@ const operatorPylonMarketplaceRoutes = makeOperatorPylonMarketplaceRoutes({
   requireBrowserSession,
 })
 
+const operatorFleetStatusRoutes = makeOperatorFleetStatusRoutes({
+  requireAdminApiToken,
+})
+
 const nexusPylonVisibilityRoutes = makeNexusPylonVisibilityRoutes({
   appendRefreshedSessionCookies,
   currentIsoTimestamp,
@@ -11096,6 +11101,13 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     path: '/api/admin/inference-analytics',
     handler: (request, env, ctx) =>
       tokenUsageLedgerRoutes.handleInferenceAnalyticsApi(request, env, ctx),
+  },
+  {
+    path: '/api/operator/fleet/status',
+    handler: (request, env) =>
+      Effect.promise(() =>
+        operatorFleetStatusRoutes.handleOperatorFleetStatusApi(request, env),
+      ),
   },
   {
     path: '/api/stats/token-usage/leaderboards',
