@@ -561,6 +561,24 @@ then full source-of-truth inversion at `forge.openagents.com`.
 > dependency logic below remain the longer-term map; the live issue set is the
 > committed first implementation slice.
 
+> FORGE-0 first-wave completion, 2026-06-28: the live GitHub issue slice
+> (#6746, #6747, #6748, #6750, #6751, #6752) is complete and pushed to `main`.
+> The owned Forge foundation now has D1 source-of-truth rows, typed protocol
+> schemas, a local receive-pack parser, R2 packfile metadata archiving,
+> tenant-scoped git access tokens, Pylon dispatch messages, and a
+> Docker-isolated Bun verification runner. The original longer roadmap below
+> remains the next implementation map; the first-wave GitHub epic can close
+> because its concrete sub-issues are done.
+
+> FORGE-1 status, 2026-06-28: Worker-side D1 coordination source-of-truth rows
+> landed in migration `0251_forge_coordination_source_of_truth.sql`, with typed
+> Effect schemas in `@openagentsinc/forge-protocol` and the store/tests at
+> `apps/openagents.com/workers/api/src/forge-coordination-store.ts`. The first
+> row set covers Forge issues, PR/change records, NIP-34-aligned status rows,
+> dispatch leases, and merge-queue ledger snapshots. Stores decode every row
+> through the shared protocol package so Workers and Pylon do not fork local
+> coordination contracts.
+
 > FORGE-2 status, 2026-06-28: Pylon now has a local pure
 > `git-receive-pack` parser at `apps/pylon/src/git-receive-pack.ts`. The parser
 > validates pkt-line framing, ref update commands, SHA-1/SHA-256 object IDs,
