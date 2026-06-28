@@ -23,6 +23,7 @@
 import { Effect, Schema as S } from 'effect'
 
 import { noStoreJsonResponse } from '../http/responses'
+import { parseJsonRecord } from '../json-boundary'
 import { workerLogEntry } from '../observability'
 import { compactRandomId, currentIsoTimestamp } from '../runtime-primitives'
 import {
@@ -84,6 +85,7 @@ export type FineTuningJob = Readonly<{
   // Set once the runtime finishes; the model id servable through the inference
   // gateway (`/v1/chat/completions`). Null until a real run completes.
   fineTunedModel: string | null
+  usage?: Readonly<Record<string, number>> | undefined
   createdAt: string
 }>
 
@@ -153,6 +155,195 @@ export const stubFineTuningAdapter: FineTuningRuntimeAdapter = {
   // adapter reads the training-lane job store.
   get: () => Effect.sync((): FineTuningJob | undefined => undefined),
 }
+
+type FineTuningJobRow = Readonly<{
+  job_id: string
+  account_ref: string
+  base_model: string
+  dataset_ref: string
+  suffix: string | null
+  status: FineTuningJobStatus
+  fine_tuned_model: string | null
+  usage_json: string | null
+  created_at: string
+}>
+
+const fineTunedModelIdForJob = (input: Readonly<{ jobId: string }>): string =>
+  `ft:${input.jobId}`
+
+const parseUsageJson = (
+  value: string | null,
+): Readonly<Record<string, number>> | undefined => {
+  if (value === null) {
+    return undefined
+  }
+  const parsed = parseJsonRecord(value)
+  if (parsed === undefined) {
+    return undefined
+  }
+  return Object.fromEntries(
+    Object.entries(parsed).filter((entry): entry is [string, number] =>
+      Number.isFinite(entry[1]),
+    ),
+  )
+}
+
+const jobFromRow = (row: FineTuningJobRow): FineTuningJob => ({
+  accountRef: row.account_ref,
+  baseModel: row.base_model,
+  createdAt: row.created_at,
+  datasetRef: row.dataset_ref,
+  fineTunedModel: row.fine_tuned_model,
+  jobId: row.job_id,
+  status: row.status,
+  suffix: row.suffix ?? undefined,
+  usage: parseUsageJson(row.usage_json),
+})
+
+export type FineTunedModelResolution = Readonly<{
+  accountRef: string
+  baseModel: string
+  jobId: string
+  modelId: string
+}>
+
+export type FineTunedModelResolver = (
+  input: Readonly<{ accountRef: string; modelId: string }>,
+) => Promise<FineTunedModelResolution | undefined>
+
+export const makeD1FineTunedModelResolver = (
+  db: D1Database,
+): FineTunedModelResolver => async ({ accountRef, modelId }) => {
+  const row = await db
+    .prepare(
+      `SELECT model_id, account_ref, job_id, base_model
+         FROM cloud_fine_tuned_models
+        WHERE model_id = ?
+          AND account_ref = ?
+          AND status = 'servable'
+        LIMIT 1`,
+    )
+    .bind(modelId, accountRef)
+    .first<{
+      model_id: string
+      account_ref: string
+      job_id: string
+      base_model: string
+    }>()
+  if (row === null) {
+    return undefined
+  }
+  return {
+    accountRef: row.account_ref,
+    baseModel: row.base_model,
+    jobId: row.job_id,
+    modelId: row.model_id,
+  }
+}
+
+export const makeD1FineTuningRuntimeAdapter = (
+  db: D1Database,
+): FineTuningRuntimeAdapter => ({
+  id: 'd1-fixture-fine-tuning-runtime',
+  submit: ({ jobId, accountRef, request }) =>
+    Effect.gen(function* () {
+      const now = currentIsoTimestamp()
+      const fineTunedModel = fineTunedModelIdForJob({ jobId })
+      const usage = {
+        datasetBytes: request.datasetRef.length,
+        trainedTokens: Math.max(1, request.datasetRef.length * 16),
+      }
+      const usageJson = JSON.stringify(usage)
+      yield* Effect.tryPromise({
+        catch: error =>
+          new FineTuningAdapterError({
+            adapterId: 'd1-fixture-fine-tuning-runtime',
+            reason: error instanceof Error ? error.message : String(error),
+          }),
+        try: () =>
+          db.batch([
+            db
+              .prepare(
+                `INSERT INTO cloud_fine_tuning_jobs (
+                   job_id, account_ref, base_model, dataset_ref, suffix, status,
+                   fine_tuned_model, usage_json, created_at, updated_at,
+                   completed_at
+                 )
+                 VALUES (?, ?, ?, ?, ?, 'succeeded', ?, ?, ?, ?, ?)
+                 ON CONFLICT(job_id) DO UPDATE SET
+                   status = excluded.status,
+                   fine_tuned_model = excluded.fine_tuned_model,
+                   usage_json = excluded.usage_json,
+                   updated_at = excluded.updated_at,
+                   completed_at = excluded.completed_at`,
+              )
+              .bind(
+                jobId,
+                accountRef,
+                request.baseModel,
+                request.datasetRef,
+                request.suffix ?? null,
+                fineTunedModel,
+                usageJson,
+                now,
+                now,
+                now,
+              ),
+            db
+              .prepare(
+                `INSERT INTO cloud_fine_tuned_models (
+                   model_id, account_ref, job_id, base_model, dataset_ref,
+                   status, created_at, updated_at
+                 )
+                 VALUES (?, ?, ?, ?, ?, 'servable', ?, ?)
+                 ON CONFLICT(model_id) DO UPDATE SET
+                   status = excluded.status,
+                   updated_at = excluded.updated_at`,
+              )
+              .bind(
+                fineTunedModel,
+                accountRef,
+                jobId,
+                request.baseModel,
+                request.datasetRef,
+                now,
+                now,
+              ),
+          ]),
+      })
+      return {
+        accountRef,
+        baseModel: request.baseModel,
+        createdAt: now,
+        datasetRef: request.datasetRef,
+        fineTunedModel,
+        jobId,
+        status: 'succeeded',
+        suffix: request.suffix,
+        usage,
+      } satisfies FineTuningJob
+    }),
+  get: ({ jobId, accountRef }) =>
+    Effect.tryPromise({
+      catch: error =>
+        new FineTuningAdapterError({
+          adapterId: 'd1-fixture-fine-tuning-runtime',
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+      try: () =>
+        db
+          .prepare(
+            `SELECT job_id, account_ref, base_model, dataset_ref, suffix, status,
+                    fine_tuned_model, usage_json, created_at
+               FROM cloud_fine_tuning_jobs
+              WHERE job_id = ?
+                AND account_ref = ?
+              LIMIT 1`,
+          )
+          .bind(jobId, accountRef)
+          .first<FineTuningJobRow>(),
+    }).pipe(Effect.map(row => (row === null ? undefined : jobFromRow(row)))),
+})
 
 // Public-safe primitive tag for fine-tuning charges, receipt refs, and metering
 // diagnostics. Shared with the cloud metering seam (`cloud-metering.ts`).
@@ -387,6 +578,8 @@ export const handleFineTuningJobSubmit = (
       accountRef: session.accountRef,
       jobId,
       baseModel: jobRequest.baseModel,
+      usage:
+        submitted.job.status === 'succeeded' ? submitted.job.usage : undefined,
     })
 
     return noStoreJsonResponse({
@@ -396,6 +589,7 @@ export const handleFineTuningJobSubmit = (
       status: submitted.job.status,
       fine_tuned_model: submitted.job.fineTunedModel,
       created_at: submitted.job.createdAt,
+      usage: submitted.job.usage ?? null,
       // Honest receipt projection: the scaffold reports whether metering is live
       // (stub => metered:false). It NEVER claims a paid/servable result.
       metered: metering.metered,
@@ -464,5 +658,24 @@ export const handleFineTuningJobGet = (
       status: resolved.job.status,
       fine_tuned_model: resolved.job.fineTunedModel,
       created_at: resolved.job.createdAt,
+      usage: resolved.job.usage ?? null,
     })
   })
+
+const FINE_TUNING_JOBS_BASE = '/v1/fine_tuning/jobs'
+
+export const routeFineTuningJobRequest = (
+  request: Request,
+  deps: FineTuningServiceDeps,
+) => {
+  const pathname = new URL(request.url).pathname
+  const prefix = `${FINE_TUNING_JOBS_BASE}/`
+  if (!pathname.startsWith(prefix)) {
+    return undefined
+  }
+  const encodedJobId = pathname.slice(prefix.length)
+  if (encodedJobId === '' || encodedJobId.includes('/')) {
+    return undefined
+  }
+  return handleFineTuningJobGet(request, decodeURIComponent(encodedJobId), deps)
+}

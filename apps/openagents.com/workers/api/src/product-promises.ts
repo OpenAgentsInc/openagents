@@ -3588,14 +3588,15 @@ export const publicProductPromisesDocument = () => {
         claim:
           'OpenAgents Cloud offers fine-tuning as a buyable primitive: submit a base model + dataset, run a fine-tune on the network, and use the resulting model through the inference gateway, billed from a credit balance.',
         safeCopy:
-          'Fine-tuning as a sellable Cloud primitive (named in Episode 239, docs/transcripts/239.md) is NOT a live billed product. A flag-gated INERT SCAFFOLD exists (EPIC #5510/#5516): the OpenAI-shaped surface (POST /v1/fine_tuning/jobs intake + GET /v1/fine_tuning/jobs/:id lifecycle read) is wired behind CLOUD_FINE_TUNING_ENABLED (default off → 404), with a runtime-adapter seam, cross-account-isolated job reads, and a REAL receipt-first credit-metering seam (cloud-metering.ts) that decrements credits through the same atomic PayIn ledger the inference gateway uses — proven against real SQL to never go negative and to be idempotent per job (no double-charge). HONEST: it ships defaulted to a stub runtime adapter with no persistence and to a no-op metering hook, so on prod it is inert and bills nothing. OpenAgents has a decentralized TRAINING lane (training.* records; decentralized_training_launch.v1 is green only for one bounded settled executor-trace scope) and a live inference gateway request surface, but there is still no real fine-tune job runtime wired to the training lane, no fine-tuned-model registration into the gateway, no live pricing, and no paid fine-tuning receipt.',
+          'Fine-tuning as a sellable Cloud primitive (named in Episode 239, docs/transcripts/239.md) is NOT a live billed product. A flag-gated scaffold exists behind CLOUD_FINE_TUNING_ENABLED (default off -> 404): POST /v1/fine_tuning/jobs runs the bounded D1 fixture runtime to completion, persists lifecycle rows, registers the resulting ft:<jobId> model in a per-account model registry, and GET /v1/fine_tuning/jobs/:id reads the real stored status with cross-account isolation. The chat gateway can resolve a caller-owned registered fine-tuned model id back to its base model for serving. Completed fixture jobs pass runtime usage into the receipt-first cloud-metering seam (cloud-metering.ts), but live pricing is zero/scaffold-only and no paid fine-tuning receipt or settlement is created. OpenAgents has a decentralized TRAINING lane (training.* records; decentralized_training_launch.v1 is green only for one bounded settled executor-trace scope) and a live inference gateway request surface; this record remains red until a real customer-paid fine-tune has a dereferenceable paid receipt and owner sign-off.',
         unsafeCopy:
-          'Do not claim OpenAgents sells fine-tuning, that a customer can submit a model + dataset and buy a fine-tune, or that fine-tuned models are servable/billable through OpenAgents today. Do not say the surface is "unbuilt" — a flag-gated INERT scaffold (intake + lifecycle read + a tested receipt-first metering seam) exists; the gaps are a real runtime, live pricing, and a paid receipt. Do not present the training run or the inference gateway as a fine-tuning product.',
+          'Do not claim OpenAgents sells fine-tuning, that a customer can buy a fine-tune, or that fine-tuned models are paid/billable through OpenAgents today. Do not say the surface is unbuilt or runtime-unwired: a flag-gated fixture runtime, persisted lifecycle read, model registration, gateway resolver, and tested receipt-first metering seam exist. The remaining gaps are live enabled intake, real nonzero pricing, demand provenance, paid receipt, settlement where required, and owner sign-off. Do not present the training run or the inference gateway as a paid fine-tuning product.',
         evidenceRefs: [
           'docs/transcripts/239.md',
           'docs/promises/2026-06-19-episode-239-lets-make-money-registry-reconciliation.md',
           'docs/inference/2026-06-19-cloud-primitives-fine-tuning-sandbox-scaffold-advance.md',
           'apps/openagents.com/workers/api/src/cloud/fine-tuning-service-routes.ts',
+          'apps/openagents.com/workers/api/migrations/0256_cloud_fine_tuning_runtime.sql',
           'apps/openagents.com/workers/api/src/cloud/cloud-metering.ts',
           'apps/openagents.com/workers/api/src/cloud/cloud-metering.test.ts',
           'https://github.com/OpenAgentsInc/openagents/issues/5510',
@@ -3607,11 +3608,12 @@ export const publicProductPromisesDocument = () => {
         ],
         blockerRefs: [
           'blocker.product_promises.cloud_fine_tuning_live_intake_disabled',
-          'blocker.product_promises.cloud_fine_tuning_real_job_runtime_unwired',
+          'blocker.product_promises.cloud_fine_tuning_live_pricing_missing',
+          'blocker.product_promises.cloud_fine_tuning_paid_receipt_missing',
           'blocker.product_promises.cloud_fine_tuning_billing_settlement_missing',
         ],
         verification:
-          'Red until a customer submits a fine-tune job, it runs on the network, the resulting model is registered and servable through the gateway, and a dereferenceable paid fine-tuning receipt (metering + settlement) exists. Per proof.demand_provenance.v1, internal fine-tunes are plumbing proof, not market proof.',
+          'Red until a real customer submits a fine-tune job through live enabled intake, it runs beyond the bounded fixture path, the resulting model is registered and servable through the gateway, and a dereferenceable paid fine-tuning receipt (nonzero metering + settlement where required) exists. Per proof.demand_provenance.v1, internal fine-tunes are plumbing proof, not market proof.',
         authorityBoundary:
           'Naming fine-tuning as a primitive grants no fine-tune intake, runtime, model-registration, billing, payout, or public-product-claim authority.',
       },

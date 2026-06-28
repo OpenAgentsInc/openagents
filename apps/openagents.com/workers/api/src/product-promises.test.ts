@@ -805,7 +805,8 @@ describe('public product promises document', () => {
           state: 'red',
           blockerRefs: expect.arrayContaining([
             'blocker.product_promises.cloud_fine_tuning_live_intake_disabled',
-            'blocker.product_promises.cloud_fine_tuning_real_job_runtime_unwired',
+            'blocker.product_promises.cloud_fine_tuning_live_pricing_missing',
+            'blocker.product_promises.cloud_fine_tuning_paid_receipt_missing',
             'blocker.product_promises.cloud_fine_tuning_billing_settlement_missing',
           ]),
         }),

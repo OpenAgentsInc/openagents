@@ -64,6 +64,7 @@ type WorkerRouteDependencies = Readonly<{
   routeForgeControlPlaneRequest: OptionalEffectRoute
   routeForumRequest: OptionalEffectRoute
   routeImageGenerationRequest: OptionalEffectRoute
+  routeFineTuningJobRequest: OptionalEffectRoute
   routeModelRetrieveRequest: OptionalEffectRoute
   // MirrorCode demo single-run read GET /api/gym/mirrorcode/runs/{id} (#6378 —
   // the path-param surface the exact-route registry cannot match). Public-safe;
@@ -287,6 +288,16 @@ export const makeWorkerRouteRequest =
 
       if (imageGenerationResponse !== undefined) {
         return yield* imageGenerationResponse
+      }
+
+      const fineTuningJobResponse = dependencies.routeFineTuningJobRequest(
+        request,
+        env,
+        ctx,
+      )
+
+      if (fineTuningJobResponse !== undefined) {
+        return yield* fineTuningJobResponse
       }
 
       // OpenAI-compatible GET /v1/models/{model} retrieve (the path-param
