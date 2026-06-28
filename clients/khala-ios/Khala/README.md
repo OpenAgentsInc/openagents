@@ -8,7 +8,7 @@ chat history; the main surface is a chat `NavigationStack`.
 - **Platform:** iOS 17+, native SwiftUI. **No Expo / React Native / EAS.**
 - **Spec:** `../../../docs/mobile/2026-06-26-khala-chatgpt-style-app-spec.md`
   (voice-runtime reference: `../../../docs/mobile/2026-06-26-khala-voice-app-spec.md`)
-- Replaces the retired Expo app `clients/mobile/AutopilotRemoteControl`
+- Replaces the retired Expo app `clients/khala-ios/AutopilotRemoteControl`
   (`../../../docs/mobile/2026-06-26-autopilot-remote-control-retirement.md`).
 
 ## What it does
@@ -31,7 +31,7 @@ is excluded from the synchronized build via a membership exception.)
 ## Project layout
 
 ```
-clients/mobile/Khala/
+clients/khala-ios/Khala/
 ├── project.yml                 # XcodeGen spec (regenerates Khala.xcodeproj)
 ├── Khala.xcodeproj/            # sync-group project (opens without xcodegen)
 └── Khala/
@@ -68,7 +68,7 @@ clients/mobile/Khala/
 ## Open & run locally (Xcode)
 
 ```sh
-cd clients/mobile/Khala
+cd clients/khala-ios/Khala
 open Khala.xcodeproj
 ```
 
@@ -80,7 +80,7 @@ If you prefer to regenerate the project from the spec (e.g. after adding files):
 
 ```sh
 brew install xcodegen      # one-time, if not installed
-cd clients/mobile/Khala
+cd clients/khala-ios/Khala
 xcodegen generate
 open Khala.xcodeproj
 ```
@@ -88,7 +88,7 @@ open Khala.xcodeproj
 ## Build / archive from the command line
 
 ```sh
-cd clients/mobile/Khala
+cd clients/khala-ios/Khala
 # Build for a simulator (no signing needed):
 xcodebuild -project Khala.xcodeproj -scheme Khala \
   -destination 'platform=iOS Simulator,name=iPhone 16' build

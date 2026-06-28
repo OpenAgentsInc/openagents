@@ -22,7 +22,7 @@
       "apps/pylon",
       "apps/pylon/packages/*",
       "clients/khala-cli",
-      "clients/mobile/*",
+      "clients/khala-ios/*",
       "packages/*",
       "packages/probe",
       "packages/probe/packages/*"

@@ -18,7 +18,7 @@ iteration (so it survives context compaction). Append progress to §6.
 > changes ship **OTA via our own `updates.openagents.com`** (not u.expo.dev).
 > **Never run `eas build` / `eas submit` / `eas update`.** Decide OTA-vs-rebuild
 > with the `fingerprint-classify` / `ship-mode` protocol cores (native dep change
-> ⇒ rebuild). Runbook: `clients/mobile/AutopilotRemoteControl/TESTFLIGHT.md`.
+> ⇒ rebuild). Runbook: `clients/khala-ios/AutopilotRemoteControl/TESTFLIGHT.md`.
 > Proven 2026-06-13: built build 12 locally + uploaded via altool (drawer #4954).
 
 ## 0. The end-to-end goal + the long work queue (≥6h of runway)

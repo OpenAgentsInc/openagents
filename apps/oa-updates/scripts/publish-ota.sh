@@ -10,7 +10,7 @@ set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 cd "$REPO"
-MOBILE="clients/mobile/AutopilotRemoteControl"
+MOBILE="clients/khala-ios/AutopilotRemoteControl"
 
 echo "==> computing build runtime fingerprint"
 RUNTIME="$(cd "$MOBILE" && bunx expo-updates fingerprint:generate --platform ios 2>/dev/null \

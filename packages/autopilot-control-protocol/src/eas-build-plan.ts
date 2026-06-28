@@ -35,8 +35,8 @@ export function planEasBuild(input: EasBuildPlanInput): EasBuildPlan {
   return {
     steps: [
       input.autoSubmit
-        ? "clients/mobile/AutopilotRemoteControl/scripts/build-and-submit.sh"
-        : "clients/mobile/AutopilotRemoteControl/scripts/build-and-submit.sh --build-only",
+        ? "clients/khala-ios/AutopilotRemoteControl/scripts/build-and-submit.sh"
+        : "clients/khala-ios/AutopilotRemoteControl/scripts/build-and-submit.sh --build-only",
     ],
     willBuild: true,
     willSubmit: input.autoSubmit,

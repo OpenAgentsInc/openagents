@@ -9,7 +9,7 @@
 > never `eas update`/u.expo.dev. **Do not use `eas build`, `eas submit`, `eas
 > update`, or any Expo cloud service.** The `expo` CLI itself (`expo install`,
 > `expo export`, `expo prebuild`) stays. Canonical runbook:
-> `clients/mobile/AutopilotRemoteControl/TESTFLIGHT.md`.
+> `clients/khala-ios/AutopilotRemoteControl/TESTFLIGHT.md`.
 
 Date: 2026-06-13
 Status: implementation roadmap. Sequences the buildout of the three Autopilot
@@ -23,7 +23,7 @@ milestone's rungs are tracked as issues. No runtime invariant changes here.
 - **Desktop** — Autopilot Desktop, Bun/Electrobun + Foldkit
   (`apps/autopilot-desktop`); audit
   `2026-06-13-autopilot-desktop-app-audit.md`.
-- **Mobile** — Autopilot Remote Control, React Native/Expo (`clients/mobile`);
+- **Mobile** — Autopilot Remote Control, React Native/Expo (`clients/khala-ios`);
   audit `2026-06-13-autopilot-remote-control-mobile-app-audit.md`.
 
 **Spine:** `packages/autopilot-control-protocol` (Effect Schema + typed client +
@@ -56,7 +56,7 @@ of building against them.
 > Apple-native upload (#4919). Distribution normally lives in M5 (CL-32), but TestFlight for
 > the shell is pulled forward and does not block the M1–M4 sequence. iOS bundle
 > `com.openagents.autopilot-mobile`, Apple team OpenAgents, Inc. `HQWSG26L43`;
-> runbook `clients/mobile/AutopilotRemoteControl/TESTFLIGHT.md`. The desktop
+> runbook `clients/khala-ios/AutopilotRemoteControl/TESTFLIGHT.md`. The desktop
 > equivalent (sign/notarize + BSDIFF feed) remains M5.
 >
 > **Fast-track follow-on:** once on TestFlight, adopt self-hosted
@@ -136,7 +136,7 @@ Rungs:
   (`electrobun.config.ts`, Bun main wiring the Pylon control client over
   loopback, Foldkit webview via Vite → `views://`), added to workspace globs.
   Repo: openagents. *Parallel.*
-- **CL-4** (#4906) Mobile scaffold: `clients/mobile` vanilla Expo app (SDK 55 / RN 0.81 /
+- **CL-4** (#4906) Mobile scaffold: `clients/khala-ios` vanilla Expo app (SDK 55 / RN 0.81 /
   React 19 / React Navigation v7; MMKV, edge-to-edge, EAS, Maestro patterns
   borrowed from Ignite) consuming `packages/autopilot-control-protocol`. Repo:
   openagents. *Parallel.*
@@ -187,7 +187,7 @@ transport so mobile (and remote desktop) work off the local machine.
   bootstrapId + secret + projectionLevel/capabilities, so a phone scan works on
   same-Wi-Fi (no Tailnet) OR over Tailnet with the identical handshake. Node side
   in the Pylon TUI/CLI; the mobile client gets a QR-scan + paste pairing screen.
-  Repo: openagents/apps/pylon (+ clients/mobile). *After CL-9.*
+  Repo: openagents/apps/pylon (+ clients/khala-ios). *After CL-9.*
 - **CL-14** (#4916) Wire desktop + mobile clients onto the bridge transport (replacing
   the M1 dev transport), behind the same client interface. Repo: openagents.
   *After CL-9..CL-12, CL-5, CL-6.*
@@ -278,7 +278,7 @@ local Expo tooling, the **#4918 campaign scheduler**, and the
   out coding agents across the account pool — exactly today's manual loop, made
   autonomous, with escalation hooks (CL-41). Repo: openagents/apps/pylon (+ forge).
 - **CL-37** (#4943) **Ship-mode classifier (Expo fingerprint)** — after the
-  fan-out merges, compute the Expo Updates runtime fingerprint of `clients/mobile`
+  fan-out merges, compute the Expo Updates runtime fingerprint of `clients/khala-ios`
   vs the deployed build: unchanged ⇒ **OTA-eligible** (JS only), changed ⇒
   **rebuild required** (native/config). Pure, testable; decides CL-38 vs CL-39.
   Depends on #4920. Repo: openagents.
@@ -291,7 +291,7 @@ local Expo tooling, the **#4918 campaign scheduler**, and the
 - **CL-39** (#4945) **Auto local build + submit (no Expo cloud)** — when a
   rebuild is required, the coordinator runs a **local build on our own Mac** and
   uploads the binary **straight to Apple** through
-  `clients/mobile/AutopilotRemoteControl/scripts/build-and-submit.sh`
+  `clients/khala-ios/AutopilotRemoteControl/scripts/build-and-submit.sh`
   (`expo prebuild` → `xcodebuild`/`fastlane gym` + `xcrun altool`/ASC API).
   Run a local `expo export` bundle pre-check before building. Apple is the only
   external dependency. Repo: openagents.
@@ -360,7 +360,7 @@ on the Expo EAS MCP — and CL-42 is independent.
 1. **First-demo session content for CL-7** — simplest compelling demo is a
    bounded `session.spawn` whose live timeline + a single approval prompt render
    on both clients. (Recommended.)
-2. **Workspace integration of `clients/mobile`** — RESOLVED: `clients/mobile` is a
+2. **Workspace integration of `clients/khala-ios`** — RESOLVED: `clients/khala-ios` is a
    bun workspace member with a `workspace:*` dep on
    `packages/autopilot-control-protocol`; Metro is monorepo-aware (CL-6 follow-on:
    `watchFolders`/`nodeModulesPaths` to the repo root). Standalone publish not used.

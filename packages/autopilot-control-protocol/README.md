@@ -2,7 +2,7 @@
 
 The shared spine for the Autopilot clients — web (`apps/openagents.com/apps/web`),
 desktop (`apps/autopilot-desktop`, Electrobun), and mobile
-(`clients/mobile`, Expo/React Native). One typed protocol, implemented and
+(`clients/khala-ios`, Expo/React Native). One typed protocol, implemented and
 tested once, imported by every client.
 
 (Pylon is the internal node/runtime name; this package is the client-facing

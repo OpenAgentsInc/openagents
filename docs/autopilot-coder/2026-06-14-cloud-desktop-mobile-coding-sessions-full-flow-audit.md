@@ -191,7 +191,7 @@ the Pylon client to the `cloud/` coordinator**, and C-15 isolation benchmarks.
 scope (see §0a).**
 
 - **The mobile surface (designed, not yet scaffolded):** React Native/Expo app
-  at `openagents/clients/mobile/AutopilotRemoteControl/` (directory empty). Spec
+  at `openagents/clients/khala-ios/AutopilotRemoteControl/` (directory empty). Spec
   in `2026-06-13-autopilot-remote-control-mobile-app-audit.md`: bridge pairing
   (QR/bootstrap → scoped `PairingCredentialClaims`), cursor-resumable streams,
   decision relay, `expo-notifications` (APNs), projection levels. Build/ship
@@ -348,7 +348,7 @@ node live; GCE deploy tested.
 **Have:** shared `autopilot-control-protocol` package; Pylon bridge verbs
 partially built; design spec complete.
 **Missing (all of it, in build terms):**
-- Scaffold the Expo app at `clients/mobile/AutopilotRemoteControl/`
+- Scaffold the Expo app at `clients/khala-ios/AutopilotRemoteControl/`
   (clients-roadmap M1; fast-track #4919 for TestFlight via local build).
 - Finish Pylon **bridge transport (system #39)**: `bridge.pair.exchange`,
   `bridge.revoke`, `bridge.clients.list`, capability-scoped credentials,
