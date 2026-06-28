@@ -3357,32 +3357,36 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Anyone who refers a user, agent, or business that funds an OpenAgents inference account earns an ongoing referral revshare cut of ALL of that account’s inference spend, indefinitely (not a one-time bounty), settled in credits or Bitcoin.',
         safeCopy:
-          'Referral-on-all-inference is roadmap/contract language only (sub-EPIC #5475). It is designed to reuse the RL-1 referral ledger (attribution -> eligibility -> dispatch) and the credit<->Bitcoin asset-boundary/no-resale guards (RL-3), and to be implemented to span categories from the start. None of it is built: there is no live inference gateway to spend through, no inference referral attribution, no ongoing per-spend accrual, and no settled inference referral payout. The Sites 5% referral payout ledger is a separate, narrower surface that is wired but has paid no real payout (sites.referral_bitcoin_stream.v1, yellow); it is not the inference referral product and does not make this planned claim live.',
+          'Referral-on-all-inference remains planned, not green. The implementation now reuses the RL-1 referral attribution and payout ledger for referred inference principals, accrues eligibility after receipt-first metered paid requests, and records a per-request margin split across OpenAgents, the aggregate serving-node share, and the referrer. That is still not a live earning claim: the paid-credits path is not collectable end-to-end for customers, inference referral payout dispatch remains owner-gated, and no real referred-inference payout has settled with a dereferenceable receipt. The Sites 5% referral payout ledger is a related narrower surface; it does not by itself make this inference referral claim live.',
         unsafeCopy:
-          'Do not claim anyone earns a cut of referred inference spend, that ongoing/indefinite inference referral revshare exists, or that pointing a business at OpenAgents pays the referrer today. Do not present the wired Sites referral ledger as proof this inference referral claim is live.',
+          'Do not claim anyone has received a settled payout from referred inference spend, that pointing a business at OpenAgents pays the referrer today, or that the promise is green. Do not present eligibility rows, split rows, or the wired Sites referral ledger as settled payout proof.',
         evidenceRefs: [
           'docs/inference/2026-06-19-inference-gateway-business.md',
           'docs/inference/2026-06-19-decentralized-serving-shard-wan.md',
           'docs/inference/2026-06-19-agent-cloud-revshare-everywhere.md',
+          'apps/openagents.com/workers/api/src/inference/inference-referral-accrual.ts',
+          'apps/openagents.com/workers/api/src/inference/inference-referral-accrual.test.ts',
+          'apps/openagents.com/workers/api/src/inference/inference-referral-split.ts',
+          'apps/openagents.com/workers/api/migrations/0257_inference_referral_margin_splits.sql',
           'https://github.com/OpenAgentsInc/openagents/issues/5475',
           'https://github.com/OpenAgentsInc/openagents/issues/5487',
           'https://github.com/OpenAgentsInc/openagents/issues/5488',
           'https://github.com/OpenAgentsInc/openagents/issues/5489',
           'https://github.com/OpenAgentsInc/openagents/issues/5490',
           'https://github.com/OpenAgentsInc/openagents/issues/5491',
+          'https://github.com/OpenAgentsInc/openagents/issues/6839',
           'promise:inference.gateway_credits_business.v1',
           'promise:sites.referral_bitcoin_stream.v1',
         ],
         blockerRefs: [
           'blocker.product_promises.inference_paid_credits_card_to_credit_not_collectable',
-          'blocker.product_promises.inference_referral_attribution_unbuilt',
-          'blocker.product_promises.inference_referral_accrual_unbuilt',
+          'blocker.product_promises.inference_referral_first_real_paid_receipt_pending',
           'blocker.product_promises.referral_first_real_payout_pending',
         ],
         verification:
-          'Planned until the PAID inference gateway exists (the request surface is live, but no customer can fund inference spend through it end-to-end yet — inference.gateway_credits_business.v1 stays red on the paid-credits path), inference referral attribution binds a funded referee account to a referrer, ongoing accrual computes a referral % off receipt-first metered inference spend, a three-way per-request margin split (OpenAgents / serving node / referrer) is implemented, and a real referred-inference referral payout settles with a dereferenceable receipt under RL-1/2/3 and the asset-boundary/no-resale guards.',
+          'Planned until the PAID inference gateway is customer-collectable end-to-end, the existing RL-1-backed referred-account accrual path is exercised by real funded inference spend, the recorded per-request split rows reconcile to the metered charge receipt and payout eligibility row, and a real referred-inference referral payout settles with a dereferenceable receipt under RL-1/2/3 and the asset-boundary/no-resale guards.',
         authorityBoundary:
-          'Design intent for cross-category, indefinite referral revshare is roadmap evidence only. It grants no attribution, accrual, eligibility, payout, or settlement authority, and referral attribution is never payout eligibility or spendable settlement by itself.',
+          'Referral attribution, eligibility rows, and recorded split rows are accounting evidence only. They grant no spendable settlement or public green-claim authority until owner-gated dispatch settles a real payout with public-safe receipt evidence.',
       },
       {
         ...basePromiseFields,

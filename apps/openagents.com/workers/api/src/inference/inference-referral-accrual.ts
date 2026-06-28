@@ -53,6 +53,7 @@ import {
 } from './metering-hook'
 import { type FundingKind, priceRequest } from './pricing'
 import {
+  type InferenceSplit,
   type InferenceSplitWeights,
   computeInferenceSplit,
 } from './inference-referral-split'
@@ -183,6 +184,12 @@ export const inferenceReferralPayoutRef = (requestId: string): string =>
 export const INFERENCE_REFERRAL_QUALIFYING_EVENT_KIND =
   'inference_paid_request' as const
 
+export const inferenceReferralMarginSplitRef = (requestId: string): string =>
+  `inference.referral.margin_split.${requestId}`
+
+export const inferenceReferralChargeReceiptRef = (requestId: string): string =>
+  `receipt.inference.charge.${requestId}`
+
 // Period key for the ledger's per-referrer-period caps. Inference accrual is
 // ongoing, so a calendar-month bucket (YYYY-MM, UTC) is the period the existing
 // per-referrer-period cap applies over. Derived from the request's ISO time.
@@ -207,7 +214,77 @@ export type AccrueInferenceReferralResult =
   | Readonly<{ _tag: 'self_attribution' }>
   | Readonly<{ _tag: 'zero_referrer_share' }>
   | Readonly<{ _tag: 'boundary_refused'; reasonRef: string }>
-  | Readonly<{ _tag: 'recorded'; entry: SiteReferralPayoutLedgerEntry }>
+  | Readonly<{
+      _tag: 'recorded'
+      entry: SiteReferralPayoutLedgerEntry
+      marginSplitRef: string
+    }>
+
+const countServingNodes = (context: MeteringContext): number => {
+  const stages = context.servingReceipt?.stages ?? []
+  return new Set(stages.map(stage => stage.nodeRef)).size
+}
+
+const recordInferenceReferralMarginSplit = async (
+  db: D1Database,
+  input: Readonly<{
+    attribution: ConsumedAttributionRow
+    context: MeteringContext
+    nowIso: string
+    party: Exclude<ReferredParty, null>
+    split: InferenceSplit
+  }>,
+): Promise<string> => {
+  const requestId = input.context.requestId
+  const splitRef = inferenceReferralMarginSplitRef(requestId)
+  const servingNodeCount = countServingNodes(input.context)
+
+  await db
+    .prepare(
+      `INSERT OR IGNORE INTO inference_referral_margin_splits
+         (id, request_id, account_ref, referred_user_id, referrer_user_id,
+          referral_attribution_id, referral_source_id, referral_invite_id,
+          payout_ref, qualifying_event_ref, charge_receipt_ref, funding_kind,
+          adapter_id, requested_model, served_model, served_by_contributor,
+          serving_node_count, charge_usd, cost_usd, margin_usd, margin_sats,
+          openagents_usd, openagents_sats, serving_node_usd, serving_node_sats,
+          referrer_usd, referrer_sats, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .bind(
+      splitRef,
+      requestId,
+      input.context.accountRef,
+      input.party.userId,
+      input.attribution.referrer_user_id,
+      input.attribution.referral_attribution_id,
+      input.attribution.referral_source_id,
+      input.attribution.referral_invite_id,
+      inferenceReferralPayoutRef(requestId),
+      inferenceReferralQualifyingEventRef(requestId),
+      inferenceReferralChargeReceiptRef(requestId),
+      input.context.fundingKind,
+      input.context.adapterId,
+      input.context.requestedModel,
+      input.context.servedModel,
+      input.context.servingReceipt === undefined ? 0 : 1,
+      servingNodeCount,
+      input.split.chargeUsd,
+      input.split.costUsd,
+      input.split.marginUsd,
+      input.split.marginSats,
+      input.split.openagents.usd,
+      input.split.openagents.sats,
+      input.split.servingNode.usd,
+      input.split.servingNode.sats,
+      input.split.referrer.usd,
+      input.split.referrer.sats,
+      input.nowIso,
+    )
+    .run()
+
+  return splitRef
+}
 
 /**
  * Accrue the referrer's ongoing cut for ONE paid inference request. Resolves the
@@ -261,11 +338,10 @@ export const accrueInferenceReferral = async (
 
   const split = computeInferenceSplit({
     priced,
-    // Referral accrual does not depend on the serving node, so contributor
-    // attribution is irrelevant to the referrer share. Pass false; the referrer
-    // share is the same regardless. (The serving-node share — when present — is
-    // fed by the sibling serving-node payout work, not here.)
-    servedByContributor: false,
+    // The referrer share is independent of who served it, but the receipt-first
+    // split row must preserve the actual three-party posture for this request:
+    // OpenAgents, serving node aggregate, and referrer.
+    servedByContributor: context.servingReceipt !== undefined,
     ...(input.weights === undefined ? {} : { weights: input.weights }),
   })
 
@@ -321,7 +397,14 @@ export const accrueInferenceReferral = async (
   }
 
   const entry = await createReferralPayoutEligibility(db, createInput)
-  return { _tag: 'recorded', entry }
+  const marginSplitRef = await recordInferenceReferralMarginSplit(db, {
+    attribution,
+    context,
+    nowIso,
+    party,
+    split,
+  })
+  return { _tag: 'recorded', entry, marginSplitRef }
 }
 
 export type ReferralAccrualDeps = Readonly<{
