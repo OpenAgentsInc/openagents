@@ -37,23 +37,32 @@
 > sharing is owner opt-in only; capture grants no payout. The disclosure remains
 > separate from capture behavior and paid privacy product proof.
 >
-> Latest reconciliation: live registry `2026-06-19.2` (see
-> [`product-promises.ts`](../../apps/openagents.com/workers/api/src/product-promises.ts)
-> and the June 18-19 launch/promise reconciliation notes). `2026-06-19.2` is a
-> copy/evidence destale pass with no state flips: `autopilot.desktop_gui_client.v1`
-> stays yellow but records the BUILT auto-onboarding EPIC #5441 (AO-1..AO-6) with
-> the final from-DMG clean-Mac proof owner-gated and pending; the Sites referral
-> payout ledger is WIRED in source (RL-1 #5458: eligibility feed +
-> readiness-gated idempotent approved->dispatched->settled dispatch via the
-> MDK/Spark adapter) but no real referral payout has settled, so
-> `sites.referral_bitcoin_stream.v1` stays yellow and
-> `autopilot_sites.partner_payout_ledger.v1` stays red, each with a
+> Current machine-readable source of truth: `/api/public/product-promises` is
+> generated from
+> [`product-promises.ts`](../../apps/openagents.com/workers/api/src/product-promises.ts),
+> which currently advertises registry `2026-06-27.2` with
+> `lastUpdated: "2026-06-27"`. This narrative document records the same
+> top-line 2026-06-27 promise decisions above, plus historical reconciliation
+> context below; when in doubt, agents and reviewers should defer to the
+> machine-readable registry and include its version in mismatch reports.
+>
+> `2026-06-28` standing sweep: recent mainline Khala, Artanis, Pylon, Gym, and
+> operator-safety merges were checked against the current `2026-06-27.2`
+> registry header. This pass records no promise state flips, no new green
+> claims, and no machine-registry changes; follow-on public claims from those
+> surfaces remain bound to their existing scoped/yellow/red records until their
+> own evidence and owner-signed transition receipts exist.
+>
+> Historical reconciliation `2026-06-19.2` was a copy/evidence destale pass with
+> no state flips: `autopilot.desktop_gui_client.v1` stays yellow but records the
+> BUILT auto-onboarding EPIC #5441 (AO-1..AO-6) with the final from-DMG clean-Mac
+> proof owner-gated and pending; the Sites referral payout ledger is WIRED in
+> source (RL-1 #5458: eligibility feed + readiness-gated idempotent
+> approved->dispatched->settled dispatch via the MDK/Spark adapter) but no real
+> referral payout has settled, so `sites.referral_bitcoin_stream.v1` stays
+> yellow and `autopilot_sites.partner_payout_ledger.v1` stays red, each with a
 > first-real-payout-pending blocker.
-> The machine-readable source of truth served at
-> `/api/public/product-promises` is
-> `apps/openagents.com/workers/api/src/product-promises.ts`; this narrative doc
-> documents the record contract and families and may trail the source registry
-> between full rewrites. As of `2026-06-19.1`: the agent labor market is green
+> As of `2026-06-19.1`: the agent labor market is green
 > (`labor.forum_work_requests.v1`, `labor.nostr_negotiation_market.v1`), with
 > `provider.compliant_usage_labor.v1` and
 > `autopilot.control_center_fanout_marketplace.v1` yellow; nine new wave-3 /
