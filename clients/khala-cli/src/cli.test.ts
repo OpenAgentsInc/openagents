@@ -50,6 +50,56 @@ describe("Khala CLI info diagnostics", () => {
     expect(stdout).not.toContain("token=")
   })
 
+  test("renders the live fleet dashboard from the operator status endpoint", async () => {
+    const authHeaders: Array<string | null> = []
+    const server = Bun.serve({
+      port: 0,
+      fetch: request => {
+        authHeaders.push(request.headers.get("authorization"))
+        expect(new URL(request.url).pathname).toBe("/api/operator/fleet/status")
+        return Response.json({
+          pace: { burnRate: "900 tokens/min", paceToFloor: "on pace" },
+          fleet: { concurrency: 2, inFlightIssues: ["#6429"] },
+          watchdog: { state: "healthy", leases: 1 },
+          glm: { status: "ready", readyReplicas: 8, totalReplicas: 8 },
+          brain: { state: "running", goals: 3 },
+        })
+      },
+    })
+
+    const originalWrite = process.stdout.write
+    let stdout = ""
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+      stdout += String(chunk)
+      return true
+    }) as typeof process.stdout.write
+    try {
+      const exitCode = await runKhalaCli([
+        "fleet",
+        "status",
+        "--live",
+        "--base-url",
+        `http://127.0.0.1:${server.port}`,
+      ], {
+        OPENAGENTS_AGENT_TOKEN: "oa_agent_live_dashboard_test",
+        KHALA_FLEET_LIVE_MAX_POLLS: "1",
+      })
+      expect(exitCode).toBe(0)
+    } finally {
+      process.stdout.write = originalWrite
+      server.stop(true)
+    }
+
+    expect(authHeaders).toEqual(["Bearer oa_agent_live_dashboard_test"])
+    expect(stdout).toContain("Khala fleet live dashboard")
+    expect(stdout).toContain("[Pace]")
+    expect(stdout).toContain("burnRate: 900 tokens/min")
+    expect(stdout).toContain("[Fleet]")
+    expect(stdout).toContain("[Watchdog]")
+    expect(stdout).toContain("[GLM]")
+    expect(stdout).toContain("[Brain]")
+  })
+
   test("uses the stored login token for --api when no env or flag token is present", async () => {
     const dir = mkdtempSync(join(tmpdir(), "khala-api-token-test-"))
     const tokenPath = join(dir, "agent-token")

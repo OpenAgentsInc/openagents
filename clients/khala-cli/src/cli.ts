@@ -16,6 +16,7 @@ import {
   connectFleetAccount,
   linkFleetPylon,
   listFleetAccounts,
+  runOperatorFleetStatusLive,
   type KhalaFleetConnectResult,
   type KhalaFleetLinkResult,
   type KhalaFleetStatus,
@@ -74,7 +75,7 @@ type ParsedCommand =
   | { readonly kind: "fleetConnect"; readonly accountRef: string | undefined; readonly force: boolean }
   | { readonly kind: "fleetRun" }
   | { readonly kind: "fleetLink" }
-  | { readonly kind: "fleetStatus" }
+  | { readonly kind: "fleetStatus"; readonly live: boolean }
   | { readonly kind: "help" }
   | { readonly kind: "info" }
   | {
@@ -205,6 +206,15 @@ export async function runKhalaCli(argv: ReadonlyArray<string>, env: Record<strin
       return 0
     }
     if (args.command.kind === "fleetStatus") {
+      if (args.command.live) {
+        const token = await ensureStoredAgentToken({
+          baseUrl: args.baseUrl,
+          env,
+          explicitToken: args.token,
+        })
+        await runOperatorFleetStatusLive({ baseUrl: args.baseUrl, token, env })
+        return 0
+      }
       const status = await listFleetAccounts({ env })
       process.stdout.write(args.json ? `${JSON.stringify(status)}\n` : `${formatFleetStatus(status)}\n`)
       return 0
@@ -385,6 +395,7 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
   let spawnWorkflow: KhalaSpawnWorkflow = "codex_agent_task"
   let fleetAccount: string | undefined
   let fleetForce = false
+  let fleetLive = false
   const positional: Array<string> = []
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -495,6 +506,8 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
       fleetAccount = arg.slice("--account=".length)
     } else if (arg === "--force") {
       fleetForce = true
+    } else if (arg === "--live") {
+      fleetLive = true
     } else if (arg.startsWith("-")) {
       throw new Error(`Unknown flag: ${arg}`)
     } else {
@@ -516,7 +529,7 @@ function parseArgs(argv: ReadonlyArray<string>, env: Record<string, string | und
   } else if (maybeCommand === "fleet") {
     const sub = positional[1]?.trim().toLowerCase()
     if (sub === "status" || sub === "list" || sub === "ls") {
-      command = { kind: "fleetStatus" }
+      command = { kind: "fleetStatus", live: fleetLive }
     } else if (sub === "run") {
       command = { kind: "fleetRun" }
     } else if (sub === "link") {
@@ -1975,6 +1988,7 @@ Usage:
   khala fleet link
   khala fleet status
   khala fleet run --repo owner/repo --issues 123,124 --verify "bun test" --dry-run
+  khala fleet status --live
   khala auth codex
   khala codex status
   khala codex "read README.md"
@@ -2043,6 +2057,7 @@ Flags:
   --per-account <n>    Fleet run slots per ready Codex account (default: 1)
   --once               Fleet run one refill round, then exit
   --dry-run            Fleet run prints the resolved plan without dispatching
+  --live               Poll /api/operator/fleet/status for khala fleet status
   --help, -h           Show this help
 `
 }
