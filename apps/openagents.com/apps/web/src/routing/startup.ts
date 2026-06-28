@@ -68,6 +68,11 @@ export type StartupRoute = typeof StartupRoute.Type
 
 export { routeRequiresAuthBootstrap } from '../product-policy'
 
+const forumUnknownPathPattern = /^\/forum(?:\/|$)/
+
+const isUnknownForumPath = (path: string): boolean =>
+  forumUnknownPathPattern.test(path)
+
 export const startupRouteForLoggedOut = (
   route: AppRoute,
 ): typeof LoggedOutStartupRoute.Type =>
@@ -129,11 +134,16 @@ export const startupRouteForLoggedOut = (
           redirect: Option.none(),
         }),
     ),
-    M.tag('NotFound', () =>
-      LoggedOutStartupRoute({
-        route: LandingRoute(),
-        redirect: Option.some(StartupRedirectToHome({ href: homeRouter() })),
-      }),
+    M.tag('NotFound', route =>
+      isUnknownForumPath(route.path)
+        ? LoggedOutStartupRoute({
+            route,
+            redirect: Option.none(),
+          })
+        : LoggedOutStartupRoute({
+            route: LandingRoute(),
+            redirect: Option.some(StartupRedirectToHome({ href: homeRouter() })),
+          }),
     ),
     M.orElse(() =>
       LoggedOutStartupRoute({

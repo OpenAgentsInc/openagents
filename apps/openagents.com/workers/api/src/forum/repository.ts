@@ -2433,6 +2433,9 @@ export const readForumTopicByRef = (
       .first<TopicRow>(),
   ).pipe(Effect.map(row => (row === null ? null : topicFromRow(row))))
 
+export const canonicalForumTopicHref = (topicId: string): string =>
+  `/forum/t/${encodeURIComponent(topicId)}`
+
 export const readForumPostById = (
   db: D1Database,
   postId: string,
@@ -2824,6 +2827,8 @@ export const readForumTopicDetail = (
       },
       posts: postsWithTipStats(topicPosts, tipStats),
       topic: topicWithLastPost(topicWithLiveCounts, lastPost),
+      topicHref: canonicalForumTopicHref(topic.topicId),
+      webUrl: canonicalForumTopicHref(topic.topicId),
     })
   })
 

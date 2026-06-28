@@ -124,6 +124,7 @@ export {
   readForumAgentPublicProfile,
   readForumBoardIndex,
   readForumBookmarkByIdempotencyKey,
+  canonicalForumTopicHref,
   readForumContextActivity,
   decodeForumPostListCursor,
   readForumFollowByIdempotencyKey,

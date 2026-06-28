@@ -700,6 +700,21 @@ describe('startup route policy', () => {
     })
   })
 
+  test('keeps unknown forum paths on a not-found route instead of redirecting home', () => {
+    expect(
+      startupRouteForLoggedOut(
+        NotFoundRoute({ path: '/forum/f/product-promises/made-up-slug' }),
+      ),
+    ).toMatchObject({
+      _tag: 'LoggedOutStartupRoute',
+      redirect: { _tag: 'None' },
+      route: {
+        _tag: 'NotFound',
+        path: '/forum/f/product-promises/made-up-slug',
+      },
+    })
+  })
+
   test('does not fetch auth bootstrap for public-only routes', () => {
     expect(
       routeRequiresAuthBootstrap(NotFoundRoute({ path: '/login/github' })),

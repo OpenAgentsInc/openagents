@@ -33,6 +33,7 @@ import {
   authenticateForumAgentToken,
   bookmarkForumTarget,
   buildForumWriterContext,
+  canonicalForumTopicHref,
   claimForumTipSettlement,
   createForumReplyPost,
   createForumTopicWithFirstPost,
@@ -1700,6 +1701,8 @@ const createTopicResponse = (
         idempotent: true,
         receiptRefs: [],
         topic: existingTopic,
+        topicHref: canonicalForumTopicHref(existingTopic.topicId),
+        webUrl: canonicalForumTopicHref(existingTopic.topicId),
       })
     }
 
@@ -1793,6 +1796,8 @@ const createTopicResponse = (
         idempotent: false,
         receiptRefs: [],
         topic: created.topic,
+        topicHref: canonicalForumTopicHref(created.topic.topicId),
+        webUrl: canonicalForumTopicHref(created.topic.topicId),
       },
       { status: 201 },
     )

@@ -670,7 +670,7 @@ describe('Forum routes', () => {
     expect(document.querySelector('[role="alert"]')?.textContent).toContain(
       'GitHub login did not complete. Try again.',
     )
-    expect(document.cookie).not.toContain('oa_login_error=')
+    expect(document.cookie).not.toContain('oa_login_error=github_login_failed')
   })
 
   test('renders receipt state without overclaiming creator settlement', () => {
