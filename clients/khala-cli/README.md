@@ -165,7 +165,11 @@ no long-string pasting:
   It auto-resolves your local Pylon ref, computes slots as ready accounts times
   `--per-account` capped by `--max-parallel`, advertises that capacity, and
   routes issue work through your local no-spend Pylon. Use `--dry-run` to inspect
-  the resolved plan first, or `--once` to run one refill round and exit.
+  the resolved plan first, or `--once` to run one refill round and exit. In
+  supervisor mode, sustained all-slot lockout triggers a bounded deduped
+  replenishment set instead of escalating into the long refused-work backoff:
+  the standing GEPA/DSPy loop, source audits over Pylon/clients/Worker code, and
+  test/lint/typecheck sweeps.
 - `khala fleet status --live` polls the owner-only
   `/api/operator/fleet/status` endpoint about every five seconds and renders the
   Pace, Fleet, Watchdog, GLM, and Brain/Artanis blocks as a terminal dashboard.
