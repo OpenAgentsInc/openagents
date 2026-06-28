@@ -355,6 +355,29 @@ export class PublicKhalaTokensServedModelMix extends S.Class<PublicKhalaTokensSe
   groups: S.Array(PublicKhalaTokensServedModelMixGroup),
 }) {}
 
+export class PublicKhalaTokensServedDemandMixGroup extends S.Class<PublicKhalaTokensServedDemandMixGroup>(
+  'PublicKhalaTokensServedDemandMixGroup',
+)({
+  kind: TokenUsageDemandKind,
+  source: S.String,
+  client: S.String,
+  tokens: S.Int,
+  reqs: S.Int,
+  pct: S.Number,
+}) {}
+
+// Public-safe demand/adoption mix for /stats and GTM closeability checks. This
+// intentionally exposes only aggregate rows over the bounded demand taxonomy
+// plus sanitized source/client labels. It never includes account refs, actor
+// refs, provider ids, model ids, prompts, completions, traces, or event ids.
+export class PublicKhalaTokensServedDemandMix extends S.Class<PublicKhalaTokensServedDemandMix>(
+  'PublicKhalaTokensServedDemandMix',
+)({
+  window: PublicKhalaTokensServedHistoryWindow,
+  totalTokens: S.Int,
+  groups: S.Array(PublicKhalaTokensServedDemandMixGroup),
+}) {}
+
 // ----------------------------------------------------------------------------
 // Inference cost / provider-lane analytics (issue #6232) — OWNER-GATED
 // ----------------------------------------------------------------------------

@@ -405,6 +405,17 @@ describe('OpenAgents OpenAPI route', () => {
     expect(khalaTokensServedModelMixOperation.description).toEqual(
       expect.stringContaining('canonical family aggregate rows'),
     )
+    const khalaTokensServedDemandMixOperation = operationAt(
+      body,
+      '/api/public/khala-tokens-served/demand-mix',
+      'get',
+    )
+    expect(khalaTokensServedDemandMixOperation.operationId).toBe(
+      'getPublicKhalaTokensServedDemandMix',
+    )
+    expect(khalaTokensServedDemandMixOperation.description).toEqual(
+      expect.stringContaining('demand/adoption mix'),
+    )
     expect(operationAt(body, '/api/agents/me', 'get').operationId).toBe(
       'getProgrammaticAgentMe',
     )

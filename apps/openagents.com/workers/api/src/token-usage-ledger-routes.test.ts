@@ -522,6 +522,12 @@ const makeRoutes = (
         totalTokens: 0,
         groups: [],
       }),
+    readPublicTokensServedDemandMix: () =>
+      Effect.succeed({
+        window: '30d',
+        totalTokens: 0,
+        groups: [],
+      }),
     readLeaderboardPreference: input => {
       preferenceInputs.push(input)
 
