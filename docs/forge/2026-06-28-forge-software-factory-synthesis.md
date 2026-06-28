@@ -14,7 +14,10 @@ as one product, not two.
 > `docs/forge/2026-06-28-forge-cross-system-leverage.md` (Pylon/Tassadar/
 > Artanis/Payments/Blueprint/Khala/Psionic/Nostr leverage),
 > `docs/forge/origin.md` (Cursor Origin analysis) and `docs/forge/linear.md`
-> (Linear Diffs analysis). The **historical** software-factory vision lives in
+> (Linear Diffs analysis), plus
+> `docs/forge/2026-06-28-forge-linear-adaptation.md` (what to adapt from
+> Linear onto Forge's software-factory layer). The **historical**
+> software-factory vision lives in
 > the root workspace `products/forge.md` +
 > `products/2026-04-14-openagents-com-forge-mvp-roadmap.md`, and in the
 > `docs/blitz/forge/*` blitz docs cited throughout.

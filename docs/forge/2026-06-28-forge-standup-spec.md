@@ -15,7 +15,8 @@
 > Companion: `docs/forge/2026-06-28-forge-openagents-com-owned-coordination-layer-audit.md`
 > (the why + architecture), `docs/forge/origin.md`, and
 > `docs/forge/2026-06-28-forge-boundary-contract.md` (the SU-0 execution and
-> auth boundary).
+> auth boundary). The Linear/software-factory product adaptation notes live in
+> `docs/forge/2026-06-28-forge-linear-adaptation.md`.
 
 ## What already exists (FORGE-1..6, merged on main)
 
@@ -164,6 +165,8 @@ coordination layer is live. SU-8 is the external multi-tenant expansion gate.
 - #6771 — SU-3 smart-Git intake to archive/canonical refs/coordination records;
   implemented in the `apps/openagents.com` Worker with migration
   `0255_forge_git_canonical_store.sql`.
+- #6782 — Linear adaptation + software-factory synergies; implemented by
+  `docs/forge/2026-06-28-forge-linear-adaptation.md`.
 
 ---
 
