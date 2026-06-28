@@ -46,6 +46,7 @@ import type {
   GymLadderSourceStore,
   GymLadderStore,
 } from './ladder-store'
+import type { MirrorCodeRunSourceStore } from './mirrorcode-store'
 
 // The ladder is a stored snapshot upserted by the recurring owner-armed publish
 // (per model release / weekly / on demand). It is not live-at-read, so it
@@ -73,6 +74,7 @@ export type GymLadderRouteInput = Readonly<{
 export type GymLadderOperatorRouteInput = GymLadderRouteInput &
   Readonly<{
     requireAdminApiToken: (request: Request) => Promise<boolean>
+    mirrorCodeRunStore?: MirrorCodeRunSourceStore
     store?: GymLadderStore
   }>
 
@@ -159,6 +161,7 @@ export const handlePublicGymLeaderboardApi = (
 const buildPublishedLadder = (
   raw: unknown,
   config: GymLadderRecurringConfig,
+  storedMirrorCodeRuns: ReadonlyArray<MirrorCodeRun> = [],
 ): Effect.Effect<
   | Readonly<{ ladder: GymLadderLeaderboard; tag: 'ok' }>
   | Readonly<{ reason: string; tag: 'reject' }>
@@ -236,6 +239,14 @@ const buildPublishedLadder = (
       tag: 'reject' as const,
     })
   }
+  const mirrorCodeRuns = [
+    ...new Map(
+      [...storedMirrorCodeRuns, ...mirrorCodeRunsResult.runs].map(run => [
+        run.runId,
+        run,
+      ]),
+    ).values(),
+  ]
   return Effect.try({
     catch: error =>
       error instanceof GymLeaderboardUnsafe
@@ -244,7 +255,7 @@ const buildPublishedLadder = (
           ? error.message
           : String(error),
     try: () =>
-      buildGymLadderLeaderboard(reports, config, mirrorCodeRunsResult.runs),
+      buildGymLadderLeaderboard(reports, config, mirrorCodeRuns),
   }).pipe(
     Effect.map(ladder => ({ ladder, tag: 'ok' as const })),
     Effect.catch(reason => Effect.succeed({ reason, tag: 'reject' as const })),
@@ -306,7 +317,15 @@ export const handleOperatorGymLeaderboardApi = (
     ) {
       return publishBadRequest((raw as { __parseError: string }).__parseError)
     }
-    const result = yield* buildPublishedLadder(raw, config)
+    const storedMirrorCodeRuns =
+      input.mirrorCodeRunStore === undefined
+        ? []
+        : yield* input.mirrorCodeRunStore.listRuns()
+    const result = yield* buildPublishedLadder(
+      raw,
+      config,
+      storedMirrorCodeRuns,
+    )
     if (result.tag === 'reject') {
       return publishBadRequest(result.reason)
     }
