@@ -2344,6 +2344,12 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     placedRequestCount, liveEnablementProven, unattendedRequestReceiptsProven,
     greenGateMet — the mechanical receipt-evidence predicate only, never the
     owner sign-off — and the dereferenceable placed-request receipt refs).
+  - `GET /api/public/artanis/activity` — live at read over public-safe Pylon
+    registrations, assignments, event rows, and token-usage aggregates —
+    compliant (`generatedAt`, `staleness` contract `projection_staleness.v1`
+    live_at_read; redacted fleet summary, active-assignment aliases, recent
+    public-safe decisions, burn pace, and failure-mode refs only; no owner
+    tokens, private prompts, diffs, local paths, emails, or wallet material).
   - `GET /api/forum/tip-leaderboards` — live at read — compliant
     (`generatedAt`, contract, ranked-creator ladder credited/swept sats,
     honesty caveat refs).
