@@ -196,6 +196,7 @@ export const browserRouteProductIntents = {
   ProductPromises: 'public.product-promises',
   PublicAgent: 'public.agent.profile',
   ArtanisTraceTree: 'public.artanis.rlm-traces',
+  ArtanisGym: 'operator.artanis.gym',
   PublicStatsArchive: 'public.stats.archive',
   PublicTrainingRun: 'public.training.run',
   PublicTrainingRuns: 'public.training.runs',

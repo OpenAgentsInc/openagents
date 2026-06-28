@@ -36,6 +36,7 @@ const PUBLIC_ROUTE_PARSE_COVERAGE: ReadonlyArray<readonly [string, string]> = [
   ['/animations', 'Animations'],
   ['/activity', 'Activity'],
   ['/artanis/accounts', 'ArtanisAccounts'],
+  ['/artanis/gym', 'ArtanisGym'],
   ['/download', 'Download'],
   ['/landing', 'Landing'],
   ['/moksha', 'Moksha'],
@@ -100,9 +101,10 @@ describe('public route parser coverage', () => {
     // visualizer brought the parser-covered surface to 37, the Pylon Codex
     // assignment-status operator shell brought it to 38, the public
     // `/mirrorcode` (MirrorCode, powered by Khala) page brings it to 39, the
-    // public `/chat` Khala chat page brings it to 40, and the
-    // `/artanis/accounts` account-observability grid brings it to 41.
-    expect(PUBLIC_ROUTE_PARSE_COVERAGE.length).toBe(41)
+    // public `/chat` Khala chat page brings it to 40, the
+    // `/artanis/accounts` account-observability grid brings it to 41, and the
+    // `/artanis/gym` operator Gym tab surface brings it to 42.
+    expect(PUBLIC_ROUTE_PARSE_COVERAGE.length).toBe(42)
   })
 
   // The public shareable trace render (#6209) must capture the uuid param so the
