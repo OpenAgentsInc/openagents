@@ -1,0 +1,46 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "openagents-forge",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-28",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": true,
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "persist": true,
+      "invocation_logs": true
+    },
+    "traces": {
+      "enabled": true,
+      "persist": true,
+      "head_sampling_rate": 1
+    }
+  },
+  "vars": {
+    "FORGE_ENV": "production"
+  },
+  "env": {
+    "staging": {
+      "name": "openagents-forge-staging",
+      "vars": {
+        "FORGE_ENV": "staging"
+      }
+    },
+    "production": {
+      "routes": [
+        {
+          "pattern": "forge.openagents.com",
+          "custom_domain": true
+        }
+      ],
+      "vars": {
+        "FORGE_ENV": "production"
+      }
+    }
+  }
+}
