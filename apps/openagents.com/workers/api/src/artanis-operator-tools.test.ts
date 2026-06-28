@@ -259,6 +259,19 @@ describe('#6366 dispatch_codex_task (gated; plan-only without a seam)', () => {
     expect(result.plan).toContain('src/foo.test.ts')
   })
 
+  test('requires a verification command before approval or execution', async () => {
+    const result = await Effect.runPromise(
+      tool.run({
+        objective: 'Burn down public issue work per the roadmap.',
+      }),
+    )
+    expect(result.outcome).toBe('deferred')
+    if (result.outcome !== 'deferred') return
+    expect(result.reason).toBe('invalid_arguments')
+    expect(result.plan).toContain('"verify" command is required')
+    expect(result.plan).toContain('codex_agent_task')
+  })
+
   test('blocks a dispatch field carrying non-public-safe material (deferred)', async () => {
     const result = await Effect.runPromise(
       tool.run({
@@ -299,7 +312,11 @@ describe('#6366 dispatch_codex_task (gated; LIVE execution behind the gate)', ()
     })
 
     const result = await Effect.runPromise(
-      tool.run({ objective: 'Burn down public issue work per the roadmap.' }),
+      tool.run({
+        objective: 'Burn down public issue work per the roadmap.',
+        verify:
+          'bun run --cwd apps/openagents.com/workers/api test -- src/artanis-operator-tools.test.ts',
+      }),
     )
     expect(result.outcome).toBe('executed')
     if (result.outcome !== 'executed') return
@@ -331,7 +348,11 @@ describe('#6366 dispatch_codex_task (gated; LIVE execution behind the gate)', ()
     })
 
     const result = await Effect.runPromise(
-      tool.run({ objective: 'Burn down public issue work per the roadmap.' }),
+      tool.run({
+        objective: 'Burn down public issue work per the roadmap.',
+        verify:
+          'bun run --cwd apps/openagents.com/workers/api test -- src/artanis-operator-tools.test.ts',
+      }),
     )
     expect(result.outcome).toBe('deferred')
     if (result.outcome !== 'deferred') return
@@ -354,7 +375,11 @@ describe('#6366 dispatch_codex_task (gated; LIVE execution behind the gate)', ()
     })
 
     const result = await Effect.runPromise(
-      tool.run({ objective: 'Burn down public issue work per the roadmap.' }),
+      tool.run({
+        objective: 'Burn down public issue work per the roadmap.',
+        verify:
+          'bun run --cwd apps/openagents.com/workers/api test -- src/artanis-operator-tools.test.ts',
+      }),
     )
     expect(result.outcome).toBe('deferred')
     if (result.outcome !== 'deferred') return

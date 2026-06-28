@@ -2395,6 +2395,9 @@ export const makeArtanisOpenUnsupportedRequestIssueTool = (
 //   - own-capacity + no-spend ONLY (the seam targets the OWNER's linked Pylon
 //     and uses the `unpaid_smoke` coding-delegation path; it moves no money,
 //     grants no payout, and never touches pooled/third-party capacity);
+//   - required verification: Artanis-owned coding dispatch must name a bounded
+//     public verification command before it can execute. There is deliberately
+//     no arbitrary shell tool and no fixture-only escape hatch for real work.
 //   - default DEFER: with no execution seam wired, or no effective owner
 //     approval, or no eligible linked Pylon, it returns the public-safe plan
 //     plus a typed reason and never fires;
@@ -2492,6 +2495,13 @@ const buildArtanisDispatchPlan = (
       ok: false,
     }
   }
+  if (verify === undefined) {
+    return {
+      message:
+        '(invalid arguments: a public-safe "verify" command is required; Artanis coding dispatch must run through codex_agent_task with green verification before merge)',
+      ok: false,
+    }
+  }
   const badPath = filePaths.find(path => !isSafeArtanisRepoPath(path))
   if (badPath !== undefined) {
     return {
@@ -2507,9 +2517,7 @@ const buildArtanisDispatchPlan = (
   if (filePaths.length > 0) {
     promptParts.push(`Files: ${filePaths.join(', ')}.`)
   }
-  if (verify !== undefined) {
-    promptParts.push(`Run the named verification.`)
-  }
+  promptParts.push(`Run the named verification.`)
   const prompt = promptParts.join(' ')
 
   const lines: Array<string> = [
@@ -2523,9 +2531,7 @@ const buildArtanisDispatchPlan = (
     `    --branch ${branch} \\`,
     '    --commit "<current origin/main sha>" \\',
   ]
-  if (verify !== undefined) {
-    lines.push(`    --verify "${verify}" \\`)
-  }
+  lines.push(`    --verify "${verify}" \\`)
   lines.push('    --json')
   lines.push('')
   lines.push(
@@ -2546,7 +2552,9 @@ const buildArtanisDispatchPlan = (
   }
 }
 
-// dispatch_codex_task — a GATED (pylon_job_dispatch) tool. With no execution
+// dispatch_codex_task — a GATED (pylon_job_dispatch) tool. A bounded public
+// verification command is REQUIRED; Artanis does not get an arbitrary-shell
+// execution tool or a fixture-only bypass for code work. With no execution
 // seam wired (or no effective owner approval, or no eligible linked Pylon) it
 // DEFERS and returns the exact public-safe Khala -> Pylon -> Codex dispatch it
 // WOULD run. Behind an effective owner approval AND a wired execution seam it
@@ -2565,7 +2573,7 @@ export const makeArtanisDispatchCodexTaskTool = (
   return {
     definition: {
       description:
-        'Dispatch a Codex coding task through the Khala -> Pylon -> Codex burndown loop against the OWNER\'s own linked Pylon (own-capacity, NO spend, no payout). This is a gated (pylon_job_dispatch) action: it executes ONLY behind an effective owner approval; otherwise it returns the exact public-safe dispatch that would run, pending approval. Inputs MUST be public-safe (public issue numbers, public file paths, public verification commands) — no secrets, tokens, or private content.',
+        'Dispatch a Codex coding task through the Khala -> Pylon -> Codex burndown loop against the OWNER\'s own linked Pylon (own-capacity, NO spend, no payout). This is a gated (pylon_job_dispatch) action: it executes ONLY behind an effective owner approval; otherwise it returns the exact public-safe dispatch that would run, pending approval. A bounded public verify command is REQUIRED so non-spend code can merge only after green verification. Inputs MUST be public-safe (public issue numbers, public file paths, public verification commands) — no secrets, tokens, or private content.',
       name: 'dispatch_codex_task',
       parameters: {
         additionalProperties: false,
@@ -2594,7 +2602,7 @@ export const makeArtanisDispatchCodexTaskTool = (
             type: 'string',
           },
         },
-        required: ['objective'],
+        required: ['objective', 'verify'],
         type: 'object',
       },
     },
