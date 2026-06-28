@@ -590,6 +590,17 @@ then full source-of-truth inversion at `forge.openagents.com`.
 > fails closed unless the tenant is active, the token is active and unexpired,
 > the repository matches exactly, and the requested git operation is granted.
 
+> FORGE-5 status, 2026-06-28: the Pylon-to-Forge dispatch contract now lives in
+> `@openagentsinc/forge-protocol` as typed `work_item`, `decision`, and
+> `closeout` messages. Work items carry tenant/work/lease refs, objective
+> summary, scoped git target, short-lived git token ref/prefix, and optional
+> verification command descriptors. Pylon maps those messages into existing
+> `assignment_lease.v0.3` records via
+> `apps/pylon/src/forge-dispatch-protocol.ts`, then maps assignment closeouts
+> back into Forge closeouts with change, packfile, verification, artifact,
+> proof, receipt, result, and source refs. Raw git tokens remain out of the
+> persistent dispatch payload; only token refs/prefixes and scopes are carried.
+
 This is the build plan in fileable form: an ordered list of issues mapped to the
 milestones above, with dependency order and a P0-now set. Each line is
 `**FORGE-n** (milestone) [Pn] — Title — one-line scope`. These are tracking

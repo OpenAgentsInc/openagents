@@ -79,6 +79,43 @@ export const ForgeGitAccessScope = S.Literals([
 ])
 export type ForgeGitAccessScope = typeof ForgeGitAccessScope.Type
 
+export const ForgeDispatchWorkClass = S.Literals([
+  "codex_agent_task",
+  "claude_agent_task",
+  "cloud_coding_session",
+])
+export type ForgeDispatchWorkClass = typeof ForgeDispatchWorkClass.Type
+
+export const ForgeDispatchPaymentMode = S.Literals(["no-spend", "paid"])
+export type ForgeDispatchPaymentMode = typeof ForgeDispatchPaymentMode.Type
+
+export const ForgeDispatchDecisionState = S.Literals(["accepted", "rejected"])
+export type ForgeDispatchDecisionState = typeof ForgeDispatchDecisionState.Type
+
+export const ForgeDispatchCloseoutStatus = S.Literals([
+  "accepted",
+  "rejected",
+  "cancelled",
+  "timed-out",
+  "stale",
+])
+export type ForgeDispatchCloseoutStatus = typeof ForgeDispatchCloseoutStatus.Type
+
+export const ForgeDispatchSettlementState = S.Literals([
+  "not_applicable",
+  "pending",
+  "recorded",
+  "blocked",
+])
+export type ForgeDispatchSettlementState = typeof ForgeDispatchSettlementState.Type
+
+export const ForgeDispatchGitAccessDelivery = S.Literals([
+  "out_of_band",
+  "same_response_ephemeral",
+])
+export type ForgeDispatchGitAccessDelivery =
+  typeof ForgeDispatchGitAccessDelivery.Type
+
 export const ForgeNip34StatusKind = S.Literals([1630, 1631, 1632, 1633])
 export type ForgeNip34StatusKind = typeof ForgeNip34StatusKind.Type
 
@@ -220,6 +257,108 @@ export const ForgeGitAccessTokenScopeRow = S.Struct({
 export type ForgeGitAccessTokenScopeRow =
   typeof ForgeGitAccessTokenScopeRow.Type
 
+export const ForgeDispatchGitAccess = S.Struct({
+  token_ref: S.String,
+  token_prefix: S.String,
+  scopes: S.Array(ForgeGitAccessScope),
+  expires_at: S.String,
+  delivery: ForgeDispatchGitAccessDelivery,
+})
+export type ForgeDispatchGitAccess = typeof ForgeDispatchGitAccess.Type
+
+export const ForgeDispatchVerificationCommand = S.Struct({
+  command_ref: S.String,
+  runner_ref: S.String,
+  working_directory: S.String,
+  args: S.Array(S.String),
+  timeout_seconds: S.Number,
+})
+export type ForgeDispatchVerificationCommand =
+  typeof ForgeDispatchVerificationCommand.Type
+
+export const ForgeDispatchGitTarget = S.Struct({
+  repository_ref: S.String,
+  remote_url: S.String,
+  base_ref: S.String,
+  base_head: S.String,
+  branch_ref: S.String,
+  receive_pack_ref: S.String,
+  git_access: ForgeDispatchGitAccess,
+})
+export type ForgeDispatchGitTarget = typeof ForgeDispatchGitTarget.Type
+
+export const ForgeDispatchWorkItem = S.Struct({
+  schema: S.Literal("openagents.forge.dispatch.work_item.v0.1"),
+  tenant_ref: S.String,
+  dispatch_ref: S.String,
+  work_ref: S.String,
+  issue_ref: S.NullOr(S.String),
+  objective_ref: S.String,
+  objective_summary: S.String,
+  work_class: ForgeDispatchWorkClass,
+  payment_mode: ForgeDispatchPaymentMode,
+  capability_refs: S.Array(S.String),
+  git: ForgeDispatchGitTarget,
+  verification_command: S.NullOr(ForgeDispatchVerificationCommand),
+  lease_ref: S.String,
+  expires_at: S.String,
+  created_at: S.String,
+  source_refs: S.Array(S.String),
+})
+export type ForgeDispatchWorkItem = typeof ForgeDispatchWorkItem.Type
+
+export const ForgeDispatchDecision = S.Struct({
+  schema: S.Literal("openagents.forge.dispatch.decision.v0.1"),
+  tenant_ref: S.String,
+  dispatch_ref: S.String,
+  work_ref: S.String,
+  lease_ref: S.String,
+  pylon_ref: S.String,
+  state: ForgeDispatchDecisionState,
+  accepted_at: S.NullOr(S.String),
+  rejected_at: S.NullOr(S.String),
+  blocker_refs: S.Array(S.String),
+  source_refs: S.Array(S.String),
+})
+export type ForgeDispatchDecision = typeof ForgeDispatchDecision.Type
+
+export const ForgeDispatchCloseout = S.Struct({
+  schema: S.Literal("openagents.forge.dispatch.closeout.v0.1"),
+  tenant_ref: S.String,
+  dispatch_ref: S.String,
+  work_ref: S.String,
+  lease_ref: S.String,
+  pylon_ref: S.String,
+  status: ForgeDispatchCloseoutStatus,
+  payment_mode: ForgeDispatchPaymentMode,
+  settlement_state: ForgeDispatchSettlementState,
+  payout_claim_allowed: S.Boolean,
+  change_ref: S.NullOr(S.String),
+  packfile_ref: S.NullOr(S.String),
+  verification_ref: S.NullOr(S.String),
+  artifact_refs: S.Array(S.String),
+  blocker_refs: S.Array(S.String),
+  build_refs: S.Array(S.String),
+  closeout_refs: S.Array(S.String),
+  preview_refs: S.Array(S.String),
+  proof_refs: S.Array(S.String),
+  receipt_refs: S.Array(S.String),
+  result_refs: S.Array(S.String),
+  summary_refs: S.Array(S.String),
+  test_refs: S.Array(S.String),
+  source_refs: S.Array(S.String),
+  redacted: S.Literal(true),
+  completed_at: S.String,
+})
+export type ForgeDispatchCloseout = typeof ForgeDispatchCloseout.Type
+
+export const ForgeDispatchMessage = S.Union([
+  ForgeDispatchWorkItem,
+  ForgeDispatchDecision,
+  ForgeDispatchCloseout,
+])
+export type ForgeDispatchMessage = typeof ForgeDispatchMessage.Type
+
 export const ForgeCoordinationRow = S.Union([
   ForgeCoordinationIssueRow,
   ForgeCoordinationPrRow,
@@ -254,6 +393,10 @@ export const decodeForgeGitAccessTokenRow = S.decodeUnknownSync(
 export const decodeForgeGitAccessTokenScopeRow = S.decodeUnknownSync(
   ForgeGitAccessTokenScopeRow,
 )
+export const decodeForgeDispatchWorkItem = S.decodeUnknownSync(ForgeDispatchWorkItem)
+export const decodeForgeDispatchDecision = S.decodeUnknownSync(ForgeDispatchDecision)
+export const decodeForgeDispatchCloseout = S.decodeUnknownSync(ForgeDispatchCloseout)
+export const decodeForgeDispatchMessage = S.decodeUnknownSync(ForgeDispatchMessage)
 
 export const forgeCoordinationStatusStateForNip34Kind = (
   kind: ForgeNip34StatusKind,

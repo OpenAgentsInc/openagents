@@ -9,6 +9,10 @@ import {
   decodeForgeGitAccessTokenRow,
   decodeForgeGitAccessTokenScopeRow,
   decodeForgeGitPackfileArchiveRow,
+  decodeForgeDispatchCloseout,
+  decodeForgeDispatchDecision,
+  decodeForgeDispatchMessage,
+  decodeForgeDispatchWorkItem,
   decodeForgeTenantRow,
   decodeForgeMergeQueueLedgerRow,
   forgeCoordinationStatusStateForNip34Kind,
@@ -166,5 +170,94 @@ describe("@openagentsinc/forge-protocol", () => {
         created_at: at,
       }).scope,
     ).toBe("git:receive-pack")
+  })
+
+  test("decodes Pylon-to-Forge dispatch messages", () => {
+    const workItem = decodeForgeDispatchWorkItem({
+      schema: "openagents.forge.dispatch.work_item.v0.1",
+      tenant_ref: "tenant.openagents",
+      dispatch_ref: "dispatch.forge.6751",
+      work_ref: "work.forge.6751",
+      issue_ref: "issue.forge.6751",
+      objective_ref: "objective.forge.6751",
+      objective_summary: "Implement the Pylon-to-Forge dispatch protocol",
+      work_class: "codex_agent_task",
+      payment_mode: "no-spend",
+      capability_refs: ["capability.codex_cli"],
+      git: {
+        repository_ref: "repo.openagents.openagents",
+        remote_url: "https://forge.openagents.com/openagents/openagents.git",
+        base_ref: "refs/heads/main",
+        base_head: "8e0c9b2eaf84c821caf555cae233a0d27e94d4ab",
+        branch_ref: "refs/heads/forge/work/6751",
+        receive_pack_ref: "receive-pack.forge.6751",
+        git_access: {
+          token_ref: "forge_git_token.6751",
+          token_prefix: "oa_forge_git_dispatch",
+          scopes: ["git:receive-pack"],
+          expires_at: "2026-06-28T17:00:00.000Z",
+          delivery: "out_of_band",
+        },
+      },
+      verification_command: {
+        command_ref: "verification-command.forge.6751",
+        runner_ref: "forge.verification.runner.docker_bun.v0.1",
+        working_directory: ".",
+        args: ["bun", "run", "check:deploy"],
+        timeout_seconds: 1800,
+      },
+      lease_ref: "lease.forge.6751",
+      expires_at: "2026-06-28T17:00:00.000Z",
+      created_at: at,
+      source_refs: ["github:OpenAgentsInc/openagents#6751"],
+    })
+    expect(workItem.git.git_access.scopes).toEqual(["git:receive-pack"])
+    expect(decodeForgeDispatchMessage(workItem).schema).toBe(workItem.schema)
+
+    const decision = decodeForgeDispatchDecision({
+      schema: "openagents.forge.dispatch.decision.v0.1",
+      tenant_ref: workItem.tenant_ref,
+      dispatch_ref: workItem.dispatch_ref,
+      work_ref: workItem.work_ref,
+      lease_ref: workItem.lease_ref,
+      pylon_ref: "pylon.local.codex.1",
+      state: "accepted",
+      accepted_at: at,
+      rejected_at: null,
+      blocker_refs: [],
+      source_refs: workItem.source_refs,
+    })
+    expect(decision.accepted_at).toBe(at)
+
+    const closeout = decodeForgeDispatchCloseout({
+      schema: "openagents.forge.dispatch.closeout.v0.1",
+      tenant_ref: workItem.tenant_ref,
+      dispatch_ref: workItem.dispatch_ref,
+      work_ref: workItem.work_ref,
+      lease_ref: workItem.lease_ref,
+      pylon_ref: "pylon.local.codex.1",
+      status: "accepted",
+      payment_mode: "no-spend",
+      settlement_state: "not_applicable",
+      payout_claim_allowed: false,
+      change_ref: "change.forge.6751",
+      packfile_ref: "packfile.forge.6751",
+      verification_ref: "verification.forge.6751",
+      artifact_refs: [],
+      blocker_refs: [],
+      build_refs: ["build.local.check-deploy"],
+      closeout_refs: ["closeout.forge.6751"],
+      preview_refs: [],
+      proof_refs: ["proof.forge.6751"],
+      receipt_refs: ["receipt.forge.6751"],
+      result_refs: ["result.forge.6751"],
+      summary_refs: ["summary.forge.6751"],
+      test_refs: ["test.forge.6751"],
+      source_refs: workItem.source_refs,
+      redacted: true,
+      completed_at: at,
+    })
+    expect(closeout.packfile_ref).toBe("packfile.forge.6751")
+    expect(decodeForgeDispatchMessage(closeout).schema).toBe(closeout.schema)
   })
 })
