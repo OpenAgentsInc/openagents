@@ -6232,9 +6232,6 @@ const runArtanisScheduledTickScheduled = (
 ): Effect.Effect<void, never> =>
   runArtanisScheduledTickForWorker({
     db,
-    khalaFeedbackStore: makeD1KhalaFeedbackStore(db),
-    khalaTraceReviewStore: makeD1KhalaTraceReviewStore(db),
-    khalaUnsupportedRequestStore: makeD1KhalaUnsupportedRequestStore(db),
     scheduledRunnerEnabled,
     scheduledTime,
   }).pipe(

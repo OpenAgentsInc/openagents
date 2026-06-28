@@ -39,21 +39,6 @@ import { exampleArtanisRuntime } from './artanis-runtime'
 import {
   ArtanisWorkRoutingProposalRecord,
 } from './artanis-work-routing'
-import type {
-  KhalaFeedbackRecord,
-  KhalaFeedbackStore,
-} from './khala-feedback-routes'
-import {
-  buildKhalaTraceReviewReport,
-  type KhalaTraceReviewReport,
-  type KhalaTraceReviewTriageItem,
-  type KhalaTraceReviewStore,
-} from './khala-trace-review-routes'
-import type {
-  KhalaUnsupportedRequestCreateInput,
-  KhalaUnsupportedRequestStore,
-  KhalaUnsupportedRequestTriageKind,
-} from './khala-unsupported-request-routes'
 import {
   epochMillisToIsoTimestamp,
   isoTimestampAfterIso,
@@ -85,10 +70,7 @@ export type ArtanisScheduledRunnerInput = Readonly<{
   context?: Partial<ArtanisScheduledRunnerContext> | undefined
   db: D1Database
   enabled: boolean
-  khalaFeedbackStore?: KhalaFeedbackStore | undefined
   khalaReadinessObservation?: ArtanisKhalaReadinessObservation | undefined
-  khalaTraceReviewStore?: KhalaTraceReviewStore | undefined
-  khalaUnsupportedRequestStore?: KhalaUnsupportedRequestStore | undefined
   nowIso: string
   scheduleRef: string
   scopeRef?: string | undefined
@@ -123,7 +105,6 @@ export type ArtanisScheduledRunnerResult = Readonly<{
   state: ArtanisScheduledRunnerState
   storageReceipts: ReadonlyArray<ArtanisPersistenceWriteReceipt>
   tickRef: string | null
-  unsupportedRequestRefs: ReadonlyArray<string>
   workProposalRefs: ReadonlyArray<string>
 }>
 
@@ -435,7 +416,6 @@ const disabledResult = (
   state: 'disabled',
   storageReceipts: [],
   tickRef: null,
-  unsupportedRequestRefs: [],
   workProposalRefs: [],
 })
 
@@ -926,161 +906,6 @@ const scheduledHealthSnapshot = (
   })
 }
 
-const ARTANIS_UNSUPPORTED_TRIAGE_LIMIT = 10
-const ARTANIS_UNSUPPORTED_TRACE_REVIEW_HOURS = 24
-const ARTANIS_UNSUPPORTED_FEEDBACK_LIMIT = 20
-
-const publicSafeRef = (value: string): string =>
-  value
-    .trim()
-    .replace(/[^A-Za-z0-9_.:/#-]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 160)
-
-const traceReviewWindowFor = (nowIso: string) => ({
-  hours: ARTANIS_UNSUPPORTED_TRACE_REVIEW_HOURS,
-  since: isoTimestampAfterIso(
-    nowIso,
-    -ARTANIS_UNSUPPORTED_TRACE_REVIEW_HOURS * 60 * 60 * 1000,
-  ),
-  until: nowIso,
-})
-
-const loadScheduledTraceReview = async (
-  store: KhalaTraceReviewStore,
-  nowIso: string,
-): Promise<KhalaTraceReviewReport> => {
-  const window = traceReviewWindowFor(nowIso)
-  const facts = await store.readFacts({
-    limit: ARTANIS_UNSUPPORTED_TRIAGE_LIMIT,
-    window,
-  })
-
-  return buildKhalaTraceReviewReport({
-    facts,
-    generatedAt: nowIso,
-    window,
-  })
-}
-
-const traceReviewTriageKind = (
-  item: KhalaTraceReviewTriageItem,
-): KhalaUnsupportedRequestTriageKind =>
-  item.kind === 'missing_capability' ? 'missing_capability' : 'bug'
-
-const unsupportedRequestFromTraceTriageItem = (
-  item: KhalaTraceReviewTriageItem,
-  nowIso: string,
-): KhalaUnsupportedRequestCreateInput => {
-  const triageKind = traceReviewTriageKind(item)
-
-  return {
-    createdAt: nowIso,
-    evidenceRefs: uniqueRefs([item.triageRef, ...item.evidenceRefs]).slice(
-      0,
-      20,
-    ),
-    forumTopicRef: null,
-    githubIssueRef: null,
-    requestRef: `khala_unsupported:${publicSafeRef(item.triageRef)}`,
-    sourceKind: 'trace_review',
-    sourceRef: item.triageRef,
-    status: 'needs_issue',
-    suggestedIssueTitle: item.suggestedIssueTitle,
-    summary:
-      `Trace review found a recurring ${item.priority}-priority ${item.kind} signal in the last ${ARTANIS_UNSUPPORTED_TRACE_REVIEW_HOURS}h window. Evidence refs are bounded to public-safe aggregate refs.`,
-    title: item.title,
-    triageKind,
-    updatedAt: nowIso,
-  }
-}
-
-const feedbackSummary = (
-  records: ReadonlyArray<KhalaFeedbackRecord>,
-): string => {
-  const sourceLabels = uniqueRefs(
-    records.map(record => publicSafeRef(record.source)).filter(Boolean),
-  ).slice(0, 5)
-  const firstCreatedAt = records
-    .map(record => record.createdAt)
-    .sort((left, right) => left.localeCompare(right))[0]
-  const latestCreatedAt = records
-    .map(record => record.createdAt)
-    .sort((left, right) => right.localeCompare(left))[0]
-
-  return `Khala feedback intake received ${records.length} recent note${records.length === 1 ? '' : 's'} requiring backlog triage. Source labels: ${sourceLabels.join(', ') || 'unknown'}. Window: ${firstCreatedAt ?? 'unknown'} to ${latestCreatedAt ?? 'unknown'}. Raw feedback text stays in the owner/admin feedback store.`
-}
-
-const unsupportedRequestFromFeedback = (
-  records: ReadonlyArray<KhalaFeedbackRecord>,
-  nowIso: string,
-): KhalaUnsupportedRequestCreateInput | null => {
-  if (records.length === 0) {
-    return null
-  }
-
-  const evidenceRefs = uniqueRefs(
-    records.map(record => record.feedbackRef),
-  ).slice(0, 20)
-
-  return {
-    createdAt: nowIso,
-    evidenceRefs,
-    forumTopicRef: null,
-    githubIssueRef: null,
-    requestRef: 'khala_unsupported:khala_feedback_recent_triage',
-    sourceKind: 'khala_feedback',
-    sourceRef: 'khala_feedback.recent_triage',
-    status: 'needs_issue',
-    suggestedIssueTitle: '[Khala feedback] Triage recent CLI feedback into fixes',
-    summary: feedbackSummary(records),
-    title: 'Recent Khala feedback needs backlog triage',
-    triageKind: 'missing_capability',
-    updatedAt: nowIso,
-  }
-}
-
-const scheduledUnsupportedRequestInputs = async (
-  input: ArtanisScheduledRunnerInput,
-): Promise<ReadonlyArray<KhalaUnsupportedRequestCreateInput>> => {
-  const traceReview = input.khalaTraceReviewStore === undefined
-    ? null
-    : await loadScheduledTraceReview(input.khalaTraceReviewStore, input.nowIso)
-  const traceInputs = (traceReview?.triageItems ?? [])
-    .filter(item => item.priority !== 'low' || item.kind === 'missing_capability')
-    .slice(0, ARTANIS_UNSUPPORTED_TRIAGE_LIMIT)
-    .map(item => unsupportedRequestFromTraceTriageItem(item, input.nowIso))
-  const feedback = input.khalaFeedbackStore === undefined
-    ? []
-    : await input.khalaFeedbackStore.listRecent({
-        limit: ARTANIS_UNSUPPORTED_FEEDBACK_LIMIT,
-      })
-  const feedbackInput = unsupportedRequestFromFeedback(feedback, input.nowIso)
-
-  return feedbackInput === null ? traceInputs : [...traceInputs, feedbackInput]
-}
-
-const runUnsupportedLedgerTriage = (
-  input: ArtanisScheduledRunnerInput,
-): Effect.Effect<ReadonlyArray<string>, never> => {
-  if (input.khalaUnsupportedRequestStore === undefined) {
-    return Effect.succeed([])
-  }
-  const store = input.khalaUnsupportedRequestStore
-
-  return Effect.tryPromise({
-    catch: () => 'khala_unsupported_triage_failed' as const,
-    try: async () => {
-      const requests = await scheduledUnsupportedRequestInputs(input)
-      const records = await Promise.all(
-        requests.map(request => store.upsert(request)),
-      )
-
-      return uniqueRefs(records.map(record => record.requestRef))
-    },
-  }).pipe(Effect.catch(() => Effect.succeed([])))
-}
-
 export const runArtanisScheduledTick = Effect.fn('runArtanisScheduledTick')(
   function* (input: ArtanisScheduledRunnerInput) {
     if (!input.enabled) {
@@ -1135,7 +960,6 @@ export const runArtanisScheduledTick = Effect.fn('runArtanisScheduledTick')(
       loop.loopRef,
       tick.tickRef,
     )
-    const unsupportedRequestRefs = yield* runUnsupportedLedgerTriage(input)
 
     const runtimeReceipt = yield* saveArtanisRuntimeSnapshot(
       input.db,
@@ -1225,7 +1049,6 @@ export const runArtanisScheduledTick = Effect.fn('runArtanisScheduledTick')(
       state: 'completed',
       storageReceipts,
       tickRef: tick.tickRef,
-      unsupportedRequestRefs,
       workProposalRefs: [
         workProposal.proposalRef,
         khalaBurndownWorkProposal.proposalRef,
@@ -1239,10 +1062,7 @@ export const runArtanisScheduledTick = Effect.fn('runArtanisScheduledTick')(
 export const runArtanisScheduledTickForWorker = (
   input: Readonly<{
     db: D1Database
-    khalaFeedbackStore?: KhalaFeedbackStore | undefined
     khalaReadinessObservation?: ArtanisKhalaReadinessObservation | undefined
-    khalaTraceReviewStore?: KhalaTraceReviewStore | undefined
-    khalaUnsupportedRequestStore?: KhalaUnsupportedRequestStore | undefined
     scheduledRunnerEnabled: boolean
     scheduledTime: number
   }>,
@@ -1252,10 +1072,7 @@ export const runArtanisScheduledTickForWorker = (
   return runArtanisScheduledTick({
     db: input.db,
     enabled: input.scheduledRunnerEnabled,
-    khalaFeedbackStore: input.khalaFeedbackStore,
     khalaReadinessObservation: input.khalaReadinessObservation,
-    khalaTraceReviewStore: input.khalaTraceReviewStore,
-    khalaUnsupportedRequestStore: input.khalaUnsupportedRequestStore,
     nowIso,
     scheduleRef: `cron.public.artanis.${refSuffix(nowIso)}`,
   })
