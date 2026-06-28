@@ -1,3 +1,4 @@
+import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import {
@@ -13,10 +14,48 @@ import {
   buildAgentClVertexGeminiRunnerPlan,
   buildAgentClVertexStressBaselineReport,
   buildAgentClVertexStressExperiment,
+  runAgentClVertexRunnerLoop,
   runAgentClRepoReuseFixtureEval,
   runAgentClSequentialLoop,
   runAgentClTaskRunner,
 } from './agentcl'
+import {
+  InferenceAdapterError,
+  type InferenceProviderAdapter,
+  type InferenceRequest,
+  type InferenceResult,
+} from '../provider-adapter'
+
+const vertexResult = (
+  usage: InferenceResult['usage'],
+): InferenceResult => ({
+  content: 'public-safe AgentCL fixture outcome',
+  finishReason: 'stop',
+  servedModel: 'gemini-3.5-flash',
+  usage,
+})
+
+const fakeVertexAdapter = (
+  complete: (
+    request: InferenceRequest,
+  ) => Effect.Effect<InferenceResult, InferenceAdapterError>,
+): InferenceProviderAdapter => ({
+  complete,
+  id: 'vertex-gemini',
+  stream: () =>
+    Effect.succeed([
+      {
+        contentDelta: '',
+        finishReason: 'stop',
+        servedModel: 'gemini-3.5-flash',
+        usage: {
+          completionTokens: 1,
+          promptTokens: 1,
+          totalTokens: 2,
+        },
+      },
+    ]),
+})
 
 describe('AgentCL repo-reuse gym environment', () => {
   test('builds a public-safe two-pass compositional stream plan', () => {
@@ -319,6 +358,122 @@ describe('AgentCL repo-reuse gym environment', () => {
         consecutiveBillingOrQuotaErrors: 0,
       }),
     ).toEqual({ tripped: true, reason: 'spend_cap_exceeded' })
+  })
+
+  test('keeps the AgentCL Vertex runner no-spend unless owner_armed_real is selected', async () => {
+    let calls = 0
+    const result = await Effect.runPromise(
+      runAgentClVertexRunnerLoop({
+        adapter: fakeVertexAdapter(() => {
+          calls += 1
+          return Effect.succeed(
+            vertexResult({
+              completionTokens: 1,
+              promptTokens: 1,
+              totalTokens: 2,
+            }),
+          )
+        }),
+        ownerApprovalRef: 'owner.approval.agentcl.vertex_stress.20260628',
+        runMode: 'fixture_baseline',
+      }),
+    )
+
+    expect(result.status).toBe('blocked_unarmed')
+    expect(result.failureRefs).toContain(
+      'blocker.gym.agentcl.vertex_runner_not_owner_armed_real',
+    )
+    expect(calls).toBe(0)
+  })
+
+  test('blocks AgentCL live execution when the supplied lane is a forbidden fallback', async () => {
+    const fallbackAdapter: InferenceProviderAdapter = {
+      ...fakeVertexAdapter(() =>
+        Effect.succeed(
+          vertexResult({
+            completionTokens: 1,
+            promptTokens: 1,
+            totalTokens: 2,
+          }),
+        ),
+      ),
+      id: 'openrouter-khala-glm-fallback',
+    }
+
+    const result = await Effect.runPromise(
+      runAgentClVertexRunnerLoop({
+        adapter: fallbackAdapter,
+        ownerApprovalRef: 'owner.approval.agentcl.vertex_stress.20260628',
+        runMode: 'owner_armed_real',
+      }),
+    )
+
+    expect(result.status).toBe('blocked_forbidden_fallback')
+    expect(result.failureRefs).toContain(
+      'blocker.gym.agentcl.vertex_runner_forbidden_fallback_lane',
+    )
+  })
+
+  test('runs AgentCL live calls through Vertex only and aborts after measured spend crosses the $50 cap', async () => {
+    let calls = 0
+    const result = await Effect.runPromise(
+      runAgentClVertexRunnerLoop({
+        adapter: fakeVertexAdapter(request => {
+          calls += 1
+          expect(request.model).toBe('gemini-3.5-flash')
+          expect(request.priority).toBe('internal_stress')
+          return Effect.succeed(
+            vertexResult({
+              completionTokens: 166_666_668,
+              promptTokens: 0,
+              totalTokens: 166_666_668,
+            }),
+          )
+        }),
+        ownerApprovalRef: 'owner.approval.agentcl.vertex_stress.20260628',
+        runMode: 'owner_armed_real',
+      }),
+    )
+
+    expect(calls).toBe(1)
+    expect(result.status).toBe('aborted_circuit_breaker')
+    expect(result.report.budgetGuard.circuitBreakerTripped).toBe(true)
+    expect(result.report.budgetGuard.circuitBreakerReason).toBe(
+      'spend_cap_exceeded',
+    )
+    expect(result.report.budgetGuard.estimatedSpendUsdCents).toBeGreaterThan(
+      5000,
+    )
+  })
+
+  test('aborts AgentCL live execution after three consecutive billing or quota errors', async () => {
+    let calls = 0
+    const result = await Effect.runPromise(
+      runAgentClVertexRunnerLoop({
+        adapter: fakeVertexAdapter(() => {
+          calls += 1
+          return Effect.fail(
+            new InferenceAdapterError({
+              adapterId: 'vertex-gemini',
+              httpStatus: 429,
+              kind: 'quota_error',
+              reason: 'Vertex Gemini returned HTTP 429: resource exhausted',
+              retryable: true,
+            }),
+          )
+        }),
+        ownerApprovalRef: 'owner.approval.agentcl.vertex_stress.20260628',
+        runMode: 'owner_armed_real',
+      }),
+    )
+
+    expect(calls).toBe(3)
+    expect(result.status).toBe('aborted_circuit_breaker')
+    expect(result.report.budgetGuard.consecutiveBillingOrQuotaErrors).toBe(3)
+    expect(result.report.budgetGuard.circuitBreakerReason).toBe(
+      'consecutive_billing_or_quota_errors',
+    )
+    expect(result.report.capacityReport.http429Count).toBe(3)
   })
 
   test('emits the CL-5 baseline report with separate PG, SG, and GG curves plus capacity blockers', () => {

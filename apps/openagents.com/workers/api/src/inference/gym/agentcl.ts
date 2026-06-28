@@ -1,4 +1,4 @@
-import { Schema as S } from 'effect'
+import { Effect, Schema as S } from 'effect'
 
 import {
   AGENTCL_REPO_REUSE_GYM_EXPERIMENT,
@@ -11,6 +11,18 @@ import {
 } from './experiment'
 import { exampleArtanisContinualLearningTemplateLedger } from '../../artanis-continual-learning-templates'
 import type { BenchmarkWorkload } from '../benchmark'
+import {
+  type InferenceMessage,
+  type InferenceProviderAdapter,
+  type InferenceRequest,
+  type InferenceResult,
+  type InferenceUsage,
+} from '../provider-adapter'
+import { priceRequest } from '../pricing'
+import {
+  DEFAULT_GEMINI_MODEL_ID,
+  VERTEX_GEMINI_ADAPTER_ID,
+} from '../vertex-gemini-adapter'
 
 export { AGENTCL_REPO_REUSE_GYM_EXPERIMENT } from './experiment'
 
@@ -316,7 +328,7 @@ export const AgentClVertexStressReportV0 = S.Struct({
   budgetGuard: S.Struct({
     spendCapUsdCents: S.Literal(5000),
     estimatedSpendUsdCents: S.Number.check(
-      S.isBetween({ minimum: 0, maximum: 5000 }),
+      S.isBetween({ minimum: 0, maximum: 1_000_000 }),
     ),
     consecutiveBillingOrQuotaErrors: S.Number.check(
       S.isBetween({ minimum: 0, maximum: 3 }),
@@ -359,6 +371,19 @@ export type AgentClLearningClaimEvidence = Readonly<{
     decisionGrade?: boolean
     publicClaimEligible?: boolean
   }>
+}>
+
+export type AgentClVertexRunnerLoopStatus =
+  | 'completed'
+  | 'aborted_circuit_breaker'
+  | 'blocked_unarmed'
+  | 'blocked_forbidden_fallback'
+
+export type AgentClVertexRunnerLoopResult = Readonly<{
+  status: AgentClVertexRunnerLoopStatus
+  report: AgentClVertexStressReportV0
+  results: ReadonlyArray<InferenceResult>
+  failureRefs: ReadonlyArray<string>
 }>
 
 const decodePlan = S.decodeUnknownSync(AgentClRepoReusePlan)
@@ -1013,6 +1038,213 @@ export const assessAgentClVertexRunnerCircuitBreaker = (
     reason,
   }
 }
+
+const agentClVertexPromptForTask = (
+  entry: AgentClTaskSequenceEntry,
+): ReadonlyArray<InferenceMessage> => [
+  {
+    content:
+      'Run the public AgentCL repo-reuse task. Use only public task refs and return a concise public-safe outcome summary.',
+    role: 'system',
+  },
+  {
+    content: [
+      `taskRef=${entry.taskRef}`,
+      `taskRole=${entry.taskRole}`,
+      `workload=${entry.workload}`,
+      `pass=${entry.pass}`,
+      `memoryAccess=${entry.memoryAccess}`,
+      `verifierRef=${entry.verifierRef}`,
+    ].join('\n'),
+    role: 'user',
+  },
+]
+
+const agentClVertexRequestForTask = (
+  entry: AgentClTaskSequenceEntry,
+): InferenceRequest => ({
+  messages: agentClVertexPromptForTask(entry),
+  model: DEFAULT_GEMINI_MODEL_ID,
+  passthroughParams: {
+    max_tokens: 1024,
+    temperature: 0.2,
+  },
+  priority: 'internal_stress',
+  stream: false,
+})
+
+const estimatedVertexSpendCentsForUsage = (usage: InferenceUsage): number =>
+  priceRequest({
+    fundingKind: 'card',
+    margin: 0,
+    model: DEFAULT_GEMINI_MODEL_ID,
+    usage,
+  }).costUsd * 100
+
+const isAgentClBillingOrQuotaError = (error: Readonly<{
+  httpStatus?: number | undefined
+  kind?: string | undefined
+  reason: string
+}>): boolean => {
+  const reason = error.reason.toLowerCase()
+  const kind = error.kind?.toLowerCase() ?? ''
+  return (
+    error.httpStatus === 429 ||
+    kind.includes('quota') ||
+    kind.includes('billing') ||
+    kind.includes('rate_limited') ||
+    kind.includes('resource_exhausted') ||
+    reason.includes('quota') ||
+    reason.includes('billing') ||
+    reason.includes('http 429') ||
+    reason.includes('resource exhausted') ||
+    reason.includes('resource_exhausted')
+  )
+}
+
+export const runAgentClVertexRunnerLoop = (
+  input: Readonly<{
+    adapter: InferenceProviderAdapter
+    ownerApprovalRef: string
+    runMode: AgentClVertexStressRunMode
+    experiment?: GymExperiment | undefined
+  }>,
+): Effect.Effect<AgentClVertexRunnerLoopResult> =>
+  Effect.gen(function* () {
+    if (input.runMode !== 'owner_armed_real') {
+      return {
+        failureRefs: ['blocker.gym.agentcl.vertex_runner_not_owner_armed_real'],
+        report: buildAgentClVertexStressBaselineReport({
+          runMode: input.runMode,
+        }),
+        results: [],
+        status: 'blocked_unarmed',
+      }
+    }
+
+    if (input.adapter.id !== VERTEX_GEMINI_ADAPTER_ID) {
+      return {
+        failureRefs: [
+          'blocker.gym.agentcl.vertex_runner_forbidden_fallback_lane',
+        ],
+        report: buildAgentClVertexStressBaselineReport({
+          runMode: input.runMode,
+        }),
+        results: [],
+        status: 'blocked_forbidden_fallback',
+      }
+    }
+
+    const stressExperiment =
+      input.experiment ??
+      buildAgentClVertexStressExperiment(input.ownerApprovalRef)
+    const { compiled, plan } = buildAgentClRepoReusePlan(stressExperiment)
+    const taskSequence = taskSequenceForPlan(plan, compiled)
+    const results: Array<InferenceResult> = []
+    const failureRefs: Array<string> = []
+    let estimatedSpendUsdCents = 0
+    let consecutiveBillingOrQuotaErrors = 0
+    let http429Count = 0
+    let resourceExhaustedCount = 0
+    let status: AgentClVertexRunnerLoopStatus = 'completed'
+    const runnerPlan = buildAgentClVertexGeminiRunnerPlan(input.ownerApprovalRef)
+    const plannedIterations = runnerPlan.parallelism.plannedParallelSequences
+
+    for (const entry of taskSequence.slice(0, plannedIterations)) {
+      const beforeCallBreaker = assessAgentClVertexRunnerCircuitBreaker({
+        consecutiveBillingOrQuotaErrors,
+        estimatedSpendUsdCents,
+      })
+      if (beforeCallBreaker.tripped) {
+        status = 'aborted_circuit_breaker'
+        failureRefs.push(
+          `blocker.gym.agentcl.vertex_runner.${beforeCallBreaker.reason}`,
+        )
+        break
+      }
+
+      const request = agentClVertexRequestForTask(entry)
+      const outcome = yield* input.adapter
+        .complete(request)
+        .pipe(
+          Effect.map(result => ({ result, ok: true as const })),
+          Effect.catch(error =>
+            Effect.succeed({ error, ok: false as const }),
+          ),
+        )
+
+      if (!outcome.ok) {
+        if (isAgentClBillingOrQuotaError(outcome.error)) {
+          consecutiveBillingOrQuotaErrors += 1
+          if (
+            outcome.error.httpStatus === 429 ||
+            outcome.error.reason.toLowerCase().includes('http 429')
+          ) {
+            http429Count += 1
+          }
+          if (
+            outcome.error.reason.toLowerCase().includes('resource exhausted') ||
+            outcome.error.reason.toLowerCase().includes('resource_exhausted') ||
+            outcome.error.kind?.toLowerCase().includes('resource_exhausted') ===
+              true
+          ) {
+            resourceExhaustedCount += 1
+          }
+        }
+        const afterErrorBreaker = assessAgentClVertexRunnerCircuitBreaker({
+          consecutiveBillingOrQuotaErrors,
+          estimatedSpendUsdCents,
+        })
+        if (afterErrorBreaker.tripped) {
+          status = 'aborted_circuit_breaker'
+          failureRefs.push(
+            `blocker.gym.agentcl.vertex_runner.${afterErrorBreaker.reason}`,
+          )
+          break
+        }
+        continue
+      }
+
+      consecutiveBillingOrQuotaErrors = 0
+      results.push(outcome.result)
+      estimatedSpendUsdCents += estimatedVertexSpendCentsForUsage(
+        outcome.result.usage,
+      )
+
+      const afterResultBreaker = assessAgentClVertexRunnerCircuitBreaker({
+        consecutiveBillingOrQuotaErrors,
+        estimatedSpendUsdCents,
+      })
+      if (afterResultBreaker.tripped) {
+        status = 'aborted_circuit_breaker'
+        failureRefs.push(
+          `blocker.gym.agentcl.vertex_runner.${afterResultBreaker.reason}`,
+        )
+        break
+      }
+    }
+
+    return {
+      failureRefs,
+      report: buildAgentClVertexStressBaselineReport({
+        attemptedSequences:
+          results.length + http429Count + resourceExhaustedCount,
+        completedSequences: results.length,
+        consecutiveBillingOrQuotaErrors,
+        estimatedSpendUsdCents,
+        http429Count,
+        peakAcceptedParallelSequences: Math.min(
+          results.length,
+          plannedIterations,
+        ),
+        resourceExhaustedCount,
+        runMode: input.runMode,
+        verifiedVertexBeforeScale: true,
+      }),
+      results,
+      status,
+    }
+  })
 
 export const buildAgentClVertexStressBaselineReport = (
   input: Readonly<{
