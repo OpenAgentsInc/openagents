@@ -269,6 +269,9 @@ import { makePublicCloudPrimitiveReceiptRoutes } from './cloud/public-cloud-prim
 import {
   handleSandboxRequest,
   isSandboxComputeServiceEnabled,
+  makeD1SandboxRuntimeAdapter,
+  makeLedgerSandboxMeteringHook,
+  routeSandboxRequest,
 } from './cloud/sandbox-compute-service-routes'
 import {
   CodingQuickWinPipelineEndpoint,
@@ -12945,6 +12948,12 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         enabled: isSandboxComputeServiceEnabled(
           env.CLOUD_SANDBOX_COMPUTE_ENABLED,
         ),
+        adapter: makeD1SandboxRuntimeAdapter(openAgentsDatabase(env)),
+        meteringHook: makeLedgerSandboxMeteringHook({
+          db: openAgentsDatabase(env),
+          priceUsd: () => 0,
+          usdToMsat: usd => Math.ceil(usd * 1000),
+        }),
       }),
   },
 ])
@@ -13117,6 +13126,24 @@ const routeRequest = makeWorkerRouteRequest({
       },
       adapter: makeD1FineTuningRuntimeAdapter(openAgentsDatabase(env)),
       enabled: isFineTuningServiceEnabled(env.CLOUD_FINE_TUNING_ENABLED),
+    }),
+  routeSandboxRequest: (request, env) =>
+    routeSandboxRequest(request, {
+      authenticate: async authRequest => {
+        const token = readBearerToken(authRequest)
+        if (token === undefined) {
+          return undefined
+        }
+        const session = await authenticateProgrammaticAgent(
+          makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+          token,
+        )
+        return session === undefined
+          ? undefined
+          : { accountRef: `agent:${session.user.id}` }
+      },
+      adapter: makeD1SandboxRuntimeAdapter(openAgentsDatabase(env)),
+      enabled: isSandboxComputeServiceEnabled(env.CLOUD_SANDBOX_COMPUTE_ENABLED),
     }),
   // OpenAI-compatible GET /v1/models/{model} retrieve. Gated by the SAME
   // INFERENCE_GATEWAY_ENABLED flag as the list and chat-completions routes, so

@@ -125,6 +125,9 @@ describe('public product promises document', () => {
       'blocker.product_promises.referral_cross_category_accrual_unbuilt',
     )
     expect(blockerRefs).not.toContain(
+      'blocker.product_promises.cloud_sandbox_live_metering_billing_unwired',
+    )
+    expect(blockerRefs).not.toContain(
       'blocker.product_promises.cloud_primitives_unified_balance_unbuilt',
     )
     expect(decoded.sourceRefs).toContain(
@@ -822,12 +825,15 @@ describe('public product promises document', () => {
           state: 'red',
           blockerRefs: expect.arrayContaining([
             'blocker.product_promises.cloud_sandbox_live_rent_surface_disabled',
-            'blocker.product_promises.cloud_sandbox_live_metering_billing_unwired',
-            // The receipt ARTIFACT now exists (PAID-charge settle + dereference
-            // route, DE-2 #5525); the remaining gate is a real renter +
-            // owner sign-off, not a missing receipt.
+            'blocker.product_promises.cloud_sandbox_live_pricing_missing',
+            // The D1 fixture runtime and receipt ARTIFACT now exist; remaining
+            // gates are live rent/pricing plus real renter + owner sign-off.
             'blocker.product_promises.cloud_sandbox_real_renter_demand_provenance_and_owner_signoff_missing',
           ]),
+          evidenceRefs: expect.arrayContaining([
+            'apps/openagents.com/workers/api/migrations/0257_cloud_sandbox_runtime.sql',
+          ]),
+          safeCopy: expect.stringContaining('bounded D1 fixture runtime'),
         }),
         expect.objectContaining({
           promiseId: 'markets.open_protocol_markets.v1',

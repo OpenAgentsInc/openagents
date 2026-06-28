@@ -24,8 +24,13 @@
 import { Effect, Schema as S } from 'effect'
 
 import { noStoreJsonResponse } from '../http/responses'
+import { parseJsonRecord } from '../json-boundary'
 import { workerLogEntry } from '../observability'
-import { compactRandomId, currentIsoTimestamp } from '../runtime-primitives'
+import {
+  compactRandomId,
+  currentIsoTimestamp,
+  isoTimestampAfterIso,
+} from '../runtime-primitives'
 import {
   cloudChargeReceiptRef,
   type CloudMeteringDeps,
@@ -86,6 +91,7 @@ export type Sandbox = Readonly<{
   image: string
   ttlSeconds: number
   status: SandboxStatus
+  usage?: Readonly<Record<string, number>> | undefined
   // Connection ref for the rented sandbox (e.g. a scoped session URL). Null
   // until a real sandbox is provisioned. Public-safe ref, never raw creds.
   connectionRef: string | null
@@ -158,6 +164,142 @@ export const stubSandboxAdapter: SandboxRuntimeAdapter = {
   // #5517's real adapter reads the isolated-session substrate.
   get: () => Effect.sync((): Sandbox | undefined => undefined),
 }
+
+type SandboxRow = Readonly<{
+  sandbox_id: string
+  account_ref: string
+  image: string
+  ttl_seconds: number
+  status: SandboxStatus
+  connection_ref: string | null
+  usage_json: string | null
+  created_at: string
+  expires_at_hint: string | null
+}>
+
+const expiresAtHintForTtl = (
+  input: Readonly<{ createdAt: string; ttlSeconds: number }>,
+): string => isoTimestampAfterIso(input.createdAt, input.ttlSeconds * 1000)
+
+const sandboxConnectionRef = (sandboxId: string): string =>
+  `sandbox.session.${sandboxId}`
+
+const parseUsageJson = (
+  value: string | null,
+): Readonly<Record<string, number>> | undefined => {
+  if (value === null) {
+    return undefined
+  }
+  const parsed = parseJsonRecord(value)
+  if (parsed === undefined) {
+    return undefined
+  }
+  return Object.fromEntries(
+    Object.entries(parsed).filter((entry): entry is [string, number] =>
+      Number.isFinite(entry[1]),
+    ),
+  )
+}
+
+const sandboxFromRow = (row: SandboxRow): Sandbox => ({
+  accountRef: row.account_ref,
+  connectionRef: row.connection_ref,
+  createdAt: row.created_at,
+  expiresAtHint: row.expires_at_hint,
+  image: row.image,
+  sandboxId: row.sandbox_id,
+  status: row.status,
+  ttlSeconds: row.ttl_seconds,
+  usage: parseUsageJson(row.usage_json),
+})
+
+export const makeD1SandboxRuntimeAdapter = (
+  db: D1Database,
+): SandboxRuntimeAdapter => ({
+  id: 'd1-fixture-sandbox-runtime',
+  provision: ({ sandboxId, accountRef, request }) =>
+    Effect.gen(function* () {
+      const now = currentIsoTimestamp()
+      const expiresAtHint = expiresAtHintForTtl({
+        createdAt: now,
+        ttlSeconds: request.ttlSeconds,
+      })
+      const usage = {
+        wallSeconds: request.ttlSeconds,
+        sandboxWorkUnits: Math.max(1, request.image.length),
+      }
+      const usageJson = JSON.stringify(usage)
+      const connectionRef = sandboxConnectionRef(sandboxId)
+      yield* Effect.tryPromise({
+        catch: error =>
+          new SandboxAdapterError({
+            adapterId: 'd1-fixture-sandbox-runtime',
+            reason: error instanceof Error ? error.message : String(error),
+          }),
+        try: () =>
+          db
+            .prepare(
+              `INSERT INTO cloud_sandbox_sessions (
+                 sandbox_id, account_ref, image, ttl_seconds, status,
+                 connection_ref, usage_json, created_at, updated_at,
+                 expires_at_hint, completed_at
+               )
+               VALUES (?, ?, ?, ?, 'ready', ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(sandbox_id) DO UPDATE SET
+                 status = excluded.status,
+                 connection_ref = excluded.connection_ref,
+                 usage_json = excluded.usage_json,
+                 updated_at = excluded.updated_at,
+                 expires_at_hint = excluded.expires_at_hint,
+                 completed_at = excluded.completed_at`,
+            )
+            .bind(
+              sandboxId,
+              accountRef,
+              request.image,
+              request.ttlSeconds,
+              connectionRef,
+              usageJson,
+              now,
+              now,
+              expiresAtHint,
+              now,
+            )
+            .run(),
+      })
+      return {
+        accountRef,
+        connectionRef,
+        createdAt: now,
+        expiresAtHint,
+        image: request.image,
+        sandboxId,
+        status: 'ready',
+        ttlSeconds: request.ttlSeconds,
+        usage,
+      } satisfies Sandbox
+    }),
+  get: ({ sandboxId, accountRef }) =>
+    Effect.tryPromise({
+      catch: error =>
+        new SandboxAdapterError({
+          adapterId: 'd1-fixture-sandbox-runtime',
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+      try: () =>
+        db
+          .prepare(
+            `SELECT sandbox_id, account_ref, image, ttl_seconds, status,
+                    connection_ref, usage_json, created_at, expires_at_hint
+               FROM cloud_sandbox_sessions
+              WHERE sandbox_id = ?
+                AND account_ref = ?
+              LIMIT 1`,
+          )
+          .bind(sandboxId, accountRef)
+          .first<SandboxRow>(),
+    }).pipe(Effect.map(row => (row === null ? undefined : sandboxFromRow(row)))),
+})
 
 // Public-safe primitive tag for sandbox charges, receipt refs, and metering
 // diagnostics. Shared with the cloud metering seam (`cloud-metering.ts`).
@@ -397,6 +539,10 @@ export const handleSandboxRequest = (
       accountRef: session.accountRef,
       sandboxId,
       image: sandboxRequest.image,
+      usage:
+        provisioned.sandbox.status === 'ready'
+          ? provisioned.sandbox.usage
+          : undefined,
     })
 
     return noStoreJsonResponse({
@@ -407,6 +553,8 @@ export const handleSandboxRequest = (
       status: provisioned.sandbox.status,
       connection_ref: provisioned.sandbox.connectionRef,
       created_at: provisioned.sandbox.createdAt,
+      expires_at_hint: provisioned.sandbox.expiresAtHint,
+      usage: provisioned.sandbox.usage ?? null,
       // Honest receipt projection: reports whether metering is live (stub =>
       // metered:false). NEVER claims a paid/usable sandbox result.
       metered: metering.metered,
@@ -476,5 +624,25 @@ export const handleSandboxGet = (
       status: resolved.sandbox.status,
       connection_ref: resolved.sandbox.connectionRef,
       created_at: resolved.sandbox.createdAt,
+      expires_at_hint: resolved.sandbox.expiresAtHint,
+      usage: resolved.sandbox.usage ?? null,
     })
   })
+
+const SANDBOXES_BASE = '/v1/sandboxes'
+
+export const routeSandboxRequest = (
+  request: Request,
+  deps: SandboxComputeServiceDeps,
+) => {
+  const pathname = new URL(request.url).pathname
+  const prefix = `${SANDBOXES_BASE}/`
+  if (!pathname.startsWith(prefix)) {
+    return undefined
+  }
+  const encodedSandboxId = pathname.slice(prefix.length)
+  if (encodedSandboxId === '' || encodedSandboxId.includes('/')) {
+    return undefined
+  }
+  return handleSandboxGet(request, decodeURIComponent(encodedSandboxId), deps)
+}
