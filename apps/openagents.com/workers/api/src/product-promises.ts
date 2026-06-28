@@ -79,6 +79,8 @@ const sourceRefs = [
   'packages/probe/packages/runtime/src/benchmark/external-repo-studying-product.ts',
   'packages/probe/packages/runtime/tests/external-repo-studying-product.test.ts',
   'docs/inference/README.md',
+  'apps/pylon/src/psionic-vllm-proxy.ts',
+  'apps/pylon/tests/psionic-vllm-proxy.test.ts',
   'docs/inference/2026-06-19-inference-gateway-business.md',
   'docs/inference/2026-06-19-fireworks-provider.md',
   'docs/inference/2026-06-19-pricing-vs-factory.md',
@@ -237,6 +239,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-28.1 is a marketplace.signature_monetization.v1 gate-hardening pass and flips NO promise state. The signature revenue gate now models publish -> activate -> usable refs before metered usage can drive pricing, keeps validation-only packages non-installable, requires attribution/pricing/rev-share/dispute/refund evidence before payable state, and allows settlement claims only when a public-safe usage-charge settlement receipt settles the full contributor payable amount. The promise stays planned on blocker.product_promises.signature_settlement_missing because live billing and real settlement remain owner-armed and receipt-first.',
         'Registry 2026-06-28.1: training.device_capability_dataset.v1 gains continuous thermal-throttle receipt machinery for CS336 A2 benchmark assignments and flips NO promise state (stays planned after the 2026-06-20 revenue-loop tightening). The bounded A2 workload now has a sustained-vs-burst thermal evidence builder that derives ratio rows from burst and sustained throughput samples. Verified sustained_vs_burst_throughput_ratio rows now project receiptRefs, thermalThrottleReceiptRefs, and thermalThrottleFunnelReasonCodes, and the public A2 dashboard carries the same refs so the capacity funnel can consume closed device_capability.public.* reason codes without exposing hardware identifiers. The product blocker blocker.product_promises.thermal_throttle_detection_missing STAYS until a real production contributor run records an owner-accepted verified thermal-row receipt and the operator records any required claim transition per proof.claim_upgrade_receipts.v1. No green flip, paid assignment, settlement, or capability guarantee is created by this source machinery alone. Evidence: docs/training/2026-06-28-cs336-a2-continuous-thermal-throttle-receipts.md.',
         'Registry 2026-06-28.2 corrects referral.refer_once_earn_forever.v1 evidence/copy for #6838 and flips NO promise state. The permanent referrer<->referee spine is now represented by the consume-once user/agent referral attribution tables joined to site_referral_sources, and the category-agnostic accrueCrossCategoryReferral primitive feeds receipt-first paid events from non-Sites categories such as marketplace/fine_tuning into the ONE RL-1 referral payout ledger. The promise STAYS red because no real ecosystem purchase has produced a settled Bitcoin referral payout and no purchase-to-payout dereferenceable receipt exists yet; the owner-armed payout and RL-1/RL-3 asset-boundary/no-resale gates remain required.',
+        'Registry 2026-06-28.2: inference.decentralized_serving_fabric.v1 gains stricter whole-small-model Pylon proxy evidence and flips NO promise state. apps/pylon/src/psionic-vllm-proxy.ts now treats exact-greedy parity as a separate same-engine reference check: the proxy forwards a greedy serve request to the configured local engine, performs a second same-engine greedy reference call, compares output digests, refuses non-greedy requests, and keeps paid routing ineligible on reference mismatch or known-answer canary failure. This is source-level receipt plumbing only. The promise STAYS red: green still requires an owner-armed live gateway request, dereferenceable exact-greedy-parity receipt, canary/replay/payout-eligibility admission, and settled serving-node payout evidence.',
       ],
     },
     promises: [
@@ -3437,13 +3440,15 @@ export const publicProductPromisesDocument = () => {
         claim:
           'The Pylon network is a decentralized model-serving fabric — every Pylon can load weights and serve inference (small models whole, large models sharded across N Pylons via the shard-WAN pipeline) — supplying the inference gateway and paying serving nodes Bitcoin revshare against exact-parity receipts.',
         safeCopy:
-          'Decentralized serving as gateway supply is design + partly hardware-blocked roadmap, not a live capability. Today a Pylon runs coding-agent execution and the Tassadar exact-execution substrate; it does NOT yet load model weights and serve inference. The shard-WAN large-model pipeline is owned by Psionic and is mostly status planned (most large-model phases are hardware-blocked); only the planning/evidence substrate is early. The near-term lane is whole-small-model single-Pylon serving, also unbuilt as a gateway supply adapter. Serving-node Bitcoin revshare is designed to clear born-verified (exact-greedy parity) through RL-2/RL-3, but no Pylon has served a gateway inference request and no serving-node inference payout has settled — and the first real dispatched payout is owner-armed.',
+          'Decentralized serving as gateway supply remains red and owner-gated, not a live public capability. The near-term whole-small-model lane now has source support for a Psionic/vLLM proxy that accepts the gateway serve contract, forwards a greedy request to a configured local engine, performs a second same-engine greedy reference call, and only marks parity verified when the served and reference digests match. That is receipt-first plumbing, not production evidence: no owner-armed Pylon has yet served a live gateway inference request with a dereferenceable exact-greedy-parity receipt, and no serving-node inference payout has settled. The shard-WAN large-model pipeline remains Psionic-planned / hardware-blocked.',
         unsafeCopy:
           'Do not claim Pylons serve inference, that large models are sharded across the network and served, that decentralized inference supply is live, or that any serving node has earned Bitcoin for serving inference. Do not claim a trustless privacy or trustless-verification guarantee — the fabric is trusted-posture and activation-visible to the serving worker.',
         evidenceRefs: [
           'docs/inference/2026-06-19-decentralized-serving-shard-wan.md',
           'docs/inference/2026-06-19-inference-gateway-business.md',
           'docs/inference/README.md',
+          'apps/pylon/src/psionic-vllm-proxy.ts',
+          'apps/pylon/tests/psionic-vllm-proxy.test.ts',
           'https://github.com/OpenAgentsInc/openagents/issues/5483',
           'https://github.com/OpenAgentsInc/openagents/issues/5484',
           'https://github.com/OpenAgentsInc/openagents/issues/5474',
@@ -3452,14 +3457,14 @@ export const publicProductPromisesDocument = () => {
           'promise:pylon.consumer_compute_earns_bitcoin_self_serve.v1',
         ],
         blockerRefs: [
-          'blocker.product_promises.pylon_inference_serving_unbuilt',
+          'blocker.product_promises.pylon_inference_serving_live_receipt_missing',
           'blocker.product_promises.shard_wan_large_model_serving_psionic_planned',
           'blocker.product_promises.inference_serving_node_payout_unbuilt',
           'blocker.product_promises.inference_serving_first_real_payout_owner_armed',
           'blocker.product_promises.inference_paid_credits_card_to_credit_not_collectable',
         ],
         verification:
-          'Red until a Pylon serves a real gateway inference request (whole-small-model near-term, shard-WAN large-model as Psionic hardware-backed phases land), the run carries an exact-greedy-parity receipt where a same-engine reference is feasible, the per-stage payout split is implemented against psionic.serve.pipeline_sharded_run_receipt.v1, and an owner-armed first serving-node Bitcoin payout settles with a dereferenceable receipt under RL-2/RL-3.',
+          'Red until an owner-armed Pylon serves a real gateway inference request through the whole-small-model proxy, the run returns a dereferenceable exact-greedy-parity receipt from a same-engine reference check, the gateway admits that receipt through canary/replay/payout-eligibility gates, and an owner-armed first serving-node Bitcoin payout settles with a dereferenceable receipt under RL-2/RL-3. Source tests prove the proxy refuses non-greedy requests and fails closed on reference mismatch; they do not green the live serving claim.',
         authorityBoundary:
           'Serving-fabric design honors the Psionic boundary: pricing, payout, marketplace, and identity authority stay outside Psionic, which emits evidence/receipts only. This record grants no serving, routing, payout, or public-product-claim authority, and large-model fabric claims stay blocked until a hardware-backed receipt or a typed refusal exists.',
       },

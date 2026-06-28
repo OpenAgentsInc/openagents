@@ -40,18 +40,18 @@
 > Current machine-readable source of truth: `/api/public/product-promises` is
 > generated from
 > [`product-promises.ts`](../../apps/openagents.com/workers/api/src/product-promises.ts),
-> which currently advertises registry `2026-06-28.1` with
+> which currently advertises registry `2026-06-28.2` with
 > `lastUpdated: "2026-06-28"`. This narrative document records the same
 > top-line 2026-06-27 promise decisions above, plus historical reconciliation
 > context below; when in doubt, agents and reviewers should defer to the
 > machine-readable registry and include its version in mismatch reports.
 >
 > `2026-06-28` standing sweep: recent mainline Khala, Artanis, Pylon, Gym, and
-> operator-safety merges were checked against the current `2026-06-28.1`
-> registry header. This pass records no promise state flips, no new green
-> claims, and no machine-registry changes; follow-on public claims from those
-> surfaces remain bound to their existing scoped/yellow/red records until their
-> own evidence and owner-signed transition receipts exist.
+> operator-safety merges were checked against the current `2026-06-28.2`
+> registry header. This pass records no promise state flips and no new green
+> claims; follow-on public claims from those surfaces remain bound to their
+> existing scoped/yellow/red records until their own evidence and owner-signed
+> transition receipts exist.
 >
 > Historical reconciliation `2026-06-19.2` was a copy/evidence destale pass with
 > no state flips: `autopilot.desktop_gui_client.v1` stays yellow but records the
