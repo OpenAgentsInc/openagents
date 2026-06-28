@@ -84,7 +84,13 @@ export type PylonAccountUsageStoreEntry = {
     observedAt: string
     usage: PylonLocalSessionUsageSnapshot
   } | null
+  localSessionUsageHistory?: PylonLocalSessionUsageObservation[]
   updatedAt: string
+}
+
+export type PylonLocalSessionUsageObservation = {
+  observedAt: string
+  usage: PylonLocalSessionUsageSnapshot
 }
 
 export type PylonAccountUsageStore = {
@@ -265,6 +271,7 @@ type AccountUsageObservation = {
 }
 
 const ACCOUNT_USAGE_STALE_SECONDS = 15 * 60
+const LOCAL_SESSION_USAGE_HISTORY_LIMIT = 256
 const costStatement =
   "pylon accounts usage --refresh runs one minimal bounded provider inference per selected account and may consume paid provider tokens."
 
@@ -483,6 +490,60 @@ function uniqueSnapshots(snapshots: PylonProviderRateLimitSnapshot[]) {
   return result
 }
 
+function localSessionUsageHistoryWith(
+  existing: PylonAccountUsageStoreEntry | undefined,
+  next: PylonLocalSessionUsageObservation | null,
+): PylonLocalSessionUsageObservation[] | undefined {
+  const history = existing?.localSessionUsageHistory
+    ? [...existing.localSessionUsageHistory]
+    : existing?.localSessionTruth
+      ? [existing.localSessionTruth]
+      : []
+  if (next) history.push(next)
+  if (history.length === 0) return undefined
+  return history
+    .sort((left, right) => Date.parse(left.observedAt) - Date.parse(right.observedAt))
+    .slice(-LOCAL_SESSION_USAGE_HISTORY_LIMIT)
+}
+
+export function countRollingWindowLocalSessionTokens(
+  observations: readonly PylonLocalSessionUsageObservation[],
+  options: { now: Date; windowMinutes: number },
+): number {
+  const windowMs = Math.max(0, options.windowMinutes) * 60_000
+  const windowStartMs = options.now.getTime() - windowMs
+  const windowEndMs = options.now.getTime()
+  const previousTotalsBySession = new Map<string, number>()
+  let tokenCount = 0
+  const sorted = observations
+    .map((observation, index) => ({ observation, index, observedMs: Date.parse(observation.observedAt) }))
+    .filter((entry) => Number.isFinite(entry.observedMs) && entry.observedMs <= windowEndMs)
+    .sort((left, right) => left.observedMs - right.observedMs || left.index - right.index)
+
+  for (const { observation, index, observedMs } of sorted) {
+    const totalTokens = Math.max(0, Math.round(observation.usage.totalTokens))
+    const sessionKey = observation.usage.sessionRef ?? `observation:${observation.observedAt}:${index}`
+    const previousTotal = previousTotalsBySession.get(sessionKey)
+    const delta = previousTotal === undefined
+      ? totalTokens
+      : totalTokens >= previousTotal
+        ? totalTokens - previousTotal
+        : totalTokens
+    if (observedMs >= windowStartMs && observedMs <= windowEndMs) tokenCount += delta
+    previousTotalsBySession.set(sessionKey, totalTokens)
+  }
+  return tokenCount
+}
+
+export function countAccountRollingWindowLocalSessionTokens(
+  entry: PylonAccountUsageStoreEntry | undefined,
+  options: { now: Date; windowMinutes: number },
+): number | null {
+  const history = entry?.localSessionUsageHistory ?? (entry?.localSessionTruth ? [entry.localSessionTruth] : [])
+  if (history.length === 0) return null
+  return countRollingWindowLocalSessionTokens(history, options)
+}
+
 export function parseCodexRateLimitHeaders(headers: Record<string, unknown>): PylonProviderRateLimitSnapshot[] {
   const lower = new Map<string, unknown>()
   for (const [key, value] of Object.entries(headers)) lower.set(key.toLowerCase(), value)
@@ -535,6 +596,9 @@ export async function recordPylonAccountUsageObservation(
   const identity = accountIdentity(observation.provider, observation.account)
   const store = await loadAccountUsageStore(summary)
   const existing = store.accounts[identity.accountRefHash]
+  const localSessionObservation = observation.localSessionUsage
+    ? { observedAt, usage: observation.localSessionUsage }
+    : null
   const updated: PylonAccountUsageStoreEntry = {
     provider: observation.provider,
     selector: identity.selector,
@@ -544,9 +608,10 @@ export async function recordPylonAccountUsageObservation(
         ? { observedAt, snapshots: observation.providerSnapshots }
         : existing?.providerTruth ?? null,
     localSessionTruth:
-      observation.localSessionUsage
-        ? { observedAt, usage: observation.localSessionUsage }
+      localSessionObservation
+        ? localSessionObservation
         : existing?.localSessionTruth ?? null,
+    localSessionUsageHistory: localSessionUsageHistoryWith(existing, localSessionObservation),
     updatedAt: observedAt,
   }
   store.accounts[identity.accountRefHash] = updated

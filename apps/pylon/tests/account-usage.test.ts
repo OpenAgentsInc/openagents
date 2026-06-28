@@ -3,9 +3,11 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import {
+  countRollingWindowLocalSessionTokens,
   collectPylonAccountUsageSummary,
   collectPylonAccountsList,
   collectPylonAccountsUsage,
+  loadAccountUsageStore,
   parseCodexRateLimitHeaders,
   parsePylonAccountsUsageArgs,
   providerRateLimitSnapshotsFromEvent,
@@ -48,6 +50,63 @@ async function runPylonCli(args: string[], env: Record<string, string | undefine
 }
 
 describe("pylon account usage", () => {
+  test("counts cumulative local-session token deltas inside a rolling window", () => {
+    const now = new Date("2026-06-28T12:00:00.000Z")
+    const usage = (observedAt: string, totalTokens: number, sessionRef = "session.pylon.codex.fixture") => ({
+      observedAt,
+      usage: {
+        provider: "codex" as const,
+        sessionRef,
+        inputTokens: 0,
+        outputTokens: totalTokens,
+        totalTokens,
+      },
+    })
+
+    expect(countRollingWindowLocalSessionTokens([
+      usage("2026-06-28T10:30:00.000Z", 100),
+      usage("2026-06-28T11:05:00.000Z", 160),
+      usage("2026-06-28T11:45:00.000Z", 210),
+      usage("2026-06-28T12:05:00.000Z", 300),
+    ], { now, windowMinutes: 60 })).toBe(110)
+  })
+
+  test("counts first in-window totals, reset totals, and null-session observations safely", () => {
+    const now = new Date("2026-06-28T12:00:00.000Z")
+    expect(countRollingWindowLocalSessionTokens([
+      {
+        observedAt: "2026-06-28T11:15:00.000Z",
+        usage: {
+          provider: "codex",
+          sessionRef: "session.pylon.codex.first_seen",
+          inputTokens: 20,
+          outputTokens: 80,
+          totalTokens: 100,
+        },
+      },
+      {
+        observedAt: "2026-06-28T11:30:00.000Z",
+        usage: {
+          provider: "codex",
+          sessionRef: "session.pylon.codex.first_seen",
+          inputTokens: 5,
+          outputTokens: 35,
+          totalTokens: 40,
+        },
+      },
+      {
+        observedAt: "2026-06-28T11:45:00.000Z",
+        usage: {
+          provider: "codex",
+          sessionRef: null,
+          inputTokens: 3,
+          outputTokens: 7,
+          totalTokens: 10,
+        },
+      },
+    ], { now, windowMinutes: 60 })).toBe(150)
+  })
+
   test("codex accounts list aliases the local account inventory command", async () => {
     await withHome(async (home) => {
       const proc = await runPylonCli(["codex", "accounts", "list", "--json"], {
@@ -163,6 +222,38 @@ describe("pylon account usage", () => {
         now: new Date("2026-06-12T12:20:00.000Z"),
       })
       expect(summaryProjection?.staleProviderTruthCount).toBe(1)
+    })
+  })
+
+  test("persists local-session usage history for rolling-window counters", async () => {
+    await withHome(async (home) => {
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), { PYLON_HOME: home })
+      await recordPylonAccountUsageObservation(summary, {
+        provider: "codex",
+        localSessionUsage: {
+          provider: "codex",
+          sessionRef: "session.pylon.codex.history",
+          inputTokens: 0,
+          outputTokens: 100,
+          totalTokens: 100,
+        },
+        observedAt: new Date("2026-06-28T11:00:00.000Z"),
+      })
+      await recordPylonAccountUsageObservation(summary, {
+        provider: "codex",
+        localSessionUsage: {
+          provider: "codex",
+          sessionRef: "session.pylon.codex.history",
+          inputTokens: 0,
+          outputTokens: 175,
+          totalTokens: 175,
+        },
+        observedAt: new Date("2026-06-28T11:30:00.000Z"),
+      })
+
+      const account = (await loadAccountUsageStore(summary)).accounts[hashPylonAccountRef("codex", "default")]
+      expect(account?.localSessionTruth?.usage.totalTokens).toBe(175)
+      expect(account?.localSessionUsageHistory?.map((entry) => entry.usage.totalTokens)).toEqual([100, 175])
     })
   })
 
