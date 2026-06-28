@@ -44,6 +44,9 @@ export const KERNEL_OPTIMIZATION_WORK_REQUEST_SCHEMA =
 export const KERNEL_OPTIMIZATION_SETTLEMENT_CLAIM_SCHEMA =
   "openagents.kernel_optimization_settlement_claim.v1"
 
+export const KERNEL_OPTIMIZATION_ACCEPTED_WORK_RECEIPT_SCHEMA =
+  "openagents.kernel_optimization_accepted_work_receipt.v1"
+
 /**
  * Same posture as the green labor rail: a worker payout only ever follows
  * accepted work, never on dispatch. Surfaced on both the request (the promise to
@@ -299,5 +302,137 @@ export const buildKernelOptimizationSettlementClaim = (
       target: verdict.target,
     },
     ok: true,
+  }
+}
+
+export type KernelOptimizationAcceptedWorkReceipt = Readonly<{
+  schema: typeof KERNEL_OPTIMIZATION_ACCEPTED_WORK_RECEIPT_SCHEMA
+  promiseId: typeof KERNEL_OPTIMIZATION_PROMISE_ID
+  workRequestSchema: typeof KERNEL_OPTIMIZATION_WORK_REQUEST_SCHEMA
+  settlementClaimSchema: typeof KERNEL_OPTIMIZATION_SETTLEMENT_CLAIM_SCHEMA
+  acceptedWorkRef: string
+  throughputRecordRef: string
+  parityVerdictRef: string
+  receiptState: "accepted_work_proven"
+  marketRailRefs: ReadonlyArray<string>
+  workRequest: KernelOptimizationWorkRequest
+  settlementClaim: KernelOptimizationSettlementClaim
+  settlementState: "not_settled"
+  payoutClaimAllowed: false
+}>
+
+export type KernelOptimizationAcceptedWorkReceiptResult =
+  | Readonly<{ ok: true; receipt: KernelOptimizationAcceptedWorkReceipt }>
+  | Readonly<{
+      ok: false
+      reason: "request_verdict_mismatch" | "verdict_not_accepted"
+      detail: string
+    }>
+
+const sameTarget = (
+  request: KernelOptimizationWorkRequest,
+  verdict: KernelOptimizationVerdict,
+): boolean =>
+  request.target.targetModel === verdict.target.targetModel &&
+  request.target.device === verdict.target.device &&
+  request.target.hardwareRef === verdict.target.hardwareRef
+
+/**
+ * Bind a dispatched kernel-optimization request to the accepted throughput +
+ * parity verdict and the born-verified settlement claim.
+ *
+ * This is the public-safe receipt shape the verified-work market can record for
+ * an accepted kernel optimization. It is deliberately not a payout or settled
+ * payment receipt: it proves the work is accepted and settlement-ready, while
+ * keeping actual payout/settlement authority on the existing verified-work rail.
+ */
+export const buildKernelOptimizationAcceptedWorkReceipt = (
+  input: Readonly<{
+    workRequest: KernelOptimizationWorkRequest
+    verdict: KernelOptimizationVerdict
+    acceptedWorkRef: string
+    throughputRecordRef: string
+    parityVerdictRef: string
+  }>,
+): KernelOptimizationAcceptedWorkReceiptResult => {
+  const acceptedWorkRef = assertNonEmpty(
+    input.acceptedWorkRef,
+    "acceptedWorkRef",
+  )
+  const throughputRecordRef = assertNonEmpty(
+    input.throughputRecordRef,
+    "throughputRecordRef",
+  )
+  const parityVerdictRef = assertNonEmpty(
+    input.parityVerdictRef,
+    "parityVerdictRef",
+  )
+
+  if (!sameTarget(input.workRequest, input.verdict)) {
+    return {
+      detail: `request target ${input.workRequest.target.targetModel}/${input.workRequest.target.device}/${input.workRequest.target.hardwareRef} != verdict target ${input.verdict.target.targetModel}/${input.verdict.target.device}/${input.verdict.target.hardwareRef}`,
+      ok: false,
+      reason: "request_verdict_mismatch",
+    }
+  }
+  if (
+    input.workRequest.opRef.trim().toLowerCase() !==
+    input.verdict.optimizedOpRef.trim().toLowerCase()
+  ) {
+    return {
+      detail: `request op "${input.workRequest.opRef.trim()}" != verdict op "${input.verdict.optimizedOpRef.trim()}"`,
+      ok: false,
+      reason: "request_verdict_mismatch",
+    }
+  }
+  if (
+    input.workRequest.namedBaseline.tokensPerSecond !==
+    input.verdict.baselineTokensPerSecond
+  ) {
+    return {
+      detail: `request baseline tok/s ${input.workRequest.namedBaseline.tokensPerSecond} != verdict baseline tok/s ${input.verdict.baselineTokensPerSecond}`,
+      ok: false,
+      reason: "request_verdict_mismatch",
+    }
+  }
+  if (
+    input.workRequest.validatorDeviceRef !== input.verdict.parityValidatorDeviceRef
+  ) {
+    return {
+      detail: `request validator ${input.workRequest.validatorDeviceRef} != verdict validator ${input.verdict.parityValidatorDeviceRef}`,
+      ok: false,
+      reason: "request_verdict_mismatch",
+    }
+  }
+
+  const settlement = buildKernelOptimizationSettlementClaim(input.verdict)
+  if (!settlement.ok) {
+    return {
+      detail: settlement.detail,
+      ok: false,
+      reason: "verdict_not_accepted",
+    }
+  }
+
+  return {
+    ok: true,
+    receipt: {
+      acceptedWorkRef,
+      marketRailRefs: [
+        "promise:labor.forum_work_requests.v1",
+        "promise:labor.nostr_negotiation_market.v1",
+      ],
+      parityVerdictRef,
+      payoutClaimAllowed: false,
+      promiseId: KERNEL_OPTIMIZATION_PROMISE_ID,
+      receiptState: "accepted_work_proven",
+      schema: KERNEL_OPTIMIZATION_ACCEPTED_WORK_RECEIPT_SCHEMA,
+      settlementClaim: settlement.claim,
+      settlementClaimSchema: KERNEL_OPTIMIZATION_SETTLEMENT_CLAIM_SCHEMA,
+      settlementState: "not_settled",
+      throughputRecordRef,
+      workRequest: input.workRequest,
+      workRequestSchema: KERNEL_OPTIMIZATION_WORK_REQUEST_SCHEMA,
+    },
   }
 }

@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test"
 
 import {
+  KERNEL_OPTIMIZATION_ACCEPTED_WORK_RECEIPT_SCHEMA,
   KERNEL_OPTIMIZATION_PROMISE_ID,
   KERNEL_OPTIMIZATION_SETTLEMENT_CLAIM_SCHEMA,
   KERNEL_OPTIMIZATION_SETTLEMENT_MODE,
   KERNEL_OPTIMIZATION_WORK_REQUEST_SCHEMA,
+  buildKernelOptimizationAcceptedWorkReceipt,
   buildKernelOptimizationSettlementClaim,
   buildKernelOptimizationWorkRequest,
   type KernelOptimizationJobSpec,
@@ -143,5 +145,86 @@ describe("buildKernelOptimizationSettlementClaim", () => {
     }
     const result = buildKernelOptimizationSettlementClaim(noSpeedup)
     expect(result.ok).toBe(false)
+  })
+})
+
+describe("buildKernelOptimizationAcceptedWorkReceipt", () => {
+  test("records an accepted-work receipt bound to request, throughput, parity, and settlement", () => {
+    const request = buildKernelOptimizationWorkRequest(spec)
+    const result = buildKernelOptimizationAcceptedWorkReceipt({
+      acceptedWorkRef: "accepted.kernel_opt.qwen35.rmsnorm.fixture.v1",
+      parityVerdictRef: "verdict.kernel_opt.parity.fixture.v1",
+      throughputRecordRef: "throughput.kernel_opt.qwen35.rmsnorm.fixture.v1",
+      verdict: acceptedVerdict,
+      workRequest: request,
+    })
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) throw new Error("expected accepted-work receipt")
+    expect(result.receipt.schema).toBe(
+      KERNEL_OPTIMIZATION_ACCEPTED_WORK_RECEIPT_SCHEMA,
+    )
+    expect(result.receipt.receiptState).toBe("accepted_work_proven")
+    expect(result.receipt.settlementState).toBe("not_settled")
+    expect(result.receipt.payoutClaimAllowed).toBe(false)
+    expect(result.receipt.workRequest).toBe(request)
+    expect(result.receipt.settlementClaim.speedupRatio).toBeCloseTo(523 / 328)
+    expect(result.receipt.marketRailRefs).toEqual([
+      "promise:labor.forum_work_requests.v1",
+      "promise:labor.nostr_negotiation_market.v1",
+    ])
+  })
+
+  test("refuses to bind a verdict for a different requested op", () => {
+    const request = buildKernelOptimizationWorkRequest({
+      ...spec,
+      baseline: { ...baseline, opRef: "attention.flash" },
+      opRef: "attention.flash",
+    })
+    const result = buildKernelOptimizationAcceptedWorkReceipt({
+      acceptedWorkRef: "accepted.kernel_opt.qwen35.attention.fixture.v1",
+      parityVerdictRef: "verdict.kernel_opt.parity.fixture.v1",
+      throughputRecordRef: "throughput.kernel_opt.qwen35.rmsnorm.fixture.v1",
+      verdict: acceptedVerdict,
+      workRequest: request,
+    })
+
+    expect(result.ok).toBe(false)
+    if (result.ok) throw new Error("op-mismatched receipt must fail")
+    expect(result.reason).toBe("request_verdict_mismatch")
+  })
+
+  test("refuses to record accepted work for a rejected verdict", () => {
+    const request = buildKernelOptimizationWorkRequest(spec)
+    const rejected: KernelOptimizationVerdict = {
+      ...acceptedVerdict,
+      outcome: "rejected",
+      parityOutcome: "rejected",
+      rejection: { parityRejection: null, reason: "parity_rejected" },
+    }
+    const result = buildKernelOptimizationAcceptedWorkReceipt({
+      acceptedWorkRef: "accepted.kernel_opt.qwen35.rmsnorm.fixture.v1",
+      parityVerdictRef: "verdict.kernel_opt.parity.rejected.fixture.v1",
+      throughputRecordRef: "throughput.kernel_opt.qwen35.rmsnorm.fixture.v1",
+      verdict: rejected,
+      workRequest: request,
+    })
+
+    expect(result.ok).toBe(false)
+    if (result.ok) throw new Error("rejected verdict receipt must fail")
+    expect(result.reason).toBe("verdict_not_accepted")
+  })
+
+  test("refuses unsafe refs in receipt evidence fields", () => {
+    const request = buildKernelOptimizationWorkRequest(spec)
+    expect(() =>
+      buildKernelOptimizationAcceptedWorkReceipt({
+        acceptedWorkRef: "/Users/local/private/result",
+        parityVerdictRef: "verdict.kernel_opt.parity.fixture.v1",
+        throughputRecordRef: "throughput.kernel_opt.qwen35.rmsnorm.fixture.v1",
+        verdict: acceptedVerdict,
+        workRequest: request,
+      }),
+    ).toThrow(/private, payment, credential/)
   })
 })
