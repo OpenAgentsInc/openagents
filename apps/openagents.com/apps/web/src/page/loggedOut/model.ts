@@ -859,6 +859,42 @@ export const PublicArtanisReportClaimSummary = S.Struct({
 export type PublicArtanisReportClaimSummary =
   typeof PublicArtanisReportClaimSummary.Type
 
+export const PublicArtanisReportActivityTickerEntry = S.Struct({
+  activityRef: S.String,
+  assignmentRef: S.NullOr(S.String),
+  createdAtDisplay: S.String,
+  detail: S.String,
+  issueNumber: S.NullOr(S.Number),
+  label: S.String,
+  sourceRefs: S.Array(S.String),
+  state: S.String,
+})
+export type PublicArtanisReportActivityTickerEntry =
+  typeof PublicArtanisReportActivityTickerEntry.Type
+
+export const PublicArtanisReportDecisionFailureMode = S.Struct({
+  count: S.Number,
+  failureModeRef: S.String,
+  label: S.String,
+  latestDecisionRef: S.NullOr(S.String),
+  resultingPublicIssueNumber: S.NullOr(S.Number),
+  sourceRefs: S.Array(S.String),
+  state: S.String,
+})
+export type PublicArtanisReportDecisionFailureMode =
+  typeof PublicArtanisReportDecisionFailureMode.Type
+
+export const PublicArtanisReportDecisionLog = S.Struct({
+  authorityBoundary: S.String,
+  countsByState: S.Record(S.String, S.Number),
+  failureModes: S.Array(PublicArtanisReportDecisionFailureMode),
+  generatedAtDisplay: S.String,
+  sourceRefs: S.Array(S.String),
+  ticker: S.Array(PublicArtanisReportActivityTickerEntry),
+})
+export type PublicArtanisReportDecisionLog =
+  typeof PublicArtanisReportDecisionLog.Type
+
 export const PublicArtanisReportStateCaveat = S.Struct({
   caveats: S.Array(S.String),
   description: S.String,
@@ -875,6 +911,7 @@ export const PublicArtanisReport = S.Struct({
   autonomousLoop: PublicArtanisReportLoopSummary,
   campaignRef: S.String,
   claimStateCaveats: S.Array(PublicArtanisReportStateCaveat),
+  decisionLog: S.optionalKey(PublicArtanisReportDecisionLog),
   displayName: S.String,
   forumLinks: S.Array(PublicArtanisReportForumLink),
   forumRewardSmoke: PublicArtanisForumRewardSmoke,

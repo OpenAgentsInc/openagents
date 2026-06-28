@@ -12,6 +12,7 @@ import {
   publicNexusPylonReceiptRouteRefsFromRefs,
 } from './artanis-public-report'
 import { handlePublicArtanisReportApi } from './artanis-public-report-routes'
+import { projectArtanisTickMonitor } from './artanis-tick-monitor'
 import { publicPylonStatsFromNexusPayload } from './public-pylon-stats'
 import { publicScannerSafeRef } from './public-ref-scanner-safety'
 
@@ -521,6 +522,74 @@ describe('Artanis public report', () => {
       ]),
     )
     expect(artanisPublicReportHasPrivateMaterial(report)).toBe(false)
+  })
+
+  test('projects public-safe Log and Brain decision summaries from admin ticks', () => {
+    const tickMonitor = projectArtanisTickMonitor(
+      [
+        {
+          action_json: JSON.stringify({
+            rationale:
+              'Public issue #6358 identified the counter-health failure mode.',
+          }),
+          assignment_ref: 'assignment.artanis_admin.20260611011429',
+          created_at: '2026-06-11T01:14:29.000Z',
+          id: 'decision-1',
+          state: 'dispatched',
+        },
+        {
+          action_json: JSON.stringify({
+            reason:
+              'private token leak attempt should redact before the public report',
+          }),
+          assignment_ref: null,
+          created_at: '2026-06-11T01:10:00.000Z',
+          id: 'decision-2',
+          state: 'blocked',
+        },
+        {
+          action_json: JSON.stringify({
+            reason: 'Dispatch failed; triaged to OpenAgentsInc/openagents#6415.',
+          }),
+          assignment_ref: null,
+          created_at: '2026-06-11T01:08:00.000Z',
+          id: 'decision-3',
+          state: 'dispatch_failed',
+        },
+      ],
+      '2026-06-11T01:20:00.000Z',
+    )
+    const report = artanisPublicReportSnapshot({
+      nowIso: '2026-06-11T01:20:00.000Z',
+      pylonStats: publicPylonStatsFromNexusPayload({
+        as_of_unix_ms: Date.parse('2026-06-11T01:20:00.000Z'),
+      }),
+      tickMonitor,
+    })
+    const serialized = JSON.stringify(report)
+
+    expect(report.decisionLog.ticker).toHaveLength(3)
+    expect(report.decisionLog.ticker[0]).toMatchObject({
+      assignmentRef: 'assignment.artanis_admin.20260611011429',
+      issueNumber: 6358,
+      label: 'Executor dispatched',
+    })
+    expect(report.decisionLog.failureModes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          count: 1,
+          label: 'Blocked decisions',
+          resultingPublicIssueNumber: null,
+        }),
+        expect.objectContaining({
+          count: 1,
+          label: 'Dispatch failures',
+          resultingPublicIssueNumber: 6415,
+        }),
+      ]),
+    )
+    expect(artanisPublicReportHasPrivateMaterial(report)).toBe(false)
+    expect(serialized).not.toContain('private token leak')
   })
 
   // Epic #4751 (instance 6, #4745): the report declares its staleness
