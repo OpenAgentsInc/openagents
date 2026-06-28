@@ -496,6 +496,75 @@ describe("Pylon assignment lease flow", () => {
     })
   })
 
+  test("routes Claude no-spend assignments through the selected Claude account", async () => {
+    await withTempHome(async (home) => {
+      const claudeLease = lease({
+        capabilityRefs: ["capability.pylon.local_claude_agent"],
+        codingAssignment: {
+          claudeAgent: {
+            agentKind: "claude_agent_sdk",
+            fixtureRef: "fixture.public.pylon.claude_agent.sum_repair.v1",
+            schema: CLAUDE_AGENT_TASK_SCHEMA,
+          },
+        },
+        jobKind: "claude_agent_task",
+      })
+      const fake = fakeAssignmentServer({ leases: [claudeLease] })
+      const summary = await readySummary(home, ["capability.pylon.local_claude_agent"])
+      const state = await ensurePylonLocalState(summary)
+      const claudeHome = join(home, "accounts/claude/claude-pylon-a")
+      await mkdir(claudeHome, { recursive: true })
+      await writeFile(
+        state.paths.config,
+        `${JSON.stringify(
+          {
+            dev: {
+              accounts: [{ provider: "claude_agent", ref: "claude-pylon-a", home: claudeHome }],
+            },
+          },
+          null,
+          2,
+        )}\n`,
+      )
+      await sendHeartbeat(summary, { baseUrl: fake.baseUrl, now: () => new Date("2026-06-09T00:00:00.000Z") })
+
+      let seenAccountRef: string | null = null
+      let seenClaudeConfigDir: string | null = null
+      const fixingClaudeRunner: ClaudeAgentRunner = async (input) => {
+        seenAccountRef = input.account?.accountRef ?? null
+        seenClaudeConfigDir = input.env?.CLAUDE_CONFIG_DIR ?? null
+        await writeFile(
+          join(input.cwd, "sum.ts"),
+          "export const sum = (left: number, right: number) => left + right\n",
+        )
+        return { commandCount: 1, editedFileCount: 1, outcome: "completed", sessionRef: null, turnCount: 1 }
+      }
+
+      const result = await runNoSpendAssignment(summary, {
+        accountRef: "claude-pylon-a",
+        baseUrl: fake.baseUrl,
+        claudeAgentProbe: {
+          env: { ANTHROPIC_API_KEY: "test-key-shape" },
+          importer: async (specifier: string) => {
+            if (specifier !== CLAUDE_AGENT_SDK_PACKAGE) throw new Error("unexpected import")
+            return {}
+          },
+          platform: "darwin",
+        },
+        claudeAgentRunner: fixingClaudeRunner,
+        now: () => new Date("2026-06-09T00:00:30.000Z"),
+      })
+
+      expect(result.ok).toBe(true)
+      if (!result.ok) throw new Error("expected Claude assignment to run")
+      expect(seenAccountRef).toBe("claude-pylon-a")
+      expect(seenClaudeConfigDir).toBe(claudeHome)
+      expect(result.closeout.resultRefs).toContain(
+        "result.public.pylon.claude_agent_task.fixture_repair_passed",
+      )
+    })
+  })
+
   test("emits public-safe live runtime progress while Codex assignment is active", async () => {
     await withTempHome(async (home) => {
       const codexLease = lease({
