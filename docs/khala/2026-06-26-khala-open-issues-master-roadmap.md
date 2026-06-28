@@ -265,7 +265,12 @@ operator view of what remains, not a public product claim.
   tokens and `178691` non-GLM/fallback tokens from earlier fallback/probe
   behavior, so the GLM stress ledger is now over the owner-requested
   `5,000,000` token threshold.
-  #6317 remains open for continuous scheduling/public telemetry and a
+  A 2026-06-28 prep slice added a bounded public-safe continuous supervisor tick
+  artifact around the adaptive runner. It carries the next run id, cadence,
+  carried-forward concurrency, previous public summary, and yield/complete
+  reason refs through `openagents.khala.telemetry.v1`, and it drops stress to
+  the floor instead of dispatching when external demand is active. #6317 remains
+  open for wiring that supervisor into the live durable loop and proving a
   controlled external-demand spike with zero external failure.
 - 2026-06-27T11:03Z #6323 isolated live-host attempt: `us-central1` could not
   allocate another 8x RTX PRO 6000 Spot host because regional preemptible quota
