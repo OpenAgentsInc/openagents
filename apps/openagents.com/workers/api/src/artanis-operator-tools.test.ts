@@ -17,6 +17,7 @@ import {
   isSafeArtanisAssignmentRef,
   isSafeArtanisRepoPath,
   makeArtanisDispatchCodexTaskTool,
+  makeArtanisGetFleetStatusTool,
   makeArtanisGetGlmFleetStatusTool,
   makeArtanisGetSyntheticLoadStatusTool,
   makeArtanisGetKhalaFeedbackTool,
@@ -1633,6 +1634,131 @@ describe('#6359 get_network_stats (live public stats + token pace)', () => {
   })
 })
 
+describe('get_fleet_status (unified operator fleet read)', () => {
+  test('composes pace, fleet, watchdog, GLM, and brain status in one read', async () => {
+    const tool = makeArtanisGetFleetStatusTool({
+      glmFleetStatus: {
+        loadFleetStatus: async (): Promise<ArtanisGlmFleetStatus> => ({
+          readyReplicas: 4,
+          status: 'ready',
+          totalReplicas: 5,
+          warmReplicas: 1,
+        }),
+      },
+      networkStats: {
+        loadStats: async () => ({
+          allTimeTokensServed: 9_000,
+          generatedAt: '2026-06-27T17:00:00.000Z',
+          history: [],
+          modelMix: [],
+          pace: {
+            behindPace: true,
+            day: '2026-06-27',
+            fractionOfCentralDayElapsed: 0.5,
+            gapToTarget4x: 300,
+            paceProjection: 100,
+            target10x: 1_000,
+            target4x: 400,
+            todayTokens: 50,
+            yesterdayTokens: 100,
+          },
+          timezone: 'America/Chicago',
+          todayTokens: 50,
+        }),
+      },
+      pylonAssignments: {
+        lister: async (): Promise<ReadonlyArray<ArtanisPylonAssignmentSummary>> => [
+          {
+            assignmentRef: 'assignment.public.pylon_api.pass',
+            jobKind: 'codex_agent_task',
+            leaseState: 'terminal',
+            phase: 'proof-ready',
+            state: 'closeout_submitted',
+            updatedAt: 'a minute ago',
+            verifyResult: 'pass',
+          },
+          {
+            assignmentRef: 'assignment.public.pylon_api.running',
+            jobKind: 'codex_agent_task',
+            leaseState: 'active',
+            phase: 'accepted',
+            state: 'accepted',
+            updatedAt: 'now',
+            verifyResult: 'unknown',
+          },
+        ],
+      },
+      syntheticLoadStatus: {
+        reader: async (): Promise<ReadonlyArray<ArtanisSyntheticLoadRun>> => [
+          {
+            runRef: 'synthetic_load.terminal_bench.public.one',
+            runType: 'terminal-bench',
+            state: 'running',
+            targetTokens: 10_000,
+            tokensBurned: 2_500,
+          },
+        ],
+      },
+      traceReview: {
+        loadReport: async () => ({
+          aggregates: {
+            rawCodexEvents: { rowCount: 1 },
+            tokens: { eventCount: 2, totalTokens: 345 },
+            traces: { traceCount: 3 },
+          },
+          outcomes: [{ count: 2, outcome: 'accepted', totalTokens: 345 }],
+          window: {
+            hours: 24,
+            since: '2026-06-26T17:00:00.000Z',
+            until: '2026-06-27T17:00:00.000Z',
+          },
+        }),
+      },
+    })
+
+    expect(tool.kind).toBe('read')
+    expect(tool.definition.name).toBe('get_fleet_status')
+
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toContain('Unified fleet status')
+    expect(result).toContain('Pace: Token pace for 2026-06-27')
+    expect(result).toContain('BEHIND PACE')
+    expect(result).toContain(
+      'Fleet: 2 recent Pylon/Codex assignments; active=1, pass=1, fail=0, in-progress=1.',
+    )
+    expect(result).toContain('assignment.public.pylon_api.running')
+    expect(result).toContain('Watchdog: 1 active synthetic-load run')
+    expect(result).toContain('2500/10000 tokens')
+    expect(result).toContain('GLM: status=ready, ready=4/5, warm=1.')
+    expect(result).toContain(
+      'Brain: trace-review 3 turns / 345 tokens over 24h; top outcome=accepted.',
+    )
+  })
+
+  test('degrades missing or failing readers to honest unavailable sections', async () => {
+    const tool = makeArtanisGetFleetStatusTool({
+      networkStats: {
+        loadStats: async () => {
+          throw new Error('stats down')
+        },
+      },
+      pylonAssignments: {
+        lister: async () => {
+          throw new Error('d1 down')
+        },
+      },
+    })
+
+    const result = await Effect.runPromise(tool.execute({}))
+    expect(result).toContain('Pace: unavailable')
+    expect(result).toContain('Fleet: unavailable')
+    expect(result).toContain('Watchdog: unavailable')
+    expect(result).toContain('GLM: unavailable')
+    expect(result).toContain('Brain: unavailable')
+    expect(result).not.toContain('Error:')
+  })
+})
+
 describe('trigger_synthetic_load (RISKY plan-only) — iteration 4', () => {
   const tool = makeArtanisTriggerSyntheticLoadTool()
 
@@ -2222,6 +2348,7 @@ describe('makeArtanisOperatorTools default table', () => {
     const names = tools.map(tool => tool.definition.name).sort()
     expect(names).toEqual([
       'dispatch_codex_task',
+      'get_fleet_status',
       'get_glm_fleet_status',
       'get_khala_feedback',
       'get_network_stats',
@@ -2269,6 +2396,13 @@ describe('makeArtanisOperatorTools default table', () => {
   test('the default table includes a read-kind get_glm_fleet_status tool', () => {
     const tools = makeArtanisOperatorTools()
     const tool = tools.find(t => t.definition.name === 'get_glm_fleet_status')
+    expect(tool).toBeDefined()
+    expect(tool?.kind).toBe('read')
+  })
+
+  test('the default table includes a read-kind get_fleet_status tool', () => {
+    const tools = makeArtanisOperatorTools()
+    const tool = tools.find(t => t.definition.name === 'get_fleet_status')
     expect(tool).toBeDefined()
     expect(tool?.kind).toBe('read')
   })
