@@ -224,6 +224,26 @@ const requireIdempotencyHash = (
   return Effect.promise(() => sha256Hex(idempotencyKey))
 }
 
+const requireScopedIdempotencyHash = (
+  request: Request,
+  scope: readonly string[],
+): Effect.Effect<string, PylonApiStoreError> => {
+  const idempotencyKey = idempotencyKeyFromRequest(request)
+
+  if (idempotencyKey === undefined) {
+    return Effect.fail(
+      new PylonApiStoreError({
+        kind: 'validation_error',
+        reason: 'Idempotency-Key header is required.',
+      }),
+    )
+  }
+
+  return Effect.promise(() =>
+    sha256Hex(['pylon_api_event_v2', ...scope, idempotencyKey].join('\0')),
+  )
+}
+
 const decodeBody = <A>(
   request: Request,
   schema: S.Decoder<A>,
@@ -1607,9 +1627,20 @@ const routeEvent = <Bindings extends PylonApiRouteEnv>(
 ) =>
   Effect.gen(function* () {
     const session = yield* requireAgent(dependencies, request, env)
-    const idempotencyKeyHash = yield* requireIdempotencyHash(request)
     const pylonRef = input.pylonRef
     const assignmentRef = input.assignmentRef ?? null
+    const registration = yield* requireOwnedRegistration(
+      dependencies,
+      env,
+      pylonRef,
+      session,
+    )
+    const idempotencyKeyHash = yield* requireScopedIdempotencyHash(request, [
+      registration.ownerAgentUserId,
+      pylonRef,
+      input.eventKind,
+      assignmentRef ?? '',
+    ])
     const store = routeStore(dependencies, env)
     const existingEvent = yield* Effect.tryPromise({
       catch: pylonApiStoreErrorFromUnknown,
@@ -1678,12 +1709,6 @@ const routeEvent = <Bindings extends PylonApiRouteEnv>(
       )
     }
 
-    const registration = yield* requireOwnedRegistration(
-      dependencies,
-      env,
-      pylonRef,
-      session,
-    )
     const nowIso = routeNowIso(dependencies)
     const assignment =
       input.assignmentRef === undefined
@@ -1922,9 +1947,20 @@ const routeRegisterSparkPayoutTarget = <Bindings extends PylonApiRouteEnv>(
       )
     }
 
-    const idempotencyKeyHash = yield* requireIdempotencyHash(request)
     const store = routeStore(dependencies, env)
     const sparkStore = makeSparkStore(env)
+    const registration = yield* requireOwnedRegistration(
+      dependencies,
+      env,
+      pylonRef,
+      session,
+    )
+    const idempotencyKeyHash = yield* requireScopedIdempotencyHash(request, [
+      registration.ownerAgentUserId,
+      pylonRef,
+      'payout_target_admission',
+      '',
+    ])
 
     const existingEvent = yield* Effect.tryPromise({
       catch: pylonApiStoreErrorFromUnknown,
@@ -1990,12 +2026,6 @@ const routeRegisterSparkPayoutTarget = <Bindings extends PylonApiRouteEnv>(
       )
     }
 
-    const registration = yield* requireOwnedRegistration(
-      dependencies,
-      env,
-      pylonRef,
-      session,
-    )
     // The schema validates the raw `spark1…` shape and the redacted digest ref
     // shape at the JSON boundary; the raw address never reaches here unvalidated.
     const body = yield* decodeBody(

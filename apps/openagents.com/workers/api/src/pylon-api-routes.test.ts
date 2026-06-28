@@ -63,6 +63,11 @@ type PylonRouteJson = Readonly<{
     walletSpendAllowed?: boolean
   }>
   error?: string
+  event?: Readonly<{
+    eventKind?: string
+    pylonRef?: string
+    status?: string
+  }>
   reason?: string
   events?: ReadonlyArray<unknown>
   idempotent?: boolean
@@ -3575,15 +3580,54 @@ describe('Pylon API routes', () => {
     expect(rejectedBody.assignment?.state).toBe('rejected')
   })
 
-  test('rejects idempotency key reuse across Pylons, agents, and event kinds', async () => {
+  test('scopes event idempotency keys by owner, Pylon, event kind, and assignment', async () => {
     const store = new MemoryPylonApiStore()
     await registerPylon(store)
-    await route(store, '/api/pylons/pylon.test.one/heartbeat', {
-      body: { healthRefs: ['health.public.ok'] },
-      idempotencyKey: 'pylon-event-key',
-      method: 'POST',
+    const firstHeartbeat = await route(
+      store,
+      '/api/pylons/pylon.test.one/heartbeat',
+      {
+        body: { healthRefs: ['health.public.ok'] },
+        idempotencyKey: 'pylon-event-key',
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
+    const replayHeartbeat = await route(
+      store,
+      '/api/pylons/pylon.test.one/heartbeat',
+      {
+        body: { healthRefs: ['health.public.changed'] },
+        idempotencyKey: 'pylon-event-key',
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
+    await registerPylon(store, {
+      idempotencyKey: 'register-pylon-test-two',
+      pylonRef: 'pylon.test.two',
       tokenUserId: 'agent-one',
     })
+    const sameKeyDifferentPylon = await route(
+      store,
+      '/api/pylons/pylon.test.two/heartbeat',
+      {
+        body: { healthRefs: ['health.public.ok'] },
+        idempotencyKey: 'pylon-event-key',
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
+    const sameKeyDifferentEventKind = await route(
+      store,
+      '/api/pylons/pylon.test.one/wallet-readiness',
+      {
+        body: { walletReady: true },
+        idempotencyKey: 'pylon-event-key',
+        method: 'POST',
+        tokenUserId: 'agent-one',
+      },
+    )
     const wrongOwner = await route(
       store,
       '/api/pylons/pylon.test.one/heartbeat',
@@ -3594,22 +3638,16 @@ describe('Pylon API routes', () => {
         tokenUserId: 'agent-two',
       },
     )
-    const wrongEventKind = await route(
+    const registrationWithSameClientKey = await route(
       store,
-      '/api/pylons/pylon.test.one/wallet-readiness',
+      '/api/pylons/register',
       {
-        body: { walletReady: true },
+        body: { pylonRef: 'pylon.test.from-event-key' },
         idempotencyKey: 'pylon-event-key',
         method: 'POST',
         tokenUserId: 'agent-one',
       },
     )
-    const wrongRegisterKind = await route(store, '/api/pylons/register', {
-      body: { pylonRef: 'pylon.test.from-event-key' },
-      idempotencyKey: 'pylon-event-key',
-      method: 'POST',
-      tokenUserId: 'agent-one',
-    })
     const registerReplayWithDifferentPylon = await route(
       store,
       '/api/pylons/register',
@@ -3620,18 +3658,30 @@ describe('Pylon API routes', () => {
         tokenUserId: 'agent-one',
       },
     )
+    const replayHeartbeatBody = await responseJson<PylonRouteJson>(
+      replayHeartbeat,
+    )
     const registerReplayBody = await responseJson<PylonRouteJson>(
       registerReplayWithDifferentPylon,
     )
 
+    expect(firstHeartbeat.status).toBe(201)
+    expect(replayHeartbeat.status).toBe(200)
+    expect(replayHeartbeatBody.idempotent).toBe(true)
+    expect(replayHeartbeatBody.event).toMatchObject({
+      eventKind: 'heartbeat',
+      pylonRef: 'pylon.test.one',
+      status: 'online',
+    })
+    expect(sameKeyDifferentPylon.status).toBe(201)
+    expect(sameKeyDifferentEventKind.status).toBe(201)
     expect(wrongOwner.status).toBe(403)
-    expect(wrongEventKind.status).toBe(409)
-    expect(wrongRegisterKind.status).toBe(409)
+    expect(registrationWithSameClientKey.status).toBe(201)
     expect(registerReplayWithDifferentPylon.status).toBe(200)
     expect(registerReplayBody.idempotent).toBe(true)
     expect(registerReplayBody.pylon?.pylonRef).toBe('pylon.test.one')
     expect(store.registrations.has('pylon.test.different')).toBe(false)
-    expect(store.registrations.has('pylon.test.from-event-key')).toBe(false)
+    expect(store.registrations.has('pylon.test.from-event-key')).toBe(true)
   })
 
   test('requires registered-agent auth and registration ownership for writes', async () => {
