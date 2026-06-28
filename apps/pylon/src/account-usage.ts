@@ -24,11 +24,19 @@ import {
 } from "./codex-agent.js"
 import type { BootstrapSummary } from "./bootstrap.js"
 import { assertPublicProjectionSafe } from "./state.js"
+import {
+  consumeManualQuotaReset,
+  isAccountAvailable,
+  loadManualQuotaResetRecord,
+  loadQuotaRecord,
+  type QuotaRecord,
+} from "./account-quota-ledger.js"
 
 export const PYLON_ACCOUNT_USAGE_STORE_SCHEMA = "openagents.pylon.account_usage_store.v0.3"
 export const PYLON_ACCOUNTS_LIST_SCHEMA = "openagents.pylon.accounts_list.v0.3"
 export const PYLON_ACCOUNTS_USAGE_SCHEMA = "openagents.pylon.accounts_usage.v0.3"
 export const PYLON_ACCOUNT_USAGE_SUMMARY_SCHEMA = "openagents.pylon.account_usage_summary.v0.3"
+export const PYLON_ACCOUNTS_STATUS_SCHEMA = "openagents.pylon.accounts_status.v0.1"
 
 export type PylonRateLimitWindowSnapshot = {
   usedPercent: number
@@ -113,6 +121,57 @@ export type PylonAccountsUsageArgs = {
   all: boolean
   refresh: boolean
   json: boolean
+}
+
+export type PylonAccountsStatusArgs = Pick<PylonAccountsUsageArgs, "accountRef" | "provider" | "all" | "json"> & {
+  reset: boolean
+}
+
+export type PylonAccountWindowStatus = {
+  usedPercent: number
+  remainingPercent: number
+  windowMinutes: number | null
+  resetsAtIso: string | null
+  label: string
+}
+
+export type PylonAccountsStatusProjection = {
+  schema: typeof PYLON_ACCOUNTS_STATUS_SCHEMA
+  observedAt: string
+  accounts: Array<{
+    provider: PylonAccountProvider
+    selector: "registry_ref" | "default_home"
+    accountRef: string | null
+    accountRefHash: string
+    readiness: PylonAccountReadiness["readiness"]
+    quota: {
+      state: "available" | "limited"
+      observedAt: string | null
+      cooldownExpiresAt: string | null
+      cooldownSecondsRemaining: number | null
+      sourceDigestRef: string | null
+    }
+    capacity: {
+      hourly: PylonAccountWindowStatus | null
+      weekly: PylonAccountWindowStatus | null
+      windows: PylonAccountWindowStatus[]
+    }
+    usage: {
+      observedAt: string | null
+      inputTokens: number | null
+      outputTokens: number | null
+      totalTokens: number | null
+      totalCostUsd?: number
+    }
+    manualReset: {
+      performed: boolean
+      manualResetsRemaining: number
+      updatedAt: string
+      blockerRefs: string[]
+    }
+    blockerRefs: string[]
+  }>
+  blockerRefs: string[]
 }
 
 export type PylonAccountsUsageProjection = {
@@ -318,6 +377,7 @@ function isApproximateWindow(minutes: number, expectedMinutes: number) {
 export function rateLimitLabelForWindow(windowMinutes: number | null): string {
   if (windowMinutes === null) return "usage"
   const minutes = Math.max(0, windowMinutes)
+  if (isApproximateWindow(minutes, 60)) return "hourly"
   if (isApproximateWindow(minutes, 5 * 60)) return "5h"
   if (isApproximateWindow(minutes, 24 * 60)) return "daily"
   if (isApproximateWindow(minutes, 7 * 24 * 60)) return "weekly"
@@ -528,6 +588,44 @@ export function parsePylonAccountsUsageArgs(args: string[]): PylonAccountsUsageA
   }
   const selectorCount = [parsed.accountRef, parsed.provider, parsed.all ? "all" : null].filter(Boolean).length
   if (selectorCount > 1) throw new Error("Use only one of --account, --provider, or --all")
+  return parsed
+}
+
+export function parsePylonAccountsStatusArgs(args: string[]): PylonAccountsStatusArgs {
+  const parsed: PylonAccountsStatusArgs = {
+    accountRef: null,
+    provider: null,
+    all: false,
+    json: false,
+    reset: false,
+  }
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index]
+    if (arg === "--json") {
+      parsed.json = true
+    } else if (arg === "--reset") {
+      parsed.reset = true
+    } else if (arg === "--all") {
+      parsed.all = true
+    } else if (arg === "--account") {
+      const value = args[index + 1]
+      if (!value || value.startsWith("--")) throw new Error("--account requires an account ref or provider selector")
+      parsed.accountRef = value
+      index += 1
+    } else if (arg === "--provider") {
+      const value = args[index + 1]
+      if (!value || value.startsWith("--")) throw new Error("--provider requires codex or claude_agent")
+      const provider = providerSelectorFrom(value)
+      if (!provider) throw new Error("--provider must be codex or claude_agent")
+      parsed.provider = provider
+      index += 1
+    } else {
+      throw new Error(`Unknown accounts status option: ${arg}`)
+    }
+  }
+  const selectorCount = [parsed.accountRef, parsed.provider, parsed.all ? "all" : null].filter(Boolean).length
+  if (selectorCount > 1) throw new Error("Use only one of --account, --provider, or --all")
+  if (parsed.reset && !parsed.accountRef) throw new Error("accounts status --reset requires --account <ref>")
   return parsed
 }
 
@@ -920,6 +1018,148 @@ function clonePlatformTruth(value: PlatformTruthProjection): PlatformTruthProjec
       : null,
     blockerRefs: [...value.blockerRefs],
   }
+}
+
+function isoFromResetEpoch(value: number | null): string | null {
+  if (value === null || !Number.isFinite(value) || value <= 0) return null
+  const millis = value < 10_000_000_000 ? value * 1000 : value
+  const date = new Date(millis)
+  return Number.isNaN(date.getTime()) ? null : date.toISOString()
+}
+
+function windowStatusFrom(snapshot: PylonRateLimitWindowSnapshot): PylonAccountWindowStatus {
+  return {
+    usedPercent: snapshot.usedPercent,
+    remainingPercent: snapshot.remainingPercent,
+    windowMinutes: snapshot.windowMinutes,
+    resetsAtIso: isoFromResetEpoch(snapshot.resetsAt),
+    label: snapshot.label,
+  }
+}
+
+function capacityWindowsFrom(entry: PylonAccountUsageStoreEntry | undefined): PylonAccountWindowStatus[] {
+  if (!entry?.providerTruth) return []
+  const windows: PylonAccountWindowStatus[] = []
+  for (const snapshot of entry.providerTruth.snapshots) {
+    if (snapshot.primary) windows.push(windowStatusFrom(snapshot.primary))
+    if (snapshot.secondary) windows.push(windowStatusFrom(snapshot.secondary))
+  }
+  const seen = new Set<string>()
+  return windows.filter((window) => {
+    const key = `${window.label}:${window.windowMinutes ?? "unknown"}:${window.usedPercent}:${window.resetsAtIso ?? "none"}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+function quotaCooldownExpiresAt(record: QuotaRecord | null): string | null {
+  if (record === null) return null
+  if (record.retryAtIso !== null) return record.retryAtIso
+  const observed = Date.parse(record.observedAt)
+  if (!Number.isFinite(observed)) return null
+  return new Date(observed + 3600_000).toISOString()
+}
+
+function quotaCooldownSecondsRemaining(record: QuotaRecord | null, now: Date): number | null {
+  const expiresAt = quotaCooldownExpiresAt(record)
+  if (expiresAt === null) return null
+  const parsed = Date.parse(expiresAt)
+  if (!Number.isFinite(parsed)) return null
+  return Math.max(0, Math.ceil((parsed - now.getTime()) / 1000))
+}
+
+function firstWindowByLabel(windows: PylonAccountWindowStatus[], label: string): PylonAccountWindowStatus | null {
+  return windows.find((window) => window.label === label) ?? null
+}
+
+export async function collectPylonAccountsStatus(
+  summary: Pick<BootstrapSummary, "paths">,
+  args: PylonAccountsStatusArgs,
+  options: { env?: Record<string, string | undefined>; now?: Date } = {},
+): Promise<PylonAccountsStatusProjection> {
+  const env = options.env ?? (Bun.env as Record<string, string | undefined>)
+  const now = options.now ?? new Date()
+  const observedAt = now.toISOString()
+  const targets = await selectAccountUsageTargets(summary, args, env)
+  const store = await loadAccountUsageStore(summary)
+  const accounts: PylonAccountsStatusProjection["accounts"] = []
+
+  for (const target of targets) {
+    const readiness = (await readinessForTarget(summary, target, env)).readiness
+    let resetPerformed = false
+    let resetBlockerRefs: string[] = []
+    if (args.reset && args.accountRef === target.accountRef) {
+      try {
+        await consumeManualQuotaReset(summary, {
+          accountRefHash: target.accountRefHash,
+          provider: target.provider,
+          now,
+        })
+        resetPerformed = true
+      } catch {
+        resetBlockerRefs = ["blocker.pylon.accounts_status.manual_resets_exhausted"]
+      }
+    }
+
+    const quotaRecord = await loadQuotaRecord(summary, target.accountRefHash)
+    const resetRecord = await loadManualQuotaResetRecord(summary, {
+      accountRefHash: target.accountRefHash,
+      provider: target.provider,
+    })
+    const entry = store.accounts[target.accountRefHash]
+    const windows = capacityWindowsFrom(entry)
+    const localUsage = entry?.localSessionTruth?.usage ?? null
+    const quotaLimited = !isAccountAvailable(quotaRecord, now)
+    const quota = {
+      state: quotaLimited ? "limited" as const : "available" as const,
+      observedAt: quotaRecord?.observedAt ?? null,
+      cooldownExpiresAt: quotaCooldownExpiresAt(quotaRecord),
+      cooldownSecondsRemaining: quotaCooldownSecondsRemaining(quotaRecord, now),
+      sourceDigestRef: quotaRecord?.sourceDigestRef ?? null,
+    }
+    const manualReset = {
+      performed: resetPerformed,
+      manualResetsRemaining: resetRecord.manualResetsRemaining,
+      updatedAt: resetRecord.updatedAt,
+      blockerRefs: resetBlockerRefs,
+    }
+    accounts.push({
+      provider: target.provider,
+      selector: target.selector,
+      accountRef: target.accountRef,
+      accountRefHash: target.accountRefHash,
+      readiness,
+      quota,
+      capacity: {
+        hourly: firstWindowByLabel(windows, "hourly"),
+        weekly: firstWindowByLabel(windows, "weekly"),
+        windows,
+      },
+      usage: {
+        observedAt: entry?.localSessionTruth?.observedAt ?? null,
+        inputTokens: localUsage?.inputTokens ?? null,
+        outputTokens: localUsage?.outputTokens ?? null,
+        totalTokens: localUsage?.totalTokens ?? null,
+        ...(localUsage?.totalCostUsd === undefined ? {} : { totalCostUsd: localUsage.totalCostUsd }),
+      },
+      manualReset,
+      blockerRefs: [
+        ...readiness.blockerRefs,
+        ...(quotaLimited ? ["blocker.pylon.accounts_status.quota_limited"] : []),
+        ...manualReset.blockerRefs,
+      ],
+    })
+  }
+
+  const projection = {
+    schema: PYLON_ACCOUNTS_STATUS_SCHEMA,
+    observedAt,
+    accounts,
+    blockerRefs: accounts.flatMap((account) => account.blockerRefs),
+  } satisfies PylonAccountsStatusProjection
+  assertPublicProjectionSafe(projection)
+  return projection
 }
 
 export async function collectPylonAccountsUsage(
