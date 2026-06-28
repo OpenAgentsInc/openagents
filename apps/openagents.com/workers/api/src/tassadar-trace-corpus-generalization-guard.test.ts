@@ -100,6 +100,61 @@ describe('Tassadar trace corpus generalization guard', () => {
     )
   })
 
+  test('detects checksum tampering on a held-out shard ref', async () => {
+    const manifest = readManifest('tassadar-trace-corpus.v0_2.w3_100m.manifest.json')
+    const guard = manifest.generalizationGuard!
+    const tampered: TassadarGeneralizationGuardManifest = {
+      ...manifest,
+      generalizationGuard: {
+        ...guard,
+        partitions: guard.partitions.map(partition =>
+          partition.kind === 'gg_held_out'
+            ? {
+                ...partition,
+                shardRefs: partition.shardRefs.map((ref, index) =>
+                  index === 0 ? ref.replace(/.$/, '0') : ref,
+                ),
+              }
+            : partition,
+        ),
+      },
+    }
+
+    await expect(validateTassadarGeneralizationGuard(tampered)).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'held_out_shard_ref_checksum_mismatch',
+        }),
+        expect.objectContaining({ kind: 'guard_digest_mismatch' }),
+      ]),
+    )
+  })
+
+  test('detects held-out partition count drift against manifest rows', async () => {
+    const manifest = readManifest('tassadar-trace-corpus.v0_1.manifest.json')
+    const guard = manifest.generalizationGuard!
+    const drifted: TassadarGeneralizationGuardManifest = {
+      ...manifest,
+      generalizationGuard: {
+        ...guard,
+        partitions: guard.partitions.map(partition =>
+          partition.kind === 'gg_held_out'
+            ? { ...partition, recordCount: partition.recordCount + 1 }
+            : partition,
+        ),
+      },
+    }
+
+    await expect(validateTassadarGeneralizationGuard(drifted)).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'held_out_partition_count_mismatch',
+        }),
+        expect.objectContaining({ kind: 'guard_digest_mismatch' }),
+      ]),
+    )
+  })
+
   test('MirrorCode public tasks are labeled as Khala GG evidence', () => {
     const run = buildMirrorCodeRun({
       runId: 'mc-decision-cal-py-gg-0001',
