@@ -22,6 +22,10 @@ import {
   gymLadderSnapshotRef,
 } from './ladder'
 import type { GymLeaderboardReportInput } from './leaderboard'
+import {
+  buildMirrorCodeRun,
+  type MirrorCodeRun,
+} from './mirrorcode-contract'
 
 const REALISTIC_SHAPE = {
   id: 'observed-opencode-ladder-run',
@@ -102,15 +106,36 @@ const khalaInput = (costBasisMsat: number): GymLeaderboardReportInput => {
   }
 }
 
+const mirrorCodeRun = (
+  overrides: Partial<Parameters<typeof buildMirrorCodeRun>[0]> = {},
+): MirrorCodeRun =>
+  buildMirrorCodeRun({
+    runId: 'mc-public-cal-python-0001',
+    model: 'openagents/khala',
+    taskId: 'cal_python',
+    bucket: 'S',
+    language: 'python',
+    status: 'passed',
+    passRate: 1,
+    tokens: { total: 1_250_000_000 },
+    startedAt: '2026-06-27T00:00:00.000Z',
+    finishedAt: '2026-06-27T04:00:00.000Z',
+    summary: 'Decision-grade public MirrorCode cal_python run.',
+    grade: 'decision_grade',
+    ...overrides,
+  })
+
 describe('Gym ladder recurring config', () => {
-  test('defines the three deliberate rungs with owner gates + internal demand tagging', () => {
+  test('defines the four deliberate rungs with owner gates + internal demand tagging', () => {
     expect(GYM_LADDER_RUNGS.map(r => r.rung)).toEqual([
       'rung1',
       'rung2',
       'rung3',
+      'rung4',
     ])
     expect(GYM_LADDER_RUNGS[0]?.opponentLanes).toContain('bigpickle')
     expect(GYM_LADDER_RUNGS[2]?.opponentLanes).toEqual(['openai-gpt', 'claude'])
+    expect(GYM_LADDER_RUNGS[3]?.opponentLanes).toEqual([])
     for (const rung of GYM_LADDER_RUNGS) {
       expect(rung.ownerGateRef).toMatch(/^gate\.owner\.gym\.ladder\./)
     }
@@ -141,6 +166,7 @@ describe('Gym ladder leaderboard projection', () => {
       'awaiting_owner',
       'awaiting_owner',
       'awaiting_owner',
+      'awaiting_owner',
     ])
     const rung1 = ladder.rungs[0]!
     expect(rung1.entries).toEqual([])
@@ -153,6 +179,11 @@ describe('Gym ladder leaderboard projection', () => {
     // bigpickle is a fixture_only lane today -> honest fixture-only blocker.
     expect(rung1.blockerRefs).toContain(
       'blocker.gym.ladder.opponent_lane_fixture_only.bigpickle',
+    )
+    const rung4 = ladder.rungs.find(r => r.rung === 'rung4')!
+    expect(rung4.mirrorCodeEntries).toEqual([])
+    expect(rung4.blockerRefs).toContain(
+      'blocker.gym.ladder.mirrorcode.no_decision_grade_public_task_run',
     )
   })
 
@@ -200,18 +231,47 @@ describe('Gym ladder leaderboard projection', () => {
     expect(ladder.rungs.find(r => r.rung === 'rung3')?.state).toBe(
       'awaiting_owner',
     )
+    expect(ladder.rungs.find(r => r.rung === 'rung4')?.state).toBe(
+      'awaiting_owner',
+    )
   })
 
-  test('never publishes fixture / non-decision-grade reports as a rung measurement', () => {
-    const fixture = runGymFixtureExperiment(BUNDLED_GYM_EXPERIMENT)
-    const ladder = buildGymLadderLeaderboard([
-      {
-        ...fixture,
-        reportRef: 'report.gym.ladder.fixture',
-        receiptRef: 'receipt.gym.ladder.fixture',
-        candidateRef: 'bigpickle.fixture.run',
-      },
+  test('publishes rung4 from decision-grade MirrorCode public-task rows', () => {
+    const ladder = buildGymLadderLeaderboard([], undefined, [mirrorCodeRun()])
+    const rung4 = ladder.rungs.find(r => r.rung === 'rung4')!
+    expect(rung4.state).toBe('published')
+    expect(rung4.entries).toEqual([])
+    expect(rung4.blockerRefs).toEqual([])
+    expect(rung4.mirrorCodeEntries).toEqual([
+      expect.objectContaining({
+        rank: 1,
+        runId: 'mc-public-cal-python-0001',
+        taskId: 'cal_python',
+        passRateBps: 10_000,
+        tokensTotal: 1_250_000_000,
+        decisionGrade: true,
+        demandKind: 'internal',
+        demandSource: 'gym_mirrorcode',
+        generalizationSet: 'mirrorcode_public_tasks_no_rag',
+        memoryPolicy: 'no_rag_public_tasks_only',
+      }),
     ])
+  })
+
+  test('never publishes fixture / non-decision-grade reports or MirrorCode smoke as a rung measurement', () => {
+    const fixture = runGymFixtureExperiment(BUNDLED_GYM_EXPERIMENT)
+    const ladder = buildGymLadderLeaderboard(
+      [
+        {
+          ...fixture,
+          reportRef: 'report.gym.ladder.fixture',
+          receiptRef: 'receipt.gym.ladder.fixture',
+          candidateRef: 'bigpickle.fixture.run',
+        },
+      ],
+      undefined,
+      [mirrorCodeRun({ grade: 'smoke' })],
+    )
     expect(ladder.decisionGradeRowCount).toBe(0)
     expect(ladder.excludedReports).toContainEqual({
       reportRef: 'report.gym.ladder.fixture',
@@ -220,6 +280,7 @@ describe('Gym ladder leaderboard projection', () => {
     for (const rung of ladder.rungs) {
       expect(rung.state).toBe('awaiting_owner')
     }
+    expect(ladder.rungs.find(r => r.rung === 'rung4')?.mirrorCodeEntries).toEqual([])
   })
 
   test('carries the honest ladder caveats and no illustrative leakage', () => {
@@ -229,6 +290,9 @@ describe('Gym ladder leaderboard projection', () => {
     )
     expect(ladder.caveatRefs).toContain(
       'caveat.public.gym.ladder.no_beats_frontier_claim_from_single_run',
+    )
+    expect(ladder.caveatRefs).toContain(
+      'caveat.public.gym.ladder.mirrorcode_smoke_runs_never_ranked',
     )
     expect(JSON.stringify(ladder)).not.toContain('illustrativeNotice')
   })
