@@ -6,6 +6,7 @@ import {
   type GlmNvfp4PilotEvidenceRefField,
   type GlmNvfp4PilotPublicSummary,
   type GlmNvfp4PilotResult,
+  type GlmNvfp4ServingStackFailureCode,
 } from './glm-nvfp4-pilot'
 
 export const GLM_NVFP4_PILOT_OPERATOR_BUNDLE_SCHEMA =
@@ -24,6 +25,22 @@ export type GlmNvfp4PilotOwnerArmedCommandInput = Readonly<{
   measuredMaxModelLen?: number | undefined
 }>
 
+export type GlmNvfp4PilotServingStackNextAction =
+  | 'fix_boot_load'
+  | 'fix_generation_backend'
+  | 'run_owner_armed_pilot'
+  | 'record_tool_quality_throughput_evidence'
+
+export type GlmNvfp4PilotServingStackSummary = Readonly<{
+  findingCount: number
+  failedBeforeEndpointCount: number
+  failedDuringGenerationCount: number
+  endpointHealthyCount: number
+  failureCodes: ReadonlyArray<GlmNvfp4ServingStackFailureCode>
+  evidenceRefs: ReadonlyArray<string>
+  nextAction: GlmNvfp4PilotServingStackNextAction
+}>
+
 export type GlmNvfp4PilotOperatorBundle = Readonly<{
   schemaVersion: typeof GLM_NVFP4_PILOT_OPERATOR_BUNDLE_SCHEMA
   generatedAt: string
@@ -31,6 +48,7 @@ export type GlmNvfp4PilotOperatorBundle = Readonly<{
   publicSafe: true
   result: GlmNvfp4PilotResult
   summary: GlmNvfp4PilotPublicSummary
+  servingStackSummary: GlmNvfp4PilotServingStackSummary
   missingOperatorInputs: ReadonlyArray<GlmNvfp4PilotOperatorInput>
   ownerArmedCommand: string
   retentionNotes: ReadonlyArray<string>
@@ -232,12 +250,58 @@ export const collectGlmNvfp4PilotMissingOperatorInputs = (input: {
   ]
 }
 
+export const summarizeGlmNvfp4PilotServingStack = (
+  result: GlmNvfp4PilotResult,
+): GlmNvfp4PilotServingStackSummary => {
+  const failedBeforeEndpoint = result.servingStackFindings.filter(
+    finding => finding.status === 'failed_before_endpoint',
+  )
+  const failedDuringGeneration = result.servingStackFindings.filter(
+    finding => finding.status === 'failed_during_generation',
+  )
+  const endpointHealthy = result.servingStackFindings.filter(
+    finding => finding.status === 'endpoint_healthy',
+  )
+  const failureCodes = [
+    ...new Set(
+      result.servingStackFindings.flatMap(finding =>
+        finding.failureCode === null ? [] : [finding.failureCode],
+      ),
+    ),
+  ].sort()
+  const evidenceRefs = [
+    ...new Set(
+      result.servingStackFindings.flatMap(finding =>
+        finding.evidenceRef === null ? [] : [finding.evidenceRef],
+      ),
+    ),
+  ].sort()
+
+  return {
+    findingCount: result.servingStackFindings.length,
+    failedBeforeEndpointCount: failedBeforeEndpoint.length,
+    failedDuringGenerationCount: failedDuringGeneration.length,
+    endpointHealthyCount: endpointHealthy.length,
+    failureCodes,
+    evidenceRefs,
+    nextAction:
+      failedBeforeEndpoint.length > 0
+        ? 'fix_boot_load'
+        : failedDuringGeneration.length > 0
+          ? 'fix_generation_backend'
+          : result.toolLoop.sampleCount === 0
+            ? 'run_owner_armed_pilot'
+            : 'record_tool_quality_throughput_evidence',
+  }
+}
+
 export const buildGlmNvfp4PilotOperatorBundle = (input: {
   config: GlmNvfp4PilotConfig
   result: GlmNvfp4PilotResult
   outputDir?: string | undefined
 }): GlmNvfp4PilotOperatorBundle => {
   const summary = summarizeGlmNvfp4PilotResult(input.result)
+  const servingStackSummary = summarizeGlmNvfp4PilotServingStack(input.result)
   return {
     schemaVersion: GLM_NVFP4_PILOT_OPERATOR_BUNDLE_SCHEMA,
     generatedAt: input.result.generatedAt,
@@ -245,6 +309,7 @@ export const buildGlmNvfp4PilotOperatorBundle = (input: {
     publicSafe: true,
     result: input.result,
     summary,
+    servingStackSummary,
     missingOperatorInputs: collectGlmNvfp4PilotMissingOperatorInputs(input),
     ownerArmedCommand: buildGlmNvfp4PilotOwnerArmedCommand({
       outputDir: input.outputDir,
@@ -274,6 +339,15 @@ export const formatGlmNvfp4PilotOperatorReadme = (
               `- ${input.env} (${input.flag}): ${input.status}; ${input.label}`,
           )
           .join('\n')
+  const servingStackFindings =
+    bundle.result.servingStackFindings.length === 0
+      ? '- none'
+      : bundle.result.servingStackFindings
+          .map(
+            finding =>
+              `- ${finding.engine} ${finding.status} ${finding.failureCode ?? 'none'} ${finding.evidenceRef ?? 'no_public_ref'}`,
+          )
+          .join('\n')
 
   return [
     '# GLM NVFP4 Pilot Evidence Bundle',
@@ -286,6 +360,12 @@ export const formatGlmNvfp4PilotOperatorReadme = (
     '## Missing Operator Inputs',
     '',
     missingInputs,
+    '',
+    '## Serving Stack Findings',
+    '',
+    `Next action: ${bundle.servingStackSummary.nextAction}`,
+    '',
+    servingStackFindings,
     '',
     '## Owner-Armed Command Template',
     '',

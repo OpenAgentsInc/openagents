@@ -165,4 +165,68 @@ describe('GLM NVFP4 pilot operator path (#6323)', () => {
     expect(retained).not.toContain('prompt.private.quality')
     expect(retained).not.toContain('wallet.private.boot.load')
   })
+
+  test('summarizes public serving-stack no-go findings for operator handoff', () => {
+    const localConfig = config({
+      ownerArmed: true,
+      ownerApprovalRef: 'approval.public.khala.glm_nvfp4.owner_armed.001',
+      endpointUrl: 'https://pilot.internal.example.invalid/v1',
+      endpointRef: 'endpoint.public.khala.glm_nvfp4.single_host_8x.001',
+      decisionRef:
+        'decision.public.khala.glm_nvfp4.issue_6323.no_go_generation_001',
+      bootLoadStatus: 'passed',
+      bootLoadEvidenceRef:
+        'evidence.public.khala.glm_nvfp4.boot_load.model_list_001',
+      measuredMaxModelLen: 65536,
+      measuredMaxModelLenEvidenceRef:
+        'evidence.public.khala.glm_nvfp4.max_model_len.65536.001',
+      servingStackFindings: [
+        {
+          engine: 'sglang',
+          status: 'failed_during_generation',
+          failureCode: 'sglang_trtllm_sm120_unsupported',
+          evidenceRef:
+            'evidence.public.khala.glm_nvfp4.sglang_trtllm_sm120.001',
+        },
+        {
+          engine: 'sglang',
+          status: 'failed_during_generation',
+          failureCode: 'sglang_tilelang_sm120_compile_failure',
+          evidenceRef:
+            'evidence.public.khala.glm_nvfp4.sglang_tilelang_sm120.001',
+        },
+      ],
+    })
+    const result = buildGlmNvfp4PilotResult({ config: localConfig })
+    const bundle = buildGlmNvfp4PilotOperatorBundle({
+      config: localConfig,
+      result,
+      outputDir: '.pilot-evidence/glm-nvfp4-6323-sm120-generation-no-go',
+    })
+    const readme = formatGlmNvfp4PilotOperatorReadme(bundle)
+
+    expect(bundle.servingStackSummary).toEqual({
+      findingCount: 2,
+      failedBeforeEndpointCount: 0,
+      failedDuringGenerationCount: 2,
+      endpointHealthyCount: 0,
+      failureCodes: [
+        'sglang_tilelang_sm120_compile_failure',
+        'sglang_trtllm_sm120_unsupported',
+      ],
+      evidenceRefs: [
+        'evidence.public.khala.glm_nvfp4.sglang_tilelang_sm120.001',
+        'evidence.public.khala.glm_nvfp4.sglang_trtllm_sm120.001',
+      ],
+      nextAction: 'fix_generation_backend',
+    })
+    expect(readme).toContain('## Serving Stack Findings')
+    expect(readme).toContain('Next action: fix_generation_backend')
+    expect(readme).toContain(
+      '- sglang failed_during_generation sglang_trtllm_sm120_unsupported evidence.public.khala.glm_nvfp4.sglang_trtllm_sm120.001',
+    )
+    expect(JSON.stringify(bundle) + readme).not.toContain(
+      'pilot.internal.example.invalid',
+    )
+  })
 })
