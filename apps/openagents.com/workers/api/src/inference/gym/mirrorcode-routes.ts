@@ -1,14 +1,5 @@
 // Routes for the MirrorCode-as-a-service gym demo surface (#6378, epic #6376).
 //
-//   - `GET /api/public/gym/mirrorcode/runs` (no auth): the public-safe
-//     leaderboard / list. Returns the stored Khala runs plus the LABELED
-//     illustrative paper-reference comparators. Honestly `[]` runs until one is
-//     recorded.
-//   - `GET /api/public/gym/mirrorcode/runs/{id}` (no auth): one run's
-//     status/result, or a typed 404.
-//   - `GET /api/public/gym/mirrorcode/token-burn` (no auth): automated
-//     public-safe token-burn reporter over the stored run rows. It aggregates
-//     exact token-row refs where present and keeps unproven totals separate.
 //   - `POST /api/gym/mirrorcode/runs` (admin bearer / owner-gated): launch /
 //     record a Khala MirrorCode run. The body is a public-safe MirrorCode run
 //     record (the shared result contract). The Worker RE-BUILDS it through
@@ -17,7 +8,14 @@
 //     source, test data, prompts, or canary strings is REJECTED with a typed
 //     400 and never stored. Owner-scoped: no public spend, no settlement, no
 //     payout — recording a run row is in-progress / measurement evidence only.
-//   - Legacy `/api/gym/mirrorcode/*` GET paths remain as compatibility aliases.
+//   - `GET /api/gym/mirrorcode/runs` (no auth): the public-safe leaderboard /
+//     list. Returns the stored Khala runs plus the LABELED illustrative
+//     paper-reference comparators. Honestly `[]` runs until one is recorded.
+//   - `GET /api/gym/mirrorcode/runs/{id}` (no auth): one run's status/result, or
+//     a typed 404.
+//   - `GET /api/gym/mirrorcode/token-burn` (no auth): automated public-safe
+//     token-burn reporter over the stored run rows. It aggregates exact
+//     token-row refs where present and keeps unproven totals separate.
 //
 // The public GET is composed live from D1 at read, so it declares a
 // `live_at_read` staleness contract (epic #4751). No dispatch, spend,
@@ -208,21 +206,12 @@ const handleOperatorIngestRun = (
   )
 }
 
-const isTokenBurnPath = (pathname: string): boolean =>
-  pathname === '/api/gym/mirrorcode/token-burn' ||
-  pathname === '/api/public/gym/mirrorcode/token-burn'
-
-const isOwnerWritableRunsPath = (pathname: string): boolean =>
-  pathname === '/api/gym/mirrorcode/runs'
-
-// `/api/public/gym/mirrorcode/runs`: public GET list/leaderboard.
-// `/api/gym/mirrorcode/runs`: compatibility GET + owner-gated POST.
+// `/api/gym/mirrorcode/runs`: public GET list/leaderboard + owner-gated POST.
 export const handleMirrorCodeRunsApi = (
   request: Request,
   input: MirrorCodeRunsOperatorRouteInput,
 ): Effect.Effect<Response> => {
-  const pathname = new URL(request.url).pathname
-  if (isTokenBurnPath(pathname)) {
+  if (new URL(request.url).pathname === '/api/gym/mirrorcode/token-burn') {
     if (request.method !== 'GET') {
       return Effect.succeed(methodNotAllowed(['GET']))
     }
@@ -230,7 +219,7 @@ export const handleMirrorCodeRunsApi = (
       Effect.map(runs => noStoreJsonResponse(tokenBurnEnvelope(input, runs))),
     )
   }
-  if (request.method === 'POST' && isOwnerWritableRunsPath(pathname)) {
+  if (request.method === 'POST') {
     return Effect.gen(function* () {
       const authorized = yield* Effect.promise(() =>
         input.requireAdminApiToken(request),
@@ -246,11 +235,7 @@ export const handleMirrorCodeRunsApi = (
       Effect.map(runs => noStoreJsonResponse(publicEnvelope(input, runs))),
     )
   }
-  return Effect.succeed(
-    isOwnerWritableRunsPath(pathname)
-      ? methodNotAllowed(['GET', 'POST'])
-      : methodNotAllowed(['GET']),
-  )
+  return Effect.succeed(methodNotAllowed(['GET', 'POST']))
 }
 
 // `/api/gym/mirrorcode/runs/{id}`: one run's public-safe status/result.
@@ -280,16 +265,14 @@ export const handleMirrorCodeRunByIdApi = (
   )
 }
 
-// Match `/api/public/gym/mirrorcode/runs/{id}` or legacy
-// `/api/gym/mirrorcode/runs/{id}` and extract the id. Returns undefined for the
-// base path (handled by the exact route) or any non-matching path, so the worker
-// route cascade falls through cleanly.
+// Match `/api/gym/mirrorcode/runs/{id}` and extract the id. Returns undefined
+// for the base path (handled by the exact route) or any non-matching path, so
+// the worker route cascade falls through cleanly.
 export const matchMirrorCodeRunByIdRequest = (
   request: Request,
 ): string | undefined => {
   const pathname = new URL(request.url).pathname
-  const match =
-    /^\/api\/(?:public\/)?gym\/mirrorcode\/runs\/([^/]+)$/.exec(pathname)
+  const match = /^\/api\/gym\/mirrorcode\/runs\/([^/]+)$/.exec(pathname)
   if (match === null) {
     return undefined
   }
