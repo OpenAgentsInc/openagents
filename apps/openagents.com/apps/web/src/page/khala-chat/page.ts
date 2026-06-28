@@ -36,6 +36,7 @@ export const KHALA_CHAT_LATEST_BUTTON_ATTR = 'khala-chat-latest-button'
 export const KHALA_CHAT_THREAD_END_ATTR = 'khala-chat-thread-end'
 export const KHALA_CHAT_INFO_TRIGGER_ATTR = 'khala-chat-info-trigger'
 export const KHALA_CHAT_INFO_DIALOG_ATTR = 'khala-chat-info-dialog'
+export const KHALA_CHAT_SCENE_SCRIM_ATTR = 'khala-chat-scene-scrim'
 // The selector used to place a newly-submitted turn near the top of the reading
 // viewport. This is an explicit user-intent move, unlike streaming deltas.
 export const KHALA_CHAT_LATEST_TURN_SELECTOR = `[data-${KHALA_CHAT_LATEST_TURN_ATTR}="true"]`
@@ -104,6 +105,20 @@ const transcriptView = <Message>(model: KhalaChatModel): Html => {
         [],
       ),
     ],
+  )
+}
+
+const sceneScrimView = <Message>(): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [
+      h.DataAttribute(KHALA_CHAT_SCENE_SCRIM_ATTR, ''),
+      Ui.className<Message>(
+        'pointer-events-none absolute inset-0 z-0 bg-black/50',
+      ),
+    ],
+    [],
   )
 }
 
@@ -693,10 +708,11 @@ export const overlayView = <Message>(
     ],
     [
       infoTrigger,
+      sceneScrimView<Message>(),
       h.div(
         [
           Ui.className<Message>(
-            'pointer-events-auto m-auto grid max-h-full w-[min(100%,48rem)] content-start gap-4 ' +
+            'pointer-events-auto relative z-10 m-auto grid max-h-full w-[min(100%,48rem)] content-start gap-4 ' +
               'border border-[#3a7bff]/25 bg-black/55 p-4 backdrop-blur-md khala-glow sm:p-6',
           ),
         ],
@@ -755,7 +771,7 @@ export const bottomOverlayView = <Message>(
   const composerShell = h.div(
     [
       Ui.className<Message>(
-        'pointer-events-auto mx-auto w-[min(100%,44rem)] border border-[#3a7bff]/45 bg-black/62 backdrop-blur-md khala-glow',
+        'pointer-events-auto relative z-10 mx-auto w-[min(100%,44rem)] border border-[#3a7bff]/45 bg-black/62 backdrop-blur-md khala-glow',
       ),
     ],
     [composerView<Message>(model, actions)],
@@ -771,8 +787,9 @@ export const bottomOverlayView = <Message>(
       ),
     ],
     [
+      sceneScrimView<Message>(),
       h.div(
-        [Ui.className<Message>('relative grid min-h-0')],
+        [Ui.className<Message>('relative z-10 grid min-h-0')],
         [scrollRegion, latestButton],
       ),
       composerShell,
