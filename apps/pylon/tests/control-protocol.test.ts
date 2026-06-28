@@ -306,6 +306,64 @@ describe("control protocol", () => {
     )
   })
 
+  test("operator manual account reset endpoint is bearer gated and no-store", async () => {
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const calls: Array<Record<string, unknown>> = []
+          const runtime = yield* makePylonNodeRuntime
+          const server = yield* startControlServer(runtime, {
+            token: "test-token-0123456789abcdef",
+            actions: {
+              ...stubActions([]),
+              accountsStatus: async (input?: { accountRef?: string; reset?: boolean }) => {
+                calls.push({ input })
+                return {
+                  schema: "openagents.pylon.accounts_status.v0.1",
+                  observedAt: "2026-06-28T00:00:00.000Z",
+                  accounts: [
+                    {
+                      accountRefHash: "account.pylon.codex.abc",
+                      provider: "codex",
+                      accountRef: "codex",
+                      quota: { state: "available", cooldownExpiresAt: null },
+                      manualReset: { performed: true, manualResetsRemaining: 2 },
+                    },
+                  ],
+                  blockerRefs: [],
+                }
+              },
+            },
+            port: 0,
+          })
+
+          const denied = yield* Effect.promise(() =>
+            fetch(`${server.url}/api/operator/accounts/codex/manual-reset`, {
+              method: "POST",
+              headers: { authorization: "Bearer wrong" },
+            }),
+          )
+          expect(denied.status).toBe(403)
+          expect(denied.headers.get("cache-control")).toBe("no-store")
+          const deniedBody = yield* Effect.promise(() => denied.text())
+          expect(deniedBody).not.toContain("account.pylon.codex.abc")
+
+          const allowed = yield* Effect.promise(() =>
+            fetch(`${server.url}/api/operator/accounts/codex/manual-reset`, {
+              method: "POST",
+              headers: { authorization: "Bearer test-token-0123456789abcdef" },
+            }),
+          )
+          expect(allowed.status).toBe(200)
+          expect(allowed.headers.get("cache-control")).toBe("no-store")
+          expect(calls).toEqual([{ input: { accountRef: "codex", reset: true } }])
+          const body = yield* Effect.promise(() => allowed.json() as Promise<{ accounts: unknown[] }>)
+          expect(body.accounts).toHaveLength(1)
+        }),
+      ),
+    )
+  })
+
   test("assignments commands round-trip and report unavailability", async () => {
     const calls: Array<Record<string, unknown>> = []
     await Effect.runPromise(
