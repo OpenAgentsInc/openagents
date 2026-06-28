@@ -264,7 +264,7 @@ const composerView = <Message>(
               h.AriaLabel('Message Khala'),
               h.Rows(4),
               Ui.className<Message>(
-                'field-sizing-content min-h-36 w-full resize-none bg-transparent px-4 pb-16 pt-4 font-mono text-[0.8125rem] leading-[1.55] text-[#f1efe8] outline-none placeholder:text-[#a9c3ff]/70 max-sm:text-base/6',
+                'field-sizing-content min-h-36 w-full resize-none bg-transparent px-0 pb-16 pt-4 font-mono text-[0.8125rem] leading-[1.55] text-[#f1efe8] outline-none placeholder:text-[#a9c3ff]/70 max-sm:text-base/6',
               ),
               // Enter submits the turn; Shift+Enter inserts a newline.
               h.OnKeyDownPreventDefault((key, modifiers) =>
