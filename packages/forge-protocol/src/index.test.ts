@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "bun:test";
 
 import {
   FORGE_PROTOCOL_SCHEMA_VERSION,
@@ -22,28 +22,32 @@ import {
   forgeCoordinationStatusStateForNip34Kind,
   forgeCoordinationStatusStates,
   forgeNip34StatusKindForState,
-} from "./index.js"
+} from "./index.js";
 
-const at = "2026-06-28T16:00:00.000Z"
+const at = "2026-06-28T16:00:00.000Z";
 
 describe("@openagentsinc/forge-protocol", () => {
   test("exports the phase 0 schema version", () => {
-    expect(FORGE_PROTOCOL_SCHEMA_VERSION).toBe("openagents.forge.protocol.v0.1")
-  })
+    expect(FORGE_PROTOCOL_SCHEMA_VERSION).toBe(
+      "openagents.forge.protocol.v0.1",
+    );
+  });
 
   test("round-trips NIP-34 status states and kinds", () => {
     for (const state of forgeCoordinationStatusStates) {
-      const kind = forgeNip34StatusKindForState(state)
-      expect(forgeCoordinationStatusStateForNip34Kind(kind)).toBe(state)
+      const kind = forgeNip34StatusKindForState(state);
+      expect(forgeCoordinationStatusStateForNip34Kind(kind)).toBe(state);
     }
-  })
+  });
 
   test("keeps control-plane scopes separate from smart Git token scopes", () => {
-    expect(forgeControlPlaneScopes).toContain("forge:promotion:decide")
-    expect(decodeForgeControlPlaneScope("forge:work:write")).toBe("forge:work:write")
-    expect(() => decodeForgeControlPlaneScope("git:receive-pack")).toThrow()
-    expect(() => decodeForgeControlPlaneScope("git:admin")).toThrow()
-  })
+    expect(forgeControlPlaneScopes).toContain("forge:promotion:decide");
+    expect(decodeForgeControlPlaneScope("forge:work:write")).toBe(
+      "forge:work:write",
+    );
+    expect(() => decodeForgeControlPlaneScope("git:receive-pack")).toThrow();
+    expect(() => decodeForgeControlPlaneScope("git:admin")).toThrow();
+  });
 
   test("decodes the D1 coordination source-of-truth row shapes", () => {
     expect(
@@ -54,11 +58,13 @@ describe("@openagentsinc/forge-protocol", () => {
         title: "D1 coordination schema",
         state: "open",
         priority_ref: "prio:0-pr-burndown",
-        source_refs_json: JSON.stringify(["github:OpenAgentsInc/openagents#6746"]),
+        source_refs_json: JSON.stringify([
+          "github:OpenAgentsInc/openagents#6746",
+        ]),
         created_at: at,
         updated_at: at,
       }).issue_ref,
-    ).toBe("issue.forge.6746")
+    ).toBe("issue.forge.6746");
 
     expect(
       decodeForgeCoordinationPrRow({
@@ -75,7 +81,7 @@ describe("@openagentsinc/forge-protocol", () => {
         created_at: at,
         updated_at: at,
       }).state,
-    ).toBe("ready")
+    ).toBe("ready");
 
     expect(
       decodeForgeCoordinationStatusRow({
@@ -88,7 +94,7 @@ describe("@openagentsinc/forge-protocol", () => {
         source_refs_json: "[]",
         created_at: at,
       }).nip34_kind,
-    ).toBe(1630)
+    ).toBe(1630);
 
     expect(
       decodeForgeDispatchLeaseRow({
@@ -104,7 +110,7 @@ describe("@openagentsinc/forge-protocol", () => {
         released_at: null,
         source_refs_json: "[]",
       }).state,
-    ).toBe("active")
+    ).toBe("active");
 
     expect(
       decodeForgeMergeQueueLedgerRow({
@@ -121,7 +127,7 @@ describe("@openagentsinc/forge-protocol", () => {
         created_at: at,
         updated_at: at,
       }).state,
-    ).toBe("projected")
+    ).toBe("projected");
 
     expect(
       decodeForgeGitPackfileArchiveRow({
@@ -136,7 +142,7 @@ describe("@openagentsinc/forge-protocol", () => {
         packfile_bytes: 128,
         object_format: "sha1",
         command_count: 1,
-        capabilities_json: "[\"report-status\"]",
+        capabilities_json: '["report-status"]',
         ref_updates_json: "[]",
         source_refs_json: "[]",
         content_type: "application/x-git-packed-objects",
@@ -144,17 +150,23 @@ describe("@openagentsinc/forge-protocol", () => {
         created_at: at,
         updated_at: at,
       }).object_format,
-    ).toBe("sha1")
+    ).toBe("sha1");
 
     expect(
       decodeForgeTenantRow({
         tenant_ref: "tenant.openagents",
         display_name: "OpenAgents",
         state: "active",
+        confidential_workspace_mode: "attested",
+        attestation_ref: "attestation.forge.openagents.sgx.public",
+        encrypted_knowledge_pack_ref:
+          "knowledge-pack.forge.openagents.encrypted",
+        refusal_reason: null,
+        retention_policy_ref: "retention.forge.openagents.30d",
         created_at: at,
         updated_at: at,
-      }).state,
-    ).toBe("active")
+      }).confidential_workspace_mode,
+    ).toBe("attested");
 
     expect(
       decodeForgeGitAccessTokenRow({
@@ -171,7 +183,7 @@ describe("@openagentsinc/forge-protocol", () => {
         revoked_at: null,
         source_refs_json: "[]",
       }).repository_ref,
-    ).toBe("repo.openagents.openagents")
+    ).toBe("repo.openagents.openagents");
 
     expect(
       decodeForgeGitAccessTokenScopeRow({
@@ -180,8 +192,8 @@ describe("@openagentsinc/forge-protocol", () => {
         scope: "git:receive-pack",
         created_at: at,
       }).scope,
-    ).toBe("git:receive-pack")
-  })
+    ).toBe("git:receive-pack");
+  });
 
   test("decodes Pylon-to-Forge dispatch messages", () => {
     const workItem = decodeForgeDispatchWorkItem({
@@ -221,9 +233,9 @@ describe("@openagentsinc/forge-protocol", () => {
       expires_at: "2026-06-28T17:00:00.000Z",
       created_at: at,
       source_refs: ["github:OpenAgentsInc/openagents#6751"],
-    })
-    expect(workItem.git.git_access.scopes).toEqual(["git:receive-pack"])
-    expect(decodeForgeDispatchMessage(workItem).schema).toBe(workItem.schema)
+    });
+    expect(workItem.git.git_access.scopes).toEqual(["git:receive-pack"]);
+    expect(decodeForgeDispatchMessage(workItem).schema).toBe(workItem.schema);
 
     const decision = decodeForgeDispatchDecision({
       schema: "openagents.forge.dispatch.decision.v0.1",
@@ -237,8 +249,8 @@ describe("@openagentsinc/forge-protocol", () => {
       rejected_at: null,
       blocker_refs: [],
       source_refs: workItem.source_refs,
-    })
-    expect(decision.accepted_at).toBe(at)
+    });
+    expect(decision.accepted_at).toBe(at);
 
     const closeout = decodeForgeDispatchCloseout({
       schema: "openagents.forge.dispatch.closeout.v0.1",
@@ -267,10 +279,10 @@ describe("@openagentsinc/forge-protocol", () => {
       source_refs: workItem.source_refs,
       redacted: true,
       completed_at: at,
-    })
-    expect(closeout.packfile_ref).toBe("packfile.forge.6751")
-    expect(decodeForgeDispatchMessage(closeout).schema).toBe(closeout.schema)
-  })
+    });
+    expect(closeout.packfile_ref).toBe("packfile.forge.6751");
+    expect(decodeForgeDispatchMessage(closeout).schema).toBe(closeout.schema);
+  });
 
   test("decodes redacted verification and promotion decision receipts", () => {
     const verification = decodeForgeVerificationReceipt({
@@ -296,9 +308,9 @@ describe("@openagentsinc/forge-protocol", () => {
       log_sha256: "d".repeat(64),
       source_refs: ["github:OpenAgentsInc/openagents#6768"],
       redacted: true,
-    })
-    expect(verification.change_ref).toBe("change.forge.6768")
-    expect(verification.packfile_sha256).toHaveLength(64)
+    });
+    expect(verification.change_ref).toBe("change.forge.6768");
+    expect(verification.packfile_sha256).toHaveLength(64);
 
     const promotion = decodeForgePromotionDecisionReceipt({
       schema: "openagents.forge.promotion.decision.v0.1",
@@ -317,8 +329,8 @@ describe("@openagentsinc/forge-protocol", () => {
       decided_at: "2026-06-28T16:02:00.000Z",
       source_refs: verification.source_refs,
       redacted: true,
-    })
-    expect(promotion.decision).toBe("approved")
-    expect(promotion.promoted_head).toBe(verification.head_head)
-  })
-})
+    });
+    expect(promotion.decision).toBe("approved");
+    expect(promotion.promoted_head).toBe(verification.head_head);
+  });
+});

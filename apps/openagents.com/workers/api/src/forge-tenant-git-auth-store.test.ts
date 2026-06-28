@@ -52,6 +52,10 @@ const migration = readFileSync(
   new URL('../migrations/0253_forge_tenant_git_access_tokens.sql', import.meta.url),
   'utf8',
 )
+const tenantIsolationPostureMigration = readFileSync(
+  new URL('../migrations/0256_forge_tenant_isolation_posture.sql', import.meta.url),
+  'utf8',
+)
 
 const makeStore = (): {
   db: DatabaseSync
@@ -60,6 +64,7 @@ const makeStore = (): {
   const db = new DatabaseSync(':memory:')
   db.exec('PRAGMA foreign_keys = ON')
   db.exec(migration)
+  db.exec(tenantIsolationPostureMigration)
   return {
     db,
     store: makeD1ForgeTenantGitAuthStore(
@@ -144,6 +149,28 @@ describe('forge tenant git auth store', () => {
       'forge_git_token.receive_pack',
     )
     expect(stored?.last_used_at).toBe(laterIso)
+  })
+
+  test('stores tenant confidential posture as public-safe refs', async () => {
+    const { store } = makeStore()
+    const tenant = await store.upsertTenant({
+      tenantRef: 'tenant.external-fleet',
+      displayName: 'External Fleet',
+      confidentialWorkspaceMode: 'attested',
+      attestationRef: 'attestation.forge.external_fleet.public',
+      encryptedKnowledgePackRef: 'knowledge-pack.forge.external_fleet.encrypted',
+      refusalReason: null,
+      retentionPolicyRef: 'retention.forge.external_fleet.7d',
+      nowIso,
+    })
+
+    expect(tenant).toMatchObject({
+      tenant_ref: 'tenant.external-fleet',
+      confidential_workspace_mode: 'attested',
+      attestation_ref: 'attestation.forge.external_fleet.public',
+      encrypted_knowledge_pack_ref: 'knowledge-pack.forge.external_fleet.encrypted',
+      retention_policy_ref: 'retention.forge.external_fleet.7d',
+    })
   })
 
   test('git:admin grants both upload-pack and receive-pack', async () => {

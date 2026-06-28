@@ -4691,9 +4691,9 @@ const components = (): JsonSchema => ({
       type: 'http',
       scheme: 'bearer',
       bearerFormat:
-        'OpenAgents Forge control-plane token plus X-OpenAgents-Forge-Scopes',
+        'OpenAgents Forge control-plane token plus X-OpenAgents-Forge-Scopes and X-OpenAgents-Forge-Tenant-Ref',
       description:
-        'Dedicated Forge control-plane bearer token. Send X-OpenAgents-Forge-Scopes with one or more forge:* scopes such as forge:work:write or forge:admin. Forge smart-Git tokens (oa_forge_git_*) are rejected for /api/forge routes.',
+        'Dedicated Forge control-plane bearer token. Send X-OpenAgents-Forge-Scopes with one or more forge:* scopes such as forge:work:write or forge:admin, plus X-OpenAgents-Forge-Tenant-Ref for the tenant being read or mutated. Forge smart-Git tokens (oa_forge_git_*) are rejected for /api/forge routes, and tenant-scoped control-plane tokens cannot read or mutate another tenant.',
     },
   },
   schemas: {

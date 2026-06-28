@@ -14,7 +14,10 @@ code import these schemas instead of re-declaring local coordination records.
 
 Control-plane calls use the separate `ForgeControlPlaneScope` set
 (`forge:*`). Tenant git access scopes are only valid for smart Git HTTP and must
-not authorize `/api/forge/*` routes. The boundary contract is documented in
+not authorize `/api/forge/*` routes. Non-admin control-plane tokens are scoped
+to one tenant ref, and route handlers compare that authenticated tenant to the
+query or body `tenantRef` before returning rows or persisting mutations. The
+boundary contract is documented in
 `docs/forge/2026-06-28-forge-boundary-contract.md`.
 
 The package also defines the first Pylon-to-Forge dispatch messages:
@@ -34,3 +37,10 @@ The package is public-safe by default: records carry refs, bounded state,
 timestamps, and JSON-encoded ref arrays. They do not carry raw prompts, raw
 provider payloads, private repository contents, local paths, raw git tokens,
 secrets, or wallet material.
+
+Tenant rows also define optional external-fleet posture refs:
+`confidential_workspace_mode`, `attestation_ref`,
+`encrypted_knowledge_pack_ref`, `refusal_reason`, and
+`retention_policy_ref`. These are safe read-model fields for onboarding and
+policy display only; they do not grant API, Git, promotion, mirror, or artifact
+authority.

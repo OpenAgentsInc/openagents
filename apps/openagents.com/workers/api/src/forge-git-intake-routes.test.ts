@@ -134,6 +134,7 @@ const migrations = [
   '0253_forge_tenant_git_access_tokens.sql',
   '0254_forge_control_plane_receipts.sql',
   '0255_forge_git_canonical_store.sql',
+  '0256_forge_tenant_isolation_posture.sql',
 ].map(migration)
 
 const textEncoder = new TextEncoder()
