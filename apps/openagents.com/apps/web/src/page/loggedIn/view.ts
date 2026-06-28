@@ -9,6 +9,7 @@ import {
   adminRouter,
   activityRouter,
   animationsRouter,
+  artanisTraceTreeRouter,
   autopilotWorkDetailRouter,
   autopilotWorkRouter,
   billingRouter,
@@ -141,6 +142,7 @@ const currentHref = (model: Model): string =>
       Blog: () => blogRouter(),
       BlogPost: ({ slug }) => blogPostRouter({ slug }),
       PublicAgent: ({ agentRef }) => publicAgentRouter({ agentRef }),
+      ArtanisTraceTree: () => artanisTraceTreeRouter(),
       Trace: ({ uuid }) => traceRouter({ uuid }),
       TraceCompare: ({ ids }) => traceCompareRouter({ ids }),
       PylonCodexAssignmentStatus: ({ assignmentRef }) =>
@@ -210,6 +212,7 @@ const routeKey = (model: Model): string =>
       Blog: () => 'Blog',
       BlogPost: ({ slug }) => `BlogPost:${slug}`,
       PublicAgent: ({ agentRef }) => `PublicAgent:${agentRef}`,
+      ArtanisTraceTree: () => 'ArtanisTraceTree',
       Trace: ({ uuid }) => `Trace:${uuid}`,
       TraceCompare: ({ ids }) => `TraceCompare:${ids}`,
       PylonCodexAssignmentStatus: ({ assignmentRef }) =>
@@ -611,6 +614,10 @@ const routeView = (model: Model): Html => {
                 chatRouter(),
                 'Go to Chat',
               ),
+            ]),
+          ArtanisTraceTree: () =>
+            Ui.workroomScrollableRoute<Message>([
+              notFoundView(artanisTraceTreeRouter(), chatRouter(), 'Go to Chat'),
             ]),
           // /trace/{uuid} is a public route resolved by the top-level
           // `publicRouteBody` in view.ts before the logged-in submodel; this

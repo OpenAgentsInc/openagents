@@ -115,6 +115,7 @@ export const startupRouteForLoggedOut = (
       'Blog',
       'BlogPost',
       'PublicAgent',
+      'ArtanisTraceTree',
       'Share',
       'Trace',
       'TraceCompare',
@@ -174,6 +175,7 @@ const startupRouteForIncompleteOnboarding = (route: AppRoute): StartupRoute =>
     ),
     M.tag(
       'PublicAgent',
+      'ArtanisTraceTree',
       'ProductPromises',
       'Stats',
       'PublicStatsArchive',
@@ -300,6 +302,7 @@ const startupRouteForCompleteOnboarding = (
     ),
     M.tag(
       'PublicAgent',
+      'ArtanisTraceTree',
       'ProductPromises',
       'PublicTrainingRuns',
       'PublicTrainingRun',
@@ -490,6 +493,7 @@ export const startupCompleteDisposition = {
   Blog: 'gated',
   BlogPost: 'gated',
   PublicAgent: 'public',
+  ArtanisTraceTree: 'public',
   Share: 'public',
   Trace: 'public',
   TraceCompare: 'public',

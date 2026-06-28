@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest'
 
 import {
   AdminRoute,
+  ArtanisTraceTreeRoute,
   type AppRoute,
   AutopilotRoute,
   AutopilotWorkDetailRoute,
@@ -119,6 +120,12 @@ describe('app route parser', () => {
   test('accepts the short public Artanis campaign route', () => {
     expect(urlToAppRoute(appUrl('/artanis'))).toEqual(
       PublicAgentRoute({ agentRef: 'artanis' }),
+    )
+  })
+
+  test('accepts the Artanis RLM trace tree visualizer route', () => {
+    expect(urlToAppRoute(appUrl('/artanis/traces'))).toEqual(
+      ArtanisTraceTreeRoute(),
     )
   })
 

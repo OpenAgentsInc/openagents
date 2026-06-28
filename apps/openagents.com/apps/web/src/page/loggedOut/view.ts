@@ -9,6 +9,7 @@ import { homeRouter } from '../../route'
 import * as Ui from '../../ui'
 import * as Activity from '../activity'
 import * as Animations from '../animations'
+import * as ArtanisTraceTree from '../artanisTraceTree'
 import * as AutopilotOnboardingPage from '../autopilot-onboarding/page'
 import * as Blog from '../blog'
 import * as Business from '../business'
@@ -334,6 +335,8 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
               // union here no longer includes it.
               Blog: route => Blog.view(route, { _tag: 'LoggedOut' }),
               BlogPost: route => Blog.view(route, { _tag: 'LoggedOut' }),
+              ArtanisTraceTree: () =>
+                ArtanisTraceTree.view({ _tag: 'LoggedOut' }),
               PublicAgent: route => PublicAgent.view(model, route.agentRef),
               NotFound: ({ path }) =>
                 notFoundView(path, homeRouter(), 'Go Home'),
