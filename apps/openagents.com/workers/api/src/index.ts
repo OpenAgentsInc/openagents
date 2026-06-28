@@ -10895,10 +10895,33 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       }),
   },
   {
+    // MirrorCode-as-a-service public API endpoint (#6677). Read-only alias under
+    // the public API namespace; launch/record writes stay on the owner-gated
+    // `/api/gym/mirrorcode/runs` path above.
+    path: '/api/public/gym/mirrorcode/runs',
+    handler: (request, env) =>
+      handleMirrorCodeRunsApi(request, {
+        requireAdminApiToken: adminRequest =>
+          requireAdminApiToken(adminRequest, env),
+        store: makeD1MirrorCodeRunStore(openAgentsDatabase(env)),
+      }),
+  },
+  {
     // MirrorCode automated token-burn reporter (#6676). Public read-only live
     // aggregate over stored public-safe run rows; exact token refs are surfaced
     // where present and unproven token totals stay separated.
     path: '/api/gym/mirrorcode/token-burn',
+    handler: (request, env) =>
+      handleMirrorCodeRunsApi(request, {
+        requireAdminApiToken: adminRequest =>
+          requireAdminApiToken(adminRequest, env),
+        store: makeD1MirrorCodeRunStore(openAgentsDatabase(env)),
+      }),
+  },
+  {
+    // MirrorCode token-burn public API alias (#6677). Same live-at-read
+    // public-safe aggregate, under `/api/public`.
+    path: '/api/public/gym/mirrorcode/token-burn',
     handler: (request, env) =>
       handleMirrorCodeRunsApi(request, {
         requireAdminApiToken: adminRequest =>

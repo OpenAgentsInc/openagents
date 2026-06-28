@@ -237,6 +237,26 @@ describe('handleMirrorCodeRunsApi GET', () => {
     ).toBe(true)
     expect(body.staleness.composition).toBe('live_at_read')
   })
+
+  test('public API alias returns the same read-only run list', async () => {
+    const built = buildMirrorCodeRun(validInput)
+    const response = await run(
+      handleMirrorCodeRunsApi(
+        new Request('https://openagents.com/api/public/gym/mirrorcode/runs'),
+        {
+          requireAdminApiToken: async () => false,
+          listRuns: () => [built],
+        },
+      ),
+    )
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      scope: string
+      runs: ReadonlyArray<{ runId: string }>
+    }
+    expect(body.scope).toBe('public')
+    expect(body.runs[0]?.runId).toBe('mc-phase0-cal-py-0001')
+  })
 })
 
 describe('handleMirrorCodeTokenBurnReportApi', () => {
@@ -280,6 +300,28 @@ describe('handleMirrorCodeTokenBurnReportApi', () => {
     ])
   })
 
+  test('public API alias returns token-burn report', async () => {
+    const built = buildMirrorCodeRun(validInput)
+    const response = await run(
+      handleMirrorCodeRunsApi(
+        new Request(
+          'https://openagents.com/api/public/gym/mirrorcode/token-burn',
+        ),
+        {
+          requireAdminApiToken: async () => false,
+          listRuns: () => [built],
+          nowIso: () => '2026-06-28T00:00:00.000Z',
+        },
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      report: { totalTokensBurned: number }
+    }
+    expect(body.report.totalTokensBurned).toBe(12_345_678)
+  })
+
   test('non-GET is rejected', async () => {
     const response = await run(
       handleMirrorCodeRunsApi(
@@ -317,6 +359,32 @@ describe('handleMirrorCodeRunsApi POST', () => {
       }),
     )
     expect(response.status).toBe(401)
+    expect(stored).toBe(0)
+  })
+
+  test('public API alias is read-only even with admin auth', async () => {
+    let stored = 0
+    const response = await run(
+      handleMirrorCodeRunsApi(
+        new Request('https://openagents.com/api/public/gym/mirrorcode/runs', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(validInput),
+        }),
+        {
+          requireAdminApiToken: async () => true,
+          store: {
+            listRuns: () => Effect.succeed([]),
+            getRun: () => Effect.sync(() => undefined),
+            upsertRun: () =>
+              Effect.sync(() => {
+                stored += 1
+              }),
+          },
+        },
+      ),
+    )
+    expect(response.status).toBe(405)
     expect(stored).toBe(0)
   })
 
@@ -458,6 +526,16 @@ describe('matchMirrorCodeRunByIdRequest', () => {
     expect(
       matchMirrorCodeRunByIdRequest(
         new Request('https://openagents.com/api/gym/mirrorcode/runs/abc-123'),
+      ),
+    ).toBe('abc-123')
+  })
+
+  test('matches the public API by-id path', () => {
+    expect(
+      matchMirrorCodeRunByIdRequest(
+        new Request(
+          'https://openagents.com/api/public/gym/mirrorcode/runs/abc-123',
+        ),
       ),
     ).toBe('abc-123')
   })
