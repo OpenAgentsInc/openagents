@@ -1,0 +1,34 @@
+# XcodeGen spec for the Khala native macOS SwiftUI app.
+# Regenerate Khala.xcodeproj with:  xcodegen generate
+# A committed Khala.xcodeproj is included so Xcode/xcodebuild work without
+# xcodegen installed.
+name: Khala
+options:
+  bundleIdPrefix: com.openagents
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.9"
+    DEVELOPMENT_TEAM: HQWSG26L43
+    CODE_SIGN_STYLE: Automatic
+
+targets:
+  Khala:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Khala
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.openagents.khala-macos
+        PRODUCT_NAME: Khala
+        INFOPLIST_FILE: Khala/Resources/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        ENABLE_PREVIEWS: YES
+        SWIFT_EMIT_LOC_STRINGS: YES
