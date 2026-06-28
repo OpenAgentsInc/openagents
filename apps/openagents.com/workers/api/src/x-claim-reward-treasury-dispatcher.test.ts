@@ -9,6 +9,7 @@ import {
   type XClaimRewardTreasuryDispatchStats,
   type XClaimRewardTreasuryDispatchStore,
   evaluateXClaimRewardSmokePreflight,
+  makeD1XClaimRewardRecipientResolver,
   readXClaimRewardTreasuryDispatchConfig,
   runXClaimRewardTreasuryDispatch,
   xClaimRewardDispatchDayStartIso,
@@ -233,6 +234,25 @@ class FakeTreasury implements XClaimRewardTreasuryClient {
     }
 }
 
+const recipientDb = (
+  row: Readonly<{
+    bolt12_offer: string | null
+    lightning_address?: string | null
+    wallet_ref: string
+  }> | null,
+): D1Database =>
+  ({
+    prepare: (query: string) => ({
+      bind: () => ({
+        first: async () =>
+          query.includes('bolt12_offer IS NOT NULL') &&
+          row?.bolt12_offer === null
+            ? null
+            : row,
+      }),
+    }),
+  }) as unknown as D1Database
+
 const runDispatch = (
   store: MemoryDispatchStore,
   treasury: XClaimRewardTreasuryClient | null,
@@ -334,6 +354,29 @@ describe('X claim reward treasury dispatcher', () => {
     expect(reward?.stateReasonRef).toBe(
       'reason.public.x_claim_reward_recipient_wallet_missing',
     )
+  })
+
+  test('resolves only a registered BOLT12 recipient for live reward dispatch', async () => {
+    const bolt12Recipient = await makeD1XClaimRewardRecipientResolver(
+      recipientDb({
+        bolt12_offer: safeOffer,
+        lightning_address: 'owner@example.com',
+        wallet_ref: 'wallet.public.agent.bolt12',
+      }),
+    )(rewardRecord())
+    const lightningOnlyRecipient = await makeD1XClaimRewardRecipientResolver(
+      recipientDb({
+        bolt12_offer: null,
+        lightning_address: 'owner@example.com',
+        wallet_ref: 'wallet.public.agent.lightning_address_only',
+      }),
+    )(rewardRecord())
+
+    expect(bolt12Recipient).toEqual({
+      destination: safeOffer,
+      destinationSourceRef: 'wallet.public.agent.bolt12',
+    })
+    expect(lightningOnlyRecipient).toBeNull()
   })
 
   test('enforces per-run, per-day, and liquidity caps before new sends', async () => {

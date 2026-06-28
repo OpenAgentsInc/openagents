@@ -543,25 +543,23 @@ export const makeD1XClaimRewardRecipientResolver =
     const row = await db
       .prepare(
         `SELECT wallet_ref, bolt12_offer
-                , lightning_address
            FROM forum_tip_recipient_wallets
           WHERE actor_ref = ?
             AND state = 'ready'
             AND archived_at IS NULL
-            AND (lightning_address IS NOT NULL OR bolt12_offer IS NOT NULL)
+            AND bolt12_offer IS NOT NULL
           LIMIT 1`,
       )
       .bind(`agent:${reward.agentUserId}`)
       .first<{
         wallet_ref: string
         bolt12_offer: string | null
-        lightning_address: string | null
       }>()
 
     return row === null
       ? null
       : {
-          destination: row.lightning_address ?? row.bolt12_offer!,
+          destination: row.bolt12_offer!,
           destinationSourceRef: row.wallet_ref,
         }
   }
