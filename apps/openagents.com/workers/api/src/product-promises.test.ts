@@ -537,6 +537,8 @@ describe('public product promises document', () => {
             'docs/launch/vertex-fleet/training.data_refinery_corpus.v1.md',
             'apps/openagents.com/workers/api/src/cs336-a4-eval-delta-payment.ts',
             'apps/openagents.com/workers/api/src/cs336-a4-eval-delta-payment.test.ts',
+            'apps/openagents.com/workers/api/src/cs336-a4-paid-refinery-shard-dispatch.ts',
+            'apps/openagents.com/workers/api/src/cs336-a4-paid-refinery-shard-dispatch.test.ts',
             'apps/openagents.com/workers/api/src/cs336-a4-provenance.ts',
             'apps/openagents.com/workers/api/src/cs336-a4-provenance.test.ts',
             'apps/openagents.com/workers/api/src/training-data-refinery.ts',
@@ -550,7 +552,7 @@ describe('public product promises document', () => {
           ],
           safeCopy: expect.stringContaining('evalDeltaPaymentGate'),
           verification: expect.stringContaining(
-            'paymentComputationAvailable=true',
+            'paid-dispatch receipt builder',
           ),
         }),
         expect.objectContaining({
