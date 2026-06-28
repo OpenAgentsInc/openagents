@@ -241,6 +241,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-28.2 corrects referral.refer_once_earn_forever.v1 evidence/copy for #6838 and flips NO promise state. The permanent referrer<->referee spine is now represented by the consume-once user/agent referral attribution tables joined to site_referral_sources, and the category-agnostic accrueCrossCategoryReferral primitive feeds receipt-first paid events from non-Sites categories such as marketplace/fine_tuning into the ONE RL-1 referral payout ledger. The promise STAYS red because no real ecosystem purchase has produced a settled Bitcoin referral payout and no purchase-to-payout dereferenceable receipt exists yet; the owner-armed payout and RL-1/RL-3 asset-boundary/no-resale gates remain required.',
         'Registry 2026-06-28.2: inference.decentralized_serving_fabric.v1 gains stricter whole-small-model Pylon proxy evidence and flips NO promise state. apps/pylon/src/psionic-vllm-proxy.ts now treats exact-greedy parity as a separate same-engine reference check: the proxy forwards a greedy serve request to the configured local engine, performs a second same-engine greedy reference call, compares output digests, refuses non-greedy requests, and keeps paid routing ineligible on reference mismatch or known-answer canary failure. This is source-level receipt plumbing only. The promise STAYS red: green still requires an owner-armed live gateway request, dereferenceable exact-greedy-parity receipt, canary/replay/payout-eligibility admission, and settled serving-node payout evidence.',
         'Registry 2026-06-28.2: marketplace.wasm_plugins.v1 gains source-level WASM-plugin package policy and install-state registry machinery plus an inert installed-plugin discovery route at GET /api/public/marketplace/wasm-plugins; NO promise state flips. The manifest schema requires version, WASM digest ref, interface declarations, bounded permissions, source refs, and policy refs; admission fails closed on malformed or over-privileged manifests; install/uninstall persists state in the injected registry store; and the public route lists only installed plugins from the injected store while reporting inert/planned. The broad package-policy/install-registry gap is narrowed, but the promise STAYS planned because there is still no public self-serve install marketplace, sandboxed execution receipt, billing, or settlement. No third-party WASM execution, code loading, marketplace mutation, billing, payout, or green claim is created.',
+        'Registry 2026-06-28.2 clears the stale P2.5 live-wiring blocker from autopilot.agent_world_scene.v1 without flipping the promise green. The running Autopilot Desktop Verse now has the complete flag-gated live path: chat-world-subscriptions.ts polls /api/public/pylon-stats into GotChatWorldScene, update.ts stores the latest ChatWorldPylonScene without resetting the controller, view.ts composes modelChatWorldScene into the behind-chat three-effect visualization, and payment particles are both event-pruned and idle-pruned by TickedChatWorldPaymentParticles so stale beams do not imply current activity on quiet networks. Focused desktop tests cover the pylon-stats subscription, scene reducer/view wiring, and idle beam expiry. The promise STAYS yellow on blocker.product_promises.agent_world_scene_not_default_on because the public product default-on / stay-flag-gated decision still needs explicit owner sign-off and any future green flip remains receipt-first per proof.claim_upgrade_receipts.v1. No spend, payout, settlement, runtime authority, or multiplayer authority is created by this visual wiring.',
       ],
     },
     promises: [
@@ -3911,7 +3912,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'The Autopilot chat is set inside a living 3D Pylon world: a glass-over-canvas scene rendered behind the conversation where each live Pylon appears as a crystal, driven by real pylon-stats data.',
         safeCopy:
-          'The agent world scene exists behind the Autopilot chat as a flag-gated, glass-over-canvas 3D render. The P0 scene mount and P1 live Pylon crystals (fed from the public pylon-stats projection) are merged to main behind the default-off CHAT_WORLD_SCENE flag. It is not on by default, and the live in-app wiring polish (P2.5) is still pending.',
+          'The agent world scene exists behind the Autopilot chat as a flag-gated, glass-over-canvas 3D render. The live in-app wiring is present: pylon-stats feeds the running scene through the chat-world subscription/reducer/view path, live Pylons render as crystals, and stale payment beams age out instead of implying current activity. The product default-on / stay-flag-gated decision is still owner-gated, so this remains a yellow, receipt-bounded claim.',
         unsafeCopy:
           'Do not say the 3D agent world is on by default for all users, that it is a finished shipped feature, that it is a walkable or multiplayer world (see world.multiplayer_agent_world.v1), or that the scene shows anything other than evidence-bound live Pylon state.',
         evidenceRefs: [
@@ -3923,16 +3924,20 @@ export const publicProductPromisesDocument = () => {
           'https://github.com/OpenAgentsInc/openagents/issues/5736',
           'apps/autopilot-desktop/src/shared/chat-world-scene.ts',
           'apps/autopilot-desktop/src/ui/chat-world-subscriptions.ts',
+          'apps/autopilot-desktop/src/ui/subscriptions.ts',
+          'apps/autopilot-desktop/src/ui/update.ts',
           'apps/autopilot-desktop/src/ui/view.ts',
+          'apps/autopilot-desktop/tests/chat-world-scene.test.ts',
+          'apps/autopilot-desktop/tests/chat-world-subscriptions.test.ts',
+          'apps/autopilot-desktop/tests/verse-launch-checklist.test.ts',
           'https://openagents.com/api/public/pylon-stats',
           'promise:repo.open_source_code_map.v1',
         ],
         blockerRefs: [
           'blocker.product_promises.agent_world_scene_not_default_on',
-          'blocker.product_promises.agent_world_scene_live_wiring_p2_5_pending',
         ],
         verification:
-          'Yellow is limited to what is merged to main: the P0 scene mount behind the default-off CHAT_WORLD_SCENE flag (PR #5742) and P1 live Pylon crystals fed from the public pylon-stats projection (PR #5743), with primitives from three-effect#10 (spawner/avatar/warp-in/bars). True today: the scene renders behind chat when the flag is enabled and crystals reflect live Pylon state. Green requires the scene on by default (or an explicit owner decision that it stays flag-gated as the product), the P2.5 live in-app wiring polish landed, and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+          'Yellow is limited to what is merged to main: the P0 scene mount behind CHAT_WORLD_SCENE (PR #5742), P1 live Pylon crystals fed from the public pylon-stats projection (PR #5743), and the P2.5 in-app wiring path that carries pylon-stats through chat-world-subscriptions.ts -> GotChatWorldScene -> modelChatWorldScene -> verseSceneVisualization, plus idle expiry for evidence-bound payment beams. Focused proof: bun test tests/verse-launch-checklist.test.ts tests/chat-world-subscriptions.test.ts tests/chat-world-scene.test.ts in apps/autopilot-desktop. Green still requires the owner decision that the scene is default-on or explicitly remains flag-gated as the product, plus an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
         authorityBoundary:
           'The agent world scene is a presentational projection of already-public Pylon state. It grants no runtime mutation, no spend, no settlement, no payout, and no authority over the data it visualizes, and it makes no separate Pylon earning, payment, multiplayer, or onboarding claim green.',
       },

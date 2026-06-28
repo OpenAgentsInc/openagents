@@ -15,8 +15,10 @@ import {
   chatWorldMultiplayerFlag,
 } from "../src/shared/chat-world-flags"
 import {
+  PAYMENT_PARTICLE_GOLD,
   pylonGrowthTier,
   type ChatWorldPylonScene,
+  type PaymentParticle,
 } from "../src/shared/chat-world-scene"
 import { projectOnboardingStatus } from "../src/shared/onboarding-status"
 import type { NodeStateMessage } from "../src/shared/rpc"
@@ -26,12 +28,15 @@ import {
   ChangedVerseLocalPose,
   ChangedInputProfile,
   GotChatWorldScene,
+  GotChatWorldPaymentParticle,
   GotNodeState,
   GotOnboardingStatus,
   GotTrainingRuns,
+  TickedChatWorldPaymentParticles,
   TickedOnboardingStatusRefresh,
   TickedVerseTrainingProjectionRefresh,
 } from "../src/ui/message"
+import { modelChatWorldParticles } from "../src/ui/model"
 import { update } from "../src/ui/update"
 import {
   clearVerseSceneDiagnosticsForTest,
@@ -103,6 +108,23 @@ const livePylonScene = (
   growth: pylonGrowthTier(2_100),
   asOfLabel: "moments ago",
   ...overrides,
+})
+
+const paymentParticle = (input: {
+  readonly id: string
+  readonly ts: string
+}): PaymentParticle => ({
+  id: input.id,
+  kind: "real_bitcoin_moved",
+  fromRef: "pylon.alpha",
+  toRef: "pylon.beta",
+  amountSats: 1_000,
+  realBitcoinMoved: true,
+  color: PAYMENT_PARTICLE_GOLD,
+  size: 0.5,
+  sourceRefs: [`receipt.${input.id}`],
+  ts: input.ts,
+  text: null,
 })
 
 const ijklInputProfile = (): OpenAgentsInputProfile => ({
@@ -503,6 +525,43 @@ describe("Verse packaged launch checklist (#5827)", () => {
     expect(verseSceneDiagnostics().map(entry => entry.event)).toContain(
       "chat-world-scene.noop",
     )
+  })
+
+  test("idle payment-particle ticks expire stale beams without a new payment", () => {
+    clearVerseEnv()
+    const [initial] = initialRuntimeState()
+    const [withOld] = update(
+      initial,
+      GotChatWorldPaymentParticle({
+        particle: paymentParticle({
+          id: "old",
+          ts: "2026-06-20T00:00:45.000Z",
+        }),
+      }),
+    )
+    const [withRecent] = update(
+      withOld,
+      GotChatWorldPaymentParticle({
+        particle: paymentParticle({
+          id: "recent",
+          ts: "2026-06-20T00:02:00.000Z",
+        }),
+      }),
+    )
+    const [afterIdleTick] = update(
+      withRecent,
+      TickedChatWorldPaymentParticles({
+        referenceTsMs: Date.parse("2026-06-20T00:03:30.000Z"),
+      }),
+    )
+
+    expect(modelChatWorldParticles(withRecent).map((p) => p.id)).toEqual([
+      "old",
+      "recent",
+    ])
+    expect(modelChatWorldParticles(afterIdleTick).map((p) => p.id)).toEqual([
+      "recent",
+    ])
   })
 
   test("the packaged Verse scene carries the Tassadar bulletin world item", () => {
