@@ -86,6 +86,11 @@ struct RootView: View {
                             }
                         }
                         Button {
+                            switchChannel(to: .appleFM)
+                        } label: {
+                            Label("Use Apple FM", systemImage: "desktopcomputer")
+                        }
+                        Button {
                             openTracesInWeb(conversation: activeConversation)
                         } label: {
                             Label("Open traces in web", systemImage: "safari")
@@ -105,7 +110,7 @@ struct RootView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
-                    .accessibilityLabel(channel == .artanis ? "Artanis menu" : "Khala menu")
+                    .accessibilityLabel("\(channel.speaker) menu")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: newChat) {

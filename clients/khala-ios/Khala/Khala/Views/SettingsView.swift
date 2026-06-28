@@ -78,6 +78,15 @@ struct SettingsView: View {
                     )
                     .font(.footnote)
                 }
+
+                Section("Apple FM local bridge") {
+                    Text("Apple FM uses the local bridge health endpoint before inference. Base URL order: PROBE_APPLE_FM_BASE_URL, OPENAGENTS_APPLE_FM_BASE_URL, then http://127.0.0.1:11435.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Text("If the bridge reports unsupported, use an admitted Apple Silicon Mac with Apple Intelligence enabled and the packaged helper installed/executable.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
             }
             .navigationTitle("Settings")
             .toolbar {

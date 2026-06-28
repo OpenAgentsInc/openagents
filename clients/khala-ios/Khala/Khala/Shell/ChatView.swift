@@ -27,6 +27,9 @@ struct ChatView: View {
                         if messages.isEmpty && model.error == nil {
                             emptyState
                         } else {
+                            if model.channel == .appleFM {
+                                appleFMStatusPanel
+                            }
                             ForEach(messages) { message in
                                 MessageBubble(
                                     title: message.role == .user ? "You" : model.channel.speaker,
@@ -60,6 +63,7 @@ struct ChatView: View {
                 .background(.thinMaterial)
         }
         .onAppear {
+            model.refreshAppleFMStatus()
             // New/empty chat: autofocus the composer so the keyboard opens
             // immediately. A short delay lets the view settle so focus reliably
             // takes and the keyboard animates up.
@@ -98,6 +102,67 @@ struct ChatView: View {
             return "Collective intelligence behind a free API. Ask anything."
         case .artanis:
             return "You are talking to the operator agent that runs the loop — not the public Khala collective. Ask what it's working on."
+        case .appleFM:
+            return "Local Apple Foundation Models through the bridge on this Mac."
+        }
+    }
+
+    private var appleFMStatusPanel: some View {
+        let status = model.appleFMStatus
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: appleFMStatusIcon(status?.availability))
+                    .foregroundStyle(appleFMStatusColor(status?.availability))
+                Text(appleFMStatusTitle(status?.availability))
+                    .font(.callout.weight(.semibold))
+            }
+            Text(status?.message ?? "Checking the local Apple FM bridge.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("Bridge: \(status?.baseURL.absoluteString ?? AppleFMClient.resolvedBaseURL().absoluteString)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if let status, !status.blockerRefs.isEmpty {
+                Text(status.blockerRefs.joined(separator: "\n"))
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+            }
+            Button(action: model.refreshAppleFMStatus) {
+                Label("Refresh", systemImage: "arrow.clockwise")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func appleFMStatusTitle(_ availability: AppleFMClient.Availability?) -> String {
+        switch availability {
+        case .ready: return "Apple FM ready"
+        case .unsupported: return "Apple FM unsupported"
+        case .unavailable: return "Apple FM unavailable"
+        case nil: return "Apple FM checking"
+        }
+    }
+
+    private func appleFMStatusIcon(_ availability: AppleFMClient.Availability?) -> String {
+        switch availability {
+        case .ready: return "checkmark.circle.fill"
+        case .unsupported: return "exclamationmark.triangle.fill"
+        case .unavailable: return "xmark.circle.fill"
+        case nil: return "clock"
+        }
+    }
+
+    private func appleFMStatusColor(_ availability: AppleFMClient.Availability?) -> Color {
+        switch availability {
+        case .ready: return .green
+        case .unsupported: return .orange
+        case .unavailable: return .red
+        case nil: return .secondary
         }
     }
 
@@ -168,7 +233,7 @@ struct ChatView: View {
     }
 
     private var canSend: Bool {
-        hasKey && !model.isStreaming
+        (!model.channel.requiresAPIKey || hasKey) && !model.isStreaming
             && !typedMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
