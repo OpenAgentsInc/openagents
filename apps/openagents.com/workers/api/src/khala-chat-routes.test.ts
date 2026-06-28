@@ -281,6 +281,34 @@ describe('khala chat route', () => {
     )
   })
 
+  test('answers Artanis questions through the public read-only operator-agent signature', async () => {
+    let openedProvider = false
+    const routes = makeKhalaChatRoutes({
+      makeStreamClient: () => () => {
+        openedProvider = true
+        return Effect.fail(new OnboardingInferenceError({ reason: 'provider should not open' }))
+      },
+      rateLimit: allowAll,
+      recordServedTokens: () => Effect.void,
+    })
+
+    const response = await run(
+      routes.routeKhalaChatRequest(
+        chatRequest({ messages: [{ role: 'user', content: 'How can I talk to Artanis?' }] }),
+        {},
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(openedProvider).toBe(false)
+    const text = await response.text()
+    expect(text).toContain('Artanis is the OpenAgents operator agent')
+    expect(text).toContain('read-only')
+    expect(text).toContain('/api/public/artanis/report')
+    expect(text).not.toContain('Protoss')
+    expect(text).toContain('"servedAdapterId":"khala-artanis-read-only-signature"')
+  })
+
   test('emits provider-labeled reasoning on a separate SSE event', async () => {
     const routes = routesWith(
       chunkStream([

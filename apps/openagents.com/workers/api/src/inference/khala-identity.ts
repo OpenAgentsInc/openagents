@@ -79,6 +79,7 @@ export const KhalaSignatureId = S.Literals([
   'identity',
   'refusal_posture',
   'response_discipline',
+  'artanis_interaction',
 ])
 export type KhalaSignatureId = typeof KhalaSignatureId.Type
 
@@ -311,6 +312,23 @@ export const KHALA_IDENTITY_STATEMENT =
 
 export const KHALA_STANDARD_GREETING =
   'We are Khala. How can we help?'
+
+export const KHALA_ARTANIS_PUBLIC_READ_ONLY_ANSWER = [
+  'Artanis is the OpenAgents operator agent, not the StarCraft character.',
+  'You can observe public-safe Artanis state and activity at https://openagents.com/agents/artanis, the public report endpoint /api/public/artanis/report, and the launch dashboard /api/public/launch-dashboard.',
+  'This public Khala lane is read-only: we can summarize where to look and explain public decisions or fleet status, but we cannot command Artanis, dispatch work, spend funds, or use owner-only operator tools from here.',
+].join(' ')
+
+export const KHALA_ARTANIS_INTERACTION_SYSTEM_PROMPT = [
+  'Artanis interaction signature: when a user asks about Artanis, interpret Artanis as the OpenAgents operator agent, not a game/lore character.',
+  'The public Khala lane may answer read-only questions about Artanis using public-safe surfaces such as /agents/artanis, /api/public/artanis/report, /api/public/launch-dashboard, public activity, and fleet-status summaries.',
+  'Never roleplay StarCraft lore for Artanis unless the user explicitly asks for the game character. Never claim this public lane can command Artanis, dispatch work, spend funds, or access owner-only operator state.',
+].join(' ')
+
+export const isKhalaArtanisPublicReadOnlyPrompt = (input: string): boolean => {
+  const normalized = input.trim().toLowerCase()
+  return /\bartanis\b/u.test(normalized) && !/\bstarcraft\b|\bprotoss\b|\bdaelaam\b|\bhierarch\b/u.test(normalized)
+}
 
 // The reinforcement instruction the route prepends on a re-ask when identity is
 // violated (the LLM-side correction — the preferred correction path).
@@ -633,6 +651,41 @@ export const KHALA_RESPONSE_DISCIPLINE_SIGNATURE: KhalaSignature = {
 // The signature registry (extensible set; identity is #1).
 // ---------------------------------------------------------------------------
 
+export const KHALA_ARTANIS_INTERACTION_SIGNATURE: KhalaSignature = {
+  correctText: (completion: string): string => completion,
+  description:
+    'Khala recognizes Artanis as the OpenAgents operator agent for Artanis-related public questions, keeps the answer read-only, and does not fall through to game lore unless explicitly requested.',
+  id: 'artanis_interaction',
+  reinforcementPrompt: KHALA_ARTANIS_INTERACTION_SYSTEM_PROMPT,
+  verify: (completion: string): KhalaSignatureVerdict => {
+    const lower = completion.toLowerCase()
+    const mentionsArtanis = lower.includes('artanis')
+    if (!mentionsArtanis) {
+      return {
+        reason: '',
+        satisfied: true,
+        signature: 'artanis_interaction',
+        violations: [],
+      }
+    }
+    const loreOnly =
+      /\bstarcraft\b|\bprotoss\b|\bdaelaam\b|\bhierarch\b|\bnerve cords\b/u.test(lower) &&
+      !/\bopenagents\b|\boperator agent\b|\bread-only\b/u.test(lower)
+    const unsafeCommandClaim =
+      /\b(?:i|we) (?:can|will) (?:command|dispatch|spend|approve|pay|execute)\b/u.test(lower)
+    const violations = [
+      ...(loreOnly ? [{ text: 'artanis_lore_fallback' }] : []),
+      ...(unsafeCommandClaim ? [{ text: 'artanis_public_command_claim' }] : []),
+    ]
+    return {
+      reason: violations.length === 0 ? '' : 'artanis_interaction_contract',
+      satisfied: violations.length === 0,
+      signature: 'artanis_interaction',
+      violations,
+    }
+  },
+}
+
 // Ordered registry of Khala signatures. Identity is first, refusal posture is
 // second, response discipline is third. New signatures append here and are
 // picked up by `verifyKhalaSignatures` / the route guard without further wiring.
@@ -641,6 +694,7 @@ export const KHALA_SIGNATURES: ReadonlyArray<KhalaSignature> = [
   KHALA_IDENTITY_SIGNATURE,
   KHALA_REFUSAL_POSTURE_SIGNATURE,
   KHALA_RESPONSE_DISCIPLINE_SIGNATURE,
+  KHALA_ARTANIS_INTERACTION_SIGNATURE,
 ]
 
 export const getKhalaSignature = (

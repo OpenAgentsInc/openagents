@@ -27,11 +27,14 @@ import { Effect, Schema as S } from 'effect'
 import type { OnboardingStreamSource } from './autopilot-onboarding-program'
 import { OnboardingInferenceError } from './autopilot-onboarding-program'
 import {
+  KHALA_ARTANIS_INTERACTION_SYSTEM_PROMPT,
+  KHALA_ARTANIS_PUBLIC_READ_ONLY_ANSWER,
   KHALA_CAPABILITY_TRUTH_SYSTEM_PROMPT,
   KHALA_IDENTITY_SYSTEM_PROMPT,
   KHALA_REFUSAL_POSTURE_SYSTEM_PROMPT,
   KHALA_RESPONSE_DISCIPLINE_SYSTEM_PROMPT,
   KHALA_STANDARD_GREETING,
+  isKhalaArtanisPublicReadOnlyPrompt,
 } from './inference/khala-identity'
 import {
   type InferenceMessage,
@@ -203,7 +206,7 @@ export const buildKhalaChatMessages = (
 ): ReadonlyArray<InferenceMessage> => [
   {
     role: 'system',
-    content: `${KHALA_IDENTITY_SYSTEM_PROMPT} ${KHALA_REFUSAL_POSTURE_SYSTEM_PROMPT} ${KHALA_RESPONSE_DISCIPLINE_SYSTEM_PROMPT} ${KHALA_CAPABILITY_TRUTH_SYSTEM_PROMPT} ${KHALA_CHAT_INSTRUCTION}${khalaChatContextInstruction(context)}`,
+    content: `${KHALA_IDENTITY_SYSTEM_PROMPT} ${KHALA_REFUSAL_POSTURE_SYSTEM_PROMPT} ${KHALA_RESPONSE_DISCIPLINE_SYSTEM_PROMPT} ${KHALA_CAPABILITY_TRUTH_SYSTEM_PROMPT} ${KHALA_ARTANIS_INTERACTION_SYSTEM_PROMPT} ${KHALA_CHAT_INSTRUCTION}${khalaChatContextInstruction(context)}`,
   },
   ...messages.map(message => ({
     role: message.role,
@@ -254,3 +257,14 @@ export const isKhalaFastGreetingTurn = (
     normalizeKhalaFastPrompt(message.content),
   )
 }
+
+export const isKhalaArtanisPublicReadOnlyTurn = (
+  messages: ReadonlyArray<KhalaChatMessage>,
+): boolean => {
+  const message = messages[messages.length - 1]
+  return message !== undefined &&
+    message.role === 'user' &&
+    isKhalaArtanisPublicReadOnlyPrompt(message.content)
+}
+
+export { KHALA_ARTANIS_PUBLIC_READ_ONLY_ANSWER }
