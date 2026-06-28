@@ -143,6 +143,8 @@ const issueText = (issue: Pick<GitHubIssue, "body" | "title">): string =>
 export const issueHasPriorityLabel = (issue: GitHubIssue): boolean =>
   issue.labels.some(label => PRIORITY_LABELS.includes(label.name as PriorityLabel))
 
+export const issueHasAnyLabel = (issue: GitHubIssue): boolean => issue.labels.length > 0
+
 export const tokenizeIssueText = (value: string): ReadonlyArray<string> =>
   uniqueSorted(
     value
@@ -308,12 +310,15 @@ export const listRepositoryFiles = (cwd: string): ReadonlyArray<string> => {
   return uniqueSorted(output.split("\n").map(line => line.trim()).filter(Boolean))
 }
 
+export const buildCandidateIssueSearch = (includeLabeled: boolean): string =>
+  includeLabeled ? "is:issue is:open sort:created-desc" : "is:issue is:open no:label sort:created-desc"
+
 const listCandidateIssues = (
   repo: string,
   limit: number,
-  _includeLabeled: boolean,
+  includeLabeled: boolean,
 ): ReadonlyArray<GitHubIssue> => {
-  const search = "is:issue is:open sort:created-desc"
+  const search = buildCandidateIssueSearch(includeLabeled)
   return runGhJson([
     "issue",
     "list",
@@ -373,7 +378,7 @@ const main = () => {
   const options = parseArgs(Bun.argv.slice(2))
   const repositoryFiles = listRepositoryFiles(process.cwd())
   const candidates = listCandidateIssues(options.repo, options.limit, options.includeLabeled).filter(
-    issue => options.includeLabeled || !issueHasPriorityLabel(issue),
+    issue => options.includeLabeled || !issueHasAnyLabel(issue),
   )
   const openIssues = listOpenIssues(options.repo, Math.max(options.limit, 100))
   const decisions = candidates.map(issue =>
