@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path"
 
 import { khalaHome, runKhalaCodexTask, type KhalaCodexRunResult } from "./codex.js"
 import { spawnProcess } from "./proc.js"
-import { DEFAULT_BASE_URL } from "./types.js"
+import { DEFAULT_BASE_URL, KhalaCliError } from "./types.js"
 
 export const KHALA_SPAWN_RUN_SCHEMA = "openagents.khala.spawn_run.v0.1"
 export const KHALA_SPAWN_WORKER_SCHEMA = "openagents.khala.spawn_worker.v0.1"
@@ -446,12 +446,19 @@ const remoteKhalaSpawnMcpCaller: KhalaSpawnMcpCaller = async input => {
   })
   const text = await response.text()
   if (!response.ok) {
-    throw new Error(`remote ${input.tool} failed (${response.status}): ${text.trim() || response.statusText}`)
+    throw new KhalaCliError({
+      code: "remote_http_error",
+      reason: `remote ${input.tool} failed (${response.status}): ${text.trim() || response.statusText}`,
+      statusCode: response.status,
+    })
   }
   const envelope = parseJsonRecord(text, `remote ${input.tool} response`)
   const error = recordValue(envelope, "error")
   if (isRecord(error)) {
-    throw new Error(stringValue(error, "message") ?? `remote ${input.tool} returned an error`)
+    throw new KhalaCliError({
+      code: "remote_mcp_error",
+      reason: stringValue(error, "message") ?? `remote ${input.tool} returned an error`,
+    })
   }
   const result = recordValue(envelope, "result")
   if (!isRecord(result)) {

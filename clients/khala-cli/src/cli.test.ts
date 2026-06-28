@@ -380,6 +380,48 @@ describe("Khala CLI info diagnostics", () => {
     expect(parsed.state).toBe("completed")
   })
 
+  test("surfaces pylon spawn server validation errors instead of reporting network failure", async () => {
+    const server = Bun.serve({
+      port: 0,
+      fetch: () =>
+        Response.json({
+          error: "pylon_api_validation_error",
+          message: "Missing key [\"jobKind\"] after network reached server",
+        }, { status: 400 }),
+    })
+
+    const originalWrite = process.stderr.write
+    let stderr = ""
+    process.stderr.write = ((chunk: string | Uint8Array) => {
+      stderr += String(chunk)
+      return true
+    }) as typeof process.stderr.write
+    try {
+      const exitCode = await runKhalaCli([
+        "spawn",
+        "--strategy",
+        "pylon",
+        "--count",
+        "1",
+        "--fixture",
+        "--base-url",
+        `http://127.0.0.1:${server.port}`,
+        "--objective",
+        "validation smoke",
+      ], {
+        OPENAGENTS_AGENT_TOKEN: "oa_agent_pylon_validation_test",
+      })
+      expect(exitCode).toBe(1)
+    } finally {
+      process.stderr.write = originalWrite
+      server.stop(true)
+    }
+
+    expect(stderr).toContain("remote khala.spawn failed (400)")
+    expect(stderr).toContain("pylon_api_validation_error")
+    expect(stderr).not.toContain("Could not reach Khala")
+  })
+
   test("accepts claude_agent_task workflow for pylon spawn", async () => {
     const dir = mkdtempSync(join(tmpdir(), "khala-pylon-claude-workflow-test-"))
     const tokenPath = join(dir, "agent-token")
