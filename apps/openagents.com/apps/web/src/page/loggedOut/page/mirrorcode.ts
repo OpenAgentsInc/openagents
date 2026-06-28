@@ -102,6 +102,28 @@ const stat = (label: string, value: string): Html => {
   )
 }
 
+const codeBlock = (label: string, lines: ReadonlyArray<string>): Html => {
+  const h = html<Message>()
+
+  return h.figure(
+    [Ui.className<Message>('m-0 grid gap-2 border border-white/10 bg-black p-3')],
+    [
+      h.figcaption(
+        [Ui.className<Message>('text-[0.72rem] font-semibold uppercase tracking-wide text-white/45')],
+        [label],
+      ),
+      h.pre(
+        [
+          Ui.className<Message>(
+            'm-0 overflow-x-auto whitespace-pre rounded-none text-[0.75rem] leading-5 text-white/70',
+          ),
+        ],
+        [lines.join('\n')],
+      ),
+    ],
+  )
+}
+
 const emptyState = (
   attrs: ReadonlyArray<DivAttr>,
   eyebrow: string,
@@ -283,6 +305,129 @@ const livePanel = (model: MirrorCodeRunsModel): Html => {
         ]),
       ]),
       body,
+    ],
+  )
+}
+
+const playgroundStep = (
+  title: string,
+  body: string,
+  attrs: ReadonlyArray<DivAttr>,
+): Html => {
+  const h = html<Message>()
+
+  return h.div(
+    [
+      ...attrs,
+      Ui.className<Message>(
+        'grid content-start gap-2 border border-white/10 bg-black p-3',
+      ),
+    ],
+    [
+      h.h3(
+        [Ui.className<Message>('m-0 text-sm font-semibold text-white')],
+        [title],
+      ),
+      h.p(
+        [Ui.className<Message>('m-0 text-[0.8125rem] leading-5 text-white/60')],
+        [body],
+      ),
+    ],
+  )
+}
+
+const playgroundPanel = (): Html => {
+  const h = html<Message>()
+
+  return h.section(
+    [
+      h.DataAttribute('mirrorcode-playground-panel', ''),
+      Ui.className<Message>(panelClass),
+    ],
+    [
+      h.div(
+        [Ui.className<Message>('grid gap-2 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start')],
+        [
+          h.div([Ui.className<Message>('grid gap-2')], [
+            h.p([Ui.className<Message>(sectionTitleClass)], [
+              'MirrorCode-as-a-Service playground',
+            ]),
+            h.h2(
+              [Ui.className<Message>('m-0 max-w-[26ch] text-2xl font-semibold tracking-tight text-balance text-white sm:text-3xl')],
+              ['Queue a public-task run, then read status by run id'],
+            ),
+            h.p(
+              [Ui.className<Message>('m-0 max-w-[78ch] text-base text-white/65 sm:text-sm')],
+              [
+                'The public playground shows the exact API surface without opening public dispatch. Launch is owner-gated; status and leaderboard reads are public-safe and never expose task source, prompts, logs, canary strings, keys, or private-set answers.',
+              ],
+            ),
+          ]),
+          h.div(
+            [
+              h.DataAttribute('mirrorcode-owner-gated-launch', ''),
+              Ui.className<Message>(
+                'grid gap-1 border border-[#ffb400]/30 bg-[#120d02] p-3 text-[0.78rem] text-[#ffd884]',
+              ),
+            ],
+            [
+              h.span(
+                [Ui.className<Message>('font-semibold uppercase tracking-wide')],
+                ['Owner-gated launch'],
+              ),
+              h.span([], [
+                'POST requires an admin bearer token; public visitors can inspect the contract and read results only.',
+              ]),
+            ],
+          ),
+        ],
+      ),
+      h.div(
+        [Ui.className<Message>('grid gap-3 md:grid-cols-3')],
+        [
+          playgroundStep(
+            '1. Choose a public target',
+            'Select an S, M, or L public MirrorCode task. Private tasks are excluded from this service surface.',
+            [h.DataAttribute('mirrorcode-playground-step', 'target')],
+          ),
+          playgroundStep(
+            '2. Queue a launch intent',
+            'The owner-operated runner creates a queued row first, then the external MirrorCode/Inspect executor updates status and result.',
+            [h.DataAttribute('mirrorcode-playground-step', 'launch')],
+          ),
+          playgroundStep(
+            '3. Poll public status',
+            'Read a single run or the leaderboard. The response carries public-safe fields only, with exact-token refs when a decision-grade result exists.',
+            [h.DataAttribute('mirrorcode-playground-step', 'status')],
+          ),
+        ],
+      ),
+      h.div(
+        [Ui.className<Message>('grid gap-3 lg:grid-cols-2')],
+        [
+          codeBlock('Launch intent', [
+            'POST /api/gym/mirrorcode/runs',
+            'Authorization: Bearer <admin-token>',
+            '',
+            '{',
+            '  "kind": "launch",',
+            '  "taskId": "cal",',
+            '  "bucket": "S",',
+            '  "language": "python",',
+            '  "grade": "smoke"',
+            '}',
+          ]),
+          codeBlock('Status read', [
+            'GET /api/gym/mirrorcode/runs/{runId}',
+            'GET /api/gym/mirrorcode/runs',
+            '',
+            'returns:',
+            '  status, passRate, tokensTotal,',
+            '  exactTokenUsageEventRefs,',
+            '  tokenAttributionProofRef',
+          ]),
+        ],
+      ),
     ],
   )
 }
@@ -501,6 +646,7 @@ export const view = (model: MirrorCodeRunsModel): Html => {
       h.div([Ui.className<Message>(pageClass)], [
         hero(),
         benchmarkStrip(model),
+        playgroundPanel(),
         livePanel(model),
         leaderboardPanel(model),
       ]),

@@ -129,6 +129,12 @@ describe('public MirrorCode page', () => {
     expect(rendered).toContain(
       'No runs yet — machinery shipped, awaiting first Phase-0 run',
     )
+    expect(rendered).toContain('data-mirrorcode-playground-panel')
+    expect(rendered).toContain('MirrorCode-as-a-Service playground')
+    expect(rendered).toContain('POST /api/gym/mirrorcode/runs')
+    expect(rendered).toContain('GET /api/gym/mirrorcode/runs/{runId}')
+    expect(rendered).toContain('data-mirrorcode-owner-gated-launch')
+    expect(rendered).toContain('public visitors can inspect the contract')
     // Comparators section is always labeled as illustrative, never head-to-head.
     expect(rendered).toContain(
       'Paper-reference comparators (illustrative — not a head-to-head)',
