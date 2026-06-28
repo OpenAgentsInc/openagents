@@ -1193,6 +1193,14 @@ export const ProviderAccountPoolResponse = S.Struct({
 export type ProviderAccountPoolResponse =
   typeof ProviderAccountPoolResponse.Type
 
+export const ProviderAccountPoolManualResetResponse = S.Struct({
+  ok: S.Literal(true),
+  providerAccountRef: S.String,
+  resetAt: S.String,
+})
+export type ProviderAccountPoolManualResetResponse =
+  typeof ProviderAccountPoolManualResetResponse.Type
+
 export const ProviderAccountPoolIdle = ts('ProviderAccountPoolIdle', {})
 export const ProviderAccountPoolLoading = ts('ProviderAccountPoolLoading', {})
 export const ProviderAccountPoolLoaded = ts('ProviderAccountPoolLoaded', {

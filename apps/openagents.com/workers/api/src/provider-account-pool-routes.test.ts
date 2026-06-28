@@ -76,7 +76,7 @@ class FakeD1Statement {
       results: this.database.all(this.query, this.values) as Array<T>,
     })
 
-  run = () => Promise.resolve({ success: true })
+  run = () => Promise.resolve(this.database.run(this.query, this.values))
 }
 
 class FakePoolD1 {
@@ -149,6 +149,37 @@ class FakePoolD1 {
     }
 
     return null
+  }
+
+  run = (query: string, values: Array<unknown>) => {
+    if (
+      query.includes('UPDATE provider_accounts') &&
+      query.includes('cooldown_until = NULL')
+    ) {
+      const [updatedAt, userId, providerAccountRef] = values as [
+        string,
+        string,
+        string,
+      ]
+      const account = this.accounts.find(
+        candidate =>
+          candidate.user_id === userId &&
+          candidate.provider_account_ref === providerAccountRef &&
+          candidate.deleted_at === null,
+      )
+
+      if (account === undefined) {
+        return { success: true, meta: { changes: 0 } }
+      }
+
+      account.cooldown_until = null
+      account.recent_failure_class = null
+      account.last_failed_launch_at = updatedAt
+
+      return { success: true, meta: { changes: 1 } }
+    }
+
+    return { success: true, meta: { changes: 0 } }
   }
 
   all = (query: string, values: Array<unknown>): Array<unknown> => {
@@ -319,6 +350,16 @@ const poolRequest = (headers: Record<string, string> = {}): Request =>
   new Request('https://openagents.com/api/provider-accounts/pool', {
     headers,
     method: 'GET',
+  })
+
+const resetRequest = (
+  providerAccountRef: string,
+  headers: Record<string, string> = {},
+): Request =>
+  new Request('https://openagents.com/api/provider-accounts/pool/reset', {
+    body: JSON.stringify({ providerAccountRef }),
+    headers: { 'content-type': 'application/json', ...headers },
+    method: 'POST',
   })
 
 const seededDatabase = (): FakePoolD1 => {
@@ -546,6 +587,51 @@ describe('provider account pool projection route', () => {
     expect(response.status).toBe(401)
   })
 
+  test('browser session manually resets an owned cooldown account', async () => {
+    const database = seededDatabase()
+    const handler = makeHandler({
+      database,
+      session: { user: { userId: OWNER_USER_ID } },
+    })
+    const response = await handler(
+      resetRequest('provider-account_acct_cooling'),
+    )
+    const body = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(body).toEqual({
+      ok: true,
+      providerAccountRef: 'provider-account_acct_cooling',
+      resetAt: NOW,
+    })
+    expect(
+      database.accounts.find(
+        account =>
+          account.provider_account_ref === 'provider-account_acct_cooling',
+      ),
+    ).toMatchObject({
+      cooldown_until: null,
+      recent_failure_class: null,
+    })
+  })
+
+  test('manual reset refuses missing and cross-owner accounts', async () => {
+    const handler = makeHandler({
+      database: seededDatabase(),
+      session: { user: { userId: OWNER_USER_ID } },
+    })
+    const missingBody = await handler(
+      new Request('https://openagents.com/api/provider-accounts/pool/reset', {
+        body: '{}',
+        method: 'POST',
+      }),
+    )
+    const missingAccount = await handler(resetRequest('provider-account_other'))
+
+    expect(missingBody.status).toBe(400)
+    expect(missingAccount.status).toBe(404)
+  })
+
   test('non-GET methods are rejected', async () => {
     const handler = makeHandler({
       database: seededDatabase(),
@@ -554,6 +640,20 @@ describe('provider account pool projection route', () => {
     const response = await handler(
       new Request('https://openagents.com/api/provider-accounts/pool', {
         method: 'POST',
+      }),
+    )
+
+    expect(response.status).toBe(405)
+  })
+
+  test('non-POST reset methods are rejected', async () => {
+    const handler = makeHandler({
+      database: seededDatabase(),
+      session: { user: { userId: OWNER_USER_ID } },
+    })
+    const response = await handler(
+      new Request('https://openagents.com/api/provider-accounts/pool/reset', {
+        method: 'GET',
       }),
     )
 

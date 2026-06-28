@@ -1604,6 +1604,12 @@ const schemaComponents = (): JsonSchema => ({
   ProviderAccountPoolResponse: objectSummary(
     'Account-pool dashboard projection over the connected provider accounts owned by the signed-in user or the agent grant owner: provider-tagged per-account status/health, lease eligibility with typed reasons, active lease count vs lease limit, cooldown-until plus remaining seconds, low-credit flags, recent failure class, last-selected/sanity-check/probe/launch timestamps, and reconnect nudges for expired or reauth-required accounts; plus the active lease list, the next-selection explain row, summary counts, generatedAt, and the declared staleness contract (live_at_read, rebuilds on provider-account connect/disconnect/health/lease/failover transitions). Read-only projection: lease refs and typed state only. Provider tokens, secrets, grants, and raw provider payloads are never returned, and the projection grants no lease, spend, or provider-mutation authority.',
   ),
+  ProviderAccountPoolManualResetRequest: objectSummary(
+    'Signed-in owner request to manually clear a provider account cooldown/rate-limit marker by providerAccountRef. Browser session only; agent bearer grants remain read-only for this surface. The reset does not touch credentials, leases, spend, or other owners accounts.',
+  ),
+  ProviderAccountPoolManualResetResponse: objectSummary(
+    'Manual reset receipt with ok, providerAccountRef, and resetAt. It confirms only that the signed-in owners local cooldown/rate-limit marker was cleared; callers should re-read the pool projection for current eligibility.',
+  ),
   BuiltinComputeAgentGrantEnvelope: objectSummary(
     'Built-in hosted-Gemini grant result for the no-key built-in agent path. A granted response returns a short-lived redacted grant with provider secret refs, free-tier budget refs, expiry, and materialization instructions only; it never returns the hosted key, provider payloads, prompts, completions, or broad provider-account mutation authority. Not-configured and quota-exhausted states are explicit.',
   ),
@@ -11057,6 +11063,26 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Account-pool dashboard projection.',
           '#/components/schemas/ProviderAccountPoolResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/provider-accounts/pool/reset': {
+    post: operation({
+      operationId: 'resetProviderAccountPoolAccount',
+      summary: 'Manually reset an owned provider account cooldown marker',
+      description:
+        'Signed-in owner action that clears the selected account-pool cooldown and recent rate-limit marker by providerAccountRef, then returns a reset receipt. The action is browser-session only; bearer-agent pool access remains read-only. It does not expose or mutate provider credentials, active leases, spend, or accounts outside the signed-in owner scope.',
+      tags: ['Provider Accounts'],
+      security: [{ browserSession: [] }],
+      requestBody: jsonContent(
+        '#/components/schemas/ProviderAccountPoolManualResetRequest',
+      ),
+      responses: {
+        '200': okJson(
+          'Provider account manual reset receipt.',
+          '#/components/schemas/ProviderAccountPoolManualResetResponse',
         ),
         ...errorResponses(),
       },

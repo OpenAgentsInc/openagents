@@ -8,6 +8,7 @@ import {
 } from './customer-order-agent-auth'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import type { RouteEffect } from './http/route-effects'
+import { optionalString, readJsonObject } from './json-boundary'
 import { logWorkerRouteError } from './observability'
 import { PROVIDER_ACCOUNT_LEASE_POLICY_VERSION } from './provider-account-lease-policy'
 import {
@@ -105,6 +106,12 @@ export type ProviderAccountPoolResponse = Readonly<{
   activeLeases: ReadonlyArray<ProviderAccountPoolLease>
   nextSelection: ProviderAccountPoolNextSelection
   summary: ProviderAccountPoolSummary
+}>
+
+export type ProviderAccountPoolManualResetResponse = Readonly<{
+  ok: true
+  providerAccountRef: string
+  resetAt: string
 }>
 
 type PoolAccountRow = Readonly<{
@@ -530,12 +537,53 @@ class ProviderAccountPoolProjectionError extends Error {
   override readonly name = 'ProviderAccountPoolProjectionError'
 }
 
+class ProviderAccountPoolBadRequest extends Error {
+  override readonly name = 'ProviderAccountPoolBadRequest'
+}
+
 const poolProjectionError = (
   error: unknown,
 ): ProviderAccountPoolProjectionError =>
   new ProviderAccountPoolProjectionError(
     error instanceof Error ? error.message : String(error),
   )
+
+const readManualResetProviderAccountRef = async (
+  request: Request,
+): Promise<string> => {
+  const body = await readJsonObject(request)
+  const providerAccountRef = optionalString(body.providerAccountRef)
+
+  if (providerAccountRef === undefined) {
+    throw new ProviderAccountPoolBadRequest()
+  }
+
+  return providerAccountRef
+}
+
+const resetProviderAccountPoolAccount = async (
+  db: D1Database,
+  input: Readonly<{
+    providerAccountRef: string
+    resetAt: string
+    userId: string
+  }>,
+): Promise<boolean> => {
+  const result = await db
+    .prepare(
+      `UPDATE provider_accounts
+          SET cooldown_until = NULL,
+              recent_failure_class = NULL,
+              updated_at = ?
+        WHERE user_id = ?
+          AND provider_account_ref = ?
+          AND deleted_at IS NULL`,
+    )
+    .bind(input.resetAt, input.userId, input.providerAccountRef)
+    .run()
+
+  return (result.meta?.changes ?? 0) > 0
+}
 
 const agentAuthFailureStatus = (
   failure: CustomerOrderAgentAuthFailure,
@@ -557,11 +605,71 @@ export const makeProviderAccountPoolRoutes = <
     ctx: ExecutionContext,
   ): RouteEffect =>
     Effect.gen(function* () {
-      if (request.method !== 'GET') {
+      const pathname = new URL(request.url).pathname
+      const isReset = pathname === '/api/provider-accounts/pool/reset'
+
+      if (!isReset && request.method !== 'GET') {
         return methodNotAllowed(['GET'])
       }
 
+      if (isReset && request.method !== 'POST') {
+        return methodNotAllowed(['POST'])
+      }
+
       const now = dependencies.nowIso?.() ?? currentIsoTimestamp()
+
+      if (isReset) {
+        if (hasBearerAuthorization(request)) {
+          return noStoreJsonResponse(
+            { error: 'browser_session_required' },
+            { status: 401 },
+          )
+        }
+
+        const session = yield* Effect.tryPromise({
+          catch: poolProjectionError,
+          try: () => dependencies.requireBrowserSession(request, env, ctx),
+        })
+
+        if (session === undefined) {
+          return yield* Effect.fail(new ProviderAccountPoolSessionMissing())
+        }
+
+        const providerAccountRef = yield* Effect.tryPromise({
+          catch: error =>
+            error instanceof ProviderAccountPoolBadRequest
+              ? error
+              : poolProjectionError(error),
+          try: () => readManualResetProviderAccountRef(request),
+        })
+        const reset = yield* Effect.tryPromise({
+          catch: poolProjectionError,
+          try: () =>
+            resetProviderAccountPoolAccount(openAgentsDatabase(env), {
+              providerAccountRef,
+              resetAt: now,
+              userId: session.user.userId,
+            }),
+        })
+
+        if (!reset) {
+          return noStoreJsonResponse(
+            { error: 'provider_account_not_found' },
+            { status: 404 },
+          )
+        }
+
+        const response: ProviderAccountPoolManualResetResponse = {
+          ok: true,
+          providerAccountRef,
+          resetAt: now,
+        }
+
+        return dependencies.appendRefreshedSessionCookies(
+          noStoreJsonResponse(response),
+          session,
+        )
+      }
 
       if (hasBearerAuthorization(request)) {
         const auth = yield* authenticateCustomerOrderAgentRequest(
@@ -621,6 +729,15 @@ export const makeProviderAccountPoolRoutes = <
         if (error instanceof ProviderAccountPoolSessionMissing) {
           return Effect.succeed(
             noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 }),
+          )
+        }
+
+        if (error instanceof ProviderAccountPoolBadRequest) {
+          return Effect.succeed(
+            noStoreJsonResponse(
+              { error: 'provider_account_ref_required' },
+              { status: 400 },
+            ),
           )
         }
 

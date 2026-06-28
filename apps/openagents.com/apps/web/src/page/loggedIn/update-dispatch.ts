@@ -114,6 +114,12 @@ export const update = (model: Model, message: Message): UpdateReturn => {
       RequestedLoadProviderAccountPool: () => updateProviders(model, message),
       SucceededLoadProviderAccountPool: () => updateProviders(model, message),
       FailedLoadProviderAccountPool: () => updateProviders(model, message),
+      ClickedResetProviderAccountPoolAccount: () =>
+        updateProviders(model, message),
+      SucceededResetProviderAccountPoolAccount: () =>
+        updateProviders(model, message),
+      FailedResetProviderAccountPoolAccount: () =>
+        updateProviders(model, message),
 
       RequestedLoadOnboardingRepositories: () =>
         updateOnboarding(model, message),
