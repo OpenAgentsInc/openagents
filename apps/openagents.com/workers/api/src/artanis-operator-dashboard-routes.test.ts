@@ -1,7 +1,10 @@
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
-import { makeOperatorArtanisDashboardRoutes } from './artanis-operator-dashboard-routes'
+import {
+  makeOperatorArtanisDashboardRoutes,
+  operatorAccountUsageProjection,
+} from './artanis-operator-dashboard-routes'
 
 const executionContext = {} as ExecutionContext
 
@@ -184,6 +187,9 @@ describe('Artanis operator dashboard routes', () => {
     expect(response.status).toBe(200)
     expect(body).toMatchObject({
       dashboardRef: 'operator.artanis.dashboard',
+      accountUsage: {
+        accounts: [],
+      },
       selectedThread: {
         callerId: 'github:14167547',
         messageCount: 2,
@@ -224,6 +230,51 @@ describe('Artanis operator dashboard routes', () => {
         {
           callerId: 'claude:worker-2',
           title: 'Claude needs steering',
+        },
+      ],
+    })
+  })
+
+  test('projects bounded hourly and weekly token usage windows for dashboard meters', () => {
+    const projection = operatorAccountUsageProjection(
+      [
+        {
+          accountRefHash: 'acct_hash_codex_1',
+          cooldownExpiresAt: '2026-06-28T02:00:00.000Z',
+          hourlyCap: 1_000,
+          hourlyUsage: 250,
+          isRateLimited: true,
+          manualResetsRemaining: 2,
+          provider: 'codex',
+          weeklyCap: 10_000,
+          weeklyUsage: 12_000,
+        },
+      ],
+      '2026-06-28T01:05:00.000Z',
+    )
+
+    expect(projection).toMatchObject({
+      observedAt: '2026-06-28T01:05:00.000Z',
+      accounts: [
+        {
+          accountRefHash: 'acct_hash_codex_1',
+          isRateLimited: true,
+          windows: [
+            {
+              cap: 1_000,
+              label: 'hourly',
+              percentUsed: 25,
+              remaining: 750,
+              used: 250,
+            },
+            {
+              cap: 10_000,
+              label: 'weekly',
+              percentUsed: 100,
+              remaining: 0,
+              used: 12_000,
+            },
+          ],
         },
       ],
     })

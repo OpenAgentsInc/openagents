@@ -2,6 +2,7 @@ import { Effect, Match as M, Schema as S } from 'effect'
 
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { openAgentsDatabase } from './runtime'
+import { currentIsoTimestamp } from './runtime-primitives'
 
 type OperatorArtanisDashboardEnv = Readonly<{
   OPENAGENTS_DB: D1Database
@@ -85,6 +86,59 @@ type ArtanisMessageRow = Readonly<{
   body: string
   created_at: string
 }>
+
+type OperatorAccountUsageRow = Readonly<{
+  accountRefHash: string
+  provider: string
+  isRateLimited: boolean
+  cooldownExpiresAt: string | null
+  hourlyCap: number | null
+  hourlyUsage: number | null
+  weeklyCap: number | null
+  weeklyUsage: number | null
+  manualResetsRemaining: number | null
+}>
+
+const boundedPercent = (usage: number | null, cap: number | null): number => {
+  if (usage === null || cap === null || cap <= 0) {
+    return 0
+  }
+
+  return Math.max(0, Math.min(100, Math.round((usage / cap) * 100)))
+}
+
+const remainingTokens = (usage: number | null, cap: number | null): number | null =>
+  usage === null || cap === null ? null : Math.max(0, cap - usage)
+
+const accountUsageWindow = (
+  label: 'hourly' | 'weekly',
+  usage: number | null,
+  cap: number | null,
+) => ({
+  cap,
+  label,
+  percentUsed: boundedPercent(usage, cap),
+  remaining: remainingTokens(usage, cap),
+  used: usage,
+})
+
+export const operatorAccountUsageProjection = (
+  rows: ReadonlyArray<OperatorAccountUsageRow>,
+  observedAt: string,
+) => ({
+  accounts: rows.map(row => ({
+    accountRefHash: row.accountRefHash,
+    cooldownExpiresAt: row.cooldownExpiresAt,
+    isRateLimited: row.isRateLimited,
+    manualResetsRemaining: row.manualResetsRemaining,
+    provider: row.provider,
+    windows: [
+      accountUsageWindow('hourly', row.hourlyUsage, row.hourlyCap),
+      accountUsageWindow('weekly', row.weeklyUsage, row.weeklyCap),
+    ],
+  })),
+  observedAt,
+})
 
 const routeErrorResponse = (error: OperatorArtanisDashboardError) =>
   M.value(error).pipe(
@@ -275,6 +329,7 @@ export const makeOperatorArtanisDashboardRoutes = <
 
       return dependencies.appendRefreshedSessionCookies(
         noStoreJsonResponse({
+          accountUsage: operatorAccountUsageProjection([], currentIsoTimestamp()),
           callerIdFilter: callerId ?? null,
           dashboardRef: 'operator.artanis.dashboard',
           messages: messages.map(messageProjection),

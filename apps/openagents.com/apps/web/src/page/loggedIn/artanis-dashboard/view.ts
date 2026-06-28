@@ -10,6 +10,9 @@ import {
   type Message,
 } from '../message'
 import type {
+  ArtanisOperatorDashboardAccountUsage,
+  ArtanisOperatorDashboardAccountUsageEntry,
+  ArtanisOperatorDashboardAccountUsageWindow,
   ArtanisOperatorDashboardMessage,
   ArtanisOperatorDashboardResponse,
   ArtanisOperatorDashboardThread,
@@ -20,6 +23,16 @@ const shortTime = (iso: string): string =>
   iso.replace('T', ' ').replace('.000Z', 'Z')
 
 const humanLabel = (value: string): string => value.replace(/_/g, ' ')
+
+const formatNumber = (value: number): string =>
+  new Intl.NumberFormat('en-US').format(value)
+
+const usageText = (
+  window: ArtanisOperatorDashboardAccountUsageWindow,
+): string =>
+  window.used === null || window.cap === null || window.remaining === null
+    ? 'usage unmeasured'
+    : `${formatNumber(window.used)} / ${formatNumber(window.cap)} used · ${formatNumber(window.remaining)} remaining`
 
 const emptyText = (label: string): Html =>
   html<Message>().p(
@@ -169,6 +182,145 @@ const transcript = (response: ArtanisOperatorDashboardResponse): Html => {
   ])
 }
 
+const usageBarClass = (
+  entry: ArtanisOperatorDashboardAccountUsageEntry,
+  window: ArtanisOperatorDashboardAccountUsageWindow,
+): string => {
+  if (window.used === null || window.cap === null) {
+    return 'bg-white/25'
+  }
+
+  if (entry.isRateLimited || window.percentUsed >= 90) {
+    return 'bg-[#d32f2f]'
+  }
+
+  if (window.percentUsed >= 70) {
+    return 'bg-[#ffb400]'
+  }
+
+  return 'bg-[#00c853]'
+}
+
+const accountUsageWindowView = (
+  entry: ArtanisOperatorDashboardAccountUsageEntry,
+  window: ArtanisOperatorDashboardAccountUsageWindow,
+): Html => {
+  const h = html<Message>()
+  const percent = Math.max(0, Math.min(100, window.percentUsed))
+
+  return h.div([Ui.className<Message>('grid gap-1.5')], [
+    h.div([Ui.className<Message>('flex items-center justify-between gap-3')], [
+      h.span(
+        [Ui.className<Message>('text-[0.6875rem] font-semibold leading-4 text-white/65')],
+        [humanLabel(window.label)],
+      ),
+      h.span(
+        [Ui.className<Message>('text-[0.6875rem] leading-4 text-white/45')],
+        [`${percent}%`],
+      ),
+    ]),
+    h.div(
+      [
+        h.AriaLabel(`${entry.provider} ${window.label} token usage ${percent}%`),
+        h.Role('meter'),
+        h.Attribute('aria-valuemin', '0'),
+        h.Attribute('aria-valuemax', '100'),
+        h.Attribute('aria-valuenow', String(percent)),
+        Ui.className<Message>('h-2 w-full overflow-hidden rounded-sm bg-white/10'),
+      ],
+      [
+        h.div(
+          [
+            h.Style({ width: `${percent}%` }),
+            Ui.className<Message>(`h-full rounded-sm ${usageBarClass(entry, window)}`),
+          ],
+          [],
+        ),
+      ],
+    ),
+    h.div(
+      [Ui.className<Message>('text-[0.6875rem] leading-4 text-white/45')],
+      [usageText(window)],
+    ),
+  ])
+}
+
+const accountUsageEntryView = (
+  entry: ArtanisOperatorDashboardAccountUsageEntry,
+): Html => {
+  const h = html<Message>()
+  const stateClass = entry.isRateLimited
+    ? 'border-[#d32f2f]/45 bg-[#1b0d0d]'
+    : 'border-[#00c853]/30 bg-[#07150c]'
+  const stateLabel = entry.isRateLimited ? 'limited' : 'available'
+  const cooldown =
+    entry.cooldownExpiresAt === null
+      ? 'no cooldown'
+      : `resets ${shortTime(entry.cooldownExpiresAt)}`
+  const resets =
+    entry.manualResetsRemaining === null
+      ? 'manual resets unknown'
+      : `${entry.manualResetsRemaining} manual resets`
+
+  return h.article(
+    [Ui.className<Message>('grid gap-3 border border-white/10 bg-[#0c0f13]/90 p-3')],
+    [
+      h.div([Ui.className<Message>('flex flex-wrap items-start justify-between gap-2')], [
+        h.div([Ui.className<Message>('grid gap-1')], [
+          h.h2(
+            [Ui.className<Message>('m-0 text-[0.8125rem] font-semibold leading-5 text-white')],
+            [`${entry.provider} · ${entry.accountRefHash.slice(0, 10)}`],
+          ),
+          h.p(
+            [Ui.className<Message>('m-0 text-[0.6875rem] leading-4 text-white/45')],
+            [`${cooldown} · ${resets}`],
+          ),
+        ]),
+        h.span(
+          [
+            Ui.className<Message>(
+              `rounded-sm border px-2 py-1 text-[0.6875rem] font-semibold leading-none ${stateClass}`,
+            ),
+          ],
+          [stateLabel],
+        ),
+      ]),
+      h.div(
+        [Ui.className<Message>('grid gap-3 sm:grid-cols-2')],
+        entry.windows.map(window => accountUsageWindowView(entry, window)),
+      ),
+    ],
+  )
+}
+
+const accountUsagePanel = (
+  accountUsage: ArtanisOperatorDashboardAccountUsage | undefined,
+): Html => {
+  const h = html<Message>()
+
+  return h.section([Ui.className<Message>('grid gap-3')], [
+    h.div([Ui.className<Message>('flex flex-wrap items-end justify-between gap-3')], [
+      h.div([Ui.className<Message>('grid gap-1')], [
+        h.div([Ui.className<Message>(Ui.eyebrowClass)], ['Fleet capacity']),
+        h.h2(
+          [Ui.className<Message>('m-0 text-xl font-semibold leading-tight text-white')],
+          ['Token usage windows'],
+        ),
+      ]),
+      h.span(
+        [Ui.className<Message>('text-[0.6875rem] leading-4 text-white/40')],
+        [accountUsage === undefined ? 'not loaded' : shortTime(accountUsage.observedAt)],
+      ),
+    ]),
+    accountUsage === undefined || accountUsage.accounts.length === 0
+      ? emptyText('No account usage rows are available.')
+      : h.div(
+          [Ui.className<Message>('grid gap-3 xl:grid-cols-2')],
+          accountUsage.accounts.map(accountUsageEntryView),
+        ),
+  ])
+}
+
 const loadedView = (
   model: Model,
   response: ArtanisOperatorDashboardResponse,
@@ -234,6 +386,7 @@ const loadedView = (
         ],
         [threadList(response), transcript(response)],
       ),
+      accountUsagePanel(response.accountUsage),
     ],
   )
 }

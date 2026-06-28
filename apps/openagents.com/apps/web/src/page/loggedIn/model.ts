@@ -905,7 +905,36 @@ export const ArtanisOperatorDashboardMessage = S.Struct({
 export type ArtanisOperatorDashboardMessage =
   typeof ArtanisOperatorDashboardMessage.Type
 
+export const ArtanisOperatorDashboardAccountUsageWindow = S.Struct({
+  cap: S.NullOr(S.Number),
+  label: S.Literals(['hourly', 'weekly']),
+  percentUsed: S.Number,
+  remaining: S.NullOr(S.Number),
+  used: S.NullOr(S.Number),
+})
+export type ArtanisOperatorDashboardAccountUsageWindow =
+  typeof ArtanisOperatorDashboardAccountUsageWindow.Type
+
+export const ArtanisOperatorDashboardAccountUsageEntry = S.Struct({
+  accountRefHash: S.String,
+  cooldownExpiresAt: S.NullOr(S.String),
+  isRateLimited: S.Boolean,
+  manualResetsRemaining: S.NullOr(S.Number),
+  provider: S.String,
+  windows: S.Array(ArtanisOperatorDashboardAccountUsageWindow),
+})
+export type ArtanisOperatorDashboardAccountUsageEntry =
+  typeof ArtanisOperatorDashboardAccountUsageEntry.Type
+
+export const ArtanisOperatorDashboardAccountUsage = S.Struct({
+  accounts: S.Array(ArtanisOperatorDashboardAccountUsageEntry),
+  observedAt: S.String,
+})
+export type ArtanisOperatorDashboardAccountUsage =
+  typeof ArtanisOperatorDashboardAccountUsage.Type
+
 export const ArtanisOperatorDashboardResponse = S.Struct({
+  accountUsage: S.optionalKey(ArtanisOperatorDashboardAccountUsage),
   callerIdFilter: S.NullOr(S.String),
   dashboardRef: S.String,
   messages: S.Array(ArtanisOperatorDashboardMessage),
