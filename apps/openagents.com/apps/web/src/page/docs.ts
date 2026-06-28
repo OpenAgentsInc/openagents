@@ -15,6 +15,7 @@ export const DocSlug = S.Literals([
   'autopilot-sites',
   'software-handoff',
   'autonomous-qa',
+  'connect-codex-fleet',
   'product-promises',
   'forum',
   'api',
@@ -166,6 +167,58 @@ const docsPages: ReadonlyArray<DocPage> = [
       {
         href: 'https://github.com/OpenAgentsInc/openagents/blob/main/apps/qa-runner/LICENSE',
         label: 'MIT license',
+      },
+    ],
+  },
+  {
+    slug: 'connect-codex-fleet',
+    title: 'Connect Your Codex Fleet',
+    summary:
+      'Use Khala CLI to connect your own Codex accounts so Artanis can route bounded coding backlog work through your local capacity.',
+    description: [
+      'Install Khala CLI, connect a Codex account with the paste-free device-login flow, then check fleet readiness.',
+      'The public onboarding path is deliberately short: npm install -g @openagentsinc/khala, khala fleet connect, then khala fleet status.',
+      'Each connected account uses an isolated home under your Pylon home. The flow never touches the default ~/.codex home, credentials stay on your machine, and tokens are not printed.',
+      'Run khala fleet connect again to add another distinct account. More distinct accounts mean more usable throughput for your own Artanis-backed backlog work.',
+      'Claude capacity is exposed through the Pylon local-Claude lane and operator runbooks; the zero-paste public fleet command is Codex-first today.',
+    ],
+    sections: [
+      {
+        heading: 'Quick Start',
+        items: [
+          'npm install -g @openagentsinc/khala',
+          'khala fleet connect',
+          'khala fleet status',
+        ],
+      },
+      {
+        heading: 'What You Should See',
+        items: [
+          'khala fleet connect opens the standard Codex device-auth browser flow, shows a short code, and confirms the linked account email after success.',
+          'khala fleet status lists connected accounts with readiness such as ready or credentials-missing.',
+          'If the Codex CLI is missing, the command prints a friendly install hint for npm install -g @openai/codex.',
+        ],
+      },
+      {
+        heading: 'Public Safety Boundary',
+        items: [
+          'Public Artanis and Pylon projections use generic labels and refs. They must not expose emails, credentials, raw prompts, diffs, local paths, or private repository data.',
+          'The own-capacity coding path routes only through capacity linked to the same owner scope. It is not third-party pooled labor and it is not a settlement-bearing marketplace path.',
+        ],
+      },
+    ],
+    links: [
+      {
+        href: 'https://github.com/OpenAgentsInc/openagents/blob/main/clients/khala-cli/README.md#connect-your-codex-fleet',
+        label: 'Khala CLI fleet docs',
+      },
+      {
+        href: 'https://github.com/OpenAgentsInc/openagents/blob/main/docs/ops/2026-06-27-khala-codex-own-capacity-burn-runbook.md',
+        label: 'Own-capacity runbook',
+      },
+      {
+        href: 'https://github.com/OpenAgentsInc/openagents/blob/main/docs/ops/2026-06-27-artanis-as-a-service-multi-tenant-codex-fleet-enablement.md',
+        label: 'Fleet contribution plan',
       },
     ],
   },

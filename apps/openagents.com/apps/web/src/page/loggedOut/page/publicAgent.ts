@@ -1043,6 +1043,143 @@ const bitcoinPrimary = (value: string): string => value.replace(/ \(.+\)$/, '')
 const bitcoinDenomination = (value: string): string | null =>
   value.match(/\((.+)\)$/)?.[1] ?? null
 
+const fleetOnboardingCommands = [
+  'npm install -g @openagentsinc/khala',
+  'khala fleet connect',
+  'khala fleet status',
+] as const
+
+const artanisFleetOnboardingView = (): Html => {
+  const h = html<Message>()
+
+  return h.section(
+    [Ui.className<Message>('grid gap-4 border-b border-[#222] pb-6')],
+    [
+      h.div(
+        [
+          Ui.className<Message>(
+            'flex flex-wrap items-end justify-between gap-3',
+          ),
+        ],
+        [
+          h.div(
+            [Ui.className<Message>('grid gap-2')],
+            [
+              h.div([Ui.className<Message>(Ui.eyebrowClass)], ['Join fleet']),
+              h.h2(
+                [
+                  Ui.className<Message>(
+                    'text-xl font-semibold tracking-normal text-[#f1efe8]',
+                  ),
+                ],
+                ['Have Codex or Claude? Join the fleet.'],
+              ),
+            ],
+          ),
+          h.a(
+            [
+              h.Href('/docs/connect-codex-fleet'),
+              Ui.className<Message>(
+                'border border-[#333] px-3 py-2 text-[0.75rem] text-white/70 underline-offset-4 hover:border-white/35 hover:text-[#f1efe8] hover:underline',
+              ),
+            ],
+            ['Fleet docs'],
+          ),
+        ],
+      ),
+      h.div(
+        [
+          Ui.className<Message>(
+            'grid gap-3 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]',
+          ),
+        ],
+        [
+          h.div(
+            [
+              Ui.className<Message>(
+                'grid gap-3 border border-[#222] bg-[#010102] p-3',
+              ),
+            ],
+            [
+              h.p(
+                [
+                  Ui.className<Message>(
+                    'max-w-3xl text-sm leading-6 text-[#f1efe8]',
+                  ),
+                ],
+                [
+                  'Connect your own coding-agent capacity so a per-user Artanis can burn down public issue backlogs through your local Pylon. Credentials stay on your machine; public projections use generic fleet labels and refs only.',
+                ],
+              ),
+              h.div(
+                [
+                  Ui.className<Message>(
+                    'grid gap-2 text-[0.75rem] text-white/45 sm:grid-cols-3',
+                  ),
+                ],
+                [
+                  h.div(
+                    [Ui.className<Message>('border border-[#1b1b1b] p-2')],
+                    ['Paste-free device login'],
+                  ),
+                  h.div(
+                    [Ui.className<Message>('border border-[#1b1b1b] p-2')],
+                    ['Isolated Codex account homes'],
+                  ),
+                  h.div(
+                    [Ui.className<Message>('border border-[#1b1b1b] p-2')],
+                    ['More accounts, more throughput'],
+                  ),
+                ],
+              ),
+            ],
+          ),
+          h.div(
+            [
+              Ui.className<Message>(
+                'grid gap-3 border border-[#222] bg-[#010102] p-3',
+              ),
+            ],
+            [
+              h.div(
+                [Ui.className<Message>('text-[0.75rem] text-white/45')],
+                ['Start here'],
+              ),
+              h.ol(
+                [Ui.className<Message>('grid gap-1')],
+                fleetOnboardingCommands.map(command =>
+                  h.li(
+                    [
+                      Ui.className<Message>(
+                        'overflow-x-auto border border-[#1b1b1b] bg-black px-3 py-2 text-[0.75rem] leading-6 text-[#f1efe8]',
+                      ),
+                    ],
+                    [h.code([], [command])],
+                  ),
+                ),
+              ),
+              h.div(
+                [Ui.className<Message>('flex flex-wrap gap-2')],
+                [
+                  h.a(
+                    [
+                      h.Href('/docs/connect-codex-fleet'),
+                      Ui.className<Message>(
+                        'border border-[#333] px-3 py-2 text-[0.75rem] text-white/70 underline-offset-4 hover:border-white/35 hover:text-[#f1efe8] hover:underline',
+                      ),
+                    ],
+                    ['Read the setup guide'],
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    ],
+  )
+}
+
 const artanisClaimRow = (claim: PublicArtanisReportClaimSummary): Html => {
   const h = html<Message>()
 
@@ -1797,6 +1934,7 @@ const loadedView = (
       ),
       isArtanis ? artanisPulseView(khalaTokensServedHistory) : null,
       isArtanis ? artanisReportView(artanisReport) : null,
+      isArtanis ? artanisFleetOnboardingView() : null,
       isArtanis ? pylonStatsView(pylonStats) : null,
       isAdjutant ? adjutantActivityView(adjutantActivity) : null,
       h.section(
