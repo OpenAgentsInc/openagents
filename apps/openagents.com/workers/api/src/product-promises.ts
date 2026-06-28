@@ -1051,25 +1051,29 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Paid privacy and confidential compute opt callers out of free-tier trace capture.',
         safeCopy:
-          'The privacy entitlement seam is designed to fail closed to not-captured for paid privacy or confidential-compute callers, and the free-tier disclosure tells users that paying for privacy or using confidential compute opts out. This remains yellow: the entitlement policy exists as a boundary, but broad paid privacy/confidential-compute product copy is not green until the paid product path, purchase/entitlement proof, and confidential execution path have their own receipts.',
+          'The privacy entitlement seam fails closed to not-captured for paid privacy or confidential-compute callers. A paid-privacy purchase endpoint now records a public-safe entitlement receipt and grants the trace-capture opt-out entitlement; a confidential-compute execution endpoint records a public-safe capture-excluded execution receipt when confidential mode is armed. This remains yellow until owner sign-off and the broader paid Khala business loop are green.',
         unsafeCopy:
-          'Do not claim paid privacy, confidential compute, or privacy-preserving paid Khala is broadly live merely because the opt-out policy seam exists. Do not claim a paid user will be billed, entitled, or run in confidential compute without receipt-backed product proof.',
+          'Do not claim paid privacy, confidential compute, or privacy-preserving paid Khala is broadly green merely because receipt machinery exists. Do not claim a full billing loop, refund path, settlement, provider guarantee, or confidential runtime guarantee beyond the bounded public-safe receipts.',
         evidenceRefs: [
+          'route:/v1/inference/privacy/paid-privacy/purchases',
+          'route:/v1/inference/privacy/confidential-compute/executions',
+          'route:/api/public/inference/privacy-receipts/{receiptRef}',
           'apps/openagents.com/workers/api/src/inference/inference-privacy-entitlement.ts',
+          'apps/openagents.com/workers/api/src/inference/inference-privacy-receipt-routes.ts',
+          'apps/openagents.com/workers/api/migrations/0256_inference_privacy_receipts.sql',
           'apps/openagents.com/workers/api/src/inference/free-tier-data-sharing-disclosure.ts',
           'docs/promises/2026-06-25-free-tier-data-sharing-disclosure.md',
           'docs/inference/2026-06-25-khala-inference-gtm-push.md',
           'docs/transcripts/242.md',
         ],
         blockerRefs: [
-          'blocker.product_promises.paid_privacy_purchase_receipt_missing',
-          'blocker.product_promises.confidential_compute_execution_receipt_missing',
+          'blocker.product_promises.paid_privacy_owner_signoff_pending',
           'blocker.product_promises.paid_khala_business_loop_not_green',
         ],
         verification:
-          'Verify the entitlement function excludes paid-privacy/confidential-compute requests from trace capture fail-closed. Green requires a real paid privacy entitlement or confidential compute receipt, endpoint smoke, public-safe projection, and owner sign-off.',
+          'Verify the paid-privacy purchase endpoint records an entitlement receipt, grants inference_privacy_entitlements, and exposes only the public-safe receipt projection. Verify the confidential-compute execution endpoint records a capture-excluded execution receipt only when confidential mode is armed. The trace-capture resolver must still exclude paid-privacy/confidential-compute callers fail-closed. Green still requires owner sign-off and the broader paid Khala business loop.',
         authorityBoundary:
-          'An opt-out policy seam is not a paid product, billing, settlement, privacy guarantee, or confidential-compute runtime proof.',
+          'Privacy receipts prove bounded entitlement/execution rows and capture exclusion only. They are not billing, refund, settlement, payout, provider, broad privacy guarantee, or confidential-runtime authority.',
       },
       {
         ...basePromiseFields,

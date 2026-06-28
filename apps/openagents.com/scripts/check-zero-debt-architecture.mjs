@@ -1093,6 +1093,11 @@ const publicProjectionSurfaces = [
     route: '/api/public/inference/batch-job-receipts',
     status: 'staleness_declared',
   },
+  {
+    module: 'workers/api/src/inference/inference-privacy-receipt-routes.ts',
+    route: '/api/public/inference/privacy-receipts',
+    status: 'staleness_declared',
+  },
   // Static contract documents, not state projections.
   {
     module: 'workers/api/src/index.ts',
