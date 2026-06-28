@@ -571,6 +571,16 @@ then full source-of-truth inversion at `forge.openagents.com`.
 > digest + source refs. R2 archiving and token-scoped access build on that
 > record in the following live Forge issues.
 
+> FORGE-3 status, 2026-06-28: Worker-side packfile archiving now has a private
+> R2 + D1 store at
+> `apps/openagents.com/workers/api/src/forge-git-packfile-archive-store.ts` and
+> migration `0252_forge_git_packfile_archives.sql`. R2 stores the raw
+> `application/x-git-packed-objects` bytes under deterministic private keys;
+> D1 stores tenant/repository/change refs, receive-pack ref, SHA-256 digest,
+> byte count, object format, capabilities JSON, ref-update JSON, and source refs.
+> The store is idempotent by `(tenant_ref, packfile_ref)` and by tenant-scoped
+> digest so repeated receive-pack submissions do not duplicate blob storage.
+
 This is the build plan in fileable form: an ordered list of issues mapped to the
 milestones above, with dependency order and a P0-now set. Each line is
 `**FORGE-n** (milestone) [Pn] — Title — one-line scope`. These are tracking

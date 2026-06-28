@@ -55,6 +55,13 @@ export const ForgeMergeQueueLedgerState = S.Literals([
 ])
 export type ForgeMergeQueueLedgerState = typeof ForgeMergeQueueLedgerState.Type
 
+export const ForgeGitPackfileObjectFormat = S.Literals([
+  "sha1",
+  "sha256",
+  "unknown",
+])
+export type ForgeGitPackfileObjectFormat = typeof ForgeGitPackfileObjectFormat.Type
+
 export const ForgeNip34StatusKind = S.Literals([1630, 1631, 1632, 1633])
 export type ForgeNip34StatusKind = typeof ForgeNip34StatusKind.Type
 
@@ -141,12 +148,34 @@ export const ForgeMergeQueueLedgerRow = S.Struct({
 })
 export type ForgeMergeQueueLedgerRow = typeof ForgeMergeQueueLedgerRow.Type
 
+export const ForgeGitPackfileArchiveRow = S.Struct({
+  tenant_ref: S.String,
+  packfile_ref: S.String,
+  repository_ref: S.String,
+  change_ref: S.NullOr(S.String),
+  receive_pack_ref: S.NullOr(S.String),
+  artifact_r2_key: S.String,
+  packfile_sha256: S.String,
+  packfile_bytes: S.Number,
+  object_format: ForgeGitPackfileObjectFormat,
+  command_count: S.Number,
+  capabilities_json: S.String,
+  ref_updates_json: S.String,
+  source_refs_json: S.String,
+  content_type: S.String,
+  visibility: S.Literal("operator_only"),
+  created_at: S.String,
+  updated_at: S.String,
+})
+export type ForgeGitPackfileArchiveRow = typeof ForgeGitPackfileArchiveRow.Type
+
 export const ForgeCoordinationRow = S.Union([
   ForgeCoordinationIssueRow,
   ForgeCoordinationPrRow,
   ForgeCoordinationStatusRow,
   ForgeDispatchLeaseRow,
   ForgeMergeQueueLedgerRow,
+  ForgeGitPackfileArchiveRow,
 ])
 export type ForgeCoordinationRow = typeof ForgeCoordinationRow.Type
 
@@ -160,6 +189,9 @@ export const decodeForgeCoordinationStatusRow = S.decodeUnknownSync(
 export const decodeForgeDispatchLeaseRow = S.decodeUnknownSync(ForgeDispatchLeaseRow)
 export const decodeForgeMergeQueueLedgerRow = S.decodeUnknownSync(
   ForgeMergeQueueLedgerRow,
+)
+export const decodeForgeGitPackfileArchiveRow = S.decodeUnknownSync(
+  ForgeGitPackfileArchiveRow,
 )
 
 export const forgeCoordinationStatusStateForNip34Kind = (

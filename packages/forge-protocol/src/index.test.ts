@@ -6,6 +6,7 @@ import {
   decodeForgeCoordinationPrRow,
   decodeForgeCoordinationStatusRow,
   decodeForgeDispatchLeaseRow,
+  decodeForgeGitPackfileArchiveRow,
   decodeForgeMergeQueueLedgerRow,
   forgeCoordinationStatusStateForNip34Kind,
   forgeCoordinationStatusStates,
@@ -103,5 +104,28 @@ describe("@openagentsinc/forge-protocol", () => {
         updated_at: at,
       }).state,
     ).toBe("projected")
+
+    expect(
+      decodeForgeGitPackfileArchiveRow({
+        tenant_ref: "tenant.openagents",
+        packfile_ref: "packfile.forge.test",
+        repository_ref: "repo.openagents.openagents",
+        change_ref: "change.forge.test",
+        receive_pack_ref: "receive-pack.forge.test",
+        artifact_r2_key:
+          "private/forge/git-packfiles/tenant.openagents/repo.openagents.openagents/packfile.forge.test.pack",
+        packfile_sha256: "a".repeat(64),
+        packfile_bytes: 128,
+        object_format: "sha1",
+        command_count: 1,
+        capabilities_json: "[\"report-status\"]",
+        ref_updates_json: "[]",
+        source_refs_json: "[]",
+        content_type: "application/x-git-packed-objects",
+        visibility: "operator_only",
+        created_at: at,
+        updated_at: at,
+      }).object_format,
+    ).toBe("sha1")
   })
 })
