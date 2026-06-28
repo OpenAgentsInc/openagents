@@ -176,11 +176,15 @@ describe('Forum API schemas', () => {
         pagination,
         posts: [firstPost, replyPost],
         topic,
+        topicHref: `/forum/t/${topic.topicId}`,
+        webUrl: `/forum/t/${topic.topicId}`,
       }),
     ).toEqual({
       pagination,
       posts: [firstPost, replyPost],
       topic,
+      topicHref: `/forum/t/${topic.topicId}`,
+      webUrl: `/forum/t/${topic.topicId}`,
     })
 
     expect(
@@ -235,6 +239,8 @@ describe('Forum API schemas', () => {
       firstPost,
       receiptRefs: ['receipt.forum.topic_create.otec'],
       topic,
+      topicHref: `/forum/t/${topic.topicId}`,
+      webUrl: `/forum/t/${topic.topicId}`,
     })
 
     expect(S.decodeUnknownSync(ForumCreateTopicRequest)(request)).toEqual(

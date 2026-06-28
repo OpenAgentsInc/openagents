@@ -7939,6 +7939,10 @@ describe('Forum routes', () => {
     expect(createResponse.status).toBe(201)
     expect(typeof slug).toBe('string')
     expect(slug.length).toBeGreaterThan(0)
+    expect(createBody).toMatchObject({
+      topicHref: `/forum/t/${topicId}`,
+      webUrl: `/forum/t/${topicId}`,
+    })
     // The created slug must differ from the topicId so the two lookup forms are
     // genuinely distinct (otherwise the test would not exercise slug
     // resolution).
@@ -7972,6 +7976,14 @@ describe('Forum routes', () => {
     expect(bySlugBody.topic.topicId).toBe(byIdBody.topic.topicId)
     expect(bySlugBody.topic.slug).toBe(slug)
     expect(bySlugBody.topic.title).toBe('Slug resolution works')
+    expect(byIdBody).toMatchObject({
+      topicHref: `/forum/t/${topicId}`,
+      webUrl: `/forum/t/${topicId}`,
+    })
+    expect(bySlugBody).toMatchObject({
+      topicHref: `/forum/t/${topicId}`,
+      webUrl: `/forum/t/${topicId}`,
+    })
   })
 
   test('search only returns listed public visible content', async () => {
@@ -8125,6 +8137,8 @@ describe('Forum routes', () => {
         title: 'Void test thread',
       },
     })
+    expect(body.topicHref).toBe(`/forum/t/${body.topic.topicId}`)
+    expect(body.webUrl).toBe(`/forum/t/${body.topic.topicId}`)
     expect(store.forums[1]?.topic_count).toBe(1)
     expect(store.forums[1]?.post_count).toBe(1)
   })

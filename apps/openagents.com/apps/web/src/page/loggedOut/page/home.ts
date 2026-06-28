@@ -948,7 +948,7 @@ export const khalaTokensServedCounter = (
             [
               h.DataAttribute('value', display),
               h.DataAttribute('counter-display', 'khala-tokens-served'),
-              h.Class(
+              Ui.className<Message>(
                 `${motionOdometerClass} block w-full max-w-full whitespace-nowrap text-center`,
               ),
             ],
