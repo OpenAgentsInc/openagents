@@ -16,6 +16,8 @@ export const AGENTCL_REPO_REUSE_PLAN_SCHEMA =
   'openagents.gym.agentcl_repo_reuse_plan.v0' as const
 export const AGENTCL_VERTEX_STRESS_REPORT_SCHEMA =
   'openagents.gym.agentcl_vertex_stress_report.v0' as const
+export const AGENTCL_VERTEX_RUNNER_PLAN_SCHEMA =
+  'openagents.gym.agentcl_vertex_runner_plan.v0' as const
 
 export const AgentClStreamKind = S.Literals(['naive', 'compositional'])
 export type AgentClStreamKind = typeof AgentClStreamKind.Type
@@ -192,6 +194,47 @@ export const AgentClVertexStressCircuitBreakerReason = S.Literals([
 export type AgentClVertexStressCircuitBreakerReason =
   typeof AgentClVertexStressCircuitBreakerReason.Type
 
+export const AgentClVertexRunnerPlanV0 = S.Struct({
+  schemaVersion: S.Literal(AGENTCL_VERTEX_RUNNER_PLAN_SCHEMA),
+  issueRef: S.Literal('public.issue.6766'),
+  lane: S.Struct({
+    laneRef: S.Literal('vertex-gemini'),
+    model: S.Literal('gemini-3.5-flash'),
+    projectRef: S.Literal('project.openagentsgemini'),
+    forbiddenFallbackLaneRefs: S.Array(S.Literals(['glm-free', 'khala-free'])),
+    requiresPreScaleVertexProof: S.Literal(true),
+    preScaleProofRef: S.Literal(
+      'proof.agentcl.vertex_gemini35_flash.pre_scale_routing',
+    ),
+  }),
+  parallelism: S.Struct({
+    plannedParallelSequences: S.Literal(10),
+    verifyRouteBeforeScaling: S.Literal(true),
+  }),
+  budgetGuard: S.Struct({
+    spendCapUsdCents: S.Literal(5000),
+    abortOnEstimatedSpendAboveCap: S.Literal(true),
+    abortOnConsecutiveBillingOrQuotaErrors: S.Literal(3),
+    trackedCapacityErrorRefs: S.Array(
+      S.Literals([
+        'billing_error',
+        'quota_error',
+        'http_429',
+        'resource_exhausted',
+      ]),
+    ),
+  }),
+  ownerApprovalRef: S.String,
+  publicSafety: S.Struct({
+    rawPromptsStayOwnerPrivate: S.Literal(true),
+    noProviderPayloadsInPublicReport: S.Literal(true),
+    noSpendWithoutOwnerApproval: S.Literal(true),
+  }),
+  reportRefs: S.Array(S.String),
+})
+export type AgentClVertexRunnerPlanV0 =
+  typeof AgentClVertexRunnerPlanV0.Type
+
 export const AgentClCurvePoint = S.Struct({
   pass: AgentClPassKind,
   taskRole: AgentClTaskRole,
@@ -263,6 +306,7 @@ const decodePlan = S.decodeUnknownSync(AgentClRepoReusePlan)
 const decodeEval = S.decodeUnknownSync(AgentClEvalV0)
 const decodeLearningClaimGate = S.decodeUnknownSync(AgentClLearningClaimGate)
 const decodeSequentialRun = S.decodeUnknownSync(AgentClSequentialRun)
+const decodeVertexRunnerPlan = S.decodeUnknownSync(AgentClVertexRunnerPlanV0)
 const decodeVertexStressReport = S.decodeUnknownSync(AgentClVertexStressReportV0)
 
 const roundGain = (value: number): number => Math.round(value * 1000) / 1000
@@ -660,29 +704,101 @@ export const runAgentClRepoReuseFixtureEval = (
 
 export const buildAgentClVertexStressExperiment = (
   ownerApprovalRef: string,
-): GymExperiment => ({
-  ...AGENTCL_REPO_REUSE_GYM_EXPERIMENT,
-  id: 'gym-agentcl-vertex-gemini35-flash-stress-cl5-v0',
-  policy: {
-    ...AGENTCL_REPO_REUSE_GYM_EXPERIMENT.policy,
-    fanout: {
-      lanes: ['vertex-gemini'],
-      mode: 'single',
-      concurrency: 10,
+): GymExperiment => {
+  const runnerPlan = buildAgentClVertexGeminiRunnerPlan(ownerApprovalRef)
+
+  return {
+    ...AGENTCL_REPO_REUSE_GYM_EXPERIMENT,
+    id: 'gym-agentcl-vertex-gemini35-flash-stress-cl5-v0',
+    policy: {
+      ...AGENTCL_REPO_REUSE_GYM_EXPERIMENT.policy,
+      fanout: {
+        lanes: [runnerPlan.lane.laneRef],
+        mode: 'single',
+        concurrency: runnerPlan.parallelism.plannedParallelSequences,
+      },
+      sampling: {
+        ...AGENTCL_REPO_REUSE_GYM_EXPERIMENT.policy.sampling,
+        maxTokens: 8192,
+        transport: 'streaming',
+      },
     },
-    sampling: {
-      ...AGENTCL_REPO_REUSE_GYM_EXPERIMENT.policy.sampling,
-      maxTokens: 8192,
-      transport: 'streaming',
+    budget: {
+      spendCapMsat: 0,
+      maxBillableSamples: runnerPlan.parallelism.plannedParallelSequences,
+      seam: 'real',
+      ownerApprovalRef,
     },
-  },
-  budget: {
-    spendCapMsat: 0,
-    maxBillableSamples: 10,
-    seam: 'real',
+  }
+}
+
+export const buildAgentClVertexGeminiRunnerPlan = (
+  ownerApprovalRef: string,
+): AgentClVertexRunnerPlanV0 =>
+  decodeVertexRunnerPlan({
+    schemaVersion: AGENTCL_VERTEX_RUNNER_PLAN_SCHEMA,
+    issueRef: 'public.issue.6766',
+    lane: {
+      laneRef: 'vertex-gemini',
+      model: 'gemini-3.5-flash',
+      projectRef: 'project.openagentsgemini',
+      forbiddenFallbackLaneRefs: ['glm-free', 'khala-free'],
+      requiresPreScaleVertexProof: true,
+      preScaleProofRef: 'proof.agentcl.vertex_gemini35_flash.pre_scale_routing',
+    },
+    parallelism: {
+      plannedParallelSequences: 10,
+      verifyRouteBeforeScaling: true,
+    },
+    budgetGuard: {
+      spendCapUsdCents: 5000,
+      abortOnEstimatedSpendAboveCap: true,
+      abortOnConsecutiveBillingOrQuotaErrors: 3,
+      trackedCapacityErrorRefs: [
+        'billing_error',
+        'quota_error',
+        'http_429',
+        'resource_exhausted',
+      ],
+    },
     ownerApprovalRef,
-  },
-})
+    publicSafety: {
+      rawPromptsStayOwnerPrivate: true,
+      noProviderPayloadsInPublicReport: true,
+      noSpendWithoutOwnerApproval: true,
+    },
+    reportRefs: [
+      'public.issue.6766',
+      'route.gym.agentcl.vertex_gemini35_flash',
+      'cap.usd.agentcl.vertex_stress.50',
+    ],
+  })
+
+export const assessAgentClVertexRunnerCircuitBreaker = (
+  input: Readonly<{
+    estimatedSpendUsdCents: number
+    consecutiveBillingOrQuotaErrors: number
+  }>,
+): Readonly<{
+  tripped: boolean
+  reason: AgentClVertexStressCircuitBreakerReason
+}> => {
+  const runnerPlan = buildAgentClVertexGeminiRunnerPlan(
+    'owner.approval.agentcl.vertex_stress.required',
+  )
+  const reason =
+    input.estimatedSpendUsdCents > runnerPlan.budgetGuard.spendCapUsdCents
+      ? 'spend_cap_exceeded'
+      : input.consecutiveBillingOrQuotaErrors >=
+          runnerPlan.budgetGuard.abortOnConsecutiveBillingOrQuotaErrors
+        ? 'consecutive_billing_or_quota_errors'
+        : 'none'
+
+  return {
+    tripped: reason !== 'none',
+    reason,
+  }
+}
 
 export const buildAgentClVertexStressBaselineReport = (
   input: Readonly<{
@@ -709,12 +825,10 @@ export const buildAgentClVertexStressBaselineReport = (
   const consecutiveBillingOrQuotaErrors =
     input.consecutiveBillingOrQuotaErrors ?? 0
   const estimatedSpendUsdCents = input.estimatedSpendUsdCents ?? 0
-  const circuitBreakerReason =
-    estimatedSpendUsdCents >= 5000
-      ? 'spend_cap_exceeded'
-      : consecutiveBillingOrQuotaErrors >= 3
-        ? 'consecutive_billing_or_quota_errors'
-        : 'none'
+  const circuitBreaker = assessAgentClVertexRunnerCircuitBreaker({
+    estimatedSpendUsdCents,
+    consecutiveBillingOrQuotaErrors,
+  })
 
   return decodeVertexStressReport({
     schemaVersion: AGENTCL_VERTEX_STRESS_REPORT_SCHEMA,
@@ -734,8 +848,8 @@ export const buildAgentClVertexStressBaselineReport = (
       spendCapUsdCents: 5000,
       estimatedSpendUsdCents,
       consecutiveBillingOrQuotaErrors,
-      circuitBreakerTripped: circuitBreakerReason !== 'none',
-      circuitBreakerReason,
+      circuitBreakerTripped: circuitBreaker.tripped,
+      circuitBreakerReason: circuitBreaker.reason,
     },
     capacityReport: {
       plannedParallelSequences: 10,

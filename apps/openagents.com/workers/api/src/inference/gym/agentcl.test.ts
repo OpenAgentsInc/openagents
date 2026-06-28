@@ -4,9 +4,12 @@ import {
   AGENTCL_EVAL_SCHEMA,
   AGENTCL_REPO_REUSE_GYM_EXPERIMENT,
   AGENTCL_REPO_REUSE_PLAN_SCHEMA,
+  AGENTCL_VERTEX_RUNNER_PLAN_SCHEMA,
   AGENTCL_VERTEX_STRESS_REPORT_SCHEMA,
   assessAgentClLearningClaimGate,
+  assessAgentClVertexRunnerCircuitBreaker,
   buildAgentClRepoReusePlan,
+  buildAgentClVertexGeminiRunnerPlan,
   buildAgentClVertexStressBaselineReport,
   buildAgentClVertexStressExperiment,
   runAgentClRepoReuseFixtureEval,
@@ -209,6 +212,62 @@ describe('AgentCL repo-reuse gym environment', () => {
     })
     expect(compiled.policySelection.fanout.lanes).toEqual(['vertex-gemini'])
     expect(compiled.policySelection.fanout.concurrency).toBe(10)
+  })
+
+  test('builds the CL-4 Vertex Gemini runner plan with route verification and fallback bans', () => {
+    const plan = buildAgentClVertexGeminiRunnerPlan(
+      'owner.approval.agentcl.vertex_stress.20260628',
+    )
+
+    expect(plan.schemaVersion).toBe(AGENTCL_VERTEX_RUNNER_PLAN_SCHEMA)
+    expect(plan.issueRef).toBe('public.issue.6766')
+    expect(plan.lane).toEqual({
+      laneRef: 'vertex-gemini',
+      model: 'gemini-3.5-flash',
+      projectRef: 'project.openagentsgemini',
+      forbiddenFallbackLaneRefs: ['glm-free', 'khala-free'],
+      requiresPreScaleVertexProof: true,
+      preScaleProofRef: 'proof.agentcl.vertex_gemini35_flash.pre_scale_routing',
+    })
+    expect(plan.parallelism).toEqual({
+      plannedParallelSequences: 10,
+      verifyRouteBeforeScaling: true,
+    })
+    expect(plan.budgetGuard).toEqual({
+      spendCapUsdCents: 5000,
+      abortOnEstimatedSpendAboveCap: true,
+      abortOnConsecutiveBillingOrQuotaErrors: 3,
+      trackedCapacityErrorRefs: [
+        'billing_error',
+        'quota_error',
+        'http_429',
+        'resource_exhausted',
+      ],
+    })
+  })
+
+  test('trips the CL-4 runner circuit breaker on quota streaks or spend above the cap', () => {
+    expect(
+      assessAgentClVertexRunnerCircuitBreaker({
+        estimatedSpendUsdCents: 4999,
+        consecutiveBillingOrQuotaErrors: 2,
+      }),
+    ).toEqual({ tripped: false, reason: 'none' })
+    expect(
+      assessAgentClVertexRunnerCircuitBreaker({
+        estimatedSpendUsdCents: 1250,
+        consecutiveBillingOrQuotaErrors: 3,
+      }),
+    ).toEqual({
+      tripped: true,
+      reason: 'consecutive_billing_or_quota_errors',
+    })
+    expect(
+      assessAgentClVertexRunnerCircuitBreaker({
+        estimatedSpendUsdCents: 5001,
+        consecutiveBillingOrQuotaErrors: 0,
+      }),
+    ).toEqual({ tripped: true, reason: 'spend_cap_exceeded' })
   })
 
   test('emits the CL-5 baseline report with separate PG, SG, and GG curves plus capacity blockers', () => {
