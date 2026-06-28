@@ -87,6 +87,184 @@ const pylonStatsError = (model: PublicPylonStatsModel): string | null =>
       ? model.stats.error
       : null
 
+const artanisFleetRecruitmentView = (): Html => {
+  const h = html<Message>()
+  const setupCommands = [
+    'npm install -g @openagentsinc/khala',
+    'khala fleet connect',
+    'khala fleet status',
+  ]
+  const signals = [
+    [
+      'Local first',
+      'Device login, isolated Codex homes, credentials stay on your machine.',
+    ],
+    [
+      'More accounts',
+      'Each distinct account adds another ready slot for backlog burn-down.',
+    ],
+    [
+      'Public proof',
+      'Artanis routes public issue work; local Pylons execute and report receipts.',
+    ],
+  ] as const
+
+  return h.section(
+    [
+      h.DataAttribute('component', 'artanis-fleet-recruitment'),
+      Ui.className<Message>('grid gap-4 border-b border-[#222] pb-6'),
+    ],
+    [
+      h.div(
+        [
+          Ui.className<Message>(
+            'grid gap-4 border border-[#333] bg-[#010102] p-4 sm:grid-cols-[minmax(0,1fr)_minmax(18rem,0.72fr)] sm:p-5',
+          ),
+        ],
+        [
+          h.div(
+            [Ui.className<Message>('grid content-start gap-4')],
+            [
+              h.div(
+                [Ui.className<Message>('flex flex-wrap items-center gap-2')],
+                [
+                  h.span(
+                    [Ui.className<Message>(Ui.eyebrowClass)],
+                    ['Join the fleet'],
+                  ),
+                  h.span(
+                    [
+                      Ui.className<Message>(
+                        'border border-[#333] px-2 py-1 text-[0.6875rem] text-[#ffb400]',
+                      ),
+                    ],
+                    ['Codex / Claude builders'],
+                  ),
+                ],
+              ),
+              h.div(
+                [Ui.className<Message>('grid gap-2')],
+                [
+                  h.h2(
+                    [
+                      Ui.className<Message>(
+                        'max-w-2xl text-2xl font-semibold leading-tight tracking-normal text-[#f1efe8]',
+                      ),
+                    ],
+                    ['Have Codex or Claude? Put it on Artanis work.'],
+                  ),
+                  h.p(
+                    [
+                      Ui.className<Message>(
+                        'max-w-3xl text-sm leading-6 text-white/60',
+                      ),
+                    ],
+                    [
+                      'Connect your local coding accounts, keep credentials on your machine, and let Khala route public backlog work through your own Pylon.',
+                    ],
+                  ),
+                ],
+              ),
+              h.div(
+                [Ui.className<Message>('flex flex-wrap gap-2 text-[0.75rem]')],
+                [
+                  h.a(
+                    [
+                      h.Href('/AGENTS.md'),
+                      Ui.className<Message>(
+                        'border border-[#ffb400] bg-[#ffb400] px-3 py-2 font-semibold text-black hover:bg-[#f1efe8]',
+                      ),
+                    ],
+                    ['Fleet docs'],
+                  ),
+                  h.a(
+                    [
+                      h.Href('/forum/f/product-promises'),
+                      Ui.className<Message>(
+                        'border border-[#333] px-3 py-2 text-white/70 underline-offset-4 hover:border-white/35 hover:text-[#f1efe8] hover:underline',
+                      ),
+                    ],
+                    ['Ask in Forum'],
+                  ),
+                ],
+              ),
+            ],
+          ),
+          h.div(
+            [
+              Ui.className<Message>(
+                'grid content-start gap-3 border border-[#222] bg-black p-3',
+              ),
+            ],
+            [
+              h.div(
+                [Ui.className<Message>('text-[0.75rem] text-white/45')],
+                ['Paste-free setup'],
+              ),
+              h.ol(
+                [Ui.className<Message>('grid gap-2')],
+                setupCommands.map((command, index) =>
+                  h.li(
+                    [
+                      Ui.className<Message>(
+                        'grid grid-cols-[1.75rem_minmax(0,1fr)] items-center gap-2',
+                      ),
+                    ],
+                    [
+                      h.span(
+                        [
+                          Ui.className<Message>(
+                            'text-center text-[0.6875rem] tabular-nums text-white/35',
+                          ),
+                        ],
+                        [formatNumber(index + 1)],
+                      ),
+                      h.code(
+                        [
+                          Ui.className<Message>(
+                            'min-w-0 break-words border border-[#222] bg-[#080808] px-2 py-1.5 text-[0.75rem] text-[#f1efe8]',
+                          ),
+                        ],
+                        [command],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+      h.div(
+        [Ui.className<Message>('grid gap-2 sm:grid-cols-3')],
+        signals.map(([label, detail]) =>
+          h.div(
+            [
+              Ui.className<Message>(
+                'grid gap-1 border border-[#222] bg-[#010102] p-3',
+              ),
+            ],
+            [
+              h.div(
+                [Ui.className<Message>('text-[0.75rem] text-[#f1efe8]')],
+                [label],
+              ),
+              h.p(
+                [
+                  Ui.className<Message>(
+                    'text-[0.75rem] leading-5 text-white/45',
+                  ),
+                ],
+                [detail],
+              ),
+            ],
+          ),
+        ),
+      ),
+    ],
+  )
+}
+
 const deployedSiteRow = (site: PublicAdjutantDeployedSite): Html => {
   const h = html<Message>()
 
@@ -1283,6 +1461,7 @@ const loadedView = (
           ),
         ],
       ),
+      isArtanis ? artanisFleetRecruitmentView() : null,
       isArtanis ? artanisReportView(artanisReport) : null,
       isArtanis ? pylonStatsView(pylonStats) : null,
       isAdjutant ? adjutantActivityView(adjutantActivity) : null,

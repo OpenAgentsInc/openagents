@@ -1055,6 +1055,15 @@ describe('docs and blog routes', () => {
         Scene.text('Make Artanis progress visible safely.'),
       ).toExist(),
       Scene.expect(Scene.text('Run accepted.')).toExist(),
+      Scene.expect(Scene.text('Join the fleet')).toExist(),
+      Scene.expect(
+        Scene.text('Have Codex or Claude? Put it on Artanis work.'),
+      ).toExist(),
+      Scene.expect(Scene.text('khala fleet connect')).toExist(),
+      Scene.expect(Scene.role('link', { name: 'Fleet docs' })).toHaveAttr(
+        'href',
+        '/AGENTS.md',
+      ),
       Scene.expect(Scene.text('Artanis status report')).toExist(),
       Scene.expect(Scene.text('Health')).toExist(),
       Scene.expect(Scene.text('1 signal needs attention')).toExist(),
