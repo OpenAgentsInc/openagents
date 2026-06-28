@@ -1023,6 +1023,67 @@ export async function cleanupExpiredWorkspaces(input: {
 }
 
 /**
+ * Count-bounded cleanup for hot assignment caches. Unlike the TTL sweep, this
+ * runs when a lane knows its cache root is high churn and must stay under a
+ * fixed number of materialized workspaces.
+ */
+export async function cleanupOldestMaterializedWorkspaces(input: {
+  workspaceStateRoot: string
+  maxMaterializedWorkspaces: number
+  minimumAgeSeconds?: number
+  now?: Date
+}): Promise<{ cleanupReceiptRefs: string[]; retainedWorkspaceRefs: string[] }> {
+  const maxMaterializedWorkspaces = Math.max(
+    0,
+    Math.floor(input.maxMaterializedWorkspaces),
+  )
+  let entries: string[]
+  try {
+    entries = await readdir(input.workspaceStateRoot)
+  } catch {
+    return { cleanupReceiptRefs: [], retainedWorkspaceRefs: [] }
+  }
+
+  const materializedRecords: WorkspaceLeaseRecord[] = []
+  for (const entry of entries) {
+    if (!entry.endsWith(".json")) continue
+    const record = await readLeaseRecord(join(input.workspaceStateRoot, entry))
+    if (record === null || record.state !== "materialized") continue
+    materializedRecords.push(record)
+  }
+  if (materializedRecords.length <= maxMaterializedWorkspaces) {
+    return { cleanupReceiptRefs: [], retainedWorkspaceRefs: [] }
+  }
+
+  const now = input.now ?? new Date()
+  const minimumAgeMs =
+    Math.max(0, Math.floor(input.minimumAgeSeconds ?? 0)) * 1000
+  const cleanupReceiptRefs: string[] = []
+  const retainedWorkspaceRefs: string[] = []
+  const eligibleOldestFirst = materializedRecords
+    .filter((record) => {
+      const materializedAtMs = Date.parse(record.materializedAt)
+      if (!Number.isFinite(materializedAtMs)) return true
+      return now.getTime() - materializedAtMs >= minimumAgeMs
+    })
+    .sort((left, right) => {
+      const leftMs = Date.parse(left.materializedAt)
+      const rightMs = Date.parse(right.materializedAt)
+      return (
+        (Number.isFinite(leftMs) ? leftMs : 0) -
+        (Number.isFinite(rightMs) ? rightMs : 0)
+      )
+    })
+  const cleanupCount = materializedRecords.length - maxMaterializedWorkspaces
+  for (const record of eligibleOldestFirst.slice(0, cleanupCount)) {
+    const result = await cleanLeaseRecord(input.workspaceStateRoot, record, now)
+    if (result?.state === "cleaned") cleanupReceiptRefs.push(result.cleanupReceiptRef)
+    if (result?.state === "retained") retainedWorkspaceRefs.push(result.workspaceRef)
+  }
+  return { cleanupReceiptRefs, retainedWorkspaceRefs }
+}
+
+/**
  * Explicit release for the remove_on_closeout retention policy: removes
  * one workspace by its internal ref and mints its cleanup receipt. Returns
  * null when the lease is unknown or already cleaned.
