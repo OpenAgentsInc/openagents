@@ -24,7 +24,7 @@ export const USER_FACING_SURFACE_PREFIXES = [
   "apps/forum/",
   "apps/openagents-world/",
   "apps/pylon/",
-  "clients/mobile/",
+  "clients/khala-ios/",
   "packages/autopilot-ui/",
   "packages/design-tokens/",
   "packages/input-bindings/",

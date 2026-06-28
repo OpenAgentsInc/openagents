@@ -11,7 +11,7 @@
 - **Status:** spec-first desktop target
 - **Owning future surface:** `clients/desktop/Khala/` or equivalent native
   macOS SwiftUI app target, to be created.
-- **Sibling surface:** `clients/mobile/Khala/` native SwiftUI iOS app.
+- **Sibling surface:** `clients/khala-ios/Khala/` native SwiftUI iOS app.
 - **Core thesis:** every admitted Apple Silicon Mac can become a self-contained
   Khala node: local chat UI, local Pylon, local Apple Foundation Models backend,
   OpenAuth/agent identity, fleet visibility, and optional provider/earning mode.
@@ -20,8 +20,8 @@
 
 This spec is grounded in the current repository material below:
 
-- `clients/mobile/Khala/README.md`, `clients/mobile/Khala/project.yml`, and
-  `clients/mobile/Khala/Khala/KhalaApp.swift` show the current native SwiftUI
+- `clients/khala-ios/Khala/README.md`, `clients/khala-ios/Khala/project.yml`, and
+  `clients/khala-ios/Khala/Khala/KhalaApp.swift` show the current native SwiftUI
   Khala app shape: a ChatGPT-style client, local conversation storage, Keychain
   API key storage, streaming Khala API calls, markdown/code rendering, and a
   retained push-to-talk voice affordance.
@@ -78,7 +78,7 @@ provider mode are ready, unavailable, or owner-action-required.
 
 Current, grounded facts:
 
-- The mobile app already exists as native SwiftUI under `clients/mobile/Khala/`.
+- The mobile app already exists as native SwiftUI under `clients/khala-ios/Khala/`.
 - The Khala API is OpenAI-compatible at `https://openagents.com/api/v1`, with
   the single public model `openagents/khala`.
 - The repo has Apple FM bridge packaging and smoke material in
@@ -260,7 +260,7 @@ chat; they simply cannot advertise Apple FM capacity.
 
 ### Reuse
 
-Reuse or port from `clients/mobile/Khala/`:
+Reuse or port from `clients/khala-ios/Khala/`:
 
 - Khala API client shape, including streaming SSE and 402 handling.
 - Keychain storage pattern.

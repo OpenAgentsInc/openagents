@@ -35,7 +35,7 @@ describe("local mobile build plan", () => {
       platform: "ios",
       autoSubmit: false,
     })).toEqual({
-      steps: ["clients/mobile/AutopilotRemoteControl/scripts/build-and-submit.sh --build-only"],
+      steps: ["clients/khala-ios/AutopilotRemoteControl/scripts/build-and-submit.sh --build-only"],
       willBuild: true,
       willSubmit: false,
       reason: "rebuild_required",
@@ -63,7 +63,7 @@ describe("local mobile build plan", () => {
       platform: "ios",
       autoSubmit: true,
     })).toEqual({
-      steps: ["clients/mobile/AutopilotRemoteControl/scripts/build-and-submit.sh"],
+      steps: ["clients/khala-ios/AutopilotRemoteControl/scripts/build-and-submit.sh"],
       willBuild: true,
       willSubmit: true,
       reason: "rebuild_required",

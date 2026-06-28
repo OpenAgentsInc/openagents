@@ -84,7 +84,7 @@ Evidence test suites re-verified green this pass:
 | id | note |
 | --- | --- |
 | `proof.demand_provenance.v1` | advanced this pass (first serving surface); green needs remaining projections + receipt |
-| `mobile.autopilot_remote_control.v1` | Pylon remote bridge transport (#5000) → Expo read-only app to TestFlight (#5001) → write actions (#5002-5004). Build per `clients/mobile/AutopilotRemoteControl/TESTFLIGHT.md` — NO Expo/EAS cloud. |
+| `mobile.autopilot_remote_control.v1` | Pylon remote bridge transport (#5000) → Expo read-only app to TestFlight (#5001) → write actions (#5002-5004). Build per `clients/khala-ios/AutopilotRemoteControl/TESTFLIGHT.md` — NO Expo/EAS cloud. |
 | `mobile.voice_approval_companion.v1` | depends on mobile projection + voice command approval receipts + cross-device workroom sync |
 | `claims.pursued_world_first_largest_agentic_sales_force.v1` | aspirational — stays planned forever |
 | `claims.pursued_world_first_largest_sales_force.v1` | aspirational — stays planned forever |

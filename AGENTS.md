@@ -544,15 +544,15 @@ and local Codex auth out of reports.
 - Do not reintroduce the old Cargo or Tauri workspace unless the user asks for
   explicit historical compatibility work.
 - **Mobile build/ship policy (owner mandate): NO Expo/EAS cloud.** The current
-  mobile app is the **native SwiftUI** voice app `clients/mobile/Khala`
+  mobile app is the **native SwiftUI** voice app `clients/khala-ios/Khala`
   (bundle `com.openagents.khala`) — see
   `docs/mobile/2026-06-26-khala-voice-app-spec.md`. It is pure local Xcode:
-  build/run via `clients/mobile/Khala/Khala.xcodeproj`, archive with
+  build/run via `clients/khala-ios/Khala/Khala.xcodeproj`, archive with
   `xcodebuild`, and upload to TestFlight with Apple-native `xcrun altool`
   (ASC key in `.secrets/appstoreconnect.env`), under Apple Team `HQWSG26L43`.
   Native Swift has **no OTA path** (`updates.openagents.com` / `expo-updates`
   do not apply). Never run `eas build` / `eas submit` / `eas update`.
-  The earlier Expo React-Native app `clients/mobile/AutopilotRemoteControl`
+  The earlier Expo React-Native app `clients/khala-ios/AutopilotRemoteControl`
   was **retired** on 2026-06-26 and removed from the repo
   (`docs/mobile/2026-06-26-autopilot-remote-control-retirement.md`); the Expo
   prebuild + own-OTA path (`apps/oa-updates/scripts/publish-ota.sh`) and the

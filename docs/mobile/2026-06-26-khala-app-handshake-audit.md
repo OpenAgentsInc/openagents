@@ -7,7 +7,7 @@
 > behavior is only what the running app and the live API actually do.
 
 - **Date:** 2026-06-26
-- **App:** `clients/mobile/Khala/` (native SwiftUI, bundle `com.openagents.khala`)
+- **App:** `clients/khala-ios/Khala/` (native SwiftUI, bundle `com.openagents.khala`)
 - **Spec:** `docs/mobile/2026-06-26-khala-voice-app-spec.md`
 - **Toolchain:** Xcode 26.5 (build 17F42), iOS 17 deployment target
 
@@ -77,7 +77,7 @@ Rebuild after the change: **BUILD SUCCEEDED** (simulator,
 
 **Yes.** Concrete steps to demonstrate the handshake:
 
-1. Open `clients/mobile/Khala/Khala.xcodeproj` in Xcode (or
+1. Open `clients/khala-ios/Khala/Khala.xcodeproj` in Xcode (or
    `xcodebuild … -scheme Khala`), run on an iOS 17+ simulator.
 2. Tap the gear → **Mint a free key** (calls `POST /api/keys/free`, stores the
    `oa_agent_…` token in the Keychain) — or paste an existing key.

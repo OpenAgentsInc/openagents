@@ -4,7 +4,7 @@
 > locally on our Mac (`expo prebuild`→`xcodebuild`/`fastlane`), TestFlight upload
 > is Apple-native (`xcrun altool`), JS ships OTA via our own
 > `updates.openagents.com`. Any "EAS/Expo cloud" phrasing below is historical.
-> Canonical runbook: `clients/mobile/AutopilotRemoteControl/TESTFLIGHT.md`.
+> Canonical runbook: `clients/khala-ios/AutopilotRemoteControl/TESTFLIGHT.md`.
 
 Date: 2026-06-13 (framework decision revised 2026-06-13: React Native/Expo,
 superseding the earlier Swift direction — see "Framework Decision" below).
@@ -119,7 +119,7 @@ Non-goals (hard boundaries, from the remote session bridge audit, system #39):
 A React Native/Expo app is TypeScript, so it can consume the shared workspace
 protocol package — but it uses Metro (not Vite) and a large native-module dep
 tree, so it should not sit inside the Bun/Effect deploy-topology guard's globs.
-Place it in a `clients/mobile/` area that depends on the shared package without
+Place it in a `clients/khala-ios/` area that depends on the shared package without
 becoming part of the Worker/Foldkit build:
 
 ```
@@ -146,7 +146,7 @@ openagents/
   consume the workspace package without dragging Metro into the root install,
   reference it via a path/workspace dependency or a thin build step that
   publishes the package locally; keep the RN/Metro install scoped to
-  `clients/mobile/`.
+  `clients/khala-ios/`.
 - The shared package stays on the tracked Effect v4 line; the RN app pins its
   own Expo SDK / RN versions independently.
 
@@ -455,7 +455,7 @@ projection test (per the system #39 decision).
 0. Extract `packages/autopilot-control-protocol` (Effect Schema + client +
    cursor/decision logic) shared by web, desktop, and this app — the foundation
    the RN decision depends on. (openagents) *[shared with the desktop audit]*
-1. `clients/mobile` scaffold: vanilla **Expo** app (Expo SDK 55 / RN 0.81 /
+1. `clients/khala-ios` scaffold: vanilla **Expo** app (Expo SDK 55 / RN 0.81 /
    React 19 / React Navigation v7), MMKV + edge-to-edge + EAS + Maestro patterns
    borrowed from Ignite, consuming `packages/autopilot-control-protocol`. (openagents)
 2. P0 read-only companion: pairing (QR/URL/token in `expo-secure-store`), node

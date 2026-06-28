@@ -122,14 +122,14 @@ Message      { id: UUID, role: .system|.user|.assistant, content: String, create
 
 ## Build / run / verify
 
-- Local Xcode only. `clients/mobile/Khala/Khala.xcodeproj`, scheme `Khala`,
+- Local Xcode only. `clients/khala-ios/Khala/Khala.xcodeproj`, scheme `Khala`,
   iOS 17+.
 - Every lane must end with a **clean Debug build + a launch-render check on the
   iPhone 17 simulator** (screenshot shows the real UI, not black), using the
   env demo hooks where useful.
 - The black-screen the owner saw is a **stale local build/DerivedData** symptom
   (origin/main renders correctly); after landing, resync the owner's working
-  tree for `clients/mobile/Khala` and clear `~/Library/Developer/Xcode/DerivedData/Khala-*`.
+  tree for `clients/khala-ios/Khala` and clear `~/Library/Developer/Xcode/DerivedData/Khala-*`.
 
 ## Out of scope (v1)
 
