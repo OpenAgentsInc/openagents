@@ -229,6 +229,14 @@ describe('training run window authority', () => {
       churn: { joinCount: 0, lossCount: 0, standbyPromotionCount: 0 },
       durableCheckpointSeal: {
         checkpointDigestRef,
+        readbackReceipt: {
+          objectKey: `checkpoints/${checkpointDigestRef}`,
+          readbackDigestRef: checkpointDigestRef,
+          receiptRef: 'receipt.training.checkpoint_readback.window.0001',
+          sizeBytes: 1_048_576,
+          storeClass: 'r2',
+          storedDigestRef: checkpointDigestRef,
+        },
         replicationFactor: 2,
         retrievalProofRef: 'receipt.training.checkpoint_readback.window.0001',
         retrievalVerified: true,
@@ -462,6 +470,14 @@ describe('training run window authority', () => {
         checkpointDigestRef,
         durableCheckpointSeal: {
           checkpointDigestRef,
+          readbackReceipt: {
+            objectKey: `checkpoints/${checkpointDigestRef}`,
+            readbackDigestRef: checkpointDigestRef,
+            receiptRef: 'receipt.training.checkpoint_readback.window.other',
+            sizeBytes: 1_048_576,
+            storeClass: 'r2',
+            storedDigestRef: checkpointDigestRef,
+          },
           replicationFactor: 2,
           retrievalVerified: true,
           sizeBytes: 1_048_576,

@@ -65,6 +65,24 @@ export const DurableContentAddressedStorageClasses: ReadonlySet<CheckpointStorag
     'content_addressed_replicated_blob',
   ])
 
+export const RemoteCheckpointReadbackStoreClass = S.Literals(['r2'])
+export type RemoteCheckpointReadbackStoreClass =
+  typeof RemoteCheckpointReadbackStoreClass.Type
+
+export const RemoteCheckpointReadbackReceipt = S.Struct({
+  objectKey: PublicSafeRef,
+  readbackDigestRef: PublicSafeRef,
+  receiptRef: PublicSafeRef,
+  sizeBytes: S.Number.check(
+    S.isInt(),
+    S.isBetween({ minimum: 1, maximum: 1_099_511_627_776 }),
+  ),
+  storeClass: RemoteCheckpointReadbackStoreClass,
+  storedDigestRef: PublicSafeRef,
+})
+export type RemoteCheckpointReadbackReceipt =
+  typeof RemoteCheckpointReadbackReceipt.Type
+
 export const DurableCheckpointSeal = S.Struct({
   /** Content-addressed digest of the serialized checkpoint bytes. */
   checkpointDigestRef: PublicSafeRef,
@@ -79,6 +97,7 @@ export const DurableCheckpointSeal = S.Struct({
    * without a read-back is not durability.
    */
   retrievalVerified: S.Boolean,
+  readbackReceipt: S.optionalKey(RemoteCheckpointReadbackReceipt),
   /** Public-safe ref to the read-back verification receipt, when present. */
   retrievalProofRef: S.optional(PublicSafeRef),
   sizeBytes: S.Number.check(
@@ -99,6 +118,9 @@ export type DurableCheckpointSealReason =
   | 'storage_class_not_durable_content_addressed'
   | 'replication_factor_below_durable_minimum'
   | 'checkpoint_retrieval_not_verified'
+  | 'readback_receipt_missing'
+  | 'readback_receipt_digest_mismatch'
+  | 'readback_receipt_size_mismatch'
   | 'seal_descriptor_malformed'
 
 export type DurableCheckpointSealGate = Readonly<{
@@ -141,6 +163,19 @@ export const evaluateDurableCheckpointSeal = (
   }
   if (!seal.retrievalVerified) {
     reasons.push('checkpoint_retrieval_not_verified')
+  }
+  if (seal.readbackReceipt === undefined) {
+    reasons.push('readback_receipt_missing')
+  } else {
+    if (
+      seal.readbackReceipt.storedDigestRef !== seal.checkpointDigestRef ||
+      seal.readbackReceipt.readbackDigestRef !== seal.checkpointDigestRef
+    ) {
+      reasons.push('readback_receipt_digest_mismatch')
+    }
+    if (seal.readbackReceipt.sizeBytes !== seal.sizeBytes) {
+      reasons.push('readback_receipt_size_mismatch')
+    }
   }
 
   const durable = reasons.length === 0

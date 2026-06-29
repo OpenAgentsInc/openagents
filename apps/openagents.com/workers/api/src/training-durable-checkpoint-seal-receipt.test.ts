@@ -14,6 +14,14 @@ import {
 
 const durableSeal = (): DurableCheckpointSeal => ({
   checkpointDigestRef: `sha256:${'a'.repeat(64)}`,
+  readbackReceipt: {
+    objectKey: `checkpoints/sha256:${'a'.repeat(64)}`,
+    readbackDigestRef: `sha256:${'a'.repeat(64)}`,
+    receiptRef: 'receipt.training.checkpoint_readback.window.r1.w0007.v1',
+    sizeBytes: 4_294_967_296,
+    storeClass: 'r2',
+    storedDigestRef: `sha256:${'a'.repeat(64)}`,
+  },
   replicationFactor: 3,
   retrievalProofRef: 'receipt.training.checkpoint_readback.window.r1.w0007.v1',
   retrievalVerified: true,
@@ -32,6 +40,12 @@ describe('durable checkpoint seal receipt emitter', () => {
     expect(receipt.checkpointDigestRef).toBe(`sha256:${'a'.repeat(64)}`)
     expect(receipt.replicationFactor).toBe(3)
     expect(receipt.storageClass).toBe('content_addressed_object_store')
+    expect(receipt.readbackDigestRef).toBe(`sha256:${'a'.repeat(64)}`)
+    expect(receipt.readbackObjectKey).toBe(
+      `checkpoints/sha256:${'a'.repeat(64)}`,
+    )
+    expect(receipt.readbackStoreClass).toBe('r2')
+    expect(receipt.storedDigestRef).toBe(`sha256:${'a'.repeat(64)}`)
     expect(receipt.retrievalProofRef).toBe(
       'receipt.training.checkpoint_readback.window.r1.w0007.v1',
     )

@@ -16,6 +16,14 @@ import {
 
 const durableSeal = (): DurableCheckpointSeal => ({
   checkpointDigestRef: `sha256:${'a'.repeat(64)}`,
+  readbackReceipt: {
+    objectKey: `checkpoints/sha256:${'a'.repeat(64)}`,
+    readbackDigestRef: `sha256:${'a'.repeat(64)}`,
+    receiptRef: 'receipt.training.checkpoint_readback.window.r1.w0007.v1',
+    sizeBytes: 4_294_967_296,
+    storeClass: 'r2',
+    storedDigestRef: `sha256:${'a'.repeat(64)}`,
+  },
   replicationFactor: 3,
   retrievalProofRef: 'receipt.training.checkpoint_readback.window.r1.w0007.v1',
   retrievalVerified: true,
@@ -82,6 +90,15 @@ describe('durable checkpoint seal receipt verifier', () => {
     expect(verdict.reasons).toContain(
       'replication_factor_below_durable_minimum',
     )
+  })
+
+  test('rejects a receipt whose read-back digest does not match the checkpoint', () => {
+    const verdict = verifyDurableCheckpointSealReceipt({
+      ...genuineReceipt(),
+      readbackDigestRef: `sha256:${'c'.repeat(64)}`,
+    })
+    expect(verdict.verified).toBe(false)
+    expect(verdict.reasons).toContain('readback_receipt_digest_mismatch')
   })
 
   test('fails toward not-verified for a malformed untrusted receipt', () => {

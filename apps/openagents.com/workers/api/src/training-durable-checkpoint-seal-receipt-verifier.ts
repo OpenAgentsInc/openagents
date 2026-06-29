@@ -61,6 +61,8 @@ export type DurableCheckpointSealReceiptVerificationReason =
   | 'receipt_ref_mismatch'
   | 'checkpoint_digest_not_content_addressed'
   | 'replication_factor_below_durable_minimum'
+  | 'readback_receipt_digest_mismatch'
+  | 'readback_receipt_size_mismatch'
 
 export type DurableCheckpointSealReceiptVerificationVerdict = Readonly<{
   authorityBoundary: string
@@ -97,6 +99,15 @@ export const verifyDurableCheckpointSealReceipt = (
   }
   if (receipt.replicationFactor < MinDurableReplicationFactor) {
     reasons.push('replication_factor_below_durable_minimum')
+  }
+  if (
+    receipt.storedDigestRef !== receipt.checkpointDigestRef ||
+    receipt.readbackDigestRef !== receipt.checkpointDigestRef
+  ) {
+    reasons.push('readback_receipt_digest_mismatch')
+  }
+  if (receipt.sizeBytes < 1) {
+    reasons.push('readback_receipt_size_mismatch')
   }
 
   const verified = reasons.length === 0

@@ -11,6 +11,14 @@ import {
 
 const durableSeal: DurableCheckpointSeal = {
   checkpointDigestRef: `sha256:${'a'.repeat(64)}`,
+  readbackReceipt: {
+    objectKey: `checkpoints/sha256:${'a'.repeat(64)}`,
+    readbackDigestRef: `sha256:${'a'.repeat(64)}`,
+    receiptRef: 'receipt.training.checkpoint_readback.window.r1.w0007.v1',
+    sizeBytes: 4_294_967_296,
+    storeClass: 'r2',
+    storedDigestRef: `sha256:${'a'.repeat(64)}`,
+  },
   replicationFactor: 3,
   retrievalProofRef: 'receipt.training.checkpoint_readback.window.r1.w0007.v1',
   retrievalVerified: true,
@@ -63,6 +71,39 @@ describe('durable checkpoint seal evaluator', () => {
     })
     expect(gate.durable).toBe(false)
     expect(gate.reasons).toContain('checkpoint_retrieval_not_verified')
+  })
+
+  test('holds when the read-back receipt is missing', () => {
+    const { readbackReceipt: _ignored, ...withoutReceipt } = durableSeal
+    const gate = evaluateDurableCheckpointSeal(withoutReceipt)
+    expect(gate.durable).toBe(false)
+    expect(gate.reasons).toContain('readback_receipt_missing')
+  })
+
+  test('holds when the read-back receipt does not rehash to the checkpoint digest', () => {
+    const readbackReceipt = durableSeal.readbackReceipt!
+    const gate = evaluateDurableCheckpointSeal({
+      ...durableSeal,
+      readbackReceipt: {
+        ...readbackReceipt,
+        readbackDigestRef: `sha256:${'b'.repeat(64)}`,
+      },
+    })
+    expect(gate.durable).toBe(false)
+    expect(gate.reasons).toContain('readback_receipt_digest_mismatch')
+  })
+
+  test('holds when the read-back receipt size does not match the sealed checkpoint', () => {
+    const readbackReceipt = durableSeal.readbackReceipt!
+    const gate = evaluateDurableCheckpointSeal({
+      ...durableSeal,
+      readbackReceipt: {
+        ...readbackReceipt,
+        sizeBytes: durableSeal.sizeBytes - 1,
+      },
+    })
+    expect(gate.durable).toBe(false)
+    expect(gate.reasons).toContain('readback_receipt_size_mismatch')
   })
 
   test('a malformed descriptor fails toward hold, never toward sealing', () => {
