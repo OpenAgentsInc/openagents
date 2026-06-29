@@ -3013,6 +3013,12 @@ export const handleChatCompletions = (
       isKhalaModel(requestedModel) &&
       requestAttribution?.demandKind === 'internal_stress' &&
       isMultiLaneBurnDemandSource(requestAttribution.demandSource)
+    const glmOwnCapacityFailoverKhalaRequest =
+      isKhalaModel(requestedModel) &&
+      (requestAttribution?.demandKind === 'external' ||
+        requestAttribution?.demandKind === undefined) &&
+      deps.dispatch?.glmOwnCapacityFailover?.isActive() === true &&
+      plannedIdsForModel.includes(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID)
     // INTERNAL FRONTIER-CODING OVERRIDE (MirrorCode gym rung). Honestly-tagged
     // internal frontier-coding eval load (`demand_kind=internal`,
     // `demand_source=gym_mirrorcode`) that is tool-bearing is routed to the
@@ -3027,6 +3033,16 @@ export const handleChatCompletions = (
       requestAttribution.demandSource === 'gym_mirrorcode'
     const basePlannedIds = callerPaidByok
       ? [OPENROUTER_KHALA_FALLBACK_ADAPTER_ID]
+      : glmOwnCapacityFailoverKhalaRequest
+        ? selectAdapterPlanForKhalaMultiLaneBurnRequest(
+            requestedModel,
+            plannedIdsForModel.filter(
+              id =>
+                id !== HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID &&
+                deps.registry.resolve(id) !== undefined,
+            ),
+            (deps.multiLaneBurnRotation ?? nextMultiLaneBurnRotationIndex)(),
+          )
       : multiLaneBurnKhalaRequest
         ? // Rotate only across lanes that are actually registered (so the spread
           // lands on lanes that can serve), keeping the per-request round-robin

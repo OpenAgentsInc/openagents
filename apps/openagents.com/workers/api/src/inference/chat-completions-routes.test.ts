@@ -67,6 +67,7 @@ import {
   HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
   OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
   VERTEX_GEMINI_ADAPTER_ID,
+  makeGlmOwnCapacityFailover,
   selectAdapterPlan,
 } from './model-router'
 import {
@@ -3525,6 +3526,76 @@ describe('POST /v1/chat/completions', () => {
       },
     })
     expect(recorded[0]?.usage.totalTokens).toBeGreaterThan(0)
+  })
+
+  test('active GLM own-capacity failover spreads external Khala traffic across registered paid lanes (#6823)', async () => {
+    const registry = new InferenceProviderRegistry()
+    registry.register(echoAdapter(VERTEX_GEMINI_ADAPTER_ID))
+    registry.register(echoAdapter(FIREWORKS_ADAPTER_ID))
+    registry.register(echoAdapter(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID))
+    registry.register(echoAdapter(OPENROUTER_KHALA_FALLBACK_ADAPTER_ID))
+
+    const failover = makeGlmOwnCapacityFailover({ failureThreshold: 1 })
+    failover.recordFailure(
+      new InferenceAdapterError({
+        adapterId: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+        httpStatus: 503,
+        kind: 'route_admission_reserved_headroom_unavailable',
+        reason: 'GLM own-capacity lane has no reserved external headroom',
+        retryable: true,
+      }),
+    )
+
+    const recorded: Array<string> = []
+    const servedWorkers: Array<string> = []
+    let rotation = 0
+
+    for (let index = 0; index < 4; index += 1) {
+      const response = await run(
+        handleChatCompletions(
+          chatRequest(helloBody, {
+            headers: {
+              [INFERENCE_CLIENT_HEADER]: 'public-api',
+              [INFERENCE_DEMAND_KIND_HEADER]: 'external',
+              [INFERENCE_DEMAND_SOURCE_HEADER]: 'public-api',
+            },
+          }),
+          baseDeps({
+            dispatch: {
+              glmOwnCapacityFailover: failover,
+              sleep: () => Effect.void,
+            },
+            lanePlan: () => [
+              HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+              VERTEX_GEMINI_ADAPTER_ID,
+              FIREWORKS_ADAPTER_ID,
+              OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+            ],
+            multiLaneBurnRotation: () => rotation++,
+            recordTokensServed: input =>
+              Effect.sync(() => {
+                recorded.push(input.adapterId)
+              }),
+            registry,
+          }),
+        ),
+      )
+
+      expect(response.status).toBe(200)
+      const body = (await response.json()) as {
+        openagents?: { worker?: string }
+      }
+      servedWorkers.push(body.openagents!.worker!)
+    }
+
+    expect(servedWorkers).toEqual([
+      VERTEX_GEMINI_ADAPTER_ID,
+      FIREWORKS_ADAPTER_ID,
+      OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+      VERTEX_GEMINI_ADAPTER_ID,
+    ])
+    expect(servedWorkers).not.toContain(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID)
+    expect(recorded).toEqual(servedWorkers)
   })
 
   test('hedges external requests to a warm lane when route dispatch hedging is configured', async () => {
