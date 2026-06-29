@@ -1614,6 +1614,35 @@ describe('public product promises document', () => {
     )
   })
 
+  test('keeps Hosted Gemini yellow after the production receipt audit until the Gemini path succeeds', () => {
+    const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
+      publicProductPromisesDocument(),
+    )
+    const hostedGeminiPromise = decoded.promises.find(
+      promise => promise.promiseId === 'api.hosted_gemini.v1',
+    )
+
+    expect(hostedGeminiPromise).toMatchObject({
+      state: 'yellow',
+      blockerRefs: [
+        'blocker.product_promises.hosted_gemini_production_receipt_pending',
+        'blocker.product_promises.hosted_gemini_owner_upgrade_signoff_pending',
+      ],
+    })
+    expect(hostedGeminiPromise?.evidenceRefs).toContain(
+      'docs/inference/2026-06-29-hosted-gemini-production-receipt-audit.md',
+    )
+    expect(hostedGeminiPromise?.safeCopy).toContain(
+      'direct gemini-3.5-flash returned model_unavailable',
+    )
+    expect(hostedGeminiPromise?.safeCopy).toContain(
+      'Hosted Gemini production receipt remains pending',
+    )
+    expect(hostedGeminiPromise?.unsafeCopy).toContain(
+      'without a real production receipt',
+    )
+  })
+
   test('keeps kernel optimization planned while exposing code-backed dispatch and parity receipt machinery', () => {
     const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
       publicProductPromisesDocument(),

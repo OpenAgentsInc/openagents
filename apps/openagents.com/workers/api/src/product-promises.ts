@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-29.2'
+export const PublicProductPromisesVersion = '2026-06-29.3'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -54,6 +54,7 @@ const sourceRefs = [
   'docs/transcripts/243.md',
   'docs/transcripts/244.md',
   'docs/inference/2026-06-25-khala-inference-gtm-push.md',
+  'docs/inference/2026-06-29-hosted-gemini-production-receipt-audit.md',
   'docs/khala/2026-06-25-pylon-linked-coding-capacity-routing-spec.md',
   'docs/afteraction/2026-06-26-khala-pylon-codex-delegation-afteraction.md',
   'docs/traces/2026-06-27-pylon-codex-live-trace-status-audit.md',
@@ -1311,7 +1312,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'OpenAgents is API-driven and may offer hosted Gemini through an OpenAgents API surface.',
         safeCopy:
-          'OpenAgents has route-covered hosted Gemini execution through the env-gated Vertex binding and the OpenAI-compatible Khala gateway enforces account credits, entitlement/free-quota gates, metering, and served-token rows. The promise stays yellow until a real production receipt and owner-approved upgrade evidence are attached.',
+          'OpenAgents has route-covered hosted Gemini execution through the env-gated Vertex binding and the OpenAI-compatible Khala gateway enforces account credits, entitlement/free-quota gates, metering, and served-token rows. A 2026-06-29 production audit found the authenticated public gateway live for openagents/khala with public-safe usage metadata, but direct gemini-3.5-flash returned model_unavailable, so the Hosted Gemini production receipt remains pending. The promise stays yellow until a successful Hosted Gemini production receipt and owner-approved upgrade evidence are attached.',
         unsafeCopy:
           'Do not claim hosted Gemini is green, settled, broadly resale-ready, or owner-approved without a real production receipt.',
         evidenceRefs: [
@@ -1323,6 +1324,7 @@ export const publicProductPromisesDocument = () => {
           'apps/openagents.com/workers/api/src/inference/chat-completions-routes.test.ts',
           'apps/openagents.com/workers/api/src/autopilot-hosted-gemini-executor-env.ts',
           'apps/openagents.com/workers/api/src/inference/served-tokens-recorder.ts',
+          'docs/inference/2026-06-29-hosted-gemini-production-receipt-audit.md',
           'docs/autopilot-coder/2026-06-09-probe-autopilot-sites-agent-api-audit.md',
         ],
         blockerRefs: [
