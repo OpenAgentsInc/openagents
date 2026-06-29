@@ -69,3 +69,12 @@ Matches are normalized to LF for comparison and written back with the original
 line-ending style and BOM preserved. Ambiguous, missing, stale, whole-file, and
 credential-path edits fail closed; successful edits produce a bounded diff
 preview and request scoped write approval before bytes are changed.
+
+### `write`
+
+`write` creates or intentionally rewrites an entire UTF-8 text file. It accepts
+`path`, `content`, and optional overwrite guards `expected_sha256` or
+`expected_content`. New files may create parent directories under the workspace.
+Existing files require a fresh guard before overwrite, preserve an existing
+UTF-8 BOM, produce a structured diff receipt, and request scoped write approval
+before bytes are changed.
