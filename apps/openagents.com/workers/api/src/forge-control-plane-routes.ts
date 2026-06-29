@@ -612,6 +612,48 @@ const routeVerificationReceipts = async <Bindings>(
   return noStoreJsonResponse({ verificationReceipt }, { status: 201 })
 }
 
+const assertApprovedPromotionHasPassingVerificationReceipt = async (
+  store: ForgeCoordinationStore,
+  receipt: typeof ForgePromotionDecisionReceipt.Type,
+) => {
+  if (receipt.decision !== 'approved') {
+    return
+  }
+
+  if (receipt.verification_ref === null) {
+    throw new ForgeControlPlaneHttpError(
+      409,
+      'forge_promotion_verification_receipt_required',
+      'Approved Forge promotions require a passing verification receipt for the exact change/base/head.',
+    )
+  }
+
+  const verificationReceipt = (
+    await store.listVerificationReceipts(receipt.tenant_ref, 100, receipt.change_ref)
+  ).find(candidate => candidate.verification_ref === receipt.verification_ref)
+
+  if (verificationReceipt === undefined) {
+    throw new ForgeControlPlaneHttpError(
+      409,
+      'forge_promotion_verification_receipt_missing',
+      'Approved Forge promotion verification_ref does not name a recorded verification receipt for this change.',
+    )
+  }
+
+  if (
+    verificationReceipt.verdict !== 'passed' ||
+    verificationReceipt.exit_code !== 0 ||
+    verificationReceipt.base_head !== receipt.base_head ||
+    verificationReceipt.head_head !== receipt.candidate_head
+  ) {
+    throw new ForgeControlPlaneHttpError(
+      409,
+      'forge_promotion_verification_receipt_mismatch',
+      'Approved Forge promotion verification receipt must be passing and match the promotion change/base/head.',
+    )
+  }
+}
+
 const routePromotionDecisions = async <Bindings>(
   dependencies: ForgeControlPlaneRouteDependencies<Bindings>,
   request: Request,
@@ -647,6 +689,7 @@ const routePromotionDecisions = async <Bindings>(
     'forge:promotion:decide',
     receipt.tenant_ref,
   )
+  await assertApprovedPromotionHasPassingVerificationReceipt(store, receipt)
   const promotionDecision = await store.recordPromotionDecisionReceipt(
     receipt,
     routeNowIso(dependencies),

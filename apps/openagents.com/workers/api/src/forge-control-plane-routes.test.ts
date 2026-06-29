@@ -145,6 +145,52 @@ const makeHarness = () => {
   return { canonicalStore, run, store: coordinationStore }
 }
 
+const forgeVerificationReceipt = (overrides: Record<string, unknown> = {}) => ({
+  schema: 'openagents.forge.verification.receipt.v0.1',
+  tenant_ref: 'tenant.openagents',
+  verification_ref: 'verification.forge.6770',
+  change_ref: 'change.forge.6770',
+  repository_ref: 'repo:OpenAgentsInc/openagents',
+  base_ref: 'refs/heads/main',
+  base_head: '8e0c9b2eaf84c821caf555cae233a0d27e94d4ab',
+  head_ref: 'refs/heads/forge-6770',
+  head_head: '9e0c9b2eaf84c821caf555cae233a0d27e94d4ac',
+  packfile_ref: 'packfile.forge.6770',
+  packfile_sha256: 'sha256:verification',
+  executor_identity_ref: 'agent.public.forge',
+  command_ref: 'cmd.test',
+  command_args: ['bun', 'test'],
+  exit_code: 0,
+  verdict: 'passed',
+  started_at: now,
+  completed_at: '2026-06-28T17:02:00.000Z',
+  artifact_refs: ['artifact:test-log'],
+  log_sha256: 'sha256:log',
+  source_refs: ['github:OpenAgentsInc/openagents#6770'],
+  redacted: true,
+  ...overrides,
+})
+
+const forgePromotionDecision = (overrides: Record<string, unknown> = {}) => ({
+  schema: 'openagents.forge.promotion.decision.v0.1',
+  tenant_ref: 'tenant.openagents',
+  promotion_ref: 'promotion.forge.6770',
+  queue_ref: 'queue.forge.main',
+  change_ref: 'change.forge.6770',
+  decision: 'approved',
+  base_head: '8e0c9b2eaf84c821caf555cae233a0d27e94d4ab',
+  candidate_head: '9e0c9b2eaf84c821caf555cae233a0d27e94d4ac',
+  promoted_head: '9e0c9b2eaf84c821caf555cae233a0d27e94d4ac',
+  verification_ref: 'verification.forge.6770',
+  gate_refs: ['gate.tests'],
+  blocker_refs: [],
+  decided_by_ref: 'agent.public.forge',
+  decided_at: '2026-06-28T17:03:00.000Z',
+  source_refs: ['github:OpenAgentsInc/openagents#6770'],
+  redacted: true,
+  ...overrides,
+})
+
 describe('Forge control-plane routes', () => {
   test('rejects Forge smart-Git tokens on control-plane routes', async () => {
     const { run } = makeHarness()
@@ -312,30 +358,7 @@ describe('Forge control-plane routes', () => {
 
     const verificationResponse = await run(
       requestJson('/api/forge/verification-receipts', {
-        json: {
-          schema: 'openagents.forge.verification.receipt.v0.1',
-          tenant_ref: 'tenant.openagents',
-          verification_ref: 'verification.forge.6770',
-          change_ref: 'change.forge.6770',
-          repository_ref: 'repo:OpenAgentsInc/openagents',
-          base_ref: 'refs/heads/main',
-          base_head: '8e0c9b2eaf84c821caf555cae233a0d27e94d4ab',
-          head_ref: 'refs/heads/forge-6770',
-          head_head: '9e0c9b2eaf84c821caf555cae233a0d27e94d4ac',
-          packfile_ref: 'packfile.forge.6770',
-          packfile_sha256: 'sha256:verification',
-          executor_identity_ref: 'agent.public.forge',
-          command_ref: 'cmd.test',
-          command_args: ['bun', 'test'],
-          exit_code: 0,
-          verdict: 'passed',
-          started_at: now,
-          completed_at: '2026-06-28T17:02:00.000Z',
-          artifact_refs: ['artifact:test-log'],
-          log_sha256: 'sha256:log',
-          source_refs: ['github:OpenAgentsInc/openagents#6770'],
-          redacted: true,
-        },
+        json: forgeVerificationReceipt(),
         headers: authHeaders(scopes),
         method: 'POST',
       }),
@@ -344,24 +367,7 @@ describe('Forge control-plane routes', () => {
 
     const promotionResponse = await run(
       requestJson('/api/forge/promotion-decisions', {
-        json: {
-          schema: 'openagents.forge.promotion.decision.v0.1',
-          tenant_ref: 'tenant.openagents',
-          promotion_ref: 'promotion.forge.6770',
-          queue_ref: 'queue.forge.main',
-          change_ref: 'change.forge.6770',
-          decision: 'approved',
-          base_head: '8e0c9b2eaf84c821caf555cae233a0d27e94d4ab',
-          candidate_head: '9e0c9b2eaf84c821caf555cae233a0d27e94d4ac',
-          promoted_head: '9e0c9b2eaf84c821caf555cae233a0d27e94d4ac',
-          verification_ref: 'verification.forge.6770',
-          gate_refs: ['gate.tests'],
-          blocker_refs: [],
-          decided_by_ref: 'agent.public.forge',
-          decided_at: '2026-06-28T17:03:00.000Z',
-          source_refs: ['github:OpenAgentsInc/openagents#6770'],
-          redacted: true,
-        },
+        json: forgePromotionDecision(),
         headers: authHeaders(scopes),
         method: 'POST',
       }),
@@ -389,6 +395,50 @@ describe('Forge control-plane routes', () => {
       promotionDecisions: ReadonlyArray<unknown>
     }
     expect(decisionsBody.promotionDecisions).toHaveLength(1)
+  })
+
+  test('fails closed when approved promotion lacks a recorded verification receipt', async () => {
+    const { run } = makeHarness()
+    const response = await run(
+      requestJson('/api/forge/promotion-decisions', {
+        json: forgePromotionDecision(),
+        headers: authHeaders('forge:promotion:decide'),
+        method: 'POST',
+      }),
+    )
+    const body = (await response.json()) as { error: string; reason: string }
+
+    expect(response.status).toBe(409)
+    expect(body.error).toBe('forge_promotion_verification_receipt_missing')
+    expect(body.reason).toContain('recorded verification receipt')
+  })
+
+  test('fails closed when approved promotion verification receipt is stale or failing', async () => {
+    const { run } = makeHarness()
+    const scopes = 'forge:receipt:write forge:promotion:decide'
+    const verificationResponse = await run(
+      requestJson('/api/forge/verification-receipts', {
+        json: forgeVerificationReceipt({
+          head_head: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        }),
+        headers: authHeaders(scopes),
+        method: 'POST',
+      }),
+    )
+    expect(verificationResponse.status).toBe(201)
+
+    const response = await run(
+      requestJson('/api/forge/promotion-decisions', {
+        json: forgePromotionDecision(),
+        headers: authHeaders(scopes),
+        method: 'POST',
+      }),
+    )
+    const body = (await response.json()) as { error: string; reason: string }
+
+    expect(response.status).toBe(409)
+    expect(body.error).toBe('forge_promotion_verification_receipt_mismatch')
+    expect(body.reason).toContain('passing')
   })
 
   test('imports the public OpenAgents main ref into canonical refs idempotently', async () => {
