@@ -11,7 +11,10 @@ import {
   type CloudSessionGrantBinding,
 } from "../src/openagents-cloud-provider"
 import {
+  CLOUD_WORKROOM_EVENT_KINDS,
+  makeCloudControlClient,
   resolveCloudControlConfig,
+  resolveCloudEventKind,
   type CloudWorkroomEvent,
 } from "../src/cloud-control-client"
 
@@ -165,6 +168,80 @@ describe("OpenAgents Cloud execution backend (#4997)", () => {
       expect(ok.config.baseUrl).toBe("https://cloud.example")
       expect(ok.config.bearerToken).toBe("tok")
     }
+  })
+
+  test("cloud control client round-trips every codex_workroom_event.v1 kind and rejects unknown kinds", async () => {
+    const externalRunId = "shc-codex:oa-gce-ephemeral-test:test_run"
+    const expectedKinds = [...CLOUD_WORKROOM_EVENT_KINDS]
+    const fakeFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString()
+      if (url.endsWith("/v1/placement")) {
+        const body = init?.body ? JSON.parse(String(init.body)) : {}
+        return Response.json({
+          binding: {
+            runId: body.run_id,
+            externalRunId,
+            lane: "cloud-gcp",
+            providerLane: "gcp",
+            runnerId: "oa-gce-ephemeral-test",
+          },
+          externalRunId,
+          status: "queued",
+          events: [
+            ...expectedKinds.map((kind) => ({
+              kind,
+              summary: `roundtrip ${kind}`,
+              receiptRefs:
+                kind === "receipt" || kind === "cloud.gce.resource_usage_receipt"
+                  ? [`receipt.${kind}`]
+                  : undefined,
+            })),
+            { kind: "future.unknown", summary: "must be dropped" },
+          ],
+        })
+      }
+      if (url.includes("/events")) {
+        return Response.json({
+          status: "completed",
+          cursor: expectedKinds.length,
+          events: [
+            { kind: "started", type: "cloud.gce.provisioned" },
+            { kind: "receipt", type: "cloud.gce.resource" },
+            { kind: "cleanup", type: "cloud.gce.cleanup" },
+            { kind: "log", type: "cloud.gce.degraded" },
+          ],
+        })
+      }
+      return new Response("not found", { status: 404 })
+    }) as unknown as typeof fetch
+
+    const client = makeCloudControlClient(
+      { baseUrl: "https://cloud.example", bearerToken: "control-token" },
+      fakeFetch,
+    )
+    const ack = await client.placeRun({
+      auth_grant_ref: "",
+      contract_version: "openagents.codex_placement_assignment.v1",
+      created_at_ms: 1,
+      goal: "roundtrip every kind",
+      lane: "cloud-gcp",
+      owner_ref: "owner.test",
+      provider_account_ref: "",
+      run_id: "session.test",
+      wallet_authority: false,
+    })
+
+    expect(ack.events.map((event) => event.kind)).toEqual(expectedKinds)
+    expect(ack.events.some((event) => event.kind === ("future.unknown" as never))).toBe(false)
+
+    const page = await client.fetchEvents(externalRunId, 0)
+    expect(page.events.map((event) => event.kind)).toEqual([
+      "cloud.gce.provisioned",
+      "cloud.gce.resource_usage_receipt",
+      "cloud.gce.cleanup",
+      "cloud.gce.degraded",
+    ])
+    expect(resolveCloudEventKind("future.unknown", undefined)).toBe(null)
   })
 
   test("spawn cloud-gcp resolves grant, places run, maps events, surfaces terminal + artifact + receipt", async () => {
@@ -387,9 +464,9 @@ describe("OpenAgents Cloud execution backend (#4997)", () => {
       expect(row?.lane).toBe("cloud-gcp")
 
       // MOST IMPORTANT: the resource_usage_receipt.v1 ref round-trips to the
-      // session exactly like SHC/local (first receipt ref captured — the
-      // provision receipt arrives first on the cloud.gce.provisioned event).
-      expect(row?.resourceUsageReceiptRef).toBe("sha256:provision-receipt-0")
+      // session exactly like SHC/local. Provision/cleanup receipts are
+      // timeline provenance only and must not mask the actual usage receipt.
+      expect(row?.resourceUsageReceiptRef).toBe("sha256:resource-usage-receipt-1")
 
       // VM lifecycle provenance lines appear in the lane-transparent stream.
       const detail = await actions.events(spawned.sessionRef)

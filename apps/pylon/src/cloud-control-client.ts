@@ -152,6 +152,24 @@ export type CloudWorkroomEvent = {
   redacted?: boolean
 }
 
+export const CLOUD_WORKROOM_EVENT_KINDS: readonly CloudWorkroomEventKind[] = [
+  "queued",
+  "started",
+  "log",
+  "redacted",
+  "artifact",
+  "receipt",
+  "completed",
+  "failed",
+  "timeout",
+  "cancelled",
+  "placement.bound",
+  "cloud.gce.provisioned",
+  "cloud.gce.cleanup",
+  "cloud.gce.degraded",
+  "cloud.gce.resource_usage_receipt",
+]
+
 export type CloudPlacementAck = {
   binding: CloudRunnerBinding
   externalRunId: string
@@ -193,6 +211,10 @@ export function isCloudGceEventKind(kind: string): kind is CloudWorkroomEventKin
   return (CLOUD_GCE_EVENT_KINDS as readonly string[]).includes(kind)
 }
 
+export function isCloudWorkroomEventKind(kind: string): kind is CloudWorkroomEventKind {
+  return (CLOUD_WORKROOM_EVENT_KINDS as readonly string[]).includes(kind)
+}
+
 // Normalize a raw cloud event discriminator (which may arrive on either the
 // `type` field — the cloud `JobEvent.type` — or the broad workroom `kind`
 // field) into a single canonical `CloudWorkroomEventKind`. The `cloud.gce.*`
@@ -214,7 +236,9 @@ export function resolveCloudEventKind(
     if (isCloudGceEventKind(raw)) return raw
   }
   // Fall back to the broad workroom kind when no GCE discriminator is present.
-  return typeof kindField === "string" ? (kindField as CloudWorkroomEventKind) : null
+  return typeof kindField === "string" && isCloudWorkroomEventKind(kindField)
+    ? kindField
+    : null
 }
 
 // Map a Pylon control-session lane to the cloud compute lane. `local` never
