@@ -1173,3 +1173,14 @@ GLM coding lane and leave REAP-504B on the 4x hosts.)
   After closeout, `provider go-online` again reported Codex `available=2`,
   `ready=2`, `busy=0`, `queued=0`; treat this as the current proof that stale
   local no-spend leases no longer poison advertised capacity.
+- 2026-06-29 #6893 bounded implementation note: the
+  `autopilot.control_center_fanout_marketplace.v1` non-code marketplace fanout
+  slice is represented in source by `marketplace-work-class-catalog.ts`,
+  `self-serve-fanout.ts`, and the customer-authenticated lane-C fanout route.
+  `data_labeling` is the first live non-code work class; it carries
+  `capability.market.data_labeling` and
+  `command.public.market.data_labeling.audit` through the same opt-in,
+  budget-cap, public-tier, and validator gate as code-task fanout. The promise
+  remains yellow: this is typed fanout/authorized market input, not an
+  owner-signed armed settlement receipt, provider execution proof, or money
+  movement.

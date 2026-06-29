@@ -62,11 +62,13 @@ describe('marketplace work-class catalog route', () => {
       handleMarketplaceWorkClassCatalogApi(request('?workClass=data_labeling')),
     )
     const body = (await response.json()) as {
+      liveWorkClasses: ReadonlyArray<string>
       workClass: { workClass: string; status: string } | null
       pluginMarketplaceBeyondCodeTaskLive: boolean
     }
     expect(body.workClass?.workClass).toBe('data_labeling')
     expect(body.workClass?.status).toBe('live')
+    expect(body.liveWorkClasses).toContain(MARKETPLACE_DATA_LABELING_WORK_CLASS)
     expect(body.pluginMarketplaceBeyondCodeTaskLive).toBe(true)
   })
 
