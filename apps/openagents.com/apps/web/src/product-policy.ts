@@ -173,6 +173,7 @@ export const browserRouteProductIntents = {
   Landing: 'public.landing',
   Terms: 'public.terms',
   Privacy: 'public.privacy',
+  Code: 'public.code.landing',
   Khala: 'public.khala',
   KhalaChat: 'public.khala.chat',
   Pylon: 'public.pylon',

@@ -28,10 +28,11 @@ export const diffBodyClass =
   'm-0 overflow-x-auto py-0 font-mono text-[0.8125rem] leading-[1.5] text-[#d7e2f0]'
 export const diffHunkClass =
   'block whitespace-pre bg-[#0b1626] px-3 py-0.5 text-[0.75rem] text-[#5f86c2]'
-export const diffLineClass = 'flex min-h-[1.5em]'
+export const diffLineClass = 'flex min-h-[1.5em] border-l-2'
 export const diffGutterClass =
-  'w-9 shrink-0 select-none px-1 text-right tabular-nums text-[#34507f]'
-export const diffSignClass = 'w-4 shrink-0 select-none text-center'
+  'w-9 shrink-0 select-none px-1 text-right tabular-nums'
+export const diffSignClass =
+  'w-4 shrink-0 select-none text-center font-semibold'
 export const diffCodeClass = 'min-w-0 flex-1 whitespace-pre pr-3'
 
 export const DiffProps = Schema.Struct({
@@ -146,10 +147,19 @@ export const parseUnifiedDiff = (
   }
 }
 
+// Clear green/red change signal: a 2px left accent bar + a saturated-enough
+// line tint that reads unmistakably over the near-black surface, even though
+// the syntax tokens inside stay in the cool palette.
 const lineBgClass = (kind: DiffRowKind): string => {
-  if (kind === 'add') return 'bg-[#0f2a18]'
-  if (kind === 'remove') return 'bg-[#2a1417]'
-  return ''
+  if (kind === 'add') return 'border-[#2ea043] bg-[#0f3320]'
+  if (kind === 'remove') return 'border-[#e5484d] bg-[#3a161a]'
+  return 'border-transparent'
+}
+
+const gutterColorFor = (kind: DiffRowKind): string => {
+  if (kind === 'add') return 'text-[#56d364]'
+  if (kind === 'remove') return 'text-[#f0727a]'
+  return 'text-[#34507f]'
 }
 
 const signFor = (kind: DiffRowKind): string => {
@@ -159,8 +169,8 @@ const signFor = (kind: DiffRowKind): string => {
 }
 
 const signClassFor = (kind: DiffRowKind): string => {
-  if (kind === 'add') return clsx(diffSignClass, 'text-[#3fb950]')
-  if (kind === 'remove') return clsx(diffSignClass, 'text-[#f85149]')
+  if (kind === 'add') return clsx(diffSignClass, 'text-[#56d364]')
+  if (kind === 'remove') return clsx(diffSignClass, 'text-[#f0727a]')
   return clsx(diffSignClass, 'text-transparent')
 }
 
@@ -229,11 +239,17 @@ const diffRowView = <Message>(
       ...(showLineNumbers
         ? [
             h.span(
-              [h.AriaHidden(true), h.Class(diffGutterClass)],
+              [
+                h.AriaHidden(true),
+                h.Class(clsx(diffGutterClass, gutterColorFor(row.kind))),
+              ],
               [row.oldNo === undefined ? '' : String(row.oldNo)],
             ),
             h.span(
-              [h.AriaHidden(true), h.Class(diffGutterClass)],
+              [
+                h.AriaHidden(true),
+                h.Class(clsx(diffGutterClass, gutterColorFor(row.kind))),
+              ],
               [row.newNo === undefined ? '' : String(row.newNo)],
             ),
           ]

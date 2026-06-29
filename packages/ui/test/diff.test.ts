@@ -91,8 +91,10 @@ describe('ai-elements diff', () => {
     // Add/remove line tints + copy hooks (reuses the code-block copy controller).
     expect(rendered).toContain('data-diff-line="add"')
     expect(rendered).toContain('data-diff-line="remove"')
-    expect(rendered).toContain('bg-[#0f2a18]')
-    expect(rendered).toContain('bg-[#2a1417]')
+    expect(rendered).toContain('bg-[#0f3320]') // green add tint
+    expect(rendered).toContain('bg-[#3a161a]') // red remove tint
+    expect(rendered).toContain('border-[#2ea043]') // green accent bar
+    expect(rendered).toContain('border-[#e5484d]') // red accent bar
     expect(rendered).toContain('data-oa-code-copy=""')
     expect(rendered).toContain('data-oa-code-source=""')
   })

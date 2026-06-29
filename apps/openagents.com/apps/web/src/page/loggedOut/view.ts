@@ -21,6 +21,7 @@ import * as Docs from '../docs'
 import * as Download from '../download'
 import * as Forum from '../forum'
 import * as KhalaChatPage from '../khala-chat/page'
+import * as Code from '../code'
 import * as Login from '../login'
 import * as Privacy from '../privacy'
 import type { PublicHeaderViewer } from '../publicHeader'
@@ -312,6 +313,7 @@ export const view = Submodel.defineView<Model, Message>((model): Html => {
               // shared canvas), so the route union here no longer includes them.
               Terms: () => Terms.view({ _tag: 'LoggedOut' }),
               Privacy: () => Privacy.view({ _tag: 'LoggedOut' }),
+              Code: () => Code.view({ _tag: 'LoggedOut' }),
               Trace: route =>
                 Trace.view(route, { _tag: 'LoggedOut' }, model.trace),
               TraceCompare: route =>

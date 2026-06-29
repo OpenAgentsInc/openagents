@@ -24,6 +24,7 @@ const PUBLIC_ROUTE_PARSE_COVERAGE: ReadonlyArray<readonly [string, string]> = [
   ['/stats-old', 'PublicStatsArchive'],
   ['/terms', 'Terms'],
   ['/privacy', 'Privacy'],
+  ['/code', 'Code'],
   ['/business', 'Business'],
   ['/pylons', 'Pylon'],
   ['/run', 'Run'],
@@ -104,7 +105,7 @@ describe('public route parser coverage', () => {
     // public `/chat` Khala chat page brings it to 40, the
     // `/artanis/accounts` account-observability grid brings it to 41, and the
     // `/artanis/gym` operator Gym tab surface brings it to 42.
-    expect(PUBLIC_ROUTE_PARSE_COVERAGE.length).toBe(42)
+    expect(PUBLIC_ROUTE_PARSE_COVERAGE.length).toBe(43)
   })
 
   // The public shareable trace render (#6209) must capture the uuid param so the

@@ -25,6 +25,7 @@ import type {
   PublicPylonStats,
   PublicPylonStatsModel,
 } from './page/loggedOut/model'
+import * as Code from './page/code'
 import * as Privacy from './page/privacy'
 import type {
   PublicHeaderAuthState,
@@ -398,6 +399,8 @@ const title = (model: Model): string => {
       return 'Terms of Service - OpenAgents'
     case 'Privacy':
       return 'Privacy Policy - OpenAgents'
+    case 'Code':
+      return 'Khala Code - OpenAgents'
     case 'Animations':
       return 'Animations - OpenAgents'
     case 'Activity':
@@ -628,6 +631,7 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
       model.route._tag !== 'AutopilotVertical' &&
       model.route._tag !== 'Terms' &&
       model.route._tag !== 'Privacy' &&
+      model.route._tag !== 'Code' &&
       model.route._tag !== 'Animations' &&
       model.route._tag !== 'Activity' &&
       model.route._tag !== 'ArtanisAccounts' &&
@@ -685,6 +689,9 @@ const publicRouteBody = (model: Model): Document['body'] | undefined => {
 
   if (model.route._tag === 'Privacy') {
     return Privacy.view<Message>(authState)
+  }
+  if (model.route._tag === 'Code') {
+    return Code.view<Message>(authState)
   }
 
   if (model.route._tag === 'Trace') {
