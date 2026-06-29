@@ -1,7 +1,10 @@
 import { jsonResponse } from '@openagentsinc/sync-worker'
 
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
-import { parseJsonStringArray } from './json-boundary'
+import {
+  parseJsonRecord as parseJsonBoundaryRecord,
+  parseJsonStringArray,
+} from './json-boundary'
 import { openAgentsDatabase } from './runtime'
 import { currentIsoTimestamp } from './runtime-primitives'
 
@@ -80,6 +83,19 @@ type GlmHeartbeatRow = Readonly<{
   health_status: string | null
 }>
 
+type AssignmentProgressRow = Readonly<{
+  assignment_ref: string | null
+  created_at: string
+  event_body_json: string
+  event_kind: string
+  status: string
+}>
+
+type AssignmentTokenRow = Readonly<{
+  task_ref: string
+  tokens_so_far: number | null
+}>
+
 type CacheEntry = Readonly<{
   expiresAt: number
   generatedAt: string
@@ -108,6 +124,68 @@ const millisBetween = (startIso: string, endIso: string): number => {
   return Number.isFinite(start) && Number.isFinite(end)
     ? Math.max(0, end - start)
     : 0
+}
+
+const boundedString = (
+  value: unknown,
+  maxLength = 180,
+): string | null => {
+  if (typeof value !== 'string') {
+    return null
+  }
+  const trimmed = value.trim()
+  if (trimmed.length === 0) {
+    return null
+  }
+  return trimmed.length <= maxLength ? trimmed : `${trimmed.slice(0, maxLength)}...`
+}
+
+const phaseFromProgress = (
+  row: AssignmentProgressRow | undefined,
+  fallbackState: string,
+): string => {
+  if (row === undefined) {
+    return fallbackState === 'proof_submitted'
+      ? 'proof'
+      : fallbackState === 'running' || fallbackState === 'accepted'
+        ? 'running'
+        : 'queued'
+  }
+
+  const body = parseJsonBoundaryRecord(row.event_body_json) ?? {}
+  const bodyPhase = boundedString(body.phase, 64)
+  if (bodyPhase !== null) {
+    return bodyPhase
+  }
+
+  const status = boundedString(body.status, 64) ?? row.status
+  return status === 'artifact-ready'
+    ? 'diff'
+    : status === 'proof-ready' || status === 'submitted'
+      ? 'proof'
+      : status === 'accepted'
+        ? 'running'
+        : status
+}
+
+const progressEventLabel = (
+  row: AssignmentProgressRow | undefined,
+): string | null => {
+  if (row === undefined) {
+    return null
+  }
+  const body = parseJsonBoundaryRecord(row.event_body_json) ?? {}
+  return boundedString(body.lastProgressEvent, 100) ?? row.event_kind
+}
+
+const progressLogLine = (
+  row: AssignmentProgressRow | undefined,
+): string | null => {
+  if (row === undefined) {
+    return null
+  }
+  const body = parseJsonBoundaryRecord(row.event_body_json) ?? {}
+  return boundedString(body.message)
 }
 
 const safeAll = async <T>(
@@ -254,6 +332,62 @@ const buildFleetStatusSnapshot = async (
     ),
   ])
 
+  const progressOwnerClause = scope.kind === 'agent' ? 'AND owner_agent_user_id = ?' : ''
+  const tokenOwnerClause = scope.kind === 'agent' ? 'AND actor_user_id = ?' : ''
+  const [
+    progressRows,
+    assignmentTokenRows,
+  ] = await Promise.all([
+    safeAll<AssignmentProgressRow>(
+      db,
+      `SELECT assignment_ref, event_kind, status, event_body_json, created_at
+         FROM pylon_api_events
+        WHERE archived_at IS NULL
+          AND event_kind IN ('assignment_acceptance', 'assignment_progress', 'artifact_proof_metadata', 'worker_closeout')
+          ${progressOwnerClause}
+        ORDER BY created_at DESC
+        LIMIT 200`,
+      ...ownerBindings,
+    ),
+    safeAll<AssignmentTokenRow>(
+      db,
+      `SELECT task_ref, COALESCE(SUM(total_tokens), 0) AS tokens_so_far
+         FROM token_usage_events
+        WHERE task_ref IS NOT NULL
+          AND provider = 'pylon-codex-own-capacity'
+          AND model = 'openagents/pylon-codex'
+          AND usage_truth = 'exact'
+          AND demand_kind = 'own_capacity'
+          AND demand_source = 'khala_coding_delegation'
+          ${tokenOwnerClause}
+        GROUP BY task_ref
+        ORDER BY MAX(observed_at) DESC
+        LIMIT 200`,
+      ...ownerBindings,
+    ),
+  ])
+
+  const latestProgressByAssignmentRef = new Map<string, AssignmentProgressRow>()
+  for (const row of progressRows) {
+    const body = parseJsonBoundaryRecord(row.event_body_json) ?? {}
+    const refs = [
+      row.assignment_ref,
+      boundedString(body.assignmentRef, 160),
+      boundedString(body.leaseRef, 160),
+    ].filter((ref): ref is string => ref !== null)
+    for (const ref of refs) {
+      if (!latestProgressByAssignmentRef.has(ref)) {
+        latestProgressByAssignmentRef.set(ref, row)
+      }
+    }
+  }
+  const tokensByAssignmentRef = new Map(
+    assignmentTokenRows.map(row => [
+      row.task_ref,
+      Math.max(0, Math.trunc(row.tokens_so_far ?? 0)),
+    ]),
+  )
+
   const nowMs = Date.parse(nowIso)
   const activeFreshCutoffMs = nowMs - 90_000
   const fleetAccounts = registrations.map(row => {
@@ -375,15 +509,17 @@ const buildFleetStatusSnapshot = async (
         jobKind: row.job_kind,
         state: row.state,
         elapsedMs: millisBetween(row.created_at, nowIso),
-        phase:
-          row.state === 'proof_submitted'
-            ? 'proof'
-            : row.state === 'running' || row.state === 'accepted'
-              ? 'running'
-              : 'queued',
-        tokensSoFar: null,
-        lastProgressEvent: null,
-        lastLog: null,
+        phase: phaseFromProgress(
+          latestProgressByAssignmentRef.get(row.assignment_ref),
+          row.state,
+        ),
+        tokensSoFar: tokensByAssignmentRef.get(row.assignment_ref) ?? null,
+        lastProgressEvent: progressEventLabel(
+          latestProgressByAssignmentRef.get(row.assignment_ref),
+        ),
+        lastLog: progressLogLine(
+          latestProgressByAssignmentRef.get(row.assignment_ref),
+        ),
         updatedAt: row.updated_at,
         leaseExpiresAt: row.lease_expires_at,
       })),
@@ -397,7 +533,12 @@ const buildFleetStatusSnapshot = async (
         leaseExpiresAt: row.lease_expires_at,
       })),
       activeAssignmentCount: activeAssignments.length,
-      sourceRefs: ['d1:pylon_api_registrations', 'd1:pylon_api_assignments'],
+      sourceRefs: [
+        'd1:pylon_api_registrations',
+        'd1:pylon_api_assignments',
+        'd1:pylon_api_events',
+        'd1:token_usage_events',
+      ],
     },
     accounts: {
       status: accountLedger,

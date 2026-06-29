@@ -104,6 +104,33 @@ const rowsForSql = (sql: string): ReadonlyArray<Record<string, unknown>> => {
     ]
   }
 
+  if (sql.includes('FROM pylon_api_events')) {
+    return [
+      {
+        assignment_ref: 'lease.public.issue_6427',
+        created_at: '2026-06-27T18:39:45.000Z',
+        event_body_json: JSON.stringify({
+          assignmentRef: 'assignment.public.issue_6427',
+          lastProgressEvent: 'verification.started',
+          message: 'Running focused verification.',
+          phase: 'testing',
+          status: 'running',
+        }),
+        event_kind: 'assignment_progress',
+        status: 'running',
+      },
+    ]
+  }
+
+  if (sql.includes('tokens_so_far')) {
+    return [
+      {
+        task_ref: 'assignment.public.issue_6427',
+        tokens_so_far: 321,
+      },
+    ]
+  }
+
   if (sql.includes('tokens_today')) {
     return [{ tokens_today: 1200 }]
   }
@@ -191,7 +218,7 @@ describe('operator fleet status route', () => {
     expect(first.headers.get('x-openagents-cache')).toBe('miss')
     expect(second.headers.get('x-openagents-cache')).toBe('hit')
     expect(log.length).toBeGreaterThan(0)
-    expect(log.length).toBe(9)
+    expect(log.length).toBe(11)
     expect(cachedBody).toEqual(body)
     expect(body).toMatchObject({
       authority: {
@@ -209,9 +236,10 @@ describe('operator fleet status route', () => {
           {
             assignmentRef: 'assignment.public.issue_6427',
             elapsedMs: 660000,
-            lastProgressEvent: null,
-            phase: 'running',
-            tokensSoFar: null,
+            lastLog: 'Running focused verification.',
+            lastProgressEvent: 'verification.started',
+            phase: 'testing',
+            tokensSoFar: 321,
           },
         ],
         activeSlots: 3,
@@ -269,6 +297,7 @@ describe('operator fleet status route', () => {
     expect(JSON.stringify(body)).not.toContain('/Users/')
     expect(JSON.stringify(body)).not.toContain('auth.json')
     expect(JSON.stringify(body)).not.toContain('Fan out bounded')
+    expect(JSON.stringify(body)).not.toContain('raw prompt')
   })
 
   test('accepts a registered agent token through the owner-scoped state path', async () => {
