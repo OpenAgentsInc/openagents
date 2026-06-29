@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs"
 import { readdir, readFile, stat } from "node:fs/promises"
 import { homedir } from "node:os"
 import { join, resolve } from "node:path"
+import { Context, Data, Effect, Layer } from "effect"
 
 export type PylonAccountProvider = "codex" | "claude_agent"
 export type PylonAccountSelectorKind = "registry_ref" | "direct_home"
@@ -29,6 +30,25 @@ export type ResolvedPylonAccountSelection = {
   accountRefHash: string
   home: string
 }
+
+export type PylonAccountRegistryErrorKind = "not_found" | "malformed" | "storage_failed"
+
+export class PylonAccountRegistryError extends Data.TaggedError("PylonAccountRegistryError")<{
+  readonly kind: PylonAccountRegistryErrorKind
+  readonly operation: "load_account_registry"
+  readonly path: string
+  readonly reason: string
+  readonly causeRef: string
+}> {}
+
+export class PylonAccountRegistryService extends Context.Service<
+  PylonAccountRegistryService,
+  {
+    readonly load: (
+      summary: { paths: { config: string } },
+    ) => Effect.Effect<PylonAccountRegistryEntry[], PylonAccountRegistryError>
+  }
+>()("PylonAccountRegistryService") {}
 
 export type PublicPylonAccountSelection = {
   provider: PylonAccountProvider
@@ -65,6 +85,22 @@ function nonNegativeNumberOrNull(value: unknown): number | null {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null
 }
 
+function storageErrorKind(cause: unknown): PylonAccountRegistryErrorKind {
+  if (cause && typeof cause === "object" && "code" in cause && (cause as { code?: unknown }).code === "ENOENT") {
+    return "not_found"
+  }
+  return "storage_failed"
+}
+
+function causeRefFor(value: unknown): string {
+  const label = value instanceof Error
+    ? `${value.name}:${value.message}`
+    : typeof value === "string"
+      ? value
+      : JSON.stringify(value)
+  return `cause.pylon.account_registry.${createHash("sha256").update(label ?? "unknown").digest("hex").slice(0, 16)}`
+}
+
 export function normalizeAccountHome(value: string): string {
   const trimmed = value.trim()
   if (trimmed === "~") return homedir()
@@ -76,11 +112,38 @@ export function hashPylonAccountRef(provider: PylonAccountProvider, value: strin
   return `account.pylon.${provider}.${createHash("sha256").update(`${provider}:${value}`).digest("hex").slice(0, 24)}`
 }
 
-export async function loadPylonAccountRegistry(
+export function loadPylonAccountRegistryEffect(
   summary: { paths: { config: string } },
-): Promise<PylonAccountRegistryEntry[]> {
-  try {
-    const raw = JSON.parse(await readFile(summary.paths.config, "utf8")) as { dev?: unknown }
+): Effect.Effect<PylonAccountRegistryEntry[], PylonAccountRegistryError> {
+  return Effect.gen(function* () {
+    const configPath = summary.paths.config
+    const config = yield* Effect.tryPromise({
+      try: () => readFile(configPath, "utf8"),
+      catch: (cause) =>
+        new PylonAccountRegistryError({
+          kind: storageErrorKind(cause),
+          operation: "load_account_registry",
+          path: configPath,
+          reason: "Pylon account registry config could not be read",
+          causeRef: causeRefFor(cause),
+        }),
+    })
+
+    let raw: { dev?: unknown }
+    try {
+      raw = JSON.parse(config) as { dev?: unknown }
+    } catch (cause) {
+      return yield* Effect.fail(
+        new PylonAccountRegistryError({
+          kind: "malformed",
+          operation: "load_account_registry",
+          path: configPath,
+          reason: "Pylon account registry config is not valid JSON",
+          causeRef: causeRefFor(cause),
+        }),
+      )
+    }
+
     const section = raw.dev
     if (section === null || typeof section !== "object") return []
     const accounts = (section as { accounts?: unknown }).accounts
@@ -105,9 +168,21 @@ export async function loadPylonAccountRegistry(
       })
     }
     return entries
-  } catch {
-    return []
-  }
+  })
+}
+
+export const PylonAccountRegistryLive = Layer.succeed(PylonAccountRegistryService, {
+  load: loadPylonAccountRegistryEffect,
+})
+
+export async function loadPylonAccountRegistry(
+  summary: { paths: { config: string } },
+): Promise<PylonAccountRegistryEntry[]> {
+  return Effect.runPromise(
+    loadPylonAccountRegistryEffect(summary).pipe(
+      Effect.catch(() => Effect.succeed([])),
+    ),
+  )
 }
 
 async function assertAccountHomePresent(home: string): Promise<void> {
