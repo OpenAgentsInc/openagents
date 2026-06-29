@@ -3119,13 +3119,8 @@ export const handleChatCompletions = (
     const traceEmitOptIn = resolveKhalaChatTraceOptIn({ rawBody, request })
 
     const routeDemandClass = routeDemandClassFromAttribution(requestAttribution)
-    const internalStressRouteAdmissionRejected =
-      routeDemandClass === 'internal_stress' &&
-      deps.routeAdmission !== undefined &&
-      deps.routeAdmission.reservedExternalHeadroomAvailable === false
     const preemptionAbortController =
       routeDemandClass === 'internal_stress' &&
-      !internalStressRouteAdmissionRejected &&
       (deps.internalStressPreemption !== undefined ||
         deps.internalStressCoordinator !== undefined)
         ? new AbortController()
