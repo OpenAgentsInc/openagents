@@ -1,4 +1,5 @@
 import { describe, expect, mock, test } from "bun:test"
+import { Deferred, Effect, Fiber } from "effect"
 import { existsSync } from "node:fs"
 import { lstat, mkdir, mkdtemp, readdir, readFile, readlink, rm, writeFile } from "node:fs/promises"
 import { join, relative } from "node:path"
@@ -22,9 +23,19 @@ import type {
 import { createBootstrapSummary, parseBootstrapArgs } from "../src/bootstrap"
 import { ensurePylonLocalState, assertPublicProjectionSafe } from "../src/state"
 import {
+  hashPylonAccountRef,
+  type ResolvedPylonAccountSelection,
+} from "../src/account-registry"
+import { loadCodexAccountHealthRecord } from "../src/codex-account-health-ledger"
+import { loadQuotaRecord } from "../src/account-quota-ledger"
+import {
   WorkspaceCheckoutError,
   workspaceLeaseRecordFor,
 } from "../src/workspace-materializer"
+import {
+  PylonRuntimeRetrySchedules,
+  scopedTimeout,
+} from "../src/effect-runtime-patterns"
 
 const now = new Date("2026-06-11T22:00:00.000Z")
 
@@ -195,7 +206,7 @@ describe("codex agent task recognition", () => {
           codexAgentProbe: readyProbe,
         })
         expect(record?.status).toBe("rejected")
-        expect(record?.blockerRefs).toEqual([blocker])
+        expect(record?.blockerRefs).toContain(blocker)
         assertPublicProjectionSafe(record)
       }
 
@@ -207,7 +218,58 @@ describe("codex agent task recognition", () => {
         codexAgentProbe: readyProbe,
       })
       expect(record?.status).toBe("rejected")
-      expect(record?.blockerRefs).toEqual(["blocker.assignment.codex_agent_execution_refused"])
+      expect(record?.blockerRefs).toContain("blocker.assignment.codex_agent_execution_refused")
+      expect(record?.blockerRefs).toContain("blocker.assignment.codex_agent_execution_other")
+    })
+  })
+
+  test("surfaces revoked and usage-limited Codex account refusals and records account health", async () => {
+    await withState(async (state) => {
+      const accountRefHash = hashPylonAccountRef("codex", "codex-2")
+      const account: ResolvedPylonAccountSelection = {
+        provider: "codex",
+        selector: "registry_ref",
+        accountRef: "codex-2",
+        accountRefHash,
+        home: join(state.paths.home, "accounts", "codex", "codex-2"),
+      }
+      const revokedRunner: CodexAgentRunner = async () => {
+        throw new Error("Your access token could not be refreshed because your refresh token was revoked. Please log out and sign in again.")
+      }
+
+      const revoked = await executeCodexAgentAssignment(state, lease, now, {
+        account,
+        codexAgentRunner: revokedRunner,
+        codexAgentProbe: readyProbe,
+      })
+
+      expect(revoked?.status).toBe("rejected")
+      expect(revoked?.blockerRefs).toContain("blocker.assignment.codex_agent_execution_credentials_revoked")
+      expect(revoked?.blockerRefs).toContain("blocker.assignment.codex_account_credentials_revoked_needs_owner_reauth")
+      expect(revoked?.resultRefs).toContain("result.public.pylon.codex_agent_task.execution_refused.credentials_revoked")
+      expect((await loadCodexAccountHealthRecord(state, accountRefHash))?.reason).toBe("credentials_revoked")
+      assertPublicProjectionSafe(revoked)
+
+      const limitedAccountRefHash = hashPylonAccountRef("codex", "codex-3")
+      const limitedAccount: ResolvedPylonAccountSelection = {
+        ...account,
+        accountRef: "codex-3",
+        accountRefHash: limitedAccountRefHash,
+        home: join(state.paths.home, "accounts", "codex", "codex-3"),
+      }
+      const limitedRunner: CodexAgentRunner = async () => {
+        throw new Error("You have hit your usage limit. Please try again at 2026-06-28T22:00:00Z.")
+      }
+      const limited = await executeCodexAgentAssignment(state, lease, now, {
+        account: limitedAccount,
+        codexAgentRunner: limitedRunner,
+        codexAgentProbe: readyProbe,
+      })
+
+      expect(limited?.blockerRefs).toContain("blocker.assignment.codex_agent_execution_usage_limited")
+      expect((await loadCodexAccountHealthRecord(state, limitedAccountRefHash))?.reason).toBe("usage_limited")
+      expect((await loadQuotaRecord(state, limitedAccountRefHash))?.retryAtIso).toBe("2026-06-28T22:00:00.000Z")
+      assertPublicProjectionSafe(limited)
     })
   })
 
@@ -240,6 +302,53 @@ describe("codex agent task recognition", () => {
       )
       assertPublicProjectionSafe(record)
     })
+  })
+
+  test("scoped deadline timers are released when the owning fiber is interrupted", async () => {
+    const events: string[] = []
+
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const acquired = yield* Deferred.make<void>()
+          const fiber = yield* Effect.forkScoped(
+            Effect.scoped(
+              Effect.gen(function* () {
+                yield* scopedTimeout({
+                  delayMs: 10_000,
+                  onTimeout: () => events.push("timeout-fired"),
+                  setTimeout: (() => {
+                    events.push("timeout-scheduled")
+                    return 42 as unknown as ReturnType<typeof setTimeout>
+                  }) as typeof setTimeout,
+                  clearTimeout: ((timer) => {
+                    events.push(`timeout-cleared:${String(timer)}`)
+                  }) as typeof clearTimeout,
+                })
+                yield* Deferred.succeed(acquired, undefined)
+                yield* Effect.never
+              }),
+            ),
+          )
+
+          yield* Deferred.await(acquired)
+          yield* Fiber.interrupt(fiber)
+        }),
+      ),
+    )
+
+    expect(events).toEqual(["timeout-scheduled", "timeout-cleared:42"])
+  })
+
+  test("Pylon retry schedules expose named Effect schedules for shared runtime paths", () => {
+    expect(Object.keys(PylonRuntimeRetrySchedules).sort()).toEqual([
+      "d1TransientFailure",
+      "durableObjectCall",
+      "externalHttpProviderCall",
+      "gitGithubOperation",
+      "publicProjectionSync",
+      "walletAdjacentCall",
+    ])
   })
 
   test("redaction: unsafe-shaped digests are rejected before any POST", async () => {

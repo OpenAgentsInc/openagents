@@ -47,7 +47,8 @@ the batch; `MC_BACKSTOP_SMOKE=1` runs that preflight standalone.
 Problem source: the built-in **public-domain fixture set** (classic toy
 functions — sum, reverse, palindrome, factorial, gcd, FizzBuzz, …). These are
 **NOT MirrorCode tasks**, so there is no benchmark contamination, and the load is
-tagged `demand_kind=internal` / `demand_source=gym_backstop`. The read-only
+tagged `demand_kind=internal` / `demand_source=gym_mirrorcode` with the standing
+#6923 task/workflow/ledger refs. The read-only
 MirrorCode clone is detected and surfaced (`mirrorcodeClonePresent`,
 `mirrorcodeSTargets`) in the result when present, but its tasks are **not** run
 here.

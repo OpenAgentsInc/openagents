@@ -19,6 +19,9 @@ type SiteRuntimeRow = Readonly<{
   site_status: string
   slug: string
   static_assets_manifest_json: string | null
+  team_id: string | null
+  created_at: string
+  updated_at: string
   version_id: string | null
   visibility: string
   worker_module_r2_key: string | null
@@ -41,6 +44,9 @@ class SiteRuntimeDbStore {
       site_id: 'site_project_otec',
       site_status: 'approved',
       slug: 'otec',
+      team_id: 'team_otec',
+      created_at: '2026-06-01T00:00:00.000Z',
+      updated_at: '2026-06-01T00:00:00.000Z',
       static_assets_manifest_json: JSON.stringify({
         assets: {
           'index.html': {
@@ -56,37 +62,48 @@ class SiteRuntimeDbStore {
       worker_module_r2_key: null,
     },
     {
-    access_mode: 'public',
-    active_deployment_id: 'site_deployment_otec',
-    build_status: 'saved',
-    deployment_id: 'site_deployment_otec',
-    deployment_status: 'active',
-    dispatch_namespace: null,
-    external_deployment_id: null,
-    d1_binding_name: null,
-    r2_binding_name: null,
-    runtime_kind: 'omega_static_r2',
-    runtime_script_name: null,
-    site_id: 'site_project_otec',
-    site_status: 'approved',
-    slug: 'otec',
-    static_assets_manifest_json: JSON.stringify({
-      assets: {
-        'index.html': {
-          cacheControl: 'public, max-age=120',
-          contentType: 'text/html; charset=utf-8',
-          r2Key: 'sites/otec/deployments/site_deployment_otec/index.html',
+      access_mode: 'public',
+      active_deployment_id: 'site_deployment_otec',
+      build_status: 'saved',
+      deployment_id: 'site_deployment_otec',
+      deployment_status: 'active',
+      dispatch_namespace: null,
+      external_deployment_id: null,
+      d1_binding_name: null,
+      r2_binding_name: null,
+      runtime_kind: 'omega_static_r2',
+      runtime_script_name: null,
+      site_id: 'site_project_otec',
+      site_status: 'approved',
+      slug: 'otec',
+      team_id: 'team_otec',
+      created_at: '2026-06-02T00:00:00.000Z',
+      updated_at: '2026-06-02T00:00:00.000Z',
+      static_assets_manifest_json: JSON.stringify({
+        assets: {
+          'about/index.html': {
+            cacheControl: 'public, max-age=120',
+            contentType: 'text/html; charset=utf-8',
+            r2Key: 'sites/otec/deployments/site_deployment_otec/about.html',
+          },
+          'index.html': {
+            cacheControl: 'public, max-age=120',
+            contentType: 'text/html; charset=utf-8',
+            r2Key: 'sites/otec/deployments/site_deployment_otec/index.html',
+          },
         },
-      },
-    }),
-    version_id: 'site_version_otec',
-    visibility: 'public',
-    worker_module_r2_key: null,
+      }),
+      version_id: 'site_version_otec',
+      visibility: 'public',
+      worker_module_r2_key: null,
     },
   ]
 
   get row(): SiteRuntimeRow | null {
-    return this.rows.find(row => row.deployment_id === row.active_deployment_id) ?? null
+    return (
+      this.rows.find(row => row.deployment_id === row.active_deployment_id) ??
+      null
+    )
   }
 
   set row(value: SiteRuntimeRow | null) {
@@ -113,15 +130,22 @@ class SiteRuntimeStatement implements D1PreparedStatement {
   first<T = unknown>(): Promise<T | null> {
     if (this.query.includes('FROM site_projects')) {
       const isVersionQuery = this.query.includes('site_versions.id = ?')
-      const versionId = isVersionQuery ? String(this.values[0]) : null
-      const slug = String(this.values[isVersionQuery ? 1 : 0])
+      const isTeamQuery = this.query.includes('site_projects.team_id = ?')
       const row = isVersionQuery
         ? this.store.rows.find(
-            row => row.slug === slug && row.version_id === versionId,
+            row =>
+              row.slug === String(this.values[1]) &&
+              row.version_id === String(this.values[0]),
           )
-        : this.store.row?.slug === slug
-          ? this.store.row
-          : undefined
+        : isTeamQuery
+          ? this.store.rows.find(
+              row =>
+                row.team_id === String(this.values[0]) &&
+                row.deployment_id === row.active_deployment_id,
+            )
+          : this.store.row?.slug === String(this.values[0])
+            ? this.store.row
+            : undefined
 
       return Promise.resolve((row as T | undefined) ?? null)
     }
@@ -162,6 +186,13 @@ class MemoryR2Bucket {
       'sites/otec/deployments/site_deployment_otec/index.html',
       {
         body: '<!doctype html><title>OTEC</title>',
+        contentType: 'text/html; charset=utf-8',
+      },
+    ],
+    [
+      'sites/otec/deployments/site_deployment_otec/about.html',
+      {
+        body: '<!doctype html><title>About OTEC</title>',
         contentType: 'text/html; charset=utf-8',
       },
     ],
@@ -209,13 +240,24 @@ class MemoryDispatchNamespace {
 }
 
 const routes = makeSiteRuntimeRoutes({ sitesHost: 'sites.openagents.com' })
+const customHostnameRoutes = makeSiteRuntimeRoutes({
+  reservedHosts: new Set(['openagents.com']),
+  resolveCustomHostname: hostname =>
+    Effect.succeed(
+      hostname === 'brand.example.com'
+        ? { hostname, status: 'active', teamId: 'team_otec' }
+        : null,
+    ),
+  sitesHost: 'sites.openagents.com',
+})
 
 const runRoute = (
   store: SiteRuntimeDbStore,
   request: Request,
   dispatch = new MemoryDispatchNamespace(),
+  routeSet = routes,
 ): Promise<Response> => {
-  const route = routes.routeSiteRuntimeRequest(request, {
+  const route = routeSet.routeSiteRuntimeRequest(request, {
     ARTIFACTS: new MemoryR2Bucket() as unknown as R2Bucket,
     OPENAGENTS_DB: siteRuntimeDb(store),
     SITES_DISPATCH: dispatch as unknown as DispatchNamespace,
@@ -272,6 +314,34 @@ describe('site runtime routes', () => {
   test('does not match non-sites hosts', () => {
     const route = routes.routeSiteRuntimeRequest(
       new Request('https://openagents.com/otec'),
+      {
+        ARTIFACTS: new MemoryR2Bucket() as unknown as R2Bucket,
+        OPENAGENTS_DB: siteRuntimeDb(new SiteRuntimeDbStore()),
+        SITES_DISPATCH:
+          new MemoryDispatchNamespace() as unknown as DispatchNamespace,
+      },
+    )
+
+    expect(route).toBeUndefined()
+  })
+
+  test('serves an active tenant custom hostname without a slug prefix', async () => {
+    const response = await runRoute(
+      new SiteRuntimeDbStore(),
+      new Request('https://brand.example.com/about'),
+      new MemoryDispatchNamespace(),
+      customHostnameRoutes,
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.text()).resolves.toContain(
+      '<title>About OTEC</title>',
+    )
+  })
+
+  test('does not intercept reserved first-party hosts for custom hostname lookup', () => {
+    const route = customHostnameRoutes.routeSiteRuntimeRequest(
+      new Request('https://openagents.com/about'),
       {
         ARTIFACTS: new MemoryR2Bucket() as unknown as R2Bucket,
         OPENAGENTS_DB: siteRuntimeDb(new SiteRuntimeDbStore()),

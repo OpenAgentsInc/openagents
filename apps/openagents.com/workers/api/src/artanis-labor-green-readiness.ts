@@ -82,6 +82,12 @@ export type ArtanisLaborGreenReadinessProjection = Readonly<{
   // The blocker tokens this surface tracks, named so the operator recording the
   // transition can cite the exact refs being cleared.
   blockerRefs: ReadonlyArray<string>
+  // The blocker tokens whose mechanical receipt predicates are satisfied by the
+  // live feed at read time.
+  clearedBlockerRefs: ReadonlyArray<string>
+  // The blocker tokens whose mechanical receipt predicates remain unsatisfied
+  // by the live feed at read time.
+  unclearedBlockerRefs: ReadonlyArray<string>
   // The number of placed receipts required before the receipts blocker clears.
   unattendedRequestTarget: number
   // The placed-request count over the projected feed window.
@@ -145,6 +151,18 @@ export const projectArtanisLaborGreenReadinessProjection = (
     placedRequestCount >= ARTANIS_LABOR_UNATTENDED_REQUEST_TARGET
   const greenGateMet =
     liveEnablementProven && unattendedRequestReceiptsProven
+  const clearedBlockerRefs = [
+    ...(liveEnablementProven ? [ARTANIS_LABOR_LIVE_ENABLEMENT_BLOCKER] : []),
+    ...(unattendedRequestReceiptsProven
+      ? [ARTANIS_LABOR_UNATTENDED_RECEIPTS_BLOCKER]
+      : []),
+  ]
+  const unclearedBlockerRefs = [
+    ...(liveEnablementProven ? [] : [ARTANIS_LABOR_LIVE_ENABLEMENT_BLOCKER]),
+    ...(unattendedRequestReceiptsProven
+      ? []
+      : [ARTANIS_LABOR_UNATTENDED_RECEIPTS_BLOCKER]),
+  ]
 
   return {
     authorityBoundary: AUTHORITY_BOUNDARY,
@@ -152,6 +170,7 @@ export const projectArtanisLaborGreenReadinessProjection = (
       ARTANIS_LABOR_LIVE_ENABLEMENT_BLOCKER,
       ARTANIS_LABOR_UNATTENDED_RECEIPTS_BLOCKER,
     ],
+    clearedBlockerRefs,
     byTerminalState: feed.summary.byTerminalState,
     generatedAt: nowIso,
     greenGateMet,
@@ -170,6 +189,7 @@ export const projectArtanisLaborGreenReadinessProjection = (
     staleness: liveAtReadStaleness([
       'artanis_labor_unattended_request_receipt_stored',
     ]),
+    unclearedBlockerRefs,
     unattendedRequestReceiptsProven,
     unattendedRequestTarget: ARTANIS_LABOR_UNATTENDED_REQUEST_TARGET,
   }

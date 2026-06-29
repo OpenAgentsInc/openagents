@@ -24,6 +24,7 @@ export class ProbeGepaStandingOptimizationLoopInput extends S.Class<ProbeGepaSta
 )({
   candidateArtifactRefs: S.Array(S.String),
   candidateManifestRefs: S.Array(S.String),
+  dspyRlmAuditRefs: S.Array(S.String),
   effectAuthorityGateRefs: S.Array(S.String),
   evalResultRefs: S.Array(S.String),
   failureFamilyRefs: S.Array(S.String),
@@ -46,7 +47,9 @@ export class ProbeGepaStandingOptimizationLoopProjection extends S.Class<ProbeGe
   candidateArtifactsAdmissibleToAuthority: S.Boolean,
   candidateManifestRefs: S.Array(S.String),
   decision: ProbeGepaStandingOptimizationLoopDecision,
+  dspyRlmAuditRefs: S.Array(S.String),
   effectAuthorityGateRefs: S.Array(S.String),
+  evalResultRefs: S.Array(S.String),
   evidenceRefs: S.Array(S.String),
   failureFamilyRefs: S.Array(S.String),
   issueRefs: S.Array(S.String),
@@ -103,6 +106,7 @@ const normalizeInput = (
     ...input,
     candidateArtifactRefs: uniqueRefs(input.candidateArtifactRefs),
     candidateManifestRefs: uniqueRefs(input.candidateManifestRefs),
+    dspyRlmAuditRefs: uniqueRefs(input.dspyRlmAuditRefs),
     effectAuthorityGateRefs: uniqueRefs(input.effectAuthorityGateRefs),
     evalResultRefs: uniqueRefs(input.evalResultRefs),
     failureFamilyRefs: uniqueRefs(input.failureFamilyRefs),
@@ -117,8 +121,6 @@ const normalizeInput = (
 const blockerRefsFor = (
   input: ProbeGepaStandingOptimizationLoopInput,
 ): ReadonlyArray<string> => {
-  const hasTraceOrEvalEvidence =
-    input.sourceTraceRefs.length > 0 || input.evalResultRefs.length > 0
   const hasLowQualitySelection =
     input.lowQualityTurnRefs.length > 0 || input.failureFamilyRefs.length > 0
   const candidateRequested = input.requestedAction === 'emit_candidates'
@@ -127,8 +129,11 @@ const blockerRefsFor = (
     input.candidateManifestRefs.length > 0
 
   return uniqueRefs([
-    ...(!hasTraceOrEvalEvidence
-      ? ['blocker.probe_gepa_standing_loop.trace_or_eval_refs_missing']
+    ...(input.sourceTraceRefs.length === 0
+      ? ['blocker.probe_gepa_standing_loop.source_trace_refs_missing']
+      : []),
+    ...(input.evalResultRefs.length === 0
+      ? ['blocker.probe_gepa_standing_loop.eval_result_refs_missing']
       : []),
     ...(!hasLowQualitySelection
       ? ['blocker.probe_gepa_standing_loop.low_quality_selection_missing']
@@ -138,6 +143,9 @@ const blockerRefsFor = (
       : []),
     ...(candidateRequested && input.mutaliskLaneRefs.length === 0
       ? ['blocker.probe_gepa_standing_loop.mutalisk_lane_missing']
+      : []),
+    ...(candidateRequested && input.dspyRlmAuditRefs.length === 0
+      ? ['blocker.probe_gepa_standing_loop.dspy_rlm_audit_missing']
       : []),
     ...(candidateRequested && input.optimizerRunRefs.length === 0
       ? ['blocker.probe_gepa_standing_loop.optimizer_run_refs_missing']
@@ -204,6 +212,10 @@ export const projectProbeGepaStandingOptimizationLoop = (
     normalized.candidateManifestRefs,
   )
   assertSafeRefs(
+    'Probe GEPA standing loop DSPy/RLM audit refs',
+    normalized.dspyRlmAuditRefs,
+  )
+  assertSafeRefs(
     'Probe GEPA standing loop Effect authority gate refs',
     normalized.effectAuthorityGateRefs,
   )
@@ -229,6 +241,7 @@ export const projectProbeGepaStandingOptimizationLoop = (
   const evidenceRefs = uniqueRefs([
     ...normalized.sourceTraceRefs,
     ...normalized.evalResultRefs,
+    ...normalized.dspyRlmAuditRefs,
     ...normalized.optimizerRunRefs,
   ])
   const decision: ProbeGepaStandingOptimizationLoopDecision =
@@ -244,7 +257,9 @@ export const projectProbeGepaStandingOptimizationLoop = (
     candidateArtifactsAdmissibleToAuthority,
     candidateManifestRefs: normalized.candidateManifestRefs,
     decision,
+    dspyRlmAuditRefs: normalized.dspyRlmAuditRefs,
     effectAuthorityGateRefs: normalized.effectAuthorityGateRefs,
+    evalResultRefs: normalized.evalResultRefs,
     evidenceRefs,
     failureFamilyRefs: normalized.failureFamilyRefs,
     issueRefs: normalized.issueRefs,

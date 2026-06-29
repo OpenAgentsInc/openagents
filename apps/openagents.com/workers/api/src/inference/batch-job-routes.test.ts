@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import {
   type BatchJobRoutesDeps,
   handleBatchJobReceiptRead,
+  handleBatchJobResultsRead,
   handleBatchJobsSubmit,
   handleBatchJobStatusRead,
 } from './batch-job-routes'
@@ -379,5 +380,107 @@ describe('handleBatchJobStatusRead', () => {
     expect(body.enqueuedAt).toBe('2026-06-20T12:00:00.000Z')
     expect(body.startedAt).toBe('2026-06-20T12:00:45.000Z')
     expect(body.batchWaitMs).toBe(45000)
+  })
+})
+
+describe('handleBatchJobResultsRead', () => {
+  const makeReadDb = (
+    jobStatus: string | null,
+    accountRef = 'agent:123',
+    resultsR2Key: string | null = 'batch_123/results.jsonl',
+  ): D1Database => {
+    return {
+      prepare: (sql: string) => ({
+        bind: () => ({
+          first: async () => {
+            if (sql.includes('inference_batch_jobs')) {
+              if (jobStatus === null) return null
+              return {
+                job_id: 'batch_123',
+                account_ref: accountRef,
+                status: jobStatus,
+                charge_receipt_ref: 'receipt.inference.batch_job_charge.batch_123',
+                dataset_size: 1,
+                processed_items: 1,
+                failed_items: 0,
+                results_r2_key: resultsR2Key,
+                created_at: '2026-06-20T12:00:00.000Z',
+                updated_at: '2026-06-20T12:05:00.000Z',
+                enqueued_at: '2026-06-20T12:00:00.000Z',
+                started_at: '2026-06-20T12:00:45.000Z',
+              }
+            }
+            return null
+          },
+        }),
+      }),
+    } as unknown as D1Database
+  }
+
+  const makeResultsRequest = (jobId: string): Request =>
+    new Request(`https://openagents.com/v1/inference/batches/${jobId}/results`, {
+      method: 'GET',
+    })
+
+  const resultsStore = {
+    readResults: (key: string) =>
+      Effect.succeed(
+        key === 'batch_123/results.jsonl'
+          ? '{"index":0,"ok":true,"content":"done"}'
+          : null,
+      ),
+    writeResults: () => Effect.succeed('unused'),
+  }
+
+  it('returns 404 when disabled', async () => {
+    const response = await run(
+      handleBatchJobResultsRead(
+        makeResultsRequest('batch_123'),
+        baseDeps({ enabled: false, resultsStore }),
+      ),
+    )
+    expect(response.status).toBe(404)
+  })
+
+  it('returns 401 when unauthenticated', async () => {
+    const response = await run(
+      handleBatchJobResultsRead(
+        makeResultsRequest('batch_123'),
+        baseDeps({ authenticate: async () => undefined, resultsStore }),
+      ),
+    )
+    expect(response.status).toBe(401)
+  })
+
+  it('returns 404 before completion or for another account', async () => {
+    const pending = await run(
+      handleBatchJobResultsRead(
+        makeResultsRequest('batch_123'),
+        baseDeps({ db: makeReadDb('pending'), resultsStore }),
+      ),
+    )
+    expect(pending.status).toBe(404)
+
+    const otherAccount = await run(
+      handleBatchJobResultsRead(
+        makeResultsRequest('batch_123'),
+        baseDeps({ db: makeReadDb('completed', 'agent:other'), resultsStore }),
+      ),
+    )
+    expect(otherAccount.status).toBe(404)
+  })
+
+  it('returns completed job JSONL results for the owner', async () => {
+    const response = await run(
+      handleBatchJobResultsRead(
+        makeResultsRequest('batch_123'),
+        baseDeps({ db: makeReadDb('completed'), resultsStore }),
+      ),
+    )
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toContain(
+      'application/x-ndjson',
+    )
+    expect(await response.text()).toBe('{"index":0,"ok":true,"content":"done"}')
   })
 })

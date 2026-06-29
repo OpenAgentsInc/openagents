@@ -74,6 +74,7 @@
     "@openagentsinc/agent-runtime-schema": "workspace:*",
     "@openagentsinc/autopilot-control-protocol": "workspace:*",
     "@openagentsinc/blueprint-contracts": "workspace:*",
+    "@openagentsinc/effect-boundary": "workspace:*",
     "@openagentsinc/forge-protocol": "workspace:*",
     "@openagentsinc/mcp-contract": "workspace:*",
     "@openagentsinc/nip90": "workspace:*",

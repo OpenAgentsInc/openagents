@@ -102,6 +102,7 @@ const livePylonScene = (
       color: 0x4ade80,
       online: true,
       pulseSpeed: 0.4,
+      growth: pylonGrowthTier(2_100),
       products: ["labor"],
     },
   ],
@@ -525,6 +526,41 @@ describe("Verse packaged launch checklist (#5827)", () => {
     expect(verseSceneDiagnostics().map(entry => entry.event)).toContain(
       "chat-world-scene.noop",
     )
+  })
+
+  test("per-Pylon settled-sats growth changes refresh the live Verse scene", () => {
+    clearVerseEnv()
+    const [initial] = initialRuntimeState()
+    const [withScene] = update(
+      initial,
+      GotChatWorldScene({ scene: livePylonScene() }),
+    )
+    const grown = pylonGrowthTier(100_000)
+    const [afterGrowth] = update(
+      withScene,
+      GotChatWorldScene({
+        scene: livePylonScene({
+          growth: grown,
+          nodes: [
+            {
+              ...livePylonScene().nodes[0]!,
+              growth: grown,
+            },
+          ],
+        }),
+      }),
+    )
+
+    expect(afterGrowth).not.toBe(withScene)
+    expect(
+      verseSceneVisualization(afterGrowth).nodes?.find(
+        node => node.id === "pylon.alpha",
+      ),
+    ).toMatchObject({
+      detail: "working - tier 3 - 100000 sats - 12 facets",
+      role: "rung",
+      status: "active",
+    })
   })
 
   test("idle payment-particle ticks expire stale beams without a new payment", () => {

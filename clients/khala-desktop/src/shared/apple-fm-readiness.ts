@@ -81,6 +81,64 @@ export type KhalaAppleFmReadiness = {
   readonly contentRedacted: true
 }
 
+export type KhalaAppleFmInstallSmokeInput = {
+  readonly readiness: KhalaAppleFmReadiness
+  readonly installer: {
+    readonly signed: boolean
+    readonly notarized: boolean
+    readonly artifactRef?: string | null
+  }
+  readonly helper: {
+    readonly packaged: boolean
+    readonly source: "packaged-resource" | "env" | "source-wrapper" | "source-build" | "unknown"
+    readonly supervised: boolean
+    readonly restartObserved: boolean
+  }
+  readonly session: {
+    readonly completed: boolean
+    readonly adapter: "apple_fm" | string
+    readonly lane: "local" | string
+    readonly executionMode: "local_bounded" | string
+    readonly sandboxMode: "read-only" | string
+    readonly networkAccessEnabled: boolean
+    readonly cloudRunner: string | null
+    readonly resourceUsageReceiptRef: string | null
+    readonly toolSuccess: boolean
+  }
+  readonly redaction: {
+    readonly promptLeaked: boolean
+    readonly fileContentLeaked: boolean
+    readonly callbackTokenLeaked: boolean
+    readonly callbackUrlLeaked: boolean
+    readonly bearerLeaked: boolean
+    readonly localPathLeaked: boolean
+  }
+  readonly observedAt?: string
+}
+
+export type KhalaAppleFmInstallSmokeEvidence = {
+  readonly kind: "khala_desktop_apple_fm_from_install_smoke"
+  readonly promiseId: "autopilot.local_apple_fm_tool_chat.v1"
+  readonly ok: boolean
+  readonly state: "passed" | "blocked"
+  readonly artifactRef: string | null
+  readonly observedAt: string
+  readonly checked: {
+    readonly signedInstaller: boolean
+    readonly notarizedInstaller: boolean
+    readonly packagedHelper: boolean
+    readonly supervisedHelper: boolean
+    readonly helperRestartObserved: boolean
+    readonly pylonReady: boolean
+    readonly boundedLocalSession: boolean
+    readonly toolSuccess: boolean
+    readonly noHostedCompute: boolean
+    readonly publicSafeRedaction: boolean
+  }
+  readonly blockerRefs: ReadonlyArray<string>
+  readonly contentRedacted: true
+}
+
 export type BuildKhalaAppleFmReadinessInput = {
   readonly platform: AppleFmRuntimePlatform
   readonly helperFound: boolean
@@ -98,6 +156,12 @@ const stringArray = (value: unknown): ReadonlyArray<string> =>
 
 const optionalString = (value: unknown): string | null =>
   typeof value === "string" && value.trim() !== "" ? value.trim() : null
+
+const optionalPublicRef = (value: unknown): string | null => {
+  const ref = optionalString(value)
+  if (ref === null) return null
+  return /^[a-z][a-z0-9_.:-]+$/i.test(ref) ? ref : null
+}
 
 const requiredString = (value: unknown, fallback: string): string =>
   optionalString(value) ?? fallback
@@ -145,11 +209,19 @@ export function buildKhalaAppleFmReadiness(
   input: BuildKhalaAppleFmReadinessInput,
 ): KhalaAppleFmReadiness {
   const supported = appleFmSupportedOn(input.platform)
+  const pylonStatusIdentityOk =
+    input.pylonStatus !== null &&
+    input.pylonStatus !== undefined &&
+    optionalString(input.pylonStatus.backendKind) === APPLE_FM_BACKEND_KIND &&
+    optionalString(input.pylonStatus.profileId) === APPLE_FM_LOCAL_PROFILE_ID &&
+    optionalString(input.pylonStatus.model) === APPLE_FM_MODEL_ID &&
+    optionalString(input.pylonStatus.capability) === APPLE_FM_CAPABILITY
   const pylon =
     input.pylonStatus === null || input.pylonStatus === undefined
       ? null
       : sanitizePylonAppleFmStatus(input.pylonStatus)
   const pylonReady =
+    pylonStatusIdentityOk &&
     pylon !== null &&
     pylon.available &&
     pylon.status === "ready" &&
@@ -186,7 +258,9 @@ export function buildKhalaAppleFmReadiness(
   }
 
   if (supported && helperUsable && !pylonReady) {
-    if (input.pylonControlConfigured === true) {
+    if (input.pylonControlConfigured === true && pylon !== null && !pylonStatusIdentityOk) {
+      blockers.add("blocker.khala_desktop.apple_fm.pylon_status_malformed")
+    } else if (input.pylonControlConfigured === true) {
       blockers.add("blocker.khala_desktop.apple_fm.pylon_not_ready")
     } else {
       blockers.add("blocker.khala_desktop.apple_fm.pylon_control_unconfigured")
@@ -214,6 +288,76 @@ export function buildKhalaAppleFmReadiness(
     pylon,
     blockerRefs: [...blockers].sort(),
     observedAt: input.observedAt ?? new Date().toISOString(),
+    contentRedacted: true,
+  }
+}
+
+export function buildKhalaAppleFmInstallSmokeEvidence(
+  input: KhalaAppleFmInstallSmokeInput,
+): KhalaAppleFmInstallSmokeEvidence {
+  const redactionValues = Object.values(input.redaction)
+  const checked = {
+    signedInstaller: input.installer.signed,
+    notarizedInstaller: input.installer.notarized,
+    packagedHelper: input.helper.packaged && input.helper.source === "packaged-resource",
+    supervisedHelper:
+      input.helper.supervised && input.readiness.pylon?.supervisor?.supervised === true,
+    helperRestartObserved: input.helper.restartObserved,
+    pylonReady: input.readiness.available && input.readiness.state === "ready",
+    boundedLocalSession:
+      input.session.completed &&
+      input.session.adapter === "apple_fm" &&
+      input.session.lane === "local" &&
+      input.session.executionMode === "local_bounded" &&
+      input.session.sandboxMode === "read-only" &&
+      input.session.networkAccessEnabled === false,
+    toolSuccess: input.session.toolSuccess,
+    noHostedCompute:
+      input.session.cloudRunner === null && input.session.resourceUsageReceiptRef === null,
+    publicSafeRedaction: redactionValues.every(value => value === false),
+  } as const
+  const blockers = new Set<string>()
+
+  if (!checked.signedInstaller) {
+    blockers.add("blocker.product_promises.local_apple_fm_signed_installer_recut_missing")
+  }
+  if (!checked.notarizedInstaller) {
+    blockers.add("blocker.product_promises.local_apple_fm_notarized_installer_missing")
+  }
+  if (!checked.packagedHelper) {
+    blockers.add("blocker.product_promises.local_apple_fm_packaged_helper_missing")
+  }
+  if (!checked.supervisedHelper) {
+    blockers.add("blocker.product_promises.local_apple_fm_helper_supervision_missing")
+  }
+  if (!checked.helperRestartObserved) {
+    blockers.add("blocker.product_promises.local_apple_fm_helper_restart_smoke_missing")
+  }
+  if (!checked.pylonReady) {
+    blockers.add("blocker.product_promises.local_apple_fm_pylon_ready_smoke_missing")
+  }
+  if (!checked.boundedLocalSession || !checked.toolSuccess) {
+    blockers.add("blocker.product_promises.local_apple_fm_from_install_session_smoke_missing")
+  }
+  if (!checked.noHostedCompute) {
+    blockers.add("blocker.product_promises.local_apple_fm_no_hosted_compute_proof_missing")
+  }
+  if (!checked.publicSafeRedaction) {
+    blockers.add("blocker.product_promises.local_apple_fm_redaction_proof_missing")
+  }
+  for (const blockerRef of input.readiness.blockerRefs) blockers.add(blockerRef)
+
+  const blockerRefs = [...blockers].sort()
+
+  return {
+    kind: "khala_desktop_apple_fm_from_install_smoke",
+    promiseId: "autopilot.local_apple_fm_tool_chat.v1",
+    ok: blockerRefs.length === 0,
+    state: blockerRefs.length === 0 ? "passed" : "blocked",
+    artifactRef: optionalPublicRef(input.installer.artifactRef),
+    observedAt: input.observedAt ?? input.readiness.observedAt,
+    checked,
+    blockerRefs,
     contentRedacted: true,
   }
 }

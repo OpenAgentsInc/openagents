@@ -139,6 +139,12 @@ const closeoutReceiptRow = (
         ],
         [receipt.closeoutRef],
       ),
+      receipt.receiptRefs.length === 0
+        ? empty()
+        : h.div(
+            [Ui.className<Message>('flex flex-wrap gap-2')],
+            refChips(receipt.receiptRefs),
+          ),
     ],
   )
 }

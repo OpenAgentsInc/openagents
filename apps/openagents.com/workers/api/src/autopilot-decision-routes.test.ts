@@ -137,7 +137,9 @@ class MemoryAutopilotWorkStore implements AutopilotWorkStore {
   recordDecisionCloseoutReceipt = async (
     receipt: AutopilotDecisionCloseoutReceipt,
   ) => {
-    this.closeoutReceipts.set(receipt.closeoutRef, receipt)
+    if (!this.closeoutReceipts.has(receipt.closeoutRef)) {
+      this.closeoutReceipts.set(receipt.closeoutRef, receipt)
+    }
   }
 
   listDecisionCloseoutReceiptsForWorkOrder = async (
@@ -687,6 +689,43 @@ describe('autopilot decision queue routes', () => {
     expect(replay.status).toBe(200)
     expect(replayBody.idempotent).toBe(true)
     expect(replayBody.work.state).toBe('revision_required')
+  })
+
+  test('keeps the first applied closeout receipt across idempotent replay', async () => {
+    const store = new MemoryAutopilotWorkStore()
+
+    await store.createWorkOrder(deliveredWorkOrderRecord())
+
+    const first = await route(
+      store,
+      '/api/autopilot/decisions/decision_action.autopilot_work_order.decision_test_1.approve_pr_draft/actions',
+      {
+        body: { action: 'accept' },
+        idempotencyKey: 'decision-accept-replay-closeout-1',
+        method: 'POST',
+      },
+    )
+    const replay = await route(
+      store,
+      '/api/autopilot/decisions/decision_action.autopilot_work_order.decision_test_1.approve_pr_draft/actions',
+      {
+        body: { action: 'accept' },
+        idempotencyKey: 'decision-accept-replay-closeout-1',
+        method: 'POST',
+      },
+    )
+    const firstBody = (await first.json()) as DecisionActBody
+    const replayBody = (await replay.json()) as DecisionActBody
+    const persisted = store.closeoutReceipts.get(
+      'decision.closeout.accept.autopilot_work_order.decision_test_1',
+    )
+
+    expect(first.status).toBe(201)
+    expect(replay.status).toBe(200)
+    expect(firstBody.closeout.outcome).toBe('applied')
+    expect(replayBody.closeout.outcome).toBe('applied')
+    expect(persisted?.outcome).toBe('applied')
+    expect(store.closeoutReceipts).toHaveLength(1)
   })
 
   test('rejects conflicting decision actions after a recorded decision', async () => {

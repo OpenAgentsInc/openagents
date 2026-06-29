@@ -310,7 +310,7 @@ describe('AgentCL repo-reuse gym environment', () => {
     )
 
     expect(plan.schemaVersion).toBe(AGENTCL_VERTEX_RUNNER_PLAN_SCHEMA)
-    expect(plan.issueRef).toBe('public.issue.6766')
+    expect(plan.issueRef).toBe('public.issue.6762')
     expect(plan.lane).toEqual({
       laneRef: 'vertex-gemini',
       model: 'gemini-3.5-flash',
@@ -352,6 +352,12 @@ describe('AgentCL repo-reuse gym environment', () => {
       tripped: true,
       reason: 'consecutive_billing_or_quota_errors',
     })
+    expect(
+      assessAgentClVertexRunnerCircuitBreaker({
+        estimatedSpendUsdCents: 5000,
+        consecutiveBillingOrQuotaErrors: 0,
+      }),
+    ).toEqual({ tripped: true, reason: 'spend_cap_exceeded' })
     expect(
       assessAgentClVertexRunnerCircuitBreaker({
         estimatedSpendUsdCents: 5001,
@@ -480,7 +486,7 @@ describe('AgentCL repo-reuse gym environment', () => {
     const report = buildAgentClVertexStressBaselineReport()
 
     expect(report.schemaVersion).toBe(AGENTCL_VERTEX_STRESS_REPORT_SCHEMA)
-    expect(report.issueRef).toBe('public.issue.6767')
+    expect(report.issueRef).toBe('public.issue.6762')
     expect(report.routing).toEqual({
       laneRef: 'vertex-gemini',
       model: 'gemini-3.5-flash',

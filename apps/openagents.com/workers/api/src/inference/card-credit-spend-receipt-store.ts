@@ -8,6 +8,7 @@ import {
   type CardCreditSpendReceipt,
   type CreditToMsatGrantLeg,
   type InferenceSpendLeg,
+  cardCreditPurchaseLedgerKey,
   cardCreditSpendReceiptRef,
 } from './card-credit-spend-receipt'
 import {
@@ -23,7 +24,11 @@ export type PublicCardCreditSpendReceiptProjection = Readonly<{
   receiptRef: string
   resolution:
     | Readonly<{ status: 'ok'; receipt: CardCreditSpendReceipt }>
-    | Readonly<{ status: 'pending'; missing: 'purchase' | 'grant' | 'spend' }>
+    | Readonly<{
+        status: 'pending'
+        missing: 'purchase' | 'grant' | 'spend'
+        nextEvidenceRef: string
+      }>
     | Readonly<{ status: 'invalid'; reason: string; message: string }>
   schemaVersion: 'openagents.inference.card_credit_spend_receipt.v1'
   sourceRefs: ReadonlyArray<string>
@@ -54,8 +59,27 @@ const sessionIdFromReceiptRef = (receiptRef: string): string | null =>
     ? receiptRef.slice(prefix.length)
     : null
 
+const pendingNextEvidenceRef = (
+  sessionId: string,
+  missing: 'purchase' | 'grant' | 'spend',
+): string => {
+  if (missing === 'purchase') {
+    return cardCreditPurchaseLedgerKey(sessionId)
+  }
+
+  if (missing === 'grant') {
+    return (
+      cardCreditGrantContextRef(sessionId) ??
+      'ledger.pay_ins.usd_credit_grant.context_ref'
+    )
+  }
+
+  return 'ledger.pay_ins.inference_charge.context_ref'
+}
+
 const publicProjectionFromResolution = (
   receiptRef: string,
+  sessionId: string,
   generatedAt: string,
   resolution: CardCreditSpendReceiptResolution,
 ): PublicCardCreditSpendReceiptProjection | null => {
@@ -76,7 +100,14 @@ const publicProjectionFromResolution = (
     resolution: resolution.ok
       ? { receipt: resolution.receipt, status: 'ok' }
       : resolution.status === 'pending'
-        ? { missing: resolution.missing, status: 'pending' }
+        ? {
+            missing: resolution.missing,
+            nextEvidenceRef: pendingNextEvidenceRef(
+              sessionId,
+              resolution.missing,
+            ),
+            status: 'pending',
+          }
         : {
             message: resolution.message,
             reason: resolution.reason,
@@ -279,6 +310,11 @@ export const makeD1CardCreditSpendReceiptStore = (
       },
     })
 
-    return publicProjectionFromResolution(receiptRef, generatedAt, resolution)
+    return publicProjectionFromResolution(
+      receiptRef,
+      sessionId,
+      generatedAt,
+      resolution,
+    )
   },
 })
