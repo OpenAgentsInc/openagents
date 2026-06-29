@@ -16,6 +16,15 @@ import {
 } from '@openagentsinc/tassadar-executor/dense-weight-module'
 
 import { artanisMindComplete } from './artanis-mind'
+import {
+  type ArtanisLaborPersistedTick,
+  runAndPersistArtanisLaborRequestTick,
+} from './artanis-labor-tick-driver'
+import type {
+  ArtanisLaborRequesterDeps,
+  ArtanisLaborRequesterOutcome,
+} from './artanis-labor-requester'
+import type { ArtanisLaborUnattendedReceiptStore } from './artanis-labor-receipt-store'
 import { parseJsonStringArray, parseJsonWithSchema } from './json-boundary'
 import { epochMillisToIsoTimestamp, randomUuid } from './runtime-primitives'
 import { pylonCapabilityRefsEligibleForExecutorDispatch } from './tassadar-capability-admission'
@@ -60,6 +69,18 @@ export type AdminTickOutcome = Readonly<{
   decisionId: string | null
   assignmentRef: string | null
   reason: string | null
+}>
+
+export type AdminLaborRequestTickOutcome = Readonly<{
+  state: 'placed' | 'refused' | 'skipped' | 'failed'
+  reason: string | null
+  receiptRef: string | null
+  terminalState:
+    | 'requested_pending_delivery'
+    | 'refused'
+    | 'skipped_config_disabled'
+    | null
+  workRequestId: string | null
 }>
 
 export type AdminDispatchFn = (
@@ -448,6 +469,87 @@ export const runArtanisAdminTickScheduled = (
         reason: 'admin_tick_disabled',
         state: 'skipped',
       })
+
+const laborOutcomeState = (
+  outcome: ArtanisLaborRequesterOutcome,
+): AdminLaborRequestTickOutcome['state'] => {
+  if (outcome.kind === 'requested') {
+    return 'placed'
+  }
+  if (outcome.kind === 'refused') {
+    return 'refused'
+  }
+  return 'skipped'
+}
+
+const laborOutcomeReason = (
+  outcome: ArtanisLaborRequesterOutcome,
+): string | null => {
+  if (outcome.kind === 'requested') {
+    return null
+  }
+  if (outcome.kind === 'refused') {
+    return outcome.reason
+  }
+  return outcome.reason
+}
+
+const laborTickOutcomeFromPersisted = (
+  persisted: ArtanisLaborPersistedTick,
+): AdminLaborRequestTickOutcome => ({
+  reason: laborOutcomeReason(persisted.requestOutcome),
+  receiptRef: persisted.sealed.receiptRef,
+  state: laborOutcomeState(persisted.requestOutcome),
+  terminalState:
+    persisted.sealed.receipt.terminalState === 'accepted_released' ||
+    persisted.sealed.receipt.terminalState === 'rejected_refunded'
+      ? null
+      : persisted.sealed.receipt.terminalState,
+  workRequestId: persisted.sealed.receipt.workRequestId,
+})
+
+export const runArtanisAdminLaborRequestTick = (
+  input: Readonly<{
+    artanisActorRef: string
+    requesterDeps: ArtanisLaborRequesterDeps
+    store: ArtanisLaborUnattendedReceiptStore
+    tickRef: string
+  }>,
+): Promise<AdminLaborRequestTickOutcome> =>
+  runAndPersistArtanisLaborRequestTick(input).then(laborTickOutcomeFromPersisted)
+
+export const runArtanisAdminLaborRequestTickScheduled = (
+  input: Readonly<{
+    enabled: boolean
+    requesterDeps: Omit<ArtanisLaborRequesterDeps, 'enabled'>
+    store: ArtanisLaborUnattendedReceiptStore
+    artanisActorRef: string
+    tickRef: string
+  }>,
+): Effect.Effect<AdminLaborRequestTickOutcome, never> =>
+  Effect.tryPromise({
+    catch: () => 'labor_request_tick_error' as const,
+    try: () =>
+      runArtanisAdminLaborRequestTick({
+        artanisActorRef: input.artanisActorRef,
+        requesterDeps: {
+          ...input.requesterDeps,
+          enabled: input.enabled,
+        },
+        store: input.store,
+        tickRef: input.tickRef,
+      }),
+  }).pipe(
+    Effect.catch(reason =>
+      Effect.succeed({
+        reason,
+        receiptRef: null,
+        state: 'failed',
+        terminalState: null,
+        workRequestId: null,
+      } satisfies AdminLaborRequestTickOutcome),
+    ),
+  )
 
 // ---------------------------------------------------------------------------
 // Closeout verifier (issue #4697, the verify->accept half of the span).
