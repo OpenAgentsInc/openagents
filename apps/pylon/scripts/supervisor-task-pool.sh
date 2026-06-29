@@ -128,7 +128,7 @@ supervisor_fetch_unsupported_request_issues() {
 }
 
 supervisor_fallback_issues() {
-  local fallback="${SUP_TASK_POOL_FALLBACK_ISSUES:-6310 6311 6320 6354 6355 6358}"
+  local fallback="${SUP_TASK_POOL_FALLBACK_ISSUES:-6987 6958 6902 6637 6822 6824 6831 6656 6695 6963}"
   printf '%s\n' $fallback | supervisor_dedupe_issues
 }
 

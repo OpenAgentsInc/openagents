@@ -143,7 +143,7 @@ SUP_STANDING_TASK_CHECK_SECS="${SUP_STANDING_TASK_CHECK_SECS:-300}"
 
 # Fallback only. The active task pool is resolved dynamically from the
 # unsupported-request ledger and linked open GitHub issues.
-SUP_TASK_POOL_FALLBACK_ISSUES="${SUP_TASK_POOL_FALLBACK_ISSUES:-${SUP_ISSUES:-6310 6311 6320 6354 6355 6358}}"
+SUP_TASK_POOL_FALLBACK_ISSUES="${SUP_TASK_POOL_FALLBACK_ISSUES:-${SUP_ISSUES:-6987 6958 6902 6637 6822 6824 6831 6656 6695 6963}}"
 
 PYLON=(bun "$REPO_ROOT/apps/pylon/src/index.ts")
 mkdir -p "$SUP_STATE_DIR"
@@ -337,7 +337,11 @@ worker_loop() {
           if [ "$cand" = "$onum2" ]; then filtered+=("$cand"); break; fi
         done
       done
-      issues=("${filtered[@]}")
+      if [ "${#filtered[@]}" -gt 0 ]; then
+        issues=("${filtered[@]}")
+      else
+        issues=()
+      fi
     fi
     if [ "${#issues[@]}" -eq 0 ]; then
       log "slot=$slot OPEN-SET no task-pool issues are still open; backing off ${backoff}s"

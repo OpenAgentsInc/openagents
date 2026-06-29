@@ -228,11 +228,18 @@ standing Pylon token and `PYLON_HOME=$HOME/.pylon-fable`:
   `SUP_BACKOFF_MIN=2`, `SUP_BACKOFF_MAX=30`,
   `SUP_FAILURE_BACKOFF_ESCALATE_THRESHOLD=99`
 
-First live count after startup was:
+The first naive monitor printed `codex_exec=15`, but that was a bad process
+match: the monitor command line itself contained the `codex exec` regex. A
+filtered process check showed the real state:
 
-- `codex_exec=15`
-- `run_no_spend=27`
-- `khala_request=15`
+- `actual_codex_exec=0`
+- `actual_khala_request=0`
+- `actual_run_no_spend=13`
+
+The executor pool was alive, but the dispatcher was not creating work. The
+immediate blocker was `codex-supervisor.sh: line 340: filtered[@]: unbound
+variable` under `set -u` when the live-open-issue intersection was empty. Fix
+that before trusting any saturation number.
 
 Keep that session alive unless it is demonstrably hurting the fleet. Do not
 reflex-restart it. Watch counts in the OpenAgents desktop Coding view and in
@@ -327,8 +334,9 @@ When #6995 lands, desktop should blend:
 
 ### Acceptance for the next handoff
 
-- Sustained `codex_exec >= 12` for at least 30 minutes, with no increasing stale
-  claim count.
+- Sustained filtered `codex_exec >= 12` for at least 30 minutes, with no
+  increasing stale claim count. The process matcher must exclude monitor shell
+  command lines.
 - Desktop shows active workers and lets the owner click each active Codex
   session to read messages.
 - #6995 and #6994 are either merged or rejected with exact failing test output.
