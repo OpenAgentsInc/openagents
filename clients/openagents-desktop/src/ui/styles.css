@@ -559,16 +559,19 @@ button {
 }
 
 .coding-manager-status {
-  max-height: 190px;
+  max-height: 220px;
   margin: 0;
   overflow: auto;
-  padding: 10px;
+  padding: 10px 12px;
   color: #d7e2f0;
-  background: rgba(0, 0, 0, 0.24);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 6px;
-  font-size: 0.7rem;
-  line-height: 1.5;
+  background: #05080e;
+  border: 1px solid #1d2a44;
+  border-radius: 8px;
+  box-shadow: 0 0 28px -12px rgba(58, 123, 255, 0.5);
+  /* dynamically generated status dump → chat-mono, not Berkeley Mono */
+  font-family: var(--oa-font-code);
+  font-size: 0.72rem;
+  line-height: 1.55;
   white-space: pre-wrap;
 }
 
