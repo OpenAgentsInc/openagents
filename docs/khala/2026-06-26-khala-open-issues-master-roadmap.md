@@ -1173,6 +1173,16 @@ GLM coding lane and leave REAP-504B on the 4x hosts.)
   After closeout, `provider go-online` again reported Codex `available=2`,
   `ready=2`, `busy=0`, `queued=0`; treat this as the current proof that stale
   local no-spend leases no longer poison advertised capacity.
+- 2026-06-29 #6902 bounded fix: Pylon now classifies Codex execution/auth
+  failures as `credentials_revoked`, `usage_limited`, `rate_limited`,
+  `network`, `timeout`, or `other`, stores only public-safe local health
+  evidence per account, and records quota blocks for usage/rate-limit
+  refusals. `accounts status --json`, per-account heartbeat capacity, and
+  assignment auto-selection now exclude unhealthy Codex accounts instead of
+  advertising a present-but-dead `auth.json`; revoked credentials also emit a
+  re-auth-required blocker. Still verify on live fleet that operator logs and
+  dashboard rows show the same per-account reason while healthy accounts remain
+  in rotation.
 - 2026-06-29 #7025 business quick-win receipt narrowing: `business.coding_quick_win.v1`
   now has a public-safe paid-delivery claim projection at
   `GET /api/public/business/coding-quick-win-receipts?view=paid-delivery-claims`
