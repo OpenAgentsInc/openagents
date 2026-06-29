@@ -422,6 +422,48 @@ describe("codex agent task recognition", () => {
     })
   })
 
+  test("classifies SDK stream error events with top-level messages", async () => {
+    mock.module(CODEX_AGENT_SDK_PACKAGE, () => ({
+      Codex: class {
+        startThread() {
+          return {
+            runStreamed: async () => ({
+              events: (async function* () {
+                yield { type: "thread.started", thread_id: "thread-codex-stream-error" }
+                yield { type: "turn.started" }
+                yield {
+                  type: "error",
+                  message:
+                    "Codex stream error: You've hit your usage limit. Visit settings to purchase more credits.",
+                }
+              })(),
+            }),
+          }
+        }
+      },
+    }))
+
+    const result = await runWithCodexSdk({
+      assignmentRef: "assignment.public.codex_agent.stream_error",
+      cwd: "/tmp",
+      instructions: "Run a mocked Codex turn.",
+      leaseRef: "lease.public.codex_agent.stream_error",
+      networkAccessEnabled: true,
+      pylonRef: "pylon.public.codex_agent.stream_error",
+      runRef: "run.public.codex_agent.stream_error",
+      sandboxMode: "danger-full-access",
+      timeoutMs: 1_000,
+      workspaceRef: "workspace.public.codex_agent.stream_error",
+    })
+
+    expect(result).toMatchObject({
+      executionRefusalReason: "usage_limited",
+      outcome: "refused",
+      sessionRef: expect.stringMatching(/^session\.pylon\.codex_agent\./),
+      turnCount: 0,
+    })
+  })
+
   test("SDK turn reporter failures do not fail the local Codex task", async () => {
     const reports: Array<unknown> = []
     mock.module(CODEX_AGENT_SDK_PACKAGE, () => ({

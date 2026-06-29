@@ -687,6 +687,7 @@ export async function prepareWorkspaceDependencies(input: {
 type CodexThreadEvent = {
   type?: string
   thread_id?: string
+  message?: string
   usage?: {
     input_tokens?: number
     cached_input_tokens?: number
@@ -1014,8 +1015,9 @@ export async function runWithCodexSdk(input: CodexAgentRunInput): Promise<CodexA
       }
       if (event.type === "turn.failed" || event.type === "error") {
         failed = true
-        if (event.error?.message !== undefined) {
-          refusalReason = classifyCodexAgentExecutionRefusal(event.error.message)
+        const errorMessage = event.error?.message ?? event.message
+        if (errorMessage !== undefined) {
+          refusalReason = classifyCodexAgentExecutionRefusal(errorMessage)
         }
       }
       if (event.type === "item.completed" && event.item?.type === "command_execution") {
