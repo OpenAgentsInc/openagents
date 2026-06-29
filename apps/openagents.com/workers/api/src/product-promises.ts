@@ -4001,7 +4001,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'A Pylon visibly grows in the agent world — crystal scale, facets, and brightness step up by tier — as it earns cumulative settled sats.',
         safeCopy:
-          'Pylon growth tiers are merged to main (PR #5743): cumulative settled sats map to a monotonic growth tier that the renderer turns into crystal scale/facets/brightness, with tier 0 an honest still crystal for a Pylon that has not settled any earnings yet. It rides the same default-off CHAT_WORLD_SCENE / CHAT_WORLD_PAYMENTS flags and is not yet wired on by default.',
+          'Pylon growth tiers are merged and live-wired behind the chat-world flags: public per-Pylon cumulative settled sats map to a monotonic growth tier that the scene adapter turns into crystal scale/status brightness and facet metadata, with tier 0 an honest still crystal for a Pylon that has not settled any earnings yet. It rides the same default-off CHAT_WORLD_SCENE / CHAT_WORLD_PAYMENTS flags and is not on by default.',
         unsafeCopy:
           'Do not say Pylon growth is live for all users by default, that growth reflects anything other than real settled sats, or that a larger crystal implies any new earning, payout, or settlement capability.',
         evidenceRefs: [
@@ -4009,16 +4009,18 @@ export const publicProductPromisesDocument = () => {
           'https://github.com/OpenAgentsInc/openagents/pull/5743',
           'https://github.com/OpenAgentsInc/openagents/issues/5730',
           'https://github.com/OpenAgentsInc/openagents/issues/5737',
+          'https://github.com/OpenAgentsInc/openagents/issues/6868',
           'apps/autopilot-desktop/src/shared/chat-world-scene.ts',
+          'apps/autopilot-desktop/src/shared/chat-world-scene.test.ts',
+          'apps/autopilot-desktop/src/ui/pylon-network-visualization.ts',
           'promise:autopilot.agent_world_scene.v1',
           'promise:autopilot.bitcoin_payment_visualization.v1',
         ],
         blockerRefs: [
-          'blocker.product_promises.pylon_growth_not_wired_into_live_scene',
           'blocker.product_promises.pylon_growth_flag_default_off',
         ],
         verification:
-          'Yellow is limited to the merged growth-tier model in chat-world-scene.ts (#5737): PYLON_GROWTH_TIER_THRESHOLDS_SATS defines monotonic sats thresholds, tier 0 is the honest no-earnings still crystal, and the descriptor maps tier to scale/facet/brightness consistently. True today: the growth-tier descriptor is computed from cumulative settled sats. Green requires the growth wired into the live running scene end to end, an owner decision on default-on, and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+          'Yellow now covers the live scene wiring behind CHAT_WORLD_SCENE / CHAT_WORLD_PAYMENTS: PublicRecentPylon preserves public cumulativeSettledSats when present, projectChatWorldPylonScene computes each node growth descriptor from that value, liveChatWorldNetworkScene carries the descriptor into PylonNetworkNode, and pylonNetworkVisualizationOptions maps tiers onto the pinned three-effect renderer knobs (larger role geometry, brighter status, and facet/sats detail). Tier 0 remains the 0-sat still crystal. Green still requires an owner decision on default-on and an owner-signed receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
         authorityBoundary:
           'Pylon growth visualization is a presentational projection of already-public settled-sats data. It grants no earning, spend, payout, or settlement authority, and a crystal tier never asserts earnings the underlying settlement receipts do not.',
       },
