@@ -29,11 +29,10 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // store) and the dispatch seam (dispatchSelfServeFanout) lists nothing. Set
   // "true"/"1"/"on" to arm the (still yellow/inert) surface. The plan makes no
   // broad-live-marketplace claim and the promise stays yellow regardless; the
-  // capability clears only blocker.product_promises.self_serve_fanout_missing
-  // (a customer-initiated single-action fanout planner/route exists), while
-  // blocker.product_promises.plugin_marketplace_beyond_code_task_missing stays
-  // uncleared (code_task work class only). A green flip stays receipt-first and
-  // owner-signed with a dereferenceable settlement receipt.
+  // capability clears blocker.product_promises.self_serve_fanout_missing and
+  // can carry live catalog work classes beyond code_task, but the dispatch seam
+  // stays inert until armed. A green flip still requires receipt-first
+  // owner-signed settlement evidence from an armed self-serve fanout.
   SELF_SERVE_FANOUT_ENABLED?: string | undefined
   // Labor self-serve earning payout flag (promise
   // provider.compliant_usage_labor.v1, yellow). Default OFF: the

@@ -10887,12 +10887,13 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     // Self-serve control-center fanout scaffold (promise
     // autopilot.control_center_fanout_marketplace.v1, yellow). INERT: the store
     // is empty unless SELF_SERVE_FANOUT_ENABLED is armed, and the response
-    // always reports inert/yellow/selfServe with workClass code_task. It models
-    // a customer-initiated single-action fanout plan (gate decision + the linked
-    // market work-request the fanout would list) over the existing lane-C gate;
-    // the dispatch seam (dispatchSelfServeFanout) lists nothing. It clears only
-    // the self-serve blocker (the plugin-marketplace-beyond-code_task blocker
-    // stays uncleared) and makes no broad-live-marketplace claim. Read-only.
+    // always reports inert/yellow/selfServe with the default workClass code_task
+    // plus any stored plans' typed work classes. It models a customer-initiated
+    // single-action fanout plan (gate decision + the linked market work-request
+    // the fanout would list) over the existing lane-C gate; the dispatch seam
+    // (dispatchSelfServeFanout) lists nothing unless explicitly armed. It clears
+    // the self-serve blocker and can carry live catalog work classes beyond
+    // code_task, but still makes no green/broad-marketplace claim. Read-only.
     path: SelfServeFanoutEndpoint,
     handler: (request, env) =>
       handleSelfServeFanoutApi(request, {
@@ -10902,11 +10903,11 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {
     // Marketplace work-class catalog (promise
     // autopilot.control_center_fanout_marketplace.v1, yellow). Read-only registry
-    // view: it lists every registered work class with its status, names the single
-    // live class (code_task), and always reports the still-uncleared
-    // plugin-marketplace-beyond-code_task blocker. No flag, no store, nothing
-    // executable — the projection's assertCatalogInvariants throws rather than let
-    // any plugin class silently flip live. Makes no broad-live-marketplace claim.
+    // view: it lists every registered work class with its status and names the
+    // live classes, including the first non-code plugin class (data_labeling).
+    // No flag, no store, and no dispatch side effect: the projection's
+    // assertCatalogInvariants throws rather than let non-code support regress
+    // silently. Makes no green/broad-live-marketplace claim.
     path: MarketplaceWorkClassCatalogEndpoint,
     handler: request => handleMarketplaceWorkClassCatalogApi(request),
   },
