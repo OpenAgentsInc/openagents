@@ -391,6 +391,7 @@ import { routeAccessResponse } from './http/route-access-response'
 import { routeEffect, routeEffectOrResponse } from './http/route-effects'
 import { makeD1HygieneDebtReceiptStore } from './hygiene-debt-receipt-store'
 import { makeHygieneLaneSettlementRoutes } from './hygiene-lane-settlement-routes'
+import { makeHostedGeminiPromiseReadinessRoutes } from './hosted-gemini-promise-readiness-routes'
 import { makeImageGenerationRoutes } from './image-generation-routes'
 import { makeD1InferenceReceiptStore } from './inference-receipts'
 import {
@@ -8404,6 +8405,15 @@ const publicInferenceReceiptRoutes = makePublicInferenceReceiptRoutes<Env>({
   nowIso: currentIsoTimestamp,
 })
 
+const hostedGeminiPromiseReadinessRoutes =
+  makeHostedGeminiPromiseReadinessRoutes<Env>({
+    makeInferenceReceiptStore: env =>
+      makeD1InferenceReceiptStore(openAgentsDatabase(env)),
+    makeTransitionReceiptStore: env =>
+      makeD1PromiseTransitionReceiptStore(openAgentsDatabase(env)),
+    nowIso: currentIsoTimestamp,
+  })
+
 // Dereferenceable PAID receipt read for sellable Cloud primitives (sandbox
 // compute #5517 / fine-tuning #5516). Public proof read only — it derefs the
 // metered-charge `pay_ins` row the cloud-metering seam already wrote; it grants
@@ -10530,6 +10540,14 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       handlePublicPromiseTransitionsApi(request, {
         store: makeD1PromiseTransitionReceiptStore(openAgentsDatabase(env)),
       }),
+  },
+  {
+    path: '/api/public/product-promises/api.hosted_gemini.v1/readiness',
+    handler: (request, env) =>
+      hostedGeminiPromiseReadinessRoutes.routeHostedGeminiPromiseReadinessRequest(
+        request,
+        env,
+      ) ?? Effect.succeed(notFound()),
   },
   {
     // Enterprise claim-upgrade audit projection (proof.claim_upgrade_receipts.v1).

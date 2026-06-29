@@ -1808,6 +1808,9 @@ const schemaComponents = (): JsonSchema => ({
   ProductPromiseTransitions: objectSummary(
     'Public-safe promise transition receipt feed with top-level generatedAt, served registryVersion/registryGeneratedAt, and the declared live_at_read staleness contract (maxStalenessSeconds 0, rebuildsOn registry/transition-receipt changes) so verifiers can bind receipt rows to the current registry context. Receipt rows include receiptId, promiseId, from/to state, registry version, typed checks, result (passed/failed/exception), evidence refs, and timestamps. Receipts are transition evidence, not transitions.',
   ),
+  HostedGeminiPromiseReadinessEnvelope: objectSummary(
+    'Public-safe readiness projection for api.hosted_gemini.v1 with top-level generatedAt, maxStalenessSeconds, and the declared live_at_read staleness contract. Given a receiptRef, it reads the public inference receipt and product-promise transition feed live-at-read, then reports whether the receipt is a paid Vertex Gemini charge with positive usage and whether an owner-signed green transition cites the same evidence. It includes request path, response-shape ref, blockerRefs, clearsBlockerRefs, caveats, and source refs. Read-only: exposes no prompts, provider payloads, keys, private user data, account ids, amounts, spend authority, provider authority, or registry mutation authority.',
+  ),
   ProductPromiseClaimUpgradeAudit: objectSummary(
     'Public-safe enterprise claim-upgrade audit projection (proof.claim_upgrade_receipts.v1). Joins the transition-receipt feed against the live product-promise registry so a third party can audit every state change, especially every green flip. Per promise: promiseId, productArea, currentState, lastVerifiedAt, blockerRefs, and the transition receipts backing it (from->to, registryVersion, receiptRef, result, evidenceRefs, owner signoff, alreadyApplied/isGreenFlip flags). A registry-wide summary reports promiseCount, transitionReceiptCount, greenPromiseCount, greenPromisesReceiptBacked, the explicit greenPromisesWithoutReceipt list (green promises with no recorded green-flip receipt), greenFlipReceiptCount, ownerSignedExceptionCount, and failedReceiptCount. Filterable by promiseId, state, and greenOnly. Carries generatedAt and a live_at_read staleness contract (maxStalenessSeconds 0, rebuildsOn registry/receipt transitions) because it is composed live at read from the registry and receipt feed. Read-only: exposes no private data, moves no money, and changes no registry state.',
   ),
@@ -9750,6 +9753,29 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Promise transition receipt feed.',
           '#/components/schemas/ProductPromiseTransitions',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/product-promises/api.hosted_gemini.v1/readiness': {
+    get: operation({
+      operationId: 'getHostedGeminiPromiseReadiness',
+      summary: 'Read Hosted Gemini promise readiness',
+      description:
+        'Given a public inference receiptRef, composes the public inference receipt and product-promise transition feed live-at-read to determine whether api.hosted_gemini.v1 has both required green-gate evidence: a paid production Vertex Gemini receipt with usage and an owner-signed green transition citing the same evidence. Read-only: returns blockerRefs/caveats and grants no spend, provider, owner-signoff, or registry mutation authority.',
+      tags: ['Public Proof'],
+      security: [],
+      parameters: [
+        queryParam(
+          'receiptRef',
+          'Public inference receipt ref to evaluate, usually receipt.inference.charge.<requestId>.',
+        ),
+      ],
+      responses: {
+        '200': okJson(
+          'Hosted Gemini promise readiness projection.',
+          '#/components/schemas/HostedGeminiPromiseReadinessEnvelope',
         ),
         ...errorResponses(),
       },
