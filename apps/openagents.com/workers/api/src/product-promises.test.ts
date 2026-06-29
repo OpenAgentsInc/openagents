@@ -440,7 +440,7 @@ describe('public product promises document', () => {
       /latest stays 0\.2\.5|only published, installable Pylon|release candidate, not stable 0\.3\.0|Pylon v1\.0 is present in the monorepo as a release candidate/i,
     )
     expect(currentCopy).toContain('Pylon v1.0 has a stable source cut')
-    expect(currentCopy).toContain('Registry 2026-06-29.2')
+    expect(currentCopy).toContain('Registry 2026-06-29.3')
     expect(currentCopy).toContain('flips NO promise state')
     expect(currentCopy).toContain('Khala Desktop now carries source-level')
     expect(currentCopy).toContain('maxStalenessSeconds:0')
@@ -1586,7 +1586,7 @@ describe('public product promises document', () => {
     )
   })
 
-  test('keeps Khala model-family mix yellow with explicit staleness and demand caveats', () => {
+  test('keeps Khala model-family mix yellow with #7016 live-at-read verification and only owner-signoff pending', () => {
     const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
       publicProductPromisesDocument(),
     )
@@ -1605,12 +1605,18 @@ describe('public product promises document', () => {
     expect(modelMixPromise?.evidenceRefs).toContain(
       'route:/api/public/khala-tokens-served/model-mix',
     )
+    expect(modelMixPromise?.evidenceRefs).toContain(
+      'docs/promises/2026-06-29-khala-model-family-mix-public-verification.md',
+    )
     expect(modelMixPromise?.blockerRefs).toEqual([
       'blocker.product_promises.model_mix_green_owner_signoff_pending',
     ])
-    expect(modelMixPromise?.verification).toContain('issue #6858')
+    expect(modelMixPromise?.verification).toContain('issue #7016')
     expect(modelMixPromise?.verification).toContain(
-      'Green still requires a live receipt/owner sign-off',
+      'projection_staleness.v1 maxStalenessSeconds:0',
+    )
+    expect(modelMixPromise?.verification).toContain(
+      'The only remaining blocker is a recorded owner-signed yellow->green promise_transition receipt',
     )
   })
 

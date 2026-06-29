@@ -1,5 +1,14 @@
 # Promise Registry
 
+> Registry `2026-06-29.3` is a #7016 Khala model-family mix verification pass
+> and flips NO promise state. Production verification on 2026-06-29 confirmed
+> `GET /api/public/khala-tokens-served/model-mix` returns live-at-read,
+> aggregate public family rows with `projection_staleness.v1` and
+> `maxStalenessSeconds:0`. The
+> `metrics.khala_model_family_mix_public.v1` promise remains yellow only
+> because no owner-signed yellow-to-green `promise_transition` receipt has been
+> recorded under `proof.claim_upgrade_receipts.v1`.
+>
 > Registry `2026-06-29.2` is a current-main refresh after #6997, #6999,
 > #7001, #7002, and #7006 and flips NO promise state. It records the
 > terminal-agent current-state audit and Codex tool-layer study as evidence for
@@ -66,9 +75,9 @@
 > Current machine-readable source of truth: `/api/public/product-promises` is
 > generated from
 > [`product-promises.ts`](../../apps/openagents.com/workers/api/src/product-promises.ts),
-> which currently advertises registry `2026-06-29.2` with
+> which currently advertises registry `2026-06-29.3` with
 > `lastUpdated: "2026-06-29"`. This narrative document records the same
-> top-line 2026-06-29.2 promise decisions above, plus historical reconciliation
+> top-line 2026-06-29.3 promise decisions above, plus historical reconciliation
 > context below; when in doubt, agents and reviewers should defer to the
 > machine-readable registry and include its version in mismatch reports.
 >
@@ -76,7 +85,7 @@
 > Tassadar CPU-transform, referral, small-model proxy, WASM plugin, Verse scene,
 > native email, marketplace, metrics, terminal-agent audit, supervisor
 > replenishment, GLM failover, Apple FM sidecar, and operator-safety merges were
-> checked against the current `2026-06-29.2` registry header. This pass records
+> checked against the current `2026-06-29.3` registry header. This pass records
 > no additional promise state flips and no new green claims beyond the already
 > source-recorded scoped transitions; red/planned/yellow records keep their
 > owner-signed, receipt-first green gates.
