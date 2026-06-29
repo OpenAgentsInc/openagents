@@ -1,4 +1,5 @@
 import { Schema as S } from 'effect'
+import { existsSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 
 import {
@@ -82,6 +83,9 @@ const ProductPromisesDocument = S.Struct({
   }),
   version: S.String,
 })
+
+const repoFile = (relPath: string): URL =>
+  new URL(`../../../../../${relPath}`, import.meta.url)
 
 describe('public product promises document', () => {
   test('matches the browser-facing schema', () => {
@@ -1330,6 +1334,77 @@ describe('public product promises document', () => {
     expect(externalRepoStudyPromise?.authorityBoundary).toContain(
       'no private repo ingestion authority',
     )
+  })
+
+  test('world-first and largest-force claims stay gated by the #7027 dated audit', () => {
+    const auditDoc = 'docs/promises/2026-06-29-world-first-claims-7027-audit.md'
+    expect(existsSync(repoFile(auditDoc))).toBe(true)
+
+    const document = publicProductPromisesDocument()
+    const byId = new Map(
+      document.promises.map(promise => [promise.promiseId, promise]),
+    )
+
+    const paidBitcoin = byId.get(
+      'claims.world_first_ai_training_paid_bitcoin.v1',
+    )
+    expect(paidBitcoin).toMatchObject({
+      state: 'red',
+      blockerRefs: expect.arrayContaining([
+        'blocker.product_promises.world_first_evidence_pack_missing',
+        'blocker.product_promises.world_first_owner_signed_upgrade_missing',
+      ]),
+      evidenceRefs: expect.arrayContaining([auditDoc]),
+    })
+    expect(paidBitcoin?.safeCopy).toContain('full qualifiers')
+    expect(paidBitcoin?.unsafeCopy).toContain('bare "world first"')
+    expect(paidBitcoin?.verification).toContain('#7027 dated audit')
+
+    const llmComputer = byId.get(
+      'claims.world_first_public_llm_computer_training_run.v1',
+    )
+    expect(llmComputer).toMatchObject({
+      state: 'red',
+      blockerRefs: [
+        'blocker.product_promises.world_first_owner_signed_upgrade_missing',
+      ],
+      evidenceRefs: expect.arrayContaining([auditDoc]),
+    })
+    expect(llmComputer?.safeCopy).toContain('Percepta')
+    expect(llmComputer?.unsafeCopy).toContain('bare "world first"')
+    expect(llmComputer?.verification).toContain('#7027 dated audit')
+
+    const agenticSalesForce = byId.get(
+      'claims.pursued_world_first_largest_agentic_sales_force.v1',
+    )
+    expect(agenticSalesForce).toMatchObject({
+      state: 'planned',
+      blockerRefs: expect.arrayContaining([
+        'blocker.product_promises.world_first_agentic_sales_force_not_achieved',
+        'blocker.product_promises.world_first_agentic_sales_force_no_sized_verifiable_force',
+        'blocker.product_promises.world_first_owner_signed_upgrade_missing',
+      ]),
+      evidenceRefs: expect.arrayContaining([auditDoc]),
+    })
+    expect(agenticSalesForce?.safeCopy).toContain('PURSUED')
+    expect(agenticSalesForce?.unsafeCopy).toContain('OpenAgents HAS')
+    expect(agenticSalesForce?.verification).toContain('#7027 dated audit')
+
+    const largestSalesForce = byId.get(
+      'claims.pursued_world_first_largest_sales_force.v1',
+    )
+    expect(largestSalesForce).toMatchObject({
+      state: 'planned',
+      blockerRefs: expect.arrayContaining([
+        'blocker.product_promises.world_first_largest_sales_force_not_achieved',
+        'blocker.product_promises.world_first_largest_sales_force_seven_million_bar_unmet',
+        'blocker.product_promises.world_first_owner_signed_upgrade_missing',
+      ]),
+      evidenceRefs: expect.arrayContaining([auditDoc]),
+    })
+    expect(largestSalesForce?.safeCopy).toContain('NOT achieved')
+    expect(largestSalesForce?.unsafeCopy).toContain('~7M-agent bar')
+    expect(largestSalesForce?.verification).toContain('#7027 dated audit')
   })
 
   test('weekend pylon promise assault attaches evidence without flipping any state', () => {
