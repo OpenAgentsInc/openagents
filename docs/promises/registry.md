@@ -1,5 +1,15 @@
 # Promise Registry
 
+> Registry `2026-06-29.3` verifies #7016 and flips NO promise state. Production
+> `GET /api/public/khala-tokens-served/model-mix?window=30d` returned
+> `schemaVersion: openagents.public_khala_model_mix.v1`, `generatedAt`,
+> aggregate family rows only, and `projection_staleness.v1` `live_at_read` with
+> `maxStalenessSeconds:0` over `token_usage_events`. The Khala model-mix
+> promise remains yellow because the only remaining blocker is an owner-signed
+> yellow->green product-promise transition receipt under
+> `proof.claim_upgrade_receipts.v1`; stale cached/fuzzy freshness wording is
+> not applied.
+>
 > Registry `2026-06-29.2` is a current-main refresh after #6997, #6999,
 > #7001, #7002, and #7006 and flips NO promise state. It records the
 > terminal-agent current-state audit and Codex tool-layer study as evidence for
@@ -66,9 +76,9 @@
 > Current machine-readable source of truth: `/api/public/product-promises` is
 > generated from
 > [`product-promises.ts`](../../apps/openagents.com/workers/api/src/product-promises.ts),
-> which currently advertises registry `2026-06-29.2` with
+> which currently advertises registry `2026-06-29.3` with
 > `lastUpdated: "2026-06-29"`. This narrative document records the same
-> top-line 2026-06-29.2 promise decisions above, plus historical reconciliation
+> top-line 2026-06-29.3 promise decisions above, plus historical reconciliation
 > context below; when in doubt, agents and reviewers should defer to the
 > machine-readable registry and include its version in mismatch reports.
 >
@@ -76,7 +86,7 @@
 > Tassadar CPU-transform, referral, small-model proxy, WASM plugin, Verse scene,
 > native email, marketplace, metrics, terminal-agent audit, supervisor
 > replenishment, GLM failover, Apple FM sidecar, and operator-safety merges were
-> checked against the current `2026-06-29.2` registry header. This pass records
+> checked against the current `2026-06-29.3` registry header. This pass records
 > no additional promise state flips and no new green claims beyond the already
 > source-recorded scoped transitions; red/planned/yellow records keep their
 > owner-signed, receipt-first green gates.
