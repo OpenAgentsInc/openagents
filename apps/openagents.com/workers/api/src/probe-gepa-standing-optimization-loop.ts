@@ -121,8 +121,6 @@ const normalizeInput = (
 const blockerRefsFor = (
   input: ProbeGepaStandingOptimizationLoopInput,
 ): ReadonlyArray<string> => {
-  const hasTraceOrEvalEvidence =
-    input.sourceTraceRefs.length > 0 || input.evalResultRefs.length > 0
   const hasLowQualitySelection =
     input.lowQualityTurnRefs.length > 0 || input.failureFamilyRefs.length > 0
   const candidateRequested = input.requestedAction === 'emit_candidates'
@@ -131,8 +129,11 @@ const blockerRefsFor = (
     input.candidateManifestRefs.length > 0
 
   return uniqueRefs([
-    ...(!hasTraceOrEvalEvidence
-      ? ['blocker.probe_gepa_standing_loop.trace_or_eval_refs_missing']
+    ...(input.sourceTraceRefs.length === 0
+      ? ['blocker.probe_gepa_standing_loop.source_trace_refs_missing']
+      : []),
+    ...(input.evalResultRefs.length === 0
+      ? ['blocker.probe_gepa_standing_loop.eval_result_refs_missing']
       : []),
     ...(!hasLowQualitySelection
       ? ['blocker.probe_gepa_standing_loop.low_quality_selection_missing']

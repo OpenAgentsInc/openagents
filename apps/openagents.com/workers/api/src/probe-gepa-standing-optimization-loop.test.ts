@@ -64,7 +64,7 @@ describe('Probe GEPA standing optimization loop projection (#6707)', () => {
     ])
   })
 
-  test('blocks the standing loop without trace or eval evidence and low-quality selection', () => {
+  test('blocks the standing loop without trace evidence, eval evidence, or low-quality selection', () => {
     const projection = projectProbeGepaStandingOptimizationLoop(
       input({
         evalResultRefs: [],
@@ -76,11 +76,32 @@ describe('Probe GEPA standing optimization loop projection (#6707)', () => {
 
     expect(projection.decision).toBe('blocked')
     expect(projection.blockerRefs).toContain(
-      'blocker.probe_gepa_standing_loop.trace_or_eval_refs_missing',
+      'blocker.probe_gepa_standing_loop.source_trace_refs_missing',
+    )
+    expect(projection.blockerRefs).toContain(
+      'blocker.probe_gepa_standing_loop.eval_result_refs_missing',
     )
     expect(projection.blockerRefs).toContain(
       'blocker.probe_gepa_standing_loop.low_quality_selection_missing',
     )
+  })
+
+  test('requires both source trace refs and eval result refs before candidate emission', () => {
+    expect(
+      projectProbeGepaStandingOptimizationLoop(
+        input({
+          evalResultRefs: [],
+        }),
+      ).blockerRefs,
+    ).toContain('blocker.probe_gepa_standing_loop.eval_result_refs_missing')
+
+    expect(
+      projectProbeGepaStandingOptimizationLoop(
+        input({
+          sourceTraceRefs: [],
+        }),
+      ).blockerRefs,
+    ).toContain('blocker.probe_gepa_standing_loop.source_trace_refs_missing')
   })
 
   test('requires the DSPy/RLM audit, Mutalisk optimizer runs, candidate manifests, and authority gates before emission', () => {
