@@ -3285,6 +3285,7 @@ describe('POST /v1/chat/completions', () => {
           lanePlan: () => ['primary'],
           registry,
           routeAdmission: {
+            internalStressHeadroomAvailable: false,
             reason: 'glm_reserved_external_headroom_unavailable',
             reservedExternalHeadroomAvailable: false,
           },
@@ -3299,6 +3300,41 @@ describe('POST /v1/chat/completions', () => {
       },
     })
     expect(registerCalls).toBe(0)
+  })
+
+  test('admits internal_stress when GLM has an idle slot but external reserve is unavailable', async () => {
+    let dispatched = false
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      ...echoAdapter('primary'),
+      complete: request => {
+        dispatched = true
+        return stubEchoAdapter.complete(request)
+      },
+    })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(helloBody, {
+          headers: {
+            [INFERENCE_DEMAND_KIND_HEADER]: 'internal_stress',
+            [INFERENCE_DEMAND_SOURCE_HEADER]: 'glm-saturation',
+          },
+        }),
+        baseDeps({
+          lanePlan: () => ['primary'],
+          registry,
+          routeAdmission: {
+            internalStressHeadroomAvailable: true,
+            reason: 'glm_reserved_external_headroom_unavailable',
+            reservedExternalHeadroomAvailable: false,
+          },
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(dispatched).toBe(true)
   })
 
   test('wired GLM saturation proof: internal_stress yields while external overflows and records exact served tokens', async () => {
