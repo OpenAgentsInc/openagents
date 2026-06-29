@@ -54,6 +54,7 @@ const createPylonButton = requireElement<HTMLButtonElement>("#create-pylon")
 const pylonActionStatus = requireElement<HTMLElement>("#pylon-action-status")
 const codingPage = requireElement<HTMLElement>("#coding-page")
 const codingBack = requireElement<HTMLButtonElement>("#coding-back")
+const codingApm = requireElement<HTMLButtonElement>("#coding-apm")
 const codingObserved = requireElement<HTMLElement>("#coding-observed")
 const codingSummary = requireElement<HTMLElement>("#coding-summary")
 const codingMetricCodex = requireElement<HTMLElement>("#coding-metric-codex")
@@ -101,6 +102,8 @@ const tokenAccountingSummary = requireElement<HTMLElement>(
 const tokenReplay = requireElement<HTMLButtonElement>("#token-replay")
 const tokenSpoolList = requireElement<HTMLElement>("#token-spool-list")
 const tokenReplayStatus = requireElement<HTMLElement>("#token-replay-status")
+const apmPage = requireElement<HTMLElement>("#apm-page")
+const apmBack = requireElement<HTMLButtonElement>("#apm-back")
 
 let latestCodingResult: CodingStatusResult | null = null
 let latestTokenAccounting: TokenAccountingStatusResult | null = null
@@ -818,18 +821,24 @@ const loadTokenAccounting = async (): Promise<void> => {
   }
 }
 
-type DesktopRoute = "coding" | "landing" | "pylons"
+type DesktopRoute = "apm" | "coding" | "landing" | "pylons"
 
 const routeFromLocation = (): DesktopRoute => {
   const route = globalThis.location.hash.replace(/^#\/?/, "")
-  return route === "pylons" || route === "coding" ? route : "landing"
+  return route === "pylons" || route === "coding" || route === "apm"
+    ? route
+    : "landing"
 }
 
 const applyRoute = (route: DesktopRoute): void => {
   shell.dataset.route = route
   pylonsPage.hidden = route !== "pylons"
   codingPage.hidden = route !== "coding"
-  codingStatus.setAttribute("aria-expanded", route === "coding" ? "true" : "false")
+  apmPage.hidden = route !== "apm"
+  codingStatus.setAttribute(
+    "aria-expanded",
+    route === "coding" || route === "apm" ? "true" : "false",
+  )
   pylonStatus.setAttribute("aria-expanded", route === "pylons" ? "true" : "false")
   handle.setPose(route === "landing" ? "landing" : "pylons")
 }
@@ -853,6 +862,8 @@ const navigateTo = (route: DesktopRoute): void => {
 codingStatus.addEventListener("click", () => navigateTo("coding"))
 pylonStatus.addEventListener("click", () => navigateTo("pylons"))
 codingBack.addEventListener("click", () => navigateTo("landing"))
+codingApm.addEventListener("click", () => navigateTo("apm"))
+apmBack.addEventListener("click", () => navigateTo("coding"))
 pylonsBack.addEventListener("click", () => navigateTo("landing"))
 codingCopyStatus.addEventListener("click", () => {
   if (latestCodingResult === null) return

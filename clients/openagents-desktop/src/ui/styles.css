@@ -170,6 +170,7 @@ button {
 .coding-status:focus-visible,
 .pylons-back:focus-visible,
 .create-pylon:focus-visible,
+.coding-apm-button:focus-visible,
 .coding-manager-actions button:focus-visible,
 .coding-active-session:focus-visible,
 .coding-session-row:focus-visible {
@@ -206,13 +207,15 @@ button {
 }
 
 .openagents-shell[data-route="pylons"] .openagents-wordmark,
-.openagents-shell[data-route="coding"] .openagents-wordmark {
+.openagents-shell[data-route="coding"] .openagents-wordmark,
+.openagents-shell[data-route="apm"] .openagents-wordmark {
   opacity: 0;
   transform: translateY(10px);
 }
 
 .pylons-page,
-.coding-page {
+.coding-page,
+.apm-page {
   position: absolute;
   inset: 0;
   z-index: 2;
@@ -221,7 +224,8 @@ button {
 }
 
 .pylons-page[hidden],
-.coding-page[hidden] {
+.coding-page[hidden],
+.apm-page[hidden] {
   display: none;
 }
 
@@ -426,6 +430,37 @@ button {
   align-self: center;
   color: #8fa9d6;
   font-size: 0.72rem;
+}
+
+.coding-toolbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+}
+
+.coding-apm-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 12px;
+  color: #dbe8ff;
+  background: rgba(7, 11, 18, 0.82);
+  border: 1px solid rgba(58, 123, 255, 0.42);
+  border-radius: 8px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.coding-apm-button:hover,
+.coding-apm-button:focus-visible {
+  color: #fff;
+  border-color: rgba(79, 208, 255, 0.88);
 }
 
 .coding-metrics {
@@ -1138,6 +1173,206 @@ pre.coding-message-body {
   text-transform: uppercase;
 }
 
+.apm-panel {
+  width: min(1040px, 100%);
+}
+
+.apm-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.48fr);
+  gap: 18px;
+  align-items: stretch;
+  padding: 20px;
+}
+
+.apm-hero > div:first-child {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.apm-kicker {
+  margin: 0;
+  color: #9bb8e8;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.apm-hero h2 {
+  margin: 0;
+  color: #fff;
+  font-size: 3rem;
+  font-weight: 700;
+  line-height: 0.95;
+}
+
+.apm-hero p,
+.apm-section p,
+.apm-status-card p,
+.apm-revival article p {
+  margin: 0;
+  color: #b9c9e6;
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+
+.apm-formula {
+  display: grid;
+  align-content: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 16px;
+  background: rgba(4, 9, 18, 0.88);
+  border: 1px solid rgba(79, 208, 255, 0.2);
+  border-radius: 8px;
+  box-shadow: 0 0 34px -22px rgba(79, 208, 255, 0.92);
+}
+
+.apm-formula span,
+.apm-status-card span {
+  overflow: hidden;
+  color: #7f99c8;
+  font-size: 0.66rem;
+  font-weight: 700;
+  line-height: 1;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.apm-formula strong {
+  overflow-wrap: anywhere;
+  color: #f4f8ff;
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+.apm-status-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0 16px 12px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+}
+
+.apm-status-card {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+  padding: 13px;
+  background: rgba(5, 11, 22, 0.9);
+}
+
+.apm-status-card strong {
+  overflow: hidden;
+  color: #fff;
+  font-size: 1rem;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.apm-section-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  gap: 12px;
+  padding: 0 16px 12px;
+}
+
+.apm-section {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+  background: rgba(4, 9, 18, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+}
+
+.apm-section h3 {
+  margin: 0;
+  color: #f4f8ff;
+  font-size: 0.92rem;
+  line-height: 1.2;
+}
+
+.apm-timeline {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.apm-timeline li {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px;
+  background: rgba(8, 14, 26, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+}
+
+.apm-timeline strong,
+.apm-revival article strong {
+  color: #dbe8ff;
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.apm-timeline span {
+  color: #b9c9e6;
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.apm-band-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.apm-band-list span {
+  padding: 7px 9px;
+  color: #dff8ff;
+  background: rgba(79, 208, 255, 0.09);
+  border: 1px solid rgba(79, 208, 255, 0.22);
+  border-radius: 999px;
+  font-size: 0.68rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.apm-revival {
+  margin: 0 16px 18px;
+}
+
+.apm-revival-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.apm-revival article {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  min-width: 0;
+  padding: 11px;
+  background: rgba(8, 14, 26, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+}
+
 @media (max-width: 900px) {
   .openagents-wordmark {
     padding: 40px;
@@ -1172,7 +1407,8 @@ pre.coding-message-body {
   }
 
   .pylons-page,
-  .coding-page {
+  .coding-page,
+  .apm-page {
     padding: 68px 16px 16px;
   }
 
@@ -1188,8 +1424,14 @@ pre.coding-message-body {
   }
 
   .pylons-back,
-  .create-pylon {
+  .create-pylon,
+  .coding-apm-button {
     width: 100%;
+  }
+
+  .coding-toolbar-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .pylon-row {
@@ -1249,6 +1491,21 @@ pre.coding-message-body {
   .coding-message-heading {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .apm-hero,
+  .apm-status-grid,
+  .apm-section-grid,
+  .apm-revival-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .apm-hero h2 {
+    font-size: 2.4rem;
+  }
+
+  .apm-timeline li {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
