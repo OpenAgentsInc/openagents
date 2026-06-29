@@ -10687,9 +10687,10 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
   {
     // Tassadar Percepta executor architecture receipts (#5523 / DE-5 #5528;
     // promise models.tassadar_percepta_executor.v1, planned). Read-only refs and
-    // digest projection: clears only the architecture-receipt blocker while
-    // Pylon CPU-transform training receipts remain missing. No trained model,
-    // inference endpoint, spend, settlement, promotion, or green claim.
+    // digest projection: architecture receipts and a separate bounded
+    // CPU-transform fixture receipt are available while settlement and owner
+    // green sign-off remain missing. No trained model, inference endpoint,
+    // spend, settlement, promotion, or green claim.
     path: TassadarPerceptaArchitectureReceiptsEndpoint,
     handler: request => handleTassadarPerceptaArchitectureReceiptsApi(request),
   },
@@ -10697,7 +10698,8 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
     // Tassadar Percepta CPU-transform training receipt status (#5523 / DE-5
     // #5528; promise models.tassadar_percepta_executor.v1, planned). Read-only
     // status projection: exposes the architecture and Artanis dataset inputs
-    // while every real training receipt gate remains false.
+    // plus one bounded fixture receipt while settlement and green gates remain
+    // false.
     path: TassadarPerceptaCpuTransformTrainingReceiptsEndpoint,
     handler: request =>
       handleTassadarPerceptaCpuTransformTrainingReceiptsApi(request),
