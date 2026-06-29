@@ -375,6 +375,47 @@ describe("#6637 account status observability", () => {
     })
   })
 
+  test("accounts status manual reset clears an unknown local quota block", async () => {
+    await withTempHome(async ({ home, summary }) => {
+      const accountHome = join(home, "accounts", "codex", "codex")
+      await mkdir(accountHome, { recursive: true })
+      await writeFile(summary.paths.config, JSON.stringify({
+        dev: {
+          accounts: [
+            {
+              provider: "codex",
+              ref: "codex",
+              home: accountHome,
+            },
+          ],
+        },
+      }))
+      const accountRefHash = hashPylonAccountRef("codex", "codex")
+      await recordQuotaBlock(summary, {
+        accountRefHash,
+        provider: "codex",
+        retryAtIso: "2026-06-28T22:00:00.000Z",
+        sourceDigestRef: "digest.pylon.account_quota.unknown",
+        now: new Date("2026-06-28T21:30:00.000Z"),
+      })
+
+      const reset = await collectPylonAccountsStatus(
+        summary,
+        parsePylonAccountsStatusArgs(["--account", "codex", "--reset", "--json"]),
+        {
+          env: { PYLON_HOME: home, CODEX_HOME: accountHome, PYLON_ACCOUNT_HOME_ROOT: join(home, "empty-siblings") },
+          now: new Date("2026-06-28T21:35:00.000Z"),
+        },
+      )
+
+      expect(reset.accounts[0]?.manualReset.performed).toBe(true)
+      expect(reset.accounts[0]?.manualReset.blockerRefs).toEqual([])
+      expect(reset.accounts[0]?.quota.state).toBe("available")
+      expect(reset.accounts[0]?.quotaPolicy.state).toBe("available")
+      expect(await loadQuotaRecord(summary, accountRefHash)).toBeNull()
+    })
+  })
+
   test("projects specific Codex account auth health reasons", async () => {
     await withTempHome(async ({ home, summary }) => {
       const accountHome = join(home, "accounts", "codex", "codex-revoked")

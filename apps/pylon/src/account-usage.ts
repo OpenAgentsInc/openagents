@@ -1332,7 +1332,7 @@ export async function collectPylonAccountsStatus(
     let resetPerformed = false
     let resetBlockerRefs: string[] = []
     if (args.reset && args.accountRef === target.accountRef) {
-      if (preResetPolicy.state !== "weekly_exhausted" || !preResetPolicy.operatorRecovery.manualResetAvailable) {
+      if (preResetPolicy.state === "short_window_cooldown" || preResetPolicy.state === "weekly_exhausted") {
         resetBlockerRefs = ["blocker.pylon.accounts_status.manual_reset_not_applicable"]
       } else {
         try {
