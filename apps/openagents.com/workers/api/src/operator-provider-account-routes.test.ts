@@ -2019,7 +2019,48 @@ describe('operator provider account routes', () => {
     })
   })
 
-  test('operator reset rejects non-POST methods and missing providerAccountRef', async () => {
+  test('operator reset accepts accountRefHash alias for the Artanis accounts dashboard', async () => {
+    const repository = new FakeProviderAccountRepository()
+    const database = new FakeProviderAccountD1()
+    database.accounts.push(
+      fakeAccountRow(
+        'provider_account_rate_limited',
+        'provider-account_ref_rate_limited',
+        {
+          cooldown_until: '2099-01-01T00:00:00.000Z',
+          health: 'unhealthy',
+          recent_failure_class: 'rate_limited',
+        },
+      ),
+    )
+
+    const response = await run(
+      repository,
+      '/api/operator/accounts/reset',
+      {
+        body: JSON.stringify({
+          accountRefHash: 'provider-account_ref_rate_limited',
+          email: 'chris@openagents.com',
+        }),
+        method: 'POST',
+      },
+      undefined,
+      database.asD1(),
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      providerAccountRef: 'provider-account_ref_rate_limited',
+    })
+    expect(database.accounts[0]).toMatchObject({
+      cooldown_until: null,
+      health: 'healthy',
+      recent_failure_class: null,
+    })
+  })
+
+  test('operator reset rejects non-POST methods and missing provider account ref', async () => {
     const repository = new FakeProviderAccountRepository()
     const database = new FakeProviderAccountD1()
 
@@ -2047,7 +2088,7 @@ describe('operator provider account routes', () => {
     expect(missingRef.status).toBe(400)
     await expect(missingRef.json()).resolves.toEqual({
       error: 'bad_request',
-      reason: 'providerAccountRef is required',
+      reason: 'providerAccountRef or accountRefHash is required',
     })
   })
 
