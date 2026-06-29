@@ -140,7 +140,44 @@ export interface KhalaWorkspaceService {
   readonly resolvePath?: (path: string) => Effect.Effect<string, KhalaToolRuntimeError>
 }
 
+export type KhalaProcessOutputChannel = "stdout" | "stderr"
+
+export type KhalaProcessEvent = Readonly<{
+  channel: KhalaProcessOutputChannel
+  text: string
+  timestampMs: number
+}>
+
+export type KhalaProcessExecInput = Readonly<{
+  argv?: ReadonlyArray<string>
+  cancelAfterMs?: number
+  command: string
+  cwd: string
+  maxCaptureBytes: number
+  shell?: string
+  timeoutMs: number
+}>
+
+export type KhalaProcessExecResult = Readonly<{
+  cancelled: boolean
+  durationMs: number
+  events: ReadonlyArray<KhalaProcessEvent>
+  exitCode: number | null
+  sandbox: Readonly<{
+    enforced: boolean
+    kind: "none" | "external"
+    note: string
+  }>
+  signal: string | null
+  stderr: string
+  stderrTruncated: boolean
+  stdout: string
+  stdoutTruncated: boolean
+  timedOut: boolean
+}>
+
 export interface KhalaProcessService {
+  readonly execCommand: (input: KhalaProcessExecInput) => Effect.Effect<KhalaProcessExecResult, KhalaToolRuntimeError>
   readonly marker: "khala.process_service"
 }
 
@@ -337,13 +374,102 @@ export const inMemoryKhalaOutputStore = (): KhalaOutputStore & {
 
 export function makeKhalaToolServices(input: {
   readonly permission?: KhalaPermissionService
+  readonly process?: KhalaProcessService
   readonly workingDirectory?: string
 } = {}): KhalaToolServices {
   return {
     outputStore: inMemoryKhalaOutputStore(),
     permission: input.permission ?? allowAllKhalaPermissionService,
-    process: { marker: "khala.process_service" },
+    process: input.process ?? defaultKhalaProcessService,
     workspace: { workingDirectory: input.workingDirectory ?? process.cwd() },
+  }
+}
+
+export const defaultKhalaProcessService: KhalaProcessService = {
+  execCommand: input =>
+    Effect.promise(async () => {
+      const started = Date.now()
+      let timedOut = false
+      let cancelled = false
+      const command = input.argv !== undefined && input.argv.length > 0
+        ? [...input.argv]
+        : [input.shell ?? process.env.SHELL ?? "/bin/sh", "-lc", input.command]
+      const proc = Bun.spawn(command, {
+        cwd: input.cwd,
+        stderr: "pipe",
+        stdout: "pipe",
+      })
+      const kill = (reason: "cancelled" | "timedOut"): void => {
+        if (reason === "cancelled") cancelled = true
+        else timedOut = true
+        proc.kill()
+      }
+      const timeout = setTimeout(() => kill("timedOut"), input.timeoutMs)
+      const cancel = input.cancelAfterMs === undefined
+        ? undefined
+        : setTimeout(() => kill("cancelled"), input.cancelAfterMs)
+      const events: KhalaProcessEvent[] = []
+      const [stdout, stderr, exitCode] = await Promise.all([
+        readProcessStream(proc.stdout, "stdout", input.maxCaptureBytes, events, () => proc.kill()),
+        readProcessStream(proc.stderr, "stderr", input.maxCaptureBytes, events, () => proc.kill()),
+        proc.exited.catch(() => null),
+      ])
+      clearTimeout(timeout)
+      if (cancel !== undefined) clearTimeout(cancel)
+      return {
+        cancelled,
+        durationMs: Date.now() - started,
+        events: events.sort((a, b) => a.timestampMs - b.timestampMs),
+        exitCode,
+        sandbox: {
+          enforced: false,
+          kind: "none",
+          note: "No sandbox is enforced by the default local Khala process service.",
+        },
+        signal: null,
+        stderr: stderr.text,
+        stderrTruncated: stderr.truncated,
+        stdout: stdout.text,
+        stdoutTruncated: stdout.truncated,
+        timedOut,
+      }
+    }),
+  marker: "khala.process_service",
+}
+
+async function readProcessStream(
+  stream: ReadableStream<Uint8Array>,
+  channel: KhalaProcessOutputChannel,
+  maxBytes: number,
+  events: KhalaProcessEvent[],
+  onTruncate: () => void,
+): Promise<Readonly<{ text: string; truncated: boolean }>> {
+  const reader = stream.getReader()
+  const chunks: Buffer[] = []
+  let bytes = 0
+  let truncated = false
+  while (true) {
+    const read = await reader.read()
+    if (read.done) break
+    const chunk = read.value
+    const remaining = maxBytes - bytes
+    if (remaining <= 0 || chunk.byteLength > remaining) {
+      if (remaining > 0) {
+        const kept = chunk.slice(0, remaining)
+        chunks.push(Buffer.from(kept))
+        events.push({ channel, text: Buffer.from(kept).toString("utf8"), timestampMs: Date.now() })
+      }
+      truncated = true
+      onTruncate()
+      break
+    }
+    bytes += chunk.byteLength
+    chunks.push(Buffer.from(chunk))
+    events.push({ channel, text: Buffer.from(chunk).toString("utf8"), timestampMs: Date.now() })
+  }
+  return {
+    text: Buffer.concat(chunks).toString("utf8"),
+    truncated,
   }
 }
 
@@ -422,6 +548,7 @@ export { createGrepTool, grepToolDefinition } from "./grep.js"
 export { createEditTool, editToolDefinition } from "./edit.js"
 export { createWriteTool, writeToolDefinition } from "./write.js"
 export { applyPatchToolDefinition, createApplyPatchTool } from "./apply-patch.js"
+export { createExecCommandTool, execCommandToolDefinition } from "./exec-command.js"
 
 function permissionRequestFor(
   definition: KhalaToolDefinition,
