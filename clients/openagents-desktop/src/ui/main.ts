@@ -329,15 +329,21 @@ const renderCodingSessions = (
     sessions.find(session => session.path === selectedSessionPath) ?? null
 
   codingActiveList.replaceChildren()
-  const activeSessions = sessions.filter(session => session.active).slice(0, 8)
-  if (activeSessions.length === 0) {
+  const activeSessions = sessions.filter(session => session.active)
+  const recentSessions = sessions.filter(session => session.status === "recent")
+  const visibleSessions = (
+    activeSessions.length + recentSessions.length > 0
+      ? [...activeSessions, ...recentSessions]
+      : sessions
+  ).slice(0, 8)
+  if (visibleSessions.length === 0) {
     const empty = document.createElement("div")
     empty.className = "coding-empty coding-active-empty"
     empty.textContent = "No active Codex sessions."
     codingActiveList.append(empty)
   } else {
     codingActiveList.append(
-      ...activeSessions.map(session => sessionButton(session, "chip")),
+      ...visibleSessions.map(session => sessionButton(session, "chip")),
     )
   }
 

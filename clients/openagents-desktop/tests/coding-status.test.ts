@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
 import {
+  latestCodingTranscriptActivityMs,
   parseCodexSessionRollout,
   parseCodingProcesses,
   parseSupervisorLog,
@@ -97,6 +98,9 @@ Pylon presence failed: OpenAgents presence request failed (401): {"error":"unaut
       "assistant",
     ])
     expect(parsed.messages.at(-1)?.text).toBe("Done.")
+    expect(latestCodingTranscriptActivityMs(parsed.messages)).toBe(
+      Date.parse("2026-06-29T02:46:00.000Z"),
+    )
   })
 
   test("uses task-like rollout text instead of injected AGENTS context as title", () => {

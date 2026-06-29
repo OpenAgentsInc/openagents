@@ -618,3 +618,16 @@ export const parseCodexSessionRollout = (
     title,
   }
 }
+
+export const latestCodingTranscriptActivityMs = (
+  messages: readonly CodingTranscriptMessage[],
+): number | null => {
+  let latest: number | null = null
+  for (const message of messages) {
+    if (message.timestamp === null) continue
+    const millis = Date.parse(message.timestamp)
+    if (!Number.isFinite(millis)) continue
+    latest = latest === null ? millis : Math.max(latest, millis)
+  }
+  return latest
+}

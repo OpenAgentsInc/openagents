@@ -7,6 +7,7 @@ import { dirname, join, resolve } from "node:path"
 import {
   type CodingCodexSession,
   emptyCodingStatusSummary,
+  latestCodingTranscriptActivityMs,
   parseCodexSessionRollout,
   parseCodingProcesses,
   parseSupervisorLog,
@@ -434,9 +435,13 @@ const readCodexSessions = async (
         },
         processes,
       )
-      const isRecent = Date.now() - file.modifiedAtMs <= 10 * 60 * 1_000
+      const activityAtMs = Math.max(
+        file.modifiedAtMs,
+        latestCodingTranscriptActivityMs(parsed.messages) ?? file.modifiedAtMs,
+      )
+      const isRecent = Date.now() - activityAtMs <= 10 * 60 * 1_000
       const active = process !== null
-      const modifiedAt = new Date(file.modifiedAtMs).toISOString()
+      const modifiedAt = new Date(activityAtMs).toISOString()
 
       return {
         accountRef,
