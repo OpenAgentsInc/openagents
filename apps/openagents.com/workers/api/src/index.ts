@@ -302,6 +302,8 @@ import { isCrmResendSendEnabled, makeCrmResendSender } from './crm-resend'
 import { makeCrmResendRoutes } from './crm-resend-routes'
 import { makeCrmRoutes } from './crm-routes'
 import { makeCrmSendRoutes } from './crm-send-routes'
+import { makeInMemoryCodingQuickWinPaidDeliveryClaimStore } from './coding-quick-win-claim-upgrade'
+import { makeCodingQuickWinReceiptPublicRoutes } from './coding-quick-win-receipt-public-routes'
 import { CustomerOneCohortEndpoint } from './customer-one-cohort-projection'
 import {
   handleOperatorCustomerOneCohortRowsApi,
@@ -7609,12 +7611,10 @@ const providerAccountRoutes = makeProviderAccountRoutes({
   handleProviderAccountUsageApi: (request, env, ctx) =>
     providerAccountUsageRoutes.handleProviderAccountUsageApi(request, env, ctx),
   handleProviderAccountsListApi: (request, env, ctx) =>
-    routeEffect('handle_provider_accounts_list_api', () =>
-      providerAccountBrowserHandlers.handleProviderAccountsListApi(
-        request,
-        env,
-        ctx,
-      ),
+    providerAccountBrowserHandlers.handleProviderAccountsListApi(
+      request,
+      env,
+      ctx,
     ),
   handleProviderDeviceLoginConnectedApi: (request, env, attemptId) =>
     routeEffect('handle_provider_device_login_connected_api', () =>
@@ -8418,6 +8418,11 @@ const marketingAgencyReceiptPublicRoutes =
   makeMarketingAgencyReceiptPublicRoutes<Env>({
     makeClaimStore: _env =>
       makeInMemoryMarketingAgencyPaidDeliveryClaimStore([]),
+  })
+const codingQuickWinReceiptPublicRoutes =
+  makeCodingQuickWinReceiptPublicRoutes<Env>({
+    makeClaimStore: _env =>
+      makeInMemoryCodingQuickWinPaidDeliveryClaimStore([]),
   })
 const marketingAgencySelfServePublicRoutes =
   makeMarketingAgencySelfServePublicRoutes<Env>({
@@ -11000,6 +11005,18 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       }),
   },
   {
+    // MirrorCode standing backstop burn (#6923). Public read-only live plan +
+    // ledger report over stored public-safe run rows. The surface never
+    // dispatches, spends, settles, or exposes task contents.
+    path: '/api/gym/mirrorcode/backstop-burn',
+    handler: (request, env) =>
+      handleMirrorCodeRunsApi(request, {
+        requireAdminApiToken: adminRequest =>
+          requireAdminApiToken(adminRequest, env),
+        store: makeD1MirrorCodeRunStore(openAgentsDatabase(env)),
+      }),
+  },
+  {
     // Operator-only Harbor full trace archive (#6253). Stores raw Harbor job
     // tarballs in private R2 with D1 metadata. Unlike `/api/traces`, this is
     // NOT a public-safe ATIF projection and never appears on public `/gym`.
@@ -13450,6 +13467,8 @@ const routeRequest = makeWorkerRouteRequest({
     ecommerceCampaignReceiptOperatorRoutes.routeEcommerceCampaignReceiptOperatorRequest,
   routeEcommerceCampaignSelfServeRequest:
     ecommerceCampaignSelfServeRoutes.routeEcommerceCampaignSelfServeRequest,
+  routeCodingQuickWinReceiptRequest:
+    codingQuickWinReceiptPublicRoutes.routeCodingQuickWinReceiptRequest,
   routeMarketingAgencyReceiptRequest:
     marketingAgencyReceiptPublicRoutes.routeMarketingAgencyReceiptRequest,
   routeMarketingAgencySelfServeRequest:

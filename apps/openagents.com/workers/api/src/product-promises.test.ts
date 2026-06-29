@@ -1,4 +1,5 @@
 import { Schema as S } from 'effect'
+import { existsSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 
 import {
@@ -83,6 +84,9 @@ const ProductPromisesDocument = S.Struct({
   version: S.String,
 })
 
+const repoFile = (relPath: string): URL =>
+  new URL(`../../../../../${relPath}`, import.meta.url)
+
 describe('public product promises document', () => {
   test('matches the browser-facing schema', () => {
     const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
@@ -130,6 +134,9 @@ describe('public product promises document', () => {
     expect(blockerRefs).not.toContain(
       'blocker.product_promises.cloud_primitives_unified_balance_unbuilt',
     )
+    expect(blockerRefs).not.toContain(
+      'blocker.product_promises.business_coding_quick_win_self_serve_missing',
+    )
     expect(decoded.sourceRefs).toContain(
       'docs/training/2026-06-20-psion-instruct-sft-fixture-sync.md',
     )
@@ -158,6 +165,15 @@ describe('public product promises document', () => {
       'docs/tassadar/2026-06-21-tassadar-cpu-transform-training-receipt-surface.md',
     )
     expect(decoded.promises.length).toBeGreaterThan(0)
+    const codingQuickWin = decoded.promises.find(
+      promise => promise.promiseId === 'business.coding_quick_win.v1',
+    )
+    expect(codingQuickWin?.blockerRefs).toEqual([
+      'blocker.product_promises.business_coding_quick_win_paid_receipt_missing',
+    ])
+    expect(codingQuickWin?.evidenceRefs).toContain(
+      'route:/api/public/business/coding-quick-win-receipts?view=paid-delivery-claims',
+    )
     expect(decoded.verificationSummary.promiseCount).toBe(
       decoded.promises.length,
     )
@@ -428,6 +444,31 @@ describe('public product promises document', () => {
         'apps/openagents.com/workers/api/src/agentic-npm-composition-runtime.test.ts',
       ]),
     )
+    const freeTierTraceCapturePromise = decoded.promises.find(
+      promise =>
+        promise.promiseId === 'data.khala_free_tier_trace_capture.v1',
+    )
+    expect(freeTierTraceCapturePromise?.blockerRefs).not.toContain(
+      'blocker.product_promises.trace_capture_public_disclosure_alignment_required',
+    )
+    expect(freeTierTraceCapturePromise?.blockerRefs).toEqual(
+      expect.arrayContaining([
+        'blocker.product_promises.free_tier_capture_default_owner_gated',
+        'blocker.product_promises.trace_capture_reward_marker_inert',
+      ]),
+    )
+    expect(freeTierTraceCapturePromise?.verification).toContain(
+      'disclosure surface, and privacy-entitlement exclusion code now agree',
+    )
+    const paidCaptureOptoutPromise = decoded.promises.find(
+      promise => promise.promiseId === 'privacy.khala_paid_capture_optout.v1',
+    )
+    expect(paidCaptureOptoutPromise?.blockerRefs).toEqual(
+      expect.arrayContaining([
+        'blocker.product_promises.paid_privacy_owner_signoff_pending',
+        'blocker.product_promises.paid_khala_business_loop_not_green',
+      ]),
+    )
     expect(agenticNpmPromise?.safeCopy).toContain(
       'bounded source-level registry + install/use runtime core exists',
     )
@@ -440,7 +481,7 @@ describe('public product promises document', () => {
       /latest stays 0\.2\.5|only published, installable Pylon|release candidate, not stable 0\.3\.0|Pylon v1\.0 is present in the monorepo as a release candidate/i,
     )
     expect(currentCopy).toContain('Pylon v1.0 has a stable source cut')
-    expect(currentCopy).toContain('Registry 2026-06-29.3')
+    expect(currentCopy).toContain('Registry 2026-06-29.4')
     expect(currentCopy).toContain('flips NO promise state')
     expect(currentCopy).toContain('Khala Desktop now carries source-level')
     expect(currentCopy).toContain('maxStalenessSeconds:0')
@@ -1296,6 +1337,77 @@ describe('public product promises document', () => {
     expect(externalRepoStudyPromise?.authorityBoundary).toContain(
       'no private repo ingestion authority',
     )
+  })
+
+  test('world-first and largest-force claims stay gated by the #7027 dated audit', () => {
+    const auditDoc = 'docs/promises/2026-06-29-world-first-claims-7027-audit.md'
+    expect(existsSync(repoFile(auditDoc))).toBe(true)
+
+    const document = publicProductPromisesDocument()
+    const byId = new Map(
+      document.promises.map(promise => [promise.promiseId, promise]),
+    )
+
+    const paidBitcoin = byId.get(
+      'claims.world_first_ai_training_paid_bitcoin.v1',
+    )
+    expect(paidBitcoin).toMatchObject({
+      state: 'red',
+      blockerRefs: expect.arrayContaining([
+        'blocker.product_promises.world_first_evidence_pack_missing',
+        'blocker.product_promises.world_first_owner_signed_upgrade_missing',
+      ]),
+      evidenceRefs: expect.arrayContaining([auditDoc]),
+    })
+    expect(paidBitcoin?.safeCopy).toContain('full qualifiers')
+    expect(paidBitcoin?.unsafeCopy).toContain('bare "world first"')
+    expect(paidBitcoin?.verification).toContain('#7027 dated audit')
+
+    const llmComputer = byId.get(
+      'claims.world_first_public_llm_computer_training_run.v1',
+    )
+    expect(llmComputer).toMatchObject({
+      state: 'red',
+      blockerRefs: [
+        'blocker.product_promises.world_first_owner_signed_upgrade_missing',
+      ],
+      evidenceRefs: expect.arrayContaining([auditDoc]),
+    })
+    expect(llmComputer?.safeCopy).toContain('Percepta')
+    expect(llmComputer?.unsafeCopy).toContain('bare "world first"')
+    expect(llmComputer?.verification).toContain('#7027 dated audit')
+
+    const agenticSalesForce = byId.get(
+      'claims.pursued_world_first_largest_agentic_sales_force.v1',
+    )
+    expect(agenticSalesForce).toMatchObject({
+      state: 'planned',
+      blockerRefs: expect.arrayContaining([
+        'blocker.product_promises.world_first_agentic_sales_force_not_achieved',
+        'blocker.product_promises.world_first_agentic_sales_force_no_sized_verifiable_force',
+        'blocker.product_promises.world_first_owner_signed_upgrade_missing',
+      ]),
+      evidenceRefs: expect.arrayContaining([auditDoc]),
+    })
+    expect(agenticSalesForce?.safeCopy).toContain('PURSUED')
+    expect(agenticSalesForce?.unsafeCopy).toContain('OpenAgents HAS')
+    expect(agenticSalesForce?.verification).toContain('#7027 dated audit')
+
+    const largestSalesForce = byId.get(
+      'claims.pursued_world_first_largest_sales_force.v1',
+    )
+    expect(largestSalesForce).toMatchObject({
+      state: 'planned',
+      blockerRefs: expect.arrayContaining([
+        'blocker.product_promises.world_first_largest_sales_force_not_achieved',
+        'blocker.product_promises.world_first_largest_sales_force_seven_million_bar_unmet',
+        'blocker.product_promises.world_first_owner_signed_upgrade_missing',
+      ]),
+      evidenceRefs: expect.arrayContaining([auditDoc]),
+    })
+    expect(largestSalesForce?.safeCopy).toContain('NOT achieved')
+    expect(largestSalesForce?.unsafeCopy).toContain('~7M-agent bar')
+    expect(largestSalesForce?.verification).toContain('#7027 dated audit')
   })
 
   test('weekend pylon promise assault attaches evidence without flipping any state', () => {

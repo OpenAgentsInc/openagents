@@ -10,6 +10,11 @@ import {
 import type { BootstrapSummary } from "./bootstrap.js"
 import { recordAccountLinkInPresence } from "./presence.js"
 import { assertPublicProjectionSafe } from "./state.js"
+import {
+  classifyCodexAccountFailure,
+  type PylonCodexAccountHealthReason,
+} from "./codex-account-health.js"
+import { clearCodexAccountHealthFailure } from "./codex-account-health-ledger.js"
 
 export type PylonAccountsConnectArgs = {
   provider: PylonAccountProvider
@@ -36,7 +41,7 @@ export type PylonCodexDeviceLoginRunner = (input: {
  * Reasons a stored Codex `auth.json` can be present-but-unusable. These are
  * public-safe enum refs only; they never carry token material.
  */
-export type PylonCodexAuthInvalidReason = "credentials_revoked" | "usage_limited" | "auth_error"
+export type PylonCodexAuthInvalidReason = Exclude<PylonCodexAccountHealthReason, "network" | "timeout" | "other"> | "auth_error"
 
 /**
  * Result of probing whether a stored Codex credential is actually usable, not
@@ -316,16 +321,13 @@ export function classifyCodexAuthProbeOutput(input: {
   stdout: string
   stderr: string
 }): PylonCodexAuthValidity {
-  const text = `${input.stdout}\n${input.stderr}`.toLowerCase()
-  if (/revok/.test(text)) {
-    return { valid: false, reason: "credentials_revoked" }
-  }
-  if (/usage limit|rate limit|too many requests|quota|\b429\b/.test(text)) {
-    return { valid: false, reason: "usage_limited" }
-  }
+  const text = `${input.stdout}\n${input.stderr}`
+  const failure = classifyCodexAccountFailure(text)
+  if (failure.reason === "credentials_revoked") return { valid: false, reason: "credentials_revoked" }
+  if (failure.reason === "usage_limited" || failure.reason === "rate_limited") return { valid: false, reason: failure.reason }
   if (
     /could not be refreshed|refresh token|token (?:has )?expired|expired token|unauthorized|\b401\b|not logged in|please (?:sign in|log ?in)|sign in again|authentication (?:failed|error)|invalid (?:token|credential)/.test(
-      text,
+      text.toLowerCase(),
     )
   ) {
     return { valid: false, reason: "auth_error" }
@@ -654,6 +656,17 @@ export async function runPylonAccountsConnect(
     blockerRefs,
   } satisfies PylonAccountConnectProjection
   assertPublicProjectionSafe(projection)
+  if (
+    args.provider === "codex" &&
+    (deviceLoginStatus === "completed" ||
+      deviceLoginStatus === "completed_recovered_invalid_auth" ||
+      (deviceLoginStatus === "skipped_existing_auth" && deviceLoginReason === undefined))
+  ) {
+    await clearCodexAccountHealthFailure(
+      summary,
+      hashPylonAccountRef(args.provider, args.accountRef),
+    )
+  }
   const linkedProviderAccountRef = linkedOpenAgentsProviderAccountRef(openAgentsDeviceLogin)
   if (linkedProviderAccountRef !== null) {
     await recordAccountLinkInPresence(summary, {

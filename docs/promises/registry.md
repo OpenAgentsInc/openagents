@@ -1,6 +1,6 @@
 # Promise Registry
 
-> Registry `2026-06-29.3` corrects the #6891 unsafe-copy boundary for
+> Registry `2026-06-29.4` corrects the #6891 unsafe-copy boundary for
 > `models.tassadar_percepta_executor.v1` and flips NO promise state. The
 > promise already cites the bounded Pylon v1.0 CPU computation-transform fixture
 > receipt, so unsafe copy now blocks broad or settled Pylon CPU-transform
@@ -8,6 +8,14 @@
 > promise STAYS planned: the receipt is fixture-scale only and still does not
 > prove a trained model, public earning path, real settlement, model promotion,
 > or green transition.
+>
+> Registry `2026-06-29.3` implements the #7027 world-first / largest-force
+> promise audit and flips NO promise state. The dated audit records allowed
+> wording, refuse-list wording, prior-art caveats, receipt refs, and blocker
+> notes for the two world-first claims and two largest-force pursuit records.
+> The world-first claims stay red; the largest-force records stay planned
+> pursuits; no owner-signed transition receipt, record-holder status, green
+> claim, payout, settlement, or marketing-claim authority is created.
 >
 > Registry `2026-06-29.2` is a current-main refresh after #6997, #6999,
 > #7001, #7002, and #7006 and flips NO promise state. It records the
@@ -75,9 +83,9 @@
 > Current machine-readable source of truth: `/api/public/product-promises` is
 > generated from
 > [`product-promises.ts`](../../apps/openagents.com/workers/api/src/product-promises.ts),
-> which currently advertises registry `2026-06-29.3` with
+> which currently advertises registry `2026-06-29.4` with
 > `lastUpdated: "2026-06-29"`. This narrative document records the same
-> top-line 2026-06-29.3 promise decisions above, plus historical reconciliation
+> top-line 2026-06-29.4 promise decisions above, plus historical reconciliation
 > context below; when in doubt, agents and reviewers should defer to the
 > machine-readable registry and include its version in mismatch reports.
 >
@@ -85,7 +93,7 @@
 > Tassadar CPU-transform, referral, small-model proxy, WASM plugin, Verse scene,
 > native email, marketplace, metrics, terminal-agent audit, supervisor
 > replenishment, GLM failover, Apple FM sidecar, and operator-safety merges were
-> checked against the current `2026-06-29.3` registry header. This pass records
+> checked against the current `2026-06-29.4` registry header. This pass records
 > no additional promise state flips and no new green claims beyond the already
 > source-recorded scoped transitions; red/planned/yellow records keep their
 > owner-signed, receipt-first green gates.

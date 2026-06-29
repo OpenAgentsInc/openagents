@@ -1960,7 +1960,7 @@ const schemaComponents = (): JsonSchema => ({
     'Public-safe Artanis Tassadar distillation dataset receipt: a refs-only live-at-read manifest over accepted Artanis admin executor-trace closeouts. Returns receiptState, receiptRef/datasetRef when enough verified traces exist, required/source verified trace counts, digest prefixes, closeout receipt refs, clearsBlockerRefs/blockerRefs, and per-trace public refs. It exposes no raw trace bodies, private runner logs, prompts, provider payloads, wallet material, customer data, settlement claim, model-training claim, or model-promotion claim.',
   ),
   ArtanisResponderSupportResponse: objectSummary(
-    'Public-safe Artanis Pylon-support responder external-contributor-flow and tick-readiness projection: per-asker-provenance counts (externalContributorAnsweredCount, externalContributorTippedCount, ownerOperatorAnsweredCount), externalContributorFlowProven, external-contributor interactions with dereferenceable reply-post refs, and tickReadiness with the ten unattended responder tick target, qualifying tick count, tick windows, and externalContributorAnsweredWithinTickWindow. An external contributor is a registered non-owner, non-operator, non-Artanis identity; operator/owner test articles are classified owner_operator and never satisfy the gate. Carries generatedAt plus projection_staleness.v1 contracts (live_at_read, maxStalenessSeconds 0, rebuildsOn the responder-action and responder-tick ledger writes). Read-only projection; it grants no dispatch, spend, assignment, settlement, moderation, Forum-write, or registry-transition authority and cannot create an interaction, a reply, a tip, or a tick.',
+    'Public-safe Artanis Pylon-support responder external-contributor-flow and tick-readiness projection: per-asker-provenance counts (externalContributorAnsweredCount, externalContributorTippedCount, ownerOperatorAnsweredCount), externalContributorFlowProven, external-contributor interactions with dereferenceable reply-post refs, blockerRefs/clearedBlockerRefs/unclearedBlockerRefs, greenGateMet, and tickReadiness with the ten unattended responder tick target, qualifying tick count, tick windows, and externalContributorAnsweredWithinTickWindow. An external contributor is a registered non-owner, non-operator, non-Artanis identity; operator/owner test articles are classified owner_operator and never satisfy the gate. Carries generatedAt plus projection_staleness.v1 contracts (live_at_read, maxStalenessSeconds 0, rebuildsOn the responder-action and responder-tick ledger writes). Read-only projection; it grants no dispatch, spend, assignment, settlement, moderation, Forum-write, or registry-transition authority and cannot create an interaction, a reply, a tip, or a tick.',
   ),
   LaborSelfServePayoutRequest: objectSummary(
     'Agent-authenticated self-serve labor payout request. The providerRef must match the bearer-authenticated actor; the route currently returns a typed plan plus an inert dispatch decision unless explicitly enabled.',
@@ -1973,6 +1973,9 @@ const schemaComponents = (): JsonSchema => ({
   ),
   EcommerceCampaignReceiptResponse: objectSummary(
     'Public-safe e-commerce campaign receipt or paid-delivery-claims projection. Carries assessedAt/generatedAt timestamps plus a live_at_read staleness contract for claim projections where available. Fixture and stored receipts expose bounded delivery refs only and grant no new delivery, attribution, payout, settlement, or green-claim authority.',
+  ),
+  CodingQuickWinReceiptResponse: objectSummary(
+    'Public-safe coding quick-win receipt or paid-delivery-claims projection. Carries assessedAt/generatedAt timestamps plus a live_at_read staleness contract for claim projections where available. Receipt reads expose lifecycle labels without customer-private refs and grant no auto-merge, deploy, payout, settlement, or green-claim authority.',
   ),
   MarketingAgencyReceiptResponse: objectSummary(
     'Public-safe marketing-agency white-label receipt or paid-delivery-claims projection. Carries assessedAt/generatedAt timestamps plus a live_at_read staleness contract for claim projections where available. Fixture and stored receipts expose bounded delivery refs only and grant no new delivery, attribution, payout, settlement, or green-claim authority.',
@@ -3725,6 +3728,7 @@ const schemaComponents = (): JsonSchema => ({
     required: [
       'authorityBoundary',
       'blockerRefs',
+      'clearedBlockerRefs',
       'generatedAt',
       'greenGateMet',
       'kind',
@@ -3733,6 +3737,7 @@ const schemaComponents = (): JsonSchema => ({
       'placedRequests',
       'publicSafe',
       'staleness',
+      'unclearedBlockerRefs',
       'unattendedRequestReceiptsProven',
       'unattendedRequestTarget',
     ],
@@ -3740,6 +3745,7 @@ const schemaComponents = (): JsonSchema => ({
       authorityBoundary: { type: 'string' },
       blockerRefs: { type: 'array', items: { type: 'string' } },
       byTerminalState: { type: 'object' },
+      clearedBlockerRefs: { type: 'array', items: { type: 'string' } },
       generatedAt: { type: 'string', format: 'date-time' },
       greenGateMet: { type: 'boolean' },
       kind: {
@@ -3770,6 +3776,7 @@ const schemaComponents = (): JsonSchema => ({
           rebuildsOn: { type: 'array', items: { type: 'string' } },
         },
       },
+      unclearedBlockerRefs: { type: 'array', items: { type: 'string' } },
       unattendedRequestReceiptsProven: { type: 'boolean' },
       unattendedRequestTarget: { type: 'integer' },
     },
@@ -4098,10 +4105,12 @@ const requestSchemas = (): JsonSchema => ({
       'optOut',
       'publicSharing',
       'reportPath',
+      'blockerRefs',
+      'gates',
       'references',
     ],
     description:
-      'Canonical, code-accurate data-sharing terms for the free Khala API (#6296). Public-safe: terms text + bounded policy facts only — no secrets, account, or payment material.',
+      'Canonical, code-accurate data-sharing terms for the free Khala API (#6296/#7019). Public-safe: terms text, bounded policy facts, and explicit blocker/gate refs only — no secrets, account, prompt, trace, or payment material.',
     properties: {
       promiseId: {
         type: 'string',
@@ -4123,6 +4132,7 @@ const requestSchemas = (): JsonSchema => ({
         additionalProperties: false,
         required: [
           'capturedByDefault',
+          'defaultCaptureGate',
           'redacted',
           'defaultVisibility',
           'mayTrain',
@@ -4134,6 +4144,7 @@ const requestSchemas = (): JsonSchema => ({
           'Machine-checkable policy facts mirroring the runtime capture seams.',
         properties: {
           capturedByDefault: { type: 'boolean' },
+          defaultCaptureGate: { type: 'string', enum: ['owner_gated'] },
           redacted: { type: 'boolean' },
           defaultVisibility: { type: 'string', enum: ['owner_only'] },
           mayTrain: { type: 'boolean' },
@@ -4145,6 +4156,54 @@ const requestSchemas = (): JsonSchema => ({
       optOut: { type: 'string' },
       publicSharing: { type: 'string' },
       reportPath: { type: 'string' },
+      blockerRefs: {
+        type: 'array',
+        items: { type: 'string' },
+        description:
+          'Public-safe blocker refs that keep the related data/privacy promises yellow.',
+      },
+      gates: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['defaultCapture', 'paidPrivacyOptOut', 'traceRewards'],
+        description:
+          'Public-safe gate summary so agents do not infer green/live behavior from policy terms alone.',
+        properties: {
+          defaultCapture: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['state', 'envFlag', 'blockerRef'],
+            properties: {
+              state: { type: 'string', enum: ['owner_gated'] },
+              envFlag: {
+                type: 'string',
+                enum: ['KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT'],
+              },
+              blockerRef: { type: 'string' },
+            },
+          },
+          paidPrivacyOptOut: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['state', 'failClosed', 'blockerRefs'],
+            properties: {
+              state: { type: 'string', enum: ['wired_yellow'] },
+              failClosed: { type: 'boolean' },
+              blockerRefs: { type: 'array', items: { type: 'string' } },
+            },
+          },
+          traceRewards: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['state', 'payoutClaimAllowed', 'blockerRef'],
+            properties: {
+              state: { type: 'string', enum: ['inert'] },
+              payoutClaimAllowed: { type: 'boolean' },
+              blockerRef: { type: 'string' },
+            },
+          },
+        },
+      },
       references: { type: 'array', items: { type: 'string' } },
     },
   },
@@ -5606,7 +5665,7 @@ const paths = (): JsonSchema => ({
       operationId: 'getFreeTierDataSharingDisclosure',
       summary: 'Read free-API data-sharing terms',
       description:
-        'Returns the canonical, code-accurate data-sharing terms for the free Khala API so agents and users can discover them over the API surface, not only in human UI. The honest terms: free API usage is captured by default as REDACTED, PRIVATE (owner_only) traces that may be used to improve and train OpenAgents models; paying for privacy (or running confidential compute) opts you OUT of capture (fail-closed to not-captured); public sharing of a captured trace is owner opt-in only; and being captured grants NO payout or settlement (the data-market reward marker is inert and owner-gated). The same disclosure object is embedded in the POST /api/keys/free mint response. Read-only, no auth, no secrets.',
+        'Returns the canonical, code-accurate data-sharing terms for the free Khala API so agents and users can discover them over the API surface, not only in human UI. The honest terms: free API usage is captured by default when the owner-gated production capture flag is armed, as REDACTED, PRIVATE (owner_only) traces that may be used to improve and train OpenAgents models; paying for privacy (or running confidential compute) opts you OUT of capture (fail-closed to not-captured); public sharing of a captured trace is owner opt-in only; and being captured grants NO payout or settlement (the data-market reward marker is inert and owner-gated). The same disclosure object is embedded in the POST /api/keys/free mint response. Read-only, no auth, no secrets.',
       tags: ['Public Proof', 'Agents'],
       security: publicRead,
       responses: {
@@ -5930,6 +5989,29 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'E-commerce campaign receipt projection.',
           '#/components/schemas/EcommerceCampaignReceiptResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/business/coding-quick-win-receipts': {
+    get: operation({
+      operationId: 'listPublicCodingQuickWinReceiptClaims',
+      summary: 'List coding quick-win paid-delivery claims',
+      description:
+        'Returns public-safe coding quick-win paid-delivery claim projections when called with view=paid-delivery-claims. Receipt point reads are available under the same route prefix. The surface grants no auto-merge, deploy, delivery, payout, settlement, or green-claim authority.',
+      tags: ['Business', 'Public Proof'],
+      security: publicRead,
+      parameters: [
+        queryParam(
+          'view',
+          'Use paid-delivery-claims to list projected paid delivery claims.',
+        ),
+      ],
+      responses: {
+        '200': okJson(
+          'Coding quick-win receipt projection.',
+          '#/components/schemas/CodingQuickWinReceiptResponse',
         ),
         ...errorResponses(),
       },

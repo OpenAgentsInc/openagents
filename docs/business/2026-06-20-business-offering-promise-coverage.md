@@ -27,7 +27,7 @@ assisted, red = blocked for affirmative copy, planned = roadmap.
 | Coding-runtime execution (objective → repo → verify → diff + evidence) | `pylon.local_claude_agent_bridge.v1`, `autopilot.codex_probe_pylon_successor.v1`, `pylon.cli_tui_probe_background.v1`, `pylon.agent_steerable_cli.v1` | green | Live single-task exec re-verified 2026-06-19. |
 | Negotiated labor jobs (post → negotiate → escrow → execute → validate → settle) | `labor.forum_work_requests.v1`, `labor.nostr_negotiation_market.v1` | green | First end-to-end settled job #4777. |
 | Desktop GUI to watch/steer sessions | `autopilot.desktop_gui_client.v1` | yellow | From-DMG clean-Mac render/presence/settled-Bitcoin proof pending. |
-| **Coding quick win as a buyable business product** | **`business.coding_quick_win.v1` (NEW)** | yellow | Operator-assisted today; needs packaged priced intake→delivery→receipt + first paid customer receipt. |
+| **Coding quick win as a buyable business product** | **`business.coding_quick_win.v1` (NEW)** | yellow | Self-serve evidence pipeline + public paid-receipt claim projection exist; first real paid customer receipt plus owner sign-off still pending. |
 
 ### 2. Inference / AI
 
@@ -129,7 +129,7 @@ Tier 1 — make the business loop collectable and deliverable (highest priority)
 1. `business.intake_quick_win_offering.v1` — close the self-serve quick-win delivery + first paid quick-win receipt.
 2. `inference.gateway_credits_business.v1` — close the paid card/Bitcoin→credit→inference-spend receipt (prod Stripe keys + USD→msat bridge with a real purchase).
 3. `payments.autopilot_credits_purchase.v1` — credit-card purchase of credits in prod.
-4. `business.coding_quick_win.v1` — package the green coding runtime + labor market as a priced, repeatable, receipted business product.
+4. `business.coding_quick_win.v1` — land the first real paid customer receipt and owner sign-off through the existing self-serve evidence pipeline + paid-claim projection.
 
 Tier 2 — vertical packs and inference products from operator-assisted → self-serve:
 
