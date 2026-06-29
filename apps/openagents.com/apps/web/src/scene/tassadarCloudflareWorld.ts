@@ -92,6 +92,17 @@ export type TassadarPylonChatInput = Readonly<{
   pylonRef: string
 }>
 
+export type TassadarAvatarPositionCommandPayload = Readonly<{
+  animation: 'idle' | 'run' | 'walk'
+  avatarRef: string
+  position: Readonly<{
+    x: number
+    y: number
+    z: number
+  }>
+  rotationY: number
+}>
+
 const text = (value: string | null): string => value?.trim() ?? ''
 
 const runRefForSummary = (summary: TassadarRunPublicSummary): string =>
@@ -157,6 +168,26 @@ const movementModeToAnimation = (
     : movementMode === 'walking'
       ? 'walk'
       : 'idle'
+
+export const tassadarAvatarPositionCommandPayload = (
+  input: Readonly<{
+    actorRef: string
+    characterId: string
+    position: TassadarLocalAvatarPosition
+  }>,
+): TassadarAvatarPositionCommandPayload => {
+  const clamped = clampTassadarLocalAvatarPosition(input.position)
+  return {
+    animation: movementModeToAnimation(clamped.movementMode),
+    avatarRef: worldAvatarRefForCharacter(input.actorRef, input.characterId),
+    position: {
+      x: clamped.positionX,
+      y: clamped.positionY,
+      z: clamped.positionZ,
+    },
+    rotationY: clamped.yaw,
+  }
+}
 
 const readModelRows = (
   readModel: ClientWorld,
@@ -449,16 +480,11 @@ export const startTassadarCloudflareWorldSubscription = async (
       })
     },
     updateLocalAvatar: position => {
-      const clamped = clampTassadarLocalAvatarPosition(position)
-      callCommand('set_avatar_position', {
-        position: {
-          x: clamped.positionX,
-          y: clamped.positionY,
-          z: clamped.positionZ,
-        },
-        rotationY: clamped.yaw,
-        animation: movementModeToAnimation(clamped.movementMode),
-      })
+      callCommand('set_avatar_position', tassadarAvatarPositionCommandPayload({
+        actorRef,
+        characterId,
+        position,
+      }))
     },
   }
 }
