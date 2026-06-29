@@ -1,5 +1,20 @@
 # Promise Registry
 
+> Registry `2026-06-29.1` implements the accepted-outcome economics spine for
+> `payments.accepted_outcome_economics.v1` and flips NO promise state. The new
+> dereferenceable contributor-accrual bundle and accepted-outcome settlement
+> bundle compose fixture/source-level gross-margin, ledger, and settlement-state
+> receipts for one stored economics row. The promise STAYS red until a real
+> accepted outcome moves through the money-moving settlement path and an
+> owner-signed green transition exists.
+>
+> Registry `2026-06-28.3` implements the bounded CPU computation-transform
+> fixture for `models.tassadar_percepta_executor.v1` and flips NO promise state.
+> The public receipt surface proves one CPU-only fixture-scale optimization step
+> with no real Bitcoin movement and no settlement. The promise STAYS planned;
+> this is not a trained model, paid earning path, model promotion, or green
+> transition.
+>
 > Registry `2026-06-27.2` flips
 > `khala.own_capacity_codex_delegation.v1` to green for its explicit typed
 > owner-capacity scope only. The scoped proof now covers reliable default
@@ -40,11 +55,19 @@
 > Current machine-readable source of truth: `/api/public/product-promises` is
 > generated from
 > [`product-promises.ts`](../../apps/openagents.com/workers/api/src/product-promises.ts),
-> which currently advertises registry `2026-06-28.2` with
-> `lastUpdated: "2026-06-28"`. This narrative document records the same
-> top-line 2026-06-27 promise decisions above, plus historical reconciliation
+> which currently advertises registry `2026-06-29.1` with
+> `lastUpdated: "2026-06-29"`. This narrative document records the same
+> top-line 2026-06-29 promise decisions above, plus historical reconciliation
 > context below; when in doubt, agents and reviewers should defer to the
 > machine-readable registry and include its version in mismatch reports.
+>
+> `2026-06-29` standing sweep: recent mainline accepted-outcome economics,
+> Tassadar CPU-transform, referral, small-model proxy, WASM plugin, Verse scene,
+> native email, marketplace, metrics, and operator-safety merges were checked
+> against the current `2026-06-29.1` registry header. This pass records no
+> additional promise state flips and no new green claims beyond the already
+> source-recorded scoped transitions; red/planned/yellow records keep their
+> owner-signed, receipt-first green gates.
 >
 > `2026-06-28` standing sweep: recent mainline Khala, Artanis, Pylon, Gym, and
 > operator-safety merges were checked against the current `2026-06-28.2`
