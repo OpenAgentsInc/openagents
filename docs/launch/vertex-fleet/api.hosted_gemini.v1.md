@@ -457,6 +457,34 @@ production binding shape the harness was missing.
   does not prove a lane's credential authenticates upstream). The gateway
   blocker REMAINS listed.
 
+### 2026-06-29 update — production receipt + owner-transition readiness gate
+
+- `blocker.product_promises.hosted_gemini_production_receipt_pending` and
+  `blocker.product_promises.hosted_gemini_owner_upgrade_signoff_pending` —
+  **made mechanically auditable, NOT cleared.** Issue #7017 needs a
+  dereferenceable public-safe production receipt and an owner-signed promise
+  transition before hosted Gemini can go green. This change adds the missing
+  read-only gate:
+  - `apps/openagents.com/workers/api/src/hosted-gemini-promise-readiness.ts`
+    classifies a cited public inference receipt as green-eligible only when it
+    is a paid `receipt.inference.charge.*` projection with `vertex-gemini` model
+    evidence and positive token usage, then requires a matching
+    `api.hosted_gemini.v1` green transition receipt that cites the same evidence.
+  - `apps/openagents.com/workers/api/src/hosted-gemini-promise-readiness-routes.ts`
+    exposes
+    `GET /api/public/product-promises/api.hosted_gemini.v1/readiness?receiptRef=<receiptRef>`,
+    composed live from the existing public inference receipt store and product
+    promise transition receipt store.
+  - Focused tests prove non-Hosted/non-metered receipts do not clear the
+    production blocker, missing owner signoff keeps the signoff blocker, and a
+    transition must cite the same receipt evidence before both blockers clear.
+
+  **Honest scope:** this endpoint is proof/readiness plumbing only. It does not
+  run a live Gemini request, mint an owner transition, debit credits, move money,
+  widen provider authority, or flip the registry. The promise remains yellow
+  until an actual production receipt dereferences through the route and the
+  owner-signed transition receipt exists.
+
 ## What remains (for green)
 
 - Arm the bound executor on a real deployment (`HOSTED_GEMINI_EXECUTOR_ENABLED`
