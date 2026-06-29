@@ -47,11 +47,19 @@ Do not say or imply:
 - Customer-data privacy review and redaction policy.
 - Customer repo ingestion boundary and source-authority contract.
 - Private validation and holdout split discipline with leak response.
-- Marketplace package policy and conformance tests.
-- Usage metering and exact usage-subject refs.
-- Pricing, refund, dispute, and package entitlement policy.
-- Payout eligibility policy.
-- Settlement receipts for any paid package or accepted work claim.
+- Marketplace package policy and conformance tests. The refs-only inert
+  commercial preflight is now recorded in
+  `2026-06-29-repo-studying-commercial-policy-gate.md`; it does not list a
+  package or make one claimable.
+- Usage metering and exact usage-subject refs. The commercial preflight now
+  requires these refs before paid-package readiness can be planned.
+- Pricing, refund, dispute, and package entitlement policy. The commercial
+  preflight now requires these refs before paid-package readiness can be planned.
+- Payout eligibility policy. The commercial preflight now requires a payout
+  policy ref but keeps `payoutEligible=false`.
+- Settlement receipts for any paid package or accepted work claim. The
+  commercial preflight now requires a settlement-gate ref but keeps
+  `settlementReady=false`.
 - Product-promise preflight before public copy changes state.
 
 ## SA-5 Gate Matrix (#5342)
@@ -63,10 +71,10 @@ OpenAgents-repo dogfood only.
 | Capability | Required evidence before claim | Current state |
 | --- | --- | --- |
 | Customer repo studying | Customer consent and workspace authority refs; a tenant-scoped corpus manifest; source-ingestion and deletion/export policy; redaction report; private-material boundary tests; holdout validation showing lift on customer-safe tasks; product-promise transition receipt. | Blocked. No customer repo ingestion or public customer studying claim. |
-| Marketplace study package | Package schema; conformance tests; package review/approval refs; entitlement and usage-metering refs; pricing, refund, and dispute policy; public listing copy reviewed against this promise gate. | Blocked. Study packets are not marketplace packages. |
+| Marketplace study package | Package schema; conformance tests; package review/approval refs; entitlement and usage-metering refs; pricing, refund, and dispute policy; public listing copy reviewed against this promise gate. | Commercial policy refs are explicit and inert (`2026-06-29-repo-studying-commercial-policy-gate.md`). Study packets are still not marketplace packages. |
 | Repo-expert language | Evaluation report from private validation and holdout tasks; freshness and source-authority refs; failure analysis; caveat copy that distinguishes packet-assisted retrieval from a trained model/expert. | Blocked. Current evidence is internal OpenAgents-codebase lift only. |
-| Payout eligibility | A separate work request or funded receipt; accepted-work evidence; independent verification; payout target approval; settlement approval; public-safe settlement receipt. Study packets or StudyBench rows alone must not create payout eligibility. | Blocked except where another already-green labor/debt-receipt rail independently supplies the payout authority. |
-| Automatic paid work | Assignment/claim route, budget cap, worker/reviewer/settlement role split, idempotent settlement, reconciliation, and public receipt projection for the actual work product. | Blocked. A study packet may be evidence/context only. |
+| Payout eligibility | A separate work request or funded receipt; accepted-work evidence; independent verification; payout target approval; settlement approval; public-safe settlement receipt. Study packets or StudyBench rows alone must not create payout eligibility. | Commercial policy refs are explicit and inert; `payoutEligible=false` remains enforced except where another already-green labor/debt-receipt rail independently supplies payout authority. |
+| Automatic paid work | Assignment/claim route, budget cap, worker/reviewer/settlement role split, idempotent settlement, reconciliation, and public receipt projection for the actual work product. | Commercial policy refs are explicit and inert; a study packet may be evidence/context only and no paid-work route is armed. |
 
 Closeout for #5342 is gate definition, not a green-claim transition. Any future
 state change must update this review, the registry entry, and the relevant

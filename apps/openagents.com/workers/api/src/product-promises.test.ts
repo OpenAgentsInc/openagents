@@ -1027,14 +1027,15 @@ describe('public product promises document', () => {
           audience: expect.arrayContaining(['agent', 'operator', 'developer']),
           blockerRefs: expect.arrayContaining([
             'blocker.product_promises.repo_studying_privacy_review_missing',
-            'blocker.product_promises.repo_studying_marketplace_metering_missing',
-            'blocker.product_promises.repo_studying_payout_settlement_gates_missing',
+            'blocker.product_promises.repo_studying_product_copy_review_missing',
           ]),
           evidenceRefs: expect.arrayContaining([
             'docs/research/machine-studying/openagents-studybench/runs/2026-06-17-mvp-14-baseline-packet-gepa-comparison.md',
             'packages/probe/docs/benchmarks/2026-06-17-openagents-studybench-mvp-14-comparison.json',
             'docs/promises/2026-06-17-repo-studying-product-promise-gate-review.md',
             'packages/probe/packages/runtime/src/benchmark/openagents-customer-private-validation.ts',
+            'packages/probe/packages/runtime/src/benchmark/external-repo-studying-commercial-policy.ts',
+            'docs/promises/2026-06-29-repo-studying-commercial-policy-gate.md',
             'promise:repo.open_source_code_map.v1',
           ]),
           promiseId: 'autopilot.repo_study_packets.v1',
@@ -1256,6 +1257,20 @@ describe('public product promises document', () => {
     expect(repoStudyPacketPromise).toMatchObject({
       state: 'yellow',
     })
+    expect(repoStudyPacketPromise?.blockerRefs).not.toEqual(
+      expect.arrayContaining([
+        'blocker.product_promises.repo_studying_marketplace_metering_missing',
+        'blocker.product_promises.repo_studying_pricing_package_policy_missing',
+        'blocker.product_promises.repo_studying_payout_settlement_gates_missing',
+      ]),
+    )
+    expect(repoStudyPacketPromise?.evidenceRefs).toEqual(
+      expect.arrayContaining([
+        'packages/probe/packages/runtime/src/benchmark/external-repo-studying-commercial-policy.ts',
+        'packages/probe/packages/runtime/tests/external-repo-studying-commercial-policy.test.ts',
+        'docs/promises/2026-06-29-repo-studying-commercial-policy-gate.md',
+      ]),
+    )
     expect(
       `${repoStudyPacketPromise?.claim} ${repoStudyPacketPromise?.safeCopy}`,
     ).not.toMatch(
@@ -1276,6 +1291,20 @@ describe('public product promises document', () => {
     expect(externalRepoStudyPromise).toMatchObject({
       state: 'yellow',
     })
+    expect(externalRepoStudyPromise?.blockerRefs).not.toEqual(
+      expect.arrayContaining([
+        'blocker.product_promises.external_repo_studying_marketplace_metering_missing',
+        'blocker.product_promises.external_repo_studying_pricing_package_policy_missing',
+        'blocker.product_promises.external_repo_studying_payout_settlement_gates_missing',
+      ]),
+    )
+    expect(externalRepoStudyPromise?.evidenceRefs).toEqual(
+      expect.arrayContaining([
+        'packages/probe/packages/runtime/src/benchmark/external-repo-studying-commercial-policy.ts',
+        'packages/probe/packages/runtime/tests/external-repo-studying-commercial-policy.test.ts',
+        'docs/promises/2026-06-29-repo-studying-commercial-policy-gate.md',
+      ]),
+    )
     expect(
       `${externalRepoStudyPromise?.claim} ${externalRepoStudyPromise?.safeCopy}`,
     ).not.toMatch(

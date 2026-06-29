@@ -2,6 +2,22 @@
 
 State: **yellow** (unchanged — no green flip in this change).
 
+## Latest status (2026-06-29): commercial policy preflight
+
+The commercial blockers named in older sections below
+(`marketplace_metering_missing`, `pricing_package_policy_missing`, and
+`payout_settlement_gates_missing`) are now narrowed by the refs-only inert
+commercial policy gate in
+`docs/promises/2026-06-29-repo-studying-commercial-policy-gate.md`.
+
+That gate requires usage-subject, metering, package, pricing, entitlement,
+payout, settlement, and refund/dispute policy refs before paid-package readiness
+can be planned, but it keeps `marketplacePackageAllowed=false`,
+`payoutEligible=false`, `settlementReady=false`, and `effectsApplied=false`.
+The external pilot remains yellow on privacy-policy/review and self-serve upload
+blockers; no package is listed, no payout is eligible, no settlement is ready,
+and no money moves.
+
 ## What this change advances
 
 Blocker advanced: **`blocker.product_promises.external_repo_studying_self_serve_upload_missing`**

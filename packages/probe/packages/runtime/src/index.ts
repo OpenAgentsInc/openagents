@@ -32,6 +32,7 @@ export * from "./benchmark/external-repo-studying-customer-authorization-registr
 export * from "./benchmark/external-repo-studying-review-authorization-binding";
 export * from "./benchmark/external-repo-studying-review-intake-binding";
 export * from "./benchmark/external-repo-studying-dsr-authorization-binding";
+export * from "./benchmark/external-repo-studying-commercial-policy";
 export * from "./benchmark/openagents-customer-private-validation";
 export * from "./benchmark/openagents-autopilot-coder-studied-context";
 export * from "./benchmark/openagents-autopilot-coder-studied-runtime";
