@@ -5,6 +5,7 @@ import {
   DurableCheckpointSealBlocker,
   DurableCheckpointSealSchemaVersion,
   MinDurableReplicationFactor,
+  PublicSafeRef,
   evaluateDurableCheckpointSeal,
 } from './training-durable-checkpoint-seal'
 
@@ -57,7 +58,7 @@ export const DurableCheckpointSealReceipt = S.Struct({
   publicSafe: S.Literal(true),
   receiptRef: S.String,
   replicationFactor: S.Int,
-  retrievalProofRef: S.String,
+  retrievalProofRef: PublicSafeRef,
   schemaVersion: S.Literal(DurableCheckpointSealReceiptSchemaVersion),
   sizeBytes: S.Int,
   sourceRefs: S.Array(S.String),

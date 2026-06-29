@@ -103,6 +103,15 @@ describe('durable checkpoint seal receipt emitter', () => {
     expect(receipt.outcome).toBe('seal_on_durable_checkpoint')
   })
 
+  test('refuses to build from an untrusted descriptor with a non-public proof ref', () => {
+    expect(() =>
+      buildUntrustedDurableCheckpointSealReceipt({
+        ...durableSeal(),
+        retrievalProofRef: 'x',
+      }),
+    ).toThrow(DurableCheckpointSealReceiptUnsafe)
+  })
+
   test('refuses to build from a malformed untrusted descriptor', () => {
     expect(() =>
       buildUntrustedDurableCheckpointSealReceipt({ windowRef: 42 }),

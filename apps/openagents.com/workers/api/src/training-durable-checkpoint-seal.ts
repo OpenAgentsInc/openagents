@@ -36,7 +36,7 @@ export const DurableCheckpointDigestPattern = /^sha256:[a-f0-9]{64}$/
 export const MinDurableReplicationFactor = 2
 
 const PublicSafeRefPattern = /^[A-Za-z0-9][A-Za-z0-9_.:/-]*$/
-const PublicSafeRef = S.Trim.check(
+export const PublicSafeRef = S.Trim.check(
   S.isNonEmpty(),
   S.isMinLength(3),
   S.isMaxLength(260),
