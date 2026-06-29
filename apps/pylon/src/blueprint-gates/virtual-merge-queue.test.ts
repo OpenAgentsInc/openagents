@@ -335,6 +335,11 @@ describe("virtual merge queue", () => {
     expect(result.nextVirtualHeadAfter).toBe(C)
     expect(result.commands).toEqual([
       { kind: "git_fetch_pr_head", args: ["git", "fetch", "origin", "pull/123/head"] },
+      {
+        kind: "git_verify_fetched_pr_head",
+        args: ["git", "rev-parse", "--verify", "FETCH_HEAD^{commit}"],
+        expectedStdout: B,
+      },
       { kind: "git_checkout_branch", args: ["git", "checkout", "main"] },
       { kind: "git_reset_actual_head", args: ["git", "reset", "--hard", A] },
       { kind: "git_merge_ff_only", args: ["git", "merge", "--ff-only", B] },
