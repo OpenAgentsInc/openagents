@@ -1092,7 +1092,7 @@ const replayTokenFailures = async (): Promise<TokenAccountingReplayResult> => {
   }
 }
 
-const spawnJson = async (cmd: readonly string[]): Promise<unknown> => {
+const spawnAuthenticatedJson = async (cmd: readonly string[]): Promise<unknown> => {
   const agentToken = await resolveAgentToken()
   const proc = Bun.spawn({
     cmd: [...cmd],
@@ -1131,7 +1131,7 @@ const verifyAssignmentTokenUsage = async (
   try {
     const pylonAppPath = await resolvePylonAppPath()
     const bunExecutable = resolveBunExecutable()
-    const payload = await spawnJson([
+    const payload = await spawnAuthenticatedJson([
       bunExecutable,
       resolve(pylonAppPath, "src", "index.ts"),
       "khala",
