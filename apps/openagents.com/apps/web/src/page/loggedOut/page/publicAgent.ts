@@ -1580,6 +1580,375 @@ const fleetShippingView = (model: PublicActivityTimelineModel): Html => {
   return fleetShippingMessageView('Loading live fleet activity.')
 }
 
+type FleetMapSlot = Readonly<{
+  index: number
+  pylon: PublicRecentPylon | null
+}>
+
+const fleetMapSlots = (
+  stats: PublicPylonStats | null,
+): ReadonlyArray<FleetMapSlot> => {
+  const pylons = stats?.recentPylons ?? []
+  const visibleSlotCount =
+    stats === null
+      ? 8
+      : Math.max(
+          8,
+          Math.min(
+            24,
+            stats.pylonsOnlineNow,
+            pylons.length || stats.pylonsOnlineNow,
+          ),
+        )
+
+  return globalThis.Array.from({ length: visibleSlotCount }, (_, index) => ({
+    index,
+    pylon: pylons[index] ?? null,
+  }))
+}
+
+const pylonSlotState = (
+  pylon: PublicRecentPylon | null,
+): 'assignment' | 'wallet' | 'online' | 'empty' => {
+  if (pylon === null) {
+    return 'empty'
+  }
+  if (pylon.assignmentReadyNow === true) {
+    return 'assignment'
+  }
+  if (pylon.walletReadyNow === true) {
+    return 'wallet'
+  }
+  return pylon.onlineNow === false ? 'empty' : 'online'
+}
+
+const pylonSlotToneClass: Record<ReturnType<typeof pylonSlotState>, string> = {
+  assignment: 'border-[#00c853]/60 bg-[#06140a] text-[#9ad6b7]',
+  empty: 'border-[#1b1b1b] bg-black text-white/25',
+  online: 'border-[#333] bg-[#0a0a0a] text-white/55',
+  wallet: 'border-[#ffb400]/55 bg-[#171102] text-[#f0d28a]',
+}
+
+const pylonSlotStateLabel: Record<ReturnType<typeof pylonSlotState>, string> = {
+  assignment: 'assignment-ready',
+  empty: 'empty',
+  online: 'online',
+  wallet: 'wallet-ready',
+}
+
+const pylonSlotView = (slot: FleetMapSlot): Html => {
+  const h = html<Message>()
+  const state = pylonSlotState(slot.pylon)
+  const label =
+    slot.pylon?.nodeLabel ??
+    slot.pylon?.pylonRef ??
+    slot.pylon?.nostrPubkeyShort ??
+    `slot ${slot.index + 1}`
+  const detail =
+    slot.pylon === null
+      ? 'no public heartbeat'
+      : `${slot.pylon.readyModel ?? 'model unknown'} / ${slot.pylon.lastSeenAtLabel ?? 'freshness unknown'}`
+
+  return h.li(
+    [
+      h.DataAttribute('fleet-map-slot', state),
+      Ui.className<Message>(
+        `grid min-h-24 content-between gap-3 border p-2 ${pylonSlotToneClass[state]}`,
+      ),
+    ],
+    [
+      h.div([Ui.className<Message>('flex items-center justify-between gap-2')], [
+        h.span(
+          [
+            Ui.className<Message>(
+              'text-[0.625rem] uppercase tracking-wide text-white/40',
+            ),
+          ],
+          [`${slot.index + 1}`.padStart(2, '0')],
+        ),
+        h.span(
+          [Ui.className<Message>('text-[0.625rem] text-current')],
+          [pylonSlotStateLabel[state]],
+        ),
+      ]),
+      h.div([Ui.className<Message>('grid min-w-0 gap-1')], [
+        h.span(
+          [
+            Ui.className<Message>(
+              'truncate text-[0.75rem] font-semibold text-[#f1efe8]',
+            ),
+          ],
+          [label],
+        ),
+        h.span(
+          [
+            Ui.className<Message>(
+              'truncate text-[0.6875rem] text-white/40',
+            ),
+          ],
+          [detail],
+        ),
+      ]),
+    ],
+  )
+}
+
+const taskBoardKinds = new Set<PublicActivityTimelineEvent['kind']>([
+  'assignment_ready',
+  'work_claimed',
+  'trace_submitted',
+  'verification_queued',
+  'verification_verified',
+  'verification_rejected',
+])
+
+type TaskBoardLane = Readonly<{
+  label: string
+  detail: string
+  kinds: ReadonlySet<PublicActivityTimelineEvent['kind']>
+}>
+
+const taskBoardLanes: ReadonlyArray<TaskBoardLane> = [
+  {
+    detail: 'Slots ready to accept work',
+    kinds: new Set<PublicActivityTimelineEvent['kind']>(['assignment_ready']),
+    label: 'Ready',
+  },
+  {
+    detail: 'Work claimed by public Pylon refs',
+    kinds: new Set<PublicActivityTimelineEvent['kind']>(['work_claimed']),
+    label: 'Claimed',
+  },
+  {
+    detail: 'Trace and verification work in flight',
+    kinds: new Set<PublicActivityTimelineEvent['kind']>([
+      'trace_submitted',
+      'verification_queued',
+    ]),
+    label: 'Verifying',
+  },
+  {
+    detail: 'Verifier outcomes from the public feed',
+    kinds: new Set<PublicActivityTimelineEvent['kind']>([
+      'verification_verified',
+      'verification_rejected',
+    ]),
+    label: 'Resolved',
+  },
+]
+
+const activeTaskBoardEvents = (
+  model: PublicActivityTimelineModel,
+): ReadonlyArray<PublicActivityTimelineEvent> => {
+  if (model._tag !== 'PublicActivityTimelineLoaded') {
+    return []
+  }
+  const generatedMs = parseMs(model.envelope.generatedAt)
+
+  return fleetFeedEvents(model.envelope.events)
+    .filter(event => taskBoardKinds.has(event.kind))
+    .filter(event => {
+      if (generatedMs === null) {
+        return true
+      }
+      const eventMs = parseMs(event.ts)
+      return (
+        eventMs !== null && generatedMs - eventMs <= FLEET_FEED_FRESH_WINDOW_MS
+      )
+    })
+}
+
+const taskBoardRow = (event: PublicActivityTimelineEvent): Html => {
+  const h = html<Message>()
+  const actor = event.actorRef ?? event.targetRef ?? event.runRef ?? 'public ref'
+
+  return h.li(
+    [
+      Ui.className<Message>(
+        'grid gap-1 border-b border-[#1b1b1b] py-2 last:border-b-0',
+      ),
+    ],
+    [
+      h.div(
+        [Ui.className<Message>('text-[0.75rem] leading-5 text-[#f1efe8]')],
+        [event.text],
+      ),
+      h.div(
+        [
+          Ui.className<Message>(
+            'flex flex-wrap justify-between gap-2 text-[0.6875rem] text-white/35',
+          ),
+        ],
+        [
+          h.span([Ui.className<Message>('truncate')], [actor]),
+          h.span([Ui.className<Message>('tabular-nums')], [
+            friendlyRelativeTime(event.ts),
+          ]),
+        ],
+      ),
+    ],
+  )
+}
+
+const taskBoardLaneView = (
+  lane: TaskBoardLane,
+  events: ReadonlyArray<PublicActivityTimelineEvent>,
+): Html => {
+  const h = html<Message>()
+  const rows = events.filter(event => lane.kinds.has(event.kind)).slice(0, 4)
+
+  return h.div(
+    [
+      Ui.className<Message>(
+        'grid min-h-48 content-start gap-3 border border-[#222] bg-[#010102] p-3',
+      ),
+    ],
+    [
+      h.div([Ui.className<Message>('grid gap-1')], [
+        h.div(
+          [Ui.className<Message>('flex items-center justify-between gap-2')],
+          [
+            h.span(
+              [
+                Ui.className<Message>(
+                  'text-[0.75rem] font-semibold text-[#f1efe8]',
+                ),
+              ],
+              [lane.label],
+            ),
+            h.span(
+              [
+                Ui.className<Message>(
+                  'tabular-nums text-[0.6875rem] text-white/35',
+                ),
+              ],
+              [formatNumber(rows.length)],
+            ),
+          ],
+        ),
+        h.div([Ui.className<Message>('text-[0.6875rem] text-white/35')], [
+          lane.detail,
+        ]),
+      ]),
+      Array.match(rows, {
+        onEmpty: () =>
+          h.div(
+            [
+              h.Role('status'),
+              Ui.className<Message>(
+                'border border-[#1b1b1b] bg-black p-3 text-[0.75rem] text-white/35',
+              ),
+            ],
+            ['No public rows in this lane.'],
+          ),
+        onNonEmpty: values =>
+          h.ol([Ui.className<Message>('grid')], values.map(taskBoardRow)),
+      }),
+    ],
+  )
+}
+
+const artanisFleetMapAndTaskBoardView = (
+  pylonStats: PublicPylonStatsModel,
+  activityTimeline: PublicActivityTimelineModel,
+): Html => {
+  const h = html<Message>()
+  const stats = pylonStatsFromModel(pylonStats)
+  const slots = fleetMapSlots(stats)
+  const tasks = activeTaskBoardEvents(activityTimeline)
+  const assignmentReady = slots.filter(
+    slot => pylonSlotState(slot.pylon) === 'assignment',
+  ).length
+
+  return h.section(
+    [
+      h.DataAttribute('component', 'artanis-fleet-map-task-board'),
+      Ui.className<Message>('grid gap-4 border-b border-[#222] pb-6'),
+    ],
+    [
+      h.div(
+        [
+          Ui.className<Message>(
+            'flex flex-wrap items-end justify-between gap-3',
+          ),
+        ],
+        [
+          h.div([Ui.className<Message>('grid gap-2')], [
+            h.div([Ui.className<Message>(Ui.eyebrowClass)], ['Fleet map']),
+            h.h2(
+              [
+                Ui.className<Message>(
+                  'm-0 text-lg font-semibold tracking-normal text-[#f1efe8]',
+                ),
+              ],
+              ['Pylons, slots, active tasks'],
+            ),
+          ]),
+          h.div(
+            [
+              Ui.className<Message>(
+                'flex flex-wrap gap-2 text-[0.75rem] text-white/45',
+              ),
+            ],
+            [
+              h.span([], [`${formatNumber(assignmentReady)} assignment-ready`]),
+              h.span([], [`${formatNumber(tasks.length)} task rows`]),
+            ],
+          ),
+        ],
+      ),
+      h.div(
+        [
+          Ui.className<Message>(
+            'grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]',
+          ),
+        ],
+        [
+          h.div([Ui.className<Message>('grid content-start gap-3')], [
+            h.div(
+              [
+                Ui.className<Message>(
+                  'grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-4',
+                ),
+              ],
+              slots.map(pylonSlotView),
+            ),
+            h.div(
+              [Ui.className<Message>('text-[0.75rem] leading-5 text-white/35')],
+              [
+                stats === null
+                  ? 'Loading public Pylon slots from the live stats projection.'
+                  : `${formatNumber(stats.pylonsOnlineNow)} online / ${formatNumber(stats.pylonsWalletReadyNow)} wallet-ready / ${formatNumber(stats.pylonsAssignmentReadyNow)} assignment-ready.`,
+              ],
+            ),
+          ]),
+          h.div([Ui.className<Message>('grid content-start gap-3')], [
+            h.div([Ui.className<Message>('grid gap-1')], [
+              h.div([Ui.className<Message>(Ui.eyebrowClass)], [
+                'Active Task Board',
+              ]),
+              h.div(
+                [Ui.className<Message>('text-[0.75rem] text-white/35')],
+                ['Work and verification lanes from the public activity feed.'],
+              ),
+            ]),
+            h.div(
+              [Ui.className<Message>('grid gap-2 md:grid-cols-2')],
+              taskBoardLanes.map(lane => taskBoardLaneView(lane, tasks)),
+            ),
+            h.div(
+              [Ui.className<Message>('text-[0.75rem] leading-5 text-white/35')],
+              [
+                'Only public activity rows are shown; prompts, local workspaces, private traces, and provider payloads stay out of this board.',
+              ],
+            ),
+          ]),
+        ],
+      ),
+    ],
+  )
+}
+
 type VirtualMergeQueueLane = Readonly<{
   label: string
   value: string
@@ -2131,6 +2500,7 @@ const artanisLoadedView = (
       // HERO: the live token-burn Pulse is the strongest signal that an
       // autonomous fleet is building in real time, so it spans the console.
       artanisPulseView(khalaTokensServedHistory),
+      artanisFleetMapAndTaskBoardView(pylonStats, activityTimeline),
       artanisVirtualMergeQueueView(),
       h.div(
         [
