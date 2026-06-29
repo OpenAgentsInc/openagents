@@ -519,6 +519,17 @@ describe('OpenAgents OpenAPI route', () => {
       operationAt(body, '/api/autopilot/decisions', 'get').operationId,
     ).toBe('listAutopilotDecisions')
     expect(
+      operationAt(body, '/api/autopilot/work/{workOrderRef}/decisions', 'get')
+        .operationId,
+    ).toBe('listAutopilotWorkOrderDecisions')
+    expect(
+      operationAt(
+        body,
+        '/api/autopilot/decision-closeouts/{closeoutRef}',
+        'get',
+      ).operationId,
+    ).toBe('getAutopilotDecisionCloseout')
+    expect(
       operationAt(
         body,
         '/api/autopilot/decisions/{decisionRef}/actions',
