@@ -174,6 +174,7 @@ const approvedExactRoutePaths = [
   '/v1/inference/privacy/paid-privacy/purchases',
   '/v1/inference/privacy/confidential-compute/executions',
   '/v1/inference/batches',
+  '/v1/inference/batches/:jobId/results',
   '/v1/inference/batches/:jobId',
   '/v1/chat/completions',
   '/mpp/v1/chat/completions',
