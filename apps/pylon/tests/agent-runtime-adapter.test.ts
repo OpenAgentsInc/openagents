@@ -113,22 +113,64 @@ describe("AgentRuntimeAdapter", () => {
   test("Claude and Codex runners are selected from the declarative registry", () => {
     expect(
       AGENT_RUNNER_REGISTRY.map((runner) => ({
+        agentKind: runner.agentKind,
         adapterKind: runner.adapterKind,
         accountProvider: runner.accountProvider,
         kind: runner.kind,
+        runtime: runner.runtime,
         serviceRef: runner.serviceRef,
       })),
     ).toEqual([
       {
         accountProvider: "claude_agent",
+        agentKind: "claude_agent_sdk",
         adapterKind: "claude_code",
         kind: "claude_agent",
+        runtime: {
+          sdkPackage: CLAUDE_AGENT_SDK_PACKAGE,
+          readinessProbe: "claude_agent_sdk_import",
+          executionPolicy: {
+            approvalPolicy: "pre_tool_use_deny",
+            networkAccess: "runner_default",
+            sandboxMode: "bounded_tool_allowlist",
+          },
+          turnReporter: {
+            endpointPath: "/api/pylon/claude/turns",
+            failSoft: true,
+            kind: "pylon_claude_turn_reporter",
+            usageTruth: "exact",
+          },
+          workspaceBoundary: {
+            enforcement: "deny_before_tool_use",
+            strategy: "pre_tool_use_hook",
+          },
+        },
         serviceRef: "claude",
       },
       {
         accountProvider: "codex",
+        agentKind: "codex_sdk",
         adapterKind: "codex",
         kind: "codex",
+        runtime: {
+          sdkPackage: CODEX_AGENT_SDK_PACKAGE,
+          readinessProbe: "codex_sdk_import_or_cli_login",
+          executionPolicy: {
+            approvalPolicy: "never",
+            networkAccess: "enabled",
+            sandboxMode: "danger-full-access",
+          },
+          turnReporter: {
+            endpointPath: "/api/pylon/codex/turns",
+            failSoft: true,
+            kind: "pylon_codex_turn_reporter",
+            usageTruth: "exact",
+          },
+          workspaceBoundary: {
+            enforcement: "reject_closeout_on_escape",
+            strategy: "post_hoc_workspace_validation",
+          },
+        },
         serviceRef: "codex",
       },
     ])

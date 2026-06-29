@@ -2,10 +2,12 @@ import type { AgentRuntimeAdapterKind } from "@openagentsinc/agent-runtime-schem
 
 import type { ResolvedPylonAccountSelection } from "./account-registry.js"
 import {
+  CLAUDE_AGENT_SDK_PACKAGE,
   CLAUDE_AGENT_CAPABILITY_REF,
   type ClaudeAgentProbeOptions,
 } from "./claude-agent.js"
 import {
+  CLAUDE_AGENT_TASK_AGENT_KIND,
   claudeAgentTaskFrom,
   executeClaudeAgentAssignment,
   type ClaudeAgentCheckoutRunner,
@@ -13,10 +15,14 @@ import {
   type ClaudeAgentRunner,
 } from "./claude-agent-executor.js"
 import {
+  CODEX_AGENT_SDK_PACKAGE,
   CODEX_AGENT_CAPABILITY_REF,
   type CodexAgentProbeOptions,
 } from "./codex-agent.js"
 import {
+  CODEX_AGENT_OWNER_LOCAL_APPROVAL_POLICY,
+  CODEX_AGENT_OWNER_LOCAL_SANDBOX_MODE,
+  CODEX_AGENT_TASK_AGENT_KIND,
   codexAgentTaskFrom,
   executeCodexAgentAssignment,
   type CodexAgentExecutionOptions,
@@ -27,8 +33,50 @@ import type { PylonAssignmentLease } from "./assignment.js"
 import type { PylonLocalState } from "./state.js"
 
 export type AgentRunnerKind = "claude_agent" | "codex"
+export type AgentRunnerTaskAgentKind =
+  | typeof CLAUDE_AGENT_TASK_AGENT_KIND
+  | typeof CODEX_AGENT_TASK_AGENT_KIND
 export type AgentRunnerServiceRef = "claude" | "codex"
 export type AgentRunnerAccountProvider = "claude_agent" | "codex"
+
+export type AgentRunnerReadinessProbeKind =
+  | "claude_agent_sdk_import"
+  | "codex_sdk_import_or_cli_login"
+
+export type AgentRunnerWorkspaceBoundary =
+  | {
+      strategy: "pre_tool_use_hook"
+      enforcement: "deny_before_tool_use"
+    }
+  | {
+      strategy: "post_hoc_workspace_validation"
+      enforcement: "reject_closeout_on_escape"
+    }
+
+export type AgentRunnerExecutionPolicy = {
+  approvalPolicy: "pre_tool_use_deny" | typeof CODEX_AGENT_OWNER_LOCAL_APPROVAL_POLICY
+  networkAccess: "runner_default" | "enabled"
+  sandboxMode: "bounded_tool_allowlist" | typeof CODEX_AGENT_OWNER_LOCAL_SANDBOX_MODE
+}
+
+export type AgentRunnerTurnReporterKind =
+  | "pylon_claude_turn_reporter"
+  | "pylon_codex_turn_reporter"
+
+export type AgentRunnerTurnReporterContract = {
+  endpointPath: "/api/pylon/claude/turns" | "/api/pylon/codex/turns"
+  failSoft: true
+  kind: AgentRunnerTurnReporterKind
+  usageTruth: "exact"
+}
+
+export type AgentRunnerRuntimeContract = {
+  sdkPackage: string
+  readinessProbe: AgentRunnerReadinessProbeKind
+  executionPolicy: AgentRunnerExecutionPolicy
+  turnReporter: AgentRunnerTurnReporterContract
+  workspaceBoundary: AgentRunnerWorkspaceBoundary
+}
 
 export type AgentRunnerCloseoutRecord = {
   artifactRefs: string[]
@@ -59,10 +107,12 @@ export type AgentRunnerExecutionOptions = {
 
 export type AgentRunnerDescriptor = {
   kind: AgentRunnerKind
+  agentKind: AgentRunnerTaskAgentKind
   adapterKind: AgentRuntimeAdapterKind
   accountProvider: AgentRunnerAccountProvider
   serviceRef: AgentRunnerServiceRef
   capabilityRef: string
+  runtime: AgentRunnerRuntimeContract
   canRunAssignment: (codingAssignment: unknown) => boolean
   execute: (
     state: PylonLocalState,
@@ -89,10 +139,30 @@ function commonExecutionOptions(options: AgentRunnerExecutionOptions) {
 export const AGENT_RUNNER_REGISTRY: ReadonlyArray<AgentRunnerDescriptor> = [
   {
     kind: "claude_agent",
+    agentKind: CLAUDE_AGENT_TASK_AGENT_KIND,
     adapterKind: "claude_code",
     accountProvider: "claude_agent",
     serviceRef: "claude",
     capabilityRef: CLAUDE_AGENT_CAPABILITY_REF,
+    runtime: {
+      sdkPackage: CLAUDE_AGENT_SDK_PACKAGE,
+      readinessProbe: "claude_agent_sdk_import",
+      executionPolicy: {
+        approvalPolicy: "pre_tool_use_deny",
+        networkAccess: "runner_default",
+        sandboxMode: "bounded_tool_allowlist",
+      },
+      turnReporter: {
+        endpointPath: "/api/pylon/claude/turns",
+        failSoft: true,
+        kind: "pylon_claude_turn_reporter",
+        usageTruth: "exact",
+      },
+      workspaceBoundary: {
+        strategy: "pre_tool_use_hook",
+        enforcement: "deny_before_tool_use",
+      },
+    },
     canRunAssignment: (codingAssignment) => claudeAgentTaskFrom(codingAssignment) !== null,
     execute: (state, lease, now, options) =>
       executeClaudeAgentAssignment(state, lease, now, {
@@ -106,10 +176,30 @@ export const AGENT_RUNNER_REGISTRY: ReadonlyArray<AgentRunnerDescriptor> = [
   },
   {
     kind: "codex",
+    agentKind: CODEX_AGENT_TASK_AGENT_KIND,
     adapterKind: "codex",
     accountProvider: "codex",
     serviceRef: "codex",
     capabilityRef: CODEX_AGENT_CAPABILITY_REF,
+    runtime: {
+      sdkPackage: CODEX_AGENT_SDK_PACKAGE,
+      readinessProbe: "codex_sdk_import_or_cli_login",
+      executionPolicy: {
+        approvalPolicy: CODEX_AGENT_OWNER_LOCAL_APPROVAL_POLICY,
+        networkAccess: "enabled",
+        sandboxMode: CODEX_AGENT_OWNER_LOCAL_SANDBOX_MODE,
+      },
+      turnReporter: {
+        endpointPath: "/api/pylon/codex/turns",
+        failSoft: true,
+        kind: "pylon_codex_turn_reporter",
+        usageTruth: "exact",
+      },
+      workspaceBoundary: {
+        strategy: "post_hoc_workspace_validation",
+        enforcement: "reject_closeout_on_escape",
+      },
+    },
     canRunAssignment: (codingAssignment) => codexAgentTaskFrom(codingAssignment) !== null,
     execute: (state, lease, now, options) =>
       executeCodexAgentAssignment(state, lease, now, {
