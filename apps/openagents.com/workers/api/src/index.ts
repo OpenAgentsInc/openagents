@@ -2121,6 +2121,20 @@ const getForgeControlPlaneToken = (
   return token
 }
 
+const getForgeGitHubMirrorToken = (
+  env: OpenAgentsWorkerConfigEnv,
+): string | undefined => {
+  const token = redactedValue(
+    getOpenAgentsWorkerConfig(env).forgeGitHubMirrorToken,
+  )
+
+  if (token === undefined || token.trim() === '') {
+    return undefined
+  }
+
+  return token
+}
+
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
 
@@ -13478,6 +13492,7 @@ const routeRequest = makeWorkerRouteRequest({
           getForgeControlPlaneToken(authEnv),
           requiredScope,
         ),
+      githubMirrorToken: mirrorEnv => getForgeGitHubMirrorToken(mirrorEnv),
       makeCanonicalStore: storeEnv =>
         makeD1ForgeGitCanonicalStore(openAgentsDatabase(storeEnv)),
       makeStore: storeEnv =>

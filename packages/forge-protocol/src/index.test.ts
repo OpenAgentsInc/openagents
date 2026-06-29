@@ -9,6 +9,7 @@ import {
   decodeForgeDispatchLeaseRow,
   decodeForgeGitAccessTokenRow,
   decodeForgeGitAccessTokenScopeRow,
+  decodeForgeGitHubMirrorReceipt,
   decodeForgeGitPackfileArchiveRow,
   decodeForgeDispatchCloseout,
   decodeForgeDispatchDecision,
@@ -284,7 +285,7 @@ describe("@openagentsinc/forge-protocol", () => {
     expect(decodeForgeDispatchMessage(closeout).schema).toBe(closeout.schema);
   });
 
-  test("decodes redacted verification and promotion decision receipts", () => {
+  test("decodes redacted verification, promotion, and mirror receipts", () => {
     const verification = decodeForgeVerificationReceipt({
       schema: "openagents.forge.verification.receipt.v0.1",
       tenant_ref: "tenant.openagents",
@@ -332,5 +333,26 @@ describe("@openagentsinc/forge-protocol", () => {
     });
     expect(promotion.decision).toBe("approved");
     expect(promotion.promoted_head).toBe(verification.head_head);
+
+    const mirror = decodeForgeGitHubMirrorReceipt({
+      schema: "openagents.forge.github_mirror.receipt.v0.1",
+      tenant_ref: "tenant.openagents",
+      mirror_ref: "mirror.forge.github.openagents.main.6768",
+      promotion_ref: promotion.promotion_ref,
+      source_canonical_ref: "refs/heads/main",
+      destination_github_ref: "refs/heads/main",
+      repository_ref: verification.repository_ref,
+      github_repository: "OpenAgentsInc/openagents",
+      commit_id: promotion.promoted_head,
+      status: "mirrored",
+      attempted_at: "2026-06-28T16:03:00.000Z",
+      mirrored_at: "2026-06-28T16:03:00.000Z",
+      refusal_reason: null,
+      error_reason: null,
+      source_refs: promotion.source_refs,
+      redacted: true,
+    });
+    expect(mirror.commit_id).toBe(promotion.promoted_head);
+    expect(mirror.status).toBe("mirrored");
   });
 });

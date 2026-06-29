@@ -67,6 +67,10 @@ const canonicalGitMigration = readFileSync(
   new URL('../migrations/0255_forge_git_canonical_store.sql', import.meta.url),
   'utf8',
 )
+const githubMirrorMigration = readFileSync(
+  new URL('../migrations/0257_forge_github_mirror_receipts.sql', import.meta.url),
+  'utf8',
+)
 
 const makeStores = (): Readonly<{
   canonicalStore: ForgeGitCanonicalStore
@@ -77,6 +81,7 @@ const makeStores = (): Readonly<{
   db.exec(coordinationMigration)
   db.exec(controlPlaneReceiptsMigration)
   db.exec(canonicalGitMigration)
+  db.exec(githubMirrorMigration)
   const d1 = new SqliteD1(db) as unknown as D1Database
   return {
     canonicalStore: makeD1ForgeGitCanonicalStore(d1),
@@ -96,15 +101,20 @@ const authHeaders = (scopes: string): HeadersInit => ({
 
 const githubMainSha = '1234567890abcdef1234567890abcdef12345678'
 const makeGitHubFetch = (sha: string = githubMainSha): typeof fetch =>
-  (async () =>
-    Response.json({
+  (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    if (init?.method === 'PATCH') {
+      return Response.json({ ok: true })
+    }
+
+    return Response.json({
       ref: 'refs/heads/main',
       object: {
         sha,
         type: 'commit',
         url: `https://api.github.com/repos/OpenAgentsInc/openagents/git/commits/${sha}`,
       },
-    })) as typeof fetch
+    })
+  }) as typeof fetch
 
 type JsonRequestInit = Omit<RequestInit, 'body'> & Readonly<{ json?: unknown }>
 
@@ -127,6 +137,7 @@ const makeHarness = () => {
     authorizeControlPlaneBearer: (request, _env, scope) =>
       authorizeForgeControlPlaneBearer(request, controlPlaneToken, scope),
     fetch: makeGitHubFetch(),
+    githubMirrorToken: () => 'github_mirror_token',
     makeCanonicalStore: () => canonicalStore,
     makeStore: () => coordinationStore,
     nowIso: () => now,
@@ -479,5 +490,125 @@ describe('Forge control-plane routes', () => {
 
     expect(response.status).toBe(403)
     expect(body.error).toBe('forge_openagents_import_target_forbidden')
+  })
+
+  test('mirrors only approved Forge promotions to GitHub main with receipts', async () => {
+    const { run, store } = makeHarness()
+    const promotedHead = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+    const scopes = 'forge:admin forge:queue:read'
+
+    await store.recordPromotionDecisionReceipt(
+      {
+        schema: 'openagents.forge.promotion.decision.v0.1',
+        tenant_ref: 'tenant.openagents',
+        promotion_ref: 'promotion.forge.6796.approved',
+        queue_ref: 'queue.forge.main',
+        change_ref: 'change.forge.6796',
+        decision: 'approved',
+        base_head: '1234567890abcdef1234567890abcdef12345678',
+        candidate_head: promotedHead,
+        promoted_head: promotedHead,
+        verification_ref: 'verification.forge.6796',
+        gate_refs: ['gate.forge.su4', 'gate.forge.su5'],
+        blocker_refs: [],
+        decided_by_ref: 'agent.public.forge',
+        decided_at: now,
+        source_refs: ['github:OpenAgentsInc/openagents#6796'],
+        redacted: true,
+      },
+      now,
+    )
+
+    const response = await run(
+      requestJson('/api/forge/mirror/github/openagents-main', {
+        json: {
+          tenantRef: 'tenant.openagents',
+          repositoryRef: 'repo.openagents.openagents',
+          promotionRef: 'promotion.forge.6796.approved',
+        },
+        headers: authHeaders(scopes),
+        method: 'POST',
+      }),
+    )
+    const body = (await response.json()) as {
+      mirrorReceipt: { commit_id: string; status: string; mirrored_at: string }
+    }
+
+    expect(response.status).toBe(201)
+    expect(body.mirrorReceipt).toMatchObject({
+      commit_id: promotedHead,
+      mirrored_at: now,
+      status: 'mirrored',
+    })
+
+    const secondResponse = await run(
+      requestJson('/api/forge/mirror/github/openagents-main', {
+        json: {
+          tenantRef: 'tenant.openagents',
+          repositoryRef: 'repo.openagents.openagents',
+          promotionRef: 'promotion.forge.6796.approved',
+        },
+        headers: authHeaders(scopes),
+        method: 'POST',
+      }),
+    )
+    expect(secondResponse.status).toBe(201)
+
+    const listResponse = await run(
+      new Request(
+        'https://openagents.com/api/forge/mirror/github/openagents-main?tenantRef=tenant.openagents&promotionRef=promotion.forge.6796.approved',
+        { headers: authHeaders(scopes) },
+      ),
+    )
+    const listBody = (await listResponse.json()) as {
+      mirrorReceipts: ReadonlyArray<unknown>
+    }
+    expect(listResponse.status).toBe(200)
+    expect(listBody.mirrorReceipts).toHaveLength(1)
+  })
+
+  test('refuses non-promoted Forge decisions before touching GitHub', async () => {
+    const { run, store } = makeHarness()
+
+    await store.recordPromotionDecisionReceipt(
+      {
+        schema: 'openagents.forge.promotion.decision.v0.1',
+        tenant_ref: 'tenant.openagents',
+        promotion_ref: 'promotion.forge.6796.blocked',
+        queue_ref: 'queue.forge.main',
+        change_ref: 'change.forge.6796',
+        decision: 'blocked',
+        base_head: '1234567890abcdef1234567890abcdef12345678',
+        candidate_head: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        promoted_head: null,
+        verification_ref: null,
+        gate_refs: [],
+        blocker_refs: ['blocker.forge.verification_failed'],
+        decided_by_ref: 'agent.public.forge',
+        decided_at: now,
+        source_refs: ['github:OpenAgentsInc/openagents#6796'],
+        redacted: true,
+      },
+      now,
+    )
+
+    const response = await run(
+      requestJson('/api/forge/mirror/github/openagents-main', {
+        json: {
+          tenantRef: 'tenant.openagents',
+          repositoryRef: 'repo.openagents.openagents',
+          promotionRef: 'promotion.forge.6796.blocked',
+        },
+        headers: authHeaders('forge:admin'),
+        method: 'POST',
+      }),
+    )
+    const body = (await response.json()) as {
+      mirrorReceipt: { status: string; refusal_reason: string | null }
+    }
+
+    expect(response.status).toBe(409)
+    expect(body.mirrorReceipt.status).toBe('refused')
+    expect(body.mirrorReceipt.refusal_reason).toContain('not an approved')
   })
 })
