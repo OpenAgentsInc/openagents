@@ -2485,7 +2485,7 @@ button {
 
   .coding-command-console {
     grid-template-rows:
-      minmax(180px, 0.42fr)
+      minmax(230px, 0.42fr)
       minmax(230px, 0.52fr)
       minmax(110px, 0.25fr);
     overflow: auto;
