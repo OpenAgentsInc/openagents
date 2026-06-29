@@ -57,6 +57,7 @@ const liveScene = (
       color: 0x4ade80,
       online: true,
       pulseSpeed: 1.8,
+      growth: pylonGrowthTier(100_000),
       products: [],
     },
     {
@@ -66,6 +67,7 @@ const liveScene = (
       color: 0x7dd3fc,
       online: true,
       pulseSpeed: 0.4,
+      growth: pylonGrowthTier(0),
       products: [],
     },
   ],
@@ -92,13 +94,25 @@ describe("liveChatWorldNetworkScene", () => {
     // assignment_ready → working (earning), wallet_ready (online, not earning) → online
     expect(nodes[0]!.tone).toBe("working")
     expect(nodes[0]!.flowing).toBe(true)
+    expect(nodes[0]!.growth).toEqual(pylonGrowthTier(100_000))
     expect(nodes[1]!.tone).toBe("online")
     expect(nodes[1]!.flowing).toBe(false)
+    expect(nodes[1]!.growth).toEqual(pylonGrowthTier(0))
     expect(scene!.onlineNow).toBe(2)
     expect(scene!.sessionsOnlineNow).toBe(1)
     // cumulative settled sats ride through as the growth signal
     expect(scene!.satsSettledTotal).toBe(50_000)
     expect(options.worldLabelDensity).toBe("compact")
+    expect(options.nodes?.find(node => node.id === "abc123")).toMatchObject({
+      detail: "working - tier 3 - 100000 sats - 12 facets",
+      role: "rung",
+      status: "active",
+    })
+    expect(options.nodes?.find(node => node.id === "def456")).toMatchObject({
+      detail: "online - tier 0 - 0 sats",
+      role: "lifecycle",
+      status: "queued",
+    })
     expect(options.nodes?.find(node => node.id === "network")?.position?.[2]).toBeGreaterThan(0)
     expect(options.nodes?.filter(node => node.id !== "network").every(node => (node.position?.[2] ?? 0) !== 0)).toBe(true)
   })
