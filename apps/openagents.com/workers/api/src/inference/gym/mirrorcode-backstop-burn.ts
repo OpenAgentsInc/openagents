@@ -166,6 +166,9 @@ export const buildMirrorCodeBackstopBatchPlan = (
       candidate =>
         !skippedRefs.has(
           taskKey(candidate.bucket, candidate.taskId, candidate.language),
+        ) &&
+        !skippedRefs.has(
+          taskRefFor(candidate.bucket, candidate.taskId, candidate.language),
         ),
     )
     .slice(0, boundedBatchSize(input.maxTasks))
