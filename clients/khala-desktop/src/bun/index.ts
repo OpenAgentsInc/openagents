@@ -9,16 +9,21 @@ import {
   KHALA_DESKTOP_RPC_MAX_REQUEST_TIME_MS,
   type KhalaDesktopRPCSchema,
 } from "../shared/rpc.js"
+import { createAppleFmSidecarHost } from "./apple-fm-sidecar.js"
 
 const baseUrl =
   Bun.env.PYLON_OPENAGENTS_BASE_URL ??
   Bun.env.OPENAGENTS_COM_BASE_URL ??
   KHALA_OPERATOR_DEFAULT_BASE_URL
+const appleFmSidecar = createAppleFmSidecarHost()
 
 const rpc = BrowserView.defineRPC<KhalaDesktopRPCSchema>({
   maxRequestTime: KHALA_DESKTOP_RPC_MAX_REQUEST_TIME_MS,
   handlers: {
     requests: {
+      async appleFmReadiness() {
+        return appleFmSidecar.readiness()
+      },
       async operatorDashboard() {
         return Effect.runPromise(
           fetchOperatorDashboard({
@@ -40,6 +45,10 @@ const rpc = BrowserView.defineRPC<KhalaDesktopRPCSchema>({
     },
     messages: {},
   },
+})
+
+process.on("beforeExit", () => {
+  appleFmSidecar.stop()
 })
 
 new BrowserWindow({
