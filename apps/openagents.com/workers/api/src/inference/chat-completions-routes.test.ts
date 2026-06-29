@@ -4794,6 +4794,10 @@ describe('POST /v1/chat/completions serving-policy gate', () => {
       requestId: string
       usage: InferenceUsage
     }> = []
+    const entitlementChecks: Array<{
+      accountRef: string
+      model: string
+    }> = []
     let dispatchCount = 0
 
     registry.register({
@@ -4820,6 +4824,15 @@ describe('POST /v1/chat/completions serving-policy gate', () => {
         }),
         baseDeps({
           authenticate: async () => ({ accountRef: 'agent:registered-gemini' }),
+          checkPremiumAccess: async (accountRef, model) => {
+            entitlementChecks.push({ accountRef, model })
+            return {
+              allowed: true,
+              message: '',
+              premium: false,
+              reasonRef: 'reason.inference_premium.non_premium_model',
+            }
+          },
           laneArming: vertexGeminiReadyArming,
           lanePlan: selectAdapterPlan,
           meteringHook: context =>
@@ -4860,6 +4873,9 @@ describe('POST /v1/chat/completions serving-policy gate', () => {
       receipt_required: true,
     })
     expect(dispatchCount).toBe(1)
+    expect(entitlementChecks).toEqual([
+      { accountRef: 'agent:registered-gemini', model: KHALA_MODEL_ID },
+    ])
     expect(metered).toEqual([
       expect.objectContaining({
         accountRef: 'agent:registered-gemini',
@@ -4879,6 +4895,68 @@ describe('POST /v1/chat/completions serving-policy gate', () => {
         usage: { completionTokens: 13, promptTokens: 21, totalTokens: 34 },
       },
     ])
+  })
+
+  test('registered-agent hosted Gemini request rejects before Vertex dispatch when quota and balance admission fail', async () => {
+    const registry = new InferenceProviderRegistry()
+    const quotaChecks: Array<{ accountRef: string; model: string }> = []
+    let dispatchCount = 0
+    let meteringCount = 0
+    let servedTokenCount = 0
+
+    registry.register({
+      complete: () =>
+        Effect.sync(() => {
+          dispatchCount += 1
+          return {
+            content: 'must not run',
+            finishReason: 'stop',
+            servedModel: 'gemini-3.5-flash',
+            usage: { completionTokens: 1, promptTokens: 1, totalTokens: 2 },
+          }
+        }),
+      id: VERTEX_GEMINI_ADAPTER_ID,
+      stream: () => Effect.sync(() => []),
+    })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          messages: [{ content: 'Run the hosted Gemini smoke.', role: 'user' }],
+          model: KHALA_MODEL_ID,
+        }),
+        baseDeps({
+          authenticate: async () => ({ accountRef: 'agent:registered-gemini' }),
+          checkFreeAllowance: async (accountRef, model) => {
+            quotaChecks.push({ accountRef, model })
+            return { eligible: false }
+          },
+          laneArming: vertexGeminiReadyArming,
+          lanePlan: selectAdapterPlan,
+          meteringHook: () =>
+            Effect.sync(() => {
+              meteringCount += 1
+              return { metered: true, receiptRef: 'receipt.must_not_exist' }
+            }),
+          readAvailableMsat: emptyBalance,
+          recordTokensServed: () =>
+            Effect.sync(() => {
+              servedTokenCount += 1
+            }),
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(402)
+    const body = (await response.json()) as { error: string }
+    expect(body.error).toBe('insufficient_credits')
+    expect(quotaChecks).toEqual([
+      { accountRef: 'agent:registered-gemini', model: KHALA_MODEL_ID },
+    ])
+    expect(dispatchCount).toBe(0)
+    expect(meteringCount).toBe(0)
+    expect(servedTokenCount).toBe(0)
   })
 
   test('rejects an UNKNOWN (non-Khala) model id with model_unavailable', async () => {
