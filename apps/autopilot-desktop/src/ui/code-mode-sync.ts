@@ -9,6 +9,8 @@
 import type { SessionSummary } from "@openagentsinc/autopilot-control-protocol"
 import type {
   AccountRow,
+  AccountStatusResponse,
+  AccountStatusRow,
   AppleFmReadinessResponse,
   ApprovalRow,
   BuiltInAgentReadinessResponse,
@@ -51,6 +53,7 @@ export type CodeModeSyncAccountRow = Readonly<{
   homePresent: boolean | null
   priority: number | null
   blockerRefs: readonly string[]
+  status: AccountStatusRow | null
   source: "managed_live" | "managed_only" | "live_only" | "default_home"
 }>
 
@@ -80,6 +83,7 @@ export type CodeModeSyncSnapshot = Readonly<{
   accounts: readonly CodeModeSyncAccountRow[]
   liveAccounts: readonly AccountRow[]
   managedAccounts: readonly ManagedAccountRow[]
+  accountStatus?: AccountStatusResponse | null
   approvals: readonly ApprovalRow[]
   artifacts: Readonly<Record<string, SessionArtifactStats>>
   readiness: CodeModeSyncReadiness
@@ -100,6 +104,7 @@ export type CodeModeSyncInput = Readonly<{
   source: CodeModeSyncSource
   node: NodeStateMessage | null
   managedAccounts: ManagedAccountsResponse | null
+  accountStatus?: AccountStatusResponse | null
   inferenceGatewayReadiness: InferenceGatewayReadinessResponse | null
   builtInAgentReadiness: BuiltInAgentReadinessResponse | null
   appleFmReadiness: AppleFmReadinessResponse | null
@@ -150,16 +155,50 @@ const uniqueStrings = (values: readonly string[]): readonly string[] =>
 const mergeAccountRows = (
   liveAccounts: readonly AccountRow[],
   managedAccounts: readonly ManagedAccountRow[],
+  accountStatus: AccountStatusResponse | null,
 ): readonly CodeModeSyncAccountRow[] => {
   const liveByKey = new Map<string, AccountRow>()
   for (const row of liveAccounts) {
     liveByKey.set(accountKey(row.provider, row.accountRef, row.accountRefHash), row)
   }
+  const statusByHash = new Map<string, AccountStatusRow>()
+  const statusByRef = new Map<string, AccountStatusRow>()
+  for (const status of accountStatus?.accounts ?? []) {
+    statusByHash.set(status.accountRefHash, status)
+    if (status.accountRef !== null) statusByRef.set(`${status.provider}:${status.accountRef}`, status)
+  }
+  const statusFor = (
+    provider: string,
+    accountRef: string | null,
+    hash: string | null | undefined,
+  ): AccountStatusRow | null => {
+    if (hash !== null && hash !== undefined) {
+      const byHash = statusByHash.get(hash)
+      if (byHash !== undefined) return byHash
+    }
+    return accountRef === null ? null : statusByRef.get(`${provider}:${accountRef}`) ?? null
+  }
+  const readyFromStatus = (fallback: boolean, status: AccountStatusRow | null): boolean =>
+    status === null
+      ? fallback
+      : status.readiness.state === "ready" && status.quota.state === "available"
+  const blockersFromStatus = (
+    existing: readonly string[],
+    status: AccountStatusRow | null,
+  ): readonly string[] =>
+    uniqueStrings([
+      ...existing,
+      ...(status?.blockerRefs ?? []),
+      ...(status !== null && status.quota.state !== "available"
+        ? [`blocker.pylon.accounts_status.${status.quota.state}`]
+        : []),
+    ])
 
   const rows = new Map<string, CodeModeSyncAccountRow>()
   for (const managed of managedAccounts) {
     const key = accountKey(managed.provider, managed.ref, null)
     const live = liveByKey.get(key) ?? null
+    const status = statusFor(managed.provider, managed.ref, live?.accountRefHash ?? null)
     rows.set(key, {
       key,
       provider: managed.provider,
@@ -167,12 +206,13 @@ const mergeAccountRows = (
       accountRefHash: live?.accountRefHash ?? null,
       label: accountLabel(managed.provider, managed.ref, live?.accountRefHash ?? null),
       selector: live?.selector ?? "managed",
-      ready: live?.ready ?? managed.homePresent,
+      ready: readyFromStatus(live?.ready ?? managed.homePresent, status),
       managed: true,
       live: live !== null,
       homePresent: managed.homePresent,
       priority: managed.priority,
-      blockerRefs: uniqueStrings(live?.blockerRefs ?? []),
+      blockerRefs: blockersFromStatus(live?.blockerRefs ?? [], status),
+      status,
       source: live === null ? "managed_only" : "managed_live",
     })
   }
@@ -180,6 +220,7 @@ const mergeAccountRows = (
   for (const live of liveAccounts) {
     const key = accountKey(live.provider, live.accountRef, live.accountRefHash)
     if (rows.has(key)) continue
+    const status = statusFor(live.provider, live.accountRef, live.accountRefHash)
     rows.set(key, {
       key,
       provider: live.provider,
@@ -187,12 +228,13 @@ const mergeAccountRows = (
       accountRefHash: live.accountRefHash,
       label: accountLabel(live.provider, live.accountRef, live.accountRefHash),
       selector: live.selector,
-      ready: live.ready,
+      ready: readyFromStatus(live.ready, status),
       managed: false,
       live: true,
       homePresent: null,
       priority: live.priority,
-      blockerRefs: uniqueStrings(live.blockerRefs),
+      blockerRefs: blockersFromStatus(live.blockerRefs, status),
+      status,
       source: live.selector === "default_home" ? "default_home" : "live_only",
     })
   }
@@ -427,7 +469,8 @@ export const projectCodeModeSyncSnapshot = (
     if (priorityA !== priorityB) return priorityA - priorityB
     return `${a.provider}:${a.ref}`.localeCompare(`${b.provider}:${b.ref}`)
   })
-  const accounts = mergeAccountRows(liveAccounts, managedAccounts)
+  const accountStatus = input.accountStatus ?? null
+  const accounts = mergeAccountRows(liveAccounts, managedAccounts, accountStatus)
   const artifacts = input.node?.artifacts ?? {}
   const approvals = input.node?.approvals ?? []
   const readiness = readinessProjection(input)
@@ -463,6 +506,7 @@ export const projectCodeModeSyncSnapshot = (
     accounts,
     liveAccounts,
     managedAccounts,
+    accountStatus,
     approvals,
     artifacts,
     readiness,

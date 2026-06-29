@@ -151,6 +151,7 @@ import {
 
 import type {
   AccountRow,
+  AccountStatusRow,
   AppleFmReadinessResponse,
   ApprovalRow,
   AssignmentRow,
@@ -225,6 +226,7 @@ import {
   ClickedLoadGeneratedProofReplay,
   ClickedRefreshManagedAccounts,
   ClickedRemoveManagedAccount,
+  ClickedResetAccountStatus,
   ChangedVerseLocalPose,
   ChangedVersePresenceZone,
   ChangedVerseWorldItemProximity,
@@ -414,6 +416,7 @@ import {
   modelVerseSpawnedScenes,
   modelCodeModeSync,
   modelManagedAccounts,
+  modelAccountStatus,
   modelPaneLayer,
   modelPromiseSurfacingReadiness,
   modelPromiseSurfacingResult,
@@ -1054,10 +1057,101 @@ const cloudCard = (model: Model): Html => {
   ])
 }
 
-// AccountRow (rpc.ts) → AccountSummary (autopilot-ui). Read-only display via the
-// shared AccountList component. CS-A1: use the node's stable accountRefHash and
-// keep readiness state honest (ready vs blocked).
-const toAccountSummary = (row: AccountRow): AccountSummary => ({
+const activeSessionStates = new Set(["queued", "started", "running"])
+
+const accountStatusState = (
+  row: AccountRow,
+  status: AccountStatusRow | null,
+): AccountSummary["state"] => {
+  if (status !== null) {
+    if (status.quota.state === "cooldown") return "cooldown"
+    if (status.quota.state === "weekly_exhausted") return "weekly_exhausted"
+    if (status.quota.state !== "available") return "quota_blocked"
+    if (status.readiness.state === "credentials_missing" || status.readiness.state === "credentials_revoked") {
+      return "credentials_missing"
+    }
+    if (status.readiness.state === "auth_refresh_failed") return "auth_refresh_failed"
+    if (status.readiness.state === "model_unavailable") return "model_unavailable"
+    if (status.readiness.state === "execution_refused") return "execution_refused"
+    if (status.readiness.state !== "ready") return "unavailable"
+  }
+  return row.ready ? "ready" : "quota_blocked"
+}
+
+const statusForAccount = (
+  statuses: readonly AccountStatusRow[],
+  row: AccountRow,
+): AccountStatusRow | null =>
+  statuses.find((status) => status.accountRefHash === row.accountRefHash) ??
+  statuses.find((status) =>
+    status.provider === row.provider &&
+    status.accountRef !== null &&
+    status.accountRef === row.accountRef
+  ) ??
+  null
+
+const lastSuccessfulTurnForAccount = (model: Model, accountHash: string): string | null => {
+  const session = (modelNode(model)?.sessions ?? [])
+    .filter((row) => row.accountRefHash === accountHash && row.state === "completed")
+    .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))[0]
+  return session?.updatedAt ?? null
+}
+
+const recentRefusalForAccount = (model: Model, accountHash: string): string | null => {
+  const node = modelNode(model)
+  const session = (node?.sessions ?? [])
+    .filter((row) => row.accountRefHash === accountHash && row.state === "failed")
+    .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))[0]
+  if (session === undefined) return null
+  const detail = node?.events?.[session.sessionRef]
+    ?.slice()
+    .reverse()
+    .find((event) => /refus|blocker|limit|unavailable/i.test(event.detail))?.detail
+  return detail ?? session.lastProgressRef ?? "failed"
+}
+
+// AccountRow (rpc.ts) + AccountStatusRow → AccountSummary (autopilot-ui).
+// Read-only display via the shared AccountList component; reset actions stay in
+// the desktop pane below so the shared component remains message-agnostic.
+const toAccountSummary = (
+  model: Model,
+  row: AccountRow,
+  status: AccountStatusRow | null = null,
+): AccountSummary => {
+  const hourly = status?.capacity.hourly ?? null
+  const weekly = status?.capacity.weekly ?? null
+  const usage =
+    weekly !== null
+      ? { used: Math.round(100 - weekly.remainingPercent), limit: 100 }
+      : hourly !== null
+        ? { used: Math.round(100 - hourly.remainingPercent), limit: 100 }
+        : undefined
+  return {
+    accountRefHash: row.accountRefHash,
+    provider: row.provider,
+    state: accountStatusState(row, status),
+    ...(usage === undefined ? {} : { usage }),
+    resetAt: status?.quota.cooldownExpiresAt ?? weekly?.resetsAtIso ?? hourly?.resetsAtIso ?? null,
+    cooldownSecondsRemaining: status?.quota.cooldownSecondsRemaining ?? null,
+    activeSlots: (modelNode(model)?.sessions ?? []).filter(
+      (session) =>
+        session.accountRefHash === row.accountRefHash &&
+        activeSessionStates.has(session.state),
+    ).length,
+    recentRefusalReason: recentRefusalForAccount(model, row.accountRefHash),
+    lastSuccessfulTurn: lastSuccessfulTurnForAccount(model, row.accountRefHash),
+    ...(status === null
+      ? {}
+      : {
+          manualReset: {
+            allowed: status.quota.resetAllowed,
+            remaining: status.quota.manualResetsRemaining,
+          },
+        }),
+  }
+}
+
+const toBasicAccountSummary = (row: AccountRow): AccountSummary => ({
   accountRefHash: row.accountRefHash,
   provider: row.provider,
   state: row.ready ? "ready" : "quota_blocked",
@@ -1118,6 +1212,7 @@ const fallbackCodeModeAccountRows = (model: Model): readonly CodeModeSyncAccount
     homePresent: null,
     priority: row.priority,
     blockerRefs: row.blockerRefs,
+    status: null,
     source: row.selector === "default_home" ? "default_home" : "live_only",
   }))
 
@@ -1358,7 +1453,7 @@ const verseCodeAccountInventory = (model: Model): Html => {
 const accountsSection = (node: NodeStateMessage): Html => {
   const accounts = node.accounts ?? []
   if (accounts.length === 0) return h.empty
-  return card("Accounts", [AccountList({ accounts: accounts.map(toAccountSummary) })])
+  return card("Accounts", [AccountList({ accounts: accounts.map(toBasicAccountSummary) })])
 }
 
 const notificationsSection = (view: NotificationCenterView): Html => {
@@ -6777,6 +6872,31 @@ const sortManagedAccountRows = (
     return a.ref.localeCompare(b.ref)
   })
 
+const accountResetControls = (statuses: readonly AccountStatusRow[]): Html => {
+  const resettable = statuses.filter(
+    (status) =>
+      status.provider === "codex" &&
+      status.accountRef !== null &&
+      status.quota.operatorAction === "manual_recovery_available" &&
+      status.quota.resetAllowed,
+  )
+  if (resettable.length === 0) return h.empty
+  return h.div(
+    [cls("managed-account-reset-controls")],
+    resettable.map((status) =>
+      h.button(
+        [
+          cls("link-button"),
+          h.Type("button"),
+          h.Title("Request a provider-supported manual reset for this exhausted account"),
+          h.OnClick(ClickedResetAccountStatus({ accountRef: status.accountRef ?? "" })),
+        ],
+        [`Reset ${status.accountRef}`],
+      ),
+    ),
+  )
+}
+
 // CS-A1: account-management surface — add / select / priority / quota over the
 // node's local dev.accounts config. Turns the read-only AccountList into a
 // managed registry (audit gap #2). Readiness/quota stays the live accounts.list
@@ -6787,6 +6907,7 @@ const accountManagementCard = (model: Model): Html => {
   const rows = sortManagedAccountRows(managed?.accounts ?? [])
   const node = modelNode(model)
   const liveAccounts = modelCodeModeSync(model)?.liveAccounts ?? node?.accounts ?? []
+  const accountStatuses = modelAccountStatus(model)?.accounts ?? []
   return card("Accounts", [
     h.p([cls("card-body")], [
       "Manage which provider accounts this node can run coding sessions under. Priority orders dispatch (lower runs first).",
@@ -6802,7 +6923,14 @@ const accountManagementCard = (model: Model): Html => {
     liveAccounts.length > 0
       ? h.div(
           [cls("managed-account-readiness")],
-          [AccountList({ accounts: liveAccounts.map(toAccountSummary) })],
+          [
+            AccountList({
+              accounts: liveAccounts.map((row) =>
+                toAccountSummary(model, row, statusForAccount(accountStatuses, row)),
+              ),
+            }),
+            accountResetControls(accountStatuses),
+          ],
         )
       : h.empty,
     // Managed registry rows (editable).

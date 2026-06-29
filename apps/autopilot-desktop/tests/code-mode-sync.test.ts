@@ -8,6 +8,7 @@ import { describe, expect, test } from "bun:test"
 import type { SessionSummary } from "@openagentsinc/autopilot-control-protocol"
 import type {
   AccountRow,
+  AccountStatusResponse,
   BuiltInAgentReadinessResponse,
   InferenceGatewayReadinessResponse,
   ManagedAccountsResponse,
@@ -86,6 +87,47 @@ const managed = (
     homePresent: true,
     priority: index,
   })),
+})
+
+const accountStatus = (
+  accountRefHash: string,
+  state: "available" | "cooldown" | "weekly_exhausted" = "available",
+): AccountStatusResponse => ({
+  schema: "openagents.pylon.accounts_status.v0.1",
+  observedAt: "2026-06-21T22:00:00.000Z",
+  accounts: [
+    {
+      provider: "codex",
+      selector: "registry_ref",
+      accountRef: "work",
+      accountRefHash,
+      readiness: { state: "ready", blockerRefs: [] },
+      quota: {
+        state,
+        kind: state === "available" ? null : state,
+        observedAt: state === "available" ? null : "2026-06-21T22:00:00.000Z",
+        cooldownExpiresAt: state === "cooldown" ? "2026-06-22T03:00:00.000Z" : null,
+        cooldownSecondsRemaining: state === "cooldown" ? 18_000 : null,
+        sourceDigestRef: state === "available" ? null : "digest.public.status",
+        manualResetsRemaining: 3,
+        resetAllowed: state === "weekly_exhausted",
+        operatorAction: state === "cooldown"
+          ? "wait_for_cooldown"
+          : state === "weekly_exhausted"
+            ? "manual_recovery_available"
+            : "none",
+      },
+      capacity: { hourly: null, weekly: null, windows: [] },
+      usage: { observedAt: null, inputTokens: null, outputTokens: null, totalTokens: null },
+      manualReset: {
+        performed: false,
+        manualResetsRemaining: 3,
+        updatedAt: "2026-06-21T22:00:00.000Z",
+        blockerRefs: [],
+      },
+      blockerRefs: state === "available" ? [] : [`blocker.pylon.accounts_status.${state}`],
+    },
+  ],
 })
 
 const session = (input: Partial<SessionSummary> = {}): SessionSummary => ({
@@ -269,6 +311,25 @@ describe("code-mode sync projection (#5929)", () => {
     expect(nodeDiagnostic?.title).toBe("Node sync reconnecting")
     expect(nodeDiagnostic?.body).not.toContain("not OK")
     expect(nodeDiagnostic?.body).not.toContain("blocked")
+  })
+
+  test("cooling Codex accounts are excluded from ready routing", () => {
+    const snapshot = projectCodeModeSyncSnapshot({
+      source: "node_state",
+      node: nodeState(),
+      managedAccounts: managed(["work"]),
+      accountStatus: accountStatus(workHash, "cooldown"),
+      inferenceGatewayReadiness: gatewayReadiness(),
+      builtInAgentReadiness: builtInReadiness(),
+      appleFmReadiness: null,
+      selectedSessionRef: sessionRef,
+      composerAdapter: "codex",
+      composerAccountRef: "work",
+    })
+
+    expect(snapshot.accounts[0]?.ready).toBe(false)
+    expect(snapshot.accounts[0]?.blockerRefs).toContain("blocker.pylon.accounts_status.cooldown")
+    expect(snapshot.counts.readyAccounts).toBe(0)
   })
 
   test("one node-state tick updates Sessions, Agent Stream, Decisions, and Diff/Artifacts", () => {

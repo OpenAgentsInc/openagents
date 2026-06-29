@@ -70,6 +70,64 @@ export type ManagedAccountMutationResponse = {
   readonly error?: string
 }
 
+export type AccountWindowStatus = {
+  readonly usedPercent: number
+  readonly remainingPercent: number
+  readonly windowMinutes: number | null
+  readonly resetsAtIso: string | null
+  readonly label: string
+}
+
+export type AccountStatusRow = {
+  readonly provider: "codex" | "claude_agent" | string
+  readonly selector: "registry_ref" | "default_home" | string
+  readonly accountRef: string | null
+  readonly accountRefHash: string
+  readonly readiness: {
+    readonly state: string
+    readonly blockerRefs: readonly string[]
+  }
+  readonly quota: {
+    readonly state: "available" | "cooldown" | "weekly_exhausted" | "limited" | string
+    readonly kind: string | null
+    readonly observedAt: string | null
+    readonly cooldownExpiresAt: string | null
+    readonly cooldownSecondsRemaining: number | null
+    readonly sourceDigestRef: string | null
+    readonly manualResetsRemaining: number
+    readonly resetAllowed: boolean
+    readonly operatorAction: "wait_for_cooldown" | "manual_recovery_available" | "none" | string
+  }
+  readonly capacity: {
+    readonly hourly: AccountWindowStatus | null
+    readonly weekly: AccountWindowStatus | null
+    readonly windows: readonly AccountWindowStatus[]
+  }
+  readonly usage: {
+    readonly observedAt: string | null
+    readonly inputTokens: number | null
+    readonly outputTokens: number | null
+    readonly totalTokens: number | null
+    readonly totalCostUsd?: number
+  }
+  readonly manualReset: {
+    readonly performed: boolean
+    readonly manualResetsRemaining: number
+    readonly updatedAt: string
+    readonly blockerRefs: readonly string[]
+  }
+  readonly blockerRefs: readonly string[]
+}
+
+export type AccountStatusResponse = {
+  readonly schema?: string
+  readonly observedAt?: string
+  readonly accounts: readonly AccountStatusRow[]
+  readonly blockerRefs?: readonly string[]
+  readonly ok?: boolean
+  readonly error?: string
+}
+
 export type SessionArtifactStats = {
   readonly kind: string
   readonly outcome: string | null
@@ -1272,6 +1330,14 @@ export type DesktopRPCSchema = {
       readonly listManagedAccounts: {
         readonly params: Record<string, never>
         readonly response: ManagedAccountsResponse
+      }
+      readonly getAccountStatus: {
+        readonly params: Record<string, never>
+        readonly response: AccountStatusResponse
+      }
+      readonly resetAccountStatus: {
+        readonly params: { accountRef: string }
+        readonly response: AccountStatusResponse
       }
       readonly addManagedAccount: {
         readonly params: {

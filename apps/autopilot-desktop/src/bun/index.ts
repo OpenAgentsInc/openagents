@@ -72,11 +72,13 @@ import {
   cancelSession,
   deployToCloud,
   fetchAppleFmReadiness,
+  fetchAccountStatus,
   fetchNodeSparkAddress,
   fetchNodeState,
   fetchOnboardingSignals,
   probeControlToken,
   readControlToken,
+  requestAccountManualReset,
   resolveApproval,
   resolveManagedWorktreeRepoRef,
   setCoordinatorPaused,
@@ -1252,6 +1254,24 @@ const rpc = BrowserView.defineRPC<DesktopRPCSchema>({
       // node's local dev.accounts config. Bun owns the home + config path.
       async listManagedAccounts() {
         return listManagedAccounts(resolveHome())
+      },
+      async getAccountStatus() {
+        const token = await acceptedControlTokenForCommand()
+        if (token === null) {
+          return { ok: false, accounts: [], error: CONTROL_TOKEN_NOT_ACCEPTED }
+        }
+        return fetchAccountStatus({ baseUrl: controlBaseUrl, token })
+      },
+      async resetAccountStatus(params: { accountRef: string }) {
+        const token = await acceptedControlTokenForCommand()
+        if (token === null) {
+          return { ok: false, accounts: [], error: CONTROL_TOKEN_NOT_ACCEPTED }
+        }
+        return requestAccountManualReset({
+          baseUrl: controlBaseUrl,
+          token,
+          accountRef: params.accountRef,
+        })
       },
       async addManagedAccount(params) {
         return addManagedAccount(resolveHome(), {

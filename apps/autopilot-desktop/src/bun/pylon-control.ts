@@ -17,6 +17,7 @@ import {
   type PresenceSnapshot,
 } from "../shared/pylon-fleet-reconciliation.js"
 import type {
+  AccountStatusResponse,
   AccountRow,
   AppleFmReadinessResponse,
   AppleFmSessionStartResponse,
@@ -476,6 +477,53 @@ async function fetchAccountRows(input: {
     }))
   } catch {
     return []
+  }
+}
+
+export async function fetchAccountStatus(input: {
+  baseUrl: string
+  token: string
+  fetchFn?: typeof fetch
+}): Promise<AccountStatusResponse> {
+  const fetchFn = input.fetchFn ?? fetch
+  try {
+    const res = await fetchFn(`${input.baseUrl.replace(/\/+$/, "")}/command`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${input.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ type: "accounts.status.detailed" }),
+    })
+    if (!res.ok) return { ok: false, accounts: [], error: `control ${res.status}` }
+    const json = await res.json()
+    if (json !== null && typeof json === "object" && Array.isArray((json as { accounts?: unknown }).accounts)) {
+      return json as AccountStatusResponse
+    }
+    return { ok: false, accounts: [], error: "malformed account status response" }
+  } catch (error) {
+    return { ok: false, accounts: [], error: error instanceof Error ? error.message : String(error) }
+  }
+}
+
+export async function requestAccountManualReset(input: {
+  baseUrl: string
+  token: string
+  accountRef: string
+  fetchFn?: typeof fetch
+}): Promise<AccountStatusResponse> {
+  const fetchFn = input.fetchFn ?? fetch
+  try {
+    const res = await fetchFn(`${input.baseUrl.replace(/\/+$/, "")}/command`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${input.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ type: "accounts.status.manual_reset", accountRef: input.accountRef }),
+    })
+    if (!res.ok) return { ok: false, accounts: [], error: `control ${res.status}` }
+    const json = await res.json()
+    if (json !== null && typeof json === "object" && Array.isArray((json as { accounts?: unknown }).accounts)) {
+      return json as AccountStatusResponse
+    }
+    return { ok: false, accounts: [], error: "malformed account reset response" }
+  } catch (error) {
+    return { ok: false, accounts: [], error: error instanceof Error ? error.message : String(error) }
   }
 }
 

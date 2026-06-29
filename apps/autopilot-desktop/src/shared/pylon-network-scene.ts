@@ -45,6 +45,9 @@ export type RecentPylon = {
   readonly onlineNow?: boolean | null
   readonly walletReadyNow?: boolean | null
   readonly assignmentReadyNow?: boolean | null
+  readonly cumulativeSettledSats?: number | null
+  readonly lastHeartbeatAgeSeconds?: number | null
+  readonly products?: ReadonlyArray<string> | null
 }
 
 const cleanLabel = (value: string | null | undefined): string => {

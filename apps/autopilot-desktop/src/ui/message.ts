@@ -614,6 +614,7 @@ export const SelectedComposerAccount = m("SelectedComposerAccount", {
 // dev.accounts config the runtime reads). Bun owns the home + config path.
 export const ClickedRefreshManagedAccounts = m("ClickedRefreshManagedAccounts")
 export const GotManagedAccounts = m("GotManagedAccounts", { projection: S.Unknown })
+export const GotAccountStatus = m("GotAccountStatus", { projection: S.Unknown })
 export const ChangedAddAccountRef = m("ChangedAddAccountRef", { value: S.String })
 export const ChangedAddAccountProvider = m("ChangedAddAccountProvider", {
   provider: S.Literals(["codex", "claude_agent"]),
@@ -635,8 +636,14 @@ export const ClickedBumpManagedAccountPriority = m(
     priority: S.Number,
   },
 )
+export const ClickedResetAccountStatus = m("ClickedResetAccountStatus", {
+  accountRef: S.String,
+})
 // Settled (shared by add/remove/set-priority). Carries the refreshed list.
 export const SettledManagedAccountMutation = m("SettledManagedAccountMutation", {
+  projection: S.Unknown,
+})
+export const SettledAccountStatusReset = m("SettledAccountStatusReset", {
   projection: S.Unknown,
 })
 
@@ -935,6 +942,7 @@ export const Message = S.Union([
   SelectedComposerAccount,
   ClickedRefreshManagedAccounts,
   GotManagedAccounts,
+  GotAccountStatus,
   ChangedAddAccountRef,
   ChangedAddAccountProvider,
   ChangedAddAccountHome,
@@ -942,7 +950,9 @@ export const Message = S.Union([
   ClickedAddManagedAccount,
   ClickedRemoveManagedAccount,
   ClickedBumpManagedAccountPriority,
+  ClickedResetAccountStatus,
   SettledManagedAccountMutation,
+  SettledAccountStatusReset,
   ChangedThemePreference,
   ChangedDefaultAdapter,
   ChangedDefaultLane,

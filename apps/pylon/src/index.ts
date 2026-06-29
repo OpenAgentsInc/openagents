@@ -1182,7 +1182,19 @@ const runHeadlessNode = Effect.gen(function* () {
             },
             { env: Bun.env },
           )
-        : collectPylonOperatorAccountStatus(bootstrapSummary),
+        : input?.detailed
+          ? collectPylonAccountsStatus(
+              bootstrapSummary,
+              {
+                accountRef: null,
+                provider: null,
+                all: true,
+                json: true,
+                reset: false,
+              },
+              { env: Bun.env },
+            )
+          : collectPylonOperatorAccountStatus(bootstrapSummary),
       // The supervisor-status provider comes from the launch lifecycle owner
       // above (undefined unless PYLON_APPLE_FM_SUPERVISE=1 and a helper exists),
       // so by default this is the unsupervised projection unchanged.

@@ -18,6 +18,7 @@ import {
   ClaimTrainingWindowLease,
   ChooseIdentity,
   DeployCloud,
+  LoadAccountStatus,
   LoadAppleFmReadiness,
   LoadBuiltInAgentReadiness,
   LoadIdentityChoiceState,
@@ -41,6 +42,7 @@ import {
   PersistPreferences,
   ReconcileTrainingWindow,
   RemoveManagedAccount,
+  ResetAccountStatus,
   RequestTrainingBootstrapGrant,
   RespondToVerseInput,
   RespondToShellInput,
@@ -125,6 +127,7 @@ import {
   BLUEPRINT_CHAT_REPLAY_TOOL_REF,
   Model,
   modelAppleFmReadiness,
+  modelAccountStatus,
   modelBuiltInAgentReadiness,
   modelInferenceGatewayReadiness,
   modelManagedAccounts,
@@ -207,6 +210,7 @@ const withCodeModeSync = (
       source,
       node: modelNode(model),
       managedAccounts: modelManagedAccounts(model),
+      accountStatus: modelAccountStatus(model),
       inferenceGatewayReadiness: modelInferenceGatewayReadiness(model),
       builtInAgentReadiness: modelBuiltInAgentReadiness(model),
       appleFmReadiness: modelAppleFmReadiness(model),
@@ -291,7 +295,7 @@ const openNewCoderSession = (model: Model): Result => {
       }),
       "model_tick",
     ),
-    [LoadManagedAccounts()],
+    [LoadManagedAccounts(), LoadAccountStatus()],
   ]
 }
 
@@ -754,6 +758,7 @@ const isAccountManagingPane = (pane: PaneId): boolean =>
 
 const diagnosticsRefreshCommands = (): ReadonlyArray<Command.Command<Message>> => [
   LoadManagedAccounts(),
+  LoadAccountStatus(),
   LoadInferenceGatewayReadiness(),
   LoadBuiltInAgentReadiness(),
   LoadAppleFmReadiness(),
@@ -798,6 +803,7 @@ const fallbackCodeModeAccountRows = (model: Model): readonly CodeModeSyncAccount
     homePresent: null,
     priority: row.priority,
     blockerRefs: row.blockerRefs,
+    status: null,
     source: row.selector === "default_home" ? "default_home" : "live_only",
   }))
 
@@ -1423,7 +1429,7 @@ export const update = (model: Model, message: Message): Result => {
             ? // #5485: the account-managing panes (composer/spawn/settings) are
               // exactly where the own-auth-vs-gateway routing matters, so refresh
               // the gateway readiness (credits/hint) on enter alongside accounts.
-              [LoadManagedAccounts(), LoadInferenceGatewayReadiness()]
+              [LoadManagedAccounts(), LoadAccountStatus(), LoadInferenceGatewayReadiness()]
             : noCommands),
           ...(isDiagnosticsPane(message.pane) ? diagnosticsRefreshCommands() : noCommands),
         ],
@@ -1708,7 +1714,7 @@ export const update = (model: Model, message: Message): Result => {
           }),
           "model_tick",
         ),
-        enteringCode ? [LoadManagedAccounts()] : noCommands,
+        enteringCode ? [LoadManagedAccounts(), LoadAccountStatus()] : noCommands,
       ]
     }
 
@@ -3124,7 +3130,7 @@ export const update = (model: Model, message: Message): Result => {
         }),
         // #5485: + warm the gateway readiness so the composer's route hint is
         // accurate the moment an adopted session opens (matches NavigatedTo).
-        [LoadManagedAccounts(), LoadInferenceGatewayReadiness()],
+        [LoadManagedAccounts(), LoadAccountStatus(), LoadInferenceGatewayReadiness()],
       ]
 
     // ── #5469 (EPIC #5461): swarm batch launch ──────────────────────────────────
@@ -3550,7 +3556,7 @@ export const update = (model: Model, message: Message): Result => {
         }),
         // CS-A1: a fresh thread reloads the account list so a newly added
         // account is pickable without re-navigating.
-        [LoadManagedAccounts()],
+        [LoadManagedAccounts(), LoadAccountStatus()],
       ]
     case "SucceededComposerTurn":
       return [
@@ -4041,7 +4047,7 @@ export const update = (model: Model, message: Message): Result => {
           pane: message.pane,
         })
         const accountCommands = isAccountManagingPane(message.pane)
-          ? [LoadManagedAccounts(), LoadInferenceGatewayReadiness()]
+          ? [LoadManagedAccounts(), LoadAccountStatus(), LoadInferenceGatewayReadiness()]
           : noCommands
         const diagnosticCommands = isDiagnosticsPane(message.pane)
           ? diagnosticsRefreshCommands()
@@ -4082,7 +4088,7 @@ export const update = (model: Model, message: Message): Result => {
           managedAccountsPending: true,
           managedAccountsStatus: { text: "loading accounts...", tone: "info" },
         }),
-        [LoadManagedAccounts()],
+        [LoadManagedAccounts(), LoadAccountStatus()],
       ]
     case "GotManagedAccounts": {
       const projection = message.projection as {
@@ -4099,6 +4105,27 @@ export const update = (model: Model, message: Message): Result => {
             managedAccountsStatus: projection.ok
               ? { text: "", tone: "idle" }
               : { text: projection.error ?? "could not load accounts", tone: "error" },
+          }),
+          "managed_accounts",
+        ),
+        noCommands,
+      ]
+    }
+    case "GotAccountStatus": {
+      const projection = message.projection as {
+        accounts?: ReadonlyArray<unknown>
+        ok?: boolean
+        error?: string
+      }
+      return [
+        withCodeModeSync(
+          Model.make({
+            ...model,
+            accountStatus: message.projection,
+            managedAccountsStatus:
+              projection.ok === false
+                ? { text: projection.error ?? "could not load account status", tone: "error" }
+                : model.managedAccountsStatus,
           }),
           "managed_accounts",
         ),
@@ -4204,6 +4231,37 @@ export const update = (model: Model, message: Message): Result => {
           }),
         ],
       ]
+    case "ClickedResetAccountStatus":
+      return [
+        Model.make({
+          ...model,
+          managedAccountsPending: true,
+          managedAccountsStatus: { text: "requesting account reset...", tone: "info" },
+        }),
+        [ResetAccountStatus({ accountRef: message.accountRef })],
+      ]
+    case "SettledAccountStatusReset": {
+      const projection = message.projection as {
+        ok?: boolean
+        accounts?: ReadonlyArray<unknown>
+        error?: string
+      }
+      return [
+        withCodeModeSync(
+          Model.make({
+            ...model,
+            accountStatus: message.projection,
+            managedAccountsPending: false,
+            managedAccountsStatus:
+              projection.ok === false
+                ? { text: projection.error ?? "account reset failed", tone: "error" }
+                : { text: "account reset recorded", tone: "success" },
+          }),
+          "managed_accounts",
+        ),
+        noCommands,
+      ]
+    }
     case "SettledManagedAccountMutation": {
       const projection = message.projection as {
         ok: boolean

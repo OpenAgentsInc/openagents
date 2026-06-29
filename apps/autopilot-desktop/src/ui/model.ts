@@ -49,6 +49,7 @@ import {
 } from "../shared/proof-replays.js"
 import type {
   AppleFmReadinessResponse,
+  AccountStatusResponse,
   BuiltInAgentReadinessResponse,
   IdentityChoiceStateResponse,
   InferenceGatewayReadinessResponse,
@@ -703,6 +704,7 @@ export const Model = ts("AutopilotDesktop", {
   // ManagedAccountsResponse projection (opaque, read via the typed accessor);
   // the rest are the add-account form fields + transient status.
   managedAccounts: S.NullOr(S.Unknown),
+  accountStatus: S.NullOr(S.Unknown),
   // VCODE-12 (#5929): one de-duped code-mode sync snapshot over managed
   // accounts, live account readiness, node sessions, event tails, artifacts,
   // approvals, and quota/readiness projections. Opaque like `node`, read via
@@ -869,6 +871,11 @@ export const modelManagedAccounts = (
   model: Model,
 ): ManagedAccountsResponse | null =>
   model.managedAccounts as ManagedAccountsResponse | null
+
+export const modelAccountStatus = (
+  model: Model,
+): AccountStatusResponse | null =>
+  model.accountStatus as AccountStatusResponse | null
 
 export const modelCodeModeSync = (
   model: Model,
@@ -1312,6 +1319,7 @@ export const initialModel: Model = Model.make({
   verseSpawnedScenes: [],
   verseGameScreenActive: false,
   managedAccounts: null,
+  accountStatus: null,
   codeModeSync: null,
   managedAccountsPending: false,
   managedAccountsStatus: { text: "", tone: "idle" },
