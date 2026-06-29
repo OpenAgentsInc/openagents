@@ -450,7 +450,7 @@ const readCodexSessions = async (
         pid: process?.pid ?? null,
         sessionId,
         source: parsed.source,
-        status: active ? process.status : isRecent ? "recent" : "idle",
+        status: active ? "active" : isRecent ? "recent" : "idle",
         title: parsed.title ?? process?.label ?? fallbackSessionTitle(sessionId),
       } satisfies CodingCodexSession
     }),
