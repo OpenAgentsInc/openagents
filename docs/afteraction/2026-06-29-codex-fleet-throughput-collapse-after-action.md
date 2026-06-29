@@ -1895,3 +1895,66 @@ The public stats read side also flapped during this same check:
 model-mix SQL succeeded in about 300 ms, so this was D1/load/read-path pressure,
 not bad token rows. Do not confuse a transient public stats 500 with missing
 accounting; check the ledger diff and the failure spool first.
+
+Follow-up at `2026-06-29T12:30Z` changed the work-queue diagnosis:
+
+```text
+open GitHub issues: 60
+open GitHub PRs: 385
+mergeable PRs: 225
+unknown-mergeability PRs: 160
+issues with a detected PR by branch/title: 59 / 60
+```
+
+The one issue not detected by the simple `issue-<number>` / `#<number>` parser
+was `#7011`, but there is an open PR branch named
+`pylon-account-registry-effect-service-7011`, so the real bottleneck is no
+longer issue-start fanout. The bottleneck is PR review, dedupe, and merge
+readiness. Keep the local fleet pointed at PR review/fix work until that queue
+is drained or the merge path is automated.
+
+The v2 PR-review refill loop kept the machine near saturation, but it sometimes
+launched duplicate reviews for the same very new PR. Example: recent logs showed
+duplicate launches for `#7410`, `#7409`, `#7408`, `#7407`, `#7406`, `#7405`,
+and `#7404`; `#7404` briefly had two active accepted assignments at once. Some
+duplicates were harmless failed-before-accept attempts, but at least one was
+real active duplication.
+
+Next controller fix: take an atomic per-PR local lock before calling
+`khala request`, keep that lock while an accepted assignment is active, and write
+a separate terminal marker for failed-before-accept attempts. The controller
+must distinguish:
+
+- never accepted: retrying the same PR is fine;
+- accepted and active: do not launch another reviewer for that PR;
+- accepted and finished with D1 row: skip unless a human intentionally asks for
+  another review pass.
+
+This is not worth killing the live controller for while it is saturated. Let the
+current workers close out; build the lock-aware controller as the next durable
+replacement.
+
+Another fresh failure spool appeared at `2026-06-29T12:24Z` with two reports:
+one `401 unauthorized` main turn and one `500 internal_server_error` helper
+turn. Both replayed successfully through `createPylonCodexTurnReporter` with the
+stored pylon token, exact D1 rows were verified, and the spool was archived as:
+
+```text
+~/.pylon-fable/replayed-failures/codex-turn-report-failures-20260629T122702Z.jsonl
+```
+
+Verification immediately after:
+
+```text
+2026-06-29T12:26Z D1 since 10:00Z:
+  rows: 478
+  total_tokens: 1,009,645,916
+  public_tokens: 1,009,645,916
+  latest_observed: 2026-06-29T12:26:38.283Z
+
+2026-06-29T12:26Z public /api/public/khala-tokens-served:
+  tokensServed: 5,693,025,375
+
+live failure spools after archive:
+  0
+```
