@@ -15,6 +15,7 @@ import {
   mergeTassadarCapabilityRefs,
   writeTassadarCapabilityEvidence,
 } from "./tassadar-capability.js"
+import { runTassadarCpuTransformTrainingFixture } from "./tassadar-cpu-transform-training.js"
 import {
   loadClaudeAgentConfig,
   probeClaudeAgentReadiness,
@@ -3407,6 +3408,13 @@ async function main() {
       process.exitCode = 1
       return
     }
+  }
+
+  if (args[0] === "tassadar" && args[1] === "cpu-transform-training") {
+    const result = runTassadarCpuTransformTrainingFixture()
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
+    process.exitCode = result.ok ? 0 : 1
+    return
   }
 
   if (args[0] === "presence") {

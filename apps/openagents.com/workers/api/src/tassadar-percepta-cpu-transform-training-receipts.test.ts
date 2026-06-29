@@ -12,6 +12,10 @@ import {
 } from './tassadar-percepta-architecture-receipts'
 import {
   ArtanisTassadarDistillationDatasetEndpoint,
+  TassadarPerceptaCpuTransformOwnerGreenSignoffBlocker,
+  TassadarPerceptaCpuTransformRealSettlementBlocker,
+  TassadarPerceptaCpuTransformTrainingFixtureAssignmentRef,
+  TassadarPerceptaCpuTransformTrainingFixtureReceiptRef,
   TassadarPerceptaCpuTransformTrainingReceiptRefPattern,
   TassadarPerceptaCpuTransformTrainingReceiptsEndpoint,
   TassadarPerceptaCpuTransformTrainingReceiptsProjection,
@@ -54,10 +58,20 @@ type CpuTransformTrainingReceiptsBody = Readonly<{
     emittedCpuTransformTrainingReceiptCount: number
     requiredAcceptedTraceCount: number
   }>
+  receipts: ReadonlyArray<
+    Readonly<{
+      assignmentRef: string
+      lossAfterMicros: number
+      lossBeforeMicros: number
+      receiptRef: string
+      realBitcoinMoved: boolean
+      settlementState: string
+    }>
+  >
 }>
 
 describe('Tassadar Percepta CPU-transform training receipts projection', () => {
-  test('publishes the missing-receipt status without claiming training', () => {
+  test('publishes the bounded receipt without claiming settlement or green status', () => {
     const projection = projectTassadarPerceptaCpuTransformTrainingReceipts({
       generatedAt: '2026-06-21T12:00:00.000Z',
     })
@@ -80,20 +94,21 @@ describe('Tassadar Percepta CPU-transform training receipts projection', () => {
       maxStalenessSeconds: 0,
     })
     expect(projection.gate).toEqual({
-      acceptedWorkReceiptAvailable: false,
+      acceptedWorkReceiptAvailable: true,
       architectureReceiptAvailable: true,
-      clearsBlockerRefs: [],
-      cpuTransformTrainingReceiptAvailable: false,
+      clearsBlockerRefs: [TassadarPerceptaCpuTransformTrainingReceiptBlocker],
+      cpuTransformTrainingReceiptAvailable: true,
       distillationDatasetReceiptInputAvailable: true,
       greenGateSatisfied: false,
-      pylonAssignmentReceiptAvailable: false,
+      pylonAssignmentReceiptAvailable: true,
       publicProjectionAvailable: true,
       realSettlementReceiptAvailable: false,
       remainingBlockerRefs: [
-        TassadarPerceptaCpuTransformTrainingReceiptBlocker,
+        TassadarPerceptaCpuTransformRealSettlementBlocker,
+        TassadarPerceptaCpuTransformOwnerGreenSignoffBlocker,
       ],
-      trainedModelArtifactAvailable: false,
-      verifierVerdictReceiptAvailable: false,
+      trainedModelArtifactAvailable: true,
+      verifierVerdictReceiptAvailable: true,
     })
     expect(projection.inputRefs).toEqual(
       expect.arrayContaining([
@@ -112,11 +127,11 @@ describe('Tassadar Percepta CPU-transform training receipts projection', () => {
       ]),
     )
     expect(projection.expectedReceiptSurface).toMatchObject({
-      emittedReceiptCount: 0,
+      emittedReceiptCount: 1,
       expectedReceiptRefPattern:
         TassadarPerceptaCpuTransformTrainingReceiptRefPattern,
-      routePublishesReceipts: false,
-      routePublishesStatusOnly: true,
+      routePublishesReceipts: true,
+      routePublishesStatusOnly: false,
     })
     expect(
       projection.expectedReceiptSurface.requirements.map(
@@ -131,15 +146,29 @@ describe('Tassadar Percepta CPU-transform training receipts projection', () => {
     ])
     expect(
       projection.expectedReceiptSurface.requirements.every(
-        requirement => requirement.available === false,
+        requirement =>
+          requirement.requirementKind === 'real_settlement_receipt'
+            ? requirement.available === false
+            : requirement.available === true,
       ),
     ).toBe(true)
     expect(projection.receiptSummary).toEqual({
       architectureReceiptCount: 1,
       distillationDatasetReceiptCount: 1,
-      emittedCpuTransformTrainingReceiptCount: 0,
+      emittedCpuTransformTrainingReceiptCount: 1,
       requiredAcceptedTraceCount: ARTANIS_TASSADAR_DISTILLATION_DATASET_TARGET,
     })
+    expect(projection.receipts).toEqual([
+      expect.objectContaining({
+        assignmentRef: TassadarPerceptaCpuTransformTrainingFixtureAssignmentRef,
+        lossAfterMicros: 546296,
+        lossBeforeMicros: 1666666,
+        lossImproved: true,
+        receiptRef: TassadarPerceptaCpuTransformTrainingFixtureReceiptRef,
+        realBitcoinMoved: false,
+        settlementState: 'not_settled',
+      }),
+    ])
   })
 
   test('keeps authority and private material out of the public projection', () => {
@@ -174,25 +203,34 @@ describe('Tassadar Percepta CPU-transform training receipts projection', () => {
     expect(body.promiseState).toBe('planned')
     expect(body.gate.architectureReceiptAvailable).toBe(true)
     expect(body.gate.distillationDatasetReceiptInputAvailable).toBe(true)
-    expect(body.gate.cpuTransformTrainingReceiptAvailable).toBe(false)
-    expect(body.gate.pylonAssignmentReceiptAvailable).toBe(false)
-    expect(body.gate.acceptedWorkReceiptAvailable).toBe(false)
-    expect(body.gate.verifierVerdictReceiptAvailable).toBe(false)
+    expect(body.gate.cpuTransformTrainingReceiptAvailable).toBe(true)
+    expect(body.gate.pylonAssignmentReceiptAvailable).toBe(true)
+    expect(body.gate.acceptedWorkReceiptAvailable).toBe(true)
+    expect(body.gate.verifierVerdictReceiptAvailable).toBe(true)
     expect(body.gate.realSettlementReceiptAvailable).toBe(false)
-    expect(body.gate.trainedModelArtifactAvailable).toBe(false)
+    expect(body.gate.trainedModelArtifactAvailable).toBe(true)
     expect(body.gate.greenGateSatisfied).toBe(false)
     expect(body.gate.remainingBlockerRefs).toEqual([
-      TassadarPerceptaCpuTransformTrainingReceiptBlocker,
+      TassadarPerceptaCpuTransformRealSettlementBlocker,
+      TassadarPerceptaCpuTransformOwnerGreenSignoffBlocker,
     ])
-    expect(body.expectedReceiptSurface.emittedReceiptCount).toBe(0)
-    expect(body.expectedReceiptSurface.routePublishesReceipts).toBe(false)
-    expect(body.expectedReceiptSurface.routePublishesStatusOnly).toBe(true)
+    expect(body.expectedReceiptSurface.emittedReceiptCount).toBe(1)
+    expect(body.expectedReceiptSurface.routePublishesReceipts).toBe(true)
+    expect(body.expectedReceiptSurface.routePublishesStatusOnly).toBe(false)
     expect(body.receiptSummary).toEqual({
       architectureReceiptCount: 1,
       distillationDatasetReceiptCount: 1,
-      emittedCpuTransformTrainingReceiptCount: 0,
+      emittedCpuTransformTrainingReceiptCount: 1,
       requiredAcceptedTraceCount: ARTANIS_TASSADAR_DISTILLATION_DATASET_TARGET,
     })
+    expect(body.receipts).toEqual([
+      expect.objectContaining({
+        assignmentRef: TassadarPerceptaCpuTransformTrainingFixtureAssignmentRef,
+        receiptRef: TassadarPerceptaCpuTransformTrainingFixtureReceiptRef,
+        settlementState: 'not_settled',
+        realBitcoinMoved: false,
+      }),
+    ])
     expect(body.inputRefs.map(inputRef => inputRef.receiptRef)).toEqual(
       expect.arrayContaining([
         TassadarPerceptaArchitectureReceiptRef,

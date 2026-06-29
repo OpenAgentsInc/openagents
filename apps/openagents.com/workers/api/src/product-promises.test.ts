@@ -923,15 +923,19 @@ describe('public product promises document', () => {
             'apps/openagents.com/workers/api/src/tassadar-percepta-architecture-receipts.ts',
             'apps/openagents.com/workers/api/src/tassadar-percepta-cpu-transform-training-receipts.ts',
             'apps/openagents.com/workers/api/src/tassadar-percepta-cpu-transform-training-receipts.test.ts',
+            'apps/pylon/src/tassadar-cpu-transform-training.ts',
+            'apps/pylon/tests/tassadar-cpu-transform-training.test.ts',
+            'receipt.models.tassadar_percepta_executor.cpu_transform_training.cpu_transform_fixture_v1',
           ]),
           blockerRefs: [
-            'blocker.product_promises.pylon_v03_cpu_transform_training_receipts_missing',
+            'blocker.product_promises.tassadar_cpu_transform_real_settlement_missing',
+            'blocker.product_promises.tassadar_cpu_transform_owner_green_signoff_missing',
           ],
           safeCopy: expect.stringContaining(
-            'CPU-transform receipt status gate',
+            'one bounded Pylon v1.0 CPU computation-transform fixture receipt',
           ),
           verification: expect.stringContaining(
-            'cpuTransformTrainingReceiptAvailable=false',
+            'cpuTransformTrainingReceiptAvailable=true',
           ),
         }),
         expect.objectContaining({

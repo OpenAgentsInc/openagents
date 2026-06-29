@@ -9,14 +9,19 @@ Public route:
 
 ## What This Clears
 
-This clears no product blocker by itself.
-
-The remaining blocker is still active:
+This clears the old missing CPU-transform receipt blocker for the bounded
+fixture scope only:
 
 - `blocker.product_promises.pylon_v03_cpu_transform_training_receipts_missing`
 
-The route is a public status surface for the missing receipt gate. It makes the
-required evidence shape inspectable without claiming that the training happened.
+The remaining blockers are still active:
+
+- `blocker.product_promises.tassadar_cpu_transform_real_settlement_missing`
+- `blocker.product_promises.tassadar_cpu_transform_owner_green_signoff_missing`
+
+The route is a public receipt surface for one bounded Pylon v1.0 CPU
+computation-transform fixture. It makes the evidence inspectable without
+claiming a trained model, paid earning path, model promotion, or green promise.
 
 ## Inputs Already Visible
 
@@ -35,15 +40,33 @@ Those inputs are necessary context, not training proof. They do not create a
 trained model, accepted Pylon work, verifier verdict, settlement, inference
 endpoint, or green transition.
 
-## Missing Receipt Gates
+## Bounded Receipt
 
-The route reports all real CPU-transform training gates as false:
+The route projects one public-safe fixture receipt:
 
-- Pylon assignment receipt available: false
-- accepted-work receipt available: false
-- verifier verdict receipt available: false
+- assignment:
+  `assignment.models.tassadar_percepta_executor.cpu_transform_fixture.v1`
+- receipt:
+  `receipt.models.tassadar_percepta_executor.cpu_transform_training.cpu_transform_fixture_v1`
+- verifier verdict:
+  `verdict.tassadar_cpu_transform.exact_replay.cpu_transform_fixture_v1`
+- checkpoint digest:
+  `artifact.tassadar_percepta_executor.cpu_transform_checkpoint.sha256.8feaf5488599a4b618b8d2188ed8ea0b68ec9fb5f58a55db3064e52ae9ff73d9`
+
+The fixture runs one CPU-only optimization step over a public linear transform
+fixture. It records loss improvement from `1666666` to `546296` micros and marks
+the replay verdict accepted.
+
+## Remaining Gates
+
+The route reports the bounded receipt gates as true, while keeping settlement
+and green authority false:
+
+- Pylon assignment receipt available: true
+- accepted-work receipt available: true
+- verifier verdict receipt available: true
 - real settlement receipt available: false
-- trained artifact digest available: false
+- trained artifact digest available: true for the fixture checkpoint only
 - green gate satisfied: false
 
 The expected future receipt pattern is:
@@ -52,11 +75,10 @@ The expected future receipt pattern is:
 
 ## Boundaries
 
-This is read-only. It does not dispatch work, spend, settle, accept a closeout,
-write a training artifact, promote a model, serve inference, or transition the
-promise to green.
+This is read-only. It does not dispatch work, spend, settle, promote a model,
+serve inference, or transition the promise to green.
 
-Green still requires an actual Pylon CPU-transform training assignment with
-accepted work, verifier verdicts, real settlement refs where money moved, a
-public-safe trained artifact digest, and the receipt-first upgrade gate under
-`proof.claim_upgrade_receipts.v1`.
+Green still requires real settlement refs where money moved where applicable,
+owner sign-off, and the receipt-first upgrade gate under
+`proof.claim_upgrade_receipts.v1`. The current fixture receipt is not a broad
+CPU-transform training completion claim.
