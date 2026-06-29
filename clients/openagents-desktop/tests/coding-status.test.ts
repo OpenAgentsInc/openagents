@@ -2,6 +2,11 @@ import { describe, expect, test } from "bun:test"
 
 import {
   buildManagerResumeSnapshot,
+  type CodingCodexSession,
+  codexProcessForSession,
+  isLiveCodexSession,
+  liveCodexSessionCount,
+  liveCodexSessions,
   parseCodexSessionRollout,
   parseCodingAssignmentDetails,
   parseCodingProcesses,
@@ -9,6 +14,31 @@ import {
   summarizeManagerAssignmentLogs,
   summarizeCodingProcesses,
 } from "../src/shared/coding-status.js"
+
+const codexSession = (
+  overrides: Partial<CodingCodexSession> = {},
+): CodingCodexSession => ({
+  accountRef: "codex",
+  active: false,
+  assignmentRef: null,
+  closeout: { blockerRefs: [], closeoutRef: null, status: null },
+  cwd: null,
+  elapsed: null,
+  issueRef: null,
+  lastEvent: { ageSeconds: null, name: null, timestamp: null },
+  leaseRef: null,
+  pullRequestRef: null,
+  messageCount: 0,
+  messages: [],
+  modifiedAt: new Date(0).toISOString(),
+  path: "/tmp/rollout.jsonl",
+  pid: null,
+  sessionId: "session",
+  source: null,
+  status: "idle",
+  title: "Codex session",
+  ...overrides,
+})
 
 describe("openagents desktop coding status", () => {
   test("parses local coding agent processes", () => {
@@ -291,5 +321,84 @@ Pylon presence failed: OpenAgents presence request failed (401): {"error":"unaut
     expect(snapshot.statusBlock).toContain("OPENAGENTS MANAGER RESUME")
     expect(snapshot.statusBlock).toContain("assignment_runners: 0")
     expect(snapshot.statusBlock).toContain("candidate_lane: #7557 open")
+  })
+
+  test("counts a running session as LIVE even while its token proof is pending", () => {
+    // A genuinely running codex exec worker, linked to a process (pid set,
+    // active true), but whose downstream token proof has not posted yet.
+    const runningButProofPending = codexSession({
+      accountRef: "codex-4",
+      active: true,
+      assignmentRef: "assignment.public.khala_coding.test_6932",
+      closeout: { blockerRefs: [], closeoutRef: null, status: null },
+      cwd: "/tmp/workspace-one",
+      pid: 4242,
+      sessionId: "live-pending",
+      status: "active",
+      title: "Codex exec codex-4 #6932",
+    })
+    const finishedRecent = codexSession({
+      active: false,
+      pid: null,
+      sessionId: "recent-idle",
+      status: "recent",
+    })
+
+    expect(isLiveCodexSession(runningButProofPending)).toBe(true)
+    expect(isLiveCodexSession(finishedRecent)).toBe(false)
+
+    const sessions = [runningButProofPending, finishedRecent]
+    const live = liveCodexSessions(sessions)
+    expect(live).toContain(runningButProofPending)
+    expect(live).not.toContain(finishedRecent)
+    // The pending token proof must not hide the running worker or zero the
+    // live count.
+    expect(liveCodexSessionCount(sessions)).toBe(1)
+  })
+
+  test("treats a process-linked session without a matched process as not live", () => {
+    expect(isLiveCodexSession(codexSession({ active: false, pid: null }))).toBe(
+      false,
+    )
+    expect(isLiveCodexSession(codexSession({ pid: 99, status: "idle" }))).toBe(
+      true,
+    )
+  })
+
+  test("links running codex exec children by workspace path, then by account fallback", () => {
+    const processes = parseCodingProcesses(`
+  200     1  9.0      01:00 /Users/me/.codex/accounts/codex-4/codex/vendor/aarch64-apple-darwin/bin/codex exec --json
+  201     1  7.0      02:00 /Users/me/node_modules/@openai/codex/vendor/aarch64-apple-darwin/bin/codex exec --cd /tmp/workspace-one --assignment-ref assignment.public.khala_coding.test_6932 codex-2
+`)
+
+    // Precise cwd match wins for the worker that exposes --cd.
+    const cwdMatch = codexProcessForSession(
+      { accountRef: "codex-2", cwd: "/tmp/workspace-one" },
+      processes,
+      { allowAccountFallback: true },
+    )
+    expect(cwdMatch?.pid).toBe(201)
+
+    // A running worker whose command carries no --cd flag (workspacePath null)
+    // still links to its session by account so it stays LIVE before proof.
+    const fallbackMatch = codexProcessForSession(
+      { accountRef: "codex-4", cwd: null },
+      processes,
+      { allowAccountFallback: true },
+    )
+    expect(fallbackMatch?.pid).toBe(200)
+
+    // Without the fallback enabled, a cwd-less worker cannot be matched.
+    expect(
+      codexProcessForSession({ accountRef: "codex-4", cwd: null }, processes),
+    ).toBeNull()
+
+    // Claimed pids keep linkage 1:1.
+    expect(
+      codexProcessForSession({ accountRef: "codex-4", cwd: null }, processes, {
+        allowAccountFallback: true,
+        claimedPids: new Set([200]),
+      }),
+    ).toBeNull()
   })
 })

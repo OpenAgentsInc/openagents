@@ -952,6 +952,47 @@ button {
   border-color: rgba(255, 107, 122, 0.4);
 }
 
+/*
+ * Token-proof sub-badge. Annotates proof state alongside the lifecycle status
+ * without affecting liveness — a running session stays LIVE while this shows
+ * "Proof pending".
+ */
+.coding-session-proof {
+  justify-self: start;
+  align-self: start;
+  margin-top: 2px;
+  padding: 4px 9px;
+  color: #aebfe0;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.coding-session-proof[data-proof="pending"],
+.coding-session-proof[data-proof="verifying"] {
+  color: #e6eeff;
+  background: rgba(143, 182, 255, 0.08);
+  border-color: rgba(143, 182, 255, 0.26);
+}
+
+.coding-session-proof[data-proof="ok"] {
+  color: #dcfff7;
+  background: rgba(35, 212, 165, 0.09);
+  border-color: rgba(35, 212, 165, 0.32);
+}
+
+.coding-session-proof[data-proof="blocked"] {
+  color: #ffd8dd;
+  background: rgba(255, 107, 122, 0.09);
+  border-color: rgba(255, 107, 122, 0.34);
+}
+
 .coding-transcript {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;

@@ -19,6 +19,7 @@ import {
   type CodingManagerTokenFailure,
   type CodingManagerTokenFailures,
   type CodingCodexSession,
+  codexProcessForSession,
   emptyCodingStatusSummary,
   OPENAGENTS_DESKTOP_MANAGER_GITHUB_SINCE,
   parseCodexSessionRollout,
@@ -733,29 +734,6 @@ const sessionIdFromRolloutPath = (path: string): string =>
   path.split("/").at(-1)?.replace(/\.jsonl$/, "") ??
   path
 
-const matchingCodexProcess = (
-  session: {
-    readonly accountRef: string | null
-    readonly cwd: string | null
-  },
-  processes: readonly CodingProcess[],
-): CodingProcess | null =>
-  processes.find(process => {
-    if (process.kind !== "codex_exec") return false
-    if (
-      session.accountRef !== null &&
-      process.accountRef !== null &&
-      session.accountRef !== process.accountRef
-    ) {
-      return false
-    }
-    return (
-      session.cwd !== null &&
-      process.workspacePath !== null &&
-      session.cwd === process.workspacePath
-    )
-  }) ?? null
-
 const recentAssignmentLogs = async (): Promise<readonly string[]> => {
   const dirs = [
     resolve(resolvePylonHome(), "pr-resolver-logs"),
@@ -814,75 +792,103 @@ const readCodexSessions = async (
   assignmentDetails: readonly CodingAssignmentDetail[],
 ): Promise<readonly CodingCodexSession[]> => {
   const files = await recentCodexSessionFiles()
-  const sessions = await Promise.all(
-    files.map(async file => {
-      const text = await readTextFile(file.path)
-      const parsed = parseCodexSessionRollout(text)
-      const sessionId = parsed.sessionId ?? sessionIdFromRolloutPath(file.path)
-      const accountRef = file.accountRef
-      const process = matchingCodexProcess(
-        {
-          accountRef,
-          cwd: parsed.cwd,
-        },
-        processes,
-      )
-      const isRecent = Date.now() - file.modifiedAtMs <= 10 * 60 * 1_000
-      const active = process !== null
-      const modifiedAt = new Date(file.modifiedAtMs).toISOString()
-      const issueRef = process?.issueRef ?? null
-      const assignment = matchingAssignmentDetail(
-        { cwd: parsed.cwd, issueRef },
-        assignmentDetails,
-      )
-      const lastMessage = parsed.messages.at(-1)
-      const lastEventAt = assignment?.lastEventAt ?? lastMessage?.timestamp ?? modifiedAt
-      const lastEventAtMs = Date.parse(lastEventAt)
-
-      return {
-        accountRef,
-        active,
-        assignmentRef:
-          assignment?.assignmentRef ??
-          parsed.assignmentRef ??
-          process?.assignmentRef ??
-          null,
-        closeout: {
-          blockerRefs: assignment?.blockerRefs ?? [],
-          closeoutRef: assignment?.closeoutRef ?? null,
-          status: assignment?.closeoutStatus ?? null,
-        },
-        cwd: parsed.cwd,
-        elapsed:
-          assignment?.elapsedMs === null || assignment?.elapsedMs === undefined
-            ? process?.age ?? null
-            : `${Math.max(0, Math.floor(assignment.elapsedMs / 1000))}s`,
-        issueRef: issueRef ?? assignment?.issueRef ?? null,
-        lastEvent: {
-          ageSeconds: Number.isFinite(lastEventAtMs)
-            ? Math.max(0, Math.floor((Date.now() - lastEventAtMs) / 1000))
-            : null,
-          name: assignment?.lastEvent ?? lastMessage?.kind ?? null,
-          timestamp: lastEventAt,
-        },
-        leaseRef: assignment?.leaseRef ?? null,
-        pullRequestRef: assignment?.pullRequestRef ?? null,
-        messageCount: parsed.messageCount,
-        messages: parsed.messages,
-        modifiedAt,
-        path: file.path,
-        pid: process?.pid ?? null,
-        sessionId,
-        source: parsed.source,
-        status: active ? "active" : isRecent ? "recent" : "idle",
-        title:
-          parsed.title ??
-          process?.label ??
-          assignment?.assignmentRef ??
-          fallbackSessionTitle(sessionId),
-      } satisfies CodingCodexSession
-    }),
+  const parsedFiles = await Promise.all(
+    files.map(async file => ({
+      file,
+      parsed: parseCodexSessionRollout(await readTextFile(file.path)),
+    })),
   )
+
+  // Link each running codex exec process to at most one session. `files` is
+  // already ordered most-recent first. Pass 1 takes precise workspace-path
+  // matches so the right session keeps its process; pass 2 links any remaining
+  // running worker by account when no cwd is available on either side, so a
+  // genuinely-running child stays LIVE even before its token proof posts.
+  const claimedPids = new Set<number>()
+  const processByPath = new Map<string, CodingProcess>()
+  for (const { file, parsed } of parsedFiles) {
+    const process = codexProcessForSession(
+      { accountRef: file.accountRef, cwd: parsed.cwd },
+      processes,
+      { claimedPids },
+    )
+    if (process !== null) {
+      processByPath.set(file.path, process)
+      claimedPids.add(process.pid)
+    }
+  }
+  for (const { file, parsed } of parsedFiles) {
+    if (processByPath.has(file.path)) continue
+    const process = codexProcessForSession(
+      { accountRef: file.accountRef, cwd: parsed.cwd },
+      processes,
+      { allowAccountFallback: true, claimedPids },
+    )
+    if (process !== null) {
+      processByPath.set(file.path, process)
+      claimedPids.add(process.pid)
+    }
+  }
+
+  const sessions = parsedFiles.map(({ file, parsed }) => {
+    const sessionId = parsed.sessionId ?? sessionIdFromRolloutPath(file.path)
+    const accountRef = file.accountRef
+    const process = processByPath.get(file.path) ?? null
+    const isRecent = Date.now() - file.modifiedAtMs <= 10 * 60 * 1_000
+    const active = process !== null
+    const modifiedAt = new Date(file.modifiedAtMs).toISOString()
+    const issueRef = process?.issueRef ?? null
+    const assignment = matchingAssignmentDetail(
+      { cwd: parsed.cwd, issueRef },
+      assignmentDetails,
+    )
+    const lastMessage = parsed.messages.at(-1)
+    const lastEventAt = assignment?.lastEventAt ?? lastMessage?.timestamp ?? modifiedAt
+    const lastEventAtMs = Date.parse(lastEventAt)
+
+    return {
+      accountRef,
+      active,
+      assignmentRef:
+        assignment?.assignmentRef ??
+        parsed.assignmentRef ??
+        process?.assignmentRef ??
+        null,
+      closeout: {
+        blockerRefs: assignment?.blockerRefs ?? [],
+        closeoutRef: assignment?.closeoutRef ?? null,
+        status: assignment?.closeoutStatus ?? null,
+      },
+      cwd: parsed.cwd,
+      elapsed:
+        assignment?.elapsedMs === null || assignment?.elapsedMs === undefined
+          ? process?.age ?? null
+          : `${Math.max(0, Math.floor(assignment.elapsedMs / 1000))}s`,
+      issueRef: issueRef ?? assignment?.issueRef ?? null,
+      lastEvent: {
+        ageSeconds: Number.isFinite(lastEventAtMs)
+          ? Math.max(0, Math.floor((Date.now() - lastEventAtMs) / 1000))
+          : null,
+        name: assignment?.lastEvent ?? lastMessage?.kind ?? null,
+        timestamp: lastEventAt,
+      },
+      leaseRef: assignment?.leaseRef ?? null,
+      pullRequestRef: assignment?.pullRequestRef ?? null,
+      messageCount: parsed.messageCount,
+      messages: parsed.messages,
+      modifiedAt,
+      path: file.path,
+      pid: process?.pid ?? null,
+      sessionId,
+      source: parsed.source,
+      status: active ? "active" : isRecent ? "recent" : "idle",
+      title:
+        parsed.title ??
+        process?.label ??
+        assignment?.assignmentRef ??
+        fallbackSessionTitle(sessionId),
+    } satisfies CodingCodexSession
+  })
 
   return sessions
     .sort((left, right) => {

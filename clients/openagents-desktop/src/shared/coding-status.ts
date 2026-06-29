@@ -438,6 +438,81 @@ export const summarizeCodingProcesses = (
     .length,
 })
 
+const EMPTY_PID_SET: ReadonlySet<number> = new Set<number>()
+
+/**
+ * A Codex session counts as LIVE when a real running `codex exec` worker
+ * process is linked to it. Liveness is a property of the running process tree
+ * only; it must never depend on whether the downstream token-usage proof has
+ * been posted yet. Token proof is reported separately as a sub-status so that a
+ * genuinely-running worker stays visible while its proof is still pending.
+ */
+export const isLiveCodexSession = (session: CodingCodexSession): boolean =>
+  session.active || session.status === "active" || session.pid !== null
+
+/**
+ * The live "Squadron" set: every session backed by a running codex exec
+ * process, regardless of token-proof state.
+ */
+export const liveCodexSessions = (
+  sessions: readonly CodingCodexSession[],
+): readonly CodingCodexSession[] => sessions.filter(isLiveCodexSession)
+
+export const liveCodexSessionCount = (
+  sessions: readonly CodingCodexSession[],
+): number => liveCodexSessions(sessions).length
+
+/**
+ * Link a parsed Codex session to a running `codex exec` process.
+ *
+ * The precise signal is an exact workspace-path (cwd) match for the same
+ * account. Real codex exec children are frequently spawned with the working
+ * directory set on the process itself rather than via a `--cd`/`--cwd` flag, so
+ * their command line carries no workspace path and a strict cwd match can never
+ * succeed even though the worker is genuinely running. To keep that live work
+ * visible, fall back to an account-scoped match when neither side exposes a
+ * comparable workspace path. `claimedPids` keeps the linkage at most 1:1 so a
+ * single running process is never counted as several live sessions.
+ */
+export const codexProcessForSession = (
+  session: {
+    readonly accountRef: string | null
+    readonly cwd: string | null
+  },
+  processes: readonly CodingProcess[],
+  options: {
+    readonly allowAccountFallback?: boolean
+    readonly claimedPids?: ReadonlySet<number>
+  } = {},
+): CodingProcess | null => {
+  const claimedPids = options.claimedPids ?? EMPTY_PID_SET
+  const accountMatches = (process: CodingProcess): boolean =>
+    session.accountRef === null ||
+    process.accountRef === null ||
+    session.accountRef === process.accountRef
+  const available = processes.filter(
+    process => process.kind === "codex_exec" && !claimedPids.has(process.pid),
+  )
+
+  const cwdMatch = available.find(
+    process =>
+      accountMatches(process) &&
+      session.cwd !== null &&
+      process.workspacePath !== null &&
+      session.cwd === process.workspacePath,
+  )
+  if (cwdMatch !== undefined) return cwdMatch
+
+  if (options.allowAccountFallback !== true) return null
+
+  const accountMatch = available.find(
+    process =>
+      accountMatches(process) &&
+      (process.workspacePath === null || session.cwd === null),
+  )
+  return accountMatch ?? null
+}
+
 type CodingManagerLogInput = {
   readonly path: string
   readonly text: string

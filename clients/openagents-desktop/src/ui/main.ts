@@ -14,6 +14,8 @@ import {
 import {
   type CodingCodexSession,
   emptyManagerResumeSnapshot,
+  isLiveCodexSession,
+  liveCodexSessions,
   OPENAGENTS_DESKTOP_CODING_POLL_INTERVAL_MS,
   type CodingStatusResult,
   type CodingSupervisorEvent,
@@ -491,7 +493,9 @@ const verificationForSession = (
 const sessionLifecycleState = (
   session: CodingCodexSession,
 ): SessionLifecycleState => {
-  if (session.active || session.status === "active") return "active"
+  // A running codex exec worker is LIVE first. Token proof never demotes a
+  // live session to "blocked"; proof is reported as a separate sub-badge.
+  if (isLiveCodexSession(session)) return "active"
   const verification = verificationForSession(session)
   if (verification?.ok === true) return "counted"
   if (verification?.ok === false) return "blocked"
@@ -589,6 +593,47 @@ const selectSession = (session: CodingCodexSession): void => {
   if (latestCodingResult !== null) renderCodingStatus(latestCodingResult)
 }
 
+type SessionProofBadge = {
+  readonly state: "blocked" | "ok" | "pending" | "verifying"
+  readonly text: string
+}
+
+/**
+ * Token-proof state shown as a separate sub-badge on the session. This is
+ * intentionally decoupled from liveness: a running session always renders as
+ * LIVE, and this badge only annotates whether its downstream token-usage proof
+ * has posted yet. It never hides the session or changes the live count.
+ */
+const sessionProofBadge = (
+  session: CodingCodexSession,
+): SessionProofBadge | null => {
+  if (session.assignmentRef === null) return null
+  const verification = verificationForSession(session)
+  if (verification?.ok === true) return { state: "ok", text: "Proof OK" }
+  if (verification?.ok === false) {
+    return verification.blockerRef ===
+      "blocker.desktop_token_accounting.proof_unavailable"
+      ? { state: "pending", text: "Proof pending" }
+      : { state: "blocked", text: "Proof blocked" }
+  }
+  if (tokenVerificationInFlight.has(session.assignmentRef)) {
+    return { state: "verifying", text: "Proof checking" }
+  }
+  return { state: "pending", text: "Proof pending" }
+}
+
+const sessionProofBadgeElement = (
+  session: CodingCodexSession,
+): HTMLSpanElement | null => {
+  const badge = sessionProofBadge(session)
+  if (badge === null) return null
+  const element = document.createElement("span")
+  element.className = "coding-session-proof"
+  element.dataset.proof = badge.state
+  element.textContent = badge.text
+  return element
+}
+
 const sessionButton = (
   session: CodingCodexSession,
   variant: "chip" | "row",
@@ -612,6 +657,8 @@ const sessionButton = (
   status.className = "coding-session-status"
   status.textContent = sessionLifecycleLabel(session).toUpperCase()
 
+  const proof = sessionProofBadgeElement(session)
+
   const outcomeText = sessionOutcome(session)
   const outcome =
     outcomeText === null ? null : document.createElement("span")
@@ -620,22 +667,16 @@ const sessionButton = (
     outcome.textContent = outcomeText
   }
 
-  if (variant === "chip") {
-    if (outcome === null) {
-      button.append(title, meta, status)
-    } else {
-      button.append(title, meta, outcome, status)
-    }
-  } else {
+  const leading: HTMLElement[] = [title, meta]
+  if (outcome !== null) leading.push(outcome)
+  if (variant === "row") {
     const preview = document.createElement("span")
     preview.className = "coding-session-preview"
     preview.textContent = sessionPreview(session)
-    if (outcome === null) {
-      button.append(title, meta, preview, status)
-    } else {
-      button.append(title, meta, outcome, preview, status)
-    }
+    leading.push(preview)
   }
+  if (proof !== null) leading.push(proof)
+  button.append(...leading, status)
 
   return button
 }
@@ -925,16 +966,20 @@ const renderTokenAccounting = (result: TokenAccountingStatusResult): void => {
 
 const renderCodingSessions = (
   sessions: readonly CodingCodexSession[],
+  codexExecCount: number,
 ): void => {
   const visibleSessions = visibleCodingSessions(sessions)
-  const activeSessions = visibleSessions.filter(
-    session => session.active || session.status === "active",
-  )
+  // Live = backed by a running codex exec process, independent of token proof.
+  const activeSessions = liveCodexSessions(visibleSessions)
 
   for (const session of visibleSessions.slice(0, 8)) {
+    // Also fetch proof for live sessions so the "proof pending" sub-badge can
+    // populate; this is annotation only and never gates visibility.
     if (
       session.assignmentRef !== null &&
-      (session.status === "recent" || session.closeout.status !== null)
+      (isLiveCodexSession(session) ||
+        session.status === "recent" ||
+        session.closeout.status !== null)
     ) {
       queueAssignmentTokenVerification(session.assignmentRef)
     }
@@ -958,8 +1003,16 @@ const renderCodingSessions = (
     empty.className = "coding-empty coding-active-empty"
     empty.textContent =
       visibleSessions.length === 0
-        ? "No Codex session transcripts found."
-        : "No live Codex exec processes. Recent and completed sessions are listed below."
+        ? codexExecCount > 0
+          ? `${formatCount(codexExecCount)} live Codex exec ${
+              codexExecCount === 1 ? "process is" : "processes are"
+            } running. Linking session transcripts…`
+          : "No Codex session transcripts found."
+        : codexExecCount > 0
+          ? `${formatCount(codexExecCount)} live Codex exec ${
+              codexExecCount === 1 ? "process is" : "processes are"
+            } running. Recent and completed sessions are listed below.`
+          : "No live Codex exec processes. Recent and completed sessions are listed below."
     codingActiveList.append(empty)
   } else {
     codingActiveList.append(
@@ -1073,7 +1126,7 @@ const renderCodingStatus = (result: CodingStatusResult): void => {
     )
   }
 
-  renderCodingSessions(result.sessions)
+  renderCodingSessions(result.sessions, summary.codexExecCount)
   renderApm(result)
 
   codingDispatchSummary.textContent = [
