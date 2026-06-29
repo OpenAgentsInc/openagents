@@ -18,8 +18,10 @@ import {
   trainingReplayPairView,
   trainingTraceStrandView,
 } from '../scene/animations/trainingGrammar'
+import { landingSquaresView } from '../scene/landingSquaresElement'
 import { lightBeamsView } from '../scene/lightBeamsElement'
 import * as Ui from '../ui'
+import { codeCopyScopeView } from '../ui/codeCopyScopeElement'
 import type { PublicHeaderAuthState } from './publicHeader'
 import * as PublicHeader from './publicHeader'
 
@@ -52,28 +54,10 @@ type FamilyMeta = {
   readonly exports: ReadonlyArray<string>
 }
 
-// Whether `@openagentsinc/ui` exports an `ai-elements` family at build time.
-// Issue #5083 lands that family in parallel. We must never hard-depend on it,
-// so we detect it defensively and render a placeholder when it is absent.
-//
-// `@openagentsinc/ui` re-exports the family as a namespace
-// (`export * as AiElements from './ai-elements'`), so the family surfaces as
-// `Ui.AiElements`. We probe a stable base-contract symbol on that namespace
-// without importing the (possibly missing) module directly. A flat-name probe
-// is kept as a fallback in case the export shape changes.
-const aiElementsExported = ((): boolean => {
-  const ui = Ui as unknown as Record<string, unknown>
-  const namespace = ui['AiElements'] as Record<string, unknown> | undefined
-  if (
-    namespace !== undefined &&
-    (typeof namespace['aiElementBase'] === 'function' ||
-      typeof namespace['aiElementModuleCount'] === 'number')
-  ) {
-    return true
-  }
-  const probes = ['aiElementBase', 'aiMessage', 'aiPromptInput']
-  return probes.some(name => typeof ui[name] === 'function')
-})()
+// `@openagentsinc/ui` re-exports the AI Elements family as the typed
+// `Ui.AiElements` namespace (issue #5083, now landed). Reference it directly
+// through the namespace; the base-contract export proves the family is present.
+const aiElementsExported = typeof Ui.AiElements.aiElementBase === 'function'
 
 const families: ReadonlyArray<FamilyMeta> = [
   {
@@ -497,26 +481,251 @@ const businessShowcaseSteps: ReadonlyArray<Ui.BusinessLadderStep> = [
   },
 ]
 
+// --- /components/code-block: dedicated glow demo (issue #7608) ---------------
+
+const CODE_SAMPLE_TS = `import { Effect } from 'effect'
+
+// A tiny Khala helper, highlighted as typed Foldkit spans.
+export const greet = (name: string): Effect.Effect<string> =>
+  Effect.succeed(\`Hello, \${name}!\`)
+
+export const shout = greet('Khala').pipe(
+  Effect.map(message => message.toUpperCase()),
+)
+`
+
+const CODE_SAMPLE_PY = `def greet(name: str) -> str:
+    return f"Hello, {name}!"
+
+print(greet("Khala"))
+`
+
+const CODE_SAMPLE_RUST = `fn greet(name: &str) -> String {
+    format!("Hello, {name}!")
+}
+
+fn main() {
+    println!("{}", greet("Khala"));
+}
+`
+
+const CODE_SAMPLE_JSON = `{
+  "model": "openagents/khala",
+  "stream": true,
+  "messages": [
+    { "role": "user", "content": "ship it" }
+  ]
+}
+`
+
+const CODE_SAMPLE_BASH = `# Connect your Codex fleet to Khala
+npm install -g @openagentsinc/khala
+khala fleet connect
+khala fleet status
+`
+
+// A glass panel that labels a single live example over the glowing scene.
+const codeBlockDemoFrame = <Message>(
+  caption: string,
+  child: Html,
+): Html => {
+  const h = html<Message>()
+
+  return h.section(
+    [
+      Ui.className<Message>(
+        'grid gap-3 rounded-xl border border-[#1d2a44] bg-[#05080e]/70 p-4 backdrop-blur-md ' +
+          'shadow-[0_0_44px_-18px_rgba(58,123,255,0.5)] sm:p-5',
+      ),
+    ],
+    [
+      h.p(
+        [
+          Ui.className<Message>(
+            'm-0 font-mono text-[0.6875rem] uppercase tracking-[0.18em] text-[#8fb6ff]',
+          ),
+        ],
+        [caption],
+      ),
+      child,
+    ],
+  )
+}
+
+export const codeBlockShowcaseView = <Message>(): Html => {
+  const h = html<Message>()
+  const codeBlock = Ui.AiElements.codeBlock<Message>
+
+  return h.div(
+    [
+      h.DataAttribute('route', 'components-code-block'),
+      Ui.className<Message>(
+        'relative h-screen h-dvh min-h-screen min-h-dvh w-full overflow-hidden bg-black',
+      ),
+    ],
+    [
+      landingSquaresView<Message>([
+        Ui.className<Message>('block'),
+        h.DataAttribute('pose', 'khala'),
+      ]),
+      h.div(
+        [
+          Ui.className<Message>(
+            'pointer-events-none absolute inset-0 z-[5] bg-black/75',
+          ),
+        ],
+        [],
+      ),
+      h.div(
+        [Ui.className<Message>('absolute inset-0 z-10 overflow-y-auto')],
+        [
+          h.div(
+            [
+              Ui.className<Message>(
+                'mx-auto w-[min(100%,880px)] px-5 py-10 sm:py-16',
+              ),
+            ],
+            [
+              h.a(
+                [
+                  h.Href('/components'),
+                  Ui.className<Message>(
+                    'pointer-events-auto inline-flex items-center gap-2 font-mono text-[0.75rem] ' +
+                      'uppercase tracking-[0.18em] text-[#8fb6ff] transition-colors hover:text-white',
+                  ),
+                ],
+                ['← Components'],
+              ),
+              h.p(
+                [
+                  Ui.className<Message>(
+                    'mt-8 mb-2 font-mono text-[0.75rem] uppercase tracking-[0.22em] text-[#7aa2ff]',
+                  ),
+                ],
+                ['@openagentsinc/ui · ai-elements'],
+              ),
+              h.h1(
+                [
+                  Ui.className<Message>(
+                    'm-0 text-balance font-semibold tracking-tight text-white text-4xl sm:text-5xl',
+                  ),
+                ],
+                ['Code block'],
+              ),
+              h.p(
+                [
+                  Ui.className<Message>(
+                    'mt-4 max-w-[64ch] text-base/7 text-[#c9d2dd]',
+                  ),
+                ],
+                [
+                  'A syntax-highlighted code surface for Khala Code, ported from the ' +
+                    'AI Elements code block into Foldkit/Effect. Tokens render as typed ' +
+                    'nodes (no innerHTML), with a filename / language header, a working ' +
+                    'copy button, optional line numbers, and a run/test panel — dressed ' +
+                    'in the Protoss glow.',
+                ],
+              ),
+              codeCopyScopeView<Message>(
+                [Ui.className<Message>('mt-10 grid gap-5')],
+                [
+                  codeBlockDemoFrame<Message>(
+                    'TypeScript · line numbers · run result',
+                    codeBlock({
+                      props: {
+                        code: CODE_SAMPLE_TS,
+                        language: 'typescript',
+                        filename: 'greet.ts',
+                      },
+                      showLineNumbers: true,
+                      result: {
+                        status: 'passed',
+                        summary: 'Compiled and ran',
+                        duration: '0.4s',
+                      },
+                    }),
+                  ),
+                  codeBlockDemoFrame<Message>(
+                    'Python',
+                    codeBlock({
+                      props: {
+                        code: CODE_SAMPLE_PY,
+                        language: 'python',
+                        filename: 'greet.py',
+                      },
+                    }),
+                  ),
+                  codeBlockDemoFrame<Message>(
+                    'Rust · line numbers',
+                    codeBlock({
+                      props: {
+                        code: CODE_SAMPLE_RUST,
+                        language: 'rust',
+                        filename: 'main.rs',
+                      },
+                      showLineNumbers: true,
+                    }),
+                  ),
+                  codeBlockDemoFrame<Message>(
+                    'JSON',
+                    codeBlock({
+                      props: {
+                        code: CODE_SAMPLE_JSON,
+                        language: 'json',
+                        filename: 'request.json',
+                      },
+                    }),
+                  ),
+                  codeBlockDemoFrame<Message>(
+                    'Shell · no filename',
+                    codeBlock({
+                      props: { code: CODE_SAMPLE_BASH, language: 'bash' },
+                    }),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    ],
+  )
+}
+
 export const view = <Message>(
   authState: PublicHeaderAuthState<Message>,
   selectedFamily?: string,
 ): Html => {
   const h = html<Message>()
 
+  // `/components/code-block` is a dedicated, chrome-less demo rendered over the
+  // same glowing-blue homepage scene (issue #7608), not the workbench shell.
+  if (selectedFamily === 'code-block') {
+    return codeBlockShowcaseView<Message>()
+  }
+
   return h.div(
     [Ui.className<Message>(pageShellClass)],
     [
       PublicHeader.view(authState),
-      h.main(
+      // Wrap the workbench in the copy-scope controller so every rendered
+      // code-block copy button works here too. `display: contents` keeps the
+      // wrapper transparent to layout while still receiving bubbled clicks.
+      codeCopyScopeView<Message>(
+        [Ui.className<Message>('contents')],
         [
-          h.AriaLabel('Component library'),
-          Ui.className<Message>(
-            'mx-auto grid w-[min(100%,1120px)] gap-8 px-4 py-8 lg:grid-cols-[220px_minmax(0,1fr)]',
+          h.main(
+            [
+              h.AriaLabel('Component library'),
+              Ui.className<Message>(
+                'mx-auto grid w-[min(100%,1120px)] gap-8 px-4 py-8 lg:grid-cols-[220px_minmax(0,1fr)]',
+              ),
+            ],
+            [
+              sidebarView<Message>(selectedFamily),
+              articleView<Message>(selectedFamily),
+            ],
           ),
-        ],
-        [
-          sidebarView<Message>(selectedFamily),
-          articleView<Message>(selectedFamily),
         ],
       ),
       h.script([], [Ui.publicLandingThemeScript()]),
@@ -576,6 +785,15 @@ const sidebarView = <Message>(selectedFamily?: string): Html => {
               ),
             ],
             ['Training grammar'],
+          ),
+          h.a(
+            [
+              h.Href('/components/code-block'),
+              Ui.className<Message>(
+                navLinkClass(selectedFamily === 'code-block'),
+              ),
+            ],
+            ['Code block (glow demo)'],
           ),
           ...Array.map(families, family =>
             h.a(
@@ -1705,180 +1923,126 @@ const familyShowcase = <Message>(familyId: string): ReadonlyArray<Html> => {
 // namespace. Probed defensively so a missing/renamed export never breaks the
 // build: any export that is not a function is skipped gracefully.
 const aiElementsShowcase = <Message>(): ReadonlyArray<Html> => {
-  const ns = (Ui as unknown as Record<string, unknown>)['AiElements'] as
-    | Record<string, unknown>
-    | undefined
-  if (ns === undefined) {
-    return []
-  }
-
   const box = previewBox<Message>
-  const boxes: Array<Html> = []
-  const has = (name: string): boolean => typeof ns[name] === 'function'
-  const call = <T>(name: string, arg: T): Html =>
-    (ns[name] as (input: T) => Html)(arg)
 
-  if (has('promptInput')) {
-    boxes.push(
-      box(
-        'Prompt input',
-        'AiElements.promptInput',
-        call('promptInput', {
-          props: {
-            name: 'prompt',
-            placeholder: 'Ask the agent to do something...',
-            status: 'ready',
-            submitLabel: 'Send',
-            rows: 3,
-          },
-        }),
-      ),
-    )
-  }
-
-  if (has('message')) {
-    boxes.push(
-      box(
-        'Message (assistant)',
-        'AiElements.message',
-        call('message', {
-          props: {
-            role: 'assistant',
-            author: 'Agent',
-            time: 'now',
-            body: 'Here is a rendered AI message bubble with role-based styling.',
-          },
-        }),
-      ),
-    )
-  }
-
-  if (has('codeBlock')) {
-    boxes.push(
-      box(
-        'Code block',
-        'AiElements.codeBlock',
-        call('codeBlock', {
-          props: {
-            filename: 'example.ts',
-            language: 'typescript',
-            code: 'export const greet = (name: string): string =>\n  `Hello, ${name}`',
-          },
-          result: {
-            status: 'passed',
-            summary: 'Compiled and ran',
-            duration: '0.4s',
-          },
-        }),
-      ),
-    )
-  }
-
-  if (has('task')) {
-    boxes.push(
-      box(
-        'Task',
-        'AiElements.task',
-        call('task', {
-          props: {
-            title: 'Implement the gallery',
-            open: true,
-            items: [
-              { label: 'Read the issue', status: 'done' },
-              { label: 'Render components', status: 'active' },
-              { label: 'Open a PR', status: 'queued' },
-            ],
-          },
-        }),
-      ),
-    )
-  }
-
-  if (has('sources')) {
-    boxes.push(
-      box(
-        'Sources',
-        'AiElements.sources',
-        call('sources', {
-          props: {
-            open: true,
-            label: 'Sources',
-            sources: [
-              { title: 'Component contract', href: '#' },
-              { title: 'Design tokens', href: '#' },
-            ],
-          },
-        }),
-      ),
-    )
-  }
-
-  if (has('tool')) {
-    boxes.push(
-      box(
-        'Tool (awaiting approval)',
-        'AiElements.tool',
-        call('tool', {
-          props: {
-            name: 'edit_file',
-            state: 'awaiting-approval',
-            input: '{ "path": "components.ts" }',
-            open: true,
-          },
-        }),
-      ),
-    )
-  }
-
-  if (has('confirmation')) {
-    boxes.push(
-      box(
-        'Confirmation',
-        'AiElements.confirmation',
-        call('confirmation', {
-          props: {
-            title: 'Apply 3 file edits?',
-            state: 'requested',
-            detail: 'The agent wants to write changes to the working tree.',
-          },
-        }),
-      ),
-    )
-  }
-
-  if (has('reasoning')) {
-    boxes.push(
-      box(
-        'Reasoning',
-        'AiElements.reasoning',
-        call('reasoning', {
-          props: {
-            text: 'First read the issue, then render each family with realistic sample props.',
-            open: true,
-            duration: 4,
-          },
-        }),
-      ),
-    )
-  }
-
-  if (has('webPreview')) {
-    boxes.push(
-      box(
-        'Web preview',
-        'AiElements.webPreview',
-        call('webPreview', {
-          props: {
-            url: 'https://openagents.com/components',
-            title: 'Component library',
-            console: ['ready', 'rendered 12 families'],
-          },
-        }),
-      ),
-    )
-  }
-
-  return boxes
+  return [
+    box(
+      'Prompt input',
+      'AiElements.promptInput',
+      Ui.AiElements.promptInput<Message>({
+        props: {
+          name: 'prompt',
+          placeholder: 'Ask the agent to do something...',
+          status: 'ready',
+          submitLabel: 'Send',
+          rows: 3,
+        },
+      }),
+    ),
+    box(
+      'Message (assistant)',
+      'AiElements.message',
+      Ui.AiElements.message<Message>({
+        props: {
+          role: 'assistant',
+          author: 'Agent',
+          time: 'now',
+          body: 'Here is a rendered AI message bubble with role-based styling.',
+        },
+      }),
+    ),
+    box(
+      'Code block',
+      'AiElements.codeBlock',
+      Ui.AiElements.codeBlock<Message>({
+        props: {
+          filename: 'example.ts',
+          language: 'typescript',
+          code: 'export const greet = (name: string): string =>\n  `Hello, ${name}`',
+        },
+        showLineNumbers: true,
+        result: {
+          status: 'passed',
+          summary: 'Compiled and ran',
+          duration: '0.4s',
+        },
+      }),
+    ),
+    box(
+      'Task',
+      'AiElements.task',
+      Ui.AiElements.task<Message>({
+        props: {
+          title: 'Implement the gallery',
+          open: true,
+          items: [
+            { label: 'Read the issue', status: 'done' },
+            { label: 'Render components', status: 'active' },
+            { label: 'Open a PR', status: 'queued' },
+          ],
+        },
+      }),
+    ),
+    box(
+      'Sources',
+      'AiElements.sources',
+      Ui.AiElements.sources<Message>({
+        props: {
+          open: true,
+          label: 'Sources',
+          sources: [
+            { title: 'Component contract', href: '#' },
+            { title: 'Design tokens', href: '#' },
+          ],
+        },
+      }),
+    ),
+    box(
+      'Tool (awaiting approval)',
+      'AiElements.tool',
+      Ui.AiElements.tool<Message>({
+        props: {
+          name: 'edit_file',
+          state: 'awaiting-approval',
+          input: '{ "path": "components.ts" }',
+          open: true,
+        },
+      }),
+    ),
+    box(
+      'Confirmation',
+      'AiElements.confirmation',
+      Ui.AiElements.confirmation<Message>({
+        props: {
+          title: 'Apply 3 file edits?',
+          state: 'requested',
+          detail: 'The agent wants to write changes to the working tree.',
+        },
+      }),
+    ),
+    box(
+      'Reasoning',
+      'AiElements.reasoning',
+      Ui.AiElements.reasoning<Message>({
+        props: {
+          text: 'First read the issue, then render each family with realistic sample props.',
+          open: true,
+          duration: 4,
+        },
+      }),
+    ),
+    box(
+      'Web preview',
+      'AiElements.webPreview',
+      Ui.AiElements.webPreview<Message>({
+        props: {
+          url: 'https://openagents.com/components',
+          title: 'Component library',
+          console: ['ready', 'rendered 12 families'],
+        },
+      }),
+    ),
+  ]
 }
 
 const trainingRunFieldVisualization = {

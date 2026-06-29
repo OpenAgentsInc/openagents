@@ -17,7 +17,7 @@ const expectedCatalog = [
   { moduleId: 'prompt-input', primitives: 7 },
   { moduleId: 'message', primitives: 4 },
   { moduleId: 'response', primitives: 3 },
-  { moduleId: 'code-block', primitives: 4 },
+  { moduleId: 'code-block', primitives: 5 },
   { moduleId: 'task', primitives: 5 },
   { moduleId: 'sources', primitives: 4 },
   { moduleId: 'tool', primitives: 5 },

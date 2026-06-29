@@ -82,12 +82,13 @@ export const aiElementPorts: ReadonlyArray<AiElementPort> = [
     label: 'Code Block',
     category: 'code',
     purpose:
-      'Frame a code surface with a filename/language header and an optional run/test result panel.',
+      'Frame a syntax-highlighted code surface with a filename/language header, a copy button, optional line numbers, and an optional run/test result panel.',
     primitives: [
       'CodeBlock',
       'CodeBlockHeader',
       'CodeBlockBody',
       'CodeBlockRunResult',
+      'CodeBlockCopyButton',
     ],
   },
   {
