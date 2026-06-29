@@ -20,6 +20,16 @@ const projection = (
     receiptRef,
   ],
   generatedAt: '2026-06-20T00:01:00.000Z',
+  promiseGate: {
+    broaderReferralPromiseIdsNotSatisfied: [
+      'referral.refer_once_earn_forever.v1',
+      'inference.referral_on_all_inference.v1',
+      'marketplace.monetize_any_layer_with_referral.v1',
+    ],
+    livePurchaseToBitcoinPayoutReceipt: true,
+    requiredSettlementRail: 'hosted_mdk',
+    scopedPromiseId: 'sites.referral_bitcoin_stream.v1',
+  },
   policyRefs: ['policy.site_referral_payout.v1'],
   qualifyingEventKind: 'inference_paid_request',
   receiptRef,
@@ -89,6 +99,16 @@ describe('public Site referral payout receipt routes', () => {
     expect(body.receipt).toMatchObject({
       attributionLinked: true,
       generatedAt: '2026-06-20T00:01:00.000Z',
+      promiseGate: {
+        broaderReferralPromiseIdsNotSatisfied: [
+          'referral.refer_once_earn_forever.v1',
+          'inference.referral_on_all_inference.v1',
+          'marketplace.monetize_any_layer_with_referral.v1',
+        ],
+        livePurchaseToBitcoinPayoutReceipt: true,
+        requiredSettlementRail: 'hosted_mdk',
+        scopedPromiseId: 'sites.referral_bitcoin_stream.v1',
+      },
       qualifyingEventKind: 'inference_paid_request',
       receiptRef,
       resolution: {
