@@ -1889,6 +1889,138 @@ live failure spools after archive:
   0
 ```
 
+## 13:10Z note: ad hoc UI task dispatch should not force `--pylon-ref`
+
+After the fleet was reoriented toward PR resolution plus a small ORCA/UI lane,
+three explicit UI/operator tasks were requested:
+
+- fix the OpenAgents desktop Coding page false empty-state;
+- move the `/stats` Khala token counter into the top header area, widen the
+  daily chart, include June 24 forward, and deploy;
+- implement the Codex weekly-exhaustion reset/recovery policy while leaving
+  5-hour cooldown accounts to wait for reset.
+
+The first attempts were launched with detached logs but exited silently before
+acceptance. Re-running one request in the foreground showed the real blocker:
+
+```text
+pylon khala request failed (409): ... blocker.public.pylon_dispatch.duplicate_active_assignment
+```
+
+That happened only on the forced `--pylon-ref pylon.a1469b9cdf6965a57530` path.
+The same prompts accepted immediately when dispatched like the working PR
+resolver, pinned to a Codex account but without an explicit `--pylon-ref`.
+
+Accepted refs:
+
+```text
+desktop empty-state fix:
+  account: codex-7
+  assignment: assignment.public.khala_coding.chatcmpl_50eef2af5b7c47c1bfa70d6b740f3c01
+
+/stats counter/chart/deploy:
+  account: codex-3
+  assignment: assignment.public.khala_coding.chatcmpl_c6aa92db7533443bada2392e2937e085
+
+weekly rate-limit reset policy:
+  account: codex-4
+  assignment: assignment.public.khala_coding.chatcmpl_1d2ce7605c874f85a11a3f632a1f3173
+```
+
+Operational rule: during high fanout, use `--account <codex-ref>` and let the
+public request gate choose the linked pylon unless a specific pylon-target smoke
+is the thing being tested. A forced `--pylon-ref` can collide with an existing
+active assignment for that pylon and produce a duplicate-active refusal even
+when the target Codex account has free slots.
+
+Follow-up at `2026-06-29T12:37Z` and `2026-06-29T12:45Z`: the "some finished,
+some still running" state is expected and should be audited by splitting active
+markers from finished candidates.
+
+At `12:37Z`, the PR-review accepted-ref diff showed:
+
+```text
+recent PR-review entries: 223
+active refs: 17
+finished candidates: 206
+D1 token_usage_events matches: 206
+missing finished candidates: 0
+recent ledger tokens: 257,209,279
+latest observed: 2026-06-29T12:37:08.119Z
+```
+
+At `12:45Z`, after another fast wave of reviews:
+
+```text
+live active marker files: 18
+live failure spools: 0
+
+D1 since 10:00Z:
+  rows: 603
+  total_tokens: 1,103,776,318
+  public_tokens: 1,103,776,318
+  latest_observed: 2026-06-29T12:45:45.475Z
+
+public /api/public/khala-tokens-served:
+  tokensServed: 5,786,123,542
+
+PR-review accepted-ref diff:
+  recent PR-review entries: 263
+  active refs: 19
+  finished candidates: 244
+  D1 token_usage_events matches: 244
+  missing finished candidates: 0
+  recent ledger tokens: 301,994,948
+  latest observed: 2026-06-29T12:45:45.475Z
+```
+
+Interpretation: finished PR-review assignments were counted; active sessions
+were correctly not counted yet. Future agents should not retroactively add rows
+for active sessions. If a session has an active marker, wait for closeout or a
+real failure spool. If a finished candidate is missing and no failure spool
+exists, only then do the exact-account rollout JSONL reconstruction described
+above.
+
+Code follow-up added in commit scope after this audit: a sourceable PR-review
+refill helper at
+`apps/pylon/scripts/codex-supervisor/pr-review-refill.sh` plus
+`pr-review-refill.test.sh`.
+
+What the helper does:
+
+- takes an atomic local lock keyed by PR number before launching `khala request`;
+- keeps accepted PR locks while the matching assignment ref is active under
+  `~/.pylon-fable/active-assignment-runs`;
+- converts stale accepted/inactive locks into short-lived done markers so the
+  refiller keeps walking the PR queue instead of rereviewing one hot PR;
+- releases failed-before-accept locks immediately so transient launch failures
+  do not park useful work;
+- parses recent `pr-review-*.log` accepted lifecycle events back into lock
+  state after a controller restart;
+- provides `refill-once --account <codex-ref>` as the small replacement unit for
+  the ad hoc v2 refill loop.
+
+Focused verification was intentionally limited, per operator instruction not to
+run all prepush gates yet:
+
+```text
+bash apps/pylon/scripts/codex-supervisor/pr-review-refill.test.sh
+  12 passed, 0 failed
+
+bash apps/pylon/scripts/codex-supervisor/claim-dispatch.test.sh
+  13 passed, 0 failed
+
+bash -n apps/pylon/scripts/codex-supervisor/pr-review-refill.sh \
+  apps/pylon/scripts/codex-supervisor/pr-review-refill.test.sh
+  ok
+```
+
+Operational guidance: do not kill the currently saturated ad hoc controller
+while it owns live children. Start using the lock-aware helper only as a
+replacement/refill unit once the current controller can be stopped without
+orphaning active accepted assignments, or wrap it in a parent loop that does
+not terminate its launched worker children on controller replacement.
+
 The public stats read side also flapped during this same check:
 `/api/public/khala-tokens-served/history` and `/model-mix` returned transient
 500s, then returned 200 on retry. Direct D1 reads for the exact history and
