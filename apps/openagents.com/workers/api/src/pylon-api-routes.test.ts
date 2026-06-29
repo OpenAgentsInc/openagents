@@ -1089,7 +1089,7 @@ describe('Pylon API routes', () => {
     expect(failingDb.batchQueries).toHaveLength(2)
   })
 
-  test('D1 event creation is idempotent when the idempotency pre-read races a duplicate write (#6821)', async () => {
+  test('D1 event creation is idempotent when the idempotency pre-read races a duplicate heartbeat write (#6820)', async () => {
     const idempotencyKeyHash = 'hash.presence.duplicate'
     const existing = buildPylonApiEventRecord({
       body: {
@@ -1142,6 +1142,12 @@ describe('Pylon API routes', () => {
     expect(db.insertQueries).toHaveLength(1)
     expect(db.insertQueries[0]).toContain(
       'ON CONFLICT(idempotency_key_hash) DO UPDATE',
+    )
+    expect(db.events.get(idempotencyKeyHash)?.event_ref).toBe(
+      existing.eventRef,
+    )
+    expect(db.events.get(idempotencyKeyHash)?.created_at).toBe(
+      existing.createdAt,
     )
   })
 
