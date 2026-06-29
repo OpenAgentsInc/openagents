@@ -14,6 +14,7 @@ import {
   decodeForgeDispatchDecision,
   decodeForgeDispatchMessage,
   decodeForgeDispatchWorkItem,
+  decodeForgeGithubMirrorReceipt,
   decodeForgePromotionDecisionReceipt,
   decodeForgeTenantRow,
   decodeForgeVerificationReceipt,
@@ -332,5 +333,29 @@ describe("@openagentsinc/forge-protocol", () => {
     });
     expect(promotion.decision).toBe("approved");
     expect(promotion.promoted_head).toBe(verification.head_head);
+
+    const mirror = decodeForgeGithubMirrorReceipt({
+      schema: "openagents.forge.github_mirror.receipt.v0.1",
+      tenant_ref: "tenant.openagents",
+      mirror_ref: "mirror.github.openagents.main.6768",
+      repository_ref: "repo.openagents.openagents",
+      promotion_ref: promotion.promotion_ref,
+      change_ref: promotion.change_ref,
+      source_canonical_ref: "refs/forge/promoted/openagents/main",
+      destination_github_ref: "refs/heads/main",
+      commit_id: promotion.promoted_head,
+      status: "mirrored",
+      attempted_at: "2026-06-28T16:03:00.000Z",
+      mirrored_at: "2026-06-28T16:03:05.000Z",
+      refusal_reason: null,
+      error_reason: null,
+      retry_count: 0,
+      idempotency_key:
+        "tenant.openagents:repo.openagents.openagents:promotion.forge.6768:refs/heads/main",
+      source_refs: promotion.source_refs,
+      redacted: true,
+    });
+    expect(mirror.promotion_ref).toBe(promotion.promotion_ref);
+    expect(mirror.destination_github_ref).toBe("refs/heads/main");
   });
 });

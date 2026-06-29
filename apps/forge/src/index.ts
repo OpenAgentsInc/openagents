@@ -157,6 +157,16 @@ export const ForgeShellRefItem = Schema.Struct({
 })
 export type ForgeShellRefItem = typeof ForgeShellRefItem.Type
 
+export const ForgeShellMirrorItem = Schema.Struct({
+  mirrorRef: Schema.String,
+  promotionRef: Schema.String,
+  sourceCanonicalRef: Schema.String,
+  destinationGithubRef: Schema.String,
+  commitId: Schema.String,
+  status: Schema.String,
+})
+export type ForgeShellMirrorItem = typeof ForgeShellMirrorItem.Type
+
 export const ForgeShellDogfoodLane = Schema.Struct({
   laneRef: Schema.String,
   issueRef: Schema.String,
@@ -189,6 +199,7 @@ export const ForgeShellSnapshot = Schema.Struct({
   verification: Schema.Array(ForgeShellVerificationItem),
   mergeQueue: Schema.Array(ForgeShellQueueItem),
   refs: Schema.Array(ForgeShellRefItem),
+  mirrors: Schema.Array(ForgeShellMirrorItem),
 })
 export type ForgeShellSnapshot = typeof ForgeShellSnapshot.Type
 
@@ -387,6 +398,16 @@ export const forgeShellPreviewState: ForgeShellSnapshot = {
       target: "virtual merge queue heads",
       authority: "Blueprint gates",
       state: "contracted",
+    },
+  ],
+  mirrors: [
+    {
+      mirrorRef: "mirror.github.openagents.main.su6",
+      promotionRef: "promotion.forge.su6.nextActualPromotion",
+      sourceCanonicalRef: "refs/forge/promoted/openagents/main",
+      destinationGithubRef: "refs/heads/main",
+      commitId: "Forge-promoted commit id only",
+      status: "pending-promotion-receipt",
     },
   ],
 }
@@ -1200,6 +1221,41 @@ const renderQueue = (): string => `<section class="forge-panel" data-span="wide"
   </div>
 </section>`
 
+const renderMirrorReceipts = (): string => `<section class="forge-panel" data-span="wide">
+  <div class="forge-panel-head">
+    <h3 class="forge-panel-title">GitHub Mirror Receipts</h3>
+    <span class="forge-table-caption">${forgeShellPreviewState.mirrors.length} receipts</span>
+  </div>
+  <div class="forge-table-wrap">
+    <table class="forge-table">
+      <thead>
+        <tr>
+          <th>Mirror</th>
+          <th>Promotion</th>
+          <th>Source</th>
+          <th>Destination</th>
+          <th>Commit</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${forgeShellPreviewState.mirrors
+          .map(
+            item => `<tr>
+              <td class="forge-code">${escapeHtml(item.mirrorRef)}</td>
+              <td class="forge-code">${escapeHtml(item.promotionRef)}</td>
+              <td class="forge-code">${escapeHtml(item.sourceCanonicalRef)}</td>
+              <td class="forge-code">${escapeHtml(item.destinationGithubRef)}</td>
+              <td class="forge-muted">${escapeHtml(item.commitId)}</td>
+              <td>${renderStatus(item.status)}</td>
+            </tr>`,
+          )
+          .join("\n")}
+      </tbody>
+    </table>
+  </div>
+</section>`
+
 const renderRefs = (): string => `<section class="forge-panel" data-span="wide">
   <div class="forge-panel-head">
     <h3 class="forge-panel-title">Canonical Refs</h3>
@@ -1231,7 +1287,8 @@ const renderRefs = (): string => `<section class="forge-panel" data-span="wide">
       </tbody>
     </table>
   </div>
-</section>`
+</section>
+${renderMirrorReceipts()}`
 
 const renderRouteContent = (routeId: ForgeShellRouteId): string => {
   switch (routeId) {

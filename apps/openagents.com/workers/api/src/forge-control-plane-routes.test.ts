@@ -63,6 +63,10 @@ const controlPlaneReceiptsMigration = readFileSync(
   new URL('../migrations/0254_forge_control_plane_receipts.sql', import.meta.url),
   'utf8',
 )
+const githubMirrorReceiptsMigration = readFileSync(
+  new URL('../migrations/0259_forge_github_mirror_receipts.sql', import.meta.url),
+  'utf8',
+)
 const canonicalGitMigration = readFileSync(
   new URL('../migrations/0255_forge_git_canonical_store.sql', import.meta.url),
   'utf8',
@@ -76,6 +80,7 @@ const makeStores = (): Readonly<{
   db.exec('PRAGMA foreign_keys = ON')
   db.exec(coordinationMigration)
   db.exec(controlPlaneReceiptsMigration)
+  db.exec(githubMirrorReceiptsMigration)
   db.exec(canonicalGitMigration)
   const d1 = new SqliteD1(db) as unknown as D1Database
   return {
@@ -389,6 +394,74 @@ describe('Forge control-plane routes', () => {
       promotionDecisions: ReadonlyArray<unknown>
     }
     expect(decisionsBody.promotionDecisions).toHaveLength(1)
+  })
+
+  test('records GitHub mirror receipts as promotion-derived downstream state', async () => {
+    const { run } = makeHarness()
+    const scopes = [
+      'forge:mirror:read',
+      'forge:mirror:write',
+    ].join(' ')
+    const receipt = {
+      schema: 'openagents.forge.github_mirror.receipt.v0.1',
+      tenant_ref: 'tenant.openagents',
+      mirror_ref: 'mirror.github.openagents.main.6796',
+      repository_ref: 'repo.openagents.openagents',
+      promotion_ref: 'promotion.forge.6796',
+      change_ref: 'change.forge.6796',
+      source_canonical_ref: 'refs/forge/promoted/openagents/main',
+      destination_github_ref: 'refs/heads/main',
+      commit_id: '9e0c9b2eaf84c821caf555cae233a0d27e94d4ac',
+      status: 'mirrored',
+      attempted_at: '2026-06-28T17:04:00.000Z',
+      mirrored_at: '2026-06-28T17:04:03.000Z',
+      refusal_reason: null,
+      error_reason: null,
+      retry_count: 0,
+      idempotency_key:
+        'tenant.openagents:repo.openagents.openagents:promotion.forge.6796:refs/heads/main',
+      source_refs: ['github:OpenAgentsInc/openagents#6796'],
+      redacted: true,
+    }
+
+    const firstResponse = await run(
+      requestJson('/api/forge/github-mirror-receipts', {
+        json: receipt,
+        headers: authHeaders(scopes),
+        method: 'POST',
+      }),
+    )
+    expect(firstResponse.status).toBe(201)
+    const firstBody = (await firstResponse.json()) as {
+      githubMirrorReceipt: { promotion_ref: string; status: string }
+    }
+    expect(firstBody.githubMirrorReceipt).toMatchObject({
+      promotion_ref: 'promotion.forge.6796',
+      status: 'mirrored',
+    })
+
+    const secondResponse = await run(
+      requestJson('/api/forge/github-mirror-receipts', {
+        json: { ...receipt, retry_count: 1 },
+        headers: authHeaders(scopes),
+        method: 'POST',
+      }),
+    )
+    expect(secondResponse.status).toBe(201)
+
+    const listResponse = await run(
+      new Request(
+        'https://openagents.com/api/forge/github-mirror-receipts?tenantRef=tenant.openagents&changeRef=change.forge.6796',
+        { headers: authHeaders(scopes) },
+      ),
+    )
+    const listBody = (await listResponse.json()) as {
+      githubMirrorReceipts: ReadonlyArray<{ retry_count: number }>
+    }
+
+    expect(listResponse.status).toBe(200)
+    expect(listBody.githubMirrorReceipts).toHaveLength(1)
+    expect(listBody.githubMirrorReceipts[0]?.retry_count).toBe(1)
   })
 
   test('imports the public OpenAgents main ref into canonical refs idempotently', async () => {

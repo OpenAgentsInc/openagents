@@ -84,6 +84,9 @@ describe("Forge UI Worker", () => {
     expect(body.preview.apiBasePath).toBe("/api/forge")
     expect(body.preview.dogfoodLanes).toHaveLength(1)
     expect(body.preview.dogfoodLanes[0]?.issueRef).toBe("#6797")
+    expect(body.preview.mirrors[0]?.mirrorRef).toBe(
+      "mirror.github.openagents.main.su6",
+    )
   })
 
   it("renders a direct route shell without the old logged-in Forge page", () => {
@@ -117,6 +120,8 @@ describe("Forge UI Worker", () => {
     expect(html).toContain(OPENAGENTS_FORGE_DEFAULT_BRANCH_REF)
     expect(html).toContain("OpenAgentsInc/openagents default branch")
     expect(html).toContain("/api/forge/refs live canonical store")
+    expect(html).toContain("GitHub Mirror Receipts")
+    expect(html).toContain("mirror.github.openagents.main.su6")
   })
 
   it("reports health without claiming any coordination authority", async () => {

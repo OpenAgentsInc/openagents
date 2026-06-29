@@ -3,6 +3,7 @@ import {
   decodeForgeCoordinationPrRow,
   decodeForgeCoordinationStatusRow,
   decodeForgeDispatchLeaseRow,
+  decodeForgeGithubMirrorReceipt,
   decodeForgeMergeQueueLedgerRow,
   decodeForgePromotionDecisionReceipt,
   decodeForgeVerificationReceipt,
@@ -14,6 +15,7 @@ import {
   type ForgeCoordinationStatusRow,
   type ForgeCoordinationStatusState,
   type ForgeDispatchLeaseRow,
+  type ForgeGithubMirrorReceipt,
   type ForgeMergeQueueLedgerRow,
   type ForgeMergeQueueLedgerState,
   type ForgePromotionDecisionReceipt,
@@ -138,6 +140,15 @@ export type ForgeCoordinationStore = Readonly<{
     limit: number,
     changeRef?: string,
   ) => Promise<ReadonlyArray<ForgePromotionDecisionReceipt>>
+  recordGithubMirrorReceipt: (
+    receipt: ForgeGithubMirrorReceipt,
+    createdAt: string,
+  ) => Promise<ForgeGithubMirrorReceipt>
+  listGithubMirrorReceipts: (
+    tenantRef: string,
+    limit: number,
+    changeRef?: string,
+  ) => Promise<ReadonlyArray<ForgeGithubMirrorReceipt>>
 }>
 
 const StringArray = S.Array(S.String)
@@ -186,6 +197,26 @@ type ForgePromotionDecisionReceiptRow = Readonly<{
   blocker_refs_json: string
   decided_by_ref: string
   decided_at: string
+  source_refs_json: string
+  redacted: number | boolean
+}>
+
+type ForgeGithubMirrorReceiptRow = Readonly<{
+  tenant_ref: string
+  mirror_ref: string
+  repository_ref: string
+  promotion_ref: string
+  change_ref: string
+  source_canonical_ref: string
+  destination_github_ref: string
+  commit_id: string
+  status: string
+  attempted_at: string
+  mirrored_at: string | null
+  refusal_reason: string | null
+  error_reason: string | null
+  retry_count: number
+  idempotency_key: string
   source_refs_json: string
   redacted: number | boolean
 }>
@@ -239,6 +270,30 @@ const promotionDecisionReceiptFromRow = (
     blocker_refs: stringArrayFromJson(row.blocker_refs_json),
     decided_by_ref: row.decided_by_ref,
     decided_at: row.decided_at,
+    source_refs: stringArrayFromJson(row.source_refs_json),
+    redacted: row.redacted === true || row.redacted === 1,
+  })
+
+const githubMirrorReceiptFromRow = (
+  row: ForgeGithubMirrorReceiptRow,
+): ForgeGithubMirrorReceipt =>
+  decodeForgeGithubMirrorReceipt({
+    schema: 'openagents.forge.github_mirror.receipt.v0.1',
+    tenant_ref: row.tenant_ref,
+    mirror_ref: row.mirror_ref,
+    repository_ref: row.repository_ref,
+    promotion_ref: row.promotion_ref,
+    change_ref: row.change_ref,
+    source_canonical_ref: row.source_canonical_ref,
+    destination_github_ref: row.destination_github_ref,
+    commit_id: row.commit_id,
+    status: row.status,
+    attempted_at: row.attempted_at,
+    mirrored_at: row.mirrored_at,
+    refusal_reason: row.refusal_reason,
+    error_reason: row.error_reason,
+    retry_count: row.retry_count,
+    idempotency_key: row.idempotency_key,
     source_refs: stringArrayFromJson(row.source_refs_json),
     redacted: row.redacted === true || row.redacted === 1,
   })
@@ -958,5 +1013,118 @@ export const makeD1ForgeCoordinationStore = (
             .all<ForgePromotionDecisionReceiptRow>()
 
     return rows.results.map(promotionDecisionReceiptFromRow)
+  },
+
+  async recordGithubMirrorReceipt(receipt, createdAt) {
+    const decoded = decodeForgeGithubMirrorReceipt(receipt)
+    await db
+      .prepare(
+        `
+          INSERT INTO forge_github_mirror_receipts (
+            tenant_ref,
+            mirror_ref,
+            repository_ref,
+            promotion_ref,
+            change_ref,
+            source_canonical_ref,
+            destination_github_ref,
+            commit_id,
+            status,
+            attempted_at,
+            mirrored_at,
+            refusal_reason,
+            error_reason,
+            retry_count,
+            idempotency_key,
+            source_refs_json,
+            redacted,
+            created_at,
+            updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+          ON CONFLICT (tenant_ref, mirror_ref) DO UPDATE SET
+            repository_ref = excluded.repository_ref,
+            promotion_ref = excluded.promotion_ref,
+            change_ref = excluded.change_ref,
+            source_canonical_ref = excluded.source_canonical_ref,
+            destination_github_ref = excluded.destination_github_ref,
+            commit_id = excluded.commit_id,
+            status = excluded.status,
+            attempted_at = excluded.attempted_at,
+            mirrored_at = excluded.mirrored_at,
+            refusal_reason = excluded.refusal_reason,
+            error_reason = excluded.error_reason,
+            retry_count = excluded.retry_count,
+            idempotency_key = excluded.idempotency_key,
+            source_refs_json = excluded.source_refs_json,
+            updated_at = excluded.updated_at
+        `,
+      )
+      .bind(
+        decoded.tenant_ref,
+        decoded.mirror_ref,
+        decoded.repository_ref,
+        decoded.promotion_ref,
+        decoded.change_ref,
+        decoded.source_canonical_ref,
+        decoded.destination_github_ref,
+        decoded.commit_id,
+        decoded.status,
+        decoded.attempted_at,
+        decoded.mirrored_at,
+        decoded.refusal_reason,
+        decoded.error_reason,
+        decoded.retry_count,
+        decoded.idempotency_key,
+        jsonArray(decoded.source_refs),
+        createdAt,
+        createdAt,
+      )
+      .run()
+
+    const row = await db
+      .prepare(
+        `
+          SELECT *
+          FROM forge_github_mirror_receipts
+          WHERE tenant_ref = ? AND mirror_ref = ?
+        `,
+      )
+      .bind(decoded.tenant_ref, decoded.mirror_ref)
+      .first<ForgeGithubMirrorReceiptRow>()
+
+    return githubMirrorReceiptFromRow(
+      rowOrFail(row, 'forge github mirror receipt'),
+    )
+  },
+
+  async listGithubMirrorReceipts(tenantRef, limit, changeRef) {
+    const rows =
+      changeRef === undefined
+        ? await db
+            .prepare(
+              `
+                SELECT *
+                FROM forge_github_mirror_receipts
+                WHERE tenant_ref = ?
+                ORDER BY attempted_at DESC, mirror_ref DESC
+                LIMIT ?
+              `,
+            )
+            .bind(tenantRef, limitRows(limit))
+            .all<ForgeGithubMirrorReceiptRow>()
+        : await db
+            .prepare(
+              `
+                SELECT *
+                FROM forge_github_mirror_receipts
+                WHERE tenant_ref = ? AND change_ref = ?
+                ORDER BY attempted_at DESC, mirror_ref DESC
+                LIMIT ?
+              `,
+            )
+            .bind(tenantRef, changeRef, limitRows(limit))
+            .all<ForgeGithubMirrorReceiptRow>()
+
+    return rows.results.map(githubMirrorReceiptFromRow)
   },
 })

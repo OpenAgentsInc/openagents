@@ -346,6 +346,10 @@ describe('OpenAgents OpenAPI route', () => {
     expect(
       operationAt(body, '/api/forge/promotion-decisions', 'post').operationId,
     ).toBe('recordForgePromotionDecision')
+    expect(
+      operationAt(body, '/api/forge/github-mirror-receipts', 'post')
+        .operationId,
+    ).toBe('recordForgeGithubMirrorReceipt')
     expect(operationAt(body, '/api/agents/claims', 'post').operationId).toBe(
       'requestAgentOwnerClaim',
     )

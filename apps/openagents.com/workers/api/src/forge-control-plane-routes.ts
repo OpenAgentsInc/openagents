@@ -2,6 +2,7 @@ import {
   ForgeCoordinationChangeState,
   ForgeCoordinationIssueState,
   ForgeCoordinationStatusState,
+  ForgeGithubMirrorReceipt,
   ForgeMergeQueueLedgerState,
   ForgePromotionDecisionReceipt,
   ForgeVerificationReceipt,
@@ -655,6 +656,49 @@ const routePromotionDecisions = async <Bindings>(
   return noStoreJsonResponse({ promotionDecision }, { status: 201 })
 }
 
+const routeGithubMirrorReceipts = async <Bindings>(
+  dependencies: ForgeControlPlaneRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  url: URL,
+) => {
+  const store = dependencies.makeStore(env)
+
+  if (request.method === 'GET') {
+    const tenantRef = tenantRefFromQuery(url)
+    await requireScope(dependencies, request, env, 'forge:mirror:read', tenantRef)
+    const limit = limitFromQuery(url)
+    return noStoreJsonResponse({
+      githubMirrorReceipts: await store.listGithubMirrorReceipts(
+        tenantRef,
+        limit,
+        optionalQuery(url, 'changeRef'),
+      ),
+      limit,
+      tenantRef,
+    })
+  }
+
+  if (request.method !== 'POST') {
+    return methodNotAllowed(['GET', 'POST'])
+  }
+
+  const receipt = await decodeBody(request, ForgeGithubMirrorReceipt)
+  await requireScope(
+    dependencies,
+    request,
+    env,
+    'forge:mirror:write',
+    receipt.tenant_ref,
+  )
+  const githubMirrorReceipt = await store.recordGithubMirrorReceipt(
+    receipt,
+    routeNowIso(dependencies),
+  )
+
+  return noStoreJsonResponse({ githubMirrorReceipt }, { status: 201 })
+}
+
 const sha256Hex = async (value: string): Promise<string> => {
   const bytes = await crypto.subtle.digest(
     'SHA-256',
@@ -873,6 +917,12 @@ export const makeForgeControlPlaneRoutes = <Bindings>(
     if (route.length === 1 && route[0] === 'promotion-decisions') {
       return routeEffect(() =>
         routePromotionDecisions(dependencies, request, env, url),
+      )
+    }
+
+    if (route.length === 1 && route[0] === 'github-mirror-receipts') {
+      return routeEffect(() =>
+        routeGithubMirrorReceipts(dependencies, request, env, url),
       )
     }
 

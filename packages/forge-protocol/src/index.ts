@@ -98,6 +98,8 @@ export const ForgeControlPlaneScope = S.Literals([
   "forge:lease:write",
   "forge:queue:read",
   "forge:queue:write",
+  "forge:mirror:read",
+  "forge:mirror:write",
   "forge:receipt:write",
   "forge:promotion:decide",
   "forge:admin",
@@ -113,6 +115,8 @@ export const forgeControlPlaneScopes: ReadonlyArray<ForgeControlPlaneScope> = [
   "forge:lease:write",
   "forge:queue:read",
   "forge:queue:write",
+  "forge:mirror:read",
+  "forge:mirror:write",
   "forge:receipt:write",
   "forge:promotion:decide",
   "forge:admin",
@@ -166,6 +170,14 @@ export const ForgePromotionDecisionState = S.Literals([
 ]);
 export type ForgePromotionDecisionState =
   typeof ForgePromotionDecisionState.Type;
+
+export const ForgeGithubMirrorStatus = S.Literals([
+  "pending",
+  "mirrored",
+  "refused",
+  "errored",
+]);
+export type ForgeGithubMirrorStatus = typeof ForgeGithubMirrorStatus.Type;
 
 export const ForgeDispatchGitAccessDelivery = S.Literals([
   "out_of_band",
@@ -464,6 +476,28 @@ export const ForgePromotionDecisionReceipt = S.Struct({
 export type ForgePromotionDecisionReceipt =
   typeof ForgePromotionDecisionReceipt.Type;
 
+export const ForgeGithubMirrorReceipt = S.Struct({
+  schema: S.Literal("openagents.forge.github_mirror.receipt.v0.1"),
+  tenant_ref: S.String,
+  mirror_ref: S.String,
+  repository_ref: S.String,
+  promotion_ref: S.String,
+  change_ref: S.String,
+  source_canonical_ref: S.String,
+  destination_github_ref: S.String,
+  commit_id: S.String,
+  status: ForgeGithubMirrorStatus,
+  attempted_at: S.String,
+  mirrored_at: S.NullOr(S.String),
+  refusal_reason: S.NullOr(S.String),
+  error_reason: S.NullOr(S.String),
+  retry_count: S.Number,
+  idempotency_key: S.String,
+  source_refs: S.Array(S.String),
+  redacted: S.Literal(true),
+});
+export type ForgeGithubMirrorReceipt = typeof ForgeGithubMirrorReceipt.Type;
+
 export const ForgeDispatchMessage = S.Union([
   ForgeDispatchWorkItem,
   ForgeDispatchDecision,
@@ -528,6 +562,9 @@ export const decodeForgeVerificationReceipt = S.decodeUnknownSync(
 );
 export const decodeForgePromotionDecisionReceipt = S.decodeUnknownSync(
   ForgePromotionDecisionReceipt,
+);
+export const decodeForgeGithubMirrorReceipt = S.decodeUnknownSync(
+  ForgeGithubMirrorReceipt,
 );
 
 export const forgeCoordinationStatusStateForNip34Kind = (

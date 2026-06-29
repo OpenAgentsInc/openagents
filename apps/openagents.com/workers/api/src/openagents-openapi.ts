@@ -1640,6 +1640,13 @@ const schemaComponents = (): JsonSchema => ({
   ForgePromotionDecisionListEnvelope: objectSummary(
     'Forge promotion decision receipt list. Contains tenantRef, limit, and redacted promotion decision receipts filtered optionally by changeRef. Requires forge:queue:read or admin authority.',
   ),
+  ForgeGithubMirrorReceiptEnvelope: envelope(
+    'githubMirrorReceipt',
+    '#/components/schemas/ForgeGithubMirrorReceipt',
+  ),
+  ForgeGithubMirrorReceiptListEnvelope: objectSummary(
+    'Forge GitHub mirror receipt list. Contains tenantRef, limit, and redacted downstream mirror receipts filtered optionally by changeRef. Requires forge:mirror:read or admin authority.',
+  ),
   ForgeVerificationReceiptEnvelope: envelope(
     'verificationReceipt',
     '#/components/schemas/ForgeVerificationReceipt',
@@ -3911,6 +3918,9 @@ const requestSchemas = (): JsonSchema => ({
   ),
   ForgePromotionDecisionReceipt: objectSummary(
     'Redacted Forge promotion decision receipt matching openagents.forge.promotion.decision.v0.1. Carries queue/change refs, decision state, heads, gate/blocker refs, deciding actor ref, timestamp, and source refs only.',
+  ),
+  ForgeGithubMirrorReceipt: objectSummary(
+    'Redacted Forge GitHub mirror receipt matching openagents.forge.github_mirror.receipt.v0.1. Carries the Forge promotion ref, source canonical ref, downstream GitHub ref, commit id, mirror status, timestamps, retry count, and refusal/error reason only. It records downstream visibility and never authorizes promotion.',
   ),
   CreateOperatorSiteRequest: objectSummary(
     'Operator request for creating a Site project from an order or prompt.',
@@ -6774,6 +6784,46 @@ const paths = (): JsonSchema => ({
         '201': okJson(
           'Stored Forge promotion decision.',
           '#/components/schemas/ForgePromotionDecisionEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/forge/github-mirror-receipts': {
+    get: operation({
+      operationId: 'listForgeGithubMirrorReceipts',
+      summary: 'List Forge GitHub mirror receipts',
+      description:
+        'Lists redacted Forge GitHub mirror receipts for a tenant, optionally filtered by changeRef. Requires forge:mirror:read or admin authority. These rows are downstream mirror state only; GitHub cannot authorize promotion.',
+      tags: ['Forge'],
+      security: forgeControlPlaneBearer,
+      parameters: [
+        queryParam('tenantRef', 'Required Forge tenant ref.'),
+        queryParam('changeRef', 'Optional change ref filter.'),
+        queryParam('limit', 'Optional result limit, clamped to 1..100.'),
+      ],
+      responses: {
+        '200': okJson(
+          'Forge GitHub mirror receipts.',
+          '#/components/schemas/ForgeGithubMirrorReceiptListEnvelope',
+        ),
+        ...errorResponses(),
+      },
+    }),
+    post: operation({
+      operationId: 'recordForgeGithubMirrorReceipt',
+      summary: 'Record Forge GitHub mirror receipt',
+      description:
+        'Records a redacted Forge GitHub mirror receipt using the shared openagents.forge.github_mirror.receipt.v0.1 schema. Requires forge:mirror:write or admin authority. The receipt must name a Forge promotion ref and records only downstream GitHub mirror state.',
+      tags: ['Forge'],
+      security: forgeControlPlaneBearer,
+      requestBody: jsonContent(
+        '#/components/schemas/ForgeGithubMirrorReceipt',
+      ),
+      responses: {
+        '201': okJson(
+          'Stored Forge GitHub mirror receipt.',
+          '#/components/schemas/ForgeGithubMirrorReceiptEnvelope',
         ),
         ...errorResponses(),
       },
