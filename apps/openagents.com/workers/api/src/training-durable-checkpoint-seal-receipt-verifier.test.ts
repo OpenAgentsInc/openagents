@@ -16,7 +16,12 @@ import {
 
 const durableSeal = (): DurableCheckpointSeal => ({
   checkpointDigestRef: `sha256:${'a'.repeat(64)}`,
+  readbackRehashReceiptRef:
+    'receipt.training.checkpoint_readback_rehash.window.r1.w0007.v1',
   replicationFactor: 3,
+  remoteCheckpointObjectRef:
+    'r2.openagents_autopilot_artifacts.training_checkpoint.sha256_aaaaaaaa',
+  remoteCheckpointStoreRef: 'r2.openagents_autopilot_artifacts.training',
   retrievalProofRef: 'receipt.training.checkpoint_readback.window.r1.w0007.v1',
   retrievalVerified: true,
   sizeBytes: 4_294_967_296,

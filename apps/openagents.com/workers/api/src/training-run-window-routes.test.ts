@@ -2607,7 +2607,10 @@ describe('training run window routes', () => {
       churn: { joinCount: 0, lossCount: 0, standbyPromotionCount: 0 },
       durableCheckpointSeal: {
         checkpointDigestRef,
+        readbackRehashReceiptRef: `receipt.${windowRef}.checkpoint.readback_rehash`,
         replicationFactor: 2,
+        remoteCheckpointObjectRef: `r2.training_checkpoint.${windowRef}`,
+        remoteCheckpointStoreRef: 'r2.openagents_autopilot_artifacts.training',
         retrievalProofRef: `receipt.${windowRef}.checkpoint.readback`,
         retrievalVerified: true,
         sizeBytes: 1_048_576,

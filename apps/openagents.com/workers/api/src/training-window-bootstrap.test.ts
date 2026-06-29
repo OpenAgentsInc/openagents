@@ -45,7 +45,10 @@ const sealMetadata = (
         checkpointDigestRef,
         durableCheckpointSeal: {
           checkpointDigestRef,
+          readbackRehashReceiptRef: `receipt.training.checkpoint_readback_rehash.${windowRef}`,
           replicationFactor: 2,
+          remoteCheckpointObjectRef: `r2.training_checkpoint.${windowRef}`,
+          remoteCheckpointStoreRef: 'r2.openagents_autopilot_artifacts.training',
           retrievalProofRef: `receipt.training.checkpoint_readback.${windowRef}`,
           retrievalVerified: true,
           sizeBytes: 1_048_576,

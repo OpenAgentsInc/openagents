@@ -14,7 +14,12 @@ import {
 
 const durableSeal = (): DurableCheckpointSeal => ({
   checkpointDigestRef: `sha256:${'a'.repeat(64)}`,
+  readbackRehashReceiptRef:
+    'receipt.training.checkpoint_readback_rehash.window.r1.w0007.v1',
   replicationFactor: 3,
+  remoteCheckpointObjectRef:
+    'r2.openagents_autopilot_artifacts.training_checkpoint.sha256_aaaaaaaa',
+  remoteCheckpointStoreRef: 'r2.openagents_autopilot_artifacts.training',
   retrievalProofRef: 'receipt.training.checkpoint_readback.window.r1.w0007.v1',
   retrievalVerified: true,
   sizeBytes: 4_294_967_296,
@@ -32,6 +37,15 @@ describe('durable checkpoint seal receipt emitter', () => {
     expect(receipt.checkpointDigestRef).toBe(`sha256:${'a'.repeat(64)}`)
     expect(receipt.replicationFactor).toBe(3)
     expect(receipt.storageClass).toBe('content_addressed_object_store')
+    expect(receipt.readbackRehashReceiptRef).toBe(
+      'receipt.training.checkpoint_readback_rehash.window.r1.w0007.v1',
+    )
+    expect(receipt.remoteCheckpointObjectRef).toBe(
+      'r2.openagents_autopilot_artifacts.training_checkpoint.sha256_aaaaaaaa',
+    )
+    expect(receipt.remoteCheckpointStoreRef).toBe(
+      'r2.openagents_autopilot_artifacts.training',
+    )
     expect(receipt.retrievalProofRef).toBe(
       'receipt.training.checkpoint_readback.window.r1.w0007.v1',
     )
@@ -53,11 +67,12 @@ describe('durable checkpoint seal receipt emitter', () => {
     ).toBe(buildDurableCheckpointSealReceipt(durableSeal()).receiptRef)
   })
 
-  test('omits the retrieval proof ref when the descriptor has none', () => {
-    const { retrievalProofRef: _ignored, ...withoutProof } = durableSeal()
-    const receipt = buildDurableCheckpointSealReceipt(withoutProof)
-    expect(receipt.retrievalProofRef).toBeUndefined()
-    expect(receipt.outcome).toBe('seal_on_durable_checkpoint')
+  test('refuses to emit without a remote read-back-and-rehash receipt', () => {
+    const { readbackRehashReceiptRef: _ignored, ...withoutReceipt } =
+      durableSeal()
+    expect(() =>
+      buildDurableCheckpointSealReceipt(withoutReceipt),
+    ).toThrow(DurableCheckpointSealReceiptUnsafe)
   })
 
   test('refuses to emit when the digest is not content-addressed', () => {

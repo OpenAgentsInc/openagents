@@ -229,7 +229,11 @@ describe('training run window authority', () => {
       churn: { joinCount: 0, lossCount: 0, standbyPromotionCount: 0 },
       durableCheckpointSeal: {
         checkpointDigestRef,
+        readbackRehashReceiptRef:
+          'receipt.training.checkpoint_readback_rehash.window.0001',
         replicationFactor: 2,
+        remoteCheckpointObjectRef: 'r2.training_checkpoint.window.0001',
+        remoteCheckpointStoreRef: 'r2.openagents_autopilot_artifacts.training',
         retrievalProofRef: 'receipt.training.checkpoint_readback.window.0001',
         retrievalVerified: true,
         sizeBytes: 1_048_576,
@@ -447,7 +451,12 @@ describe('training run window authority', () => {
         checkpointDigestRef,
         durableCheckpointSeal: {
           checkpointDigestRef,
+          readbackRehashReceiptRef:
+            'receipt.training.checkpoint_readback_rehash.window.0001',
           replicationFactor: 1,
+          remoteCheckpointObjectRef: 'r2.training_checkpoint.window.0001',
+          remoteCheckpointStoreRef:
+            'r2.openagents_autopilot_artifacts.training',
           retrievalVerified: true,
           sizeBytes: 1_048_576,
           storageClass: 'content_addressed_object_store',
@@ -462,7 +471,12 @@ describe('training run window authority', () => {
         checkpointDigestRef,
         durableCheckpointSeal: {
           checkpointDigestRef,
+          readbackRehashReceiptRef:
+            'receipt.training.checkpoint_readback_rehash.window.other',
           replicationFactor: 2,
+          remoteCheckpointObjectRef: 'r2.training_checkpoint.window.other',
+          remoteCheckpointStoreRef:
+            'r2.openagents_autopilot_artifacts.training',
           retrievalVerified: true,
           sizeBytes: 1_048_576,
           storageClass: 'content_addressed_object_store',
