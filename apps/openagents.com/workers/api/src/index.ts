@@ -549,6 +549,7 @@ import {
   dispatchWithOverflow,
   dispatchWithOverflowWithMetadata,
   makeBoundedDispatchFailureTelemetry,
+  makeGlmOwnCapacityFailover,
   makeKhalaBackedAdapterPlan,
 } from './inference/model-router'
 import {
@@ -9847,10 +9848,19 @@ const registerHydraliskAdapter = (
   }
 }
 
+let latestHydraliskGlm52RouteAdmission:
+  | HydraliskPoolRouteAdmissionSnapshot
+  | undefined
+
 const hydraliskGlm52RouteAdmissionForEnv = (
   env: HydraliskServeEnv,
-): HydraliskPoolRouteAdmissionSnapshot | undefined =>
-  hydraliskGlm52PoolRuntimes.get(env)?.routeAdmission()
+): HydraliskPoolRouteAdmissionSnapshot | undefined => {
+  const snapshot = hydraliskGlm52PoolRuntimes.get(env)?.routeAdmission()
+  if (snapshot !== undefined) {
+    latestHydraliskGlm52RouteAdmission = snapshot
+  }
+  return snapshot
+}
 
 const openRouterAdaptersRegistered = new WeakSet<object>()
 
@@ -10360,6 +10370,22 @@ const dispatchFailureTelemetry = makeBoundedDispatchFailureTelemetry({
   maxEvents: 256,
   nowMs: currentEpochMillis,
   windowMs: 15 * 60 * 1_000,
+})
+
+const glmOwnCapacityFailover = makeGlmOwnCapacityFailover({
+  failureThreshold: 3,
+  isRecovered: () =>
+    latestHydraliskGlm52RouteAdmission?.reservedExternalHeadroomAvailable ===
+    true,
+  onAlert: event => {
+    console.warn(event.message, {
+      adapterId: event.adapterId,
+      consecutiveFailures: event.consecutiveFailures,
+      reason: event.reason,
+      threshold: event.threshold,
+      type: event.type,
+    })
+  },
 })
 
 const internalStressPreemption = makeInternalStressPreemptionRegistry()
@@ -12439,6 +12465,7 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         ),
         dispatch: {
           failureTelemetry: dispatchFailureTelemetry.record,
+          glmOwnCapacityFailover,
         },
         ...(routeAdmission === undefined ? {} : { routeAdmission }),
         internalStressPreemption,

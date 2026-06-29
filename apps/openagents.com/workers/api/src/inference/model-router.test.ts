@@ -21,6 +21,7 @@ import {
   dispatchWithOverflowWithMetadata,
   isMultiLaneBurnDemandSource,
   makeBoundedDispatchFailureTelemetry,
+  makeGlmOwnCapacityFailover,
   makeKhalaBackedAdapterPlan,
   openModelsByCost,
   rotateAdapterPlan,
@@ -1226,6 +1227,132 @@ describe('dispatchWithOverflow', () => {
     }
     expect(glm.calls()).toBe(1)
     expect(gemini.calls()).toBe(1)
+  })
+
+  test('activates GLM own-capacity failover after consecutive reserved-headroom 503s and auto-clears on recovery', async () => {
+    let recovered = false
+    const alerts: Array<{
+      message: string
+      type: string
+      consecutiveFailures: number
+    }> = []
+    const telemetry: Array<DispatchFailureTelemetryEvent> = []
+    const glm = mockAdapter(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID, [
+      new InferenceAdapterError({
+        adapterId: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+        adapterRouteMetadata: {
+          glmAggregateExternalHeadroom: 0,
+          glmAggregateInflightCount: 8,
+          glmAggregateMaxInflight: 8,
+          glmSaturationPolicy: 'failover_active',
+          queueWaitMs: 0,
+          replicaBusyReason: 'reserved_headroom_unavailable',
+          replicaFallbackReason: 'reserved_headroom_unavailable',
+        },
+        httpStatus: 503,
+        kind: 'route_admission_reserved_headroom_unavailable',
+        reason: 'GLM own-capacity lane has no reserved external headroom',
+        retryable: true,
+      }),
+      new InferenceAdapterError({
+        adapterId: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+        httpStatus: 503,
+        kind: 'route_admission_reserved_headroom_unavailable',
+        reason: 'GLM own-capacity lane has no reserved external headroom',
+        retryable: true,
+      }),
+      undefined,
+    ])
+    const vertex = mockAdapter(VERTEX_GEMINI_ADAPTER_ID, [undefined])
+    const fireworks = mockAdapter(FIREWORKS_ADAPTER_ID, [undefined])
+    const openrouter = mockAdapter(OPENROUTER_KHALA_FALLBACK_ADAPTER_ID, [
+      undefined,
+    ])
+    const registry = new InferenceProviderRegistry()
+    registry.register(glm.adapter)
+    registry.register(vertex.adapter)
+    registry.register(fireworks.adapter)
+    registry.register(openrouter.adapter)
+    const failover = makeGlmOwnCapacityFailover({
+      failureThreshold: 2,
+      isRecovered: () => recovered,
+      onAlert: event => {
+        alerts.push({
+          consecutiveFailures: event.consecutiveFailures,
+          message: event.message,
+          type: event.type,
+        })
+      },
+    })
+    const deps = {
+      failureTelemetry: (event: DispatchFailureTelemetryEvent) => {
+        telemetry.push(event)
+      },
+      glmOwnCapacityFailover: failover,
+      plan: () => [
+        HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+        VERTEX_GEMINI_ADAPTER_ID,
+        FIREWORKS_ADAPTER_ID,
+        OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+      ],
+      registry,
+      sleep: noSleep,
+    }
+
+    const first = await runResult(
+      dispatchWithOverflowWithMetadata(request(KHALA_MODEL_ID), completeOp, deps),
+    )
+    const second = await runResult(
+      dispatchWithOverflowWithMetadata(request(KHALA_MODEL_ID), completeOp, deps),
+    )
+    const third = await runResult(
+      dispatchWithOverflowWithMetadata(request(KHALA_MODEL_ID), completeOp, deps),
+    )
+    recovered = true
+    const fourth = await runResult(
+      dispatchWithOverflowWithMetadata(request(KHALA_MODEL_ID), completeOp, deps),
+    )
+
+    expect(first._tag).toBe('Success')
+    expect(second._tag).toBe('Success')
+    expect(third._tag).toBe('Success')
+    expect(fourth._tag).toBe('Success')
+    if (third._tag === 'Success') {
+      expect(third.success.route).toMatchObject({
+        primaryAdapterId: VERTEX_GEMINI_ADAPTER_ID,
+        servedAdapterId: VERTEX_GEMINI_ADAPTER_ID,
+      })
+    }
+    if (fourth._tag === 'Success') {
+      expect(fourth.success.route).toMatchObject({
+        fallbackReason: null,
+        primaryAdapterId: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+        servedAdapterId: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+      })
+    }
+    expect(glm.calls()).toBe(3)
+    expect(vertex.calls()).toBe(3)
+    expect(fireworks.calls()).toBe(0)
+    expect(openrouter.calls()).toBe(0)
+    expect(alerts).toEqual([
+      {
+        consecutiveFailures: 2,
+        message: 'GLM own-capacity down — failover active',
+        type: 'activated',
+      },
+      {
+        consecutiveFailures: 0,
+        message: 'GLM own-capacity recovered - failover cleared',
+        type: 'cleared',
+      },
+    ])
+    expect(telemetry).toContainEqual({
+      adapterId: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+      classifier: 'fallback',
+      kind: 'glm_own_capacity_failover_active',
+      retryable: true,
+      stage: 'fallback',
+    })
   })
 
   test('GLM lane quorum unhealthy overflows without exposing private route data', async () => {

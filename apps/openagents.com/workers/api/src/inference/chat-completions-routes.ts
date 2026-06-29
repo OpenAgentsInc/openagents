@@ -3282,6 +3282,9 @@ export const handleChatCompletions = (
       ...(deps.dispatch?.failureTelemetry === undefined
         ? {}
         : { failureTelemetry: deps.dispatch.failureTelemetry }),
+      ...(deps.dispatch?.glmOwnCapacityFailover === undefined
+        ? {}
+        : { glmOwnCapacityFailover: deps.dispatch.glmOwnCapacityFailover }),
     }
 
     if (inferenceRequest.stream) {
