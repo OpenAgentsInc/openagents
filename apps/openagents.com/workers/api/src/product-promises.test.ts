@@ -440,9 +440,10 @@ describe('public product promises document', () => {
       /latest stays 0\.2\.5|only published, installable Pylon|release candidate, not stable 0\.3\.0|Pylon v1\.0 is present in the monorepo as a release candidate/i,
     )
     expect(currentCopy).toContain('Pylon v1.0 has a stable source cut')
-    expect(currentCopy).toContain('Registry 2026-06-29.2')
+    expect(currentCopy).toContain('Registry 2026-06-29.3')
     expect(currentCopy).toContain('flips NO promise state')
-    expect(currentCopy).toContain('Khala Desktop now carries source-level')
+    expect(currentCopy).toContain('Khala model-mix route was rechecked')
+    expect(currentCopy).toContain('owner-signed transition receipt')
     expect(currentCopy).toContain('maxStalenessSeconds:0')
     const codexSuccessorPromise = decoded.promises.find(
       promise => promise.promiseId === 'autopilot.codex_probe_pylon_successor.v1',
@@ -1586,7 +1587,7 @@ describe('public product promises document', () => {
     )
   })
 
-  test('keeps Khala model-family mix yellow with explicit staleness and demand caveats', () => {
+  test('keeps Khala model-family mix yellow with explicit staleness and owner-signoff gate', () => {
     const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
       publicProductPromisesDocument(),
     )
@@ -1608,10 +1609,19 @@ describe('public product promises document', () => {
     expect(modelMixPromise?.blockerRefs).toEqual([
       'blocker.product_promises.model_mix_green_owner_signoff_pending',
     ])
-    expect(modelMixPromise?.verification).toContain('issue #6858')
+    expect(modelMixPromise?.verification).toContain('issue #7016')
+    expect(modelMixPromise?.verification).toContain('2026-06-29')
     expect(modelMixPromise?.verification).toContain(
-      'Green still requires a live receipt/owner sign-off',
+      'production GET /api/public/khala-tokens-served/model-mix?window=30d',
     )
+    expect(modelMixPromise?.verification).toContain('maxStalenessSeconds:0')
+    expect(modelMixPromise?.verification).toContain(
+      'public aggregate family rows only',
+    )
+    expect(modelMixPromise?.verification).toContain(
+      'Green still requires an owner-signed transition receipt',
+    )
+    expect(modelMixPromise?.verification).not.toContain('2-second cache')
   })
 
   test('keeps kernel optimization planned while exposing code-backed dispatch and parity receipt machinery', () => {
