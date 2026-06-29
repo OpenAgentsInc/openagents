@@ -53,6 +53,9 @@ export const DurableCheckpointSealReceipt = S.Struct({
   outcome: S.Literal('seal_on_durable_checkpoint'),
   predicateSchemaVersion: S.Literal(DurableCheckpointSealSchemaVersion),
   publicSafe: S.Literal(true),
+  readbackDigestRef: S.String,
+  readbackObjectKey: S.String,
+  readbackStoreClass: S.String,
   receiptRef: S.String,
   replicationFactor: S.Int,
   retrievalProofRef: S.optional(S.String),
@@ -60,6 +63,7 @@ export const DurableCheckpointSealReceipt = S.Struct({
   sizeBytes: S.Int,
   sourceRefs: S.Array(S.String),
   storageClass: S.String,
+  storedDigestRef: S.String,
   windowRef: S.String,
 })
 export type DurableCheckpointSealReceipt =
@@ -116,6 +120,14 @@ export const buildDurableCheckpointSealReceipt = (
       reason: `A durable-checkpoint-seal receipt may only be emitted for a durable seal; this seal is ${gate.decision} (${gate.reasons.join(', ')}).`,
     })
   }
+  const readbackReceipt = seal.readbackReceipt
+  if (readbackReceipt === undefined) {
+    throw new DurableCheckpointSealReceiptUnsafe({
+      blockerRef: DurableCheckpointSealBlocker,
+      reason:
+        'A durable-checkpoint-seal receipt requires a read-back receipt bound to the sealed checkpoint.',
+    })
+  }
 
   return DurableCheckpointSealReceipt.make({
     authorityBoundary: receiptAuthorityBoundary,
@@ -125,6 +137,9 @@ export const buildDurableCheckpointSealReceipt = (
     outcome: 'seal_on_durable_checkpoint',
     predicateSchemaVersion: DurableCheckpointSealSchemaVersion,
     publicSafe: true,
+    readbackDigestRef: readbackReceipt.readbackDigestRef,
+    readbackObjectKey: readbackReceipt.objectKey,
+    readbackStoreClass: readbackReceipt.storeClass,
     receiptRef: durableCheckpointSealReceiptRef(
       seal.windowRef,
       seal.checkpointDigestRef,
@@ -137,6 +152,7 @@ export const buildDurableCheckpointSealReceipt = (
     sizeBytes: seal.sizeBytes,
     sourceRefs: receiptSourceRefs,
     storageClass: seal.storageClass,
+    storedDigestRef: readbackReceipt.storedDigestRef,
     windowRef: seal.windowRef,
   })
 }

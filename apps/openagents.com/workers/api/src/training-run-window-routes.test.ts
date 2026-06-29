@@ -2607,6 +2607,14 @@ describe('training run window routes', () => {
       churn: { joinCount: 0, lossCount: 0, standbyPromotionCount: 0 },
       durableCheckpointSeal: {
         checkpointDigestRef,
+        readbackReceipt: {
+          objectKey: `checkpoints/${checkpointDigestRef}`,
+          readbackDigestRef: checkpointDigestRef,
+          receiptRef: `receipt.${windowRef}.checkpoint.readback`,
+          sizeBytes: 1_048_576,
+          storeClass: 'r2',
+          storedDigestRef: checkpointDigestRef,
+        },
         replicationFactor: 2,
         retrievalProofRef: `receipt.${windowRef}.checkpoint.readback`,
         retrievalVerified: true,

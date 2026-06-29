@@ -45,6 +45,14 @@ const sealMetadata = (
         checkpointDigestRef,
         durableCheckpointSeal: {
           checkpointDigestRef,
+          readbackReceipt: {
+            objectKey: `checkpoints/${checkpointDigestRef}`,
+            readbackDigestRef: checkpointDigestRef,
+            receiptRef: `receipt.training.checkpoint_readback.${windowRef}`,
+            sizeBytes: 1_048_576,
+            storeClass: 'r2',
+            storedDigestRef: checkpointDigestRef,
+          },
           replicationFactor: 2,
           retrievalProofRef: `receipt.training.checkpoint_readback.${windowRef}`,
           retrievalVerified: true,

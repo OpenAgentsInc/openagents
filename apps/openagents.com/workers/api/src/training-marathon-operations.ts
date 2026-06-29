@@ -188,7 +188,7 @@ export const projectTrainingMarathonOperations = (
         worklogRef,
       ],
       statusLabel:
-        'Durable-checkpoint seal predicate and bootstrap filtering are wired; no real remote checkpoint-store read-back receipt exists.',
+        'Durable-checkpoint seal predicate and bootstrap filtering require an R2 read-back receipt shape; no real production remote checkpoint-store read-back receipt exists.',
     }),
     curtailmentSurface: new TrainingMarathonCurtailmentSurface({
       blockerRef: TrainingMarathonCurtailmentDrillBlocker,
