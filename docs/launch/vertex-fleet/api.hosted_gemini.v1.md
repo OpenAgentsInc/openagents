@@ -459,6 +459,20 @@ production binding shape the harness was missing.
 
 ## What remains (for green)
 
+- A dereferenceable, public-safe production receipt from the public or
+  authenticated user/agent path. The receipt must show:
+  - request path,
+  - hosted Gemini model/provider lane,
+  - metering/usage,
+  - successful response shape,
+  - billing/free-tier/privacy caveats that still apply.
+  It must not expose raw prompts, provider payloads, provider keys, account
+  identifiers, private user data, or wallet/payment material.
+- Owner-signed promise transition evidence recorded through the product-promise
+  transition path before `api.hosted_gemini.v1` can become green. Until both the
+  production receipt and transition evidence exist, the current blockers remain:
+  - `blocker.product_promises.hosted_gemini_production_receipt_pending`
+  - `blocker.product_promises.hosted_gemini_owner_upgrade_signoff_pending`
 - Arm the bound executor on a real deployment (`HOSTED_GEMINI_EXECUTOR_ENABLED`
   + `VERTEX_SA_KEY`) and confirm a live hosted Gemini inference call serves a
   paid placement. The chain is now assemblable from one factory

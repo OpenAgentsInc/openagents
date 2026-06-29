@@ -441,9 +441,33 @@ describe('public product promises document', () => {
     )
     expect(currentCopy).toContain('Pylon v1.0 has a stable source cut')
     expect(currentCopy).toContain('Registry 2026-06-29.2')
+    expect(currentCopy).toContain('Registry 2026-06-29.3')
     expect(currentCopy).toContain('flips NO promise state')
     expect(currentCopy).toContain('Khala Desktop now carries source-level')
     expect(currentCopy).toContain('maxStalenessSeconds:0')
+    const hostedGeminiPromise = decoded.promises.find(
+      promise => promise.promiseId === 'api.hosted_gemini.v1',
+    )
+    expect(hostedGeminiPromise?.state).toBe('yellow')
+    expect(hostedGeminiPromise?.blockerRefs).toEqual([
+      'blocker.product_promises.hosted_gemini_production_receipt_pending',
+      'blocker.product_promises.hosted_gemini_owner_upgrade_signoff_pending',
+    ])
+    expect(hostedGeminiPromise?.evidenceRefs).toContain(
+      'docs/launch/vertex-fleet/api.hosted_gemini.v1.md',
+    )
+    expect(hostedGeminiPromise?.safeCopy).toContain(
+      'real production receipt and owner-approved upgrade evidence',
+    )
+    expect(hostedGeminiPromise?.unsafeCopy).toContain(
+      'Do not claim hosted Gemini is green',
+    )
+    expect(hostedGeminiPromise?.verification).toContain(
+      'dereferenceable production receipt showing request path',
+    )
+    expect(hostedGeminiPromise?.verification).toContain(
+      'billing/free-tier/privacy caveats',
+    )
     const codexSuccessorPromise = decoded.promises.find(
       promise => promise.promiseId === 'autopilot.codex_probe_pylon_successor.v1',
     )
