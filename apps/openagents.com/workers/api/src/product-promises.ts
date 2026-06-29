@@ -1026,9 +1026,9 @@ export const publicProductPromisesDocument = () => {
         audience: ['user', 'agent', 'contributor', 'public'],
         state: 'yellow',
         claim:
-          'Free Khala API usage is captured by default as redacted, private traces that may be used to improve and train models; pay for privacy to opt out; public sharing is opt-in only.',
+          'Free Khala API usage is captured by default when the owner-gated production capture flag is armed, as redacted, private traces that may be used to improve and train models; pay for privacy to opt out; public sharing is opt-in only.',
         safeCopy:
-          'Free tier: when you use the free Khala API without paying for privacy, your traffic is captured by default as a redacted, private-by-default (owner_only) trace and may be used to improve and train OpenAgents models. Pay for privacy, or run confidential compute, to opt out of capture (fail-closed to not-captured). A captured trace is shared publicly only if its owner explicitly opts it into public visibility. Capture grants no payout or settlement — the data-market reward marker is inert and owner-gated. The canonical terms are served at GET /api/public/free-tier-data-sharing and embedded in the POST /api/keys/free mint response.',
+          'Free tier: when you use the free Khala API without paying for privacy, your traffic is captured by default when the owner-gated production capture flag is armed, as a redacted, private-by-default (owner_only) trace and may be used to improve and train OpenAgents models. Pay for privacy, or run confidential compute, to opt out of capture (fail-closed to not-captured). A captured trace is shared publicly only if its owner explicitly opts it into public visibility. Capture grants no payout or settlement — the data-market reward marker is inert and owner-gated. The canonical terms are served at GET /api/public/free-tier-data-sharing and embedded in the POST /api/keys/free mint response with explicit blocker/gate refs.',
         unsafeCopy:
           'Do not claim free traffic is never captured, do not claim captured traces are public by default, do not claim paid-privacy callers are captured, and do not claim capture earns the user a payout, reward, or settlement.',
         evidenceRefs: [
@@ -1045,9 +1045,13 @@ export const publicProductPromisesDocument = () => {
         blockerRefs: [
           'blocker.product_promises.free_tier_capture_default_owner_gated',
           'blocker.product_promises.disclosure_copy_owner_signoff_pending',
+          'blocker.product_promises.trace_capture_public_disclosure_alignment_required',
+          'blocker.product_promises.trace_capture_reward_marker_inert',
+          'blocker.product_promises.paid_privacy_owner_signoff_pending',
+          'blocker.product_promises.paid_khala_business_loop_not_green',
         ],
         verification:
-          'GET /api/public/free-tier-data-sharing returns the canonical disclosure (version, summary, ordered terms, bounded policy facts) and the POST /api/keys/free mint response embeds the same dataSharing object. The terms must stay accurate to the capture seams: auto-capture is redacted and owner_only (khala-chat-trace-emitter.ts), paid-privacy is excluded fail-closed (inference-privacy-entitlement.ts), public is owner opt-in only, and the reward marker stays inert (#6221). Green requires the default-on capture flip armed in prod (KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT) and owner-approved public copy.',
+          'GET /api/public/free-tier-data-sharing returns the canonical disclosure (version, summary, ordered terms, bounded policy facts, blocker refs, and gate summary) and the POST /api/keys/free mint response embeds the same dataSharing object. The terms must stay accurate to the capture seams: auto-capture is redacted and owner_only (khala-chat-trace-emitter.ts), default-on production capture is owner-gated by KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT, paid-privacy is excluded fail-closed (inference-privacy-entitlement.ts), public is owner opt-in only, and the reward marker stays inert (#6221). Green requires the default-on capture flip armed in prod and owner-approved public copy.',
         authorityBoundary:
           'A disclosure grants no spend, payout, settlement, training-consent, or capture authority. It describes policy only; it does not change capture behavior or move money.',
       },
