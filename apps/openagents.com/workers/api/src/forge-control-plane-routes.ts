@@ -117,6 +117,13 @@ const ForgeMergeQueueSnapshotRequest = S.Struct({
   sourceRefs: S.optionalKey(S.Array(S.String)),
 })
 
+const ForgeMergeQueueDeriveRequest = S.Struct({
+  tenantRef: S.String,
+  queueRef: S.String,
+  actualHead: S.String,
+  sourceRefs: S.optionalKey(S.Array(S.String)),
+})
+
 const ForgeOpenAgentsImportRequest = S.Struct({
   tenantRef: S.String,
   repositoryRef: S.String,
@@ -276,6 +283,261 @@ const limitFromQuery = (url: URL): number => {
   }
 
   return Math.min(Math.max(parsed, 1), 100)
+}
+
+const commitShaPattern = /^[a-f0-9]{40}$/i
+
+type ForgeQueueCandidate = Readonly<{
+  baseHead: string
+  blockerRefs: ReadonlyArray<string>
+  changeRef: string
+  issueNumber: number
+  issueOpen: boolean
+  patchHead: string
+  queuedAt: string
+  verificationPassed: boolean
+}>
+
+type ForgeQueueReadyEntry = Readonly<{
+  candidateRef: string
+  issueNumber: number
+  promotionRef: string
+  virtualBaseCommit: string
+  virtualHeadCommit: string
+  waitsForActualHead: string | null
+}>
+
+type ForgeQueueBlockedEntry = Readonly<{
+  blockedReasonRef: string
+  candidateRef: string
+  detail: string
+  issueNumber: number
+  status: 'blocked' | 'needs-rebase'
+}>
+
+const jsonStringArray = (value: string): ReadonlyArray<string> => {
+  const parsed = JSON.parse(value) as unknown
+  return Array.isArray(parsed)
+    ? parsed.filter((entry): entry is string => typeof entry === 'string')
+    : []
+}
+
+const issueNumberFromRef = (
+  issueRef: string,
+  githubIssueNumber: number | null | undefined,
+): number => {
+  if (githubIssueNumber !== null && githubIssueNumber !== undefined) {
+    return githubIssueNumber
+  }
+  const match = issueRef.match(/(?:^|[._#-])(\d+)$/u)
+  return match === null ? 0 : Number(match[1])
+}
+
+const promotionRefForCandidate = async (
+  candidate: ForgeQueueCandidate,
+): Promise<string> =>
+  `promotion.forge.next_actual.${(await sha256Hex(
+    `${candidate.issueNumber}:${candidate.baseHead}:${candidate.patchHead}`,
+  )).slice(0, 24)}`
+
+const deletionPoisonBlocker = (
+  blockerRefs: ReadonlyArray<string>,
+): string | undefined =>
+  blockerRefs.find(ref =>
+    /(?:delete|deletion|mass_deletion|protected_path_deleted|deletion_poison)/iu.test(
+      ref,
+    ),
+  )
+
+const blockQueueCandidate = (
+  candidate: ForgeQueueCandidate,
+  blockedReasonRef: string,
+  detail: string,
+): ForgeQueueBlockedEntry => ({
+  blockedReasonRef,
+  candidateRef: candidate.changeRef,
+  detail,
+  issueNumber: candidate.issueNumber,
+  status:
+    blockedReasonRef === 'virtual_merge_queue.blocked.stale_base'
+      ? 'needs-rebase'
+      : 'blocked',
+})
+
+const projectForgeMergeQueue = async (
+  actualHead: string,
+  candidates: ReadonlyArray<ForgeQueueCandidate>,
+) => {
+  const ready: Array<ForgeQueueReadyEntry> = []
+  const blocked: Array<ForgeQueueBlockedEntry> = []
+  const seenIssues = new Set<number>()
+  let virtualHead = actualHead
+
+  if (!commitShaPattern.test(actualHead)) {
+    return {
+      actualHead,
+      branchBaseForNextAssignment: actualHead,
+      blocked: candidates.map(candidate =>
+        blockQueueCandidate(
+          candidate,
+          'virtual_merge_queue.blocked.invalid_commit',
+          'actual head is not a pinned 40-character commit',
+        ),
+      ),
+      nextActualPromotion: null,
+      ready,
+      virtualHead: actualHead,
+    }
+  }
+
+  for (const candidate of [...candidates].sort((left, right) =>
+    `${left.queuedAt}\0${left.changeRef}`.localeCompare(
+      `${right.queuedAt}\0${right.changeRef}`,
+    ),
+  )) {
+    if (seenIssues.has(candidate.issueNumber)) {
+      blocked.push(
+        blockQueueCandidate(
+          candidate,
+          'virtual_merge_queue.blocked.duplicate_issue',
+          `issue #${candidate.issueNumber} already has an earlier queue candidate`,
+        ),
+      )
+      continue
+    }
+    seenIssues.add(candidate.issueNumber)
+
+    if (
+      candidate.issueNumber <= 0 ||
+      !commitShaPattern.test(candidate.baseHead) ||
+      !commitShaPattern.test(candidate.patchHead)
+    ) {
+      blocked.push(
+        blockQueueCandidate(
+          candidate,
+          'virtual_merge_queue.blocked.invalid_commit',
+          'candidate issue, base, or patch head is not pinned',
+        ),
+      )
+      continue
+    }
+
+    if (!candidate.issueOpen) {
+      blocked.push(
+        blockQueueCandidate(
+          candidate,
+          'virtual_merge_queue.blocked.issue_closed',
+          `issue #${candidate.issueNumber} is not open`,
+        ),
+      )
+      continue
+    }
+
+    if (!candidate.verificationPassed) {
+      blocked.push(
+        blockQueueCandidate(
+          candidate,
+          'virtual_merge_queue.blocked.verification_not_passed',
+          `issue #${candidate.issueNumber} has no passing verification receipt`,
+        ),
+      )
+      continue
+    }
+
+    const deletionBlocker = deletionPoisonBlocker(candidate.blockerRefs)
+    if (deletionBlocker !== undefined) {
+      blocked.push(
+        blockQueueCandidate(
+          candidate,
+          'virtual_merge_queue.blocked.protected_path_deleted',
+          `candidate carries deletion-poison blocker ${deletionBlocker}`,
+        ),
+      )
+      continue
+    }
+
+    if (candidate.baseHead.toLowerCase() !== virtualHead.toLowerCase()) {
+      blocked.push(
+        blockQueueCandidate(
+          candidate,
+          'virtual_merge_queue.blocked.stale_base',
+          `candidate base ${candidate.baseHead} does not match virtual head ${virtualHead}`,
+        ),
+      )
+      continue
+    }
+
+    const promotionRef = await promotionRefForCandidate(candidate)
+    const waitsForActualHead =
+      candidate.baseHead.toLowerCase() === actualHead.toLowerCase()
+        ? null
+        : candidate.baseHead
+    ready.push({
+      candidateRef: candidate.changeRef,
+      issueNumber: candidate.issueNumber,
+      promotionRef,
+      virtualBaseCommit: candidate.baseHead,
+      virtualHeadCommit: candidate.patchHead,
+      waitsForActualHead,
+    })
+    virtualHead = candidate.patchHead
+  }
+
+  return {
+    actualHead,
+    branchBaseForNextAssignment: virtualHead,
+    blocked,
+    nextActualPromotion:
+      ready.find(entry => entry.waitsForActualHead === null) ?? null,
+    ready,
+    virtualHead,
+  }
+}
+
+const deriveForgeMergeQueueProjection = async (
+  store: ForgeCoordinationStore,
+  tenantRef: string,
+  actualHead: string,
+) => {
+  const [changes, issues, verificationReceipts] = await Promise.all([
+    store.listChanges(tenantRef, 100),
+    store.listIssues(tenantRef, 100),
+    store.listVerificationReceipts(tenantRef, 100),
+  ])
+  const issuesByRef = new Map(issues.map(issue => [issue.issue_ref, issue]))
+  const passedVerificationRefs = new Set(
+    verificationReceipts
+      .filter(receipt => receipt.verdict === 'passed')
+      .map(receipt => receipt.verification_ref),
+  )
+  const passedVerificationChangeRefs = new Set(
+    verificationReceipts
+      .filter(receipt => receipt.verdict === 'passed')
+      .map(receipt => receipt.change_ref),
+  )
+  const candidates = changes
+    .filter(change => change.state === 'ready' || change.state === 'open')
+    .map((change): ForgeQueueCandidate => {
+      const issue = issuesByRef.get(change.issue_ref)
+      return {
+        baseHead: change.base_head,
+        blockerRefs: jsonStringArray(change.blocker_refs_json),
+        changeRef: change.change_ref,
+        issueNumber: issueNumberFromRef(
+          change.issue_ref,
+          issue?.github_issue_number,
+        ),
+        issueOpen: issue?.state !== 'closed',
+        patchHead: change.patch_head,
+        queuedAt: change.created_at,
+        verificationPassed:
+          (change.verification_ref !== null &&
+            passedVerificationRefs.has(change.verification_ref)) ||
+          passedVerificationChangeRefs.has(change.change_ref),
+      }
+    })
+
+  return projectForgeMergeQueue(actualHead, candidates)
 }
 
 const requireScope = async <Bindings>(
@@ -536,8 +798,14 @@ const routeQueue = async <Bindings>(
   await requireScope(dependencies, request, env, 'forge:queue:read', tenantRef)
   const limit = limitFromQuery(url)
   const store = dependencies.makeStore(env)
+  const actualHead = optionalQuery(url, 'actualHead')
+  const derived =
+    actualHead === undefined
+      ? undefined
+      : await deriveForgeMergeQueueProjection(store, tenantRef, actualHead)
 
   return noStoreJsonResponse({
+    ...(derived === undefined ? {} : { derived }),
     latest: await store.readLatestMergeQueueLedger(tenantRef),
     limit,
     queueSnapshots: await store.listMergeQueueLedgers(tenantRef, limit),
@@ -573,6 +841,40 @@ const routeQueueSnapshots = async <Bindings>(
   })
 
   return noStoreJsonResponse({ queueSnapshot }, { status: 201 })
+}
+
+const routeQueueDerive = async <Bindings>(
+  dependencies: ForgeControlPlaneRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+) => {
+  if (request.method !== 'POST') {
+    return methodNotAllowed(['POST'])
+  }
+
+  const body = await decodeBody(request, ForgeMergeQueueDeriveRequest)
+  await requireScope(dependencies, request, env, 'forge:queue:write', body.tenantRef)
+  const store = dependencies.makeStore(env)
+  const derived = await deriveForgeMergeQueueProjection(
+    store,
+    body.tenantRef,
+    body.actualHead,
+  )
+  const queueSnapshot = await store.recordMergeQueueLedger({
+    tenantRef: body.tenantRef,
+    queueRef: body.queueRef,
+    baseHead: body.actualHead,
+    actualHead: body.actualHead,
+    virtualHead: derived.virtualHead,
+    state: 'projected',
+    nextPromotionRef: derived.nextActualPromotion?.promotionRef ?? null,
+    ready: derived.ready,
+    blocked: derived.blocked,
+    sourceRefs: body.sourceRefs ?? [],
+    nowIso: routeNowIso(dependencies),
+  })
+
+  return noStoreJsonResponse({ derived, queueSnapshot }, { status: 201 })
 }
 
 const routeVerificationReceipts = async <Bindings>(
@@ -862,6 +1164,10 @@ export const makeForgeControlPlaneRoutes = <Bindings>(
 
     if (route.length === 2 && route[0] === 'queue' && route[1] === 'snapshots') {
       return routeEffect(() => routeQueueSnapshots(dependencies, request, env))
+    }
+
+    if (route.length === 2 && route[0] === 'queue' && route[1] === 'derive') {
+      return routeEffect(() => routeQueueDerive(dependencies, request, env))
     }
 
     if (route.length === 1 && route[0] === 'verification-receipts') {
