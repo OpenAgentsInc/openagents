@@ -57,4 +57,3 @@ did not produce a hosted Gemini production receipt. The current blockers remain:
 Green still requires a fresh production Hosted Gemini success receipt that
 dereferences from the promise evidence set and an owner-signed transition
 receipt recorded through the product-promise transition path.
-
