@@ -41,8 +41,8 @@ export const MARKETPLACE_WORK_CLASS_CATALOG_SCHEMA =
 export const MARKETPLACE_WORK_CLASS_CATALOG_PROMISE =
   'autopilot.control_center_fanout_marketplace.v1' as const
 
-// The ONE work class that is actually live on the market today — the same class
-// the self-serve fanout lists and #4783 settled under.
+// The original live work class — the same class the self-serve fanout default
+// lists and #4783 settled under.
 export const MARKETPLACE_LIVE_WORK_CLASS = 'code_task' as const
 
 export const MARKETPLACE_DATA_LABELING_WORK_CLASS = 'data_labeling' as const

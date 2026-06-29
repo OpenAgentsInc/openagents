@@ -92,14 +92,14 @@ describe('public launch dashboard', () => {
       ['api_hosted_gemini', 'yellow'],
       ['agentic_labor_products', 'yellow'],
       ['pylon_cli_tui_probe_background', 'yellow'],
-      ['control_center_fanout_plugin_marketplace', 'red'],
+      ['control_center_fanout_plugin_marketplace', 'yellow'],
       ['dspy_gepa_signature_monetization', 'red'],
       ['chatgpt_claude_codex_capacity', 'red'],
       ['cursor_agent_forum_wallet', 'yellow'],
       ['prepaid_provider_capacity_monetization', 'red'],
     ])
-    expect(dashboard.redCount).toBe(7)
-    expect(dashboard.yellowCount).toBe(10)
+    expect(dashboard.redCount).toBe(6)
+    expect(dashboard.yellowCount).toBe(11)
     expect(dashboard.greenCount).toBe(1)
     expect(dashboard.status).toBe('red')
     expect(dashboard.rows.every(row => row.evidenceRefs.length > 0)).toBe(true)

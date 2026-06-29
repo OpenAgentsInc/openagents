@@ -293,11 +293,14 @@ const publicLaunchDashboardRows: ReadonlyArray<PromiseRowDefinition> = [
       'Do not claim every Pylon install includes a complete Probe CLI/TUI background worker.',
   },
   {
-    baseStatus: 'red',
+    baseStatus: 'yellow',
     blockerRefs: [
-      'blocker.launch_dashboard.control_center.multi_agent_marketplace_not_self_serve',
+      'blocker.launch_dashboard.control_center.armed_settlement_receipt_missing',
     ],
     evidenceRefs: [
+      'apps/openagents.com/workers/api/src/self-serve-fanout.ts',
+      'apps/openagents.com/workers/api/src/marketplace-work-class-catalog.ts',
+      'https://github.com/OpenAgentsInc/openagents/issues/6893',
       'route:/api/operator/pylons/assignments',
       'docs/2026-06-08-signature-marketplace-revenue-gate.md',
     ],
@@ -305,10 +308,10 @@ const publicLaunchDashboardRows: ReadonlyArray<PromiseRowDefinition> = [
     promiseText:
       'Control center / Autopilot can fan out work to many agents and pull from a plugin marketplace.',
     safeCopy:
-      'Operator assignment and marketplace gate surfaces exist, but self-serve multi-agent fanout plus plugin marketplace execution is not live.',
+      'Lane-C fanout has a customer-initiated planner and a live non-code data_labeling work class, but armed self-serve settlement remains receipt-gated.',
     staleSensitive: true,
     unsafeCopy:
-      'Do not claim a self-serve control center can fan out paid work to many agents from a live marketplace.',
+      'Do not claim a self-serve control center can settle paid work to many agents from a broad live marketplace.',
   },
   {
     baseStatus: 'red',

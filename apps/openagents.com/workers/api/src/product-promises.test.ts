@@ -223,6 +223,9 @@ describe('public product promises document', () => {
     // self-serve-fanout pass clears the self_serve_fanout_missing blocker on
     // autopilot.control_center_fanout_marketplace.v1 (customer-initiated
     // single-action fanout planner/route + INERT public projection); the
+    // promise STAYS yellow, so green remains exactly 24. The #6893 non-code
+    // marketplace pass clears plugin_marketplace_beyond_code_task_missing by
+    // wiring data_labeling through the same fanout planner/route gate; the
     // promise STAYS yellow, so green remains exactly 24. The 2026-06-20.16
     // agentic-labor self-serve pass clears not_all_labor_flows_self_serve on
     // autopilot.agentic_labor_products.v1 (deployed self-serve POST order path)
