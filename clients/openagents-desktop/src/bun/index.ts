@@ -68,6 +68,11 @@ const khalaFleetStorePath = (): string =>
   Bun.env.OPENAGENTS_DESKTOP_KHALA_FLEET_DB ??
   join(homedir(), ".openagents", "desktop", "khala-fleet.sqlite")
 
+const previewPort = (): number => {
+  const parsed = Number(Bun.env.OPENAGENTS_DESKTOP_PREVIEW_PORT ?? "50001")
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 50001
+}
+
 const pathCandidates = (): readonly string[] => [
   Bun.env.PATH ?? "",
   join(homedir(), ".bun", "bin"),
@@ -1371,24 +1376,170 @@ const khalaFleetSnapshot = async (): Promise<KhalaFleetSnapshotResult> => {
   }
 }
 
+const desktopRpcRequestHandlers = {
+  codingStatus,
+  createPylon,
+  khalaDispatchPlan,
+  khalaFleetSnapshot,
+  async pylonStatus() {
+    return desktopPylonStatus()
+  },
+  replayTokenFailures,
+  tokenAccountingStatus,
+  verifyAssignmentTokenUsage,
+} satisfies OpenAgentsDesktopRPCSchema["requests"]
+
+const contentTypeForPath = (path: string): string => {
+  if (path.endsWith(".html")) return "text/html; charset=utf-8"
+  if (path.endsWith(".js")) return "text/javascript; charset=utf-8"
+  if (path.endsWith(".css")) return "text/css; charset=utf-8"
+  if (path.endsWith(".woff2")) return "font/woff2"
+  if (path.endsWith(".json")) return "application/json; charset=utf-8"
+  return "application/octet-stream"
+}
+
+const packagedPreviewRootCandidates = (): readonly string[] => [
+  resolve(process.cwd(), "../Resources/app/views/openagents-desktop"),
+  resolve(process.cwd(), "app/views/openagents-desktop"),
+]
+
+const sourcePreviewAssetCandidates = (pathname: string): readonly string[] => {
+  const normalized = pathname === "/" ? "/index.html" : pathname
+  if (normalized === "/index.html") {
+    return [resolve(process.cwd(), "src/ui/index.html")]
+  }
+  if (normalized === "/main.js") {
+    return [resolve(process.cwd(), "resources/ui/main.js")]
+  }
+  if (normalized === "/main.css") {
+    return [resolve(process.cwd(), "resources/ui/main.css")]
+  }
+  if (normalized.startsWith("/fonts/")) {
+    return [resolve(process.cwd(), "src/ui", normalized.slice(1))]
+  }
+  return []
+}
+
+const previewAssetCandidates = (pathname: string): readonly string[] => {
+  const normalized = pathname === "/" ? "/index.html" : pathname
+  if (normalized.includes("..")) return []
+  return [
+    ...packagedPreviewRootCandidates().map(root =>
+      resolve(root, normalized.slice(1)),
+    ),
+    ...sourcePreviewAssetCandidates(normalized),
+  ]
+}
+
+const responseHeaders = (
+  contentType: string,
+  extra?: HeadersInit,
+): Headers => {
+  const headers = new Headers(extra)
+  headers.set("content-type", contentType)
+  headers.set("cache-control", "no-store")
+  return headers
+}
+
+const jsonResponse = (value: unknown, init?: ResponseInit): Response =>
+  new Response(JSON.stringify(value), {
+    ...init,
+    headers: responseHeaders("application/json; charset=utf-8", init?.headers),
+  })
+
+const previewAssetResponse = async (pathname: string): Promise<Response> => {
+  for (const candidate of previewAssetCandidates(pathname)) {
+    const file = Bun.file(candidate)
+    if (!(await file.exists())) continue
+    return new Response(file, {
+      headers: responseHeaders(contentTypeForPath(candidate)),
+    })
+  }
+  return new Response("Not found", {
+    status: 404,
+    headers: responseHeaders("text/plain; charset=utf-8"),
+  })
+}
+
+const previewRpcResponse = async (request: Request, method: string): Promise<Response> => {
+  if (request.method !== "POST") {
+    return jsonResponse({ ok: false, error: "method_not_allowed" }, {
+      status: 405,
+    })
+  }
+  const handler = (
+    desktopRpcRequestHandlers as Record<string, (...args: readonly unknown[]) => unknown>
+  )[method]
+  if (handler === undefined) {
+    return jsonResponse({ ok: false, error: "unknown_rpc_method" }, {
+      status: 404,
+    })
+  }
+  try {
+    const body = await request.json().catch(() => ({}))
+    const args =
+      typeof body === "object" &&
+      body !== null &&
+      !Array.isArray(body) &&
+      Array.isArray((body as { args?: unknown }).args)
+        ? (body as { args: readonly unknown[] }).args
+        : []
+    return jsonResponse(await handler(...args))
+  } catch (error) {
+    return jsonResponse(
+      {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      { status: 500 },
+    )
+  }
+}
+
+const previewFetch = async (request: Request): Promise<Response> => {
+  const url = new URL(request.url)
+  if (url.pathname === "/health") {
+    return jsonResponse({ ok: true, app: "OpenAgents Desktop" })
+  }
+  if (url.pathname.startsWith("/rpc/")) {
+    return previewRpcResponse(request, decodeURIComponent(url.pathname.slice(5)))
+  }
+  return previewAssetResponse(url.pathname)
+}
+
+const startPreviewServer = (): void => {
+  if (Bun.env.OPENAGENTS_DESKTOP_PREVIEW_SERVER === "0") return
+  const requestedPort = previewPort()
+  for (let offset = 0; offset < 10; offset += 1) {
+    const port = requestedPort + offset
+    try {
+      const server = Bun.serve({
+        port,
+        fetch: previewFetch,
+      })
+      console.info(`OpenAgents desktop web preview: http://localhost:${server.port}`)
+      return
+    } catch (error) {
+      if (!String(error).includes("EADDRINUSE") || offset === 9) {
+        console.warn(
+          `OpenAgents desktop web preview unavailable: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        )
+      }
+    }
+  }
+}
+
 const rpc = BrowserView.defineRPC<OpenAgentsDesktopRPCSchema>({
   maxRequestTime: OPENAGENTS_DESKTOP_RPC_MAX_REQUEST_TIME_MS,
   handlers: {
-    requests: {
-      codingStatus,
-      createPylon,
-      khalaDispatchPlan,
-      khalaFleetSnapshot,
-      async pylonStatus() {
-        return desktopPylonStatus()
-      },
-      replayTokenFailures,
-      tokenAccountingStatus,
-      verifyAssignmentTokenUsage,
-    },
+    requests: desktopRpcRequestHandlers,
     messages: {},
   },
 })
+
+startPreviewServer()
 
 new BrowserWindow({
   title: "OpenAgents",

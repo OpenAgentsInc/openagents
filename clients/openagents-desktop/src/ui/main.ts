@@ -31,7 +31,64 @@ import { mountLandingSquares } from "./landing-squares"
 import { renderMessageBody } from "./transcript-render"
 import "./styles.css"
 
-const rpc = Electroview.defineRPC<OpenAgentsDesktopRPCSchema>({
+type DesktopRpc = ReturnType<typeof Electroview.defineRPC<OpenAgentsDesktopRPCSchema>>
+type DesktopRpcRequests = OpenAgentsDesktopRPCSchema["requests"]
+
+const postPreviewRpc = async <Result>(
+  method: string,
+  args: readonly unknown[] = [],
+): Promise<Result> => {
+  const response = await fetch(`/rpc/${encodeURIComponent(method)}`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ args }),
+  })
+  if (!response.ok) {
+    throw new Error(`${method} failed with ${response.status}`)
+  }
+  return await response.json() as Result
+}
+
+const previewRpc = (): DesktopRpc => ({
+  request: {
+    codingStatus: () =>
+      postPreviewRpc<Awaited<ReturnType<DesktopRpcRequests["codingStatus"]>>>(
+        "codingStatus",
+      ),
+    createPylon: () =>
+      postPreviewRpc<Awaited<ReturnType<DesktopRpcRequests["createPylon"]>>>(
+        "createPylon",
+      ),
+    khalaDispatchPlan: input =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["khalaDispatchPlan"]>>
+      >("khalaDispatchPlan", [input]),
+    khalaFleetSnapshot: () =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["khalaFleetSnapshot"]>>
+      >("khalaFleetSnapshot"),
+    pylonStatus: () =>
+      postPreviewRpc<Awaited<ReturnType<DesktopRpcRequests["pylonStatus"]>>>(
+        "pylonStatus",
+      ),
+    replayTokenFailures: () =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["replayTokenFailures"]>>
+      >("replayTokenFailures"),
+    tokenAccountingStatus: () =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["tokenAccountingStatus"]>>
+      >("tokenAccountingStatus"),
+    verifyAssignmentTokenUsage: assignmentRef =>
+      postPreviewRpc<
+        Awaited<ReturnType<DesktopRpcRequests["verifyAssignmentTokenUsage"]>>
+      >("verifyAssignmentTokenUsage", [assignmentRef]),
+  },
+})
+
+const nativeRpc = Electroview.defineRPC<OpenAgentsDesktopRPCSchema>({
   maxRequestTime: OPENAGENTS_DESKTOP_RPC_MAX_REQUEST_TIME_MS,
   handlers: {
     requests: {},
@@ -39,7 +96,22 @@ const rpc = Electroview.defineRPC<OpenAgentsDesktopRPCSchema>({
   },
 })
 
-new Electroview({ rpc })
+const electrobunGlobals = globalThis as typeof globalThis & {
+  __electrobun?: unknown
+  __electrobunRpcSocketPort?: unknown
+  __electrobunWebviewId?: unknown
+}
+
+const hasElectrobunBridge =
+  electrobunGlobals.__electrobun !== undefined &&
+  electrobunGlobals.__electrobunRpcSocketPort !== undefined &&
+  electrobunGlobals.__electrobunWebviewId !== undefined
+
+const rpc = hasElectrobunBridge ? nativeRpc : previewRpc()
+
+if (hasElectrobunBridge) {
+  new Electroview({ rpc: nativeRpc })
+}
 
 const requireElement = <T extends Element>(selector: string): T => {
   const element = document.querySelector<T>(selector)
