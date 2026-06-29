@@ -97,6 +97,14 @@ export type OperatorFetchOptions = {
   readonly fetch?: typeof fetch
 }
 
+export class OperatorDashboardFetchError extends S.TaggedErrorClass<OperatorDashboardFetchError>()(
+  "OperatorDashboardFetchError",
+  {
+    cause: S.optional(S.Unknown),
+    message: S.String,
+  },
+) {}
+
 const asRecord = (value: unknown): Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -284,9 +292,13 @@ const fetchJson = (options: {
   readonly fetch: typeof fetch
   readonly path: string
   readonly token: string
-}): Effect.Effect<unknown, Error> =>
+}): Effect.Effect<unknown, OperatorDashboardFetchError> =>
   Effect.tryPromise({
-    catch: (error: unknown) => error instanceof Error ? error : new Error(String(error)),
+    catch: (error: unknown) =>
+      new OperatorDashboardFetchError({
+        cause: error,
+        message: error instanceof Error ? error.message : String(error),
+      }),
     try: async () => {
       const response = await options.fetch(`${options.baseUrl}${options.path}`, {
         headers: {
@@ -296,7 +308,9 @@ const fetchJson = (options: {
         method: "GET",
       })
       if (!response.ok) {
-        throw new Error(`${options.path} returned ${response.status}`)
+        throw new OperatorDashboardFetchError({
+          message: `${options.path} returned ${response.status}`,
+        })
       }
       return response.json()
     },
@@ -331,7 +345,7 @@ export const fetchOperatorDashboard = (
       }),
     }
   }).pipe(
-    Effect.catch((error: Error) =>
+    Effect.catch((error: OperatorDashboardFetchError) =>
       Effect.succeed({
         ok: false as const,
         error: error.message,

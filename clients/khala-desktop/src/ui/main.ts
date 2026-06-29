@@ -1,12 +1,12 @@
 import { Electroview } from "electrobun/view"
 
+import type { AppleFmSidecarPublicStatus } from "../bun/apple-fm-sidecar.js"
 import {
   KHALA_OPERATOR_POLL_INTERVAL_MS,
   type DashboardAccount,
   type DashboardPylon,
   type DashboardSession,
   type KhalaDesktopDashboard,
-  type KhalaDesktopDashboardResult,
 } from "../shared/operator-dashboard.js"
 import {
   KHALA_DESKTOP_RPC_MAX_REQUEST_TIME_MS,
@@ -26,7 +26,11 @@ new Electroview({ rpc })
 
 type ViewState =
   | { readonly status: "loading" }
-  | { readonly status: "ready"; readonly dashboard: KhalaDesktopDashboard }
+  | {
+      readonly status: "ready"
+      readonly appleFmSidecar: AppleFmSidecarPublicStatus | null
+      readonly dashboard: KhalaDesktopDashboard
+    }
   | { readonly status: "error"; readonly error: string; readonly observedAt: string }
 
 const app = document.querySelector<HTMLElement>("#app")
@@ -110,7 +114,45 @@ const sessionRow = (session: DashboardSession): string => `
 const emptyRow = (message: string, columns: number): string =>
   `<tr><td class="empty-row" colspan="${columns}">${escapeHtml(message)}</td></tr>`
 
-const renderDashboard = (dashboard: KhalaDesktopDashboard): string => `
+const sidecarPanel = (status: AppleFmSidecarPublicStatus | null): string => {
+  if (status === null) {
+    return `
+      <section class="panel">
+        <div class="section-heading">
+          <h2>Local Apple FM</h2>
+          <span>checking</span>
+        </div>
+        <div class="detail-grid">
+          <article><span>State</span><strong>checking</strong></article>
+          <article><span>Authority</span><strong>Pylon required</strong></article>
+          <article><span>Blockers</span><strong>pending</strong></article>
+        </div>
+      </section>`
+  }
+
+  const blockerText =
+    status.blockerRefs.length === 0 ? "none" : status.blockerRefs.join(", ")
+  const source = status.helperSource === null ? "none" : status.helperSource
+  return `
+    <section class="panel">
+      <div class="section-heading">
+        <h2>Local Apple FM</h2>
+        <span>${escapeHtml(formatTime(status.observedAt))}</span>
+      </div>
+      <div class="detail-grid">
+        <article><span>State</span><strong><span class="pill ${status.available ? "pill-ready" : "pill-warn"}">${escapeHtml(status.state.replace(/_/g, " "))}</span></strong></article>
+        <article><span>Helper</span><strong>${escapeHtml(source.replace(/_/g, " "))}</strong></article>
+        <article><span>Owner process</span><strong>${status.launchedByApp ? "launched by app" : "not launched"}</strong></article>
+      </div>
+      <p class="panel-note">${escapeHtml(status.message)}</p>
+      <p class="panel-note">Blockers: ${escapeHtml(blockerText)}</p>
+    </section>`
+}
+
+const renderDashboard = (
+  dashboard: KhalaDesktopDashboard,
+  appleFmSidecar: AppleFmSidecarPublicStatus | null,
+): string => `
   <section class="hero">
     <div>
       <p class="kicker">Khala operator desktop</p>
@@ -130,6 +172,8 @@ const renderDashboard = (dashboard: KhalaDesktopDashboard): string => `
     <article><span>Ready accounts</span><strong>${formatNumber(dashboard.totals.readyAccounts)}</strong></article>
     <article><span>Tokens today</span><strong>${formatNumber(dashboard.totals.tokensToday)}</strong></article>
   </section>
+
+  ${sidecarPanel(appleFmSidecar)}
 
   <section class="panel">
     <div class="section-heading">
@@ -194,13 +238,16 @@ const render = (state: ViewState): void => {
     return
   }
 
-  app.innerHTML = renderDashboard(state.dashboard)
+  app.innerHTML = renderDashboard(state.dashboard, state.appleFmSidecar)
 }
 
 const load = async (): Promise<void> => {
-  const result: KhalaDesktopDashboardResult = await rpc.request.operatorDashboard()
+  const [result, appleFmSidecar] = await Promise.all([
+    rpc.request.operatorDashboard(),
+    rpc.request.appleFmSidecarStatus().catch(() => null),
+  ])
   if (result.ok) {
-    render({ status: "ready", dashboard: result.dashboard })
+    render({ status: "ready", appleFmSidecar, dashboard: result.dashboard })
   } else {
     render({ status: "error", error: result.error, observedAt: result.observedAt })
   }

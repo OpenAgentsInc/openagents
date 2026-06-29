@@ -2,9 +2,8 @@
 
 Date: 2026-06-29
 
-Status: audit and implementation plan for issue #6947. This document does not
-implement the sidecar. The implementation issue is tracked separately and is
-blocked on #6932: #6978.
+Status: audit and implementation plan for issue #6947, with the first bounded
+implementation slice for #6978 now attached to `clients/khala-desktop`.
 
 ## Summary
 
@@ -316,13 +315,22 @@ Do not reuse:
 
 ## Implementation Backlog
 
-Blocked on #6932:
+#6978 first slice after #6932:
 
-1. Add an Electrobun Apple app resource copy for
-   `foundation-bridge`.
-2. Add a Bun-side sidecar lifecycle module for packaged helper discovery,
-   launch/adopt/stop, loopback port selection, timeout, and cleanup.
-3. Wire Pylon control readiness into the new desktop app's local backend mode.
+1. **Landed:** Add an Electrobun Apple app resource copy for
+   `foundation-bridge` in `clients/khala-desktop/electrobun.config.ts`. The
+   build prefers the compiled Swift helper when present and falls back to the
+   Pylon wrapper in source checkouts; release hosts still need to run the Swift
+   build before packaging.
+2. **Landed:** Add a Bun-side sidecar lifecycle module for packaged helper
+   discovery, launch/adopt/stop, loopback port selection, readiness timeout,
+   cleanup, typed states, and public-safe blocker refs:
+   `clients/khala-desktop/src/bun/apple-fm-sidecar.ts`.
+3. **Partially landed:** Wire local Apple FM mode into the Electrobun UI through
+   public-safe status only. The webview sees state, blocker refs, helper source
+   label, and whether the app launched the helper; it does not receive helper
+   paths, loopback URLs, callback tokens, prompts, tool args, or file contents.
+   Pylon remains required for actual readiness and turns.
 4. Wire local Apple FM turn submission through Pylon, not directly from the
    webview to the sidecar.
 5. Add token usage ingestion for local Apple FM own-capacity turns if the
@@ -331,8 +339,10 @@ Blocked on #6932:
    first release if raw archives are unavailable.
 7. Add fake-bridge unit/integration tests for helper missing, unsupported,
    disabled, ready, not-ready refusal, bounded tool success, and redaction.
-8. Add the packaged-helper verifier to the Apple release pipeline before
-   notarization.
+8. **Landed for the Khala desktop app:** Add the packaged-helper verifier
+   `clients/khala-desktop/scripts/verify-packaged-apple-fm-bridge.ts` and
+   package script `verify:packaged-apple-fm`. The broader release pipeline must
+   call this after `electrobun build` and before notarization.
 9. Run an admitted-Mac from-install smoke on the signed/notarized build.
 
 ## Acceptance For The Follow-Up Implementation

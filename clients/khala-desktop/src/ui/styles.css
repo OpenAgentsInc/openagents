@@ -135,6 +135,40 @@ h2 {
   overflow: hidden;
 }
 
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 16px 18px;
+}
+
+.detail-grid article {
+  display: grid;
+  min-height: 72px;
+  gap: 8px;
+  padding: 14px;
+  background: #0a1119;
+  border: 1px solid #1d2530;
+  border-radius: 8px;
+}
+
+.detail-grid span,
+.panel-note {
+  color: #aeb9c6;
+  font-size: 12px;
+}
+
+.detail-grid strong {
+  color: #f7fbff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.panel-note {
+  padding: 0 18px 14px;
+  line-height: 1.55;
+}
+
 .section-heading {
   display: flex;
   align-items: center;
@@ -251,6 +285,10 @@ code,
 
   .metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .detail-grid {
+    grid-template-columns: 1fr;
   }
 }
 
