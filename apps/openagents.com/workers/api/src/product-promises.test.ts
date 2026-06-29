@@ -130,6 +130,9 @@ describe('public product promises document', () => {
     expect(blockerRefs).not.toContain(
       'blocker.product_promises.cloud_primitives_unified_balance_unbuilt',
     )
+    expect(blockerRefs).not.toContain(
+      'blocker.product_promises.autopilot_credits_no_card_credit_spend_receipt',
+    )
     expect(decoded.sourceRefs).toContain(
       'docs/training/2026-06-20-psion-instruct-sft-fixture-sync.md',
     )
@@ -160,6 +163,35 @@ describe('public product promises document', () => {
     expect(decoded.promises.length).toBeGreaterThan(0)
     expect(decoded.verificationSummary.promiseCount).toBe(
       decoded.promises.length,
+    )
+    const cardCreditInferencePromise = decoded.promises.find(
+      promise => promise.promiseId === 'inference.gateway_credits_business.v1',
+    )
+    const autopilotCreditsPromise = decoded.promises.find(
+      promise => promise.promiseId === 'payments.autopilot_credits_purchase.v1',
+    )
+
+    expect(cardCreditInferencePromise?.state).toBe('red')
+    expect(cardCreditInferencePromise?.evidenceRefs).toContain(
+      'apps/openagents.com/workers/api/src/public-card-credit-spend-receipt-routes.ts',
+    )
+    expect(cardCreditInferencePromise?.blockerRefs).toEqual(
+      expect.arrayContaining([
+        'blocker.product_promises.inference_paid_receipt_not_yet_supplied',
+      ]),
+    )
+    expect(autopilotCreditsPromise?.state).toBe('red')
+    expect(autopilotCreditsPromise?.evidenceRefs).toContain(
+      'apps/openagents.com/workers/api/src/public-card-credit-spend-receipt-routes.ts',
+    )
+    expect(autopilotCreditsPromise?.blockerRefs).not.toContain(
+      'blocker.product_promises.autopilot_credits_no_card_credit_spend_receipt',
+    )
+    expect(autopilotCreditsPromise?.blockerRefs).toEqual(
+      expect.arrayContaining([
+        'blocker.product_promises.autopilot_credits_prod_stripe_secrets_missing',
+        'blocker.product_promises.autopilot_credits_no_real_card_purchase_receipt',
+      ]),
     )
     // receipt. The Episode 239 records (registry 2026-06-19.6) are all
     // red/planned; the 2026-06-19.7 passes (scaffold advancement + training
@@ -440,8 +472,9 @@ describe('public product promises document', () => {
       /latest stays 0\.2\.5|only published, installable Pylon|release candidate, not stable 0\.3\.0|Pylon v1\.0 is present in the monorepo as a release candidate/i,
     )
     expect(currentCopy).toContain('Pylon v1.0 has a stable source cut')
-    expect(currentCopy).toContain('Registry 2026-06-29.2')
+    expect(currentCopy).toContain('Registry 2026-06-29.3')
     expect(currentCopy).toContain('flips NO promise state')
+    expect(currentCopy).toContain('audits #7018')
     expect(currentCopy).toContain('Khala Desktop now carries source-level')
     expect(currentCopy).toContain('maxStalenessSeconds:0')
     const codexSuccessorPromise = decoded.promises.find(
