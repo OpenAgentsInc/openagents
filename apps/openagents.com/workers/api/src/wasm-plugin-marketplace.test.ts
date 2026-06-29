@@ -6,6 +6,8 @@ import {
   handleWasmPluginMarketplaceApi,
 } from './wasm-plugin-marketplace-routes'
 import {
+  type WasmPluginSandboxPolicy,
+  executeWasmPluginSandboxed,
   type WasmPluginPackageManifest,
   installWasmPluginPackage,
   listInstalledWasmPlugins,
@@ -14,6 +16,14 @@ import {
 } from './wasm-plugin-marketplace'
 
 const validDigest = `wasm.sha256.${'a'.repeat(64)}`
+const wasmBytes = (hex: string) =>
+  Uint8Array.from(hex.match(/../g)?.map(byte => Number.parseInt(byte, 16)) ?? [])
+const fixtureAddWasm = wasmBytes(
+  '0061736d0100000001070160027f7f017f030201000707010361646400000a09010700200020016a0b',
+)
+const fixtureUnauthorizedImportWasm = wasmBytes(
+  '0061736d010000000105016000017f020e0103656e76067365637265740000030201000707010372756e00010a0601040010000b',
+)
 
 const manifest = (
   overrides: Partial<WasmPluginPackageManifest> = {},
@@ -34,6 +44,18 @@ const manifest = (
   permissions: ['clock.read', 'log.public'],
   sourceRefs: ['https://github.com/OpenAgentsInc/openagents/tree/main/examples'],
   policyRefs: ['policy.openagents.wasm_plugin_admission.v1'],
+  ...overrides,
+})
+
+const sandboxPolicy = (
+  overrides: Partial<WasmPluginSandboxPolicy> = {},
+): WasmPluginSandboxPolicy => ({
+  maxWasmBytes: 512,
+  maxInputBytes: 64,
+  maxOutputBytes: 64,
+  maxDurationMs: 100,
+  allowedHostCalls: ['clock.read', 'log.public'],
+  policyRefs: ['policy.openagents.wasm_plugin_sandbox.v1'],
   ...overrides,
 })
 
@@ -103,6 +125,111 @@ describe('WASM plugin marketplace policy (#6833)', () => {
     )
     expect(uninstalled?.state).toBe('uninstalled')
     expect(listInstalledWasmPlugins(store).plugins).toHaveLength(0)
+  })
+})
+
+describe('WASM plugin sandbox execution gate (#6832)', () => {
+  test('runs a bounded fixture plugin and emits metering-ready evidence', async () => {
+    const result = await executeWasmPluginSandboxed({
+      manifest: manifest({
+        interfaceDecls: [
+          {
+            kind: 'marketplace.transform.v1',
+            exportName: 'add',
+            inputSchemaRef: 'schema.public.example.i32_pair.v1',
+            outputSchemaRef: 'schema.public.example.i32.v1',
+          },
+        ],
+      }),
+      wasmBytes: fixtureAddWasm,
+      exportName: 'add',
+      args: [20, 22],
+      policy: sandboxPolicy(),
+    })
+
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.result).toBe(42)
+      expect(result.evidence).toEqual(
+        expect.objectContaining({
+          schema: 'openagents.wasm_plugin_execution_evidence.v1',
+          packageRef: 'wasm_plugin.example_transform',
+          exportName: 'add',
+          status: 'accepted',
+          meteringReady: true,
+          wasmBytes: fixtureAddWasm.byteLength,
+          hostCallsAttempted: [],
+          hostCallsRejected: [],
+        }),
+      )
+      expect(result.evidence.inputHash).toMatch(/^input\.sha256\.[a-f0-9]{64}$/)
+      expect(result.evidence.outputHash).toMatch(
+        /^output\.sha256\.[a-f0-9]{64}$/,
+      )
+    }
+  })
+
+  test('rejects unauthorized host calls before instantiation', async () => {
+    const result = await executeWasmPluginSandboxed({
+      manifest: manifest({
+        interfaceDecls: [
+          {
+            kind: 'marketplace.transform.v1',
+            exportName: 'run',
+            inputSchemaRef: 'schema.public.example.empty.v1',
+            outputSchemaRef: 'schema.public.example.i32.v1',
+          },
+        ],
+      }),
+      wasmBytes: fixtureUnauthorizedImportWasm,
+      exportName: 'run',
+      args: [],
+      policy: sandboxPolicy({ allowedHostCalls: [] }),
+    })
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error.blockerRef).toBe(
+        'blocker.wasm_plugin_execution.host_call_denied',
+      )
+      expect(result.error.evidence).toEqual(
+        expect.objectContaining({
+          status: 'rejected',
+          hostCallsAttempted: ['env.secret'],
+          hostCallsRejected: ['env.secret'],
+          meteringReady: true,
+        }),
+      )
+      expect(result.error.evidence.errorHash).toMatch(
+        /^error\.sha256\.[a-f0-9]{64}$/,
+      )
+    }
+  })
+
+  test('rejects oversized input under the sandbox policy', async () => {
+    const result = await executeWasmPluginSandboxed({
+      manifest: manifest({
+        interfaceDecls: [
+          {
+            kind: 'marketplace.transform.v1',
+            exportName: 'add',
+            inputSchemaRef: 'schema.public.example.i32_pair.v1',
+            outputSchemaRef: 'schema.public.example.i32.v1',
+          },
+        ],
+      }),
+      wasmBytes: fixtureAddWasm,
+      exportName: 'add',
+      args: [1, 2],
+      policy: sandboxPolicy({ maxInputBytes: 2 }),
+    })
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error.blockerRef).toBe(
+        'blocker.wasm_plugin_execution.input_too_large',
+      )
+    }
   })
 })
 
