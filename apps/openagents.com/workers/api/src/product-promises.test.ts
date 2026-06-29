@@ -431,6 +431,30 @@ describe('public product promises document', () => {
     expect(agenticNpmPromise?.safeCopy).toContain(
       'bounded source-level registry + install/use runtime core exists',
     )
+    const codingQuickWinPromise = decoded.promises.find(
+      promise => promise.promiseId === 'business.coding_quick_win.v1',
+    )
+    expect(codingQuickWinPromise?.state).toBe('yellow')
+    expect(codingQuickWinPromise?.blockerRefs).toEqual([
+      'blocker.product_promises.business_coding_quick_win_paid_receipt_missing',
+    ])
+    expect(codingQuickWinPromise?.blockerRefs).not.toContain(
+      'blocker.product_promises.business_coding_quick_win_self_serve_missing',
+    )
+    expect(codingQuickWinPromise?.safeCopy).toContain(
+      'public, inert self-serve pipeline endpoint',
+    )
+    expect(codingQuickWinPromise?.verification).toContain(
+      'POST /api/public/business/coding-quick-win-pipeline',
+    )
+    expect(codingQuickWinPromise?.evidenceRefs).toEqual(
+      expect.arrayContaining([
+        'apps/openagents.com/workers/api/src/coding-quick-win-pipeline.ts',
+        'apps/openagents.com/workers/api/src/coding-quick-win-pipeline.test.ts',
+        'apps/openagents.com/workers/api/src/coding-quick-win-pipeline-routes.ts',
+        'apps/openagents.com/workers/api/src/coding-quick-win-pipeline-routes.test.ts',
+      ]),
+    )
     const currentCopy = [
       decoded.currentMonorepoStatus.summary,
       ...decoded.currentMonorepoStatus.caveats,
@@ -440,7 +464,7 @@ describe('public product promises document', () => {
       /latest stays 0\.2\.5|only published, installable Pylon|release candidate, not stable 0\.3\.0|Pylon v1\.0 is present in the monorepo as a release candidate/i,
     )
     expect(currentCopy).toContain('Pylon v1.0 has a stable source cut')
-    expect(currentCopy).toContain('Registry 2026-06-29.2')
+    expect(currentCopy).toContain('Registry 2026-06-29.3')
     expect(currentCopy).toContain('flips NO promise state')
     expect(currentCopy).toContain('Khala Desktop now carries source-level')
     expect(currentCopy).toContain('maxStalenessSeconds:0')

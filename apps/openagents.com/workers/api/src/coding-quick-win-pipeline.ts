@@ -11,8 +11,8 @@ import { BusinessQuickWinPaymentEvidence, businessQuickWinPaidEvidenceRef } from
  * Coding-quick-win SELF-SERVE PIPELINE ORCHESTRATOR.
  *
  * Promise business.coding_quick_win.v1 is yellow with one remaining blocker
- * for the self-serve loop:
- *   - blocker.product_promises.business_coding_quick_win_self_serve_missing
+ * after the self-serve pipeline surface:
+ *   - blocker.product_promises.business_coding_quick_win_paid_receipt_missing
  *
  * This module orchestrates the deterministic step events (scope, provisioning,
  * invocation, delivery, acceptance, payment) into a single verifiable pipeline.
