@@ -92,7 +92,17 @@ const rowsForSql = (sql: string): ReadonlyArray<Record<string, unknown>> => {
   }
 
   if (sql.includes('FROM pylon_api_events')) {
-    return [
+    const rows = [
+      {
+        assignment_ref: 'assignment.public.issue_6427',
+        created_at: '2026-06-27T18:40:50.000Z',
+        event_body_json: JSON.stringify({
+          artifactRefs: ['artifact.public.assignment.testing'],
+        }),
+        event_kind: 'artifact_proof_metadata',
+        event_ref: 'event.public.assignment.issue_6427.artifact.testing',
+        status: 'submitted',
+      },
       {
         assignment_ref: 'assignment.public.issue_6427',
         created_at: '2026-06-27T18:40:30.000Z',
@@ -105,6 +115,9 @@ const rowsForSql = (sql: string): ReadonlyArray<Record<string, unknown>> => {
         status: 'ok',
       },
     ]
+    return sql.includes("event_kind = 'assignment_progress'")
+      ? rows.filter(row => row.event_kind === 'assignment_progress')
+      : rows
   }
 
   if (sql.includes('FROM fleet_alerts')) {
@@ -324,6 +337,8 @@ describe('operator fleet status route', () => {
     expect(log.some(sql => sql.includes('owner_agent_user_id = ?'))).toBe(true)
     expect(log.some(sql => sql.includes('AND user_id = ?'))).toBe(true)
     expect(log.some(sql => sql.includes('AND actor_user_id = ?'))).toBe(true)
+    expect(log.some(sql => sql.includes("event_kind = 'assignment_progress'"))).toBe(true)
+    expect(log.some(sql => sql.includes("usage_truth = 'exact'"))).toBe(true)
   })
 
   test('keeps the legacy fleet status path admin-token only', async () => {

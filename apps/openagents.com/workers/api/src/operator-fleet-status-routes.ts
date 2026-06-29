@@ -247,6 +247,7 @@ const buildFleetStatusSnapshot = async (
          FROM pylon_api_events
         WHERE archived_at IS NULL
           AND assignment_ref IS NOT NULL
+          AND event_kind = 'assignment_progress'
           ${scope.kind === 'agent' ? 'AND owner_agent_user_id = ?' : ''}
         ORDER BY created_at DESC
         LIMIT 100`,
@@ -257,6 +258,9 @@ const buildFleetStatusSnapshot = async (
       `SELECT task_ref, COALESCE(SUM(total_tokens), 0) AS total_tokens
          FROM token_usage_events
         WHERE task_ref IS NOT NULL
+          AND provider = 'pylon-codex-own-capacity'
+          AND model = 'openagents/pylon-codex'
+          AND usage_truth = 'exact'
           AND demand_kind = 'own_capacity'
           AND demand_source = 'khala_coding_delegation'
           ${scope.kind === 'agent' ? 'AND actor_user_id = ?' : ''}
