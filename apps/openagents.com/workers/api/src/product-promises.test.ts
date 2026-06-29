@@ -130,6 +130,9 @@ describe('public product promises document', () => {
     expect(blockerRefs).not.toContain(
       'blocker.product_promises.cloud_primitives_unified_balance_unbuilt',
     )
+    expect(blockerRefs).not.toContain(
+      'blocker.product_promises.business_coding_quick_win_self_serve_missing',
+    )
     expect(decoded.sourceRefs).toContain(
       'docs/training/2026-06-20-psion-instruct-sft-fixture-sync.md',
     )
@@ -158,6 +161,15 @@ describe('public product promises document', () => {
       'docs/tassadar/2026-06-21-tassadar-cpu-transform-training-receipt-surface.md',
     )
     expect(decoded.promises.length).toBeGreaterThan(0)
+    const codingQuickWin = decoded.promises.find(
+      promise => promise.promiseId === 'business.coding_quick_win.v1',
+    )
+    expect(codingQuickWin?.blockerRefs).toEqual([
+      'blocker.product_promises.business_coding_quick_win_paid_receipt_missing',
+    ])
+    expect(codingQuickWin?.evidenceRefs).toContain(
+      'route:/api/public/business/coding-quick-win-receipts?view=paid-delivery-claims',
+    )
     expect(decoded.verificationSummary.promiseCount).toBe(
       decoded.promises.length,
     )
