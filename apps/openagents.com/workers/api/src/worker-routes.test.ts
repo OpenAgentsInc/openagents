@@ -395,6 +395,7 @@ describe('Worker route dual-serve resolution (#6148)', () => {
       routeEcommerceCampaignReceiptRequest: noRoute,
       routeEcommerceCampaignReceiptOperatorRequest: noRoute,
       routeEcommerceCampaignSelfServeRequest: noRoute,
+      routeCodingQuickWinReceiptRequest: noRoute,
       routeMarketingAgencyReceiptRequest: noRoute,
       routeMarketingAgencySelfServeRequest: noRoute,
       routePylonApiRequest: noRoute,

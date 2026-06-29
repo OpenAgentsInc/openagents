@@ -1974,6 +1974,9 @@ const schemaComponents = (): JsonSchema => ({
   EcommerceCampaignReceiptResponse: objectSummary(
     'Public-safe e-commerce campaign receipt or paid-delivery-claims projection. Carries assessedAt/generatedAt timestamps plus a live_at_read staleness contract for claim projections where available. Fixture and stored receipts expose bounded delivery refs only and grant no new delivery, attribution, payout, settlement, or green-claim authority.',
   ),
+  CodingQuickWinReceiptResponse: objectSummary(
+    'Public-safe coding quick-win receipt or paid-delivery-claims projection. Carries assessedAt/generatedAt timestamps plus a live_at_read staleness contract for claim projections where available. Receipt reads expose lifecycle labels without customer-private refs and grant no auto-merge, deploy, payout, settlement, or green-claim authority.',
+  ),
   MarketingAgencyReceiptResponse: objectSummary(
     'Public-safe marketing-agency white-label receipt or paid-delivery-claims projection. Carries assessedAt/generatedAt timestamps plus a live_at_read staleness contract for claim projections where available. Fixture and stored receipts expose bounded delivery refs only and grant no new delivery, attribution, payout, settlement, or green-claim authority.',
   ),
@@ -5930,6 +5933,29 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'E-commerce campaign receipt projection.',
           '#/components/schemas/EcommerceCampaignReceiptResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/business/coding-quick-win-receipts': {
+    get: operation({
+      operationId: 'listPublicCodingQuickWinReceiptClaims',
+      summary: 'List coding quick-win paid-delivery claims',
+      description:
+        'Returns public-safe coding quick-win paid-delivery claim projections when called with view=paid-delivery-claims. Receipt point reads are available under the same route prefix. The surface grants no auto-merge, deploy, delivery, payout, settlement, or green-claim authority.',
+      tags: ['Business', 'Public Proof'],
+      security: publicRead,
+      parameters: [
+        queryParam(
+          'view',
+          'Use paid-delivery-claims to list projected paid delivery claims.',
+        ),
+      ],
+      responses: {
+        '200': okJson(
+          'Coding quick-win receipt projection.',
+          '#/components/schemas/CodingQuickWinReceiptResponse',
         ),
         ...errorResponses(),
       },

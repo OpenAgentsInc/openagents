@@ -1173,3 +1173,14 @@ GLM coding lane and leave REAP-504B on the 4x hosts.)
   After closeout, `provider go-online` again reported Codex `available=2`,
   `ready=2`, `busy=0`, `queued=0`; treat this as the current proof that stale
   local no-spend leases no longer poison advertised capacity.
+- 2026-06-29 #7025 business quick-win receipt narrowing: `business.coding_quick_win.v1`
+  now has a public-safe paid-delivery claim projection at
+  `GET /api/public/business/coding-quick-win-receipts?view=paid-delivery-claims`
+  and a point-read projection for recorded receipt refs. The self-serve evidence
+  chain blocker is removed for the coding pack because
+  `POST /api/public/business/coding-quick-win-pipeline` already validates
+  scope -> provisioning -> runtime invocation -> delivery -> acceptance ->
+  payment into a `BusinessQuickWinReceipt`. The promise stays yellow on the
+  exact remaining gap: a real first paid customer receipt plus owner sign-off
+  under `proof.claim_upgrade_receipts.v1`; the public claim projection reports
+  no substantiated claim while the store is empty.
