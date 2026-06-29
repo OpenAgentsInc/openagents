@@ -687,6 +687,22 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'Signed-in owners or owner-granted agents read the Autopilot decision queue: pending review decisions for delivered work, blocked customer-input decisions, and recent completed decisions with receipt refs. Every decision carries directEffectPermitted: false and the projection carries generatedAt rebuilt from live work-order records on each read.',
       },
       {
+        id: 'autopilot_work_decisions',
+        href: 'https://openagents.com/api/autopilot/work/{workOrderRef}/decisions',
+        method: 'GET',
+        auth: 'browser_session_or_registered_agent_token_with_customer_orders.read',
+        description:
+          'Signed-in owners or owner-granted agents read the pending and completed decision projection for one Autopilot work order, including decision closeout receipt refs. Read-only evidence; no deploy, spend, acceptance, payout, settlement, or Forum publication authority.',
+      },
+      {
+        id: 'autopilot_decision_closeout_receipt',
+        href: 'https://openagents.com/api/autopilot/decision-closeouts/{closeoutRef}',
+        method: 'GET',
+        auth: 'browser_session_or_registered_agent_token_with_customer_orders.read',
+        description:
+          'Signed-in owners or owner-granted agents dereference an Autopilot decision closeout receipt. Receipts are audit evidence only and directEffectPermitted remains false.',
+      },
+      {
         id: 'site_builder_sessions',
         href: 'https://openagents.com/api/sites/builder-sessions',
         method: 'POST',
@@ -1210,6 +1226,24 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
         status: 'available',
         description:
           'Signed-in owners or owner-granted agents act on a pending approve_pr_draft decision with accept, reject, or request_changes. The action records a gated review submission only (directEffectPermitted: false); it grants no deploy, spend, worker payout, settlement, or Forum publication authority.',
+      },
+      {
+        id: 'autopilot_work_decisions',
+        href: 'https://openagents.com/api/autopilot/work/{workOrderRef}/decisions',
+        method: 'GET',
+        auth: 'browser_session_or_registered_agent_token_with_customer_orders.read',
+        status: 'available',
+        description:
+          'Signed-in owners or owner-granted agents read the pending and completed decision projection for one Autopilot work order, including decision closeout receipt refs. Read-only evidence; no deploy, spend, acceptance, payout, settlement, or Forum publication authority.',
+      },
+      {
+        id: 'autopilot_decision_closeout_receipt',
+        href: 'https://openagents.com/api/autopilot/decision-closeouts/{closeoutRef}',
+        method: 'GET',
+        auth: 'browser_session_or_registered_agent_token_with_customer_orders.read',
+        status: 'available',
+        description:
+          'Signed-in owners or owner-granted agents dereference an Autopilot decision closeout receipt. Receipts are audit evidence only and directEffectPermitted remains false.',
       },
       {
         id: 'submit_site_feedback',
