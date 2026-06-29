@@ -37,6 +37,7 @@ const makeFakeStore = (
     status: BatchJobStatus
     processedItems?: number
     failedItems?: number
+    resultsR2Key?: string | null
     startedAt?: string
   }>
 } => {
@@ -45,6 +46,7 @@ const makeFakeStore = (
     status: BatchJobStatus
     processedItems?: number
     failedItems?: number
+    resultsR2Key?: string | null
     startedAt?: string
   }> = []
   const store: BatchJobStore = {
@@ -179,12 +181,20 @@ describe('executeBatchJob', () => {
       usage: { completionTokens: 20, promptTokens: 10, totalTokens: 30 },
     })
     const metering = meteringRecorder()
+    const storedResults: Array<string> = []
 
     const outcome = await run(
       executeBatchJob(
         {
           dispatch: dispatchDepsFor(gateway.adapter),
           meteringHook: metering.hook,
+          resultsStore: {
+            readResults: () => Effect.succeed(null),
+            writeResults: (_jobId, rows) => {
+              storedResults.push(JSON.stringify(rows))
+              return Effect.succeed('batch_test/results.jsonl')
+            },
+          },
           store: fake.store,
         },
         makeQueueMessage('batch_test', 2),
@@ -209,6 +219,7 @@ describe('executeBatchJob', () => {
     ])
     expect(metering.calls()[0]?.accountRef).toBe('agent:abc')
     expect(metering.calls()[0]?.servedModel).toBe('served/fireworks')
+    expect(storedResults).toHaveLength(1)
 
     // Drove the row processing -> completed; the completed status is what makes
     // the public closeout receipt dereferenceable.
@@ -218,7 +229,9 @@ describe('executeBatchJob', () => {
     expect(terminal?.status).toBe('completed')
     expect(terminal?.processedItems).toBe(2)
     expect(terminal?.failedItems).toBe(0)
+    expect(terminal?.resultsR2Key).toBe('batch_test/results.jsonl')
     expect(fake.reads()?.status).toBe('completed')
+    expect(fake.reads()?.resultsR2Key).toBe('batch_test/results.jsonl')
   })
 
   it('stamps the consumer-start time (END of the batch wait) from the injected clock', async () => {

@@ -1,13 +1,21 @@
 import { describe, expect, test } from "bun:test"
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 
 import {
   codexAccountCapacities,
   codexAccountCapacityKey,
   codexAccountCapacityRefs,
   codexBusyByAccount,
+  localCodexAccountReadiness,
   codexPerAccountConcurrency,
 } from "./presence.js"
 import { UNKEYED_ACTIVE_RUN_ACCOUNT } from "./active-assignment-runs.js"
+import { createBootstrapSummary, parseBootstrapArgs } from "./bootstrap.js"
+import { hashPylonAccountRef } from "./account-registry.js"
+import { recordCodexAccountHealthFailure } from "./codex-account-health-ledger.js"
+import { classifyCodexAccountFailure } from "./codex-account-health.js"
 
 const HASH_A = "account.pylon.codex.aaaaaaaaaaaa"
 const KEY_A = "aaaaaaaaaaaa"
@@ -44,6 +52,52 @@ describe("#6354 per-account Codex capacity (Pylon side)", () => {
       ],
     })
     expect(accounts.map(account => account.accountKey)).toEqual([KEY_B])
+  })
+
+  test("revoked and usage-limited accounts are excluded with a specific readiness reason", async () => {
+    const home = await mkdtemp(join(tmpdir(), "pylon-codex-account-health-"))
+    try {
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), { PYLON_HOME: home })
+      const goodHome = join(home, "accounts", "codex", "codex-good")
+      const revokedHome = join(home, "accounts", "codex", "codex-revoked")
+      await mkdir(goodHome, { recursive: true })
+      await mkdir(revokedHome, { recursive: true })
+      await writeFile(join(goodHome, "auth.json"), "{}")
+      await writeFile(join(revokedHome, "auth.json"), "{}")
+      await writeFile(summary.paths.config, JSON.stringify({
+        dev: {
+          accounts: [
+            { provider: "codex", ref: "codex-good", home: goodHome },
+            { provider: "codex", ref: "codex-revoked", home: revokedHome },
+          ],
+        },
+      }))
+      const revokedHash = hashPylonAccountRef("codex", "codex-revoked")
+      await recordCodexAccountHealthFailure(summary, {
+        accountRefHash: revokedHash,
+        failure: classifyCodexAccountFailure("refresh token was revoked"),
+        now: new Date("2026-06-28T22:00:00.000Z"),
+      })
+
+      const readiness = await localCodexAccountReadiness(summary, {
+        PYLON_HOME: home,
+        PYLON_ACCOUNT_HOME_ROOT: join(home, "empty-siblings"),
+      })
+      expect(readiness).toContainEqual({
+        accountRefHash: hashPylonAccountRef("codex", "codex-good"),
+        ready: true,
+      })
+      expect(readiness).toContainEqual({
+        accountRefHash: revokedHash,
+        ready: false,
+        reason: "credentials_revoked",
+      })
+      expect(codexAccountCapacities({ perAccountConcurrency: 1, readiness }).map(account => account.accountRefHash)).toEqual([
+        hashPylonAccountRef("codex", "codex-good"),
+      ])
+    } finally {
+      await rm(home, { recursive: true, force: true })
+    }
   })
 
   test("capacity/load refs use the counted per-account ref shape", () => {

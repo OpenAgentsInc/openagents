@@ -123,6 +123,48 @@ It provides the template, parse boundary, and verifier integration needed to con
 
 ---
 
+# business.coding_quick_win.v1 — paid receipt claim projection
+
+## What this change adds
+
+A public-safe paid-delivery claim projection for coding quick wins:
+
+- `apps/openagents.com/workers/api/src/coding-quick-win-claim-upgrade.ts`
+- `apps/openagents.com/workers/api/src/coding-quick-win-claim-upgrade.test.ts`
+- `apps/openagents.com/workers/api/src/coding-quick-win-receipt-public-routes.ts`
+- `apps/openagents.com/workers/api/src/coding-quick-win-receipt-public-routes.test.ts`
+- `GET /api/public/business/coding-quick-win-receipts?view=paid-delivery-claims`
+
+The projection is deliberately fail-closed. A claim substantiates only when:
+
+- `assertFirstPaidQuickWinReceipt` passes for a `business.coding_quick_win.v1`
+  receipt.
+- An owner sign-off ref is present under `proof.claim_upgrade_receipts.v1`.
+
+The receipt point-read path projects lifecycle labels without exposing signup
+ids, raw customer inputs, private repository data, payment secrets, provider
+payloads, or internal evidence refs.
+
+## Which blocker this advances
+
+`blocker.product_promises.business_coding_quick_win_paid_receipt_missing`
+(narrowed).
+
+The self-serve evidence chain now has a public receipt/claim read model, so the
+remaining gap is no longer a missing checker or projection. It is the real
+business event: a first paid customer coding quick-win receipt plus owner
+sign-off.
+
+## What genuinely remains (blocker stays listed)
+
+- Paid receipt: no real paid customer coding quick-win receipt is currently
+  recorded in this checkout's public claim store, so
+  `GET /api/public/business/coding-quick-win-receipts?view=paid-delivery-claims`
+  reports `paidDeliveryClaimSubstantiated: false` and keeps
+  `blocker.product_promises.business_coding_quick_win_paid_receipt_missing`.
+
+---
+
 # business.coding_quick_win.v1 — exposed self-serve pipeline route
 
 ## What this change adds

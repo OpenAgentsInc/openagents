@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { spawnSync } from "node:child_process"
 import {
   buildTechnicalPlan,
   buildCandidateIssueSearch,
@@ -7,6 +8,8 @@ import {
   inferRelevantFiles,
   issueHasAnyLabel,
   issueHasPriorityLabel,
+  issueNeedsPriorityTriage,
+  PRIORITY_LABELS,
   renderTriageComment,
   tokenizeIssueText,
   triageIssue,
@@ -121,8 +124,16 @@ describe("github issue triage output", () => {
     expect(issueHasAnyLabel(issue({ labels: [{ name: "standing-task" }] }))).toBe(true)
   })
 
-  test("builds the default candidate query from newly opened unlabeled issues", () => {
-    expect(buildCandidateIssueSearch(false)).toBe("is:issue is:open no:label sort:created-desc")
+  test("keeps non-priority labeled issues in the priority triage queue", () => {
+    expect(issueNeedsPriorityTriage(issue({ labels: [] }))).toBe(true)
+    expect(issueNeedsPriorityTriage(issue({ labels: [{ name: "standing-task" }] }))).toBe(true)
+    expect(issueNeedsPriorityTriage(issue({ labels: [{ name: "prio:2-issue-triage" }] }))).toBe(false)
+  })
+
+  test("builds the default candidate query from issues missing priority labels", () => {
+    expect(buildCandidateIssueSearch(false)).toBe(
+      `is:issue is:open ${PRIORITY_LABELS.map(label => `-label:"${label}"`).join(" ")} sort:created-desc`,
+    )
     expect(buildCandidateIssueSearch(true)).toBe("is:issue is:open sort:created-desc")
   })
 
@@ -142,5 +153,25 @@ describe("github issue triage output", () => {
     expect(buildTechnicalPlan(target, decision.label, decision.relevantFiles, [])).toHaveLength(4)
     expect(renderTriageComment(decision)).toContain("Automated triage pass")
     expect(renderTriageComment(decision)).toContain("prio:2-issue-triage")
+  })
+
+  test("prints the searched queue when no candidates are found", () => {
+    const result = spawnSync(
+      process.execPath,
+      ["run", "scripts/github-issue-triage.ts", "--repo", "OpenAgentsInc/openagents", "--limit", "1"],
+      {
+        cwd: import.meta.dir + "/..",
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          PATH: `${import.meta.dir}/fixtures/github-issue-triage/bin:${process.env.PATH ?? ""}`,
+        },
+      },
+    )
+
+    expect(result.status).toBe(0)
+    expect(result.stdout).toContain(
+      `[github-issue-triage] no candidate issues found for OpenAgentsInc/openagents using search: is:issue is:open ${PRIORITY_LABELS.map(label => `-label:"${label}"`).join(" ")} sort:created-desc`,
+    )
   })
 })

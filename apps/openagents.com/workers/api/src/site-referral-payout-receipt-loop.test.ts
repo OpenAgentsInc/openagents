@@ -428,6 +428,50 @@ describe('RL-1 staging-test settlement-receipt closed loop (#5524)', () => {
     expect(receipt?.receiptRef).toBe(expectedReceiptRef)
   })
 
+  test('public receipt dereference refuses contaminated row metadata', async () => {
+    const store = new LoopStore()
+    store.rows.push({
+      amount_sats: 125,
+      archived_at: null,
+      caveat_refs_json: JSON.stringify([
+        'caveat.site_referral_payout.settlement_evidence_required',
+      ]),
+      created_at: '2026-06-22T12:05:00.000Z',
+      evidence_refs_json: JSON.stringify([
+        'receipt.site_referral_payout.hosted_mdk.safe123',
+      ]),
+      id: 'site_referral_payout_entry_contaminated',
+      idempotency_key: 'site_referral_payout.contaminated',
+      payout_ref: 'site_referral_payout_contaminated',
+      period_key: '2026-06',
+      policy_refs_json: JSON.stringify([
+        'policy.site_referral_payout.v1',
+        'provider_payload.raw_payment_hash',
+      ]),
+      previous_entry_id: null,
+      qualifying_amount_sats: 2500,
+      qualifying_event_kind: 'raw_payment_hash',
+      qualifying_event_ref: 'evidence.btc_paid.contaminated',
+      referred_user_id: 'github:buyer',
+      referral_attribution_id: 'referral_attribution_contaminated',
+      referral_invite_id: null,
+      referral_source_id: 'site_referral_source_contaminated',
+      referrer_user_id: 'github:referrer',
+      reversal_of_entry_id: null,
+      state: 'settled',
+      state_reason_ref: null,
+    })
+
+    const receipt = await makeD1SiteReferralPayoutReceiptStore(
+      loopDb(store),
+    ).readSiteReferralPayoutReceipt(
+      'receipt.site_referral_payout.hosted_mdk.safe123',
+      '2026-06-22T12:06:00.000Z',
+    )
+
+    expect(receipt).toBeNull()
+  })
+
   test('fail-safe: a DISABLED staging adapter never settles and records no settled state (no receipt to dereference)', async () => {
     const store = new LoopStore()
     seedAttribution(store, 'github:loop-buyer')

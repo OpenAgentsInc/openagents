@@ -41,6 +41,10 @@ import type {
   InferenceResult,
 } from './provider-adapter'
 import type { BatchJobStore } from './batch-job-store'
+import type {
+  BatchJobResultRow,
+  BatchJobResultsStore,
+} from './batch-job-results-store'
 
 // One executable unit of a batch job. The submit route prices on token counts;
 // the consumer needs the actual prompt to RUN the item, so the queue message
@@ -121,6 +125,11 @@ export type BatchJobConsumerDeps = Readonly<{
   // `batchWaitMs` is exactly assertable. Injectable so the consumer stays a pure
   // function of its seams.
   nowIso?: (() => string) | undefined
+  // Optional results sink. When wired, the consumer persists one JSONL row per
+  // item and stores the returned key on the job so the authenticated results
+  // route can retrieve completed outputs. Undefined keeps older/inert paths
+  // receipt-only.
+  resultsStore?: BatchJobResultsStore | undefined
 }>
 
 const toInferenceRequest = (
@@ -193,6 +202,7 @@ export const executeBatchJob = (
 
     let processedItems = 0
     let failedItems = 0
+    const resultRows: Array<BatchJobResultRow> = []
 
     for (let index = 0; index < message.items.length; index += 1) {
       const item = message.items[index]
@@ -223,6 +233,12 @@ export const executeBatchJob = (
 
       if (!dispatched.ok) {
         failedItems += 1
+        resultRows.push({
+          error: dispatched.reason,
+          index,
+          ok: false,
+          requestedModel: item.model,
+        })
         yield* Effect.logInfo(
           workerLogEntry('inference.batch_job.item.failed', {
             index,
@@ -232,6 +248,16 @@ export const executeBatchJob = (
         )
         continue
       }
+
+      resultRows.push({
+        content: dispatched.served.value.content,
+        finishReason: dispatched.served.value.finishReason,
+        index,
+        ok: true,
+        requestedModel: item.model,
+        servedModel: dispatched.served.value.servedModel,
+        usage: dispatched.served.value.usage,
+      })
 
       // Decrement credits through the EXISTING metering hook. The per-item
       // request id is `<jobId>:<index>` so the hook's idempotency key dedupes a
@@ -252,10 +278,15 @@ export const executeBatchJob = (
     const allFailed =
       message.items.length > 0 && failedItems === message.items.length
     const terminalStatus = allFailed ? 'failed' : 'completed'
+    const resultsR2Key =
+      resultRows.length > 0 && deps.resultsStore !== undefined
+        ? yield* deps.resultsStore.writeResults(message.jobId, resultRows)
+        : undefined
 
     yield* deps.store.updateBatchJobStatus(message.jobId, terminalStatus, {
       failedItems,
       processedItems,
+      ...(resultsR2Key === undefined ? {} : { resultsR2Key }),
     })
 
     yield* Effect.logInfo(

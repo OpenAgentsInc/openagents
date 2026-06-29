@@ -137,6 +137,9 @@ describe('Autopilot decisions page', () => {
     expect(rendered).toContain(
       'decision.closeout.accept.autopilot_work_order.test_1',
     )
+    expect(rendered).toContain(
+      'receipt.review.accept.autopilot_work_order.test_1',
+    )
     expect(rendered).toContain('accepted')
     expect(rendered).toContain('applied')
   })

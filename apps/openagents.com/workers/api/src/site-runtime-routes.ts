@@ -2,11 +2,15 @@ import { Effect } from 'effect'
 
 import { methodNotAllowed, redirectResponse } from './http/responses'
 import {
-  type SiteRuntimeStaticAsset,
-  type SiteRuntimeWorkerDeployment,
   SiteRuntimeService,
+  type SiteRuntimeStaticAsset,
   SiteRuntimeStorageError,
+  type SiteRuntimeWorkerDeployment,
 } from './site-runtime'
+import {
+  TenantCustomHostnameStorageError,
+  type TenantRef,
+} from './tenant-custom-hostnames'
 
 type SiteRuntimeRouteEnv = Readonly<{
   ARTIFACTS: R2Bucket
@@ -16,6 +20,14 @@ type SiteRuntimeRouteEnv = Readonly<{
 type HttpResponse = globalThis.Response
 
 type SiteRuntimeRoutesConfig = Readonly<{
+  reservedHosts?: ReadonlySet<string>
+  resolveCustomHostname?: (
+    hostname: string,
+    env: SiteRuntimeRouteEnv,
+  ) => Effect.Effect<
+    TenantRef | null,
+    SiteRuntimeStorageError | TenantCustomHostnameStorageError
+  >
   sitesHost: string
 }>
 
@@ -85,10 +97,7 @@ const parseSiteRuntimePath = (url: URL): ParsedSiteRuntimePath | null => {
   if (segments[1] === 'versions') {
     const versionId = segments[2]
 
-    if (
-      versionId === undefined ||
-      !SITE_VERSION_ID_PATTERN.test(versionId)
-    ) {
+    if (versionId === undefined || !SITE_VERSION_ID_PATTERN.test(versionId)) {
       return null
     }
 
@@ -118,6 +127,21 @@ const parseSiteRuntimePath = (url: URL): ParsedSiteRuntimePath | null => {
         : url.pathname.slice(`/${slug}`.length),
     slug,
     versionId: null,
+  }
+}
+
+const parseCustomHostnameSiteRuntimePath = (
+  url: URL,
+): Omit<ParsedSiteRuntimePath, 'slug' | 'versionId'> | null => {
+  const segments = url.pathname.split('/').filter(segment => segment !== '')
+
+  if (hasUnsafePathSegment(segments)) {
+    return null
+  }
+
+  return {
+    candidatePaths: candidateAssetPaths(segments.join('/'), url.pathname),
+    dispatchPath: url.pathname === '' ? '/' : url.pathname,
   }
 }
 
@@ -179,13 +203,16 @@ const runSiteRuntimeRoute = (
   env: SiteRuntimeRouteEnv,
   effect: Effect.Effect<
     HttpResponse,
-    SiteRuntimeStorageError,
+    SiteRuntimeStorageError | TenantCustomHostnameStorageError,
     SiteRuntimeService
   >,
 ): Effect.Effect<HttpResponse> =>
   effect.pipe(
     Effect.provide(SiteRuntimeService.layer(env)),
     Effect.catchTag('SiteRuntimeStorageError', () =>
+      Effect.succeed(publicSiteServerError()),
+    ),
+    Effect.catchTag('TenantCustomHostnameStorageError', () =>
       Effect.succeed(publicSiteServerError()),
     ),
   )
@@ -197,12 +224,64 @@ export const makeSiteRuntimeRoutes = (config: SiteRuntimeRoutesConfig) => ({
   ): Effect.Effect<HttpResponse> | undefined => {
     const url = new URL(request.url)
 
-    if (url.hostname !== config.sitesHost) {
+    if (
+      url.hostname !== config.sitesHost &&
+      (config.resolveCustomHostname === undefined ||
+        config.reservedHosts?.has(url.hostname) === true)
+    ) {
       return undefined
     }
 
     if (url.search !== '') {
       return Effect.succeed(redirectResponse(`${url.origin}${url.pathname}`))
+    }
+
+    if (url.hostname !== config.sitesHost) {
+      const parsed = parseCustomHostnameSiteRuntimePath(url)
+
+      if (parsed === null) {
+        return Effect.succeed(publicSiteNotFound())
+      }
+
+      return runSiteRuntimeRoute(
+        env,
+        Effect.gen(function* () {
+          const tenant = yield* config.resolveCustomHostname!(url.hostname, env)
+
+          if (tenant === null) {
+            return publicSiteNotFound()
+          }
+
+          const runtime = yield* SiteRuntimeService
+          const target = yield* runtime.resolveRuntimeTargetForTeam(
+            tenant.teamId,
+            parsed.candidatePaths,
+          )
+
+          if (target === null) {
+            return publicSiteNotFound()
+          }
+
+          if (target._tag === 'worker') {
+            return yield* workerDispatchResponse(
+              env.SITES_DISPATCH,
+              target,
+              request,
+              parsed.dispatchPath,
+            )
+          }
+
+          if (request.method !== 'GET' && request.method !== 'HEAD') {
+            return methodNotAllowed(['GET', 'HEAD'])
+          }
+
+          const object = yield* runtime.readArtifactObject(target)
+
+          return object === null
+            ? publicSiteNotFound()
+            : artifactResponse(request, object, target)
+        }),
+      )
     }
 
     const parsed = parseSiteRuntimePath(url)

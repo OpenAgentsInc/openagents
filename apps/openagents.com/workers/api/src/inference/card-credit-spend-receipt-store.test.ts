@@ -1,13 +1,15 @@
-import { DatabaseSync } from 'node:sqlite'
-
 import { Effect } from 'effect'
+import { DatabaseSync } from 'node:sqlite'
 import { describe, expect, test } from 'vitest'
 
 import { readAgentBalance } from '../payments-ledger'
-import { makeD1CardCreditSpendReceiptStore } from './card-credit-spend-receipt-store'
 import { cardCreditSpendReceiptRef } from './card-credit-spend-receipt'
-import { fundInferenceFromCredit, usdCreditGrantReceiptRef } from './usd-credit-bridge'
+import { makeD1CardCreditSpendReceiptStore } from './card-credit-spend-receipt-store'
 import { makeLedgerMeteringHook } from './metering-hook'
+import {
+  fundInferenceFromCredit,
+  usdCreditGrantReceiptRef,
+} from './usd-credit-bridge'
 
 type Row = Record<string, unknown>
 
@@ -174,6 +176,72 @@ const run = <A, E>(effect: Effect.Effect<A, E>): Promise<A> =>
   Effect.runPromise(effect)
 
 describe('D1 card-credit-spend receipt store', () => {
+  test('pending projection names the purchase ledger key when checkout is missing', async () => {
+    const db = makeDb()
+
+    const projection = await makeD1CardCreditSpendReceiptStore(
+      db,
+    ).readCardCreditSpendReceipt(
+      cardCreditSpendReceiptRef(SESSION),
+      '2026-06-28T12:01:00.000Z',
+    )
+
+    expect(projection?.resolution).toEqual({
+      missing: 'purchase',
+      nextEvidenceRef: `billing:stripe-checkout:${SESSION}`,
+      status: 'pending',
+    })
+  })
+
+  test('pending projection names the card-origin grant context when checkout exists', async () => {
+    const db = makeDb()
+    await seedStripeCheckoutCredit(db)
+
+    const projection = await makeD1CardCreditSpendReceiptStore(
+      db,
+    ).readCardCreditSpendReceipt(
+      cardCreditSpendReceiptRef(SESSION),
+      '2026-06-28T12:01:00.000Z',
+    )
+
+    expect(projection?.resolution).toEqual({
+      missing: 'grant',
+      nextEvidenceRef: `inference:usd-credit:card:${SESSION}`,
+      status: 'pending',
+    })
+  })
+
+  test('pending projection names the inference charge context when grant exists', async () => {
+    const db = makeDb()
+    await seedStripeCheckoutCredit(db)
+
+    const grant = await run(
+      fundInferenceFromCredit(
+        {
+          amountCents: 500,
+          grantRef: 'grant-card-credit-spend',
+          sourceCheckoutSessionId: SESSION,
+          userId: USER,
+        },
+        { db, nowIso: () => NOW },
+      ),
+    )
+    expect(grant.ok).toBe(true)
+
+    const projection = await makeD1CardCreditSpendReceiptStore(
+      db,
+    ).readCardCreditSpendReceipt(
+      cardCreditSpendReceiptRef(SESSION),
+      '2026-06-28T12:01:00.000Z',
+    )
+
+    expect(projection?.resolution).toEqual({
+      missing: 'spend',
+      nextEvidenceRef: 'ledger.pay_ins.inference_charge.context_ref',
+      status: 'pending',
+    })
+  })
+
   test('resolves ok after card credit is bridged and spent by real metering', async () => {
     const db = makeDb()
     await seedStripeCheckoutCredit(db)
@@ -248,9 +316,9 @@ describe('D1 card-credit-spend receipt store', () => {
         step: 'msat_to_inference',
       },
     ])
-    expect(projection.resolution.receipt.conservation.spentMsat).toBeGreaterThan(
-      0,
-    )
+    expect(
+      projection.resolution.receipt.conservation.spentMsat,
+    ).toBeGreaterThan(0)
     expect(JSON.stringify(projection)).not.toMatch(
       /invoice|lnbc|payment_hash|preimage|wallet|secret|api[_-]?key|bearer/i,
     )

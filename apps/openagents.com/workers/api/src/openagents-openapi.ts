@@ -118,6 +118,15 @@ const okJson = (description: string, schemaRef: string): JsonSchema => ({
   ...jsonContent(schemaRef),
 })
 
+const okNdjson = (description: string, schemaRef: string): JsonSchema => ({
+  description,
+  content: {
+    'application/x-ndjson': {
+      schema: { $ref: schemaRef },
+    },
+  },
+})
+
 const okEventStream = (
   description: string,
   messageSchemaRef: string,
@@ -434,7 +443,7 @@ export const TassadarPerceptaArchitectureReceiptsEnvelope: JsonSchema = {
   type: 'object',
   additionalProperties: true,
   description:
-    'Public-safe architecture-receipts projection for models.tassadar_percepta_executor.v1. Carries generatedAt, a live_at_read staleness contract, one architecture receipt bundle with compiled-executor, learned-interface, verifier, and artifact-lineage components, plus explicit gate fields showing architectureReceiptsAvailable=true, pylonCpuTransformTrainingReceiptsAvailable=false, and greenGateSatisfied=false. It exposes refs and digests only: no raw traces, private runner logs, provider payloads, wallet material, payment material, trained-model claim, inference endpoint, model promotion, or CPU-transform training claim.',
+    'Public-safe architecture-receipts projection for models.tassadar_percepta_executor.v1. Carries generatedAt, a live_at_read staleness contract, one architecture receipt bundle with compiled-executor, learned-interface, verifier, and artifact-lineage components, plus explicit gate fields showing architectureReceiptsAvailable=true, pylonCpuTransformTrainingReceiptsAvailable=true for the separate bounded fixture receipt, and greenGateSatisfied=false. It exposes refs and digests only: no raw traces, private runner logs, provider payloads, wallet material, payment material, trained-model claim, inference endpoint, model promotion, broad CPU-transform training claim, settlement claim, or green promise claim.',
   required: [
     'authorityBoundary',
     'endpoint',
@@ -1671,10 +1680,13 @@ const schemaComponents = (): JsonSchema => ({
     'Public-safe OpenAgents Cloud primitive ledger receipt envelope with a receipt projection, generatedAt, and a declared live_at_read staleness contract (rebuildsOn pay_ins.public_receipt_ref). It proves a PAID metered-charge `pay_ins` row exists for a sellable Cloud primitive (`receipt.cloud.sandbox_compute.rental.charge.*` or `receipt.cloud.fine_tuning.job.charge.*`) without exposing account ids, amounts, idempotency keys, invoices, preimages, wallet material, provider payloads, or raw job/sandbox bodies. The projection carries caveats noting demand provenance and owner sign-off are still pending, so it asserts no product-promise is green. Read-only; grants no spend, refund, payout, provisioning, settlement, provider, public-claim, or registry authority.',
   ),
   InferenceBatchJobSubmitRequest: objectSummary(
-    'Programmatic-agent batch inference request. Carries a bounded dataset of model plus prompt/completion token counts for cost estimation and initial job persistence. Do not send raw private datasets or provider payloads.',
+    'Programmatic-agent batch inference request. Carries a bounded dataset of model plus prompt/completion token counts for cost estimation and optional executable messages for detached processing. Do not send raw private datasets or provider payloads.',
   ),
   InferenceBatchJobSubmitResponse: objectSummary(
-    'Batch inference job acceptance response with jobId, charge receipt ref, accepted status, and estimated charge. Acceptance does not prove background execution or completed batch output.',
+    'Batch inference job acceptance response with jobId, charge receipt ref, accepted status, and estimated charge. Completion, result retrieval, and closeout receipt dereference remain separate status/result reads.',
+  ),
+  InferenceBatchJobResultsResponse: objectSummary(
+    'Authenticated NDJSON batch inference results for the submitting agent. Available only for completed jobs with a persisted result artifact; excludes other accounts and incomplete jobs.',
   ),
   PublicStripeCheckoutReceiptEnvelope: objectSummary(
     'Public-safe Stripe checkout credit receipt envelope with generatedAt and a declared live_at_read staleness contract. It resolves `receipt.billing.stripe_checkout.*` as pending, invalid, or ok from the stored checkout session and positive Stripe checkout credit ledger row without exposing customer ids, checkout URLs, email, raw Stripe payloads, secrets, ledger ids, invoices, payment material, or wallet material. Read-only; grants no checkout, spend, refund, payout, settlement, provider, public-claim, or registry authority.',
@@ -1960,7 +1972,7 @@ const schemaComponents = (): JsonSchema => ({
     'Public-safe Artanis Tassadar distillation dataset receipt: a refs-only live-at-read manifest over accepted Artanis admin executor-trace closeouts. Returns receiptState, receiptRef/datasetRef when enough verified traces exist, required/source verified trace counts, digest prefixes, closeout receipt refs, clearsBlockerRefs/blockerRefs, and per-trace public refs. It exposes no raw trace bodies, private runner logs, prompts, provider payloads, wallet material, customer data, settlement claim, model-training claim, or model-promotion claim.',
   ),
   ArtanisResponderSupportResponse: objectSummary(
-    'Public-safe Artanis Pylon-support responder external-contributor-flow and tick-readiness projection: per-asker-provenance counts (externalContributorAnsweredCount, externalContributorTippedCount, ownerOperatorAnsweredCount), externalContributorFlowProven, external-contributor interactions with dereferenceable reply-post refs, and tickReadiness with the ten unattended responder tick target, qualifying tick count, tick windows, and externalContributorAnsweredWithinTickWindow. An external contributor is a registered non-owner, non-operator, non-Artanis identity; operator/owner test articles are classified owner_operator and never satisfy the gate. Carries generatedAt plus projection_staleness.v1 contracts (live_at_read, maxStalenessSeconds 0, rebuildsOn the responder-action and responder-tick ledger writes). Read-only projection; it grants no dispatch, spend, assignment, settlement, moderation, Forum-write, or registry-transition authority and cannot create an interaction, a reply, a tip, or a tick.',
+    'Public-safe Artanis Pylon-support responder external-contributor-flow and tick-readiness projection: per-asker-provenance counts (externalContributorAnsweredCount, externalContributorTippedCount, ownerOperatorAnsweredCount), externalContributorFlowProven, external-contributor interactions with dereferenceable reply-post refs, blockerRefs/clearedBlockerRefs/unclearedBlockerRefs, greenGateMet, and tickReadiness with the ten unattended responder tick target, qualifying tick count, tick windows, and externalContributorAnsweredWithinTickWindow. An external contributor is a registered non-owner, non-operator, non-Artanis identity; operator/owner test articles are classified owner_operator and never satisfy the gate. Carries generatedAt plus projection_staleness.v1 contracts (live_at_read, maxStalenessSeconds 0, rebuildsOn the responder-action and responder-tick ledger writes). Read-only projection; it grants no dispatch, spend, assignment, settlement, moderation, Forum-write, or registry-transition authority and cannot create an interaction, a reply, a tip, or a tick.',
   ),
   LaborSelfServePayoutRequest: objectSummary(
     'Agent-authenticated self-serve labor payout request. The providerRef must match the bearer-authenticated actor; the route currently returns a typed plan plus an inert dispatch decision unless explicitly enabled.',
@@ -1973,6 +1985,9 @@ const schemaComponents = (): JsonSchema => ({
   ),
   EcommerceCampaignReceiptResponse: objectSummary(
     'Public-safe e-commerce campaign receipt or paid-delivery-claims projection. Carries assessedAt/generatedAt timestamps plus a live_at_read staleness contract for claim projections where available. Fixture and stored receipts expose bounded delivery refs only and grant no new delivery, attribution, payout, settlement, or green-claim authority.',
+  ),
+  CodingQuickWinReceiptResponse: objectSummary(
+    'Public-safe coding quick-win receipt or paid-delivery-claims projection. Carries assessedAt/generatedAt timestamps plus a live_at_read staleness contract for claim projections where available. Receipt reads expose lifecycle labels without customer-private refs and grant no auto-merge, deploy, payout, settlement, or green-claim authority.',
   ),
   MarketingAgencyReceiptResponse: objectSummary(
     'Public-safe marketing-agency white-label receipt or paid-delivery-claims projection. Carries assessedAt/generatedAt timestamps plus a live_at_read staleness contract for claim projections where available. Fixture and stored receipts expose bounded delivery refs only and grant no new delivery, attribution, payout, settlement, or green-claim authority.',
@@ -2055,7 +2070,7 @@ const schemaComponents = (): JsonSchema => ({
   TrainingPostTrainingDpoPreferenceWorkloadEnvelope,
   TrainingPostTrainingVibeTestRubricEnvelope,
   TrainingA2DeviceCapabilityDashboardEnvelope: objectSummary(
-    'Public-safe CS336 A2 device-capability dashboard envelope with anonymized device-class distributions, benchmark measurement refs, statistical cross-check state, blocker refs, privacy boundary refs, earning estimates explicitly labeled modeled-from-measured, and thermalThrottleSignals derived only from sustained_vs_burst_throughput_ratio rows. Each distribution carries a measurementProvenance (settled_cross_checked or measured_unsettled) and a crossCheckState; measured_unsettled rows are genuinely measured but not paid and not cross-check verified (verified:false, no earning estimate). The envelope reports observedDeviceClassCount (total observed classes), observedSettledDeviceClassCount (classes with at least one settled, cross-checked, verified row), thermalThrottleDetectionStatus, and thermalThrottleBlockerRefs. It excludes device identifiers, owner linkage, wallet material, payment material, and raw benchmark payloads.',
+    'Public-safe CS336 A2 device-capability dashboard envelope with anonymized device-class distributions, benchmark measurement refs, statistical cross-check state, blocker refs, privacy boundary refs, earning estimates explicitly labeled modeled-from-measured, thermalThrottleSignals derived only from sustained_vs_burst_throughput_ratio rows, and thermalThrottleReceiptRefs populated only from verified thermal rows. Each distribution carries a measurementProvenance (settled_cross_checked or measured_unsettled), a crossCheckState, sameClassReplicationScope, sameClassReplicationStatus, and sameClassReplicationBlockerRefs; measured_unsettled rows are genuinely measured but not paid and not cross-check verified (verified:false, no earning estimate). The envelope reports observedDeviceClassCount (total observed classes), observedSettledDeviceClassCount (classes with at least one settled, cross-checked, verified row), thermalThrottleDetectionStatus, thermalThrottleBlockerRefs, sameClassReplicationStatus, sameClassReplicationSignals, and sameClassReplicationBlockerRefs so same-host-only or single-observation rows cannot appear cross-machine replicated. It excludes device identifiers, owner linkage, wallet material, payment material, and raw benchmark payloads.',
   ),
   TrainingA2DeviceBenchmarkEvidenceRequest: objectSummary(
     'Admin-only request to admit CS336 A2 benchmark measurements into a training run projection. Each measurement carries class-level statistics only (metric, unit, sampleCount, p50/p90/min/max), and an optional measurementProvenance. settled_cross_checked rows (default) require at least one receipt ref and may carry verification refs and an earning estimate (always relabeled modeled-from-measured). measured_unsettled rows are genuinely measured but unpaid: they require at least one digest-commitment ref and must NOT carry a settlement receipt or an earning estimate. sustained_vs_burst_throughput_ratio rows feed the public thermal-throttle classifier only after the same evidence admission and cross-check rules. Device identifiers, wallet material, and payment material are rejected by the privacy guard at admission time.',
@@ -3725,6 +3740,7 @@ const schemaComponents = (): JsonSchema => ({
     required: [
       'authorityBoundary',
       'blockerRefs',
+      'clearedBlockerRefs',
       'generatedAt',
       'greenGateMet',
       'kind',
@@ -3733,6 +3749,7 @@ const schemaComponents = (): JsonSchema => ({
       'placedRequests',
       'publicSafe',
       'staleness',
+      'unclearedBlockerRefs',
       'unattendedRequestReceiptsProven',
       'unattendedRequestTarget',
     ],
@@ -3740,6 +3757,7 @@ const schemaComponents = (): JsonSchema => ({
       authorityBoundary: { type: 'string' },
       blockerRefs: { type: 'array', items: { type: 'string' } },
       byTerminalState: { type: 'object' },
+      clearedBlockerRefs: { type: 'array', items: { type: 'string' } },
       generatedAt: { type: 'string', format: 'date-time' },
       greenGateMet: { type: 'boolean' },
       kind: {
@@ -3770,6 +3788,7 @@ const schemaComponents = (): JsonSchema => ({
           rebuildsOn: { type: 'array', items: { type: 'string' } },
         },
       },
+      unclearedBlockerRefs: { type: 'array', items: { type: 'string' } },
       unattendedRequestReceiptsProven: { type: 'boolean' },
       unattendedRequestTarget: { type: 'integer' },
     },
@@ -4098,10 +4117,12 @@ const requestSchemas = (): JsonSchema => ({
       'optOut',
       'publicSharing',
       'reportPath',
+      'blockerRefs',
+      'gates',
       'references',
     ],
     description:
-      'Canonical, code-accurate data-sharing terms for the free Khala API (#6296). Public-safe: terms text + bounded policy facts only — no secrets, account, or payment material.',
+      'Canonical, code-accurate data-sharing terms for the free Khala API (#6296/#7019). Public-safe: terms text, bounded policy facts, and explicit blocker/gate refs only — no secrets, account, prompt, trace, or payment material.',
     properties: {
       promiseId: {
         type: 'string',
@@ -4123,6 +4144,7 @@ const requestSchemas = (): JsonSchema => ({
         additionalProperties: false,
         required: [
           'capturedByDefault',
+          'defaultCaptureGate',
           'redacted',
           'defaultVisibility',
           'mayTrain',
@@ -4134,6 +4156,7 @@ const requestSchemas = (): JsonSchema => ({
           'Machine-checkable policy facts mirroring the runtime capture seams.',
         properties: {
           capturedByDefault: { type: 'boolean' },
+          defaultCaptureGate: { type: 'string', enum: ['owner_gated'] },
           redacted: { type: 'boolean' },
           defaultVisibility: { type: 'string', enum: ['owner_only'] },
           mayTrain: { type: 'boolean' },
@@ -4145,6 +4168,54 @@ const requestSchemas = (): JsonSchema => ({
       optOut: { type: 'string' },
       publicSharing: { type: 'string' },
       reportPath: { type: 'string' },
+      blockerRefs: {
+        type: 'array',
+        items: { type: 'string' },
+        description:
+          'Public-safe blocker refs that keep the related data/privacy promises yellow.',
+      },
+      gates: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['defaultCapture', 'paidPrivacyOptOut', 'traceRewards'],
+        description:
+          'Public-safe gate summary so agents do not infer green/live behavior from policy terms alone.',
+        properties: {
+          defaultCapture: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['state', 'envFlag', 'blockerRef'],
+            properties: {
+              state: { type: 'string', enum: ['owner_gated'] },
+              envFlag: {
+                type: 'string',
+                enum: ['KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT'],
+              },
+              blockerRef: { type: 'string' },
+            },
+          },
+          paidPrivacyOptOut: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['state', 'failClosed', 'blockerRefs'],
+            properties: {
+              state: { type: 'string', enum: ['wired_yellow'] },
+              failClosed: { type: 'boolean' },
+              blockerRefs: { type: 'array', items: { type: 'string' } },
+            },
+          },
+          traceRewards: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['state', 'payoutClaimAllowed', 'blockerRef'],
+            properties: {
+              state: { type: 'string', enum: ['inert'] },
+              payoutClaimAllowed: { type: 'boolean' },
+              blockerRef: { type: 'string' },
+            },
+          },
+        },
+      },
       references: { type: 'array', items: { type: 'string' } },
     },
   },
@@ -5008,7 +5079,7 @@ const paths = (): JsonSchema => ({
       operationId: 'createInferenceBatchJob',
       summary: 'Create an inference batch job',
       description:
-        'Accepts a programmatic-agent batch inference job request, estimates and charges the initial job cost, and persists the pending job. This is only the paid receipt surface for inference.batch_processing_jobs.v1: background execution, R2 result storage, completion closeout, and green product-promise status remain separate gates. The OpenAI-compatible inference gateway and MPP are canonical under the /api base (POST /api/v1/chat/completions, GET /api/v1/models, POST /api/mpp/v1/chat/completions); the legacy bare /v1 and /mpp/v1 paths remain non-breaking aliases that resolve to the same handlers.',
+        'Accepts a programmatic-agent batch inference job request, estimates and charges the initial job cost, persists the pending job, and queues executable message rows when the batch worker is armed. Green product-promise status remains receipt-first and separately gated on real paid evidence. The OpenAI-compatible inference gateway and MPP are canonical under the /api base (POST /api/v1/chat/completions, GET /api/v1/models, POST /api/mpp/v1/chat/completions); the legacy bare /v1 and /mpp/v1 paths remain non-breaking aliases that resolve to the same handlers.',
       tags: ['Inference', 'Billing'],
       security: agentBearer,
       requestBody: jsonContent(
@@ -5018,6 +5089,24 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Inference batch job accepted.',
           '#/components/schemas/InferenceBatchJobSubmitResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/v1/inference/batches/{jobId}/results': {
+    get: operation({
+      operationId: 'getInferenceBatchJobResults',
+      summary: 'Read inference batch job results',
+      description:
+        'Returns the completed batch job result artifact as NDJSON for the submitting agent only. Pending, failed, missing-result, or cross-account jobs return not_found. This route exposes model outputs to the authenticated owner and is never a public proof surface.',
+      tags: ['Inference'],
+      security: agentBearer,
+      parameters: [pathParam('jobId', 'Inference batch job id.')],
+      responses: {
+        '200': okNdjson(
+          'Inference batch job results.',
+          '#/components/schemas/InferenceBatchJobResultsResponse',
         ),
         ...errorResponses(),
       },
@@ -5606,7 +5695,7 @@ const paths = (): JsonSchema => ({
       operationId: 'getFreeTierDataSharingDisclosure',
       summary: 'Read free-API data-sharing terms',
       description:
-        'Returns the canonical, code-accurate data-sharing terms for the free Khala API so agents and users can discover them over the API surface, not only in human UI. The honest terms: free API usage is captured by default as REDACTED, PRIVATE (owner_only) traces that may be used to improve and train OpenAgents models; paying for privacy (or running confidential compute) opts you OUT of capture (fail-closed to not-captured); public sharing of a captured trace is owner opt-in only; and being captured grants NO payout or settlement (the data-market reward marker is inert and owner-gated). The same disclosure object is embedded in the POST /api/keys/free mint response. Read-only, no auth, no secrets.',
+        'Returns the canonical, code-accurate data-sharing terms for the free Khala API so agents and users can discover them over the API surface, not only in human UI. The honest terms: free API usage is captured by default when the owner-gated production capture flag is armed, as REDACTED, PRIVATE (owner_only) traces that may be used to improve and train OpenAgents models; paying for privacy (or running confidential compute) opts you OUT of capture (fail-closed to not-captured); public sharing of a captured trace is owner opt-in only; and being captured grants NO payout or settlement (the data-market reward marker is inert and owner-gated). The same disclosure object is embedded in the POST /api/keys/free mint response. Read-only, no auth, no secrets.',
       tags: ['Public Proof', 'Agents'],
       security: publicRead,
       responses: {
@@ -5930,6 +6019,29 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'E-commerce campaign receipt projection.',
           '#/components/schemas/EcommerceCampaignReceiptResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/public/business/coding-quick-win-receipts': {
+    get: operation({
+      operationId: 'listPublicCodingQuickWinReceiptClaims',
+      summary: 'List coding quick-win paid-delivery claims',
+      description:
+        'Returns public-safe coding quick-win paid-delivery claim projections when called with view=paid-delivery-claims. Receipt point reads are available under the same route prefix. The surface grants no auto-merge, deploy, delivery, payout, settlement, or green-claim authority.',
+      tags: ['Business', 'Public Proof'],
+      security: publicRead,
+      parameters: [
+        queryParam(
+          'view',
+          'Use paid-delivery-claims to list projected paid delivery claims.',
+        ),
+      ],
+      responses: {
+        '200': okJson(
+          'Coding quick-win receipt projection.',
+          '#/components/schemas/CodingQuickWinReceiptResponse',
         ),
         ...errorResponses(),
       },
@@ -7833,7 +7945,7 @@ const paths = (): JsonSchema => ({
       operationId: 'getTassadarPerceptaArchitectureReceipts',
       summary: 'Read Tassadar Percepta executor architecture receipts',
       description:
-        'Returns the public-safe architecture-receipts projection for models.tassadar_percepta_executor.v1. The receipt bundle ties the public model profile to compiled/frozen executor refs, learned-interface refs, artifact-lineage hashes, and verifier refs. It clears only the architecture-receipt blocker; Pylon CPU-transform training receipts remain missing and greenGateSatisfied remains false. Read-only; grants no training dispatch, spend, settlement, model promotion, inference endpoint, CPU-transform training claim, or green product-promise authority.',
+        'Returns the public-safe architecture-receipts projection for models.tassadar_percepta_executor.v1. The receipt bundle ties the public model profile to compiled/frozen executor refs, learned-interface refs, artifact-lineage hashes, and verifier refs. It now points at the separate bounded Pylon CPU-transform fixture receipt while keeping real settlement missing and greenGateSatisfied=false. Read-only; grants no training dispatch, spend, settlement, model promotion, inference endpoint, broad CPU-transform training claim, or green product-promise authority.',
       tags: ['Training', 'Public Proof'],
       security: publicRead,
       responses: {
@@ -8237,7 +8349,7 @@ const paths = (): JsonSchema => ({
       operationId: 'readTrainingA2DeviceCapabilityDashboard',
       summary: 'Read CS336 A2 device capability dashboard',
       description:
-        'Reads the public-safe CS336 A2 device-capability dataset. The feed is built from receipt-backed benchmark measurements and statistical same-class cross-checks; it publishes only anonymized device-class distributions and modeled-from-measured earning estimates.',
+        'Reads the public-safe CS336 A2 device-capability dataset. The feed is built from receipt-backed benchmark measurements and statistical same-class cross-checks; it publishes only anonymized device-class distributions, modeled-from-measured earning estimates, verified thermal receipt refs, and same-class replication labels. Unverified, unsettled, same-host-only, and single-observation rows remain explicitly labeled and do not imply earning estimates or device-capability guarantees.',
       tags: ['Training'],
       security: publicRead,
       responses: {

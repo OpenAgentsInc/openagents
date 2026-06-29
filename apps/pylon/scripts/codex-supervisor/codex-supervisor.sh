@@ -412,7 +412,7 @@ worker_loop() {
     fi
     if [ -z "$issue" ]; then
       local pick_sleep
-      pick_sleep="$(sup_claimed_pick_backoff_secs "${#issues[@]}" "$desired" "$backoff")"
+      pick_sleep="$(sup_lockout_pick_backoff_secs "${#issues[@]}" "$desired" "$backoff" "$lockout_repeat")"
       log "slot=$slot LOCKOUT all backlog issues are closed, already have open PRs, or are claimed by other slots; open_backlog=${#issues[@]} desired_slots=$desired repeated=$lockout_repeat backing off ${pick_sleep}s"
       sleep "$pick_sleep"
       if [ "$pick_sleep" = "$backoff" ]; then

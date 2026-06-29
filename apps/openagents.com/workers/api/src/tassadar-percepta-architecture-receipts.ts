@@ -15,6 +15,7 @@ export const TassadarPerceptaArchitectureReceiptRef =
 export const TassadarPerceptaArchitectureReceiptsStaleness =
   liveAtReadStaleness([
     'tassadar_percepta_architecture_receipt_published',
+    'tassadar_percepta_cpu_transform_training_receipt_published',
     'product_promise_registry_updated',
   ])
 
@@ -22,6 +23,10 @@ export const TassadarPerceptaArchitectureReceiptBlocker =
   'blocker.product_promises.percepta_executor_architecture_receipts_missing'
 export const TassadarPerceptaCpuTransformTrainingReceiptBlocker =
   'blocker.product_promises.pylon_v03_cpu_transform_training_receipts_missing'
+export const TassadarPerceptaCpuTransformRealSettlementBlocker =
+  'blocker.product_promises.tassadar_cpu_transform_real_settlement_missing'
+export const TassadarPerceptaCpuTransformOwnerGreenSignoffBlocker =
+  'blocker.product_promises.tassadar_cpu_transform_owner_green_signoff_missing'
 
 const unsafePublicMaterialPattern =
   /(\"?(deviceId|deviceRef|nodeId|nodeRef|ownerId|ownerRef|pylonId|pylonRef|wallet[A-Za-z0-9_-]*|mnemonic|payment[A-Za-z0-9_-]*|preimage|invoice|bolt11|bolt12|lno1|secret[A-Za-z0-9_-]*|private[A-Za-z0-9_-]*)\"?\s*:|\/Users\/|\/home\/|api[_-]?key|bearer|lnbc|lntb|lno1|mnemonic|payment[_-]?(hash|preimage)|preimage|raw[_-]?(dataset|invoice|payment|payload|prompt|runner)|seed[_-]?phrase|sk-[a-z0-9]|wallet[_-]?(home|path|seed|mnemonic|private))/i
@@ -346,12 +351,16 @@ export const projectTassadarPerceptaArchitectureReceipts = (
     endpoint: TassadarPerceptaArchitectureReceiptsEndpoint,
     gate: {
       architectureReceiptsAvailable: true,
-      clearsBlockerRefs: [TassadarPerceptaArchitectureReceiptBlocker],
+      clearsBlockerRefs: [
+        TassadarPerceptaArchitectureReceiptBlocker,
+        TassadarPerceptaCpuTransformTrainingReceiptBlocker,
+      ],
       greenGateSatisfied: false,
-      pylonCpuTransformTrainingReceiptsAvailable: false,
+      pylonCpuTransformTrainingReceiptsAvailable: true,
       publicProjectionAvailable: true,
       remainingBlockerRefs: [
-        TassadarPerceptaCpuTransformTrainingReceiptBlocker,
+        TassadarPerceptaCpuTransformRealSettlementBlocker,
+        TassadarPerceptaCpuTransformOwnerGreenSignoffBlocker,
       ],
     },
     generatedAt: input.generatedAt ?? currentIsoTimestamp(),
@@ -381,9 +390,9 @@ export const projectTassadarPerceptaArchitectureReceipts = (
     staleness: TassadarPerceptaArchitectureReceiptsStaleness,
     status: 'architecture_receipts_available',
     statusLabel:
-      'Tassadar Percepta executor architecture receipts are available; Pylon CPU-transform training receipts remain missing.',
+      'Tassadar Percepta executor architecture receipts are available, and the related bounded CPU-transform fixture receipt is projected separately; real settlement and owner green sign-off remain missing.',
     unsafeCopy:
-      'Do not claim a trained Tassadar Percepta model, public contributor CPU-transform training, an inference endpoint, settlement, model promotion, or a green promise. This projection clears only the architecture-receipt blocker.',
+      'Do not claim a trained Tassadar Percepta model, broad public contributor CPU-transform training, an inference endpoint, settlement, model promotion, or a green promise. This projection clears the architecture blocker and points at the separate bounded CPU-transform fixture receipt only.',
   })
 
   assertPublicSafeValue(

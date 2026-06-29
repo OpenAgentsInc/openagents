@@ -295,6 +295,9 @@ describe('X claim reward treasury dispatcher', () => {
     expect(reward?.state).toBe('settled')
     expect(reward?.treasuryPaymentId).toBe('payment_secret_1')
     expect(reward?.evidenceRefs).toContain(
+      'receipt.public.x_claim_reward.settled.x_claim_reward_1',
+    )
+    expect(reward?.evidenceRefs).toContain(
       'settlement_evidence.public.mdk_treasury.x_claim_reward_x_claim_reward_1',
     )
     expect(serialized).not.toContain(safeOffer)
@@ -319,6 +322,9 @@ describe('X claim reward treasury dispatcher', () => {
     expect(second.settled).toBe(1)
     expect(treasury.paidDestinations).toHaveLength(1)
     expect(reward?.state).toBe('settled')
+    expect(reward?.evidenceRefs).toContain(
+      'receipt.public.x_claim_reward.settled.x_claim_reward_1',
+    )
   })
 
   test('records terminal treasury failures as failed reward rows', async () => {

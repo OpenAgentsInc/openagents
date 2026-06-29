@@ -368,6 +368,13 @@ const chatWorldSceneMaterialKey = (
       state: node.state,
       color: node.color,
       online: node.online,
+      growth: {
+        tier: node.growth.tier,
+        scale: node.growth.scale,
+        facets: node.growth.facets,
+        brightness: node.growth.brightness,
+        settledSats: node.growth.settledSats,
+      },
       products: [...node.products].sort(),
     })),
   })

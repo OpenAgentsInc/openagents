@@ -117,6 +117,7 @@ export type HydraliskPoolAdapterConfig = Readonly<{
 }>
 
 export type HydraliskPoolRouteAdmissionSnapshot = Readonly<{
+  internalStressHeadroomAvailable: boolean
   reason: string
   reservedExternalHeadroomAvailable: boolean
 }>
@@ -957,19 +958,25 @@ const routeAdmissionForHeadroom = (
 ): HydraliskPoolRouteAdmissionSnapshot => {
   if (headroom.aggregateMaxInflight <= 0) {
     return {
+      internalStressHeadroomAvailable: false,
       reason: 'glm_pool_no_external_capacity',
       reservedExternalHeadroomAvailable: false,
     }
   }
   if (headroom.aggregateExternalHeadroom <= 0) {
     return {
+      internalStressHeadroomAvailable: false,
       reason: 'glm_aggregate_external_headroom_zero',
       reservedExternalHeadroomAvailable: false,
     }
   }
   return {
-    reason: 'glm_reserved_external_headroom_available',
-    reservedExternalHeadroomAvailable: true,
+    internalStressHeadroomAvailable: true,
+    reason:
+      headroom.aggregateExternalHeadroom > 1
+        ? 'glm_reserved_external_headroom_available'
+        : 'glm_reserved_external_headroom_unavailable',
+    reservedExternalHeadroomAvailable: headroom.aggregateExternalHeadroom > 1,
   }
 }
 

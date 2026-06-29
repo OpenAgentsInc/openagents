@@ -211,6 +211,26 @@ const sessionSubtitle = (session: CodingCodexSession): string => {
   return parts.join(" · ")
 }
 
+const sessionStatusRank = (session: CodingCodexSession): number => {
+  if (session.active || session.status === "active") return 0
+  if (session.status === "recent") return 1
+  return 2
+}
+
+const sessionModifiedAtMs = (session: CodingCodexSession): number => {
+  const millis = Date.parse(session.modifiedAt)
+  return Number.isFinite(millis) ? millis : 0
+}
+
+const visibleCodingSessions = (
+  sessions: readonly CodingCodexSession[],
+): readonly CodingCodexSession[] =>
+  [...sessions].sort((left, right) => {
+    const statusDelta = sessionStatusRank(left) - sessionStatusRank(right)
+    if (statusDelta !== 0) return statusDelta
+    return sessionModifiedAtMs(right) - sessionModifiedAtMs(left)
+  })
+
 const selectSession = (session: CodingCodexSession): void => {
   selectedSessionPath = session.path
   if (latestCodingResult !== null) renderCodingStatus(latestCodingResult)
@@ -237,10 +257,10 @@ const sessionButton = (
 
   const status = document.createElement("span")
   status.className = "coding-session-status"
-  status.textContent = session.status
+  status.textContent = session.status.toUpperCase()
 
   if (variant === "chip") {
-    button.append(title, meta)
+    button.append(title, meta, status)
   } else {
     const preview = document.createElement("span")
     preview.className = "coding-session-preview"
@@ -317,38 +337,42 @@ const renderCodingTranscript = (
 const renderCodingSessions = (
   sessions: readonly CodingCodexSession[],
 ): void => {
+  const visibleSessions = visibleCodingSessions(sessions)
+
   if (
-    sessions.length > 0 &&
+    visibleSessions.length > 0 &&
     (selectedSessionPath === null ||
-      !sessions.some(session => session.path === selectedSessionPath))
+      !visibleSessions.some(session => session.path === selectedSessionPath))
   ) {
-    selectedSessionPath = sessions[0].path
+    selectedSessionPath = visibleSessions[0].path
   }
 
   const selectedSession =
-    sessions.find(session => session.path === selectedSessionPath) ?? null
+    visibleSessions.find(session => session.path === selectedSessionPath) ?? null
 
   codingActiveList.replaceChildren()
-  const activeSessions = sessions.filter(session => session.active).slice(0, 8)
-  if (activeSessions.length === 0) {
+  const topSessions = visibleSessions.slice(0, 8)
+  if (topSessions.length === 0) {
     const empty = document.createElement("div")
     empty.className = "coding-empty coding-active-empty"
     empty.textContent = "No active Codex sessions."
     codingActiveList.append(empty)
   } else {
     codingActiveList.append(
-      ...activeSessions.map(session => sessionButton(session, "chip")),
+      ...topSessions.map(session => sessionButton(session, "chip")),
     )
   }
 
   codingList.replaceChildren()
-  if (sessions.length === 0) {
+  if (visibleSessions.length === 0) {
     const empty = document.createElement("div")
     empty.className = "coding-empty"
     empty.textContent = "No Codex session rollouts found."
     codingList.append(empty)
   } else {
-    codingList.append(...sessions.map(session => sessionButton(session, "row")))
+    codingList.append(
+      ...visibleSessions.map(session => sessionButton(session, "row")),
+    )
   }
 
   renderCodingTranscript(selectedSession)

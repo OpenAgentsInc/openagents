@@ -94,6 +94,12 @@ describe('buildMirrorCodeRun', () => {
     ).toThrow(MirrorCodeRunError)
   })
 
+  test('rejects unsafe run ids before they can be stored or served', () => {
+    expect(() =>
+      buildMirrorCodeRun({ ...validInput, runId: 'mc unsafe/run id' }),
+    ).toThrow(MirrorCodeRunError)
+  })
+
   test('rejects a malformed body', () => {
     expect(() => buildMirrorCodeRun({ runId: 'x' })).toThrow(MirrorCodeRunError)
   })
@@ -114,6 +120,20 @@ describe('buildMirrorCodeRun', () => {
     expect(built.passRate).toBeNull()
     expect(built.decisionGrade).toBe(false)
     expect(built.summary).toContain('Owner-gated MirrorCode launch queued')
+  })
+
+  test('rejects owner-gated launch intents outside the smoke S bucket', () => {
+    expect(() =>
+      buildMirrorCodeLaunchRun(
+        {
+          kind: 'launch',
+          taskId: 'ruff',
+          bucket: 'L',
+          language: 'python',
+        },
+        '2026-06-27T02:03:04.000Z',
+      ),
+    ).toThrow(MirrorCodeRunError)
   })
 
   test('rejects an owner-gated launch for an unknown public target', () => {
@@ -222,12 +242,24 @@ describe('handleMirrorCodeRunsApi GET', () => {
     const body = (await response.json()) as {
       schemaVersion: string
       model: string
+      launchPolicy: {
+        mode: string
+        allowedBuckets: ReadonlyArray<string>
+        publicTargetsByBucket: { S: ReadonlyArray<string> }
+        maxTokensPerRun: number
+        maxWallClockSeconds: number
+      }
       runs: ReadonlyArray<{ runId: string }>
       comparators: ReadonlyArray<{ source: string }>
       staleness: { composition: string }
     }
     expect(body.schemaVersion).toBe('openagents.gym.mirrorcode_runs.v1')
     expect(body.model).toBe('openagents/khala')
+    expect(body.launchPolicy.mode).toBe('owner_gated_smoke')
+    expect(body.launchPolicy.allowedBuckets).toEqual(['S'])
+    expect(body.launchPolicy.publicTargetsByBucket.S).toContain('qsv_select')
+    expect(body.launchPolicy.maxTokensPerRun).toBe(50_000_000)
+    expect(body.launchPolicy.maxWallClockSeconds).toBe(21_600)
     expect(body.runs[0]?.runId).toBe('mc-phase0-cal-py-0001')
     expect(body.comparators.length).toBeGreaterThan(0)
     expect(
@@ -284,6 +316,90 @@ describe('handleMirrorCodeTokenBurnReportApi', () => {
     const response = await run(
       handleMirrorCodeRunsApi(
         new Request('https://openagents.com/api/gym/mirrorcode/token-burn', {
+          method: 'POST',
+        }),
+        { requireAdminApiToken: async () => false, listRuns: () => [] },
+      ),
+    )
+
+    expect(response.status).toBe(405)
+  })
+})
+
+describe('handleMirrorCodeBackstopBurnApi', () => {
+  test('public GET returns the next standing batch plan and ledger report', async () => {
+    const terminalRun = buildMirrorCodeRun({
+      ...validInput,
+      runId: 'mc-backstop-qsv-select-python-0001',
+      taskId: 'qsv_select',
+      status: 'failed',
+      passRate: 0.25,
+      tokens: { total: 1_000 },
+      exactTokenUsageEventRefs: [],
+    })
+    const activeRun = buildMirrorCodeRun({
+      ...validInput,
+      runId: 'mc-backstop-jq-simple-python-0001',
+      taskId: 'jq_simple',
+      status: 'running',
+      passRate: 0.8,
+      tokens: { total: 500 },
+      exactTokenUsageEventRefs: [
+        'token_usage_event.gym_mirrorcode.jq_simple.0001',
+      ],
+    })
+    const response = await run(
+      handleMirrorCodeRunsApi(
+        new Request(
+          'https://openagents.com/api/gym/mirrorcode/backstop-burn?maxTasks=3',
+        ),
+        {
+          requireAdminApiToken: async () => false,
+          listRuns: () => [terminalRun, activeRun],
+          nowIso: () => '2026-06-28T00:00:00.000Z',
+        },
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      schemaVersion: string
+      issueNumber: number
+      plan: {
+        taskCount: number
+        tasks: ReadonlyArray<{ taskId: string }>
+      }
+      report: {
+        runCount: number
+        terminalRunCount: number
+        passRateBps: number | null
+        totalTokensBurned: number
+        exactTokenBackedTokens: number
+      }
+      staleness: { composition: string }
+    }
+    expect(body.schemaVersion).toBe(
+      'openagents.gym.mirrorcode_backstop_burn.v1',
+    )
+    expect(body.issueNumber).toBe(6923)
+    expect(body.staleness.composition).toBe('live_at_read')
+    expect(body.plan.taskCount).toBe(3)
+    expect(body.plan.tasks.map(task => task.taskId)).toEqual([
+      'gron',
+      'bitwise',
+      'hexyl',
+    ])
+    expect(body.report.runCount).toBe(2)
+    expect(body.report.terminalRunCount).toBe(1)
+    expect(body.report.passRateBps).toBe(0)
+    expect(body.report.totalTokensBurned).toBe(1_500)
+    expect(body.report.exactTokenBackedTokens).toBe(500)
+  })
+
+  test('non-GET is rejected', async () => {
+    const response = await run(
+      handleMirrorCodeRunsApi(
+        new Request('https://openagents.com/api/gym/mirrorcode/backstop-burn', {
           method: 'POST',
         }),
         { requireAdminApiToken: async () => false, listRuns: () => [] },
@@ -406,6 +522,35 @@ describe('handleMirrorCodeRunsApi POST', () => {
     expect(body.reason).toContain('launch intents are smoke-only')
   })
 
+  test('authorized POST rejects non-S launch intents without storing', async () => {
+    let stored = 0
+    const response = await run(
+      handleMirrorCodeRunsApi(
+        postRequest({
+          kind: 'launch',
+          taskId: 'ruff',
+          bucket: 'L',
+          language: 'python',
+        }),
+        {
+          requireAdminApiToken: async () => true,
+          nowIso: () => '2026-06-27T02:03:04.000Z',
+          store: {
+            listRuns: () => Effect.succeed([]),
+            getRun: () => Effect.sync(() => undefined),
+            upsertRun: () => Effect.sync(() => {
+              stored += 1
+            }),
+          },
+        },
+      ),
+    )
+    expect(response.status).toBe(400)
+    expect(stored).toBe(0)
+    const body = (await response.json()) as { reason: string }
+    expect(body.reason).toContain('S-bucket public targets only')
+  })
+
   test('authorized POST with task contents is rejected 400', async () => {
     let stored = 0
     const response = await run(
@@ -425,6 +570,29 @@ describe('handleMirrorCodeRunsApi POST', () => {
     )
     expect(response.status).toBe(400)
     expect(stored).toBe(0)
+  })
+
+  test('authorized POST with unsafe run id is rejected before storage', async () => {
+    let stored = 0
+    const response = await run(
+      handleMirrorCodeRunsApi(
+        postRequest({ ...validInput, runId: 'mc unsafe/run id' }),
+        {
+          requireAdminApiToken: async () => true,
+          store: {
+            listRuns: () => Effect.succeed([]),
+            getRun: () => Effect.sync(() => undefined),
+            upsertRun: () => Effect.sync(() => {
+              stored += 1
+            }),
+          },
+        },
+      ),
+    )
+    expect(response.status).toBe(400)
+    expect(stored).toBe(0)
+    const body = (await response.json()) as { reason: string }
+    expect(body.reason).toContain('runId must be a public-safe ref')
   })
 })
 

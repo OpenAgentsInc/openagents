@@ -114,6 +114,15 @@ second="$(sup_ensure_replenishment_issues | tr '\n' ' ')"
 created_count2="$(wc -l < "$WORK/gh-state/create.log" | tr -d ' ')"
 [ "$created_count2" = "3" ] && ok "dedupe prevents duplicate issue spam" || bad "created count after rerun '$created_count2'"
 
+rm -rf "$SUP_LOCKOUT_CACHE_DIR/replenishment.lock"
+mkdir -p "$SUP_LOCKOUT_CACHE_DIR/replenishment.lock"
+template_title="$(sup_replenishment_template_titles | head -1)"
+printf '8101\t%s\n8102\tSG-2 replenish: unrelated stale labeled issue\n' "$template_title" > "$WORK/gh-state/open.tsv"
+locked="$(sup_ensure_replenishment_issues | tr '\n' ' ')"
+[ "$locked" = "8101 " ] && ok "held-lock fallback returns only template replenishment issues" \
+  || bad "held-lock fallback returned '$locked'"
+rm -rf "$SUP_LOCKOUT_CACHE_DIR/replenishment.lock"
+
 export SUP_REPLENISHMENT_MAX_CREATE=1
 rm -rf "$SUP_LOCKOUT_CACHE_DIR/replenishment.lock"
 rm -f "$WORK/gh-state/open.tsv" "$WORK/gh-state/create.log"

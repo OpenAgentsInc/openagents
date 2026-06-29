@@ -84,6 +84,28 @@ export type VoiceProgramIngestDeps = Readonly<{
   enabled: boolean
 }>
 
+type VoiceProgramIngestApprovalGate = Readonly<{
+  approvalMutationAllowed: false
+  approvalRequired: true
+  approvalRequirement: 'operator_required'
+  commandExecutionAllowed: false
+  riskLabel: 'Medium risk'
+  riskLevel: 'medium'
+  state: 'needs_approval'
+  stateLabel: 'Needs approval'
+}>
+
+const approvalGatePayload = (): VoiceProgramIngestApprovalGate => ({
+  approvalMutationAllowed: false,
+  approvalRequired: true,
+  approvalRequirement: 'operator_required',
+  commandExecutionAllowed: false,
+  riskLabel: 'Medium risk',
+  riskLevel: 'medium',
+  state: 'needs_approval',
+  stateLabel: 'Needs approval',
+})
+
 // The honest inert/disabled payload. Read-only, no live capability claimed.
 const inertPayload = (): Record<string, unknown> => ({
   promiseId: VOICE_PROGRAM_INGEST_PROMISE_ID,
@@ -269,6 +291,7 @@ export const handleVoiceProgramIngestApi = async (
     enabled: true as const,
     executesProgramRun: false as const,
     proposesProgramInputOnly: true as const,
+    approvalGate: approvalGatePayload(),
     blockerCleared: VOICE_PROGRAM_INGEST_BLOCKERS.cleared,
     remainingBlockers: VOICE_PROGRAM_INGEST_BLOCKERS.remaining,
     proposal,

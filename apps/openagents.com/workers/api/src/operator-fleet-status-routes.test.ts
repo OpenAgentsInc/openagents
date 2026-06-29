@@ -64,6 +64,22 @@ const rowsForSql = (sql: string): ReadonlyArray<Record<string, unknown>> => {
     ]
   }
 
+  if (sql.includes('FROM pylon_api_events')) {
+    return [
+      {
+        assignment_ref: 'assignment.public.issue_6427',
+        created_at: '2026-06-27T18:40:30.000Z',
+        event_body_json: JSON.stringify({
+          elapsedMs: 630000,
+          lastProgressEvent: 'turn.completed',
+          message: 'Runtime phase: testing.',
+          phase: 'testing',
+          tokensSoFar: 4242,
+        }),
+      },
+    ]
+  }
+
   if (sql.includes('FROM provider_accounts')) {
     return [
       {
@@ -92,6 +108,18 @@ const rowsForSql = (sql: string): ReadonlyArray<Record<string, unknown>> => {
   }
 
   if (sql.includes('FROM fleet_alerts')) {
+    if (sql.includes('serving_rate_low')) {
+      return [
+        {
+          active_assignments: 0,
+          alert_ref: 'serving_rate_alert.serving_rate_low.2026-06-27T18:39:00.000Z.feedface',
+          classification: 'serving_rate_low',
+          detected_at: '2026-06-27T18:39:00.000Z',
+          queued_assignments: 0,
+          reason_ref: 'blocker.public.serving_rate.tokens_per_hour_below_floor',
+        },
+      ]
+    }
     return [
       {
         active_assignments: 1,
@@ -191,7 +219,7 @@ describe('operator fleet status route', () => {
     expect(first.headers.get('x-openagents-cache')).toBe('miss')
     expect(second.headers.get('x-openagents-cache')).toBe('hit')
     expect(log.length).toBeGreaterThan(0)
-    expect(log.length).toBe(9)
+    expect(log.length).toBe(10)
     expect(cachedBody).toEqual(body)
     expect(body).toMatchObject({
       authority: {
@@ -208,10 +236,12 @@ describe('operator fleet status route', () => {
         activeAssignments: [
           {
             assignmentRef: 'assignment.public.issue_6427',
-            elapsedMs: 660000,
-            lastProgressEvent: null,
-            phase: 'running',
-            tokensSoFar: null,
+            elapsedMs: 630000,
+            lastLog: 'Runtime phase: testing.',
+            lastProgressEvent: 'turn.completed',
+            phase: 'testing',
+            progressObservedAt: '2026-06-27T18:40:30.000Z',
+            tokensSoFar: 4242,
           },
         ],
         activeSlots: 3,
@@ -255,6 +285,13 @@ describe('operator fleet status route', () => {
         ],
       },
       schemaVersion: 'operator.fleet_status.v1',
+      servingRateMonitor: {
+        latestAlert: {
+          classification: 'serving_rate_low',
+          reasonRef: 'blocker.public.serving_rate.tokens_per_hour_below_floor',
+        },
+        state: 'SERVING_RATE_LOW',
+      },
       supervisor: {
         availableCodexSlots: 3,
         desiredCodexSlots: 2,
@@ -289,6 +326,7 @@ describe('operator fleet status route', () => {
     expect(body.fleet.sourceRefs).toContain('d1:pylon_api_registrations')
     expect(log.some(sql => sql.includes('owner_agent_user_id = ?'))).toBe(true)
     expect(log.some(sql => sql.includes('AND user_id = ?'))).toBe(true)
+    expect(log.some(sql => sql.includes('FROM pylon_api_events') && sql.includes('pylon_ref IN'))).toBe(true)
   })
 
   test('keeps the legacy fleet status path admin-token only', async () => {

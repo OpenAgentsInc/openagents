@@ -27,7 +27,8 @@
 //
 // No dispatch, spend, settlement, payout, or public-claim authority. A progress
 // object is in-progress evidence only and is always `decisionGrade: false`.
-import { Effect } from 'effect'
+import { readRequestJsonEffect } from '@openagentsinc/effect-boundary'
+import { Effect, Schema as S } from 'effect'
 
 import { methodNotAllowed, noStoreJsonResponse } from '../../http/responses'
 import { currentIsoTimestamp } from '../../runtime-primitives'
@@ -48,6 +49,7 @@ import type {
 // progress object carries its own `lastUpdatedAt` capture time. The contract is
 // declared in the public payload (epic #4751, public-projection-staleness).
 const GYM_RUN_PROGRESS_MAX_STALENESS_SECONDS = 300
+const GymRunProgressIngestBody = S.Record(S.String, S.Unknown)
 
 const gymRunProgressStaleness = () =>
   storedSnapshotStaleness(GYM_RUN_PROGRESS_MAX_STALENESS_SECONDS, [
@@ -157,10 +159,11 @@ const handleOperatorIngestRunProgress = (
   if (store === undefined) {
     return Effect.succeed(ingestUnavailable())
   }
-  return Effect.tryPromise({
-    catch: error => (error instanceof Error ? error.message : String(error)),
-    try: () => request.json(),
-  }).pipe(
+  return readRequestJsonEffect(
+    GymRunProgressIngestBody,
+    request,
+    'gym.run_progress.operator.ingest.body',
+  ).pipe(
     Effect.flatMap(raw => buildIngestedProgress(raw)),
     Effect.flatMap(result =>
       result.tag === 'reject'
@@ -188,7 +191,13 @@ const handleOperatorIngestRunProgress = (
             ),
           ),
     ),
-    Effect.catch(reason => Effect.succeed(ingestBadRequest(reason))),
+    Effect.catch(error =>
+      Effect.succeed(
+        ingestBadRequest(
+          typeof error === 'string' ? error : error.reasonRef,
+        ),
+      ),
+    ),
   )
 }
 

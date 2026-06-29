@@ -155,7 +155,17 @@ describe('POST /api/keys/free (issue #6228)', () => {
       dataSharing: {
         promiseId: string
         terms: ReadonlyArray<string>
-        policy: { capturedByDefault: boolean; paidPrivacyOptOut: boolean }
+        policy: {
+          capturedByDefault: boolean
+          defaultCaptureGate: string
+          paidPrivacyOptOut: boolean
+        }
+        gates: {
+          defaultCapture: { state: string }
+          paidPrivacyOptOut: { failClosed: boolean }
+          traceRewards: { payoutClaimAllowed: boolean }
+        }
+        blockerRefs: ReadonlyArray<string>
       }
     }
     expect(body.tier).toBe('free')
@@ -169,7 +179,14 @@ describe('POST /api/keys/free (issue #6228)', () => {
     )
     expect(body.dataSharing.terms.length).toBeGreaterThan(0)
     expect(body.dataSharing.policy.capturedByDefault).toBe(true)
+    expect(body.dataSharing.policy.defaultCaptureGate).toBe('owner_gated')
     expect(body.dataSharing.policy.paidPrivacyOptOut).toBe(true)
+    expect(body.dataSharing.gates.defaultCapture.state).toBe('owner_gated')
+    expect(body.dataSharing.gates.paidPrivacyOptOut.failClosed).toBe(true)
+    expect(body.dataSharing.gates.traceRewards.payoutClaimAllowed).toBe(false)
+    expect(body.dataSharing.blockerRefs).toContain(
+      'blocker.product_promises.paid_khala_business_loop_not_green',
+    )
     // The minted account is now marked free-tier in D1.
     const row = await db
       .prepare(

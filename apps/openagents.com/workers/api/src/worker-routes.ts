@@ -89,6 +89,7 @@ type WorkerRouteDependencies = Readonly<{
   routeEcommerceCampaignReceiptRequest: OptionalEffectRoute
   routeEcommerceCampaignReceiptOperatorRequest: OptionalEffectRoute
   routeEcommerceCampaignSelfServeRequest: OptionalEffectRoute
+  routeCodingQuickWinReceiptRequest: OptionalEffectRoute
   routeMarketingAgencyReceiptRequest: OptionalEffectRoute
   routeMarketingAgencySelfServeRequest: OptionalEffectRoute
   routePylonApiRequest: OptionalEffectRoute
@@ -659,6 +660,13 @@ export const makeWorkerRouteRequest =
 
       if (ecommerceCampaignSelfServeResponse !== undefined) {
         return yield* ecommerceCampaignSelfServeResponse
+      }
+
+      const codingQuickWinReceiptResponse =
+        dependencies.routeCodingQuickWinReceiptRequest(request, env, ctx)
+
+      if (codingQuickWinReceiptResponse !== undefined) {
+        return yield* codingQuickWinReceiptResponse
       }
 
       const marketingAgencyReceiptResponse =

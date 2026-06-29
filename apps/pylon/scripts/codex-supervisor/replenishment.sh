@@ -60,6 +60,10 @@ SG-2 replenish: test lint typecheck sweep for owner-capacity lane|sweep|Run a fo
 TEMPLATES
 }
 
+sup_replenishment_template_titles() {
+  sup_replenishment_templates | awk -F'|' 'NF { print $1 }'
+}
+
 sup_replenishment_open_issues_json() {
   command -v "$SUP_GH_BIN" >/dev/null 2>&1 || return 1
   sup_run_timeout "$SUP_GH_TIMEOUT_SECS" "$SUP_GH_BIN" issue list \
@@ -86,6 +90,24 @@ for row in rows if isinstance(rows,list) else []:
         print(row['number'])
         sys.exit(0)
 sys.exit(1)" 2>/dev/null
+}
+
+sup_replenishment_template_issue_numbers_from_json() {
+  local titles
+  titles="$(sup_replenishment_template_titles)"
+  SUP_REPLENISHMENT_TEMPLATE_TITLES="$titles" python3 -c "import json,os,sys
+titles=set(filter(None, os.environ.get('SUP_REPLENISHMENT_TEMPLATE_TITLES','').splitlines()))
+try:
+    rows=json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+seen=set()
+for row in rows if isinstance(rows,list) else []:
+    n=row.get('number')
+    title=row.get('title')
+    if isinstance(n,int) and title in titles and n not in seen:
+        seen.add(n)
+        print(n)" 2>/dev/null
 }
 
 sup_replenishment_created_issue_number() {
@@ -170,17 +192,7 @@ sup_ensure_replenishment_issues() {
   command -v "$SUP_GH_BIN" >/dev/null 2>&1 || return 1
 
   if ! sup_replenishment_with_lock; then
-    sup_replenishment_open_issues_json | python3 -c "import json,sys
-try:
-    rows=json.load(sys.stdin)
-except Exception:
-    sys.exit(0)
-seen=set()
-for row in rows if isinstance(rows,list) else []:
-    n=row.get('number')
-    if isinstance(n,int) and n not in seen:
-        seen.add(n)
-        print(n)" 2>/dev/null
+    sup_replenishment_open_issues_json | sup_replenishment_template_issue_numbers_from_json
     return 0
   fi
 

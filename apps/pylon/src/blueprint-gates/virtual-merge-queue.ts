@@ -82,6 +82,11 @@ export type VirtualMergeQueuePrFastForwardCommand =
       readonly args: readonly ["git", "fetch", "origin", string]
     }
   | {
+      readonly kind: "git_verify_fetched_pr_head"
+      readonly args: readonly ["git", "rev-parse", "--verify", "FETCH_HEAD^{commit}"]
+      readonly expectedStdout: string
+    }
+  | {
       readonly kind: "git_checkout_branch"
       readonly args: readonly ["git", "checkout", string]
     }
@@ -442,6 +447,11 @@ export function planVirtualMergeQueuePrFastForward(input: {
       {
         kind: "git_fetch_pr_head",
         args: ["git", "fetch", "origin", `pull/${request.prNumber}/head`] as const,
+      },
+      {
+        kind: "git_verify_fetched_pr_head",
+        args: ["git", "rev-parse", "--verify", "FETCH_HEAD^{commit}"] as const,
+        expectedStdout: request.prHeadCommit,
       },
       {
         kind: "git_checkout_branch",

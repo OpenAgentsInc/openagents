@@ -1,4 +1,5 @@
 import { Schema as S } from 'effect'
+import { existsSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 
 import {
@@ -83,7 +84,59 @@ const ProductPromisesDocument = S.Struct({
   version: S.String,
 })
 
+const repoFile = (relPath: string): URL =>
+  new URL(`../../../../../${relPath}`, import.meta.url)
+
 describe('public product promises document', () => {
+  test('keeps business quick-win paid receipt blockers exact for issue 7025', () => {
+    const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
+      publicProductPromisesDocument(),
+    )
+    const promiseById = new Map(
+      decoded.promises.map(promise => [promise.promiseId, promise]),
+    )
+
+    expect(
+      promiseById.get('business.intake_quick_win_offering.v1'),
+    ).toMatchObject({
+      state: 'yellow',
+      blockerRefs: expect.arrayContaining([
+        'blocker.product_promises.business_quick_win_self_serve_delivery_missing',
+        'blocker.product_promises.business_first_paid_quick_win_receipt_missing',
+      ]),
+    })
+    expect(promiseById.get('business.coding_quick_win.v1')).toMatchObject({
+      state: 'yellow',
+      blockerRefs: expect.arrayContaining([
+        'blocker.product_promises.business_coding_quick_win_paid_receipt_missing',
+      ]),
+    })
+    expect(
+      promiseById.get('business.ecommerce_workspace_pack.v1'),
+    ).toMatchObject({
+      state: 'yellow',
+      blockerRefs: [
+        'blocker.product_promises.ecommerce_pack_first_paid_delivery_receipt_missing',
+      ],
+    })
+    expect(promiseById.get('business.legal_workspace_pack.v1')).toMatchObject({
+      state: 'yellow',
+      blockerRefs: expect.arrayContaining([
+        'blocker.product_promises.legal_pack_self_serve_missing',
+        'blocker.product_promises.legal_pack_first_paid_delivery_receipt_missing',
+      ]),
+    })
+    expect(
+      promiseById.get('business.marketing_agency_workspace_pack.v1'),
+    ).toMatchObject({
+      state: 'yellow',
+      blockerRefs: expect.arrayContaining([
+        'blocker.product_promises.marketing_agency_pack_self_serve_missing',
+        'blocker.product_promises.marketing_agency_pack_first_paid_delivery_receipt_missing',
+      ]),
+    })
+  })
+
   test('matches the browser-facing schema', () => {
     const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
       publicProductPromisesDocument(),
@@ -130,6 +183,9 @@ describe('public product promises document', () => {
     expect(blockerRefs).not.toContain(
       'blocker.product_promises.cloud_primitives_unified_balance_unbuilt',
     )
+    expect(blockerRefs).not.toContain(
+      'blocker.product_promises.business_coding_quick_win_self_serve_missing',
+    )
     expect(decoded.sourceRefs).toContain(
       'docs/training/2026-06-20-psion-instruct-sft-fixture-sync.md',
     )
@@ -158,6 +214,15 @@ describe('public product promises document', () => {
       'docs/tassadar/2026-06-21-tassadar-cpu-transform-training-receipt-surface.md',
     )
     expect(decoded.promises.length).toBeGreaterThan(0)
+    const codingQuickWin = decoded.promises.find(
+      promise => promise.promiseId === 'business.coding_quick_win.v1',
+    )
+    expect(codingQuickWin?.blockerRefs).toEqual([
+      'blocker.product_promises.business_coding_quick_win_paid_receipt_missing',
+    ])
+    expect(codingQuickWin?.evidenceRefs).toContain(
+      'route:/api/public/business/coding-quick-win-receipts?view=paid-delivery-claims',
+    )
     expect(decoded.verificationSummary.promiseCount).toBe(
       decoded.promises.length,
     )
@@ -343,6 +408,10 @@ describe('public product promises document', () => {
     // /api/public/marketplace/composed-products read surface. Runtime,
     // self-serve write/install lifecycle, and billing blockers remain, so
     // green remains exactly 26.
+    // The 2026-06-29.1 compose-and-list lifecycle pass adds no-spend
+    // assemble/list/install-use receipts with builder attribution, replacing
+    // the unbuilt runtime/lifecycle blockers with the paid-listing runtime
+    // blocker. Billing/settlement remains, so no promise flips green.
     // The agentic-npm runtime pass clears the stale source-level registry and
     // install/use blocker by acknowledging the bounded runtime core plus
     // install/use evidence rows. Paid public marketplace and billing/settlement
@@ -366,9 +435,13 @@ describe('public product promises document', () => {
     // khala.own_capacity_codex_delegation.v1 promise green after live dispatch,
     // materialization, trace-status, proof, and no-spend closeout evidence.
     // Green is now exactly 31.
+    // The #7029 MDK send-readiness capacity pass clears the scoped
+    // payments.money_dev_kit.v1 blocker only for the original funded wallet
+    // home, backed by public-safe 1-sat receipts and capacity-sufficient
+    // preflight evidence. Green is now exactly 32.
     expect(
       decoded.promises.filter(promise => promise.state === 'green').length,
-    ).toBe(31)
+    ).toBe(32)
     expect(decoded.verificationSummary.evidenceRefCount).toBeGreaterThan(0)
     expect(decoded.verificationSummary.uniqueBlockerCount).toBeGreaterThan(0)
     expect(
@@ -377,6 +450,33 @@ describe('public product promises document', () => {
     expect(
       decoded.promises.every(promise => promise.sourceRefs.length > 0),
     ).toBe(true)
+    const agentCharacterCreationPromise = decoded.promises.find(
+      promise =>
+        promise.promiseId === 'autopilot.agent_character_creation.v1',
+    )
+    expect(agentCharacterCreationPromise).toBeDefined()
+    expect(agentCharacterCreationPromise?.state).toBe('planned')
+    expect(agentCharacterCreationPromise?.evidenceRefs).toEqual(
+      expect.arrayContaining([
+        'https://github.com/OpenAgentsInc/openagents/issues/6861',
+        'promise:autopilot.agent_world_scene.v1',
+        'promise:labor.forum_work_requests.v1',
+      ]),
+    )
+    expect(agentCharacterCreationPromise?.blockerRefs).toEqual([
+      'blocker.product_promises.agent_character_creation_not_built',
+      'blocker.product_promises.agent_character_creation_auto_forum_intro_unproven',
+      'blocker.product_promises.agent_character_creation_auto_work_search_unproven',
+    ])
+    expect(agentCharacterCreationPromise?.safeCopy).toContain(
+      'The closure gate is receipt-first',
+    )
+    expect(agentCharacterCreationPromise?.verification).toContain(
+      'a demonstrated automated work-search step covered by tests',
+    )
+    expect(agentCharacterCreationPromise?.safeCopy).toContain(
+      'It is not a shipped onboarding flow',
+    )
     const openMarketsPromise = decoded.promises.find(
       promise => promise.promiseId === 'markets.open_protocol_markets.v1',
     )
@@ -396,10 +496,15 @@ describe('public product promises document', () => {
     expect(composeAndListPromise?.blockerRefs).not.toContain(
       'blocker.product_promises.marketplace_listing_lifecycle_unbuilt',
     )
+    expect(composeAndListPromise?.blockerRefs).not.toContain(
+      'blocker.product_promises.marketplace_composition_runtime_unbuilt',
+    )
+    expect(composeAndListPromise?.blockerRefs).not.toContain(
+      'blocker.product_promises.marketplace_self_serve_listing_write_install_lifecycle_unbuilt',
+    )
     expect(composeAndListPromise?.blockerRefs).toEqual(
       expect.arrayContaining([
-        'blocker.product_promises.marketplace_composition_runtime_unbuilt',
-        'blocker.product_promises.marketplace_self_serve_listing_write_install_lifecycle_unbuilt',
+        'blocker.product_promises.marketplace_paid_listing_runtime_missing',
         'blocker.product_promises.marketplace_billing_settlement_missing',
       ]),
     )
@@ -407,7 +512,7 @@ describe('public product promises document', () => {
       'route:/api/public/marketplace/composed-products',
     )
     expect(composeAndListPromise?.safeCopy).toContain(
-      'public read-only listing/discovery projection',
+      'no-spend assemble/list/install-use lifecycle receipts',
     )
     const agenticNpmPromise = decoded.promises.find(
       promise =>
@@ -428,6 +533,31 @@ describe('public product promises document', () => {
         'apps/openagents.com/workers/api/src/agentic-npm-composition-runtime.test.ts',
       ]),
     )
+    const freeTierTraceCapturePromise = decoded.promises.find(
+      promise =>
+        promise.promiseId === 'data.khala_free_tier_trace_capture.v1',
+    )
+    expect(freeTierTraceCapturePromise?.blockerRefs).not.toContain(
+      'blocker.product_promises.trace_capture_public_disclosure_alignment_required',
+    )
+    expect(freeTierTraceCapturePromise?.blockerRefs).toEqual(
+      expect.arrayContaining([
+        'blocker.product_promises.free_tier_capture_default_owner_gated',
+        'blocker.product_promises.trace_capture_reward_marker_inert',
+      ]),
+    )
+    expect(freeTierTraceCapturePromise?.verification).toContain(
+      'disclosure surface, and privacy-entitlement exclusion code now agree',
+    )
+    const paidCaptureOptoutPromise = decoded.promises.find(
+      promise => promise.promiseId === 'privacy.khala_paid_capture_optout.v1',
+    )
+    expect(paidCaptureOptoutPromise?.blockerRefs).toEqual(
+      expect.arrayContaining([
+        'blocker.product_promises.paid_privacy_owner_signoff_pending',
+        'blocker.product_promises.paid_khala_business_loop_not_green',
+      ]),
+    )
     expect(agenticNpmPromise?.safeCopy).toContain(
       'bounded source-level registry + install/use runtime core exists',
     )
@@ -440,9 +570,12 @@ describe('public product promises document', () => {
       /latest stays 0\.2\.5|only published, installable Pylon|release candidate, not stable 0\.3\.0|Pylon v1\.0 is present in the monorepo as a release candidate/i,
     )
     expect(currentCopy).toContain('Pylon v1.0 has a stable source cut')
+    expect(currentCopy).toContain('Registry 2026-06-29.2')
     expect(currentCopy).toContain('Registry 2026-06-29.3')
     expect(currentCopy).toContain('flips NO promise state')
     expect(currentCopy).toContain('Khala Desktop now carries source-level')
+    expect(currentCopy).toContain('owner-scoped /api/operator/fleet/state')
+    expect(currentCopy).toContain('public Artanis page now renders a fleet map')
     expect(currentCopy).toContain('maxStalenessSeconds:0')
     const codexSuccessorPromise = decoded.promises.find(
       promise => promise.promiseId === 'autopilot.codex_probe_pylon_successor.v1',
@@ -471,6 +604,26 @@ describe('public product promises document', () => {
         'apps/openagents.com/workers/api/src/inference/model-router.ts',
         'apps/openagents.com/workers/api/src/inference/model-router.test.ts',
       ]),
+    )
+    const khalaCliPromise = decoded.promises.find(
+      promise => promise.promiseId === 'khala.cli_terminal_client.v1',
+    )
+    expect(khalaCliPromise?.state).toBe('green')
+    expect(khalaCliPromise?.safeCopy).toContain('khala fleet status')
+    expect(khalaCliPromise?.safeCopy).toContain(
+      'owner-scoped fleet state',
+    )
+    expect(khalaCliPromise?.unsafeCopy).toContain(
+      'cross-owner fleet browser',
+    )
+    expect(khalaCliPromise?.evidenceRefs).toEqual(
+      expect.arrayContaining([
+        'clients/khala-cli/src/fleet.ts',
+        'apps/openagents.com/workers/api/src/operator-fleet-status-routes.ts',
+      ]),
+    )
+    expect(khalaCliPromise?.authorityBoundary).toContain(
+      'fleet visibility',
     )
     expect(decoded.promises).toEqual(
       expect.arrayContaining([
@@ -915,8 +1068,7 @@ describe('public product promises document', () => {
           promiseId: 'marketplace.compose_and_list_products.v1',
           state: 'planned',
           blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.marketplace_composition_runtime_unbuilt',
-            'blocker.product_promises.marketplace_self_serve_listing_write_install_lifecycle_unbuilt',
+            'blocker.product_promises.marketplace_paid_listing_runtime_missing',
             'blocker.product_promises.marketplace_billing_settlement_missing',
           ]),
           evidenceRefs: expect.arrayContaining([
@@ -1068,10 +1220,13 @@ describe('public product promises document', () => {
           state: 'green',
         }),
         expect.objectContaining({
-          blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.mdk_agent_wallet_send_readiness_insufficient_capacity',
-          ]),
+          blockerRefs: [],
           evidenceRefs: expect.arrayContaining([
+            'apps/openagents.com/docs/nexus/2026-06-08-mdk-agent-wallet-send-readiness-preflight.md',
+            'apps/openagents.com/docs/nexus/2026-06-08-mdk-agent-wallet-outbound-capacity-restore-report.md',
+            'receipt.nexus_pylon.settlement.assignment_public_probe_gepa_paid_multi_pylon_20260608214500_1',
+            'receipt.nexus_pylon.settlement.assignment_public_probe_gepa_paid_multi_pylon_20260608214500_2',
+            'capacity.mdk_agent_wallet.send.sufficient_for_scoped_smoke',
             'docs/forum/2026-06-09-forum-mdk-webhook-reconciliation-audit.md',
             'route:/api/forum/paid-actions/mdk/webhooks',
             'script:apps/openagents.com/scripts/forum.mjs tip-post-smoke',
@@ -1079,7 +1234,9 @@ describe('public product promises document', () => {
             'apps/openagents.com/docs/mdk-forum-readiness-smoke.md',
           ]),
           promiseId: 'payments.money_dev_kit.v1',
-          state: 'yellow',
+          safeCopy: expect.stringContaining('Spark remains the primary'),
+          state: 'green',
+          unsafeCopy: expect.stringContaining('Do not claim MDK mnemonic restore'),
         }),
         expect.objectContaining({
           blockerRefs: [],
@@ -1303,6 +1460,77 @@ describe('public product promises document', () => {
     expect(externalRepoStudyPromise?.authorityBoundary).toContain(
       'no private repo ingestion authority',
     )
+  })
+
+  test('world-first and largest-force claims stay gated by the #7027 dated audit', () => {
+    const auditDoc = 'docs/promises/2026-06-29-world-first-claims-7027-audit.md'
+    expect(existsSync(repoFile(auditDoc))).toBe(true)
+
+    const document = publicProductPromisesDocument()
+    const byId = new Map(
+      document.promises.map(promise => [promise.promiseId, promise]),
+    )
+
+    const paidBitcoin = byId.get(
+      'claims.world_first_ai_training_paid_bitcoin.v1',
+    )
+    expect(paidBitcoin).toMatchObject({
+      state: 'red',
+      blockerRefs: expect.arrayContaining([
+        'blocker.product_promises.world_first_evidence_pack_missing',
+        'blocker.product_promises.world_first_owner_signed_upgrade_missing',
+      ]),
+      evidenceRefs: expect.arrayContaining([auditDoc]),
+    })
+    expect(paidBitcoin?.safeCopy).toContain('full qualifiers')
+    expect(paidBitcoin?.unsafeCopy).toContain('bare "world first"')
+    expect(paidBitcoin?.verification).toContain('#7027 dated audit')
+
+    const llmComputer = byId.get(
+      'claims.world_first_public_llm_computer_training_run.v1',
+    )
+    expect(llmComputer).toMatchObject({
+      state: 'red',
+      blockerRefs: [
+        'blocker.product_promises.world_first_owner_signed_upgrade_missing',
+      ],
+      evidenceRefs: expect.arrayContaining([auditDoc]),
+    })
+    expect(llmComputer?.safeCopy).toContain('Percepta')
+    expect(llmComputer?.unsafeCopy).toContain('bare "world first"')
+    expect(llmComputer?.verification).toContain('#7027 dated audit')
+
+    const agenticSalesForce = byId.get(
+      'claims.pursued_world_first_largest_agentic_sales_force.v1',
+    )
+    expect(agenticSalesForce).toMatchObject({
+      state: 'planned',
+      blockerRefs: expect.arrayContaining([
+        'blocker.product_promises.world_first_agentic_sales_force_not_achieved',
+        'blocker.product_promises.world_first_agentic_sales_force_no_sized_verifiable_force',
+        'blocker.product_promises.world_first_owner_signed_upgrade_missing',
+      ]),
+      evidenceRefs: expect.arrayContaining([auditDoc]),
+    })
+    expect(agenticSalesForce?.safeCopy).toContain('PURSUED')
+    expect(agenticSalesForce?.unsafeCopy).toContain('OpenAgents HAS')
+    expect(agenticSalesForce?.verification).toContain('#7027 dated audit')
+
+    const largestSalesForce = byId.get(
+      'claims.pursued_world_first_largest_sales_force.v1',
+    )
+    expect(largestSalesForce).toMatchObject({
+      state: 'planned',
+      blockerRefs: expect.arrayContaining([
+        'blocker.product_promises.world_first_largest_sales_force_not_achieved',
+        'blocker.product_promises.world_first_largest_sales_force_seven_million_bar_unmet',
+        'blocker.product_promises.world_first_owner_signed_upgrade_missing',
+      ]),
+      evidenceRefs: expect.arrayContaining([auditDoc]),
+    })
+    expect(largestSalesForce?.safeCopy).toContain('NOT achieved')
+    expect(largestSalesForce?.unsafeCopy).toContain('~7M-agent bar')
+    expect(largestSalesForce?.verification).toContain('#7027 dated audit')
   })
 
   test('weekend pylon promise assault attaches evidence without flipping any state', () => {
@@ -1660,6 +1888,34 @@ describe('public product promises document', () => {
     )
     expect(kernelPromise?.verification).toContain(
       'Green still requires a real live market-dispatched optimized kernel',
+    )
+  })
+
+  test('keeps X claim reward yellow while naming settled dispatch receipt evidence', () => {
+    const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
+      publicProductPromisesDocument(),
+    )
+    const xClaimRewardPromise = decoded.promises.find(
+      promise => promise.promiseId === 'agents.x_claim_reward.v1',
+    )
+
+    expect(xClaimRewardPromise).toMatchObject({
+      state: 'yellow',
+      blockerRefs: [
+        'blocker.product_promises.x_claim_reward_live_dispatch_smoke_missing',
+      ],
+    })
+    expect(xClaimRewardPromise?.safeCopy).toContain(
+      'settled dispatch receipt refs',
+    )
+    expect(xClaimRewardPromise?.safeCopy).toContain(
+      'No owner-armed reward has completed a live dispatch smoke',
+    )
+    expect(xClaimRewardPromise?.verification).toContain(
+      'persist a public settled dispatch receipt ref',
+    )
+    expect(xClaimRewardPromise?.verification).toContain(
+      'Green requires one live operator-dispatched reward',
     )
   })
 

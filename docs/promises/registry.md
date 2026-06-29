@@ -10,6 +10,15 @@
 > The promise remains yellow until a signed/notarized installer recut proves the
 > packaged or supervised helper from a clean install on admitted Apple Silicon.
 >
+> Registry `2026-06-29.3` is a fleet-state/public-board sync after #6995 and
+> #7004 and flips NO promise state. It records the owner-scoped
+> `/api/operator/fleet/state` route plus Khala fleet client wiring as linked-
+> owner status visibility, while preserving the admin-only boundary for the
+> legacy fleet status route and making no dispatch, spend, payout, settlement,
+> or cross-owner capacity claim. It also records the public Artanis fleet map
+> and active task board as public observability from Pylon stats/activity data,
+> not assignment proof, guaranteed availability, revenue, or settlement.
+>
 > Registry `2026-06-29.2` is a current-main refresh after #6997, #6999,
 > #7001, #7002, and #7006 and flips NO promise state. It records the
 > terminal-agent current-state audit and Codex tool-layer study as evidence for
@@ -84,12 +93,14 @@
 >
 > `2026-06-29` standing sweep: recent mainline accepted-outcome economics,
 > Tassadar CPU-transform, referral, small-model proxy, WASM plugin, Verse scene,
-> native email, marketplace, metrics, terminal-agent audit, supervisor
-> replenishment, GLM failover, Apple FM sidecar, and operator-safety merges were
-> checked against the current `2026-06-29.3` registry header. This pass records
-> no additional promise state flips and no new green claims beyond the already
-> source-recorded scoped transitions; red/planned/yellow records keep their
-> owner-signed, receipt-first green gates.
+> native email, marketplace, metrics, terminal-agent audit, Codex tool-layer
+> study, supervisor replenishment, GLM failover, Apple FM sidecar, owner-scoped
+> fleet state, account-reset safety, VMQ fast-forward planning, public agent
+> task-board UI, the public Artanis fleet board, Effect usage audit, and
+> operator-safety merges were checked against the current `2026-06-29.3`
+> registry header. This pass records no additional promise state flips and no
+> new green claims beyond the already source-recorded scoped transitions;
+> red/planned/yellow records keep their owner-signed, receipt-first green gates.
 >
 > `2026-06-28` standing sweep: recent mainline Khala, Artanis, Pylon, Gym, and
 > operator-safety merges were checked against the current `2026-06-28.2`

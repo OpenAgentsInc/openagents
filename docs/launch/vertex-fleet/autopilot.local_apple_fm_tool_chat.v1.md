@@ -334,3 +334,26 @@ Advances (does **not** clear)
 Registry `2026-06-29.3` narrows the blocker list to the signed-installer recut
 and signed/from-install supervised-smoke gates. Nothing here flips any promise
 state.
+
+## Follow-up run (2026-06-29): Khala Desktop packaged helper now has bounded restart supervision
+
+Advances source-level supervision evidence for
+`blocker.product_promises.local_apple_fm_helper_supervision_missing`.
+
+- What was missing: the Khala Desktop sidecar could discover and launch the
+  packaged `foundation-bridge` helper, but a non-zero helper exit left the host
+  in `failed` until the app was manually restarted. That did not satisfy the
+  supervised-helper shape needed by the signed/from-install smoke.
+- `clients/khala-desktop/src/bun/apple-fm-sidecar.ts` now applies a bounded
+  restart policy for packaged helpers and explicit
+  `OPENAGENTS_APPLE_FM_BRIDGE_PATH` helpers. Source-tree helpers remain
+  adopted rather than launched. `stop()` cancels pending restarts and kills any
+  live child so a clean shutdown cannot leave a retry timer running.
+- `clients/khala-desktop/tests/apple-fm-sidecar.test.ts` covers packaged-helper
+  launch redaction, crash restart, and stop-cancels-restart behavior with fake
+  helpers and fake Pylon readiness. No prompts, callback URLs, control tokens,
+  or local helper paths enter the public readiness projection.
+- Still open: this is source-level supervision behavior only. The promise stays
+  yellow until a signed/notarized installer recut is produced and the same
+  helper launch/restart/readiness/chat/shutdown smoke is repeated from a clean
+  install on admitted Apple Silicon.
