@@ -9,7 +9,8 @@
 // are reported and ignored — a broken config must never block the node.
 
 import { join } from "node:path"
-import { Schema } from "effect"
+import { parseJsonEffect } from "@openagentsinc/effect-boundary"
+import { Effect, Schema } from "effect"
 
 export const keybindsFileName = "keybinds.json"
 
@@ -27,7 +28,9 @@ export interface KeybindsLoadResult {
 }
 
 export function parseKeybindsConfig(content: string): KeybindOverrides {
-  const decoded = Schema.decodeUnknownSync(KeybindsSchema)(JSON.parse(content))
+  const decoded = Effect.runSync(
+    parseJsonEffect(KeybindsSchema, content, "pylon.keybinds.config"),
+  )
   return decoded.bindings
 }
 

@@ -1,4 +1,14 @@
 import { Option, Schema as S } from 'effect'
+export {
+  decodeRowEffect,
+  decodeUnknownEffect,
+  expectBoundaryFailure,
+  OpenAgentsBoundaryError,
+  parseJsonEffect,
+  readJsonFileEffect,
+  readRedactedConfigEffect,
+  readRequestJsonEffect,
+} from '@openagentsinc/effect-boundary'
 
 const JsonRecord = S.Record(S.String, S.Unknown)
 const UnknownArray = S.Array(S.Unknown)
