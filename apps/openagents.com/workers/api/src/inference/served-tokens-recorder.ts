@@ -73,6 +73,9 @@ export type ServedTokensRequestMetrics = Readonly<{
   replicaMaxInflight?: number | undefined
   replicaQueueDepth?: number | undefined
   replicaWarmState?: 'cold' | 'unknown' | 'warm' | undefined
+  glmAggregateExternalHeadroom?: number | undefined
+  glmAggregateInflightCount?: number | undefined
+  glmAggregateMaxInflight?: number | undefined
   glmSaturationPolicy?: string | undefined
   schedulerPreemptionEvidenceRef?: string | undefined
   schedulerPreemptionReason?: string | undefined
@@ -244,6 +247,27 @@ const servedTokensSafeMetrics = (
     ...(metrics.replicaWarmState === undefined
       ? {}
       : { replicaWarmState: metrics.replicaWarmState }),
+    ...(finiteNonNegative(metrics.glmAggregateExternalHeadroom) === undefined
+      ? {}
+      : {
+          glmAggregateExternalHeadroom: finiteNonNegative(
+            metrics.glmAggregateExternalHeadroom,
+          ),
+        }),
+    ...(finiteNonNegative(metrics.glmAggregateInflightCount) === undefined
+      ? {}
+      : {
+          glmAggregateInflightCount: finiteNonNegative(
+            metrics.glmAggregateInflightCount,
+          ),
+        }),
+    ...(finiteNonNegative(metrics.glmAggregateMaxInflight) === undefined
+      ? {}
+      : {
+          glmAggregateMaxInflight: finiteNonNegative(
+            metrics.glmAggregateMaxInflight,
+          ),
+        }),
     ...(optionalText(metrics.glmSaturationPolicy) === undefined
       ? {}
       : { glmSaturationPolicy: optionalText(metrics.glmSaturationPolicy) }),

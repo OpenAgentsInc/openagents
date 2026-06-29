@@ -3423,6 +3423,110 @@ describe('POST /v1/chat/completions', () => {
     expect(recorded[0]?.usage.totalTokens).toBeGreaterThan(0)
   })
 
+  test('GLM reserved-headroom failures overflow external demand to paid fallback and keep exact token metering (#6820)', async () => {
+    let glmCalls = 0
+    let geminiCalls = 0
+    const recorded: Array<{
+      adapterId: string
+      requestAttribution?: unknown
+      requestMetrics?: unknown
+      usage: InferenceUsage
+    }> = []
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      ...echoAdapter(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID),
+      complete: () => {
+        glmCalls += 1
+        return Effect.fail(
+          new InferenceAdapterError({
+            adapterId: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+            adapterRouteMetadata: {
+              glmAggregateExternalHeadroom: 0,
+              glmAggregateInflightCount: 8,
+              glmAggregateMaxInflight: 8,
+              glmSaturationPolicy: 'failover_active',
+              queueWaitMs: 0,
+              replicaBusyReason: 'reserved_headroom_unavailable',
+              replicaFallbackReason: 'reserved_headroom_unavailable',
+            },
+            httpStatus: 503,
+            kind: 'route_admission_reserved_headroom_unavailable',
+            reason: 'GLM own-capacity lane has no reserved external headroom',
+            retryable: true,
+          }),
+        )
+      },
+    })
+    registry.register({
+      ...echoAdapter(VERTEX_GEMINI_ADAPTER_ID),
+      complete: request => {
+        geminiCalls += 1
+        return stubEchoAdapter.complete(request)
+      },
+    })
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest(helloBody, {
+          headers: {
+            [INFERENCE_CLIENT_HEADER]: 'public-api',
+            [INFERENCE_DEMAND_KIND_HEADER]: 'external',
+            [INFERENCE_DEMAND_SOURCE_HEADER]: 'public-api',
+          },
+        }),
+        baseDeps({
+          dispatch: { sleep: () => Effect.void },
+          lanePlan: () => [
+            HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+            VERTEX_GEMINI_ADAPTER_ID,
+          ],
+          recordTokensServed: input =>
+            Effect.sync(() => {
+              recorded.push({
+                adapterId: input.adapterId,
+                requestAttribution: input.requestAttribution,
+                requestMetrics: input.requestMetrics,
+                usage: input.usage,
+              })
+            }),
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      openagents?: {
+        routing?: { fallback_reason?: string | null }
+        worker?: string
+      }
+    }
+    expect(body.openagents?.worker).toBe(VERTEX_GEMINI_ADAPTER_ID)
+    expect(body.openagents?.routing?.fallback_reason).toBe(
+      'route_admission_reserved_headroom_unavailable',
+    )
+    expect(glmCalls).toBe(1)
+    expect(geminiCalls).toBe(1)
+    expect(recorded).toHaveLength(1)
+    expect(recorded[0]).toMatchObject({
+      adapterId: VERTEX_GEMINI_ADAPTER_ID,
+      requestAttribution: {
+        demandClient: 'public-api',
+        demandKind: 'external',
+        demandSource: 'public-api',
+      },
+      requestMetrics: {
+        fallbackReason: 'route_admission_reserved_headroom_unavailable',
+        glmAggregateExternalHeadroom: 0,
+        glmAggregateInflightCount: 8,
+        glmAggregateMaxInflight: 8,
+        glmSaturationPolicy: 'failover_active',
+        queueWaitMs: 0,
+      },
+    })
+    expect(recorded[0]?.usage.totalTokens).toBeGreaterThan(0)
+  })
+
   test('hedges external requests to a warm lane when route dispatch hedging is configured', async () => {
     let primaryCalls = 0
     let hedgeCalls = 0

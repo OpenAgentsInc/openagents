@@ -1629,6 +1629,30 @@ const servedTokensRequestMetrics = (
     ...(adapterRouteMetadata?.replicaWarmState === undefined
       ? {}
       : { replicaWarmState: adapterRouteMetadata.replicaWarmState }),
+    ...((adapterRouteMetadata?.glmAggregateExternalHeadroom ??
+      fallbackAdapterRouteMetadata?.glmAggregateExternalHeadroom) === undefined
+      ? {}
+      : {
+          glmAggregateExternalHeadroom:
+            adapterRouteMetadata?.glmAggregateExternalHeadroom ??
+            fallbackAdapterRouteMetadata?.glmAggregateExternalHeadroom,
+        }),
+    ...((adapterRouteMetadata?.glmAggregateInflightCount ??
+      fallbackAdapterRouteMetadata?.glmAggregateInflightCount) === undefined
+      ? {}
+      : {
+          glmAggregateInflightCount:
+            adapterRouteMetadata?.glmAggregateInflightCount ??
+            fallbackAdapterRouteMetadata?.glmAggregateInflightCount,
+        }),
+    ...((adapterRouteMetadata?.glmAggregateMaxInflight ??
+      fallbackAdapterRouteMetadata?.glmAggregateMaxInflight) === undefined
+      ? {}
+      : {
+          glmAggregateMaxInflight:
+            adapterRouteMetadata?.glmAggregateMaxInflight ??
+            fallbackAdapterRouteMetadata?.glmAggregateMaxInflight,
+        }),
     ...((adapterRouteMetadata?.glmSaturationPolicy ??
       fallbackAdapterRouteMetadata?.glmSaturationPolicy) === undefined
       ? {}
