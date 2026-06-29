@@ -440,10 +440,39 @@ describe('public product promises document', () => {
       /latest stays 0\.2\.5|only published, installable Pylon|release candidate, not stable 0\.3\.0|Pylon v1\.0 is present in the monorepo as a release candidate/i,
     )
     expect(currentCopy).toContain('Pylon v1.0 has a stable source cut')
-    expect(currentCopy).toContain('Registry 2026-06-29.2')
+    expect(currentCopy).toContain('Registry 2026-06-29.3')
     expect(currentCopy).toContain('flips NO promise state')
+    expect(currentCopy).toContain('audits #7023')
     expect(currentCopy).toContain('Khala Desktop now carries source-level')
     expect(currentCopy).toContain('maxStalenessSeconds:0')
+    const desktopPromise = decoded.promises.find(
+      promise => promise.promiseId === 'autopilot.desktop_gui_client.v1',
+    )
+    expect(desktopPromise?.state).toBe('yellow')
+    expect(desktopPromise?.evidenceRefs).toContain(
+      'docs/promises/2026-06-29-autopilot-desktop-dmg-compute-gate-audit.md',
+    )
+    expect(desktopPromise?.blockerRefs).toEqual(
+      expect.arrayContaining([
+        'blocker.product_promises.autopilot_desktop_from_dmg_proof_owner_gated',
+        'blocker.product_promises.autopilot_desktop_live_runtimes_not_wired',
+        'blocker.product_promises.autopilot_desktop_pricing_distribution_undecided',
+      ]),
+    )
+    const builtinComputePromise = decoded.promises.find(
+      promise => promise.promiseId === 'autopilot.builtin_compute_agent.v1',
+    )
+    expect(builtinComputePromise?.state).toBe('yellow')
+    expect(builtinComputePromise?.evidenceRefs).toContain(
+      'docs/promises/2026-06-29-autopilot-desktop-dmg-compute-gate-audit.md',
+    )
+    expect(builtinComputePromise?.blockerRefs).toEqual(
+      expect.arrayContaining([
+        'blocker.product_promises.builtin_compute_agent_signed_recut_missing',
+        'blocker.product_promises.builtin_compute_agent_live_from_install_smoke_missing',
+        'blocker.product_promises.openagents_compute_metering_live_smoke_missing',
+      ]),
+    )
     const codexSuccessorPromise = decoded.promises.find(
       promise => promise.promiseId === 'autopilot.codex_probe_pylon_successor.v1',
     )

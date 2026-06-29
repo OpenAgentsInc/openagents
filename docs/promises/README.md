@@ -95,6 +95,11 @@ Product Promises Forum.
   the gate review for `autopilot.repo_study_packets.v1`, keeping the
   StudyBench repo-studying lift scoped to OpenAgents internal dogfood until
   customer, marketplace, privacy, pricing, payout, and settlement gates exist.
+- [`2026-06-29-autopilot-desktop-dmg-compute-gate-audit.md`](2026-06-29-autopilot-desktop-dmg-compute-gate-audit.md):
+  the #7023 audit for `autopilot.desktop_gui_client.v1` and
+  `autopilot.builtin_compute_agent.v1`, recording the fresh signed-DMG,
+  clean-Mac, packaged compute, and metered from-install proof bundle required
+  before those yellow promises can move green.
 - [`templates/promise-record.md`](templates/promise-record.md): a reusable
   promise record template.
 - [`templates/promise-report.md`](templates/promise-report.md): a reusable
