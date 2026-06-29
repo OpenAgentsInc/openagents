@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test"
 import {
   buildManagerResumeSnapshot,
   parseCodexSessionRollout,
+  parseCodingAssignmentDetails,
   parseCodingProcesses,
   parseSupervisorLog,
   summarizeManagerAssignmentLogs,
@@ -133,6 +134,28 @@ Pylon presence failed: OpenAgents presence request failed (401): {"error":"unaut
       title: "tool error",
     })
     expect(parsed.messages.at(-1)?.text).toBe("Done.")
+  })
+
+  test("parses assignment lifecycle details for selected worker panels", () => {
+    const details = parseCodingAssignmentDetails(`
+{"event":"assignment_run.runtime_started","assignmentRef":"assignment.public.khala_coding.one","leaseRef":"lease.one","observedAt":"2026-06-29T16:00:00.000Z","workspacePath":"/tmp/openagents-one","issueNumber":7596}
+{"event":"assignment_run.runtime_progress","assignmentRef":"assignment.public.khala_coding.one","leaseRef":"lease.one","observedAt":"2026-06-29T16:00:10.000Z","elapsedMs":10234,"lastProgressEvent":"turn.completed"}
+{"event":"assignment_run.completed","assignmentRef":"assignment.public.khala_coding.one","leaseRef":"lease.one","observedAt":"2026-06-29T16:00:20.000Z","status":"accepted","closeoutRef":"assignment.closeout.one","pullRequestNumber":7612,"blockerRefs":[]}
+`)
+
+    expect(details).toHaveLength(1)
+    expect(details[0]).toMatchObject({
+      assignmentRef: "assignment.public.khala_coding.one",
+      closeoutRef: "assignment.closeout.one",
+      closeoutStatus: "accepted",
+      elapsedMs: 10234,
+      issueRef: "7596",
+      lastEvent: "assignment_run.completed",
+      lastEventAt: "2026-06-29T16:00:20.000Z",
+      leaseRef: "lease.one",
+      pullRequestRef: "7612",
+      workspacePath: "/tmp/openagents-one",
+    })
   })
 
   test("uses task-like rollout text instead of injected AGENTS context as title", () => {

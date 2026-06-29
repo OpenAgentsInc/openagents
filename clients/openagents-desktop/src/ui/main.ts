@@ -249,8 +249,9 @@ const sessionSubtitle = (session: CodingCodexSession): string => {
   const parts = [
     session.accountRef,
     session.issueRef === null ? null : `#${session.issueRef}`,
-    session.assignmentRef,
+    session.assignmentRef === null ? null : session.assignmentRef.slice(-12),
     session.pid === null ? null : `PID ${formatCount(session.pid)}`,
+    session.elapsed === null ? null : `elapsed ${session.elapsed}`,
     formatRelativeTimestamp(session.modifiedAt),
   ].filter((value): value is string => value !== null)
   return parts.join(" · ")
@@ -386,6 +387,53 @@ const messageRow = (message: CodingTranscriptMessage): HTMLElement => {
   return row
 }
 
+const detailChip = (label: string, value: string | null): HTMLElement => {
+  const chip = document.createElement("span")
+  chip.className = "coding-detail-chip"
+  const name = document.createElement("strong")
+  name.textContent = label
+  const body = document.createElement("code")
+  body.textContent = value === null || value.trim() === "" ? "unknown" : value
+  chip.append(name, body)
+  return chip
+}
+
+const sessionDetailChips = (session: CodingCodexSession): readonly HTMLElement[] => {
+  const lastEvent =
+    session.lastEvent.name === null
+      ? null
+      : `${session.lastEvent.name}${
+          session.lastEvent.ageSeconds === null
+            ? ""
+            : ` · ${formatCount(session.lastEvent.ageSeconds)}s ago`
+        }`
+  const closeout =
+    session.closeout.closeoutRef ??
+    session.closeout.status ??
+    (session.closeout.blockerRefs.length === 0
+      ? null
+      : session.closeout.blockerRefs.join(", "))
+  const pullIssue = [
+    session.pullRequestRef === null ? null : `PR #${session.pullRequestRef}`,
+    session.issueRef === null ? null : `issue #${session.issueRef}`,
+  ].filter((value): value is string => value !== null).join(" · ")
+  const workspace =
+    session.cwd ??
+    (session.assignmentRef === null
+      ? session.path
+      : `pylon khala status --assignment-ref ${session.assignmentRef} --json`)
+  return [
+    detailChip("assignment", session.assignmentRef),
+    detailChip("account", session.accountRef),
+    detailChip("PR/issue", pullIssue === "" ? null : pullIssue),
+    detailChip("workspace", workspace),
+    detailChip("PID", session.pid === null ? null : String(session.pid)),
+    detailChip("elapsed", session.elapsed),
+    detailChip("last event", lastEvent),
+    detailChip("closeout", closeout),
+  ]
+}
+
 const renderCodingTranscript = (
   session: CodingCodexSession | null,
 ): void => {
@@ -410,6 +458,11 @@ const renderCodingTranscript = (
     .filter((value): value is string => value !== null && value !== "")
     .join(" · ")
   codingTranscriptCount.textContent = `${formatCount(session.messageCount)} messages`
+
+  const details = document.createElement("div")
+  details.className = "coding-session-details"
+  details.append(...sessionDetailChips(session))
+  codingTranscriptMessages.append(details)
 
   if (session.messages.length === 0) {
     const empty = document.createElement("div")
