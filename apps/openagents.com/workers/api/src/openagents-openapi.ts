@@ -1676,6 +1676,12 @@ const schemaComponents = (): JsonSchema => ({
   InferenceBatchJobSubmitResponse: objectSummary(
     'Batch inference job acceptance response with jobId, charge receipt ref, accepted status, and estimated charge. Acceptance does not prove background execution or completed batch output.',
   ),
+  InferenceBatchJobStatusResponse: objectSummary(
+    'Owner-authenticated inference batch-job status response with item counts, lifecycle timestamps, and measured batch wait when available. It exposes only the requesting agent account job.',
+  ),
+  InferenceBatchJobResultsResponse: objectSummary(
+    'Owner-authenticated inference batch-job results response for a terminal job. It returns per-item success or failure records, including model output content and provider-reported usage for the owning agent only; public receipt routes never expose this payload.',
+  ),
   PublicStripeCheckoutReceiptEnvelope: objectSummary(
     'Public-safe Stripe checkout credit receipt envelope with generatedAt and a declared live_at_read staleness contract. It resolves `receipt.billing.stripe_checkout.*` as pending, invalid, or ok from the stored checkout session and positive Stripe checkout credit ledger row without exposing customer ids, checkout URLs, email, raw Stripe payloads, secrets, ledger ids, invoices, payment material, or wallet material. Read-only; grants no checkout, spend, refund, payout, settlement, provider, public-claim, or registry authority.',
   ),
@@ -5018,6 +5024,42 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Inference batch job accepted.',
           '#/components/schemas/InferenceBatchJobSubmitResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/v1/inference/batches/{jobId}': {
+    get: operation({
+      operationId: 'getInferenceBatchJobStatus',
+      summary: 'Read inference batch job status',
+      description:
+        'Returns owner-authenticated status for one submitted inference batch job, including item counts, lifecycle timestamps, result pointer metadata, and measured batch wait when available. The legacy bare /v1/inference/batches/{jobId} path remains a non-breaking alias.',
+      tags: ['Inference', 'Billing'],
+      security: agentBearer,
+      parameters: [pathParam('jobId', 'Inference batch job id.')],
+      responses: {
+        '200': okJson(
+          'Inference batch job status.',
+          '#/components/schemas/InferenceBatchJobStatusResponse',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  '/api/v1/inference/batches/{jobId}/results': {
+    get: operation({
+      operationId: 'getInferenceBatchJobResults',
+      summary: 'Read inference batch job results',
+      description:
+        'Returns owner-authenticated result rows for a terminal inference batch job. Pending jobs return a not-ready error; another account job returns not_found. This route can expose model output content to the owning agent and is intentionally separate from the public closeout receipt.',
+      tags: ['Inference', 'Billing'],
+      security: agentBearer,
+      parameters: [pathParam('jobId', 'Inference batch job id.')],
+      responses: {
+        '200': okJson(
+          'Inference batch job results.',
+          '#/components/schemas/InferenceBatchJobResultsResponse',
         ),
         ...errorResponses(),
       },

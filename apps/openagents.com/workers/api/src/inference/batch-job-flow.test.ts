@@ -18,7 +18,9 @@ import { describe, expect, it } from 'vitest'
 import {
   type BatchJobRoutesDeps,
   handleBatchJobReceiptRead,
+  handleBatchJobResultsRead,
   handleBatchJobsSubmit,
+  handleBatchJobStatusRead,
 } from './batch-job-routes'
 import {
   type BatchJobConsumerDeps,
@@ -53,6 +55,7 @@ type BatchRow = {
   processed_items: number
   failed_items: number
   results_r2_key: string | null
+  results_json: string | null
   created_at: string
   updated_at: string
   enqueued_at: string | null
@@ -100,6 +103,7 @@ const makeStatefulDb = (): D1Database => {
             updatedAt,
             enqueuedAt,
             startedAt,
+            resultsJson,
           ] = bindings
           rows.set(String(jobId), {
             account_ref: String(accountRef),
@@ -111,6 +115,7 @@ const makeStatefulDb = (): D1Database => {
             job_id: String(jobId),
             processed_items: Number(processedItems),
             results_r2_key: resultsR2Key === null ? null : String(resultsR2Key),
+            results_json: resultsJson === null ? null : String(resultsJson),
             started_at: startedAt === null ? null : String(startedAt),
             status: String(status),
             updated_at: String(updatedAt),
@@ -140,6 +145,10 @@ const makeStatefulDb = (): D1Database => {
             }
             if (sql.includes('results_r2_key = ?')) {
               next.results_r2_key = String(bindings[cursor])
+              cursor += 1
+            }
+            if (sql.includes('results_json = ?')) {
+              next.results_json = String(bindings[cursor])
               cursor += 1
             }
             if (sql.includes('started_at = ?')) {
@@ -230,6 +239,16 @@ const receiptRequest = (receiptRef: string): Request =>
     `https://openagents.com/api/public/inference/batch-job-receipts/${receiptRef}`,
     { method: 'GET' },
   )
+
+const statusRequest = (jobId: string): Request =>
+  new Request(`https://openagents.com/v1/inference/batches/${jobId}`, {
+    method: 'GET',
+  })
+
+const resultsRequest = (jobId: string): Request =>
+  new Request(`https://openagents.com/v1/inference/batches/${jobId}/results`, {
+    method: 'GET',
+  })
 
 describe('async batch-job flow (submit -> queue -> consumer -> receipt)', () => {
   it('runs a detached khala job end-to-end and makes its receipt dereferenceable', async () => {
@@ -322,7 +341,47 @@ describe('async batch-job flow (submit -> queue -> consumer -> receipt)', () => 
     expect(metering.calls()[0]?.accountRef).toBe('agent:flow')
     expect(metering.calls()[0]?.requestId).toBe(`${jobId}:0`)
 
-    // 3) RECEIPT is now dereferenceable (status flipped to completed).
+    // 3) STATUS and RESULTS are now available to the owning agent.
+    const statusResponse = await run(
+      handleBatchJobStatusRead(statusRequest(jobId), submitDeps(db, enqueue)),
+    )
+    expect(statusResponse.status).toBe(200)
+    const statusBody = (await statusResponse.json()) as {
+      batchWaitMs: number
+      failedItems: number
+      processedItems: number
+      status: string
+    }
+    expect(statusBody.status).toBe('completed')
+    expect(statusBody.processedItems).toBe(1)
+    expect(statusBody.failedItems).toBe(0)
+    expect(statusBody.batchWaitMs).toBe(120_000)
+
+    const resultsResponse = await run(
+      handleBatchJobResultsRead(resultsRequest(jobId), submitDeps(db, enqueue)),
+    )
+    expect(resultsResponse.status).toBe(200)
+    const resultsBody = (await resultsResponse.json()) as {
+      jobId: string
+      results: ReadonlyArray<{
+        content: string
+        requestedModel: string
+        servedModel: string
+        status: string
+        usage: { totalTokens: number }
+      }>
+      status: string
+    }
+    expect(resultsBody.jobId).toBe(jobId)
+    expect(resultsBody.status).toBe('completed')
+    expect(resultsBody.results).toHaveLength(1)
+    expect(resultsBody.results[0]?.status).toBe('succeeded')
+    expect(resultsBody.results[0]?.content).toBe('fake completion')
+    expect(resultsBody.results[0]?.requestedModel).toBe('gemini-3.5-flash')
+    expect(resultsBody.results[0]?.servedModel).toBe('served/fireworks')
+    expect(resultsBody.results[0]?.usage.totalTokens).toBe(30)
+
+    // 4) RECEIPT is now dereferenceable (status flipped to completed).
     const finalReceipt = await run(
       handleBatchJobReceiptRead(
         receiptRequest(batchJobCloseoutReceiptRef(jobId)),

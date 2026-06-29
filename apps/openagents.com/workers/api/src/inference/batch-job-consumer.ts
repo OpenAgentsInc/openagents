@@ -39,6 +39,7 @@ import { stubMeteringHook } from './metering-hook'
 import type {
   InferenceRequest,
   InferenceResult,
+  InferenceUsage,
 } from './provider-adapter'
 import type { BatchJobStore } from './batch-job-store'
 
@@ -92,6 +93,23 @@ export type BatchJobExecutionOutcome = Readonly<{
   processedItems: number
   failedItems: number
   receiptRef: string
+}>
+
+export type BatchJobResultItem = Readonly<{
+  index: number
+  status: 'failed' | 'succeeded'
+  content?: string | undefined
+  finishReason?: string | undefined
+  requestedModel: string
+  servedModel?: string | undefined
+  usage?: InferenceUsage | undefined
+  error?: string | undefined
+}>
+
+export type BatchJobResultsEnvelope = Readonly<{
+  schemaVersion: 'openagents.inference.batch_job.results.v1'
+  jobId: string
+  results: ReadonlyArray<BatchJobResultItem>
 }>
 
 // The dereferenceable closeout receipt ref the public route resolves. Built from
@@ -193,6 +211,7 @@ export const executeBatchJob = (
 
     let processedItems = 0
     let failedItems = 0
+    const results: Array<BatchJobResultItem> = []
 
     for (let index = 0; index < message.items.length; index += 1) {
       const item = message.items[index]
@@ -223,6 +242,12 @@ export const executeBatchJob = (
 
       if (!dispatched.ok) {
         failedItems += 1
+        results.push({
+          error: dispatched.reason,
+          index,
+          requestedModel: item.model,
+          status: 'failed',
+        })
         yield* Effect.logInfo(
           workerLogEntry('inference.batch_job.item.failed', {
             index,
@@ -232,6 +257,16 @@ export const executeBatchJob = (
         )
         continue
       }
+
+      results.push({
+        content: dispatched.served.value.content,
+        finishReason: dispatched.served.value.finishReason,
+        index,
+        requestedModel: item.model,
+        servedModel: dispatched.served.value.servedModel,
+        status: 'succeeded',
+        usage: dispatched.served.value.usage,
+      })
 
       // Decrement credits through the EXISTING metering hook. The per-item
       // request id is `<jobId>:<index>` so the hook's idempotency key dedupes a
@@ -252,10 +287,16 @@ export const executeBatchJob = (
     const allFailed =
       message.items.length > 0 && failedItems === message.items.length
     const terminalStatus = allFailed ? 'failed' : 'completed'
+    const resultsJson = JSON.stringify({
+      jobId: message.jobId,
+      results,
+      schemaVersion: 'openagents.inference.batch_job.results.v1',
+    } satisfies BatchJobResultsEnvelope)
 
     yield* deps.store.updateBatchJobStatus(message.jobId, terminalStatus, {
       failedItems,
       processedItems,
+      resultsJson,
     })
 
     yield* Effect.logInfo(

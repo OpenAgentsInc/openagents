@@ -412,6 +412,7 @@ import {
 } from './inference/batch-job-consumer'
 import {
   handleBatchJobReceiptRead,
+  handleBatchJobResultsRead,
   handleBatchJobStatusRead,
   handleBatchJobsSubmit,
 } from './inference/batch-job-routes'
@@ -12208,6 +12209,28 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
         // Inert producer by default: undefined unless the batch-jobs flag is on
         // AND the queue binding is provisioned (see makeBatchJobEnqueue).
         enqueueBatchJob: makeBatchJobEnqueue(env),
+        nowIso: currentIsoTimestamp,
+      }),
+  },
+  {
+    path: '/v1/inference/batches/:jobId/results',
+    handler: (request, env) =>
+      handleBatchJobResultsRead(request, {
+        authenticate: async authRequest => {
+          const token = readBearerToken(authRequest)
+          if (token === undefined) {
+            return undefined
+          }
+          const session = await authenticateProgrammaticAgent(
+            makeD1AgentRegistrationStore(openAgentsDatabase(env)),
+            token,
+          )
+          return session === undefined
+            ? undefined
+            : { accountRef: `agent:${session.user.id}` }
+        },
+        db: openAgentsDatabase(env),
+        enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
         nowIso: currentIsoTimestamp,
       }),
   },

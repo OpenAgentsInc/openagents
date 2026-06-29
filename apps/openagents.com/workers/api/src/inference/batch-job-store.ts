@@ -11,6 +11,7 @@ export type BatchJobRecord = Readonly<{
   processedItems: number
   failedItems: number
   resultsR2Key: string | null
+  resultsJson: string | null
   createdAt: string
   updatedAt: string
   // Book P0-3 (#6086): batch-wait timing for an auditable detached job.
@@ -35,7 +36,7 @@ export type BatchJobStore = Readonly<{
     > &
       // `startedAt` is only ever WRITTEN as a real timestamp (never reset to
       // null), so narrow it to a non-null string here.
-      Readonly<{ startedAt?: string }>,
+      Readonly<{ resultsJson?: string; startedAt?: string }>,
   ) => Effect.Effect<void>
   getBatchJob: (jobId: string) => Effect.Effect<BatchJobRecord | null>
 }>
@@ -48,8 +49,8 @@ export const makeD1BatchJobStore = (db: D1Database, nowIso: () => string): Batch
           `INSERT INTO inference_batch_jobs (
              job_id, account_ref, status, charge_receipt_ref, dataset_size,
              processed_items, failed_items, results_r2_key, created_at, updated_at,
-             enqueued_at, started_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+             enqueued_at, started_at, results_json
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .bind(
           job.jobId,
@@ -63,7 +64,8 @@ export const makeD1BatchJobStore = (db: D1Database, nowIso: () => string): Batch
           job.createdAt,
           nowIso(),
           job.enqueuedAt,
-          job.startedAt
+          job.startedAt,
+          job.resultsJson
         )
         .run()
     ).pipe(Effect.asVoid, Effect.orDie),
@@ -85,6 +87,10 @@ export const makeD1BatchJobStore = (db: D1Database, nowIso: () => string): Batch
         query += ', results_r2_key = ?'
         bindings.push(updates.resultsR2Key)
       }
+      if (updates.resultsJson !== undefined) {
+        query += ', results_json = ?'
+        bindings.push(updates.resultsJson)
+      }
       // Book P0-3: stamp the consumer-start time (closes the batch wait). Only
       // written once, when the consumer transitions the job to `processing`.
       if (updates.startedAt !== undefined) {
@@ -103,8 +109,8 @@ export const makeD1BatchJobStore = (db: D1Database, nowIso: () => string): Batch
       db
         .prepare(
           `SELECT job_id, account_ref, status, charge_receipt_ref, dataset_size,
-             processed_items, failed_items, results_r2_key, created_at, updated_at,
-             enqueued_at, started_at
+             processed_items, failed_items, results_r2_key, results_json,
+             created_at, updated_at, enqueued_at, started_at
            FROM inference_batch_jobs WHERE job_id = ? LIMIT 1`
         )
         .bind(jobId)
@@ -121,6 +127,7 @@ export const makeD1BatchJobStore = (db: D1Database, nowIso: () => string): Batch
           processedItems: Number(row.processed_items),
           failedItems: Number(row.failed_items),
           resultsR2Key: row.results_r2_key ? String(row.results_r2_key) : null,
+          resultsJson: row.results_json ? String(row.results_json) : null,
           createdAt: String(row.created_at),
           updatedAt: String(row.updated_at),
           enqueuedAt: row.enqueued_at ? String(row.enqueued_at) : null,

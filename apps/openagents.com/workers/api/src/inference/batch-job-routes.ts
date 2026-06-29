@@ -3,6 +3,7 @@ import { Effect, Schema as S } from 'effect'
 import { noStoreJsonResponse } from '../http/responses'
 import { compactRandomId } from '../runtime-primitives'
 import {
+  type BatchJobResultsEnvelope,
   type BatchJobExecutableItem,
   BatchJobQueueMessage,
 } from './batch-job-consumer'
@@ -203,6 +204,7 @@ export const handleBatchJobsSubmit = (
       processedItems: 0,
       failedItems: 0,
       resultsR2Key: null,
+      resultsJson: null,
       createdAt: deps.nowIso(),
       enqueuedAt: enqueuedAtIso,
       startedAt: null,
@@ -369,5 +371,102 @@ export const handleBatchJobStatusRead = (
       enqueuedAt: job.enqueuedAt,
       startedAt: job.startedAt,
       batchWaitMs: batchWaitMs ?? null,
+    })
+  })
+
+const decodeBatchJobResults = (
+  value: string | null,
+): BatchJobResultsEnvelope | undefined => {
+  if (value === null) {
+    return undefined
+  }
+  try {
+    const parsed = parseJsonUnknown(value)
+    const schema = S.Struct({
+      schemaVersion: S.Literal('openagents.inference.batch_job.results.v1'),
+      jobId: S.String,
+      results: S.Array(
+        S.Struct({
+          index: S.Number,
+          requestedModel: S.String,
+          status: S.Literals(['failed', 'succeeded']),
+          content: S.optionalKey(S.String),
+          error: S.optionalKey(S.String),
+          finishReason: S.optionalKey(S.String),
+          servedModel: S.optionalKey(S.String),
+          usage: S.optionalKey(
+            S.Struct({
+              promptTokens: S.Number,
+              completionTokens: S.Number,
+              totalTokens: S.Number,
+              cachedPromptTokens: S.optionalKey(S.Number),
+            }),
+          ),
+        }),
+      ),
+    })
+    return S.decodeUnknownSync(schema)(parsed)
+  } catch {
+    return undefined
+  }
+}
+
+export const handleBatchJobResultsRead = (
+  request: Request,
+  deps: BatchJobRoutesDeps,
+) =>
+  Effect.gen(function* () {
+    if (!deps.enabled) {
+      return noStoreJsonResponse(
+        { error: 'inference_batch_jobs_disabled' },
+        { status: 404 },
+      )
+    }
+
+    if (request.method !== 'GET') {
+      return noStoreJsonResponse({ error: 'method_not_allowed' }, { status: 405 })
+    }
+
+    const session = yield* Effect.promise(() => deps.authenticate(request))
+    if (session === undefined) {
+      const headers = new Headers({ 'www-authenticate': 'Bearer' })
+      return noStoreJsonResponse({ error: 'unauthorized' }, { headers, status: 401 })
+    }
+
+    const url = new URL(request.url)
+    const match = url.pathname.match(/^\/v1\/inference\/batches\/([^/]+)\/results$/)
+    if (!match) {
+      return noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
+    }
+
+    const jobId = match[1] ?? ''
+    const store = makeD1BatchJobStore(deps.db, deps.nowIso)
+    const job = yield* store.getBatchJob(jobId)
+
+    if (!job || job.accountRef !== session.accountRef) {
+      return noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
+    }
+
+    if (job.status !== 'completed' && job.status !== 'failed') {
+      return noStoreJsonResponse(
+        { error: 'batch_job_results_not_ready', status: job.status },
+        { status: 409 },
+      )
+    }
+
+    const envelope = decodeBatchJobResults(job.resultsJson)
+    if (envelope === undefined) {
+      return noStoreJsonResponse(
+        { error: 'batch_job_results_missing' },
+        { status: 404 },
+      )
+    }
+
+    return noStoreJsonResponse({
+      generatedAt: deps.nowIso(),
+      jobId: job.jobId,
+      results: envelope.results,
+      schemaVersion: envelope.schemaVersion,
+      status: job.status,
     })
   })

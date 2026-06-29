@@ -13,6 +13,23 @@ export type ExactRoute<Env> = Readonly<{
   path: string
 }>
 
+const routePathMatches = (routePath: string, pathname: string): boolean => {
+  const routeSegments = routePath.split('/')
+  const pathSegments = pathname.split('/')
+
+  if (routeSegments.length !== pathSegments.length) {
+    return false
+  }
+
+  return routeSegments.every((segment, index) => {
+    const pathSegment = pathSegments[index]
+    if (pathSegment === undefined) {
+      return false
+    }
+    return segment.startsWith(':') || segment === pathSegment
+  })
+}
+
 export const routeExact = <Env>(
   routes: ReadonlyArray<ExactRoute<Env>>,
   pathname: string,
@@ -20,4 +37,6 @@ export const routeExact = <Env>(
   env: Env,
   ctx: ExecutionContext,
 ): Effect.Effect<HttpResponse> | undefined =>
-  routes.find(route => route.path === pathname)?.handler(request, env, ctx)
+  routes
+    .find(route => routePathMatches(route.path, pathname))
+    ?.handler(request, env, ctx)

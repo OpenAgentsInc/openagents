@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import {
   type BatchJobRoutesDeps,
   handleBatchJobReceiptRead,
+  handleBatchJobResultsRead,
   handleBatchJobsSubmit,
   handleBatchJobStatusRead,
 } from './batch-job-routes'
@@ -154,6 +155,7 @@ describe('handleBatchJobReceiptRead', () => {
                 processed_items: 99,
                 failed_items: 1,
                 results_r2_key: 'batch_123/results.jsonl',
+                results_json: null,
                 created_at: '2026-06-20T12:00:00.000Z',
                 updated_at: '2026-06-20T12:05:00.000Z',
                 // Book P0-3: enqueue -> consumer-start timing for the batch wait.
@@ -257,6 +259,7 @@ describe('handleBatchJobReceiptRead', () => {
                 processed_items: 99,
                 failed_items: 1,
                 results_r2_key: 'batch_123/results.jsonl',
+                results_json: null,
                 created_at: '2026-06-20T12:00:00.000Z',
                 updated_at: '2026-06-20T12:05:00.000Z',
                 enqueued_at: null,
@@ -304,6 +307,7 @@ describe('handleBatchJobStatusRead', () => {
                 processed_items: 99,
                 failed_items: 1,
                 results_r2_key: 'batch_123/results.jsonl',
+                results_json: null,
                 created_at: '2026-06-20T12:00:00.000Z',
                 updated_at: '2026-06-20T12:05:00.000Z',
                 enqueued_at: '2026-06-20T12:00:00.000Z',
@@ -379,5 +383,124 @@ describe('handleBatchJobStatusRead', () => {
     expect(body.enqueuedAt).toBe('2026-06-20T12:00:00.000Z')
     expect(body.startedAt).toBe('2026-06-20T12:00:45.000Z')
     expect(body.batchWaitMs).toBe(45000)
+  })
+})
+
+describe('handleBatchJobResultsRead', () => {
+  const makeReadDb = (
+    jobStatus: string | null,
+    accountRef = 'agent:123',
+    resultsJson: string | null = JSON.stringify({
+      jobId: 'batch_123',
+      results: [
+        {
+          content: 'summary result',
+          finishReason: 'stop',
+          index: 0,
+          requestedModel: 'gemini-3.5-flash',
+          servedModel: 'served/fireworks',
+          status: 'succeeded',
+          usage: {
+            completionTokens: 20,
+            promptTokens: 10,
+            totalTokens: 30,
+          },
+        },
+      ],
+      schemaVersion: 'openagents.inference.batch_job.results.v1',
+    }),
+  ): D1Database => {
+    return {
+      prepare: (sql: string) => ({
+        bind: () => ({
+          first: async () => {
+            if (sql.includes('inference_batch_jobs')) {
+              if (jobStatus === null) return null
+              return {
+                job_id: 'batch_123',
+                account_ref: accountRef,
+                status: jobStatus,
+                charge_receipt_ref:
+                  'receipt.inference.batch_job_charge.batch_123',
+                dataset_size: 1,
+                processed_items: 1,
+                failed_items: 0,
+                results_r2_key: null,
+                results_json: resultsJson,
+                created_at: '2026-06-20T12:00:00.000Z',
+                updated_at: '2026-06-20T12:05:00.000Z',
+                enqueued_at: '2026-06-20T12:00:00.000Z',
+                started_at: '2026-06-20T12:00:45.000Z',
+              }
+            }
+            return null
+          },
+        }),
+      }),
+    } as unknown as D1Database
+  }
+
+  const makeResultsRequest = (jobId: string): Request =>
+    new Request(`https://openagents.com/v1/inference/batches/${jobId}/results`, {
+      method: 'GET',
+    })
+
+  it('returns 404 when disabled', async () => {
+    const response = await run(
+      handleBatchJobResultsRead(
+        makeResultsRequest('batch_123'),
+        baseDeps({ enabled: false }),
+      ),
+    )
+    expect(response.status).toBe(404)
+  })
+
+  it('returns 401 when unauthenticated', async () => {
+    const response = await run(
+      handleBatchJobResultsRead(
+        makeResultsRequest('batch_123'),
+        baseDeps({ authenticate: async () => undefined }),
+      ),
+    )
+    expect(response.status).toBe(401)
+  })
+
+  it('returns 404 for another account job', async () => {
+    const response = await run(
+      handleBatchJobResultsRead(
+        makeResultsRequest('batch_123'),
+        baseDeps({ db: makeReadDb('completed', 'agent:other') }),
+      ),
+    )
+    expect(response.status).toBe(404)
+  })
+
+  it('returns 409 while the job is still pending', async () => {
+    const response = await run(
+      handleBatchJobResultsRead(
+        makeResultsRequest('batch_123'),
+        baseDeps({ db: makeReadDb('pending') }),
+      ),
+    )
+    expect(response.status).toBe(409)
+    const body = (await response.json()) as any
+    expect(body.error).toBe('batch_job_results_not_ready')
+  })
+
+  it('returns stored results for a completed owner job', async () => {
+    const response = await run(
+      handleBatchJobResultsRead(
+        makeResultsRequest('batch_123'),
+        baseDeps({ db: makeReadDb('completed') }),
+      ),
+    )
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as any
+    expect(body.schemaVersion).toBe('openagents.inference.batch_job.results.v1')
+    expect(body.jobId).toBe('batch_123')
+    expect(body.status).toBe('completed')
+    expect(body.results).toHaveLength(1)
+    expect(body.results[0].content).toBe('summary result')
+    expect(body.results[0].usage.totalTokens).toBe(30)
   })
 })

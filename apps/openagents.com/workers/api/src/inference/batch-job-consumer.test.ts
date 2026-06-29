@@ -37,6 +37,7 @@ const makeFakeStore = (
     status: BatchJobStatus
     processedItems?: number
     failedItems?: number
+    resultsJson?: string
     startedAt?: string
   }>
 } => {
@@ -45,6 +46,7 @@ const makeFakeStore = (
     status: BatchJobStatus
     processedItems?: number
     failedItems?: number
+    resultsJson?: string
     startedAt?: string
   }> = []
   const store: BatchJobStore = {
@@ -62,6 +64,10 @@ const makeFakeStore = (
             updates.resultsR2Key === undefined
               ? record.resultsR2Key
               : updates.resultsR2Key,
+          resultsJson:
+            updates.resultsJson === undefined
+              ? record.resultsJson
+              : updates.resultsJson,
           startedAt:
             updates.startedAt === undefined
               ? record.startedAt
@@ -90,6 +96,7 @@ const pendingJob = (
   jobId: 'batch_test',
   processedItems: 0,
   resultsR2Key: null,
+  resultsJson: null,
   startedAt: null,
   status: 'pending',
   updatedAt: '2026-06-22T00:00:00.000Z',
