@@ -28,7 +28,7 @@ spend. The live CLI path (`--live`) uses the Khala model_fn.
 Honesty: this is a real measurement of our own model against public-domain toy
 problems; it is NOT the MirrorCode paper benchmark and must never be published
 as a MirrorCode score. Results are tagged `demand_kind=internal`,
-`demand_source=gym_backstop`.
+`demand_source=gym_mirrorcode`.
 
 Python 3.9 compatible (system python3); no third-party deps.
 """
@@ -46,7 +46,12 @@ import tempfile
 import uuid
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-DEMAND = {"kind": "internal", "source": "gym_backstop", "client": "mirrorcode-backstop"}
+ISSUE_NUMBER = 6923
+TASK_REF = "issue.public.openagents.6923.mirrorcode_backstop_burn"
+WORKFLOW_REF = "workflow.public.gym.mirrorcode.backstop_burn.6923"
+LEDGER_REF = "ledger.public.gym.mirrorcode.backstop_burn.6923"
+
+DEMAND = {"kind": "internal", "source": "gym_mirrorcode", "client": "mirrorcode-backstop"}
 
 # --- Built-in public-domain fixture problem set --------------------------------
 # Small, classic, public-domain coding problems (NOT MirrorCode tasks, so no
@@ -276,6 +281,10 @@ def evaluate_batch(
             "solutionChars": len(code),
             "solution": code,  # public-safe: fixtures are public-domain toy problems
             "demand": DEMAND,
+            "issueNumber": ISSUE_NUMBER,
+            "taskRef": TASK_REF,
+            "workflowRef": WORKFLOW_REF,
+            "ledgerRef": LEDGER_REF,
             "recordedAt": _now_iso(),
         }
         per_problem.append(trace)
@@ -301,6 +310,10 @@ def evaluate_batch(
         "mirrorcodeClonePresent": mirrorcode_clone_present(),
         "mirrorcodeSTargets": MIRRORCODE_S_TARGETS if mirrorcode_clone_present() else [],
         "demand": DEMAND,
+        "issueNumber": ISSUE_NUMBER,
+        "taskRef": TASK_REF,
+        "workflowRef": WORKFLOW_REF,
+        "ledgerRef": LEDGER_REF,
         "grade": "backstop",
         "decisionGrade": False,
         "modelErrorCount": model_error_count,
