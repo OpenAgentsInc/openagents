@@ -93,6 +93,8 @@ describe('buildSelfServeFanoutPlan', () => {
     if (!result.ok) return
     const plan = result.plan
     expect(plan.workClass).toBe('data_labeling')
+    expect(plan.planId).toBe(selfServeFanoutPlanId('wo-1', 'data_labeling'))
+    expect(plan.planId).not.toBe(selfServeFanoutPlanId('wo-1'))
     expect(plan.readyForMarket).toBe(true)
     expect(plan.marketWorkRequest).toMatchObject({
       requiredCapabilityRefs: ['capability.market.data_labeling'],
