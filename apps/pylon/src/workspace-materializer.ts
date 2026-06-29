@@ -2,7 +2,7 @@ import { existsSync, realpathSync } from "node:fs"
 import { mkdir, readdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises"
 import { dirname, join, resolve } from "node:path"
 import { createHash } from "node:crypto"
-import { Effect, type Scope } from "effect"
+import { Context, Effect, Layer, type Scope } from "effect"
 import { CLAUDE_AGENT_CAPABILITY_REF } from "./claude-agent.js"
 import { CODEX_AGENT_CAPABILITY_REF } from "./codex-agent.js"
 
@@ -761,6 +761,86 @@ export type WorkspaceLeaseRecord = {
   }
 }
 
+export type PylonWorkspaceMaterializerOperation =
+  | "workspace.materialize_with_lease"
+  | "workspace.cleanup_expired"
+  | "workspace.cleanup_oldest"
+  | "workspace.release"
+  | "workspace.lease_record_read"
+
+export class PylonWorkspaceMaterializerError extends Error {
+  readonly _tag = "PylonWorkspaceMaterializerError"
+  readonly operation: PylonWorkspaceMaterializerOperation
+  readonly reasonRef: string
+  readonly causeRef: string
+  readonly fallbackCloseoutUsed: boolean
+
+  constructor(input: {
+    readonly operation: PylonWorkspaceMaterializerOperation
+    readonly reasonRef: string
+    readonly causeRef: string
+    readonly fallbackCloseoutUsed: boolean
+  }) {
+    super(`${input.operation} failed: ${input.reasonRef}`)
+    this.name = "PylonWorkspaceMaterializerError"
+    this.operation = input.operation
+    this.reasonRef = input.reasonRef
+    this.causeRef = input.causeRef
+    this.fallbackCloseoutUsed = input.fallbackCloseoutUsed
+  }
+}
+
+function workspaceMaterializerError(
+  operation: PylonWorkspaceMaterializerOperation,
+  reasonRef: string,
+  cause: unknown,
+): PylonWorkspaceMaterializerError {
+  const causeLabel = cause instanceof Error ? `${cause.name}:${cause.message}` : String(cause)
+  return new PylonWorkspaceMaterializerError({
+    operation,
+    reasonRef,
+    causeRef: stableRef("cause.pylon.workspace_materializer", causeLabel),
+    fallbackCloseoutUsed: false,
+  })
+}
+
+export class PylonWorkspaceMaterializer extends Context.Service<
+  PylonWorkspaceMaterializer,
+  {
+    readonly materializeWithLease: (
+      input: MaterializeWithLeaseInput,
+    ) => Effect.Effect<MaterializedWorkspace, PylonWorkspaceMaterializerError>
+    readonly cleanupExpired: (input: {
+      workspaceStateRoot: string
+      now?: Date
+    }) => Effect.Effect<
+      { cleanupReceiptRefs: string[]; retainedWorkspaceRefs: string[] },
+      PylonWorkspaceMaterializerError
+    >
+    readonly cleanupOldest: (input: {
+      workspaceStateRoot: string
+      maxMaterializedWorkspaces: number
+      minimumAgeSeconds?: number
+      now?: Date
+    }) => Effect.Effect<
+      { cleanupReceiptRefs: string[]; retainedWorkspaceRefs: string[] },
+      PylonWorkspaceMaterializerError
+    >
+    readonly release: (input: {
+      workspaceStateRoot: string
+      workspaceRef: string
+      now?: Date
+    }) => Effect.Effect<
+      { cleanupReceiptRef?: string; retainedWorkspaceRef?: string; retentionReasonRef?: string } | null,
+      PylonWorkspaceMaterializerError
+    >
+    readonly leaseRecordFor: (input: {
+      workspaceStateRoot: string
+      workspaceRef: string
+    }) => Effect.Effect<WorkspaceLeaseRecord, PylonWorkspaceMaterializerError>
+  }
+>()("PylonWorkspaceMaterializer") {}
+
 /** Stable cache key for one public repository's shared bare clone. */
 export function repositoryCacheKeyFor(fullName: string): string {
   return createHash("sha256").update(fullName).digest("hex").slice(0, 24)
@@ -996,6 +1076,40 @@ async function readLeaseRecord(path: string): Promise<WorkspaceLeaseRecord | nul
     return record.schema === WORKSPACE_LEASE_SCHEMA ? record : null
   } catch {
     return null
+  }
+}
+
+async function readLeaseRecordOrThrow(path: string): Promise<WorkspaceLeaseRecord> {
+  let raw: string
+  try {
+    raw = await readFile(path, "utf8")
+  } catch (error) {
+    if (isNodeErrorWithCode(error, "ENOENT")) {
+      throw workspaceMaterializerError(
+        "workspace.lease_record_read",
+        "reason.workspace_lease.not_found",
+        error,
+      )
+    }
+    throw workspaceMaterializerError(
+      "workspace.lease_record_read",
+      "reason.workspace_lease.storage_failed",
+      error,
+    )
+  }
+
+  try {
+    const record = JSON.parse(raw) as WorkspaceLeaseRecord
+    if (record.schema !== WORKSPACE_LEASE_SCHEMA) {
+      throw new Error("unexpected workspace lease schema")
+    }
+    return record
+  } catch (error) {
+    throw workspaceMaterializerError(
+      "workspace.lease_record_read",
+      "reason.workspace_lease.malformed",
+      error,
+    )
   }
 }
 
@@ -1296,6 +1410,66 @@ export async function workspaceLeaseRecordFor(input: {
 }): Promise<WorkspaceLeaseRecord | null> {
   return readLeaseRecord(leaseRecordPath(input.workspaceStateRoot, input.workspaceRef))
 }
+
+export const PylonWorkspaceMaterializerLive = Layer.succeed(PylonWorkspaceMaterializer, {
+  materializeWithLease: (input: MaterializeWithLeaseInput) =>
+    Effect.tryPromise({
+      try: () => materializeGitCheckoutWorkspaceWithLease(input),
+      catch: (error: unknown) =>
+        workspaceMaterializerError(
+          "workspace.materialize_with_lease",
+          workspaceCheckoutFailureReasonRef(error) ?? "reason.workspace_materializer.materialize_failed",
+          error,
+        ),
+    }),
+  cleanupExpired: (input: { workspaceStateRoot: string; now?: Date }) =>
+    Effect.tryPromise({
+      try: () => cleanupExpiredWorkspaces(input),
+      catch: (error: unknown) =>
+        workspaceMaterializerError(
+          "workspace.cleanup_expired",
+          "reason.workspace_materializer.cleanup_expired_failed",
+          error,
+        ),
+    }),
+  cleanupOldest: (input: {
+    workspaceStateRoot: string
+    maxMaterializedWorkspaces: number
+    minimumAgeSeconds?: number
+    now?: Date
+  }) =>
+    Effect.tryPromise({
+      try: () => cleanupOldestMaterializedWorkspaces(input),
+      catch: (error: unknown) =>
+        workspaceMaterializerError(
+          "workspace.cleanup_oldest",
+          "reason.workspace_materializer.cleanup_oldest_failed",
+          error,
+        ),
+    }),
+  release: (input: { workspaceStateRoot: string; workspaceRef: string; now?: Date }) =>
+    Effect.tryPromise({
+      try: () => releaseWorkspace(input),
+      catch: (error: unknown) =>
+        workspaceMaterializerError(
+          "workspace.release",
+          "reason.workspace_materializer.release_failed",
+          error,
+        ),
+    }),
+  leaseRecordFor: (input: { workspaceStateRoot: string; workspaceRef: string }) =>
+    Effect.tryPromise({
+      try: () => readLeaseRecordOrThrow(leaseRecordPath(input.workspaceStateRoot, input.workspaceRef)),
+      catch: (error: unknown) =>
+        error instanceof PylonWorkspaceMaterializerError
+          ? error
+          : workspaceMaterializerError(
+              "workspace.lease_record_read",
+              "reason.workspace_lease.storage_failed",
+              error,
+            ),
+    }),
+})
 
 /**
  * The public-safe projection of a workspace lease: refs, state, policy,

@@ -3,6 +3,7 @@ import { existsSync } from "node:fs"
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
+import { Effect } from "effect"
 import {
   checkoutBaseCommitSha,
   checkoutSourceRef,
@@ -10,6 +11,8 @@ import {
   gitCheckoutWorkspaceFrom,
   materializeGitCheckoutWorkspace,
   materializeGitCheckoutWorkspaceWithLease,
+  PylonWorkspaceMaterializer,
+  PylonWorkspaceMaterializerLive,
   removeMaterializedWorkspace,
   type GitCheckoutWorkspace,
   type WorkspaceCheckoutRunner,
@@ -424,6 +427,79 @@ describe("cleanupOldestMaterializedWorkspaces", () => {
       await rm(cacheRoot, { recursive: true, force: true })
       await rm(repositoryCacheRoot, { recursive: true, force: true })
       await rm(workspaceStateRoot, { recursive: true, force: true })
+    }
+  })
+})
+
+describe("PylonWorkspaceMaterializerLive", () => {
+  const checkoutRunner: WorkspaceCheckoutRunner = async (workingDirectory) => {
+    await mkdir(workingDirectory, { recursive: true })
+    await writeFile(join(workingDirectory, "checked-out"), "ok\n")
+  }
+
+  test("materializes and reads a lease record through the Effect service facade", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-workspace-service-"))
+    try {
+      const workspaceStateRoot = join(root, "workspace-leases")
+      const materialized = await Effect.runPromise(
+        Effect.gen(function* () {
+          const materializer = yield* PylonWorkspaceMaterializer
+          return yield* materializer.materializeWithLease({
+            cacheRoot: join(root, "adapter-tasks"),
+            checkout: validCheckout,
+            checkoutRunner,
+            leaseRef: "lease.public.workspace.service",
+            refPrefix: "workspace.pylon.codex_agent_task",
+            repositoryCacheRoot: join(root, "git-cache"),
+            workspaceStateRoot,
+            now: new Date("2026-06-11T00:00:00.000Z"),
+          })
+        }).pipe(Effect.provide(PylonWorkspaceMaterializerLive)),
+      )
+
+      const record = await Effect.runPromise(
+        Effect.gen(function* () {
+          const materializer = yield* PylonWorkspaceMaterializer
+          return yield* materializer.leaseRecordFor({
+            workspaceStateRoot,
+            workspaceRef: materialized.workspaceRef,
+          })
+        }).pipe(Effect.provide(PylonWorkspaceMaterializerLive)),
+      )
+      expect(record.workspaceRef).toBe(materialized.workspaceRef)
+      expect(record.state).toBe("materialized")
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  test("distinguishes missing and malformed lease records at the Effect service boundary", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-workspace-service-"))
+    try {
+      const workspaceStateRoot = join(root, "workspace-leases")
+      const readLease = (workspaceRef: string) =>
+        Effect.runPromise(
+          Effect.gen(function* () {
+            const materializer = yield* PylonWorkspaceMaterializer
+            return yield* materializer.leaseRecordFor({ workspaceStateRoot, workspaceRef })
+          }).pipe(Effect.provide(PylonWorkspaceMaterializerLive)),
+        )
+
+      await expect(readLease("workspace.pylon.codex_agent_task.missing")).rejects.toMatchObject({
+        operation: "workspace.lease_record_read",
+        reasonRef: "reason.workspace_lease.not_found",
+        fallbackCloseoutUsed: false,
+      })
+
+      await mkdir(workspaceStateRoot, { recursive: true })
+      await writeFile(join(workspaceStateRoot, "workspace.pylon.codex_agent_task.bad.json"), "{ nope")
+      await expect(readLease("workspace.pylon.codex_agent_task.bad")).rejects.toMatchObject({
+        operation: "workspace.lease_record_read",
+        reasonRef: "reason.workspace_lease.malformed",
+        fallbackCloseoutUsed: false,
+      })
+    } finally {
+      await rm(root, { recursive: true, force: true })
     }
   })
 })
