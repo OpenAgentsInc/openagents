@@ -1341,7 +1341,7 @@ describe('public product promises document', () => {
           audience: expect.arrayContaining(['user', 'agent', 'operator']),
           blockerRefs: expect.arrayContaining([
             'blocker.product_promises.local_apple_fm_signed_installer_recut_missing',
-            'blocker.product_promises.local_apple_fm_helper_supervision_missing',
+            'blocker.product_promises.local_apple_fm_signed_from_install_supervised_smoke_missing',
           ]),
           evidenceRefs: expect.arrayContaining([
             'docs/apple-fm/2026-06-15-current-apple-fm-electrobun-desktop-audit.md',
@@ -1362,6 +1362,7 @@ describe('public product promises document', () => {
             'apps/autopilot-desktop/tests/apple-fm-loopback-integration.test.ts',
             'apps/autopilot-desktop/tests/cl-53-sanitize.test.ts',
             'docs/apple-fm/2026-06-29-electrobun-apple-fm-swift-sidecar-plan.md',
+            'docs/launch/vertex-fleet/autopilot.local_apple_fm_tool_chat.v1.md',
             'clients/khala-desktop/src/bun/apple-fm-sidecar.ts',
             'clients/khala-desktop/src/shared/apple-fm-packaging.ts',
             'clients/khala-desktop/src/shared/apple-fm-readiness.ts',
@@ -1402,6 +1403,15 @@ describe('public product promises document', () => {
     )
     expect(localAppleFmPromise?.blockerRefs).not.toContain(
       'blocker.product_promises.local_apple_fm_admitted_mac_smoke_missing',
+    )
+    expect(localAppleFmPromise?.blockerRefs).not.toContain(
+      'blocker.product_promises.local_apple_fm_helper_supervision_missing',
+    )
+    expect(localAppleFmPromise?.verification).toContain(
+      'helper supervision policy',
+    )
+    expect(localAppleFmPromise?.verification).toContain(
+      'supervised from-install smoke',
     )
     expect(localAppleFmPromise?.safeCopy).toContain('Khala Desktop')
     expect(localAppleFmPromise?.verification).toContain(

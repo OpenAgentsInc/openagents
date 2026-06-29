@@ -1,5 +1,15 @@
 # Promise Registry
 
+> Registry `2026-06-29.3` narrows the Apple FM local-mode blockers after #7022
+> and flips NO promise state. Source evidence now covers the Pylon helper
+> supervision policy, status projection, driver, launcher, and opt-in host
+> lifecycle seam, so the broad
+> `blocker.product_promises.local_apple_fm_helper_supervision_missing` blocker is
+> replaced with
+> `blocker.product_promises.local_apple_fm_signed_from_install_supervised_smoke_missing`.
+> The promise remains yellow until a signed/notarized installer recut proves the
+> packaged or supervised helper from a clean install on admitted Apple Silicon.
+>
 > Registry `2026-06-29.3` is a fleet-state/public-board sync after #6995 and
 > #7004 and flips NO promise state. It records the owner-scoped
 > `/api/operator/fleet/state` route plus Khala fleet client wiring as linked-
