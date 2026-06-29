@@ -233,14 +233,36 @@ export function plannedReplenishmentRounds(
   alreadyDispatchedKeys: ReadonlySet<string> = new Set(),
 ): ReadonlyArray<FleetRunSlot> {
   const available = REPLENISHMENT_OBJECTIVES.filter(task => !alreadyDispatchedKeys.has(task.dedupeKey))
-  return available.slice(0, plan.targetSlots).map((task, slot) => ({
+  const staticRounds = available.slice(0, plan.targetSlots).map((task, slot) => ({
     accountRef: plan.readyAccounts[slot % plan.readyAccounts.length] ?? "codex",
     dedupeKey: task.dedupeKey,
     issue: task.issue,
     objective: task.objective,
     slot,
-    workKind: "replenishment",
+    workKind: "replenishment" as const,
   }))
+  if (staticRounds.length >= plan.targetSlots) return staticRounds
+
+  const generatedStart = alreadyDispatchedKeys.size
+  const generatedCount = plan.targetSlots - staticRounds.length
+  const generatedRounds = Array.from({ length: generatedCount }, (_, index) => {
+    const slot = staticRounds.length + index
+    const issue = plan.issues[(generatedStart + index) % plan.issues.length] ?? null
+    const dedupeKey = `lockout-recovery-sweep-${generatedStart + index}`
+    return {
+      accountRef: plan.readyAccounts[slot % plan.readyAccounts.length] ?? "codex",
+      dedupeKey,
+      issue,
+      objective:
+        issue === null
+          ? "Run a bounded public-safe lockout recovery audit over the checkout. Fix one concrete issue if found, avoid duplicate open PRs, and run the named verification."
+          : `Re-audit public issue #${issue} after fleet lockout. Implement the smallest safe non-duplicate change that moves it toward closure and run the named verification.`,
+      slot,
+      workKind: "replenishment" as const,
+    }
+  })
+
+  return [...staticRounds, ...generatedRounds]
 }
 
 export function nextFleetSupervisorDelay(input: {
