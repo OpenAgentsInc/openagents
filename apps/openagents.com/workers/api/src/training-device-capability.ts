@@ -153,6 +153,7 @@ export type DeviceCapabilityDistribution = Readonly<{
   measurementRef: string
   metric: Cs336A2QualificationProbeMeasurement
   min: number
+  ownerAcceptedProductionReceiptRefs: ReadonlyArray<string>
   p50: number
   p90: number
   receiptRefs: ReadonlyArray<string>
@@ -179,6 +180,7 @@ export type DeviceCapabilityThermalThrottleSignal = Readonly<{
   measurementRef: string
   metric: typeof Cs336A2ThermalThrottleMetric
   minRatio: number
+  ownerAcceptedProductionReceiptRefs: ReadonlyArray<string>
   p50Ratio: number
   p90Ratio: number
   ratioFloor: typeof Cs336A2ThermalThrottleRatioFloor
@@ -223,6 +225,7 @@ export type DeviceCapabilityDatasetProjection = Readonly<{
   observedDeviceClassCount: number
   observedMeasurementCount: number
   observedSettledDeviceClassCount: number
+  ownerAcceptedProductionThermalReceiptRefs: ReadonlyArray<string>
   privacyBoundaryRefs: ReadonlyArray<string>
   requiredSameClassSampleCount: number
   schemaVersion: 'openagents.training.device_capability_dataset.v1'
@@ -267,6 +270,7 @@ export const Cs336A2MeasurementEvidence = S.Struct({
   measurementRef: S.optionalKey(PublicSafeRef),
   metric: S.Literals(Cs336A2QualificationProbeMeasurements),
   min: S.Number,
+  ownerAcceptedProductionReceiptRefs: PublicSafeRefs,
   p50: S.Number,
   p90: S.Number,
   receiptRefs: S.Array(PublicSafeRef),
@@ -563,6 +567,9 @@ const distributionsFromEvidence = (
         measurementRef,
         metric,
         min,
+        ownerAcceptedProductionReceiptRefs: uniqueRefs(
+          stringArrayFromUnknown(measurement.ownerAcceptedProductionReceiptRefs),
+        ),
         p50,
         p90,
         receiptRefs: uniqueRefs(stringArrayFromUnknown(measurement.receiptRefs)),
@@ -692,6 +699,8 @@ export const buildDeviceCapabilityThermalThrottleSignals = (
         measurementRef: distribution.measurementRef,
         metric: Cs336A2ThermalThrottleMetric,
         minRatio: distribution.min,
+        ownerAcceptedProductionReceiptRefs:
+          distribution.ownerAcceptedProductionReceiptRefs,
         p50Ratio: distribution.p50,
         p90Ratio: distribution.p90,
         ratioFloor: Cs336A2ThermalThrottleRatioFloor,
@@ -738,7 +747,15 @@ export const thermalThrottleBlockerRefs = (
     return ['blocker.cs336_a2.requires_sustained_vs_burst_thermal_probe']
   }
 
-  return uniqueRefs(signals.flatMap(signal => signal.blockerRefs))
+  const ownerAcceptedProductionReceiptRefs =
+    ownerAcceptedProductionThermalReceiptRefs(signals)
+
+  return uniqueRefs([
+    ...signals.flatMap(signal => signal.blockerRefs),
+    ...(ownerAcceptedProductionReceiptRefs.length === 0
+      ? ['blocker.cs336_a2.requires_owner_accepted_production_thermal_receipt']
+      : []),
+  ])
 }
 
 export const thermalThrottleFunnelReasonCodes = (
@@ -753,6 +770,15 @@ export const thermalThrottleReceiptRefs = (
     signals
       .filter(signal => signal.verified)
       .flatMap(signal => signal.receiptRefs),
+  )
+
+export const ownerAcceptedProductionThermalReceiptRefs = (
+  signals: ReadonlyArray<DeviceCapabilityThermalThrottleSignal>,
+): ReadonlyArray<string> =>
+  uniqueRefs(
+    signals
+      .filter(signal => signal.verified)
+      .flatMap(signal => signal.ownerAcceptedProductionReceiptRefs),
   )
 
 export const buildCs336A2DeviceBenchmarkPayload = (
@@ -826,6 +852,17 @@ const assertAdmissibleMeasurement = (
   }
 
   const provenance = measurement.measurementProvenance ?? 'settled_cross_checked'
+  const ownerAcceptedProductionReceiptRefs =
+    measurement.ownerAcceptedProductionReceiptRefs ?? []
+
+  if (
+    ownerAcceptedProductionReceiptRefs.length > 0 &&
+    measurement.metric !== Cs336A2ThermalThrottleMetric
+  ) {
+    throw new DeviceCapabilityEvidenceValidationError(
+      'CS336 A2 owner-accepted production receipt refs are only admissible on sustained-vs-burst thermal evidence.',
+    )
+  }
 
   if (provenance === 'measured_unsettled') {
     // Genuinely measured but unsettled rows are NOT paid, so they carry no
@@ -849,6 +886,12 @@ const assertAdmissibleMeasurement = (
     if (measurement.receiptRefs.length > 0) {
       throw new DeviceCapabilityEvidenceValidationError(
         'CS336 A2 measured_unsettled evidence must not carry a settlement receipt ref; unsettled rows are explicitly not paid.',
+      )
+    }
+
+    if (ownerAcceptedProductionReceiptRefs.length > 0) {
+      throw new DeviceCapabilityEvidenceValidationError(
+        'CS336 A2 measured_unsettled evidence must not carry owner-accepted production receipt refs.',
       )
     }
 
@@ -953,6 +996,8 @@ export const publicDeviceCapabilityProjection = (
     observedDeviceClassCount,
     observedMeasurementCount,
     observedSettledDeviceClassCount,
+    ownerAcceptedProductionThermalReceiptRefs:
+      ownerAcceptedProductionThermalReceiptRefs(thermalThrottleSignals),
     privacyBoundaryRefs: [
       'privacy.cs336_a2.class_level_dataset_only',
       'privacy.cs336_a2.no_device_identifiers',
