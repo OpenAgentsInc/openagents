@@ -1842,3 +1842,56 @@ D1 matches in recent set: 70
 missing finished candidates: 0
 live failure spools: 0
 ```
+
+Follow-up at `2026-06-29T12:20Z` exposed both accounting paths in the same
+burst:
+
+- A fresh `~/.pylon-fable/codex-turn-report-failures.jsonl` appeared with four
+  complete turn reports: three `401 unauthorized` ingest failures and one `503
+  pylon_codex_storage_error` from `token_usage_ingest`.
+- The stored pylon agent token in
+  `~/.pylon-fable/auth/openagents-agent-token` was still valid
+  (`/api/agents/me` returned 200), so the 401s were stale-token failures from
+  the worker process environment rather than bad local report data.
+- Replaying the four spooled reports through `createPylonCodexTurnReporter`
+  succeeded on the first attempt for all four.
+- Exact D1 verification showed the four assignment refs present afterward. Two
+  of the refs had multiple turn rows, which is expected when the same assignment
+  produces both main and helper turns.
+- The two PR-review refs that were missing before replay were then present in
+  the finished-ref diff.
+- The replayed spool was moved to
+  `~/.pylon-fable/replayed-failures/codex-turn-report-failures-20260629T121911Z.jsonl`
+  so any new live failure creates a fresh obvious file.
+
+Verification after that replay:
+
+```text
+2026-06-29T12:20Z PR-review assignment diff:
+  recent PR-review entries: 146
+  active refs: 16
+  finished candidates: 130
+  D1 matches in recent set: 130
+  missing finished candidates: 0
+  recent ledger tokens: 167,698,119
+  latest observed: 2026-06-29T12:19:34.948Z
+
+2026-06-29T12:19Z D1 since 10:00Z:
+  rows: 426
+  total_tokens: 969,479,489
+  public_tokens: 969,479,489
+  latest_observed: 2026-06-29T12:19:34.948Z
+
+2026-06-29T12:19Z public /api/public/khala-tokens-served:
+  tokensServed: 5,652,802,481
+
+live failure spools after archive:
+  0
+```
+
+The public stats read side also flapped during this same check:
+`/api/public/khala-tokens-served/history` and `/model-mix` returned transient
+500s, then returned 200 on retry. Direct D1 reads for the exact history and
+model-mix SQL succeeded in about 300 ms, so this was D1/load/read-path pressure,
+not bad token rows. Do not confuse a transient public stats 500 with missing
+accounting; check the ledger diff and the failure spool first.
