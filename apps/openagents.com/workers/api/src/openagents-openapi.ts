@@ -4099,9 +4099,10 @@ const requestSchemas = (): JsonSchema => ({
       'publicSharing',
       'reportPath',
       'references',
+      'deployment',
     ],
     description:
-      'Canonical, code-accurate data-sharing terms for the free Khala API (#6296). Public-safe: terms text + bounded policy facts only — no secrets, account, or payment material.',
+      'Canonical, code-accurate data-sharing terms for the free Khala API (#6296). Public-safe: terms text + bounded policy facts + capture gate state only — no secrets, account, or payment material.',
     properties: {
       promiseId: {
         type: 'string',
@@ -4146,6 +4147,29 @@ const requestSchemas = (): JsonSchema => ({
       publicSharing: { type: 'string' },
       reportPath: { type: 'string' },
       references: { type: 'array', items: { type: 'string' } },
+      deployment: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['captureDefaultGate', 'captureDefaultEnv', 'blockerRef'],
+        description:
+          'Current deployment gate for default-on capture behavior. The public disclosure endpoint is env-free and reports owner_gated; env-aware mint responses report armed only when KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT is armed.',
+        properties: {
+          captureDefaultGate: {
+            type: 'string',
+            enum: ['armed', 'owner_gated'],
+          },
+          captureDefaultEnv: {
+            type: 'string',
+            enum: ['KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT'],
+          },
+          blockerRef: {
+            type: 'string',
+            enum: [
+              'blocker.product_promises.free_tier_capture_default_owner_gated',
+            ],
+          },
+        },
+      },
     },
   },
   FreeApiKeyMintResponse: {
@@ -4153,7 +4177,7 @@ const requestSchemas = (): JsonSchema => ({
     additionalProperties: false,
     required: ['tier', 'model', 'credential', 'quota', 'usage', 'dataSharing'],
     description:
-      'Khala FREE API mode mint result. The raw bearer token is returned ONCE here and is not redisplayed. No wallet, payment, or owner-private material is included. The dataSharing field carries the honest free-tier data-sharing terms (#6296): free usage is captured by default as redacted, private traces that may improve/train models; pay for privacy to opt out; public sharing is opt-in only.',
+      'Khala FREE API mode mint result. The raw bearer token is returned ONCE here and is not redisplayed. No wallet, payment, or owner-private material is included. The dataSharing field carries the honest free-tier data-sharing terms (#6296): when the owner-gated capture default is armed, free usage is captured by default as redacted, private traces that may improve/train models; pay for privacy to opt out; public sharing is opt-in only; deployment.captureDefaultGate reports the actual mint-time gate.',
     properties: {
       tier: { type: 'string', enum: ['free'] },
       model: { type: 'string', enum: ['openagents/khala'] },

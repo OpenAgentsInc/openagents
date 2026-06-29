@@ -1028,7 +1028,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Free Khala API usage is captured by default as redacted, private traces that may be used to improve and train models; pay for privacy to opt out; public sharing is opt-in only.',
         safeCopy:
-          'Free tier: when you use the free Khala API without paying for privacy, your traffic is captured by default as a redacted, private-by-default (owner_only) trace and may be used to improve and train OpenAgents models. Pay for privacy, or run confidential compute, to opt out of capture (fail-closed to not-captured). A captured trace is shared publicly only if its owner explicitly opts it into public visibility. Capture grants no payout or settlement — the data-market reward marker is inert and owner-gated. The canonical terms are served at GET /api/public/free-tier-data-sharing and embedded in the POST /api/keys/free mint response.',
+          'Free tier: when the owner-gated capture default is armed, free Khala API traffic from callers who have not paid for privacy is captured by default as a redacted, private-by-default (owner_only) trace and may be used to improve and train OpenAgents models. Pay for privacy, or run confidential compute, to opt out of capture (fail-closed to not-captured). A captured trace is shared publicly only if its owner explicitly opts it into public visibility. Capture grants no payout or settlement — the data-market reward marker is inert and owner-gated. The canonical terms are served at GET /api/public/free-tier-data-sharing and embedded in the POST /api/keys/free mint response; both expose deployment.captureDefaultGate so the owner-gated blocker remains visible until the production flip is armed.',
         unsafeCopy:
           'Do not claim free traffic is never captured, do not claim captured traces are public by default, do not claim paid-privacy callers are captured, and do not claim capture earns the user a payout, reward, or settlement.',
         evidenceRefs: [
@@ -1047,7 +1047,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.disclosure_copy_owner_signoff_pending',
         ],
         verification:
-          'GET /api/public/free-tier-data-sharing returns the canonical disclosure (version, summary, ordered terms, bounded policy facts) and the POST /api/keys/free mint response embeds the same dataSharing object. The terms must stay accurate to the capture seams: auto-capture is redacted and owner_only (khala-chat-trace-emitter.ts), paid-privacy is excluded fail-closed (inference-privacy-entitlement.ts), public is owner opt-in only, and the reward marker stays inert (#6221). Green requires the default-on capture flip armed in prod (KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT) and owner-approved public copy.',
+          'GET /api/public/free-tier-data-sharing returns the canonical disclosure (version, summary, ordered terms, bounded policy facts, and deployment.captureDefaultGate=owner_gated unless an env-aware caller reports the armed flag) and the POST /api/keys/free mint response embeds the same dataSharing object with the actual KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT gate. The terms must stay accurate to the capture seams: auto-capture is redacted and owner_only (khala-chat-trace-emitter.ts), paid-privacy is excluded fail-closed (inference-privacy-entitlement.ts), public is owner opt-in only, and the reward marker stays inert (#6221). Green requires the default-on capture flip armed in prod and owner-approved public copy.',
         authorityBoundary:
           'A disclosure grants no spend, payout, settlement, training-consent, or capture authority. It describes policy only; it does not change capture behavior or move money.',
       },
@@ -1060,7 +1060,7 @@ export const publicProductPromisesDocument = () => {
         claim:
           'Free Khala API usage can be captured as redacted, private-by-default traces for model improvement.',
         safeCopy:
-          'The free-tier trace-capture seams exist and are intentionally private/redacted by default when armed: captured traces are owner_only unless the owner opts into public sharing, and trace capture does not create payout or settlement eligibility. This is yellow because the behavior is owner-gated by KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT and must remain aligned with the public disclosure and paid-privacy exclusion path.',
+          'The free-tier trace-capture seams exist and are intentionally private/redacted by default when armed: captured traces are owner_only unless the owner opts into public sharing, and trace capture does not create payout or settlement eligibility. This is yellow because the behavior is owner-gated by KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT; the disclosure endpoint and free-key mint response must expose that gate state and remain aligned with the paid-privacy exclusion path.',
         unsafeCopy:
           'Do not claim all free-tier traffic is currently captured unless the production gate is armed, do not claim captured traces are public by default, and do not claim capture pays users or contributors.',
         evidenceRefs: [

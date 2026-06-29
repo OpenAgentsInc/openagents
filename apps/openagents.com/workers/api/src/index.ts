@@ -6983,7 +6983,11 @@ export const handleFreeKeyMint = async (
           // privacy (or use confidential compute) to opt out; public sharing is
           // opt-in only. The same canonical disclosure is served at
           // GET /api/public/free-tier-data-sharing for agents.
-          dataSharing: freeTierDataSharingDisclosure(),
+          dataSharing: freeTierDataSharingDisclosure({
+            captureDefaultArmed: isKhalaFreeTierTraceCaptureDefaultEnabled(
+              env.KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT,
+            ),
+          }),
         },
         { status: 201 },
       ),

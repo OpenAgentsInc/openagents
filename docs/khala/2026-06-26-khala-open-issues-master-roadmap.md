@@ -1148,6 +1148,17 @@ GLM coding lane and leave REAP-504B on the 4x hosts.)
 - The owner-gated honesty bar still applies: any published benchmark number must come from
   the owner-armed real seam over realistic traffic (`decisionGrade:true`); internal
   dogfood/stress tokens stay segmented (#6298 demand tags) and out of external metrics.
+- 2026-06-29 #7019 local promise/data-privacy slice: the free-tier data-sharing
+  disclosure now exposes `deployment.captureDefaultGate` so
+  `GET /api/public/free-tier-data-sharing` remains blocker-explicit
+  (`owner_gated`) while the env-aware `POST /api/keys/free` mint response reports
+  `armed` only when `KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT` is actually armed.
+  Paid privacy / confidential compute remains the fail-closed non-capture path,
+  public sharing remains owner opt-in only, and trace reward/payout markers stay
+  inert. Keep `data.free_tier_capture_disclosure.v1`,
+  `data.khala_free_tier_trace_capture.v1`, and
+  `privacy.khala_paid_capture_optout.v1` yellow until owner sign-off, live gate
+  evidence, and the paid Khala business loop are green.
 - Khala -> Pylon -> Codex worker status at refresh: the latest supervised batch
   completed across `codex-2`, `codex-3`, and `codex-4`, with simultaneous runs
   on both `codex-2` and `codex-3` across the broader stress sequence. Accepted

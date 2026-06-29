@@ -36,7 +36,7 @@ export const FREE_TIER_DATA_SHARING_PROMISE_ID =
 
 // Disclosure version. Bump when the TERMS text changes (not on unrelated copy
 // edits). Surfaces echo this so a caller/agent can pin which terms they saw.
-export const FREE_TIER_DATA_SHARING_DISCLOSURE_VERSION = '2026-06-25.1' as const
+export const FREE_TIER_DATA_SHARING_DISCLOSURE_VERSION = '2026-06-29.1' as const
 
 // Public, human-readable summary line. Intentionally short and quotable; the
 // full clause list carries the precise terms.
@@ -78,6 +78,16 @@ export type FreeTierDataSharingPolicy = Readonly<{
   rewardInert: true
 }>
 
+export type FreeTierDataSharingDeployment = Readonly<{
+  // The production flip that turns default-on free-tier capture from policy into
+  // live behavior. Public endpoint reads are env-free, so they intentionally
+  // report the conservative owner-gated state; env-aware mint responses pass the
+  // actual deployment value.
+  captureDefaultGate: 'armed' | 'owner_gated'
+  captureDefaultEnv: 'KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT'
+  blockerRef: 'blocker.product_promises.free_tier_capture_default_owner_gated'
+}>
+
 export const FREE_TIER_DATA_SHARING_POLICY: FreeTierDataSharingPolicy = {
   capturedByDefault: true,
   redacted: true,
@@ -104,14 +114,23 @@ export type FreeTierDataSharingDisclosure = Readonly<{
   reportPath: string
   // Public references for the policy and its source.
   references: ReadonlyArray<string>
+  // Current deployment gate for default-on capture behavior.
+  deployment: FreeTierDataSharingDeployment
 }>
 
 export const FREE_TIER_DATA_SHARING_REPORT_PATH =
   'https://openagents.com/forum/f/product-promises' as const
 
-// Build the canonical disclosure object. Pure; no IO, no env, no clock.
-export const freeTierDataSharingDisclosure =
-  (): FreeTierDataSharingDisclosure => ({
+export type FreeTierDataSharingDisclosureOptions = Readonly<{
+  captureDefaultArmed?: boolean | undefined
+}>
+
+// Build the canonical disclosure object. Pure; no IO, no env, no clock. The
+// public endpoint leaves captureDefaultArmed unset so the owner-gated blocker
+// remains explicit; env-aware call sites can pass the actual deployment gate.
+export const freeTierDataSharingDisclosure = (
+  options: FreeTierDataSharingDisclosureOptions = {},
+): FreeTierDataSharingDisclosure => ({
     promiseId: FREE_TIER_DATA_SHARING_PROMISE_ID,
     version: FREE_TIER_DATA_SHARING_DISCLOSURE_VERSION,
     summary: FREE_TIER_DATA_SHARING_SUMMARY,
@@ -128,4 +147,11 @@ export const freeTierDataSharingDisclosure =
       'https://github.com/OpenAgentsInc/openagents/blob/main/docs/promises/2026-06-25-free-tier-data-sharing-disclosure.md',
       'https://github.com/OpenAgentsInc/openagents/blob/main/docs/traces/2026-06-25-default-on-trace-capture-audit.md',
     ],
+    deployment: {
+      captureDefaultGate:
+        options.captureDefaultArmed === true ? 'armed' : 'owner_gated',
+      captureDefaultEnv: 'KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT',
+      blockerRef:
+        'blocker.product_promises.free_tier_capture_default_owner_gated',
+    },
   })

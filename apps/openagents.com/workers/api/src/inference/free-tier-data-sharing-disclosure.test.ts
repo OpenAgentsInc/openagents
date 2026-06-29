@@ -24,7 +24,20 @@ describe('free-tier data-sharing disclosure (#6296)', () => {
       publicSharingOptIn: true,
       rewardInert: true,
     })
+    expect(disclosure.deployment).toEqual({
+      captureDefaultGate: 'owner_gated',
+      captureDefaultEnv: 'KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT',
+      blockerRef:
+        'blocker.product_promises.free_tier_capture_default_owner_gated',
+    })
     expect(disclosure.reportPath).toContain('forum/f/product-promises')
+  })
+
+  test('can project an env-aware armed capture gate for mint responses', () => {
+    expect(
+      freeTierDataSharingDisclosure({ captureDefaultArmed: true }).deployment
+        .captureDefaultGate,
+    ).toBe('armed')
   })
 
   test('terms cover the four honest clauses without overclaiming', () => {
@@ -53,8 +66,15 @@ describe('free-tier data-sharing disclosure (#6296)', () => {
       ),
     )
     expect(ok.status).toBe(200)
-    const body = (await ok.json()) as { promiseId: string }
+    const body = (await ok.json()) as {
+      promiseId: string
+      deployment: { captureDefaultGate: string; blockerRef: string }
+    }
     expect(body.promiseId).toBe(FREE_TIER_DATA_SHARING_PROMISE_ID)
+    expect(body.deployment.captureDefaultGate).toBe('owner_gated')
+    expect(body.deployment.blockerRef).toBe(
+      'blocker.product_promises.free_tier_capture_default_owner_gated',
+    )
 
     const denied = await Effect.runPromise(
       handleFreeTierDataSharingDisclosureApi(

@@ -100,11 +100,13 @@ const makeEnv = (
   db: D1Database,
   flag: string | undefined,
   mintCap?: string | undefined,
+  captureDefault?: string | undefined,
 ): Env =>
   ({
     OPENAGENTS_DB: db,
     INFERENCE_FREE_TIER_ENABLED: flag,
     FREE_KEY_MAX_MINTS_PER_IP_PER_DAY: mintCap,
+    KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT: captureDefault,
   }) as unknown as Env
 
 const mintRequest = (
@@ -156,6 +158,10 @@ describe('POST /api/keys/free (issue #6228)', () => {
         promiseId: string
         terms: ReadonlyArray<string>
         policy: { capturedByDefault: boolean; paidPrivacyOptOut: boolean }
+        deployment: {
+          captureDefaultGate: string
+          blockerRef: string
+        }
       }
     }
     expect(body.tier).toBe('free')
@@ -170,6 +176,10 @@ describe('POST /api/keys/free (issue #6228)', () => {
     expect(body.dataSharing.terms.length).toBeGreaterThan(0)
     expect(body.dataSharing.policy.capturedByDefault).toBe(true)
     expect(body.dataSharing.policy.paidPrivacyOptOut).toBe(true)
+    expect(body.dataSharing.deployment.captureDefaultGate).toBe('owner_gated')
+    expect(body.dataSharing.deployment.blockerRef).toBe(
+      'blocker.product_promises.free_tier_capture_default_owner_gated',
+    )
     // The minted account is now marked free-tier in D1.
     const row = await db
       .prepare(
@@ -179,6 +189,19 @@ describe('POST /api/keys/free (issue #6228)', () => {
       .bind(`agent:${store.registrations[0]!.user.id}`)
       .first<{ account_ref: string }>()
     expect(row).not.toBeNull()
+  })
+
+  test('data-sharing disclosure reports armed capture gate when owner flag is on', async () => {
+    const response = await handleFreeKeyMint(
+      mintRequest(),
+      makeEnv(makeDb(), 'true', undefined, 'true'),
+      new MemoryAgentRegistrationStore(),
+    )
+    expect(response.status).toBe(201)
+    const body = (await response.json()) as {
+      dataSharing: { deployment: { captureDefaultGate: string } }
+    }
+    expect(body.dataSharing.deployment.captureDefaultGate).toBe('armed')
   })
 
   test('rejects non-POST with 405', async () => {
