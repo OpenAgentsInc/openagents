@@ -3122,7 +3122,10 @@ export const handleChatCompletions = (
     const internalStressRouteAdmissionRejected =
       routeDemandClass === 'internal_stress' &&
       deps.routeAdmission !== undefined &&
-      deps.routeAdmission.reservedExternalHeadroomAvailable === false
+      !(
+        deps.routeAdmission.internalStressHeadroomAvailable ??
+        deps.routeAdmission.reservedExternalHeadroomAvailable
+      )
     const preemptionAbortController =
       routeDemandClass === 'internal_stress' &&
       !internalStressRouteAdmissionRejected &&

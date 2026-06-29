@@ -3304,6 +3304,18 @@ describe('POST /v1/chat/completions', () => {
 
   test('admits internal_stress when GLM has an idle slot but external reserve is unavailable', async () => {
     let dispatched = false
+    let registerCalls = 0
+    let releaseCalls = 0
+    const coordinator: InternalStressPreemptionCoordinator = {
+      preempt: async () => undefined,
+      register: async () => {
+        registerCalls += 1
+        return async () => {
+          releaseCalls += 1
+        }
+      },
+      snapshot: async () => ({ activeStressCount: 0 }),
+    }
     const registry = new InferenceProviderRegistry()
     registry.register({
       ...echoAdapter('primary'),
@@ -3322,6 +3334,7 @@ describe('POST /v1/chat/completions', () => {
           },
         }),
         baseDeps({
+          internalStressCoordinator: coordinator,
           lanePlan: () => ['primary'],
           registry,
           routeAdmission: {
@@ -3335,6 +3348,8 @@ describe('POST /v1/chat/completions', () => {
 
     expect(response.status).toBe(200)
     expect(dispatched).toBe(true)
+    expect(registerCalls).toBe(1)
+    expect(releaseCalls).toBe(1)
   })
 
   test('wired GLM saturation proof: internal_stress yields while external overflows and records exact served tokens', async () => {
