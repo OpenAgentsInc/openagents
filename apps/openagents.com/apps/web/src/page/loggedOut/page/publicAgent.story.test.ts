@@ -5,12 +5,14 @@ import { PublicAgentRoute } from '../../../route'
 import {
   SucceededLoadPublicActivityTimeline,
   SucceededLoadPublicAgentGoal,
+  SucceededLoadPublicArtanisActivity,
   SucceededLoadPublicKhalaTokensServedHistory,
   SucceededLoadPublicPylonStats,
 } from '../message'
 import {
   PublicKhalaTokensServedHistory,
   init,
+  type PublicArtanisActivity,
   type PublicPylonStats,
 } from '../model'
 import { update } from '../update'
@@ -231,6 +233,87 @@ const sampleActivityTimeline: PublicActivityTimelineEnvelope = {
   },
 }
 
+const sampleArtanisActivity: PublicArtanisActivity = {
+  activeAssignments: [
+    {
+      agentId: 'pylon.public.codex-east-1',
+      assignmentId: 'assignment.public.issue.6656.claimed',
+      publicIssue: 'issue.public.github.6656',
+      repo: 'OpenAgentsInc/openagents',
+      sourceRefs: ['issue.public.github.6656'],
+      state: 'in_progress',
+      updatedAt: '2026-06-27T16:59:45.000Z',
+      workerFamily: 'codex',
+    },
+    {
+      agentId: 'pylon.public.codex-west-2',
+      assignmentId: 'assignment.public.issue.6656.verify',
+      publicIssue: 'issue.public.github.6656',
+      repo: 'OpenAgentsInc/openagents',
+      sourceRefs: ['verification.public.issue.6656'],
+      state: 'proof_ready',
+      updatedAt: '2026-06-27T16:59:30.000Z',
+      workerFamily: 'codex',
+    },
+  ],
+  burnPace: {
+    sourceRefs: ['route:/api/public/artanis/activity'],
+    tokensLast24h: 100_000_000,
+    tokensLastHour: 2_000,
+    turnsLast24h: 12,
+    turnsLastHour: 2,
+  },
+  failureModes: [],
+  fleet: {
+    capacityAvailable: 2,
+    claudeReady: 0,
+    codexReady: 2,
+    genericAgents: [
+      {
+        agentId: 'pylon.public.codex-east-1',
+        capacityAvailable: 1,
+        family: 'codex',
+        onlineNow: true,
+        status: 'assignment_ready',
+      },
+      {
+        agentId: 'pylon.public.codex-west-2',
+        capacityAvailable: 1,
+        family: 'codex',
+        onlineNow: true,
+        status: 'assignment_ready',
+      },
+    ],
+    onlineNow: 2,
+    registeredTotal: 3,
+  },
+  generatedAt: '2026-06-27T17:00:00.000Z',
+  recentDecisions: [
+    {
+      agentId: 'pylon.public.codex-west-2',
+      assignmentId: 'assignment.public.issue.6656.verify',
+      decisionId: 'decision.public.issue.6656.verify',
+      kind: 'verification',
+      observedAt: '2026-06-27T16:59:35.000Z',
+      publicIssue: 'issue.public.github.6656',
+      sourceRefs: ['verification.public.issue.6656'],
+      status: 'queued',
+    },
+  ],
+  safety: {
+    excludedFields: ['rawEvents', 'prompt', 'localWorkspacePath'],
+    redaction: 'public_safe_summary_only',
+  },
+  schemaVersion: 'openagents.public_artanis_activity.v1',
+  sourceUrl: 'https://openagents.com/api/public/artanis/activity',
+  staleness: {
+    composition: 'live_at_read',
+    contractVersion: 'projection_staleness.v1',
+    maxStalenessSeconds: 0,
+    rebuildsOn: ['public_artanis_activity_read'],
+  },
+}
+
 const loadedArtanisModel = () => {
   const [withGoal] = update(
     init(PublicAgentRoute({ agentRef: 'artanis' })),
@@ -273,7 +356,12 @@ const loadedArtanisModel = () => {
     SucceededLoadPublicActivityTimeline({ envelope: sampleActivityTimeline }),
   )
 
-  return withTimeline
+  const [withArtanisActivity] = update(
+    withTimeline,
+    SucceededLoadPublicArtanisActivity({ activity: sampleArtanisActivity }),
+  )
+
+  return withArtanisActivity
 }
 
 describe('public Artanis Pulse panel', () => {
@@ -301,13 +389,19 @@ describe('public Artanis Pulse panel', () => {
     expect(markup).toContain('codex-east-1')
     expect(markup).toContain('codex-west-2')
     expect(markup).toContain('assignment-ready')
-    expect(markup).toContain('3 online / 2 wallet-ready / 2 assignment-ready')
+    expect(markup).toContain(
+      '2 online / 2 wallet-ready / 2 assignment-ready / 3 registered',
+    )
     expect(markup).toContain('Active Task Board')
     expect(markup).toContain('Ready')
     expect(markup).toContain('Claimed')
     expect(markup).toContain('Verifying')
-    expect(markup).toContain('Issue 6656 fleet board work claimed.')
-    expect(markup).toContain('Issue 6656 public verification queued.')
+    expect(markup).toContain('issue.public.github.6656 / in_progress')
+    expect(markup).toContain('issue.public.github.6656 / proof_ready')
+    expect(markup).toContain('verification / queued / issue.public.github.6656')
+    expect(markup).toContain(
+      'Active assignments and decisions from the Artanis activity projection.',
+    )
     expect(markup).toContain('Only public activity rows are shown')
     expect(markup).toContain('artanis-virtual-merge-queue')
     expect(markup).toContain('Virtual merge queue')

@@ -95,6 +95,7 @@ import {
   FailedLoadPublicActivityTimeline,
   FailedLoadPublicAdjutantActivity,
   FailedLoadPublicAgentGoal,
+  FailedLoadPublicArtanisActivity,
   FailedLoadPublicArtanisReport,
   FailedLoadPublicForumLaunchStatus,
   FailedLoadPublicForumTipLeaderboards,
@@ -118,6 +119,7 @@ import {
   SucceededLoadPublicActivityTimeline,
   SucceededLoadPublicAdjutantActivity,
   SucceededLoadPublicAgentGoal,
+  SucceededLoadPublicArtanisActivity,
   SucceededLoadPublicArtanisReport,
   SucceededLoadPublicForumLaunchStatus,
   SucceededLoadPublicForumTipLeaderboards,
@@ -140,6 +142,7 @@ import {
   FailedPublicActivityTimeline,
   FailedPublicAdjutantActivity,
   FailedPublicAgent,
+  FailedPublicArtanisActivity,
   FailedPublicArtanisReport,
   FailedPublicForumLaunchStatus,
   FailedPublicForumTipLeaderboards,
@@ -157,6 +160,7 @@ import {
   LoadedPublicActivityTimeline,
   LoadedPublicAdjutantActivity,
   LoadedPublicAgent,
+  LoadedPublicArtanisActivity,
   LoadedPublicArtanisReport,
   LoadedPublicForumLaunchStatus,
   LoadedPublicForumTipLeaderboards,
@@ -173,6 +177,7 @@ import {
   NotFoundTrace,
   PublicAdjutantActivity,
   PublicAgentGoalResponse,
+  PublicArtanisActivity,
   PublicArtanisReport,
   PublicForumLaunchStatus,
   PublicForumTipLeaderboards,
@@ -266,6 +271,11 @@ class PublicAdjutantActivityLoadError extends S.TaggedErrorClass<PublicAdjutantA
 
 class PublicActivityTimelineLoadError extends S.TaggedErrorClass<PublicActivityTimelineLoadError>()(
   'PublicActivityTimelineLoadError',
+  { error: S.Defect },
+) {}
+
+class PublicArtanisActivityLoadError extends S.TaggedErrorClass<PublicArtanisActivityLoadError>()(
+  'PublicArtanisActivityLoadError',
   { error: S.Defect },
 ) {}
 
@@ -455,6 +465,47 @@ export const LoadPublicActivityTimeline = Command.define(
     Effect.catch(error =>
       Effect.succeed(
         FailedLoadPublicActivityTimeline({
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      ),
+    ),
+  ),
+)
+
+export const LoadPublicArtanisActivity = Command.define(
+  'LoadPublicArtanisActivity',
+  SucceededLoadPublicArtanisActivity,
+  FailedLoadPublicArtanisActivity,
+)(
+  Effect.gen(function* () {
+    const response = yield* Effect.tryPromise({
+      try: () =>
+        fetch('/api/public/artanis/activity?limit=24', {
+          cache: 'no-store',
+          headers: { accept: 'application/json' },
+        }),
+      catch: error => new PublicArtanisActivityLoadError({ error }),
+    })
+
+    if (!response.ok) {
+      return yield* new PublicArtanisActivityLoadError({
+        error: `Public Artanis activity returned HTTP ${response.status}.`,
+      })
+    }
+
+    const payload = yield* Effect.tryPromise({
+      try: () => response.json(),
+      catch: error => new PublicArtanisActivityLoadError({ error }),
+    })
+    const activity = yield* S.decodeUnknownEffect(PublicArtanisActivity)(
+      payload,
+    )
+
+    return SucceededLoadPublicArtanisActivity({ activity })
+  }).pipe(
+    Effect.catch(error =>
+      Effect.succeed(
+        FailedLoadPublicArtanisActivity({
           error: error instanceof Error ? error.message : String(error),
         }),
       ),
@@ -1770,6 +1821,7 @@ export const initialCommands = (
                                   agentRef: model.route.agentRef,
                                 }),
                                 LoadPublicActivityTimeline(),
+                                LoadPublicArtanisActivity(),
                                 LoadPublicPylonStats(),
                                 LoadPublicKhalaTokensServedHistory(),
                               ]
@@ -2084,6 +2136,24 @@ export const update = (model: Model, message: Message): UpdateReturn =>
       FailedLoadPublicActivityTimeline: ({ error }) => [
         evo(model, {
           publicActivityTimeline: () => FailedPublicActivityTimeline({ error }),
+        }),
+        [],
+      ],
+      RequestedPollPublicArtanisActivity: () => [
+        model,
+        [LoadPublicArtanisActivity()],
+      ],
+      SucceededLoadPublicArtanisActivity: ({ activity }) => [
+        evo(model, {
+          publicArtanisActivity: () =>
+            LoadedPublicArtanisActivity({ activity }),
+        }),
+        [],
+      ],
+      FailedLoadPublicArtanisActivity: ({ error }) => [
+        evo(model, {
+          publicArtanisActivity: () =>
+            FailedPublicArtanisActivity({ error }),
         }),
         [],
       ],

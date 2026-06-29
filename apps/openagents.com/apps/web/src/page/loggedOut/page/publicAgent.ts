@@ -16,6 +16,10 @@ import type {
   PublicAdjutantActivityMilestone,
   PublicAdjutantActivityModel,
   PublicAdjutantDeployedSite,
+  PublicArtanisActiveAssignment,
+  PublicArtanisActivity,
+  PublicArtanisActivityModel,
+  PublicArtanisFleetAgent,
   PublicAgentGoal,
   PublicAgentGoalEvent,
   PublicKhalaTokensServedHistoryModel,
@@ -1582,10 +1586,40 @@ const fleetShippingView = (model: PublicActivityTimelineModel): Html => {
 
 type FleetMapSlot = Readonly<{
   index: number
-  pylon: PublicRecentPylon | null
+  label: string
+  detail: string
+  state: 'assignment' | 'wallet' | 'online' | 'empty'
 }>
 
-const fleetMapSlots = (
+const emptyFleetMapSlot = (index: number): FleetMapSlot => ({
+  detail: 'no public heartbeat',
+  index,
+  label: `slot ${index + 1}`,
+  state: 'empty',
+})
+
+const pylonSlotState = (
+  pylon: PublicRecentPylon,
+): FleetMapSlot['state'] => {
+  if (pylon.assignmentReadyNow === true) {
+    return 'assignment'
+  }
+  if (pylon.walletReadyNow === true) {
+    return 'wallet'
+  }
+  return pylon.onlineNow === false ? 'empty' : 'online'
+}
+
+const fleetAgentSlotState = (
+  agent: PublicArtanisFleetAgent,
+): FleetMapSlot['state'] => {
+  if (agent.capacityAvailable > 0) {
+    return 'assignment'
+  }
+  return agent.onlineNow ? 'online' : 'empty'
+}
+
+const fleetMapSlotsFromStats = (
   stats: PublicPylonStats | null,
 ): ReadonlyArray<FleetMapSlot> => {
   const pylons = stats?.recentPylons ?? []
@@ -1601,35 +1635,69 @@ const fleetMapSlots = (
           ),
         )
 
-  return globalThis.Array.from({ length: visibleSlotCount }, (_, index) => ({
-    index,
-    pylon: pylons[index] ?? null,
-  }))
+  return globalThis.Array.from({ length: visibleSlotCount }, (_, index) => {
+    const pylon = pylons[index]
+    if (pylon === undefined) {
+      return emptyFleetMapSlot(index)
+    }
+
+    return {
+      detail: `${pylon.readyModel ?? 'model unknown'} / ${pylon.lastSeenAtLabel ?? 'freshness unknown'}`,
+      index,
+      label: pylon.nodeLabel ?? pylon.pylonRef ?? pylon.nostrPubkeyShort,
+      state: pylonSlotState(pylon),
+    }
+  })
 }
 
-const pylonSlotState = (
-  pylon: PublicRecentPylon | null,
-): 'assignment' | 'wallet' | 'online' | 'empty' => {
-  if (pylon === null) {
-    return 'empty'
-  }
-  if (pylon.assignmentReadyNow === true) {
-    return 'assignment'
-  }
-  if (pylon.walletReadyNow === true) {
-    return 'wallet'
-  }
-  return pylon.onlineNow === false ? 'empty' : 'online'
+const fleetMapSlotsFromArtanisActivity = (
+  activity: PublicArtanisActivity,
+): ReadonlyArray<FleetMapSlot> => {
+  const agents = activity.fleet.genericAgents
+  const visibleSlotCount = Math.max(
+    8,
+    Math.min(24, activity.fleet.registeredTotal, agents.length || 8),
+  )
+
+  return globalThis.Array.from({ length: visibleSlotCount }, (_, index) => {
+    const agent = agents[index]
+    if (agent === undefined) {
+      return emptyFleetMapSlot(index)
+    }
+
+    return {
+      detail: `${agent.family} / ${agent.status} / ${formatNumber(agent.capacityAvailable)} slot${agent.capacityAvailable === 1 ? '' : 's'}`,
+      index,
+      label: agent.agentId,
+      state: fleetAgentSlotState(agent),
+    }
+  })
 }
 
-const pylonSlotToneClass: Record<ReturnType<typeof pylonSlotState>, string> = {
+const publicArtanisActivityFromModel = (
+  model: PublicArtanisActivityModel,
+): PublicArtanisActivity | null =>
+  model._tag === 'PublicArtanisActivityLoaded' ? model.activity : null
+
+const fleetMapSlots = (
+  stats: PublicPylonStats | null,
+  activity: PublicArtanisActivity | null,
+): ReadonlyArray<FleetMapSlot> => {
+  if (activity !== null) {
+    return fleetMapSlotsFromArtanisActivity(activity)
+  }
+
+  return fleetMapSlotsFromStats(stats)
+}
+
+const pylonSlotToneClass: Record<FleetMapSlot['state'], string> = {
   assignment: 'border-[#00c853]/60 bg-[#06140a] text-[#9ad6b7]',
   empty: 'border-[#1b1b1b] bg-black text-white/25',
   online: 'border-[#333] bg-[#0a0a0a] text-white/55',
   wallet: 'border-[#ffb400]/55 bg-[#171102] text-[#f0d28a]',
 }
 
-const pylonSlotStateLabel: Record<ReturnType<typeof pylonSlotState>, string> = {
+const pylonSlotStateLabel: Record<FleetMapSlot['state'], string> = {
   assignment: 'assignment-ready',
   empty: 'empty',
   online: 'online',
@@ -1638,16 +1706,7 @@ const pylonSlotStateLabel: Record<ReturnType<typeof pylonSlotState>, string> = {
 
 const pylonSlotView = (slot: FleetMapSlot): Html => {
   const h = html<Message>()
-  const state = pylonSlotState(slot.pylon)
-  const label =
-    slot.pylon?.nodeLabel ??
-    slot.pylon?.pylonRef ??
-    slot.pylon?.nostrPubkeyShort ??
-    `slot ${slot.index + 1}`
-  const detail =
-    slot.pylon === null
-      ? 'no public heartbeat'
-      : `${slot.pylon.readyModel ?? 'model unknown'} / ${slot.pylon.lastSeenAtLabel ?? 'freshness unknown'}`
+  const state = slot.state
 
   return h.li(
     [
@@ -1678,7 +1737,7 @@ const pylonSlotView = (slot: FleetMapSlot): Html => {
               'truncate text-[0.75rem] font-semibold text-[#f1efe8]',
             ),
           ],
-          [label],
+          [slot.label],
         ),
         h.span(
           [
@@ -1686,7 +1745,7 @@ const pylonSlotView = (slot: FleetMapSlot): Html => {
               'truncate text-[0.6875rem] text-white/40',
             ),
           ],
-          [detail],
+          [slot.detail],
         ),
       ]),
     ],
@@ -1705,7 +1764,15 @@ const taskBoardKinds = new Set<PublicActivityTimelineEvent['kind']>([
 type TaskBoardLane = Readonly<{
   label: string
   detail: string
+  lane: 'ready' | 'claimed' | 'verifying' | 'resolved'
   kinds: ReadonlySet<PublicActivityTimelineEvent['kind']>
+}>
+
+type TaskBoardItem = Readonly<{
+  actor: string
+  lane: TaskBoardLane['lane']
+  text: string
+  updatedAt: string
 }>
 
 const taskBoardLanes: ReadonlyArray<TaskBoardLane> = [
@@ -1713,11 +1780,13 @@ const taskBoardLanes: ReadonlyArray<TaskBoardLane> = [
     detail: 'Slots ready to accept work',
     kinds: new Set<PublicActivityTimelineEvent['kind']>(['assignment_ready']),
     label: 'Ready',
+    lane: 'ready',
   },
   {
     detail: 'Work claimed by public Pylon refs',
     kinds: new Set<PublicActivityTimelineEvent['kind']>(['work_claimed']),
     label: 'Claimed',
+    lane: 'claimed',
   },
   {
     detail: 'Trace and verification work in flight',
@@ -1726,6 +1795,7 @@ const taskBoardLanes: ReadonlyArray<TaskBoardLane> = [
       'verification_queued',
     ]),
     label: 'Verifying',
+    lane: 'verifying',
   },
   {
     detail: 'Verifier outcomes from the public feed',
@@ -1734,12 +1804,55 @@ const taskBoardLanes: ReadonlyArray<TaskBoardLane> = [
       'verification_rejected',
     ]),
     label: 'Resolved',
+    lane: 'resolved',
   },
 ]
 
-const activeTaskBoardEvents = (
+const taskBoardLaneFromAssignment = (
+  assignment: PublicArtanisActiveAssignment,
+): TaskBoardLane['lane'] => {
+  const state = assignment.state.toLowerCase()
+  if (state.includes('proof') || state.includes('verify')) {
+    return 'verifying'
+  }
+  if (state.includes('closeout') || state.includes('accepted')) {
+    return 'resolved'
+  }
+  return state.includes('queue') ? 'ready' : 'claimed'
+}
+
+const taskBoardItemsFromArtanisActivity = (
+  activity: PublicArtanisActivity | null,
+): ReadonlyArray<TaskBoardItem> => {
+  if (activity === null) {
+    return []
+  }
+
+  const assignments = activity.activeAssignments.map(assignment => ({
+    actor: assignment.agentId,
+    lane: taskBoardLaneFromAssignment(assignment),
+    text: `${assignment.publicIssue ?? assignment.assignmentId} / ${assignment.state}${assignment.repo === null ? '' : ` / ${assignment.repo}`}`,
+    updatedAt: assignment.updatedAt,
+  }))
+
+  const decisions = activity.recentDecisions.map(decision => ({
+    actor: decision.agentId,
+    lane:
+      decision.status.toLowerCase().includes('blocked') ||
+      decision.status.toLowerCase().includes('failed') ||
+      decision.status.toLowerCase().includes('accepted')
+        ? ('resolved' as const)
+        : ('verifying' as const),
+    text: `${decision.kind} / ${decision.status}${decision.publicIssue === null ? '' : ` / ${decision.publicIssue}`}`,
+    updatedAt: decision.observedAt,
+  }))
+
+  return [...assignments, ...decisions]
+}
+
+const activeTaskBoardEventsFromTimeline = (
   model: PublicActivityTimelineModel,
-): ReadonlyArray<PublicActivityTimelineEvent> => {
+): ReadonlyArray<TaskBoardItem> => {
   if (model._tag !== 'PublicActivityTimelineLoaded') {
     return []
   }
@@ -1756,11 +1869,30 @@ const activeTaskBoardEvents = (
         eventMs !== null && generatedMs - eventMs <= FLEET_FEED_FRESH_WINDOW_MS
       )
     })
+    .map(event => ({
+      actor: event.actorRef ?? event.targetRef ?? event.runRef ?? 'public ref',
+      lane:
+        taskBoardLanes.find(lane => lane.kinds.has(event.kind))?.lane ??
+        'claimed',
+      text: event.text,
+      updatedAt: event.ts,
+    }))
 }
 
-const taskBoardRow = (event: PublicActivityTimelineEvent): Html => {
+const activeTaskBoardItems = (
+  activity: PublicArtanisActivity | null,
+  timeline: PublicActivityTimelineModel,
+): ReadonlyArray<TaskBoardItem> => {
+  const activityItems = taskBoardItemsFromArtanisActivity(activity)
+  if (activityItems.length > 0) {
+    return activityItems
+  }
+
+  return activeTaskBoardEventsFromTimeline(timeline)
+}
+
+const taskBoardRow = (item: TaskBoardItem): Html => {
   const h = html<Message>()
-  const actor = event.actorRef ?? event.targetRef ?? event.runRef ?? 'public ref'
 
   return h.li(
     [
@@ -1771,7 +1903,7 @@ const taskBoardRow = (event: PublicActivityTimelineEvent): Html => {
     [
       h.div(
         [Ui.className<Message>('text-[0.75rem] leading-5 text-[#f1efe8]')],
-        [event.text],
+        [item.text],
       ),
       h.div(
         [
@@ -1780,9 +1912,9 @@ const taskBoardRow = (event: PublicActivityTimelineEvent): Html => {
           ),
         ],
         [
-          h.span([Ui.className<Message>('truncate')], [actor]),
+          h.span([Ui.className<Message>('truncate')], [item.actor]),
           h.span([Ui.className<Message>('tabular-nums')], [
-            friendlyRelativeTime(event.ts),
+            friendlyRelativeTime(item.updatedAt),
           ]),
         ],
       ),
@@ -1792,10 +1924,10 @@ const taskBoardRow = (event: PublicActivityTimelineEvent): Html => {
 
 const taskBoardLaneView = (
   lane: TaskBoardLane,
-  events: ReadonlyArray<PublicActivityTimelineEvent>,
+  events: ReadonlyArray<TaskBoardItem>,
 ): Html => {
   const h = html<Message>()
-  const rows = events.filter(event => lane.kinds.has(event.kind)).slice(0, 4)
+  const rows = events.filter(event => event.lane === lane.lane).slice(0, 4)
 
   return h.div(
     [
@@ -1851,14 +1983,19 @@ const taskBoardLaneView = (
 const artanisFleetMapAndTaskBoardView = (
   pylonStats: PublicPylonStatsModel,
   activityTimeline: PublicActivityTimelineModel,
+  artanisActivityModel: PublicArtanisActivityModel,
 ): Html => {
   const h = html<Message>()
   const stats = pylonStatsFromModel(pylonStats)
-  const slots = fleetMapSlots(stats)
-  const tasks = activeTaskBoardEvents(activityTimeline)
-  const assignmentReady = slots.filter(
-    slot => pylonSlotState(slot.pylon) === 'assignment',
-  ).length
+  const activity = publicArtanisActivityFromModel(artanisActivityModel)
+  const slots = fleetMapSlots(stats, activity)
+  const tasks = activeTaskBoardItems(activity, activityTimeline)
+  const assignmentReady =
+    activity?.fleet.capacityAvailable ??
+    slots.filter(slot => slot.state === 'assignment').length
+  const onlineNow = activity?.fleet.onlineNow ?? stats?.pylonsOnlineNow
+  const walletReady = stats?.pylonsWalletReadyNow
+  const registeredTotal = activity?.fleet.registeredTotal
 
   return h.section(
     [
@@ -1893,6 +2030,11 @@ const artanisFleetMapAndTaskBoardView = (
             [
               h.span([], [`${formatNumber(assignmentReady)} assignment-ready`]),
               h.span([], [`${formatNumber(tasks.length)} task rows`]),
+              activity === null
+                ? null
+                : h.span([], [
+                    `${formatNumber(activity.burnPace.turnsLastHour)} turns last hour`,
+                  ]),
             ],
           ),
         ],
@@ -1916,9 +2058,11 @@ const artanisFleetMapAndTaskBoardView = (
             h.div(
               [Ui.className<Message>('text-[0.75rem] leading-5 text-white/35')],
               [
-                stats === null
-                  ? 'Loading public Pylon slots from the live stats projection.'
-                  : `${formatNumber(stats.pylonsOnlineNow)} online / ${formatNumber(stats.pylonsWalletReadyNow)} wallet-ready / ${formatNumber(stats.pylonsAssignmentReadyNow)} assignment-ready.`,
+                activity === null
+                  ? stats === null
+                    ? 'Loading public Pylon slots from the live stats projection.'
+                    : `${formatNumber(stats.pylonsOnlineNow)} online / ${formatNumber(stats.pylonsWalletReadyNow)} wallet-ready / ${formatNumber(stats.pylonsAssignmentReadyNow)} assignment-ready.`
+                  : `${formatNumber(onlineNow ?? 0)} online / ${walletReady === undefined ? 'wallet readiness in Pylon stats' : `${formatNumber(walletReady)} wallet-ready`} / ${formatNumber(assignmentReady)} assignment-ready / ${formatNumber(registeredTotal ?? 0)} registered.`,
               ],
             ),
           ]),
@@ -1929,7 +2073,11 @@ const artanisFleetMapAndTaskBoardView = (
               ]),
               h.div(
                 [Ui.className<Message>('text-[0.75rem] text-white/35')],
-                ['Work and verification lanes from the public activity feed.'],
+                [
+                  activity === null
+                    ? 'Work and verification lanes from the public activity feed.'
+                    : 'Active assignments and decisions from the Artanis activity projection.',
+                ],
               ),
             ]),
             h.div(
@@ -2474,6 +2622,7 @@ const artanisLoadedView = (
   goal: PublicAgentGoal | null,
   pylonStats: PublicPylonStatsModel,
   activityTimeline: PublicActivityTimelineModel,
+  artanisActivity: PublicArtanisActivityModel,
   khalaTokensServedHistory: PublicKhalaTokensServedHistoryModel,
 ): Html => {
   const h = html<Message>()
@@ -2500,7 +2649,11 @@ const artanisLoadedView = (
       // HERO: the live token-burn Pulse is the strongest signal that an
       // autonomous fleet is building in real time, so it spans the console.
       artanisPulseView(khalaTokensServedHistory),
-      artanisFleetMapAndTaskBoardView(pylonStats, activityTimeline),
+      artanisFleetMapAndTaskBoardView(
+        pylonStats,
+        activityTimeline,
+        artanisActivity,
+      ),
       artanisVirtualMergeQueueView(),
       h.div(
         [
@@ -2538,6 +2691,7 @@ const loadedView = (
   events: ReadonlyArray<PublicAgentGoalEvent>,
   pylonStats: PublicPylonStatsModel,
   activityTimeline: PublicActivityTimelineModel,
+  artanisActivity: PublicArtanisActivityModel,
   khalaTokensServedHistory: PublicKhalaTokensServedHistoryModel,
   adjutantActivity: PublicAdjutantActivityModel,
 ): Html => {
@@ -2553,6 +2707,7 @@ const loadedView = (
       goal,
       pylonStats,
       activityTimeline,
+      artanisActivity,
       khalaTokensServedHistory,
     )
   }
@@ -2634,6 +2789,7 @@ export const view = (model: Model, agentRef: string): Html => {
       model.publicAgent.response.events,
       model.publicPylonStats,
       model.publicActivityTimeline,
+      model.publicArtanisActivity,
       model.publicKhalaTokensServedHistory,
       model.publicAdjutantActivity,
     )
@@ -2664,6 +2820,7 @@ export const view = (model: Model, agentRef: string): Html => {
       ],
       model.publicPylonStats,
       model.publicActivityTimeline,
+      model.publicArtanisActivity,
       model.publicKhalaTokensServedHistory,
       model.publicAdjutantActivity,
     )
@@ -2674,6 +2831,7 @@ export const view = (model: Model, agentRef: string): Html => {
       null,
       model.publicPylonStats,
       model.publicActivityTimeline,
+      model.publicArtanisActivity,
       model.publicKhalaTokensServedHistory,
     )
   }

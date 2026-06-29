@@ -237,6 +237,7 @@ describe('logged-out nav + copy update', () => {
     expect(commandNames(initialCommands(artanisModel))).toEqual([
       'LoadPublicAgentGoal',
       'LoadPublicActivityTimeline',
+      'LoadPublicArtanisActivity',
       'LoadPublicPylonStats',
       'LoadPublicKhalaTokensServedHistory',
     ])

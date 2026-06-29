@@ -40,6 +40,7 @@ import {
   ReceivedKhalaTokensServedPatch,
   RequestedPollKhalaTokensServed,
   RequestedPollKhalaTokensServedHistory,
+  RequestedPollPublicArtanisActivity,
   RequestedPollPublicActivityTimeline,
   RequestedPollKhalaTokensServedModelMix,
   RequestedPollGymRunProgress,
@@ -1548,6 +1549,27 @@ export const subscriptions = Subscription.make<Model, Message>()(entry => ({
             Stream.map(() =>
               GotLoggedOutMessage({
                 message: RequestedPollPublicActivityTimeline(),
+              }),
+            ),
+          ),
+          Effect.sync(() => isActive),
+        ),
+    },
+  ),
+  publicArtanisActivityPoll: entry(
+    {
+      isActive: S.Boolean,
+    },
+    {
+      modelToDependencies: publicActivityTimelinePollDependenciesForModel,
+      dependenciesToStream: ({ isActive }: { isActive: boolean }) =>
+        Stream.when(
+          Stream.tick(
+            Duration.seconds(KHALA_TOKENS_SERVED_HISTORY_POLL_INTERVAL_SECONDS),
+          ).pipe(
+            Stream.map(() =>
+              GotLoggedOutMessage({
+                message: RequestedPollPublicArtanisActivity(),
               }),
             ),
           ),

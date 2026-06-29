@@ -753,6 +753,7 @@ describe('authenticated startup routing', () => {
     expect(commands.map(command => command.name)).toEqual([
       'LoadPublicAgentGoal',
       'LoadPublicActivityTimeline',
+      'LoadPublicArtanisActivity',
       'LoadPublicPylonStats',
       'LoadPublicKhalaTokensServedHistory',
     ])
@@ -820,6 +821,7 @@ describe('authenticated startup routing', () => {
     expect(commands.map(command => command.name)).toEqual([
       'LoadPublicAgentGoal',
       'LoadPublicActivityTimeline',
+      'LoadPublicArtanisActivity',
       'LoadPublicPylonStats',
       'LoadPublicKhalaTokensServedHistory',
     ])

@@ -28,6 +28,7 @@ import {
   OnboardingStep,
   PublicAdjutantActivity,
   PublicAgentGoalResponse,
+  PublicArtanisActivity,
   PublicArtanisReport,
   PublicForumLaunchStatus,
   PublicForumTipLeaderboards,
@@ -230,6 +231,21 @@ export const SucceededLoadPublicActivityTimeline = m(
 )
 export const FailedLoadPublicActivityTimeline = m(
   'FailedLoadPublicActivityTimeline',
+  {
+    error: S.String,
+  },
+)
+export const RequestedPollPublicArtanisActivity = m(
+  'RequestedPollPublicArtanisActivity',
+)
+export const SucceededLoadPublicArtanisActivity = m(
+  'SucceededLoadPublicArtanisActivity',
+  {
+    activity: PublicArtanisActivity,
+  },
+)
+export const FailedLoadPublicArtanisActivity = m(
+  'FailedLoadPublicArtanisActivity',
   {
     error: S.String,
   },
@@ -625,6 +641,9 @@ export const Message = S.Union([
   RequestedPollPublicActivityTimeline,
   SucceededLoadPublicActivityTimeline,
   FailedLoadPublicActivityTimeline,
+  RequestedPollPublicArtanisActivity,
+  SucceededLoadPublicArtanisActivity,
+  FailedLoadPublicArtanisActivity,
   RequestedPollKhalaTokensServedModelMix,
   SucceededLoadPublicKhalaTokensServedModelMix,
   FailedLoadPublicKhalaTokensServedModelMix,
