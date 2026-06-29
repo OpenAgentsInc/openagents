@@ -1,0 +1,11 @@
+{
+  "schema": "openagents.pylon.m10_overnight_task_failure.v0.1",
+  "runRef": "run.m10.overnight.fe89b989a4adfdde61631a79",
+  "taskIndex": 12,
+  "cycle": 3,
+  "lane": "claude_agent",
+  "surface": "work_order",
+  "observedAt": "2026-06-13T01:43:43.737Z",
+  "errorClass": "execution_error",
+  "errorDigestRef": "digest.m10.task_error.606c6fc8a0a9fc88fc70eb21"
+}

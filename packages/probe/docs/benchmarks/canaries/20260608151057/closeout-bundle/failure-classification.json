@@ -1,0 +1,12 @@
+{
+  "schemaRef": "probe.failure_classification_summary.v1",
+  "assignmentRef": "assignment.public.probe_gepa.terminal_bench_2.canary.20260608151057",
+  "failureClassification": {
+    "classificationRef": "failure_classification.probe.retained.configure_git_webserver.service_readiness",
+    "family": "service_readiness",
+    "summaryRef": "summary.public.probe_run.public.probe_gepa.terminal_bench_2.canary.20260608151057.service_readiness_retained"
+  },
+  "retainedFailureRefs": [
+    "retained_failure.terminal-bench-2-harbor.task_run.terminal_bench_2.configure_git_webserver.20260608151057.service_readiness"
+  ]
+}

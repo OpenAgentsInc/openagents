@@ -1,0 +1,20 @@
+# Xcode / SwiftPM build + user state
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+
+# Archives / exports
+*.xcarchive
+*.ipa
+ExportOptions.plist
+
+# macOS
+.DS_Store
+
+# SwiftPM
+.swiftpm/
+.build/
+Packages/

@@ -1,0 +1,51 @@
+{
+  "schemaRef": "psionic.probe_gepa_live_pylon_closeout_import_request.v1",
+  "importRef": "psionic_import.public.probe_gepa.terminal_bench_2.canary.20260608151057",
+  "sourceReceiptRef": "receipt.public.probe_gepa.terminal_bench_2.canary.20260608151057",
+  "candidateHash": "sha256:a2a44c21a08fcba12108786821dc5045a746e72b0d5a7f45374b08f8ba6a6743",
+  "candidateState": "retained_evidence_only",
+  "acceptedForFrontierMutation": false,
+  "requestedFrontierState": "pending_live_import_review",
+  "closeoutBundleRef": "probe_benchmark_closeout_bundle.probe_run.public.probe_gepa.terminal_bench_2.canary.20260608151057",
+  "routeScorecardRef": "route_scorecard.public.probe_run.public.probe_gepa.terminal_bench_2.canary.20260608151057",
+  "verifierResultRefs": [
+    "verifier_result.public.probe_run.public.probe_gepa.terminal_bench_2.canary.20260608151057.initial_retained.service_readiness"
+  ],
+  "pylonAssignmentRef": "assignment.public.probe_gepa.terminal_bench_2.canary.20260608151057",
+  "pylonEventRefs": [
+    "pylon_event.heartbeat.cbfba02f-8ce8-4161-954a-109f403a56c1",
+    "pylon_event.wallet_readiness.ae6b9e8c-58d8-4dde-a1a0-d666d162087a",
+    "pylon_event.assignment_acceptance.ab63a3aa-771e-47cd-8cf6-1d29f945021e",
+    "pylon_event.assignment_progress.27bf8d2d-6979-4597-8e85-2da994990710",
+    "pylon_event.artifact_proof_metadata.82e04c95-8084-4b95-bbd2-1183b760c7ae"
+  ],
+  "artifactRefs": [
+    "artifact.public.probe_run.public.probe_gepa.terminal_bench_2.canary.20260608151057.probe_closeout_bundle",
+    "artifact.public.probe_run.public.probe_gepa.terminal_bench_2.canary.20260608151057.route_scorecard",
+    "artifact.public.probe_run.public.probe_gepa.terminal_bench_2.canary.20260608151057.verifier_result_refs"
+  ],
+  "proofRefs": [
+    "proof.public.probe_run.public.probe_gepa.terminal_bench_2.canary.20260608151057.no_spend_assignment_lifecycle",
+    "proof.public.probe_run.public.probe_gepa.terminal_bench_2.canary.20260608151057.public_safe_redaction",
+    "proof.public.probe_run.public.probe_gepa.terminal_bench_2.canary.20260608151057.terminal_bench_2.initial_evidence"
+  ],
+  "closeoutRefs": [
+    "closeout.public.probe_run.public.probe_gepa.terminal_bench_2.canary.20260608151057.operator_reviewed_unpaid_smoke",
+    "probe_closeout.probe_run.public.probe_gepa.terminal_bench_2.canary.20260608151057",
+    "route_scorecard.public.probe_run.public.probe_gepa.terminal_bench_2.canary.20260608151057",
+    "verifier_result.public.probe_run.public.probe_gepa.terminal_bench_2.canary.20260608151057.initial_retained"
+  ],
+  "safetyBoundary": {
+    "publicBenchmarkScoreClaimAllowed": false,
+    "paidWorkClaimAllowed": false,
+    "settledBitcoinClaimAllowed": false,
+    "modelTrainingClaimAllowed": false,
+    "runtimePromotionAllowed": false,
+    "stage1PromotionAllowed": "shadow_only_after_separate_gate",
+    "notes": [
+      "This is a live unpaid Pylon assignment lifecycle with public-safe refs.",
+      "It is initial retained Terminal-Bench evidence, not a leaderboard score.",
+      "The Probe closeout bundle records a retained service-readiness failure family while the Pylon work closeout was accepted as evidence work."
+    ]
+  }
+}

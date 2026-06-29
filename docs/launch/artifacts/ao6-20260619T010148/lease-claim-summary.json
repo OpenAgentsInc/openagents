@@ -1,0 +1,8 @@
+{
+  "leaseRef": "training.lease.00ea30b2-5165-4ca3-9398-a11545970ffa",
+  "pylonRef": "pylon.fa4e9049a4329f3d56e2",
+  "windowRef": "training.window.tassadar.executor.20260615.w1",
+  "trainingRunRef": "run.tassadar.executor.20260615",
+  "state": "active",
+  "expiresAt": null
+}

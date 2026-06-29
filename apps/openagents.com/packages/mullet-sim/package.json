@@ -1,0 +1,17 @@
+{
+  "name": "@openagentsinc/mullet-sim",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@openagentsinc/mullet-schema": "workspace:*",
+    "effect": "4.0.0-beta.70"
+  }
+}

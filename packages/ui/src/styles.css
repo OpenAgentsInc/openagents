@@ -1,0 +1,6 @@
+/* #6046: aggregated component stylesheet backed by central --oa-* tokens. */
+@import './shared.css';
+@import './forms.css';
+@import './feedback.css';
+@import './workroom-styles.css';
+@import './ai-elements/prompt-input.css';

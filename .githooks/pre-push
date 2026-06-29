@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Pre-push gate — enforces "everything goes through all gates" without CI.
+# Policy: NO GitHub Actions. This local hook is how direct pushes to main
+# (including owner-agent pushes like cinder/lathe) are gated on check:deploy.
+#
+# Enable in any checkout with:  git config core.hooksPath .githooks
+#
+# Gates only pushes whose remote ref is main. Other branches push freely.
+set -uo pipefail
+
+gate=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+  case "$remote_ref" in
+    refs/heads/main|*/main) gate=1 ;;
+  esac
+done
+
+[ "$gate" = 1 ] || exit 0
+
+root="$(git rev-parse --show-toplevel)"
+
+# Fast fail: no merge-conflict markers in source.
+if grep -rqE '^<<<<<<<|^=======$|^>>>>>>>' \
+     "$root/apps/openagents.com/workers/api/src" \
+     "$root/apps/openagents.com/apps/web/src" 2>/dev/null; then
+  echo "[pre-push gate] BLOCKED: merge-conflict markers present in source." >&2
+  exit 1
+fi
+
+echo "[pre-push gate] push to main -> running check:deploy (all gates)..." >&2
+if ! ( cd "$root/apps/openagents.com" && bun run check:deploy ) >&2; then
+  echo "[pre-push gate] BLOCKED: check:deploy failed. Fix it before pushing to main." >&2
+  exit 1
+fi
+
+echo "[pre-push gate] check:deploy GREEN." >&2
+echo "[pre-push gate] running warning-only Tier 1 QA smoke for changed user-facing surfaces..." >&2
+if ! ( cd "$root" && bun scripts/qa-pre-push-smoke.ts ) >&2; then
+  echo "[pre-push gate] WARNING: Tier 1 QA smoke did not pass or did not finish. Push remains allowed; Tier 2 async QA is authoritative." >&2
+fi
+
+echo "[pre-push gate] launching warning-only Tier 2 async QA on OpenAgents GCE..." >&2
+if ! ( cd "$root" && bun scripts/qa-async-gce-trigger.ts ) >&2; then
+  echo "[pre-push gate] WARNING: Tier 2 async QA trigger failed. Push remains allowed; inspect oa-codex-control / GCE runner health." >&2
+fi
+
+echo "[pre-push gate] main gate green; QA stages yielded — push allowed." >&2
+exit 0

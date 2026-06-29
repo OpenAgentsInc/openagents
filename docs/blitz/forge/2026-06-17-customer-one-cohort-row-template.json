@@ -1,0 +1,19 @@
+{
+  "artifactRef": "artifact.customer-one.replace-me.delivery.v1",
+  "blockerRefs": [],
+  "candidateRef": "candidate.customer-one.replace-me.v1",
+  "caveatRefs": [],
+  "completionBundleRef": "completion.customer-one.replace-me.bundle.v1",
+  "inviteRef": "invite.customer-one.replace-me.v1",
+  "privacyReviewRef": "privacy.customer-one.replace-me.review.v1",
+  "reviewRef": "review.customer-one.replace-me.human.v1",
+  "routingRef": "routing.customer-one.replace-me.owned-node.v1",
+  "runRef": "run.customer-one.replace-me.primary.v1",
+  "state": "loop_completed",
+  "teamCohortRef": "cohort.team.replace-me.v1",
+  "templateRef": "forge.template.replace-me.v1",
+  "updatedAt": "replace-with-iso-timestamp",
+  "verificationRef": "verification.customer-one.replace-me.smoke.v1",
+  "verticalRef": "vertical.replace-me.v1",
+  "workspaceRef": "workspace.customer-one.replace-me.v1"
+}

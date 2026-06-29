@@ -1,0 +1,38 @@
+{
+  "name": "@openagentsinc/khala",
+  "version": "0.1.21",
+  "description": "Khala terminal client with interactive and headless CLI modes",
+  "private": false,
+  "type": "module",
+  "packageManager": "bun@1.3.11",
+  "bin": {
+    "khala": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "bun build src/index.ts --target=node --format=esm --outdir=dist",
+    "khala": "bun src/index.ts",
+    "prepack": "bun run build",
+    "test": "bun test src",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OpenAgentsInc/openagents.git",
+    "directory": "clients/khala-cli"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@openai/codex-sdk": "^0.139.0"
+  },
+  "devDependencies": {
+    "bun-types": "^1.0.0",
+    "effect": "4.0.0-beta.70",
+    "typescript": "^6.0.3"
+  }
+}

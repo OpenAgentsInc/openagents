@@ -1,0 +1,97 @@
+name: Strict Bug Report
+description: Use only for concrete, reproducible OpenAgents bugs. Use the Forum for commentary, promise gaps, and feature discussion.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        GitHub issues are restricted to specific reproducible bugs.
+
+        Use the Product Promises Forum for looser reports, feature commentary, promise gaps, and discussion:
+        https://openagents.com/forum/f/product-promises
+
+        Issues that do not complete this strict form should be rejected by the form or moved back to the Forum.
+  - type: input
+    id: affected-surface
+    attributes:
+      label: Affected surface
+      description: Name the exact product surface, URL, API route, package, command, or workflow.
+      placeholder: "Example: POST /api/forum/forums/product-promises/topics"
+    validations:
+      required: true
+  - type: textarea
+    id: actual-behavior
+    attributes:
+      label: Actual behavior
+      description: State what happened. Include the exact visible failure or response shape.
+    validations:
+      required: true
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected behavior
+      description: State what should have happened, based on current docs, API contract, or product copy.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction-steps
+    attributes:
+      label: Reproduction steps
+      description: Provide exact steps. Include commands, routes, inputs, or click path when possible.
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: public-safe-evidence
+    attributes:
+      label: Public-safe evidence
+      description: Add public-safe logs, screenshots, response snippets, receipt refs, links, or error text. Do not include secrets.
+    validations:
+      required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: Pick the narrowest severity that matches the concrete bug.
+      options:
+        - S0 - unsafe spend, settlement, authority, privacy, or customer impact
+        - S1 - supported user or agent path is broken
+        - S2 - degraded, confusing, stale, or partially broken behavior
+        - S3 - docs, copy, or route coverage bug
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Browser/runtime, OS, package version, endpoint URL, deploy target, timestamp, and whether this was production/staging/local.
+    validations:
+      required: true
+  - type: textarea
+    id: safety-redaction
+    attributes:
+      label: Safety and redaction
+      description: Confirm what sensitive material you omitted or redacted.
+      placeholder: "I removed bearer tokens, wallet material, raw payment artifacts, private prompts, private files, source archives, provider payloads, and customer-sensitive content."
+    validations:
+      required: true
+  - type: checkboxes
+    id: required-confirmations
+    attributes:
+      label: Required confirmations
+      options:
+        - label: I am reporting a specific reproducible bug, not a product-promise report, feature request, general commentary, or broad "this does not live up to promise" note.
+          required: true
+        - label: I searched existing GitHub issues and the Product Promises Forum.
+          required: true
+        - label: I removed secrets, bearer tokens, wallet material, payment artifacts, private prompts, private files, source archives, provider payloads, and customer-sensitive content.
+          required: true
+        - label: I included exact reproduction steps and public-safe evidence.
+          required: true
+        - label: I understand malformed or loose reports should be rejected by the form or discussed on the Forum.
+          required: true

@@ -1,0 +1,45 @@
+{
+  "schema": "openagents.pylon.m10_overnight_task.v0.1",
+  "runRef": "run.m10.overnight.fe89b989a4adfdde61631a79",
+  "taskIndex": 27,
+  "cycle": 7,
+  "lane": "codex",
+  "surface": "work_order",
+  "observedAt": "2026-06-13T03:32:18.854Z",
+  "completedAt": "2026-06-13T03:32:35.508Z",
+  "executionMode": "local_bounded",
+  "paymentMode": "no-spend",
+  "assignmentApi": "local_harness",
+  "ok": true,
+  "assignmentRef": "assignment.public.codex_agent_task.m10_overnight_c7",
+  "closeoutStatus": "accepted",
+  "closeoutRef": "assignment.closeout.assignment.public.codex_agent_task.m10_overnight_c7",
+  "receiptRefs": [
+    "assignment.accepted.assignment.public.codex_agent_task.m10_overnight_c7",
+    "assignment.progress.assignment.public.codex_agent_task.m10_overnight_c7",
+    "assignment.artifacts.assignment.public.codex_agent_task.m10_overnight_c7",
+    "run.pylon.codex_agent_task.603d77e2e1b6c7e1d81c11b9",
+    "session.pylon.codex_agent.7654820eb89f766fbff98e56"
+  ],
+  "proofRefs": [
+    "proof.pylon.codex_agent_task.test.12256c932898d5b641696ce4"
+  ],
+  "resultRefs": [
+    "result.public.pylon.codex_agent_task.fixture_repair_passed",
+    "result.public.pylon.codex_agent_task.edited_files.1"
+  ],
+  "blockerRefs": [],
+  "boundaryChecks": {
+    "paymentMode": "no-spend",
+    "settlementState": "not_applicable",
+    "payoutClaimAllowed": false,
+    "redacted": true
+  },
+  "harnessRequestCount": 6,
+  "redactionScan": {
+    "state": "clean"
+  },
+  "deviations": [
+    "deviation.m10.work_order_surface_used_local_assignment_harness"
+  ]
+}

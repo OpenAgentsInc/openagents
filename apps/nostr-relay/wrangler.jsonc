@@ -1,0 +1,58 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "openagents-market-relay",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-09",
+  "workers_dev": true,
+  "preview_urls": true,
+  // Canonical public market-relay domain (#4863). The workers.dev URL
+  // stays live for compatibility; relay.openagents.com is the published
+  // ref strangers and providers should use.
+  "routes": [
+    { "pattern": "relay.openagents.com", "custom_domain": true },
+    // nexus.openagents.com repointed here by owner decision 2026-06-12
+    // (#4867): the legacy nostr-rs-relay box is decommissioned; v0.2.5
+    // providers announcing on nexus now land on the owned relay.
+    { "pattern": "nexus.openagents.com", "custom_domain": true },
+  ],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "persist": true,
+      "invocation_logs": true,
+    },
+    "traces": {
+      "enabled": true,
+      "persist": true,
+      "head_sampling_rate": 1,
+    },
+  },
+  "vars": {
+    "OPENAGENTS_NOSTR_RELAY_ISSUE": "https://github.com/OpenAgentsInc/openagents/issues/4636",
+    "RELAY_NAME": "OpenAgents Relay",
+    "RELAY_DESCRIPTION": "OpenAgents relay: open-write market rails (NIP-90/DS/89) plus general coordination/discovery kinds (NIP-01/02/17/28/38/65) write-gated by a provisioned-pubkey allowlist or NIP-42 AUTH. Event transport only; no payment, identity, moderation, assignment, or settlement authority.",
+    "RELAY_CONTACT": "https://github.com/OpenAgentsInc/openagents/issues/4636",
+    // Comma/whitespace-separated 64-char-hex pubkeys allowed to write the
+    // general coordination/discovery kinds (#5537). Empty by default: with no
+    // allowlisted pubkeys, general kinds require NIP-42 AUTH. Pylon-provisioned
+    // agent pubkeys go here (set via wrangler vars/secret by the owner).
+    "OPENAGENTS_RELAY_AUTHORIZED_PUBKEYS": "",
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "NOSTR_RELAY",
+        "class_name": "NostrRelayDO",
+      },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["NostrRelayDO"],
+    },
+  ],
+}

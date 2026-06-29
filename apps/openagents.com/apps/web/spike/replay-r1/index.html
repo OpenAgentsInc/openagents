@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Replay R-1 headless render spike</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        background: #000;
+      }
+      /* Fixed viewport so the headless screenshot is deterministic. */
+      body {
+        position: relative;
+        width: 1280px;
+        height: 720px;
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <script type="module" src="./page-entry.ts"></script>
+  </body>
+</html>

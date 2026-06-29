@@ -1,0 +1,21 @@
+{
+  "name": "@openagentsinc/nostr-relay",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --port 8787",
+    "deploy": "wrangler deploy",
+    "smoke": "bun scripts/smoke.ts",
+    "test": "bun test src",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "nostr-effect": "0.0.12"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260609.0",
+    "typescript": "catalog:",
+    "wrangler": "^4.51.0"
+  }
+}

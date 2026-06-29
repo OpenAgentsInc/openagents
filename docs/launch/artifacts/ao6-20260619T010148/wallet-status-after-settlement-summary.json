@@ -1,0 +1,12 @@
+{
+  "ok": true,
+  "configured": true,
+  "daemonOnline": true,
+  "balanceSats": 10,
+  "receiveReady": true,
+  "sendReady": true,
+  "readiness": "send-ready",
+  "payoutTargetRefs": [
+    "payout.spark.3596dd0026ab64132e90ed1d"
+  ]
+}

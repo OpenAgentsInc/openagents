@@ -1,0 +1,5 @@
+# Spike render artifacts — reproducible, do not commit.
+*.png
+*.mp4
+*.render.json
+*.frames/

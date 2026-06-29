@@ -1,0 +1,59 @@
+{
+  "artifacts": [
+    {
+      "byteSize": 252982,
+      "kind": "mp4",
+      "sha256": "aa2689c520bca782681b3cc4db9478aba5d06ac29fd7c03e29cb436b00ffda8b",
+      "storageUrl": "local:replay-clips/replay_clip_job.autostream_10c3b01b_visibility_capture.issue_5438/openagents-5438-autostream.mp4"
+    }
+  ],
+  "bundleRef": "proof_replay_bundle.public_activity.73e66071",
+  "cameraPath": {
+    "keyframes": [
+      {
+        "second": 0,
+        "verb": "frame_settlement"
+      }
+    ],
+    "schemaVersion": "openagents.replay_camera_path.v1"
+  },
+  "caveatRefs": [
+    "Clip is evidence-presentation only and grants no settlement or payout authority.",
+    "needs_owner.replay_clip.r2_bucket_not_provisioned: storageUrl is a local placeholder until R2 is provisioned."
+  ],
+  "claimScope": "evidence_presentation_only",
+  "frameCount": 24,
+  "generatedAt": "2026-06-19T00:55:45.657Z",
+  "jobRef": "replay_clip_job.autostream_10c3b01b_visibility_capture.issue_5438",
+  "render": {
+    "durationSecond": 24,
+    "fps": 1,
+    "height": 360,
+    "outputKind": "mp4",
+    "startSecond": 42,
+    "width": 640
+  },
+  "renderer": {
+    "pixelFormat": "yuv420p",
+    "renderer": "playwright-chromium-screenshot-plus-ffmpeg",
+    "rendererVersion": "replay-r1",
+    "runLocation": "local_or_ci_render_box_with_bun_node_headless_chromium_and_ffmpeg_not_cloudflare_worker",
+    "videoCodec": "libx264"
+  },
+  "schemaVersion": "openagents.replay_clip_manifest.v1",
+  "source": {
+    "actorRef": "pylon.81f0facfe7971870f685",
+    "fromCursor": "2026-06-18T13:47:40.322Z:training_trace:event.public.trace_submitted.contribution.tassadar_executor_trace.assignment.artanis_admin.20260616123648.kernel_trace",
+    "kind": "timeline_range",
+    "runRef": "run.tassadar.executor.20260615",
+    "toCursor": "2026-06-18T13:47:40.555Z:settlement_receipt:event.public.settlement_recorded.receipt.nexus.tassadar_run_settlement.idempotency.tassadar.autostream.training.verification.challenge.10c3b01b-c781-4a03-a8ed-4ae6c6195fe4.worker",
+    "windowRef": "training.window.tassadar.executor.20260615.w1"
+  },
+  "sourceRefs": [
+    "https://openagents.com/api/public/activity-timeline?from=2026-06-18T12:00:00.000Z&to=2026-06-18T14:00:00.000Z&limit=80",
+    "https://openagents.com/api/public/proof-replays?mode=activity-timeline&from=2026-06-18T12:00:00.000Z&to=2026-06-18T14:00:00.000Z&limit=80",
+    "https://openagents.com/api/public/nexus-pylon/receipts/receipt.nexus.tassadar_run_settlement.idempotency.tassadar.autostream.training.verification.challenge.10c3b01b-c781-4a03-a8ed-4ae6c6195fe4.worker",
+    "receipt.nexus.tassadar_run_settlement.idempotency.tassadar.autostream.training.verification.challenge.10c3b01b-c781-4a03-a8ed-4ae6c6195fe4.worker",
+    "training.verification.challenge.10c3b01b-c781-4a03-a8ed-4ae6c6195fe4"
+  ]
+}

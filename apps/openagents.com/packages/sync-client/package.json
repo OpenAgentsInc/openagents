@@ -1,0 +1,17 @@
+{
+  "name": "@openagentsinc/sync-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@openagentsinc/sync-schema": "workspace:*",
+    "effect": "4.0.0-beta.70"
+  }
+}

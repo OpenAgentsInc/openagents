@@ -1,0 +1,12 @@
+{
+  "assignmentRef": "assignment.tassadar.ao6.patched2.20260619T010148",
+  "pylonDeviceRef": "pylon.device.ao6.patched2.worker",
+  "sampledWindow": {
+    "startStep": 0,
+    "endStep": 1
+  },
+  "sampledWindowRef": "sampled.window.ao6.patched2.20260619T010148",
+  "traceCommitmentDigestRef": "digest.tassadar.ao6.patched2.20260619T010148",
+  "workerReceiptRef": "receipt.worker.ao6.patched2.20260619T010148",
+  "workloadFamily": "article_closeout"
+}

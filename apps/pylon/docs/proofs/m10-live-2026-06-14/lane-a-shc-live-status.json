@@ -1,0 +1,102 @@
+{
+  "schema": "openagents.proof.m10.live_shc_status.v1",
+  "capturedAt": "2026-06-14T02:46:42.757Z",
+  "workOrderRef": "autopilot_work_order.1531e063-71e4-49aa-a378-5d8d7fdbb3b3",
+  "state": "accepted_free_slice",
+  "createdAt": "2026-06-14T02:32:14.662Z",
+  "updatedAt": "2026-06-14T02:34:56.000Z",
+  "scheduledLaunch": {
+    "dispatchedAt": "2026-06-14T02:34:56.000Z",
+    "expiredAt": null,
+    "launchAt": "2026-06-14T02:34:13Z",
+    "launchState": "dispatched",
+    "reasonRefs": [
+      "scheduled_launch.dispatched",
+      "scheduled_launch.placement_at_launch_time"
+    ],
+    "windowMinutes": 5
+  },
+  "placementDecision": {
+    "availabilityState": "selected",
+    "selectedRunnerKind": "openagents_shc",
+    "fallbackRunnerKind": "openagents_shc",
+    "source": "fallback",
+    "reasonRefs": [
+      "placement.selected.fallback",
+      "placement.fallback.openagents_shc",
+      "pricing.autopilot_work.hosted_runner_metered",
+      "placement.reason.your_pylon_unavailable_hosted_metered"
+    ]
+  },
+  "funding": {
+    "buyerFundingState": "not_required",
+    "buyerPaymentProofRef": null,
+    "fundedAmountCents": 0,
+    "quoteRef": "quote.autopilot_work.client.pylon.m10.m10-shc-20260614T023213Z.0.openagents.autopilot_work_quote.v1",
+    "settlementBlockedReasonRef": "settlement.no_worker_payout_mode",
+    "settlementEligible": false,
+    "workerPayoutEligible": false
+  },
+  "assignmentIntentsCount": 1,
+  "fallbackLeaseIntentsCount": 1,
+  "fallbackLeaseIntent": {
+    "acceptanceCriteriaRefs": [
+      "acceptance.public.status_visible",
+      "acceptance.public.no_mutation_required"
+    ],
+    "assignmentRef": "fallback_assignment.autopilot_work_order.1531e063-71e4-49aa-a378-5d8d7fdbb3b3.task.autopilot_coder.m10_shc_m10-shc-20260614T023213Z",
+    "closeoutPathRefs": [
+      "closeout.fallback_assignment.autopilot_work_order.1531e063-71e4-49aa-a378-5d8d7fdbb3b3.task.autopilot_coder.m10_shc_m10-shc-20260614T023213Z.diff_or_summary_required",
+      "closeout.fallback_assignment.autopilot_work_order.1531e063-71e4-49aa-a378-5d8d7fdbb3b3.task.autopilot_coder.m10_shc_m10-shc-20260614T023213Z.tests_or_blocker_required",
+      "closeout.fallback_assignment.autopilot_work_order.1531e063-71e4-49aa-a378-5d8d7fdbb3b3.task.autopilot_coder.m10_shc_m10-shc-20260614T023213Z.accepted_work_not_implied"
+    ],
+    "fallbackLaneRef": "fallback_lane.openagents.shc",
+    "forumAutoPublishAllowed": false,
+    "jobKind": "validation",
+    "noForumAutoPublishRefs": [
+      "forum_autopublish_disabled.fallback_assignment.autopilot_work_order.1531e063-71e4-49aa-a378-5d8d7fdbb3b3.task.autopilot_coder.m10_shc_m10-shc-20260614T023213Z"
+    ],
+    "paymentMode": "unpaid_smoke",
+    "requiredCapabilityRefs": [
+      "capability.fallback.assignment_ready",
+      "capability.openagents.shc"
+    ],
+    "resultExpectationRefs": [
+      "result.fallback_assignment.autopilot_work_order.1531e063-71e4-49aa-a378-5d8d7fdbb3b3.task.autopilot_coder.m10_shc_m10-shc-20260614T023213Z.public_safe_closeout"
+    ],
+    "rollbackRefs": [
+      "rollback.fallback_assignment.autopilot_work_order.1531e063-71e4-49aa-a378-5d8d7fdbb3b3.task.autopilot_coder.m10_shc_m10-shc-20260614T023213Z.no_deploy_without_owner_acceptance"
+    ],
+    "runnerKind": "openagents_shc",
+    "selectionPolicyRefs": [
+      "placement.selected.fallback",
+      "placement.fallback.openagents_shc",
+      "pricing.autopilot_work.hosted_runner_metered",
+      "placement.reason.your_pylon_unavailable_hosted_metered"
+    ],
+    "spendCapRefs": [
+      "spend_cap.no_spend.fallback_assignment"
+    ],
+    "taskRef": "task.autopilot_coder.m10_shc_m10-shc-20260614T023213Z",
+    "workerPayoutAuthority": false
+  },
+  "executionCloseout": null,
+  "reviewDecision": null,
+  "nextAction": {
+    "callerActionRefs": [],
+    "reasonRefs": [
+      "next_action.ready_for_assignment"
+    ],
+    "retryAfterSeconds": null,
+    "state": "ready"
+  },
+  "conclusion": {
+    "scheduledDispatchProved": true,
+    "fallbackLeaseIntentProved": true,
+    "terminalCloseoutProved": false,
+    "issueAcceptanceMet": false,
+    "blockerRefs": [
+      "blocker.m10.shc.closeout_route_missing"
+    ]
+  }
+}

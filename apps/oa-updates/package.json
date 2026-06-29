@@ -1,0 +1,12 @@
+{
+  "name": "@openagentsinc/oa-updates",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "OpenAgents Updates — self-hosted Expo-Updates-compatible OTA server (MVP). See cloud/docs/2026-06-13-openagents-updates-and-deployment-infra-audit.md",
+  "scripts": {
+    "test": "bun test",
+    "serve": "bun run src/server.ts",
+    "desktop:publish": "bun run scripts/publish-desktop-release.ts"
+  }
+}

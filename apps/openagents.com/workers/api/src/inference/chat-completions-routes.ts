@@ -1,0 +1,3919 @@
+// OpenAI-compatible chat-completions route for the inference gateway
+// (EPIC #5474, #5476). This is the FOUNDATION the rest of the inference build
+// plugs into:
+//
+//   - flag-gated INERT by default (INFERENCE_GATEWAY_ENABLED, default off)
+//   - per-account API-key auth (reuses the agent bearer-token credential)
+//   - read-only credit-balance gate (rejects on insufficient balance; #5477
+//     owns the real decrement/top-up paths, not this route)
+//   - provider-adapter seam dispatch (registry resolves model -> adapter; ships
+//     wired to the stub/echo adapter so the route works end-to-end in tests)
+//   - metering-hook seam (#5477 decrements credits from provider `usage`;
+//     stubbed here as a no-op/log)
+//
+// Streaming and non-streaming shapes are both supported. The response mirrors
+// the OpenAI Chat Completions contract so off-the-shelf clients work by changing
+// only base URL + key. Anthropic Messages compatibility is a parallel surface;
+// a clean spot is left for it (see ANTHROPIC SEAM below) but is out of scope for
+// #5476.
+import { Effect, Redacted } from 'effect'
+
+import type { AgentRegistrationStore } from '../agent-registration'
+import { noStoreJsonResponse } from '../http/responses'
+import { recordFromUnknown } from '../json-boundary'
+import type { PylonApiStore } from '../pylon-api'
+import { requireProviderApiKeyShape } from '../provider-account-api-key'
+import type { FineTunedModelResolver } from '../cloud/fine-tuning-service-routes'
+import {
+  compactRandomId,
+  currentEpochMillis,
+  currentEpochSeconds,
+  epochMillisToIsoTimestamp,
+} from '../runtime-primitives'
+// PURE dispatch producer only — enqueues an out-of-Worker verification job; never
+// imports the headless runner (playwright) into the Worker bundle (EPIC #6017).
+import {
+  type AcceptanceJobQueue,
+  enqueueAcceptanceJob,
+} from './acceptance-dispatch'
+// PURE verdict type only — the route NEVER imports the headless runner (playwright)
+// into the Worker bundle. The runner executes out of the Worker; its verdict shape is
+// the only thing the route consumes (EPIC #6017).
+import { type AcceptanceVerdict } from './acceptance-runner/verdict'
+import {
+  acceptanceContractGuidanceForRequest,
+  intentToAcceptanceSpec,
+} from './acceptance-spec'
+import {
+  type AutopilotConciergeRequestConfig,
+  buildAutopilotConciergeSystemPrompt,
+  isAutopilotConciergeModel,
+  resolveAutopilotConciergeConfig,
+} from './autopilot-concierge-model'
+import {
+  type AutopilotConciergeOutputSpec,
+  extractConciergeOutputSpec,
+} from './autopilot-concierge-output-spec'
+import {
+  type ConciergeToolDeclaration,
+  autopilotConciergeToolDeclarations,
+} from './autopilot-concierge-tools'
+import {
+  type CachePinPolicy,
+  type CacheWarmthOracle,
+  type LaneHealthOracle,
+  decideCacheAwareRouting,
+} from './cache-aware-routing'
+import { classifyCodingWorkflow } from './coding-workflow-classifier'
+import {
+  type CodingDelegationResult,
+  delegateCodingWorkflow,
+} from './coding-workflow-delegation'
+import {
+  type DurableStreamNamespace,
+  seedDurableInferenceStreamDO,
+  teeUpstreamToDurableDO,
+} from './durable-inference-do-transport'
+import {
+  type DurableInferenceStreamStore,
+  type StreamStore,
+  durableInferenceReadUrl,
+  seedDurableInferenceStream,
+  teeUpstreamToDurable,
+} from './durable-inference-proxy'
+import {
+  KHALA_FIREWORKS_BACKING_MODEL_ID,
+  KHALA_STRONG_CODING_FIREWORKS_MODEL_ID,
+} from './fireworks-adapter'
+import {
+  type FairShareDecision,
+  type SpendCapDecision,
+} from './inference-abuse-controls'
+import { applyInternalAccountAttribution } from './inference-internal-account'
+import type {
+  InternalStressPreemptionCoordinator,
+  InternalStressPreemptionRegistry,
+} from './internal-stress-preemption'
+import { agentUserIdFromAccountRef } from './inference-owner-identity'
+import { type PremiumAccessDecision } from './inference-premium-allowlist'
+import { resolveKhalaChatTraceOptIn } from './khala-chat-trace-emitter'
+import {
+  KHALA_CODE_VERIFIER_WORKER_ID,
+  type KhalaCodeVerificationVerdict,
+  prescreenKhalaCodeArtifact,
+  verifyKhalaCodeCompletion,
+} from './khala-code-verifier'
+import {
+  type ComponentChannelOutput,
+  type ComponentRepairReask,
+  KHALA_COMPONENT_CATALOG_PROMPT,
+  type KhalaComponentFrame,
+  runComponentChannel,
+  serializeComponentFrame,
+} from './khala-component-channel'
+import {
+  KHALA_CAPABILITY_TRUTH_SYSTEM_PROMPT,
+  KHALA_IDENTITY_REINFORCEMENT_PROMPT,
+  KHALA_IDENTITY_SYSTEM_PROMPT,
+  KHALA_RESPONSE_DISCIPLINE_SYSTEM_PROMPT,
+  getKhalaSignature,
+  guardKhalaCompletion,
+  verifyKhalaSignatures,
+} from './khala-identity'
+import {
+  type KhalaExecutedVerdict,
+  type KhalaRequestClass,
+  type KhalaSettlementState,
+  type KhalaTelemetryBlock,
+  type KhalaVerificationClass,
+  NOT_MEASURED,
+  buildKhalaTelemetryBlock,
+} from './khala-telemetry'
+import {
+  type MeteringHook,
+  type MeteringOutcome,
+  stubMeteringHook,
+} from './metering-hook'
+import {
+  type DispatchDeps,
+  type DispatchHedgingPolicy,
+  type DispatchLoadSheddingPolicy,
+  type DispatchRouteAdmissionPolicy,
+  type DispatchRouteMetadata,
+  type DispatchSchedulerPreemptionPolicy,
+  type DispatchSuccessValidator,
+  FIREWORKS_ADAPTER_ID,
+  FIREWORKS_STRONG_CODING_ADAPTER_ID,
+  HYDRALISK_ADAPTER_ID,
+  HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+  HYDRALISK_GPT_OSS_120B_ADAPTER_ID,
+  OPENAGENTS_NETWORK_ADAPTER_ID,
+  OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+  VERTEX_ANTHROPIC_ADAPTER_ID,
+  VERTEX_GEMINI_ADAPTER_ID,
+  classifyModel,
+  dispatchWithOverflow,
+  dispatchWithOverflowWithMetadata,
+  isMultiLaneBurnDemandSource,
+  selectAdapterPlanForKhalaMultiLaneBurnRequest,
+  selectAdapterPlanForKhalaStrongCodingRequest,
+  selectAdapterPlanForKhalaToolRequest,
+} from './model-router'
+import {
+  type SupplyLaneArming,
+  resolveNamedModelServability,
+} from './model-serving-policy'
+import { inferenceToolCallsFromUnknown } from './openai-chat-compat'
+import {
+  type FundingKind,
+  HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
+  KHALA_CODE_MODEL_ID,
+  KHALA_MODEL_ID,
+  type SupplyLane,
+  isKhalaModel,
+  lookupModel,
+  normalizeKhalaModelId,
+} from './pricing'
+import {
+  type StableBlockKind,
+  type TaggedPromptMessage,
+  assembleStablePromptLayout,
+  deriveCacheAffinityKey,
+  deriveSessionAffinityValue,
+  hashCacheAffinityKey,
+  sessionAffinityParams,
+} from './prompt-prefix-cache'
+import {
+  InferenceAdapterError,
+  type InferenceAdapterRouteMetadata,
+  type InferenceMessage,
+  type InferenceProviderRegistry,
+  type InferenceRequest,
+  type InferenceResult,
+  type InferenceStreamEvent,
+  type InferenceStreamSource,
+  type InferenceToolCallDelta,
+} from './provider-adapter'
+import {
+  type ServedTokensRecorder,
+  type ServedTokensRequestAttribution,
+  type ServedTokensRequestMetrics,
+} from './served-tokens-recorder'
+import { STUB_ECHO_ADAPTER_ID } from './stub-echo-adapter'
+import { DEFAULT_GEMINI_MODEL_ID } from './vertex-gemini-adapter'
+
+// DEFAULT MODEL ------------------------------------------------------------
+// The model served when a request omits `model`. Public model selection has
+// collapsed to Khala; internal callers may say `khala`, external OpenAI-style
+// clients should say `openagents/khala`.
+export const DEFAULT_CHAT_MODEL = KHALA_MODEL_ID
+
+export const INFERENCE_DEMAND_KIND_HEADER = 'x-openagents-demand-kind'
+export const INFERENCE_DEMAND_SOURCE_HEADER = 'x-openagents-demand-source'
+export const INFERENCE_CLIENT_HEADER = 'x-openagents-client'
+export const KHALA_BYOK_PROVIDER_HEADER = 'x-openagents-provider'
+export const KHALA_BYOK_PROVIDER_KEY_HEADER = 'x-openagents-provider-key'
+export const KHALA_BYOK_ACK_HEADER = 'x-openagents-byok'
+
+type KhalaByokState =
+  | Readonly<{ _tag: 'absent' }>
+  | Readonly<{
+      _tag: 'accepted'
+      apiKey: Redacted.Redacted<string>
+      provider: 'openrouter'
+    }>
+  | Readonly<{ _tag: 'invalid'; reason: string }>
+
+const resolveKhalaByokState = (headers: Headers): KhalaByokState => {
+  const provider = headers.get(KHALA_BYOK_PROVIDER_HEADER)?.trim().toLowerCase()
+  const rawKey = headers.get(KHALA_BYOK_PROVIDER_KEY_HEADER)
+
+  if ((provider === undefined || provider === '') && rawKey === null) {
+    return { _tag: 'absent' }
+  }
+  if (provider !== 'openrouter') {
+    return {
+      _tag: 'invalid',
+      reason: 'Only x-openagents-provider: openrouter is supported for BYOK.',
+    }
+  }
+  try {
+    return {
+      _tag: 'accepted',
+      apiKey: Redacted.make(requireProviderApiKeyShape(rawKey)),
+      provider: 'openrouter',
+    }
+  } catch {
+    return {
+      _tag: 'invalid',
+      reason: 'x-openagents-provider-key must be a single valid API key value.',
+    }
+  }
+}
+
+const byokResponseHeaders = (
+  byok: KhalaByokState,
+  routed: boolean,
+): Record<string, string> =>
+  byok._tag === 'absent'
+    ? {}
+    : {
+        [KHALA_BYOK_ACK_HEADER]:
+          byok._tag === 'invalid' ? 'invalid' : routed ? 'routed' : 'accepted',
+      }
+
+const applyByokResponseHeader = (
+  response: Readonly<{ headers: Pick<Headers, 'set'> }>,
+  byok: KhalaByokState,
+  routed: boolean,
+): void => {
+  for (const [key, value] of Object.entries(byokResponseHeaders(byok, routed))) {
+    response.headers.set(key, value)
+  }
+}
+
+const safeAttributionToken = (value: string | null): string | undefined => {
+  const trimmed = value?.trim()
+
+  if (
+    trimmed === undefined ||
+    trimmed === '' ||
+    !/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$/.test(trimmed)
+  ) {
+    return undefined
+  }
+
+  return trimmed
+}
+
+const demandKindFromHeader = (
+  value: string | null,
+): ServedTokensRequestAttribution['demandKind'] | undefined => {
+  const normalized = value?.trim().toLowerCase()
+
+  if (
+    normalized === 'external' ||
+    normalized === 'internal' ||
+    normalized === 'internal_stress' ||
+    normalized === 'own_capacity' ||
+    normalized === 'unlabeled'
+  ) {
+    return normalized
+  }
+
+  return undefined
+}
+
+const requestAttributionFromHeaders = (
+  headers: Headers,
+): ServedTokensRequestAttribution | undefined => {
+  const demandKind = demandKindFromHeader(
+    headers.get(INFERENCE_DEMAND_KIND_HEADER),
+  )
+  const demandSource = safeAttributionToken(
+    headers.get(INFERENCE_DEMAND_SOURCE_HEADER),
+  )
+  const demandClient = safeAttributionToken(
+    headers.get(INFERENCE_CLIENT_HEADER),
+  )
+
+  if (
+    demandKind === undefined &&
+    demandSource === undefined &&
+    demandClient === undefined
+  ) {
+    return undefined
+  }
+
+  return {
+    demandKind: demandKind ?? 'unlabeled',
+    ...(demandSource === undefined ? {} : { demandSource }),
+    ...(demandClient === undefined ? {} : { demandClient }),
+  }
+}
+
+const routeDemandClassFromAttribution = (
+  attribution: ServedTokensRequestAttribution | undefined,
+): DispatchRouteAdmissionPolicy['demandClass'] =>
+  attribution?.demandKind === 'internal_stress'
+    ? 'internal_stress'
+    : attribution?.demandKind === 'external' ||
+        attribution?.demandKind === undefined
+      ? 'external'
+      : 'batch'
+
+// Private module-level round-robin counter for MULTI-LANE FAN-OUT (throughput
+// unlock). Advances once per burn request so successive concurrent
+// continual-learning / stress requests start on different lanes. Wraps well
+// below MAX_SAFE_INTEGER; only the value mod laneCount matters. This is the
+// DEFAULT source for `deps.multiLaneBurnRotation`, so the fan-out mode needs no
+// Worker wiring change — the request headers alone select it.
+let multiLaneBurnRotationCounter = 0
+const nextMultiLaneBurnRotationIndex = (): number => {
+  const index = multiLaneBurnRotationCounter
+  multiLaneBurnRotationCounter =
+    multiLaneBurnRotationCounter >= Number.MAX_SAFE_INTEGER - 1
+      ? 0
+      : multiLaneBurnRotationCounter + 1
+  return index
+}
+
+const booleanBodyFlag = (body: Record<string, unknown>, key: string): boolean =>
+  body[key] === true || body[key] === 'true' || body[key] === 1
+
+export const codingDelegationDisabled = (
+  request: Request,
+  rawBody: Record<string, unknown>,
+): boolean => {
+  const header = request.headers
+    .get('x-openagents-disable-coding-delegation')
+    ?.trim()
+    .toLowerCase()
+  if (header === 'true' || header === '1') {
+    return true
+  }
+
+  if (booleanBodyFlag(rawBody, 'disable_coding_delegation')) {
+    return true
+  }
+
+  const openagents =
+    rawBody.openagents !== null && typeof rawBody.openagents === 'object'
+      ? (rawBody.openagents as Record<string, unknown>)
+      : undefined
+
+  return openagents === undefined
+    ? false
+    : booleanBodyFlag(openagents, 'disable_coding_delegation') ||
+        booleanBodyFlag(openagents, 'disableCodingDelegation')
+}
+
+// AUTH SEAM ---------------------------------------------------------------
+// Resolves the per-account API key (the OpenAgents agent bearer token) to an
+// account ref. Returns undefined when the key is missing/invalid. The Worker
+// wires this to `authenticateProgrammaticAgent`; tests inject a fake.
+export type InferenceAuth = (
+  request: Request,
+) => Promise<Readonly<{ accountRef: string }> | undefined>
+
+// BALANCE SEAM ------------------------------------------------------------
+// Read-only available-credit check (msat) for the account. The Worker wires
+// this to `readAgentBalance(...).availableMsat`. #5476 only GATES on balance;
+// it never decrements (that is #5477's metering path).
+export type InferenceBalanceReader = (accountRef: string) => Promise<number>
+
+// FUNDING-KIND SEAM -------------------------------------------------------
+// Resolves how an account funds its balance (card | bitcoin) so the metering
+// hook (#5477) applies the Bitcoin funding discount in `priceRequest`. Defaults
+// to card. A real per-account card-vs-Bitcoin funding preference wires here once
+// the credit top-up paths record it; until then every account is treated as
+// card-funded (the conservative, no-discount default).
+export type InferenceFundingResolver = (
+  accountRef: string,
+) => Promise<FundingKind>
+
+export const defaultCardFundingResolver: InferenceFundingResolver = async () =>
+  'card'
+
+// ROUTING SEAM ------------------------------------------------------------
+// Resolves a requested model alias to an adapter id. #5476 shipped a resolver
+// that always selects the stub/echo adapter so the route is exercisable
+// end-to-end. #5482 (routing & supply selection) adds the real cheapest-viable
+// path via `lanePlan` below; the single-id `router` seam is retained for the
+// stub/test path and as the gate when no `lanePlan` is supplied.
+export type ModelRouter = (model: string) => string | undefined
+
+export const stubModelRouter: ModelRouter = () => STUB_ECHO_ADAPTER_ID
+
+// SUPPLY-SELECTION SEAM (#5482) -------------------------------------------
+// Resolves a requested model to an ORDERED list of candidate adapter ids
+// (cheapest viable lane first, then overflow fallbacks). When supplied, the
+// route dispatches across this plan with bounded-backoff overflow on retryable
+// provider failures (429 / 503 / 5xx / transport) — see `dispatchWithOverflow`
+// in model-router.ts. The Worker wires this to `selectAdapterPlan`; when it is
+// absent the route falls back to the single-id `router` seam (the #5476 path).
+export type ModelLanePlanner = (model: string) => ReadonlyArray<string>
+
+type ChatCompletionsDispatchDeps = Omit<
+  DispatchDeps,
+  'hedging' | 'plan' | 'preemption' | 'registry' | 'shedding'
+> &
+  Readonly<{
+    hedging?: Omit<DispatchHedgingPolicy, 'demandClass'> | undefined
+    preemption?:
+      | Omit<DispatchSchedulerPreemptionPolicy, 'demandClass'>
+      | undefined
+    shedding?: Omit<DispatchLoadSheddingPolicy, 'demandClass'> | undefined
+  }>
+
+export const isToolBearingKhalaRequest = (
+  input: Readonly<{
+    body: ChatCompletionsRequestBody
+    rawBody: Record<string, unknown>
+    requestedModel: string
+  }>,
+): boolean => {
+  if (!isKhalaModel(input.requestedModel)) {
+    return false
+  }
+
+  const hasDeclaredTools =
+    (Array.isArray(input.rawBody['tools']) &&
+      input.rawBody['tools'].length > 0) ||
+    (Array.isArray(input.rawBody['functions']) &&
+      input.rawBody['functions'].length > 0)
+
+  if (hasDeclaredTools) {
+    return true
+  }
+
+  return input.body.messages.some(
+    message =>
+      message.role === 'tool' ||
+      message.toolCallId !== undefined ||
+      (message.toolCalls !== undefined && message.toolCalls.length > 0),
+  )
+}
+
+// Parse the INFERENCE_GATEWAY_ENABLED flag value. Default OFF: anything other
+// than an explicit truthy token leaves the gateway inert.
+export const isInferenceGatewayEnabled = (
+  value: string | undefined,
+): boolean => {
+  if (value === undefined) {
+    return false
+  }
+  return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase())
+}
+
+// Parse the INFERENCE_DURABLE_STREAM_ENABLED flag (durable-stream Rank-1, #6058).
+// Default OFF: the streaming pass-through degrades to today's behaviour (no
+// persistence/resume) unless this is an explicit truthy token AND a durable
+// store factory is wired. Fail-safe + inert by default.
+export const isInferenceDurableStreamEnabled = (
+  value: string | undefined,
+): boolean => {
+  if (value === undefined) {
+    return false
+  }
+  return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase())
+}
+
+// COMPONENT-CHANNEL CONFIG (issue #6127). `enabled` is the gateway-level flag
+// (default off). When on, the channel is STILL only activated per-request via an
+// explicit opt-in for a Khala model. `repairReask` (optional) wires the ONE
+// bounded repair turn over a single non-streaming Khala call; absent => an
+// invalid card is dropped without a repair attempt (still never shipped).
+export type ComponentChannelConfig = Readonly<{
+  enabled: boolean
+  repairReask?: ComponentRepairReask | undefined
+}>
+
+// Resolve whether the typed component channel is active FOR THIS REQUEST. Three
+// AND-gated conditions, all required, so the default `/v1` shape never changes:
+//   1. the gateway-level flag is on (`config.enabled`)
+//   2. the request explicitly opts in (header `x-oa-component-channel: on`, or a
+//      truthy `oa_component_channel` body field) — a deterministic parse of an
+//      explicit caller-supplied switch, never an intent inference
+//   3. the model is a Khala model (the channel is a Khala capability)
+export const resolveComponentChannelActive = (
+  input: Readonly<{
+    config: ComponentChannelConfig | undefined
+    request: Request
+    rawBody: Record<string, unknown>
+    requestedModel: string
+    autopilotConcierge?: boolean | undefined
+  }>,
+): boolean => {
+  if (input.config?.enabled !== true) {
+    return false
+  }
+  if (!isKhalaModel(input.requestedModel)) {
+    return false
+  }
+  if (input.autopilotConcierge === true) {
+    return true
+  }
+  const header = input.request.headers
+    .get('x-oa-component-channel')
+    ?.trim()
+    .toLowerCase()
+  const headerOptIn =
+    header !== undefined && ['1', 'true', 'yes', 'on'].includes(header)
+  const bodyField = input.rawBody['oa_component_channel']
+  const bodyOptIn =
+    bodyField === true ||
+    (typeof bodyField === 'string' &&
+      ['1', 'true', 'yes', 'on'].includes(bodyField.trim().toLowerCase()))
+  return headerOptIn || bodyOptIn
+}
+
+export type ChatCompletionsDeps = Readonly<{
+  // Whether the gateway is enabled. The Worker passes
+  // env.INFERENCE_GATEWAY_ENABLED parsed as a flag; default OFF.
+  enabled: boolean
+  authenticate: InferenceAuth
+  readAvailableMsat: InferenceBalanceReader
+  registry: InferenceProviderRegistry
+  // Single-id router seam. Defaults to the stub router (always selects the
+  // stub/echo adapter). Used to gate `model_unavailable` and to dispatch when
+  // no multi-lane `lanePlan` is supplied (#5476 path).
+  router?: ModelRouter
+  // Ordered multi-lane plan for cheapest-viable selection + overflow (#5482).
+  // When present, the route dispatches across the plan with bounded-backoff
+  // overflow on retryable failures. The Worker wires this to `selectAdapterPlan`.
+  lanePlan?: ModelLanePlanner
+  // MULTI-LANE FAN-OUT ROTATION (throughput unlock). Returns the per-request
+  // round-robin index used to rotate the Khala lane plan ONLY for the internal
+  // continual-learning / stress "burn" demand-source (demand_kind=internal_stress
+  // + demand_source in MULTILANE_BURN_DEMAND_SOURCES). Each call should return a
+  // monotonically advancing integer so successive concurrent burn requests start
+  // on different lanes and aggregate throughput becomes the SUM of the healthy
+  // paid lanes' capacities instead of one lane's serve rate. Default: a private
+  // module-level monotonic counter, so the mode works in prod with NO Worker
+  // wiring change — only the request headers select it. Tests inject a controlled
+  // sequence to assert deterministic spread. Never consulted for any other
+  // demand class or model, so default user routing is unaffected.
+  multiLaneBurnRotation?: (() => number) | undefined
+  // PROVIDER SERVING POLICY (blocker.product_promises.public_paid_model_gateway_missing
+  // on api.hosted_gemini.v1). The SAME presence-derived lane arming the public
+  // catalog (`/v1/models`) and the pre-purchase quote (`/v1/quote`) are gated on.
+  // When supplied, a request for a KNOWN model whose supply lane is NOT armed is
+  // rejected with a clean `model_unavailable` (400) BEFORE any account-state gate
+  // or provider dispatch — so the gateway serves exactly what it advertises and
+  // quotes, instead of accepting the request and failing deep at dispatch with a
+  // generic `provider_error` (502). An UNKNOWN model id is not gated (the
+  // estimator prices it at the conservative fallback rate, consistent with
+  // `/v1/quote`). Omitting it preserves the prior serve-everything behaviour.
+  // Presence-only; no secret value is read here.
+  laneArming?: SupplyLaneArming
+  resolveFineTunedModel?: FineTunedModelResolver | undefined
+  // Routing overflow knobs (backoff + injected sleep) forwarded to
+  // `dispatchWithOverflow`. Tests inject `sleep: () => Effect.void` so overflow
+  // never waits. Ignored unless `lanePlan` is supplied.
+  dispatch?: ChatCompletionsDispatchDeps | undefined
+  routeAdmission?: Omit<DispatchRouteAdmissionPolicy, 'demandClass'> | undefined
+  internalStressPreemption?: InternalStressPreemptionRegistry | undefined
+  internalStressCoordinator?: InternalStressPreemptionCoordinator | undefined
+  // Defaults to the no-op/log metering stub. The Worker supplies the live
+  // ledger hook (`makeLedgerMeteringHook`, #5477) when the gateway is enabled.
+  meteringHook?: MeteringHook
+  // SERVED-TOKENS RECORDER (issue #6227). Records one canonical
+  // `token_usage_events` row per SERVED completion so the public "Khala Tokens
+  // Served" counter (GET /api/public/khala-tokens-served) reflects
+  // all real Khala served-token traffic. Internal dogfood rows remain exact in
+  // the ledger and move the aggregate public product counter, but demand labels
+  // are never exposed by that scalar. Invoked AFTER the metering hook on every
+  // completion path (non-streaming, buffered stream, true
+  // pass-through stream) and only when the request produced real provider usage
+  // — so a failed / 4xx / refused call is never recorded. It runs INDEPENDENTLY
+  // of which metering wrapper handled the request, so a FREE-TIER completion
+  // (whose credit-ledger hook is short-circuited in `withFreeTierKhala`) STILL
+  // records its served tokens (the tokens were served and must count, even though
+  // no credit was debited). The
+  // row is idempotent per request id (one served completion = one row); a
+  // retry/replay is a no-op insert. Default undefined => no-op (the inert/test
+  // path is byte-for-byte unchanged). The recorder never throws and never fails
+  // the customer's already-delivered completion.
+  recordTokensServed?: ServedTokensRecorder | undefined
+  // INTERNAL/OPS ACCOUNT DEMAND ALLOWLIST (#6298 follow-up). The set of account
+  // refs (parsed once from `INFERENCE_INTERNAL_ACCOUNT_REFS`) whose traffic is
+  // auto-classified `demand_kind=internal` REGARDLESS of request headers, so our
+  // own dogfood (heartbeat / canary / Terminal-Bench, all on the ops key) never
+  // pollutes the external trace corpus or the demand ledger — without each
+  // caller having to send a header. The rule refines the SINGLE resolved
+  // `requestAttribution` value that feeds BOTH the served-tokens recorder
+  // (`token_usage_events`) AND the trace emitter (`agent_traces.demand_kind`),
+  // so they stay consistent. Precedence: a specific internal-source header
+  // (e.g. `harbor_terminal_bench`) is preserved; only a header-less / non-
+  // internal internal-account request defaults to `internal_account`. A non-
+  // internal account is unaffected. Default empty => pure no-op (fail-soft).
+  internalAccountRefs?: ReadonlySet<string> | undefined
+  // Resolves the account's funding kind (card | bitcoin) for the metering hook.
+  // Defaults to card (no Bitcoin discount).
+  resolveFundingKind?: InferenceFundingResolver
+  // Minimum available balance (msat) required to accept a request. Until #5477
+  // prices per-model, any positive balance clears the gate; an account with
+  // zero/negative available balance is rejected.
+  minimumAvailableMsat?: number
+  // FREE-ALLOWANCE PRE-FLIGHT (EPIC #5474 §1). Read-only mirror of the gate
+  // inside `withFreeAllowance`. The balance gate calls this BEFORE rejecting a
+  // zero/insufficient-balance account: if the (account, model) is free-eligible
+  // and the resolving owner still has remaining free allowance, the request is
+  // allowed through (the metering hook then eats the cost and accrues it), so a
+  // genuinely-free request is never falsely 402'd. Default undefined => the gate
+  // is unchanged (a zero-balance account is rejected). Resolution errors return
+  // not-eligible, so the balance gate stands. Wired by the Worker to
+  // `checkFreeAllowancePreflight` against the SAME owner-identity resolver the
+  // metering hook uses, keeping the bypass and the accrual consistent.
+  checkFreeAllowance?: (
+    accountRef: string,
+    model: string,
+  ) => Promise<{ readonly eligible: boolean }>
+  // OWNER BALANCE-GATE EXEMPTION (issue #6180). Read-only seam the balance gate
+  // calls BEFORE the 402: if the (account, model) resolves to an EXEMPT verified
+  // owner AND the model is non-premium / own-infra, the zero-balance request is
+  // allowed through (the `withOperatorCredit` metering wrapper then records it as
+  // `operator_credit` — zero credit debit + receipt, no referral). Lets
+  // approved/internal keys test our OWN lanes (e.g. `openagents/khala` on the
+  // hourly Hydralisk box) WITHOUT funding while Khala stays paid for the public.
+  // HARD GUARDRAIL: a PREMIUM model (`claude`/`unknown`) is NEVER exempt — it
+  // still hits the normal balance + premium gates. Default undefined => the gate
+  // is unchanged (a zero-balance account is rejected). Resolution errors return
+  // not-exempt, so the balance gate stands. Wired by the Worker to
+  // `makeOperatorExemptionGate` ONLY when INFERENCE_OPERATOR_EXEMPTION_ENABLED is
+  // on, against the SAME owner-identity resolver the metering wrapper uses so the
+  // bypass and the zero-debit record agree.
+  checkOperatorExemption?: (
+    accountRef: string,
+    model: string,
+  ) => Promise<{ readonly exempt: boolean }>
+  // KHALA FREE TIER bypass (issue #6228). Read-only seam the balance gate calls
+  // BEFORE the 402: if the (account, model) is a FREE-TIER key on the free Khala
+  // lane (own-infra / non-premium) AND still within its per-key daily quota, the
+  // zero-balance request is allowed through (the `withFreeTierKhala` metering
+  // wrapper then records it as a zero-debit free receipt + accrues the quota).
+  // This is the THIRD balance-gate bypass alongside `checkFreeAllowance` (owner
+  // Sybil pool on Gemini) and `checkOperatorExemption` (owner operator credit);
+  // it is the self-serve one — anyone who mints a free key gets free Khala within
+  // quota. A PREMIUM model is NEVER free; over-quota / non-free-tier / non-Khala
+  // requests fall through to the normal 402. Default undefined => the gate is
+  // unchanged. Wired by the Worker to `makeFreeTierGate` ONLY when
+  // INFERENCE_FREE_TIER_ENABLED is on, against the SAME store + quota the metering
+  // wrapper uses so the bypass and the zero-debit accrual agree.
+  checkFreeTier?: (
+    accountRef: string,
+    model: string,
+  ) => Promise<{ readonly free: boolean }>
+  // ABUSE-CONTROL SEAMS (#5486). Both default to undefined => the gate is OPEN
+  // (no-op), so the inert/flag-off path and the unconfigured-account path are
+  // byte-for-byte unchanged. The decisions are computed by the pure deciders in
+  // inference-abuse-controls.ts (`decideFairShare` / `decideSpendCap`); the
+  // Worker wires these to per-account window counters (D1/KV) so one customer
+  // cannot starve the shared Vertex quota (fair-share) or drain its whole balance
+  // via a compromised key (spend cap), both DISTINCT from the raw balance gate.
+  //
+  // PER-CUSTOMER RATE / FAIR-SHARE GATE. Returns the fair-share decision for the
+  // account in the current window. When `allowed` is false the route rejects with
+  // the decision's statusCode (429) and sets RateLimit-* headers from the
+  // bounded counters. Checked AFTER auth (so it is keyed to the account) and
+  // BEFORE provider dispatch (so a starve-attempt never reaches a provider).
+  checkFairShare?: (accountRef: string) => Promise<FairShareDecision>
+  // PER-ACCOUNT SPEND-CAP GATE. Returns the spend-cap decision for the account in
+  // the current window. When `allowed` is false the route rejects with the
+  // decision's statusCode (402, distinct from the balance gate's
+  // insufficient_credits). Checked after the balance gate; pre-flight it bounds
+  // the already-spent window total (no per-request estimate exists yet).
+  checkSpendCap?: (accountRef: string) => Promise<SpendCapDecision>
+  // PREMIUM-MODEL OWNER-GRANT GATE (free-tier enablement §2). Returns the
+  // premium-access decision for the (account, model) pair. Premium models
+  // (Claude / GPT / partner-passthrough) require the account's resolved OWNER
+  // identity to be on the owner-controlled allowlist; non-allowlisted premium
+  // requests are DENIED (403) with a clear, actionable message. Non-premium
+  // models (Gemini free default, Fireworks open) always pass. Default undefined
+  // => the gate is OPEN (no-op), so the inert/flag-off path is unchanged.
+  // Checked AFTER auth (so it is keyed to the resolved owner) and BEFORE
+  // provider dispatch (so a denied premium request never reaches a provider).
+  checkPremiumAccess?: (
+    accountRef: string,
+    model: string,
+  ) => Promise<PremiumAccessDecision>
+  // DEFAULT-ON caller-owned Pylon delegation for typed coding workflows (#6278).
+  // When wired, a request classified by `classifyCodingWorkflow` is routed to
+  // the caller's linked, heartbeat-fresh Codex Pylon capacity before normal
+  // provider supply selection. The branch is disabled only by an explicit
+  // per-request disable header/body switch; absence means default-on.
+  codingDelegation?: Readonly<{
+    agentStore: AgentRegistrationStore
+    pylonStore: PylonApiStore
+    resolveOpenAuthUserId: (accountRef: string) => Promise<string | undefined>
+  }>
+  // Deterministic id/timestamp injection for tests. `nowEpochSeconds` defaults
+  // to the runtime-primitives clock; `newId` to a runtime-primitives random id.
+  nowEpochSeconds?: () => number
+  newId?: () => string
+  // DURABLE-STREAM RANK-1 SEAM (#6058, EPIC #6056). When `durableStreamEnabled`
+  // is true AND `durableStream` resolves a per-request `StreamStore`, a streaming
+  // completion is teed into a durable offset log keyed by the response id, so a
+  // client disconnect mid-generation can be resumed by offset (the durable read
+  // route). DEFAULT OFF + UNWIRED: with the flag off or no store factory, the
+  // streaming path is byte-for-byte today's pass-through (no persistence/resume).
+  // Metering still settles EXACTLY ONCE on the real upstream EOF and NEVER on a
+  // resume/replay read (the resume route has no metering hook).
+  durableStreamEnabled?: boolean | undefined
+  durableStream?: DurableInferenceStreamStore | undefined
+  // PRODUCTION DURABLE SUBSTRATE (#6058). When present AND `durableStreamEnabled`
+  // is true, the streaming completion is teed into the per-request Durable Object
+  // (`DurableInferenceStreamObject`, keyed `getByName(responseId)`) over the
+  // `/v1/stream/{id}` HTTP contract — the DO is the single authoritative durable
+  // log a LATER GET resume reads. This is the live wiring; `durableStream` (the
+  // synchronous `StreamStore` factory) is the in-memory test/contract substrate.
+  // When both are present the DO namespace wins. Absent (e.g. the binding is
+  // unbound on an env) => fail-safe non-durable pass-through.
+  durableStreamNamespace?: DurableStreamNamespace | undefined
+  // TYPED COMPONENT CHANNEL SEAM (EPIC #6123, issue #6127). The ADDITIVE,
+  // OPT-IN `oa.component` SSE channel: a Khala turn may stream prose PLUS one or
+  // more validated, versioned `oa.component` cards from the CLOSED v1 catalog
+  // (khala-component-channel.ts). DEFAULT OFF: with `componentChannel` absent or
+  // `enabled: false`, `/v1/chat/completions` is byte-for-byte today's text-only
+  // stream — standard OpenAI clients are unaffected. When `enabled` is true the
+  // channel is STILL only activated for a request that explicitly opts in (the
+  // `x-oa-component-channel: on` header or an `oa_component_channel: true` body
+  // field) AND targets a Khala model, so the default response shape never
+  // changes. On activation, the gateway:
+  //   - injects the closed-catalog system prompt (stable prefix),
+  //   - assembles the completion, splits prose vs fenced `oa-component` blocks,
+  //   - validates each card's props against the closed catalog with Effect
+  //     Schema (ONE bounded repair turn, then drop — never ship malformed),
+  //   - honors the SAME provider-identity redaction backstop as the prose path,
+  //   - re-emits prose as `{content}` deltas and each card as one atomic
+  //     `event: oa.component` frame.
+  componentChannel?: ComponentChannelConfig | undefined
+  // CACHE-AWARE ROUTING SEAM (book P0-2 deliverable 6 / #6084). When wired, a
+  // same-session/codebase/account follow-up is routed to the cache-WARM lane
+  // first (the lane that previously served this affinity hash), subject to the
+  // lane still being viable + healthy + privacy/region-allowed. All three are
+  // INJECTED capabilities so routing stays pure + typed (no ad-hoc string
+  // matching). DEFAULT UNWIRED: with `cacheWarmthOracle` absent the lane plan is
+  // unchanged (cheapest-viable order), so existing behavior is unaffected.
+  //   - `cacheWarmthOracle` : affinity HASH → the lane that last served it.
+  //   - `laneHealthOracle`  : lane → health posture (warm hint ignored if sick).
+  //   - `cachePinPolicy`    : lane → may this account pin here (privacy/region).
+  cacheWarmthOracle?: CacheWarmthOracle | undefined
+  laneHealthOracle?: LaneHealthOracle | undefined
+  cachePinPolicy?: CachePinPolicy | undefined
+  // Deterministic clock (epoch ms) for the durable log's TTL/offset bookkeeping.
+  // Defaults to a fixed value in tests; the Worker threads `currentEpochMillis`.
+  nowEpochMillis?: (() => number) | undefined
+  // ACCEPTANCE-DISPATCH SEAM (EPIC #6017). When a khala-code completion produces an
+  // EXECUTABLE artifact (it passes the cheap pre-screen), the gateway enqueues an
+  // out-of-Worker verification job: a node-side runner (Pylon / sandbox / Cloud Run)
+  // runs the real headless acceptance suite and posts the verdict back to the
+  // authenticated callback, which backfills the receipt (`unverified` ->
+  // `test_passed`/`failed`). DEFAULT OFF + UNWIRED: with `acceptanceDispatch.enabled`
+  // false or no `queue`/`artifactStore` wired, NOTHING is enqueued and the receipt
+  // stays the honest `unverified`. The Worker wires this once a runner host is
+  // deployed and the flag (KHALA_ACCEPTANCE_DISPATCH_ENABLED) is on. Chromium NEVER
+  // runs in the Worker; this only enqueues a job (pure producer).
+  acceptanceDispatch?: Readonly<{
+    enabled: boolean
+    queue: AcceptanceJobQueue | undefined
+    // Persist the artifact bytes and return a dereferenceable ref the runner
+    // resolves (an R2 key). Absent => no job is enqueued (the runner would have no
+    // artifact to fetch). Receives the request id + the runnable HTML.
+    storeArtifact?: (
+      input: Readonly<{ requestId: string; html: string }>,
+    ) => Promise<string>
+  }>
+  // CROSS-APP TRACE EMISSION (openagents #6214, epic #6206). When wired AND
+  // enabled AND the request opts in, a COMPLETED non-streaming Khala chat session
+  // is mapped to a public-safe ATIF trajectory and persisted via the shared trace
+  // store, so the session becomes a shareable `/trace/{uuid}`. DEFAULT OFF +
+  // UNWIRED: with `traceEmit` absent or `enabled: false`, NOTHING is emitted and
+  // `/v1/chat/completions` is byte-for-byte today's behaviour. The emit is
+  // fire-and-forget over the already-delivered completion (it never blocks, fails,
+  // or alters the response). The emitted model id is the gateway projection
+  // (`openagents/khala`), never a raw backend; the emitter reuses the SAME ingest
+  // validation + public-safety tripwire (never bypassed). Autopilot/Pylon
+  // emission are explicit follow-ups (#6214), not built on this path.
+  traceEmit?: Readonly<{
+    enabled: boolean
+    // DEFAULT-ON FREE-TIER CAPTURE flag (#6293), SEPARATE from the master
+    // `enabled` kill-switch. When false (the default), capture only happens for
+    // a request that EXPLICITLY opts in (today's behaviour). When true, a
+    // free-tier-and-not-paid-privacy completion is captured WITHOUT an opt-in
+    // (private-by-default, redacted). Staged independently of the master flag so
+    // the flip can be enabled by a single env var after redaction is confirmed.
+    captureDefaultEnabled?: boolean | undefined
+    // CAPTURE-DEFAULT resolver (#6293/#6295). Returns whether THIS (account,
+    // model) qualifies for default-on capture: `freeTier.free && !paidPrivacy`.
+    // FAIL-CLOSED-TO-PRIVATE: an unsafe/unknown determination must resolve to
+    // false (do not capture). Only consulted when `captureDefaultEnabled` is on.
+    // Absent => captureDefault is always false (no auto-capture).
+    resolveCaptureDefault?:
+      | ((accountRef: string, model: string) => Promise<boolean>)
+      | undefined
+    // Persist a completed Khala chat session as an ATIF trace. The Worker wires
+    // this to `emitKhalaChatTrace` against the shared trace store + the resolved
+    // owner. Absent => no-op. Returns only public-safe result metadata; the call
+    // site never logs trace text or offending values.
+    emit: (
+      input: Readonly<{
+        accountRef: string
+        requestedModel: string
+        requestMessages: ReadonlyArray<InferenceMessage>
+        result: InferenceResult
+        responseId: string
+        optedIn: boolean
+        // DEFAULT-ON CAPTURE: persist even without an explicit opt-in. Stored
+        // owner_only (private-by-default). Resolved at the call site.
+        captureDefault: boolean
+        // DEMAND-ORIGIN (#6298): the SAME resolved attribution the recorder got
+        // (`requestAttribution`), so a captured trace and its ledger event
+        // agree. Absent => `unlabeled` on the trace (fail-soft). We do NOT
+        // re-parse the demand headers; we reuse the already-resolved value.
+        requestAttribution?: ServedTokensRequestAttribution | undefined
+      }>,
+    ) => Promise<TraceEmitResultForMetrics | void>
+    // REDACTION METRICS (#6297): optional public-safe sink for redaction-rate
+    // and residual leak counters. Receives counts only, never trace content.
+    recordRedactionMetrics?:
+      | ((event: TraceRedactionMetricEvent) => Promise<void> | void)
+      | undefined
+  }>
+}>
+
+// REQUEST SCHEMA ----------------------------------------------------------
+type ChatCompletionsRequestBody = Readonly<{
+  // `model` is OPTIONAL: an unspecified model defaults to DEFAULT_CHAT_MODEL
+  // (`openagents/khala`) in `resolveRequestedModel` below.
+  model?: string | undefined
+  messages: ReadonlyArray<InferenceMessage>
+  stream?: boolean | undefined
+}>
+
+type TraceEmitRedactionReport = Readonly<{
+  counts: Readonly<Record<string, number>>
+  total: number
+}>
+
+type TraceEmitResultForMetrics = Readonly<{
+  emitted: boolean
+  reason?: string | undefined
+  detail?: string | undefined
+  redactionReport?: TraceEmitRedactionReport | undefined
+}>
+
+export type TraceRedactionMetricEvent = Readonly<{
+  emitted: boolean
+  reason: string
+  redactionTotal: number
+  redactionCounts: Readonly<Record<string, number>>
+  residualTripwireCount: number
+}>
+
+const residualTripwireCount = (result: TraceEmitResultForMetrics): number => {
+  if (result.emitted || result.reason !== 'redaction_residual_drop') {
+    return 0
+  }
+  const codes =
+    result.detail
+      ?.split(',')
+      .map(code => code.trim())
+      .filter(code => code !== '') ?? []
+  return Math.max(1, codes.length)
+}
+
+const traceRedactionMetricEvent = (
+  result: TraceEmitResultForMetrics,
+): TraceRedactionMetricEvent | undefined => {
+  if (result.redactionReport === undefined) {
+    return undefined
+  }
+  return {
+    emitted: result.emitted,
+    reason: result.emitted ? 'emitted' : (result.reason ?? 'not_emitted'),
+    redactionCounts: result.redactionReport.counts,
+    redactionTotal: result.redactionReport.total,
+    residualTripwireCount: residualTripwireCount(result),
+  }
+}
+
+// Resolve the effective requested model: a present, non-blank `model` normalized
+// through the single Khala alias rule, otherwise the Khala default. Centralized
+// so the default applies uniformly to routing, premium gating, response echo,
+// and metering.
+export const resolveRequestedModel = (model: string | undefined): string => {
+  const trimmed = model?.trim()
+  return trimmed === undefined || trimmed === ''
+    ? DEFAULT_CHAT_MODEL
+    : normalizeKhalaModelId(trimmed)
+}
+
+const decodeOpenAiContent = (value: unknown): string | undefined => {
+  if (typeof value === 'string') {
+    return value
+  }
+  if (value === null) {
+    return ''
+  }
+  if (!Array.isArray(value)) {
+    return undefined
+  }
+  const parts: Array<string> = []
+  for (const item of value) {
+    const record = recordFromUnknown(item)
+    if (record?.['type'] !== 'text' || typeof record['text'] !== 'string') {
+      return undefined
+    }
+    parts.push(record['text'])
+  }
+  return parts.join('\n\n')
+}
+
+const nonEmptyString = (value: unknown): string | undefined =>
+  typeof value === 'string' && value !== '' ? value : undefined
+
+const decodeMessage = (value: unknown): InferenceMessage | undefined => {
+  const record = recordFromUnknown(value)
+  const role = nonEmptyString(record?.['role'])
+  if (record === undefined || role === undefined) {
+    return undefined
+  }
+  const rawToolCalls = record['tool_calls']
+  const toolCalls =
+    rawToolCalls === undefined
+      ? undefined
+      : inferenceToolCallsFromUnknown(rawToolCalls)
+  if (rawToolCalls !== undefined && toolCalls === undefined) {
+    return undefined
+  }
+  const content =
+    record['content'] === undefined && toolCalls !== undefined
+      ? ''
+      : decodeOpenAiContent(record['content'])
+  if (content === undefined) {
+    return undefined
+  }
+  const toolCallId = nonEmptyString(record['tool_call_id'])
+  const name = nonEmptyString(record['name'])
+  return {
+    content,
+    ...(name === undefined ? {} : { name }),
+    role,
+    ...(toolCallId === undefined ? {} : { toolCallId }),
+    ...(toolCalls === undefined || toolCalls.length === 0 ? {} : { toolCalls }),
+  }
+}
+
+const decodeBody = (value: unknown): ChatCompletionsRequestBody | undefined => {
+  const record = recordFromUnknown(value)
+  if (record === undefined || !Array.isArray(record['messages'])) {
+    return undefined
+  }
+  const model = record['model']
+  if (model !== undefined && typeof model !== 'string') {
+    return undefined
+  }
+  const stream = record['stream']
+  if (stream !== undefined && typeof stream !== 'boolean') {
+    return undefined
+  }
+  const messages = record['messages'].map(decodeMessage)
+  if (messages.some(message => message === undefined)) {
+    return undefined
+  }
+  return {
+    messages: messages as ReadonlyArray<InferenceMessage>,
+    ...(model === undefined ? {} : { model }),
+    ...(stream === undefined ? {} : { stream }),
+  }
+}
+
+// GATEWAY-SIDE STABLE PROMPT LAYOUT (book P0-2 / #6084 deliverable 1+2). Build the
+// outgoing messages as TAGGED blocks so the prefix-cache assembler can order them
+// STABLE content first (acceptance contract → identity → tool schemas → stable
+// policy) and NOVEL/volatile content last — the book's rule "novel tokens as late
+// as possible" so the long shared prefix stays cacheable. Each gateway-injected
+// block is tagged with its `StableBlockKind`, so ordering is deterministic and
+// structural (classification of OUR OWN injected blocks, not a keyword match on
+// user intent — honors the workspace semantic-routing rule).
+//
+// Identity injection (STEP 1, the PRIMARY identity mechanism): for every
+// `openagents/khala-*` request the strong Khala identity system message is part of
+// the STABLE prefix so the identity rule binds to every Khala consumer and the
+// post-completion signature guard remains the backstop on top.
+//
+// Acceptance-contract injection (EPIC #6017): for a khala-code coding request whose
+// intent maps to an executable acceptance lane, the contract guidance (the runner's
+// `window` hooks) is a STABLE prefix block too. Both are additive; the assembler
+// orders them canonically (acceptance contract leads, then identity) regardless of
+// append order.
+const buildTaggedKhalaMessages = (
+  clientMessages: ReadonlyArray<InferenceMessage>,
+  requestedModel: string,
+  autopilotConcierge: AutopilotConciergeRequestConfig | undefined,
+  // COMPONENT-CHANNEL (issue #6127): inject the closed-catalog system prompt as a
+  // STABLE prefix block ONLY when the channel is active for this request. Absent /
+  // false => no injection, prompt byte-identical to before (additive + opt-in).
+  componentChannelActive?: boolean,
+): ReadonlyArray<TaggedPromptMessage> => {
+  const tagged: Array<TaggedPromptMessage> = []
+
+  // Acceptance-contract stable block (khala-code coding lane only).
+  if (requestedModel === KHALA_CODE_MODEL_ID) {
+    const guidance = acceptanceContractGuidanceForRequest({
+      messages: clientMessages.map(message => ({
+        content: message.content,
+        role: message.role,
+      })),
+      model: requestedModel,
+    })
+    if (guidance !== undefined) {
+      tagged.push({
+        message: { content: guidance, role: 'system' },
+        stableKind: 'acceptanceContract' satisfies StableBlockKind,
+      })
+    }
+  }
+
+  // Identity stable block (every khala-* model).
+  if (isKhalaModel(requestedModel)) {
+    tagged.push({
+      message: { content: KHALA_IDENTITY_SYSTEM_PROMPT, role: 'system' },
+      stableKind: 'identity' satisfies StableBlockKind,
+    })
+    tagged.push({
+      message: {
+        content: KHALA_RESPONSE_DISCIPLINE_SYSTEM_PROMPT,
+        role: 'system',
+      },
+      stableKind: 'stablePolicy' satisfies StableBlockKind,
+    })
+    tagged.push({
+      message: {
+        content: KHALA_CAPABILITY_TRUTH_SYSTEM_PROMPT,
+        role: 'system',
+      },
+      stableKind: 'stablePolicy' satisfies StableBlockKind,
+    })
+  }
+
+  // Autopilot Concierge product prompt (#6148): server-owned model config,
+  // vertical enum, component catalog metadata, and Output Spec instructions. It
+  // is injected by the gateway for the virtual model only; callers cannot supply
+  // arbitrary vertical/system-prompt text.
+  if (autopilotConcierge !== undefined) {
+    tagged.push({
+      message: {
+        content: buildAutopilotConciergeSystemPrompt(autopilotConcierge),
+        role: 'system',
+      },
+      stableKind: 'otherSystem' satisfies StableBlockKind,
+    })
+  }
+
+  // Component-catalog stable block (issue #6127): only when the typed component
+  // channel is active for this Khala request. The catalog prompt lists the closed
+  // v1 component set + prop shapes so the model surfaces a card via the fenced
+  // `oa-component` mechanism that works across all Khala backends.
+  if (componentChannelActive === true && isKhalaModel(requestedModel)) {
+    tagged.push({
+      message: { content: KHALA_COMPONENT_CATALOG_PROMPT, role: 'system' },
+      stableKind: 'identity' satisfies StableBlockKind,
+    })
+  }
+
+  // Client messages: their own `system` messages are stable policy/steer (the
+  // assembler classifies role==='system' as `otherSystem`, ordered after the
+  // known stable blocks); everything else is volatile/novel (ordered last).
+  for (const message of clientMessages) {
+    tagged.push({ message })
+  }
+  return tagged
+}
+
+const toInferenceRequest = (
+  body: ChatCompletionsRequestBody,
+  raw: Record<string, unknown>,
+  requestedModel: string,
+  // The session-affinity passthrough params derived from the request's
+  // cache-affinity key (book P0-2 deliverable 4). MERGED into passthroughParams
+  // (overriding any stray client copy) so the adapters pin the session to one
+  // cache-warm replica. Empty for non-Khala / no-affinity requests.
+  affinityParams: Readonly<Record<string, string>>,
+  // COMPONENT-CHANNEL (issue #6127): when active, the closed-catalog system prompt
+  // is injected as a stable prefix block. Default false => no injection.
+  componentChannelActive?: boolean,
+  autopilotConcierge?: AutopilotConciergeRequestConfig | undefined,
+  scheduler?: Readonly<{
+    abortSignal?: AbortSignal | undefined
+    priority: InferenceRequest['priority']
+  }>,
+  callerProviderKey?: InferenceRequest['callerProviderKey'],
+): InferenceRequest => {
+  const clientMessages: ReadonlyArray<InferenceMessage> = body.messages
+  // For a non-Khala model, leave the messages exactly as the client sent them
+  // (no gateway injection, no reordering) — byte-identical to prior behavior.
+  // For a Khala model, assemble the cache-optimal stable layout.
+  const messages = isKhalaModel(requestedModel)
+    ? assembleStablePromptLayout(
+        buildTaggedKhalaMessages(
+          clientMessages,
+          requestedModel,
+          autopilotConcierge,
+          componentChannelActive,
+        ),
+      ).messages
+    : clientMessages
+  const {
+    codebase: _codebase,
+    disable_coding_delegation: _disableCodingDelegation,
+    disableCodingDelegation: _disableCodingDelegationCamel,
+    messages: _messages,
+    model: _model,
+    oa_component_channel: _oaComponentChannel,
+    openagents: _openagents,
+    pylonRef: _pylonRef,
+    stream: _stream,
+    targetPylonRef: _targetPylonRef,
+    workflow_class: _workflowClassSnake,
+    workflowClass: _workflowClass,
+    ...rest
+  } = raw
+  return {
+    ...(scheduler?.abortSignal === undefined
+      ? {}
+      : { abortSignal: scheduler.abortSignal }),
+    ...(callerProviderKey === undefined ? {} : { callerProviderKey }),
+    messages,
+    model: requestedModel,
+    // Gateway-derived session affinity wins over any stray client copy.
+    passthroughParams: { ...rest, ...affinityParams },
+    ...(scheduler?.priority === undefined
+      ? {}
+      : { priority: scheduler.priority }),
+    stream: body.stream === true,
+  }
+}
+
+type ToolRequirementState =
+  | Readonly<{ _tag: 'tool_optional' }>
+  | Readonly<{ _tag: 'tool_required' }>
+
+type AssistantCompletionState =
+  | Readonly<{ _tag: 'assistant_content' }>
+  | Readonly<{ _tag: 'assistant_tool_calls' }>
+  | Readonly<{ _tag: 'empty_assistant' }>
+
+const requestToolRequirementState = (
+  request: InferenceRequest,
+): ToolRequirementState => {
+  const toolChoice = request.passthroughParams['tool_choice']
+  if (toolChoice === 'required') {
+    return { _tag: 'tool_required' }
+  }
+  const toolChoiceRecord = recordFromUnknown(toolChoice)
+  return toolChoiceRecord?.['type'] === 'function'
+    ? { _tag: 'tool_required' }
+    : { _tag: 'tool_optional' }
+}
+
+const assistantCompletionState = (
+  result: InferenceResult,
+): AssistantCompletionState => {
+  if (result.toolCalls !== undefined && result.toolCalls.length > 0) {
+    return { _tag: 'assistant_tool_calls' }
+  }
+  return result.content.trim() === ''
+    ? { _tag: 'empty_assistant' }
+    : { _tag: 'assistant_content' }
+}
+
+const validateChatCompletionResult: DispatchSuccessValidator<
+  Readonly<{ adapterId: string; value: InferenceResult }>
+> = ({ adapter, request, value }) => {
+  const toolRequirement = requestToolRequirementState(request)
+  const completionState = assistantCompletionState(value.value)
+
+  if (
+    toolRequirement._tag === 'tool_required' &&
+    completionState._tag !== 'assistant_tool_calls'
+  ) {
+    return {
+      _tag: 'failed',
+      error: new InferenceAdapterError({
+        adapterId: adapter.id,
+        kind: 'tool_required_no_tool_calls',
+        reason: 'adapter returned no tool calls for a tool-required request',
+        retryable: true,
+      }),
+    }
+  }
+
+  if (completionState._tag === 'empty_assistant') {
+    return {
+      _tag: 'failed',
+      error: new InferenceAdapterError({
+        adapterId: adapter.id,
+        kind: 'empty_assistant_content',
+        reason: 'adapter returned empty assistant content',
+        retryable: true,
+      }),
+    }
+  }
+
+  return { _tag: 'accepted' }
+}
+
+const validateRawChatCompletionResult: DispatchSuccessValidator<
+  InferenceResult
+> = ({ adapter, request, value }) =>
+  validateChatCompletionResult({
+    adapter,
+    request,
+    value: { adapterId: adapter.id, value },
+  })
+
+// Resolve the cache-affinity dimensions for a request from the authenticated
+// account plus client-supplied session / codebase hints (book P0-2 deliverable
+// 3). The session/codebase hints are read from the OpenAI-style `user` field and
+// a non-standard `codebase` hint in the raw body, plus the `x-session-affinity` /
+// `x-codebase` request headers — all OPTIONAL, all bounded fields (deterministic
+// parse of explicit caller-supplied identifiers, never an intent parse). Only
+// `account` is required; the others sharpen affinity when present.
+const resolveCacheAffinity = (
+  accountRef: string,
+  raw: Record<string, unknown>,
+  request: Request,
+): Readonly<{
+  rawKey: string
+  hash: string
+  params: Readonly<Record<string, string>>
+}> => {
+  const stringField = (value: unknown): string | undefined =>
+    typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
+  const header = (name: string): string | undefined => {
+    const value = request.headers.get(name)
+    return value !== null && value.trim() !== '' ? value.trim() : undefined
+  }
+  const session =
+    stringField(raw['user']) ?? header('x-session-affinity') ?? undefined
+  const codebase =
+    stringField(raw['codebase']) ?? header('x-codebase') ?? undefined
+  const rawKey = deriveCacheAffinityKey({
+    account: accountRef,
+    ...(session === undefined ? {} : { session }),
+    ...(codebase === undefined ? {} : { codebase }),
+  })
+  return {
+    hash: hashCacheAffinityKey(rawKey),
+    params: sessionAffinityParams(deriveSessionAffinityValue(rawKey)),
+    rawKey,
+  }
+}
+
+const defaultId = () => compactRandomId('chatcmpl')
+
+const providerErrorResponse = (error: InferenceAdapterError) => {
+  if (error.kind === 'route_admission_reserved_headroom_unavailable') {
+    return noStoreJsonResponse(
+      {
+        error: {
+          code: 'route_admission_reserved_headroom_unavailable',
+          message: error.reason,
+          retryable: error.retryable,
+          type: 'route_admission_reserved_headroom_unavailable',
+        },
+      },
+      { headers: { 'retry-after': '1' }, status: 429 },
+    )
+  }
+  if (error.kind === 'internal_stress_yielded') {
+    return noStoreJsonResponse(
+      {
+        error: {
+          code: 'internal_stress_yielded',
+          message: error.reason,
+          retryable: error.retryable,
+          status: 'yielded',
+          type: 'internal_stress_yielded',
+        },
+      },
+      { headers: { 'retry-after': '1' }, status: 429 },
+    )
+  }
+  if (error.kind === 'glm_pool_saturated') {
+    const queueWaitMs = error.adapterRouteMetadata?.queueWaitMs
+    return noStoreJsonResponse(
+      {
+        error: {
+          code: 'glm_pool_saturated',
+          message: error.reason,
+          retryable: error.retryable,
+          type: 'glm_pool_saturated',
+          ...(queueWaitMs === undefined ? {} : { queue_wait_ms: queueWaitMs }),
+          ...(error.adapterRouteMetadata?.replicaBusyReason === undefined
+            ? {}
+            : {
+                replica_busy_reason:
+                  error.adapterRouteMetadata.replicaBusyReason,
+              }),
+          ...(error.adapterRouteMetadata?.glmSaturationPolicy === undefined
+            ? {}
+            : {
+                saturation_policy:
+                  error.adapterRouteMetadata.glmSaturationPolicy,
+              }),
+        },
+      },
+      { headers: { 'retry-after': '1' }, status: 429 },
+    )
+  }
+  return noStoreJsonResponse(
+    { error: 'provider_error', reason: error.reason },
+    { status: 502 },
+  )
+}
+
+// The public OpenAgents disclosure block (M0 / #6008). Khala virtual models use
+// it to show which concrete model/worker served one endpoint; Hydralisk raw
+// model ids use it to disclose owned infrastructure without pretending to be a
+// Khala-specific coordinator. No prompts, credentials, or chain-of-thought are
+// exposed.
+type OpenAgentsReceipt = Readonly<{
+  requested_model: string
+  served_model: string
+  worker: string
+  lane: string
+  // Concrete priced supply lane, distinct from the legacy `lane` model class
+  // (`open` / `gemini` / `claude`). Additive and public-safe; lets OpenAgents
+  // expose day-zero Hydralisk routing without changing older receipt readers.
+  supply_lane?: SupplyLane | undefined
+  routing?:
+    | Readonly<{
+        provider_health_score: number | typeof NOT_MEASURED
+        region: string | typeof NOT_MEASURED
+        fallback_reason: string | null
+        selected_replica_id?: string | undefined
+        selected_replica_ref?: string | undefined
+        replica_fallback_reason?: string | null | undefined
+        replica_health_score?: number | typeof NOT_MEASURED | undefined
+        replica_region?: string | typeof NOT_MEASURED | undefined
+        replica_busy_reason?: string | null | undefined
+        queue_wait_ms?: number | typeof NOT_MEASURED | undefined
+        glm_saturation_policy?: string | undefined
+        scheduler_preemption?:
+          | Readonly<{
+              evidence_ref: string
+              reason: string
+              target_demand_class: 'internal_stress'
+              target_outcome: 'preempted_yielded'
+            }>
+          | undefined
+      }>
+    | undefined
+  // `unverified` is the HONEST default for an executable artifact we have not actually
+  // run yet (EPIC #6017): the regex pre-screen passed but the out-of-Worker headless
+  // acceptance runner has not executed it, so we do NOT certify it. `test_passed` is
+  // reserved for an EXECUTED acceptance suite that fully passed.
+  verification: 'none' | 'test_passed' | 'unverified' | 'failed'
+  // Whether a real headless acceptance run produced this verdict. False => the
+  // verdict is the honest pre-screen-only downgrade, not an execution result.
+  executed?: boolean | undefined
+  verified?: boolean | undefined
+  receipt?: string | undefined
+  receipt_url?: string | undefined
+  billing?:
+    | Readonly<{
+        mode: 'receipt_backed' | 'no_debit' | 'zero_charge'
+        reason?:
+          | 'caller_provider_key'
+          | 'operator_exempt_or_unmetered'
+          | undefined
+        receipt_required: boolean
+      }>
+    | undefined
+  route?: 'coding' | undefined
+  workers?: ReadonlyArray<string> | undefined
+  verification_receipt?: string | undefined
+  verification_command?: string | undefined
+  verification_integrity?:
+    | KhalaCodeVerificationVerdict['integrity']
+    | undefined
+  scalar_reward?: number | undefined
+  reward_handoff?: string | undefined
+  rubric?:
+    | Readonly<{
+        ref: string
+        passed_checks: ReadonlyArray<string>
+        failed_checks: ReadonlyArray<string>
+      }>
+    | undefined
+  // KHALA REQUEST-TELEMETRY SCORECARD (book P0-1 / Open Q #1-2). The SMALL,
+  // immediate lifecycle summary — request class, tokens, TTFT, total wall-clock,
+  // verification class + executed verdict + scalar reward, and a `detailRef`
+  // pointer to the full dereferenceable record. Non-breaking additive field;
+  // every numeric is a real measurement or the honest `not_measured` sentinel.
+  // The full P0-1 record (time split, queue/batch wait, region, cache-affinity
+  // hash, fallback reason, cost basis / margin bucket / settlement state /
+  // blockers) is the depth behind the receipt detail, off this hot path.
+  telemetry?: KhalaTelemetryBlock | undefined
+  // Bitcoin/Spark settlement on a VERIFIED accepted outcome (#6011, EPIC #6017).
+  // `settled` is the honest default `false` on the hot path: settlement fires
+  // ASYNC after an out-of-Worker headless acceptance run verifies the outcome
+  // (the verdict-callback path settles the worker + validator and flips this to
+  // `true`), so a fresh completion is `verified:false`/`settled:false` until the
+  // runner verifies it. The field exists so the receipt shape is stable and a
+  // settled accepted outcome surfaces `settled:true` + the settlement receipt
+  // refs alongside `verified`/`scalar_reward`.
+  settled?: boolean | undefined
+  settlement_receipts?: ReadonlyArray<string> | undefined
+  // AUTOPILOT CONCIERGE STRUCTURED ARTIFACTS (#6148). Present ONLY for the
+  // `openagents/autopilot-concierge` virtual model.
+  //   - `output_spec` is the 10-section intake Output Spec reliably extracted
+  //     from the completion (the fenced `oa-output-spec` JSON block, with a
+  //     markdown-section fallback), so a programmatic consumer reads the
+  //     accumulated intake state as a STRUCTURED field rather than parsing prose.
+  //     Absent when the turn surfaced no parseable spec content.
+  //   - `tools` is the bounded, server-declared Concierge tool set with each
+  //     tool's review/effect posture and an honest `declared_not_executed`
+  //     status (live execution is a deferred seam — see autopilot-concierge-tools.ts).
+  output_spec?: AutopilotConciergeOutputSpec | undefined
+  tools?: ReadonlyArray<ConciergeToolDeclaration> | undefined
+}>
+
+const billingDisclosureFor = (
+  metering: MeteringOutcome,
+): NonNullable<OpenAgentsReceipt['billing']> => {
+  if (metering.zeroCharge === true) {
+    return { mode: 'zero_charge', receipt_required: false }
+  }
+  if (metering.receiptRef !== null) {
+    return { mode: 'receipt_backed', receipt_required: true }
+  }
+  if (metering.byok === true) {
+    return {
+      mode: 'no_debit',
+      reason: 'caller_provider_key',
+      receipt_required: false,
+    }
+  }
+  return {
+    mode: 'no_debit',
+    reason: 'operator_exempt_or_unmetered',
+    receipt_required: false,
+  }
+}
+
+const publicInferenceReceiptUrl = (receiptRef: string): string =>
+  `/api/public/inference/receipts/${encodeURIComponent(receiptRef)}`
+
+const supplyLaneForAdapterId = (adapterId: string): SupplyLane | undefined => {
+  switch (adapterId) {
+    case FIREWORKS_ADAPTER_ID:
+    case FIREWORKS_STRONG_CODING_ADAPTER_ID:
+      return 'fireworks'
+    case HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID:
+    case HYDRALISK_ADAPTER_ID:
+    case HYDRALISK_GPT_OSS_120B_ADAPTER_ID:
+      return 'hydralisk'
+    case OPENROUTER_KHALA_FALLBACK_ADAPTER_ID:
+      return 'openrouter'
+    case OPENAGENTS_NETWORK_ADAPTER_ID:
+      return 'openagents-network'
+    case VERTEX_ANTHROPIC_ADAPTER_ID:
+      return 'vertex-anthropic'
+    case VERTEX_GEMINI_ADAPTER_ID:
+      return 'vertex-gemini'
+    default:
+      return undefined
+  }
+}
+
+// Map a Khala request's model alias to the per-adapter BACKING model id before
+// dispatch. The conversational Khala plan fans out across Vertex Gemini /
+// Fireworks / GLM / OpenRouter, and each of those adapters rejects the
+// `openagents/khala` alias — they need their own backing model id. The public
+// completions route passes this as `requestForAdapter`; it is exported so the
+// Artanis operator responder client (index.ts `makeArtanisResponderKhalaClient`)
+// applies the SAME mapping. Without it, every Khala-backed lane in the Artanis
+// dispatch rejected `openagents/khala` and the operator channel returned 503
+// `artanis_operator_mind_unavailable` (#6363).
+export const khalaRequestForAdapter = (
+  request: InferenceRequest,
+  adapterId: string,
+): InferenceRequest => {
+  if (normalizeKhalaModelId(request.model) !== KHALA_MODEL_ID) {
+    return request
+  }
+  switch (adapterId) {
+    case VERTEX_GEMINI_ADAPTER_ID:
+      return { ...request, model: DEFAULT_GEMINI_MODEL_ID }
+    case FIREWORKS_ADAPTER_ID:
+      return { ...request, model: KHALA_FIREWORKS_BACKING_MODEL_ID }
+    case HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID:
+      return { ...request, model: HYDRALISK_GLM_52_REAP_504B_MODEL_ID }
+    default:
+      return request
+  }
+}
+
+// Variant of `khalaRequestForAdapter` for the internal strong-coding lane. It is
+// identical EXCEPT that the strong-coding Fireworks alias is rewritten to the
+// frontier GLM coding model instead of the default Khala Fireworks backing, so
+// the frontier lane and the proven backing can both appear in one plan. Every
+// other adapter keeps the standard Khala backing mapping (overflow safety).
+export const khalaStrongCodingRequestForAdapter = (
+  request: InferenceRequest,
+  adapterId: string,
+): InferenceRequest => {
+  if (
+    adapterId === FIREWORKS_STRONG_CODING_ADAPTER_ID &&
+    normalizeKhalaModelId(request.model) === KHALA_MODEL_ID
+  ) {
+    return { ...request, model: KHALA_STRONG_CODING_FIREWORKS_MODEL_ID }
+  }
+  return khalaRequestForAdapter(request, adapterId)
+}
+
+const servedTokensRequestMetrics = (
+  input: Readonly<{
+    adapterId: string
+    adapterRouteMetadata?: InferenceAdapterRouteMetadata | undefined
+    routeMetadata?: DispatchRouteMetadata | undefined
+    requestClass: ServedTokensRequestMetrics['requestClass']
+    timing?: KhalaTelemetryTiming | undefined
+  }>,
+): ServedTokensRequestMetrics => {
+  const adapterRouteMetadata = input.adapterRouteMetadata
+  const fallbackAdapterRouteMetadata =
+    input.routeMetadata?.fallbackAdapterRouteMetadata
+  const routeQueueWaitMs =
+    input.timing?.queueWaitMs ??
+    adapterRouteMetadata?.queueWaitMs ??
+    fallbackAdapterRouteMetadata?.queueWaitMs
+  const fallbackReason =
+    input.routeMetadata?.fallbackReason ??
+    adapterRouteMetadata?.replicaFallbackReason ??
+    undefined
+  return {
+    requestClass: input.requestClass,
+    ...(supplyLaneForAdapterId(input.adapterId) === undefined
+      ? {}
+      : { supplyLane: supplyLaneForAdapterId(input.adapterId) }),
+    ...(fallbackReason === undefined ? {} : { fallbackReason }),
+    ...(adapterRouteMetadata?.selectedReplicaId === undefined
+      ? {}
+      : { selectedReplicaId: adapterRouteMetadata.selectedReplicaId }),
+    ...(adapterRouteMetadata?.selectedReplicaRef === undefined
+      ? {}
+      : { selectedReplicaRef: adapterRouteMetadata.selectedReplicaRef }),
+    ...((adapterRouteMetadata?.replicaFallbackReason ??
+      fallbackAdapterRouteMetadata?.replicaFallbackReason) === undefined
+      ? {}
+      : {
+          replicaFallbackReason:
+            adapterRouteMetadata?.replicaFallbackReason ??
+            fallbackAdapterRouteMetadata?.replicaFallbackReason,
+        }),
+    ...((adapterRouteMetadata?.replicaBusyReason ??
+      fallbackAdapterRouteMetadata?.replicaBusyReason) === undefined
+      ? {}
+      : {
+          replicaBusyReason:
+            adapterRouteMetadata?.replicaBusyReason ??
+            fallbackAdapterRouteMetadata?.replicaBusyReason,
+        }),
+    ...(adapterRouteMetadata?.replicaHealthScore === undefined
+      ? {}
+      : { replicaHealthScore: adapterRouteMetadata.replicaHealthScore }),
+    ...(adapterRouteMetadata?.replicaRegion === undefined
+      ? {}
+      : { replicaRegion: adapterRouteMetadata.replicaRegion }),
+    ...(adapterRouteMetadata?.replicaCapacityClass === undefined
+      ? {}
+      : { replicaCapacityClass: adapterRouteMetadata.replicaCapacityClass }),
+    ...(adapterRouteMetadata?.replicaCostProfileRef === undefined
+      ? {}
+      : { replicaCostProfileRef: adapterRouteMetadata.replicaCostProfileRef }),
+    ...(adapterRouteMetadata?.replicaInflightCount === undefined
+      ? {}
+      : { replicaInflightCount: adapterRouteMetadata.replicaInflightCount }),
+    ...(adapterRouteMetadata?.replicaMaxInflight === undefined
+      ? {}
+      : { replicaMaxInflight: adapterRouteMetadata.replicaMaxInflight }),
+    ...(adapterRouteMetadata?.replicaQueueDepth === undefined
+      ? {}
+      : { replicaQueueDepth: adapterRouteMetadata.replicaQueueDepth }),
+    ...(adapterRouteMetadata?.replicaWarmState === undefined
+      ? {}
+      : { replicaWarmState: adapterRouteMetadata.replicaWarmState }),
+    ...((adapterRouteMetadata?.glmAggregateExternalHeadroom ??
+      fallbackAdapterRouteMetadata?.glmAggregateExternalHeadroom) === undefined
+      ? {}
+      : {
+          glmAggregateExternalHeadroom:
+            adapterRouteMetadata?.glmAggregateExternalHeadroom ??
+            fallbackAdapterRouteMetadata?.glmAggregateExternalHeadroom,
+        }),
+    ...((adapterRouteMetadata?.glmAggregateInflightCount ??
+      fallbackAdapterRouteMetadata?.glmAggregateInflightCount) === undefined
+      ? {}
+      : {
+          glmAggregateInflightCount:
+            adapterRouteMetadata?.glmAggregateInflightCount ??
+            fallbackAdapterRouteMetadata?.glmAggregateInflightCount,
+        }),
+    ...((adapterRouteMetadata?.glmAggregateMaxInflight ??
+      fallbackAdapterRouteMetadata?.glmAggregateMaxInflight) === undefined
+      ? {}
+      : {
+          glmAggregateMaxInflight:
+            adapterRouteMetadata?.glmAggregateMaxInflight ??
+            fallbackAdapterRouteMetadata?.glmAggregateMaxInflight,
+        }),
+    ...((adapterRouteMetadata?.glmSaturationPolicy ??
+      fallbackAdapterRouteMetadata?.glmSaturationPolicy) === undefined
+      ? {}
+      : {
+          glmSaturationPolicy:
+            adapterRouteMetadata?.glmSaturationPolicy ??
+            fallbackAdapterRouteMetadata?.glmSaturationPolicy,
+        }),
+    ...(routeQueueWaitMs === undefined
+      ? {}
+      : { queueWaitMs: routeQueueWaitMs }),
+    ...(input.timing?.ttftMs === undefined
+      ? {}
+      : { ttftMs: input.timing.ttftMs }),
+    ...(input.timing?.totalWallClockMs === undefined
+      ? {}
+      : { totalWallClockMs: input.timing.totalWallClockMs }),
+    ...(input.timing?.generationWallClockMs === undefined
+      ? {}
+      : { generationWallClockMs: input.timing.generationWallClockMs }),
+    ...(input.routeMetadata?.schedulerPreemption === undefined
+      ? {}
+      : {
+          schedulerPreemptionEvidenceRef:
+            input.routeMetadata.schedulerPreemption.evidenceRef,
+          schedulerPreemptionReason:
+            input.routeMetadata.schedulerPreemption.reason,
+          schedulerPreemptionTargetDemandClass:
+            input.routeMetadata.schedulerPreemption.targetDemandClass,
+          schedulerPreemptionTargetOutcome:
+            input.routeMetadata.schedulerPreemption.targetOutcome,
+        }),
+  }
+}
+
+// What the gateway can MEASURE about this request's lifecycle on the hot path
+// today (book P0-1). All optional: an unmeasured value becomes the honest
+// `not_measured` sentinel in the telemetry builder — never a fabricated number.
+type KhalaTelemetryTiming = Readonly<{
+  // True for the streaming path. Determines the request class (interactive_stream
+  // vs async_job/batch later) and whether TTFT/ITL are measurable at all.
+  streamed: boolean
+  // Total wall-clock from request accept to completion (ms), gateway-edge
+  // measured. Undefined on a path that did not capture it => sentinel.
+  totalWallClockMs?: number | undefined
+  // Time to first token (ms), measurable on the streaming path only.
+  ttftMs?: number | undefined
+  // Generation wall-clock (first byte -> last byte, ms) used to DERIVE perceived
+  // TPS + mean inter-token latency. Streaming only; undefined => those derived
+  // metrics are the sentinel (we never guess them from total wall-clock).
+  generationWallClockMs?: number | undefined
+  // Bounded queue wait before a serving lane either accepted work or overflowed.
+  // Undefined means no measured queue wait was available; 0 means measured zero.
+  queueWaitMs?: number | undefined
+}>
+
+// Map a khala-code verifier verdict's CLASS onto the telemetry verification
+// class vocabulary (khala.md §6). Reuses the existing values; never invents one.
+const telemetryVerificationClass = (
+  verification: KhalaCodeVerificationVerdict['verification'],
+): KhalaVerificationClass => verification
+
+// Map executed-ness + class onto the executed verdict. `not_executed` is the
+// honest default whenever the headless run did not produce a verdict.
+const telemetryExecutedVerdict = (
+  verdict: KhalaCodeVerificationVerdict,
+): KhalaExecutedVerdict => {
+  if (!verdict.executed) {
+    return 'not_executed'
+  }
+  return verdict.verification === 'test_passed' ? 'passed' : 'failed'
+}
+
+// Derive the request class from the measured shape. Streaming => interactive
+// stream; otherwise an async/synchronous job. (batch/verifier_run lanes set
+// their own class once those request paths land; this is the chat path.)
+const telemetryRequestClass = (streamed: boolean): KhalaRequestClass =>
+  streamed ? 'interactive_stream' : 'async_job'
+
+const openAgentsReceiptForResult = (
+  input: Readonly<{
+    adapterId: string
+    metering: MeteringOutcome
+    requestedModel: string
+    responseId: string
+    result: InferenceResult
+    routeMetadata?: DispatchRouteMetadata | undefined
+    // The executed-acceptance verdict from the out-of-Worker headless runner, when an
+    // execution actually ran (EPIC #6017). PRESENT => `verified`/`scalarReward` derive
+    // from EXECUTION. ABSENT (the hot Worker path today, which cannot launch a browser)
+    // => HONEST DOWNGRADE to `unverified`. Full prod wiring (async sandbox dispatch of
+    // the runner + receipt backfill) threads a real verdict in here.
+    acceptance?: AcceptanceVerdict | undefined
+    // What the gateway measured about this request's lifecycle (book P0-1). When
+    // absent, every telemetry numeric is the honest `not_measured` sentinel.
+    timing?: KhalaTelemetryTiming | undefined
+    // The RAW cache-affinity key for this request (book P0-2 deliverable 3:
+    // account/session/codebase). It is hashed into `cacheAffinityKeyHash` by the
+    // telemetry builder and NEVER stored/exposed raw. Undefined → no affinity key
+    // applied → the hash is null and a blocker records why.
+    cacheAffinityKeyRaw?: string | undefined
+  }>,
+): OpenAgentsReceipt | undefined => {
+  const supplyLane =
+    lookupModel(input.result.servedModel)?.lane ??
+    supplyLaneForAdapterId(input.adapterId) ??
+    lookupModel(input.requestedModel)?.lane
+  const isKhala = isKhalaModel(input.requestedModel)
+  if (!isKhala && supplyLane !== 'hydralisk') {
+    return undefined
+  }
+
+  const base = {
+    lane: classifyModel(input.requestedModel),
+    requested_model: input.requestedModel,
+    served_model: input.result.servedModel,
+    ...(supplyLane === undefined ? {} : { supply_lane: supplyLane }),
+    worker: input.adapterId,
+  } satisfies Omit<OpenAgentsReceipt, 'verification'>
+  const adapterRouteMetadata = input.result.adapterRouteMetadata
+  const fallbackAdapterRouteMetadata =
+    input.routeMetadata?.fallbackAdapterRouteMetadata
+  const routeProviderHealthScore =
+    input.routeMetadata?.providerHealthScore ??
+    adapterRouteMetadata?.replicaHealthScore
+  const routeRegion =
+    input.routeMetadata?.region ?? adapterRouteMetadata?.replicaRegion
+  const routeFallbackReason =
+    input.routeMetadata?.fallbackReason ??
+    adapterRouteMetadata?.replicaFallbackReason ??
+    null
+  const routeQueueWaitMs =
+    input.timing?.queueWaitMs ??
+    adapterRouteMetadata?.queueWaitMs ??
+    fallbackAdapterRouteMetadata?.queueWaitMs
+  const routeGlmSaturationPolicy =
+    adapterRouteMetadata?.glmSaturationPolicy ??
+    fallbackAdapterRouteMetadata?.glmSaturationPolicy
+  const routeReplicaBusyReason =
+    adapterRouteMetadata?.replicaBusyReason ??
+    fallbackAdapterRouteMetadata?.replicaBusyReason
+  const routeReplicaFallbackReason =
+    adapterRouteMetadata?.replicaFallbackReason ??
+    fallbackAdapterRouteMetadata?.replicaFallbackReason
+  const routing = {
+    fallback_reason: input.routeMetadata?.fallbackReason ?? null,
+    provider_health_score: routeProviderHealthScore ?? NOT_MEASURED,
+    region: routeRegion ?? NOT_MEASURED,
+    ...(adapterRouteMetadata?.selectedReplicaId === undefined
+      ? {}
+      : { selected_replica_id: adapterRouteMetadata.selectedReplicaId }),
+    ...(adapterRouteMetadata?.selectedReplicaRef === undefined
+      ? {}
+      : { selected_replica_ref: adapterRouteMetadata.selectedReplicaRef }),
+    ...(routeReplicaFallbackReason === undefined
+      ? {}
+      : {
+          replica_fallback_reason: routeReplicaFallbackReason,
+        }),
+    ...(adapterRouteMetadata?.replicaHealthScore === undefined
+      ? {}
+      : { replica_health_score: adapterRouteMetadata.replicaHealthScore }),
+    ...(adapterRouteMetadata?.replicaRegion === undefined
+      ? {}
+      : { replica_region: adapterRouteMetadata.replicaRegion }),
+    ...(routeReplicaBusyReason === undefined
+      ? {}
+      : { replica_busy_reason: routeReplicaBusyReason }),
+    queue_wait_ms: routeQueueWaitMs ?? NOT_MEASURED,
+    ...(routeGlmSaturationPolicy === undefined
+      ? {}
+      : { glm_saturation_policy: routeGlmSaturationPolicy }),
+    ...(input.routeMetadata?.schedulerPreemption === undefined
+      ? {}
+      : {
+          scheduler_preemption: {
+            evidence_ref: input.routeMetadata.schedulerPreemption.evidenceRef,
+            reason: input.routeMetadata.schedulerPreemption.reason,
+            target_demand_class:
+              input.routeMetadata.schedulerPreemption.targetDemandClass,
+            target_outcome:
+              input.routeMetadata.schedulerPreemption.targetOutcome,
+          },
+        }),
+  } satisfies NonNullable<OpenAgentsReceipt['routing']>
+
+  if (!isKhala) {
+    return {
+      ...base,
+      routing,
+      verification: 'none' as const,
+    }
+  }
+
+  // Shared telemetry inputs measurable for EVERY Khala request (tokens from the
+  // provider usage, latency from the gateway edge). The cache-affinity key (book
+  // P0-2 deliverable 3) is now wired: when present it is hashed into the receipt
+  // and the cached-input dimension is populated from provider usage; when absent
+  // (no session/codebase context) the hash is null and a blocker records why.
+  const streamed = input.timing?.streamed ?? false
+  const settlementBlockers =
+    input.metering.receiptRef === null ? ['cost_not_measured'] : []
+  const cacheAffinityKeyRaw =
+    input.cacheAffinityKeyRaw !== undefined &&
+    input.cacheAffinityKeyRaw.trim() !== ''
+      ? input.cacheAffinityKeyRaw
+      : undefined
+  const cacheBlockers =
+    cacheAffinityKeyRaw === undefined ? ['cache_affinity_key_not_resolved'] : []
+
+  if (input.requestedModel !== KHALA_CODE_MODEL_ID) {
+    // Non-coding Khala lane: no verifier pass (verification class `none`). Still
+    // carries the full lifecycle telemetry summary (tokens + latency + request
+    // class) so EVERY Khala response is measurable, not just khala-code.
+    const settlementState: KhalaSettlementState = 'not_applicable'
+    const telemetry = buildKhalaTelemetryBlock(
+      {
+        completionTokens: input.result.usage.completionTokens,
+        costBasisMsat: undefined,
+        executedVerdict: 'not_executed',
+        priceMsat: undefined,
+        promptTokens: input.result.usage.promptTokens,
+        provider: input.adapterId,
+        ...(routeProviderHealthScore === undefined
+          ? {}
+          : { providerHealthScore: routeProviderHealthScore }),
+        requestClass: telemetryRequestClass(streamed),
+        requestId: input.responseId,
+        requestedModel: input.requestedModel,
+        route: classifyModel(input.requestedModel),
+        servedModel: input.result.servedModel,
+        ...(routeRegion === undefined ? {} : { region: routeRegion }),
+        fallbackReason: routeFallbackReason,
+        ...(cacheAffinityKeyRaw === undefined ? {} : { cacheAffinityKeyRaw }),
+        ...(input.result.usage.cachedPromptTokens === undefined
+          ? {}
+          : { cachedInputTokens: input.result.usage.cachedPromptTokens }),
+        ...(input.timing?.generationWallClockMs === undefined
+          ? {}
+          : { generationWallClockMs: input.timing.generationWallClockMs }),
+        ...(routeQueueWaitMs === undefined
+          ? {}
+          : { queueWaitMs: routeQueueWaitMs }),
+        ...(input.timing?.totalWallClockMs === undefined
+          ? {}
+          : { totalWallClockMs: input.timing.totalWallClockMs }),
+        ...(input.timing?.ttftMs === undefined
+          ? {}
+          : { ttftMs: input.timing.ttftMs }),
+        scalarReward: undefined,
+        settlementState,
+        totalTokens: input.result.usage.totalTokens,
+        verificationClass: 'none',
+        blockerRefs: [...settlementBlockers, ...cacheBlockers],
+      },
+      input.metering.receiptRef === null
+        ? null
+        : publicInferenceReceiptUrl(input.metering.receiptRef),
+    )
+    // AUTOPILOT CONCIERGE artifacts (#6148): surface the structured Output Spec
+    // (reliably extracted from the completion) and the declared bounded tool set
+    // on the disclosure block, so a programmatic `/api/v1/chat/completions`
+    // consumer reads them as structured fields. Only for the concierge virtual
+    // model; every other Khala model is byte-identical to before.
+    const conciergeOutputSpec = isAutopilotConciergeModel(input.requestedModel)
+      ? extractConciergeOutputSpec(input.result.content)
+      : undefined
+    return {
+      ...base,
+      billing: billingDisclosureFor(input.metering),
+      routing,
+      telemetry,
+      verification: 'none' as const,
+      ...(isAutopilotConciergeModel(input.requestedModel)
+        ? { tools: autopilotConciergeToolDeclarations() }
+        : {}),
+      ...(conciergeOutputSpec === undefined
+        ? {}
+        : { output_spec: conciergeOutputSpec }),
+    }
+  }
+
+  const verdict: KhalaCodeVerificationVerdict = verifyKhalaCodeCompletion({
+    content: input.result.content,
+    meteringReceiptRef: input.metering.receiptRef,
+    requestId: input.responseId,
+    servedModel: input.result.servedModel,
+    worker: input.adapterId,
+    ...(input.acceptance === undefined ? {} : { acceptance: input.acceptance }),
+  })
+  const receipt = input.metering.receiptRef ?? verdict.receiptRef
+
+  const verifierBlockers = verdict.executed ? [] : ['verifier_not_executed']
+  const telemetry = buildKhalaTelemetryBlock(
+    {
+      completionTokens: input.result.usage.completionTokens,
+      costBasisMsat: undefined,
+      executedVerdict: telemetryExecutedVerdict(verdict),
+      priceMsat: undefined,
+      promptTokens: input.result.usage.promptTokens,
+      provider: input.adapterId,
+      ...(routeProviderHealthScore === undefined
+        ? {}
+        : { providerHealthScore: routeProviderHealthScore }),
+      requestClass: telemetryRequestClass(streamed),
+      requestId: input.responseId,
+      requestedModel: input.requestedModel,
+      route: 'coding',
+      servedModel: input.result.servedModel,
+      ...(routeRegion === undefined ? {} : { region: routeRegion }),
+      fallbackReason: routeFallbackReason,
+      scalarReward: verdict.scalarReward,
+      settlementState: verdict.verified ? 'pending' : 'not_applicable',
+      totalTokens: input.result.usage.totalTokens,
+      verificationClass: telemetryVerificationClass(verdict.verification),
+      verifierReceiptRef: verdict.receiptRef,
+      ...(cacheAffinityKeyRaw === undefined ? {} : { cacheAffinityKeyRaw }),
+      ...(input.result.usage.cachedPromptTokens === undefined
+        ? {}
+        : { cachedInputTokens: input.result.usage.cachedPromptTokens }),
+      ...(input.timing?.generationWallClockMs === undefined
+        ? {}
+        : { generationWallClockMs: input.timing.generationWallClockMs }),
+      ...(routeQueueWaitMs === undefined
+        ? {}
+        : { queueWaitMs: routeQueueWaitMs }),
+      ...(input.timing?.totalWallClockMs === undefined
+        ? {}
+        : { totalWallClockMs: input.timing.totalWallClockMs }),
+      ...(input.timing?.ttftMs === undefined
+        ? {}
+        : { ttftMs: input.timing.ttftMs }),
+      blockerRefs: [
+        ...settlementBlockers,
+        ...cacheBlockers,
+        ...verifierBlockers,
+      ],
+    },
+    input.metering.receiptRef === null
+      ? null
+      : publicInferenceReceiptUrl(input.metering.receiptRef),
+  )
+
+  return {
+    ...base,
+    billing: billingDisclosureFor(input.metering),
+    executed: verdict.executed,
+    receipt,
+    ...(input.metering.receiptRef === null
+      ? {}
+      : { receipt_url: publicInferenceReceiptUrl(input.metering.receiptRef) }),
+    reward_handoff: verdict.reward.handoffRef,
+    route: 'coding',
+    routing,
+    rubric: {
+      failed_checks: verdict.failedChecks,
+      passed_checks: verdict.passedChecks,
+      ref: verdict.rubricRef,
+    },
+    scalar_reward: verdict.scalarReward,
+    // Honest hot-path default: settlement fires ASYNC after the headless acceptance
+    // verdict callback verifies the outcome and pays the worker + validator (#6011).
+    // A fresh completion is not yet settled; the public receipt read reflects the
+    // settled state once the callback has run.
+    settled: false,
+    telemetry,
+    verification: verdict.verification,
+    verification_command: verdict.command.commandRef,
+    verification_integrity: verdict.integrity,
+    verification_receipt: verdict.receiptRef,
+    verified: verdict.verified,
+    workers: [input.adapterId, KHALA_CODE_VERIFIER_WORKER_ID],
+  }
+}
+
+// Enqueue an out-of-Worker acceptance-verification job for a khala-code completion
+// that produced an EXECUTABLE artifact (EPIC #6017). INERT + FAIL-SOFT: returns
+// immediately (no enqueue) for a non-khala-code model, a flag-off dispatch, a missing
+// queue/artifact store, or an artifact that fails the cheap pre-screen (not even worth
+// running). When it does enqueue, it derives the spec from intent (reusing
+// `intentToAcceptanceSpec`), persists the artifact to get a dereferenceable ref, and
+// sends the typed job. A failure to store/enqueue is swallowed (the completion is
+// already delivered; the receipt simply stays the honest `unverified`).
+const maybeEnqueueAcceptanceJob = (
+  input: Readonly<{
+    dispatch: ChatCompletionsDeps['acceptanceDispatch']
+    requestedModel: string
+    requestMessages: ReadonlyArray<InferenceMessage>
+    responseId: string
+    result: InferenceResult
+    adapterId: string
+    meteringReceiptRef: string | null
+  }>,
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    const dispatch = input.dispatch
+    if (
+      dispatch === undefined ||
+      !dispatch.enabled ||
+      dispatch.queue === undefined ||
+      dispatch.storeArtifact === undefined ||
+      input.requestedModel !== KHALA_CODE_MODEL_ID
+    ) {
+      return
+    }
+
+    // Only enqueue a RUNNABLE artifact (the cheap pre-screen gates execution; it is
+    // NOT the verdict). A non-runnable artifact already verifies as `failed` on the
+    // hot path; nothing to execute.
+    const prescreen = prescreenKhalaCodeArtifact(input.result.content)
+    if (!prescreen.attemptExecution || prescreen.html === undefined) {
+      return
+    }
+
+    const spec = intentToAcceptanceSpec({
+      messages: input.requestMessages.map(message => ({
+        content: message.content,
+        role: message.role,
+      })),
+      model: input.requestedModel,
+    })
+    if (spec === undefined) {
+      return
+    }
+
+    // Persist the artifact -> dereferenceable ref the runner resolves. A store failure
+    // means no runnable handle, so we do not enqueue (receipt stays `unverified`).
+    const artifactRef = yield* Effect.tryPromise(() =>
+      dispatch.storeArtifact!({
+        html: prescreen.html as string,
+        requestId: input.responseId,
+      }),
+    ).pipe(
+      Effect.map(ref => ref as string | undefined),
+      Effect.orElseSucceed(() => undefined),
+    )
+    if (artifactRef === undefined) {
+      return
+    }
+
+    yield* enqueueAcceptanceJob({
+      artifactRef,
+      enabled: dispatch.enabled,
+      meteringReceiptRef: input.meteringReceiptRef,
+      queue: dispatch.queue,
+      requestId: input.responseId,
+      servedModel: input.result.servedModel,
+      spec,
+      worker: input.adapterId,
+    }).pipe(Effect.asVoid)
+  })
+
+// OpenAI non-streaming response envelope.
+const openAiResponse = (
+  input: Readonly<{
+    id: string
+    created: number
+    model: string
+    result: InferenceResult
+    openagents?: OpenAgentsReceipt | undefined
+  }>,
+) => ({
+  choices: [
+    {
+      finish_reason: input.result.finishReason,
+      index: 0,
+      message: {
+        content: input.result.content,
+        role: 'assistant',
+        ...(input.result.toolCalls === undefined ||
+        input.result.toolCalls.length === 0
+          ? {}
+          : { tool_calls: input.result.toolCalls }),
+      },
+    },
+  ],
+  created: input.created,
+  id: input.id,
+  model: input.model,
+  object: 'chat.completion',
+  ...(input.openagents === undefined ? {} : { openagents: input.openagents }),
+  usage: {
+    completion_tokens: input.result.usage.completionTokens,
+    prompt_tokens: input.result.usage.promptTokens,
+    total_tokens: input.result.usage.totalTokens,
+  },
+})
+
+const sseFrame = (payload: unknown): string =>
+  `data: ${JSON.stringify(payload)}\n\n`
+
+type StreamFrameDelta = Readonly<{
+  contentDelta: string
+  reasoningDelta?: string | undefined
+  toolCallDeltas?: ReadonlyArray<InferenceToolCallDelta> | undefined
+}>
+
+const hasStreamFrameDelta = (delta: StreamFrameDelta): boolean =>
+  delta.contentDelta !== '' ||
+  (delta.reasoningDelta !== undefined && delta.reasoningDelta !== '') ||
+  (delta.toolCallDeltas !== undefined && delta.toolCallDeltas.length > 0)
+
+const openAiChunkDelta = (
+  delta: StreamFrameDelta,
+): Record<string, unknown> => ({
+  ...(delta.contentDelta === '' ? {} : { content: delta.contentDelta }),
+  ...(delta.reasoningDelta === undefined || delta.reasoningDelta === ''
+    ? {}
+    : { reasoning_content: delta.reasoningDelta }),
+  ...(delta.toolCallDeltas === undefined || delta.toolCallDeltas.length === 0
+    ? {}
+    : { tool_calls: delta.toolCallDeltas }),
+})
+
+// Build a TRUE incremental SSE Response body that pumps the upstream stream
+// source to the client frame-by-frame (the khala-code 524 fix). Each content
+// delta is emitted AS IT ARRIVES — bytes flow continuously so the Cloudflare
+// edge idle-timer resets and a multi-minute generation never 524s. The terminal
+// `openagents` disclosure block (built by the SAME `openAgentsReceiptForResult` the
+// non-streaming + buffered paths use) and metering settlement happen AFTER the
+// upstream closes, attached to the final `chat.completion.chunk` before
+// `data: [DONE]`. Metering settles receipt-first from the terminal usage frame.
+//
+// KHALA IDENTITY DEFENSE ON THE PASS-THROUGH PATH: because deltas are sent to
+// the client AS THEY ARRIVE (the whole point of this path — to avoid the 524),
+// the post-completion identity guard's redaction backstop cannot un-send an
+// already-streamed token. The PRIMARY mechanism — the strong gateway-side
+// `KHALA_IDENTITY_SYSTEM_PROMPT` injected for every `khala-*` request — is what
+// protects this path: the model never volunteers its provenance in the first
+// place. The buffered stream path (which materializes the whole completion
+// before emitting) and the non-streaming path additionally run the guard
+// backstop over the assembled content.
+//
+// This runs OUTSIDE the route's Effect: the metering hook is an Effect, so it is
+// executed with `Effect.runPromise` in the flush step (the same hook used on the
+// buffered/non-streaming paths). The metering hook never fails (it returns a
+// typed outcome), so a metering error never breaks the already-delivered stream.
+// Resolve the per-request durable store, swallowing a factory failure into
+// `undefined` (fail-safe: a broken/absent durable substrate must NOT break the
+// completion — it degrades to today's non-durable pass-through).
+const resolveDurableStore = (
+  factory: DurableInferenceStreamStore,
+  requestId: string,
+): StreamStore | undefined => {
+  try {
+    return factory(requestId)
+  } catch {
+    return undefined
+  }
+}
+
+const makePassThroughResponseStream = (
+  input: Readonly<{
+    accountRef: string
+    adapterId: string
+    created: number
+    fundingKind: FundingKind
+    meteringHook: MeteringHook
+    // SERVED-TOKENS RECORDER (issue #6227). Invoked after metering on the terminal
+    // usage frame so the public served-tokens counter reflects this stream.
+    recordTokensServed?: ServedTokensRecorder | undefined
+    requestAttribution?: ServedTokensRequestAttribution | undefined
+    requestedModel: string
+    responseId: string
+    source: InferenceStreamSource
+    routeMetadata?: DispatchRouteMetadata | undefined
+    // DURABLE-PROXY SEAM (#6058). When present, every upstream frame is teed into
+    // a per-request durable offset log (`@openagentsinc/durable-stream`) keyed by
+    // `responseId` so a client disconnect mid-generation can be resumed by offset.
+    // ABSENT => today's pure pass-through, byte-for-byte unchanged (fail-safe).
+    durableStore?: StreamStore | undefined
+    // PRODUCTION DURABLE SUBSTRATE (#6058). When present, every upstream frame is
+    // teed into the per-request Durable Object (`getByName(responseId)`) over the
+    // `/v1/stream/{id}` HTTP contract — the authoritative durable log a later GET
+    // resume reads. Takes precedence over `durableStore` (the in-memory test
+    // substrate) when both are present. Absent => non-durable pass-through.
+    durableNamespace?: DurableStreamNamespace | undefined
+    // Deterministic clock for the durable log (TTL/offset bookkeeping). Defaults
+    // to a fixed epoch in tests; the route threads `currentEpochMillis`.
+    durableNowMs?: number | undefined
+    // TELEMETRY CLOCK (book P0-1). On the TRUE pass-through stream, TTFT and
+    // generation wall-clock are GENUINELY measurable (first content delta and
+    // EOF are observable here). `nowMs` is the wall-clock source (ms);
+    // `requestStartMs` is the request-accept instant the route captured. Both
+    // optional: absent => the telemetry numerics degrade to honest sentinels.
+    nowMs?: (() => number) | undefined
+    requestStartMs?: number | undefined
+    // The RAW cache-affinity key (book P0-2 deliverable 3) so the terminal
+    // disclosure records its public-safe HASH. Undefined → no affinity key.
+    cacheAffinityKeyRaw?: string | undefined
+  }>,
+): ReadableStream<Uint8Array> => {
+  const encoder = new TextEncoder()
+  const telemetryNow = input.nowMs ?? currentEpochMillis
+  const chunkFrame = (
+    delta: StreamFrameDelta,
+    finishReason: string | null,
+    openagents?: OpenAgentsReceipt | undefined,
+  ): string =>
+    sseFrame({
+      choices: [
+        {
+          delta: openAiChunkDelta(delta),
+          finish_reason: finishReason,
+          index: 0,
+        },
+      ],
+      created: input.created,
+      id: input.responseId,
+      model: input.requestedModel,
+      object: 'chat.completion.chunk',
+      ...(openagents === undefined ? {} : { openagents }),
+    })
+
+  // Settle metering (receipt-first) from the terminal usage frame and build the
+  // terminal SSE frame carrying the `openagents` disclosure. THIS IS THE SINGLE
+  // METERING-ONCE BOUNDARY: it runs only on the real upstream EOF (the producer
+  // drain), never on a resume/replay read. `terminal.usage === undefined` (no
+  // terminal usage frame served) means no settlement, exactly as the buffered
+  // path behaves.
+  const buildTerminalFrame = async (
+    terminal: ReturnType<InferenceStreamSource['terminal']>,
+    content: string,
+    // Telemetry boundaries captured by the producer drain (book P0-1): the
+    // first-token instant (for TTFT) and the EOF instant (for total + generation
+    // wall-clock). `undefined` => that boundary was never observed => sentinel.
+    timing?: Readonly<{ firstTokenMs?: number | undefined; eofMs: number }>,
+  ): Promise<string> => {
+    const servedModel = terminal.servedModel ?? input.requestedModel
+    // Derive the measurable lifecycle timing for the TRUE streaming path. TTFT =
+    // first-token - request-accept; total wall-clock = EOF - request-accept;
+    // generation wall-clock = EOF - first-token (the decode window, used to derive
+    // perceived TPS + ITL). Any boundary we did not observe stays undefined =>
+    // honest sentinel downstream.
+    const start = input.requestStartMs
+    const streamTiming =
+      timing === undefined
+        ? { streamed: true as const }
+        : {
+            streamed: true as const,
+            ...(start === undefined
+              ? {}
+              : { totalWallClockMs: Math.max(0, timing.eofMs - start) }),
+            ...(start === undefined || timing.firstTokenMs === undefined
+              ? {}
+              : { ttftMs: Math.max(0, timing.firstTokenMs - start) }),
+            ...(timing.firstTokenMs === undefined
+              ? {}
+              : {
+                  generationWallClockMs: Math.max(
+                    0,
+                    timing.eofMs - timing.firstTokenMs,
+                  ),
+                }),
+          }
+    let streamMetering: MeteringOutcome | undefined
+    if (terminal.usage !== undefined) {
+      const terminalUsage = terminal.usage
+      const recordTokensServed = input.recordTokensServed
+      // Settle metering AND record the served tokens in ONE Effect program, run
+      // through the single terminal-frame `Effect.runPromise` bridge. The
+      // served-tokens recorder (issue #6227) runs AFTER metering so the public
+      // counter reflects this stream; it is Effect-shaped and never fails (it
+      // swallows its own errors), so it can never break the delivered stream.
+      streamMetering = await Effect.runPromise(
+        Effect.gen(function* () {
+          const outcome = yield* input.meteringHook({
+            accountRef: input.accountRef,
+            adapterId: input.adapterId,
+            fundingKind: input.fundingKind,
+            requestId: input.responseId,
+            requestedModel: input.requestedModel,
+            servedModel,
+            streamed: true,
+            usage: terminalUsage,
+          })
+          if (recordTokensServed !== undefined) {
+            yield* recordTokensServed({
+              accountRef: input.accountRef,
+              adapterId: input.adapterId,
+              requestId: input.responseId,
+              ...(input.requestAttribution === undefined
+                ? {}
+                : { requestAttribution: input.requestAttribution }),
+              requestMetrics: servedTokensRequestMetrics({
+                adapterId: input.adapterId,
+                adapterRouteMetadata: terminal.adapterRouteMetadata,
+                requestClass: 'interactive_stream',
+                routeMetadata: input.routeMetadata,
+                timing: streamTiming,
+              }),
+              requestedModel: input.requestedModel,
+              servedModel,
+              streamed: true,
+              usage: terminalUsage,
+            })
+          }
+          return outcome
+        }),
+      )
+    }
+
+    const streamResult: InferenceResult = {
+      ...(terminal.adapterRouteMetadata === undefined
+        ? {}
+        : { adapterRouteMetadata: terminal.adapterRouteMetadata }),
+      content,
+      finishReason: terminal.finishReason ?? 'stop',
+      servedModel,
+      usage: terminal.usage ?? {
+        completionTokens: 0,
+        promptTokens: 0,
+        totalTokens: 0,
+      },
+    }
+    const openagents = openAgentsReceiptForResult({
+      adapterId: input.adapterId,
+      ...(input.cacheAffinityKeyRaw === undefined
+        ? {}
+        : { cacheAffinityKeyRaw: input.cacheAffinityKeyRaw }),
+      metering: streamMetering ?? { metered: false, receiptRef: null },
+      requestedModel: input.requestedModel,
+      responseId: input.responseId,
+      result: streamResult,
+      ...(input.routeMetadata === undefined
+        ? {}
+        : { routeMetadata: input.routeMetadata }),
+      timing: streamTiming,
+    })
+    return chunkFrame(
+      { contentDelta: '' },
+      terminal.finishReason ?? 'stop',
+      openagents,
+    )
+  }
+
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      // DURABLE PROXY PATH (#6058). Tee each upstream frame into the durable log
+      // AND to the client; persist+close on EOF; settle metering EXACTLY ONCE in
+      // the `onEof` callback above. The producer drain is the only consumer of
+      // the live upstream, so a replay read can never re-bill.
+      // Telemetry: the first observed content delta (TTFT boundary). Captured on
+      // BOTH the durable and non-durable drains so streaming TTFT is real.
+      let firstTokenMs: number | undefined
+      // PRODUCTION DURABLE PATH (#6058). Tee each upstream frame into the
+      // per-request Durable Object over the `/v1/stream/{id}` HTTP contract AND
+      // to the client. The DO is the authoritative durable log a later GET
+      // resume reads. Metering settles EXACTLY ONCE in the `onEof` callback (the
+      // producer drain), never in the DO and never on replay. A DO-fetch fault
+      // degrades the durable mirror but never breaks the live completion.
+      if (input.durableNamespace !== undefined) {
+        await teeUpstreamToDurableDO({
+          emit: frame => {
+            if (firstTokenMs === undefined) {
+              firstTokenMs = telemetryNow()
+            }
+            controller.enqueue(encoder.encode(frame))
+          },
+          frameForDelta: delta => chunkFrame({ contentDelta: delta }, null),
+          frameForEvent: event => chunkFrame(event, null),
+          namespace: input.durableNamespace,
+          onEof: (terminal, content) =>
+            buildTerminalFrame(terminal, content, {
+              eofMs: telemetryNow(),
+              firstTokenMs,
+            }),
+          requestId: input.responseId,
+          source: input.source,
+        })
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+        controller.close()
+        return
+      }
+      // IN-MEMORY DURABLE PATH (test/contract substrate). Same guarantees against
+      // the synchronous `StreamStore` port the DO implements.
+      if (input.durableStore !== undefined) {
+        await teeUpstreamToDurable({
+          emit: frame => {
+            if (firstTokenMs === undefined) {
+              // First emitted frame on the durable path marks first-token.
+              firstTokenMs = telemetryNow()
+            }
+            controller.enqueue(encoder.encode(frame))
+          },
+          frameForDelta: delta => chunkFrame({ contentDelta: delta }, null),
+          frameForEvent: event => chunkFrame(event, null),
+          nowMs: input.durableNowMs ?? 0,
+          onEof: (terminal, content) =>
+            buildTerminalFrame(terminal, content, {
+              eofMs: telemetryNow(),
+              firstTokenMs,
+            }),
+          requestId: input.responseId,
+          source: input.source,
+          store: input.durableStore,
+        })
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+        controller.close()
+        return
+      }
+
+      // NON-DURABLE PASS-THROUGH (today's behaviour, unchanged).
+      const contentParts: Array<string> = []
+      try {
+        // Pump every upstream content delta to the client immediately.
+        for await (const event of input.source.frames) {
+          if (hasStreamFrameDelta(event)) {
+            if (firstTokenMs === undefined) {
+              firstTokenMs = telemetryNow()
+            }
+            if (event.contentDelta !== '') {
+              contentParts.push(event.contentDelta)
+            }
+            controller.enqueue(encoder.encode(chunkFrame(event, null)))
+          }
+        }
+      } catch {
+        // The upstream stream faulted mid-flight. The client already has partial
+        // content; close the SSE cleanly (DONE) so it is not left hanging. There
+        // is no terminal usage frame, so metering does NOT settle (receipt-first
+        // — never an estimate), exactly as the buffered path would on a stream
+        // with no terminal usage.
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+        controller.close()
+        return
+      }
+
+      // Stream drained: settle metering + build the disclosure from the terminal
+      // state, receipt-first. No re-buffering of content beyond the join needed
+      // for the verifier's full-output rubric.
+      const terminalFrame = await buildTerminalFrame(
+        input.source.terminal(),
+        contentParts.join(''),
+        { eofMs: telemetryNow(), firstTokenMs },
+      )
+      controller.enqueue(encoder.encode(terminalFrame))
+      controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+      controller.close()
+    },
+  })
+}
+
+export const handleChatCompletions = (
+  request: Request,
+  deps: ChatCompletionsDeps,
+) =>
+  Effect.gen(function* () {
+    // INERT GATE: flagged off in production until the EPIC lands.
+    if (!deps.enabled) {
+      return noStoreJsonResponse(
+        { error: 'inference_gateway_disabled' },
+        { status: 404 },
+      )
+    }
+
+    if (request.method !== 'POST') {
+      return noStoreJsonResponse(
+        { error: 'method_not_allowed' },
+        { status: 405 },
+      )
+    }
+
+    // ANTHROPIC SEAM: a parallel `/v1/messages` handler normalizes Anthropic
+    // Messages into the same InferenceRequest and reuses the registry +
+    // metering hook below. Out of scope for #5476.
+
+    const headerAttribution = requestAttributionFromHeaders(request.headers)
+    const session = yield* Effect.promise(() => deps.authenticate(request))
+    if (session === undefined) {
+      const headers = new Headers({ 'www-authenticate': 'Bearer' })
+      return noStoreJsonResponse(
+        { error: 'unauthorized' },
+        { headers, status: 401 },
+      )
+    }
+
+    // INTERNAL/OPS ACCOUNT DEMAND RULE (#6298 follow-up). Refine the single
+    // header-derived attribution with the env-configured internal-account
+    // allowlist NOW that the account is authenticated. Traffic from an
+    // internal/ops account is forced to `demand_kind=internal` (defaulting the
+    // source to `internal_account` when no specific internal-source header was
+    // sent, never downgrading a specific one like `harbor_terminal_bench`), so
+    // untagged dogfood never lands in the external/`unlabeled` corpus or the
+    // demand ledger. This ONE value feeds BOTH the served-tokens recorder
+    // (`token_usage_events`) and the trace emitter (`agent_traces.demand_kind`),
+    // so they classify identically. Empty allowlist / non-internal account =>
+    // no-op (external users resolve exactly as before).
+    const requestAttribution = applyInternalAccountAttribution(
+      headerAttribution,
+      session.accountRef,
+      deps.internalAccountRefs ?? new Set<string>(),
+    )
+
+    // FAIR-SHARE GATE (#5486). Keyed to the authenticated account so one customer
+    // cannot starve the shared Vertex quota / Fireworks limits. Open (no-op) when
+    // unwired. Rejected requests carry RateLimit-* headers from the bounded
+    // counters so well-behaved clients back off; nothing reaches a provider.
+    if (deps.checkFairShare !== undefined) {
+      const fairShare = yield* Effect.promise(() =>
+        deps.checkFairShare!(session.accountRef),
+      )
+      if (!fairShare.allowed) {
+        const headers = new Headers({
+          'ratelimit-limit': String(fairShare.limit),
+          'ratelimit-policy': `${fairShare.limit};w=${fairShare.windowSeconds}`,
+          'ratelimit-remaining': String(fairShare.remainingRequests),
+          'ratelimit-reset': String(fairShare.windowSeconds),
+          'retry-after': String(fairShare.windowSeconds),
+        })
+        return noStoreJsonResponse(
+          {
+            error: 'rate_limited',
+            reason: fairShare.status,
+            remainingRequests: fairShare.remainingRequests,
+            remainingTokens: fairShare.remainingTokens,
+          },
+          { headers, status: fairShare.statusCode },
+        )
+      }
+    }
+
+    const rawBody = yield* Effect.promise(async () => {
+      try {
+        return (await request.json()) as Record<string, unknown>
+      } catch {
+        return undefined
+      }
+    })
+    if (rawBody === undefined) {
+      return noStoreJsonResponse({ error: 'invalid_json' }, { status: 400 })
+    }
+
+    const body = decodeBody(rawBody)
+    if (body === undefined || body.messages.length === 0) {
+      return noStoreJsonResponse({ error: 'invalid_request' }, { status: 400 })
+    }
+
+    // Resolve the effective model once: an unspecified/blank model defaults to
+    // the single public Khala model. Used for premium gating, routing, response
+    // echo, and metering.
+    const rawRequestedModel = resolveRequestedModel(body.model)
+    const fineTunedModelResolution =
+      deps.resolveFineTunedModel === undefined || isKhalaModel(rawRequestedModel)
+        ? undefined
+        : yield* Effect.promise(() =>
+            deps.resolveFineTunedModel!({
+              accountRef: session.accountRef,
+              modelId: rawRequestedModel,
+            }),
+          )
+    const requestedModel =
+      fineTunedModelResolution === undefined
+        ? rawRequestedModel
+        : fineTunedModelResolution.baseModel
+    const autopilotConcierge = isAutopilotConciergeModel(requestedModel)
+      ? resolveAutopilotConciergeConfig(rawBody)
+      : undefined
+    if (autopilotConcierge?.ok === false) {
+      return noStoreJsonResponse(
+        {
+          allowed: autopilotConcierge.allowed,
+          error: autopilotConcierge.error,
+        },
+        { status: 400 },
+      )
+    }
+    if (
+      !isKhalaModel(requestedModel) &&
+      fineTunedModelResolution === undefined
+    ) {
+      return noStoreJsonResponse(
+        { error: 'model_unavailable', model: rawRequestedModel },
+        { status: 400 },
+      )
+    }
+    const byok = resolveKhalaByokState(request.headers)
+    if (byok._tag === 'invalid') {
+      return noStoreJsonResponse(
+        {
+          error: 'invalid_byok_provider_key',
+          reason: byok.reason,
+        },
+        { headers: byokResponseHeaders(byok, false), status: 400 },
+      )
+    }
+
+    const nowEpochSeconds = deps.nowEpochSeconds ?? currentEpochSeconds
+    const newId = deps.newId ?? defaultId
+    const nowEpochMillis = deps.nowEpochMillis ?? currentEpochMillis
+    const created = nowEpochSeconds()
+    const responseId = newId()
+    const requestStartMs = nowEpochMillis()
+    const codingWorkflow = classifyCodingWorkflow({
+      headers: request.headers,
+      messages: body.messages,
+      rawBody,
+    })
+
+    if (
+      codingWorkflow.workflowClass !== 'none' &&
+      !codingDelegationDisabled(request, rawBody)
+    ) {
+      if (deps.codingDelegation === undefined) {
+        return noStoreJsonResponse(
+          {
+            error: 'coding_delegation_unavailable',
+            reason: 'Coding workflow delegation is not wired on this gateway.',
+          },
+          { status: 503 },
+        )
+      }
+      const codingDelegation = deps.codingDelegation
+
+      // #6331/#6318: resolve the owner scope, linked agents, and delegation
+      // through a single guarded promise. An agent-owned request can route
+      // through its own Pylon even if the OpenAuth link read flakes; an
+      // OpenAuth-only request still fails closed with a typed 503 instead of an
+      // opaque 500.
+      const selfAgentUserId = agentUserIdFromAccountRef(session.accountRef)
+      const selfLinkedAgent =
+        selfAgentUserId === undefined ? [] : [{ agentUserId: selfAgentUserId }]
+      const nowIso = epochMillisToIsoTimestamp(created * 1000)
+      const delegation: CodingDelegationResult | null = yield* Effect.promise(
+        async () => {
+          let failureStage:
+            | 'delegation_gate'
+            | 'linked_agent_read'
+            | 'openauth_owner_resolution' = 'openauth_owner_resolution'
+          try {
+            const openauthUserId = await (async () => {
+              try {
+                return await codingDelegation.resolveOpenAuthUserId(
+                  session.accountRef,
+                )
+              } catch (error) {
+                if (selfLinkedAgent.length > 0) {
+                  return undefined
+                }
+                throw error
+              }
+            })()
+            failureStage = 'linked_agent_read'
+            const openAuthLinkedAgents = await (async () => {
+              if (
+                openauthUserId === undefined ||
+                codingDelegation.agentStore.listLinkedAgentsForOpenAuthUser ===
+                  undefined
+              ) {
+                return []
+              }
+              try {
+                return await codingDelegation.agentStore.listLinkedAgentsForOpenAuthUser(
+                  openauthUserId,
+                  100,
+                )
+              } catch (error) {
+                if (selfLinkedAgent.length > 0) {
+                  return []
+                }
+                throw error
+              }
+            })()
+            const linkedAgents = [...selfLinkedAgent, ...openAuthLinkedAgents]
+            failureStage = 'delegation_gate'
+            return await delegateCodingWorkflow({
+              classification: codingWorkflow,
+              linkedAgents,
+              makeId: newId,
+              nowIso,
+              pylonStore: codingDelegation.pylonStore,
+              rawBody,
+              requestId: responseId,
+            })
+          } catch {
+            return {
+              error: 'coding_delegation_store_unavailable',
+              evidenceRefs: [
+                'evidence.khala_coding.dispatch.store_unavailable',
+                `evidence.khala_coding.dispatch.${failureStage}_unavailable`,
+              ],
+              kind: 'rejected',
+              reason:
+                `The Khala coding dispatch gate could not read linked Pylon capacity right now at stage "${failureStage.replaceAll('_', ' ')}". ` +
+                'This is a transient gate failure, not an account problem — retry shortly.',
+              requestedPylonRef: null,
+              statusCode: 503,
+            } as const
+          }
+        },
+      )
+
+      if (delegation?.kind === 'rejected') {
+        return noStoreJsonResponse(
+          {
+            error: delegation.error,
+            evidenceRefs: delegation.evidenceRefs,
+            reason: delegation.reason,
+            requestedPylonRef: delegation.requestedPylonRef,
+          },
+          { status: delegation.statusCode },
+        )
+      }
+
+      if (delegation !== null) {
+        const content =
+          `Coding workflow delegated to linked Pylon ${delegation.pylon.pylonRef}. ` +
+          `Resume stream: ${delegation.durableStreamUrl}`
+        const frame = sseFrame({
+          choices: [
+            {
+              delta: { content, role: 'assistant' },
+              finish_reason: null,
+              index: 0,
+            },
+          ],
+          created,
+          id: responseId,
+          model: requestedModel,
+          object: 'chat.completion.chunk',
+          openagents: {
+            coding_delegation: {
+              assignmentRef: delegation.assignment.assignmentRef,
+              durableStreamUrl: delegation.durableStreamUrl,
+              evidenceRefs: delegation.evidenceRefs,
+              pylonRef: delegation.pylon.pylonRef,
+              workflowClass: codingWorkflow.workflowClass,
+            },
+          },
+        })
+        const doneFrame = 'data: [DONE]\n\n'
+        const streamBody = `${frame}${doneFrame}`
+
+        if (deps.durableStreamEnabled === true) {
+          if (deps.durableStreamNamespace !== undefined) {
+            yield* Effect.promise(() =>
+              seedDurableInferenceStreamDO({
+                close: true,
+                frames: [frame, doneFrame],
+                namespace: deps.durableStreamNamespace!,
+                requestId: responseId,
+              }),
+            )
+          } else if (deps.durableStream !== undefined) {
+            const store = resolveDurableStore(deps.durableStream, responseId)
+            if (store !== undefined) {
+              seedDurableInferenceStream({
+                close: true,
+                frames: [frame, doneFrame],
+                nowMs: requestStartMs,
+                requestId: responseId,
+                store,
+              })
+            }
+          }
+        }
+
+        return new Response(streamBody, {
+          headers: {
+            'cache-control': 'no-store',
+            'content-type': 'text/event-stream; charset=utf-8',
+            'openagents-coding-assignment-ref':
+              delegation.assignment.assignmentRef,
+            'openagents-durable-stream-url': delegation.durableStreamUrl,
+            'stream-closed': 'true',
+            'stream-next-offset': String(
+              new TextEncoder().encode(streamBody).byteLength,
+            ),
+            'stream-up-to-date': 'true',
+            vary: 'authorization',
+          },
+          status: 200,
+        })
+      }
+
+      return noStoreJsonResponse(
+        {
+          error: 'coding_delegation_unavailable',
+          evidenceRefs: codingWorkflow.evidenceRefs,
+          reason:
+            'No linked, heartbeat-fresh, Codex-capable Pylon capacity is available for this account.',
+        },
+        { status: 503 },
+      )
+    }
+
+    // PROVIDER SERVING-POLICY GATE (public_paid_model_gateway_missing). Reject a
+    // public Khala model whose backing supply lane is NOT armed with the SAME
+    // clean `model_unavailable` the catalog hides and the quote 404s — keeping
+    // advertise == quote == serve. Checked BEFORE the account-state gates
+    // (premium / balance / spend-cap) and before dispatch, because servability is
+    // a property of the model + supply, independent of the account: an unservable
+    // model is never the customer's balance/allowlist problem. Open (no-op) when
+    // `laneArming` is omitted, after the public-model gate above has already
+    // rejected raw GPT-OSS and old split ids.
+    if (
+      deps.laneArming !== undefined &&
+      fineTunedModelResolution === undefined &&
+      resolveNamedModelServability(requestedModel, deps.laneArming) === false
+    ) {
+      return noStoreJsonResponse(
+        { error: 'model_unavailable', model: requestedModel },
+        { status: 400 },
+      )
+    }
+
+    // PREMIUM-MODEL OWNER-GRANT GATE (free-tier enablement §2). Premium models
+    // require the account's resolved OWNER identity to be allowlisted. Checked
+    // here, after auth and before any balance/dispatch work, so a non-allowlisted
+    // premium request is denied with an actionable message and never reaches a
+    // provider. Open (no-op) when unwired; non-premium models always pass.
+    if (deps.checkPremiumAccess !== undefined) {
+      const premium = yield* Effect.promise(() =>
+        deps.checkPremiumAccess!(session.accountRef, requestedModel),
+      )
+      if (!premium.allowed) {
+        return noStoreJsonResponse(
+          {
+            error: 'premium_model_not_allowed',
+            message: premium.message,
+            model: requestedModel,
+            reason: premium.reasonRef,
+          },
+          { status: 403 },
+        )
+      }
+    }
+
+    // BALANCE GATE (read-only). #5477 owns the real per-model decrement.
+    const callerPaidByok = byok._tag === 'accepted'
+    const minimum = deps.minimumAvailableMsat ?? 1
+    const availableMsat = callerPaidByok
+      ? minimum
+      : yield* Effect.promise(() => deps.readAvailableMsat(session.accountRef))
+    if (!callerPaidByok && availableMsat < minimum) {
+      // FREE-ALLOWANCE BYPASS (EPIC #5474 §1). A zero/insufficient-balance
+      // account is NOT rejected when the request is free-eligible AND the
+      // resolving owner still has remaining free allowance — that request would
+      // be eaten by `withFreeAllowance` after dispatch, so 402'ing it here would
+      // make the free tier untestable/unreachable without a funded balance. The
+      // pre-flight is read-only and conservative: non-free models, exhausted
+      // pools, and resolution errors all fall through to the normal 402.
+      const freeAllowed =
+        deps.checkFreeAllowance === undefined
+          ? false
+          : (yield* Effect.promise(() =>
+              deps.checkFreeAllowance!(session.accountRef, requestedModel),
+            )).eligible
+      // OWNER BALANCE-GATE EXEMPTION (issue #6180). A zero/insufficient-balance
+      // account is ALSO not rejected when the request resolves to an EXEMPT
+      // verified owner on a NON-premium / own-infra model — that request is
+      // recorded by `withOperatorCredit` after dispatch as `operator_credit`
+      // (zero credit debit + receipt, no referral). Lets approved/internal keys
+      // test our OWN lanes (e.g. `openagents/khala` on the hourly Hydralisk box)
+      // WITHOUT funding while Khala stays paid for the public. The seam itself
+      // refuses premium models + unclaimed accounts, so the 402 stands for them.
+      const operatorExempt =
+        deps.checkOperatorExemption === undefined
+          ? false
+          : (yield* Effect.promise(() =>
+              deps.checkOperatorExemption!(session.accountRef, requestedModel),
+            )).exempt
+      // KHALA FREE TIER bypass (issue #6228). A zero-balance request is ALSO not
+      // rejected when it resolves to a FREE-TIER key on the free Khala lane that
+      // is still within its per-key daily quota — that request is recorded by
+      // `withFreeTierKhala` after dispatch as a zero-debit free receipt (and its
+      // usage accrues against the daily quota). The seam itself refuses premium
+      // models, non-free-tier accounts, non-Khala models, and over-quota keys, so
+      // the 402 stands for them and Khala stays paid for funded keys beyond quota.
+      const freeTier =
+        deps.checkFreeTier === undefined
+          ? false
+          : (yield* Effect.promise(() =>
+              deps.checkFreeTier!(session.accountRef, requestedModel),
+            )).free
+      if (!freeAllowed && !operatorExempt && !freeTier) {
+        return noStoreJsonResponse(
+          {
+            error: 'insufficient_credits',
+            availableMsat,
+            requiredMsat: minimum,
+          },
+          { status: 402 },
+        )
+      }
+    }
+
+    // SPEND-CAP GATE (#5486). DISTINCT from the balance gate above: an account
+    // can be flush with credits yet still be capped at a configurable per-window
+    // spend ceiling so a compromised key cannot drain the whole balance. Open
+    // (no-op) when unwired or when no cap is configured for the account.
+    if (!callerPaidByok && deps.checkSpendCap !== undefined) {
+      const spendCap = yield* Effect.promise(() =>
+        deps.checkSpendCap!(session.accountRef),
+      )
+      if (!spendCap.allowed) {
+        return noStoreJsonResponse(
+          {
+            error: 'spend_cap_exceeded',
+            capMsat: spendCap.capMsat,
+            remainingMsat: spendCap.remainingMsat,
+            spentMsatInWindow: spendCap.spentMsatInWindow,
+            windowSeconds: spendCap.windowSeconds,
+          },
+          { status: spendCap.statusCode },
+        )
+      }
+    }
+
+    const baseMeteringHook = deps.meteringHook ?? stubMeteringHook
+    const meteringHook: MeteringHook = callerPaidByok
+      ? () =>
+          Effect.succeed({
+            byok: true,
+            metered: false,
+            receiptRef: null,
+          } satisfies MeteringOutcome)
+      : baseMeteringHook
+    const resolveFundingKind =
+      deps.resolveFundingKind ?? defaultCardFundingResolver
+    const fundingKind = yield* Effect.promise(() =>
+      resolveFundingKind(session.accountRef),
+    )
+
+    // SUPPLY SELECTION (#5482) -------------------------------------------
+    // Resolve the ordered candidate adapter ids for this model. When a
+    // multi-lane `lanePlan` is supplied (the Worker wires `selectAdapterPlan`)
+    // the route dispatches across it with bounded-backoff overflow; otherwise
+    // it falls back to the single-id `router` seam (the #5476 / stub path).
+    const planFor: ModelLanePlanner =
+      deps.lanePlan ??
+      (model => {
+        const id = (deps.router ?? stubModelRouter)(model)
+        return id === undefined ? [] : [id]
+      })
+    const plannedIdsForModel = planFor(requestedModel)
+    const toolBearingKhalaRequest = isToolBearingKhalaRequest({
+      body,
+      rawBody,
+      requestedModel,
+    })
+    const glmSaturationStressKhalaRequest =
+      isKhalaModel(requestedModel) &&
+      requestAttribution?.demandKind === 'internal_stress' &&
+      requestAttribution.demandSource === 'glm-saturation'
+    // MULTI-LANE FAN-OUT (throughput unlock). Honestly-tagged internal
+    // continual-learning / stress burn traffic (`demand_kind=internal_stress`,
+    // `demand_source` in MULTILANE_BURN_DEMAND_SOURCES) is SPREAD across the
+    // healthy paid lanes instead of pinning the single primary lane. Each request
+    // rotates the registered Khala lane plan by a per-request round-robin index,
+    // so concurrent burn requests start on different lanes (Vertex + Fireworks +
+    // OpenRouter + GLM-when-up) and aggregate throughput becomes the SUM of those
+    // lanes' serve rates rather than one lane's cap. Gated on the internal burn
+    // demand-source only, so normal conversational, tool, mirrorcode, and external
+    // Khala routing is completely unchanged. The chosen primary still keeps the
+    // full remaining plan behind it, preserving overflow + fail-closed posture.
+    const multiLaneBurnKhalaRequest =
+      isKhalaModel(requestedModel) &&
+      requestAttribution?.demandKind === 'internal_stress' &&
+      isMultiLaneBurnDemandSource(requestAttribution.demandSource)
+    // INTERNAL FRONTIER-CODING OVERRIDE (MirrorCode gym rung). Honestly-tagged
+    // internal frontier-coding eval load (`demand_kind=internal`,
+    // `demand_source=gym_mirrorcode`) that is tool-bearing is routed to the
+    // strongest tool-capable coding lane instead of the latency-first
+    // conversational backing or the unreliable owned GLM-REAP tool lane (#6310).
+    // It is gated on internal attribution only, so normal conversational and
+    // external Khala routing is unchanged, and it overflows to the proven Khala
+    // backing if the frontier lane is unavailable.
+    const mirrorcodeStrongCodingKhalaRequest =
+      toolBearingKhalaRequest &&
+      requestAttribution?.demandKind === 'internal' &&
+      requestAttribution.demandSource === 'gym_mirrorcode'
+    const basePlannedIds = callerPaidByok
+      ? [OPENROUTER_KHALA_FALLBACK_ADAPTER_ID]
+      : multiLaneBurnKhalaRequest
+        ? // Rotate only across lanes that are actually registered (so the spread
+          // lands on lanes that can serve), keeping the per-request round-robin
+          // index from the injected counter / module-level default.
+          selectAdapterPlanForKhalaMultiLaneBurnRequest(
+            requestedModel,
+            plannedIdsForModel.filter(
+              id => deps.registry.resolve(id) !== undefined,
+            ),
+            (deps.multiLaneBurnRotation ?? nextMultiLaneBurnRotationIndex)(),
+          )
+        : mirrorcodeStrongCodingKhalaRequest
+          ? selectAdapterPlanForKhalaStrongCodingRequest(
+              requestedModel,
+              plannedIdsForModel,
+            )
+          : glmSaturationStressKhalaRequest &&
+              plannedIdsForModel.includes(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID)
+            ? [HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID]
+            : toolBearingKhalaRequest || glmSaturationStressKhalaRequest
+              ? selectAdapterPlanForKhalaToolRequest(
+                  requestedModel,
+                  plannedIdsForModel,
+                )
+              : plannedIdsForModel
+
+    // CACHE-AFFINITY RESOLUTION (book P0-2 deliverables 3+4). Compose the
+    // account/session/codebase key, its public-safe hash (for the receipt), and
+    // the provider session-affinity passthrough params (for replica pinning).
+    // Only Khala models get gateway-managed affinity; non-Khala requests carry no
+    // affinity key (empty params) so their behavior is byte-identical to before.
+    const affinity = isKhalaModel(requestedModel)
+      ? resolveCacheAffinity(session.accountRef, rawBody, request)
+      : { hash: null as string | null, params: {}, rawKey: undefined }
+
+    // CACHE-AWARE ROUTING (book P0-2 deliverable 6). Reorder — never widen — the
+    // viable lane plan so a same-session/codebase/account follow-up tries the
+    // cache-WARM lane first, subject to the warm lane still being in the plan and
+    // passing health + privacy/region gates. Pure reorder: the overflow tail is
+    // preserved behind the warm lane. Inert when no oracle is wired (plan
+    // unchanged) so existing behavior is unaffected until the Worker wires it.
+    // MULTI-LANE FAN-OUT bypasses cache-warmth reordering: a burn request
+    // deliberately wants to SPREAD across lanes (round-robin primary), not pin to
+    // the cache-warm lane, so the rotation must survive intact. Cache-aware
+    // routing still governs every normal request unchanged.
+    const routingDecision = multiLaneBurnKhalaRequest
+      ? { lanes: basePlannedIds }
+      : decideCacheAwareRouting({
+          affinityHash: affinity.hash,
+          plannedLanes: basePlannedIds,
+          ...(deps.cacheWarmthOracle === undefined
+            ? {}
+            : { warmthOracle: deps.cacheWarmthOracle }),
+          ...(deps.laneHealthOracle === undefined
+            ? {}
+            : { healthOracle: deps.laneHealthOracle }),
+          ...(deps.cachePinPolicy === undefined
+            ? {}
+            : { pinPolicy: deps.cachePinPolicy }),
+        })
+    const plannedIds = routingDecision.lanes
+
+    // model_unavailable when no lane is configured OR none of the planned lanes
+    // is actually registered (e.g. an absent partner secret leaves the plan but
+    // no resolvable adapter).
+    const hasViableLane = plannedIds.some(
+      id => deps.registry.resolve(id) !== undefined,
+    )
+    if (!hasViableLane) {
+      return noStoreJsonResponse(
+        { error: 'model_unavailable', model: requestedModel },
+        { headers: byokResponseHeaders(byok, false), status: 400 },
+      )
+    }
+
+    // COMPONENT-CHANNEL ACTIVATION (issue #6127). AND-gated: gateway flag on +
+    // explicit per-request opt-in + Khala model. Default false => the channel is
+    // inert and the response is byte-for-byte today's text-only stream.
+    const componentChannelActive = resolveComponentChannelActive({
+      autopilotConcierge: autopilotConcierge?.ok === true,
+      config: deps.componentChannel,
+      rawBody,
+      request,
+      requestedModel,
+    })
+
+    // CROSS-APP TRACE EMISSION opt-in (#6214). Deterministic parse of an explicit
+    // caller switch (header / body). Only consulted on the non-streaming path
+    // below, and only when `deps.traceEmit` is wired + enabled.
+    const traceEmitOptIn = resolveKhalaChatTraceOptIn({ rawBody, request })
+
+    const routeDemandClass = routeDemandClassFromAttribution(requestAttribution)
+    const internalStressRouteAdmissionRejected =
+      routeDemandClass === 'internal_stress' &&
+      deps.routeAdmission !== undefined &&
+      deps.routeAdmission.reservedExternalHeadroomAvailable === false
+    const preemptionAbortController =
+      routeDemandClass === 'internal_stress' &&
+      !internalStressRouteAdmissionRejected &&
+      (deps.internalStressPreemption !== undefined ||
+        deps.internalStressCoordinator !== undefined)
+        ? new AbortController()
+        : undefined
+    const releasePreemptionSlot: () => Promise<void> =
+      preemptionAbortController === undefined
+        ? async () => {}
+        : deps.internalStressCoordinator !== undefined
+          ? yield* Effect.tryPromise({
+              catch: () => 'internal_stress_scheduler_register_failed' as const,
+              try: () =>
+                deps.internalStressCoordinator!.register({
+                  abortController: preemptionAbortController,
+                  nowMs: requestStartMs,
+                  requestId: responseId,
+                }),
+            }).pipe(
+              Effect.catch(() =>
+                Effect.sync(() => {
+                  preemptionAbortController.abort(
+                    'internal_stress_global_scheduler_unavailable',
+                  )
+                  return async () => {}
+                }),
+              ),
+            )
+          : (() => {
+              const release = deps.internalStressPreemption!.register({
+                abortController: preemptionAbortController,
+                requestId: responseId,
+              })
+              return async () => release()
+            })()
+    const inferenceRequest = toInferenceRequest(
+      body,
+      rawBody,
+      requestedModel,
+      affinity.params,
+      componentChannelActive,
+      autopilotConcierge?.ok === true ? autopilotConcierge.config : undefined,
+      {
+        ...(preemptionAbortController === undefined
+          ? {}
+          : { abortSignal: preemptionAbortController.signal }),
+        priority: routeDemandClass,
+      },
+      byok._tag === 'accepted'
+        ? { apiKey: byok.apiKey, provider: byok.provider }
+        : undefined,
+    )
+    // The raw cache-affinity key threaded into every telemetry build site so the
+    // receipt records its public-safe HASH (never the raw key). Undefined for
+    // non-Khala / no-affinity requests.
+    const cacheAffinityKeyRaw = affinity.rawKey
+    // Dispatch deps for the overflow loop. The plan is pinned to `plannedIds`
+    // (already resolved from lanePlan/router above) so selection + dispatch use
+    // exactly the same ordering.
+    const coordinatorSnapshot =
+      routeDemandClass === 'external' &&
+      deps.internalStressCoordinator !== undefined
+        ? yield* Effect.tryPromise({
+            catch: () => undefined,
+            try: () =>
+              deps.internalStressCoordinator!.snapshot({
+                nowMs: nowEpochMillis(),
+              }),
+          }).pipe(Effect.orElseSucceed(() => undefined))
+        : undefined
+    const effectiveRouteAdmission =
+      routeDemandClass === 'external' &&
+      coordinatorSnapshot !== undefined &&
+      coordinatorSnapshot.activeStressCount > 0
+        ? {
+            reason: 'glm_global_internal_stress_active',
+            reservedExternalHeadroomAvailable: false,
+          }
+        : deps.routeAdmission
+    const preemptionPolicy =
+      deps.dispatch?.preemption ??
+      ((deps.internalStressPreemption === undefined &&
+        deps.internalStressCoordinator === undefined) ||
+      effectiveRouteAdmission === undefined
+        ? undefined
+        : {
+            preempt: () =>
+              deps.internalStressCoordinator !== undefined
+                ? Effect.tryPromise({
+                    catch: () => undefined,
+                    try: () =>
+                      deps.internalStressCoordinator!.preempt({
+                        nowMs: nowEpochMillis(),
+                        reason: 'external_reserved_headroom_unavailable',
+                      }),
+                  }).pipe(Effect.orElseSucceed(() => undefined))
+                : Effect.sync(() =>
+                    deps.internalStressPreemption!.preempt({
+                      reason: 'external_reserved_headroom_unavailable',
+                    }),
+                  ),
+            reason: effectiveRouteAdmission.reason,
+            reservedExternalHeadroomAvailable:
+              effectiveRouteAdmission.reservedExternalHeadroomAvailable,
+          })
+    const dispatchDeps: DispatchDeps = {
+      registry: deps.registry,
+      plan: () => plannedIds,
+      requestForAdapter: mirrorcodeStrongCodingKhalaRequest
+        ? khalaStrongCodingRequestForAdapter
+        : khalaRequestForAdapter,
+      ...(deps.dispatch?.backoff === undefined
+        ? {}
+        : { backoff: deps.dispatch.backoff }),
+      ...(deps.dispatch?.sleep === undefined
+        ? {}
+        : { sleep: deps.dispatch.sleep }),
+      ...(deps.dispatch?.routingSignals === undefined
+        ? {}
+        : { routingSignals: deps.dispatch.routingSignals }),
+      ...(deps.dispatch?.retry === undefined
+        ? {}
+        : { retry: deps.dispatch.retry }),
+      ...(deps.dispatch?.shedding === undefined
+        ? {}
+        : {
+            shedding: {
+              ...deps.dispatch.shedding,
+              demandClass: routeDemandClass,
+            },
+          }),
+      ...(effectiveRouteAdmission === undefined
+        ? {}
+        : {
+            admission: {
+              ...effectiveRouteAdmission,
+              demandClass: routeDemandClass,
+            },
+          }),
+      ...(preemptionPolicy === undefined
+        ? {}
+        : {
+            preemption: {
+              ...preemptionPolicy,
+              demandClass: routeDemandClass,
+            },
+          }),
+      ...(deps.dispatch?.hedging === undefined
+        ? {}
+        : {
+            hedging: {
+              ...deps.dispatch.hedging,
+              demandClass: routeDemandClass,
+            },
+          }),
+      ...(deps.dispatch?.failureTelemetry === undefined
+        ? {}
+        : { failureTelemetry: deps.dispatch.failureTelemetry }),
+      ...(deps.dispatch?.glmOwnCapacityFailover === undefined
+        ? {}
+        : { glmOwnCapacityFailover: deps.dispatch.glmOwnCapacityFailover }),
+    }
+
+    if (inferenceRequest.stream) {
+      // TRUE PASS-THROUGH STREAM (the khala-code 524 fix). When the served
+      // adapter exposes `streamSse`, pump the upstream SSE to the client
+      // frame-by-frame so every chunk resets the Cloudflare edge idle-timer and
+      // a multi-minute generation never 524s (the old buffered array path read
+      // the WHOLE upstream completion before emitting a single byte — exactly
+      // what tripped the edge ~100s timeout on a long generation). Connect-time
+      // dispatch still overflows across the lane plan on a retryable failure;
+      // once bytes are flowing there is no overflow (the client already has
+      // partial output). Metering settles receipt-first from the terminal usage
+      // frame after the upstream stream closes. Adapters without `streamSse`
+      // (stub/echo, simple test adapters) fall through to the buffered path.
+      //
+      // COMPONENT-CHANNEL (issue #6127): when the typed component channel is
+      // active for this request, we deliberately take the BUFFERED path instead
+      // of the true pass-through. A component frame is ATOMIC (one complete
+      // validated card) and the prose/component split + schema validation + the
+      // bounded repair turn all need the WHOLE assembled completion — which the
+      // true pass-through (delta-as-it-arrives) cannot provide. So we signal the
+      // SAME non-retryable `stream_not_supported` the no-`streamSse` lane signals,
+      // and the existing fallthrough re-frames the completion through the channel.
+      // This keeps the default (channel-off) path byte-for-byte unchanged.
+      const sseDispatch = yield* dispatchWithOverflowWithMetadata(
+        inferenceRequest,
+        (adapter, request) => {
+          if (componentChannelActive || adapter.streamSse === undefined) {
+            // Signal "this lane cannot stream incrementally" as a NON-retryable
+            // typed failure so the overflow loop surfaces it without retrying;
+            // the route catches it and falls back to the buffered path.
+            //
+            // COMPONENT-CHANNEL (issue #6127): when the typed component channel is
+            // active for this request, we deliberately force the BUFFERED path. A
+            // component frame is ATOMIC (one complete validated card) and the
+            // prose/component split + schema validation + the bounded repair turn
+            // all need the WHOLE assembled completion — which the true pass-through
+            // (delta-as-it-arrives) cannot provide. The default (channel-off) path
+            // is byte-for-byte unchanged.
+            return Effect.fail(
+              new InferenceAdapterError({
+                adapterId: adapter.id,
+                kind: 'stream_not_supported',
+                reason: componentChannelActive
+                  ? 'component channel active: buffered re-frame required'
+                  : 'adapter does not support incremental streaming',
+                retryable: false,
+              }),
+            )
+          }
+          return adapter
+            .streamSse(request)
+            .pipe(Effect.map(source => ({ adapterId: adapter.id, source })))
+        },
+        dispatchDeps,
+      ).pipe(
+        Effect.map(served => ({ ok: true as const, served })),
+        Effect.catch(error =>
+          Effect.succeed({
+            error,
+            ok: false as const,
+          }),
+        ),
+      )
+
+      if (sseDispatch.ok) {
+        const { adapterId, source } = sseDispatch.served.value
+        const sourceWithPreemptionRelease: InferenceStreamSource = {
+          frames: (async function* (): AsyncIterable<InferenceStreamEvent> {
+            try {
+              for await (const frame of source.frames) {
+                yield frame
+              }
+            } finally {
+              await releasePreemptionSlot()
+            }
+          })() as InferenceStreamSource['frames'],
+          terminal: source.terminal,
+        }
+        // DURABLE-STREAM RANK-1 (#6058). Resolve a per-request durable store when
+        // the flag is on AND a store factory is wired; a failing/absent factory
+        // leaves `durableStore` undefined so the stream degrades to today's
+        // pass-through (fail-safe, idempotent). The durable read URL lets a client
+        // reconnect `?offset=<last>` and replay the suffix without re-billing.
+        const durableStore: StreamStore | undefined =
+          deps.durableStreamEnabled === true && deps.durableStream !== undefined
+            ? resolveDurableStore(deps.durableStream, responseId)
+            : undefined
+        // PRODUCTION DURABLE SUBSTRATE (#6058): the per-request Durable Object,
+        // resolved only when the flag is on AND the binding is wired. Takes
+        // precedence over the in-memory `durableStore` test substrate.
+        const durableNamespace: DurableStreamNamespace | undefined =
+          deps.durableStreamEnabled === true &&
+          deps.durableStreamNamespace !== undefined
+            ? deps.durableStreamNamespace
+            : undefined
+        // The completion is being persisted (and is resumable) when EITHER durable
+        // substrate is active.
+        const durablePersisting =
+          durableNamespace !== undefined || durableStore !== undefined
+        const responseStream = makePassThroughResponseStream({
+          accountRef: session.accountRef,
+          adapterId,
+          ...(cacheAffinityKeyRaw === undefined ? {} : { cacheAffinityKeyRaw }),
+          created,
+          durableNowMs: nowEpochMillis(),
+          durableStore,
+          ...(durableNamespace === undefined ? {} : { durableNamespace }),
+          fundingKind,
+          meteringHook,
+          ...(deps.recordTokensServed === undefined
+            ? {}
+            : { recordTokensServed: deps.recordTokensServed }),
+          ...(requestAttribution === undefined ? {} : { requestAttribution }),
+          // TELEMETRY CLOCK (book P0-1): the TRUE pass-through path is where TTFT
+          // and generation wall-clock are genuinely observable (first delta + EOF).
+          nowMs: nowEpochMillis,
+          requestStartMs,
+          requestedModel,
+          responseId,
+          source: sourceWithPreemptionRelease,
+          routeMetadata: sseDispatch.served.route,
+        })
+        return new Response(responseStream, {
+          headers: {
+            'cache-control': 'no-store',
+            'content-type': 'text/event-stream; charset=utf-8',
+            ...byokResponseHeaders(byok, true),
+            // Advertise the resumable read URL only when the completion is being
+            // persisted. The opaque request id carries no prompt/credential
+            // material, so this header is safe (INVARIANTS: no leakage).
+            ...(durablePersisting
+              ? {
+                  'openagents-durable-stream-url':
+                    durableInferenceReadUrl(responseId),
+                }
+              : {}),
+          },
+          status: 200,
+        })
+      }
+
+      // Only fall back to the buffered path when the served lane genuinely could
+      // not stream incrementally. A real upstream/connect failure (provider
+      // error) must surface as the 502 it is, not be retried via the buffered
+      // path (which would double-dispatch and could 524 again).
+      if (sseDispatch.error.kind !== 'stream_not_supported') {
+        yield* Effect.promise(() => releasePreemptionSlot())
+        const response = providerErrorResponse(sseDispatch.error)
+        applyByokResponseHeader(response, byok, false)
+        return response
+      }
+
+      // Run the stream op across the lane plan; the served adapter id rides
+      // alongside the chunks so metering reports the lane that actually served.
+      const chunks = yield* dispatchWithOverflowWithMetadata(
+        inferenceRequest,
+        (adapter, request) =>
+          adapter
+            .stream(request)
+            .pipe(Effect.map(value => ({ adapterId: adapter.id, value }))),
+        dispatchDeps,
+      ).pipe(
+        Effect.map(served => ({ ok: true as const, served })),
+        Effect.catch(error => Effect.succeed({ error, ok: false as const })),
+        Effect.ensuring(Effect.promise(() => releasePreemptionSlot())),
+      )
+      if (!chunks.ok) {
+        const response = providerErrorResponse(chunks.error)
+        applyByokResponseHeader(response, byok, false)
+        return response
+      }
+      const servedChunks = chunks.served.value.value
+      // Settle metering from the terminal usage frame (receipt-first).
+      const terminal = [...servedChunks]
+        .reverse()
+        .find(chunk => chunk.usage !== undefined)
+      const bufferedStreamTiming = {
+        streamed: true as const,
+        totalWallClockMs: Math.max(0, nowEpochMillis() - requestStartMs),
+      }
+      // Capture the metering outcome so the disclosure block (below) carries the
+      // same receipt the non-streaming path attaches. `undefined` when no
+      // terminal usage frame was served (no metering ran).
+      let streamMetering: MeteringOutcome | undefined
+      if (terminal?.usage !== undefined) {
+        const streamServedModel = terminal.servedModel ?? requestedModel
+        streamMetering = yield* meteringHook({
+          accountRef: session.accountRef,
+          adapterId: chunks.served.value.adapterId,
+          fundingKind,
+          requestId: responseId,
+          requestedModel: requestedModel,
+          servedModel: streamServedModel,
+          streamed: true,
+          usage: terminal.usage,
+        })
+        // SERVED-TOKENS COUNTER (issue #6227): buffered-stream fallback path.
+        // Record the served completion in the canonical token ledger so the public
+        // counter reflects it. Only on a real terminal usage frame; never throws.
+        if (deps.recordTokensServed !== undefined) {
+          yield* deps.recordTokensServed({
+            accountRef: session.accountRef,
+            adapterId: chunks.served.value.adapterId,
+            requestId: responseId,
+            ...(requestAttribution === undefined ? {} : { requestAttribution }),
+            requestMetrics: servedTokensRequestMetrics({
+              adapterId: chunks.served.value.adapterId,
+              adapterRouteMetadata: terminal.adapterRouteMetadata,
+              requestClass: 'interactive_stream',
+              routeMetadata: chunks.served.route,
+              timing: bufferedStreamTiming,
+            }),
+            requestedModel,
+            servedModel: streamServedModel,
+            streamed: true,
+            usage: terminal.usage,
+          })
+        }
+      }
+
+      // OPENAGENTS DISCLOSURE (M0 / #6008 follow-up). Streaming carries the SAME
+      // non-breaking `openagents` block the non-streaming path emits, built by the
+      // SAME `openAgentsReceiptForResult(...)` (non-disclosed lanes => undefined).
+      // Reconstruct an `InferenceResult` from the served chunks — content
+      // concatenated, the terminal finishReason/usage, and the terminal served
+      // model when the adapter reports one — then attach the block to the FINAL
+      // `chat.completion.chunk` frame only, before `data: [DONE]`.
+      const assembledContent = servedChunks
+        .map(chunk => chunk.contentDelta)
+        .join('')
+
+      // KHALA IDENTITY GUARD (buffered stream path). This path materializes the
+      // WHOLE upstream completion before emitting a byte (it builds `body_sse`
+      // from the full chunk array), so the deterministic identity backstop runs
+      // here on the assembled content. No re-ask on this path (the chunks are
+      // already buffered); the gateway identity system prompt is the primary
+      // defense and this is the fail-closed redaction backstop. A clean stream is
+      // re-emitted delta-for-delta unchanged; only an identity leak is rewritten.
+      let guardedStreamContent = assembledContent
+      let streamIdentityCorrected = false
+      // COMPONENT-CHANNEL TRANSFORM (issue #6127). When the channel is active for
+      // this request, run the assembled completion through the gateway transform:
+      // split prose vs fenced `oa-component` blocks, validate each card against
+      // the closed catalog (ONE bounded repair turn, then drop), identity-guard
+      // the prose, and surface the validated frames. The transform ALSO runs the
+      // identity backstop over the prose, so it subsumes the plain identity guard
+      // for this request. Inert for every channel-off request (the `else` below is
+      // the unchanged prior behavior).
+      let componentFrames: ReadonlyArray<KhalaComponentFrame> = []
+      if (componentChannelActive) {
+        const channel: ComponentChannelOutput = yield* Effect.promise(() =>
+          runComponentChannel(assembledContent, {
+            ...(deps.componentChannel?.repairReask === undefined
+              ? {}
+              : { reask: deps.componentChannel.repairReask }),
+          }),
+        )
+        guardedStreamContent = channel.prose
+        componentFrames = channel.frames
+        // The transform already identity-guarded the prose; force the re-frame
+        // path below (a single corrected content frame + the component frames),
+        // since the per-delta chunks no longer match the stripped prose.
+        streamIdentityCorrected = true
+      } else if (isKhalaModel(requestedModel)) {
+        const guard = yield* Effect.promise(() =>
+          guardKhalaCompletion({ completion: assembledContent }),
+        )
+        guardedStreamContent = guard.text
+        streamIdentityCorrected = guard.corrected
+      }
+
+      const streamResult: InferenceResult = {
+        ...(terminal?.adapterRouteMetadata === undefined
+          ? {}
+          : { adapterRouteMetadata: terminal.adapterRouteMetadata }),
+        content: guardedStreamContent,
+        finishReason: terminal?.finishReason ?? 'stop',
+        servedModel: terminal?.servedModel ?? requestedModel,
+        usage: terminal?.usage ?? {
+          completionTokens: 0,
+          promptTokens: 0,
+          totalTokens: 0,
+        },
+      }
+      const streamOpenagents = openAgentsReceiptForResult({
+        adapterId: chunks.served.value.adapterId,
+        ...(cacheAffinityKeyRaw === undefined ? {} : { cacheAffinityKeyRaw }),
+        // `openAgentsReceiptForResult` requires a MeteringOutcome; when no terminal
+        // usage frame was served (so no metering ran) fall back to the stub
+        // outcome shape so a Khala stream without usage still discloses.
+        metering: streamMetering ?? { metered: false, receiptRef: null },
+        requestedModel,
+        responseId,
+        result: streamResult,
+        routeMetadata: chunks.served.route,
+        // Buffered fallback (adapter has no incremental `streamSse`): the WHOLE
+        // completion is materialized before a byte is emitted, so there is no
+        // observable first-token boundary here — TTFT/ITL stay honest sentinels.
+        // Total wall-clock IS measurable from request accept to drain.
+        timing: bufferedStreamTiming,
+      })
+
+      // When the identity guard rewrote the content, the original per-delta
+      // chunks no longer match the corrected text, so re-frame the stream as a
+      // single corrected content frame + a terminal frame carrying the finish
+      // reason and disclosure. When nothing was corrected, re-emit the chunks
+      // exactly as served (byte-for-byte the prior behavior).
+      const frameStrings: Array<string> = []
+      if (streamIdentityCorrected) {
+        // Prose content frame. When the component channel stripped all prose to
+        // empty (a card-only turn), emit an empty-delta frame so the stream shape
+        // stays a valid OpenAI chunk sequence.
+        frameStrings.push(
+          sseFrame({
+            choices: [
+              {
+                delta:
+                  guardedStreamContent === ''
+                    ? {}
+                    : { content: guardedStreamContent },
+                finish_reason: null,
+                index: 0,
+              },
+            ],
+            created,
+            id: responseId,
+            model: requestedModel,
+            object: 'chat.completion.chunk',
+          }),
+        )
+        // COMPONENT-CHANNEL FRAMES (issue #6127). Each validated card is emitted
+        // as one ATOMIC `event: oa.component` SSE frame, AFTER the prose and
+        // BEFORE the terminal `chat.completion.chunk`. Standard OpenAI clients
+        // ignore the unknown `event:` type and still parse the stream as text;
+        // the Foldkit client switches on `oa.component` to render the typed card.
+        for (const frame of componentFrames) {
+          frameStrings.push(serializeComponentFrame(frame))
+        }
+        frameStrings.push(
+          sseFrame({
+            choices: [
+              {
+                delta: {},
+                finish_reason: terminal?.finishReason ?? 'stop',
+                index: 0,
+              },
+            ],
+            created,
+            id: responseId,
+            model: requestedModel,
+            object: 'chat.completion.chunk',
+            ...(streamOpenagents !== undefined
+              ? { openagents: streamOpenagents }
+              : {}),
+          }),
+        )
+      } else {
+        const lastIndex = servedChunks.length - 1
+        for (const [index, chunk] of servedChunks.entries()) {
+          frameStrings.push(
+            sseFrame({
+              choices: [
+                {
+                  delta: openAiChunkDelta(chunk),
+                  finish_reason: chunk.finishReason ?? null,
+                  index: 0,
+                },
+              ],
+              created,
+              id: responseId,
+              model: requestedModel,
+              object: 'chat.completion.chunk',
+              // Disclosure rides on the terminal frame only (non-breaking field).
+              ...(index === lastIndex && streamOpenagents !== undefined
+                ? { openagents: streamOpenagents }
+                : {}),
+            }),
+          )
+        }
+      }
+      const body_sse = frameStrings.join('')
+      const stream = `${body_sse}data: [DONE]\n\n`
+
+      return new Response(stream, {
+        headers: {
+          'cache-control': 'no-store',
+          'content-type': 'text/event-stream; charset=utf-8',
+          ...byokResponseHeaders(byok, true),
+        },
+        status: 200,
+      })
+    }
+
+    const result = yield* dispatchWithOverflowWithMetadata(
+      inferenceRequest,
+      (adapter, request) =>
+        adapter
+          .complete(request)
+          .pipe(Effect.map(value => ({ adapterId: adapter.id, value }))),
+      dispatchDeps,
+      validateChatCompletionResult,
+    ).pipe(
+      Effect.map(served => ({ ok: true as const, served })),
+      Effect.catch(error => Effect.succeed({ error, ok: false as const })),
+      Effect.ensuring(Effect.promise(() => releasePreemptionSlot())),
+    )
+    if (!result.ok) {
+      const response = providerErrorResponse(result.error)
+      applyByokResponseHeader(response, byok, false)
+      return response
+    }
+
+    // KHALA IDENTITY GUARD (STEP 2). Run the typed identity signature over the
+    // completion BEFORE metering/response. If the completion asserts a forbidden
+    // provider/model identity ("I am built on Gemini / by Google", Claude, GPT,
+    // …) the guard corrects it: first by RE-ASKING the provider with a stronger
+    // identity instruction, and as a fail-closed backstop by deterministically
+    // redacting the offending identity claim to the Khala identity statement.
+    // It NEVER mangles a normal answer — a clean completion passes through
+    // unchanged — and only runs for Khala models (non-Khala responses are
+    // byte-identical to before). The re-ask re-dispatches across the same lane
+    // plan with the reinforcement appended as a leading system message.
+    const servedValue = result.served.value.value
+    const servedAdapterId = result.served.value.adapterId
+    let guardedContent = servedValue.content
+    if (isKhalaModel(requestedModel)) {
+      // Verify the original completion against the identity signatures. Only on
+      // a violation do we re-ask (the native Effect dispatch below), so a clean
+      // answer never triggers an extra provider call. The re-ask result is then
+      // handed to `guardKhalaCompletion` (which re-verifies it and applies the
+      // deterministic backstop if it STILL leaks) — keeping the dispatch in the
+      // Effect topology rather than nesting `Effect.runPromise`.
+      const signatureVerdicts = verifyKhalaSignatures(servedValue.content)
+      const firstViolation = signatureVerdicts.find(
+        verdict => !verdict.satisfied,
+      )
+      const reinforcementPrompt =
+        getKhalaSignature(firstViolation?.signature ?? 'identity')
+          ?.reinforcementPrompt ?? KHALA_IDENTITY_REINFORCEMENT_PROMPT
+      const reaskedContent = firstViolation !== undefined
+        ? yield* dispatchWithOverflow(
+            {
+              ...inferenceRequest,
+              messages: [
+                {
+                  content: reinforcementPrompt,
+                  role: 'system',
+                },
+                ...inferenceRequest.messages,
+              ],
+            },
+            (adapter, request) => adapter.complete(request),
+            dispatchDeps,
+            validateRawChatCompletionResult,
+          ).pipe(
+            Effect.map(value => value.content as string | undefined),
+            Effect.orElseSucceed(() => undefined),
+          )
+        : undefined
+      const guard = yield* Effect.promise(() =>
+        guardKhalaCompletion({
+          completion: servedValue.content,
+          // The re-ask is already resolved (above); the guard just consumes it.
+          reask:
+            reaskedContent === undefined
+              ? undefined
+              : async () => reaskedContent,
+        }),
+      )
+      guardedContent = guard.text
+    }
+    // Apply the (possibly corrected) content. A clean answer is identical to
+    // `servedValue`; only an identity leak changes `content`.
+    const guardedResult: InferenceResult =
+      guardedContent === servedValue.content
+        ? servedValue
+        : { ...servedValue, content: guardedContent }
+    const nonStreamTiming = {
+      streamed: false as const,
+      totalWallClockMs: Math.max(0, nowEpochMillis() - requestStartMs),
+    }
+
+    const metering = yield* meteringHook({
+      accountRef: session.accountRef,
+      adapterId: servedAdapterId,
+      fundingKind,
+      requestId: responseId,
+      requestedModel: requestedModel,
+      servedModel: guardedResult.servedModel,
+      streamed: false,
+      usage: guardedResult.usage,
+    })
+
+    // SERVED-TOKENS COUNTER (issue #6227): non-streaming path. Record this served
+    // completion in the canonical token ledger so the public "Khala Tokens Served"
+    // counter reflects it. This is a SUCCESSFUL completion (a provider failure
+    // returned the 502 above), so the served tokens count; never throws.
+    if (deps.recordTokensServed !== undefined) {
+      yield* deps.recordTokensServed({
+        accountRef: session.accountRef,
+        adapterId: servedAdapterId,
+        requestId: responseId,
+        ...(requestAttribution === undefined ? {} : { requestAttribution }),
+        requestMetrics: servedTokensRequestMetrics({
+          adapterId: servedAdapterId,
+          adapterRouteMetadata: guardedResult.adapterRouteMetadata,
+          requestClass: 'async_job',
+          routeMetadata: result.served.route,
+          timing: nonStreamTiming,
+        }),
+        requestedModel,
+        servedModel: guardedResult.servedModel,
+        streamed: false,
+        usage: guardedResult.usage,
+      })
+    }
+
+    // ACCEPTANCE-DISPATCH (EPIC #6017): when khala-code produced a runnable artifact,
+    // enqueue an out-of-Worker verification job (flagged; inert by default). The
+    // node-side runner executes the suite and the verdict callback backfills the
+    // receipt from `unverified` -> `test_passed`/`failed`. Fire-and-forget: never
+    // blocks or fails the already-priced completion.
+    yield* maybeEnqueueAcceptanceJob({
+      adapterId: servedAdapterId,
+      dispatch: deps.acceptanceDispatch,
+      meteringReceiptRef: metering.receiptRef,
+      requestMessages: inferenceRequest.messages,
+      requestedModel,
+      responseId,
+      result: guardedResult,
+    })
+
+    // CROSS-APP TRACE EMISSION (#6214) + DEFAULT-ON FREE-TIER CAPTURE (#6293):
+    // map this completed Khala chat session to a public-safe ATIF trajectory and
+    // (flag-gated) persist it as a `/trace/{uuid}`. Fire-and-forget over the
+    // already-priced completion: it NEVER blocks, fails, or alters the response.
+    //
+    // Persist when the MASTER flag is on AND (this request opted in OR
+    // `captureDefault` is true). `captureDefault` is the default-on free-tier
+    // policy (#6293): only consulted when the SEPARATE
+    // `traceEmit.captureDefaultEnabled` flag is on, resolved as
+    // `freeTier.free && !paidPrivacy` (#6295, fail-closed-to-private). The
+    // resolver is consulted ONLY when there is no explicit opt-in (an opted-in
+    // request is already captured). We pass the GUARDED result (the same
+    // identity-safe content the client received) and the ORIGINAL client messages
+    // (gateway scaffolding is dropped inside the emitter); the emitter REDACTS the
+    // trajectory before the public-safety tripwire and re-checks every gate.
+    if (deps.traceEmit !== undefined && deps.traceEmit.enabled) {
+      // Resolve captureDefault lazily: skip the resolver entirely when the
+      // capture-default flag is off, the request already opted in, or no resolver
+      // is wired. Fail-soft: a resolver error => NOT captured (do not block).
+      let captureDefault = false
+      if (
+        !traceEmitOptIn &&
+        deps.traceEmit.captureDefaultEnabled === true &&
+        deps.traceEmit.resolveCaptureDefault !== undefined
+      ) {
+        captureDefault = yield* Effect.promise(() =>
+          deps.traceEmit!.resolveCaptureDefault!(
+            session.accountRef,
+            requestedModel,
+          ).catch(() => false),
+        )
+      }
+      if (traceEmitOptIn || captureDefault) {
+        const emitResult = yield* Effect.promise(() =>
+          deps
+            .traceEmit!.emit({
+              accountRef: session.accountRef,
+              optedIn: traceEmitOptIn,
+              captureDefault,
+              requestMessages: body.messages.map(message => ({
+                content: message.content,
+                role: message.role,
+              })),
+              requestedModel,
+              responseId,
+              result: guardedResult,
+              // DEMAND-ORIGIN (#6298): reuse the SAME resolved attribution the
+              // recorder got (resolved once at the chat seam), so the captured
+              // trace and its ledger event always agree on internal-vs-external.
+              ...(requestAttribution === undefined
+                ? {}
+                : { requestAttribution }),
+            })
+            .catch(() => undefined),
+        )
+        const metricEvent =
+          emitResult === undefined
+            ? undefined
+            : traceRedactionMetricEvent(emitResult)
+        if (
+          metricEvent !== undefined &&
+          deps.traceEmit.recordRedactionMetrics !== undefined
+        ) {
+          yield* Effect.promise(() =>
+            Promise.resolve(
+              deps.traceEmit!.recordRedactionMetrics!(metricEvent),
+            ).catch(() => undefined),
+          )
+        }
+      }
+    }
+
+    return noStoreJsonResponse(
+      openAiResponse({
+        created,
+        id: responseId,
+        model: requestedModel,
+        // Disclosed lanes carry the public block showing which concrete
+        // model/worker served the request. `khala-code` additionally runs the
+        // deterministic verifier and attaches the test verdict; ordinary
+        // non-disclosed responses remain byte-identical to before. Streaming
+        // carries the same disclosure in a later slice.
+        openagents: openAgentsReceiptForResult({
+          adapterId: servedAdapterId,
+          ...(cacheAffinityKeyRaw === undefined ? {} : { cacheAffinityKeyRaw }),
+          metering,
+          requestedModel,
+          responseId,
+          result: guardedResult,
+          routeMetadata: result.served.route,
+          // Non-streaming: total wall-clock is measurable; TTFT/ITL are not (no
+          // first-token boundary on a buffered completion) => honest sentinels.
+          timing: nonStreamTiming,
+        }),
+        result: guardedResult,
+      }),
+      { headers: byokResponseHeaders(byok, true) },
+    )
+  })

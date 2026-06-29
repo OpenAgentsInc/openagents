@@ -1,0 +1,107 @@
+{
+  "artifactPath": "scripts/khala-demo/artifacts/khala-crossy-road-northstar-passing.v1.html",
+  "acceptanceVerdict": {
+    "checks": [
+      {
+        "detail": "No console or page errors during load.",
+        "id": "loads_without_errors",
+        "passed": true
+      },
+      {
+        "detail": "Game started (started=true, loopTicks 0->4).",
+        "id": "play_starts_game",
+        "passed": true
+      },
+      {
+        "detail": "Forward input advanced player by ~0.66 (expected ~1).",
+        "id": "forward_input_advances_player",
+        "passed": true
+      },
+      {
+        "detail": "Max camera delta per move 0.49 <= bound 5.",
+        "id": "camera_follow_delta_bounded",
+        "passed": true
+      },
+      {
+        "detail": "World has 24 rows ahead after 12 moves (>= 12).",
+        "id": "world_keeps_generating_ahead",
+        "passed": true
+      },
+      {
+        "detail": "Restart reset player to origin and progress to 0.",
+        "id": "restart_resets_state",
+        "passed": true
+      }
+    ],
+    "consoleErrors": [],
+    "executed": true,
+    "failedChecks": [],
+    "kind": "crossy_road_single_html",
+    "pageErrors": [],
+    "passedChecks": [
+      "loads_without_errors",
+      "play_starts_game",
+      "forward_input_advances_player",
+      "camera_follow_delta_bounded",
+      "world_keeps_generating_ahead",
+      "restart_resets_state"
+    ],
+    "rubricRef": "rubric.khala_code.crossy_road.executed_acceptance.v1",
+    "scalarReward": 1,
+    "verified": true
+  },
+  "khalaCodeVerdict": {
+    "artifact": {
+      "bytes": 16153,
+      "fingerprint": "fnv1a32:9ef47428",
+      "kind": "single_html"
+    },
+    "command": {
+      "commandRef": "command.khala_code.crossy_road.headless_html_probe.v1",
+      "kind": "headless_html_probe",
+      "rubricRef": "rubric.khala_code.crossy_road.single_html.v1",
+      "target": "crossy-road-single-html"
+    },
+    "executed": false,
+    "failedChecks": [
+      "single_html_file",
+      "has_runnable_surface"
+    ],
+    "passedChecks": [],
+    "prescreen": {
+      "attemptExecution": false,
+      "checks": [
+        {
+          "id": "single_html_file",
+          "label": "The delivered artifact is one self-contained HTML file.",
+          "passed": false,
+          "failureReason": "Expected one self-contained HTML file with no external script/style/media dependencies."
+        },
+        {
+          "id": "has_runnable_surface",
+          "label": "The artifact has a script and a plausible game surface to execute.",
+          "passed": false,
+          "failureReason": "Expected a <script> plus a canvas/game surface and no obvious fatal marker."
+        }
+      ],
+      "html": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"UTF-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n<title>OpenAgents Crossy Road</title>\n<style>\n  html, body { margin: 0; padding: 0; overflow: hidden; background: #87CEEB; font-family: sans-serif; user-select: none; }\n  #game-container { position: absolute; inset: 0; }\n  #score { position: absolute; top: 20px; left: 20px; color: #fff; font-size: 28px; font-weight: bold; text-shadow: 1px 1px 3px rgba(0,0,0,0.5); pointer-events: none; z-index: 10; }\n  #ui { position: absolute; inset: 0; pointer-events: none; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 20; }\n  #overlay, #game-over { pointer-events: auto; background: rgba(0,0,0,0.65); padding: 40px 60px; border-radius: 24px; text-align: center; color: #fff; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }\n  #overlay h1, #game-over h1 { margin: 0 0 20px; font-size: 52px; letter-spacing: 2px; }\n  #overlay p, #game-over p { font-size: 20px; margin: 10px 0; }\n  #start-btn, #restart-btn { font-size: 28px; padding: 16px 48px; border: none; border-radius: 14px; background: #FFD700; color: #222; cursor: pointer; font-weight: bold; transition: transform 0.1s, background 0.2s; }\n  #start-btn:hover, #restart-btn:hover { background: #FFC107; transform: scale(1.05); }\n  #game-over { display: none; }\n</style>\n</head>\n<body>\n<div id=\"game-container\"></div>\n<div id=\"score\">0</div>\n<div id=\"ui\">\n  <div id=\"overlay\">\n    <h1>CROSSY ROAD</h1>\n    <button id=\"start-btn\">PLAY</button>\n  </div>\n  <div id=\"game-over\">\n    <h1>SPLAT!</h1>\n    <p>Score: <span id=\"final-score\">0</span></p>\n    <button id=\"restart-btn\">TRY AGAIN</button>\n  </div>\n</div>\n<script src=\"https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js\"></script>\n<script>\n(function(){\n  const container = document.getElementById('game-container');\n  const overlay = document.getElementById('overlay');\n  const gameOver = document.getElementById('game-over');\n  const startBtn = document.getElementById('start-btn');\n  const restartBtn = document.getElementById('restart-btn');\n  const scoreEl = document.getElementById('score');\n  const finalScoreEl = document.getElementById('final-score');\n\n  let scene, camera, renderer;\n  let player = { position: {x:0,y:0,z:0}, rotation: {x:0,y:0,z:0} };\n  camera = { position: {x:0,y:0,z:0} };\n\n  let rows = [];\n  let maxGeneratedZ = 0;\n  let started = false;\n  let isDead = false;\n  let loopTicks = 0;\n  let progress = 0;\n  let worldRowsAhead = 0;\n\n  const TILE_SIZE = 1;\n  const VIEW_AHEAD = 24;\n  const VIEW_BEHIND = 8;\n  const SAFE_ZONE = 15;\n  const HOP_SPEED = 8;\n\n  let hop = { active: false, t: 0, from: new THREE.Vector3(), to: new THREE.Vector3(), dir: new THREE.Vector3() };\n  let pendingHop = null;\n\n  function init() {\n    if (typeof THREE === 'undefined') return;\n\n    scene = new THREE.Scene();\n    scene.background = new THREE.Color(0x87CEEB);\n    scene.fog = new THREE.Fog(0x87CEEB, 25, 55);\n\n    const width = window.innerWidth || 1;\n    const height = window.innerHeight || 1;\n\n    camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 100);\n    camera.position.set(8, 12, 8);\n\n    try {\n      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });\n      renderer.setSize(width, height);\n      renderer.shadowMap.enabled = true;\n      renderer.shadowMap.type = THREE.PCFSoftShadowMap;\n      container.appendChild(renderer.domElement);\n    } catch (e) {\n      renderer = { setSize: function(){}, render: function(){} };\n    }\n\n    const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.85);\n    scene.add(hemi);\n    const dir = new THREE.DirectionalLight(0xffffff, 0.85);\n    dir.position.set(20, 45, 15);\n    dir.castShadow = true;\n    dir.shadow.mapSize.width = 1024;\n    dir.shadow.mapSize.height = 1024;\n    dir.shadow.camera.left = -25;\n    dir.shadow.camera.right = 25;\n    dir.shadow.camera.top = 25;\n    dir.shadow.camera.bottom = -25;\n    scene.add(dir);\n\n    createPlayer();\n    generateInitialWorld();\n\n    window.addEventListener('resize', onResize);\n    window.addEventListener('keydown', onKeyDown);\n\n    startBtn.addEventListener('click', function(){ window.__openagentsCrossyRoadStart(); });\n    restartBtn.addEventListener('click', function(){ window.__openagentsCrossyRoadRestart(); });\n\n    setInterval(update, 16);\n    if (typeof requestAnimationFrame === 'function') {\n      requestAnimationFrame(renderLoop);\n    }\n  }\n\n  function createPlayer() {\n    const group = new THREE.Group();\n    const white = new THREE.MeshLambertMaterial({ color: 0xffffff });\n    const body = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 0.75), white);\n    body.position.y = 0.5;\n    body.castShadow = true;\n    group.add(body);\n\n    const head = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.38, 0.42), white);\n    head.position.set(0, 1.0, 0.28);\n    head.castShadow = true;\n    group.add(head);\n\n    const beak = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.1, 0.22), new THREE.MeshLambertMaterial({ color: 0xffa500 }));\n    beak.position.set(0, 0.95, 0.58);\n    group.add(beak);\n\n    const eyeMat = new THREE.MeshLambertMaterial({ color: 0x111111 });\n    const eyeL = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.05), eyeMat);\n    eyeL.position.set(-0.13, 1.05, 0.5);\n    const eyeR = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.05), eyeMat);\n    eyeR.position.set(0.13, 1.05, 0.5);\n    group.add(eyeL);\n    group.add(eyeR);\n\n    group.position.set(0, 0, 0);\n    scene.add(group);\n    player = group;\n  }\n\n  function createGroundTile(x, z, color) {\n    const geo = new THREE.BoxGeometry(TILE_SIZE, 0.2, TILE_SIZE);\n    const mat = new THREE.MeshLambertMaterial({ color: color });\n    const mesh = new THREE.Mesh(geo, mat);\n    mesh.position.set(x, -0.1, z);\n    mesh.receiveShadow = true;\n    scene.add(mesh);\n    return mesh;\n  }\n\n  function createCar() {\n    const group = new THREE.Group();\n    const colors = [0xe53935, 0xfb8c00, 0xfdd835, 0x43a047, 0x1e88e5, 0x8e24aa];\n    const color = colors[Math.floor(Math.random() * colors.length)];\n    const body = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.42, 1.45), new THREE.MeshLambertMaterial({ color: color }));\n    body.position.y = 0.22;\n    body.castShadow = true;\n    group.add(body);\n\n    const wheelGeo = new THREE.BoxGeometry(0.16, 0.16, 0.16);\n    const wheelMat = new THREE.MeshLambertMaterial({ color: 0x222222 });\n    const positions = [[-0.34,0.06,0.48],[0.34,0.06,0.48],[-0.34,0.06,-0.48],[0.34,0.06,-0.48]];\n    positions.forEach(function(p){\n      const w = new THREE.Mesh(wheelGeo, wheelMat);\n      w.position.set(p[0], p[1], p[2]);\n      group.add(w);\n    });\n    group.userData = { type: 'car' };\n    return group;\n  }\n\n  function createLog() {\n    const geo = new THREE.BoxGeometry(2.3, 0.22, 0.72);\n    const mat = new THREE.MeshLambertMaterial({ color: 0x8d6e63 });\n    const log = new THREE.Mesh(geo, mat);\n    log.castShadow = true;\n    log.receiveShadow = true;\n    log.userData = { type: 'log' };\n    return log;\n  }\n\n  function createTree() {\n    const group = new THREE.Group();\n    const trunk = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.65, 0.32), new THREE.MeshLambertMaterial({ color: 0x5d4037 }));\n    trunk.position.y = 0.32;\n    trunk.castShadow = true;\n    group.add(trunk);\n    const leaves = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.85, 0.85), new THREE.MeshLambertMaterial({ color: 0x2e7d32 }));\n    leaves.position.y = 0.9;\n    leaves.castShadow = true;\n    group.add(leaves);\n    group.userData = { type: 'tree' };\n    return group;\n  }\n\n  function generateRow(z) {\n    let type = 'grass';\n    if (z > SAFE_ZONE) {\n      const r = Math.random();\n      if (r < 0.32) type = 'road';\n      else if (r < 0.58) type = 'water';\n    }\n    const color = type === 'grass' ? 0x4caf50 : type === 'road' ? 0x555555 : 0x2196f3;\n    const row = { z: z, type: type, tiles: [], obstacles: [] };\n\n    for (let x = -6; x <= 6; x++) {\n      row.tiles.push(createGroundTile(x, z, color));\n    }\n\n    if (type === 'road') {\n      const speedDir = Math.random() < 0.5 ? -1 : 1;\n      const speed = speedDir * (1.4 + Math.random() * 1.6);\n      const count = 1 + Math.floor(Math.random() * 2);\n      for (let i = 0; i < count; i++) {\n        const car = createCar();\n        car.position.set(Math.random() * 12 - 6, 0.35, z);\n        car.userData.speed = speed;\n        row.obstacles.push(car);\n        scene.add(car);\n      }\n    } else if (type === 'water') {\n      const speedDir = Math.random() < 0.5 ? -1 : 1;\n      const speed = speedDir * (0.7 + Math.random() * 0.7);\n      const count = 1 + Math.floor(Math.random() * 2);\n      for (let i = 0; i < count; i++) {\n        const log = createLog();\n        log.position.set(Math.random() * 12 - 6, 0.05, z);\n        log.userData.speed = speed;\n        row.obstacles.push(log);\n        scene.add(log);\n      }\n    } else if (type === 'grass' && z !== 0 && z > SAFE_ZONE && Math.random() < 0.28) {\n      const tree = createTree();\n      tree.position.set(Math.floor(Math.random() * 9 - 4), 0, z);\n      row.obstacles.push(tree);\n      scene.add(tree);\n    }\n\n    rows.push(row);\n    if (z > maxGeneratedZ) maxGeneratedZ = z;\n  }\n\n  function generateInitialWorld() {\n    rows.forEach(function(r){\n      r.tiles.forEach(function(t){ scene.remove(t); });\n      r.obstacles.forEach(function(o){ scene.remove(o); });\n    });\n    rows = [];\n    maxGeneratedZ = 0;\n    for (let z = -VIEW_BEHIND; z <= VIEW_AHEAD; z++) {\n      generateRow(z);\n    }\n  }\n\n  function ensureRowsAhead() {\n    const playerZ = Math.round(player.position.z);\n    while (maxGeneratedZ - playerZ < VIEW_AHEAD) {\n      generateRow(maxGeneratedZ + 1);\n    }\n    rows = rows.filter(function(r){\n      if (r.z < playerZ - VIEW_BEHIND) {\n        r.tiles.forEach(function(t){ scene.remove(t); });\n        r.obstacles.forEach(function(o){ scene.remove(o); });\n        return false;\n      }\n      return true;\n    });\n  }\n\n  function onKeyDown(e) {\n    if (!started || isDead) return;\n    let dx = 0, dz = 0;\n    switch (e.key) {\n      case 'ArrowUp': case 'w': case 'W': dz = 1; break;\n      case 'ArrowDown': case 's': case 'S': dz = -1; break;\n      case 'ArrowLeft': case 'a': case 'A': dx = -1; break;\n      case 'ArrowRight': case 'd': case 'D': dx = 1; break;\n      default: return;\n    }\n    e.preventDefault();\n    if (hop.active) {\n      pendingHop = { dx: dx, dz: dz };\n      return;\n    }\n    startHop(dx, dz);\n  }\n\n  function startHop(dx, dz) {\n    hop.active = true;\n    hop.t = 0;\n    hop.from.copy(player.position);\n    hop.to.set(player.position.x + dx, player.position.y, player.position.z + dz);\n    hop.dir.set(dx, 0, dz);\n  }\n\n  function finishHop() {\n    player.position.copy(hop.to);\n    player.position.y = 0;\n    hop.active = false;\n    player.rotation.set(0, 0, 0);\n    checkRow();\n    ensureRowsAhead();\n    progress = Math.round(player.position.z);\n    scoreEl.textContent = progress;\n\n    if (pendingHop && !isDead) {\n      const p = pendingHop;\n      pendingHop = null;\n      startHop(p.dx, p.dz);\n    }\n  }\n\n  function updateHop(dt) {\n    if (!hop.active) return;\n    hop.t += dt * HOP_SPEED;\n    if (hop.t >= 1) {\n      hop.t = 1;\n      finishHop();\n      return;\n    }\n    player.position.lerpVectors(hop.from, hop.to, hop.t);\n    player.position.y = Math.sin(hop.t * Math.PI) * 0.42;\n    player.rotation.z = -hop.dir.x * Math.sin(hop.t * Math.PI) * 0.25;\n    player.rotation.x = hop.dir.z * Math.sin(hop.t * Math.PI) * 0.25;\n  }\n\n  function checkRow() {\n    const z = Math.round(player.position.z);\n    const row = rows.find(function(r){ return r.z === z; });\n    if (!row) return;\n    if (row.type === 'water') {\n      let onLog = false;\n      for (let i = 0; i < row.obstacles.length; i++) {\n        const ob = row.obstacles[i];\n        if (ob.userData.type === 'log' && Math.abs(player.position.x - ob.position.x) < 1.15) {\n          onLog = true;\n          break;\n        }\n      }\n      if (!onLog) die();\n    }\n  }\n\n  function updateObstacles(dt) {\n    rows.forEach(function(row){\n      row.obstacles.forEach(function(ob){\n        if (ob.userData.speed) {\n          ob.position.x += ob.userData.speed * dt;\n          if (ob.position.x > 8.5) ob.position.x = -8.5;\n          if (ob.position.x < -8.5) ob.position.x = 8.5;\n        }\n      });\n    });\n\n    const z = Math.round(player.position.z);\n    const row = rows.find(function(r){ return r.z === z; });\n    if (row && row.type === 'water' && !hop.active) {\n      let onLog = false;\n      for (let i = 0; i < row.obstacles.length; i++) {\n        const ob = row.obstacles[i];\n        if (ob.userData.type === 'log' && Math.abs(player.position.x - ob.position.x) < 1.15) {\n          player.position.x += ob.userData.speed * dt;\n          onLog = true;\n          break;\n        }\n      }\n      if (!onLog) die();\n    }\n  }\n\n  function checkCollisions() {\n    if (hop.active) return;\n    const z = Math.round(player.position.z);\n    const row = rows.find(function(r){ return r.z === z; });\n    if (!row) return;\n    for (let i = 0; i < row.obstacles.length; i++) {\n      const ob = row.obstacles[i];\n      if (ob.userData.type === 'car') {\n        const dx = player.position.x - ob.position.x;\n        const dz = player.position.z - ob.position.z;\n        if (Math.abs(dx) < 0.7 && Math.abs(dz) < 0.8) die();\n      } else if (ob.userData.type === 'tree') {\n        const dx = player.position.x - ob.position.x;\n        const dz = player.position.z - ob.position.z;\n        if (Math.abs(dx) < 0.55 && Math.abs(dz) < 0.55) {\n          player.position.copy(hop.from);\n        }\n      }\n    }\n  }\n\n  function die() {\n    if (isDead) return;\n    isDead = true;\n    pendingHop = null;\n    finalScoreEl.textContent = progress;\n    gameOver.style.display = 'block';\n    overlay.style.display = 'none';\n  }\n\n  function updateCamera() {\n    const targetX = player.position.x + 8;\n    const targetY = player.position.y + 12;\n    const targetZ = player.position.z + 8;\n    camera.position.x += (targetX - camera.position.x) * 0.12;\n    camera.position.y += (targetY - camera.position.y) * 0.12;\n    camera.position.z += (targetZ - camera.position.z) * 0.12;\n    camera.lookAt(player.position.x, player.position.y, player.position.z);\n  }\n\n  function onResize() {\n    const width = window.innerWidth || 1;\n    const height = window.innerHeight || 1;\n    camera.aspect = width / height;\n    camera.updateProjectionMatrix();\n    renderer.setSize(width, height);\n  }\n\n  function update() {\n    if (!started) return;\n    loopTicks++;\n    const dt = 0.016;\n    updateObstacles(dt);\n    updateHop(dt);\n    checkCollisions();\n    updateCamera();\n    worldRowsAhead = maxGeneratedZ - Math.round(player.position.z);\n  }\n\n  function renderLoop() {\n    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(renderLoop);\n    if (renderer && scene && camera) {\n      try { renderer.render(scene, camera); } catch (e) {}\n    }\n  }\n\n  window.__openagentsCrossyRoadState = function(){\n    return {\n      player: { x: player.position.x, y: player.position.y, z: player.position.z },\n      camera: { position: { x: camera.position.x, y: camera.position.y, z: camera.position.z } },\n      progress: progress,\n      worldRowsAhead: worldRowsAhead,\n      started: started,\n      loopTicks: loopTicks\n    };\n  };\n\n  window.__openagentsCrossyRoadStart = function(){\n    overlay.style.display = 'none';\n    gameOver.style.display = 'none';\n    started = true;\n    isDead = false;\n  };\n\n  window.__openagentsCrossyRoadRestart = function(){\n    player.position.set(0, 0, 0);\n    player.rotation.set(0, 0, 0);\n    progress = 0;\n    isDead = false;\n    hop.active = false;\n    pendingHop = null;\n    scoreEl.textContent = '0';\n    generateInitialWorld();\n    overlay.style.display = 'none';\n    gameOver.style.display = 'none';\n    started = true;\n  };\n\n  function boot() {\n    if (typeof THREE === 'undefined') {\n      setTimeout(boot, 50);\n      return;\n    }\n    init();\n  }\n\n  if (document.readyState === 'loading') {\n    document.addEventListener('DOMContentLoaded', boot);\n  } else {\n    boot();\n  }\n})();\n</script>\n</body>\n</html>"
+    },
+    "receiptRef": "receipt.inference.khala_code.verification.khala.northstar.crossy_road.executed_acceptance.v1.fnv1a32.9ef47428",
+    "reward": {
+      "handoffRef": "accepted_outcome.khala_code.crossy_road.receipt.inference.khala_code.verification.khala.northstar.crossy_road.executed_a",
+      "scalar": 0
+    },
+    "rubricRef": "rubric.khala_code.crossy_road.single_html.v1",
+    "scalarReward": 0,
+    "sourceRefs": [
+      "rubric.khala_code.crossy_road.single_html.v1",
+      "command.khala_code.crossy_road.headless_html_probe.v1",
+      "receipt.inference.khala_code.verification.khala.northstar.crossy_road.executed_acceptance.v1.fnv1a32.9ef47428",
+      "model:openagents/khala-code",
+      "worker:khala-code-crossy-road-verifier"
+    ],
+    "summary": "Artifact failed the cheap pre-screen (not a runnable single-file HTML game); not executed.",
+    "verification": "failed",
+    "verified": false
+  }
+}

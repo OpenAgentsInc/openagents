@@ -1,0 +1,180 @@
+import type { ProofReplayBundle } from '@openagentsinc/proof-replay'
+
+// A self-contained, shipment-gate-passing proof_replay_bundle.v1 fixture so the
+// spike needs no live Worker / D1. Lifted from packages/proof-replay's own test
+// fixture (the canonical "passes assertProofReplayBundleShipmentGate" bundle).
+// The spike proves headless rendering of the EXISTING scene; the exact bundle
+// content is not load-bearing for that question.
+export const spikeReplayBundle = {
+  actors: [
+    {
+      actorRef: 'actor.pylon',
+      avatarRole: 'contributor',
+      displayName: 'Contributor',
+      fallbackAssetId: 'procedural.avatar',
+      pylonRef: 'pylon.public.worker',
+    },
+    {
+      actorRef: 'actor.treasury',
+      avatarRole: 'settlement_terminal',
+      displayName: 'Treasury',
+      fallbackAssetId: 'procedural.terminal',
+    },
+  ],
+  bundleRef: 'proof_replay_bundle.spike.r1',
+  cameraCues: [
+    {
+      cueRef: 'cue.overview',
+      durationSecond: 8,
+      focusRefs: ['stage.run'],
+      mode: 'overview',
+      sourceRefs: ['run.test'],
+      startSecond: 0,
+    },
+    {
+      cueRef: 'cue.proof',
+      durationSecond: 12,
+      focusRefs: ['stage.proof'],
+      mode: 'orbit_proof',
+      sourceRefs: ['challenge.test'],
+      startSecond: 8,
+    },
+    {
+      cueRef: 'cue.zap',
+      durationSecond: 8,
+      focusRefs: ['stage.settlement'],
+      mode: 'zap_focus',
+      sourceRefs: ['receipt.test.real'],
+      startSecond: 20,
+    },
+  ],
+  captions: [
+    {
+      captionRef: 'caption.title',
+      sequenceIndex: 0,
+      sourceRefs: ['run.test'],
+      text: 'Receipt-backed work becomes a public Bitcoin settlement.',
+      timelineSecond: 0,
+    },
+  ],
+  claimScope: 'evidence_presentation_only',
+  events: [
+    {
+      actorRefs: ['actor.pylon'],
+      displayText: 'proof_verified',
+      eventRef: 'event.2.proof_verified',
+      kind: 'proof_verified',
+      sequenceIndex: 2,
+      sourceRefs: ['source.2'],
+      targetRefs: ['stage.proof'],
+      timelineSecond: 10,
+    },
+    {
+      actorRefs: ['actor.pylon'],
+      displayText: 'actor_entered_region',
+      eventRef: 'event.0.actor_entered_region',
+      kind: 'actor_entered_region',
+      sequenceIndex: 0,
+      sourceRefs: ['source.0'],
+      targetRefs: ['stage.run'],
+      timelineSecond: 0,
+    },
+    {
+      actorRefs: ['actor.pylon'],
+      amountSats: 5,
+      displayText: 'payment_zap_simulated',
+      eventRef: 'event.3.payment_zap_simulated',
+      kind: 'payment_zap_simulated',
+      sequenceIndex: 3,
+      sourceRefs: ['receipt.test.simulation'],
+      targetRefs: ['stage.settlement'],
+      timelineSecond: 14,
+    },
+    {
+      actorRefs: ['actor.pylon'],
+      amountSats: 1_000,
+      displayText: 'settlement_recorded',
+      eventRef: 'event.4.settlement_recorded',
+      kind: 'settlement_recorded',
+      rail: 'spark_treasury',
+      sequenceIndex: 4,
+      sourceRefs: ['receipt.test.real'],
+      targetRefs: ['stage.settlement'],
+      timelineSecond: 22,
+    },
+    {
+      actorRefs: ['actor.treasury'],
+      amountSats: 1_000,
+      displayText: 'payment_zap_confirmed',
+      eventRef: 'event.5.payment_zap_confirmed',
+      kind: 'payment_zap_confirmed',
+      rail: 'spark_treasury',
+      sequenceIndex: 5,
+      sourceRefs: ['receipt.test.real'],
+      targetRefs: ['actor.pylon', 'stage.pylon'],
+      timelineSecond: 24,
+    },
+    {
+      actorRefs: ['actor.pylon'],
+      displayText: 'settlement_blocked_closed',
+      eventRef: 'event.1.settlement_blocked_closed',
+      kind: 'settlement_blocked_closed',
+      sequenceIndex: 1,
+      sourceRefs: ['forum.failed_closed'],
+      targetRefs: ['stage.settlement'],
+      timelineSecond: 6,
+    },
+  ],
+  flows: [
+    {
+      flowKind: 'payment_movement',
+      flowRef: 'flow.real',
+      fromRef: 'actor.treasury',
+      sourceRefs: ['receipt.test.real'],
+      toRef: 'actor.pylon',
+    },
+  ],
+  gaps: [
+    {
+      affectedRefs: ['settlement_blocked_closed'],
+      gapRef: 'gap.sequence',
+      reason: 'ordered by sequence',
+      sourceRefs: ['forum.failed_closed'],
+    },
+  ],
+  generatedAt: '2026-06-18T02:00:00.000Z',
+  privacyLevel: 'public_safe',
+  schemaVersion: 'proof_replay_bundle.v1',
+  sourceAuthority: 'worker_d1_public',
+  sourceRefs: [
+    { kind: 'run', ref: 'run.test' },
+    { kind: 'receipt', ref: 'receipt.test.real' },
+  ],
+  stages: [
+    {
+      label: 'Tassadar',
+      sourceRefs: ['run.test'],
+      stageKind: 'run_core',
+      stageRef: 'stage.run',
+    },
+    {
+      label: 'Proof gate',
+      sourceRefs: ['challenge.test'],
+      stageKind: 'proof_gate',
+      stageRef: 'stage.proof',
+    },
+    {
+      label: 'Settlement terminal',
+      sourceRefs: ['receipt.test.real'],
+      stageKind: 'settlement_terminal',
+      stageRef: 'stage.settlement',
+    },
+    {
+      label: 'Contributor station',
+      sourceRefs: ['pylon.public.worker'],
+      stageKind: 'pylon_station',
+      stageRef: 'stage.pylon',
+    },
+  ],
+  title: 'Tassadar Run 1 (Replay R-1 spike)',
+} satisfies ProofReplayBundle

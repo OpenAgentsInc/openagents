@@ -1,0 +1,6 @@
+{
+  "replayDigestRef": "digest.tassadar.ao6.patched2.20260619T010148",
+  "validatorDeviceRef": "pylon.device.ao6.patched2.validator",
+  "validatorReceiptRef": "receipt.validator.ao6.patched2.20260619T010148",
+  "workloadFamily": "article_closeout"
+}

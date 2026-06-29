@@ -1,0 +1,3 @@
+/Users/christopherdavid/work/openagents/apps/autopilot-desktop/artifacts/stable-macos-arm64-Autopilot.20260619T010148.notarized.dmg: accepted
+source=Notarized Developer ID
+origin=Developer ID Application: OpenAgents, Inc. (HQWSG26L43)

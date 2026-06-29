@@ -1,0 +1,31 @@
+{
+  "schemaRef": "probe.tool_menu_summary.v1",
+  "assignmentRef": "assignment.public.probe_gepa.terminal_bench_2.canary.20260608151057",
+  "redactionState": "public_safe",
+  "selectedSignatureRefs": [
+    "program_signature.probe.benchmark.service_readiness.v1"
+  ],
+  "snapshot": {
+    "schemaRef": "probe.projected_tool_menu_snapshot.v1",
+    "projectedToolRefs": [
+      "tool.probe.read_file",
+      "tool.probe.code_search",
+      "tool.probe.shell_command",
+      "tool.probe.apply_patch",
+      "tool.probe.record_evidence"
+    ],
+    "requiredToolRefs": [
+      "tool.probe.read_file",
+      "tool.probe.code_search",
+      "tool.probe.shell_command",
+      "tool.probe.apply_patch",
+      "tool.probe.record_evidence"
+    ],
+    "deniedToolRefs": [
+      "tool.probe.raw_network_exfiltration",
+      "tool.probe.unbounded_log_export",
+      "tool.probe.hidden_verifier_read"
+    ]
+  },
+  "toolMenuRef": "tool_menu.probe.terminal_bench_2.canary.unpaid_smoke.v1"
+}

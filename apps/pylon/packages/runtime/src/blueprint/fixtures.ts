@@ -1,0 +1,459 @@
+import type {
+  BlueprintContractConsumer,
+  BlueprintContractExportSeed,
+  BlueprintModuleVersionRef,
+  BlueprintProgramRegistryProjection,
+  BlueprintProgramSignature,
+  BlueprintProgramToolScope,
+  BlueprintProgramType,
+  BlueprintReleaseGateRef,
+  ProbeToolMenuPlan,
+} from "./contracts.js";
+
+export const BLUEPRINT_CONTRACT_CONSUMERS: ReadonlyArray<BlueprintContractConsumer> = [
+  "ai_agent",
+  "nexus",
+  "oa_node",
+  "oa_workroomd",
+  "probe",
+  "psionic",
+  "pylon",
+  "treasury",
+];
+
+export const STATIC_BLUEPRINT_REGISTRY_VERSION_REF = "blueprint_registry.probe_static_fixture.v1";
+
+const operatorConsumers = (): Array<BlueprintContractConsumer> => [
+  "ai_agent",
+  "nexus",
+  "oa_node",
+  "oa_workroomd",
+  "probe",
+  "psionic",
+  "pylon",
+];
+
+const allConsumers = (): Array<BlueprintContractConsumer> => [...BLUEPRINT_CONTRACT_CONSUMERS];
+
+const jsonSchema = (
+  name: string,
+  privacyPolicy: "public_refs_only" | "operator_refs_only",
+): BlueprintContractExportSeed["jsonSchemas"][number] => ({
+  consumers: privacyPolicy === "public_refs_only" ? allConsumers() : operatorConsumers(),
+  id: `blueprint_json_schema.${name}.v1`,
+  jsonSchemaUrl: `https://openagents.com/api/blueprint/contracts/json-schema/${name}.schema.json`,
+  name,
+  openApiComponentRef: `#/components/schemas/${name}`,
+  privacyPolicy,
+  schemaRef: `schema.blueprint.${name}.v1`,
+  stability: "seed",
+  versionRef: `schema.blueprint.${name}.v1`,
+});
+
+const probeReadTools: ReadonlyArray<BlueprintProgramToolScope> = [
+  {
+    access: "read",
+    allowedSurfaces: ["agent_api", "omni_workroom", "operator_dashboard", "pylon_desktop"],
+    requiresApproval: false,
+    toolRef: "tool.probe.code_search",
+  },
+  {
+    access: "read",
+    allowedSurfaces: ["agent_api", "omni_workroom", "operator_dashboard", "pylon_desktop"],
+    requiresApproval: false,
+    toolRef: "tool.probe.read_file",
+  },
+  {
+    access: "evidence",
+    allowedSurfaces: ["agent_api", "omni_workroom", "operator_dashboard"],
+    requiresApproval: false,
+    toolRef: "tool.probe.record_evidence",
+  },
+];
+
+const signatureLookupProgramType: BlueprintProgramType = {
+  allowedStrategyRefs: ["strategy.blueprint.semantic_signature_lookup.v1"],
+  directMutationAllowed: false,
+  evidenceRequirements: [
+    {
+      descriptionRef: "evidence.blueprint.signature_lookup.registry_projection_ref",
+      kind: "source_ref",
+      minimumCount: 1,
+      required: true,
+    },
+  ],
+  family: "routing",
+  id: "program_type.probe.signature_lookup",
+  instructionRefs: ["instructions.probe.signature_lookup.v1"],
+  instructionsVersionRef: "instructions.probe.signature_lookup.v1",
+  purposeRef: "purpose.probe.signature_lookup",
+  receiptRequirements: [
+    {
+      kind: "program_run",
+      receiptRef: "receipt.program_run",
+      required: true,
+    },
+  ],
+  releaseGates: [
+    {
+      evidenceRefs: ["evidence.blueprint.fixture.signature_lookup.decode"],
+      gateKind: "operator_review",
+      gateRef: "release_gate.probe.signature_lookup.operator_review",
+      required: true,
+    },
+  ],
+  riskClass: "low",
+  status: "draft",
+  toolScopes: probeReadTools,
+};
+
+const toolMenuProgramType: BlueprintProgramType = {
+  allowedStrategyRefs: ["strategy.blueprint.tool_menu_projection.v1"],
+  directMutationAllowed: false,
+  evidenceRequirements: [
+    {
+      descriptionRef: "evidence.blueprint.tool_menu.projected_from_signature_scopes",
+      kind: "source_ref",
+      minimumCount: 1,
+      required: true,
+    },
+  ],
+  family: "action_planning",
+  id: "program_type.probe.tool_menu.project",
+  instructionRefs: ["instructions.probe.tool_menu.project.v1"],
+  instructionsVersionRef: "instructions.probe.tool_menu.project.v1",
+  purposeRef: "purpose.probe.tool_menu.project",
+  receiptRequirements: [
+    {
+      kind: "program_run",
+      receiptRef: "receipt.program_run",
+      required: true,
+    },
+    {
+      kind: "action_submission",
+      receiptRef: "receipt.action_submission",
+      required: false,
+    },
+  ],
+  releaseGates: [
+    {
+      evidenceRefs: ["evidence.blueprint.fixture.tool_menu.decode"],
+      gateKind: "operator_review",
+      gateRef: "release_gate.probe.tool_menu.operator_review",
+      required: true,
+    },
+  ],
+  riskClass: "medium",
+  status: "draft",
+  toolScopes: [
+    ...probeReadTools,
+    {
+      access: "propose_action",
+      allowedSurfaces: ["agent_api", "omni_workroom", "operator_dashboard"],
+      requiresApproval: true,
+      toolRef: "tool.probe.propose_action_submission",
+    },
+  ],
+};
+
+const signatureLookupSignature: BlueprintProgramSignature = {
+  decodePolicy: {
+    validationMode: "strict",
+    validationPolicyRef: "policy.blueprint.decode.strict_public_refs_only",
+    unknownFieldPolicy: "reject",
+  },
+  evidenceRequirements: signatureLookupProgramType.evidenceRequirements,
+  id: "program_signature.probe.signature_lookup.v1",
+  inputSchema: {
+    kind: "input",
+    schemaRef: "schema.probe.BlueprintSignatureLookupRequest.v1",
+    versionRef: "schema.probe.BlueprintSignatureLookupRequest.v1",
+  },
+  outputSchema: {
+    kind: "output",
+    schemaRef: "schema.probe.BlueprintSignatureLookupResult.v1",
+    versionRef: "schema.probe.BlueprintSignatureLookupResult.v1",
+  },
+  programTypeId: signatureLookupProgramType.id,
+  receiptRequirements: signatureLookupProgramType.receiptRequirements,
+  status: "draft",
+  supportsContext: true,
+  supportsContinuation: false,
+  supportsProofProjection: false,
+  supportsReview: false,
+  supportsRouting: true,
+  toolScopes: probeReadTools,
+  versionRef: "program_signature.probe.signature_lookup.v1",
+};
+
+const toolMenuSignature: BlueprintProgramSignature = {
+  decodePolicy: {
+    validationMode: "strict",
+    validationPolicyRef: "policy.blueprint.decode.strict_public_refs_only",
+    unknownFieldPolicy: "reject",
+  },
+  evidenceRequirements: toolMenuProgramType.evidenceRequirements,
+  id: "program_signature.probe.tool_menu.project.v1",
+  inputSchema: {
+    kind: "input",
+    schemaRef: "schema.probe.ProbeToolMenuRequest.v1",
+    versionRef: "schema.probe.ProbeToolMenuRequest.v1",
+  },
+  outputSchema: {
+    kind: "output",
+    schemaRef: "schema.probe.ProbeToolMenuPlan.v1",
+    versionRef: "schema.probe.ProbeToolMenuPlan.v1",
+  },
+  programTypeId: toolMenuProgramType.id,
+  receiptRequirements: toolMenuProgramType.receiptRequirements,
+  status: "draft",
+  supportsContext: true,
+  supportsContinuation: false,
+  supportsProofProjection: true,
+  supportsReview: false,
+  supportsRouting: false,
+  toolScopes: toolMenuProgramType.toolScopes,
+  versionRef: "program_signature.probe.tool_menu.project.v1",
+};
+
+const moduleVersions: ReadonlyArray<BlueprintModuleVersionRef> = [
+  {
+    id: "module_version.probe.signature_lookup.seed.v1",
+    implementationRef: "implementation.probe.signature_lookup.fixture_mirror.v1",
+    moduleKind: "effect_agent_module",
+    moduleRef: "module.probe.signature_lookup",
+    programSignatureId: signatureLookupSignature.id,
+    programTypeId: signatureLookupProgramType.id,
+    releaseState: "unpromoted",
+    status: "draft",
+    versionRef: "module_version.probe.signature_lookup.seed.v1",
+  },
+  {
+    id: "module_version.probe.tool_menu.seed.v1",
+    implementationRef: "implementation.probe.tool_menu.fixture_mirror.v1",
+    moduleKind: "deterministic_reducer",
+    moduleRef: "module.probe.tool_menu",
+    programSignatureId: toolMenuSignature.id,
+    programTypeId: toolMenuProgramType.id,
+    releaseState: "unpromoted",
+    status: "draft",
+    versionRef: "module_version.probe.tool_menu.seed.v1",
+  },
+];
+
+const releaseGates: ReadonlyArray<BlueprintReleaseGateRef> = [
+  {
+    decidedByRef: null,
+    decision: null,
+    decisionReasonRef: null,
+    fixturePassState: "draft",
+    fixtureRefs: ["fixture.probe.signature_lookup.decode.v1"],
+    id: "release_gate.probe.signature_lookup.seed.v1",
+    policyState: "not_checked",
+    receiptRefs: [],
+    reviewState: "not_requested",
+    rollbackPosture: "missing",
+    scorecardRef: null,
+    selfPromotionAttempt: false,
+    targetKind: "program_signature",
+    targetRef: signatureLookupSignature.id,
+  },
+  {
+    decidedByRef: null,
+    decision: null,
+    decisionReasonRef: null,
+    fixturePassState: "draft",
+    fixtureRefs: ["fixture.probe.tool_menu.decode.v1"],
+    id: "release_gate.probe.tool_menu.seed.v1",
+    policyState: "not_checked",
+    receiptRefs: [],
+    reviewState: "not_requested",
+    rollbackPosture: "missing",
+    scorecardRef: null,
+    selfPromotionAttempt: false,
+    targetKind: "program_signature",
+    targetRef: toolMenuSignature.id,
+  },
+];
+
+export const STATIC_BLUEPRINT_PROGRAM_REGISTRY: BlueprintProgramRegistryProjection = {
+  entries: [
+    {
+      approvalRequired: false,
+      backendKinds: ["apple_fm_bridge"],
+      capabilityRefs: ["probe.backend.apple_fm_bridge", "probe.blueprint.signature_lookup"],
+      directMutationAllowed: false,
+      evidenceRefs: ["evidence.blueprint.signature_lookup.registry_projection_ref"],
+      failureRefs: [],
+      family: "routing",
+      id: "registry_entry.probe.signature_lookup.seed.v1",
+      moduleVersionIds: ["module_version.probe.signature_lookup.seed.v1"],
+      programSignatureIds: [signatureLookupSignature.id],
+      programTypeId: signatureLookupProgramType.id,
+      promotionState: "draft",
+      receiptRefs: ["receipt.program_run"],
+      releaseGateIds: ["release_gate.probe.signature_lookup.seed.v1"],
+      riskClass: "low",
+      runIds: [],
+      safeProjection: true,
+      status: "draft",
+    },
+    {
+      approvalRequired: true,
+      backendKinds: ["apple_fm_bridge"],
+      capabilityRefs: ["probe.backend.apple_fm_bridge", "probe.blueprint.tool_menu"],
+      directMutationAllowed: false,
+      evidenceRefs: ["evidence.blueprint.tool_menu.projected_from_signature_scopes"],
+      failureRefs: [],
+      family: "action_planning",
+      id: "registry_entry.probe.tool_menu.seed.v1",
+      moduleVersionIds: ["module_version.probe.tool_menu.seed.v1"],
+      programSignatureIds: [toolMenuSignature.id],
+      programTypeId: toolMenuProgramType.id,
+      promotionState: "draft",
+      receiptRefs: ["receipt.program_run", "receipt.action_submission"],
+      releaseGateIds: ["release_gate.probe.tool_menu.seed.v1"],
+      riskClass: "medium",
+      runIds: [],
+      safeProjection: true,
+      status: "draft",
+    },
+  ],
+  moduleVersions,
+  policyRef: "policy.blueprint.probe_registry_fixture.public_refs_only.v1",
+  programSignatures: [signatureLookupSignature, toolMenuSignature],
+  programTypes: [signatureLookupProgramType, toolMenuProgramType],
+  releaseGates,
+  runDetails: [
+    {
+      actorRef: "actor.probe.fixture",
+      authorityBoundary: "evidence_only",
+      confidence: 1,
+      costRef: "cost.probe.fixture.zero",
+      createdAt: "2026-06-07T00:00:00.000Z",
+      directMutationDisabled: true,
+      evidenceRefs: ["evidence.blueprint.signature_lookup.registry_projection_ref"],
+      failureRefs: [],
+      id: "program_run.probe.signature_lookup.fixture.v1",
+      latencyMs: 0,
+      moduleVersionId: "module_version.probe.signature_lookup.seed.v1",
+      noDeploy: true,
+      noEmail: true,
+      noSourceMutation: true,
+      noSpend: true,
+      programSignatureId: signatureLookupSignature.id,
+      programTypeId: signatureLookupProgramType.id,
+      promotionState: "draft",
+      purposeRef: "purpose.probe.signature_lookup",
+      receiptRefs: ["receipt.program_run"],
+      routeRef: "route.probe.fixture",
+      safeProjection: true,
+      updatedAt: "2026-06-07T00:00:00.000Z",
+    },
+  ],
+  safeProjection: true,
+};
+
+export const STATIC_BLUEPRINT_CONTRACT_EXPORT: BlueprintContractExportSeed = {
+  consumers: allConsumers(),
+  eventCatalog: [
+    {
+      consumers: operatorConsumers(),
+      eventRef: "event.blueprint.program_run.recorded.v1",
+      id: "blueprint_event.program_run.recorded.v1",
+      payloadSchemaRef: "schema.blueprint.BlueprintProgramRunDetailProjection.v1",
+      privacyPolicy: "operator_refs_only",
+      receiptRefs: ["receipt.program_run"],
+      stability: "seed",
+      topicRef: "topic.blueprint.program_run.recorded",
+    },
+    {
+      consumers: operatorConsumers(),
+      eventRef: "event.blueprint.action_submission.proposed.v1",
+      id: "blueprint_event.action_submission.proposed.v1",
+      payloadSchemaRef: "schema.blueprint.BlueprintActionSubmission.v1",
+      privacyPolicy: "operator_refs_only",
+      receiptRefs: ["receipt.action_submission"],
+      stability: "seed",
+      topicRef: "topic.blueprint.action_submission.proposed",
+    },
+  ],
+  id: "blueprint_contract_export.probe_seed.v1",
+  jsonSchemas: [
+    jsonSchema("BlueprintProgramType", "public_refs_only"),
+    jsonSchema("BlueprintProgramSignature", "public_refs_only"),
+    jsonSchema("BlueprintProgramRegistryProjection", "operator_refs_only"),
+    jsonSchema("BlueprintProgramRunDetailProjection", "operator_refs_only"),
+    jsonSchema("ProbeToolMenuPlan", "operator_refs_only"),
+    jsonSchema("BlueprintActionSubmission", "operator_refs_only"),
+  ],
+  openApi: [
+    {
+      consumers: operatorConsumers(),
+      id: "blueprint_openapi.program_registry.get.v1",
+      method: "GET",
+      operationRef: "operation.blueprint.program_registry.get",
+      path: "/api/blueprint/program-registry",
+      privacyPolicy: "operator_refs_only",
+      requestSchemaRef: null,
+      responseSchemaRef: "schema.blueprint.BlueprintProgramRegistryProjection.v1",
+      stability: "seed",
+    },
+    {
+      consumers: operatorConsumers(),
+      id: "blueprint_openapi.contract_export.get.v1",
+      method: "GET",
+      operationRef: "operation.blueprint.contract_export.get",
+      path: "/api/blueprint/contracts",
+      privacyPolicy: "operator_refs_only",
+      requestSchemaRef: null,
+      responseSchemaRef: "schema.blueprint.BlueprintContractExportSeed.v1",
+      stability: "seed",
+    },
+  ],
+  receiptCatalog: [
+    {
+      consumers: allConsumers(),
+      evidenceSchemaRef: "schema.blueprint.BlueprintProgramRunDetailProjection.v1",
+      id: "blueprint_receipt.program_run.v1",
+      privacyPolicy: "operator_refs_only",
+      receiptRef: "receipt.program_run",
+      retentionPolicyRef: "retention.blueprint.operator_evidence.default",
+      stability: "seed",
+    },
+    {
+      consumers: operatorConsumers(),
+      evidenceSchemaRef: "schema.blueprint.BlueprintActionSubmission.v1",
+      id: "blueprint_receipt.action_submission.v1",
+      privacyPolicy: "operator_refs_only",
+      receiptRef: "receipt.action_submission",
+      retentionPolicyRef: "retention.blueprint.operator_evidence.default",
+      stability: "seed",
+    },
+  ],
+  versionRef: "blueprint_contract_export.probe_seed.v1",
+};
+
+export const STATIC_PROBE_TOOL_MENU_PLAN: ProbeToolMenuPlan = {
+  backendKind: "apple_fm_bridge",
+  evidenceFlags: {
+    authorityBoundary: "evidence_only",
+    directMutationDisabled: true,
+    noDeploy: true,
+    noEmail: true,
+    noSourceMutation: true,
+    noSpend: true,
+  },
+  programSignatureIds: [toolMenuSignature.id],
+  registryPolicyRef: STATIC_BLUEPRINT_PROGRAM_REGISTRY.policyRef,
+  releaseGateIds: ["release_gate.probe.tool_menu.seed.v1"],
+  safeProjection: true,
+  tools: toolMenuSignature.toolScopes.map((scope) => ({
+    access: scope.access,
+    allowedSurfaces: scope.allowedSurfaces,
+    inputSchemaRef: "schema.probe.ToolInput.public_refs_only.v1",
+    programSignatureId: toolMenuSignature.id,
+    requiresApproval: scope.requiresApproval,
+    toolRef: scope.toolRef,
+  })),
+};

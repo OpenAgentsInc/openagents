@@ -1,0 +1,3 @@
+appNotarySubmissionId=117fe77a-0e62-43e7-b2dd-4e1794810cf1
+appNotaryStatus=Accepted
+appGatekeeper=accepted; source=Notarized Developer ID; origin=Developer ID Application: OpenAgents, Inc. (HQWSG26L43)

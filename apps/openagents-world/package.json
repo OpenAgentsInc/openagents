@@ -1,0 +1,23 @@
+{
+  "name": "@openagentsinc/openagents-world",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --port 8791",
+    "deploy": "wrangler deploy --env=\"\"",
+    "test": "bun test src",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@openagentsinc/public-activity-timeline": "workspace:*",
+    "@openagentsinc/world-contract": "workspace:*",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260609.0",
+    "bun-types": "^1.0.0",
+    "typescript": "catalog:",
+    "wrangler": "^4.51.0"
+  }
+}

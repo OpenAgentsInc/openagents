@@ -1,0 +1,11 @@
+{
+  "pylonRef": "pylon.fa4e9049a4329f3d56e2",
+  "displayName": "AO6 Patched2 DMG",
+  "status": "active",
+  "latestHeartbeatStatus": "online",
+  "walletReady": true,
+  "sparkPayoutTargetReady": true,
+  "sparkPayoutTargetRef": "payout.spark.3596dd0026ab64132e90ed1d",
+  "ownerAgentRef": "agent:user_48a3488e-d1ad-4dda-90da-af8a10e7b721",
+  "eventCount": 9
+}

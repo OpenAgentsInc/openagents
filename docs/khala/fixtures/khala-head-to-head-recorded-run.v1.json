@@ -1,0 +1,267 @@
+{
+  "schema": "openagents.khala_head_to_head_evidence.v1",
+  "manifestRef": "recorded.khala.head_to_head.crossy_road.verified_run.v1",
+  "evidenceMode": "fixture_scaffold",
+  "generatedAt": "2026-06-23T00:00:00.000Z",
+  "scope": {
+    "issueRef": "github:OpenAgentsInc/openagents#6016",
+    "parentIssueRef": "github:OpenAgentsInc/openagents#6017",
+    "roadmapRef": "docs/inference/khala-buildout-roadmap.md#agent-demo--benchmark-metrics-and-publication-pack",
+    "runbookRef": "docs/inference/2026-06-23-khala-head-to-head-m8-status.md",
+    "prompt": "build a really high quality single html file crossy road game with three.js",
+    "benchmarkRef": "benchmark.khala.crossy_road_threejs.single_html.v1"
+  },
+  "runs": [
+    {
+      "runId": "recorded.khala.crossy_road.verified_run.v1",
+      "lane": "khala",
+      "label": "Khala recorded run (prod 2026-06-22); EXECUTED acceptance on 2026-06-23 => failed 6/6 (verified:false)",
+      "model": "openagents/khala-code",
+      "provider": "openagents",
+      "coordinator": {
+        "mode": "heuristic_router",
+        "policyRef": "recorded.khala.heuristic_router.v0.crossy_road.v1",
+        "promoted": false
+      },
+      "evidenceMode": "fixture_scaffold",
+      "startedAt": "2026-06-22T00:00:00.000Z",
+      "completedAt": "2026-06-22T00:01:46.000Z",
+      "wallClockMs": 106000,
+      "usage": {
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "totalTokens": 0
+      },
+      "costUsd": 0,
+      "costMsat": 0,
+      "priceMsat": 0,
+      "acceptedOutcome": {
+        "accepted": false,
+        "verificationClass": "failed",
+        "verdictRef": "recorded.verdict.khala.crossy_road.executed_failed.v1",
+        "verifierRef": "verifier.khala_code.executed_acceptance_suite.v1",
+        "receiptRef": "recorded.receipt.khala.crossy_road.executed_failed_scalar_reward_0.v1",
+        "evidenceRefs": [
+          "recorded.artifact.khala.crossy_road.single_html.v1",
+          "recorded.stream.khala.crossy_road.no_524.106s.v1"
+        ],
+        "blockerRefs": [
+          "blocker.khala_demo.executed_acceptance_failed_six_of_six"
+        ],
+        "executedAcceptance": {
+          "note": "Authoritative north-star artifact (reconstructed from the verified prod SSE stream at /tmp/khala-stream.txt, fingerprint fnv1a32:10cb2792, 53426 bytes, preserved at scripts/khala-demo/artifacts/khala-crossy-road-northstar-run.v1.html) was run through the REAL headless acceptance runner (apps/openagents.com/workers/api/src/inference/acceptance-runner) and verifyKhalaCodeCompletion via scripts/khala-demo/run-executed-acceptance.mjs.",
+          "executed": true,
+          "rubricRef": "rubric.khala_code.crossy_road.executed_acceptance.v1",
+          "verification": "failed",
+          "verified": false,
+          "scalarReward": 0,
+          "artifactFingerprint": "fnv1a32:10cb2792",
+          "passedChecks": [],
+          "failedChecks": [
+            "loads_without_errors",
+            "play_starts_game",
+            "forward_input_advances_player",
+            "camera_follow_delta_bounded",
+            "world_keeps_generating_ahead",
+            "restart_resets_state"
+          ],
+          "checkDetail": {
+            "loads_without_errors": "FAIL — 1 page error during construction: localStorage access throws in the constructor (the Game ctor reads localStorage before the start-btn listener attaches), consistent with the documented crash-on-load defect; the game never finishes constructing.",
+            "play_starts_game": "FAIL — PLAY did not start the game (started=undefined; loop never ticked).",
+            "forward_input_advances_player": "FAIL — forward input did not advance the player (state unreadable).",
+            "camera_follow_delta_bounded": "FAIL — no bounded camera motion observed (state unreadable).",
+            "world_keeps_generating_ahead": "FAIL — world rows ahead unknown (state unreadable).",
+            "restart_resets_state": "FAIL — restart did not reset (state unreadable)."
+          },
+          "honestNote": "Two distinct, honest reasons for the red: (1) a real load-time crash (localStorage-in-constructor / DOM-ref ordering) so the game never starts; and (2) the artifact never exposes the runner state contract (__openagentsCrossyRoadState/Start/Restart), so the five state-dependent checks fail honestly rather than producing a false green. An artifact that does not expose the contract cannot be execution-verified — by design. A real `failed` beats a fake `passed`."
+        }
+      },
+      "artifact": {
+        "kind": "single_html",
+        "artifactRef": "recorded.artifact.khala.crossy_road.single_html.v1",
+        "playableInWorldRef": null,
+        "blockerRefs": [
+          "blocker.khala_demo.artifact_not_playable_in_world"
+        ]
+      },
+      "settlement": {
+        "settled": false,
+        "receiptRefs": [],
+        "blockerRefs": [
+          "blocker.khala_demo.settlement_owner_armed_not_dispatched"
+        ]
+      },
+      "verse": {
+        "playbackRef": null,
+        "sourceRefs": [],
+        "inWorldWorkUnits": 0,
+        "gatewayWorkUnits": 0,
+        "blockerRefs": [
+          "blocker.khala_demo.verse_playback_missing"
+        ]
+      },
+      "energy": {
+        "kwhMeasured": null,
+        "measurementRef": null,
+        "blockerRefs": [
+          "blocker.khala_demo.energy_telemetry_missing"
+        ]
+      },
+      "sourceRefs": [
+        "docs/inference/khala-buildout-roadmap.md",
+        "docs/inference/2026-06-23-khala-head-to-head-m8-status.md",
+        "docs/inference/2026-06-22-verified-work-must-execute-the-artifact.md",
+        "github:OpenAgentsInc/openagents#6016"
+      ],
+      "blockerRefs": [
+        "blocker.khala_demo.tokens_not_measured",
+        "blocker.khala_demo.cost_usd_not_measured",
+        "blocker.khala_demo.m7_live_conductor_missing"
+      ]
+    },
+    {
+      "runId": "recorded.khala.crossy_road.executed_passing_run.v1",
+      "lane": "khala",
+      "label": "Khala live run (prod 2026-06-23, served kimi-k2p7-code via Fireworks); EXECUTED acceptance => PASSED 6/6 (verified:true, scalarReward 1). Prompt = north-star + the runner state contract.",
+      "model": "openagents/khala-code",
+      "provider": "openagents",
+      "coordinator": {
+        "mode": "heuristic_router",
+        "policyRef": "recorded.khala.heuristic_router.v0.crossy_road.v1",
+        "promoted": false
+      },
+      "evidenceMode": "fixture_scaffold",
+      "startedAt": "2026-06-23T03:00:00.000Z",
+      "completedAt": "2026-06-23T03:01:53.000Z",
+      "wallClockMs": 113000,
+      "usage": {
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "totalTokens": 0
+      },
+      "costUsd": 0,
+      "costMsat": 0,
+      "priceMsat": 0,
+      "acceptedOutcome": {
+        "accepted": true,
+        "verificationClass": "test_passed",
+        "verdictRef": "recorded.verdict.khala.crossy_road.executed_passed.v1",
+        "verifierRef": "verifier.khala_code.executed_acceptance_suite.v1",
+        "receiptRef": "recorded.receipt.khala.crossy_road.executed_passed_scalar_reward_1.v1",
+        "evidenceRefs": [
+          "recorded.artifact.khala.crossy_road.single_html.passing.v1",
+          "recorded.stream.khala.crossy_road.no_524.113s.v1"
+        ],
+        "blockerRefs": [],
+        "executedAcceptance": {
+          "note": "The PASSING north-star artifact (Khala-code prod stream on 2026-06-23, served model accounts/fireworks/models/kimi-k2p7-code, 16153 bytes, fingerprint fnv1a32:9ef47428, preserved at scripts/khala-demo/artifacts/khala-crossy-road-northstar-passing.v1.html) was run through the REAL headless acceptance runner (apps/openagents.com/workers/api/src/inference/acceptance-runner, Playwright/chromium) via scripts/khala-demo/run-executed-acceptance.mjs. Full verdict JSON: scripts/khala-demo/artifacts/khala-crossy-road-northstar-passing.v1.verdict.json.",
+          "executed": true,
+          "rubricRef": "rubric.khala_code.crossy_road.executed_acceptance.v1",
+          "verification": "test_passed",
+          "verified": true,
+          "scalarReward": 1,
+          "artifactFingerprint": "fnv1a32:9ef47428",
+          "passedChecks": [
+            "loads_without_errors",
+            "play_starts_game",
+            "forward_input_advances_player",
+            "camera_follow_delta_bounded",
+            "world_keeps_generating_ahead",
+            "restart_resets_state"
+          ],
+          "failedChecks": [],
+          "checkDetail": {
+            "loads_without_errors": "PASS — No console or page errors during load (no localStorage-on-load crash).",
+            "play_starts_game": "PASS — Game started (started=true, loopTicks 0->4..6).",
+            "forward_input_advances_player": "PASS — Forward input advanced player by ~0.66 (within the expected ~1-tile tolerance).",
+            "camera_follow_delta_bounded": "PASS — Max camera delta per move ~0.41-0.49 <= bound 5 (no 100x camera bug).",
+            "world_keeps_generating_ahead": "PASS — 24 rows ahead after 12 moves (>= 12; no blue sky).",
+            "restart_resets_state": "PASS — Restart reset player to origin and progress to 0."
+          },
+          "honestNote": "This is the GENUINE executed pass: the headless suite actually ran the game and all six behavioral checks passed. IMPORTANT HONEST CAVEAT ON THE GATEWAY VERDICT: the prod gateway's terminal openagents block on this same stream returned verification:failed, because the gateway's CHEAP PRE-SCREEN (khala-code-verifier.ts prescreenKhalaCodeArtifact) rejects any artifact whose <script> loads three.js from a CDN (the !scriptSrcPattern rule) and so never reaches the execution branch. The north-star prompt explicitly asks for three.js, so a faithful artifact loads three.js from a CDN and is pre-screen-rejected by the gateway today even though it executes correctly. The standalone executed-acceptance runner runs the real Playwright suite directly (no pre-screen gate) and is the authoritative behavioral verdict: verified:true, 6/6, scalarReward 1. PROMPT CAVEAT: the bare north-star prompt (the run above) fails 6/6 because the model has no way to know the __openagentsCrossyRoadState/Start/Restart hooks the headless runner drives; this passing run augmented the prompt with that state contract so the executor could drive the game. Both data points are kept honestly."
+        }
+      },
+      "artifact": {
+        "kind": "single_html",
+        "artifactRef": "recorded.artifact.khala.crossy_road.single_html.passing.v1",
+        "playableInWorldRef": null,
+        "blockerRefs": [
+          "blocker.khala_demo.artifact_not_playable_in_world"
+        ]
+      },
+      "settlement": {
+        "settled": false,
+        "receiptRefs": [],
+        "blockerRefs": [
+          "blocker.khala_demo.settlement_owner_armed_not_dispatched"
+        ]
+      },
+      "verse": {
+        "playbackRef": null,
+        "sourceRefs": [],
+        "inWorldWorkUnits": 0,
+        "gatewayWorkUnits": 0,
+        "blockerRefs": [
+          "blocker.khala_demo.verse_playback_missing"
+        ]
+      },
+      "energy": {
+        "kwhMeasured": null,
+        "measurementRef": null,
+        "blockerRefs": [
+          "blocker.khala_demo.energy_telemetry_missing"
+        ]
+      },
+      "sourceRefs": [
+        "docs/inference/khala-buildout-roadmap.md",
+        "docs/inference/2026-06-23-khala-head-to-head-m8-status.md",
+        "docs/inference/2026-06-22-verified-work-must-execute-the-artifact.md",
+        "github:OpenAgentsInc/openagents#6016"
+      ],
+      "blockerRefs": [
+        "blocker.khala_demo.tokens_not_measured",
+        "blocker.khala_demo.cost_usd_not_measured",
+        "blocker.khala_demo.m7_live_conductor_missing",
+        "blocker.khala_demo.gateway_prescreen_rejects_cdn_three_js"
+      ]
+    }
+  ],
+  "externalReportedClaims": [
+    {
+      "claimRef": "reported.sakana_fugu_ultra.crossy_road.external_unverified.v1",
+      "label": "Sakana Fugu Ultra reported comparison",
+      "citationStatus": "reported_without_primary_url",
+      "tokens": 89000,
+      "costUsd": 7.32,
+      "wallClockMs": 1320000,
+      "verdictSummary": "Reported faster and cheaper; issues included inverted turn direction, wonky camera, no SFX, and not identical to Crossy Road.",
+      "blockerRefs": [
+        "blocker.khala_demo.external_claim_primary_url_missing"
+      ]
+    },
+    {
+      "claimRef": "reported.claude_opus_4_8_ultracode.crossy_road.external_unverified.v1",
+      "label": "Claude Opus 4.8 Ultracode reported comparison",
+      "citationStatus": "reported_without_primary_url",
+      "tokens": 940000,
+      "costUsd": 37.85,
+      "wallClockMs": 4740000,
+      "verdictSummary": "Reported higher quality; issues included retry loops and wrong restart character position.",
+      "blockerRefs": [
+        "blocker.khala_demo.external_claim_primary_url_missing"
+      ]
+    }
+  ],
+  "publication": {
+    "status": "draft_scaffold",
+    "publicationRef": null,
+    "claimUpgradeRefs": [],
+    "blockerRefs": [
+      "blocker.khala_demo.frontier_baseline_not_run",
+      "blocker.khala_demo.watched_in_verse_pending",
+      "blocker.khala_demo.playable_in_world_pending",
+      "blocker.khala_demo.publication_missing",
+      "blocker.khala_demo.owner_signed_claim_upgrade_missing"
+    ]
+  }
+}
