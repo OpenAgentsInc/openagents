@@ -1295,6 +1295,113 @@ describe('public product promises document', () => {
     )
   })
 
+  test('keeps world-first and largest-force claims qualified until owner receipts exist', () => {
+    const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
+      publicProductPromisesDocument(),
+    )
+    const byId = new Map(
+      decoded.promises.map(promise => [promise.promiseId, promise]),
+    )
+
+    const bitcoinTrainingClaim = byId.get(
+      'claims.world_first_ai_training_paid_bitcoin.v1',
+    )
+    expect(bitcoinTrainingClaim).toEqual(
+      expect.objectContaining({
+        state: 'red',
+        blockerRefs: expect.arrayContaining([
+          'blocker.product_promises.world_first_evidence_pack_missing',
+          'blocker.product_promises.world_first_owner_signed_upgrade_missing',
+        ]),
+        evidenceRefs: expect.arrayContaining([
+          'docs/launch/2026-06-18-world-firsts-verification.md',
+          'promise:proof.claim_upgrade_receipts.v1',
+        ]),
+      }),
+    )
+    expect(bitcoinTrainingClaim?.safeCopy).toContain(
+      'full qualifiers, not the bare "world first" phrasing',
+    )
+    expect(bitcoinTrainingClaim?.unsafeCopy).toContain(
+      'Do not say, on camera or in copy',
+    )
+    expect(bitcoinTrainingClaim?.verification).toContain(
+      'Green still requires (1) a dereferenceable evidence pack',
+    )
+
+    const llmComputerClaim = byId.get(
+      'claims.world_first_public_llm_computer_training_run.v1',
+    )
+    expect(llmComputerClaim).toEqual(
+      expect.objectContaining({
+        state: 'red',
+        blockerRefs: expect.arrayContaining([
+          'blocker.product_promises.world_first_owner_signed_upgrade_missing',
+        ]),
+        evidenceRefs: expect.arrayContaining([
+          'docs/launch/2026-06-20-llm-computer-training-run-definition.md',
+          'docs/launch/2026-06-20-world-first-llm-computer-evidence-pack.md',
+          'promise:proof.claim_upgrade_receipts.v1',
+        ]),
+      }),
+    )
+    expect(llmComputerClaim?.safeCopy).toContain(
+      'crediting Percepta as the paradigm originator',
+    )
+    expect(llmComputerClaim?.unsafeCopy).toContain(
+      'without the qualifiers and Percepta credit',
+    )
+    expect(llmComputerClaim?.verification).toContain(
+      'with a skeptic-runnable verification recipe and a refuse-list',
+    )
+
+    const largestAgenticSalesForceClaim = byId.get(
+      'claims.pursued_world_first_largest_agentic_sales_force.v1',
+    )
+    expect(largestAgenticSalesForceClaim).toEqual(
+      expect.objectContaining({
+        state: 'planned',
+        blockerRefs: expect.arrayContaining([
+          'blocker.product_promises.world_first_agentic_sales_force_not_achieved',
+          'blocker.product_promises.world_first_agentic_sales_force_no_sized_verifiable_force',
+          'blocker.product_promises.world_first_owner_signed_upgrade_missing',
+        ]),
+      }),
+    )
+    expect(largestAgenticSalesForceClaim?.safeCopy).toContain(
+      'It is NOT achieved and must never be presented as a met or verified claim',
+    )
+    expect(largestAgenticSalesForceClaim?.unsafeCopy).toContain(
+      'Do not state OpenAgents HAS the largest agentic sales force',
+    )
+    expect(largestAgenticSalesForceClaim?.verification).toContain(
+      'This record is intentionally never green from aspiration',
+    )
+
+    const largestSalesForceClaim = byId.get(
+      'claims.pursued_world_first_largest_sales_force.v1',
+    )
+    expect(largestSalesForceClaim).toEqual(
+      expect.objectContaining({
+        state: 'planned',
+        blockerRefs: expect.arrayContaining([
+          'blocker.product_promises.world_first_largest_sales_force_not_achieved',
+          'blocker.product_promises.world_first_largest_sales_force_seven_million_bar_unmet',
+          'blocker.product_promises.world_first_owner_signed_upgrade_missing',
+        ]),
+      }),
+    )
+    expect(largestSalesForceClaim?.safeCopy).toContain(
+      'The Avon ~6.5M figure is attributed in the video to ChatGPT',
+    )
+    expect(largestSalesForceClaim?.unsafeCopy).toContain(
+      'Do not state OpenAgents HAS the largest sales force',
+    )
+    expect(largestSalesForceClaim?.verification).toContain(
+      'independently verified counts crossing the stated bar',
+    )
+  })
+
   test('weekend pylon promise assault attaches evidence without flipping any state', () => {
     const document = publicProductPromisesDocument()
     const byId = new Map(
