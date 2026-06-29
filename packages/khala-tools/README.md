@@ -42,3 +42,12 @@ case-insensitively, dotfiles are included, directories end in `/`, and empty
 directories are successful results. The tool returns bounded model output plus
 structured UI entries; denied workspace escapes and credential-shaped directory
 paths are blocked before listing.
+
+### `glob`
+
+`glob` finds workspace paths by glob pattern. It accepts `pattern`, optional
+search root `path`, and optional `limit`. The default implementation uses
+`rg --files --hidden --glob ...` when available so repository ignore rules are
+honored, then falls back to a deterministic local walker with simple
+`.gitignore` support. Results are POSIX-style workspace-relative paths with
+structured match counts and truncation metadata.
