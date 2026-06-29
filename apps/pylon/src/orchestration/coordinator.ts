@@ -4,7 +4,17 @@ export type DispatchLiveness = "fresh" | "stale" | "missing" | "hung"
 
 export type DispatchEligibility =
   | { ok: true }
-  | { ok: false; reason: "not_idle" | "circuit_broken" | "heartbeat_missing" | "heartbeat_stale" | "dispatch_hung" | "base_drift" }
+  | {
+      ok: false
+      reason:
+        | "not_idle"
+        | "circuit_broken"
+        | "heartbeat_missing"
+        | "heartbeat_stale"
+        | "dispatch_hung"
+        | "base_drift"
+        | "runner_mismatch"
+    }
 
 export type SupervisorCoordinatorOptions = {
   now?: Date
@@ -44,10 +54,20 @@ export function dispatchLiveness(
 
 export function dispatchEligibility(
   context: DispatchContext,
-  options: SupervisorCoordinatorOptions = {},
+  taskOrOptions?: OrchestrationTask | SupervisorCoordinatorOptions,
+  maybeOptions: SupervisorCoordinatorOptions = {},
 ): DispatchEligibility {
+  const task = taskOrOptions !== undefined && "status" in taskOrOptions && "spec" in taskOrOptions
+    ? taskOrOptions
+    : undefined
+  const options = task === undefined
+    ? (taskOrOptions as SupervisorCoordinatorOptions | undefined) ?? maybeOptions
+    : maybeOptions
   if (context.status === "circuit_broken") return { ok: false, reason: "circuit_broken" }
   if (context.status !== "idle") return { ok: false, reason: "not_idle" }
+  if (task?.spec.runnerKind !== undefined && context.runnerKind !== "generic" && context.runnerKind !== task.spec.runnerKind) {
+    return { ok: false, reason: "runner_mismatch" }
+  }
   const liveness = dispatchLiveness(context, options)
   if (liveness === "missing") return { ok: false, reason: "heartbeat_missing" }
   if (liveness === "stale") return { ok: false, reason: "heartbeat_stale" }
@@ -69,16 +89,22 @@ export function planSupervisorDispatch(
   const readyTasks = tasks.filter((task) => task.status === "ready")
   const planned: PlannedDispatch[] = []
   const refused: DispatchCoordinatorResult["refused"] = []
+  const plannedTaskIds = new Set<string>()
 
   for (const context of contexts) {
     if (planned.length >= capacity || planned.length >= readyTasks.length) break
-    const eligibility = dispatchEligibility(context, options)
+    const firstUnplannedTask = readyTasks.find((candidate) => !plannedTaskIds.has(candidate.id))
+    const task = readyTasks.find((candidate) => {
+      if (plannedTaskIds.has(candidate.id)) return false
+      return dispatchEligibility(context, candidate, options).ok
+    })
+    const eligibility = dispatchEligibility(context, task ?? firstUnplannedTask, options)
     if (!eligibility.ok) {
       refused.push({ context, eligibility })
       continue
     }
-    const task = readyTasks[planned.length]
     if (task === undefined) break
+    plannedTaskIds.add(task.id)
     planned.push({ task, context })
   }
 
