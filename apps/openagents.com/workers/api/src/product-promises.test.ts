@@ -440,10 +440,11 @@ describe('public product promises document', () => {
       /latest stays 0\.2\.5|only published, installable Pylon|release candidate, not stable 0\.3\.0|Pylon v1\.0 is present in the monorepo as a release candidate/i,
     )
     expect(currentCopy).toContain('Pylon v1.0 has a stable source cut')
-    expect(currentCopy).toContain('Registry 2026-06-29.2')
+    expect(currentCopy).toContain('Registry 2026-06-29.3')
     expect(currentCopy).toContain('flips NO promise state')
     expect(currentCopy).toContain('Khala Desktop now carries source-level')
     expect(currentCopy).toContain('maxStalenessSeconds:0')
+    expect(currentCopy).toContain('metrics.khala_model_family_mix_public.v1')
     const codexSuccessorPromise = decoded.promises.find(
       promise => promise.promiseId === 'autopilot.codex_probe_pylon_successor.v1',
     )
@@ -1599,6 +1600,9 @@ describe('public product promises document', () => {
     expect(modelMixPromise?.safeCopy).toContain('maxStalenessSeconds:0')
     expect(modelMixPromise?.safeCopy).toContain('stable public model-family')
     expect(modelMixPromise?.safeCopy).toContain('Pylon-Codex own-capacity')
+    expect(modelMixPromise?.safeCopy).not.toMatch(
+      /2-second cache|cached\/fuzzy|fuzzy freshness/i,
+    )
     expect(modelMixPromise?.unsafeCopy).toContain(
       'external customer demand, revenue',
     )
@@ -1608,9 +1612,18 @@ describe('public product promises document', () => {
     expect(modelMixPromise?.blockerRefs).toEqual([
       'blocker.product_promises.model_mix_green_owner_signoff_pending',
     ])
-    expect(modelMixPromise?.verification).toContain('issue #6858')
+    expect(modelMixPromise?.verification).toContain('issue #7016 re-audit')
     expect(modelMixPromise?.verification).toContain(
-      'Green still requires a live receipt/owner sign-off',
+      'production GET /api/public/khala-tokens-served/model-mix?window=30d',
+    )
+    expect(modelMixPromise?.verification).toContain(
+      'projection_staleness.v1 maxStalenessSeconds:0',
+    )
+    expect(modelMixPromise?.verification).toContain(
+      'Green still requires a recorded owner-signed yellow->green transition receipt',
+    )
+    expect(modelMixPromise?.verification).not.toMatch(
+      /2-second cache|cached\/fuzzy|fuzzy freshness/i,
     )
   })
 
