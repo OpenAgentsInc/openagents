@@ -95,6 +95,70 @@ describe("Pylon supervisor orchestration store", () => {
     expect(store.getDispatchContext("ctx.fresh")?.currentTaskId).toBe("task.a")
   })
 
+  test("uses registry runner kinds to match typed tasks to compatible contexts", () => {
+    const now = new Date("2026-06-27T12:00:00.000Z")
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    store.createTask({
+      id: "task.claude",
+      spec: { ...baseTaskSpec, title: "Claude task", runnerKind: "claude_agent" },
+      now,
+    })
+    store.createTask({
+      id: "task.codex",
+      spec: { ...baseTaskSpec, title: "Codex task", runnerKind: "codex" },
+      now,
+    })
+    store.createDispatchContext({
+      id: "ctx.codex",
+      assigneeHandle: "codex-1",
+      runnerKind: "codex",
+      lastHeartbeatAt: now,
+      now,
+    })
+    store.createDispatchContext({
+      id: "ctx.claude",
+      assigneeHandle: "claude-1",
+      runnerKind: "claude_agent",
+      lastHeartbeatAt: now,
+      now,
+    })
+
+    const result = dispatchReadySupervisorTasks(store, { now, maxConcurrentSlots: 2 })
+
+    expect(result.planned.map((entry) => [entry.task.id, entry.context.id])).toEqual([
+      ["task.codex", "ctx.codex"],
+      ["task.claude", "ctx.claude"],
+    ])
+    expect(store.getTask("task.codex")?.status).toBe("dispatched")
+    expect(store.getTask("task.claude")?.status).toBe("dispatched")
+  })
+
+  test("refuses an otherwise healthy idle context when the ready task requires another runner", () => {
+    const now = new Date("2026-06-27T12:00:00.000Z")
+    const store = createPylonOrchestrationStore(new Database(":memory:"))
+    store.createTask({
+      id: "task.claude",
+      spec: { ...baseTaskSpec, title: "Claude task", runnerKind: "claude_agent" },
+      now,
+    })
+    store.createDispatchContext({
+      id: "ctx.codex",
+      assigneeHandle: "codex-1",
+      runnerKind: "codex",
+      lastHeartbeatAt: now,
+      now,
+    })
+
+    const result = dispatchReadySupervisorTasks(store, { now })
+
+    expect(result.planned).toEqual([])
+    expect(result.refused.map((entry) => [entry.context.id, entry.eligibility.ok ? "ok" : entry.eligibility.reason])).toEqual([
+      ["ctx.codex", "runner_mismatch"],
+    ])
+    expect(store.getTask("task.claude")?.status).toBe("ready")
+    expect(store.getDispatchContext("ctx.codex")?.status).toBe("idle")
+  })
+
   test("tracks a virtual HEAD chain for concurrently dispatched git tasks", () => {
     const now = new Date("2026-06-27T12:00:00.000Z")
     const store = createPylonOrchestrationStore(new Database(":memory:"))
@@ -169,6 +233,7 @@ describe("Pylon supervisor group addressing", () => {
     store.createDispatchContext({
       id: "ctx.a",
       assigneeHandle: "codex-1",
+      runnerKind: "codex",
       worktreeId: "wt-a",
       lastHeartbeatAt: now,
       now,
@@ -187,6 +252,9 @@ describe("Pylon supervisor group addressing", () => {
 
     expect(resolveOrchestrationGroup("@all", contexts).map((context) => context.id)).toEqual(["ctx.a", "ctx.b"])
     expect(resolveOrchestrationGroup("@idle", contexts).map((context) => context.id)).toEqual(["ctx.a"])
+    expect(resolveOrchestrationGroup("@runner:codex", contexts).map((context) => context.id)).toEqual(["ctx.a"])
+    expect(resolveOrchestrationGroup("@runner:claude", contexts).map((context) => context.id)).toEqual(["ctx.b"])
+    expect(resolveOrchestrationGroup("@runner:claude_agent", contexts).map((context) => context.id)).toEqual(["ctx.b"])
     expect(resolveOrchestrationGroup("@worktree:wt-b", contexts).map((context) => context.id)).toEqual(["ctx.b"])
     expect(resolveOrchestrationGroup("@codex-1", contexts).map((context) => context.id)).toEqual(["ctx.a"])
   })

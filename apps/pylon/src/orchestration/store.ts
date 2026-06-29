@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite"
 import { createHash } from "node:crypto"
+import type { AgentRunnerKind } from "../agent-runner-registry.js"
 
 export const ORCHESTRATION_SCHEMA_VERSION = 1
 
@@ -14,6 +15,7 @@ export type OrchestrationTaskStatus =
 export type OrchestrationTaskSpec = {
   title: string
   prompt: string
+  runnerKind?: OrchestrationRunnerKind
   verifyCommand?: string
   repo?: string
   branch?: string
@@ -60,10 +62,13 @@ export type DispatchContextStatus =
   | "blocked"
   | "circuit_broken"
 
+export type OrchestrationRunnerKind = AgentRunnerKind | "generic"
+type StoredRunnerKind = OrchestrationRunnerKind | "claude"
+
 export type DispatchContext = {
   id: string
   assigneeHandle: string
-  runnerKind: "codex" | "claude" | "generic"
+  runnerKind: OrchestrationRunnerKind
   worktreeId: string | null
   worktreePath: string | null
   status: DispatchContextStatus
@@ -96,7 +101,7 @@ export type CreateTaskInput = {
 export type CreateDispatchContextInput = {
   id: string
   assigneeHandle: string
-  runnerKind?: DispatchContext["runnerKind"]
+  runnerKind?: OrchestrationRunnerKind | "claude"
   worktreeId?: string | null
   worktreePath?: string | null
   maxConcurrentSlots?: number
@@ -119,7 +124,16 @@ const parsePendingTaskIds = (value: string): string[] => [...new Set(parseJsonAr
 const parseSpec = (value: string): OrchestrationTaskSpec => {
   const parsed: unknown = JSON.parse(value)
   if (typeof parsed !== "object" || parsed === null) throw new Error("invalid orchestration task spec")
-  return parsed as OrchestrationTaskSpec
+  const spec = parsed as Omit<OrchestrationTaskSpec, "runnerKind"> & { runnerKind?: StoredRunnerKind }
+  const { runnerKind, ...rest } = spec
+  return {
+    ...rest,
+    ...(runnerKind === undefined ? {} : { runnerKind: normalizeOrchestrationRunnerKind(runnerKind) }),
+  }
+}
+
+export function normalizeOrchestrationRunnerKind(kind: OrchestrationRunnerKind | "claude"): OrchestrationRunnerKind {
+  return kind === "claude" ? "claude_agent" : kind
 }
 
 type TaskRow = {
@@ -137,7 +151,7 @@ type TaskRow = {
 type DispatchContextRow = {
   id: string
   assignee_handle: string
-  runner_kind: DispatchContext["runnerKind"]
+  runner_kind: StoredRunnerKind
   worktree_id: string | null
   worktree_path: string | null
   status: DispatchContextStatus
@@ -175,7 +189,7 @@ const taskFromRow = (row: TaskRow): OrchestrationTask => ({
 const contextFromRow = (row: DispatchContextRow): DispatchContext => ({
   id: row.id,
   assigneeHandle: row.assignee_handle,
-  runnerKind: row.runner_kind,
+  runnerKind: normalizeOrchestrationRunnerKind(row.runner_kind),
   worktreeId: row.worktree_id,
   worktreePath: row.worktree_path,
   status: row.status,
@@ -233,7 +247,7 @@ export class PylonOrchestrationStore {
       CREATE TABLE IF NOT EXISTS pylon_orchestration_dispatch_contexts (
         id TEXT PRIMARY KEY,
         assignee_handle TEXT NOT NULL,
-        runner_kind TEXT NOT NULL CHECK (runner_kind IN ('codex', 'claude', 'generic')),
+        runner_kind TEXT NOT NULL CHECK (runner_kind IN ('codex', 'claude_agent', 'claude', 'generic')),
         worktree_id TEXT,
         worktree_path TEXT,
         status TEXT NOT NULL CHECK (status IN ('idle', 'dispatched', 'completed', 'failed', 'blocked', 'circuit_broken')),
@@ -361,7 +375,7 @@ export class PylonOrchestrationStore {
       .run({
         $id: input.id,
         $assigneeHandle: input.assigneeHandle,
-        $runnerKind: input.runnerKind ?? "generic",
+        $runnerKind: normalizeOrchestrationRunnerKind(input.runnerKind ?? "generic"),
         $worktreeId: input.worktreeId ?? null,
         $worktreePath: input.worktreePath ?? null,
         $lastHeartbeatAt: input.lastHeartbeatAt === undefined ? null : input.lastHeartbeatAt === null ? null : iso(input.lastHeartbeatAt),
