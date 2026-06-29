@@ -19,6 +19,10 @@ describe("khala desktop Apple FM readiness", () => {
       pylonStatus: {
         available: true,
         status: "ready",
+        backendKind: "apple_fm_bridge",
+        profileId: "apple-fm-local",
+        model: "apple-foundation-model",
+        capability: APPLE_FM_CAPABILITY,
         advertisedCapabilities: [APPLE_FM_CAPABILITY],
         blockerRefs: [],
         supervisor: {
