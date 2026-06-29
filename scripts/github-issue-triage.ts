@@ -313,13 +313,32 @@ export const listRepositoryFiles = (cwd: string): ReadonlyArray<string> => {
 export const buildCandidateIssueSearch = (includeLabeled: boolean): string =>
   includeLabeled ? "is:issue is:open sort:created-desc" : "is:issue is:open no:label sort:created-desc"
 
+export const buildIssueViewArgs = (repo: string, issueNumber: number): ReadonlyArray<string> => [
+  "issue",
+  "view",
+  String(issueNumber),
+  "--repo",
+  repo,
+  "--json",
+  "number,title,body,labels,url",
+]
+
+export const hydrateCandidateIssues = (
+  issues: ReadonlyArray<GitHubIssue>,
+  readIssue: (issueNumber: number) => GitHubIssue,
+): ReadonlyArray<GitHubIssue> =>
+  issues.map(issue => ({
+    ...issue,
+    ...readIssue(issue.number),
+  }))
+
 const listCandidateIssues = (
   repo: string,
   limit: number,
   includeLabeled: boolean,
 ): ReadonlyArray<GitHubIssue> => {
   const search = buildCandidateIssueSearch(includeLabeled)
-  return runGhJson([
+  const issues = runGhJson([
     "issue",
     "list",
     "--repo",
@@ -333,6 +352,8 @@ const listCandidateIssues = (
     "--json",
     "number,title,body,labels,url",
   ]) as ReadonlyArray<GitHubIssue>
+
+  return hydrateCandidateIssues(issues, issueNumber => runGhJson(buildIssueViewArgs(repo, issueNumber)) as GitHubIssue)
 }
 
 const listOpenIssues = (repo: string, limit: number): ReadonlyArray<GitHubIssue> =>
