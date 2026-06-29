@@ -67,6 +67,18 @@ export const VOICE_PROGRAM_INGEST_BLOCKERS = {
   ],
 } as const
 
+const voiceProgramIngestCapabilityEnvelope = {
+  capturesAudio: false,
+  callsTranscriptionService: false,
+  generatesActionProposals: false,
+  rendersApprovalUi: false,
+  approvalMutationAllowed: false,
+  actionExecutionAllowed: false,
+  providerMutationAllowed: false,
+  paymentMutationAllowed: false,
+  publicClaimUpgradeAllowed: false,
+} as const
+
 // Parse the VOICE_PROGRAM_INGEST_ENABLED flag. Default OFF: anything other than
 // an explicit truthy token leaves the endpoint inert.
 export const isVoiceProgramIngestEnabled = (
@@ -90,13 +102,12 @@ const inertPayload = (): Record<string, unknown> => ({
   promiseState: 'red',
   inert: true,
   enabled: false,
+  ...voiceProgramIngestCapabilityEnvelope,
   // Echo the read-only authority boundary so callers can see this endpoint
   // never executes, mutates, captures audio, or settles.
   authorityBoundary: 'read_only_voice_session_evidence',
   executesProgramRun: false,
   proposesProgramInputOnly: true,
-  capturesAudio: false,
-  callsTranscriptionService: false,
   blockerCleared: VOICE_PROGRAM_INGEST_BLOCKERS.cleared,
   remainingBlockers: VOICE_PROGRAM_INGEST_BLOCKERS.remaining,
   note:
@@ -267,6 +278,7 @@ export const handleVoiceProgramIngestApi = async (
     promiseId: VOICE_PROGRAM_INGEST_PROMISE_ID,
     promiseState: 'red' as const,
     enabled: true as const,
+    ...voiceProgramIngestCapabilityEnvelope,
     executesProgramRun: false as const,
     proposesProgramInputOnly: true as const,
     blockerCleared: VOICE_PROGRAM_INGEST_BLOCKERS.cleared,

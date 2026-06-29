@@ -87,6 +87,13 @@ describe('handleVoiceProgramIngestApi', () => {
     expect(payload.executesProgramRun).toBe(false)
     expect(payload.callsTranscriptionService).toBe(false)
     expect(payload.capturesAudio).toBe(false)
+    expect(payload.generatesActionProposals).toBe(false)
+    expect(payload.rendersApprovalUi).toBe(false)
+    expect(payload.approvalMutationAllowed).toBe(false)
+    expect(payload.actionExecutionAllowed).toBe(false)
+    expect(payload.providerMutationAllowed).toBe(false)
+    expect(payload.paymentMutationAllowed).toBe(false)
+    expect(payload.publicClaimUpgradeAllowed).toBe(false)
     // The named blocker this endpoint clears, and the two that stay gated.
     expect(payload.blockerCleared).toBe(VOICE_PROGRAM_INGEST_BLOCKERS.cleared)
     expect(payload.blockerCleared).toBe(
@@ -114,6 +121,15 @@ describe('handleVoiceProgramIngestApi', () => {
     // The envelope echoes that nothing executes; only program INPUT is proposed.
     expect(payload.executesProgramRun).toBe(false)
     expect(payload.proposesProgramInputOnly).toBe(true)
+    expect(payload.callsTranscriptionService).toBe(false)
+    expect(payload.capturesAudio).toBe(false)
+    expect(payload.generatesActionProposals).toBe(false)
+    expect(payload.rendersApprovalUi).toBe(false)
+    expect(payload.approvalMutationAllowed).toBe(false)
+    expect(payload.actionExecutionAllowed).toBe(false)
+    expect(payload.providerMutationAllowed).toBe(false)
+    expect(payload.paymentMutationAllowed).toBe(false)
+    expect(payload.publicClaimUpgradeAllowed).toBe(false)
     // The blocker this clears stays surfaced; settlement-adjacent blockers stay.
     expect(payload.blockerCleared).toBe(
       'blocker.product_promises.voice_ingestion_endpoint_missing',

@@ -3147,7 +3147,7 @@ export const publicProductPromisesDocument = () => {
           'blocker.product_promises.voice_proposal_and_approval_ui_missing',
         ],
         verification:
-          'Voice evidence contracts and projection logic pass tests. Green requires an ingestion endpoint, a transcription service, proposal generation, and an approval UI, with every proposed action gated server-side.',
+          'Voice evidence contracts, projection logic, the pure transcript-to-program-input ingest core, and the flag-gated POST /api/mobile/voice-sessions/ingest endpoint pass tests. The endpoint accepts only already-transcribed, redacted, ref-only segments and explicitly reports no STT call, no audio capture, no action proposal generation, no approval UI, no approval mutation, and no execution. Green still requires an STT service and capture path, AI action proposal generation, and an approval UI with every proposed action gated server-side.',
         authorityBoundary:
           'A voice transcript is evidence of user intent, not command authority; all proposed actions require server-side policy checks and explicit approval.',
       },
