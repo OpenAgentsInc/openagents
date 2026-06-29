@@ -111,9 +111,41 @@ describe('buildMirrorCodeRun', () => {
     expect(built.runId).toBe('mc-s-qsv-select-python-20260627020304')
     expect(built.status).toBe('queued')
     expect(built.tokensTotal).toBe(0)
+    expect(built.maxTokens).toBe(1_000_000)
+    expect(built.maxWallClockSeconds).toBe(3_600)
     expect(built.passRate).toBeNull()
     expect(built.decisionGrade).toBe(false)
     expect(built.summary).toContain('Owner-gated MirrorCode launch queued')
+  })
+
+  test('builds an owner-gated queued launch row with explicit hard caps', () => {
+    const built = buildMirrorCodeLaunchRun(
+      {
+        kind: 'launch',
+        taskId: 'cal',
+        bucket: 'S',
+        language: 'python',
+        maxTokens: 50_000,
+        maxWallClockSeconds: 600,
+      },
+      '2026-06-27T02:03:04.000Z',
+    )
+    expect(built.maxTokens).toBe(50_000)
+    expect(built.maxWallClockSeconds).toBe(600)
+  })
+
+  test('rejects an owner-gated launch outside the Phase-0 S bucket', () => {
+    expect(() =>
+      buildMirrorCodeLaunchRun(
+        {
+          kind: 'launch',
+          taskId: 'sed',
+          bucket: 'M',
+          language: 'python',
+        },
+        '2026-06-27T02:03:04.000Z',
+      ),
+    ).toThrow(MirrorCodeRunError)
   })
 
   test('rejects an owner-gated launch for an unknown public target', () => {
@@ -367,12 +399,20 @@ describe('handleMirrorCodeRunsApi POST', () => {
     expect(response.status).toBe(202)
     const body = (await response.json()) as {
       kind: string
-      run: { runId: string; status: string; tokensTotal: number }
+      run: {
+        maxTokens?: number
+        maxWallClockSeconds?: number
+        runId: string
+        status: string
+        tokensTotal: number
+      }
     }
     expect(body.kind).toBe('mirrorcode_run_launched')
     expect(body.run.runId).toBe('mc-s-qsv-select-python-20260627020304')
     expect(body.run.status).toBe('queued')
     expect(body.run.tokensTotal).toBe(0)
+    expect(body.run.maxTokens).toBe(1_000_000)
+    expect(body.run.maxWallClockSeconds).toBe(3_600)
     expect(storedRunId).toBe('mc-s-qsv-select-python-20260627020304')
   })
 

@@ -84,6 +84,8 @@ export const MIRRORCODE_DEMAND_SOURCE = 'gym_mirrorcode'
 export const MIRRORCODE_GENERALIZATION_SET_ID = 'mirrorcode_public_tasks_no_rag'
 export const MIRRORCODE_MEMORY_POLICY = 'no_rag_public_tasks_only'
 export const MIRRORCODE_TOKEN_ATTRIBUTION_TRUTH = 'exact_rows_as_proof'
+export const MIRRORCODE_PHASE0_DEFAULT_MAX_TOKENS = 1_000_000
+export const MIRRORCODE_PHASE0_DEFAULT_MAX_WALL_CLOCK_SECONDS = 3_600
 
 // Field bounds enforced in `buildMirrorCodeRun` (the codebase avoids inline
 // Schema length/number refinements; the build boundary is the single place that
@@ -111,6 +113,10 @@ export const MirrorCodeRunInput = S.Struct({
   passRate: S.optional(S.NullOr(S.Number)),
   // Total tokens spent by this sample (the honest token-sink contribution).
   tokens: S.Struct({ total: S.Number }),
+  // Optional public-safe execution caps. Launch intents always set these; older
+  // scored records may omit them.
+  maxTokens: S.optional(S.Number),
+  maxWallClockSeconds: S.optional(S.Number),
   // Exact downstream token rows backing `tokens.total`. Required before a
   // decision-grade run can publish into the gym ladder.
   exactTokenUsageEventRefs: S.optional(S.Array(S.String)),
@@ -130,6 +136,8 @@ export const MirrorCodeLaunchRequest = S.Struct({
   taskId: S.String,
   bucket: MirrorCodeBucket,
   language: S.optional(S.NullOr(S.String)),
+  maxTokens: S.optional(S.Number),
+  maxWallClockSeconds: S.optional(S.Number),
   grade: S.optional(MirrorCodeRunGrade),
 })
 export type MirrorCodeLaunchRequest = typeof MirrorCodeLaunchRequest.Type
@@ -144,6 +152,8 @@ export const MirrorCodeRun = S.Struct({
   status: MirrorCodeRunStatus,
   passRate: S.NullOr(S.Number),
   tokensTotal: S.Number,
+  maxTokens: S.optional(S.Number),
+  maxWallClockSeconds: S.optional(S.Number),
   exactTokenUsageEventRefs: S.Array(S.String),
   tokenAttributionTruth: S.Literal(MIRRORCODE_TOKEN_ATTRIBUTION_TRUTH),
   tokenAttributionProofRef: S.String,
@@ -281,6 +291,24 @@ const assertBounds = (input: MirrorCodeRunInput): void => {
     throw new MirrorCodeRunError('tokens.total must be a non-negative number.')
   }
   if (
+    input.maxTokens !== undefined &&
+    (!Number.isFinite(input.maxTokens) ||
+      input.maxTokens < 1 ||
+      !Number.isInteger(input.maxTokens))
+  ) {
+    throw new MirrorCodeRunError('maxTokens must be a positive integer.')
+  }
+  if (
+    input.maxWallClockSeconds !== undefined &&
+    (!Number.isFinite(input.maxWallClockSeconds) ||
+      input.maxWallClockSeconds < 1 ||
+      !Number.isInteger(input.maxWallClockSeconds))
+  ) {
+    throw new MirrorCodeRunError(
+      'maxWallClockSeconds must be a positive integer.',
+    )
+  }
+  if (
     input.passRate !== undefined &&
     input.passRate !== null &&
     (!Number.isFinite(input.passRate) ||
@@ -385,6 +413,8 @@ export const buildMirrorCodeRun = (raw: unknown): MirrorCodeRun => {
     status,
     passRate,
     tokensTotal: input.tokens.total,
+    maxTokens: input.maxTokens,
+    maxWallClockSeconds: input.maxWallClockSeconds,
     exactTokenUsageEventRefs,
     tokenAttributionTruth: MIRRORCODE_TOKEN_ATTRIBUTION_TRUTH,
     tokenAttributionProofRef: tokenAttributionProofRefFor(input.runId),
@@ -427,6 +457,11 @@ export const buildMirrorCodeLaunchRun = (
     throw new MirrorCodeRunError('taskId must contain a public-safe id.')
   }
   assertPublicTarget(launch)
+  if (launch.bucket !== 'S') {
+    throw new MirrorCodeRunError(
+      'MirrorCode launch intents are Phase-0 S-bucket smoke runs only.',
+    )
+  }
   if (launch.grade === 'decision_grade') {
     throw new MirrorCodeRunError(
       'MirrorCode launch intents are smoke-only; post the scored decision_grade result with exactTokenUsageEventRefs after execution.',
@@ -442,6 +477,10 @@ export const buildMirrorCodeLaunchRun = (
     status: 'queued',
     passRate: null,
     tokens: { total: 0 },
+    maxTokens: launch.maxTokens ?? MIRRORCODE_PHASE0_DEFAULT_MAX_TOKENS,
+    maxWallClockSeconds:
+      launch.maxWallClockSeconds ??
+      MIRRORCODE_PHASE0_DEFAULT_MAX_WALL_CLOCK_SECONDS,
     startedAt: nowIso,
     finishedAt: null,
     summary: `Owner-gated MirrorCode launch queued for ${launch.taskId} (${launch.bucket} bucket) through openagents/khala.`,
