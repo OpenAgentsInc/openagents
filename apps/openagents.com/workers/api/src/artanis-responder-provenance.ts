@@ -29,6 +29,7 @@ import {
   liveAtReadStaleness,
 } from './public-projection-staleness'
 import {
+  ARTANIS_RESPONDER_UNATTENDED_TICKS_BLOCKER,
   readArtanisResponderTickReadiness,
   type ArtanisResponderTickReadinessProjection,
 } from './artanis-responder-ticks'
@@ -40,6 +41,9 @@ export const ARTANIS_RESPONDER_SUPPORT_STALENESS: PublicProjectionStalenessContr
     'artanis_responder_actions.insert',
     'artanis_responder_actions.update',
   ])
+
+export const ARTANIS_RESPONDER_EXTERNAL_FLOW_BLOCKER =
+  'blocker.product_promises.external_contributor_flow_unproven'
 
 // The bounded asker-provenance enum. external_contributor is the only class
 // the green gate cares about; the others exist so the classifier is total
@@ -127,6 +131,8 @@ export type ArtanisResponderSupportProjection = Readonly<{
   publicSafe: true
   authorityBoundary: string
   staleness: PublicProjectionStalenessContract
+  // The blocker tokens this surface tracks for the promise registry.
+  blockerRefs: ReadonlyArray<string>
   // Counts over the projected window, split by provenance honesty.
   externalContributorAnsweredCount: number
   externalContributorTippedCount: number
@@ -134,6 +140,10 @@ export type ArtanisResponderSupportProjection = Readonly<{
   // True once at least one external contributor has been answered end to end
   // with a dereferenceable reply post. This is the gate the blocker tracks.
   externalContributorFlowProven: boolean
+  // True iff the external-contributor flow and ten unattended responder tick
+  // predicates are both proven on live rows. The owner-signed registry
+  // transition remains separate.
+  greenGateMet: boolean
   // The external-contributor interactions, newest first, each with the
   // dereferenceable reply-post ref.
   externalInteractions: ReadonlyArray<ArtanisExternalSupportInteraction>
@@ -224,20 +234,31 @@ export const projectArtanisResponderSupport = (
   const externalContributorFlowProven = externalInteractions.some(
     interaction => interaction.replyPostRef !== null,
   )
+  const greenGateMet =
+    tickReadiness !== undefined &&
+    externalContributorFlowProven &&
+    tickReadiness.externalContributorAnsweredWithinTickWindow &&
+    tickReadiness.unattendedResponderTicksProven
 
   return {
     authorityBoundary:
       'Read-only projection over the Artanis responder-action ledger. Grants no dispatch, spend, assignment, settlement, moderation, or registry authority and cannot create an interaction, a reply, or a tip. Asker provenance is a bounded identity-field classification (operator/owner/agent/user prefix plus known internal Artanis/admin refs); the mind still owns the question-class decision.',
+    blockerRefs: [
+      ARTANIS_RESPONDER_EXTERNAL_FLOW_BLOCKER,
+      ARTANIS_RESPONDER_UNATTENDED_TICKS_BLOCKER,
+    ],
     externalContributorAnsweredCount,
     externalContributorFlowProven,
     externalContributorTippedCount,
     externalInteractions,
     generatedAt: nowIso,
+    greenGateMet,
     kind: 'artanis_pylon_support_responder_external_flow',
     notes: [
       'An external contributor is a registered non-owner, non-operator, non-Artanis identity (a user: actor or a non-internal agent: actor). Operator/owner test articles are classified owner_operator and never satisfy the external-contributor gate.',
       'externalContributorFlowProven becomes true only when at least one external contributor has been answered end to end with a dereferenceable reply post (state responded or tipped); the reply post is fetchable at the publicUrl.',
       'A tipped interaction additionally proves the budget-gated economic leg (reliable-tips ladder) on a real external post.',
+      'greenGateMet is the mechanical receipt-evidence predicate only: externalContributorFlowProven, tickReadiness.externalContributorAnsweredWithinTickWindow, and tickReadiness.unattendedResponderTicksProven must all be true. The yellow->green flip additionally requires the owner-signed promise_transition.',
     ],
     ownerOperatorAnsweredCount,
     publicSafe: true,

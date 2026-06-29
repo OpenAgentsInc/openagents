@@ -4,6 +4,8 @@ import {
 } from './public-projection-staleness'
 
 export const ARTANIS_RESPONDER_TICK_TARGET = 10
+export const ARTANIS_RESPONDER_UNATTENDED_TICKS_BLOCKER =
+  'blocker.product_promises.ten_unattended_responder_ticks_unaccrued'
 
 export const ARTANIS_RESPONDER_TICK_STALENESS: PublicProjectionStalenessContract =
   liveAtReadStaleness([
@@ -72,6 +74,7 @@ export type ArtanisResponderTickReadinessProjection = Readonly<{
   publicSafe: true
   authorityBoundary: string
   staleness: PublicProjectionStalenessContract
+  blockerRefs: ReadonlyArray<string>
   tickTarget: number
   qualifyingUnattendedResponderTickCount: number
   unattendedResponderTicksProven: boolean
@@ -257,6 +260,7 @@ export const projectArtanisResponderTickReadiness = (
   return {
     authorityBoundary:
       'Read-only projection over Artanis responder scheduled tick receipts plus answered responder-action refs. Grants no dispatch, spend, assignment, settlement, moderation, Forum-write, or registry-transition authority and cannot create a tick, classify a question, post a reply, or tip.',
+    blockerRefs: [ARTANIS_RESPONDER_UNATTENDED_TICKS_BLOCKER],
     externalContributorAnsweredWithinTickWindow: tickWindows.some(
       tick => tick.externalContributorAnsweredInWindow,
     ),

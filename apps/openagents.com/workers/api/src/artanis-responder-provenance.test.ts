@@ -1,11 +1,19 @@
 import { describe, expect, test } from 'vitest'
 
 import {
+  ARTANIS_RESPONDER_EXTERNAL_FLOW_BLOCKER,
   boundedResponderSupportLimit,
   classifyAskerProvenance,
   projectArtanisResponderSupport,
   type ArtanisResponderActionRow,
 } from './artanis-responder-provenance'
+import {
+  ARTANIS_RESPONDER_TICK_TARGET,
+  ARTANIS_RESPONDER_UNATTENDED_TICKS_BLOCKER,
+  projectArtanisResponderTickReadiness,
+  type ArtanisResponderTickActionRow,
+  type ArtanisResponderTickRow,
+} from './artanis-responder-ticks'
 
 const nowIso = '2026-06-20T00:00:00.000Z'
 
@@ -22,6 +30,40 @@ const row = (
   state: 'responded',
   tip_receipt_ref: null,
   topic_id: 'topic-1',
+  ...overrides,
+})
+
+const tickRow = (
+  n: number,
+  overrides: Partial<ArtanisResponderTickRow> = {},
+): ArtanisResponderTickRow => ({
+  compose_blocked: 0,
+  compose_considered: 1,
+  compose_responded: 1,
+  compose_skipped_reason: null,
+  compose_state: 'ran',
+  compose_tipped: 0,
+  scan_blocked: 0,
+  scan_proposed: 1,
+  scan_scanned: 1,
+  scan_skipped: 0,
+  scan_skipped_reason: null,
+  scan_state: 'ran',
+  scheduled_at: `2026-06-20T${String(n).padStart(2, '0')}:00:00.000Z`,
+  tick_ref: `receipt.artanis_responder.tick.${n}`,
+  ...overrides,
+})
+
+const tickActionRow = (
+  n: number,
+  overrides: Partial<ArtanisResponderTickActionRow> = {},
+): ArtanisResponderTickActionRow => ({
+  asker_provenance: n === 0 ? 'external_contributor' : 'owner_operator',
+  id: `action-${n}`,
+  replied_at: `2026-06-20T${String(n).padStart(2, '0')}:30:00.000Z`,
+  reply_post_id: `post.public.forum.artanis.${n}`,
+  state: 'responded',
+  topic_id: `topic-${n}`,
   ...overrides,
 })
 
@@ -70,10 +112,15 @@ describe('projectArtanisResponderSupport', () => {
     const projection = projectArtanisResponderSupport([row({})], nowIso)
     expect(projection.kind).toBe('artanis_pylon_support_responder_external_flow')
     expect(projection.publicSafe).toBe(true)
+    expect(projection.blockerRefs).toEqual([
+      ARTANIS_RESPONDER_EXTERNAL_FLOW_BLOCKER,
+      ARTANIS_RESPONDER_UNATTENDED_TICKS_BLOCKER,
+    ])
     expect(projection.staleness.contractVersion).toBe('projection_staleness.v1')
     expect(projection.staleness.composition).toBe('live_at_read')
     expect(projection.externalContributorAnsweredCount).toBe(1)
     expect(projection.externalContributorFlowProven).toBe(true)
+    expect(projection.greenGateMet).toBe(false)
     expect(projection.externalInteractions).toHaveLength(1)
     expect(projection.externalInteractions[0]?.replyPostRef).toBe(
       'post.public.forum.artanis.status.42',
@@ -160,6 +207,47 @@ describe('projectArtanisResponderSupport', () => {
     )
     expect(projection.externalContributorAnsweredCount).toBe(0)
     expect(projection.ownerOperatorAnsweredCount).toBe(0)
+  })
+
+  test('greenGateMet requires external flow and ten qualifying unattended ticks', () => {
+    const tickReadiness = projectArtanisResponderTickReadiness(
+      Array.from({ length: ARTANIS_RESPONDER_TICK_TARGET }, (_, n) => tickRow(n)),
+      Array.from({ length: ARTANIS_RESPONDER_TICK_TARGET }, (_, n) =>
+        tickActionRow(n),
+      ),
+    )
+    expect(tickReadiness.blockerRefs).toEqual([
+      ARTANIS_RESPONDER_UNATTENDED_TICKS_BLOCKER,
+    ])
+    expect(tickReadiness.unattendedResponderTicksProven).toBe(true)
+    expect(tickReadiness.externalContributorAnsweredWithinTickWindow).toBe(true)
+
+    const projection = projectArtanisResponderSupport(
+      [row({ asker_provenance: 'external_contributor' })],
+      nowIso,
+      tickReadiness,
+    )
+    expect(projection.externalContributorFlowProven).toBe(true)
+    expect(projection.greenGateMet).toBe(true)
+  })
+
+  test('greenGateMet stays false when ticks pass without an external tick window', () => {
+    const tickReadiness = projectArtanisResponderTickReadiness(
+      Array.from({ length: ARTANIS_RESPONDER_TICK_TARGET }, (_, n) => tickRow(n)),
+      Array.from({ length: ARTANIS_RESPONDER_TICK_TARGET }, (_, n) =>
+        tickActionRow(n, { asker_provenance: 'owner_operator' }),
+      ),
+    )
+    expect(tickReadiness.unattendedResponderTicksProven).toBe(true)
+    expect(tickReadiness.externalContributorAnsweredWithinTickWindow).toBe(false)
+
+    const projection = projectArtanisResponderSupport(
+      [row({ asker_provenance: 'external_contributor' })],
+      nowIso,
+      tickReadiness,
+    )
+    expect(projection.externalContributorFlowProven).toBe(true)
+    expect(projection.greenGateMet).toBe(false)
   })
 })
 
