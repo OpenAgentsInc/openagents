@@ -561,6 +561,29 @@ describe('public product promises document', () => {
     expect(agenticNpmPromise?.safeCopy).toContain(
       'bounded source-level registry + install/use runtime core exists',
     )
+    const agentCharacterCreationPromise = decoded.promises.find(
+      promise =>
+        promise.promiseId === 'autopilot.agent_character_creation.v1',
+    )
+    expect(agentCharacterCreationPromise?.state).toBe('planned')
+    expect(agentCharacterCreationPromise?.evidenceRefs).toEqual(
+      expect.arrayContaining([
+        'https://github.com/OpenAgentsInc/openagents/issues/6861',
+        'promise:autopilot.agent_world_scene.v1',
+        'promise:labor.forum_work_requests.v1',
+      ]),
+    )
+    expect(agentCharacterCreationPromise?.blockerRefs).toEqual([
+      'blocker.product_promises.agent_character_creation_not_built',
+      'blocker.product_promises.agent_character_creation_auto_forum_intro_unproven',
+      'blocker.product_promises.agent_character_creation_auto_work_search_unproven',
+    ])
+    expect(agentCharacterCreationPromise?.safeCopy).toContain(
+      'It is not a shipped onboarding flow.',
+    )
+    expect(agentCharacterCreationPromise?.unsafeCopy).toContain(
+      'Do not say character-creation onboarding is live',
+    )
     const currentCopy = [
       decoded.currentMonorepoStatus.summary,
       ...decoded.currentMonorepoStatus.caveats,
