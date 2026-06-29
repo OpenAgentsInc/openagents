@@ -145,6 +145,23 @@ export type PylonAccountWindowStatus = {
   label: string
 }
 
+export type PylonAccountQuotaPolicyStatus = {
+  state: "available" | "short_window_cooldown" | "weekly_exhausted" | "limited_unknown"
+  limitScope: "none" | "short_window" | "weekly" | "unknown"
+  exhaustedWindow: PylonAccountWindowStatus | null
+  weeklyWindow: PylonAccountWindowStatus | null
+  resetAtIso: string | null
+  shouldWaitForReset: boolean
+  operatorRecovery: {
+    required: boolean
+    manualResetAvailable: boolean
+    manualResetsRemaining: number
+    command: string | null
+    status: "not_applicable" | "available" | "unavailable" | "exhausted" | "provider_reset_required"
+  }
+  blockerRefs: string[]
+}
+
 export type PylonAccountsStatusProjection = {
   schema: typeof PYLON_ACCOUNTS_STATUS_SCHEMA
   observedAt: string
@@ -162,6 +179,7 @@ export type PylonAccountsStatusProjection = {
       sourceDigestRef: string | null
       manualResetsRemaining: number
     }
+    quotaPolicy: PylonAccountQuotaPolicyStatus
     capacity: {
       hourly: PylonAccountWindowStatus | null
       weekly: PylonAccountWindowStatus | null
@@ -1174,6 +1192,114 @@ function firstWindowByLabel(windows: PylonAccountWindowStatus[], label: string):
   return windows.find((window) => window.label === label) ?? null
 }
 
+function exhaustedWindow(windows: PylonAccountWindowStatus[], labels: readonly string[]): PylonAccountWindowStatus | null {
+  return windows.find((window) =>
+    labels.includes(window.label) &&
+    (window.remainingPercent <= 0 || window.usedPercent >= 100)
+  ) ?? null
+}
+
+function resetAtForPolicy(window: PylonAccountWindowStatus | null, quotaCooldownExpiresAt: string | null): string | null {
+  return window?.resetsAtIso ?? quotaCooldownExpiresAt
+}
+
+export function quotaPolicyFromAccountStatus(input: {
+  quotaLimited: boolean
+  quotaCooldownExpiresAt: string | null
+  windows: PylonAccountWindowStatus[]
+  manualResetsRemaining: number
+  accountRef: string | null
+  hasLocalQuotaBlock: boolean
+}): PylonAccountQuotaPolicyStatus {
+  const weeklyWindow = firstWindowByLabel(input.windows, "weekly")
+  const weeklyExhausted = exhaustedWindow(input.windows, ["weekly"])
+  const shortWindowExhausted = exhaustedWindow(input.windows, ["5h", "hourly"])
+  const weeklyStillAvailable =
+    weeklyWindow === null ||
+    (weeklyWindow.remainingPercent > 0 && weeklyWindow.usedPercent < 100)
+
+  const resetCommand = input.accountRef === null
+    ? null
+    : `pylon accounts status --account ${input.accountRef} --reset --json`
+  const refreshCommand = input.accountRef === null
+    ? null
+    : `pylon accounts usage --account ${input.accountRef} --refresh --json`
+  const recovery = (
+    required: boolean,
+    status: PylonAccountQuotaPolicyStatus["operatorRecovery"]["status"],
+    options: { command?: string | null; manualResetAllowed?: boolean } = {},
+  ): PylonAccountQuotaPolicyStatus["operatorRecovery"] => {
+    const manualResetAvailable =
+      required &&
+      options.manualResetAllowed !== false &&
+      input.hasLocalQuotaBlock &&
+      input.manualResetsRemaining > 0 &&
+      resetCommand !== null
+    return {
+      required,
+      manualResetAvailable,
+      manualResetsRemaining: input.manualResetsRemaining,
+      command: options.command === undefined
+        ? manualResetAvailable ? resetCommand : null
+        : options.command,
+      status,
+    }
+  }
+
+  if (weeklyExhausted) {
+    return {
+      state: "weekly_exhausted",
+      limitScope: "weekly",
+      exhaustedWindow: weeklyExhausted,
+      weeklyWindow,
+      resetAtIso: resetAtForPolicy(weeklyExhausted, input.quotaCooldownExpiresAt),
+      shouldWaitForReset: false,
+      operatorRecovery: recovery(true, "provider_reset_required", {
+        command: refreshCommand,
+        manualResetAllowed: false,
+      }),
+      blockerRefs: ["blocker.pylon.accounts_status.weekly_quota_exhausted"],
+    }
+  }
+
+  if (input.quotaLimited && shortWindowExhausted && weeklyStillAvailable) {
+    return {
+      state: "short_window_cooldown",
+      limitScope: "short_window",
+      exhaustedWindow: shortWindowExhausted,
+      weeklyWindow,
+      resetAtIso: resetAtForPolicy(shortWindowExhausted, input.quotaCooldownExpiresAt),
+      shouldWaitForReset: true,
+      operatorRecovery: recovery(false, "not_applicable"),
+      blockerRefs: ["blocker.pylon.accounts_status.short_window_cooldown"],
+    }
+  }
+
+  if (input.quotaLimited) {
+    return {
+      state: "limited_unknown",
+      limitScope: "unknown",
+      exhaustedWindow: null,
+      weeklyWindow,
+      resetAtIso: input.quotaCooldownExpiresAt,
+      shouldWaitForReset: input.quotaCooldownExpiresAt !== null,
+      operatorRecovery: recovery(false, "not_applicable"),
+      blockerRefs: ["blocker.pylon.accounts_status.quota_limited"],
+    }
+  }
+
+  return {
+    state: "available",
+    limitScope: "none",
+    exhaustedWindow: null,
+    weeklyWindow,
+    resetAtIso: null,
+    shouldWaitForReset: false,
+    operatorRecovery: recovery(false, "not_applicable"),
+    blockerRefs: [],
+  }
+}
+
 export async function collectPylonAccountsStatus(
   summary: Pick<BootstrapSummary, "paths">,
   args: PylonAccountsStatusArgs,
@@ -1188,28 +1314,44 @@ export async function collectPylonAccountsStatus(
 
   for (const target of targets) {
     const readiness = (await readinessForTarget(summary, target, env)).readiness
-    let resetPerformed = false
-    let resetBlockerRefs: string[] = []
-    if (args.reset && args.accountRef === target.accountRef) {
-      try {
-        await consumeManualQuotaReset(summary, {
-          accountRefHash: target.accountRefHash,
-          provider: target.provider,
-          now,
-        })
-        resetPerformed = true
-      } catch {
-        resetBlockerRefs = ["blocker.pylon.accounts_status.manual_resets_exhausted"]
-      }
-    }
-
-    const quotaRecord = await loadQuotaRecord(summary, target.accountRefHash)
-    const resetRecord = await loadManualQuotaResetRecord(summary, {
+    const entry = store.accounts[target.accountRefHash]
+    const windows = capacityWindowsFrom(entry)
+    let quotaRecord = await loadQuotaRecord(summary, target.accountRefHash)
+    let resetRecord = await loadManualQuotaResetRecord(summary, {
       accountRefHash: target.accountRefHash,
       provider: target.provider,
     })
-    const entry = store.accounts[target.accountRefHash]
-    const windows = capacityWindowsFrom(entry)
+    const preResetPolicy = quotaPolicyFromAccountStatus({
+      quotaLimited: !isAccountAvailable(quotaRecord, now),
+      quotaCooldownExpiresAt: quotaCooldownExpiresAt(quotaRecord),
+      windows,
+      manualResetsRemaining: resetRecord.manualResetsRemaining,
+      accountRef: target.accountRef,
+      hasLocalQuotaBlock: quotaRecord !== null,
+    })
+    let resetPerformed = false
+    let resetBlockerRefs: string[] = []
+    if (args.reset && args.accountRef === target.accountRef) {
+      if (preResetPolicy.state !== "weekly_exhausted" || !preResetPolicy.operatorRecovery.manualResetAvailable) {
+        resetBlockerRefs = ["blocker.pylon.accounts_status.manual_reset_not_applicable"]
+      } else {
+        try {
+          await consumeManualQuotaReset(summary, {
+            accountRefHash: target.accountRefHash,
+            provider: target.provider,
+            now,
+          })
+          resetPerformed = true
+          quotaRecord = await loadQuotaRecord(summary, target.accountRefHash)
+          resetRecord = await loadManualQuotaResetRecord(summary, {
+            accountRefHash: target.accountRefHash,
+            provider: target.provider,
+          })
+        } catch {
+          resetBlockerRefs = ["blocker.pylon.accounts_status.manual_resets_exhausted"]
+        }
+      }
+    }
     const localUsage = entry?.localSessionTruth?.usage ?? null
     const quotaLimited = !isAccountAvailable(quotaRecord, now)
     const quota = {
@@ -1220,6 +1362,14 @@ export async function collectPylonAccountsStatus(
       sourceDigestRef: quotaRecord?.sourceDigestRef ?? null,
       manualResetsRemaining: resetRecord.manualResetsRemaining,
     }
+    const quotaPolicy = quotaPolicyFromAccountStatus({
+      quotaLimited,
+      quotaCooldownExpiresAt: quota.cooldownExpiresAt,
+      windows,
+      manualResetsRemaining: resetRecord.manualResetsRemaining,
+      accountRef: target.accountRef,
+      hasLocalQuotaBlock: quotaRecord !== null,
+    })
     const manualReset = {
       performed: resetPerformed,
       manualResetsRemaining: resetRecord.manualResetsRemaining,
@@ -1233,6 +1383,7 @@ export async function collectPylonAccountsStatus(
       accountRefHash: target.accountRefHash,
       readiness,
       quota,
+      quotaPolicy,
       capacity: {
         hourly: firstWindowByLabel(windows, "hourly"),
         weekly: firstWindowByLabel(windows, "weekly"),
@@ -1248,7 +1399,7 @@ export async function collectPylonAccountsStatus(
       manualReset,
       blockerRefs: [
         ...readiness.blockerRefs,
-        ...(quotaLimited ? ["blocker.pylon.accounts_status.quota_limited"] : []),
+        ...quotaPolicy.blockerRefs,
         ...manualReset.blockerRefs,
       ],
     })

@@ -12,7 +12,10 @@ import {
 import {
   countAccountRollingWindowLocalSessionTokens,
   loadAccountUsageStore,
+  quotaPolicyFromAccountStatus,
+  type PylonAccountQuotaPolicyStatus,
   type PylonAccountUsageStoreEntry,
+  type PylonAccountWindowStatus,
   type PylonProviderRateLimitSnapshot,
 } from "./account-usage.js"
 import type { BootstrapSummary } from "./bootstrap.js"
@@ -31,6 +34,7 @@ export type PylonOperatorAccountStatusEntry = {
   weeklyCap: number | null
   weeklyUsage: number | null
   manualResetsRemaining: number | null
+  quotaPolicy: PylonAccountQuotaPolicyStatus
 }
 
 export type PylonOperatorAccountStatusProjection = {
@@ -90,6 +94,37 @@ function usageFor(
   return null
 }
 
+function isoFromResetEpoch(value: number | null): string | null {
+  if (value === null || !Number.isFinite(value) || value <= 0) return null
+  const millis = value < 10_000_000_000 ? value * 1000 : value
+  const date = new Date(millis)
+  return Number.isNaN(date.getTime()) ? null : date.toISOString()
+}
+
+function capacityWindowsFrom(entry: PylonAccountUsageStoreEntry | undefined): PylonAccountWindowStatus[] {
+  if (!entry?.providerTruth) return []
+  const windows: PylonAccountWindowStatus[] = []
+  for (const snapshot of entry.providerTruth.snapshots) {
+    for (const window of [snapshot.primary, snapshot.secondary]) {
+      if (window === null) continue
+      windows.push({
+        usedPercent: window.usedPercent,
+        remainingPercent: window.remainingPercent,
+        windowMinutes: window.windowMinutes,
+        resetsAtIso: isoFromResetEpoch(window.resetsAt),
+        label: window.label,
+      })
+    }
+  }
+  const seen = new Set<string>()
+  return windows.filter((window) => {
+    const key = `${window.label}:${window.windowMinutes ?? "unknown"}:${window.usedPercent}:${window.resetsAtIso ?? "none"}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
 export async function collectPylonOperatorAccountStatus(
   summary: Pick<BootstrapSummary, "paths">,
   options: { now?: Date } = {},
@@ -108,16 +143,27 @@ export async function collectPylonOperatorAccountStatus(
       defaultManualResetsRemaining: account.manualResetsRemaining,
     })
     const usageEntry = usageStore.accounts[accountRefHash]
+    const accountCooldownExpiresAt = cooldownExpiresAt(quotaRecord, now)
+    const accountQuotaLimited = !isAccountAvailable(quotaRecord, now)
+    const accountManualResetsRemaining = resetRecord.manualResetsRemaining
     accounts.push({
       accountRefHash,
       provider: account.provider,
-      isRateLimited: !isAccountAvailable(quotaRecord, now),
-      cooldownExpiresAt: cooldownExpiresAt(quotaRecord, now),
+      isRateLimited: accountQuotaLimited,
+      cooldownExpiresAt: accountCooldownExpiresAt,
       hourlyCap: account.hourlyCap,
       hourlyUsage: usageFor(usageEntry, "hourly", account.hourlyCap, now),
       weeklyCap: account.weeklyCap,
       weeklyUsage: usageFor(usageEntry, "weekly", account.weeklyCap, now),
-      manualResetsRemaining: resetRecord.manualResetsRemaining,
+      manualResetsRemaining: accountManualResetsRemaining,
+      quotaPolicy: quotaPolicyFromAccountStatus({
+        quotaLimited: accountQuotaLimited,
+        quotaCooldownExpiresAt: accountCooldownExpiresAt,
+        windows: capacityWindowsFrom(usageEntry),
+        manualResetsRemaining: accountManualResetsRemaining,
+        accountRef: null,
+        hasLocalQuotaBlock: quotaRecord !== null,
+      }),
     })
   }
 

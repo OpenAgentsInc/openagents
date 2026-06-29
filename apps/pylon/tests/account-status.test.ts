@@ -96,7 +96,7 @@ describe("pylon operator account status", () => {
       })
 
       expect(projection.accounts).toEqual([
-        {
+        expect.objectContaining({
           accountRefHash,
           provider: "codex",
           isRateLimited: true,
@@ -106,7 +106,12 @@ describe("pylon operator account status", () => {
           weeklyCap: 10_000,
           weeklyUsage: 4_000,
           manualResetsRemaining: 2,
-        },
+          quotaPolicy: expect.objectContaining({
+            state: "limited_unknown",
+            resetAtIso: "2026-06-28T02:00:00.000Z",
+            shouldWaitForReset: true,
+          }),
+        }),
       ])
       expect(JSON.stringify(projection)).not.toContain(codexHome)
       assertPublicProjectionSafe(projection)
