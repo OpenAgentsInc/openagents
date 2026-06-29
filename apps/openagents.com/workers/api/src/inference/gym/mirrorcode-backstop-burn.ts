@@ -102,13 +102,13 @@ const publicSegment = (value: string): string =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
 
-const taskKey = (
+export const mirrorCodeBackstopTaskKey = (
   bucket: MirrorCodeBucket,
   taskId: string,
   language: string,
 ): string => `${bucket}:${taskId}:${language}`
 
-const taskRefFor = (
+export const mirrorCodeBackstopTaskRefFor = (
   bucket: MirrorCodeBucket,
   taskId: string,
   language: string,
@@ -128,6 +128,15 @@ const runIdFor = (
     publicSegment(taskId),
     publicSegment(language),
   ].join('-')
+
+const skipRefsFor = (
+  bucket: MirrorCodeBucket,
+  taskId: string,
+  language: string,
+): ReadonlyArray<string> => [
+  mirrorCodeBackstopTaskKey(bucket, taskId, language),
+  mirrorCodeBackstopTaskRefFor(bucket, taskId, language),
+]
 
 const boundedBatchSize = (value: number | undefined): number => {
   if (value === undefined || !Number.isFinite(value)) {
@@ -164,13 +173,15 @@ export const buildMirrorCodeBackstopBatchPlan = (
   const tasks = candidates
     .filter(
       candidate =>
-        !skippedRefs.has(
-          taskKey(candidate.bucket, candidate.taskId, candidate.language),
-        ),
+        skipRefsFor(
+          candidate.bucket,
+          candidate.taskId,
+          candidate.language,
+        ).every(ref => !skippedRefs.has(ref)),
     )
     .slice(0, boundedBatchSize(input.maxTasks))
     .map(candidate => {
-      const taskRef = taskRefFor(
+      const taskRef = mirrorCodeBackstopTaskRefFor(
         candidate.bucket,
         candidate.taskId,
         candidate.language,
@@ -221,7 +232,11 @@ const ledgerTraceForRun = (
 ): MirrorCodeBackstopLedgerTrace => ({
   traceRef: `trace.public.gym.mirrorcode.backstop.${publicSegment(run.runId)}`,
   runId: run.runId,
-  taskRef: taskRefFor(run.bucket, run.taskId, run.language ?? DEFAULT_LANGUAGE),
+  taskRef: mirrorCodeBackstopTaskRefFor(
+    run.bucket,
+    run.taskId,
+    run.language ?? DEFAULT_LANGUAGE,
+  ),
   taskId: run.taskId,
   bucket: run.bucket,
   status: run.status,

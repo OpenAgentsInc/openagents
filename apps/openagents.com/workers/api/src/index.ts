@@ -11007,6 +11007,18 @@ const exactRouteRegistry = makeExactRouteRegistry<Env>([
       }),
   },
   {
+    // MirrorCode standing backstop burn (#6923). Public read-only live plan +
+    // ledger report over stored public-safe run rows. The surface never
+    // dispatches, spends, settles, or exposes task contents.
+    path: '/api/gym/mirrorcode/backstop-burn',
+    handler: (request, env) =>
+      handleMirrorCodeRunsApi(request, {
+        requireAdminApiToken: adminRequest =>
+          requireAdminApiToken(adminRequest, env),
+        store: makeD1MirrorCodeRunStore(openAgentsDatabase(env)),
+      }),
+  },
+  {
     // Operator-only Harbor full trace archive (#6253). Stores raw Harbor job
     // tarballs in private R2 with D1 metadata. Unlike `/api/traces`, this is
     // NOT a public-safe ATIF projection and never appears on public `/gym`.
