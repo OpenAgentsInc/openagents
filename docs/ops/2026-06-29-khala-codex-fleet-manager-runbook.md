@@ -1,470 +1,570 @@
-# Khala Codex Fleet Manager Runbook
+# OpenAgents Desktop Codex Fanout Runbook
 
 **Date:** 2026-06-29
-**Scope:** How the local manager agent has been dispatching OpenAgents PR and
-issue work to Khala-backed local Codex workers, what failed, and how to move
-the process into OpenAgents Desktop.
-**Audience:** Future manager agents, desktop implementers, and operators trying
-to keep Codex workers fanned out without losing accounting or confusing stale
-leases for real work.
+**Audience:** OpenAgents operators, manager agents, and desktop implementers
+**Canonical goal:** Run the Khala/Codex fanout loop through OpenAgents Desktop
+with programmatic controls, while preserving exact token accounting and enough
+resume state for the next operator after compaction, restart, or reboot.
 
-This is a companion to
-[`2026-06-27-khala-codex-own-capacity-burn-runbook.md`](./2026-06-27-khala-codex-own-capacity-burn-runbook.md)
-and the Codex fleet after-action in
-[`../afteraction/2026-06-29-codex-fleet-throughput-collapse-after-action.md`](../afteraction/2026-06-29-codex-fleet-throughput-collapse-after-action.md).
+This replaces the shell-loop era runbook. The shell commands below are still
+included because they are the bridge the current Desktop process uses under the
+hood, and because they are the emergency fallback when a manager must get work
+moving before a UI control is finished.
 
-## Handoff Snapshot
+## Hard Truth Of The Current Build
 
-At the stopping point for this report, the shell refill controller was stopped.
-Do not assume the fleet is idle: existing `khala request` wrappers and Codex
-child processes may still be completing. The last observed controller state:
+OpenAgents Desktop already owns the visible control surface under
+`clients/openagents-desktop`, package `@openagentsinc/desktop`.
 
-- The generic PR refill loop was replaced with a targeted rate-limit/Pylon/Codex
-  PR queue, then stopped.
-- A final tick launched PR #7486 and PR #6831 before the controller received
-  SIGTERM.
-- The live token-report failure spool was empty.
-- The repo-wide open PR count had fallen from the user's observed 418 to 267.
-- Since `2026-06-29T13:45:00Z`, the GitHub query showed 19 merged PRs and 97
-  closed PRs.
+The Desktop webview calls its Bun side through Electrobun RPC. The important
+methods are:
 
-Before resuming, run the status commands in this document. Do not infer current
-state from this snapshot.
+- `codingStatus()`
+- `createPylon()`
+- `khalaDispatchPlan(input)`
+- `khalaFleetSnapshot()`
+- `pylonStatus()`
+- `replayTokenFailures()`
+- `tokenAccountingStatus()`
+- `verifyAssignmentTokenUsage(assignmentRef)`
 
-## What The Manual Manager Did
+Those are real in-process Desktop controls. They are not yet exposed as a
+stable external HTTP or JSON-RPC endpoint. Until that endpoint exists, external
+manager agents should drive the same underlying Pylon and Codex commands that
+Desktop uses, keep Desktop running for visibility/reconciliation, and treat the
+Desktop event store as the durable resume surface.
 
-The manual manager ran a local dispatch loop outside the product:
+Codex itself has two programmatic modes that matter:
 
-1. Query GitHub for open PRs or issues.
-2. Choose a candidate set.
-3. Claim a PR with a filesystem lock under `~/.codex-supervisor/pr-review`.
-4. Fire a Khala coding assignment through local Pylon:
+- `codex exec --json`: immediate non-interactive work from the current shell or
+  an isolated account home. It emits JSONL events and final token usage. This
+  can start useful work from the existing logged-in Codex session.
+- `codex app-server`: JSON-RPC over stdio, WebSocket, or Unix socket. This is
+  the richer long-term bridge Desktop should launch and own. The current
+  OpenAgents Desktop fanout path has not fully switched to app-server yet.
+
+## Non-Negotiable Rules
+
+1. Use exactly one fanout controller at a time.
+2. Never run `codex login` or `codex login --device-auth` against default
+   `~/.codex` for fleet accounts. Use isolated account homes created by Pylon
+   or `khala fleet connect`.
+3. Do not kill in-flight `codex exec` children just to make the process table
+   look clean. A killed turn can leave a stale lease and can lose accounting.
+4. Do not count a job as complete until both execution and token proof have
+   been reconciled.
+5. Run a non-mutating dispatch plan before launching a burst.
+6. Keep the Desktop app open during fanout so the Coding page, Pylon page,
+   token replay panel, and local fleet event store stay current.
+7. If the default checkout is dirty with other agents' work, create a clean
+   worktree from `origin/main` for scoped fixes. Do not stash or reset other
+   agents' work.
+
+## Required Local Pieces
+
+From the repo root:
 
 ```sh
-bun apps/pylon/src/index.ts khala request \
-  --account codex-3 \
-  --prompt "Resolve OpenAgents public PR #NNNN as part of the PR queue burndown..." \
-  --workflow codex_agent_task \
+cd /Users/christopherdavid/work/openagents
+bun install --frozen-lockfile
+```
+
+Required CLIs:
+
+```sh
+npm install -g @openai/codex @openagentsinc/khala
+```
+
+Required environment for the current Desktop/Pylon bridge:
+
+```sh
+export OPENAGENTS_REPO_ROOT=/Users/christopherdavid/work/openagents
+export OPENAGENTS_PYLON_APP_PATH="$OPENAGENTS_REPO_ROOT/apps/pylon"
+export PYLON_OPENAGENTS_BASE_URL=https://openagents.com
+export OPENAGENTS_DESKTOP_KHALA_FLEET_DB="$HOME/.openagents/desktop/khala-fleet.sqlite"
+
+# Use the existing local Pylon home unless intentionally testing another one.
+export PYLON_HOME="${PYLON_HOME:-$HOME/.openagents/pylon}"
+```
+
+Authentication is normally read from the stored local Pylon/OpenAgents token.
+If an operator injects `OPENAGENTS_AGENT_TOKEN`, never print it and never write
+it to tracked files.
+
+## Connect Codex Accounts
+
+The only part that should need a human is the ChatGPT device authorization flow
+for each account. The preferred flow is:
+
+```sh
+khala fleet connect
+khala fleet status
+```
+
+This creates isolated account homes under Pylon-managed account directories.
+If you need to drive Pylon directly, list accounts first:
+
+```sh
+bun "$OPENAGENTS_PYLON_APP_PATH/src/index.ts" codex accounts list --json
+```
+
+For a specific account that needs login, use the Pylon account command from the
+repo's current `AGENTS.md` guidance, not default `~/.codex`:
+
+```sh
+bun "$OPENAGENTS_PYLON_APP_PATH/src/index.ts" auth codex \
+  --account codex-N \
+  --force-device-login
+```
+
+The device code flow can also be used by Codex directly for a one-off isolated
+home:
+
+```sh
+CODEX_HOME="$HOME/.pylon-fable/accounts/codex/codex-N" codex login --device-auth
+```
+
+Use direct `CODEX_HOME=... codex login --device-auth` only when Pylon account
+commands are unavailable. The safer path is `khala fleet connect`.
+
+## Start Desktop
+
+Start the app from the repo root:
+
+```sh
+OPENAGENTS_REPO_ROOT="$OPENAGENTS_REPO_ROOT" \
+PYLON_OPENAGENTS_BASE_URL="$PYLON_OPENAGENTS_BASE_URL" \
+bun run --cwd clients/openagents-desktop dev
+```
+
+The app window should show:
+
+- top-right `CODING: N`
+- top-right `PYLONS: N`
+- a Coding page with active/recent sessions and transcript detail
+- a Pylons page with connected user pylons
+- token accounting status and replay controls
+
+If the app is already running, leave it open. Do not restart it in the middle
+of an active fanout unless the UI bridge is wedged and the Pylon/Codex children
+have been verified independently.
+
+## Start Or Refresh Local Pylon
+
+From Desktop, the `Create Pylon` button calls `createPylon()`, which runs:
+
+```sh
+bun run --cwd "$OPENAGENTS_PYLON_APP_PATH" start
+```
+
+The headless equivalent is:
+
+```sh
+bun run --cwd "$OPENAGENTS_PYLON_APP_PATH" start
+```
+
+Bring the node online and publish a fresh heartbeat when the CLI supports it:
+
+```sh
+bun "$OPENAGENTS_PYLON_APP_PATH/src/index.ts" provider go-online
+bun "$OPENAGENTS_PYLON_APP_PATH/src/index.ts" presence heartbeat
+```
+
+If those commands fail because this checkout has a newer or older CLI shape,
+use Desktop's Pylons page and `pylonStatus()` as source of truth, then inspect:
+
+```sh
+find "$PYLON_HOME" "$HOME/.pylon-fable" -maxdepth 3 -type f \
+  \( -name '*heartbeat*' -o -name '*capacity*' -o -name '*assignment*' \) \
+  2>/dev/null | head -50
+```
+
+## Start From The Existing Codex Session If Needed
+
+If the fleet accounts are not connected yet, an operator can still get one
+bootstrap task moving through the current Codex login:
+
+```sh
+cd "$OPENAGENTS_REPO_ROOT"
+codex exec --json \
+  "Inspect issues 7590-7598 and report the safest merge order. Do not edit files."
+```
+
+This is useful for immediate analysis. It is not the preferred Khala counted
+path unless wrapped by Pylon assignment execution. If the goal is Khala token
+usage and public accounting, route work through Pylon assignments below.
+
+## Programmatic Control Map
+
+| Desired action | Desktop method | Current headless bridge |
+| --- | --- | --- |
+| Show Codex sessions | `codingStatus()` | process table, Codex JSONL rollout files, Pylon active markers |
+| Show user pylons | `pylonStatus()` | Pylon provider/presence commands and local Pylon home |
+| Start local pylon | `createPylon()` | `bun run --cwd apps/pylon start` |
+| Plan fanout slots | `khalaDispatchPlan(input)` | `pylon khala dispatch --json` |
+| Show durable queue state | `khalaFleetSnapshot()` | SQLite store at `OPENAGENTS_DESKTOP_KHALA_FLEET_DB` |
+| Check token failures | `tokenAccountingStatus()` | `~/.pylon-fable/codex-turn-report-failures.jsonl` |
+| Replay token failures | `replayTokenFailures()` | Desktop RPC today; verify with proof CLI after replay |
+| Verify one assignment | `verifyAssignmentTokenUsage(ref)` | `pylon khala proof <assignmentRef> --json` |
+
+The headless bridge is intentionally listed because a manager agent can run it
+today, while the Desktop renders and reconciles the same state.
+
+## Preflight Checklist Before Fanout
+
+Run these in order:
+
+```sh
+cd "$OPENAGENTS_REPO_ROOT"
+git fetch origin +refs/heads/main:refs/remotes/origin/main
+COMMIT="$(git rev-parse origin/main)"
+VERIFY="bun scripts/check-conflict-markers.mjs"
+```
+
+Check account readiness without printing sensitive auth:
+
+```sh
+bun "$OPENAGENTS_PYLON_APP_PATH/src/index.ts" codex accounts list --json \
+  | node -e '
+      const fs = require("fs");
+      const json = JSON.parse(fs.readFileSync(0, "utf8"));
+      const accounts = Array.isArray(json.accounts) ? json.accounts : [];
+      console.log(JSON.stringify({
+        ok: json.ok !== false,
+        count: accounts.length,
+        ready: accounts
+          .map((a) => ({ accountRef: a.accountRef || a.ref || null, readiness: a.readiness || a.status || null }))
+          .filter((a) => a.accountRef)
+      }, null, 2));
+    '
+```
+
+Inspect local active work:
+
+```sh
+python3 - <<'PY'
+import glob, json, os, subprocess
+markers = glob.glob(os.path.expanduser('~/.pylon-fable/active-assignment-runs/*.json'))
+ps = subprocess.check_output(['ps', '-axo', 'pid,ppid,etime,command'], text=True)
+print('active_assignment_markers', len(markers))
+print('codex_exec_processes', sum(1 for line in ps.splitlines() if 'codex exec' in line))
+print('khala_request_wrappers', sum(1 for line in ps.splitlines() if 'khala request' in line))
+spool = os.path.expanduser('~/.pylon-fable/codex-turn-report-failures.jsonl')
+print('token_failure_spool_bytes', os.path.getsize(spool) if os.path.exists(spool) else 0)
+PY
+```
+
+If the token failure spool is non-empty, do not launch a massive burst until
+you understand whether accounting is degraded.
+
+## Plan A Burst
+
+`khala dispatch` is a non-mutating planner. It proves that the account list,
+candidate list, concurrency, base URL, repo, commit, and verifier can form real
+assignment requests.
+
+Example for one smoke slot:
+
+```sh
+bun "$OPENAGENTS_PYLON_APP_PATH/src/index.ts" khala dispatch \
+  --candidates issue:7590 \
+  --accounts codex-2 \
+  --concurrency 1 \
+  --priority-lane khala-code-smoke \
   --repo OpenAgentsInc/openagents \
   --branch main \
-  --commit "<origin/main sha>" \
-  --verify "bun scripts/check-conflict-markers.mjs" \
+  --commit "$COMMIT" \
+  --verify "$VERIFY" \
   --json
 ```
 
-5. Let Pylon auto-run the local no-spend assignment through Codex.
-6. Monitor local markers, logs, GitHub state, and token-ingest failures.
-7. Refill newly freed capacity.
-
-The important distinction: `khala request` dispatch and Codex execution are not
-the same thing. The manager must verify both the lease/assignment and the live
-Codex child process.
-
-## Local State Files And What They Mean
-
-These paths were the real working surface during the session:
-
-- `~/.pylon-fable/active-assignment-runs/*.json`: local active assignment
-  markers. Useful but not sufficient; a marker can outlive useful execution.
-- `~/.pylon-fable/pr-resolver-logs/pr-review-*.log`: JSON logs from PR
-  resolution assignments.
-- `~/.codex-supervisor/pr-review/locks/pr.<number>`: local PR claim locks.
-- `~/.codex-supervisor/pr-review/done/pr.<number>`: local "do not retry"
-  markers.
-- `~/.pylon-fable/codex-turn-report-failures.jsonl`: exact token usage reports
-  that failed to post and must be replayed.
-- `~/.pylon-fable/replayed-failures/`: archived token-report replay files.
-- `~/.pylon-fable/accounts/codex/<account>/`: isolated Codex homes. Never run
-  login against default `~/.codex`.
-
-The temporary controller was `/tmp/openagents_burst_pr_refill.sh`. Treat it as
-an emergency sketch, not product code. It should be replaced by the desktop
-harness described below.
-
-## Dispatch Queue Selection
-
-The generic burndown loop initially selected from all open PRs. After the user
-reoriented the work toward Pylon and Codex rate limits, the candidate set was
-changed to explicit high-value PRs:
-
-```txt
-7557 Expose Codex fleet quota cooldown state
-7579 Expose Codex quota reset policy status
-7560 fix(pylon): update account reset status
-7523 fix(pylon): parse provider quota reset hints
-7558 fix(pylon): classify codex account execution refusals
-7246 fix(pylon): surface Codex execution refusal reasons
-7221 fix(pylon): surface codex execution refusal reasons
-7510 fix(khala-desktop): add Codex account readiness controls
-7279 fix(codex-supervisor): GC orphan claims and fast-retry gate refusals
-7104 fix(codex-supervisor): GC stale claims and fast-retry gate flakes
-7073 feat(operator): surface live Pylon runtime progress
-7283 fix(operator): register fleet state observability route
-7230 feat(operator): surface fleet assignment progress
-7336 feat(operator): surface fleet assignment progress
-7589 Align Pylon coordinator with runner registry
-7571 Harden Pylon agent runner resolution
-7486 Harden Pylon agent runner registry contract
-```
-
-Manager agents should prefer this cluster until Codex account status, reset
-timers, refusal reasons, fleet progress, and desktop visibility are integrated.
-Do not let random PR burndown starve the rate-limit work.
-
-## Safe Stop And Resume
-
-To stop launching new work, kill only the controller loop and refill script:
+Example for a wider issue/PR burst:
 
 ```sh
-pgrep -fl 'rate_limit_pr_refill|openagents_burst_pr_refill|pr-review-refill|burst_refill'
-kill <controller-pid> <refill-script-pid>
+bun "$OPENAGENTS_PYLON_APP_PATH/src/index.ts" khala dispatch \
+  --candidates issue:7590,issue:7591,issue:7592,issue:7593,issue:7594,issue:7595,issue:7596,issue:7597,issue:7598 \
+  --accounts codex-2,codex-3,codex-4,codex-5,codex-6,codex-7 \
+  --concurrency 12 \
+  --priority-lane khala-code \
+  --repo OpenAgentsInc/openagents \
+  --branch main \
+  --commit "$COMMIT" \
+  --verify "$VERIFY" \
+  --json
 ```
 
-Do not kill `codex exec` children or active `khala request` wrappers unless you
-have proven they have no child process, no active marker, and no useful output
-in flight. Killing an in-flight turn creates stale leases and hides token usage.
+A healthy plan has:
 
-After stopping the launcher, verify:
+- Desktop RPC wrapper: `ok: true`
+- raw Pylon CLI output: `schema: "openagents.pylon.khala_dispatch_plan.v0.1"`
+- at least one `slots[]` entry
+- `blockerRefs: []`
+- each slot has `workflow: "codex_agent_task"`
+- each slot has a concrete `accountRefHash`
+- each slot carries the exact `repository`, `commit`, and `verifier`
+
+Common blockers:
+
+- `blocker.khala_dispatch.no_account_targets`: the account refs are not known
+  or are not Codex-capable.
+- `blocker.khala_dispatch.no_dispatch_slots`: account/candidate/concurrency
+  combination produced no work.
+- missing `PYLON_OPENAGENTS_BASE_URL`: pass `--base-url` or export the env var.
+
+## Execute Planned Work
+
+The current Desktop bridge plans slots and records/visualizes the fleet. The
+actual execution bridge is still Pylon's assignment path.
+
+For each planned candidate/account pair:
 
 ```sh
-pgrep -fl 'rate_limit_pr_refill|openagents_burst_pr_refill|pr-review-refill|burst_refill' || true
+PYLON_REF="<target pylon ref from the dispatch slot>"
+
+bun "$OPENAGENTS_PYLON_APP_PATH/src/index.ts" khala request \
+  --account codex-2 \
+  --pylon-ref "$PYLON_REF" \
+  --prompt "You are working in OpenAgentsInc/openagents. Complete issue #7590. Run the required verifier before finishing. Open or update the PR that closes the issue." \
+  --workflow codex_agent_task \
+  --repo OpenAgentsInc/openagents \
+  --branch main \
+  --commit "$COMMIT" \
+  --verify "$VERIFY" \
+  --json
 ```
 
-Then inspect active work:
+If the request creates an assignment but does not run it automatically, run the
+assignment through the no-spend local executor:
 
 ```sh
-python3 - <<'PY'
-import glob, json, os, collections, subprocess
-paths = glob.glob(os.path.expanduser('~/.pylon-fable/active-assignment-runs/*.json'))
-by = collections.Counter()
-for path in paths:
-    try:
-        data = json.load(open(path))
-    except Exception:
-        continue
-    by[data.get('accountRefHash') or '-'] += 1
-out = subprocess.check_output(['ps', '-axo', 'pid,ppid,etime,command'], text=True)
-print('active_marker_files', len(paths))
-print('by_account_hash', dict(by))
-print('codex_exec', sum(1 for line in out.splitlines() if 'codex exec' in line))
-print('khala_request_wrappers', sum(1 for line in out.splitlines() if 'bun apps/pylon/src/index.ts khala request' in line))
-spool = os.path.expanduser('~/.pylon-fable/codex-turn-report-failures.jsonl')
-print('failure_spool_bytes', os.path.getsize(spool) if os.path.exists(spool) else 0)
-PY
+bun "$OPENAGENTS_PYLON_APP_PATH/src/index.ts" assignment run-no-spend \
+  --assignment-ref "$ASSIGNMENT_REF" \
+  --json
 ```
 
-## Deterministic Checks For Manager Agents
+Do not fan out only by spawning raw `codex exec` processes unless the user has
+explicitly accepted uncounted work. Pylon assignment execution is what binds the
+work to Khala assignment refs and token proof.
 
-Always run these before deciding the fleet is healthy or stuck.
+## Monitor Fanout In Desktop
 
-### 1. Active markers versus actual Codex
+Open the Desktop Coding page. It must show:
 
-Compare marker count to `codex exec` process count. The marker count is not the
-throughput number. During the session the system reached 23 active markers, but
-actual `codex exec` processes lagged around 16-17. Report both numbers.
+- `CODEX EXEC`: live `codex exec` children
+- `BURNING`: active assignment runs consuming Codex
+- `KHALA REQ`: request wrappers
+- `READY`: known ready account capacity where available
+- active or recent sessions at the top
+- selected transcript messages, tool calls, and tool outputs
+- recent dispatch/refusal events
 
-### 2. Recent PR assignment logs
-
-Classify recent logs:
+If the top says no live sessions but the left list contains active processes,
+the UI filter is wrong. The backing state is still usable; inspect with:
 
 ```sh
-python3 - <<'PY'
-import glob, os, collections
-logs = glob.glob(os.path.expanduser('~/.pylon-fable/pr-resolver-logs/pr-review-*.log'))
-logs.sort(key=os.path.getmtime, reverse=True)
-c = collections.Counter()
-for path in logs[:160]:
-    text = open(path, errors='replace').read()
-    if '"event":"assignment_run.completed"' in text and '"status":"accepted"' in text:
-        c['completed_accepted'] += 1
-    elif '"event":"assignment_run.completed"' in text and '"status":"rejected"' in text:
-        c['completed_rejected'] += 1
-    elif '"event":"assignment_run.accepted"' in text:
-        c['accepted_running_or_unknown'] += 1
-    elif '"ok": false' in text or '"error":' in text:
-        c['failed_before_accept'] += 1
-    elif text.strip():
-        c['pending_output'] += 1
-    else:
-        c['empty'] += 1
-print(dict(c))
-PY
+ps -axo pid,ppid,etime,command | rg 'codex exec|khala request|assignment run-no-spend' || true
+find "$HOME/.pylon-fable/active-assignment-runs" -type f -maxdepth 1 2>/dev/null | wc -l
 ```
 
-Do not treat an `assignment_run.accepted` event as success. A run can accept a
-lease and then close out rejected with
-`blocker.assignment.codex_agent_execution_refused` or
-`blocker.assignment.codex_agent_test_failed`.
+Do not treat `assignment_run.accepted` as success. Watch for a final
+`assignment_run.completed` status and then verify token proof.
 
-### 3. GitHub movement
+## Token Accounting And Replay
 
-Use GitHub state, not local optimism:
-
-```sh
-gh pr list --repo OpenAgentsInc/openagents --state open --json number --limit 500 --jq 'length'
-gh pr list --repo OpenAgentsInc/openagents --state merged --json number,mergedAt --limit 150 \
-  --jq '[.[] | select(.mergedAt >= "2026-06-29T13:45:00Z")] | length'
-gh pr list --repo OpenAgentsInc/openagents --state closed --json number,closedAt --limit 150 \
-  --jq '[.[] | select(.closedAt >= "2026-06-29T13:45:00Z")] | length'
-```
-
-### 4. Token usage failure spool
-
-Every completed Codex turn must post exact usage. If this file is non-empty,
-replay it before claiming accounting is complete:
+Every Codex turn that executes for Khala must land in token accounting. The
+Desktop bridge reads the local failure spool:
 
 ```sh
 test -s "$HOME/.pylon-fable/codex-turn-report-failures.jsonl" && {
   wc -l "$HOME/.pylon-fable/codex-turn-report-failures.jsonl"
-  jq -r '{observedAt,error:(.error|tostring|.[0:120]), assignmentRef:.report.assignmentRef, usage:.report.usage}' \
+  jq -r '{assignmentRef:.report.assignmentRef, usage:.report.usage, error:(.error|tostring|.[0:160])}' \
     "$HOME/.pylon-fable/codex-turn-report-failures.jsonl"
-} || echo 'no live failure spool'
+} || echo 'no token report failures'
 ```
 
-The replay path is documented in the after-action. After replaying, query D1
-for the assignment refs and verify `token_usage_events.total_tokens`.
-
-## Lessons From This Session
-
-### One controller only
-
-Two refill loops with different state directories caused duplicate launches,
-stale locks, and confusing output. Use exactly one controller and one lock
-namespace. For the temporary controller that namespace was:
+If failures exist, use Desktop's replay control, which calls
+`replayTokenFailures()`. Then verify each assignment:
 
 ```sh
-SUP_PR_REVIEW_STATE_DIR="$HOME/.codex-supervisor/pr-review"
-SUP_PR_REVIEW_LOG_DIR="$HOME/.pylon-fable/pr-resolver-logs"
+bun "$OPENAGENTS_PYLON_APP_PATH/src/index.ts" khala proof "$ASSIGNMENT_REF" --json
 ```
 
-### A high lease count is not the same as useful fanout
+Expected result:
 
-The manager can briefly drive active assignment markers into the 20s while
-actual `codex exec` is lower. The desktop must show both:
+- the assignment ref exists
+- the proof has exact input/output/total token counts
+- the public `/stats` and `/khala` counters eventually include the usage
 
-- `assigned`: accepted active leases
-- `executing`: live Codex child processes
-- `fresh`: last event/progress age
-- `closed_accepted` and `closed_rejected`
+If replay still fails, stop launching new work, preserve the failure spool, and
+document the assignment refs in the Desktop event store. Do not hand-wave
+missing accounting.
 
-### Capacity misses are normal under pressure
+## Rate Limits And Resets
 
-This failure is expected when a specific account is saturated:
-
-```txt
-pylon khala request failed (503): No linked, heartbeat-fresh,
-Codex-capable Pylon capacity is available for this account.
-```
-
-Do not panic or mark the whole fleet broken. Back off that account or let the
-refill loop try another account.
-
-### Execution refused means the account or runner needs status, not guesswork
-
-Several accepted PR assignments immediately closed rejected with:
-
-```txt
-blocker.assignment.codex_agent_execution_refused
-```
-
-This is why the rate-limit/status PR cluster matters. The manager needs typed
-account state: ready, five-hour cooldown, weekly exhausted, auth refresh failed,
-missing credentials, model unavailable, or execution refused for another typed
-reason.
-
-### `--verify true` is not a safe portable verifier
-
-Some earlier workers failed closeout with `ENOENT: posix_spawn 'true'`. Use a
-real repo command for lightweight PR review, for example:
+OpenAgents Desktop must surface account readiness and cooldowns. Until the
+Desktop controls are fully switched to Codex app-server/account APIs, use the
+Pylon account commands:
 
 ```sh
---verify "bun scripts/check-conflict-markers.mjs"
+bun "$OPENAGENTS_PYLON_APP_PATH/src/index.ts" accounts status --json
+bun "$OPENAGENTS_PYLON_APP_PATH/src/index.ts" accounts usage --account codex-2 --refresh --json
+bun "$OPENAGENTS_PYLON_APP_PATH/src/index.ts" accounts status --account codex-2 --reset --json
 ```
 
-For implementation work, use the narrow test named by the issue or PR.
+The policy is:
 
-### Log parsing must be exact
+- If an account only exhausted the short 5h window but has weekly budget left,
+  wait for the cooldown.
+- If weekly usage is exhausted and the account supports reset, use the reset
+  control for that account.
+- Record reset attempts and outcomes in the Desktop fleet event store.
 
-The temporary script initially parsed log names with:
+Do not repeatedly dispatch into an account that is returning execution refusal
+or quota exhaustion. That creates noisy rejected assignments and hides the real
+upper bound.
 
-```regex
-(?:codex|codex-\d+)-([0-9]+)
+## Safe Stop
+
+Stop only the launcher/controller first:
+
+```sh
+pgrep -fl 'khala.*refill|codex.*refill|openagents_burst|rate_limit_pr_refill|pr-review-refill' || true
 ```
 
-For a log named `pr-review-...-codex-3-7557-...log`, this captured PR `3`
-instead of `7557`. The correct order is:
+Then kill only the controller PIDs, not child Codex turns:
 
-```regex
-(?:codex-\d+|codex)-([0-9]+)
+```sh
+kill <controller-pid>
 ```
 
-This bug created bogus `pr.3` and `pr.7` bookkeeping and hid real PR locks. The
-desktop harness must not parse critical state out of filenames; it should store
-structured rows.
+After that, let active `codex exec` children close out. Verify:
 
-### Accepted logs can still be rejected work
+```sh
+ps -axo pid,ppid,etime,command | rg 'codex exec|assignment run-no-spend|khala request' || true
+```
 
-The first lock-release logic skipped any log containing
-`assignment_run.accepted`. That kept rejected runs locked forever. Correct
-classification must prefer final lifecycle state:
+If a child is genuinely wedged, capture its assignment ref, last transcript
+event, and token status before terminating it.
 
-1. `assignment_run.completed` with `status:"accepted"` means done.
-2. `assignment_run.completed` with `status:"rejected"` means release or retry.
-3. `assignment_run.accepted` without completed state means still running or
-   unknown.
-4. `ok:false` before acceptance means release or retry after backoff.
+## Resume After Compaction Or Reboot
 
-### Never kill in-flight Codex turns for cleanup
+Run:
 
-If a worker has a live `codex exec` child, let it finish. Killing the process
-mid-turn creates stale leases and can delay dispatch for minutes. Only clean up
-wrappers with no child process and no matching active assignment marker.
+```sh
+cd "$OPENAGENTS_REPO_ROOT"
+git fetch origin +refs/heads/main:refs/remotes/origin/main
 
-### Account inventory matters
+python3 - <<'PY'
+import glob, os, subprocess
+markers = glob.glob(os.path.expanduser('~/.pylon-fable/active-assignment-runs/*.json'))
+print('active_assignment_markers', len(markers))
+print(subprocess.check_output(['ps', '-axo', 'pid,ppid,etime,command'], text=True))
+PY
+```
 
-During this session:
+Then open Desktop and inspect:
 
-- `codex-2` had local state but no `auth.json`, so it was not a usable lane.
-- `codex-6` had auth but had been removed from config earlier. Treat it as
-  disabled until a rate-limit/status check says it can be safely resumed.
-- `codex-3`, `codex-4`, `codex-5`, and `codex-7` were the active lanes.
+- Coding page live/recent sessions
+- Pylons page connected pylons
+- token failure panel
+- local fleet snapshot
+- GitHub issue/PR state
 
-Do not blindly add a configured account to the dispatcher. Confirm isolated
-home auth, provider status, and reset/cooldown state first.
+If there are no child processes but active markers remain, classify them as
+stale only after checking recent logs and assignment proofs.
 
-## Moving This Into OpenAgents Desktop
+## What To Move Fully Into Desktop Next
 
-The current shell process should become a desktop-owned fleet harness. Desktop
-already has the operator surface; it should also own the local deterministic
-control plane.
+The current runbook is intentionally executable today, but the product should
+absorb these shell bridges:
 
-### Target architecture
+1. Expose an external local Desktop control endpoint for manager agents. Use
+   loopback plus a local token, matching Pylon's control-server shape.
+2. Make `khalaDispatchPlan` optionally execute planned slots, not only plan
+   them.
+3. Launch Codex through `codex app-server` or `@openai/codex-sdk` so Desktop
+   owns sessions, steering, transcripts, approvals, and usage events.
+4. Store every planned slot, launched assignment, process PID, account state,
+   closeout, proof, and replay attempt in the Desktop SQLite event store.
+5. Add deterministic resume checks that compare:
+   - GitHub issue/PR state
+   - active assignment markers
+   - live process table
+   - Codex JSONL transcripts
+   - token proof rows
+6. Add one-click account cooldown and reset controls, with policy safeguards.
+7. Retire temp shell refill loops once Desktop can execute and refill slots
+   directly.
 
-Add a local desktop service, conceptually `OpenAgentsDesktopFleetManager`, with
-these parts:
+## Tested On 2026-06-29
 
-- `CodexAccountRegistry`: reads isolated Codex homes, auth readiness, model
-  cache status, last refresh time, and provider usage/cooldown state.
-- `PylonCapacityService`: publishes heartbeat/go-online, reads current Pylon
-  ref, and reconciles advertised capacity against active assignments.
-- `GitHubQueueService`: builds PR and issue candidate queues using structured
-  GitHub data, labels, search terms, merge state, and superseding relationships.
-- `DispatchPlanner`: decides which account gets which task using typed account
-  health, desired concurrency, per-account slots, backoff, and priority lanes.
-- `AssignmentRunner`: calls the Pylon assignment APIs or a structured local Bun
-  worker. Shelling out is acceptable as a bridge, but the product API should be
-  structured IPC with JSON events, not filename parsing.
-- `WorkerProcessTracker`: records child PIDs, start time, account, assignment
-  ref, PR or issue ref, workspace path, current phase, last event time, and
-  closeout status.
-- `TokenReconciler`: watches exact Codex turn usage posts, replays local failure
-  spools, and verifies D1 or public API projection before marking a run counted.
-- `EventStore`: a local SQLite store inside the desktop profile. This replaces
-  flat lock directories as source of truth.
+The runbook was validated from a clean detached worktree at:
 
-### Desktop UI requirements
+```txt
+/tmp/openagents-desktop-fanout-runbook
+```
 
-The desktop should make the manager state visible without requiring shell
-reconstruction:
+The following checks were performed:
 
-- Top-level counters: `Coding`, `Pylons`, `Executing`, `Assigned`, `Rejected`,
-  `Tokens counted`, and `Token failures`.
-- Per-account cards: account ref, auth state, provider readiness, current
-  concurrency, active assignments, cooldown/reset time, weekly status, and last
-  successful turn.
-- Queue view: current priority lane, candidates, claimed-by, lock age, latest
-  GitHub state, and reason for skipping.
-- Worker detail view: assignment ref, PR/issue, prompt summary, account, PID,
-  live event stream, tool calls, final closeout, GitHub action taken, and token
-  rows.
-- Reconciliation panel: unposted usage reports, replay button, D1/API proof,
-  and projection delta.
+1. Installed dependencies with `bun install --frozen-lockfile`.
+2. Confirmed `@openagentsinc/desktop` exposes the Desktop RPC methods listed
+   above.
+3. Confirmed missing `PYLON_OPENAGENTS_BASE_URL` fails fast for
+   `khala dispatch`.
+4. Confirmed account listing works without printing sensitive auth.
+5. Confirmed a non-mutating dispatch plan with ready account `codex-2`,
+   candidate `issue:7590`, `concurrency 1`, `repo OpenAgentsInc/openagents`,
+   current `origin/main`, and verifier `bun scripts/check-conflict-markers.mjs`
+   returned one slot and zero blockers.
 
-### Rate limit and reset behavior
+Run these final verification commands after editing this runbook:
 
-The desktop harness must distinguish at least these states:
+```sh
+bun run --cwd clients/openagents-desktop verify
 
-- ready
-- missing credentials
-- auth refresh failed
-- five-hour cooldown active, with `reset_at`
-- weekly usage exhausted, with `reset_at`
-- model unavailable
-- execution refused with unknown provider detail
+COMMIT="$(git rev-parse origin/main)"
+bun "$OPENAGENTS_PYLON_APP_PATH/src/index.ts" khala dispatch \
+  --candidates issue:7590 \
+  --accounts codex-2 \
+  --concurrency 1 \
+  --priority-lane khala-code-smoke \
+  --repo OpenAgentsInc/openagents \
+  --branch main \
+  --commit "$COMMIT" \
+  --verify "bun scripts/check-conflict-markers.mjs" \
+  --json
+```
 
-The user wants ORCA-like rate-limit visibility and reset controls. Implement
-this as a typed operator action, not a blind retry loop:
+The second command is non-mutating. It is safe to run as a smoke test, but it
+depends on `codex-2` still being connected and ready on the local machine. If
+it fails with `no_account_targets`, run the account connection flow first or
+replace `codex-2` with a ready account from `codex accounts list --json`.
 
-1. Read provider-reported status and reset times.
-2. If the account only hit a short five-hour cooldown and has weekly capacity
-   left, do not spend a reset action. Schedule automatic resume at `reset_at`.
-3. If weekly usage is exhausted and a legitimate provider-supported manual reset
-   or operator reset workflow exists, expose a deliberate `Request reset`
-   action, record the reason, and log the result.
-4. If no supported reset exists, show that clearly and keep the account out of
-   rotation until the provider reset time.
+## Quick Operator Loop
 
-Do not let the manager keep probing an exhausted account every few seconds. That
-creates noise, rejections, and misleading "active" UI.
+For an urgent but controlled fanout:
 
-### Deterministic preflight before launching a worker
+```sh
+cd "$OPENAGENTS_REPO_ROOT"
+export PYLON_OPENAGENTS_BASE_URL=https://openagents.com
+COMMIT="$(git rev-parse origin/main)"
+VERIFY="bun scripts/check-conflict-markers.mjs"
 
-Before any new assignment:
+bun "$OPENAGENTS_PYLON_APP_PATH/src/index.ts" codex accounts list --json
 
-1. Confirm exactly one controller is active.
-2. Confirm PR/issue is still open and not already merged/closed.
-3. Confirm no live accepted worker is already assigned to that PR/issue.
-4. Confirm account is ready and not cooling down.
-5. Confirm advertised Pylon capacity minus active accepted assignments leaves a
-   slot.
-6. Confirm `origin/main` commit and verifier command are recorded.
-7. Write a structured local `planned` row before calling Khala.
+bun "$OPENAGENTS_PYLON_APP_PATH/src/index.ts" khala dispatch \
+  --candidates issue:7590,issue:7591,issue:7592 \
+  --accounts codex-2,codex-3,codex-4 \
+  --concurrency 3 \
+  --priority-lane khala-code \
+  --repo OpenAgentsInc/openagents \
+  --branch main \
+  --commit "$COMMIT" \
+  --verify "$VERIFY" \
+  --json
 
-### Deterministic postflight after launching a worker
+# If the plan is healthy, launch one request per planned slot and watch Desktop.
+```
 
-After dispatch:
-
-1. Require `assignment_run.accepted` within a bounded timeout, or classify
-   failed-before-accept.
-2. Require a child process or event stream within a bounded timeout, or
-   classify accepted-but-not-executing.
-3. Poll progress freshness. Show stale age in the UI.
-4. On closeout, classify accepted versus rejected from final lifecycle state.
-5. Verify GitHub state changed as claimed by the worker.
-6. Verify exact token usage is posted or replay the failure spool.
-7. Mark the queue row done, retryable, blocked, or superseded with a typed
-   reason.
-
-## Manager Agent Protocol After Compaction
-
-When a new manager agent picks this up:
-
-1. Read this file and the 2026-06-29 after-action first.
-2. Stop any shell refill parent if the user asked for a pause or reorientation.
-   Leave in-flight Codex workers alone.
-3. Run the active marker versus `codex exec` status command.
-4. Check the token failure spool.
-5. Query GitHub open/merged/closed counts.
-6. Inspect the latest PR resolver logs by final lifecycle state.
-7. Rebuild the candidate set from current GitHub state. Do not trust old
-   temp-file candidates.
-8. Resume with one controller only, or use the desktop harness once available.
-9. Report exact state: assigned, executing, accepted, rejected, token failures,
-   open PR count, and the current priority lane.
-
-## What To Build Next
-
-The immediate product direction is clear:
-
-1. Merge or consolidate the PRs that expose Codex quota/cooldown/reset status,
-   execution refusal reasons, account readiness, supervisor stale-claim GC, and
-   live fleet progress.
-2. Replace `/tmp/openagents_burst_pr_refill.sh` with a checked-in Pylon/Desktop
-   harness that uses structured state and tests.
-3. Move the queue, account status, dispatcher, process tracker, and token
-   reconciler into OpenAgents Desktop.
-4. Make the desktop UI the operator source of truth for Codex fleet status and
-   work assignment, while keeping Codex itself as the local coding engine.
-
-The goal is not just higher fanout. The goal is higher fanout with state that a
-future manager agent can trust after compaction.
+Do not increase concurrency until the Desktop Coding page shows real live Codex
+processes and the token failure spool remains empty.
