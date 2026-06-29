@@ -429,7 +429,7 @@ button {
 
 .coding-metrics {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 1px;
   margin: 4px 16px 10px;
   overflow: hidden;
@@ -606,13 +606,130 @@ button {
 
 .coding-transcript {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
   min-width: 0;
   max-height: 460px;
   overflow: hidden;
   background: rgba(4, 9, 18, 0.88);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 8px;
+}
+
+.token-accounting-panel {
+  display: grid;
+  gap: 10px;
+  margin: 0 16px 12px;
+  padding: 12px;
+  background: rgba(4, 9, 18, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+}
+
+.token-accounting-heading,
+.token-verification-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.token-accounting-heading div {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.token-accounting-heading h3 {
+  margin: 0;
+  color: #fff;
+  font-size: 0.88rem;
+  line-height: 1.2;
+}
+
+.token-accounting-heading span,
+.token-spool-row span,
+.token-replay-status,
+.token-verification-row p,
+.token-verification-empty {
+  color: #9bb8e8;
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.token-replay {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 12px;
+  color: #fff;
+  background: rgba(17, 61, 132, 0.72);
+  border: 1px solid rgba(79, 208, 255, 0.58);
+  border-radius: 8px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.token-replay:disabled {
+  cursor: default;
+  opacity: 0.48;
+}
+
+.token-spool-list {
+  display: grid;
+  gap: 8px;
+}
+
+.token-spool-row,
+.token-spool-empty,
+.token-verification-row,
+.token-verification-empty {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px;
+  background: rgba(8, 14, 26, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+}
+
+.token-spool-row {
+  border-color: rgba(255, 107, 122, 0.34);
+}
+
+.token-spool-row strong,
+.token-verification-row strong {
+  overflow: hidden;
+  color: #fff;
+  font-size: 0.76rem;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.token-spool-row p,
+.token-verification-row p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.coding-token-verification {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.token-verification-row[data-state="ok"] {
+  border-color: rgba(79, 208, 255, 0.34);
+}
+
+.token-verification-row[data-state="blocked"] {
+  border-color: rgba(255, 107, 122, 0.42);
 }
 
 .coding-transcript-heading {

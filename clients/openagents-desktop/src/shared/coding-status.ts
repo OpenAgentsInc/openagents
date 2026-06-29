@@ -12,6 +12,7 @@ export type CodingProcessKind =
 export type CodingProcess = {
   readonly accountRef: string | null
   readonly age: string
+  readonly assignmentRef: string | null
   readonly cpuPercent: number
   readonly issueRef: string | null
   readonly kind: CodingProcessKind
@@ -55,6 +56,7 @@ export type CodingTranscriptMessage = {
 export type CodingCodexSession = {
   readonly accountRef: string | null
   readonly active: boolean
+  readonly assignmentRef: string | null
   readonly cwd: string | null
   readonly issueRef: string | null
   readonly messageCount: number
@@ -69,6 +71,7 @@ export type CodingCodexSession = {
 }
 
 export type ParsedCodexSessionRollout = {
+  readonly assignmentRef: string | null
   readonly cwd: string | null
   readonly messageCount: number
   readonly messages: readonly CodingTranscriptMessage[]
@@ -148,6 +151,15 @@ const issueRefFromCommand = (command: string): string | null =>
   command.match(/#(\d{3,})/)?.[1] ??
   null
 
+const assignmentRefPattern = /assignment[.:-][A-Za-z0-9_.:-]{3,180}/
+
+const assignmentRefFromCommand = (command: string): string | null =>
+  command.match(/(?:--assignment-ref\s+)((?:"[^"]+")|(?:'[^']+')|\S+)/)?.[1]
+    ?.replace(/^(['"])(.*)\1$/, "$2")
+    ?.match(assignmentRefPattern)?.[0] ??
+  command.match(assignmentRefPattern)?.[0] ??
+  null
+
 const unquoteShellToken = (value: string): string =>
   value.replace(/^(['"])(.*)\1$/, "$2")
 
@@ -159,10 +171,15 @@ const workspacePathFromCommand = (command: string): string | null => {
 const labelForProcess = (
   kind: CodingProcessKind,
   accountRef: string | null,
+  assignmentRef: string | null,
   issueRef: string | null,
 ): string => {
   const base = processKindLabel[kind]
-  const detail = [accountRef, issueRef === null ? null : `#${issueRef}`]
+  const detail = [
+    accountRef,
+    issueRef === null ? null : `#${issueRef}`,
+    assignmentRef === null ? null : assignmentRef,
+  ]
     .filter((value): value is string => value !== null)
     .join(" ")
   return detail === "" ? base : `${base} ${detail}`
@@ -193,14 +210,16 @@ export const parseCodingProcesses = (
     }
 
     const accountRef = accountRefFromCommand(command)
+    const assignmentRef = assignmentRefFromCommand(command)
     const issueRef = issueRefFromCommand(command)
     rows.push({
       accountRef,
       age,
+      assignmentRef,
       cpuPercent,
       issueRef,
       kind,
-      label: labelForProcess(kind, accountRef, issueRef),
+      label: labelForProcess(kind, accountRef, assignmentRef, issueRef),
       parentPid,
       pid,
       status: cpuPercent >= 5 ? "active" : "idle",
@@ -212,12 +231,14 @@ export const parseCodingProcesses = (
   return rows.map(row => {
     const parent = byPid.get(row.parentPid)
     const accountRef = row.accountRef ?? parent?.accountRef ?? null
+    const assignmentRef = row.assignmentRef ?? parent?.assignmentRef ?? null
     const issueRef = row.issueRef ?? parent?.issueRef ?? null
     return {
       ...row,
       accountRef,
+      assignmentRef,
       issueRef,
-      label: labelForProcess(row.kind, accountRef, issueRef),
+      label: labelForProcess(row.kind, accountRef, assignmentRef, issueRef),
     }
   })
 }
@@ -612,6 +633,7 @@ const sessionMetaPayload = (payload: unknown): JsonObject | null => {
 export const parseCodexSessionRollout = (
   rolloutText: string,
 ): ParsedCodexSessionRollout => {
+  let assignmentRef: string | null = null
   let cwd: string | null = null
   let sessionId: string | null = null
   let source: string | null = null
@@ -627,6 +649,10 @@ export const parseCodexSessionRollout = (
       continue
     }
     if (!isJsonObject(record)) continue
+    if (assignmentRef === null) {
+      const serialized = compactJsonFromUnknown(record)
+      assignmentRef = serialized?.match(assignmentRefPattern)?.[0] ?? null
+    }
 
     const timestamp = stringValueFromUnknown(record.timestamp)
     const type = stringValueFromUnknown(record.type)
@@ -662,6 +688,7 @@ export const parseCodexSessionRollout = (
   }
 
   return {
+    assignmentRef,
     cwd,
     messageCount: messages.length,
     messages: messages.slice(-24),
