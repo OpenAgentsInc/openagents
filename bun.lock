@@ -529,6 +529,17 @@
         "typescript": "catalog:",
       },
     },
+    "packages/khala-tools": {
+      "name": "@openagentsinc/khala-tools",
+      "version": "0.1.0",
+      "dependencies": {
+        "effect": "catalog:",
+      },
+      "devDependencies": {
+        "bun-types": "^1.0.0",
+        "typescript": "catalog:",
+      },
+    },
     "packages/mcp-contract": {
       "name": "@openagentsinc/mcp-contract",
       "version": "0.1.0",
@@ -1013,6 +1024,8 @@
     "@openagentsinc/khala-desktop": ["@openagentsinc/khala-desktop@workspace:clients/khala-desktop"],
 
     "@openagentsinc/khala-macos": ["@openagentsinc/khala-macos@workspace:clients/khala-macos"],
+
+    "@openagentsinc/khala-tools": ["@openagentsinc/khala-tools@workspace:packages/khala-tools"],
 
     "@openagentsinc/mcp-contract": ["@openagentsinc/mcp-contract@workspace:packages/mcp-contract"],
 

@@ -1,0 +1,439 @@
+import { Effect, Schema as S } from "effect"
+
+export const KhalaToolAuthority = S.Literals([
+  "read",
+  "search",
+  "edit",
+  "write",
+  "patch",
+  "shell",
+  "process_stdin",
+  "network",
+  "browser",
+  "external_directory",
+  "memory_write",
+  "credential",
+  "persistent_config_write",
+  "owner_full_access",
+])
+export type KhalaToolAuthority = typeof KhalaToolAuthority.Type
+
+export const KhalaToolAvailability = S.Literals(["inspect", "coding", "owner_local_full", "browser", "extension"])
+export type KhalaToolAvailability = typeof KhalaToolAvailability.Type
+
+export const KhalaPermissionMode = S.Literals(["allow", "approval_required", "deny"])
+export type KhalaPermissionMode = typeof KhalaPermissionMode.Type
+
+export const KhalaToolExecutionMode = S.Literals(["local", "hosted", "delegated"])
+export type KhalaToolExecutionMode = typeof KhalaToolExecutionMode.Type
+
+export const KhalaJsonSchema = S.Record(S.String, S.Unknown)
+export type KhalaJsonSchema = typeof KhalaJsonSchema.Type
+
+export const KhalaRendererMetadata = S.Struct({
+  kind: S.String,
+  rendererRef: S.optional(S.String),
+})
+export type KhalaRendererMetadata = typeof KhalaRendererMetadata.Type
+
+export const KhalaToolDefinition = S.Struct({
+  authority: KhalaToolAuthority,
+  availability: S.Array(KhalaToolAvailability),
+  description: S.String,
+  executionMode: KhalaToolExecutionMode,
+  inputSchema: KhalaJsonSchema,
+  internalId: S.String,
+  label: S.String,
+  name: S.String,
+  outputSchema: S.optional(KhalaJsonSchema),
+  permissionMode: KhalaPermissionMode,
+  prompt: S.String,
+  promptGuidelines: S.Array(S.String),
+  renderer: S.optional(KhalaRendererMetadata),
+})
+export type KhalaToolDefinition = typeof KhalaToolDefinition.Type
+
+export const KhalaToolInvocation = S.Struct({
+  arguments: S.Record(S.String, S.Unknown),
+  id: S.String,
+  name: S.String,
+  sessionId: S.String,
+})
+export type KhalaToolInvocation = typeof KhalaToolInvocation.Type
+
+export const KhalaPublicSafety = S.Literals(["public_safe", "private", "redacted"])
+export type KhalaPublicSafety = typeof KhalaPublicSafety.Type
+
+export const KhalaToolArtifact = S.Struct({
+  artifactRef: S.String,
+  mediaType: S.optional(S.String),
+  private: S.Boolean,
+  summary: S.optional(S.String),
+})
+export type KhalaToolArtifact = typeof KhalaToolArtifact.Type
+
+export const KhalaToolResultStatus = S.Literals(["ok", "failed", "denied"])
+export type KhalaToolResultStatus = typeof KhalaToolResultStatus.Type
+
+export const KhalaToolResult = S.Struct({
+  artifacts: S.Array(KhalaToolArtifact),
+  modelOutput: S.Struct({
+    text: S.String,
+  }),
+  privateDataRefs: S.Array(S.String),
+  publicSafety: KhalaPublicSafety,
+  publicSummary: S.String,
+  redactionRefs: S.Array(S.String),
+  status: KhalaToolResultStatus,
+  ui: S.Unknown,
+})
+export type KhalaToolResult = typeof KhalaToolResult.Type
+
+export const KhalaToolEventKind = S.Literals([
+  "model_content",
+  "tool_requested",
+  "approval_requested",
+  "approval_answered",
+  "tool_started",
+  "tool_progress",
+  "stdout_chunk",
+  "stderr_chunk",
+  "diff_chunk",
+  "artifact_written",
+  "tool_completed",
+  "tool_failed",
+  "tool_cancelled",
+])
+export type KhalaToolEventKind = typeof KhalaToolEventKind.Type
+
+export const KhalaToolEvent = S.Struct({
+  eventId: S.String,
+  invocationId: S.optional(S.String),
+  kind: KhalaToolEventKind,
+  payload: S.Unknown,
+  sessionId: S.String,
+})
+export type KhalaToolEvent = typeof KhalaToolEvent.Type
+
+export const KhalaPermissionDecision = S.Literals(["allow", "deny", "always"])
+export type KhalaPermissionDecision = typeof KhalaPermissionDecision.Type
+
+export const KhalaPermissionRequest = S.Struct({
+  action: KhalaToolAuthority,
+  authorityMode: S.String,
+  publicSafety: KhalaPublicSafety,
+  resources: S.Array(S.String),
+  saveScope: S.Literals(["once", "session", "project"]),
+  sessionId: S.String,
+  toolCallId: S.String,
+  toolName: S.String,
+  workingDirectory: S.optional(S.String),
+})
+export type KhalaPermissionRequest = typeof KhalaPermissionRequest.Type
+
+export interface KhalaPermissionService {
+  readonly decide: (request: KhalaPermissionRequest) => Effect.Effect<KhalaPermissionDecision, never>
+}
+
+export interface KhalaWorkspaceService {
+  readonly workingDirectory: string
+  readonly resolvePath?: (path: string) => Effect.Effect<string, KhalaToolRuntimeError>
+}
+
+export interface KhalaProcessService {
+  readonly marker: "khala.process_service"
+}
+
+export interface KhalaOutputStore {
+  readonly writeArtifact: (input: {
+    readonly bytes: Uint8Array
+    readonly mediaType?: string
+    readonly summary?: string
+  }) => Effect.Effect<KhalaToolArtifact, KhalaToolRuntimeError>
+}
+
+export interface KhalaToolServices {
+  readonly outputStore: KhalaOutputStore
+  readonly permission: KhalaPermissionService
+  readonly process: KhalaProcessService
+  readonly workspace: KhalaWorkspaceService
+}
+
+export class KhalaToolRuntimeError extends S.TaggedErrorClass<KhalaToolRuntimeError>()(
+  "KhalaToolRuntimeError",
+  {
+    code: S.String,
+    reason: S.String,
+  },
+) {}
+
+export interface KhalaToolExecuteContext {
+  readonly definition: KhalaToolDefinition
+  readonly invocation: KhalaToolInvocation
+  readonly services: KhalaToolServices
+}
+
+export interface RegisteredKhalaTool {
+  readonly definition: KhalaToolDefinition
+  readonly execute?: (
+    input: Readonly<Record<string, unknown>>,
+    context: KhalaToolExecuteContext,
+  ) => Effect.Effect<KhalaToolResult, KhalaToolRuntimeError>
+}
+
+export interface KhalaToolRegistry {
+  readonly list: () => ReadonlyArray<KhalaToolDefinition>
+  readonly materialize: (availability: KhalaToolAvailability) => ReadonlyArray<KhalaToolDefinition>
+  readonly register: (tool: RegisteredKhalaTool) => void
+  readonly resolve: (name: string) => RegisteredKhalaTool | undefined
+}
+
+export function makeKhalaToolRegistry(initial: ReadonlyArray<RegisteredKhalaTool> = []): KhalaToolRegistry {
+  const tools = new Map<string, RegisteredKhalaTool>()
+  const register = (tool: RegisteredKhalaTool): void => {
+    tools.set(tool.definition.name, tool)
+  }
+  for (const tool of initial) register(tool)
+  return {
+    list: () => [...tools.values()].map(tool => tool.definition),
+    materialize: availability =>
+      [...tools.values()]
+        .map(tool => tool.definition)
+        .filter(definition => definition.availability.includes(availability)),
+    register,
+    resolve: name => tools.get(name),
+  }
+}
+
+export function executeKhalaTool(
+  registry: KhalaToolRegistry,
+  invocation: KhalaToolInvocation,
+  services: KhalaToolServices,
+): Effect.Effect<KhalaToolResult, never> {
+  const tool = registry.resolve(invocation.name)
+  if (tool === undefined) {
+    return Effect.succeed(khalaToolError("unknown_tool", `Unknown tool: ${invocation.name}`))
+  }
+  if (tool.execute === undefined) {
+    return Effect.succeed(khalaToolError("missing_handler", `Tool has no execute handler: ${invocation.name}`))
+  }
+  if (!isRecord(invocation.arguments)) {
+    return Effect.succeed(khalaToolError("invalid_arguments", "Invalid tool input: expected an object"))
+  }
+  const definition = tool.definition
+  if (definition.permissionMode === "deny") {
+    return Effect.succeed(khalaToolDenied("permission_policy_denied", `${definition.name} is denied by policy`))
+  }
+  const permissionEffect =
+    definition.permissionMode === "approval_required"
+      ? services.permission.decide(permissionRequestFor(definition, invocation, services))
+      : Effect.succeed("allow" as const)
+
+  return permissionEffect.pipe(
+    Effect.flatMap(decision => {
+      if (decision === "deny") {
+        return Effect.succeed(khalaToolDenied("permission_denied", `${definition.name} denied by permission service`))
+      }
+      return tool.execute!(invocation.arguments, { definition, invocation, services }).pipe(
+        Effect.map(sanitizeToolResult),
+        Effect.catchTag("KhalaToolRuntimeError", error =>
+          Effect.succeed(khalaToolError(error.code, error.reason)),
+        ),
+      )
+    }),
+  )
+}
+
+export function khalaToolOk(input: {
+  readonly modelText: string
+  readonly publicSummary?: string
+  readonly ui?: unknown
+  readonly artifacts?: ReadonlyArray<KhalaToolArtifact>
+  readonly publicSafety?: KhalaPublicSafety
+  readonly privateDataRefs?: ReadonlyArray<string>
+  readonly redactionRefs?: ReadonlyArray<string>
+}): KhalaToolResult {
+  return sanitizeToolResult({
+    artifacts: [...(input.artifacts ?? [])],
+    modelOutput: { text: input.modelText },
+    privateDataRefs: [...(input.privateDataRefs ?? [])],
+    publicSafety: input.publicSafety ?? "public_safe",
+    publicSummary: input.publicSummary ?? input.modelText,
+    redactionRefs: [...(input.redactionRefs ?? [])],
+    status: "ok",
+    ui: input.ui ?? null,
+  })
+}
+
+export function khalaToolError(code: string, reason: string): KhalaToolResult {
+  const safe = redactKhalaPublicText(`${code}: ${reason}`)
+  return {
+    artifacts: [],
+    modelOutput: { text: safe },
+    privateDataRefs: [],
+    publicSafety: safe === `${code}: ${reason}` ? "public_safe" : "redacted",
+    publicSummary: safe,
+    redactionRefs: safe === `${code}: ${reason}` ? [] : ["redaction.khala_tool.error"],
+    status: "failed",
+    ui: { code, reason: safe },
+  }
+}
+
+export function khalaToolDenied(code: string, reason: string): KhalaToolResult {
+  const error = khalaToolError(code, reason)
+  return { ...error, status: "denied" }
+}
+
+export function sanitizeToolResult(result: KhalaToolResult): KhalaToolResult {
+  const publicSummary = redactKhalaPublicText(result.publicSummary)
+  const modelText = redactKhalaPublicText(result.modelOutput.text)
+  const redacted = publicSummary !== result.publicSummary || modelText !== result.modelOutput.text
+  return {
+    ...result,
+    modelOutput: { text: modelText },
+    publicSafety: redacted ? "redacted" : result.publicSafety,
+    publicSummary,
+    redactionRefs: redacted
+      ? [...new Set([...result.redactionRefs, "redaction.khala_tool.public_text"])]
+      : result.redactionRefs,
+  }
+}
+
+export function redactKhalaPublicText(value: string): string {
+  return value
+    .replace(/OPENROUTER_API_KEY\s*[:=]\s*\S+/giu, "OPENROUTER_API_KEY=[REDACTED]")
+    .replace(/sk-or-[A-Za-z0-9_-]{8,}/gu, "[REDACTED_OPENROUTER_KEY]")
+    .replace(/sk-[A-Za-z0-9_-]{16,}/gu, "[REDACTED_API_KEY]")
+    .replace(/Bearer\s+[A-Za-z0-9._-]{16,}/giu, "Bearer [REDACTED_TOKEN]")
+}
+
+export const allowAllKhalaPermissionService: KhalaPermissionService = {
+  decide: () => Effect.succeed("allow"),
+}
+
+export const denyAllKhalaPermissionService: KhalaPermissionService = {
+  decide: () => Effect.succeed("deny"),
+}
+
+export const inMemoryKhalaOutputStore = (): KhalaOutputStore & {
+  readonly artifacts: ReadonlyArray<KhalaToolArtifact>
+} => {
+  const artifacts: KhalaToolArtifact[] = []
+  return {
+    artifacts,
+    writeArtifact: input =>
+      Effect.sync(() => {
+        const artifact: KhalaToolArtifact = {
+          artifactRef: `artifact.local.${artifacts.length + 1}`,
+          private: true,
+          ...(input.mediaType === undefined ? {} : { mediaType: input.mediaType }),
+          ...(input.summary === undefined ? {} : { summary: redactKhalaPublicText(input.summary) }),
+        }
+        artifacts.push(artifact)
+        return artifact
+      }),
+  }
+}
+
+export function makeKhalaToolServices(input: {
+  readonly permission?: KhalaPermissionService
+  readonly workingDirectory?: string
+} = {}): KhalaToolServices {
+  return {
+    outputStore: inMemoryKhalaOutputStore(),
+    permission: input.permission ?? allowAllKhalaPermissionService,
+    process: { marker: "khala.process_service" },
+    workspace: { workingDirectory: input.workingDirectory ?? process.cwd() },
+  }
+}
+
+export const KhalaBackendKind = S.Literals(["hosted_openagents", "openrouter_byok", "mock"])
+export type KhalaBackendKind = typeof KhalaBackendKind.Type
+
+export const KhalaBackendSelection = S.Struct({
+  baseUrl: S.optional(S.String),
+  credentialSource: S.optional(S.Literals(["env:OPENROUTER_API_KEY", "khala-provider-key"])),
+  kind: KhalaBackendKind,
+  model: S.String,
+  provider: S.optional(S.Literal("openrouter")),
+})
+export type KhalaBackendSelection = typeof KhalaBackendSelection.Type
+
+export function resolveKhalaBackend(input: {
+  readonly env?: Readonly<Record<string, string | undefined>>
+  readonly preferred?: KhalaBackendKind
+  readonly storedProviderKey?: Readonly<{ provider: string; keyConfigured: boolean }>
+} = {}): KhalaBackendSelection {
+  if (input.preferred === "mock") {
+    return { kind: "mock", model: "mock/khala-tools" }
+  }
+  const envKey = input.env?.OPENROUTER_API_KEY?.trim()
+  const storedOpenRouter =
+    input.storedProviderKey?.provider === "openrouter" && input.storedProviderKey.keyConfigured
+
+  if ((input.preferred === "openrouter_byok" || envKey !== undefined && envKey.length > 0 || storedOpenRouter) &&
+    (envKey !== undefined && envKey.length > 0 || storedOpenRouter)
+  ) {
+    return {
+      credentialSource: envKey !== undefined && envKey.length > 0 ? "env:OPENROUTER_API_KEY" : "khala-provider-key",
+      kind: "openrouter_byok",
+      model: input.env?.OPENROUTER_MODEL?.trim() || "openrouter/free",
+      provider: "openrouter",
+    }
+  }
+
+  return {
+    baseUrl: input.env?.OPENAGENTS_BASE_URL?.trim() || "https://openagents.com",
+    kind: "hosted_openagents",
+    model: "openagents/khala",
+  }
+}
+
+export interface OpenAiCompatibleToolDefinition {
+  readonly function: {
+    readonly description: string
+    readonly name: string
+    readonly parameters: KhalaJsonSchema
+  }
+  readonly type: "function"
+}
+
+export function toOpenAiCompatibleTool(definition: KhalaToolDefinition): OpenAiCompatibleToolDefinition {
+  return {
+    function: {
+      description: definition.description,
+      name: definition.name,
+      parameters: definition.inputSchema,
+    },
+    type: "function",
+  }
+}
+
+export function toOpenAiCompatibleTools(
+  definitions: ReadonlyArray<KhalaToolDefinition>,
+): ReadonlyArray<OpenAiCompatibleToolDefinition> {
+  return definitions.map(toOpenAiCompatibleTool)
+}
+
+function permissionRequestFor(
+  definition: KhalaToolDefinition,
+  invocation: KhalaToolInvocation,
+  services: KhalaToolServices,
+): KhalaPermissionRequest {
+  const resources = typeof invocation.arguments.path === "string" ? [invocation.arguments.path] : []
+  return {
+    action: definition.authority,
+    authorityMode: definition.executionMode,
+    publicSafety: "private",
+    resources,
+    saveScope: "once",
+    sessionId: invocation.sessionId,
+    toolCallId: invocation.id,
+    toolName: definition.name,
+    workingDirectory: services.workspace.workingDirectory,
+  }
+}
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
