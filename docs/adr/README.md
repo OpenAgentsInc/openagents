@@ -30,3 +30,7 @@ records. They provide a stable decision log that links those sources together.
 * [ADR-0005: Land through PR review and the `check:deploy` gate](0005-land-through-pr-review-and-check-deploy.md)
 * [ADR-0006: Route Khala coding delegation through owner-local Pylon capacity](0006-route-khala-coding-delegation-through-owner-local-pylon-capacity.md)
 * [ADR-0007: Gate public product claims through product promises](0007-gate-public-product-claims-through-product-promises.md)
+* [ADR-0008: Use ledger-backed public projections with staleness contracts](0008-use-ledger-backed-public-projections-with-staleness-contracts.md)
+* [ADR-0009: Count Khala served tokens from exact usage events](0009-count-khala-served-tokens-from-exact-usage-events.md)
+* [ADR-0010: Use Spark for agent payments and MDK for checkouts](0010-use-spark-for-agent-payments-and-mdk-for-checkouts.md)
+* [ADR-0011: Treat Blueprint submissions as evidence, not authority](0011-treat-blueprint-submissions-as-evidence-not-authority.md)
