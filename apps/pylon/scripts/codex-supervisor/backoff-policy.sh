@@ -113,6 +113,30 @@ sup_record_account_refusal() {
 
 sup_dispatch_failure_signature() {
   local out="$1"
+  if grep -qiE 'codex_agent_execution_refused\.credentials_revoked|credentials[_ -]?revoked|refresh token was revoked' "$out" 2>/dev/null; then
+    printf 'credentials_revoked'
+    return 0
+  fi
+  if grep -qiE 'codex_agent_execution_refused\.usage_limited|usage[_ -]?limited|usage limit' "$out" 2>/dev/null; then
+    printf 'usage_limited'
+    return 0
+  fi
+  if grep -qiE 'codex_agent_execution_refused\.rate_limited|rate[_ -]?limited|rate.?limit|too many requests|\b429\b' "$out" 2>/dev/null; then
+    printf 'rate_limited'
+    return 0
+  fi
+  if grep -qiE 'codex_agent_execution_refused\.timeout|timed? ?out|timeout' "$out" 2>/dev/null; then
+    printf 'timeout'
+    return 0
+  fi
+  if grep -qiE 'codex_agent_execution_refused\.auth_error|auth[_ -]?error|unauthorized|\b401\b|sign in again' "$out" 2>/dev/null; then
+    printf 'auth_error'
+    return 0
+  fi
+  if grep -qiE 'codex_agent_execution_refused\.network|network|websocket|\bwss\b|econnreset|enotfound|eai_again|fetch failed' "$out" 2>/dev/null; then
+    printf 'network'
+    return 0
+  fi
   if grep -qiE 'codex_agent_execution_refused|execution[_ -]?refused' "$out" 2>/dev/null; then
     printf 'codex_agent_execution_refused'
     return 0

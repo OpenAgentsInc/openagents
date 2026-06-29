@@ -42,6 +42,10 @@ else
 fi
 
 printf '%s' '{"error":"codex_agent_execution_refused"}' > "$WORK/executor-refused.json"
+printf '%s' '{"blockerRefs":["blocker.assignment.codex_agent_execution_refused","blocker.assignment.codex_agent_execution_refused.credentials_revoked"]}' > "$WORK/revoked.json"
+printf '%s' '{"blockerRefs":["blocker.assignment.codex_agent_execution_refused.usage_limited"]}' > "$WORK/usage-limited.json"
+printf '%s' '{"blockerRefs":["blocker.assignment.codex_agent_execution_refused.rate_limited"]}' > "$WORK/specific-rate.json"
+printf '%s' '{"blockerRefs":["blocker.assignment.codex_agent_execution_refused.auth_error"]}' > "$WORK/auth-error.json"
 printf '%s' '{"error":"target_pylon_unavailable"}' > "$WORK/gate-refused.json"
 printf '%s' 'HTTP 429 too many requests' > "$WORK/rate.txt"
 printf '%s' 'plain failure' > "$WORK/other.txt"
@@ -50,6 +54,30 @@ if [ "$(sup_dispatch_failure_signature "$WORK/executor-refused.json")" = "codex_
   ok "executor refusal is classified distinctly"
 else
   bad "executor refusal classification failed"
+fi
+
+if [ "$(sup_dispatch_failure_signature "$WORK/revoked.json")" = "credentials_revoked" ]; then
+  ok "specific revoked credential refusal is surfaced"
+else
+  bad "revoked credential refusal classification failed"
+fi
+
+if [ "$(sup_dispatch_failure_signature "$WORK/usage-limited.json")" = "usage_limited" ]; then
+  ok "specific usage-limited refusal is surfaced"
+else
+  bad "usage-limited refusal classification failed"
+fi
+
+if [ "$(sup_dispatch_failure_signature "$WORK/specific-rate.json")" = "rate_limited" ]; then
+  ok "specific rate-limited refusal is surfaced"
+else
+  bad "specific rate-limited refusal classification failed"
+fi
+
+if [ "$(sup_dispatch_failure_signature "$WORK/auth-error.json")" = "auth_error" ]; then
+  ok "specific auth-error refusal is surfaced"
+else
+  bad "auth-error refusal classification failed"
 fi
 
 if [ "$(sup_dispatch_failure_signature "$WORK/gate-refused.json")" = "refused" ]; then

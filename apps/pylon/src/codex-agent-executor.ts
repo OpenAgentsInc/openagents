@@ -124,12 +124,22 @@ export type CodexAgentRunOutcome =
   | "workspace_escape_blocked"
   | "refused"
 
+export type CodexAgentExecutionRefusalReason =
+  | "credentials_revoked"
+  | "usage_limited"
+  | "rate_limited"
+  | "network"
+  | "timeout"
+  | "auth_error"
+  | "other"
+
 export type CodexAgentRunResult = {
   outcome: CodexAgentRunOutcome
   turnCount: number
   editedFileCount: number
   commandCount: number
   sessionRef: string | null
+  refusalReason?: CodexAgentExecutionRefusalReason
 }
 
 export type CodexAgentRunner = (input: CodexAgentRunInput) => Promise<CodexAgentRunResult>
@@ -648,6 +658,49 @@ type CodexThreadEvent = {
 
 type RawCodexThreadEvent = Record<string, unknown>
 
+export function classifyCodexAgentExecutionError(error: unknown): CodexAgentExecutionRefusalReason {
+  const text = (() => {
+    if (error instanceof Error) return `${error.name}\n${error.message}\n${error.stack ?? ""}`
+    if (typeof error === "string") return error
+    if (error !== null && typeof error === "object") {
+      const record = error as { message?: unknown; stderr?: unknown; stdout?: unknown; code?: unknown; status?: unknown }
+      return [
+        typeof record.message === "string" ? record.message : "",
+        typeof record.stderr === "string" ? record.stderr : "",
+        typeof record.stdout === "string" ? record.stdout : "",
+        typeof record.code === "string" || typeof record.code === "number" ? String(record.code) : "",
+        typeof record.status === "string" || typeof record.status === "number" ? String(record.status) : "",
+      ].join("\n")
+    }
+    return ""
+  })().toLowerCase()
+
+  if (/revok/.test(text)) return "credentials_revoked"
+  if (/usage limit|quota/.test(text)) return "usage_limited"
+  if (/rate limit|too many requests|\b429\b/.test(text)) return "rate_limited"
+  if (/timeout|timed out|etimedout|abort(?:ed)?/.test(text)) return "timeout"
+  if (/network|websocket|\bwss\b|econnreset|enotfound|eai_again|fetch failed/.test(text)) return "network"
+  if (
+    /could not be refreshed|refresh token|token (?:has )?expired|expired token|unauthorized|\b401\b|not logged in|please (?:sign in|log ?in)|sign in again|authentication (?:failed|error)|invalid (?:token|credential)/.test(
+      text,
+    )
+  ) {
+    return "auth_error"
+  }
+  return "other"
+}
+
+function codexExecutionRefusalRefs(reason: CodexAgentExecutionRefusalReason) {
+  return {
+    blockerRefs: [
+      "blocker.assignment.codex_agent_execution_refused",
+      `blocker.assignment.codex_agent_execution_refused.${reason}`,
+    ],
+    resultRef: `result.public.pylon.codex_agent_task.execution_refused.${reason}`,
+    summaryRef: `summary.public.pylon.codex_agent_task.execution_refused.${reason}`,
+  }
+}
+
 function finiteToken(value: number | undefined): number {
   return typeof value === "number" && Number.isFinite(value) && value > 0
     ? Math.trunc(value)
@@ -861,6 +914,7 @@ export async function runWithCodexSdk(input: CodexAgentRunInput): Promise<CodexA
   let pendingRawEvents: Array<RawCodexThreadEvent> = []
   let pendingChunkItems: Array<CodexTurnReportItem> = []
   let pendingChunkRawEvents: Array<RawCodexThreadEvent> = []
+  let refusalReason: CodexAgentExecutionRefusalReason | undefined
 
   const flushEventChunk = async (turnIndex: number) => {
     if (pendingChunkRawEvents.length === 0) return
@@ -949,7 +1003,10 @@ export async function runWithCodexSdk(input: CodexAgentRunInput): Promise<CodexA
         pendingChunkRawEvents = []
         activeTurnIndex = 0
       }
-      if (event.type === "turn.failed" || event.type === "error") failed = true
+      if (event.type === "turn.failed" || event.type === "error") {
+        failed = true
+        refusalReason = classifyCodexAgentExecutionError(event.error?.message ?? event)
+      }
       if (event.type === "item.completed" && event.item?.type === "command_execution") {
         commandCount += 1
         await emitCodexProgress(input.onProgress, {
@@ -1001,7 +1058,14 @@ export async function runWithCodexSdk(input: CodexAgentRunInput): Promise<CodexA
     return { outcome: "budget_exceeded", turnCount, editedFileCount, commandCount, sessionRef }
   }
   if (failed) {
-    return { outcome: "refused", turnCount, editedFileCount, commandCount, sessionRef }
+    return {
+      outcome: "refused",
+      turnCount,
+      editedFileCount,
+      commandCount,
+      sessionRef,
+      refusalReason: refusalReason ?? "other",
+    }
   }
   return { outcome: "completed", turnCount, editedFileCount, commandCount, sessionRef }
 }
@@ -1291,15 +1355,17 @@ export async function executeCodexAgentAssignment(
       ...(options.onProgress === undefined ? {} : { onProgress: options.onProgress }),
       workspaceRef: materialized.workspaceRef,
     })
-  } catch {
+  } catch (error) {
+    const reason = classifyCodexAgentExecutionError(error)
+    const refusal = codexExecutionRefusalRefs(reason)
     await releaseCodexAgentWorkspace({ materialized, now })
     return refusalRecord({
       lease,
       runRef,
-      blockerRefs: ["blocker.assignment.codex_agent_execution_refused"],
-      resultRef: "result.public.pylon.codex_agent_task.execution_refused",
-      summaryRef: "summary.public.pylon.codex_agent_task.execution_refused",
-      message: "Local Codex thread refused with a typed execution error.",
+      blockerRefs: refusal.blockerRefs,
+      resultRef: refusal.resultRef,
+      summaryRef: refusal.summaryRef,
+      message: `Local Codex thread refused with a typed execution error (${reason}).`,
     })
   }
 
@@ -1325,14 +1391,16 @@ export async function executeCodexAgentAssignment(
     })
   }
   if (run.outcome === "refused") {
+    const reason = run.refusalReason ?? "other"
+    const refusal = codexExecutionRefusalRefs(reason)
     await releaseCodexAgentWorkspace({ materialized, now })
     return refusalRecord({
       lease,
       runRef,
-      blockerRefs: ["blocker.assignment.codex_agent_execution_refused"],
-      resultRef: "result.public.pylon.codex_agent_task.execution_refused",
-      summaryRef: "summary.public.pylon.codex_agent_task.execution_refused",
-      message: "Local Codex thread ended with an execution error before completing the task.",
+      blockerRefs: refusal.blockerRefs,
+      resultRef: refusal.resultRef,
+      summaryRef: refusal.summaryRef,
+      message: `Local Codex thread ended with an execution error before completing the task (${reason}).`,
     })
   }
 

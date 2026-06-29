@@ -6,6 +6,7 @@ import { tmpdir } from "node:os"
 import {
   CODEX_AGENT_SUM_REPAIR_FIXTURE_REF,
   CODEX_AGENT_TASK_SCHEMA,
+  classifyCodexAgentExecutionError,
   codexAgentTaskFrom,
   effectiveSandboxMode,
   executeCodexAgentAssignment,
@@ -175,14 +176,35 @@ describe("codex agent task recognition", () => {
     })
   })
 
+  test("classifies Codex execution errors into public-safe refusal reasons", () => {
+    expect(
+      classifyCodexAgentExecutionError(
+        new Error("Your access token could not be refreshed because your refresh token was revoked."),
+      ),
+    ).toBe("credentials_revoked")
+    expect(classifyCodexAgentExecutionError("usage limit reached for account")).toBe("usage_limited")
+    expect(classifyCodexAgentExecutionError({ stderr: "429 too many requests" })).toBe("rate_limited")
+    expect(
+      classifyCodexAgentExecutionError(
+        Object.assign(new Error("fetch failed wss connection"), { code: "ENOTFOUND" }),
+      ),
+    ).toBe("network")
+    expect(classifyCodexAgentExecutionError(new Error("operation timed out"))).toBe("timeout")
+    expect(classifyCodexAgentExecutionError("unexpected sdk failure")).toBe("other")
+  })
+
   test("maps escape, budget, refusal, and thrown-runner outcomes to typed blockers", async () => {
     await withState(async (state) => {
       const outcomes = [
         { outcome: "workspace_escape_blocked", blocker: "blocker.assignment.codex_agent_workspace_escape_blocked" },
         { outcome: "budget_exceeded", blocker: "blocker.assignment.codex_agent_budget_exceeded" },
-        { outcome: "refused", blocker: "blocker.assignment.codex_agent_execution_refused" },
+        {
+          outcome: "refused",
+          blocker: "blocker.assignment.codex_agent_execution_refused",
+          specificBlocker: "blocker.assignment.codex_agent_execution_refused.other",
+        },
       ] as const
-      for (const { outcome, blocker } of outcomes) {
+      for (const { outcome, blocker, specificBlocker } of outcomes) {
         const runner: CodexAgentRunner = async () => ({
           outcome,
           turnCount: 1,
@@ -195,19 +217,28 @@ describe("codex agent task recognition", () => {
           codexAgentProbe: readyProbe,
         })
         expect(record?.status).toBe("rejected")
-        expect(record?.blockerRefs).toEqual([blocker])
+        expect(record?.blockerRefs).toContain(blocker)
+        if (specificBlocker !== undefined) {
+          expect(record?.blockerRefs).toContain(specificBlocker)
+        }
         assertPublicProjectionSafe(record)
       }
 
       const throwingRunner: CodexAgentRunner = async () => {
-        throw new Error("sdk exploded")
+        throw new Error("Your access token could not be refreshed because your refresh token was revoked.")
       }
       const record = await executeCodexAgentAssignment(state, lease, now, {
         codexAgentRunner: throwingRunner,
         codexAgentProbe: readyProbe,
       })
       expect(record?.status).toBe("rejected")
-      expect(record?.blockerRefs).toEqual(["blocker.assignment.codex_agent_execution_refused"])
+      expect(record?.blockerRefs).toEqual([
+        "blocker.assignment.codex_agent_execution_refused",
+        "blocker.assignment.codex_agent_execution_refused.credentials_revoked",
+      ])
+      expect(record?.resultRefs).toEqual([
+        "result.public.pylon.codex_agent_task.execution_refused.credentials_revoked",
+      ])
     })
   })
 
