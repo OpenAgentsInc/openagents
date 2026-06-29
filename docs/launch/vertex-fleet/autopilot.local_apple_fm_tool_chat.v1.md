@@ -4,12 +4,16 @@ Date: 2026-06-20
 
 Promise: `autopilot.local_apple_fm_tool_chat.v1` (state: **yellow**, unchanged)
 
-## Blocker advanced
+## Blocker narrowed
 
 `blocker.product_promises.local_apple_fm_helper_supervision_missing`
 
-This run advances — but does **not** clear — the helper-supervision blocker. It
-remains listed in the registry `blockerRefs`.
+The source-level helper-supervision work in this evidence file is now reflected
+in registry `2026-06-29.3`: the broad helper-supervision blocker is no longer
+listed in the promise `blockerRefs`. The promise remains **yellow** with the
+narrower signed/from-install smoke blocker because the supervised path still
+needs a clean-install smoke from a signed/notarized build on admitted Apple
+Silicon.
 
 ## What was missing
 
@@ -327,5 +331,6 @@ Advances (does **not** clear)
   signed/notarized installer that bundles or supervises the helper, plus a
   from-install smoke).
 
-Both blockers remain listed in the registry `blockerRefs`; nothing here flips
-any promise state.
+Registry `2026-06-29.3` narrows the blocker list to the signed-installer recut
+and signed/from-install supervised-smoke gates. Nothing here flips any promise
+state.
