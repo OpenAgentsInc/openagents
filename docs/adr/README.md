@@ -34,3 +34,4 @@ records. They provide a stable decision log that links those sources together.
 * [ADR-0009: Count served tokens from exact usage ledger rows](0009-count-served-tokens-from-exact-usage-ledger-rows.md)
 * [ADR-0010: Separate Spark agent payments from MDK checkouts](0010-separate-spark-agent-payments-from-mdk-checkouts.md)
 * [ADR-0011: Ship Khala mobile as native SwiftUI with local Apple tooling](0011-ship-khala-mobile-as-native-swiftui-with-local-apple-tooling.md)
+* [ADR-0012: Adopt a native Khala terminal tool runtime](0012-adopt-khala-native-terminal-tool-runtime.md)
