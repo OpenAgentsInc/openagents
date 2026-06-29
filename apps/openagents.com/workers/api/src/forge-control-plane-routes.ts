@@ -628,11 +628,12 @@ const assertApprovedPromotionHasCurrentPassingVerification = async (
     )
   }
 
-  const verification = (
-    await store.listVerificationReceipts(receipt.tenant_ref, 100, receipt.change_ref)
-  ).find(candidate => candidate.verification_ref === receipt.verification_ref)
+  const verification = await store.readVerificationReceipt(
+    receipt.tenant_ref,
+    receipt.verification_ref,
+  )
 
-  if (verification === undefined) {
+  if (verification === undefined || verification.change_ref !== receipt.change_ref) {
     throw new ForgeControlPlaneHttpError(
       409,
       'forge_promotion_verification_receipt_missing',
