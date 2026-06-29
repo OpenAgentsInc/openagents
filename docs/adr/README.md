@@ -30,3 +30,6 @@ records. They provide a stable decision log that links those sources together.
 * [ADR-0005: Land through PR review and the `check:deploy` gate](0005-land-through-pr-review-and-check-deploy.md)
 * [ADR-0006: Route Khala coding delegation through owner-local Pylon capacity](0006-route-khala-coding-delegation-through-owner-local-pylon-capacity.md)
 * [ADR-0007: Gate public product claims through product promises](0007-gate-public-product-claims-through-product-promises.md)
+* [ADR-0008: Declare public projection freshness at each surface](0008-declare-public-projection-freshness-at-each-surface.md)
+* [ADR-0009: Use Spark as the primary agent payment rail](0009-use-spark-as-the-primary-agent-payment-rail.md)
+* [ADR-0010: Store only public-safe ATIF trace projections](0010-store-only-public-safe-atif-trace-projections.md)
