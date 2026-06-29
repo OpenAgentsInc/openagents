@@ -147,3 +147,13 @@ headers, credentials, tokens, and authority flags; use local `read`, `glob`, and
 `grep` for repository navigation. Results include source URL, final URL, status,
 content type, fetched-at timestamp, redirect metadata, bounded private
 model-visible text, and private artifacts for truncated or binary bodies.
+
+### `web_search`
+
+`web_search` is also part of the optional `network` preset. It requires explicit
+network permission and a configured host search provider; the default service
+fails closed as unconfigured. It accepts `query`, optional `domains`,
+`recency_days`, and `limit`, but never provider credentials or request headers.
+Results are bounded, source-attributed, timestamped, and kept out of public
+summaries except for provider/result-count metadata. Use repository-local search
+tools for code navigation.

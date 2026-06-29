@@ -344,12 +344,38 @@ export interface KhalaNetworkService {
   readonly marker: "khala.network_service"
 }
 
+export type KhalaWebSearchInput = Readonly<{
+  domains: ReadonlyArray<string>
+  limit: number
+  query: string
+  recencyDays?: number
+}>
+
+export type KhalaWebSearchItem = Readonly<{
+  publishedAt?: string
+  snippet: string
+  title: string
+  url: string
+}>
+
+export type KhalaWebSearchResult = Readonly<{
+  provider: string
+  results: ReadonlyArray<KhalaWebSearchItem>
+  searchedAtMs: number
+}>
+
+export interface KhalaWebSearchService {
+  readonly marker: "khala.web_search_service"
+  readonly search: (input: KhalaWebSearchInput) => Effect.Effect<KhalaWebSearchResult, KhalaToolRuntimeError>
+}
+
 export interface KhalaToolServices {
   readonly interaction: KhalaInteractionService
   readonly network: KhalaNetworkService
   readonly outputStore: KhalaOutputStore
   readonly permission: KhalaPermissionService
   readonly process: KhalaProcessService
+  readonly search: KhalaWebSearchService
   readonly todo: KhalaTodoService
   readonly workspace: KhalaWorkspaceService
 }
@@ -679,11 +705,21 @@ export function createFetchKhalaNetworkService(fetchImpl: typeof fetch = globalT
   }
 }
 
+export const unconfiguredKhalaWebSearchService: KhalaWebSearchService = {
+  marker: "khala.web_search_service",
+  search: () =>
+    Effect.fail(new KhalaToolRuntimeError({
+      code: "web_search_unconfigured",
+      reason: "No Khala web search provider is configured.",
+    })),
+}
+
 export function makeKhalaToolServices(input: {
   readonly interaction?: KhalaInteractionService
   readonly network?: KhalaNetworkService
   readonly permission?: KhalaPermissionService
   readonly process?: KhalaProcessService
+  readonly search?: KhalaWebSearchService
   readonly todo?: KhalaTodoService
   readonly workingDirectory?: string
 } = {}): KhalaToolServices {
@@ -693,6 +729,7 @@ export function makeKhalaToolServices(input: {
     outputStore: inMemoryKhalaOutputStore(),
     permission: input.permission ?? allowAllKhalaPermissionService,
     process: input.process ?? defaultKhalaProcessService,
+    search: input.search ?? unconfiguredKhalaWebSearchService,
     todo: input.todo ?? inMemoryKhalaTodoService(),
     workspace: { workingDirectory: input.workingDirectory ?? process.cwd() },
   }
@@ -1102,6 +1139,7 @@ export { askUserToolDefinition, createAskUserTool } from "./ask-user.js"
 export { createTodoWriteTool, todoWriteToolDefinition } from "./todo-write.js"
 export { createViewImageTool, viewImageToolDefinition } from "./view-image.js"
 export { createWebFetchTool, webFetchToolDefinition } from "./web-fetch.js"
+export { createWebSearchTool, webSearchToolDefinition } from "./web-search.js"
 
 function permissionRequestFor(
   definition: KhalaToolDefinition,
@@ -1112,7 +1150,9 @@ function permissionRequestFor(
     ? [invocation.arguments.path]
     : typeof invocation.arguments.url === "string"
       ? [invocation.arguments.url]
-      : []
+      : typeof invocation.arguments.query === "string"
+        ? [invocation.arguments.query]
+        : []
   return {
     action: definition.authority,
     authorityMode: definition.executionMode,
