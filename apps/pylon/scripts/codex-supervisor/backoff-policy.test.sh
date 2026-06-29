@@ -22,6 +22,8 @@ export SUP_CODEX_REFUSAL_TUNE_THRESHOLD=3
 export SUP_CLAIMED_DEEP_BACKLOG_SLEEP_SECS=1
 export SUP_FAILURE_BACKOFF_ESCALATE_THRESHOLD=2
 export SUP_LOCKOUT_BACKOFF_MAX=120
+export SUP_LOCKOUT_IDLE_SECS=2
+export SUP_REPLENISHMENT_LOCKOUTS=3
 mkdir -p "$SUP_STATE_DIR" "$SUP_BACKOFF_POLICY_DIR"
 
 # shellcheck source=backoff-policy.sh
@@ -104,16 +106,28 @@ else
   bad "shallow backlog should keep normal backoff"
 fi
 
-if [ "$(sup_lockout_pick_backoff_secs 4 4 300)" = "120" ]; then
+if [ "$(sup_lockout_pick_backoff_secs 4 4 300 2)" = "120" ]; then
   ok "lockout pick backoff caps minute-scale idle waits"
 else
   bad "lockout pick backoff did not cap at SUP_LOCKOUT_BACKOFF_MAX"
 fi
 
-if [ "$(sup_lockout_pick_backoff_secs 12 4 300)" = "1" ]; then
+if [ "$(sup_lockout_pick_backoff_secs 12 4 300 2)" = "1" ]; then
   ok "deep backlog near-immediate retry still wins under lockout cap"
 else
   bad "lockout cap should preserve deep backlog immediate retry"
+fi
+
+if [ "$(sup_lockout_pick_backoff_secs 4 4 120 3)" = "2" ]; then
+  ok "sustained lockout stays on short replenishment cadence"
+else
+  bad "sustained lockout should not keep escalating backoff"
+fi
+
+if [ "$(sup_lockout_pick_backoff_secs 4 4 15 2)" = "15" ]; then
+  ok "pre-replenishment lockout keeps normal backoff policy"
+else
+  bad "pre-replenishment lockout should keep normal backoff policy"
 fi
 
 if sup_should_escalate_failure_backoff refused 1; then
