@@ -273,6 +273,9 @@ pick_unlocked_issue() {
 # an issue another slot is actively working. Defaults to the dispatch timeout
 # when set, else 30m.
 : "${SUP_CLAIM_TTL_SECS:=${SUP_DISPATCH_TIMEOUT_SECS:-1800}}"
+# Claims from a previous supervisor process must not wedge a restarted fleet.
+# At startup we drop any claim whose recorded owner pid is not alive.
+: "${SUP_CLAIM_STARTUP_GC_ORPHANS:=1}"
 
 sup_claims_dir() {
   local d="${SUP_LOCKOUT_CACHE_DIR:-$SUP_STATE_DIR}/claims"
@@ -296,6 +299,73 @@ sup_gc_stale_claims() {
       rm -rf "$claim" 2>/dev/null || true
     fi
   done
+}
+
+sup_claim_owner_pid() {
+  local claim="$1"
+  [ -f "$claim/meta" ] || return 1
+  awk 'NR==1 {print $1; exit}' "$claim/meta" 2>/dev/null
+}
+
+sup_pid_is_alive() {
+  local pid="$1"
+  [ "$pid" -gt 0 ] 2>/dev/null || return 1
+  kill -0 "$pid" 2>/dev/null
+}
+
+# sup_gc_orphan_claims
+#   Startup recovery for SIGKILL/restart: clear claims recorded by a supervisor
+#   pid that is no longer alive. TTL-only cleanup is too slow for a deep backlog;
+#   stale claim directories from the prior process can otherwise make every slot
+#   report LOCKOUT even though no assignment is actually running.
+sup_gc_orphan_claims() {
+  local dir; dir="$(sup_claims_dir)"
+  local claim owner
+  for claim in "$dir"/claim.*; do
+    [ -e "$claim" ] || continue
+    owner="$(sup_claim_owner_pid "$claim" || true)"
+    if [ -z "$owner" ] || ! sup_pid_is_alive "$owner"; then
+      rm -rf "$claim" 2>/dev/null || true
+    fi
+  done
+}
+
+# sup_labels_for_claim_guard <issue>
+#   Source-order tolerant label lookup. In the live supervisor, priority-
+#   dispatch.sh provides sup_labels_for_issue after this file is sourced. Tests
+#   may override that function. Standalone lockout tests fall back to gh.
+sup_labels_for_claim_guard() {
+  local issue="$1"
+  [ -n "$issue" ] || return 0
+  if command -v sup_labels_for_issue >/dev/null 2>&1; then
+    sup_labels_for_issue "$issue"
+    return 0
+  fi
+  command -v "$SUP_GH_BIN" >/dev/null 2>&1 || return 0
+  sup_run_timeout "$SUP_GH_TIMEOUT_SECS" "$SUP_GH_BIN" issue view "$issue" --repo "$SUP_REPO" \
+    --json labels 2>/dev/null | python3 -c "import sys,json
+try:
+    data=json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+labels=[(l.get('name') or '') for l in (data.get('labels') or []) if isinstance(l,dict)]
+print(','.join([x for x in labels if x]))" 2>/dev/null
+}
+
+# sup_issue_is_dispatch_claim_excluded <issue>
+#   Epics and standing tasks are coordination/source issues, not one-off
+#   dispatch units. Claiming them can reserve the whole queue floor and starve
+#   concrete backlog work, so the supervisor prefers concrete issues and never
+#   creates an in-flight claim for these labels.
+sup_issue_is_dispatch_claim_excluded() {
+  local issue="$1"
+  local labels=",${2:-$(sup_labels_for_claim_guard "$issue")},"
+  case "$labels" in
+    *",standing-task,"*|*",epic,"*|*",type:epic,"*|*",kind:epic,"*)
+      return 0
+      ;;
+  esac
+  return 1
 }
 
 # sup_claim_is_active <issue>
@@ -359,7 +429,8 @@ sup_release_claim() {
 #   ATOMICALLY claims the first remaining issue before returning it. Two slots
 #   racing the same ordered pool therefore resolve to DISTINCT issues. rc 0 with
 #   the claimed issue on stdout; rc 1 when no distinct unlocked+unclaimed issue
-#   is available.
+#   is available. Epic / standing-task issues are fallback-only and returned
+#   without a claim, so they cannot wedge a restarted supervisor.
 pick_and_claim_unlocked_issue() {
   local start="$1"; shift
   local arr=("$@")
@@ -370,6 +441,11 @@ pick_and_claim_unlocked_issue() {
   for (( k=0; k<n; k++ )); do
     i=$(( (start + k) % n ))
     issue="${arr[$i]}"
+    # First pass prefers concrete issues. Epics / standing tasks are fallback-
+    # only and are handled without claims below.
+    if sup_issue_is_dispatch_claim_excluded "$issue"; then
+      continue
+    fi
     # Already reserved by another slot this window -> spread to a distinct issue.
     if sup_claim_is_active "$issue"; then
       continue
@@ -388,6 +464,24 @@ pick_and_claim_unlocked_issue() {
       printf '%s' "$issue"
       return 0
     fi
+  done
+  # Fallback: if only epic / standing-task issues are dispatchable, allow one
+  # through WITHOUT creating a claim directory. This preserves the standing queue
+  # floor while preventing orphaned coordination claims from wedging restarts.
+  for (( k=0; k<n; k++ )); do
+    i=$(( (start + k) % n ))
+    issue="${arr[$i]}"
+    if ! sup_issue_is_dispatch_claim_excluded "$issue"; then
+      continue
+    fi
+    if ! issue_is_open "$issue"; then
+      continue
+    fi
+    if issue_has_open_pr "$issue"; then
+      continue
+    fi
+    printf '%s' "$issue"
+    return 0
   done
   return 1
 }

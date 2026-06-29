@@ -122,7 +122,7 @@ sup_dispatch_failure_signature() {
     return 0
   fi
   if grep -qiE '409|dispatch gate refused|target_pylon_unavailable|duplicate_active_assignment' "$out" 2>/dev/null; then
-    printf 'refused'
+    printf 'dispatch_gate_conflict'
     return 0
   fi
   printf 'other'
@@ -143,6 +143,9 @@ sup_should_escalate_failure_backoff() {
   local sig="$1"
   local repeated="$2"
   if [ "$sig" = "codex_agent_execution_refused" ]; then
+    return 1
+  fi
+  if [ "$sig" = "dispatch_gate_conflict" ]; then
     return 1
   fi
   [ "$repeated" -ge "$SUP_FAILURE_BACKOFF_ESCALATE_THRESHOLD" ] 2>/dev/null

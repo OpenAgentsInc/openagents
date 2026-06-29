@@ -52,8 +52,8 @@ else
   bad "executor refusal classification failed"
 fi
 
-if [ "$(sup_dispatch_failure_signature "$WORK/gate-refused.json")" = "refused" ]; then
-  ok "gate refusal remains generic refused"
+if [ "$(sup_dispatch_failure_signature "$WORK/gate-refused.json")" = "dispatch_gate_conflict" ]; then
+  ok "gate 409 refusal is classified as fast-retry dispatch conflict"
 else
   bad "gate refusal classification failed"
 fi
@@ -113,6 +113,12 @@ if sup_should_escalate_failure_backoff refused 2; then
   ok "repeated genuine refusal escalates backoff"
 else
   bad "repeated genuine refusal should escalate backoff"
+fi
+
+if sup_should_escalate_failure_backoff dispatch_gate_conflict 9; then
+  bad "dispatch gate conflicts should not escalate general backoff"
+else
+  ok "dispatch gate conflicts retry fast without escalating backoff"
 fi
 
 if sup_should_escalate_failure_backoff codex_agent_execution_refused 9; then

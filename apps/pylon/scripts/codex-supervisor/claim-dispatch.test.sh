@@ -101,6 +101,14 @@ if sup_claim_is_active 701; then bad "stale #701 should be GC'd"; else ok "stale
 if sup_claim_is_active 702; then ok "fresh #702 survives GC"; else bad "fresh #702 should survive GC"; fi
 sup_release_claim 702
 
+# --- sup_gc_orphan_claims removes claims owned by dead supervisor pids -------
+sup_try_claim_issue 704 "$$" >/dev/null
+sup_try_claim_issue 705 99999999 >/dev/null
+sup_gc_orphan_claims
+if sup_claim_is_active 704; then ok "startup orphan GC preserves live-owner claim"; else bad "live-owner #704 should survive orphan GC"; fi
+if sup_claim_is_active 705; then bad "dead-owner #705 should be removed by orphan GC"; else ok "startup orphan GC removes dead-owner claim"; fi
+sup_release_claim 704
+
 # --- sup_refresh_claim renews TTL ------------------------------------------
 sup_try_claim_issue 703 >/dev/null
 touch -t 200001010000 "$(sup_claims_dir)/claim.703" 2>/dev/null || true
@@ -132,6 +140,30 @@ sup_release_claim 710; sup_release_claim 711; sup_release_claim 712
 picked=$(pick_and_claim_unlocked_issue 0 799 713)
 if [ "$picked" = "713" ]; then ok "pick_and_claim skips CLOSED #799 -> #713"; else bad "expected 713, got '$picked'"; fi
 sup_release_claim 713
+
+# --- pick_and_claim never claims epics / standing tasks ----------------------
+sup_labels_for_issue() {
+  case "$1" in
+    730) printf 'standing-task,prio:4-backstop-burn' ;;
+    731) printf 'epic,prio:1-continual-learning' ;;
+    *) printf '' ;;
+  esac
+}
+printf 'OPEN' > "$STUB_DIR/state.730"
+printf 'OPEN' > "$STUB_DIR/state.731"
+printf 'OPEN' > "$STUB_DIR/state.732"
+picked=$(pick_and_claim_unlocked_issue 0 730 731 732)
+if [ "$picked" = "732" ]; then ok "pick_and_claim skips standing-task/epic labels -> #732"; else bad "expected 732 after standing/epic exclusions, got '$picked'"; fi
+if sup_claim_is_active 730 || sup_claim_is_active 731; then
+  bad "standing-task/epic issues must not be claimed"
+else
+  ok "standing-task/epic issues have no claim directories"
+fi
+sup_release_claim 732
+
+picked=$(pick_and_claim_unlocked_issue 0 730 731)
+if [ "$picked" = "730" ]; then ok "standing-task can dispatch as fallback when no concrete issue remains"; else bad "expected fallback standing-task #730, got '$picked'"; fi
+if sup_claim_is_active 730; then bad "fallback standing-task dispatch must remain unclaimed"; else ok "fallback standing-task dispatch creates no claim"; fi
 
 # --- CONCURRENCY: N slots, same pool -> all DISTINCT, no duplicates ---------
 # This is the core regression assertion for the duplicate-dispatch bug.

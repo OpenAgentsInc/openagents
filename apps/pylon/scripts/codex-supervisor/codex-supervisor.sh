@@ -494,11 +494,12 @@ worker_loop() {
       last_failure_sig="$sig"
       failure_repeat=1
     fi
-    if [ "$sig" = "refused" ]; then
-      # The gate already has an active assignment for this issue (it is busy
-      # elsewhere). PARK it for the full claim TTL so the fleet stops hammering
-      # the same stuck issue (#6661/#6662) and other slots spread to distinct
-      # work; the claim GCs once the TTL elapses for a later retry.
+    if [ "$sig" = "dispatch_gate_conflict" ]; then
+      # Gate 409s are often cross-driver contention, not proof this issue needs
+      # to be parked for a full claim TTL. Release and retry fast so the slot
+      # does not idle behind a stale local claim.
+      sup_release_claim "$issue"
+    elif [ "$sig" = "refused" ]; then
       sup_refresh_claim "$issue"
     else
       # Transient rate-limit/error on our side, not the issue's fault: release
@@ -511,6 +512,9 @@ worker_loop() {
     local failure_sleep="$backoff"
     local escalate_backoff=1
     if [ "$sig" = "codex_agent_execution_refused" ]; then
+      failure_sleep="$SUP_CLAIMED_DEEP_BACKLOG_SLEEP_SECS"
+      escalate_backoff=0
+    elif [ "$sig" = "dispatch_gate_conflict" ]; then
       failure_sleep="$SUP_CLAIMED_DEEP_BACKLOG_SLEEP_SECS"
       escalate_backoff=0
     elif ! sup_should_escalate_failure_backoff "$sig" "$failure_repeat"; then
@@ -543,6 +547,11 @@ echo $$ > "$SUP_STATE_DIR/supervisor.pid"
 # fresh process is not flagged wedged before its first dispatch (#6646).
 record_dispatch_attempt
 log "=== codex-supervisor START pid=$$ repo=$REPO_ROOT pylon=$SUP_PYLON_REF per_account=$SUP_PER_ACCOUNT max_slots=$SUP_MAX_SLOTS account_refs=${SUP_ACCOUNT_REFS:-all} ==="
+
+if [ "$SUP_CLAIM_STARTUP_GC_ORPHANS" = "1" ]; then
+  sup_gc_orphan_claims
+  log "startup claim GC complete (orphan claims removed)"
+fi
 
 sup_run_timeout "$SUP_PYLON_TIMEOUT_SECS" "${PYLON[@]}" provider go-online >> "$SUP_LOG" 2>&1 || log "provider go-online nonzero (continuing)"
 
