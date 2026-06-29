@@ -92,6 +92,14 @@ export const aiElementPorts: ReadonlyArray<AiElementPort> = [
     ],
   },
   {
+    moduleId: 'diff',
+    label: 'Diff',
+    category: 'code',
+    purpose:
+      'Render a unified diff as a framed surface with a filename + add/remove stats header, an old|new line-number gutter, +/- signs, subtle green/red line tints, and per-line syntax highlighting.',
+    primitives: ['Diff', 'DiffHeader', 'DiffHunk', 'DiffLine'],
+  },
+  {
     moduleId: 'task',
     label: 'Task',
     category: 'workflow',

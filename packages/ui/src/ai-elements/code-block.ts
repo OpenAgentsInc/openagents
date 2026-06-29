@@ -4,7 +4,7 @@ import type { Attribute, Html } from 'foldkit/html'
 import { html } from 'foldkit/html'
 
 import { iconView } from '../icon'
-import { eyebrowClass, metaClass, statusDotClass, titleClass } from '../primitives'
+import { eyebrowClass, statusDotClass, toneTextClass } from '../primitives'
 import { aiElementBase } from './base'
 import {
   type CodeToken,
@@ -48,8 +48,13 @@ export const codeBlockCopyButtonClass = clsx(
   'cursor-pointer',
 )
 export const codeBlockRunResultClass =
-  'grid gap-1 border-t border-[#16233b] bg-[#0a111d] px-3 py-2.5'
-export const codeBlockRunHeaderClass = 'flex items-center gap-2'
+  'flex flex-col gap-1.5 border-t border-[#16233b] bg-[#0a111d] px-3 py-2'
+export const codeBlockRunHeaderClass =
+  'flex items-center gap-2.5 font-mono text-[0.75rem]'
+export const codeBlockRunLabelClass = 'font-medium uppercase tracking-[0.06em]'
+export const codeBlockRunSummaryClass = 'min-w-0 truncate text-white/45'
+export const codeBlockRunDurationClass =
+  'ml-auto shrink-0 tabular-nums text-white/35'
 export const codeBlockRunOutputClass =
   'm-0 overflow-x-auto font-mono text-[0.75rem] leading-[1.45] text-white/60'
 
@@ -236,25 +241,32 @@ export const codeBlockRunResult = <Message>(
   const h = html<Message>()
   const decoded = Schema.decodeUnknownSync(CodeBlockRunResultProps)(props)
 
+  const tone = runStatusTone(decoded.status)
+
   return h.div(
     [
       aiElementBase<Message>(MODULE_ID, 'CodeBlockRunResult'),
       h.Class(codeBlockRunResultClass),
     ],
     [
+      // Single tidy row: status dot + toned label, the summary inline, and the
+      // duration pushed to the right edge.
       h.div(
         [h.Class(codeBlockRunHeaderClass)],
         [
-          h.span([h.Class(statusDotClass(runStatusTone(decoded.status)))], []),
-          h.span([h.Class(titleClass)], [runStatusLabel(decoded.status)]),
+          h.span([h.Class(statusDotClass(tone))], []),
+          h.span(
+            [h.Class(clsx(toneTextClass(tone), codeBlockRunLabelClass))],
+            [runStatusLabel(decoded.status)],
+          ),
+          decoded.summary === undefined
+            ? null
+            : h.span([h.Class(codeBlockRunSummaryClass)], [decoded.summary]),
           decoded.duration === undefined
             ? null
-            : h.span([h.Class(metaClass)], [decoded.duration]),
+            : h.span([h.Class(codeBlockRunDurationClass)], [decoded.duration]),
         ],
       ),
-      decoded.summary === undefined
-        ? null
-        : h.p([h.Class(metaClass)], [decoded.summary]),
       decoded.output === undefined
         ? null
         : h.pre([h.Class(codeBlockRunOutputClass)], [decoded.output]),

@@ -692,16 +692,152 @@ export const codeBlockShowcaseView = <Message>(): Html => {
   )
 }
 
+// --- /components/diff: dedicated glow demo (issue #7608) ---------------------
+
+const DIFF_SAMPLE_TS = `diff --git a/src/greet.ts b/src/greet.ts
+index 3a1b2c4..7d8e9f0 100644
+--- a/src/greet.ts
++++ b/src/greet.ts
+@@ -1,6 +1,7 @@
+ import { Effect } from 'effect'
+
+-export const greet = (name: string): string =>
+-  'Hello ' + name
++export const greet = (name: string): Effect.Effect<string> =>
++  Effect.succeed(\`Hello, \${name}!\`)
++
++export const shout = greet('Khala')
+`
+
+const DIFF_SAMPLE_RUST = `diff --git a/src/main.rs b/src/main.rs
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -1,5 +1,6 @@
+ fn greet(name: &str) -> String {
+-    format!("Hello {}", name)
++    format!("Hello, {}!", name)
+ }
+
+ fn main() {
+@@ -9,3 +10,4 @@ fn main() {
+     println!("{}", greet("World"));
++    println!("{}", greet("Khala"));
+ }
+`
+
+export const diffShowcaseView = <Message>(): Html => {
+  const h = html<Message>()
+  const diff = Ui.AiElements.diff<Message>
+
+  return h.div(
+    [
+      h.DataAttribute('route', 'components-diff'),
+      Ui.className<Message>(
+        'relative h-screen h-dvh min-h-screen min-h-dvh w-full overflow-hidden bg-black',
+      ),
+    ],
+    [
+      landingSquaresView<Message>([
+        Ui.className<Message>('block'),
+        h.DataAttribute('pose', 'khala'),
+      ]),
+      h.div(
+        [
+          Ui.className<Message>(
+            'pointer-events-none absolute inset-0 z-[5] bg-black/75',
+          ),
+        ],
+        [],
+      ),
+      h.div(
+        [Ui.className<Message>('absolute inset-0 z-10 overflow-y-auto')],
+        [
+          h.div(
+            [
+              Ui.className<Message>(
+                'mx-auto w-[min(100%,880px)] px-5 py-10 sm:py-16',
+              ),
+            ],
+            [
+              h.a(
+                [
+                  h.Href('/components'),
+                  Ui.className<Message>(
+                    'pointer-events-auto inline-flex items-center gap-2 font-mono text-[0.75rem] ' +
+                      'uppercase tracking-[0.18em] text-[#8fb6ff] transition-colors hover:text-white',
+                  ),
+                ],
+                ['← Components'],
+              ),
+              h.p(
+                [
+                  Ui.className<Message>(
+                    'mt-8 mb-2 font-mono text-[0.75rem] uppercase tracking-[0.22em] text-[#7aa2ff]',
+                  ),
+                ],
+                ['@openagentsinc/ui · ai-elements'],
+              ),
+              h.h1(
+                [
+                  Ui.className<Message>(
+                    'm-0 text-balance font-semibold tracking-tight text-white text-4xl sm:text-5xl',
+                  ),
+                ],
+                ['Diff'],
+              ),
+              h.p(
+                [
+                  Ui.className<Message>(
+                    'mt-4 max-w-[64ch] text-base/7 text-[#c9d2dd]',
+                  ),
+                ],
+                [
+                  'A unified-diff surface — structurally a sibling of the code ' +
+                    'block, coloured for change. Parses a git patch into an ' +
+                    'old | new line-number gutter with +/- signs and subtle ' +
+                    'green/red line tints, with per-line syntax highlighting and ' +
+                    'a copy button that yields the original patch.',
+                ],
+              ),
+              codeCopyScopeView<Message>(
+                [Ui.className<Message>('mt-10 grid gap-5')],
+                [
+                  codeBlockDemoFrame<Message>(
+                    'TypeScript · single hunk',
+                    diff({
+                      props: { patch: DIFF_SAMPLE_TS, language: 'typescript' },
+                    }),
+                  ),
+                  codeBlockDemoFrame<Message>(
+                    'Rust · multiple hunks',
+                    diff({
+                      props: { patch: DIFF_SAMPLE_RUST, language: 'rust' },
+                    }),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    ],
+  )
+}
+
 export const view = <Message>(
   authState: PublicHeaderAuthState<Message>,
   selectedFamily?: string,
 ): Html => {
   const h = html<Message>()
 
-  // `/components/code-block` is a dedicated, chrome-less demo rendered over the
-  // same glowing-blue homepage scene (issue #7608), not the workbench shell.
+  // `/components/code-block` and `/components/diff` are dedicated, chrome-less
+  // demos rendered over the same glowing-blue homepage scene (issue #7608), not
+  // the workbench shell.
   if (selectedFamily === 'code-block') {
     return codeBlockShowcaseView<Message>()
+  }
+  if (selectedFamily === 'diff') {
+    return diffShowcaseView<Message>()
   }
 
   return h.div(
@@ -794,6 +930,13 @@ const sidebarView = <Message>(selectedFamily?: string): Html => {
               ),
             ],
             ['Code block (glow demo)'],
+          ),
+          h.a(
+            [
+              h.Href('/components/diff'),
+              Ui.className<Message>(navLinkClass(selectedFamily === 'diff')),
+            ],
+            ['Diff (glow demo)'],
           ),
           ...Array.map(families, family =>
             h.a(
@@ -1965,6 +2108,21 @@ const aiElementsShowcase = <Message>(): ReadonlyArray<Html> => {
           status: 'passed',
           summary: 'Compiled and ran',
           duration: '0.4s',
+        },
+      }),
+    ),
+    box(
+      'Diff',
+      'AiElements.diff',
+      Ui.AiElements.diff<Message>({
+        props: {
+          filename: 'greet.ts',
+          language: 'typescript',
+          patch:
+            '@@ -1,2 +1,2 @@\n' +
+            ' const greet = (name) =>\n' +
+            "-  'Hello ' + name\n" +
+            '+  `Hello, ${name}!`\n',
         },
       }),
     ),

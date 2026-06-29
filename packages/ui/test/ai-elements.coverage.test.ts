@@ -18,6 +18,7 @@ const expectedCatalog = [
   { moduleId: 'message', primitives: 4 },
   { moduleId: 'response', primitives: 3 },
   { moduleId: 'code-block', primitives: 5 },
+  { moduleId: 'diff', primitives: 4 },
   { moduleId: 'task', primitives: 5 },
   { moduleId: 'sources', primitives: 4 },
   { moduleId: 'tool', primitives: 5 },
@@ -75,6 +76,7 @@ describe('AI Elements catalog coverage', () => {
     expect(typeof AiElements.message).toBe('function')
     expect(typeof AiElements.response).toBe('function')
     expect(typeof AiElements.codeBlock).toBe('function')
+    expect(typeof AiElements.diff).toBe('function')
     expect(typeof AiElements.task).toBe('function')
     expect(typeof AiElements.sources).toBe('function')
     expect(typeof AiElements.tool).toBe('function')
