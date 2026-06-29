@@ -237,6 +237,19 @@ export const PYLON_COMMAND_CATALOG: readonly PylonCommandEntry[] = [
     ],
   },
   {
+    command: "vmq",
+    summary: "Plan Pylon virtual merge queue supervisor operations through the running node.",
+    mutates: false,
+    spends: false,
+    needsNode: true,
+    json: true,
+    args: [
+      pos("pr-fast-forward-plan", "Subcommand."),
+      opt("--projection", "Path to a virtual merge queue projection JSON file.", true),
+      opt("--request", "Path to a PR fast-forward request JSON file.", true),
+    ],
+  },
+  {
     command: "deploy",
     summary: "Trigger/inspect a node cloud deploy (gated by OA_DEPLOY_ENABLE=1).",
     mutates: true,

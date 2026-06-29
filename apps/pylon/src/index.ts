@@ -2754,6 +2754,38 @@ async function main() {
     }
   }
 
+  // #6695 VMQ supervisor API: expose the node-local PR fast-forward planner so
+  // supervisors can verify the next actual promotion before any git push exists.
+  if (args[0] === "vmq") {
+    const command = args[1]
+    const options = parseCliOptions(args.slice(2))
+    try {
+      if (command === "pr-fast-forward-plan") {
+        const projectionPath = optionString(options, "projection")
+        const requestPath = optionString(options, "request")
+        if (!projectionPath || !requestPath) {
+          throw new Error("vmq pr-fast-forward-plan requires --projection <json> and --request <json>")
+        }
+        const projection = JSON.parse(await readFile(projectionPath, "utf8"))
+        const request = JSON.parse(await readFile(requestPath, "utf8"))
+        const { result } = await runControlCommand(
+          {
+            type: "virtual_merge_queue.pr_fast_forward.plan",
+            projection,
+            request,
+          },
+          Bun.env,
+        )
+        process.stdout.write(`${JSON.stringify({ ok: true, result }, null, 2)}\n`)
+        return
+      }
+      throw new Error("usage: pylon vmq pr-fast-forward-plan --projection projection.json --request request.json")
+    } catch (error) {
+      emitControlError("vmq", error)
+      return
+    }
+  }
+
   // CL-5035 deploy: surface the gated node deploy-cloud action as a CLI verb.
   // Execution stays gated on the node behind OA_DEPLOY_ENABLE=1 (fail-safe);
   // this verb only forwards the request to the running node.
