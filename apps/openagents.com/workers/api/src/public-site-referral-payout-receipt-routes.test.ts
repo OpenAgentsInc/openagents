@@ -14,12 +14,14 @@ const projection = (
   attributionLinked: true,
   authorityBoundary:
     'Public proof only. This referral payout receipt read grants no attribution, invite, checkout, spend, refund, payout, settlement, wallet, provider, or registry authority.',
+  blockerRefs: [],
   caveatRefs: ['caveat.site_referral_payout.settlement_evidence_required'],
   evidenceRefs: [
     'evidence.site_referral_payout.adapter.hosted_mdk',
     receiptRef,
   ],
   generatedAt: '2026-06-20T00:01:00.000Z',
+  liveRailReceipt: true,
   policyRefs: ['policy.site_referral_payout.v1'],
   qualifyingEventKind: 'inference_paid_request',
   receiptRef,
@@ -89,6 +91,7 @@ describe('public Site referral payout receipt routes', () => {
     expect(body.receipt).toMatchObject({
       attributionLinked: true,
       generatedAt: '2026-06-20T00:01:00.000Z',
+      liveRailReceipt: true,
       qualifyingEventKind: 'inference_paid_request',
       receiptRef,
       resolution: {

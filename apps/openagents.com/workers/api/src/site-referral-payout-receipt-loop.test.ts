@@ -355,6 +355,10 @@ describe('RL-1 staging-test settlement-receipt closed loop (#5524)', () => {
     expect(receipt).toMatchObject({
       amountSats: fed.entry.amountSats,
       attributionLinked: true,
+      blockerRefs: [
+        'blocker.product_promises.referral_first_real_live_payout_pending',
+      ],
+      liveRailReceipt: false,
       qualifyingEventKind: 'forum_tip_paid',
       receiptRef: outcome.receiptRef,
       resolution: {
@@ -426,6 +430,59 @@ describe('RL-1 staging-test settlement-receipt closed loop (#5524)', () => {
 
     expect(receipt?.resolution.state).toBe('settled')
     expect(receipt?.receiptRef).toBe(expectedReceiptRef)
+    expect(receipt?.liveRailReceipt).toBe(false)
+  })
+
+  test('hosted MDK receipt rows are marked as live-rail receipts', async () => {
+    const store = new LoopStore()
+    const db = loopDb(store)
+    const receiptRef = 'receipt.site_referral_payout.hosted_mdk.liveabc123'
+
+    store.rows.push({
+      amount_sats: 125,
+      archived_at: null,
+      caveat_refs_json: JSON.stringify([
+        'caveat.site_referral_payout.settlement_evidence_required',
+      ]),
+      created_at: '2026-06-22T12:07:00.000Z',
+      evidence_refs_json: JSON.stringify([
+        'evidence.site_referral_payout.adapter.hosted_mdk',
+        receiptRef,
+      ]),
+      id: 'site_referral_payout_entry_live',
+      idempotency_key: 'site_referral_payout.live.idempotency',
+      payout_ref: 'site_referral_payout_live',
+      period_key: '2026-06',
+      policy_refs_json: JSON.stringify(['policy.site_referral_payout.v1']),
+      previous_entry_id: null,
+      qualifying_amount_sats: 2500,
+      qualifying_event_kind: 'forum_tip_paid',
+      qualifying_event_ref: 'evidence.btc_paid.live',
+      referred_user_id: 'github:live-buyer',
+      referral_attribution_id: 'referral_attribution_live',
+      referral_invite_id: null,
+      referral_source_id: 'site_referral_source_live',
+      referrer_user_id: 'github:live-referrer',
+      reversal_of_entry_id: null,
+      state: 'settled',
+      state_reason_ref:
+        'reason.public.site_referral_payout.settled_with_adapter_receipt',
+    })
+
+    const receipt = await makeD1SiteReferralPayoutReceiptStore(
+      db,
+    ).readSiteReferralPayoutReceipt(receiptRef, '2026-06-22T12:08:00.000Z')
+
+    expect(receipt).toMatchObject({
+      blockerRefs: [],
+      liveRailReceipt: true,
+      receiptRef,
+      resolution: {
+        settlementRail: 'hosted_mdk',
+        state: 'settled',
+        status: 'ok',
+      },
+    })
   })
 
   test('fail-safe: a DISABLED staging adapter never settles and records no settled state (no receipt to dereference)', async () => {

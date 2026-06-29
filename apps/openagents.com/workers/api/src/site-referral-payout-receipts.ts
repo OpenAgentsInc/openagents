@@ -17,9 +17,11 @@ export type PublicSiteReferralPayoutReceiptProjection = Readonly<{
   amountSats: number
   attributionLinked: true
   authorityBoundary: string
+  blockerRefs: ReadonlyArray<string>
   caveatRefs: ReadonlyArray<string>
   evidenceRefs: ReadonlyArray<string>
   generatedAt: string
+  liveRailReceipt: boolean
   policyRefs: ReadonlyArray<string>
   qualifyingEventKind: string
   receiptRef: string
@@ -66,6 +68,14 @@ const settlementRailForReceipt = (
       ? 'staging_test'
       : 'public_safe_adapter'
 
+const isLiveRailReceipt = (receiptRef: string): boolean =>
+  settlementRailForReceipt(receiptRef) === 'hosted_mdk'
+
+const blockerRefsForReceipt = (receiptRef: string): ReadonlyArray<string> =>
+  isLiveRailReceipt(receiptRef)
+    ? []
+    : ['blocker.product_promises.referral_first_real_live_payout_pending']
+
 const publicProjection = (
   row: SettledReceiptRow,
   receiptRef: string,
@@ -80,9 +90,11 @@ const publicProjection = (
     attributionLinked: true,
     authorityBoundary:
       'Public proof only. This referral payout receipt read grants no attribution, invite, checkout, spend, refund, payout, settlement, wallet, provider, or registry authority.',
+    blockerRefs: blockerRefsForReceipt(receiptRef),
     caveatRefs: parseJsonStringArray(row.caveat_refs_json),
     evidenceRefs,
     generatedAt,
+    liveRailReceipt: isLiveRailReceipt(receiptRef),
     policyRefs: parseJsonStringArray(row.policy_refs_json),
     qualifyingEventKind: row.qualifying_event_kind,
     receiptRef,
