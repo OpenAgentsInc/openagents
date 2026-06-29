@@ -9,6 +9,8 @@ import {
   type ProviderAccountRow,
   type ProviderConnectionAttemptRecord,
   type ProviderConnectionAttemptRow,
+  decodeProviderAccountRow,
+  decodeProviderConnectionAttemptRow,
   toAccountRecord,
   toAttemptRecord,
   toGrantRecord,
@@ -34,7 +36,9 @@ export const makeD1ProviderAccountRepository = (
       .bind(userId, providerAccountRef)
       .first<ProviderAccountRow>()
 
-    return row === null ? undefined : toAccountRecord(row)
+    return row === null
+      ? undefined
+      : toAccountRecord(decodeProviderAccountRow(row))
   },
 
   findAccountByProviderAccountRef: async providerAccountRef => {
@@ -48,7 +52,9 @@ export const makeD1ProviderAccountRepository = (
       .bind(providerAccountRef)
       .first<ProviderAccountRow>()
 
-    return row === null ? undefined : toAccountRecord(row)
+    return row === null
+      ? undefined
+      : toAccountRecord(decodeProviderAccountRow(row))
   },
 
   findReusableAccount: async userId => {
@@ -66,7 +72,9 @@ export const makeD1ProviderAccountRepository = (
       .bind(userId)
       .first<ProviderAccountRow>()
 
-    return row === null ? undefined : toAccountRecord(row)
+    return row === null
+      ? undefined
+      : toAccountRecord(decodeProviderAccountRow(row))
   },
 
   listAccountsForUser: async userId => {
@@ -83,7 +91,9 @@ export const makeD1ProviderAccountRepository = (
       .bind(userId)
       .all<ProviderAccountRow>()
 
-    return rows.results.map(toAccountRecord)
+    return rows.results.map(row =>
+      toAccountRecord(decodeProviderAccountRow(row)),
+    )
   },
 
   listPendingAttemptsForUser: async userId => {
@@ -100,7 +110,9 @@ export const makeD1ProviderAccountRepository = (
       .bind(userId)
       .all<ProviderConnectionAttemptRow>()
 
-    return rows.results.map(toAttemptRecord)
+    return rows.results.map(row =>
+      toAttemptRecord(decodeProviderConnectionAttemptRow(row)),
+    )
   },
 
   findAttemptForUser: async (userId, attemptId) => {
@@ -134,8 +146,10 @@ export const makeD1ProviderAccountRepository = (
     return accountRow === null
       ? undefined
       : {
-          account: toAccountRecord(accountRow),
-          attempt: toAttemptRecord(attemptRow),
+          account: toAccountRecord(decodeProviderAccountRow(accountRow)),
+          attempt: toAttemptRecord(
+            decodeProviderConnectionAttemptRow(attemptRow),
+          ),
         }
   },
 
@@ -168,8 +182,10 @@ export const makeD1ProviderAccountRepository = (
     return accountRow === null
       ? undefined
       : {
-          account: toAccountRecord(accountRow),
-          attempt: toAttemptRecord(attemptRow),
+          account: toAccountRecord(decodeProviderAccountRow(accountRow)),
+          attempt: toAttemptRecord(
+            decodeProviderConnectionAttemptRow(attemptRow),
+          ),
         }
   },
 
@@ -395,7 +411,7 @@ export const makeD1ProviderAccountRepository = (
       })
     }
 
-    return toAccountRecord(updated)
+    return toAccountRecord(decodeProviderAccountRow(updated))
   },
 
   recordFailedAttempt: async (account, attempt, event) => {
@@ -479,7 +495,7 @@ export const makeD1ProviderAccountRepository = (
       })
     }
 
-    return toAccountRecord(updated)
+    return toAccountRecord(decodeProviderAccountRow(updated))
   },
 
   recordAccountHealth: async (providerAccountRef, account, event) => {
@@ -574,7 +590,9 @@ export const makeD1ProviderAccountRepository = (
       .bind(providerAccountRef)
       .first<ProviderAccountRow>()
 
-    return updated === null ? undefined : toAccountRecord(updated)
+    return updated === null
+      ? undefined
+      : toAccountRecord(decodeProviderAccountRow(updated))
   },
 
   createAuthGrant: async (grant, event) => {
@@ -798,7 +816,9 @@ export const makeD1ProviderAccountRepository = (
       .bind(account.id)
       .first<ProviderAccountRow>()
 
-    return updated === null ? undefined : toAccountRecord(updated)
+    return updated === null
+      ? undefined
+      : toAccountRecord(decodeProviderAccountRow(updated))
   },
 })
 

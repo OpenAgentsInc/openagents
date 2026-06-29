@@ -347,3 +347,20 @@ directories to hard failures.
 This audit is documentation-only and intentionally makes no production code
 changes. It is grounded in direct code inspection of the files cited above and
 in the local Effect best-practice guides available through `effect-solutions`.
+
+## 2026-06-29 implementation note for #7012
+
+The first bounded #7012 migration slice moved the browser
+`GET /api/provider-accounts` authority path onto an internal
+`Effect<Response, ProviderAccountError | RouteError, ProviderAccountLifecycleService>`
+orchestration function and runs it once at the Worker handler boundary with a
+D1-backed `ProviderAccountLifecycleService` layer. The provider-account
+lifecycle facade now has a route consumer, and focused route coverage substitutes
+the lifecycle service layer instead of reaching through ad hoc repository
+injection.
+
+The touched D1 provider-account read path now decodes provider-account and
+connection-attempt rows from `unknown` through Effect Schema before converting
+them into domain records. Remaining provider-account browser mutations still use
+the older Promise orchestration style and are the next narrow candidates for the
+same facade/row-decoder pattern.

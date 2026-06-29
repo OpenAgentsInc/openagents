@@ -1,4 +1,11 @@
+import { Effect, Layer } from 'effect'
+
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
+import {
+  RouteDependencyError,
+  type RouteError,
+  type RouteEffect,
+} from './http/route-effects'
 import {
   optionalBoolean,
   optionalString,
@@ -17,9 +24,11 @@ import {
   type StoreStartedCodexDeviceLogin,
   disconnectProviderAccountForUser,
   issueProviderAccountGrant,
-  listProviderAccountsForUser,
   makeD1ProviderAccountRepository,
+  makeProviderAccountLifecycleService,
   pollOpenAiCodexDeviceLogin,
+  ProviderAccountLifecycleService,
+  type ProviderAccountError,
   refreshChatGptCodexDeviceLoginForUser,
   startChatGptCodexDeviceLogin,
   startOpenAiCodexDeviceLogin,
@@ -71,33 +80,135 @@ type ProviderAccountBrowserDependencies<
   ) => StoreStartedCodexDeviceLogin
 }>
 
+type ProviderAccountsListRouteError = RouteError | ProviderAccountError
+
+const requireBrowserSessionEffect = <
+  Session extends ProviderAccountBrowserSession,
+  Bindings extends ProviderAccountBrowserEnv,
+>(
+  dependencies: Pick<
+    ProviderAccountBrowserDependencies<Session, Bindings>,
+    'requireBrowserSession'
+  >,
+  request: Request,
+  env: Bindings,
+  ctx: ExecutionContext,
+): Effect.Effect<Session | undefined, RouteError> =>
+  Effect.tryPromise({
+    try: () => dependencies.requireBrowserSession(request, env, ctx),
+    catch: error =>
+      new RouteDependencyError({
+        operation: 'provider_accounts_require_browser_session',
+        message: error instanceof Error ? error.message : String(error),
+      }),
+  })
+
+export const listProviderAccountsForBrowserSession = <
+  Session extends ProviderAccountBrowserSession,
+>(
+  session: Session,
+  appendRefreshedSessionCookies: (
+    response: Response,
+    session: Session,
+  ) => Response,
+) =>
+  Effect.gen(function* () {
+    const providerAccounts = yield* ProviderAccountLifecycleService
+    const bundle = yield* providerAccounts.listForUser(session.user.userId)
+    const response = noStoreJsonResponse(bundle)
+
+    return appendRefreshedSessionCookies(response, session)
+  })
+
+const providerAccountsListRouteEffect = <
+  Session extends ProviderAccountBrowserSession,
+  Bindings extends ProviderAccountBrowserEnv,
+>(
+  input: Readonly<{
+    dependencies: ProviderAccountBrowserDependencies<Session, Bindings>
+    ctx: ExecutionContext
+    env: Bindings
+    request: Request
+  }>,
+) =>
+  Effect.gen(function* () {
+    if (input.request.method !== 'GET') {
+      return methodNotAllowed(['GET'])
+    }
+
+    const session = yield* requireBrowserSessionEffect(
+      input.dependencies,
+      input.request,
+      input.env,
+      input.ctx,
+    )
+
+    if (session === undefined) {
+      return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    }
+
+    return yield* listProviderAccountsForBrowserSession(
+      session,
+      input.dependencies.appendRefreshedSessionCookies,
+    )
+  })
+
+const providerAccountsListErrorResponse = (
+  error: ProviderAccountsListRouteError,
+) =>
+  noStoreJsonResponse(
+    {
+      error: 'provider_accounts_list_failed',
+      errorName: providerAccountRouteErrorName(error),
+      message: providerAccountRouteErrorMessage(error),
+    },
+    { status: providerAccountRouteErrorStatus(error, 500) },
+  )
+
 export const makeProviderAccountBrowserHandlers = <
   Session extends ProviderAccountBrowserSession,
   Env extends ProviderAccountBrowserEnv,
 >(
   dependencies: ProviderAccountBrowserDependencies<Session, Env>,
 ) => ({
-  handleProviderAccountsListApi: async (
+  handleProviderAccountsListApi: (
     request: Request,
     env: Env,
     ctx: ExecutionContext,
-  ): Promise<Response> => {
-    if (request.method !== 'GET') {
-      return methodNotAllowed(['GET'])
-    }
-
-    const session = await dependencies.requireBrowserSession(request, env, ctx)
-
-    if (session === undefined) {
-      return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
-    }
-
+  ): RouteEffect => {
     const repository = makeD1ProviderAccountRepository(openAgentsDatabase(env))
-    const response = noStoreJsonResponse(
-      await listProviderAccountsForUser(repository, session.user.userId),
+    const lifecycleLayer = Layer.succeed(
+      ProviderAccountLifecycleService,
+      makeProviderAccountLifecycleService({
+        deleteStartedDeviceLogin: dependencies.deleteStartedCodexDeviceLogin(
+          env.AUTH_STORAGE,
+        ),
+        pollDeviceLogin: secret => pollOpenAiCodexDeviceLogin(secret),
+        readStartedDeviceLogin: dependencies.readStartedCodexDeviceLogin(
+          env.AUTH_STORAGE,
+        ),
+        repository,
+        startDeviceLogin: () => startOpenAiCodexDeviceLogin(),
+        storeConnectedAuth: dependencies.storeConnectedCodexAuth(
+          env.AUTH_STORAGE,
+        ),
+        storeStartedDeviceLogin: dependencies.storeStartedCodexDeviceLogin(
+          env.AUTH_STORAGE,
+        ),
+      }),
     )
 
-    return dependencies.appendRefreshedSessionCookies(response, session)
+    return providerAccountsListRouteEffect({
+      ctx,
+      dependencies,
+      env,
+      request,
+    }).pipe(
+      Effect.provide(lifecycleLayer),
+      Effect.catch(error =>
+        Effect.succeed(providerAccountsListErrorResponse(error)),
+      ),
+    )
   },
 
   handleProviderAccountDisconnectApi: async (

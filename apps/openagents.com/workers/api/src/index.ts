@@ -7609,12 +7609,10 @@ const providerAccountRoutes = makeProviderAccountRoutes({
   handleProviderAccountUsageApi: (request, env, ctx) =>
     providerAccountUsageRoutes.handleProviderAccountUsageApi(request, env, ctx),
   handleProviderAccountsListApi: (request, env, ctx) =>
-    routeEffect('handle_provider_accounts_list_api', () =>
-      providerAccountBrowserHandlers.handleProviderAccountsListApi(
-        request,
-        env,
-        ctx,
-      ),
+    providerAccountBrowserHandlers.handleProviderAccountsListApi(
+      request,
+      env,
+      ctx,
     ),
   handleProviderDeviceLoginConnectedApi: (request, env, attemptId) =>
     routeEffect('handle_provider_device_login_connected_api', () =>

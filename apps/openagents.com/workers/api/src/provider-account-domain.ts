@@ -5,6 +5,7 @@ import {
   providerAccountPublicMetadataJson,
   sanitizeProviderAccountText,
 } from '@openagentsinc/provider-account-schema'
+import { Schema as S } from 'effect'
 
 import { parseBase64UrlJsonRecord } from './json-boundary'
 import {
@@ -572,6 +573,93 @@ export type ProviderConnectionAttemptRow = Readonly<{
   created_at: string
   updated_at: string
 }>
+
+export const ProviderAccountRow = S.Struct({
+  id: S.String,
+  user_id: S.String,
+  team_id: S.NullOr(S.String),
+  provider: S.Union([
+    S.Literal(CHATGPT_CODEX_PROVIDER),
+    S.Literal(GOOGLE_GEMINI_PROVIDER),
+    S.Literal(ANTHROPIC_CLAUDE_PROVIDER),
+  ]),
+  auth_mode: S.Union([
+    S.Literal('chatgpt_device_code'),
+    S.Literal('codex_device_auth'),
+    S.Literal('manual_secret_ref'),
+    S.Literal('api_key'),
+  ]),
+  status: S.Union([
+    S.Literal('pending'),
+    S.Literal('connected'),
+    S.Literal('expired'),
+    S.Literal('denied'),
+    S.Literal('disconnected'),
+    S.Literal('unhealthy'),
+  ]),
+  health: S.Union([
+    S.Literal('unknown'),
+    S.Literal('healthy'),
+    S.Literal('unhealthy'),
+    S.Literal('requires_reauth'),
+  ]),
+  provider_account_ref: S.String,
+  secret_ref: S.NullOr(S.String),
+  account_label: S.NullOr(S.String),
+  plan_type: S.NullOr(S.String),
+  connected_at: S.NullOr(S.String),
+  disconnected_at: S.NullOr(S.String),
+  denied_at: S.NullOr(S.String),
+  last_status_at: S.String,
+  metadata_json: S.NullOr(S.String),
+  created_at: S.String,
+  updated_at: S.String,
+  deleted_at: S.NullOr(S.String),
+})
+export const decodeProviderAccountRow = S.decodeUnknownSync(ProviderAccountRow)
+
+export const ProviderConnectionAttemptRow = S.Struct({
+  id: S.String,
+  provider_account_id: S.String,
+  user_id: S.String,
+  team_id: S.NullOr(S.String),
+  provider: S.Union([
+    S.Literal(CHATGPT_CODEX_PROVIDER),
+    S.Literal(GOOGLE_GEMINI_PROVIDER),
+    S.Literal(ANTHROPIC_CLAUDE_PROVIDER),
+  ]),
+  method: S.Union([
+    S.Literal('chatgpt_device_code'),
+    S.Literal('codex_device_auth'),
+    S.Literal('provider_api_key'),
+  ]),
+  source: S.Union([
+    S.Literal('shc_broker'),
+    S.Literal('worker_device_code'),
+    S.Literal('manual_placeholder'),
+    S.Literal('browser_api_key'),
+    S.Literal('pylon_local_codex_auth'),
+  ]),
+  login_ref: S.NullOr(S.String),
+  verification_url: S.NullOr(S.String),
+  user_code: S.NullOr(S.String),
+  status: S.Union([
+    S.Literal('pending'),
+    S.Literal('connected'),
+    S.Literal('expired'),
+    S.Literal('denied'),
+    S.Literal('failed'),
+  ]),
+  expires_at: S.String,
+  completed_at: S.NullOr(S.String),
+  failed_at: S.NullOr(S.String),
+  metadata_json: S.NullOr(S.String),
+  created_at: S.String,
+  updated_at: S.String,
+})
+export const decodeProviderConnectionAttemptRow = S.decodeUnknownSync(
+  ProviderConnectionAttemptRow,
+)
 
 export type ProviderAccountAuthGrantRow = Readonly<{
   id: string
