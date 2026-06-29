@@ -136,6 +136,7 @@ import {
 } from './metering-hook'
 import {
   type DispatchDeps,
+  type DispatchGlmOwnCapacityFailover,
   type DispatchHedgingPolicy,
   type DispatchLoadSheddingPolicy,
   type DispatchRouteAdmissionPolicy,
@@ -3015,6 +3016,7 @@ export const handleChatCompletions = (
       isMultiLaneBurnDemandSource(requestAttribution.demandSource)
     const glmOwnCapacityFailoverKhalaRequest =
       isKhalaModel(requestedModel) &&
+      !toolBearingKhalaRequest &&
       (requestAttribution?.demandKind === 'external' ||
         requestAttribution?.demandKind === undefined) &&
       deps.dispatch?.glmOwnCapacityFailover?.isActive() === true &&
@@ -3245,6 +3247,17 @@ export const handleChatCompletions = (
             reservedExternalHeadroomAvailable:
               effectiveRouteAdmission.reservedExternalHeadroomAvailable,
           })
+    const dispatchGlmOwnCapacityFailover:
+      | DispatchGlmOwnCapacityFailover
+      | undefined =
+      deps.dispatch?.glmOwnCapacityFailover === undefined
+        ? undefined
+        : glmOwnCapacityFailoverKhalaRequest
+          ? deps.dispatch.glmOwnCapacityFailover
+          : {
+              ...deps.dispatch.glmOwnCapacityFailover,
+              isActive: () => false,
+            }
     const dispatchDeps: DispatchDeps = {
       registry: deps.registry,
       plan: () => plannedIds,
@@ -3298,9 +3311,9 @@ export const handleChatCompletions = (
       ...(deps.dispatch?.failureTelemetry === undefined
         ? {}
         : { failureTelemetry: deps.dispatch.failureTelemetry }),
-      ...(deps.dispatch?.glmOwnCapacityFailover === undefined
+      ...(dispatchGlmOwnCapacityFailover === undefined
         ? {}
-        : { glmOwnCapacityFailover: deps.dispatch.glmOwnCapacityFailover }),
+        : { glmOwnCapacityFailover: dispatchGlmOwnCapacityFailover }),
     }
 
     if (inferenceRequest.stream) {

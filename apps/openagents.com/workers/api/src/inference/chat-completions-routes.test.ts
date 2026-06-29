@@ -3598,6 +3598,71 @@ describe('POST /v1/chat/completions', () => {
     expect(recorded).toEqual(servedWorkers)
   })
 
+  test('active GLM own-capacity failover keeps tool-bearing Khala requests on the tool lane', async () => {
+    const registry = new InferenceProviderRegistry()
+    registry.register(echoAdapter(VERTEX_GEMINI_ADAPTER_ID))
+    registry.register(echoAdapter(FIREWORKS_ADAPTER_ID))
+    registry.register(echoAdapter(HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID))
+    registry.register(echoAdapter(OPENROUTER_KHALA_FALLBACK_ADAPTER_ID))
+
+    const failover = makeGlmOwnCapacityFailover({ failureThreshold: 1 })
+    failover.recordFailure(
+      new InferenceAdapterError({
+        adapterId: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+        httpStatus: 503,
+        kind: 'route_admission_reserved_headroom_unavailable',
+        reason: 'GLM own-capacity lane has no reserved external headroom',
+        retryable: true,
+      }),
+    )
+
+    const response = await run(
+      handleChatCompletions(
+        chatRequest({
+          ...helloBody,
+          tool_choice: 'auto',
+          tools: [
+            {
+              function: {
+                description: 'Run a shell command.',
+                name: 'bash',
+                parameters: {
+                  additionalProperties: false,
+                  properties: { command: { type: 'string' } },
+                  required: ['command'],
+                  type: 'object',
+                },
+              },
+              type: 'function',
+            },
+          ],
+        }),
+        baseDeps({
+          dispatch: {
+            glmOwnCapacityFailover: failover,
+            sleep: () => Effect.void,
+          },
+          lanePlan: () => [
+            VERTEX_GEMINI_ADAPTER_ID,
+            FIREWORKS_ADAPTER_ID,
+            HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+            OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
+          ],
+          multiLaneBurnRotation: () => 0,
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      openagents?: { worker?: string }
+    }
+    expect(body.openagents?.worker).toBe(
+      HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
+    )
+  })
+
   test('hedges external requests to a warm lane when route dispatch hedging is configured', async () => {
     let primaryCalls = 0
     let hedgeCalls = 0
