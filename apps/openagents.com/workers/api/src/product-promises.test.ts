@@ -130,6 +130,9 @@ describe('public product promises document', () => {
     expect(blockerRefs).not.toContain(
       'blocker.product_promises.cloud_primitives_unified_balance_unbuilt',
     )
+    expect(blockerRefs).not.toContain(
+      'blocker.product_promises.orange_check_nostr_export_missing',
+    )
     expect(decoded.sourceRefs).toContain(
       'docs/training/2026-06-20-psion-instruct-sft-fixture-sync.md',
     )
@@ -1040,6 +1043,21 @@ describe('public product promises document', () => {
           promiseId: 'autopilot.repo_study_packets.v1',
           safeCopy: expect.stringContaining('dogfooding'),
           state: 'yellow',
+        }),
+        expect.objectContaining({
+          blockerRefs: [
+            'blocker.product_promises.orange_check_live_purchase_receipt_pending',
+            'blocker.product_promises.orange_check_badge_visibility_owner_signoff_pending',
+          ],
+          evidenceRefs: expect.arrayContaining([
+            'apps/openagents.com/workers/api/src/orange-check-nostr-export.ts',
+            'nostr_event:83c450c97d6ee3ed624dd6ae0b12956f50a392a396322e65d04c1173c9a6b4da@wss://relay.openagents.com',
+          ]),
+          promiseId: 'identity.orange_check_forum_signal.v1',
+          state: 'yellow',
+          verification: expect.stringContaining(
+            'owner-signed transition receipt/sign-off',
+          ),
         }),
         expect.objectContaining({
           blockerRefs: [],
