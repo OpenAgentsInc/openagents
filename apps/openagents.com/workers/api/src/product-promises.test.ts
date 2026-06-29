@@ -1614,6 +1614,63 @@ describe('public product promises document', () => {
     )
   })
 
+  test('records #7030 as an intentional default-off decision for agent-world visuals', () => {
+    const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
+      publicProductPromisesDocument(),
+    )
+    const scenePromise = decoded.promises.find(
+      promise => promise.promiseId === 'autopilot.agent_world_scene.v1',
+    )
+    const paymentPromise = decoded.promises.find(
+      promise =>
+        promise.promiseId === 'autopilot.bitcoin_payment_visualization.v1',
+    )
+    const growthPromise = decoded.promises.find(
+      promise =>
+        promise.promiseId === 'autopilot.pylon_growth_visualization.v1',
+    )
+    const publicCopy = [
+      decoded.currentMonorepoStatus.summary,
+      ...decoded.currentMonorepoStatus.caveats,
+      ...decoded.notes,
+    ].join('\n')
+
+    expect(decoded.registryVersion).toBe('2026-06-29.3')
+    expect(publicCopy).toContain('Registry 2026-06-29.3 records the #7030')
+    expect(publicCopy).toContain('flips NO promise state')
+    expect(scenePromise?.state).toBe('yellow')
+    expect(scenePromise?.safeCopy).toContain(
+      '#7030 decision is to keep it default-off/flag-gated',
+    )
+    expect(scenePromise?.blockerRefs).toEqual([
+      'blocker.product_promises.agent_world_scene_not_default_on',
+    ])
+    expect(scenePromise?.verification).toContain(
+      'green for stale beam expiry',
+    )
+    expect(scenePromise?.authorityBoundary).toContain('grants no runtime mutation')
+
+    expect(paymentPromise?.state).toBe('yellow')
+    expect(paymentPromise?.safeCopy).toContain(
+      '#7030 keeps it default-off/flag-gated',
+    )
+    expect(paymentPromise?.blockerRefs).toEqual([
+      'blocker.product_promises.payment_visualization_flag_default_off',
+    ])
+    expect(paymentPromise?.authorityBoundary).toContain(
+      'grants no payment authority',
+    )
+
+    expect(growthPromise?.state).toBe('yellow')
+    expect(growthPromise?.safeCopy).toContain('#6868 remains linked')
+    expect(growthPromise?.blockerRefs).toEqual([
+      'blocker.product_promises.pylon_growth_flag_default_off',
+    ])
+    expect(growthPromise?.authorityBoundary).toContain(
+      'grants no earning, spend, payout, or settlement authority',
+    )
+  })
+
   test('keeps kernel optimization planned while exposing code-backed dispatch and parity receipt machinery', () => {
     const decoded = S.decodeUnknownSync(ProductPromisesDocument)(
       publicProductPromisesDocument(),
