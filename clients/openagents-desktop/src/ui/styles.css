@@ -45,6 +45,10 @@ textarea {
   font: inherit;
 }
 
+button {
+  appearance: none;
+}
+
 .openagents-shell {
   position: relative;
   display: grid;
@@ -111,6 +115,12 @@ textarea {
   line-height: 1;
   text-transform: uppercase;
   white-space: nowrap;
+  cursor: pointer;
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    color 180ms ease,
+    transform 180ms ease;
 }
 
 .pylon-status::before {
@@ -128,6 +138,23 @@ textarea {
   box-shadow: 0 0 16px -2px rgba(79, 208, 255, 0.92);
 }
 
+.pylon-status:hover,
+.pylon-status:focus-visible,
+.pylon-status[aria-expanded="true"] {
+  color: #fff;
+  border-color: rgba(79, 208, 255, 0.86);
+  box-shadow:
+    0 0 0 1px rgba(79, 208, 255, 0.16) inset,
+    0 0 36px -10px rgba(58, 123, 255, 0.92);
+}
+
+.pylon-status:focus-visible,
+.pylons-back:focus-visible,
+.create-pylon:focus-visible {
+  outline: 2px solid rgba(79, 208, 255, 0.84);
+  outline-offset: 3px;
+}
+
 .openagents-wordmark {
   position: relative;
   z-index: 2;
@@ -138,6 +165,9 @@ textarea {
   padding: 48px;
   pointer-events: none;
   text-align: center;
+  transition:
+    opacity 240ms ease,
+    transform 240ms ease;
 }
 
 .openagents-wordmark h1 {
@@ -151,6 +181,216 @@ textarea {
     0 1px 0 rgba(255, 255, 255, 0.1),
     0 18px 72px rgba(0, 0, 0, 0.74);
   text-wrap: balance;
+}
+
+.openagents-shell[data-route="pylons"] .openagents-wordmark {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.pylons-page {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow: hidden;
+  padding: 88px 24px 24px;
+}
+
+.pylons-page[hidden] {
+  display: none;
+}
+
+.pylons-panel {
+  display: grid;
+  width: min(760px, 100%);
+  max-height: calc(100vh - 112px);
+  max-height: calc(100dvh - 112px);
+  margin: 0 auto;
+  overflow: auto;
+  color: #f4f8ff;
+  background: rgba(0, 5, 14, 0.78);
+  border: 1px solid rgba(58, 123, 255, 0.34);
+  border-radius: 8px;
+  box-shadow:
+    0 0 0 1px rgba(79, 208, 255, 0.06) inset,
+    0 32px 92px rgba(0, 0, 0, 0.62),
+    0 0 46px -22px rgba(58, 123, 255, 0.72);
+  backdrop-filter: blur(18px);
+}
+
+.pylons-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.pylons-back,
+.create-pylon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding: 0 14px;
+  color: #dbe8ff;
+  background: rgba(7, 11, 18, 0.82);
+  border: 1px solid rgba(58, 123, 255, 0.42);
+  border-radius: 8px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    background 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease;
+}
+
+.create-pylon {
+  color: #fff;
+  background: rgba(17, 61, 132, 0.72);
+  border-color: rgba(79, 208, 255, 0.58);
+  box-shadow: 0 0 28px -14px rgba(79, 208, 255, 0.92);
+}
+
+.pylons-back:hover,
+.create-pylon:hover {
+  color: #fff;
+  border-color: rgba(79, 208, 255, 0.88);
+}
+
+.create-pylon:disabled {
+  cursor: progress;
+  opacity: 0.62;
+}
+
+.pylons-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 20px 12px;
+}
+
+.pylons-heading h2 {
+  margin: 0;
+  font-size: 1.6rem;
+  line-height: 1;
+}
+
+.pylons-heading span {
+  color: #9bb8e8;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.pylons-list {
+  display: grid;
+  gap: 10px;
+  padding: 8px 16px 18px;
+}
+
+.pylon-row,
+.pylon-empty {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  background: rgba(8, 14, 26, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+}
+
+.pylon-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.pylon-row[data-state="online"] {
+  border-color: rgba(79, 208, 255, 0.32);
+}
+
+.pylon-row-identity {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+
+.pylon-row-identity strong {
+  overflow: hidden;
+  color: #fff;
+  font-size: 0.9rem;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pylon-row-identity span,
+.pylon-empty,
+.pylon-action-status {
+  color: #9bb8e8;
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.pylon-row-status {
+  min-width: 86px;
+  padding: 7px 10px;
+  color: #b6c8e8;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.pylon-row[data-state="online"] .pylon-row-status {
+  color: #dff8ff;
+  background: rgba(79, 208, 255, 0.1);
+  border-color: rgba(79, 208, 255, 0.35);
+}
+
+.pylon-row-slots {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.pylon-slot {
+  display: grid;
+  gap: 4px;
+  min-height: 46px;
+  padding: 9px 10px;
+  background: rgba(0, 0, 0, 0.26);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+}
+
+.pylon-slot-label {
+  color: #6f8abb;
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.pylon-slot strong {
+  color: #fff;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.pylon-action-status {
+  min-height: 26px;
+  margin: 0;
+  padding: 0 20px 18px;
 }
 
 @media (max-width: 900px) {
@@ -176,6 +416,38 @@ textarea {
 
   .openagents-wordmark h1 {
     font-size: 4rem;
+  }
+
+  .pylons-page {
+    padding: 68px 16px 16px;
+  }
+
+  .pylons-panel {
+    max-height: calc(100vh - 84px);
+    max-height: calc(100dvh - 84px);
+  }
+
+  .pylons-toolbar,
+  .pylons-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .pylons-back,
+  .create-pylon {
+    width: 100%;
+  }
+
+  .pylon-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pylon-row-status {
+    width: fit-content;
+  }
+
+  .pylon-row-slots {
+    grid-template-columns: 1fr;
   }
 }
 

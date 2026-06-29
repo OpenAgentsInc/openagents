@@ -17,6 +17,7 @@ export type LandingPose =
   | 'tassadar'
   | 'autopilot'
   | 'login'
+  | 'pylons'
 
 const BACKGROUND_COLOR = 0x000000
 // A tasteful cool blue, driven above 1.0 (HDR) so the cores survive the bloom
@@ -53,6 +54,10 @@ export const POSES: Record<
   login: {
     pos: new Three.Vector3(3.4, -0.4, 16.5),
     target: new Three.Vector3(-1.1, 0.2, -0.6),
+  },
+  pylons: {
+    pos: new Three.Vector3(-6.2, 3.8, 10.2),
+    target: new Three.Vector3(0.2, 0.3, -1.8),
   },
 }
 

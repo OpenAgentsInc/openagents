@@ -13,11 +13,44 @@
         class="openagents-scene"
         aria-hidden="true"
       ></div>
-      <aside id="pylon-status" class="pylon-status" aria-live="polite">
+      <button
+        id="pylon-status"
+        class="pylon-status"
+        type="button"
+        aria-controls="pylons-page"
+        aria-expanded="false"
+      >
         <span id="pylon-count">Pylons: 0</span>
-      </aside>
+      </button>
       <section class="openagents-wordmark" aria-labelledby="openagents-title">
         <h1 id="openagents-title">OpenAgents</h1>
+      </section>
+      <section
+        id="pylons-page"
+        class="pylons-page"
+        aria-labelledby="pylons-title"
+        hidden
+      >
+        <div class="pylons-panel">
+          <div class="pylons-toolbar">
+            <button id="pylons-back" class="pylons-back" type="button">
+              OpenAgents
+            </button>
+            <button id="create-pylon" class="create-pylon" type="button">
+              Create Pylon
+            </button>
+          </div>
+          <div class="pylons-heading">
+            <h2 id="pylons-title">Pylons</h2>
+            <span id="pylons-summary">Pylons: 0</span>
+          </div>
+          <div id="pylons-list" class="pylons-list"></div>
+          <p
+            id="pylon-action-status"
+            class="pylon-action-status"
+            aria-live="polite"
+          ></p>
+        </div>
       </section>
     </main>
     <script type="module" src="./main.js"></script>
