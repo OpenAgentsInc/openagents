@@ -5,8 +5,11 @@ import { homedir } from "node:os"
 import { dirname, join, resolve } from "node:path"
 
 import {
+  type CodingAssignmentRun,
   type CodingCodexSession,
   emptyCodingStatusSummary,
+  mergeAssignmentRuns,
+  parseAssignmentRunLifecycleLog,
   parseCodexSessionRollout,
   parseCodingProcesses,
   parseSupervisorLog,
@@ -109,6 +112,7 @@ const pylonHomeCandidates = (): readonly string[] => {
   return [
     ...(Bun.env.PYLON_HOME ? [Bun.env.PYLON_HOME] : []),
     join(home, ".openagents", "pylon"),
+    join(home, ".pylon-fable"),
     join(home, ".pylon"),
   ]
 }
@@ -254,6 +258,85 @@ const countNonEmptyLines = async (path: string): Promise<number | null> => {
   const text = await readTextFile(path)
   if (text === "") return null
   return text.split("\n").filter(line => line.trim() !== "").length
+}
+
+const activeAssignmentRunDirectories = (): readonly string[] => [
+  resolve(resolvePylonHome(), "active-assignment-runs"),
+  join(homedir(), ".pylon-fable", "active-assignment-runs"),
+  join(homedir(), ".openagents", "pylon", "active-assignment-runs"),
+  join(homedir(), ".pylon", "active-assignment-runs"),
+]
+
+const assignmentLogDirectories = (): readonly string[] => [
+  join(homedir(), ".pylon-fable", "pr-resolver-logs"),
+  resolve(supervisorHome(), "pr-resolver-logs"),
+]
+
+const readActiveAssignmentRuns = async (): Promise<readonly CodingAssignmentRun[]> => {
+  const runs: CodingAssignmentRun[] = []
+  const seen = new Set<string>()
+
+  for (const directory of activeAssignmentRunDirectories()) {
+    if (seen.has(directory)) continue
+    seen.add(directory)
+    let entries
+    try {
+      entries = await readdir(directory, { withFileTypes: true })
+    } catch {
+      continue
+    }
+    await Promise.all(
+      entries.map(async entry => {
+        if (!entry.isFile() || !entry.name.endsWith(".json")) return
+        const text = await readTextFile(resolve(directory, entry.name))
+        runs.push(...parseAssignmentRunLifecycleLog(text))
+      }),
+    )
+  }
+
+  return mergeAssignmentRuns(runs)
+}
+
+const readRecentAssignmentLifecycleRuns = async (): Promise<readonly CodingAssignmentRun[]> => {
+  const files: Array<{ modifiedAtMs: number; path: string }> = []
+
+  for (const directory of assignmentLogDirectories()) {
+    let entries
+    try {
+      entries = await readdir(directory, { withFileTypes: true })
+    } catch {
+      continue
+    }
+    await Promise.all(
+      entries.map(async entry => {
+        if (!entry.isFile() || !entry.name.endsWith(".log")) return
+        const path = resolve(directory, entry.name)
+        try {
+          const fileStat = await stat(path)
+          files.push({ modifiedAtMs: fileStat.mtimeMs, path })
+        } catch {
+          // Ignore logs that disappear during scan.
+        }
+      }),
+    )
+  }
+
+  const runs = await Promise.all(
+    files
+      .sort((left, right) => right.modifiedAtMs - left.modifiedAtMs)
+      .slice(0, 96)
+      .map(async file => parseAssignmentRunLifecycleLog(await readTextFile(file.path))),
+  )
+
+  return mergeAssignmentRuns(runs.flat())
+}
+
+const readAssignmentRuns = async (): Promise<readonly CodingAssignmentRun[]> => {
+  const [activeRuns, lifecycleRuns] = await Promise.all([
+    readActiveAssignmentRuns(),
+    readRecentAssignmentLifecycleRuns(),
+  ])
+  return mergeAssignmentRuns([...lifecycleRuns, ...activeRuns])
 }
 
 const codexSessionDateSegments = (): readonly string[] => {
@@ -414,11 +497,31 @@ const matchingCodexProcess = (
     )
   }) ?? null
 
+const matchingAssignmentRun = (
+  input: {
+    readonly accountRef: string | null
+    readonly process: CodingProcess | null
+  },
+  runs: readonly CodingAssignmentRun[],
+): CodingAssignmentRun | null => {
+  if (input.process?.assignmentRef !== null && input.process?.assignmentRef !== undefined) {
+    return (
+      runs.find(run => run.assignmentRef === input.process?.assignmentRef) ?? null
+    )
+  }
+
+  const activeRuns = runs.filter(run => run.closeoutRef === null)
+  if (input.process !== null && activeRuns.length === 1) return activeRuns[0] ?? null
+
+  return null
+}
+
 const fallbackSessionTitle = (sessionId: string): string =>
   sessionId.startsWith("rollout-") ? sessionId : `Codex ${sessionId.slice(0, 8)}`
 
 const readCodexSessions = async (
   processes: readonly CodingProcess[],
+  assignmentRuns: readonly CodingAssignmentRun[],
 ): Promise<readonly CodingCodexSession[]> => {
   const files = await recentCodexSessionFiles()
   const sessions = await Promise.all(
@@ -436,11 +539,16 @@ const readCodexSessions = async (
       )
       const isRecent = Date.now() - file.modifiedAtMs <= 10 * 60 * 1_000
       const active = process !== null
+      const assignment = matchingAssignmentRun(
+        { accountRef, process },
+        assignmentRuns,
+      )
       const modifiedAt = new Date(file.modifiedAtMs).toISOString()
 
       return {
         accountRef,
         active,
+        assignment,
         cwd: parsed.cwd,
         issueRef: process?.issueRef ?? null,
         messageCount: parsed.messageCount,
@@ -485,7 +593,7 @@ const spawnText = async (cmd: readonly string[]): Promise<string> => {
 const codingStatus = async (): Promise<CodingStatusResult> => {
   const observedAt = new Date().toISOString()
   const home = supervisorHome()
-  const [psOutput, supervisorLog, claimCount, openIssueCount] =
+  const [psOutput, supervisorLog, claimCount, openIssueCount, assignmentRuns] =
     await Promise.all([
       spawnText([
         "/bin/ps",
@@ -504,10 +612,11 @@ const codingStatus = async (): Promise<CodingStatusResult> => {
       readTextFile(resolve(home, "supervisor.log")),
       countDirectoryEntries(resolve(home, "claims")),
       countNonEmptyLines(resolve(home, "open-issues.set")),
+      readAssignmentRuns(),
     ])
 
   const processes = parseCodingProcesses(psOutput)
-  const sessions = await readCodexSessions(processes)
+  const sessions = await readCodexSessions(processes, assignmentRuns)
   const processSummary = summarizeCodingProcesses(processes)
   const logSummary = parseSupervisorLog(supervisorLog)
   const summary: CodingStatusSummary = {

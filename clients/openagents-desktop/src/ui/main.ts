@@ -66,6 +66,9 @@ const codingTranscriptMeta = requireElement<HTMLElement>(
 const codingTranscriptCount = requireElement<HTMLElement>(
   "#coding-transcript-count",
 )
+const codingTranscriptDetails = requireElement<HTMLElement>(
+  "#coding-transcript-details",
+)
 const codingTranscriptMessages = requireElement<HTMLElement>(
   "#coding-transcript-messages",
 )
@@ -128,6 +131,18 @@ const formatAbsoluteTimestamp = (value: string | null): string => {
     minute: "2-digit",
     second: "2-digit",
   }).format(date)
+}
+
+const formatDuration = (value: number | null): string => {
+  if (value === null) return "Unknown"
+  const seconds = Math.max(0, Math.round(value / 1000))
+  if (seconds < 60) return `${formatCount(seconds)}s`
+  const minutes = Math.floor(seconds / 60)
+  const restSeconds = seconds % 60
+  if (minutes < 60) return `${formatCount(minutes)}m ${formatCount(restSeconds)}s`
+  const hours = Math.floor(minutes / 60)
+  const restMinutes = minutes % 60
+  return `${formatCount(hours)}h ${formatCount(restMinutes)}m`
 }
 
 const pylonIsOnline = (pylon: DesktopPylon): boolean =>
@@ -218,14 +233,20 @@ const sessionSubtitle = (session: CodingCodexSession): string => {
   const parts = [
     session.accountRef,
     session.issueRef === null ? null : `#${session.issueRef}`,
+    session.assignment?.closeoutStatus ?? session.assignment?.phase ?? null,
     session.pid === null ? null : `PID ${formatCount(session.pid)}`,
     formatRelativeTimestamp(session.modifiedAt),
   ].filter((value): value is string => value !== null)
   return parts.join(" · ")
 }
 
+const sessionIsActive = (session: CodingCodexSession): boolean =>
+  session.active ||
+  session.status === "active" ||
+  (session.assignment !== null && session.assignment.closeoutRef === null)
+
 const sessionStatusRank = (session: CodingCodexSession): number => {
-  if (session.active || session.status === "active") return 0
+  if (sessionIsActive(session)) return 0
   if (session.status === "recent") return 1
   return 2
 }
@@ -257,7 +278,7 @@ const sessionButton = (
   button.className =
     variant === "chip" ? "coding-active-session" : "coding-session-row"
   button.type = "button"
-  button.dataset.state = session.status
+  button.dataset.state = sessionIsActive(session) ? "active" : session.status
   button.dataset.selected =
     selectedSessionPath === session.path ? "true" : "false"
   button.addEventListener("click", () => selectSession(session))
@@ -270,7 +291,7 @@ const sessionButton = (
 
   const status = document.createElement("span")
   status.className = "coding-session-status"
-  status.textContent = session.status.toUpperCase()
+  status.textContent = (sessionIsActive(session) ? "active" : session.status).toUpperCase()
 
   if (variant === "chip") {
     button.append(title, meta, status)
@@ -354,6 +375,49 @@ const messageRow = (message: CodingTranscriptMessage): HTMLElement => {
   return row
 }
 
+const detailItem = (label: string, value: string | null): HTMLElement => {
+  const item = document.createElement("div")
+  item.className = "coding-detail-item"
+
+  const labelEl = document.createElement("span")
+  labelEl.textContent = label
+
+  const valueEl = document.createElement("strong")
+  valueEl.textContent = value === null || value === "" ? "Unknown" : value
+
+  item.append(labelEl, valueEl)
+  return item
+}
+
+const renderCodingTranscriptDetails = (
+  session: CodingCodexSession | null,
+): void => {
+  codingTranscriptDetails.replaceChildren()
+  if (session === null) return
+
+  const assignment = session.assignment
+  const workspace = compactPath(session.cwd) ?? compactPath(session.path)
+  const issue =
+    session.issueRef === null ? null : `#${session.issueRef}`
+  const blockerRefs =
+    assignment === null || assignment.blockerRefs.length === 0
+      ? null
+      : assignment.blockerRefs.join(", ")
+
+  codingTranscriptDetails.append(
+    detailItem("Assignment", assignment?.assignmentRef ?? null),
+    detailItem("Account", session.accountRef ?? assignment?.accountRefHash ?? null),
+    detailItem("Issue/PR", issue),
+    detailItem("Workspace", workspace),
+    detailItem("PID", session.pid === null ? null : String(session.pid)),
+    detailItem("Elapsed", formatDuration(assignment?.elapsedMs ?? null)),
+    detailItem("Last event", assignment?.lastEvent ?? null),
+    detailItem("Last event age", formatRelativeTimestamp(assignment?.lastEventAt ?? null)),
+    detailItem("Closeout", assignment?.closeoutRef ?? assignment?.closeoutStatus ?? null),
+    detailItem("Blockers", blockerRefs),
+  )
+}
+
 const renderCodingTranscript = (
   session: CodingCodexSession | null,
 ): void => {
@@ -362,6 +426,7 @@ const renderCodingTranscript = (
     codingTranscriptTitle.textContent = "No session selected"
     codingTranscriptMeta.textContent = "Click a Codex instance"
     codingTranscriptCount.textContent = "0 messages"
+    renderCodingTranscriptDetails(null)
     const empty = document.createElement("div")
     empty.className = "coding-empty"
     empty.textContent = "No Codex session transcript loaded."
@@ -377,6 +442,7 @@ const renderCodingTranscript = (
     .filter((value): value is string => value !== null && value !== "")
     .join(" · ")
   codingTranscriptCount.textContent = `${formatCount(session.messageCount)} messages`
+  renderCodingTranscriptDetails(session)
 
   if (session.messages.length === 0) {
     const empty = document.createElement("div")

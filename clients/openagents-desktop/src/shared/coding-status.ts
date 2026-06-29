@@ -12,6 +12,7 @@ export type CodingProcessKind =
 export type CodingProcess = {
   readonly accountRef: string | null
   readonly age: string
+  readonly assignmentRef: string | null
   readonly cpuPercent: number
   readonly issueRef: string | null
   readonly kind: CodingProcessKind
@@ -20,6 +21,22 @@ export type CodingProcess = {
   readonly pid: number
   readonly status: "active" | "idle"
   readonly workspacePath: string | null
+}
+
+export type CodingAssignmentRun = {
+  readonly accountRefHash: string | null
+  readonly assignmentRef: string
+  readonly blockerRefs: readonly string[]
+  readonly closeoutRef: string | null
+  readonly closeoutStatus: string | null
+  readonly elapsedMs: number | null
+  readonly lastEvent: string | null
+  readonly lastEventAt: string | null
+  readonly leaseRef: string | null
+  readonly phase: string | null
+  readonly refreshedAt: string | null
+  readonly runRef: string | null
+  readonly startedAt: string | null
 }
 
 export type CodingSupervisorEvent = {
@@ -55,6 +72,7 @@ export type CodingTranscriptMessage = {
 export type CodingCodexSession = {
   readonly accountRef: string | null
   readonly active: boolean
+  readonly assignment: CodingAssignmentRun | null
   readonly cwd: string | null
   readonly issueRef: string | null
   readonly messageCount: number
@@ -148,6 +166,12 @@ const issueRefFromCommand = (command: string): string | null =>
   command.match(/#(\d{3,})/)?.[1] ??
   null
 
+const assignmentRefFromCommand = (command: string): string | null =>
+  command.match(/(?:^|\s)--assignment-ref\s+((?:"[^"]+")|(?:'[^']+')|\S+)/)?.[1]
+    ?.replace(/^(['"])(.*)\1$/, "$2") ??
+  command.match(/\bassignment\.public\.[a-z0-9_.-]+/i)?.[0] ??
+  null
+
 const unquoteShellToken = (value: string): string =>
   value.replace(/^(['"])(.*)\1$/, "$2")
 
@@ -193,10 +217,12 @@ export const parseCodingProcesses = (
     }
 
     const accountRef = accountRefFromCommand(command)
+    const assignmentRef = assignmentRefFromCommand(command)
     const issueRef = issueRefFromCommand(command)
     rows.push({
       accountRef,
       age,
+      assignmentRef,
       cpuPercent,
       issueRef,
       kind,
@@ -212,14 +238,112 @@ export const parseCodingProcesses = (
   return rows.map(row => {
     const parent = byPid.get(row.parentPid)
     const accountRef = row.accountRef ?? parent?.accountRef ?? null
+    const assignmentRef = row.assignmentRef ?? parent?.assignmentRef ?? null
     const issueRef = row.issueRef ?? parent?.issueRef ?? null
     return {
       ...row,
       accountRef,
+      assignmentRef,
       issueRef,
       label: labelForProcess(row.kind, accountRef, issueRef),
     }
   })
+}
+
+const numberValueFromUnknown = (value: unknown): number | null =>
+  typeof value === "number" && Number.isFinite(value) ? value : null
+
+const stringArrayFromUnknown = (value: unknown): readonly string[] =>
+  Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : []
+
+const assignmentRunFromUnknown = (value: unknown): CodingAssignmentRun | null => {
+  if (!isJsonObject(value)) return null
+  const assignmentRef = stringValueFromUnknown(value.assignmentRef)
+  if (assignmentRef === null) return null
+  const observedAt = stringValueFromUnknown(value.observedAt)
+  const event = stringValueFromUnknown(value.event)
+  const status = stringValueFromUnknown(value.status)
+  const phase = stringValueFromUnknown(value.phase)
+  return {
+    accountRefHash: stringValueFromUnknown(value.accountRefHash),
+    assignmentRef,
+    blockerRefs: stringArrayFromUnknown(value.blockerRefs),
+    closeoutRef: stringValueFromUnknown(value.closeoutRef),
+    closeoutStatus:
+      event === "assignment_run.closeout_submitted" ||
+      event === "assignment_run.completed"
+        ? status
+        : null,
+    elapsedMs: numberValueFromUnknown(value.elapsedMs),
+    lastEvent: event,
+    lastEventAt: observedAt,
+    leaseRef: stringValueFromUnknown(value.leaseRef),
+    phase: phase ?? status,
+    refreshedAt: stringValueFromUnknown(value.refreshedAt),
+    runRef: stringValueFromUnknown(value.runRef),
+    startedAt:
+      event === "assignment_run.accepted" || event === "assignment_run.runtime_started"
+        ? observedAt
+        : stringValueFromUnknown(value.startedAt),
+  }
+}
+
+export const mergeAssignmentRuns = (
+  runs: readonly CodingAssignmentRun[],
+): readonly CodingAssignmentRun[] => {
+  const byAssignment = new Map<string, CodingAssignmentRun>()
+
+  for (const run of runs) {
+    const current = byAssignment.get(run.assignmentRef)
+    byAssignment.set(run.assignmentRef, {
+      accountRefHash: run.accountRefHash ?? current?.accountRefHash ?? null,
+      assignmentRef: run.assignmentRef,
+      blockerRefs:
+        run.blockerRefs.length > 0 ? run.blockerRefs : current?.blockerRefs ?? [],
+      closeoutRef: run.closeoutRef ?? current?.closeoutRef ?? null,
+      closeoutStatus: run.closeoutStatus ?? current?.closeoutStatus ?? null,
+      elapsedMs: Math.max(run.elapsedMs ?? 0, current?.elapsedMs ?? 0) || null,
+      lastEvent: run.lastEvent ?? current?.lastEvent ?? null,
+      lastEventAt: run.lastEventAt ?? current?.lastEventAt ?? null,
+      leaseRef: run.leaseRef ?? current?.leaseRef ?? null,
+      phase: run.phase ?? current?.phase ?? null,
+      refreshedAt: run.refreshedAt ?? current?.refreshedAt ?? null,
+      runRef: run.runRef ?? current?.runRef ?? null,
+      startedAt: current?.startedAt ?? run.startedAt,
+    })
+  }
+
+  return [...byAssignment.values()]
+}
+
+export const parseAssignmentRunLifecycleLog = (
+  logText: string,
+): readonly CodingAssignmentRun[] => {
+  const runs: CodingAssignmentRun[] = []
+
+  for (const line of logText.split("\n")) {
+    const trimmed = line.trim()
+    if (!trimmed.startsWith("{")) continue
+    let record: unknown
+    try {
+      record = JSON.parse(trimmed)
+    } catch {
+      continue
+    }
+    if (!isJsonObject(record)) continue
+    if (
+      record.schema !== "openagents.pylon.assignment_run_lifecycle_event.v0.1" &&
+      record.schema !== "openagents.pylon.active_assignment_run.v0.1"
+    ) {
+      continue
+    }
+    const run = assignmentRunFromUnknown(record)
+    if (run !== null) runs.push(run)
+  }
+
+  return mergeAssignmentRuns(runs)
 }
 
 export const emptyCodingStatusSummary = (): CodingStatusSummary => ({

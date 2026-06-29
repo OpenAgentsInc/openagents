@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 
 import {
+  parseAssignmentRunLifecycleLog,
   parseCodexSessionRollout,
   parseCodingProcesses,
   parseSupervisorLog,
@@ -32,10 +33,12 @@ describe("openagents desktop coding status", () => {
     })
     expect(processes[1]).toMatchObject({
       accountRef: "codex-6",
+      assignmentRef: null,
       issueRef: "6932",
     })
     expect(processes[2]).toMatchObject({
       accountRef: "codex-6",
+      assignmentRef: null,
       issueRef: "6932",
       parentPid: 101,
       workspacePath: "/tmp/workspace-one",
@@ -46,6 +49,44 @@ describe("openagents desktop coding status", () => {
       khalaRequestCount: 1,
       supervisorCount: 1,
       vertexBurnCount: 1,
+    })
+  })
+
+  test("inherits assignment refs from parent assignment runners", () => {
+    const processes = parseCodingProcesses(`
+  200     1  0.4      01:20 bun apps/pylon/src/index.ts assignment run-no-spend --assignment-ref assignment.public.khala_coding.chatcmpl_abc --json
+  201   200  9.2      00:44 /Users/me/node_modules/@openai/codex/vendor/aarch64-apple-darwin/bin/codex exec --cd /tmp/workspace-two
+`)
+
+    expect(processes[0]).toMatchObject({
+      assignmentRef: "assignment.public.khala_coding.chatcmpl_abc",
+      kind: "assignment_runner",
+    })
+    expect(processes[1]).toMatchObject({
+      assignmentRef: "assignment.public.khala_coding.chatcmpl_abc",
+      kind: "codex_exec",
+      status: "active",
+    })
+  })
+
+  test("parses assignment lifecycle progress and closeout details", () => {
+    const runs = parseAssignmentRunLifecycleLog(`
+{"schema":"openagents.pylon.assignment_run_lifecycle_event.v0.1","observedAt":"2026-06-29T14:26:41.222Z","event":"assignment_run.runtime_started","assignmentRef":"assignment.public.khala_coding.chatcmpl_abc","accountRefHash":"account.pylon.codex.aaaa","leaseRef":"assignment.public.khala_coding.chatcmpl_abc"}
+{"schema":"openagents.pylon.assignment_run_lifecycle_event.v0.1","observedAt":"2026-06-29T14:27:12.557Z","event":"assignment_run.runtime_progress","assignmentRef":"assignment.public.khala_coding.chatcmpl_abc","accountRefHash":"account.pylon.codex.aaaa","leaseRef":"assignment.public.khala_coding.chatcmpl_abc","phase":"runtime_active","elapsedMs":31335,"lastProgressEvent":"assignment_run.runtime_started"}
+{"schema":"openagents.pylon.assignment_run_lifecycle_event.v0.1","observedAt":"2026-06-29T14:28:09.654Z","event":"assignment_run.completed","assignmentRef":"assignment.public.khala_coding.chatcmpl_abc","leaseRef":"assignment.public.khala_coding.chatcmpl_abc","status":"rejected","closeoutRef":"assignment.closeout.abc","blockerRefs":["blocker.assignment.codex_agent_test_failed"]}
+`)
+
+    expect(runs).toHaveLength(1)
+    expect(runs[0]).toMatchObject({
+      accountRefHash: "account.pylon.codex.aaaa",
+      assignmentRef: "assignment.public.khala_coding.chatcmpl_abc",
+      blockerRefs: ["blocker.assignment.codex_agent_test_failed"],
+      closeoutRef: "assignment.closeout.abc",
+      closeoutStatus: "rejected",
+      elapsedMs: 31335,
+      lastEvent: "assignment_run.completed",
+      lastEventAt: "2026-06-29T14:28:09.654Z",
+      phase: "rejected",
     })
   })
 

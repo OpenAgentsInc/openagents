@@ -606,13 +606,51 @@ button {
 
 .coding-transcript {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   min-width: 0;
   max-height: 460px;
   overflow: hidden;
   background: rgba(4, 9, 18, 0.88);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 8px;
+}
+
+.coding-transcript-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  padding: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.coding-detail-item {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+  padding: 9px 10px;
+  background: rgba(5, 11, 22, 0.9);
+}
+
+.coding-detail-item span {
+  overflow: hidden;
+  color: #7189b4;
+  font-size: 0.58rem;
+  font-weight: 700;
+  line-height: 1;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.coding-detail-item strong {
+  overflow: hidden;
+  color: #dbe8ff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .coding-transcript-heading {
@@ -972,6 +1010,10 @@ pre.coding-message-body {
   .coding-message-heading {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .coding-transcript-details {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
