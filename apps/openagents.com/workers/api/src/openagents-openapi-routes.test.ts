@@ -872,7 +872,7 @@ describe('OpenAgents OpenAPI route', () => {
     ).toEqual(
       expect.objectContaining({
         bearerFormat:
-          'OpenAgents Forge control-plane token plus X-OpenAgents-Forge-Scopes',
+          'OpenAgents Forge control-plane token plus X-OpenAgents-Forge-Scopes and X-OpenAgents-Forge-Tenant-Ref',
         type: 'http',
       }),
     )
@@ -1255,6 +1255,8 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   // Owner-gated inference cost / provider-lane analytics (#6232): internal cost
   // + provider data, owner session only, not part of the public OpenAPI surface.
   '/api/admin/inference-analytics',
+  '/api/operator/accounts/status',
+  '/api/operator/artanis/dashboard',
   // Operator fleet status aggregator (#6427): admin/operator snapshot for
   // internal Artanis and fleet surfaces; public pages consume a later
   // public-safe projection, not this operator route directly.
@@ -1293,6 +1295,8 @@ const intentionallyUndocumentedApiRoutes: ReadonlyArray<string> = [
   '/api/operator/adjutant/assignments/{param}/current-run/clear',
   '/api/operator/adjutant/assignments/{param}/enrichment',
   '/api/operator/adjutant/assignments/{param}/enrichment/briefs/{param}/review',
+  '/api/public/inference/privacy-receipts/:receiptRef',
+  '/api/public/inference/privacy-receipts/{param}',
   '/api/operator/adjutant/assignments/{param}/enrichment/enqueue',
   '/api/operator/adjutant/assignments/{param}/enrichment/plan',
   '/api/operator/adjutant/assignments/{param}/enrichment/refresh',

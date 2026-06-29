@@ -12,6 +12,7 @@ import {
 } from './agent-search'
 import { CustomerOneCohortEndpoint } from './customer-one-cohort-projection'
 import { DemandProvenanceEndpoint } from './demand-provenance'
+import { EnergyFlexibleLoadProofEndpoint } from './energy-flexible-load-proof'
 import { ForumPostBodyTextMaxLength } from './forum-limits'
 import { OmniApiSdkSeedEndpoint } from './omni-api-sdk-seed'
 import {
@@ -818,6 +819,92 @@ export const TrainingMarathonOperationsEnvelope: JsonSchema = {
     staleness: { type: 'object' },
     status: { type: 'string' },
     unsafeCopy: { type: 'string' },
+  },
+}
+
+export const EnergyFlexibleLoadProofProjectionSchema: JsonSchema = {
+  type: 'object',
+  additionalProperties: true,
+  description:
+    'Public-safe flexible-load proof projection for energy.flexible_load_proof.v1. It decodes ERCOT public price fixture rows, exposes read-only work-class flexibility profiles, and projects labeled flexible-load event history while keeping greenGateSatisfied=false until real flexible-load receipts and owner-signed transition evidence exist. It grants no grid dispatch, capacity assignment, runner launch, wallet spend, payout, settlement, or public promise-state authority.',
+  required: [
+    'authorityBoundary',
+    'eventHistory',
+    'gate',
+    'generatedAt',
+    'marketPrices',
+    'promiseId',
+    'schemaVersion',
+    'sourceRefs',
+    'staleness',
+    'status',
+    'workClassFlexProfiles',
+  ],
+  properties: {
+    authorityBoundary: { type: 'string' },
+    eventHistory: {
+      type: 'object',
+      additionalProperties: true,
+      required: ['evidenceStateLabels', 'events', 'projectedEventCount'],
+      properties: {
+        evidenceStateLabels: { type: 'array', items: { type: 'string' } },
+        events: { type: 'array', items: { type: 'object' } },
+        projectedEventCount: { type: 'integer' },
+      },
+    },
+    gate: {
+      type: 'object',
+      additionalProperties: false,
+      required: [
+        'blockerRefs',
+        'greenGateSatisfied',
+        'marketPriceIngestionAvailable',
+        'modeledOperatorReportAvailable',
+        'ownerSignedTransitionReceiptAvailable',
+        'realFlexibleLoadReceiptAvailable',
+        'workClassFlexProfilesAvailable',
+      ],
+      properties: {
+        blockerRefs: { type: 'array', items: { type: 'string' } },
+        greenGateSatisfied: { type: 'boolean' },
+        marketPriceIngestionAvailable: { type: 'boolean' },
+        modeledOperatorReportAvailable: { type: 'boolean' },
+        ownerSignedTransitionReceiptAvailable: { type: 'boolean' },
+        realFlexibleLoadReceiptAvailable: { type: 'boolean' },
+        workClassFlexProfilesAvailable: { type: 'boolean' },
+      },
+    },
+    generatedAt: { type: 'string' },
+    marketPrices: {
+      type: 'object',
+      additionalProperties: true,
+      required: ['decodedRowCount', 'source', 'windows'],
+      properties: {
+        decodedRowCount: { type: 'integer' },
+        source: { type: 'string', enum: ['ercot_public_api_v2_fixture'] },
+        windows: { type: 'array', items: { type: 'object' } },
+      },
+    },
+    promiseId: {
+      type: 'string',
+      enum: ['energy.flexible_load_proof.v1'],
+    },
+    schemaVersion: { type: 'string' },
+    sourceRefs: { type: 'array', items: { type: 'string' } },
+    staleness: { type: 'object' },
+    status: {
+      type: 'string',
+      enum: ['evidence_scaffolded_receipt_gated'],
+    },
+    workClassFlexProfiles: {
+      type: 'object',
+      additionalProperties: true,
+      required: ['profiles', 'projectedProfileCount'],
+      properties: {
+        profiles: { type: 'array', items: { type: 'object' } },
+        projectedProfileCount: { type: 'integer' },
+      },
+    },
   },
 }
 
@@ -1677,6 +1764,7 @@ const schemaComponents = (): JsonSchema => ({
   AcceptedOutcomesPerKwhProjection: objectSummary(
     'Public-safe Accepted Outcomes per Kilowatt-Hour projection. Includes generatedAt, the declared staleness contract, the frozen metric definition ref, receipt-backed accepted-outcome counter, modeled/measured energy evidence labels, a typed internal/external demand-provenance split (proof.demand_provenance.v1, rule no_external_dollar_no_demand_claim, with externalDemandClaimAllowed gating market-demand claims), gate state, blocker refs, caveats, and published datapoints. Modeled seed datapoints are clearly labeled and do not grant payout, settlement, dispatch, energy-market, investment, or grid-operation authority, and internal demand is never presented as external market demand.',
   ),
+  EnergyFlexibleLoadProofProjection: EnergyFlexibleLoadProofProjectionSchema,
   VerifiedOutcomeReputationProjection: objectSummary(
     'Public-safe verified-outcome reputation projection. Includes generatedAt, the declared live_at_read staleness contract, TraceRank/EigenTrust algorithm metadata, graph counts, ignored edge refs, score rows, and copy gates. Only replay-verified outcomes with public-safe Bitcoin settlement receipts affect scores; self-reported feedback, unpaid no-spend work, unverified reviews, and missing-receipt edges are ignored. The seed projection is read-only and grants no dispatch, marketplace ranking, assignment, payout, settlement, moderation, identity, ERC-8004 publication, or spend authority.',
   ),
@@ -4959,6 +5047,23 @@ const paths = (): JsonSchema => ({
         '200': okJson(
           'Accepted Outcomes per kWh metric.',
           '#/components/schemas/AcceptedOutcomesPerKwhProjection',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
+  [EnergyFlexibleLoadProofEndpoint]: {
+    get: operation({
+      operationId: 'getEnergyFlexibleLoadProof',
+      summary: 'Read flexible-load proof projection',
+      description:
+        'Returns the public-safe flexible-load proof projection for energy.flexible_load_proof.v1. The current response includes fixture-backed ERCOT market price rows, read-only work-class flexibility profiles, and labeled flexible-load event history while keeping greenGateSatisfied=false until real flexible-load receipts and owner-signed transition evidence exist. Read-only; grants no grid dispatch, capacity assignment, runner launch, wallet spend, payout, settlement, or public promise-state authority.',
+      tags: ['Public Proof'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Flexible-load proof projection.',
+          '#/components/schemas/EnergyFlexibleLoadProofProjection',
         ),
         ...errorResponses(),
       },

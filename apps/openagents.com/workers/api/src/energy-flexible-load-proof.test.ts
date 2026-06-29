@@ -1,10 +1,13 @@
-import { Schema as S } from 'effect'
+import { Effect, Schema as S } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import {
+  EnergyFlexibleLoadProofEndpoint,
   EnergyFlexibleLoadProofProjection,
   projectEnergyFlexibleLoadProof,
 } from './energy-flexible-load-proof'
+import { handleEnergyFlexibleLoadProofApi } from './energy-flexible-load-proof-routes'
+import { openAgentsOpenApiDocument } from './openagents-openapi'
 
 describe('energy flexible-load proof projection', () => {
   test('returns decoded market rows, queryable flex profiles, and labeled event history without flipping green', () => {
@@ -45,5 +48,32 @@ describe('energy flexible-load proof projection', () => {
       'blocker.product_promises.owner_signed_energy_green_transition_missing',
     ])
     expect(projection.authorityBoundary).toContain('grants no grid dispatch')
+  })
+
+  test('serves the public route as no-store JSON and documents it in OpenAPI', async () => {
+    const response = await Effect.runPromise(
+      handleEnergyFlexibleLoadProofApi(
+        new Request(`https://openagents.com${EnergyFlexibleLoadProofEndpoint}`),
+      ),
+    )
+    const body = await response.json()
+    const document = await Effect.runPromise(openAgentsOpenApiDocument())
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('cache-control')).toBe('no-store')
+    expect(body).toEqual(expect.objectContaining({
+      promiseId: 'energy.flexible_load_proof.v1',
+      status: 'evidence_scaffolded_receipt_gated',
+    }))
+    expect(
+      (
+        document.paths[EnergyFlexibleLoadProofEndpoint] as
+          | { get?: { operationId?: string } }
+          | undefined
+      )?.get?.operationId,
+    ).toBe('getEnergyFlexibleLoadProof')
+    expect(
+      (document.components as { schemas: Record<string, unknown> }).schemas,
+    ).toHaveProperty('EnergyFlexibleLoadProofProjection')
   })
 })
