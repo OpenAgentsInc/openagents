@@ -16,6 +16,10 @@ import {
   type CodingStatusSummary,
 } from "../shared/coding-status.js"
 import {
+  type KhalaFleetSnapshotResult,
+  OpenAgentsDesktopFleetManager,
+} from "../shared/khala-fleet-manager.js"
+import {
   connectedPylonCount,
   type CreatePylonResult,
   type DesktopPylon,
@@ -32,6 +36,10 @@ const baseUrl =
   Bun.env.PYLON_OPENAGENTS_BASE_URL ??
   Bun.env.OPENAGENTS_COM_BASE_URL ??
   OPENAGENTS_DESKTOP_DEFAULT_BASE_URL
+
+const khalaFleetStorePath = (): string =>
+  Bun.env.OPENAGENTS_DESKTOP_KHALA_FLEET_DB ??
+  join(homedir(), ".openagents", "desktop", "khala-fleet.sqlite")
 
 const pathCandidates = (): readonly string[] => [
   Bun.env.PATH ?? "",
@@ -567,12 +575,32 @@ const createPylon = async (): Promise<CreatePylonResult> => {
   }
 }
 
+const khalaFleetSnapshot = async (): Promise<KhalaFleetSnapshotResult> => {
+  const observedAt = new Date()
+  try {
+    const manager = OpenAgentsDesktopFleetManager.acquire({
+      path: khalaFleetStorePath(),
+    })
+    return {
+      ok: true,
+      snapshot: manager.reconstructActiveState(observedAt),
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+      observedAt: observedAt.toISOString(),
+    }
+  }
+}
+
 const rpc = BrowserView.defineRPC<OpenAgentsDesktopRPCSchema>({
   maxRequestTime: OPENAGENTS_DESKTOP_RPC_MAX_REQUEST_TIME_MS,
   handlers: {
     requests: {
       codingStatus,
       createPylon,
+      khalaFleetSnapshot,
       async pylonStatus() {
         return desktopPylonStatus()
       },
