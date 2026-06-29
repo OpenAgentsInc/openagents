@@ -440,10 +440,20 @@ describe('public product promises document', () => {
       /latest stays 0\.2\.5|only published, installable Pylon|release candidate, not stable 0\.3\.0|Pylon v1\.0 is present in the monorepo as a release candidate/i,
     )
     expect(currentCopy).toContain('Pylon v1.0 has a stable source cut')
-    expect(currentCopy).toContain('Registry 2026-06-29.2')
+    expect(currentCopy).toContain('Registry 2026-06-29.3')
     expect(currentCopy).toContain('flips NO promise state')
     expect(currentCopy).toContain('Khala Desktop now carries source-level')
     expect(currentCopy).toContain('maxStalenessSeconds:0')
+    const xClaimRewardPromise = decoded.promises.find(
+      promise => promise.promiseId === 'agents.x_claim_reward.v1',
+    )
+    expect(xClaimRewardPromise?.state).toBe('yellow')
+    expect(xClaimRewardPromise?.safeCopy).toContain(
+      'bounded operator smoke harness',
+    )
+    expect(xClaimRewardPromise?.evidenceRefs).toContain(
+      'apps/openagents.com/workers/api/src/x-claim-reward-treasury-dispatcher.ts',
+    )
     const codexSuccessorPromise = decoded.promises.find(
       promise => promise.promiseId === 'autopilot.codex_probe_pylon_successor.v1',
     )

@@ -11,6 +11,7 @@ import {
   evaluateXClaimRewardSmokePreflight,
   makeD1XClaimRewardRecipientResolver,
   readXClaimRewardTreasuryDispatchConfig,
+  runXClaimRewardOperatorDispatchSmoke,
   runXClaimRewardTreasuryDispatch,
   xClaimRewardDispatchDayStartIso,
 } from './x-claim-reward-treasury-dispatcher'
@@ -167,6 +168,8 @@ class MemoryDispatchStore implements XClaimRewardTreasuryDispatchStore {
     ).length,
     todayReservedSats: await this.countTodayReservedSats(dayStartIso),
   })
+
+  readRewardById = async (rewardId: string) => this.rewards.get(rewardId)
 
   settleReward = async (input: {
     evidenceRefs: ReadonlyArray<string>
@@ -573,5 +576,67 @@ describe('X claim reward treasury dispatcher', () => {
     expect(body.rewardDispatch.pendingPaymentCount).toBe(1)
     expect(serialized).not.toContain('payment_secret_status')
     expect(serialized).not.toContain(safeOffer)
+  })
+
+  describe('operator dispatch smoke harness', () => {
+    test('runs one armed reward through dispatch and returns public-safe receipt evidence', async () => {
+      const store = new MemoryDispatchStore([rewardRecord()])
+      const treasury = new FakeTreasury()
+      const report = await runXClaimRewardOperatorDispatchSmoke({
+        config: config(),
+        resolveRecipient: async reward =>
+          reward.agentUserId === null
+            ? null
+            : {
+                destination: safeOffer,
+                destinationSourceRef: `wallet.public.${reward.agentUserId}.redacted`,
+              },
+        store,
+        treasury,
+      })
+      const serialized = JSON.stringify(report)
+
+      expect(report.ready).toBe(true)
+      expect(report.preflight.ready).toBe(true)
+      expect(report.summary?.requested).toBe(1)
+      expect(report.summary?.settled).toBe(1)
+      expect(report.rewardRef).toBe('x_claim_reward_receipt_1')
+      expect(report.completion?.transitionRequest).toEqual({
+        evidenceRefs: [
+          'x_claim_reward_receipt_1',
+          'settlement_evidence.public.mdk_treasury.x_claim_reward_x_claim_reward_1',
+        ],
+        promiseId: 'agents.x_claim_reward.v1',
+        toState: 'green',
+      })
+      expect(treasury.paidDestinations).toEqual([safeOffer])
+      expect(serialized).not.toContain(safeOffer)
+      expect(serialized).not.toContain('payment_secret_1')
+    })
+
+    test('stays no-op when the dispatch flag is not armed', async () => {
+      const store = new MemoryDispatchStore([rewardRecord()])
+      const treasury = new FakeTreasury()
+      const report = await runXClaimRewardOperatorDispatchSmoke({
+        config: config({ enabled: false }),
+        resolveRecipient: async () => ({
+          destination: safeOffer,
+          destinationSourceRef: 'wallet.public.agent.redacted',
+        }),
+        store,
+        treasury,
+      })
+
+      expect(report.ready).toBe(false)
+      expect(report.summary).toBeNull()
+      expect(report.completion).toBeNull()
+      expect(report.blockingReasonRefs).toContain(
+        'reason.public.x_claim_reward_treasury_dispatch_disabled',
+      )
+      expect(treasury.paidDestinations).toEqual([])
+      expect(store.rewards.get('x_claim_reward_1')?.state).toBe(
+        'dispatch_requested',
+      )
+    })
   })
 })

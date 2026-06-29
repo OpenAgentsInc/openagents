@@ -7,6 +7,10 @@ import type {
 import { X_CLAIM_REWARD_AMOUNT_SATS } from './agent-owner-claim-routes'
 import type { ContainerPathFetch } from './http/container-fetch'
 import { parseJsonStringArray } from './json-boundary'
+import {
+  assertXClaimRewardSmokeCompletion,
+  type XClaimRewardSmokeCompletionReport,
+} from './x-claim-reward-smoke-completion'
 
 const DEFAULT_PER_RUN_REWARD_CAP = 1
 const DEFAULT_DAILY_SATS_CAP = 5000
@@ -114,6 +118,7 @@ export type XClaimRewardTreasuryDispatchStore = Readonly<{
     dayStartIso: string,
     config: XClaimRewardTreasuryDispatchConfig,
   ) => Promise<XClaimRewardTreasuryDispatchStats>
+  readRewardById: (rewardId: string) => Promise<XClaimRewardRecord | undefined>
   settleReward: (input: {
     evidenceRefs: ReadonlyArray<string>
     nowIso: string
@@ -408,6 +413,7 @@ export const makeD1XClaimRewardTreasuryDispatchStore = (
         todayReservedSats,
       }
     },
+    readRewardById,
     settleReward: input =>
       updateReward({
         evidenceRefs: input.evidenceRefs,
@@ -902,6 +908,15 @@ export type XClaimRewardSmokePreflightInput = Readonly<{
   stats: XClaimRewardTreasuryDispatchStats
 }>
 
+export type XClaimRewardOperatorDispatchSmokeReport = Readonly<{
+  blockingReasonRefs: ReadonlyArray<string>
+  completion: XClaimRewardSmokeCompletionReport | null
+  preflight: XClaimRewardSmokePreflightReport
+  ready: boolean
+  rewardRef: string | null
+  summary: XClaimRewardTreasuryDispatchSummary | null
+}>
+
 /**
  * Evaluates whether the bounded treasury wallet and ledger are in a clean state
  * to run the first live single-reward dispatch smoke. This is a pure,
@@ -973,6 +988,90 @@ export const evaluateXClaimRewardSmokePreflight = (
     blockingReasonRefs,
     checks,
     ready: blockingReasonRefs.length === 0,
+  }
+}
+
+export const runXClaimRewardOperatorDispatchSmoke = async (
+  dependencies: XClaimRewardTreasuryDispatcherDependencies,
+): Promise<XClaimRewardOperatorDispatchSmokeReport> => {
+  const dayStartIso = xClaimRewardDispatchDayStartIso(dependencies.config.nowIso)
+  const stats = await dependencies.store.readDispatchStats(
+    dayStartIso,
+    dependencies.config,
+  )
+  const balance =
+    dependencies.treasury === null
+      ? null
+      : await dependencies.treasury.readBalance()
+  const preflight = evaluateXClaimRewardSmokePreflight({
+    balanceMaxSendableSat:
+      balance?.kind === 'ok' ? balance.maxSendableSat : null,
+    stats,
+  })
+
+  if (!preflight.ready) {
+    return {
+      blockingReasonRefs: preflight.blockingReasonRefs,
+      completion: null,
+      preflight,
+      ready: false,
+      rewardRef: null,
+      summary: null,
+    }
+  }
+
+  const [rewardToDispatch] =
+    await dependencies.store.listDispatchRequestedRewards(1)
+
+  if (rewardToDispatch === undefined) {
+    const blockingReasonRefs = uniqueRefs(preflight.blockingReasonRefs, [
+      NoApprovedRewardReasonRef,
+    ])
+
+    return {
+      blockingReasonRefs,
+      completion: null,
+      preflight,
+      ready: false,
+      rewardRef: null,
+      summary: null,
+    }
+  }
+
+  const summary = await runXClaimRewardTreasuryDispatch(dependencies)
+  const reward = await dependencies.store.readRewardById(rewardToDispatch.id)
+
+  if (reward === undefined) {
+    const blockingReasonRefs = uniqueRefs(preflight.blockingReasonRefs, [
+      NoApprovedRewardReasonRef,
+    ])
+
+    return {
+      blockingReasonRefs,
+      completion: null,
+      preflight,
+      ready: false,
+      rewardRef: rewardToDispatch.receiptRef,
+      summary,
+    }
+  }
+
+  const completion = assertXClaimRewardSmokeCompletion({
+    reward,
+    summary,
+  })
+  const blockingReasonRefs = uniqueRefs(
+    preflight.blockingReasonRefs,
+    completion.blockingReasonRefs,
+  )
+
+  return {
+    blockingReasonRefs,
+    completion,
+    preflight,
+    ready: preflight.ready && completion.ready,
+    rewardRef: reward.receiptRef,
+    summary,
   }
 }
 
