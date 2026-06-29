@@ -179,10 +179,16 @@ move behind the same host or into its own Worker once the boundary is proven.
   (Docker-isolated `bun test`) and posts a receipt + verdict back to Forge
   before the change is promotable. Acceptance: a failing change cannot reach
   `nextActualPromotion`, and the D1 status is backed by a receipt artifact.
-- **SU-6 — GitHub mirror worker (#6796).** A one-way worker that pushes
-  promoted commits to GitHub as a read-only mirror (keeps external visibility;
-  removes GitHub from the critical path). Acceptance: a Forge-promoted commit
-  appears on GitHub `main` via the mirror, not via a PR.
+- **SU-6 — GitHub mirror worker (#6796).** The control-plane mirror entrypoint is
+  `POST /api/forge/github-mirror-runs`: it reads a Forge promotion decision
+  receipt, refuses anything missing/blocked/not approved, and pushes only the
+  promoted head to the configured downstream `OpenAgentsInc/openagents`
+  `refs/heads/main` GitHub mirror with `force:false`. `GET
+  /api/forge/github-mirror-runs` lists `ForgeGithubMirrorReceipt` rows so the
+  Forge API/shell can surface mirrored, refused, and failed attention state.
+  Re-running a mirrored promotion is idempotent and does not advance GitHub
+  again. Acceptance: a Forge-promoted commit appears on GitHub `main` via the
+  mirror, not via a PR.
 - **SU-7 — Dogfood one OpenAgents fleet lane (#6797).** Point ONE codex/Pylon
   lane at Forge (intake -> verify -> queue -> promote -> mirror) end-to-end;
   prove zero GitHub PR contention. Then widen the cutover lane-by-lane.

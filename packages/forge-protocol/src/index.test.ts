@@ -14,6 +14,7 @@ import {
   decodeForgeDispatchDecision,
   decodeForgeDispatchMessage,
   decodeForgeDispatchWorkItem,
+  decodeForgeGithubMirrorReceipt,
   decodeForgePromotionDecisionReceipt,
   decodeForgeTenantRow,
   decodeForgeVerificationReceipt,
@@ -42,6 +43,7 @@ describe("@openagentsinc/forge-protocol", () => {
 
   test("keeps control-plane scopes separate from smart Git token scopes", () => {
     expect(forgeControlPlaneScopes).toContain("forge:promotion:decide");
+    expect(forgeControlPlaneScopes).toContain("forge:mirror:write");
     expect(decodeForgeControlPlaneScope("forge:work:write")).toBe(
       "forge:work:write",
     );
@@ -332,5 +334,26 @@ describe("@openagentsinc/forge-protocol", () => {
     });
     expect(promotion.decision).toBe("approved");
     expect(promotion.promoted_head).toBe(verification.head_head);
+
+    const mirror = decodeForgeGithubMirrorReceipt({
+      schema: "openagents.forge.github_mirror.receipt.v0.1",
+      tenant_ref: "tenant.openagents",
+      mirror_ref: "mirror.github.openagents.main.6768",
+      promotion_ref: promotion.promotion_ref,
+      source_canonical_ref: "repo.openagents.openagents:refs/heads/main",
+      destination_github_ref: "refs/heads/main",
+      destination_repository: "OpenAgentsInc/openagents",
+      commit_id: verification.head_head,
+      status: "mirrored",
+      attempted_at: "2026-06-28T16:03:00.000Z",
+      mirrored_at: "2026-06-28T16:03:00.000Z",
+      refusal_reason: null,
+      error_reason: null,
+      source_refs: [promotion.promotion_ref],
+      attention_refs: [],
+      redacted: true,
+    });
+    expect(mirror.status).toBe("mirrored");
+    expect(mirror.commit_id).toBe(verification.head_head);
   });
 });

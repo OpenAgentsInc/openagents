@@ -42,6 +42,7 @@ export const ForgeShellRouteId = Schema.Literals([
   "verification",
   "queue",
   "refs",
+  "mirror",
 ])
 export type ForgeShellRouteId = typeof ForgeShellRouteId.Type
 
@@ -103,6 +104,13 @@ export const forgeShellRoutes: ReadonlyArray<ForgeShellRoute> = [
     label: "Git Refs",
     summary: "canonical ref namespaces and mirror state",
     apiPath: "/api/forge/refs",
+  },
+  {
+    id: "mirror",
+    path: "/mirror",
+    label: "Mirror",
+    summary: "GitHub mirror receipts and attention state",
+    apiPath: "/api/forge/github-mirror-runs",
   },
 ]
 
@@ -1233,6 +1241,24 @@ const renderRefs = (): string => `<section class="forge-panel" data-span="wide">
   </div>
 </section>`
 
+const renderMirror = (): string => `<section class="forge-panel" data-span="wide">
+  <div class="forge-panel-head">
+    <h3 class="forge-panel-title">GitHub Mirror</h3>
+    <span class="forge-table-caption">/api/forge/github-mirror-runs</span>
+  </div>
+  <div class="forge-list">
+    ${forgeShellPreviewState.dogfoodLanes
+      .map(
+        lane => `<div class="forge-list-item">
+          <span class="forge-list-kicker">${escapeHtml(lane.issueRef)}</span>
+          <span class="forge-list-title">${escapeHtml(lane.mirrorRef)}</span>
+          <span class="forge-list-body">Mirrors ${escapeHtml(lane.promotionRef)} to GitHub only after Forge accepts the promoted head.</span>
+        </div>`,
+      )
+      .join("\n")}
+  </div>
+</section>`
+
 const renderRouteContent = (routeId: ForgeShellRouteId): string => {
   switch (routeId) {
     case "dogfood":
@@ -1247,6 +1273,8 @@ const renderRouteContent = (routeId: ForgeShellRouteId): string => {
       return renderQueue()
     case "refs":
       return renderRefs()
+    case "mirror":
+      return renderMirror()
     case "overview":
       return renderOverview()
   }

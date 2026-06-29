@@ -29,7 +29,7 @@ describe("Forge UI Worker", () => {
     expect(html).toContain("--forge-energy")
   })
 
-  it("defines shell routes for dogfood, work, changes, verification, queue, and refs", () => {
+  it("defines shell routes for dogfood, work, changes, verification, queue, refs, and mirror", () => {
     expect(forgeShellRoutes.map(route => route.path)).toEqual([
       "/",
       "/dogfood",
@@ -38,6 +38,7 @@ describe("Forge UI Worker", () => {
       "/verification",
       "/queue",
       "/refs",
+      "/mirror",
     ])
     expect(forgeShellRoutes.map(route => route.apiPath)).toEqual([
       "/api/forge/overview",
@@ -47,6 +48,7 @@ describe("Forge UI Worker", () => {
       "/api/forge/verification-receipts",
       "/api/forge/queue",
       "/api/forge/refs",
+      "/api/forge/github-mirror-runs",
     ])
     expect(resolveForgeShellRoute("/work/")?.id).toBe("work")
   })
@@ -84,6 +86,13 @@ describe("Forge UI Worker", () => {
     expect(body.preview.apiBasePath).toBe("/api/forge")
     expect(body.preview.dogfoodLanes).toHaveLength(1)
     expect(body.preview.dogfoodLanes[0]?.issueRef).toBe("#6797")
+    expect(body.routes).toContainEqual({
+      id: "mirror",
+      path: "/mirror",
+      label: "Mirror",
+      summary: "GitHub mirror receipts and attention state",
+      apiPath: "/api/forge/github-mirror-runs",
+    })
   })
 
   it("renders a direct route shell without the old logged-in Forge page", () => {
