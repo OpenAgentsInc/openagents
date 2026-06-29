@@ -37,7 +37,10 @@ import {
   laneCFanoutObjectiveRef,
 } from './lane-c-fanout-bridge'
 import { isMarketplaceWorkClassId } from './marketplace-work-class-catalog'
-import { buildSelfServeFanoutPlan } from './self-serve-fanout'
+import {
+  buildSelfServeFanoutPlan,
+  selfServeFanoutDispatchIdempotencyKey,
+} from './self-serve-fanout'
 import {
   methodNotAllowed,
   noStoreJsonResponse,
@@ -3209,6 +3212,10 @@ const laneCFanoutWorkOrder = <Bindings extends AutopilotWorkRouteEnv>(
     // this branch (it gets a 409 above), so the floor cannot be bypassed.
     const objectiveRef = laneCFanoutObjectiveRef(workOrderRef)
     const marketWorkRequestInput = selfServePlan.marketWorkRequest ?? {
+      idempotencyKey: selfServeFanoutDispatchIdempotencyKey(
+        workOrderRef,
+        'code_task',
+      ),
       budgetSats: budgetCapSats,
       deadlineRef: 'deadline.public.lane_c_fanout.20261231',
       objectiveRef,

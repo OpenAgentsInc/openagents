@@ -106,6 +106,8 @@ export type SelfServeFanoutInput = typeof SelfServeFanoutInput.Type
  * /api/forum/work-requests, assembled in the SAME self-serve step.
  */
 export const SelfServeFanoutMarketWorkRequest = S.Struct({
+  /** Stable key the market requester uses to avoid duplicate listings. */
+  idempotencyKey: S.String,
   /** Public-safe objective ref derived from the work order. */
   objectiveRef: S.String,
   /** Budget for the market job in whole sats. */
@@ -185,6 +187,13 @@ const isWholeNonNegative = (value: number): boolean =>
 /** Stable, public-safe plan id derived from a work order ref. */
 export const selfServeFanoutPlanId = (workOrderRef: string): string =>
   `self_serve_fanout.${workOrderRef.replace(/[^a-z0-9._-]+/giu, '_')}`
+
+/** Stable public-safe idempotency key for the downstream market listing. */
+export const selfServeFanoutDispatchIdempotencyKey = (
+  workOrderRef: string,
+  workClass: MarketplaceWorkClassId,
+): string =>
+  `${selfServeFanoutPlanId(workOrderRef)}.dispatch.${workClass}`
 
 /** Public-safe deadline ref for a self-serve fanout market job. */
 export const SELF_SERVE_FANOUT_DEADLINE_REF =
@@ -270,6 +279,10 @@ export const buildSelfServeFanoutPlan = (
   const marketWorkRequest: SelfServeFanoutMarketWorkRequest | null =
     fanout.readyForMarket
       ? {
+          idempotencyKey: selfServeFanoutDispatchIdempotencyKey(
+            input.workOrderRef,
+            workClass,
+          ),
           objectiveRef,
           budgetSats: input.budgetCapSats,
           title: input.title.slice(0, 160),

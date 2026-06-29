@@ -2927,6 +2927,7 @@ describe('Autopilot work routes', () => {
     )
     const body = (await response.json()) as {
       marketWorkRequestInput: {
+        idempotencyKey: string
         requiredCapabilityRefs: ReadonlyArray<string>
         verificationCommandRef: string
         workClass: string
@@ -2943,6 +2944,9 @@ describe('Autopilot work routes', () => {
     }
 
     expect(response.status).toBe(201)
+    expect(body.marketWorkRequestInput.idempotencyKey).toBe(
+      `self_serve_fanout.${workOrderRef}.dispatch.data_labeling`,
+    )
     expect(body.marketWorkRequestInput).toMatchObject({
       requiredCapabilityRefs: ['capability.market.data_labeling'],
       verificationCommandRef: 'command.public.market.data_labeling.audit',

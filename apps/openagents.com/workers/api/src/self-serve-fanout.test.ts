@@ -12,6 +12,7 @@ import {
   dispatchSelfServeFanout,
   makeInMemorySelfServeFanoutStore,
   readSelfServeFanoutPlan,
+  selfServeFanoutDispatchIdempotencyKey,
   selfServeFanoutPlanId,
 } from './self-serve-fanout'
 import {
@@ -69,6 +70,9 @@ describe('buildSelfServeFanoutPlan', () => {
     expect(plan.gate.lane).toBe('public_market')
     expect(plan.gate.state).toBe('ready')
     expect(plan.marketWorkRequest).not.toBeNull()
+    expect(plan.marketWorkRequest?.idempotencyKey).toBe(
+      selfServeFanoutDispatchIdempotencyKey('wo-1', 'code_task'),
+    )
     expect(plan.marketWorkRequest?.workClass).toBe('code_task')
     expect(plan.marketWorkRequest?.budgetSats).toBe(5000)
     expect(plan.marketWorkRequest?.requiredCapabilityRefs).toEqual([
@@ -95,11 +99,35 @@ describe('buildSelfServeFanoutPlan', () => {
     expect(plan.workClass).toBe('data_labeling')
     expect(plan.readyForMarket).toBe(true)
     expect(plan.marketWorkRequest).toMatchObject({
+      idempotencyKey: selfServeFanoutDispatchIdempotencyKey(
+        'wo-1',
+        'data_labeling',
+      ),
       requiredCapabilityRefs: ['capability.market.data_labeling'],
       verificationCommandRef: 'command.public.market.data_labeling.audit',
       workClass: 'data_labeling',
     })
     expect(plan.unclearedBlockerRefs).toEqual([])
+  })
+
+  test('keeps downstream dispatch idempotent per work order and work class', () => {
+    const first = buildSelfServeFanoutPlan(optedInInput, readyFacts, 'now')
+    const repeat = buildSelfServeFanoutPlan(optedInInput, readyFacts, 'later')
+    const dataLabeling = buildSelfServeFanoutPlan(
+      { ...optedInInput, workClass: 'data_labeling' },
+      readyFacts,
+      'now',
+    )
+    if (!first.ok || !repeat.ok || !dataLabeling.ok) {
+      throw new Error('expected ready fanout plans')
+    }
+
+    expect(first.plan.marketWorkRequest?.idempotencyKey).toBe(
+      repeat.plan.marketWorkRequest?.idempotencyKey,
+    )
+    expect(first.plan.marketWorkRequest?.idempotencyKey).not.toBe(
+      dataLabeling.plan.marketWorkRequest?.idempotencyKey,
+    )
   })
 
   test('rejects an inert plugin work class before market authorization', () => {
