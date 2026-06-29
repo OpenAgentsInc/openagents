@@ -9,7 +9,11 @@
 > gateway, and Khala Desktop Apple FM sidecar packaging/readiness as
 > source-level yellow evidence only. The Khala model-mix promise remains
 > live-at-read with `maxStalenessSeconds:0`; stale 2-second cache wording is not
-> applied.
+> applied. Follow-up issue #7014 records the next green-wave audit for this
+> registry version: 87 non-green records are split across child issues
+> #7015-#7030 for receipt-first work. The in-repo audit is
+> [`2026-06-29-next-green-wave-audit.md`](2026-06-29-next-green-wave-audit.md).
+> It flips no promise state and broadens no copy by itself.
 >
 > Registry `2026-06-29.1` implements the accepted-outcome economics spine for
 > `payments.accepted_outcome_economics.v1` and flips NO promise state. The new

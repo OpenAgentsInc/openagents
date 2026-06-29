@@ -105,6 +105,9 @@ describe('public product promises document', () => {
     expect(decoded.sourceRefs).toContain(
       'https://github.com/OpenAgentsInc/openagents',
     )
+    expect(decoded.sourceRefs).toContain(
+      'docs/promises/2026-06-29-next-green-wave-audit.md',
+    )
     const blockerRefs = decoded.promises.flatMap(promise => promise.blockerRefs)
     expect(blockerRefs).not.toContain(
       'blocker.product_promises.cloud_fine_tuning_intake_unbuilt',
@@ -444,6 +447,8 @@ describe('public product promises document', () => {
     expect(currentCopy).toContain('flips NO promise state')
     expect(currentCopy).toContain('Khala Desktop now carries source-level')
     expect(currentCopy).toContain('maxStalenessSeconds:0')
+    expect(currentCopy).toContain('Issue #7014 records the next green-wave audit')
+    expect(currentCopy).toContain('child issues #7015-#7030')
     const codexSuccessorPromise = decoded.promises.find(
       promise => promise.promiseId === 'autopilot.codex_probe_pylon_successor.v1',
     )
