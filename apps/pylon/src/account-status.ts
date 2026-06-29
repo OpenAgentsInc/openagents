@@ -5,7 +5,9 @@ import {
 } from "./account-registry.js"
 import {
   isAccountAvailable,
+  loadManualQuotaResetRecord,
   loadQuotaRecord,
+  type ManualQuotaResetRecord,
   type QuotaRecord,
 } from "./account-quota-ledger.js"
 import {
@@ -50,6 +52,14 @@ function fallbackCooldownExpiresAt(record: QuotaRecord): string | null {
 function cooldownExpiresAt(record: QuotaRecord | null, now: Date): string | null {
   if (record === null || isAccountAvailable(record, now)) return null
   return fallbackCooldownExpiresAt(record)
+}
+
+function manualResetsRemainingFor(
+  configured: number | null,
+  record: ManualQuotaResetRecord,
+): number | null {
+  const hasLedgerState = record.updatedAt !== new Date(0).toISOString() || record.resetEvents.length > 0
+  return hasLedgerState ? record.manualResetsRemaining : configured ?? record.manualResetsRemaining
 }
 
 function usageFromPercent(cap: number | null, usedPercent: number): number {
@@ -101,6 +111,10 @@ export async function collectPylonOperatorAccountStatus(
   for (const account of registry) {
     const accountRefHash = hashPylonAccountRef(account.provider, account.ref)
     const quotaRecord = await loadQuotaRecord(summary as BootstrapSummary, accountRefHash)
+    const resetRecord = await loadManualQuotaResetRecord(summary as BootstrapSummary, {
+      accountRefHash,
+      provider: account.provider,
+    })
     const usageEntry = usageStore.accounts[accountRefHash]
     accounts.push({
       accountRefHash,
@@ -111,7 +125,7 @@ export async function collectPylonOperatorAccountStatus(
       hourlyUsage: usageFor(usageEntry, "hourly", account.hourlyCap, now),
       weeklyCap: account.weeklyCap,
       weeklyUsage: usageFor(usageEntry, "weekly", account.weeklyCap, now),
-      manualResetsRemaining: account.manualResetsRemaining,
+      manualResetsRemaining: manualResetsRemainingFor(account.manualResetsRemaining, resetRecord),
     })
   }
 
