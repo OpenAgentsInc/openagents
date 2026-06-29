@@ -636,6 +636,61 @@ describe('#6654 Artanis RLM composition', () => {
       requests.every(request => request.model === ARTANIS_OPERATOR_KHALA_MODEL),
     ).toBe(true)
   })
+
+  test('uses the RLM conductor on long-form asks even when operator tools exist', async () => {
+    const { calls, tool } = makeFakeReadTool('tool result should not be read')
+    const { client, requests } = makeScriptedKhalaClient([
+      textResult(
+        JSON.stringify({
+          compositionInstruction: 'Compose from the packets.',
+          subqueries: [
+            {
+              evidenceRefs: ['evidence.artanis.operator.rlm.state'],
+              id: 'state',
+              question: 'What state matters?',
+              signatureRef: ARTANIS_OPERATOR_RLM_SIGNATURE_REF,
+            },
+            {
+              evidenceRefs: ['evidence.artanis.operator.rlm.answer'],
+              id: 'answer',
+              question: 'What answer should be composed?',
+              signatureRef: ARTANIS_OPERATOR_RLM_SIGNATURE_REF,
+            },
+          ],
+        }),
+      ),
+      textResult('State packet.'),
+      textResult('Answer packet.'),
+      textResult('I composed the long-form answer from separate packets.'),
+    ])
+
+    const result = await Effect.runPromise(
+      artanisOperatorTurn({
+        awareness: exampleAwareness,
+        khalaClient: client,
+        memory: exampleMemory,
+        messages: [
+          {
+            content: 'write a detailed report for the owner',
+            role: 'user',
+          },
+        ],
+        ownerId: 'owner:github:14167547',
+        tools: [tool],
+      }),
+    )
+
+    expect('error' in result).toBe(false)
+    if ('error' in result) return
+    expect(result.reply).toBe(
+      'I composed the long-form answer from separate packets.',
+    )
+    expect(result.rlmTrace.used).toBe(true)
+    expect(result.toolInvocations).toEqual([])
+    expect(calls).toEqual([])
+    expect(requests).toHaveLength(4)
+    expect(requests.every(request => request.tools === undefined)).toBe(true)
+  })
 })
 
 describe('#6364 artanis operator bounded tool-calling loop', () => {

@@ -672,6 +672,18 @@ const LONG_FORM_OWNER_CUES: ReadonlyArray<string> = [
   'write-up',
 ]
 
+const TOOL_GROUNDED_OWNER_CUES: ReadonlyArray<string> = [
+  'check ',
+  'grep ',
+  'inspect ',
+  'look up ',
+  'open ',
+  'read ',
+  'search ',
+  'summarize ',
+  'verify ',
+]
+
 const latestOwnerMessageContent = (
   messages: ReadonlyArray<ArtanisOperatorMessage>,
 ): string =>
@@ -682,6 +694,13 @@ export const shouldUseArtanisRlmComposition = (
 ): boolean => {
   const lower = latestOwnerMessageContent(messages).toLowerCase()
   return LONG_FORM_OWNER_CUES.some(cue => lower.includes(cue))
+}
+
+const shouldPreferArtanisToolLoop = (
+  messages: ReadonlyArray<ArtanisOperatorMessage>,
+): boolean => {
+  const lower = latestOwnerMessageContent(messages).toLowerCase()
+  return TOOL_GROUNDED_OWNER_CUES.some(cue => lower.includes(cue))
 }
 
 const normalizeArtanisRlmSubqueries = (
@@ -1335,7 +1354,15 @@ export const artanisOperatorTurn = (input: {
       messages: input.messages,
     })
 
-    if (tools.length === 0 && shouldUseArtanisRlmComposition(input.messages)) {
+    // Long-form owner asks use the RLM conductor even on the production route
+    // where operator tools are configured. The RLM pass remains read-only: its
+    // planner, subquery, and composition completions intentionally suppress
+    // tool definitions, so merely making the conductor reachable here does not
+    // widen spend, dispatch, or destructive authority.
+    if (
+      shouldUseArtanisRlmComposition(input.messages) &&
+      (tools.length === 0 || !shouldPreferArtanisToolLoop(input.messages))
+    ) {
       const composed = yield* runArtanisRlmComposition({
         baseMessages,
         khalaClient: input.khalaClient,
