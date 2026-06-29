@@ -396,10 +396,15 @@ describe('public product promises document', () => {
     expect(composeAndListPromise?.blockerRefs).not.toContain(
       'blocker.product_promises.marketplace_listing_lifecycle_unbuilt',
     )
+    expect(composeAndListPromise?.blockerRefs).not.toContain(
+      'blocker.product_promises.marketplace_composition_runtime_unbuilt',
+    )
+    expect(composeAndListPromise?.blockerRefs).not.toContain(
+      'blocker.product_promises.marketplace_self_serve_listing_write_install_lifecycle_unbuilt',
+    )
     expect(composeAndListPromise?.blockerRefs).toEqual(
       expect.arrayContaining([
-        'blocker.product_promises.marketplace_composition_runtime_unbuilt',
-        'blocker.product_promises.marketplace_self_serve_listing_write_install_lifecycle_unbuilt',
+        'blocker.product_promises.marketplace_public_self_serve_write_install_route_unlaunched',
         'blocker.product_promises.marketplace_billing_settlement_missing',
       ]),
     )
@@ -408,6 +413,9 @@ describe('public product promises document', () => {
     )
     expect(composeAndListPromise?.safeCopy).toContain(
       'public read-only listing/discovery projection',
+    )
+    expect(composeAndListPromise?.safeCopy).toContain(
+      'bounded source-level composition runtime core',
     )
     const agenticNpmPromise = decoded.promises.find(
       promise =>
@@ -915,8 +923,7 @@ describe('public product promises document', () => {
           promiseId: 'marketplace.compose_and_list_products.v1',
           state: 'planned',
           blockerRefs: expect.arrayContaining([
-            'blocker.product_promises.marketplace_composition_runtime_unbuilt',
-            'blocker.product_promises.marketplace_self_serve_listing_write_install_lifecycle_unbuilt',
+            'blocker.product_promises.marketplace_public_self_serve_write_install_route_unlaunched',
             'blocker.product_promises.marketplace_billing_settlement_missing',
           ]),
           evidenceRefs: expect.arrayContaining([

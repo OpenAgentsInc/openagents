@@ -1,5 +1,6 @@
-// Compose-and-list marketplace MVP — typed product-composition model + a pure
-// listing surface (EPIC #5510, child #5515; promise
+// Compose-and-list marketplace MVP — typed product-composition model, bounded
+// composition runtime core, install/use lifecycle records, and a pure listing
+// surface (EPIC #5510, child #5515; promise
 // marketplace.compose_and_list_products.v1).
 //
 // Episode 239 ("Let's Make Money", docs/transcripts/239.md): agents and their
@@ -11,13 +12,12 @@
 // claim it is live. It is PURE:
 //   - it moves no money, runs no fulfillment, reads no wallet, writes no
 //     receipt, and provisions no primitive;
-//   - it only defines a typed, versioned product DEFINITION (a composition of
-//     primitive/market capability references) and a read-only listing
-//     projection over an injected store.
+//   - the composition runtime only assembles a typed definition into an inert
+//     listing row, then records public-safe install/use lifecycle evidence.
 // The promise marketplace.compose_and_list_products.v1 STAYS `planned`. Nothing
-// here flips it green: there is no composition runtime, no install/use
-// lifecycle, no billing, attribution, rev-share, or settlement. A green flip
-// stays receipt-first and owner-signed per proof.claim_upgrade_receipts.v1.
+// here flips it green: this is source-level scaffold evidence only, with no
+// public write route, billing, rev-share, sale receipt, or settlement. A green
+// flip stays receipt-first and owner-signed per proof.claim_upgrade_receipts.v1.
 
 import { Schema as S } from 'effect'
 
@@ -32,6 +32,9 @@ export const MARKETPLACE_PRODUCT_COMPOSITION_SCHEMA =
 
 export const MARKETPLACE_COMPOSE_AND_LIST_PROMISE =
   'marketplace.compose_and_list_products.v1' as const
+
+export const MARKETPLACE_PRODUCT_LIFECYCLE_SCHEMA =
+  'openagents.marketplace_product_lifecycle.v1' as const
 
 /**
  * The OpenAgents primitives + open-market capabilities a product can be
@@ -103,6 +106,18 @@ export class ComposedProductValidationError extends S.TaggedErrorClass<ComposedP
 ) {}
 
 const isNonEmpty = (value: string): boolean => value.trim().length > 0
+
+const publicSafeRefPattern = /^[A-Za-z0-9][A-Za-z0-9_.:/@-]{0,260}$/
+const unsafeLifecycleRefPattern =
+  /(\/Users\/|\/home\/|access[_-]?token|auth\.json|bearer\s+|cookie|gho_[A-Za-z0-9_]+|ghp_[A-Za-z0-9_]+|lnbc|lntb|lnbcrt|lno1|mdk[_-]?(access[_-]?token|mnemonic|webhook[_-]?secret)|mnemonic|payment[_-]?(hash|preimage|secret)|preimage|private[_-]?key|provider[_-]?(credential|grant|payload|secret|token)|seed[_-]?phrase|sk-[a-z0-9]|wallet[._-]?(key|material|mnemonic|preimage|secret|seed)|xprv)/i
+
+const isPublicSafeRef = (value: string): boolean =>
+  publicSafeRefPattern.test(value) && !unsafeLifecycleRefPattern.test(value)
+
+const composedProductBuilderAttributionRef = (
+  definition: ComposedProductDefinition,
+): string =>
+  `marketplace.builder:${definition.productId}:${definition.definitionVersion}:${definition.builderRef}`
 
 /**
  * Build a typed product definition from raw input. PURE and validating:
@@ -191,6 +206,94 @@ export const buildComposedProductDefinition = (input: {
   }
 }
 
+export type ComposedProductBuilderAttribution = Readonly<{
+  builderRef: string
+  attributionRef: string
+}>
+
+export type ComposedProductAssemblyPlan = Readonly<{
+  schema: typeof MARKETPLACE_PRODUCT_COMPOSITION_SCHEMA
+  productId: string
+  definitionVersion: number
+  status: 'assembled'
+  promiseId: typeof MARKETPLACE_COMPOSE_AND_LIST_PROMISE
+  inert: true
+  componentRefs: ReadonlyArray<MarketplaceComponentRef>
+  attribution: ComposedProductBuilderAttribution
+  assembledAt: string
+}>
+
+export type ComposedProductAssemblyResult = Readonly<{
+  definition: ComposedProductDefinition
+  assemblyPlan: ComposedProductAssemblyPlan
+}>
+
+/**
+ * Source-level composition runtime core: validate a builder-supplied typed
+ * definition, pin it to `listed`, and emit the public-safe builder attribution
+ * row future billing/rev-share work can bind to. It does not provision, bill,
+ * fulfill, or expose a public write route.
+ */
+export const assembleComposedProductForListing = (input: {
+  productId: string
+  definitionVersion: number
+  builderRef: string
+  title: string
+  summary: string
+  components: ReadonlyArray<MarketplaceComponentRef>
+  createdAt?: string
+  assembledAt?: string
+}):
+  | { ok: true; result: ComposedProductAssemblyResult }
+  | { ok: false; error: ComposedProductValidationError } => {
+  const definitionResult = buildComposedProductDefinition({
+    ...input,
+    listingState: 'listed',
+  })
+  if (!definitionResult.ok) {
+    return definitionResult
+  }
+  if (!isPublicSafeRef(input.productId)) {
+    return {
+      ok: false,
+      error: new ComposedProductValidationError({
+        reason: 'productId must be a public-safe product ref',
+      }),
+    }
+  }
+  if (!isPublicSafeRef(input.builderRef)) {
+    return {
+      ok: false,
+      error: new ComposedProductValidationError({
+        reason: 'builderRef must be a public-safe attribution ref',
+      }),
+    }
+  }
+
+  const definition = definitionResult.definition
+  const attributionRef = composedProductBuilderAttributionRef(definition)
+  return {
+    ok: true,
+    result: {
+      definition,
+      assemblyPlan: {
+        schema: MARKETPLACE_PRODUCT_COMPOSITION_SCHEMA,
+        productId: definition.productId,
+        definitionVersion: definition.definitionVersion,
+        status: 'assembled',
+        promiseId: MARKETPLACE_COMPOSE_AND_LIST_PROMISE,
+        inert: true,
+        componentRefs: definition.components,
+        attribution: {
+          builderRef: definition.builderRef,
+          attributionRef,
+        },
+        assembledAt: input.assembledAt ?? currentIsoTimestamp(),
+      },
+    },
+  }
+}
+
 /**
  * The set of distinct primitives a definition composes — useful for a listing
  * surface and for the monetize-any-layer seam (#5518).
@@ -243,6 +346,43 @@ export type ComposedProductListingStore = {
   list: () => ReadonlyArray<ComposedProductDefinition>
 }
 
+export type ComposedProductInstallEvidenceRow = Readonly<{
+  schema: typeof MARKETPLACE_PRODUCT_LIFECYCLE_SCHEMA
+  evidenceKind: 'marketplace_composed_product_install'
+  lifecycleRef: string
+  productId: string
+  definitionVersion: number
+  buyerRef: string
+  builderRef: string
+  attributionRef: string
+  status: 'installed'
+  inert: true
+  installedAt: string
+}>
+
+export type ComposedProductUsageEvidenceRow = Readonly<{
+  schema: typeof MARKETPLACE_PRODUCT_LIFECYCLE_SCHEMA
+  evidenceKind: 'marketplace_composed_product_usage'
+  usageRef: string
+  lifecycleRef: string
+  productId: string
+  buyerRef: string
+  builderRef: string
+  attributionRef: string
+  status: 'used'
+  inert: true
+  usedAt: string
+}>
+
+export type ComposedProductLifecycleStore = ComposedProductListingStore & {
+  upsertDefinition: (definition: ComposedProductDefinition) => void
+  readDefinition: (productId: string) => ComposedProductDefinition | undefined
+  writeInstallEvidence: (row: ComposedProductInstallEvidenceRow) => void
+  listInstallEvidence: () => ReadonlyArray<ComposedProductInstallEvidenceRow>
+  writeUsageEvidence: (row: ComposedProductUsageEvidenceRow) => void
+  listUsageEvidence: () => ReadonlyArray<ComposedProductUsageEvidenceRow>
+}
+
 export const emptyComposedProductListingStore: ComposedProductListingStore = {
   list: () => [],
 }
@@ -252,6 +392,128 @@ export const makeInMemoryComposedProductListingStore = (
 ): ComposedProductListingStore => ({
   list: () => definitions,
 })
+
+export const makeInMemoryComposedProductLifecycleStore = (
+  initialDefinitions: ReadonlyArray<ComposedProductDefinition> = [],
+): ComposedProductLifecycleStore => {
+  const definitions = new Map<string, ComposedProductDefinition>(
+    initialDefinitions.map(definition => [definition.productId, definition]),
+  )
+  const installRows: Array<ComposedProductInstallEvidenceRow> = []
+  const usageRows: Array<ComposedProductUsageEvidenceRow> = []
+  return {
+    list: () => [...definitions.values()],
+    upsertDefinition: definition => {
+      definitions.set(definition.productId, definition)
+    },
+    readDefinition: productId => definitions.get(productId),
+    writeInstallEvidence: row => {
+      installRows.push(row)
+    },
+    listInstallEvidence: () => [...installRows],
+    writeUsageEvidence: row => {
+      usageRows.push(row)
+    },
+    listUsageEvidence: () => [...usageRows],
+  }
+}
+
+export const selfServeListComposedProduct = (
+  store: ComposedProductLifecycleStore,
+  input: Parameters<typeof assembleComposedProductForListing>[0],
+):
+  | { ok: true; result: ComposedProductAssemblyResult }
+  | { ok: false; error: ComposedProductValidationError } => {
+  const assembled = assembleComposedProductForListing(input)
+  if (!assembled.ok) {
+    return assembled
+  }
+  store.upsertDefinition(assembled.result.definition)
+  return assembled
+}
+
+export const installComposedProduct = (
+  store: ComposedProductLifecycleStore,
+  input: {
+    productId: string
+    buyerRef: string
+    installedAt?: string
+  },
+):
+  | { ok: true; row: ComposedProductInstallEvidenceRow }
+  | { ok: false; error: ComposedProductValidationError } => {
+  if (!isPublicSafeRef(input.buyerRef)) {
+    return {
+      ok: false,
+      error: new ComposedProductValidationError({
+        reason: 'buyerRef must be public-safe',
+      }),
+    }
+  }
+  const definition = readComposedProduct(store, input.productId)
+  if (definition === null) {
+    return {
+      ok: false,
+      error: new ComposedProductValidationError({
+        reason: 'product must be listed before install',
+      }),
+    }
+  }
+  const lifecycleRef = `marketplace.install:${definition.productId}:${input.buyerRef}`
+  const row: ComposedProductInstallEvidenceRow = {
+    schema: MARKETPLACE_PRODUCT_LIFECYCLE_SCHEMA,
+    evidenceKind: 'marketplace_composed_product_install',
+    lifecycleRef,
+    productId: definition.productId,
+    definitionVersion: definition.definitionVersion,
+    buyerRef: input.buyerRef,
+    builderRef: definition.builderRef,
+    attributionRef: composedProductBuilderAttributionRef(definition),
+    status: 'installed',
+    inert: true,
+    installedAt: input.installedAt ?? currentIsoTimestamp(),
+  }
+  store.writeInstallEvidence(row)
+  return { ok: true, row }
+}
+
+export const recordComposedProductUse = (
+  store: ComposedProductLifecycleStore,
+  input: {
+    lifecycleRef: string
+    usedAt?: string
+  },
+):
+  | { ok: true; row: ComposedProductUsageEvidenceRow }
+  | { ok: false; error: ComposedProductValidationError } => {
+  const installRow = store
+    .listInstallEvidence()
+    .find(row => row.lifecycleRef === input.lifecycleRef)
+  if (installRow === undefined) {
+    return {
+      ok: false,
+      error: new ComposedProductValidationError({
+        reason: 'install lifecycle must exist before use',
+      }),
+    }
+  }
+  const usageRef = `marketplace.use:${installRow.productId}:${installRow.buyerRef}:${store.listUsageEvidence().length + 1}`
+  const row: ComposedProductUsageEvidenceRow = {
+    schema: MARKETPLACE_PRODUCT_LIFECYCLE_SCHEMA,
+    evidenceKind: 'marketplace_composed_product_usage',
+    usageRef,
+    lifecycleRef: installRow.lifecycleRef,
+    productId: installRow.productId,
+    buyerRef: installRow.buyerRef,
+    builderRef: installRow.builderRef,
+    attributionRef: installRow.attributionRef,
+    status: 'used',
+    inert: true,
+    usedAt: input.usedAt ?? currentIsoTimestamp(),
+  }
+  store.writeUsageEvidence(row)
+  return { ok: true, row }
+}
 
 /**
  * Staleness contract for the listing projection. It is built fresh from the
