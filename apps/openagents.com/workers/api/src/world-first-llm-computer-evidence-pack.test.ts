@@ -15,10 +15,18 @@ const readRepoFile = (relPath: string): string =>
   readFileSync(repoFile(relPath), 'utf8')
 
 const PROMISE_ID = 'claims.world_first_public_llm_computer_training_run.v1'
+const PAID_BITCOIN_PROMISE_ID =
+  'claims.world_first_ai_training_paid_bitcoin.v1'
+const AGENTIC_SALES_FORCE_PROMISE_ID =
+  'claims.pursued_world_first_largest_agentic_sales_force.v1'
+const SALES_FORCE_PROMISE_ID =
+  'claims.pursued_world_first_largest_sales_force.v1'
 const DEFINITION_DOC =
   'docs/launch/2026-06-20-llm-computer-training-run-definition.md'
 const EVIDENCE_PACK_DOC =
   'docs/launch/2026-06-20-world-first-llm-computer-evidence-pack.md'
+const WORLD_FIRST_AUDIT_DOC =
+  'docs/promises/2026-06-29-world-first-claims-qualified-evidence-audit.md'
 
 const docRefs = (markdown: string): ReadonlyArray<string> => [
   ...new Set(markdown.match(/docs\/[A-Za-z0-9._/-]+\.md/g) ?? []),
@@ -33,6 +41,17 @@ const claim2Promise = () => {
     throw new Error(`promise ${PROMISE_ID} not found in registry`)
   }
   return { document, promise }
+}
+
+const getPromise = (promiseId: string) => {
+  const document = publicProductPromisesDocument()
+  const promise = document.promises.find(
+    candidate => candidate.promiseId === promiseId,
+  )
+  if (!promise) {
+    throw new Error(`promise ${promiseId} not found in registry`)
+  }
+  return promise
 }
 
 describe('world-first LLM-computer evidence pack dereferenceability', () => {
@@ -115,5 +134,71 @@ describe('world-first LLM-computer evidence pack dereferenceability', () => {
     // Public copy must never authorize a bare "world first" claim.
     expect(promise.unsafeCopy).toContain('world first')
     expect(promise.safeCopy).toContain('Percepta')
+  })
+
+  test('the #7027 world-first audit is wired into every gated world-first claim', () => {
+    expect(repoFileExists(WORLD_FIRST_AUDIT_DOC)).toBe(true)
+
+    const promises = [
+      getPromise(PAID_BITCOIN_PROMISE_ID),
+      getPromise(PROMISE_ID),
+      getPromise(AGENTIC_SALES_FORCE_PROMISE_ID),
+      getPromise(SALES_FORCE_PROMISE_ID),
+    ]
+
+    for (const promise of promises) {
+      expect(promise.evidenceRefs).toContain(WORLD_FIRST_AUDIT_DOC)
+      expect(promise.verification).toContain('2026-06-29 #7027 audit')
+    }
+  })
+
+  test('the #7027 audit keeps red/planned states and owner-signed blockers', () => {
+    expect(getPromise(PAID_BITCOIN_PROMISE_ID)).toEqual(
+      expect.objectContaining({
+        state: 'red',
+        blockerRefs: expect.arrayContaining([
+          'blocker.product_promises.world_first_evidence_pack_missing',
+          'blocker.product_promises.world_first_owner_signed_upgrade_missing',
+        ]),
+      }),
+    )
+    expect(getPromise(PROMISE_ID)).toEqual(
+      expect.objectContaining({
+        state: 'red',
+        blockerRefs: expect.arrayContaining([
+          'blocker.product_promises.world_first_owner_signed_upgrade_missing',
+        ]),
+      }),
+    )
+    expect(getPromise(AGENTIC_SALES_FORCE_PROMISE_ID)).toEqual(
+      expect.objectContaining({
+        state: 'planned',
+        blockerRefs: expect.arrayContaining([
+          'blocker.product_promises.world_first_agentic_sales_force_not_achieved',
+          'blocker.product_promises.world_first_agentic_sales_force_no_sized_verifiable_force',
+          'blocker.product_promises.world_first_owner_signed_upgrade_missing',
+        ]),
+      }),
+    )
+    expect(getPromise(SALES_FORCE_PROMISE_ID)).toEqual(
+      expect.objectContaining({
+        state: 'planned',
+        blockerRefs: expect.arrayContaining([
+          'blocker.product_promises.world_first_largest_sales_force_not_achieved',
+          'blocker.product_promises.world_first_largest_sales_force_seven_million_bar_unmet',
+          'blocker.product_promises.world_first_owner_signed_upgrade_missing',
+        ]),
+      }),
+    )
+  })
+
+  test('the #7027 audit carries a refuse-list for unqualified public copy', () => {
+    const audit = readRepoFile(WORLD_FIRST_AUDIT_DOC)
+
+    expect(audit).toContain('Refuse-List')
+    expect(audit).toContain('bare "world first" framing')
+    expect(audit).toContain('OpenAgents has the largest agentic sales force')
+    expect(audit).toContain('has met the seven-million-agent bar')
+    expect(audit).toContain('owner-signed transition receipt')
   })
 })
