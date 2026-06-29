@@ -1,5 +1,14 @@
 # Promise Registry
 
+> Registry `2026-06-29.3` records the #7014 next green-wave triage for the
+> `2026-06-29.2` product-promise audit and flips NO promise state. The wave
+> links child issues #7015-#7030 to their owner-signoff, paid-receipt,
+> payout-receipt, desktop-from-install, unattended-Artanis, public-metrics,
+> training-receipt, world-first, repository-studying, MDK, and visualization
+> gates. It is tracking evidence only: it creates no green claim, removes no
+> blocker, broadens no copy, and does not substitute for dereferenceable
+> receipts or owner-signed `promise_transition` records.
+>
 > Registry `2026-06-29.2` is a current-main refresh after #6997, #6999,
 > #7001, #7002, and #7006 and flips NO promise state. It records the
 > terminal-agent current-state audit and Codex tool-layer study as evidence for
@@ -66,9 +75,9 @@
 > Current machine-readable source of truth: `/api/public/product-promises` is
 > generated from
 > [`product-promises.ts`](../../apps/openagents.com/workers/api/src/product-promises.ts),
-> which currently advertises registry `2026-06-29.2` with
+> which currently advertises registry `2026-06-29.3` with
 > `lastUpdated: "2026-06-29"`. This narrative document records the same
-> top-line 2026-06-29.2 promise decisions above, plus historical reconciliation
+> top-line 2026-06-29.3 promise decisions above, plus historical reconciliation
 > context below; when in doubt, agents and reviewers should defer to the
 > machine-readable registry and include its version in mismatch reports.
 >
