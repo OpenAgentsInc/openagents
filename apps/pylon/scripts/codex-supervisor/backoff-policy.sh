@@ -16,6 +16,7 @@
 : "${SUP_CODEX_REFUSAL_TUNE_THRESHOLD:=3}"
 : "${SUP_CLAIMED_DEEP_BACKLOG_SLEEP_SECS:=1}"
 : "${SUP_FAILURE_BACKOFF_ESCALATE_THRESHOLD:=2}"
+: "${SUP_LOCKOUT_BACKOFF_MAX:=120}"
 
 sup_backoff_policy_dir() {
   local d="${SUP_BACKOFF_POLICY_DIR:-$SUP_STATE_DIR/backoff-policy}"
@@ -137,6 +138,19 @@ sup_claimed_pick_backoff_secs() {
     return 0
   fi
   printf '%s' "$current_backoff"
+}
+
+sup_lockout_pick_backoff_secs() {
+  local open_count="$1"
+  local desired_slots="$2"
+  local current_backoff="$3"
+  local selected
+  selected="$(sup_claimed_pick_backoff_secs "$open_count" "$desired_slots" "$current_backoff")"
+  if [ "$selected" -gt "$SUP_LOCKOUT_BACKOFF_MAX" ] 2>/dev/null; then
+    printf '%s' "$SUP_LOCKOUT_BACKOFF_MAX"
+    return 0
+  fi
+  printf '%s' "$selected"
 }
 
 sup_should_escalate_failure_backoff() {
