@@ -273,6 +273,7 @@ pick_unlocked_issue() {
 # an issue another slot is actively working. Defaults to the dispatch timeout
 # when set, else 30m.
 : "${SUP_CLAIM_TTL_SECS:=${SUP_DISPATCH_TIMEOUT_SECS:-1800}}"
+: "${SUP_NON_DISPATCH_CLAIM_LABELS:=standing-task,epic}"
 
 sup_claims_dir() {
   local d="${SUP_LOCKOUT_CACHE_DIR:-$SUP_STATE_DIR}/claims"
@@ -298,6 +299,36 @@ sup_gc_stale_claims() {
   done
 }
 
+sup_claim_owner_pid() {
+  local claim="$1"
+  awk 'NR==1 {print $1}' "$claim/meta" 2>/dev/null
+}
+
+sup_claim_owner_is_live() {
+  local claim="$1"
+  local owner; owner="$(sup_claim_owner_pid "$claim")"
+  case "$owner" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  kill -0 "$owner" 2>/dev/null
+}
+
+# sup_gc_orphaned_claims
+#   Startup/restart sweep for claims left behind by a killed supervisor. Active
+#   claims are tied to the worker shell's PID (BASHPID); if that process no
+#   longer exists, there is no live local owner refreshing the claim, so keeping
+#   it would wedge the next run until the full TTL expires.
+sup_gc_orphaned_claims() {
+  local dir; dir="$(sup_claims_dir)"
+  local claim
+  for claim in "$dir"/claim.*; do
+    [ -e "$claim" ] || continue
+    if ! sup_claim_owner_is_live "$claim"; then
+      rm -rf "$claim" 2>/dev/null || true
+    fi
+  done
+}
+
 # sup_claim_is_active <issue>
 #   rc 0 if a FRESH claim is held for the issue (reserved by some slot), rc 1
 #   otherwise. Does not mutate; GC of stale entries is sup_gc_stale_claims's job.
@@ -317,7 +348,7 @@ sup_claim_is_active() {
 #   rc 1 if another slot already holds a fresh claim. Relies on the caller (or a
 #   preceding sup_gc_stale_claims) to have cleared expired claims first.
 sup_try_claim_issue() {
-  local issue="$1"; local owner="${2:-$$}"
+  local issue="$1"; local owner="${2:-${BASHPID:-$$}}"
   [ -n "$issue" ] || return 1
   local dir; dir="$(sup_claims_dir)"
   local claim="$dir/claim.$issue"
@@ -340,7 +371,7 @@ sup_refresh_claim() {
   # sup_gc_stale_claims read); overwriting an existing inner file does not
   # reliably update the directory mtime on all filesystems.
   touch "$claim" 2>/dev/null || true
-  printf '%s %s\n' "${2:-$$}" "$(date +%s)" > "$claim/meta" 2>/dev/null || true
+  printf '%s %s\n' "${2:-${BASHPID:-$$}}" "$(date +%s)" > "$claim/meta" 2>/dev/null || true
 }
 
 # sup_release_claim <issue>
@@ -350,6 +381,38 @@ sup_refresh_claim() {
 sup_release_claim() {
   local issue="$1"; [ -n "$issue" ] || return 0
   rm -rf "$(sup_claims_dir)/claim.$issue" 2>/dev/null || true
+}
+
+sup_label_list_has_exact() {
+  local labels=",${1:-},"
+  local wanted="$2"
+  case "$labels" in
+    *",${wanted},"*) return 0 ;;
+  esac
+  return 1
+}
+
+# sup_issue_is_non_dispatch_claim_target <issue>
+#   Standing-task / epic issues are backlog governors, not unit work for Codex
+#   dispatch. They must never receive in-flight claims; claiming them parks the
+#   exact queue machinery that should be keeping the fleet moving. Label lookup
+#   is fail-open: if no label map/helper exists, normal dispatch guards decide.
+sup_issue_is_non_dispatch_claim_target() {
+  local issue="$1"
+  [ -n "$issue" ] || return 1
+  command -v sup_labels_for_issue >/dev/null 2>&1 || return 1
+  local labels; labels="$(sup_labels_for_issue "$issue")"
+  [ -n "$labels" ] || return 1
+  local oldifs="$IFS"; IFS=','
+  local blocked
+  for blocked in $SUP_NON_DISPATCH_CLAIM_LABELS; do
+    if [ -n "$blocked" ] && sup_label_list_has_exact "$labels" "$blocked"; then
+      IFS="$oldifs"
+      return 0
+    fi
+  done
+  IFS="$oldifs"
+  return 1
 }
 
 # pick_and_claim_unlocked_issue <start_index> <issue...>
@@ -370,6 +433,11 @@ pick_and_claim_unlocked_issue() {
   for (( k=0; k<n; k++ )); do
     i=$(( (start + k) % n ))
     issue="${arr[$i]}"
+    # Queue-governor issues should be recreated/managed, never claimed as unit
+    # dispatch work.
+    if sup_issue_is_non_dispatch_claim_target "$issue"; then
+      continue
+    fi
     # Already reserved by another slot this window -> spread to a distinct issue.
     if sup_claim_is_active "$issue"; then
       continue

@@ -43,6 +43,9 @@ fi
 
 printf '%s' '{"error":"codex_agent_execution_refused"}' > "$WORK/executor-refused.json"
 printf '%s' '{"error":"target_pylon_unavailable"}' > "$WORK/gate-refused.json"
+printf '%s' '{"error":"pylon_api_conflict"} HTTP 409' > "$WORK/gate-conflict.json"
+printf '%s' '{"blockerRefs":["blocker.public.pylon_dispatch.duplicate_active_assignment"]}' > "$WORK/duplicate-active.json"
+printf '%s' '503 could not read linked owner registration' > "$WORK/d1-flake.txt"
 printf '%s' 'HTTP 429 too many requests' > "$WORK/rate.txt"
 printf '%s' 'plain failure' > "$WORK/other.txt"
 
@@ -52,10 +55,28 @@ else
   bad "executor refusal classification failed"
 fi
 
-if [ "$(sup_dispatch_failure_signature "$WORK/gate-refused.json")" = "refused" ]; then
-  ok "gate refusal remains generic refused"
+if [ "$(sup_dispatch_failure_signature "$WORK/gate-refused.json")" = "dispatch_gate_conflict" ]; then
+  ok "target_pylon_unavailable is classified as fast dispatch gate conflict"
 else
   bad "gate refusal classification failed"
+fi
+
+if [ "$(sup_dispatch_failure_signature "$WORK/gate-conflict.json")" = "dispatch_gate_conflict" ]; then
+  ok "pylon_api_conflict/409 is classified as fast dispatch gate conflict"
+else
+  bad "pylon_api_conflict classification failed"
+fi
+
+if [ "$(sup_dispatch_failure_signature "$WORK/duplicate-active.json")" = "refused" ]; then
+  ok "duplicate_active_assignment stays parked as refused"
+else
+  bad "duplicate_active_assignment classification failed"
+fi
+
+if [ "$(sup_dispatch_failure_signature "$WORK/d1-flake.txt")" = "dispatch_gate_transient" ]; then
+  ok "500/503 D1 read flakes are classified as fast dispatch gate transient"
+else
+  bad "D1 flake classification failed"
 fi
 
 if [ "$(sup_dispatch_failure_signature "$WORK/rate.txt")" = "rate_limited" ]; then
@@ -119,6 +140,18 @@ if sup_should_escalate_failure_backoff codex_agent_execution_refused 9; then
   bad "executor refusal should not escalate general backoff"
 else
   ok "executor refusal never escalates general backoff"
+fi
+
+if sup_should_escalate_failure_backoff dispatch_gate_conflict 9; then
+  bad "dispatch gate conflict should not escalate general backoff"
+else
+  ok "dispatch gate conflict never escalates general backoff"
+fi
+
+if sup_should_escalate_failure_backoff dispatch_gate_transient 9; then
+  bad "dispatch gate transient should not escalate general backoff"
+else
+  ok "dispatch gate transient never escalates general backoff"
 fi
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
