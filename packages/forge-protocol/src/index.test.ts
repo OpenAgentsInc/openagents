@@ -318,6 +318,7 @@ describe("@openagentsinc/forge-protocol", () => {
       promotion_ref: "promotion.forge.6768",
       queue_ref: "queue.forge.main",
       change_ref: verification.change_ref,
+      queue_position: 0,
       decision: "approved",
       base_head: verification.base_head,
       candidate_head: verification.head_head,

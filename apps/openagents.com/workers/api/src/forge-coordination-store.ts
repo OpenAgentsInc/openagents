@@ -1,12 +1,4 @@
 import {
-  decodeForgeCoordinationIssueRow,
-  decodeForgeCoordinationPrRow,
-  decodeForgeCoordinationStatusRow,
-  decodeForgeDispatchLeaseRow,
-  decodeForgeMergeQueueLedgerRow,
-  decodeForgePromotionDecisionReceipt,
-  decodeForgeVerificationReceipt,
-  forgeNip34StatusKindForState,
   type ForgeCoordinationChangeState,
   type ForgeCoordinationIssueRow,
   type ForgeCoordinationIssueState,
@@ -18,6 +10,14 @@ import {
   type ForgeMergeQueueLedgerState,
   type ForgePromotionDecisionReceipt,
   type ForgeVerificationReceipt,
+  decodeForgeCoordinationIssueRow,
+  decodeForgeCoordinationPrRow,
+  decodeForgeCoordinationStatusRow,
+  decodeForgeDispatchLeaseRow,
+  decodeForgeMergeQueueLedgerRow,
+  decodeForgePromotionDecisionReceipt,
+  decodeForgeVerificationReceipt,
+  forgeNip34StatusKindForState,
 } from '@openagentsinc/forge-protocol'
 import { Schema as S } from 'effect'
 
@@ -85,24 +85,38 @@ export type ForgeMergeQueueLedgerInput = Readonly<{
 
 export type ForgeDispatchLeaseAcquireResult =
   | Readonly<{ acquired: true; lease: ForgeDispatchLeaseRow }>
-  | Readonly<{ acquired: false; activeLease: ForgeDispatchLeaseRow | undefined }>
+  | Readonly<{
+      acquired: false
+      activeLease: ForgeDispatchLeaseRow | undefined
+    }>
 
 export type ForgeCoordinationStore = Readonly<{
-  upsertIssue: (input: ForgeCoordinationIssueInput) => Promise<ForgeCoordinationIssueRow>
-  listIssues: (tenantRef: string, limit: number) => Promise<ReadonlyArray<ForgeCoordinationIssueRow>>
-  upsertChange: (input: ForgeCoordinationChangeInput) => Promise<ForgeCoordinationPrRow>
+  upsertIssue: (
+    input: ForgeCoordinationIssueInput,
+  ) => Promise<ForgeCoordinationIssueRow>
+  listIssues: (
+    tenantRef: string,
+    limit: number,
+  ) => Promise<ReadonlyArray<ForgeCoordinationIssueRow>>
+  upsertChange: (
+    input: ForgeCoordinationChangeInput,
+  ) => Promise<ForgeCoordinationPrRow>
   listChanges: (
     tenantRef: string,
     limit: number,
     issueRef?: string,
   ) => Promise<ReadonlyArray<ForgeCoordinationPrRow>>
-  recordStatus: (input: ForgeCoordinationStatusInput) => Promise<ForgeCoordinationStatusRow>
+  recordStatus: (
+    input: ForgeCoordinationStatusInput,
+  ) => Promise<ForgeCoordinationStatusRow>
   listStatuses: (
     tenantRef: string,
     limit: number,
     subjectRef?: string,
   ) => Promise<ReadonlyArray<ForgeCoordinationStatusRow>>
-  acquireDispatchLease: (input: ForgeDispatchLeaseInput) => Promise<ForgeDispatchLeaseAcquireResult>
+  acquireDispatchLease: (
+    input: ForgeDispatchLeaseInput,
+  ) => Promise<ForgeDispatchLeaseAcquireResult>
   listDispatchLeases: (
     tenantRef: string,
     limit: number,
@@ -112,7 +126,9 @@ export type ForgeCoordinationStore = Readonly<{
     tenantRef: string,
     workRef: string,
   ) => Promise<ForgeDispatchLeaseRow | undefined>
-  recordMergeQueueLedger: (input: ForgeMergeQueueLedgerInput) => Promise<ForgeMergeQueueLedgerRow>
+  recordMergeQueueLedger: (
+    input: ForgeMergeQueueLedgerInput,
+  ) => Promise<ForgeMergeQueueLedgerRow>
   listMergeQueueLedgers: (
     tenantRef: string,
     limit: number,
@@ -177,6 +193,7 @@ type ForgePromotionDecisionReceiptRow = Readonly<{
   promotion_ref: string
   queue_ref: string
   change_ref: string
+  queue_position: number
   decision: string
   base_head: string
   candidate_head: string
@@ -230,6 +247,7 @@ const promotionDecisionReceiptFromRow = (
     promotion_ref: row.promotion_ref,
     queue_ref: row.queue_ref,
     change_ref: row.change_ref,
+    queue_position: row.queue_position,
     decision: row.decision,
     base_head: row.base_head,
     candidate_head: row.candidate_head,
@@ -592,11 +610,19 @@ export const makeD1ForgeCoordinationStore = (
     } catch {
       return {
         acquired: false,
-        activeLease: await readActiveDispatchLease(db, input.tenantRef, input.workRef),
+        activeLease: await readActiveDispatchLease(
+          db,
+          input.tenantRef,
+          input.workRef,
+        ),
       }
     }
 
-    const activeLease = await readActiveDispatchLease(db, input.tenantRef, input.workRef)
+    const activeLease = await readActiveDispatchLease(
+      db,
+      input.tenantRef,
+      input.workRef,
+    )
     if (activeLease === undefined) {
       throw new ForgeCoordinationStoreInvariantError(
         'forge dispatch lease was not persisted',
@@ -866,6 +892,7 @@ export const makeD1ForgeCoordinationStore = (
             promotion_ref,
             queue_ref,
             change_ref,
+            queue_position,
             decision,
             base_head,
             candidate_head,
@@ -878,10 +905,11 @@ export const makeD1ForgeCoordinationStore = (
             source_refs_json,
             redacted,
             created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
           ON CONFLICT (tenant_ref, promotion_ref) DO UPDATE SET
             queue_ref = excluded.queue_ref,
             change_ref = excluded.change_ref,
+            queue_position = excluded.queue_position,
             decision = excluded.decision,
             base_head = excluded.base_head,
             candidate_head = excluded.candidate_head,
@@ -899,6 +927,7 @@ export const makeD1ForgeCoordinationStore = (
         decoded.promotion_ref,
         decoded.queue_ref,
         decoded.change_ref,
+        decoded.queue_position,
         decoded.decision,
         decoded.base_head,
         decoded.candidate_head,

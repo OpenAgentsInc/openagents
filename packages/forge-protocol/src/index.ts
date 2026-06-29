@@ -443,12 +443,36 @@ export const ForgeVerificationReceipt = S.Struct({
 });
 export type ForgeVerificationReceipt = typeof ForgeVerificationReceipt.Type;
 
+export const ForgePromotionEligibilityBlocker = S.Literals([
+  "blocker.forge.verification.missing_change",
+  "blocker.forge.verification.missing_receipt_ref",
+  "blocker.forge.verification.missing_receipt",
+  "blocker.forge.verification.wrong_change",
+  "blocker.forge.verification.stale_base",
+  "blocker.forge.verification.stale_head",
+  "blocker.forge.verification.not_passing",
+]);
+export type ForgePromotionEligibilityBlocker =
+  typeof ForgePromotionEligibilityBlocker.Type;
+
+export const ForgePromotionEligibility = S.Struct({
+  tenant_ref: S.String,
+  change_ref: S.String,
+  eligible: S.Boolean,
+  verification_ref: S.NullOr(S.String),
+  base_head: S.NullOr(S.String),
+  head_head: S.NullOr(S.String),
+  blocker_refs: S.Array(ForgePromotionEligibilityBlocker),
+});
+export type ForgePromotionEligibility = typeof ForgePromotionEligibility.Type;
+
 export const ForgePromotionDecisionReceipt = S.Struct({
   schema: S.Literal("openagents.forge.promotion.decision.v0.1"),
   tenant_ref: S.String,
   promotion_ref: S.String,
   queue_ref: S.String,
   change_ref: S.String,
+  queue_position: S.Number,
   decision: ForgePromotionDecisionState,
   base_head: S.String,
   candidate_head: S.String,
@@ -525,6 +549,9 @@ export const decodeForgeDispatchMessage =
   S.decodeUnknownSync(ForgeDispatchMessage);
 export const decodeForgeVerificationReceipt = S.decodeUnknownSync(
   ForgeVerificationReceipt,
+);
+export const decodeForgePromotionEligibility = S.decodeUnknownSync(
+  ForgePromotionEligibility,
 );
 export const decodeForgePromotionDecisionReceipt = S.decodeUnknownSync(
   ForgePromotionDecisionReceipt,

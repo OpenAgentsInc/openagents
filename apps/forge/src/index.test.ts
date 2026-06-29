@@ -91,7 +91,19 @@ describe("Forge UI Worker", () => {
 
     expect(html).toContain('data-forge-route="changes"')
     expect(html).toContain("Change Inspector")
+    expect(html).toContain("receipt-required")
+    expect(html).toContain("blocker.forge.verification.missing_receipt_ref")
     expect(html).not.toContain("loggedIn/page/forge")
+  })
+
+  it("surfaces receipt-bound verification state in verification and queue views", () => {
+    const verificationHtml = renderForgeShellHtml("verification")
+    const queueHtml = renderForgeShellHtml("queue")
+
+    expect(verificationHtml).toContain("Bound Refs")
+    expect(verificationHtml).toContain("refs/forge/changes/openagents/codex-low-risk")
+    expect(queueHtml).toContain("requires passing ForgeVerificationReceipt")
+    expect(queueHtml).toContain("blocked-verification-required")
   })
 
   it("renders the SU-7 dogfood lane with intake through mirror refs", () => {

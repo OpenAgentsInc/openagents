@@ -122,6 +122,8 @@ export const ForgeShellChangeItem = Schema.Struct({
   workRef: Schema.String,
   baseHead: Schema.String,
   patchHead: Schema.String,
+  verificationRef: Schema.String,
+  verificationState: Schema.String,
   state: Schema.String,
   blockers: Schema.Array(Schema.String),
 })
@@ -132,6 +134,8 @@ export const ForgeShellVerificationItem = Schema.Struct({
   changeRef: Schema.String,
   verdict: Schema.String,
   command: Schema.String,
+  baseHead: Schema.String,
+  headHead: Schema.String,
   executor: Schema.String,
   logDigest: Schema.String,
 })
@@ -267,24 +271,30 @@ export const forgeShellPreviewState: ForgeShellSnapshot = {
       workRef: "work.forge.6797",
       baseHead: "refs/heads/main",
       patchHead: "refs/forge/changes/openagents/codex-low-risk",
+      verificationRef: "pending",
+      verificationState: "receipt-required",
       state: "awaiting-smart-git-intake",
-      blockers: [],
+      blockers: ["blocker.forge.verification.missing_receipt_ref"],
     },
     {
       changeRef: "change.forge.shell",
       workRef: "work.forge.6769",
       baseHead: "refs/heads/main@81182403c3",
       patchHead: "refs/forge/changes/shell-preview",
+      verificationRef: "pending",
+      verificationState: "pending-live-run",
       state: "public-safe-preview",
-      blockers: [],
+      blockers: ["blocker.forge.verification.missing_receipt_ref"],
     },
     {
       changeRef: "change.forge.control-plane",
       workRef: "work.forge.6770",
       baseHead: "refs/heads/main",
       patchHead: "pending-/api/forge",
+      verificationRef: "pending",
+      verificationState: "blocked",
       state: "waiting-for-route-registry",
-      blockers: ["control-plane-auth", "d1-writes"],
+      blockers: ["control-plane-auth", "d1-writes", "blocker.forge.verification.missing_receipt_ref"],
     },
   ],
   verification: [
@@ -293,6 +303,8 @@ export const forgeShellPreviewState: ForgeShellSnapshot = {
       changeRef: "change.forge.su7.openagents-codex-low-risk",
       verdict: "required-before-promotion",
       command: "bun run --cwd apps/openagents.com check:deploy",
+      baseHead: "refs/heads/main",
+      headHead: "refs/forge/changes/openagents/codex-low-risk",
       executor: "owned Pylon forge-verification-runner",
       logDigest: "pending-first-live-receipt",
     },
@@ -301,6 +313,8 @@ export const forgeShellPreviewState: ForgeShellSnapshot = {
       changeRef: "change.forge.shell",
       verdict: "pending-live-run",
       command: "bun run --cwd apps/forge test",
+      baseHead: "refs/heads/main@81182403c3",
+      headHead: "refs/forge/changes/shell-preview",
       executor: "apps/forge Worker test harness",
       logDigest: "local-after-implementation",
     },
@@ -309,6 +323,8 @@ export const forgeShellPreviewState: ForgeShellSnapshot = {
       changeRef: "change.forge.boundary",
       verdict: "passed",
       command: "bun run --cwd packages/forge-protocol test",
+      baseHead: "schema.fixture.base",
+      headHead: "schema.fixture.head",
       executor: "forge-protocol schema tests",
       logDigest: "sha256-public-summary",
     },
@@ -327,8 +343,8 @@ export const forgeShellPreviewState: ForgeShellSnapshot = {
       changeRef: "change.forge.shell",
       virtualHead: "refs/forge/virtual/main+shell",
       actualHead: "refs/heads/main",
-      gate: "ui-contract-ready",
-      state: "projected",
+      gate: "requires passing ForgeVerificationReceipt for current base/head",
+      state: "blocked-verification-required",
     },
     {
       position: "blocked",
@@ -1108,6 +1124,7 @@ const renderChanges = (): string => `<section class="forge-panel" data-span="wid
           <th>Work</th>
           <th>Base Head</th>
           <th>Patch Head</th>
+          <th>Verification</th>
           <th>State</th>
           <th>Blockers</th>
         </tr>
@@ -1120,6 +1137,7 @@ const renderChanges = (): string => `<section class="forge-panel" data-span="wid
               <td>${escapeHtml(item.workRef)}</td>
               <td class="forge-muted">${escapeHtml(item.baseHead)}</td>
               <td class="forge-code">${escapeHtml(item.patchHead)}</td>
+              <td><span class="forge-code">${escapeHtml(item.verificationRef)}</span><br><span class="forge-muted">${escapeHtml(item.verificationState)}</span></td>
               <td>${renderStatus(item.state)}</td>
               <td class="forge-muted">${escapeHtml(item.blockers.length === 0 ? "none" : item.blockers.join(", "))}</td>
             </tr>`,
@@ -1143,6 +1161,7 @@ const renderVerification = (): string => `<section class="forge-panel" data-span
           <th>Change</th>
           <th>Verdict</th>
           <th>Command</th>
+          <th>Bound Refs</th>
           <th>Executor</th>
           <th>Log Digest</th>
         </tr>
@@ -1155,6 +1174,7 @@ const renderVerification = (): string => `<section class="forge-panel" data-span
               <td>${escapeHtml(item.changeRef)}</td>
               <td>${renderStatus(item.verdict)}</td>
               <td class="forge-code">${escapeHtml(item.command)}</td>
+              <td><span class="forge-muted">${escapeHtml(item.baseHead)}</span><br><span class="forge-code">${escapeHtml(item.headHead)}</span></td>
               <td>${escapeHtml(item.executor)}</td>
               <td class="forge-muted">${escapeHtml(item.logDigest)}</td>
             </tr>`,

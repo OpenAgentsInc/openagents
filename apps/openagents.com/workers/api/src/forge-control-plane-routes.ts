@@ -1,4 +1,5 @@
 import {
+  type ForgeControlPlaneScope,
   ForgeCoordinationChangeState,
   ForgeCoordinationIssueState,
   ForgeCoordinationStatusState,
@@ -6,17 +7,13 @@ import {
   ForgePromotionDecisionReceipt,
   ForgeVerificationReceipt,
   decodeForgeControlPlaneScope,
-  type ForgeControlPlaneScope,
 } from '@openagentsinc/forge-protocol'
 import { Effect, Schema as S } from 'effect'
 
 import { timingSafeEqual } from './agent-registration'
-import {
-  type ForgeCoordinationStore,
-} from './forge-coordination-store'
-import type {
-  ForgeGitCanonicalStore,
-} from './forge-git-canonical-store'
+import { type ForgeCoordinationStore } from './forge-coordination-store'
+import type { ForgeGitCanonicalStore } from './forge-git-canonical-store'
+import { planForgePromotionQueue } from './forge-promotion-planner'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { decodeUnknownWithSchema, readJsonObject } from './json-boundary'
 import { currentIsoTimestamp } from './runtime-primitives'
@@ -27,6 +24,7 @@ const OPENAGENTS_FORGE_REPOSITORY_REF = 'repo.openagents.openagents'
 const OPENAGENTS_GITHUB_OWNER = 'OpenAgentsInc'
 const OPENAGENTS_GITHUB_REPO = 'openagents'
 const OPENAGENTS_DEFAULT_BRANCH_REF = 'refs/heads/main'
+const OPENAGENTS_FORGE_QUEUE_REF = 'queue.forge.openagents.main'
 
 export type ForgeControlPlaneAuth = Readonly<{
   mode: 'admin' | 'control_plane'
@@ -296,15 +294,19 @@ const requireScope = async <Bindings>(
   }
 
   if ((await dependencies.requireAdminApiToken?.(request, env)) === true) {
-    return { mode: 'admin', scopes: ['forge:admin'], subjectRef: 'admin', tenantRef: null }
+    return {
+      mode: 'admin',
+      scopes: ['forge:admin'],
+      subjectRef: 'admin',
+      tenantRef: null,
+    }
   }
 
-  const controlPlaneAuth =
-    await dependencies.authorizeControlPlaneBearer?.(
-      request,
-      env,
-      requiredScope,
-    )
+  const controlPlaneAuth = await dependencies.authorizeControlPlaneBearer?.(
+    request,
+    env,
+    requiredScope,
+  )
 
   if (controlPlaneAuth !== undefined) {
     if (
@@ -364,7 +366,13 @@ const routeWorkRecords = async <Bindings>(
   }
 
   const body = await decodeBody(request, ForgeWorkRecordRequest)
-  await requireScope(dependencies, request, env, 'forge:work:write', body.tenantRef)
+  await requireScope(
+    dependencies,
+    request,
+    env,
+    'forge:work:write',
+    body.tenantRef,
+  )
   const workRecord = await store.upsertIssue({
     tenantRef: body.tenantRef,
     issueRef: body.issueRef,
@@ -375,7 +383,9 @@ const routeWorkRecords = async <Bindings>(
     ...(body.githubIssueNumber === undefined
       ? {}
       : { githubIssueNumber: body.githubIssueNumber }),
-    ...(body.priorityRef === undefined ? {} : { priorityRef: body.priorityRef }),
+    ...(body.priorityRef === undefined
+      ? {}
+      : { priorityRef: body.priorityRef }),
   })
 
   return noStoreJsonResponse({ workRecord }, { status: 201 })
@@ -391,7 +401,13 @@ const routeChanges = async <Bindings>(
 
   if (request.method === 'GET') {
     const tenantRef = tenantRefFromQuery(url)
-    await requireScope(dependencies, request, env, 'forge:change:read', tenantRef)
+    await requireScope(
+      dependencies,
+      request,
+      env,
+      'forge:change:read',
+      tenantRef,
+    )
     const limit = limitFromQuery(url)
     return noStoreJsonResponse({
       changes: await store.listChanges(
@@ -409,7 +425,13 @@ const routeChanges = async <Bindings>(
   }
 
   const body = await decodeBody(request, ForgeChangeRecordRequest)
-  await requireScope(dependencies, request, env, 'forge:change:write', body.tenantRef)
+  await requireScope(
+    dependencies,
+    request,
+    env,
+    'forge:change:write',
+    body.tenantRef,
+  )
   const change = await store.upsertChange({
     tenantRef: body.tenantRef,
     prRef: body.prRef,
@@ -440,7 +462,13 @@ const routeChangeStatus = async <Bindings>(
   }
 
   const body = await decodeBody(request, ForgeStatusTransitionRequest)
-  await requireScope(dependencies, request, env, 'forge:status:write', body.tenantRef)
+  await requireScope(
+    dependencies,
+    request,
+    env,
+    'forge:status:write',
+    body.tenantRef,
+  )
   const status = await dependencies.makeStore(env).recordStatus({
     tenantRef: body.tenantRef,
     statusRef: body.statusRef,
@@ -487,7 +515,13 @@ const routeLeases = async <Bindings>(
 
   if (request.method === 'GET') {
     const tenantRef = tenantRefFromQuery(url)
-    await requireScope(dependencies, request, env, 'forge:lease:write', tenantRef)
+    await requireScope(
+      dependencies,
+      request,
+      env,
+      'forge:lease:write',
+      tenantRef,
+    )
     const limit = limitFromQuery(url)
     return noStoreJsonResponse({
       leases: await store.listDispatchLeases(
@@ -505,7 +539,13 @@ const routeLeases = async <Bindings>(
   }
 
   const body = await decodeBody(request, ForgeDispatchLeaseRequest)
-  await requireScope(dependencies, request, env, 'forge:lease:write', body.tenantRef)
+  await requireScope(
+    dependencies,
+    request,
+    env,
+    'forge:lease:write',
+    body.tenantRef,
+  )
   const result = await store.acquireDispatchLease({
     tenantRef: body.tenantRef,
     leaseRef: body.leaseRef,
@@ -536,6 +576,39 @@ const routeQueue = async <Bindings>(
   await requireScope(dependencies, request, env, 'forge:queue:read', tenantRef)
   const limit = limitFromQuery(url)
   const store = dependencies.makeStore(env)
+  const canonicalStore = dependencies.makeCanonicalStore(env)
+  const defaultBranch = await canonicalStore.readRef(
+    tenantRef,
+    OPENAGENTS_FORGE_REPOSITORY_REF,
+    OPENAGENTS_DEFAULT_BRANCH_REF,
+  )
+
+  if (defaultBranch?.state === 'active' && defaultBranch.object_id !== null) {
+    const plan = planForgePromotionQueue({
+      actualHead: defaultBranch.object_id,
+      changes: await store.listChanges(tenantRef, 100),
+      issues: await store.listIssues(tenantRef, 100),
+      statuses: await store.listStatuses(tenantRef, 100),
+      verifications: await store.listVerificationReceipts(tenantRef, 100),
+    })
+    await store.recordMergeQueueLedger({
+      actualHead: plan.actualHead,
+      baseHead: plan.baseHead,
+      blocked: plan.blocked,
+      nextPromotionRef: plan.nextActualPromotion?.promotionRef ?? null,
+      nowIso: routeNowIso(dependencies),
+      queueRef: OPENAGENTS_FORGE_QUEUE_REF,
+      ready: plan.ready,
+      sourceRefs: [
+        'issue.public.github.OpenAgentsInc.openagents.6794',
+        'forge.canonical_ref.refs_heads_main',
+        'forge.coordination_rows.work_change_status',
+      ],
+      state: plan.nextActualPromotion === null ? 'blocked' : 'projected',
+      tenantRef,
+      virtualHead: plan.virtualHead,
+    })
+  }
 
   return noStoreJsonResponse({
     latest: await store.readLatestMergeQueueLedger(tenantRef),
@@ -555,22 +628,30 @@ const routeQueueSnapshots = async <Bindings>(
   }
 
   const body = await decodeBody(request, ForgeMergeQueueSnapshotRequest)
-  await requireScope(dependencies, request, env, 'forge:queue:write', body.tenantRef)
-  const queueSnapshot = await dependencies.makeStore(env).recordMergeQueueLedger({
-    tenantRef: body.tenantRef,
-    queueRef: body.queueRef,
-    baseHead: body.baseHead,
-    actualHead: body.actualHead,
-    virtualHead: body.virtualHead,
-    state: body.state,
-    ready: body.ready,
-    blocked: body.blocked,
-    sourceRefs: body.sourceRefs ?? [],
-    nowIso: routeNowIso(dependencies),
-    ...(body.nextPromotionRef === undefined
-      ? {}
-      : { nextPromotionRef: body.nextPromotionRef }),
-  })
+  await requireScope(
+    dependencies,
+    request,
+    env,
+    'forge:queue:write',
+    body.tenantRef,
+  )
+  const queueSnapshot = await dependencies
+    .makeStore(env)
+    .recordMergeQueueLedger({
+      tenantRef: body.tenantRef,
+      queueRef: body.queueRef,
+      baseHead: body.baseHead,
+      actualHead: body.actualHead,
+      virtualHead: body.virtualHead,
+      state: body.state,
+      ready: body.ready,
+      blocked: body.blocked,
+      sourceRefs: body.sourceRefs ?? [],
+      nowIso: routeNowIso(dependencies),
+      ...(body.nextPromotionRef === undefined
+        ? {}
+        : { nextPromotionRef: body.nextPromotionRef }),
+    })
 
   return noStoreJsonResponse({ queueSnapshot }, { status: 201 })
 }
@@ -585,7 +666,13 @@ const routeVerificationReceipts = async <Bindings>(
 
   if (request.method === 'GET') {
     const tenantRef = tenantRefFromQuery(url)
-    await requireScope(dependencies, request, env, 'forge:change:read', tenantRef)
+    await requireScope(
+      dependencies,
+      request,
+      env,
+      'forge:change:read',
+      tenantRef,
+    )
     const limit = limitFromQuery(url)
     return noStoreJsonResponse({
       limit,
@@ -603,7 +690,13 @@ const routeVerificationReceipts = async <Bindings>(
   }
 
   const receipt = await decodeBody(request, ForgeVerificationReceipt)
-  await requireScope(dependencies, request, env, 'forge:receipt:write', receipt.tenant_ref)
+  await requireScope(
+    dependencies,
+    request,
+    env,
+    'forge:receipt:write',
+    receipt.tenant_ref,
+  )
   const verificationReceipt = await store.recordVerificationReceipt(
     receipt,
     routeNowIso(dependencies),
@@ -622,7 +715,13 @@ const routePromotionDecisions = async <Bindings>(
 
   if (request.method === 'GET') {
     const tenantRef = tenantRefFromQuery(url)
-    await requireScope(dependencies, request, env, 'forge:queue:read', tenantRef)
+    await requireScope(
+      dependencies,
+      request,
+      env,
+      'forge:queue:read',
+      tenantRef,
+    )
     const limit = limitFromQuery(url)
     return noStoreJsonResponse({
       limit,
@@ -647,6 +746,77 @@ const routePromotionDecisions = async <Bindings>(
     'forge:promotion:decide',
     receipt.tenant_ref,
   )
+  const canonicalStore = dependencies.makeCanonicalStore(env)
+  const defaultBranch = await canonicalStore.readRef(
+    receipt.tenant_ref,
+    OPENAGENTS_FORGE_REPOSITORY_REF,
+    OPENAGENTS_DEFAULT_BRANCH_REF,
+  )
+
+  if (receipt.decision === 'approved') {
+    if (defaultBranch?.state !== 'active' || defaultBranch.object_id === null) {
+      throw new ForgeControlPlaneHttpError(
+        409,
+        'forge_promotion_canonical_ref_unavailable',
+        'Forge cannot approve promotion without an active canonical target ref.',
+      )
+    }
+    const plan = planForgePromotionQueue({
+      actualHead: defaultBranch.object_id,
+      changes: await store.listChanges(receipt.tenant_ref, 100),
+      issues: await store.listIssues(receipt.tenant_ref, 100),
+      statuses: await store.listStatuses(receipt.tenant_ref, 100),
+      verifications: await store.listVerificationReceipts(
+        receipt.tenant_ref,
+        100,
+      ),
+    })
+    const next = plan.nextActualPromotion
+    if (
+      next === null ||
+      receipt.promotion_ref !== next.promotionRef ||
+      receipt.change_ref !== next.changeRef ||
+      receipt.queue_ref !== OPENAGENTS_FORGE_QUEUE_REF ||
+      receipt.queue_position !== next.queuePosition ||
+      receipt.base_head !== next.baseHead ||
+      receipt.candidate_head !== next.candidateHead ||
+      receipt.promoted_head !== next.candidateHead ||
+      receipt.verification_ref !== next.verificationRef ||
+      receipt.blocker_refs.length !== 0
+    ) {
+      throw new ForgeControlPlaneHttpError(
+        409,
+        'forge_promotion_decision_not_next_actual_promotion',
+        'Approved Forge promotion decisions must match the computed nextActualPromotion.',
+      )
+    }
+
+    await canonicalStore.importExternalRef({
+      changeRef: receipt.change_ref,
+      objectFormat: receipt.candidate_head.length === 40 ? 'sha1' : 'sha256',
+      objectId: receipt.candidate_head,
+      packfileRef: `packfile.forge.promotion.${receipt.promotion_ref.slice(-24)}`,
+      receivePackRef: `receive-pack.forge.promotion.${receipt.promotion_ref.slice(-24)}`,
+      refName: OPENAGENTS_DEFAULT_BRANCH_REF,
+      repositoryRef: OPENAGENTS_FORGE_REPOSITORY_REF,
+      sourceDigestSha256: await sha256Hex(
+        JSON.stringify({
+          baseHead: receipt.base_head,
+          candidateHead: receipt.candidate_head,
+          promotionRef: receipt.promotion_ref,
+          queueRef: receipt.queue_ref,
+        }),
+      ),
+      sourceRefs: [
+        ...receipt.source_refs,
+        'issue.public.github.OpenAgentsInc.openagents.6794',
+        'forge.promotion.fast_forward.canonical_ref',
+      ],
+      tenantRef: receipt.tenant_ref,
+      nowIso: routeNowIso(dependencies),
+    })
+  }
+
   const promotionDecision = await store.recordPromotionDecisionReceipt(
     receipt,
     routeNowIso(dependencies),
@@ -725,7 +895,9 @@ const routeRefs = async <Bindings>(
       state: optionalQuery(url, 'state') === 'deleted' ? 'deleted' : 'active',
     })
   return noStoreJsonResponse({
-    defaultBranch: refs.find(ref => ref.ref_name === OPENAGENTS_DEFAULT_BRANCH_REF),
+    defaultBranch: refs.find(
+      ref => ref.ref_name === OPENAGENTS_DEFAULT_BRANCH_REF,
+    ),
     defaultBranchRef: OPENAGENTS_DEFAULT_BRANCH_REF,
     limit: limitFromQuery(url),
     refs,
@@ -748,7 +920,13 @@ const routeOpenAgentsImport = async <Bindings>(
   if (request.method !== 'POST') {
     return methodNotAllowed(['POST'])
   }
-  await requireScope(dependencies, request, env, 'forge:admin', OPENAGENTS_FORGE_TENANT_REF)
+  await requireScope(
+    dependencies,
+    request,
+    env,
+    'forge:admin',
+    OPENAGENTS_FORGE_TENANT_REF,
+  )
   const body = await decodeBody(request, ForgeOpenAgentsImportRequest)
   if (
     body.tenantRef !== OPENAGENTS_FORGE_TENANT_REF ||
@@ -810,10 +988,7 @@ const routeOpenAgentsImport = async <Bindings>(
 export const makeForgeControlPlaneRoutes = <Bindings>(
   dependencies: ForgeControlPlaneRouteDependencies<Bindings>,
 ) => ({
-  routeForgeControlPlaneRequest(
-    request: Request,
-    env: Bindings,
-  ) {
+  routeForgeControlPlaneRequest(request: Request, env: Bindings) {
     const url = new URL(request.url)
 
     if (
@@ -827,18 +1002,16 @@ export const makeForgeControlPlaneRoutes = <Bindings>(
     const route = segments.slice(2)
 
     if (route.length === 1 && route[0] === 'work-records') {
-      return routeEffect(() => routeWorkRecords(dependencies, request, env, url))
+      return routeEffect(() =>
+        routeWorkRecords(dependencies, request, env, url),
+      )
     }
 
     if (route.length === 1 && route[0] === 'changes') {
       return routeEffect(() => routeChanges(dependencies, request, env, url))
     }
 
-    if (
-      route.length === 3 &&
-      route[0] === 'changes' &&
-      route[2] === 'status'
-    ) {
+    if (route.length === 3 && route[0] === 'changes' && route[2] === 'status') {
       return routeEffect(() =>
         routeChangeStatus(dependencies, request, env, route[1] ?? ''),
       )
@@ -860,7 +1033,11 @@ export const makeForgeControlPlaneRoutes = <Bindings>(
       return routeEffect(() => routeRefs(dependencies, request, env, url))
     }
 
-    if (route.length === 2 && route[0] === 'queue' && route[1] === 'snapshots') {
+    if (
+      route.length === 2 &&
+      route[0] === 'queue' &&
+      route[1] === 'snapshots'
+    ) {
       return routeEffect(() => routeQueueSnapshots(dependencies, request, env))
     }
 

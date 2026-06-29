@@ -1,11 +1,10 @@
 import { readFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
-
 import { describe, expect, test } from 'vitest'
 
 import {
-  makeD1ForgeCoordinationStore,
   type ForgeCoordinationStore,
+  makeD1ForgeCoordinationStore,
 } from './forge-coordination-store'
 
 class SqliteD1Statement {
@@ -28,7 +27,9 @@ class SqliteD1Statement {
 
   async all<T = Record<string, unknown>>(): Promise<{ results: Array<T> }> {
     return {
-      results: this.db.prepare(this.sql).all(...(this.bound as never[])) as Array<T>,
+      results: this.db
+        .prepare(this.sql)
+        .all(...(this.bound as never[])) as Array<T>,
     }
   }
 
@@ -63,11 +64,24 @@ class SqliteD1 {
 }
 
 const coordinationMigration = readFileSync(
-  new URL('../migrations/0251_forge_coordination_source_of_truth.sql', import.meta.url),
+  new URL(
+    '../migrations/0251_forge_coordination_source_of_truth.sql',
+    import.meta.url,
+  ),
   'utf8',
 )
 const controlPlaneReceiptsMigration = readFileSync(
-  new URL('../migrations/0254_forge_control_plane_receipts.sql', import.meta.url),
+  new URL(
+    '../migrations/0254_forge_control_plane_receipts.sql',
+    import.meta.url,
+  ),
+  'utf8',
+)
+const promotionQueuePositionMigration = readFileSync(
+  new URL(
+    '../migrations/0256_forge_promotion_queue_position.sql',
+    import.meta.url,
+  ),
   'utf8',
 )
 
@@ -76,6 +90,7 @@ const makeStore = (): ForgeCoordinationStore => {
   db.exec('PRAGMA foreign_keys = ON')
   db.exec(coordinationMigration)
   db.exec(controlPlaneReceiptsMigration)
+  db.exec(promotionQueuePositionMigration)
   return makeD1ForgeCoordinationStore(new SqliteD1(db) as unknown as D1Database)
 }
 
@@ -168,7 +183,9 @@ describe('forge coordination D1 store', () => {
     })
     expect(blocked.acquired).toBe(false)
     if (blocked.acquired) {
-      throw new Error('second lease should not acquire while first lease is active')
+      throw new Error(
+        'second lease should not acquire while first lease is active',
+      )
     }
     expect(blocked.activeLease?.lease_ref).toBe('lease.forge.first')
 
@@ -204,9 +221,9 @@ describe('forge coordination D1 store', () => {
     })
     const latest = await store.readLatestMergeQueueLedger('tenant.openagents')
     expect(latest?.queue_ref).toBe('queue.forge.first')
-    await expect(store.listMergeQueueLedgers('tenant.openagents', 10)).resolves.toEqual([
-      latest,
-    ])
+    await expect(
+      store.listMergeQueueLedgers('tenant.openagents', 10),
+    ).resolves.toEqual([latest])
     expect(JSON.parse(latest?.ready_json ?? '[]')).toEqual([
       { changeRef: 'change.forge.6746' },
     ])
@@ -244,7 +261,11 @@ describe('forge coordination D1 store', () => {
     expect(verificationReceipt.command_args).toEqual(['bun', 'test'])
     expect(verificationReceipt.redacted).toBe(true)
     await expect(
-      store.listVerificationReceipts('tenant.openagents', 10, 'change.forge.6770'),
+      store.listVerificationReceipts(
+        'tenant.openagents',
+        10,
+        'change.forge.6770',
+      ),
     ).resolves.toEqual([verificationReceipt])
 
     const promotionDecision = await store.recordPromotionDecisionReceipt(
@@ -254,6 +275,7 @@ describe('forge coordination D1 store', () => {
         promotion_ref: 'promotion.forge.6770',
         queue_ref: 'queue.forge.main',
         change_ref: 'change.forge.6770',
+        queue_position: 0,
         decision: 'approved',
         base_head: '8e0c9b2eaf84c821caf555cae233a0d27e94d4ab',
         candidate_head: '9e0c9b2eaf84c821caf555cae233a0d27e94d4ac',
@@ -270,7 +292,11 @@ describe('forge coordination D1 store', () => {
     )
     expect(promotionDecision.decision).toBe('approved')
     await expect(
-      store.listPromotionDecisionReceipts('tenant.openagents', 10, 'change.forge.6770'),
+      store.listPromotionDecisionReceipts(
+        'tenant.openagents',
+        10,
+        'change.forge.6770',
+      ),
     ).resolves.toEqual([promotionDecision])
   })
 })

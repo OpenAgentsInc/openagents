@@ -1,7 +1,6 @@
+import { Effect } from 'effect'
 import { readFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
-
-import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import {
@@ -9,12 +8,12 @@ import {
   makeForgeControlPlaneRoutes,
 } from './forge-control-plane-routes'
 import {
-  makeD1ForgeCoordinationStore,
   type ForgeCoordinationStore,
+  makeD1ForgeCoordinationStore,
 } from './forge-coordination-store'
 import {
-  makeD1ForgeGitCanonicalStore,
   type ForgeGitCanonicalStore,
+  makeD1ForgeGitCanonicalStore,
 } from './forge-git-canonical-store'
 
 class SqliteD1Statement {
@@ -37,13 +36,23 @@ class SqliteD1Statement {
 
   async all<T = Record<string, unknown>>(): Promise<{ results: Array<T> }> {
     return {
-      results: this.db.prepare(this.sql).all(...(this.bound as never[])) as Array<T>,
+      results: this.db
+        .prepare(this.sql)
+        .all(...(this.bound as never[])) as Array<T>,
     }
   }
 
-  async run(): Promise<{ success: true; results: []; meta: { changes: number } }> {
+  async run(): Promise<{
+    success: true
+    results: []
+    meta: { changes: number }
+  }> {
     const result = this.db.prepare(this.sql).run(...(this.bound as never[]))
-    return { meta: { changes: Number(result.changes) }, results: [], success: true }
+    return {
+      meta: { changes: Number(result.changes) },
+      results: [],
+      success: true,
+    }
   }
 }
 
@@ -56,15 +65,28 @@ class SqliteD1 {
 }
 
 const coordinationMigration = readFileSync(
-  new URL('../migrations/0251_forge_coordination_source_of_truth.sql', import.meta.url),
+  new URL(
+    '../migrations/0251_forge_coordination_source_of_truth.sql',
+    import.meta.url,
+  ),
   'utf8',
 )
 const controlPlaneReceiptsMigration = readFileSync(
-  new URL('../migrations/0254_forge_control_plane_receipts.sql', import.meta.url),
+  new URL(
+    '../migrations/0254_forge_control_plane_receipts.sql',
+    import.meta.url,
+  ),
   'utf8',
 )
 const canonicalGitMigration = readFileSync(
   new URL('../migrations/0255_forge_git_canonical_store.sql', import.meta.url),
+  'utf8',
+)
+const promotionQueuePositionMigration = readFileSync(
+  new URL(
+    '../migrations/0256_forge_promotion_queue_position.sql',
+    import.meta.url,
+  ),
   'utf8',
 )
 
@@ -77,6 +99,7 @@ const makeStores = (): Readonly<{
   db.exec(coordinationMigration)
   db.exec(controlPlaneReceiptsMigration)
   db.exec(canonicalGitMigration)
+  db.exec(promotionQueuePositionMigration)
   const d1 = new SqliteD1(db) as unknown as D1Database
   return {
     canonicalStore: makeD1ForgeGitCanonicalStore(d1),
@@ -108,16 +131,15 @@ const makeGitHubFetch = (sha: string = githubMainSha): typeof fetch =>
 
 type JsonRequestInit = Omit<RequestInit, 'body'> & Readonly<{ json?: unknown }>
 
-const requestJson = (
-  path: string,
-  init: JsonRequestInit = {},
-): Request =>
+const requestJson = (path: string, init: JsonRequestInit = {}): Request =>
   new Request(`https://openagents.com${path}`, {
     ...init,
     ...(init.json === undefined ? {} : { body: JSON.stringify(init.json) }),
     headers: {
       ...(init.headers ?? {}),
-      ...(init.json === undefined ? {} : { 'content-type': 'application/json' }),
+      ...(init.json === undefined
+        ? {}
+        : { 'content-type': 'application/json' }),
     },
   })
 
@@ -283,9 +305,15 @@ describe('Forge control-plane routes', () => {
     )
     expect(statusResponse.status).toBe(201)
 
-    await expect(store.listIssues('tenant.openagents', 10)).resolves.toHaveLength(1)
-    await expect(store.listChanges('tenant.openagents', 10)).resolves.toHaveLength(1)
-    await expect(store.listStatuses('tenant.openagents', 10)).resolves.toHaveLength(1)
+    await expect(
+      store.listIssues('tenant.openagents', 10),
+    ).resolves.toHaveLength(1)
+    await expect(
+      store.listChanges('tenant.openagents', 10),
+    ).resolves.toHaveLength(1)
+    await expect(
+      store.listStatuses('tenant.openagents', 10),
+    ).resolves.toHaveLength(1)
 
     const listResponse = await run(
       new Request(
@@ -350,13 +378,14 @@ describe('Forge control-plane routes', () => {
           promotion_ref: 'promotion.forge.6770',
           queue_ref: 'queue.forge.main',
           change_ref: 'change.forge.6770',
-          decision: 'approved',
+          queue_position: 0,
+          decision: 'blocked',
           base_head: '8e0c9b2eaf84c821caf555cae233a0d27e94d4ab',
           candidate_head: '9e0c9b2eaf84c821caf555cae233a0d27e94d4ac',
-          promoted_head: '9e0c9b2eaf84c821caf555cae233a0d27e94d4ac',
+          promoted_head: null,
           verification_ref: 'verification.forge.6770',
           gate_refs: ['gate.tests'],
-          blocker_refs: [],
+          blocker_refs: ['forge.promotion.blocked.manual_test'],
           decided_by_ref: 'agent.public.forge',
           decided_at: '2026-06-28T17:03:00.000Z',
           source_refs: ['github:OpenAgentsInc/openagents#6770'],
@@ -391,6 +420,234 @@ describe('Forge control-plane routes', () => {
     expect(decisionsBody.promotionDecisions).toHaveLength(1)
   })
 
+  test('computes nextActualPromotion from Forge rows and advances canonical main only for the computed approved decision', async () => {
+    const { canonicalStore, run } = makeHarness()
+    const scopes = [
+      'forge:admin',
+      'forge:work:write',
+      'forge:change:write',
+      'forge:queue:read',
+      'forge:receipt:write',
+      'forge:promotion:decide',
+    ].join(' ')
+    const A = githubMainSha
+    const B = '2234567890abcdef1234567890abcdef12345678'
+    const C = '3234567890abcdef1234567890abcdef12345678'
+    const D = '4234567890abcdef1234567890abcdef12345678'
+
+    await run(
+      requestJson('/api/forge/admin/import-openagents', {
+        json: {
+          tenantRef: 'tenant.openagents',
+          repositoryRef: 'repo.openagents.openagents',
+        },
+        headers: authHeaders(scopes),
+        method: 'POST',
+      }),
+    )
+
+    for (const [issueNumber, changeRef, title] of [
+      [6794, 'change.forge.6794.a', 'Owned merge authority A'],
+      [6795, 'change.forge.6794.b', 'Owned merge authority B'],
+      [6796, 'change.forge.6794.stale', 'Stale base'],
+      [6797, 'change.forge.6794.delete', 'Deletion poison'],
+    ] as const) {
+      const workResponse = await run(
+        requestJson('/api/forge/work-records', {
+          json: {
+            tenantRef: 'tenant.openagents',
+            issueRef: `issue.forge.${issueNumber}`,
+            githubIssueNumber: issueNumber,
+            title,
+            state: 'open',
+            sourceRefs: [`github:OpenAgentsInc/openagents#${issueNumber}`],
+          },
+          headers: authHeaders(scopes),
+          method: 'POST',
+        }),
+      )
+      expect(workResponse.status).toBe(201)
+
+      const baseHead = issueNumber === 6794 ? A : issueNumber === 6795 ? B : A
+      const patchHead =
+        issueNumber === 6794
+          ? B
+          : issueNumber === 6795
+            ? C
+            : issueNumber === 6796
+              ? D
+              : '5234567890abcdef1234567890abcdef12345678'
+      const verificationRef = `verification.forge.${issueNumber}`
+      const changeResponse = await run(
+        requestJson('/api/forge/changes', {
+          json: {
+            tenantRef: 'tenant.openagents',
+            prRef: `pr.forge.${issueNumber}`,
+            issueRef: `issue.forge.${issueNumber}`,
+            changeRef,
+            state: 'ready',
+            baseHead,
+            patchHead,
+            verificationRef,
+            blockerRefs:
+              issueNumber === 6797
+                ? ['blocker.forge.deletion_poison.protected_path_deleted']
+                : [],
+            sourceRefs: [`github:OpenAgentsInc/openagents#${issueNumber}`],
+          },
+          headers: authHeaders(scopes),
+          method: 'POST',
+        }),
+      )
+      expect(changeResponse.status).toBe(201)
+
+      const verificationResponse = await run(
+        requestJson('/api/forge/verification-receipts', {
+          json: {
+            schema: 'openagents.forge.verification.receipt.v0.1',
+            tenant_ref: 'tenant.openagents',
+            verification_ref: verificationRef,
+            change_ref: changeRef,
+            repository_ref: 'repo.openagents.openagents',
+            base_ref: 'refs/heads/main',
+            base_head: baseHead,
+            head_ref: `refs/heads/forge-${issueNumber}`,
+            head_head: patchHead,
+            packfile_ref: `packfile.forge.${issueNumber}`,
+            packfile_sha256: `sha256:verification-${issueNumber}`,
+            executor_identity_ref: 'agent.public.forge',
+            command_ref:
+              'command.public.pylon_khala.verify.b5bea41b6c623f7c09f1bf24',
+            command_args: [
+              'bun',
+              'run',
+              '--cwd',
+              'apps/openagents.com',
+              'check:deploy',
+            ],
+            exit_code: 0,
+            verdict: 'passed',
+            started_at: now,
+            completed_at: `2026-06-28T17:0${issueNumber - 6793}:00.000Z`,
+            artifact_refs: [`artifact:test-log-${issueNumber}`],
+            log_sha256: `sha256:log-${issueNumber}`,
+            source_refs: [`github:OpenAgentsInc/openagents#${issueNumber}`],
+            redacted: true,
+          },
+          headers: authHeaders(scopes),
+          method: 'POST',
+        }),
+      )
+      expect(verificationResponse.status).toBe(201)
+    }
+
+    const queueResponse = await run(
+      new Request(
+        'https://openagents.com/api/forge/queue?tenantRef=tenant.openagents',
+        { headers: authHeaders(scopes) },
+      ),
+    )
+    const queueBody = (await queueResponse.json()) as {
+      latest: {
+        next_promotion_ref: string
+        ready_json: string
+        blocked_json: string
+        virtual_head: string
+      }
+    }
+    const ready = JSON.parse(queueBody.latest.ready_json) as Array<{
+      changeRef: string
+      promotionRef: string
+      queuePosition: number
+      verificationRef: string
+    }>
+    const blocked = JSON.parse(queueBody.latest.blocked_json) as Array<{
+      blockedReasonRef: string
+      changeRef: string
+    }>
+
+    expect(queueResponse.status).toBe(200)
+    expect(ready.map(entry => entry.changeRef)).toEqual([
+      'change.forge.6794.a',
+      'change.forge.6794.b',
+    ])
+    expect(queueBody.latest.next_promotion_ref).toBe(ready[0]?.promotionRef)
+    expect(queueBody.latest.virtual_head).toBe(C)
+    expect(blocked.map(entry => entry.blockedReasonRef)).toEqual([
+      'forge.promotion.blocked.stale-base',
+      'forge.promotion.blocked.deletion-poison-guard',
+    ])
+
+    const staleApproval = await run(
+      requestJson('/api/forge/promotion-decisions', {
+        json: {
+          schema: 'openagents.forge.promotion.decision.v0.1',
+          tenant_ref: 'tenant.openagents',
+          promotion_ref: ready[1]?.promotionRef,
+          queue_ref: 'queue.forge.openagents.main',
+          change_ref: 'change.forge.6794.b',
+          queue_position: ready[1]?.queuePosition,
+          decision: 'approved',
+          base_head: B,
+          candidate_head: C,
+          promoted_head: C,
+          verification_ref: ready[1]?.verificationRef,
+          gate_refs: ['gate.forge.merge-deploy-gate'],
+          blocker_refs: [],
+          decided_by_ref: 'forge.control-plane.service',
+          decided_at: '2026-06-28T17:10:00.000Z',
+          source_refs: ['github:OpenAgentsInc/openagents#6794'],
+          redacted: true,
+        },
+        headers: authHeaders(scopes),
+        method: 'POST',
+      }),
+    )
+    expect(staleApproval.status).toBe(409)
+
+    const approved = ready[0]!
+    const approvalResponse = await run(
+      requestJson('/api/forge/promotion-decisions', {
+        json: {
+          schema: 'openagents.forge.promotion.decision.v0.1',
+          tenant_ref: 'tenant.openagents',
+          promotion_ref: approved.promotionRef,
+          queue_ref: 'queue.forge.openagents.main',
+          change_ref: approved.changeRef,
+          queue_position: approved.queuePosition,
+          decision: 'approved',
+          base_head: A,
+          candidate_head: B,
+          promoted_head: B,
+          verification_ref: approved.verificationRef,
+          gate_refs: [
+            'gate.forge.merge-deploy-gate',
+            'gate.forge.issue-close-safe',
+            'gate.forge.command-execution-source-verified',
+            'gate.forge.operator-grounded-assertion',
+            'gate.forge.deletion-poison-guard',
+          ],
+          blocker_refs: [],
+          decided_by_ref: 'forge.control-plane.service',
+          decided_at: '2026-06-28T17:11:00.000Z',
+          source_refs: ['github:OpenAgentsInc/openagents#6794'],
+          redacted: true,
+        },
+        headers: authHeaders(scopes),
+        method: 'POST',
+      }),
+    )
+    expect(approvalResponse.status).toBe(201)
+
+    await expect(
+      canonicalStore.readRef(
+        'tenant.openagents',
+        'repo.openagents.openagents',
+        'refs/heads/main',
+      ),
+    ).resolves.toMatchObject({ object_id: B })
+  })
+
   test('imports the public OpenAgents main ref into canonical refs idempotently', async () => {
     const { canonicalStore, run } = makeHarness()
     const headers = authHeaders('forge:admin forge:change:read')
@@ -409,7 +666,11 @@ describe('Forge control-plane routes', () => {
     const firstBody = (await firstResponse.json()) as {
       changed: boolean
       defaultBranch: { ref_name: string; object_id: string }
-      import: { tenantRef: string; repositoryRef: string; defaultBranchRef: string }
+      import: {
+        tenantRef: string
+        repositoryRef: string
+        defaultBranchRef: string
+      }
     }
 
     expect(firstResponse.status).toBe(201)
@@ -436,7 +697,10 @@ describe('Forge control-plane routes', () => {
     expect(secondBody.changed).toBe(false)
 
     await expect(
-      canonicalStore.listRefs('tenant.openagents', 'repo.openagents.openagents'),
+      canonicalStore.listRefs(
+        'tenant.openagents',
+        'repo.openagents.openagents',
+      ),
     ).resolves.toHaveLength(1)
 
     const refsResponse = await run(
