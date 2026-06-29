@@ -33,3 +33,12 @@ arguments. It returns numbered, bounded model output and structured UI line
 metadata. Image-like files are not read as text; the tool returns a `view_image`
 hint instead. Credential-shaped paths, device files, sockets, pipes, directories,
 and denied workspace escapes are blocked before bytes are returned.
+
+### `ls`
+
+`ls` lists one directory page. It accepts an optional workspace-relative or
+approved absolute/external `path` and optional `limit`. Entries are sorted
+case-insensitively, dotfiles are included, directories end in `/`, and empty
+directories are successful results. The tool returns bounded model output plus
+structured UI entries; denied workspace escapes and credential-shaped directory
+paths are blocked before listing.
