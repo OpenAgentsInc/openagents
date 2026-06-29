@@ -419,6 +419,7 @@ export { createReadTool, readToolDefinition } from "./read.js"
 export { createLsTool, lsToolDefinition } from "./ls.js"
 export { createGlobTool, globToolDefinition } from "./glob.js"
 export { createGrepTool, grepToolDefinition } from "./grep.js"
+export { createEditTool, editToolDefinition } from "./edit.js"
 
 function permissionRequestFor(
   definition: KhalaToolDefinition,

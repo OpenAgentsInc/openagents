@@ -60,3 +60,12 @@ structured match counts and truncation metadata.
 falls back to an ignore-aware local walker. Binary files and credential-shaped
 paths are skipped, output is bounded by line, match, byte, and model-text caps,
 and no-match searches succeed with structured empty results.
+
+### `edit`
+
+`edit` performs exact text replacements in one file. It accepts `path` plus an
+`edits` array of `old_text`/`new_text` pairs, with optional `replace_all`.
+Matches are normalized to LF for comparison and written back with the original
+line-ending style and BOM preserved. Ambiguous, missing, stale, whole-file, and
+credential-path edits fail closed; successful edits produce a bounded diff
+preview and request scoped write approval before bytes are changed.
