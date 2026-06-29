@@ -384,7 +384,8 @@ describe('public product promises document', () => {
     // The 2026-06-20.48 agent-MMORPG / agent-world pass adds five new records
     // (autopilot.agent_world_scene.v1, autopilot.bitcoin_payment_visualization.v1,
     // autopilot.pylon_growth_visualization.v1 yellow; autopilot.agent_character_creation.v1,
-    // world.multiplayer_agent_world.v1 planned) and flips NO promise state, so
+    // world.multiplayer_agent_world.v1 planned). The 2026-06-29.4 pass later
+    // advances autopilot.agent_character_creation.v1 to yellow, so
     // green remains exactly 26.
     // The 2026-06-20.49 owner-directed revenue-loop tightening postpones 7
     // marketplace + advanced/research-training promises (yellow/red -> planned)
@@ -455,27 +456,37 @@ describe('public product promises document', () => {
         promise.promiseId === 'autopilot.agent_character_creation.v1',
     )
     expect(agentCharacterCreationPromise).toBeDefined()
-    expect(agentCharacterCreationPromise?.state).toBe('planned')
+    expect(agentCharacterCreationPromise?.state).toBe('yellow')
     expect(agentCharacterCreationPromise?.evidenceRefs).toEqual(
       expect.arrayContaining([
         'https://github.com/OpenAgentsInc/openagents/issues/6861',
+        'apps/autopilot-desktop/src/shared/character-creation-onboarding.ts',
+        'apps/autopilot-desktop/src/shared/character-creation-onboarding.test.ts',
+        'apps/autopilot-desktop/src/shared/onboarding-status.ts',
+        'apps/autopilot-desktop/tests/onboarding-status.test.ts',
+        'apps/autopilot-desktop/src/bun/forum-intro.ts',
+        'apps/autopilot-desktop/tests/forum-intro.test.ts',
+        'apps/autopilot-desktop/src/bun/forum-work-search.ts',
+        'apps/autopilot-desktop/tests/forum-work-search.test.ts',
+        'apps/autopilot-desktop/scripts/auto-onboarding-headless-proof.ts',
+        'apps/autopilot-desktop/scripts/auto-onboarding-e2e-smoke.ts',
         'promise:autopilot.agent_world_scene.v1',
         'promise:labor.forum_work_requests.v1',
       ]),
     )
     expect(agentCharacterCreationPromise?.blockerRefs).toEqual([
-      'blocker.product_promises.agent_character_creation_not_built',
-      'blocker.product_promises.agent_character_creation_auto_forum_intro_unproven',
-      'blocker.product_promises.agent_character_creation_auto_work_search_unproven',
+      'blocker.product_promises.agent_character_creation_live_new_user_receipt_missing',
+      'blocker.product_promises.agent_character_creation_permissioned_forum_intro_receipt_missing',
+      'blocker.product_promises.agent_character_creation_green_owner_review_pending',
     ])
     expect(agentCharacterCreationPromise?.safeCopy).toContain(
-      'The closure gate is receipt-first',
+      'source-level Autopilot Desktop evidence',
     )
     expect(agentCharacterCreationPromise?.verification).toContain(
-      'a demonstrated automated work-search step covered by tests',
+      'postForumIntroduction posts one idempotent, rate-capped Forum introduction',
     )
     expect(agentCharacterCreationPromise?.safeCopy).toContain(
-      'It is not a shipped onboarding flow',
+      'not a green/default-on live-production claim',
     )
     const openMarketsPromise = decoded.promises.find(
       promise => promise.promiseId === 'markets.open_protocol_markets.v1',
@@ -565,24 +576,31 @@ describe('public product promises document', () => {
       promise =>
         promise.promiseId === 'autopilot.agent_character_creation.v1',
     )
-    expect(repeatedAgentCharacterCreationPromise?.state).toBe('planned')
+    expect(repeatedAgentCharacterCreationPromise?.state).toBe('yellow')
     expect(repeatedAgentCharacterCreationPromise?.evidenceRefs).toEqual(
       expect.arrayContaining([
         'https://github.com/OpenAgentsInc/openagents/issues/6861',
+        'apps/autopilot-desktop/src/shared/character-creation-onboarding.ts',
+        'apps/autopilot-desktop/src/shared/character-creation-onboarding.test.ts',
+        'apps/autopilot-desktop/src/bun/forum-intro.ts',
+        'apps/autopilot-desktop/tests/forum-intro.test.ts',
+        'apps/autopilot-desktop/src/bun/forum-work-search.ts',
+        'apps/autopilot-desktop/tests/forum-work-search.test.ts',
+        'apps/autopilot-desktop/scripts/auto-onboarding-e2e-smoke.ts',
         'promise:autopilot.agent_world_scene.v1',
         'promise:labor.forum_work_requests.v1',
       ]),
     )
     expect(repeatedAgentCharacterCreationPromise?.blockerRefs).toEqual([
-      'blocker.product_promises.agent_character_creation_not_built',
-      'blocker.product_promises.agent_character_creation_auto_forum_intro_unproven',
-      'blocker.product_promises.agent_character_creation_auto_work_search_unproven',
+      'blocker.product_promises.agent_character_creation_live_new_user_receipt_missing',
+      'blocker.product_promises.agent_character_creation_permissioned_forum_intro_receipt_missing',
+      'blocker.product_promises.agent_character_creation_green_owner_review_pending',
     ])
     expect(repeatedAgentCharacterCreationPromise?.safeCopy).toContain(
-      'It is not a shipped onboarding flow.',
+      'This is not a green/default-on live-production claim',
     )
     expect(repeatedAgentCharacterCreationPromise?.unsafeCopy).toContain(
-      'Do not say character-creation onboarding is live',
+      'Do not say character-creation onboarding is green',
     )
     const currentCopy = [
       decoded.currentMonorepoStatus.summary,
@@ -595,6 +613,10 @@ describe('public product promises document', () => {
     expect(currentCopy).toContain('Pylon v1.0 has a stable source cut')
     expect(currentCopy).toContain('Registry 2026-06-29.2')
     expect(currentCopy).toContain('Registry 2026-06-29.3')
+    expect(currentCopy).toContain('Registry 2026-06-29.4')
+    expect(currentCopy).toContain(
+      'advances autopilot.agent_character_creation.v1 from planned to yellow',
+    )
     expect(currentCopy).toContain('flips NO promise state')
     expect(currentCopy).toContain('Khala Desktop now carries source-level')
     expect(currentCopy).toContain('owner-scoped /api/operator/fleet/state')
