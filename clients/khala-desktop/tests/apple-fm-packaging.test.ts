@@ -53,6 +53,19 @@ describe("khala desktop Apple FM packaging", () => {
     expect(result.verifiedPath).toContain("Khala-dev.app")
   })
 
+  test("verifier picks the first candidate that ships a usable helper", () => {
+    const stableOnly: AppleFmBridgeProbe = (helperPath) =>
+      helperPath.includes("stable-macos-arm64")
+        ? { exists: true, nonEmpty: true, executable: true }
+        : { exists: false, nonEmpty: false, executable: false }
+
+    const result = verifyPackagedAppleFmBridge({ probe: stableOnly })
+
+    expect(result.ok).toBe(true)
+    expect(result.verifiedEnv).toBe("stable")
+    expect(result.verifiedPath).toContain("Khala.app")
+  })
+
   test("verifier rejects missing, empty, and non-executable helpers", () => {
     const missing = verifyPackagedAppleFmBridge({
       probe: () => ({ exists: false, nonEmpty: false, executable: false }),
@@ -74,5 +87,18 @@ describe("khala desktop Apple FM packaging", () => {
     expect(
       nonExecutable.failures.every((failure) => failure.reason === "helper not executable"),
     ).toBe(true)
+  })
+
+  test("failure reasons carry only structural bundle diagnostics", () => {
+    const result = verifyPackagedAppleFmBridge({
+      probe: () => ({ exists: false, nonEmpty: false, executable: false }),
+    })
+
+    expect(result.ok).toBe(false)
+    for (const failure of result.failures) {
+      expect(failure.bundleDir.startsWith("build/")).toBe(true)
+      expect(failure.reason.includes("/")).toBe(false)
+      expect(failure.reason).not.toContain("foundation-bridge")
+    }
   })
 })
