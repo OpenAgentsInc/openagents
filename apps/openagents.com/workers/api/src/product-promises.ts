@@ -4,7 +4,7 @@ import { currentIsoTimestamp } from './runtime-primitives'
 export const PublicProductPromisesEndpoint = '/api/public/product-promises'
 export const PublicProductPromisesSchemaVersion =
   'openagents.product_promises.v1'
-export const PublicProductPromisesVersion = '2026-06-29.2'
+export const PublicProductPromisesVersion = '2026-06-29.3'
 
 const reportPath = 'https://openagents.com/forum/f/product-promises'
 
@@ -261,6 +261,7 @@ export const publicProductPromisesDocument = () => {
         'Registry 2026-06-28.3 implements #6891 for models.tassadar_percepta_executor.v1 and flips NO promise state. Pylon v1.0 now has a deterministic bounded CPU computation-transform fixture in apps/pylon/src/tassadar-cpu-transform-training.ts that runs one CPU-only optimization step, self-verifies loss improvement, emits receipt.models.tassadar_percepta_executor.cpu_transform_training.cpu_transform_fixture_v1, and keeps realBitcoinMoved:false / settlementState:not_settled. GET /api/public/models/tassadar-percepta-executor/cpu-transform-training-receipts now projects that public-safe receipt alongside the architecture and Artanis distillation dataset inputs, so the old pylon_v03_cpu_transform_training_receipts_missing blocker is replaced by blocker.product_promises.tassadar_cpu_transform_real_settlement_missing and blocker.product_promises.tassadar_cpu_transform_owner_green_signoff_missing. The promise STAYS planned: this is one fixture-scale receipt, not a trained model, not a paid earning path, not model promotion, and not a green transition; any future green flip remains receipt-first and owner-signed per proof.claim_upgrade_receipts.v1.',
         'Registry 2026-06-29.1 implements #6848 for payments.accepted_outcome_economics.v1 and flips NO promise state. The accepted-outcome economics spine now has a dereferenceable contributor accrual bundle at GET /api/public/payments/contributor-accrual-bundle?economicsId=... plus the settlement bundle at GET /api/public/accepted-outcome/settlement/{economicsId}; together they compose a gross-margin receipt, contributor accrual ledger entries, and an eight-state settlement machine from one stored accepted-outcome economics row. Tests prove the ledger and receipt share the same economicsId, reconcile gross margin exactly, reconcile pending_payout to the distributable ledger pool, keep public projections free of internal cents/raw payment material, and surface missing contributor provenance honestly. The old source-level blockers contributor_ledger_missing and gross_margin_receipts_missing are replaced by real_accepted_outcome_receipt_missing and owner_signed_green_transition_missing. The promise STAYS red because source/fixture receipt machinery is not a real accepted outcome carried through a money-moving settlement path, and any future green flip remains receipt-first and owner-signed per proof.claim_upgrade_receipts.v1.',
         'Registry 2026-06-29.2 is a current-main refresh after #6997/#6999/#7001/#7002/#7006 and flips NO promise state. The terminal-agent current-state audit and Codex tool-layer study are now cited as evidence for the Codex/Probe/Pylon runtime direction: current production coding delegation is still Pylon plus external agent SDK lanes and OpenAgents-native terminal tools remain a consolidation task, not a new green claim. The codex-supervisor LOCKOUT replenishment helper can create or reuse three bounded standing issues so owner-capacity supervisors do not idle indefinitely, but it creates no paid labor, payout, settlement, or broad availability claim. The inference router now has GLM own-capacity failover alerting and public-safe fallback telemetry for repeated no-headroom saturation, but the paid gateway still stays red until a dereferenceable paid receipt exists. Khala Desktop now carries source-level Electrobun Apple FM sidecar packaging/readiness plus redaction tests, but Apple FM local mode remains yellow until a signed/notarized from-install smoke with helper supervision exists. The Khala model-mix promise remains live-at-read with maxStalenessSeconds:0; the stale 2-second cache wording is not applied.',
+        'Registry 2026-06-29.3 is a business.coding_quick_win.v1 blocker narrowing pass and flips NO promise state (stays yellow, green count unchanged at 31). The source-level coding quick-win orchestrator and POST /api/public/business/coding-quick-win-pipeline now validate the typed intake -> repo provisioning -> runtime invocation -> delivery -> acceptance -> payment chain into an inert business_quick_win receipt, so blocker.product_promises.business_coding_quick_win_self_serve_missing is removed as stale. The promise remains yellow on blocker.product_promises.business_coding_quick_win_paid_receipt_missing: no real paid customer delivery receipt, revenue claim, settlement, or green transition is created.',
       ],
     },
     promises: [
@@ -4188,13 +4189,18 @@ export const publicProductPromisesDocument = () => {
         claim:
           "A business customer can buy a coding quick win: a written objective is taken into a repository, the customer's verification command is run, and a reviewable change is handed back with verification evidence.",
         safeCopy:
-          'Coding quick wins are available as an operator-assisted business offering. The coding-agent runtime (local Claude/Codex bridge, Probe/Pylon CLI/TUI background execution) and the negotiated forum labor market are live and green, so OpenAgents can take a bounded coding objective and return a diff with verification evidence. Packaging this as a priced intake -> delivery -> accepted-outcome -> receipt business product is operator-assisted today, not self-serve.',
+          'Coding quick wins are available as an operator-assisted business offering, and the source-level self-serve pipeline now models intake -> repo provisioning -> runtime invocation -> delivery -> acceptance -> payment into one inert receipt. The coding-agent runtime and negotiated forum labor market are live and green, so OpenAgents can take a bounded coding objective and return a diff with verification evidence. A real paid customer receipt is still missing, so this is not a green paid-product claim.',
         unsafeCopy:
           'Do not say coding quick wins are a one-click self-serve product, that arbitrary large projects are guaranteed, or that delivery happens without a human review gate and an accepted-outcome check.',
         evidenceRefs: [
           'docs/business/2026-06-20-openagents-business-intake-spec.md',
           'docs/launch/2026-06-19-coding-agent-live-verification.md',
           'docs/labor/2026-06-14-first-negotiated-labor-job-evidence-bundle.md',
+          'docs/launch/vertex-fleet/business.coding_quick_win.v1.md',
+          'apps/openagents.com/workers/api/src/coding-quick-win-pipeline.ts',
+          'apps/openagents.com/workers/api/src/coding-quick-win-pipeline-routes.ts',
+          'apps/openagents.com/workers/api/src/coding-quick-win-pipeline-routes.test.ts',
+          'route:/api/public/business/coding-quick-win-pipeline',
           'promise:pylon.local_claude_agent_bridge.v1',
           'promise:autopilot.codex_probe_pylon_successor.v1',
           'promise:pylon.cli_tui_probe_background.v1',
@@ -4204,11 +4210,10 @@ export const publicProductPromisesDocument = () => {
           'promise:business.intake_quick_win_offering.v1',
         ],
         blockerRefs: [
-          'blocker.product_promises.business_coding_quick_win_self_serve_missing',
           'blocker.product_promises.business_coding_quick_win_paid_receipt_missing',
         ],
         verification:
-          'Yellow inherits its execution evidence from the green coding-agent records (local single-task exec re-verified 2026-06-19, docs/launch/2026-06-19-coding-agent-live-verification.md) and the green negotiated labor market (#4777 settled labor job). True today: OpenAgents can run a bounded coding objective and return a verified diff, operator-assisted. Green requires a packaged, repeatable coding-quick-win business product (priced intake -> delivery -> accepted outcome) with a dereferenceable first paid customer receipt and a receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
+          'Yellow inherits its execution evidence from the green coding-agent records (local single-task exec re-verified 2026-06-19, docs/launch/2026-06-19-coding-agent-live-verification.md) and the green negotiated labor market (#4777 settled labor job). The source-level self-serve orchestrator and POST /api/public/business/coding-quick-win-pipeline now validate the typed intake -> provisioning -> runtime invocation -> delivery -> acceptance -> payment shape into an inert business_quick_win receipt, so the broad self-serve-missing blocker is narrowed. True today: OpenAgents can run a bounded coding objective and return a verified diff, operator-assisted, with the self-serve receipt pipeline modeled in source. Green requires a dereferenceable first paid customer receipt and a receipt-first upgrade per proof.claim_upgrade_receipts.v1.',
         authorityBoundary:
           "A coding quick win delivers a reviewable change with evidence under a human review gate. It grants no auto-merge, deploy, spend, payout, or settlement authority, and accepting an outcome is the customer's decision, not an automatic one.",
       },

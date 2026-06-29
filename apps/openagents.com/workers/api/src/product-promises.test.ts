@@ -459,6 +459,30 @@ describe('public product promises document', () => {
         'apps/pylon/scripts/codex-supervisor/replenishment.test.sh',
       ]),
     )
+    const codingQuickWinPromise = decoded.promises.find(
+      promise => promise.promiseId === 'business.coding_quick_win.v1',
+    )
+    expect(codingQuickWinPromise?.state).toBe('yellow')
+    expect(codingQuickWinPromise?.blockerRefs).not.toContain(
+      'blocker.product_promises.business_coding_quick_win_self_serve_missing',
+    )
+    expect(codingQuickWinPromise?.blockerRefs).toEqual([
+      'blocker.product_promises.business_coding_quick_win_paid_receipt_missing',
+    ])
+    expect(codingQuickWinPromise?.evidenceRefs).toEqual(
+      expect.arrayContaining([
+        'apps/openagents.com/workers/api/src/coding-quick-win-pipeline.ts',
+        'apps/openagents.com/workers/api/src/coding-quick-win-pipeline-routes.ts',
+        'apps/openagents.com/workers/api/src/coding-quick-win-pipeline-routes.test.ts',
+        'route:/api/public/business/coding-quick-win-pipeline',
+      ]),
+    )
+    expect(codingQuickWinPromise?.safeCopy).toContain(
+      'A real paid customer receipt is still missing',
+    )
+    expect(codingQuickWinPromise?.verification).toContain(
+      'inert business_quick_win receipt',
+    )
     const inferenceGatewayPromise = decoded.promises.find(
       promise => promise.promiseId === 'inference.gateway_credits_business.v1',
     )
