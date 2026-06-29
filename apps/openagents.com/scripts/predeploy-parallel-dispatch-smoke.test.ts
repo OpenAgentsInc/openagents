@@ -128,6 +128,7 @@ describe('predeploy parallel dispatch smoke', () => {
     await expect(
       smoke.runPredeployParallelDispatchSmoke({
         approveStagingMutation: true,
+        autoRegisterAgentToken: false,
         fetchImpl,
         parallelism: 5,
         pylonRef: 'pylon.predeploy.test',
@@ -135,6 +136,59 @@ describe('predeploy parallel dispatch smoke', () => {
         token: 'oa_agent_test',
       }),
     ).rejects.toThrow('duplicate_active_assignment')
+  })
+
+  test('self-registers a staging smoke agent on the default staging origin', async () => {
+    const fetchImpl = vi.fn(
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const url = new URL(
+          input instanceof Request ? input.url : String(input),
+        )
+
+        if (url.pathname === '/api/agents/register') {
+          const body = JSON.parse(String(init?.body)) as Record<string, unknown>
+          expect(body.displayName).toBe('Predeploy parallel dispatch smoke')
+          expect(body.slug).toBe('predeploy-smoke-run-auto')
+          return json({
+            credential: { token: 'oa_agent_auto_registered' },
+          })
+        }
+
+        const headers = new Headers(init?.headers)
+        expect(headers.get('authorization')).toBe(
+          'Bearer oa_agent_auto_registered',
+        )
+
+        if (url.pathname === '/api/pylons/register') {
+          return json({ pylon: { pylonRef: 'pylon.predeploy.auto' } })
+        }
+
+        if (url.pathname === '/api/pylons/pylon.predeploy.auto/heartbeat') {
+          return json({ event: { eventKind: 'heartbeat' } })
+        }
+
+        if (url.pathname === '/api/operator/pylons/assignments') {
+          const body = JSON.parse(String(init?.body)) as {
+            assignmentRef: string
+          }
+          return json({ assignment: { assignmentRef: body.assignmentRef } })
+        }
+
+        return json({ error: 'unexpected' }, { status: 404 })
+      },
+    )
+
+    const output = await smoke.runPredeployParallelDispatchSmoke({
+      approveStagingMutation: true,
+      fetchImpl,
+      parallelism: 5,
+      pylonRef: 'pylon.predeploy.auto',
+      runRef: 'run_auto',
+      token: 'oa_agent_wrong_environment',
+    })
+
+    expect(output.ok).toBe(true)
+    expect(fetchImpl).toHaveBeenCalledTimes(8)
   })
 
   test('requires explicit staging mutation approval', async () => {

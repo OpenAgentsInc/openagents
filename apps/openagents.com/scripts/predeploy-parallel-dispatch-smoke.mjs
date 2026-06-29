@@ -75,10 +75,48 @@ const requireOk = async promise => {
 
 const stableAccountKey = index => `6409${String(index).padStart(20, '0')}`
 
+const defaultStagingOrigin = trimBaseUrl(defaultBaseUrl)
+
+const slugPart = value =>
+  String(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48) || 'run'
+
+const registerStagingSmokeAgentToken = async (fetchImpl, baseUrl, runRef) => {
+  const registration = await requireOk(
+    requestJson(fetchImpl, baseUrl, '/api/agents/register', {
+      body: JSON.stringify({
+        displayName: 'Predeploy parallel dispatch smoke',
+        externalId: `predeploy.parallel.dispatch.${runRef}`,
+        metadata: {
+          authority: 'staging_predeploy_parallel_dispatch_smoke',
+          runRef,
+        },
+        slug: `predeploy-smoke-${slugPart(runRef)}`.slice(0, 80),
+      }),
+      headers: {
+        'content-type': 'application/json',
+      },
+      method: 'POST',
+    }),
+  )
+  const token = registration.body?.credential?.token
+  assert(
+    typeof token === 'string' && token.trim() !== '',
+    'Staging smoke agent registration did not return a token.',
+  )
+  return token
+}
+
 export const parseArgs = (argv, env = process.env) => {
   const options = {
     approveStagingMutation: truthy(
       env.OPENAGENTS_PARALLEL_DISPATCH_SMOKE_APPROVE_STAGING_MUTATION,
+    ),
+    autoRegisterAgentToken: !truthy(
+      env.OPENAGENTS_PARALLEL_DISPATCH_SMOKE_DISABLE_AUTO_REGISTER,
     ),
     baseUrl: env.OPENAGENTS_PARALLEL_DISPATCH_SMOKE_BASE_URL || defaultBaseUrl,
     parallelism: Number.parseInt(
@@ -109,6 +147,8 @@ export const parseArgs = (argv, env = process.env) => {
       options.token = argv[++index] || options.token
     } else if (value === '--approve-staging-mutation') {
       options.approveStagingMutation = true
+    } else if (value === '--no-auto-register-agent-token') {
+      options.autoRegisterAgentToken = false
     } else if (value === '--help' || value === '-h') {
       options.help = true
     } else {
@@ -130,10 +170,15 @@ Options:
   --run-ref <ref>                  Public-safe run suffix for idempotency refs.
   --token <token>                  Agent bearer token. Defaults to OPENAGENTS_AGENT_TOKEN.
   --approve-staging-mutation       Required. This creates staging Pylon/assignment rows.
+  --no-auto-register-agent-token   Do not self-register the staging smoke agent.
 
-The smoke registers a staging dummy Pylon, advertises one Codex slot for each
-dummy account hash, then dispatches the no-spend dummy assignments concurrently.
-Any duplicate_active_assignment response fails the deploy gate.
+By default, the smoke self-registers a throwaway agent token when using the
+default staging origin, so a production OPENAGENTS_AGENT_TOKEN cannot poison the
+staging gate. Set OPENAGENTS_PARALLEL_DISPATCH_SMOKE_DISABLE_AUTO_REGISTER=1 or
+pass --no-auto-register-agent-token to force the provided token. The smoke
+registers a staging dummy Pylon, advertises one Codex slot for each dummy account
+hash, then dispatches the no-spend dummy assignments concurrently. Any
+duplicate_active_assignment response fails the deploy gate.
 `
 
 export const buildRegisterBody = pylonRef => ({
@@ -230,6 +275,7 @@ export const buildAssignmentBody = ({ index, pylonRef, runRef }) => {
 
 export const runPredeployParallelDispatchSmoke = async ({
   approveStagingMutation = false,
+  autoRegisterAgentToken = true,
   baseUrl = defaultBaseUrl,
   fetchImpl = globalThis.fetch,
   parallelism = defaultParallelism,
@@ -243,7 +289,7 @@ export const runPredeployParallelDispatchSmoke = async ({
     'Refusing staging mutation smoke without --approve-staging-mutation.',
   )
   assert(
-    token.trim() !== '',
+    token.trim() !== '' || autoRegisterAgentToken,
     'Missing OPENAGENTS_AGENT_TOKEN or --token for staging dispatch smoke.',
   )
   assert(
@@ -260,8 +306,16 @@ export const runPredeployParallelDispatchSmoke = async ({
   )
 
   const origin = trimBaseUrl(baseUrl)
+  const resolvedToken =
+    autoRegisterAgentToken && origin === defaultStagingOrigin
+      ? await registerStagingSmokeAgentToken(fetchImpl, origin, runRef)
+      : token
+  assert(
+    resolvedToken.trim() !== '',
+    'Missing OPENAGENTS_AGENT_TOKEN or --token for staging dispatch smoke.',
+  )
   const authHeaders = {
-    authorization: `Bearer ${token}`,
+    authorization: `Bearer ${resolvedToken}`,
     'content-type': 'application/json',
   }
 
