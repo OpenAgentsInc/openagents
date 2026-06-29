@@ -45,6 +45,7 @@ import {
   type PylonActiveCodingRunAccountCounts,
   type PylonActiveCodingRunCounts,
 } from "./active-assignment-runs.js"
+import { isAccountAvailable, loadQuotaRecord } from "./account-quota-ledger.js"
 
 // The fields of the local wallet probe the heartbeat needs to publish
 // receive-readiness (openagents #5151). A full WalletStatusProjection satisfies
@@ -295,6 +296,7 @@ export async function localCodingServiceReadyCounts(
 // carries a raw account ref, email, or home path.
 export type PylonCodexAccountReadiness = {
   accountRefHash: string
+  blockerRefs?: string[]
   ready: boolean
 }
 
@@ -326,14 +328,23 @@ export async function localCodexAccountReadiness(
   summary: Pick<BootstrapSummary, "paths">,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<PylonCodexAccountReadiness[]> {
-  const readiness = new Map<string, boolean>()
+  const now = new Date()
+  const readiness = new Map<string, PylonCodexAccountReadiness>()
   const registry = await loadPylonAccountRegistry(summary)
   const codexEntries = registry.filter(entry => entry.provider === "codex")
   for (const entry of codexEntries) {
-    readiness.set(
-      hashPylonAccountRef("codex", entry.ref),
-      await codexHomeHasAuth(entry.home),
-    )
+    const accountRefHash = hashPylonAccountRef("codex", entry.ref)
+    const quotaRecord = await loadQuotaRecord(summary, accountRefHash)
+    const hasAuth = await codexHomeHasAuth(entry.home)
+    const quotaAvailable = isAccountAvailable(quotaRecord, now)
+    readiness.set(accountRefHash, {
+      accountRefHash,
+      ready: hasAuth && quotaAvailable,
+      blockerRefs: [
+        ...(hasAuth ? [] : ["blocker.codex_agent.credentials_missing"]),
+        ...(quotaAvailable ? [] : ["blocker.codex_agent.usage_limited"]),
+      ],
+    })
   }
   if (codexEntries.length === 0) {
     const configuredCodexHome = env.CODEX_HOME?.trim()
@@ -341,15 +352,20 @@ export async function localCodexAccountReadiness(
       configuredCodexHome && configuredCodexHome.length > 0
         ? normalizeAccountHome(configuredCodexHome)
         : join(homedir(), ".codex")
-    readiness.set(
-      hashPylonAccountRef("codex", "default"),
-      await codexHomeHasAuth(defaultHome),
-    )
+    const accountRefHash = hashPylonAccountRef("codex", "default")
+    const quotaRecord = await loadQuotaRecord(summary, accountRefHash)
+    const hasAuth = await codexHomeHasAuth(defaultHome)
+    const quotaAvailable = isAccountAvailable(quotaRecord, now)
+    readiness.set(accountRefHash, {
+      accountRefHash,
+      ready: hasAuth && quotaAvailable,
+      blockerRefs: [
+        ...(hasAuth ? [] : ["blocker.codex_agent.credentials_missing"]),
+        ...(quotaAvailable ? [] : ["blocker.codex_agent.usage_limited"]),
+      ],
+    })
   }
-  return [...readiness.entries()].map(([accountRefHash, ready]) => ({
-    accountRefHash,
-    ready,
-  }))
+  return [...readiness.values()]
 }
 
 // Per-account Codex capacity: each ready account advertises `perAccountConcurrency`

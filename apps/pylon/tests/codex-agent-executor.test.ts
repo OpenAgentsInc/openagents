@@ -6,6 +6,7 @@ import { tmpdir } from "node:os"
 import {
   CODEX_AGENT_SUM_REPAIR_FIXTURE_REF,
   CODEX_AGENT_TASK_SCHEMA,
+  classifyCodexExecutionFailure,
   codexAgentTaskFrom,
   effectiveSandboxMode,
   executeCodexAgentAssignment,
@@ -15,6 +16,8 @@ import {
   type CodexAgentRunner,
 } from "../src/codex-agent-executor"
 import { CODEX_AGENT_SDK_PACKAGE } from "../src/codex-agent"
+import { hashPylonAccountRef, type ResolvedPylonAccountSelection } from "../src/account-registry"
+import { loadQuotaRecord } from "../src/account-quota-ledger"
 import type {
   CodexEventChunkReport,
   CodexTurnReport,
@@ -78,6 +81,9 @@ const idleRunner: CodexAgentRunner = async () => ({
   sessionRef: null,
 })
 
+const usageLimitMessage =
+  "Codex turn failed: You've hit your usage limit. Visit https://chatgpt.com/codex/settings/usage to purchase more credits or try again at Jun 14th, 2026 9:58 PM."
+
 async function withState<T>(fn: (state: Awaited<ReturnType<typeof ensurePylonLocalState>>) => Promise<T>) {
   const home = await mkdtemp(join(tmpdir(), "pylon-codex-exec-test-"))
   try {
@@ -90,6 +96,29 @@ async function withState<T>(fn: (state: Awaited<ReturnType<typeof ensurePylonLoc
 }
 
 describe("codex agent task recognition", () => {
+  test("classifies concrete Codex execution failures without retaining raw text", () => {
+    expect(
+      classifyCodexExecutionFailure(
+        new Error("Your access token could not be refreshed because your refresh token was revoked."),
+      ),
+    ).toMatchObject({
+      blockerRef: "blocker.assignment.codex_agent_execution_credentials_revoked",
+      reason: "credentials_revoked",
+    })
+    expect(classifyCodexExecutionFailure(new Error(usageLimitMessage))).toMatchObject({
+      blockerRef: "blocker.assignment.codex_agent_execution_usage_limited",
+      reason: "usage_limited",
+    })
+    expect(classifyCodexExecutionFailure(new Error("429 Too Many Requests"))).toMatchObject({
+      blockerRef: "blocker.assignment.codex_agent_execution_rate_limited",
+      reason: "rate_limited",
+    })
+    expect(classifyCodexExecutionFailure(new Error("WebSocket network failure"))).toMatchObject({
+      blockerRef: "blocker.assignment.codex_agent_execution_network",
+      reason: "network",
+    })
+  })
+
   test("recognizes the typed work class and passes everything else through", async () => {
     expect(codexAgentTaskFrom(codexAgentCodingAssignment)).not.toBeNull()
     expect(codexAgentTaskFrom({ kind: "job.public.tassadar_executor_trace", tassadar: {} })).toBeNull()
@@ -180,9 +209,13 @@ describe("codex agent task recognition", () => {
       const outcomes = [
         { outcome: "workspace_escape_blocked", blocker: "blocker.assignment.codex_agent_workspace_escape_blocked" },
         { outcome: "budget_exceeded", blocker: "blocker.assignment.codex_agent_budget_exceeded" },
-        { outcome: "refused", blocker: "blocker.assignment.codex_agent_execution_refused" },
+        {
+          outcome: "refused",
+          blocker: "blocker.assignment.codex_agent_execution_refused",
+          extraBlocker: "blocker.assignment.codex_agent_execution_other",
+        },
       ] as const
-      for (const { outcome, blocker } of outcomes) {
+      for (const { outcome, blocker, extraBlocker } of outcomes) {
         const runner: CodexAgentRunner = async () => ({
           outcome,
           turnCount: 1,
@@ -195,7 +228,9 @@ describe("codex agent task recognition", () => {
           codexAgentProbe: readyProbe,
         })
         expect(record?.status).toBe("rejected")
-        expect(record?.blockerRefs).toEqual([blocker])
+        expect(record?.blockerRefs).toContain(blocker)
+        if (extraBlocker !== undefined) expect(record?.blockerRefs).toContain(extraBlocker)
+        else expect(record?.blockerRefs).toEqual([blocker])
         assertPublicProjectionSafe(record)
       }
 
@@ -207,7 +242,46 @@ describe("codex agent task recognition", () => {
         codexAgentProbe: readyProbe,
       })
       expect(record?.status).toBe("rejected")
-      expect(record?.blockerRefs).toEqual(["blocker.assignment.codex_agent_execution_refused"])
+      expect(record?.blockerRefs).toContain("blocker.assignment.codex_agent_execution_refused")
+      expect(record?.blockerRefs).toContain("blocker.assignment.codex_agent_execution_other")
+    })
+  })
+
+  test("usage-limit refusals surface the reason and mark the account unavailable", async () => {
+    await withState(async (state) => {
+      const accountRef = "codex-usage-limited"
+      const accountRefHash = hashPylonAccountRef("codex", accountRef)
+      const account: ResolvedPylonAccountSelection = {
+        provider: "codex",
+        selector: "registry_ref",
+        accountRef,
+        accountRefHash,
+        home: join(state.paths.home, "accounts", "codex", accountRef),
+      }
+      const refusingRunner: CodexAgentRunner = async () => ({
+        outcome: "refused",
+        turnCount: 1,
+        editedFileCount: 0,
+        commandCount: 0,
+        sessionRef: null,
+        errorMessage: usageLimitMessage,
+      })
+
+      const record = await executeCodexAgentAssignment(state, lease, now, {
+        account,
+        codexAgentRunner: refusingRunner,
+        codexAgentProbe: readyProbe,
+      })
+
+      expect(record?.status).toBe("rejected")
+      expect(record?.blockerRefs).toContain("blocker.assignment.codex_agent_execution_usage_limited")
+      expect(record?.resultRefs).toContain("result.public.pylon.codex_agent_task.execution_usage_limited")
+      expect(JSON.stringify(record)).not.toContain(usageLimitMessage)
+      const quotaRecord = await loadQuotaRecord(state, accountRefHash)
+      expect(quotaRecord).not.toBeNull()
+      expect(quotaRecord?.provider).toBe("codex")
+      expect(quotaRecord?.sourceDigestRef).toStartWith("diagnostic.pylon.codex_agent_task.execution_error.")
+      assertPublicProjectionSafe(record)
     })
   })
 
