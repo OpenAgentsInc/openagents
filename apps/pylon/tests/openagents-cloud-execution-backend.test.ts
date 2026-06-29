@@ -11,8 +11,11 @@ import {
   type CloudSessionGrantBinding,
 } from "../src/openagents-cloud-provider"
 import {
+  makeCloudControlClient,
+  OPENAGENTS_CODEX_WORKROOM_EVENT_KINDS,
   resolveCloudControlConfig,
   type CloudWorkroomEvent,
+  type CloudWorkroomEventKind,
 } from "../src/cloud-control-client"
 
 // #4997: faked cloud control plane over `fetch`. It records the calls Pylon
@@ -150,6 +153,109 @@ const GRANT_BINDING: CloudSessionGrantBinding = {
 }
 
 describe("OpenAgents Cloud execution backend (#4997)", () => {
+  test("cloud HTTP client round-trips every codex_workroom_event.v1 kind", async () => {
+    const rawEvents = OPENAGENTS_CODEX_WORKROOM_EVENT_KINDS.map((kind) => {
+      const base = {
+        summary: `summary for ${kind}`,
+        artifactRefs: kind === "artifact" ? [`artifact.${kind}`] : undefined,
+        receiptRefs:
+          kind === "receipt" || kind === "cloud.gce.resource_usage_receipt"
+            ? [`receipt.${kind}`]
+            : undefined,
+      }
+      switch (kind) {
+        case "cloud.gce.provisioned":
+          return { ...base, kind: "started", type: kind }
+        case "cloud.gce.cleanup":
+          return { ...base, kind: "cleanup", type: kind }
+        case "cloud.gce.degraded":
+          return { ...base, kind: "log", type: kind }
+        case "cloud.gce.resource_usage_receipt":
+          return { ...base, kind: "receipt", type: kind }
+        default:
+          return { ...base, kind }
+      }
+    })
+    const fakeFetch = (async () =>
+      Response.json({
+        status: "running",
+        events: rawEvents,
+        cursor: rawEvents.length,
+      })) as unknown as typeof fetch
+
+    const client = makeCloudControlClient(
+      { baseUrl: "https://cloud.example", bearerToken: "test-token" },
+      fakeFetch,
+    )
+    const page = await client.fetchEvents("external-run", 0)
+
+    expect(page.events.map((event) => event.kind)).toEqual(
+      [...OPENAGENTS_CODEX_WORKROOM_EVENT_KINDS],
+    )
+    expect(page.events.every((event) => event.summary === `summary for ${event.kind}`)).toBe(true)
+    expect(page.events.find((event) => event.kind === "artifact")?.artifactRefs).toEqual([
+      "artifact.artifact",
+    ])
+    expect(page.events.find((event) => event.kind === "receipt")?.receiptRefs).toEqual([
+      "receipt.receipt",
+    ])
+    expect(
+      page.events.find((event) => event.kind === "cloud.gce.resource_usage_receipt")
+        ?.receiptRefs,
+    ).toEqual(["receipt.cloud.gce.resource_usage_receipt"])
+  })
+
+  test("cloud HTTP client rejects unknown workroom event kinds instead of inventing phases", async () => {
+    const fakeFetch = (async () =>
+      Response.json({
+        status: "running",
+        events: [
+          { kind: "log", summary: "valid event" },
+          { kind: "cloud.gce.unknown", summary: "invalid event" },
+          { kind: "made.up.kind", summary: "invalid event" },
+        ],
+        cursor: 3,
+      })) as unknown as typeof fetch
+
+    const client = makeCloudControlClient(
+      { baseUrl: "https://cloud.example", bearerToken: "test-token" },
+      fakeFetch,
+    )
+    const page = await client.fetchEvents("external-run", 0)
+
+    expect(page.events.map((event) => event.kind)).toEqual(["log"])
+  })
+
+  test("cloud.gce.resource alias normalizes to the canonical workroom kind", async () => {
+    const fakeFetch = (async () =>
+      Response.json({
+        status: "running",
+        events: [
+          {
+            kind: "receipt",
+            type: "cloud.gce.resource",
+            summary: "resource alias",
+            receiptRefs: ["receipt.alias"],
+          },
+        ],
+        cursor: 1,
+      })) as unknown as typeof fetch
+
+    const client = makeCloudControlClient(
+      { baseUrl: "https://cloud.example", bearerToken: "test-token" },
+      fakeFetch,
+    )
+    const page = await client.fetchEvents("external-run", 0)
+
+    expect(page.events).toEqual([
+      {
+        kind: "cloud.gce.resource_usage_receipt" satisfies CloudWorkroomEventKind,
+        summary: "resource alias",
+        receiptRefs: ["receipt.alias"],
+      },
+    ])
+  })
+
   test("resolveCloudControlConfig gates on neutral env (off by default)", () => {
     expect(resolveCloudControlConfig({}).configured).toBe(false)
     expect(
