@@ -1,5 +1,47 @@
 # After-Action: Codex Fleet Throughput Collapse + Recovery — 2026-06-28/29
 
+## ⇨ HANDOFF: do this next, in priority order
+
+The single proven fact: **dispatch (create lease) and execute (`assignment
+run-no-spend`) are separate; the executor was missing.** Firing 12 concurrent
+runners took codex 1→9 instantly. There is NO hardware/account ceiling at ~5 —
+that earlier conclusion was wrong.
+
+1. **Build a standing RUNNER POOL (highest leverage).** A supervised service that
+   keeps M (start 12-20) concurrent `bun apps/pylon/src/index.ts assignment
+   run-no-spend` workers alive (respawn on exit), using the **standing pylon's own
+   token** (`grep oa_agent_ ~/.pylon-fable/bin/standing-pylon.sh`), with
+   `OPENAI_API_KEY`/`CODEX_API_KEY` UNSET. It only EXECUTES existing leases — it
+   does not dispatch — so it never contends (no 409). This is the durable version
+   of the ad-hoc loop that worked. Make it part of the supervisor or a sibling
+   `apps/pylon/scripts/codex-supervisor/runner-pool.sh`.
+2. **Fix the supervisor backoff (#6987):** treat transient `503`/`500`/`409`
+   (D1 read flakes) as fast-retry (≤2s), NOT 15-300s backoff. The backoff on
+   transient flakes is what collapses concurrency. Also: stale-lease closeout on
+   startup, claim GC, never claim epics/standing-tasks.
+3. **Server-side gate D1-read resilience:** the gate's "linked owner registration
+   read" + "linked Pylon capacity read" 503/500 intermittently — add retry/cache
+   so a D1 blip returns valid capacity instead of failing dispatch.
+4. **Token discipline:** the supervisor/runners MUST use the pylon's own token
+   (the one that publishes presence). A mismatch → "heartbeat stale".
+5. **Deploy the Artanis fix** (`2d46d808`, fail-soft operator chat) — needs a prod
+   Worker deploy to take effect.
+6. **Bound the Vertex/Khala burn** so it can never overload D1 and starve codex
+   dispatch (codex ≈90% of tokens, burn ≈1.6%). My 16-burn "max burn" took codex
+   down — do not repeat.
+7. **Offload to more machines** (`archlinux` 100.108.56.85, `imac-pro-bertha`
+   100.97.233.57 — both online on the Tailnet; reach via Tailscale SSH, run codex
+   with `bash -ic`). One Mac + 5 accounts is not the path to tens; runner pools on
+   multiple machines is.
+
+**Do NOT:** reflex-restart the supervisor (stale 5-min leases poison the gate);
+fire large one-off dispatch batches (herd fills the gate with unrun leases);
+run unbounded Vertex burns (D1 overload). Watch `clients/openagents-desktop`
+(the live fleet dashboard) for ground truth.
+
+---
+
+
 Author: Claude-main (overseer). Window: ~evening of 2026-06-28 CT. Repo:
 `OpenAgentsInc/openagents`. Honest, no-theater account of a throughput collapse
 that was **mostly self-inflicted by the overseer (me)**, the real root causes,
