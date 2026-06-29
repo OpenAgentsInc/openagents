@@ -10404,7 +10404,7 @@ const dispatchFailureTelemetry = makeBoundedDispatchFailureTelemetry({
 const glmOwnCapacityFailover = makeGlmOwnCapacityFailover({
   failureThreshold: 3,
   isRecovered: () =>
-    latestHydraliskGlm52RouteAdmission?.reservedExternalHeadroomAvailable ===
+    latestHydraliskGlm52RouteAdmission?.internalStressHeadroomAvailable ===
     true,
   onAlert: event => {
     logWorkerRouteWarning('glm_own_capacity_failover_alert', {
