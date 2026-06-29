@@ -1057,7 +1057,7 @@ const historyChartHeading = (live: boolean, label: string): Html => {
   return h.div(
     [
       Ui.className<Message>(
-        'flex items-center gap-2 text-[0.66rem] uppercase leading-none tracking-[0.08em] text-white/45',
+        'flex items-center gap-2 text-[0.78rem] uppercase leading-none tracking-[0.08em] text-white/55',
       ),
     ],
     [
@@ -1089,7 +1089,7 @@ const historyChartShell = (
     [
       h.DataAttribute('chart', 'khala-tokens-served-history'),
       Ui.className<Message>(
-        'flex flex-col gap-3 border border-[#242424] bg-[#030303] px-4 py-5',
+        'flex h-full flex-col gap-3 border border-[#242424] bg-[#030303] px-4 py-5',
       ),
     ],
     [
@@ -1535,13 +1535,17 @@ const historyChartBars = (
   }`
 
   return h.div(
-    [h.Role('img'), h.AriaLabel(ariaLabel)],
+    [
+      h.Role('img'),
+      h.AriaLabel(ariaLabel),
+      Ui.className<Message>('flex min-h-0 grow flex-col'),
+    ],
     [
       h.ul(
         [
           h.Attribute('style', gridStyle),
           Ui.className<Message>(
-            'm-0 grid list-none gap-2 p-0 [overflow:visible]',
+            'm-0 grid min-h-0 grow list-none gap-2 p-0 [grid-auto-rows:minmax(0,1fr)] [overflow:visible]',
           ),
         ],
         series.map(point => {
@@ -1566,13 +1570,15 @@ const historyChartBars = (
                 pointProjection === undefined ? 'none' : 'end-of-day',
               ),
               h.Attribute('title', title),
-              Ui.className<Message>('grid min-w-0 grid-rows-[9.25rem_auto]'),
+              Ui.className<Message>(
+                'grid min-h-0 min-w-0 grid-rows-[minmax(9.25rem,1fr)_auto]',
+              ),
             ],
             [
               h.div(
                 [
                   Ui.className<Message>(
-                    'flex h-[9.25rem] min-w-0 items-end border-b border-[#242424]',
+                    'flex h-full min-h-[9.25rem] min-w-0 items-end border-b border-[#242424]',
                   ),
                 ],
                 [

@@ -313,8 +313,8 @@ describe('Khala Tokens Served history chart (#6227)', () => {
     expect(markup).toContain(
       'grid-template-columns: repeat(6, minmax(0, 1fr));',
     )
-    expect(markup).toContain('grid-rows-[9.25rem_auto]')
-    expect(markup).toContain('h-[9.25rem]')
+    expect(markup).toContain('grid-rows-[minmax(9.25rem,1fr)_auto]')
+    expect(markup).toContain('min-h-[9.25rem]')
     expect(markup).toContain('"data-projection":"end-of-day"')
     expect(markup).toContain('"data-projected-tokens":"24613953"')
     expect(markup).toContain('repeating-linear-gradient(135deg')
