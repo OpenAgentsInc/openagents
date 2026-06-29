@@ -116,6 +116,20 @@ describe('buildMirrorCodeRun', () => {
     expect(built.summary).toContain('Owner-gated MirrorCode launch queued')
   })
 
+  test('rejects owner-gated launch intents outside the smoke S bucket', () => {
+    expect(() =>
+      buildMirrorCodeLaunchRun(
+        {
+          kind: 'launch',
+          taskId: 'ruff',
+          bucket: 'L',
+          language: 'python',
+        },
+        '2026-06-27T02:03:04.000Z',
+      ),
+    ).toThrow(MirrorCodeRunError)
+  })
+
   test('rejects an owner-gated launch for an unknown public target', () => {
     expect(() =>
       buildMirrorCodeLaunchRun(
@@ -222,12 +236,24 @@ describe('handleMirrorCodeRunsApi GET', () => {
     const body = (await response.json()) as {
       schemaVersion: string
       model: string
+      launchPolicy: {
+        mode: string
+        allowedBuckets: ReadonlyArray<string>
+        publicTargetsByBucket: { S: ReadonlyArray<string> }
+        maxTokensPerRun: number
+        maxWallClockSeconds: number
+      }
       runs: ReadonlyArray<{ runId: string }>
       comparators: ReadonlyArray<{ source: string }>
       staleness: { composition: string }
     }
     expect(body.schemaVersion).toBe('openagents.gym.mirrorcode_runs.v1')
     expect(body.model).toBe('openagents/khala')
+    expect(body.launchPolicy.mode).toBe('owner_gated_smoke')
+    expect(body.launchPolicy.allowedBuckets).toEqual(['S'])
+    expect(body.launchPolicy.publicTargetsByBucket.S).toContain('qsv_select')
+    expect(body.launchPolicy.maxTokensPerRun).toBe(50_000_000)
+    expect(body.launchPolicy.maxWallClockSeconds).toBe(21_600)
     expect(body.runs[0]?.runId).toBe('mc-phase0-cal-py-0001')
     expect(body.comparators.length).toBeGreaterThan(0)
     expect(
@@ -488,6 +514,35 @@ describe('handleMirrorCodeRunsApi POST', () => {
     expect(stored).toBe(0)
     const body = (await response.json()) as { reason: string }
     expect(body.reason).toContain('launch intents are smoke-only')
+  })
+
+  test('authorized POST rejects non-S launch intents without storing', async () => {
+    let stored = 0
+    const response = await run(
+      handleMirrorCodeRunsApi(
+        postRequest({
+          kind: 'launch',
+          taskId: 'ruff',
+          bucket: 'L',
+          language: 'python',
+        }),
+        {
+          requireAdminApiToken: async () => true,
+          nowIso: () => '2026-06-27T02:03:04.000Z',
+          store: {
+            listRuns: () => Effect.succeed([]),
+            getRun: () => Effect.sync(() => undefined),
+            upsertRun: () => Effect.sync(() => {
+              stored += 1
+            }),
+          },
+        },
+      ),
+    )
+    expect(response.status).toBe(400)
+    expect(stored).toBe(0)
+    const body = (await response.json()) as { reason: string }
+    expect(body.reason).toContain('S-bucket public targets only')
   })
 
   test('authorized POST with task contents is rejected 400', async () => {
