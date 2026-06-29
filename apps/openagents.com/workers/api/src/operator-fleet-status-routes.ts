@@ -1,7 +1,7 @@
 import { jsonResponse } from '@openagentsinc/sync-worker'
 
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
-import { parseJsonStringArray } from './json-boundary'
+import { parseJsonRecord, parseJsonStringArray } from './json-boundary'
 import { openAgentsDatabase } from './runtime'
 import { currentIsoTimestamp } from './runtime-primitives'
 
@@ -43,6 +43,12 @@ type AssignmentRow = Readonly<{
   created_at: string
   updated_at: string
   lease_expires_at: string
+}>
+
+type AssignmentProgressRow = Readonly<{
+  assignment_ref: string
+  created_at: string
+  event_body_json: string
 }>
 
 type AlertRow = Readonly<{
@@ -110,6 +116,16 @@ const millisBetween = (startIso: string, endIso: string): number => {
     : 0
 }
 
+const boundedString = (value: unknown, maxLength: number): string | null =>
+  typeof value === 'string' && value.length > 0
+    ? value.slice(0, maxLength)
+    : null
+
+const boundedInteger = (value: unknown): number | null => {
+  const numberValue = typeof value === 'number' ? value : Number.NaN
+  return Number.isFinite(numberValue) ? Math.max(0, Math.trunc(numberValue)) : null
+}
+
 const safeAll = async <T>(
   db: D1Database,
   sql: string,
@@ -162,6 +178,7 @@ const buildFleetStatusSnapshot = async (
   const [
     registrations,
     assignments,
+    assignmentProgressRows,
     providerAccounts,
     latestAlert,
     today,
@@ -192,6 +209,18 @@ const buildFleetStatusSnapshot = async (
           AND state IN ('offered','accepted','running','proof_submitted')
         ORDER BY updated_at DESC
         LIMIT 50`,
+      ...ownerBindings,
+    ),
+    safeAll<AssignmentProgressRow>(
+      db,
+      `SELECT assignment_ref, created_at, event_body_json
+         FROM pylon_api_events
+        WHERE archived_at IS NULL
+          AND event_kind = 'assignment_progress'
+          AND assignment_ref IS NOT NULL
+          ${assignmentOwnerClause}
+        ORDER BY created_at DESC
+        LIMIT 100`,
       ...ownerBindings,
     ),
     safeAll<ProviderAccountRow>(
@@ -284,6 +313,26 @@ const buildFleetStatusSnapshot = async (
   const activeAssignments = assignments.filter(row =>
     row.state === 'accepted' || row.state === 'running' || row.state === 'proof_submitted',
   )
+  const latestProgressByAssignment = new Map<string, {
+    createdAt: string
+    elapsedMs: number | null
+    lastLog: string | null
+    lastProgressEvent: string | null
+    phase: string | null
+    tokensSoFar: number | null
+  }>()
+  for (const row of assignmentProgressRows) {
+    if (latestProgressByAssignment.has(row.assignment_ref)) continue
+    const body = parseJsonRecord(row.event_body_json) ?? {}
+    latestProgressByAssignment.set(row.assignment_ref, {
+      createdAt: row.created_at,
+      elapsedMs: boundedInteger(body.elapsedMs),
+      lastLog: boundedString(body.message, 240),
+      lastProgressEvent: boundedString(body.lastProgressEvent, 120),
+      phase: boundedString(body.phase, 80),
+      tokensSoFar: boundedInteger(body.tokensSoFar),
+    })
+  }
   const accountLedger = providerAccounts.map(row => {
     const cooldownExpiresAt =
       row.cooldown_until !== null && row.cooldown_until > nowIso
@@ -369,24 +418,29 @@ const buildFleetStatusSnapshot = async (
       busySlots,
       queuedSlots,
       spread: fleetAccounts,
-      activeAssignments: assignments.map(row => ({
-        assignmentRef: row.assignment_ref,
-        pylonRef: row.pylon_ref,
-        jobKind: row.job_kind,
-        state: row.state,
-        elapsedMs: millisBetween(row.created_at, nowIso),
-        phase:
+      activeAssignments: assignments.map(row => {
+        const progress = latestProgressByAssignment.get(row.assignment_ref)
+        const fallbackPhase =
           row.state === 'proof_submitted'
             ? 'proof'
             : row.state === 'running' || row.state === 'accepted'
               ? 'running'
-              : 'queued',
-        tokensSoFar: null,
-        lastProgressEvent: null,
-        lastLog: null,
-        updatedAt: row.updated_at,
-        leaseExpiresAt: row.lease_expires_at,
-      })),
+              : 'queued'
+        return {
+          assignmentRef: row.assignment_ref,
+          pylonRef: row.pylon_ref,
+          jobKind: row.job_kind,
+          state: row.state,
+          elapsedMs: progress?.elapsedMs ?? millisBetween(row.created_at, nowIso),
+          phase: progress?.phase ?? fallbackPhase,
+          tokensSoFar: progress?.tokensSoFar ?? null,
+          lastProgressEvent: progress?.lastProgressEvent ?? null,
+          lastLog: progress?.lastLog ?? null,
+          progressObservedAt: progress?.createdAt ?? null,
+          updatedAt: row.updated_at,
+          leaseExpiresAt: row.lease_expires_at,
+        }
+      }),
       inFlightAssignments: assignments.map(row => ({
         assignmentRef: row.assignment_ref,
         pylonRef: row.pylon_ref,
@@ -397,7 +451,11 @@ const buildFleetStatusSnapshot = async (
         leaseExpiresAt: row.lease_expires_at,
       })),
       activeAssignmentCount: activeAssignments.length,
-      sourceRefs: ['d1:pylon_api_registrations', 'd1:pylon_api_assignments'],
+      sourceRefs: [
+        'd1:pylon_api_registrations',
+        'd1:pylon_api_assignments',
+        'd1:pylon_api_events.assignment_progress',
+      ],
     },
     accounts: {
       status: accountLedger,

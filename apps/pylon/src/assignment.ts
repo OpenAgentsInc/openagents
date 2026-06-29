@@ -128,6 +128,10 @@ export type AssignmentProgress = {
   artifactRefs: string[]
   proofRefs: string[]
   observedAt: string
+  elapsedMs?: number
+  phase?: "runtime_active" | CodexAgentRuntimePhase
+  tokensSoFar?: number
+  lastProgressEvent?: AssignmentRunLifecycleEvent["event"] | string
 }
 
 export type AssignmentCloseout = {
@@ -1816,16 +1820,36 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
           ...(options.codexAgentProbe === undefined ? {} : { codexAgentProbe: options.codexAgentProbe }),
           ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
           onCodexProgress: async (progress) => {
+            const elapsedMs = Math.max(0, Date.now() - runtimeStartedAtMs)
             await emitLifecycleEvent({
               event: "assignment_run.runtime_progress",
               assignmentRef: lease.assignmentRef,
               ...(agentAccount.accountRefHash === undefined ? {} : { accountRefHash: agentAccount.accountRefHash }),
               leaseRef: lease.leaseRef,
               phase: progress.phase,
-              elapsedMs: Math.max(0, Date.now() - runtimeStartedAtMs),
+              elapsedMs,
               ...(progress.tokensSoFar === undefined ? {} : { tokensSoFar: progress.tokensSoFar }),
               ...(progress.lastProgressEvent === undefined ? {} : { lastProgressEvent: progress.lastProgressEvent }),
             })
+            await submitAssignmentProgress(
+              summary,
+              {
+                schema: "openagents.pylon.assignment_progress.v0.3",
+                assignmentRef: lease.assignmentRef,
+                leaseRef: lease.leaseRef,
+                sequence: Math.max(1, Math.floor(elapsedMs / 1000)),
+                status: "running",
+                message: `Runtime phase: ${progress.phase}.`,
+                artifactRefs: [],
+                proofRefs: [],
+                observedAt: (options.now?.() ?? new Date()).toISOString(),
+                elapsedMs,
+                phase: progress.phase,
+                ...(progress.tokensSoFar === undefined ? {} : { tokensSoFar: progress.tokensSoFar }),
+                ...(progress.lastProgressEvent === undefined ? {} : { lastProgressEvent: progress.lastProgressEvent }),
+              },
+              options,
+            ).catch(() => {})
           },
         })) ??
         (await executeRuntimeGate(state, lease, observedAtDate)),

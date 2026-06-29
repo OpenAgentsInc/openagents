@@ -594,6 +594,18 @@ describe("Pylon assignment lease flow", () => {
       })
       expect(typeof runtimeActiveProgress?.elapsedMs).toBe("number")
       expect(runtimeActiveProgress?.elapsedMs).toBeGreaterThanOrEqual(0)
+      const postedRuntimeProgress = fake.requests
+        .filter((request) => request.path.endsWith("/progress"))
+        .map((request) => request.body)
+        .find((body) => body.status === "running" && body.phase === "proof")
+      expect(postedRuntimeProgress).toMatchObject({
+        assignmentRef: codexLease.assignmentRef,
+        leaseRef: codexLease.leaseRef,
+        message: "Runtime phase: proof.",
+        phase: "proof",
+        status: "running",
+      })
+      expect(typeof postedRuntimeProgress.elapsedMs).toBe("number")
 
       const lifecycleJson = JSON.stringify(lifecycleEvents)
       expect(lifecycleJson).not.toContain(home)
