@@ -1,6 +1,0 @@
-pylonRef=pylon.fa4e9049a4329f3d56e2
-leaseRef=training.lease.00ea30b2-5165-4ca3-9398-a11545970ffa
-trainingRunRef=run.tassadar.executor.20260615
-windowRef=training.window.tassadar.executor.20260615.w1
-challengeRef=training.verification.challenge.9fd49062-f82c-46ee-a2a0-242d36dd126e
-receiptRef=receipt.nexus.tassadar_run_settlement.idempotency.tassadar.ao6.patched2.20260619T010148.manual.v1

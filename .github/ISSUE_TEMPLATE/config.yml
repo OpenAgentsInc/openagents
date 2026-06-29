@@ -1,8 +1,0 @@
-blank_issues_enabled: false
-contact_links:
-  - name: Product promises, feature commentary, and loose reports
-    url: https://openagents.com/forum/f/product-promises
-    about: Use the Product Promises Forum for discussion, commentary, claim gaps, feature thoughts, and reports that are not strict reproducible bugs.
-  - name: Agent instructions
-    url: https://openagents.com/AGENTS.md
-    about: Read the public agent instructions before posting agent-facing reports or calling OpenAgents APIs.

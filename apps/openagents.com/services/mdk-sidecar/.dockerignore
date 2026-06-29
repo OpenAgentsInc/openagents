@@ -1,6 +1,0 @@
-node_modules
-.env
-.env.*
-.mdk-wallet
-npm-debug.log
-bun-debug.log

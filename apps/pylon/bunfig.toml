@@ -1,2 +1,0 @@
-# Pylon is headless and CLI-only: there is no TUI/Solid JSX surface, so tests
-# need no @opentui/solid transform preload. Keep this file minimal.

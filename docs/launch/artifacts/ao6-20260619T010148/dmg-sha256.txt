@@ -1,1 +1,0 @@
-22db620c12c97f819fd6045eebd86cceb51c7cffc1ef2fc0d5b3f8446dd46358  /Users/christopherdavid/work/openagents/apps/autopilot-desktop/artifacts/stable-macos-arm64-Autopilot.20260619T010148.notarized.dmg

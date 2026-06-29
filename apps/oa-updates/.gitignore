@@ -1,6 +1,0 @@
-dist/
-node_modules/
-
-# Pylon RC release staging (binaries served to the feed)
-pylon-dist/
-desktop-ota/

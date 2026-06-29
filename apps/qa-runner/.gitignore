@@ -1,9 +1,0 @@
-# Per-run artifact output (video/trace/screenshots/result.json/session-trace.json).
-# The committed review artifact is the distilled scenario under generated/, not
-# these raw run outputs.
-runs/
-
-# Bundled standalone CLI output. Built on demand (`bun run build`) and freshly
-# rebuilt at pack time by the `prepack` hook, so the bundle ships in the npm
-# tarball without being committed to git.
-dist/
