@@ -28,6 +28,7 @@ import {
 } from "../src/account-registry"
 import { loadCodexAccountHealthRecord } from "../src/codex-account-health-ledger"
 import { loadQuotaRecord } from "../src/account-quota-ledger"
+import { classifyCodexAccountFailure } from "../src/codex-account-health"
 import {
   WorkspaceCheckoutError,
   workspaceLeaseRecordFor,
@@ -88,6 +89,8 @@ const idleRunner: CodexAgentRunner = async () => ({
   commandCount: 0,
   sessionRef: null,
 })
+
+const validCodexAuthProbe = async () => ({ valid: true as const })
 
 async function withState<T>(fn: (state: Awaited<ReturnType<typeof ensurePylonLocalState>>) => Promise<T>) {
   const home = await mkdtemp(join(tmpdir(), "pylon-codex-exec-test-"))
@@ -241,6 +244,7 @@ describe("codex agent task recognition", () => {
         account,
         codexAgentRunner: revokedRunner,
         codexAgentProbe: readyProbe,
+        codexAuthValidityProbe: validCodexAuthProbe,
       })
 
       expect(revoked?.status).toBe("rejected")
@@ -264,12 +268,47 @@ describe("codex agent task recognition", () => {
         account: limitedAccount,
         codexAgentRunner: limitedRunner,
         codexAgentProbe: readyProbe,
+        codexAuthValidityProbe: validCodexAuthProbe,
       })
 
       expect(limited?.blockerRefs).toContain("blocker.assignment.codex_agent_execution_usage_limited")
       expect((await loadCodexAccountHealthRecord(state, limitedAccountRefHash))?.reason).toBe("usage_limited")
       expect((await loadQuotaRecord(state, limitedAccountRefHash))?.retryAtIso).toBe("2026-06-28T22:00:00.000Z")
       assertPublicProjectionSafe(limited)
+    })
+  })
+
+  test("pre-dispatch Codex auth health refuses revoked accounts before starting the runner", async () => {
+    await withState(async (state) => {
+      const accountRefHash = hashPylonAccountRef("codex", "codex-revoked")
+      const account: ResolvedPylonAccountSelection = {
+        provider: "codex",
+        selector: "registry_ref",
+        accountRef: "codex-revoked",
+        accountRefHash,
+        home: join(state.paths.home, "accounts", "codex", "codex-revoked"),
+      }
+      let runnerStarted = false
+      const record = await executeCodexAgentAssignment(state, lease, now, {
+        account,
+        codexAgentRunner: async () => {
+          runnerStarted = true
+          return { outcome: "completed", turnCount: 1, editedFileCount: 0, commandCount: 0, sessionRef: null }
+        },
+        codexAgentProbe: readyProbe,
+        codexAuthValidityProbe: async () => ({
+          valid: false,
+          reason: "credentials_revoked",
+          failure: classifyCodexAccountFailure("Your access token could not be refreshed because your refresh token was revoked."),
+        }),
+      })
+
+      expect(runnerStarted).toBe(false)
+      expect(record?.status).toBe("rejected")
+      expect(record?.blockerRefs).toContain("blocker.assignment.codex_agent_execution_credentials_revoked")
+      expect(record?.blockerRefs).toContain("blocker.assignment.codex_account_credentials_revoked_needs_owner_reauth")
+      expect((await loadCodexAccountHealthRecord(state, accountRefHash))?.reason).toBe("credentials_revoked")
+      assertPublicProjectionSafe(record)
     })
   })
 

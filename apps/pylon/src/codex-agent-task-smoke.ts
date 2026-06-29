@@ -220,6 +220,7 @@ export async function runCodexAgentTaskCiSmoke(): Promise<CodexAgentTaskSmokeRes
           return {}
         },
       },
+      codexAuthValidityProbe: async () => ({ valid: true }),
     })
 
     const closeout = "closeout" in run ? run.closeout : {}

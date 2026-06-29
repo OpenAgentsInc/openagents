@@ -131,6 +131,7 @@ describe("codex agent task smoke (CI-safe leg)", () => {
           },
           platform: "darwin",
         },
+        codexAuthValidityProbe: async () => ({ valid: true }),
       })
 
       expect(run.ok).toBe(true)

@@ -24,6 +24,8 @@ import {
   probeCodexAgentReadiness,
   type CodexAgentProbeOptions,
 } from "./codex-agent.js"
+import type { PylonCodexAuthValidityProbe } from "./account-connect.js"
+import { probeAndRecordCodexAccountAuthHealth } from "./codex-account-auth-health.js"
 import type { CodexAgentRuntimePhase, CodexAgentRunner } from "./codex-agent-executor.js"
 import {
   agentRunnerForLease,
@@ -177,6 +179,7 @@ export type AssignmentClientOptions = {
   claudeAgentProbe?: ClaudeAgentProbeOptions
   codexAgentRunner?: CodexAgentRunner
   codexAgentProbe?: CodexAgentProbeOptions
+  codexAuthValidityProbe?: PylonCodexAuthValidityProbe
   localAssignmentHeartbeatStaleAfterMs?: number
   localProcessIsAlive?: (processId: number) => boolean
   onLifecycleEvent?: (event: AssignmentRunLifecycleEvent) => void | Promise<void>
@@ -1590,6 +1593,15 @@ async function resolveAgentAccountForAssignment(
             env: targetEnv,
           })
     if (readiness.state !== "ready") continue
+    if (provider === "codex") {
+      const authHealth = await probeAndRecordCodexAccountAuthHealth(summary, {
+        account: target.account,
+        env,
+        now,
+        ...(options.codexAuthValidityProbe === undefined ? {} : { probe: options.codexAuthValidityProbe }),
+      })
+      if (authHealth.state !== "valid") continue
+    }
     readyTargets.push(target)
   }
   if (readyTargets.length === 0) return { account: null }
@@ -1828,6 +1840,9 @@ export async function runNoSpendAssignment(summary: BootstrapSummary, options: A
           ...(options.claudeAgentProbe === undefined ? {} : { claudeAgentProbe: options.claudeAgentProbe }),
           ...(options.claudeAgentRunner === undefined ? {} : { claudeAgentRunner: options.claudeAgentRunner }),
           ...(options.codexAgentRunner === undefined ? {} : { codexAgentRunner: options.codexAgentRunner }),
+          ...(options.codexAuthValidityProbe === undefined
+            ? {}
+            : { codexAuthValidityProbe: options.codexAuthValidityProbe }),
           ...(options.codexAgentProbe === undefined ? {} : { codexAgentProbe: options.codexAgentProbe }),
           ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
           onCodexProgress: async (progress) => {

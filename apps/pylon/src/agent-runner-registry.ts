@@ -1,6 +1,7 @@
 import type { AgentRuntimeAdapterKind } from "@openagentsinc/agent-runtime-schema"
 
 import type { ResolvedPylonAccountSelection } from "./account-registry.js"
+import type { PylonCodexAuthValidityProbe } from "./account-connect.js"
 import {
   CLAUDE_AGENT_SDK_PACKAGE,
   CLAUDE_AGENT_CAPABILITY_REF,
@@ -101,6 +102,7 @@ export type AgentRunnerExecutionOptions = {
   claudeAgentRunner?: ClaudeAgentRunner
   codexAgentProbe?: CodexAgentProbeOptions
   codexAgentRunner?: CodexAgentRunner
+  codexAuthValidityProbe?: PylonCodexAuthValidityProbe
   onCodexProgress?: (progress: CodexAgentRuntimeProgress) => void | Promise<void>
   fetch?: typeof fetch
 }
@@ -215,6 +217,9 @@ export const AGENT_RUNNER_REGISTRY: ReadonlyArray<AgentRunnerDescriptor> = [
         ...commonExecutionOptions(options),
         ...(options.codexAgentProbe === undefined ? {} : { codexAgentProbe: options.codexAgentProbe }),
         ...(options.codexAgentRunner === undefined ? {} : { codexAgentRunner: options.codexAgentRunner }),
+        ...(options.codexAuthValidityProbe === undefined
+          ? {}
+          : { codexAuthValidityProbe: options.codexAuthValidityProbe }),
         ...(options.onCodexProgress === undefined ? {} : { onProgress: options.onCodexProgress }),
       } satisfies CodexAgentExecutionOptions),
   },

@@ -23,6 +23,8 @@ import {
   pylonAccountEnvironment,
   type ResolvedPylonAccountSelection,
 } from "./account-registry.js"
+import type { PylonCodexAuthValidityProbe } from "./account-connect.js"
+import { probeAndRecordCodexAccountAuthHealth } from "./codex-account-auth-health.js"
 import {
   publishAssignmentPullRequest,
   type AssignmentPrTitleBody,
@@ -165,6 +167,7 @@ export type CodexAgentExecutionOptions = {
   checkoutRunner?: CodexAgentCheckoutRunner
   codexAgentRunner?: CodexAgentRunner
   codexAgentProbe?: CodexAgentProbeOptions
+  codexAuthValidityProbe?: PylonCodexAuthValidityProbe
   codexEventChunkReporter?: CodexEventChunkReporter
   codexTurnReporter?: CodexTurnReporter
   dependencyInstaller?: LocalCommandRunner
@@ -1269,6 +1272,26 @@ export async function executeCodexAgentAssignment(
       resultRef: "result.public.pylon.codex_agent_task.unavailable",
       summaryRef: "summary.public.pylon.codex_agent_task.unavailable",
       message: `Local Codex lane is not ready on this device (${probed.state}).`,
+    })
+  }
+  const authHealth = await probeAndRecordCodexAccountAuthHealth(state, {
+    account: options.account,
+    env,
+    now,
+    ...(options.codexAuthValidityProbe === undefined ? {} : { probe: options.codexAuthValidityProbe }),
+  })
+  if (authHealth.state !== "valid") {
+    return refusalRecord({
+      lease,
+      runRef,
+      blockerRefs: [
+        "blocker.assignment.codex_agent_execution_refused",
+        ...codexAccountFailureBlockerRefs(authHealth.failure.reason),
+        authHealth.failure.sourceDigestRef,
+      ],
+      resultRef: `result.public.pylon.codex_agent_task.execution_refused.${authHealth.failure.reason}`,
+      summaryRef: `summary.public.pylon.codex_agent_task.execution_refused.${authHealth.failure.reason}`,
+      message: `Local Codex account failed pre-dispatch auth health with ${authHealth.failure.reason}: ${authHealth.failure.publicMessage || "no public error message available"}.`,
     })
   }
 

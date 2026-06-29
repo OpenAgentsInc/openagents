@@ -251,19 +251,19 @@ describe("classifyCodexAuthProbeOutput", () => {
         stdout: "",
         stderr: "Your access token could not be refreshed because your refresh token was revoked.",
       }),
-    ).toEqual({ valid: false, reason: "credentials_revoked" })
+    ).toMatchObject({ valid: false, reason: "credentials_revoked", failure: { reason: "credentials_revoked" } })
   })
 
   test("classifies a usage limit as usage_limited", () => {
     expect(
       classifyCodexAuthProbeOutput({ exitCode: 1, stdout: "", stderr: "You have hit your usage limit." }),
-    ).toEqual({ valid: false, reason: "usage_limited" })
+    ).toMatchObject({ valid: false, reason: "usage_limited", failure: { reason: "usage_limited" } })
   })
 
   test("classifies a 401/unauthorized as auth_error", () => {
     expect(
       classifyCodexAuthProbeOutput({ exitCode: 1, stdout: "", stderr: "http 401 Unauthorized" }),
-    ).toEqual({ valid: false, reason: "auth_error" })
+    ).toMatchObject({ valid: false, reason: "auth_error" })
   })
 
   test("treats a clean exit as valid", () => {

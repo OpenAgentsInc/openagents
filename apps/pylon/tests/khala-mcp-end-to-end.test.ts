@@ -609,6 +609,7 @@ describe("Khala MCP end-to-end smoke", () => {
           },
           platform: "darwin",
         },
+        codexAuthValidityProbe: async () => ({ valid: true }),
         codexAgentRunner: async input => {
           expect(input.cwd).toContain("codex-agent-tasks")
           expect(input.instructions).toContain("bounded fixture workspace")
