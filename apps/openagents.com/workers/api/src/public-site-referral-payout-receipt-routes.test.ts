@@ -21,6 +21,16 @@ const projection = (
   ],
   generatedAt: '2026-06-20T00:01:00.000Z',
   policyRefs: ['policy.site_referral_payout.v1'],
+  proofScope: {
+    broaderReferralClaimSatisfied: false,
+    liveSitesReferralPayoutProof: true,
+    notAcceptedForPromiseRefs: ['referral.refer_once_earn_forever.v1'],
+    promiseRefs: ['sites.referral_bitcoin_stream.v1'],
+    reasonRefs: [
+      'reason.public.site_referral_payout.live_hosted_mdk_receipt',
+      'reason.public.site_referral_payout.broader_referral_claim_requires_cross_category_receipts',
+    ],
+  },
   qualifyingEventKind: 'inference_paid_request',
   receiptRef,
   resolution: {
@@ -91,6 +101,12 @@ describe('public Site referral payout receipt routes', () => {
       generatedAt: '2026-06-20T00:01:00.000Z',
       qualifyingEventKind: 'inference_paid_request',
       receiptRef,
+      proofScope: {
+        broaderReferralClaimSatisfied: false,
+        liveSitesReferralPayoutProof: true,
+        notAcceptedForPromiseRefs: ['referral.refer_once_earn_forever.v1'],
+        promiseRefs: ['sites.referral_bitcoin_stream.v1'],
+      },
       resolution: {
         settlementRail: 'hosted_mdk',
         state: 'settled',

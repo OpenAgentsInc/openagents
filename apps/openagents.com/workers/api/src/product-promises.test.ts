@@ -857,6 +857,22 @@ describe('public product promises document', () => {
           ]),
         }),
         expect.objectContaining({
+          promiseId: 'sites.referral_bitcoin_stream.v1',
+          state: 'yellow',
+          blockerRefs: [
+            'blocker.product_promises.referral_first_real_payout_pending',
+          ],
+          evidenceRefs: expect.arrayContaining([
+            'route:/api/public/site-referral-payout-receipts/{receiptRef}',
+            'apps/openagents.com/workers/api/src/site-referral-payout-receipts.ts',
+            'apps/openagents.com/workers/api/src/site-referral-payout-receipt-loop.test.ts',
+          ]),
+          safeCopy: expect.stringContaining('proofScope'),
+          verification: expect.stringContaining(
+            'only a hosted_mdk receipt can set liveSitesReferralPayoutProof=true',
+          ),
+        }),
+        expect.objectContaining({
           promiseId: 'autopilot.all_in_one_business_system.v1',
           state: 'planned',
         }),

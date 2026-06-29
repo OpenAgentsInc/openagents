@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
 
 import { projectMdkPayoutModeGate } from './mdk-payout-mode-gate'
+import { makeSiteReferralPayoutAdapter } from './site-referral-payout-adapter'
 import { dispatchReferralPayoutSettlement } from './site-referral-payout-dispatch'
 import { recordReferralPayoutForPaidEvent } from './site-referral-payout-feed'
 import type { SiteReferralPayoutState } from './site-referral-payout-ledger'
@@ -293,6 +294,85 @@ const bitcoinPaidEvent = (userId: string) => ({
 })
 
 describe('RL-1 staging-test settlement-receipt closed loop (#5524)', () => {
+  test('feed -> dispatch (hosted-MDK adapter contract) -> receipt is marked as live Sites proof', async () => {
+    const store = new LoopStore()
+    seedAttribution(store, 'github:loop-buyer')
+    const db = loopDb(store)
+
+    const fed = await recordReferralPayoutForPaidEvent(
+      db,
+      bitcoinPaidEvent('github:loop-buyer'),
+    )
+
+    if (fed._tag !== 'recorded') {
+      throw new Error('expected the paid event to record an eligible row')
+    }
+
+    const adapter = makeSiteReferralPayoutAdapter({
+      client: {
+        programmaticPayout: async input => ({
+          paymentHash: `test_public_hash_${input.idempotencyKey}`,
+          paymentId: `test_public_payment_${input.idempotencyKey}`,
+          status: 'SUCCESS',
+        }),
+      },
+      resolveDestination: async () => 'referrer@example.com',
+    })
+    const outcome = await dispatchReferralPayoutSettlement(
+      db,
+      {
+        adapter,
+        nowIso: () => '2026-06-22T12:05:00.000Z',
+        readReadiness: readyGate,
+      },
+      { payoutRef: fed.entry.payoutRef, revenueAsset: 'bitcoin' },
+    )
+
+    if (outcome._tag !== 'settled') {
+      throw new Error(`expected settled, got ${outcome._tag}`)
+    }
+
+    expect(outcome.receiptRef).toMatch(
+      /^receipt\.site_referral_payout\.hosted_mdk\.[a-f0-9]{32}$/,
+    )
+
+    const receipt = await makeD1SiteReferralPayoutReceiptStore(
+      db,
+    ).readSiteReferralPayoutReceipt(
+      outcome.receiptRef,
+      '2026-06-22T12:06:00.000Z',
+    )
+
+    expect(receipt).toMatchObject({
+      proofScope: {
+        broaderReferralClaimSatisfied: false,
+        liveSitesReferralPayoutProof: true,
+        notAcceptedForPromiseRefs: ['referral.refer_once_earn_forever.v1'],
+        promiseRefs: ['sites.referral_bitcoin_stream.v1'],
+        reasonRefs: [
+          'reason.public.site_referral_payout.live_hosted_mdk_receipt',
+          'reason.public.site_referral_payout.broader_referral_claim_requires_cross_category_receipts',
+        ],
+      },
+      resolution: {
+        settlementRail: 'hosted_mdk',
+        state: 'settled',
+        status: 'ok',
+      },
+    })
+
+    const serialized = JSON.stringify(receipt).toLowerCase()
+    for (const banned of [
+      'referrer@example.com',
+      'test_public_hash',
+      'test_public_payment',
+      'payment_hash',
+      'paymentid',
+    ]) {
+      expect(serialized).not.toContain(banned)
+    }
+  })
+
   test('feed -> dispatch (staging adapter) -> settled D1 row -> public receipt dereferences', async () => {
     const store = new LoopStore()
     seedAttribution(store, 'github:loop-buyer')
@@ -357,6 +437,19 @@ describe('RL-1 staging-test settlement-receipt closed loop (#5524)', () => {
       attributionLinked: true,
       qualifyingEventKind: 'forum_tip_paid',
       receiptRef: outcome.receiptRef,
+      proofScope: {
+        broaderReferralClaimSatisfied: false,
+        liveSitesReferralPayoutProof: false,
+        notAcceptedForPromiseRefs: [
+          'referral.refer_once_earn_forever.v1',
+          'sites.referral_bitcoin_stream.v1',
+        ],
+        promiseRefs: ['sites.referral_bitcoin_stream.v1'],
+        reasonRefs: [
+          'reason.public.site_referral_payout.staging_receipt_not_live_payout_proof',
+          'reason.public.site_referral_payout.broader_referral_claim_requires_cross_category_receipts',
+        ],
+      },
       resolution: {
         settlementRail: 'staging_test',
         state: 'settled',

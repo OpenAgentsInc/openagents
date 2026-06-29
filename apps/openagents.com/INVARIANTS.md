@@ -2758,8 +2758,14 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
     public-safe evidence refs while omitting payout refs, user ids, attribution
     ids, referral source or invite ids, payout destinations, invoices, payment
     hashes, preimages, raw provider payloads, wallet material, and ledger ids.
-    Read-only; grants no attribution, invite, checkout, spend, refund, payout,
-    settlement, wallet, provider, public-claim, or registry authority.
+    It also exposes `proofScope`: `hosted_mdk` receipts can mark
+    `liveSitesReferralPayoutProof=true` for the narrow
+    `sites.referral_bitcoin_stream.v1` claim, `staging_test` receipts must mark
+    it false, and a single Site receipt must keep
+    `broaderReferralClaimSatisfied=false` for
+    `referral.refer_once_earn_forever.v1`. Read-only; grants no attribution,
+    invite, checkout, spend, refund, payout, settlement, wallet, provider,
+    public-claim, or registry authority.
     Regression coverage:
     `workers/api/src/public-site-referral-payout-receipt-routes.test.ts`.
   - `GET /api/public/partner-payout-receipts/{receiptRef}` — live at read over

@@ -22,6 +22,13 @@ export type PublicSiteReferralPayoutReceiptProjection = Readonly<{
   generatedAt: string
   policyRefs: ReadonlyArray<string>
   qualifyingEventKind: string
+  proofScope: Readonly<{
+    broaderReferralClaimSatisfied: false
+    liveSitesReferralPayoutProof: boolean
+    notAcceptedForPromiseRefs: ReadonlyArray<string>
+    promiseRefs: ReadonlyArray<string>
+    reasonRefs: ReadonlyArray<string>
+  }>
   receiptRef: string
   resolution: Readonly<{
     settlementRail: SiteReferralPayoutReceiptSettlementRail
@@ -66,6 +73,31 @@ const settlementRailForReceipt = (
       ? 'staging_test'
       : 'public_safe_adapter'
 
+const proofScopeForSettlementRail = (
+  settlementRail: SiteReferralPayoutReceiptSettlementRail,
+): PublicSiteReferralPayoutReceiptProjection['proofScope'] => {
+  const liveSitesReferralPayoutProof = settlementRail === 'hosted_mdk'
+
+  return {
+    broaderReferralClaimSatisfied: false,
+    liveSitesReferralPayoutProof,
+    notAcceptedForPromiseRefs: [
+      'referral.refer_once_earn_forever.v1',
+      ...(liveSitesReferralPayoutProof ? [] : ['sites.referral_bitcoin_stream.v1']),
+    ],
+    promiseRefs: ['sites.referral_bitcoin_stream.v1'],
+    reasonRefs: liveSitesReferralPayoutProof
+      ? [
+          'reason.public.site_referral_payout.live_hosted_mdk_receipt',
+          'reason.public.site_referral_payout.broader_referral_claim_requires_cross_category_receipts',
+        ]
+      : [
+          'reason.public.site_referral_payout.staging_receipt_not_live_payout_proof',
+          'reason.public.site_referral_payout.broader_referral_claim_requires_cross_category_receipts',
+        ],
+  }
+}
+
 const publicProjection = (
   row: SettledReceiptRow,
   receiptRef: string,
@@ -74,6 +106,7 @@ const publicProjection = (
   const evidenceRefs = parseJsonStringArray(row.evidence_refs_json).filter(ref =>
     isPublicSafeRef(ref),
   )
+  const settlementRail = settlementRailForReceipt(receiptRef)
 
   return {
     amountSats: Number(row.amount_sats),
@@ -84,10 +117,11 @@ const publicProjection = (
     evidenceRefs,
     generatedAt,
     policyRefs: parseJsonStringArray(row.policy_refs_json),
+    proofScope: proofScopeForSettlementRail(settlementRail),
     qualifyingEventKind: row.qualifying_event_kind,
     receiptRef,
     resolution: {
-      settlementRail: settlementRailForReceipt(receiptRef),
+      settlementRail,
       state: 'settled',
       status: 'ok',
     },
