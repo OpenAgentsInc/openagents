@@ -33,6 +33,7 @@ import {
   workspaceLeaseRecordFor,
   type WorkspaceCheckoutRunner,
 } from "../src/workspace-materializer"
+import { projectVirtualMergeQueue } from "../src/blueprint-gates/virtual-merge-queue"
 
 const appleFmControlEnv = {
   PYLON_HOME: "/tmp/pylon-apple-fm-control-test",
@@ -245,6 +246,82 @@ describe("control protocol", () => {
             ),
           )
           expect(bogus).toMatch(/unknown command/)
+        }),
+      ),
+    )
+  })
+
+  test("control command plans supervisor virtual merge queue PR fast-forward", async () => {
+    const actualHead = "a".repeat(40)
+    const firstHead = "b".repeat(40)
+    const secondHead = "c".repeat(40)
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const runtime = yield* makePylonNodeRuntime
+          const server = yield* startControlServer(runtime, {
+            token: "test-token-0123456789abcdef",
+            actions: stubActions([]),
+            port: 0,
+          })
+          const projection = projectVirtualMergeQueue({
+            actualHead,
+            candidates: [
+              {
+                candidateRef: "candidate.public.pylon_vmq.issue_6695",
+                issueNumber: 6695,
+                baseCommit: actualHead,
+                patchCommit: firstHead,
+                verificationPassed: true,
+                issueOpen: true,
+                hasOpenPullRequest: false,
+                queuedAt: "2026-06-28T00:00:01.000Z",
+              },
+              {
+                candidateRef: "candidate.public.pylon_vmq.issue_6696",
+                issueNumber: 6696,
+                baseCommit: firstHead,
+                patchCommit: secondHead,
+                verificationPassed: true,
+                issueOpen: true,
+                hasOpenPullRequest: false,
+                queuedAt: "2026-06-28T00:00:02.000Z",
+              },
+            ],
+          })
+
+          const result = yield* Effect.promise(() =>
+            sendControlCommand(server.url, "test-token-0123456789abcdef", {
+              type: "virtual_merge_queue.pr_fast_forward.plan",
+              projection,
+              request: {
+                supervisorRef: "supervisor.public.pylon_vmq.sig_abcdef",
+                repository: "OpenAgentsInc/openagents",
+                branch: "main",
+                actualHead,
+                prNumber: 6695,
+                prBaseCommit: actualHead,
+                prHeadCommit: firstHead,
+                promotionRef: projection.nextActualPromotion?.promotionRef ?? "",
+              },
+            }),
+          )
+
+          expect(result).toMatchObject({
+            schema: "openagents.pylon.virtual_merge_queue.pr_fast_forward.v1",
+            state: "ready",
+            issueNumber: 6695,
+            expectedActualHeadBefore: actualHead,
+            fastForwardHead: firstHead,
+            nextVirtualHeadAfter: secondHead,
+          })
+          expect((result as { commands: Array<{ kind: string }> }).commands.map((command) => command.kind)).toEqual([
+            "git_fetch_pr_head",
+            "git_checkout_branch",
+            "git_reset_actual_head",
+            "git_merge_ff_only",
+            "git_push_branch",
+          ])
         }),
       ),
     )

@@ -31,6 +31,11 @@ import type {
   ControlSessionReplyCommand,
   ControlSessionSpawnCommand,
 } from "./control-sessions.js"
+import {
+  planVirtualMergeQueuePrFastForward,
+  type VirtualMergeQueuePrFastForwardRequest,
+  type VirtualMergeQueueProjection,
+} from "../blueprint-gates/virtual-merge-queue.js"
 
 export const defaultControlPort = 4716
 export const controlTokenFileName = "control-token"
@@ -106,6 +111,13 @@ export type ControlCommand =
   // revokes a paired credential by its pairingRef.
   | { type: "bridge.clients.list" }
   | { type: "bridge.revoke"; pairingRef: string }
+  // #6695: public-safe supervisor API for planning the one allowed PR
+  // fast-forward from the Pylon-native virtual merge queue.
+  | {
+      type: "virtual_merge_queue.pr_fast_forward.plan"
+      projection: VirtualMergeQueueProjection
+      request: VirtualMergeQueuePrFastForwardRequest
+    }
 
 export interface ControlCommandActions {
   walletSend: (destinationRef: string, amountSats?: number) => Promise<unknown>
@@ -365,6 +377,11 @@ export const startControlServer = (
           }
           return { revoked: bridgePairing.revoke(command.pairingRef) }
         }
+        case "virtual_merge_queue.pr_fast_forward.plan":
+          return planVirtualMergeQueuePrFastForward({
+            projection: command.projection,
+            request: command.request,
+          })
         default:
           throw new Error(`unknown command: ${(command as { type?: string }).type}`)
       }
